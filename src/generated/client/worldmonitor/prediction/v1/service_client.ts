@@ -6,6 +6,7 @@ export interface ListPredictionMarketsRequest {
   cursor: string;
   category: string;
   query: string;
+  minLiquidity: number;
 }
 
 export interface ListPredictionMarketsResponse {
@@ -26,6 +27,7 @@ export interface PredictionMarket {
   source: MarketSource;
   yesPriceChange24h?: number;
   yesPriceChange7d?: number;
+  liquidity?: number;
 }
 
 export interface PaginationResponse {
@@ -90,6 +92,7 @@ export class PredictionServiceClient {
     if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
     if (req.category != null && req.category !== "") params.set("category", String(req.category));
     if (req.query != null && req.query !== "") params.set("query", String(req.query));
+    if (req.minLiquidity != null && req.minLiquidity !== 0) params.set("min_liquidity", String(req.minLiquidity));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

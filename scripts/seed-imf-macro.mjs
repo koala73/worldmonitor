@@ -98,6 +98,7 @@ async function fetchImfMacro() {
         primaryBalancePct: primBal?.year ?? null,
         govExpenditurePct: govExp?.year ?? null,
         govRevenuePct: rev?.year ?? null,
+        currentAccountPct: ca?.year ?? null,
       },
       year: infl?.year ?? ca?.year ?? rev?.year ?? cpi?.year ?? cpiEop?.year ?? govExp?.year ?? primBal?.year ?? null,
       // Codex PR #3604 P2 — see seed-imf-external.mjs for the full

@@ -5,7 +5,7 @@
  */
 
 import { ValidationError } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { cachedFetchJson } from './redis';
+import { cachedFetchJsonWithMeta } from './redis';
 
 const HISTORY_DOMAINS = new Set(['conflict', 'military', 'energy']);
 const SUCCESS_CACHE_TTL_SECONDS = 30 * 60;
@@ -68,7 +68,7 @@ class UpstreamUnavailable extends Error {}
 
 /**
  * Cache only successful history reads. Failed upstream responses intentionally
- * throw through cachedFetchJson with cacheFetcherErrors disabled, so neither a
+ * throw through cachedFetchJsonWithMeta with cacheFetcherErrors disabled, so neither a
  * Redis negative sentinel nor a raw semantic-text cache key is ever created.
  */
 export async function cacheSuccessfulHistoryRead<T extends object>(
@@ -78,7 +78,7 @@ export async function cacheSuccessfulHistoryRead<T extends object>(
 ): Promise<T | null> {
   const key = await opaqueCacheKey(kind, normalizedInputs);
   try {
-    return await cachedFetchJson<T>(
+    const result = await cachedFetchJsonWithMeta<T>(
       key,
       SUCCESS_CACHE_TTL_SECONDS,
       async () => {
@@ -87,9 +87,15 @@ export async function cacheSuccessfulHistoryRead<T extends object>(
         return result;
       },
       0,
-      { cacheFetcherErrors: false, timeoutMs: 12_000 },
+      {
+        cacheFetcherErrors: false,
+        timeoutMs: 12_000,
+        isCallerLocalError: (error) => error instanceof ValidationError,
+      },
     );
+    return result.data;
   } catch (error) {
+    if (error instanceof ValidationError) throw error;
     if (error instanceof UpstreamUnavailable || error instanceof Error) return null;
     return null;
   }

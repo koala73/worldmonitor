@@ -4,7 +4,7 @@ package worldmonitor.sanctions.v1;
 
 import "sebuf/http/annotations.proto";
 
-// LookupSanctionEntityRequest screens the seeded OFAC SDN, OFAC Consolidated and Canada SEMA index.
+// LookupSanctionEntityRequest screens the seeded OFAC SDN, OFAC Consolidated, Canada SEMA and US CSL index.
 message LookupSanctionEntityRequest {
   // Search a name, up to 10 retained aliases per entity, or an exact IMO identifier (2-200 characters).
   string q = 1 [(sebuf.http.query) = { name: "q" }];

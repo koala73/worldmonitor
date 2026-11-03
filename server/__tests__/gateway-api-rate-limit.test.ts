@@ -68,8 +68,10 @@ vi.mock("../_shared/entitlement-check", async (importActual) => {
 });
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId ----------
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
 vi.mock("../_shared/user-api-key", () => ({
-  validateUserApiKey: vi.fn(async () => ({ userId: "acct_starter", keyId: "k1", name: "t" })),
+  validateUserApiKeyPrincipal: vi.fn(async () => ({ userId: "acct_starter", keyId: "k1", keyKind: "api", keyHash: "h".repeat(64), activeKeyRank: 0 })),
 }));
 
 import { createDomainGateway } from "../gateway";

@@ -65,7 +65,8 @@ const PUBLIC_PATHS = readPublicNoAuthPaths();
 const ENDPOINT_ENTITLEMENTS = readEndpointEntitlements();
 const ENDPOINT_ENTITLEMENT_PATHS = new Set(ENDPOINT_ENTITLEMENTS.keys());
 const PREMIUM_RPC_PATHS = new Set(readPremiumRpcPaths());
-const BEARER_AUTH_PATHS = new Set([...ENDPOINT_ENTITLEMENT_PATHS, ...PREMIUM_RPC_PATHS]);
+const COUNTRY_HISTORY_PATH = '/api/intelligence/v1/get-country-history';
+const BEARER_AUTH_PATHS = new Set([...ENDPOINT_ENTITLEMENT_PATHS, ...PREMIUM_RPC_PATHS, COUNTRY_HISTORY_PATH]);
 if (BEARER_AUTH_PATHS.size === 0) {
   throw new Error('bearer-auth path sources parsed as empty — refusing to run');
 }
@@ -155,6 +156,8 @@ const BEARER_OPERATION_SECURITY = [
   { BearerAuth: [] },
 ];
 
+const OPTIONAL_HISTORY_SECURITY = [{}, ...BEARER_OPERATION_SECURITY];
+
 const TRUST_REVIEW_OPERATION_SECURITY = [{ TrustReviewKey: [] }];
 
 // The handler throws ApiError(401, 'Unauthorized'), which error-mapper renders
@@ -185,6 +188,11 @@ const UNAUTHORIZED_RESPONSE = {
       schema: { $ref: '#/components/schemas/UnauthorizedError' },
     },
   },
+};
+
+const OPTIONAL_HISTORY_UNAUTHORIZED_RESPONSE = {
+  ...UNAUTHORIZED_RESPONSE,
+  description: 'Invalid supplied credentials. Omit credentials for seven-day access.',
 };
 
 const FORBIDDEN_SCHEMA = {
@@ -372,16 +380,18 @@ function injectJson(spec) {
         }
       } else {
         if (BEARER_AUTH_PATHS.has(path)) {
-          if (!eq(op.security, BEARER_OPERATION_SECURITY)) {
-            op.security = BEARER_OPERATION_SECURITY;
+          const security = path === COUNTRY_HISTORY_PATH ? OPTIONAL_HISTORY_SECURITY : BEARER_OPERATION_SECURITY;
+          if (!eq(op.security, security)) {
+            op.security = security;
             changed = true;
           }
         } else if (op.security !== undefined) {
           delete op.security;
           changed = true;
         }
-        if (!eq(op.responses['401'], UNAUTHORIZED_RESPONSE)) {
-          op.responses['401'] = UNAUTHORIZED_RESPONSE;
+        const unauthorized = path === COUNTRY_HISTORY_PATH ? OPTIONAL_HISTORY_UNAUTHORIZED_RESPONSE : UNAUTHORIZED_RESPONSE;
+        if (!eq(op.responses['401'], unauthorized)) {
+          op.responses['401'] = unauthorized;
           changed = true;
         }
         if (isEntitlementGated) {
@@ -665,6 +675,7 @@ const YAML_TRUST_REVIEW_OPERATION_SECURITY = [
 const YAML_OPERATION_SECURITY = {
   public: ['            security: []'],
   bearer: YAML_BEARER_OPERATION_SECURITY,
+  'optional-history': [YAML_BEARER_OPERATION_SECURITY[0], '                - {}', ...YAML_BEARER_OPERATION_SECURITY.slice(1)],
   'trust-review': YAML_TRUST_REVIEW_OPERATION_SECURITY,
 };
 
@@ -1186,9 +1197,12 @@ function injectYamlAuthContract(text) {
           changed = removeYamlForbiddenResponse(lines, path, method) || changed;
         }
       } else {
-        changed = ensureYamlUnauthorizedResponse(lines, path, method) || changed;
+        const unauthorized = path === COUNTRY_HISTORY_PATH
+          ? YAML_UNAUTHORIZED_RESPONSE.map(line => line.replace(UNAUTHORIZED_RESPONSE.description, OPTIONAL_HISTORY_UNAUTHORIZED_RESPONSE.description))
+          : YAML_UNAUTHORIZED_RESPONSE;
+        changed = ensureYamlUnauthorizedResponse(lines, path, method, unauthorized) || changed;
         if (BEARER_AUTH_PATHS.has(path)) {
-          changed = ensureYamlOperationSecurity(lines, path, method, 'bearer') || changed;
+          changed = ensureYamlOperationSecurity(lines, path, method, path === COUNTRY_HISTORY_PATH ? 'optional-history' : 'bearer') || changed;
         } else {
           // Non-bearer op inherits the root API-key requirement; strip any
           // stale operation-level security (e.g. a BearerAuth block left from

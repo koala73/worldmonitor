@@ -3,8 +3,6 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
 import { SERVER_INSTRUCTIONS } from '../api/mcp/constants.ts';
-import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
-import { getRequiredTier } from '../server/_shared/entitlement-check.ts';
 import {
   buildPublicTool,
   TOOL_LIST_RESPONSE,
@@ -24,6 +22,7 @@ describe('agent-visible MCP access contract', () => {
     assert.equal(accessFor('get_sources'), 'free');
     assert.equal(accessFor('get_market_data'), 'free-account');
     assert.equal(accessFor('get_mcp_allowance'), 'free-account');
+    assert.equal(accessFor('start_upgrade'), 'free-account');
     assert.equal(accessFor('get_country_risk'), 'subscription');
     assert.equal(accessFor('get_sanctions_data'), 'subscription');
     assert.equal(accessFor('get_supply_chain_data'), 'subscription');
@@ -31,28 +30,15 @@ describe('agent-visible MCP access contract', () => {
     for (const tool of TOOL_REGISTRY) {
       const expected = tool._subscriptionOnly ? 'subscription' : tool._freeTier === true
         ? 'free'
-        : tool._execute === undefined || tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance'
+        : tool._execute === undefined || tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance' || tool.name === 'start_upgrade'
           ? 'free-account'
           : 'subscription';
       assert.equal(accessFor(tool.name), expected, `${tool.name} access marker`);
     }
   });
 
-  it('keeps Pro-only Comtrade cache data out of every free-account tool', () => {
-    const path = '/api/trade/v1/list-comtrade-flows';
-    assert.ok(PREMIUM_RPC_PATHS.has(path));
-    assert.equal(getRequiredTier(path), 1);
-    const handler = readFileSync(new URL(`../server/worldmonitor/${path.slice(5)}.ts`, import.meta.url), 'utf8');
-    const prefix = handler.match(/const KEY_PREFIX = '([^']+)'/)?.[1];
-    assert.equal(prefix, 'comtrade:flows');
-    assert.ok(TOOL_REGISTRY.some((tool) => tool._cacheKeys?.includes(`${prefix}:v1`)));
-    for (const tool of TOOL_REGISTRY) {
-      if (toolAccess(tool) === 'subscription') continue;
-      for (const key of tool._cacheKeys ?? []) {
-        assert.ok(key !== prefix && !key.startsWith(`${prefix}:`), `${tool.name} exposes Pro-only ${key}`);
-      }
-    }
-  });
+  // Pro-only cache data (Comtrade flows, the #7433 datasets) is kept out of
+  // free-account tools by tests/mcp-free-account-paid-data-invariant.test.mts.
 
   it('publishes what every tool COSTS, on every tool', () => {
     // An API-tier caller is charged 1, 2 or 3 units per call. Without this the

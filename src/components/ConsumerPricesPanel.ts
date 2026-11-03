@@ -444,6 +444,7 @@ export class ConsumerPricesPanel extends Panel {
         </tr>`;
     }).join('');
     return `
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
       <table class="cp-global-table">
         <thead>
           <tr>
@@ -452,6 +453,7 @@ export class ConsumerPricesPanel extends Panel {
         </thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
       <div class="cp-global-hint">Tap a market row to drill in</div>
     `;
   }
@@ -508,6 +510,7 @@ export class ConsumerPricesPanel extends Panel {
           value="${escapeHtml(this.inflationFilter)}" />
         <span class="cp-world-count">${escapeHtml(this.inflationCountText(visible))}</span>
       </div>
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
       <table class="cp-global-table cp-world-table">
         <thead>
           <tr>
@@ -519,6 +522,7 @@ export class ConsumerPricesPanel extends Panel {
         </thead>
         <tbody>${this.inflationTbodyHtml(visible)}</tbody>
       </table>
+      </div>
       <div class="cp-global-hint">${escapeHtml(t('components.consumerPrices.world.source'))}</div>
     `;
   }
@@ -586,6 +590,7 @@ export class ConsumerPricesPanel extends Panel {
     if (!cats?.length) return this.renderEmptyState('No category data yet');
 
     return `
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
       <table class="cp-table">
         <thead>
           <tr>
@@ -608,6 +613,7 @@ export class ConsumerPricesPanel extends Panel {
           `).join('')}
         </tbody>
       </table>
+      </div>
     `;
   }
 

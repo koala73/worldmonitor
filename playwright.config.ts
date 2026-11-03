@@ -45,6 +45,7 @@ if (webMcpProduction) {
 
 export default defineConfig({
   testDir: './e2e',
+  forbidOnly: Boolean(process.env.CI),
   preserveOutput: 'always',
   // Production mode is a safety boundary, not merely a base-URL switch. Even
   // when its complete environment tuple is inherited by another npm script,

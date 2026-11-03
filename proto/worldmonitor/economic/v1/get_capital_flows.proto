@@ -1,0 +1,298 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// CapitalFlowComponents splits one side of the financial account by functional category, in USD billions. A component is absent when the source does not report it for the period.
+message CapitalFlowComponents {
+  // Direct investment: lasting-interest stakes of 10% or more, including reinvested earnings and intercompany debt.
+  optional double fdi = 1;
+  // Portfolio investment: equity and debt securities that are not direct investment.
+  optional double portfolio = 2;
+  // Other investment: loans, deposits, currency, trade credit and other accounts.
+  optional double other = 3;
+  // Sum of the three categories. Set only when all three are reported for the period; a partial sum would read as a collapse.
+  optional double total = 4;
+}
+
+// CapitalFlowPeriod is one period of gross balance-of-payments financial-account flows.
+message CapitalFlowPeriod {
+  // Period label: YYYY-Qn for quarterly series, YYYY for annual series.
+  string period = 1;
+  // Gross inflows: non-residents' net new claims on the country (BPM6 net incurrence of liabilities). Negative means non-residents withdrew more than they added.
+  CapitalFlowComponents inflows = 2;
+  // Gross outflows: residents' net new claims abroad (BPM6 net acquisition of financial assets), excluding reserve assets. Negative means residents brought money home.
+  CapitalFlowComponents outflows = 3;
+  // Net errors and omissions, USD billions. Persistent negative values can indicate outflows the official categories do not record.
+  optional double errors_omissions = 4;
+}
+
+// CapitalFlowEpisode is one Forbes and Warnock (2012) episode on a quarterly series. Derived from reported flows, not published by the source.
+message CapitalFlowEpisode {
+  // First quarter of the episode, YYYY-Qn: the first quarter the change in four-quarter flows moved more than one standard deviation from its trailing mean.
+  string start = 1;
+  // Last quarter of the episode, YYYY-Qn. Equals the series' latest quarter while the episode is still open.
+  string end = 2;
+  // Number of quarters in the episode; always at least 2.
+  int32 quarters = 3;
+  // Largest absolute z-score reached during the episode; always at least 2.
+  double peak_z = 4;
+  // Quarter of the peak z-score, YYYY-Qn.
+  string peak_period = 5;
+}
+
+// CapitalFlowEpisodes lists the episodes that ended within the last ten years, oldest first, by type.
+message CapitalFlowEpisodes {
+  // Sharp rises in gross inflows: non-residents adding money faster than usual.
+  repeated CapitalFlowEpisode surge = 1;
+  // Sharp falls in gross inflows: a sudden stop in non-residents' money.
+  repeated CapitalFlowEpisode stop = 2;
+  // Sharp rises in gross outflows: residents sending money abroad faster than usual.
+  repeated CapitalFlowEpisode flight = 3;
+  // Sharp falls in gross outflows: residents bringing money home.
+  repeated CapitalFlowEpisode retrenchment = 4;
+}
+
+// CapitalFlowState is the episode classification at the latest quarter both sides report. Derived, not published by the source.
+message CapitalFlowState {
+  // surge or stop when an inflow episode is open at the latest quarter; empty otherwise.
+  string inflow = 1;
+  // flight or retrenchment when an outflow episode is open at the latest quarter; empty otherwise.
+  string outflow = 2;
+  // Inflow z-score at the latest quarter: the change in four-quarter inflows against its trailing 20-quarter mean, in standard deviations. Beyond plus or minus 2 is an episode-level move.
+  optional double inflow_z = 3;
+  // Outflow z-score at the latest quarter, on the same basis.
+  optional double outflow_z = 4;
+}
+
+// CapitalFlowTotals summarizes gross flows over the trailing four quarters (quarterly series) or the latest year (annual series). USD billions unless the name ends in Pct or PctGdp.
+message CapitalFlowTotals {
+  // Gross inflows over the window. Absent when any quarter in it is incomplete or the quarters are not consecutive.
+  optional double inflows_usd_bn = 1;
+  // Gross outflows over the window, on the same basis.
+  optional double outflows_usd_bn = 2;
+  // Inflows minus outflows. Positive means the country took in more than it sent out.
+  optional double net_usd_bn = 3;
+  // Gross inflows as a percent of GDP.
+  optional double inflows_pct_gdp = 4;
+  // Gross outflows as a percent of GDP.
+  optional double outflows_pct_gdp = 5;
+  // Year-on-year change in gross inflows, percent. Annual series only, and only when the prior year is reported.
+  optional double inflows_yoy_pct = 6;
+  // Year-on-year change in gross outflows, percent, on the same basis.
+  optional double outflows_yoy_pct = 7;
+}
+
+// CapitalFlowBop is the IMF balance-of-payments view of one country.
+message CapitalFlowBop {
+  // quarterly when a current quarterly series exists, otherwise annual. Annual series carry no state and no episodes.
+  string frequency = 1;
+  // Latest period in the series: YYYY-Qn or YYYY.
+  string latest_period = 2;
+  // Episode classification at the latest quarter. Absent for annual series.
+  CapitalFlowState state = 3;
+  // Episodes over the last ten years. Absent for annual series.
+  CapitalFlowEpisodes episodes = 4;
+  // Trailing four quarters (quarterly) or the latest year (annual).
+  CapitalFlowTotals totals = 5;
+  // Recent periods, oldest first: 12 quarters or 6 years. Empty unless the include_series query parameter is true.
+  repeated CapitalFlowPeriod series = 6;
+}
+
+// CapitalFlowPosition is a cross-border bank position from BIS locational banking statistics, in USD billions.
+message CapitalFlowPosition {
+  // Outstanding amount at the latest quarter.
+  optional double stock_usd_bn = 1;
+  // Sum of the last four FX- and break-adjusted quarterly changes: money moved, net of exchange-rate effects and reporting breaks. Positive means the position grew.
+  optional double flow_4q_usd_bn = 2;
+}
+
+// CapitalFlowCounterparty is one partner country in a ranked bilateral list, in USD billions.
+message CapitalFlowCounterparty {
+  // ISO 3166-1 alpha-2 code of the partner.
+  string country = 1;
+  // Outstanding amount.
+  optional double stock_usd_bn = 2;
+  // Four-quarter adjusted flow. Bank lists only.
+  optional double flow_4q_usd_bn = 3;
+}
+
+// CapitalFlowBank is the BIS locational banking view of one country's residents.
+message CapitalFlowBank {
+  // Latest quarter, YYYY-Qn.
+  string latest_period = 1;
+  // Deposits of the country's non-bank residents in banks located in every BIS reporting country.
+  CapitalFlowPosition non_bank_deposits_abroad = 2;
+  // The household and non-profit slice of those deposits.
+  CapitalFlowPosition household_deposits_abroad = 3;
+  // Cross-border bank lending to the country's non-bank residents by banks in every BIS reporting country.
+  CapitalFlowPosition non_bank_borrowing_from_abroad = 4;
+  // Banking systems holding the most deposits from the country's non-banks, largest first.
+  repeated CapitalFlowCounterparty top_bank_locations = 5;
+  // True when the country's own banks publish a by-counterparty breakdown to the BIS. Some reporting systems publish aggregates only.
+  bool publishes_bilateral = 6;
+  // For systems that publish a breakdown: the countries whose non-banks hold the most deposits in its banks, largest first.
+  repeated CapitalFlowCounterparty top_depositor_origins = 7;
+}
+
+// CapitalFlowPortfolio is the IMF portfolio-positions view of one country, from mirror data, in USD billions.
+message CapitalFlowPortfolio {
+  // Reference year: the newest year at least 80% as well reported as the year before.
+  int32 year = 1;
+  // Securities issued by residents of this country held by every reporting economy.
+  optional double foreign_holdings_usd_bn = 2;
+  // The same reporters' holdings a year earlier, so the change is like for like.
+  optional double foreign_holdings_prev_year_usd_bn = 3;
+  // Change between the two, percent. Mixes new money with price and exchange-rate moves.
+  optional double change_pct = 4;
+  // Number of reporting economies holding the country's securities.
+  int32 reporter_count = 5;
+  // Largest foreign holders, largest first.
+  repeated CapitalFlowCounterparty top_holders = 6;
+  // The country's own holdings of foreign securities, when it reports them.
+  optional double holdings_abroad_usd_bn = 7;
+  // Largest destinations of those holdings, largest first.
+  repeated CapitalFlowCounterparty top_destinations = 8;
+}
+
+// CapitalFlowFdi is the IMF direct-investment positions view of one country, as the country itself reports them, by immediate counterpart, in USD billions. Conduit economies carry large pass-through positions.
+message CapitalFlowFdi {
+  // Reference year: the newest year at least 80% as well reported as the year before.
+  int32 year = 1;
+  // Direct investment in the country by all counterparts.
+  optional double inward_usd_bn = 2;
+  // Largest investors, largest first.
+  repeated CapitalFlowCounterparty top_investors = 3;
+  // The country's direct investment abroad.
+  optional double outward_usd_bn = 4;
+  // Largest destinations, largest first.
+  repeated CapitalFlowCounterparty top_destinations = 5;
+}
+
+// CapitalFlowCountry carries every capital-flow view for one country. A view is absent when its source publishes nothing for the country.
+message CapitalFlowCountry {
+  // ISO 3166-1 alpha-2 code.
+  string country = 1;
+  // ISO 3166-1 alpha-3 code.
+  string iso3 = 2;
+  // GDP used for percent-of-GDP figures, USD billions (World Bank, current US dollars).
+  optional double gdp_usd_bn = 3;
+  // Year of that GDP figure.
+  int32 gdp_year = 4;
+  // Gross balance-of-payments flows.
+  CapitalFlowBop bop = 5;
+  // Cross-border bank positions.
+  CapitalFlowBank bank = 6;
+  // Portfolio holdings of the country's securities.
+  CapitalFlowPortfolio portfolio = 7;
+  // Direct-investment positions.
+  CapitalFlowFdi fdi = 8;
+}
+
+// CapitalFlowLatest names the newest period of each source.
+message CapitalFlowLatest {
+  // Quarter most quarterly balance-of-payments reporters have reached, YYYY-Qn.
+  string bop_quarter = 1;
+  // Year most annual-only reporters have reached.
+  string bop_year = 2;
+  // Latest BIS banking quarter, YYYY-Qn.
+  string bis_quarter = 3;
+  // Portfolio-positions reference year.
+  int32 pip_year = 4;
+  // Direct-investment positions reference year.
+  int32 fdi_year = 5;
+}
+
+// CapitalFlowPairLeg is one direction of a bilateral position, in USD billions.
+message CapitalFlowPairLeg {
+  // reported: the reporting side published a current figure. not_itemized: the reporting side publishes bilateral data but has no current figure for this partner (zero, small, confidential, or a series that stopped); unknown, not zero. not_published: the reporting side publishes no bilateral breakdown.
+  string status = 1;
+  // Outstanding position at the leg's reference period.
+  optional double stock_usd_bn = 2;
+  // Bank legs: sum of the last four FX- and break-adjusted quarterly changes.
+  optional double flow_4q_usd_bn = 3;
+  // Portfolio legs: the same holding a year earlier.
+  optional double prev_year_usd_bn = 4;
+  // FDI legs: investor when stockUsdBn is the investor's outward figure, host when only the host's inward figure exists. Empty for other legs.
+  string basis = 5;
+  // FDI legs: the other side's figure for the same position. The two sides' reports often differ.
+  optional double counterpart_report_usd_bn = 6;
+  // Bank legs: FX- and break-adjusted quarterly flows for up to the last eight quarters, oldest first. Quarters without a figure are omitted.
+  repeated CapitalFlowPairPoint history = 7;
+  // Bank legs: loans_deposits (BIS instrument G) normally; all_instruments (instrument A, which adds debt securities) for a reporting system that publishes no loans-and-deposits breakdown. Empty for other legs.
+  string instrument = 8;
+}
+
+// CapitalFlowPairPoint is one quarterly adjusted bank flow.
+message CapitalFlowPairPoint {
+  // Quarter, YYYY-Qn.
+  string period = 1;
+  // Adjusted flow in the quarter, USD billions. Positive means the position grew.
+  double usd_bn = 2;
+}
+
+// CapitalFlowPair carries a country (a) and a counterpart (b) in both directions across bank, portfolio and direct-investment channels.
+message CapitalFlowPair {
+  // ISO 3166-1 alpha-2 code of a, the requested country.
+  string country = 1;
+  // ISO 3166-1 alpha-2 code of b, the counterpart.
+  string counterpart = 2;
+  // BIS quarter of the bank legs, YYYY-Qn. Portfolio and FDI legs carry their own years below.
+  string bank_period = 3;
+  // IMF portfolio-positions year of the holding legs.
+  int32 portfolio_year = 4;
+  // Deposits of a's non-bank residents in banks located in b, as b's banks report them.
+  CapitalFlowPairLeg a_deposits_in_b = 5;
+  // Deposits of b's non-bank residents in banks located in a, as a's banks report them.
+  CapitalFlowPairLeg b_deposits_in_a = 6;
+  // Lending by banks located in b to a's non-bank residents, as b's banks report it.
+  CapitalFlowPairLeg a_borrowing_from_b = 7;
+  // Lending by banks located in a to b's non-bank residents, as a's banks report it.
+  CapitalFlowPairLeg b_borrowing_from_a = 8;
+  // a's holdings of securities issued in b, as a reports them.
+  CapitalFlowPairLeg a_holdings_of_b = 9;
+  // b's holdings of securities issued in a, as b reports them.
+  CapitalFlowPairLeg b_holdings_of_a = 10;
+  // a's direct investment in b: a's outward figure, with b's inward figure for the same position.
+  CapitalFlowPairLeg a_fdi_in_b = 11;
+  // b's direct investment in a, on the same basis.
+  CapitalFlowPairLeg b_fdi_in_a = 12;
+  // IMF direct-investment positions year of the FDI legs.
+  int32 fdi_year = 13;
+}
+
+// GetCapitalFlowsRequest selects countries, an optional counterpart, and detail.
+message GetCapitalFlowsRequest {
+  // Optional ISO 3166-1 alpha-2 filter. When set, only that country is returned (and the counterpart, if given).
+  string country = 1 [
+    (sebuf.http.query) = {name: "country"},
+    (buf.validate.field).string.max_len = 2
+  ];
+  // When true, include each returned country's period-by-period BOP series. Defaults to false.
+  bool include_series = 2 [(sebuf.http.query) = {name: "include_series"}];
+  // Optional ISO 3166-1 alpha-2 partner. With country, the response adds pair (both directions) and the counterpart's own view. Ignored without country, and when equal to country.
+  string counterpart = 3 [
+    (sebuf.http.query) = {name: "counterpart"},
+    (buf.validate.field).string.max_len = 2
+  ];
+}
+
+// GetCapitalFlowsResponse is cross-country capital-flow data from IMF and BIS official statistics. Amounts are USD billions.
+message GetCapitalFlowsResponse {
+  // Countries in ascending ISO code order.
+  repeated CapitalFlowCountry countries = 1;
+  // Newest period per source.
+  CapitalFlowLatest latest = 2;
+  // When the dataset was built, Unix epoch milliseconds. 0 when unavailable.
+  int64 seeded_at = 3 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // True when the seeded dataset is unavailable. An empty country list is not zero flow.
+  bool unavailable = 4;
+  // Source URLs.
+  repeated string sources = 5;
+  // Short method notes keyed by view: bop, episodes, bank, portfolio, fdi, pairs, caveat.
+  map<string, string> method = 6;
+  // Present when country and counterpart are both set and differ.
+  CapitalFlowPair pair = 7;
+}

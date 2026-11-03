@@ -1,3 +1,8 @@
+// This pins the canonical AGPL header in LICENSE and the licence,
+// commercial-use and hosted-plan statements in the project documents (#8690,
+// section 2). The published words are the contract, so executing application
+// code cannot verify them.
+//
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

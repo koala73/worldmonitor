@@ -29,6 +29,7 @@ const FAMILY_LABELS: Record<ChinaActivityProxyFamily, string> = {
   commodity: 'Commodity',
   corridor: 'Corridor',
   market: 'Market',
+  atmosphere: 'Atmosphere',
 };
 
 const UTC_DATE_FORMATTER = new Intl.DateTimeFormat('en', {

@@ -578,7 +578,7 @@ describe('paid curated market panel through the MCP handler', () => {
     for (const section of ['physical-premium', 'physical-divergence', 'fear-greed']) assert.deepEqual(value.data[section], canonical.data[section]);
     const snapshotValue = stored[0][1], readCount = reads.length;
     let reusedDefaultText;
-    for (const args of [{}, { symbols: [], asset_class: [] }, { symbols: [' '] }, { jmespath: '' }, { jmespath: null }]) {
+    for (const args of [{}, { symbols: [], asset_class: [] }, { symbols: [' '] }, { jmespath: '' }]) {
       const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
       assert.equal(next.result.structuredContent._budget_exceeded, undefined);
       assert.equal(next.result.structuredContent.transportCoverage.count_scope, 'post_filter_snapshot');
@@ -593,8 +593,9 @@ describe('paid curated market panel through the MCP handler', () => {
       if (args.panel_request) assert.equal(reads.length, beforeReads, 'the original reader reuses its snapshot without source reads');
     }
     const projectedCoverage = await (await handler(proReq('POST', callBody('get_market_data', { jmespath: 'transportCoverage' })), deps)).json();
-    assert.equal(projectedCoverage.result.content[0].text, 'null', 'real projection bypasses default coverage presentation');
-    assert.deepEqual(projectedCoverage.result.structuredContent, { projection: null });
+    assert.match(projectedCoverage.result.structuredContent._jmespath_error, /^empty_projection/, 'real projection bypasses default coverage presentation');
+    assert.equal(projectedCoverage.result.structuredContent.original_keys.includes('transportCoverage'), false);
+    assert.deepEqual(projectedCoverage.result.structuredContent, JSON.parse(projectedCoverage.result.content[0].text));
     for (const args of [{ limit: 10 }, { limit: 1 }, { symbols: ['AAPL'] }, { asset_class: ['equity'] }, { summary: true }, { jmespath: 'data' }]) {
       const next = await (await handler(proReq('POST', callBody('get_market_data', args)), deps)).json();
       assert.equal(next.result.structuredContent.transportCoverage, undefined, 'explicit presentation is not fitted');
@@ -1206,6 +1207,20 @@ describe('paid prediction panel through the MCP handler', () => {
       assert.equal((await invoke(deps, { ...args, panel_request: token })).body.error.code, -32602);
     }
   });
+  it('accepts min_liquidity on paid openings and receipt reads', async () => {
+    bootstrapOverride = { ...payload(), geopolitical: [
+      { title: 'deep', source: 'polymarket', yesPrice: 50, liquidity: 250000 },
+      { title: 'thin', source: 'polymarket', yesPrice: 30, liquidity: 900 },
+      { title: 'unreported', source: 'kalshi', yesPrice: 60 },
+    ] };
+    const { deps } = makeProDeps();
+    const opened = await invoke(deps, { min_liquidity: 5000 });
+    assert.deepEqual(data(opened).geopolitical.map(m => m.title), ['deep']);
+    const token = opened.body.result.structuredContent.panelRequest.token;
+    const unfiltered = await invoke(deps, { panel_request: token, min_liquidity: 0 });
+    assert.deepEqual(data(unfiltered).geopolitical.map(m => m.title), ['deep', 'thin', 'unreported']);
+    assert.equal((await invoke(deps, { panel_request: token, min_liquidity: -1 })).body.error.code, -32602);
+  });
   it('opens once, narrows exact contracts and replays normalized filters with two fixed reads per uncached filter', async () => {
     const { deps, pipe } = makeProDeps();
     const first = await invoke(deps);
@@ -1213,15 +1228,15 @@ describe('paid prediction panel through the MCP handler', () => {
     assert.equal(first.body.result.structuredContent.panelRequest?.panel, 'predictions');
     assert.equal(first.body.result._meta['worldmonitor/usage'].remaining, 49);
     assert.equal(fetched.length, 2);
-    const filtered = await invoke(deps, { category: ' GEOPOLITICAL ', query: ' US ELECTION ', source: 'KALSHI' });
+    const filtered = await invoke(deps, { category: 'geopolitical', query: ' US ELECTION ', source: 'kalshi' });
     assert.deepEqual(data(filtered).geopolitical.map(row => row.title), ['US Election']);
     assert.deepEqual(data(filtered).tech, []);
     assert.equal(filtered.body.result.structuredContent.panelRequest.token, token);
-    await invoke(deps, { source: ' kalshi ', query: 'us election', category: 'geopolitical', limit: 30, panel_request: token });
+    await invoke(deps, { source: 'kalshi', query: 'us election', category: 'geopolitical', limit: 30, panel_request: token });
     assert.equal(fetched.length, 4);
     assert.equal(pipe.count, 1);
     await invoke(deps, { category: 'tech', source: 'kalshi', panel_request: token });
-    const empty = await invoke(deps, { category: 'TECH', source: 'KALSHI', panel_request: token });
+    const empty = await invoke(deps, { category: 'tech', source: 'kalshi', panel_request: token });
     assert.deepEqual(data(empty), { geopolitical: [], tech: [], finance: [] });
     assert.equal(fetched.length, 6);
     for (const [limit, expected] of [[0, 2], [-1, 2], [1.9, 1], [0.5, 0]]) {
@@ -1398,10 +1413,12 @@ describe('paid prediction panel through the MCP handler', () => {
     ]) {
       const { deps, pipe } = makeProDeps({ getEntitlements: async () => entitlement });
       const first = await invoke(deps, { source: 12, category: 'invalid', query: null, limit: -1, extra: true });
-      assert.equal(first.body.error, undefined);
-      assert.equal(first.body.result.structuredContent.panelRequest, undefined);
-      assert.equal(data(first).tech.length, 2);
-      await invoke(deps, { category: 'TECH', limit: 1.9 });
+      assert.equal(first.body.error?.code, -32602);
+      assert.equal(pipe.count, 0);
+      const valid = await invoke(deps, { limit: -1, extra: true });
+      assert.equal(valid.body.result.structuredContent.panelRequest, undefined);
+      assert.equal(data(valid).tech.length, 2);
+      await invoke(deps, { category: 'tech', limit: 1.9 });
       assert.equal(pipe.count, 2);
       for (const args of [{ refresh: false }, { refresh: true, request_id: crypto.randomUUID() }, { request_id: crypto.randomUUID() }, { panel_request: 'forged' }]) {
         assert.equal((await invoke(deps, args)).body.error?.code, -32602);

@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { mergeSanctionEntries, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
+import { CSL_ROW_ID, CSL_SOURCES } from '../scripts/_csl-sanctions.mjs';
 import { signalAggregator } from '@/services/signal-aggregator';
 import { projectCountrySignalDetails } from '../shared/country-signal-details';
 
 const seedSource = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
-const producer = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp });
+const producer = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID });
 vm.runInContext(seedSource.replace(/^import\s.*$/gm, '')
   .replace(/loadEnvFile\([^)]+\);/, '')
   .replace(/async function fetchSource[\s\S]*/, ''), producer);

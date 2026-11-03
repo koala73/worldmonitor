@@ -192,6 +192,10 @@ function isCuratedOmission(key, context = {}) {
   // Same for `scope`: it belongs to occurrence events only, and the handler
   // rejects any scope on a chokepoint.disruption subscription.
   if (key === 'scope' && where.includes('registerwebhook')) return true;
+  // ListNewsPool: the example cell is a French feed-row read, which has no
+  // build time or replay age, so those fields stay out and `state` gets a slot.
+  if ((where.includes('listnewspool') || where.includes('list-news-pool')) && context.name === 'cells'
+    && (key === 'generatedAt' || key === 'staleAgeSeconds')) return true;
   // GetTradeFlows / GetTariffTrends: a 200 carrying rows always has
   // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
   // skips the zero value and so paired rows with INVALID_REQUEST — a response
@@ -238,6 +242,35 @@ function overrideStringExample(key, context = {}) {
   // is not one of the published ids, so the documented 200 sample is un-runnable.
   if (key === 'id' && (where.includes('getusinterestrates') || where.includes('get-us-interest-rates'))) {
     return 'fed_funds_effective';
+  }
+  // ListMediaPerspective validates codes, audiences and region slugs; the
+  // heuristic's "example" values are rejected with HTTP 400.
+  if (where.includes('listmediaperspective') || where.includes('list-media-perspective')) {
+    if (key === 'subjectcountry') return 'SA';
+    if (key === 'outletcountries') return 'US';
+    if (key === 'audience') return 'domestic';
+    if (key === 'outletregions') return 'northern-europe';
+  }
+  // ListNewsPool validates languages, editions and categories against the
+  // catalog layout, so the heuristic's "example" values are rejected with 400.
+  // French in full: Radio-Canada, placed under `us`.
+  if (where.includes('listnewspool') || where.includes('list-news-pool')) {
+    if (key === 'languages') return 'fr';
+    if (key === 'editions') return 'full';
+    if (key === 'category') return 'us';
+  }
+  if (where.includes('listnewspool') || where.includes('list-news-pool') || where.includes('newspoolcell')) {
+    if (key === 'edition') return 'full';
+    if (key === 'language') return 'fr';
+    if (key === 'state') return 'complete';
+  }
+  // ListSourceItems: editions, category and sources must name catalog
+  // placements, or the example request is answered `unplaced`.
+  if (where.includes('listsourceitems') || where.includes('list-source-items') || where.includes('sourceitemsstate')) {
+    if (key === 'editions' || key === 'edition') return 'full';
+    if (key === 'category') return 'europe';
+    if (key === 'sources' || key === 'source') return 'France 24';
+    if (key === 'state') return 'found';
   }
   if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
     if (key === 'commodityid') return 'crude_oil';
@@ -324,6 +357,7 @@ function overrideStringExample(key, context = {}) {
   if (key === 'range') {
     if (where.includes('consumerprice') || where.includes('consumer-prices')) return CONSUMER_PRICE_RANGE_EXAMPLE_ID;
   }
+  if (key === 'regionid' && (where.includes('getno2activity') || where.includes('get-no2-activity'))) return 'yangtze-river-delta';
   if (key === 'regionid') return REGIONAL_INTELLIGENCE_EXAMPLE_ID;
   if (key === 'airlines') return 'BA';
   if (key === 'departurewindow') return '6-20';
@@ -690,6 +724,9 @@ function stringExample(name, schema = {}, context = {}) {
   if (description.includes('iata')) return constrainedString(key.includes('destination') || key.includes('arrival') ? 'LHR' : 'JFK', schema);
   if (description.includes('iso 4217') || key.includes('currency')) return constrainedString('USD', schema);
   if (description.includes('iso 639') || key === 'lang' || key.includes('locale')) return constrainedString('en', schema);
+  // A partner country must differ from the primary country example (US), or
+  // the sample request describes a self-pair that returns no pair.
+  if (key === 'counterpart' && description.includes('iso 3166')) return constrainedString('DE', schema);
   if (description.includes('iso 3166') || key.includes('marketcode')) return constrainedString('US', schema);
   if (description.includes('wto member code')) return constrainedString(key.includes('partner') ? '156' : '840', schema);
   if (description.includes('world bank indicator code')) return constrainedString('NY.GDP.MKTP.CD', schema);
@@ -702,7 +739,8 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('iso2') || key.includes('country') || key.includes('countrycode')) return constrainedString('US', schema);
   if (key === 'members' || key === 'includedmembers') return constrainedString('US', schema);
   if (key.includes('bbox')) return constrainedString('-74.10,40.60,-73.70,40.90', schema);
-  if (key.includes('lat')) return constrainedString('40.7128', schema);
+  // Word-shaped, as in the numeric picker: `latestPeriod` is not a latitude.
+  if (key === 'lat' || key.endsWith('lat') || key.includes('latitude')) return constrainedString('40.7128', schema);
   if (key.includes('lng') || key.includes('lon')) return constrainedString('-74.0060', schema);
   if (key.includes('date') || key.endsWith('day')) return constrainedString('2026-01-15', schema);
   if (key.includes('time') || key.endsWith('at')) return constrainedString('2026-01-15T12:00:00Z', schema);
@@ -711,6 +749,11 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('language')) return constrainedString('typescript', schema);
   if (key.includes('category')) return constrainedString('cs.AI', schema);
   if (key.includes('feedtype')) return constrainedString('top', schema);
+  // GetCapitalFlows: periods, episode bounds and source quarters are YYYY-Qn.
+  if ((where.includes('getcapitalflows') || where.includes('get-capital-flows'))
+    && (key.includes('period') || key.includes('quarter') || key === 'start' || key === 'end')) {
+    return constrainedString('2026-Q1', schema);
+  }
   if (key.includes('period')) return constrainedString('daily', schema);
   if (key.includes('cargotype')) return constrainedString('container', schema);
   if (key.includes('commoditytype')) return constrainedString('oil', schema);
@@ -762,6 +805,11 @@ function numberExample(name, schema = {}, integer = false) {
 
   if (Number.isFinite(schema.minimum) && value < schema.minimum) value = schema.minimum;
   if (Number.isFinite(schema.maximum) && value > schema.maximum) value = schema.maximum;
+  // A closed numeric set: use its first non-zero member (zero is usually the
+  // "default" sentinel), never a value outside the set.
+  if (Array.isArray(schema.enum) && schema.enum.length > 0 && !schema.enum.includes(value)) {
+    return schema.enum.find((member) => member !== 0) ?? schema.enum[0];
+  }
   if (integer) value = Math.trunc(value);
   if (integer && Number.isFinite(schema.minimum) && value < schema.minimum) value = Math.ceil(schema.minimum);
   if (integer && Number.isFinite(schema.maximum) && value > schema.maximum) value = Math.floor(schema.maximum);
@@ -845,6 +893,30 @@ function getPriceHistoryExample() {
       { symbol: 'SI=F', name: 'Silver', currency: 'USD', timestamps: days, closes: [60.84, 61.02, 61.25] },
     ],
     unavailable: [],
+  };
+}
+
+function getGoldIntelligenceExample() {
+  return {
+    goldPrice: 3200,
+    goldChangePct: 0,
+    goldSparkline: [],
+    silverPrice: 0,
+    platinumPrice: 0,
+    palladiumPrice: 0,
+    crossCurrencyPrices: [],
+    drivers: [],
+    updatedAt: '2026-09-30T00:00:00Z',
+    unavailable: false,
+    cbReserves: {
+      asOfMonth: '2026-09',
+      indicator: 'IRFCLDT1_IRFCL56_USD',
+      valueIsOunces: false,
+      totalTonnes: 0,
+      topHolders: [{ iso3: 'USA', name: 'United States', tonnes: 0, pctOfReserves: 50 }],
+      topBuyers12m: [],
+      topSellers12m: [],
+    },
   };
 }
 
@@ -1069,6 +1141,48 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'GetWebcamImage'
+    && context.exampleSurface === 'response') {
+    return {
+      thumbnailUrl: 'https://example.com/cam.jpg',
+      playerUrl: '',
+      title: 'Port camera',
+      windyUrl: 'https://www.windy.com/webcams/123',
+      lastUpdated: '2026-01-15T12:00:00.000Z',
+      resolvedAt: 1768478460000,
+      mediaType: 'snapshot',
+      error: '',
+    };
+  }
+  if (depth === 0 && context.operationId === 'GetCountrySignalObservations'
+    && context.exampleSurface === 'response') {
+    return {
+      countryCode: 'US', family: 'COUNTRY_SIGNAL_FAMILY_OUTAGES', windowIndex: 0,
+      outcomeJson: JSON.stringify({ countryCode: 'US', family: 'outages', state: 'unavailable', observations: [],
+        snapshotAt: null, retrievedAt: '2026-10-18T12:00:00.000Z', computedAt: null,
+        observationWindow: null, scope: 'Country-qualified observations', attribution: 'Cloudflare Radar',
+        partial: true, sampleBeforeCountryFilter: false, reason: 'Synthetic unavailable-source example.',
+        matchedRows: null, sampledRows: null, omittedRows: null }),
+    };
+  }
+  // ListMediaPerspective has no framing labels until the background labeller
+  // ships: every headline is counted as unlabeled and the label fields are empty.
+  if (depth === 0 && context.operationId === 'ListMediaPerspective'
+    && String(context.name ?? '').endsWith('Response')) {
+    return {
+      subjectCountry: 'SA', windowHours: 72, state: 'complete', feedTotal: 812, feedCached: 812,
+      unattributedCount: 0, noCoverageCountries: [], readAt: '2026-10-27T12:00:00.000Z',
+      groups: [{
+        homeCountry: 'GB', audience: 'international', outletCount: 1, headlineCount: 1,
+        framing: { favorable: 0, neutral: 0, critical: 0, hostile: 0, unlabeled: 1, method: '', model: '', promptVersion: '' },
+        headlines: [{
+          title: 'Saudi Arabia hosts ceasefire talks', englishTitle: 'Saudi Arabia hosts ceasefire talks', titleLanguage: 'en',
+          outlet: 'BBC World', publisherFamily: 'bbc', tier: 1, ownershipClass: 'public-service', stateAffiliated: '',
+          propagandaRisk: 'low', framing: '', publishedAt: 1717200000000, link: 'https://www.bbc.co.uk/news/articles/example',
+        }],
+      }],
+    };
+  }
   if (depth === 0 && context.operationId === 'ListAircraftEmergencies'
     && String(context.name ?? '').endsWith('Response')) {
     return {
@@ -1127,6 +1241,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getPriceHistoryExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getgoldintelligence'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getGoldIntelligenceExample();
   }
   if (
     depth === 0
@@ -1371,8 +1492,48 @@ function injectDisplacementYearContract(spec) {
   return changed;
 }
 
+// buf.validate can only bound windowHours to 0..96 (the runtime validator has
+// no int32.in), but ListMediaPerspective accepts exactly these values. Publish
+// the closed set on the request schema and on the REST query parameter.
+const MEDIA_PERSPECTIVE_WINDOW_HOURS = [0, 24, 48, 72, 96];
+function injectMediaPerspectiveWindowContract(spec) {
+  const properties = spec.components?.schemas?.ListMediaPerspectiveRequest?.properties;
+  if (!properties?.windowHours) return false;
+  const desired = {
+    type: 'integer',
+    format: 'int32',
+    description: properties.windowHours.description,
+    enum: MEDIA_PERSPECTIVE_WINDOW_HOURS,
+  };
+  if (desired.description === undefined) delete desired.description;
+  let changed = !eq(properties.windowHours, desired);
+  properties.windowHours = desired;
+  const parameter = spec.paths?.['/api/news/v1/list-media-perspective']?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'window_hours');
+  if (parameter) {
+    const schema = { type: 'integer', format: 'int32', enum: MEDIA_PERSPECTIVE_WINDOW_HOURS };
+    if (!eq(parameter.schema, schema)) changed = true;
+    parameter.schema = schema;
+  }
+  return changed;
+}
+
 function injectSpecExamples(spec) {
   let changed = injectDisplacementYearContract(spec);
+  changed = injectMediaPerspectiveWindowContract(spec) || changed;
+  const countrySignals = spec.paths?.['/api/intelligence/v1/get-country-signal-observations']?.get;
+  const countrySignalFields = spec.components?.schemas?.GetCountrySignalObservationsRequest?.properties;
+  for (const parameter of countrySignals?.parameters ?? []) {
+    const property = { country_code: 'countryCode', window_index: 'windowIndex', cursor: 'cursor' }[parameter.name];
+    if (property && countrySignalFields?.[property]) {
+      const schema = clone(countrySignalFields[property]);
+      delete schema.description;
+      delete schema.example;
+      delete schema.examples;
+      if (!eq(parameter.schema, schema)) changed = true;
+      parameter.schema = schema;
+    }
+  }
   const runId = spec.components?.schemas?.GetSimulationOutcomeRequest?.properties?.runId;
   const runIdParameter = spec.paths?.['/api/forecast/v1/get-simulation-outcome']?.get?.parameters
     ?.find((item) => item?.in === 'query' && item.name === 'runId');
@@ -1402,7 +1563,9 @@ function injectSpecExamples(spec) {
           // and clobbering it would fight that injector. That injector owns
           // header-param examples.
           if (param.in === 'header') continue;
-          const example = exampleForSchema(param.schema, spec, {
+          const example = context.operationId === 'GetCountrySignalObservations' && param.name === 'window_index' ? 0
+            : context.operationId === 'GetCountrySignalObservations' && param.name === 'cursor' ? ''
+            : exampleForSchema(param.schema, spec, {
             ...context,
             name: param.name,
             description: param.description,
@@ -1671,27 +1834,36 @@ function replaceResponseExample(lines, opStart, opEnd, code, example) {
   replaceMediaExample(lines, mediaStart, example);
 }
 
-function patchYamlDisplacementYearSchema(lines, schema) {
-  const requestStart = lines.findIndex((line) => line.trim().endsWith('GetDisplacementSummaryRequest:'));
+function patchYamlRequestPropertySchema(lines, requestName, property, schema) {
+  const requestStart = lines.findIndex((line) => line.trim().endsWith(`${requestName}:`));
   if (requestStart === -1) return;
   const requestIndent = countIndent(lines[requestStart]);
   const requestEnd = blockEnd(lines, requestStart, requestIndent);
-  const yearStart = lines.findIndex((line, index) =>
+  const propertyStart = lines.findIndex((line, index) =>
     index > requestStart
     && index < requestEnd
     && countIndent(line) === requestIndent + 8
-    && (line.trim() === 'year:' || line.trim() === '"year":'),
+    && (line.trim() === `${property}:` || line.trim() === `"${property}":`),
   );
-  if (yearStart === -1) throw new Error('could not locate GetDisplacementSummaryRequest.year in YAML artifact');
-  const yearIndent = countIndent(lines[yearStart]);
-  const yearEnd = blockEnd(lines, yearStart, yearIndent);
-  lines.splice(yearStart, yearEnd - yearStart, ...renderYamlNode({ year: schema }, yearIndent));
+  if (propertyStart === -1) throw new Error(`could not locate ${requestName}.${property} in YAML artifact`);
+  const propertyIndent = countIndent(lines[propertyStart]);
+  const propertyEnd = blockEnd(lines, propertyStart, propertyIndent);
+  lines.splice(propertyStart, propertyEnd - propertyStart, ...renderYamlNode({ [property]: schema }, propertyIndent));
 }
 
 function patchYamlExamples(raw, spec, label) {
   const lines = raw.split('\n');
   const displacementYear = spec.components?.schemas?.GetDisplacementSummaryRequest?.properties?.year;
-  if (displacementYear) patchYamlDisplacementYearSchema(lines, displacementYear);
+  if (displacementYear) patchYamlRequestPropertySchema(lines, 'GetDisplacementSummaryRequest', 'year', displacementYear);
+  const mediaWindow = spec.components?.schemas?.ListMediaPerspectiveRequest?.properties?.windowHours;
+  if (mediaWindow) patchYamlRequestPropertySchema(lines, 'ListMediaPerspectiveRequest', 'windowHours', mediaWindow);
+  const mediaPath = '/api/news/v1/list-media-perspective';
+  const mediaWindowParameter = spec.paths?.[mediaPath]?.get?.parameters
+    ?.find((item) => item?.in === 'query' && item.name === 'window_hours');
+  if (mediaWindowParameter?.schema) {
+    const loc = findOperation(lines, mediaPath, 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, 'window_hours', mediaWindowParameter.schema);
+  }
   const displacementParameter = spec.paths?.['/api/displacement/v1/get-displacement-summary']?.get?.parameters
     ?.find((item) => item?.in === 'query' && item.name === 'year');
   if (displacementParameter?.schema) {
@@ -1703,6 +1875,12 @@ function patchYamlExamples(raw, spec, label) {
   if (runIdParameter) {
     const loc = findOperation(lines, runIdPath, 'get', label);
     replaceParamSchema(lines, loc.start, loc.end, 'runId', runIdParameter.schema);
+  }
+  const countrySignalsPath = '/api/intelligence/v1/get-country-signal-observations';
+  for (const parameter of spec.paths?.[countrySignalsPath]?.get?.parameters ?? []) {
+    if (!['country_code', 'window_index', 'cursor'].includes(parameter.name)) continue;
+    const loc = findOperation(lines, countrySignalsPath, 'get', label);
+    replaceParamSchema(lines, loc.start, loc.end, parameter.name, parameter.schema);
   }
   for (const [path, ops] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(ops ?? {})) {

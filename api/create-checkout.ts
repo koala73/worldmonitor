@@ -28,6 +28,7 @@ import { validateBearerToken } from '../server/auth-session';
 // From the canonical shared module, not via api/mcp/upgrade — the checkout edge
 // function has no reason to depend on the MCP transport tree (#6716).
 import { normalizeCheckoutAttributionSource } from '../shared/mcp-attribution';
+import { normalizeAcquisitionSource } from '../shared/acquisition-source';
 import { publicCheckoutError } from '../shared/checkout-errors';
 
 const CONVEX_SITE_URL =
@@ -182,6 +183,7 @@ export default async function handler(
     discountCode?: string;
     referralCode?: string;
     attributionSource?: string;
+    acquisition?: unknown;
     bypassPendingGuard?: boolean;
   };
   try {
@@ -210,6 +212,7 @@ export default async function handler(
   }
 
   const attributionSource = normalizeCheckoutAttributionSource(body.attributionSource);
+  const acquisition = normalizeAcquisitionSource(body.acquisition) ?? undefined;
 
   // Relay to Convex
   try {
@@ -229,6 +232,7 @@ export default async function handler(
         discountCode: body.discountCode,
         referralCode: body.referralCode,
         attributionSource,
+        acquisition,
         bypassPendingGuard: body.bypassPendingGuard,
       }),
       signal: AbortSignal.timeout(15_000),

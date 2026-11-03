@@ -10,7 +10,7 @@ export { IDLE_PAUSE_MS } from '../idle';
 
 // Refresh intervals (ms) - shared across all variants
 export const REFRESH_INTERVALS = {
-  feeds: 20 * 60 * 1000,
+  feeds: 10 * 60 * 1000,
   markets: 12 * 60 * 1000,
   crypto: 12 * 60 * 1000,
   predictions: 15 * 60 * 1000,
@@ -122,12 +122,6 @@ export const STORAGE_KEYS = {
   //       re-recovered on subsequent loads (otherwise user-explicit
   //       full-category disabling would be silently undone forever).
   disabledFeedsSchema: 'worldmonitor-disabled-feeds-schema',
-  // `{ [customCategoryKey]: rotationCycle }`. A custom news category is never
-  // in the per-variant server digest, so its capped per-feed fetch rotates
-  // through its sources a window at a time (#5873). The cycle has to survive a
-  // reload or short sessions would replay window 0 forever and the rotation
-  // would never reach sources 4..N — the exact defect it exists to fix.
-  newsFeedRotation: 'worldmonitor-news-feed-rotation',
   liveChannels: 'worldmonitor-live-channels',
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
   activeChannel: 'worldmonitor-active-channel',

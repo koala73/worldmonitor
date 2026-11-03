@@ -66,7 +66,10 @@ const REDIRECT_URI = 'https://claude.ai/api/mcp/auth_callback';
 const USER_ID = 'user_pro_123';
 const MCP_TOKEN_ID = 'k57_mcp_token_id';
 const TOKEN_TTL_SECONDS = 3600;
-const REFRESH_TTL_SECONDS = 604800;
+// Idle window for a refresh token. Every rotation writes a fresh token with the
+// full window, so a connector that refreshes at least once in 30 days never
+// expires; one idle longer than that has to reconnect.
+const REFRESH_TTL_SECONDS = 30 * 24 * 3600;
 
 // PKCE: known verifier → known challenge (BASE64URL of SHA-256).
 const CODE_VERIFIER = 'a'.repeat(64);
@@ -2389,5 +2392,88 @@ describe('Vercel Connect public client, end to end', () => {
         else process.env[k] = v;
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Refresh-token idle window
+// ---------------------------------------------------------------------------
+
+/**
+ * Claude refreshes only when the connector is used. With a 7-day refresh TTL,
+ * a connector left alone for a week came back as "Connection has expired" and
+ * needed Reconnect. The window is now 30 days and slides: each rotation issues a
+ * token with the whole window again. The replay evidence (family pointer) and
+ * the family revocation marker must live exactly as long as a token can, or a
+ * replay late in the window would no longer revoke the family (GHSA-f6gj).
+ */
+describe('refresh-token idle window', () => {
+  function assertFullRefreshWindow(ops, refreshToken, familyId) {
+    const cmd = findSetCommand(ops, `oauth:refresh:${refreshToken}`);
+    assert.ok(cmd, `expected SET for oauth:refresh:${refreshToken}`);
+    assert.deepEqual(cmd.slice(3), ['EX', 30 * 24 * 3600], 'refresh token gets the full 30-day window');
+    assertFamilyPointerSetEx(ops, `oauth:famptr:${refreshToken}`, familyId, 30 * 24 * 3600);
+  }
+
+  const CODE_RECORDS = {
+    pro: {
+      kind: 'pro', userId: USER_ID, mcpTokenId: MCP_TOKEN_ID, scope: 'mcp_pro',
+    },
+    user_key: {
+      kind: 'user_key', api_key_hash: 'a'.repeat(64), scope: 'mcp',
+    },
+  };
+
+  for (const [label, codeRecord] of Object.entries(CODE_RECORDS)) {
+    it(`${label}: the code exchange and every rotation write a full 30-day window`, async () => {
+      const { redis, deps } = makeDeps();
+      redis.store.set('oauth:code:idle', {
+        ...codeRecord,
+        client_id: CLIENT_ID,
+        redirect_uri: REDIRECT_URI,
+        code_challenge: CODE_CHALLENGE,
+      });
+      redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+      const issued = await tokenHandler(makeReq('authorization_code', {
+        code: 'idle', code_verifier: CODE_VERIFIER, client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
+      }), deps);
+      assert.equal(issued.status, 200);
+      let refreshToken = (await issued.json()).refresh_token;
+      const familyId = JSON.parse(redis.store.get(`oauth:refresh:${refreshToken}`)).family_id;
+      assertFullRefreshWindow(redis.ops, refreshToken, familyId);
+
+      // Two rotations: each must restart the window, not inherit what is left.
+      for (let i = 0; i < 2; i += 1) {
+        redis.ops.length = 0;
+        const rotated = await tokenHandler(makeReq('refresh_token', {
+          refresh_token: refreshToken, client_id: CLIENT_ID,
+        }), deps);
+        assert.equal(rotated.status, 200);
+        const next = (await rotated.json()).refresh_token;
+        assert.notEqual(next, refreshToken, 'rotation still issues a new refresh token');
+        assertFullRefreshWindow(redis.ops, next, familyId);
+        refreshToken = next;
+      }
+    });
+  }
+
+  it('a family revoked on replay stays revoked for the whole window', async () => {
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam-window';
+    redis.store.set('oauth:refresh:rt-window', {
+      kind: 'pro', client_id: CLIENT_ID, userId: USER_ID, mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro', family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-window', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const first = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-window', client_id: CLIENT_ID }), deps);
+    assert.equal(first.status, 200);
+    redis.ops.length = 0;
+    const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-window', client_id: CLIENT_ID }), deps);
+    assert.equal(replay.status, 400);
+    assert.equal((await replay.json()).error, 'invalid_grant');
+    assertSetEx(redis.ops, `oauth:famrev:${FAMILY}`, '1', 30 * 24 * 3600);
   });
 });

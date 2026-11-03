@@ -93,7 +93,7 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
     MutationObserver: win.MutationObserver, ResizeObserver: class { observe() {} disconnect() {} },
     modelContextRoot: root, translate: key => key.split('.').at(-1),
     status: doc.getElementById('countryStatus'), input: doc.querySelector('input'),
-    panel: { getCode: () => state.country, getName: () => state.name, isVisible: () => state.visible, getAtlasSelection: () => state.atlas, getSignalCounts: () => null, onClose: callback => { state.close = callback; }, hide: () => { state.visible = false; } },
+    panel: { getCode: () => state.country, getName: () => state.name, isVisible: () => state.visible, getAtlasSelection: () => state.atlas, getSignalCounts: () => null, getQualifiedCountrySignals: () => null, clearQualifiedCountrySignals() {}, onClose: callback => { state.close = callback; }, hide: () => { state.visible = false; } },
     ready: true, toolsAvailable: false, linksAvailable: false, queuedView: undefined, openRequest: undefined,
     admissions: new Map(), assessments: new Map(), assessmentTimes: new Map(), coverages: new Map(),
     source: { clearLoadedData() {} }, controller: { dispose() {} }, timeline: undefined, signalSlots: undefined,

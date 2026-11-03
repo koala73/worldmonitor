@@ -781,6 +781,13 @@ const STYLE_BLOCK = `<style>
     --mint: #4ade80;            /* bright WM brand mint for dark-page accents (AAA on #0a0a0a) */
     --paper: #fafafa;
     --paper-ink: #0a0a0a;
+    /* Pager geometry. --pager-band is the strip the fixed .nav-dots pill
+       occupies above the viewport bottom (offset + pill height) plus 2vh
+       of air; digest pages keep their text out of it. */
+    --pager-bottom: 3.5vh;
+    --pager-pad-y: 0.9vh;
+    --pager-dot: 9px;
+    --pager-band: calc(var(--pager-bottom) + 2 * var(--pager-pad-y) + var(--pager-dot) + 2vh);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -857,10 +864,26 @@ const STYLE_BLOCK = `<style>
   .cover.back .meta-bottom {
     width: 100%; position: absolute; bottom: 6vh; left: 0; padding: 0 6vw;
   }
-  .digest { background: var(--cream); color: var(--cream-ink); }
+  /* Digest pages scroll when their copy outgrows the viewport, and the
+     fixed pager pill would sit on top of that text. The bottom border is
+     outside the scrollport, so the pager band is a non-scrolling strip;
+     it is transparent and the page background (clipped to the border
+     box) fills it. Border + padding keep the old 10vh bottom inset. */
+  .digest {
+    background: var(--cream); color: var(--cream-ink);
+    border-bottom: var(--pager-band) solid transparent;
+    padding-bottom: max(0px, calc(10vh - var(--pager-band)));
+  }
+  /* The absolute .page-number (top 5vh, right 4vw) sits inside this row,
+     past the 6vw page gutter. Reserve its width on the right: the counter
+     is always 7 characters ("NN / NN") of the same mono face and size, at
+     0.2em tracking, so 7ch + 1.4em is its width, less the 2vw it hangs
+     into the gutter, plus 1em of air. ch/em resolve in that mono font. */
   .digest .running-head {
     display: flex; justify-content: space-between; align-items: center;
     padding-bottom: 2vh; border-bottom: 1px solid rgba(26, 22, 18, 0.18);
+    font-family: 'IBM Plex Mono', monospace; font-size: max(11px, 0.85vw);
+    padding-right: calc(7ch + 1.4em - 2vw + 1em);
   }
   .digest .running-head .left {
     display: flex; align-items: center; gap: 0.8vw;
@@ -1028,15 +1051,18 @@ const STYLE_BLOCK = `<style>
     overflow-wrap: anywhere;
   }
   .nav-dots {
-    position: fixed; bottom: 3.5vh; left: 50%;
+    position: fixed; bottom: var(--pager-bottom); left: 50%;
     transform: translateX(-50%);
     display: flex; gap: 0.9vw; z-index: 20;
-    padding: 0.9vh 1.4vw;
+    padding: var(--pager-pad-y) 1.4vw;
     background: rgba(20, 20, 20, 0.55);
     backdrop-filter: blur(8px); border-radius: 999px;
   }
+  /* The dots are built by NAV_SCRIPT; until it runs (or if it never
+     does) an empty pill would show as a bare grey bar. */
+  .nav-dots:empty { display: none; }
   .nav-dots button {
-    width: 9px; height: 9px; border-radius: 50%; border: none;
+    width: var(--pager-dot); height: var(--pager-dot); border-radius: 50%; border: none;
     background: rgba(255, 255, 255, 0.3);
     cursor: pointer; padding: 0;
     transition: all 220ms ease;
@@ -1063,6 +1089,7 @@ const STYLE_BLOCK = `<style>
   }
   @media (max-width: 640px) {
     .page { padding: 5vh 6vw 8vh; }
+    .digest { padding-bottom: max(0px, calc(8vh - var(--pager-band))); }
     /* padding-right must clear the absolute .page-number block on the
        right. "09 / 12" in IBM Plex Mono at 11px is ~65-70px wide and
        .page-number sits at right:5vw; on a 360px Android ~19px + 70px

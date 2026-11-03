@@ -14,7 +14,13 @@ import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
 import { signDunningPortalToken } from "../lib/identitySigning";
 import { buildUnsubscribeUrl, listUnsubscribeHeaders } from "../lib/emailUnsubscribe";
 import { ResendSendError, sendResendEmail, type EmailPurpose } from "../lib/resendEmail";
-import { billingDeletionForEvent, billingDeletionForUser, isCoveringAt } from "./subscriptionHelpers";
+import {
+  billingDeletionForEvent,
+  billingDeletionForUser,
+  isCancellationScheduled,
+  isCoveringAt,
+  resolveBillingRecipient,
+} from "./subscriptionHelpers";
 
 export { formatAccessEndDate } from "./cancellationEmailCopy";
 
@@ -261,7 +267,7 @@ function userWelcomeHtml(planName: string, planKey: string, signInEmail?: string
     ? `Welcome to ${planName} — your intel, delivered.`
     : `Welcome to ${planName}!`;
   const ctaLabel = isPro ? "Open My Brief" : "Open Dashboard";
-  const ctaHref = isPro ? "https://worldmonitor.app/brief" : "https://worldmonitor.app";
+  const ctaHref = isPro ? "https://www.worldmonitor.app/dashboard" : "https://www.worldmonitor.app";
   const supportLine = isPro
     ? `<p style="font-size: 11px; color: #666; text-align: center; margin: 0 0 20px;">Questions? Reply to this email or ping <a href="mailto:${ADMIN_EMAIL}" style="color: #4ade80;">${ADMIN_EMAIL}</a>.</p>`
     : "";
@@ -643,20 +649,7 @@ export const getDunningContext = internalQuery({
       .unique();
     if (!sub || await billingDeletionForUser(ctx, sub.userId)) return null;
 
-    // Recipient resolution mirrors the portal's trust order: the sub's own
-    // rawPayload email first (per-Clerk-userId by construction), then the
-    // customers row for the SAME userId (see billing.ts on why customers
-    // rows can race across Clerk accounts — same-userId lookup only).
-    const rawEmail = (sub.rawPayload as { customer?: { email?: string } } | null)
-      ?.customer?.email;
-    let email = typeof rawEmail === "string" && rawEmail.includes("@") ? rawEmail : "";
-    if (!email) {
-      const customer = await ctx.db
-        .query("customers")
-        .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
-        .first();
-      email = customer?.email ?? "";
-    }
+    const email = await resolveBillingRecipient(ctx, sub);
 
     const now = Date.now();
     const siblingSubs = await ctx.db
@@ -687,8 +680,9 @@ export const getDunningContext = internalQuery({
       status: sub.status,
       episodeAnchor: sub.onHoldAt ?? sub.updatedAt,
       cancelledAt: sub.cancelledAt ?? null,
+      cancelScheduledAt: isCancellationScheduled(sub) ? (sub.cancelScheduledAt ?? null) : null,
       currentPeriodEnd: sub.currentPeriodEnd,
-      email: email.trim(),
+      email,
       hasLiveSub,
       entitlementCoveredUntil,
     };
@@ -979,6 +973,7 @@ type DunningContext = {
   status: string;
   episodeAnchor: number;
   cancelledAt: number | null;
+  cancelScheduledAt: number | null;
   currentPeriodEnd: number;
   email: string;
   hasLiveSub: boolean;
@@ -1045,9 +1040,14 @@ function evaluateDunningEligibility(
     // the cancelled sub is STILL covering. Re-checked here, not just at
     // schedule time, because the action runs detached — a reactivation or
     // an expiry can land in between, and "your access continues until
-    // <past date>" is worse than saying nothing.
-    if (sub.status !== "cancelled") return { ok: false, reason: "not_cancelled" };
-    if (sub.cancelledAt !== episodeAt) return { ok: false, reason: "stale_episode" };
+    // <past date>" is worse than saying nothing. A portal cancel keeps the
+    // row active until period end, so its episode is the scheduled-cancel
+    // anchor (null once the cancel is withdrawn).
+    const cancellationEpisode = sub.status === "cancelled" ? sub.cancelledAt : sub.cancelScheduledAt;
+    if (sub.status !== "cancelled" && cancellationEpisode === null) {
+      return { ok: false, reason: "not_cancelled" };
+    }
+    if (cancellationEpisode !== episodeAt) return { ok: false, reason: "stale_episode" };
     if (sub.currentPeriodEnd <= now) return { ok: false, reason: "not_covering" };
     return { ok: true };
   }
@@ -1301,6 +1301,24 @@ export const runDunningScan = internalMutation({
         dodoSubscriptionId: sub.dodoSubscriptionId,
         step: "cancellation_confirm",
         episodeAt: sub.cancelledAt,
+      });
+    }
+    const recentScheduledCancels = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_status_cancelScheduledAt", (q) =>
+        q
+          .eq("status", "active")
+          .gte("cancelScheduledAt", now - CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS),
+      )
+      .collect();
+    for (const sub of recentScheduledCancels) {
+      if (sub.cancelScheduledAt === undefined || !isCancellationScheduled(sub)) continue;
+      if (sub.currentPeriodEnd < now) continue;
+      paidThroughCancelled.push(sub);
+      due.push({
+        dodoSubscriptionId: sub.dodoSubscriptionId,
+        step: "cancellation_confirm",
+        episodeAt: sub.cancelScheduledAt,
       });
     }
 

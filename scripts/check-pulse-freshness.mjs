@@ -110,7 +110,7 @@ function capturedInstant({ capturedAtMs, capturedAt }) {
  * testable without a network.
  *
  * @param {{ filename: string, capturedAt: string, capturedAtMs?: number | null, ageDays: number } | null} snapshot
- * @param {{ conclusion: string | null, url?: string, createdAt?: string, completedAt?: string } | null} lastRun
+ * @param {{ conclusion: string | null, url?: string, createdAt?: string, attemptStartedAt?: string } | null} lastRun
  */
 export function evaluatePulseFreshness(snapshot, lastRun, {
   warnAgeDays = PULSE_SNAPSHOT_WARN_AGE_DAYS,
@@ -149,9 +149,12 @@ export function evaluatePulseFreshness(snapshot, lastRun, {
   // failure reopened the issue a day after the fix (#8417). A run without a
   // timestamp compares as never superseded.
   const failed = Boolean(lastRun?.conclusion) && lastRun.conclusion !== 'success';
-  // Reruns retain created_at; only a snapshot after the failed attempt can
-  // repair that failure. Older callers without attempt timing use createdAt.
-  const superseded = failed && capturedInstant(snapshot) > Date.parse(lastRun.completedAt ?? lastRun.createdAt ?? '');
+  // Anchor on the start of the latest attempt, not its completion: a refresh
+  // that captures, fails verify, and is merged once its tests are fixed leaves a
+  // snapshot captured mid-attempt, and that merge is the repair (#9700). Reruns
+  // retain created_at, so attempt timing keeps an older snapshot from hiding a
+  // failed rerun. Older callers without attempt timing use createdAt.
+  const superseded = failed && capturedInstant(snapshot) > Date.parse(lastRun.attemptStartedAt ?? lastRun.createdAt ?? '');
   if (failed && !superseded) {
     reasons.push({
       kind: 'refresh-failed',
@@ -282,7 +285,9 @@ export function readLastRefreshRun({ repository = process.env.GITHUB_REPOSITORY,
     conclusion: run.conclusion ?? null,
     url: run.html_url ?? '',
     createdAt: run.created_at ?? '',
-    completedAt: run.updated_at ?? run.created_at ?? '',
+    // updated_at is the completion fallback: later than the attempt start, so a
+    // listing without run_started_at fails closed.
+    attemptStartedAt: run.run_started_at ?? run.updated_at ?? run.created_at ?? '',
   };
 }
 

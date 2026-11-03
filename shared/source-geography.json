@@ -664,5 +664,45 @@
   "Nature News": [],
   "BBC Science": [],
   "Guardian Science": [],
-  "ScienceDaily": []
+  "ScienceDaily": [],
+  "Dagens Nyheter": [
+    "SE"
+  ],
+  "Svenska Dagbladet": [
+    "SE"
+  ],
+  "De Telegraaf": [
+    "NL"
+  ],
+  "NRC": [
+    "NL"
+  ],
+  "El Mundo": [
+    "ES"
+  ],
+  "El País": [
+    "ES"
+  ],
+  "Tuoi Tre News": [
+    "VN"
+  ],
+  "Thai PBS": [
+    "TH"
+  ],
+  "AP Mexico": [],
+  "Reuters LatAm": [],
+  "BBC Afrique": [],
+  "BBC Mundo": [],
+  "CDC": [],
+  "DHS": [],
+  "FEMA": [],
+  "FPRI": [],
+  "Jamestown": [],
+  "RAND": [],
+  "Responsible Statecraft": [],
+  "India News Network": [],
+  "Latin America": [],
+  "Mexico Security": [],
+  "Mining & Resources": [],
+  "UNHCR": []
 }

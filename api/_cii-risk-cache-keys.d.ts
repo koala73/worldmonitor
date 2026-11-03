@@ -1,7 +1,7 @@
 export const CII_RISK_SCORE_CACHE_KEYS: Readonly<{
-  live: 'risk:scores:sebuf:v8';
-  stale: 'risk:scores:sebuf:stale:v8';
-  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v8';
+  live: 'risk:scores:sebuf:v14';
+  stale: 'risk:scores:sebuf:stale:v14';
+  trendHistoryPrefix: 'risk:scores:sebuf:trend-history:v14';
   dailyHistoryPrefix: 'risk:scores:history:';
   dailyHistoryIndex: 'risk:scores:history:index';
   dailyHistoryMeta: 'seed-meta:intelligence:risk-scores-history';

@@ -1,6 +1,7 @@
 import { COUNTRY_READERS, countryReadResultSchema, type CountryReader } from '../../shared/country-brief-host';
 import { RAW_SIGNAL_ENVELOPE_BYTES, rawSignalsResultSchema } from '../../shared/country-raw-signals';
 import { CountrySectionError } from './country-brief-error';
+import { COUNTRY_SIGNAL_BYTES, countrySignalResponseSchema } from '../../shared/country-signal-observations';
 export { CountrySectionError } from './country-brief-error';
 
 const REUSE_MS = 300_000;
@@ -15,6 +16,10 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
   const queue: Array<() => void> = [];
   const cache = new Map<string, CachedRead>();
   const pending = new Map<string, PendingRead>();
+  const admissionBudgets = new Map<string, { dispatched: number }>();
+  let readBudget = { dispatched: 2 };
+  let selectedAdmission: string | undefined;
+  let mandatoryPending = 0;
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     if (url.origin !== 'https://www.worldmonitor.app' || (init?.method ?? (input instanceof Request ? input.method : 'GET')) !== 'GET') throw new Error('Unsupported country request');
@@ -22,8 +27,10 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
     if (!entry) throw new Error('Unsupported country reader');
     const [section, reader] = entry;
     const args = reader.args.parse(Object.fromEntries(url.searchParams));
-    const signal = init?.signal ?? (input instanceof Request ? input.signal : new AbortController().signal);
+    const callerSignal = init?.signal ?? (input instanceof Request ? input.signal : new AbortController().signal);
+    const signal = section === 'countrySignals' ? AbortSignal.any([callerSignal, AbortSignal.timeout(15_000)]) : callerSignal;
     signal.throwIfAborted();
+    const budget = readBudget;
     const key = JSON.stringify([section, Object.entries(args).sort(([a], [b]) => a.localeCompare(b))]);
     const stored = cache.get(key);
     if (stored && stored.expires > Date.now()) return new Response(stored.text, { headers: { 'Content-Type': 'application/json' } });
@@ -44,7 +51,13 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
         else active++;
         try {
           requestSignal.throwIfAborted();
-          const raw = await call('get_country_brief_section', { section, arguments: args }, requestSignal);
+          const newFamily = section === 'countrySignals' && 'family' in args && args.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE';
+          if (newFamily && budget.dispatched >= 64) throw new Error('Country read budget reserved for existing sections');
+          budget.dispatched++;
+          if (!newFamily) mandatoryPending++;
+          let raw: unknown;
+          try { raw = await call('get_country_brief_section', { section, arguments: args }, requestSignal); }
+          finally { if (!newFamily) mandatoryPending--; }
           const result = section === 'signalsRaw' ? rawSignalsResultSchema.parse(raw) : countryReadResultSchema.parse(raw);
           if (result.section !== section as CountryReader) throw new Error('Country section identity mismatch');
           requestSignal.throwIfAborted();
@@ -55,8 +68,12 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
           if (requestedCountry && (section === 'signalsRaw' ? requestedCountry !== returnedCountry : returnedCountry && requestedCountry !== returnedCountry)) throw new Error('Country identity mismatch');
           const text = JSON.stringify(result.value);
           const bytes = new TextEncoder().encode(text).length;
+          if (section === 'countrySignals') {
+            if (bytes > COUNTRY_SIGNAL_BYTES) throw new Error('Country Signals exceeds byte limit');
+            countrySignalResponseSchema.parse(result.value);
+          }
           if (section === 'signalsRaw' && new TextEncoder().encode(JSON.stringify(result)).length > RAW_SIGNAL_ENVELOPE_BYTES) throw new Error('Signals envelope exceeds its byte limit');
-          if (result.state === 'ready' && bytes <= MAX_ENTRY_BYTES && !requestSignal.aborted && (!('upstreamUnavailable' in result.value) || result.value.upstreamUnavailable !== true)
+          if (section !== 'countrySignals' && result.state === 'ready' && bytes <= MAX_ENTRY_BYTES && !requestSignal.aborted && (!('upstreamUnavailable' in result.value) || result.value.upstreamUnavailable !== true)
             && !(Array.isArray(result.value.missing) && result.value.missing.length)) {
             while (cacheBytes + bytes > MAX_CACHE_BYTES && cache.size) {
               const oldest = cache.keys().next().value!;
@@ -92,9 +109,28 @@ export function createHostCountryFetch(call: (name: string, args: object, signal
     }
   };
   const clear = () => {
+    if (!selectedAdmission) readBudget = { dispatched: 2 };
     cache.clear(); cacheBytes = 0;
     for (const work of pending.values()) work.controller.abort();
     pending.clear();
   };
-  return Object.assign(fetcher, { clear });
+  const selectAdmission = (token: string) => {
+    selectedAdmission = token;
+    let budget = admissionBudgets.get(token);
+    if (!budget) {
+      budget = { dispatched: 2 };
+      admissionBudgets.set(token, budget);
+      if (admissionBudgets.size > 30) admissionBudgets.delete(admissionBudgets.keys().next().value!);
+    }
+    readBudget = budget;
+  };
+  const settleMandatoryReads = async (signal?: AbortSignal) => {
+    for (let quiet = 0; quiet < 2;) {
+      signal?.throwIfAborted();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      quiet = mandatoryPending === 0 && active === 0 && queue.length === 0 ? quiet + 1 : 0;
+    }
+    signal?.throwIfAborted();
+  };
+  return Object.assign(fetcher, { clear, settleMandatoryReads, selectAdmission });
 }

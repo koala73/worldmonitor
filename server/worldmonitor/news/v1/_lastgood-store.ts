@@ -23,6 +23,7 @@ import {
   LASTGOOD_TTL_S,
   attemptMetaKey,
   isAcceptableDigest,
+  isCatalogChanged,
   isEligibleScope,
   isStaleReason,
   lastGoodKey,
@@ -127,10 +128,14 @@ function transactionSucceeded(results: Array<{ result?: unknown; error?: string 
 export function measureServableRichness(
   data: DigestLike,
   revokedUrls: ReadonlySet<string>,
-): { categoryCount: number; itemCount: number } {
-  const categories = Object.values(data.categories ?? {});
+  exemptCategories: readonly string[] = [],
+): { categoryCount: number; itemCount: number; totalCategoryCount: number } {
+  const exempt = new Set(exemptCategories);
+  const entries = Object.entries(data.categories ?? {});
   let itemCount = 0;
-  for (const bucket of categories) {
+  let categoryCount = 0;
+  for (const [name, bucket] of entries) {
+    if (!exempt.has(name)) categoryCount += 1;
     const items = Array.isArray(bucket?.items) ? bucket.items : [];
     for (const item of items) {
       const link = item && typeof item === 'object' && 'link' in item
@@ -139,7 +144,9 @@ export function measureServableRichness(
       if (typeof link !== 'string' || !revokedUrls.has(link)) itemCount += 1;
     }
   }
-  return { categoryCount: categories.length, itemCount };
+  // categoryCount is the gate's breadth signal and leaves exempt categories
+  // out; totalCategoryCount is whether the body is servable at all.
+  return { categoryCount, itemCount, totalCategoryCount: entries.length };
 }
 
 /**
@@ -318,7 +325,10 @@ export async function publishAcceptedSnapshot(
   lang: string,
   data: ListFeedDigestResponse,
   canonicalDigestKey?: string,
+  gate: { exemptCategories?: readonly string[]; catalogFingerprint?: string } = {},
 ): Promise<'accepted' | 'rejected' | 'unavailable'> {
+  const exemptCategories = gate.exemptCategories ?? [];
+  const catalogFingerprint = gate.catalogFingerprint;
   if (!isEligibleScope(variant, lang) || !isAcceptableDigest(data)) return 'rejected';
   const now = Date.now();
   const generatedAtMs = Date.parse(data.generatedAt ?? '');
@@ -330,8 +340,8 @@ export async function publishAcceptedSnapshot(
         console.warn(`[digest-publication] source unavailable variant=${variant} lang=${lang}`);
         return 'unavailable';
       }
-      const candidateRichness = measureServableRichness(data, revoked.urls);
-      if (candidateRichness.categoryCount < 1 || candidateRichness.itemCount < 1) {
+      const candidateRichness = measureServableRichness(data, revoked.urls, exemptCategories);
+      if (candidateRichness.totalCategoryCount < 1 || candidateRichness.itemCount < 1) {
         console.log(`[digest-publication] candidate rejected after revocations variant=${variant} lang=${lang}`);
         return 'rejected';
       }
@@ -354,26 +364,39 @@ export async function publishAcceptedSnapshot(
         : null;
       const canonicalGeneratedAt = canonicalValue ? Date.parse(canonicalValue.generatedAt ?? '') : NaN;
       const canonicalRichness = canonicalValue
-        ? measureServableRichness(canonicalValue, revoked.urls)
+        ? measureServableRichness(canonicalValue, revoked.urls, exemptCategories)
         : null;
+      const catalogChanged = current ? isCatalogChanged(current, catalogFingerprint) : false;
       const canonicalMeta = canonicalRichness
-        && canonicalRichness.categoryCount >= 1
+        && !catalogChanged
+        && canonicalRichness.totalCategoryCount >= 1
         && canonicalRichness.itemCount >= 1
         && Number.isFinite(canonicalGeneratedAt)
         ? {
             acceptedAt: canonicalGeneratedAt,
-            ...canonicalRichness,
+            categoryCount: canonicalRichness.categoryCount,
+            itemCount: canonicalRichness.itemCount,
           }
         : null;
       // Re-measure the incumbent BODY under the current revocation set, as the
       // Lua gate does. Its stored itemCount is a publication-time count, and a
       // URL revoked since must not keep inflating it and veto the repair.
-      const measuredCurrentItems = current
-        ? measureServableRichness(current.data, revoked.urls).itemCount
+      const measuredCurrent = current
+        ? measureServableRichness(current.data, revoked.urls, exemptCategories)
         : undefined;
-      const decision = shouldReplaceAccepted(current, candidateRichness, now, measuredCurrentItems);
+      const measuredCurrentItems = measuredCurrent?.itemCount;
+      // Breadth is re-measured too, with the same exemptions as the candidate:
+      // the stored count predates them.
+      const comparable = current && measuredCurrent
+        ? { ...current, categoryCount: measuredCurrent.categoryCount }
+        : current;
+      const candidateCounts = {
+        categoryCount: candidateRichness.categoryCount,
+        itemCount: candidateRichness.itemCount,
+      };
+      const decision = shouldReplaceAccepted(comparable, candidateCounts, now, measuredCurrentItems, catalogFingerprint);
       const canonicalDecision = canonicalMeta
-        ? shouldReplaceAccepted(canonicalMeta, candidateRichness, now)
+        ? shouldReplaceAccepted(canonicalMeta, candidateCounts, now)
         : null;
       if (!decision.replace || canonicalDecision && !canonicalDecision.replace) {
         // The single-process sidecar has no transaction primitive. Publish
@@ -399,8 +422,9 @@ export async function publishAcceptedSnapshot(
       }
       const meta: AcceptedSnapshotMeta = {
         acceptedAt,
-        ...candidateRichness,
-        ...nextPeak(current, candidateRichness.itemCount, acceptedAt, now, measuredCurrentItems),
+        ...candidateCounts,
+        ...nextPeak(current, candidateRichness.itemCount, acceptedAt, now, measuredCurrentItems, catalogFingerprint),
+        ...(catalogFingerprint ? { catalogFingerprint } : {}),
       };
       const durableWritten = await setCachedJson(lastGoodKey(variant, lang), { ...meta, data }, LASTGOOD_TTL_S);
       if (!durableWritten) {
@@ -435,6 +459,8 @@ export async function publishAcceptedSnapshot(
       new Date(now).toISOString(),
       String(DIGEST_REJECTION_TTL_S),
       String(ATTEMPT_META_TTL_S),
+      JSON.stringify([...exemptCategories]),
+      catalogFingerprint ?? '',
     ];
     const results = await runRedisPipeline([[
       'EVAL',

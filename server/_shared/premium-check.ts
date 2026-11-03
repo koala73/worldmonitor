@@ -17,7 +17,10 @@ import {
   TRUSTED_USER_ID_HEADER,
   getInternalMcpVerifiedNonce,
 } from './mcp-internal-hmac.js';
-import { validateUserApiKey } from './user-api-key.js';
+import { validateUserApiKeyPrincipal } from './user-api-key.js';
+import { isApiOnlyPath } from './api-only-paths.js';
+import { resolveUserKeyEntitlement, resolveUserKeyScope } from './desktop-key-principal.js';
+import type { DesktopKeyMeterEntitlement } from './desktop-key-meter.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   resolveActiveDirectLlmLimit,
@@ -43,7 +46,25 @@ export type PremiumCallerIdentity =
   | {
       isPremium: true;
       userId: string;
-      kind: 'user-api-key' | 'bearer';
+      /**
+       * `desktop-key` (plan 2026-10-25-001): a desktop principal — a `desktop`
+       * key, or a downgraded owner's `api` key within `maxDesktopKeys` — with
+       * Pro-session treatment: the owner's tier decides, limits come from the
+       * owner's plan, and the API-only set is denied before this arm.
+       */
+      kind: 'user-api-key' | 'bearer' | 'desktop-key';
+      /**
+       * Present on `desktop-key` only: what the per-account desktop meter
+       * (KTD6 / R6) needs — the owner's plan and its sold limits — so a
+       * standalone edge (api/mcp-proxy.ts, api/chat-analyst.ts) can charge
+       * `chargeDesktopKeyBudget` without a second entitlement read. The meter
+       * is NOT charged here: gateway-served handlers resolve this identity too
+       * and the gateway has already charged them; charging twice would halve
+       * every desktop allowance. REQUIRED on that arm for the same reason
+       * `directLlmDailyLimit` is — an edge that forgets it would serve
+       * unmetered — and the type below pins the pairing.
+       */
+      desktopKeyMeter?: NonNullable<DesktopKeyMeterEntitlement>;
       quotaExempt: false;
       /**
        * Daily direct-LLM budget for this caller. `null` is unlimited.
@@ -312,8 +333,8 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
   // Browser tester keys — validateApiKey returns required:false for trusted origins
   // even when a valid key is present, so we check the header directly first.
   const wmKey =
-    request.headers.get('X-WorldMonitor-Key') ??
-    request.headers.get('X-Api-Key') ??
+    request.headers.get('X-WorldMonitor-Key') ||
+    request.headers.get('X-Api-Key') ||
     '';
   // Set when the wm_-key lookup could not COMPLETE (below). Read only at the
   // terminal fall-through, so a co-present bearer still wins if it resolves.
@@ -331,10 +352,15 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     // treat them as invalid keys; fall through so a co-present bearer can still
     // grant premium, and fail closed for the user-key path itself.
     try {
-      const userKey = await validateUserApiKey(wmKey);
+      // Desktop-aware (KTD3): returns `api` and `desktop` keys with their
+      // kind; the scope resolver decides what the kind may reach (KTD4/KTD5).
+      const userKey = await validateUserApiKeyPrincipal(wmKey);
       if (userKey) {
-        const ent = await getEntitlements(userKey.userId);
-        if (hasCurrentEntitlementCoverage(ent) && ent.features.apiAccess === true) {
+        // One cached read; a pre-deploy entry that cannot answer the desktop
+        // decision is refetched through Convex (desktop-key-principal.ts).
+        const ent = await resolveUserKeyEntitlement(userKey.userId, userKey);
+        const keyScope = resolveUserKeyScope(userKey, ent);
+        if (keyScope.scope === 'api' && ent) {
           return {
             isPremium: true,
             userId: userKey.userId,
@@ -344,6 +370,23 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
             enterprisePlan: ent.features.tier >= 3,
           };
         }
+        if (keyScope.scope === 'desktop' && ent) {
+          // KTD7: the API-only set is closed to desktop principals. This is a
+          // scope verdict, not a billing one, so it carries no retry/upsell tag.
+          if (isApiOnlyPath(new URL(request.url).pathname)) return DENIED;
+          return {
+            isPremium: true,
+            userId: userKey.userId,
+            kind: 'desktop-key',
+            desktopKeyMeter: { planKey: ent.planKey, features: { planLimits: ent.features.planLimits } },
+            quotaExempt: false,
+            directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
+            enterprisePlan: ent.features.tier >= 3,
+          };
+        }
+        // A key beyond the owner's desktop cap is a scope verdict too (AE6):
+        // the subscription is fine, this key is just not one of the oldest.
+        if (keyScope.scope === 'denied' && keyScope.reason === 'over_cap') return DENIED;
         // Preserve main's billing-verification tag on confirmed denials (#5622).
         return denyFor(ent);
       }

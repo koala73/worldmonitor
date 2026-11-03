@@ -301,13 +301,24 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
     assert.doesNotMatch(root, /\/pro\/src\/|\/@fs\//, 'no dev-server asset URL may ship');
   });
 
-  it('/pro adds its nav/hero mirrors without changing the shared critical CSS that / ships', () => {
+  it('/ and /pro ship the same shared critical CSS, then only their own hero mirrors', () => {
     const proCritical = criticalStyleText(builtSrc('public/pro/index.html'));
     const welcomeCritical = criticalStyleText(builtSrc('public/pro/welcome.html'));
-    assert.ok(proCritical.startsWith(welcomeCritical), '/pro must ship the shared block unchanged, then its own');
-    const proOnly = proCritical.slice(welcomeCritical.length);
+    // The welcome hero block opens with its section rule (prerender.mjs
+    // WELCOME_HERO_CRITICAL_CSS); everything before it is the shared block.
+    const welcomeHeroAt = welcomeCritical.indexOf('main>section[data-wm-hero]{');
+    assert.ok(welcomeHeroAt > 0, '/ must ship its own hero mirrors after the shared block');
+    const shared = welcomeCritical.slice(0, welcomeHeroAt);
+    assert.ok(proCritical.startsWith(shared), '/pro must ship the shared block unchanged, then its own');
+    const proOnly = proCritical.slice(shared.length);
+    const welcomeOnly = welcomeCritical.slice(shared.length);
     assert.match(proOnly, /\.sr-only\{/, '/pro must mirror the hero h1 sr-only lead');
+    assert.match(proOnly, /main>section:first-child>div:first-child\{/, '/pro keeps its hero wash geometry');
     assert.ok(!welcomeCritical.includes(proOnly), 'the /pro block must not reach /');
+    assert.ok(!proCritical.includes(welcomeOnly), 'the / hero block must not reach /pro');
+    // A blanket `main p` rule is unlayered, so it would override every
+    // paragraph's own margin and max-width on / for the life of the page.
+    assert.doesNotMatch(welcomeCritical, /(^|[}])main p\{/, '/ must not ship a blanket main p rule');
   });
 
   it('/ welcome ships its real, user-visible SSR app without a hidden sibling', () => {

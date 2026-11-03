@@ -89,6 +89,27 @@ test('coalesces consecutive gaps and rejects malformed or future history instead
   }
 });
 
+test('CSL events carry notice and url, accept the unspecified type, and reject non-string citations', () => {
+  const csl = (id, extra = {}) => ({ ...row(id), id: `CSL-EL:${id}`, entityType: 'SANCTIONS_ENTITY_TYPE_UNSPECIFIED',
+    _notice: '90 FR 14032', _url: 'https://www.bis.gov/x', ...extra });
+  const prior = Array.from({ length: 20 }, (_, i) => csl(i));
+  const log = buildSanctionsChanges({
+    previous: { 'CSL-EL': snapshot(prior) },
+    current: { 'CSL-EL': snapshot([...prior, csl(21), csl(22, { _notice: undefined, _url: undefined })], now) },
+    health: { 'CSL-EL': { status: 'ok' } }, now, history: null,
+  });
+  const cited = log.events.find(e => e.id === 'CSL-EL:21');
+  const bare = log.events.find(e => e.id === 'CSL-EL:22');
+  assert.equal(cited.et, 'unspecified');
+  assert.equal(cited.notice, '90 FR 14032');
+  assert.equal(cited.url, 'https://www.bis.gov/x');
+  assert.equal('notice' in bare || 'url' in bare, false);
+  for (const bad of [{ notice: 42 }, { url: ['https://x'] }]) {
+    const history = { ...log, events: [{ ...cited, ...bad }] };
+    assert.throws(() => run(priorRows, { history }), /SANCTIONS_CHANGES_INVALID/);
+  }
+});
+
 test('retained and unavailable runs cannot roll back the history clock after split publication', () => {
   const first = run([...priorRows, row(21)]);
   for (const status of ['retained', 'unavailable']) {

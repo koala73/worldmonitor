@@ -566,7 +566,7 @@ function mountPlugin(): void {
         status.textContent = 'This article source link is unavailable.';
         return;
       }
-      if (!/^https?:$/.test(new URL(link.href).protocol)) return;
+      if (!/^https?:$/.test(link.protocol)) return;
       event.preventDefault();
       if (openLinks) void request('ui/open-link', { url: link.href }).catch(() => { status.textContent = 'The host could not open this link.'; });
       else status.textContent = 'Opening links is unavailable in this host.';

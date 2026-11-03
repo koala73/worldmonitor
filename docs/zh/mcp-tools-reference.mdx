@@ -491,7 +491,7 @@ curl -s https://worldmonitor.app/mcp \
 
 价格和债务指标：巨无霸指数、FAO 食品价格指数和各国国家债务水平。
 
-原名 `get_tariff_trends`，直接调用旧名仍然有效。自 #9301 起该捆绑包不含关税序列。美国 MFN 关税趋势属于 Pro 数据：请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。`dataset: ["tariffs"]` 会返回 Invalid params。
+原名 `get_tariff_trends`。旧名上仅含 tariffs 的调用会运行 `get_tariff_averages` 并返回美国 MFN 序列。旧名上的其他数据集仍返回本捆绑包。自 #9301 起本捆绑包不含关税序列。美国 MFN 序列属于 Pro 数据。请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。在本工具上使用 `dataset: ["tariffs"]` 会返回 Invalid params。
 
 **参数（工具特定）：**
 
@@ -515,6 +515,79 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_price_and_debt_indicators","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_capital_flows`
+
+返回约 230 个经济体资金的流入与流出,以及任意两个经济体之间的资金往来,数据来自官方统计。IMF 国际收支:总流入与总流出,按 FDI、证券投资和其他投资拆分,按国家为季度或年度数据,并附推导的 Forbes-Warnock 状态(流入为 surge 或 stop,流出为 flight 或 retrenchment)及 z 分数。按国家和按国家对:BIS 跨境银行存款与贷款、IMF 证券投资持有和 IMF 直接投资头寸。居民身份变更不是国际收支流量。来源滞后 1–3 个季度(FDI 约 2 年);10 天未更新或最新国际收支季度超过一年时标记为过期。缓存读取:API 套餐权重 1,计入已登录账户的免费额度。country(最多 10 个)返回完整视图;counterpart 增加每个国家对的双向数据,每个分项标注 reported、not_itemized 或 not_published。不指定 country 时,对具备排序指标的国家排名(默认 outflow_z;仅有年度数据的序列没有该指标),按 limit 截断(默认 30,传 0 不限)。
+
+适用于任意经济体和任意国家对:传入多个 `country` 进行比较,加上 `counterpart` 获取双边明细,或省略 `country`,对具备所选 `sort` 指标的经济体排名(默认 `outflow_z` 不含仅有年度数据、没有 z 分数的序列)。阶段标签按 Forbes 与 Warnock(2012)方法由已报告的流量推导。各视图、分项和状态的说明见[资本流动方法论](/zh/methodology/capital-flows)。
+
+**参数(工具专用):**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country` | `array<string>` | 返回完整视图的国家:ISO 3166-1 alpha-2、alpha-3 或英文名称。省略则返回跨国排名。 |
+| `include_series` | boolean | 与 country 一起使用时,同时返回逐期国际收支流量(12 个季度或 6 年)。默认 false。 |
+| `counterpart` | string | 与 country 一起使用的对手国(alpha-2、alpha-3 或名称)。返回 pairs[]:双方非银行在对方银行的存款和双向银行贷款(存量、四季度流量、八个季度历史),双方对彼此证券的持有,以及带双方数字的双向直接投资,另加对手国自身的视图。 |
+| `sort` | `string: outflow_z / inflow_z / outflows_pct_gdp / inflows_pct_gdp / net_usd_bn / bank_deposits_abroad_flow_4q / foreign_portfolio_change_pct` | 省略 country 时的排名字段。默认 outflow_z。 |
+| `ascending` | boolean | 升序排列。默认 false。 |
+| `limit` | number | 排名最多返回的国家数(默认 30,传 0 表示不限)。传入 country 时忽略。 |
+
+- **API 端点:** `GET /api/economic/v1/get-capital-flows`
+- **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
+- **类型:** 缓存读取 — 从 Redis 亚秒级响应。
+- **新鲜度预算:** 距上次每周种子 **10 天**,另有内容时效检查:最新 IMF 国际收支季度超过 12 个月时 `stale` 变为 true。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_capital_flows","arguments":{"country":["DE"],"counterpart":"JP"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_no2_activity`
+
+基于 Sentinel-5P 对流层 NO2 的工业活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与前三年同期日期对比，给出 changePercent 以及经 10% 死区后的 direction。没有读数的区域带有 exclusion；在前几年数据仍在回填时，baseline_backfill_pending 是预期状态，不是故障。可按 country_code（该国及其境内集群）、region_id 或 kind 过滤。每日播种，从不实时调用 Copernicus；请转载 attribution。需要付费套餐；一次下游请求，API 套餐权重 2。只读。
+
+每个区域报告 `windowStart`、`windowEnd`、`validDays`（无云且通过质量过滤像元足够的天数）、以 mol/m2 计的平均 NO2 柱浓度、进入基线的往年年份、`changePercent`、`signalValue`（10% 死区之外的变化，死区内为 0）和 `direction`（`strengthening`、`weakening`、`unchanged`）。没有读数的区域 `direction: null`，并带有封闭词汇表中的 `exclusion`：`request_failed`、`baseline_backfill_pending`、`insufficient_valid_days`、`insufficient_baseline_years`。响应携带 `method`（由路由的 `methodVersion` 固定的常量）、`generatedAt`、`stale`（超过 72 小时健康预算时为 true）以及 `attribution` 中必须保留的署名，例如 "Contains modified Copernicus Sentinel data 2023-2026"。方法说明见[中国活动即时预测方法论](/zh/methodology/china-activity-nowcast)。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country_code` | string | 可选。ISO 3166-1 alpha-2 代码（"DE"）、alpha-3（"DEU"）或英文名称（"Germany"）。返回该国区域及其境内的所有集群；跨国集群（`gulf-states`、`rotterdam-antwerp`）没有国家代码。 |
+| `region_id` | string | 可选的注册表 id，例如 `country-cn` 或 `yangtze-river-delta`。与其他过滤条件按 AND 组合。 |
+| `kind` | `string: country / cluster` | 可选。`country` 为国家多边形，`cluster` 为命名工业集群；省略则两者都返回。 |
+
+**响应区分：** `unavailableReason` 使用 RPC 的封闭 `No2ActivityUnavailableReason` 枚举。`NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案（过滤条件未命中任何注册区域，重试无效），`upstreamUnavailable: false`。`NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST` 是客户端错误（畸形过滤条件直接到达 handler；网关会先返回 HTTP 400），`upstreamUnavailable: false`。其余原因表示故障（`seed_missing`、`invalid_dataset`、`cache_unavailable`），`upstreamUnavailable: true`。区域级 `exclusion` 不会撤回整个响应：`baseline_backfill_pending`、`insufficient_valid_days` 和 `insufficient_baseline_years` 表示方法拒绝给出它无法支撑的读数，而 `request_failed` 表示该区域自身的来源刷新失败时间已超过保留数据的有效期。
+
+- **API 端点：** `GET /api/economic/v1/get-no2-activity`
+- **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：没有 `summary` 参数（用 `jmespath` 裁剪响应）。
+- **类型：** 规范 NO2 活动路由的 RPC 代理（handler 负责过滤、合约校验和未命中分类）。
+- **新鲜度预算：** 最多 **72 小时** 后 `stale`（每日播种节奏的三倍，与 `/api/health` 一致）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_no2_activity","arguments":{"country_code":"CN","kind":"cluster"}}
   }'
 ```
 
@@ -862,12 +935,14 @@ curl -s https://worldmonitor.app/mcp \
 | `query` | string | 仅保留标题包含此文本的市场（不区分大小写）。 |
 | `source` | string: kalshi / polymarket | 筛选为一个预测市场来源。Kalshi 目前不提供分类器标签，因此与 `category=tech` 组合不会返回记录。 |
 | `sort` | string: rank / move_24h / move_7d | 默认 `rank` 保留种子排序。`move_24h` 和 `move_7d` 在每个类别内按变化绝对值降序排列，然后应用 limit；缺失值排在最后。 |
+| `min_liquidity` | number | 仅保留流动性（以美元计的挂单深度）不低于此值的市场，在 limit 之前应用。大于 0 时，没有流动性数据的市场（例如订单簿获取失败的 Kalshi 市场）会被排除。 |
 | `limit` | number | 限制每个类别的记录数，默认 30。零或负数表示不限。正小数使用整数部分。 |
 | `refresh` | boolean | 仅限付费面板。默认 false 复用预测分配。true 必须附带 UUID request_id，并开始一次新分配。刷新时省略 panel_request。 |
 | `request_id` | string | 付费刷新 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
 | `panel_request` | string | 服务器签发的预测凭据，用于到期前的授权精选读取。API 和免费账户调用不接受该凭据。 |
 
 - **概率变化：** 可选 `change24h` 和 `change7d` 为 `yesPrice` 0–100 标度的百分点变化。上游缺失时不返回该字段，零表示没有变化。Kalshi 仅提供 24 小时变化。REST 的 `yesPriceChange24h` 和 `yesPriceChange7d` 使用 0–1 概率标度。
+- **流动性：** 可选 `liquidity` 为按交易场所计算的美元挂单深度。Polymarket 记录使用 Gamma 的 CLOB 流动性（`liquidity`，等于 `liquidityClob`）：类别桶记录为事件级，国家记录为合约级。Kalshi 记录对合约订单簿中全部 yes 与 no 买单的价格乘以数量求和。两个场所的计算方式不同，阈值宜在同一来源内比较。场所未报告或订单簿获取失败时不返回该字段。REST 以 `min_liquidity` 接受同一筛选。
 - **API 端点：** `GET /api/prediction/v1/list-prediction-markets`
 - **访问：** `free-account`，任意已登录账户均可调用。免费账户消耗每日免费额度，API 套餐仍按工具权重计费。接受通用 `summary` 参数。
 - **付费面板计量：** Pro 与 Pro Business 打开面板扣一次额度。规范化筛选与重复打开在五分钟内复用预测分配。返回的 `panelRequest.token` 在到期前授权精选预测读取。本地类别展开只读取已加载数据，不发起新的工具调用。每份分配最多允许 64 次未缓存工具执行，未缓存执行与已确认缓存回放分别限制为每分钟 64 次。工具执行次数不等于单条 Redis 命令数。
@@ -896,17 +971,17 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_energy_intelligence`
 
-能源供应、价格、存储、中断和政策：EIA 石油库存、电力价格（Ember）、天然气存储（GIE）、燃料短缺、化石和可再生能源份额、活跃能源中断、政府危机政策。
+能源供应、价格、存储、中断和政策：EIA 石油库存、电力价格（Ember）、各国天然气存储（GIE）、燃料短缺、化石和可再生能源份额、活跃能源中断、政府危机政策，以及欧盟天然气总存储、美国天然气存储和美国商业原油库存的带日期历史。原 `get_energy_storage` 已并入本工具，旧名称仍可调用并返回 `deprecation` 提示。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable>` | 将响应限制为一个或多个能源子数据集。省略则返回完整捆绑包。 |
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable / eu-gas-storage / nat-gas-storage / crude-inventories>` | 将响应限制为一个或多个能源子数据集。省略则返回完整捆绑包。 |
 | `country` | string | 将按国家键控的数据集（Ember 电力组合、天然气存储、燃料短缺、能源中断、化石份额）筛选为一个 ISO 3166-1 alpha-2 代码。 |
-| `limit` | number | 将每个含列表的能源切片（危机政策、电力地区、天然气存储国家、世界银行可再生能源历史/地区）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | integer | 将每个含列表的能源切片（危机政策、电力地区、天然气存储国家、世界银行可再生能源历史/地区、按新到旧排列的存储和库存历史）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`
+- **API 端点：** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`, `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **3 天**（由 seeder cron 的预期间隔设定）。
 
@@ -941,8 +1016,14 @@ curl -s https://worldmonitor.app/mcp \
 | `panel_request` | string | 付费冲突事件凭据，在到期前复用受限内部筛选读取。API 和免费账户不接受。 |
 | `refresh` | boolean | 仅限付费面板。true 需附带 UUID request_id，并省略 panel_request，以开始一次新分配。 |
 | `request_id` | string | 显式付费刷新的 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
+| `bbox` | object | 仅保留此范围内的事件。sw_lon > ne_lon 表示跨越 180° 经线。不能与 lat/lon/radius_km 同时使用。 |
+| `lat` | number | radius_km 的中心纬度；需同时提供 lon 和 radius_km。 |
+| `lon` | number | radius_km 的中心经度；需同时提供 lat 和 radius_km。 |
+| `radius_km` | number | 仅保留距 lat/lon 大圆距离在此范围内的事件（最大 2000）。 |
+| `since_days` | integer | 仅保留最近 N 天内的事件。 |
 
 - **API 端点：** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **区域与时间筛选：** `bbox` 需提供 `sw_lat`、`sw_lon`、`ne_lat` 和 `ne_lon`（均为必填）。请只传 `bbox`，或同时传 `lat`、`lon` 和 `radius_km` 三者；混用或只传部分半径参数会在扣除任何额度前返回 Invalid params。筛选作用于 UCDP、伊朗和动荡事件，在 `country` 与 `min_fatalities` 之后、`limit` 之前执行；国家风险评分没有坐标，不受筛选。缺少有效坐标（或在使用 `since_days` 时缺少日期）的事件会被丢弃，`data.geo_filter.excluded` 按列表统计这些行，避免把空结果误读为附近没有事件。当 `since_days` 早于某列表最早的带日期行时，`data.geo_filter.oldest_held` 给出该行的时间（epoch 毫秒），避免把宽时间窗误读为完整覆盖。不传这些参数时响应不含 `geo_filter`。
 - **访问与计量：** `free-account`。免费账户使用免费额度，API 套餐保留按工具权重计费。Pro 与 Pro Business 首次打开扣一次额度，规范化筛选与重复打开在五分钟内复用冲突事件分配。每份分配最多允许 64 次未缓存工具执行，未缓存执行与成功缓存回放分别限制为每分钟 64 次。每次执行读取五个固定 Redis 键，启用伊朗事件时为六个，不分别扣额度。
 - **复用与刷新：** 相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放。显式刷新使用新的 UUID 扣一次新额度；同一 UUID 的重试复用该分配。授权凭据读取查询当前额度，不另行预留；计数器未知时保留数据并省略数字通知。付费参数在预留前拒绝未知字段及非有限数值。普通 API 和免费调用保留既有筛选转换，不接受付费凭据或刷新控制。
 - **来源观察与恢复：** 可选 `conflict_source.ucdp` 仅保留已读取元数据中类型正确的 `fetchedAt`、`candidateVersion`、`candidateComplete` 和 `annualFailedPages`，缺失字段保持缺失。已知不完整、缺失、格式错误、过期或不兼容的数据保持可重试；可用列表仍按请求筛选。元数据与数据不是原子快照，该观察不能证明所有动荡提供方的完整覆盖或 CII/伊朗的独立新鲜度。
@@ -1229,6 +1310,7 @@ curl -s https://worldmonitor.app/mcp \
 | `category` | string（枚举） | 将聚类限制为一个完整摘要类别（`politics`、`us`、`europe`、`middleeast`、`tech`、`ai`、`finance`、`commodities`、`gov`、`africa`、`latam`、`asia`、`energy`、`thinktanks`、`crisis`、`layoffs`、`science`、`intel`）。结果中以 `category` 回显（省略时为 `null`）。未知值返回 `headlineCount: 0`，并以 `note` 列出当前摘要中存在的类别。 |
 
 - **交叉印证：** 每个簇都带有 `corroboration`，形如 `{ state, publishers }`。`state` 取值为 `corroborated`（两个及以上发布方家族，且并非全部为第 4 层级）、`single-publisher`、`tier4-only`（两个及以上家族，且每个都是已声明的第 4 层级聚合站或博客）或 `unknown`；`publishers` 统计不同的发布方家族，`state` 为 `unknown` 时为 `null`。新闻面板、地图弹窗和摘要为该故事显示相同的判定。实时提醒只携带该故事的发布方数量，因此只报告 `single-publisher` 或 `corroborated`，从不报告 `tier4-only`。它描述的是报道覆盖面，而非准确性：任何状态都不表示某条说法为真或为假。旁边的 `publishers` 名单列出每个发布方及其声明层级。
+- **来源溯源：** 每个簇都带有主媒体的 `primarySourceProvenance`，以及与 `sources` 按下标对齐的 `sourceProvenance`（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（空数组表示尚未记录标签，并不代表该媒体中立）、可选的 `note`、按固定顺序列出全部事实的 `summary` 字符串，以及媒体概况：`homeCountry`、`audience`（`domestic`、`international` 或 `diaspora`）、`language` 和 `ownershipClass`，未记录概况时均为 `null`。智能体无需调用 `get_sources`，即可对同时包含一级通讯社和高风险或国家关联媒体的簇进行加权。溯源采用失败即关闭：尚未审核的媒体会报告 `risk: "unknown"` 并附上说明，绝不会默认为低风险。
 - **API 端点：** `GET /api/news/v1/list-feed-digest`
 - **类型：** 确定性本地计算 —— 每次调用对约 150-200 条摘要头条运行聚类（上游为 CDN/Redis 缓存，15 分钟节奏）。
 - **配额：** 标准 —— 每次调用消耗 MCP 每日预留。
@@ -1356,14 +1438,14 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_sanctions_data`
 
-读取 OFAC SDN、OFAC Consolidated、加拿大 SEMA 制裁和国家压力评分。`screen` 支持名称、每个实体最多 10 个保留别名和精确 IMO 编号，返回 `score`、`matched_on`、`matched_text`；不要同时提供 `screen` 和 `changes_since_days`。`changes_since_days` 选择仅变更历史模式，返回指定天数内观测到的新增、移除和制裁项目变更。匹配结果仅供进一步向发布机构核实，不构成法律意见。每次调用权重为 1，不在请求时获取外部来源。
+读取 OFAC SDN、OFAC Consolidated、加拿大 SEMA 制裁和国家压力评分，并可筛查美国综合筛查清单（CSL）中的六个出口管制清单：BIS 实体清单、拒绝人员清单、未核实清单、军事最终用户清单，以及国务院 ITAR 禁止清单和防扩散制裁清单。压力评分只统计 OFAC 和 SEMA；CSL 条目的 `et` 为 `unspecified`，其变更事件带有 `notice`（《联邦公报》引用）和 `url`。`screen` 支持名称、每个实体最多 10 个保留别名和精确 IMO 编号，返回 `score`、`matched_on`、`matched_text`；不要同时提供 `screen` 和 `changes_since_days`。`changes_since_days` 选择仅变更历史模式，返回指定天数内观测到的新增、移除和制裁项目变更。匹配结果仅供进一步向发布机构核实，不构成法律意见。每次调用权重为 1，不在请求时获取外部来源。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `country` | string | 将制裁实体和压力评分筛选为一个 ISO 3166-1 alpha-2 国家代码。 |
-| `entity_type` | string | 筛选为一种实体类型（不区分大小写的子串，例如 "vessel"、"aircraft"、"person"、"entity"）。 |
+| `entity_type` | string | 筛选为一种实体类型（不区分大小写的子串，例如 "vessel"、"aircraft"、"individual"、"entity"；CSL 行为 "unspecified"）。 |
 | `query` | string | 仅保留名称包含此文本的制裁实体（不区分大小写）。 |
 | `screen` | string | 按名称、别名或 IMO 编号筛选，长度 2-200 字符；实体筛选时不要提供 `changes_since_days`。 |
 | `min_score` | number | 最低匹配分数 0-100，默认 70，仅与 `screen` 一起使用。 |
@@ -1524,12 +1606,17 @@ curl -s https://worldmonitor.app/mcp \
 
 基础设施级联模拟：在种子化的海底电缆表加上精选的管道、港口和咽喉要道注册表上进行广度优先故障传播。不传 `source_id` 可获取按类型分组的可模拟节点目录；链式容量沿路径相乘，远端影响会真实地衰减。
 
+传入 `countries` 可比较各国的海底电缆暴露度。`data.exposure` 中每一项列出在该国登陆的电缆、不同登陆站、这些电缆经过的咽喉要道及其占该国电缆的比例（`largestSingleChokepointShare` 为单一封锁的最坏情况），以及 `activeIncidents`：NGA 通告监测标记为 `FAULT` 或 `DEGRADED` 的电缆。没有事件的电缆只是没有匹配的通告，并不代表确认正常。`health_available: false` 表示无法读取电缆健康快照。咽喉要道判定结合简化路由几何与登陆点：在波斯湾或红海内外均有登陆点的电缆，视为穿过两者之间的出口。
+
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
 | `source_id` | string | 要中断的节点 id（不传参数可获取完整目录）。 |
+| `source_ids` | array | 同时切断多个节点（例如一组电缆 id）；所有 id 必须有效，各国影响在切断集合内累加。传入 `source_id` 时忽略。 |
+| `cut_cables_through` | string | 咽喉要道 id（例如 `chokepoint:hormuz_strait`）：切断路由经过该处的所有电缆。传入 `source_id` 或 `source_ids` 时忽略。 |
 | `disruption_level` | number | 初始故障严重度，0.1 到 1 之间（默认 1）。 |
+| `countries` | array | 最多 10 个国家（ISO alpha-2、alpha-3 或英文名称），在 `data.exposure` 中返回各国电缆暴露度比较。可与切断参数组合使用。 |
 
 - **API 端点：** 无（仅 MCP 的派生分析）。
 - **类型：** 派生分析 — 每次请求从种子化电缆表构建依赖图。
@@ -2015,19 +2102,20 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_infrastructure_status`
 
-互联网基础设施健康：Cloudflare Radar 故障和主要云提供商及互联网服务的服务状态。
+Cloudflare Radar 互联网快照，分三个数据集：`outages`（故障及主要云提供商和互联网服务的状态）、`traffic`（流量异常，`totalCount` 为筛选前的全球总数）和 `ddos`（全球 DDoS 协议、向量和目标国家摘要）。原 `get_internet_activity` 已并入本工具，旧名称仍可调用并返回 `deprecation` 提示。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `country` | string | 按名称筛选为一个国家（不区分大小写的子串）。 |
+| `dataset` | `array<string: outages / traffic / ddos>` | 将响应限制为故障、流量异常或 DDoS 摘要。省略则返回全部三个。 |
+| `country` | string | 按 ISO 3166-1 alpha-2 或 alpha-3 代码或英文国家名称筛选故障和流量异常。无法解析的输入返回 Invalid params。DDoS 摘要为全球数据，仅请求 DDoS 时传入 `country` 会返回 Invalid params。 |
 | `severity` | string | 筛选为一种故障严重度（不区分大小写的子串）。 |
-| `limit` | number | 将故障列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `limit` | integer | 将每个列表（故障、异常、DDoS 协议、向量和目标国家）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/infrastructure/v1/list-internet-outages`
+- **API 端点：** `GET /api/infrastructure/v1/list-internet-outages`, `GET /api/infrastructure/v1/list-internet-traffic-anomalies`, `GET /api/infrastructure/v1/list-internet-ddos-attacks`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 故障 **30 分钟**，流量异常和 DDoS **60 分钟**；任一数据集超出预算即标记 `stale: true`。
 
 <CodeGroup>
 
@@ -2131,7 +2219,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **2 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 各子数据集使用与 `/api/health` 一致的播种时间预算：天气警报 **45 分钟**、气候新闻 **90 分钟**、异常 **9 小时**、灾害 **12 小时**、空气质量 **3 小时**、海洋/海冰 **48 小时**、CO2 监测 **72 小时**。异常和气候新闻还检查生产者的内容时效预算，目前分别为 **14 天**和 **7 天**。任一播种过期、刷新失败、元数据缺失或内容过期都会使整个捆绑包标记为 `stale: true`。`cached_at` 是所有来源中最早的播种时间，并非统一的过期时间。`dataset` 在捆绑包新鲜度检查后筛选返回的数据。
 
 <CodeGroup>
 
@@ -2163,8 +2251,14 @@ curl -s https://worldmonitor.app/mcp \
 | `min_magnitude` | number | 丢弃低于此震级的地震和自然事件。 |
 | `active_only` | boolean | 仅保留仍处于活跃状态（未关闭）的自然事件。 |
 | `limit` | number | 将每个灾害列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `bbox` | object | 仅保留此范围内的事件。sw_lon > ne_lon 表示跨越 180° 经线。不能与 lat/lon/radius_km 同时使用。 |
+| `lat` | number | radius_km 的中心纬度；需同时提供 lon 和 radius_km。 |
+| `lon` | number | radius_km 的中心经度；需同时提供 lat 和 radius_km。 |
+| `radius_km` | number | 仅保留距 lat/lon 大圆距离在此范围内的事件（最大 2000）。 |
+| `since_days` | integer | 仅保留最近 N 天内的事件。 |
 
 - **API 端点：** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
+- **区域与时间筛选：** `bbox` 需提供 `sw_lat`、`sw_lon`、`ne_lat` 和 `ne_lon`（均为必填）。请只传 `bbox`，或同时传 `lat`、`lon` 和 `radius_km` 三者；混用或只传部分半径参数会在扣除任何额度前返回 Invalid params。筛选作用于地震、火点和自然事件（包括区域列表 `events.westernPacific.events` 与 `events.hkoWarnings.warnings`），在 `min_magnitude` 与 `active_only` 之后、`limit` 之前执行。缺少有效坐标（或在使用 `since_days` 时缺少日期）的行会被丢弃，`data.geo_filter.excluded` 按数据集统计这些行，避免把空结果误读为附近没有事件。当 `since_days` 早于某列表最早的带日期行时，`data.geo_filter.oldest_held` 给出该行的时间（epoch 毫秒），避免把宽时间窗误读为完整覆盖。不传这些参数时响应不含 `geo_filter`。
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
 
@@ -2290,16 +2384,21 @@ curl -s https://worldmonitor.app/mcp \
 
 UNHCR 单一报告年度的年度流离失所统计：全球总数、按来源国统计的难民、寻求庇护者、国内流离失所者和无国籍者，各庇护国收容总数，以及最大的来源国至庇护国难民流向。仅为年度存量数据，不含月度抵达或危机局势更新。UNHCR 发布当年数据前，快照为上一年数据，由 `summary.year` 标明。
 
+传入 `view: "events"` 时，工具改为在 `iduEvents` 中返回 IDMC 国内流离失所更新：各国过去 30 天在本国境内流离失所的人数（分冲突和灾害）、`newlyReported7d`（IDMC 在过去 7 天发布的数字，不论流离失所日期）、`surge` 标志（至少 5,000 人且为此前 150 天月均值的三倍），以及过去 180 天内带位置的 IDMC 数字，按时间由新到旧排列。IDMC 发布数字的中位滞后约为三周，因此最近几周的数据并不完整。
+
+传入 `view: "regions"` 时，工具在 `dtmRegions` 中返回 IOM 流离失所跟踪矩阵（DTM）数据：过去 18 个月内每个 DTM 行动的最新一轮调查，按规模由大到小排列，包括国内流离失所者总数、按原因的划分、各一级行政区的人数（已知时附 OCHA P-code 和坐标）以及最多 30 条区域间流向。同一国家的行动可能重叠（全国性行动与省级行动），因此不要将其总数相加。调查轮次最多每月一次。
+
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `countries` | `array<string>` | 要保留的 ISO 3166-1 alpha-3 国家代码（例如 ["SYR","UKR","AFG"]）。匹配逐国总数和来源/庇护流。省略则返回全部。 |
-| `limit` | number | 将逐国和顶级流列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `countries` | `array<string>` | 要保留的国家名称、ISO alpha-2 或 alpha-3 代码（例如 ["Syria","UA","AFG"]）。匹配逐国总数、来源/庇护流、IDMC 数据和 DTM 行动。省略则返回全部。无法解析的国家名称和 alpha-3 代码返回 Invalid params；未知的两字母代码不会报错，只是没有匹配结果。 |
+| `limit` | number | 将逐国、顶级流、IDMC 和 DTM 行动列表限制为最多这么多项（默认 30，传 0 表示不限）。IDMC 事件最多 100 条。 |
+| `view` | `string: annual / movements / events / regions` | `annual`（默认）：`summary` 中的 UNHCR 年度存量。`movements`：按来源日期的跨境流动报告。`events`：`iduEvents` 中的 IDMC 国内流离失所数据。`regions`：`dtmRegions` 中的 IOM DTM 行动数据。 |
 
 - **API 端点：** `GET /api/displacement/v1/get-displacement-summary`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **2.5 天**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** 年度视图最多 **2.5 天**、事件和区域视图最多 **2 天**后标记 `stale: true`（由 seeder cron 的预期间隔设定）；区域视图的最新调查轮次超过 90 天时也标记为过期。
 
 <CodeGroup>
 
@@ -2335,6 +2434,7 @@ curl -s https://worldmonitor.app/mcp \
 - **类型：** 缓存支撑的 RPC。付费打开消耗一个世界简报面板额度；有效期内的健康重复读取和 JMESPath 视图复用已接受的原始快照。有效且不足三小时的最近可用内容仍可返回，并显示过期提示，但过期内容允许重试，不会作为新鲜快照缓存。缺失、损坏或超过期限的内容不可用。不在请求时调用 LLM。API 保持普通逐工具计费，免费账户保持订阅拒绝行为。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
 - **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
+- **来源溯源：** 每个 `topStories[i]` 还带有 `sourceProvenance`，与其 `sources` 按下标对齐（`sourceProvenance[j]` 描述 `sources[j]`）。每一项给出该媒体声明的 `tier`（1–4，未登记时为 `null`）、`risk`、`type`，以及它们是否已声明和已审核（`riskDeclared`、`typeDeclared`、`riskReviewed`、`typeReviewed`）；登记了关联方时给出 `stateAffiliated`，另有 `knownBiases`（人工整理的立场标签；空数组表示尚未记录标签，并不代表该媒体中立）和可选的 `note`。这与 `get_news_clusters` 返回的逐媒体记录相同，只是没有 `summary`；它能显示同一故事同时引用一级通讯社和高风险或国家关联媒体的情况，而仅看 `sourceTier` 看不出这一点。没有媒体列表的故事不带溯源。若响应会超出输出预算，先删除所有 `note`，仍不够时才删除所有 `sourceProvenance` 列表；此时 `transportCoverage` 会标明被裁剪的字段，`omission_reason` 为 `"output_budget"`。媒体名称和 `sourceTier` 始终返回。
 
 <CodeGroup>
 
@@ -2502,6 +2602,25 @@ curl -s https://worldmonitor.app/mcp \
 - **API 共享：** `sharedWithRestApi` 表示计数器是否包含 REST 请求。影子模式的 API 计数器仍使用已售 API 上限。账户总数不能识别具体调用者。
 - **API 端点：** 无。工具与账户资源共用一个强制执行计数器读取器。响应为 `no-store`。
 
+### `start_upgrade`
+
+为已登录账户创建绑定该账户的付费套餐结账链接。当拒绝响应的 `error.data` 带有 `checkoutTool: "start_upgrade"` 时调用，并传入该拒绝中的 `recommendedPlan`。只有免费账户会收到 `checkoutTool`；付费调用方的拒绝只带 `recommendedPlan`，因为同一套餐系列内的升级通过账单门户完成。用户在浏览器中打开链接完成付款；此工具从不扣款，智能体也不接触付款信息。
+
+不向 ChatGPT 提供：其应用规范不允许发起结账，因此 ChatGPT 的请求在 `tools/list` 和 `describe_tool` 中看不到此工具，调用会返回 `Unknown tool`。Codex 和其他客户端仍可使用。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `plan` | string | 是 | 取值之一：`pro_monthly`、`pro_annual`、`pro_business_monthly`、`pro_business_annual`、`api_starter`、`api_starter_annual`、`api_business`、`api_business_annual`。其他值返回 `-32602`，并在 `error.data.plans` 中列出可用值。 |
+
+**响应：** `{ checkoutUrl, plan, nextStep }`。每次调用都会创建新的结账会话。此工具不接受 `jmespath` 投影（返回 `-32602`）：投影运行前结账会话已经创建，投影可能丢掉唯一一份 `checkoutUrl`。
+
+- **访问：** `free-account`。要求绑定用户的 OAuth 或 `wm_…` 凭据。匿名调用返回常规的 `-32001` `no-account` 拒绝；运营方密钥返回 `-32002`。
+- **配额：** 不消耗每日额度，也不消耗免费账户调用次数，因此额度用尽后仍可调用。每分钟限流照常适用。
+- **结账路径：** 与定价页相同，因此账户结账限流以及已有订阅、待处理付款检查都适用。账户已持有同一系列的套餐时返回 `-32002`，`error.data.reason` 为 `"already-subscribed"`；从 Pro 升级到 Pro Business 需先取消 Pro，从 API Starter 升级到 API Business 则在账单门户中按比例变更。存在 15 分钟内的待处理付款时返回 `reason: "payment-in-progress"`。触发结账限流（每个账户每 10 分钟 5 个会话，与定价页共用）时返回 HTTP 429 的 `-32029`，并带 `Retry-After`。
+- **服务条款：** 创建会话时会记录该账户接受服务条款，与定价页相同。[服务条款](/zh/terms)将 MCP 请求视为接受。
+- **付款之后：** 付款 webhook 到达后，下一次 `get_mcp_allowance` 调用即报告付费套餐的额度，无需重新授权。
+- **API 端点：** 无。响应为 `no-store`。
+
 ### `describe_tool`
 
 按名称返回任何其他工具的完整定义 — 与其 `tools/list` 条目相同的 `description`、`inputSchema`（每个属性的描述）、`outputSchema`、`annotations` 和 `_meta`。自 v1.34.0 起，`tools/list` 在 1,024 字节的逐工具预算内完整返回每条描述，因此这是对单个工具的重读，而不再是获取完整文本的唯一途径（v1.5.0 至 v1.33.0 期间列表被截断为第一句，≤120 字节）。
@@ -2535,3 +2654,26 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `report_issue`
+
+为 WorldMonitor 维护者存储一份报告：缺陷、缺失的能力、错误或过期的数据，或安全问题。它是 [`POST /api/feedback/v1/submit-report`](/zh/api-platform) 的 MCP 对应工具，使用相同的校验、脱敏和限额。每份报告都由人工阅读，不会公开，不会被自动处理，也不会回复。
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `kind` | string | 是 | `bug`、`missing_capability`、`data_quality` 或 `security`。 |
+| `summary` | string | 是 | 一句话，最多 300 个字符。这是报告正文，不是缓存工具通用的 `summary` 开关。 |
+| `surface` | string | 否 | 报告涉及的对象：工具名、REST 路径，或尚不存在的功能的简短标签。最多 200 个字符。 |
+| `expected` | string | 否 | 预期结果。最多 2,000 个字符。 |
+| `actual` | string | 否 | 实际结果。最多 2,000 个字符。 |
+| `requestId` | string | 否 | 失败调用的请求 ID：MCP 错误中的 `error.data.requestId`，或 REST 响应的 `x-vercel-id` 头。仅限字母、数字、`:`、`_` 和 `-`，最多 128 个字符。 |
+| `clientName` | string | 否 | 客户端或智能体名称。最多 80 个字符。 |
+
+**响应：** `{ reportId, status }`。`status` 为 `received`，安全报告为 `private`，并附带 `advisoryUrl` 和 `notice`。10 分钟内重发相同报告会返回第一次的 `reportId`，不会重复存储。
+
+- **访问：free。** 无需凭据。通过权益检查的 Pro 或 API 账户使用自己的额度；其他调用方（包括免费账户和未通过检查的密钥）均以匿名身份报告。身份始终来自请求凭据，从不来自参数。
+- **限额：** 匿名调用方每个 IP 每小时 5 份，每个账户每天 30 份，另有全站上限。超过 24 KB 的参数在任何报告限额或存储调用之前即被拒绝。此工具不消耗每日额度。
+- **脱敏：** 凭据和电子邮件地址在存储前被替换。报告中不应包含密钥或个人数据。
+- **安全报告：** `security` 报告仅用于标记存在漏洞。详细信息请通过私密的[安全公告表单](https://github.com/koala73/worldmonitor/security/advisories/new)提交。
+- **错误：** `-32602` 指出无效字段。`-32029`（HTTP 429，`Retry-After: 3600`）表示额度已用完。`-32603`（HTTP 503，`Retry-After: 60`）表示限流器或存储不可用，报告未被存储。`-32002`（HTTP 403）表示账户正在删除。被拒绝的安全报告在 `error.data` 中保留 `advisoryUrl`。
+- **API 端点：** 无。报告直接写入存储。

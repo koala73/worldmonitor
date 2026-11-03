@@ -13,6 +13,7 @@ import {
   cachedFetchJsonWithMeta,
   getCachedJson,
   setCachedJson,
+  setCachedJsonIfAbsent,
   getCachedJsonBatch,
   readCachedJson,
   runRedisPipeline,
@@ -21,6 +22,7 @@ import {
 } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import { readBoundedResponseBody } from '../../../../api/mcp/bounded-body';
 import {
   classifyStaleSnapshot,
   filterRevokedUrls,
@@ -42,6 +44,7 @@ import {
   type LastGoodRead,
 } from './_lastgood-store';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { getUsageScope } from '../../../_shared/usage';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import {
@@ -49,6 +52,8 @@ import {
   orderServerFeedEntries,
   VARIANT_FEEDS,
   INTEL_SOURCES,
+  SERVER_EDITIONS,
+  digestGateProfile,
   type ServerFeed,
 } from './_feeds';
 import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
@@ -126,6 +131,7 @@ import {
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
+import { normalizeFeedDateZone } from '../../../../shared/feed-date-zone.js';
 import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 // #6428: entity corroboration must count publishers, not feed labels.
 import {
@@ -138,7 +144,7 @@ import {
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
-const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+export const VALID_VARIANTS = new Set<string>(SERVER_EDITIONS);
 // The one digest language set, shared with the gateway's public-shape
 // classifier so a CDN-shielded `?lang=xx&public=1` shape and the handler can
 // never disagree. Anything outside it is a 400 (#8360).
@@ -258,7 +264,7 @@ type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed }
  * on the next request rather than on the next rebuild. Returns the original
  * object untouched when nothing was suppressed, so the common path stays free.
  */
-function suppressRevoked(
+export function suppressRevoked(
   data: ListFeedDigestResponse,
   revoked: ReadonlySet<string>,
 ): { data: ListFeedDigestResponse; dropped: number } {
@@ -656,7 +662,7 @@ function compareAnchorCandidates(a: ParsedItem, b: ParsedItem): number {
   return 0;
 }
 
-function computeItemCredibilityScore(
+export function computeItemCredibilityScore(
   item: CredibilitySourceItem,
   independentCorroborationCount: number,
 ): number {
@@ -739,7 +745,7 @@ function entityCorroborationScore(count: number | undefined): number {
   return Math.min(Math.max(finite, 0), 5) * ENTITY_CORROBORATION_SCORE_PER_SOURCE;
 }
 
-function computeImportanceScore(
+export function computeImportanceScore(
   level: ThreatLevel,
   source: string,
   corroborationCount: number,
@@ -778,7 +784,9 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
     controller.abort();
   }, FEED_TIMEOUT_MS);
   const onAbort = () => controller.abort();
-  parentSignal.addEventListener('abort', onAbort, { once: true });
+  // An abort event that already fired never reaches a listener added now.
+  if (parentSignal.aborted) controller.abort();
+  else parentSignal.addEventListener('abort', onAbort, { once: true });
 
   return {
     controller,
@@ -820,32 +828,134 @@ export function looksLikeRssXml(text: string): boolean {
   return /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
 }
 
+/** HTTP validators from a direct 200, replayed as a conditional GET on refresh. */
+export interface FeedValidators {
+  etag?: string;
+  lastModified?: string;
+}
+
+interface RssTextResult {
+  text: string | null;
+  failure: FeedFetchAttempt['failure'];
+  /** True only for a 304 to a conditional request: the cached parse is still current. */
+  notModified?: boolean;
+  validators?: FeedValidators;
+}
+
+function responseValidators(resp: Response): FeedValidators | undefined {
+  const etag = resp.headers.get('etag') ?? undefined;
+  const lastModified = resp.headers.get('last-modified') ?? undefined;
+  return etag || lastModified ? { etag, lastModified } : undefined;
+}
+
+/** Mirrors `RSS_MAX_BODY_BYTES` in scripts/ais-relay.cjs (the relay leg's cap). */
+const RSS_MAX_BODY_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Decode a feed body in the charset it declares: the Content-Type charset,
+ * else the XML prolog's encoding, else UTF-8. Folha de S.Paulo serves
+ * ISO-8859-1 with a bare `text/xml`, so a fixed UTF-8 decode garbled every
+ * accented title. An unknown label falls back to UTF-8.
+ */
+export function decodeFeedBody(bytes: Uint8Array, contentType: string | null): string {
+  // A byte-order mark wins over any declaration, as in browsers. UTF-16 has
+  // no ASCII prolog to sniff, so the BOM is the only way to find it.
+  const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 'utf-8'
+    : bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le'
+      : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be'
+        : null;
+  if (bom) return new TextDecoder(bom).decode(bytes);
+  let label = /charset\s*=\s*["']?([\w.:-]+)/i.exec(contentType ?? '')?.[1];
+  if (!label) {
+    // The prolog is ASCII in every encoding a feed declares, so a Latin-1
+    // read of the first bytes finds it without knowing the charset yet.
+    const head = new TextDecoder('latin1').decode(bytes.subarray(0, 256));
+    label = /^\s*<\?xml[^>]*\bencoding\s*=\s*["']([\w.:-]+)["']/i.exec(head)?.[1];
+  }
+  if (label) {
+    try {
+      return new TextDecoder(label).decode(bytes);
+    } catch {
+      // Unknown label: fall through to UTF-8.
+    }
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
-): Promise<{ text: string | null; failure: FeedFetchAttempt['failure'] }> {
+  validators?: FeedValidators,
+): Promise<RssTextResult> {
   const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
 
   try {
-    const resp = await fetch(url, {
-      headers: {
-        'User-Agent': CHROME_UA,
-        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      signal: controller.signal,
-    });
+    const headers: Record<string, string> = {
+      'User-Agent': CHROME_UA,
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+    };
+    if (validators?.etag) headers['If-None-Match'] = validators.etag;
+    if (validators?.lastModified) headers['If-Modified-Since'] = validators.lastModified;
+    const resp = await fetch(url, { headers, signal: controller.signal });
+    if (resp.status === 304 && validators) return { text: null, failure: null, notModified: true };
     if (!resp.ok) return { text: null, failure: 'direct-error' };
-    const text = await resp.text();
+    // Same 5 MiB ceiling the relay leg enforces; an oversized body throws
+    // here and falls through to the relay like any other direct failure.
+    const text = decodeFeedBody(
+      await readBoundedResponseBody(resp, RSS_MAX_BODY_BYTES),
+      resp.headers.get('content-type'),
+    );
     // Defensive: upstream may return HTTP 200 with an HTML interstitial
     // (Cloudflare bot challenge, captcha page). Reject up front so the
     // caller's relay fallback fires instead of caching an empty parse.
     if (!looksLikeRssXml(text)) return { text: null, failure: 'direct-error' };
-    return { text, failure: null };
+    return { text, failure: null, validators: responseValidators(resp) };
   } catch {
     return {
       text: null,
       failure: timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'direct-error',
+    };
+  } finally {
+    cleanup();
+  }
+}
+
+interface RelayTextResult {
+  text: string | null;
+  attempted: boolean;
+  status: number | null;
+  failure: FeedFetchAttempt['failure'];
+  bodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error';
+}
+
+/** The Railway relay leg: a different IP for feeds that block Vercel. */
+async function fetchViaRelay(url: string, signal: AbortSignal): Promise<RelayTextResult> {
+  const relayBase = getRelayBaseUrl();
+  if (!relayBase) return { text: null, attempted: false, status: null, failure: null, bodyShape: 'no-relay' };
+  const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(url)}`;
+  const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
+  let status: number | null = null;
+  try {
+    const resp = await fetch(relayUrl, {
+      headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
+      signal: controller.signal,
+    });
+    status = resp.status;
+    if (!resp.ok) return { text: null, attempted: true, status, failure: null, bodyShape: 'fetch-error' };
+    const relayText = await resp.text();
+    // Relay can also return CF-challenge HTML if the relay's IP is
+    // challenged — apply the same sniff to keep the cache clean.
+    return looksLikeRssXml(relayText)
+      ? { text: relayText, attempted: true, status, failure: null, bodyShape: 'rss' }
+      : { text: null, attempted: true, status, failure: null, bodyShape: 'html-or-empty' };
+  } catch {
+    return {
+      text: null,
+      attempted: true,
+      status,
+      failure: timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'relay-error',
+      bodyShape: 'fetch-error',
     };
   } finally {
     cleanup();
@@ -868,6 +978,13 @@ export interface ParseResult {
   // #7083: how the fetch leg of this attempt actually ended. Absent on
   // cache entries written before the field existed.
   attempt?: FeedFetchAttempt;
+  // When upstream last confirmed this parse (a 200 or a 304). Absent on
+  // entries written before background refresh; those simply age out.
+  fetchedAt?: number;
+  // When the feed body was last parsed in full. A 304 renews fetchedAt but not
+  // this, so the parse-time date gates still rerun at least hourly.
+  parsedAt?: number;
+  validators?: FeedValidators;
 }
 
 // Cache TTLs: a successful parse (parsedTotal > 0) caches for an hour to
@@ -942,51 +1059,33 @@ export async function fetchAndParseRss(
         // so cache hits keep the normal `empty` verdict.
         return { ...cached, attempt: cachedAttemptFrom(cached.attempt) };
       }
+      // Serve the cached parse now; confirm it with upstream after the
+      // response, so the next build sees new items without this one waiting.
+      if (isDueForRefresh(cached, Date.now())) scheduleFeedRefresh(feed, variant, cached);
       return cached;
     }
 
     // Try direct fetch first
     const direct = await fetchRssText(feed.url, signal);
     let text = direct.text;
-    let failure: FeedFetchAttempt['failure'] = direct.failure;
+    const failure: FeedFetchAttempt['failure'] = direct.failure;
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
     let relayFailure: FeedFetchAttempt['failure'] = null;
     let relayAttempted = false;
     let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
 
-    // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
-    if (!text) {
-      const relayBase = getRelayBaseUrl();
-      if (relayBase) {
-        relayAttempted = true;
-        relayBodyShape = 'fetch-error';
-        const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
-        const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
-        try {
-          const resp = await fetch(relayUrl, {
-            headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
-            signal: controller.signal,
-          });
-          relayStatus = resp.status;
-          if (resp.ok) {
-            const relayText = await resp.text();
-            // Relay can also return CF-challenge HTML if the relay's IP is
-            // challenged — apply the same sniff to keep the cache clean.
-            if (looksLikeRssXml(relayText)) {
-              text = relayText;
-              source = 'relay';
-              relayBodyShape = 'rss';
-            } else {
-              relayBodyShape = 'html-or-empty';
-            }
-          }
-        } catch {
-          /* relay also failed */
-          relayFailure = timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'relay-error';
-        } finally {
-          cleanup();
-        }
+    // Fallback: route through Railway relay (different IP, avoids Vercel blocks).
+    // Not once the digest deadline has passed: nothing would wait for it.
+    if (!text && !signal.aborted) {
+      const relay = await fetchViaRelay(feed.url, signal);
+      relayAttempted = relay.attempted;
+      relayBodyShape = relay.bodyShape;
+      relayStatus = relay.status;
+      relayFailure = relay.failure;
+      if (relay.text) {
+        text = relay.text;
+        source = 'relay';
       }
     }
 
@@ -1017,7 +1116,11 @@ export async function fetchAndParseRss(
         negativeCache: false,
       };
       const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
-      await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      // Our own deadline says nothing about the feed: caching it would make
+      // the next builds serve an empty row for 5 minutes instead of fetching.
+      if (attempt.failure !== 'deadline-abort') {
+        await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      }
       return empty;
     }
 
@@ -1034,6 +1137,10 @@ export async function fetchAndParseRss(
       failure: null,
       negativeCache: false,
     };
+    result.fetchedAt = Date.now();
+    result.parsedAt = result.fetchedAt;
+    // Relay responses carry the relay's validators, not the publisher's.
+    if (source === 'direct' && direct.validators) result.validators = direct.validators;
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
@@ -1047,6 +1154,96 @@ export async function fetchAndParseRss(
       attempt: { source: 'direct', failure: 'direct-error', negativeCache: false },
     };
   }
+}
+
+// A healthy parse stays servable for CACHE_TTL_HEALTHY_S, but once it is this
+// old the next build that reads it also asks upstream, after its response, for
+// anything newer. A conditional GET makes the common "nothing new" answer a
+// bodiless 304.
+export const FEED_REFRESH_AFTER_MS = 5 * 60_000;
+// One refresher per feed across concurrent builds and isolates.
+const FEED_REFRESH_LOCK_S = 120;
+// Bounds a build's background fan-out; the rest wait for a free slot.
+const FEED_REFRESH_CONCURRENCY = 20;
+
+export type FeedRefreshOutcome = 'locked' | 'not-modified' | 'updated' | 'failed';
+
+export function isDueForRefresh(cached: ParseResult, now: number): boolean {
+  return cached.parsedTotal > 0
+    && typeof cached.fetchedAt === 'number'
+    && now - cached.fetchedAt >= FEED_REFRESH_AFTER_MS;
+}
+
+/**
+ * Re-confirms one cached feed parse with upstream. Never replaces a healthy
+ * parse with a failure or an empty body: those leave the entry to serve until
+ * it expires, when the foreground fetch path takes over as before.
+ */
+export async function refreshFeedCache(
+  feed: ServerFeed,
+  variant: string,
+  cached: ParseResult,
+  signal: AbortSignal = AbortSignal.timeout(FEED_TIMEOUT_MS * 2),
+): Promise<FeedRefreshOutcome> {
+  const cacheKey = rssFeedCacheKey(variant, feed.url);
+  const locked = await setCachedJsonIfAbsent(`rss:feed-refresh-lock:v1:${variant}:${feed.url}`, 1, FEED_REFRESH_LOCK_S);
+  if (!locked) return 'locked';
+
+  // parseRssXml drops items dated too far ahead or behind *now*. An unchanged
+  // body can still change which items pass, so reparse it at least hourly, as
+  // the plain one-hour TTL used to.
+  const lastFullParse = cached.parsedAt ?? cached.fetchedAt ?? 0;
+  const conditional = Date.now() - lastFullParse < CACHE_TTL_HEALTHY_S * 1000;
+  const direct = await fetchRssText(feed.url, signal, conditional ? cached.validators : undefined);
+  if (direct.notModified) {
+    await setCachedJson(cacheKey, { ...cached, fetchedAt: Date.now() }, CACHE_TTL_HEALTHY_S);
+    return 'not-modified';
+  }
+  let text = direct.text;
+  let source: 'direct' | 'relay' = 'direct';
+  if (!text) {
+    const relay = await fetchViaRelay(feed.url, signal);
+    if (!relay.text) return 'failed';
+    text = relay.text;
+    source = 'relay';
+  }
+  const parsed = parseRssXml(text, feed, variant);
+  // parsedTotal counts titled entries before the date gates, so it can be
+  // positive with nothing usable. Only a parse with items replaces a healthy one.
+  if (!parsed || parsed.items.length === 0) return 'failed';
+  const now = Date.now();
+  const result: ParseResult = {
+    ...parsed,
+    attempt: { source, failure: null, negativeCache: false },
+    fetchedAt: now,
+    parsedAt: now,
+  };
+  if (source === 'direct' && direct.validators) result.validators = direct.validators;
+  await setCachedJson(cacheKey, result, CACHE_TTL_HEALTHY_S);
+  return 'updated';
+}
+
+let refreshesRunning = 0;
+const refreshQueue: Array<() => void> = [];
+
+async function withRefreshSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (refreshesRunning >= FEED_REFRESH_CONCURRENCY) {
+    await new Promise<void>((resolve) => refreshQueue.push(resolve));
+  }
+  refreshesRunning += 1;
+  try {
+    return await task();
+  } finally {
+    refreshesRunning -= 1;
+    refreshQueue.shift()?.();
+  }
+}
+
+function scheduleFeedRefresh(feed: ServerFeed, variant: string, cached: ParseResult): void {
+  const refresh = withRefreshSlot(() => refreshFeedCache(feed, variant, cached)).catch(() => 'failed' as const);
+  const ctx = getUsageScope()?.ctx;
+  if (ctx) ctx.waitUntil(refresh);
+  else void refresh;
 }
 
 // Date-tag priority lists. RSS feeds typically carry <pubDate>; Atom carries
@@ -1074,13 +1271,41 @@ function isTrustedOriginAggregator(feedUrl: string): boolean {
   }
 }
 
-function extractFirstDateTag(block: string, isAtom: boolean): string {
+function extractFirstDateTag(block: string, isAtom: boolean, lower = asciiLower(block)): string {
   const tags = isAtom ? DATE_TAG_PRIORITY.atom : DATE_TAG_PRIORITY.rss;
   for (const tag of tags) {
-    const value = extractTag(block, tag);
+    const value = extractTag(block, tag, lower);
     if (value) return value;
   }
   return '';
+}
+
+/** Epoch ms of a feed date that parses and is not in the future, else null. */
+function usableFeedDateMs(raw: string): number | null {
+  if (!raw) return null;
+  const ms = new Date(normalizeFeedDateZone(raw)).getTime();
+  if (Number.isNaN(ms) || ms > Date.now() + FUTURE_DATE_TOLERANCE_MS) return null;
+  return ms;
+}
+
+/**
+ * The date of a snapshot feed's channel, read from the markup before its first
+ * item, so an item's own date is never mistaken for it.
+ */
+function channelDateMs(xml: string, xmlLower: string, isAtom: boolean): number | null {
+  const opener = isAtom ? '<entry' : '<item';
+  let end = xmlLower.indexOf(opener);
+  while (end !== -1 && !/[\s>]/.test(xmlLower[end + opener.length] ?? '')) {
+    end = xmlLower.indexOf(opener, end + 1);
+  }
+  const head = end === -1 ? xml : xml.slice(0, end);
+  const tags = isAtom ? ['updated', 'published'] : ['pubDate', 'lastBuildDate', 'dc:date'];
+  const headLower = asciiLower(head);
+  for (const tag of tags) {
+    const value = extractTag(head, tag, headLower);
+    if (value) return usableFeedDateMs(value);
+  }
+  return null;
 }
 
 function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
@@ -1090,13 +1315,12 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   let parsedTotal = 0;
   let droppedUndated = 0;
 
-  const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
-  const entryRegex = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
-
-  let matches = [...xml.matchAll(itemRegex)];
+  const xmlLower = asciiLower(xml);
+  let matches = scanTagBlocks(xml, xmlLower, 'item');
   const isAtom = matches.length === 0;
-  if (isAtom) matches = [...xml.matchAll(entryRegex)];
+  if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
   const originPublisherTrusted = !isAtom && isTrustedOriginAggregator(feed.url);
+  const snapshotDateMs = feed.channelDated ? channelDateMs(xml, xmlLower, isAtom) : null;
 
   // #4920 coverage ledger: items beyond the per-feed cap were previously
   // dropped with no counter anywhere — fully invisible.
@@ -1105,11 +1329,11 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const parseLimit = retainCountryItems ? COUNTRY_ITEMS_PER_FEED : ITEMS_PER_FEED;
   // One log line per feed for gated pool links: a deep pool can drop dozens.
   const poolLinkDrops = new Map<string, number>();
-  for (const [index, match] of matches.slice(0, parseLimit).entries()) {
-    const block = match[1]!;
+  for (const [index, block] of matches.slice(0, parseLimit).entries()) {
+    const blockLower = asciiLower(block);
     const forDigest = index < ITEMS_PER_FEED;
 
-    const title = extractTag(block, 'title');
+    const title = extractTag(block, 'title', blockLower);
     if (!title) continue;
 
     if (forDigest) parsedTotal++;
@@ -1117,11 +1341,17 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     let link: string;
     let blankedLinkHost = '';
     if (isAtom) {
-      const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
+      // `[^<>]+`, not `[^>]+`: an opener's scan stops at the next tag, so a
+      // run of unterminated `<link` openers no longer rescans to the end.
+      const hrefMatch = block.match(/<link[^<>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
     } else {
-      link = extractTag(block, 'link');
+      link = extractTag(block, 'link', blockLower);
     }
+    // A publisher click counter carries the article URL after a `*`
+    // (redir.folha.com.br/.../*https://www1.folha.uol.com.br/...). Keep the
+    // article URL; the publisher-link gate below still checks its host.
+    link = link.replace(/^https?:\/\/[^/?#*]+\/[^*?#]*\*(?=https?:\/\/)/i, '');
     // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
     if (!/^https?:\/\//i.test(link)) link = '';
 
@@ -1136,22 +1366,14 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // require at least one non-empty, parseable, non-future timestamp. Items
     // that fail the gate are dropped — never silently stamped with Date.now()
     // (which is the bug that let static institutional pages reach the brief).
-    const pubDateStr = extractFirstDateTag(block, isAtom);
-    if (!pubDateStr) {
+    // A channel-dated snapshot feed's undated item takes the channel's date,
+    // which passes the same gate.
+    const pubDateStr = extractFirstDateTag(block, isAtom, blockLower);
+    const publishedAt = pubDateStr ? usableFeedDateMs(pubDateStr) : snapshotDateMs;
+    if (publishedAt === null) {
       if (forDigest) droppedUndated++;
       continue;
     }
-    const parsedDate = new Date(pubDateStr);
-    const parsedMs = parsedDate.getTime();
-    if (Number.isNaN(parsedMs)) {
-      if (forDigest) droppedUndated++;
-      continue;
-    }
-    if (parsedMs > Date.now() + FUTURE_DATE_TOLERANCE_MS) {
-      if (forDigest) droppedUndated++;
-      continue;
-    }
-    const publishedAt = parsedMs;
 
     // RSS 2.0 <source url="...">Name</source> — the originating publisher,
     // emitted per item by Google News. Atom's <source> is a metadata
@@ -1159,7 +1381,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // dialect is read; extractTag's [^<]* body would not match a container
     // anyway, but skipping Atom keeps that an invariant rather than a
     // regex accident.
-    const extractedOriginPublisher = isAtom ? '' : extractTag(block, 'source');
+    const extractedOriginPublisher = isAtom ? '' : extractTag(block, 'source', blockLower);
     // Ordinary feeds cannot vouch for RSS <source>. The country reader already
     // ignores untrusted origin metadata, so keep those late headlines and store
     // an empty publisher. Trusted aggregators still have the 200-character
@@ -1197,7 +1419,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
 
     const threat = classifyByKeyword(title, variant);
     const isAlert = threat.level === 'critical' || threat.level === 'high';
-    const description = extractDescription(block, isAtom, title);
+    const description = extractDescription(block, isAtom, title, blockLower);
 
     // #8398: digest branch — same ingest gate as the country-pool branch
     // above (this is the last feed-scoped point before items lose their feed;
@@ -1292,25 +1514,25 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
  * Returns the raw content without entity decoding — caller strips HTML and
  * decodes entities via `decodeXmlEntities`.
  */
-const DESCRIPTION_TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
+function extractRawTagBody(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return cdata;
+  return matchTagBody(xml, lower, tag) ?? '';
+}
 
-function extractRawTagBody(xml: string, tag: string): string {
-  let cached = DESCRIPTION_TAG_REGEX_CACHE.get(tag);
-  if (!cached) {
-    cached = {
-      cdata: new RegExp(
-        `<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`,
-        'i',
-      ),
-      plain: new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'),
-    };
-    DESCRIPTION_TAG_REGEX_CACHE.set(tag, cached);
-  }
-  const cdataMatch = xml.match(cached.cdata);
-  if (cdataMatch) return cdataMatch[1] ?? '';
-
-  const match = xml.match(cached.plain);
-  return match ? match[1] ?? '' : '';
+/**
+ * `s.replace(re, replacement)` for a global regex whose every match ends with
+ * `terminator`. Each failed match attempt scans to the end of the string, so a
+ * long unterminated tail (`<<<<…`, `<![CDATA[…` with no `]]>`) made the replace
+ * quadratic. No match can end past the last terminator, so only the prefix
+ * through it is handed to the regex, where each attempt stops at the next
+ * terminator; the tail is appended unchanged. Same result as the plain replace.
+ */
+function replaceBeforeLast(s: string, terminator: string, re: RegExp, replacement: string): string {
+  const end = s.lastIndexOf(terminator);
+  if (end < 0) return s;
+  const cut = end + terminator.length;
+  return s.slice(0, cut).replace(re, replacement) + s.slice(cut);
 }
 
 function normalizeForDescriptionEquality(s: string): string {
@@ -1325,20 +1547,24 @@ function normalizeForDescriptionEquality(s: string): string {
  * MIN_DESCRIPTION_LEN, or normalises-equal to the headline — in those cases
  * downstream consumers must fall back to the cleaned headline (R6).
  */
-function extractDescription(block: string, isAtom: boolean, title: string): string {
+function extractDescription(
+  block: string,
+  isAtom: boolean,
+  title: string,
+  lower = asciiLower(block),
+): string {
   const tags = isAtom ? DESCRIPTION_TAG_PRIORITY.atom : DESCRIPTION_TAG_PRIORITY.rss;
 
   let best = '';
   for (const tag of tags) {
-    const raw = extractRawTagBody(block, tag);
+    const raw = extractRawTagBody(block, tag, lower);
     if (!raw) continue;
     // Some publisher feeds place entity-encoded thumbnail markup before a
     // literal CDATA summary in one tag body (Times of India is one example).
     // Unwrap complete embedded CDATA sections before entity decoding and HTML
     // stripping; otherwise `<...>` removal consumes the wrapper and its text.
-    const unwrapped = raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
-    const cleaned = decodeXmlEntities(unwrapped)
-      .replace(/<[^>]+>/g, ' ')
+    const unwrapped = replaceBeforeLast(raw, ']]>', /<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+    const cleaned = replaceBeforeLast(decodeXmlEntities(unwrapped), '>', /<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     if (cleaned.length > best.length) best = cleaned;
@@ -1351,36 +1577,130 @@ function extractDescription(block: string, isAtom: boolean, title: string): stri
   return best.slice(0, MAX_DESCRIPTION_LEN);
 }
 
-const TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
-const KNOWN_TAGS = [
-  'title',
-  'link',
-  'pubDate',
-  'published',
-  'updated',
-  // Dublin Core date dialects (ArXiv and similar feeds publish via these
-  // instead of <pubDate>). Pre-caching their regexes mirrors the perf
-  // pattern used for other hot-path tags.
-  'dc:date',
-  'dc:Date.Issued',
-] as const;
-for (const tag of KNOWN_TAGS) {
-  TAG_REGEX_CACHE.set(tag, {
-    cdata: new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i'),
-    plain: new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i'),
-  });
+function extractTag(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return cdata.trim();
+
+  const text = matchTagText(xml, lower, tag);
+  return text !== null ? decodeXmlEntities(text.trim()) : '';
 }
 
-function extractTag(xml: string, tag: string): string {
-  const cached = TAG_REGEX_CACHE.get(tag);
-  const cdataRe = cached?.cdata ?? new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i');
-  const plainRe = cached?.plain ?? new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i');
+// ── Linear tag scanners ─────────────────────────────────────────────────────
+// Feed bodies are publisher-controlled and parsed synchronously on the edge
+// isolate. The lazy/`[^>]*` tag regexes these replace backtrack quadratically
+// on unterminated markup (a 1 MB run of `<title` took ~2 min), so each scanner
+// below reproduces one regex's first match with indexOf walks that never
+// revisit a character more than a constant number of times. Tag names are
+// matched literally and ASCII-case-insensitively, like the `/i` regexes did.
+// `lower` must be `asciiLower(xml)`: index-aligned with `xml`, so a match
+// found in `lower` is sliced from `xml` with the original case.
 
-  const cdataMatch = xml.match(cdataRe);
-  if (cdataMatch) return cdataMatch[1]!.trim();
+const JS_WHITESPACE = /\s/;
 
-  const match = xml.match(plainRe);
-  return match ? decodeXmlEntities(match[1]!.trim()) : '';
+/** Lowercase A-Z only. Index-preserving, unlike toLowerCase (`İ` grows to 2 units). */
+function asciiLower(s: string): string {
+  return s.replace(/[A-Z]+/g, (run) => run.toLowerCase());
+}
+
+function isJsWhitespace(c: string | undefined): boolean {
+  return c !== undefined && JS_WHITESPACE.test(c);
+}
+
+/**
+ * For each `<tag` opener in order, yields the index of the first `>` after
+ * it: where `<tag[^>]*>` ends for that opener. The `>` lookup is reused while
+ * it still lies past the opener, so a run of openers before one `>` costs
+ * O(n) in total.
+ */
+function* tagOpeners(lower: string, tag: string): Generator<number> {
+  const open = `<${tag.toLowerCase()}`;
+  let pos = 0;
+  let gt = -1;
+  for (;;) {
+    const o = lower.indexOf(open, pos);
+    if (o < 0) return;
+    if (gt < o + open.length) gt = lower.indexOf('>', o + open.length);
+    if (gt < 0) return; // no `>` after this opener, so none after a later one
+    yield gt;
+    pos = o + 1;
+  }
+}
+
+/** Every `/<tag[\s>]([\s\S]*?)<\/tag>/gi` capture, in order (item/entry split). */
+function scanTagBlocks(xml: string, lower: string, tag: string): string[] {
+  const open = `<${tag}`;
+  const close = `</${tag}>`;
+  const blocks: string[] = [];
+  let pos = 0;
+  for (;;) {
+    const o = lower.indexOf(open, pos);
+    if (o < 0) break;
+    const next = lower[o + open.length];
+    if (next !== '>' && !isJsWhitespace(next)) {
+      pos = o + 1;
+      continue;
+    }
+    const bodyStart = o + open.length + 1;
+    const c = lower.indexOf(close, bodyStart);
+    if (c < 0) break; // no close after this opener, so none after a later one
+    blocks.push(xml.slice(bodyStart, c));
+    pos = c + close.length;
+  }
+  return blocks;
+}
+
+/** First `<tag[^>]*>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/tag>` capture (`/i`), or null. */
+function matchCdataTag(xml: string, lower: string, tag: string): string | null {
+  const close = `</${tag.toLowerCase()}>`;
+  let lastGt = -1;
+  let bodyStart = -1;
+  for (const gt of tagOpeners(lower, tag)) {
+    if (gt !== lastGt) {
+      // Openers sharing one `>` share the same verdict.
+      lastGt = gt;
+      let j = gt + 1;
+      while (isJsWhitespace(lower[j])) j++;
+      bodyStart = lower.startsWith('<![cdata[', j) ? j + 9 : -1;
+    }
+    if (bodyStart < 0) continue;
+    // The first CDATA opener decides: a later opener's body starts later, so
+    // it cannot reach a terminator this one did not.
+    let k = lower.indexOf(']]>', bodyStart);
+    while (k >= 0) {
+      let j = k + 3;
+      while (isJsWhitespace(lower[j])) j++;
+      if (lower.startsWith(close, j)) return xml.slice(bodyStart, k);
+      k = lower.indexOf(']]>', k + 1);
+    }
+    return null;
+  }
+  return null;
+}
+
+/** First `<tag[^>]*>([^<]*)<\/tag>` capture (`/i`), or null. */
+function matchTagText(xml: string, lower: string, tag: string): string | null {
+  const close = `</${tag.toLowerCase()}>`;
+  let lastGt = -1;
+  let lt = -1;
+  for (const gt of tagOpeners(lower, tag)) {
+    if (gt !== lastGt) {
+      lastGt = gt;
+      lt = lower.indexOf('<', gt + 1);
+    }
+    if (lt < 0) return null; // no `<` left for any later opener either
+    if (lower.startsWith(close, lt)) return xml.slice(gt + 1, lt);
+  }
+  return null;
+}
+
+/** First `<tag[^>]*>([\s\S]*?)<\/tag>` capture (`/i`), or null. */
+function matchTagBody(xml: string, lower: string, tag: string): string | null {
+  for (const gt of tagOpeners(lower, tag)) {
+    // The first opener decides: a later one's body starts no earlier.
+    const c = lower.indexOf(`</${tag.toLowerCase()}>`, gt + 1);
+    return c < 0 ? null : xml.slice(gt + 1, c);
+  }
+  return null;
 }
 
 /**
@@ -2014,7 +2334,7 @@ async function readAdoptionState(
   return { aliasTargetByHash, trackFirstSeenByHash, incompleteHashes };
 }
 
-function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
+export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
   return {
     source: item.source,
     title: item.title,
@@ -2257,7 +2577,7 @@ export async function listFeedDigest(
           onPositiveResult: async (result) => {
             if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
               const publication = await settleBeforeDeadline(
-                publishAcceptedSnapshot(variant, lang, result, digestCacheKey),
+                publishAcceptedSnapshot(variant, lang, result, digestCacheKey, digestGateProfile(variant)),
                 responseDeadlineAt,
                 'unavailable',
               );
@@ -2435,7 +2755,9 @@ function linkHostnameForLog(link: string): string {
  *      feed host (e.g. `amp.` editions);
  *   3. the trusted-aggregator origin publisher (RSS `<source>`, only when the
  *      parser marked this feed trusted) — a wire syndicated through Google
- *      News is still the wire's article, not the aggregator's.
+ *      News is still the wire's article, not the aggregator's;
+ *   4. the feed's catalog `linkHosts`, for a feed that lists another site's
+ *      pages.
  *
  * The RSS `<source>` element on an UNTRUSTED feed is upstream text and never
  * enters the set (same rule as `publisherFamilyForItem`): a hostile feed
@@ -2445,11 +2767,12 @@ function linkHostnameForLog(link: string): string {
  */
 function expectedPublisherHostsForItem(
   item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
-  feed: Pick<ServerFeed, 'url'>,
+  feed: Pick<ServerFeed, 'url' | 'linkHosts'>,
 ): string[] {
   const hosts = new Set<string>();
   const feedHost = feedPublisherHost(feed?.url);
   if (feedHost) hosts.add(feedHost);
+  for (const host of feed?.linkHosts ?? []) hosts.add(host);
   const sourceFamily = publisherFamilyFor(item?.source ?? '');
   const familyDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[sourceFamily];
   if (Array.isArray(familyDomains)) for (const domain of familyDomains) hosts.add(domain);
@@ -2474,6 +2797,7 @@ for (const categories of Object.values(VARIANT_FEEDS)) {
       if (!host) continue;
       const hosts = registeredFeedHostsBySource.get(feed.name) ?? new Set<string>();
       hosts.add(host);
+      for (const linkHost of feed.linkHosts ?? []) hosts.add(linkHost);
       registeredFeedHostsBySource.set(feed.name, hosts);
     }
   }
@@ -2512,7 +2836,7 @@ function storyTrackLinkForPersist(
 function isItemLinkAllowed(
   link: string,
   item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
-  feed: Pick<ServerFeed, 'url'>,
+  feed: Pick<ServerFeed, 'url' | 'linkHosts'>,
 ): boolean {
   return isPublisherLink(link, expectedPublisherHostsForItem(item, feed));
 }
@@ -2864,9 +3188,11 @@ async function writeStoryTracking(
     // Archive keys are deliberately raw: the Railway resolver and backfill
     // operate outside a Vercel deployment prefix and must read this same
     // durable evidence namespace.
+    // Keep each record's lastSeen and its index score in the same transaction.
+    // Concurrent pipelines can otherwise leave a mixed pair and block recovery.
     const evidenceTimeoutMs = redisTimeoutForDeadline(deadlineAt);
     const evidencePromise = evidenceEligible && evidenceTimeoutMs !== undefined
-      ? runRedisPipeline(evidenceBatchCommands, true, evidenceTimeoutMs)
+      ? runRedisTransaction(evidenceBatchCommands, true, evidenceTimeoutMs)
       : Promise.resolve([]);
     if (evidenceEligible && evidenceTimeoutMs === undefined) evidenceWritesConfirmed = false;
     for (const trackingChunk of chunkRedisCommands(commands)) {
@@ -3634,6 +3960,12 @@ export const __testing__ = {
   extractDescription,
   extractRawTagBody,
   extractFirstDateTag,
+  asciiLower,
+  scanTagBlocks,
+  matchCdataTag,
+  matchTagText,
+  matchTagBody,
+  replaceBeforeLast,
   buildStoryTrackHsetFields,
   storyTrackLinkForPersist,
   isItemLinkAllowed,

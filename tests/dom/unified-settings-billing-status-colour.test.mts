@@ -221,6 +221,22 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     expect(html).not.toContain('data-billing-tone="ended"');
   });
 
+  it('shows a portal-scheduled cancellation as ending with its access-until date, not "Renews"', () => {
+    const periodEnd = Date.now() + 12 * DAY;
+    mockSubscription = subscription({
+      status: 'active',
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: periodEnd,
+    });
+    const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
+
+    expect(html).toContain(
+      `Cancellation scheduled -- access until ${new Date(periodEnd).toLocaleDateString()}`,
+    );
+    expect(html).not.toContain('Renews:');
+    expect(planTone(html)).toBe('ending');
+  });
+
   it('paints a cancellation past its paid period red', () => {
     mockSubscription = subscription({
       status: 'cancelled',

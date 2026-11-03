@@ -125,6 +125,7 @@ function storyItem(overrides: Record<string, unknown> = {}) {
 }
 
 async function runWriter(config: {
+  now?: number;
   variant?: string;
   lang?: string;
   vercelEnv?: string;
@@ -139,6 +140,7 @@ async function runWriter(config: {
   } = config;
   const redis = fakeUpstash({ coverage: marker, failEvidence });
   const saved = {
+    now: Date.now,
     fetch: globalThis.fetch,
     url: process.env.UPSTASH_REDIS_REST_URL,
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
@@ -147,6 +149,7 @@ async function runWriter(config: {
     localMode: process.env.LOCAL_API_MODE,
   };
   globalThis.fetch = redis.fetchImpl as unknown as typeof fetch;
+  if (config.now !== undefined) Date.now = () => config.now!;
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
   process.env.VERCEL_ENV = vercelEnv;
@@ -158,6 +161,7 @@ async function runWriter(config: {
     items.forEach((item, index) => { item.titleHash = hashes[index]; });
     await __testing__.writeStoryTracking(items as never, variant, lang, hashes);
   } finally {
+    Date.now = saved.now;
     globalThis.fetch = saved.fetch;
     const restore = (name: string, value: string | undefined) => {
       if (value === undefined) delete process.env[name];
@@ -173,6 +177,42 @@ async function runWriter(config: {
 }
 
 describe('forecast evidence publication wiring (#7082)', () => {
+  it('keeps record and index aligned across overlapping or interrupted publications', async () => {
+    const publications = [];
+    for (const now of [nowMs + 213, nowMs]) {
+      const redis = await runWriter({ now });
+      publications.push(redis.calls.find(({ body }) => Array.isArray(body)
+        && body.some((cmd) => cmd[0] === 'ZADD' && cmd[1] === 'forecast:evidence:v1'))!);
+    }
+    // A REST pipeline permits a competing client between commands. A
+    // transaction exposes only the complete batch as an execution boundary.
+    const units = publications.map(({ url, body }) => url.endsWith('/multi-exec')
+      ? [body as unknown[][]] : (body as unknown[][]).map((cmd) => [cmd]));
+    const state = new Map<string, unknown>();
+    const apply = (commands: unknown[][]) => {
+      for (const [verb, key, value, member] of commands) {
+        if (verb === 'SET') state.set(String(key), JSON.parse(String(value)));
+        if (verb === 'ZADD') state.set(`${key}:${member}`, Number(value));
+      }
+    };
+    const hash = '1'.repeat(64);
+    const aligned = () => assert.equal(
+      (state.get(`forecast:evidence:record:v1:${hash}`) as { lastSeen: number }).lastSeen,
+      state.get(`forecast:evidence:v1:${hash}`),
+      'record.lastSeen and index score must stay equal at each publication boundary',
+    );
+    // Newer writer starts, older writer finishes, newer writer resumes.
+    apply(units[0][0]);
+    units[1].forEach(apply);
+    units[0].slice(1).forEach(apply);
+    aligned();
+    // An interrupted newer request must not expose half of the pair either.
+    state.clear();
+    units[1].forEach(apply);
+    apply(units[0][0]);
+    aligned();
+  });
+
   it('publishes a self-contained record and a stable index member per story', async () => {
     const redis = await runWriter({ coverage });
     const sets = redis.commandsOf((verb, key) => verb === 'SET' && key.startsWith('forecast:evidence:record:v1:'));

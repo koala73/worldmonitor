@@ -8,7 +8,7 @@
 # =============================================================================
 
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS builder
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS builder
 
 WORKDIR /app
 ENV npm_config_install_links=true
@@ -17,6 +17,7 @@ ENV npm_config_install_links=true
 COPY package.json package-lock.json ./
 COPY vendor/braces/ ./vendor/braces/
 COPY vendor/stream-json/ ./vendor/stream-json/
+COPY vendor/vercel-og/ ./vendor/vercel-og/
 RUN npm ci --ignore-scripts
 
 # Copy full source
@@ -56,7 +57,7 @@ RUN npx tsc && npx vite build
 RUN test -s dist/pro/index.html && test -s dist/pro/welcome.html
 
 # ── Stage 2: Runtime dependencies ───────────────────────────────────────────
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime-deps
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS runtime-deps
 
 WORKDIR /app
 
@@ -70,7 +71,7 @@ COPY docker/runtime-package-lock.json ./package-lock.json
 RUN npm ci --omit=dev --omit=optional --ignore-scripts
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS final
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS final
 
 # nginx + supervisord
 RUN apk add --no-cache nginx supervisor gettext && \
@@ -84,6 +85,7 @@ WORKDIR /app
 COPY --from=builder /app/src-tauri/sidecar/local-api-server.mjs ./local-api-server.mjs
 COPY --from=builder /app/src-tauri/sidecar/package.json ./package.json
 COPY --from=builder /app/shared/llm-health-providers.js ./shared/llm-health-providers.js
+COPY --from=builder /app/shared/desktop-key-access.js ./shared/desktop-key-access.js
 ENV LOCAL_API_RESOURCE_DIR=/app
 
 # Minimal runtime node_modules — required by raw .js handlers that aren't

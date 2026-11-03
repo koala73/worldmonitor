@@ -47,9 +47,28 @@ Set these before enabling strict relay auth.
 | `VITE_WS_RELAY_URL` | Browser (local dev) | none | No | Localhost fallback path for direct browser calls in development only. |
 | `RELAY_SHARED_SECRET` | Railway + Vercel + self-hosted | empty | **Yes (always)** | Shared secret for non-public relay routes. The relay refuses to start without it unless `I_UNDERSTAND_THIS_DISABLES_AUTH=true`. |
 | `RELAY_AUTH_HEADER` | Railway + Vercel | `x-relay-key` | No (but recommended explicit) | Header name carrying relay secret. |
-| `I_UNDERSTAND_THIS_DISABLES_AUTH` | Railway / self-hosted | `false` | No | Dev-only escape hatch. If `true`, the relay boots WITHOUT a shared secret, logs a loud `[SECURITY]` line at boot and every 5 minutes, and accepts every request on non-public routes. Never set in production. |
+| `I_UNDERSTAND_THIS_DISABLES_AUTH` | Railway / self-hosted | `false` | No | Dev-only escape hatch. If `true`, the relay boots WITHOUT a shared secret and logs a loud `[SECURITY]` line at boot and every 5 minutes. `/status` and `/wits` still require a configured secret. Never set in production. |
 | `ALLOW_UNAUTHENTICATED_RELAY` | Railway / self-hosted | `false` | No | **Deprecated** alias of `I_UNDERSTAND_THIS_DISABLES_AUTH`. Still accepted for back-compat; the relay logs a `[DEPRECATED]` warning when this name is used. |
 | `ALLOW_VERCEL_PREVIEW_ORIGINS` | Railway | `false` | No | If `true`, allows `*.vercel.app` origins in relay CORS checks. |
+
+## WITS tariff transport
+
+The bilateral tariff handler uses `WS_RELAY_URL`, `RELAY_SHARED_SECRET`, and
+`RELAY_AUTH_HEADER` to fetch WITS through the authenticated `GET /wits` route.
+Without `WS_RELAY_URL`, it calls WITS directly. A configured relay failure remains
+an upstream failure; the handler does not retry through the direct path.
+
+The route accepts one `path` query parameter for TRN reported rows, MFN AVE rows,
+reporter/year availability, or country/group metadata. It constructs a fixed
+`https://wits.worldbank.org` destination, rejects redirects, and never forwards the
+relay secret upstream. Requests have a nine-second deadline through body completion
+and a 4 MiB response limit. Upstream status codes and XML pass through unchanged.
+The relay sends `no-store`; the tariff handler retains its existing Redis cache,
+historical year, source attribution, and tariff basis.
+
+Deploy the relay route before the API caller when activating this transport.
+The caller does not fall back to direct WITS if the relay returns 404 because its
+route has not been deployed.
 
 ## Relay-Adjacent Feature Flags
 

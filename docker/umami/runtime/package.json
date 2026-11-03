@@ -15,8 +15,8 @@
   },
   "pnpm": {
     "overrides": {
-      "hono": "4.13.7",
-      "fast-uri": "3.1.8",
+      "hono": "4.13.13",
+      "fast-uri": "3.1.9",
       "brace-expansion@1": "1.1.21",
       "shell-quote": "1.12.0"
     }

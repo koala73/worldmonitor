@@ -3,6 +3,7 @@ import { BRIEF_TOPICS } from './country-brief-sections';
 import { panelReceiptSchema } from './panel-admission';
 import { resolveCountryCode } from './country-code-resolve';
 import { RAW_SIGNAL_PATH } from './country-raw-signals';
+import { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_WIRE_FAMILIES } from './country-signal-observations';
 
 const signalCountryNames = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
 // Intl includes named organizations, statistical regions and test locales as well as countries/territories.
@@ -35,10 +36,16 @@ const countryBriefDirectReadSchema = z.object({
 }).strict();
 const countryRiskDirectReadSchema = z.object({ country_code: z.string().min(2).max(100), history_days: historyDays }).strict();
 
-export function normalizeCountryDirectRead(name: 'get_country_brief' | 'get_country_risk', args: Record<string, unknown>): Record<string, unknown> | null {
+export function normalizeCountryDirectRead(
+  name: 'get_country_brief' | 'get_country_risk',
+  args: Record<string, unknown>,
+  // The MCP layer passes its localized resolver; the default keeps the
+  // localized name tables out of the browser bundles that import this module.
+  resolveCountry: (raw: unknown) => string | null = resolveCountryCode,
+): Record<string, unknown> | null {
   const parsed = (name === 'get_country_brief' ? countryBriefDirectReadSchema : countryRiskDirectReadSchema).safeParse(args);
   if (!parsed.success) return null;
-  const country = resolveCountryCode(parsed.data.country_code);
+  const country = resolveCountry(parsed.data.country_code);
   if (!country) return null;
   const original = parsed.data as { framework?: unknown; allow_stale?: unknown };
   let framework = '';
@@ -56,6 +63,7 @@ const activityBoundsSchema = {
 };
 
 export const COUNTRY_READERS = {
+  countrySignals: { path: COUNTRY_SIGNAL_PATH, args: z.object({ country_code: signalCountryCode, family: z.enum(COUNTRY_SIGNAL_WIRE_FAMILIES), window_index: z.coerce.number().int().min(0).max(1).default(0), cursor: z.string().max(200).default('') }).strict().refine(value => value.family === 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE' || value.window_index === 0 && value.cursor === '') },
   signalsRaw: { path: RAW_SIGNAL_PATH, args: z.object({ country_code: signalCountryCode }).strict() },
   flights: { path: '/api/military/v1/list-military-flights', args: z.object({ ...activityBoundsSchema, page_size: z.coerce.number().int().min(100).max(100).default(100), operator: z.literal('MILITARY_OPERATOR_UNSPECIFIED').default('MILITARY_OPERATOR_UNSPECIFIED'), aircraft_type: z.literal('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED').default('MILITARY_AIRCRAFT_TYPE_UNSPECIFIED'), cursor: z.string().max(200).default('') }).strict() },
   vessels: { path: '/api/maritime/v1/get-vessel-snapshot', args: z.object({ ne_lat: z.coerce.number().pipe(z.literal(0)).default(0), ne_lon: z.coerce.number().pipe(z.literal(0)).default(0), sw_lat: z.coerce.number().pipe(z.literal(0)).default(0), sw_lon: z.coerce.number().pipe(z.literal(0)).default(0), include_candidates: z.literal('true').default('true') }).strict() },
@@ -88,6 +96,7 @@ export const COUNTRY_READERS = {
   disruptions: { path: '/api/supply-chain/v1/list-energy-disruptions', args: z.object({ assetId: z.literal('').default(''), assetType: z.literal('').default(''), ongoingOnly: z.enum(['true', 'false']).default('false') }).strict() },
   scenario: { path: '/api/intelligence/v1/compute-energy-shock', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/), chokepoint_id: z.string().regex(/^[a-z0-9_-]{1,80}$/), disruption_pct: z.coerce.number().min(0).max(100).default(0), fuel_mode: z.enum(['both', 'oil', 'gas']).default('oil') }).strict() },
   defense: { path: '/api/military/v1/get-defense-industrial-base', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/) }).strict() },
+  no2: { path: '/api/economic/v1/get-no2-activity', args: z.object({ country_code: z.string().regex(/^[A-Z]{2}$/), kind: z.literal('NO2_REGION_KIND_COUNTRY').default('NO2_REGION_KIND_COUNTRY') }).strict() },
   markets: { path: '/api/prediction/v1/list-prediction-markets', args: z.object({ page_size: z.coerce.number().int().min(1).max(100).default(50), query: z.string().max(100).default(''), category: z.string().max(40).default(''), cursor: z.literal('').default('') }).strict() },
   china: { path: '/api/intelligence/v1/get-china-decision-signals', args: z.object({  }).strict() },
   production: { path: '/api/supply-chain/v1/get-mineral-production', args: z.object({ commodity: z.string().regex(/^[a-z0-9-]{1,60}$/), iso2: z.literal('').default(''), stage: z.literal('').default('') }).strict() },

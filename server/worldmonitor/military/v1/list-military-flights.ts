@@ -138,13 +138,13 @@ function paginateResponse(
 }
 
 function paginateResponseForCaller(
-  ctx: ServerContext,
+  redistributableOnly: boolean,
   flights: ListMilitaryFlightsResponse['flights'],
   clusters: ListMilitaryFlightsResponse['clusters'],
   bounds: RequestBounds,
   req: ListMilitaryFlightsRequest,
 ): ListMilitaryFlightsResponse {
-  if (!requiresRedistributableProviders(ctx.request)) {
+  if (!redistributableOnly) {
     return paginateResponse(flights, clusters, bounds, req);
   }
 
@@ -518,7 +518,15 @@ export async function listMilitaryFlights(
   ctx: ServerContext,
   req: ListMilitaryFlightsRequest,
 ): Promise<ListMilitaryFlightsResponse> {
-  const redistributableOnly = requiresRedistributableProviders(ctx.request);
+  return readMilitaryFlights(ctx, req, { redistributableOnly: requiresRedistributableProviders(ctx.request), allowProviderFetch: true });
+}
+
+export async function readMilitaryFlights(
+  ctx: ServerContext,
+  req: ListMilitaryFlightsRequest,
+  policy: { redistributableOnly: boolean; allowProviderFetch: boolean },
+): Promise<ListMilitaryFlightsResponse> {
+  const { redistributableOnly } = policy;
   try {
     if (!req.neLat && !req.neLon && !req.swLat && !req.swLon) return emptyResponse();
     // #6249: a NaN/Infinity corner cannot be normalized into a meaningful
@@ -540,7 +548,13 @@ export async function listMilitaryFlights(
       throw new Error('military live seed read failed');
     }
     if (seeded.status === 'hit' && seedCovers(seeded.coverage, requestBounds)) {
-      return paginateResponseForCaller(ctx, seeded.flights, [], requestBounds, req);
+      return paginateResponseForCaller(redistributableOnly, seeded.flights, [], requestBounds, req);
+    }
+
+    if (!policy.allowProviderFetch) {
+      const stale = await fetchStableStaleSnapshot(requestBounds);
+      if (stale) return paginateResponseForCaller(redistributableOnly, stale.flights, stale.clusters, requestBounds, req);
+      throw new Error('Country flight snapshot unavailable');
     }
 
     // A miss, or a hit whose coverage does not contain this request (for
@@ -647,12 +661,12 @@ export async function listMilitaryFlights(
       // fallback when OpenSky / the relay hiccups.
       const staleResult = await fetchStableStaleSnapshot(requestBounds);
       if (staleResult) {
-        return paginateResponseForCaller(ctx, staleResult.flights, staleResult.clusters, requestBounds, req);
+        return paginateResponseForCaller(redistributableOnly, staleResult.flights, staleResult.clusters, requestBounds, req);
       }
       markNoCacheResponse(ctx.request);
       return emptyResponse();
     }
-    return paginateResponseForCaller(ctx, fullResult.flights, fullResult.clusters, requestBounds, req);
+    return paginateResponseForCaller(redistributableOnly, fullResult.flights, fullResult.clusters, requestBounds, req);
   } catch {
     // Reaching here means the live path was abandoned before any provider call —
     // most often the deliberate 'live seed read failed' throw above, which exists
@@ -669,8 +683,9 @@ export async function listMilitaryFlights(
     const requestBounds = normalizeBounds(req);
     const staleResult = await fetchStableStaleSnapshot(requestBounds);
     if (staleResult) {
-      return paginateResponseForCaller(ctx, staleResult.flights, staleResult.clusters, requestBounds, req);
+      return paginateResponseForCaller(redistributableOnly, staleResult.flights, staleResult.clusters, requestBounds, req);
     }
+    if (!policy.allowProviderFetch) throw new Error('Country military snapshot unavailable');
     markNoCacheResponse(ctx.request);
     return emptyResponse();
   }

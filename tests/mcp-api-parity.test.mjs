@@ -84,6 +84,8 @@ const HTTP_METHODS = new Set([
 // -----------------------------------------------------------------------------
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
+  ['GET /api/economic/v1/get-food-prices', 'deferred-to-future-tool: source-specific food prices and dated food-security context are served to the dashboard (#9841)'],
+  ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
   // === mutating (20) ===
   ["GET /api/aviation/v1/list-airport-delays",
@@ -95,8 +97,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/resilience/v1/get-resilience-ranking",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/v2/shipping/webhooks",
-    "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
-  ["GET /api/webcam/v1/list-webcams",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["POST /api/infrastructure/v1/record-baseline-snapshot",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
@@ -111,6 +111,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes to Convex (not server/_shared/redis) — lead registration write"],
   ["POST /api/leads/v1/submit-contact",
     "mutating: writes to Convex (not server/_shared/redis) — contact form write"],
+  ["POST /api/feedback/v1/submit-report",
+    "mutating: agent feedback written to Convex; MCP exposure is report_issue, which calls the shared admitFeedbackReport path rather than this route (#8721)"],
   ["POST /api/news/v1/submit-error-report",
     "mutating: reader error report written to the #9093 review queue via runRedisPipeline"],
   ["POST /api/news/v1/review-error-report",
@@ -164,8 +166,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
   ["GET /api/maritime/v1/list-navigational-warnings",
     "fetch-on-miss: paid-upstream — external feed fetch per request"],
-  ["GET /api/displacement/v1/get-internal-displacement",
-    "deferred-to-future-tool: pure-read of the seeded IOM DTM snapshot (displacement:dtm:v1). Region-level IDP counts per operation would widen get_displacement_data's UNHCR country shape; add them to that tool in a follow-up instead of a second displacement tool."],
   ["GET /api/market/v1/get-price-history",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/market/v1/get-insider-transactions",
@@ -181,8 +181,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/supply-chain/v1/get-route-explorer-lane",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/supply-chain/v1/get-route-impact",
-    "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
-  ["GET /api/webcam/v1/get-webcam-image",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["POST /api/conflict/v1/get-humanitarian-summary-batch",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
@@ -242,6 +240,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: country snapshot capture reads existing full RSS caches; a future country_headlines tool can expose this uncapped country pool"],
   ["GET /api/news/v1/list-error-reports",
     "deferred-to-future-tool: operator review queue (#9093) is secret-gated and holds private reader contacts; no MCP surface by design"],
+  ["GET /api/news/v1/list-source-items",
+    "deferred-to-future-tool: cached rows for a dashboard panel's enabled sources below the digest category cap (#9796); agents read whole categories through list-news-pool"],
   ["GET /api/news/v1/list-label-changes",
     "deferred-to-future-tool: label history (#9093) is read by the /trust page; a future trust tool can expose recent label changes"],
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",

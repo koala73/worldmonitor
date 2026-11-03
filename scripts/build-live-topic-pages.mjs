@@ -6,8 +6,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { LIVE_TOPIC_PAGES } from './live-pages/index.mjs';
+import { LIVE_PAGE_RELATED, renderLiveDataLinks } from './live-pages/related-links.mjs';
 
-export const LIVE_TOPIC_PAGES_CONTENT_VERSION = '2026-10-18';
+export const LIVE_TOPIC_PAGES_CONTENT_VERSION = '2026-10-28';
 export const LIVE_TOPIC_PAGES_INPUT_PATHS = Object.freeze([
   'scripts/build-live-topic-pages.mjs',
   'scripts/live-pages',
@@ -22,6 +23,7 @@ export function renderLiveTopicPage({ page, record, baseUrl, lastmod, tpl }) {
       <p class="lede">${escapeHtml(page.description)}</p>
 ${section}
 ${page.explainer}
+${renderLiveDataLinks(LIVE_PAGE_RELATED[page.slug] ?? [], escapeHtml, 'Related live data')}
       <h2>See it on the dashboard</h2>
       <p>The same data appears in the ${escapeHtml(page.dashboardPanel)} view of the <a href="/dashboard">World Monitor dashboard</a>, next to the map, alerts and related panels. Other live checks are listed on the <a href="/tools/">live tools page</a>.</p>`;
   return pageDocument({

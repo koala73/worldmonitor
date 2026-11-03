@@ -317,7 +317,9 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');
     assert.deepEqual(newsStory.sourceProvenance.required, [
       'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed', 'knownBiases', 'summary',
+      'homeCountry', 'audience', 'language', 'ownershipClass',
     ]);
+    assert.deepEqual(newsStory.sourceProvenance.properties.audience.enum, ['domestic', 'international', 'diaspora', null]);
     assert.deepEqual(newsStory.sourceProvenance.properties.risk.enum, [
       'low', 'medium', 'high', 'unknown',
     ]);
@@ -456,7 +458,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // rather than silently skipped, so the count can only go down. Each is the
   // same defect class -- schema key never written by the producer:
   const KNOWN_PHANTOM_ROW_FIELDS = new Set([
-    // Serves `locationName` (+ latitude/longitude) -- scripts/seed-iran-events.mjs.
+    // Serves `locationName` (+ latitude/longitude) -- scripts/lib/middle-east-strikes.cjs (ais-relay).
     'get_conflict_events.data.iran-events.events[].country',
     'get_conflict_events.data.iran-events.events[].location',
     // Serves staticBaseline/dynamicScore/combinedScore, never a flat `score`.
@@ -644,6 +646,8 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // gateway response is not what they return.
   // --------------------------------------------------------------------
   const VERBATIM_PASSTHROUGH_TOOLS = [
+    'get_country_history',
+    'get_media_perspective',
     'analyze_news_headlines',
     'analyze_situation',
     'get_chokepoint_dependencies',

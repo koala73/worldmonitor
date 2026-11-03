@@ -18,7 +18,7 @@ describe('wave-2a analysis tools registry contract', () => {
     },
     get_focal_points: {
       budget: 65536,
-      coverage: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v8'],
+      coverage: ['news:insights:v1', 'intelligence:cross-source-signals:v1', 'risk:scores:sebuf:v14'],
     },
     simulate_infrastructure_cascade: {
       budget: 131072,
@@ -26,7 +26,7 @@ describe('wave-2a analysis tools registry contract', () => {
     },
     get_military_surge: {
       budget: 65536,
-      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1', 'risk:scores:sebuf:v8'],
+      coverage: ['military:flights:v1', 'theater-posture:sebuf:v1', 'military:surges:v1', 'risk:scores:sebuf:v14'],
     },
   };
 
@@ -67,7 +67,7 @@ describe('wave-2a analysis tools registry contract', () => {
     const params = {
       get_signal_convergence: ['lat', 'lon', 'radius_km', 'min_domains'],
       get_focal_points: ['country_code', 'limit'],
-      simulate_infrastructure_cascade: ['source_id', 'disruption_level'],
+      simulate_infrastructure_cascade: ['source_id', 'source_ids', 'cut_cables_through', 'disruption_level', 'countries'],
       get_military_surge: ['theater'],
     };
     for (const [name, keys] of Object.entries(params)) {

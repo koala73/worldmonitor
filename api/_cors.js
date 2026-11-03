@@ -33,11 +33,12 @@ const ALLOWED_HEADERS = [
   'X-Api-Key',
   'X-Widget-Key',
   'X-Pro-Key',
-  'X-WorldMonitor-Desktop-Timestamp',
-  'X-WorldMonitor-Desktop-Signature',
   'Idempotency-Key',
   'Mcp-Session-Id',
   'MCP-Protocol-Version',
+  // MCP 2026-07-28 request metadata headers (mirrored method / tool, prompt or resource name).
+  'Mcp-Method',
+  'Mcp-Name',
   'Last-Event-ID',
 ].join(', ');
 
@@ -47,6 +48,10 @@ const EXPOSED_HEADERS = [
   'Retry-After',
   'Idempotency-Key',
   'Idempotent-Replayed',
+  // Poll URL on a gateway 202 Accepted async job (#4810). The Worker stamps
+  // this list over every api.worldmonitor.app response, so it must be here
+  // for browser agents to read it, not only in server/cors.ts.
+  'Location',
   // Billing-verification denials (server/_shared/entitlement-check.ts) carry
   // the reason here alongside `Retry-After`. Docs advertise the header
   // (docs/usage-errors.mdx) but it was not exposed, so a cross-origin browser

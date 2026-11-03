@@ -23,7 +23,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/worldmonitor"><img src="https://img.shields.io/npm/v/worldmonitor?style=for-the-badge&logo=npm&logoColor=white&label=npm%20i%20worldmonitor&color=CB3837" alt="npm i worldmonitor"></a>&nbsp;
-  <a href="https://www.npmjs.com/package/worldmonitor"><img src="https://img.shields.io/badge/CLI-npx%20worldmonitor-CB3837?style=for-the-badge&logo=npm&logoColor=white" alt="npx worldmonitor"></a>&nbsp;
+  <a href="https://www.worldmonitor.app/docs/cli-dashboard"><img src="https://img.shields.io/badge/Terminal_Dashboard-npx%20worldmonitor-CB3837?style=for-the-badge&logo=gnometerminal&logoColor=white" alt="Terminal dashboard: npx worldmonitor"></a>&nbsp;
   <a href="https://pypi.org/project/worldmonitor-sdk/"><img src="https://img.shields.io/pypi/v/worldmonitor-sdk?style=for-the-badge&logo=pypi&logoColor=white&label=pip%20install%20worldmonitor-sdk&color=3775A9" alt="pip install worldmonitor-sdk"></a>&nbsp;
   <a href="https://rubygems.org/gems/worldmonitor"><img src="https://img.shields.io/gem/v/worldmonitor?style=for-the-badge&logo=rubygems&logoColor=white&label=gem%20install%20worldmonitor&color=E9573F" alt="gem install worldmonitor"></a>&nbsp;
   <a href="https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go"><img src="https://img.shields.io/badge/go%20get-sdk%2Fgo-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="go get github.com/koala73/worldmonitor/sdk/go"></a>
@@ -44,6 +44,21 @@
 
 ![World Monitor Dashboard](docs/images/worldmonitor-7-mar-2026.jpg)
 
+## Ways to Use It
+
+| Surface | Get it | Docs |
+|---------|--------|------|
+| **Web app** | [worldmonitor.app](https://www.worldmonitor.app) and the tech, finance, commodity, happy and energy variants | [Getting Started](https://www.worldmonitor.app/docs/getting-started) |
+| **Desktop app** (Tauri) | Windows, macOS and Linux downloads above | [Desktop App](https://www.worldmonitor.app/docs/desktop-app) |
+| **Terminal dashboard** | `npx worldmonitor` | [Terminal Dashboard](https://www.worldmonitor.app/docs/cli-dashboard) |
+| **CLI** | `npm install -g worldmonitor` or `brew install worldmonitor` | [Command-Line Client](https://www.worldmonitor.app/docs/cli) |
+| **SDKs** | Python `worldmonitor-sdk`, Ruby `worldmonitor`, Go `sdk/go` | [SDKs](https://www.worldmonitor.app/docs/sdks) |
+| **MCP server** | `https://worldmonitor.app/mcp` | [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) |
+
+The terminal dashboard runs the same live data in your shell: world map, news, markets, conflict, military flights, cyber, climate, prediction markets and live TV, with mouse support and colour themes. No API key needed.
+
+![World Monitor terminal dashboard](docs/images/tui/overview.webp)
+
 ---
 
 ## What It Does
@@ -52,7 +67,7 @@
 - **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with a shared map-layer catalog
 - **Panel inventory** — concrete panel implementations across specialized variants
 - **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
-- **[Country Instability Index (CII)](https://www.worldmonitor.app/country-instability-index/)** — live CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
+- **[Country Instability Index (CII)](https://www.worldmonitor.app/country-instability-index/)** — live CII v14 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
 - **Finance radar** — stock exchanges, commodities, crypto, and a market composite
 - **Local AI** — run everything with Ollama, no API keys required
 - **Site variants** from a single codebase (world, tech, finance, commodity, happy, energy)
@@ -71,12 +86,15 @@ All site variants and desktop binaries are built from a single codebase and ship
 |---------|--------|-------|
 | `worldmonitor.app`, `tech.`, `finance.`, `commodity.`, `happy.`, `energy.` | Stable | Public deployments built from this repo, actively maintained |
 | Desktop binaries (Windows / macOS Apple Silicon / macOS Intel / Linux AppImage) | Stable | One Tauri binary for every variant — install World Monitor and switch to tech, finance, commodity, energy, or happy in-app. There is deliberately no per-variant download |
+| `worldmonitor` npm package (terminal dashboard and CLI) | Stable | Published from [`cli/`](cli/) on every `cli-v*` tag |
 
 Issues filed against any of the above are triaged from the same backlog — see the [issues board](https://github.com/koala73/worldmonitor/issues) for currently-open work.
 
 ---
 
 ## Quick Start
+
+Requires Node.js 24, the version pinned in `.nvmrc`. Distribution packages are often older. Debian 12 and Raspberry Pi OS ship Node.js 18 with npm 9.2.0, where `npm install` stops with `Invalid comparator: file:vendor/braces`. Install Node.js 24 with [nvm](https://github.com/nvm-sh/nvm) (`nvm install` inside the checkout reads `.nvmrc`) or from [nodejs.org](https://nodejs.org/en/download).
 
 ```bash
 git clone https://github.com/koala73/worldmonitor.git
@@ -124,12 +142,14 @@ World Monitor is built for agents and scripts as well as browsers:
 
 - **MCP server** — `https://worldmonitor.app/mcp` (Streamable HTTP). Public `tools/list`; `tools/call` authenticates with a `X-WorldMonitor-Key` header or OAuth.
   The server also publishes its Agent Skills through the draft `io.modelcontextprotocol/skills` extension (`skills/list`, `skills/get`, and `skill://…` resource reads).
+- **Google Antigravity and Gemini listing preparation** — install the bundled Antigravity plugin (`.antigravity-plugin/plugin.json` + `mcp_config.json`) with `agy plugin install ./worldmonitor`. Gemini custom apps and Connected Apps sign in through Google's OAuth callbacks. See [Gemini and Antigravity](https://www.worldmonitor.app/docs/gemini-antigravity).
 - **REST API** — base `https://api.worldmonitor.app`, described by the [OpenAPI spec](https://worldmonitor.app/openapi.yaml).
-- **CLI** — the official [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm package (source in [`cli/`](cli/)):
+- **CLI** — the official [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm package (source in [`cli/`](cli/)). Run it with no arguments in a terminal for the [terminal dashboard](https://www.worldmonitor.app/docs/cli-dashboard):
 
   ```sh
   npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
   npm install -g worldmonitor     # or install the `worldmonitor` (alias `wm`) command
+  brew install worldmonitor       # or install it with Homebrew
   worldmonitor risk IR --api-key wm_xxx
   ```
 
@@ -142,6 +162,12 @@ Agent discovery files: [`llms.txt`](https://worldmonitor.app/llms.txt) · [agent
 ## Flight Data
 
 Flight data provided graciously by [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor), the most advanced ADS-B flight data solution.
+
+---
+
+## Supported By
+
+World Monitor's web app and API run on [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor). Thank you to Vercel for their generous support of the project.
 
 ---
 

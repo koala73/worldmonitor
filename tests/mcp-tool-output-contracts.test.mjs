@@ -44,7 +44,26 @@ const originalEnv = { ...process.env };
 // before reaching dispatch. Values are deliberately benign and aligned with
 // each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
 const REQUIRED_ARGS = {
+  find_webcams: { bound_w: 4, bound_s: 51, bound_e: 5, bound_n: 52, zoom: 9 },
+  get_webcam_media: { webcam_id: '123456789' },
+  get_country_history: { country_code: 'US' },
+  get_media_perspective: { subject_country: 'SA' },
+  get_defense_industrial_base: { country_code: 'US' },
+  get_country_coverage: { country_code: 'US' },
+  get_food_stocks: { country_code: 'US' },
+  get_demographics_capability: { country_code: 'US' },
+  get_resilience_indicators: { country_code: 'US' },
+  get_five_factor_scorecard: { country_code: 'US' },
+  get_supply_vulnerabilities: { country_code: 'US' },
+  get_chokepoint_dependencies: { chokepoint_id: 'suez' },
+  verify_claim: { claim: 'A controlled claim for verification.' },
+  analyze_news_headlines: { headlines: ['Controlled headline'] },
+  get_country_brief_section: { section: 'risk', arguments: { country_code: 'US' } },
+  get_bilateral_tariff: { reporter: 'US', partner: 'CN', hs_code: '010121' },
+  get_us_import_duty: { partner: 'CN', hs_code: '010121' },
   classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
+  start_upgrade: { plan: 'pro_monthly' },
+  report_issue: { kind: 'bug', summary: 'A controlled report.' },
   get_country_brief: { country_code: 'US' },
   open_country_brief: { country_code: 'US' },
   get_country_risk: { country_code: 'US' },
@@ -53,6 +72,7 @@ const REQUIRED_ARGS = {
   get_maritime_activity: { country_code: 'US' },
   analyze_situation: { query: 'test query' },
   search_intel_history: { query: 'test query' },
+  get_intel_timeline: { domain: 'conflict' },
   // `situation` carries a 10-char proto minimum, so the placeholder clears it.
   get_similar_events: { situation: 'a test situation description' },
   search_flights: { origin: 'JFK', destination: 'LHR', departure_date: '2026-06-01' },
@@ -192,6 +212,9 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
 
       let args = REQUIRED_ARGS[name] ?? {};
       const { deps, pipe } = makeProDeps();
+      // start_upgrade creates its checkout session in dispatch, before the
+      // stubbed _execute; answer the relay so the call reaches the result path.
+      if (name === 'start_upgrade') deps.createCheckout = async () => ({ kind: 'created', checkoutUrl: 'https://checkout.example/session' });
       let originalForecast;
       if (name === 'get_forecast_case' || name === 'get_forecast_theaters') {
         const generatedAt = Date.now();

@@ -2,6 +2,7 @@ import type { EffectiveTariffRate } from '@/generated/client/worldmonitor/trade/
 import type { CountrySignalCounts } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
+import type { RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
 import type { GetCountryChokepointIndexResponse, GetCountryVulnerabilitiesResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
@@ -49,7 +50,8 @@ export interface CountryDeepDiveSignalItem {
   type: 'MILITARY' | 'PROTEST' | 'CYBER' | 'DISASTER' | 'OUTAGE' | 'OTHER';
   severity: ThreatLevel;
   description: string;
-  timestamp: Date;
+  timestamp: Date | null;
+  source?: string;
 }
 
 export interface CountryDeepDiveSignalDetails {
@@ -194,6 +196,7 @@ export interface CountryEnergyProfileData {
   sprSource: string;
   sprAsOf: string;
   sprAvailable: boolean;
+  regionalEnergyFeeds?: RegionalEnergyFeed[];
 }
 
 export interface CountryPortActivityData {
@@ -210,6 +213,8 @@ export interface CountryPortActivityData {
     anomalySignal: boolean;
   }[];
   fetchedAt: string;
+  // The API's last data for a country PortWatch has not refreshed in 7+ days.
+  stale?: boolean;
 }
 
 export interface CountryBriefPanel {
@@ -233,7 +238,10 @@ export interface CountryBriefPanel {
   updateScore?(score: CountryScore | null, signals: CountrySignalCounts): void;
   isFallbackBrief?(): boolean;
   updateSignals?(signals: CountrySignalCounts, notes?: readonly string[]): void;
+  getSignalCounts?(): CountrySignalCounts | null;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
+  updateQualifiedCountrySignals?(value: import('../../shared/country-signal-observations').QualifiedCountrySignals): void;
+  clearQualifiedCountrySignals?(): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary | null): void;
   updateDefenseIndustrialBase?(data: GetDefenseIndustrialBaseResponse | null): void;
   syncCountryPremiumSectionsAccess?(hasAccess: boolean): void;
@@ -249,6 +257,7 @@ export interface CountryBriefPanel {
   onStateChange?(cb: (state: { visible: boolean; maximized: boolean }) => void): void;
   updateNationalDebt?(entry: { debtToGdp: number; debtUsd: number; annualGrowth: number; source: string } | null): void;
   updateSanctionsPressure?(data: { entryCount: number; sanctionsActive?: boolean } | null): void;
+  updateNo2Activity?(reading: import('@/services/economic/no2-activity').No2CountryReading): void;
   updateComtradeFlows?(flows: Array<{ partnerName: string; cmdDesc: string; tradeValueUsd: number; yoyChange: number }> | null): void;
   updateTariffTrends?(data: CountryTariffTrendsData | null): void;
   updateMultiSectorCostShock?(data: MultiSectorShockResponse | null): void;

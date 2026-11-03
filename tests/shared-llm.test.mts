@@ -398,6 +398,29 @@ describe('callLlm', () => {
     assert.equal('reasoning' in (postBodies[0] ?? {}), false);
   });
 
+  it('the reasoning stream sends reasoning off when the caller opts out (chat-analyst budget, #9195 follow-up)', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.LLM_REASONING_PROVIDER;
+    delete process.env.LLM_REASONING_MODEL;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', { status: 200 });
+    }) as typeof fetch;
+
+    await new Response(callLlmReasoningStream({ messages: [{ role: 'user', content: 'x' }], enableReasoning: false })).text();
+    assert.deepEqual(bodies[0]?.reasoning, { enabled: false }, 'opt-out must disable hidden reasoning on the wire');
+
+    bodies.length = 0;
+    await new Response(callLlmReasoningStream({ messages: [{ role: 'user', content: 'y' }] })).text();
+    assert.equal('reasoning' in (bodies[0] ?? {}), false, 'the default still lets the model reason');
+  });
+
   it('callLlmReasoning honors enableReasoning:false to disable reasoning on the reasoning-tier model (#4983)', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     process.env.LLM_REASONING_PROVIDER = 'openrouter';
@@ -461,7 +484,7 @@ describe('callLlm', () => {
 
     assert.ok(attemptedModels.includes('google/gemma-4-26b-a4b-it:free'), 'the gemma free leg still serves reasoning calls');
     assert.equal(
-      attemptedModels.includes('nvidia/nemotron-3-super-120b-a12b:free'),
+      attemptedModels.includes('nvidia/nemotron-3.5-super-vl:free'),
       false,
       'NVIDIA logs free-endpoint prompts, so chat and deduction text must never reach it',
     );
@@ -469,7 +492,7 @@ describe('callLlm', () => {
     attemptedModels.length = 0;
     await callLlm({ messages: [{ role: 'user', content: 'Summarize these headlines.' }] });
     assert.ok(
-      attemptedModels.includes('nvidia/nemotron-3-super-120b-a12b:free'),
+      attemptedModels.includes('nvidia/nemotron-3.5-super-vl:free'),
       'the default chain keeps the backup for public-data prompts',
     );
   });
@@ -571,7 +594,7 @@ describe('callLlm', () => {
       }
       const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
       bodies.push(body);
-      const content = body.model === 'nvidia/nemotron-3-super-120b-a12b:free' ? 'backup answer' : '';
+      const content = body.model === 'nvidia/nemotron-3.5-super-vl:free' ? 'backup answer' : '';
       return new Response(JSON.stringify({
         choices: [{ message: { content } }],
         usage: { total_tokens: 5 },
@@ -581,11 +604,11 @@ describe('callLlm', () => {
     const result = await callLlm({ messages: [{ role: 'user', content: 'Answer briefly.' }] });
 
     assert.equal(result?.provider, 'openrouter-free-backup');
-    assert.equal(result?.model, 'nvidia/nemotron-3-super-120b-a12b:free');
+    assert.equal(result?.model, 'nvidia/nemotron-3.5-super-vl:free');
     assert.deepEqual(bodies.map(body => body.model), [
       'deepseek/deepseek-v4-flash',
       'google/gemma-4-26b-a4b-it:free',
-      'nvidia/nemotron-3-super-120b-a12b:free',
+      'nvidia/nemotron-3.5-super-vl:free',
     ]);
     for (const body of bodies) {
       assert.deepEqual(body.reasoning, { enabled: false });

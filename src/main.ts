@@ -405,6 +405,10 @@ function shouldSuppressCspViolation(
       // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
       // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
       if (url.protocol === 'https:' && url.hostname === 'www.6ppn.com' && cssFile.test(url.pathname)) return true;
+      // Same extension asset shape from a second host
+      // (price.dianxiaobao.net/ext/assets/style.<hash>.css, WORLDMONITOR-J0
+      // round 6, the only unfiltered blockedURI in the issue's last 30 days).
+      if (url.protocol === 'https:' && url.hostname === 'price.dianxiaobao.net' && cssFile.test(url.pathname)) return true;
       // FontAwesome public CDN. The injected sheet is v4.7.0 — a 2016 release
       // this app never shipped — and our style-src is `'self' 'unsafe-inline'`
       // with no cross-origin host at all, so any use.fontawesome.com stylesheet
@@ -544,9 +548,11 @@ import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
 import { installFetchFailureAttribution } from '@/services/fetch-failure-attribution';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
+import { primeBootstrapFastTier } from '@/services/bootstrap-prefetch';
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
+import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 import { initAnalytics, trackContentHandoff } from '@/services/analytics';
@@ -565,6 +571,18 @@ const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
 // Convex user row (users.ensureRecord), which new API keys inherit.
 // Best-effort: blocked cookies mean "no attribution".
 captureAgentRefFromSearch(window.location.search, agentRefStorage());
+// First-touch channel (UTM, referrer host, landing page), stamped onto the
+// Dodo subscription at checkout. The visit is read now, before any URL
+// rewrite; the module itself loads off the main chunk (bundle budget).
+const acquisitionVisit = {
+  search: window.location.search,
+  pathname: window.location.pathname,
+  referrer: document.referrer,
+  now: Date.now(),
+};
+void import('../shared/acquisition-source')
+  .then((m) => { m.captureFirstTouchAcquisition(m.browserAcquisitionStorage(), acquisitionVisit); })
+  .catch(() => { /* no attribution */ });
 
 // Product analytics are secondary startup work; RUM starts once the trusted
 // dashboard entry executes so it can observe page-load vitals.
@@ -605,6 +623,7 @@ loadDesktopSecrets().catch(() => {});
 
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
+applyDeviceTierClass(document.documentElement);
 applyFont();
 applyFontScale();
 window.addEventListener('storage', (event) => {
@@ -633,7 +652,7 @@ safeStorageRemove('wm-settings-open');
 
 // Standalone windows: ?settings=1 = panel display settings, ?live-channels=1 = channel management
 // Both need i18n initialized so t() does not return undefined.
-const urlParams = new URL(location.href).searchParams;
+const urlParams = new URLSearchParams(location.search);
 if (urlParams.get('settings') === '1') {
   void Promise.all([import('./services/i18n'), import('./settings-window')]).then(
     async ([i18n, m]) => {
@@ -649,6 +668,8 @@ if (urlParams.get('settings') === '1') {
     }
   );
 } else {
+  // Start the first dashboard data now instead of after the App chunk loads.
+  primeBootstrapFastTier();
   installUtmInterceptor();
   let resolveBindings!: (bindings: WebMcpAppBindings) => void;
   let rejectBindings!: (error: unknown) => void;

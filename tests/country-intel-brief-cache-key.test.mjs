@@ -20,6 +20,17 @@ describe('country intel brief cache key derivation', () => {
     assert.ok(a.startsWith('ci-sebuf:v12:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
   });
 
+  it('re-keys a brief when a NOTAM closes or reopens one of its airports', () => {
+    const mk = (isPremium, airportTag) => deriveCountryIntelCacheKey({
+      countryCode: 'SA', lang: 'en', isPremium, contextHash: 'base', frameworkHash: '', energyYear: '2024', energyImportYear: '2023', airportTag,
+    });
+    for (const premium of [false, true]) {
+      assert.equal(mk(premium, ''), mk(premium, undefined), 'no NOTAM keeps the existing key');
+      assert.notEqual(mk(premium, ''), mk(premium, 'OEJN:closed'));
+      assert.notEqual(mk(premium, 'OEJN:closed'), mk(premium, 'OEJN:restricted'));
+    }
+  });
+
   it('anon key ignores framework hash (framework is premium-only input)', () => {
     const base = deriveCountryIntelCacheKey({
       countryCode: 'FR', lang: 'en', isPremium: false,

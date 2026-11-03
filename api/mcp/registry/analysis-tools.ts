@@ -1,5 +1,6 @@
 import { RpcValidationError } from '../billing-denial';
 import { requireCountryCode } from '../_country-args';
+import { isAssignedCountryCode } from '../../../shared/country-code-resolve';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { CII_MOVERS_OUTPUT_SCHEMA, ciiHistoryDays, readCiiMovers } from '../_cii-history';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
@@ -22,7 +23,12 @@ import {
 import { GeoConvergenceEngine, getLocationName } from '../../../shared/analysis-geo-convergence';
 import {
   buildDependencyGraph,
+  CABLE_EXPOSURE_NOTE,
+  type CableHealthInput,
   calculateCascade,
+  calculateChokepointCableCut,
+  calculateMultiCascade,
+  getCountryCableExposure,
   getGraphStats,
 } from '../../../shared/analysis-infrastructure-cascade';
 import {
@@ -60,6 +66,36 @@ import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import type { FreshnessCheck, ToolDef } from '../types';
+
+// Full CII realtime signal-density coverage (conflict + news families since CII v14),
+// matching api/health.js riskScores minRecordCount.
+const CII_REALTIME_COVERAGE_MIN = 2;
+
+const MAX_EXPOSURE_COUNTRIES = 10;
+
+/** Resolve simulate_infrastructure_cascade `countries` to unique ISO-2 codes, rejecting bad input before any cache read. */
+function resolveExposureCountries(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  const values = Array.isArray(raw) ? raw : [raw];
+  if (values.length > MAX_EXPOSURE_COUNTRIES) {
+    throw new RpcValidationError('simulate-infrastructure-cascade', [{
+      field: 'countries',
+      description: `Pass at most ${MAX_EXPOSURE_COUNTRIES} countries.`,
+    }]);
+  }
+  const codes = values.map((value) => {
+    const code = requireCountryCode(value, 'simulate-infrastructure-cascade', 'countries').toUpperCase();
+    // Shape alone admits unassigned codes such as ZZ, which would read as a real country with no cables.
+    if (!isAssignedCountryCode(code)) {
+      throw new RpcValidationError('simulate-infrastructure-cascade', [{
+        field: 'countries',
+        description: `${JSON.stringify(code)} is not an assigned ISO 3166-1 country code.`,
+      }]);
+    }
+    return code;
+  });
+  return [...new Set(codes)];
+}
 
 type PayloadValidator = (value: unknown) => boolean;
 
@@ -209,6 +245,26 @@ function resolveLimit(raw: unknown, fallback: number): number {
 // universal rule: evaluateFreshness() applies it only to checks that explicitly
 // declare honorContentAge.
 const ANALYSIS_STALE_DESCRIPTION = 'True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help.';
+
+function focalPointCountry(params: Record<string, unknown>): string {
+  const rawCountry = params.country_code;
+  const countryCode = rawCountry == null || (typeof rawCountry === 'string' && !rawCountry.trim())
+    ? '' : requireCountryCode(rawCountry, 'get-focal-points');
+  if (countryCode && getSharedEntityIndex().byId.get(countryCode)?.type !== 'country') {
+    throw new RpcValidationError('get-focal-points', [{
+      field: 'country_code',
+      description: `No focal-point coverage for ${countryCode}: that country is absent from the entity registry.`,
+    }]);
+  }
+  return countryCode;
+}
+
+function alertDigestArguments(params: Record<string, unknown>) {
+  const view = typeof params.view === 'string' ? params.view : 'today';
+  const moversDays = ciiHistoryDays(params.movers_days, 'movers_days');
+  if (moversDays !== undefined && view !== 'weekly') throw new RpcValidationError('movers_days', [{ field: 'movers_days', description: 'Valid only with view: weekly.' }]);
+  return { view, moversDays };
+}
 
 export const ANALYSIS_TOOLS: ToolDef[] = [
   {
@@ -365,6 +421,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_focal_points',
+    _validateArgs: params => { focalPointCountry(params); },
     title: 'News and map focal points',
     _outputBudgetBytes: 65536,
     description:
@@ -412,22 +469,14 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params) => {
-      const rawCountry = params.country_code;
-      const countryCode = rawCountry == null || (typeof rawCountry === 'string' && !rawCountry.trim())
-        ? '' : requireCountryCode(rawCountry, 'get-focal-points');
+      const countryCode = focalPointCountry(params);
       const index = getSharedEntityIndex();
-      if (countryCode && index.byId.get(countryCode)?.type !== 'country') {
-        throw new RpcValidationError('get-focal-points', [{
-          field: 'country_code',
-          description: `No focal-point coverage for ${countryCode}: that country is absent from the entity registry.`,
-        }]);
-      }
       const limit = resolveLimit(params.limit, 10);
       const keys = ['news:insights:v1', 'intelligence:cross-source-signals:v1', CII_RISK_SCORE_CACHE_KEYS.live];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:news:insights', maxStaleMin: 30 },
         { key: 'seed-meta:intelligence:cross-source-signals', maxStaleMin: 30 },
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
       ];
       const { payloads: [insights, crossSource, riskScores], freshness } = await readCachesWithFreshness(keys, checks);
       requireAnyInput(
@@ -469,18 +518,37 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     title: 'Simulate an infrastructure cascade',
     _outputBudgetBytes: 131072,
     description:
-      'Infrastructure cascade simulation: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. ' +
-      'Builds the dashboard dependency graph server-side from the seeded TeleGeography submarine-cable table plus the curated ' +
-      'pipeline, port, and maritime-chokepoint registries, then runs breadth-first failure propagation from the chosen source ' +
-      'node. Results include every affected node with its degraded capacity share, per-country impact categories, redundancy ' +
-      'candidates, and graph statistics. Call with no source_id to receive the catalog of simulatable node ids grouped by ' +
-      'type; disruption_level scales the initial failure from partial (0.1) to total (1, the default). Chained capacity math ' +
-      'multiplies along paths, so distant impacts shrink realistically instead of cascading at full strength.',
+      'Infrastructure cascade simulation and subsea cable exposure: what fails downstream when a cable, chokepoint, ' +
+      'pipeline, or port is disrupted. Builds the dependency graph from the seeded TeleGeography submarine-cable table ' +
+      'plus curated pipeline, port, and chokepoint registries, then propagates the failure breadth-first. Results list ' +
+      'affected nodes, per-country impact levels, alternative cables (ranked by whether they avoid the chokepoints the ' +
+      'cut cables cross), and graph stats. Call with no arguments for the catalog of node ids. source_ids or ' +
+      'cut_cables_through (a chokepoint id) model a simultaneous multi-cable cut, e.g. every cable through Hormuz. ' +
+      'countries (up to 10) compares per-country cable exposure: cable count, landing stations, chokepoints crossed, ' +
+      'and cables the cable-health monitor flags as faulted. disruption_level ranges 0.1 to 1 (default 1). Cable ' +
+      'results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.',
     inputSchema: {
       type: 'object',
       properties: {
         source_id: { type: 'string', description: 'Node id to disrupt (see the no-argument catalog for valid ids).' },
+        source_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: 50,
+          description: 'Cut several nodes at once (e.g. a list of cable ids); all ids must be known and per-country impacts add up across the cut. Ignored when source_id is given.',
+        },
+        cut_cables_through: {
+          type: 'string',
+          description: 'Chokepoint id (e.g. "chokepoint:hormuz_strait"): cut every cable whose route crosses it. Ignored when source_id or source_ids is given.',
+        },
         disruption_level: { type: 'number', description: 'Initial failure severity between 0.1 and 1 (default 1).' },
+        countries: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 1,
+          maxItems: MAX_EXPOSURE_COUNTRIES,
+          description: 'Compare subsea cable exposure for these countries (ISO alpha-2, alpha-3 or English name): cables landing there, distinct landing stations, chokepoints those cables cross and their share, and active FAULT or DEGRADED cable incidents. Returned in data.exposure; combines with the cut arguments.',
+        },
       },
       required: [],
     },
@@ -496,6 +564,43 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             catalog: { type: ['object', 'null'], description: 'Node ids by type; present only when source_id is omitted.' },
             cascade: { type: ['object', 'null'], description: 'Cascade result; present only when source_id is given.' },
             stats: { type: 'object' },
+            exposure: {
+              type: 'array',
+              description: 'Per-country subsea cable exposure, in request order; present only when countries is given.',
+              items: {
+                type: 'object',
+                properties: {
+                  country: { type: 'string' },
+                  countryName: { type: 'string' },
+                  cableCount: { type: 'integer' },
+                  landingStationCount: { type: 'integer' },
+                  landingStations: { type: 'array', items: { type: 'object', properties: { city: { type: 'string' }, cables: { type: 'integer' } } } },
+                  cables: { type: 'array', items: { type: 'object', properties: {
+                    id: { type: 'string' }, name: { type: 'string' }, rfsYear: { type: ['integer', 'null'] },
+                    landingCities: { type: 'array', items: { type: 'string' } },
+                    chokepoints: { type: 'array', items: { type: 'string' } },
+                    health: { type: ['object', 'null'], description: 'Set only when the cable is flagged FAULT or DEGRADED.' },
+                  } } },
+                  chokepointExposure: { type: 'array', items: { type: 'object', properties: {
+                    chokepoint: { type: 'string' }, name: { type: 'string' }, cables: { type: 'integer' },
+                    share: { type: 'number', description: 'Share of the country cables that cross this chokepoint.' },
+                  } } },
+                  cablesAvoidingChokepoints: { type: 'integer' },
+                  largestSingleChokepointShare: { type: 'number' },
+                  activeIncidents: { type: 'array', items: { type: 'object', properties: {
+                    cableId: { type: 'string' }, name: { type: 'string' },
+                    status: { type: 'string', enum: ['FAULT', 'DEGRADED'] },
+                    score: { type: ['number', 'null'] }, confidence: { type: ['number', 'null'] },
+                    lastUpdated: { type: ['number', 'null'], description: 'Epoch ms of the newest notice.' },
+                    evidence: { type: 'array', items: { type: 'object', properties: {
+                      source: { type: 'string' }, summary: { type: 'string' }, ts: { type: ['number', 'null'] },
+                    } } },
+                  } } },
+                },
+              },
+            },
+            health_available: { type: 'boolean', description: 'False when the cable-health snapshot was unreadable; incidents are then unknown, not absent. Present only with countries.' },
+            exposure_note: { type: 'string', description: 'How exposure is derived and its limits. Present only with countries.' },
           },
           required: [],
         },
@@ -505,19 +610,76 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       required: ['cached_at', 'stale', 'data'],
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // Dispatch runs this before reserving quota, so a bad country costs nothing.
+    _validateArgs: (params) => { resolveExposureCountries(params.countries); },
     _execute: async (params) => {
+      const exposureCountries = resolveExposureCountries(params.countries);
+      const wantsExposure = exposureCountries.length > 0;
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:infrastructure:submarine-cables', maxStaleMin: 25200 },
+        ...(wantsExposure ? [{ key: 'seed-meta:cable-health', maxStaleMin: 90 }] : []),
       ];
-      const { payloads: [cablesPayload], freshness } = await readCachesWithFreshness(
-        ['infrastructure:submarine-cables:v1'],
+      const { payloads: [cablesPayload, healthPayload], freshness } = await readCachesWithFreshness(
+        wantsExposure ? ['infrastructure:submarine-cables:v1', 'cable-health-v1'] : ['infrastructure:submarine-cables:v1'],
         checks,
       );
       const cables = submarineCablesToCableInputs(cablesPayload);
       const graph = buildDependencyGraph({ cables, waterways: MCP_CASCADE_WATERWAYS });
       const stats = getGraphStats(graph);
+      let exposureData: Record<string, unknown> = {};
+      if (wantsExposure) {
+        if (cablesPayload === null) {
+          throw new McpSourceUnavailableError(
+            'The submarine-cable catalog is unavailable',
+            freshness.unavailable_inputs,
+            freshness.failed_inputs,
+          );
+        }
+        const healthCables = healthPayload && typeof healthPayload === 'object'
+          ? (healthPayload as { cables?: Record<string, CableHealthInput> }).cables ?? null
+          : null;
+        exposureData = {
+          exposure: exposureCountries.map((code) => getCountryCableExposure(graph, code, healthCables)),
+          health_available: healthCables !== null,
+          exposure_note: CABLE_EXPOSURE_NOTE,
+        };
+      }
 
       const sourceId = typeof params.source_id === 'string' ? params.source_id.trim() : '';
+      const sourceIds = Array.isArray(params.source_ids)
+        ? params.source_ids.filter((id): id is string => typeof id === 'string').map((id) => id.trim()).filter(Boolean).slice(0, 50)
+        : [];
+      const cutChokepoint = typeof params.cut_cables_through === 'string' ? params.cut_cables_through.trim() : '';
+      const rawLevel = Number(params.disruption_level ?? 1);
+      const disruptionLevel = Math.min(1, Math.max(0.1, Number.isFinite(rawLevel) ? rawLevel : 1));
+
+      if (!sourceId && (sourceIds.length > 0 || cutChokepoint)) {
+        const cascade = sourceIds.length > 0
+          ? calculateMultiCascade(graph, sourceIds, disruptionLevel)
+          : calculateChokepointCableCut(graph, cutChokepoint, disruptionLevel);
+        if (!cascade) {
+          if (cablesPayload === null) {
+            throw new McpSourceUnavailableError(
+              'The submarine-cable catalog is unavailable',
+              freshness.unavailable_inputs,
+              freshness.failed_inputs,
+            );
+          }
+          return {
+            ...freshness,
+            data: { catalog: null, cascade: null, stats, ...exposureData },
+            error: sourceIds.length > 0
+              ? `unknown source_ids: ${sourceIds.filter(id => !graph.nodes.has(id)).join(', ')} — call without arguments for the full catalog`
+              : `no cable crosses "${cutChokepoint}" or it is not a known chokepoint id`,
+          };
+        }
+        return { ...freshness, data: { catalog: null, cascade, stats, ...exposureData } };
+      }
+
+      if (!sourceId && wantsExposure) {
+        return { ...freshness, data: { catalog: null, cascade: null, stats, ...exposureData } };
+      }
+
       if (!sourceId) {
         const catalog: Record<string, Array<{ id: string; name: string }>> = {};
         for (const node of graph.nodes.values()) {
@@ -538,18 +700,16 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         const sample = [...graph.nodes.keys()].filter((id) => !id.startsWith('country-')).slice(0, 12);
         return {
           ...freshness,
-          data: { catalog: null, cascade: null, stats },
+          data: { catalog: null, cascade: null, stats, ...exposureData },
           error: `unknown source_id "${sourceId}" — call without source_id for the full catalog`,
           known_id_sample: sample,
         };
       }
 
-      const rawLevel = Number(params.disruption_level ?? 1);
-      const disruptionLevel = Math.min(1, Math.max(0.1, Number.isFinite(rawLevel) ? rawLevel : 1));
       const cascade = calculateCascade(graph, sourceId, disruptionLevel);
-      return { ...freshness, data: { catalog: null, cascade, stats } };
+      return { ...freshness, data: { catalog: null, cascade, stats, ...exposureData } };
     },
-    _coverageKeys: ['infrastructure:submarine-cables:v1'],
+    _coverageKeys: ['infrastructure:submarine-cables:v1', 'cable-health-v1'],
     _apiPaths: [],
   },
   {
@@ -600,7 +760,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:military:flights', maxStaleMin: 30 },
         { key: 'seed-meta:theater-posture', maxStaleMin: 60 },
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
       ];
       const {
         payloads: [flightsPayload, posturePayload, surgesPayload, historyPayload, riskScores],
@@ -863,10 +1023,9 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       required: ['cached_at', 'stale', 'data'],
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _validateArgs: alertDigestArguments,
     _execute: async (params) => {
-      const view = typeof params.view === 'string' ? params.view : 'today';
-      const moversDays = ciiHistoryDays(params.movers_days, 'movers_days');
-      if (moversDays !== undefined && view !== 'weekly') throw new RpcValidationError('movers_days', [{ field: 'movers_days', description: 'Valid only with view: weekly.' }]);
+      const { view, moversDays } = alertDigestArguments(params);
       const keys: string[] = [
         CII_RISK_SCORE_CACHE_KEYS.live,
         'military:surges:v1',
@@ -878,7 +1037,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       ];
       if (view === 'weekly') keys.push('military:surges:history:v1');
       const checks: FreshnessCheck[] = [
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
         { key: 'seed-meta:cable-health', maxStaleMin: 90 },
         { key: 'seed-meta:infra:outages', maxStaleMin: 30 },
@@ -1035,7 +1194,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       const keys = ['news:insights:v1', CII_RISK_SCORE_CACHE_KEYS.live, 'military:flights:v1', 'unrest:events:v1', 'seismology:earthquakes:v1'];
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:news:insights', maxStaleMin: 30 },
-        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: 3 },
+        { key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30, minRecordCount: CII_REALTIME_COVERAGE_MIN },
         { key: 'seed-meta:military:flights', maxStaleMin: 30 },
         { key: 'seed-meta:unrest:events', maxStaleMin: 120 },
         { key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30 },

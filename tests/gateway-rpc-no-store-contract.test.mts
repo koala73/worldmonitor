@@ -69,6 +69,27 @@ function assertCacheable(res: Response): void {
 }
 
 describe('gateway RPC no-store contract', () => {
+  it('uses converted POST query fields for projection and cache debug headers', async () => {
+    const path = '/api/scenario/v1/get-scenario-status';
+    const handler = createDomainGateway([
+      jsonRoute(path, { status: 'pending', value: { ok: true } }),
+    ]);
+    const base = request(path);
+    const headers = new Headers(base.headers);
+    const body = JSON.stringify({ _debug: '1', jmespath: 'value' });
+    headers.set('Content-Type', 'application/json');
+    headers.set('Content-Length', String(new TextEncoder().encode(body).length));
+    const res = await handler(new Request('https://worldmonitor.app' + path, {
+      method: 'POST',
+      headers,
+      body,
+    }));
+
+    assert.equal(res.status, 200);
+    assertNoStore(res);
+    assert.deepEqual(await res.json(), { ok: true });
+  });
+
   it('keeps paired physical-premium cohorts out of shared caches', async () => {
     const premiumPath = '/api/market/v1/get-physical-premiums';
     const divergencePath = '/api/market/v1/get-physical-divergence-index';
@@ -131,6 +152,19 @@ describe('gateway RPC no-store contract', () => {
 
     assert.equal(res.status, 200);
     assertCacheable(res);
+  });
+
+  it('keeps degraded movement sources out of the daily CDN cache', async () => {
+    const path = '/api/displacement/v1/get-cross-border-movements';
+    for (const status of ['ok', 'partial', 'stale', 'unavailable']) {
+      const handler = createDomainGateway([jsonRoute(path, {
+        movements: [], dataAvailable: true, sources: [{ id: 'uk', status: 'ok' }, { id: 'odp', status }],
+      })]);
+      const res = await handler(request(path));
+      assert.equal(res.status, 200);
+      if (status === 'ok') assertCacheable(res);
+      else assertNoStore(res);
+    }
   });
 
   it('lets a bare energy seed miss opt into no-store through the handler side channel', async () => {

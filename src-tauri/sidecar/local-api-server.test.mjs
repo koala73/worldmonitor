@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
-import { createHmac } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
+import { setTimeout as sleep } from 'node:timers/promises';
 import net from 'node:net';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
@@ -13,7 +13,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
-import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
+
+delete process.env.WS_RELAY_URL;
+const { createLocalApiServer, __testing__ } = await import('./local-api-server.mjs');
 
 test('bundles the shared LLM health provider registry with the sidecar (#7126)', () => {
   const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
@@ -24,6 +26,39 @@ test('bundles the shared LLM health provider registry with the sidecar (#7126)',
     /COPY --from=builder \/app\/shared\/llm-health-providers\.js \.\/shared\/llm-health-providers\.js/,
   );
   assert.match(dockerfile, /^ENV LOCAL_API_RESOURCE_DIR=\/app$/m);
+});
+
+// api/_user-api-key.js imports ../shared/desktop-key-access.js, so every route
+// that validates a user API key needs it shipped next to api/ (#9906).
+test('ships the shared desktop key access module with the sidecar (#9906)', () => {
+  const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
+  const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+  assert.ok(config.bundle.resources.includes('../shared/desktop-key-access.js'));
+  assert.match(
+    dockerfile,
+    /COPY --from=builder \/app\/shared\/desktop-key-access\.js \.\/shared\/desktop-key-access\.js/,
+  );
+});
+
+// Served locally, these answer 5xx or an empty 200 (notification-suppressions);
+// the cloud holds their state. Before #9906 a failed Upstash import hid that.
+// reverse-geocode answers 503 locally: its Nominatim limiter fails closed
+// without Upstash, and its geocode cache is the cloud's Redis.
+test('prefers the cloud for routes whose state lives only in the cloud (#9906)', () => {
+  for (const pathname of [
+    '/api/analytics-health',
+    '/api/notification-suppressions',
+    '/api/oauth/authorize',
+    '/api/oauth/register',
+    '/api/reverse-geocode',
+    '/api/security/report',
+    '/api/wm-session',
+  ]) {
+    assert.equal(__testing__.isCloudPreferred(pathname), true, pathname);
+  }
+  for (const pathname of ['/api/opensky', '/api/oref-alerts', '/api/polymarket', '/api/telegram-feed', '/api/x-feed']) {
+    assert.equal(__testing__.isCloudPreferred(pathname), false, pathname);
+  }
 });
 
 test('jsonForScript keeps any value inside an inline <script> as data', () => {
@@ -106,11 +141,197 @@ test('keeps seed-owned commodity vulnerability snapshots cloud-preferred', async
   }
 });
 
+// The cloud edge 403s short or library user agents, and the gateway accepts a
+// Pro desktop only with the same pair a Pro browser sends: an anonymous wms_
+// session plus the user's Clerk bearer (#9396).
+async function setupCloudAuthRemote() {
+  const mints = [];
+  const calls = [];
+  // Tests override these to simulate short-lived sessions, failed mints and a slow edge.
+  const behavior = { mint: () => ({ lifetimeMs: 12 * 60 * 60 * 1000 }), callDelayMs: 0 };
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1');
+    if (url.pathname === '/api/wm-session') {
+      mints.push({ method: req.method, origin: req.headers.origin, userAgent: req.headers['user-agent'] });
+      const { lifetimeMs, fail, delayMs = 0 } = behavior.mint(mints.length);
+      await sleep(delayMs);
+      if (fail) {
+        res.writeHead(503).end();
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, exp: Date.now() + lifetimeMs, token: `wms_minted_${mints.length}` }));
+      return;
+    }
+    calls.push({ path: url.pathname, headers: req.headers });
+    await sleep(behavior.callDelayMs);
+    if (res.destroyed) return;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ source: 'remote' }));
+  });
+  const port = await listen(server);
+  return {
+    mints,
+    calls,
+    behavior,
+    remoteBase: `http://127.0.0.1:${port}`,
+    close: () => new Promise(resolve => server.close(resolve)),
+  };
+}
+
+async function withCloudAuthSidecar(run) {
+  const endpoint = '/api/displacement/v1/get-displacement-summary';
+  const remote = await setupCloudAuthRemote();
+  const localApi = await setupApiDir({
+    'displacement/v1/get-displacement-summary.js': 'export default () => Response.json({ source: "local-empty" });',
+  });
+  const originalProductKey = process.env.WORLDMONITOR_API_KEY;
+  const originalVersion = process.env.LOCAL_API_APP_VERSION;
+  delete process.env.WORLDMONITOR_API_KEY;
+  process.env.LOCAL_API_APP_VERSION = '9.8.7';
+  const app = await createLocalApiServer({
+    port: 0, apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase, cloudFallback: 'true', allowPrivateRemoteBase: true,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  try {
+    await run({ remote, url: `http://127.0.0.1:${port}${endpoint}` });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalProductKey === undefined) delete process.env.WORLDMONITOR_API_KEY;
+    else process.env.WORLDMONITOR_API_KEY = originalProductKey;
+    if (originalVersion === undefined) delete process.env.LOCAL_API_APP_VERSION;
+    else process.env.LOCAL_API_APP_VERSION = originalVersion;
+  }
+}
+
+for (const rendererUserAgent of [undefined, 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15']) {
+  test(`cloud requests carry the sidecar user agent when the renderer sent ${rendererUserAgent ? 'a WebView UA' : 'none'}`, async () => {
+    await withCloudAuthSidecar(async ({ remote, url }) => {
+      const response = await authFetch(url, rendererUserAgent ? { headers: { 'User-Agent': rendererUserAgent } } : {});
+      assert.equal(response.status, 200);
+      assert.equal(remote.calls[0].headers['user-agent'], 'WorldMonitor-Desktop/9.8.7 (sidecar)');
+    });
+  });
+}
+
+// A keyless cloud call is a 401 since #3541, which left signed-out desktops
+// with empty panels (#7548). They authenticate like an anonymous browser.
+test('a signed-out desktop sends one cached anonymous session and no user credential', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    assert.equal((await authFetch(url)).status, 200);
+    assert.equal((await authFetch(url)).status, 200);
+    assert.deepEqual(remote.mints, [{ method: 'POST', origin: 'https://worldmonitor.app', userAgent: 'WorldMonitor-Desktop/9.8.7 (sidecar)' }]);
+    for (const call of remote.calls) {
+      assert.equal(call.headers.authorization, undefined);
+      assert.equal(call.headers['x-worldmonitor-key'], 'wms_minted_1');
+    }
+  });
+});
+
+test('a signed-out desktop still reaches the cloud keyless when minting fails', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    remote.behavior.mint = () => ({ fail: true });
+    assert.equal((await authFetch(url)).status, 200);
+    assert.equal(remote.mints.length, 1);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], undefined);
+  });
+});
+
+test('a forwarded Pro bearer reaches the cloud with one cached anonymous session', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    const headers = { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' };
+    assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.deepEqual(remote.mints, [{ method: 'POST', origin: 'https://worldmonitor.app', userAgent: 'WorldMonitor-Desktop/9.8.7 (sidecar)' }]);
+    for (const call of remote.calls) {
+      assert.equal(call.headers.authorization, 'Bearer clerk-jwt');
+      assert.equal(call.headers['x-worldmonitor-key'], 'wms_minted_1');
+      assert.equal(call.headers['x-worldmonitor-user-authorization'], undefined);
+    }
+  });
+});
+
+test('a valid session survives a failed refresh until it expires', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    // Two minutes left is inside the refresh margin, so the next request refreshes.
+    remote.behavior.mint = (n) => (n === 1 ? { lifetimeMs: 2 * 60 * 1000 } : { fail: true });
+    const headers = { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' };
+    for (let i = 0; i < 3; i += 1) assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.equal(remote.mints.length, 2, 'one refresh attempt, then the retry pause');
+    for (const call of remote.calls) assert.equal(call.headers['x-worldmonitor-key'], 'wms_minted_1');
+  });
+});
+
+test('session minting and the cloud fetch share one deadline', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    remote.behavior.mint = () => ({ lifetimeMs: 12 * 60 * 60 * 1000, delayMs: 2_500 });
+    remote.behavior.callDelayMs = 2_000;
+    const startedAt = Date.now();
+    await authFetch(url, { headers: { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' } });
+    assert.ok(Date.now() - startedAt < 3_600, `took ${Date.now() - startedAt}ms`);
+  });
+});
+
+test('a renderer-supplied key wins over the minted session on a signed-out desktop', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+    assert.equal((await authFetch(url, { headers: { 'X-WorldMonitor-Key': 'wm_renderer_key' } })).status, 200);
+    assert.equal(remote.mints.length, 0);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], 'wm_renderer_key');
+    assert.equal(remote.calls[0].headers.authorization, undefined);
+  });
+});
+
+test('a configured product key wins over the minted session', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+    const headers = { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' };
+    assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.equal(remote.mints.length, 0);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], 'desktop-product-key');
+    assert.equal(remote.calls[0].headers.authorization, 'Bearer clerk-jwt');
+  });
+});
+
+test('local handlers never see the forwarded user credential', async () => {
+  const localApi = await setupApiDir({
+    'header-check.js': `export default (req) => Response.json({
+      userAuthorization: req.headers.get('x-worldmonitor-user-authorization'),
+    });`,
+  });
+  const app = await createLocalApiServer({ port: 0, apiDir: localApi.apiDir, logger: { log() {}, warn() {}, error() {} } });
+  const { port } = await app.start();
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/header-check`, {
+      headers: { 'X-WorldMonitor-User-Authorization': 'Bearer clerk-jwt' },
+    });
+    assert.deepEqual(await response.json(), { userAuthorization: null });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a forwarded user credential that is not a bearer is dropped', async () => {
+  await withCloudAuthSidecar(async ({ remote, url }) => {
+    const headers = { 'X-WorldMonitor-User-Authorization': 'Basic Zm9vOmJhcg==' };
+    assert.equal((await authFetch(url, { headers })).status, 200);
+    assert.equal(remote.calls[0].headers.authorization, undefined);
+    assert.equal(remote.calls[0].headers['x-worldmonitor-key'], 'wms_minted_1');
+    assert.equal(remote.calls[0].headers['x-worldmonitor-user-authorization'], undefined);
+  });
+});
+
 test('routes seed-only displacement requests to cloud before a local empty 200', async () => {
   const endpoint = '/api/displacement/v1/get-displacement-summary';
   const seeded = { summary: { year: 2025, countries: [{ code: 'SYR' }], topFlows: [] }, fetchedAt: 123456, dataAvailable: true };
   const hits = [];
   const remote = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
     hits.push(req.url);
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify(seeded));
@@ -141,12 +362,166 @@ test('routes seed-only displacement requests to cloud before a local empty 200',
   }
 });
 
+test('keeps desktop Ollama headline translation on the local handler (#9476)', async () => {
+  assert.equal(__testing__.isCloudPreferred('/api/news/v1/summarize-article'), true);
+  const savedEnv = {
+    WS_RELAY_URL: process.env.WS_RELAY_URL,
+    LOCAL_API_MODE: process.env.LOCAL_API_MODE,
+    LOCAL_API_CLOUD_FALLBACK: process.env.LOCAL_API_CLOUD_FALLBACK,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    OLLAMA_MODEL: process.env.OLLAMA_MODEL,
+  };
+  delete process.env.WS_RELAY_URL;
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  process.env.LOCAL_API_CLOUD_FALLBACK = 'true';
+  process.env.OLLAMA_MODEL = 'qwen3:8b';
+
+  const ollamaHits = [];
+  const ollama = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      ollamaHits.push(req.url);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ summary: 'Traduction locale' }));
+    });
+  });
+  const ollamaPort = await listen(ollama);
+  process.env.OLLAMA_API_URL = `http://127.0.0.1:${ollamaPort}`;
+
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'news/v1/summarize-article.js': `
+      export default async function handler(request) {
+        const body = await request.json();
+        if (body.provider === 'ollama' && body.mode === 'translate') {
+          if (body.fail === 'status') {
+            return Response.json({ error: 'Ollama translation failed', provider: 'ollama' }, { status: 502 });
+          }
+          if (body.fail === 'throw') throw new Error('ollama down');
+          const endpoint = new URL('/v1/chat/completions', process.env.OLLAMA_API_URL);
+          const upstream = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ model: process.env.OLLAMA_MODEL }),
+          });
+          const data = await upstream.json();
+          return Response.json({ source: 'local-ollama', provider: 'ollama', summary: data.summary });
+        }
+        return Response.json({ source: 'local-summarize', provider: body.provider, mode: body.mode });
+      }
+    `,
+    'news/v1/list-feed-digest.js': `
+      export default function handler() {
+        return Response.json({ source: 'local-news' });
+      }
+    `,
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    allowPrivateRemoteBase: true,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+  const base = `http://127.0.0.1:${port}`;
+  const postSummarize = (payload, headers) => authFetch(`${base}/api/news/v1/summarize-article`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify(payload),
+  });
+  const summarizeHits = () => remote.hits.filter((hit) => hit === '/api/news/v1/summarize-article');
+
+  try {
+    const translated = await postSummarize({
+      provider: 'ollama',
+      mode: 'translate',
+      headlines: ['Hello world'],
+      variant: 'fr',
+    });
+    assert.equal(translated.status, 200);
+    assert.deepEqual(await translated.json(), {
+      source: 'local-ollama',
+      provider: 'ollama',
+      summary: 'Traduction locale',
+    });
+    assert.deepEqual(ollamaHits, ['/v1/chat/completions']);
+    assert.deepEqual(summarizeHits(), []);
+
+    const paid = await postSummarize({ provider: 'groq', mode: 'brief', headlines: ['Markets'] });
+    assert.equal(paid.status, 200);
+    assert.equal((await paid.json()).source, 'remote');
+    assert.deepEqual(ollamaHits, ['/v1/chat/completions']);
+    assert.deepEqual(summarizeHits(), ['/api/news/v1/summarize-article']);
+
+    const otherTranslate = await postSummarize({ provider: 'groq', mode: 'translate', headlines: ['Hello'] });
+    assert.equal((await otherTranslate.json()).source, 'remote');
+    assert.deepEqual(ollamaHits, ['/v1/chat/completions']);
+
+    const ollamaBrief = await postSummarize({ provider: 'ollama', mode: 'brief', headlines: ['Local summary'] });
+    assert.equal((await ollamaBrief.json()).source, 'remote');
+    assert.deepEqual(ollamaHits, ['/v1/chat/completions']);
+
+    const digest = await authFetch(`${base}/api/news/v1/list-feed-digest`);
+    assert.equal(digest.status, 200);
+    assert.equal((await digest.json()).source, 'remote');
+
+    const malformed = await authFetch(`${base}/api/news/v1/summarize-article`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{',
+    });
+    assert.equal((await malformed.json()).source, 'remote');
+
+    const failed = await postSummarize({
+      provider: 'ollama',
+      mode: 'translate',
+      headlines: ['Hello'],
+      fail: 'status',
+    });
+    assert.equal(failed.status, 502);
+    assert.deepEqual(await failed.json(), { error: 'Ollama translation failed', provider: 'ollama' });
+
+    const thrown = await postSummarize({
+      provider: 'ollama',
+      mode: 'translate',
+      headlines: ['Hello'],
+      fail: 'throw',
+    });
+    assert.equal(thrown.status, 502);
+    const thrownBody = await thrown.json();
+    assert.equal(thrownBody.error, 'Local handler error');
+    assert.equal(thrownBody.endpoint, '/api/news/v1/summarize-article');
+    assert.equal(ollamaHits.length, 1);
+
+    const anonymous = await fetch(`${base}/api/news/v1/summarize-article`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ provider: 'ollama', mode: 'translate', headlines: ['Hello'] }),
+    });
+    assert.equal(anonymous.status, 401);
+    assert.equal(ollamaHits.length, 1);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    ollama.closeAllConnections();
+    await new Promise((resolve) => ollama.close(resolve));
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 for (const failure of ['silent', 'trickle', 'refused']) {
   test(`cloud-preferred requests use local fallback when cloud is ${failure}`, async () => {
     const endpoint = '/api/displacement/v1/get-displacement-summary';
     const hits = [];
     const timers = new Set();
     const remote = createServer((req, res) => {
+      if (answerSessionMint(req, res)) return;
       hits.push(req.url);
       if (failure === 'trickle') {
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -224,7 +599,9 @@ for (const localFailure of ['missing', 'error-response', 'throw']) {
   test(`does not retry a timed-out cloud-preferred POST when the local handler is ${localFailure}`, async () => {
     const endpoint = '/api/v2/shipping/webhooks';
     let cloudCalls = 0;
-    const remote = createServer(() => { cloudCalls++; });
+    const remote = createServer((req, res) => {
+      if (!answerSessionMint(req, res)) cloudCalls++;
+    });
     const remotePort = await listen(remote);
     const handlers = {
       'error-response': 'export default () => Response.json({ error: "unavailable" }, { status: 503 });',
@@ -267,6 +644,7 @@ test('cloud proxy cancels its upstream request when the desktop client disconnec
   const received = new Promise(resolve => { cloudRequest = resolve; });
   const closed = new Promise(resolve => { cloudClosed = resolve; });
   const remote = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
     res.once('close', cloudClosed);
     cloudRequest();
   });
@@ -617,11 +995,21 @@ function mockHttpsRequestOnce({ statusCode, headers, body }) {
   };
 }
 
+// Every keyless cloud call mints an anonymous session first (#7548). Fake
+// clouds answer it at once so their assertions still see the proxied request.
+function answerSessionMint(req, res) {
+  if (!new URL(req.url || '/', 'http://127.0.0.1').pathname.endsWith('/api/wm-session')) return false;
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ ok: true, exp: Date.now() + 60 * 60 * 1000, token: 'wms_test' }));
+  return true;
+}
+
 async function setupRemoteServer() {
   const hits = [];
   const origins = [];
   const headers = [];
   const server = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
     const url = new URL(req.url || '/', 'http://127.0.0.1');
     hits.push(url.pathname);
     origins.push(req.headers.origin || null);
@@ -794,6 +1182,7 @@ test('falls back to cloud when cloudFallback is enabled and local handler return
 test('preserves POST body when cloud fallback is triggered after local non-OK response', async () => {
   const remoteBodies = [];
   const remote = createServer((req, res) => {
+    if (answerSessionMint(req, res)) return;
     const chunks = [];
     req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => {
@@ -849,10 +1238,8 @@ test('preserves POST body when cloud fallback is triggered after local non-OK re
   }
 });
 
-test('signs desktop register-interest cloud fallback when shared secret is configured', async () => {
-  const originalSecret = process.env.WM_DESKTOP_SHARED_SECRET;
+test('forwards desktop register-interest to the cloud RPC without legacy signature headers', async () => {
   const originalConvex = process.env.CONVEX_URL;
-  process.env.WM_DESKTOP_SHARED_SECRET = 'desktop-test-secret';
   delete process.env.CONVEX_URL;
 
   const remote = await setupRegisterInterestRemote();
@@ -871,10 +1258,9 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
       email: 'desktop@example.com',
       source: 'web-form',
       appVersion: '2.8.0',
+      turnstileToken: 'desktop-turnstile-token',
     }, {
       'Content-Encoding': 'gzip',
-      'X-WorldMonitor-Desktop-Timestamp': '1',
-      'X-WorldMonitor-Desktop-Signature': 'sha256=bad',
     });
     assert.equal(response.status, 200);
     assert.equal(remote.requests.length, 1);
@@ -882,33 +1268,15 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
     const request = remote.requests[0];
     assert.equal(request.path, '/api/leads/v1/register-interest');
     assert.equal(request.json.source, 'desktop-settings');
-    const timestamp = request.headers['x-worldmonitor-desktop-timestamp'];
-    const signature = request.headers['x-worldmonitor-desktop-signature'];
+    assert.equal(request.json.turnstileToken, 'desktop-turnstile-token');
     assert.equal(request.headers['content-encoding'], undefined);
     assert.match(request.headers['user-agent'], /Chrome\/131\.0\.0\.0/);
-    assert.match(timestamp, /^\d+$/);
-    assert.match(signature, /^sha256=[a-f0-9]{64}$/);
-    assert.notEqual(timestamp, '1');
-    assert.notEqual(signature, 'sha256=bad');
-
-    const canonical = JSON.stringify({
-      email: 'desktop@example.com',
-      source: 'desktop-settings',
-      appVersion: '2.8.0',
-      referredBy: '',
-      website: '',
-      turnstileToken: '',
-    });
-    const expected = `sha256=${createHmac('sha256', process.env.WM_DESKTOP_SHARED_SECRET)
-      .update(`${timestamp}\n${canonical}`)
-      .digest('hex')}`;
-    assert.equal(signature, expected);
+    const legacyHeaders = Object.keys(request.headers).filter((name) => name.startsWith('x-worldmonitor-desktop-'));
+    assert.deepEqual(legacyHeaders, []);
   } finally {
     await app.close();
     await localApi.cleanup();
     await remote.close();
-    if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
-    else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
     if (originalConvex === undefined) delete process.env.CONVEX_URL;
     else process.env.CONVEX_URL = originalConvex;
   }
@@ -1573,8 +1941,9 @@ test('allows only Docker mode to fetch configured private Redis REST origin', as
   }
 });
 
-test('allows only Docker mode to fetch configured private LLM origins', async () => {
+test('allows Docker LLM origins and only the configured Ollama origin on desktop', async () => {
   const envSnapshot = {
+    LOCAL_API_MODE: process.env.LOCAL_API_MODE,
     LLM_API_URL: process.env.LLM_API_URL,
     OLLAMA_API_URL: process.env.OLLAMA_API_URL,
     UNCONFIGURED_PRIVATE_URL: process.env.UNCONFIGURED_PRIVATE_URL,
@@ -1617,6 +1986,7 @@ test('allows only Docker mode to fetch configured private LLM origins', async ()
   });
 
   async function runProbes(mode, envKeys) {
+    process.env.LOCAL_API_MODE = mode;
     const app = await createLocalApiServer({
       port: 0,
       apiDir: localApi.apiDir,
@@ -1654,15 +2024,20 @@ test('allows only Docker mode to fetch configured private LLM origins', async ()
       }
     }
 
-    const desktopResponses = await runProbes('desktop-sidecar', envKeys);
+    const desktopResponses = await runProbes('tauri-sidecar', envKeys);
     for (const [index, envKey] of envKeys.entries()) {
       const desktopResponse = desktopResponses[index];
+      if (envKey === 'OLLAMA_API_URL') {
+        assert.equal(desktopResponse.status, 200, envKey);
+        assert.deepEqual(await desktopResponse.json(), { ok: true });
+        continue;
+      }
       assert.equal(desktopResponse.status, 502, envKey);
       const desktopBody = await desktopResponse.json();
       assert.equal(desktopBody.error, 'Local handler error');
       assert.match(desktopBody.reason, /SSRF blocked/);
     }
-    assert.equal(handlerHits, 2, 'only Docker handler probes should reach the upstream');
+    assert.equal(handlerHits, 3, 'Docker providers and desktop Ollama should reach the upstream');
 
     process.env.LLM_API_URL = 'not-a-url';
     process.env.OLLAMA_API_URL = '://also-not-a-url';
@@ -1684,6 +2059,72 @@ test('allows only Docker mode to fetch configured private LLM origins', async ()
     await Promise.all(upstreams.map((upstream) => new Promise((resolve, reject) => {
       upstream.close((error) => (error ? reject(error) : resolve()));
     })));
+  }
+});
+
+test('a silent Ollama completion outlasts the upstream idle timeout but not the Ollama one', async () => {
+  const envSnapshot = {
+    LOCAL_API_MODE: process.env.LOCAL_API_MODE,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+  };
+  const ollama = createServer(async (_req, res) => {
+    await sleep(300);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const ollamaPort = await listen(ollama);
+  const localApi = await setupApiDir({
+    'ollama-probe.js': `
+      export default async function handler() {
+        const upstream = await fetch(new URL('/v1/chat/completions', process.env.OLLAMA_API_URL), {
+          method: 'POST',
+          body: '{}',
+        });
+        return new Response(await upstream.text(), { status: upstream.status });
+      }
+    `,
+  });
+  process.env.LOCAL_API_MODE = 'tauri-sidecar';
+  process.env.OLLAMA_API_URL = `http://127.0.0.1:${ollamaPort}`;
+  __testing__.setUpstreamIdleTimeoutMs(50);
+  __testing__.setOllamaIdleTimeoutMs(2000);
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    mode: 'tauri-sidecar',
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+  // The test's own fetch runs through the patched one, so it would idle out
+  // waiting on the sidecar.
+  const probe = () => new Promise((resolve, reject) => {
+    httpRequest(`http://127.0.0.1:${port}/api/ollama-probe`, {
+      headers: { Authorization: `Bearer ${TEST_LOCAL_API_TOKEN}` },
+    }, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(body) }));
+    }).on('error', reject).end();
+  });
+  try {
+    const completed = await probe();
+    assert.equal(completed.status, 200);
+    assert.deepEqual(completed.body, { ok: true });
+
+    __testing__.setOllamaIdleTimeoutMs(100);
+    const hung = await probe();
+    assert.equal(hung.status, 502);
+    assert.match(hung.body.reason, /idle-timed out/);
+  } finally {
+    __testing__.setUpstreamIdleTimeoutMs(12000);
+    __testing__.setOllamaIdleTimeoutMs(90000);
+    await app.close();
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => ollama.close((error) => (error ? reject(error) : resolve())));
   }
 });
 
@@ -2304,36 +2745,6 @@ test('accepts OLLAMA_MODEL via /api/local-env-update', async () => {
   }
 });
 
-test('accepts WM_DESKTOP_SHARED_SECRET via /api/local-env-update', async () => {
-  const originalSecret = process.env.WM_DESKTOP_SHARED_SECRET;
-  const localApi = await setupApiDir({});
-
-  const app = await createLocalApiServer({
-    port: 0,
-    apiDir: localApi.apiDir,
-    logger: { log() { }, warn() { }, error() { } },
-  });
-  const { port } = await app.start();
-
-  try {
-    const response = await authFetch(`http://127.0.0.1:${port}/api/local-env-update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
-    });
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.ok, true);
-    assert.equal(body.key, 'WM_DESKTOP_SHARED_SECRET');
-    assert.equal(process.env.WM_DESKTOP_SHARED_SECRET, 'desktop-secret-from-runtime');
-  } finally {
-    if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
-    else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
-    await app.close();
-    await localApi.cleanup();
-  }
-});
-
 test('accepts ALPHA_VANTAGE_API_KEY via /api/local-env-update', async () => {
   const originalKey = process.env.ALPHA_VANTAGE_API_KEY;
   const localApi = await setupApiDir({});
@@ -2377,32 +2788,6 @@ test('stores ALPHA_VANTAGE_API_KEY without claiming the provider demo response v
     assert.equal(response.status, 200);
     assert.equal(response.json?.valid, true);
     assert.equal(response.json?.message, 'Key stored');
-  } finally {
-    await app.close();
-    await localApi.cleanup();
-  }
-});
-
-test('validates WM_DESKTOP_SHARED_SECRET without provider probe', async () => {
-  const localApi = await setupApiDir({});
-
-  const app = await createLocalApiServer({
-    port: 0,
-    apiDir: localApi.apiDir,
-    logger: { log() { }, warn() { }, error() { } },
-  });
-  const { port } = await app.start();
-
-  try {
-    const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
-    });
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.valid, true);
-    assert.equal(body.message, 'Desktop shared secret stored');
   } finally {
     await app.close();
     await localApi.cleanup();
@@ -3252,6 +3637,123 @@ test('rss-proxy blocks IPv4-mapped IPv6 literals and DNS answers before transpor
     dns.resolve4 = originalResolve4;
     dns.resolve6 = originalResolve6;
     https.request = originalHttpsRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy escapes control characters from the blocked url before logging it', async () => {
+  const localApi = await setupApiDir({});
+  const warnings = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn(...args) { warnings.push(args.join(' ')); }, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const feedUrl = 'http://127.0.0.1/\n[local-api] forged\r\u001b[2J';
+    const response = await authFetch(
+      `http://127.0.0.1:${port}/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`,
+    );
+    assert.equal(response.status, 403);
+    const blocked = warnings.filter((line) => line.includes('rss-proxy SSRF blocked'));
+    assert.equal(blocked.length, 1, JSON.stringify(warnings));
+    for (const line of warnings) {
+      assert.doesNotMatch(line, /[\r\n\u001b]/, JSON.stringify(line));
+    }
+    assert.ok(blocked[0].includes(JSON.stringify(feedUrl)), blocked[0]);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a malformed request-target gets a 400 and the sidecar keeps serving', async () => {
+  const localApi = await setupApiDir({
+    'ping.js': `
+      export default async function handler() {
+        return new Response('pong', { status: 200 });
+      }
+    `,
+  });
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  const rawRequest = (target) => new Promise((resolve, reject) => {
+    const socket = net.connect(port, '127.0.0.1', () => {
+      socket.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
+    });
+    let data = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk) => { data += chunk; });
+    socket.on('end', () => resolve(data));
+    socket.on('error', reject);
+    socket.setTimeout(5000, () => { socket.destroy(); reject(new Error(`no response for ${target}`)); });
+  });
+
+  try {
+    const raw = await rawRequest('//');
+    assert.match(raw.split('\r\n')[0], /^HTTP\/1\.1 400 /);
+
+    const response = await authFetch(`http://127.0.0.1:${port}/api/ping`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pong');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('a throw that escapes the request handler gets a 500 and the sidecar keeps serving', async () => {
+  const localApi = await setupApiDir({
+    'boom.js': `
+      export default async function handler() {
+        // dispatch() returns this Response; reading its body then throws
+        // inside the request handler's own try.
+        return new Response(new ReadableStream({
+          start(controller) { controller.error(new Error('body failed')); },
+        }));
+      }
+    `,
+    'ping.js': `
+      export default async function handler() {
+        return new Response('pong', { status: 200 });
+      }
+    `,
+  });
+  const errors = [];
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: {
+      log() {},
+      warn() {},
+      error(message) {
+        errors.push(message);
+        // A failing logger inside the handler's own catch is the throw that
+        // escapes handleRequest.
+        if (message === '[local-api] fatal') throw new Error('logger failed');
+      },
+    },
+  });
+  const { port } = await app.start();
+
+  try {
+    const failed = await authFetch(`http://127.0.0.1:${port}/api/boom`);
+    assert.equal(failed.status, 500);
+    assert.deepEqual(await failed.json(), { error: 'Internal server error' });
+    assert.ok(errors.includes('[local-api] unhandled request error'), JSON.stringify(errors));
+
+    const response = await authFetch(`http://127.0.0.1:${port}/api/ping`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'pong');
+  } finally {
     await app.close();
     await localApi.cleanup();
   }

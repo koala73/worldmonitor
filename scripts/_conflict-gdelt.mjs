@@ -9,12 +9,23 @@
 // country NAME (not FIPS locationcc, which diverges from ISO2 — UA→UP, SD→SU …), and
 // the emitted event `country` is the full name so it matches UCDP country names /
 // the EMA engine's normalizeCountry.
+// This map is the conflict feed's whole country gate: the bulk mapper drops any
+// row located elsewhere, and the seeder's DOC sweep iterates its keys. Its keys
+// are exactly the original 20 priority countries plus every
+// shared/crawlable-crises.json coverage country, nothing hand-picked
+// (pinned by tests/conflict-gdelt-country-coverage.test.mts). It stays a literal
+// rather than a registry read because server/ and the bulk materializer import
+// this module, and the names must match the downstream country resolvers.
 export const GDELT_COUNTRY_NAMES = {
   AF: 'Afghanistan', SY: 'Syria', UA: 'Ukraine', SD: 'Sudan', SS: 'South Sudan',
   SO: 'Somalia', CD: 'Democratic Republic of Congo', MM: 'Myanmar', YE: 'Yemen',
   ET: 'Ethiopia', IQ: 'Iraq', PS: 'Palestinian Territories', LY: 'Libya',
   ML: 'Mali', BF: 'Burkina Faso', NE: 'Niger', NG: 'Nigeria', CM: 'Cameroon',
   MZ: 'Mozambique', HT: 'Haiti',
+  // From shared/crawlable-crises.json coverage.
+  SA: 'Saudi Arabia', IR: 'Iran', IL: 'Israel', LB: 'Lebanon', QA: 'Qatar',
+  AE: 'United Arab Emirates', KW: 'Kuwait', BH: 'Bahrain', OM: 'Oman',
+  RU: 'Russia', DJ: 'Djibouti', ER: 'Eritrea',
 };
 
 export const GDELT_CONFLICT_TERMS = '(clashes OR airstrike OR shelling OR militants OR offensive OR killed)';

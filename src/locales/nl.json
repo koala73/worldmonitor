@@ -9,7 +9,6 @@
     "status": "Systeemstatus",
     "insights": "AI-inzichten",
     "map": "Interactive Map",
-    "techMap": "Mondiale technologie",
     "politics": "Wereldnieuws",
     "us": "Verenigde Staten",
     "europe": "Europa",
@@ -19,8 +18,8 @@
     "intel": "Intel-feed",
     "middleeast": "Midden-Oosten",
     "layoffs": "Ontslagen-tracker",
-    "ai": "AI & machine learning",
-    "startups": "Startups & venture capital",
+    "ai": "AI en machine learning",
+    "startups": "Start-ups & durfkapitaal",
     "vcblogs": "Inzichten en essays over venture capital",
     "regionalStartups": "Wereldwijd startupnieuws",
     "unicorns": "Eenhoorn-tracker",
@@ -66,36 +65,36 @@
     "polymarket": "Voorspellingen",
     "climate": "Klimaatafwijkingen",
     "securityAdvisories": "Veiligheidsadviezen",
-    "orefSirens": "Israel Sirens",
+    "orefSirens": "Sirenes in Israël",
     "telegramIntel": "Telegram Inlichtingen",
-    "xIntel": "X News Accounts",
+    "xIntel": "X-nieuwsaccounts",
     "giving": "Mondiale donaties",
     "supplyChain": "Toeleveringsketen",
     "gulfEconomies": "Golfeconomieën",
     "gulfIndices": "Golfindices",
     "gulfCurrencies": "Golfvaluta",
     "gulfOil": "Golfolie",
-    "bigmac": "Real Big Mac Index",
+    "bigmac": "Echte Big Mac-index",
     "marketImplications": "AI-marktimplicaties",
-    "energyComplex": "Energy Complex",
+    "energyComplex": "Energiecomplex",
     "oilInventories": "Olievoorraden",
-    "energyCrisis": "Energy Crisis Tracker",
-    "goldIntelligence": "Gold Intelligence",
-    "wsbTickerScanner": "WallStreetBets ticker scanner",
+    "energyCrisis": "Energiecrisistracker",
+    "goldIntelligence": "Goudinformatie",
+    "wsbTickerScanner": "WallStreetBets-tickerscanner",
     "internetDisruptions": "Internetverstoringen",
     "internetDisruptionsTabs": {
       "outages": "Uitval",
       "ddos": "DDoS",
       "anomalies": "Anomalieën"
     },
-    "liveWebcams": "Live Webcams",
+    "liveWebcams": "Live webcams",
     "windyWebcams": "Windy Live Webcam",
     "groceryBasket": "Boodschappenmandindex",
     "groceryItem": "Artikel",
     "bigmacDesc": "Big Mac-prijzen in landen in het Midden-Oosten (Big Mac Index)",
-    "bigmacWow": "Week-over-week",
+    "bigmacWow": "Week-op-week",
     "bigmacCountry": "Land",
-    "faoFoodPriceIndex": "FAO Voedselprijs-index",
+    "faoFoodPriceIndex": "Voedselprijzen",
     "fuelPrices": "Brandstofprijzen",
     "fuelPricesDesc": "Retailprijzen voor benzine en diesel in meer dan 30 landen wereldwijd",
     "fuelPricesCountry": "Land",
@@ -103,12 +102,13 @@
     "fuelPricesDiesel": "Diesel",
     "fuelPricesSource": "Bron",
     "groceryBasketDesc": "Boodschappenmand-prijsvergelijking in 24 landen wereldwijd",
-    "airlineIntel": "✈️ Airline Intelligence",
+    "airlineIntel": "✈️ Luchtvaartinformatie",
     "consumerPrices": "Consumentenprijzen",
     "fearGreed": "Angst & Hebzucht",
     "marketBreadth": "Marktbreedte",
     "climateNews": "Klimaatnieuws",
-    "fx": "Wisselkoersen"
+    "fx": "Wisselkoersen",
+    "ukmtoIncidents": "UKMTO-incidenten"
   },
   "commands": {
     "prefixes": {
@@ -189,8 +189,8 @@
         "climate": "Klimaatanomalieën in-/uitschakelen",
         "outages": "Internetstoringen in-/uitschakelen",
         "tradeRoutes": "Handelsroutes in-/uitschakelen",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "Laag met Canadese wegen aan/uit",
+        "canadaAlerts": "Laag met Canadese provinciale noodwaarschuwingen aan/uit"
       },
       "view": {
         "dark": "Naar donkere modus",
@@ -225,7 +225,7 @@
         "hotspot": "Hotspot",
         "market": "Markt",
         "prediction": "Voorspelling",
-        "conflict": "Conflict",
+        "conflict": "Conflicten",
         "base": "Militaire basis",
         "pipeline": "Pijpleiding",
         "cable": "Onderzeese kabel",
@@ -249,12 +249,12 @@
       "seeAllCommands": "Alle opdrachten tonen",
       "hideCommandList": "Terug",
       "flightOnGround": "Op de grond",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} knopen",
       "flightMilitary": "Militair · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militair · {{type}} · op de grond",
       "flightSearchHint": "Druk op Enter of klik om live positie op te zoeken",
       "flightNotFound": "Geen live positie gevonden voor {{callsign}}",
-      "addPanel": "Add"
+      "addPanel": "Toevoegen"
     },
     "signal": {
       "source": "Source",
@@ -314,7 +314,8 @@
       "alertTitle": {
         "configured": "Bureaubladinstellingen geconfigureerd",
         "needsKeys": "Configureer API-sleutels om functies te ontgrendelen",
-        "some": "Voor sommige functies zijn API-sleutels nodig"
+        "some": "Voor sommige functies zijn API-sleutels nodig",
+        "pro": "World Monitor Pro is actief"
       },
       "summary": {
         "desktop": "Desktop-modus",
@@ -341,11 +342,12 @@
         "ABUSEIPDB_API_KEY": "Optionele verrijkingsbron voor reputatie van kwaadaardige IP-adressen.",
         "FINNHUB_API_KEY": "Vertraagde of voorgeladen aandelenkoersen en marktgegevens. Een sleutel is geen live ticker.",
         "NASA_FIRMS_API_KEY": "Brandinformatiesysteem voor Resourcebeheer.",
-        "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
-        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
+        "OLLAMA_API_URL": "bijv. http://127.0.0.1:11434 (Ollama) of http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatibel endpoint.",
+        "OLLAMA_MODEL": "bijv. llama3.1:8b — modeltag voor samenvattingen."
       },
-      "skipSetup": "Sla de configuratie over — een enkele World Monitor-licentie ontgrendelt alles. Meld u aan voor de wachtlijst voor vroege toegang.",
-      "reserveEarlyAccess": "Reserveer Vroege Toegang"
+      "proCloud": "Functies zonder lokale API-sleutel gebruiken World Monitor cloudgegevens.",
+      "skipSetupPro": "Sla de setup over: meld je aan met World Monitor Pro om cloudgegevens te gebruiken in plaats van je eigen API-sleutels.",
+      "getPro": "World Monitor Pro ophalen"
     },
     "countryIntel": {
       "identifying": "Land identificeren...",
@@ -368,7 +370,7 @@
     "countryBrief": {
       "components": {
         "unrest": "Onrust",
-        "conflict": "Conflict",
+        "conflict": "Conflicten",
         "security": "Militaire activiteit",
         "information": "Informatie"
       },
@@ -429,7 +431,7 @@
       "error": "Kan verhaal niet genereren.",
       "saved": "Opgeslagen!",
       "copied": "Gekopieerd!",
-      "opening": "Opening..."
+      "opening": "Openen..."
     },
     "settingsWindow": {
       "invokeFail": "Kan {{command}} niet uitvoeren. Controleer het bureaubladlogboek.",
@@ -454,15 +456,17 @@
       "logCleared": "Logboek gewist.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Licentie- / API-sleutel",
+          "title": "Desktop-sleutel",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Abonnees van API Starter en API Business maken deze sleutel in het webdashboard via Settings → API Keys. Als u de volledige sleutel kwijt bent, trekt u deze in en maakt u een vervangende sleutel."
+          "description": "Voor builds zonder aanmelding. Pro: maak er een aan in Settings → API Keys op het web; API-plansleutels werken ook. Voor eigen gebruik; gedeelde of openbare implementaties hebben een API-plan nodig. Help: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OF",
         "register": {
-          "title": "Een API-sleutel nodig?",
-          "description": "Ga naar worldmonitor.app/docs/api-keys voor stapsgewijze hulp. Handmatige API-sleutels vereisen een API Starter- of API Business-abonnement.",
-          "submitBtn": "API-abonnementen bekijken"
+          "submitBtn": "Abonnementen bekijken"
+        },
+        "signIn": {
+          "title": "Aanmelden met Pro",
+          "description": "Pro werkt hier zodra je je aanmeldt vanuit het hoofdvenster. Geen sleutel nodig."
         }
       },
       "shellTitle": "World Monitor-instellingen",
@@ -505,10 +509,10 @@
       "toggleMode": "Schakel de afspeelmodus in",
       "historicalPlayback": "Historisch afspelen",
       "close": "Dichtbij",
-      "skipToStart": "Skip to start",
-      "previous": "Previous",
-      "next": "Next",
-      "skipToEnd": "Skip to end"
+      "skipToStart": "Naar het begin",
+      "previous": "Vorige",
+      "next": "Volgende",
+      "skipToEnd": "Naar het einde"
     },
     "deckgl": {
       "views": {
@@ -579,7 +583,7 @@
         "ucdpEvents": "UCDP-evenementen",
         "displacementFlows": "Verplaatsingsstromen",
         "climateAnomalies": "Klimaatafwijkingen",
-        "weatherAlerts": "Waarschuwingen voor zwaar weer (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Weerwaarschuwingen",
         "strategicWaterways": "Strategische waterwegen",
         "economicCenters": "Economische Centra",
         "criticalMinerals": "Kritieke mineralen",
@@ -591,7 +595,7 @@
         "tradeRoutes": "Handelsroutes",
         "gpsJamming": "Navigatieinterferentie",
         "dayNight": "Dag/Nacht",
-        "iranAttacks": "Iraanse aanvallen",
+        "iranAttacks": "Aanvallen in het Midden-Oosten",
         "ciiChoropleth": "Landinestabiliteit",
         "positiveEvents": "Positieve gebeurtenissen",
         "kindness": "Daden van goedheid",
@@ -600,8 +604,10 @@
         "renewableInstallations": "Schone energie",
         "radiationSpike": "Stralingspiek",
         "radiationElevated": "Verhoogde straling",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaRoads": "Canadese wegen",
+        "canadaAlerts": "Canadese waarschuwingen",
+        "notamAirspace": "NOTAM-luchtruimbeperkingen",
+        "no2Activity": "Industriële activiteit"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -640,7 +646,9 @@
         "sourceIomDtm": "Bron: IOM DTM",
         "sinceDate": "sinds {{date}}",
         "lastMonth": "vorige maand",
-        "sourceUnhcrOdp": "Bron: UNHCR Operational Data Portal"
+        "sourceUnhcrOdp": "Bron: UNHCR Operational Data Portal",
+        "displaced": "ontheemd",
+        "sourceIdmc": "Bron: IDMC"
       },
       "layerHelp": {
         "title": "Gids voor kaartlagen",
@@ -720,8 +728,10 @@
           "techFires": "Actieve bosbranden nabij technische infrastructuur",
           "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
           "ciiChoropleth": "Country Instability Index heatmap — landen ingekleurd naar score (groen=stabiel, rood=kritiek)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaRoads": "Officiële verkeersincidenten, waarschuwingen, wegcondities, afsluitingen, werkzaamheden en gevaren in ondersteunde Canadese rechtsgebieden",
+          "canadaAlerts": "Provinciale openbare-veiligheidswaarschuwingen van Alberta Emergency Alert, B.C. Evacuation Orders and Alerts en SaskAlert",
+          "notamAirspace": "Tijdelijke vliegbeperkingen en beperkt, gevaar- en verboden luchtruim van FAA NOTAMs, nu van kracht of binnen 24 uur van start",
+          "no2Activity": "Richting van de NO2-activiteit uit Sentinel-5P voor 167 landen en 32 industriële clusters: het laatste venster van 56 dagen tegenover dezelfde data in voorgaande jaren, na een dode band van 10%. Bevat gewijzigde Copernicus Sentinel-gegevens."
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
@@ -749,11 +759,10 @@
       "relatedAssetsNear": "Gerelateerde activa in de buurt van {{location}}",
       "summaryError": "Samenvatting kon niet worden gemaakt",
       "summaryFailed": "Samenvatting mislukt",
-      "sourceCoverage": "{{covered}}/{{total}} bronnen",
-      "sourceCoverageHint": "Toont {{covered}} van {{total}} ingeschakelde bronnen — dit paneel wisselt bij elke verversing van bron",
       "sortBy": "Sorteren op",
       "sortNewest": "Nieuwste",
-      "sortRelevance": "Relevantie"
+      "sortRelevance": "Relevantie",
+      "translationUnavailable": "Vertaling niet beschikbaar. Controleer de instellingen van je AI-provider en probeer het opnieuw."
     },
     "countryBrief": {
       "shareStory": "Deel verhaal",
@@ -776,7 +785,8 @@
       "info": "INFO"
     },
     "pizzint": {
-      "indexSource": "Index: World Monitor · locatiegegevens:",
+      "indexSource": "Index: World Monitor",
+      "venueSource": "locatiegegevens:",
       "statusNormal": "NORMAAL",
       "statusNoData": "GEEN GEGEVENS",
       "statusNoBaseline": "GEEN REFERENTIE",
@@ -785,6 +795,16 @@
       "tensionsTitle": "Geopolitieke spanningen",
       "tensionsSource": "Spanningen: World Monitor op basis van GDELT-gebeurtenissen",
       "insufficientData": "Onvoldoende gegevens",
+      "evidenceStrikes": "Gemelde aanvallen in 3 dagen ({{countries}}): {{value}}",
+      "evidenceAirports": "Verstoorde luchthavens: {{value}}",
+      "evidenceAirportClosed": "Luchthaven {{name}} gesloten",
+      "evidenceAirportHalted": "{{name}}: meeste vluchten geannuleerd",
+      "evidenceAirportRestricted": "{{name}}: vluchten beperkt",
+      "evidenceMilitaryAircraft": "Militaire vliegtuigen ({{country}}) in de regio: {{value}}",
+      "evidencePlaAircraft": "Chinese militaire vliegtuigen bij Taiwan: {{value}}",
+      "evidencePlaShips": "Chinese marineschepen bij Taiwan: {{value}}",
+      "evidenceSanctions": "Nieuwe Amerikaanse sancties deze week ({{country}}): {{value}}",
+      "evidenceUsual": "(normaal {{value}})",
       "pizzaUnavailable": "Activiteit van pizzeria's niet beschikbaar",
       "source": "Bron:",
       "defcon": "DEFCON {{level}}",
@@ -813,7 +833,7 @@
       "mcap": "Marktk.",
       "vol24h": "24u Vol",
       "chg24h": "24u Wijz",
-      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
+      "infoTooltip": "<strong>Stablecoins</strong> Koppelingsgezondheid, marktkapitalisatie en 24-uursvolume van de belangrijkste aan de USD gekoppelde tokens (USDT, USDC, DAI, BUSD). Een losgeslagen koppeling wijst op systeemrisico."
     },
     "status": {
       "updatedAt": "Bijgewerkt {{time}}"
@@ -863,10 +883,10 @@
       },
       "trendStable": "stabiel",
       "domains": {
-        "air": "AIR",
-        "sea": "SEA"
+        "air": "LUCHT",
+        "sea": "ZEE"
       },
-      "strike": "STRIKE",
+      "strike": "AANVAL",
       "staleWarning": "Gebruik van gecachte gegevens — live feed tijdelijk niet beschikbaar",
       "updated": "Bijgewerkt:",
       "theaters": {
@@ -889,15 +909,15 @@
       "noEvents": "Er zijn geen evenementen om weer te geven",
       "showOnMap": "Toon op kaart",
       "moreInfo": "Meer informatie",
-      "upcoming": "Upcoming",
-      "conferences": "Conferences",
-      "earnings": "Earnings",
-      "all": "All",
-      "conferencesCount": "{{count}} conferences",
-      "onMap": "{{count}} on map",
-      "techmemeEvents": "Techmeme Events ↗",
-      "today": "TODAY",
-      "soon": "SOON",
+      "upcoming": "Aankomend",
+      "conferences": "Conferenties",
+      "earnings": "Kwartaalcijfers",
+      "all": "Alles",
+      "conferencesCount": "{{count}} conferenties",
+      "onMap": "{{count}} op kaart",
+      "techmemeEvents": "Techmeme-evenementen ↗",
+      "today": "VANDAAG",
+      "soon": "BINNENKORT",
       "infoTooltip": "<strong>Tech-evenementen</strong> Aankomende en recente technologie-evenementen: conferenties, productlanceringen, regelgevende hoorzittingen en winstgesprekken. Samengesteld uit officiële evenementenkalenders en industriebronnen."
     },
     "techReadiness": {
@@ -905,14 +925,14 @@
       "mobileSubscriptions": "Mobiele abonnementen",
       "rdSpending": "Onderzoeks- en ontwikkelingsbegroting",
       "infoTooltip": "<strong>Technologische paraatheid</strong> Wereldbankcomposietscore, 0–100. Wegingen zijn onderzoeks- en ontwikkeling 35%, internet 30%, breedband 20% en mobiel 15%. Internetgebruikers zijn een populatiepercentage; mobiele abonnementen per 100 personen; onderzoeksbegroting als aandeel van economische output. Ontbrekende waarden tonen een streepje. Gegevens beslaan 2019–2024.",
-      "fetchingData": "Fetching World Bank Data",
-      "internetUsersIndicator": "Internet Users",
-      "mobileSubscriptionsIndicator": "Mobile Subscriptions",
-      "broadbandAccess": "Broadband Access",
+      "fetchingData": "Wereldbankgegevens ophalen",
+      "internetUsersIndicator": "Internetgebruikers",
+      "mobileSubscriptionsIndicator": "Mobiele abonnementen",
+      "broadbandAccess": "Breedbandtoegang",
       "rdExpenditure": "Onderzoeks- en ontwikkelingsuitgaven",
-      "analyzingCountries": "Analyzing 200+ countries...",
-      "source": "Source: World Bank",
-      "updated": "Updated: {{date}}",
+      "analyzingCountries": "Meer dan 200 landen analyseren...",
+      "source": "Bron: Wereldbank",
+      "updated": "Bijgewerkt: {{date}}",
       "dataPreparing": "Tech-readiness-gegevens verversen — dit verschijnt binnenkort."
     },
     "cascade": {
@@ -940,6 +960,8 @@
       "capacityPercent": "{{percent}}% capaciteit",
       "noCountryImpacts": "Er zijn geen landeneffecten gedetecteerd",
       "alternativeRoutes": "Alternatieve routes",
+      "sharesCutZone": "zelfde zeestraat",
+      "estimateNote": "Schatting: kabelcapaciteit en redundantie zijn benaderd, niet gemeten.",
       "countriesAffected": "Betrokken landen ({{count}})",
       "links": "koppelingen",
       "selectInfrastructureHint": "Selecteer infrastructuur om de cascade-impact te analyseren",
@@ -989,14 +1011,14 @@
       "gov": "Regering",
       "noSpending": "Geen recente overheidsprijzen",
       "awards": "onderscheidingen",
-      "centralBanks": "Central Banks",
+      "centralBanks": "Centrale banken",
       "noBisData": "Gegevens Bank voor Internationale Betalingen tijdelijk onbeschikbaar — wordt opnieuw geprobeerd",
-      "policyRate": "Policy Rate",
+      "policyRate": "Beleidsrente",
       "creditToGdp": "Krediet ten opzichte van economische output",
       "realEer": "Reële effectieve wisselkoers",
-      "cut": "cut",
-      "hike": "hike",
-      "hold": "hold",
+      "cut": "verlaging",
+      "hike": "verhoging",
+      "hold": "ongewijzigd",
       "fredKeyMissing": "API-sleutel Federal Reserve Economic Data vereist. Voeg deze toe in Instellingen om economische indicatoren in te schakelen.",
       "laborMarket": "Arbeidsmarkt",
       "metroUnemployment": "Werkloosheid metropolitan",
@@ -1043,7 +1065,7 @@
       "noRevenueData": "Geen douane-inkomstengegevens beschikbaar",
       "treasuryUnavailable": "Schatkistgegevens tijdelijk niet beschikbaar",
       "fytdLabel": "FY{{year}} jaar tot op heden",
-      "vsPriorFy": "vs FY{{year}}",
+      "vsPriorFy": "vs. FY{{year}}",
       "sourceWto": "Wereldhandelorganisatie",
       "sourceTreasury": "Amerikaans ministerie van Financiën",
       "colDate": "Datum",
@@ -1053,7 +1075,7 @@
       "noComtradeData": "Geen strategische stroomgegevens beschikbaar",
       "comtradeUnavailable": "UN Comtrade-gegevens tijdelijk niet beschikbaar",
       "sourceComtrade": "UN Comtrade",
-      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
+      "comtradeNationalScope": "UN Comtrade-regels zijn officiële nationale statistieken voor het rapporterende land. Het is geen exportregister per stad, corridor, fabriek, haven of zending.",
       "anomalyBadge": "Anomalie",
       "colReporter": "Land",
       "colCommodity": "Grondstof",
@@ -1099,7 +1121,21 @@
       "latestChange": "Laatste verandering",
       "accelerating": "Versnelt",
       "inDays": "in {{days}} dagen",
-      "crossBorderNote": "VN-Vluchtelingenagentschap Operational Data Portal: personen die grenzen overstaken in elke crisis, vanuit de meest recente landverslagen. Situaties overlappen, dus worden niet bij elkaar opgeteld."
+      "crossBorderNote": "VN-Vluchtelingenagentschap Operational Data Portal: personen die grenzen overstaken in elke crisis, vanuit de meest recente landverslagen. Situaties overlappen, dus worden niet bij elkaar opgeteld.",
+      "last7And30": "Laatste 7 / 30 dagen",
+      "staleReport": "Verouderd rapport",
+      "reported": "Aantal",
+      "period": "Periode",
+      "movementNote": "Elke rij behoudt de bron, rapportdatum en meeteenheid. Populaties, aankomsten en grenscontrole-incidenten zijn verschillende metingen. Bronnen kunnen overlappen; tel hun aantallen niet op. WorldMonitor leidt deze weergave af van de gekoppelde bronnen; dit houdt geen goedkeuring door de aanbieders in.",
+      "recent": "Recent",
+      "last30Days": "Laatste 30 dagen",
+      "newThisWeek": "Nieuw deze week",
+      "conflict": "Conflict",
+      "disaster": "Ramp",
+      "surge": "Toename",
+      "recentNote": "IDMC: mensen ontheemd binnen hun eigen land in de laatste 30 dagen. IDMC publiceert een cijfer gemiddeld drie weken na de ontheemding, dus recente weken worden later ingevuld. Nieuw deze week telt cijfers gepubliceerd in de afgelopen 7 dagen. Toename: ten minste 5.000 mensen en drie keer het maandelijkse gemiddelde van de voorgaande vijf maanden.",
+      "recentAsOf": "Gegevens per {{date}}.",
+      "recentMissing": "Geen gegevens dit keer van {{countries}}; hun bestanden konden niet worden geladen, wat niet nul verplaatsing betekent."
     },
     "populationExposure": {
       "totalAffected": "Totaal getroffen",
@@ -1116,8 +1152,8 @@
       "noSignals": "Geen instabiliteitssignalen gedetecteerd",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Inclusief per-land baseline + event multiplier — zie /docs/methodology/cii-risk-scores voor de gepubliceerde tabel",
-      "sectionFollowing": "Following",
-      "sectionAll": "All",
+      "sectionFollowing": "Gevolgd",
+      "sectionAll": "Alles",
       "sourceStates": {
         "degraded": "gedegradeerd",
         "stale": "verouderd"
@@ -1144,7 +1180,7 @@
       "filterAll": "Alles",
       "filterBreaking": "Belangrijk",
       "filterConflict": "Conflicten",
-      "filterOsint": "open-source intelligence",
+      "filterOsint": "open-source-inlichtingen",
       "filterMiddleeast": "Midden-Oosten",
       "live": "LIVE",
       "viewSource": "Bron bekijken",
@@ -1152,54 +1188,54 @@
       "filterCyber": "Cyber"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
+      "infoTooltip": "Geselecteerde berichten van openbare nieuwsaccounts op X. Alleen officiële API.",
+      "loading": "Verbinden met relay voor X-nieuwsaccounts...",
+      "empty": "Geen berichten beschikbaar",
+      "disabled": "Relay voor X-nieuwsaccounts niet actief",
+      "filterAll": "Alles",
+      "filterBreaking": "Laatste nieuws",
       "filterConflict": "Conflict",
-      "filterOsint": "open-source intelligence",
-      "filterMiddleeast": "Middle East",
+      "filterOsint": "open-source-inlichtingen",
+      "filterMiddleeast": "Midden-Oosten",
       "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
+      "viewSource": "Bron bekijken",
+      "filterGeopolitics": "Geopolitiek",
       "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Database van directe buitenlandse investeringen van Saoedi-Arabië en de VAE in mondiale kritieke infrastructuur. Klik op een rij om naar de investering op de kaart te vliegen.",
-      "searchPlaceholder": "Search assets, countries, entities…",
-      "allCountries": "All Countries",
-      "saudiArabia": "Saudi Arabia",
-      "uae": "UAE",
-      "allSectors": "All Sectors",
-      "allEntities": "All Entities",
-      "allStatuses": "All Statuses",
-      "operational": "Operational",
-      "underConstruction": "Under Construction",
-      "announced": "Announced",
-      "rumoured": "Rumoured",
-      "divested": "Divested",
-      "asset": "Asset",
-      "country": "Country",
+      "searchPlaceholder": "Zoek activa, landen, entiteiten…",
+      "allCountries": "Alle landen",
+      "saudiArabia": "Saoedi-Arabië",
+      "uae": "VAE",
+      "allSectors": "Alle sectoren",
+      "allEntities": "Alle entiteiten",
+      "allStatuses": "Alle statussen",
+      "operational": "Operationeel",
+      "underConstruction": "In aanbouw",
+      "announced": "Aangekondigd",
+      "rumoured": "Gerucht",
+      "divested": "Afgestoten",
+      "asset": "Activum",
+      "country": "Land",
       "sector": "Sector",
-      "investment": "Investment",
-      "year": "Year",
-      "noMatch": "No investments match filters",
-      "undisclosed": "Undisclosed",
+      "investment": "Investering",
+      "year": "Jaar",
+      "noMatch": "Geen investeringen die aan de filters voldoen",
+      "undisclosed": "Niet bekendgemaakt",
       "sectors": {
-        "ports": "Ports",
-        "pipelines": "Pipelines",
-        "energy": "Energy",
-        "datacenters": "Data Centers",
-        "airports": "Airports",
-        "railways": "Railways",
-        "telecoms": "Telecoms",
+        "ports": "Havens",
+        "pipelines": "Pijpleidingen",
+        "energy": "Energie",
+        "datacenters": "Datacenters",
+        "airports": "Luchthavens",
+        "railways": "Spoorwegen",
+        "telecoms": "Telecom",
         "water": "Water",
-        "logistics": "Logistics",
-        "mining": "Mining",
-        "realEstate": "Real Estate",
-        "manufacturing": "Manufacturing"
+        "logistics": "Logistiek",
+        "mining": "Mijnbouw",
+        "realEstate": "Vastgoed",
+        "manufacturing": "Industrie"
       }
     },
     "prediction": {
@@ -1231,48 +1267,48 @@
         "deEscalating": "De-escalerend",
         "stable": "Stabiel"
       },
-      "insufficientData": "Insufficient Data",
-      "unableToAssess": "Unable to assess risk level.",
-      "enableDataSources": "Enable data sources to begin monitoring.",
-      "requiredDataSources": "Required Data Sources",
-      "optionalSources": "Optional Sources",
-      "enableCoreFeeds": "Enable Core Feeds",
-      "waitingForData": "Waiting for data...",
-      "refresh": "Refresh",
-      "learningMode": "Learning Mode - {{minutes}}m until reliable",
-      "noData": "no data",
-      "enable": "Enable",
-      "convergenceMetric": "Convergence",
+      "insufficientData": "Onvoldoende gegevens",
+      "unableToAssess": "Kan het risiconiveau niet beoordelen.",
+      "enableDataSources": "Schakel databronnen in om te beginnen met monitoren.",
+      "requiredDataSources": "Vereiste databronnen",
+      "optionalSources": "Optionele bronnen",
+      "enableCoreFeeds": "Kernfeeds inschakelen",
+      "waitingForData": "Wachten op gegevens...",
+      "refresh": "Verversen",
+      "learningMode": "Leermodus - nog {{minutes}} min tot betrouwbaar",
+      "noData": "geen gegevens",
+      "enable": "Inschakelen",
+      "convergenceMetric": "Convergentie",
       "ciiDeviation": "Country Instability Index Afwijking",
-      "infraEvents": "Infra Events",
-      "highAlerts": "High Alerts",
-      "topRisks": "Top Risks",
-      "recentAlerts": "Recent Alerts ({{count}})",
-      "updated": "Updated: {{time}}",
+      "infraEvents": "Infrastructuurgebeurtenissen",
+      "highAlerts": "Hoge waarschuwingen",
+      "topRisks": "Grootste risico's",
+      "recentAlerts": "Recente waarschuwingen ({{count}})",
+      "updated": "Bijgewerkt: {{time}}",
       "time": {
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago"
+        "justNow": "zojuist",
+        "minutesAgo": "{{count}} min geleden",
+        "hoursAgo": "{{count}} u geleden"
       },
-      "cachedCiiStatus": "Cached Country Instability Index {{states}}",
+      "cachedCiiStatus": "Gecachte Landeninstabiliteitsindex {{states}}",
       "sourceStates": {
         "degraded": "gedegradeerd",
         "stale": "verouderd"
       },
-      "dataFreshness": "Data Freshness",
-      "sourcesDetail": "{{active}}/{{total}} sources"
+      "dataFreshness": "Actualiteit van gegevens",
+      "sourcesDetail": "{{active}}/{{total}} bronnen"
     },
     "insights": {
       "infoTooltip": "<strong>AI-aangedreven analyse</strong><br>• <strong>World Brief</strong>: AI-samenvatting (OpenRouter)<br>• <strong>Sentiment</strong>: analyse van nieuwstoon<br>• <strong>Velocity</strong>: snel bewegende verhalen<br>• <strong>Focal Punten</strong>: correleert nieuwsentiteiten met kaartsignalen (militair, protesten, storingen)<br><em>Alleen desktop • Mogelijk gemaakt door Llama 3.3 + Focal Point-detectie</em>",
       "noStories": "Nog geen breaking of multi-source verhalen",
-      "step": "Step {{step}}/{{total}}",
-      "waitingForData": "Waiting for news data...",
-      "rankingStories": "Ranking important stories...",
-      "analyzingSentiment": "Analyzing sentiment...",
-      "generatingBrief": "Generating world brief...",
-      "mapFlashLabel": "Live Event Pulse",
-      "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
+      "step": "Stap {{step}}/{{total}}",
+      "waitingForData": "Wachten op nieuwsgegevens...",
+      "rankingStories": "Belangrijke verhalen rangschikken...",
+      "analyzingSentiment": "Sentiment analyseren...",
+      "generatingBrief": "Wereldbriefing genereren...",
+      "mapFlashLabel": "Live gebeurtenissenpuls",
+      "mapFlashDesc": "Locaties op de kaart laten oplichten bij breaking nieuws",
+      "aiFlowCloudLabel": "Cloud-AI (OpenRouter)",
       "aiFlowCloudDesc": "Koppen naar de cloud sturen voor AI-samenvatting (aanbevolen)",
       "aiFlowBrowserLabel": "Lokaal browsermodel",
       "aiFlowBrowserDesc": "AI lokaal in uw browser uitvoeren",
@@ -1285,7 +1321,7 @@
       "aiFlowStatusBrowserOnly": "Alleen browsermodel",
       "aiFlowStatusDisabled": "Geen AI-aanbieders ingeschakeld",
       "insightsDisabledTitle": "AI-analyse is uitgeschakeld",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "insightsDisabledHint": "Schakel providers in via het instellingenwieltje in de kaartkop",
       "streamQualityDesc": "Kwaliteit instellen voor alle livestreams (lager bespaart bandbreedte)",
       "streamQualityLabel": "Videokwaliteit",
       "badgeAnimLabel": "Badge-animaties",
@@ -1353,20 +1389,20 @@
       "stories": "verhalen"
     },
     "predictions": {
-      "vol": "Vol",
+      "vol": "Vol.",
       "closes": "Sluit",
       "yes": "Ja",
       "no": "Nee",
-      "leanYes": "Lean Yes",
-      "leanNo": "Lean No",
-      "tossUp": "Toss-up"
+      "leanYes": "Neigt naar Ja",
+      "leanNo": "Neigt naar Nee",
+      "tossUp": "Onbeslist"
     },
     "gdelt": {
       "empty": "Geen recente artikelen voor dit onderwerp"
     },
     "regulation": {
       "timeline": "Tijdlijn",
-      "deadlines": "Deadlines",
+      "deadlines": "Termijnen",
       "regulations": "Regelgevingen",
       "countries": "Landen",
       "recentActions": "Recente regelgevende acties (laatste 12 maanden)",
@@ -1379,21 +1415,26 @@
       "active": "Actief",
       "proposed": "Voorgesteld",
       "updated": "Bijgewerkt",
-      "dashboard": "AI Regulation Dashboard",
-      "actionsCount": "{{count}} actions",
+      "dashboard": "Dashboard AI-regelgeving",
+      "actionsCount": "{{count}} maatregelen",
       "deadlinesCount": "{{count}} deadlines",
-      "days": "days",
-      "activeCount": "Active Regulations ({{count}})",
-      "proposedCount": "Proposed Regulations ({{count}})",
-      "moreProvisions": "+{{count}} more...",
-      "source": "Source",
+      "days": "dagen",
+      "activeCount": "Actieve regelgeving ({{count}})",
+      "proposedCount": "Voorgestelde regelgeving ({{count}})",
+      "moreProvisions": "+{{count}} meer...",
+      "source": "Bron",
       "stances": {
-        "strict": "Strict",
-        "moderate": "Moderate",
-        "permissive": "Permissive",
-        "undefined": "Undefined"
+        "strict": "Streng",
+        "moderate": "Gematigd",
+        "permissive": "Toegeeflijk",
+        "undefined": "Ongedefinieerd"
       },
-      "infoTooltip": "<strong>Regelgeving</strong> Regelgevende acties, beleidswijzigingen en handhavingsupdates van mondiale toezichthouders: financiële, technologische, energie- en handelsautoriteiten. Bron: officiële overheids- en regelgevende publicaties."
+      "infoTooltip": "<strong>Regelgeving</strong> Regelgevende acties, beleidswijzigingen en handhavingsupdates van mondiale toezichthouders: financiële, technologische, energie- en handelsautoriteiten. Bron: officiële overheids- en regelgevende publicaties.",
+      "latestActions": "Laatst geregistreerde acties",
+      "otherDeadlines": "Overige nalevingsdeadlines",
+      "daysAgo": "dagen geleden",
+      "revokedCount": "Ingetrokken regelgeving ({{count}})",
+      "lapsedCount": "Vervallen voorstellen ({{count}})"
     },
     "etfFlows": {
       "unavailable": "exchangegenoteerde fondsengegevens tijdelijk niet beschikbaar",
@@ -1417,25 +1458,25 @@
     "macroSignals": {
       "overall": "Totaal",
       "verdict": {
-        "buy": "BUY",
-        "cash": "CASH"
+        "buy": "KOPEN",
+        "cash": "CONTANT"
       },
-      "bullish": "{{count}}/{{total}} bullish",
+      "bullish": "{{count}}/{{total}} positief",
       "signals": {
         "liquidity": "Liquiditeit",
         "flow": "Stroom",
         "regime": "Regime",
-        "btcTrend": "BTC Trend",
-        "hashRate": "Hash Rate",
+        "btcTrend": "BTC-trend",
+        "hashRate": "Hashrate",
         "fearGreed": "Fear &amp; Greed",
         "momentum": "Momentum"
       },
       "infoTooltip": "<strong>Bitcoin-marktomstandigheden</strong> Composiet signaalenpaneel voor Bitcoin-positionering en risicoappetijt:<ul><li><strong>Liquiditeit</strong>: Netto Fed-liquiditeitsproxy</li><li><strong>Stroom</strong>: BTC vs QQQ 5-dagrendementen</li><li><strong>Regime</strong>: QQQ vs XLP rotatie (risk-on/off)</li><li><strong>BTC-trend</strong>: Prijs vs SMA50/200, Mayer Multiple</li><li><strong>Hash-snelheid</strong>: 30-daagse netwerkhashshijving</li><li><strong>Angst & Hebzucht</strong>: Marktsentimentindex</li></ul>Dit panel is voor regime en positionering, niet voor brede macrogegevens."
     },
     "panel": {
-      "showMethodologyInfo": "Show methodology info",
-      "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings",
+      "showMethodologyInfo": "Methodologie-info tonen",
+      "dragToResize": "Sleep om te vergroten/verkleinen (dubbelklik om te resetten)",
+      "openSettings": "Instellingen openen",
       "closePanel": "Paneel sluiten",
       "collapsePanel": "Paneel samenvouwen",
       "expandPanel": "Paneel uitvouwen",
@@ -1445,49 +1486,50 @@
       "mapLabelsFallbackVi": "Kaartlabels vallen momenteel terug op Engels voor Vietnamees."
     },
     "serviceStatus": {
-      "checkingServices": "Checking services...",
-      "allOperational": "All services operational",
+      "checkingServices": "Diensten controleren...",
+      "allOperational": "Alle diensten operationeel",
       "ok": "OK",
-      "degraded": "Degraded",
-      "outage": "Outage",
+      "degraded": "Verminderd",
+      "outage": "Storing",
       "categories": {
-        "all": "All",
+        "all": "Alles",
         "cloud": "Cloud",
-        "dev": "Dev Tools",
-        "comm": "Comms",
+        "dev": "Ontwikkeltools",
+        "comm": "Communicatie",
         "ai": "AI",
         "saas": "SaaS"
       },
       "infoTooltip": "<strong>Dienststatus</strong> Live operationele status van grote cloudplatforms, financiële infrastructuur en kritieke internetdiensten. Bron: officiële statuspagina's (AWS, Azure, GCP, Cloudflare, beurzen). Incidenten kunnen wijzen op bredere verstoringen."
     },
     "verification": {
-      "title": "Information Verification Checklist",
-      "hint": "Based on Bellingcat's OSH Framework",
+      "title": "Checklist informatieverificatie",
+      "hint": "Gebaseerd op het OSH-framework van Bellingcat",
       "verdicts": {
-        "verified": "VERIFIED",
-        "likely": "LIKELY AUTHENTIC",
-        "uncertain": "UNCERTAIN",
-        "unreliable": "UNRELIABLE"
+        "verified": "GEVERIFIEERD",
+        "likely": "WAARSCHIJNLIJK AUTHENTIEK",
+        "uncertain": "ONZEKER",
+        "unreliable": "ONBETROUWBAAR"
       },
-      "notesTitle": "Verification Notes",
-      "noNotes": "No notes added",
-      "addNotePlaceholder": "Add verification note...",
-      "add": "Add",
-      "resetChecklist": "Reset Checklist",
+      "notesTitle": "Verificatienotities",
+      "noNotes": "Geen notities toegevoegd",
+      "addNotePlaceholder": "Verificatienotitie toevoegen...",
+      "add": "Toevoegen",
+      "resetChecklist": "Checklist resetten",
       "checks": {
-        "recency": "Recent timestamp confirmed",
-        "geolocation": "Location verified",
-        "source": "Primary source identified",
-        "crossref": "Cross-referenced with other sources",
-        "noAi": "No AI generation artifacts",
-        "noRecrop": "Not recycled/old footage",
-        "metadata": "Metadata verified",
-        "context": "Context established"
+        "recency": "Recente tijdstempel bevestigd",
+        "geolocation": "Locatie geverifieerd",
+        "source": "Primaire bron geïdentificeerd",
+        "crossref": "Vergeleken met andere bronnen",
+        "noAi": "Geen sporen van AI-generatie",
+        "noRecrop": "Geen hergebruikte/oude beelden",
+        "metadata": "Metadata geverifieerd",
+        "context": "Context vastgesteld"
       }
     },
     "liveNews": {
-      "notLive": "{{name}} is not currently live",
-      "openOnYouTube": "Open on YouTube",
+      "audioUnavailable": "Audio niet beschikbaar",
+      "notLive": "{{name}} is momenteel niet live",
+      "openOnYouTube": "Openen op YouTube",
       "manage": "Kanalen beheren",
       "addChannel": "Kanaal toevoegen",
       "remove": "Verwijderen",
@@ -1531,7 +1573,7 @@
       "noMatching": "Geen adviezen voor dit filter",
       "critical": "Kritiek",
       "health": "Gezondheid",
-      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
+      "sources": "Amerikaans ministerie van BuZa, AU DFAT, UK FCDO, CDC, ECDC, WHO, Amerikaanse ambassades",
       "refresh": "Vernieuwen",
       "levels": {
         "doNotTravel": "Niet reizen",
@@ -1549,12 +1591,12 @@
       "infoTooltip": "<strong>Veiligheidsadviezen</strong><br>Reisadviezen en veiligheidswaarschuwingen van overheidsinstanties."
     },
     "orefSirens": {
-      "checking": "Checking siren alerts...",
-      "noAlerts": "No active sirens — all clear",
-      "notConfigured": "Sirens service not configured",
-      "activeSirens": "{{count}} active siren(s)",
-      "justNow": "just now",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "checking": "Sirenewaarschuwingen controleren...",
+      "noAlerts": "Geen actieve sirenes — alles veilig",
+      "notConfigured": "Sirenedienst niet geconfigureerd",
+      "activeSirens": "{{count}} actieve sirene(s)",
+      "justNow": "zojuist",
+      "infoTooltip": "<strong>Sirenes in Israël</strong><br>Realtime sirenewaarschuwingen voor raketten van het Israëlische Thuisfrontcommando.<br><br>Gegevens worden elke 10 seconden opgevraagd. Een pulserende rode indicator betekent dat er sirenes klinken.",
       "historySummary": "{{count}} meldingen in 24u — {{waves}} golven",
       "loadingHistory": "Geschiedenis laden..."
     },
@@ -1562,8 +1604,8 @@
       "critical": "KRITIEK",
       "dismiss": "Sluiten",
       "high": "HOOG",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "Breaking-nieuwswaarschuwingen",
+      "viewPanel": "Gerelateerd paneel bekijken"
     },
     "giving": {
       "activityIndex": "Activiteitsindex",
@@ -1614,12 +1656,12 @@
     },
     "supplyChain": {
       "chokepoints": "Knelpunten",
-      "disruption": "Disruption",
-      "vessels": "vessels",
-      "incidents7d": "incidents (7d)",
-      "corridorDisruption": "Corridor Disruption",
+      "disruption": "Verstoring",
+      "vessels": "schepen",
+      "incidents7d": "incidenten (7d)",
+      "corridorDisruption": "Corridorverstoring",
       "corridor": "Corridor",
-      "loadingCorridors": "Loading corridor data...",
+      "loadingCorridors": "Corridorgegevens laden...",
       "mineral": "Mineraal",
       "minerals": "Mineralen",
       "noChokepoints": "Knelpuntgegevens worden geladen...",
@@ -1642,12 +1684,15 @@
       "historyUnavailable": "Passagesgeschiedenis niet beschikbaar",
       "transitDataUnavailable": "Passagesgegevens niet beschikbaar (upstream gedeeltelijk)",
       "infoTooltip": "<strong>Supply Chain Monitor</strong> Wereldwijde logistiek en resourcetracking:<ul><li><strong>Chokepoints</strong>: Maritieme doorvoerstatus, verstoringsscore en scheepsaantallen</li><li><strong>Shipping</strong>: Baltic Dry Index en vrachtratiotrends</li><li><strong>Minerals</strong>: Kritieke mineraalconcentratierisico (producentconcentratie-index) en topproducenten</li></ul>Klik op een chokepoint-kaart om de doorvoergeschiedenis weer te geven.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Upgrade naar PRO voor aandelen mijn- en raffinaderijen per land met concentratie (producentenconcentratie-index) per fase."
+      "mineStage": "Mijnbouw",
+      "refineryStage": "Raffinage",
+      "stageUnavailable": "Geen gepubliceerde cijfers voor deze fase",
+      "withheldNote": "W achtergehouden",
+      "productionCaption": "Landaandelen in de werkelijke productie. De kaartlaag met afzettingen toont waar grondstoffen liggen; deze tabel toont wie ze delft of raffineert.",
+      "productionProLocked": "Upgrade naar PRO voor aandelen mijn- en raffinaderijen per land met concentratie (producentenconcentratie-index) per fase.",
+      "partialTransitCoverage": "{{names}} transitgegevens niet beschikbaar",
+      "oilPipelinesUnavailable": "Oliepijplijngegevens niet beschikbaar",
+      "gasPipelinesUnavailable": "Gaspijplijngegevens niet beschikbaar"
     },
     "positiveNewsFeed": {
       "noStories": "Nog geen verhalen in deze categorie"
@@ -1676,7 +1721,7 @@
       "clearTrails": "Sporen wissen"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "infoTooltip": "<strong>Internetstoringen</strong> Realtime internetstoringen, DDoS-aanvallen en verkeersafwijkingen uit wereldwijde netwerkmonitoring:<ul><li><strong>Storingen</strong>: via BGP gedetecteerde verbindingsstoringen per land</li><li><strong>DDoS</strong>: meldingen van volumetrische aanvallen per protocol en vector</li><li><strong>Afwijkingen</strong>: ongebruikelijke verkeerspatronen van Cloudflare Radar</li></ul>",
       "noOutages": "Geen actieve storingen gedetecteerd",
       "noDdos": "Geen DDoS-gegevens beschikbaar",
       "noAnomalies": "Geen verkeersafwijkingen gedetecteerd",
@@ -1685,16 +1730,16 @@
       "topTargets": "Meest aangevallen landen"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "infoTooltip": "<strong>Grondstoffen</strong> Koersen van verhandelbare niet-energiegrondstoffen, gericht op metalen en materialen. Energieprijzen staan in Energiecomplex; macrostressindicatoren in Macrostress.",
+      "commodities": "Grondstoffen",
+      "physicalPremiums": "Fysieke premie",
+      "physical": "Fysiek",
+      "paper": "Papier",
+      "premium": "Premie",
+      "asOf": "Per {{date}}",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "Goud",
+        "silver": "Zilver"
       },
       "divergence": {
         "compositeValue": "Fysieke stressindex: {{value}} / 100",
@@ -1714,7 +1759,7 @@
       }
     },
     "crypto": {
-      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+      "infoTooltip": "<strong>Crypto</strong> Live prijzen, 24-uursveranderingen en volume van de belangrijkste cryptovaluta. Gegevens van CoinGecko."
     },
     "gulfEconomies": {
       "infoTooltip": "<strong>Gulf Economies</strong> Aandelen-indices, wisselkoersen en olieprijzen voor economieën van de Samenwerkingsraad van de Golf (Saoedi-Arabië, VAE, Koeweit, Qatar, Bahrein, Oman)."
@@ -1723,25 +1768,25 @@
       "infoTooltip": "<strong>Grocery Index</strong> Wereldwijd vergelijking van boodschappenprijzen in 24 landen — volgt inflatietrends van consumptiegoederen buiten de standaard consumentenprijsindex."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>Echte Big Mac-index</strong> De Big Mac-index van The Economist meet koopkrachtpariteit door de prijzen van McDonald's-burgers tussen landen te vergelijken. Bijgewerkt bij publicatie van nieuwe gegevens (per kwartaal/jaar)."
     },
     "defiTokens": {
-      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+      "infoTooltip": "<strong>DeFi-tokens</strong> Prijzen en 24u/7d-prestaties van de belangrijkste tokens van gedecentraliseerde financiële protocollen — DEX'en, leenplatforms en rendementsprotocollen."
     },
     "aiTokens": {
-      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+      "infoTooltip": "<strong>AI-tokens</strong> Prijzen en 24u/7d-prestaties van tokens uit de AI- en machine-learningsector — rekennetwerken, gedecentraliseerde AI-infrastructuur en dataprotocollen."
     },
     "altTokens": {
-      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+      "infoTooltip": "<strong>Alt-tokens</strong> Prijzen en 24u/7d-prestaties van alternatieve en opkomende cryptotokens buiten de grootste marktkapitalisaties."
     },
     "stockAnalysis": {
-      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+      "infoTooltip": "<strong>Premium aandelenanalyse</strong> AI-analyse van aandelen in je volglijst — koop/houd/verkoopsignalen, koersdoelen, belangrijkste risico's en katalysatoren, dagelijks bijgewerkt."
     },
     "stockBacktest": {
-      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+      "infoTooltip": "<strong>Premium backtesting</strong> Historische backtests van aandelen in je volglijst — rendementen uit het verleden, maximale daling en volatiliteitsstatistieken."
     },
     "dailyMarketBrief": {
-      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+      "infoTooltip": "<strong>Dagelijkse marktbriefing</strong> Door AI gegenereerde dagelijkse samenvatting van wereldwijde marktomstandigheden, belangrijke macrotrends en sectorsignalen — elke handelsdag ververst."
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> Recente verklaringen, rentebesluiten en communicatie van de Federal Reserve, Europese Centrale Bank, Bank of England en andere belangrijke centrale banken wereldwijd."
@@ -1779,7 +1824,7 @@
       "sourceFallback": "Bron",
       "attribution": "WHO · ProMED · HealthMap",
       "levels": {
-        "alert": "ALERT",
+        "alert": "ALARM",
         "warning": "WAARSCHUWING",
         "watch": "TOEZICHT"
       },
@@ -1858,7 +1903,7 @@
       },
       "metrics": {
         "vix": "VIX",
-        "hySpread": "High-yield Spread",
+        "hySpread": "High-yieldspread",
         "hygPrice": "HYG-prijs",
         "tltPrice": "TLT-prijs"
       },
@@ -1889,20 +1934,21 @@
       "proLocked": "Upgrade naar PRO voor scorebepaling van grondstofgevoeligheid"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live scheepstracking door de Straat van Hormuz, 's werelds meest kritieke olie-bottleneck. Monitort tankertellingen, verstoringgebeurtenissen en wekelijkse stromingsveranderingen. Ongeveer 20% van de wereldwijde oliëtoevoer passeren hier dagelijks.",
+      "infoTooltip": "<strong>Hormuz-handelstracker</strong> WTO DataLab dagelijkse verzendingsindexen voor de Straat van Hormuz: ruwe olie, LNG en kunstmest die de Golf verlaten, landbouwproducten die aankomen. Op volume, gemiddelde januari–maart 2025 = 100, alleen AIS-zichtbare vaartuigen. Status en datum komen van WTO's nieuwste analyse.",
       "title": "Hormuz-handelstracker",
       "noData": "Geen gegevens",
       "notAvailable": "N/A",
       "chartUnavailable": "Grafiekgegevens niet beschikbaar",
       "sourcePrefix": "Bron:",
       "units": {
-        "ktPerDay": "kt/dag",
-        "generic": "eenheden"
+        "index": "index"
       },
       "errors": {
         "unavailable": "Hormuz-gegevens niet beschikbaar",
         "failedToLoad": "Laden mislukt"
-      }
+      },
+      "analysisDate": "WTO-analyse {{date}}",
+      "indexNote": "Verzendingsindex op volume, gemiddelde januari–maart 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live webcams</strong> Livestreams van geopolitiek significante locaties wereldwijd: conflictzones, hoofdsteden, grensovergangen en strategische knelpunten. Streams van YouTube en openbare netwerken."
@@ -1939,7 +1985,7 @@
     },
     "energyComplex": {
       "noData": "Energiegegevens tijdelijk niet beschikbaar - wordt opnieuw geprobeerd",
-      "liveTape": "Live Tape",
+      "liveTape": "Live koersen",
       "liveTapeSource": "Marktkoersen",
       "infoTooltip": "<strong>Energy Complex</strong> Fysieke en verhandelbare energiesignalen op één plaats:<ul><li><strong>Statistieken US Energy Information Administration</strong>: WTI, Brent, Amerikaanse productie en voorraden</li><li><strong>Live tape</strong>: Verhandelbare energieprijzen zoals ruwe olie en aardgas</li><li><strong>Doel</strong>: Fysieke energiespanning scheiden van bredere macro- en commoditypanels</li></ul>"
     },
@@ -1950,21 +1996,21 @@
         "movers": "Bewegingen",
         "spread": "Retailerspread",
         "health": "Gegevenskwaliteit",
-        "world": "World"
+        "world": "Wereld"
       },
       "infoTooltip": "<strong>Consumentenprijzen</strong> Live boodschappenmanden, wekelijkse veranderingen, categorietrends, prijswijzigingen en verschillen tussen retailers. De wereldweergave gebruikt jaarlijkse inflatie van het Internationale Monetaire Fonds Mondiale Economische Vooruitzichten.",
       "world": {
-        "country": "Country",
+        "country": "Land",
         "inflationYoY": "Jaarlijkse inflatie",
-        "endOfPeriod": "End-of-Period",
-        "year": "Year",
-        "filterPlaceholder": "Filter countries…",
-        "loading": "Loading global inflation…",
-        "empty": "Inflation data not yet available",
-        "noMatches": "No matching countries",
+        "endOfPeriod": "Einde periode",
+        "year": "Jaar",
+        "filterPlaceholder": "Landen filteren…",
+        "loading": "Wereldwijde inflatie laden…",
+        "empty": "Inflatiegegevens nog niet beschikbaar",
+        "noMatches": "Geen overeenkomende landen",
         "source": "Bron: Internationaal Monetair Fonds Mondiale Economische Vooruitzichten · jaarlijkse consumentenprijsindex inflatie, alle rapporterende economieën",
-        "countSingular": "country",
-        "countPlural": "countries"
+        "countSingular": "land",
+        "countPlural": "landen"
       }
     },
     "marketImplications": {
@@ -1973,10 +2019,10 @@
       "directions": {
         "long": "LONG",
         "short": "SHORT",
-        "hedge": "HEDGE"
+        "hedge": "AFDEKKEN"
       },
-      "rationale": "Rationale:",
-      "driver": "Driver:",
+      "rationale": "Onderbouwing:",
+      "driver": "Drijver:",
       "appliesToNext": "Van toepassing op volgende AI-regeneratie",
       "signals_one": "{{count}} signaal",
       "signals_other": "{{count}} signalen",
@@ -2075,14 +2121,14 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} +{{count}} meer — {{reason}}",
+        "notFound": "geen koers beschikbaar",
+        "providerError": "koers ophalen mislukt, wordt zo opnieuw geprobeerd",
+        "rateLimited": "koersleverancier beperkt verzoeken, wordt zo opnieuw geprobeerd",
+        "notConfigured": "koersleverancier niet geconfigureerd",
+        "requestLimit": "te veel symbolen opgevraagd",
+        "budget": "nog niet geladen, wordt zo opnieuw geprobeerd",
+        "seed": "marktgegevens tijdelijk niet beschikbaar"
       }
     },
     "heatmap": {
@@ -2116,7 +2162,7 @@
       "cotSection": "Olie / Goud / Zilver + Index Positioning (Commitments of Traders)",
       "stocksSection": "Toptitels VS: dagelijkse verschuiving",
       "longShort": "Long {{long}} / Short {{short}}",
-      "lev": "Lev",
+      "lev": "Hefboom",
       "noCot": "Geen Commitments of Traders-rijen beschikbaar.",
       "noStocks": "Geen toptitelcitaten beschikbaar.",
       "reportDate": "Commitments of Traders-rapportdatum: {{date}}",
@@ -2130,7 +2176,7 @@
       "crypto": "CRYPTO",
       "fx": "Valutahandel",
       "warmup": "Basiswaarden worden opgebouwd. Volume- en Open Interest-geschiedenis wordt in het volgende uur ingevuld.",
-      "footer": "5min · Hyperliquid perps · 24/7"
+      "footer": "5 min · Hyperliquid-perps · 24/7"
     },
     "goldIntelligence": {
       "infoTooltip": "<strong>Gold intelligence</strong> Goudprijzen in verschillende valuta's, goud/zilver- en goud/platinaratio's, en managed-money futures-posities. Bronnen zijn onder andere Yahoo Finance en de Commodity Futures Trading Commission."
@@ -2154,7 +2200,15 @@
       "renewalFailedDesc": "We konden de verlenging van je abonnement niet verifiëren. Beheer je facturering of neem contact op met support als het probleem aanhoudt.",
       "manageBilling": "Facturering beheren",
       "lapsedDesc": "Je Pro-abonnement is beëindigd. Abonneer je opnieuw om premium toegang terug te krijgen.",
-      "resubscribe": "Opnieuw abonneren"
+      "resubscribe": "Opnieuw abonneren",
+      "billingEmailBouncedMessage": "Factuur-e-mails naar {{email}} komen terug als onbestelbaar. Werk je factuur-e-mailadres bij zodat je bonnetjes en betaalmeldingen ontvangt.",
+      "fixBillingEmail": "Factuur-e-mail corrigeren",
+      "billingEmailLabel": "Nieuw factuur-e-mailadres",
+      "save": "Opslaan",
+      "billingEmailUpdated": "Factuur-e-mailadres gewijzigd in {{email}}. Bonnetjes en betaalmeldingen gaan vanaf nu daarheen.",
+      "billingEmailInvalid": "Voer een geldig e-mailadres in.",
+      "billingEmailSuppressed": "Ook op dat adres kunnen we niet bezorgen. Probeer een ander adres.",
+      "billingEmailUpdateFailed": "We konden je factuur-e-mailadres niet bijwerken. Probeer het opnieuw of neem contact op met support als het blijft mislukken."
     },
     "checkoutFailureBanner": {
       "message": "Betaling kon niet worden voltooid. Er is geen bedrag in rekening gebracht.",
@@ -2209,6 +2263,15 @@
             "mcpClients": "MCP instellen",
             "channels": "Stel deze in bij de meldingsinstellingen"
           }
+        },
+        "about": {
+          "heading": "Nog één ding: waar ga je World Monitor voor gebruiken?",
+          "body": "Drie snelle vragen helpen ons de juiste tools voor jou te bouwen. Sla er gerust over.",
+          "confirmCta": "Mijn antwoorden opslaan",
+          "confirming": "Opslaan…",
+          "doneNote": "Dank je, we hebben je antwoorden ontvangen.",
+          "summaryLabel": "Over jou",
+          "summaryVerified": "Opgeslagen. Dank je."
         }
       },
       "status": {
@@ -2244,7 +2307,7 @@
     "frameworkSelector": {
       "label": "Analyseframework",
       "defaultNeutral": "Standaard (Neutraal)",
-      "titlePrefix": "Framework: {{name}}",
+      "titlePrefix": "Kader: {{name}}",
       "titleNone": "Analyseframework"
     },
     "sanctionsPressure": {
@@ -2300,7 +2363,7 @@
       "headers": {
         "station": "Station",
         "reading": "Meting",
-        "delta": "Delta",
+        "delta": "Verschil",
         "status": "Status",
         "observed": "Waargenomen"
       },
@@ -2338,7 +2401,7 @@
         "all": "Alle"
       },
       "cpcLabels": {
-        "H04B": "Comms",
+        "H04B": "Communicatie",
         "H01L": "Halfgeleiders",
         "F42B": "Munitie",
         "G06N": "AI",
@@ -2373,19 +2436,19 @@
         "elevated": "Verhoogd",
         "spikes": "Pieken",
         "persist": "Aanhoudend",
-        "conflict": "Conflict",
+        "conflict": "Conflicten",
         "strategic": "Strategisch"
       },
       "badges": {
-        "conflictAdjacent": "conflict-adj",
-        "energyAdjacent": "energy-adj",
-        "industrial": "industrial",
-        "strategic": "strategic"
+        "conflictAdjacent": "conflictnabij",
+        "energyAdjacent": "energienabij",
+        "industrial": "industrieel",
+        "strategic": "strategisch"
       },
-      "observations_one": "{{count}} obs",
-      "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
-      "sources_other": "{{count}} src",
+      "observations_one": "{{count}} waarn.",
+      "observations_other": "{{count}} waarn.",
+      "sources_one": "{{count}} bron",
+      "sources_other": "{{count}} bronnen",
       "age": {
         "minutesAgo_one": "{{count}}m geleden",
         "minutesAgo_other": "{{count}}m geleden",
@@ -2406,7 +2469,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Turkse Straten",
         "panama": "Panama",
-        "danishStraits": "Deense Straten"
+        "doverStrait": "Nauw van Calais"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
@@ -2419,7 +2482,7 @@
       "attribution": {
         "method": "Portwatch-scheepsdraaglast + ship tracking-kalibratie",
         "sampleLabel": "scheepstracking-verstoringssignalen",
-        "creditName": "US Energy Information Administration World Oil Transit Chokepoints"
+        "creditName": "US Energy Information Administration — World Oil Transit Chokepoints"
       }
     },
     "mobileNav": {
@@ -2456,7 +2519,7 @@
         "hoursAgo": "{{count}}u geleden",
         "daysAgo": "{{count}}d geleden",
         "compactNow": "nu",
-        "compactMinutes": "{{count}}m",
+        "compactMinutes": "{{count}} min",
         "compactHours": "{{count}}u",
         "compactDays": "{{count}}d"
       }
@@ -2487,7 +2550,7 @@
       "currency": "Valuta",
       "pair": "Paar",
       "rate": "Koers",
-      "yoy": "12m",
+      "yoy": "12 mnd",
       "drawdown": "24m Daling",
       "peakToTrough": "Piek → Dal",
       "change1d": "1d",
@@ -2571,6 +2634,95 @@
       "rosterSummaryTier1": "Gemeld door {{publishers}}, waaronder {{tier1}} tier-1",
       "rosterPublishers_one": "{{count}} uitgever",
       "rosterPublishers_other": "{{count}} uitgevers"
+    },
+    "foodPrices": {
+      "title": "Lokale voedselprijzen",
+      "method": "De weekverandering vergelijkt hetzelfde product, dezelfde markt, herkomst en eenheid met de prijs van precies zeven dagen eerder. Landen gebruiken verschillende mandjes en valuta.",
+      "loading": "Voedselprijzen laden…",
+      "unavailable": "Niet beschikbaar",
+      "retry": "Opnieuw proberen",
+      "country": "Land",
+      "market": "Markt",
+      "retail": "Detailhandel",
+      "wholesale": "Groothandel",
+      "farmgate": "Af boerderij",
+      "export": "Export",
+      "prices": "Voedselprijzen",
+      "product": "Artikel",
+      "price": "Prijs / eenheid",
+      "weekly": "Weekverandering",
+      "origin": "Herkomst",
+      "versus": "ten opzichte van",
+      "noBaseline": "Vorige week niet beschikbaar",
+      "context": "Voedselzekerheid en maandelijkse context",
+      "contextNote": "Deze rapporten bieden gedateerde context, geen wekelijkse prijsveranderingen. Rapporten uit Tunesië kunnen enkele maanden achterlopen.",
+      "briefCountry": "Landenrapport",
+      "report": "Rapportdatum",
+      "checked": "Laatst gecontroleerd",
+      "current": "Actueel",
+      "partial": "Sommige rapporten ontbreken of zijn oud",
+      "stale": "Oudere gegevens",
+      "global": "Wereldwijde maandindex van FAO"
+    },
+    "aboutYou": {
+      "title": "Help ons World Monitor voor jou te bouwen",
+      "ariaLabel": "Over jou",
+      "progress": "{{current}} van {{total}}",
+      "skip": "Overslaan",
+      "close": "Sluiten",
+      "done": "Gereed",
+      "saving": "Opslaan…",
+      "saveFailed": "Dit kon niet worden opgeslagen. Probeer het opnieuw.",
+      "retry": "Opnieuw proberen",
+      "thanks": "Dank je wel. Dit helpt ons bepalen wat we volgende willen bouwen.",
+      "questions": {
+        "primaryUse": {
+          "label": "Waarvoor gebruik je World Monitor vooral?",
+          "options": {
+            "news": "Nieuws en wereldgebeurtenissen",
+            "markets": "Markten en handel",
+            "commodities": "Grondstoffen en toeleveringsketen",
+            "travel": "Reizen en vluchten",
+            "security": "Veiligheid en OSINT",
+            "research": "Onderzoek en journalistiek",
+            "api-agent": "Bouwen met de API of een AI-agent",
+            "other": "Iets anders"
+          }
+        },
+        "usageContext": {
+          "label": "Gebruik je het voor werk of persoonlijk gebruik?",
+          "options": {
+            "personal": "Persoonlijk",
+            "work": "Werk"
+          }
+        },
+        "payer": {
+          "label": "Wie betaalt, of zou betalen, ervoor?",
+          "options": {
+            "self": "Ik zelf",
+            "employer": "Mijn werkgever of team",
+            "not-paying": "Nog niemand"
+          }
+        },
+        "role": {
+          "label": "Welke beschrijving past het beste bij jouw rol?",
+          "options": {
+            "analyst": "Analist of onderzoeker",
+            "trader": "Handelaar of belegger",
+            "journalist": "Journalist",
+            "security": "Veiligheid of risico",
+            "government": "Regering of beleid",
+            "supply-chain": "Toeleveringsketen of operaties",
+            "developer": "Ontwikkelaar",
+            "student": "Student",
+            "other": "Overig"
+          }
+        },
+        "alternative": {
+          "label": "Wat zou je gebruiken als World Monitor niet bestond?",
+          "placeholder": "Optioneel"
+        }
+      }
     }
   },
   "popups": {
@@ -2620,7 +2772,7 @@
       "navPerformance": "Getroffen luchtvaartuigen",
       "samples": "Aantal getroffen luchtvaartuigen",
       "aircraft": "Totaal aantal waargenomen luchtvaartuigen",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "H3-zeshoek"
     },
     "flight": {
       "groundStop": "GRONDSTOP",
@@ -2636,7 +2788,7 @@
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
         "computed": "Berekend",
-        "aviationstack": "Flight Data",
+        "aviationstack": "Vluchtgegevens",
         "notam": "NOTAM"
       },
       "regions": {
@@ -2647,7 +2799,9 @@
         "africa": "Afrika"
       },
       "scheduled": "Ingepland",
-      "estimated": "Geschat"
+      "estimated": "Geschat",
+      "normalOperations": "NORMALE OPERATIES",
+      "open": "OPEN"
     },
     "cyberThreat": {
       "title": "CYBERDREIGING"
@@ -2734,9 +2888,9 @@
     "gamma": "GAMMA",
     "city": "STAD",
     "length": "LENGTE",
-    "operator": "OPERATOR",
+    "operator": "EXPLOITANT",
     "countries": "LANDEN",
-    "waypoints": "WAYPOINTS",
+    "waypoints": "ROUTEPUNTEN",
     "repairEta": "Geschatte reparatietijd",
     "timeUnits": {
       "m": "M",
@@ -2748,7 +2902,7 @@
       "baseline": "Basislijn",
       "components": {
         "news": "Nieuws",
-        "cii": "Country Instability Index",
+        "cii": "Landeninstabiliteitsindex",
         "geo": "Geo",
         "military": "Militair"
       },
@@ -2920,17 +3074,17 @@
       "speed": "SNELHEID",
       "heading": "RUBRIEK",
       "mmsi": "Maritime Mobile Service Identity",
-      "region": "REGION",
-      "strikeGroup": "STRIKE GROUP",
+      "region": "REGIO",
+      "strikeGroup": "AANVALSGROEP",
       "usniIntel": "US Naval Institute Intelligence",
       "usniSource": "Bron: US Naval Institute News Fleet Tracker",
       "approximatePosition": "Positie geschat — gebaseerd op wekelijks US Naval Institute rapport, geen real-time scheepsmonitoring.",
       "darkDescription": "⚠ Vaartuig is onzichtbaar geworden - scheepsmonitoringsignaal verloren. Kan wijzen op gevoelige operaties.",
-      "recentTracking": "Recent Tracking",
-      "lastReport": "LATEST",
-      "nearChokepoint": "NEAR CHOKEPOINT",
-      "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN",
+      "recentTracking": "Recente tracking",
+      "lastReport": "LAATSTE",
+      "nearChokepoint": "NABIJ KNELPUNT",
+      "nearBase": "NABIJ BASIS",
+      "lastSeen": "LAATST GEZIEN",
       "estPosition": "GESCHATTE POSITIE",
       "aisLive": "Live scheepsmonitoring"
     },
@@ -2999,7 +3153,7 @@
         "development": "ONTWIKKELING",
         "exploration": "VERKENNING"
       },
-      "projectSubtitle": "{{mineral}} PROJECT"
+      "projectSubtitle": "{{mineral}}-PROJECT"
     },
     "stockExchange": {
       "marketCap": "MARKTKAP"
@@ -3053,7 +3207,12 @@
       "position": "Positie",
       "ground": "Op de grond",
       "airborne": "In de lucht"
-    }
+    },
+    "upcomingForecast": "Komende verwachting",
+    "currentForecast": "Actuele verwachting",
+    "expiredForecast": "Verlopen verwachting",
+    "validFrom": "Geldig vanaf",
+    "validUntil": "Geldig tot"
   },
   "signals": {
     "context": {
@@ -3227,13 +3386,13 @@
     "noData": "Geen gegevens beschikbaar",
     "close": "Sluiten",
     "currentVariant": "(huidig)",
-    "retry": "Retry",
-    "refresh": "Refresh",
+    "retry": "Opnieuw proberen",
+    "refresh": "Verversen",
     "all": "Alle",
     "loadingGiving": "Donatiegegevens laden...",
     "rateLimitedMarket": "Marktgegevens tijdelijk beperkt — automatisch opnieuw proberen",
     "cancel": "Annuleren",
-    "dismiss": "Dismiss"
+    "dismiss": "Sluiten"
   },
   "header": {
     "world": "WERELD",
@@ -3248,7 +3407,7 @@
     "pinMap": "Kaart bovenaan vastzetten",
     "filterSources": "Bronnen filteren...",
     "sourcesEnabled": "{{enabled}}/{{total}} ingeschakeld",
-    "finance": "FINANCE",
+    "finance": "FINANCIËN",
     "panelDisplayCaption": "Kies welke panelen op het dashboard worden weergegeven",
     "tabSettings": "Instellingen",
     "tabPanels": "Panelen",
@@ -3264,21 +3423,21 @@
     "sourceRegionEurope": "Europa",
     "sourceRegionTopical": "Thematisch",
     "sourceRegionIntel": "Inlichtingen",
-    "sourceRegionTechNews": "Tech News",
-    "sourceRegionAiMl": "AI & Machine learning",
-    "sourceRegionStartupsVc": "Startups & Venture capital",
-    "sourceRegionRegionalTech": "Regional Ecosystems",
-    "sourceRegionDeveloper": "Developer",
-    "sourceRegionCybersecurity": "Cybersecurity",
-    "sourceRegionTechPolicy": "Policy & Research",
-    "sourceRegionTechMedia": "Media & Podcasts",
-    "sourceRegionMarkets": "Markets & Analysis",
+    "sourceRegionTechNews": "Technieuws",
+    "sourceRegionAiMl": "AI & machine learning",
+    "sourceRegionStartupsVc": "Start-ups & durfkapitaal",
+    "sourceRegionRegionalTech": "Regionale ecosystemen",
+    "sourceRegionDeveloper": "Ontwikkelaar",
+    "sourceRegionCybersecurity": "Cyberbeveiliging",
+    "sourceRegionTechPolicy": "Beleid & onderzoek",
+    "sourceRegionTechMedia": "Media & podcasts",
+    "sourceRegionMarkets": "Markten & analyse",
     "sourceRegionFixedIncomeFx": "Fixed Income & Buitenlandse valuta",
-    "sourceRegionCommodities": "Commodities",
-    "sourceRegionCryptoDigital": "Crypto & Digital",
-    "sourceRegionCentralBanks": "Central Banks & Economy",
-    "sourceRegionDeals": "Deals & Corporate",
-    "sourceRegionFinRegulation": "Financial Regulation",
+    "sourceRegionCommodities": "Grondstoffen",
+    "sourceRegionCryptoDigital": "Crypto & digitaal",
+    "sourceRegionCentralBanks": "Centrale banken & economie",
+    "sourceRegionDeals": "Deals & bedrijven",
+    "sourceRegionFinRegulation": "Financiële regelgeving",
     "sourceRegionGulfMena": "Golf & Midden-Oosten en Noord-Afrika",
     "filterPanels": "Panels filteren...",
     "resetLayout": "Layout resetten",
@@ -3289,9 +3448,9 @@
     "panelCatRegionalNews": "Regionaal Nieuws",
     "panelCatMarketsFinance": "Markten & Financiën",
     "panelCatTopical": "Actueel",
-    "panelCatDataTracking": "Data & Tracking",
-    "panelCatTechAi": "Tech & AI",
-    "panelCatStartupsVc": "Startups & Venture capital",
+    "panelCatDataTracking": "Data & tracking",
+    "panelCatTechAi": "Tech en AI",
+    "panelCatStartupsVc": "Start-ups & durfkapitaal",
     "panelCatSecurityPolicy": "Veiligheid & Beleid",
     "panelCatMarkets": "Markten",
     "panelCatFixedIncomeFx": "Fixed Income & Buitenlandse valuta",
@@ -3336,7 +3495,7 @@
     "loadingIndex": "Index laden...",
     "components": {
       "unrest": "Onrust",
-      "conflict": "Conflict",
+      "conflict": "Conflicten",
       "security": "Militaire activiteit",
       "information": "Informatie"
     },
@@ -3391,18 +3550,18 @@
     },
     "militaryActivity": "Militaire activiteit",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "Defensie-industriële basis",
+      "expenditure": "Militaire uitgaven",
+      "personnel": "Personeel",
+      "armsImports": "Wapenimport",
       "concentration": "Index leveranciersconcentratie",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "Wapenleveranciers ({{start}}–{{end}})",
       "source": "Bronnen: World Bank en SIPRI Arms Transfers Database. De overdracht-volumeindicator meet relatieve wapenoverdrachen, niet de financiële waarde.",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "Bron: Wereldbank.",
       "snapshotAssembled": "Momentopname van {{source}} samengesteld op {{time}}",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "Niet beschikbaar",
+      "coverage": "In kaart gebrachte dekking",
+      "supplierRetained": "Leveranciersgegevens behouden van de laatste geslaagde verversing van importeurs."
     },
     "economicIndicators": "Economische indicatoren",
     "ownFlights": "Eigen vluchten",
@@ -3510,47 +3669,47 @@
       "activityNowcast": "Activiteit nowcast",
       "decisionSignalsUnavailable": "De momentopname van beslissingssignalen van China is momenteel niet beschikbaar."
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "Voedselvoorraden",
     "foodStocksHelp": "USDA-productie, -aanbod en -distributie voorraden-naar-gebruik per marketingjaar, met wereldratio ter referentie. FAOSTAT Food Balances levert productie en binnenlands aanbod wanneer Productie, Aanbod en Distributie geen volledige landensaldo heeft.",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "Voedselvoorraden laden…",
+    "foodStocksUnavailable": "Voedselvoorraden niet beschikbaar.",
+    "foodStocksProLocked": "Upgrade naar PRO voor voorraad-verbruikverhouding van grondstoffen",
+    "foodStocksCommodity": "Grondstof",
+    "foodStocksMarketingYear": "Handelsjaar",
+    "foodStocksRatio": "Voorraad/verbruik",
+    "foodStocksWorld": "Wereld",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "Tarwe",
+      "corn": "Maïs",
+      "rice": "Rijst",
+      "soybeans": "Sojabonen",
+      "barley": "Gerst",
+      "palmOil": "Palmolie"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "Demografie en arbeidsmarkt",
       "help": "Leeftijdsstructuur, onderwijspijplijn en capaciteit van industrieel arbeidskrachten uit UN World Population Prospects, UNESCO Institute for Statistics en World Bank World Development Indicators, en ILOSTAT.",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "Demografische en arbeidsgegevens laden…",
+      "unavailable": "Demografische en arbeidsgegevens niet beschikbaar.",
+      "proLocked": "Upgrade naar PRO voor demografische en arbeidsgegevens",
+      "notAvailable": "Niet beschikbaar",
+      "ageStructure": "Leeftijdsopbouw",
+      "education": "Onderwijspijplijn",
+      "industrialWorkforce": "Industriële beroepsbevolking",
+      "medianAge": "Mediane leeftijd",
+      "oldAgeDependency": "Grijze druk",
+      "totalDependency": "Totale afhankelijkheid",
+      "workingAgePopulation": "Bevolking in de werkende leeftijd",
+      "workingAgeProjection": "Bevolking in de werkende leeftijd (+10 jaar)",
+      "tertiaryEnrollment": "Inschrijving hoger onderwijs",
       "stemGraduates": "Afgestudeerden wetenschap, technologie, engineering en wiskunde",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "Onderzoekers",
+      "craftTrades": "Ambachts- en vaklieden",
+      "plantOperators": "Bedieners van installaties en machines",
+      "trainedIndustrialWorkforce": "Gecombineerde industriële beroepsbevolking",
+      "manufacturingShare": "Werkgelegenheid in de industrie",
+      "source": "Bronnen: {{sources}}.",
+      "retained": "{{stage}}-gegevens behouden van de laatste geslaagde verversing.",
       "statusNotSupplied": "Status van schatting en imputatie niet opgegeven"
     },
     "fiveFactorScorecard": {
@@ -3585,7 +3744,7 @@
         "pillar-unavailable": "Pijler niet beschikbaar"
       },
       "inputs": {
-        "population": "Population",
+        "population": "Bevolking",
         "food_productionBalance": "Productiebalans",
         "food_stocksToUse": "Voorraden te gebruiken",
         "food_waterSecurity": "Waterveiligheid",
@@ -3624,7 +3783,7 @@
     "intelligence": "Intelligentie",
     "media": "Media",
     "panels": "Panelen",
-    "dataAndCommunity": "Data & Community",
+    "dataAndCommunity": "Data & community",
     "theme": "Thema",
     "themeDesc": "Automatisch volgt systeemvoorkeur.",
     "themeAuto": "Automatisch (systeem volgen)",
@@ -3648,7 +3807,7 @@
     "copyCoordinates": "Coördinaten kopiëren"
   },
   "shell": {
-    "documentTitle": "World Monitor — Real-Time Global Intelligence Dashboard",
+    "documentTitle": "World Monitor — Realtime wereldwijd inlichtingendashboard",
     "metaDescription": "Real-time wereldwijd intelligentieplatform. Gepubliceerd in WIRED. Gebruikt door meer dan 2 miljoen mensen in 190 landen. Conflicten, markten, militair, open-source intelligence in één overzicht.",
     "offlineTitle": "Je bent offline",
     "offlineMessage": "World Monitor heeft een internetverbinding nodig voor real-time inlichtingengegevens.",
@@ -3656,7 +3815,7 @@
   },
   "widgets": {
     "confirmDelete": "Dit widget permanent verwijderen?",
-    "chatTitle": "Widget Builder",
+    "chatTitle": "Widgetbouwer",
     "modifyTitle": "Widget aanpassen",
     "inputPlaceholder": "Beschrijf je widget...",
     "addToDashboard": "Toevoegen aan Dashboard",
@@ -3680,7 +3839,7 @@
     "modifyHint": "Het huidige widget wordt weergegeven. Dien een wijzigingsverzoek in om het aan te passen.",
     "generating": "Genereren…",
     "examplesTitle": "Ideeën voor prompts",
-    "previewTitle": "Live Preview",
+    "previewTitle": "Livevoorbeeld",
     "phaseChecking": "Controleren",
     "phaseReadyToPrompt": "Klaar",
     "phaseFetching": "Ophalen",
@@ -3811,5 +3970,341 @@
       "description": "Bronnen over Iran, Israël, de Golf en Koerdische regio's inschakelen"
     },
     "unavailable": "Preset {{preset}} is niet beschikbaar met je huidige panelen"
+  },
+  "countryHistory": {
+    "title": "Dagelijkse landgeschiedenis",
+    "loading": "Daggeschiedenis laden…",
+    "window": "Periode",
+    "days": "{{days}} dagen",
+    "observed": "{{count}} momentopnamen in {{days}} dagen",
+    "legend": "CII (amber): hoger betekent meer instabiliteit. Veerkracht (groen): hoger betekent meer capaciteit. Punten markeren dagen met geselecteerde koppen.",
+    "chart": "Dagelijkse CII- en veerkrachtscores. Hiaten en formulewijzigingen onderbreken de lijnen.",
+    "selectDate": "{{date}}, {{count}} geselecteerde koppen",
+    "empty": "Geen dagelijkse momentopnamen in deze periode. Geschiedenis wordt opgebouwd na activering.",
+    "unavailable": "De geschiedenis is tijdelijk niet beschikbaar. Probeer opnieuw.",
+    "retry": "Opnieuw proberen",
+    "stale": "De laatste geslaagde dagelijkse vastlegging is meer dan 36 uur oud.",
+    "break": "Formulewijziging of waarnemingshiaat. Vergelijk alleen scores met dezelfde formule.",
+    "partial": "De nieuwsdekking was onvolledig bij de vastlegging.",
+    "resilience": "Veerkracht",
+    "ciiMissing": "CII niet beschikbaar",
+    "resilienceMissing": "Veerkracht niet beschikbaar",
+    "noEvents": "Voor deze datum zijn geen geselecteerde koppen vastgelegd. Dit bewijst niet dat er geen gebeurtenissen waren.",
+    "unlock90": "Ontgrendel 90 dagen met Pro",
+    "unlock365": "Ontgrendel 365 dagen met een API-abonnement"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Bron",
+      "freshness": "Actualiteit",
+      "confidence": "Betrouwbaarheid",
+      "limitations": "Beperkingen",
+      "related": "Gerelateerd",
+      "groundedIn": "Onderbouwd met",
+      "curated": "Samengesteld v1",
+      "fallback": "Terugval",
+      "layerGuide": "Lagengids"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Nieuws / Hotspots",
+        "purpose": "Licht bewaakte geopolitieke hotspots uit en verhoogt hun niveau wanneer gerelateerd nieuws en escalatiesignalen samenkomen.",
+        "source": "Hotspotregister van WorldMonitor, nieuwsinlichtingen via RSS/GDELT, escalatiescore van hotspots, militaire activiteit en context van landinestabiliteit.",
+        "freshness": "Hotspotlocaties zijn samengesteld en statisch. De actualiteit van nieuwsstromen wordt apart gevolgd. De niveaus worden opnieuw berekend wanneer de nieuwsstromen van het dashboard verversen, met ongeveer 10 minuten ertussen, terwijl GDELT-inlichtingen langere laad- en cachebudgetten heeft.",
+        "confidence": "Bruikbaar als aanwijzing om te sorteren, niet als citeerbare bewering zonder het onderliggende nieuws en de landcontext te openen.",
+        "limitations": {
+          "0": "Nieuwsvolume en trefwoordherkenning kunnen sterk gevolgde regio's oververtegenwoordigen.",
+          "1": "Weinig zichtbare gebeurtenissen kunnen ontbreken wanneer de dekking van RSS/GDELT dun of vertraagd is."
+        },
+        "related": {
+          "0": "paneel Live nieuws",
+          "1": "paneel Strategisch risicooverzicht",
+          "2": "Inlichtingenoverzicht",
+          "3": "Pop-ups van Intel-hotspots"
+        }
+      },
+      "no2Activity": {
+        "category": "Economie",
+        "purpose": "Kleurt landen en industriële clusters naar de richting van hun troposferische NO2 uit Sentinel-5P, een verbrandingsspoor, in het laatste venster van 56 dagen tegenover dezelfde data in voorgaande jaren.",
+        "source": "Copernicus Sentinel-5P TROPOMI NO2 via de CDSE Sentinel Hub Statistical API, dagelijks per regio samengevoegd door de dienst seed-no2-activity. Bevat gewijzigde Copernicus Sentinel-gegevens.",
+        "freshness": "Elke 24 uur gevoed; het venster eindigt 3 dagen voor de run zodat late granules kunnen binnenkomen, met een versheidsbudget van 72 uur.",
+        "confidence": "Een regio krijgt alleen een uitlezing met minstens 14 geldige dagen en 2 basisjaren; bewolking is de dominante ruis, dus een mager venster weigert een uitlezing in plaats van te gokken.",
+        "limitations": {
+          "0": "„Basis in afwachting” is wekenlang de verwachte status na het toevoegen van een regio, zolang vensters van voorgaande jaren nog worden opgehaald.",
+          "1": "NO2 volgt verbranding, dus schonere opwekking of schonere voertuigen lezen als afnemende activiteit."
+        },
+        "related": {
+          "0": "Nowcast activiteit China",
+          "1": "Landenbrief"
+        }
+      },
+      "conflicts": {
+        "category": "Conflicten",
+        "purpose": "Toont samengestelde conflictzones en geopolitieke grenslagen, zodat analisten actuele signalen kunnen plaatsen tegen bekende strijdtonelen.",
+        "source": "Conflictzoneregister van WorldMonitor, conflictcontext van UCDP/ACLED en gedocumenteerde grensmetadata, zoals de Koreaanse DMZ.",
+        "freshness": "De basiszones zijn samengesteld en statisch. Dynamische conflictgebeurtenissen worden apart gevolgd via ACLED/UCDP-stromen en statussignalen.",
+        "confidence": "Goed voor geografische oriëntatie. Op zichzelf bevestigt het geen incident op het moment zelf.",
+        "limitations": {
+          "0": "Statische zones kunnen achterlopen op snelle tactische veranderingen.",
+          "1": "Sommige conflictbewijzen verschijnen als conflictgebeurtenissen, in de landinestabiliteit of in gerelateerde panelen, en niet als een conflictzonepolygoon."
+        },
+        "related": {
+          "0": "UCDP-evenementen",
+          "1": "paneel Country Instability Index",
+          "2": "Strategisch risicooverzicht",
+          "3": "Inlichtingenoverzicht"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Luchtvaart",
+        "purpose": "Toont gemelde transpondercodes 7500, 7600 en 7700, los van de militaire indeling.",
+        "source": "Exacte transpondercode-opvragingen op adsb.lol. Vliegtuigdetails gebruiken de velden van de aanbieder. De naamsvermelding is ODbL.",
+        "freshness": "De laag wordt elke minuut gecontroleerd zolang die zichtbaar is. Het laatste bericht mag hoogstens 120 seconden oud zijn. Kaartposities mogen hoogstens 90 seconden oud zijn. Onbekende meldingen vervallen na 15 minuten.",
+        "confidence": "Een gemeld transpondersignaal bevestigt geen incident, oorzaak, landing of afhandeling.",
+        "limitations": {
+          "0": "De dekking van ontvangers is onvolledig.",
+          "1": "Het tijdstip van het laatste bericht is niet het tijdstip waarop de transpondercode is gekozen.",
+          "2": "Vliegtuigen zonder verse positie verschijnen alleen in de detaillijst.",
+          "3": "Tegenstrijdige gegevens en verlies van ontvangst worden onbekend."
+        },
+        "related": {
+          "0": "Vliegtuigdetails"
+        }
+      },
+      "ais": {
+        "category": "Maritiem",
+        "purpose": "Toont scheepsdichtheid en AIS-verstoringssignalen rond strategische wateren en knelpunten.",
+        "source": "Momentopnamen van de AISStream-doorgifte, de maritieme dienst van WorldMonitor en classificeerders van knelpuntverstoring.",
+        "freshness": "Momentopnamen van de AIS-doorgifte worden standaard elke 5 seconden opnieuw opgebouwd. De server kan de basisdichtheid 5 minuten in de cache houden, en de laag is uitgeschakeld of verouderd wanneer de inloggegevens of de verbinding van de doorgifte ontbreken.",
+        "confidence": "Bruikbaar om maritieme afwijkingen te screenen, maar AIS wordt door de schepen zelf gemeld en die kunnen van de uitzending verdwijnen.",
+        "limitations": {
+          "0": "De dekking van AIS aan land is ongelijk, met gedocumenteerd zwakker zicht op het Midden-Oosten, Azië en de open oceaan.",
+          "1": "Donkere scheepvaart wordt afgeleid uit gaten en congestiepatronen, niet uit een direct bewijs van opzet."
+        },
+        "related": {
+          "0": "paneel Toeleveringsketen",
+          "1": "Status Chokepunten",
+          "2": "Militaire schepen",
+          "3": "AIS-signalen van het inlichtingenoverzicht"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Maritiem",
+        "purpose": "Tekent de grote container-, energie- en massagoedroutes door strategische knelpunten, om over verstoringstrajecten te redeneren.",
+        "source": "Handelsrouteregister van WorldMonitor, plus de knelpuntstatus van de toeleveringsketen en de transitsamenvattingen.",
+        "freshness": "De geometrie van de routes is statisch. De knelpuntstatus wordt elke 6 minuten licht ververst, en de transitsamenvattingen verversen elke 10 minuten via de caches van de toeleveringsketen en de paden van de doorgifte.",
+        "confidence": "Goed voor blootstelling op routeniveau. Het is geen routeringsstroom per schip.",
+        "limitations": {
+          "0": "Routes zijn gemodelleerde corridors en hoeven niet overeen te komen met een bepaald reisplan.",
+          "1": "Verstoringslagen hangen af van de huidige knelpuntstatus en van de staat van AIS."
+        },
+        "related": {
+          "0": "paneel Toeleveringsketen",
+          "1": "Routeverkenner (Route Explorer)",
+          "2": "Scenariomotor (Scenario Engine)",
+          "3": "Laag Strategische waterwegen"
+        }
+      },
+      "flights": {
+        "category": "Luchtvaart",
+        "purpose": "Laat luchthavenverstoring en NOTAM-sluitingen zien, luchtruim-NOTAM die nu gelden of binnen 24 uur beginnen (tijdelijke vluchtbeperkingen, beperkte, gevaarlijke en verboden gebieden, militaire oefengebieden, reserveringen en sluitingen van het luchtruim), en live vliegtuigposities wanneer volgen beschikbaar is.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) en ICAO-NOTAM, adsb.lol (ODbL), Wingbits, herstel via de oude OpenSky-dienst, optionele niet-commerciële aanvulling airplanes.live/adsb.fi, en de luchtvaartdienst. Luchtruim-NOTAM worden als polygonen getekend waar NMS ze levert, als cirkels waar de NOTAM een straal tot 250 NM geeft, en anders als markering.",
+        "freshness": "Luchthavenverstoring wordt op een ritme van 30 minuten geladen. Luchtruim-NOTAM worden elke 5 minuten geladen uit wijzigingsophalingen van NMS, met een dagelijkse volledige hersynchronisatie, tegen een actualiteitsbudget van 20 minuten. Het luchtvaartpaneel ververst operationele weergaven ook in een opvraagcyclus van 5 minuten.",
+        "confidence": "Het meest bruikbaar om verstoringen te sorteren. De dekking van elk live vliegtuig hangt af van de beschikbaarheid van ADS-B en van de ingestelde aanbieders. De NOTAM-tekst is gezaghebbend zoals de FAA die verspreidt.",
+        "limitations": {
+          "0": "Gesimuleerde demogegevens op basis van AviationStack kunnen verschijnen wanneer een API-sleutel ontbreekt.",
+          "1": "Live vliegtuigposities kunnen vertraagd of afwezig zijn waar de ADS-B-dekking zwak of geblokkeerd is.",
+          "2": "NOTAM-gebieden in het luchtruim worden alleen op de deck.gl-kaart getekend. De SVG- en globekaarten tonen luchthavenmarkeringen.",
+          "3": "De meeste Amerikaanse TFR beschrijven hun vorm alleen in de tekst, dus ze verschijnen als een markering op de NOTAM-positie en niet als de beperkte vorm.",
+          "4": "Tijdschema's binnen het geldigheidsvenster van een NOTAM (bijvoorbeeld dagelijkse uren) staan in de toelichting, maar worden niet op de zichtbaarheid toegepast."
+        },
+        "related": {
+          "0": "paneel Airline Intelligence",
+          "1": "Luchtvaartcommandobalk",
+          "2": "Luchtvaartsignalen van het inlichtingenoverzicht",
+          "3": "Vliegtuignoodgevallen",
+          "4": "Navigatieinterferentie"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Conflicten",
+        "purpose": "Zet gewapende conflictregistraties op gebeurtenisniveau uit, met land, actoren, datum en bandbreedtes van dodelijke slachtoffers.",
+        "source": "GED-API van het Uppsala Conflict Data Program, via de conflictdienst en de lading van UCDP-gebeurtenissen.",
+        "freshness": "De gegevens worden elke 6 uur geladen wanneer de UCDP-lading in orde is.",
+        "confidence": "Redactioneel consequenter dan ruwe stromen van laatste nieuws, maar de vertraging is bewust. Het is geen live stroom van het slagveld.",
+        "limitations": {
+          "0": "Het jaarlijkse publicatieritme, van onderzoekskwaliteit, kan zeer recente gebeurtenissen missen.",
+          "1": "De bandbreedtes van dodelijke slachtoffers zijn schattingen en moeten als bandbreedtes worden gelezen, niet als exacte tellingen."
+        },
+        "related": {
+          "0": "paneel UCDP-conflictgebeurtenissen",
+          "1": "Conflictcomponent van de Country Instability Index",
+          "2": "Tijdlijn van het land"
+        }
+      },
+      "weather": {
+        "category": "Weer",
+        "purpose": "Toont actieve officiële waarschuwingen voor zwaar weer van nationale meteorologische diensten, samengevoegd in één stroom weather:alerts:v1.",
+        "source": "National Weather Service van de Verenigde Staten (NWS), Environment and Climate Change Canada (ECCC) en de CAP-aggregatie van het WMO-informatiecentrum voor zwaar weer (SWIC), geladen via de doorgifte van WorldMonitor.",
+        "freshness": "NWS-, ECCC- en SWIC-waarschuwingen worden elke 15 minuten door de doorgifte geladen en bewaakt tegen een actualiteitsbudget van 45 minuten.",
+        "confidence": "Gezaghebbend voor waarschuwingen die de bijdragende nationale diensten uitgeven, afhankelijk van het publicatiemoment bij de bron. NWS en ECCC worden als polygonen getekend. SWIC-waarschuwingen met een locatiecode worden getekend op de centroïde van het land van de uitgevende dienst, met een expliciete precisiemarkering.",
+        "limitations": {
+          "0": "De meeste SWIC-leden publiceren locatiecodes, geen polygonen. Die waarschuwingen verschijnen als punten op landniveau, met de gebiedsbeschrijving letterlijk overgenomen, en niet als lagen van het gewaarschuwde gebied.",
+          "1": "De SWIC-dekking hangt af van welke WMO-leden nu naar de aggregator publiceren. De dichtheid verschilt per regio.",
+          "2": "SWIC-rijen van de Verenigde Staten en Canada worden overgeslagen omdat NWS en ECCC voor die landen al dekking op polygoonniveau leveren."
+        },
+        "related": {
+          "0": "Laag Natuurlijke gebeurtenissen",
+          "1": "Pop-ups voor weerwaarschuwingen",
+          "2": "Data Freshness"
+        }
+      },
+      "canadaRoads": {
+        "category": "Vervoer",
+        "purpose": "Toont officiële wegincidenten, waarschuwingen, condities, afsluitingen, werkzaamheden en gevaren in de ondersteunde Canadese rechtsgebieden.",
+        "source": "Provinciale stromen Ontario 511, Alberta 511 en Manitoba 511, City of Toronto Road Restrictions en DriveBC Open511, geladen via WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 en Manitoba 511 worden elke 15 minuten geladen en bewaakt tegen een actualiteitsbudget van 45 minuten. De beperkingen van Toronto worden elke 2 uur geladen, en DriveBC Open511 elke 30 minuten.",
+        "confidence": "Gezaghebbend voor de ondersteunde provinciale en gemeentelijke uitgevers, afhankelijk van het publicatiemoment bij de bron en van de gekarteerde geometrie.",
+        "limitations": {
+          "0": "Alberta 511 roadconditions wordt niet binnengehaald (het adres van de leverancier antwoordt met 404). De livekaart van Alberta toont alleen gebeurtenissen en waarschuwingen.",
+          "1": "Provinciale waarschuwingen zonder coördinaten verschijnen niet als punten op de kaart.",
+          "2": "Polylijnen van wegconditie kunnen complexe snelweggeometrie vereenvoudigen."
+        },
+        "related": {
+          "0": "Weerwaarschuwingen",
+          "1": "Data Freshness"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Noodwaarschuwingen",
+        "purpose": "Toont actieve waarschuwingen voor de openbare veiligheid van Alberta, British Columbia en Saskatchewan als punten op de kaart, naast het NWS-weer van de Verenigde Staten.",
+        "source": "De Atom van Alberta Emergency Alert, de GeoJSON-laag OGL-BC Evacuation Orders and Alerts en de openbare JSON-stroom van SaskAlert, plus CAP 1.2-details van dezelfde server, worden genormaliseerd tot één canadaAlerts-unie. CAP/GeoRSS-polygonen, evacuatiepolygonen van B.C. en CAP-polygonen van SaskAlert worden centroïden. Registraties zonder geometrie gebruiken de centroïde van de provincie van herkomst.",
+        "freshness": "Provinciale bronnen worden elke 15 minuten geladen en de unie wordt bewaakt tegen een actualiteitsbudget van 45 minuten. Een lege stroom (geen actieve waarschuwingen) is een geldig succes zonder registraties.",
+        "confidence": "Gezaghebbend voor waarschuwingen die Alberta Emergency Alert, B.C. Evacuation Orders and Alerts en SaskAlert publiceren, afhankelijk van het publicatiemoment bij de bron en van de gekarteerde waarschuwingsgeometrie.",
+        "limitations": {
+          "0": "De dekking is beperkt tot Alberta, British Columbia en Saskatchewan. Ontario heeft geen geschikte machinaal leesbare stroom die de provincie zelf beheert, buiten de uitgesloten NAAD.",
+          "1": "Deze laag vervangt geen NWS-weerwaarschuwingen van de Verenigde Staten en geen weglagen van Ontario en Toronto.",
+          "2": "Meldingen zonder een ernst die op de kaart kan worden gezet (CAP- en kleursemantiek van Alberta, evacuatiestatus van B.C. of CAP-ernst van SaskAlert) worden weggelaten in plaats van verzonnen. Kleur of niveau van de SaskAlert-samenvatting telt niet als CAP-ernst."
+        },
+        "related": {
+          "0": "Weerwaarschuwingen",
+          "1": "Laag Natuurlijke gebeurtenissen",
+          "2": "Data Freshness"
+        }
+      },
+      "cyberThreats": {
+        "category": "Cyberbedreigingen",
+        "purpose": "Brengt geografisch verrijkte indicatoren van compromittering in kaart, zoals C2-servers, systemen met kwaadaardige software, phishing, kwaadaardige URL's en ransomware-infrastructuur.",
+        "source": "abuse.ch Feodo Tracker en URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, de RSS- en nieuwsstroom van ransomware.live, en verrijking met IP-geolocatie.",
+        "freshness": "De ladingen voor cyberbedreigingen draaien elke 2 uur. De getoonde IOC gebruiken een voortschrijdend venster van 14 dagen en hebben een plafond voor de kaartprestaties.",
+        "confidence": "Goed om infrastructuur te zien, maar attributie en IP-geolocatie kunnen ruis geven.",
+        "limitations": {
+          "0": "IP-geolocatie kan naar de infrastructuur van de aanbieder wijzen in plaats van naar een operator of een slachtoffer.",
+          "1": "Beschikbaarheid van stromen, API-sleutels en misbruikmeldingen per stroom kunnen de dekking vertekenen."
+        },
+        "related": {
+          "0": "Kaartpop-ups Cyberbedreigingen",
+          "1": "Cyberbijdrage aan de landinestabiliteit",
+          "2": "Data Freshness"
+        }
+      },
+      "natural": {
+        "category": "Natuurrampen",
+        "purpose": "Toont aardbevingen, zware rampwaarschuwingen en actieve aardobservatiegebeurtenissen, voor situatiebewustzijn.",
+        "source": "Aardbevingen van USGS, waarschuwingen van GDACS en gebeurtenissen van NASA EONET, samengevoegd in de dienst voor natuurlijke gebeurtenissen.",
+        "freshness": "Natuurlijke gebeurtenissen worden elke 3 uur geladen. Het verwachte bronritme voor aardbevingen van USGS is gedocumenteerd op ongeveer 5 minuten.",
+        "confidence": "Sterk voor gedetecteerde openbare rampsignalen. De betrouwbaarheid verschilt per gevaartype en door de meldingsvertraging bij de bron.",
+        "limitations": {
+          "0": "GDACS-waarschuwingen van lage ernst worden weggefilterd zodat de kaart leesbaar blijft.",
+          "1": "Natuurbranden van EONET worden op actualiteit gefilterd, dus oudere open gebeurtenissen kunnen ontbreken als actieve kaartpunten."
+        },
+        "related": {
+          "0": "Pop-ups van de laag Natuurlijke gebeurtenissen",
+          "1": "Weerwaarschuwingen",
+          "2": "Natuursignalen van het inlichtingenoverzicht"
+        }
+      },
+      "waterways": {
+        "category": "Maritiem",
+        "purpose": "Markeert strategische waterwegen en knelpunten, zodat verstoringssignalen tegen een vaste maritieme geografie kunnen worden gelezen.",
+        "source": "Register van strategische waterwegen van WorldMonitor, met statuslagen van knelpunten in de toeleveringsketen uit AIS, NGA-waarschuwingen en van PortWatch afgeleide stromen.",
+        "freshness": "Waterweglocaties zijn statisch. De live knelpuntstatus wordt elke 6 minuten licht ververst, en de transitsamenvattingen verversen elke 10 minuten wanneer het pad van de doorgifte en PortWatch in orde is.",
+        "confidence": "Hoog voor de vaste geografie. De betrouwbaarheid van een live verstoring hangt af van de bijbehorende stromen AIS, NGA en PortWatch.",
+        "limitations": {
+          "0": "Een zichtbare knelpuntmarkering betekent niet dat er een actieve verstoring is.",
+          "1": "Gebiedsafbakeningen en gemodelleerde routes kunnen complexe verkeerspatronen vereenvoudigen."
+        },
+        "related": {
+          "0": "paneel Toeleveringsketen",
+          "1": "Laag Handelsroutes",
+          "2": "Routeverkenner (Route Explorer)",
+          "3": "Scenariomotor (Scenario Engine)"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Landrisico",
+        "purpose": "Kleurt landen volgens de huidige score van de Country Instability Index, voor een brede eerste sortering van strategisch risico.",
+        "source": "Scoredienst van de Country Instability Index van WorldMonitor, met signalen van conflict, onrust, reisadviezen, cyberdreiging, scheepsvolging, luchtvaart, natuurlijke gebeurtenissen en nieuws.",
+        "freshness": "De cache van risicoscores wordt elke 8 minuten licht ververst. seed-meta en health.riskScores tonen de staat actueel, verouderd, gedeeltelijk of gedegradeerd, tegen een actualiteitsbudget van 30 minuten.",
+        "confidence": "Signaal van een samengesteld model, geen officiële landbeoordeling en geen kansverwachting.",
+        "limitations": {
+          "0": "Schaarse of gedegradeerde brongroepen kunnen de betrouwbaarheid verlagen ook wanneer een land nog een score heeft.",
+          "1": "Kleur op landniveau kan verschillen binnen het land verbergen. Vergelijk die met de panelen voordat de kleur wordt geciteerd."
+        },
+        "related": {
+          "0": "paneel Country Instability Index",
+          "1": "paneel Strategisch risicooverzicht",
+          "2": "Data Freshness",
+          "3": "Inlichtingenoverzicht"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Laag",
+      "purpose": "Deze laag kan op de kaart worden aangezet, maar een samengestelde fiche over bron en betrouwbaarheid is nog niet toegevoegd.",
+      "source": "Niet opgenomen in de v1-set voor laaguitleg.",
+      "freshness": "Hier is geen actualiteitscontract op laagniveau vastgelegd. Controleer de zichtbare badges van de panelen, de pop-ups of de status Data Freshness zodra die beschikbaar zijn.",
+      "confidence": "Onbekend totdat brongebonden metadata is toegevoegd.",
+      "limitations": {
+        "0": "Het ontbreken van een samengestelde fiche betekent niet dat de laag niet beschikbaar is.",
+        "1": "Gebruik de pop-ups van de laag en de gerelateerde panelen voor context die bij de bron hoort."
+      },
+      "related": {
+        "0": "Lagengids"
+      }
+    }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO-gegevens niet beschikbaar.",
+    "empty": "UKMTO heeft geen incidenten teruggegeven.",
+    "stale": "Verouderde brongegevens. Laatst gecontroleerd",
+    "current": "Bron gecontroleerd",
+    "reportedClaims": "Meldingen van de uitgever. Beweringen worden mogelijk nog onderzocht.",
+    "occurred": "Incident",
+    "reported": "Gepubliceerd"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Wereldwijde marktkaart",
+      "liveNews": "Marktkoppen",
+      "insights": "AI-marktinzichten"
+    },
+    "tech": {
+      "map": "Wereldwijde technologiekaart",
+      "liveNews": "Technologiekoppen"
+    },
+    "commodity": {
+      "map": "Grondstoffenkaart",
+      "liveNews": "Grondstoffenkoppen",
+      "insights": "AI-grondstoffeninzichten"
+    },
+    "energy": {
+      "map": "Energieatlas-kaart",
+      "liveNews": "Energiekoppen",
+      "insights": "AI-energieinzichten"
+    },
+    "happy": {
+      "map": "Goed nieuws-kaart"
+    }
   }
 }
