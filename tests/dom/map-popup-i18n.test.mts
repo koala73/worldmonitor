@@ -1,0 +1,186 @@
+/**
+ * #10065: MapPopup must not mix the selected locale with hardcoded English.
+ * Deterministic labels come from the catalogue; free-form provider prose is
+ * left original and only translated when the user asks, via the toggle.
+ */
+import i18next from 'i18next';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { MapPopup } from '@/components/MapPopup';
+import {
+  aptSectorLabel, aptTacticLabel, countryLabel, isSameLocation, localizeRelativePlace,
+  parseGdeltReportTitle, severityLabel, statusLabel,
+} from '@/components/map-popup-i18n';
+import { PopupProseTranslator } from '@/components/map-popup-translate';
+import de from '@/locales/de.json';
+import en from '@/locales/en.json';
+
+async function useLanguage(lng: 'en' | 'de'): Promise<void> {
+  if (!i18next.isInitialized) {
+    await i18next.init({
+      lng, fallbackLng: 'en', supportedLngs: ['en', 'de'],
+      resources: { en: { translation: en as Record<string, unknown> }, de: { translation: de as Record<string, unknown> } },
+      interpolation: { escapeValue: false },
+    });
+  } else {
+    if (!i18next.hasResourceBundle('de', 'translation')) i18next.addResourceBundle('de', 'translation', de, true, true);
+    await i18next.changeLanguage(lng);
+  }
+  if (i18next.language !== lng) throw new Error(`[dom-harness] wanted ${lng}, got ${i18next.language}`);
+}
+
+type Deferred = { promise: Promise<string | null>; resolve: (v: string | null) => void };
+const deferred = (): Deferred => {
+  let resolve!: (v: string | null) => void;
+  const promise = new Promise<string | null>(r => { resolve = r; });
+  return { promise, resolve };
+};
+const flush = () => new Promise(r => setTimeout(r, 0));
+
+let container: HTMLElement;
+let popup: MapPopup;
+let calls: string[];
+let pending: Deferred[];
+beforeAll(() => useLanguage('de'));
+beforeEach(async () => {
+  await useLanguage('de');
+  PopupProseTranslator.clearCache();
+  calls = []; pending = [];
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  popup = new MapPopup(container, {
+    translate: (text) => { calls.push(text); const d = deferred(); pending.push(d); return d.promise; },
+  });
+});
+afterEach(() => { popup.hide('replacement'); container.remove(); });
+
+const nuclear = { id: 'n1', name: 'Bushehr', lat: 28.8, lon: 50.9, type: 'plant', status: 'active', operator: 'AEOI' };
+const weather = {
+  id: 'w1', event: 'Flood Warning', severity: 'Moderate', headline: 'Flood warning issued for the river basin',
+  description: 'River levels are rising quickly.', areaDesc: 'Basin', onset: new Date().toISOString(),
+  expires: new Date(Date.now() + 3_600_000).toISOString(), coordinates: [], centroid: [0, 0],
+};
+const apt = {
+  id: 'a1', name: 'APT33', aka: 'Elfin', sponsor: 'Iran', lat: 35, lon: 51, mitreId: 'G0064',
+  mitreUrl: 'https://attack.mitre.org/groups/G0064/', tactics: ['Initial Access', 'Exfiltration'],
+  targetSectors: ['Energy', 'Oil & Gas', 'SWIFT'], description: 'Iranian espionage group.',
+};
+const quake = {
+  id: 'q1', place: '6 km SE of Pitaloza Arriba, Panama', magnitude: 5.2, depthKm: 10,
+  location: { latitude: 8, longitude: -80 }, occurredAt: Date.now() - 60_000, sourceUrl: 'https://usgs.gov/x',
+};
+
+describe('label helpers in German', () => {
+  it('maps severities, statuses, tactics and sectors; unknown values fall back unchanged', () => {
+    expect(severityLabel('Moderate', { upper: true })).toBe('MÄSSIG');
+    expect(statusLabel('active')).toBe('AKTIV');
+    expect(statusLabel('Something Novel')).toBe('SOMETHING NOVEL');
+    expect(aptTacticLabel('Initial Access')).toBe(de.popups.aptTactics.initialAccess);
+    expect(aptSectorLabel('Oil & Gas')).toBe(de.popups.aptSectors.oilAndGas);
+    expect(aptSectorLabel('SWIFT')).toBe('SWIFT');
+  });
+  it('localizes principal earthquake directions and leaves other phrasings original', () => {
+    expect(localizeRelativePlace('6 km SE of Pitaloza Arriba, Panama')).toBe(
+      i18next.t('popups.earthquake.relativePlace', { distance: '6', direction: de.popups.compass.se, place: 'Pitaloza Arriba, Panama' }),
+    );
+    expect(localizeRelativePlace('12 km ESE of Hualien City, Taiwan')).toBe('12 km ESE of Hualien City, Taiwan');
+    expect(localizeRelativePlace('South of the Fiji Islands')).toBe('South of the Fiji Islands');
+  });
+  it('localizes country names and detects country-level GDELT locations', () => {
+    expect(countryLabel('Canada')).toBe('Kanada');
+    expect(countryLabel('Atlantis')).toBe('Atlantis');
+    expect(isSameLocation('Canada', 'Canada')).toBe(true);
+    expect(isSameLocation('Toronto', 'Canada')).toBe(false);
+    expect(parseGdeltReportTitle('Canada (33 reports)')).toEqual({ place: 'Canada', count: 33 });
+    expect(parseGdeltReportTitle('Clashes in Paris')).toBeNull();
+  });
+});
+
+describe('MapPopup in German', () => {
+  it('shows the nuclear status from the catalogue and keeps the raw value as data', () => {
+    popup.show({ type: 'nuclear', data: nuclear as never, x: 10, y: 10 });
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('AKTIV');
+    expect(text).not.toContain('ACTIVE');
+  });
+  it('localizes weather severity, leaves the provider headline original and does not translate on open', () => {
+    popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
+    expect(document.querySelector('.popup-header .popup-badge')?.textContent).toBe('MÄSSIG');
+    expect(document.body.textContent).toContain(weather.headline);
+    expect(document.querySelectorAll('.popup-translate-btn').length).toBeGreaterThan(0);
+    expect(calls).toEqual([]);
+  });
+  it('localizes APT tactics and the Targets label, keeping MITRE ids', () => {
+    popup.show({ type: 'apt', data: apt as never, x: 10, y: 10 });
+    const text = document.body.textContent ?? '';
+    expect(text).toContain(de.popups.aptTactics.initialAccess);
+    expect(text).toContain(`${de.popups.mapPopup.targets}:`);
+    expect(text).not.toContain('Targets:');
+    expect(text).toContain('G0064');
+    expect(document.querySelector('[data-tactic="Initial Access"]')).not.toBeNull();
+  });
+  it('localizes the earthquake direction and keeps the original in the title', () => {
+    popup.show({ type: 'earthquake', data: quake as never, x: 10, y: 10 });
+    const loc = document.querySelector('.popup-location');
+    expect(loc?.textContent).toContain(de.popups.compass.se);
+    expect(loc?.getAttribute('title')).toBe(quake.place);
+  });
+  it('does not render "Canada, Canada" for a country-level GDELT signal', () => {
+    popup.show({
+      type: 'protest', x: 10, y: 10,
+      data: {
+        id: 'gdelt-ca', title: 'Canada (33 reports)', city: 'Canada', country: 'Canada', eventType: 'protest',
+        severity: 'low', confidence: 'low', sourceType: 'gdelt', sources: ['GDELT'], sourceUrls: [], lat: 56, lon: -106,
+        time: new Date(), validated: false, fatalities: 0, tags: [], actors: [],
+      } as never,
+    });
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/Canada, Canada|Kanada, Kanada/);
+    expect(text).toContain('Kanada');
+    expect(text).not.toContain('reports)');
+  });
+});
+
+describe('on-demand translation toggle', () => {
+  it('translates on click, marks it automatic and not official, and restores the original', async () => {
+    popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
+    const btn = document.querySelector<HTMLButtonElement>('.popup-translate-btn')!;
+    btn.click();
+    expect(calls).toEqual([weather.headline]);
+    pending[0]!.resolve('Hochwasserwarnung für das Flussgebiet');
+    await flush();
+    const box = btn.closest('.popup-translatable')!;
+    expect(box.getAttribute('data-state')).toBe('translated');
+    expect(box.textContent).toContain('Hochwasserwarnung für das Flussgebiet');
+    expect(box.querySelector('.popup-translation-note')?.textContent).toContain(de.popups.mapPopup.translate.notOfficial);
+    btn.click();
+    expect(box.getAttribute('data-state')).toBe('original');
+    expect(box.textContent).toContain(weather.headline);
+  });
+  it('drops a late response after the popup was replaced', async () => {
+    popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
+    document.querySelector<HTMLButtonElement>('.popup-translate-btn')!.click();
+    popup.show({ type: 'apt', data: apt as never, x: 10, y: 10 });
+    pending[0]!.resolve('VERSPÄTET');
+    await flush();
+    expect(document.body.textContent).not.toContain('VERSPÄTET');
+  });
+  it('keeps the original and shows an unavailable status when the provider fails', async () => {
+    popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
+    const btn = document.querySelector<HTMLButtonElement>('.popup-translate-btn')!;
+    btn.click();
+    pending[0]!.resolve(null);
+    await flush();
+    const box = btn.closest('.popup-translatable')!;
+    expect(box.textContent).toContain(weather.headline);
+    expect(box.querySelector('.popup-translation-error')).not.toBeNull();
+  });
+});
+
+describe('English baseline', () => {
+  it('renders plain prose with no translate button and English labels', async () => {
+    await useLanguage('en');
+    popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
+    expect(document.querySelector('.popup-translate-btn')).toBeNull();
+    expect(document.querySelector('.popup-header .popup-badge')?.textContent).toBe('MODERATE');
+  });
+});

@@ -29259,3 +29259,28 @@ body.map-width-resizing {
 .food-prices-context { margin-top: 14px; }
 .food-prices-context summary { cursor: pointer; font-size: .9em; }
 .fao-monthly-context { border-top: 1px solid var(--border); }
+
+/* Map popup on-demand translation (#10065) */
+.popup-translatable { position: relative; }
+.popup-translate-btn {
+  background: transparent;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  border-radius: 4px;
+  color: var(--text-dim, #888);
+  cursor: pointer;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  margin-top: 4px;
+  padding: 1px 6px;
+}
+.popup-translate-btn:hover,
+.popup-translate-btn:focus-visible { color: var(--text, #e8e8e8); border-color: var(--accent, #44ff88); }
+.popup-translate-btn[disabled] { cursor: progress; opacity: 0.6; }
+.popup-translation-note,
+.popup-translation-error {
+  display: block;
+  color: var(--text-dim, #888);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-style: italic;
+  margin-top: 2px;
+}
