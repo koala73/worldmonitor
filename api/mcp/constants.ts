@@ -386,8 +386,8 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.44.0 → 1.45.0 for get_media_perspective (95 → 96 tools).
 // Bumped 1.45.0 → 1.46.0 for get_no2_activity (96 → 97 tools, #9722).
 // Bumped 1.46.0 → 1.47.0 for webcam discovery and recent media (97 → 99 tools, #5704).
-// Bumped 1.47.0 → 1.48.0 for report_issue (99 → 100 tools, #8721).
-export const SERVER_VERSION = '1.48.0';
+// Bumped 1.48.0 → 1.49.0 for get_global_air_activity (100 → 101 tools, #7720).
+export const SERVER_VERSION = '1.49.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
