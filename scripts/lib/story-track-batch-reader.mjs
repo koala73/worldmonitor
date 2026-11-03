@@ -59,6 +59,12 @@
 
 export const STORY_TRACK_BATCH_SIZE = 500;
 
+// Cleanup and archive accounting must distinguish an absent hash from a
+// legacy hash with none of the selected fields, using the same snapshot.
+export const HASH_FIELDS_WITH_LENGTH_SCRIPT = `
+return {redis.call('HLEN', KEYS[1]), redis.call('HMGET', KEYS[1], unpack(ARGV))}
+`;
+
 export async function readStoryTracksChunked(
   hashes,
   pipelineFn,

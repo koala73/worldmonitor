@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { MARKET_ALERT_ACTIVITY_RETENTION_MS } from '../scripts/_market-alert-ledger.mjs';
+import { HASH_FIELDS_WITH_LENGTH_SCRIPT } from '../scripts/lib/story-track-batch-reader.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -720,7 +721,7 @@ describe('reader migration (#7082)', () => {
 describe('bounded backfill and cutover (#7082)', () => {
   const now = 1_750_000_000_000;
   const hash = 'e'.repeat(64);
-  const track = ['Backfilled event', 'https://example.test/e', 'body', String(now - 1_000)];
+  const track = [4, ['Backfilled event', 'https://example.test/e', 'body', String(now - 1_000)]];
 
   it('is a dry-run by default and never writes a cutover marker', async () => {
     const calls = [];
@@ -737,7 +738,7 @@ describe('bounded backfill and cutover (#7082)', () => {
     assert.equal(report.mode, 'dry-run');
     assert.deepEqual(calls[2].command, [
       ['GET', mod.forecastEvidenceRecordKey(hash)],
-      ['HMGET', `story:track:v1:${hash}`, 'title', 'link', 'description', 'publishedAt'],
+      ['EVAL', HASH_FIELDS_WITH_LENGTH_SCRIPT, '1', `story:track:v1:${hash}`, 'title', 'link', 'description', 'publishedAt'],
     ]);
     assert.equal(report.cutoverVerified, false);
     assert.equal(calls.some(call => call.command[0] === 'SET'), false);
@@ -751,8 +752,7 @@ describe('bounded backfill and cutover (#7082)', () => {
       fetchFn: sequenceFetch([
         { result: [hash, String(now - 500)] },
         { result: ['f'.repeat(64), String(now - backfillMod.FORECAST_EVIDENCE_BACKFILL_WINDOW_MS - 1)] },
-        [{ result: null }, { result: [null, null, null, null] }],
-        [{ result: 0 }],
+        [{ result: null }, { result: [0, [null, null, null, null]] }],
       ]),
     });
     assert.equal(report.cutoverVerified, false);
@@ -766,8 +766,7 @@ describe('bounded backfill and cutover (#7082)', () => {
       fetchFn: sequenceFetch([
         { result: [hash, String(now - 500)] },
         { result: ['f'.repeat(64), String(now - backfillMod.FORECAST_EVIDENCE_BACKFILL_WINDOW_MS - 1)] },
-        [{ result: null }, { result: [null, null, null, null] }],
-        [{ result: 1 }],
+        [{ result: null }, { result: [1, [null, null, null, null]] }],
       ]),
     });
     assert.equal(report.missingRows, 0);

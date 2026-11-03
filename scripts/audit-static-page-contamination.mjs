@@ -52,6 +52,7 @@
 
 import { isInstitutionalStaticPage } from './shared/url-classifier.js';
 import { getRedisCredentials } from './_seed-utils.mjs';
+import { HASH_FIELDS_WITH_LENGTH_SCRIPT } from './lib/story-track-batch-reader.mjs';
 
 const VALID_MODES = ['url', 'age', 'residue', 'both'];
 
@@ -153,35 +154,25 @@ async function* scanKeys(url, token, pattern) {
  */
 export async function readAuditTracks(url, token, keys) {
   if (keys.length === 0) return [];
-  const commands = keys.map((k) => ['HMGET', k, ...TRACK_FIELDS]);
+  const commands = keys.map((k) => ['EVAL', HASH_FIELDS_WITH_LENGTH_SCRIPT, '1', k, ...TRACK_FIELDS]);
   const responses = await redisPipeline(url, token, commands);
   if (!Array.isArray(responses) || responses.length !== keys.length) throw new Error('Incomplete audit story-track read');
-  const tracks = responses.map((r) => {
-    const result = r?.result;
-    if (r?.error || !Array.isArray(result) || result.length !== TRACK_FIELDS.length ||
+  return responses.map((r) => {
+    const snapshot = r?.result;
+    const result = snapshot?.[1];
+    if (r?.error || !Array.isArray(snapshot) || snapshot.length !== 2 ||
+        !Number.isSafeInteger(snapshot[0]) || snapshot[0] < 0 ||
+        !Array.isArray(result) || result.length !== TRACK_FIELDS.length ||
         result.some(value => value !== null && typeof value !== 'string')) {
       throw new Error('Invalid audit story-track HMGET response');
     }
+    if (snapshot[0] === 0) return null;
     const obj = {};
     for (let i = 0; i < result.length; i += 1) {
       if (result[i] !== null) obj[TRACK_FIELDS[i]] = result[i];
     }
-    return Object.keys(obj).length === 0 ? null : obj;
+    return obj;
   });
-  const emptyIndexes = tracks.flatMap((track, index) => track === null ? [index] : []);
-  if (emptyIndexes.length > 0) {
-    // A legacy hash with no selected fields still counts as residue. HMGET
-    // alone cannot distinguish it from a key that expired after SCAN.
-    const lengths = await redisPipeline(url, token, emptyIndexes.map(index => ['HLEN', keys[index]]));
-    if (!Array.isArray(lengths) || lengths.length !== emptyIndexes.length ||
-        lengths.some(row => row?.error || !Number.isSafeInteger(row?.result) || row.result < 0)) {
-      throw new Error('Invalid audit story-track existence response');
-    }
-    emptyIndexes.forEach((index, offset) => {
-      if (lengths[offset].result > 0) tracks[index] = {};
-    });
-  }
-  return tracks;
 }
 
 async function batchDel(url, token, keys) {

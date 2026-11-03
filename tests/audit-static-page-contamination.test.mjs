@@ -2,6 +2,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { HASH_FIELDS_WITH_LENGTH_SCRIPT } from '../scripts/lib/story-track-batch-reader.mjs';
 import {
   classifyTrack,
   parseArgs,
@@ -16,14 +17,10 @@ describe('audit story-track selection', () => {
     const originalFetch = globalThis.fetch;
     const fields = ['link', 'publishedAt', 'lastSeen', 'severity', 'source', 'title'];
     globalThis.fetch = async (_url, init) => {
-      if (JSON.parse(init.body)[0][0] === 'HLEN') {
-        assert.deepEqual(JSON.parse(init.body), [['HLEN', 'missing']]);
-        return { ok: true, json: async () => [{ result: 0 }] };
-      }
-      assert.deepEqual(JSON.parse(init.body), ['one', 'missing'].map(key => ['HMGET', key, ...fields]));
+      assert.deepEqual(JSON.parse(init.body), ['one', 'missing'].map(key => ['EVAL', HASH_FIELDS_WITH_LENGTH_SCRIPT, '1', key, ...fields]));
       return { ok: true, json: async () => [
-        { result: ['https://www.defense.gov/About/', null, String(NOW), 'high', 'Defense', ''] },
-        { result: fields.map(() => null) },
+        { result: [5, ['https://www.defense.gov/About/', null, String(NOW), 'high', 'Defense', '']] },
+        { result: [0, fields.map(() => null)] },
       ] };
     };
     try {
@@ -53,13 +50,32 @@ describe('audit story-track selection', () => {
     globalThis.fetch = async (_url, init) => {
       const commands = JSON.parse(init.body);
       calls += 1;
-      assert.equal(commands[0][0], calls === 1 ? 'HMGET' : 'HLEN');
-      return { ok: true, json: async () => [{ result: calls === 1 ? Array(6).fill(null) : 1 }] };
+      assert.equal(commands[0][0], 'EVAL');
+      return { ok: true, json: async () => [{ result: [1, Array(6).fill(null)] }] };
     };
     try {
       const [track] = await readAuditTracks('https://redis.example', 'test', ['legacy']);
       assert.deepEqual(track, {});
+      assert.equal(calls, 1);
       assert.deepEqual(classifyTrack(track, { mode: 'residue', maxAgeMs: HOUR, nowMs: NOW, residueMinStaleMs: HOUR }), ['residue']);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('classifies a recreated fresh story from one snapshot without a second existence read', async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async (_url, init) => {
+      calls += 1;
+      assert.deepEqual(JSON.parse(init.body), [['EVAL', HASH_FIELDS_WITH_LENGTH_SCRIPT, '1', 'recreated',
+        'link', 'publishedAt', 'lastSeen', 'severity', 'source', 'title']]);
+      return { ok: true, json: async () => [{ result: [3, [null, String(NOW), String(NOW), null, null, 'Fresh story']] }] };
+    };
+    try {
+      const [track] = await readAuditTracks('https://redis.example', 'test', ['recreated']);
+      assert.deepEqual(classifyTrack(track, { mode: 'residue', maxAgeMs: HOUR, nowMs: NOW, residueMinStaleMs: HOUR }), []);
+      assert.equal(calls, 1);
     } finally {
       globalThis.fetch = originalFetch;
     }

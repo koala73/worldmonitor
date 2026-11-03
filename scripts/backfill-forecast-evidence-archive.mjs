@@ -6,6 +6,7 @@
 // back. Normal digest publication then advances coverageEndMs.
 
 import { CHROME_UA, loadEnvFile } from './_seed-utils.mjs';
+import { HASH_FIELDS_WITH_LENGTH_SCRIPT } from './lib/story-track-batch-reader.mjs';
 import {
   FORECAST_EVIDENCE_COVERAGE_KEY,
   FORECAST_EVIDENCE_COVERAGE_VERSION,
@@ -43,11 +44,15 @@ function redisResultConfirmed(payload, expected) {
 
 const TRACK_FIELDS = ['title', 'link', 'description', 'publishedAt'];
 
-function selectedTrack(raw) {
-  if (!Array.isArray(raw) || raw.length !== TRACK_FIELDS.length ||
+function selectedTrack(snapshot) {
+  const raw = snapshot?.[1];
+  if (!Array.isArray(snapshot) || snapshot.length !== 2 ||
+      !Number.isSafeInteger(snapshot[0]) || snapshot[0] < 0 ||
+      !Array.isArray(raw) || raw.length !== TRACK_FIELDS.length ||
       raw.some(value => value !== null && typeof value !== 'string')) {
     throw new Error('Invalid backfill story-track HMGET response');
   }
+  if (snapshot[0] === 0) return null;
   const value = {};
   for (let index = 0; index < raw.length; index += 1) {
     if (raw[index] !== null) value[TRACK_FIELDS[index]] = raw[index];
@@ -136,7 +141,6 @@ export async function backfillForecastEvidenceArchive(options = {}) {
   }
 
   const sourceDataRows = [];
-  const existingTrackHashes = new Set();
   for (let offset = 0; offset < hashes.length; offset += batchSize) {
     const batch = hashes.slice(offset, offset + batchSize);
     // Reuse an already archived self-contained payload before consulting the
@@ -144,23 +148,10 @@ export async function backfillForecastEvidenceArchive(options = {}) {
     // to a provable 14-day cutover as the unreadable pre-cutover tail ages out.
     const commands = batch.flatMap(hash => [
       ['GET', forecastEvidenceRecordKey(hash)],
-      ['HMGET', `story:track:v1:${hash}`, ...TRACK_FIELDS],
+      ['EVAL', HASH_FIELDS_WITH_LENGTH_SCRIPT, '1', `story:track:v1:${hash}`, ...TRACK_FIELDS],
     ]);
     const payload = await request(`${url}/pipeline`, commands, 'Redis archive/story-track backfill read');
     if (!redisResultConfirmed(payload, commands.length)) throw new Error('Archive/story-track backfill returned incomplete data');
-    const emptyHashes = batch.filter((_, index) => Object.keys(selectedTrack(payload[index * 2 + 1]?.result)).length === 0);
-    if (emptyHashes.length > 0) {
-      // Preserve missing-row versus legacy tombstone accounting when every
-      // selected field is absent, without fetching unrelated hash values.
-      const lengths = await request(`${url}/pipeline`, emptyHashes.map(hash => ['HLEN', `story:track:v1:${hash}`]), 'Redis backfill story-track existence read');
-      if (!redisResultConfirmed(lengths, emptyHashes.length) ||
-          lengths.some(row => !Number.isSafeInteger(row.result) || row.result < 0)) {
-        throw new Error('Invalid backfill story-track existence response');
-      }
-      emptyHashes.forEach((hash, index) => {
-        if (lengths[index].result > 0) existingTrackHashes.add(hash);
-      });
-    }
     sourceDataRows.push(...payload);
   }
 
@@ -176,7 +167,7 @@ export async function backfillForecastEvidenceArchive(options = {}) {
       if (parsed?.hash === hashes[index]) member = buildForecastEvidenceMember(parsed, scores[index]);
     }
     const track = selectedTrack(sourceDataRows[index * 2 + 1]?.result);
-    if (!member && Object.keys(track).length === 0 && !existingTrackHashes.has(hashes[index])) {
+    if (!member && !track) {
       missingRows += 1;
       continue;
     }
