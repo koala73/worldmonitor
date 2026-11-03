@@ -111,6 +111,48 @@ describe('scheduled analytics collector monitor', () => {
     });
   });
 
+  it('opens a fresh connection for every write canary so an idle keep-alive reset is not reported as a collector failure', async (t) => {
+    // Production failed 1/12 attempts with ECONNRESET 13-113 ms into bursts 2
+    // and 3, never burst 1: later bursts reused the sockets burst 1 left idle,
+    // and the edge reset one as it was written to. Browsers resend a request
+    // that dies on a reused socket before any response; Node fetch does not.
+    // This server resets any write that arrives on an already-used socket.
+    const usedSockets = new WeakSet();
+    const writeSockets = new Set();
+    const server = createServer((request, response) => {
+      const reused = usedSockets.has(request.socket);
+      usedSockets.add(request.socket);
+      if (request.method === 'POST') {
+        if (reused) {
+          request.socket.destroy();
+          return;
+        }
+        writeSockets.add(request.socket);
+        request.resume();
+        request.on('end', () => {
+          response.writeHead(200, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({ cache: 'c', sessionId: 's', visitId: 'v' }));
+        });
+        return;
+      }
+      response.writeHead(request.url === '/api/send' ? 405 : 200);
+      response.end("'/api/send'");
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise((resolve) => {
+      server.closeAllConnections();
+      server.close(resolve);
+    }));
+
+    const report = await runCollectorChecks({
+      origin: `http://127.0.0.1:${server.address().port}`,
+      sleep: async () => {},
+    });
+    assert.deepEqual(report.writeSummary.failures, []);
+    assert.equal(report.alerting, false);
+    assert.equal(writeSockets.size, 12, 'every write canary attempt needs its own connection');
+  });
+
   it('accepts the live shape of a healthy collector', () => {
     // Verified against production 2026-07-24 after the #5565 restore.
     assert.equal(evaluateProbeResult(probeByName('heartbeat'), { status: 200 }), null);
