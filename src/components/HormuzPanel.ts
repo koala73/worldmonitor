@@ -242,11 +242,21 @@ export class HormuzPanel extends Panel {
       const tip = this.element?.querySelector<HTMLElement>('.hz-tip');
       if (!tip) return;
       const barRect = (target as SVGRectElement).getBoundingClientRect();
-      tip.style.left = `${barRect.left + barRect.width / 2}px`;
-      tip.style.top = `${Math.max(8, barRect.top - 28)}px`;
-      tip.style.transform = 'translateX(-50%)';
-      tip.style.opacity = '1';
       tip.textContent = `${date}  ${val} ${unit}`;
+      // .panel's `contain: content` makes it the containing block for this
+      // fixed tooltip, so viewport coordinates would land offset by the
+      // panel's own position. Measure where (0, 0) lands and place from there,
+      // centred on the bar and kept inside the panel.
+      tip.style.transform = 'none';
+      tip.style.left = '0px';
+      tip.style.top = '0px';
+      const origin = tip.getBoundingClientRect();
+      const panel = (this.element as HTMLElement).getBoundingClientRect();
+      const half = origin.width / 2;
+      const centre = Math.min(Math.max(barRect.left + barRect.width / 2, panel.left + half + 4), panel.right - half - 4);
+      tip.style.left = `${centre - half - origin.left}px`;
+      tip.style.top = `${Math.max(panel.top + 4, barRect.top - 28) - origin.top}px`;
+      tip.style.opacity = '1';
     });
 
     this.element.addEventListener('mouseleave', () => {

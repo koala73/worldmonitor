@@ -25,13 +25,14 @@ test('Hormuz bar charts fill the panel body at every width', async ({ page }) =>
     const el = panel.getElement();
     host.appendChild(el);
     const series = Array.from({ length: 30 }, (_, i) => ({ date: `2026-10-${String(i + 1).padStart(2, '0')}`, value: 40 + (i % 7) * 10 }));
-    const internals = panel as unknown as { data: unknown; showingData: boolean; renderPanel(): void };
+    const internals = panel as unknown as { data: unknown; showingData: boolean; renderPanel(): void; bindTooltip(): void };
     internals.data = {
       fetchedAt: Date.now(), updatedDate: '2026-09-21', title: 'Analysis', summary: null, paragraphs: [], status: 'open',
       charts: [{ label: 'crude', title: 'Crude oil outbound shipments', series }],
       attribution: { source: 'WTO', url: 'https://datalab.wto.org/' },
     };
     internals.showingData = true;
+    internals.bindTooltip(); // fetchData() binds it after the first render
 
     const measure = async (width: number) => {
       host.style.width = `${width}px`;
@@ -46,13 +47,13 @@ test('Hormuz bar charts fill the panel body at every width', async ({ page }) =>
       const style = getComputedStyle(content);
       // The chart row also holds the title line; the chart should span it.
       const row = el.querySelector('.hz-chart')!.getBoundingClientRect();
-      const bar = el.querySelector('.hbar')!.getBoundingClientRect();
+      const bars = [...el.querySelectorAll('.hbar')].map((b) => b.getBoundingClientRect());
       return {
         overflowX: content.scrollWidth - content.clientWidth,
         chartWidth: Math.round(chart.width),
         rowWidth: Math.round(row.width),
         chartRightPastBody: Math.round(chart.right - (body.right - parseFloat(style.paddingRight))),
-        barInsideChart: bar.left >= chart.left - 0.5 && bar.right <= chart.right + 0.5,
+        barsOutsideChart: bars.filter((bar) => bar.left < chart.left - 0.5 || bar.right > chart.right + 0.5).length,
       };
     };
 
@@ -63,6 +64,32 @@ test('Hormuz bar charts fill the panel body at every width', async ({ page }) =>
     expect(m.overflowX, `${name}: body must not scroll sideways`).toBeLessThanOrEqual(0);
     expect(m.chartRightPastBody, `${name}: chart stays inside the body`).toBeLessThanOrEqual(0);
     expect(Math.abs(m.chartWidth - m.rowWidth), `${name}: chart spans its row`).toBeLessThanOrEqual(2);
-    expect(m.barInsideChart, `${name}: hover targets scale with the bars`).toBe(true);
+    expect(m.barsOutsideChart, `${name}: every hover target stays inside the chart`).toBe(0);
   }
+
+  // A sidebar panel sits right of the map. The tooltip must still appear over
+  // the hovered bar, including the rightmost one.
+  const bar = await page.evaluate(async () => {
+    const host = document.body.lastElementChild as HTMLElement;
+    host.style.marginLeft = '700px';
+    host.style.width = '754px';
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const bars = document.querySelectorAll('.hbar');
+    const r = bars[bars.length - 1]!.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(bar.x - 1, bar.y);
+  await page.mouse.move(bar.x, bar.y);
+  await page.waitForTimeout(200); // the tooltip fades in over 80ms
+  const tip = await page.evaluate(() => {
+    const t = document.querySelector<HTMLElement>('.hz-tip')!;
+    const r = t.getBoundingClientRect();
+    const panel = t.closest('.panel')!.getBoundingClientRect();
+    return { center: r.left + r.width / 2, bottom: r.bottom, right: r.right, panelRight: panel.right, opacity: getComputedStyle(t).opacity, text: t.textContent };
+  });
+  expect(tip.opacity).toBe('1');
+  expect(tip.text).toContain('10-30');
+  expect(Math.abs(tip.center - bar.x), 'tooltip is centred on the hovered bar').toBeLessThanOrEqual(4);
+  expect(tip.bottom, 'tooltip sits above the bar').toBeLessThanOrEqual(bar.y);
+  expect(tip.right, 'tooltip stays inside the panel').toBeLessThanOrEqual(tip.panelRight);
 });
