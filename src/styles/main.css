@@ -20682,27 +20682,24 @@ a.prediction-link:hover {
   max-height: 80vh;
 }
 
+/* Tabs that do not fit wrap onto more rows instead of scrolling out of
+   sight. Each tab's shadow rules off its row; on the last row it lands on
+   the strip's border, so a single row looks unchanged. */
 .unified-settings-tabs {
   display: flex;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scroll-padding-inline: 24px;
-  scrollbar-width: none;
-}
-
-.unified-settings-tabs::-webkit-scrollbar {
-  display: none;
 }
 
 .unified-settings-tab {
   flex: 1 0 auto;
   min-height: 44px;
-  padding: 10px 12px;
+  padding: 10px 8px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
+  box-shadow: 0 1px var(--border);
   color: var(--text-dim);
   font-family: inherit;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
@@ -20721,6 +20718,17 @@ a.prediction-link:hover {
 .unified-settings-tab.active {
   border-bottom-color: var(--text);
   color: var(--text);
+}
+
+/* Forced colors paint every transparent border, which hid the selected tab. */
+@media (forced-colors: active) {
+  .unified-settings-tab {
+    border-bottom-color: Canvas;
+  }
+
+  .unified-settings-tab.active {
+    border-bottom-color: Highlight;
+  }
 }
 
 .unified-settings-tab-panel {

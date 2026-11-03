@@ -103,10 +103,10 @@
   overflow-x: auto;
 }
 
-/* A table too wide for its panel, or the Settings tab strip on a phone,
-   scrolls sideways. Overlay scrollbars (macOS, touch) hide that, so the
-   edge with more content fades out. The fade follows the scroll position
-   and needs scroll-driven animations; elsewhere the region still scrolls. */
+/* A table too wide for its panel scrolls sideways. Overlay scrollbars
+   (macOS, touch) hide that, so the edge with more content fades out,
+   matching the tab strip above. The fade follows the scroll position
+   and needs scroll-driven animations; elsewhere the table still scrolls. */
 @property --table-scroll-fade-start {
   syntax: '<length>';
   inherits: false;
@@ -144,8 +144,7 @@
 @supports (animation-timeline: scroll()) {
   /* Only the table's own wrapper fades. A mask on .panel-content would
      also fade the summary, filters and footer around the table. */
-  .table-scroll,
-  .unified-settings-tabs {
+  .table-scroll {
     animation: table-scroll-fade-start linear both, table-scroll-fade-end linear both, table-scroll-fade-mask linear both;
     animation-timeline: scroll(self inline), scroll(self inline), scroll(self inline);
     animation-range: 0 24px, calc(100% - 24px) 100%, normal;
@@ -159,8 +158,7 @@
     animation-range: calc(100% - 24px) 100%, normal;
   }
 
-  [dir="rtl"] .table-scroll,
-  [dir="rtl"] .unified-settings-tabs {
+  [dir="rtl"] .table-scroll {
     animation-name: table-scroll-fade-start, table-scroll-fade-end, table-scroll-fade-mask-rtl;
   }
 
