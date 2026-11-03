@@ -601,6 +601,14 @@
       }
     },
     {
+      "name": "get_global_air_activity",
+      "description": "Global military air activity: how many aircraft are aloft worldwide right now, by type and theater. A cheap aggregate over the seeded world flight snapshot — one total, an aircraft-type breakdown (fighters, tankers, AWACS, reconnaissance, transports, bombers, drones), per-theater rollups using the same theater bounds the surge engine uses (theater counts can overlap), and the count outside every declared theater. Quiet theaters are omitted rather than reported as zero rows. Scope is military aircraft from redistribution-cleared providers — the seeded snapshot that covers the world; for civilian traffic or a single country use get_airspace, and for posture/threat interpretation of the same data use get_military_surge.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "geopolitical-security"
+      }
+    },
+    {
       "name": "get_military_surge",
       "description": "Return the military surge watch computed server-side over the seeded flight snapshot: per-theater posture summaries counting fighters, tankers, AWACS, reconnaissance, transports, bombers and drones inside each theater boundary with trend context from persisted surge history and tracked-vessel counts; foreign_presence detections (operators flying far from home above per-operator thresholds); and seeded_surges, the alerts the flights seeder computed against its own baselines (reported separately because it uses different thresholds). Inputs are flagged stale after 30 minutes; flight_count and the *_available flags report which inputs were present. Requires a paid plan; weight 2 on API plans. theater narrows by id or name substring. Read-only.",
       "_meta": {
