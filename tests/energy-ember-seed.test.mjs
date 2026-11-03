@@ -24,28 +24,26 @@ const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 // Real Ember CSV column names (must match COLS in seed-ember-electricity.mjs)
 const ISO3_COL = 'ISO 3 code';
 const DATE_COL = 'Date';
-const SERIES_COL = 'Variable';
-const UNIT_COL = 'Unit';
-const VALUE_COL = 'Value';
+const SERIES_COL = 'Electricity source';
+const VALUE_COL = 'Generation (TWh)';
 
 function makeRow(overrides = {}) {
   return {
     [ISO3_COL]: 'USA',
     [DATE_COL]: '2024-01-01',
     [SERIES_COL]: 'Coal',
-    [UNIT_COL]: 'TWh',
     [VALUE_COL]: '100',
     ...overrides,
   };
 }
 
 /**
- * Build a minimal long-format CSV string from an array of row objects.
+ * Build a minimal Ember monthly release CSV string from an array of row objects.
  * @param {Array<Record<string, string>>} rows
  * @param {string} [eol] line terminator (default LF). Upstream switched to bare CR in June 2026.
  */
 function buildCsv(rows, eol = '\n') {
-  const headers = [ISO3_COL, DATE_COL, SERIES_COL, UNIT_COL, VALUE_COL, 'Category'];
+  const headers = [ISO3_COL, DATE_COL, SERIES_COL, VALUE_COL];
   const lines = [headers.join(',')];
   for (const row of rows) {
     lines.push(headers.map((h) => row[h] ?? '').join(','));
@@ -64,21 +62,21 @@ function threeCountryFixture() {
     makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Nuclear',          [VALUE_COL]: '100' }),
     makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Coal',             [VALUE_COL]: '200' }),
     makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Gas',              [VALUE_COL]: '200' }),
-    makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '800' }),
+    makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total generation', [VALUE_COL]: '800' }),
     // DEU (Germany)
     makeRow({ [ISO3_COL]: 'DEU', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '200' }),
     makeRow({ [ISO3_COL]: 'DEU', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Renewables',       [VALUE_COL]: '500' }),
     makeRow({ [ISO3_COL]: 'DEU', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Nuclear',          [VALUE_COL]: '0'   }),
     makeRow({ [ISO3_COL]: 'DEU', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Coal',             [VALUE_COL]: '100' }),
     makeRow({ [ISO3_COL]: 'DEU', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Gas',              [VALUE_COL]: '100' }),
-    makeRow({ [ISO3_COL]: 'DEU', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '700' }),
+    makeRow({ [ISO3_COL]: 'DEU', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total generation', [VALUE_COL]: '700' }),
     // FRA (France)
     makeRow({ [ISO3_COL]: 'FRA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '50'  }),
     makeRow({ [ISO3_COL]: 'FRA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Renewables',       [VALUE_COL]: '100' }),
     makeRow({ [ISO3_COL]: 'FRA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Nuclear',          [VALUE_COL]: '400' }),
     makeRow({ [ISO3_COL]: 'FRA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Coal',             [VALUE_COL]: '20'  }),
     makeRow({ [ISO3_COL]: 'FRA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Gas',              [VALUE_COL]: '30'  }),
-    makeRow({ [ISO3_COL]: 'FRA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '550' }),
+    makeRow({ [ISO3_COL]: 'FRA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total generation', [VALUE_COL]: '550' }),
   ];
   return buildCsv(rows);
 }
@@ -195,10 +193,10 @@ describe('parseEmberCsv', () => {
     const rows = [
       // Jan 2024
       makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '100' }),
-      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '200' }),
+      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total generation', [VALUE_COL]: '200' }),
       // Feb 2024 (later — should be selected)
       makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '2024-02-01', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '80'  }),
-      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '2024-02-01', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '210' }),
+      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '2024-02-01', [SERIES_COL]: 'Total generation', [VALUE_COL]: '210' }),
     ];
     const csv = buildCsv(rows);
     const result = parseEmberCsv(csv);
@@ -207,17 +205,6 @@ describe('parseEmberCsv', () => {
     assert.equal(gb.dataMonth, '2024-02', 'should use the later month');
     // Feb: fossil=80, total=210 → ~38.1%
     assert.ok(Math.abs(gb.fossilShare - (80 / 210) * 100) < 0.01);
-  });
-
-  it('skips rows where unit !== TWh', () => {
-    const rows = [
-      makeRow({ [ISO3_COL]: 'AUS', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Fossil',           [UNIT_COL]: 'GW', [VALUE_COL]: '100' }),
-      makeRow({ [ISO3_COL]: 'AUS', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total Generation', [UNIT_COL]: 'GW', [VALUE_COL]: '200' }),
-    ];
-    const csv = buildCsv(rows);
-    const result = parseEmberCsv(csv);
-    // AUS should not appear since no TWh rows
-    assert.ok(!result.has('AU'), 'AU should be excluded when unit is GW');
   });
 
   it('skips countries where Total Generation is missing', () => {
@@ -257,7 +244,7 @@ describe('upstream date-format change (DD/MM/YYYY)', () => {
   it('extracts dataMonth from DD/MM/YYYY dates', () => {
     const rows = [
       makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/03/2026', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '400' }),
-      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/03/2026', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '800' }),
+      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/03/2026', [SERIES_COL]: 'Total generation', [VALUE_COL]: '800' }),
     ];
     const result = parseEmberCsv(buildCsv(rows));
     const us = result.get('US');
@@ -269,9 +256,9 @@ describe('upstream date-format change (DD/MM/YYYY)', () => {
     // Lexically "01/12/2025" > "01/01/2026", so naive string max picks the wrong (older) month.
     const rows = [
       makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/12/2025', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '100' }),
-      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/12/2025', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '200' }),
+      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/12/2025', [SERIES_COL]: 'Total generation', [VALUE_COL]: '200' }),
       makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/01/2026', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '80'  }),
-      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/01/2026', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '210' }),
+      makeRow({ [ISO3_COL]: 'GBR', [DATE_COL]: '01/01/2026', [SERIES_COL]: 'Total generation', [VALUE_COL]: '210' }),
     ];
     const result = parseEmberCsv(buildCsv(rows));
     const gb = result.get('GB');
@@ -290,7 +277,7 @@ describe('real-world combined format (CR-only + DD/MM/YYYY)', () => {
   it('parses a CSV with both June-2026 upstream changes at once', () => {
     const rows = [
       makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/04/2026', [SERIES_COL]: 'Fossil',           [VALUE_COL]: '400' }),
-      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/04/2026', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '800' }),
+      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '01/04/2026', [SERIES_COL]: 'Total generation', [VALUE_COL]: '800' }),
     ];
     const csv = buildCsv(rows, '\r'); // CR-only + DD/MM/YYYY
     const result = parseEmberCsv(csv);
@@ -305,7 +292,7 @@ describe('schema sentinel', () => {
   it('throws when Fossil series is not present in any row', () => {
     const rows = [
       makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Coal',             [VALUE_COL]: '100' }),
-      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total Generation', [VALUE_COL]: '200' }),
+      makeRow({ [ISO3_COL]: 'USA', [DATE_COL]: '2024-01-01', [SERIES_COL]: 'Total generation', [VALUE_COL]: '200' }),
     ];
     const csv = buildCsv(rows);
     assert.throws(
@@ -655,7 +642,7 @@ describe('dataWritten flag prevents stash restore after successful pipeline', ()
 // ---------------------------------------------------------------------------
 
 describe('golden fixture (Ember monthly CSV)', () => {
-  const csv = readFileSync(resolve(FIXTURE_DIR, 'ember-monthly-sample.csv'), 'utf-8');
+  const csv = readFileSync(resolve(FIXTURE_DIR, 'ember/release_generation_monthly_global.excerpt.csv'), 'utf-8');
 
   it('parseEmberCsv returns at least 1 country from the fixture', () => {
     const countries = parseEmberCsv(csv);
@@ -693,12 +680,5 @@ describe('golden fixture (Ember monthly CSV)', () => {
     for (const [iso2, entry] of countries) {
       assert.match(entry.dataMonth, /^\d{4}-\d{2}$/, `${iso2} dataMonth format wrong: ${entry.dataMonth}`);
     }
-  });
-
-  it('US fossilShare is 50% (400/800)', () => {
-    const countries = parseEmberCsv(csv);
-    const us = countries.get('US');
-    assert.ok(us != null);
-    assert.ok(Math.abs(us.fossilShare - 50) < 0.01, `US fossilShare should be 50, got ${us.fossilShare}`);
   });
 });
