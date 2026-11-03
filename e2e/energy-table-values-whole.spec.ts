@@ -29,7 +29,12 @@ const VIEWPORTS = [
   { width: 1920, height: 1200, fontScale: 2 },
 ];
 
-interface TableFit { panel: number; table: number; host: number; split: string[]; brokenWords: string[]; missingRoles: string[] }
+interface TableFit {
+  panel: number; table: number; host: number; split: string[]; brokenWords: string[]; missingRoles: string[];
+  // Stacked layout: below 31em of the wrap's text the rows stack, the name
+  // cell spans the row and the header is visually hidden.
+  shouldStack: boolean; stacked: boolean; narrowFirstCells: number; headerHeight: number;
+}
 
 function measure(page: Page, key: string, valueColumns: readonly number[]): Promise<TableFit> {
   return page.evaluate(({ key, valueColumns }) => {
@@ -68,6 +73,15 @@ function measure(page: Page, key: string, valueColumns: readonly number[]): Prom
         }
       }
     }
+    const wrap = table.closest<HTMLElement>('[class$="-wrap"]')!;
+    const wrapStyle = getComputedStyle(wrap);
+    let narrowFirstCells = 0;
+    for (const row of table.querySelectorAll<HTMLElement>('tbody tr')) {
+      const style = getComputedStyle(row);
+      const content = row.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const first = row.children[0] as HTMLElement | undefined;
+      if (first && first.getBoundingClientRect().width < content - 1) narrowFirstCells += 1;
+    }
     // The stacked layout swaps table display for block and flex, which drops
     // table navigation in Safari 16 VoiceOver, so the roles must be explicit.
     const missingRoles: string[] = [];
@@ -82,6 +96,10 @@ function measure(page: Page, key: string, valueColumns: readonly number[]): Prom
       for (const cell of row.cells) expectRole(cell, cell.tagName === 'TH' ? 'columnheader' : 'cell', cell.tagName.toLowerCase());
     }
     return {
+      shouldStack: wrap.getBoundingClientRect().width <= 31 * parseFloat(wrapStyle.fontSize),
+      stacked: getComputedStyle(table).display === 'block',
+      narrowFirstCells,
+      headerHeight: table.tHead ? table.tHead.getBoundingClientRect().height : -1,
       panel: Math.round(panel.getBoundingClientRect().width),
       table: Math.round(table.scrollWidth),
       host: Math.round(table.parentElement!.clientWidth),
@@ -94,6 +112,7 @@ function measure(page: Page, key: string, valueColumns: readonly number[]): Prom
 
 test('energy table values and names stay whole inside their column', async ({ browser }, testInfo) => {
   test.setTimeout(240_000);
+  let stackedNarrowPanels = 0;
   for (const viewport of VIEWPORTS) {
     const { fontScale, ...size } = viewport;
     const context = await browser.newContext({ viewport: size, colorScheme: 'dark' });
@@ -125,7 +144,17 @@ test('energy table values and names stay whole inside their column', async ({ br
       expect.soft(fit.brokenWords, `${label}: name words broken mid-word`).toEqual([]);
       expect.soft(fit.missingRoles, `${label}: table semantics`).toEqual([]);
       expect.soft(fit.table, `${label}: table wider than its column`).toBeLessThanOrEqual(fit.host + 1);
+      expect.soft(fit.stacked, `${label}: rows stack only below 31em of text`).toBe(fit.shouldStack);
+      if (fit.stacked) {
+        expect.soft(fit.narrowFirstCells, `${label}: stacked name cells narrower than their row`).toBe(0);
+        expect.soft(fit.headerHeight, `${label}: stacked header still occupies space`).toBeLessThanOrEqual(1);
+        if (fit.panel <= 340 && fontScale === 1) stackedNarrowPanels += 1;
+      } else {
+        expect.soft(fit.headerHeight, `${label}: column headers hidden in the table layout`).toBeGreaterThan(1);
+      }
     }
     await context.close();
   }
+  // The 1366px layout puts every panel in a column of 340px or less.
+  expect(stackedNarrowPanels, 'no panel stacked in a column of 340px or less').toBe(PANELS.length);
 });
