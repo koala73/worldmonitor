@@ -1934,7 +1934,7 @@
       "proLocked": "Upgrade naar PRO voor scorebepaling van grondstofgevoeligheid"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab dagelijkse verzendingsindexen voor de Straat van Hormuz: ruwe olie, LNG en kunstmest die de Golf verlaten, landbouwproducten die aankomen. Op volume, gemiddelde januari–maart 2025 = 100, alleen AIS-zichtbare vaartuigen. Status en datum komen van WTO's nieuwste analyse.",
+      "infoTooltip": "<strong>Hormuz-handelstracker</strong> WTO DataLab dagelijkse verzendingsindexen voor de Straat van Hormuz: ruwe olie, LNG en kunstmest die de Golf verlaten, landbouwproducten die aankomen. Op volume, gemiddelde januari–maart 2025 = 100, alleen AIS-zichtbare vaartuigen. Status en datum komen van WTO's nieuwste analyse.",
       "title": "Hormuz-handelstracker",
       "noData": "Geen gegevens",
       "notAvailable": "N/A",

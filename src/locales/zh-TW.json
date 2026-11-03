@@ -2309,7 +2309,7 @@
       "proLocked": "升級至PRO以檢視商品脆弱性評分"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>霍爾木茲貿易追蹤器</strong> WTO DataLab 關於霍爾木茲海峽的日貨運指數：離開波斯灣的原油、液化天然氣和化肥，以及抵達的農產品。按體積計，2025年1–3月平均值 = 100，僅包括 AIS 可見船舶。狀態和日期來自 WTO 的最新分析。",
+      "infoTooltip": "<strong>霍爾木茲貿易追蹤</strong> WTO DataLab 關於霍爾木茲海峽的日貨運指數：離開波斯灣的原油、液化天然氣和化肥，以及抵達的農產品。按體積計，2025年1–3月平均值 = 100，僅包括 AIS 可見船舶。狀態和日期來自 WTO 的最新分析。",
       "title": "霍爾木茲貿易追蹤",
       "noData": "無資料",
       "notAvailable": "不適用",

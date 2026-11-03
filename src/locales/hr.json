@@ -2611,7 +2611,7 @@
       "proLocked": "Nadogradi na PRO za bodovanje ranjivosti roba"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab dnevni indeksi pošiljki za Tjesnac Hormuz: sirova nafta, UPP i gnojivo koja napuštaju Perzijski zaljev, poljoprivredni proizvodi koji stižu. Po količini, prosječna vrijednost za siječanj–ožujak 2025. = 100, samo brodovi vidljivi na AIS-u. Status i datum dolaze iz najnovije WTO analize.",
+      "infoTooltip": "<strong>Praćenje trgovine kroz Hormuz</strong> WTO DataLab dnevni indeksi pošiljki za Tjesnac Hormuz: sirova nafta, UPP i gnojivo koja napuštaju Perzijski zaljev, poljoprivredni proizvodi koji stižu. Po količini, prosječna vrijednost za siječanj–ožujak 2025. = 100, samo brodovi vidljivi na AIS-u. Status i datum dolaze iz najnovije WTO analize.",
       "title": "Praćenje trgovine kroz Hormuz",
       "noData": "Nema podataka",
       "notAvailable": "N/A",

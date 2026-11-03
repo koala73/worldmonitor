@@ -2327,7 +2327,7 @@
       "proLocked": "Actualiza a PRO para ver puntuaciones de vulnerabilidad de materias primas"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Índices de envíos diarios de WTO DataLab para el Estrecho de Ormuz: petróleo crudo, GNL y fertilizantes saliendo del Golfo, productos agrícolas llegando. Por volumen, promedio de enero–marzo de 2025 = 100, solo buques visibles por AIS. El estado y la fecha provienen del análisis más reciente de la WTO.",
+      "infoTooltip": "<strong>Rastreador Comercial del Hormuz</strong> Índices de envíos diarios de WTO DataLab para el Estrecho de Ormuz: petróleo crudo, GNL y fertilizantes saliendo del Golfo, productos agrícolas llegando. Por volumen, promedio de enero–marzo de 2025 = 100, solo buques visibles por AIS. El estado y la fecha provienen del análisis más reciente de la WTO.",
       "title": "Rastreador Comercial del Hormuz",
       "noData": "Sin datos",
       "notAvailable": "N/A",

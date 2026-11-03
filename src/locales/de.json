@@ -2318,7 +2318,7 @@
       "proLocked": "Upgraden Sie auf PRO für Rohstoff-Anfälligkeitsbewertung"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Status und Datum stammen aus der neuesten Analyse der WTO.",
+      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Status und Datum stammen aus der neuesten Analyse der WTO.",
       "title": "Hormuz-Handels-Tracker",
       "noData": "Keine Daten",
       "notAvailable": "N/V",

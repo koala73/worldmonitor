@@ -2318,7 +2318,7 @@
       "proLocked": "Emtia kırılganlık puanlandırması için PRO'ya yükseltin"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab'ın Hormuz Boğazı günlük gemi taşıyıcılık endeksleri: Körfez'den çıkan ham petrol, LNG ve gübre, gelen tarım ürünleri. Hacim bazında, Ocak–Mart 2025 ortalaması = 100, yalnızca AIS-görünür gemiler. Durum ve tarih WTO'nun en son analizinden gelmektedir.",
+      "infoTooltip": "<strong>Hormuz Ticaret İzleyicisi</strong> WTO DataLab'ın Hormuz Boğazı günlük sevkiyat endeksleri: Körfez'den çıkan ham petrol, LNG ve gübre, gelen tarım ürünleri. Hacim bazında, Ocak–Mart 2025 ortalaması = 100, yalnızca AIS-görünür gemiler. Durum ve tarih WTO'nun en son analizinden gelmektedir.",
       "title": "Hormuz Ticaret İzleyicisi",
       "noData": "Veri yok",
       "notAvailable": "Kullanılamıyor",
