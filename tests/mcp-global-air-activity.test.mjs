@@ -46,9 +46,9 @@ function flight(id, { lat, lon }, aircraftType, source = 'wingbits') {
   };
 }
 
-function install(payload) {
+function install(payload, fetchedAt = Date.now()) {
   installRedis({
-    'seed-meta:military:flights': { fetchedAt: Date.now(), recordCount: 4, sourceVersion: 'test' },
+    'seed-meta:military:flights': { fetchedAt, recordCount: 4, sourceVersion: 'test' },
     'military:flights:v1': payload,
   }, { keepVercelEnv: true });
 }
@@ -56,6 +56,7 @@ function install(payload) {
 describe('get_global_air_activity (#5707)', () => {
   it('aggregates the world total, type breakdown, theater rollups, and the outside-theater remainder', async () => {
     install({
+      coverage: 'global',
       flights: [
         flight('f1', IN_THEATER, 'fighter'),
         flight('f2', IN_THEATER, 'tanker'),
@@ -68,6 +69,8 @@ describe('get_global_air_activity (#5707)', () => {
     const result = await findTool('get_global_air_activity')._execute({}, '', {}, {});
 
     assert.equal(result.data.total_military_aircraft, 4);
+    assert.equal(result.data.coverage, 'global');
+    assert.equal(result.data.partial, false);
     assert.equal(result.data.by_aircraft_type.fighter, 1);
     assert.equal(result.data.by_aircraft_type.tanker, 1);
     assert.equal(result.data.by_aircraft_type.transport, 1);
@@ -103,6 +106,39 @@ describe('get_global_air_activity (#5707)', () => {
     assert.equal(result.data.outside_theater_count, 0);
     assert.equal(result.data.by_aircraft_type.unknown, 1);
   });
+
+  it('excludes confirmed grounded tracks from every count without changing surge consumers', async () => {
+    install({ coverage: 'global', flights: [
+      { ...flight('air', IN_THEATER, 'fighter'), onGround: false },
+      { ...flight('ground', IN_THEATER, 'tanker'), onGround: true },
+      { ...flight('ground-outside', OUTSIDE_THEATERS, 'transport'), onGround: true },
+      flight('unknown-status', IN_THEATER, 'unknown'),
+    ], fetchedAt: Date.now() });
+    const result = await findTool('get_global_air_activity')._execute({}, '', {}, {});
+    assert.equal(result.data.total_military_aircraft, 2);
+    assert.deepEqual(result.data.by_aircraft_type, { fighter: 1, unknown: 1 });
+    assert.equal(result.data.theaters.find((t) => t.theater_id === 'iran-theater')?.total_aircraft, 2);
+    assert.equal(result.data.outside_theater_count, 0);
+    const surge = await findTool('get_military_surge')._execute({}, '', {}, {});
+    assert.equal(surge.data.flight_count, 4, 'the shared surge consumer retains its existing contract');
+  });
+
+  for (const coverage of ['regional', undefined, 'unexpected']) {
+    it(`labels ${coverage ?? 'missing'} provider coverage as partial without re-aging the snapshot`, async () => {
+      const fetchedAt = Date.now() - 5 * 60_000;
+      install({ coverage, flights: [
+        { ...flight('regional-air', IN_THEATER, 'fighter'), onGround: false },
+      ], fetchedAt }, fetchedAt);
+      const result = await findTool('get_global_air_activity')._execute({}, '', {}, {});
+      assert.equal(result.data.coverage, coverage === 'regional' ? 'regional' : 'unknown');
+      assert.equal(result.data.partial, true);
+      assert.equal(result.data.total_military_aircraft, 1, 'this is an observed subset, not a worldwide total');
+      assert.equal(result.cached_at, new Date(fetchedAt).toISOString());
+      assert.equal(result.stale, false, 'geographic coverage is distinct from freshness');
+      assert.deepEqual(result.unavailable_inputs, []);
+      assert.deepEqual(result.failed_inputs, []);
+    });
+  }
 
   it('quiet theaters are omitted, not reported as zero rows', async () => {
     install({ flights: [flight('f1', IN_THEATER, 'fighter')], fetchedAt: Date.now() });

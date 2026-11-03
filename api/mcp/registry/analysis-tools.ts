@@ -4,6 +4,7 @@ import { isAssignedCountryCode } from '../../../shared/country-code-resolve';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { CII_MOVERS_OUTPUT_SCHEMA, ciiHistoryDays, readCiiMovers } from '../_cii-history';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
+import { asArray, asRecord } from '../../../shared/analysis-adapter-guards';
 import { buildAlertDigest, buildWeeklyTrends } from '../../../shared/analysis-alert-digest';
 import {
   anomaliesToDigestInput,
@@ -717,14 +718,14 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     title: 'Global military air activity',
     _outputBudgetBytes: 32768,
     description:
-      'Global military air activity: how many aircraft are aloft worldwide right now, by type and theater. ' +
-      'A cheap aggregate over the seeded world flight snapshot — one total, an aircraft-type breakdown ' +
-      '(fighters, tankers, AWACS, reconnaissance, transports, bombers, drones), per-theater rollups using the ' +
-      'same theater bounds the surge engine uses (theater counts can overlap), and the count outside every declared theater. Quiet ' +
-      'theaters are omitted rather than reported as zero rows. Scope is military aircraft from ' +
-      'redistribution-cleared providers — the seeded snapshot that covers the world; for civilian traffic or a ' +
-      'single country use get_airspace, and for posture/threat interpretation of the same data use ' +
-      'get_military_surge.',
+      'Observed military air activity by type and theater; check coverage and partial before interpreting totals. ' +
+      'Counts tracks from redistribution-cleared providers in the seeded snapshot, excluding confirmed on-ground ' +
+      'aircraft; unknown ground status remains included. Returns the observed total, aircraft-type breakdown, ' +
+      'overlapping geographic theater counts and the count outside all theater bounds. Quiet theaters are omitted. ' +
+      'coverage preserves the provider snapshot scope: global, regional or unknown. Regional or unknown coverage ' +
+      'sets partial=true: those counts are a subset, never a worldwide total. Even global coverage does not mean ' +
+      'every military aircraft is observable. Freshness is separate from geographic coverage. For civilian or ' +
+      'single-country traffic use get_airspace; for posture interpretation use get_military_surge.',
     inputSchema: { type: 'object', properties: {}, required: [] },
     outputSchema: {
       type: 'object',
@@ -735,7 +736,12 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         data: {
           type: 'object',
           properties: {
-            total_military_aircraft: { type: 'number' },
+            coverage: {
+              type: 'string', enum: ['global', 'regional', 'unknown'],
+              description: 'Provider-reported geographic scope of the source snapshot; missing or unrecognized values are unknown.',
+            },
+            partial: { type: 'boolean', description: 'True for regional or unknown coverage: counts are an observed subset, not a worldwide total. Independent of stale.' },
+            total_military_aircraft: { type: 'number', description: 'Observed tracks excluding confirmed on-ground aircraft; unknown ground status remains included. Limited to the reported coverage, not a complete world inventory.' },
             by_aircraft_type: { type: 'object', additionalProperties: { type: 'number' } },
             theaters: { type: 'array', description: 'Overlapping geographic counts; includes untyped aircraft in totals.', items: { type: 'object', properties: {
               theater_id: { type: 'string' }, theater_name: { type: 'string' }, short_name: { type: 'string' },
@@ -746,7 +752,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             } } },
             outside_theater_count: { type: 'number', description: 'Aircraft aloft outside every declared posture theater.' },
           },
-          required: [],
+          required: ['coverage', 'partial', 'total_military_aircraft', 'by_aircraft_type', 'theaters', 'outside_theater_count'],
         },
       },
       required: ['cached_at', 'stale', 'data'],
@@ -765,7 +771,15 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       // Same adapter as get_military_surge: redistribution gating and shape
       // tolerance live in one place. Geographic membership below uses the
       // shared posture theater bounds, including their overlaps.
-      const flights = militaryFlightsToSurgeInputs(flightsPayload);
+      const snapshot = asRecord(flightsPayload);
+      const coverage = snapshot?.coverage === 'global' || snapshot?.coverage === 'regional'
+        ? snapshot.coverage : 'unknown';
+      // Ground filtering belongs only to this activity tool. The shared
+      // surge adapter intentionally retains positioned ground tracks.
+      const flights = militaryFlightsToSurgeInputs({
+        ...snapshot,
+        flights: asArray(snapshot?.flights).filter((raw) => asRecord(raw)?.onGround !== true),
+      });
       const byType: Record<string, number> = {};
       for (const flight of flights) {
         byType[flight.aircraftType] = (byType[flight.aircraftType] ?? 0) + 1;
@@ -798,6 +812,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       return {
         ...freshness,
         data: {
+          coverage,
+          partial: coverage !== 'global',
           total_military_aircraft: flights.length,
           by_aircraft_type: byType,
           theaters,
