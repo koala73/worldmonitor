@@ -234,8 +234,7 @@ function formatDate(ms) {
 /**
  * Pure renderer for one audit run. Split from main() so the ORDER of the report
  * — actionable findings BEFORE any terminal condition — is testable without a
- * network round trip, matching formatAcceptanceReport() in
- * scripts/check-seed-freshness.mjs.
+ * network round trip.
  */
 export function formatAuditReport(
   { blocking, deferred, suppressed, stale, lockfile },

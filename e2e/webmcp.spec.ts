@@ -203,7 +203,7 @@ async function executeDashboardTool(
 
 async function readTargetCancellationSupported(page: Page, toolName: string): Promise<boolean> {
   return page.evaluate((name) => {
-    const marks = (window as Window & {
+    const marks = (window as unknown as {
       __wmLcpDebug?: {
         getSnapshot?: () => {
           marks: Array<{
@@ -285,7 +285,7 @@ async function executeDashboardToolObserved(
       }
       // Read the mark before returning. switch_monitor reloads on success, and
       // a later evaluate can land on the next document, which has no mark.
-      const supported = (window as Window & {
+      const supported = (window as unknown as {
         __wmLcpDebug?: {
           getSnapshot?: () => {
             marks: Array<{
@@ -678,7 +678,7 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
     type ExecutableModelContext = WebMCP.ModelContext & {
       executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
     };
-    type ProbeWindow = Window & {
+    type ProbeWindow = Omit<Window, '__wmLcpDebug'> & {
       __wmLcpDebug?: { getSnapshot?: () => { marks: ToolStartMark[] } };
       __wmWebMcpColdStartContext?: Promise<ColdStartContextProbe>;
     };

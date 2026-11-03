@@ -71,10 +71,15 @@ function isRetryableStatus(status) {
 async function getRequestHashAndRedisKey(request, pathname, scope, idempotencyKey) {
   try {
     const bodyBuf = await request.clone().arrayBuffer();
-    const reqHash = await sha256Hex(bodyBuf);
+    // The request-body digest and the idempotency-key digest are independent;
+    // run them together so an idempotent write pays one hash latency, not two.
+    const [reqHash, keyHash] = await Promise.all([
+      sha256Hex(bodyBuf),
+      sha256Hex(`${scope}\n${pathname}\n${idempotencyKey}`),
+    ]);
     // App-owned idempotency record (#7674): rides the deployment-prefixed
     // default so a preview deployment's retries settle in its own namespace.
-    const redisKey = `idem:v1:${await sha256Hex(`${scope}\n${pathname}\n${idempotencyKey}`)}`;
+    const redisKey = `idem:v1:${keyHash}`;
     return { reqHash, redisKey };
   } catch {
     return null;

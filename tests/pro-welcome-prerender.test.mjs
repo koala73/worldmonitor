@@ -168,6 +168,43 @@ test('sections state a price or percentage the audit credits', { skip }, () => {
   const gps = passageAfter('GPS jamming zones');
   assert.match(gps, /at least 2% of aircraft/);
   assert.ok(gps.split(/\s+/).length >= 40, `GPS card is under 40 words: ${gps}`);
+  const depth = JSON.parse(readFileSync(new URL('../pro-test/src/generated/depth-stats.json', import.meta.url), 'utf8'));
+  const risk = passageAfter('Explain a country-risk move');
+  assert.ok(risk.includes(`ranked for ${depth.resilienceRanked} of ${copy.resilienceUniverse} countries, about ${copy.resilienceRankedPct}%,`), risk);
+  assert.equal(copy.resilienceRankedPct, Math.round((depth.resilienceRanked / copy.resilienceUniverse) * 100));
+  assert.ok(risk.split(/\s+/).length >= 40, `country-risk card is under 40 words: ${risk}`);
+});
+
+// The dates in the Voices subtitle are the publication dates in the cited URLs.
+test('Voices subtitle dates the press it names', { skip }, async () => {
+  const { THE_ATLANTIC_URL, EL_PAIS_URL } = await import('../shared/press.ts');
+  assert.match(THE_ATLANTIC_URL, /\/2026\/03\//);
+  assert.match(EL_PAIS_URL, /\/2026-03-16\//);
+  const { content } = welcomeRoot();
+  const at = content.indexOf('>What people say about World Monitor</h2>');
+  assert.ok(at >= 0, 'missing Voices heading');
+  const sub = tagsToText(content.slice(at).match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '', '');
+  assert.match(sub, /The Atlantic wrote about it on 14 March 2026 and El País two days later/);
+  assert.ok(sub.split(/\s+/).length >= 40, `Voices subtitle is under 40 words: ${sub}`);
+});
+
+// geo.new's YMYL disclaimer check (EAT-18) reads only the main text, and only
+// about the first 2,500 words of the page (its word count stayed at ~2,506 while
+// the page grew to ~3,100). Under the FAQ the line sat near word 2,930 and was
+// never seen, so it lives under the pricing teaser, once, and not in the footer.
+test('the not-advice line sits early in <main>, under the pricing teaser, once', { skip }, () => {
+  const html = welcomeHtml();
+  const line = /World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice\./g;
+  assert.equal(tagsToText(html, ' ').replace(/\s+/g, ' ').match(line)?.length, 1);
+  const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+  const pricing = main.slice(main.indexOf('id="pricing"'), main.indexOf('id="faq"'));
+  assert.match(tagsToText(pricing, ' ').replace(/\s+/g, ' '), line);
+  assert.match(tagsToText(pricing, ' ').replace(/\s+/g, ' '), /consult a qualified professional/);
+  const body = html.slice(html.indexOf('<body')).replace(/<(script|style|noscript)[\s\S]*?<\/\1>/g, ' ');
+  const words = tagsToText(body, ' ').split(/\s+/).filter(Boolean);
+  const at = words.join(' ').indexOf('World Monitor is for informational purposes only');
+  const position = words.join(' ').slice(0, at).split(' ').length;
+  assert.ok(position < 2400, `the not-advice line starts at word ${position}, past the ~2,500 words geo.new reads`);
 });
 
 // The FAQ figures live inside <details> answers, which geo.new did not credit

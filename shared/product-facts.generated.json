@@ -97,7 +97,7 @@
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 1000,
-      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial license — for your organization"
+      "description": "Full Pro dashboard included (1 named user), REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial use — internal only, not customer-facing"
     },
     {
       "planKey": "api_starter_annual",
@@ -127,7 +127,7 @@
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
+      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial use — in your customer-facing products"
     },
     {
       "planKey": "api_business_annual",
@@ -163,28 +163,28 @@
   "heroProofStats": {
     "mapLayers": 59,
     "feeds": 468,
-    "providers": 790,
+    "providers": 829,
     "alertOrigins": 5
   },
   "depthProofStats": {
     "mapLayers": 59,
     "feeds": 468,
-    "providers": 790,
+    "providers": 829,
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,
-    "resilienceRanked": 170,
+    "resilienceRanked": 169,
     "submarineCables": 98,
     "pipelinesLng": 159,
     "aiDatacenters": 313,
     "hotspots": 29,
     "stockExchanges": 29,
-    "mcpTools": 99,
+    "mcpTools": 100,
     "commands": 623,
     "languages": 28
   },
   "resilienceCoverage": {
-    "ranked": 170,
+    "ranked": 169,
     "universe": 196
   }
 }

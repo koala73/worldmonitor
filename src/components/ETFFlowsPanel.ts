@@ -138,7 +138,7 @@ export class ETFFlowsPanel extends Panel {
             <span class="etf-summary-value">${s.inflowCount}↑ ${s.outflowCount}↓</span>
           </div>
         </div>
-        <div class="etf-table-wrap">
+        <div class="etf-table-wrap table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
           <table class="etf-table">
             <thead>
               <tr>

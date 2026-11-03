@@ -127,6 +127,9 @@ COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
 # market-quote-refresh.cjs prevents partial upstream success from shrinking the
 # bootstrap basket and bounds Yahoo fallback cadence.
 COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refresh.cjs
+# yahoo-closed-session.cjs gives rolled futures quotes their last session's
+# change in the relay market loop. Missing it = startup crash.
+COPY scripts/shared/yahoo-closed-session.cjs ./scripts/shared/yahoo-closed-session.cjs
 # market-seed-universe.cjs is the catalog + auxiliary quote basket shared by
 # seed-market-quotes.mjs and the relay market loop. Missing it = startup crash.
 COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-universe.cjs

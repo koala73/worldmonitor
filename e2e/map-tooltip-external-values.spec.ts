@@ -69,6 +69,6 @@ test('map tooltip external values remain text', async ({ page }) => {
   await expect(evidence.locator('img, script, b')).toHaveCount(0);
   await expect(evidence).toContainText('Storm <img src=x onerror=alert(1)>');
   await expect(evidence).toContainText('Satellite <b>name</b>');
-  await expect(evidence).toContainText(labels.names[2]);
+  await expect(evidence).toContainText(labels.names[2]!);
   await evidence.screenshot({ path: 'test-results/map-tooltip-external-values.png' });
 });

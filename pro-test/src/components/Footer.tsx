@@ -2,7 +2,7 @@ import { DASHBOARD_PATH } from '../routes';
 import { ABOUT_DOCS_PATH } from '../../../shared/press';
 import { LegalFooterNav } from './LegalFooterNav';
 
-export const Footer = () => (
+export const Footer = ({ disclaimer = true }: { disclaimer?: boolean }) => (
   <footer className="border-t border-wm-border bg-[#020202] pt-8 pb-12 px-6 text-center">
     <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
       <div className="flex items-center gap-3 mb-4 md:mb-0">
@@ -30,5 +30,14 @@ export const Footer = () => (
       </span>
     </div>
     <LegalFooterNav />
+    {/* Mirrors the "not professional advice" clause in docs/terms.mdx. The
+        welcome page shows it under its pricing teaser instead, inside <main>,
+        where geo.new's YMYL disclaimer check (EAT-18) reads. */}
+    {disclaimer && (
+      <p className="max-w-3xl mx-auto mt-4 text-xs text-wm-muted">
+        World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice.
+        Verify what you see, and consult a qualified professional before decisions where an error could cause loss or harm.
+      </p>
+    )}
   </footer>
 );

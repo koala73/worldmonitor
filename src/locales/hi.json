@@ -137,18 +137,18 @@
     },
     "militaryActivity": "सैन्य गतिविधि",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "रक्षा औद्योगिक आधार",
+      "expenditure": "सैन्य व्यय",
+      "personnel": "कार्मिक",
+      "armsImports": "हथियार आयात",
       "concentration": "आपूर्तिकर्ता एकाग्रता सूचकांक",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "हथियार आपूर्तिकर्ता ({{start}}–{{end}})",
       "source": "स्रोत: विश्व बैंक और SIPRI शस्त्र अंतरण डेटाबेस। अंतरण मात्रा संकेतक सापेक्ष शस्त्र अंतरण को मापता है, वित्तीय मूल्य को नहीं।",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "स्रोत: विश्व बैंक।",
       "snapshotAssembled": "{{source}} का डेटा स्नैपशॉट {{time}} को संकलित किया गया",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "उपलब्ध नहीं",
+      "coverage": "मैप की गई कवरेज",
+      "supplierRetained": "आपूर्तिकर्ता डेटा पिछले सफल आयातक रीफ़्रेश से बरकरार रखा गया।"
     },
     "economicIndicators": "आर्थिक संकेतक",
     "ownFlights": "अपनी उड़ानें",
@@ -263,47 +263,47 @@
       "activityNowcast": "गतिविधि नाउकास्ट",
       "decisionSignalsUnavailable": "चीन का निर्णय-संकेत स्नैपशॉट वर्तमान में अनुपलब्ध है।"
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "खाद्य भंडार",
     "foodStocksHelp": "USDA उत्पादन, आपूर्ति और वितरण वस्तु स्टॉक-से-उपयोग विपणन वर्ष द्वारा, दुनिया के अनुपात के साथ संदर्भ के लिए। FAOSTAT खाद्य संतुलन उत्पादन और घरेलू आपूर्ति प्रदान करता है जब उत्पादन, आपूर्ति और वितरण के पास कोई पूर्ण देश संतुलन नहीं है।",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "खाद्य भंडार लोड हो रहा है…",
+    "foodStocksUnavailable": "खाद्य भंडार अनुपलब्ध।",
+    "foodStocksProLocked": "कमोडिटी स्टॉक-टू-यूज़ के लिए PRO में अपग्रेड करें",
+    "foodStocksCommodity": "कमोडिटी",
+    "foodStocksMarketingYear": "विपणन वर्ष",
+    "foodStocksRatio": "स्टॉक-टू-यूज़",
+    "foodStocksWorld": "विश्व",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "गेहूँ",
+      "corn": "मक्का",
+      "rice": "चावल",
+      "soybeans": "सोयाबीन",
+      "barley": "जौ",
+      "palmOil": "पाम तेल"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "जनसांख्यिकी और कार्यबल",
       "help": "UN विश्व जनसंख्या संभावनाएं, यूनेस्को सांख्यिकी संस्थान और विश्व बैंक विश्व विकास संकेतक, और ILOSTAT से आयु संरचना, शिक्षा पाइपलाइन, और औद्योगिक कार्यबल क्षमता।",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "जनसांख्यिकी और कार्यबल डेटा लोड हो रहा है…",
+      "unavailable": "जनसांख्यिकी और कार्यबल डेटा अनुपलब्ध।",
+      "proLocked": "जनसांख्यिकी और कार्यबल डेटा के लिए PRO में अपग्रेड करें",
+      "notAvailable": "उपलब्ध नहीं",
+      "ageStructure": "आयु संरचना",
+      "education": "शिक्षा पाइपलाइन",
+      "industrialWorkforce": "औद्योगिक कार्यबल",
+      "medianAge": "माध्यिका आयु",
+      "oldAgeDependency": "वृद्धावस्था निर्भरता",
+      "totalDependency": "कुल निर्भरता",
+      "workingAgePopulation": "कार्यशील आयु जनसंख्या",
+      "workingAgeProjection": "कार्यशील आयु जनसंख्या (+10 वर्ष)",
+      "tertiaryEnrollment": "तृतीयक नामांकन",
       "stemGraduates": "विज्ञान, प्रौद्योगिकी, इंजीनियरिंग और गणित स्नातक",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "शोधकर्ता",
+      "craftTrades": "शिल्प और व्यापार कामगार",
+      "plantOperators": "संयंत्र और मशीन संचालक",
+      "trainedIndustrialWorkforce": "संयुक्त औद्योगिक कार्यबल",
+      "manufacturingShare": "विनिर्माण रोज़गार",
+      "source": "स्रोत: {{sources}}।",
+      "retained": "{{stage}} डेटा पिछले सफल रीफ़्रेश से बरकरार रखा गया।",
       "statusNotSupplied": "अनुमान और अनुपस्थित मानों की पूर्ति की स्थिति उपलब्ध नहीं है"
     },
     "fiveFactorScorecard": {
@@ -338,7 +338,7 @@
         "pillar-unavailable": "स्तंभ अनुपलब्ध"
       },
       "inputs": {
-        "population": "Population",
+        "population": "जनसंख्या",
         "food_productionBalance": "उत्पादन संतुलन",
         "food_stocksToUse": "उपयोग हेतु स्टॉक",
         "food_waterSecurity": "जल सुरक्षा",
@@ -457,7 +457,6 @@
     "markets": "बाजार",
     "marketImplications": "एआई के बाजार असर",
     "map": "वैश्विक स्थिति",
-    "techMap": "वैश्विक तकनीक",
     "techHubs": "लोकप्रिय तकनीकी केंद्र",
     "status": "सिस्टम की स्थिति",
     "insights": "एआई की जानकारी",
@@ -508,7 +507,7 @@
     "securityAdvisories": "सुरक्षा सलाह",
     "orefSirens": "इज्राइल सायरन",
     "telegramIntel": "टेलीग्राम खुफिया",
-    "xIntel": "X News Accounts",
+    "xIntel": "X समाचार खाते",
     "startups": "स्टार्टअप और उद्यम पूंजी",
     "vcblogs": "उद्यम पूंजी अंतर्दृष्टि और निबंध",
     "regionalStartups": "वैश्विक स्टार्टअप खबरें",
@@ -545,7 +544,7 @@
     "bigmacDesc": "मध्य पूर्व के देशों में बिग मैक की कीमतें (बिग मैक इंडेक्स)",
     "bigmacWow": "सप्ताह-दर-सप्ताह",
     "bigmacCountry": "देश",
-    "faoFoodPriceIndex": "FAO खाद्य मूल्य सूचकांक",
+    "faoFoodPriceIndex": "खाद्य कीमतें",
     "fuelPrices": "ईंधन की कीमतें",
     "fuelPricesDesc": "30+ देशों में रिटेल पेट्रोल और डीजल की कीमतें",
     "fuelPricesCountry": "देश",
@@ -643,8 +642,8 @@
         "climate": "जलवायु असामान्यताएं चालू/बंद करें",
         "outages": "इंटरनेट बंद दिखाएं/छुपाएं",
         "tradeRoutes": "व्यापार मार्ग चालू/बंद करें",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "कनाडा सड़क ओवरले टॉगल करें",
+        "canadaAlerts": "कनाडा प्रांतीय आपातकालीन अलर्ट ओवरले टॉगल करें"
       },
       "view": {
         "dark": "डार्क मोड पर जाएं",
@@ -1022,7 +1021,12 @@
         "moderate": "मध्यम",
         "permissive": "अनुमेय",
         "undefined": "अपरिभाषित"
-      }
+      },
+      "latestActions": "नवीनतम दर्ज कार्रवाई",
+      "otherDeadlines": "अन्य अनुपालन समय सीमाएं",
+      "daysAgo": "दिन पहले",
+      "revokedCount": "निरस्त किए गए विनियम ({{count}})",
+      "lapsedCount": "समाप्त प्रस्ताव ({{count}})"
     },
     "economic": {
       "indicators": "सूचक",
@@ -1092,12 +1096,15 @@
       "topProducers": "शीर्ष उत्पादक",
       "risk": "जोखिम",
       "infoTooltip": "<strong>सप्लाई चेन मॉनिटर</strong> वैश्विक लॉजिस्टिक्स और संसाधन ट्रैकिंग:<ul><li><strong>चोकपॉइंट्स</strong>: समुद्री पारगमन स्थिति, व्यवधान स्कोर, और पोत संख्या</li><li><strong>शिपिंग</strong>: बाल्टिक ड्राई इंडेक्स और फ्रेट दर प्रवृत्तियाँ</li><li><strong>खनिज</strong>: महत्वपूर्ण खनिज एकाग्रता जोखिम (निर्माता एकाग्रता सूचकांक) और शीर्ष निर्माता</li></ul>पारगमन इतिहास चार्ट विस्तारित करने के लिए एक चोकपॉइंट कार्ड पर क्लिक करें।",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "खनन और रिफाइनरी देश शेयर को एकाग्रता के साथ अपग्रेड करने के लिए PRO में अपग्रेड करें (उत्पादक एकाग्रता सूचकांक) चरण द्वारा।"
+      "mineStage": "खनन",
+      "refineryStage": "शोधन",
+      "stageUnavailable": "इस चरण के लिए कोई प्रकाशित आँकड़े नहीं",
+      "withheldNote": "W रोका गया",
+      "productionCaption": "वास्तविक उत्पादन में देशों की हिस्सेदारी। मानचित्र की भंडार परत दिखाती है कि संसाधन कहाँ हैं; यह तालिका दिखाती है कि उनका खनन या शोधन कौन करता है।",
+      "productionProLocked": "खनन और रिफाइनरी देश शेयर को एकाग्रता के साथ अपग्रेड करने के लिए PRO में अपग्रेड करें (उत्पादक एकाग्रता सूचकांक) चरण द्वारा।",
+      "partialTransitCoverage": "{{names}} के लिए पारगमन डेटा उपलब्ध नहीं है",
+      "oilPipelinesUnavailable": "तेल पाइपलाइन डेटा उपलब्ध नहीं है",
+      "gasPipelinesUnavailable": "गैस पाइपलाइन डेटा उपलब्ध नहीं है"
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",
@@ -1456,8 +1463,8 @@
         "happiness": "विश्व खुशी",
         "speciesRecovery": "प्रजाति पुनर्प्राप्ति",
         "renewableInstallations": "स्वच्छ ऊर्जा",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "कनाडा सड़कें",
+        "canadaAlerts": "कनाडा अलर्ट",
         "notamAirspace": "NOTAM हवाई क्षेत्र प्रतिबंध",
         "no2Activity": "औद्योगिक गतिविधि"
       },
@@ -1573,8 +1580,8 @@
           "dayNight": "वास्तविक समय सूरज की रोशनी और अंधेरा क्षेत्र",
           "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
           "ciiChoropleth": "देश अस्थिरता सूचकांक हीट-मैप — देशों को स्कोर द्वारा रंगीन करता है (हरा=स्थिर, लाल=गंभीर)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "canadaRoads": "समर्थित कनाडाई क्षेत्राधिकारों में आधिकारिक सड़क घटनाएँ, अलर्ट, स्थितियाँ, बंदी, निर्माण कार्य और खतरे",
+          "canadaAlerts": "Alberta Emergency Alert, B.C. Evacuation Orders and Alerts और SaskAlert से प्रांतीय सार्वजनिक-सुरक्षा अलर्ट",
           "notamAirspace": "FAA NOTAM से अस्थायी उड़ान प्रतिबंध और प्रतिबंधित, खतरनाक व निषिद्ध हवाई क्षेत्र, जो अभी प्रभावी हैं या 24 घंटों के भीतर शुरू होंगे",
           "no2Activity": "167 देशों और 32 औद्योगिक क्लस्टरों के लिए Sentinel-5P NO2 गतिविधि की दिशा: पिछले वर्षों की समान तिथियों की तुलना में नवीनतम 56-दिन की विंडो, 10% डेड बैंड के बाद। इसमें संशोधित Copernicus Sentinel डेटा शामिल है।"
         },
@@ -1967,8 +1974,6 @@
       "summaryFailed": "सारांश असफल",
       "sources": "{{count}} स्रोत",
       "relatedAssetsNear": "{{location}} के निकट संबंधित संसाधन",
-      "sourceCoverage": "{{covered}}/{{total}} स्रोत",
-      "sourceCoverageHint": "{{total}} सक्षम स्रोतों में से {{covered}} दिखाए जा रहे हैं — यह पैनल हर रिफ़्रेश पर अपने स्रोत बदलता रहता है",
       "sortBy": "क्रमित करें",
       "sortNewest": "नवीनतम",
       "sortRelevance": "प्रासंगिकता",
@@ -1978,8 +1983,8 @@
       "critical": "गंभीर",
       "high": "उच्च",
       "dismiss": "खारिज करें",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "ताज़ा ख़बर अलर्ट",
+      "viewPanel": "संबंधित पैनल देखें"
     },
     "intelligenceFindings": {
       "breakingAlerts": "ब्रेकिंग अलर्ट",
@@ -2051,19 +2056,19 @@
       "filterCyber": "साइबर"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "infoTooltip": "X से चुनिंदा सार्वजनिक समाचार-खातों की पोस्ट। केवल आधिकारिक API।",
+      "loading": "X समाचार-खाता रिले से कनेक्ट हो रहा है...",
+      "empty": "कोई पोस्ट उपलब्ध नहीं",
+      "disabled": "X समाचार-खाता रिले सक्रिय नहीं है",
+      "filterAll": "सभी",
+      "filterBreaking": "ताज़ा ख़बर",
+      "filterConflict": "संघर्ष",
       "filterOsint": "खुले स्रोत बुद्धिमत्ता",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
-      "filterCyber": "Cyber"
+      "filterMiddleeast": "मध्य पूर्व",
+      "live": "लाइव",
+      "viewSource": "स्रोत देखें",
+      "filterGeopolitics": "भू-राजनीति",
+      "filterCyber": "साइबर"
     },
     "investments": {
       "infoTooltip": "सऊदी अरब और UAE के वैश्विक महत्वपूर्ण इन्फ्रास्ट्रक्चर में विदेशी निवेशों का डेटाबेस। मानचित्र पर निवेश देखने के लिए पंक्ति पर क्लिक करें।",
@@ -2232,14 +2237,14 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} +{{count}} और — {{reason}}",
+        "notFound": "कोई कोट उपलब्ध नहीं",
+        "providerError": "कोट प्राप्त करना विफल, शीघ्र पुनः प्रयास किया जा रहा है",
+        "rateLimited": "कोट प्रदाता की दर सीमा लागू, शीघ्र पुनः प्रयास किया जा रहा है",
+        "notConfigured": "कोट प्रदाता कॉन्फ़िगर नहीं है",
+        "requestLimit": "बहुत अधिक सिंबल अनुरोधित",
+        "budget": "अभी लोड नहीं हुआ, शीघ्र पुनः प्रयास किया जा रहा है",
+        "seed": "बाज़ार डेटा अस्थायी रूप से अनुपलब्ध"
       }
     },
     "heatmap": {
@@ -2247,15 +2252,15 @@
     },
     "commodities": {
       "infoTooltip": "<strong>कमोडिटी</strong> व्यापार योग्य गैर-ऊर्जा कमोडिटी टेप जो धातु और सामग्री पर केंद्रित है। ऊर्जा कीमतें ऊर्जा कॉम्प्लेक्स में लाइव; मैक्रो तनाव संकेत मैक्रो तनाव में।",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "commodities": "कमोडिटी",
+      "physicalPremiums": "भौतिक प्रीमियम",
+      "physical": "भौतिक",
+      "paper": "पेपर",
+      "premium": "प्रीमियम",
+      "asOf": "{{date}} तक",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "सोना",
+        "silver": "चाँदी"
       },
       "divergence": {
         "compositeValue": "भौतिक तनाव सूचकांक: {{value}} / 100",
@@ -2589,20 +2594,21 @@
       "proLocked": "वस्तु कमजोरी स्कोरिंग के लिए PRO में अपग्रेड करें"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Strait of Hormuz के माध्यम से लाइव vessel ट्रैकिंग, विश्व का सबसे महत्वपूर्ण तेल chokepoint। Tanker counts, disruption events और साप्ताहिक flow परिवर्तन की निगरानी करता है। वैश्विक तेल आपूर्ति का लगभग 20% यहाँ दैनिक रूप से transit करता है।",
+      "infoTooltip": "<strong>हर्मुज व्यापार ट्रैकर</strong> WTO DataLab द्वारा हॉर्मुज़ जलडमरूमध्य के दैनिक शिपमेंट सूचकांक: खाड़ी से निर्यात होने वाले कच्चे तेल, LNG और उर्वरक, आने वाले कृषि उत्पाद। मात्रा के अनुसार, जनवरी–मार्च 2025 का औसत = 100, केवल AIS-दृश्यमान पोत। स्थिति और तारीख WTO के नवीनतम विश्लेषण से आते हैं।",
       "title": "हर्मुज व्यापार ट्रैकर",
       "noData": "कोई डेटा नहीं",
       "notAvailable": "उपलब्ध नहीं",
       "chartUnavailable": "चार्ट डेटा उपलब्ध नहीं",
       "sourcePrefix": "स्रोत:",
       "units": {
-        "ktPerDay": "किलो टन/दिन",
-        "generic": "इकाइयां"
+        "index": "इंडेक्स"
       },
       "errors": {
         "unavailable": "हर्मुज डेटा उपलब्ध नहीं",
         "failedToLoad": "लोड करने में विफल"
-      }
+      },
+      "analysisDate": "WTO विश्लेषण {{date}}",
+      "indexNote": "शिपमेंट इंडेक्स मात्रा द्वारा, जनवरी–मार्च 2025 औसत = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>लाइव वेबकैम</strong> दुनिया भर के भू-राजनीतिक महत्वपूर्ण स्थानों से लाइव फीड: संघर्ष क्षेत्र, राजधानी शहर, सीमा पारगमन, और रणनीतिक चोकपॉइंट। स्रोत: YouTube और सार्वजनिक नेटवर्क।"
@@ -2710,6 +2716,15 @@
             "mcpClients": "MCP सेट करें",
             "channels": "उन्हें नोटिफिकेशन सेटिंग्स में सेट करें"
           }
+        },
+        "about": {
+          "heading": "एक आखिरी बात: आप World Monitor का उपयोग किसके लिए करेंगे?",
+          "body": "तीन तेज़ जवाब हमें आपके लिए सही उपकरण बनाने में मदद करते हैं। जो पसंद हो उन्हें छोड़ दें।",
+          "confirmCta": "मेरे उत्तर सहेजें",
+          "confirming": "सहेजा जा रहा है…",
+          "doneNote": "धन्यवाद, हमारे पास आपके उत्तर हैं।",
+          "summaryLabel": "आपके बारे में",
+          "summaryVerified": "सहेजा गया। धन्यवाद।"
         }
       },
       "status": {
@@ -2907,7 +2922,7 @@
         "babElMandeb": "बाब एल मंडेब",
         "bosphorus": "तुर्की जलडमरूमध्य",
         "panama": "पनामा",
-        "danishStraits": "डेनेस जलडमरूमध्य"
+        "doverStrait": "डोवर जलडमरूमध्य"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
@@ -2982,13 +2997,13 @@
       "infoTooltip": "<strong>Currency rates</strong> Stress 45 currencies को 24 महीनों में उनकी सबसे बड़ी decline के अनुसार rank करता है, 12-month change के साथ। Spot rates अलग US dollar और euro bases का उपयोग करते हैं। Russian ruble rates rubles per unit हैं। स्रोतों में Yahoo Finance, European Central Bank और Bank of Russia शामिल हैं।",
       "tabs": {
         "stress": "मुद्रा तनाव",
-        "spot": "Spot",
+        "spot": "स्पॉट",
         "rub": "RUB"
       },
       "currency": "मुद्रा",
       "pair": "जोड़ी",
       "rate": "दर",
-      "yoy": "12m",
+      "yoy": "12 माह",
       "drawdown": "24m ड्रॉडाउन",
       "peakToTrough": "शिखर → गर्त",
       "change1d": "1d",
@@ -3072,6 +3087,95 @@
       "rosterSummaryTier1": "{{publishers}} द्वारा रिपोर्ट किया गया, जिनमें {{tier1}} स्तर-1 शामिल हैं",
       "rosterPublishers_one": "{{count}} प्रकाशक",
       "rosterPublishers_other": "{{count}} प्रकाशक"
+    },
+    "foodPrices": {
+      "title": "स्थानीय खाद्य कीमतें",
+      "method": "साप्ताहिक बदलाव उसी उत्पाद, बाज़ार, उत्पत्ति और इकाई की कीमत की तुलना ठीक सात दिन पहले की कीमत से करता है। देशों की खाद्य टोकरी और मुद्राएँ अलग हैं।",
+      "loading": "खाद्य कीमतें लोड हो रही हैं…",
+      "unavailable": "उपलब्ध नहीं",
+      "retry": "फिर कोशिश करें",
+      "country": "देश",
+      "market": "बाज़ार",
+      "retail": "खुदरा",
+      "wholesale": "थोक",
+      "farmgate": "खेत पर मूल्य",
+      "export": "निर्यात",
+      "prices": "खाद्य कीमतें",
+      "product": "उत्पाद",
+      "price": "कीमत / इकाई",
+      "weekly": "साप्ताहिक बदलाव",
+      "origin": "उत्पत्ति",
+      "versus": "की तुलना में",
+      "noBaseline": "पिछला सप्ताह उपलब्ध नहीं",
+      "context": "खाद्य सुरक्षा और मासिक संदर्भ",
+      "contextNote": "ये रिपोर्ट तारीख सहित संदर्भ देती हैं, साप्ताहिक मूल्य बदलाव नहीं। ट्यूनीशिया की रिपोर्ट में कई महीनों की देरी हो सकती है।",
+      "briefCountry": "देश का संक्षिप्त विवरण",
+      "report": "रिपोर्ट की तारीख",
+      "checked": "अंतिम जाँच",
+      "current": "वर्तमान",
+      "partial": "कुछ रिपोर्ट उपलब्ध नहीं हैं या पुरानी हैं",
+      "stale": "पुराने आँकड़े",
+      "global": "एफएओ का वैश्विक मासिक सूचकांक"
+    },
+    "aboutYou": {
+      "title": "World Monitor को आपके लिए बेहतर बनाने में हमारी मदद करें",
+      "ariaLabel": "आपके बारे में",
+      "progress": "{{current}} का {{total}}",
+      "skip": "छोड़ें",
+      "close": "बंद करें",
+      "done": "पूर्ण",
+      "saving": "सहेजा जा रहा है…",
+      "saveFailed": "वह सहेजा नहीं जा सका। फिर से कोशिश करें।",
+      "retry": "पुनः प्रयास करें",
+      "thanks": "धन्यवाद। यह हमें अगला क्या बनाना है यह तय करने में मदद करता है।",
+      "questions": {
+        "primaryUse": {
+          "label": "आप मुख्य रूप से World Monitor का उपयोग किस लिए करते हैं?",
+          "options": {
+            "news": "समाचार और विश्व घटनाएं",
+            "markets": "बाजार और ट्रेडिंग",
+            "commodities": "कमोडिटीज और सप्लाई चेन",
+            "travel": "यात्रा और उड़ानें",
+            "security": "सुरक्षा और OSINT",
+            "research": "अनुसंधान और पत्रकारिता",
+            "api-agent": "API या AI एजेंट के साथ निर्माण",
+            "other": "कुछ और"
+          }
+        },
+        "usageContext": {
+          "label": "क्या आप इसे काम या व्यक्तिगत उपयोग के लिए करते हैं?",
+          "options": {
+            "personal": "व्यक्तिगत",
+            "work": "काम"
+          }
+        },
+        "payer": {
+          "label": "कौन भुगतान करता है, या करेगा?",
+          "options": {
+            "self": "मैं",
+            "employer": "मेरा नियोक्ता या टीम",
+            "not-paying": "अभी कोई नहीं"
+          }
+        },
+        "role": {
+          "label": "आपकी भूमिका को कौन सा विकल्प सर्वोत्तम बताता है?",
+          "options": {
+            "analyst": "विश्लेषक या शोधकर्ता",
+            "trader": "व्यापारी या निवेशक",
+            "journalist": "पत्रकार",
+            "security": "सुरक्षा या जोखिम",
+            "government": "सरकार या नीति",
+            "supply-chain": "सप्लाई चेन या संचालन",
+            "developer": "डेवलपर",
+            "student": "छात्र",
+            "other": "अन्य"
+          }
+        },
+        "alternative": {
+          "label": "अगर World Monitor मौजूद नहीं होता तो आप क्या उपयोग करते?",
+          "placeholder": "वैकल्पिक"
+        }
+      }
     }
   },
   "popups": {
@@ -3741,7 +3845,7 @@
     "retry": "पुनः प्रयास करें",
     "refresh": "रिफ्रेश करें",
     "all": "सभी",
-    "dismiss": "Dismiss"
+    "dismiss": "ख़ारिज करें"
   },
   "connectivity": {
     "offlineCached": "ऑफ़लाइन — {{freshness}} का सेव किया हुआ डेटा दिखा रहा है।",
@@ -4178,5 +4282,29 @@
     "reportedClaims": "प्रकाशक की रिपोर्ट। दावों की जाँच अभी जारी हो सकती है।",
     "occurred": "घटना",
     "reported": "प्रकाशित"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "वैश्विक बाजार मानचित्र",
+      "liveNews": "बाजार समाचार",
+      "insights": "AI बाजार अंतर्दृष्टि"
+    },
+    "tech": {
+      "map": "वैश्विक प्रौद्योगिकी मानचित्र",
+      "liveNews": "प्रौद्योगिकी समाचार"
+    },
+    "commodity": {
+      "map": "वस्तु मानचित्र",
+      "liveNews": "वस्तु समाचार",
+      "insights": "AI वस्तु अंतर्दृष्टि"
+    },
+    "energy": {
+      "map": "ऊर्जा एटलस मानचित्र",
+      "liveNews": "ऊर्जा समाचार",
+      "insights": "AI ऊर्जा अंतर्दृष्टि"
+    },
+    "happy": {
+      "map": "सकारात्मक समाचार मानचित्र"
+    }
   }
 }

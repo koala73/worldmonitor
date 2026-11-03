@@ -14,12 +14,6 @@ export interface BrowserCatalogFeed {
   lang?: string;
   strategicDefault?: boolean;
   /**
-   * No digest carries this source in this category yet, so a panel that reads
-   * digests must still fetch it directly. Cleared as sources gain server
-   * placements (shared/news-catalog-pending-migration.json).
-   */
-  browserOnly?: true;
-  /**
    * The only digest language that carries this source, set whenever the
    * server restricts it to one language. It can differ from `lang`: BBC
    * Persian is `fa` on the server but unrestricted in the browser, and The
@@ -33,8 +27,8 @@ export interface BrowserCatalogFeed {
  * Whether the `language` digest carries this source in its placements: the
  * server's isServerFeedReachableForLanguage, read from the browser catalog.
  */
-export function digestCarriesFeed(feed: Pick<BrowserCatalogFeed, 'browserOnly' | 'digestLang'>, language: string): boolean {
-  return !feed.browserOnly && (feed.digestLang === undefined || feed.digestLang === language);
+export function digestCarriesFeed(feed: Pick<BrowserCatalogFeed, 'digestLang'>, language: string): boolean {
+  return feed.digestLang === undefined || feed.digestLang === language;
 }
 
 export interface BrowserCatalog {

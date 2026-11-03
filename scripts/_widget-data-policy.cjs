@@ -267,6 +267,7 @@ const EXCLUDED_RPC_ROUTES = {
   "/api/economic/v1/get-eu-gas-storage": "Same data as bootstrap key euGasStorage",
   "/api/economic/v1/get-eurostat-country-data": "Same data as bootstrap key eurostatCountryData",
   "/api/economic/v1/get-fao-food-price-index": "Same data as bootstrap key faoFoodPriceIndex",
+  "/api/economic/v1/get-food-prices": "Source-specific food baskets require country, market and unit selection; use the dashboard food-price card",
   "/api/economic/v1/get-macro-signals": "Same data as bootstrap key macroSignals",
   "/api/economic/v1/get-nat-gas-storage": "Same data as bootstrap key natGasStorage",
   "/api/economic/v1/get-national-debt": "Pro-only (401 for the anonymous widget session)",

@@ -10,8 +10,6 @@ impressions per indexed page.
   inspected sample and its index states; performance per window and family;
   flagged disagreements; sampling notes.
 - `<date>.md` — the deterministic human summary generated from that snapshot.
-- `coverage-totals.json` — the Page indexing report totals, recorded by hand
-  each month. See [Monthly coverage totals](#monthly-coverage-totals).
 
 The first snapshot is `2026-09-25`. Later ones arrive through the weekly
 workflow's review PR.
@@ -46,7 +44,10 @@ grep that has to carve out documentation is a grep that stops catching leaks.
 Add `--search-export <path>` to also emit the per-family rows in the shape
 `scripts/seo-ai-visibility-collector.mjs` accepts under
 `sources.googleSearchConsole`. The scorecard stays the single report; this is a
-feed into it, not a second one.
+feed into it, not a second one. Its window totals are the by-property site
+totals, never the page-row sum. The weekly workflow does not need this flag:
+`scripts/seo-weekly-baseline.mjs` maps the committed snapshot through the same
+`toScorecardSearchExport`, adding the reviewed query rows.
 
 ## Reading it
 
@@ -82,7 +83,8 @@ by-property number directly, and the window `totals` are labelled
 compare the site with the chart, never one with the other.
 
 **Brand and non-brand are split with one pattern.** `BRAND_QUERY_PATTERN` in
-the collector names World Monitor and its common misspellings. Google applies
+the collector names World Monitor and its misspellings, including the
+`worldmoniter` family Bing reports. Google applies
 it as a query filter; the snapshot applies the same source to its own top
 queries. A query filter drops anonymized queries, so the site table reports
 them as the remainder (`anonymized`) instead of losing them, and per-family
@@ -126,35 +128,15 @@ The unprefixed path comes from Mintlify's server-rendered navigation data. Our
 `<a href>` and `hreflang` links carry `/docs`. Before chasing a row like this,
 rerun that page-filtered split.
 
-## Monthly coverage totals
+## Page indexing report totals
 
-The Page indexing report totals ("Page with redirect", "Not found (404)",
-"Crawled, currently not indexed") have no API. Once a month, open Search
-Console, Indexing, Pages, and append a reading to `coverage-totals.json`:
-
-```json
-{
-  "exportedOn": "YYYY-MM-DD",
-  "declaredUrls": 0,
-  "pageWithRedirect": 0,
-  "notFound404": 0,
-  "crawledNotIndexed": 0,
-  "source": "https://github.com/koala73/worldmonitor/issues/..."
-}
-```
-
-- `exportedOn` is the date Search Console shows the report as updated. It must
-  be later than the previous reading.
-- `declaredUrls` is the sitemap inventory that day. The latest weekly
-  snapshot's `inventory.declared` is close enough.
-- `source` links to the issue comment where the reading is recorded, with a
-  screenshot of the report.
-
-Every weekly summary renders the whole series under "Coverage totals (recorded
-by hand)". Once the latest reading is more than 35 days old, the summary marks
-it as overdue, so a missed month shows up in the weekly review PR. The
-collector refuses a malformed ledger, and `tests/seo-gsc-collector.test.mjs`
-checks the committed file.
+The Search Console Page indexing report ("Page with redirect", "Not found
+(404)", "Crawled, currently not indexed") has no API, and its totals are not
+tracked. Every number here comes from the API. URL Inspection covers each
+sitemap URL individually. URLs outside the sitemap appear only through
+performance rows: those with a known family count toward that family's numbers,
+and only URLs with no matching family are listed under "URLs outside every
+family".
 
 ## Run time and failures
 

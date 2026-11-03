@@ -5,7 +5,7 @@
  * For each enabled alert rule with digestMode != "realtime":
  *   1. Checks isDue() against digest:last-sent:v1:${userId}:${variant}
  *   2. ZRANGEBYSCORE digest:accumulator:v1:${variant} to get stories in window
- *   3. Batch HGETALL story:track:v1:${hash} for metadata
+ *   3. Batch HMGET story:track:v1:${hash} for digest metadata
  *   4. Derives phase, filters fading/non-matching severity, sorts by currentScore
  *   5. SMEMBERS story:sources:v1:${hash} for source attribution
  *   6. Formats and dispatches to each configured channel
@@ -137,6 +137,7 @@ import {
   digestCoverageText,
   digestWebhookStory,
   readStoryCorroboration,
+  storyCorroborationField,
 } from './lib/digest-corroboration.mjs';
 import { buildTickerDictionary } from '../shared/ticker-extract.js';
 import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
@@ -724,7 +725,7 @@ async function buildDigest(rule, windowStartMs) {
   );
   if (!Array.isArray(hashes) || hashes.length === 0) return null;
 
-  // null = at least one HGETALL chunk failed. Returning null here
+  // null = at least one story-track chunk failed. Returning null here
   // matches the legacy semantic (single-pipeline failure produced
   // an empty story list → null buildDigest result → cron skipped
   // sending the digest for this user/variant). The alternative —
@@ -732,7 +733,14 @@ async function buildDigest(rule, windowStartMs) {
   // chunks — would silently drop stories AND mark the slot as sent,
   // suppressing retry on the next tick. See:
   //   scripts/lib/story-track-batch-reader.mjs (bail-on-failure rationale).
-  const trackResults = await readStoryTracksChunked(hashes, upstashPipeline);
+  const trackResults = await readStoryTracksChunked(hashes, upstashPipeline, {
+    fields: [
+      'title', 'severity', 'publishedAt', 'isOpinion', 'isFeelGood',
+      'isEphemeralLiveCoverage', 'link', 'description', 'mentionCount',
+      'firstSeen', 'lastSeen', 'currentScore', 'category', 'entityCorroborationCount',
+      storyCorroborationField(variant, lang),
+    ],
+  });
   if (trackResults === null) return null;
 
   // READ-time freshness cutoff is anchored to the rule's own digest

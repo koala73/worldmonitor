@@ -399,30 +399,47 @@ export class StorageFacilityMapPanel extends Panel {
 
     const html = unsafeRawHtml(`
       <div class="sf-wrap">
-        <table class="sf-table">
-          <thead>
-            <tr>
-              <th scope="col">Facility</th>
-              <th scope="col">Country · Type</th>
-              <th scope="col">Capacity</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
+          <table class="sf-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Facility</th>
+                <th scope="col" role="columnheader">Country · Type</th>
+                <th scope="col" role="columnheader">Capacity</th>
+                <th scope="col" role="columnheader">Status</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">${rows}</tbody>
+          </table>
+        </div>
         ${attribution}
         ${drawer}
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .sf-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .sf-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: sf-wrap / inline-size; }
         .sf-table { width: 100%; border-collapse: collapse; }
         .sf-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .sf-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .sf-table tr.sf-row { cursor: pointer; }
         .sf-table tr.sf-row:hover td { background: rgba(255,255,255,0.03); }
-        .sf-name { font-weight: 600; color: var(--text, #eee); }
-        .sf-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .sf-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
+        .sf-table .sf-val { white-space: nowrap; }
+        .sf-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+        /* Four columns cannot fit a narrow column without splitting values, so each
+           row stacks: the name takes the full width, the values share one line below.
+           The breakpoint is in em of the scaled wrap text (31em is 341px at 100%), so
+           a larger font-size setting stacks the rows in a wider column too. */
+        @container sf-wrap (max-width: 31em) {
+          .sf-table, .sf-table tbody { display: block; }
+          .sf-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+          .sf-table tr.sf-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .sf-table tr.sf-row td { padding: 0; border: 0; }
+          .sf-table tr.sf-row td:first-child { flex: 1 0 100%; }
+          .sf-table tr.sf-row td:last-child { margin-left: auto; }
+          .sf-table tr.sf-row:hover { background: rgba(255,255,255,0.03); }
+          .sf-table tr.sf-row:hover td { background: none; }
+        }
         .sf-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .sf-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
         .sf-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
@@ -443,14 +460,14 @@ export class StorageFacilityMapPanel extends Panel {
     const glyph = TYPE_GLYPH[f.facilityType] ?? '🔹';
     const typeLabel = TYPE_LABEL[f.facilityType] ?? f.facilityType;
     return `
-      <tr class="sf-row" data-facility-id="${escapeHtml(f.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
-        <td>
+      <tr class="sf-row" role="row" data-facility-id="${escapeHtml(f.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
+        <td role="cell">
           <div class="sf-name">${glyph} ${escapeHtml(f.name)}</div>
           <div class="sf-sub">${escapeHtml(f.operator || '')}</div>
         </td>
-        <td>${escapeHtml(f.country)} · ${escapeHtml(typeLabel)}</td>
-        <td>${escapeHtml(capacityLabel(f))}</td>
-        <td>${badgeChip(f.publicBadge)}</td>
+        <td role="cell"><span class="sf-val">${escapeHtml(f.country)}</span> · <span class="sf-val">${escapeHtml(typeLabel)}</span></td>
+        <td role="cell" class="sf-val">${escapeHtml(capacityLabel(f))}</td>
+        <td role="cell">${badgeChip(f.publicBadge)}</td>
       </tr>`;
   }
 

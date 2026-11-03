@@ -121,18 +121,20 @@ export class RadiationWatchPanel extends Panel {
     this.setSafeContent(unsafeRawHtml(`
       <div class="radiation-panel-content">
         ${summary}
-        <table class="radiation-table">
-          <thead>
-            <tr>
-              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.station'))}</th>
-              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.reading'))}</th>
-              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.delta'))}</th>
-              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.status'))}</th>
-              <th scope="col">${escapeHtml(t('components.radiationWatch.headers.observed'))}</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="radiation-table">
+            <thead>
+              <tr>
+                <th scope="col">${escapeHtml(t('components.radiationWatch.headers.station'))}</th>
+                <th scope="col">${escapeHtml(t('components.radiationWatch.headers.reading'))}</th>
+                <th scope="col">${escapeHtml(t('components.radiationWatch.headers.delta'))}</th>
+                <th scope="col">${escapeHtml(t('components.radiationWatch.headers.status'))}</th>
+                <th scope="col">${escapeHtml(t('components.radiationWatch.headers.observed'))}</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
         <div class="radiation-footer">${escapeHtml(footer)}</div>
       </div>
     `, 'legacy Panel.setContent() migration'));

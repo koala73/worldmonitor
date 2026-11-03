@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { projectCountrySanctions, MAX_COUNTRY_SANCTIONS_BYTES } from '../shared/country-sanctions-signals.mjs';
-import { mergeSanctionEntries, SEMA_SOURCE, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
-import { CSL_ROW_ID, CSL_SOURCES } from '../scripts/_csl-sanctions.mjs';
+import { mergeSanctionEntries, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
+import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
 import { buildSanctionsChanges } from '../scripts/_sanctions-changes.mjs';
 
 const seed = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
@@ -31,7 +31,7 @@ async function produce({ previousState = { entryIds: ['SDN:1', 'CONSOLIDATED:1',
   const context = vm.createContext({
     console: { log() {}, warn() {} }, Buffer, gzipSync, gunzipSync,
     Date: class extends Date { static now() { return at; } },
-    SEMA_SOURCE, SANCTIONS_SOURCE_VERSION, SANCTIONS_MAX_CONTENT_AGE_MIN: 43200, projectCountrySanctions,
+    SEMA_SOURCE, SEMA_TIMEOUT_MS, CSL_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, SANCTIONS_MAX_CONTENT_AGE_MIN: 43200, projectCountrySanctions,
     mergeSanctionEntries, sanctionsListContentMeta, buildSanctionsChanges,
     verifySeedKey: async () => previousState,
     readSeedSnapshot: async key => key === 'sanctions:source-snapshots:v1' ? stored : null,

@@ -97,6 +97,7 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
 | Devin | `https://api.devin.ai/mcp/oauth/callback` ([Devin MCP docs](https://docs.devin.ai/work-with-devin/mcp)) |
 | Google Antigravity | `https://antigravity.google/oauth-callback` ([Antigravity MCP docs](https://antigravity.google/docs/mcp)) |
+| Gemini (Connected Apps and custom apps) | Any path under `/r/` or `/a/` on `https://oauth-redirect.googleusercontent.com`, `https://oauth-redirect-sandbox.googleusercontent.com`, or `https://oauth-redirect-test.googleusercontent.com`. Google generates the rest of the path for each app or user. No query, fragment, port, or percent-encoding ([Google OAuth guide](https://developers.google.com/connected-apps/mcp/oauth)) |
 | Vercel Connect | `https://connect.vercel.com/callback` ([Vercel Connect provider docs](https://vercel.com/docs/connect/providers)) |
 | Glama | `https://glama.ai/api/app/mcp/oauth/callback` (connectors and test profiles), `https://glama.ai/mcp/inspector/oauth/callback` ([Glama MCP Inspector](https://glama.ai/mcp/inspector)) |
 | Make.com | `https://www.make.com/oauth/cb/mcp` ([Make MCP client](https://apps.make.com/mcp-client)) |
@@ -110,7 +111,7 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/callback` ([client metadata](https://www.skydive.com/api/v1/external-oauth/client-metadata)) |
 | MCPJam | `https://app.mcpjam.com/oauth/callback`, `https://score.mcpjam.com/oauth/callback` ([client metadata](https://www.mcpjam.com/.well-known/oauth/client-metadata.json)) |
 
-Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, goose, Zed, and MCP Inspector use the loopback form. Notion, Linear, Lovable, Factory, Conductor, Skydive, and MCPJam prefer Client ID Metadata Documents and now connect that way (see below); their callbacks stay listed for clients that still register. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Clients with per-user or per-tenant callbacks, such as Gemini custom apps and Microsoft Copilot Studio, cannot be exact-matched and are not supported.
+Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, goose, Zed, and MCP Inspector use the loopback form. Notion, Linear, Lovable, Factory, Conductor, Skydive, and MCPJam prefer Client ID Metadata Documents and now connect that way (see below); their callbacks stay listed for clients that still register. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Gemini is the one prefix match, on the six prefixes Google publishes. Other clients with per-user or per-tenant callbacks, such as Microsoft Copilot Studio, cannot be exact-matched and are not supported.
 
 ### Client ID Metadata Documents
 
@@ -308,6 +309,18 @@ The server exposes a registry of tools. Most are cache-reads over pre-seeded Red
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
 </Tip>
 
+### Localized country arguments and summaries
+
+Country arguments that use the country resolver accept names in every supported dashboard locale, including `"Deutschland"`, `"Francia"`, `"日本"`, `"中国"`, `"德國"`, `"भारत"`, `"ایران"` and `"السعودية"`, as well as ISO alpha-2 and alpha-3 codes. Names come from CLDR long and short region names. Arabic also accepts curated common and official forms and spelling variants, including diacritics, tatweel, the article `ال`, hamza, taa marbuta and alef maqsura. Ambiguous names and contradictory pairs such as `"Deutschland (FR)"` return Invalid params.
+
+Existing ISO codes and short aliases take precedence over localized abbreviations. For example, `"RU"` remains Russia, so use `"Reino Unido"` for the UK in Spanish. Vietnamese `"Nga"` matches Nigeria's alpha-3 code; use `"Liên bang Nga"` or `"RU"` for Russia.
+
+Supported locales are `en`, `bg`, `cs`, `fr`, `de`, `el`, `es`, `hr`, `hu`, `it`, `pl`, `pt`, `nl`, `sv`, `ru`, `uk`, `ar`, `fa`, `zh`, `zh-TW`, `ja`, `ko`, `ro`, `tr`, `th`, `vi`, `hi` and `sw`. Regenerate the committed country names and their scripts mirror with `node scripts/build-country-names-localized.mjs`; `--check` checks for drift against the runtime CLDR release. The generator reads the dashboard locale registry directly.
+
+For a localized summary, pass headlines to `analyze_news_headlines` with `lang` set to a supported locale, such as `"de"`, `"hi"`, `"zh-TW"` or `"ar"`. Regional tags normalize to the supported locale. With `mode: "translate"`, the tool translates one headline into `lang`. This does not localize the precomputed `get_world_brief` or add language support to `get_country_brief`.
+
+Free-text substring filters and ISO-only fields retain their existing contracts. Localized entity names and the special tariff values "World" and "EU" are outside this resolver.
+
 ### Markets & economy
 
 | Tool | Description |
@@ -396,7 +409,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 
 | Tool | Description |
 |------|-------------|
-| `get_airspace` | Live ADS-B over a country. Params: `country_code` (alpha-2, alpha-3, or English country name), `type` (`all`/`civilian`/`military`). |
+| `get_airspace` | Live ADS-B over a country. Params: `country_code` (alpha-2, alpha-3, or country name in any supported dashboard locale), `type` (`all`/`civilian`/`military`). |
 | `get_maritime_activity` | AIS density zones, dark-ship events, chokepoint congestion per country. Params: `country_code`. |
 | `get_aviation_status` | FAA airport delays, NOTAM closures, tracked military aircraft. |
 | `get_infrastructure_status` | Cloudflare Radar outages, major cloud/internet service status. |

@@ -2876,6 +2876,52 @@ describe("webhook processWebhookEvent", () => {
     expect(subs).toHaveLength(1);
   });
 
+  test("a conflicting equal-timestamp lifecycle event preserves the first accepted state", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await processEvent(t, "wh_equal_active", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    const before = await t.run((ctx) => ctx.db.query("subscriptions").unique());
+    expect(before?.status).toBe("active");
+    await processEvent(t, "wh_equal_cancel", "subscription.cancelled", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    const equal = await t.run((ctx) => ctx.db.query("subscriptions").unique());
+    expect(equal).toEqual(before);
+    await processEvent(t, "wh_newer_cancel", "subscription.cancelled", makeSubscriptionPayload(), BASE_TIMESTAMP + 1);
+    const newer = await t.run((ctx) => ctx.db.query("subscriptions").unique());
+    expect(newer?.status).toBe("cancelled");
+    expect(newer?.updatedAt).toBe(BASE_TIMESTAMP + 1);
+  });
+
+  test.each(["subscription.active", "payment.succeeded"] as const)("concurrent duplicate %s deliveries apply storage effects once", async (eventType) => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: "test-user-001", dodoCustomerId: "cust_test_001", email: "test@example.com",
+        createdAt: BASE_TIMESTAMP, updatedAt: BASE_TIMESTAMP,
+      });
+    });
+    const args = {
+      webhookId: "wh_concurrent_duplicate", eventType, timestamp: BASE_TIMESTAMP,
+      rawPayload: eventType === "subscription.active" ? makeSubscriptionPayload() : makePaymentPayload("payment.succeeded"),
+    };
+    await Promise.all(Array.from({ length: 8 }, () => t.mutation(internal.payments.webhookMutations.processWebhookEvent, args)));
+    const state = await t.run(async (ctx) => ({
+      webhooks: await ctx.db.query("webhookEvents").collect(),
+      subscriptions: await ctx.db.query("subscriptions").collect(),
+      payments: await ctx.db.query("paymentEvents").collect(),
+      entitlements: await ctx.db.query("entitlements").collect(),
+      customers: await ctx.db.query("customers").collect(),
+    }));
+    expect(state.webhooks).toHaveLength(1);
+    expect(state.customers).toHaveLength(1);
+    expect(state.subscriptions).toHaveLength(eventType === "subscription.active" ? 1 : 0);
+    expect(state.payments).toHaveLength(eventType === "payment.succeeded" ? 1 : 0);
+    if (eventType === "subscription.active") {
+      expect(state.entitlements).toHaveLength(1);
+      expect(state.entitlements[0]?.planKey).toBe("pro_monthly");
+    }
+  });
+
   test.each([
     ["dispute.opened", "dispute_opened"],
     ["dispute.won", "dispute_won"],

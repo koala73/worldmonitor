@@ -479,7 +479,6 @@
     "markets": "Markets",
     "marketImplications": "AI Market Implications",
     "map": "Global Situation",
-    "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
     "status": "System Status",
     "insights": "AI Insights",
@@ -567,7 +566,7 @@
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
     "bigmacWow": "Week-over-week",
     "bigmacCountry": "Country",
-    "faoFoodPriceIndex": "FAO Food Price Index",
+    "faoFoodPriceIndex": "Food prices",
     "fuelPrices": "Fuel Prices",
     "fuelPricesDesc": "Retail gasoline and diesel prices across 30+ countries worldwide",
     "fuelPricesCountry": "Country",
@@ -585,6 +584,30 @@
     "climateNews": "Climate News",
     "fx": "Foreign exchange rates",
     "ukmtoIncidents": "UKMTO Incidents"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Global Markets Map",
+      "liveNews": "Market Headlines",
+      "insights": "AI Market Insights"
+    },
+    "tech": {
+      "map": "Global Tech Map",
+      "liveNews": "Tech Headlines"
+    },
+    "commodity": {
+      "map": "Commodity Map",
+      "liveNews": "Commodity Headlines",
+      "insights": "AI Commodity Insights"
+    },
+    "energy": {
+      "map": "Energy Atlas Map",
+      "liveNews": "Energy Headlines",
+      "insights": "AI Energy Insights"
+    },
+    "happy": {
+      "map": "Good News Map"
+    }
   },
   "commands": {
     "prefixes": {
@@ -1024,6 +1047,8 @@
       "countries": "Countries",
       "recentActions": "Recent Regulatory Actions (Last 12 Months)",
       "upcomingDeadlines": "Upcoming Compliance Deadlines",
+      "latestActions": "Latest Recorded Actions",
+      "otherDeadlines": "Other Compliance Deadlines",
       "globalLandscape": "Global Regulatory Landscape",
       "emptyActions": "No recent regulatory actions",
       "emptyDeadlines": "No upcoming compliance deadlines in the next 12 months",
@@ -1035,8 +1060,11 @@
       "actionsCount": "{{count}} actions",
       "deadlinesCount": "{{count}} deadlines",
       "days": "days",
+      "daysAgo": "days ago",
       "activeCount": "Active Regulations ({{count}})",
       "proposedCount": "Proposed Regulations ({{count}})",
+      "revokedCount": "Revoked Regulations ({{count}})",
+      "lapsedCount": "Lapsed Proposals ({{count}})",
       "moreProvisions": "+{{count}} more...",
       "source": "Source",
       "stances": {
@@ -1092,6 +1120,9 @@
       "noShipping": "Shipping rate data not available",
       "noMinerals": "Mineral data loading...",
       "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
+      "partialTransitCoverage": "{{names}} transit data unavailable",
+      "oilPipelinesUnavailable": "Oil pipeline data unavailable",
+      "gasPipelinesUnavailable": "Gas pipeline data unavailable",
       "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
       "warnings": "warning(s)",
       "aisDisruptions": "Ship tracking disruptions",
@@ -1990,8 +2021,6 @@
       "summaryFailed": "Summary failed",
       "sources": "{{count}} sources",
       "relatedAssetsNear": "Related assets near {{location}}",
-      "sourceCoverage": "{{covered}}/{{total}} sources",
-      "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
       "sortRelevance": "Relevance"
@@ -2644,15 +2673,16 @@
       "proLocked": "Upgrade to PRO for commodity vulnerability scoring"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live ship tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab daily shipment indexes for the Strait of Hormuz: crude oil, LNG and fertilizer leaving the Gulf, farm goods arriving. By volume, Jan–Mar 2025 average = 100, AIS-visible vessels only. Status and date come from WTO's latest analysis.",
       "title": "Hormuz Trade Tracker",
       "noData": "No data",
       "notAvailable": "N/A",
       "chartUnavailable": "Chart data unavailable",
       "sourcePrefix": "Source:",
+      "analysisDate": "WTO analysis {{date}}",
+      "indexNote": "Shipment index by volume, Jan–Mar 2025 average = 100",
       "units": {
-        "ktPerDay": "kt/day",
-        "generic": "units"
+        "index": "index"
       },
       "errors": {
         "unavailable": "Hormuz data unavailable",
@@ -2734,6 +2764,66 @@
       "retrying": "Retrying…",
       "dismiss": "Dismiss"
     },
+    "aboutYou": {
+      "title": "Help us build World Monitor for you",
+      "ariaLabel": "About you",
+      "progress": "{{current}} of {{total}}",
+      "skip": "Skip",
+      "close": "Close",
+      "done": "Done",
+      "saving": "Saving…",
+      "saveFailed": "Couldn't save that. Try again.",
+      "retry": "Retry",
+      "thanks": "Thanks. This helps us decide what to build next.",
+      "questions": {
+        "primaryUse": {
+          "label": "What do you mainly use World Monitor for?",
+          "options": {
+            "news": "News and world events",
+            "markets": "Markets and trading",
+            "commodities": "Commodities and supply chain",
+            "travel": "Travel and flights",
+            "security": "Security and OSINT",
+            "research": "Research and journalism",
+            "api-agent": "Building with the API or an AI agent",
+            "other": "Something else"
+          }
+        },
+        "usageContext": {
+          "label": "Do you use it for work or personal use?",
+          "options": {
+            "personal": "Personal",
+            "work": "Work"
+          }
+        },
+        "payer": {
+          "label": "Who pays, or would pay, for it?",
+          "options": {
+            "self": "I do",
+            "employer": "My employer or team",
+            "not-paying": "Nobody yet"
+          }
+        },
+        "role": {
+          "label": "Which best describes your role?",
+          "options": {
+            "analyst": "Analyst or researcher",
+            "trader": "Trader or investor",
+            "journalist": "Journalist",
+            "security": "Security or risk",
+            "government": "Government or policy",
+            "supply-chain": "Supply chain or operations",
+            "developer": "Developer",
+            "student": "Student",
+            "other": "Other"
+          }
+        },
+        "alternative": {
+          "label": "What would you use if World Monitor didn't exist?",
+          "placeholder": "Optional"
+        }
+      }
+    },
     "proActivation": {
       "badge": "PRO",
       "progress": "Step {{current}} of {{total}}",
@@ -2741,6 +2831,15 @@
       "ariaLabel": "Pro activation setup",
       "signedInAs": "Signed in as {{email}}",
       "steps": {
+        "about": {
+          "heading": "One last thing: what will you use World Monitor for?",
+          "body": "Three quick answers help us build the right tools for you. Skip any you like.",
+          "confirmCta": "Save my answers",
+          "confirming": "Saving…",
+          "doneNote": "Thanks, we have your answers.",
+          "summaryLabel": "About you",
+          "summaryVerified": "Saved. Thank you."
+        },
         "brief": {
           "heading": "Your daily brief, every morning",
           "body": "A curated intelligence briefing in your inbox each morning — the overnight signals that matter, distilled into a five-minute read.",
@@ -2978,7 +3077,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Turkish Straits",
         "panama": "Panama",
-        "danishStraits": "Danish Straits"
+        "doverStrait": "Dover Strait"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
@@ -3094,6 +3193,35 @@
       "captured": "Captured. Review observation dates and constraints before downloading.",
       "failed": "Could not capture the scenarios. Check your access and retry. No result is available to export.",
       "locked": "Decision brief is available on Pro."
+    },
+    "foodPrices": {
+      "title": "Local food prices",
+      "method": "Weekly change compares the same product, market, origin and unit with its price exactly seven days earlier. Countries use different baskets and currencies.",
+      "loading": "Loading food prices…",
+      "unavailable": "Unavailable",
+      "retry": "Retry",
+      "country": "Country",
+      "market": "Market",
+      "retail": "Retail",
+      "wholesale": "Wholesale",
+      "farmgate": "Farmgate",
+      "export": "Export",
+      "prices": "Food prices",
+      "product": "Product",
+      "price": "Price / unit",
+      "weekly": "Week over week",
+      "origin": "Origin",
+      "versus": "vs",
+      "noBaseline": "Prior week unavailable",
+      "context": "Food security and monthly context",
+      "contextNote": "These reports provide dated context. They do not provide weekly price changes. Tunisia reports can lag by several months.",
+      "briefCountry": "Country brief",
+      "report": "Report date",
+      "checked": "Last checked",
+      "current": "Current",
+      "partial": "Some reports unavailable or old",
+      "stale": "Older data",
+      "global": "FAO global monthly index"
     }
   },
   "popups": {

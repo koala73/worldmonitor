@@ -15,6 +15,8 @@ import {
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './bounded-body';
 import {
   allSupportedProtocolVersionsNewestFirst,
+  CHATGPT_MODERN_SERVER_INSTRUCTIONS,
+  CHATGPT_SERVER_INSTRUCTIONS,
   MAX_JSON_RPC_BODY_BYTES,
   MCP_LOG_LEVELS,
   MODERN_SERVER_INSTRUCTIONS,
@@ -25,7 +27,8 @@ import {
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { applyChatGptCommercePolicy, isChatGptHost } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
   buildAccountAllowanceResourceResponse,
@@ -55,6 +58,8 @@ import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from 
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { classifyAgentClientHints, sanitizeClientName } from '../../shared/agent-client-source';
 import { hashKeySync } from '../../server/_shared/usage-identity';
+import { deriveRequestId } from '../../server/_shared/usage';
+import { attachRequestIdToErrors } from './request-id';
 import {
   createMcpUsage,
   emitMcpRequestEvent,
@@ -564,7 +569,9 @@ async function maybeStreamJsonRpcResponse(req: Request, owner: string | null, re
   if (!sessionId) return response;
 
   const streamId = crypto.randomUUID();
-  const responseBody = await response.text();
+  // Framed here, before mcpHandler's exit step can see JSON, so the error
+  // request id is stamped now for the live stream and the replay buffer.
+  const responseBody = await (await attachRequestIdToErrors(response, deriveRequestId(req))).text();
   // A single `message` event carrying the fully-computed JSON-RPC response. The
   // body is already resolved (`await response.text()` above) before the stream
   // is constructed, so there is no slow-result window a separate priming event
@@ -855,10 +862,13 @@ export async function mcpHandler(
   let res: Response;
   try {
     res = await mcpHandlerInner(req, deps, usage, exchange, ctx);
+    // Before modern shaping, which may re-frame a JSON body as SSE.
+    res = await attachRequestIdToErrors(res, deriveRequestId(req));
+    // Before modern shaping too: it reads the legacy denial envelope.
+    if (isChatGptHost(req)) res = await applyChatGptCommercePolicy(res);
     if (usage.era === 'modern') {
       res = await shapeModernResponse(res, {
         method: exchange.method,
-        onAlias: WELL_KNOWN_MCP_PATHS.has(new URL(req.url).pathname),
         acceptsSse: clientAcceptsSse(req),
       });
     }
@@ -1004,11 +1014,10 @@ async function mcpHandlerInner(
     // HEAD is the matching GET with the body suppressed. Reuse the discovery
     // helpers so cache policy, canonical Link, and static-asset fallback status
     // cannot drift between the two methods.
-    const pathname = new URL(req.url).pathname;
-    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+    if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       return serveServerCard(req, corsHeaders, true);
     }
-    if (pathname === MCP_TRANSPORT_PATH) {
+    if (requestPathname === MCP_TRANSPORT_PATH) {
       return serveMcpGuide(req, corsHeaders, true);
     }
     return new Response(null, {
@@ -1028,12 +1037,11 @@ async function mcpHandlerInner(
     !req.headers.get('last-event-id') &&
     !clientAcceptsSse(req)
   ) {
-    const pathname = new URL(req.url).pathname;
-    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+    if (WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
       usage.skip = true;
       return serveServerCard(req, corsHeaders);
     }
-    if (pathname === MCP_TRANSPORT_PATH) {
+    if (requestPathname === MCP_TRANSPORT_PATH) {
       usage.skip = true;
       return serveMcpGuide(req, corsHeaders);
     }
@@ -1360,7 +1368,7 @@ async function mcpHandlerInner(
     return respond(rpcOk(id, {
       supportedVersions: allSupportedProtocolVersionsNewestFirst(),
       capabilities: modernServerCapabilities(),
-      instructions: MODERN_SERVER_INSTRUCTIONS,
+      instructions: isChatGptHost(req) ? CHATGPT_MODERN_SERVER_INSTRUCTIONS : MODERN_SERVER_INSTRUCTIONS,
     }, corsHeaders));
   }
   if (modernEra && method === 'subscriptions/listen') {
@@ -1400,7 +1408,7 @@ async function mcpHandlerInner(
         protocolVersion: negotiatedVersion,
         capabilities: serverCapabilities(),
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-        instructions: SERVER_INSTRUCTIONS,
+        instructions: isChatGptHost(req) ? CHATGPT_SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders }));
     }
     case 'notifications/initialized':
@@ -1408,7 +1416,7 @@ async function mcpHandlerInner(
     case 'ping':
       return respond(rpcOk(id, {}, corsHeaders));
     case 'tools/list':
-      return respond(rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders));
+      return respond(rpcOk(id, { tools: isChatGptHost(req) ? CHATGPT_TOOL_LIST_RESPONSE : TOOL_LIST_RESPONSE }, corsHeaders));
     case 'tools/call': {
       // context is always set here. tools/call is never a PUBLIC_MCP_METHOD, and
       // since U7 a free-tier call takes the anon branch above but still sets an

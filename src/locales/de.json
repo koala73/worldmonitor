@@ -175,7 +175,7 @@
       "aviationSource": "Luftfahrtüberwachung",
       "hazardSource": "Länder-Aufklärungssignale",
       "marketSource": "Nationaler Marktindex",
-      "ccfiSource": "Shanghai Shipping Exchange",
+      "ccfiSource": "Shanghaier Schifffahrtsbörse",
       "comtradeSource": "UN Comtrade, Berichtsland 156",
       "sourceUnavailable": "Quelle nicht verfügbar",
       "policyUnavailable": "Nicht verfügbar",
@@ -305,7 +305,7 @@
   },
   "header": {
     "world": "WELT",
-    "tech": "TECH",
+    "tech": "TECHNIK",
     "live": "LIVE",
     "search": "Suche",
     "settings": "EINSTELLUNGEN",
@@ -387,7 +387,6 @@
     "liveNews": "Live-Nachrichten",
     "markets": "Märkte",
     "map": "Globale Lage",
-    "techMap": "Globale Tech",
     "status": "Systemstatus",
     "insights": "KI-Insights",
     "strategicPosture": "KI-Strategische Haltung",
@@ -433,7 +432,7 @@
     "vcblogs": "Venture-Capital-Insights & Essays",
     "regionalStartups": "Globale Startup-Nachrichten",
     "unicorns": "Einhorn-Tracker",
-    "accelerators": "Accelerators & Demo Days",
+    "accelerators": "Accelerators & Demo-Days",
     "security": "Cybersicherheit",
     "policy": "KI-Politik & Regulierung",
     "regulation": "KI-Regulierungs-Dashboard",
@@ -459,7 +458,7 @@
     "gulfIndices": "Golf-Indizes",
     "gulfCurrencies": "Golf-Währungen",
     "gulfOil": "Golf-Öl",
-    "bigmac": "Real Big Mac Index",
+    "bigmac": "Echter Big-Mac-Index",
     "marketImplications": "KI-Marktauswirkungen",
     "energyComplex": "Energiekomplex",
     "oilInventories": "Ölbestände",
@@ -479,7 +478,7 @@
     "bigmacDesc": "Big-Mac-Preise in Ländern des Nahen Ostens (Big-Mac-Index)",
     "bigmacWow": "Woche-über-Woche",
     "bigmacCountry": "Land",
-    "faoFoodPriceIndex": "FAO-Lebensmittelpreisindex",
+    "faoFoodPriceIndex": "Lebensmittelpreise",
     "fuelPrices": "Kraftstoffpreise",
     "fuelPricesDesc": "Einzelhandelsbenzin- und Dieselpreise in über 30 Ländern weltweit",
     "fuelPricesCountry": "Land",
@@ -634,7 +633,7 @@
       "seeAllCommands": "Alle Befehle anzeigen",
       "hideCommandList": "Zurück",
       "flightOnGround": "Am Boden",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} kn",
       "flightMilitary": "Militär · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militär · {{type}} · am Boden",
       "flightSearchHint": "Drücken Sie die Eingabetaste oder klicken Sie, um die aktuelle Position nachzuschlagen",
@@ -918,7 +917,12 @@
         "permissive": "Permissiv",
         "undefined": "Undefiniert"
       },
-      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen."
+      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen.",
+      "latestActions": "Zuletzt aufgezeichnete Maßnahmen",
+      "otherDeadlines": "Weitere Compliance-Fristen",
+      "daysAgo": "Tage her",
+      "revokedCount": "Widerrufene Vorschriften ({{count}})",
+      "lapsedCount": "Hinfällige Vorschläge ({{count}})"
     },
     "economic": {
       "indicators": "Indikatoren",
@@ -984,7 +988,10 @@
       "stageUnavailable": "Keine veröffentlichten Zahlen für diese Stufe",
       "withheldNote": "W = einbehalten",
       "productionCaption": "Länderanteile der tatsächlichen Produktion. Die Karte zeigt in der Depositen-Ebene, wo sich Rohstoffe befinden; diese Tabelle zeigt, wer sie abbaut oder verarbeitet.",
-      "productionProLocked": "Upgrade auf PRO für Bergbau- und Raffinerie-Länderanteile mit Konzentration (Produzentenkonzentrationsindex) nach Stufe."
+      "productionProLocked": "Upgrade auf PRO für Bergbau- und Raffinerie-Länderanteile mit Konzentration (Produzentenkonzentrationsindex) nach Stufe.",
+      "partialTransitCoverage": "Transitdaten nicht verfügbar: {{names}}",
+      "oilPipelinesUnavailable": "Ölpipeline-Daten nicht verfügbar",
+      "gasPipelinesUnavailable": "Gaspipeline-Daten nicht verfügbar"
     },
     "tradePolicy": {
       "tariffs": "Zölle",
@@ -1145,8 +1152,8 @@
         "renewableInstallations": "Saubere Energie",
         "radiationSpike": "Strahlungsspitze",
         "radiationElevated": "Erhöhte Strahlung",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "Kanada-Straßen",
+        "canadaAlerts": "Kanada-Warnungen",
         "notamAirspace": "NOTAM-Luftraumbeschränkungen",
         "no2Activity": "Industrielle Aktivität"
       },
@@ -1282,7 +1289,7 @@
     "climate": {
       "noAnomalies": "Keine wesentlichen Anomalien festgestellt",
       "zone": "Zone",
-      "temp": "Temp",
+      "temp": "Temp.",
       "precip": "Niederschlag",
       "severityLabel": "Schweregrad",
       "severity": {
@@ -1301,8 +1308,6 @@
       "relatedAssetsNear": "Zugehörige Anlagen in der Nähe von {{location}}",
       "summaryError": "Zusammenfassung konnte nicht erstellt werden",
       "summaryFailed": "Zusammenfassung fehlgeschlagen",
-      "sourceCoverage": "{{covered}}/{{total}} Quellen",
-      "sourceCoverageHint": "Zeigt {{covered}} von {{total}} aktivierten Quellen — dieses Panel wechselt seine Quellen bei jeder Aktualisierung",
       "sortBy": "Sortieren nach",
       "sortNewest": "Neueste",
       "sortRelevance": "Relevanz"
@@ -1439,7 +1444,7 @@
         "air": "LUFT",
         "sea": "SEE"
       },
-      "strike": "STRIKE",
+      "strike": "ANGRIFF",
       "staleWarning": "Zwischengespeicherte Daten verwendet — Live-Feed vorübergehend nicht verfügbar",
       "updated": "Aktualisiert:",
       "theaters": {
@@ -1468,7 +1473,7 @@
       "all": "Alle",
       "conferencesCount": "{{count}} Konferenzen",
       "onMap": "{{count}} auf der Karte",
-      "techmemeEvents": "Techmeme Events ↗",
+      "techmemeEvents": "Techmeme-Termine ↗",
       "today": "HEUTE",
       "soon": "BALD",
       "infoTooltip": "<strong>Tech-Veranstaltungen</strong> Bevorstehende und aktuelle Technologieveranstaltungen: Konferenzen, Produkteinführungen, regulatorische Anhörungen und Earnings Calls. Aggregiert aus offiziellen Veranstaltungskalendern und Branchenquellen."
@@ -1722,7 +1727,7 @@
       "empty": "Keine Beiträge verfügbar",
       "disabled": "X-Nachrichtenkonto-Relay nicht aktiv",
       "filterAll": "Alle",
-      "filterBreaking": "Breaking",
+      "filterBreaking": "Eilmeldungen",
       "filterConflict": "Konflikt",
       "filterOsint": "Open-Source-Geheimdienstarbeit",
       "filterMiddleeast": "Naher Osten",
@@ -1754,7 +1759,7 @@
       "undisclosed": "Nicht bekannt gegeben",
       "sectors": {
         "ports": "Häfen",
-        "pipelines": "Pipelines",
+        "pipelines": "Rohrleitungen",
         "energy": "Energie",
         "datacenters": "Rechenzentren",
         "airports": "Flughäfen",
@@ -1932,7 +1937,7 @@
       "overall": "Gesamt",
       "verdict": {
         "buy": "KAUFEN",
-        "cash": "CASH"
+        "cash": "BARGELD"
       },
       "bullish": "{{count}}/{{total}} bullisch",
       "signals": {
@@ -1940,7 +1945,7 @@
         "flow": "Mittelfluss",
         "regime": "Regime",
         "btcTrend": "BTC-Trend",
-        "hashRate": "Hash Rate",
+        "hashRate": "Hashrate",
         "fearGreed": "Angst & Gier",
         "momentum": "Momentum"
       },
@@ -2313,20 +2318,21 @@
       "proLocked": "Upgraden Sie auf PRO für Rohstoff-Anfälligkeitsbewertung"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> Live-Schiffsverfolgung durch die Straße von Hormuz, einem der weltweit kritischsten Ölengpässe. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Durchsatzveränderungen. Etwa 20% des globalen Ölvorrats durchlaufen täglich diesen Engpass.",
+      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Status und Datum stammen aus der neuesten Analyse der WTO.",
       "title": "Hormuz-Handels-Tracker",
       "noData": "Keine Daten",
       "notAvailable": "N/V",
       "chartUnavailable": "Chartdaten nicht verfügbar",
       "sourcePrefix": "Quelle:",
       "units": {
-        "ktPerDay": "kt/Tag",
-        "generic": "Einheiten"
+        "index": "Index"
       },
       "errors": {
         "unavailable": "Hormuz-Daten nicht verfügbar",
         "failedToLoad": "Fehler beim Laden"
-      }
+      },
+      "analysisDate": "WTO-Analyse {{date}}",
+      "indexNote": "Versandindex nach Volumen, Durchschnitt Januar–März 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live-Webcams</strong> Liveübertragungen von geopolitisch bedeutsamen Orten weltweit: Konfliktzonen, Hauptstädte, Grenzübergänge und strategische Engpässe. Streams von YouTube und öffentlichen Netzwerken."
@@ -2397,7 +2403,7 @@
       "directions": {
         "long": "LONG",
         "short": "SHORT",
-        "hedge": "HEDGE"
+        "hedge": "ABSICHERUNG"
       },
       "rationale": "Begründung:",
       "driver": "Treiber:",
@@ -2540,7 +2546,7 @@
       "cotSection": "Öl / Gold / Silber + Index-Positionierung (Commitments of Traders)",
       "stocksSection": "Top-US-Aktien: Tägliche Verschiebung",
       "longShort": "Long {{long}} / Short {{short}}",
-      "lev": "Lev",
+      "lev": "Hebel",
       "noCot": "Keine Commitments of Traders-Zeilen verfügbar.",
       "noStocks": "Keine Top-Aktienkurse verfügbar.",
       "reportDate": "Commitments of Traders-Report-Datum: {{date}}",
@@ -2641,6 +2647,15 @@
             "mcpClients": "MCP einrichten",
             "channels": "In den Benachrichtigungseinstellungen einrichten"
           }
+        },
+        "about": {
+          "heading": "Eine letzte Sache: Wofür wirst du World Monitor nutzen?",
+          "body": "Drei kurze Antworten helfen uns, die richtigen Tools für dich zu entwickeln. Du kannst gerne überspringen, was du möchtest.",
+          "confirmCta": "Antworten speichern",
+          "confirming": "Speichern…",
+          "doneNote": "Danke, wir haben deine Antworten.",
+          "summaryLabel": "Über dich",
+          "summaryVerified": "Gespeichert. Danke."
         }
       },
       "status": {
@@ -2676,7 +2691,7 @@
     "frameworkSelector": {
       "label": "Analyse-Framework",
       "defaultNeutral": "Standard (Neutral)",
-      "titlePrefix": "Framework: {{name}}",
+      "titlePrefix": "Analyserahmen: {{name}}",
       "titleNone": "Analyse-Framework"
     },
     "sanctionsPressure": {
@@ -2835,10 +2850,10 @@
         "hormuzStrait": "Hormus",
         "malaccaStrait": "Malakka",
         "suez": "Suez",
-        "babElMandeb": "Bab el-Mandeb",
+        "babElMandeb": "Bab al-Mandab",
         "bosphorus": "Türkische Meerengen",
         "panama": "Panama",
-        "danishStraits": "Dänische Meerengen"
+        "doverStrait": "Straße von Dover"
       },
       "flow": {
         "mbd": "{{value}} Mio. Fass/Tag",
@@ -2888,8 +2903,8 @@
         "hoursAgo": "vor {{count}}h",
         "daysAgo": "vor {{count}}T",
         "compactNow": "jetzt",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactMinutes": "{{count}} Min.",
+        "compactHours": "{{count}} Std.",
         "compactDays": "{{count}}T"
       }
     },
@@ -2913,7 +2928,7 @@
       "infoTooltip": "<strong>Wechselkurse</strong> Stress stuft 45 Währungen nach ihrer größten Abnahme über 24 Monate ein, mit der 12-Monats-Veränderung. Spotquoten verwenden separate US-Dollar- und Euro-Basis. Russische Rubel-Quoten sind Rubel pro Einheit. Quellen umfassen Yahoo Finance, die Europäische Zentralbank und die Bank of Russia.",
       "tabs": {
         "stress": "Währungs-Stress",
-        "spot": "Spot",
+        "spot": "Kassa",
         "rub": "RUB"
       },
       "currency": "Währung",
@@ -3003,6 +3018,95 @@
       "rosterSummaryTier1": "Berichtet von {{publishers}}, darunter {{tier1}} Tier-1",
       "rosterPublishers_one": "{{count}} Verleger",
       "rosterPublishers_other": "{{count}} Verlegern"
+    },
+    "foodPrices": {
+      "title": "Lokale Lebensmittelpreise",
+      "method": "Die Wochenänderung vergleicht dasselbe Produkt am selben Markt mit gleicher Herkunft und Einheit mit dem Preis genau sieben Tage zuvor. Länder verwenden unterschiedliche Warenkörbe und Währungen.",
+      "loading": "Lebensmittelpreise werden geladen…",
+      "unavailable": "Nicht verfügbar",
+      "retry": "Erneut versuchen",
+      "country": "Land",
+      "market": "Markt",
+      "retail": "Einzelhandel",
+      "wholesale": "Großhandel",
+      "farmgate": "Erzeugerpreis",
+      "export": "Export",
+      "prices": "Lebensmittelpreise",
+      "product": "Erzeugnis",
+      "price": "Preis / Einheit",
+      "weekly": "Wochenvergleich",
+      "origin": "Herkunft",
+      "versus": "gegenüber",
+      "noBaseline": "Vorwoche nicht verfügbar",
+      "context": "Ernährungssicherheit und monatlicher Kontext",
+      "contextNote": "Diese Berichte liefern datierten Kontext, aber keine wöchentlichen Preisänderungen. Berichte aus Tunesien können mehrere Monate zurückliegen.",
+      "briefCountry": "Länderbericht",
+      "report": "Berichtsdatum",
+      "checked": "Zuletzt geprüft",
+      "current": "Aktuell",
+      "partial": "Einige Berichte fehlen oder sind veraltet",
+      "stale": "Ältere Daten",
+      "global": "Globaler monatlicher FAO-Index"
+    },
+    "aboutYou": {
+      "title": "Hilf uns, World Monitor für dich zu entwickeln",
+      "ariaLabel": "Über dich",
+      "progress": "{{current}} von {{total}}",
+      "skip": "Überspringen",
+      "close": "Schließen",
+      "done": "Fertig",
+      "saving": "Wird gespeichert…",
+      "saveFailed": "Das konnte nicht gespeichert werden. Versuche es nochmal.",
+      "retry": "Erneut versuchen",
+      "thanks": "Danke. Das hilft uns zu entscheiden, was wir als Nächstes entwickeln.",
+      "questions": {
+        "primaryUse": {
+          "label": "Wofür nutzt du World Monitor hauptsächlich?",
+          "options": {
+            "news": "Nachrichten und Weltereignisse",
+            "markets": "Märkte und Trading",
+            "commodities": "Rohstoffe und Lieferkette",
+            "travel": "Reisen und Flüge",
+            "security": "Sicherheit und OSINT",
+            "research": "Forschung und Journalismus",
+            "api-agent": "Entwicklung mit der API oder einem KI-Agent",
+            "other": "Etwas anderes"
+          }
+        },
+        "usageContext": {
+          "label": "Nutzt du es beruflich oder privat?",
+          "options": {
+            "personal": "Privat",
+            "work": "Beruflich"
+          }
+        },
+        "payer": {
+          "label": "Wer bezahlt oder würde dafür bezahlen?",
+          "options": {
+            "self": "Ich selbst",
+            "employer": "Mein Arbeitgeber oder Team",
+            "not-paying": "Noch niemand"
+          }
+        },
+        "role": {
+          "label": "Welche Beschreibung passt am besten zu deiner Rolle?",
+          "options": {
+            "analyst": "Analyst oder Forscher",
+            "trader": "Trader oder Investor",
+            "journalist": "Journalist",
+            "security": "Sicherheit oder Risikomanagement",
+            "government": "Regierung oder Politik",
+            "supply-chain": "Lieferkette oder Betrieb",
+            "developer": "Entwickler",
+            "student": "Studierende",
+            "other": "Sonstiges"
+          }
+        },
+        "alternative": {
+          "label": "Was würdest du nutzen, wenn es World Monitor nicht gäbe?",
+          "placeholder": "Freiwillige Angabe"
+        }
+      }
     }
   },
   "popups": {
@@ -3052,7 +3156,7 @@
       "navPerformance": "Betroffene Luftfahrzeuge",
       "samples": "Anzahl betroffener Luftfahrzeuge",
       "aircraft": "Gesichtete Luftfahrzeuge",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "H3-Hexagon"
     },
     "flight": {
       "groundStop": "STARTVERBOT",
@@ -3182,7 +3286,7 @@
       "baseline": "Basislinie",
       "components": {
         "news": "Nachrichten",
-        "cii": "Country Instability Index",
+        "cii": "Länderinstabilitätsindex",
         "geo": "Geo",
         "military": "Militär"
       },
@@ -3211,7 +3315,7 @@
     "chokepointCongestion": "ENGPASS-STAU",
     "darkening": "VERDUNKELUNG",
     "density": "DICHTE",
-    "darkShips": "DARK SHIPS",
+    "darkShips": "SCHIFFE OHNE AIS",
     "vesselCount": "SCHIFFSANZAHL",
     "window": "ZEITFENSTER",
     "region": "REGION",
@@ -3287,7 +3391,7 @@
         "faang": "BIG TECH",
         "unicorn": "EINHORN",
         "public": "BÖRSENNOTIERT",
-        "tech": "TECH"
+        "tech": "TECHNIK"
       },
       "marketCap": "MARKTKAP",
       "employees": "MITARBEITER"
@@ -3341,7 +3445,7 @@
       "speed": "GESCHW.",
       "heading": "KURS",
       "hexCode": "HEX-CODE",
-      "squawk": "SQUAWK",
+      "squawk": "TRANSPONDERCODE",
       "attribution": "Quelle: adsb.lol (ODbL) · OpenSky Network",
       "climbRate": "STEIGGESCHWINDIGKEIT",
       "manufacturer": "HERSTELLER",
@@ -3468,7 +3572,7 @@
       "mossad_idf": "Mossad/IDF",
       "nato_hq": "NATO-Hauptquartier",
       "pla_mss_activity": "PLA/MSS-Aktivität",
-      "pentagon_pizza_index": "Pentagon Pizza Index",
+      "pentagon_pizza_index": "Pentagon-Pizza-Index",
       "piracy_conflict": "Piraterie/Konflikt",
       "qatar_al_udeid": "Katar/Al Udeid",
       "saudi_gip_mbs": "Saudisches GIP/MBS",
@@ -4178,5 +4282,29 @@
     "reportedClaims": "Meldungen des Herausgebers. Angaben werden möglicherweise noch untersucht.",
     "occurred": "Vorfall",
     "reported": "Veröffentlicht"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Weltkarte der Märkte",
+      "liveNews": "Markt-Schlagzeilen",
+      "insights": "KI-Markteinblicke"
+    },
+    "tech": {
+      "map": "Weltkarte der Technologie",
+      "liveNews": "Tech-Schlagzeilen"
+    },
+    "commodity": {
+      "map": "Rohstoffkarte",
+      "liveNews": "Rohstoff-Schlagzeilen",
+      "insights": "KI-Rohstoffeinblicke"
+    },
+    "energy": {
+      "map": "Energieatlas-Karte",
+      "liveNews": "Energie-Schlagzeilen",
+      "insights": "KI-Energieeinblicke"
+    },
+    "happy": {
+      "map": "Karte der guten Nachrichten"
+    }
   }
 }

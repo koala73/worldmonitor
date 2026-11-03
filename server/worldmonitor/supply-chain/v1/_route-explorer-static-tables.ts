@@ -42,6 +42,8 @@ export const TRANSIT_DAYS_BY_ROUTE_ID: Record<string, readonly [number, number]>
   'cpec-route': [10, 16],
   'panama-transit': [1, 2],
   'transatlantic': [8, 14],
+  'us-west-northeast-asia': [10, 14],
+  'us-gulf-asia-panama': [24, 32],
 };
 
 /**

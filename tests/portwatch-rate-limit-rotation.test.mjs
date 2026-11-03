@@ -74,14 +74,17 @@ describe('publication block classification (#8501)', () => {
     assert.match(block.reason, /24/);
   });
 
-  it('keeps a hard failure when a country actually fell out of coverage', () => {
+  it('blocks publication without a crash when a country fell out of coverage', () => {
+    // 2026-11-01: ArcGIS degradation left 10 countries past the 7-day cache
+    // limit and every 12h tick exited 1. Last-good is retained and the meta
+    // records the shortfall, so /api/health owns the alarm, not Railway.
     const block = classifyPublicationBlock({
       ...stalledRotation,
       countryCount: 173,
       coverage: { ...stalledRotation.coverage, complete: false },
     });
     assert.equal(block?.kind, 'coverage_shortfall');
-    assert.equal(block.exitCode, 1);
+    assert.equal(block.exitCode, PUBLISH_BLOCKED_EXIT_CODE);
   });
 
   it('refuses the soft outcome when the coverage object contradicts its own complete flag', () => {
@@ -120,6 +123,35 @@ describe('publication block classification (#8501)', () => {
     assert.match(block.reason, /invalid_query, rate_limited/);
   });
 
+  it('treats ArcGIS and network failures as upstream, and our own faults as crashes', () => {
+    const { isUpstreamFetchFailure } = portwatchSeed;
+    const live = new AbortController().signal;
+    // Upstream: the shapes ArcGIS and its transports actually threw on 2026-11-01.
+    for (const error of [
+      new Error('ArcGIS error: Cannot perform query. Invalid query parameters.'),
+      Object.assign(new Error('ArcGIS incomplete page: reference page 2'), { refreshFailureCode: 'incomplete_page' }),
+      new Error('ArcGIS proxy leg timeout after 50000ms'),
+      new Error('Proxy CONNECT: HTTP/1.1 522 Server Error'),
+      new TypeError('fetch failed'),
+    ]) assert.equal(isUpstreamFetchFailure(error, live), true, error.message);
+    // Ours: Redis/cache reads, programming errors, a SIGTERM-aborted run.
+    for (const error of [
+      new Error('Redis pipeline failed: HTTP 500 — boom'),
+      new Error('PortWatch cache read failed'),
+      // A Redis transport rejection is tagged at its source, because its bare
+      // shape matches an ArcGIS transport failure.
+      Object.assign(new Error('Redis pipeline failed: fetch failed'), { portwatchOwnFault: true }),
+      Object.assign(new TypeError('fetch failed'), { portwatchOwnFault: true }),
+      new TypeError("Cannot read properties of undefined (reading 'size')"),
+      new ReferenceError('fetchAl is not defined'),
+      'not an error object',
+    ]) assert.equal(isUpstreamFetchFailure(error, live), false, String(error?.message ?? error));
+    const aborted = new AbortController();
+    aborted.abort(new Error('SIGTERM'));
+    assert.equal(isUpstreamFetchFailure(new Error('ArcGIS error: x'), aborted.signal), false,
+      'an aborted run never reached a verdict and stays a crash');
+  });
+
   it('keeps a hard failure when the run made no upstream contact at all', () => {
     const block = classifyPublicationBlock({ ...stalledRotation, upstreamContactCount: 0 });
     assert.equal(block?.kind, 'coverage_shortfall');
@@ -156,6 +188,68 @@ describe('publication block classification (#8501)', () => {
     assert.match(seederSrc, /canonicalAtRisk/,
       'main() must disqualify the soft outcome when the canonical TTL was not confirmed');
     assert.match(seederSrc, /const canonicalAtRisk = prevIso2List !== null && !canonicalTtlExtended;/);
+  });
+});
+
+// ── 1b. an expired backlog clears once upstream recovers ─────────────────────
+describe('recovery from an expired backlog (2026-11-03)', () => {
+  // The seeder stayed publish-blocked for six days at 132/174: 42 payloads had
+  // passed the seven-day expiry, and cohorts of 27-28 countries cached together
+  // reach it every 12h. The fixture is the real per-country cache state.
+  const fixture = JSON.parse(readFileSync(
+    fileURLToPath(new URL('./fixtures/portwatch/port-activity-cache-2026-11-03.json', import.meta.url)),
+    'utf-8',
+  ));
+  const src = readFileSync(
+    fileURLToPath(new URL('../scripts/seed-portwatch-port-activity.mjs', import.meta.url)),
+    'utf-8',
+  );
+  const dispatchDeadlineMs = Number(src.match(/RUN_DISPATCH_DEADLINE_MS = ([\d_]+)/)[1].replace(/_/g, ''));
+  // The 2026-11-03T00:05Z run: activity began ~5s in, then five batches of six
+  // took 39.2s each on average, plus the 5s inter-batch gap.
+  const observedStartMs = 5_000;
+  const observedBatchMs = 39_200 + 5_000;
+  const admittedBatches = Math.floor(
+    (dispatchDeadlineMs - portwatchSeed.PER_COUNTRY_TIMEOUT_MS - observedStartMs) / observedBatchMs,
+  ) + 1;
+  const deadlineSlots = admittedBatches * portwatchSeed.CONCURRENCY;
+  const outOfCoverage = (prevPayload, now) => !Number.isFinite(prevPayload.cacheWrittenAt)
+    || now - prevPayload.cacheWrittenAt >= PORTWATCH_MAX_CACHE_AGE_MS;
+  const cadenceMs = PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
+
+  function runsUntilFullCoverage(runSucceeds) {
+    const state = fixture.countries.map(({ iso2, cacheWrittenAt, refreshAttemptedAt }) => ({
+      iso2, iso3: `${iso2}X`, prevPayload: { iso2, cacheWrittenAt, refreshAttemptedAt },
+    }));
+    const firstRunAt = Math.ceil(fixture.capturedAt / cadenceMs) * cadenceMs;
+    for (let run = 0; run < 20; run++) {
+      const now = firstRunAt + run * cadenceMs;
+      const cap = state.some(({ prevPayload }) => outOfCoverage(prevPayload, now))
+        ? portwatchSeed.MAX_RECOVERY_COLD_FETCH_PER_RUN
+        : portwatchSeed.MAX_COLD_FETCH_PER_RUN;
+      for (const entry of orderColdFetchQueue(state, undefined, { now }).slice(0, Math.min(cap, deadlineSlots))) {
+        entry.prevPayload = {
+          ...entry.prevPayload,
+          refreshAttemptedAt: now,
+          ...(runSucceeds(run) ? { cacheWrittenAt: now } : {}),
+        };
+      }
+      const completedAt = now + dispatchDeadlineMs;
+      if (state.every(({ prevPayload }) => completedAt - prevPayload.cacheWrittenAt < PORTWATCH_MAX_CACHE_AGE_MS)) {
+        return run + 1;
+      }
+    }
+    return Infinity;
+  }
+
+  it('publishes again within two healthy runs', () => {
+    const runs = runsUntilFullCoverage(() => true);
+    assert.ok(runs <= 2, `needed ${runs} healthy runs to reach full coverage`);
+  });
+
+  it('still recovers within two days when every third run fails outright', () => {
+    const runs = runsUntilFullCoverage((run) => run % 3 !== 1);
+    assert.ok(runs <= 4, `needed ${runs} runs to reach full coverage`);
   });
 });
 
@@ -234,10 +328,8 @@ describe('cold-fetch priority for the expiring tail (#8501)', () => {
 
   it('holds both edges of the priority window exactly', () => {
     // Fixtures sit ON the boundaries, so `>=` -> `>` and `<` -> `<=` both fail.
-    // The far edge is the one that matters: with `<=`, a payload that has just
-    // crossed MAX_CACHE_AGE_MS re-enters the tier and — being the oldest — sorts
-    // to the very front, spending the scarcest slot in the run on a country
-    // that is already unpublishable.
+    // At the far edge the payload has expired: it leaves the expiring tier for
+    // the out-of-coverage tier, which sorts AHEAD of the merely-due country.
     const onNearEdge = item('NE', {
       cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS - lead),
       refreshAttemptedAt: NOW,
@@ -255,8 +347,13 @@ describe('cold-fetch priority for the expiring tail (#8501)', () => {
     );
     assert.deepEqual(
       orderColdFetchQueue([merelyDue, onFarEdge], undefined, { now: NOW }).map((e) => e.iso2),
-      ['DD', 'FE'],
-      'a payload exactly at the hard expiry is already unpublishable and is not promoted',
+      ['FE', 'DD'],
+      'a payload exactly at the hard expiry is out of coverage and outranks a merely-due one',
+    );
+    assert.deepEqual(
+      orderColdFetchQueue([onNearEdge, onFarEdge], undefined, { now: NOW }).map((e) => e.iso2),
+      ['FE', 'NE'],
+      'an expired payload leaves the expiring tier for the out-of-coverage tier ahead of it',
     );
   });
 
@@ -284,14 +381,45 @@ describe('cold-fetch priority for the expiring tail (#8501)', () => {
     );
   });
 
-  it('does not promote a payload that already passed the expiry it cannot come back from', () => {
-    // Past MAX_CACHE_AGE_MS the payload is unpublishable anyway; spending a
-    // scarce cold-fetch slot on it would starve a country still inside it.
+  // 2026-11-01 manual run: 10 countries had crossed MAX_CACHE_AGE_MS. They sat
+  // in the ordinary rotation behind recent failed attempts, none received one
+  // of the 30 slots, 15 slots went to countries still being published, and the
+  // run exited 1 at 164/174 coverage. An expired payload is out of coverage
+  // exactly like a never-cached country: one successful fetch restores it.
+  it('ranks an expired payload with never-cached countries, ahead of the expiring tier', () => {
     const ordered = orderColdFetchQueue([
+      item('SV', { cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS - 3_600_000), refreshAttemptedAt: NOW - 2 * DAY }),
       item('EX', { cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS + DAY), refreshAttemptedAt: NOW }),
-      item('SV', { cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS - 3_600_000), refreshAttemptedAt: NOW }),
+      item('DD', { cacheWrittenAt: NOW - 2 * DAY, refreshAttemptedAt: NOW - 30 * DAY }),
+      { iso2: 'ZZ', iso3: 'ZZZ', prevPayload: null },
     ], undefined, { now: NOW }).map((entry) => entry.iso2);
-    assert.deepEqual(ordered, ['SV', 'EX']);
+    assert.deepEqual(ordered, ['ZZ', 'EX', 'SV', 'DD']);
+  });
+
+  it('rotates repeatedly failing expired countries oldest-attempt-first', () => {
+    const ordered = orderColdFetchQueue([
+      item('E1', { cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS + 3 * DAY), refreshAttemptedAt: NOW - 1_000 }),
+      item('E2', { cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS + DAY), refreshAttemptedAt: NOW - 12 * 3_600_000 }),
+    ], undefined, { now: NOW }).map((entry) => entry.iso2);
+    assert.deepEqual(ordered, ['E2', 'E1']);
+  });
+
+  it('spends capped slots on expired countries before any still-published one', () => {
+    // The production shape: 10 expired after recent failed attempts, 152
+    // published countries attempted longer ago. The fix is only real if the
+    // expired ten land inside the MAX_COLD_FETCH_PER_RUN slice.
+    const cap = portwatchSeed.MAX_COLD_FETCH_PER_RUN;
+    const expired = Array.from({ length: 10 }, (_, i) => item(`X${i}`, {
+      cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS + i * 3_600_000),
+      refreshAttemptedAt: NOW - 60_000,
+    }));
+    const published = Array.from({ length: 152 }, (_, i) => item(`P${String(i).padStart(3, '0')}`, {
+      cacheWrittenAt: NOW - 3 * DAY,
+      refreshAttemptedAt: NOW - (5 * DAY + i * 60_000),
+    }));
+    const selected = new Set(orderColdFetchQueue([...published, ...expired], undefined, { now: NOW })
+      .slice(0, cap).map((entry) => entry.iso2));
+    for (const entry of expired) assert.ok(selected.has(entry.iso2), `${entry.iso2} must get a slot`);
   });
 });
 
@@ -351,6 +479,37 @@ describe('batch circuit-breaker classification (#8501)', () => {
       ...Array.from({ length: 5 }, () => 'B: Unable to perform query. Too many requests.'),
     ];
     assert.equal(classifyBatchCircuitBreak(mixed, 6)?.code, 'invalid_query');
+  });
+
+  // 2026-10-27..31: ArcGIS returned intermittent `Invalid query parameters`.
+  // The oldest-cached countries head the expiring tier every run and a failed
+  // fetch never advances cacheWrittenAt, so batch 1 was the same five
+  // already-failing countries each time. 5 of 6 tripped the abort and the 24
+  // countries behind them were never attempted, run after run. A repeat failure
+  // from a country already failing that way is not NEW evidence of a schema
+  // regression; only countries without that history can supply it.
+  it('does not abort on invalid_query evidence that only repeats known failures', () => {
+    const observed = [
+      'VGB: Cannot perform query. Invalid query parameters.',
+      'BHR: Cannot perform query. Invalid query parameters.',
+      'ABW: Cannot perform query. Invalid query parameters.',
+      'PRI: Cannot perform query. Invalid query parameters.',
+      'HKG: Cannot perform query. Invalid query parameters.',
+    ];
+    const knownInvalidQuery = new Set(['VGB', 'BHR', 'ABW', 'PRI', 'HKG']);
+    assert.equal(classifyBatchCircuitBreak(observed, 6, undefined, { knownInvalidQuery }), null);
+    assert.equal(classifyBatchCircuitBreak(observed, 6)?.code, 'invalid_query',
+      'without failure history the same batch still reads as a regression');
+  });
+
+  it('still aborts when countries with no failure history hit invalid_query', () => {
+    const fresh = ['AAA', 'BBB', 'CCC'].map((iso3) => `${iso3}: Cannot perform query. Invalid query parameters.`);
+    const known = ['VGB', 'BHR', 'ABW'].map((iso3) => `${iso3}: Cannot perform query. Invalid query parameters.`);
+    const knownInvalidQuery = new Set(['VGB', 'BHR', 'ABW']);
+    assert.equal(classifyBatchCircuitBreak([...fresh, ...known], 6, undefined, { knownInvalidQuery })?.code,
+      'invalid_query');
+    assert.equal(classifyBatchCircuitBreak([fresh[0], ...known], 4, undefined, { knownInvalidQuery }), null,
+      'one fresh country is too little evidence to abandon the run');
   });
 
   it('does not trip on a mixed bag of unrelated failures', () => {
@@ -417,7 +576,20 @@ describe('rate-limit backoff (#8501)', () => {
     assert.ok(Number.isFinite(sectionTimeoutMs) && sectionTimeoutMs > 0,
       'the bundle section timeout must be readable, or this assertion proves nothing');
 
-    const batches = Math.ceil(portwatchSeed.MAX_COLD_FETCH_PER_RUN / portwatchSeed.CONCURRENCY);
+    // The cap sizes the queue; the dispatch deadline decides how many batches
+    // start. A batch is admitted only while now + PER_COUNTRY_TIMEOUT_MS is
+    // inside the deadline, so at worst every admitted batch runs its full wrap.
+    const dispatchDeadlineMs = Number(
+      readFileSync(
+        fileURLToPath(new URL('../scripts/seed-portwatch-port-activity.mjs', import.meta.url)),
+        'utf-8',
+      ).match(/RUN_DISPATCH_DEADLINE_MS = ([\d_]+)/)[1].replace(/_/g, ''),
+    );
+    const batches = Math.min(
+      Math.ceil(portwatchSeed.MAX_RECOVERY_COLD_FETCH_PER_RUN / portwatchSeed.CONCURRENCY),
+      Math.floor((dispatchDeadlineMs - portwatchSeed.PER_COUNTRY_TIMEOUT_MS)
+        / (portwatchSeed.PER_COUNTRY_TIMEOUT_MS + 5_000)) + 1,
+    );
     const activityWorstCaseMs = batches * portwatchSeed.PER_COUNTRY_TIMEOUT_MS
       + (batches - 1) * 5_000;
 

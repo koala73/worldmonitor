@@ -380,15 +380,16 @@
       "api": {
         "description": "在实时数据基础上构建内部工具",
         "features": [
+          "完整 Pro 仪表板（1 个命名用户）",
           "REST API + 官方 SDK（npm、PyPI、RubyGems、Go）",
           "包含许可证 / API 密钥",
           "实时数据流",
-          "每分钟 60 个请求",
-          "每天包含 1,000 次请求（REST + MCP 合计；一次实时 MCP 调用计为 2-3 次）",
+          "60 请求/分钟",
+          "包含 1,000 请求/天（REST + MCP 合计；一次实时 MCP 调用计为 2-3）",
           "Webhook 通知"
         ],
         "highlightFeatures": [
-          "商业许可证 — 供您的组织使用"
+          "商业用途 — 仅内部使用，不面向客户"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "优先支持"
         ],
         "highlightFeatures": [
-          "商业许可证 — 供您的客户使用"
+          "商业用途 — 在您面向客户的产品中使用"
         ]
       },
       "proBusiness": {
@@ -663,7 +664,8 @@
       "proF4": "MCP、REST API及官方SDK——一个密钥下的实时工具",
       "proF5": "自定义小部件构建器，用于您自己的面板",
       "cta": "查看计划和定价",
-      "note": "起价 $39.99/月 · 按年计费可免费享受 3 个月"
+      "note": "起价 $39.99/月 · 按年计费可免费享受 3 个月",
+      "disclaimer": "World Monitor 仅供参考，不构成财务、投资、法律、安保或安全建议。请核实您所看到的内容，并在作出错误可能导致损失或伤害的决定之前，咨询具备相应资质的专业人士。"
     },
     "faq": {
       "eyebrow": "无隐藏条件",
@@ -710,14 +712,14 @@
       "chokepointTitle": "检查海峡",
       "chokepointDesc": "查看{{chokepoints}}条关键海运通道的中断状态、船舶流向和风险。",
       "countryRiskTitle": "解释国家风险变动",
-      "countryRiskDesc": "追踪国家变化背后的政治、安全、经济和韧性信号，涵盖{{resilienceRanked}}个国家的韧性排名。",
+      "countryRiskDesc": "追踪一个国家变化背后的政治、安全、经济和韧性信号。韧性排名覆盖{{resilienceUniverse}}个国家中的{{resilienceRanked}}个，约占{{resilienceRankedPct}}%，因此可以参照该国长期的结构性基准来解读变动，而不只是依据本周的新闻标题。",
       "open": "打开证据",
       "workflow": "分步工作流程"
     },
     "voices": {
       "eyebrow": "用户怎么说",
       "title": "大家如何评价 World Monitor",
-      "sub": "{{countries}} 个国家的 {{users}} 人使用过 World Monitor。以下是媒体和部分用户的评价。",
+      "sub": "{{countries}} 个国家的 {{users}} 人使用过 World Monitor。The Atlantic 于2026年3月14日撰文报道了它，El País 在两天后也作了报道，WIRED、The Economic Times、Arabian Business 和 L'Orient Today 也都报道过它。以下是媒体和部分用户的说法。",
       "translatedJa": "译自日语",
       "prev": "上一组引语",
       "next": "更多引语"

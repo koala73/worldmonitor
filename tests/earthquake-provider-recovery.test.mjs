@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { __testing__ as health } from '../api/health.js';
-import { isSourceFailurePendingProblem } from '../scripts/check-seed-freshness.mjs';
 import {
   fetchMergedEarthquakes, earthquakesAfterPublish, earthquakesContentMeta, fetchNrcanAtom, NRCAN_ATOM_URL,
 } from '../scripts/seismology/nrcan-atom.mjs';
@@ -61,7 +60,6 @@ test('first transient miss retains provider events and clock; second run warns; 
   assert.equal(pending.status, 'SEED_ERROR', 'diagnosis remains visible');
   assert.equal(health.healthStatusBucket(pending, NOW + 5 * MIN), 'ok');
   assert.equal(pending.sourceFailurePendingUntil, new Date(NOW + 15 * MIN).toISOString());
-  assert.equal(isSourceFailurePendingProblem(pending, NOW + 5 * MIN), true);
   const compact = health.healthResponseBody({ status: 'HEALTHY', summary: { pending: 1 }, checkedAt: new Date(NOW + 5 * MIN).toISOString(), checks: { earthquakes: pending } }, true);
   assert.deepEqual(compact.pending, { earthquakes: pending });
   assert.equal(health.snapshotTtlSeconds(compact, NOW + 15 * MIN - 20_000), 20);
@@ -218,7 +216,6 @@ test('pending ends at the provider deadline and cannot hide absent clocks, stale
   ]) {
     assert.notEqual(health.healthStatusBucket(verdict(first, NOW + 29 * MIN, overrides), NOW + 29 * MIN), 'ok');
   }
-  assert.equal(isSourceFailurePendingProblem({ ...entry, sourceFailurePendingUntil: new Date(NOW + 60 * MIN).toISOString() }, NOW + 29 * MIN), false);
 });
 
 // Exercise the actual entrypoint and runSeed writes in separate cron processes.

@@ -13,7 +13,7 @@ paths:
             tags:
                 - SanctionsService
             summary: ListSanctionsPressure
-            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions.
+            description: ListSanctionsPressure returns OFAC SDN and Consolidated designations plus Canada SEMA entries, with country and program pressure and new additions.
             operationId: ListSanctionsPressure
             parameters:
                 - name: max_items

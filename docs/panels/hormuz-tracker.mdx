@@ -1,17 +1,18 @@
 ---
 title: "Hormuz Trade Tracker"
-description: "Live AIS vessel tracking through the Strait of Hormuz — tanker counts, disruption events, and weekly flow changes at the world's most critical oil chokepoint."
+description: "Daily WTO DataLab shipment indexes for the Strait of Hormuz: crude oil, LNG and fertilizer outbound, agricultural products inbound, with a status read from WTO's latest analysis."
 ---
 
-The **Hormuz Trade Tracker** panel (internal id `hormuz-tracker`) is a focused drill-down on a single chokepoint: the [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/). Approximately 20% of global oil transits the Strait daily, so a dedicated real-time view — status, tanker counts, weekly flow changes, disruption events — is more useful than a row in a generic chokepoint table.
+The **Hormuz Trade Tracker** panel (internal id `hormuz-tracker`) is a focused drill-down on a single chokepoint: the [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/). Approximately 20% of global oil transits the Strait daily, so a dedicated view of its cargo flows is more useful than a row in a generic chokepoint table.
 
 ## What the panel shows
 
 A status-colored header and per-series bar charts:
 
-- **Status indicator** — `normal` (green `#2ecc71`), `restricted` (amber `#f39c12`), `disrupted` (orange `#e67e22`), `closed` (red `#e74c3c`). Colours live in `statusColor()` in `src/components/HormuzPanel.ts:10`.
-- **Per-series bar charts** — one chart per tracked series (tanker types, flow categories). Each chart renders recent data points; zero-value bars render in a muted red so gaps are visible rather than invisible. 4-colour palette cycles through `#e67e22` / `#1abc9c` / `#9b59b6` / `#27ae60`.
-- **Hover tooltips** — hovering a bar surfaces the date, value, and unit (via invisible hit-rects `.hbar` with data attributes).
+- **Status indicator**: `open` (green `#2ecc71`), `restricted` (amber `#f39c12`), `disrupted` (orange `#e67e22`), `closed` (red `#e74c3c`). Colours live in `statusColor()` in `src/components/HormuzPanel.ts`. The seeder derives the status from the wording of WTO's latest written analysis (`deriveStatus()` in `scripts/seed-hormuz.mjs`), and the header shows that analysis's publication date.
+- **Per-series bar charts**: crude oil, LNG and fertilizer-related shipments leaving the Persian Gulf, and agricultural products arriving. Each series is a daily voyage intake index by volume, with the January–March 2025 daily average at 100 (WTO methodological note), counting only vessels visible through AIS. Zero-value bars render in a muted red so gaps stay visible. The palette cycles through `#e67e22` / `#1abc9c` / `#9b59b6` / `#27ae60`.
+- **Hover tooltips**: hovering a bar shows the date and index value (via invisible hit-rects `.hbar` with data attributes).
+- **Commodity dependencies** (Pro): which countries depend most on Hormuz transits for each commodity.
 
 Series types come from `HormuzSeries[]`, bundled into `HormuzChart[]` blocks within the `HormuzTrackerData` payload.
 
@@ -20,27 +21,27 @@ Panel id is `hormuz-tracker`; canonical component is `src/components/HormuzPanel
 ## How you reach it
 
 - **Cmd+K**: type *hormuz* or *strait*.
-- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`priority: 2`). Not present in the tech, finance, commodity, or happy variants. Source: `'hormuz-tracker'` in `FULL_PANELS` of `src/config/panels.ts`.
+- **Availability by variant**: enabled by default in the **full/geopolitical** variant (`priority: 2`, `FULL_PANELS`) and the **energy** variant (`priority: 1`, `ENERGY_PANELS`) of `src/config/panels.ts`.
 
 ## Data sources
 
-`fetchHormuzTracker()` in `@/services/hormuz-tracker` is backed by the Railway AIS relay that tallies AIS vessel transits through the Strait. The seeder produces both live tanker counts and weekly flow deltas; disruption events surface through the status field.
+`fetchHormuzTracker()` in `@/services/hormuz-tracker` reads the Redis key `supply_chain:hormuz_tracker:v1`. `scripts/seed-hormuz.mjs` writes it once a day from the [WTO DataLab Strait of Hormuz Trade Tracker](https://datalab.wto.org/Strait-of-Hormuz-Trade-Tracker) (AXSMarine data): the last 30 days of each index from the tracker's Power BI report, plus the title, summary and body of WTO's latest written analysis, from which the status is derived.
 
 This panel uses a legacy/special platform proxy rather than a generated `SupplyChainService` RPC:
 
 | Method + route | Feeds |
 |---|---|
-| `GET /api/supply-chain/hormuz-tracker` | Real-time Hormuz status, tanker transit series, weekly flow deltas, and disruption events. |
+| `GET /api/supply-chain/hormuz-tracker` | Status, WTO analysis date and text, and the four daily shipment index series. |
 
 For the proxy catalog entry, see [Proxies](/api-proxies). For generated chokepoint and lane-risk RPCs, see [Supply Chain](/panels/supply-chain) and [Route Explorer](/route-explorer).
 
 ## Refresh cadence
 
-AIS-driven; the relay writes updates in near-real-time. The panel reads on mount and on manual refresh — it does not poll aggressively.
+The seeder runs daily. WTO publishes its written analysis less often than the index data, so the analysis date can trail the latest chart date by weeks. The panel reads on mount and refreshes hourly while it is near the viewport.
 
 ## Tier & gating
 
-**Free.** No `premium` flag in `src/config/panels.ts`. The backing proxy is public.
+**Free** for the tracker: no `premium` flag in `src/config/panels.ts`, and the backing proxy is public. The commodity dependencies block needs Pro.
 
 ## Related
 

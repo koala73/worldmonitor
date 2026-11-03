@@ -1,0 +1,358 @@
+import feeds from './shared/regional-energy-feeds.json' with { type: 'json' };
+import { readFileSync } from 'node:fs';
+import { rootCertificates } from 'node:tls';
+import { Agent, fetch as undiciFetch } from 'undici';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
+import { assertZipExpansionWithin } from './_zip-expansion.mjs';
+import {
+  parsePgcb, parseNiso, parseCammesa, parseEskom, parseOns, parseAnpTrade,
+  parseAnpPriceRows, parsePetrobangla, parseGse, pdfItems, pdfAllItems,
+  discoverEskomCsv, discoverGsePdf, discoverPetrobanglaPdf, buildFeedSnapshot, inEffect, effectiveAt,
+  discoverEvnPost, parseEvn,
+  KOREM_FIXED_URLS, koremEnergySeriesUrl, koremLastDateUrl, koremCtUrls, parseKorem,
+  COES_DEMAND_URL, coesDemandBody, parseCoes,
+  ICCC_INDEX_URL, discoverPngFuelPosts, parsePngFuelPost,
+  FCCC_INDEX_URL, discoverFijiFuelPdfs, parseFijiFuel,
+  MEM_MAX_UPLOADS_PER_MONTH, memUploadFolders, memWorkbookUrl, parseMemPriceRows,
+} from './lib/regional-energy-feeds.mjs';
+import {
+  QATARENERGY_PDF_URL, parseQatarFuel,
+  ERB_INDEX_URL, discoverErbBuildUps, parseErbBuildUp,
+  npaMediaUrl, discoverNpaWorkbook, parseNpaExPumpRows, parseNpaIndicatorRows,
+  SONABHY_PAGE_URL, SONABHY_API_HOSTS, discoverSonabhyState, discoverSonabhyApi, parseSonabhyTariffs,
+  ZERA_HOME_URL, parseZeraPrices,
+  DOE_HOST, DOE_MEDIA_HOST, DOE_NCR_PAGE_URL, discoverDoeNcrPdfs, parseDoeNcrPrices,
+  ANPTL_INDEX_URL, discoverAnpTlPosts, discoverAnpTlPdf, parseAnpTlStations,
+  CREG_PAGE_URL, parseCregPrices,
+  URSEA_TOPIC_URL, discoverUrseaPages, parseUrseaMaximumPrices, parseUrseaReferencePrices,
+} from './lib/regional-fuel-feeds.mjs';
+
+const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
+// The ANP national price sheet uses about a dozen columns, MEM's ten.
+const SHEET_COLUMNS = 64;
+const DOWNLOAD_HOSTS = new Set([
+  'erp.powergrid.gov.bd', 'petrobangla.org.bd', 'www.niggrid.org',
+  'www.eskom.co.za', 'api.cammesa.com', 'admin.gse.com.ge',
+  'dados.ons.org.br', 'ons-aws-prod-opendata.s3.amazonaws.com',
+  'www.gov.br', 'objectstorage.ap-dcc-gazipur-1.oraclecloud15.com',
+  'evn.com.vn', 'portal.korem.kz', 'www.coes.org.pe',
+  'iccc.gov.pg', 'fccc.gov.fj', 'mem.gob.gt',
+  'www.qatarenergy.qa', 'www.erb.org.zm', 'npa.gov.gh', 'www.sonabhy.bf', ...SONABHY_API_HOSTS,
+  'www.zera.co.zw', DOE_HOST, DOE_MEDIA_HOST, 'www.anp.tl', 'creg.gov.co', 'www.gub.uy',
+]);
+export const regionalEnergyKey = id => `energy:regional:${id}:v1`;
+export const regionalEnergyMetaKey = id => `seed-meta:energy:regional-${id}`;
+const issuerAgents = new Map();
+// @railway-runtime-dependency ./data/regional-energy/pgcb-issuer.pem
+// @railway-runtime-dependency ./data/regional-energy/petrobangla-issuer.pem
+
+function sourceFetch(url, options) {
+  const issuer = {
+    'erp.powergrid.gov.bd': 'pgcb',
+    'petrobangla.org.bd': 'petrobangla',
+  }[new URL(url).hostname];
+  if (!issuer) return globalThis.fetch(url, options);
+  if (!issuerAgents.has(issuer)) {
+    // These servers omit their intermediates. Complete their chains using
+    // the public Sectigo issuers, while retaining Node's roots and TLS checks.
+    const intermediate = readFileSync(new URL(`./data/regional-energy/${issuer}-issuer.pem`, import.meta.url), 'utf8');
+    issuerAgents.set(issuer, new Agent({ connect: { ca: [...rootCertificates, intermediate] } }));
+  }
+  return undiciFetch(url, { ...options, dispatcher: issuerAgents.get(issuer) });
+}
+
+// ZIP headers are not trusted: inflate each entry with a bounded output
+// before ExcelJS inflates the same bytes without one.
+function assertWorkbookWithinBudget(bytes, source) {
+  try {
+    assertZipExpansionWithin(bytes, 50_000_000);
+  } catch (err) {
+    throw new Error(/expands past/.test(err.message) ? `${source} workbook exceeds size budget` : `${source} workbook is ${err.message}`);
+  }
+}
+const cellValue = cell => (cell.value && typeof cell.value === 'object' && !(cell.value instanceof Date)
+  ? ('result' in cell.value ? cell.value.result : 'richText' in cell.value ? cell.value.richText.map(r => r.text).join('') : cell.value)
+  : cell.value);
+
+// Loads one worksheet as arrays of cell values within the first SHEET_COLUMNS.
+async function readSheetRows(bytes, sheetName, source) {
+  assertWorkbookWithinBudget(bytes, source);
+  const { default: ExcelJS } = await import('exceljs');
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(bytes);
+  const sheet = book.getWorksheet(sheetName);
+  if (!sheet) throw new Error(`Missing ${source} price sheet`);
+  // ExcelJS indexes row values by column, so copying row.values would
+  // allocate up to a far-right cell. Copy only cells within the price table.
+  const sheetRows = [];
+  sheet.eachRow(row => {
+    const values = [];
+    row.eachCell((cell, column) => { if (column <= SHEET_COLUMNS) values[column - 1] = cellValue(cell); });
+    sheetRows.push(Array.from(values));
+  });
+  return sheetRows;
+}
+
+// Streams only the first worksheet. The NPA ex-pump workbook keeps one sheet
+// per publication day (hundreds of sheets, ~3 MB); loading it whole costs
+// about 600 MB, streaming the newest sheet about 160 MB.
+async function readFirstSheetRows(bytes, source) {
+  assertWorkbookWithinBudget(bytes, source);
+  const { default: ExcelJS } = await import('exceljs');
+  const { Readable } = await import('node:stream');
+  const reader = new ExcelJS.stream.xlsx.WorkbookReader(Readable.from([bytes]), { worksheets: 'emit', sharedStrings: 'cache', hyperlinks: 'ignore', styles: 'ignore', entries: 'emit' });
+  for await (const sheet of reader) {
+    const sheetRows = [];
+    for await (const row of sheet) {
+      const values = [];
+      row.eachCell((cell, column) => { if (column <= SHEET_COLUMNS) values[column - 1] = cellValue(cell); });
+      sheetRows.push(Array.from(values));
+    }
+    return sheetRows;
+  }
+  throw new Error(`Missing ${source} worksheet`);
+}
+
+// `pdfReader` is an injection seam for tests ONLY: it receives the downloaded
+// bytes and their URL and returns text items in place of pdfjs.
+export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs = Date.now(), pdfReader = null } = {}) {
+  const feed = feeds.find(f => f.id === id);
+  if (!feed) throw new Error(`Unknown regional energy feed ${id}`);
+  const downloaded = [];
+  const approved = url => {
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || !DOWNLOAD_HOSTS.has(url.hostname)) throw new Error('Unapproved regional energy URL');
+  };
+  // Probes a file a provider names predictably. Only 404 means absent: a
+  // challenge, redirect or outage fails the run rather than skipping a file.
+  const exists = async input => {
+    const url = new URL(input);
+    approved(url);
+    const response = await fetchFn(url.href, { method: 'HEAD', headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(25000), redirect: 'manual' });
+    if (response.status === 404) return false;
+    if (!response.ok) throw new Error(`${id} provider HTTP ${response.status}`);
+    return true;
+  };
+  // `form` sends a urlencoded POST body; a redirect would drop it, so a POST must not redirect.
+  // `timeoutMs` covers the whole response, body included.
+  const read = async (input, format = 'text', form = undefined, timeoutMs = 25000) => {
+    let url = new URL(input);
+    for (let hop = 0; hop < 4; hop++) {
+      approved(url);
+      const request = form === undefined
+        ? { headers: { 'User-Agent': USER_AGENT } }
+        : { method: 'POST', body: form, headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } };
+      const response = await fetchFn(url.href, { ...request, signal: AbortSignal.timeout(timeoutMs), redirect: 'manual' });
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        if (form !== undefined) throw new Error('Unexpected regional energy POST redirect');
+        const location = response.headers.get('location');
+        if (!location) throw new Error('Missing regional energy redirect location');
+        url = new URL(location, url); continue;
+      }
+      if (!response.ok) throw new Error(`${id} provider HTTP ${response.status}`);
+      const limit = 25_000_000;
+      if (Number(response.headers.get('content-length')) > limit) throw new Error('Energy download exceeds size budget');
+      const parts = [];
+      let size = 0;
+      for await (const chunk of response.body) {
+        size += chunk.byteLength;
+        if (size > limit) throw new Error('Energy download exceeds size budget');
+        parts.push(chunk);
+      }
+      const bytes = Buffer.concat(parts);
+      downloaded.push(url.href);
+      if (format === 'bytes') return bytes;
+      const body = bytes.toString('utf8');
+      return format === 'json' ? JSON.parse(body) : body;
+    }
+    throw new Error('Too many regional energy redirects');
+  };
+  const readPdf = async (input, pages = 'first') => {
+    const bytes = await read(input, 'bytes');
+    return pdfReader ? pdfReader(bytes, new URL(input).href) : (pages === 'all' ? pdfAllItems : pdfItems)(bytes);
+  };
+
+  let points;
+  if (id === 'pgcb') points = parsePgcb(await read(feed.sourceUrl));
+  if (id === 'niso') points = parseNiso(await read(feed.sourceUrl));
+  if (id === 'petrobangla') {
+    const url = discoverPetrobanglaPdf(await read(`${feed.sourceUrl}?filters=${encodeURIComponent(JSON.stringify({ reports_type: '6922d2b181fc96cef9e99f16' }))}`));
+    points = parsePetrobangla(await pdfItems(await read(url, 'bytes')));
+  }
+  if (id === 'cammesa') {
+    const base = 'https://api.cammesa.com/demanda-svc';
+    const demand = await read(`${base}/demanda/ObtieneDemandaYTemperaturaRegion?id_region=1002`, 'json');
+    const generation = await read(`${base}/generacion/ObtieneGeneracioEnergiaPorRegion?id_region=1002`, 'json');
+    points = parseCammesa(demand, generation);
+  }
+  if (id === 'eskom') {
+    const datasets = ['System_hourly_actual_and_forecasted_demand', 'Weekly_unplanned_outages', 'Hourly_Generation'];
+    const csvs = [];
+    for (const title of datasets) {
+      const media = await read(`https://www.eskom.co.za/dataportal/wp-json/wp/v2/media?search=${encodeURIComponent(title)}&per_page=20&orderby=date&order=desc`, 'json');
+      csvs.push(await read(discoverEskomCsv(media, title)));
+    }
+    points = parseEskom(...csvs);
+  }
+  if (id === 'gse') {
+    const url = discoverGsePdf(await read(feed.sourceUrl, 'json'));
+    points = parseGse(await pdfItems(await read(url, 'bytes')));
+  }
+  if (id === 'ons') {
+    const catalog = await read(feed.sourceUrl, 'json');
+    if (catalog.success !== true) throw new Error('ONS catalog unavailable');
+    const resources = (catalog.result?.resources ?? []).filter(r => r.format === 'CSV' && /BALANCO_ENERGIA_SUBSISTEMA_20\d{2}\.csv$/.test(r.url)).sort((a, b) => b.url.localeCompare(a.url));
+    if (!resources.length) throw new Error('Missing ONS balance CSV');
+    points = parseOns(await read(resources[0].url));
+  }
+  if (id === 'anp') {
+    const tradePage = await read('https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/importacoes-e-exportacoes');
+    const tradeUrl = [...tradePage.matchAll(/href="([^"]+)"/g)].find(m => /\/ie\/derivados\/importacoes-exportacoes-derivados-[^/]+\.csv$/.test(m[1]))?.[1];
+    if (!tradeUrl) throw new Error('Missing ANP petroleum trade CSV');
+    const trade = parseAnpTrade(await read(tradeUrl));
+    const pricePage = await read('https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/levantamento-de-precos-de-combustiveis-ultimas-semanas-pesquisadas');
+    const priceUrl = [...pricePage.matchAll(/href="([^"]+)"/g)].find(m => /\/resumo[_-]semanal[_-]lpc[_-].+\.xlsx$/.test(m[1]))?.[1];
+    if (!priceUrl) throw new Error('Missing ANP weekly price workbook');
+    const sheetRows = await readSheetRows(await read(priceUrl, 'bytes'), 'BRASIL', 'ANP');
+    points = [...trade, ...parseAnpPriceRows(sheetRows)];
+  }
+  if (id === 'mem') {
+    // Newest folder first; within a folder the highest suffix is the newest upload.
+    let url;
+    for (const folder of memUploadFolders(nowMs)) {
+      for (const nameYear of folder.nameYears) {
+        for (let n = 0; n <= MEM_MAX_UPLOADS_PER_MONTH; n++) {
+          const candidate = memWorkbookUrl(folder.year, folder.month, nameYear, n);
+          if (!(await exists(candidate))) break;
+          url = candidate;
+        }
+        if (url) break;
+      }
+      if (url) break;
+    }
+    if (!url) throw new Error('Missing MEM daily price workbook');
+    points = parseMemPriceRows(await readSheetRows(await read(url, 'bytes'), 'PUBLICACIÓN WEB', 'MEM'));
+  }
+  if (id === 'evn') points = parseEvn(await read(discoverEvnPost(await read(feed.sourceUrl))));
+  if (id === 'korem') {
+    const summary = await read(KOREM_FIXED_URLS.summary, 'json');
+    const maxConsumption = await read(KOREM_FIXED_URLS.maxConsumption, 'json');
+    const torgNames = await read(KOREM_FIXED_URLS.torgNames, 'json');
+    const zones = await read(KOREM_FIXED_URLS.zones, 'json');
+    const series = await read(koremEnergySeriesUrl(summary), 'json');
+    const ct = [];
+    for (const plan of koremCtUrls(torgNames, zones, await read(koremLastDateUrl(torgNames), 'json'))) {
+      ct.push({ zone: plan.zone, prices: await read(plan.prices, 'json'), volumes: await read(plan.volumes, 'json') });
+    }
+    points = parseKorem({ series, maxConsumption, ct });
+  }
+  if (id === 'coes') points = parseCoes(await read(COES_DEMAND_URL, 'json', coesDemandBody(nowMs)));
+  if (id === 'iccc' || id === 'fccc') {
+    // Releases are posted before they take effect. Use the newest release
+    // already in effect, reading at most three.
+    const candidates = id === 'iccc' ? discoverPngFuelPosts(await read(ICCC_INDEX_URL, 'json')) : discoverFijiFuelPdfs(await read(FCCC_INDEX_URL, 'json'));
+    for (const url of candidates.slice(0, 3)) {
+      const parsed = id === 'iccc' ? parsePngFuelPost(await read(url, 'json')) : parseFijiFuel(await pdfAllItems(await read(url, 'bytes')));
+      points = inEffect(parsed, nowMs, feed.utcOffsetMin);
+      if (points.length) break;
+    }
+    if (!points?.length) throw new Error(`No ${id} fuel price release in effect`);
+  }
+  if (id === 'qatarenergy') points = parseQatarFuel(await readPdf(QATARENERGY_PDF_URL, 'all'));
+  if (id === 'erb') {
+    // Each monthly release is posted the day before its prices start; read
+    // the newest release in effect, at most three.
+    for (const release of discoverErbBuildUps(await read(ERB_INDEX_URL, 'json')).slice(0, 3)) {
+      points = inEffect(parseErbBuildUp(await readPdf(release.url), release.period), nowMs, feed.utcOffsetMin);
+      if (points.length) break;
+    }
+    if (!points?.length) throw new Error('No erb pump price release in effect');
+  }
+  if (id === 'npa') {
+    // The two lookups and the two downloads are independent, so each pair
+    // runs together: the fetch phase has 80 s, the host answers in 5-20 s,
+    // and the 3 MB listing workbook took 3 s to 47 s on 2026-11-02. The
+    // worst case is then 20 s + 55 s.
+    const [listing, indicators] = await Promise.all([
+      read(npaMediaUrl('Ex-Pump Prices of OMCs'), 'json', undefined, 20000).then(media => discoverNpaWorkbook(media, 'expump')),
+      read(npaMediaUrl('Petroleum Price Indicators'), 'json', undefined, 20000).then(media => discoverNpaWorkbook(media, 'indicators')),
+    ]);
+    const [listingBytes, indicatorBytes] = await Promise.all([read(listing.url, 'bytes', undefined, 55000), read(indicators.url, 'bytes', undefined, 20000)]);
+    // The workbook keeps one sheet per day with the newest first; only that
+    // sheet is read, and it must be the day the upload is named for.
+    const prices = parseNpaExPumpRows(await readFirstSheetRows(listingBytes, 'NPA'));
+    if (prices[0].period !== listing.day) throw new Error('NPA listing sheet does not match its upload day');
+    points = [...prices, ...parseNpaIndicatorRows(await readSheetRows(indicatorBytes, 'Media Publication', 'NPA'))];
+  }
+  if (id === 'sonabhy') {
+    const state = await read(discoverSonabhyState(await read(SONABHY_PAGE_URL)));
+    points = parseSonabhyTariffs(await read(discoverSonabhyApi(state), 'json'));
+  }
+  if (id === 'zera') points = parseZeraPrices(await read(ZERA_HOME_URL));
+  if (id === 'doe') {
+    // The monitoring sheet is posted during its week; a sheet posted early
+    // waits for its week to start, and the previous week serves meanwhile.
+    for (const week of discoverDoeNcrPdfs(await read(DOE_NCR_PAGE_URL), nowMs).slice(0, 3)) {
+      const parsed = parseDoeNcrPrices(await readPdf(week.url, 'all'));
+      if (parsed[0].period !== week.weekStart) throw new Error('DOE monitoring week does not match its link');
+      points = inEffect(parsed, nowMs, feed.utcOffsetMin);
+      if (points.length) break;
+    }
+    if (!points?.length) throw new Error('No doe price monitoring week in effect');
+  }
+  if (id === 'anptl') {
+    const [post] = discoverAnpTlPosts(await read(ANPTL_INDEX_URL, 'json'));
+    points = parseAnpTlStations(await readPdf(discoverAnpTlPdf(await read(post.url, 'json')), 'all'), post.period);
+  }
+  if (id === 'creg') points = parseCregPrices(await read(CREG_PAGE_URL));
+  if (id === 'ursea') {
+    // Maximum prices and reference prices are published days ahead of the
+    // month they apply to; each falls back to its previous publication.
+    const pages = discoverUrseaPages(await read(URSEA_TOPIC_URL));
+    const inForce = async (urls, parse) => {
+      for (const url of urls.slice(0, 2)) {
+        const current = inEffect(parse(await read(url)), nowMs, feed.utcOffsetMin);
+        if (current.length) return current;
+      }
+      throw new Error('No ursea price publication in effect');
+    };
+    points = [...await inForce(pages.maximum, parseUrseaMaximumPrices), ...await inForce(pages.reference, parseUrseaReferencePrices)];
+  }
+  if (feed.publishesAhead) points = inEffect(points, nowMs, feed.utcOffsetMin);
+  const snapshot = buildFeedSnapshot(id, points, downloaded.at(-1), nowMs);
+  return { ...snapshot, dataUrls: downloaded };
+}
+
+// Health reads a future newestItemAt as stale content. Date periods start at
+// the provider's local midnight, and items published up to an hour ahead (COES
+// schedules) count only once they have started.
+export function regionalEnergyContentMeta(data, runStartedAtMs = Date.now()) {
+  const offset = feeds.find(f => f.id === data.sourceId)?.utcOffsetMin;
+  const times = data.observations.map(p => effectiveAt(p.period, offset)).filter(t => t <= runStartedAtMs);
+  if (!times.length) return null;
+  return { newestItemAt: Math.max(...times), oldestItemAt: Math.min(...times) };
+}
+
+export function regionalEnergySeedOptions(id) {
+  const feed = feeds.find(f => f.id === id);
+  if (!feed) throw new Error('Unknown regional energy feed');
+  return {
+    ttlSeconds: 14 * 86400,
+    sourceVersion: `regional-energy-${id}-v1`,
+    schemaVersion: 1,
+    declareRecords: data => data.observations.length,
+    recordCount: data => data.observations.length,
+    validateFn: data => data.sourceId === id && data.observations.length > 0,
+    emptyDataIsFailure: true,
+    recordInitialFetchFailure: true,
+    maxStaleMin: feed.intervalMin * 3,
+    contentMeta: regionalEnergyContentMeta,
+    maxContentAgeMin: feed.maxContentAgeMin,
+    lockTtlMs: 300000,
+    fetchPhaseTimeoutMs: 240000,
+    afterFreshness: async () => {
+      const creds = getOptionalUpstashCreds();
+      if (!creds) throw new Error('Missing regional energy activation credentials');
+      await upstashCommand(creds, ['SET', `seed-activated:energy:regional-${id}`, '1']);
+    },
+  };
+}
