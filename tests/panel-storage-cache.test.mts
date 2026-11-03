@@ -48,6 +48,18 @@ function click(element: Element): void {
 }
 
 describe('Panel storage cache', () => {
+  it('schedules no connection timer for an unmounted panel', async () => {
+    // The mini DOM has no MutationObserver, so a queued connected callback arms
+    // a 50ms fallback that re-arms until the panel mounts. Constructing a panel
+    // that is never mounted must not queue one, or it keeps the process alive.
+    await withHarness((harness) => {
+      const timers = () => process.getActiveResourcesInfo().filter((kind) => kind === 'Timeout').length;
+      const before = timers();
+      harness.createPanel({ id: 'threat-timeline' });
+      assert.equal(timers(), before);
+    });
+  });
+
   it('reads each aggregate storage map once across repeated Panel construction', async () => {
     await withHarness((harness) => {
       const spanMap = Object.fromEntries(Array.from({ length: PANEL_COUNT }, (_, index) => [`panel-${index}`, 2]));

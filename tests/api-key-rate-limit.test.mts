@@ -134,14 +134,14 @@ describe('#3199 U3 — reserveDailyMeter', () => {
 });
 
 describe('#3199 U3 — burst limiter fail-open + headers', () => {
-  it('checkBurst fails open (ok:true) when Upstash is not configured', async () => {
+  it('checkBurst reports unavailable when Upstash is not configured', async () => {
     const prevUrl = process.env.UPSTASH_REDIS_REST_URL;
     const prevToken = process.env.UPSTASH_REDIS_REST_TOKEN;
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     try {
       const r = await checkBurst(60, 'acct_1');
-      assert.deepEqual(r, { ok: true });
+      assert.deepEqual(r, { ok: null, reason: 'not_configured' });
     } finally {
       if (prevUrl !== undefined) process.env.UPSTASH_REDIS_REST_URL = prevUrl;
       if (prevToken !== undefined) process.env.UPSTASH_REDIS_REST_TOKEN = prevToken;

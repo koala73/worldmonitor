@@ -13,6 +13,10 @@ export const GDELT_MASTER_FILELIST_URL = `${GDELT_STORAGE_ORIGIN}/gdeltv2/master
 export const GDELT_MAX_EXPORT_ZIP_BYTES = 5_000_000;
 export const GDELT_MAX_EXPORT_CSV_BYTES = 30_000_000;
 export const GDELT_ROLLING_WINDOW_MAX_EVENTS = 5_000;
+// GDELT lists each 15-minute file about 11 minutes before its nominal
+// timestamp (20261003193000 appeared at 19:18:45 UTC), so the newest cohort
+// is routinely in the future. Allow one interval of lead, no more.
+export const GDELT_PUBLICATION_LEAD_MS = 15 * 60 * 1000;
 
 const MASTER_TAIL_BYTES = 16_384;
 const RECENT_EXPORT_COUNT = 8;

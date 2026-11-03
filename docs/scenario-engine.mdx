@@ -64,7 +64,7 @@ For scripted use, see [`POST /api/scenario/v1/run-scenario`](/api-scenarios#run-
 ## Data behind Scenario Engine
 
 - **Scenario templates** — `server/worldmonitor/supply-chain/v1/scenario-templates.ts`. The catalog is predefined; supported physical severity and country controls are run inputs.
-- **Job queue** — Redis list `scenario-queue:pending`; worker results land at `scenario-result:{jobId}`.
+- **Job queue** — Redis list `scenario-queue:pending`; worker results land at `scenario-result:{owner}:{jobId}`.
 - **Chokepoint registry** — the same registry that backs live chokepoint status and Route Explorer, ensuring scenario results visually align with the rest of the product.
 - **Trade / impact data** — HS2 exposure cache entries read from `supply-chain:exposure:{ISO2}:{HS2}:v1`. If `iso2` is omitted, v1 computes only the bounded country/sector manifest in existing seed metadata. Supplying `iso2` scopes the job to that single country key.
 

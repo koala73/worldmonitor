@@ -2,14 +2,14 @@
 
 **Last verified**: 2026-07-27 (public lifecycle, plan, price, and capability facts now share one generation chain).
 
-Factual snapshot of how authentication, payments, entitlements, and billing management work today. This page intentionally describes only current deployed behavior.
+Factual snapshot of the repository architecture for authentication, payments, entitlements, and billing management. Checkout source references were reviewed on 2026-09-15; deployment must be verified separately.
 
 ## Stack at a glance
 
 | Concern | Provider | Primary entry points |
 |---|---|---|
 | Auth | **Clerk** (`@clerk/clerk-js` headless on main app, `@clerk/clerk-react` on `/pro`) | `src/services/clerk.ts`, `pro-test/src/services/checkout.ts` |
-| Payments | **Dodo Payments** (top-level redirect to hosted checkout + guarded full-page return) | `convex/lib/dodo.ts`; the `dodopayments-checkout` npm SDK is a root dependency only, reached by dormant dashboard code — `/pro` dropped it in #7222 |
+| Payments | **Dodo Payments** (top-level redirect to hosted checkout + guarded full-page return) | `convex/lib/dodo.ts`, `src/services/checkout.ts`, `pro-test/src/services/checkout.ts`; neither browser bundle requires the overlay SDK |
 | Entitlements | **Convex** (`subscriptions` + `entitlements` tables, reactive WebSocket) | `convex/payments/*`, `src/services/entitlements.ts`, `src/services/billing.ts` |
 | Referral attribution | **Dodo → Affonso** (via `metadata.affonso_referral` contract) | `convex/payments/checkout.ts:131`, `convex/payments/subscriptionHelpers.ts:299` |
 | Billing portal | **Dodo customer portal** | `api/customer-portal.ts`, `convex/payments/billing.ts`, `src/services/billing.ts:openBillingPortal` |
@@ -24,6 +24,7 @@ Products are served at runtime from `https://api.worldmonitor.app/api/product-ca
 - **Free** — `price: 0`, no productId, card links to dashboard.
 - **Pro Monthly** — `pdt_0Nbtt71uObulf7fGXhQup` ($39.99/mo).
 - **Pro Annual** — `pdt_0NbttMIfjLWC10jHQWYgJ` ($399.99/yr, ~17% discount).
+- **Desktop keys** — Pro includes 2 and Pro Business 3 (same `wm_` format; kind stored server-side). They give the subscriber a signed-in Pro session's access from the desktop app, up to 7,500 requests/day and 120/minute per account, and are denied on `/api/v2/`, shipping webhooks, MCP via key and OAuth key grants. They are denied, not revoked, when coverage lapses.
 - **API Starter** — `pdt_0NbttVmG1SERrxhygbbUq` ($99.99/mo, 1k req/day).
 - **API Annual** — `pdt_0Nbu2lawHYE3dv2THgSEV` ($999/yr).
 - **API Business** — `pdt_0Nbttg7NuOJrhbyBGCius` ($299.99/mo, 10k req/day, commercial-use license + 5 bundled Pro seats (any corporate email domain); monthly-only, published in #4945; Starter→Business upgrades ride the Dodo collection/portal path).
@@ -42,17 +43,14 @@ Products are served at runtime from `https://api.worldmonitor.app/api/product-ca
 
 ### Checkout creation
 
-Two Convex actions at `convex/payments/checkout.ts`:
+One Convex action at `convex/payments/checkout.ts`: `internalCreateCheckout` (internal action), called by `/relay/create-checkout` with the trusted userId from the edge gateway (`api/create-checkout.ts`). There is no public checkout action: a direct Convex call would skip the edge's per-user and per-IP budgets, and Dodo rate-limits our shared API key.
 
-- `createCheckout` (public action): Convex/Clerk auth.
-- `internalCreateCheckout` (internal action): called by `/relay/create-checkout` with trusted userId from the edge gateway.
-
-Both share `_createCheckoutSession()` which:
+It calls `_createCheckoutSession()`, which:
 
 1. Validates `returnUrl` against an allow-listed set of worldmonitor.app origins.
 2. Builds metadata: `wm_user_id` (HMAC-signed via `convex/lib/identitySigning.ts`), `wm_login_email` + `wm_login_email_sig` (the Clerk login email authenticated for this checkout, signed as a **separate** field so the `wm_user_id_sig` payload stays `userId` alone and pre-existing sessions keep verifying), + optional `affonso_referral`.
 3. Calls `checkout()` from `convex/lib/dodo.ts`.
-4. Returns `{ checkout_url }` for overlay open or full-page redirect.
+4. Returns `{ checkout_url }` for hosted checkout navigation.
 
 ### Duplicate guard
 
@@ -63,7 +61,7 @@ Before creating a session, `getCheckoutBlockingSubscription` checks for active/o
 Both surfaces take the same path since #4449: a top-level redirect to Dodo's hosted checkout. The overlay iframe could not host Dodo's nested 3DS/fraud stack.
 
 - **Live path**: `startCheckout()` (`src/services/checkout.ts`, `pro-test/src/services/checkout.ts`) creates the session at the edge endpoint, then navigates full-page. Dodo returns the buyer to the dashboard on the guarded `?wm_checkout=return` contract; `src/services/checkout-return.ts:handleCheckoutReturn()` reads the params, reconciles success only against authoritative Dodo evidence (`subscription_id`/`payment_id` plus a success status), and cleans the URL.
-- **Dormant overlay** (main app only): `src/services/checkout.ts:openCheckout()` / `ensureCheckoutOverlayInitialized()` still contain the `DodoPayments.Checkout.open()` machinery, but `openCheckout` has zero callers. `/pro`'s copy (`initOverlay`) and its `dodopayments-checkout` dependency were removed in #7222; the dashboard's is still pending removal.
+- **Overlay removed**: neither surface initializes the Dodo overlay SDK. The dashboard's unused overlay event handler, callback wiring, watchdog and SDK dependency have been removed. Hosted checkout uses `safeHostedCheckoutUrl()` before navigation; live entitlement subscriptions and the guarded return handler own activation.
 
 ### Webhook → subscription lifecycle
 
@@ -81,10 +79,11 @@ Both surfaces take the same path since #4449: a top-level redirect to Dodo's hos
 ## Billing management
 
 - **Entry point**: `UnifiedSettings.ts:450` renders a `<button class="manage-billing-btn">Manage Billing</button>` inside the settings modal.
-- **Edge gateway**: `api/customer-portal.ts` validates Clerk bearer, relays to `/relay/customer-portal` on Convex, which calls Dodo to mint a user-scoped portal session.
+- **Edge gateway**: `api/customer-portal.ts` validates Clerk bearer, relays to `/relay/customer-portal` on Convex, which calls Dodo to mint a user-scoped portal session. Payment-failure emails link to `GET /api/customer-portal?t=<token>` instead. Convex verifies the HMAC token (`verifyDunningPortalToken`) and mints a session only while the user still has an on-hold subscription.
 - **Client-side**: `src/services/billing.ts:openBillingPortal()` fetches the portal URL via Convex action and opens in a new tab. Falls back to `https://customer.dodopayments.com` (generic portal) on any failure.
 - **/pro parallel**: `pro-test/src/services/checkout.ts:openBillingPortal()` is triggered when a `/pro`-origin checkout hits `ACTIVE_SUBSCRIPTION_EXISTS`; currently redirects via `window.location.assign()` (same-tab).
 - **Payment failures**: `src/components/payment-failure-banner.ts` renders a persistent red banner when subscription status is `on_hold`; auto-hides on return to `active`.
+- **Bounced billing email**: `getSubscriptionForUser` also returns `billingEmail` (resolved exactly as dunning resolves its recipient) and `billingEmailBounced` (a Resend hard-bounce suppression on that address, `active`/`on_hold` only). The same banner shows an amber notice naming the address, or adds "Fix billing email" to the on_hold banner, with an inline form that calls `payments/billing:updateBillingEmail` (Dodo customer update first, then the local `customers` row and subscription payloads).
 
 ## Referral attribution
 
@@ -113,7 +112,7 @@ src/services/
 ├── auth-state.ts             # Central auth session
 ├── billing.ts                # Subscription watch + openBillingPortal
 ├── entitlements.ts           # Reactive entitlement state
-├── checkout.ts               # Dodo overlay orchestration
+├── checkout.ts               # Hosted checkout orchestration
 ├── checkout-return.ts        # Post-checkout URL param handling
 └── referral.ts               # Share-link fetch + Web Share API
 
@@ -124,10 +123,10 @@ src/components/
 └── payment-failure-banner.ts # on_hold red banner
 
 convex/payments/
-├── checkout.ts               # createCheckout + internalCreateCheckout
+├── checkout.ts               # internalCreateCheckout (relay-only)
 ├── subscriptionHelpers.ts    # Webhook → subscription lifecycle
 ├── webhookMutations.ts       # Idempotent webhook event processing
-└── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl
+└── billing.ts                # getSubscriptionForUser + getCustomerPortalUrl + updateBillingEmail
 
 api/
 ├── create-checkout.ts        # Edge gateway → Convex relay

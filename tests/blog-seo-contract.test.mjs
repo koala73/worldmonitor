@@ -251,6 +251,29 @@ describe('blog SEO and GEO corpus contract', () => {
     assert.match(index, /"@type": "SpeakableSpecification"/);
   });
 
+  it('keeps glossary and profile pages distinct from editorial articles', () => {
+    const glossary = readFileSync(resolve(root, 'blog-site/src/pages/glossary/[slug].astro'), 'utf8');
+    const author = readFileSync(resolve(root, 'blog-site/src/pages/authors/elie-habib.astro'), 'utf8');
+    const post = readFileSync(resolve(root, 'blog-site/src/layouts/BlogPost.astro'), 'utf8');
+    const base = readFileSync(resolve(root, 'blog-site/src/layouts/Base.astro'), 'utf8');
+
+    assert.match(glossary, /ogType="website"/);
+    assert.match(glossary, /'@type': 'DefinedTerm'/);
+    assert.match(author, /ogType="profile"/);
+    assert.match(author, /'@type': 'ProfilePage'/);
+    for (const page of [glossary, author]) {
+      assert.doesNotMatch(page, /['"]@type['"]:\s*['"](?:Article|BlogPosting|NewsArticle)['"]/);
+    }
+    assert.match(post, /ogType="article"/);
+    assert.match(post, /"@type": "BlogPosting"/);
+    for (const field of ['headline', 'datePublished', 'dateModified', 'author', 'image']) {
+      assert.ok(post.includes(`"${field}":`), `posts retain ${field}`);
+    }
+    const articleBlock = base.match(/\{resolvedOgType === 'article' && \(\s*<>([\s\S]*?)<\/>\s*\)\}/);
+    assert.ok(articleBlock, 'article metadata must be gated by the page type');
+    assert.doesNotMatch(base.replace(articleBlock[0], ''), /property="article:/);
+  });
+
   // blog-site is a live JSON-LD emitter separate from the crawlable corpus: the
   // #7502 sweep in tests/crawlable-corpus.test.mjs walks built corpus output
   // and asserts a resolvable @context on every block, and use-cases/research

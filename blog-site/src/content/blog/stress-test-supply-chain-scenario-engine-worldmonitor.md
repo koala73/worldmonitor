@@ -15,7 +15,7 @@ That is necessary, but it does not answer the planning question:
 
 > What breaks if the next chokepoint closes, tariff shock lands, or weather event cuts capacity?
 
-WorldMonitor's Scenario Engine is built for that what-if layer. It takes named disruption templates, runs them through the supply-chain exposure graph, and returns the affected chokepoints, sectors, and countries so analysts can compare the projected impact against the live baseline.
+WorldMonitor's [Scenario Engine](https://www.worldmonitor.app/docs/scenario-engine) is built for that what-if layer. It takes named disruption templates, runs them through the supply-chain exposure graph, and returns the affected chokepoints, sectors, and countries so analysts can compare the projected impact against the live baseline.
 
 This is not a free-form simulator with arbitrary sliders. Version 1 is deliberately constrained: curated templates, fixed assumptions, async jobs, and explicit output fields. The constraint is useful. It makes every run comparable and keeps the conversation anchored to a named scenario instead of a hand-tuned model.
 

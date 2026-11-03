@@ -13,7 +13,7 @@
 // what keeps it that way.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import {
   TEASERS_OUTPUT_PATH,
   buildWelcomeTeasers,
+  renderHomeMarkdown,
   renderProHtml,
   renderWelcomeHtml,
   renderWelcomeTeasers,
@@ -33,6 +34,8 @@ import {
 import {
   QUOTE_LABELS as CLIENT_QUOTE_LABELS,
   QUOTE_SYMBOLS as CLIENT_QUOTE_SYMBOLS,
+  PUBLISHED_PULSE_DATE,
+  formatLocalizedDate,
   getFallbackTeasers,
 } from '../pro-test/src/services/teasers.ts';
 import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
@@ -42,6 +45,16 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+function assertCapturedHeadline(headline, capturedHeadlines) {
+  assert.ok(
+    capturedHeadlines.some((captured) => headline.title === captured.title
+      && headline.source === captured.source
+      && headline.url === captured.url
+      && headline.publishedAt === Date.parse(captured.publishedAt)),
+    `"${headline.title}" has no matching title, source, URL and publication time in the capture`,
+  );
 }
 
 const snapshot = JSON.parse(read(resolveLatestLivePulseSnapshotPath(repoRoot)));
@@ -87,13 +100,30 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
   });
 
   it('every published headline came from the snapshot capture', () => {
-    const frozen = new Map(snapshot.headlines.map((h) => [h.title, h]));
     for (const headline of committed.headlines) {
-      const source = frozen.get(headline.title);
-      assert.ok(source, `"${headline.title}" is not in the frozen capture — it was hand-written`);
-      assert.equal(headline.source, source.source);
-      assert.equal(headline.url, source.url);
-      assert.equal(headline.publishedAt, Date.parse(source.publishedAt));
+      assertCapturedHeadline(headline, snapshot.headlines);
+    }
+  });
+
+  it('accepts the same headline from two editions without accepting altered provenance', () => {
+    const article = {
+      title: 'Shared headline',
+      source: 'France 24',
+      url: 'https://www.france24.com/en/example-article',
+      publishedAt: '2026-09-14T01:42:29.000Z',
+    };
+    const captured = [article, { ...article, source: 'France 24 LatAm' }];
+    const generated = buildWelcomeTeasers({ ...snapshot, headlines: captured }, 'same-title fixture');
+    assert.equal(generated.headlines.length, 2);
+    for (const headline of generated.headlines) assertCapturedHeadline(headline, captured);
+
+    for (const changes of [
+      { title: 'Uncaptured headline' },
+      { source: 'Uncaptured source' },
+      { url: 'https://www.france24.com/en/different-article' },
+      { publishedAt: generated.headlines[0].publishedAt + 1 },
+    ]) {
+      assert.throws(() => assertCapturedHeadline({ ...generated.headlines[0], ...changes }, captured));
     }
   });
 
@@ -128,7 +158,7 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
     for (const row of committed.cii) {
       const frozen = snapshot.countries[row.region];
       const label = String(frozen.trend || '');
-      if (!label || label.startsWith('Stable or unavailable')) {
+      if (!label || label === 'No earlier reading' || label.startsWith('Stable')) {
         assert.equal(
           row.trend,
           'TREND_DIRECTION_UNSPECIFIED',
@@ -255,6 +285,53 @@ describe('welcome teaser strip carries its snapshot stamp (#7654)', () => {
       'the shared software entity must declare the same date on the Pro page');
   });
 
+  it('dates the hero "As of" line from the same snapshot as lastmod (#8701)', () => {
+    // The hero used to carry a hand-set "As of 8 September 2026" and a literal
+    // dateTime, which trailed lastmod by 20 days within three weeks.
+    assert.equal(PUBLISHED_PULSE_DATE, snapshot.capturedAt);
+    const hero = read('pro-test/src/welcome/Hero.tsx');
+    assert.match(hero, /dateTime=\{PUBLISHED_PULSE_DATE\}/, 'the hero <time> must read the pulse date');
+    assert.doesNotMatch(hero, /dateTime="\d{4}-\d{2}-\d{2}"/, 'no literal hero date');
+    assert.match(hero, /t\('welcome\.hero\.asOf', \{ date: formatLocalizedDate\(PUBLISHED_PULSE_DATE/);
+
+    const localeDir = join(repoRoot, 'pro-test/src/locales');
+    const locales = readdirSync(localeDir).filter((file) => file.endsWith('.json'));
+    assert.equal(locales.length, 28);
+    for (const file of locales) {
+      const asOf = JSON.parse(readFileSync(join(localeDir, file), 'utf8')).welcome.hero.asOf;
+      assert.equal(asOf.match(/\{\{date\}\}/g)?.length, 1, `${file} asOf must carry one {{date}}`);
+      assert.doesNotMatch(asOf, /20\d\d|[\u0660-\u0669\u06F0-\u06F9]/, `${file} asOf must not hardcode a date`);
+    }
+  });
+
+  it('moves the agent-facing homepage as-of line with the next pulse', () => {
+    assert.match(read('public/home.md'), new RegExp(`^As of ${snapshot.capturedAt}\\.$`, 'm'));
+    const next = renderHomeMarkdown({ capturedAt: '2026-10-01' });
+    assert.match(next, /^As of 2026-10-01\.$/m);
+    assert.equal(next.match(/^As of \d{4}-\d{2}-\d{2}\.$/gm).length, 1);
+  });
+
+  it('formats the hero date the way each locale wrote it by hand', () => {
+    // The strings the locales carried before the date became generated.
+    const expected = {
+      en: '8 September 2026',
+      de: '8. September 2026',
+      ar: '8 سبتمبر 2026',
+      fa: '۸ سپتامبر ۲۰۲۶',
+      th: '8 กันยายน 2026',
+      ja: '2026年9月8日',
+      zh: '2026年9月8日',
+      'zh-TW': '2026年9月8日',
+      ko: '2026년 9월 8일',
+      ru: '8 сентября 2026 г.',
+      hr: '8. rujna 2026.',
+    };
+    for (const [language, date] of Object.entries(expected)) {
+      assert.equal(formatLocalizedDate('2026-09-08', language), date, language);
+    }
+    assert.equal(formatLocalizedDate('not-a-date', 'en'), 'not-a-date');
+  });
+
   it('updates both software declarations for the next pulse', () => {
     const capturedAt = '2026-10-01';
     for (const render of [renderWelcomeHtml, renderProHtml]) {
@@ -370,6 +447,17 @@ describe('welcome teaser generator refuses unpublishable input', () => {
     assert.equal(byRegion.get('IL'), 'TREND_DIRECTION_UNSPECIFIED');
     assert.equal(byRegion.get('PK'), 'TREND_DIRECTION_UNSPECIFIED');
     assert.equal(byRegion.get('AD'), undefined, 'a partial capture has no score to publish');
+
+    // "Unchanged" is a measured zero against an earlier reading; "No earlier
+    // reading" is the split-out unknown half of the legacy label.
+    const split = snapshotFixture();
+    split.countries.IR.trend = 'Unchanged';
+    split.countries.IL.trend = 'No earlier reading';
+    const splitByRegion = new Map(
+      buildWelcomeTeasers(split, 'docs/snapshots/x.json').cii.map((row) => [row.region, row.trend]),
+    );
+    assert.equal(splitByRegion.get('IR'), 'TREND_DIRECTION_STABLE');
+    assert.equal(splitByRegion.get('IL'), 'TREND_DIRECTION_UNSPECIFIED');
   });
 
   it('rejects a trend label the canonical parser does not recognise', () => {

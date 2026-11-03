@@ -32,8 +32,10 @@ import { readFileSync } from 'node:fs';
 
 import { BASE_URL } from './helpers/mcp-pro-deps.mjs';
 import { resolveMcpBudget } from '../api/mcp/quota.ts';
-import { MCP_DEFAULT_BURST_PER_MINUTE, resolveMcpBurstPerMinute } from '../api/mcp/auth.ts';
+import { MCP_DEFAULT_BURST_PER_MINUTE, MCP_PROTOCOL_BURST_PER_MINUTE, resolveMcpBurstPerMinute } from '../api/mcp/auth.ts';
+import { PANEL_READ_LIMIT } from '../api/mcp/panel-requests.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
+import { OPERATOR_KEY_DAILY_CEILINGS } from '../server/_shared/high-usage-alarm.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -303,8 +305,10 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
     assert.match(notes, /identical on the OAuth and dashboard-issued wm_ API-key doors/i,
       'notes must disclose that both credential doors resolve the same budget');
-    assert.match(notes, /Legacy operator keys[\s\S]*outside this daily reservation path/i,
-      'notes must keep operator keys outside the daily reservation path');
+    assert.ok(
+      notes.includes(`Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS reserve one unit per call against a separate ${OPERATOR_KEY_DAILY_CEILINGS.mcpUnits}/day ceiling per key.`),
+      'notes must publish the operator-key daily ceiling the dispatcher enforces',
+    );
     // This assertion used to be `doesNotMatch(/1,000|10,000/)`, banning those
     // numbers because the API tiers advertised MCP caps the meter never applied.
     // They are enforced now, so the ban inverts: an agent planning a workload
@@ -329,20 +333,29 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     ]) {
       assert.ok(notes.includes(method), `${method} must be named in daily-quota notes`);
     }
-    assert.match(notes, /Per-minute .* counts ALL methods/i, 'notes must distinguish per-minute from daily exemptions');
+    assert.equal(card.rateLimits.protocolPerMinute, MCP_PROTOCOL_BURST_PER_MINUTE);
+    assert.equal(card.rateLimits.panelReadsPerMinute, PANEL_READ_LIMIT);
+    assert.equal(card.rateLimits.panelCachedReadsPerMinute, PANEL_READ_LIMIT);
+    assert.match(notes, /separate 64\/minute uncached-read and 64\/minute cached-replay buckets/);
+    assert.match(notes, /Per-minute authenticated limiting bounds all methods/i);
+    assert.match(notes, /separate 192\/minute user bucket/i);
+    assert.match(notes, /Unsupported methods do not use the protocol bucket/i);
   });
 
-  // The card carries the identity fields BOTH top-level (for scanners that read
-  // the flat shape, e.g. ora.ai's mcp-server-card check) AND nested under
-  // serverInfo (the shape the handler + sibling tests read). Guard the two from
-  // drifting on the next version bump.
-  it('top-level server-card identity mirrors serverInfo (no drift)', () => {
+  // The card carries identity fields BOTH top-level (the Server Card schema
+  // shape scanners read) AND nested under serverInfo (what initialize returns).
+  // The Server Card schema requires a reverse-DNS top-level name and a short
+  // description, so those follow the MCP Registry server.json; serverInfo keeps
+  // the initialize name and full description. Guard both from drifting.
+  it('top-level server-card identity mirrors the registry and serverInfo (no drift)', () => {
     const card = JSON.parse(
       readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
     );
-    assert.equal(card.name, card.serverInfo?.name, 'top-level name must mirror serverInfo.name');
+    const registry = JSON.parse(readFileSync(new URL('../server.json', import.meta.url), 'utf8'));
+    assert.equal(card.name, registry.name, 'top-level name must mirror server.json name');
+    assert.equal(card.description, registry.description, 'top-level description must mirror server.json description');
+    assert.equal(card.serverInfo?.name, 'worldmonitor', 'serverInfo.name must match the initialize serverInfo');
     assert.equal(card.version, card.serverInfo?.version, 'top-level version must mirror serverInfo.version');
-    assert.equal(card.description, card.serverInfo?.description, 'top-level description must mirror serverInfo.description');
     assert.equal(card.serverUrl, card.transport?.endpoint, 'top-level serverUrl must mirror transport.endpoint');
   });
 
@@ -376,14 +389,29 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       `authentication.resource ${auth.resource} is not an origin resolveMetadataOrigin can return`,
     );
 
+    // The card describes the MCP endpoint, so its `resource` is the endpoint's
+    // own identifier — the one the path-scoped document (RFC 9728 §3.1) and the
+    // connect-time challenge name — not the bare origin. A client that compares
+    // the card against the document it was challenged with must see one value.
+    assert.equal(
+      auth.resource,
+      card.transport.endpoint,
+      'authentication.resource must be the MCP endpoint the card advertises',
+    );
+
     const prm = (await import('../api/oauth-protected-resource.ts')).default;
     const emitted = await (
       await prm(
-        new Request(`${resource.origin}/.well-known/oauth-protected-resource`, {
+        new Request(`${resource.origin}/.well-known/oauth-protected-resource${resource.pathname}`, {
           headers: { host: resource.host },
         }),
       )
     ).json();
+    assert.equal(
+      emitted.resource,
+      auth.resource,
+      'authentication.resource must equal the resource the path-scoped PRM document emits',
+    );
     assert.deepEqual(
       auth.authorization_servers,
       emitted.authorization_servers,

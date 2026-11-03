@@ -555,7 +555,14 @@ type MintFailureCause = 'refused' | 'malformed' | 'timeout' | 'network' | 'abort
 type MintCauseTag = MintFailureCause | 'none';
 type MintOutcome =
   | { ok: true; session: StoredSession }
-  | { ok: false; cause: MintFailureCause };
+  | { ok: false; cause: 'refused'; status: number; keyRejected: boolean }
+  | { ok: false; cause: Exclude<MintFailureCause, 'refused'> };
+
+// api/wm-session.js answers exactly this on a 401 for a submitted legacy key.
+// A 401 from anything in front of it (the desktop sidecar's auth gate answers
+// `{ error: 'Unauthorized' }`, Deployment Protection answers HTML) says
+// nothing about the key.
+const KEY_REJECTED_ERROR = 'Invalid session key';
 
 /**
  * A transport cause is evidence about this ATTEMPT, not about the session.
@@ -630,7 +637,18 @@ async function mintSession(body?: { widgetKey?: string; proKey?: string }): Prom
       signal: timeoutController.signal,
     });
     // The server answered and said no. That IS a session-wide verdict.
-    if (!resp.ok) return { ok: false, cause: 'refused' };
+    if (!resp.ok) {
+      let keyRejected = false;
+      if (resp.status === 401) {
+        try {
+          const refused = await resp.json() as { error?: unknown };
+          keyRejected = refused?.error === KEY_REJECTED_ERROR;
+        } catch {
+          keyRejected = false;
+        }
+      }
+      return { ok: false, cause: 'refused', status: resp.status, keyRejected };
+    }
     // A body we cannot parse or that carries no usable expiry is the server
     // answering with something unusable — also session-wide, and NOT a
     // transport failure, so it must not inherit the retry below.
@@ -773,9 +791,25 @@ export function getWmSessionToken(): string | null {
   return null;
 }
 
+export type KeySessionOutcome =
+  | { ok: true }
+  /**
+   * `rejected` is true only when /api/wm-session itself answered 401 with
+   * its "Invalid session key" body. Any other status, body or transport
+   * failure says nothing about the key.
+   */
+  | { ok: false; rejected: boolean };
+
 export async function establishWmKeySession(keys: { widgetKey?: string; proKey?: string }): Promise<boolean> {
+  return (await establishWmKeySessionOutcome(keys)).ok;
+}
+
+export async function establishWmKeySessionOutcome(keys: { widgetKey?: string; proKey?: string }): Promise<KeySessionOutcome> {
   const outcome = await mintSession(keys);
-  if (!outcome.ok) return false;
+  if (!outcome.ok) {
+    const rejected = outcome.cause === 'refused' && outcome.keyRejected;
+    return { ok: false, rejected };
+  }
   const fresh = outcome.session;
   cached = fresh;
   sessionGeneration += 1;
@@ -793,7 +827,7 @@ export async function establishWmKeySession(keys: { widgetKey?: string; proKey?:
   cookiePersistenceBroken = false;
   anonymousSessionHeaderToken = null;
   saveToStorage(fresh);
-  return true;
+  return { ok: true };
 }
 
 function withCredentials(init?: RequestInit): RequestInit {
@@ -889,6 +923,12 @@ export function isApiCallTarget(url: string, apiOrigin: string): boolean {
   return parsed.origin === apiOrigin && parsed.pathname.startsWith('/api/');
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 function isCredentiallessPublicDataRequest(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
@@ -904,7 +944,7 @@ function isCredentiallessPublicDataRequest(
     return false;
   }
 
-  const pathname = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, '') : parsed.pathname;
+  const pathname = stripTrailingSlashes(parsed.pathname);
   const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
   if (isPublicSharedRpcRequest(parsed, method)) return true;
   if (pathname !== '/api/bootstrap' || method.toUpperCase() !== 'GET') return false;

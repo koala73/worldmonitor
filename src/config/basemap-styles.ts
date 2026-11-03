@@ -5,7 +5,7 @@
 // the map panel mounts — so maplibre + deck.gl now load lazily. PMTiles and
 // Protomaps stay behind provider-specific dynamic imports below so CARTO /
 // OpenFreeMap users do not download the self-hosted basemap stack.
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import {
   R2_BASE,

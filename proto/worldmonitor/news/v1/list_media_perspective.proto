@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message ListMediaPerspectiveRequest {
+  // ISO2.
+  string subject_country = 1 [
+    (sebuf.http.query) = { name: "subject_country", required: true },
+    (buf.validate.field).string.min_len = 2,
+    (buf.validate.field).string.max_len = 2
+  ];
+  // ISO2, at most 30.
+  repeated string outlet_countries = 2 [
+    (sebuf.http.query) = { name: "outlet_countries" },
+    (buf.validate.field).repeated.max_items = 30
+  ];
+  // domestic, international or diaspora.
+  string audience = 3 [(sebuf.http.query) = { name: "audience" }];
+  // 24, 48, 72 or 96.
+  int32 window_hours = 4 [
+    (sebuf.http.query) = { name: "window_hours" },
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 96
+  ];
+  // UN M49 region slugs, e.g. northern-europe.
+  repeated string outlet_regions = 5 [
+    (sebuf.http.query) = { name: "outlet_regions" },
+    (buf.validate.field).repeated.max_items = 5
+  ];
+}
+
+message MediaPerspectiveHeadline {
+  string title = 1;
+  // Machine translation unless English; untrusted.
+  string english_title = 2;
+  string title_language = 3;
+  string outlet = 4;
+  string publisher_family = 5;
+  int32 tier = 6;
+  string ownership_class = 7;
+  string state_affiliated = 8;
+  string propaganda_risk = 9;
+  // favorable, neutral, critical or hostile.
+  string framing = 10;
+  int64 published_at = 11 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  string link = 12;
+}
+
+message MediaPerspectiveFramingCounts {
+  int32 favorable = 1;
+  int32 neutral = 2;
+  int32 critical = 3;
+  int32 hostile = 4;
+  int32 unlabeled = 5;
+  // e.g. llm-headline-stance.
+  string method = 6;
+  string model = 7;
+  string prompt_version = 8;
+}
+
+message MediaPerspectiveGroup {
+  string home_country = 1;
+  string audience = 2;
+  // Publisher families.
+  int32 outlet_count = 3;
+  // Before the 20-headline cap.
+  int32 headline_count = 4;
+  MediaPerspectiveFramingCounts framing = 5;
+  repeated MediaPerspectiveHeadline headlines = 6 [(buf.validate.field).repeated.max_items = 20];
+}
+
+message ListMediaPerspectiveResponse {
+  string subject_country = 1;
+  int32 window_hours = 2;
+  repeated MediaPerspectiveGroup groups = 3;
+  repeated string no_coverage_countries = 4;
+  // No outlet profile or multi-publisher feed.
+  int32 unattributed_count = 5;
+  // complete, partial or unavailable.
+  string state = 6;
+  int32 feed_total = 7;
+  int32 feed_cached = 8;
+  string read_at = 9;
+}

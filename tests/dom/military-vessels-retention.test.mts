@@ -7,6 +7,7 @@ const stream = vi.hoisted(() => ({
   unregisterAisCallback: vi.fn(),
   isAisConfigured: vi.fn(() => false),
   initAisStream: vi.fn(),
+  getAisCandidateDataState: vi.fn(() => ({mode:'unavailable' as const,timestamp:null,offline:false})),
 }));
 const fetchReport = vi.hoisted(() => vi.fn<() => Promise<USNIFleetReport | null>>());
 
@@ -14,7 +15,7 @@ vi.mock('@/services/maritime', () => stream);
 vi.mock('@/utils', () => import('@/utils/circuit-breaker'));
 vi.mock('@/services/usni-fleet', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/usni-fleet')>(),
-  fetchUSNIFleetReport: fetchReport,
+  fetchUSNIFleetObservation: async () => {const report=await fetchReport();return {report,dataState:{mode:report ? 'live' : 'unavailable',timestamp:Date.now(),offline:false}};},
 }));
 
 let service: typeof import('@/services/military-vessels');

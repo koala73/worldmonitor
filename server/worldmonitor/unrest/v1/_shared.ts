@@ -21,31 +21,17 @@ export function deduplicateEvents(events: UnrestEvent[]): UnrestEvent[] {
     const latKey = Math.round(lat * 10) / 10;
     const lonKey = Math.round(lon * 10) / 10;
     const dateKey = new Date(event.occurredAt).toISOString().split('T')[0];
-    const key = `${latKey}:${lonKey}:${dateKey}`;
+    const key = `${event.sourceType}:${latKey}:${lonKey}:${dateKey}`;
 
     const existing = unique.get(key);
     if (!existing) {
       event.sourceUrls = mergeSourceUrls(event.sourceUrls);
       unique.set(key, event);
     } else {
-      // Merge: prefer ACLED (higher confidence), combine sources
-      if (
-        event.sourceType === 'UNREST_SOURCE_TYPE_ACLED' &&
-        existing.sourceType !== 'UNREST_SOURCE_TYPE_ACLED'
-      ) {
-        event.sources = [...new Set([...event.sources, ...existing.sources])];
-        event.sourceUrls = mergeSourceUrls(event.sourceUrls, existing.sourceUrls);
-        unique.set(key, event);
-      } else if (existing.sourceType === 'UNREST_SOURCE_TYPE_ACLED') {
-        existing.sources = [...new Set([...existing.sources, ...event.sources])];
-        existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, event.sourceUrls);
-      } else {
-        // Both GDELT: combine sources, upgrade confidence if 2+ sources
-        existing.sources = [...new Set([...existing.sources, ...event.sources])];
-        existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, event.sourceUrls);
-        if (existing.sources.length >= 2) {
-          existing.confidence = 'CONFIDENCE_LEVEL_HIGH';
-        }
+      existing.sources = [...new Set([...existing.sources, ...event.sources])];
+      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, event.sourceUrls);
+      if (existing.sourceType === 'UNREST_SOURCE_TYPE_GDELT') {
+        existing.confidence = 'CONFIDENCE_LEVEL_LOW';
       }
     }
   }

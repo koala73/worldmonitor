@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// ListLabelChangesRequest selects recent corroboration label changes, optionally for one story.
+message ListLabelChangesRequest {
+  // Story identity hash (64 hex characters). Empty lists changes across all stories.
+  string story_id = 1 [
+    (sebuf.http.query) = { name: "story_id" },
+    (buf.validate.field).string.max_len = 64
+  ];
+  // Maximum changes returned, newest first. 0 uses the default of 50; at most 200.
+  int32 limit = 2 [
+    (sebuf.http.query) = { name: "limit" },
+    (buf.validate.field).int32 = { gte: 0, lte: 200 }
+  ];
+}
+
+// LabelChangePublisher is one publisher family behind the new label.
+message LabelChangePublisher {
+  // Curated publisher name, or the feed label when no family is curated.
+  string name = 1;
+  // Declared source tier 1-4; 0 when no feed label declares one.
+  int32 tier = 2;
+}
+
+// LabelChange records one story moving between single-publisher and corroborated
+// coverage, or one correction a reviewer accepted from a reader report.
+message LabelChange {
+  // Story identity hash; empty for a correction that names no story.
+  string story_id = 1;
+  // corroboration (a label moved) | correction (an accepted reader report).
+  string field = 2;
+  // Previous state: single-publisher | corroborated; empty for a correction.
+  string previous = 3;
+  // New state: single-publisher | corroborated; empty for a correction.
+  string next = 4;
+  // Publisher families behind the previous label; 0 for a correction.
+  int32 previous_publishers = 5;
+  // Publisher families behind the new label; 0 for a correction.
+  int32 next_publishers = 6;
+  // Time the change was recorded, Unix epoch milliseconds.
+  int64 at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // What recorded it: digest (automatic) | report (an accepted error report).
+  string trigger = 8;
+  // Plain-language reason, in English.
+  string reason = 9;
+  // Publishers behind the new label, tier first; at most 12 are listed.
+  repeated LabelChangePublisher sources = 10;
+  // Story headline when the change was recorded.
+  string title = 11;
+  // Representative article URL. Empty when it failed the publisher link gate,
+  // was revoked after the change was recorded, or the revocation set could not
+  // be read.
+  string link = 12;
+  // Story CRED score 0-100 when the change was recorded; -1 when unknown.
+  int32 credibility_score = 13;
+}
+
+// ListLabelChangesResponse lists changes from the last seven days, newest first.
+message ListLabelChangesResponse {
+  // Recorded changes. Coverage, not accuracy: a change to corroborated means more publishers carry the story, not that it was confirmed.
+  repeated LabelChange changes = 1;
+  // ok | unavailable. Unavailable means the log could not be read, not that it is empty.
+  string state = 2;
+  // Retention window in days.
+  int32 retention_days = 3;
+  // Stories in the latest full English digest by label. Absent when no recent count exists.
+  LabelCounts counts = 4;
+}
+
+// LabelCounts is how many stories in the latest full English digest carry each label.
+message LabelCounts {
+  // When the digest counted, Unix epoch milliseconds.
+  int64 at = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Stories counted.
+  int32 stories = 2;
+  // Two or more publisher families, not all tier 4.
+  int32 corroborated = 3;
+  // One publisher family.
+  int32 single_publisher = 4;
+  // Two or more families, every one a declared tier-4 outlet.
+  int32 tier4_only = 5;
+  // No evidence to judge.
+  int32 unknown = 6;
+}

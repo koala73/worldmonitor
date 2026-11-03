@@ -536,9 +536,9 @@ describe('wiring contracts (#5728)', () => {
     assert.deepEqual(seen, [null]);
   });
 
-  it('checkout success paths write the pro banner entitlement hint', () => {
+  it('hosted checkout return writes the hint, but launching checkout does not', () => {
     const checkout = readFileSync(resolve(root, 'src/services/checkout.ts'), 'utf-8');
-    assert.match(checkout, /applyProBannerEntitlementHint\(localStorage, true\)/);
+    assert.doesNotMatch(checkout, /applyProBannerEntitlementHint\(localStorage, true\)/);
     const ret = readFileSync(resolve(root, 'src/services/checkout-return.ts'), 'utf-8');
     assert.match(ret, /markJustPaidProBannerHint/);
     assert.match(ret, /applyProBannerEntitlementHint\(localStorage, true\)/);

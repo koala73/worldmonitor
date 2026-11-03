@@ -4,7 +4,7 @@ package worldmonitor.economic.v1;
 
 import "sebuf/http/annotations.proto";
 
-// CrudeInventoryWeek represents one week of US crude oil stockpile data from EIA WCRSTUS1.
+// CrudeInventoryWeek represents one week of US commercial crude oil stockpile data from EIA WCESTUS1.
 message CrudeInventoryWeek {
   // ISO week period (YYYY-MM-DD, Monday of the EIA report week).
   string period = 1;

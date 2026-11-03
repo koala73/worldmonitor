@@ -110,6 +110,8 @@ test('CORS allow headers include MCP transport headers', () => {
     const allowed = cors['Access-Control-Allow-Headers'];
     assert.match(allowed, /\bMcp-Session-Id\b/);
     assert.match(allowed, /\bMCP-Protocol-Version\b/);
+    assert.match(allowed, /\bMcp-Method\b/);
+    assert.match(allowed, /\bMcp-Name\b/);
     assert.match(allowed, /\bLast-Event-ID\b/);
 
     const exposed = cors['Access-Control-Expose-Headers'];

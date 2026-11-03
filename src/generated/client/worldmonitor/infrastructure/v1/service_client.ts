@@ -12,6 +12,7 @@ export interface ListInternetOutagesRequest {
 export interface ListInternetOutagesResponse {
   outages: InternetOutage[];
   pagination?: PaginationResponse;
+  fetchedAt: number;
 }
 
 export interface InternetOutage {

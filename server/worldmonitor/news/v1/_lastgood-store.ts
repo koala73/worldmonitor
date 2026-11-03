@@ -23,8 +23,11 @@ import {
   LASTGOOD_TTL_S,
   attemptMetaKey,
   isAcceptableDigest,
+  isCatalogChanged,
   isEligibleScope,
+  isStaleReason,
   lastGoodKey,
+  nextPeak,
   parseAcceptedSnapshot,
   shouldReplaceAccepted,
   type AcceptedSnapshot,
@@ -58,6 +61,8 @@ export interface LastGoodRead<T extends DigestLike> {
 const activeAttempts = new Map<string, AttemptSlot>();
 const recentFailedAttempts = new Map<string, { attempt: FailedDigestAttempt; expiresAt: number }>();
 const failureCooldowns = new Map<string, number>();
+const gateRejectionReports = new Map<string, number>();
+const GATE_REJECTION_REPORT_COOLDOWN_MS = 30 * 60 * 1000;
 const RECENT_ATTEMPT_MEMORY_MS = 5_000;
 const LOCAL_RECOVERY_MAX_ENTRIES = 100;
 
@@ -123,10 +128,14 @@ function transactionSucceeded(results: Array<{ result?: unknown; error?: string 
 export function measureServableRichness(
   data: DigestLike,
   revokedUrls: ReadonlySet<string>,
-): { categoryCount: number; itemCount: number } {
-  const categories = Object.values(data.categories ?? {});
+  exemptCategories: readonly string[] = [],
+): { categoryCount: number; itemCount: number; totalCategoryCount: number } {
+  const exempt = new Set(exemptCategories);
+  const entries = Object.entries(data.categories ?? {});
   let itemCount = 0;
-  for (const bucket of categories) {
+  let categoryCount = 0;
+  for (const [name, bucket] of entries) {
+    if (!exempt.has(name)) categoryCount += 1;
     const items = Array.isArray(bucket?.items) ? bucket.items : [];
     for (const item of items) {
       const link = item && typeof item === 'object' && 'link' in item
@@ -135,7 +144,9 @@ export function measureServableRichness(
       if (typeof link !== 'string' || !revokedUrls.has(link)) itemCount += 1;
     }
   }
-  return { categoryCount: categories.length, itemCount };
+  // categoryCount is the gate's breadth signal and leaves exempt categories
+  // out; totalCategoryCount is whether the body is servable at all.
+  return { categoryCount, itemCount, totalCategoryCount: entries.length };
 }
 
 /**
@@ -199,6 +210,24 @@ export function publishFailedAttempt(
   return attempt;
 }
 
+/** Remember the gate identity locally after its durable publication succeeds. */
+function rememberGateHeldAttempt(
+  variant: string,
+  lang: string,
+  at: string,
+  digestCacheKey?: string,
+): void {
+  const now = Date.now();
+  recentFailedAttempts.set(scopeKey(variant, lang), {
+    attempt: Object.freeze({ at, reason: 'gate-held' as const }),
+    expiresAt: now + DIGEST_REJECTION_TTL_S * 1000,
+  });
+  if (digestCacheKey) {
+    failureCooldowns.set(digestCacheKey, now + DIGEST_REJECTION_TTL_S * 1000);
+  }
+  boundLocalRecoveryMaps(now);
+}
+
 export async function recoverFailedAttempt(
   variant: string,
   lang: string,
@@ -220,9 +249,7 @@ export async function recoverFailedAttempt(
       if (read.status === 'hit' && read.value && typeof read.value === 'object') {
         const value = read.value as { ts?: unknown; outcome?: unknown };
         const ts = typeof value.ts === 'number' && Number.isFinite(value.ts) ? value.ts : null;
-        const reason = value.outcome === 'build-error' || value.outcome === 'empty-rebuild'
-          ? value.outcome
-          : null;
+        const reason = isStaleReason(value.outcome) ? value.outcome : null;
         if (ts !== null && reason) {
           const recovered = Object.freeze({ at: new Date(ts).toISOString(), reason });
           recentFailedAttempts.set(key, {
@@ -263,6 +290,33 @@ export async function readAcceptedSnapshot<T extends DigestLike>(variant: string
 }
 
 /**
+ * A fresh build lost to the live snapshot. The requester still gets the fresh
+ * body; everyone else keeps the older one until a build clears the gate or the
+ * snapshot ages out. That is correct for a degraded build and invisible when
+ * it is wrong: on 2026-09-19 it froze `full` for ~6h with only a console.log.
+ * One Sentry issue per variant, at warning level.
+ *
+ * The 120s rejection sentinel is the only backoff for a held snapshot, so a
+ * frozen scope rebuilds ~30x/hour in every region. The condition is sustained,
+ * not an event: one capture per scope per cooldown, per isolate. The capture
+ * rides the request's waitUntil so a frozen isolate cannot drop it mid-incident.
+ */
+function reportGateRejection(variant: string, lang: string): void {
+  console.log(`[digest-publication] candidate rejected by acceptance gate variant=${variant} lang=${lang}`);
+  const key = scopeKey(variant, lang);
+  const now = Date.now();
+  if ((gateRejectionReports.get(key) ?? 0) > now) return;
+  if (gateRejectionReports.size >= LOCAL_RECOVERY_MAX_ENTRIES) gateRejectionReports.clear();
+  gateRejectionReports.set(key, now + GATE_REJECTION_REPORT_COOLDOWN_MS);
+  captureSilentError(new Error('fresh digest rejected by the last-good acceptance gate'), {
+    tags: { surface: 'news', component: 'digest-lastgood', stage: 'publish-gate', variant, lang },
+    fingerprint: ['digest-lastgood', 'publish-gate-rejected', variant],
+    level: 'warning',
+    ctx: getUsageScope()?.ctx,
+  });
+}
+
+/**
  * Publish a valid unfiltered body. The Redis script computes both candidate
  * and incumbent richness against one atomic SMEMBERS view before it writes.
  */
@@ -271,7 +325,10 @@ export async function publishAcceptedSnapshot(
   lang: string,
   data: ListFeedDigestResponse,
   canonicalDigestKey?: string,
+  gate: { exemptCategories?: readonly string[]; catalogFingerprint?: string } = {},
 ): Promise<'accepted' | 'rejected' | 'unavailable'> {
+  const exemptCategories = gate.exemptCategories ?? [];
+  const catalogFingerprint = gate.catalogFingerprint;
   if (!isEligibleScope(variant, lang) || !isAcceptableDigest(data)) return 'rejected';
   const now = Date.now();
   const generatedAtMs = Date.parse(data.generatedAt ?? '');
@@ -283,8 +340,8 @@ export async function publishAcceptedSnapshot(
         console.warn(`[digest-publication] source unavailable variant=${variant} lang=${lang}`);
         return 'unavailable';
       }
-      const candidateRichness = measureServableRichness(data, revoked.urls);
-      if (candidateRichness.categoryCount < 1 || candidateRichness.itemCount < 1) {
+      const candidateRichness = measureServableRichness(data, revoked.urls, exemptCategories);
+      if (candidateRichness.totalCategoryCount < 1 || candidateRichness.itemCount < 1) {
         console.log(`[digest-publication] candidate rejected after revocations variant=${variant} lang=${lang}`);
         return 'rejected';
       }
@@ -307,22 +364,47 @@ export async function publishAcceptedSnapshot(
         : null;
       const canonicalGeneratedAt = canonicalValue ? Date.parse(canonicalValue.generatedAt ?? '') : NaN;
       const canonicalRichness = canonicalValue
-        ? measureServableRichness(canonicalValue, revoked.urls)
+        ? measureServableRichness(canonicalValue, revoked.urls, exemptCategories)
         : null;
+      const catalogChanged = current ? isCatalogChanged(current, catalogFingerprint) : false;
       const canonicalMeta = canonicalRichness
-        && canonicalRichness.categoryCount >= 1
+        && !catalogChanged
+        && canonicalRichness.totalCategoryCount >= 1
         && canonicalRichness.itemCount >= 1
         && Number.isFinite(canonicalGeneratedAt)
         ? {
             acceptedAt: canonicalGeneratedAt,
-            ...canonicalRichness,
+            categoryCount: canonicalRichness.categoryCount,
+            itemCount: canonicalRichness.itemCount,
           }
         : null;
-      const decision = shouldReplaceAccepted(current, candidateRichness, now);
+      // Re-measure the incumbent BODY under the current revocation set, as the
+      // Lua gate does. Its stored itemCount is a publication-time count, and a
+      // URL revoked since must not keep inflating it and veto the repair.
+      const measuredCurrent = current
+        ? measureServableRichness(current.data, revoked.urls, exemptCategories)
+        : undefined;
+      const measuredCurrentItems = measuredCurrent?.itemCount;
+      // Breadth is re-measured too, with the same exemptions as the candidate:
+      // the stored count predates them.
+      const comparable = current && measuredCurrent
+        ? { ...current, categoryCount: measuredCurrent.categoryCount }
+        : current;
+      const candidateCounts = {
+        categoryCount: candidateRichness.categoryCount,
+        itemCount: candidateRichness.itemCount,
+      };
+      const decision = shouldReplaceAccepted(comparable, candidateCounts, now, measuredCurrentItems, catalogFingerprint);
       const canonicalDecision = canonicalMeta
-        ? shouldReplaceAccepted(canonicalMeta, candidateRichness, now)
+        ? shouldReplaceAccepted(canonicalMeta, candidateCounts, now)
         : null;
       if (!decision.replace || canonicalDecision && !canonicalDecision.replace) {
+        // The single-process sidecar has no transaction primitive. Publish
+        // identity first, so a visible sentinel always has its matching reason.
+        const attemptWritten = await setCachedJson(
+          attemptMetaKey(variant, lang), { ts: now, outcome: 'gate-held' }, ATTEMPT_META_TTL_S,
+        );
+        if (!attemptWritten) return 'unavailable';
         if (!decision.replace && canonicalDigestKey && currentCanonical.status === 'miss') {
           const cooldownWritten = await setCachedJson(
             canonicalDigestKey,
@@ -334,10 +416,16 @@ export async function publishAcceptedSnapshot(
             return 'unavailable';
           }
         }
-        console.log(`[digest-publication] candidate rejected by acceptance gate variant=${variant} lang=${lang}`);
+        rememberGateHeldAttempt(variant, lang, new Date(now).toISOString(), canonicalDigestKey);
+        reportGateRejection(variant, lang);
         return 'rejected';
       }
-      const meta: AcceptedSnapshotMeta = { acceptedAt, ...candidateRichness };
+      const meta: AcceptedSnapshotMeta = {
+        acceptedAt,
+        ...candidateCounts,
+        ...nextPeak(current, candidateRichness.itemCount, acceptedAt, now, measuredCurrentItems, catalogFingerprint),
+        ...(catalogFingerprint ? { catalogFingerprint } : {}),
+      };
       const durableWritten = await setCachedJson(lastGoodKey(variant, lang), { ...meta, data }, LASTGOOD_TTL_S);
       if (!durableWritten) {
         console.warn(`[digest-publication] publish unavailable variant=${variant} lang=${lang}`);
@@ -358,20 +446,21 @@ export async function publishAcceptedSnapshot(
     // letting Lua rebuild it meant a cjson decode/encode round trip, which
     // silently rewrote every empty array in the body as `{}`.
     const keys = canonicalDigestKey
-      ? [lastGoodKey(variant, lang), REVOKED_URLS_KEY, canonicalDigestKey]
-      : [lastGoodKey(variant, lang), REVOKED_URLS_KEY];
+      ? [lastGoodKey(variant, lang), REVOKED_URLS_KEY, attemptMetaKey(variant, lang), canonicalDigestKey]
+      : [lastGoodKey(variant, lang), REVOKED_URLS_KEY, attemptMetaKey(variant, lang)];
     const args = [
       String(now),
       String(LASTGOOD_MAX_AGE_MS),
       String(acceptedAt),
       String(LASTGOOD_TTL_S),
       JSON.stringify(data),
-      ...(canonicalDigestKey ? [
-        String(DIGEST_CACHE_TTL_S),
-        new Date(now - LASTGOOD_MAX_AGE_MS).toISOString(),
-        new Date(now).toISOString(),
-        String(DIGEST_REJECTION_TTL_S),
-      ] : []),
+      String(DIGEST_CACHE_TTL_S),
+      new Date(now - LASTGOOD_MAX_AGE_MS).toISOString(),
+      new Date(now).toISOString(),
+      String(DIGEST_REJECTION_TTL_S),
+      String(ATTEMPT_META_TTL_S),
+      JSON.stringify([...exemptCategories]),
+      catalogFingerprint ?? '',
     ];
     const results = await runRedisPipeline([[
       'EVAL',
@@ -385,7 +474,8 @@ export async function publishAcceptedSnapshot(
       console.warn(`[digest-publication] publish unavailable variant=${variant} lang=${lang}`);
       return 'unavailable';
     } else if (outcome.result === 0) {
-      console.log(`[digest-publication] candidate rejected by acceptance gate variant=${variant} lang=${lang}`);
+      rememberGateHeldAttempt(variant, lang, new Date(now).toISOString(), canonicalDigestKey);
+      reportGateRejection(variant, lang);
       return 'rejected';
     } else if (outcome.result === -1) {
       console.log(`[digest-publication] candidate rejected after revocations variant=${variant} lang=${lang}`);
@@ -409,6 +499,7 @@ export const __testing__ = {
   activeAttempts,
   recentFailedAttempts,
   failureCooldowns,
+  gateRejectionReports,
   deferDigestAttempt,
   measureServableRichness,
 };

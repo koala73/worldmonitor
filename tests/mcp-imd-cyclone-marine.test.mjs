@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { executeTool } from '../api/mcp/dispatch.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
-import { IMD_CANONICAL_KEY } from '../scripts/lib/imd-cyclone-marine.mjs';
+import { IMD_CANONICAL_KEY, IMD_PRODUCTS, assembleImdSnapshot, fetchImdBulletinPage, imdAfterPublish } from '../scripts/lib/imd-cyclone-marine.mjs';
 
 const findTool = (name) => CACHE_TOOLS.find((tool) => tool.name === name);
 
@@ -175,5 +176,34 @@ describe('get_imd_cyclone_marine cache tool', () => {
     assert.equal(result.data.imd_cyclone_marine.products.portWarning.status, 'failed');
     assert.equal(result.data.imd_cyclone_marine.cycloneEvents.length, 1);
     assert.equal(result.stale, false);
+  });
+
+  it('preserves recovered official PDF provenance and expiry through producer and reader', async () => {
+    const now = Date.parse('2026-10-21T18:30:00Z');
+    const page = IMD_PRODUCTS.coastalBulletin.pages.find((entry) => entry.key === 'kerala-karnataka-lakshadweep');
+    const html = readFileSync(new URL('./fixtures/imd/coastalBulletin-kerala-missing-synoptic.html', import.meta.url));
+    const pdf = readFileSync(new URL('./fixtures/imd/coastalBulletin-kerala-20261021.pdf', import.meta.url));
+    const parsed = await fetchImdBulletinPage('coastalBulletin', page, {
+      delayMs: 0,
+      fetchFn: async (url) => url === page.url ? new Response(html)
+        : new Response(pdf, { headers: { 'Content-Type': 'application/pdf' } }),
+    });
+    const produced = assembleImdSnapshot({ now, pageResults: { coastalBulletin: { [page.key]: parsed } } });
+    const result = await runTool({
+      [IMD_CANONICAL_KEY]: produced,
+      'seed-meta:weather:imd-cyclone-marine': { fetchedAt: now, recordCount: 4, ...imdAfterPublish(produced).freshnessMetaPatch },
+    }, { limit: 0 }, now);
+    assert.equal(result.stale, false);
+    const data = result.data.imd_cyclone_marine;
+    assert.equal(data.coverageState, 'degraded', 'unrelated failed pages remain visible');
+    assert.equal(data.products.coastalBulletin.pages[page.key].fallbackUsed, true);
+    assert.equal(data.products.coastalBulletin.pages[page.key].primaryFailure, 'BULLETIN_SYNOPTIC_MISSING');
+    assert.equal(data.coastalBulletins.length, 4);
+    for (const row of data.coastalBulletins) {
+      assert.equal(row.sourceUrl, page.fallbackUrl);
+      assert.equal(row.expiresAt, Date.parse('2026-10-21T22:00:00Z'));
+      assert.equal(row.issuedAt, Date.parse('2026-10-21T07:34:00Z'));
+    }
+    assert.equal(data.coastalBulletins.find((row) => row.area === 'North Kerala coast').portSignal, 'LC III.');
   });
 });

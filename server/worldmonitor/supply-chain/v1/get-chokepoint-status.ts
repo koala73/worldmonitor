@@ -158,6 +158,15 @@ interface PreBuiltTransitSummary {
   todayCargo: number | null;
   todayOther: number | null;
   wowChangePct: number;
+  // IMF PortWatch official figures (shared/chokepoint-traffic-anomaly.js
+  // summarizePortwatchHistory). null when PortWatch has nothing for the
+  // chokepoint; absent entirely from writers before the fields existed.
+  officialLatestDate?: string | null;
+  officialLatestTotal?: number | null;
+  officialAvg7d?: number | null;
+  baselineAvgDaily?: number | null;
+  baselineFrom?: string | null;
+  baselineTo?: string | null;
   riskLevel: string;
   incidentCount7d: number;
   disruptionPct: number;
@@ -502,6 +511,17 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         todayOther: ts.todayOther ?? 0,
         todayCountsAvailable: ts.todayTotal != null,
         wowChangePct: ts.wowChangePct,
+        // IMF PortWatch official figures. The proto carries absence as an
+        // empty date (latest count, 7-day mean) and an empty baseline_from
+        // (baseline), never as a bool; a null from the relay or a writer that
+        // predates the fields both land on the empty value.
+        officialLatestDate: ts.officialLatestDate ?? '',
+        officialLatestTotal: ts.officialLatestTotal ?? 0,
+        // Absent, not 0: a short history has a latest day but no 7-day mean.
+        officialAvg7d: ts.officialAvg7d ?? undefined,
+        baselineAvgDaily: ts.baselineAvgDaily ?? 0,
+        baselineFrom: ts.baselineFrom ?? '',
+        baselineTo: ts.baselineTo ?? '',
         // History is served separately by GetChokepointHistory (lazy-loaded on
         // card expand) — field stays declared for proto compat but is empty
         // on the main status response.
@@ -514,7 +534,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         // Default true for pre-fix writers (absence = covered). New writers
         // explicitly emit false for canonical zero-state fills.
         dataAvailable: transitMovementAvailable,
-      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, todayCountsAvailable: false, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
+      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, todayCountsAvailable: false, wowChangePct: 0, officialLatestDate: '', officialLatestTotal: 0, baselineAvgDaily: 0, baselineFrom: '', baselineTo: '', history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
       flowEstimate: flowsData?.[cp.id] ? {
         currentMbd: flowsData[cp.id]!.currentMbd,
         baselineMbd: flowsData[cp.id]!.baselineMbd,

@@ -12,6 +12,9 @@ import {
   DEFAULT_MAP_LAYERS,
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
+  FREE_MAX_PANELS,
+  countFreePanelCapUsage,
+  restoreProGatedPanels,
 } from '../src/config/panels.ts';
 import {
   LAYER_REGISTRY,
@@ -335,7 +338,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
   const urlStateModule = JSON.stringify(fileURLToPath(new URL('../src/utils/urlState.ts', import.meta.url)));
   const stubs = new Map<string, string>([
     ['@/utils', `
-      export { urlHasAsyncFlyTo } from ${urlStateModule};
+      export { urlHasAsyncFlyTo, withUrlFragment } from ${urlStateModule};
       export function buildMapUrl(baseUrl, state) {
         const url = new URL(baseUrl);
         if (state.center) {
@@ -453,7 +456,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function trackPanelToggled(...args) { push('trackPanelToggled', args); }
       export function trackDownloadClicked(...args) { push('trackDownloadClicked', args); }
       export function trackGateHit(...args) { push('trackGateHit', args); }
-      export function trackPanelResized(...args) { push('trackPanelResized', args); }
+      export function trackLayoutCustomized(...args) { push('trackLayoutCustomized', args); }
     `],
     ['@/services', `
       export async function saveSnapshot() {}
@@ -471,7 +474,8 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
     `],
     ['@/services/data-freshness', `
       export const dataFreshness = {
-        setEnabled(source, enabled) {
+        setEnabled() {},
+        setMapLayerEnabled(source, enabled) {
           globalThis.__missionFreshness = globalThis.__missionFreshness || [];
           globalThis.__missionFreshness.push([source, enabled]);
         },
@@ -482,7 +486,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
     ['@/services/panel-gating', 'export const PanelGateReason = { NONE: "none", ANONYMOUS: "anonymous", FREE_TIER: "free_tier", PAYMENT_ON_HOLD: "payment_on_hold", RENEWAL_PENDING: "renewal_pending", RENEWAL_FAILED: "renewal_failed", LAPSED: "lapsed" }; export function hasPremiumAccess(){ return globalThis.__missionHasPremium === true; } export function resolveGateAction(){ return () => {}; }'],
     ['@/services/mcp-store', 'export function deleteMcpPanel(){} export function getMcpPanel(){ return null; } export function saveMcpPanel(){}'],
     ['@/services/runtime', 'export function isDesktopRuntime(){ return false; }'],
-    ['@/services/tauri-bridge', 'export async function invokeTauri(){ return null; }'],
+    ['@/services/tauri-bridge', 'export async function invokeTauri(){ return null; } export function hasTauriInvokeBridge(){ return false; }'],
     ['@/services/gps-interference', 'export function getCachedGpsInterference(){ return null; }'],
     ['@/services/ml-worker', 'export const mlWorker = {};'],
     ['@/services/auth-state', 'export function getAuthState(){ return { user: { role: "pro" } }; } export function subscribeAuthState(){ return () => {}; }'],
@@ -1166,6 +1170,7 @@ function createMissionHarness(options: {
   storage?: MemoryStorage;
   map?: ReturnType<typeof makeMapSpy>;
   freeTierFallback?: boolean;
+  onApplyPanels?: (settings: Record<string, PanelConfig>) => void;
 } = {}): MissionHarness {
   const storage = options.storage ?? new MemoryStorage();
   defineLocalStorage(storage);
@@ -1243,6 +1248,7 @@ function createMissionHarness(options: {
     initialLoadComplete: true,
     resolvedLocation: 'global',
     activeChokepoint: null,
+    pendingCountryBrief: null,
     initialUrlState: null,
     PANEL_ORDER_KEY: 'panel-order',
     PANEL_SPANS_KEY: 'panel-spans',
@@ -1256,7 +1262,10 @@ function createMissionHarness(options: {
     loadDataForLayer: (layer: string) => callbacks.loadDataForLayer.push(layer),
     waitForAisData: () => { callbacks.waitForAisCalls += 1; },
     syncDataFreshnessWithLayers: () => { callbacks.syncDataFreshnessCalls += 1; },
-    applyPanelSettings: () => { callbacks.applyPanelSettingsCalls += 1; },
+    applyPanelSettings: () => {
+      callbacks.applyPanelSettingsCalls += 1;
+      options.onApplyPanels?.(ctx.panelSettings);
+    },
     applySavedPanelOrder: (panelOrder?: string[]) => {
       callbacks.appliedOrderArgs.push(panelOrder);
       callbacks.appliedOrders.push([...(panelOrder ?? [])]);
@@ -1425,6 +1434,63 @@ describe('mission preset shell integration', () => {
     assert.ok(callbacks.loadDataForLayer.includes('tradeRoutes'));
     assert.equal(callbacks.loadDataForLayer.includes('resilienceScore'), false);
     assert.equal(callbacks.stopLayerActivity.includes('resilienceScore'), false);
+  });
+
+  for (const action of ['applyMissionPreset', 'applyMissionPresetForWebMcp', 'resetMissionPreset'] as const) {
+    for (const access of [
+      { label: 'settled free', premium: false, tierResolved: true, fallback: false, capped: true },
+      { label: 'pending', premium: false, tierResolved: false, fallback: false, capped: false },
+      { label: 'fallback free', premium: false, tierResolved: false, fallback: true, capped: true },
+      { label: 'Pro', premium: true, tierResolved: true, fallback: false, capped: false },
+      { label: 'Pro during fallback', premium: true, tierResolved: false, fallback: true, capped: false },
+    ]) {
+      it(`${action} commits the correct panel limit for ${access.label}`, () => {
+        setMissionAccess(access);
+        let rendered: Record<string, PanelConfig> | undefined;
+        const { ctx, manager } = createMissionHarness({
+          freeTierFallback: access.fallback,
+          onApplyPanels: (settings) => {
+            rendered = structuredClone(settings);
+            assert.deepEqual(readJsonStorage('worldmonitor-panels'), settings,
+              'the same selection must be persisted before rendering');
+          },
+        });
+        // Retained MCP panels count toward the cap and can overflow a small mission.
+        for (let i = 0; i < FREE_MAX_PANELS; i++) {
+          ctx.panelSettings[`mcp-feed-${i}`] = { name: `Feed ${i}`, enabled: true, priority: 99 };
+        }
+        const candidate = action === 'resetMissionPreset'
+          ? resetMissionPresetState(ctx.panelSettings).panelSettings
+          : applyMissionPresetToState('crisis-desk', ctx.panelSettings).panelSettings;
+        assert.ok(countFreePanelCapUsage(candidate) > FREE_MAX_PANELS);
+        manager[action]('crisis-desk');
+        assert.deepEqual(rendered, ctx.panelSettings);
+        assert.equal(ctx.panelSettings.map?.enabled, true);
+        if (access.capped) {
+          assert.equal(countFreePanelCapUsage(ctx.panelSettings), FREE_MAX_PANELS);
+          assert.equal(ctx.panelSettings['cw-market-note']?.enabled, false);
+          assert.equal(ctx.panelSettings['cw-market-note']?.proGated, true);
+          assert.deepEqual(enabledPanelKeys(restoreProGatedPanels(ctx.panelSettings)), enabledPanelKeys(candidate),
+            'an upgrade can restore the panels disabled by this gate');
+        } else {
+          assert.deepEqual(ctx.panelSettings, candidate, 'Pro and pending layouts keep the exact mission selection');
+        }
+      });
+    }
+  }
+
+  it('caps the live reset even when storage writes fail', () => {
+    setMissionAccess({ premium: false, tierResolved: true });
+    const storage = new MemoryStorage();
+    storage.throwOnSet = true;
+    let renderedCount = -1;
+    const { ctx, manager } = createMissionHarness({
+      storage,
+      onApplyPanels: (settings) => { renderedCount = countFreePanelCapUsage(settings); },
+    });
+    manager.resetMissionPreset();
+    assert.equal(countFreePanelCapUsage(ctx.panelSettings), FREE_MAX_PANELS);
+    assert.equal(renderedCount, FREE_MAX_PANELS);
   });
 
   it('sanitizes locked mission layers only for settled free users or the bounded fallback', () => {

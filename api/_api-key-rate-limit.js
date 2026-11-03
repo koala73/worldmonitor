@@ -15,9 +15,8 @@
 // Patterns cloned: api/mcp/quota.ts (INCR-first meter + DECR rollback),
 // api/_rate-limit.js (lazy Upstash singleton, NODE_TEST_CONTEXT retry skip,
 // X-RateLimit-* header shape), server/_shared/pro-mcp-token.ts UTC helpers.
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 import { getKeyPrefix } from './_upstash-json.js';
+import { loadUpstashRatelimit } from './_upstash-ratelimit.js';
 
 /** Hardcoded per-minute burst for enterprise env keys — they carry no Convex
  *  entitlement (gateway.ts:1006-1007 skips checkEntitlement), so this cannot
@@ -27,17 +26,18 @@ export const ENTERPRISE_API_RATE_LIMIT = 1000;
 // Ratelimit per distinct numeric limit (60, 300, 1000) cached in the Map so two
 // Starter accounts share a limiter *config* but get separate buckets via the
 // per-account identifier passed to `.limit()`.
-/** @type {Redis | null} */
+/** @type {import('@upstash/redis').Redis | null} */
 let redisSingleton = null;
-/** @type {Map<number, Ratelimit>} */
+/** @type {Map<number, import('@upstash/ratelimit').Ratelimit>} */
 const burstLimiters = new Map();
-function getRedis() {
+async function getRedis() {
   if (redisSingleton)
     return redisSingleton;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token)
     return null;
+  const { Redis } = await loadUpstashRatelimit();
   // Skip the @upstash/redis retry backoff under the node test runner so
   // fail-open tests pointed at a fake host degrade immediately; production
   // (env unset) keeps the resilient default. Mirrors api/_rate-limit.js.
@@ -50,16 +50,17 @@ function getRedis() {
 }
 /**
  * The per-minute burst limiter for `perMinute` requests / 60s, cached by limit.
- * Returns null when Upstash is not configured (caller fail-opens).
+ * Returns null when Upstash is not configured.
  */
 /** @param {number} perMinute */
-export function getBurstLimiter(perMinute) {
+export async function getBurstLimiter(perMinute) {
   const existing = burstLimiters.get(perMinute);
   if (existing)
     return existing;
-  const redis = getRedis();
+  const redis = await getRedis();
   if (!redis)
     return null;
+  const { Ratelimit } = await loadUpstashRatelimit();
   const limiter = new Ratelimit({
     redis,
     limiter: Ratelimit.slidingWindow(perMinute, '60 s'),
@@ -72,28 +73,38 @@ export function getBurstLimiter(perMinute) {
   burstLimiters.set(perMinute, limiter);
   return limiter;
 }
+/** @type {number | undefined} */
+let lastBurstWarningAt;
+/** @param {'not_configured' | 'timeout' | 'error'} reason */
+function unavailableBurst(reason) {
+  const now = Date.now();
+  if (lastBurstWarningAt === undefined || now - lastBurstWarningAt >= 60_000) {
+    lastBurstWarningAt = now;
+    console.warn('[api-key-rate-limit] burst unavailable', { reason });
+  }
+  return { ok: /** @type {null} */ (null), reason };
+}
 /**
- * Evaluate the per-minute burst window for `identity`. Fail-OPEN: a missing
- * Upstash config or any Redis error resolves to `{ ok: true }` so a paying
- * customer is never 429'd for our outage (mirrors api/_rate-limit.js).
- */
-/**
+ * Evaluate account burst admission. Unavailable is not a denial: callers retain
+ * daily metering and their existing fallback policy without claiming admission.
  * @param {number} perMinute
  * @param {string} identity
- * @returns {Promise<{ok: true} | {ok: false, limit: number, reset: number}>}
+ * @returns {Promise<{ok: true} | {ok: false, limit: number, reset: number} | {ok: null, reason: 'not_configured' | 'timeout' | 'error'}>}
  */
 export async function checkBurst(perMinute, identity) {
-  const limiter = getBurstLimiter(perMinute);
-  if (!limiter)
-    return { ok: true };
   try {
-    const { success, limit, reset } = await limiter.limit(identity);
+    const limiter = await getBurstLimiter(perMinute);
+    if (!limiter)
+      return unavailableBurst('not_configured');
+    const { success, limit, reset, reason } = await limiter.limit(identity);
+    if (reason === 'timeout')
+      return unavailableBurst('timeout');
     if (!success)
       return { ok: false, limit, reset };
     return { ok: true };
   }
   catch {
-    return { ok: true };
+    return unavailableBurst('error');
   }
 }
 /** Plain (un-prefixed) daily-meter key — `runRedisPipeline` applies the

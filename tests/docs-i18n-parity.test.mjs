@@ -12,13 +12,25 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { parse as parseYaml } from 'yaml';
 
 const ROOT = new URL('../', import.meta.url).pathname;
 const DOCS_JSON = join(ROOT, 'docs', 'docs.json');
 const DOCS_DIR = join(ROOT, 'docs');
+const ENGLISH_ONLY_APPENDICES = new Set([
+  'methodology/known-limitations',
+  'methodology/financial-system-exposure',
+  'methodology/swf-classification-rubric',
+]);
 
 function readZhDoc(page) {
   return readFileSync(join(DOCS_DIR, 'zh', `${page}.mdx`), 'utf8');
+}
+
+/** Parsed leading YAML frontmatter; empty when the block is absent. */
+function frontmatterFields(content) {
+  const block = content.match(/^---\n([\s\S]*?\n)?---\n/)?.[1] ?? '';
+  return parseYaml(block) ?? {};
 }
 
 function sectionBetween(content, startHeading, endHeading) {
@@ -80,6 +92,12 @@ describe('docs i18n parity', () => {
   });
 
   for (const page of enPages) {
+    if (ENGLISH_ONLY_APPENDICES.has(page)) {
+      it(`English-only source appendix exists for ${page}`, () => {
+        assert.ok(existsSync(join(DOCS_DIR, `${page}.md`)));
+      });
+      continue;
+    }
     it(`zh/ counterpart exists for ${page}`, () => {
       const zhPath = join(DOCS_DIR, 'zh', page + '.mdx');
       assert.ok(existsSync(zhPath), `Missing zh/${page}.mdx`);
@@ -94,7 +112,35 @@ describe('docs i18n parity', () => {
       const hasCJK = /[\u4e00-\u9fff]/.test(content);
       assert.ok(hasCJK, `zh/${page}.mdx has no Chinese characters — not translated`);
     });
+
+    // Mintlify renders the frontmatter title as <title> and the description as
+    // the meta description; a page without them ships an untranslated or
+    // empty search snippet.
+    it(`en and zh frontmatter carry a title and description for ${page}`, () => {
+      const zhPath = join(DOCS_DIR, 'zh', page + '.mdx');
+      for (const [label, path] of [[page, join(DOCS_DIR, page + '.mdx')], [`zh/${page}`, zhPath]]) {
+        if (!existsSync(path)) continue; // covered by existence test above
+        const fields = frontmatterFields(readFileSync(path, 'utf8'));
+        for (const key of ['title', 'description']) {
+          const value = fields[key];
+          assert.ok(typeof value === 'string' && value.trim(), `${label}.mdx has no frontmatter ${key}`);
+        }
+      }
+    });
+
+    it(`zh/ title is translated (has Chinese) for ${page}`, () => {
+      const zhPath = join(DOCS_DIR, 'zh', page + '.mdx');
+      if (!existsSync(zhPath)) return; // covered by existence test above
+      const title = String(frontmatterFields(readFileSync(zhPath, 'utf8')).title ?? '');
+      assert.match(title, /[\u4e00-\u9fff]/, `zh/${page}.mdx title "${title}" has no Chinese characters`);
+    });
   }
+
+  it('frontmatter parsing reads block scalars as values, not their markers', () => {
+    assert.equal(frontmatterFields('---\ntitle: "T"\ndescription: >-\n  Folded text.\n---\n').description, 'Folded text.');
+    assert.ok(!frontmatterFields('---\ntitle: "T"\ndescription: >-\n---\n').description);
+    assert.deepEqual(frontmatterFields('\n## No frontmatter\n'), {});
+  });
 
   it('every zh nav page path starts with zh/', () => {
     const zhPages = collectPagePaths(zhLang);

@@ -37,7 +37,7 @@ after(() => {
 async function callHandler(fixtures) {
   const { fetchImpl } = createRedisFetch(fixtures);
   globalThis.fetch = fetchImpl;
-  return getOilInventories({}, {});
+  return getOilInventories({ request: new Request('https://worldmonitor.test/api/economic/v1/get-oil-inventories') }, {});
 }
 
 describe('GetOilInventories — SPR unit contract', () => {

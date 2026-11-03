@@ -1,6 +1,7 @@
 import { internalAction, internalQuery, type MutationCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
+import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
 
 const ADMIN_EMAIL = "elie@worldmonitor.app";
 
@@ -253,25 +254,30 @@ export const notifyUnattributedPayment = internalAction({
         <p style="font-size: 12px; color: #999; margin-top: 16px;">${guidance}</p>
       </div>`;
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    // Ops alert to our own inbox: shared helper still checks suppression,
+    // but sends no Reply-To so a reply does not loop back to ADMIN_EMAIL.
+    let result;
+    try {
+      result = await sendResendEmail(ctx, {
+        apiKey,
         from: "World Monitor <noreply@worldmonitor.app>",
         to: ADMIN_EMAIL,
         subject,
         html,
-      }),
-    });
-    if (!response.ok) {
+        replyTo: null,
+        purpose: "transactional",
+      });
+    } catch (err) {
       // Throwing lets Convex's action retry policy have another go; the row is
       // already durable either way, so the record is never at risk.
+      const status = err instanceof ResendSendError ? err.status : "request error";
       throw new Error(
-        `[unattributedPayments] Resend failed (${response.status}) for row ${rowId}`,
+        `[unattributedPayments] Resend failed (${status}) for row ${rowId}`,
       );
+    }
+    if (!result.sent) {
+      console.warn(`[unattributedPayments] alert for ${rowId} skipped: ${ADMIN_EMAIL} is suppressed`);
+      return;
     }
     console.log(`[unattributedPayments] alert sent for ${rowId} (charged=${record.charged})`);
   },

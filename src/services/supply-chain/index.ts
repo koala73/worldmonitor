@@ -84,7 +84,9 @@ function vulnerabilityRequestSignal(callerSignal?: AbortSignal): AbortSignal {
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const shippingBreaker = createCircuitBreaker<GetShippingRatesResponse>({ name: 'Shipping Rates', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
-const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ name: 'Chokepoint Status', cacheTtlMs: 90 * 60 * 1000, persistCache: true });
+// Shorter than the strip poll's shortest jittered gap (0.9 x 10 min), so every
+// poll asks the server; the server status refreshes every 6 min.
+const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ name: 'Chokepoint Status', cacheTtlMs: 5 * 60 * 1000, persistCache: true });
 const mineralsBreaker = createCircuitBreaker<GetCriticalMineralsResponse>({ name: 'Critical Minerals', cacheTtlMs: 24 * 60 * 60 * 1000, persistCache: true });
 const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerResponse>({
   name: 'China Corridor Control Towers',
@@ -149,10 +151,13 @@ export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
 
 function loadLiveChokepointStatus(forceRefresh = false): Promise<GetChokepointStatusResponse> {
   return chokepointBreaker.execute(async () => {
-    return client.getChokepointStatus({});
+    // Bounded because a stale entry waits for this request; at the deadline the saved reading is returned.
+    return client.getChokepointStatus({}, { signal: AbortSignal.timeout(10_000) });
   }, emptyChokepoints, {
     shouldCache: isCacheableChokepointStatus,
     forceRefresh,
+    // A stale entry waits for the refresh instead of showing the old reading for another poll.
+    staleRefreshMode: 'await',
   });
 }
 

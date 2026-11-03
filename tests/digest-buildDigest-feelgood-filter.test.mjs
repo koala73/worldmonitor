@@ -1,7 +1,7 @@
 // Unit tests for the buildDigest feel-good filter (U3).
 //
 // buildDigest is not exported from scripts/seed-digest-notifications.mjs,
-// so these tests are source-textual (mirroring digest-no-reclassify.test.mjs):
+// so these tests are source-textual:
 // they assert the structural invariants of the wiring rather than
 // invoking buildDigest with live Redis fixtures. The classifier's
 // behavior is fully covered by tests/feelgood-classifier.test.mjs.
@@ -215,5 +215,21 @@ describe('U3: integration with classifyFeelGood', () => {
       /typeof\s+track\.description\s*===\s*'string'/.test(slice.slice(0, 400)),
       'must defensively check track.description type before passing to classifyFeelGood',
     );
+  });
+});
+
+// The floor itself is unit-tested in tests/digest-orchestration-helpers.test.mjs
+// (applyDigestScoreFloor). This pins where buildDigest calls it: on the
+// dedup representatives, and before the top-N slice, so the digest is filled
+// from clusters that clear the floor instead of losing slots after the cut.
+describe('buildDigest applies the score floor after dedup and before the top-N slice', () => {
+  it('feeds deduplicateStories reps into applyDigestScoreFloor, then slices the floored list', () => {
+    const dedup = /const \{ reps: (\w+)[^}]*\} =\s*await deduplicateStories\(/.exec(buildDigestBody);
+    assert.ok(dedup, 'buildDigest must destructure reps from deduplicateStories(...)');
+    const floor = new RegExp(`const (\\w+) = applyDigestScoreFloor\\(${dedup[1]},`).exec(buildDigestBody);
+    assert.ok(floor, `applyDigestScoreFloor must run on the dedup reps (${dedup[1]})`);
+    const slice = new RegExp(`= ${floor[1]}\\.slice\\(0, DIGEST_MAX_ITEMS\\)`).exec(buildDigestBody);
+    assert.ok(slice, `the top-N slice must take the floored list (${floor[1]})`);
+    assert.ok(dedup.index < floor.index && floor.index < slice.index, 'order must be dedup -> floor -> slice');
   });
 });

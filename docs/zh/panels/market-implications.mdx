@@ -1,20 +1,24 @@
 ---
 title: "AI 市场影响"
-description: "AI 市场影响面板从当日全球新闻流与实时市场信号中推导做多、做空与对冲交易思路，为每一条建议附上明确的方向判断、置信度评分与详细的宏观经济传导路径解释，广泛覆盖股票、大宗商品、外汇与债券等主要资产类别，帮助专业交易员将地缘政治与宏观事件即时转化为可执行的策略级投资洞察。"
+description: "AI 市场影响面板从当日全球新闻流与实时市场信号中推导做多、做空与对冲交易思路，为每一条情景附上明确的方向判断、时间框架与详细的宏观经济传导路径解释（未评分），广泛覆盖股票、大宗商品、外汇与债券等主要资产类别，帮助专业交易员将地缘政治与宏观事件即时转化为可执行的策略级投资洞察。"
 ---
 
-**AI Market Implications** 面板（内部 id `market-implications`）将今日的情报和市场流转化为结构化的、概率加权的交易思路。每张卡片有一个方向（`LONG` / `SHORT` / `HEDGE`）、一个置信度分桶（`HIGH` / `MEDIUM` / `LOW`），以及一条解释*为何*生成该信号的传导路径说明。
+**AI Market Implications** 面板（内部 id `market-implications`）将今日的情报和市场流转化为结构化的交易情景。每张卡片有一个方向（`LONG` / `SHORT` / `HEDGE`）、一个时间框架，以及一条解释*为何*生成该信号的传导路径说明。
+
+<Note>
+这些卡片是未评分的叙事情景。没有任何卡片会按市场价格结算，因此面板不显示置信度标签，卡片也不计入[预测准确度记分卡](https://www.worldmonitor.app/accuracy/)。生成器仍会在 API 负载中输出 `confidence` 字段，但面板不显示它。
+</Note>
 
 <Warning>
-面板标题带有常驻免责声明："AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research." — `src/components/MarketImplicationsPanel.ts` 中的 `DISCLAIMER` 常量。
+面板底部带有常驻免责声明："AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research." — 语言键 `components.marketImplications.disclaimer`。卡片上方另有一行说明，标明这些是未评分的叙事情景（`components.marketImplications.unscored`）。
 </Warning>
 
 ## 面板显示内容
 
-一个市场影响卡片列表。每张卡片显示：
+一行未评分说明，随后是市场影响卡片列表。每张卡片显示：
 
 - **方向** 徽章 — `LONG`（看涨）、`SHORT`（看跌）、`HEDGE`（中性/防御）。
-- **置信度** 徽章 — `HIGH` / `MEDIUM` / `LOW`。
+- **时间框架** 徽章 — 声明的时间跨度，例如 `1W` 或 `1M`。
 - **资产** — 代码或工具。
 - **理由** — 简短叙述段落。
 - **传导路径** — 从触发事件到指定资产的链路（`TransmissionNode[]`）。

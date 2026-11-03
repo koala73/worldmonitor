@@ -133,4 +133,17 @@ describe('NqPulsePanel overlapping refreshes', () => {
     expect(panel.getElement().querySelector('.panel-error-msg')).toBeNull();
     panel.destroy();
   });
+
+  it('shows an error when Safari reports the quote deadline as AbortError', async () => {
+    const panel = new NqPulsePanel();
+    mount(panel);
+    mockFetchMultipleStocks.mockRejectedValueOnce(new DOMException('Fetch is aborted', 'AbortError'));
+
+    expect(await panel.fetchData()).toBe(false);
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(panel.getElement().querySelector('.panel-error-state')).not.toBeNull();
+    expect(panel.getElement().querySelector('.panel-loading')).toBeNull();
+    panel.destroy();
+  });
 });

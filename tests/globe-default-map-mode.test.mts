@@ -60,7 +60,7 @@ describe('default map mode', () => {
     );
     assert.match(
       mapContainer,
-      /createDeckGLMap\(token: number\)[\s\S]*Initializing deck\.gl map \(desktop mode\)[\s\S]*await loadMapLibreCss\(\)[\s\S]*await import\('\.\/DeckGLMap'\)/,
+      /createDeckGLMap\(token: number\)[\s\S]*Initializing deck\.gl map \(desktop mode\)[\s\S]*await Promise\.all\(\[\s*loadMapLibreCss\(\),\s*import\('\.\/DeckGLMap'\),?\s*\]\)/,
       'DeckGL should be the primary non-globe desktop renderer and load its runtime on demand',
     );
     assert.match(
@@ -72,6 +72,16 @@ describe('default map mode', () => {
       mapContainer,
       /DeckGL initialization failed[\s\S]*Initializing SVG map \(DeckGL fallback mode\)/,
       'SVG should stay a DeckGL failure fallback, not the default 2D renderer',
+    );
+    assert.match(
+      mapContainer,
+      /onFatalError:\s*\(error\)\s*=>\s*this\.handleDeckGLRuntimeFailure\(token,\s*error\)/,
+      'DeckGL must wire mid-session MapLibre fatals into the SVG runtime fallback',
+    );
+    assert.match(
+      mapContainer,
+      /handleDeckGLRuntimeFailure[\s\S]*Initializing SVG map \(DeckGL runtime fallback\)/,
+      'DeckGL runtime fatals (e.g. GPUInitializationError on fallback recreate) must degrade to SVG',
     );
   });
 

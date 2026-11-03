@@ -152,6 +152,21 @@ export function canonicalQueryString(searchOrUrl: string | URL): string {
     .join('&');
 }
 
+/** Canonical query after the gateway router adds its exact rpc path echo. */
+export function canonicalGatewayQueryString(input: URL): string {
+  const url = new URL(input);
+  const pathSegments = url.pathname.split('/').filter(Boolean);
+  const lastSegment = pathSegments[pathSegments.length - 1] ?? '';
+  const rpcParams = url.searchParams.getAll('rpc');
+  if (rpcParams.some((value) => value === lastSegment)) {
+    url.searchParams.delete('rpc');
+    for (const value of rpcParams) {
+      if (value !== lastSegment) url.searchParams.append('rpc', value);
+    }
+  }
+  return canonicalQueryString(url);
+}
+
 /**
  * Build the HMAC payload string from request components. Both signer and
  * verifier MUST produce byte-identical strings here.
@@ -262,8 +277,12 @@ export async function signInternalMcpRequest(args: {
 
   const url = args.url instanceof URL ? args.url : new URL(args.url);
   const ts = Math.floor(args.now ?? Date.now() / 1000);
-  const queryHash = await sha256Hex(canonicalQueryString(url));
-  const bodyHash = await sha256Hex(await coerceBodyToString(args.body));
+  // Query and body are hashed independently; overlapping them removes a
+  // serialized await from every internal MCP request this signs.
+  const [queryHash, bodyHash] = await Promise.all([
+    sha256Hex(canonicalQueryString(url)),
+    coerceBodyToString(args.body).then((body) => sha256Hex(body)),
+  ]);
   const payload = buildHmacPayload({
     ts,
     method: args.method,
@@ -356,8 +375,10 @@ export interface VerifiedInternalMcpRequest {
  */
 async function timingSafeStringEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
-  const aHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(a)));
-  const bHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(b)));
+  const [aHash, bHash] = (await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ])).map((digest) => new Uint8Array(digest)) as [Uint8Array, Uint8Array];
   let diff = 0;
   for (let i = 0; i < aHash.length; i++) diff |= aHash[i]! ^ bHash[i]!;
   return diff === 0;
@@ -504,12 +525,6 @@ export async function verifyInternalMcpRequestDetailed(
   // ?rpc=<anything-else> still participates in the hash and breaks the
   // signature, so this is not a bypass vector: stripping the exact echo is
   // semantically identical to the router not having injected it.
-  const pathSegments = url.pathname.split('/').filter(Boolean);
-  const lastSegment = pathSegments[pathSegments.length - 1] ?? '';
-  const rpcParams = url.searchParams.getAll('rpc');
-  if (rpcParams.length > 0 && rpcParams.every((v) => v === lastSegment)) {
-    url.searchParams.delete('rpc');
-  }
 
   // Body must be cloned BEFORE reading so the downstream handler can still
   // read it — Web Fetch API contract: a body can only be consumed once on
@@ -525,8 +540,10 @@ export async function verifyInternalMcpRequestDetailed(
   // empty string → SHA-256(""), matching the signer's `coerceBodyToString`.
   const bodyAsString = bodyBytes.length === 0 ? '' : new TextDecoder().decode(bodyBytes);
 
-  const queryHash = await sha256Hex(canonicalQueryString(url));
-  const bodyHash = await sha256Hex(bodyAsString);
+  const [queryHash, bodyHash] = await Promise.all([
+    sha256Hex(canonicalGatewayQueryString(url)),
+    sha256Hex(bodyAsString),
+  ]);
 
   const expectedPayload = buildHmacPayload({
     ts,

@@ -107,8 +107,12 @@ cloud proxy because the local sidecar does not hold Railway seeds.
 ## ACLED conflict snapshot
 
 `GET /api/conflict/v1/list-acled-events` reads the Railway snapshot only; requests
-never fetch ACLED on demand. The producer targets the latest 30 days. Country and
-date filters cannot retrieve history outside the available snapshot.
+never fetch ACLED on demand. worldmonitor.app has no ACLED credentials, so the
+producer fills the snapshot with GDELT conflict articles instead of ACLED events.
+Those articles carry no coordinates and the route omits them, so on
+worldmonitor.app this route returns no events. A self-hosted deployment with ACLED
+credentials gets ACLED events from the last 30 days. Country and date filters
+cannot retrieve history outside the available snapshot.
 
 Omit `country`, `start`, and `end` (or use empty country and zero timestamps) for
 the full geographic snapshot. Filter by ISO alpha-2 country code or country name.

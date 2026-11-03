@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import middleware from '../middleware.ts';
+import middleware, { config as middlewareConfig } from '../middleware.ts';
 import {
   AGENT_NOT_FOUND_CONTENT_TYPE,
   AGENT_NOT_FOUND_INDEXES,
@@ -11,11 +11,14 @@ import {
   AGENT_NOT_FOUND_STATUS,
   HUMAN_NOT_FOUND_CONTENT_TYPE,
   buildAgentNotFoundMarkdown,
+  HUMAN_NOT_FOUND_SECTIONS,
   buildHumanNotFoundHtml,
   isKnownPublicPagePath,
   prefersAgentNotFound,
+  suggestNotFoundSection,
 } from '../src/config/agent-not-found.ts';
 import { CONTENT_CORPUS_PREFIXES } from '../scripts/discover-content-corpus-pages.mjs';
+import { indexableLandingPassthroughPrefixes } from '../shared/indexable-landing-locales.ts';
 
 const vercelConfig = JSON.parse(
   readFileSync(resolve(import.meta.dirname, '../vercel.json'), 'utf8'),
@@ -51,7 +54,10 @@ function call(
 function examplePathFromSource(source: string): string | null {
   if (source.includes('(?!')) return null;
   const path = source
-    .replace(/:[A-Za-z0-9_]+(\([^)]+\))?/g, 'x')
+    .replace(/:[A-Za-z0-9_]+(\([^)]+\))?/g, (_match, pattern: string | undefined) => {
+      const extension = pattern?.match(/\\\.([A-Za-z0-9]+)\)$/)?.[1];
+      return extension ? `x.${extension}` : 'x';
+    })
     .replace(/\*+/g, 'x');
   if (!path.startsWith('/')) return null;
   if (/\.[A-Za-z0-9]+$/.test(path)) return null;
@@ -137,17 +143,23 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
   });
 
   it('does not intercept known product routes or mutating methods', () => {
-    for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states']) {
+    for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states', ...indexableLandingPassthroughPrefixes()]) {
       assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must keep its vercel.json route`);
     }
     assert.equal(call('/some-path-that-does-not-exist', { method: 'POST', accept: '*/*' }), undefined);
   });
 
   it('404s leaked SPA guesses that used to soft-404 the dashboard (#6575, #6836)', async () => {
-    for (const path of ['/country-intel', '/security', '/trust']) {
+    for (const path of ['/country-intel', '/security']) {
       const res = call(path, { accept: '*/*' });
       assert.ok(res instanceof Response, `${path} must 404`);
       assert.equal(res.status, 404);
+    }
+  });
+
+  it('serves the /trust page (#9093), which used to be a leaked SPA guess', async () => {
+    for (const path of ['/trust', '/trust/', '/trust/review/']) {
+      assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must reach its static page`);
     }
   });
 
@@ -169,6 +181,16 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
       if (!isKnownPublicPagePath(example)) missed.push(`${source} (example ${example})`);
     }
     assert.deepEqual(missed, [], 'new vercel.json routes must be added to AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES');
+  });
+
+  it('keeps constrained static asset rewrites out of extensionless page inventory', () => {
+    const source = '/plugin/assets/boot-:attempt([0-9]+)/:asset([a-zA-Z0-9_.-]+\\.js)';
+    assert.equal(examplePathFromSource(source), null);
+    assert.equal(examplePathFromSource('/countries/:slug([a-z-]+)'), '/countries/x');
+    assert.equal(
+      new RegExp(`^${middlewareConfig.matcher[2]}$`).test('/plugin/assets/boot-1/market-fixture.js'),
+      false,
+    );
   });
 
   it('does not reintroduce a rewrite that would 200 the markdown 404 body', () => {
@@ -194,5 +216,54 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
       buildAgentNotFoundMarkdown('/missing').includes(AGENT_NOT_FOUND_INDEXES.llmsTxt),
       true,
     );
+  });
+});
+
+describe('human 404 guides a lost reader to a real page', () => {
+  it('suggests the section a mistyped or singular first segment was reaching for', () => {
+    const cases: Array<[string, string | null]> = [
+      ['/countri/iran', '/countries/'],
+      ['/country/iran', '/countries/'],
+      ['/crisis/sudan-conflict', '/crises/'],
+      ['/chokepoint/suez-canal', '/chokepoints/'],
+      ['/comparison/liveuamap', '/compare/'],
+      ['/documentation', '/docs/documentation'],
+      ['/blogs/some-post', '/blog/'],
+      ["/'to", null],
+      ['/zzzzzz', null],
+      [`/${'countries'.repeat(900)}`, null],
+      ['/', null],
+    ];
+    for (const [path, expected] of cases) {
+      assert.equal(suggestNotFoundSection(path)?.href ?? null, expected, path);
+    }
+  });
+
+  it('makes the likely destination the primary action, with the dashboard second', () => {
+    const body = buildHumanNotFoundHtml('/countri/iran');
+    assert.match(body, /<main\b/);
+    assert.match(body, /<nav aria-label="Primary">/);
+    assert.match(body, /<a class="cta" href="\/countries\/">Go to Countries/);
+    assert.match(body, /<a class="secondary" href="\/dashboard">/);
+    assert.match(buildHumanNotFoundHtml("/'to"), /<a class="cta" href="\/dashboard">Open the live dashboard/);
+    for (const section of HUMAN_NOT_FOUND_SECTIONS) {
+      assert.ok(body.includes(`href="${section.href}"`), section.href);
+      assert.ok(body.includes(section.description), section.label);
+    }
+  });
+
+  it('omits the suggestion when nothing is close, and never ships a script', () => {
+    const body = buildHumanNotFoundHtml("/'to");
+    assert.doesNotMatch(body, /Go to /);
+    assert.doesNotMatch(buildHumanNotFoundHtml(), /Go to /);
+    assert.doesNotMatch(body, /<script\b/i);
+    assert.match(body, /<meta name="robots" content="noindex">/);
+  });
+
+  it('links every section to its final URL, never through a redirect', () => {
+    const redirectSources = new Set(vercelConfig.redirects.map((rule) => rule.source));
+    for (const section of HUMAN_NOT_FOUND_SECTIONS) {
+      assert.ok(!redirectSources.has(section.href), `${section.href} is a redirect source`);
+    }
   });
 });

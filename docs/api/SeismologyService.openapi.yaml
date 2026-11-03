@@ -13,7 +13,7 @@ paths:
             tags:
                 - SeismologyService
             summary: ListEarthquakes
-            description: ListEarthquakes retrieves recent earthquakes from USGS and Earthquakes Canada (NRCan).
+            description: ListEarthquakes returns M4.5+ earthquakes from the past 7 days from USGS and Earthquakes Canada (NRCan), flagging quakes within 100 km of nuclear test sites.
             operationId: ListEarthquakes
             parameters:
                 - name: start

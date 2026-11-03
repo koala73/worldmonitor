@@ -54,7 +54,9 @@ const sampleHotspot: Hotspot = {
   keywords: ['e2e', 'hotspot'],
   level: 'high',
   location: 'E2E Zone',
-  description: 'Deterministic hotspot used for mobile popup QA.',
+  description: new URLSearchParams(window.location.search).has('long')
+    ? 'Deterministic hotspot used for popup scroll QA. '.repeat(60)
+    : 'Deterministic hotspot used for mobile popup QA.',
   agencies: ['E2E Agency'],
   status: 'monitoring',
 };

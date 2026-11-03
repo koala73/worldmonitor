@@ -1,9 +1,179 @@
 import type { Page, TestInfo } from '@playwright/test';
 import { test, expect, HYDRATED_MARKET } from './country-brief-fixtures';
-import { readFile } from 'node:fs/promises';
-import { installCountryBriefDesignData, installDecisionBriefData, installCommodityBriefData } from './country-brief-design-fixtures';
+import { captureImfPeriods, type ImfPeriodScenario } from './country-brief-fixtures';
+import { readFile, writeFile } from 'node:fs/promises';
+import { installCountryBriefDesignData } from './country-brief-design-fixtures';
+import type { CountrySignalOutcome } from '../shared/country-signal-observations';
 
-test.use({ trace: 'on', serviceWorkers: 'block' });
+const recording = process.env.CI ? 'on-first-retry' : 'retain-on-failure';
+
+for (const [language, width, label] of [['fr', 1280, 'Débloquez 90 jours avec Pro'], ['ar', 390, 'افتح سجل 90 يومًا مع Pro']] as const) {
+  test(`daily country history localizes ${language} at ${width}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/intelligence/v1/get-country-history?*', route => route.fulfill({ json: {
+      country: 'UA', requestedDays: 7, allowedDays: 7, effectiveDays: 7, returnedDays: 1,
+      upstreamUnavailable: false, stale: false, fetchedAt: Date.now(),
+      points: [{ date: '2026-10-19', capturedAt: Date.UTC(2026, 9, 19, 0, 30),
+        cii: { score: 62, version: 'v11', observedAt: Date.UTC(2026, 9, 19) },
+        resilience: { score: 47, version: 'v29:pc', observedAt: Date.UTC(2026, 9, 19) },
+        topEvents: [], keySignals: [], ciiVersionBreak: false, resilienceVersionBreak: false }],
+    } }));
+    await page.goto(`/dashboard?country=UA&expanded=1&lang=${language}`);
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    await panel.locator('[data-topic="security"]').click();
+    const history = page.locator('#cdp-section-history');
+    await history.scrollIntoViewIfNeeded();
+    await expect(history.locator('.panel-locked-cta')).toHaveText(label);
+    expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await expect(page.locator('html')).toHaveCSS('direction', language === 'ar' ? 'rtl' : 'ltr');
+    const path = testInfo.outputPath(`history-${language}-${width}.png`);
+    await history.screenshot({ path });
+    await testInfo.attach(language, { path, contentType: 'image/png' });
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`daily country history ${width} preserves gaps, event click-through and failure recovery`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize({ width, height: 900 });
+    let unavailable = true;
+    let reads = 0;
+    await page.route('**/api/intelligence/v1/get-country-history?*', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      expect(params.get('country')).toBe('UA');
+      expect(params.get('days')).toBe('7');
+      reads++;
+      await route.fulfill({ json: {
+        country: 'UA', requestedDays: 7, allowedDays: 7, effectiveDays: 7, returnedDays: 3,
+        upstreamUnavailable: unavailable, stale: false, fetchedAt: Date.now(),
+        points: [17, 18, 19].map((day, index) => ({
+          date: `2026-10-${day}`, capturedAt: Date.UTC(2026, 9, day, 0, 30),
+          cii: { score: 50 + index * 6, version: index === 2 ? 'v11' : 'v10', observedAt: Date.UTC(2026, 9, day) },
+          resilience: { score: 45 + index, version: 'v29:pc', observedAt: Date.UTC(2026, 9, day) },
+          topEvents: [{ title: `Controlled Ukraine reporting for October ${day}`, link: `https://example.com/ukraine-${day}`, source: 'Controlled publisher', category: 'politics' }],
+          keySignals: [], ciiVersionBreak: index === 2, resilienceVersionBreak: false,
+        })),
+      } });
+    });
+    await page.goto('/dashboard?country=UA&expanded=1');
+    await expectCountry(page);
+    const openHistory = async () => {
+      await page.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
+      await page.locator('#cdp-section-history').scrollIntoViewIfNeeded();
+    };
+    const captureHistory = async (state: string) => {
+      const path = testInfo.outputPath(`history-${state}-${width}.png`);
+      await page.locator('#cdp-section-history').screenshot({ path });
+      await testInfo.attach(state, { path, contentType: 'image/png' });
+    };
+    await openHistory();
+    const history = page.locator('#cdp-section-history');
+    await expect(history).toContainText('History is temporarily unavailable');
+    await captureHistory('unavailable');
+    unavailable = false;
+    await history.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect(history.locator('a[href="https://example.com/ukraine-19"]')).toBeVisible();
+    await expect(history).toContainText('Formula or observation gap');
+    await expect(history.locator('.panel-locked-cta')).toHaveText('Unlock 90 days with Pro');
+    await history.locator('svg circle.country-history-resilience').first().click();
+    await expect(history.locator('.country-history-detail')).toContainText('2026-10-17');
+    await expect(history.locator('a[href="https://example.com/ukraine-17"]')).toBeVisible();
+    await expect(history.locator('a[href="https://example.com/ukraine-17"]')).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(await history.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await history.locator('[data-history-date="2026-10-19"]').click();
+    await captureHistory('recovered');
+    expect(reads).toBe(2);
+    await page.reload();
+    await expectCountry(page);
+    await openHistory();
+    await expect(history.locator('.country-history-detail')).toContainText('2026-10-19');
+  });
+}
+
+for (const width of [1280, 390]) for (const addedIds of [0, 5]) {
+  test(`mixed-source sanctions attribution ${addedIds} added IDs ${width}`, async ({ page, countryBrief }, testInfo) => {
+    void countryBrief;
+    await page.setViewportSize({ width, height: 900 });
+    const title = `50 sanctions designations; ${addedIds} additions since prior snapshot`;
+    const entries = Array.from({ length: 50 }, (_, index) => ({
+      id: `${index < 25 ? 'SDN' : 'sema-ca'}:${index}`, name: `Controlled mixed-source entity ${index}`,
+      sourceLists: [index < 25 ? 'SDN' : 'sema-ca'], programs: [],
+      countryCodes: ['CN'], countryNames: ['China'], entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+      effectiveAt: '1577836800000', isNew: index >= 25 && index < 25 + addedIds,
+    }));
+    const sanctions = { entries, totalCount: 50, sdnCount: 25, consolidatedCount: 0,
+      semaCount: 25, newEntryCount: addedIds, vesselCount: 0, aircraftCount: 0,
+      countries: [{ countryCode: 'CN', countryName: 'China', entryCount: 50,
+        newEntryCount: addedIds, vesselCount: 0, aircraftCount: 0 }], programs: [],
+      fetchedAt: String(Date.now()), datasetDate: '1577836800000' };
+    let reads = 0;
+    let qualifiedReads = 0;
+    await page.route('**/api/intelligence/v1/get-country-signal-observations?*', async route => {
+      const params = new URL(route.request().url()).searchParams;
+      if (params.get('family') !== 'COUNTRY_SIGNAL_FAMILY_SANCTIONS') return route.fallback();
+      expect(params.get('country_code')).toBe('CN');
+      qualifiedReads++;
+      const snapshotAt = new Date(Number(sanctions.fetchedAt)).toISOString();
+      const outcome: CountrySignalOutcome = { countryCode: 'CN', family: 'sanctions', state: 'observed',
+        observations: [{ id: 'CN:sanctions', family: 'sanctions', type: 'sanctions_pressure', severity: 'high',
+          title, source: 'OFAC / Canada SEMA', eventAt: null, snapshotAt, timeBasis: 'snapshot' }],
+        snapshotAt, retrievedAt: snapshotAt, computedAt: null, observationWindow: null,
+        scope: 'Controlled country-coded sanctions observations', attribution: 'OFAC / Canada SEMA',
+        partial: false, sampleBeforeCountryFilter: false, reason: null,
+        matchedRows: 1, sampledRows: 1, omittedRows: 0 };
+      await route.fulfill({ json: { countryCode: 'CN', family: 'COUNTRY_SIGNAL_FAMILY_SANCTIONS', windowIndex: 0,
+        outcomeJson: JSON.stringify(outcome) } });
+    });
+    await page.route('**/api/bootstrap?*', async route => {
+      const keys = new URL(route.request().url()).searchParams.get('keys') ?? '';
+      if (!keys.split(',').includes('sanctionsPressure')) return route.fallback();
+      reads++;
+      await route.fulfill({ json: { data: { sanctionsPressure: sanctions }, missing: [] } });
+    });
+    await page.goto('/dashboard?layers=sanctions');
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-wm-initial-data-ready', 'true');
+    await expect.poll(() => reads).toBeGreaterThan(0);
+    await page.locator(width < 768 ? '[data-mobile-tab="search"]' : '#searchBtn').click();
+    await page.locator('.search-overlay .search-input').fill('China');
+    await page.locator('.search-result-item[data-index]').filter({ hasText: 'Brief: China' }).click();
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel.locator('.cdp-country-name')).toHaveText('China');
+    await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Security', exact: true }).click();
+    const signals = panel.locator('#cdp-section-signals');
+    await expect(signals).toContainText(title);
+    await expect(signals).not.toContainText('Qualified country military observations are loading.');
+    expect(qualifiedReads).toBeGreaterThan(0);
+    await expect(signals.locator('.cdp-signal-item')).toContainText('OFAC / Canada SEMA');
+    await expect(signals).not.toContainText('OFAC-linked');
+    await expect(signals).not.toContainText('new OFAC');
+    await signals.scrollIntoViewIfNeeded();
+    await expect(signals.getByText(title, { exact: true })).toBeVisible();
+    const clipped = await signals.getByText(title, { exact: true }).evaluate(el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1);
+    expect(clipped).toBe(false);
+    await signals.screenshot({ path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-signals.png`) });
+    await page.screenshot({ path: testInfo.outputPath(`controlled-mixed-source-${addedIds}-added-${width}-viewport.png`) });
+    await writeFile(testInfo.outputPath('sanctions-fixture.json'), JSON.stringify({ mode: 'controlled mixed OFAC / Canada SEMA through qualified RPC', addedIds, width, entries, title, reads, qualifiedReads }, null, 2));
+  });
+}
+
+for (const width of [1280, 390]) for (const scenario of ['mixed', 'legacy', 'partial', 'sparse'] as ImfPeriodScenario[]) {
+  test(`IMF annual website ${scenario} ${width}`, async ({ page, countryBrief }, testInfo) => {
+    countryBrief.imfScenario = scenario;
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/dashboard?country=CA&expanded=1');
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    await panel.getByRole('button', { name: 'Economy & trade', exact: true }).click();
+    await captureImfPeriods(page, panel.locator('[data-brief-section=economic]'), scenario, testInfo, 'website');
+    if (scenario === 'mixed') {
+      await expect(panel.locator('[data-brief-section=economic] .cdp-economic-label')).toHaveText(['Stock Index', 'Weekly Momentum', 'Instability Regime', 'Real GDP Growth', 'CPI Inflation', 'Unemployment']);
+    }
+  });
+}
+test.use({ trace: recording, video: recording, serviceWorkers: 'block' });
 
 function marketsCard(page: Page) {
   return page.locator('#country-deep-dive-panel .cdp-card').filter({
@@ -43,10 +213,39 @@ async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
 
+test('country shortcut keeps the dashboard canonical and shares a working dashboard URL', async ({ page, context, countryBrief }, testInfo) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/dashboard?c=UA');
+  const countryName = page.locator('#country-deep-dive-panel .cdp-country-name');
+  await expect(countryName).toHaveText('Ukraine');
+  await expect(countryName).toBeVisible();
+  await page.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'Economy & trade', exact: true }).click();
+  await expectMarkets(page);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.worldmonitor.app/dashboard');
+  await page.locator('#country-deep-dive-panel .cdp-share-btn').click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(new URL('/dashboard?c=UA', page.url()).href);
+  const sharedUrl = await page.evaluate(() => navigator.clipboard.readText());
+  expect(countryBrief.requests.length).toBeGreaterThan(0);
+  for (const [name, width, height] of [['desktop', 1280, 720], ['mobile', 390, 844]] as const) {
+    await page.setViewportSize({ width, height });
+    await page.locator('#country-deep-dive-panel .cdp-country-name').scrollIntoViewIfNeeded();
+    const path = testInfo.outputPath(`country-shortcut-${name}.png`);
+    await page.screenshot({ path });
+    await testInfo.attach(`country-shortcut-${name}`, { path, contentType: 'image/png' });
+  }
+  await page.goto(sharedUrl);
+  await expect(countryName).toHaveText('Ukraine');
+  await expect(countryName).toBeVisible();
+  expect(new URL(page.url()).pathname).toBe('/dashboard');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://www.worldmonitor.app/dashboard');
+});
+
 test('country brief renders exact RPC records and preserves the country after reload', async ({ page, countryBrief }, testInfo) => {
+  countryBrief.response.fetchedAt = Date.parse('2026-10-09T07:41:45.410Z');
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   await expectMarkets(page);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'rpc-before-reload');
 
@@ -61,14 +260,30 @@ test('country brief renders exact RPC records and preserves the country after re
   await page.reload();
   await expectCountry(page);
   await expectMarkets(page);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests.length).toBeGreaterThan(requestsBeforeReload);
   expect(countryBrief.requests.every(request => request.category === 'country:UA' && request.status === 200)).toBe(true);
   await screenshot(page, testInfo, 'rpc-after-reload');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-known-mobile');
+});
+
+test('country brief content is never subject to content-visibility skipping', async ({ page, countryBrief: _countryBrief }) => {
+  await page.goto('/dashboard?country=UA');
+  await expectCountry(page);
+  // The dashboard's `.panel-content { content-visibility: auto }` must not reach the
+  // brief: the panel slides in from off-screen, so its paint would depend on
+  // Chrome's off-screen judgement during the slide-in.
+  const content = page.locator('#deep-dive-content');
+  await expect(content).toHaveCSS('content-visibility', 'visible');
+  await page.locator('#deep-dive-close').click();
+  await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
+  await expect(content).toHaveCSS('content-visibility', 'visible');
 });
 
 test('country brief uses bootstrap fallback when the country index is unavailable', async ({ page, countryBrief }, testInfo) => {
   countryBrief.hydrate = true;
-  countryBrief.response = { markets: [], dataAvailable: false, fetchedAt: 0 };
+  countryBrief.response = { markets: [], dataAvailable: false, fetchedAt: Date.parse('2026-10-09T07:41:45.410Z') };
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   const card = marketsCard(page);
@@ -77,19 +292,25 @@ test('country brief uses bootstrap fallback when the country index is unavailabl
   await expect(card.locator('.prediction-source')).toHaveText(['Polymarket']);
   await expect(card.locator('.cdp-market-link')).toHaveAttribute('href', HYDRATED_MARKET.url);
   await expect(card.locator('.cdp-market-item')).toBeVisible();
+  await expect(card.locator('.cdp-section-source')).toHaveText('Snapshot time unavailable. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'bootstrap-fallback');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-fallback-mobile');
 });
 
 test('country brief honors an authoritative empty index over bootstrap fallback', async ({ page, countryBrief }, testInfo) => {
   countryBrief.hydrate = true;
-  countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: 0 };
+  countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: Date.parse('2026-10-09T07:41:45.410Z') };
   await page.goto('/dashboard?country=UA');
   await expectCountry(page);
   await expect(marketsCard(page).locator('.cdp-empty')).toHaveText('No active markets for this country.');
   await expect(marketsCard(page).locator('.cdp-market-item, .cdp-loading-inline')).toHaveCount(0);
+  await expect(marketsCard(page).locator('.cdp-section-source')).toHaveText('Market data snapshot: 2026-10-09T07:41:45.410Z. This time applies to the list. Quote times are not supplied.');
   expect(countryBrief.requests).toContainEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'authoritative-empty');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await screenshot(page, testInfo, 'website-clock-empty-mobile');
 });
 
 test('country brief recovers from a failed RPC when the user reloads', async ({ page, countryBrief }, testInfo) => {
@@ -107,6 +328,57 @@ test('country brief recovers from a failed RPC when the user reloads', async ({ 
   await expectMarkets(page);
   expect(countryBrief.requests[countryBrief.requests.length - 1]).toEqual({ method: 'GET', category: 'country:UA', pageSize: '5', status: 200 });
   await screenshot(page, testInfo, 'rpc-recovered');
+});
+
+// The brief panel is a lazy chunk (#4382). When it arrived after the deep
+// link's single debounced URL write, that write ran with no visible brief and
+// dropped ?country, and nothing rewrote it: the panel's state listener was
+// registered before the panel existed. Slow CI runners hit this as a flake.
+test('a country deep link keeps ?country when the brief chunk loads slowly, and closing drops it', async ({ page, countryBrief }) => {
+  void countryBrief;
+  // A later map move can rewrite the URL with the country once the brief is
+  // visible, which hides the drop; so check every write, not the final URL.
+  await page.addInitScript(() => {
+    const writes: string[] = [];
+    (window as unknown as { __wmUrlWrites: string[] }).__wmUrlWrites = writes;
+    const replaceState = history.replaceState.bind(history);
+    history.replaceState = (state, unused, url) => {
+      writes.push(String(url ?? location.href));
+      replaceState(state, unused, url);
+    };
+  });
+  // The chunk arrives after the first URL write; the signals arrive after
+  // showLoading(), which opens the panel under the placeholder `__loading__`.
+  for (const [module, delayMs] of [['CountryDeepDivePanel', 3000], ['signal-aggregator', 6000]] as const) {
+    await page.route(`**/src/**/${module}.ts*`, async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      await route.continue();
+    });
+  }
+  await page.goto('/dashboard?country=UA');
+  await expectCountry(page);
+  const writes = await page.evaluate(() => (window as unknown as { __wmUrlWrites: string[] }).__wmUrlWrites);
+  expect(writes.length).toBeGreaterThan(0);
+  for (const url of writes) expect(new URL(url, page.url()).searchParams.get('country'), url).toBe('UA');
+  await page.locator('#deep-dive-close').click();
+  await expect(page.locator('#country-deep-dive-panel')).toHaveAttribute('aria-hidden', 'true');
+  await expect.poll(() => new URL(page.url()).searchParams.get('country')).toBeNull();
+});
+
+test('a country deep link whose brief chunk fails to load drops ?country', async ({ page, countryBrief }) => {
+  void countryBrief;
+  await page.route('**/src/components/CountryDeepDivePanel.ts*', (route) => route.abort());
+  await page.goto('/dashboard?country=UA');
+  await expect(page.getByText('Country brief failed to open. Please try again.')).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get('country')).toBeNull();
+});
+
+test('a search deep link that also names a country opens search and keeps no pending ?country', async ({ page, countryBrief }) => {
+  void countryBrief;
+  await page.goto('/dashboard?q=ukraine&country=UA');
+  await expect(page.locator('.search-modal')).toBeVisible();
+  await expect(page.locator('#country-deep-dive-panel.active')).toHaveCount(0);
+  await expect.poll(() => new URL(page.url()).searchParams.get('country')).toBeNull();
 });
 
 test('US brief keeps late evidence, metric design and report data connected', async ({ page, countryBrief }, testInfo) => {
@@ -220,7 +492,7 @@ test('limited country coverage stays navigable and China keeps its own section',
   await expect(panel.locator('#cdp-section-factors')).toContainText('Five-factor scorecard unavailable.');
   await expect(panel.locator('.cdp-scorecard-score')).toHaveCount(0);
   await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'All sections', exact: true }).click();
-  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(23);
+  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(25);
   await expect(panel.locator('#cdp-section-facts')).not.toContainText('Washington');
   await expect(panel.locator('#cdp-section-assessment')).not.toContainText('UNITED STATES');
   for (const id of ['maritime', 'trade', 'scenario']) {
@@ -231,423 +503,59 @@ test('limited country coverage stays navigable and China keeps its own section',
   await expect(panel.locator('#cdp-section-housing')).toBeHidden();
   await expect(panel.locator('#cdp-section-assessment')).toBeVisible();
   await panel.getByRole('button', { name: 'Full brief', exact: true }).click();
-  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(23);
+  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(25);
   await expect(panel.locator('#cdp-section-housing')).toBeVisible();
   await page.goto('/dashboard?country=CN&expanded=1');
   await expect(panel.locator('.cdp-country-name')).toHaveText('China');
   await expect(panel.locator('#cdp-section-china')).toBeVisible();
   await expect(panel.locator('.cdp-scorecard-score')).toHaveCount(0);
   await panel.getByRole('navigation', { name: 'Country topics' }).getByRole('button', { name: 'All sections', exact: true }).click();
-  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(24);
+  await expect(panel.locator('[data-brief-section]:visible')).toHaveCount(26);
   await testInfo.attach('china-sections', { body: await page.screenshot({ path: testInfo.outputPath('china-sections.png') }), contentType: 'image/png' });
   expect(data.countriesRequested).toContain('LS');
   expect(data.countriesRequested).toContain('CN');
 });
 
-for (const mobile of [false, true]) {
-  test(`operational worksheet ${mobile ? 'mobile' : 'desktop'} edits day 8/day 10 and imports actual downloads`, async ({ page, countryBrief }, testInfo) => {
-    void countryBrief;
-    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
-    const state = await installDecisionBriefData(page);
-    await page.goto(`/dashboard?country=DE${mobile ? '' : '&expanded=1'}`);
-    const panel = page.locator('#country-deep-dive-panel');
-    await expect(panel).toHaveAttribute('aria-hidden', 'false');
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
-    const form = output.getByRole('region', { name: 'Operational what-if worksheet', exact: true });
-    const briefFont = await panel.locator('.cdp-shell').evaluate(element => getComputedStyle(element).fontFamily);
-    await expect(form).toHaveCSS('font-family', briefFont);
-    await expect(form.locator('.operational-summary')).toContainText('Baseline first gap: Day 8. Alternative first gap: Day 8.');
-    await expect(form).toContainText('Labeled example');
-    expect(state.requests).toHaveLength(0);
-    await form.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: testInfo.outputPath('worksheet-example.png'), fullPage: true });
-    await form.getByRole('button', { name: 'Add alternative delivery', exact: true }).click();
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
-    await form.getByLabel('Alternative delivery date', { exact: true }).fill('2026-09-17');
-    await form.getByLabel('Alternative delivery quantity', { exact: true }).fill('40');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await expect(form.locator('[data-day="8"] td')).toHaveText(['0', '20', '0', '20', '40', '20', '20', '0']);
-    await expect(form.locator('[data-day="10"] td')).toHaveText(['0', '20', '0', '20', '0', '20', '0', '20']);
-    await expect(form).toContainText('Delivery cost comparison unavailable');
-    await form.locator(mobile ? '.operational-result' : '.operational-header').evaluate(element => element.scrollIntoView({ block: 'start' }));
-    await page.screenshot({ path: testInfo.outputPath('worksheet-day10.png'), fullPage: true });
-    const event = page.waitForEvent('download');
-    await form.getByRole('button', { name: 'Export worksheet JSON' }).click();
-    const download = await event;
-    const worksheetPath = testInfo.outputPath(download.suggestedFilename());
-    await download.saveAs(worksheetPath);
-    const worksheet = JSON.parse(await readFile(worksheetPath, 'utf8'));
-    expect(worksheet.baseline.days.map((day: { unmetDemand: number }) => day.unmetDemand)).toEqual([0,0,0,0,0,0,0,20,20,20]);
-    expect(worksheet.alternative.days.map((day: { unmetDemand: number }) => day.unmetDemand)).toEqual([0,0,0,0,0,0,0,0,0,20]);
-    await form.getByLabel('Alternative delivery date', { exact: true }).fill('2026-09-18');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 8');
-    await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles(worksheetPath);
-    await expect(form).toContainText('Worksheet imported');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{') });
-    await expect(form).toContainText('Import rejected');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles({ name: 'large.json', mimeType: 'application/json', buffer: Buffer.from(' '.repeat(65537)) });
-    await expect(form).toContainText('64 KiB');
-    await output.getByRole('button', { name: 'Capture / refresh both' }).click();
-    await expect(output.getByRole('status')).toContainText('Captured.');
-    const paper = output.locator('.cdp-decision-paper');
-    await expect(paper.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    const preview = JSON.parse(await paper.locator('#decision-brief-snapshot').textContent() ?? 'null');
-    expect(preview.operationalWorksheet).toEqual(worksheet);
-    for (const format of ['HTML', 'JSON']) {
-      const event = page.waitForEvent('download');
-      await output.getByRole('button', { name: `Download decision ${format}`, exact: true }).click();
-      const download = await event;
-      const path = testInfo.outputPath(download.suggestedFilename());
-      await download.saveAs(path);
-      const contents = await readFile(path, 'utf8');
-      if (format === 'JSON') expect(JSON.parse(contents)).toEqual(preview);
-      else {
-        const exported = await page.context().newPage();
-        await exported.route('http://worksheet-export.test/', route => route.fulfill({ body: contents, contentType: 'text/html' }));
-        await exported.goto('http://worksheet-export.test/');
-        expect(JSON.parse(await exported.locator('#decision-brief-snapshot').textContent() ?? 'null')).toEqual(preview);
-        await expect(exported.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-        await expect(exported.locator('a[href]').first()).toHaveAttribute('href', /https:/);
-        await exported.screenshot({ path: testInfo.outputPath('worksheet-export.png'), fullPage: true });
-        await exported.close();
-      }
+test('country report export keeps safe links and removes unsafe or malformed URLs', async ({ page, countryBrief }, testInfo) => {
+  countryBrief.response = { markets: [], dataAvailable: true, fetchedAt: 0 };
+  await page.goto('/dashboard?country=UA&expanded=1');
+  await expectCountry(page);
+  await marketsCard(page).evaluate(card => {
+    const fixture = document.createElement('div'); fixture.className = 'export-url-fixture';
+    const heading = document.createElement('h3'); heading.id = 'fixture-evidence'; heading.textContent = 'Controlled export link fixtures';
+    fixture.append(heading);
+    for (const [label, href] of [['Fragment', '#fixture-evidence'], ['Web source', 'https://example.com/evidence?a=1&b=2'],
+      ['Relative source', '/sources'], ['Unsafe scheme', 'javascript:void(0)'], ['Data scheme', 'data:text/html,fixture'],
+      ['Malformed URL', 'http://[']]) {
+      const row = document.createElement('p');
+      const anchor = document.createElement('a'); anchor.textContent = label!; anchor.setAttribute('href', href!);
+      row.append(anchor); fixture.append(row);
     }
-    await form.locator('.operational-summary').scrollIntoViewIfNeeded();
-    expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    card.append(fixture);
   });
-
-  test(`operational worksheet ${mobile ? 'mobile' : 'desktop'} rejects invalid inputs and retains reopened drafts`, async ({ page, countryBrief }, testInfo) => {
-    void countryBrief;
-    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
-    await installDecisionBriefData(page);
-    await page.goto(`/dashboard?country=DE${mobile ? '' : '&expanded=1'}`);
-    const panel = page.locator('#country-deep-dive-panel');
-    await expect(panel).toHaveAttribute('aria-hidden', 'false');
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
-    const form = output.getByRole('region', { name: 'Operational what-if worksheet', exact: true });
-    const worksheetFile = {
-      name: 'recovery-worksheet.json', mimeType: 'application/json',
-      buffer: Buffer.from(JSON.stringify({
-        schema: 'worldmonitor-operational-worksheet/v1',
-        input: {
-          operation: 'Recovery example', basis: 'user', unit: 'units',
-          startDate: '2026-09-10', horizonDays: 10, startingStock: 100, dailyDemand: 20,
-          deliveries: [{ date: '2026-09-13', quantity: 40, unit: 'units', costUsd: null }],
-          alternativeDeliveries: [{ date: '2026-09-17', quantity: 40, unit: 'units', costUsd: null }],
-          alternativeDailyDemand: null,
-        },
-      })),
-    };
-    await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles(worksheetFile);
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await output.getByRole('button', { name: 'Capture / refresh both' }).click();
-    await expect(output.getByRole('status')).toContainText('Captured.');
-    const paper = output.locator('.cdp-decision-paper');
-    await form.getByLabel('Starting usable stock', { exact: true }).fill('');
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(paper).toContainText('Operational worksheet incomplete or invalid');
-    await expect(paper.locator('.operational-result')).toHaveCount(0);
-    const invalidEvent = page.waitForEvent('download');
-    await output.getByRole('button', { name: 'Download decision JSON' }).click();
-    const invalidDownload = await invalidEvent;
-    const invalidPath = testInfo.outputPath('incomplete-decision.json');
-    await invalidDownload.saveAs(invalidPath);
-    expect(JSON.parse(await readFile(invalidPath, 'utf8')).operationalWorksheet).toBeNull();
-    await form.getByLabel('Import worksheet JSON', { exact: true }).setInputFiles(worksheetFile);
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true }).fill('10');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
-    const alternativeDemand = form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true });
-    await alternativeDemand.fill('');
-    await alternativeDemand.press('e');
-    expect(await alternativeDemand.evaluate((field: HTMLInputElement) => field.validity.badInput)).toBe(true);
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
-    await expect(paper.locator('.operational-result')).toHaveCount(0);
-    expect(JSON.parse(await paper.locator('#decision-brief-snapshot').textContent() ?? 'null').operationalWorksheet).toBeNull();
-    await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
-    await alternativeDemand.fill('10');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
-    await alternativeDemand.fill('');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: Day 10');
-    await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeEnabled();
-    await alternativeDemand.fill('10');
-    await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    await expect(form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true })).toHaveValue('10');
-    await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
-    await form.getByLabel('Daily demand', { exact: true }).fill('');
-    await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    await expect(form.getByLabel('Daily demand', { exact: true })).toHaveValue('');
-    await expect(form.locator('.operational-result')).toHaveCount(0);
-    await expect(form).toContainText('Daily demand is required');
-  });
-}
-
-
-for (const mobile of [false, true]) {
-  test(`decision brief ${mobile ? 'mobile' : 'desktop'} preserves evidence and actions in actual downloads`, async ({ page, countryBrief }, testInfo) => {
-    void countryBrief;
-    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
-    const state = await installDecisionBriefData(page);
-    await page.goto('/dashboard?country=DE');
-    const panel = page.locator('#country-deep-dive-panel');
-    await expect(panel).toHaveAttribute('aria-hidden', 'false');
-    await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-    const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
-    await expect(output).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('decision-before.png') });
-    for (const mode of ['ready', 'missing', 'mismatch'] as const) {
-      state.mode = mode;
-      await output.getByRole('button', { name: 'Capture / refresh both' }).click();
-      await expect(output.getByRole('status')).toContainText('Captured.');
-      const paper = output.locator('.cdp-decision-paper');
-      await expect(paper).toContainText(mode === 'missing' ? 'Recover recorded LNG imports' : "Compare Germany's supply obligations and alternative origins");
-      if (mode !== 'missing') {
-        await expect(paper).toContainText('6,197.7 TJ');
-        await expect(paper).toContainText('12,395.4 TJ');
-        await expect(paper).toContainText('1.3 %');
-        await expect(paper).toContainText('2.7 %');
-        await expect(paper).toContainText('2025-01-02');
-      }
-      if (mode === 'mismatch') await expect(paper.locator('.cdp-decision-comparison')).toContainText('Numeric delta withheld');
-      const preview = JSON.parse(await paper.locator('#decision-brief-snapshot').textContent() ?? 'null');
-      const files: Record<string, string> = {};
-      for (const format of ['HTML', 'JSON']) {
-        const event = page.waitForEvent('download');
-        await output.getByRole('button', { name: `Download decision ${format}`, exact: true }).click();
-        const download = await event;
-        const path = testInfo.outputPath(`${mode}-${download.suggestedFilename()}`);
-        await download.saveAs(path);
-        files[format] = await readFile(path, 'utf8');
-        await testInfo.attach(`${mode}-${format}`, { path, contentType: format === 'HTML' ? 'text/html' : 'application/json' });
-      }
-      expect(JSON.parse(files.JSON!)).toEqual(preview);
-      const exported = await page.context().newPage();
-      await exported.route('http://decision-export.test/', route => route.fulfill({ body: files.HTML!, contentType: 'text/html' }));
-      await exported.goto('http://decision-export.test/');
-      expect(JSON.parse(await exported.locator('#decision-brief-snapshot').textContent() ?? 'null')).toEqual(preview);
-      await expect(exported.locator('.cdp-decision-action')).toHaveText(preview.action.text);
-      await expect(exported.locator('body')).toContainText(preview.action.constraint);
-      await expect(exported.locator('body')).toContainText(preview.action.trigger);
-      for (const ref of preview.action.references) await expect(exported.locator('body')).toContainText(ref);
-      await exported.screenshot({ path: testInfo.outputPath(`${mode}-export.png`), fullPage: true });
-      await exported.close();
-      await paper.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: testInfo.outputPath(`${mode}-preview.png`) });
-      expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-    }
-    expect(state.requests).toHaveLength(6);
-  });
-}
-
-test('decision brief request failures recover and a second country uses its own evidence', async ({ page, countryBrief }) => {
-  void countryBrief;
-  const state = await installDecisionBriefData(page);
-  await page.goto('/dashboard?country=JP');
   const panel = page.locator('#country-deep-dive-panel');
-  await expect(panel).toHaveAttribute('aria-hidden', 'false');
-  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-  const output = panel.locator('.cdp-output');
-  for (const mode of ['denied', 'error'] as const) {
-    state.mode = mode;
-    await output.getByRole('button', { name: 'Capture / refresh both' }).click();
-    await expect(output.getByRole('status')).toContainText('Check your access and retry');
-    await expect(output.getByRole('button', { name: 'Download decision JSON' })).toBeDisabled();
-  }
-  state.mode = 'ready';
-  await output.getByRole('button', { name: 'Capture / refresh both' }).click();
-  await expect(output.locator('.cdp-decision-paper')).toContainText("Compare Japan's supply obligations");
-  await expect(output.locator('.cdp-decision-paper')).toContainText('15,000.0 TJ');
-  await expect(output.locator('.cdp-decision-paper')).not.toContainText('Germany');
-  await output.getByLabel('Comparison disruption').selectOption('75');
-  await expect(output.getByRole('button', { name: 'Download decision JSON' })).toBeDisabled();
-  await expect(output.getByRole('status')).toContainText('Selection changed');
-  await output.getByRole('button', { name: 'Capture / refresh both' }).click();
-  await expect(output.locator('.cdp-decision-paper')).toContainText('22,500.0 TJ');
-  await output.getByLabel('Fuel', { exact: true }).selectOption('oil');
-  await output.getByRole('button', { name: 'Capture / refresh both' }).click();
-  await expect(output.locator('.cdp-decision-paper')).toContainText('100.0 kbd');
-  await expect(output.locator('.cdp-decision-comparison')).toContainText('Numeric delta withheld');
-  await expect(output.locator('.cdp-decision-paper')).toContainText('observed unknown');
-});
-
-test('decision brief rejects anonymous entry and ignores delayed responses after close and country change', async ({ page, countryBrief }) => {
-  void countryBrief;
-  await page.goto('/dashboard?country=DE');
-  const panel = page.locator('#country-deep-dive-panel');
-  await expect(panel).toHaveAttribute('aria-hidden', 'false');
-  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-  await expect(page.getByText('Decision brief is available on Pro.', { exact: true })).toBeVisible();
-  await expect(panel.locator('.cdp-output')).toHaveCount(0);
-  await installDecisionBriefData(page);
-  await page.reload();
-  await expect(panel).toHaveAttribute('aria-hidden', 'false');
-  let release!: () => void;
-  const held = new Promise<void>(resolve => { release = resolve; });
-  let pending = 0;
-  await page.route('**/api/intelligence/v1/compute-energy-shock*', async route => {
-    pending++;
-    await held;
-    await route.fallback();
-  });
-  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-  await panel.getByRole('button', { name: 'Capture / refresh both' }).click();
-  await expect.poll(() => pending).toBe(2);
-  await panel.locator('#deep-dive-close').click();
-  await expect(panel).toHaveAttribute('aria-hidden', 'true');
-  await page.locator('#searchBtn').click();
-  await page.locator('.search-modal .search-input').fill('Japan');
-  await page.locator('.search-result-item[data-index]').filter({ hasText: 'Brief: Japan' }).click();
-  await expect(panel.locator('.cdp-country-name')).toHaveText('Japan');
-  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-  // Positive control: a real, live, freshly-built output is mounted and waiting for a
-  // capture before the stale Germany responses land. Without this the checks below
-  // would also hold against an empty panel, which is what made them vacuous.
-  await expect(panel.locator('.cdp-output')).toHaveCount(1);
-  await expect(panel.locator('.cdp-output')).toContainText('Select an energy disruption');
-  release();
-  await expect(panel.locator('.cdp-output')).not.toContainText('Germany');
-  await expect(panel.locator('.cdp-decision-paper')).toHaveCount(0);
-  await expect(panel.getByRole('button', { name: 'Download decision JSON' })).toBeDisabled();
-});
-
-// Browser-level coverage for invalidation while a capture is in flight: the selection
-// change aborts the request, so the paper must clear, both exports must stay disabled,
-// and Capture must come back enabled (it is disabled for the duration of a capture, and
-// the in-flight handler declines to re-enable a button it no longer owns).
-//
-// This does NOT pin the stale-response generation guard, and no browser test can: the
-// abort rejects the fetch, so the success path is never reached. That guard is pinned by
-// the mocked-load case in tests/dom/decision-brief.test.mts ("ignores late responses
-// after selection changes, close and panel abort"), which resolves despite the abort —
-// verified red by deleting `if (signal.aborted || current !== generation) return;`.
-test('decision brief clears and stays usable when a selection change aborts a capture', async ({ page, countryBrief }) => {
-  void countryBrief;
-  await installDecisionBriefData(page);
-  await page.goto('/dashboard?country=DE');
-  const panel = page.locator('#country-deep-dive-panel');
-  await expect(panel).toHaveAttribute('aria-hidden', 'false');
-  let release!: () => void;
-  const held = new Promise<void>(resolve => { release = resolve; });
-  let pending = 0;
-  await page.route('**/api/intelligence/v1/compute-energy-shock*', async route => {
-    pending++;
-    await held;
-    await route.fallback();
-  });
-  await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
-  await panel.getByRole('button', { name: 'Capture / refresh both' }).click();
-  await expect.poll(() => pending).toBe(2);
-  // Invalidate while the capture is still in flight; the output stays in the document,
-  // unlike the close/country-change path above which detaches it outright.
-  await panel.getByLabel('Comparison disruption').selectOption('75');
-  await expect(panel.locator('.cdp-output')).toContainText('Selection changed');
-  release();
-  await expect(panel.locator('.cdp-decision-paper')).toHaveCount(0);
-  await expect(panel.locator('.cdp-output')).toContainText('Selection changed');
-  await expect(panel.getByRole('button', { name: 'Download decision HTML' })).toBeDisabled();
-  await expect(panel.getByRole('button', { name: 'Download decision JSON' })).toBeDisabled();
-  // The aborted capture must leave the control usable, not permanently disabled.
-  await expect(panel.getByRole('button', { name: 'Capture / refresh both' })).toBeEnabled();
-});
-
-for (const { mobile, light } of [{ mobile: false, light: false }, { mobile: true, light: false }, { mobile: false, light: true }, { mobile: true, light: true }]) test(`commodity decision brief ${mobile ? 'mobile' : 'desktop'} ${light ? 'light' : 'dark'} captures selection and actual exports`, async ({ page, countryBrief }, testInfo) => {
-  void countryBrief;
-  if (mobile) await page.setViewportSize({ width: 390, height: 844 });
-  await installCommodityBriefData(page);
-  await page.addInitScript(theme => localStorage.setItem('worldmonitor-theme', theme), light ? 'light' : 'dark');
-  await page.goto(`/dashboard?country=JP${light && !mobile ? '&expanded=1' : ''}`);
-  const panel = page.locator('#country-deep-dive-panel');
-  await expect(panel).toHaveAttribute('aria-hidden', 'false');
-  await panel.getByRole('button', { name: 'Commodity decision brief', exact: true }).click();
-  const output = panel.getByRole('region', { name: 'Commodity decision brief', exact: true });
-  await expect(output.getByLabel('Commodity / product', { exact: true })).toHaveValue('helium');
-  await page.screenshot({ path: testInfo.outputPath('before.png') });
-  for (const commodity of ['helium', 'wheat', 'lithium']) {
-    await output.getByLabel('Commodity / product', { exact: true }).selectOption(commodity);
-    await expect(output.getByRole('button', { name: 'Download decision JSON' })).toBeDisabled();
-    await output.getByRole('button', { name: 'Capture commodity comparison' }).click();
-    await expect(output.getByRole('status')).toContainText('Captured.');
-    const paper = output.locator('.cdp-commodity-paper');
-    expect(await paper.evaluate(el => getComputedStyle(el).color)).toBe(
-      await output.evaluate(el => getComputedStyle(el).color),
-    );
-    expect(await paper.evaluate(el => getComputedStyle(el).getPropertyValue('--panel-bg').trim())).toBe(
-      await output.evaluate(el => getComputedStyle(el).getPropertyValue('--panel-bg').trim()),
-    );
-    const snapshot = JSON.parse(await paper.locator('#commodity-brief-snapshot').textContent() ?? 'null');
-    if (commodity === 'helium') {
-      await expect(paper).toContainText('hospital helium supplier share');
-      await expect(paper.locator('[data-origin="QA"]')).toContainText('Strait of Hormuz');
-      expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'QA').routeState).toBe('exposed');
-      expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'US').routeState).toBe('unknown');
-      await expect(paper.locator('[data-origin="US"]')).toContainText('39.2%');
-      await expect(paper).toContainText('999 (Unknown partner');
-      // U5: the hub badge sits outside the collapsed details, so it is visible
-      // in the preview; the depth rows are asserted on the open export below.
-      await expect(paper.locator('[data-origin="NL"]')).toContainText('Possible transit hub');
-      await expect(paper.locator('[data-origin="US"]')).not.toContainText('Possible transit hub');
-      expect(snapshot.candidates.find((c: { origin: string }) => c.origin === 'NL').transitHub).toBe(true);
-      // NL is the only origin whose modeled route avoids the blocked chokepoint,
-      // so the hub preference (which never crosses route-state tiers) cannot
-      // skip it: the action names NL and says the flag was unavoidable there.
-      expect(snapshot.action.text).toContain("Validate NL's");
-      expect(snapshot.action.text).toContain('Every eligible origin with this route state is flagged a possible transit hub');
-      const details = paper.locator('[data-origin="QA"] details');
-      await details.locator('summary').focus();
-      await details.locator('summary').press('Enter');
-      await expect(details).toHaveAttribute('open', '');
-      expect(await details.locator('summary').evaluate(el => getComputedStyle(el).outlineStyle)).not.toBe('none');
-      await expect(details).toContainText('UN Comtrade bilateral HS4');
-      await details.locator('summary').click();
-    } else if (commodity === 'wheat') {
-      expect(snapshot.candidates.map((c: { origin: string }) => c.origin)).toEqual(['AU']);
-      await expect(paper).toContainText('2023');
-      await expect(paper).not.toContainText('hospital');
-    } else {
-      await expect(paper).toContainText('No recorded HS 2836 bilateral product evidence');
-      await expect(paper).toContainText('Share coverage is unknown: no product denominator is available');
-    }
-    const files: Record<string, string> = {};
-    for (const format of ['HTML', 'JSON']) {
-      const event = page.waitForEvent('download');
-      await output.getByRole('button', { name: `Download decision ${format}`, exact: true }).click();
-      const download = await event;
-      const path = testInfo.outputPath(`${commodity}-${download.suggestedFilename()}`);
-      await download.saveAs(path); files[format] = await readFile(path, 'utf8');
-    }
-    expect(JSON.parse(files.JSON!)).toEqual(snapshot);
-    const exported = await page.context().newPage();
-    await exported.route('http://commodity-export.test/', route => route.fulfill({ body: files.HTML!, contentType: 'text/html' }));
-    await exported.goto('http://commodity-export.test/');
-    expect(JSON.parse(await exported.locator('#commodity-brief-snapshot').textContent() ?? 'null')).toEqual(snapshot);
-    await expect(exported.locator('.cdp-decision-action')).toHaveText(snapshot.action.text);
-    await expect(exported.locator('body')).toContainText(snapshot.action.constraint);
-    await expect(exported.locator('body')).toContainText(snapshot.action.trigger);
-    if (commodity === 'helium') {
-      // Export details are open, so the per-origin evidence rows are readable.
-      await expect(exported.locator('[data-origin="US"]')).toContainText('839 kg (estimated)');
-      await expect(exported.locator('[data-origin="US"]')).toContainText('$1.5B world exports of HS 2804, rank 2 of 118 reporters filing 2024');
-      await expect(exported.locator('body')).toContainText('22 reporters whose newest HS 2804 filing is older are not ranked');
-      await expect(exported.locator('[data-origin="US"]')).toContainText('46.2% of world mine output (USGS MCS)');
-      await expect(exported.locator('[data-origin="NL"]')).toContainText('Volume not reported');
-      await expect(exported.locator('[data-origin="NL"]')).toContainText('Supplier scale unavailable');
-      await expect(exported.locator('body')).toContainText('39 omitted holding 3.1% combined');
-    }
-    await exported.screenshot({ path: testInfo.outputPath(`${commodity}-export.png`), fullPage: true });
-    await exported.close();
-    await panel.locator('.panel-content').evaluate(el => { el.scrollTop = 0; });
-    await page.screenshot({ path: testInfo.outputPath(`${commodity}-preview.png`) });
-    expect(await output.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-  }
+  await panel.getByRole('button', { name: 'Export report ↗', exact: true }).click();
+  const fixture = panel.locator('.cdp-output-paper .export-url-fixture');
+  await expect(fixture.locator('a[href]')).toHaveCount(3);
+  await expect(fixture.getByText('Fragment', { exact: true })).toHaveAttribute('href', '#export-fixture-evidence');
+  await expect(fixture.getByText('Web source', { exact: true })).toHaveAttribute('href', 'https://example.com/evidence?a=1&b=2');
+  await fixture.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('export-url-policy-preview.png') });
+  const event = page.waitForEvent('download');
+  await panel.getByRole('button', { name: 'Download report HTML', exact: true }).click();
+  const download = await event;
+  const path = testInfo.outputPath(download.suggestedFilename());
+  await download.saveAs(path);
+  const html = await readFile(path, 'utf8');
+  const exported = await page.context().newPage();
+  await exported.route('http://brief-export.test/', route => route.fulfill({ body: html, contentType: 'text/html' }));
+  await exported.goto('http://brief-export.test/', { waitUntil: 'domcontentloaded' });
+  const saved = exported.locator('.export-url-fixture');
+  await expect(saved.locator('a[href]')).toHaveCount(3);
+  await expect(saved.locator('a:not([href])')).toHaveText(['Unsafe scheme', 'Data scheme', 'Malformed URL']);
+  await expect(saved.getByText('Relative source', { exact: true })).toHaveAttribute('href', 'https://worldmonitor.app/sources');
+  await expect(exported.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute('content', "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; base-uri 'none'; form-action 'none'");
+  await saved.scrollIntoViewIfNeeded();
+  await exported.screenshot({ path: testInfo.outputPath('export-url-policy-downloaded.png') });
+  await exported.close();
 });

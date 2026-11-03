@@ -12,6 +12,7 @@
 //   (useful for identifying imaging windows after events)
 
 import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
+import { normalizeSatelliteSnapshot } from '../../shared/intelligence-snapshots.js';
 
 import type { SatRec } from 'satellite.js';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
@@ -64,6 +65,9 @@ export interface SatRecEntry {
 let cachedData: SatelliteTLE[] | null = null;
 let cachedAt = 0;
 const CACHE_TTL = 10 * 60 * 1000;
+// Last-good TLEs are retained through failures for at most an hour; older
+// orbits are cleared rather than propagated as current.
+const STALE_MAX = 60 * 60 * 1000;
 
 let failures = 0;
 let cooldownUntil = 0;
@@ -72,6 +76,7 @@ const COOLDOWN_MS = 10 * 60 * 1000;
 
 export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   const now = Date.now();
+  if (cachedData && now - cachedAt >= STALE_MAX) cachedData = null;
   if (now < cooldownUntil) return cachedData;
   if (cachedData && now - cachedAt < CACHE_TTL) return cachedData;
 
@@ -84,19 +89,23 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
     } finally {
       clearTimeout(timeoutId);
     }
+    // Invalid TLE records are dropped; a malformed or all-invalid response is
+    // a failure, never a confirmed-empty sky.
+    const snapshot = normalizeSatelliteSnapshot(resp);
+    if (!snapshot) throw new Error('Satellite snapshot unavailable');
     // Proto returns `id` (the NORAD identifier); local SatelliteTLE uses `noradId`.
     // `alt`/`velocity`/`inclination` in the proto are unused by the propagation
     // client — we compute them ourselves from the TLE via satellite.js.
-    const satellites: SatelliteTLE[] = (resp.satellites ?? []).map((s) => ({
-      noradId: s.id,
+    const satellites: SatelliteTLE[] = snapshot.satellites.map((s) => ({
+      noradId: String(s.id || s.noradId),
       name: s.name,
       line1: s.line1,
       line2: s.line2,
-      type: s.type,
-      country: s.country,
+      type: s.type ?? '',
+      country: s.country ?? '',
     }));
     cachedData = satellites;
-    cachedAt = now;
+    cachedAt = Date.now();
     failures = 0;
     return cachedData;
   } catch {
@@ -104,7 +113,7 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
     if (failures >= MAX_FAILURES) {
       cooldownUntil = now + COOLDOWN_MS;
     }
-    return cachedData;
+    return cachedData && Date.now() - cachedAt < STALE_MAX ? cachedData : null;
   }
 }
 

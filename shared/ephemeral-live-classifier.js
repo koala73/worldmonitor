@@ -12,6 +12,30 @@
 
 const WATCH_LIVE_PREFIX_RE = /^\s*(?:watch\s+live|watch\s*:\s*live)\b[\s:;\-–—]*/i;
 const WATCH_PREFIX_WITH_LIVE_RE = /^\s*watch\s*:\s*.*\blive\b/i;
+const MAX_CLASSIFIER_TITLE = 1_000;
+
+function isClassifierSpace(code) {
+  return code === 32 || code === 9 || code === 10 || code === 13 || code === 12 || code === 11
+    || code === 0xa0 || code === 0x1680 || code === 0x2028 || code === 0x2029
+    || code === 0x202f || code === 0x205f || code === 0x3000 || code === 0xfeff
+    || (code >= 0x2000 && code <= 0x200a);
+}
+
+function collapseClassifierTitle(text) {
+  let out = '';
+  let pending = false;
+  for (let i = 0; i < text.length; i += 1) {
+    if (isClassifierSpace(text.charCodeAt(i))) {
+      pending = true;
+      continue;
+    }
+    if (pending && out.length > 0) out += ' ';
+    pending = false;
+    out += text[i];
+    if (out.length >= MAX_CLASSIFIER_TITLE) return out;
+  }
+  return out;
+}
 
 const LIVE_PREFIX_RE = /^\s*live\s*:\s*/i;
 const LIVE_EVENT_NOUN_RE =
@@ -27,7 +51,8 @@ const LIVE_PROGRAMMING_VERB_RE =
  * @returns {boolean} true = ephemeral live coverage (exclude from the brief).
  */
 export function classifyEphemeralLiveCoverage(story) {
-  const title = typeof story?.title === 'string' ? story.title.trim() : '';
+  const raw = typeof story?.title === 'string' ? story.title : '';
+  const title = collapseClassifierTitle(raw);
   if (!title) return false;
 
   if (WATCH_LIVE_PREFIX_RE.test(title)) return true;

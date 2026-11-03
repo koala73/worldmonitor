@@ -89,12 +89,14 @@ describe('settings export under a null localStorage', () => {
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     localStorage.setItem('worldmonitor-variant', 'full');
     localStorage.setItem('positive-threshold', '7');
+    localStorage.setItem('wm-pinned-webcams', '[null,{}]');
 
     expect(() => exportSettings()).not.toThrow();
     const blob = createObjectURL.mock.calls[0]?.[0] as Blob;
     const exported = JSON.parse(await blob.text());
     expect(exported.variant).toBe('full');
     expect(exported.data['positive-threshold']).toBe('7');
+    expect(exported.data['wm-pinned-webcams']).toBe('[]');
   });
 });
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { newsHandler } from '../server/worldmonitor/news/v1/handler';
-import { __testing__ as digest } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { __testing__ as digest, fetchAndParseRss } from '../server/worldmonitor/news/v1/list-feed-digest';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache';
 import { REVOKED_URLS_KEY } from '../server/_shared/digest-revocations';
 import { drainResponseHeaders } from '../server/_shared/response-headers';
@@ -80,6 +80,111 @@ afterEach(() => {
 });
 
 describe('country headlines from existing curated RSS caches', () => {
+  it('recovers country reporting after entry five while keeping the digest selection and counters', async () => {
+    const source = feed('Guardian Africa');
+    const date = new Date(Date.now() - 3600_000).toUTCString();
+    const xml = `<rss><channel>${Array.from({ length: 101 }, (_, index) => {
+      const country = index === 5 ? 'Cameroon' : index === 99 ? 'Niger' : index === 100 ? 'Mauritius' : 'Kenya';
+      return `<item><title>${country} announces cabinet changes</title><link>https://www.theguardian.com/world/item-${index}</link><pubDate>${date}</pubDate></item>`;
+    }).join('')}</channel></rss>`;
+    const parsed = digest.parseRssXml(xml, source, 'full');
+    const dashboard = digest.parseRssXml(xml, source, 'tech');
+    assert.ok(parsed && dashboard);
+    assert.deepEqual(parsed.items, dashboard.items);
+    assert.equal(parsed.items.length, 5);
+    assert.equal(parsed.parsedTotal, 5);
+    assert.equal(parsed.droppedUndated, 0);
+    assert.equal(parsed.droppedFeedCap, 96);
+    const key = rssFeedCacheKey('full', source.url);
+    cache.delete(key);
+    const readPipeline = globalThis.fetch;
+    let publisherReads = 0;
+    globalThis.fetch = async (url, init) => {
+      if (String(url) === source.url) {
+        publisherReads++;
+        return new Response(xml);
+      }
+      if (String(url) === `https://redis.example.test/get/${encodeURIComponent(key)}`) {
+        return Response.json({ result: cache.has(key) ? JSON.stringify(cache.get(key)) : null });
+      }
+      if (String(url) === 'https://redis.example.test/') {
+        const command = JSON.parse(String(init?.body));
+        assert.equal(command[0], 'SET');
+        assert.equal(command[1], key);
+        cache.set(key, JSON.parse(command[2]));
+        return Response.json({ result: 'OK' });
+      }
+      return readPipeline(url, init);
+    };
+    const cold = await fetchAndParseRss(source, 'full', new AbortController().signal);
+    const warm = await fetchAndParseRss(source, 'full', new AbortController().signal);
+    assert.deepEqual(cold.items, parsed.items);
+    assert.deepEqual(warm, cold);
+    assert.equal(publisherReads, 1, 'warm reads must reuse the retained country pool');
+    const { payload } = await request(['CM', 'NE', 'MU']);
+    assert.deepEqual(Object.keys(payload.countries), ['CM', 'NE']);
+    assert.equal(payload.countries.CM.items[0].source, source.name);
+    const rows = selectCountryHeadlines(payload.countries.CM.items, 'CM');
+    assert.equal(briefGroundingGap(rows), 'thin-grounding', 'retention cannot invent an independent publisher');
+  });
+
+  it('retains a dated Atom headline when the first five entries have no titles', async () => {
+    const source = feed('Guardian Pacific');
+    const xml = `<feed>${'<entry></entry>'.repeat(5)}<entry><title>Vanuatu ferry search continues</title><link href="https://www.theguardian.com/world/vanuatu-search"/><published>${new Date(Date.now() - 3600_000).toISOString()}</published><source><title>Invented Publisher</title></source></entry></feed>`;
+    const parsed = digest.parseRssXml(xml, source, 'full');
+    assert.ok(parsed);
+    assert.deepEqual(parsed.items, []);
+    assert.equal(parsed.parsedTotal, 0);
+    assert.equal(parsed.droppedFeedCap, undefined, 'preserve the empty digest result counters');
+    cache.set(rssFeedCacheKey('full', source.url), parsed);
+    const { payload } = await request(['VU']);
+    assert.equal(payload.countries.VU.items[0].source, source.name);
+  });
+
+  it('retains a late headline when an untrusted source element is oversized', async () => {
+    const source = feed('Guardian Africa');
+    const date = new Date(Date.now() - 3600_000).toUTCString();
+    const oversized = 'X'.repeat(201);
+    const xml = `<rss><channel>${Array.from({ length: 6 }, (_, index) => {
+      const country = index === 5 ? 'Cameroon' : 'Kenya';
+      const origin = index === 5 ? `<source>${oversized}</source>` : '';
+      return `<item><title>${country} announces cabinet changes</title><link>https://www.theguardian.com/world/item-${index}</link><pubDate>${date}</pubDate>${origin}</item>`;
+    }).join('')}</channel></rss>`;
+    const parsed = digest.parseRssXml(xml, source, 'full');
+    assert.ok(parsed);
+    assert.equal(parsed.countryItems?.length, 1);
+    assert.equal(parsed.countryItems?.[0]?.title, 'Cameroon announces cabinet changes');
+    assert.equal(parsed.countryItems?.[0]?.originPublisher, '');
+    assert.equal(parsed.countryItems?.[0]?.originPublisherTrusted, false);
+    cache.set(rssFeedCacheKey('full', source.url), parsed);
+    const { payload } = await request(['CM']);
+    assert.equal(payload.countries.CM.items[0].source, source.name);
+    assert.equal(payload.countries.CM.items[0].title, 'Cameroon announces cabinet changes');
+  });
+
+  it('applies date, country, URL and revocation gates to retained entries after the digest cap', async () => {
+    const source = feed('Guardian Africa');
+    const date = new Date(Date.now() - 3600_000).toUTCString();
+    const rows = Array.from({ length: 5 }, (_, index) => ({ title: 'Kenya forms a cabinet', link: `https://www.theguardian.com/kenya-${index}`, date }));
+    rows.push(
+      { title: 'Cameroon stale report', link: 'https://www.theguardian.com/stale', date: new Date(Date.now() - 97 * 3600_000).toUTCString() },
+      { title: 'Cameroon future report', link: 'https://www.theguardian.com/future', date: new Date(Date.now() + 2 * 3600_000).toUTCString() },
+      { title: 'Cameroon undated report', link: 'https://www.theguardian.com/undated', date: '' },
+      { title: 'Cameroon revoked report', link: 'https://www.theguardian.com/revoked', date },
+      { title: 'Cameroon invalid URL', link: 'javascript:alert(1)', date },
+      { title: 'Cameroon forms a cabinet', link: 'https://www.theguardian.com/accepted', date },
+    );
+    const xml = `<rss><channel>${rows.map(row => `<item><title>${row.title}</title><link>${row.link}</link><pubDate>${row.date}</pubDate></item>`).join('')}</channel></rss>`;
+    const parsed = digest.parseRssXml(xml, source, 'full');
+    assert.ok(parsed);
+    assert.equal(parsed.droppedUndated, 0, 'digest counters describe only its first five entries');
+    cache.set(rssFeedCacheKey('full', source.url), parsed);
+    revoked = ['https://www.theguardian.com/revoked'];
+    const { payload } = await request(['CM', 'PW']);
+    assert.deepEqual(Object.keys(payload.countries), ['CM']);
+    assert.deepEqual(payload.countries.CM.items.map(row => row.link), ['https://www.theguardian.com/accepted']);
+  });
+
   it('carries a parsed regional article through the registered RPC into country grounding', async () => {
     const source = feed('Guardian Pacific');
     const publishedAt = new Date(Date.now() - 3600_000).toUTCString();
@@ -142,15 +247,28 @@ describe('country headlines from existing curated RSS caches', () => {
     assert.equal(briefGroundingGap(selectCountryHeadlines(payload.countries.PW.items, 'PW')), null);
   });
 
-  it('retains trusted newsroom identity across aggregator feeds and ignores forged origins', async () => {
-    for (const [name, host] of [['Africa News', 'wire-one.example'], ['Sahel Crisis', 'wire-two.example']]) {
+  it('retains trusted newsroom identity across aggregator feeds and ignores forged origins', async (t) => {
+    const now = Date.now();
+    let clockTicks = 0;
+    t.mock.method(Date, 'now', () => now + clockTicks++ * 1000);
+    const date = new Date(now - 3600_000).toUTCString();
+    // #8398 ingest gate: links must belong to the item's own publisher. The
+    // fixture hosts stand in for the feeds' own publisher domains — the
+    // registered Africa News / Sahel Crisis feeds are Google News searches,
+    // so the country-pool gate drops these (news.google.com is the only
+    // server-known host). Point the XML at feeds whose registered host
+    // matches the link host so the trusted-vs-forged origin behavior under
+    // test survives the gate.
+    for (const name of ['NPR News', 'PBS NewsHour']) {
       const source = feed(name!);
-      const xml = `<rss><channel><item><title>Mali agrees peace talks</title><source>Reuters</source><link>https://${host}/mali-talks</link><pubDate>${new Date(Date.now() - 3600_000).toUTCString()}</pubDate></item></channel></rss>`;
+      const host = new URL(source.url).hostname;
+      const preceding = `<item><title>Kenya holds talks</title><link>https://${host}/kenya</link><pubDate>${date}</pubDate></item>`.repeat(5);
+      const xml = `<rss><channel>${preceding}<item><title>Mali agrees peace talks</title><source>Reuters</source><link>https://${host}/mali-talks</link><pubDate>${date}</pubDate></item></channel></rss>`;
       cache.set(rssFeedCacheKey('full', source.url), digest.parseRssXml(xml, source, 'full'));
     }
     const { payload } = await request(['ML']);
-    assert.deepEqual(payload.countries.ML.items.map(row => row.source), ['Reuters', 'Reuters']);
-    assert.equal(briefGroundingGap(selectCountryHeadlines(payload.countries.ML.items, 'ML')), 'thin-grounding');
+    assert.deepEqual(payload.countries.ML.items.map(row => row.source), ['NPR News', 'PBS NewsHour']);
+    assert.equal(briefGroundingGap(selectCountryHeadlines(payload.countries.ML.items, 'ML')), null);
     put('Guardian Pacific', [article('Guardian Pacific', { originPublisher: 'Reuters', originPublisherTrusted: false })]);
     assert.equal((await request()).payload.countries.PW.items[0].source, 'Guardian Pacific');
   });

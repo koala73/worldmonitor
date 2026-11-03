@@ -3,18 +3,18 @@ syntax = "proto3";
 package worldmonitor.forecast.v1;
 
 import "sebuf/http/annotations.proto";
+import "buf/validate/validate.proto";
 
 message GetSimulationOutcomeRequest {
-  // Filter is active for outcomes within the 24h retention window (#3734).
-  // If runId is supplied:
-  //   - Hit on the by-run key → returns that outcome, processing=false.
-  //   - By-run lookup returns the tombstone (worker write transiently failed) →
-  //     falls through to :latest with a 'note' describing the transient failure.
-  //   - No by-run match but runId is in the queue → returns processing=true.
-  //   - No match anywhere → falls back to :latest with a 'note' describing
-  //     expiry-or-mismatch.
-  // If runId is empty: returns :latest (existing behavior).
-  string run_id = 1 [(sebuf.http.query) = { name: "runId" }];
+  // Optional run ID (epoch ms, hyphen, 1-64 char suffix; max 128). Returns that
+  // run's outcome within 24h retention, processing=true while it is queued, or
+  // the latest outcome with a note. Empty returns the latest outcome.
+  string run_id = 1 [
+    (sebuf.http.query) = { name: "runId" },
+    (buf.validate.field).string.max_len = 128,
+    (buf.validate.field).string.pattern = "^([0-9]{13,}-[A-Za-z0-9-]{1,64})?$",
+    (sebuf.http.field_examples) = { values: ["1789387200000-abc123"] }
+  ];
 }
 
 message GetSimulationOutcomeResponse {
@@ -24,25 +24,19 @@ message GetSimulationOutcomeResponse {
   reserved "outcome_key";
   string schema_version = 4;
   int32 theater_count = 5;
-  // Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.
+  // Unix timestamp in milliseconds.
   int64 generated_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Populated when req.runId was supplied but does not match the returned outcome's runId,
-  // or when the by-run lookup returned a tombstone (Redis transient write failure).
-  // Distinguishes "your runId expired beyond 24h retention" from "by-run lookup failed
-  // (Redis transient); returned latest" so callers can react differently.
+  // Set when run_id was supplied but the latest outcome is returned instead; the
+  // text says why (run expired or not found, or its by-run record failed).
   string note = 7;
   // Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
   // Value: "redis_unavailable" on Redis errors.
   string error = 8;
-  // JSON-encoded array of theater summaries for the UI (populated when found=true).
-  // Shape: Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label, summary, confidence, keyActors}], dominantReactions, stabilizers, invalidators }>
-  // Parse with JSON.parse() on the client. Empty string when found=false.
+  // JSON-encoded Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label,
+  // summary, confidence, keyActors}], dominantReactions, stabilizers,
+  // invalidators }>; empty when found=false.
   string theater_summaries_json = 9;
-  // True when req.runId was supplied AND the runId is currently in the simulation
-  // queue (worker hasn't drained yet). Distinguishes "your run is processing"
-  // from "your run expired beyond retention" — both previously returned NOT_FOUND.
-  // Added in #3734 to prevent the 30-day demand experiment from being contaminated
-  // by the queued-vs-expired indistinguishability.
+  // True when the supplied runId is still queued, as opposed to expired.
   bool processing = 10;
   // Number of theaters eligible for simulation in the package used by this outcome.
   int32 eligible_theater_count = 11;

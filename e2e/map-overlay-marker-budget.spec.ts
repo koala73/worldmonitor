@@ -32,6 +32,7 @@ const MOBILE_PER_LAYER = 150;
 // created outside the marker budget, so they carry their own ceiling.
 const MAX_CONCURRENT_FLASHES = 12;
 const STRESS_PER_FEED = 2000;
+// Settled-dashboard contract; the optional diagnostic records its usage.
 const DASHBOARD_METRIC_BUDGETS = {
   domNodes: 12000,
   rendererNodes: 15000,
@@ -40,6 +41,18 @@ const DASHBOARD_METRIC_BUDGETS = {
 const EXPECTED_DASHBOARD_METRIC_BUDGETS = {
   domNodes: 12000,
   rendererNodes: 15000,
+  listeners: 1500,
+} as const;
+// #7867: 15 cold loads across five CI runs measured 8,956-10,065 renderer
+// nodes at first paint. 12,000 leaves 16% of the ceiling above the observed max.
+// Evidence and sample completeness: docs/solutions/performance-issues/cold-dashboard-first-paint-budget.md.
+const FIRST_PAINT_METRIC_BUDGETS = {
+  ...DASHBOARD_METRIC_BUDGETS,
+  rendererNodes: 12000,
+} as const;
+const EXPECTED_FIRST_PAINT_METRIC_BUDGETS = {
+  domNodes: 12000,
+  rendererNodes: 12000,
   listeners: 1500,
 } as const;
 // Chromium's renderer-wide metric includes a small amount of browser-owned
@@ -169,6 +182,7 @@ type HarnessWindow = Window & {
     clearOverlayFeeds: () => void;
     getActiveFlashCount: () => number;
     getFlashNodeCount: () => number;
+    destroyMap: () => void;
     getKeptHotspotCoords: () => Coord[];
     getSeededHotspotCoords: () => Coord[];
     getOverlayBudgetState: () => BudgetState;
@@ -288,9 +302,9 @@ const SETTLED_SAMPLE_BUDGET_MS = 45000;
  *
  * The asserted sample is taken at SVG map first paint, which is the readiness
  * signal #7848 chose for determinism — and which measures the pre-hydration
- * shell, so how much of the 15,000 ceiling the hydrated page actually uses was
- * invisible. The CI failure that opened #7837 measured 15,506 on a settled
- * page against that same ceiling.
+ * shell. It now has its own FIRST_PAINT_METRIC_BUDGETS (#7867); the settled
+ * diagnostic retains the 15,000-node DASHBOARD_METRIC_BUDGETS contract. The CI
+ * failure that opened #7837 measured 15,506 on a settled page against that ceiling.
  *
  * Measure on CI, not locally: the two environments disagree, and CI is the one
  * the gate runs in. Run 34148378315 read 8,946-9,838 post-GC renderer nodes at
@@ -380,8 +394,8 @@ async function recordSettledDashboardMetrics(
   }
 }
 
-function assertDashboardMetricBudgets(samples: readonly DashboardMetrics[]): void {
-  for (const [metric, limit] of Object.entries(DASHBOARD_METRIC_BUDGETS) as [DashboardMetric, number][]) {
+function assertDashboardMetricBudgets(samples: readonly DashboardMetrics[], budgets: DashboardMetrics): void {
+  for (const [metric, limit] of Object.entries(budgets) as [DashboardMetric, number][]) {
     const observed = Math.max(...samples.map((sample) => sample[metric]));
     expect(observed, `${metric} must remain within the dashboard cold-load budget`).toBeLessThanOrEqual(limit);
   }
@@ -420,11 +434,12 @@ async function attachColdDashboardMetrics(testInfo: TestInfo, samples: readonly 
     recorded: {
       readiness: 'dom-quiescence',
       measurement: 'post-gc',
+      budgets: DASHBOARD_METRIC_BUDGETS,
       totalSamples: samples.length,
       quiescedSamples: countSamples((quiescence) => quiescence.wait.quiesced),
       hydrationReadySamples: countSamples((quiescence) => quiescence.initialDataReady),
     },
-    budgets: DASHBOARD_METRIC_BUDGETS,
+    budgets: FIRST_PAINT_METRIC_BUDGETS,
     samples,
   }, null, 2)}\n`;
   try {
@@ -587,11 +602,9 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
       // root) stays inside the production guardrail from the issue investigation,
       // and repeated fresh contexts catch cold-load drift.
       //
-      // Asserted on the FIRST-PAINT sample only. The settled sample beside it in
-      // the attachment is recorded, not gated (#7837) — see
-      // recordSettledDashboardMetrics for why, and read it before deciding
-      // whether this ceiling still has the headroom it looks like it has.
-      assertDashboardMetricBudgets(samples.map((sample) => sample.firstPaint.postGc));
+      // Assert first paint against its CI-derived ceiling (#7867). The settled
+      // sample remains diagnostic: 3 of 15 CI loads missed hydration readiness.
+      assertDashboardMetricBudgets(samples.map((sample) => sample.firstPaint.postGc), FIRST_PAINT_METRIC_BUDGETS);
 
       // Ceilings only — the run-to-run RANGE of these counters is deliberately not
       // asserted. The post-GC CDP values distinguish retained renderer objects from
@@ -605,10 +618,16 @@ test.describe('SVG map overlay marker budget (#7112)', () => {
   });
 
   test('keeps each dashboard metric ceiling live', () => {
-    expect(DASHBOARD_METRIC_BUDGETS).toEqual(EXPECTED_DASHBOARD_METRIC_BUDGETS);
-    for (const [metric, limit] of Object.entries(EXPECTED_DASHBOARD_METRIC_BUDGETS) as [DashboardMetric, number][]) {
-      const overLimit = { ...DASHBOARD_METRIC_BUDGETS, [metric]: limit + 1 };
-      expect(() => assertDashboardMetricBudgets([overLimit])).toThrow();
+    for (const [budgets, expected] of [
+      [DASHBOARD_METRIC_BUDGETS, EXPECTED_DASHBOARD_METRIC_BUDGETS],
+      [FIRST_PAINT_METRIC_BUDGETS, EXPECTED_FIRST_PAINT_METRIC_BUDGETS],
+    ] as const) {
+      expect(budgets).toEqual(expected);
+      expect(() => assertDashboardMetricBudgets([expected], budgets)).not.toThrow();
+      for (const [metric, limit] of Object.entries(expected) as [DashboardMetric, number][]) {
+        const overLimit = { ...expected, [metric]: limit + 1 };
+        expect(() => assertDashboardMetricBudgets([overLimit], budgets)).toThrow();
+      }
     }
   });
 

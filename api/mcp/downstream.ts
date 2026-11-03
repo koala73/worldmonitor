@@ -98,7 +98,7 @@ function classifyMcpInboundHost(hostname: string): McpToolExecutionContext['inbo
   if (hostname === 'www.worldmonitor.app') return 'www';
   if (VARIANT_HOSTS.has(hostname)) return 'variant';
   if (hostname.endsWith('.worldmonitor.app')) return 'worldmonitor_subdomain';
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return 'local';
+  if (isLoopbackHostname(hostname)) return 'local';
   if (hostname.endsWith('.vercel.app')) return 'vercel_preview';
   return 'other';
 }
@@ -126,11 +126,11 @@ export function createMcpToolExecutionContext(requestUrl: string): McpToolExecut
 }
 
 function isLoopbackHostname(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
 }
 
 export function buildMcpDownstreamHeaders(
-  targetOrigin: string,
+  targetUrl: string,
   execution: McpToolExecutionContext | undefined,
   headers: Record<string, string>,
 ): Record<string, string> {
@@ -138,7 +138,7 @@ export function buildMcpDownstreamHeaders(
   let target: URL;
   let expected: URL;
   try {
-    target = new URL(targetOrigin);
+    target = new URL(targetUrl);
     expected = new URL(execution.downstreamOrigin);
   } catch {
     return headers;
@@ -147,6 +147,20 @@ export function buildMcpDownstreamHeaders(
   const token = process.env.LOCAL_API_TOKEN?.trim();
   if (!token) return headers;
   return { ...headers, 'X-WorldMonitor-Local-Token': token };
+}
+
+export function fetchMcpDownstream(
+  url: string,
+  init: RequestInit & { headers: Record<string, string> },
+  execution: McpToolExecutionContext | undefined,
+): Promise<Response> {
+  const headers = buildMcpDownstreamHeaders(url, execution, init.headers);
+  return globalThis.fetch(url, {
+    ...init,
+    headers,
+    // Custom transport headers survive cross-origin redirects in fetch.
+    ...(new Headers(headers).has('X-WorldMonitor-Local-Token') ? { redirect: 'error' as const } : {}),
+  });
 }
 
 function contentType(response: ToolFetchResponse): string {

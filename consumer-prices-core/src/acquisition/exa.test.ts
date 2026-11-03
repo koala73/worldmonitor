@@ -179,3 +179,61 @@ describe('ExaProvider.extract', () => {
     ).rejects.toThrow();
   });
 });
+
+// fetch() and validate() call the REST API directly rather than through
+// exa-js, whose zod@3 dependency carries GHSA-mrhx-c7xc-m3w5 with no 3.x fix.
+describe('ExaProvider.fetch', () => {
+  it('posts the URL to /contents and maps text and highlights', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ results: [{ text: 'White Bread SGD 4.95', highlights: ['SGD 4.95'] }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new ExaProvider('test-key').fetch('https://retailer.example/p/bread');
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.exa.ai/contents');
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(request.headers).toMatchObject({ 'x-api-key': 'test-key' });
+    expect(JSON.parse(String(request.body))).toEqual({
+      urls: ['https://retailer.example/p/bread'],
+      text: { maxCharacters: 100_000 },
+      highlights: { numSentences: 5, highlightsPerUrl: 3 },
+    });
+    expect(result).toMatchObject({
+      url: 'https://retailer.example/p/bread',
+      html: 'White Bread SGD 4.95',
+      markdown: 'White Bread SGD 4.95',
+      statusCode: 200,
+      provider: 'exa',
+      metadata: { highlights: ['SGD 4.95'] },
+    });
+  });
+
+  it('throws when Exa returns no result for the URL', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ results: [] }), { status: 200 })));
+
+    await expect(new ExaProvider('test-key').fetch('https://retailer.example/p/bread')).rejects.toThrow(
+      'Exa returned no content for https://retailer.example/p/bread',
+    );
+  });
+});
+
+describe('ExaProvider.validate', () => {
+  it('returns true when a one-result /search succeeds', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(new ExaProvider('test-key').validate()).resolves.toBe(true);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.exa.ai/search');
+    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({ query: 'test', numResults: 1 });
+  });
+
+  it('returns false when Exa rejects the key', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('unauthorized', { status: 401 })));
+
+    await expect(new ExaProvider('test-key').validate()).resolves.toBe(false);
+  });
+});

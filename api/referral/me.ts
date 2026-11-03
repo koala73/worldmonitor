@@ -58,7 +58,7 @@ async function registerReferralCodeInConvex(userId: string, code: string): Promi
   const convexSite =
     process.env.CONVEX_SITE_URL ??
     (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-  const relaySecret = process.env.RELAY_SHARED_SECRET ?? '';
+  const relaySecret = process.env.CONVEX_TENANT_RELAY_SECRET ?? '';
   if (!convexSite || !relaySecret) {
     throw new Error('convex_relay_not_configured');
   }
@@ -119,7 +119,7 @@ export default async function handler(
     code = await getReferralCodeForUser(session.userId, secret);
   } catch (err) {
     console.error('[api/referral/me] code generation failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/referral/me', step: 'code-generation' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/referral/me', step: 'code-generation' }, fingerprint: ['api/referral/me', 'code-generation', err instanceof Error ? err.name : 'Error'], ctx });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 

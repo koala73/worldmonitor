@@ -4,7 +4,7 @@ import type {
   GetIntelTimelineRequest,
   GetIntelTimelineResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
-import { ApiError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import {
   intelHistoryTimeline,
   resolveLimit,
@@ -27,7 +27,7 @@ const MAX_LIMIT = 200;
  * SCOPE IS MANDATORY. `domain` and `country` are the two indexed scopes on the
  * table; an unscoped read has no index to serve it and Convex throws, which
  * this layer could only report as an outage. Rejecting it here with a 400
- * (ApiError, surfaced by server/error-mapper.ts) tells the caller their
+ * (ValidationError naming `domain`, so MCP callers get Invalid params) tells the caller their
  * request was wrong instead of blaming the backend. buf.validate cannot
  * express "at least one of", so the check lives in code.
  *
@@ -45,16 +45,20 @@ export const getIntelTimeline: IntelligenceServiceHandler['getIntelTimeline'] = 
   const scope = validateHistoryScope(req, MAX_LIMIT);
   const { domain, country } = scope;
   if (!domain && !country) {
-    throw new ApiError(400, 'At least one of domain or country is required', '');
+    throw new ValidationError([{ field: 'domain', description: 'At least one of domain or country is required' }]);
   }
 
   const limit = resolveLimit(scope.limit, DEFAULT_LIMIT, MAX_LIMIT);
-  const result = await cacheSuccessfulHistoryRead('timeline', {
-    domain, country, from: scope.from, to: scope.to, limit,
-  }, () => intelHistoryTimeline({ ...scope, limit }));
+  const cursor = req.cursor ?? '';
+  if (typeof cursor !== 'string' || cursor.length > 4096) {
+    throw new ValidationError([{ field: 'cursor', description: 'cursor must be a string of at most 4096 characters' }]);
+  }
+  const result = await cacheSuccessfulHistoryRead('timeline-page', {
+    domain, country, from: scope.from, to: scope.to, limit, cursor,
+  }, () => intelHistoryTimeline({ ...scope, limit, cursor }));
   if (!result) {
-    return { records: [], partial: false, upstreamUnavailable: true };
+    return { records: [], partial: false, upstreamUnavailable: true, nextCursor: '' };
   }
 
-  return { records: result.records, partial: result.partial, upstreamUnavailable: false };
+  return { records: result.records, partial: result.partial, upstreamUnavailable: false, nextCursor: result.nextCursor };
 };

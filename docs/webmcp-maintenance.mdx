@@ -29,7 +29,8 @@ Treat each WebMCP change as a public UI contract change. Tool names, description
 | `src/services/webmcp.ts` | Imperative descriptors, schemas, registration lifecycle, bounded results and errors, telemetry, and cancellation policy. |
 | `src/services/followed-countries.ts` | Followed-country ISO validation, access state, free-tier cap, sign-in handoff, and anonymous or account persistence used by the WebMCP bindings. |
 | `src/services/webmcp-map-layer-catalog.ts`, `src/services/webmcp-panel-catalog.ts`, and `src/services/webmcp-mission-preset-catalog.ts` | Paginated layer and panel catalogs plus the bundled mission-preset catalog, filters, entitlement overlays, and stable availability reasons. |
-| `src/App.ts`, `src/app/webmcp-dashboard.ts`, and `src/app/dashboard-action-binding.ts` | Startup ordering, UI readiness, teardown, dashboard context, catalog snapshots, and binding to the human action path. |
+| `src/main.ts` | Dashboard registration before the deferred App import, the pending App bindings, the controller handed to `App.init`, and unregistration when App fails to load or construct. |
+| `src/App.ts`, `src/app/webmcp-dashboard.ts`, and `src/app/dashboard-action-binding.ts` | App initialization ordering, UI readiness, teardown, dashboard context, catalog snapshots, and binding to the human action path. |
 | `shared/agent-bus-actions.ts`, `shared/agent-bus-contract.ts`, and `src/app/agent-bus-applier.ts` | Typed dashboard action protocol and application through existing UI state. |
 | `src/app/country-map-focus.ts` and `src/app/map-dimension-control.ts` | Country bounding-box focus and the shared 2D or 3D control path. |
 | `src/config/panel-enablement.ts` and `src/app/panel-enablement.ts` | Panel enablement policy and the settings persist and apply path used by `set_panel_enabled`. |

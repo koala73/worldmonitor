@@ -108,7 +108,7 @@ const lines = [
   '|---|---:|---:|---:|---|',
   ...tableRows,
   '',
-  'Measurement: `utf8ByteLength(JSON.stringify({cached_at, stale, data: _postFilter(data, {})}))` — the same chain the runtime budget gate measures (default-args identity path; no JMESPath, no summary).',
+  'Measurement: UTF-8 JSON bytes of the post-filter cache envelope, including ordinary Market response presentation. Handler tests separately include the signed receipt. No JMESPath or summary.',
 ];
 process.stdout.write(lines.join('\n') + '\n');
 

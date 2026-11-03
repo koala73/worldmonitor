@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
+
 let _S3Client, _PutObjectCommand, _GetObjectCommand;
 async function loadS3SDK() {
   if (!_S3Client) {
@@ -216,8 +218,24 @@ async function getR2StorageClient(config) {
   return client;
 }
 
+// The exact bytes putR2JsonObject writes. A reader that parses an object and
+// serializes it again gets the same bytes, so a recorded digest can be checked.
+function serializeR2JsonBody(payload) {
+  return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+function sha256Hex(body) {
+  return createHash('sha256').update(body, 'utf8').digest('hex');
+}
+
 async function putR2JsonObject(config, key, payload, metadata = {}) {
-  const body = `${JSON.stringify(payload, null, 2)}\n`;
+  return putR2JsonBody(config, key, serializeR2JsonBody(payload), metadata);
+}
+
+// Writes an already-serialized JSON body, for a caller that records the
+// digest before the write. Returns the digest of the bytes written.
+async function putR2JsonBody(config, key, body, metadata = {}) {
+  const sha256 = sha256Hex(body);
 
   if (config.mode === 'api') {
     return withR2Retry(async () => {
@@ -237,7 +255,7 @@ async function putR2JsonObject(config, key, payload, metadata = {}) {
         error.status = resp.status;
         throw error;
       }
-      return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8') };
+      return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8'), sha256 };
     }, {
       op: 'put',
       key,
@@ -259,7 +277,7 @@ async function putR2JsonObject(config, key, payload, metadata = {}) {
       _s3TimeoutMs,
       `R2 s3 put ${key}`,
     );
-    return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8') };
+    return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8'), sha256 };
   }, {
     op: 'put',
     key,
@@ -323,6 +341,9 @@ export {
   getR2StorageClient,
   getR2JsonObject,
   putR2JsonObject,
+  putR2JsonBody,
+  serializeR2JsonBody,
+  sha256Hex,
   withSettleTimeout,
   __setS3ClientForTests,
   __setR2S3TimeoutForTests,

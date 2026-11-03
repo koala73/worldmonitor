@@ -33,8 +33,8 @@ interface NEREntity {
   text: string;
   type: string;
   confidence: number;
-  start: number;
-  end: number;
+  start: number | null;
+end: number | null;
 }
 
 interface SentimentResult {

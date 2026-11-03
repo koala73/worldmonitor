@@ -85,6 +85,7 @@ export async function readWithOneRetry<T>(
       console.warn(`[api/latest-brief] ${label} aborted on timeout — retrying once (${RETRY_ATTEMPT_MS}ms)`);
       captureSilentError(err, {
         tags: { route: 'api/latest-brief', step: 'upstash-retry-attempt', label },
+        fingerprint: ['api/latest-brief', 'upstash-retry-attempt', err instanceof Error ? err.name : 'Error'],
         ctx,
       });
       return await attempt(RETRY_ATTEMPT_MS);
@@ -128,6 +129,7 @@ async function readBriefPreview(
     );
     captureSilentError(err, {
       tags: { route: 'api/latest-brief', step: 'envelope-assertion', issueSlot },
+      fingerprint: ['api/latest-brief', 'envelope-assertion', err instanceof Error ? err.name : 'Error'],
       ctx,
     });
     return null;
@@ -268,7 +270,7 @@ export default async function handler(
     // this into "composing", which would falsely signal empty state
     // to the dashboard panel. 503 lets the client show a retry path.
     console.error('[api/latest-brief] Upstash read failed:', (err as Error).message);
-    captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' }, ctx });
+    captureSilentError(err, { tags: { route: 'api/latest-brief', step: 'upstash-read' }, fingerprint: ['api/latest-brief', 'upstash-read', err instanceof Error ? err.name : 'Error'], ctx });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 

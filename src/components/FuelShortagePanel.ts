@@ -1,5 +1,7 @@
+import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
@@ -127,13 +129,14 @@ export class FuelShortagePanel extends Panel {
   private selectedId: string | null = null;
   private detail: GetFuelShortageDetailResponse | null = null;
   private detailLoading = false;
+  private detailError: string | null = null;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ shortageId?: string }>).detail?.shortageId;
     if (!id || !this.element?.isConnected) return;
     void this.loadDetail(id);
   };
 
-  constructor() {
+  constructor(private readonly detailSource?: Pick<ReturnType<typeof getSupplyChainClient>, 'getFuelShortageDetail'>) {
     super({
       id: 'fuel-shortages',
       title: 'Global Fuel Shortage Registry',
@@ -215,21 +218,28 @@ export class FuelShortagePanel extends Panel {
     }
   }
 
+  public async presentDetail(data: ListFuelShortagesResponse, id: string): Promise<void> {
+    this.data = data;
+    await this.loadDetail(id);
+  }
+
   private async loadDetail(shortageId: string): Promise<void> {
     this.selectedId = shortageId;
     this.detailLoading = true;
+    this.detailError = null;
     this.render();
     try {
-      const d = await getSupplyChainClient().getFuelShortageDetail({ shortageId });
+      const d = await (this.detailSource ?? getSupplyChainClient()).getFuelShortageDetail({ shortageId });
       if (!this.element?.isConnected || this.selectedId !== shortageId) return;
       this.detail = d;
       this.detailLoading = false;
       this.render();
-    } catch {
+    } catch (error) {
       if (!this.element?.isConnected) return;
       if (this.selectedId !== shortageId) return;
       this.detailLoading = false;
       this.detail = null;
+      this.detailError = error instanceof CountrySectionError ? error.message : null;
       this.render();
     }
   }
@@ -277,34 +287,52 @@ export class FuelShortagePanel extends Panel {
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
 
-    this.setSafeContent(unsafeRawHtml(`
+    const html = unsafeRawHtml(`
       <div class="fs-wrap">
         <div class="fs-summary">${escapeHtml(summary)}</div>
-        <table class="fs-table">
-          <thead>
-            <tr>
-              <th scope="col">Country · Product</th>
-              <th scope="col">Since</th>
-              <th scope="col">Evidence</th>
-              <th scope="col">Severity</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
+          <table class="fs-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Country · Product</th>
+                <th scope="col" role="columnheader">Since</th>
+                <th scope="col" role="columnheader">Evidence</th>
+                <th scope="col" role="columnheader">Severity</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">${rows}</tbody>
+          </table>
+        </div>
         ${attribution}
         ${drawer}
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .fs-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .fs-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: fs-wrap / inline-size; }
         .fs-summary { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
         .fs-table { width: 100%; border-collapse: collapse; }
         .fs-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .fs-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .fs-table tr.fs-row { cursor: pointer; }
         .fs-table tr.fs-row:hover td { background: rgba(255,255,255,0.03); }
-        .fs-name { font-weight: 600; color: var(--text, #eee); }
-        .fs-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .fs-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
+        .fs-table .fs-val { white-space: nowrap; }
+        .fs-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+        /* Four columns cannot fit a narrow column without splitting values, so each
+           row stacks: the name takes the full width, the values share one line below.
+           The breakpoint is in em of the scaled wrap text (31em is 341px at 100%), so
+           a larger font-size setting stacks the rows in a wider column too. */
+        @container fs-wrap (max-width: 31em) {
+          .fs-table, .fs-table tbody { display: block; }
+          .fs-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+          .fs-table tr.fs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .fs-table tr.fs-row td { padding: 0; border: 0; }
+          .fs-table tr.fs-row td:first-child { flex: 1 0 100%; }
+          .fs-table tr.fs-row td:last-child { margin-left: auto; }
+          .fs-table tr.fs-row:hover { background: rgba(255,255,255,0.03); }
+          .fs-table tr.fs-row:hover td { background: none; }
+          .fs-table .fs-val[data-label]::before { content: attr(data-label) ' '; color: var(--text-dim, #888); }
+        }
         .fs-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .fs-quality { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); }
         .fs-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
@@ -321,21 +349,23 @@ export class FuelShortagePanel extends Panel {
         .fs-src-type-operator { background: #27ae60; color: #fff; }
         .fs-src-type-press { background: #555; color: #ccc; }
       </style>
-    `, 'legacy Panel.setContent() migration'));
+    `, 'legacy Panel.setContent() migration');
+    if (this.detailSource) this.setSafeContentImmediate(html);
+    else this.setSafeContent(html);
   }
 
   private renderRow(s: FuelShortageEntry): string {
     const glyph = PRODUCT_GLYPH[s.product] ?? '•';
     const quality = deriveShortageEvidenceQuality(s.evidence);
     return `
-      <tr class="fs-row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
-        <td>
+      <tr class="fs-row" role="row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
+        <td role="cell">
           <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)}</div>
           <div class="fs-sub">${escapeHtml(s.causeChain.join(' · ') || '—')}</div>
         </td>
-        <td>${escapeHtml(s.firstSeen.slice(0, 10))}</td>
-        <td><span class="fs-quality" title="Evidence quality: ${escapeHtml(quality)}">${QUALITY_DOT[quality]}</span></td>
-        <td>${severityChip(s.severity)}</td>
+        <td role="cell" class="fs-val" data-label="Since">${escapeHtml(s.firstSeen.slice(0, 10))}</td>
+        <td role="cell"><span class="fs-quality" title="Evidence quality: ${escapeHtml(quality)}">${QUALITY_DOT[quality]}</span></td>
+        <td role="cell">${severityChip(s.severity)}</td>
       </tr>`;
   }
 
@@ -345,7 +375,7 @@ export class FuelShortagePanel extends Panel {
     }
     const s = this.detail?.shortage;
     if (!s) {
-      return `<div class="fs-drawer"><button class="fs-drawer-close" aria-label="Close">✕</button>Shortage detail unavailable.</div>`;
+      return `<div class="fs-drawer"><button class="fs-drawer-close" aria-label="Close">✕</button>${escapeHtml(this.detailError ?? 'Shortage detail unavailable.')}</div>`;
     }
 
     const ev = s.evidence;
@@ -368,7 +398,7 @@ export class FuelShortagePanel extends Panel {
     return `
       <div class="fs-drawer">
         <button class="fs-drawer-close" aria-label="Close">✕</button>
-        <h3>${escapeHtml(s.country)} · ${escapeHtml(s.product)} ${severityChip(s.severity)}</h3>
+        <h3>${escapeHtml(iso2ToCountryName(s.country))} · ${escapeHtml(s.product)} ${severityChip(s.severity)}</h3>
         <div class="fs-kv">
           <div class="fs-kv-key">Description</div>  <div>${escapeHtml(s.shortDescription)}</div>
           <div class="fs-kv-key">First seen</div>   <div>${escapeHtml(s.firstSeen.slice(0, 10))}</div>

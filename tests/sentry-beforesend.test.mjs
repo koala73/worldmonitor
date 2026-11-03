@@ -16,6 +16,7 @@ import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 import { isolateNonProductionSentryEvent } from '../shared/sentry-build-metadata.ts';
 import { buildCheckoutReportTags } from '../src/services/checkout-sentry-policy.ts';
+import { scrubSentryCredentials } from '../shared/sensitive-url-params.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -54,7 +55,7 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 // eslint-disable-next-line no-new-func
 const rawBeforeSend = new Function(
   'event', 'isDebugBearRumScriptFrame', 'isIosLikeUserAgent', 'navigator',
-  'isolateNonProductionSentryEvent', 'environment',
+  'isolateNonProductionSentryEvent', 'environment', 'scrubSentryCredentials',
   `${tpMatch[0]}\n${fnBody}`,
 );
 
@@ -81,7 +82,7 @@ const IOS_NAVIGATOR = { userAgent: IOS_GOOGLE_APP_UA, maxTouchPoints: 5 };
 const IPADOS_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 5 };
 
 function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR, environment = 'production') {
-  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment);
+  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, scrubSentryCredentials);
 }
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
@@ -150,6 +151,12 @@ function walkTsFiles(dir) {
 
 // ─── ignoreErrors message matches ────────────────────────────────────────
 
+describe('default PII collection', () => {
+  it('collects IP and default PII only on production hosts', () => {
+    assert.match(mainSrc, /sendDefaultPii: environment === 'production',/);
+  });
+});
+
 describe('ignoreErrors filters', () => {
   it('suppresses Clerk SDK UI chunk load failure', () => {
     assert.ok(
@@ -181,6 +188,39 @@ describe('ignoreErrors filters', () => {
       'Only the enumerated extension identifiers may be ignored',
     );
   });
+
+  // WORLDMONITOR-ZS: an injected script redeclaring its own top-level
+  // `nativeIframe` binding. The only frame is the document itself
+  // (`/dashboard:1:1`), on Chrome 152 / Windows and Electron 39.
+  it('suppresses the injected nativeIframe redeclaration', () => {
+    assert.ok(
+      isIgnored("Identifier 'nativeIframe' has already been declared", 'SyntaxError'),
+      'nativeIframe duplicate-declaration must be ignored',
+    );
+  });
+
+  // Two classic scripts on one page share a global lexical scope, so the
+  // message-only entry is safe only while no script we ship declares the name.
+  it('keeps the licence true: nativeIframe is absent from our own source', () => {
+    const offenders = [];
+    for (const rel of ['../src', '../api']) {
+      for (const file of walkTsFiles(resolve(__dirname, rel))) {
+        if (/sentry-init\.ts$/.test(file)) continue;
+        if (/\bnativeIframe\b/.test(readFileSync(file, 'utf-8'))) offenders.push(file);
+      }
+    }
+    const publicDir = resolve(__dirname, '../public');
+    const documents = [
+      resolve(__dirname, '../index.html'),
+      ...readdirSync(publicDir).filter((f) => f.endsWith('.html')).map((f) => join(publicDir, f)),
+    ];
+    assert.ok(documents.length > 1, 'sanity: the scan must reach the shipped HTML documents');
+    for (const file of documents) {
+      if (/\bnativeIframe\b/.test(readFileSync(file, 'utf-8'))) offenders.push(file);
+    }
+    assert.deepEqual(offenders, [],
+      `nativeIframe now appears in our own source — the suppression is no longer safe:\n${offenders.join('\n')}`);
+  });
 });
 
 // ─── P2: firstPartyFile regex covers all Vite chunk patterns ─────────────
@@ -206,7 +246,7 @@ describe('first-party file detection', () => {
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
       const filter = ${rawBeforeSend.toString()};
       const run = event => filter(event, () => false, () => false,
-        ${JSON.stringify(DESKTOP_NAVIGATOR)}, event => event, 'production');
+        ${JSON.stringify(DESKTOP_NAVIGATOR)}, event => event, 'production', event => event);
       process.stdout.write(JSON.stringify({
         malformed: run(${JSON.stringify(malformed)}),
         wellFormed: run(${JSON.stringify(wellFormed)}),
@@ -229,6 +269,13 @@ describe('first-party file detection', () => {
     ['/assets/locale-fr-abc123.js', 'locale chunk'],
     ['src/components/DeckGLMap.ts', 'source-mapped .ts'],
     ['src/App.tsx', 'source-mapped .tsx'],
+    // Boundary: a vendor name counts only at the start of the basename. An
+    // owned chunk that merely embeds one stays first-party, so widening the
+    // vendor list cannot silently capture our own chunks by substring.
+    // (Deliberately not named `map-*`: the maplibre internal-crash rule below
+    // matches `/(map|maplibre|deck-stack)-`, which would drop it for an
+    // unrelated reason and make this assertion prove nothing.)
+    ['/assets/overlay-protomaps-adapter-Q7x1.js', 'owned chunk embedding a vendor name'],
   ];
 
   for (const [filename, label] of testPatterns) {
@@ -248,6 +295,13 @@ describe('first-party file detection', () => {
     ['/assets/d3-xyz.js', 'd3 (vendor)'],
     ['/assets/transformers-xyz.js', 'transformers (vendor)'],
     ['/assets/onnxruntime-xyz.js', 'onnxruntime (vendor)'],
+    // Emitted by vite.config.ts's node_modules branch but absent from the
+    // vendor list, so an error whose only frame was one of these counted as
+    // first-party and escaped every `!hasFirstParty` gate. Both confirmed to
+    // hold no first-party module on a real build by dumping each chunk's
+    // `moduleIds` in `generateBundle`: protomaps 0/3, h3-js 0/1. Real hashes.
+    ['/assets/protomaps-ecfqTcHR.js', 'protomaps (vendor)'],
+    ['/assets/h3-js-BR3gmGp0.js', 'h3-js (vendor)'],
   ];
 
   for (const [filename, label] of vendorChunks) {
@@ -258,6 +312,67 @@ describe('first-party file detection', () => {
       assert.equal(beforeSend(event), null, `${filename} should NOT be treated as first-party`);
     });
   }
+
+  // ── Build-time chunk ownership manifest overrides the name regex ──
+  //
+  // The regex above is a fallback. A chunk NAME cannot answer "is this ours":
+  // Rollup names a chunk after its seed module and hoists shared modules into
+  // it, so `i18n-<hash>.js` measured 12/12 first-party modules on a real build
+  // while a second, genuinely pure chunk shared the name `i18n`. No name rule
+  // can separate those. `wm-first-party-chunk-manifest` stamps each chunk with
+  // its own ownership; these lock in that the stamp wins and that a miss is
+  // never worse than the old behaviour.
+  describe('chunk ownership manifest (vendor-named chunks that hold our code)', () => {
+    const OWNERSHIP = '__WM_CHUNK_OWNERSHIP__';
+    const withOwnership = (map, run) => {
+      const had = Object.prototype.hasOwnProperty.call(globalThis, OWNERSHIP);
+      const prev = globalThis[OWNERSHIP];
+      globalThis[OWNERSHIP] = map;
+      try { return run(); } finally {
+        if (had) globalThis[OWNERSHIP] = prev; else delete globalThis[OWNERSHIP];
+      }
+    };
+    // Ambiguous message: suppressed without a first-party frame, kept with one.
+    const ambiguous = (filename) => makeEvent('Maximum call stack size exceeded', 'RangeError', [
+      { filename, lineno: 10, function: 'doStuff' },
+    ]);
+
+    it('KEEPS a vendor-NAMED chunk the manifest marks first-party (the i18n case)', () => {
+      // Exactly the live bug: this chunk matches the vendor regex, but the build
+      // measured 12/12 of its modules as ours, so its failures must surface.
+      const kept = withOwnership({ 'i18n-0kRCkTIm.js': 1 },
+        () => beforeSend(ambiguous('/assets/i18n-0kRCkTIm.js')));
+      assert.ok(kept !== null, 'a chunk the build says is ours must not be treated as vendor');
+    });
+
+    it('DROPS a chunk the manifest marks vendor even though the name is unknown to the regex', () => {
+      const dropped = withOwnership({ 'somelib-Ab12Cd34.js': 0 },
+        () => beforeSend(ambiguous('/assets/somelib-Ab12Cd34.js')));
+      assert.equal(dropped, null, 'a chunk the build says is pure vendor must be suppressible');
+    });
+
+    it('falls back to the name regex for a chunk the manifest has not registered', () => {
+      // Dev/serve, or a chunk that failed before its registration statement ran.
+      // Legacy behaviour exactly: vendor-named dropped, owned-named kept.
+      const registered = { 'other-Zz99.js': 1 };
+      assert.equal(
+        withOwnership(registered, () => beforeSend(ambiguous('/assets/maplibre-AbC123.js'))),
+        null,
+        'unregistered + vendor-named must still be suppressed',
+      );
+      assert.ok(
+        withOwnership(registered, () => beforeSend(ambiguous('/assets/panels-DzUv7BBV.js'))) !== null,
+        'unregistered + owned-named must still be kept',
+      );
+    });
+
+    it('is inert when the manifest is absent entirely', () => {
+      const had = Object.prototype.hasOwnProperty.call(globalThis, OWNERSHIP);
+      assert.equal(had, false, 'no manifest should be installed by importing the policy');
+      assert.equal(beforeSend(ambiguous('/assets/maplibre-AbC123.js')), null);
+      assert.ok(beforeSend(ambiguous('/assets/panels-DzUv7BBV.js')) !== null);
+    });
+  });
 
   it('filters sentry chunk frames as infrastructure (not even counted as third-party)', () => {
     // Sentry frames are excluded from nonInfraFrames entirely, so a sentry-only stack
@@ -416,19 +531,27 @@ describe('dynamic-module-import failures (stale chunk after deploy)', () => {
 
   // No-URL phrasings (Safari `Importing a module script failed.`, bare Firefox
   // `error loading dynamically imported module`, and the module-LINK export
-  // mismatch `Importing binding name '<x>' is not found.` — WORLDMONITOR-TM)
-  // throw at fetch/link time with no first-party call site, so they're gated on
-  // `!hasFirstParty`: suppressed with an empty or third-party stack, preserved
-  // when a genuine first-party frame is present.
+  // mismatch — WebKit's `Importing binding name '<x>' is not found.`
+  // (WORLDMONITOR-TM) and the V8/Gecko `The requested module '<url>' does not
+  // provide an export named '<x>'` (WORLDMONITOR-149)) throw at fetch/link time
+  // with no first-party call site, so they're gated on `!hasFirstParty`:
+  // suppressed with an empty or third-party stack, preserved when a genuine
+  // first-party frame is present.
   const noUrlImportErrors = [
     'Importing a module script failed.',
     'TypeError: Importing a module script failed.',
     'error loading dynamically imported module',
     "Importing binding name 'f' is not found.",
+    // Verbatim WORLDMONITOR-149: Chrome 153 / Windows, zero frames,
+    // onunhandledrejection, 7 min after its own build deployed. Gecko's
+    // spelling of the same failure (`doesn't provide an export named:`) never
+    // reaches beforeSend — it is dropped by the frame-blind `ignoreErrors`
+    // entry, which the engine-parity block below pins instead.
+    "The requested module './feeds-BoXv5LqL.js' does not provide an export named 's'",
   ];
 
   for (const msg of noUrlImportErrors) {
-    const type = msg.startsWith('Importing binding name') ? 'SyntaxError' : 'TypeError';
+    const type = /^(?:Importing binding name|The requested module)/.test(msg) ? 'SyntaxError' : 'TypeError';
     it(`suppresses "${msg.slice(0, 55)}..." with empty stack`, () => {
       const event = makeEvent(msg, type, []);
       assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed (chunk-reload guard / deploy-skew)`);
@@ -444,15 +567,213 @@ describe('dynamic-module-import failures (stale chunk after deploy)', () => {
       assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
     });
   }
+
+  // ── Engine parity for the module-LINK failure (WORLDMONITOR-149) ──
+  //
+  // One runtime condition — a chunk imports a named export a sibling chunk no
+  // longer provides after a deploy — that each engine spells differently:
+  //
+  //   V8      The requested module './x.js' does not provide an export named 's'
+  //   Gecko   The requested module './x.js' doesn't provide an export named: 's'
+  //   WebKit  Importing binding name 's' is not found.
+  //
+  // Coverage was bound to two of the three spellings, so Chrome's — the single
+  // most common engine — reported for months while the other two were dropped
+  // (one word: `does not` vs `doesn't`). This block pins the CLASS so the next
+  // engine variant is a deliberate decision, not another silent gap. Bound by
+  // the runtime condition, never by one engine's wording.
+  describe('module-link skew: every engine spelling is covered somewhere', () => {
+    const V8 = "The requested module './feeds-BoXv5LqL.js' does not provide an export named 's'";
+    const GECKO = "The requested module './feeds-BoXv5LqL.js' doesn't provide an export named: 's'";
+    const WEBKIT = "Importing binding name 's' is not found.";
+
+    it('drops the Gecko spelling at the frame-blind ignoreErrors layer', () => {
+      assert.equal(isIgnored(GECKO, 'SyntaxError'), true);
+    });
+
+    it('does NOT drop the V8 or WebKit spellings at ignoreErrors', () => {
+      // Both are stack-gated on purpose: a link failure attributable to a
+      // first-party frame must still surface. Moving either into ignoreErrors
+      // would make it frame-blind and swallow that case.
+      assert.equal(isIgnored(V8, 'SyntaxError'), false);
+      assert.equal(isIgnored(WEBKIT, 'SyntaxError'), false);
+    });
+
+    it('drops the V8 and WebKit spellings in beforeSend when no frame is ours', () => {
+      assert.equal(beforeSend(makeEvent(V8, 'SyntaxError', [])), null);
+      assert.equal(beforeSend(makeEvent(WEBKIT, 'SyntaxError', [])), null);
+    });
+
+    it('preserves the V8 and WebKit spellings when a first-party frame is present', () => {
+      assert.ok(beforeSend(makeEvent(V8, 'SyntaxError', [firstPartyFrame()])) !== null);
+      assert.ok(beforeSend(makeEvent(WEBKIT, 'SyntaxError', [firstPartyFrame()])) !== null);
+    });
+
+    it('does not swallow a first-party error that merely mentions the wording', () => {
+      // The rule must key on the runtime sentence, not on the phrase appearing
+      // anywhere in a message we produced ourselves.
+      const ours = makeEvent(
+        "Feed registry validation failed: source './feeds.ts' does not provide an export named 'FEEDS'",
+        'Error',
+        [firstPartyFrame('/assets/feeds-BoXv5LqL.js', 'validateFeedRegistry')],
+      );
+      assert.ok(beforeSend(ours) !== null, 'a first-party validation error must still surface');
+    });
+  });
+});
+
+// ─── WORLDMONITOR-XT: Vite's CSS preload failure for an owned stylesheet ───
+//
+// Vite's preload helper inserts a `<link rel="stylesheet">` for each CSS
+// dependency of an `import()` and rejects that import with `Unable to preload CSS
+// for <url>` when the link fires `error`, after dispatching `vite:preloadError`
+// (which installChunkReloadGuard turns into a reload). The helper is bundled
+// into our own chunks, so the event always carries a first-party frame; the
+// owned hashed URL is what licenses the suppression, exactly as for the JS twin.
+describe('Vite CSS preload failures (WORLDMONITOR-XT)', () => {
+  // Verbatim production shape: Chrome Mobile / Android 10, one frame in the
+  // chunk that holds the preload helper, the deferred `import('./App')` whose
+  // catch rethrows on purpose.
+  const PROD_MSG = 'Unable to preload CSS for /assets/debugbear-rum-9hl8Iil4.css';
+  const helperFrame = () => firstPartyFrame('https://www.worldmonitor.app/assets/clerk-DyIi5-Wc.js', 'HTMLLinkElement.<anonymous>');
+
+  it('suppresses the verbatim production event despite its first-party frame', () => {
+    assert.equal(beforeSend(makeEvent(PROD_MSG, 'Error', [helperFrame()])), null);
+  });
+
+  it('suppresses an absolute owned stylesheet URL', () => {
+    for (const url of [
+      'https://www.worldmonitor.app/assets/happy-theme-DInLuQYM.css',
+      'https://tech.worldmonitor.app/assets/debugbear-rum-9hl8Iil4.css',
+    ]) {
+      assert.equal(beforeSend(makeEvent(`Unable to preload CSS for ${url}`, 'Error', [helperFrame()])), null, url);
+    }
+  });
+
+  it('keeps an off-origin stylesheet', () => {
+    const event = makeEvent('Unable to preload CSS for https://cdn.example.com/assets/vendor-abc123.css', 'Error', [helperFrame()]);
+    assert.ok(beforeSend(event) !== null, 'a foreign host is not our deploy');
+  });
+
+  it('keeps a non-hashed stylesheet on an owned origin', () => {
+    const event = makeEvent('Unable to preload CSS for /assets/main.css', 'Error', [helperFrame()]);
+    assert.ok(beforeSend(event) !== null, 'only a hashed Vite asset is a stale-or-dropped chunk');
+  });
+
+  it('keeps a message that merely embeds the wording', () => {
+    const event = makeEvent('Theme failed: Unable to preload CSS for /assets/happy-theme-DInLuQYM.css (retrying)', 'Error', [helperFrame()]);
+    assert.ok(beforeSend(event) !== null, 'the helper emits the sentence alone');
+  });
+});
+
+// ─── WORLDMONITOR-11A: Safari module fetch failure behind a first-party await ───
+//
+// Safari's `Importing a module script failed.` names no URL, and WebKit's async
+// stack trace appends the awaiting `import()` site, so the `!hasFirstParty`
+// gate misses it whenever that site is ours. The module loader's own builtins
+// on the stack prove the rejection came from fetching the module graph.
+describe('Safari module fetch failure with a first-party await site (WORLDMONITOR-11A)', () => {
+  const native = (fn) => ({ filename: '[native code]', function: fn });
+  // Verbatim production frame order (Safari 16.3, oldest first). The awaiting
+  // site is `await import('./Map')` in MapContainer.initSvgMap; anonymous
+  // frames reach beforeSend as '?', not the null Sentry displays.
+  const PRODUCTION_FRAMES = [
+    native('promiseReactionJob'),
+    { filename: 'https://www.worldmonitor.app/assets/clerk-YhAdCMS6.js', lineno: 1, colno: 2176, function: '?' },
+    native('asyncFunctionResume'),
+    { filename: 'https://www.worldmonitor.app/assets/MapContainer-BJGWKB_G.js', lineno: 2, colno: 9, function: '?' },
+    native('?'),
+    native('asyncFunctionResume'),
+    native('?'),
+    native('requestSatisfy'),
+    native('requestInstantiate'),
+    native('asyncFunctionResume'),
+    native('?'),
+    native('requestFetch'),
+    native('fetch'),
+  ];
+
+  it('suppresses the verbatim production event', () => {
+    assert.equal(beforeSend(makeEvent('Importing a module script failed.', 'TypeError', PRODUCTION_FRAMES)), null);
+  });
+
+  it('suppresses the type-prefixed spelling', () => {
+    assert.equal(beforeSend(makeEvent('TypeError: Importing a module script failed.', 'TypeError', PRODUCTION_FRAMES)), null);
+  });
+
+  // The hand-built frames above are only honest if the SDK builds the same
+  // shape before beforeSend runs, so parse the Safari stack (innermost first)
+  // through the real client instead of trusting the ingest rendering.
+  it('suppresses the event the real SDK builds from the Safari stack', async () => {
+    const safariStack = [
+      'fetch@[native code]',
+      'requestFetch@[native code]',
+      '@[native code]',
+      'asyncFunctionResume@[native code]',
+      'requestInstantiate@[native code]',
+      'requestSatisfy@[native code]',
+      '@[native code]',
+      'asyncFunctionResume@[native code]',
+      '@[native code]',
+      '@https://www.worldmonitor.app/assets/MapContainer-BJGWKB_G.js:2:9',
+      'asyncFunctionResume@[native code]',
+      '@https://www.worldmonitor.app/assets/clerk-CVT8SHsT.js:1:2176',
+      'promiseReactionJob@[native code]',
+    ].join('\n');
+    const reason = new TypeError('Importing a module script failed.');
+    Object.defineProperty(reason, 'stack', { value: safariStack });
+    const client = new BrowserClient({ stackParser: defaultStackParser, integrations: [] });
+    const event = await client.eventFromException(reason);
+    const frames = event.exception.values[0].stacktrace?.frames ?? [];
+    assert.ok(frames.some((f) => f.filename === '[native code]' && f.function === 'requestFetch'),
+      'the SDK must keep the loader builtin as a named [native code] frame');
+    assert.ok(frames.some((f) => /\/assets\/MapContainer-/.test(f.filename ?? '')),
+      'the first-party await site must be on the stack, or this is not the 11A shape');
+    assert.equal(beforeSend(event), null);
+  });
+
+  // Positive control for the loader-builtin gate: the same message with only
+  // our await site and no module-loader frames is not proven to be a fetch.
+  it('keeps the message when no module-loader builtin is on the stack', () => {
+    const frames = PRODUCTION_FRAMES.filter((f) => !/^request/.test(f.function));
+    assert.ok(beforeSend(makeEvent('Importing a module script failed.', 'TypeError', frames)) !== null);
+  });
+
+  // A same-named function in our own chunk is not WebKit's builtin.
+  it('keeps the message when `requestFetch` is a bundle function, not native code', () => {
+    const frames = [
+      firstPartyFrame('https://www.worldmonitor.app/assets/MapContainer-BJGWKB_G.js', 'requestFetch'),
+      firstPartyFrame(),
+    ];
+    assert.ok(beforeSend(makeEvent('Importing a module script failed.', 'TypeError', frames)) !== null);
+  });
+
+  // Positive control for the message gate: an evaluation-time throw rides the
+  // same loader frames but rejects with its own error.
+  it('keeps a different error thrown under the module loader', () => {
+    const event = makeEvent("undefined is not an object (evaluating 'e.map')", 'TypeError', PRODUCTION_FRAMES);
+    assert.ok(beforeSend(event) !== null);
+  });
+
+  // Positive control for the type gate: WebKit raises this sentence only as a
+  // TypeError, so the same words under another type are not the loader's
+  // rejection (PR #8174 review).
+  it('keeps the sentence under a type other than TypeError', () => {
+    for (const type of ['Error', 'SyntaxError']) {
+      const event = makeEvent('Importing a module script failed.', type, PRODUCTION_FRAMES);
+      assert.ok(beforeSend(event) !== null, type);
+    }
+  });
 });
 
 // ─── Zero-frame async-rejection patterns: AbortSignal timeouts + DOMException(NotSupportedError) ───
 //
 // AbortSignal.timeout() rejections and DOMException(NotSupportedError) bubble
 // up via onunhandledrejection without first-party frames captured (browser
-// fires them from internal infra at the timer boundary). Both phrases are
-// runtime-emitted only — our shipped code cannot synthesize them
-// (WORLDMONITOR-66 / WORLDMONITOR-62).
+// fires them from internal infra at the timer boundary). Our own timeout
+// reasons are frameless too (insights-loader stamps the native header-only
+// stack), so first-party failures surface only through a `kind`-tagged report
+// (WORLDMONITOR-66 / WORLDMONITOR-62 / WORLDMONITOR-125).
 
 describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DOM-walker / wrapper-injected timeout)', () => {
   for (const dispatch of ['direct', 'queued']) {
@@ -480,11 +801,12 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
   // from extension noise, exactly as it had for panel dispatch before #7552.
   //
   // The escape hatch is the PRESENCE of a `kind` tag, not another message name.
-  // Only first-party capture call sites set `kind` (six across src/ at the time
-  // of writing: main.ts `csp_violation`, bootstrap/variant-theme.ts
+  // Only first-party capture call sites set `kind` (seven across src/ at the
+  // time of writing: main.ts `csp_violation`, bootstrap/variant-theme.ts
   // `variant_theme_load_failed`, app/pending-panel-data.ts
   // `panel_call_rejected`, services/wm-session.ts `wm_session_dead` and
-  // `wm_session_route_401`, services/checkout.ts `checkout_request_failed`),
+  // `wm_session_route_401`, services/checkout.ts `checkout_request_failed`,
+  // components/CountryDeepDivePanel.ts `country_deep_dive_load_failed`),
   // and a browser- or extension-originated rejection cannot carry one.
   //
   // The cases below are parameterised over a value that appears NOWHERE in
@@ -499,10 +821,11 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     'csp_violation',
     'variant_theme_load_failed',
     'wm_session_dead',
+    'country_deep_dive_load_failed',
     // Belongs to no call site. A name-list gate fails here and only here.
     'kind_presence_probe',
     // A truthiness gate reads this as absent and suppresses the report. No
-    // call site can emit it today — all six are string literals — but
+    // call site can emit it today — all seven are string literals — but
     // `kind: someVar` is one refactor away, and the failure would be silent.
     '',
   ]) {
@@ -720,6 +1043,18 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // mapped .ts frame or an owned hashed-chunk URL (handled above).
     ["Unexpected token 'else'", 'SyntaxError'],
     ["Unexpected token 'for'", 'SyntaxError'],
+    // V8's identifier phrasing via window.onerror with stacktrace: null
+    // (Sentry WORLDMONITOR-19G: Chrome 155 / Windows, /dashboard). A parse
+    // failure in one of our hashed chunks keeps that chunk's URL as its frame,
+    // so a frameless one is an injected script. Any identifier, not a census.
+    ["Unexpected identifier 'd'", 'SyntaxError'],
+    ["SyntaxError: Unexpected identifier 'queueMicrotask'", 'SyntaxError'],
+    // The identifiers that used to sit in frame-blind ignoreErrors entries
+    // (WORLDMONITOR-NT `'m'`, plus `'https'` and `'does'`), including
+    // WebKit's trailing `. Expected ...` clause.
+    ["Unexpected identifier 'm'", 'SyntaxError'],
+    ["Unexpected identifier 'https'. Expected ';' after variable declaration.", 'SyntaxError'],
+    ["Unexpected identifier 'does'", 'SyntaxError'],
     ['SyntaxError: Unexpected token \'else\'', 'SyntaxError'],
     ['SyntaxError: Unexpected token \'for\'', 'SyntaxError'],
     // Firefox's wording for a failed `fetch()` (WORLDMONITOR-RK) — the
@@ -790,6 +1125,20 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       [{ filename: '<anonymous>', lineno: 1 }, { filename: '<anonymous>', lineno: 1 }],
     );
     assert.equal(beforeSend(event), null);
+  });
+
+  it("suppresses an injected script's Unexpected identifier with only <anonymous> frames", () => {
+    const event = makeEvent("Unexpected identifier 'm'", 'SyntaxError',
+      [{ filename: '<anonymous>', lineno: 1 }]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('keeps Unexpected identifier when ignoreErrors runs first (no frame-blind entry)', () => {
+    // ignoreErrors cannot see frames, so any entry there would drop the
+    // first-party case before beforeSend could preserve it.
+    for (const msg of ["Unexpected identifier 'm'", "Unexpected identifier 'https'", "Unexpected identifier 'does'"]) {
+      assert.equal(isIgnored(msg, 'SyntaxError'), false, msg);
+    }
   });
 
   it('keeps a pending-request message that is not the whole browser sentence', () => {
@@ -928,6 +1277,24 @@ describe('existing beforeSend filters', () => {
       { filename: '/assets/panels-wF5GXf0N.js', lineno: 24, function: 'window.fetch' },
     ]);
     assert.equal(beforeSend(event), null, 'MapLibre tile AJAX failure should be suppressed');
+  });
+
+  it('suppresses CARTO vector-tile failures from tiles.basemaps.cartocdn.com (WORLDMONITOR-1BF)', () => {
+    // The CARTO style.json lives on basemaps.cartocdn.com, but its vector tiles
+    // are served from the tiles. subdomain. The allowlist matches hosts exactly,
+    // so the tile host needs its own entry. Frames are the real 1BF stack.
+    const event = makeEvent('Failed to fetch (tiles.basemaps.cartocdn.com)', 'TypeError', [
+      { filename: '../../src/services/fetch-failure-attribution.ts', lineno: 182, function: 'wrapped' },
+      { filename: '../../src/services/runtime.ts', lineno: 610, function: 'dispatch' },
+      { filename: '../../src/services/billing-retry.ts', lineno: 208, function: '<anonymous>' },
+      { filename: 'chrome-extension://hoklmmgfnpapgjgcpechhaamimifchmp/frame_ant/frame_ant.js', lineno: 2, function: 'window.fetch' },
+      { filename: '../../src/services/wm-session.ts', lineno: 1022, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'CARTO tile host failure should be suppressed');
+    const lookalike = makeEvent('Failed to fetch (tiles.basemaps.cartocdn.com.evil.example)', 'TypeError', [
+      { filename: '../../src/services/wm-session.ts', lineno: 1022, function: 'window.fetch' },
+    ]);
+    assert.ok(beforeSend(lookalike) !== null, 'A lookalike host must not ride the CARTO entry');
   });
 
   it('suppresses MapLibre AJAXError for allowlisted host even with an all-maplibre stack', () => {
@@ -1622,6 +1989,87 @@ describe('injected browser-automation harness errors (Floot)', () => {
       firstPartyFrame('src/components/SomePanel.ts', 'requireEl'),
     ]);
     assert.ok(beforeSend(event) !== null, 'first-party "Element not found: X" must reach Sentry');
+  });
+});
+
+// ─── WORLDMONITOR-169: Puppeteer crawler driving synthetic events ────────────
+//
+// A Chrome 141 crawler ran `PuppeteerPage.evaluate` scripts that dispatched
+// `isTrusted: false` events into the page; a handler threw on the null event
+// detail. Puppeteer's evaluated code carries a `pptr:` source URL, so its frame
+// sits at the bottom of the stack even when first-party frames sit above it.
+describe('Puppeteer-driven crawler frames (WORLDMONITOR-169)', () => {
+  const msg = "Cannot use 'in' operator to search for 'data' in null";
+  const pptrFrame = {
+    filename: 'file:///C:/snapshot/common-browser-driver/common/browser/adapters/puppeteer-adapter.js',
+    lineno: 11763,
+    function: 'async pptr:evaluate;PuppeteerPage.evaluate%20',
+  };
+
+  it('suppresses an error whose stack runs through a Puppeteer evaluate frame', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      pptrFrame,
+      { filename: 'file:///C:/snapshot/explorer.js', lineno: 7506, function: 'dispatchCustomEvent' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress on a "puppeteer"-named frame without the pptr: source URL', () => {
+    // The match keys on Puppeteer's source-URL scheme, which no bundle asset or
+    // function name can carry, not on the word. A chunk or function of ours that
+    // merely mentions puppeteer must still report.
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: '/assets/puppeteer-helpers-Bx81kQ2a.js', lineno: 12, function: 'puppeteerLikeDriver' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a puppeteer-named first-party frame must reach Sentry');
+  });
+
+  it('does NOT suppress the same error from first-party frames without Puppeteer', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'dispatchCustomEvent'),
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a real user hitting the same handler bug must reach Sentry');
+  });
+});
+
+// ─── WORLDMONITOR-168: `/sw.js` evaluated as a page script ────────────────────
+//
+// The same crawler loaded the service worker's script into pages. Workbox's
+// loader then read `document.currentScript.src` on a null `currentScript`. The
+// real registration (src/main.ts) runs it in a worker, which this client never
+// sees, so an all-`/sw.js` stack cannot come from a real user.
+describe('`/sw.js` evaluated as a page script (WORLDMONITOR-168)', () => {
+  const msg = "Cannot read properties of null (reading 'src')";
+
+  it('suppresses an error whose only frames are /sw.js', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: null },
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: 'self.define' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress the same message from a first-party frame', () => {
+    const event = makeEvent(msg, 'TypeError', [firstPartyFrame('/assets/panels-DzUv7BBV.js', 'loadScript')]);
+    assert.ok(beforeSend(event) !== null, 'a first-party null currentScript read must reach Sentry');
+  });
+
+  it('does NOT suppress when a first-party frame shares the stack with /sw.js', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/sw.js', lineno: 1, function: 'self.define' },
+      firstPartyFrame('/assets/main-Bx81kQ2a.js', 'registerServiceWorker'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'only an all-/sw.js stack is proof of page-context evaluation');
+  });
+
+  it('does NOT suppress a same-named script under another path', () => {
+    const event = makeEvent(msg, 'TypeError', [
+      { filename: 'https://www.worldmonitor.app/assets/sw.js', lineno: 1, function: 'self.define' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'only the root /sw.js is the registered worker');
   });
 });
 
@@ -2386,3 +2834,185 @@ describe('malformed numeric literal SyntaxError (WORLDMONITOR-10B)', () => {
       'the entry is anchored to the whole engine sentence');
   });
 });
+
+describe('beforeSend — MapLibre 6 Object.hasOwn on pre-15.4 WebKit / old Chromium forks (WORLDMONITOR-12V/12X)', () => {
+  const HASOWN = 'Object.hasOwn is not a function';
+  const HASOWN_WEBKIT = "Object.hasOwn is not a function. (In 'Object.hasOwn(this._values,e)', 'Object.hasOwn' is undefined)";
+
+  it('drops the zero-frame rejection from the map worker (Chrome Mobile iOS on iOS 15.3)', () => {
+    assert.equal(beforeSend(makeEvent(HASOWN_WEBKIT, 'Error', [])), null);
+  });
+
+  it('drops the Chromium phrasing with only vendor map frames (Whale 4.34)', () => {
+    const event = makeEvent(HASOWN, 'TypeError', [
+      { filename: '/assets/maplibre-C1CBGVpC.js', lineno: 1, function: 'setValue' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('keeps it when a first-party frame is on the stack', () => {
+    // Our source never calls `Object.hasOwn` (pinned below); if it ever does
+    // on an engine that lacks it, that is a real compatibility break to see.
+    const event = makeEvent(HASOWN, 'TypeError', [firstPartyFrame('src/services/i18n.ts', 'pick')]);
+    assert.ok(beforeSend(event) !== null);
+  });
+
+  it('keeps other "is not a function" messages with no frames', () => {
+    assert.ok(beforeSend(makeEvent('Object.groupBy is not a function', 'TypeError', [])) !== null);
+  });
+
+  it('pins the browser source (src/) as Object.hasOwn-free, the rule\'s licence', () => {
+    // api/ and the server-only shared/ leaves (e.g. shared/story-phase.js, used
+    // by api/og-story) run under Node, where Object.hasOwn is universal and
+    // nothing they throw reaches this beforeSend.
+    const roots = ['src'].map((d) => resolve(__dirname, '..', d));
+    const offenders = [];
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) { if (entry.name !== 'node_modules') walk(full); continue; }
+        if (!/\.(?:ts|mts|tsx|js|mjs)$/.test(entry.name)) continue;
+        if (full.endsWith('sentry-init.ts')) continue;
+        if (/\bObject\.hasOwn\(/.test(readFileSync(full, 'utf-8'))) offenders.push(full);
+      }
+    };
+    for (const root of roots) walk(root);
+    assert.deepEqual(offenders, [], 'first-party code now calls Object.hasOwn — re-derive the WORLDMONITOR-12V rule');
+  });
+});
+
+// ─── WORLDMONITOR-134: explicit `Error` from a script injected into the page ─
+//
+// Google app (GSA 437) on iOS 26.5, `Error: Ka\`prod` via onunhandledrejection.
+// Every non-native frame is the `/dashboard` document itself, at line:col
+// positions that do not exist in the served HTML (e.g. 462:1094 on a 444-char
+// line) — the host app's main-world script, which WebKit attributes to the
+// document URL. The document-frame gate already covered this shape for
+// TypeError (WORLDMONITOR-V8); a plain `Error` is only ever an explicit
+// `throw new Error(...)`/`reject(new Error(...))`, and no inline script in our
+// HTML entries does either (pinned below), so the same frames prove it foreign.
+describe('document-URL-only explicit Error (WORLDMONITOR-134)', () => {
+  const MSG = 'Ka`prod';
+  const documentFrames = [
+    { filename: '/dashboard', lineno: 464, colno: 54, function: null },
+    { filename: '/dashboard', lineno: 194, colno: 41, function: 'Vi' },
+    { filename: '[native code]', function: 'Promise' },
+    { filename: '/dashboard', lineno: 196, colno: 97, function: 'Yi' },
+    { filename: 'https://www.worldmonitor.app/dashboard', lineno: 462, colno: 1094, function: 'cv' },
+  ];
+
+  it('suppresses an Error whose only source frames are the page document', () => {
+    assert.equal(beforeSend(makeEvent(MSG, 'Error', documentFrames), IOS_NAVIGATOR), null);
+  });
+
+  it('keeps the same Error when a first-party frame is on the stack', () => {
+    const event = makeEvent(MSG, 'Error', [...documentFrames, firstPartyFrame()]);
+    assert.ok(beforeSend(event, IOS_NAVIGATOR) !== null);
+  });
+
+  it('keeps the same Error with an empty stack', () => {
+    assert.ok(beforeSend(makeEvent(MSG, 'Error', []), IOS_NAVIGATOR) !== null);
+  });
+
+  it('keeps an Error whose single document frame is the SDK onerror synthesis', () => {
+    // globalHandlersIntegration pushes exactly one `{filename: location.href,
+    // function: '?'}` frame onto a stackless onerror event, which our own
+    // bundle can raise (Firefox `uncaught exception: [object Object]`).
+    const synthesized = { filename: 'https://www.worldmonitor.app/dashboard', lineno: 0, colno: 0, function: '?' };
+    assert.ok(beforeSend(makeEvent(MSG, 'Error', [synthesized]), IOS_NAVIGATOR) !== null);
+  });
+
+  it('keeps an Error thrown from an external .js script URL', () => {
+    const event = makeEvent(MSG, 'Error', [{ filename: 'https://cdn.example.com/widget.js', lineno: 1, function: 'x' }]);
+    assert.ok(beforeSend(event, IOS_NAVIGATOR) !== null);
+  });
+
+  it('pins the licence: no inline script in an HTML entry throws or rejects', () => {
+    const root = resolve(__dirname, '..');
+    const offenders = readdirSync(root)
+      .filter((name) => name.endsWith('.html'))
+      .flatMap((name) => {
+        const html = readFileSync(join(root, name), 'utf-8');
+        return [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+          .filter(([, body]) => /\bthrow\b|\breject\s*\(|Promise\.reject\b/.test(body))
+          .map(() => name);
+      });
+    assert.deepEqual(offenders, [],
+      'an inline HTML script now throws — a document-attributed Error may be ours; re-derive the WORLDMONITOR-134 gate');
+  });
+});
+
+// #9653: DeckGLMap reports a deck.gl render-loop stop only after confirming the
+// map froze. Those errors come from deck/maplibre frames, which the vendor-stack
+// rules drop, so the report claims itself with a kind tag.
+describe('confirmed deck.gl loop-stop reports', () => {
+  const shapes = [
+    ['TypeError with only map-chunk frames', makeEvent("Cannot read properties of undefined (reading 'getViewport')", 'TypeError', [
+      { filename: '/assets/deck-stack-x1y2z3.js', lineno: 1, function: 'Deck._onRenderFrame' },
+      { filename: '/assets/maplibre-AbC123.js', lineno: 2, function: 'Map._render' },
+    ])],
+    ['interleaved null-id race', makeEvent("Cannot read properties of null (reading 'id')", 'TypeError', [
+      { filename: '/assets/deck-stack-x1y2z3.js', lineno: 1, function: 'drawLayer' },
+    ])],
+  ];
+  for (const [label, event] of shapes) {
+    it(`drops an unclaimed ${label}`, () => {
+      assert.equal(beforeSend(structuredClone(event)), null);
+    });
+    it(`delivers a claimed ${label}`, () => {
+      const claimed = { ...structuredClone(event), tags: { kind: 'deck_loop_stopped', component: 'deckgl-loop' } };
+      assert.notEqual(beforeSend(claimed), null);
+    });
+  }
+});
+
+// ─── WORLDMONITOR-1A2: ReferenceError from an anonymous-only stack ─────────
+//
+// `Clerk is not defined` (Chrome 156 / macOS, onunhandledrejection) carried
+// two `<anonymous>:1` frames and nothing else: an injected script or a DevTools
+// console snippet naming a bare `Clerk` global. Our code reaches Clerk only as
+// `window.Clerk` (a property read, never a ReferenceError), and nothing in
+// src/ or shared/ evaluates code at runtime (no eval / new Function), so every
+// ReferenceError our bundle can raise carries a bundle or page-URL frame. The
+// gate is the stack invariant, not the identifier, so the next injected global
+// does not need its own ignoreErrors entry.
+describe('beforeSend — ReferenceError with only <anonymous> frames (WORLDMONITOR-1A2)', () => {
+  const anon = () => ({ filename: '<anonymous>', lineno: 1, function: '?' });
+
+  it('suppresses the production "Clerk is not defined" shape', () => {
+    assert.equal(
+      beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [anon(), anon()])),
+      null,
+    );
+  });
+
+  it('keeps a ReferenceError raised from a first-party bundle frame', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [anon(), firstPartyFrame()])));
+  });
+
+  it('keeps a ReferenceError from an inline page script (document URL frame)', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [{ filename: 'https://www.worldmonitor.app/', lineno: 12, function: '?' }])));
+  });
+
+  // The TypeError gate above also accepts blob: and filename-less frames; this
+  // gate must not, so copying that wider condition here goes red.
+  it('keeps a ReferenceError with a blob: frame beside an <anonymous> one', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [anon(), { filename: 'blob:https://www.worldmonitor.app/3f2a', lineno: 1, function: '?' }])));
+  });
+
+  it('keeps a ReferenceError with a filename-less frame beside an <anonymous> one', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError',
+      [anon(), { lineno: 1, function: '?' }])));
+  });
+
+  it('keeps a ReferenceError with no frames at all', () => {
+    assert.ok(beforeSend(makeEvent('Clerk is not defined', 'ReferenceError', [])));
+  });
+
+  it('keeps an anonymous-only Error that is not a ReferenceError', () => {
+    assert.ok(beforeSend(makeEvent('Clerk failed to load', 'Error', [anon()])));
+  });
+});
+

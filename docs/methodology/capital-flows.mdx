@@ -1,0 +1,122 @@
+---
+title: "Capital Flows"
+description: "How WorldMonitor measures money entering and leaving about 230 economies and between any two of them, from IMF balance-of-payments, IMF portfolio and direct-investment positions, and BIS cross-border banking statistics."
+---
+
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
+## Start here
+
+The capital-flows dataset answers two questions for any economy, and for any pair of economies:
+
+- **Is money arriving or leaving, and is that unusual?** Gross inflows and outflows from the IMF balance of payments, with a derived classification of the latest quarter.
+- **Where is it going, and through which channel?** Bank deposits and lending, portfolio holdings, and direct investment between two named countries, in both directions.
+
+Everything is official statistics published by the IMF and the BIS. The only derived values are the episode labels and z-scores, which are marked as derived wherever they appear.
+
+<Info>
+A person moving to another country is not a balance-of-payments transaction. Under the IMF's BPM6 rules their assets change residence with them and are recorded as a reclassification, not a flow. Wealth migration therefore does not appear in this dataset, however large it is.
+</Info>
+
+## The country view
+
+Each country carries up to four views. A view is absent when its source publishes nothing for that country.
+
+| View | Source | Measure | Frequency | Typical lag |
+|------|--------|---------|-----------|-------------|
+| `bop` | IMF Balance of Payments (`IMF.STA/BOP`) | Gross inflows and outflows: direct, portfolio and other investment, excluding reserves | Quarterly where reported, otherwise annual | 1–2 quarters |
+| `bank` | BIS Locational Banking Statistics (`WS_LBS_D_PUB`) | Cross-border loans and deposits of the country's non-bank residents (instrument G; excludes debt securities) | Quarterly | about 2 quarters |
+| `portfolio` | IMF Portfolio Investment Positions (`IMF.STA/PIP`, formerly CPIS) | Holdings of the country's securities by every reporting economy | Annual | 9–12 months |
+| `fdi` | IMF Direct Investment Positions (`IMF.STA/DIP`, formerly CDIS) | Inward and outward direct-investment positions by immediate counterpart, as the country reports them | Annual | about 2 years |
+
+Bank positions are as of the latest BIS quarter; a series that stopped earlier is reported as absent. All amounts are US dollars, in billions. Shares of GDP use the latest World Bank GDP in current US dollars.
+
+### Gross, not net
+
+Inflows are non-residents' net new claims on the country (BPM6 *net incurrence of liabilities*). Outflows are residents' net new claims abroad (*net acquisition of financial assets*). Each is the sum of direct, portfolio and other investment, and a quarter counts only when all three are reported. A partial sum would read as a collapse.
+
+Net flows hide most of what matters. A financial centre can show inflows and outflows of hundreds of billions a quarter that cancel out, so net is reported next to gross, never instead of it.
+
+### Episode states
+
+Quarterly series are classified with the Forbes and Warnock (2012) method:
+
+1. Take the four-quarter sum of gross flows, and its change from the same sum a year earlier.
+2. Compare that change with its mean and standard deviation over the trailing 20 quarters (at least 16).
+3. An episode starts when the change moves more than one standard deviation from the mean, must reach two at some point, ends when it returns within one, and must last more than one quarter.
+
+| Side | Rising | Falling |
+|------|--------|---------|
+| Inflows (non-residents) | `surge` | `stop` |
+| Outflows (residents) | `flight` | `retrenchment` |
+
+The state at the latest quarter is evaluated where both sides have data, so the state, the z-scores and the series always describe the same quarter. Annual-only series carry no state and no episodes.
+
+**How well it works.** The classifier was back-tested against 16 documented crisis episodes listed before the first run (`node scripts/backtest-capital-flow-episodes.mjs`). It identified 9 of the 15 that had data, and flags each type in about 9–11% of country-quarters. It reliably catches broad funding crises. It mislabels flight that takes the form of repaying foreign debt, which shows as a `stop`, and flight through channels the official categories do not record. Read the states as a screen for unusual quarters, not a verdict.
+
+## Pairs
+
+Ask for a country and a counterpart and you get both directions between them. In the response, `a` is the country and `b` the counterpart.
+
+| Leg | What it measures | Reported by | Values |
+|-----|------------------|-------------|--------|
+| `aDepositsInB`, `bDepositsInA` | Deposits that one side's non-bank residents hold in the other side's banks | The banking system holding the deposits | Stock, sum of the last four adjusted quarterly flows, eight quarters of history |
+| `aBorrowingFromB`, `bBorrowingFromA` | Cross-border bank lending to one side's non-banks by the other side's banks | The lending banking system | Same as deposits |
+| `aHoldingsOfB`, `bHoldingsOfA` | One side's holdings of the other side's securities | The holder | Stock and the same holding a year earlier |
+| `aFdiInB`, `bFdiInA` | One side's direct investment in the other | Both sides | The investor's figure, and the host's figure for the same position |
+
+Bank legs use the BIS *loans and deposits* instrument, so banks' debt securities (issued or held) are not counted as deposits or lending. A few reporting systems publish their bilateral breakdown only for *all instruments*; their legs use that measure and say so in `instrument: all_instruments`, while every other bank leg carries `instrument: loans_deposits`. Bank flows are the BIS *FX- and break-adjusted* changes. They remove exchange-rate moves and reporting breaks, so they read as money moved rather than valuation. Portfolio and FDI figures are positions; a change between two years mixes new money with price and exchange-rate moves.
+
+### Leg status
+
+Every leg carries a `status`. It matters as much as the number.
+
+| Status | Meaning |
+|--------|---------|
+| `reported` | The reporting side published a figure for this partner. |
+| `not_itemized` | The reporting side publishes bilateral data but has no current figure for this partner: it is not itemized (zero, small, or withheld for confidentiality) or its series stopped before the latest period. It is unknown, not zero. A bank leg may still carry the quarters it did report in `history`. |
+| `not_published` | The reporting side publishes no bilateral breakdown at all, so this direction cannot be seen in public data. |
+
+About 30 banking systems publish a by-counterparty breakdown to the BIS, about 80 economies report portfolio holdings, and about 100 report direct investment by counterpart. Deposits placed in a banking system outside the first group are invisible from either side.
+
+### Why FDI has two figures
+
+Both sides of a pair report the same direct-investment position: the investor as outward investment, the host as inward. They rarely agree. They differ in coverage, valuation and timing, and in how pass-through entities are attributed. The dataset reports the investor's figure as `stockUsdBn` with `basis: investor` and keeps the host's as `counterpartReportUsdBn`. When only the host reports, it uses the host's figure with `basis: host`.
+
+FDI positions are by *immediate* counterpart. Conduit economies carry large positions routed through special-purpose entities, so the immediate counterpart is often not the ultimate owner.
+
+## Using it
+
+**REST.** `GET /api/economic/v1/get-capital-flows`
+
+| Parameter | Effect |
+|-----------|--------|
+| `country` | ISO 3166-1 alpha-2. Omit for every country. |
+| `counterpart` | ISO 3166-1 alpha-2. With `country`, adds `pair` and the counterpart's own view. |
+| `include_series` | Adds 12 quarters or 6 years of BOP flows per country. |
+
+```bash
+curl -s "https://api.worldmonitor.app/api/economic/v1/get-capital-flows?country=DE&counterpart=JP" \
+  -H "X-WorldMonitor-Key: $WM_KEY"
+```
+
+**MCP.** `get_capital_flows` returns full views for up to 10 countries; with `counterpart` it adds one pair per country. Without a country it ranks the economies that have the chosen `sort` metric (the default `outflow_z` leaves out annual-only series, which have no z-score): the latest outflow or inflow z-score, flows as a share of GDP, net flows, the four-quarter change in deposits held abroad, or the change in foreign portfolio holdings. See the [MCP tools reference](/mcp-tools-reference#get_capital_flows).
+
+## Freshness
+
+The dataset is rebuilt weekly from the macro data bundle. `/api/health` marks it stale after 10 days without a rebuild, or when the newest IMF balance-of-payments quarter is more than 12 months old, which means the upstream feed stopped. The response names the newest period of each source in `latest`.
+
+## Limits
+
+- **People are not flows.** Residence changes are reclassified, not recorded (see the note at the top).
+- **Unpublished banking systems are blind spots.** A `not_published` leg means the direction is not visible in public data.
+- **Positions mix prices with money.** Only the bank legs are valuation-adjusted flows.
+- **Episodes are derived.** They are a statistical screen with a measured hit rate, not an official classification.
+- **Immediate counterparts.** FDI and portfolio figures name the first counterpart, not the ultimate owner.
+
+## Sources
+
+- IMF, *Balance of Payments and International Investment Position Statistics*, *Portfolio Investment Positions by Counterpart Economy* and *Direct Investment Positions by Counterpart Economy*, via the IMF SDMX 3.0 API.
+- Bank for International Settlements, *Locational Banking Statistics*, via the BIS SDMX API.
+- World Bank, *World Development Indicators*, GDP in current US dollars.
+- Forbes, K. J. and Warnock, F. E. (2012), "Capital flow waves: Surges, stops, flight, and retrenchment", *Journal of International Economics* 88(2), 235–251.

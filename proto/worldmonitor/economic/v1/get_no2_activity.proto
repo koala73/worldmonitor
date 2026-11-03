@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+enum No2RegionKind {
+  NO2_REGION_KIND_UNSPECIFIED = 0;
+  NO2_REGION_KIND_COUNTRY = 1;
+  NO2_REGION_KIND_CLUSTER = 2;
+}
+
+enum No2Direction {
+  NO2_DIRECTION_UNSPECIFIED = 0;
+  NO2_DIRECTION_STRENGTHENING = 1;
+  NO2_DIRECTION_WEAKENING = 2;
+  NO2_DIRECTION_UNCHANGED = 3;
+}
+
+// BASELINE_BACKFILL_PENDING is expected for a new region, not a fault.
+enum No2RegionExclusion {
+  NO2_REGION_EXCLUSION_UNSPECIFIED = 0;
+  NO2_REGION_EXCLUSION_REQUEST_FAILED = 1;
+  NO2_REGION_EXCLUSION_BASELINE_BACKFILL_PENDING = 2;
+  NO2_REGION_EXCLUSION_INSUFFICIENT_VALID_DAYS = 3;
+  NO2_REGION_EXCLUSION_INSUFFICIENT_BASELINE_YEARS = 4;
+}
+
+// NOT_COVERED is a contract answer; the rest are faults.
+enum No2ActivityUnavailableReason {
+  NO2_ACTIVITY_UNAVAILABLE_REASON_UNSPECIFIED = 0;
+  NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST = 1;
+  NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED = 2;
+  NO2_ACTIVITY_UNAVAILABLE_REASON_SEED_MISSING = 3;
+  NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_DATASET = 4;
+  NO2_ACTIVITY_UNAVAILABLE_REASON_CACHE_UNAVAILABLE = 5;
+}
+
+// Filters combine with AND; none means every registered region.
+message GetNo2ActivityRequest {
+  // ISO 3166-1 alpha-2: the country plus its clusters.
+  string country_code = 1 [
+    (buf.validate.field).string.pattern = "^([A-Za-z]{2})?$",
+    (sebuf.http.query) = {name: "country_code"}
+  ];
+  // Registry id, e.g. "yangtze-river-delta".
+  string region_id = 2 [
+    (buf.validate.field).string.pattern = "^([a-z0-9-]{1,64})?$",
+    (sebuf.http.query) = {name: "region_id"}
+  ];
+  // Countries, clusters, or both when unspecified.
+  No2RegionKind kind = 3 [
+    (buf.validate.field).enum.defined_only = true,
+    (sebuf.http.query) = {name: "kind"}
+  ];
+}
+
+message No2Window {
+  string window_start = 1;
+  string window_end = 2;
+  // Days with enough cloud-free, quality-filtered pixels.
+  int32 valid_days = 3;
+  // Mean tropospheric NO2 column, mol/m2; absent with no valid day.
+  optional double mean_no2_mol_m2 = 4;
+}
+
+message No2ActivityRegion {
+  string id = 1;
+  No2RegionKind kind = 2;
+  string label = 3;
+  string country_code = 4;
+  // West, south, east, north.
+  repeated double bbox = 5;
+  No2Window current = 6;
+  // Prior years whose window entered the baseline, newest first.
+  repeated int32 baseline_years = 7;
+  optional double baseline_mean_no2_mol_m2 = 8;
+  // Percent against the baseline mean; absent when excluded.
+  optional double change_percent = 9;
+  No2Direction direction = 10;
+  No2RegionExclusion exclusion = 11;
+}
+
+message GetNo2ActivityResponse {
+  repeated No2ActivityRegion regions = 1;
+  string generated_at = 2;
+  // Older than the 72 h health budget.
+  bool stale = 3;
+  // Pins the method constants in scripts/shared/no2-activity.mjs.
+  string method_version = 4;
+  // Required Copernicus credit line.
+  string attribution = 5;
+  No2ActivityUnavailableReason unavailable_reason = 6;
+  // False when served or not covered.
+  bool upstream_unavailable = 7;
+}

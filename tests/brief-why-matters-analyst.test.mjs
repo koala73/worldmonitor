@@ -46,8 +46,8 @@ async function invokeHandlerWithCachedEnvelope(
   envelope,
   providerCompletion = null,
   primary = 'gemini',
-  fallbackProviderCompletion = null,
   requestOverrides = {},
+  extraEnv = {},
 ) {
   const previousEnv = Object.fromEntries(HANDLER_ENV_KEYS.map((key) => [key, process.env[key]]));
   const originalFetch = globalThis.fetch;
@@ -61,7 +61,7 @@ async function invokeHandlerWithCachedEnvelope(
     delete process.env[key];
   }
   if (providerCompletion) process.env.OPENROUTER_API_KEY = 'or-test-key';
-  if (fallbackProviderCompletion) process.env.GROQ_API_KEY = 'groq-test-key';
+  Object.assign(process.env, extraEnv);
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     const method = init?.method || 'GET';
@@ -78,12 +78,6 @@ async function invokeHandlerWithCachedEnvelope(
     if (method === 'GET') return new Response('', { status: 200 });
     if (url === 'https://openrouter.ai/api/v1/chat/completions' && providerCompletion) {
       return new Response(JSON.stringify(providerCompletion), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-    if (url === 'https://api.groq.com/openai/v1/chat/completions' && fallbackProviderCompletion) {
-      return new Response(JSON.stringify(fallbackProviderCompletion), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -219,7 +213,14 @@ describe('displayNameForIso2', () => {
 // ── Cache-key stability ──────────────────────────────────────────────────
 
 describe('cache key identity', () => {
-  it('hashBriefStory stable across the 5-field material', async () => {
+  it('uses an unambiguous tuple and a full SHA-256 digest', async () => {
+    const a = await hashBriefStory(story({ headline: 'a||b', source: 'c' }));
+    const b = await hashBriefStory(story({ headline: 'a', source: 'b||c' }));
+    assert.notEqual(a, b);
+    assert.match(a, /^[a-f0-9]{64}$/);
+  });
+
+  it('hashBriefStory stable across the six-field material', async () => {
     const a = await hashBriefStory(story());
     const b = await hashBriefStory(story());
     assert.equal(a, b);
@@ -227,7 +228,7 @@ describe('cache key identity', () => {
 
   it('hashBriefStory differs when any hash-field differs', async () => {
     const baseline = await hashBriefStory(story());
-    for (const f of ['headline', 'source', 'threatLevel', 'category', 'country']) {
+    for (const f of ['headline', 'source', 'threatLevel', 'category', 'country', 'description']) {
       const h = await hashBriefStory(story({ [f]: `${story()[f]}X` }));
       assert.notEqual(h, baseline, `${f} must be part of cache identity`);
     }
@@ -235,7 +236,7 @@ describe('cache key identity', () => {
 });
 
 describe('brief-why-matters Edge cache acceptance', () => {
-  it('serves a complete v10 envelope as a cache hit', async () => {
+  it('serves a complete v11 envelope as a cache hit', async () => {
     const whyMatters = 'The ruling keeps the 2027 race open while reshaping coalition strategy.';
     const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
       whyMatters,
@@ -250,7 +251,7 @@ describe('brief-why-matters Edge cache acceptance', () => {
     assert.equal(fetchCalls.length, 1, 'a valid cache hit must not call an LLM provider');
   });
 
-  it('treats a clipped v10 envelope as a miss when regeneration fails', async () => {
+  it('treats a clipped v11 envelope as a miss when regeneration fails', async () => {
     const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
       whyMatters: ANALYST_MAX_TOKEN_CLIP,
       producedBy: 'analyst',
@@ -298,7 +299,7 @@ describe('brief-why-matters Edge cache acceptance', () => {
     assert.equal(
       fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
       true,
-      'a stop-finished complete response should populate v10',
+      'a stop-finished complete response should populate v11',
     );
   });
 
@@ -322,10 +323,7 @@ describe('brief-why-matters Edge cache acceptance', () => {
     );
   });
 
-  it('walks the configured provider chain after a length-limited completion on both paths', async () => {
-    const fallback =
-      'The ruling changes alliance planning across Europe while forcing policymakers to reassess regional commitments. ' +
-      'That shift could alter near-term diplomatic and defense priorities.';
+  it('does not fall back to Groq after a length-limited completion on either path (#8885)', async () => {
     const clippedCompletion = {
       choices: [{
         message: { content: ABBREVIATION_LENGTH_CLIP },
@@ -333,31 +331,25 @@ describe('brief-why-matters Edge cache acceptance', () => {
       }],
       usage: { total_tokens: 120, completion_tokens: 80 },
     };
-    const fallbackCompletion = {
-      choices: [{ message: { content: fallback }, finish_reason: 'stop' }],
-      usage: { total_tokens: 75, completion_tokens: 35 },
-    };
 
     for (const primary of ['gemini', 'analyst']) {
       const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(
         null,
         clippedCompletion,
         primary,
-        fallbackCompletion,
+        {},
+        { GROQ_API_KEY: 'stale-groq-key' },
       );
 
       assert.equal(response.status, 200);
-      assert.equal(body.whyMatters, fallback);
-      assert.equal(body.producedBy, primary);
+      assert.equal(body.whyMatters, null);
+      assert.equal(body.producedBy, null);
       assert.deepEqual(
         fetchCalls
           .filter(({ url, method }) => method === 'POST' && url.includes('/chat/completions'))
           .map(({ url }) => url),
-        [
-          'https://openrouter.ai/api/v1/chat/completions',
-          'https://api.groq.com/openai/v1/chat/completions',
-        ],
-        `${primary} must retry the fallback provider in-request`,
+        ['https://openrouter.ai/api/v1/chat/completions'],
+        `${primary} must not send the prompt to Groq even when GROQ_API_KEY is still set`,
       );
     }
   });
@@ -780,7 +772,6 @@ describe('endpoint validation contract', () => {
         cachedEnvelope,
         null,
         'gemini',
-        null,
         requestOverrides,
       );
       assert.equal(response.status, 400, path);
