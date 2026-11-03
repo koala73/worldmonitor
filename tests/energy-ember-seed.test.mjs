@@ -105,6 +105,37 @@ function mockEmberRedis(t, existingMeta) {
 
 // ─── Tests ────────────────────────────────────────────────────────────────
 
+describe('parseEmberCsv on the November 2026 release file', () => {
+  // Rows for USA, DEU and FRA cut from
+  // files.ember-energy.org/.../release_generation_monthly_global.csv on
+  // 2026-11-03, after Ember retired monthly_full_release_long_format.csv.
+  // Expected shares are Ember's own "Share of generation (%)" column.
+  const csv = readFileSync(
+    new URL('./fixtures/ember/release_generation_monthly_global.excerpt.csv', import.meta.url),
+    'utf8',
+  );
+
+  it('reads the latest month for each country', () => {
+    const result = parseEmberCsv(csv);
+    assert.deepEqual([...result.keys()].sort(), ['DE', 'FR', 'US']);
+    for (const entry of result.values()) assert.equal(entry.dataMonth, '2026-09');
+  });
+
+  it('matches the shares Ember publishes', () => {
+    const result = parseEmberCsv(csv);
+    const expected = {
+      US: { fossilShare: 60.278, renewShare: 23.63, nuclearShare: 16.092, coalShare: 15.715, gasShare: 44.062, demandTwh: 406.044 },
+      DE: { fossilShare: 38.181, renewShare: 61.819, nuclearShare: 0, coalShare: 19.973, gasShare: 13.127, demandTwh: 42.042 },
+      FR: { fossilShare: 4.116, renewShare: 24.078, nuclearShare: 71.806, coalShare: 0, gasShare: 3.179, demandTwh: 36.082 },
+    };
+    for (const [iso2, fields] of Object.entries(expected)) {
+      for (const [field, value] of Object.entries(fields)) {
+        assert.ok(Math.abs(result.get(iso2)[field] - value) < 0.01, `${iso2} ${field} ${result.get(iso2)[field]} vs ${value}`);
+      }
+    }
+  });
+});
+
 describe('parseEmberCsv', () => {
   it('rejects a CSV missing any mapped Ember column', () => {
     const [header, ...rows] = threeCountryFixture().split('\n');
