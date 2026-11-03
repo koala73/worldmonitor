@@ -20,7 +20,7 @@ afterEach(() => {
 
 const PAID_MODEL = 'deepseek/deepseek-v4-flash';
 const FREE_MODEL = 'google/gemma-4-26b-a4b-it:free';
-const BACKUP_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
+const BACKUP_MODEL = 'nvidia/nemotron-3.5-super-vl:free';
 const modelOf = (init) => JSON.parse(init.body).model;
 
 function okResponse(content) {
