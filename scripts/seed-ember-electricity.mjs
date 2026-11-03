@@ -21,7 +21,7 @@ export const EMBER_META_KEY = 'seed-meta:energy:ember';
 export const EMBER_TTL_SECONDS = 259200; // 72h = 3× daily cron interval
 
 const EMBER_CSV_URL =
-  'https://storage.googleapis.com/emb-prod-bkt-publicdata/public-downloads/monthly_full_release_long_format.csv';
+  'https://files.ember-energy.org/public-downloads/generation/outputs/release_generation_monthly_global.csv';
 const LOCK_DOMAIN = 'energy:ember';
 const LOCK_TTL_MS = 20 * 60 * 1000; // 20 min
 const MIN_COUNTRIES = 60;
@@ -111,17 +111,17 @@ function normalizeDate(value) {
 }
 
 /**
- * Parse Ember long-format monthly CSV.
+ * Parse the Ember monthly release CSV (one row per country, month and source).
  * Returns Map<iso2, EmberCountryData>.
  * @param {string} csvText
  * @returns {Map<string, {dataMonth: string, fossilShare: number|null, renewShare: number|null, nuclearShare: number|null, coalShare: number|null, gasShare: number|null, demandTwh: number|null}>}
  */
-// Real Ember monthly CSV column names (confirmed from header row)
+// Ember monthly release columns, read from the file's header on 2026-11-03.
+// Every Generation (TWh) value is in TWh, so the file has no unit column.
 const COLS = {
   iso3: 'ISO 3 code',
-  series: 'Variable',
-  unit: 'Unit',
-  value: 'Value',
+  series: 'Electricity source',
+  value: 'Generation (TWh)',
   date: 'Date',
 };
 
@@ -140,13 +140,12 @@ export function parseEmberCsv(csvText) {
     throw new Error('Ember CSV schema changed — "Fossil" series not found; update parser');
   }
 
-  // Group by ISO 3 code, filter to TWh rows only
+  // Group by ISO 3 code
   /** @type {Map<string, Array<{date: string, series: string, value: number}>>} */
   const byIso3 = new Map();
   for (const row of rows) {
     const iso3 = String(row[COLS.iso3] || '').trim();
     if (!iso3) continue;
-    if (String(row[COLS.unit] || '').trim() !== 'TWh') continue;
 
     const value = safeFloat(row[COLS.value]);
     if (value === null) continue;
@@ -178,7 +177,7 @@ export function parseEmberCsv(csvText) {
       seriesMap.set(e.series, e.value);
     }
 
-    const total = seriesMap.get('Total Generation') ?? null;
+    const total = seriesMap.get('Total generation') ?? null;
     if (!total || total === 0) continue;
 
     const fossil = seriesMap.get('Fossil') ?? null;
