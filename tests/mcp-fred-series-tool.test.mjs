@@ -156,6 +156,17 @@ describe('get_fred_series MCP tool (#5707)', () => {
     }
   });
 
+  it('returns the canonical empty result without downstream work when no ids are supported', async () => {
+    const { deps } = makeProDeps();
+    const response = await mcpHandler(proReq('POST', callBody('get_fred_series', {
+      series_ids: ['UNKNOWN_ID', 'not-a-seeded-series'],
+    })), deps);
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(JSON.parse(body.result.content[0].text), { results: {}, fetched: 0, requested: 0 });
+    assert.equal(requests.filter((entry) => String(entry.url).includes(FRED_RPC_PATH)).length, 0);
+  });
+
   it('rejects fractional and out-of-range limits before making a downstream request', async () => {
     for (const limit of [1.5, 1001, 0, -1]) {
       requests = [];

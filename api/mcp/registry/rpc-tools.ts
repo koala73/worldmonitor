@@ -2752,6 +2752,7 @@ export const RPC_TOOLS: ToolDef[] = [
         .filter((id) => filterParamContracts.economicFredSeriesIds.includes(id))))
         .sort()
         .slice(0, 20);
+      if (seriesIds.length === 0) return { results: {}, fetched: 0, requested: 0 };
       const requestedLimit = argNum(params.limit);
       // Bounded by default: the RPC's own default is 120 observations, which
       // at 20 series would dwarf the output budget for an agent that only
