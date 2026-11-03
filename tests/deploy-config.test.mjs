@@ -96,15 +96,15 @@ const WEBMCP_PRODUCTION_HOSTS = [
   'happy.worldmonitor.app',
   'energy.worldmonitor.app',
 ];
-const WEBMCP_TRIAL_EXPIRY = 1_794_873_600;
+const WEBMCP_TRIAL_EXPIRY = 1_806_364_800;
 const WEBMCP_TOKEN_RENEWAL_BUFFER_SECONDS = 14 * 24 * 60 * 60;
 const WEBMCP_TOKEN_SHA256_BY_HOST = {
-  'www.worldmonitor.app': '97b1029dd642731a33c2c6696f21358afe3f1e3bebf87079be26ba5891d950ce',
-  'tech.worldmonitor.app': 'd230e2454012d19baebd987709beeefbd985b0e0f62aa080b220da80a6e6b31d',
-  'finance.worldmonitor.app': 'e1f3483bd6cfae1ace66dc041c9f8584233c45e9e0c335394f6cf9bdfe9af489',
-  'commodity.worldmonitor.app': '0e0bde1d1b87976889126b2f3ddcfd06df78cc3c13598e80e0a3a45701d2c0b6',
-  'happy.worldmonitor.app': '72c2026ac2266553d9007ef0615ab46c0ca080002b86b11fc1e71cadb37f23f8',
-  'energy.worldmonitor.app': '0f2fec8b51e7f29db5f12bcaaeb859d1f1d1c71156648d57d28e1bc86954d0d4',
+  'www.worldmonitor.app': '552d58ed3da1968f39f1576e7d94402079869f7f344d81b78c6bb883129acbc4',
+  'tech.worldmonitor.app': '675f2fadcf1999b06566207fd29b71c40300dcb95de2393f369e9671592cda2a',
+  'finance.worldmonitor.app': '0c87a1ec606efb59910f4744204c6ee8fff2eb42a418a68cc29f3c1ea801c449',
+  'commodity.worldmonitor.app': 'c6ae7f7c91dc7cda5c7143e10ac1fe95ab61c528be8c73c389df0288feaad924',
+  'happy.worldmonitor.app': '9c3337b1b80f2050f473ed64943f0d6d135d9c9ca0126b2631cef01fdf97b0da',
+  'energy.worldmonitor.app': '49eb184a6eb92c01c868c97620168f8a2881b0106416955b4309512decd7b71f',
 };
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
   'index.html',
