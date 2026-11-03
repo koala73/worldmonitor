@@ -101,6 +101,26 @@ describe('Intel Feed on an edition without an intel digest', () => {
     expect(renderNewsForCategory).not.toHaveBeenCalled();
   });
 
+  it('does not hold the pending pass on the full edition fetch and fetches it once per load', async () => {
+    const source = INTEL_SOURCES[0]!.name;
+    const full: Selection = {
+      digest: { categories: { intel: { items: [protoItem(source, 'Strike group sails'), protoItem(source, 'Range reopens')] } } },
+      servedStale: false,
+    };
+    const { internal, selectEditionDigest } = await techLoader(null);
+    let resolveFull: (selection: Selection) => void = () => undefined;
+    selectEditionDigest.mockImplementation(() => new Promise<Selection>((resolve) => { resolveFull = resolve; }));
+    const generation = internal.newsLoadGeneration;
+
+    const pending = await internal.loadIntelNews(techDigest, { recordBaselineSample: false, digestPending: true }, generation);
+    expect(pending).toEqual([]);
+
+    const settled = internal.loadIntelNews(techDigest, options, generation);
+    resolveFull(full);
+    expect(await settled).toHaveLength(2);
+    expect(selectEditionDigest).toHaveBeenCalledTimes(1);
+  }, 2_000);
+
   it('renders an empty list instead of leaving the panel loading when no digest has intel', async () => {
     const { internal, renderNewsForCategory } = await techLoader(null);
 
