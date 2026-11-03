@@ -15,6 +15,7 @@ import {
 } from '@/app/panel-mount-deferral';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
+  clampMapColWidthPercent,
   mapRightClassForVisualSide,
   type MapVisualSide,
 } from '@/app/split-layout';
@@ -1056,6 +1057,18 @@ export class PanelLayoutManager implements AppModule {
         return false;
       }
     })();
+    // Render the saved map width the same way: EventHandlerManager.init() runs
+    // after the first paint, and applying it there moved the map, the sidebar
+    // and every panel span. It re-clamps against the measured width later.
+    const mapColWidthStyle = (() => {
+      try {
+        const stored = Number.parseFloat(localStorage.getItem('map-col-width') ?? '');
+        if (!Number.isFinite(stored)) return '';
+        return ` style="--map-col-width: ${clampMapColWidthPercent(stored, window.innerWidth).toFixed(1)}%"`;
+      } catch {
+        return '';
+      }
+    })();
     const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
     const referenceOrigin = this.ctx.isDesktopApp || window.location.hostname.endsWith('.worldmonitor.app')
       ? 'https://www.worldmonitor.app'
@@ -1263,7 +1276,7 @@ export class PanelLayoutManager implements AppModule {
       ).join('')}
       </div>
       <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
-      <main id="main" tabindex="-1" class="main-content${mapRightClassActive ? ' map-right' : ''}">
+      <main id="main" tabindex="-1" class="main-content${mapRightClassActive ? ' map-right' : ''}"${mapColWidthStyle}>
         <div class="map-section${mapStartsCollapsed ? ' collapsed' : ''}" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
