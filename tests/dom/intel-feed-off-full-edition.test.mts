@@ -18,7 +18,8 @@ vi.mock('@/services/analysis-worker', () => ({
 type Selection = { digest: { categories: Record<string, { items: unknown[] }> }; servedStale: boolean } | null;
 
 interface LoaderInternals {
-  loadIntelNews(selection: Selection, options: { recordBaselineSample: boolean; digestPending: boolean }): Promise<unknown[]>;
+  newsLoadGeneration: number;
+  loadIntelNews(selection: Selection, options: { recordBaselineSample: boolean; digestPending: boolean }, generation?: number): Promise<unknown[]>;
   selectEditionDigest(edition: string, language: string): Promise<Selection>;
   renderNewsForCategory(category: string, items: unknown[]): void;
 }
@@ -70,6 +71,22 @@ describe('Intel Feed on an edition without an intel digest', () => {
     expect(selectEditionDigest).toHaveBeenCalledWith('full', expect.any(String));
     expect(items).toHaveLength(2);
     expect(renderNewsForCategory).toHaveBeenCalledWith('intel', items);
+  });
+
+  it('drops a load that a newer one superseded during the full edition fetch', async () => {
+    const source = INTEL_SOURCES[0]!.name;
+    const full: Selection = { digest: { categories: { intel: { items: [protoItem(source, 'Stale headline')] } } }, servedStale: false };
+    const { internal, selectEditionDigest, renderNewsForCategory } = await techLoader(full);
+    const generation = internal.newsLoadGeneration;
+    selectEditionDigest.mockImplementation(async () => {
+      internal.newsLoadGeneration += 1;
+      return full;
+    });
+
+    const items = await internal.loadIntelNews(techDigest, options, generation);
+
+    expect(items).toEqual([]);
+    expect(renderNewsForCategory).not.toHaveBeenCalled();
   });
 
   it('renders an empty list instead of leaving the panel loading when no digest has intel', async () => {
