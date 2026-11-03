@@ -399,16 +399,16 @@ export class StorageFacilityMapPanel extends Panel {
 
     const html = unsafeRawHtml(`
       <div class="sf-wrap">
-        <table class="sf-table">
-          <thead>
-            <tr>
-              <th scope="col">Facility</th>
-              <th scope="col">Country · Type</th>
-              <th scope="col">Capacity</th>
-              <th scope="col">Status</th>
+        <table class="sf-table" role="table">
+          <thead role="rowgroup">
+            <tr role="row">
+              <th scope="col" role="columnheader">Facility</th>
+              <th scope="col" role="columnheader">Country · Type</th>
+              <th scope="col" role="columnheader">Capacity</th>
+              <th scope="col" role="columnheader">Status</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody role="rowgroup">${rows}</tbody>
         </table>
         ${attribution}
         ${drawer}
@@ -458,14 +458,14 @@ export class StorageFacilityMapPanel extends Panel {
     const glyph = TYPE_GLYPH[f.facilityType] ?? '🔹';
     const typeLabel = TYPE_LABEL[f.facilityType] ?? f.facilityType;
     return `
-      <tr class="sf-row" data-facility-id="${escapeHtml(f.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
-        <td>
+      <tr class="sf-row" role="row" data-facility-id="${escapeHtml(f.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
+        <td role="cell">
           <div class="sf-name">${glyph} ${escapeHtml(f.name)}</div>
           <div class="sf-sub">${escapeHtml(f.operator || '')}</div>
         </td>
-        <td><span class="sf-val">${escapeHtml(f.country)}</span> · <span class="sf-val">${escapeHtml(typeLabel)}</span></td>
-        <td class="sf-val">${escapeHtml(capacityLabel(f))}</td>
-        <td>${badgeChip(f.publicBadge)}</td>
+        <td role="cell"><span class="sf-val">${escapeHtml(f.country)}</span> · <span class="sf-val">${escapeHtml(typeLabel)}</span></td>
+        <td role="cell" class="sf-val">${escapeHtml(capacityLabel(f))}</td>
+        <td role="cell">${badgeChip(f.publicBadge)}</td>
       </tr>`;
   }
 

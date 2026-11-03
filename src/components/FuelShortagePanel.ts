@@ -290,16 +290,16 @@ export class FuelShortagePanel extends Panel {
     const html = unsafeRawHtml(`
       <div class="fs-wrap">
         <div class="fs-summary">${escapeHtml(summary)}</div>
-        <table class="fs-table">
-          <thead>
-            <tr>
-              <th scope="col">Country · Product</th>
-              <th scope="col">Since</th>
-              <th scope="col">Evidence</th>
-              <th scope="col">Severity</th>
+        <table class="fs-table" role="table">
+          <thead role="rowgroup">
+            <tr role="row">
+              <th scope="col" role="columnheader">Country · Product</th>
+              <th scope="col" role="columnheader">Since</th>
+              <th scope="col" role="columnheader">Evidence</th>
+              <th scope="col" role="columnheader">Severity</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody role="rowgroup">${rows}</tbody>
         </table>
         ${attribution}
         ${drawer}
@@ -356,14 +356,14 @@ export class FuelShortagePanel extends Panel {
     const glyph = PRODUCT_GLYPH[s.product] ?? '•';
     const quality = deriveShortageEvidenceQuality(s.evidence);
     return `
-      <tr class="fs-row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
-        <td>
+      <tr class="fs-row" role="row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
+        <td role="cell">
           <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)}</div>
           <div class="fs-sub">${escapeHtml(s.causeChain.join(' · ') || '—')}</div>
         </td>
-        <td class="fs-val" data-label="Since">${escapeHtml(s.firstSeen.slice(0, 10))}</td>
-        <td><span class="fs-quality" title="Evidence quality: ${escapeHtml(quality)}">${QUALITY_DOT[quality]}</span></td>
-        <td>${severityChip(s.severity)}</td>
+        <td role="cell" class="fs-val" data-label="Since">${escapeHtml(s.firstSeen.slice(0, 10))}</td>
+        <td role="cell"><span class="fs-quality" title="Evidence quality: ${escapeHtml(quality)}">${QUALITY_DOT[quality]}</span></td>
+        <td role="cell">${severityChip(s.severity)}</td>
       </tr>`;
   }
 

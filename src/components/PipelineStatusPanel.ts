@@ -424,16 +424,16 @@ export class PipelineStatusPanel extends Panel {
     const html = unsafeRawHtml(`
       <div class="pp-wrap">
         ${coverageWarning}
-        <table class="pp-table">
-          <thead>
-            <tr>
-              <th scope="col">Asset</th>
-              <th scope="col">From → To</th>
-              <th scope="col">Capacity</th>
-              <th scope="col">Status</th>
+        <table class="pp-table" role="table">
+          <thead role="rowgroup">
+            <tr role="row">
+              <th scope="col" role="columnheader">Asset</th>
+              <th scope="col" role="columnheader">From → To</th>
+              <th scope="col" role="columnheader">Capacity</th>
+              <th scope="col" role="columnheader">Status</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody role="rowgroup">${rows}</tbody>
         </table>
         ${attribution}
         ${drawer}
@@ -483,14 +483,14 @@ export class PipelineStatusPanel extends Panel {
     const commodity = p.commodityType === 'gas' ? '⛽' : '🛢️';
     const route = `${escapeHtml(p.fromCountry)} → ${escapeHtml(p.toCountry)}`;
     return `
-      <tr class="pp-row" data-pipeline-id="${escapeHtml(p.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
-        <td>
+      <tr class="pp-row" role="row" data-pipeline-id="${escapeHtml(p.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
+        <td role="cell">
           <div class="pp-name">${commodity} ${escapeHtml(p.name)}</div>
           <div class="pp-sub">${escapeHtml(p.operator || '')}</div>
         </td>
-        <td class="pp-val">${route}</td>
-        <td class="pp-val">${escapeHtml(capacityLabel(p))}</td>
-        <td>${badgeChip(p.publicBadge)}</td>
+        <td role="cell" class="pp-val">${route}</td>
+        <td role="cell" class="pp-val">${escapeHtml(capacityLabel(p))}</td>
+        <td role="cell">${badgeChip(p.publicBadge)}</td>
       </tr>`;
   }
 

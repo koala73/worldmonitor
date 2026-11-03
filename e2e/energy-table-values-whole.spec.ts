@@ -29,7 +29,7 @@ const VIEWPORTS = [
   { width: 1920, height: 1200, fontScale: 2 },
 ];
 
-interface TableFit { panel: number; table: number; host: number; split: string[]; brokenWords: string[] }
+interface TableFit { panel: number; table: number; host: number; split: string[]; brokenWords: string[]; missingRoles: string[] }
 
 function measure(page: Page, key: string, valueColumns: readonly number[]): Promise<TableFit> {
   return page.evaluate(({ key, valueColumns }) => {
@@ -68,12 +68,26 @@ function measure(page: Page, key: string, valueColumns: readonly number[]): Prom
         }
       }
     }
+    // The stacked layout swaps table display for block and flex, which drops
+    // table navigation in Safari 16 VoiceOver, so the roles must be explicit.
+    const missingRoles: string[] = [];
+    const expectRole = (el: Element | null, role: string, what: string) => {
+      if (el?.getAttribute('role') !== role) missingRoles.push(`${what} role=${role}`);
+    };
+    expectRole(table, 'table', 'table');
+    expectRole(table.tHead, 'rowgroup', 'thead');
+    expectRole(table.tBodies[0] ?? null, 'rowgroup', 'tbody');
+    for (const row of table.rows) {
+      expectRole(row, 'row', 'tr');
+      for (const cell of row.cells) expectRole(cell, cell.tagName === 'TH' ? 'columnheader' : 'cell', cell.tagName.toLowerCase());
+    }
     return {
       panel: Math.round(panel.getBoundingClientRect().width),
       table: Math.round(table.scrollWidth),
       host: Math.round(table.parentElement!.clientWidth),
       split,
       brokenWords,
+      missingRoles: [...new Set(missingRoles)],
     };
   }, { key, valueColumns });
 }
@@ -109,6 +123,7 @@ test('energy table values and names stay whole inside their column', async ({ br
       const label = `${key} at ${viewport.width}px, ${fontScale * 100}% text (panel ${fit.panel}px)`;
       expect.soft(fit.split, `${label}: values broken across lines`).toEqual([]);
       expect.soft(fit.brokenWords, `${label}: name words broken mid-word`).toEqual([]);
+      expect.soft(fit.missingRoles, `${label}: table semantics`).toEqual([]);
       expect.soft(fit.table, `${label}: table wider than its column`).toBeLessThanOrEqual(fit.host + 1);
     }
     await context.close();
