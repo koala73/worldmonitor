@@ -61,8 +61,9 @@ export const DESKTOP_PARITY_FEATURES: DesktopParityFeature[] = [
     id: 'strategic-risk',
     panel: 'StrategicRiskPanel',
     serviceFiles: ['src/services/cached-risk-scores.ts'],
-    apiRoutes: ['/api/risk-scores'],
-    apiHandlers: ['api/risk-scores.js'],
+    // cached-risk-scores.ts calls the intelligence RPC through its generated client.
+    apiRoutes: ['/api/intelligence/v1/get-risk-scores'],
+    apiHandlers: ['server/worldmonitor/intelligence/v1/get-risk-scores.ts'],
     locality: 'api-key',
     fallback: 'Panel stays available with local aggregate scoring when cached backend scores are unavailable.',
     priority: 1,

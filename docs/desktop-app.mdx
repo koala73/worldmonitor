@@ -15,6 +15,7 @@ Running the app entirely against your own API keys and local sources needs no pl
 
 - **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs the supported API handler catalog locally
 - **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager, Linux Secret Service, or the kernel session keyring when no Secret Service is running), never in plaintext files
+
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
 - **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
@@ -105,6 +106,7 @@ The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Li
 ## Secret Management
 
 API keys are stored in the operating system's credential manager (macOS Keychain, Windows Credential Manager, or the Secret Service such as GNOME Keyring or KWallet on Linux) — never in plaintext config files. On Linux sessions with no Secret Service provider, keys are kept in the kernel session keyring instead, which lasts only until reboot (a warning is written to `desktop.log`). All secrets are consolidated into a single JSON vault entry in the keychain, so app startup requires exactly one OS authorization prompt regardless of how many keys are configured.
+
 
 At sidecar launch, the vault is read, parsed, and injected as environment variables. Empty or whitespace-only values are skipped. Secrets can also be updated at runtime without restarting the sidecar: saving a key in the Settings window triggers a `POST /api/local-env-update` call that hot-patches `process.env` so handlers pick up the new value immediately.
 
@@ -233,10 +235,10 @@ With none of these, the app uses an anonymous session and the local sidecar. Doc
 
 ## Auto-Update
 
-The desktop app checks for new versions by polling `worldmonitor.app/api/version` — once at startup (after a 5-second delay) and then every 6 hours. When a newer version is detected (semver comparison), a non-intrusive update badge appears with a direct link to the GitHub Release page.
+The desktop app checks for new versions by polling `api.worldmonitor.app/api/version` — once at startup (after a 5-second delay) and then every 6 hours. When a newer version is detected (semver comparison), a non-intrusive update badge appears with a platform-specific download link (`/api/download?platform=…`); unsupported platforms fall back to the GitHub Release page.
 
 Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress v2.6.0 notifications. One World Monitor binary ships and every variant is selected in-app, so the updater resolves the download by OS and architecture alone (`/api/download?platform=…`) rather than by variant.
 
 A version the updater cannot parse is reported as `version_unparsable` and never treated as "up to date" — silently concluding "no update" from an unreadable version is exactly how a single malformed release tag could stop every client updating (#5908).
 
-The `/api/version` endpoint reads the latest GitHub Release tag and caches the result for 1 hour, so version checks don't hit the GitHub API on every request.
+The `/api/version` endpoint reads the latest GitHub Release tag and caches the result at the edge for 5 minutes (`s-maxage=300`, served stale for up to 60 s while revalidating and for up to an hour if GitHub errors), so version checks don't hit the GitHub API on every request.
