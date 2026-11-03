@@ -241,14 +241,14 @@ async function expectCue(page: Page, s: Scroll, id: string, label: string): Prom
   }
 }
 
-// The sidebar holds two columns: 375px at 1920, about 280px at 1440, and at
-// 1280 one 280px column beside an implicit 214px one. `fit` lists the tables
+// The sidebar holds two columns: 375px at 1920, about 279px at 1440, and
+// about 271px at 1400, the narrowest viewport that still fits two. `fit` lists the tables
 // that must reflow to the column without scrolling; the rest may keep their
 // columns and scroll with the cue.
 const DESKTOP_VIEWPORTS = [
   { width: 1920, height: 1080, fit: ['energy-disruptions', 'ucdp-events', 'climate', 'radiation-watch'] },
   { width: 1440, height: 900, fit: ['climate'] },
-  { width: 1280, height: 800, fit: [] },
+  { width: 1400, height: 800, fit: [] },
 ];
 const DESKTOP_PANELS = [...PANELS, 'grocery-basket'] as const;
 

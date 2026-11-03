@@ -10,8 +10,8 @@
  * reintroduce the layout shift this reservation exists to prevent.
  */
 
-/** Minimum track width assumed for `repeat(auto-fill, minmax(280px, 1fr))`. */
-export const PANELS_GRID_MIN_TRACK_PX = 280;
+/** Minimum track width of `.panels-grid`: `repeat(auto-fill, minmax(270px, 1fr))` in main.css. */
+export const PANELS_GRID_MIN_TRACK_PX = 270;
 /** Maximum row span supported by the CSS (`.panel.span-1` … `.panel.span-4`). */
 export const MAX_PANEL_ROW_SPAN = 4;
 /** Maximum column span supported by the CSS (`.panel.col-span-1` … `.col-span-3`). */
@@ -27,16 +27,30 @@ function getPanelGridWidth(grid: HTMLElement): number {
 }
 
 /**
- * `.panels-grid` declares `repeat(auto-fill, minmax(280px, 1fr))`, but a
+ * `.panels-grid` declares `repeat(auto-fill, minmax(270px, 1fr))`, but a
  * rendered grid reports its resolved tracks, implicit ones included: a span
  * wider than the real columns adds implicit tracks, and counting those would
  * let the span keep the columns it created.
  */
-function isAutoFillPanelsGrid(grid: HTMLElement, style: CSSStyleDeclaration): boolean {
+function isPanelsGrid(grid: HTMLElement, style: CSSStyleDeclaration): boolean {
   return grid.classList.contains('panels-grid') && style.display === 'grid';
 }
 
-/** Columns `repeat(auto-fill, minmax(280px, 1fr))` creates in the grid's content box. */
+/**
+ * A `.panels-grid` restyled with a fixed template (the plugin's one-column
+ * layout in plugin.css) declares its column count in `--panels-grid-columns`,
+ * because the width formula below only holds for the auto-fill template.
+ */
+function getDeclaredPanelGridColumns(style: CSSStyleDeclaration): number | null {
+  const value = style.getPropertyValue('--panels-grid-columns').trim();
+  return /^[1-9]\d*$/.test(value) ? Number(value) : null;
+}
+
+function isAutoFillPanelsGrid(grid: HTMLElement, style: CSSStyleDeclaration): boolean {
+  return isPanelsGrid(grid, style) && getDeclaredPanelGridColumns(style) === null;
+}
+
+/** Columns `repeat(auto-fill, minmax(270px, 1fr))` creates in the grid's content box. */
 function countAutoFillColumns(grid: HTMLElement, style: CSSStyleDeclaration): number {
   const gap = Number.parseFloat(style.columnGap || '0') || 0;
   const padding = (Number.parseFloat(style.paddingLeft || '0') || 0) + (Number.parseFloat(style.paddingRight || '0') || 0);
@@ -57,6 +71,7 @@ export function isPanelGridColumnCountReady(element: HTMLElement): boolean {
   if (!grid || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return true;
 
   const style = window.getComputedStyle(grid);
+  if (isPanelsGrid(grid, style) && getDeclaredPanelGridColumns(style) !== null) return true;
   if (isAutoFillPanelsGrid(grid, style)) return getPanelGridWidth(grid) > 0;
   const template = style.gridTemplateColumns;
   if (!template || template === 'none' || !template.includes('repeat(')) return true;
@@ -76,6 +91,8 @@ export function getGridColumnCount(element: HTMLElement): number {
   const grid = getPanelGrid(element);
   if (!grid || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return MAX_PANEL_COL_SPAN;
   const style = window.getComputedStyle(grid);
+  const declared = isPanelsGrid(grid, style) ? getDeclaredPanelGridColumns(style) : null;
+  if (declared !== null) return declared;
   if (isAutoFillPanelsGrid(grid, style)) {
     return getPanelGridWidth(grid) > 0 ? countAutoFillColumns(grid, style) : MAX_PANEL_COL_SPAN;
   }
@@ -131,7 +148,7 @@ function publishGridColumns(grid: HTMLElement): void {
     observedGrids.delete(grid);
     return;
   }
-  if (typeof window === 'undefined' || !isAutoFillPanelsGrid(grid, window.getComputedStyle(grid))) {
+  if (typeof window === 'undefined' || !isPanelsGrid(grid, window.getComputedStyle(grid))) {
     delete grid.dataset.gridCols;
     return;
   }

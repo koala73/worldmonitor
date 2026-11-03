@@ -34,6 +34,7 @@ const VIEWPORTS: Array<{ width: number; height: number; fontScale: number; mobil
   { width: 1920, height: 1200, fontScale: 1 },
   { width: 1845, height: 1100, fontScale: 1 },
   { width: 1366, height: 768, fontScale: 1 },
+  { width: 1440, height: 900, fontScale: 1 },
   { width: 1920, height: 1200, fontScale: 1.25 },
   { width: 1920, height: 1200, fontScale: 2 },
   { width: 393, height: 852, fontScale: 1, mobile: true },
@@ -175,7 +176,8 @@ test('energy table values and names stay whole inside their column', async ({ br
     }
     await context.close();
   }
-  // The 1366px layout puts every panel in a column of 340px or less.
+  // At 1440px the sidebar holds two columns of about 279px, so every panel sits
+  // in a column of 340px or less. (1366px fits one 532px column.)
   expect(stackedNarrowPanels, 'no panel stacked in a column of 340px or less').toBe(PANELS.length);
   // The widened panel must exercise the five-column disruptions table.
   expect(wideTables, 'the disruptions log never rendered as a table').toBeGreaterThan(0);
