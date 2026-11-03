@@ -4,6 +4,9 @@ import {
   CHINA_MACRO_SERIES_CONTRACT,
 } from '../_china-macro-contract.mjs';
 
+const SOURCE_POLICIES_RE = /^\/SCGK194\/(?:index\.html|\d{8}\/[a-f0-9]{32}\.html)$/;
+
+
 export const NBS_LIST_URL = 'https://www.stats.gov.cn/english/PressRelease/';
 export const SAFE_LIST_URL = 'https://www.safe.gov.cn/safe/sjjd/index.html';
 export const NBS_ROBOTS_URL = 'https://www.stats.gov.cn/robots.txt';
@@ -35,7 +38,7 @@ export const GACC_MAX_REQUESTS_PER_RUN = 2;
 export const SOURCE_POLICIES = Object.freeze({
   shanghaiM2: Object.freeze({
     origin: 'https://jrj.sh.gov.cn',
-    path: (pathname) => /^\/SCGK194\/(?:index\.html|\d{8}\/[a-f0-9]{32}\.html)$/.test(pathname),
+    path: (pathname) => SOURCE_POLICIES_RE.test(pathname),
   }),
   shanghaiRobots: Object.freeze({
     origin: 'https://jrj.sh.gov.cn',

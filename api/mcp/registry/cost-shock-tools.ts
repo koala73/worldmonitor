@@ -7,6 +7,9 @@ import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
+const COST_SHOCK_TOOLS_RE = /^\d{1,2}$/;
+
+
 // One Gulf crude share window (compute_energy_shock preCrisisBaseline / currentFlows).
 const CRUDE_SHARE_BASELINE_SCHEMA = { type: 'object', properties: {
   basis: { type: 'string', enum: ['comtrade_monthly', 'national_monthly', 'comtrade_annual'] }, fromMonth: { type: 'string' }, toMonth: { type: 'string' },
@@ -74,7 +77,7 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
     const chokepoint = params.chokepoint_id;
     if (typeof chokepoint !== 'string' || !CHOKEPOINT_REGISTRY.some(point => point.id === chokepoint)) invalid('chokepoint_id', 'Select a canonical chokepoint ID.');
     const hs2 = params.hs2 ?? '27';
-    if (typeof hs2 !== 'string' || !/^\d{1,2}$/.test(hs2)) invalid('hs2', 'Expected a one- or two-digit HS2 code.');
+    if (typeof hs2 !== 'string' || !COST_SHOCK_TOOLS_RE.test(hs2)) invalid('hs2', 'Expected a one- or two-digit HS2 code.');
     const days = params.closure_days ?? 30;
     if (typeof days !== 'number' || !Number.isInteger(days) || days < 1 || days > 365) invalid('closure_days', 'Expected an integer from 1 through 365.');
     const query = new URLSearchParams({ iso2: country, chokepointId: chokepoint as string });

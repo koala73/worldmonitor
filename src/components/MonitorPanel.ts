@@ -6,6 +6,9 @@ import { generateId, formatTime, getCSSColor } from '@/utils';
 import { validateUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
   private onMonitorsChange?: (monitors: Monitor[]) => void;
@@ -99,7 +102,7 @@ export class MonitorPanel extends Panel {
         const searchText = `${item.title} ${(item as unknown as { description?: string }).description || ''}`.toLowerCase();
         const matched = monitor.keywords.some((kw) => {
           // Use word boundary matching to avoid false positives like "ai" in "train"
-          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const escaped = kw.replace(ESCAPED_RE, '\\$&');
           const regex = new RegExp(`\\b${escaped}\\b`, 'i');
           return regex.test(searchText);
         });

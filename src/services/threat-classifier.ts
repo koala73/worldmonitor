@@ -1,3 +1,6 @@
+
+
+const WHITESPACE_RE = /\s+/g;
 export type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 
@@ -268,7 +271,7 @@ export function classifyWithAI(
   title: string,
   variant: string,
 ): Promise<ThreatClassification | null> {
-  const cacheKey = title.trim().toLowerCase().replace(/\s+/g, ' ');
+  const cacheKey = title.trim().toLowerCase().replace(WHITESPACE_RE, ' ');
   return classifyBreaker.execute(
     () => classifyWithAIUncached(title, variant),
     null,

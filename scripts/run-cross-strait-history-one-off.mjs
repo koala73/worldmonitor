@@ -18,6 +18,10 @@ import { spawn } from 'node:child_process';
 
 import { createRailwayCliEnv } from './railway-cli.mjs';
 
+const REQUIRE_IDENTIFIER_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const LINE_BREAK_RE = /\r?\n/;
+
+
 const SOURCE_SERVICE = 'seed-bundle-derived-signals';
 const SANDBOX_IDLE_TIMEOUT_MINUTES = 15;
 const CREATE_TIMEOUT_MS = 120_000;
@@ -274,7 +278,7 @@ emit_seed_result accepted accepted
 `.trim();
 
 function requireIdentifier(value, label) {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value)) {
+  if (typeof value !== 'string' || !REQUIRE_IDENTIFIER_RE.test(value)) {
     throw new Error(`${label} must be an explicit Railway name or ID`);
   }
   return value;
@@ -327,7 +331,7 @@ function parseSandboxId(stdout) {
   } catch {
     throw new Error('Railway sandbox create returned invalid JSON; the 15-minute server idle timeout remains active');
   }
-  if (typeof parsed?.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(parsed.id)) {
+  if (typeof parsed?.id !== 'string' || !REQUIRE_IDENTIFIER_RE.test(parsed.id)) {
     throw new Error('Railway sandbox create returned no valid sandbox ID; the 15-minute server idle timeout remains active');
   }
   return parsed.id;
@@ -335,7 +339,7 @@ function parseSandboxId(stdout) {
 
 function sanitizedPreflightFailure(stdout) {
   const line = stdout
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .findLast((candidate) => candidate.startsWith(PREFLIGHT_STATUS_MARKER));
   if (!line) return '';
   let parsed;
@@ -358,7 +362,7 @@ function sanitizedPreflightFailure(stdout) {
 
 function sanitizedSeedResult(stdout) {
   const line = stdout
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .findLast((candidate) => candidate.startsWith(SEED_STATUS_MARKER));
   if (!line) return null;
   let parsed;

@@ -2,6 +2,10 @@ import countryCodes from './data/country-codes.json' with { type: 'json' };
 import predictionCountryLanguage from './shared/prediction-country-language.json' with { type: 'json' };
 import { isExpired, shouldInclude } from './_prediction-scoring.mjs';
 
+const WORDS_RE = /\p{M}/gu;
+const WORDS_RE_2 = /[^\p{L}\p{N}]+/gu;
+
+
 export const COUNTRY_MARKET_LIMIT = 5;
 
 export function countCountryMarkets(countryMarkets) {
@@ -14,9 +18,9 @@ const PREDICTION_COUNTRY_LANGUAGE = predictionCountryLanguage.countries ?? {};
 function normalizeSearchText(value) {
   const words = String(value)
     .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
+    .replace(WORDS_RE, '')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(WORDS_RE_2, ' ')
     .trim();
   return words ? ` ${words} ` : '';
 }

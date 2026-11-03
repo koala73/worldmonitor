@@ -13,6 +13,26 @@
 import { CHROME_UA } from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 
+const PARSE_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}Z$/;
+const LOOKS_PRESCRIBED_RE = /prescribed|rx[\s-]?burn/i;
+const NAME_RE = /\bname="([^"]+)"/i;
+const VALUE_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/;
+const PARSE_BC_FIRE_KML_RE = /<(?:ows:)?ExceptionReport\b/i;
+const PARSE_BC_FIRE_KML_RE_2 = /<ServiceExceptionReport\b/i;
+const ID_ATTR_RE = /\bid="([^"]+)"/i;
+const EXCEPTIONS_RE = /<(?:[\w.-]+:)?ExceptionText(?=[\s/>])[^>]*?(?:\/\s*>|>([\s\S]*?)(?:<\/(?:[\w.-]+:)?ExceptionText\s*>|$))/gi;
+const SIGNALS_RE = /\bSQLSyntaxErrorException\b/i;
+const SIGNALS_RE_2 = /\bSQL(?:Transient|NonTransient)ConnectionException\b|\bcannot get a connection\b/i;
+const SIGNALS_RE_3 = /\b(?:SocketTimeoutException|SQLTimeoutException)\b|\btimed out\b/i;
+const SIGNALS_RE_4 = /\bSQLInvalidAuthorizationSpecException\b|\binvalid username\/password\b|\bpermission denied\b/i;
+const SIGNALS_RE_5 = /\bcould not resolve property\b/i;
+const SIGNALS_RE_6 = /\bsorting is not supported\b/i;
+const EXCEPTION_CODE_RE = /\bexceptionCode=["']([^"']+)["']/;
+const LOCATOR_RE = /\blocator=["']([^"']+)["']/;
+const FETCH_APPROVED_BC_URL_RE = /^\d{1,6}$/;
+
+
 export const BC_OPENMAPS_HOST = 'openmaps.gov.bc.ca';
 export const BC_FIRE_LAYER = 'PROT_CURRENT_FIRE_PNTS_SP';
 export const BC_FIRE_TYPENAME = 'pub:WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP';
@@ -65,7 +85,7 @@ function parseTimestamp(value) {
   if (value == null || value === '') return 0;
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
   let text = String(value).trim();
-  if (/^\d{4}-\d{2}-\d{2}Z$/.test(text)) text = `${text.slice(0, 10)}T00:00:00Z`;
+  if (PARSE_TIMESTAMP_RE.test(text)) text = `${text.slice(0, 10)}T00:00:00Z`;
   const ts = Date.parse(text);
   return Number.isFinite(ts) && ts > 0 ? ts : 0;
 }
@@ -80,7 +100,7 @@ function looksPrescribed(props = {}) {
     props.FIRE_TYPE, props.fire_type, props.FIRE_STATUS, props.fire_status,
     props.FIRE_CAUSE, props.INCIDENT_NAME, props.kind,
   ].filter(Boolean).join(' ');
-  return /prescribed|rx[\s-]?burn/i.test(blob);
+  return LOOKS_PRESCRIBED_RE.test(blob);
 }
 
 function isInactiveStatus(status) {
@@ -128,13 +148,13 @@ function parseExtendedData(block) {
   const dataRe = /<(?:[\w.-]+:)?Data\b([^>]*)>([\s\S]*?)<\/(?:[\w.-]+:)?Data>/gi;
   let match;
   while ((match = dataRe.exec(block)) !== null) {
-    const name = ((match[1].match(/\bname="([^"]+)"/i) || [])[1] || '').trim();
-    const value = xmlField(match[2], 'value') || decodeXml(match[2].replace(/<[^>]+>/g, ''));
+    const name = ((match[1].match(NAME_RE) || [])[1] || '').trim();
+    const value = xmlField(match[2], 'value') || decodeXml(match[2].replace(VALUE_RE, ''));
     if (name) props[name] = value;
   }
   const simpleRe = /<(?:[\w.-]+:)?SimpleData\b([^>]*)>([\s\S]*?)<\/(?:[\w.-]+:)?SimpleData>/gi;
   while ((match = simpleRe.exec(block)) !== null) {
-    const name = ((match[1].match(/\bname="([^"]+)"/i) || [])[1] || '').trim();
+    const name = ((match[1].match(NAME_RE) || [])[1] || '').trim();
     if (name) props[name] = decodeXml(match[2]);
   }
   const description = xmlField(block, 'description');
@@ -143,7 +163,7 @@ function parseExtendedData(block) {
     const cells = [];
     let cell;
     while ((cell = cellRe.exec(description)) !== null) {
-      cells.push(decodeXml(cell[1].replace(/<[^>]+>/g, '')));
+      cells.push(decodeXml(cell[1].replace(VALUE_RE, '')));
     }
     for (let i = 0; i + 1 < cells.length; i += 2) {
       const key = cells[i];
@@ -156,7 +176,7 @@ function parseExtendedData(block) {
 function parseKmlPoint(block) {
   const coordText = xmlField(block, 'coordinates');
   if (!coordText) return null;
-  const first = coordText.split(/\s+/)[0];
+  const first = coordText.split(WHITESPACE_RE)[0];
   const parts = first.split(',').map((part) => Number(part));
   if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) return null;
   return { longitude: parts[0], latitude: parts[1] };
@@ -210,7 +230,7 @@ export function parseBcFireKml(xml) {
   if (typeof xml !== 'string' || xml.trim() === '') {
     throw new BcFirePointsError('BC wildfire KML is empty');
   }
-  if (/<(?:ows:)?ExceptionReport\b/i.test(xml) || /<ServiceExceptionReport\b/i.test(xml)) {
+  if (PARSE_BC_FIRE_KML_RE.test(xml) || PARSE_BC_FIRE_KML_RE_2.test(xml)) {
     throw new BcFirePointsError('BC wildfire KML exception report');
   }
 
@@ -233,7 +253,7 @@ export function parseBcFireKml(xml) {
     const props = parseExtendedData(block);
     const name = xmlField(block, 'name');
     if (name && !props.FIRE_NUMBER) props.FIRE_NUMBER = name;
-    const idAttr = ((attrs.match(/\bid="([^"]+)"/i) || [])[1] || '').split('.').pop();
+    const idAttr = ((attrs.match(ID_ATTR_RE) || [])[1] || '').split('.').pop();
     if (idAttr && !props.FIRE_NUMBER) props.FIRE_NUMBER = idAttr;
     if (!point && props.LATITUDE == null && props.latitude == null) continue;
     const normalized = normalizeBcFeature(props, point || {});
@@ -336,7 +356,7 @@ function parseAllowedUrl(url) {
 function bcWfsFailureDiagnostic(text) {
   const scanLimit = 8192;
   const prefix = text.slice(0, scanLimit);
-  const exceptions = [...prefix.matchAll(/<(?:[\w.-]+:)?ExceptionText(?=[\s/>])[^>]*?(?:\/\s*>|>([\s\S]*?)(?:<\/(?:[\w.-]+:)?ExceptionText\s*>|$))/gi)]
+  const exceptions = [...prefix.matchAll(EXCEPTIONS_RE)]
     .filter(match => match[1] !== undefined);
   const exceptionText = decodeHtmlEntities(exceptions.map(match => match[1]).join('\n'));
   const signals = [
@@ -344,12 +364,12 @@ function bcWfsFailureDiagnostic(text) {
       'ORA-03113', 'ORA-03114', 'ORA-12154', 'ORA-12514', 'ORA-12541']
       .filter(code => new RegExp(`\\b${code}\\b`).test(exceptionText)),
     ...[
-      ['sql_syntax', /\bSQLSyntaxErrorException\b/i],
-      ['database_connection', /\bSQL(?:Transient|NonTransient)ConnectionException\b|\bcannot get a connection\b/i],
-      ['timeout', /\b(?:SocketTimeoutException|SQLTimeoutException)\b|\btimed out\b/i],
-      ['authorization', /\bSQLInvalidAuthorizationSpecException\b|\binvalid username\/password\b|\bpermission denied\b/i],
-      ['invalid_property', /\bcould not resolve property\b/i],
-      ['unsupported_sort', /\bsorting is not supported\b/i],
+      ['sql_syntax', SIGNALS_RE],
+      ['database_connection', SIGNALS_RE_2],
+      ['timeout', SIGNALS_RE_3],
+      ['authorization', SIGNALS_RE_4],
+      ['invalid_property', SIGNALS_RE_5],
+      ['unsupported_sort', SIGNALS_RE_6],
     ].filter(([, pattern]) => pattern.test(exceptionText)).map(([signal]) => signal),
   ].slice(0, 8);
   return { exceptionTextPresent: exceptions.length > 0, scanTruncated: text.length > scanLimit, signals };
@@ -377,12 +397,12 @@ export async function fetchApprovedBcUrl(url, {
   const text = await readBoundedText(response, maxBytes);
   if (!response.ok) {
     const request = parsed.searchParams.get('request') === 'GetFeature' ? 'wfs' : 'kml';
-    const exceptionCode = text.match(/\bexceptionCode=["']([^"']+)["']/)?.[1];
-    const locator = text.match(/\blocator=["']([^"']+)["']/)?.[1];
+    const exceptionCode = text.match(EXCEPTION_CODE_RE)?.[1];
+    const locator = text.match(LOCATOR_RE)?.[1];
     console.warn(JSON.stringify({
       event: 'bc_fire_request_failure',
       request,
-      startIndex: /^\d{1,6}$/.test(parsed.searchParams.get('startIndex') || '')
+      startIndex: FETCH_APPROVED_BC_URL_RE.test(parsed.searchParams.get('startIndex') || '')
         ? Number(parsed.searchParams.get('startIndex')) : null,
       status: response.status,
       exceptionCode: ['InvalidParameterValue', 'MissingParameterValue', 'NoApplicableCode', 'OperationProcessingFailed']

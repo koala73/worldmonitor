@@ -1,3 +1,12 @@
+
+
+const NUMERIC_RE = /,/g;
+const BASELINE_RE = /[.]+$/;
+const HUMANIZE_TOKEN_RE = /[_-]+/g;
+const HUMANIZE_TOKEN_RE_2 = /\b\w/g;
+const PARSE_CII_MOVEMENT_RE = /^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const HAS_VISIBLE_SCORE_RE = /\d/;
 const REQUEST_TIMEOUT_MS = 8_000;
 const MIN_VALID_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
 export const MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
@@ -47,7 +56,7 @@ export function publishedTransitCountLabel(value, { allowZero = false } = {}) {
   if (value == null || value === '') return null;
   const numeric = typeof value === 'number'
     ? value
-    : Number(String(value).replace(/,/g, ''));
+    : Number(String(value).replace(NUMERIC_RE, ''));
   // Always re-format the parsed number instead of echoing the input string:
   // a passthrough would publish "1e3" or "0x10" verbatim, and a fraction such
   // as 0.4 clears a `> 0` gate only to render as the "0" this exists to stop.
@@ -173,7 +182,7 @@ export function chokepointCoverageMetrics({
 // reading manufactured from an absence.
 function chokepointScoreNumber(value) {
   if (typeof value === 'number') return value;
-  if (typeof value === 'string' && value.trim() !== '') return Number(value.replace(/,/g, ''));
+  if (typeof value === 'string' && value.trim() !== '') return Number(value.replace(NUMERIC_RE, ''));
   return Number.NaN;
 }
 
@@ -225,7 +234,7 @@ function chokepointArticleName(displayName) {
 // when the seeder stored a baseline; it is omitted, never estimated.
 function officialCountSentences(official, name, { through }) {
   if (official.latestTransits === null) return null;
-  const count = Number(official.latestTransits.replace(/,/g, ''));
+  const count = Number(official.latestTransits.replace(NUMERIC_RE, ''));
   const noun = count === 1 ? 'transit' : 'transits';
   const where = through ? ` through ${name}` : '';
   const counted = `IMF PortWatch counted ${official.latestTransits} ${noun}${where} on ${official.latestDate} (latest published day).`;
@@ -284,12 +293,12 @@ export function chokepointEvidenceNarrative({
 
   const { threat, anomaly } = splitScoreDescription(description);
   const baseline = threat
-    ? `Configured geopolitical baseline: ${threat.replace(/[.]+$/, '')}.`
+    ? `Configured geopolitical baseline: ${threat.replace(BASELINE_RE, '')}.`
     : 'Configured geopolitical baseline: no additional threat weight.';
   const observedInputs = [
     warnings,
     severity ? `maximum AIS congestion severity ${severity}` : null,
-    anomaly ? `PortWatch daily-transit anomaly: ${anomaly.replace(/[.]+$/, '')}` : null,
+    anomaly ? `PortWatch daily-transit anomaly: ${anomaly.replace(BASELINE_RE, '')}` : null,
   ].filter(Boolean);
   const unavailableInputs = [
     warnings === null ? 'navigational warning count' : null,
@@ -313,9 +322,9 @@ function humanizeToken(value, prefixes = []) {
     token = token.replace(new RegExp(`^${prefix}`, 'i'), '');
   }
   return token
-    .replace(/[_-]+/g, ' ')
+    .replace(HUMANIZE_TOKEN_RE, ' ')
     .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .replace(HUMANIZE_TOKEN_RE_2, (letter) => letter.toUpperCase())
     .trim();
 }
 
@@ -397,7 +406,7 @@ export function parseCiiMovement(trend, { intervalPhrase = DEFAULT_CII_MOVEMENT_
   ) {
     return { change24h: null, movementText: null };
   }
-  const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
+  const match = normalized.match(PARSE_CII_MOVEMENT_RE);
   if (!match) throw new Error(`Invalid CII movement label: ${normalized || '(empty)'}`);
   const change24h = Number(match[2]);
   const magnitude = Math.abs(change24h);
@@ -499,7 +508,7 @@ export function ciiRankingViewModel(payload, now = Date.now()) {
   const methodologyVersions = new Set();
   const rows = payload.ciiScores.map((entry) => {
     const code = String(entry?.region || '').trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(code)) throw new Error('CII ranking country code is invalid');
+    if (!COUNTRY_CODE_RE.test(code)) throw new Error('CII ranking country code is invalid');
     if (seenCodes.has(code)) throw new Error(`CII ranking contains duplicate country ${code}`);
     seenCodes.add(code);
 
@@ -1359,7 +1368,7 @@ function renderCountryRiskViewModel(tool, view) {
 /** True when the score cell still holds a published numeric value. */
 function hasVisibleScore(tool, selector) {
   const text = tool?.querySelector?.(selector)?.textContent ?? '';
-  return /\d/.test(text);
+  return HAS_VISIBLE_SCORE_RE.test(text);
 }
 
 function renderCountryRiskError(tool) {
@@ -1389,7 +1398,7 @@ function renderCountryRiskError(tool) {
 
 export async function loadCountryRisk(tool) {
   const countryCode = String(tool.dataset.countryCode || '').toUpperCase();
-  if (!/^[A-Z]{2}$/.test(countryCode)) {
+  if (!COUNTRY_CODE_RE.test(countryCode)) {
     cancelToolRequest(tool);
     renderCountryRiskError(tool);
     return;

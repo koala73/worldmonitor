@@ -46,6 +46,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildBundle } from './build-openapi-json.mjs';
 import { unreachableSchemaNames } from './openapi-drop-unreachable-schemas.mjs';
 
+const IS_REFERENCEABLE_POSITION_RE = /^2\d\d$/;
+
+
 /**
  * The scanner budget, in bytes of the served artifact.
  *
@@ -141,7 +144,7 @@ function isReferenceablePosition(parentKey, grandparentKey, inRawData) {
   // credits only the inline `responses["200"]` schema, so the dedup passes
   // deliberately never hoist one (openapi-dedup-responses.mjs). Offering those
   // bytes would be offering a change the project has already ruled out.
-  if (grandparentKey === 'responses' && /^2\d\d$/.test(String(parentKey))) return false;
+  if (grandparentKey === 'responses' && IS_REFERENCEABLE_POSITION_RE.test(String(parentKey))) return false;
   if (REF_SLOT_KEYS.has(parentKey) || REF_ARRAY_KEYS.has(parentKey)) return true;
   return REF_ENTRY_CONTAINERS.has(grandparentKey);
 }

@@ -41,6 +41,11 @@ import {
   CII_RISK_SCORE_CACHE_KEYS,
 } from '../../../_shared/cache-keys';
 
+const EXTRACT_KEYWORDS_RE = /\W+/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const ISO2_RE = /^[A-Z]{2}$/i;
+
+
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
 // When multi-language digests are available, fan out to news:digest:v1:full:<lang>
 // and merge results before scoring.
@@ -762,12 +767,12 @@ const KNOWN_2CHAR_ACRONYMS = new Set(['us', 'uk', 'eu', 'un', 'ai']);
 export function extractKeywords(query: string, limit: number = MAX_KEYWORDS): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
-  for (const raw of query.split(/\W+/)) {
+  for (const raw of query.split(EXTRACT_KEYWORDS_RE)) {
     if (!raw) continue;
     const lower = raw.toLowerCase();
     // Preserve 2-char tokens that are either known acronyms (case-insensitive)
     // or typed in uppercase — both signal intentional abbreviation.
-    if (raw.length === 2 && (KNOWN_2CHAR_ACRONYMS.has(lower) || /^[A-Z]{2}$/.test(raw))) {
+    if (raw.length === 2 && (KNOWN_2CHAR_ACRONYMS.has(lower) || COUNTRY_CODE_RE.test(raw))) {
       if (!seen.has(lower)) { seen.add(lower); result.push(lower); }
       continue;
     }
@@ -1108,7 +1113,7 @@ export async function assembleAnalystContext(
     energyExposure: 'energy:exposure:v1:index',
   };
 
-  const countryKey = geoContext && /^[A-Z]{2}$/.test(geoContext.toUpperCase())
+  const countryKey = geoContext && COUNTRY_CODE_RE.test(geoContext.toUpperCase())
     ? `intelligence:country-brief:v1:${geoContext.toUpperCase()}`
     : null;
 
@@ -1130,7 +1135,7 @@ export async function assembleAnalystContext(
   const needsSpr = new Set(['economic', 'all']).has(resolvedDomain);
   const needsRefinery = new Set(['economic', 'all']).has(resolvedDomain);
 
-  const iso2 = geoContext && /^[A-Z]{2}$/i.test(geoContext) ? geoContext.toUpperCase() : null;
+  const iso2 = geoContext && ISO2_RE.test(geoContext) ? geoContext.toUpperCase() : null;
   const needsProductSupply = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
   const needsGasFlows = iso2 != null && new Set(['economic', 'geo', 'all']).has(resolvedDomain);
   const needsOilStocksCover = iso2 != null && new Set(['economic', 'all']).has(resolvedDomain);

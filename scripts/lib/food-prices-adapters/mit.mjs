@@ -1,5 +1,17 @@
 import { firstIndex, isoDate } from '../food-prices.mjs';
 
+const AMOUNT_RE = /^\d{1,3}(?:,\d{3})*$/;
+const AMOUNT_RE_2 = /,/g;
+const REGION_RE = /^dar es sa+la+m$/i;
+const DISCOVER_MIT_REPORTS_RE = /^\/uploads\/documents\/.+\.pdf$/i;
+const DISCOVER_MIT_REPORTS_RE_2 = /Wholesale Price (\d{1,2})(?:st|nd|rd|th)? ([A-Za-z]+),? (\d{4})/i;
+const TITLE_RE = /^BEI ZA JUMLA MAZAO MAKUU YA CHAKULA NCHINI \(TZS \/ KILO 100\)/;
+const PARSE_MIT_RE = /(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})\.?\s*$/;
+const HEADERS_RE = /^(?:Min|Max) Price$/;
+const VALUES_RE = /^(?:[\d,]+|NA)$/;
+const PARSE_MIT_RE_2 = /^(?:CHANZO:|IDARA\b)/;
+
+
 const MIT_INDEX_URL = 'https://www.viwanda.go.tz/documents/product-prices-domestic';
 
 const MONTHS = [/^jan/, /^feb/, /^ma[rc]/, /^apr/, /^m(?:ay|ei)/, /^jun/, /^jul/, /^a(?:ug|go)/, /^sep/, /^o[ck]t/, /^nov/, /^de[cs]/];
@@ -10,15 +22,15 @@ const CROPS = [
 
 const monthIndex = name => MONTHS.findIndex(pattern => pattern.test(name.toLowerCase())) + 1;
 const textDate = (day, month, year) => (monthIndex(month) ? isoDate(year, monthIndex(month), day) : '');
-const amount = text => /^\d{1,3}(?:,\d{3})*$/.test(text) && Number(text.replace(/,/g, '')) > 0 ? Number(text.replace(/,/g, '')) : null;
-const region = name => /^dar es sa+la+m$/i.test(name) ? 'Dar es Salaam' : name;
+const amount = text => AMOUNT_RE.test(text) && Number(text.replace(AMOUNT_RE_2, '')) > 0 ? Number(text.replace(AMOUNT_RE_2, '')) : null;
+const region = name => REGION_RE.test(name) ? 'Dar es Salaam' : name;
 
 export function discoverMitReports(links) {
   const seen = new Set();
   return links.flatMap(link => {
     const url = new URL(link.url);
-    if (url.hostname !== 'www.viwanda.go.tz' || !/^\/uploads\/documents\/.+\.pdf$/i.test(url.pathname)) return [];
-    const match = /Wholesale Price (\d{1,2})(?:st|nd|rd|th)? ([A-Za-z]+),? (\d{4})/i.exec(decodeURIComponent(url.pathname));
+    if (url.hostname !== 'www.viwanda.go.tz' || !DISCOVER_MIT_REPORTS_RE.test(url.pathname)) return [];
+    const match = DISCOVER_MIT_REPORTS_RE_2.exec(decodeURIComponent(url.pathname));
     const date = match ? textDate(match[1], match[2], match[3]) : '';
     if (!date || seen.has(date)) return [];
     seen.add(date);
@@ -38,12 +50,12 @@ export function mitRows(items) {
 }
 
 export function parseMit(page, expectedDate) {
-  const title = page.find(item => /^BEI ZA JUMLA MAZAO MAKUU YA CHAKULA NCHINI \(TZS \/ KILO 100\)/.test(item.text))?.text;
+  const title = page.find(item => TITLE_RE.test(item.text))?.text;
   if (!title) throw new Error('mit wholesale PDF format changed');
-  const match = /(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})\.?\s*$/.exec(title);
+  const match = PARSE_MIT_RE.exec(title);
   const date = match ? textDate(match[1], match[2], match[3]) : '';
   if (!date || (expectedDate && date !== expectedDate)) throw new Error('mit report date mismatch');
-  const headers = page.filter(item => /^(?:Min|Max) Price$/.test(item.text)).sort((a, b) => a.x - b.x);
+  const headers = page.filter(item => HEADERS_RE.test(item.text)).sort((a, b) => a.x - b.x);
   if (headers.length !== CROPS.length * 2 || headers.some((header, i) => header.text !== (i % 2 ? 'Max Price' : 'Min Price'))) throw new Error('mit price columns format changed');
   for (const [i, [label]] of CROPS.entries()) {
     const crop = page.find(item => item.text.trim() === label);
@@ -51,12 +63,12 @@ export function parseMit(page, expectedDate) {
   }
   const top = headers[0].y;
   // Sorted once by height so each market row takes its band of cells without rescanning the page.
-  const values = page.filter(item => item.x >= 110 && item.y < top && /^(?:[\d,]+|NA)$/.test(item.text.trim())).sort((a, b) => a.y - b.y);
+  const values = page.filter(item => item.x >= 110 && item.y < top && VALUES_RE.test(item.text.trim())).sort((a, b) => a.y - b.y);
   const result = [];
   for (const row of mitRows(page.filter(item => item.x < 110 && item.y < top))) {
     const regionName = row.items.filter(item => item.x < 60).map(item => item.text.trim()).join(' ');
     const district = row.items.filter(item => item.x >= 60).map(item => item.text.trim()).join(' ');
-    if (/^(?:CHANZO:|IDARA\b)/.test(regionName) || (!regionName && !district)) continue;
+    if (PARSE_MIT_RE_2.test(regionName) || (!regionName && !district)) continue;
     if (!regionName || !district) throw new Error('mit market row format changed');
     const columns = new Map();
     for (let i = firstIndex(values, item => item.y >= row.y - 1); i < values.length && values[i].y <= row.y + 4; i++) {

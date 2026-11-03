@@ -3,10 +3,13 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/d
 import { readCachedEnvelopeJson } from '../../../_shared/redis';
 import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots, filterCrossBorderMovements } from './cross-border-data';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export async function getCrossBorderMovements(_ctx: ServerContext, req: GetCrossBorderMovementsRequest): Promise<GetCrossBorderMovementsResponse> {
   const countryCode = (req.countryCode ?? '').trim().toUpperCase();
   const route = (req.route ?? '').trim();
-  if (countryCode && !/^[A-Z]{2}$/.test(countryCode)) throw new ValidationError([{ field: 'countryCode', description: 'country_code must contain two letters' }]);
+  if (countryCode && !COUNTRY_CODE_RE.test(countryCode)) throw new ValidationError([{ field: 'countryCode', description: 'country_code must contain two letters' }]);
   if (route.length > 120) throw new ValidationError([{ field: 'route', description: 'route must be at most 120 characters' }]);
   return filterCrossBorderMovements(await readCrossBorderMovements(), countryCode, route);
 }

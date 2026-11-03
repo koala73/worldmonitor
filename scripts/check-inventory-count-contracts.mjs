@@ -5,6 +5,16 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
+const ASSERTION_LIKE_RE = /(?:^|\.)(?:assert|expect|check|verify|ensure|require|guard|must)/i;
+const NEGATIVE_ASSERTION_LIKE_RE = /(?:doesNot|not\.(?:to)?(?:equal|match|contain|include)|notEqual)/i;
+const ASSERTION_CONTRACT_NODES_RE = /^(?:ok|isTrue|isFalse)$/i;
+const ASSERTION_CONTRACT_NODES_RE_2 = /^(?:match|equal|strictEqual|deepEqual)$/i;
+const EMBEDDED_NUMERIC_LITERAL_RE = /(?:^|\D)(\d+(?:\.\d+)?)(?!\d)/;
+const LINE_BREAK_RE = /\r?\n/;
+const RAW_RE = /inventory-contract:\s*([^\n]+)/g;
+const MARKER_NEAR_RE = /^\s*([a-z-]+)\s*:\s*(.*?)\s*$/i;
+
+
 const CLASSIFICATIONS = new Set([
   'exact',
   'derived',
@@ -737,17 +747,17 @@ function constantParameterReference(identifier, constantParameters) {
 
 function assertionLike(expression) {
   const text = expression.getText();
-  return /(?:^|\.)(?:assert|expect|check|verify|ensure|require|guard|must)/i.test(text);
+  return ASSERTION_LIKE_RE.test(text);
 }
 
 function negativeAssertionLike(expression) {
-  return /(?:doesNot|not\.(?:to)?(?:equal|match|contain|include)|notEqual)/i.test(expression.getText());
+  return NEGATIVE_ASSERTION_LIKE_RE.test(expression.getText());
 }
 
 function assertionContractNodes(call) {
   const name = call.expression.getText().split('.').at(-1) ?? '';
-  if (/^(?:ok|isTrue|isFalse)$/i.test(name)) return call.arguments.slice(0, 1);
-  if (/^(?:match|equal|strictEqual|deepEqual)$/i.test(name)) return call.arguments.slice(1, 2);
+  if (ASSERTION_CONTRACT_NODES_RE.test(name)) return call.arguments.slice(0, 1);
+  if (ASSERTION_CONTRACT_NODES_RE_2.test(name)) return call.arguments.slice(1, 2);
   return call.arguments.slice(0, 2);
 }
 
@@ -757,7 +767,7 @@ function embeddedNumericLiteral(nodes) {
     walk(node, (candidate) => {
       if (value !== undefined) return;
       if (!ts.isStringLiteralLike(candidate) && !ts.isRegularExpressionLiteral(candidate)) return;
-      const match = candidate.text.match(/(?:^|\D)(\d+(?:\.\d+)?)(?!\d)/);
+      const match = candidate.text.match(EMBEDDED_NUMERIC_LITERAL_RE);
       if (match) value = Number(match[1]);
     });
     if (value !== undefined) break;
@@ -785,16 +795,16 @@ function comparisonKind(kind) {
 }
 
 function markerNear(sourceText, lineNumber) {
-  const lines = sourceText.split(/\r?\n/);
+  const lines = sourceText.split(LINE_BREAK_RE);
   const start = Math.max(0, lineNumber - 3);
   const text = lines.slice(start, lineNumber).join('\n');
-  const raw = [...text.matchAll(/inventory-contract:\s*([^\n]+)/g)].at(-1)?.[1];
+  const raw = [...text.matchAll(RAW_RE)].at(-1)?.[1];
   if (!raw) return null;
   const fields = {};
   const firstSeparator = raw.indexOf(';');
   fields.id = (firstSeparator === -1 ? raw : raw.slice(0, firstSeparator)).trim();
   for (const part of (firstSeparator === -1 ? '' : raw.slice(firstSeparator + 1)).split(';')) {
-    const match = part.match(/^\s*([a-z-]+)\s*:\s*(.*?)\s*$/i);
+    const match = part.match(MARKER_NEAR_RE);
     if (match) fields[match[1].toLowerCase()] = match[2];
   }
   return fields;

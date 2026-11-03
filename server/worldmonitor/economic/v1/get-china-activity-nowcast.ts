@@ -38,6 +38,9 @@ import {
 } from './china-corridor-breadth-history';
 import { getChinaMacroSnapshot } from './get-china-macro-snapshot';
 
+const OBSERVATION_MONTH_INDEX_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+
 export const CHINA_ACTIVITY_NOWCAST_CACHE_KEY =
   CHINA_ACTIVITY_NOWCAST_KEY;
 export const CHINA_ACTIVITY_NOWCAST_TTL_SECONDS = 15 * 60;
@@ -262,12 +265,12 @@ const MAX_DEMAND_CHANGE_PRODUCTS = 5;
 const MAX_DEMAND_CHANGE_PERCENT = 50;
 
 function observationMonthIndex(value: string | null): number | null {
-  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value ?? '');
+  const match = OBSERVATION_MONTH_INDEX_RE.exec(value ?? '');
   return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : null;
 }
 
 function monthPeriodEnd(value: string | null): string | null {
-  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(value ?? '');
+  const match = OBSERVATION_MONTH_INDEX_RE.exec(value ?? '');
   if (!match) return null;
   return new Date(Date.UTC(Number(match[1]), Number(match[2]), 1) - 1).toISOString();
 }

@@ -31,6 +31,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { localePathTokens } from './_locale-keys.mjs';
 
+const FIND_PLURAL_BASES_RE = /^(.+)_(one|other)$/;
+const ENGLISH_COPY_BODY_RE = /\{\{[^}]+\}\}/g;
+const ENGLISH_COPY_BODY_RE_2 = /<[^>]+>/g;
+const ENGLISH_COPY_BODY_RE_3 = /https?:\/\/\S+/g;
+const ENGLISH_COPY_BODY_RE_4 = /&[a-z]+;/g;
+const IS_COPIED_ENGLISH_VALUE_RE = /x{4,}/i;
+const WORDS_RE = /[A-Za-z][A-Za-z'’-]*[A-Za-z]/g;
+const WHITESPACE_RE = /\s+/g;
+const PRUNE_ORPHANS_RE = /^(.*)\[(\d+)\]$/;
+const RESOLVE_NESTED_RE = /^([^[]*)((?:\[\d+\])+)?$/;
+const RESOLVE_NESTED_RE_2 = /\[(\d+)\]/g;
+const EXTRACT_URL_TOKENS_RE = /(?:https?:\/\/[^\s<>"']+|[A-Za-z0-9](?=([A-Za-z0-9.-]{0,253}))\1\/[A-Za-z0-9_\-./]*[A-Za-z0-9_\-/]|(?<![A-Za-z0-9])\/[A-Za-z](?=([A-Za-z0-9_\-.]{0,128}))\2\/[A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
+const EXTRACT_URL_TOKENS_RE_2 = /^https?:\/\//;
+const EXTRACT_URL_TOKENS_RE_3 = /^[A-Za-z]{2,}$/;
+const TAG_PATTERN_RE = /<\/?[a-zA-Z][a-zA-Z0-9]*(?:\s[^>]*)?>/g;
+
+
 export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'sw', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-TW'];
 
 // Locales produced by another generator, which this script must not write.
@@ -249,7 +266,7 @@ export function getPluralCategories(loc) {
 export function findPluralBases(enFlat) {
   const bases = new Map();
   for (const k of Object.keys(enFlat)) {
-    const m = k.match(/^(.+)_(one|other)$/);
+    const m = k.match(FIND_PLURAL_BASES_RE);
     if (!m) continue;
     const [, base, suffix] = m;
     if (!bases.has(base)) bases.set(base, {});
@@ -290,19 +307,19 @@ const KEPT_ENGLISH_TOKENS = new Set([
 
 function englishCopyBody(value) {
   return value
-    .replace(/\{\{[^}]+\}\}/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/https?:\/\/\S+/g, ' ')
-    .replace(/&[a-z]+;/g, ' ')
+    .replace(ENGLISH_COPY_BODY_RE, ' ')
+    .replace(ENGLISH_COPY_BODY_RE_2, ' ')
+    .replace(ENGLISH_COPY_BODY_RE_3, ' ')
+    .replace(ENGLISH_COPY_BODY_RE_4, ' ')
     .trim();
 }
 
 function isCopiedEnglishValue(value) {
   const body = englishCopyBody(value);
-  if (!body || /x{4,}/i.test(body)) return false;
-  const words = (body.match(/[A-Za-z][A-Za-z'’-]*[A-Za-z]/g) || []).map(word => word.toLowerCase());
+  if (!body || IS_COPIED_ENGLISH_VALUE_RE.test(body)) return false;
+  const words = (body.match(WORDS_RE) || []).map(word => word.toLowerCase());
   if (words.length === 0) return false;
-  const whole = body.toLowerCase().replace(/\s+/g, ' ').trim();
+  const whole = body.toLowerCase().replace(WHITESPACE_RE, ' ').trim();
   if (KEPT_ENGLISH_TOKENS.has(whole)) return false;
   return words.some(word => !KEPT_ENGLISH_TOKENS.has(word));
 }
@@ -479,7 +496,7 @@ export function pruneOrphans(raw, orphanKeys) {
   const truncateAt = new Map();
   const plainKeys = [];
   for (const key of orphanKeys) {
-    const match = key.match(/^(.*)\[(\d+)\]$/);
+    const match = key.match(PRUNE_ORPHANS_RE);
     if (!match) {
       plainKeys.push(key);
       continue;
@@ -506,14 +523,14 @@ export function pruneOrphans(raw, orphanKeys) {
 function resolveNested(obj, dotted) {
   let cur = obj;
   for (const part of dotted.split('.')) {
-    const match = part.match(/^([^[]*)((?:\[\d+\])+)?$/);
+    const match = part.match(RESOLVE_NESTED_RE);
     if (!match) return undefined;
     if (match[1]) {
       if (cur === null || typeof cur !== 'object') return undefined;
       cur = cur[match[1]];
     }
     if (match[2]) {
-      for (const idx of match[2].matchAll(/\[(\d+)\]/g)) {
+      for (const idx of match[2].matchAll(RESOLVE_NESTED_RE_2)) {
         if (!Array.isArray(cur)) return undefined;
         cur = cur[Number(idx[1])];
       }
@@ -562,10 +579,10 @@ export function extractUrlTokens(text) {
   //   this catalog links to. Unbounded, both are O(n^2) by position even when
   //   atomic — 16k characters took ~11s.
   const pattern =
-    /(?:https?:\/\/[^\s<>"']+|[A-Za-z0-9](?=([A-Za-z0-9.-]{0,253}))\1\/[A-Za-z0-9_\-./]*[A-Za-z0-9_\-/]|(?<![A-Za-z0-9])\/[A-Za-z](?=([A-Za-z0-9_\-.]{0,128}))\2\/[A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
+    EXTRACT_URL_TOKENS_RE;
   return (text.match(pattern) || [])
     .filter((token) => {
-      if (/^https?:\/\//.test(token)) return true;
+      if (EXTRACT_URL_TOKENS_RE_2.test(token)) return true;
       // A bare absolute path — already constrained to two segments by the arm
       // that produced it.
       if (token.startsWith('/')) return true;
@@ -574,22 +591,22 @@ export function extractUrlTokens(text) {
       // from `calls/day` (no dot) and `1.5/kg` (last label is not a TLD).
       const host = token.slice(0, token.indexOf('/'));
       const labels = host.split('.');
-      return labels.length > 1 && /^[A-Za-z]{2,}$/.test(labels[labels.length - 1]);
+      return labels.length > 1 && EXTRACT_URL_TOKENS_RE_3.test(labels[labels.length - 1]);
     })
     .sort();
 }
 
 export function validateTranslation(en, translated) {
   // Reject if interpolation tokens were dropped or invented
-  const enTokens = (en.match(/\{\{[^}]+\}\}/g) || []).sort();
-  const tTokens = (translated.match(/\{\{[^}]+\}\}/g) || []).sort();
+  const enTokens = (en.match(ENGLISH_COPY_BODY_RE) || []).sort();
+  const tTokens = (translated.match(ENGLISH_COPY_BODY_RE) || []).sort();
   if (enTokens.join('|') !== tTokens.join('|')) return false;
 
   // Reject if HTML tags were dropped, renamed, or added. Compare the sorted
   // multiset (not the order) so paraphrased sentences with the same tag set
   // pass — but a stripped <strong> or invented <i> fails.
-  const tagPattern = /<\/?[a-zA-Z][a-zA-Z0-9]*(?:\s[^>]*)?>/g;
-  const norm = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const tagPattern = TAG_PATTERN_RE;
+  const norm = s => s.toLowerCase().replace(WHITESPACE_RE, ' ').trim();
   const enTags = (en.match(tagPattern) || []).map(norm).sort();
   const tTags = (translated.match(tagPattern) || []).map(norm).sort();
   if (enTags.join('|') !== tTags.join('|')) return false;

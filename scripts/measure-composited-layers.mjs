@@ -26,6 +26,9 @@
  */
 import { pathToFileURL } from 'node:url';
 
+const WHITESPACE_RE = /\s+/;
+
+
 const DESCRIBE_NODE_CAP = 400;
 const DESCRIBE_NODE_CAP_SKIPPED_SELECTOR = '(describe-cap-skipped)';
 const CAP_SKIPPED_NODE = Object.freeze({ skippedByDescribeNodeCap: true });
@@ -88,7 +91,7 @@ export function selectorForNode(node) {
   const tag = String(node.nodeName).toLowerCase();
   const { id, className } = parseAttributes(node.attributes);
   if (id) return `${tag}#${id}`;
-  const cls = String(className).trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.');
+  const cls = String(className).trim().split(WHITESPACE_RE).filter(Boolean).slice(0, 2).join('.');
   return cls ? `${tag}.${cls}` : tag;
 }
 

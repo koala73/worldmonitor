@@ -50,6 +50,17 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const BASE_RE = /\.openapi\.json$/i;
+const V_MATCH_RE = /V(\d+)$/;
+const SERVICE_RE = /([a-z0-9])([A-Z])/g;
+const BASENAME_RE = /^\.\//;
+const BASE_NAME_RE = /\s+as\s+/;
+const STRIP_COMMENTS_RE = /\/\*[\s\S]*?\*\//g;
+const STRIP_COMMENTS_RE_2 = /(^|\s)\/\/[^\n]*/g;
+const CLASSIFY_HANDLER_RE = /from\s*['"][^'"]*_shared\/llm['"]/;
+const CLASSIFY_HANDLER_RE_2 = /\bcallLlm\w*\b/;
+
+
 // -----------------------------------------------------------------------------
 // Repo paths
 // -----------------------------------------------------------------------------
@@ -173,15 +184,15 @@ function loadOpenApiOperations(specsDir) {
 // -----------------------------------------------------------------------------
 
 function specFilenameToService(filename) {
-  let base = filename.replace(/\.openapi\.json$/i, '');
+  let base = filename.replace(BASE_RE, '');
   if (base.endsWith('Service')) base = base.slice(0, -'Service'.length);
   let version = 'v1';
-  const vMatch = base.match(/V(\d+)$/);
+  const vMatch = base.match(V_MATCH_RE);
   if (vMatch) {
     version = `v${vMatch[1]}`;
     base = base.slice(0, vMatch.index);
   }
-  const service = base.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+  const service = base.replace(SERVICE_RE, '$1-$2').toLowerCase();
   return { service, version };
 }
 
@@ -215,11 +226,11 @@ function buildHandlerImportMap(handlerSource) {
   while ((m = importRe.exec(handlerSource)) !== null) {
     const namesPart = m[1];
     const importPath = m[2]; // e.g. './list-ddos-attacks'
-    const basename = importPath.replace(/^\.\//, '');
+    const basename = importPath.replace(BASENAME_RE, '');
     const names = namesPart.split(',').map((n) => n.trim()).filter(Boolean);
     for (const name of names) {
       // strip `as alias` — we want the imported name, not the alias
-      const baseName = name.split(/\s+as\s+/)[0].trim();
+      const baseName = name.split(BASE_NAME_RE)[0].trim();
       if (baseName) map[baseName] = basename;
     }
   }
@@ -257,8 +268,8 @@ function stripComments(source) {
   // arg regex — which targets `(` after specific helper names — so a
   // string literal that happens to read `// foo` won't false-match.
   return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|\s)\/\/[^\n]*/g, '$1');
+    .replace(STRIP_COMMENTS_RE, '')
+    .replace(STRIP_COMMENTS_RE_2, '$1');
 }
 
 function extractCacheKeyArgs(source) {
@@ -290,7 +301,7 @@ function resolveConstViaShared(identifier, handlerSource, handlerDir) {
   const importRe = /import(?:\s+type)?\s*\{([^}]+)\}\s*from\s*['"](\.[^'"]+)['"]\s*;?/g;
   let m;
   while ((m = importRe.exec(handlerSource)) !== null) {
-    const names = m[1].split(',').map((n) => n.split(/\s+as\s+/)[0].trim());
+    const names = m[1].split(',').map((n) => n.split(BASE_NAME_RE)[0].trim());
     if (!names.includes(identifier)) continue;
     const importPath = m[2];
     const candidate = resolve(handlerDir, `${importPath}.ts`);
@@ -319,13 +330,13 @@ function classifyHandler(source) {
   const imported = new Set();
   let m;
   while ((m = importRe.exec(source)) !== null) {
-    for (const name of m[1].split(',').map((n) => n.split(/\s+as\s+/)[0].trim())) {
+    for (const name of m[1].split(',').map((n) => n.split(BASE_NAME_RE)[0].trim())) {
       if (name) imported.add(name);
     }
   }
   // LLM passthrough annotation — imports from `_shared/llm` AND uses any
   // `callLlm*` helper (callLlm, callLlmReasoning, etc.).
-  if (/from\s*['"][^'"]*_shared\/llm['"]/.test(source) && /\bcallLlm\w*\b/.test(source)) {
+  if (CLASSIFY_HANDLER_RE.test(source) && CLASSIFY_HANDLER_RE_2.test(source)) {
     annotations.push('llm-passthrough');
   }
 

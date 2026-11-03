@@ -44,6 +44,27 @@ import { lngFacilityCount } from './_storage-facility-registry.mjs';
 import { computeStats } from './docs-stats.mjs';
 import { loadManifest, scanUpstreamHosts, sourceAttributionStats } from './source-attribution.mjs';
 
+const REWRITE_APPLICATION_JSON_LD_RE = /(<script\b(?=[^>]*\btype="application\/ld\+json")[^>]*>)([\s\S]*?)(<\/script>)/g;
+const RESTATE_FACTS_RE = /\d+/g;
+const MODULE_RE = /\b\d+-tool catalog\b/g;
+const NEXT_RE = /\b\d+-tool catalog\b/;
+const DISASTER_FILENAME_RE = /^ui:\/\/worldmonitor\/(natural-disasters(?:-v\d+)?\.html)$/;
+const MODULE_RE_2 = /get_market_data → market-radar(?:-v\d+)?\.html/;
+const MODULE_RE_3 = /get_country_brief → country-brief(?:-v\d+)?\.html/;
+const MODULE_RE_4 = /get_natural_disasters → natural-disasters(?:-v\d+)?\.html/;
+const MODULE_RE_5 = /get_news_intelligence → news-intelligence(?:-v\d+)?\.html/;
+const MODULE_RE_6 = /get_conflict_events → conflict-events(?:-v\d+)?\.html/;
+const MODULE_RE_7 = /get_prediction_markets → prediction-markets(?:-v\d+)?\.html/;
+const MODULE_RE_8 = /get_forecast_predictions → forecasts(?:-v\d+)?\.html/;
+const MODULE_RE_9 = /get_chokepoint_status → chokepoint-monitor(?:-v\d+)?\.html/;
+const MODULE_RE_10 = /get_world_brief → world-brief(?:-v\d+)?\.html/;
+const MODULE_RE_11 = /get_country_risk → country-risk(?:-v\d+)?\.html/;
+const NEXT_RE_2 = /^Last updated:.*\n\n/m;
+const MODULE_RE_12 = /^- MCP: .* with a free account.*\n/m;
+const MODULE_RE_13 = /(## Free\n[\s\S]*?^- Limits: .*\n)/m;
+const MODULE_RE_14 = /```json\n[\s\S]*?```/;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK = process.argv.includes('--check');
 // Newest published resilience snapshot: the depth band's ranked slot and the
@@ -300,7 +321,7 @@ function offerFor(plan) {
 
 function rewriteApplicationJsonLd(source, includedGroups) {
   return source.replace(
-    /(<script\b(?=[^>]*\btype="application\/ld\+json")[^>]*>)([\s\S]*?)(<\/script>)/g,
+    REWRITE_APPLICATION_JSON_LD_RE,
     (whole, open, body, close) => {
       let block;
       try {
@@ -365,7 +386,7 @@ function restateFacts(path, source) {
     }
     result = result.replace(pattern, (phrase) => {
       let slot = 0;
-      return phrase.replace(/\d+/g, (digits) => (slot < keys.length ? String(RESTATED_FACT_VALUES[keys[slot++]]) : digits));
+      return phrase.replace(RESTATE_FACTS_RE, (digits) => (slot < keys.length ? String(RESTATED_FACT_VALUES[keys[slot++]]) : digits));
     });
   }
   return result;
@@ -397,13 +418,13 @@ transform('public/.well-known/agent-card.json', (source) => {
   if (!routingSkill?.description) {
     throw new Error('agent-card routing skill must have a description');
   }
-  if ([...routingSkill.description.matchAll(/\b\d+-tool catalog\b/g)].length !== 1) {
+  if ([...routingSkill.description.matchAll(MODULE_RE)].length !== 1) {
     throw new Error('agent-card routing skill must advertise exactly one N-tool catalog');
   }
-  if ([...source.matchAll(/\b\d+-tool catalog\b/g)].length !== 1) {
+  if ([...source.matchAll(MODULE_RE)].length !== 1) {
     throw new Error('agent-card must contain exactly one N-tool catalog claim');
   }
-  const next = source.replace(/\b\d+-tool catalog\b/, `${TOOL_REGISTRY.length}-tool catalog`);
+  const next = source.replace(NEXT_RE, `${TOOL_REGISTRY.length}-tool catalog`);
   return renderJsonDomainSurface(next, AGENT_CARD_DOMAIN_SURFACE, MCP_DOMAIN_SUMMARY);
 });
 
@@ -414,37 +435,37 @@ transform('public/.well-known/mcp/server-card.json', (source) => {
   const card = JSON.parse(source);
   const disasterTool = TOOL_REGISTRY.find((tool) => tool.name === 'get_natural_disasters');
   if (!disasterTool) throw new Error('get_natural_disasters must exist in TOOL_REGISTRY');
-  const disasterFilename = disasterTool._uiResourceUri?.match(/^ui:\/\/worldmonitor\/(natural-disasters(?:-v\d+)?\.html)$/)?.[1];
+  const disasterFilename = disasterTool._uiResourceUri?.match(DISASTER_FILENAME_RE)?.[1];
   if (!disasterFilename) throw new Error('get_natural_disasters must advertise a ui://worldmonitor/natural-disasters HTML resource');
   card.metadata.mcpApps.note = card.metadata.mcpApps.note.replace(
-    /get_market_data → market-radar(?:-v\d+)?\.html/,
+    MODULE_RE_2,
     'get_market_data → market-radar-v3.html',
   ).replace(
-    /get_country_brief → country-brief(?:-v\d+)?\.html/,
+    MODULE_RE_3,
     'get_country_brief → country-brief-v3.html',
   ).replace(
-    /get_natural_disasters → natural-disasters(?:-v\d+)?\.html/,
+    MODULE_RE_4,
     `get_natural_disasters → ${disasterFilename}`,
   ).replace(
-    /get_news_intelligence → news-intelligence(?:-v\d+)?\.html/,
+    MODULE_RE_5,
     'get_news_intelligence → news-intelligence-v3.html',
   ).replace(
-    /get_conflict_events → conflict-events(?:-v\d+)?\.html/,
+    MODULE_RE_6,
     'get_conflict_events → conflict-events-v2.html',
   ).replace(
-    /get_prediction_markets → prediction-markets(?:-v\d+)?\.html/,
+    MODULE_RE_7,
     'get_prediction_markets → prediction-markets-v3.html',
   ).replace(
-    /get_forecast_predictions → forecasts(?:-v\d+)?\.html/,
+    MODULE_RE_8,
     'get_forecast_predictions → forecasts-v4.html',
   ).replace(
-    /get_chokepoint_status → chokepoint-monitor(?:-v\d+)?\.html/,
+    MODULE_RE_9,
     'get_chokepoint_status → chokepoint-monitor-v2.html',
   ).replace(
-    /get_world_brief → world-brief(?:-v\d+)?\.html/,
+    MODULE_RE_10,
     'get_world_brief → world-brief-v2.html',
   ).replace(
-    /get_country_risk → country-risk(?:-v\d+)?\.html/,
+    MODULE_RE_11,
     'get_country_risk → country-risk-v3.html',
   );
   card.metadata.mcpApps.uiResources = UI_RESOURCE_LIST_RESPONSE.map(resource => resource.uri);
@@ -615,16 +636,16 @@ function pricingSummary() {
 
 transform('public/pricing.md', (source) => {
   const generatedNote = '<!-- Product lifecycle, prices, and capability counts are generated by `npm run product:facts`. -->';
-  let next = source.replace(/^Last updated:.*\n\n/m, '');
+  let next = source.replace(NEXT_RE_2, '');
   if (!next.includes(generatedNote)) {
     next = next.replace('# Pricing - World Monitor\n', `# Pricing - World Monitor\n\n${generatedNote}\n`);
   }
   const freeMcp = `- MCP: ${FREE_ACCOUNT_MCP_LINE}; other MCP tools require a paid plan\n`;
-  next = /^- MCP: .* with a free account.*\n/m.test(next)
-    ? next.replace(/^- MCP: .* with a free account.*\n/m, freeMcp)
-    : next.replace(/(## Free\n[\s\S]*?^- Limits: .*\n)/m, `$1${freeMcp}`);
+  next = MODULE_RE_12.test(next)
+    ? next.replace(MODULE_RE_12, freeMcp)
+    : next.replace(MODULE_RE_13, `$1${freeMcp}`);
   return next.replace(
-    /```json\n[\s\S]*?```/,
+    MODULE_RE_14,
     `\`\`\`json\n${JSON.stringify(pricingSummary(), null, 2)}\n\`\`\``,
   );
 });

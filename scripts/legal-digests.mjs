@@ -26,6 +26,17 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const NORMALIZE_LEGAL_BODY_RE = /^---\n[\s\S]*?\n---\n/;
+const NORMALIZE_LEGAL_BODY_RE_2 = /\{\/\*[\s\S]*?\*\/\}/g;
+const NORMALIZE_LEGAL_BODY_RE_3 = /^(#{1,6} .+?) \{#[^\s}]+\}$/gm;
+const NORMALIZE_LEGAL_BODY_RE_4 = /\s+$/;
+const NORMALIZE_LEGAL_BODY_RE_5 = /\n{3,}/g;
+const CURRENT_VERSION_RE = /TERMS_VERSION = '([^']+)'/;
+const BLOCK_RE = /LEGAL_DOCUMENT_DIGESTS[^{]*\{([\s\S]*?)\n\};/;
+const DECLARED_LEGAL_DOCUMENTS_RE = /'([^']+)':\s*'([0-9a-f]*)'/g;
+const MAIN_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const LEGAL_TS = join(ROOT, 'shared', 'legal.ts');
 const CHECK = process.argv.includes('--check');
@@ -40,13 +51,13 @@ const SAME_DAY = process.argv.includes('--same-day');
  */
 export function normalizeLegalBody(mdx) {
   return mdx
-    .replace(/^---\n[\s\S]*?\n---\n/, '')
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
-    .replace(/^(#{1,6} .+?) \{#[^\s}]+\}$/gm, '$1')
+    .replace(NORMALIZE_LEGAL_BODY_RE, '')
+    .replace(NORMALIZE_LEGAL_BODY_RE_2, '')
+    .replace(NORMALIZE_LEGAL_BODY_RE_3, '$1')
     .split('\n')
-    .map((line) => line.replace(/\s+$/, ''))
+    .map((line) => line.replace(NORMALIZE_LEGAL_BODY_RE_4, ''))
     .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(NORMALIZE_LEGAL_BODY_RE_5, '\n\n')
     .trim();
 }
 
@@ -56,14 +67,14 @@ export function digestLegalDocument(absolutePath) {
 
 /** The version those digests are recorded against. */
 export function currentVersion(source = readFileSync(LEGAL_TS, 'utf8')) {
-  return source.match(/TERMS_VERSION = '([^']+)'/)?.[1] ?? '(unknown)';
+  return source.match(CURRENT_VERSION_RE)?.[1] ?? '(unknown)';
 }
 
 /** The doc paths declared in shared/legal.ts, in source order. */
 export function declaredLegalDocuments(source = readFileSync(LEGAL_TS, 'utf8')) {
-  const block = source.match(/LEGAL_DOCUMENT_DIGESTS[^{]*\{([\s\S]*?)\n\};/);
+  const block = source.match(BLOCK_RE);
   if (!block) throw new Error('LEGAL_DOCUMENT_DIGESTS not found in shared/legal.ts');
-  return [...block[1].matchAll(/'([^']+)':\s*'([0-9a-f]*)'/g)].map(([, path, digest]) => ({ path, digest }));
+  return [...block[1].matchAll(DECLARED_LEGAL_DOCUMENTS_RE)].map(([, path, digest]) => ({ path, digest }));
 }
 
 function main() {
@@ -106,7 +117,7 @@ function main() {
 
   let updated = source;
   for (const { path, digest } of current) {
-    const pattern = new RegExp(`('${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}':\\s*')[0-9a-f]*(')`);
+    const pattern = new RegExp(`('${path.replace(MAIN_RE, '\\$&')}':\\s*')[0-9a-f]*(')`);
     updated = updated.replace(pattern, `$1${digest}$2`);
   }
   writeFileSync(LEGAL_TS, updated, 'utf8');

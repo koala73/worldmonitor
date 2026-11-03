@@ -29,6 +29,10 @@ import { readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { isMainModule } from './lib/main-module.mjs';
 
+const PARSE_ARGS_RE = /^\d+$/;
+const PARSE_ARGS_RE_2 = /^#?(\d+)$/;
+
+
 const execFileAsync = promisify(execFile);
 
 const REPO = process.env.MERGE_TRAIN_REPO ?? 'koala73/worldmonitor';
@@ -230,12 +234,12 @@ export function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '--execute') { execute = true; continue; }
     if (arg === '--file') { file = argv[index + 1]; index += 1; continue; }
-    if (/^\d+$/.test(arg)) { numbers.push(Number(arg)); continue; }
+    if (PARSE_ARGS_RE.test(arg)) { numbers.push(Number(arg)); continue; }
     throw new Error(`Unrecognised argument: ${arg}`);
   }
   if (file) {
     for (const line of readFileSync(file, 'utf8').split('\n')) {
-      const match = line.trim().match(/^#?(\d+)$/);
+      const match = line.trim().match(PARSE_ARGS_RE_2);
       if (match) numbers.push(Number(match[1]));
     }
   }

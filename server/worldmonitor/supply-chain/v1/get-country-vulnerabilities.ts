@@ -21,12 +21,15 @@ import {
   stringValue,
 } from './_vulnerability-projection';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export async function getCountryVulnerabilities(
   ctx: ServerContext,
   req: GetCountryVulnerabilitiesRequest,
 ): Promise<GetCountryVulnerabilitiesResponse> {
   const iso2 = (req.iso2 || '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(iso2)) {
+  if (!COUNTRY_CODE_RE.test(iso2)) {
     throw new ValidationError([{ field: 'iso2', description: 'iso2 must be a 2-letter uppercase ISO country code' }]);
   }
 

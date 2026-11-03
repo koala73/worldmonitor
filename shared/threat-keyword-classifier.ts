@@ -15,6 +15,8 @@
  */
 
 /** Mirrors `ThreatLevel` in src/types — see the assertion in src/services/threat-classifier.ts. */
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
 /** Mirrors `EventCategory` in src/types — see the assertion in src/services/threat-classifier.ts. */
@@ -270,30 +272,22 @@ const TRAILING_BOUNDARY_KEYWORDS = new Set([
   'iran retaliates', 'iran strikes', 'iran launches', 'iran attacks',
 ]);
 
-const keywordRegexCache = new Map<string, RegExp>();
-
-function getKeywordRegex(kw: string): RegExp {
-  let re = keywordRegexCache.get(kw);
-  if (!re) {
-    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (SHORT_KEYWORDS.has(kw)) {
-      re = new RegExp(`\\b${escaped}\\b`);
-    } else if (TRAILING_BOUNDARY_KEYWORDS.has(kw)) {
-      re = new RegExp(`${escaped}(?![\\w-])`);
-    } else {
-      re = new RegExp(escaped);
-    }
-    keywordRegexCache.set(kw, re);
-  }
-  return re;
-}
+const KEYWORD_PATTERNS = new Map(Object.keys({
+  ...CRITICAL_KEYWORDS, ...HIGH_KEYWORDS, ...MEDIUM_KEYWORDS, ...LOW_KEYWORDS,
+  ...TECH_HIGH_KEYWORDS, ...TECH_MEDIUM_KEYWORDS, ...TECH_LOW_KEYWORDS,
+}).map(kw => {
+  const escaped = kw.replace(ESCAPED_RE, '\\$&');
+  const source = SHORT_KEYWORDS.has(kw) ? `\\b${escaped}\\b`
+    : TRAILING_BOUNDARY_KEYWORDS.has(kw) ? `${escaped}(?![\\w-])` : escaped;
+  return [kw, new RegExp(source)] as const;
+}));
 
 function matchKeywords(
   titleLower: string,
   keywords: KeywordMap
 ): { keyword: string; category: EventCategory } | null {
   for (const [kw, cat] of Object.entries(keywords)) {
-    if (getKeywordRegex(kw).test(titleLower)) {
+    if (KEYWORD_PATTERNS.get(kw)!.test(titleLower)) {
       return { keyword: kw, category: cat };
     }
   }

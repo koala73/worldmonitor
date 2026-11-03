@@ -7,6 +7,10 @@ import { writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
+const WHITESPACE_RE = /\s+/g;
+const ESCAPED_KEY_RE = /'/g;
+
+
 const COMMIT_SHA = 'master';
 const CITIES_URL = `https://raw.githubusercontent.com/eladnava/pikud-haoref-api/${COMMIT_SHA}/cities.json`;
 
@@ -14,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUTPUT = join(__dirname, '..', 'src', 'services', 'oref-locations.ts');
 
 function normalize(s) {
-  return s.normalize('NFKC').trim().replace(/\s+/g, ' ');
+  return s.normalize('NFKC').trim().replace(WHITESPACE_RE, ' ');
 }
 
 async function main() {
@@ -47,8 +51,8 @@ async function main() {
   ];
 
   for (const [heb, eng] of sorted) {
-    const escapedKey = heb.replace(/'/g, "\\'");
-    const escapedVal = eng.replace(/'/g, "\\'");
+    const escapedKey = heb.replace(ESCAPED_KEY_RE, "\\'");
+    const escapedVal = eng.replace(ESCAPED_KEY_RE, "\\'");
     lines.push(`  '${escapedKey}': '${escapedVal}',`);
   }
 

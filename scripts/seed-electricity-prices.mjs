@@ -16,6 +16,10 @@ import {
   withRetry,
 } from './_seed-utils.mjs';
 
+const PARSE_ENTSO_EPRICE_RE = /^-?\d+(?:\.\d+)?$/;
+const PARAMS_RE = /-/g;
+
+
 loadEnvFile(import.meta.url);
 
 export const ELECTRICITY_KEY_PREFIX = 'energy:electricity:v1:';
@@ -75,7 +79,7 @@ export function parseEntsoEPrice(xml) {
   const re = /<price\.amount>([^<]*)<\/price\.amount>/g;
   let m;
   while ((m = re.exec(xml)) !== null) {
-    if (!/^-?\d+(?:\.\d+)?$/.test(m[1].trim())) return null;
+    if (!PARSE_ENTSO_EPRICE_RE.test(m[1].trim())) return null;
     const v = Number(m[1]);
     if (!Number.isFinite(v)) return null;
     amounts.push(v);
@@ -156,7 +160,7 @@ export async function fetchEntsoERegion(region, token, today, yesterday, {
     in_Domain: region.eic,
     out_Domain: region.eic,
     periodStart: formatEntsoDate(yesterday),
-    periodEnd: `${isoDate(today).replace(/-/g, '')}2300`,
+    periodEnd: `${isoDate(today).replace(PARAMS_RE, '')}2300`,
     securityToken: token,
   });
   const url = `https://web-api.tp.entsoe.eu/api?${params.toString()}`;

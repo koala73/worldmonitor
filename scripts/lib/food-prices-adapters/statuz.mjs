@@ -1,5 +1,11 @@
 import { isoDate } from '../food-prices.mjs';
 
+const PARSE_STATUZ_RE = /^In soums for kilogram$/i;
+const PARSE_STATUZ_RE_2 = /^(\d{4})-[MМ](\d{2})$/;
+const NAME_RE = /^(.+?)\s*(?:\(([^)]*)\))?$/;
+const ITEM_RE = /\s*\([^)]*\)\s*$/;
+
+
 const PAGE_URL = 'https://stat.uz/ru/ofitsialnaya-statistika/prices-and-indexes';
 const DATA_URL = 'https://api.siat.stat.uz/media/uploads/sdmx/sdmx_data_1308.json';
 const INDICATOR = '1.11.03.0001';
@@ -25,26 +31,26 @@ export function parseStatuz(payload) {
   };
   const rows = dataset?.data;
   if (!meta('Indicator identification number (code)', value => value === INDICATOR) || !meta('Periodicity', value => value === 'monthly')
-    || !meta('Unit of measurement', value => /^In soums for kilogram$/i.test(value)) || !Array.isArray(rows) || rows.length < 30 || rows.length > 60) {
+    || !meta('Unit of measurement', value => PARSE_STATUZ_RE.test(value)) || !Array.isArray(rows) || rows.length < 30 || rows.length > 60) {
     throw new Error('statuz average-price dataset format changed');
   }
   const months = new Map();
   for (const key of Object.keys(rows[0])) {
-    const match = /^(\d{4})-[MМ](\d{2})$/.exec(key);
+    const match = PARSE_STATUZ_RE_2.exec(key);
     if (match) months.set(key, isoDate(match[1], match[2], 1));
   }
   const filled = [...months].filter(([key, date]) => date && rows.some(row => Number(row[key]) > 0));
   if (!filled.length) throw new Error('statuz dataset has no monthly prices');
   const [key, date] = filled.reduce((latest, entry) => entry[1] > latest[1] ? entry : latest);
   return rows.flatMap(row => {
-    const name = /^(.+?)\s*(?:\(([^)]*)\))?$/.exec(String(row.Klassifikator_ru ?? '').trim());
+    const name = NAME_RE.exec(String(row.Klassifikator_ru ?? '').trim());
     if (!name || !row.Klassifikator_en) throw new Error('statuz product columns format changed');
     const qualifier = name[2]?.trim();
     const unit = qualifier ? UNITS[qualifier] : 'kg';
     if (!unit) throw new Error(`statuz unit format changed: ${qualifier}`);
     const value = typeof row[key] === 'number' ? row[key] : Number(String(row[key] ?? '').trim() || NaN);
     if (!Number.isFinite(value) || value <= 0 || ANIMAL_FEED.has(name[1])) return [];
-    const item = ITEMS[name[1]] ?? String(row.Klassifikator_en).replace(/\s*\([^)]*\)\s*$/, '').trim();
+    const item = ITEMS[name[1]] ?? String(row.Klassifikator_en).replace(ITEM_RE, '').trim();
     return [{ item, market: 'National average', marketType: 'retail', unit, currency: 'UZS', date, price: value, origin: '' }];
   });
 }

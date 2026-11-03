@@ -25,6 +25,25 @@ import { resolveTechEventsPaging, type TechEventsPagingPresence } from './_tech-
 import { cachedFetchJson } from '../../../_shared/redis';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
+const NORMALIZE_LOCATION_RE = /^hybrid:\s*/i;
+const NORMALIZE_LOCATION_RE_2 = /,\s*(usa|us|uk|canada)$/i;
+const SUMMARY_MATCH_RE = /SUMMARY:(.+)/;
+const LOCATION_MATCH_RE = /LOCATION:(.+)/;
+const DTSTART_MATCH_RE = /DTSTART;VALUE=DATE:(\d+)/;
+const DTEND_MATCH_RE = /DTEND;VALUE=DATE:(\d+)/;
+const URL_MATCH_RE = /URL:(.+)/;
+const UID_MATCH_RE = /UID:(.+)/;
+const ITEM_MATCHES_RE = /<item>([\s\S]*?)<\/item>/g;
+const TITLE_MATCH_RE = /<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/;
+const LINK_MATCH_RE = /<link>(.*?)<\/link>/;
+const DESC_MATCH_RE = /<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s;
+const GUID_MATCH_RE = /<guid[^>]*>(.*?)<\/guid>/;
+const DATE_MATCH_RE = /on\s+(\w+\s+\d{1,2},?\s+\d{4})/i;
+const LOCATION_MATCH_RE_2 = /(?:in|at)\s+([A-Za-z\s]+,\s*[A-Za-z\s]+)(?:\.|$)/i;
+const LOCATION_MATCH_RE_3 = /Location:\s*([^<\n]+)/i;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]/g;
+
+
 const REDIS_CACHE_KEY = 'research:tech-events:v1';
 const REDIS_CACHE_TTL = 21600; // 6 hr — weekly event data
 
@@ -108,8 +127,8 @@ function normalizeLocation(location: string | null): (TechEventCoords) | null {
   let normalized = location.toLowerCase().trim();
 
   // Remove common suffixes/prefixes
-  normalized = normalized.replace(/^hybrid:\s*/i, '');
-  normalized = normalized.replace(/,\s*(usa|us|uk|canada)$/i, '');
+  normalized = normalized.replace(NORMALIZE_LOCATION_RE, '');
+  normalized = normalized.replace(NORMALIZE_LOCATION_RE_2, '');
 
   // Direct lookup
   if (CITY_COORDS[normalized]) {
@@ -144,12 +163,12 @@ function parseICS(icsText: string): TechEvent[] {
   const eventBlocks = icsText.split('BEGIN:VEVENT').slice(1);
 
   for (const block of eventBlocks) {
-    const summaryMatch = block.match(/SUMMARY:(.+)/);
-    const locationMatch = block.match(/LOCATION:(.+)/);
-    const dtstartMatch = block.match(/DTSTART;VALUE=DATE:(\d+)/);
-    const dtendMatch = block.match(/DTEND;VALUE=DATE:(\d+)/);
-    const urlMatch = block.match(/URL:(.+)/);
-    const uidMatch = block.match(/UID:(.+)/);
+    const summaryMatch = block.match(SUMMARY_MATCH_RE);
+    const locationMatch = block.match(LOCATION_MATCH_RE);
+    const dtstartMatch = block.match(DTSTART_MATCH_RE);
+    const dtendMatch = block.match(DTEND_MATCH_RE);
+    const urlMatch = block.match(URL_MATCH_RE);
+    const uidMatch = block.match(UID_MATCH_RE);
 
     if (summaryMatch && dtstartMatch) {
       const summary = summaryMatch[1]!.trim();
@@ -192,15 +211,15 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
   const events: TechEvent[] = [];
 
   // Simple regex-based RSS parsing for edge runtime
-  const itemMatches = rssText.matchAll(/<item>([\s\S]*?)<\/item>/g);
+  const itemMatches = rssText.matchAll(ITEM_MATCHES_RE);
 
   for (const match of itemMatches) {
     const item = match[1]!;
 
-    const titleMatch = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
-    const linkMatch = item.match(/<link>(.*?)<\/link>/);
-    const descMatch = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s);
-    const guidMatch = item.match(/<guid[^>]*>(.*?)<\/guid>/);
+    const titleMatch = item.match(TITLE_MATCH_RE);
+    const linkMatch = item.match(LINK_MATCH_RE);
+    const descMatch = item.match(DESC_MATCH_RE);
+    const guidMatch = item.match(GUID_MATCH_RE);
 
     const title = titleMatch ? (titleMatch[1] ?? titleMatch[2]) : null;
     const link = linkMatch ? linkMatch[1] ?? '' : '';
@@ -210,7 +229,7 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
     if (!title) continue;
 
     // Parse date from description: "EventName is happening on Month Day, Year"
-    const dateMatch = description.match(/on\s+(\w+\s+\d{1,2},?\s+\d{4})/i);
+    const dateMatch = description.match(DATE_MATCH_RE);
     let startDate: string | null = null;
     if (dateMatch) {
       const parsed = new Date(dateMatch[1]!);
@@ -221,8 +240,8 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
 
     // Parse location from description: various formats
     let location: string | null = null;
-    const locationMatch = description.match(/(?:in|at)\s+([A-Za-z\s]+,\s*[A-Za-z\s]+)(?:\.|$)/i) ||
-                          description.match(/Location:\s*([^<\n]+)/i);
+    const locationMatch = description.match(LOCATION_MATCH_RE_2) ||
+                          description.match(LOCATION_MATCH_RE_3);
     if (locationMatch) {
       location = locationMatch[1]!.trim();
     }
@@ -310,7 +329,7 @@ async function fetchAllTechEvents(): Promise<ListTechEventsResponse> {
   const seen = new Set<string>();
   events = events.filter(e => {
     const year = e.startDate.slice(0, 4);
-    const key = e.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30) + year;
+    const key = e.title.toLowerCase().replace(NON_ALPHANUMERIC_RE, '').slice(0, 30) + year;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

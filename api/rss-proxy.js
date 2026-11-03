@@ -8,6 +8,10 @@ import { RSS_BROWSER_UA, rssFetchHeadersForHost } from './_rss-fetch-headers.js'
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 
+const NAME_RE = /^\//;
+const NAME_RE_2 = /^[A-Za-z_][\w.:-]*/;
+
+
 export const config = { runtime: 'edge' };
 
 // Domains that consistently block Vercel edge IPs — skip direct fetch,
@@ -86,7 +90,7 @@ function closeOpenElements(xml) {
     const gt = xml.indexOf('>', lt);
     if (gt === -1) break;
     const raw = xml.slice(lt + 1, gt);
-    const name = raw.replace(/^\//, '').match(/^[A-Za-z_][\w.:-]*/)?.[0];
+    const name = raw.replace(NAME_RE, '').match(NAME_RE_2)?.[0];
     if (name) {
       if (raw.startsWith('/')) {
         const open = positions.get(name)?.at(-1);

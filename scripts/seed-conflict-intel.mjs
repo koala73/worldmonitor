@@ -49,6 +49,12 @@ import { makeSeedHistoryAfterPublish } from './_seed-history.mjs';
 import { resolveIso2 } from './_country-resolver.mjs';
 import { pizzintVenuePoint } from './shared/pizzint-location.cjs';
 
+const HAPI_FAILURE_REASON_RE = /blocked due to bot activity/i;
+const SECONDS_RE = /^\d+$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const FETCH_ALL_HUMANITARIAN_SUMMARIES_RE = /^[A-Z0-9_]{1,64}$/;
+
+
 export {
   HAPI_HDX_MAX_RESPONSE_BYTES,
   HAPI_HDX_PACKAGE_URL,
@@ -746,7 +752,7 @@ async function defaultPreserveHapiLastGood() {
 }
 
 function hapiFailureReason(status, providerMessage = '') {
-  if (/blocked due to bot activity/i.test(providerMessage)) {
+  if (HAPI_FAILURE_REASON_RE.test(providerMessage)) {
     return 'HAPI_BOT_BLOCK';
   }
   if (Number(status) === 429) return 'HAPI_RATE_LIMIT';
@@ -810,14 +816,14 @@ async function fetchHapiRows({
     );
     if (!resp.ok) {
       const retryAfter = resp.headers.get('retry-after');
-      const seconds = retryAfter !== null && /^\d+$/.test(retryAfter) ? Number(retryAfter) : NaN;
+      const seconds = retryAfter !== null && SECONDS_RE.test(retryAfter) ? Number(retryAfter) : NaN;
       // HTTP dates are UTC, including the legacy asctime form with no zone.
       // Only the normalized timestamp is logged; never expose the raw header.
       const retryDate = retryAfter !== null && Number.isNaN(seconds)
         ? Date.parse(retryAfter.endsWith(' GMT') ? retryAfter : `${retryAfter} GMT`) : NaN;
       console.warn(`  HAPI API rejection ${JSON.stringify({
         status: resp.status,
-        country: /^[A-Z]{2}$/.test(countryCode ?? '') ? countryCode : 'global',
+        country: COUNTRY_CODE_RE.test(countryCode ?? '') ? countryCode : 'global',
         adminLevel: ['0', '1', '2'].includes(adminLevel) ? adminLevel : null,
         offset,
         retryAfterSeconds: Number.isSafeInteger(seconds) && seconds >= 0 ? seconds : null,
@@ -1220,7 +1226,7 @@ export async function fetchAllHumanitarianSummaries({
     ...(failure?.snapshotFailureReason
       ? { snapshotFailureReason: failure.snapshotFailureReason }
       : {}),
-    ...(/^[A-Z0-9_]{1,64}$/.test(reasonCode) ? { errorCode: reasonCode } : {}),
+    ...(FETCH_ALL_HUMANITARIAN_SUMMARIES_RE.test(reasonCode) ? { errorCode: reasonCode } : {}),
   }).catch((error) => console.warn(`  HAPI failure health write failed: ${error.message}`));
   if (!apiBackoffActive) await writeFailureBackoff({
     status: Number.isFinite(Number(failure.status)) ? Number(failure.status) : 0,

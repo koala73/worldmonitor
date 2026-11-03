@@ -13,6 +13,12 @@ import {
 import { resolveIso2 } from './_country-resolver.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
+const LINES_RE = /^\uFEFF/;
+const LINES_RE_2 = /\r\n|\r|\n/;
+const NORMALIZE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DMY_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const EMBER_KEY_PREFIX = 'energy:ember:v1:';
@@ -74,8 +80,8 @@ function parseDelimitedRow(line, delimiter) {
 
 function parseDelimitedText(text, delimiter) {
   const lines = text
-    .replace(/^\uFEFF/, '')
-    .split(/\r\n|\r|\n/) // tolerate LF, CRLF, and bare CR (Ember switched to CR-only Jun 2026)
+    .replace(LINES_RE, '')
+    .split(LINES_RE_2) // tolerate LF, CRLF, and bare CR (Ember switched to CR-only Jun 2026)
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length < 2) return [];
@@ -101,8 +107,8 @@ function safeFloat(value) {
  */
 function normalizeDate(value) {
   const s = String(value || '').trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (NORMALIZE_DATE_RE.test(s)) return s;
+  const dmy = s.match(DMY_RE);
   if (dmy) {
     const [, dd, mm, yyyy] = dmy;
     return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;

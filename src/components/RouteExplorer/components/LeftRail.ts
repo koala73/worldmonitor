@@ -26,6 +26,9 @@ import {
 } from '../tabs/route-utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const FLAG_HTML_RE = /^dependency_flag_/;
+
+
 
 export class LeftRail {
   public readonly element: HTMLElement;
@@ -90,7 +93,7 @@ export class LeftRail {
       return;
     }
     const flagHtml = flags.map((f) =>
-      `<span class="re-leftrail__flag re-leftrail__flag--${f.toLowerCase().replace(/^dependency_flag_/, '')}">${escapeHtml(LeftRail.FLAG_LABELS[f] ?? f)}</span>`,
+      `<span class="re-leftrail__flag re-leftrail__flag--${f.toLowerCase().replace(FLAG_HTML_RE, '')}">${escapeHtml(LeftRail.FLAG_LABELS[f] ?? f)}</span>`,
     ).join('');
     setTrustedHtml(el, trustedHtml(`<h3 class="re-leftrail__title">Dependency Flags</h3><div class="re-leftrail__flags">${flagHtml}</div>`, "legacy direct innerHTML migration"));
   }

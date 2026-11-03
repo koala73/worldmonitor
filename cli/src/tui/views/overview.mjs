@@ -8,6 +8,12 @@ import { decodeBitmap, heading, kv, label, panel, segments, sparkline, worldMap 
 import { ageOf, fmtPct, fmtPrice, mapBlips } from '../data/select.mjs';
 import { PaneView, selectedItem } from './base.mjs';
 
+const COLOR_RE = /elevated|high|critical/i;
+const COLOR_RE_2 = /watch|raised/i;
+const NAME_RE = /-theater$/;
+const NAME_RE_2 = /-/g;
+
+
 // Border plus three story rows.
 const MIN_STORIES_H = 5;
 
@@ -104,8 +110,8 @@ export class OverviewView extends PaneView {
       heading(ctx, inner.x, ly + 1, 'theater posture', inner.w);
       posture.slice(0, 3).forEach((p, i) => {
         const level = String(p.postureLevel || 'normal');
-        const color = /elevated|high|critical/i.test(level) ? t.bad : /watch|raised/i.test(level) ? t.warn : t.good;
-        const name = String(p.theater || '').replace(/-theater$/, '').replace(/-/g, ' ');
+        const color = COLOR_RE.test(level) ? t.bad : COLOR_RE_2.test(level) ? t.warn : t.good;
+        const name = String(p.theater || '').replace(NAME_RE, '').replace(NAME_RE_2, ' ');
         segments(
           ctx,
           inner.x,

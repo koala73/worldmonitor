@@ -51,6 +51,122 @@ import {
   pkgFingerprint,
 } from './_simulation-queue-constants.mjs';
 
+const RESOLVE_IMPACT_CHANNEL_RE = /ship|freight|route.disrupt|transit.disrupt/;
+const RESOLVE_IMPACT_CHANNEL_RE_2 = /lng|gas.supply|gas.price/;
+const RESOLVE_IMPACT_CHANNEL_RE_3 = /crude|oil.supply|oil.price|petroleum/;
+const RESOLVE_IMPACT_CHANNEL_RE_4 = /energy|fuel/;
+const RESOLVE_IMPACT_CHANNEL_RE_5 = /inflat|price.spike|cost.push/;
+const RESOLVE_IMPACT_CHANNEL_RE_6 = /shortage|supply.chain/;
+const RESOLVE_IMPACT_CHANNEL_RE_7 = /commodity|repric/;
+const RESOLVE_IMPACT_CHANNEL_RE_8 = /sovereign|default|debt.distress/;
+const RESOLVE_IMPACT_CHANNEL_RE_9 = /fx|currency|exchange.rate/;
+const RESOLVE_IMPACT_CHANNEL_RE_10 = /safe.haven.bid|safe haven bid/;
+const RESOLVE_IMPACT_CHANNEL_RE_11 = /crude.spread|brent.wti|grade.spread|wti.spread/;
+const RESOLVE_IMPACT_CHANNEL_RE_12 = /risk.off|flight.to.quality|safe.haven/;
+const RESOLVE_IMPACT_CHANNEL_RE_13 = /credit.spread|yield|bond.yield/;
+const RESOLVE_IMPACT_CHANNEL_RE_14 = /security|conflict|escalat|military/;
+const RESOLVE_IMPACT_CHANNEL_RE_15 = /defense|arms|weapon/;
+const RESOLVE_IMPACT_CHANNEL_RE_16 = /volatil/;
+const RESOLVE_IMPACT_CHANNEL_RE_17 = /policy.rate|interest.rate|central.bank/;
+const RESOLVE_IMPACT_CHANNEL_RE_18 = /liquidit/;
+const RESOLVE_IMPACT_CHANNEL_RE_19 = /cyber|hack/;
+const RESOLVE_IMPACT_CHANNEL_RE_20 = /infrastruct|capacity/;
+const MATCH_REGEX_RE = /[.*+?^${}()|[\]\\]/g;
+const HUMANIZE_TRANSMISSION_CHANNEL_RE = /_/g;
+const WHITESPACE_RE = /\s+/g;
+const BUILD_NARRATIVE_SENTENCE_RE = /[.!?]$/;
+const IS_ACLED_UNREST_COUNT_EVENT_RE = /^UNREST_SOURCE_TYPE_/;
+const CRITICAL_COUNT_RE = /ransomware|wiper|ddos|intrusion|exploit|botnet|malware/i;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const PLURAL_SUFFIX_RE = /(?:s|x|z|ch|sh)$/;
+const DOMAIN_RE = /war|strike|military|attack/;
+const DOMAIN_RE_2 = /tariff|recession|economy|gdp/;
+const REGION_BASE_RE = /\s*\([^)]*\)\s*$/;
+const NORMALIZE_CRITICAL_THREAT_LEVEL_RE = /\b(killed|dead|casualties|massive|catastrophic)\b/i;
+const ADD_CRITICAL_SIGNALS_FROM_TEXT_ITEM_RE = /\b(hormuz|tanker|crude|oil|gulf)\b/i;
+const MAP_CRITICAL_SIGNAL_FRAME_TO_SIGNALS_RE = /\b(oil|crude|tanker|gulf|energy)\b/i;
+const MAP_CRITICAL_SIGNAL_FRAME_TO_SIGNALS_RE_2 = /\b(lng|gas|north field|south pars|ras laffan)\b/i;
+const MAP_CRITICAL_SIGNAL_FRAME_TO_SIGNALS_RE_3 = /\b(refinery|petrochemical|fuel depot|tank farm|storage tank)\b/i;
+const EXTRACT_THERMAL_CRITICAL_SIGNALS_RE = /\b(qatar|iran|iraq|kuwait|saudi|united arab emirates|uae|oman|bahrain|libya)\b/i;
+const CLEANED_RE = /<think>[\s\S]*?<\/think>/gi;
+const CLEANED_RE_2 = /<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi;
+const CLEANED_RE_3 = /```json\s*/gi;
+const FENCED_BLOCKS_RE = /```([\s\S]*?)```/g;
+const RAW_HYPOTHESIS_KEY_RE = /[^a-z0-9_]/g;
+const SLUGIFY_VALUE_RE = /^_+|_+$/g;
+const NORMALIZED_RE = /[\n\r]+/g;
+const NORMALIZED_RE_2 = /[<>{}\x00-\x1f]/g;
+const PARSE_FORECAST_RUN_GENERATED_AT_RE = /^(\d{10,})/;
+const NORMALIZE_SITUATION_TEXT_RE = /[^a-z0-9\s-]/g;
+const WHITESPACE_RE_2 = /\s+/;
+const INFER_ACTION_CHANNELS_RE = /(mobiliz|retaliat|escalat|strike|attack|deploy|coordination)/;
+const INFER_ACTION_CHANNELS_RE_2 = /(sanction|policy|cabinet|election|messaging|posture)/;
+const INFER_ACTION_CHANNELS_RE_3 = /(repric|price|commodity|oil|contract|risk premium)/;
+const INFER_ACTION_CHANNELS_RE_4 = /(rerout|shipping|port|throughput|logistics|corridor|freight)/;
+const INFER_ACTION_CHANNELS_RE_5 = /(outage|continuity|service|grid|facility|capacity|harden)/;
+const INFER_ACTION_CHANNELS_RE_6 = /(cyber|network|gps|spoof|jam|malware|phish)/;
+const INFER_ACTION_CHANNELS_RE_7 = /(spillover|regional|neighbor|broader)/;
+const INFER_SIMULATION_ACTOR_ROLE_RE = /\bbrigade|army|navy|air force|command\b/;
+const CLASSIFY_ENERGY_QUOTE_RE = /bz=f|brent/;
+const CLASSIFY_ENERGY_QUOTE_RE_2 = /cl=f|wti/;
+const CLASSIFY_ENERGY_QUOTE_RE_3 = /ng=f|natural gas|natgas|lng/;
+const CLASSIFY_ENERGY_QUOTE_RE_4 = /gc=f|gold|xau/;
+const CLASSIFY_ENERGY_QUOTE_RE_5 = /oil|crude|gas|energy/;
+const BUILD_WORLD_SIGNALS_RE = /oil|gas|energy/i;
+const BUILD_WORLD_SIGNALS_RE_2 = /baltic/i;
+const ENERGY_SECTOR_RE = /xle|energy/i;
+const DEFENSE_SECTOR_RE = /ita|xar|defen|aerospace/i;
+const BUILD_WORLD_SIGNALS_RE_3 = /warning|depegged/i;
+const ECONOMIC_CARDS_RE = /economic|market|sanctions/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE = /middle east|red sea|black sea|eastern mediterranean|israel|gaza/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_2 = /red sea|black sea|eastern mediterranean|south china sea|western pacific/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_3 = /middle east|red sea|black sea/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_4 = /oil|gas|grain|shipping|freight/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_5 = /western pacific|south china sea|taiwan/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_6 = /semiconductor|chip/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_7 = /power|grid|pipeline|energy/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_8 = /oil|gas|energy|crude/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_9 = /shipping|freight|port|strait|canal/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_10 = /fx|currency|exchange/i;
+const INFER_SITUATION_MARKET_BUCKETS_RE_11 = /inflation|rates|yield|pricing/i;
+const NORMALIZE_ACTOR_NAME_RE = /^[a-z][a-z0-9_-]*$/;
+const NORMALIZE_ACTOR_NAME_RE_2 = /[_-]/g;
+const NORMALIZE_ACTOR_NAME_RE_3 = /[^a-z0-9 ]/g;
+const COUNT_USABLE_TIMING_MARKERS_RE = /^T\+\d+h$/i;
+const INFER_ENTITY_CLASS_FROM_NAME_RE = /\b(military|army|navy|air\s+force|national\s+guard|houthi|irgc|revolutionary\s+guard|armed\s+forces?)\b/;
+const INFER_ENTITY_CLASS_FROM_NAME_RE_2 = /central bank|fed |ecb |boe |opec|regulator|reserve bank/;
+const INFER_ENTITY_CLASS_FROM_NAME_RE_3 = /shipping|tanker|port|logistics|freight|carrier|maersk|cosco/;
+const INFER_ENTITY_CLASS_FROM_NAME_RE_4 = /exporter|importer|producer|supplier|aramco|national oil/;
+const INFER_ENTITY_CLASS_FROM_NAME_RE_5 = /media|press|public bloc|civil society/;
+const INFER_ENTITY_CLASS_FROM_NAME_RE_6 = /trader|hedge fund|market participant|investor|commodity/;
+const BUILD_SIMULATION_PACKAGE_ENTITIES_RE = /\W+/g;
+const BUILD_SIMULATION_PACKAGE_ENTITIES_RE_2 = /^(.+?)\s+remain the lead actors/i;
+const BUILD_SIMULATION_PACKAGE_ENTITIES_RE_3 = /,\s*/;
+const BUILD_SIMULATION_PACKAGE_EVENT_SEEDS_RE = /disruption|blockage|attack|strike|closure|incident/i;
+const SELECTED_THEATERS_RE = /\s*\([^)]+\)\s*$/;
+const LOGISTICS_TEXT_RE = /\b(shipping|freight|logistics|port|route|corridor|rerouting|throughput|transit|container|maritime|tanker|canal|strait)\b/;
+const BUILD_CRITICAL_SIGNAL_ROUTE_TAG_RE = /[^a-zA-Z0-9._/-]/g;
+const SANITIZE_FOR_PROMPT_RE = /[\n\r\u2028\u2029]/g;
+const BLOCKED_RE = /<[a-z/]/i;
+const BLOCKED_RE_2 = /https?:\/\//i;
+const BLOCKED_RE_3 = /javascript:/i;
+const BLOCKED_RE_4 = /\beval\s*\(/i;
+const BLOCKED_RE_5 = /function\s*\(/;
+const BLOCKED_RE_6 = /\b(ignore|override|disregard|forget|reset)\b.{0,40}\b(previous|above|prior|earlier|all|every)\b/i;
+const BLOCKED_RE_7 = /\b(you (are|must|will|should)|new (rule|instruction|system|persona|identity))\b/i;
+const BLOCKED_RE_8 = /^\s*(system|user|assistant)\s*:/im;
+const BLOCKED_RE_9 = /^\s*#{1,3}\s+(system|instruction|rule|override)/im;
+const SANITIZE_PROPOSED_LLM_ADDITION_RE = /[<>{}]/g;
+const SHOULD_PREFER_SCENARIO_RE = /^llm_scenario/;
+const IS_LLM_NARRATIVE_SOURCE_RE = /^llm_/;
+const STRIPPED_RE = /```json\s*/g;
+const STRIPPED_RE_2 = /```\s*/g;
+const HUMANIZE_TYPE_RE = /\b\w/g;
+const IS_RETAINABLE_MARKET_IMPLICATION_CARD_RE = /^[A-Z]{1,6}(?:-[A-Z])?$/;
+const QUANTIZED_RE = /-?\d+(?:\.\d+)?/g;
+const TRADEABLE_LIVE_RE = /^[A-Z]{1,6}(-[A-Z])?$/;
+
+
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (_isDirectRun) loadEnvFile(import.meta.url);
 
@@ -560,26 +676,26 @@ const IMPACT_SIGNAL_CHANNELS = new Set(Object.values(MARKET_BUCKET_ALLOWED_CHANN
 function resolveImpactChannel(marketImpact = '') {
   const m = String(marketImpact || '').toLowerCase();
   if (IMPACT_SIGNAL_CHANNELS.has(m)) return m;
-  if (/ship|freight|route.disrupt|transit.disrupt/.test(m)) return 'shipping_cost_shock';
-  if (/lng|gas.supply|gas.price/.test(m)) return 'gas_supply_stress';
-  if (/crude|oil.supply|oil.price|petroleum/.test(m)) return 'energy_supply_shock';
-  if (/energy|fuel/.test(m)) return 'energy_supply_shock';
-  if (/inflat|price.spike|cost.push/.test(m)) return 'inflation_impulse';
-  if (/shortage|supply.chain/.test(m)) return 'commodity_repricing';
-  if (/commodity|repric/.test(m)) return 'commodity_repricing';
-  if (/sovereign|default|debt.distress/.test(m)) return 'sovereign_stress';
-  if (/fx|currency|exchange.rate/.test(m)) return 'fx_stress';
-  if (/safe.haven.bid|safe haven bid/.test(m)) return 'safe_haven_bid';
-  if (/crude.spread|brent.wti|grade.spread|wti.spread/.test(m)) return 'global_crude_spread_stress';
-  if (/risk.off|flight.to.quality|safe.haven/.test(m)) return 'risk_off_rotation';
-  if (/credit.spread|yield|bond.yield/.test(m)) return 'yield_curve_stress';
-  if (/security|conflict|escalat|military/.test(m)) return 'security_escalation';
-  if (/defense|arms|weapon/.test(m)) return 'defense_repricing';
-  if (/volatil/.test(m)) return 'volatility_shock';
-  if (/policy.rate|interest.rate|central.bank/.test(m)) return 'policy_rate_pressure';
-  if (/liquidit/.test(m)) return 'liquidity_withdrawal';
-  if (/cyber|hack/.test(m)) return 'cyber_cost_repricing';
-  if (/infrastruct|capacity/.test(m)) return 'infrastructure_capacity_loss';
+  if (RESOLVE_IMPACT_CHANNEL_RE.test(m)) return 'shipping_cost_shock';
+  if (RESOLVE_IMPACT_CHANNEL_RE_2.test(m)) return 'gas_supply_stress';
+  if (RESOLVE_IMPACT_CHANNEL_RE_3.test(m)) return 'energy_supply_shock';
+  if (RESOLVE_IMPACT_CHANNEL_RE_4.test(m)) return 'energy_supply_shock';
+  if (RESOLVE_IMPACT_CHANNEL_RE_5.test(m)) return 'inflation_impulse';
+  if (RESOLVE_IMPACT_CHANNEL_RE_6.test(m)) return 'commodity_repricing';
+  if (RESOLVE_IMPACT_CHANNEL_RE_7.test(m)) return 'commodity_repricing';
+  if (RESOLVE_IMPACT_CHANNEL_RE_8.test(m)) return 'sovereign_stress';
+  if (RESOLVE_IMPACT_CHANNEL_RE_9.test(m)) return 'fx_stress';
+  if (RESOLVE_IMPACT_CHANNEL_RE_10.test(m)) return 'safe_haven_bid';
+  if (RESOLVE_IMPACT_CHANNEL_RE_11.test(m)) return 'global_crude_spread_stress';
+  if (RESOLVE_IMPACT_CHANNEL_RE_12.test(m)) return 'risk_off_rotation';
+  if (RESOLVE_IMPACT_CHANNEL_RE_13.test(m)) return 'yield_curve_stress';
+  if (RESOLVE_IMPACT_CHANNEL_RE_14.test(m)) return 'security_escalation';
+  if (RESOLVE_IMPACT_CHANNEL_RE_15.test(m)) return 'defense_repricing';
+  if (RESOLVE_IMPACT_CHANNEL_RE_16.test(m)) return 'volatility_shock';
+  if (RESOLVE_IMPACT_CHANNEL_RE_17.test(m)) return 'policy_rate_pressure';
+  if (RESOLVE_IMPACT_CHANNEL_RE_18.test(m)) return 'liquidity_withdrawal';
+  if (RESOLVE_IMPACT_CHANNEL_RE_19.test(m)) return 'cyber_cost_repricing';
+  if (RESOLVE_IMPACT_CHANNEL_RE_20.test(m)) return 'infrastructure_capacity_loss';
   return 'commodity_repricing'; // broadest valid fallback
 }
 
@@ -1182,7 +1298,7 @@ function detectConflictScenarios(inputs, emaRiskScores) {
     // Use word-boundary regex to prevent substring false positives (IL matching Chile)
     const countryName = c.name.toLowerCase();
     const countryCode = c.code.toLowerCase();
-    const matchRegex = new RegExp(`\\b(${countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|${countryCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\b`, 'i');
+    const matchRegex = new RegExp(`\\b(${countryName.replace(MATCH_REGEX_RE, '\\$&')}|${countryCode.replace(MATCH_REGEX_RE, '\\$&')})\\b`, 'i');
     const matchingIran = iran.filter(e => matchRegex.test(e.country || e.location || ''));
     if (matchingIran.length > 0) {
       signals.push({ type: 'conflict_events', value: `${matchingIran.length} Iran-related events`, weight: 0.2 });
@@ -1450,14 +1566,14 @@ function buildStateDerivedForecastTitle(domain, stateUnit, bucketId, bucketLabel
 }
 
 function humanizeTransmissionChannel(channel) {
-  return String(channel || 'derived_transmission').replace(/_/g, ' ');
+  return String(channel || 'derived_transmission').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ');
 }
 
 function buildNarrativeSentence(...parts) {
   return parts
-    .map((part) => String(part || '').replace(/\s+/g, ' ').trim())
+    .map((part) => String(part || '').replace(WHITESPACE_RE, ' ').trim())
     .filter(Boolean)
-    .map((part) => (/[.!?]$/.test(part) ? part : `${part}.`))
+    .map((part) => (BUILD_NARRATIVE_SENTENCE_RE.test(part) ? part : `${part}.`))
     .join(' ');
 }
 
@@ -1820,7 +1936,7 @@ function deriveStateDrivenForecasts({
 function isAcledUnrestCountEvent(event) {
   const sourceType = String(event?.sourceType || event?.source_type || '').trim().toUpperCase();
   if (!sourceType) return false;
-  return sourceType.replace(/^UNREST_SOURCE_TYPE_/, '') === 'ACLED';
+  return sourceType.replace(IS_ACLED_UNREST_COUNT_EVENT_RE, '') === 'ACLED';
 }
 
 function detectPoliticalScenarios(inputs) {
@@ -2074,7 +2190,7 @@ function detectCyberScenarios(inputs) {
   for (const [country, items] of Object.entries(byCountry)) {
     if (items.length < CYBER_MIN_THREATS_PER_COUNTRY) continue;
     const types = new Set(items.map(t => t.type || t.category || 'unknown'));
-    const criticalCount = items.filter((t) => /ransomware|wiper|ddos|intrusion|exploit|botnet|malware/i.test(`${t.type || ''} ${t.category || ''}`)).length;
+    const criticalCount = items.filter((t) => CRITICAL_COUNT_RE.test(`${t.type || ''} ${t.category || ''}`)).length;
     const score = items.length + (types.size * CYBER_SCORE_TYPE_MULTIPLIER) + (criticalCount * CYBER_SCORE_CRITICAL_MULTIPLIER);
     const probability = Math.min(CYBER_PROB_MAX, (normalize(items.length, 4, 50) * CYBER_PROB_VOLUME_WEIGHT) + (normalize(types.size, 1, 6) * CYBER_PROB_TYPE_WEIGHT));
     candidates.push({
@@ -2329,7 +2445,7 @@ const SIGNAL_TRIGGER_TEMPLATES = {
 function tokenizeText(text) {
   return (text || '')
     .toLowerCase()
-    .split(/[^a-z0-9]+/g)
+    .split(NON_ALPHANUMERIC_RE)
     .filter(token => token.length >= 3);
 }
 
@@ -2349,8 +2465,8 @@ function textIncludesTerm(lowerText, lowerTerm) {
     if (termMatchRegexCache.size >= TERM_MATCH_REGEX_CACHE_MAX) {
       termMatchRegexCache.delete(termMatchRegexCache.keys().next().value);
     }
-    const escaped = lowerTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pluralSuffix = /(?:s|x|z|ch|sh)$/.test(lowerTerm) ? '(?:es)?' : 's?';
+    const escaped = lowerTerm.replace(MATCH_REGEX_RE, '\\$&');
+    const pluralSuffix = PLURAL_SUFFIX_RE.test(lowerTerm) ? '(?:es)?' : 's?';
     re = new RegExp(`(?:^|[^a-z0-9])${escaped}${pluralSuffix}(?:[^a-z0-9]|$)`);
     termMatchRegexCache.set(lowerTerm, re);
   }
@@ -2378,7 +2494,7 @@ function countTermMatches(text, terms) {
 
 function extractMeaningfulTokens(text, exclude = []) {
   const excluded = new Set(uniqueLowerTerms(exclude)
-    .flatMap(term => term.split(/[^a-z0-9]+/g))
+    .flatMap(term => term.split(NON_ALPHANUMERIC_RE))
     .filter(Boolean));
   return [...new Set(tokenizeText(text).filter(token =>
     token.length >= 4
@@ -2531,8 +2647,8 @@ function detectFromPredictionMarkets(inputs) {
     const region = MARKET_TAG_TO_REGION[tags[0]] || tags[0];
 
     const titleLower = m.title.toLowerCase();
-    const domain = titleLower.match(/war|strike|military|attack/) ? 'conflict'
-      : titleLower.match(/tariff|recession|economy|gdp/) ? 'market'
+    const domain = titleLower.match(DOMAIN_RE) ? 'conflict'
+      : titleLower.match(DOMAIN_RE_2) ? 'market'
       : 'political';
 
     predictions.push(makePrediction(
@@ -2868,7 +2984,7 @@ function getSubjectTermsForRegion(region) {
   // 2. Reverse lookup: if region is a full name (or has parenthetical suffix like "Myanmar (Burma)")
   if (!countryEntry) {
     const regionLower = region.toLowerCase();
-    const regionBase = region.replace(/\s*\([^)]*\)\s*$/, '').toLowerCase(); // strip "(Zaire)", "(Burma)", etc.
+    const regionBase = region.replace(REGION_BASE_RE, '').toLowerCase(); // strip "(Zaire)", "(Burma)", etc.
     // Exact name match always wins; containment falls back to the LONGEST
     // contained name so "DR Congo" resolves to DR Congo, never Congo, and
     // "Guinea-Bissau" / "Papua New Guinea" never inherit Guinea's terms.
@@ -3053,7 +3169,7 @@ function normalizeCriticalThreatLevel(value, text = '') {
   if (lower.includes('high')) return 'high';
   if (lower.includes('elevated')) return 'elevated';
   if (lower.includes('moderate')) return 'moderate';
-  if (/\b(killed|dead|casualties|massive|catastrophic)\b/i.test(text)) return 'critical';
+  if (NORMALIZE_CRITICAL_THREAT_LEVEL_RE.test(text)) return 'critical';
   if (CRITICAL_NEWS_ATTACK_RE.test(text) || CRITICAL_NEWS_BLOCKAGE_RE.test(text) || CRITICAL_NEWS_SANCTIONS_RE.test(text)) return 'high';
   return 'moderate';
 }
@@ -3174,7 +3290,7 @@ function addCriticalSignalsFromTextItem(signals, item, sourceType = 'critical_ne
       domains: ['supply_chain', 'market'],
       supportingEvidence: buildCriticalSignalSupport(item, ['Route disruption / closure terms are active']),
     });
-    if (hasEnergy || /\b(hormuz|tanker|crude|oil|gulf)\b/i.test(text)) {
+    if (hasEnergy || ADD_CRITICAL_SIGNALS_FROM_TEXT_ITEM_RE.test(text)) {
       pushCriticalSignal(signals, 'energy_supply_shock', sourceType, `${region || 'Critical route'} energy transit pressure`, {
         sourceKey: `${sourceType}:${region || 'global'}:route_energy`,
         region,
@@ -3465,7 +3581,7 @@ function mapCriticalSignalFrameToSignals(frame, candidate) {
     impactHints.has('energy')
     || frame.primaryKind === 'facility_attack'
     || frame.primaryKind === 'export_disruption'
-    || (frame.primaryKind === 'route_blockage' && /\b(oil|crude|tanker|gulf|energy)\b/i.test(commodity))
+    || (frame.primaryKind === 'route_blockage' && MAP_CRITICAL_SIGNAL_FRAME_TO_SIGNALS_RE.test(commodity))
   ) {
     pushCriticalSignal(signals, 'energy_supply_shock', 'critical_news_llm', `${facilityLabel} energy infrastructure stress`, {
       sourceKey: `critical_news_llm:${candidate?.sourceKey || facilityLabel}:energy_asset`,
@@ -3478,7 +3594,7 @@ function mapCriticalSignalFrameToSignals(frame, candidate) {
     });
   }
 
-  if (impactHints.has('gas_lng') || /\b(lng|gas|north field|south pars|ras laffan)\b/i.test(commodity)) {
+  if (impactHints.has('gas_lng') || MAP_CRITICAL_SIGNAL_FRAME_TO_SIGNALS_RE_2.test(commodity)) {
     pushCriticalSignal(signals, 'gas_supply_stress', 'critical_news_llm', `${facilityLabel} LNG and gas export stress`, {
       sourceKey: `critical_news_llm:${candidate?.sourceKey || facilityLabel}:lng_export`,
       region,
@@ -3490,7 +3606,7 @@ function mapCriticalSignalFrameToSignals(frame, candidate) {
     });
   }
 
-  if (impactHints.has('refined_products') || /\b(refinery|petrochemical|fuel depot|tank farm|storage tank)\b/i.test(commodity)) {
+  if (impactHints.has('refined_products') || MAP_CRITICAL_SIGNAL_FRAME_TO_SIGNALS_RE_3.test(commodity)) {
     pushCriticalSignal(signals, 'commodity_repricing', 'critical_news_llm', `${facilityLabel} refined-product repricing risk`, {
       sourceKey: `critical_news_llm:${candidate?.sourceKey || facilityLabel}:refinery_damage`,
       region,
@@ -3635,7 +3751,7 @@ function extractThermalCriticalSignals(inputs) {
         `${cluster?.observationCount || 0} observations with total FRP ${cluster?.totalFrp || 0}`,
       ],
     });
-    if (/\b(qatar|iran|iraq|kuwait|saudi|united arab emirates|uae|oman|bahrain|libya)\b/i.test(region)) {
+    if (EXTRACT_THERMAL_CRITICAL_SIGNALS_RE.test(region)) {
       pushCriticalSignal(signals, 'energy_supply_shock', 'thermal_escalation', `${region || 'Conflict-adjacent'} thermal escalation is threatening energy throughput`, {
         sourceKey: `thermal_escalation:${cluster?.id || region}:energy`,
         region,
@@ -3802,12 +3918,12 @@ function tryParseImpactExpansionCandidate(candidate) {
 
 function extractImpactExpansionPayload(text) {
   const cleaned = text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
-    .replace(/```json\s*/gi, '```')
+    .replace(CLEANED_RE, '')
+    .replace(CLEANED_RE_2, '')
+    .replace(CLEANED_RE_3, '```')
     .trim();
   const candidates = [];
-  const fencedBlocks = [...cleaned.matchAll(/```([\s\S]*?)```/g)].map((match) => match[1].trim());
+  const fencedBlocks = [...cleaned.matchAll(FENCED_BLOCKS_RE)].map((match) => match[1].trim());
   candidates.push(...fencedBlocks);
   candidates.push(cleaned);
 
@@ -3849,7 +3965,7 @@ function extractImpactExpansionPayload(text) {
 }
 
 function normalizeImpactHypothesisDraft(item = {}) {
-  const rawHypothesisKey = String(item?.hypothesisKey || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 80);
+  const rawHypothesisKey = String(item?.hypothesisKey || '').trim().toLowerCase().replace(RAW_HYPOTHESIS_KEY_RE, '_').slice(0, 80);
   const rawVariableKey = String(item?.variableKey || '').trim().toLowerCase();
   return {
     // Free-form fields (new schema, v4+)
@@ -3871,7 +3987,7 @@ function normalizeImpactHypothesisDraft(item = {}) {
     countries: uniqueSortedStrings((Array.isArray(item?.countries) ? item.countries : []).map((value) => String(value || '').trim()).filter(Boolean)).slice(0, 6),
     assetsOrSectors: uniqueSortedStrings((Array.isArray(item?.assetsOrSectors) ? item.assetsOrSectors : (Array.isArray(item?.affectedAssets) ? item.affectedAssets : [])).map((value) => String(value || '').trim()).filter(Boolean)).slice(0, 6), // mirror of affectedAssets (see above)
     commodity: String(item?.commodity || '').trim(),
-    dependsOnKey: String(item?.dependsOnKey || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 80),
+    dependsOnKey: String(item?.dependsOnKey || '').trim().toLowerCase().replace(RAW_HYPOTHESIS_KEY_RE, '_').slice(0, 80),
     strength: clampUnitInterval(Number(item?.strength ?? 0)),
     confidence: clampUnitInterval(Number(item?.confidence ?? 0)),
     analogTag: String(item?.analogTag || '').trim().toLowerCase(),
@@ -3942,7 +4058,7 @@ function extractImpactRouteFacilityKey(texts = [], dominantRegion = '') {
   const joined = texts.filter(Boolean).join(' ');
   const knownRoutes = Object.keys(CHOKEPOINT_MARKET_REGIONS).sort((a, b) => b.length - a.length);
   for (const route of knownRoutes) {
-    const pattern = new RegExp(`\\b${route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    const pattern = new RegExp(`\\b${route.replace(MATCH_REGEX_RE, '\\$&')}\\b`, 'i');
     if (pattern.test(joined)) return route;
   }
   const facilityMatch = joined.match(IMPACT_FACILITY_RE);
@@ -4011,7 +4127,7 @@ function buildImpactExpansionEvidenceTable(stateUnit, marketContext, continuityR
   pushEvidence('state_summary', `${stateUnit.label} (${stateUnit.stateKind || 'state'}) is centered on ${stateUnit.dominantRegion || stateUnit.regions?.[0] || 'the current theater'}.`);
   for (const title of (stateUnit.sampleTitles || []).slice(0, 2)) pushEvidence('headline', title);
   for (const signal of (stateUnit.topSignals || []).slice(0, 2)) {
-    pushEvidence('signal', `${String(signal.type || '').replace(/_/g, ' ')} is active across ${signal.count || 0} linked forecasts.`);
+    pushEvidence('signal', `${String(signal.type || '').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} is active across ${signal.count || 0} linked forecasts.`);
   }
   if (marketContext?.topBucketLabel) {
     pushEvidence('market_context', `${marketContext.topBucketLabel} is the top linked bucket at ${roundPct(marketContext.topBucketPressure || 0)} pressure.`);
@@ -4565,8 +4681,8 @@ function roundPct(value) {
 function slugifyValue(value) {
   return (value || '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
+    .replace(NON_ALPHANUMERIC_RE, '_')
+    .replace(SLUGIFY_VALUE_RE, '')
     .slice(0, 48);
 }
 
@@ -5156,9 +5272,9 @@ const COMPACT_NARRATIVE_MAX_LENGTH = 220;
 
 function sanitizeForOutput(text, maxLength = CANONICAL_NARRATIVE_MAX_LENGTH) {
   const normalized = (text || '')
-    .replace(/[\n\r]+/g, ' ')
-    .replace(/[<>{}\x00-\x1f]/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZED_RE, ' ')
+    .replace(NORMALIZED_RE_2, '')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
   if (!normalized) return '';
   return normalized.slice(0, maxLength).trim();
@@ -5185,7 +5301,7 @@ function buildTraceRunPrefix(runId, generatedAt, basePrefix) {
 }
 
 function parseForecastRunGeneratedAt(runId = '', fallback = Date.now()) {
-  const match = String(runId || '').match(/^(\d{10,})/);
+  const match = String(runId || '').match(PARSE_FORECAST_RUN_GENERATED_AT_RE);
   if (!match) return fallback;
   const parsed = Number(match[1]);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -5986,14 +6102,14 @@ function uniqueSortedStrings(values) {
 function normalizeSituationText(value) {
   return String(value || '')
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, ' ')
-    .split(/\s+/)
+    .replace(NORMALIZE_SITUATION_TEXT_RE, ' ')
+    .split(WHITESPACE_RE_2)
     .map((token) => token.trim())
     .filter((token) => token && token.length > 2 && !TEXT_STOPWORDS.has(token));
 }
 
 function formatSituationDomainLabel(domains = []) {
-  const cleaned = uniqueSortedStrings((domains || []).map((value) => String(value || '').replace(/_/g, ' ').trim()).filter(Boolean));
+  const cleaned = uniqueSortedStrings((domains || []).map((value) => String(value || '').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ').trim()).filter(Boolean));
   if (cleaned.length === 0) return 'cross-domain';
   if (cleaned.length === 1) return cleaned[0];
   if (cleaned.length === 2) return `${cleaned[0]} and ${cleaned[1]}`;
@@ -7240,7 +7356,7 @@ function scoreActorSpecificity(actorLike = {}) {
   if (actorId && !actorId.startsWith('shared-')) score += 0.1;
   if (category && !GENERIC_ACTOR_CATEGORIES.has(category)) score += 0.15;
   if (actorName && genericNameHitCount === 0) score += 0.15;
-  if (actorName.split(/\s+/).length >= 3) score += 0.05;
+  if (actorName.split(WHITESPACE_RE_2).length >= 3) score += 0.05;
   if (genericNameHitCount > 0) score -= Math.min(0.28, genericNameHitCount * 0.12);
   if (actorName.includes('command') || actorName.includes('desk') || actorName.includes('authority')) score -= 0.14;
   if (actorId.startsWith('shared-')) score -= 0.12;
@@ -7308,13 +7424,13 @@ function inferActionChannels(summary, intent, dominantDomain) {
   if (dominantDomain === 'cyber') channels.add('cyber_disruption');
   if (intent === 'pressure') channels.add('regional_spillover');
 
-  if (/(mobiliz|retaliat|escalat|strike|attack|deploy|coordination)/.test(text)) channels.add('security_escalation');
-  if (/(sanction|policy|cabinet|election|messaging|posture)/.test(text)) channels.add('political_pressure');
-  if (/(repric|price|commodity|oil|contract|risk premium)/.test(text)) channels.add('market_repricing');
-  if (/(rerout|shipping|port|throughput|logistics|corridor|freight)/.test(text)) channels.add('logistics_disruption');
-  if (/(outage|continuity|service|grid|facility|capacity|harden)/.test(text)) channels.add('service_disruption');
-  if (/(cyber|network|gps|spoof|jam|malware|phish)/.test(text)) channels.add('cyber_disruption');
-  if (/(spillover|regional|neighbor|broader)/.test(text)) channels.add('regional_spillover');
+  if (INFER_ACTION_CHANNELS_RE.test(text)) channels.add('security_escalation');
+  if (INFER_ACTION_CHANNELS_RE_2.test(text)) channels.add('political_pressure');
+  if (INFER_ACTION_CHANNELS_RE_3.test(text)) channels.add('market_repricing');
+  if (INFER_ACTION_CHANNELS_RE_4.test(text)) channels.add('logistics_disruption');
+  if (INFER_ACTION_CHANNELS_RE_5.test(text)) channels.add('service_disruption');
+  if (INFER_ACTION_CHANNELS_RE_6.test(text)) channels.add('cyber_disruption');
+  if (INFER_ACTION_CHANNELS_RE_7.test(text)) channels.add('regional_spillover');
   if (intent === 'stabilizing') channels.add('containment');
 
   return [...channels];
@@ -7461,7 +7577,7 @@ function buildSimulationRound(stage, situation, context) {
       (marketResistance * 1.05)
     );
     lead = marketContext?.topChannel
-      ? `${String(marketContext.topChannel).replace(/_/g, ' ')} transmission`
+      ? `${String(marketContext.topChannel).replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} transmission`
       : (branchKinds[0] || topSignalTypes[0] || 'interaction response');
   } else {
     pressureDelta = clampUnitInterval(
@@ -7550,7 +7666,7 @@ function inferSimulationActorRole(actor = {}) {
   const likelyActions = (actor.likelyActions || []).join(' ').toLowerCase();
   const name = String(actor.name || '').toLowerCase();
 
-  if (domains.has('military') || /\bbrigade|army|navy|air force|command\b/.test(name)) return 'military_actor';
+  if (domains.has('military') || INFER_SIMULATION_ACTOR_ROLE_RE.test(name)) return 'military_actor';
   if (domains.has('cyber') || likelyActions.includes('cyber')) return 'cyber_operator';
   if (domains.has('supply_chain') || likelyActions.includes('reroute') || likelyActions.includes('shipping')) return 'logistics_actor';
   if (domains.has('infrastructure') || likelyActions.includes('repair') || likelyActions.includes('harden')) return 'infrastructure_operator';
@@ -7775,7 +7891,7 @@ function buildSimulationCausalReplayChains(simulationState) {
       stages,
       actionSummary: leadAction?.summary || '',
       interactionSummary: interactionGroup
-        ? `${interactionGroup.sourceLabel} -> ${interactionGroup.targetLabel} via ${interactionGroup.strongestChannel.replace(/_/g, ' ')}`
+        ? `${interactionGroup.sourceLabel} -> ${interactionGroup.targetLabel} via ${interactionGroup.strongestChannel.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}`
         : '',
       outcomeSummary: edge.summary,
       confidence: edge.confidence || interactionGroup?.avgConfidence || 0,
@@ -7918,7 +8034,7 @@ function buildSimulationMarketConsequences(simulationState, marketState, options
           criticalSignalLift: +criticalSignalLift.toFixed(3),
           bucketSignalSupport,
           summary: direct
-            ? `${simulation.label} is exerting ${roundPct(strength)} pressure on ${bucket.label} via ${String(channel || 'derived transmission').replace(/_/g, ' ')}.`
+            ? `${simulation.label} is exerting ${roundPct(strength)} pressure on ${bucket.label} via ${String(channel || 'derived transmission').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}.`
             : `${simulation.label} is spilling ${roundPct(strength)} follow-on pressure from ${bucketMap.get(bucketId)?.label || bucketId} into ${bucket.label}.`,
         };
         if (!channelAllowed || bucketSignalSupport === 0) {
@@ -8402,7 +8518,7 @@ function buildSimulationInteractionLedger(actionLedger = [], situationSimulation
         (familyLink ? 0.06 : 0) +
         (avgSpecificity * 0.22)
       )).toFixed(3),
-      summary: `${source.actorName || 'An actor'} in ${source.situationLabel} ${interactionType.replace(/_/g, ' ')} with ${target.actorName || 'another actor'} in ${target.situationLabel} during ${stage.replace('_', ' ')}.`,
+      summary: `${source.actorName || 'An actor'} in ${source.situationLabel} ${interactionType.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} with ${target.actorName || 'another actor'} in ${target.situationLabel} during ${stage.replace('_', ' ')}.`,
       sourcePosture: sourceSimulation?.posture || '',
       sourcePostureScore: sourceSimulation?.postureScore || 0,
       targetPosture: targetSimulation?.posture || '',
@@ -9130,7 +9246,7 @@ function buildInteractionWatchlist(interactions = []) {
     .map((item) => ({
       type: `interaction_${[...item.interactionTypes][0] || 'coupling'}`,
       label: `${item.sourceLabel} -> ${item.targetLabel}`,
-      summary: `${item.sourceLabel} interacted with ${item.targetLabel} across ${item.stages.size} round(s) via ${uniqueSortedStrings([...item.channels]).map((channel) => channel.replace(/_/g, ' ')).join(', ')}, with ${(item.confidence * 100).toFixed(0)}% report confidence and ${item.actorCount} named actors involved.`,
+      summary: `${item.sourceLabel} interacted with ${item.targetLabel} across ${item.stages.size} round(s) via ${uniqueSortedStrings([...item.channels]).map((channel) => channel.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')).join(', ')}, with ${(item.confidence * 100).toFixed(0)}% report confidence and ${item.actorCount} named actors involved.`,
     }));
 }
 
@@ -9302,7 +9418,7 @@ function buildCrossSituationEffects(simulationState, options = {}) {
         relation,
         score,
         confidence,
-        summary: `${source.label} is likely to feed ${relation} into ${target.label}, reinforced by ${repeatedStages} round(s) of ${group.strongestChannel.replace(/_/g, ' ')} interactions, ${(confidence * 100).toFixed(0)}% effect confidence, and a ${describeSimulationPosture(source.posture)} posture at ${roundPct(source.postureScore)}.`,
+        summary: `${source.label} is likely to feed ${relation} into ${target.label}, reinforced by ${repeatedStages} round(s) of ${group.strongestChannel.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} interactions, ${(confidence * 100).toFixed(0)}% effect confidence, and a ${describeSimulationPosture(source.posture)} posture at ${roundPct(source.postureScore)}.`,
       });
     }
     const sorted = effects
@@ -9411,7 +9527,7 @@ function buildCrossSituationEffects(simulationState, options = {}) {
         relation,
         score: +score.toFixed(3),
         confidence: fallbackConfidence,
-        summary: `${source.label} is likely to feed ${relation} into ${target.label}, driven by ${strongestChannel.replace(/_/g, ' ')} and a ${describeSimulationPosture(source.posture)} posture at ${roundPct(source.postureScore)}.`,
+        summary: `${source.label} is likely to feed ${relation} into ${target.label}, driven by ${strongestChannel.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} and a ${describeSimulationPosture(source.posture)} posture at ${roundPct(source.postureScore)}.`,
       });
     }
   }
@@ -9827,7 +9943,7 @@ function buildWorldStateReport(worldState) {
     : (blockedInteractionSummary.preview || []).slice(0, 4).map((item) => ({
       type: `blocked_interaction_${item.reason}`,
       label: `${item.sourceLabel} -> ${item.targetLabel}`,
-      summary: `${item.sourceLabel} did not promote into a reportable interaction with ${item.targetLabel} via ${String(item.channel || 'mixed').replace(/_/g, ' ')} because of ${String(item.reason || 'quality gating').replace(/_/g, ' ')}, despite ${(Number(item.confidence || 0) * 100).toFixed(0)}% candidate confidence.`,
+      summary: `${item.sourceLabel} did not promote into a reportable interaction with ${item.targetLabel} via ${String(item.channel || 'mixed').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} because of ${String(item.reason || 'quality gating').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}, despite ${(Number(item.confidence || 0) * 100).toFixed(0)}% candidate confidence.`,
     }));
   const replayWatchlist = replayTimeline
     .slice()
@@ -9843,7 +9959,7 @@ function buildWorldStateReport(worldState) {
     .map((item) => ({
       type: `environment_${item.archetype}`,
       label: item.label,
-      summary: `${item.label} is configured as a ${item.archetype.replace(/_/g, ' ')} with ${Math.round((item.activityIntensity || 0) * 100)}% activity intensity and ${item.actorCount} active actors.`,
+      summary: `${item.label} is configured as a ${item.archetype.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} with ${Math.round((item.activityIntensity || 0) * 100)}% activity intensity and ${item.actorCount} active actors.`,
     }));
   const memoryWatchlist = (worldState.simulationState?.memoryMutations?.situations || [])
     .slice()
@@ -9852,7 +9968,7 @@ function buildWorldStateReport(worldState) {
     .map((item) => ({
       type: `memory_${item.mutationType}`,
       label: item.label,
-      summary: `${item.label} shows a ${item.mutationType.replace(/_/g, ' ')} memory shift of ${Math.round(Math.abs(item.memoryDelta || 0) * 100)} points, with ${Math.round(clamp01(item.pressureMemory || 0) * 100)}% retained pressure memory.`,
+      summary: `${item.label} shows a ${item.mutationType.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} memory shift of ${Math.round(Math.abs(item.memoryDelta || 0) * 100)} points, with ${Math.round(clamp01(item.pressureMemory || 0) * 100)}% retained pressure memory.`,
     }));
   const causalReplayWatchlist = (worldState.simulationState?.causalReplay?.chains || [])
     .slice(0, 6)
@@ -9860,20 +9976,20 @@ function buildWorldStateReport(worldState) {
       type: `causal_${chain.kind}`,
       label: chain.targetLabel ? `${chain.sourceLabel} -> ${chain.targetLabel}` : chain.sourceLabel,
       summary: chain.targetLabel
-        ? `${chain.sourceLabel} flowed into ${chain.targetLabel} through ${chain.stages.length} stage(s), triggered by ${String(chain.trigger || 'pressure').replace(/_/g, ' ')}, ending in ${chain.outcomeSummary}`
-        : `${chain.sourceLabel} moved through ${chain.stages.length} stage(s), triggered by ${String(chain.trigger || 'pressure').replace(/_/g, ' ')}, ending in ${chain.outcomeSummary}`,
+        ? `${chain.sourceLabel} flowed into ${chain.targetLabel} through ${chain.stages.length} stage(s), triggered by ${String(chain.trigger || 'pressure').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}, ending in ${chain.outcomeSummary}`
+        : `${chain.sourceLabel} moved through ${chain.stages.length} stage(s), triggered by ${String(chain.trigger || 'pressure').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}, ending in ${chain.outcomeSummary}`,
     }));
   const causalEdgeWatchlist = (worldState.simulationState?.causalGraph?.edges || [])
     .slice(0, 6)
     .map((edge) => ({
       type: `causal_edge_${edge.continuityStatus}`,
       label: `${edge.sourceLabel} -> ${edge.targetLabel}`,
-      summary: `${edge.sourceLabel} now carries a ${String(edge.continuityStatus || 'new').replace(/_/g, ' ')} ${String(edge.effectClass || 'causal').replace(/_/g, ' ')} edge into ${edge.targetLabel}, led by ${String(edge.primaryChannel || 'mixed').replace(/_/g, ' ')} at ${(Number(edge.confidence || 0) * 100).toFixed(0)}% confidence and ${(Number(edge.memorySupport || 0) * 100).toFixed(0)}% memory support.`,
+      summary: `${edge.sourceLabel} now carries a ${String(edge.continuityStatus || 'new').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} ${String(edge.effectClass || 'causal').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} edge into ${edge.targetLabel}, led by ${String(edge.primaryChannel || 'mixed').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} at ${(Number(edge.confidence || 0) * 100).toFixed(0)}% confidence and ${(Number(edge.memorySupport || 0) * 100).toFixed(0)}% memory support.`,
     }));
   const blockedEffectWatchlist = (worldState.simulationState?.blockedEffectSummary?.preview || []).slice(0, 4).map((item) => ({
     type: `blocked_effect_${item.reason}`,
     label: `${item.sourceLabel} -> ${item.targetLabel}`,
-    summary: `${item.sourceLabel} did not promote into ${item.targetLabel} via ${String(item.channel || '').replace(/_/g, ' ')} because of ${item.reason.replace(/_/g, ' ')}, despite ${(Number(item.confidence || 0) * 100).toFixed(0)}% candidate confidence.`,
+    summary: `${item.sourceLabel} did not promote into ${item.targetLabel} via ${String(item.channel || '').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} because of ${item.reason.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}, despite ${(Number(item.confidence || 0) * 100).toFixed(0)}% candidate confidence.`,
   }));
   const effectWatchlist = crossSituationEffects.length
     ? crossSituationEffects.slice(0, 6).map((item) => ({
@@ -9903,7 +10019,7 @@ function buildWorldStateReport(worldState) {
     .map((edge) => ({
       type: `market_transmission_${edge.targetBucketId}`,
       label: `${edge.sourceLabel} -> ${edge.targetLabel}`,
-      summary: `${edge.sourceLabel} is feeding ${edge.targetLabel} via ${String(edge.channel || 'derived_transmission').replace(/_/g, ' ')} at ${(edge.confidence * 100).toFixed(0)}% confidence.`,
+      summary: `${edge.sourceLabel} is feeding ${edge.targetLabel} via ${String(edge.channel || 'derived_transmission').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} at ${(edge.confidence * 100).toFixed(0)}% confidence.`,
     }));
   const marketConsequenceWatchlist = marketConsequences
     .slice(0, 6)
@@ -9917,7 +10033,7 @@ function buildWorldStateReport(worldState) {
     .map((item) => ({
       type: `blocked_market_consequence_${item.reason}`,
       label: `${item.situationLabel} -> ${item.targetBucketLabel}`,
-      summary: `${item.situationLabel} did not promote into ${item.targetBucketLabel} because of ${String(item.reason || 'quality gating').replace(/_/g, ' ')}, despite ${(Number(item.reportableScore || 0) * 100).toFixed(0)}% reportable score.`,
+      summary: `${item.situationLabel} did not promote into ${item.targetBucketLabel} because of ${String(item.reason || 'quality gating').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}, despite ${(Number(item.reportableScore || 0) * 100).toFixed(0)}% reportable score.`,
     }));
 
   const familyWatchlist = (worldState.situationFamilies || [])
@@ -10164,11 +10280,11 @@ function extractCorrelationCards(payload) {
 
 function classifyEnergyQuote(quote) {
   const text = `${quote?.symbol || ''} ${quote?.name || ''}`.toLowerCase();
-  if (/bz=f|brent/.test(text)) return 'brent';
-  if (/cl=f|wti/.test(text)) return 'wti';
-  if (/ng=f|natural gas|natgas|lng/.test(text)) return 'gas';
-  if (/gc=f|gold|xau/.test(text)) return 'gold';
-  if (/oil|crude|gas|energy/.test(text)) return 'energy_generic';
+  if (CLASSIFY_ENERGY_QUOTE_RE.test(text)) return 'brent';
+  if (CLASSIFY_ENERGY_QUOTE_RE_2.test(text)) return 'wti';
+  if (CLASSIFY_ENERGY_QUOTE_RE_3.test(text)) return 'gas';
+  if (CLASSIFY_ENERGY_QUOTE_RE_4.test(text)) return 'gold';
+  if (CLASSIFY_ENERGY_QUOTE_RE_5.test(text)) return 'energy_generic';
   return '';
 }
 
@@ -10279,7 +10395,7 @@ function buildWorldSignal(type, sourceType, label, patch = {}) {
 function summarizeWorldSignals(signals = []) {
   const typeCounts = summarizeTypeCounts(signals.map((item) => item.type));
   const regionCounts = summarizeTypeCounts(signals.map((item) => item.region).filter(Boolean));
-  const leadTypes = pickTopCountEntries(typeCounts, 4).map((item) => item.type.replace(/_/g, ' '));
+  const leadTypes = pickTopCountEntries(typeCounts, 4).map((item) => item.type.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' '));
   const leadRegions = pickTopCountEntries(regionCounts, 3).map((item) => item.type);
   return `${signals.length} normalized world signals are currently active, led by ${leadTypes.join(', ') || 'none'} across ${leadRegions.join(', ') || 'global'} contexts.`;
 }
@@ -10318,7 +10434,7 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
       domains: ['supply_chain', 'market'],
       supportingEvidence: [`${cp.name || region} risk score ${riskScore}`],
     }));
-    if (commodity && /oil|gas|energy/i.test(commodity.commodity)) {
+    if (commodity && BUILD_WORLD_SIGNALS_RE.test(commodity.commodity)) {
       signals.push(buildWorldSignal('energy_supply_shock', 'chokepoint', `${cp.name || region} energy exposure`, {
         sourceKey: cp.id || cp.name || region,
         region,
@@ -10345,7 +10461,7 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
     if (!index.spikeAlert && changePct < 5) continue;
     signals.push(buildWorldSignal('shipping_cost_shock', 'shipping_rates', `${index.name} freight repricing`, {
       sourceKey: index.indexId || index.name,
-      region: /baltic/i.test(index.name) ? 'Northern Europe' : 'Global',
+      region: BUILD_WORLD_SIGNALS_RE_2.test(index.name) ? 'Northern Europe' : 'Global',
       strength: normalize(changePct, 4, 25),
       confidence: index.spikeAlert ? 0.82 : 0.7,
       domains: ['supply_chain', 'market'],
@@ -10402,7 +10518,7 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
     }));
   }
 
-  const energySector = sectorItems.find((item) => /xle|energy/i.test(`${item.symbol || ''} ${item.name || ''}`));
+  const energySector = sectorItems.find((item) => ENERGY_SECTOR_RE.test(`${item.symbol || ''} ${item.name || ''}`));
   if (energySector && Number(energySector.change || 0) >= 1.5) {
     signals.push(buildWorldSignal('commodity_repricing', 'sector_summary', 'Energy sector repricing', {
       sourceKey: energySector.symbol || energySector.name,
@@ -10414,7 +10530,7 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
     }));
   }
 
-  const defenseSector = sectorItems.find((item) => /ita|xar|defen|aerospace/i.test(`${item.symbol || ''} ${item.name || ''}`));
+  const defenseSector = sectorItems.find((item) => DEFENSE_SECTOR_RE.test(`${item.symbol || ''} ${item.name || ''}`));
   if (defenseSector && Number(defenseSector.change || 0) >= 1.2) {
     signals.push(buildWorldSignal('defense_repricing', 'sector_summary', 'Defense sector repricing', {
       sourceKey: defenseSector.symbol || defenseSector.name,
@@ -10503,8 +10619,8 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
     }));
   }
 
-  if (stablecoins.some((coin) => Number(coin.deviation || 0) >= 0.5 || /warning|depegged/i.test(coin.pegStatus || ''))) {
-    const stressed = stablecoins.filter((coin) => Number(coin.deviation || 0) >= 0.5 || /warning|depegged/i.test(coin.pegStatus || ''));
+  if (stablecoins.some((coin) => Number(coin.deviation || 0) >= 0.5 || BUILD_WORLD_SIGNALS_RE_3.test(coin.pegStatus || ''))) {
+    const stressed = stablecoins.filter((coin) => Number(coin.deviation || 0) >= 0.5 || BUILD_WORLD_SIGNALS_RE_3.test(coin.pegStatus || ''));
     signals.push(buildWorldSignal('fx_stress', 'stablecoins', 'Stablecoin peg stress', {
       sourceKey: 'market:stablecoins:v1',
       region: 'Global',
@@ -10541,7 +10657,7 @@ function buildWorldSignals(inputs, predictions = [], _situationClusters = []) {
     }));
   }
 
-  const economicCards = correlationCards.filter((item) => /economic|market|sanctions/i.test(`${item.domain || ''} ${item.title || ''}`));
+  const economicCards = correlationCards.filter((item) => ECONOMIC_CARDS_RE.test(`${item.domain || ''} ${item.title || ''}`));
   if (economicCards.length > 0) {
     signals.push(buildWorldSignal('risk_off_rotation', 'correlation_cards', 'Economic stress correlations are active', {
       sourceKey: 'correlation:cards-bootstrap:v1',
@@ -10820,14 +10936,14 @@ function inferSituationMarketBuckets(situation) {
   if (domains.includes('conflict') || domains.includes('military')) {
     buckets.add('sovereign_risk');
     buckets.add('defense');
-    if (/middle east|red sea|black sea|eastern mediterranean|israel|gaza/i.test(region)) buckets.add('energy');
-    if (/red sea|black sea|eastern mediterranean|south china sea|western pacific/i.test(region)) buckets.add('freight');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE.test(region)) buckets.add('energy');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE_2.test(region)) buckets.add('freight');
   }
   if (domains.includes('supply_chain')) {
     buckets.add('freight');
     buckets.add('rates_inflation');
-    if (/middle east|red sea|black sea/i.test(region) || /oil|gas|grain|shipping|freight/i.test(label)) buckets.add('energy');
-    if (/western pacific|south china sea|taiwan/i.test(region) || /semiconductor|chip/i.test(label)) buckets.add('semis');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE_3.test(region) || INFER_SITUATION_MARKET_BUCKETS_RE_4.test(label)) buckets.add('energy');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE_5.test(region) || INFER_SITUATION_MARKET_BUCKETS_RE_6.test(label)) buckets.add('semis');
   }
   if (domains.includes('political')) {
     buckets.add('sovereign_risk');
@@ -10839,13 +10955,13 @@ function inferSituationMarketBuckets(situation) {
   }
   if (domains.includes('infrastructure')) {
     buckets.add('rates_inflation');
-    if (/power|grid|pipeline|energy/i.test(label)) buckets.add('energy');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE_7.test(label)) buckets.add('energy');
   }
   if (domains.includes('market')) {
-    if (/oil|gas|energy|crude/i.test(label)) buckets.add('energy');
-    if (/shipping|freight|port|strait|canal/i.test(label)) buckets.add('freight');
-    if (/fx|currency|exchange/i.test(label)) buckets.add('fx_stress');
-    if (/inflation|rates|yield|pricing/i.test(label)) buckets.add('rates_inflation');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE_8.test(label)) buckets.add('energy');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE_9.test(label)) buckets.add('freight');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE_10.test(label)) buckets.add('fx_stress');
+    if (INFER_SITUATION_MARKET_BUCKETS_RE_11.test(label)) buckets.add('rates_inflation');
     if (buckets.size === 0) buckets.add('sovereign_risk');
   }
 
@@ -10883,7 +10999,7 @@ function buildMarketTransmissionGraph(worldSignals, situationClusters = []) {
         confidence: normalizeSignalStrength((situation.avgConfidence || 0) * 0.6 + Math.min(0.35, bucketSignals.length * 0.08), 0, 1),
         supportingSignalIds: bucketSignals.slice(0, 4).map((signal) => signal.id),
         supportingSignals: bucketSignals.slice(0, 3).map((signal) => signal.label),
-        summary: `${situation.label} is feeding ${bucketConfig?.label || bucketId} pressure through ${(bucketSignals[0]?.type || 'derived transmission').replace(/_/g, ' ')}.`,
+        summary: `${situation.label} is feeding ${bucketConfig?.label || bucketId} pressure through ${(bucketSignals[0]?.type || 'derived transmission').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}.`,
       });
     }
   }
@@ -11100,7 +11216,7 @@ function buildSituationMarketContextIndex(worldSignals, marketTransmission, mark
       topTransmissionStrength: Number(topEdge?.strength || 0),
       topTransmissionConfidence: Number(topEdge?.confidence || 0),
       consequenceSummary: topBucket
-        ? `${source.label} is transmitting into ${topBucket.label} through ${String(bucketContexts[topBucket.id]?.topChannel || topEdge?.channel || 'derived_transmission').replace(/_/g, ' ')} with ${roundPct(topBucket.pressureScore || 0)} pressure.`
+        ? `${source.label} is transmitting into ${topBucket.label} through ${String(bucketContexts[topBucket.id]?.topChannel || topEdge?.channel || 'derived_transmission').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} with ${roundPct(topBucket.pressureScore || 0)} pressure.`
         : '',
     });
   }
@@ -12082,20 +12198,20 @@ function annotateDeepForecastOrigins(worldState, acceptedPaths = []) {
 function normalizeActorName(name) {
   let s = String(name || '').trim();
   const colonIdx = s.indexOf(':');
-  if (colonIdx > 0 && /^[a-z][a-z0-9_-]*$/.test(s.slice(0, colonIdx))) {
+  if (colonIdx > 0 && NORMALIZE_ACTOR_NAME_RE.test(s.slice(0, colonIdx))) {
     s = s.slice(colonIdx + 1);
   }
-  return s.toLowerCase().replace(/[_-]/g, ' ').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  return s.toLowerCase().replace(NORMALIZE_ACTOR_NAME_RE_2, ' ').replace(NORMALIZE_ACTOR_NAME_RE_3, '').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function normalizeSimulationKeywordText(text) {
-  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(text || '').toLowerCase().replace(NON_ALPHANUMERIC_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function simulationTextMatchesKeyword(normalizedText, keyword) {
   const normalizedKeyword = normalizeSimulationKeywordText(keyword);
   if (!normalizedText || !normalizedKeyword) return false;
-  const escaped = normalizedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = normalizedKeyword.replace(MATCH_REGEX_RE, '\\$&');
   return new RegExp(`(^|\\s)${escaped}`).test(normalizedText);
 }
 
@@ -12136,14 +12252,14 @@ const CHANNEL_KEYWORDS = {
 function matchesBucket(simPath, targetBucket) {
   if (!targetBucket || !simPath) return false;
   const text = normalizeSimulationKeywordText(`${simPath.label || ''} ${simPath.summary || ''}`);
-  const keywords = BUCKET_KEYWORDS[targetBucket] || [targetBucket.replace(/_/g, ' ')];
+  const keywords = BUCKET_KEYWORDS[targetBucket] || [targetBucket.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')];
   return keywords.some((kw) => simulationTextMatchesKeyword(text, kw));
 }
 
 function matchesChannel(simPath, channel) {
   if (!channel || !simPath) return false;
   const text = normalizeSimulationKeywordText(`${simPath.label || ''} ${simPath.summary || ''}`);
-  const keywords = CHANNEL_KEYWORDS[channel] || [channel.replace(/_/g, ' ')];
+  const keywords = CHANNEL_KEYWORDS[channel] || [channel.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')];
   return keywords.some((kw) => simulationTextMatchesKeyword(text, kw));
 }
 
@@ -12170,7 +12286,7 @@ function contradictsPremise(invalidator, expandedPath, fromSimulation = false) {
     if (!hasNegation) return false;
   }
   const routeKey = expandedPath?.candidate?.routeFacilityKey || '';
-  const commodityKey = (expandedPath?.candidate?.commodityKey || '').replace(/_/g, ' ');
+  const commodityKey = (expandedPath?.candidate?.commodityKey || '').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ');
   if (routeKey || commodityKey) {
     return (
       (routeKey && text.includes(routeKey.toLowerCase())) ||
@@ -12197,7 +12313,7 @@ function negatesDisruption(stabilizer, candidatePacket) {
   const hasNegation = NEGATION_TERMS.some((t) => text.includes(t));
   if (!hasNegation) return false;
   const routeKey = candidatePacket?.routeFacilityKey || '';
-  const commodityKey = (candidatePacket?.commodityKey || '').replace(/_/g, ' ');
+  const commodityKey = (candidatePacket?.commodityKey || '').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ');
   if (routeKey || commodityKey) {
     return (
       (routeKey && text.includes(routeKey.toLowerCase())) ||
@@ -12217,7 +12333,7 @@ function countUsableTimingMarkers(timingMarkers) {
   return timingMarkers.filter((marker) => {
     const event = String(marker?.event || '').trim();
     const timing = String(marker?.timing || '').trim();
-    return event.length > 0 && /^T\+\d+h$/i.test(timing);
+    return event.length > 0 && COUNT_USABLE_TIMING_MARKERS_RE.test(timing);
   }).length;
 }
 
@@ -12498,7 +12614,7 @@ function findDuplicateStateUnitLabels(stateUnits = []) {
   const counts = new Map();
   for (const unit of stateUnits || []) {
     const label = String(unit?.label || '')
-      .replace(/\s+/g, ' ')
+      .replace(WHITESPACE_RE, ' ')
       .trim();
     if (!label) continue;
     counts.set(label, (counts.get(label) || 0) + 1);
@@ -13240,12 +13356,12 @@ function mapActorCategoryToEntityClass(category, domains = []) {
 
 function inferEntityClassFromName(name) {
   const s = name.toLowerCase();
-  if (/\b(military|army|navy|air\s+force|national\s+guard|houthi|irgc|revolutionary\s+guard|armed\s+forces?)\b/.test(s)) return 'military_or_security_actor';
-  if (/central bank|fed |ecb |boe |opec|regulator|reserve bank/.test(s)) return 'regulator_or_central_bank';
-  if (/shipping|tanker|port|logistics|freight|carrier|maersk|cosco/.test(s)) return 'logistics_operator';
-  if (/exporter|importer|producer|supplier|aramco|national oil/.test(s)) return 'exporter_or_importer';
-  if (/media|press|public bloc|civil society/.test(s)) return 'media_or_public_bloc';
-  if (/trader|hedge fund|market participant|investor|commodity/.test(s)) return 'market_participant';
+  if (INFER_ENTITY_CLASS_FROM_NAME_RE.test(s)) return 'military_or_security_actor';
+  if (INFER_ENTITY_CLASS_FROM_NAME_RE_2.test(s)) return 'regulator_or_central_bank';
+  if (INFER_ENTITY_CLASS_FROM_NAME_RE_3.test(s)) return 'logistics_operator';
+  if (INFER_ENTITY_CLASS_FROM_NAME_RE_4.test(s)) return 'exporter_or_importer';
+  if (INFER_ENTITY_CLASS_FROM_NAME_RE_5.test(s)) return 'media_or_public_bloc';
+  if (INFER_ENTITY_CLASS_FROM_NAME_RE_6.test(s)) return 'market_participant';
   return 'state_actor';
 }
 
@@ -13253,12 +13369,12 @@ function buildSimulationRequirementText(theater, candidate) {
   const label = sanitizeForPrompt(theater.label) || theater.dominantRegion || 'unknown theater';
   const route = sanitizeForPrompt(theater.routeFacilityKey || theater.dominantRegion);
   const stateKind = theater.stateKind || 'cross_domain_pressure';
-  const commodity = theater.commodityKey ? ` (${theater.commodityKey.replace(/_/g, ' ')})` : '';
+  const commodity = theater.commodityKey ? ` (${theater.commodityKey.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')})` : '';
   const bucket = theater.topBucketId || 'market';
   const rawChannel = theater.topChannel ? sanitizeForPrompt(theater.topChannel) : '';
-  const channel = rawChannel ? ` via ${rawChannel.replace(/_/g, ' ')}` : '';
+  const channel = rawChannel ? ` via ${rawChannel.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')}` : '';
   const macroRegion = theater.macroRegions?.[0] || theater.dominantRegion;
-  const critTypes = (candidate.criticalSignalTypes || []).slice(0, 3).map((t) => sanitizeForPrompt(t).replace(/_/g, ' ')).join(', ');
+  const critTypes = (candidate.criticalSignalTypes || []).slice(0, 3).map((t) => sanitizeForPrompt(t).replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')).join(', ');
   const signalContext = critTypes ? ` Active signals: ${critTypes}.` : '';
 
   if (stateKind === 'maritime_disruption') {
@@ -13308,7 +13424,7 @@ function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegis
     for (const actorName of (candidate.stateSummary?.actors || [])) {
       const key = `su:${actorName}:${candidate.candidateStateId}`;
       addEntity(key, {
-        entityId: `${candidate.candidateStateId}:${actorName.toLowerCase().replace(/\W+/g, '_')}`,
+        entityId: `${candidate.candidateStateId}:${actorName.toLowerCase().replace(BUILD_SIMULATION_PACKAGE_ENTITIES_RE, '_')}`,
         name: actorName,
         class: inferEntityClassFromName(actorName),
         region: candidate.dominantRegion || '',
@@ -13321,12 +13437,12 @@ function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegis
 
     for (const entry of (candidate.evidenceTable || [])) {
       if (entry.kind !== 'actor') continue;
-      const match = entry.text.match(/^(.+?)\s+remain the lead actors/i);
+      const match = entry.text.match(BUILD_SIMULATION_PACKAGE_ENTITIES_RE_2);
       if (!match) continue;
-      for (const name of match[1].split(/,\s*/).filter(Boolean)) {
+      for (const name of match[1].split(BUILD_SIMULATION_PACKAGE_ENTITIES_RE_3).filter(Boolean)) {
         const key = `ev:${name}:${candidate.candidateStateId}`;
         addEntity(key, {
-          entityId: `${candidate.candidateStateId}:${name.toLowerCase().replace(/\W+/g, '_')}`,
+          entityId: `${candidate.candidateStateId}:${name.toLowerCase().replace(BUILD_SIMULATION_PACKAGE_ENTITIES_RE, '_')}`,
           name,
           class: inferEntityClassFromName(name),
           region: candidate.dominantRegion || '',
@@ -13342,7 +13458,7 @@ function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegis
   if (seen.size === 0) {
     for (const theater of selectedTheaters) {
       addEntity(`fallback:state:${theater.theaterId}`, {
-        entityId: `state:${theater.dominantRegion.toLowerCase().replace(/\W+/g, '_')}`,
+        entityId: `state:${theater.dominantRegion.toLowerCase().replace(BUILD_SIMULATION_PACKAGE_ENTITIES_RE, '_')}`,
         name: `${theater.dominantRegion} state authority`,
         class: 'state_actor',
         region: theater.dominantRegion,
@@ -13352,7 +13468,7 @@ function buildSimulationPackageEntities(selectedTheaters, candidates, actorRegis
         relevanceToTheater: theater.theaterId,
       });
       addEntity(`fallback:logistics:${theater.theaterId}`, {
-        entityId: `logistics:${(theater.routeFacilityKey || theater.dominantRegion).toLowerCase().replace(/\W+/g, '_')}`,
+        entityId: `logistics:${(theater.routeFacilityKey || theater.dominantRegion).toLowerCase().replace(BUILD_SIMULATION_PACKAGE_ENTITIES_RE, '_')}`,
         name: `${theater.routeFacilityKey || theater.dominantRegion} logistics operators`,
         class: 'logistics_operator',
         region: theater.dominantRegion,
@@ -13396,7 +13512,7 @@ function buildSimulationPackageEventSeeds(selectedTheaters, candidates) {
           timing: 'T+0h',
           strength: +Math.min(0.95, (candidate.rankingScore || 0.5)).toFixed(3),
         });
-      } else if (entry.kind === 'signal' && /disruption|blockage|attack|strike|closure|incident/i.test(entry.text)) {
+      } else if (entry.kind === 'signal' && BUILD_SIMULATION_PACKAGE_EVENT_SEEDS_RE.test(entry.text)) {
         seeds.push({
           seedId: `seed-${++idx}`,
           theaterId: theater.theaterId,
@@ -13455,7 +13571,7 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
         constraintId: `c-${++idx}`,
         theaterId: theater.theaterId,
         class: 'commodity_exposure',
-        statement: `${theater.commodityKey.replace(/_/g, ' ')} is the primary exposed commodity. Price and flow impacts must be bounded by current market levels.`,
+        statement: `${theater.commodityKey.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} is the primary exposed commodity. Price and flow impacts must be bounded by current market levels.`,
         hard: true,
         source: `${src}:commodityKey=${theater.commodityKey}`,
       });
@@ -13466,7 +13582,7 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
         constraintId: `c-${++idx}`,
         theaterId: theater.theaterId,
         class: 'market_admissibility',
-        statement: `Downstream impacts must route through ${theater.topChannel.replace(/_/g, ' ')} into the ${theater.topBucketId} bucket. Paths claiming direct repricing outside this channel are inadmissible.`,
+        statement: `Downstream impacts must route through ${theater.topChannel.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} into the ${theater.topBucketId} bucket. Paths claiming direct repricing outside this channel are inadmissible.`,
         hard: false,
         source: `${src}:topBucketId=${theater.topBucketId}:topChannel=${theater.topChannel}`,
       });
@@ -13492,7 +13608,7 @@ function buildSimulationPackageConstraints(selectedTheaters, candidates) {
         constraintId: `c-${++idx}`,
         theaterId: theater.theaterId,
         class: 'macro_financial_posture',
-        statement: `${theater.label || theater.candidateStateId} operates under existing ${topBucket || 'macro'} conditions; simulation must route consequences through ${(theater.topChannel || 'market channel').replace(/_/g, ' ')} and must not exceed bounds set by current structural ${topBucket || 'market'} state.`,
+        statement: `${theater.label || theater.candidateStateId} operates under existing ${topBucket || 'macro'} conditions; simulation must route consequences through ${(theater.topChannel || 'market channel').replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} and must not exceed bounds set by current structural ${topBucket || 'market'} state.`,
         hard: false,
         source: `${src}:topBucketId=${topBucket}:topChannel=${theater.topChannel}`,
       });
@@ -13520,7 +13636,7 @@ function buildEvalTargetQuestions(theater, macroRegion) {
   const bucket = theater.topBucketId || 'market';
   const label = theater.label || theater.candidateStateId;
   const route = theater.routeFacilityKey || theater.dominantRegion;
-  const commodity = theater.commodityKey ? ` and ${theater.commodityKey.replace(/_/g, ' ')} flows` : '';
+  const commodity = theater.commodityKey ? ` and ${theater.commodityKey.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} flows` : '';
 
   if (stateKind === 'maritime_disruption') {
     return [
@@ -13533,7 +13649,7 @@ function buildEvalTargetQuestions(theater, macroRegion) {
     return [
       { pathType: 'escalation', question: `How does ${label} escalate through ${bucket} market conditions, and which institutional actors accelerate the repricing?` },
       { pathType: 'containment', question: `What policy interventions or market signals contain the ${bucket} repricing before second-order spillovers materialize?` },
-      { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences: ${bucket.replace(/_/g, ' ')} direction, FX stress on import-dependent economies in ${macroRegion}, sovereign spread widening, and downstream sector demand compression.` },
+      { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences: ${bucket.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} direction, FX stress on import-dependent economies in ${macroRegion}, sovereign spread widening, and downstream sector demand compression.` },
     ];
   }
   if (stateKind === 'political_instability' || stateKind === 'governance_pressure') {
@@ -13568,7 +13684,7 @@ function buildEvalTargetQuestions(theater, macroRegion) {
   return [
     { pathType: 'escalation', question: `How does ${label} in ${macroRegion} escalate through actor behavior and institutional response into broader ${bucket} pressure, and who accelerates it?` },
     { pathType: 'containment', question: `What conditions or interventions contain ${label} before it crosses into sustained ${bucket} repricing?` },
-    { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences of ${label}: ${bucket.replace(/_/g, ' ')} conditions, FX stress in ${macroRegion}, downstream sector impacts, and actor-driven amplification.` },
+    { pathType: 'market_cascade', question: `Model 2nd and 3rd order economic consequences of ${label}: ${bucket.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ')} conditions, FX stress in ${macroRegion}, downstream sector impacts, and actor-driven amplification.` },
   ];
 }
 
@@ -13643,7 +13759,7 @@ function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null
   const selectedTheaters = top.map((c, i) => ({
     theaterId: `theater-${i + 1}`,
     candidateStateId: c.candidateStateId,
-    label: (c.candidateStateLabel || c.dominantRegion || 'unknown theater').replace(/\s*\([^)]+\)\s*$/, '').trim(),
+    label: (c.candidateStateLabel || c.dominantRegion || 'unknown theater').replace(SELECTED_THEATERS_RE, '').trim(),
     stateKind: c.stateKind,
     dominantRegion: c.dominantRegion,
     macroRegions: c.macroRegions,
@@ -14568,7 +14684,7 @@ function classifyForecastStrategicRole(pred) {
   const topBucketId = pred?.marketSelectionContext?.topBucketId || '';
   const topChannel = pred?.marketSelectionContext?.topChannel || '';
   const text = `${pred?.title || ''} ${pred?.feedSummary || ''} ${pred?.caseFile?.baseCase || ''}`.toLowerCase();
-  const logisticsText = /\b(shipping|freight|logistics|port|route|corridor|rerouting|throughput|transit|container|maritime|tanker|canal|strait)\b/;
+  const logisticsText = LOGISTICS_TEXT_RE;
   if (domain === 'supply_chain') return 'logistics';
   if (domain === 'market') {
     if (topBucketId === 'freight' || topChannel === 'shipping_cost_shock' || logisticsText.test(text)) return 'logistics_adjacent';
@@ -14587,7 +14703,7 @@ function isStrategicSupplyChainCandidate(pred) {
     stateKind === 'maritime_disruption'
     || topBucketId === 'freight'
     || ['shipping_cost_shock', 'service_disruption', 'logistics_disruption'].includes(topChannel)
-    || /\b(shipping|freight|logistics|port|route|corridor|rerouting|throughput|transit|container|maritime|tanker|canal|strait)\b/.test(text)
+    || LOGISTICS_TEXT_RE.test(text)
   );
 }
 
@@ -15468,7 +15584,7 @@ function buildCriticalSignalRouteTag(options = {}) {
   ].join('_');
   const generic = resolveForecastLlmProviders(options).find((provider) => provider.name === 'generic');
   const genericSuffix = generic ? `_generic_${generic.model}` : '';
-  return `${pinTag}${genericSuffix}`.replace(/[^a-zA-Z0-9._/-]/g, '-');
+  return `${pinTag}${genericSuffix}`.replace(BUILD_CRITICAL_SIGNAL_ROUTE_TAG_RE, '-');
 }
 
 function moveForecastLlmProviderToBack(options = {}, providerName = '') {
@@ -15557,7 +15673,7 @@ function validateCaseNarratives(items, predictions) {
 }
 
 function sanitizeForPrompt(text) {
-  return (text || '').replace(/[\n\r\u2028\u2029]/g, ' ').replace(/[<>{}\x00-\x1f]/g, '').slice(0, 200).trim();
+  return (text || '').replace(SANITIZE_FOR_PROMPT_RE, ' ').replace(NORMALIZED_RE_2, '').slice(0, 200).trim();
 }
 
 // Sanitizes LLM-returned text before writing to Redis as a prompt section.
@@ -15567,15 +15683,15 @@ function sanitizeForPrompt(text) {
 function sanitizeProposedLlmAddition(text) {
   if (typeof text !== 'string') return '';
   const BLOCKED = [
-    /<[a-z/]/i,
-    /https?:\/\//i,
-    /javascript:/i,
-    /\beval\s*\(/i,
-    /function\s*\(/,
-    /\b(ignore|override|disregard|forget|reset)\b.{0,40}\b(previous|above|prior|earlier|all|every)\b/i,
-    /\b(you (are|must|will|should)|new (rule|instruction|system|persona|identity))\b/i,
-    /^\s*(system|user|assistant)\s*:/im,
-    /^\s*#{1,3}\s+(system|instruction|rule|override)/im,
+    BLOCKED_RE,
+    BLOCKED_RE_2,
+    BLOCKED_RE_3,
+    BLOCKED_RE_4,
+    BLOCKED_RE_5,
+    BLOCKED_RE_6,
+    BLOCKED_RE_7,
+    BLOCKED_RE_8,
+    BLOCKED_RE_9,
   ];
   return text
     .split('\n')
@@ -15585,18 +15701,18 @@ function sanitizeProposedLlmAddition(text) {
       return !BLOCKED.some((re) => re.test(trimmed));
     })
     .join('\n')
-    .replace(/[<>{}]/g, '')
+    .replace(SANITIZE_PROPOSED_LLM_ADDITION_RE, '')
     .trim();
 }
 
 function extractStructuredLlmPayload(text) {
   const cleaned = text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
-    .replace(/```json\s*/gi, '```')
+    .replace(CLEANED_RE, '')
+    .replace(CLEANED_RE_2, '')
+    .replace(CLEANED_RE_3, '```')
     .trim();
   const candidates = [];
-  const fencedBlocks = [...cleaned.matchAll(/```([\s\S]*?)```/g)].map((match) => match[1].trim());
+  const fencedBlocks = [...cleaned.matchAll(FENCED_BLOCKS_RE)].map((match) => match[1].trim());
   candidates.push(...fencedBlocks);
   candidates.push(cleaned);
 
@@ -16172,7 +16288,7 @@ function buildFeedSummary(pred) {
   const scenario = pred.scenario || '';
   const deterministicBaseCase = buildFallbackBaseCase(pred);
   const shouldPreferScenario = (
-    /^llm_scenario/.test(narrativeSource)
+    SHOULD_PREFER_SCENARIO_RE.test(narrativeSource)
     || (isLlmNarrativeSource(narrativeSource) && scenario && (!baseCase || sanitizeForOutput(baseCase, 500) === sanitizeForOutput(deterministicBaseCase, 500)))
   );
   const lead = shouldPreferScenario
@@ -16184,7 +16300,7 @@ function buildFeedSummary(pred) {
 }
 
 function isLlmNarrativeSource(source = '') {
-  return /^llm_/.test(String(source || ''));
+  return IS_LLM_NARRATIVE_SOURCE_RE.test(String(source || ''));
 }
 
 function buildFallbackPerspectives(pred) {
@@ -17427,7 +17543,7 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
     try {
       // Extract JSON from response: strip code fences, find first { ... } block
       const raw = critiqueResult.text;
-      const stripped = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const stripped = raw.replace(STRIPPED_RE, '').replace(STRIPPED_RE_2, '').trim();
       const jsonStart = stripped.indexOf('{');
       const jsonEnd = stripped.lastIndexOf('}');
       if (jsonStart === -1 || jsonEnd === -1) throw new Error('no JSON object found');
@@ -17613,7 +17729,7 @@ function buildMarketImplicationsContext(inputs) {
   // Pre-synthesised critical signals (highest-value input — already ranked by strength)
   const criticalSignals = inputs.criticalSignalBundle?.signals;
   if (Array.isArray(criticalSignals) && criticalSignals.length > 0) {
-    const humanizeType = t => t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const humanizeType = t => t.replace(HUMANIZE_TRANSMISSION_CHANNEL_RE, ' ').replace(HUMANIZE_TYPE_RE, c => c.toUpperCase());
     const top = criticalSignals.slice(0, 8).map(s => {
       const label = s.title || humanizeType(s.type || '');
       const strength = s.strength != null ? ` strength=${(s.strength * 100).toFixed(0)}%` : '';
@@ -17803,7 +17919,7 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
 function isRetainableMarketImplicationCard(card) {
   if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
   const ticker = typeof card.ticker === 'string' ? card.ticker.trim().toUpperCase() : '';
-  if (!/^[A-Z]{1,6}(?:-[A-Z])?$/.test(ticker)) return false;
+  if (!IS_RETAINABLE_MARKET_IMPLICATION_CARD_RE.test(ticker)) return false;
   const direction = typeof card.direction === 'string' ? card.direction.trim().toUpperCase() : '';
   if (!['LONG', 'SHORT', 'HEDGE'].includes(direction)) return false;
   const timeframe = typeof card.timeframe === 'string' ? card.timeframe.trim().toUpperCase() : '';
@@ -17853,7 +17969,7 @@ function getMarketImplicationsMinRunBudgetMs(llmOptions = {}) {
 // load-bearing numbers — live in the 0.1–10 range where one significant
 // digit still separates 0.3% from 0.9% from 8%.
 function buildMarketImplicationsFingerprint(context) {
-  const quantized = String(context ?? '').replace(/-?\d+(?:\.\d+)?/g, (match) => {
+  const quantized = String(context ?? '').replace(QUANTIZED_RE, (match) => {
     const n = Number(match);
     return Number.isFinite(n) && n !== 0 ? Number(n).toPrecision(1) : '0';
   });
@@ -17861,7 +17977,7 @@ function buildMarketImplicationsFingerprint(context) {
 }
 
 function marketImplicationsMetaErrorReason(reason) {
-  return String(reason || 'unknown').replace(/\s+/g, ' ').slice(0, 240);
+  return String(reason || 'unknown').replace(WHITESPACE_RE, ' ').slice(0, 240);
 }
 
 // Closed failure vocabulary surfaced to /api/health as
@@ -18174,7 +18290,7 @@ async function buildAndSeedMarketImplications(inputs) {
   let effectiveTickers;
   if (liveTickerSet.size > 0) {
     const tradeableLive = new Set(
-      [...liveTickerSet].filter(s => /^[A-Z]{1,6}(-[A-Z])?$/.test(s)),
+      [...liveTickerSet].filter(s => TRADEABLE_LIVE_RE.test(s)),
     );
     effectiveTickers = new Set([...ALL_ALLOWED_TICKERS, ...tradeableLive]);
     console.log(`  [MarketImplications] Extended allowlist: ${ALL_ALLOWED_TICKERS.size} static + ${tradeableLive.size} live equity symbols`);
@@ -18627,12 +18743,12 @@ function tryParseSimulationRoundPayload(text, round) {
 
 function extractSimulationRoundPayload(text, round) {
   const cleaned = text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
-    .replace(/```json\s*/gi, '```')
+    .replace(CLEANED_RE, '')
+    .replace(CLEANED_RE_2, '')
+    .replace(CLEANED_RE_3, '```')
     .trim();
   const candidates = [];
-  const fencedBlocks = [...cleaned.matchAll(/```([\s\S]*?)```/g)].map((m) => m[1].trim());
+  const fencedBlocks = [...cleaned.matchAll(FENCED_BLOCKS_RE)].map((m) => m[1].trim());
   candidates.push(...fencedBlocks);
   candidates.push(cleaned);
   let sawInvalidPayload = false;

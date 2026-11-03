@@ -3,6 +3,10 @@
  * Handles patterns like: 2x200g, 6x1L, 500ml, 24 rolls, 3 ct, 1kg, 12 pods
  */
 
+const U_RE = /\.$/;
+const CONTEXTUAL_UNIT_RE = /^(\d+)\s*(pack)$/;
+const CONTEXTUAL_UNIT_RE_2 = /^(\d+(?:\.\d+)?)\s*(pints?)$/;
+
 export interface ParsedSize {
   packCount: number;
   sizeValue: number;
@@ -82,7 +86,7 @@ const UNIT_MAP = new Map<string, { base: string; factor: number }>([
  * `pint` (568ml imperial vs 473ml US — the magnitude is market-dependent).
  */
 function normalizeUnit(raw: string): string | null {
-  const u = raw.toLowerCase().replace(/\.$/, '');
+  const u = raw.toLowerCase().replace(U_RE, '');
   if (UNIT_MAP.has(u)) return u;
   if (u.endsWith('s')) {
     const singular = u.slice(0, -1);
@@ -129,9 +133,9 @@ export function parseSize(raw: string | null | undefined, context?: SizeContext)
   const text = raw.trim().toLowerCase();
 
   const contextualUnit = context?.baseUnit === 'ct'
-    ? { pattern: /^(\d+)\s*(pack)$/, base: 'ct', factor: 1 }
+    ? { pattern: CONTEXTUAL_UNIT_RE, base: 'ct', factor: 1 }
     : context?.baseUnit === 'ml' && context.marketCode === 'gb'
-      ? { pattern: /^(\d+(?:\.\d+)?)\s*(pints?)$/, base: 'ml', factor: 568.26125 }
+      ? { pattern: CONTEXTUAL_UNIT_RE_2, base: 'ml', factor: 568.26125 }
       : undefined;
   const contextualMatch = contextualUnit?.pattern.exec(text);
   if (contextualMatch && contextualUnit) {
@@ -162,7 +166,7 @@ export function parseSize(raw: string | null | undefined, context?: SizeContext)
   if (!sizeMatch) return null;
 
   const sizeValue = parseFloat(sizeMatch[1]);
-  const rawUnit = sizeMatch[2].toLowerCase().replace(/\.$/, '');
+  const rawUnit = sizeMatch[2].toLowerCase().replace(U_RE, '');
   const unitKey = normalizeUnit(rawUnit);
   const unitDef = unitKey ? UNIT_MAP.get(unitKey) : undefined;
 

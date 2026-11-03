@@ -7,8 +7,14 @@ import type { CommodityBriefCapture, CommodityBriefSelection, CommodityBriefSnap
 import type { MineralStageSnapshot } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import type { DecisionBriefCapture, DecisionBriefSelection, DecisionBriefSnapshot } from '../types/decision-brief';
 
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const REASON_RE = /^Current flows unavailable for [A-Z]{2}: /;
+const REASON_RE_2 = /\.$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const nonnegative = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-const month = (value: string | undefined): string | null => value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? value : null;
+const month = (value: string | undefined): string | null => value && MONTH_RE.test(value) ? value : null;
 
 export function buildDecisionBrief(selection: DecisionBriefSelection, captures: [DecisionBriefCapture, DecisionBriefCapture]): DecisionBriefSnapshot {
   const evidence: DecisionBriefSnapshot['evidence'] = [];
@@ -66,7 +72,7 @@ export function buildDecisionBrief(selection: DecisionBriefSelection, captures: 
       if (identity && !cur) {
         // The handler names the cause (series not available yet, or too few filings).
         const reason = (r.limitations ?? []).find(l => l.startsWith('Current flows unavailable for '))
-          ?.replace(/^Current flows unavailable for [A-Z]{2}: /, '').replace(/\.$/, '');
+          ?.replace(REASON_RE, '').replace(REASON_RE_2, '');
         unknowns.add(`${reference}: current-flows Gulf share is unavailable${reason ? `: ${reason}` : ''}; ${pre ? 'figures use the pre-crisis baseline' : 'no pre-crisis share is available either'}.`);
       }
     }
@@ -196,7 +202,7 @@ export function buildCommodityBrief(selection: CommodityBriefSelection, input: C
   const seen = new Set<string>();
   const candidates: CommodityBriefSnapshot['candidates'] = [];
   for (const exp of product?.topExporters ?? []) {
-    if (!/^[A-Z]{2}$/.test(exp.partnerIso2) || exp.partnerIso2 === selection.countryCode || seen.has(exp.partnerIso2)) {
+    if (!COUNTRY_CODE_RE.test(exp.partnerIso2) || exp.partnerIso2 === selection.countryCode || seen.has(exp.partnerIso2)) {
       const partner = normalizeComtradePartner(exp.partnerCode);
       excluded.push(`${exp.partnerCode} (${partner.label}; ${partner.kind}): ${nonnegative(exp.share) && exp.share <= 1 ? (exp.share * 100).toFixed(1) + '%' : 'unknown share'} excluded from country comparison${seen.has(exp.partnerIso2) ? ' as a duplicate country area; not added to avoid overlapping customs areas' : ''}`);
       continue;

@@ -8,6 +8,17 @@ import {
 } from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 
+const PARSE_POINT_RE = /<(?:georss:)?point>([^<]+)<\/(?:georss:)?point>/i;
+const WHITESPACE_RE = /\s+/;
+const PARSE_DEPTH_KM_RE = /<(?:georss:)?elev>([^<]+)<\/(?:georss:)?elev>/i;
+const PARSE_CATEGORY_RE = /<category\b[^>]*\bterm=["']([^"']+)["']/i;
+const IS_INDUSTRY_RELATED_RE = /industry-related/i;
+const HEADER_END_RE = /<entry\b/i;
+const PARSE_FEED_UPDATED_AT_RE = /<updated>([^<]+)<\/updated>/i;
+const PARSE_NRCAN_ATOM_RE = /<html[\s>]/i;
+const PARSE_NRCAN_ATOM_RE_2 = /<feed\b/i;
+
+
 const { parseProxyConfigForAttempt, proxyFetch } = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
 export const NRCAN_ATOM_HOST = 'www.earthquakescanada.nrcan.gc.ca';
@@ -62,9 +73,9 @@ function parseTitleMagPlace(title) {
 }
 
 function parsePoint(block) {
-  const match = block.match(/<(?:georss:)?point>([^<]+)<\/(?:georss:)?point>/i);
+  const match = block.match(PARSE_POINT_RE);
   if (!match) return null;
-  const parts = match[1].trim().split(/\s+/);
+  const parts = match[1].trim().split(WHITESPACE_RE);
   if (parts.length < 2) return null;
   const latitude = Number(parts[0]);
   const longitude = Number(parts[1]);
@@ -77,7 +88,7 @@ function parsePoint(block) {
 }
 
 function parseDepthKm(block) {
-  const match = block.match(/<(?:georss:)?elev>([^<]+)<\/(?:georss:)?elev>/i);
+  const match = block.match(PARSE_DEPTH_KM_RE);
   if (!match) return 0;
   const elevM = Number(match[1]);
   if (!Number.isFinite(elevM)) return 0;
@@ -92,13 +103,13 @@ function nrcanEventId(idText) {
 }
 
 function parseCategory(block) {
-  const match = block.match(/<category\b[^>]*\bterm=["']([^"']+)["']/i);
+  const match = block.match(PARSE_CATEGORY_RE);
   return match ? decodeHtmlEntities(match[1]).trim() : '';
 }
 
 export function isIndustryRelated(eq) {
   const haystack = `${eq?.category || ''} ${eq?.place || ''}`;
-  return /industry-related/i.test(haystack);
+  return IS_INDUSTRY_RELATED_RE.test(haystack);
 }
 
 export function isPublishableEarthquake(eq, nowMs = Date.now()) {
@@ -110,9 +121,9 @@ export function isPublishableEarthquake(eq, nowMs = Date.now()) {
 }
 
 function parseFeedUpdatedAt(xml) {
-  const headerEnd = xml.search(/<entry\b/i);
+  const headerEnd = xml.search(HEADER_END_RE);
   const header = headerEnd === -1 ? xml : xml.slice(0, headerEnd);
-  const match = header.match(/<updated>([^<]+)<\/updated>/i);
+  const match = header.match(PARSE_FEED_UPDATED_AT_RE);
   if (!match) return null;
   const ts = Date.parse(match[1].trim());
   return Number.isFinite(ts) && ts > 0 ? ts : null;
@@ -128,7 +139,7 @@ export function parseNrcanAtom(xml) {
   if (typeof xml !== 'string' || xml.trim() === '') {
     throw new NrcanAtomParseError('NRCan Atom is empty');
   }
-  if (/<html[\s>]/i.test(xml) || !/<feed\b/i.test(xml)) {
+  if (PARSE_NRCAN_ATOM_RE.test(xml) || !PARSE_NRCAN_ATOM_RE_2.test(xml)) {
     throw new NrcanAtomParseError('NRCan Atom is not a well-formed feed');
   }
 

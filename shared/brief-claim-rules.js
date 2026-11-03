@@ -6,10 +6,13 @@
 
 import { extractNumericFacts } from './brief-llm-core.js';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 export function sanctionsEvidenceGrounded(text, headlineCount, evidence) {
   const sanctions = evidence.filter(item => item.kind === 'sanctions');
   if (sanctions.length === 0) return true;
-  const normalize = value => value.replace(/\s+/g, ' ').trim();
+  const normalize = value => value.replace(WHITESPACE_RE, ' ').trim();
   return headlineCount === 0 && evidence.length === 1
     && normalize(text) === normalize(sanctions[0].factText);
 }
@@ -17,7 +20,7 @@ export function sanctionsEvidenceGrounded(text, headlineCount, evidence) {
 export function energyEvidenceGrounded(text, headlineCount, evidence) {
   const energy = evidence.filter(item => item.kind === 'energy');
   if (energy.length === 0) return true;
-  const normalize = value => value.replace(/\s+/g, ' ').trim();
+  const normalize = value => value.replace(WHITESPACE_RE, ' ').trim();
   return headlineCount === 0 && evidence.length === 1
     && normalize(text) === normalize(energy[0].factText);
 }

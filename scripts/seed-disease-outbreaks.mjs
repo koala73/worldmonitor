@@ -31,6 +31,13 @@ import {
   ALERT_LEVEL_METHODOLOGY_VERSION,
 } from './_disease-outbreaks-helpers.mjs';
 
+const TITLE_RE = /<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/;
+const LINK_RE = /<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/;
+const LINK_RE_2 = /<link\b[^>]*\bhref=(["'])(.*?)\1/;
+const RAW_DESC_RE = /<(description|summary|content)\b[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/;
+const PUB_DATE_RE = /<(pubDate|published|updated)>(.*?)<\/\1>/;
+
+
 const CANONICAL_KEY = 'health:disease-outbreaks:v1';
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
 
@@ -130,16 +137,16 @@ export async function fetchRssItems(url, sourceName, { fetchImpl = globalThis.fe
     let match;
     while ((match = itemRe.exec(bounded)) !== null) {
       const block = match[2];
-      let title = decodeHtmlEntities((block.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1] || '').trim();
+      let title = decodeHtmlEntities((block.match(TITLE_RE) || [])[1] || '').trim();
       if (titleSuffix) {
         if (!title.endsWith(titleSuffix)) continue;
         title = title.slice(0, -titleSuffix.length).trim();
       }
-      const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim()
-        || (block.match(/<link\b[^>]*\bhref=(["'])(.*?)\1/) || [])[2]?.trim() || '';
-      const rawDesc = (block.match(/<(description|summary|content)\b[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/) || [])[2] || '';
+      const link = (block.match(LINK_RE) || [])[1]?.trim()
+        || (block.match(LINK_RE_2) || [])[2]?.trim() || '';
+      const rawDesc = (block.match(RAW_DESC_RE) || [])[2] || '';
       const desc = cleanRssDescription(rawDesc);
-      const pubDate = (block.match(/<(pubDate|published|updated)>(.*?)<\/\1>/) || [])[2]?.trim() || '';
+      const pubDate = (block.match(PUB_DATE_RE) || [])[2]?.trim() || '';
       // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
       // (rssNormalizeItem) so tests verify the exact contract without duplicating logic.
       const normalized = rssNormalizeItem({ title, link, desc, pubDate, sourceName });

@@ -14,6 +14,9 @@ import { getAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { declareOverlay } from '@/utils/open-modal';
 
+const WEB_STEP_RE = /^(search|read|verify):/;
+
+
 
 interface WidgetChatOptions {
   mode: 'create' | 'modify';
@@ -527,7 +530,7 @@ function setFooterStatus(container: HTMLElement, text: string, tone: 'muted' | '
 
 function renderPreviewState(container: HTMLElement, phase: PreviewPhase, detail = ''): void {
   // Web search, page reads and the source check are not WorldMonitor data.
-  const webStep = phase === 'fetching' && /^(search|read|verify):/.test(detail);
+  const webStep = phase === 'fetching' && WEB_STEP_RE.test(detail);
   const heading = webStep ? t('widgets.phaseFetching') : getPreviewHeading(phase);
   const copy = detail || getPreviewCopy(phase);
   const isError = phase === 'error';

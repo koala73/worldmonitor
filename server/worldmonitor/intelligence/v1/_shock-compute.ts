@@ -2,6 +2,11 @@ import filterParamContracts from '../../../../shared/openapi-filter-param-contra
 import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/hormuz-crisis.js';
 import { BYPASS_RAMP_DAYS, HORMUZ_BYPASS_BY_EXPORTER } from './_hormuz-bypass';
 
+const CHOKEPOINT_LABEL_RE = /_/g;
+const COMPUTE_GULF_SHARE_RE = /^0+$/;
+const MONTH_INDEX_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+
 const BYPASS_EXPORTERS = Object.keys(HORMUZ_BYPASS_BY_EXPORTER);
 
 // Crude exporters whose loadings sit inside the Strait of Hormuz, per EIA
@@ -23,7 +28,7 @@ const CHOKEPOINT_DISPLAY_NAMES: Record<string, string> = {
 };
 
 function chokepointLabel(id: string): string {
-  return CHOKEPOINT_DISPLAY_NAMES[id] ?? id.replace(/_/g, ' ');
+  return CHOKEPOINT_DISPLAY_NAMES[id] ?? id.replace(CHOKEPOINT_LABEL_RE, ' ');
 }
 
 // Intl.DisplayNames is available in Node 20+ and Vercel edge runtime; fall back to the raw ISO2
@@ -217,7 +222,7 @@ export function computeGulfShare(flows: ComtradeFlowLike[]): { share: number; ha
   let totalImports = 0;
   let gulfImports = 0;
   for (const flow of flows) {
-    if (/^0+$/.test(String(flow.partnerCode))) continue;
+    if (COMPUTE_GULF_SHARE_RE.test(String(flow.partnerCode))) continue;
     const val = Number.isFinite(flow.tradeValueUsd) ? flow.tradeValueUsd : 0;
     if (val <= 0) continue;
     totalImports += val;
@@ -473,7 +478,7 @@ export function parseNetOilImports(raw: unknown, year: number | null): { year: n
 }
 
 const monthIndex = (ym: unknown): number | null => {
-  if (typeof ym !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return null;
+  if (typeof ym !== 'string' || !MONTH_INDEX_RE.test(ym)) return null;
   return Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1;
 };
 

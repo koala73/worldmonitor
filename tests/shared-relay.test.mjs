@@ -7,6 +7,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { inlineModuleRegexReferences } from './helpers/module-regex-declarations.mjs';
 
 // ─── Environment stub helpers ─────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ function withEnv(vars, fn) {
 // ─── Load relay module functions inline (avoids ESM import caching issues) ───
 
 function loadRelayFunctions() {
-  const src = readFileSync(resolve('server/_shared/relay.ts'), 'utf-8');
+  const src = inlineModuleRegexReferences(readFileSync(resolve('server/_shared/relay.ts'), 'utf-8'));
 
   // Extract and evaluate the two functions using Function constructor
   // to avoid module caching problems with env var tests

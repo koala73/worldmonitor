@@ -1,5 +1,13 @@
 'use strict';
 
+const NORMALIZE_COUNTRY_TOKEN_RE = /\p{Diacritic}/gu;
+const NORMALIZE_COUNTRY_TOKEN_RE_2 = /&/g;
+const NORMALIZE_COUNTRY_TOKEN_RE_3 = /[''‘’`.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const STRIPPED_RE = /\s*\([^)]*\)\s*$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 // Canonical country-name → ISO-3166 alpha-2 map (~306 entries incl. aliases,
 // maintained by scripts/build-country-names.cjs). Keys are pre-normalized:
 // lowercase, diacritics stripped, '&' → ' and ', punctuation collapsed.
@@ -20,11 +28,11 @@ const COUNTRY_NAME_TO_ISO2 = Object.freeze(
 function normalizeCountryToken(raw) {
   return String(raw || '')
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE, '')
     .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[''‘’`.(),/-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE_2, ' and ')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -37,7 +45,7 @@ function countryNameToIso2(raw) {
 
   // UCDP-style historical parenthetical: 'Yemen (North Yemen)',
   // 'Russia (Soviet Union)', 'DR Congo (Zaire)' — resolve via the modern name.
-  const stripped = trimmed.replace(/\s*\([^)]*\)\s*$/, '');
+  const stripped = trimmed.replace(STRIPPED_RE, '');
   if (stripped !== trimmed) {
     const viaStripped = COUNTRY_NAME_TO_ISO2[normalizeCountryToken(stripped)];
     if (viaStripped) return viaStripped;
@@ -45,7 +53,7 @@ function countryNameToIso2(raw) {
 
   // Bare ISO2 passthrough. Checked AFTER the alias map so 'UK' → GB, not 'UK'.
   const upper = trimmed.toUpperCase();
-  if (/^[A-Z]{2}$/.test(upper)) return upper;
+  if (COUNTRY_CODE_RE.test(upper)) return upper;
   return null;
 }
 

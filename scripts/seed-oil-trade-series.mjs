@@ -55,6 +55,15 @@ import {
 import { PRE_CRISIS_WINDOW } from './shared/hormuz-crisis.js';
 import { createRequire } from 'node:module';
 
+const BODY_RE = /[\u0000-\u001f]+/g;
+const HEADER_RE = /\r$/;
+const HEADER_RE_2 = /^"|"$/g;
+const FILTER_JODI_CSV_RE = /"/g;
+const BUILD_MIRROR_SERIES_RE = /^[A-Z]{3}$/;
+const FETCH_ONCE_RE = /^Comtrade HTTP 40[13]$/;
+const TIMEOUT_LIKE_RE = /fetch failed/i;
+
+
 loadEnvFile(import.meta.url);
 
 /** @type {Record<string, string>} */
@@ -190,7 +199,7 @@ async function fetchEiaRows(nowMs) {
   if (!resp.ok) throw new Error(`EIA STEO HTTP ${resp.status}`);
   // EIA occasionally emits raw control characters inside string fields.
   // eslint-disable-next-line no-control-regex
-  const body = JSON.parse((await resp.text()).replace(/[\u0000-\u001f]+/g, ' '));
+  const body = JSON.parse((await resp.text()).replace(BODY_RE, ' '));
   const rows = body?.response?.data;
   if (!Array.isArray(rows)) throw new Error('EIA STEO response has no data array');
   return rows;
@@ -233,12 +242,12 @@ function filterJodiCsv(text, wanted) {
   const rows = [];
   if (!text) return rows;
   const lines = text.split('\n');
-  const header = lines[0].replace(/\r$/, '').split(',').map((h) => h.replace(/^"|"$/g, ''));
+  const header = lines[0].replace(HEADER_RE, '').split(',').map((h) => h.replace(HEADER_RE_2, ''));
   const idx = Object.fromEntries(header.map((h, i) => [h, i]));
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
-    if (!wanted.has(line.slice(0, 2).replace(/"/g, ''))) continue;
-    const cells = line.replace(/\r$/, '').split(',').map((c) => c.replace(/^"|"$/g, ''));
+    if (!wanted.has(line.slice(0, 2).replace(FILTER_JODI_CSV_RE, ''))) continue;
+    const cells = line.replace(HEADER_RE, '').split(',').map((c) => c.replace(HEADER_RE_2, ''));
     const row = {
       REF_AREA: cells[idx.REF_AREA],
       TIME_PERIOD: cells[idx.TIME_PERIOD],
@@ -305,7 +314,7 @@ export function buildMirrorSeries(rows, { production = new Map() } = {}) {
   const tonnes = new Map();
   for (const r of rows ?? []) {
     const kg = Number(r?.netWgt);
-    if (!r?.reporterISO || !/^[A-Z]{3}$/.test(r.reporterISO) || !Number.isFinite(kg) || kg <= 0) continue;
+    if (!r?.reporterISO || !BUILD_MIRROR_SERIES_RE.test(r.reporterISO) || !Number.isFinite(kg) || kg <= 0) continue;
     if (r.cmdCode !== '2709' && r.cmdCode !== '2710') continue;
     const month = `${String(r.period).slice(0, 4)}-${String(r.period).slice(4, 6)}`;
     const byCmd = tonnes.get(r.reporterISO) ?? new Map();
@@ -579,7 +588,7 @@ export async function fetchCrudeImportOriginRows(periods, keys, { fetchJson = fe
     for (const key of keys) {
       // A rejected key (401/403) will not recover on retry: fail over at once.
       const fetchOnce = () => fetchJson(url, key).catch((err) => {
-        if (/^Comtrade HTTP 40[13]$/.test(err?.message ?? '')) err.nonRetryable = true;
+        if (FETCH_ONCE_RE.test(err?.message ?? '')) err.nonRetryable = true;
         throw err;
       });
       try {
@@ -709,7 +718,7 @@ export async function epdkFetch(url, deadlineAtMs, maxBytes = EPDK_MAX_DOCUMENT_
     if (!resp.ok) throw new Error(`EPDK HTTP ${resp.status}`);
     return await readCapped(resp, maxBytes);
   } catch (err) {
-    const timeoutLike = err?.name === 'TimeoutError' || err?.proxyable || /fetch failed/i.test(err?.message ?? '');
+    const timeoutLike = err?.name === 'TimeoutError' || err?.proxyable || TIMEOUT_LIKE_RE.test(err?.message ?? '');
     const proxyAuth = timeoutLike ? resolveProxyForConnect() : null;
     if (!proxyAuth) throw err;
     if (err?.message === 'EPDK budget exhausted') throw err;
@@ -825,7 +834,7 @@ async function arcgisJson(url) {
   } catch (err) {
     // ArcGIS rate-limits seed-server egress by stalling or 429ing; the
     // PortWatch port-activity seeder routes the same failure through the proxy.
-    const timeoutLike = err?.name === 'TimeoutError' || err?.proxyable || /fetch failed/i.test(err?.message ?? '');
+    const timeoutLike = err?.name === 'TimeoutError' || err?.proxyable || TIMEOUT_LIKE_RE.test(err?.message ?? '');
     const proxyAuth = timeoutLike ? resolveProxyForConnect() : null;
     if (!proxyAuth) throw err;
     const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: 50_000 });

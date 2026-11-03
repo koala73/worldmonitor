@@ -20,6 +20,143 @@ import { basename, dirname, join } from 'node:path';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
 import { extractAssignedObjectBlock } from './lib/js-source-structure.mjs';
 
+const STARTS_RE = /^ {2}\{$/gm;
+const CLOSE_RE = /^ {2}\},?$/m;
+const PARSE_LAYER_REGISTRY_RE = /\s|,/;
+const IDENTIFIER_RE = /^[A-Za-z_$][\w$]*/;
+const PARSE_LAYER_REGISTRY_RE_2 = /^[A-Za-z_$][\w$]*$/;
+const PARSE_LAYER_REGISTRY_RE_3 = /\s/;
+const DEFINITION_KEY_RE = /^(['"])([A-Za-z_$][\w$]*)\1$/;
+const PARSE_LAYER_REGISTRY_RE_4 = /^(['"])locked\1$/;
+const UI_CONST_TO_URI_RE = /^export\s+const\s+(\w+_UI_URI)\s*=\s*'([^']+)';/gm;
+const REGISTRY_BLOCK_MATCH_RE = /export const UI_RESOURCE_REGISTRY:[\s\S]*?=\s*\[([\s\S]*?)\n\];/;
+const REGISTRY_BODY_RE = /UI_RESOURCE_LIST_RESPONSE\.push\(\{([\s\S]*?)\}\);/g;
+const REGISTRY_ENTRIES_RE = /uri:\s*(\w+_UI_URI),\s*\n\s*name:\s*'((?:\\'|[^'])*)',\s*\n\s*description:\s*\n\s*'((?:\\'|[^'])*)',/g;
+const REGISTRY_ENTRIES_RE_2 = /\\'/g;
+const PARSE_MCP_APPS_INVENTORY_RE = /(?=^ {2}name:)/m;
+const NAME_RE = /^\s+name:\s*'([^']+)'/m;
+const URI_CONST_RE = /^\s+_uiResourceUri:\s*(\w+_UI_URI),/m;
+const MAP_RE = /^ {2}(\w+):\s*'([^']+)',$/gm;
+const PARSE_BOOTSTRAP_CACHE_CONTRACT_RE = /^ {2}(\w+):\s*\{([\s\S]*?)^ {2}\},$/gm;
+const BROWSER_RE = /browser:\s*'([^']+)'/;
+const CDN_RE = /cdn:\s*'([^']+)'/;
+const DECLARED_PROFILES_RE = /\bcdn:/g;
+const SUCCESS_BLOCK_RE = /function successCacheHeaders\([\s\S]*?\n\}/;
+const ON_DEMAND_DEFAULT_TIER_RE = /const tier = requestedTier \?\? \(authKind === 'public-on-demand' \? '(\w+)' : null\);/;
+const DEFAULT_CACHE_CONTROL_RE = /const cacheControl = [\s\S]*?\|\|\s*'([^']+)';/;
+const DEFAULT_CDN_TIER_RE = /'CDN-Cache-Control':[\s\S]*?\|\|\s*TIER_CDN_CACHE\.(\w+),/;
+const PARSE_BOOTSTRAP_CACHE_CONTRACT_RE_2 = /successCacheHeaders\(\s*tier,\s*auth\.kind,\s*cors,\s*onDemandKey,?\s*\)/;
+const PARSE_BOOTSTRAP_CACHE_CONTRACT_RE_3 = /ON_DEMAND_CACHE_PROFILES\[onDemandKey\]/;
+const RETURN_BODIES_RE = /return \{([\s\S]*?)\};/g;
+const NON_CACHEABLE_RETURNS_RE = /'Cache-Control':\s*'/;
+const NON_CACHEABLE_VALUES_RE = /'Cache-Control':\s*'([^']+)'/;
+const ENTRIES_RE = /\/\/[^\n]*/g;
+const PARSE_BOOTSTRAP_KEY_TIERS_RE = /'([^']+)'/g;
+const BLANK_COMMENTS_RE = /^([ \t]*)\/\/[^\n]*$/gm;
+const BLANK_COMMENTS_RE_2 = /\/\*[\s\S]*?\*\//g;
+const BLANK_COMMENTS_RE_3 = /[^\n]/g;
+const WHITESPACE_RE = /\s+/g;
+const COUNT_REGISTRY_ENTRIES_RE = /\n[ \t]*$/;
+const KEYS_RE = /^ {2}([A-Za-z_$][\w$]*):/gm;
+const NON_CONFORMING_RE = /^ {2}[A-Za-z_$][\w$]*:\s*\S/;
+const COMMAS_RE = /,/g;
+const BLOCK_RE = /const sources = \[([\s\S]*?)\n {2}\];/;
+const LISTED_RE = /\[\s*([A-Za-z_$][\w$]*)\s*,/g;
+const PARSE_HEALTH_PROBED_KEYS_RE = /for \(const \[name, redisKey\] of Object\.entries\(registry\)\) \{\s*\n\s*totalChecks\+\+;/;
+const MARKETS_BLOCK_RE = /const CONSUMER_PRICE_HEALTH_MARKETS = Object\.freeze\(\[([^\]]*)\]\)/;
+const PARSE_HEALTH_PROBED_KEYS_RE_2 = /if \(market === 'ae'\) continue;/;
+const PARSE_HEALTH_PROBED_KEYS_RE_3 = /const IRAN_EVENTS_ENABLED = .*\?\? 'false'/;
+const PARSE_JSON_LD_BLOCKS_RE = /<script\s+type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g;
+const ALTERNATE_LINKS_RE = /<link\s+rel="alternate"\s+hreflang="([^"]+)"\s+href="([^"]+)"\s*\/>/g;
+const CANONICAL_HREF_RE = /<link\s+rel="canonical"\s+href="([^"]+)"\s*\/>/;
+const BLOCK_RE_2 = /const\s+SUPPORTED_LANGUAGES\s*=\s*\[([\s\S]*?)\]\s*as const/;
+const COMPUTE_STATS_RE = /(\w+):\s*\[([^\]]*)\]/g;
+const COMPUTE_STATS_RE_2 = /'[^']+'/g;
+const API_ENDPOINT_ENTRIES_RE = /\.test\./;
+const API_ENDPOINT_ENTRIES_RE_2 = /\.d\.ts$/;
+const API_ENDPOINT_ENTRIES_RE_3 = /\.json$/;
+const PANEL_CLASSES_RE = /class\s+\w+\s+extends\s+Panel\b/g;
+const PROTO_SERVICES_RE = /^service\s+\w+/gm;
+const OPENAPI_SERVICE_SPECS_RE = /Service\.openapi\.yaml$/;
+const FRESHNESS_SOURCES_RE = /^\s+\w+:\s*\{\s*name:/gm;
+const FRESHNESS_REQUIRED_FOR_RISK_RE = /requiredForRisk:\s*true/g;
+const AIRPORT_COUNT_RE = /\biata:\s*'/g;
+const STOCK_EXCHANGE_COUNT_RE = /\bid:\s*'/g;
+const LEADER_BLOCK_RE = /const\s+LEADER_NAMES\s*(?::[^=]*)?\s*=\s*\[([\s\S]*?)\];/;
+const TIER1_MATCH_RE = /export const TIER1_COUNTRIES[^=]*=\s*\{([\s\S]*?)\n\};/;
+const TIER1_COUNTRIES_RE = /^\s+[A-Z]{2}:/gm;
+const POPULATION_BLOCK_RE = /const PRIORITY_COUNTRIES:[\s\S]*?=\s*\{([\s\S]*?)\n\};/;
+const POPULATION_PRIORITY_COUNTRIES_RE = /^\s+[A-Z]{3}:\s*\{/gm;
+const CLAIMS_RE = /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/;
+const CLAIMS_RE_2 = /currently \*\*(v\d+\.\d+\.\d+)\*\*/;
+const IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE = /^docs\/.+\.(?:md|mdx)$/;
+const IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_2 = /^public\/[^/]+\.(?:md|txt|json)$/;
+const IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_3 = /^public\/(?:[^/]+\/)*llms\.txt$/;
+const IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_4 = /^public\/\.well-known\/agent-skills\/[^/]+\/SKILL\.md$/;
+const IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_5 = /^pro-test\/src\/locales\/[^/]+\.json$/;
+const IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_6 = /^blog-site\/src\/content\/blog\/[^/]+\.md$/;
+const RETAINED_EXACT_CONTRACTS_RE = /(?:3\+ source types|6\+ sources\/hour)/;
+const RETAINED_EXACT_CONTRACTS_RE_2 = /8\+ feeds in 2 hours/;
+const RETAINED_EXACT_CONTRACTS_RE_3 = /Natural disasters from 3 sources/;
+const RETAINED_EXACT_CONTRACTS_RE_4 = /来自 3 个数据源的自然灾害/;
+const RETAINED_EXACT_CONTRACTS_RE_5 = /25 feed categories would have generated 25,000 edge invocations/;
+const RETAINED_EXACT_CONTRACTS_RE_6 = /41\/41 operations/;
+const RETAINED_EXACT_CONTRACTS_RE_7 = /version 1 operation/;
+const RETAINED_EXACT_CONTRACTS_RE_8 = /protoc-gen-openapiv3.*OpenAPI 3\.1\.0 specs/;
+const RETAINED_EXACT_CONTRACTS_RE_9 = /72 indicators, 21 active dimensions, 6 domains/;
+const RETAINED_EXACT_CONTRACTS_RE_10 = /72 indicators across 21 active dimensions and 6 domains/;
+const RETAINED_EXACT_CONTRACTS_RE_11 = /72 indicators across 21 active dimensions, 6 domains/;
+const RETAINED_EXACT_CONTRACTS_RE_12 = /live in 190\+ countries/;
+const RETAINED_EXACT_CONTRACTS_RE_13 = /structural resilience ranked for/;
+const RETAINED_EXACT_CONTRACTS_RE_14 = /72 indicators, 21 active dimensions, and 6 domains/;
+const RETAINED_EXACT_CONTRACTS_RE_15 = /six domains/i;
+const RETAINED_EXACT_CONTRACTS_RE_16 = /\d+ of 196 countries ranked, using 72 indicators across 21 dimensions and 6 domains/;
+const RETAINED_EXACT_CONTRACTS_RE_17 = /pillars\[\].*six domains/;
+const RETAINED_EXACT_CONTRACTS_RE_18 = /72 indicators across 21 active dimensions and 6 domains.*3 pillars.*2 structurally-retired dimensions/;
+const RETAINED_EXACT_CONTRACTS_RE_19 = /196-country public rankable universe.*72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/;
+const RETAINED_EXACT_CONTRACTS_RE_20 = /organized into 6 domains/;
+const RETAINED_EXACT_CONTRACTS_RE_21 = /6 domains are regrouped into 3 pillars/;
+const RETAINED_EXACT_CONTRACTS_RE_22 = /average of 5 domains and 13 dimensions/;
+const RETAINED_EXACT_CONTRACTS_RE_23 = /5-domain \/ 13-dimension structure.*6 new recovery dimensions/;
+const RETAINED_EXACT_CONTRACTS_RE_24 = /six-domain weighted aggregate.*rollback path/;
+const RETAINED_EXACT_CONTRACTS_RE_25 = /five-domain flat structure.*six-domain structure.*six new dimensions.*three-pillar outer layer/;
+const RETAINED_EXACT_CONTRACTS_RE_26 = /Re-anchored release-gate bands.*6-domain formula's/;
+const RETAINED_EXACT_CONTRACTS_RE_27 = /The 6-domain formula lives alongside the pillar combine/;
+const RETAINED_EXACT_CONTRACTS_RE_28 = /current registry contains 72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/;
+const RETAINED_EXACT_CONTRACTS_RE_29 = /Corroboration score is capped at five sources/;
+const RETAINED_EXACT_CONTRACTS_RE_30 = /at five sources, with `20` points per source before the `0.20` weight/;
+const RETAINED_EXACT_CONTRACTS_RE_31 = /per entity-level source, capped at five sources/;
+const RETAINED_EXACT_CONTRACTS_RE_32 = /`critical-developing`.*\+5 sources/;
+const RETAINED_EXACT_CONTRACTS_RE_33 = /`high-event`.*\+5 sources/;
+const RETAINED_EXACT_CONTRACTS_RE_34 = /`sanctions-regulatory`.*\+5 sources/;
+const RETAINED_EXACT_CONTRACTS_RE_35 = /`med`.*\+5 sources/;
+const RETAINED_EXACT_CONTRACTS_RE_36 = /current four feeds, 5 is a compatibility safety threshold/;
+const RETAINED_EXACT_CONTRACTS_RE_37 = /across seven domains/;
+const RETAINED_EXACT_CONTRACTS_RE_38 = /between two airports/;
+const RETAINED_EXACT_CONTRACTS_RE_39 = /up to 4 webcams simultaneously/;
+const RETAINED_EXACT_CONTRACTS_RE_40 = /more than 4 webcams are pinned/;
+const RETAINED_EXACT_CONTRACTS_RE_41 = /Maximum 4 webcams can be active/;
+const RETAINED_EXACT_CONTRACTS_RE_42 = /38\+ (?:associated )?military bases/;
+const RETAINED_EXACT_CONTRACTS_RE_43 = /five operational theaters/;
+const RETAINED_EXACT_CONTRACTS_RE_44 = /13 monitored waterways/;
+const RETAINED_EXACT_CONTRACTS_RE_45 = /seven channels/i;
+const RETAINED_EXACT_CONTRACTS_RE_46 = /between any two airports/;
+const RETAINED_EXACT_CONTRACTS_RE_47 = /Three signals, three endpoints/;
+const RETAINED_EXACT_CONTRACTS_RE_48 = /ingest ten feeds/;
+const RETAINED_EXACT_CONTRACTS_RE_49 = /five panels/;
+const RETAINED_EXACT_CONTRACTS_RE_50 = /25ダッシュボード/;
+const RETAINED_EXACT_CONTRACTS_RE_51 = /紛争は1つのマップレイヤー/;
+const VISIT_RE = /\btool errors\b/i;
+const VISIT_RE_2 = /\bTier \d+(?:[–-]\d+)? sources\b/i;
+const BLOCKS_RE = /"summary":\s*\{([^{}]*)\}/g;
+const VALIDATE_BOOTSTRAP_CACHE_DOCS_RE = /The (fast|slow|on-demand) tier includes `(\w+)`/g;
+const DOCUMENTED_RE = /`(\w+)`[^`]*`(max-age=[^`]+)`[^`]*CDN[^`]*`(s-maxage=[^`]+)`/g;
+const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n/;
+const WHITESPACE_RE_2 = /\s+/;
+const VARIANT_LINE_RE = /^- Dashboard variants \(registry keys\):\s*(.+)$/m;
+const DOCUMENTED_VARIANTS_RE = /`([^`]+)`/g;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // #6702: tests that stage probe trees redirect the module at a throwaway
 // copy (see withStatsRoot below) so a sibling test scanning the REAL repo
@@ -62,9 +199,9 @@ function extractSingleQuotedValue(text, name) {
 }
 
 function findTopLevelObjectBlocks(source) {
-  const starts = [...source.matchAll(/^ {2}\{$/gm)].map((m) => m.index);
+  const starts = [...source.matchAll(STARTS_RE)].map((m) => m.index);
   return starts.map((start) => {
-    const close = source.slice(start).search(/^ {2}\},?$/m);
+    const close = source.slice(start).search(CLOSE_RE);
     if (close === -1) return source.slice(start);
     return source.slice(start, start + close);
   });
@@ -193,7 +330,7 @@ function parseLayerRegistry(source) {
   const mismatchedKeys = [];
   const lockedKeys = [];
   while (cursor < registryBlock.length) {
-    while (/\s|,/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    while (PARSE_LAYER_REGISTRY_RE.test(registryBlock[cursor] ?? '')) cursor += 1;
     if (registryBlock[cursor] === '}') break;
     if (registryBlock.startsWith('...', cursor)) {
       throw new Error('docs-stats: LAYER_REGISTRY spread properties are not supported');
@@ -220,32 +357,32 @@ function parseLayerRegistry(source) {
       }
       cursor += 1;
     } else {
-      const identifier = registryBlock.slice(cursor).match(/^[A-Za-z_$][\w$]*/)?.[0];
+      const identifier = registryBlock.slice(cursor).match(IDENTIFIER_RE)?.[0];
       if (!identifier) throw new Error('docs-stats: every LAYER_REGISTRY property must have a static key');
       key = identifier;
       cursor += identifier.length;
     }
-    if (!/^[A-Za-z_$][\w$]*$/.test(key)) {
+    if (!PARSE_LAYER_REGISTRY_RE_2.test(key)) {
       throw new Error(`docs-stats: invalid LAYER_REGISTRY property key ${key}`);
     }
-    while (/\s/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    while (PARSE_LAYER_REGISTRY_RE_3.test(registryBlock[cursor] ?? '')) cursor += 1;
     if (registryBlock[cursor] !== ':') {
       throw new Error(`docs-stats: LAYER_REGISTRY property ${key} must be an assignment`);
     }
     cursor += 1;
-    while (/\s/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    while (PARSE_LAYER_REGISTRY_RE_3.test(registryBlock[cursor] ?? '')) cursor += 1;
     if (!registryBlock.startsWith('def(', cursor)) {
       throw new Error(`docs-stats: LAYER_REGISTRY property ${key} must use def()`);
     }
     const { args, end: callEnd } = readCallArguments(registryBlock, cursor + 4);
     cursor = callEnd + 1;
     declaredKeys.push(key);
-    const definitionKey = args[0]?.match(/^(['"])([A-Za-z_$][\w$]*)\1$/)?.[2];
+    const definitionKey = args[0]?.match(DEFINITION_KEY_RE)?.[2];
     if (!definitionKey) {
       throw new Error(`docs-stats: LAYER_REGISTRY property ${key} needs a static def() key`);
     }
     if (key !== definitionKey) mismatchedKeys.push(`${key} -> ${definitionKey}`);
-    if (/^(['"])locked\1$/.test(args[5] ?? '')) lockedKeys.push(key);
+    if (PARSE_LAYER_REGISTRY_RE_4.test(args[5] ?? '')) lockedKeys.push(key);
   }
   if (declaredKeys.length === 0) {
     throw new Error('docs-stats: LAYER_REGISTRY extraction was empty');
@@ -271,29 +408,29 @@ function parseMcpAppsInventory({
   cacheToolsSource = read('api/mcp/registry/cache-tools.ts'),
 } = {}) {
   const uiConstToUri = new Map(
-    [...uiRegistrySource.matchAll(/^export\s+const\s+(\w+_UI_URI)\s*=\s*'([^']+)';/gm)]
+    [...uiRegistrySource.matchAll(UI_CONST_TO_URI_RE)]
       .map((m) => [m[1], m[2]]),
   );
   if (uiConstToUri.size === 0) {
     throw new Error('docs-stats: could not parse MCP Apps ui:// URI constants');
   }
 
-  const registryBlockMatch = uiRegistrySource.match(/export const UI_RESOURCE_REGISTRY:[\s\S]*?=\s*\[([\s\S]*?)\n\];/);
+  const registryBlockMatch = uiRegistrySource.match(REGISTRY_BLOCK_MATCH_RE);
   if (!registryBlockMatch) {
     throw new Error('docs-stats: could not parse UI_RESOURCE_REGISTRY');
   }
-  const registryBody = [registryBlockMatch[1], ...[...uiRegistrySource.matchAll(/UI_RESOURCE_LIST_RESPONSE\.push\(\{([\s\S]*?)\}\);/g)].map(match => match[1])].join('\n');
+  const registryBody = [registryBlockMatch[1], ...[...uiRegistrySource.matchAll(REGISTRY_BODY_RE)].map(match => match[1])].join('\n');
   const loaderSource = read('api/mcp/ui/news-dashboard-app.ts');
-  for (const [, name, uri] of loaderSource.matchAll(/^export\s+const\s+(\w+_UI_URI)\s*=\s*'([^']+)';/gm)) {
+  for (const [, name, uri] of loaderSource.matchAll(UI_CONST_TO_URI_RE)) {
     if (new RegExp(`\\b${name}\\b`).test(registryBody)) uiConstToUri.set(name, uri);
   }
   const registryEntries = [...registryBody.matchAll(
-    /uri:\s*(\w+_UI_URI),\s*\n\s*name:\s*'((?:\\'|[^'])*)',\s*\n\s*description:\s*\n\s*'((?:\\'|[^'])*)',/g,
+    REGISTRY_ENTRIES_RE,
   )].map((m) => ({
     uriConst: m[1],
     uri: uiConstToUri.get(m[1]) ?? m[1],
-    name: m[2].replace(/\\'/g, "'"),
-    description: m[3].replace(/\\'/g, "'"),
+    name: m[2].replace(REGISTRY_ENTRIES_RE_2, "'"),
+    description: m[3].replace(REGISTRY_ENTRIES_RE_2, "'"),
   }));
   const registryConsts = registryEntries.map((entry) => entry.uriConst);
   const uiConsts = [...uiConstToUri.keys()];
@@ -308,9 +445,9 @@ function parseMcpAppsInventory({
   if (uiConstToUri.has('NEWS_DASHBOARD_UI_URI')) compiledToolSources.push(read('api/mcp/registry/news-dashboard.ts'));
   if (uiConstToUri.has('COUNTRY_VIEW_UI_URI')) compiledToolSources.push(read('api/mcp/registry/country-view.ts'));
   for (const source of [rpcToolsSource, cacheToolsSource, ...compiledToolSources]) {
-    for (const block of (compiledToolSources.includes(source) ? source.split(/(?=^ {2}name:)/m) : findTopLevelObjectBlocks(source))) {
-      const name = block.match(/^\s+name:\s*'([^']+)'/m)?.[1];
-      const uriConst = block.match(/^\s+_uiResourceUri:\s*(\w+_UI_URI),/m)?.[1];
+    for (const block of (compiledToolSources.includes(source) ? source.split(PARSE_MCP_APPS_INVENTORY_RE) : findTopLevelObjectBlocks(source))) {
+      const name = block.match(NAME_RE)?.[1];
+      const uriConst = block.match(URI_CONST_RE)?.[1];
       if (name && uriConst) {
         const uri = uiConstToUri.get(uriConst);
         if (!uri) throw new Error(`docs-stats: tool ${name} links unknown MCP App URI constant ${uriConst}`);
@@ -380,7 +517,7 @@ function parseObjectBlockBody(source, declaration, label) {
 function parseCacheHeaderMap(source, name) {
   const body = parseObjectBlockBody(source, `const ${name}`, `${name} in api/bootstrap.js`);
   const map = Object.fromEntries(
-    [...body.matchAll(/^ {2}(\w+):\s*'([^']+)',$/gm)].map((m) => [m[1], m[2]]),
+    [...body.matchAll(MAP_RE)].map((m) => [m[1], m[2]]),
   );
   for (const tier of ['fast', 'slow']) {
     if (!map[tier]) throw new Error(`docs-stats: ${name} in api/bootstrap.js is missing the ${tier} tier`);
@@ -405,9 +542,9 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
     source, 'const ON_DEMAND_CACHE_PROFILES', 'ON_DEMAND_CACHE_PROFILES in api/bootstrap.js',
   );
   const onDemandProfiles = {};
-  for (const [, key, body] of profilesBody.matchAll(/^ {2}(\w+):\s*\{([\s\S]*?)^ {2}\},$/gm)) {
-    const browser = body.match(/browser:\s*'([^']+)'/)?.[1];
-    const cdn = body.match(/cdn:\s*'([^']+)'/)?.[1];
+  for (const [, key, body] of profilesBody.matchAll(PARSE_BOOTSTRAP_CACHE_CONTRACT_RE)) {
+    const browser = body.match(BROWSER_RE)?.[1];
+    const cdn = body.match(CDN_RE)?.[1];
     if (!browser || !cdn) {
       throw new Error(`docs-stats: ON_DEMAND_CACHE_PROFILES.${key} must declare both browser and cdn`);
     }
@@ -419,7 +556,7 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
   // green while dead. Cross-check against a layout-independent count so a
   // reformat (profile collapsed to one line, block re-indented) throws instead.
   // A genuinely empty block counts 0 against 0 and stays legal.
-  const declaredProfiles = (profilesBody.match(/\bcdn:/g) || []).length;
+  const declaredProfiles = (profilesBody.match(DECLARED_PROFILES_RE) || []).length;
   if (Object.keys(onDemandProfiles).length !== declaredProfiles) {
     throw new Error(
       `docs-stats: parsed ${Object.keys(onDemandProfiles).length} ON_DEMAND_CACHE_PROFILES entries but found `
@@ -427,7 +564,7 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
     );
   }
 
-  const successBlock = source.match(/function successCacheHeaders\([\s\S]*?\n\}/)?.[0];
+  const successBlock = source.match(SUCCESS_BLOCK_RE)?.[0];
   if (!successBlock) throw new Error('docs-stats: could not parse successCacheHeaders in api/bootstrap.js');
 
   // `const tier = requestedTier ?? (authKind === 'public-on-demand' ? 'slow' : null)`
@@ -436,7 +573,7 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
   // lives, for the same reason as the fallbacks below: bounded to the emitter so
   // a removed default throws instead of matching something unrelated.
   const onDemandDefaultTier = successBlock.match(
-    /const tier = requestedTier \?\? \(authKind === 'public-on-demand' \? '(\w+)' : null\);/,
+    ON_DEMAND_DEFAULT_TIER_RE,
   )?.[1];
   if (!onDemandDefaultTier || !tierCache[onDemandDefaultTier]) {
     throw new Error('docs-stats: could not parse the public-on-demand default cache tier in api/bootstrap.js');
@@ -450,8 +587,8 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
   // patterns will happily run past a deleted fallback and match some unrelated
   // `|| '...'` elsewhere in the module, reporting a confident wrong value.
   // Bounding them to the emitter means a removed fallback throws.
-  const defaultCacheControl = successBlock.match(/const cacheControl = [\s\S]*?\|\|\s*'([^']+)';/)?.[1];
-  const defaultCdnTier = successBlock.match(/'CDN-Cache-Control':[\s\S]*?\|\|\s*TIER_CDN_CACHE\.(\w+),/)?.[1];
+  const defaultCacheControl = successBlock.match(DEFAULT_CACHE_CONTROL_RE)?.[1];
+  const defaultCdnTier = successBlock.match(DEFAULT_CDN_TIER_RE)?.[1];
   if (!defaultCacheControl || !defaultCdnTier || !tierCdnCache[defaultCdnTier]) {
     throw new Error('docs-stats: could not parse the tier-less public cache fallbacks in api/bootstrap.js');
   }
@@ -470,13 +607,13 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
   // A source gate cannot prove runtime behavior (api/bootstrap-auth.test.mjs
   // does that); this narrows the gap between "the constant says X" and "the
   // handler emits X" to a rename, which throws rather than passing quietly.
-  if (!/successCacheHeaders\(\s*tier,\s*auth\.kind,\s*cors,\s*onDemandKey,?\s*\)/.test(source)) {
+  if (!PARSE_BOOTSTRAP_CACHE_CONTRACT_RE_2.test(source)) {
     throw new Error(
       'docs-stats: api/bootstrap.js no longer calls successCacheHeaders(tier, auth.kind, cors, onDemandKey) '
       + '— the documented per-auth-kind cache contract may no longer be what it emits',
     );
   }
-  if (!/ON_DEMAND_CACHE_PROFILES\[onDemandKey\]/.test(successBlock)) {
+  if (!PARSE_BOOTSTRAP_CACHE_CONTRACT_RE_3.test(successBlock)) {
     throw new Error('docs-stats: successCacheHeaders no longer looks up ON_DEMAND_CACHE_PROFILES[onDemandKey]');
   }
 
@@ -488,8 +625,8 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
   // cacheable — the whole of #5386) left `['no-store']` and passed. And the
   // pages promise these shapes emit "no CDN cache headers", which nothing
   // checked, so adding CDN-Cache-Control to a no-store branch passed too.
-  const returnBodies = [...successBlock.matchAll(/return \{([\s\S]*?)\};/g)].map((m) => m[1]);
-  const nonCacheableReturns = returnBodies.filter((body) => /'Cache-Control':\s*'/.test(body));
+  const returnBodies = [...successBlock.matchAll(RETURN_BODIES_RE)].map((m) => m[1]);
+  const nonCacheableReturns = returnBodies.filter((body) => NON_CACHEABLE_RETURNS_RE.test(body));
   if (nonCacheableReturns.length !== 2) {
     throw new Error(
       `docs-stats: successCacheHeaders has ${nonCacheableReturns.length} literal Cache-Control branches, expected 2 `
@@ -504,7 +641,7 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
     );
   }
   const nonCacheableValues = [...new Set(
-    nonCacheableReturns.map((body) => body.match(/'Cache-Control':\s*'([^']+)'/)[1]),
+    nonCacheableReturns.map((body) => body.match(NON_CACHEABLE_VALUES_RE)[1]),
   )];
   if (nonCacheableValues.length !== 1) {
     throw new Error(
@@ -543,8 +680,8 @@ function parseBootstrapKeyTiers(source = read('shared/bootstrap-tier-keys.js')) 
     // `key ", " is registered in both on-demand and on-demand tiers`, which
     // names neither the real cause nor the offending line. These Sets hold bare
     // string literals only, so there is no `//` inside a key to protect.
-    const entries = block[1].replace(/\/\/[^\n]*/g, '');
-    for (const m of entries.matchAll(/'([^']+)'/g)) {
+    const entries = block[1].replace(ENTRIES_RE, '');
+    for (const m of entries.matchAll(PARSE_BOOTSTRAP_KEY_TIERS_RE)) {
       // Last-write-wins would make this parser disagree with the runtime in the
       // one case that matters: tierForKey() tests fast FIRST, so a key in both
       // FAST and ON_DEMAND resolves to fast at runtime and would resolve to
@@ -626,8 +763,8 @@ const HEALTH_REGISTRY_MUTATION_RE = new RegExp(
 // nothing in this file has one today, and the registry cross-count plus the
 // runtime-pinning test both fail loudly if that ever changes.
 const blankComments = (src) => src
-  .replace(/^([ \t]*)\/\/[^\n]*$/gm, '$1')
-  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  .replace(BLANK_COMMENTS_RE, '$1')
+  .replace(BLANK_COMMENTS_RE_2, (m) => m.replace(BLANK_COMMENTS_RE_3, ' '));
 
 // Every mutation this function knows how to price, in `normalizeMutation` form
 // (trimmed, inner whitespace collapsed). Adding a mutation to api/health.js
@@ -644,7 +781,7 @@ const HEALTH_REGISTRY_ACCOUNTED_MUTATIONS = [
   'delete STANDALONE_KEYS.strikePressure;',
 ];
 
-const normalizeMutation = (line) => line.trim().replace(/\s+/g, ' ');
+const normalizeMutation = (line) => line.trim().replace(WHITESPACE_RE, ' ');
 
 // Depth-1 entries of a registry object literal. parseObjectBlockBody preserves
 // the original indentation, so a top-level key sits at exactly two spaces; a
@@ -655,10 +792,10 @@ function countRegistryEntries(source, name) {
   // ends on a blank line. Anything else means the brace counter stopped early
   // on a brace inside a string, and the short count that follows would look
   // perfectly plausible.
-  if (!/\n[ \t]*$/.test(body)) {
+  if (!COUNT_REGISTRY_ENTRIES_RE.test(body)) {
     throw new Error(`docs-stats: ${name} in api/health.js did not terminate at a top-level closing brace`);
   }
-  const keys = [...body.matchAll(/^ {2}([A-Za-z_$][\w$]*):/gm)].map((m) => m[1]);
+  const keys = [...body.matchAll(KEYS_RE)].map((m) => m[1]);
   if (keys.length === 0) throw new Error(`docs-stats: ${name} in api/health.js yielded no keys`);
   const dupe = keys.find((k, i) => keys.indexOf(k) !== i);
   if (dupe) throw new Error(`docs-stats: ${name} in api/health.js declares "${dupe}" twice`);
@@ -676,7 +813,7 @@ function countRegistryEntries(source, name) {
   // quietly smaller number. Comments are already blanked by the caller.
   const nonConforming = body
     .split('\n')
-    .filter((line) => line.trim() !== '' && !/^ {2}[A-Za-z_$][\w$]*:\s*\S/.test(line));
+    .filter((line) => line.trim() !== '' && !NON_CONFORMING_RE.test(line));
   if (nonConforming.length) {
     throw new Error(
       `docs-stats: ${name} in api/health.js has ${nonConforming.length} entr${nonConforming.length === 1 ? 'y' : 'ies'} `
@@ -686,7 +823,7 @@ function countRegistryEntries(source, name) {
   }
   // A second key sharing a conforming line still counts once. Every entry ends
   // in a trailing comma, so comparing comma count to key count catches it.
-  const commas = (body.match(/,/g) || []).length;
+  const commas = (body.match(COMMAS_RE) || []).length;
   if (commas !== keys.length) {
     throw new Error(
       `docs-stats: ${name} in api/health.js has ${commas} entry terminators but ${keys.length} readable keys `
@@ -702,9 +839,9 @@ function countRegistryEntries(source, name) {
 // exactly: production grows while every gate stays pinned at the old number.
 // So read the array rather than assume it.
 function parseProbedRegistries(source) {
-  const block = source.match(/const sources = \[([\s\S]*?)\n {2}\];/);
+  const block = source.match(BLOCK_RE);
   if (!block) throw new Error('docs-stats: could not parse the `sources` registry array in api/health.js');
-  const listed = [...block[1].matchAll(/\[\s*([A-Za-z_$][\w$]*)\s*,/g)].map((m) => m[1]);
+  const listed = [...block[1].matchAll(LISTED_RE)].map((m) => m[1]);
   if (!sameStringSet(listed, HEALTH_PROBED_REGISTRIES)) {
     throw new Error(
       'docs-stats: api/health.js probes a different set of key registries than parseHealthProbedKeys prices '
@@ -722,7 +859,7 @@ function parseHealthProbedKeys(rawSource = read('api/health.js')) {
   // every entry unconditionally. A `continue` or a variant/env gate inserted
   // ahead of the increment would shrink production's total while this parse —
   // and the unit test that pins it to `Object.keys(...).length` — stayed put.
-  if (!/for \(const \[name, redisKey\] of Object\.entries\(registry\)\) \{\s*\n\s*totalChecks\+\+;/.test(source)) {
+  if (!PARSE_HEALTH_PROBED_KEYS_RE.test(source)) {
     throw new Error(
       'docs-stats: api/health.js no longer counts every registry entry unconditionally, '
       + 'so summary.total is no longer the registry size.',
@@ -751,15 +888,15 @@ function parseHealthProbedKeys(rawSource = read('api/health.js')) {
   const standaloneKeys = countRegistryEntries(source, 'STANDALONE_KEYS');
 
   // +N: the consumer-price loop registers every market except `ae`.
-  const marketsBlock = source.match(/const CONSUMER_PRICE_HEALTH_MARKETS = Object\.freeze\(\[([^\]]*)\]\)/);
+  const marketsBlock = source.match(MARKETS_BLOCK_RE);
   if (!marketsBlock) {
     throw new Error('docs-stats: could not parse CONSUMER_PRICE_HEALTH_MARKETS in api/health.js');
   }
-  const markets = [...marketsBlock[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const markets = [...marketsBlock[1].matchAll(PARSE_BOOTSTRAP_KEY_TIERS_RE)].map((m) => m[1]);
   if (!markets.includes('ae')) {
     throw new Error("docs-stats: CONSUMER_PRICE_HEALTH_MARKETS no longer contains 'ae', which the loop skips");
   }
-  if (!/if \(market === 'ae'\) continue;/.test(source)) {
+  if (!PARSE_HEALTH_PROBED_KEYS_RE_2.test(source)) {
     throw new Error("docs-stats: the consumer-price health loop no longer skips 'ae'");
   }
   // Mirror of the iranEvents presence guard below. `BOOTSTRAP_KEYS[name] = …`
@@ -793,7 +930,7 @@ function parseHealthProbedKeys(rawSource = read('api/health.js')) {
   if (!bootstrapKeys.includes('iranEvents')) {
     throw new Error('docs-stats: BOOTSTRAP_KEYS no longer declares iranEvents, so the sunset delete subtracts twice');
   }
-  if (!/const IRAN_EVENTS_ENABLED = .*\?\? 'false'/.test(source)) {
+  if (!PARSE_HEALTH_PROBED_KEYS_RE_3.test(source)) {
     throw new Error('docs-stats: IRAN_EVENTS_ENABLED no longer defaults to false — the documented registry size changed');
   }
 
@@ -823,16 +960,16 @@ function parseHealthProbedKeys(rawSource = read('api/health.js')) {
 }
 
 function parseJsonLdBlocks(html) {
-  return [...html.matchAll(/<script\s+type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g)]
+  return [...html.matchAll(PARSE_JSON_LD_BLOCKS_RE)]
     .map((m) => JSON.parse(m[1]));
 }
 
 function validateIndexLanguageMetadata(_stats, html = read('index.html')) {
   const failures = [];
 
-  const alternateLinks = [...html.matchAll(/<link\s+rel="alternate"\s+hreflang="([^"]+)"\s+href="([^"]+)"\s*\/>/g)]
+  const alternateLinks = [...html.matchAll(ALTERNATE_LINKS_RE)]
     .map((m) => ({ code: m[1], href: m[2] }));
-  const canonicalHref = html.match(/<link\s+rel="canonical"\s+href="([^"]+)"\s*\/>/)?.[1] ?? null;
+  const canonicalHref = html.match(CANONICAL_HREF_RE)?.[1] ?? null;
   if (!canonicalHref) {
     failures.push('index.html: canonical link not found');
   }
@@ -904,9 +1041,9 @@ function validateIndexLanguageMetadata(_stats, html = read('index.html')) {
 // on disk but missing from SUPPORTED_LANGUAGES, shared links silently fall back
 // to English even though the translation exists.
 function parseSupportedLanguages(i18nSource) {
-  const block = i18nSource.match(/const\s+SUPPORTED_LANGUAGES\s*=\s*\[([\s\S]*?)\]\s*as const/);
+  const block = i18nSource.match(BLOCK_RE_2);
   if (!block) return null;
-  return (block[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1));
+  return (block[1].match(PARSE_BOOTSTRAP_KEY_TIERS_RE) || []).map((s) => s.slice(1, -1));
 }
 
 function validateSupportedLanguagesRegistry(stats, i18nSource = read('src/services/i18n.ts')) {
@@ -1018,8 +1155,8 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
 
   const variantBlock = mld.slice(mld.indexOf('VARIANT_LAYER_ORDER'), mld.indexOf('export function getLayersForVariant'));
   const variantLayers = {};
-  for (const m of variantBlock.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
-    variantLayers[m[1]] = (m[2].match(/'[^']+'/g) || []).length;
+  for (const m of variantBlock.matchAll(COMPUTE_STATS_RE)) {
+    variantLayers[m[1]] = (m[2].match(COMPUTE_STATS_RE_2) || []).length;
   }
   const variantCount = Object.keys(variantLayers).length;
 
@@ -1029,7 +1166,7 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   const apiEndpointEntries = readdirSync(join(rootOf(), 'api'), { withFileTypes: true }).filter((e) => {
     const f = e.name;
     if (f.startsWith('_') || f.startsWith('.')) return false;
-    if (/\.test\./.test(f) || /\.d\.ts$/.test(f) || /\.json$/.test(f)) return false;
+    if (API_ENDPOINT_ENTRIES_RE.test(f) || API_ENDPOINT_ENTRIES_RE_2.test(f) || API_ENDPOINT_ENTRIES_RE_3.test(f)) return false;
     if (e.isDirectory()) return dirHasFiles(`api/${f}`);
     return e.isFile();
   }).length;
@@ -1037,17 +1174,17 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   // ---- Panel subclasses across src/components (ARCHITECTURE.md system diagram) ----
   const panelClasses = walk('src/components')
     .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'))
-    .reduce((n, f) => n + (read(f).match(/class\s+\w+\s+extends\s+Panel\b/g) || []).length, 0);
+    .reduce((n, f) => n + (read(f).match(PANEL_CLASSES_RE) || []).length, 0);
 
   // ---- Protos & services (proto/**) ----
   const protoFiles = walk('proto').filter((f) => f.endsWith('.proto'));
   const protoServices = protoFiles
-    .map((f) => (read(f).match(/^service\s+\w+/gm) || []).length)
+    .map((f) => (read(f).match(PROTO_SERVICES_RE) || []).length)
     .reduce((a, b) => a + b, 0);
   const protoDomainFolders = dirsIn('proto/worldmonitor').length;
 
   // ---- Generated OpenAPI service specs (docs/api/*Service.openapi.yaml) ----
-  const openapiServiceSpecs = filesIn('docs/api').filter((f) => /Service\.openapi\.yaml$/.test(f)).length;
+  const openapiServiceSpecs = filesIn('docs/api').filter((f) => OPENAPI_SERVICE_SPECS_RE.test(f)).length;
 
   // ---- Server domain handlers (server/worldmonitor/*/) ----
   const serverDomains = dirsIn('server/worldmonitor').length;
@@ -1055,7 +1192,7 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   // ---- User-facing locales (src/locales/*.json, excluding shell fragments) ----
   const localeCodes = filesIn('src/locales')
     .filter((f) => f.endsWith('.json') && !f.endsWith('.shell.json'))
-    .map((f) => f.replace(/\.json$/, ''))
+    .map((f) => f.replace(API_ENDPOINT_ENTRIES_RE_3, ''))
     .sort();
   const locales = localeCodes.length;
 
@@ -1067,8 +1204,8 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   const dfsStart = dfs.indexOf('const SOURCE_METADATA');
   const dfsClass = dfs.indexOf('class ', dfsStart);
   const metaBlock = dfs.slice(dfsStart, dfsClass >= 0 ? dfsClass : dfs.length);
-  const freshnessSources = (metaBlock.match(/^\s+\w+:\s*\{\s*name:/gm) || []).length;
-  const freshnessRequiredForRisk = (metaBlock.match(/requiredForRisk:\s*true/g) || []).length;
+  const freshnessSources = (metaBlock.match(FRESHNESS_SOURCES_RE) || []).length;
+  const freshnessRequiredForRisk = (metaBlock.match(FRESHNESS_REQUIRED_FOR_RISK_RE) || []).length;
 
   // ---- Feed definitions (shared/news-catalog.json) ----
   // One record per feed; a feed placed in several categories counts once.
@@ -1082,7 +1219,7 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   const sourceAttribution = suppliedAttribution ?? buildSourceAttributionStats({ rootDir: rootOf() });
 
   // ---- Operational source counts used by data-source and methodology docs ----
-  const airportCount = (read('src/config/airports.ts').match(/\biata:\s*'/g) || []).length;
+  const airportCount = (read('src/config/airports.ts').match(AIRPORT_COUNT_RE) || []).length;
 
   const financeGeo = read('src/config/finance-geo.ts');
   const stockExchangeStart = financeGeo.indexOf('export const STOCK_EXCHANGES');
@@ -1091,14 +1228,14 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
     throw new Error('docs-stats: could not isolate STOCK_EXCHANGES block in src/config/finance-geo.ts');
   }
   const stockExchangeBlock = financeGeo.slice(stockExchangeStart, stockExchangeEnd);
-  const stockExchangeCount = (stockExchangeBlock.match(/\bid:\s*'/g) || []).length;
+  const stockExchangeCount = (stockExchangeBlock.match(STOCK_EXCHANGE_COUNT_RE) || []).length;
   const centralBankStart = financeGeo.indexOf('export const CENTRAL_BANKS');
   const centralBankEnd = financeGeo.indexOf('export const COMMODITY_HUBS');
   if (centralBankStart === -1 || centralBankEnd === -1 || centralBankEnd <= centralBankStart) {
     throw new Error('docs-stats: could not isolate CENTRAL_BANKS block in src/config/finance-geo.ts');
   }
   const centralBankBlock = financeGeo.slice(centralBankStart, centralBankEnd);
-  const centralBankInstitutionCount = (centralBankBlock.match(/\bid:\s*'/g) || []).length;
+  const centralBankInstitutionCount = (centralBankBlock.match(STOCK_EXCHANGE_COUNT_RE) || []).length;
 
   const telegram = JSON.parse(read('data/telegram-channels.json'));
   const telegramFullEnabled = Array.isArray(telegram?.channels?.full)
@@ -1113,20 +1250,20 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   // LEADER_NAMES moved to shared/keyword-spike-core.js (issue #5697) so the
   // server-side get_keyword_spikes MCP tool shares the tracked list.
   const leaderBlock = read('shared/keyword-spike-core.js').match(
-    /const\s+LEADER_NAMES\s*(?::[^=]*)?\s*=\s*\[([\s\S]*?)\];/,
+    LEADER_BLOCK_RE,
   );
   if (!leaderBlock) {
     throw new Error('docs-stats: could not find LEADER_NAMES array in shared/keyword-spike-core.js');
   }
-  const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).length;
+  const leaderNames = (leaderBlock[1].match(COMPUTE_STATS_RE_2) || []).length;
 
   // ---- CII Tier-1 countries (src/config/countries.ts) ----
   const countriesSource = read('src/config/countries.ts');
-  const tier1Match = countriesSource.match(/export const TIER1_COUNTRIES[^=]*=\s*\{([\s\S]*?)\n\};/);
+  const tier1Match = countriesSource.match(TIER1_MATCH_RE);
   if (!tier1Match) {
     throw new Error('docs-stats: could not find TIER1_COUNTRIES in src/config/countries.ts');
   }
-  const tier1Countries = (tier1Match[1].match(/^\s+[A-Z]{2}:/gm) || []).length;
+  const tier1Countries = (tier1Match[1].match(TIER1_COUNTRIES_RE) || []).length;
 
   // ---- CRI rankable universe (scripts/shared/sovereign-status.json) ----
   const sovereignStatus = parseJson('scripts/shared/sovereign-status.json');
@@ -1140,12 +1277,12 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   // published claim when the file moved, turning a stale doc number into an
   // unnoticed "code says 0".
   const populationBlock = read('shared/analysis-population-exposure.ts').match(
-    /const PRIORITY_COUNTRIES:[\s\S]*?=\s*\{([\s\S]*?)\n\};/,
+    POPULATION_BLOCK_RE,
   );
   if (!populationBlock) {
     throw new Error('docs-stats: could not find PRIORITY_COUNTRIES in shared/analysis-population-exposure.ts');
   }
-  const populationPriorityCountries = (populationBlock[1].match(/^\s+[A-Z]{3}:\s*\{/gm) || []).length;
+  const populationPriorityCountries = (populationBlock[1].match(POPULATION_PRIORITY_COUNTRIES_RE) || []).length;
 
   return {
     _generated: 'scripts/generate-inventory-facts.mjs — build artifact; do not commit',
@@ -1212,8 +1349,8 @@ function claims(s) {
   return [
     // The generator version is a toolchain compatibility contract, not an
     // inventory total. Its documented value must stay exact.
-    { file: 'AGENTS.md', re: /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/, value: s.sebufVersion },
-    { file: 'CONTRIBUTING.md', re: /currently \*\*(v\d+\.\d+\.\d+)\*\*/, value: s.sebufVersion },
+    { file: 'AGENTS.md', re: CLAIMS_RE, value: s.sebufVersion },
+    { file: 'CONTRIBUTING.md', re: CLAIMS_RE_2, value: s.sebufVersion },
   ];
 }
 
@@ -1277,13 +1414,13 @@ function isCurrentAcquisitionClaimSurface(path) {
   return (
     ['index.html', 'README.md', 'README.zh-CN.md', 'README.ja-JP.md', 'server.json', 'cli/README.md',
       'pro-test/index.html', 'pro-test/welcome.html', 'scripts/build-agent-skills-index.mjs'].includes(path)
-    || /^docs\/.+\.(?:md|mdx)$/.test(path)
-    || /^public\/[^/]+\.(?:md|txt|json)$/.test(path)
-    || /^public\/(?:[^/]+\/)*llms\.txt$/.test(path)
+    || IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE.test(path)
+    || IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_2.test(path)
+    || IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_3.test(path)
     || path === 'public/.well-known/ai-catalog.json'
-    || /^public\/\.well-known\/agent-skills\/[^/]+\/SKILL\.md$/.test(path)
-    || /^pro-test\/src\/locales\/[^/]+\.json$/.test(path)
-    || /^blog-site\/src\/content\/blog\/[^/]+\.md$/.test(path)
+    || IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_4.test(path)
+    || IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_5.test(path)
+    || IS_CURRENT_ACQUISITION_CLAIM_SURFACE_RE_6.test(path)
   );
 }
 
@@ -1355,68 +1492,68 @@ function generatedCoverageLines(path, source) {
 
 export function validateVolatileInventoryClaims() {
   const retainedExactContracts = [
-    { path: 'docs/signal-intelligence.mdx', text: /(?:3\+ source types|6\+ sources\/hour)/ },
-    { path: 'docs/ai-intelligence.mdx', text: /8\+ feeds in 2 hours/ },
-    { path: 'docs/data-sources.mdx', text: /Natural disasters from 3 sources/ },
-    { path: 'docs/zh/data-sources.mdx', text: /来自 3 个数据源的自然灾害/ },
-    { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
-    { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
-    { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
-    { path: 'docs/architecture.mdx', text: /protoc-gen-openapiv3.*OpenAPI 3\.1\.0 specs/ },
-    { path: 'docs/PRESS_KIT.md', text: /72 indicators, 21 active dimensions, 6 domains/ },
-    { path: 'docs/documentation.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
-    { path: 'docs/features.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
-    { path: 'docs/overview.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
-    { path: 'public/llms-full.txt', text: /72 indicators across 21 active dimensions, 6 domains/ },
-    { path: 'public/llms.txt', text: /live in 190\+ countries/ },
-    { path: 'public/llms.txt', text: /structural resilience ranked for/ },
-    { path: 'index.html', text: /live in 190\+ countries/ },
-    { path: 'docs/about.mdx', text: /live in 190\+ countries/ },
-    { path: 'blog-site/src/content/blog/country-instability-index-methodology-explained.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
-    { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /72 indicators across 21 active dimensions and 6 domains/ },
-    { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /six domains/i },
-    { path: 'blog-site/src/content/blog/country-risk-monitoring-workflow-for-analysts.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
+    { path: 'docs/signal-intelligence.mdx', text: RETAINED_EXACT_CONTRACTS_RE },
+    { path: 'docs/ai-intelligence.mdx', text: RETAINED_EXACT_CONTRACTS_RE_2 },
+    { path: 'docs/data-sources.mdx', text: RETAINED_EXACT_CONTRACTS_RE_3 },
+    { path: 'docs/zh/data-sources.mdx', text: RETAINED_EXACT_CONTRACTS_RE_4 },
+    { path: 'docs/data-sources.mdx', text: RETAINED_EXACT_CONTRACTS_RE_5 },
+    { path: 'docs/tradingview-screener-integration.md', text: RETAINED_EXACT_CONTRACTS_RE_6 },
+    { path: 'docs/api-versioning.mdx', text: RETAINED_EXACT_CONTRACTS_RE_7 },
+    { path: 'docs/architecture.mdx', text: RETAINED_EXACT_CONTRACTS_RE_8 },
+    { path: 'docs/PRESS_KIT.md', text: RETAINED_EXACT_CONTRACTS_RE_9 },
+    { path: 'docs/documentation.mdx', text: RETAINED_EXACT_CONTRACTS_RE_10 },
+    { path: 'docs/features.mdx', text: RETAINED_EXACT_CONTRACTS_RE_10 },
+    { path: 'docs/overview.mdx', text: RETAINED_EXACT_CONTRACTS_RE_10 },
+    { path: 'public/llms-full.txt', text: RETAINED_EXACT_CONTRACTS_RE_11 },
+    { path: 'public/llms.txt', text: RETAINED_EXACT_CONTRACTS_RE_12 },
+    { path: 'public/llms.txt', text: RETAINED_EXACT_CONTRACTS_RE_13 },
+    { path: 'index.html', text: RETAINED_EXACT_CONTRACTS_RE_12 },
+    { path: 'docs/about.mdx', text: RETAINED_EXACT_CONTRACTS_RE_12 },
+    { path: 'blog-site/src/content/blog/country-instability-index-methodology-explained.md', text: RETAINED_EXACT_CONTRACTS_RE_14 },
+    { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: RETAINED_EXACT_CONTRACTS_RE_10 },
+    { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: RETAINED_EXACT_CONTRACTS_RE_15 },
+    { path: 'blog-site/src/content/blog/country-risk-monitoring-workflow-for-analysts.md', text: RETAINED_EXACT_CONTRACTS_RE_14 },
     // Fixed resilience schema. tests/resilience-doc-parity.test.mts derives
     // these values from the scorer registry and validates this exact page.
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /\d+ of 196 countries ranked, using 72 indicators across 21 dimensions and 6 domains/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /pillars\[\].*six domains/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /72 indicators across 21 active dimensions and 6 domains.*3 pillars.*2 structurally-retired dimensions/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /196-country public rankable universe.*72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /organized into 6 domains/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /6 domains are regrouped into 3 pillars/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /average of 5 domains and 13 dimensions/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /5-domain \/ 13-dimension structure.*6 new recovery dimensions/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /six-domain weighted aggregate.*rollback path/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /five-domain flat structure.*six-domain structure.*six new dimensions.*three-pillar outer layer/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /Re-anchored release-gate bands.*6-domain formula's/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /The 6-domain formula lives alongside the pillar combine/ },
-    { path: 'docs/methodology/country-resilience-index.mdx', text: /current registry contains 72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_16 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_17 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_18 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_19 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_20 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_21 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_22 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_23 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_24 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_25 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_26 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_27 },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: RETAINED_EXACT_CONTRACTS_RE_28 },
     // Fixed scoring limits, not extensible source inventories.
-    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /Corroboration score is capped at five sources/ },
-    { path: 'docs/methodology/news-credibility.mdx', text: /at five sources, with `20` points per source before the `0.20` weight/ },
-    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /per entity-level source, capped at five sources/ },
-    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`critical-developing`.*\+5 sources/ },
-    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`high-event`.*\+5 sources/ },
-    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`sanctions-regulatory`.*\+5 sources/ },
-    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`med`.*\+5 sources/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /current four feeds, 5 is a compatibility safety threshold/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /across seven domains/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /between two airports/ },
-    { path: 'docs/webcam-layer.mdx', text: /up to 4 webcams simultaneously/ },
-    { path: 'docs/webcam-layer.mdx', text: /more than 4 webcams are pinned/ },
-    { path: 'docs/webcam-layer.mdx', text: /Maximum 4 webcams can be active/ },
-    { path: 'docs/algorithms.mdx', text: /38\+ (?:associated )?military bases/ },
-    { path: 'docs/algorithms.mdx', text: /five operational theaters/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: RETAINED_EXACT_CONTRACTS_RE_29 },
+    { path: 'docs/methodology/news-credibility.mdx', text: RETAINED_EXACT_CONTRACTS_RE_30 },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: RETAINED_EXACT_CONTRACTS_RE_31 },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: RETAINED_EXACT_CONTRACTS_RE_32 },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: RETAINED_EXACT_CONTRACTS_RE_33 },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: RETAINED_EXACT_CONTRACTS_RE_34 },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: RETAINED_EXACT_CONTRACTS_RE_35 },
+    { path: 'docs/mcp-tools-reference.mdx', text: RETAINED_EXACT_CONTRACTS_RE_36 },
+    { path: 'docs/mcp-tools-reference.mdx', text: RETAINED_EXACT_CONTRACTS_RE_37 },
+    { path: 'docs/mcp-tools-reference.mdx', text: RETAINED_EXACT_CONTRACTS_RE_38 },
+    { path: 'docs/webcam-layer.mdx', text: RETAINED_EXACT_CONTRACTS_RE_39 },
+    { path: 'docs/webcam-layer.mdx', text: RETAINED_EXACT_CONTRACTS_RE_40 },
+    { path: 'docs/webcam-layer.mdx', text: RETAINED_EXACT_CONTRACTS_RE_41 },
+    { path: 'docs/algorithms.mdx', text: RETAINED_EXACT_CONTRACTS_RE_42 },
+    { path: 'docs/algorithms.mdx', text: RETAINED_EXACT_CONTRACTS_RE_43 },
     // Fixed scoring universe: tests/chokepoint-scenario-doc-parity.test.mjs
     // derives the exact registry membership and validates this methodology.
-    { path: 'docs/methodology/chokepoints.mdx', text: /13 monitored waterways/ },
-    { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: /seven channels/i },
-    { path: 'blog-site/src/content/blog/aviation-intelligence-airports-airspace-flight-prices.md', text: /between any two airports/ },
-    { path: 'blog-site/src/content/blog/build-supply-chain-early-warning-system-api.md', text: /Three signals, three endpoints/ },
-    { path: 'blog-site/src/content/blog/free-geopolitical-data-apis-2026.md', text: /ingest ten feeds/ },
-    { path: 'blog-site/src/content/blog/supply-chain-early-warning-dashboard-worldmonitor-api.md', text: /five panels/ },
-    { path: 'pro-test/src/locales/ja.json', text: /25ダッシュボード/ },
-    { path: 'pro-test/src/locales/ja.json', text: /紛争は1つのマップレイヤー/ },
+    { path: 'docs/methodology/chokepoints.mdx', text: RETAINED_EXACT_CONTRACTS_RE_44 },
+    { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: RETAINED_EXACT_CONTRACTS_RE_45 },
+    { path: 'blog-site/src/content/blog/aviation-intelligence-airports-airspace-flight-prices.md', text: RETAINED_EXACT_CONTRACTS_RE_46 },
+    { path: 'blog-site/src/content/blog/build-supply-chain-early-warning-system-api.md', text: RETAINED_EXACT_CONTRACTS_RE_47 },
+    { path: 'blog-site/src/content/blog/free-geopolitical-data-apis-2026.md', text: RETAINED_EXACT_CONTRACTS_RE_48 },
+    { path: 'blog-site/src/content/blog/supply-chain-early-warning-dashboard-worldmonitor-api.md', text: RETAINED_EXACT_CONTRACTS_RE_49 },
+    { path: 'pro-test/src/locales/ja.json', text: RETAINED_EXACT_CONTRACTS_RE_50 },
+    { path: 'pro-test/src/locales/ja.json', text: RETAINED_EXACT_CONTRACTS_RE_51 },
   ];
   const failures = [];
   const observedRetainedContracts = new Set();
@@ -1431,8 +1568,8 @@ export function validateVolatileInventoryClaims() {
     const generatedCoverage = generatedCoverageLines(path, scannable);
     for (const [index, line] of scannable.split('\n').entries()) {
       if (generatedCoverage && index >= generatedCoverage.start && index < generatedCoverage.end) continue;
-      if (/\btool errors\b/i.test(line)) continue;
-      if (/\bTier \d+(?:[–-]\d+)? sources\b/i.test(line)) continue;
+      if (VISIT_RE.test(line)) continue;
+      if (VISIT_RE_2.test(line)) continue;
       const retained = retainedExactContracts.filter((entry) => entry.path === path && entry.text.test(line));
       if (retained.length > 0) {
         for (const contract of retained) observedRetainedContracts.add(contract);
@@ -1698,7 +1835,7 @@ function validateHealthSummaryDocs(stats, docs = null) {
   const total = stats.healthProbedKeys.total;
 
   for (const [file, text] of Object.entries(docs)) {
-    const blocks = [...text.matchAll(/"summary":\s*\{([^{}]*)\}/g)];
+    const blocks = [...text.matchAll(BLOCKS_RE)];
     if (blocks.length === 0) {
       failures.push(`${file}: publishes ${HEALTH_SUMMARY_ANCHOR} but no readable "summary" object`);
       continue;
@@ -1772,7 +1909,7 @@ function validateBootstrapCacheDocs(stats, docs = null, keyTiers = parseBootstra
     // name the tier the key is actually registered under. `chinaDecisionSignals`
     // sat documented as slow-tier while it is an on-demand key, so `?tier=slow`
     // never returned it.
-    for (const [, tier, key] of text.matchAll(/The (fast|slow|on-demand) tier includes `(\w+)`/g)) {
+    for (const [, tier, key] of text.matchAll(VALIDATE_BOOTSTRAP_CACHE_DOCS_RE)) {
       const actual = keyTiers[key];
       if (!actual) {
         failures.push(`${file}: \`${key}\` is documented as a ${tier}-tier bootstrap key but is not a registered bootstrap cache key`);
@@ -1816,7 +1953,7 @@ function validateBootstrapCacheDocs(stats, docs = null, keyTiers = parseBootstra
     // ON_DEMAND_CACHE_PROFILES to `{}` and every page still naming a key as
     // having its own headers passes, now describing a profile that is gone.
     const documented = new Map(
-      [...line.matchAll(/`(\w+)`[^`]*`(max-age=[^`]+)`[^`]*CDN[^`]*`(s-maxage=[^`]+)`/g)]
+      [...line.matchAll(DOCUMENTED_RE)]
         .map(([, key, browser, cdn]) => [key, { browser, cdn }]),
     );
     for (const key of documented.keys()) {
@@ -1953,7 +2090,7 @@ export function validateCategoryExplainerCopy(stats, readFile = read) {
     return [`${file}: file not found`];
   }
 
-  const frontmatter = text.match(/^---\n[\s\S]*?\n---\n/);
+  const frontmatter = text.match(FRONTMATTER_RE);
   if (!frontmatter) return [`${file}: missing frontmatter`];
   const body = text.slice(frontmatter[0].length);
   const failures = [];
@@ -1969,7 +2106,7 @@ export function validateCategoryExplainerCopy(stats, readFile = read) {
     if (!CATEGORY_EXPLAINER_OPENING.test(opening)) {
       failures.push(`${file}: must open with the self-contained "World Monitor is a **free, open-source, real-time global intelligence dashboard**" definition`);
     }
-    const words = opening.split(/\s+/).filter(Boolean).length;
+    const words = opening.split(WHITESPACE_RE_2).filter(Boolean).length;
     const { min, max } = CATEGORY_EXPLAINER_OPENING_WORDS;
     if (words < min || words > max) {
       failures.push(`${file}: answer-first opening is ${words} words, expected ${min}-${max}`);
@@ -1985,11 +2122,11 @@ export function validateCategoryExplainerCopy(stats, readFile = read) {
   for (const [pattern, what] of CATEGORY_EXPLAINER_RETIRED_COPY) {
     if (pattern.test(body)) failures.push(`${file}: reintroduces ${what}`);
   }
-  const variantLine = body.match(/^- Dashboard variants \(registry keys\):\s*(.+)$/m)?.[1];
+  const variantLine = body.match(VARIANT_LINE_RE)?.[1];
   if (!variantLine) {
     failures.push(`${file}: missing the enumerated dashboard-variant list`);
   } else {
-    const documentedVariants = [...variantLine.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+    const documentedVariants = [...variantLine.matchAll(DOCUMENTED_VARIANTS_RE)].map((match) => match[1]);
     const expectedVariants = Object.keys(stats.variantLayers).sort();
     if (!sameStringSet(documentedVariants, expectedVariants)) {
       failures.push(

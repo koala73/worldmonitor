@@ -22,6 +22,9 @@ import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import commodityConfig from '../../../../shared/commodities.json';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 const BOOTSTRAP_KEY = 'market:commodities-bootstrap:v1';
 const MAX_SYMBOLS = 64;
 
@@ -31,7 +34,7 @@ export const SUPPORTED_COMMODITY_SYMBOLS: ReadonlySet<string> = new Set(
 );
 
 export function normalizeCommoditySymbol(raw: string): string {
-  return raw.trim().replace(/\s+/g, '').slice(0, 32).toUpperCase();
+  return raw.trim().replace(WHITESPACE_RE, '').slice(0, 32).toUpperCase();
 }
 
 /**

@@ -31,6 +31,12 @@ import type {
 } from './_indicator-trace';
 import type { ResilienceIndicatorId } from './_indicator-registry';
 
+const STATCAN_SOURCE_YEAR_RE = /^(\d{4})/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const NORMALIZED_RE = /[^A-Z0-9]+/g;
+const PHASE_RE = /\d+/;
+
+
 function worldBankSources(...indicatorIds: readonly string[]): readonly IndicatorObservedSource[] {
   return indicatorIds.map((indicatorId) => ({
     providerName: 'World Bank Open Data',
@@ -68,7 +74,7 @@ function oldestSourceYear(...years: readonly (number | null | undefined)[]): num
 
 function statcanSourceYear(observedAt: string | null | undefined): number | null {
   if (typeof observedAt !== 'string') return null;
-  const match = /^(\d{4})/.exec(observedAt);
+  const match = STATCAN_SOURCE_YEAR_RE.exec(observedAt);
   return match ? Number(match[1]) : null;
 }
 
@@ -550,7 +556,7 @@ export class ResilienceConfigurationError extends Error {
 const COUNTRY_NAME_ALIASES = new Map<string, Set<string>>();
 for (const [name, iso2] of Object.entries(countryNames as Record<string, string>)) {
   const code = String(iso2 || '').toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) continue;
+  if (!COUNTRY_CODE_RE.test(code)) continue;
   const current = COUNTRY_NAME_ALIASES.get(code) ?? new Set<string>();
   current.add(normalizeCountryToken(name));
   COUNTRY_NAME_ALIASES.set(code, current);
@@ -1500,7 +1506,7 @@ export function countTradeBarriers(raw: unknown, countryCode: string): number {
 }
 
 function tradePolicyStatusSeverity(status: unknown): number {
-  const normalized = String(status ?? '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  const normalized = String(status ?? '').trim().toUpperCase().replace(NORMALIZED_RE, '_');
   if (normalized === 'LOW') return 0;
   if (normalized === 'MODERATE' || normalized === 'MEDIUM' || normalized === 'PLANNED') return 1;
   if (normalized === 'HIGH' || normalized === 'IN_FORCE') return 2;
@@ -2083,7 +2089,7 @@ function readEducationRankableRecordCount(meta: unknown): number | null {
   const rawCountrySet = (meta as { countrySet?: unknown }).countrySet;
   if (typeof rawCountrySet !== 'string' || rawCountrySet.length === 0) return null;
   const codes = rawCountrySet.split(',').map((code) => code.trim());
-  if (codes.some((code) => !/^[A-Z]{2}$/.test(code) || !isInRankableUniverse(code))) return null;
+  if (codes.some((code) => !COUNTRY_CODE_RE.test(code) || !isInRankableUniverse(code))) return null;
   return new Set(codes).size;
 }
 
@@ -2640,7 +2646,7 @@ function readWbExternalDebtEnvelope(raw: unknown): WbExternalDebtEnvelope | null
 
   const nonDrsCountryCodes = new Set<string>();
   for (const code of rawNonDrsCountryCodes) {
-    if (typeof code !== 'string' || !/^[A-Z]{2}$/.test(code) || nonDrsCountryCodes.has(code)) return null;
+    if (typeof code !== 'string' || !COUNTRY_CODE_RE.test(code) || nonDrsCountryCodes.has(code)) return null;
     nonDrsCountryCodes.add(code);
   }
 
@@ -3507,7 +3513,7 @@ export async function scoreFoodWater(
   }
 
   const peopleInCrisis = safeNum(fao.peopleInCrisis);
-  const phase = safeNum(String(fao.phase || '').match(/\d+/)?.[0]);
+  const phase = safeNum(String(fao.phase || '').match(PHASE_RE)?.[0]);
 
   return tracedBlend('foodWater', [
     tracedMetric('ipcPeopleInCrisis', {

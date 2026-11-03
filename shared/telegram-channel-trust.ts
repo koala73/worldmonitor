@@ -11,6 +11,8 @@
 //
 // Types are duplicated (not imported) so this module stays a leaf and
 // shared/source-provenance.ts can spread the records without a cycle.
+const NORMALIZE_TELEGRAM_HANDLE_RE = /^@/;
+
 type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other' | 'unknown';
 type PropagandaRisk = 'low' | 'medium' | 'high' | 'unknown';
 
@@ -672,7 +674,7 @@ export const TELEGRAM_HANDLE_TO_PUBLIC_NAME: Record<string, string> = Object.fro
 );
 
 function normalizeTelegramHandle(handle: string): string {
-  return handle.trim().replace(/^@/, '').toLowerCase();
+  return handle.trim().replace(NORMALIZE_TELEGRAM_HANDLE_RE, '').toLowerCase();
 }
 
 const TELEGRAM_NORMALIZED_HANDLE_TO_PUBLIC_NAME: ReadonlyMap<string, string> = (() => {

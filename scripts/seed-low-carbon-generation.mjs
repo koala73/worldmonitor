@@ -23,6 +23,11 @@ import { resolveIso2 } from './_country-resolver.mjs';
 // Shared content-age helper for per-country annual payloads.
 import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 
+const LINES_RE = /^\uFEFF/;
+const LINES_RE_2 = /\r\n|\r|\n/;
+const BUILD_LOW_CARBON_COUNTRIES_FROM_OWID_ROWS_RE = /^[A-Z]{3}$/;
+
+
 // OWID/Ember is annual and typically publishes the prior-year electricity mix.
 // 18 months clears the normal annual lag plus release drift, while reverting
 // the interim 60-month WDI stall tolerance from issue #4219.
@@ -85,8 +90,8 @@ function parseDelimitedRow(line, delimiter = ',') {
 
 function parseDelimitedText(text, delimiter = ',') {
   const lines = String(text || '')
-    .replace(/^\uFEFF/, '')
-    .split(/\r\n|\r|\n/)
+    .replace(LINES_RE, '')
+    .split(LINES_RE_2)
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length < 2) return [];
@@ -103,7 +108,7 @@ export function buildLowCarbonCountriesFromOwidRows(rows) {
 
   for (const row of rows) {
     const iso3 = String(row?.code || '').trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(iso3)) continue;
+    if (!BUILD_LOW_CARBON_COUNTRIES_FROM_OWID_ROWS_RE.test(iso3)) continue;
 
     const iso2 = resolveIso2({ iso3, name: row?.entity });
     if (!iso2) continue;

@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { loadEnvFile } from './_seed-utils.mjs';
 
+const MAIN_RE = /\/(\d+)/;
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
@@ -148,7 +151,7 @@ async function main() {
 
       // Parse total from content-range header (e.g., "0-999/79165")
       if (contentRange && totalCount === null) {
-        const match = contentRange.match(/\/(\d+)/);
+        const match = contentRange.match(MAIN_RE);
         if (match) {
           totalCount = parseInt(match[1], 10);
           console.log(`  Total records reported by API: ${totalCount}`);

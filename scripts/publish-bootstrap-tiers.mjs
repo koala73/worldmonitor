@@ -24,6 +24,10 @@ import {
   resolveKvStorageConfig,
 } from './_kv-storage.mjs';
 
+const CANONICAL_REGISTRIES_RE = /^(?:true|false)$/i;
+const URL_RE = /\/+$/;
+
+
 const NEG_SENTINEL = '__WM_NEG__';
 const REDIS_PIPELINE_TIMEOUT_MS = 30_000;
 const TIER_INTERVAL_MS = Object.freeze({
@@ -47,7 +51,7 @@ function assertTier(tier) {
 
 function canonicalRegistries(env = process.env) {
   const rawIranEventsEnabled = env.IRAN_EVENTS_ENABLED;
-  if (!/^(?:true|false)$/i.test(rawIranEventsEnabled ?? '')) {
+  if (!CANONICAL_REGISTRIES_RE.test(rawIranEventsEnabled ?? '')) {
     throw new Error('Bootstrap publisher requires explicit IRAN_EVENTS_ENABLED=true|false');
   }
   const iranEventsEnabled = rawIranEventsEnabled.toLowerCase() === 'true';
@@ -61,7 +65,7 @@ function canonicalRegistries(env = process.env) {
 }
 
 function redisCredentials(env) {
-  const url = env.UPSTASH_REDIS_REST_URL?.replace(/\/+$/, '');
+  const url = env.UPSTASH_REDIS_REST_URL?.replace(URL_RE, '');
   const token = env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Bootstrap publisher Redis credentials are missing');
   return { url, token };

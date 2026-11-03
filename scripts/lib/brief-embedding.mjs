@@ -31,6 +31,9 @@ import {
 import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 export class EmbeddingProviderError extends Error {
   constructor(message, { status, cause } = {}) {
     super(message);
@@ -61,7 +64,7 @@ export class EmbeddingTimeoutError extends Error {
  */
 export function normalizeForEmbedding(title) {
   if (typeof title !== 'string') return '';
-  return stripSourceSuffix(title).trim().replace(/\s+/g, ' ').toLowerCase();
+  return stripSourceSuffix(title).trim().replace(WHITESPACE_RE, ' ').toLowerCase();
 }
 
 export function cacheKeyFor(normalizedTitle) {

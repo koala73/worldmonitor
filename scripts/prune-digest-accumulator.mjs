@@ -18,6 +18,10 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ACCUMULATOR_RETENTION_MS } from './_forecast-evidence-archive.mjs';
 
+const MODULE_RE = /^Refusing --apply:/;
+const MODULE_RE_2 = /^(Unknown argument|--key requires|--apply requires|Refusing non-accumulator)/;
+
+
 /** Shared with the online prune in list-feed-digest.ts — see ACCUMULATOR_RETENTION_MS. */
 export const RETENTION_MS = ACCUMULATOR_RETENTION_MS;
 export const SCAN_PAGE_SIZE = 100;
@@ -414,8 +418,8 @@ if (isDirectExecution) {
       const message = err?.message || String(err);
       console.error(`[prune-digest-accumulator] failed: ${message}`);
       if (wantsJson) console.log(JSON.stringify({ mode: 'FAILED', error: message }, null, 2));
-      if (/^Refusing --apply:/.test(message)) process.exitCode = EXIT_CUTOVER_REFUSED;
-      else if (/^(Unknown argument|--key requires|--apply requires|Refusing non-accumulator)/.test(message)) process.exitCode = EXIT_USAGE;
+      if (MODULE_RE.test(message)) process.exitCode = EXIT_CUTOVER_REFUSED;
+      else if (MODULE_RE_2.test(message)) process.exitCode = EXIT_USAGE;
       else process.exitCode = EXIT_FAILED;
     });
 }

@@ -17,6 +17,12 @@
 
 import COUNTRY_NAMES_RAW from '../../shared/country-names.json';
 
+const WHITESPACE_RE = /\s+/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const PREFERRED_RE = /[^a-z]/g;
+const NORMALIZE_COUNTRY_TO_ISO2_RE = /^[A-Za-z]{2}$/;
+
+
 const COUNTRY_NAMES = COUNTRY_NAMES_RAW as Record<string, string>;
 
 // Build the valid-ISO2 set once so pass-through values can be
@@ -25,7 +31,7 @@ const ISO2_SET = new Set<string>(Object.values(COUNTRY_NAMES));
 
 function titleCaseName(value: string): string {
   return value
-    .split(/\s+/)
+    .split(WHITESPACE_RE)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
@@ -38,14 +44,14 @@ const ISO2_TO_DISPLAY_NAME = (() => {
   const aliases = new Map<string, string[]>();
   for (const [name, code] of Object.entries(COUNTRY_NAMES)) {
     const iso = String(code || '').toUpperCase();
-    if (!/^[A-Z]{2}$/.test(iso)) continue;
+    if (!COUNTRY_CODE_RE.test(iso)) continue;
     const list = aliases.get(iso) || [];
     list.push(name);
     aliases.set(iso, list);
   }
   const out = new Map<string, string>();
   for (const [iso, names] of aliases) {
-    const preferred = names.find((candidate) => candidate.replace(/[^a-z]/g, '').length > 3)
+    const preferred = names.find((candidate) => candidate.replace(PREFERRED_RE, '').length > 3)
       ?? names[0];
     if (!preferred) continue;
     out.set(iso, titleCaseName(preferred));
@@ -68,7 +74,7 @@ function intlRegionName(iso: string): string | null {
 export function displayNameForIso2(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const upper = raw.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(upper) || !ISO2_SET.has(upper)) return null;
+  if (!COUNTRY_CODE_RE.test(upper) || !ISO2_SET.has(upper)) return null;
   return intlRegionName(upper) ?? ISO2_TO_DISPLAY_NAME.get(upper) ?? null;
 }
 
@@ -81,7 +87,7 @@ export function normalizeCountryToIso2(raw: unknown): string | null {
   // (shared/brief-filter.js:135). Map to null without treating as error.
   if (trimmed.toLowerCase() === 'global') return null;
 
-  if (/^[A-Za-z]{2}$/.test(trimmed)) {
+  if (NORMALIZE_COUNTRY_TO_ISO2_RE.test(trimmed)) {
     const upper = trimmed.toUpperCase();
     if (ISO2_SET.has(upper)) return upper;
   }

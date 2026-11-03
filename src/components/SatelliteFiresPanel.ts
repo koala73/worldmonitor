@@ -3,6 +3,11 @@ import type { FireRegionStats } from '@/services/wildfires';
 import { t } from '@/services/i18n';
 import { unsafeRawHtml } from '@/utils/sanitize';
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+
+
 export class SatelliteFiresPanel extends Panel {
   private stats: FireRegionStats[] = [];
   private totalCount = 0;
@@ -92,7 +97,7 @@ export class SatelliteFiresPanel extends Panel {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(ESCAPE_HTML_RE, '&amp;').replace(ESCAPE_HTML_RE_2, '&lt;').replace(ESCAPE_HTML_RE_3, '&gt;');
 }
 
 function timeSince(date: Date): string {

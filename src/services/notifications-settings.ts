@@ -33,6 +33,10 @@ import { CHOKEPOINT_REGISTRY } from '@/config/chokepoint-registry';
 import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const WEB_PUSH_DEVICE_LABEL_RE = /Firefox\/|Chrome\/|Edge\/|Safari\//;
+
+
 
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
 const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
@@ -73,7 +77,7 @@ export interface NotificationsSettingsResult {
 function normalizePreselectCountry(input: string | undefined): string | null {
   if (typeof input !== 'string') return null;
   const trimmed = input.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(trimmed)) return null;
+  if (!COUNTRY_CODE_RE.test(trimmed)) return null;
   return trimmed;
 }
 
@@ -120,7 +124,7 @@ function browserPushUnsupportedMessage(): string {
 // connected-but-denied row so the two can't drift.
 function webPushDeviceLabel(channel: NotificationChannel): string {
   const ua = channel.userAgent ?? '';
-  return /Firefox\/|Chrome\/|Edge\/|Safari\//.exec(ua)?.[0]?.replace('/', '') ?? 'This device';
+  return WEB_PUSH_DEVICE_LABEL_RE.exec(ua)?.[0]?.replace('/', '') ?? 'This device';
 }
 
 async function readWebPushSettingsState(): Promise<WebPushSettingsState> {

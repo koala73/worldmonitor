@@ -20,6 +20,10 @@ import {
   sortRec,
 } from './lib/openapi-codegen.mjs';
 
+const YAML_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const INDENT_OF_RE = /^ */;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const CHECK = process.argv.includes('--check');
@@ -641,7 +645,7 @@ function yamlScalar(value) {
 }
 
 function yamlKey(value) {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value) ? value : JSON.stringify(value);
+  return YAML_KEY_RE.test(value) ? value : JSON.stringify(value);
 }
 
 function renderYaml(value, indent) {
@@ -672,7 +676,7 @@ function renderResponseExample(indent) {
 }
 
 function indentOf(line) {
-  return line.match(/^ */)?.[0].length ?? 0;
+  return line.match(INDENT_OF_RE)?.[0].length ?? 0;
 }
 
 function blockEnd(lines, start, indent) {

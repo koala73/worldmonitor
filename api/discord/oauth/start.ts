@@ -9,6 +9,10 @@
  * /api/discord/oauth/callback when the user approves and selects a channel.
  */
 
+const STATE_RE = /\+/g;
+const STATE_RE_2 = /\//g;
+const STATE_RE_3 = /=+$/;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -78,7 +82,7 @@ export default async function handler(req: Request, ctx?: { waitUntil: (p: Promi
   // Generate one-time state token (20 random bytes → base64url)
   const stateBytes = crypto.getRandomValues(new Uint8Array(20));
   const state = btoa(String.fromCharCode(...stateBytes))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    .replace(STATE_RE, '-').replace(STATE_RE_2, '_').replace(STATE_RE_3, '');
 
   // Bind the state to this browser and opener origin (see channel-oauth-state).
   const oauthState = await createChannelOAuthState('discord', req, session.userId);

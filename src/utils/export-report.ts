@@ -24,6 +24,10 @@ import type { ClusteredEvent, NewsItem } from '@/types';
 import type { ExportData } from './export';
 import { vesselTypeLabel } from './vessel-type-label';
 
+const ESCAPE_REPORT_HTML_RE = /[&<>"']/g;
+const SAFE_REPORT_URL_RE = /^https?:\/\//i;
+
+
 // Row caps keep a print job from ballooning to hundreds of pages. JSON export
 // remains the full-fidelity path; the report says so in its footer.
 const MAX_NEWS_ROWS = 150;
@@ -81,14 +85,14 @@ const HTML_ESCAPES: Record<string, string> = {
 /** Escape any value for HTML text or attribute context. */
 export function escapeReportHtml(value: unknown): string {
   if (value === null || value === undefined) return '';
-  return String(value).replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
+  return String(value).replace(ESCAPE_REPORT_HTML_RE, (char) => HTML_ESCAPES[char] ?? char);
 }
 
 /** Only http(s) URLs survive — anything else (javascript:, data:) is dropped. */
 function safeReportUrl(value: unknown): string {
   const raw = typeof value === 'string' ? value.trim() : '';
   if (!raw) return '';
-  if (!/^https?:\/\//i.test(raw)) return '';
+  if (!SAFE_REPORT_URL_RE.test(raw)) return '';
   return escapeReportHtml(raw);
 }
 

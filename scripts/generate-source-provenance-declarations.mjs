@@ -3,6 +3,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeFileSync } from 'node:fs';
 
+const SETUP_RE = /source-provenance-declarations$/;
+const SETUP_RE_2 = /.*/;
+const SETUP_RE_3 = /^@\/utils$/;
+
+
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const feedConfigPath = join(rootDir, 'src/config/feeds.ts');
 const outputPath = join(rootDir, 'shared/source-provenance-declarations.ts');
@@ -21,19 +26,19 @@ const result = await build({
   plugins: [{
     name: 'stub-generator-dependencies',
     setup(buildApi) {
-      buildApi.onResolve({ filter: /source-provenance-declarations$/ }, () => ({
+      buildApi.onResolve({ filter: SETUP_RE }, () => ({
         path: 'source-provenance-declarations',
         namespace: 'provenance-stub',
       }));
-      buildApi.onLoad({ filter: /.*/, namespace: 'provenance-stub' }, () => ({
+      buildApi.onLoad({ filter: SETUP_RE_2, namespace: 'provenance-stub' }, () => ({
         contents: 'export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS = {};\n',
         loader: 'js',
       }));
-      buildApi.onResolve({ filter: /^@\/utils$/ }, () => ({
+      buildApi.onResolve({ filter: SETUP_RE_3 }, () => ({
         path: 'stub-utils',
         namespace: 'utils-stub',
       }));
-      buildApi.onLoad({ filter: /.*/, namespace: 'utils-stub' }, () => ({
+      buildApi.onLoad({ filter: SETUP_RE_2, namespace: 'utils-stub' }, () => ({
         contents: 'export function rssProxyUrl(url) { return url; }\n',
         loader: 'js',
       }));

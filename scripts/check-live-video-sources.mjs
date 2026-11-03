@@ -12,6 +12,15 @@ import { isMainModule } from './lib/main-module.mjs';
 import { AUDIT_CANARIES, LIVE_NEWS_SOURCES, WEBCAM_GRID_PRIORITY, WEBCAM_SOURCES } from '../src/config/live-video-sources.ts';
 import { classifyAttempt, LIVE_VIDEO_TIMING, parseSourceEntry } from '../src/services/live-video/model.ts';
 
+const OPTION_RE = /^[A-Za-z0-9_-]{11}$/;
+const LABELLED_RE = /^([A-Za-z0-9_.-]+)=(.+)$/;
+const SCHEME_RE = /^([a-z][a-z0-9+.-]*):\/\//i;
+const RESOLVE_BATCH_SIZE_RE = /^\d+$/;
+const LINE_BREAK_RE = /\r?\n/;
+const READ_HLS_PLAYLIST_RE = /[?#]/;
+const ROW_RESOLUTION_RE = /^[a-z0-9-]{1,40}$/;
+
+
 const PROBE_ORIGIN = 'https://www.worldmonitor.app';
 const PROBE_URL = `${PROBE_ORIGIN}/__live_video_probe__`;
 export const DEFAULT_BATCH_SIZE = 8;
@@ -106,13 +115,13 @@ export function parseCheckArgs(argv) {
     if (argv.length !== 2 || argv[1].startsWith('--')) throw new Error(`--slot needs a slot, e.g. --slot webcams/kyiv\n\n${USAGE}`);
     return { mode: 'slot', slot: argv[1] };
   }
-  const option = argv.find((arg) => arg.startsWith('--') && !/^[A-Za-z0-9_-]{11}$/.test(arg));
+  const option = argv.find((arg) => arg.startsWith('--') && !OPTION_RE.test(arg));
   if (option) throw new Error(`Unknown option ${option}\n\n${USAGE}`);
   if (!argv.length) throw new Error(USAGE);
   return {
     mode: 'entries',
     entries: argv.map((arg) => {
-      const labelled = /^([A-Za-z0-9_.-]+)=(.+)$/.exec(arg);
+      const labelled = LABELLED_RE.exec(arg);
       return labelled ? { name: labelled[1], entry: labelled[2] } : { name: null, entry: arg };
     }),
   };
@@ -397,7 +406,7 @@ export function parseAuditProxy(raw, attempt = 0) {
   const value = String(raw ?? '').trim();
   const invalid = () => new Error(`${PROXY_ENV} is not a proxy URL: expected http(s)://user:pass@host:port, user:pass@host:port or [http(s)://]host:port:user:pass`);
   // The relay's parser reads any other scheme as the user of a user:pass@host:port value.
-  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(value)?.[1]?.toLowerCase();
+  const scheme = SCHEME_RE.exec(value)?.[1]?.toLowerCase();
   if (scheme && scheme !== 'http' && scheme !== 'https') throw invalid();
   // http(s)://host:port:user:pass is not a URL, and the relay's parser returns null for it. Read the colon form
   // after the scheme and let the scheme decide TLS.
@@ -423,7 +432,7 @@ export function resolveBatchSize(env) {
   const raw = String(env[BATCH_SIZE_ENV] ?? '').trim();
   if (!raw) return DEFAULT_BATCH_SIZE;
   const size = Number(raw);
-  if (!/^\d+$/.test(raw) || size < 1 || size > MAX_BATCH_SIZE) throw new Error(`${BATCH_SIZE_ENV} must be a whole number from 1 to ${MAX_BATCH_SIZE}`);
+  if (!RESOLVE_BATCH_SIZE_RE.test(raw) || size < 1 || size > MAX_BATCH_SIZE) throw new Error(`${BATCH_SIZE_ENV} must be a whole number from 1 to ${MAX_BATCH_SIZE}`);
   return size;
 }
 
@@ -495,7 +504,7 @@ const HLS_RELOAD_FETCH_MARGIN_MS = 1_000;
 const HLS_RELOAD_HEADERS = { 'cache-control': 'no-cache', pragma: 'no-cache' };
 
 function playlistLines(text) {
-  return text.trimStart().split(/\r?\n/).map((line) => line.trim());
+  return text.trimStart().split(LINE_BREAK_RE).map((line) => line.trim());
 }
 
 /** Value of the first line that is exactly `tag` plus a value in `format`; tags match whole lines, never substrings. */
@@ -522,7 +531,7 @@ function readHlsPlaylist(text) {
     targetSeconds: Number(tagValue(lines, '#EXT-X-TARGETDURATION:', /^\d+(?:\.\d+)?$/) ?? HLS_DEFAULT_TARGET_SECONDS),
     segmentCount,
     // Token-signing CDNs rewrite the query on every request, so only the path marks a new segment.
-    lastSegment: lines.findLast((line) => line && !line.startsWith('#'))?.split(/[?#]/, 1)[0],
+    lastSegment: lines.findLast((line) => line && !line.startsWith('#'))?.split(READ_HLS_PLAYLIST_RE, 1)[0],
   };
 }
 
@@ -700,12 +709,12 @@ const RESOLUTION_STATUSES = new Set(['live', 'not-live', 'unreadable']);
 function rowResolution(result) {
   if (!result || !RESOLUTION_STATUSES.has(result.status)) return { status: 'unreadable', reason: 'skipped', videoId: null };
   if (result.status === 'live') {
-    return /^[A-Za-z0-9_-]{11}$/.test(result.videoId ?? '')
+    return OPTION_RE.test(result.videoId ?? '')
       ? { status: 'live', reason: null, videoId: result.videoId }
       : { status: 'unreadable', reason: 'parse-error', videoId: null };
   }
   // The reason lands in `why`, which the audit issue renders as trusted text: only a reason code passes.
-  return { status: result.status, reason: /^[a-z0-9-]{1,40}$/.test(result.reason ?? '') ? result.reason : 'parse-error', videoId: null };
+  return { status: result.status, reason: ROW_RESOLUTION_RE.test(result.reason ?? '') ? result.reason : 'parse-error', videoId: null };
 }
 
 /**

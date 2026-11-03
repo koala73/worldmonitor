@@ -1,5 +1,16 @@
 import { createHash } from 'node:crypto';
 
+const WHITESPACE_RE = /\s+/g;
+const CLASSIFY_POLICY_DOCUMENT_RE = /令〔?\d{4}〕?第?\d+号/;
+const EXTRACT_DOCUMENT_NUMBER_RE = /[\u4e00-\u9fff]{1,20}(?:令|公告|函|发)〔\d{4}〕第?\d+号/;
+const EXTRACT_DOCUMENT_NUMBER_RE_2 = /(?:令|公告)〔?\d{4}〕?第\d+号/;
+const EXTRACT_DOCUMENT_NUMBER_RE_3 = /(?:公告|令)\d{4}年第\d+号/;
+const CORRECTION_RE = /更正|纠正/;
+const IS_CALENDAR_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const IS_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const VALIDATE_CHINA_POLICY_PAYLOAD_RE = /^sha256:[0-9a-f]{64}$/;
+
+
 export const CHINA_POLICY_AGENCIES = Object.freeze([
   'CAC',
   'SAMR',
@@ -109,7 +120,7 @@ const TRANSLATION_STATES = Object.freeze([
 ]);
 
 function normalizeWhitespace(value) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
+  return String(value ?? '').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function sha256(value) {
@@ -211,7 +222,7 @@ export function classifyPolicyDocument(title, originalText) {
   }
 
   const finalRuleTerms = [];
-  if (/令〔?\d{4}〕?第?\d+号/.test(titleText)) finalRuleTerms.push('official_order_number');
+  if (CLASSIFY_POLICY_DOCUMENT_RE.test(titleText)) finalRuleTerms.push('official_order_number');
   for (const term of ['条例', '规定', '办法', '规章']) {
     if (titleText.includes(term)) finalRuleTerms.push(term);
   }
@@ -243,9 +254,9 @@ export function reviewedEntityLinks(text) {
 
 export function extractDocumentNumber(text) {
   const normalized = normalizeWhitespace(text);
-  return normalized.match(/[\u4e00-\u9fff]{1,20}(?:令|公告|函|发)〔\d{4}〕第?\d+号/)?.[0]
-    ?? normalized.match(/(?:令|公告)〔?\d{4}〕?第\d+号/)?.[0]
-    ?? normalized.match(/(?:公告|令)\d{4}年第\d+号/)?.[0]
+  return normalized.match(EXTRACT_DOCUMENT_NUMBER_RE)?.[0]
+    ?? normalized.match(EXTRACT_DOCUMENT_NUMBER_RE_2)?.[0]
+    ?? normalized.match(EXTRACT_DOCUMENT_NUMBER_RE_3)?.[0]
     ?? null;
 }
 
@@ -491,7 +502,7 @@ export function reconcilePolicyEvents(currentEvents, previousEvents = []) {
       continue;
     }
 
-    const correction = /更正|纠正/.test(`${event.titleOriginal} ${event.originalText}`);
+    const correction = CORRECTION_RE.test(`${event.titleOriginal} ${event.originalText}`);
     const revised = withProvenanceLineage({
       ...event,
       revision: {
@@ -527,7 +538,7 @@ function isNonEmptyString(value) {
 }
 
 function isCalendarDay(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (typeof value !== 'string' || !IS_CALENDAR_DAY_RE.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year
@@ -537,7 +548,7 @@ function isCalendarDay(value) {
 
 function isInstant(value) {
   return typeof value === 'string'
-    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+    && IS_INSTANT_RE.test(value)
     && Number.isFinite(Date.parse(value));
 }
 
@@ -676,7 +687,7 @@ export function validateChinaPolicyPayload(value) {
     && Array.isArray(event.classification.matchedTerms)
     && event.classification.matchedTerms.every(isNonEmptyString)
     && typeof event.classification.uncertain === 'boolean'
-    && /^sha256:[0-9a-f]{64}$/.test(event.contentHash)
+    && VALIDATE_CHINA_POLICY_PAYLOAD_RE.test(event.contentHash)
     && isRecord(event.revision)
     && ['original', 'revised', 'corrected'].includes(event.revision.state)
     && Number.isInteger(event.revision.sequence)

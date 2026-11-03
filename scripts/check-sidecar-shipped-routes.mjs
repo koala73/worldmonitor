@@ -29,6 +29,9 @@ import { pathToFileURL } from 'node:url';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const SHIPPED_RESOURCE_PATH_RE = /^(\.\.\/)+/;
+
+
 // The bundled runtime is large and loads nothing from api/.
 const SKIPPED_RESOURCES = new Set(['sidecar/node']);
 
@@ -43,7 +46,7 @@ export const CLOUD_ONLY_ROUTES = new Map([
 
 /** Tauri places a resource path's leading `../` segments under `_up_/`. */
 export function shippedResourcePath(entry) {
-  return entry.replace(/^(\.\.\/)+/, (ups) => '_up_/'.repeat(ups.length / 3));
+  return entry.replace(SHIPPED_RESOURCE_PATH_RE, (ups) => '_up_/'.repeat(ups.length / 3));
 }
 
 export function stageShippedResources(root, stageDir) {

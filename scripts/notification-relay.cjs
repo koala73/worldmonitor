@@ -1,5 +1,15 @@
 'use strict';
 
+const SAFE_LINKS_RE = /[\r\n]/g;
+const ESCAPE_SLACK_TEXT_RE = /&/g;
+const ESCAPE_SLACK_TEXT_RE_2 = /</g;
+const ESCAPE_SLACK_TEXT_RE_3 = />/g;
+const ESCAPE_DISCORD_TEXT_RE = /\\/g;
+const ESCAPE_DISCORD_TEXT_RE_2 = /\[/g;
+const CUT_AT_WORD_RE = /\s+\S*$/;
+const EVENT_LOG_RE = /[\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g;
+
+
 const { createHash } = require('node:crypto');
 const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
@@ -235,8 +245,8 @@ async function suppressedLinksFor(event, matchedRuleCount, context) {
   const parsed = parseSuppressionEntries(snapshot.entries);
   const suppressed = links.filter((l) => isLinkSuppressed(l, parsed));
   if (suppressed.length === 0) return [];
-  const safeLinks = suppressed.map((l) => String(l).replace(/[\r\n]/g, ' ').slice(0, 200));
-  const safeType = String(event.eventType ?? 'unknown').replace(/[\r\n]/g, ' ').slice(0, 80);
+  const safeLinks = suppressed.map((l) => String(l).replace(SAFE_LINKS_RE, ' ').slice(0, 200));
+  const safeType = String(event.eventType ?? 'unknown').replace(SAFE_LINKS_RE, ' ').slice(0, 80);
   console.log(`[relay][link-suppressed] ${context} eventType=${safeType} rules=${matchedRuleCount} links=${safeLinks.join(',')}`);
   await logLinkSuppression(event, matchedRuleCount).catch(() => {});
   return suppressed;
@@ -684,14 +694,14 @@ async function sendSlack(userId, webhookEnvelope, text) {
 const DISCORD_MAX_CONTENT = 2000;
 
 function escapeSlackText(text) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return text.replace(ESCAPE_SLACK_TEXT_RE, '&amp;').replace(ESCAPE_SLACK_TEXT_RE_2, '&lt;').replace(ESCAPE_SLACK_TEXT_RE_3, '&gt;');
 }
 
 function escapeDiscordText(text) {
   // Every Discord masked link starts with `[`. Escaping only backslashes and
   // opening brackets prevents `[trusted](https://evil)` while preserving bare
   // article URLs, including underscores and parentheses.
-  return text.replace(/\\/g, '\\\\').replace(/\[/g, '\\[');
+  return text.replace(ESCAPE_DISCORD_TEXT_RE, '\\\\').replace(ESCAPE_DISCORD_TEXT_RE_2, '\\[');
 }
 
 function buildSlackMessagePayload(text) {
@@ -1374,7 +1384,7 @@ const SNIPPET_TELEGRAM_MAX = 400;   // Telegram handles 4096; 400 keeps notifica
 function truncateForDisplay(str, maxLen) {
   if (typeof str !== 'string' || str.length === 0) return '';
   if (str.length <= maxLen) return str;
-  const cutAtWord = str.slice(0, maxLen).replace(/\s+\S*$/, '');
+  const cutAtWord = str.slice(0, maxLen).replace(CUT_AT_WORD_RE, '');
   return (cutAtWord.length > 0 ? cutAtWord : str.slice(0, maxLen)) + '…';
 }
 
@@ -1772,7 +1782,7 @@ async function processEvent(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
   const eventLog = JSON.stringify({ eventType: event.eventType, severity: event.severity ?? 'high' })
-    .replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
+    .replace(EVENT_LOG_RE, ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
   console.log('[relay] Processing event:', eventLog);
 
   // Shadow log importanceScore for comparison. Gate at caller: only rss_alert
@@ -1833,7 +1843,7 @@ async function processEvent(event) {
   ).length;
   if (countryScopeDrops > 0) {
     const rawAttribution = event?.payload?.countryCode ?? event?.payload?.country ?? event?.country ?? '(unattributed)';
-    const attribution = String(rawAttribution).replace(/[\r\n]/g, ' ').slice(0, 60);
+    const attribution = String(rawAttribution).replace(SAFE_LINKS_RE, ' ').slice(0, 60);
     console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${countryScopeDrops} scoped rule(s)`);
   }
 

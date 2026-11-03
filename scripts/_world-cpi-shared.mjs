@@ -23,6 +23,15 @@
 
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 
+const MONTHLY_RE = /^(\d{4})-M(\d{2})$/;
+const NORMALIZE_CPI_PERIOD_RE = /^\d{4}-\d{2}$/;
+const NORMALIZE_CPI_PERIOD_RE_2 = /^\d{4}-Q[1-4]$/;
+const MONTHLY_RE_2 = /^(\d{4})-(\d{2})$/;
+const QUARTERLY_RE = /^(\d{4})-Q([1-4])$/;
+const LINES_RE = /^\uFEFF/;
+const LINE_BREAK_RE = /\r?\n/;
+
+
 // Trailing observation window per frequency. Trimmed at ingest so the canonical
 // Redis values stay bounded; the full source history is not needed by any
 // consumer and the window covers a 10-year comparison surface.
@@ -85,19 +94,19 @@ export const CPI_ACTIVATION_KEYS = {
  */
 export function normalizeCpiPeriod(period) {
   if (typeof period !== 'string') return undefined;
-  const monthly = /^(\d{4})-M(\d{2})$/.exec(period);
+  const monthly = MONTHLY_RE.exec(period);
   if (monthly) return `${monthly[1]}-${monthly[2]}`;
-  if (/^\d{4}-\d{2}$/.test(period)) return period;
-  if (/^\d{4}-Q[1-4]$/.test(period)) return period;
+  if (NORMALIZE_CPI_PERIOD_RE.test(period)) return period;
+  if (NORMALIZE_CPI_PERIOD_RE_2.test(period)) return period;
   return undefined;
 }
 
 export function monthOf(period) {
-  return /^\d{4}-\d{2}$/.test(String(period ?? '')) ? String(period) : undefined;
+  return NORMALIZE_CPI_PERIOD_RE.test(String(period ?? '')) ? String(period) : undefined;
 }
 
 export function quarterOf(period) {
-  return /^\d{4}-Q[1-4]$/.test(String(period ?? '')) ? String(period) : undefined;
+  return NORMALIZE_CPI_PERIOD_RE_2.test(String(period ?? '')) ? String(period) : undefined;
 }
 
 export function periodFrequency(period) {
@@ -113,16 +122,16 @@ export function periodFrequency(period) {
  * for a staleness comparison.
  */
 export function periodMonthOrdinal(period) {
-  const monthly = /^(\d{4})-(\d{2})$/.exec(String(period ?? ''));
+  const monthly = MONTHLY_RE_2.exec(String(period ?? ''));
   if (monthly) return Number(monthly[1]) * 12 + Number(monthly[2]);
-  const quarterly = /^(\d{4})-Q([1-4])$/.exec(String(period ?? ''));
+  const quarterly = QUARTERLY_RE.exec(String(period ?? ''));
   if (quarterly) return Number(quarterly[1]) * 12 + (Number(quarterly[2]) - 1) * 3 + 1;
   return undefined;
 }
 
 /** Shift an ISO 'YYYY-MM' month token by delta months. */
 export function shiftMonth(isoMonth, delta) {
-  const match = /^(\d{4})-(\d{2})$/.exec(String(isoMonth ?? ''));
+  const match = MONTHLY_RE_2.exec(String(isoMonth ?? ''));
   if (!match) return undefined;
   const shifted = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1 + delta, 1));
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -130,7 +139,7 @@ export function shiftMonth(isoMonth, delta) {
 
 /** Shift an ISO 'YYYY-Qn' quarter token by delta quarters. */
 export function shiftQuarter(isoQuarter, delta) {
-  const match = /^(\d{4})-Q([1-4])$/.exec(String(isoQuarter ?? ''));
+  const match = QUARTERLY_RE.exec(String(isoQuarter ?? ''));
   if (!match) return undefined;
   const total = Number(match[1]) * 4 + (Number(match[2]) - 1) + delta;
   return `${Math.floor(total / 4)}-Q${(total % 4) + 1}`;
@@ -317,8 +326,8 @@ export function splitCsvLine(line) {
  */
 export function parseSdmxCsv(text) {
   const lines = String(text ?? '')
-    .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
+    .replace(LINES_RE, '')
+    .split(LINE_BREAK_RE)
     .filter((line) => line.trim().length > 0);
   if (lines.length === 0) return [];
   const header = splitCsvLine(lines[0]).map((name) => name.trim());

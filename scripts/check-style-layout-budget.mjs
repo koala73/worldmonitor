@@ -42,6 +42,9 @@ import { pathToFileURL } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const TRAILING_SLASH_RE = /\/$/;
+
+
 /**
  * Budget for the styleLayout share, in percent of attributed main-thread
  * self-time.
@@ -113,7 +116,7 @@ export function evaluateStyleLayoutBudget(report, options = {}) {
     if (typeof url !== 'string' || url.length === 0) {
       return unmeasured('report carries no url — cannot confirm what was captured');
     }
-    const path = url.split('?')[0].split('#')[0].replace(/\/$/, '');
+    const path = url.split('?')[0].split('#')[0].replace(TRAILING_SLASH_RE, '');
     if (!path.endsWith(expectedUrlSuffix)) {
       return unmeasured(`captured ${url}, expected a URL ending in '${expectedUrlSuffix}'`);
     }

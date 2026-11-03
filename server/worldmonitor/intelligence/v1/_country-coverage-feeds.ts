@@ -29,6 +29,9 @@ import type {
 } from '../../../../shared/country-timeline-events';
 import { firstMentionPosition, isCountryHeadline } from '../../../../shared/country-headline-match';
 
+const BUILD_EVENT_QUERY_TERMS_RE = /"/g;
+
+
 /** Mirrors EVENT_QUERY in src/services/country-coverage.ts. */
 const EVENT_QUERY =
   'protest OR demonstration OR riot OR conflict OR attack OR military OR earthquake OR flood OR wildfire';
@@ -81,7 +84,7 @@ export function buildEventQueryTerms(country: string, searchTerms: readonly stri
   }
   return [...uniqueTerms.values()]
     .slice(0, 6)
-    .map(term => `"${term.replace(/"/g, '')}"`)
+    .map(term => `"${term.replace(BUILD_EVENT_QUERY_TERMS_RE, '')}"`)
     .join(' OR ');
 }
 

@@ -16,6 +16,9 @@ import {
   parseLabelCounts,
 } from '../../../_shared/label-history';
 
+const LIST_LABEL_CHANGES_RE = /^[0-9a-f]{64}$/;
+
+
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const RETENTION_DAYS = LABEL_HISTORY_RETENTION_MS / (24 * 60 * 60 * 1000);
@@ -31,7 +34,7 @@ export async function listLabelChanges(
 ): Promise<ListLabelChangesResponse> {
   const storyId = req.storyId.trim().toLowerCase();
   const response: ListLabelChangesResponse = { changes: [], state: 'unavailable', retentionDays: RETENTION_DAYS };
-  if (storyId !== '' && !/^[0-9a-f]{64}$/.test(storyId)) {
+  if (storyId !== '' && !LIST_LABEL_CHANGES_RE.test(storyId)) {
     response.state = 'ok';
     return response;
   }

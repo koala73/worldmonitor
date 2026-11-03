@@ -14,6 +14,10 @@ import { periodTokenToMs, tokensToContentMeta } from '../../_content-age-helpers
 
 import { normalizeDateLabel, parseYieldNumber } from './model.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const PERIOD_RE = /^(\d{4})-(\d{2})$/;
+
+
 export const OECD_LT_MARKETS = {
   DE: 'IRLTLT01DEM156N', JP: 'IRLTLT01JPM156N', GB: 'IRLTLT01GBM156N', CA: 'IRLTLT01CAM156N',
   AU: 'IRLTLT01AUM156N', CH: 'IRLTLT01CHM156N', NO: 'IRLTLT01NOM156N', SE: 'IRLTLT01SEM156N',
@@ -65,7 +69,7 @@ export const OECD_LT_SOURCE_BUDGET_MIN = Object.freeze(Object.fromEntries(
 export const OECD_LT_MAX_CONTENT_AGE_MIN = Math.max(...Object.values(OECD_LT_SOURCE_BUDGET_MIN));
 
 export function parseFredCsv(csv) {
-  const lines = String(csv ?? '').split(/\r?\n/);
+  const lines = String(csv ?? '').split(LINE_BREAK_RE);
   if (lines.length < 2) return [];
   const out = [];
   for (const line of lines.slice(1)) {
@@ -82,7 +86,7 @@ export function parseFredCsv(csv) {
 
 /** Parse the ECB IRS `csvdata` export into FRED-shaped month-start points per market. */
 export function parseEcbIrsCsv(csv) {
-  const lines = String(csv ?? '').split(/\r?\n/);
+  const lines = String(csv ?? '').split(LINE_BREAK_RE);
   if (lines.length < 2) return {};
   const header = lines[0].split(',');
   const areaIdx = header.indexOf('REF_AREA');
@@ -94,7 +98,7 @@ export function parseEcbIrsCsv(csv) {
     if (!line.trim()) continue;
     const cells = line.split(',');
     const market = cells[areaIdx]?.trim();
-    const period = /^(\d{4})-(\d{2})$/.exec(cells[periodIdx]?.trim() ?? '');
+    const period = PERIOD_RE.exec(cells[periodIdx]?.trim() ?? '');
     const value = parseYieldNumber(cells[valueIdx]);
     if (!market || !period || value == null) continue;
     const date = normalizeDateLabel(`${period[1]}-${period[2]}-01`);

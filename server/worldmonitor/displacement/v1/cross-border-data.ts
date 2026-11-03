@@ -1,6 +1,10 @@
 import type { CrossBorderMovement, CrossBorderSourceStatus, GetCrossBorderMovementsResponse } from '../../../../src/generated/server/worldmonitor/displacement/v1/service_server';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 
+const REPORT_TIME_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTHS_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+
 export const CROSS_BORDER_SOURCES = [
   { id: 'odp', key: 'displacement:cross-border:v1', name: 'UNHCR Operational Data Portal', url: 'https://data.unhcr.org/', license: 'CC BY 4.0', licenseUrl: 'https://creativecommons.org/licenses/by/4.0/', maxContentAgeMin: 45 * 1440 },
   { id: 'uk', key: 'displacement:border-uk:v1', name: 'UK Home Office', url: 'https://www.gov.uk/government/publications/migrants-detected-crossing-the-english-channel-in-small-boats', license: 'Open Government Licence v3.0', licenseUrl: 'https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/', maxContentAgeMin: 7.5 * 1440 },
@@ -19,7 +23,7 @@ const finite = (value: unknown): number | undefined => typeof value === 'number'
 const reportTime = (value: unknown) => {
   const date = text(value);
   const ms = Date.parse(date);
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === date ? ms : 0;
+  return REPORT_TIME_RE.test(date) && Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === date ? ms : 0;
 };
 
 export function projectCrossBorderSnapshots(snapshots: Record<string, unknown>, now = Date.now()): GetCrossBorderMovementsResponse {
@@ -49,7 +53,7 @@ export function projectCrossBorderSnapshots(snapshots: Record<string, unknown>, 
       const fetchedDate = new Date(fetchedAt);
       // The ODP writer judges acceleration for the month before its fetch.
       const surgeMonth = new Date(Date.UTC(fetchedDate.getUTCFullYear(), fetchedDate.getUTCMonth(), 0)).toISOString().slice(0, 7);
-      const months = list(raw.months).filter(m => /^\d{4}-(0[1-9]|1[0-2])$/.test(text(m.month)) && nonnegative(m.individuals));
+      const months = list(raw.months).filter(m => MONTHS_RE.test(text(m.month)) && nonnegative(m.individuals));
       const month = months.sort((a, b) => text(b.month).localeCompare(text(a.month))).find(m => text(m.month) < new Date(fetchedAt).toISOString().slice(0, 7)
         && Date.UTC(Number(text(m.month).slice(0, 4)), Number(text(m.month).slice(5)), 0) <= contentAt);
       if (situation && !stock && !month) { rejectedRows++; return; }

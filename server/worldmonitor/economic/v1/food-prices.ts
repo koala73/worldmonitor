@@ -1,6 +1,9 @@
 import sourceDefinitions from '../../../../shared/food-price-sources.json';
 import type { FoodMarketPrice, FoodPriceSource, FoodSecurityContext } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
+const VALID_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export const FOOD_PRICE_SOURCES = sourceDefinitions;
 export const foodPriceKey = (id: string): string => `economic:food-prices:${id}:v1`;
 
@@ -12,7 +15,7 @@ const DAY = 86400000;
 const seriesKey = (row: Observation): string => JSON.stringify([row.market, row.marketType, row.item, row.unit, row.currency, row.origin ?? '']);
 
 function validDate(value: unknown, now: number): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (typeof value !== 'string' || !VALID_DATE_RE.test(value)) return false;
   const ms = Date.parse(`${value}T00:00:00Z`);
   return Number.isFinite(ms) && ms <= now && new Date(ms).toISOString().slice(0, 10) === value;
 }

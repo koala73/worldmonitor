@@ -9,17 +9,32 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const NORMALIZE_COUNTRY_TOKEN_RE = /\p{Diacritic}/gu;
+const NORMALIZE_COUNTRY_TOKEN_RE_2 = /&/g;
+const NORMALIZE_COUNTRY_TOKEN_RE_3 = /[''‘’`.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const N_RE = /,/g;
+const IS_USGS_WORLD_TOTAL_DETAIL_RE = /:\s*rounded\s*$/i;
+const RESOLVE_MINERAL_COUNTRY_RE = /^other countries$/i;
+const RESOLVE_MINERAL_COUNTRY_RE_2 = /^world total$/i;
+const DECODE_USGS_CSV_TEXT_RE = /[\x80-\x9F]/;
+const SRC_RE = /^\uFEFF/;
+const PARSE_USGS_MCS_CSV_RE = /^world\b/i;
+const ESTIMATED_RE = /\bestimated\b/i;
+const PARSE_BGS_RECORDS_RE = /production/i;
+
+
 const require = createRequire(import.meta.url);
 const { countryNameToIso2 } = require('./country-name-to-iso2.cjs');
 
 function normalizeCountryToken(raw) {
   return String(raw || '')
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE, '')
     .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[''‘’`.(),/-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE_2, ' and ')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -46,18 +61,18 @@ export function parseUsgsValue(raw) {
   if (text === '—' || text === '–' || text === '-' || text === '\u2014' || text === '\u2013' || text === '\u0097') {
     return { kind: 'nil' };
   }
-  const n = Number(text.replace(/,/g, ''));
+  const n = Number(text.replace(N_RE, ''));
   if (!Number.isFinite(n)) return { kind: 'unparsed', raw: text };
   return { kind: 'number', value: n };
 }
 
 export function isUsgsWorldTotalDetail(detail) {
-  return /:\s*rounded\s*$/i.test(String(detail || ''));
+  return IS_USGS_WORLD_TOTAL_DETAIL_RE.test(String(detail || ''));
 }
 
 export function classifyUsgsStage(section, detail) {
   const s = String(section || '').toLowerCase();
-  const d = String(detail || '').replace(/:\s*rounded\s*$/i, '').toLowerCase();
+  const d = String(detail || '').replace(IS_USGS_WORLD_TOTAL_DETAIL_RE, '').toLowerCase();
   if (d.includes('refinery') || d.includes('smelter') || d.includes('alumina, refinery')) return 'refinery';
   if (d.includes('primary production')) return 'refinery';
   if (d.includes('mine') || d.includes('bauxite, mine') || d.includes('helium production')) return 'mine';
@@ -76,10 +91,10 @@ export function classifyUsgsStage(section, detail) {
 export function resolveMineralCountry(rawName, aliases = loadMineralCountryAliases()) {
   const name = String(rawName || '').trim();
   if (!name) return { iso2: null, residual: false, unmapped: true, name };
-  if (/^other countries$/i.test(name)) {
+  if (RESOLVE_MINERAL_COUNTRY_RE.test(name)) {
     return { iso2: '', residual: true, unmapped: false, name: 'Other countries' };
   }
-  if (/^world total$/i.test(name)) {
+  if (RESOLVE_MINERAL_COUNTRY_RE_2.test(name)) {
     return { iso2: null, residual: false, unmapped: false, worldTotal: true, name };
   }
   const token = normalizeCountryToken(name);
@@ -119,7 +134,7 @@ export function decodeUsgsCsvText(bufOrText) {
   if (typeof bufOrText === 'string') return bufOrText;
   const buf = Buffer.isBuffer(bufOrText) ? bufOrText : Buffer.from(bufOrText);
   const utf8 = buf.toString('utf8');
-  if (!utf8.includes('\uFFFD') && !/[\x80-\x9F]/.test(utf8.slice(0, 4000))) return utf8;
+  if (!utf8.includes('\uFFFD') && !DECODE_USGS_CSV_TEXT_RE.test(utf8.slice(0, 4000))) return utf8;
   return buf.toString('latin1');
 }
 
@@ -134,7 +149,7 @@ function parseCsv(text) {
     rows.push(row);
     row = [];
   };
-  const src = String(text).replace(/^\uFEFF/, '');
+  const src = String(text).replace(SRC_RE, '');
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
     if (inQuotes) {
@@ -179,7 +194,7 @@ export function parseUsgsMcsCsv(text, { vocab = loadMineralVocab(), aliases = lo
       || index.byChapter.get(chapter.toLowerCase());
     if (!item) continue;
     const section = rec.Section || '';
-    if (!/^world\b/i.test(section)) continue;
+    if (!PARSE_USGS_MCS_CSV_RE.test(section)) continue;
     const statistics = rec.Statistics || '';
     if (statistics && statistics !== 'Production') continue;
     const detail = rec.Statistics_detail || '';
@@ -191,7 +206,7 @@ export function parseUsgsMcsCsv(text, { vocab = loadMineralVocab(), aliases = lo
     const countryRaw = rec.Country || '';
     const resolved = resolveMineralCountry(countryRaw, aliases);
     if (resolved.unmapped) unmapped.push({ country: countryRaw, commodity: item.id });
-    const estimated = /\bestimated\b/i.test(rec.Notes || '');
+    const estimated = ESTIMATED_RE.test(rec.Notes || '');
     const worldTotal = Boolean(resolved.worldTotal) || isUsgsWorldTotalDetail(detail);
     rows.push({
       commodityId: item.id,
@@ -231,7 +246,7 @@ export function parseBgsRecords(records, { vocab = loadMineralVocab(), aliases =
       || index.byBgsName.get(String(sub).toLowerCase());
     if (!item) continue;
     const statistic = rec.statistic_type || rec.statisticType || rec.Statistics || 'Production';
-    if (statistic && !/production/i.test(String(statistic))) continue;
+    if (statistic && !PARSE_BGS_RECORDS_RE.test(String(statistic))) continue;
     const year = Number(rec.year || rec.Year);
     if (!Number.isInteger(year)) continue;
     const rawVal = rec.value ?? rec.Value;

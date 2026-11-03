@@ -1,3 +1,20 @@
+
+
+const HEX_TO_BYTES_RE = /^[0-9a-f]{64}$/;
+const REQUIRE_IDENTIFIER_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]*$/;
+const REQUIRE_HEAD_SHA_RE = /^[0-9a-f]{40}$/;
+const REQUIRE_MILLISECOND_ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const REQUIRE_CAPABILITY_RE = /^[A-Za-z0-9_-]{43}$/;
+const NEW_CAPABILITY_RE = /=+$/;
+const REQUIRE_OPERATOR_REASON_RE = /[\u0000-\u001f\u007f]/;
+const REQUIRE_OPERATOR_REASON_RE_2 = /[`<>\[\]]/;
+const REQUIRE_OPERATOR_REASON_RE_3 = /(?:https?:\/\/|www\.)/i;
+const REQUIRE_OPERATOR_REASON_RE_4 = /(?:gh[pousr]_|github_pat_|sk-[A-Za-z0-9]|bearer\s+|-----BEGIN|(?:secret|token|api[_ -]?key)\s*[:=])/i;
+const IS_STORED_OPERATOR_RESULT_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/;
+const CODE_RE = /^\/v\d+\//;
+const FETCH_RE = /^\d{1,12}$/;
+const FETCH_RE_2 = /^[A-Za-z0-9_-]{16,128}$/;
+const FETCH_RE_3 = /^[0-9a-f]{7,64}$/;
 export const LEASE_DURATION_MS = 30 * 60 * 1000;
 export const MUTATION_JOB_BUDGET_MS = 13 * 60 * 1000;
 export const TERMINATION_GRACE_MS = 5 * 60 * 1000;
@@ -201,7 +218,7 @@ function bytesToHex(bytes) {
 }
 
 function hexToBytes(hex) {
-  if (!/^[0-9a-f]{64}$/.test(hex)) return null;
+  if (!HEX_TO_BYTES_RE.test(hex)) return null;
   const bytes = new Uint8Array(32);
   for (let index = 0; index < bytes.length; index += 1) {
     bytes[index] = Number.parseInt(hex.slice(index * 2, index * 2 + 2), 16);
@@ -245,7 +262,7 @@ function requireIdentifier(value, code, maxLength = 128) {
     typeof value !== 'string'
     || value.length < 1
     || value.length > maxLength
-    || !/^[A-Za-z0-9][A-Za-z0-9._:@-]*$/.test(value)
+    || !REQUIRE_IDENTIFIER_RE.test(value)
   ) {
     reject(400, code);
   }
@@ -253,14 +270,14 @@ function requireIdentifier(value, code, maxLength = 128) {
 }
 
 function requireHeadSha(value) {
-  if (typeof value !== 'string' || !/^[0-9a-f]{40}$/.test(value)) {
+  if (typeof value !== 'string' || !REQUIRE_HEAD_SHA_RE.test(value)) {
     reject(400, 'INVALID_HEAD_SHA');
   }
   return value;
 }
 
 function requireDigest(value, code) {
-  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) {
+  if (typeof value !== 'string' || !HEX_TO_BYTES_RE.test(value)) {
     reject(400, code);
   }
   return value;
@@ -269,7 +286,7 @@ function requireDigest(value, code) {
 function requireMillisecondIso(value, code) {
   if (
     typeof value !== 'string'
-    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+    || !REQUIRE_MILLISECOND_ISO_RE.test(value)
   ) {
     reject(400, code);
   }
@@ -294,7 +311,7 @@ function readSupersededRuns(value) {
       || typeof run.runId !== 'string'
       || run.runId.length < 1
       || run.runId.length > 24
-      || !/^[A-Za-z0-9][A-Za-z0-9._:@-]*$/.test(run.runId)
+      || !REQUIRE_IDENTIFIER_RE.test(run.runId)
       || !Number.isInteger(run.runAttempt)
       || run.runAttempt < 1
       || run.runAttempt > 1_000
@@ -317,7 +334,7 @@ function appendSupersededRun(value, runId, runAttempt) {
 }
 
 function requireCapability(value) {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value)) {
+  if (typeof value !== 'string' || !REQUIRE_CAPABILITY_RE.test(value)) {
     reject(400, 'INVALID_LEASE_CAPABILITY');
   }
   return value;
@@ -553,7 +570,7 @@ function newCapability(randomBytes) {
   const bytes = randomBytes(32);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(NEW_CAPABILITY_RE, '');
 }
 
 function randomIdentifier(randomUuid) {
@@ -1281,10 +1298,10 @@ function requireOperatorReason(value) {
     typeof value !== 'string'
     || value.length < 10
     || value.length > 240
-    || /[\u0000-\u001f\u007f]/.test(value)
-    || /[`<>\[\]]/.test(value)
-    || /(?:https?:\/\/|www\.)/i.test(value)
-    || /(?:gh[pousr]_|github_pat_|sk-[A-Za-z0-9]|bearer\s+|-----BEGIN|(?:secret|token|api[_ -]?key)\s*[:=])/i.test(value)
+    || REQUIRE_OPERATOR_REASON_RE.test(value)
+    || REQUIRE_OPERATOR_REASON_RE_2.test(value)
+    || REQUIRE_OPERATOR_REASON_RE_3.test(value)
+    || REQUIRE_OPERATOR_REASON_RE_4.test(value)
   ) {
     reject(400, 'INVALID_OPERATOR_REASON');
   }
@@ -1312,7 +1329,7 @@ function isStoredOperatorResult(result, binding) {
     && !Array.isArray(data)
     && JSON.stringify(Object.keys(data).sort()) === JSON.stringify(expectedKeys)
     && typeof data.resolutionId === 'string'
-    && /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/.test(data.resolutionId)
+    && IS_STORED_OPERATOR_RESULT_RE.test(data.resolutionId)
     && data.supersedingAttemptId === data.resolutionId
     && data.operationId === binding.operationId
     && data.priorId === binding.priorId
@@ -1321,9 +1338,9 @@ function isStoredOperatorResult(result, binding) {
     && data.supersedingGeneration === data.priorGeneration + 1
     && data.headSha === binding.expectedHead
     && typeof data.evidenceId === 'string'
-    && /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$/.test(data.evidenceId)
+    && IS_STORED_OPERATOR_RESULT_RE.test(data.evidenceId)
     && typeof data.evidenceDigest === 'string'
-    && /^[0-9a-f]{64}$/.test(data.evidenceDigest)
+    && HEX_TO_BYTES_RE.test(data.evidenceDigest)
     && data.decision === binding.decision;
 }
 
@@ -1704,7 +1721,7 @@ export class RailwayReconcileControl {
       if (url.search || url.hash) reject(400, 'UNSUPPORTED_URL');
       const route = ROUTES[url.pathname];
       if (!route) {
-        const code = /^\/v\d+\//.test(url.pathname)
+        const code = CODE_RE.test(url.pathname)
           ? 'UNKNOWN_PROTOCOL_VERSION'
           : 'ROUTE_NOT_FOUND';
         reject(404, code);
@@ -1728,9 +1745,9 @@ export class RailwayReconcileControl {
       const signatureHeader = request.headers.get('x-wm-control-signature') || '';
       if (versionHeader !== '1') reject(400, 'UNKNOWN_PROTOCOL_VERSION');
       if (roleHeader !== route.role) reject(403, 'AUTH_ROLE_FORBIDDEN');
-      if (!/^\d{1,12}$/.test(timestampText)) reject(401, 'AUTH_INVALID');
-      if (!/^[A-Za-z0-9_-]{16,128}$/.test(nonce)) reject(401, 'AUTH_INVALID');
-      if (!/^[0-9a-f]{64}$/.test(signatureHeader)) reject(401, 'AUTH_INVALID');
+      if (!FETCH_RE.test(timestampText)) reject(401, 'AUTH_INVALID');
+      if (!FETCH_RE_2.test(nonce)) reject(401, 'AUTH_INVALID');
+      if (!HEX_TO_BYTES_RE.test(signatureHeader)) reject(401, 'AUTH_INVALID');
       const timestamp = Number(timestampText);
       const now = this.now();
       if (
@@ -1792,7 +1809,7 @@ export default {
         return errorResponse(405, 'METHOD_NOT_ALLOWED');
       }
       const deploymentSha = env?.DEPLOYMENT_SHA;
-      if (typeof deploymentSha !== 'string' || !/^[0-9a-f]{7,64}$/.test(deploymentSha)) {
+      if (typeof deploymentSha !== 'string' || !FETCH_RE_3.test(deploymentSha)) {
         return errorResponse(503, 'CONTROL_PLANE_UNAVAILABLE');
       }
       return jsonResponse(200, { protocolVersion: 1, deploymentSha });
@@ -1803,7 +1820,7 @@ export default {
       typeof scope !== 'string'
       || scope.length < 1
       || scope.length > 200
-      || /[\u0000-\u001f\u007f]/.test(scope)
+      || REQUIRE_OPERATOR_REASON_RE.test(scope)
       || !namespace?.idFromName
       || !namespace?.get
     ) {

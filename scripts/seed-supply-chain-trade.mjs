@@ -11,6 +11,16 @@ import {
   usHtsCoverageKey,
 } from './shared/us-hts-chapter99.mjs';
 
+const FETCH_WTO_REPORTERS_RE = /^\d+$/;
+const VALID_SSE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_MATCH_RE = /(\d{1,2})-(\w+)-(\d{4})/;
+const PARSE_BDI_INDICES_RE = /,/g;
+const IS_NEG_RE = /decreased|lost|dropped/i;
+const GAP_A_RE = /gap: ([+-]?\d+\.?\d*)/;
+const RATE_A_RE = /[\d.]+/;
+const BATCH_RE = /^[0-9]{3}$/;
+
+
 loadEnvFile(import.meta.url);
 
 // Content-age budget — the canonical key holds the merged shipping indices,
@@ -90,7 +100,7 @@ async function fetchWtoReporters() {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    ALL_REPORTERS = data.map(r => String(r.code)).filter(c => /^\d+$/.test(c) && c !== '000');
+    ALL_REPORTERS = data.map(r => String(r.code)).filter(c => FETCH_WTO_REPORTERS_RE.test(c) && c !== '000');
     REPORTER_LIST_IS_FALLBACK = false;
     console.log(`  WTO reporters: ${ALL_REPORTERS.length} economies`);
   } catch (err) {
@@ -182,7 +192,7 @@ function finiteOrNull(value) {
 }
 
 function validSseDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  if (typeof value !== 'string' || !VALID_SSE_DATE_RE.test(value)) return null;
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year
@@ -305,7 +315,7 @@ export function parseBdiIndices(html) {
   // the article states, in every timezone. This feeds accumulateHistory's
   // dedup key and supplyChainContentMeta's content-age, both of which are
   // date-keyed, so an off-by-one silently re-dates history points.
-  const dateMatch = html.match(/(\d{1,2})-(\w+)-(\d{4})/);
+  const dateMatch = html.match(DATE_MATCH_RE);
   let articleDate = new Date().toISOString().slice(0, 10);
   if (dateMatch) {
     const parsed = new Date(`${dateMatch[2]} ${dateMatch[1]}, ${dateMatch[3]}`);
@@ -325,7 +335,7 @@ export function parseBdiIndices(html) {
     let currentValue = null;
     for (const re of patterns) {
       const m = html.match(re);
-      if (m) { currentValue = parseFloat(m[1].replace(/,/g, '')); break; }
+      if (m) { currentValue = parseFloat(m[1].replace(PARSE_BDI_INDICES_RE, '')); break; }
     }
     if (currentValue == null || !Number.isFinite(currentValue)) continue;
 
@@ -334,8 +344,8 @@ export function parseBdiIndices(html) {
     const deltaRe = new RegExp(`${cfg.id}\\)?[^.]*?(increased|decreased|gained|lost|dropped|rose)\\s+by\\s+([\\d,]+)\\s+points`, 'i');
     const deltaMatch = html.match(deltaRe);
     if (deltaMatch) {
-      const delta = parseFloat(deltaMatch[2].replace(/,/g, ''));
-      const isNeg = /decreased|lost|dropped/i.test(deltaMatch[1]);
+      const delta = parseFloat(deltaMatch[2].replace(PARSE_BDI_INDICES_RE, ''));
+      const isNeg = IS_NEG_RE.test(deltaMatch[1]);
       const signedDelta = isNeg ? -delta : delta;
       previousValue = currentValue - signedDelta;
       changePct = previousValue !== 0 ? (signedDelta / previousValue) * 100 : 0;
@@ -1015,8 +1025,8 @@ async function fetchTradeBarriers() {
     });
   }
   barriers.sort((a, b) => {
-    const gapA = parseFloat(a.title.match(/gap: ([+-]?\d+\.?\d*)/)?.[1] ?? '0');
-    const gapB = parseFloat(b.title.match(/gap: ([+-]?\d+\.?\d*)/)?.[1] ?? '0');
+    const gapA = parseFloat(a.title.match(GAP_A_RE)?.[1] ?? '0');
+    const gapB = parseFloat(b.title.match(GAP_A_RE)?.[1] ?? '0');
     return gapB - gapA;
   });
   console.log(`  Trade barriers: ${barriers.length} countries`);
@@ -1063,8 +1073,8 @@ async function fetchTradeRestrictions() {
       notifiedAt: year, sourceUrl: 'https://stats.wto.org',
     };
   }).filter(Boolean).sort((a, b) => {
-    const rateA = parseFloat(a.description.match(/[\d.]+/)?.[0] ?? '0');
-    const rateB = parseFloat(b.description.match(/[\d.]+/)?.[0] ?? '0');
+    const rateA = parseFloat(a.description.match(RATE_A_RE)?.[0] ?? '0');
+    const rateB = parseFloat(b.description.match(RATE_A_RE)?.[0] ?? '0');
     return rateB - rateA;
   });
 
@@ -1145,7 +1155,7 @@ export async function fetchTariffTrends() {
   // Batch WTO requests in groups of 30 to avoid URL length limits
   const BATCH_SIZE = 30;
   for (let i = 0; i < ALL_REPORTERS.length; i += BATCH_SIZE) {
-    const batch = ALL_REPORTERS.slice(i, i + BATCH_SIZE).filter((c) => /^[0-9]{3}$/.test(c));
+    const batch = ALL_REPORTERS.slice(i, i + BATCH_SIZE).filter((c) => BATCH_RE.test(c));
     if (batch.length === 0) continue;
     const data = await wtoFetch('/data', {
       i: 'TP_A_0010', r: batch.join(','),
@@ -1192,7 +1202,7 @@ export async function fetchTariffTrends() {
   }
 
   const reporters = ALL_REPORTERS
-    .filter((code) => /^[0-9]{3}$/.test(code) && !emptyAnswered.has(code))
+    .filter((code) => BATCH_RE.test(code) && !emptyAnswered.has(code))
     .sort();
   const manifest = {
     reporters,

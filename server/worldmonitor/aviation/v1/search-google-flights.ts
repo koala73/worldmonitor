@@ -12,6 +12,11 @@ import { parseStringArray } from '../../../_shared/parse-string-array';
 import { normalizePassengerCount } from '../../../_shared/passenger-count';
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 
+const PARSE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const SEARCH_GOOGLE_FLIGHTS_RE = /^\d{1,2}-\d{1,2}$/;
+const AIRLINES_RE = /^[A-Z0-9]{2}$/;
+
+
 const CACHE_TTL = 600;
 
 export async function searchGoogleFlights(
@@ -29,7 +34,7 @@ export async function searchGoogleFlights(
   if (!IATA_RE.test(origin)) invalid('origin', 'Expected a three-letter airport code');
   if (!IATA_RE.test(destination)) invalid('destination', 'Expected a three-letter airport code');
   const parseDate = (field: string, value: string): number => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) invalid(field, 'Expected a YYYY-MM-DD date');
+    if (!PARSE_DATE_RE.test(value)) invalid(field, 'Expected a YYYY-MM-DD date');
     const time = Date.parse(value + 'T00:00:00Z');
     if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== value) invalid(field, 'Invalid calendar date');
     return time;
@@ -45,7 +50,7 @@ export async function searchGoogleFlights(
   if (!['ANY', 'NON_STOP', 'ONE_STOP', 'TWO_PLUS_STOPS'].includes(maxStops)) invalid('max_stops', 'Invalid stop filter');
   let departureWindow = bounded('departure_window', req.departureWindow, 5);
   if (departureWindow) {
-    if (!/^\d{1,2}-\d{1,2}$/.test(departureWindow)) invalid('departure_window', 'Invalid departure window');
+    if (!SEARCH_GOOGLE_FLIGHTS_RE.test(departureWindow)) invalid('departure_window', 'Invalid departure window');
     const [start, end] = departureWindow.split('-').map(Number) as [number, number];
     if (start < 0 || start > 23 || end > 24 || start >= end) invalid('departure_window', 'Invalid departure window');
     departureWindow = `${start}-${end}`;
@@ -54,7 +59,7 @@ export async function searchGoogleFlights(
   if (rawAirlines.length > 10) invalid('airlines', 'At most ten airline codes are allowed');
   const airlines = [...new Set(rawAirlines.map(value => {
     const code = bounded('airlines', value, 8).toUpperCase();
-    if (!/^[A-Z0-9]{2}$/.test(code)) invalid('airlines', 'Expected two-character airline codes');
+    if (!AIRLINES_RE.test(code)) invalid('airlines', 'Expected two-character airline codes');
     return code;
   }))].sort();
   const sortValue = bounded('sort_by', req.sortBy, 32).toUpperCase();

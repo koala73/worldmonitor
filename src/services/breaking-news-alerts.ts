@@ -17,6 +17,9 @@ import {
   type Corroboration,
 } from '@/utils/corroboration-flag';
 
+const NORMALIZE_TITLE_RE = /[^\w\s]/g;
+
+
 export interface BreakingAlert {
   id: string;
   headline: string;
@@ -90,7 +93,7 @@ function simpleHash(str: string): string {
 }
 
 function normalizeTitle(title: string): string {
-  return title.toLowerCase().replace(/[^\w\s]/g, '').trim().slice(0, 80);
+  return title.toLowerCase().replace(NORMALIZE_TITLE_RE, '').trim().slice(0, 80);
 }
 
 function extractHostname(url: string): string {

@@ -15,6 +15,27 @@
 import { CANONICAL_ORIGIN, ORGANIZATION_ID, PERSON_ID, WEBSITE_ID } from './schema-graph-ids';
 import { DOCS_PAGE_DATES } from './docs-page-dates.generated';
 
+const IS_DOCS_HTML_DOCUMENT_PATH_RE = /\.[a-z0-9]+$/i;
+const REPLACE_HTML_LANG_RE = /<html\b[^>]*\blang="/i;
+const REPLACE_HTML_LANG_RE_2 = /(<html\b[^>]*\blang=")[^"]*(")/i;
+const REPLACE_HTML_LANG_RE_3 = /<html\b/i;
+const REPLACE_OG_LOCALE_RE = /og:locale/i;
+const REPLACE_OG_LOCALE_RE_2 = /(<meta\b[^>]*(?:name|property)="og:locale"[^>]*content=")[^"]*(")/i;
+const REPLACE_OG_LOCALE_RE_3 = /(<meta\b[^>]*content=")[^"]*("[^>]*(?:name|property)="og:locale")/i;
+const HREF_RE = /&/g;
+const HREF_RE_2 = /"/g;
+const HREF_RE_3 = /</g;
+const REWRITTEN_RE = /<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1(?:[\t\n\f\r ][^>]*|\/[^>]*)?>|<(?:head|\/head|link)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+const REWRITTEN_RE_2 = /^<head[\t\n\f\r >]/i;
+const REWRITTEN_RE_3 = /^<\/head[\t\n\f\r >]/i;
+const REWRITTEN_RE_4 = /^<link\b/i;
+const ATTRIBUTES_RE = /\s+([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+const WHITESPACE_RE = /\s+/;
+const SLUG_RE = /^\/docs\//;
+const TRAILING_SLASH_RE = /\/$/;
+const SLUG_RE_2 = /^zh\//;
+
+
 export const DOCS_PUBLIC_ORIGIN = 'https://www.worldmonitor.app';
 export const DOCS_ZH_HREFLANG = 'zh-Hans';
 export const DOCS_EN_HREFLANG = 'en';
@@ -44,7 +65,7 @@ export function isDocsHtmlDocumentPath(pathname: string): boolean {
   if (pathname === '/docs/mcp' || pathname.startsWith('/docs/mcp/')) return false;
   if (pathname.startsWith('/docs/_')) return false;
   // Static / generated files (css, js, images, markdown twins, xml, …)
-  if (/\.[a-z0-9]+$/i.test(pathname) && !pathname.endsWith('.html')) return false;
+  if (IS_DOCS_HTML_DOCUMENT_PATH_RE.test(pathname) && !pathname.endsWith('.html')) return false;
   return true;
 }
 
@@ -103,22 +124,22 @@ export function buildDocsHreflangLinkTags(pathname: string): string[] {
 }
 
 function replaceHtmlLang(html: string, lang: string): string {
-  if (/<html\b[^>]*\blang="/i.test(html)) {
-    return html.replace(/(<html\b[^>]*\blang=")[^"]*(")/i, `$1${lang}$2`);
+  if (REPLACE_HTML_LANG_RE.test(html)) {
+    return html.replace(REPLACE_HTML_LANG_RE_2, `$1${lang}$2`);
   }
-  return html.replace(/<html\b/i, `<html lang="${lang}"`);
+  return html.replace(REPLACE_HTML_LANG_RE_3, `<html lang="${lang}"`);
 }
 
 function replaceOgLocale(html: string, locale: string): string {
   // Mintlify currently emits name="og:locale"; Open Graph also allows property=.
-  if (/og:locale/i.test(html)) {
+  if (REPLACE_OG_LOCALE_RE.test(html)) {
     return html
       .replace(
-        /(<meta\b[^>]*(?:name|property)="og:locale"[^>]*content=")[^"]*(")/i,
+        REPLACE_OG_LOCALE_RE_2,
         `$1${locale}$2`,
       )
       .replace(
-        /(<meta\b[^>]*content=")[^"]*("[^>]*(?:name|property)="og:locale")/i,
+        REPLACE_OG_LOCALE_RE_3,
         `$1${locale}$2`,
       );
   }
@@ -126,25 +147,25 @@ function replaceOgLocale(html: string, locale: string): string {
 }
 
 function rewriteDocsHeadLinks(html: string, pathname: string): string {
-  const href = docsAbsoluteUrl(pathname).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const href = docsAbsoluteUrl(pathname).replace(HREF_RE, '&amp;').replace(HREF_RE_2, '&quot;').replace(HREF_RE_3, '&lt;');
   const canonical = `<link rel="canonical" href="${href}" />`;
   const alternates = buildDocsHreflangLinkTags(pathname).join('');
   let inHead = false;
   let replaced = false;
   let inserted = false;
   const rewritten = html.replace(
-    /<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1(?:[\t\n\f\r ][^>]*|\/[^>]*)?>|<(?:head|\/head|link)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,
+    REWRITTEN_RE,
     (tag) => {
-      if (/^<head[\t\n\f\r >]/i.test(tag)) inHead = true;
-      if (/^<\/head[\t\n\f\r >]/i.test(tag) && inHead) {
+      if (REWRITTEN_RE_2.test(tag)) inHead = true;
+      if (REWRITTEN_RE_3.test(tag) && inHead) {
         inHead = false;
         inserted = true;
         return `${replaced ? '' : canonical}${alternates}${tag}`;
       }
-      if (!inHead || !/^<link\b/i.test(tag)) return tag;
-      const attributes = [...tag.matchAll(/\s+([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)];
+      if (!inHead || !REWRITTEN_RE_4.test(tag)) return tag;
+      const attributes = [...tag.matchAll(ATTRIBUTES_RE)];
       const rel = attributes.find((attribute) => attribute[1]?.toLowerCase() === 'rel');
-      const relations = (rel?.[2] ?? rel?.[3] ?? rel?.[4] ?? '').toLowerCase().split(/\s+/);
+      const relations = (rel?.[2] ?? rel?.[3] ?? rel?.[4] ?? '').toLowerCase().split(WHITESPACE_RE);
       if (relations.includes('alternate') && attributes.some((attribute) => attribute[1]?.toLowerCase() === 'hreflang')) return '';
       if (!relations.includes('canonical')) return tag;
       if (replaced) return '';
@@ -321,7 +342,7 @@ function docsSlugForPathname(pathname: string | undefined): string | null {
   const pair = resolveDocsLocalePair(pathname);
   if (!pair) return null;
   const active = pair.active === 'zh' ? pair.zhPath : pair.enPath;
-  const slug = active.replace(/^\/docs\//, '').replace(/\/$/, '');
+  const slug = active.replace(SLUG_RE, '').replace(TRAILING_SLASH_RE, '');
   return slug.length > 0 ? slug : null;
 }
 
@@ -371,7 +392,7 @@ function docsAuthorForPathname(pathname: string | undefined): Record<string, unk
   // The Chinese mirror keeps its locale segment in the slug ("zh/methodology/…"),
   // and it is the same editorial work under translation, so drop the segment
   // before matching the family rather than attributing it differently.
-  const slug = docsSlugForPathname(pathname)?.replace(/^zh\//, '');
+  const slug = docsSlugForPathname(pathname)?.replace(SLUG_RE_2, '');
   return slug?.startsWith(DOCS_PERSON_AUTHORED_SLUG_PREFIX)
     ? { ...DOCS_PERSON_AUTHOR }
     : { ...DOCS_ORGANIZATION_AUTHOR };
@@ -521,7 +542,7 @@ export function rewriteDocsEntityGraph(html: string, pathname?: string): string 
       // element early. JSON.parse turns Mintlify's escaped `<\/script>` back
       // into a literal, and JSON.stringify would re-emit it raw. Mirrors
       // escapeJsonScript in scripts/build-crawlable-corpus.mjs.
-      const serialized = JSON.stringify(next).replace(/</g, '\\u003c');
+      const serialized = JSON.stringify(next).replace(HREF_RE_3, '\\u003c');
       return `<script type="application/ld+json">${serialized}</script>`;
     } catch (err) {
       // Fail open so a shape we cannot parse still reaches the reader, but say

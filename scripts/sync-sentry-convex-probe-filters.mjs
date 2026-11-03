@@ -54,6 +54,9 @@ import {
   listPublicConvexFunctionExports,
 } from './lib/convex-function-exports.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const CONVEX_ROOT = join(REPO_ROOT, 'convex');
@@ -106,7 +109,7 @@ const CONVEX_MISSING_PUBLIC_RE =
 export function splitErrorMessageFilters(text) {
   if (typeof text !== 'string' || text.length === 0) return [];
   return text
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
 }
@@ -211,7 +214,7 @@ export function formatCommittedFilterList(patterns) {
  */
 export function parseCommittedFilterList(text) {
   return text
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0 && !line.startsWith('#'));
 }

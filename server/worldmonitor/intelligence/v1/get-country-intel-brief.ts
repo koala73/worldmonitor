@@ -29,6 +29,22 @@ import {
   UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY,
 } from './_energy-import-dependency';
 
+const ID_RE = /^\[(.*)\]$/;
+const COMPARABLE_RE = /\p{M}/gu;
+const NORMALIZED_CLAIM_RE = /[’‘]/g;
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZED_CLAIM_RE_2 = /[.!?]$/;
+const CII_CLAIM_GROUNDED_RE = /\b(?:Country Instability Index|CII)\b/i;
+const CII_CLAIM_GROUNDED_RE_2 = /^A (?:Kalshi|Polymarket) market related to .+, (["']).+\1, priced Yes at .+ on .+; it closes .+\.$/;
+const CII_CLAIM_GROUNDED_RE_3 = /^A World Monitor forecast related to .+, (["']).+\1, gives a .+ probability by .+, as of .+\.$/;
+const CII_CLAIM_GROUNDED_RE_4 = /^(?:\s+\([^()]+\))?(?:,?\s+in the [\p{L} -]+ band)?(?:,?\s+as of .+)?$/u;
+const URGING_RE = /\burg(?:e|es|ed|ing)\b/;
+const RELATION_RE = /^(.+?) urg(?:es|ed) (.+?) to (.+)$/;
+const RENDER_EVIDENCE_GROUNDED_COUNTRY_BRIEF_RE = /[\r\n\[\]*]/;
+const LEGACY_RE = /^(.+?)\s*\|\s*(.+?)\s*\|\s*(https?:\/\/\S+)(?:\s*\|\s*published=([^\n|]+))?$/;
+const GET_COUNTRY_INTEL_BRIEF_RE = /\r\n?|[\u2028\u2029]/g;
+
+
 const INTEL_CACHE_TTL = 21600;
 
 // Anonymous cache keys are minted from caller-controlled inputs, so both
@@ -120,7 +136,7 @@ function parseEvidenceCitations(value: unknown, byId: Map<string, CountryBriefEv
   const items: CountryBriefEvidenceInput[] = [];
   for (const entry of value) {
     if (typeof entry !== 'string') return null;
-    const id = entry.trim().replace(/^\[(.*)\]$/, '$1');
+    const id = entry.trim().replace(ID_RE, '$1');
     const item = EVIDENCE_ID_RE.test(id) ? byId.get(id) : undefined;
     if (!item) return null;
     if (!items.includes(item)) items.push(item);
@@ -128,36 +144,36 @@ function parseEvidenceCitations(value: unknown, byId: Map<string, CountryBriefEv
   return items;
 }
 
-const comparable = (value: string) => value.normalize('NFKD').replace(/\p{M}/gu, '');
+const comparable = (value: string) => value.normalize('NFKD').replace(COMPARABLE_RE, '');
 
-const normalizedClaim = (value: string) => value.replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim().replace(/[.!?]$/, '').toLowerCase();
+const normalizedClaim = (value: string) => value.replace(NORMALIZED_CLAIM_RE, "'").replace(WHITESPACE_RE, ' ').trim().replace(NORMALIZED_CLAIM_RE_2, '').toLowerCase();
 
 function ciiClaimGrounded(text: string, titles: string[], evidence: CountryBriefEvidenceInput[]): boolean {
   const cii = evidence.find(item => item.kind === 'cii');
   if (!cii) {
-    if (!/\b(?:Country Instability Index|CII)\b/i.test(text)) return true;
+    if (!CII_CLAIM_GROUNDED_RE.test(text)) return true;
     const item = titles.length === 0 && evidence.length === 1 ? evidence[0] : undefined;
     if (!item || text.trim() !== item.factText.trim()) return false;
-    if (item.kind === 'market') return /^A (?:Kalshi|Polymarket) market related to .+, (["']).+\1, priced Yes at .+ on .+; it closes .+\.$/.test(text.trim());
-    if (item.kind === 'forecast') return /^A World Monitor forecast related to .+, (["']).+\1, gives a .+ probability by .+, as of .+\.$/.test(text.trim());
+    if (item.kind === 'market') return CII_CLAIM_GROUNDED_RE_2.test(text.trim());
+    if (item.kind === 'forecast') return CII_CLAIM_GROUNDED_RE_3.test(text.trim());
     return false;
   }
   if (titles.length > 0 || evidence.length !== 1) return false;
   const claim = normalizedClaim(text);
   const fact = normalizedClaim(cii.factText);
   return fact.startsWith(claim)
-    && /^(?:\s+\([^()]+\))?(?:,?\s+in the [\p{L} -]+ band)?(?:,?\s+as of .+)?$/u.test(fact.slice(claim.length));
+    && CII_CLAIM_GROUNDED_RE_4.test(fact.slice(claim.length));
 }
 
 function urgingRolesGrounded(text: string, titles: string[]): boolean {
   if (titles.length === 0) return true;
   const claim = normalizedClaim(text);
-  const urging = /\burg(?:e|es|ed|ing)\b/;
+  const urging = URGING_RE;
   const directed = titles.map(normalizedClaim).filter(title => urging.test(title));
   if (directed.length === 0) return !urging.test(claim);
   return directed.every(title => {
     if (claim === title) return true;
-    const relation = title.match(/^(.+?) urg(?:es|ed) (.+?) to (.+)$/);
+    const relation = title.match(RELATION_RE);
     if (!relation) return false;
     const [, actor, recipient, action] = relation;
     const forms = (name: string) => [name, name.startsWith('the ') ? name.slice(4) : `the ${name}`];
@@ -229,7 +245,7 @@ export function renderEvidenceGroundedCountryBrief(
       if (sourceIndexes === 'malformed') return null;
       const cited = parseEvidenceCitations(rawEvidence, evidenceById);
       const text = rawText.trim();
-      if (sourceIndexes === 'out-of-range' || cited === null || !text || text.length > 500 || /[\r\n\[\]*]/.test(text)
+      if (sourceIndexes === 'out-of-range' || cited === null || !text || text.length > 500 || RENDER_EVIDENCE_GROUNDED_COUNTRY_BRIEF_RE.test(text)
         || accepted.length >= rule.maxClaims
         || !rule.accepts({ sources: sourceIndexes.length, evidence: cited })
         || !claimIsGrounded(text, sourceIndexes.map((index) => sources[index - 1]!.title), cited)) {
@@ -258,7 +274,7 @@ export function renderEvidenceGroundedCountryBrief(
 
 function cleanSourceText(value: unknown, maxLen: number): string {
   if (typeof value !== 'string') return '';
-  const text = value.replace(/\s+/g, ' ').trim();
+  const text = value.replace(WHITESPACE_RE, ' ').trim();
   return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
 }
 
@@ -296,7 +312,7 @@ export function parseCountryBriefSources(contextSnapshot: string): CountryIntelB
     }
 
     if (!candidate) {
-      const legacy = rawPayload.match(/^(.+?)\s*\|\s*(.+?)\s*\|\s*(https?:\/\/\S+)(?:\s*\|\s*published=([^\n|]+))?$/);
+      const legacy = rawPayload.match(LEGACY_RE);
       if (legacy) {
         candidate = {
           title: legacy[1],
@@ -367,7 +383,7 @@ export async function getCountryIntelBrief(
       // MCP sends `context` in the signed POST body; the gateway promotes scalar
       // body fields into query params before this generated GET handler runs.
       const rawContextSnapshot = (url.searchParams.get('context') || '').trim().slice(0, 4000);
-      contextSnapshot = sanitizeForPrompt(rawContextSnapshot.replace(/\r\n?|[\u2028\u2029]/g, '\n'));
+      contextSnapshot = sanitizeForPrompt(rawContextSnapshot.replace(GET_COUNTRY_INTEL_BRIEF_RE, '\n'));
       sources = parseCountryBriefSources(contextSnapshot);
     }
   } catch {

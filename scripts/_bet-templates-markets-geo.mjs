@@ -24,6 +24,9 @@
 import { MARKET_FEED, MARKET_SETTLEMENT_FEED, parseMarketRecord } from './_bet-templates-markets.mjs';
 import { isGeopoliticalMarket } from './_bet-templates-markets-classify.mjs';
 
+const NORMALIZE_QUESTION_RE = /\?$/;
+
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_LEAD_MS = 2 * DAY_MS;
 // Long horizon: the geo bench clusters at Dec-31 (~156d out) and into Q1 of the
@@ -126,7 +129,7 @@ export const MARKET_GEO_BET_TEMPLATES = Array.from({ length: MARKET_GEO_SLOT_COU
 
 function normalizeQuestion(title) {
   const text = String(title).trim();
-  return /\?$/.test(text) ? text : `${text}?`;
+  return NORMALIZE_QUESTION_RE.test(text) ? text : `${text}?`;
 }
 
 function round2(value) {

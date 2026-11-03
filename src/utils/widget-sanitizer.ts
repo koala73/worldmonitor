@@ -1,6 +1,9 @@
 import DOMPurify from 'dompurify';
 import { sanitizeWidgetStyle } from './widget-style';
 
+const STRIP_LEADING_PANEL_HEADER_RE = /^\s*<div[^>]*\bclass="panel-header"[^>]*>[\s\S]*?<\/div>\s*/i;
+
+
 const PURIFY_CONFIG = {
   ALLOWED_TAGS: [
     'div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -40,7 +43,7 @@ export function sanitizeWidgetHtml(html: string): string {
 // CustomWidgetPanel frame already displays the title, so a second one is
 // always a duplicate. Only the very first element is removed.
 function stripLeadingPanelHeader(html: string): string {
-  return html.replace(/^\s*<div[^>]*\bclass="panel-header"[^>]*>[\s\S]*?<\/div>\s*/i, '');
+  return html.replace(STRIP_LEADING_PANEL_HEADER_RE, '');
 }
 
 export function wrapWidgetHtml(html: string, extraClass = ''): string {

@@ -1,5 +1,9 @@
 import type { AcquisitionProvider, ExtractResult, ExtractSchema, FetchOptions, FetchResult, SearchOptions, SearchResult } from './types.js';
 
+const TRIMMED_RE = /^```(?:json)?\s*/i;
+const TRIMMED_RE_2 = /\s*```$/;
+
+
 export class ExaProvider implements AcquisitionProvider {
   readonly name = 'exa' as const;
 
@@ -147,7 +151,7 @@ function parseStructuredSummary<T>(summary: unknown): T | null {
   if (summary && typeof summary === 'object') return summary as T;
   if (typeof summary !== 'string') return null;
 
-  const trimmed = summary.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const trimmed = summary.trim().replace(TRIMMED_RE, '').replace(TRIMMED_RE_2, '');
   if (!trimmed) return null;
   try {
     const parsed: unknown = JSON.parse(trimmed);

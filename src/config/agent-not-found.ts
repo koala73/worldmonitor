@@ -16,6 +16,15 @@
 import { indexableLandingPassthroughPrefixes } from '../../shared/indexable-landing-locales';
 import { stripTrailingSlashes } from '../../shared/strip-trailing-slashes.js';
 
+const SANITIZE_PATH_FOR_MARKDOWN_RE = /[`<>]/g;
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+const ESCAPE_HTML_RE_5 = /'/g;
+const BUILD_HUMAN_NOT_FOUND_HTML_RE = /^ {4}/gm;
+
+
 export const AGENT_NOT_FOUND_STATUS = 404 as const;
 export const AGENT_NOT_FOUND_CONTENT_TYPE = 'text/markdown; charset=utf-8';
 export const HUMAN_NOT_FOUND_CONTENT_TYPE = 'text/html; charset=utf-8';
@@ -202,7 +211,7 @@ function normalizePath(path: string): string {
 
 function sanitizePathForMarkdown(path: string): string {
   const normalized = normalizePath(path).slice(0, 200);
-  return normalized.replace(/[`<>]/g, '');
+  return normalized.replace(SANITIZE_PATH_FOR_MARKDOWN_RE, '');
 }
 
 function sanitizePathForHtml(path: string): string {
@@ -211,11 +220,11 @@ function sanitizePathForHtml(path: string): string {
 
 function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(ESCAPE_HTML_RE, '&amp;')
+    .replace(ESCAPE_HTML_RE_2, '&lt;')
+    .replace(ESCAPE_HTML_RE_3, '&gt;')
+    .replace(ESCAPE_HTML_RE_4, '&quot;')
+    .replace(ESCAPE_HTML_RE_5, '&#39;');
 }
 
 // Catch-all ranges are opt-in: the agent 404 treats curl's */* as no HTML preference.
@@ -371,7 +380,7 @@ export function buildHumanNotFoundHtml(path?: string): string {
     '    </div>',
     '    <h2>Or start from a section</h2>',
     '    <div class="grid">',
-    ...cards.map((card) => card.replace(/^ {4}/gm, '')),
+    ...cards.map((card) => card.replace(BUILD_HUMAN_NOT_FOUND_HTML_RE, '')),
     '    </div>',
     '  </main>',
     '  <footer>',

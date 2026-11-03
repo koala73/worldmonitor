@@ -8,6 +8,9 @@
  */
 
 // **SIGNAL** → <div class="chat-section-header">SIGNAL</div>
+const BOLDS_RE = /\*\*/g;
+const SINGLES_RE = /\*/g;
+
 const BOLD_CAPS_RE = /<p><strong>([A-Z][A-Z\s/]{1,29})<\/strong><\/p>/g;
 // Plain SIGNAL (4–25 chars, all caps/spaces) → section header
 const PLAIN_CAPS_RE = /<p>([A-Z][A-Z\s]{3,24})<\/p>/g;
@@ -59,9 +62,9 @@ function maskNonEmphasis(text: string): string {
 /** Index of the last unmatched `**` and `*` opener, or -1 when balanced. */
 function openEmphasis(text: string): { bold: number; italic: number } {
   const masked = maskNonEmphasis(text);
-  const bolds = [...masked.matchAll(/\*\*/g)].map((m) => m.index);
+  const bolds = [...masked.matchAll(BOLDS_RE)].map((m) => m.index);
   // Lone `*` markers once every `**` pair is blanked out.
-  const singles = [...masked.replace(/\*\*/g, '  ').matchAll(/\*/g)].map((m) => m.index);
+  const singles = [...masked.replace(BOLDS_RE, '  ').matchAll(SINGLES_RE)].map((m) => m.index);
   return {
     bold: bolds.length % 2 === 1 ? bolds[bolds.length - 1]! : -1,
     italic: singles.length % 2 === 1 ? singles[singles.length - 1]! : -1,

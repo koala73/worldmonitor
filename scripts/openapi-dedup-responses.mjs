@@ -45,6 +45,12 @@
  * the contract tests.
  */
 
+const COMPONENT_NAME_RE = /[^A-Za-z0-9]/g;
+const DEDUPE_ERROR_RESPONSES_RE = /^2/;
+const FLAT_RE = /\s*\([^()]*\)/g;
+const WHITESPACE_RE = /\s+/g;
+const LEAD_SENTENCE_RE = /(?<=[.!?])\s+(?=[A-Z])/;
+
 const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
 
 const STATUS_NAMES = {
@@ -80,7 +86,7 @@ function componentName(statusCode) {
   // Unmapped statuses follow the same compact shape rather than the longer
   // `Response<code>`, so adding a status to STATUS_NAMES never changes the
   // artifact's size profile — only its readability.
-  return STATUS_NAMES[statusCode] ?? `E${statusCode.replace(/[^A-Za-z0-9]/g, '')}`;
+  return STATUS_NAMES[statusCode] ?? `E${statusCode.replace(COMPONENT_NAME_RE, '')}`;
 }
 
 /**
@@ -98,7 +104,7 @@ export function dedupeErrorResponses(spec) {
     for (const [method, op] of Object.entries(pathItem)) {
       if (!HTTP_METHODS.has(method.toLowerCase()) || !op?.responses) continue;
       for (const [statusCode, response] of Object.entries(op.responses)) {
-        if (/^2/.test(statusCode)) continue; // 2xx must stay inline (scanner-credited)
+        if (DEDUPE_ERROR_RESPONSES_RE.test(statusCode)) continue; // 2xx must stay inline (scanner-credited)
         if (!response || typeof response !== 'object' || response.$ref) continue;
         const key = `${statusCode}${canonical(response)}`;
         const group = groups.get(key);
@@ -300,8 +306,8 @@ const utf8Bytes = (text) => Buffer.byteLength(text, 'utf8');
  * outside a bracket does not end the sentence either.
  */
 export function leadSentence(text) {
-  const flat = String(text).replaceAll(/\s*\([^()]*\)/g, '').replaceAll(/\s+/g, ' ').trim();
-  return flat.split(/(?<=[.!?])\s+(?=[A-Z])/)[0].trim();
+  const flat = String(text).replaceAll(FLAT_RE, '').replaceAll(WHITESPACE_RE, ' ').trim();
+  return flat.split(LEAD_SENTENCE_RE)[0].trim();
 }
 
 /**

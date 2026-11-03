@@ -11,14 +11,21 @@ import { describeItem, isHttpUrl } from '../ui/detail.mjs';
 import { ageOf, allHeadlines } from '../data/select.mjs';
 import { PaneView, selectedItem } from './base.mjs';
 
+const TOKENS_RE = /\[\d+\]/g;
+const TOKENS_RE_2 = /[^a-z0-9]+/;
+const CITATIONS_RE = /\[(\d+)\]/g;
+const SPLIT_RE = /(?<=[.!?])\s+/;
+const DESCRIBE_RE = /\s*\[\d+\]/g;
+
+
 const STOP = new Set('the a an and or of to in on at for with from by as is are was were be been has have had this that these those its their his her over into after before amid says said say report reports reported new amid near more than about between against while during under across through'.split(' '));
 
 export function tokens(text) {
-  return [...new Set(String(text || '').toLowerCase().replace(/\[\d+\]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !STOP.has(w)))];
+  return [...new Set(String(text || '').toLowerCase().replace(TOKENS_RE, '').split(TOKENS_RE_2).filter((w) => w.length >= 4 && !STOP.has(w)))];
 }
 
 export function citations(text) {
-  return [...String(text || '').matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
+  return [...String(text || '').matchAll(CITATIONS_RE)].map((m) => Number(m[1]));
 }
 
 // Related items for a story line: cited sources first, then headlines sharing keywords.
@@ -85,7 +92,7 @@ export class BriefView extends PaneView {
     const brief = String(ins.worldBrief || '');
     if (this.fallback?.brief !== brief) {
       const split = brief
-        .split(/(?<=[.!?])\s+/)
+        .split(SPLIT_RE)
         .filter(Boolean)
         .map((text, i) => ({ n: i + 1, text }));
       this.fallback = { brief, lines: split };
@@ -115,7 +122,7 @@ export class BriefView extends PaneView {
       return {
         title: `Story line ${item.n || ''}`.trim(),
         subtitle: 'AI world brief',
-        rows: [['Line', String(item.text || '').replace(/\s*\[\d+\]/g, '')], ['Cites', citations(item.text).map((n) => `[${n}]`).join(' ') || 'nothing'], ['Related coverage', `${rel.length} items`], ...rel.slice(0, 12).map((r, i) => [`${i + 1}. ${r.kind}`, `${r.source ? `${r.source}: ` : ''}${r.title}`])],
+        rows: [['Line', String(item.text || '').replace(DESCRIBE_RE, '')], ['Cites', citations(item.text).map((n) => `[${n}]`).join(' ') || 'nothing'], ['Related coverage', `${rel.length} items`], ...rel.slice(0, 12).map((r, i) => [`${i + 1}. ${r.kind}`, `${r.source ? `${r.source}: ` : ''}${r.title}`])],
         body: '',
         url: rel.map((r) => r.link).find(isHttpUrl) || null,
       };
@@ -193,7 +200,7 @@ export class BriefView extends PaneView {
         const n = `${String(line.n || i + 1).padStart(2)}. `;
         const body = String(line.text || '');
         const cites = citations(body);
-        const clean = body.replace(/\s*\[\d+\]/g, '');
+        const clean = body.replace(DESCRIBE_RE, '');
         const citeText = cites.length ? `  ${cites.map((c) => `[${c}]`).join('')}` : '';
         const wrapped = wrap(clean, Math.max(10, width - n.length - 1 - citeText.length));
         const rows = [];
@@ -226,7 +233,7 @@ export class BriefView extends PaneView {
     if (inner.w < 12 || inner.h < 3) return;
     let y = inner.y;
     if (line) {
-      const clean = String(line.text || '').replace(/\s*\[\d+\]/g, '');
+      const clean = String(line.text || '').replace(DESCRIBE_RE, '');
       for (const l of wrap(clean, inner.w).slice(0, 3)) s.text(inner.x, y++, l, { fg: t.dim, bg: t.panel }, inner.w);
       y++;
     }

@@ -65,6 +65,12 @@ import {
 } from './openapi-dedup-schemas.mjs';
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
+const ANNOTATION_RE = /(\[OpenAPI specification\]\(https:\/\/www\.worldmonitor\.app\/openapi\.yaml\), which is )[\d,]+ bytes/g;
+const VISIT_RE = /((`{3,}|~{3,})[\s\S]*?\2[`~]*)/;
+const SHORTEN_GENERATED_SUCCESS_DESCRIPTIONS_RE = /^2\d\d$/;
+const DROP_OPERATION_ID_DESCRIPTION_PREFIXES_RE = /^\S/;
+
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 // OPENAPI_YAML_PATH exists so the capacity report's "could not measure" exit can
 // be exercised as a real process against a real missing/invalid source, instead
@@ -75,7 +81,7 @@ export const jsonPath = resolve(scriptDir, '../public/openapi.json');
 const llmsPath = resolve(scriptDir, '../public/llms.txt');
 
 export function withOpenApiByteSize(text, yamlBytes) {
-  const annotation = /(\[OpenAPI specification\]\(https:\/\/www\.worldmonitor\.app\/openapi\.yaml\), which is )[\d,]+ bytes/g;
+  const annotation = ANNOTATION_RE;
   if ([...text.matchAll(annotation)].length !== 1) {
     throw new Error('llms.txt must contain exactly one OpenAPI YAML byte-size annotation');
   }
@@ -110,7 +116,7 @@ export function collapseSoftLineBreaks(spec) {
         // it, so ```` and ~~~ blocks are protected too. split() with two
         // capture groups yields [prose, fence, fenceMarker, prose, ...].
         node[key] = value
-          .split(/((`{3,}|~{3,})[\s\S]*?\2[`~]*)/)
+          .split(VISIT_RE)
           .filter((_, index) => index % 3 !== 2)
           .map((segment, index) => (index % 2 === 1
             ? segment
@@ -179,7 +185,7 @@ export function shortenGeneratedSuccessDescriptions(spec) {
       const responses = operation && typeof operation === 'object' ? operation.responses : null;
       if (!responses || typeof responses !== 'object') continue;
       for (const [code, response] of Object.entries(responses)) {
-        if (!/^2\d\d$/.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
+        if (!SHORTEN_GENERATED_SUCCESS_DESCRIPTIONS_RE.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
         if (response.description === GENERATED_SUCCESS_DESCRIPTION) {
           response.description = 'OK';
           stats.shortened += 1;
@@ -227,7 +233,7 @@ export function dropOperationIdDescriptionPrefixes(spec) {
       const { operationId, description } = operation ?? {};
       if (typeof operationId !== 'string' || !operationId || typeof description !== 'string') continue;
       const rest = description.startsWith(`${operationId} `) ? description.slice(operationId.length + 1) : '';
-      if (!/^\S/.test(rest)) continue;
+      if (!DROP_OPERATION_ID_DESCRIPTION_PREFIXES_RE.test(rest)) continue;
       operation.description = rest[0].toUpperCase() + rest.slice(1);
       stats.dropped += 1;
     }
@@ -289,7 +295,7 @@ export function trimResponseExampleLists(spec) {
       const responses = operation && typeof operation === 'object' ? operation.responses : null;
       if (!responses || typeof responses !== 'object') continue;
       for (const [code, response] of Object.entries(responses)) {
-        if (!/^2\d\d$/.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
+        if (!SHORTEN_GENERATED_SUCCESS_DESCRIPTIONS_RE.test(code) || !response || typeof response !== 'object' || response.$ref) continue;
         for (const media of Object.values(response.content ?? {})) {
           if (media && typeof media === 'object' && 'example' in media) trim(media.example);
         }

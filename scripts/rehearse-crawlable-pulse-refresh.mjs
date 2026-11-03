@@ -31,6 +31,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
+const ENV_RE = /^\$\{\{.*\}\}$/s;
+
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SNAPSHOT_DIR = 'docs/snapshots';
 const LIVE_PULSE_SNAPSHOT_RE = /^crawlable-live-pulse-(\d{4}-\d{2}-\d{2})\.json$/;
@@ -145,7 +148,7 @@ export function readRehearsedSteps(workflowText) {
     const step = steps.find((candidate) => candidate.name === name);
     if (!step?.run) throw new Error(`${REFRESH_WORKFLOW_PATH} has no "${name}" step with a run script`);
     const env = Object.fromEntries(Object.entries(step.env ?? {}).map(([key, value]) => (
-      [key, /^\$\{\{.*\}\}$/s.test(String(value).trim()) ? '' : String(value)]
+      [key, ENV_RE.test(String(value).trim()) ? '' : String(value)]
     )));
     return { name, run: step.run, env };
   });

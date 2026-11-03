@@ -36,6 +36,12 @@ import { join, relative, sep } from 'node:path';
 
 import { decodeHtmlEntities } from './_html-entities.mjs';
 
+const MODULE_RE = /id="([^"]+)"/g;
+const IN_PAGE_RE = /href="#([^"]+)"/g;
+const CROSS_PAGE_RE = /href="(\/[^"#?]*)(?:\?[^"#]*)?#([^"]+)"/g;
+const CROSS_PAGE_RE_2 = /^\/+|\/+$/g;
+
+
 const root = process.argv[2];
 if (!root) {
   console.error('usage: node scripts/check-doc-anchors.mjs <unpacked-export-dir>');
@@ -83,7 +89,7 @@ const sources = new Map();
 for (const file of htmlFiles) {
   const doc = readFileSync(file, 'utf8');
   sources.set(file, doc);
-  idsByPage.set(pageOf(file), new Set([...doc.matchAll(/id="([^"]+)"/g)].map((m) => decodeHtmlEntities(m[1]))));
+  idsByPage.set(pageOf(file), new Set([...doc.matchAll(MODULE_RE)].map((m) => decodeHtmlEntities(m[1]))));
 }
 
 // The renderer that assigns these ids is downloaded at export time and is NOT
@@ -113,7 +119,7 @@ for (const file of htmlFiles) {
   const page = pageOf(file) || '(root)';
   const ownIds = idsByPage.get(pageOf(file));
 
-  const inPage = new Set([...doc.matchAll(/href="#([^"]+)"/g)].map((m) => decode(m[1])));
+  const inPage = new Set([...doc.matchAll(IN_PAGE_RE)].map((m) => decode(m[1])));
   for (const href of inPage) {
     if (IGNORED.test(href)) continue;
     checked++;
@@ -121,8 +127,8 @@ for (const file of htmlFiles) {
   }
 
   const crossPage = new Set(
-    [...doc.matchAll(/href="(\/[^"#?]*)(?:\?[^"#]*)?#([^"]+)"/g)]
-      .map((m) => `${decode(m[1]).replace(/^\/+|\/+$/g, '')}#${decode(m[2])}`),
+    [...doc.matchAll(CROSS_PAGE_RE)]
+      .map((m) => `${decode(m[1]).replace(CROSS_PAGE_RE_2, '')}#${decode(m[2])}`),
   );
   for (const entry of crossPage) {
     const cut = entry.indexOf('#');

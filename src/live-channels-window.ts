@@ -19,6 +19,9 @@ import { toApiUrl } from '@/services/runtime';
 import { resolveUserCountryCode } from '@/utils/user-location';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const CHANNEL_INITIALS_RE = /[\s-]+/;
+
+
 
 /**
  * The custom channel a pasted entry describes. Video and channel ids are stable, so the same paste
@@ -42,7 +45,7 @@ function sourceProblemHint(problem: EntryProblem): string {
 let activeRegionTab = 'na';
 
 function channelInitials(name: string): string {
-  return name.split(/[\s-]+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
+  return name.split(CHANNEL_INITIALS_RE).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
 }
 
 export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise<void> {

@@ -4,6 +4,9 @@ import { LIVE_NEWS_SOURCES, type LiveNewsSlotId } from '@/config/live-video-sour
 import { CHANNEL_ID, type LiveVideoSource } from '@/services/live-video/model';
 import { loadFromStorage, saveToStorage } from '@/utils';
 
+const LEGACY_CHANNEL_ID_RE = /^@/;
+
+
 export interface LiveChannel {
   id: string;
   name: string;
@@ -244,7 +247,7 @@ function customChannelFromStorage(stored: StoredCustomChannel): LiveChannel | nu
   if (!id) return null;
   const name = stored.name || stored.handle || id;
   // A /channel/UC… URL was saved as the handle '@UC…', and that channel id still plays.
-  const legacyChannelId = stored.handle?.replace(/^@/, '');
+  const legacyChannelId = stored.handle?.replace(LEGACY_CHANNEL_ID_RE, '');
   if (legacyChannelId && CHANNEL_ID.test(legacyChannelId)) return { id, name, channelId: legacyChannelId };
   // A handle channel first: older versions also saved the video or YouTube manifest they last scraped for it,
   // which would now play frozen. Its live video cannot be looked up, so playback asks for a channel URL.

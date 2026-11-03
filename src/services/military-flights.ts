@@ -21,6 +21,9 @@ import { isDesktopRuntime, toApiUrl } from './runtime';
 import type { BreakerDataState } from '@/utils/circuit-breaker';
 import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), {
   fetch: (...args) => globalThis.fetch(...args),
 });
@@ -512,7 +515,7 @@ function clusterFlights(flights: MilitaryFlight[]): MilitaryFlightCluster[] {
       else if (hasTransport) activityType = 'transport';
 
       clusters.push({
-        id: `cluster-${hotspot.name.toLowerCase().replace(/\s+/g, '-')}`,
+        id: `cluster-${hotspot.name.toLowerCase().replace(WHITESPACE_RE, '-')}`,
         name: hotspot.name,
         lat: avgLat,
         lon: avgLon,

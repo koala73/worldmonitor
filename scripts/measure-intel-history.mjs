@@ -6,6 +6,9 @@ import { loadEnvFile } from './_seed-utils.mjs';
 import { historyCostKey, HISTORY_COST_FIELDS } from './lib/intel-history-cost.mjs';
 import { EMBED_MODEL } from './lib/brief-dedup-consts.mjs';
 
+const READ_HISTORY_COST_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export async function measureHistoryStorage({ query, maxRows = 100000, now = Date.now }) {
   if (!Number.isSafeInteger(maxRows) || maxRows < 1 || maxRows > 1000000) {
     throw new Error('maxRows must be an integer between 1 and 1000000');
@@ -44,7 +47,7 @@ export async function measureHistoryStorage({ query, maxRows = 100000, now = Dat
 }
 
 export async function readHistoryCost({ domain, resource, day }, deps = {}) {
-  if (!domain || !resource || !/^\d{4}-\d{2}-\d{2}$/.test(day ?? '') ||
+  if (!domain || !resource || !READ_HISTORY_COST_RE.test(day ?? '') ||
       !Number.isFinite(Date.parse(day)) || new Date(day).toISOString().slice(0, 10) !== day) {
     throw new Error('domain, resource, and a valid UTC day are required');
   }

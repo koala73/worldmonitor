@@ -5,6 +5,10 @@ import { getRedisCredentials, loadEnvFile, redisCommand, withRetry, SEED_REDIS_R
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { listRankableCountries } from './shared/rankable-universe.mjs';
 
+const WORDS_RE = /[^\p{L}\p{N}]+/gu;
+const EVENTS_RE = /^https?:\/\//i;
+
+
 const DAY = 86400000;
 const COUNTRY_NAMES = JSON.parse(readFileSync(new URL('./shared/country-names.json', import.meta.url), 'utf8'));
 const AMBIGUOUS_HEADLINE_NAMES = new Set(['georgia', 'jordan', 'chad', 'turkey', 'guinea', 'congo', 'republic of the congo']);
@@ -20,7 +24,7 @@ const RANKING_KEY = 'resilience:ranking:v29';
 const DIGEST_KEY = 'news:digest:v1:full:en';
 const fresh = (time, now, age) => Number.isFinite(time) && time > 0 && time <= now && now - time <= age;
 const validScore = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
-const words = text => String(text).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const words = text => String(text).toLowerCase().replace(WORDS_RE, ' ').trim();
 
 export function composeCountrySnapshots({ countries, risk, ranking, digest, now }) {
   if (!Array.isArray(risk?.ciiScores) || !risk.ciiScores.length || risk.stale || risk.degraded
@@ -38,7 +42,7 @@ export function composeCountrySnapshots({ countries, risk, ranking, digest, now 
     if (!Array.isArray(bucket?.items)) throw new Error('country history malformed news bucket');
     return bucket.items.map(item => ({ ...item, category }));
   }).filter(item => typeof item.title === 'string' && item.title && typeof item.source === 'string' && item.source
-    && typeof item.link === 'string' && /^https?:\/\//i.test(item.link)
+    && typeof item.link === 'string' && EVENTS_RE.test(item.link)
     && fresh(item.publishedAt, now, DAY))
     .sort((a, b) => (b.importanceScore || 0) - (a.importanceScore || 0) || b.publishedAt - a.publishedAt);
   return countries.map(countryCode => {

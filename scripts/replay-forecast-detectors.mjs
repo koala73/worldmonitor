@@ -45,6 +45,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { serializeR2JsonBody, sha256Hex } from './_r2-storage.mjs';
 import { parseStoredSeedJson } from './_seed-payload-codec.mjs';
 
+const ASSERT_REVISION_ON_MAIN_RE = /^[0-9a-f]{7,40}$/i;
+const DAY_RE = /-/g;
+const TRAILING_SLASH_RE = /\/$/;
+const MANIFEST_KEY_RE = /deep-snapshot\.json$/;
+
+
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(SCRIPT_PATH), '..');
 const LEDGER_KEY = 'forecast:resolutions:v1';
@@ -331,7 +337,7 @@ function git(args, options = {}) {
  * pull request ref, and those must not run here.
  */
 export function assertRevisionOnMain(revision, runGit = git) {
-  if (!/^[0-9a-f]{7,40}$/i.test(revision)) throw new Error(`not a commit sha: ${revision}`);
+  if (!ASSERT_REVISION_ON_MAIN_RE.test(revision)) throw new Error(`not a commit sha: ${revision}`);
   const onMain = () => {
     try {
       runGit(['merge-base', '--is-ancestor', revision, 'refs/remotes/origin/main']);
@@ -392,13 +398,13 @@ async function listRunIdsForDay(storageConfig, generatedAt) {
   const { getR2StorageClient } = await import('./_r2-storage.mjs');
   const { ListObjectsV2Command } = await import('@aws-sdk/client-s3');
   const client = await getR2StorageClient(storageConfig);
-  const day = new Date(generatedAt).toISOString().slice(0, 10).replace(/-/g, '/');
+  const day = new Date(generatedAt).toISOString().slice(0, 10).replace(DAY_RE, '/');
   const prefix = `${storageConfig.basePrefix}/${day}/`;
   const runIds = [];
   let token;
   do {
     const page = await client.send(new ListObjectsV2Command({ Bucket: storageConfig.bucket, Prefix: prefix, Delimiter: '/', ContinuationToken: token }));
-    for (const item of page.CommonPrefixes || []) runIds.push(item.Prefix.slice(prefix.length).replace(/\/$/, ''));
+    for (const item of page.CommonPrefixes || []) runIds.push(item.Prefix.slice(prefix.length).replace(TRAILING_SLASH_RE, ''));
     token = page.IsTruncated ? page.NextContinuationToken : undefined;
   } while (token);
   return runIds;
@@ -427,7 +433,7 @@ async function fetchSnapshot({ runId, generatedAt, lane, storageConfig }) {
 async function fetchManifestDigest({ runId, generatedAt, storageConfig }) {
   const { getR2JsonObject } = await import('./_r2-storage.mjs');
   const { buildDeepForecastSnapshotKey } = await import('./seed-forecasts.mjs');
-  const manifestKey = buildDeepForecastSnapshotKey(runId, generatedAt, storageConfig.basePrefix).replace(/deep-snapshot\.json$/, 'manifest.json');
+  const manifestKey = buildDeepForecastSnapshotKey(runId, generatedAt, storageConfig.basePrefix).replace(MANIFEST_KEY_RE, 'manifest.json');
   const manifest = await getR2JsonObject(storageConfig, manifestKey).catch(() => null);
   return typeof manifest?.snapshotSha256 === 'string' ? manifest.snapshotSha256 : null;
 }

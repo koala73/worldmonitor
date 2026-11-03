@@ -7,6 +7,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openExternal } from './video.mjs';
 
+const RUN_WEB_RE = /^\d{1,5}$/;
+const RUN_WEB_RE_2 = /(https?:\/\/(?:localhost|127\.0\.0\.1)[^\s]*)/;
+const RUN_WEB_RE_3 = /\x1b\[[0-9;]*m/g;
+
+
 export const HOSTED_DASHBOARD_URL = 'https://www.worldmonitor.app/dashboard';
 
 function isWorldMonitorRoot(dir) {
@@ -47,7 +52,7 @@ export async function runWeb({ options = {}, stdout = (s) => process.stdout.writ
     return 0;
   }
   const port = String(options.port || env.PORT || 5173);
-  if (!/^\d{1,5}$/.test(port) || Number(port) > 65535) {
+  if (!RUN_WEB_RE.test(port) || Number(port) > 65535) {
     stderr(`Invalid port: ${port}\n`);
     return 2;
   }
@@ -76,7 +81,7 @@ export async function runWeb({ options = {}, stdout = (s) => process.stdout.writ
     const lines = (pending + text).split('\n');
     pending = lines.pop();
     for (const line of lines) {
-      const m = /(https?:\/\/(?:localhost|127\.0\.0\.1)[^\s]*)/.exec(line.replace(/\x1b\[[0-9;]*m/g, ''));
+      const m = RUN_WEB_RE_2.exec(line.replace(RUN_WEB_RE_3, ''));
       if (m) {
         opened = true;
         pending = '';

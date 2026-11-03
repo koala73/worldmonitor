@@ -1,3 +1,7 @@
+
+
+const CLUSTER_ID_RE = /[:.]/g;
+const CLUSTER_ID_RE_2 = /[-T:]/g;
 const CLUSTER_RADIUS_KM = 20;
 const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const RECENT_PERSISTENCE_MS = 18 * 60 * 60 * 1000;
@@ -307,8 +311,8 @@ export function computeThermalEscalationWatch(detections, previousHistory = { ce
     });
     const clusterId = [
       countryCode.toLowerCase(),
-      key.replace(/[:.]/g, '-'),
-      new Date(nowMs).toISOString().slice(0, 13).replace(/[-T:]/g, ''),
+      key.replace(CLUSTER_ID_RE, '-'),
+      new Date(nowMs).toISOString().slice(0, 13).replace(CLUSTER_ID_RE_2, ''),
     ].join(':');
 
     output.push({

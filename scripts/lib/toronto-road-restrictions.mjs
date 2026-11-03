@@ -7,6 +7,9 @@
 
 import { finiteLat, finiteLon, lonLatPair } from './geo-coord.mjs';
 
+const SANITIZE_JSON_ESCAPES_RE = /\\(.)/g;
+
+
 export const TORONTO_ROADS_HOST = 'secure.toronto.ca';
 export const TORONTO_ROADS_URL =
   'https://secure.toronto.ca/opendata/cart/road_restrictions/v3?format=json';
@@ -37,7 +40,7 @@ export function isAllowedTorontoHost(url) {
  */
 export function sanitizeJsonEscapes(text) {
   if (typeof text !== 'string') return text;
-  return text.replace(/\\(.)/g, (match, ch) => {
+  return text.replace(SANITIZE_JSON_ESCAPES_RE, (match, ch) => {
     if ('"\\/bfnrtu'.includes(ch)) return match;
     return `\\\\${ch}`;
   });

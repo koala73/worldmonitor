@@ -1,25 +1,33 @@
 import { loadSharedConfig } from './_seed-utils.mjs';
 
+const NORMALIZE_COUNTRY_TOKEN_RE = /\p{Diacritic}/gu;
+const NORMALIZE_COUNTRY_TOKEN_RE_2 = /&/g;
+const NORMALIZE_COUNTRY_TOKEN_RE_3 = /[''.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const IS_ISO3_RE = /^[A-Z]{3}$/;
+
+
 const DEFAULT_COUNTRY_NAMES = loadSharedConfig('country-names.json');
 const DEFAULT_ISO3_MAP = loadSharedConfig('iso3-to-iso2.json');
 
 export function normalizeCountryToken(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE, '')
     .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[''.(),/-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE_2, ' and ')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
 export function isIso2(value) {
-  return /^[A-Z]{2}$/.test(String(value || '').trim());
+  return COUNTRY_CODE_RE.test(String(value || '').trim());
 }
 
 export function isIso3(value) {
-  return /^[A-Z]{3}$/.test(String(value || '').trim());
+  return IS_ISO3_RE.test(String(value || '').trim());
 }
 
 export function createCountryResolvers(countryNames = DEFAULT_COUNTRY_NAMES, iso3Map = DEFAULT_ISO3_MAP) {

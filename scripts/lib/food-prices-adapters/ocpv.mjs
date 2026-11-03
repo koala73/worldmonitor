@@ -1,5 +1,25 @@
 import { firstIndex, isoDate, nearest } from '../food-prices.mjs';
 
+const FOLD_RE = /[̀-ͯ]/g;
+const FOLD_RE_2 = /œ/g;
+const FOLD_RE_3 = /[’‘]/g;
+const FOLD_RE_4 = /[“”]/g;
+const TIDY_RE = /\s*-\s*/g;
+const WHITESPACE_RE = /\s+/g;
+const CASED_RE = /(^|['’-])(\p{L})/gu;
+const TITLE_WORD_RE = /^d['’]/;
+const REGION_NAME_RE = /\(\s+/g;
+const REGION_NAME_RE_2 = /\s+\)/g;
+const WEEK_ENDS_RE = /SEMAINE ALLANT DU\s+([\d\s]{1,5}?)\s*(?:([A-Z]+)\s+(?:(\d{4})\s+)?)?AU\s+([\d\s]{1,5}?)\s*([A-Z]+)\s+(\d{4})/g;
+const WEEK_ENDS_RE_2 = /\s/g;
+const PARSE_OCPV_RE = /UNITE\s*:\s*F CFA\/KG/;
+const NAME_ITEMS_RE = /^(?:Prix|SPECULATIONS)$/;
+const NUMBERS_RE = /^\d+$/;
+const OCPV_FOLDER_REPORTS_RE = /href=["']([^"'?]+\.pdf)["']/gi;
+const PARTS_RE = /(\d{2})_(\d{2})_AU_(\d{2})_(\d{2})_(\d{4})\.pdf$/i;
+const LATEST_LINK_RE = /\/doc\/prix_consomation\/\d{4}\/[^/]+\.pdf$/i;
+
+
 const BASE = 'https://www.ocpv-ci.com/';
 const FR_MONTHS = ['JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOUT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DECEMBRE'];
 const ITEMS = {
@@ -18,17 +38,17 @@ const ITEMS = {
   'poisson congele maquereau': 'Frozen fish (mackerel)', 'poisson congele thon': 'Frozen fish (tuna)',
 };
 
-const fold = text => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/œ/g, 'oe').replace(/[’‘]/g, "'").replace(/[“”]/g, '"');
-const tidy = text => text.replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
+const fold = text => text.normalize('NFD').replace(FOLD_RE, '').replace(FOLD_RE_2, 'oe').replace(FOLD_RE_3, "'").replace(FOLD_RE_4, '"');
+const tidy = text => text.replace(TIDY_RE, '-').replace(WHITESPACE_RE, ' ').trim();
 const itemName = label => ITEMS[fold(tidy(label)).toLowerCase()] ?? tidy(label);
 const titleWord = (word, index) => {
   if (word !== word.toUpperCase() || word.length < 2) return word;
   const lower = word.toLowerCase();
   if (index > 0 && lower === 'de') return lower;
-  const cased = lower.replace(/(^|['’-])(\p{L})/gu, (_, before, letter) => before + letter.toUpperCase());
-  return index > 0 && /^d['’]/.test(lower) ? `d${cased.slice(1)}` : cased;
+  const cased = lower.replace(CASED_RE, (_, before, letter) => before + letter.toUpperCase());
+  return index > 0 && TITLE_WORD_RE.test(lower) ? `d${cased.slice(1)}` : cased;
 };
-const regionName = text => tidy(text).replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+/g, ' ').trim()
+const regionName = text => tidy(text).replace(REGION_NAME_RE, '(').replace(REGION_NAME_RE_2, ')').replace(WHITESPACE_RE, ' ').trim()
   .split(' ').map(titleWord).join(' ');
 
 export function ocpvRows(items) {
@@ -43,9 +63,9 @@ export function ocpvRows(items) {
 }
 
 function weekEnds(text) {
-  const pattern = /SEMAINE ALLANT DU\s+([\d\s]{1,5}?)\s*(?:([A-Z]+)\s+(?:(\d{4})\s+)?)?AU\s+([\d\s]{1,5}?)\s*([A-Z]+)\s+(\d{4})/g;
+  const pattern = WEEK_ENDS_RE;
   return [...fold(text).toUpperCase().matchAll(pattern)].map(match =>
-    isoDate(match[6], FR_MONTHS.indexOf(match[5]) + 1, match[4].replace(/\s/g, '')));
+    isoDate(match[6], FR_MONTHS.indexOf(match[5]) + 1, match[4].replace(WEEK_ENDS_RE_2, '')));
 }
 
 export function ocpvReportDate(pages) {
@@ -57,7 +77,7 @@ export function ocpvReportDate(pages) {
 
 export function parseOcpv(pages) {
   const text = fold(pages.flat().map(item => item.text).join(' ')).toUpperCase();
-  if (!text.includes('PRIX A LA CONSOMMATION') || !/UNITE\s*:\s*F CFA\/KG/.test(text) || !text.includes('SPECULATIONS')) throw new Error('ocpv food PDF format changed');
+  if (!text.includes('PRIX A LA CONSOMMATION') || !PARSE_OCPV_RE.test(text) || !text.includes('SPECULATIONS')) throw new Error('ocpv food PDF format changed');
   const date = ocpvReportDate(pages);
   const result = [];
   for (const items of pages) {
@@ -65,7 +85,7 @@ export function parseOcpv(pages) {
     const headers = rows.filter(row => row.items.some(item => item.text === 'moy'));
     // Region names sorted once by height; rows already run top to bottom. Each header then takes its
     // band by binary search instead of rescanning the page.
-    const nameItems = items.filter(item => item.x >= 200 && !/^(?:Prix|SPECULATIONS)$/.test(item.text)).sort((a, b) => a.y - b.y);
+    const nameItems = items.filter(item => item.x >= 200 && !NAME_ITEMS_RE.test(item.text)).sort((a, b) => a.y - b.y);
     for (const [index, header] of headers.entries()) {
       const labels = header.items.map(item => item.text);
       if (labels.length % 3 || labels.some((label, i) => label !== ['mini', 'maxi', 'moy'][i % 3])) throw new Error('ocpv food PDF column layout changed');
@@ -86,11 +106,11 @@ export function parseOcpv(pages) {
         const numbers = row.items.filter(item => item.x >= 200).reduce((merged, item) => {
           const last = merged.at(-1);
           // Word sometimes splits one figure into adjacent text runs ("300" + "0").
-          if (last && /^\d+$/.test(last.text + item.text) && item.x - last.x < last.text.length * 4.6 + 2) merged[merged.length - 1] = { ...last, text: last.text + item.text };
+          if (last && NUMBERS_RE.test(last.text + item.text) && item.x - last.x < last.text.length * 4.6 + 2) merged[merged.length - 1] = { ...last, text: last.text + item.text };
           else merged.push(item);
           return merged;
         }, []);
-        if (!label || !numbers.length || numbers.some(number => !/^\d+$/.test(number.text))) continue;
+        if (!label || !numbers.length || numbers.some(number => !NUMBERS_RE.test(number.text))) continue;
         for (const number of numbers) {
           const column = nearest(columns, column => column.x, number.x);
           if (Math.abs(column.x - number.x) > 12) throw new Error('ocpv food PDF column layout changed');
@@ -112,14 +132,14 @@ export const sameTable = (a, b) => {
 };
 
 export function ocpvFolderReports(html, base) {
-  return [...html.matchAll(/href=["']([^"'?]+\.pdf)["']/gi)].flatMap(match => {
-    const parts = /(\d{2})_(\d{2})_AU_(\d{2})_(\d{2})_(\d{4})\.pdf$/i.exec(match[1]);
+  return [...html.matchAll(OCPV_FOLDER_REPORTS_RE)].flatMap(match => {
+    const parts = PARTS_RE.exec(match[1]);
     return parts ? [{ url: new URL(match[1], base).href, start: [parts[2], parts[1]], end: [parts[5], parts[4], parts[3]] }] : [];
   });
 }
 
 export async function collect(ctx) {
-  const latestLink = ctx.links(await ctx.get(BASE), BASE).find(link => /\/doc\/prix_consomation\/\d{4}\/[^/]+\.pdf$/i.test(new URL(link.url).pathname));
+  const latestLink = ctx.links(await ctx.get(BASE), BASE).find(link => LATEST_LINK_RE.test(new URL(link.url).pathname));
   if (!latestLink) throw new Error('ocpv weekly price PDF link missing');
   const read = async url => parseOcpv(await ctx.pdfPages(await ctx.get(url, { binary: true })));
   const folders = new Map();

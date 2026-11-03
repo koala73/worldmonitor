@@ -21,6 +21,9 @@ import type { ResilienceScoreResponse } from '@/services/resilience';
 import { escapeHtml } from './route-utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const FLAGS_HTML_RE = /^dependency_flag_/;
+
+
 
 export interface CountryImpactTabOptions {
   onDrillSideways?: (hs2: string) => void;
@@ -115,7 +118,7 @@ export class CountryImpactTab {
       : '';
 
     const flagsHtml = data.dependencyFlags.length > 0
-      ? `<div class="re-impact__flags">${data.dependencyFlags.map((f) => `<span class="re-impact__flag re-impact__flag--${f.toLowerCase().replace(/^dependency_flag_/, '')}">${escapeHtml(FLAG_LABELS[f] ?? f)}</span>`).join('')}</div>`
+      ? `<div class="re-impact__flags">${data.dependencyFlags.map((f) => `<span class="re-impact__flag re-impact__flag--${f.toLowerCase().replace(FLAGS_HTML_RE, '')}">${escapeHtml(FLAG_LABELS[f] ?? f)}</span>`).join('')}</div>`
       : '';
 
     const productsHtml = this.renderProducts(data.topStrategicProducts);

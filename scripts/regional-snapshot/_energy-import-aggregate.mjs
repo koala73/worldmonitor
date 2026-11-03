@@ -13,6 +13,8 @@
 // directly. Exact source labels only — lookalikes fail closed, matching
 // getEnergyImportDependencyObservedSources().
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
 export const ENERGY_IMPORT_SOURCE_KEY = 'resilience:static:energy-import:v1';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 export const RESILIENCE_STATIC_PREFIX = 'resilience:static:';
@@ -88,7 +90,7 @@ export function buildEnergyImportAggregate(countryRecords, meta = {}) {
   const countries = {};
   for (const [rawIso, record] of entries) {
     const iso2 = String(rawIso || '').trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(iso2)) continue;
+    if (!COUNTRY_CODE_RE.test(iso2)) continue;
     const observation = readAuditedImportObservation(record);
     if (!observation) continue;
     countries[iso2] = observation;
@@ -119,7 +121,7 @@ export function listStaticCountryKeys(indexPayload) {
   const keys = [];
   for (const raw of countries) {
     const iso2 = String(raw || '').trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(iso2)) continue;
+    if (!COUNTRY_CODE_RE.test(iso2)) continue;
     keys.push(countryStaticKey(iso2));
   }
   return keys;
@@ -168,7 +170,7 @@ export async function hydrateEnergyImportAggregate(sources, readKeys, sourceMeta
     const iso2 = key.startsWith(RESILIENCE_STATIC_PREFIX)
       ? key.slice(RESILIENCE_STATIC_PREFIX.length)
       : key;
-    if (/^[A-Z]{2}$/.test(iso2)) countryRecords[iso2] = payload;
+    if (COUNTRY_CODE_RE.test(iso2)) countryRecords[iso2] = payload;
   }
   sources[ENERGY_IMPORT_SOURCE_KEY] = buildEnergyImportAggregate(countryRecords, {
     fetchedAt: typeof index?.seededAt === 'string' || typeof index?.seededAt === 'number'

@@ -1,5 +1,9 @@
 'use strict';
 
+const STRIP_NOTIFICATION_CONTROL_CHARS_RE = /[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g;
+const WHITESPACE_RE = /\s+/g;
+
+
 /**
  * Notification field validation — CJS mirror of server/_shared/notify-fields.ts.
  *
@@ -33,11 +37,11 @@ function stripNotificationControlChars(value) {
   return value
     .normalize('NFKC')
     .replace(INVISIBLE_FORMAT_CHARS_PATTERN, ' ')
-    .replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g, ' ');
+    .replace(STRIP_NOTIFICATION_CONTROL_CHARS_RE, ' ');
 }
 
 function collapseWhitespace(value) {
-  return value.replace(/\s+/g, ' ').trim();
+  return value.replace(WHITESPACE_RE, ' ').trim();
 }
 
 function trimDanglingSurrogate(value) {

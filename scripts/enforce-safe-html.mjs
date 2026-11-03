@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const RHS_RE = /;$/;
+const WHITESPACE_RE = /\s+/g;
+const CODE_ONLY_RE = /(['"`])(?:\\.|(?!\1)[\s\S])*\1/g;
+const IS_SET_CONTENT_CALL_RE = /\.\s*setContent\s*\(/;
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const DEFAULT_BASELINE = path.join(repoRoot, 'scripts', 'safe-html-baseline.json');
@@ -64,12 +70,12 @@ function assignmentRhs(line) {
 function isClearOperation(line) {
   const match = line.match(DIRECT_HTML_ASSIGNMENT_RE);
   if (!match || match[2] !== '=') return false;
-  const rhs = assignmentRhs(line).replace(/;$/, '').trim();
+  const rhs = assignmentRhs(line).replace(RHS_RE, '').trim();
   return rhs === "''" || rhs === '""' || rhs === '``';
 }
 
 function fingerprint(file, line) {
-  const normalized = line.replace(/\s+/g, ' ').trim();
+  const normalized = line.replace(WHITESPACE_RE, ' ').trim();
   const hash = createHash('sha256').update(`${file}\0${normalized}`).digest('hex').slice(0, 16);
   return `${file}:${hash}`;
 }
@@ -98,14 +104,14 @@ function setContentSnippet(lines, index) {
 }
 
 function setContentFingerprint(file, snippet) {
-  const normalized = snippet.replace(/\s+/g, ' ').trim();
+  const normalized = snippet.replace(WHITESPACE_RE, ' ').trim();
   const hash = createHash('sha256').update(`setContent\0${file}\0${normalized}`).digest('hex').slice(0, 16);
   return `${file}:setContent:${hash}`;
 }
 
 function isSetContentCall(line) {
-  const codeOnly = line.replace(/(['"`])(?:\\.|(?!\1)[\s\S])*\1/g, '""');
-  return /\.\s*setContent\s*\(/.test(codeOnly);
+  const codeOnly = line.replace(CODE_ONLY_RE, '""');
+  return IS_SET_CONTENT_CALL_RE.test(codeOnly);
 }
 
 function isCommentOnlyLine(line) {

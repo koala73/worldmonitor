@@ -24,6 +24,14 @@ import {
   tracksTenderFreshness,
 } from './_global-tenders.mjs';
 
+const PARSED_RE = /^\uFEFF/;
+const DECODE_HTML_RE = /<br\s*\/?\s*>/gi;
+const DECODE_HTML_RE_2 = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const ID_RE = /[?&]id=(\d+)/;
+const FETCH_WORLD_BANK_RE = /^\d+$/;
+
+
 const CACHE_TTL_SECONDS = 10_800; // 3h, safely beyond the hourly Railway cadence.
 // Per-source status must outlive the 24h last-good budget health grades it
 // against; 26h leaves two hourly ticks for the key to age into STALE_SEED
@@ -262,7 +270,7 @@ export async function fetchCanadaBuys({ now = Date.now(), fetchTextFn = fetchTex
   const parsed = Papa.parse(csv, {
     header: true,
     skipEmptyLines: true,
-    transformHeader: (header) => header.replace(/^\uFEFF/, ''),
+    transformHeader: (header) => header.replace(PARSED_RE, ''),
   });
   const requiredHeaders = ['title-titre-eng', 'referenceNumber-numeroReference', 'noticeURL-URLavis-eng'];
   if (!requiredHeaders.every((header) => parsed.meta?.fields?.includes(header))) {
@@ -290,10 +298,10 @@ export async function fetchCanadaBuys({ now = Date.now(), fetchTextFn = fetchTex
 function decodeHtml(value) {
   return decodeHtmlEntities(
     String(value || '')
-      .replace(/<br\s*\/?\s*>/gi, '\n')
-      .replace(/<[^>]+>/g, ''),
+      .replace(DECODE_HTML_RE, '\n')
+      .replace(DECODE_HTML_RE_2, ''),
   )
-    .replace(/\s+/g, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -314,7 +322,7 @@ export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = 
   const records = items.map((item) => {
     const description = String(item?.description || '');
     const link = typeof item?.link === 'string' ? item.link : item?.guid;
-    const id = getsField(description, 'RFx ID') || String(link || '').match(/[?&]id=(\d+)/)?.[1] || '';
+    const id = getsField(description, 'RFx ID') || String(link || '').match(ID_RE)?.[1] || '';
     const deadlineRaw = getsField(description, 'Close date');
     return normalizeGetsNotice({
       id,
@@ -391,7 +399,7 @@ export async function fetchWorldBank({ now = Date.now(), fetchJsonFn = fetchWorl
   // declares its result window, a truncated window must not clear prior data.
   if (payload.total != null) {
     const total = Number(payload.total);
-    if (!/^\d+$/.test(String(payload.total)) || !Number.isSafeInteger(total)
+    if (!FETCH_WORLD_BANK_RE.test(String(payload.total)) || !Number.isSafeInteger(total)
       || notices.length !== Math.min(MAX_PER_SOURCE, total)
       || (payload.os != null && Number(payload.os) !== 0)) {
       throw new Error('World Bank response contains an incomplete notice window');

@@ -1,5 +1,17 @@
 import { isoDate } from '../food-prices.mjs';
 
+const WHITESPACE_RE = /\s+/g;
+const MARKET_RE = /^Kyrgyz Republic$/i;
+const MARKET_RE_2 = /\s+city$/i;
+const TITLE_RE = /in\s+([A-Za-z]+)\s+(\d{4})\s*$/;
+const PARSE_NSCKG_RE = /soms per kilogram/i;
+const DATES_RE = /^([A-Za-z]+)\s+(\d{1,2})$/;
+const PARSE_NSCKG_RE_2 = /^- -/;
+const LINK_RE = /Продовольственные товары/i;
+const LINK_RE_2 = /\/media\/files\/[\w-]+\.xls$/i;
+const COLLECT_RE = /no dated food prices/;
+
+
 const INDEX = 'https://stat.gov.kg/ru/daily-prices/';
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const ITEMS = {
@@ -21,20 +33,20 @@ const ITEMS = {
   'Чай черный байховый, 100 гр.': ['Black tea', '100 g'],
   'Чай зеленый, 100 гр.': ['Green tea', '100 g'],
 };
-const text = value => String(value ?? '').replace(/\s+/g, ' ').trim();
+const text = value => String(value ?? '').replace(WHITESPACE_RE, ' ').trim();
 const market = value => {
   const name = text(value);
-  return /^Kyrgyz Republic$/i.test(name) ? 'National average' : name.split(',')[0].replace(/\s+city$/i, '').trim();
+  return MARKET_RE.test(name) ? 'National average' : name.split(',')[0].replace(MARKET_RE_2, '').trim();
 };
 
 // Monthly sheet of the daily food-price workbook: rows 0-4 carry the trilingual title and date headers,
 // then one block per product (KY, EN, RU name row) followed by the national row and 19 settlements.
 export function parseNsckg(rows) {
-  const title = /in\s+([A-Za-z]+)\s+(\d{4})\s*$/.exec(text(rows[0]?.[1]));
+  const title = TITLE_RE.exec(text(rows[0]?.[1]));
   const month = MONTHS.indexOf(title?.[1]?.toLowerCase()) + 1;
-  if (!month || !/soms per kilogram/i.test(text(rows[1]?.[1]))) throw new Error('nsckg daily price sheet format changed');
+  if (!month || !PARSE_NSCKG_RE.test(text(rows[1]?.[1]))) throw new Error('nsckg daily price sheet format changed');
   const dates = (rows[3] ?? []).map(value => {
-    const match = /^([A-Za-z]+)\s+(\d{1,2})$/.exec(text(value));
+    const match = DATES_RE.exec(text(value));
     if (!match) return '';
     if (MONTHS.indexOf(match[1].toLowerCase()) + 1 !== month) throw new Error('nsckg date header month mismatch (format changed)');
     return isoDate(title[2], month, match[2]);
@@ -44,7 +56,7 @@ export function parseNsckg(rows) {
   let product = null;
   for (const [i, row] of rows.entries()) {
     if (i < 5 || !row) continue;
-    if (/^- -/.test(text(row[2]))) break;
+    if (PARSE_NSCKG_RE_2.test(text(row[2]))) break;
     const numbers = dates.some((date, column) => date && typeof row[column] === 'number');
     if (!numbers && text(row[2]) && market(rows[i + 1]?.[1]) === 'National average') {
       product = ITEMS[text(row[2])] ?? null;
@@ -282,7 +294,7 @@ function rangeReader(ctx, url, block = 1 << 19) {
 }
 
 export async function collect(ctx) {
-  const link = ctx.links(await ctx.get(INDEX), INDEX).find(link => /Продовольственные товары/i.test(link.text) && /\/media\/files\/[\w-]+\.xls$/i.test(new URL(link.url).pathname));
+  const link = ctx.links(await ctx.get(INDEX), INDEX).find(link => LINK_RE.test(link.text) && LINK_RE_2.test(new URL(link.url).pathname));
   if (!link) throw new Error('nsckg food workbook link missing');
   const book = await readXls(rangeReader(ctx, link.url));
   if (!book.names.length) throw new Error('nsckg workbook has no sheets');
@@ -297,7 +309,7 @@ export async function collect(ctx) {
     try {
       rows = rows.concat(parseNsckg(await book.rows(name)).filter(row => row.date <= today));
     } catch (error) {
-      if (!latest && !/no dated food prices/.test(error.message)) throw error;
+      if (!latest && !COLLECT_RE.test(error.message)) throw error;
       ctx.warn(`sheet ${name} unavailable: ${error.message}`);
       if (latest) break;
     }

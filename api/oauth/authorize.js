@@ -16,6 +16,14 @@ import {
   resolveOAuthBindValue,
 } from './_browser-binding.js';
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+const ESCAPE_HTML_RE_5 = /'/g;
+const HANDLER_RE = /^[A-Za-z0-9\-_]+$/;
+
+
 export const config = { runtime: 'edge' };
 
 const CODE_TTL_SECONDS = 600;
@@ -64,11 +72,11 @@ async function getRatelimit() {
 
 function escapeHtml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
+    .replace(ESCAPE_HTML_RE, '&amp;')
+    .replace(ESCAPE_HTML_RE_2, '&lt;')
+    .replace(ESCAPE_HTML_RE_3, '&gt;')
+    .replace(ESCAPE_HTML_RE_4, '&quot;')
+    .replace(ESCAPE_HTML_RE_5, '&#x27;');
 }
 
 // Atomic GETDEL — returns null on genuine key-miss; throws on transport/HTTP failure.
@@ -306,7 +314,7 @@ export default async function handler(req) {
     }
 
     // Validate code_challenge format: 43-char base64url
-    if (code_challenge.length !== 43 || !/^[A-Za-z0-9\-_]+$/.test(code_challenge)) {
+    if (code_challenge.length !== 43 || !HANDLER_RE.test(code_challenge)) {
       return htmlError('Invalid Request', 'code_challenge must be a 43-character base64url string.');
     }
 

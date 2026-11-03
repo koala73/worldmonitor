@@ -1,6 +1,10 @@
 import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '../services/runtime';
 import { getPersistentCache, setPersistentCache } from '../services/persistent-cache';
 
+const MAX_AGE_MATCH_RE = /(?:^|,)\s*max-age\s*=\s*"?(\d+)"?/i;
+const IS_ABORT_ERROR_RE = /Fetch is aborted/i;
+
+
 const isDev = import.meta.env.DEV;
 const RESPONSE_CACHE_PREFIX = 'api-response:';
 const DEFAULT_PERSISTED_RESPONSE_MAX_AGE_MS = 5 * 60 * 1000;
@@ -124,7 +128,7 @@ function toResponse(payload: CachedResponsePayload): Response {
 
 function persistedResponseMaxAgeMs(payload: CachedResponsePayload): number {
   const cacheControl = new Headers(payload.headers).get('cache-control');
-  const maxAgeMatch = cacheControl?.match(/(?:^|,)\s*max-age\s*=\s*"?(\d+)"?/i);
+  const maxAgeMatch = cacheControl?.match(MAX_AGE_MATCH_RE);
   if (!maxAgeMatch?.[1]) return DEFAULT_PERSISTED_RESPONSE_MAX_AGE_MS;
 
   const maxAgeSeconds = Number(maxAgeMatch[1]);
@@ -160,7 +164,7 @@ function isAbortError(error: unknown): boolean {
   // still says `AbortError: Fetch is aborted` (WORLDMONITOR-132).
   return error.name === 'TypeError'
     && 'message' in error
-    && /Fetch is aborted/i.test(String(error.message));
+    && IS_ABORT_ERROR_RE.test(String(error.message));
 }
 
 async function fetchAndPersist(url: string, init: RequestInit = {}): Promise<Response> {

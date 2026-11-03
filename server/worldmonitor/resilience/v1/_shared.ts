@@ -6,6 +6,11 @@ import type {
   ScoreInterval,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const DATE_SCORE_FOR_HISTORY_RE = /-/g;
+const PARSE_HISTORY_POINTS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 
 export type { ScoreInterval };
 
@@ -522,7 +527,7 @@ function mean(values: number[]): number | null {
 
 function normalizeCountryCode(countryCode: string): string {
   const normalized = String(countryCode || '').trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(normalized) ? normalized : '';
+  return COUNTRY_CODE_RE.test(normalized) ? normalized : '';
 }
 
 export function scoreCacheKey(countryCode: string): string {
@@ -698,7 +703,7 @@ const HISTORY_SCORE_FRACTION_SCALE = 100;
 const HISTORY_SCORE_FRACTION_OFFSET = 1;
 
 function dateScoreForHistory(date: string): number {
-  return Number(date.replace(/-/g, ''));
+  return Number(date.replace(DATE_SCORE_FOR_HISTORY_RE, ''));
 }
 
 function encodeHistoryScore(date: string, score: number): number {
@@ -746,7 +751,7 @@ function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
     const educationState: EducationCacheState = rawEducationState === 'education-off'
       ? 'education-off'
       : 'education-on';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(score)) continue;
+    if (!PARSE_HISTORY_POINTS_RE.test(date) || !Number.isFinite(score)) continue;
     const key = `${date}:${formula}:${educationState}`;
     const previous = historyByConstructState.get(key);
     if (!previous || stableMember || !previous.stableMember) {

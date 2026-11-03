@@ -21,6 +21,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 
+const JS_FILE_RE = /\.ts$/;
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const apiDir = path.join(ROOT, 'api');
@@ -99,7 +102,7 @@ try {
   // Report results
   let totalKB = 0;
   for (const entry of entries) {
-    const jsFile = entry.replace(/\.ts$/, '.js');
+    const jsFile = entry.replace(JS_FILE_RE, '.js');
     if (existsSync(jsFile)) {
       const { size } = await stat(jsFile);
       totalKB += size / 1024;

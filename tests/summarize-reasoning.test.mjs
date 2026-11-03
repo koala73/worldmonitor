@@ -14,11 +14,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inlineModuleRegexReferences } from './helpers/module-regex-declarations.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
-const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
+const readSrc = (relPath) => inlineModuleRegexReferences(readFileSync(resolve(root, relPath), 'utf-8'));
 
 // ========================================================================
 // Fix 1: message.reasoning fallback removed

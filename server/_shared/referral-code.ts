@@ -26,6 +26,8 @@
  * cleanly at attribution time.
  */
 
+const TRIMMED_RE = /\/+$/;
+
 function hexHmac(secret: string, message: string): Promise<string> {
   return (async () => {
     const enc = new TextEncoder();
@@ -68,6 +70,6 @@ export async function getReferralCodeForUser(
 }
 
 export function buildShareUrl(baseUrl: string, code: string): string {
-  const trimmed = baseUrl.replace(/\/+$/, '');
+  const trimmed = baseUrl.replace(TRIMMED_RE, '');
   return `${trimmed}/pro?ref=${encodeURIComponent(code)}`;
 }

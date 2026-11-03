@@ -39,6 +39,13 @@ import { assessContentAge } from './_content-age.js';
 import { readHumanitarianRetention } from './_humanitarian-retention.js';
 import { captureSilentError } from './_sentry-edge.js';
 
+const VERSIONED_KEY_FAMILY_RE = /^(.+?):v(\d+)(?=:|$)/;
+const FAMILY_RE = /[.*+?^${}()|[\]\\]/g;
+const PROJECT_JODI_CHINA_ROW_RE = /^\d{4}-\d{2}$/;
+const ERROR_CODE_RE = /^[A-Z0-9_]{1,64}$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const config = { runtime: 'edge' };
 
 // These tags are written into the ranking and interval seed metadata. Public
@@ -3052,14 +3059,14 @@ function keyVersionRolloutDurationMs(seedCfg) {
 }
 
 function versionedKeyFamily(dataKey) {
-  const match = /^(.+?):v(\d+)(?=:|$)/.exec(dataKey);
+  const match = VERSIONED_KEY_FAMILY_RE.exec(dataKey);
   return match ? { family: match[1], version: Number(match[2]) } : null;
 }
 
 function writerKeyVersionBehind(dataKey, sourceVersion) {
   const target = versionedKeyFamily(dataKey);
   if (!target || typeof sourceVersion !== 'string') return false;
-  const family = target.family.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const family = target.family.replace(FAMILY_RE, '\\$&');
   const match = new RegExp(`(?:^|:)${family}:v(\\d+)(?=:|$)`).exec(sourceVersion);
   return match !== null && Number(match[1]) < target.version;
 }
@@ -3590,7 +3597,7 @@ function projectJodiChinaRow(meta, enabled) {
     reason: !ok && typeof raw.reason === 'string' && JODI_CHINA_ROW_REASONS.has(raw.reason)
       ? raw.reason
       : null,
-    dataMonth: typeof raw.dataMonth === 'string' && /^\d{4}-\d{2}$/.test(raw.dataMonth)
+    dataMonth: typeof raw.dataMonth === 'string' && PROJECT_JODI_CHINA_ROW_RE.test(raw.dataMonth)
       ? raw.dataMonth
       : null,
     ageMonths: Number.isSafeInteger(ageMonths) && ageMonths >= 0 ? ageMonths : null,
@@ -3709,7 +3716,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     ? poolCoverageMargins(poolCounts, seedCfg.minPoolCounts, seedCfg.poolCountMargin)
     : null;
   const errorCode = typeof meta?.errorCode === 'string'
-    && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
+    && ERROR_CODE_RE.test(meta.errorCode)
     ? meta.errorCode
     : null;
   const workerControl = projectCompanyMonitoringWorkerControl(meta, seedCfg.workerControl, now);
@@ -3847,7 +3854,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // so the verdict and the published list cannot disagree.
   const sourceAbsentCoverageField = (value) => {
     const codes = Array.isArray(value)
-      ? value.filter((iso2) => typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2)).slice(0, 60)
+      ? value.filter((iso2) => typeof iso2 === 'string' && COUNTRY_CODE_RE.test(iso2)).slice(0, 60)
       : [];
     return codes.length > 0 ? { sourceAbsentCountries: codes } : {};
   };

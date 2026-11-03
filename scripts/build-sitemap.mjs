@@ -13,6 +13,23 @@ import {
   landingHreflangCluster,
 } from '../shared/indexable-landing-locales.ts';
 
+const ESCAPE_XML_RE = /&/g;
+const ESCAPE_XML_RE_2 = /</g;
+const ESCAPE_XML_RE_3 = />/g;
+const ESCAPE_XML_RE_4 = /"/g;
+const ESCAPE_XML_RE_5 = /'/g;
+const UNESCAPE_XML_RE = /&apos;/g;
+const UNESCAPE_XML_RE_2 = /&quot;/g;
+const UNESCAPE_XML_RE_3 = /&gt;/g;
+const UNESCAPE_XML_RE_4 = /&lt;/g;
+const UNESCAPE_XML_RE_5 = /&amp;/g;
+const IS_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PARSE_EXISTING_SITEMAP_LASTMODS_RE = /<url>\s*([\s\S]*?)\s*<\/url>/g;
+const LOC_RE = /<loc>([^<]+)<\/loc>/;
+const LASTMOD_RE = /<lastmod>([^<]+)<\/lastmod>/;
+const DATES_RE = /<meta name="lastmod" content="([^"]*)"/g;
+
+
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
 
 /**
@@ -178,21 +195,21 @@ const ALLOWED_HOSTS = new Set(STATIC_ROUTE_MANIFEST.map((entry) => new URL(entry
 const CORPUS_PATH_PREFIXES = CONTENT_CORPUS_PREFIXES.map((prefix) => `/${prefix}/`);
 
 const escapeXml = (value) => String(value)
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&apos;');
+  .replace(ESCAPE_XML_RE, '&amp;')
+  .replace(ESCAPE_XML_RE_2, '&lt;')
+  .replace(ESCAPE_XML_RE_3, '&gt;')
+  .replace(ESCAPE_XML_RE_4, '&quot;')
+  .replace(ESCAPE_XML_RE_5, '&apos;');
 
 const unescapeXml = (value) => String(value)
-  .replace(/&apos;/g, "'")
-  .replace(/&quot;/g, '"')
-  .replace(/&gt;/g, '>')
-  .replace(/&lt;/g, '<')
-  .replace(/&amp;/g, '&');
+  .replace(UNESCAPE_XML_RE, "'")
+  .replace(UNESCAPE_XML_RE_2, '"')
+  .replace(UNESCAPE_XML_RE_3, '>')
+  .replace(UNESCAPE_XML_RE_4, '<')
+  .replace(UNESCAPE_XML_RE_5, '&');
 
 const isIsoDate = (value) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value ?? '')) return false;
+  if (!IS_ISO_DATE_RE.test(value ?? '')) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
 };
@@ -204,9 +221,9 @@ const laterDate = (...values) => values
 
 export function parseExistingSitemapLastmods(source) {
   const dates = new Map();
-  for (const match of String(source ?? '').matchAll(/<url>\s*([\s\S]*?)\s*<\/url>/g)) {
-    const loc = match[1].match(/<loc>([^<]+)<\/loc>/)?.[1];
-    const lastmod = match[1].match(/<lastmod>([^<]+)<\/lastmod>/)?.[1];
+  for (const match of String(source ?? '').matchAll(PARSE_EXISTING_SITEMAP_LASTMODS_RE)) {
+    const loc = match[1].match(LOC_RE)?.[1];
+    const lastmod = match[1].match(LASTMOD_RE)?.[1];
     if (loc && isIsoDate(lastmod)) dates.set(unescapeXml(loc), lastmod);
   }
   return dates;
@@ -274,7 +291,7 @@ function hasCompleteGitHistory(repoRoot) {
 
 export function readDeclaredLastmod(repoRoot, sourcePath) {
   const html = readFileSync(join(repoRoot, sourcePath), 'utf8');
-  const dates = [...html.matchAll(/<meta name="lastmod" content="([^"]*)"/g)].map((match) => match[1]);
+  const dates = [...html.matchAll(DATES_RE)].map((match) => match[1]);
   if (dates.length !== 1 || !isIsoDate(dates[0])) {
     throw new Error(`${sourcePath} must declare exactly one YYYY-MM-DD lastmod meta; found ${JSON.stringify(dates)}`);
   }

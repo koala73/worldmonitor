@@ -5,10 +5,13 @@ import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 
+const TRAILING_SLASH_RE = /\/$/;
+
+
 export function getRelayBaseUrl() {
   const relayUrl = process.env.WS_RELAY_URL;
   if (!relayUrl) return null;
-  return relayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(/\/$/, '');
+  return relayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace(TRAILING_SLASH_RE, '');
 }
 
 export function getRelayHeaders(baseHeaders = {}) {

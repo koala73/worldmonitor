@@ -16,6 +16,11 @@
 import FACT_CHECKERS from '../../shared/fact-checkers.json';
 import { claimOverlap, claimTokens } from './claim-match';
 
+const NORMALIZE_HOST_RE = /\.$/;
+const NORMALIZE_HOST_RE_2 = /^www\./;
+const WHITESPACE_RE = /\s+/g;
+
+
 /** Google Fact Check Tools API, claims:search (v1alpha1). */
 export const FACT_CHECK_SEARCH_URL = 'https://factchecktools.googleapis.com/v1alpha1/claims:search';
 
@@ -65,7 +70,7 @@ export const FACT_CHECKER_DOMAINS: ReadonlySet<string> = new Set(
 export const FACT_CHECKER_SNAPSHOT: string = (FACT_CHECKERS as { snapshot: string }).snapshot;
 
 function normalizeHost(host: string): string {
-  return String(host || '').trim().toLowerCase().replace(/\.$/, '').replace(/^www\./, '');
+  return String(host || '').trim().toLowerCase().replace(NORMALIZE_HOST_RE, '').replace(NORMALIZE_HOST_RE_2, '');
 }
 
 /**
@@ -137,12 +142,12 @@ export type FactCheck = {
 
 /** The text with whitespace collapsed, or '' when it is longer than max (never cut). */
 function whole(text: unknown, max: number): string {
-  const value = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
+  const value = typeof text === 'string' ? text.replace(WHITESPACE_RE, ' ').trim() : '';
   return value.length <= max ? value : '';
 }
 
 function clip(text: unknown, max: number): string {
-  return typeof text === 'string' ? text.replace(/\s+/g, ' ').trim().slice(0, max) : '';
+  return typeof text === 'string' ? text.replace(WHITESPACE_RE, ' ').trim().slice(0, max) : '';
 }
 
 /**

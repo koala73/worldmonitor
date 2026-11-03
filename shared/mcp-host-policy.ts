@@ -1,6 +1,9 @@
 // The hosted product MCP transport has one public endpoint. Keep this policy
 // dependency-free because it runs in both Vercel middleware and the Edge API
 // handler that receives rewritten and dotted well-known paths.
+const NORMALIZE_MCP_HOST_RE = /\.+$/;
+const NORMALIZE_MCP_HOST_RE_2 = /:\d+$/;
+
 export const MCP_CANONICAL_ENDPOINT = 'https://worldmonitor.app/mcp';
 export const MCP_CANONICAL_ORIGIN = 'https://worldmonitor.app';
 export const MCP_CANONICAL_LINK = `<${MCP_CANONICAL_ENDPOINT}>; rel="canonical"`;
@@ -35,7 +38,7 @@ export const MCP_PRODUCT_PATHS = [
 const MCP_POLICY_PATHS: ReadonlySet<string> = new Set(MCP_PRODUCT_PATHS);
 
 export function normalizeMcpHost(raw: string): string {
-  return raw.toLowerCase().replace(/\.+$/, '').replace(/:\d+$/, '');
+  return raw.toLowerCase().replace(NORMALIZE_MCP_HOST_RE, '').replace(NORMALIZE_MCP_HOST_RE_2, '');
 }
 
 export function isMcpAliasRequest(host: string, pathname: string): boolean {

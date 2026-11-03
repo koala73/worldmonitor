@@ -3,6 +3,9 @@ import { center, mix, strWidth } from '../term/ansi.mjs';
 import { ATTR } from '../term/screen.mjs';
 import { rect } from './layout.mjs';
 
+const LOGO_LINES_RE = /\s+$/;
+
+
 // 0..1 sine pulse with the given period.
 export function pulse(now, periodMs = 1200, phase = 0) {
   return 0.5 + 0.5 * Math.sin(((now / periodMs) * 2 + phase) * Math.PI);
@@ -51,7 +54,7 @@ export function logoLines(text) {
     const glyph = FONT[ch] || FONT[' '];
     for (let i = 0; i < 5; i++) rows[i] += `${glyph[i]} `;
   }
-  return rows.map((r) => r.replace(/\s+$/, ''));
+  return rows.map((r) => r.replace(LOGO_LINES_RE, ''));
 }
 
 // Draw the logo centred in r, with a horizontal gradient between glow colours.

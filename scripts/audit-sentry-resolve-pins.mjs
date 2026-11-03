@@ -55,6 +55,12 @@ import { parseArgs as parseNodeArgs } from 'node:util';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const PARSE_LINK_HEADER_RE = /,\s*(?=<)/u;
+const PARSE_LINK_HEADER_RE_2 = /^\s*<([^>]+)>/u;
+const PARSE_LINK_HEADER_RE_3 = /;\s*rel="next"/u;
+const PARSE_LINK_HEADER_RE_4 = /;\s*results="true"/u;
+
+
 const SENTRY_HOST = 'https://us.sentry.io';
 const DEFAULT_ORG = 'elie-habib';
 const DEFAULT_PROJECT = 'worldmonitor';
@@ -90,11 +96,11 @@ export const PIN_KINDS = Object.freeze([
 
 export function parseLinkHeader(header) {
   if (typeof header !== 'string' || header.length === 0) return { next: null };
-  for (const entry of header.split(/,\s*(?=<)/u)) {
-    const [, url] = entry.match(/^\s*<([^>]+)>/u) ?? [];
+  for (const entry of header.split(PARSE_LINK_HEADER_RE)) {
+    const [, url] = entry.match(PARSE_LINK_HEADER_RE_2) ?? [];
     if (!url) continue;
-    if (!/;\s*rel="next"/u.test(entry)) continue;
-    if (!/;\s*results="true"/u.test(entry)) continue;
+    if (!PARSE_LINK_HEADER_RE_3.test(entry)) continue;
+    if (!PARSE_LINK_HEADER_RE_4.test(entry)) continue;
     return { next: url };
   }
   return { next: null };

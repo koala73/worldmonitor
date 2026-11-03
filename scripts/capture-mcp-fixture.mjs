@@ -34,6 +34,9 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const PARSE_ARGS_RE = /^-?\d+(\.\d+)?$/;
+
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const FIXTURES_DIR = resolve(ROOT, 'tests/fixtures/jmespath-samples');
@@ -55,7 +58,7 @@ function parseArgs(argv) {
       let parsed = v;
       if (v === 'true') parsed = true;
       else if (v === 'false') parsed = false;
-      else if (/^-?\d+(\.\d+)?$/.test(v)) parsed = Number(v);
+      else if (PARSE_ARGS_RE.test(v)) parsed = Number(v);
       out.args[k] = parsed;
     }
   }

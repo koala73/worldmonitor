@@ -8,6 +8,9 @@
 import { compareRules, MAX_STORIES_PER_USER } from './brief-compose.mjs';
 import { generateDigestProse } from './brief-llm.mjs';
 
+const CAROUSEL_URLS_FROM_RE = /^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2}-\d{4})\/?$/;
+
+
 /**
  * Whether an entitlement tier may receive the Pro digest. Unknown (`null`,
  * relay unreachable on a cache miss) fails closed like notification-relay's
@@ -33,7 +36,7 @@ export function isDigestDeliveryTier(tier) {
 export function carouselUrlsFrom(magazineUrl) {
   try {
     const url = new URL(magazineUrl);
-    const match = url.pathname.match(/^\/api\/brief\/([^/]+)\/(\d{4}-\d{2}-\d{2}-\d{4})\/?$/);
+    const match = url.pathname.match(CAROUSEL_URLS_FROM_RE);
     if (!match) return null;
     const [, userId, issueSlot] = match;
     const token = url.searchParams.get('t');

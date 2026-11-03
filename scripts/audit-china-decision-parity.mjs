@@ -17,6 +17,10 @@ import {
   validateChinaDecisionSignalSnapshot,
 } from './seed-china-decision-signals.mjs';
 
+const GROUP_IDS_RE = /'([^']+)'/g;
+const URL_RE = /\/+$/;
+
+
 export { isMainModule } from './lib/main-module.mjs';
 
 const wireContract = readChinaDecisionSignalWireContract();
@@ -76,7 +80,7 @@ const REQUIRED_REGISTRATIONS = Object.freeze([
 function verifyGroupIdMirror(source) {
   const body = extractDelimitedBlock(source, 'const CHINA_DECISION_SIGNAL_GROUP_IDS', '[', ']');
   if (body === null) return 'the CHINA_DECISION_SIGNAL_GROUP_IDS array literal is missing or was renamed';
-  const groupIds = [...body.matchAll(/'([^']+)'/g)].map(([, groupId]) => groupId);
+  const groupIds = [...body.matchAll(GROUP_IDS_RE)].map(([, groupId]) => groupId);
   if (groupIds.length !== GROUP_IDS.length || groupIds.some((groupId, index) => groupId !== GROUP_IDS[index])) {
     return `CHINA_DECISION_SIGNAL_GROUP_IDS is ${JSON.stringify(groupIds)}, expected ${JSON.stringify(GROUP_IDS)}`;
   }
@@ -345,7 +349,7 @@ export async function probeChinaDecisionParity(baseUrl, {
   now = () => Date.now(),
   requiredPopulatedGroups = [],
 } = {}) {
-  const url = new URL(ROUTE, `${baseUrl.replace(/\/+$/, '')}/`);
+  const url = new URL(ROUTE, `${baseUrl.replace(URL_RE, '')}/`);
   const startedAt = now();
   const response = await fetchImpl(url, {
     headers: PROBE_HEADERS,
@@ -389,7 +393,7 @@ export async function probeChinaDecisionParity(baseUrl, {
   }
   const { groupStates, groupCounts } = chinaDecisionSignalGroupDiagnostics(snapshot);
 
-  const bootstrapUrl = new URL(BOOTSTRAP_ROUTE, `${baseUrl.replace(/\/+$/, '')}/`);
+  const bootstrapUrl = new URL(BOOTSTRAP_ROUTE, `${baseUrl.replace(URL_RE, '')}/`);
   const bootstrapStartedAt = now();
   const bootstrapResponse = await fetchImpl(bootstrapUrl, {
     headers: PROBE_HEADERS,

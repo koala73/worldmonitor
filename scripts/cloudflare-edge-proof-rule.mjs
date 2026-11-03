@@ -31,6 +31,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const BLOCK_RE = /export const ENDPOINT_RATE_POLICIES[\s\S]*?^};/m;
+const ENDPOINT_POLICY_PATHS_FROM_SOURCE_RE = /'(\/api\/[^']+)'/g;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK_ONLY = process.argv.includes('--check');
 
@@ -74,9 +78,9 @@ export function pathCoveredByExpression(pathname) {
 
 function endpointPolicyPathsFromSource() {
   const source = readFileSync(join(ROOT, 'server/_shared/rate-limit.ts'), 'utf8');
-  const block = source.match(/export const ENDPOINT_RATE_POLICIES[\s\S]*?^};/m)?.[0];
+  const block = source.match(BLOCK_RE)?.[0];
   if (!block) throw new Error('ENDPOINT_RATE_POLICIES block not found in rate-limit.ts');
-  return [...block.matchAll(/'(\/api\/[^']+)'/g)].map((match) => match[1]);
+  return [...block.matchAll(ENDPOINT_POLICY_PATHS_FROM_SOURCE_RE)].map((match) => match[1]);
 }
 
 function main() {

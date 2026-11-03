@@ -1,5 +1,8 @@
 import { getCurrentLanguageTag } from '@/services/i18n';
 
+const IS_LOCALIZABLE_TEXT_FIELD_RE = /\{name[^}]*\}/;
+
+
 /**
  * Tile name fields to try, in order, per catalogue language.
  *
@@ -92,7 +95,7 @@ export function isLocalizableTextField(textField: unknown): boolean {
   if (!textField) return false;
 
   if (typeof textField === 'string') {
-    return /\{name[^}]*\}/.test(textField);
+    return IS_LOCALIZABLE_TEXT_FIELD_RE.test(textField);
   }
 
   if (typeof textField === 'object') {

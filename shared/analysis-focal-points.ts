@@ -20,6 +20,15 @@ import {
 } from './entity-extraction-core.js';
 import type { EntityType } from './entity-registry.js';
 
+const CALCULATE_CORRELATION_BONUS_RE = /military|troops|forces|army|air force/;
+const CALCULATE_CORRELATION_BONUS_RE_2 = /navy|naval|ships|fleet|carrier/;
+const CALCULATE_CORRELATION_BONUS_RE_3 = /protest|demonstrat|unrest|riot/;
+const CALCULATE_CORRELATION_BONUS_RE_4 = /internet|blackout|outage|connectivity/;
+const CALCULATE_CORRELATION_BONUS_RE_5 = /sanction|designation|ofac|treasury|embargo|blacklist/;
+const CALCULATE_CORRELATION_BONUS_RE_6 = /nuclear|radiation|reactor|contamination|radnet/;
+const CALCULATE_CORRELATION_BONUS_RE_7 = /strike|attack|bomb|missile|target|hit/;
+
+
 // ============================================================================
 // Structural input shapes — the subset of the client types this core reads.
 // The corresponding `src/` types are structurally assignable to these.
@@ -385,13 +394,13 @@ export function calculateCorrelationBonus(
 
   if (signals && mention.topHeadlines.some(h => {
     const lower = h.title.toLowerCase();
-    return (signals.signalTypes.has('military_flight') && /military|troops|forces|army|air force/.test(lower)) ||
-           (signals.signalTypes.has('military_vessel') && /navy|naval|ships|fleet|carrier/.test(lower)) ||
-           (signals.signalTypes.has('protest') && /protest|demonstrat|unrest|riot/.test(lower)) ||
-           (signals.signalTypes.has('internet_outage') && /internet|blackout|outage|connectivity/.test(lower)) ||
-           (signals.signalTypes.has('sanctions_pressure') && /sanction|designation|ofac|treasury|embargo|blacklist/.test(lower)) ||
-           (signals.signalTypes.has('radiation_anomaly') && /nuclear|radiation|reactor|contamination|radnet/.test(lower)) ||
-           (signals.signalTypes.has('active_strike') && /strike|attack|bomb|missile|target|hit/.test(lower));
+    return (signals.signalTypes.has('military_flight') && CALCULATE_CORRELATION_BONUS_RE.test(lower)) ||
+           (signals.signalTypes.has('military_vessel') && CALCULATE_CORRELATION_BONUS_RE_2.test(lower)) ||
+           (signals.signalTypes.has('protest') && CALCULATE_CORRELATION_BONUS_RE_3.test(lower)) ||
+           (signals.signalTypes.has('internet_outage') && CALCULATE_CORRELATION_BONUS_RE_4.test(lower)) ||
+           (signals.signalTypes.has('sanctions_pressure') && CALCULATE_CORRELATION_BONUS_RE_5.test(lower)) ||
+           (signals.signalTypes.has('radiation_anomaly') && CALCULATE_CORRELATION_BONUS_RE_6.test(lower)) ||
+           (signals.signalTypes.has('active_strike') && CALCULATE_CORRELATION_BONUS_RE_7.test(lower));
   })) {
     bonus += 5;
   }

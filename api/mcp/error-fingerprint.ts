@@ -17,9 +17,11 @@
  *
  * Pure + zero-import so the grouping contract needs no Sentry harness.
  */
+const SIBLING_HTTP_RE = /^([A-Za-z0-9_-]+) HTTP (\d{3})\b/;
+
 export function mcpErrorFingerprint(step: string, toolName: string, err: unknown): string[] {
   const message = err instanceof Error ? err.message : String(err);
-  const siblingHttp = message.match(/^([A-Za-z0-9_-]+) HTTP (\d{3})\b/);
+  const siblingHttp = message.match(SIBLING_HTTP_RE);
 
   // Signed requests can also fail the gateway entitlement recheck with 401.
   // Only this explicit code identifies the shared signature/replay mechanism.

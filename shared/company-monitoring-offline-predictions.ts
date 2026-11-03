@@ -59,6 +59,11 @@ import {
   validateOfflineFirstPartyIdentityBindings,
 } from './company-monitoring-offline-evidence.ts';
 
+const TEXT_RE = /[\u0000-\u001f\u007f]/u;
+const URL_ORIGIN_RE = /^www\./;
+const VALIDATE_PREVIOUS_PREDICTIONS_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+
 export * from './company-monitoring-offline-prediction-contracts.ts';
 export {
   computeOfflineClassifierRuntimeDigest,
@@ -129,7 +134,7 @@ function exact(value: unknown, keys: Set<string>, code: string): Record<string, 
 function text(value: unknown, code: string, maximum = 2_048): string {
   if (
     typeof value !== 'string' || value.length === 0 || value !== value.trim() ||
-    value.length > maximum || /[\u0000-\u001f\u007f]/u.test(value)
+    value.length > maximum || TEXT_RE.test(value)
   ) fail(code);
   return value;
 }
@@ -184,7 +189,7 @@ function validateObservation(value: unknown): OfflineProviderObservation {
     'offline_observation_official_domain_invalid',
   );
   const publisherOrigin = text(row.publisherOrigin, 'offline_observation_publisher_origin_invalid', 253);
-  const urlOrigin = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  const urlOrigin = new URL(url).hostname.toLowerCase().replace(URL_ORIGIN_RE, '');
   const expectedPublisherOrigin = row.provider === 'x' ? row.authorAccountId : urlOrigin;
   if (expectedPublisherOrigin === null || publisherOrigin !== expectedPublisherOrigin) {
     fail('offline_observation_publisher_origin_mismatch');
@@ -799,7 +804,7 @@ function validatePreviousPredictions(
     authorization.classifierRuntimeSha256 !== inputCurationRuntimeDigest ||
     authorization.childCorpusSha256 !== computeBlindCorpusDigest(corpus) ||
     authorization.expansionManifestSha256 !== previous.corpus.precommittedExpansion.manifestSha256 ||
-    typeof signatureBase64 !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(signatureBase64)
+    typeof signatureBase64 !== 'string' || !VALIDATE_PREVIOUS_PREDICTIONS_RE.test(signatureBase64)
   ) fail('offline_continuation_authorization_invalid');
   try {
     const publicKey = createPublicKey(previous.authorizationPublicKeyPem);

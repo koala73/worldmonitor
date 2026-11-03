@@ -1,5 +1,8 @@
 'use strict';
 
+const MESSAGE_ID_RE = /^saudidcd:([1-9]\d*)$/i;
+
+
 const { createHash } = require('node:crypto');
 
 // This alert opt-in is narrower than the public Telegram trust registry.
@@ -14,7 +17,7 @@ async function publishSaudiCivilDefenseAlerts(items, { now, readCache, writeCach
   const candidates = [];
   for (const item of items) {
     if (String(item?.channel).toLowerCase() !== SAUDI_CIVIL_DEFENSE.handle.toLowerCase()) continue;
-    const messageId = /^saudidcd:([1-9]\d*)$/i.exec(item.id ?? '')?.[1];
+    const messageId = MESSAGE_ID_RE.exec(item.id ?? '')?.[1];
     const publishedAt = Date.parse(item.ts);
     const title = typeof item.text === 'string' ? item.text.trim() : '';
     if (!messageId || !title || item.textTruncated || title.length > MAX_POST_CHARS) continue;

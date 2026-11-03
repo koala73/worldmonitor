@@ -16,6 +16,12 @@
 
 import { markdownToEmailHtml } from '../_digest-markdown.mjs';
 
+const HTML_ESCAPE_RE = /&/g;
+const HTML_ESCAPE_RE_2 = /</g;
+const HTML_ESCAPE_RE_3 = />/g;
+const HTML_ESCAPE_RE_4 = /"/g;
+
+
 /**
  * Inject the canonical synthesis (lead + threads + signals) into
  * the HTML email template's `<div data-ai-summary-slot></div>`
@@ -56,10 +62,10 @@ export function injectEmailSummary(html, summary) {
   }
 
   const htmlEscape = (s) => String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(HTML_ESCAPE_RE, '&amp;')
+    .replace(HTML_ESCAPE_RE_2, '&lt;')
+    .replace(HTML_ESCAPE_RE_3, '&gt;')
+    .replace(HTML_ESCAPE_RE_4, '&quot;');
 
   const leadHtml = markdownToEmailHtml(payload.lead);
 

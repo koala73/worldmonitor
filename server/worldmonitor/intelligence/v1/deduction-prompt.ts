@@ -1,3 +1,14 @@
+
+
+const NORMALIZE_WHITESPACE_RE = /\r\n/g;
+const NORMALIZE_WHITESPACE_RE_2 = /[ \t]+\n/g;
+const NORMALIZE_WHITESPACE_RE_3 = /\n{3,}/g;
+const HEADER_MATCH_RE = /(?:^|\n\n)(Recent News[^\n]*)/;
+const RECENT_NEWS_RE = /^\s*[-*]\s*/;
+const INFER_PROVIDER_LABEL_RE = /^api\./;
+const CLEANED_RE = /<think>[\s\S]*?<\/think>/gi;
+const CLEANED_RE_2 = /<think>[\s\S]*/gi;
+const WHITESPACE_RE = /\s+/g;
 interface PromptContextParts {
   primaryContext: string;
   recentNews: string[];
@@ -13,7 +24,7 @@ const BRIEF_MODE_PATTERNS = [
 ];
 
 function normalizeWhitespace(input: string): string {
-  return input.replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return input.replace(NORMALIZE_WHITESPACE_RE, '\n').replace(NORMALIZE_WHITESPACE_RE_2, '\n').replace(NORMALIZE_WHITESPACE_RE_3, '\n\n').trim();
 }
 
 function trimList(items: string[], maxItems: number, maxChars: number): string[] {
@@ -40,7 +51,7 @@ export function splitDeductionContext(geoContext: string): PromptContextParts {
     return { primaryContext: '', recentNews: [] };
   }
 
-  const headerMatch = /(?:^|\n\n)(Recent News[^\n]*)/.exec(normalized);
+  const headerMatch = HEADER_MATCH_RE.exec(normalized);
   if (!headerMatch) {
     return { primaryContext: normalized, recentNews: [] };
   }
@@ -51,7 +62,7 @@ export function splitDeductionContext(geoContext: string): PromptContextParts {
   const jsonRecords = headerMatch[1] === 'Recent News: (JSON records)';
   const recentNews = trimList(
     newsBlock
-      .map((line) => line.replace(/^\s*[-*]\s*/, '').trim())
+      .map((line) => line.replace(RECENT_NEWS_RE, '').trim())
       .filter((line) => {
         if (!jsonRecords) return Boolean(line);
         // The request length cap can cut the last record. Never pass a partial
@@ -78,7 +89,7 @@ export function inferProviderLabel(apiUrl: string): string {
     if (host.includes('openrouter')) return 'openrouter';
     if (host.includes('ollama')) return 'ollama';
     if (host.includes('openai')) return 'openai-compatible';
-    return host.replace(/^api\./, '') || 'custom';
+    return host.replace(INFER_PROVIDER_LABEL_RE, '') || 'custom';
   } catch {
     return 'custom';
   }
@@ -170,10 +181,10 @@ Formatting rules:
 
 export function postProcessDeductionOutput(raw: string, mode: DeductionMode): string {
   const cleaned = normalizeWhitespace(
-    raw.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/<think>[\s\S]*/gi, ''),
+    raw.replace(CLEANED_RE, '').replace(CLEANED_RE_2, ''),
   );
   if (mode === 'brief') {
-    return cleaned.replace(/\s+/g, ' ').trim();
+    return cleaned.replace(WHITESPACE_RE, ' ').trim();
   }
   return cleaned;
 }

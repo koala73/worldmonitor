@@ -1,5 +1,8 @@
 import { hashString } from '@/utils/hash';
 
+const SANITIZE_TITLE_RE = /[\x00-\x1f\x7f]/g;
+
+
 const DB_NAME = 'worldmonitor_vector_store';
 const DB_VERSION = 1;
 const STORE_NAME = 'embeddings';
@@ -74,7 +77,7 @@ function openDB(): Promise<IDBDatabase> {
 }
 
 export function sanitizeTitle(text: string): string {
-  return text.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 200);
+  return text.replace(SANITIZE_TITLE_RE, '').trim().slice(0, 200);
 }
 
 export function makeVectorId(source: string, url: string, pubDate: number, text: string): string {

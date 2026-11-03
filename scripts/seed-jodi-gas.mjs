@@ -20,6 +20,11 @@ import {
   jodiDatasetContentMeta,
 } from './shared/jodi-content-age.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const HEADER_RE = /^"|"$/g;
+const INDEX_RE = /^(\d{4})-(\d{2})$/;
+
+
 loadEnvFile(import.meta.url);
 const require = createRequire(import.meta.url);
 const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json');
@@ -57,10 +62,10 @@ export function parseObsValue(raw) {
 }
 
 export function parseCsvRows(csvText) {
-  const lines = csvText.split(/\r?\n/);
+  const lines = csvText.split(LINE_BREAK_RE);
   if (lines.length < 2) return [];
 
-  const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const header = lines[0].split(',').map(h => h.trim().replace(HEADER_RE, ''));
   const idxArea   = header.indexOf('REF_AREA');
   const idxPeriod = header.indexOf('TIME_PERIOD');
   const idxFlow   = header.indexOf('FLOW_BREAKDOWN');
@@ -76,9 +81,9 @@ export function parseCsvRows(csvText) {
     const line = lines[i].trim();
     if (!line) continue;
     const cells = line.split(',');
-    const unit = cells[idxUnit]?.trim().replace(/^"|"$/g, '');
+    const unit = cells[idxUnit]?.trim().replace(HEADER_RE, '');
     if (unit !== UNIT_FILTER) continue;
-    const flow = cells[idxFlow]?.trim().replace(/^"|"$/g, '');
+    const flow = cells[idxFlow]?.trim().replace(HEADER_RE, '');
     if (!FLOW_MAP[flow]) continue;
     // ASSESSMENT_CODE 3 means JODI has not assessed the value, not that it is
     // missing: China, Russia, Iraq, Indonesia and Malaysia file every gas cell
@@ -86,8 +91,8 @@ export function parseCsvRows(csvText) {
     // parseObsValue turns into null (#9393 made the same fix for oil).
     const obs = parseObsValue(cells[idxObs]);
     rows.push({
-      area:   cells[idxArea]?.trim().replace(/^"|"$/g, ''),
-      period: cells[idxPeriod]?.trim().replace(/^"|"$/g, ''),
+      area:   cells[idxArea]?.trim().replace(HEADER_RE, ''),
+      period: cells[idxPeriod]?.trim().replace(HEADER_RE, ''),
       flow,
       obs,
     });
@@ -128,7 +133,7 @@ function buildMonthRecord(iso2, period, monthRows) {
 /** Whole months from `earlier` to `later` (both YYYY-MM); Infinity if unparseable. */
 function monthsBetween(earlier, later) {
   const index = (month) => {
-    const match = /^(\d{4})-(\d{2})$/.exec(String(month));
+    const match = INDEX_RE.exec(String(month));
     return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : NaN;
   };
   const gap = index(later) - index(earlier);

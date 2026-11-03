@@ -2,6 +2,10 @@ import type { ResilienceRankingItem } from '@/services/resilience';
 import type { MapLayers } from '@/types';
 import { getResilienceVisualLevel, hasScoredResilienceOverall } from './resilience-widget-utils';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const FORMAT_RESILIENCE_CHOROPLETH_LEVEL_RE = /_/g;
+
+
 export type ResilienceChoroplethLevel = 'very_low' | 'low' | 'moderate' | 'high' | 'very_high' | 'insufficient_data';
 
 export interface ResilienceChoroplethEntry {
@@ -41,7 +45,7 @@ function hasScoredResilienceRankingItem(item: ResilienceRankingItem): boolean {
 
 function toResilienceChoroplethEntry(item: ResilienceRankingItem): [string, ResilienceChoroplethEntry] | null {
   const countryCode = String(item.countryCode || '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(countryCode)) return null;
+  if (!COUNTRY_CODE_RE.test(countryCode)) return null;
 
   if (!hasScoredResilienceRankingItem(item)) {
     return [countryCode, {
@@ -69,7 +73,7 @@ export function getResilienceChoroplethLevel(score: number): ResilienceChoroplet
 }
 
 export function formatResilienceChoroplethLevel(level: ResilienceChoroplethLevel): string {
-  return level.replace(/_/g, ' ');
+  return level.replace(FORMAT_RESILIENCE_CHOROPLETH_LEVEL_RE, ' ');
 }
 
 export function buildResilienceChoroplethMap(

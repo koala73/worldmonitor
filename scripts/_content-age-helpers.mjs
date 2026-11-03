@@ -21,6 +21,11 @@
 // reads null as STALE_CONTENT (the upstream handed us nothing datable).
 
 // 1h — matches the clock-skew tolerance in _imf-weo-content-age-helpers.mjs.
+const DATE_MATCH_RE = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/;
+const PERIOD_TOKEN_TO_MS_RE = /^(\d{4})-(\d{2})$/;
+const PERIOD_TOKEN_TO_MS_RE_2 = /^(\d{4})-Q([1-4])$/;
+const PERIOD_TOKEN_TO_MS_RE_3 = /^(\d{4})$/;
+
 const CLOCK_SKEW_TOLERANCE_MS = 60 * 60 * 1000;
 
 /** Minutes in a day — convenience for declaring maxContentAgeMin budgets. */
@@ -56,7 +61,7 @@ export function periodTokenToMs(token) {
   // anchor rejects trailing garbage like `2026-05-18xyz` explicitly. Validate
   // the calendar components before Date.parse: JavaScript normalizes impossible
   // dates such as 2026-02-31 to 2026-03-03 instead of rejecting them.
-  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(token);
+  const dateMatch = DATE_MATCH_RE.exec(token);
   if (dateMatch) {
     const year = Number(dateMatch[1]);
     const month = Number(dateMatch[2]);
@@ -65,15 +70,15 @@ export function periodTokenToMs(token) {
     const ts = Date.parse(token.length === 10 ? `${token}T00:00:00Z` : token);
     return Number.isFinite(ts) ? ts : null;
   }
-  if ((m = /^(\d{4})-(\d{2})$/.exec(token))) {
+  if ((m = PERIOD_TOKEN_TO_MS_RE.exec(token))) {
     const mo = Number(m[2]);
     if (mo < 1 || mo > 12) return null;
     return Date.UTC(Number(m[1]), mo - 1, 1);
   }
-  if ((m = /^(\d{4})-Q([1-4])$/.exec(token))) {
+  if ((m = PERIOD_TOKEN_TO_MS_RE_2.exec(token))) {
     return Date.UTC(Number(m[1]), (Number(m[2]) - 1) * 3, 1);
   }
-  if ((m = /^(\d{4})$/.exec(token))) {
+  if ((m = PERIOD_TOKEN_TO_MS_RE_3.exec(token))) {
     return Date.UTC(Number(m[1]), 0, 1);
   }
   return null;

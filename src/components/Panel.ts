@@ -31,6 +31,9 @@ import {
   setColSpanClass,
 } from '@/utils/panel-grid';
 
+const GET_ROW_SPAN_RE = /^span\s+([1-4])(?:\s|$)/;
+
+
 export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
 
 export interface PanelOptions {
@@ -95,7 +98,7 @@ function getRowSpan(element: HTMLElement): number {
   // wide video panels take three rows (#8276), and the CLS-pinned span-2
   // defaults take four on desktop, so their classes understate it.
   if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
-    const match = /^span\s+([1-4])(?:\s|$)/.exec(window.getComputedStyle(element).gridRowStart);
+    const match = GET_ROW_SPAN_RE.exec(window.getComputedStyle(element).gridRowStart);
     if (match) return Number(match[1]);
   }
   if (spanClass !== null) return spanClass;

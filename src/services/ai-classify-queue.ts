@@ -26,6 +26,9 @@
 // test header for the broader Vite/Node compat pattern.
 import { SITE_VARIANT } from '@/config/variant';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 const AI_CLASSIFY_DEDUP_MS = 30 * 60 * 1000;
 const AI_CLASSIFY_WINDOW_MS = 60 * 1000;
 const AI_CLASSIFY_MAX_PER_WINDOW =
@@ -80,7 +83,7 @@ function normalizeLink(link: string): string | null {
 }
 
 function titleKey(title: string): string {
-  return `title:${title.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+  return `title:${title.trim().toLowerCase().replace(WHITESPACE_RE, ' ')}`;
 }
 
 function toAiKey(identity: { link?: string; title: string }): string {

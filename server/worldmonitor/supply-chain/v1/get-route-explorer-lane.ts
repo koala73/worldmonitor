@@ -48,6 +48,13 @@ import {
   getCorridorGeometryOrFallback,
 } from './_route-explorer-static-tables';
 
+const DERIVE_CORRIDOR_STATUS_RE = /proposed|not yet constructed|notional/;
+const DERIVE_CORRIDOR_STATUS_RE_2 = /proposed|\(future\)/;
+const DERIVE_CORRIDOR_STATUS_RE_3 = /blockaded|effectively closed|not usable|suspended/;
+const NON_DIGIT_RE = /\D/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const CACHE_TTL_SECONDS = 60; // matches vendor endpoint cadence
 
 interface PortClusterEntry {
@@ -127,10 +134,10 @@ function geoPoint(lon: number, lat: number): GeoPoint {
 function deriveCorridorStatus(corridor: BypassCorridor): CorridorStatus {
   const notes = (corridor.notes ?? '').toLowerCase();
   const name = (corridor.name ?? '').toLowerCase();
-  if (/proposed|not yet constructed|notional/.test(notes) || /proposed|\(future\)/.test(name)) {
+  if (DERIVE_CORRIDOR_STATUS_RE.test(notes) || DERIVE_CORRIDOR_STATUS_RE_2.test(name)) {
     return 'CORRIDOR_STATUS_PROPOSED';
   }
-  if (/blockaded|effectively closed|not usable|suspended/.test(notes)) {
+  if (DERIVE_CORRIDOR_STATUS_RE_3.test(notes)) {
     return 'CORRIDOR_STATUS_UNAVAILABLE';
   }
   return 'CORRIDOR_STATUS_ACTIVE';
@@ -182,11 +189,11 @@ export async function computeLane(
 ): Promise<GetRouteExplorerLaneResponse> {
   const fromIso2 = req.fromIso2.trim().toUpperCase();
   const toIso2 = req.toIso2.trim().toUpperCase();
-  const hs2 = req.hs2.trim().replace(/\D/g, '') || '27';
+  const hs2 = req.hs2.trim().replace(NON_DIGIT_RE, '') || '27';
   const cargoLower = req.cargoType.trim().toLowerCase();
   const cargoType = CARGO_TYPES.has(cargoLower) ? cargoLower : 'container';
 
-  if (!/^[A-Z]{2}$/.test(fromIso2) || !/^[A-Z]{2}$/.test(toIso2)) {
+  if (!COUNTRY_CODE_RE.test(fromIso2) || !COUNTRY_CODE_RE.test(toIso2)) {
     return emptyResponse(req, hs2, cargoType);
   }
 
@@ -278,7 +285,7 @@ export async function getRouteExplorerLane(
   req: GetRouteExplorerLaneRequest,
 ): Promise<GetRouteExplorerLaneResponse> {
   const isPro = await isCallerPremium(ctx.request);
-  const hs2 = req.hs2?.trim().replace(/\D/g, '') || '27';
+  const hs2 = req.hs2?.trim().replace(NON_DIGIT_RE, '') || '27';
   const cargo = CARGO_TYPES.has(req.cargoType?.trim().toLowerCase() ?? '')
     ? req.cargoType.trim().toLowerCase()
     : 'container';
@@ -286,7 +293,7 @@ export async function getRouteExplorerLane(
 
   const fromIso2 = req.fromIso2?.trim().toUpperCase() ?? '';
   const toIso2 = req.toIso2?.trim().toUpperCase() ?? '';
-  if (!/^[A-Z]{2}$/.test(fromIso2) || !/^[A-Z]{2}$/.test(toIso2)) {
+  if (!COUNTRY_CODE_RE.test(fromIso2) || !COUNTRY_CODE_RE.test(toIso2)) {
     return emptyResponse(req, hs2, cargo);
   }
 

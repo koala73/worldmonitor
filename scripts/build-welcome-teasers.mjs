@@ -46,6 +46,12 @@ import { resolveLatestLivePulseSnapshotPath } from './build-crawlable-corpus.mjs
 import { parseCiiMovement } from './crawlable-live-tools.mjs';
 import { QUOTE_LABELS, isVerifiableArticleUrl } from './freeze-crawlable-live-pulse.mjs';
 
+const LASTMOD_MATCHES_RE = /<meta name="lastmod" content="\d{4}-\d{2}-\d{2}" \/>/g;
+const DATE_MODIFIED_MATCHES_RE = /"dateModified": "\d{4}-\d{2}-\d{2}"/g;
+const RENDER_WELCOME_HTML_RE = /<meta name="lastmod" content="\d{4}-\d{2}-\d{2}" \/>/;
+const RENDER_WELCOME_HTML_RE_2 = /"dateModified": "\d{4}-\d{2}-\d{2}"/;
+
+
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), '..');
 
@@ -248,8 +254,8 @@ export async function renderWelcomeTeasers({ rootDir = REPO_ROOT } = {}) {
 export function renderWelcomeHtml({ rootDir = REPO_ROOT, capturedAt } = {}) {
   const htmlPath = join(rootDir, WELCOME_HTML_PATH);
   const html = readFileSync(htmlPath, 'utf8');
-  const lastmodMatches = html.match(/<meta name="lastmod" content="\d{4}-\d{2}-\d{2}" \/>/g) || [];
-  const dateModifiedMatches = html.match(/"dateModified": "\d{4}-\d{2}-\d{2}"/g) || [];
+  const lastmodMatches = html.match(LASTMOD_MATCHES_RE) || [];
+  const dateModifiedMatches = html.match(DATE_MODIFIED_MATCHES_RE) || [];
   if (lastmodMatches.length !== 1 || dateModifiedMatches.length !== 1) {
     throw new Error(
       `${WELCOME_HTML_PATH} must carry exactly one lastmod meta and one dateModified node `
@@ -257,17 +263,17 @@ export function renderWelcomeHtml({ rootDir = REPO_ROOT, capturedAt } = {}) {
     );
   }
   return html
-    .replace(/<meta name="lastmod" content="\d{4}-\d{2}-\d{2}" \/>/, `<meta name="lastmod" content="${capturedAt}" />`)
-    .replace(/"dateModified": "\d{4}-\d{2}-\d{2}"/, `"dateModified": "${capturedAt}"`);
+    .replace(RENDER_WELCOME_HTML_RE, `<meta name="lastmod" content="${capturedAt}" />`)
+    .replace(RENDER_WELCOME_HTML_RE_2, `"dateModified": "${capturedAt}"`);
 }
 
 export function renderProHtml({ rootDir = REPO_ROOT, capturedAt } = {}) {
   const html = readFileSync(join(rootDir, PRO_HTML_PATH), 'utf8');
-  const dates = html.match(/"dateModified": "\d{4}-\d{2}-\d{2}"/g) || [];
+  const dates = html.match(DATE_MODIFIED_MATCHES_RE) || [];
   if (dates.length !== 1) {
     throw new Error(`${PRO_HTML_PATH} must carry exactly one dateModified node (found ${dates.length})`);
   }
-  return html.replace(/"dateModified": "\d{4}-\d{2}-\d{2}"/, `"dateModified": "${capturedAt}"`);
+  return html.replace(RENDER_WELCOME_HTML_RE_2, `"dateModified": "${capturedAt}"`);
 }
 
 // The agent-facing homepage states the same "As of" date as the hero. One

@@ -5,6 +5,10 @@ import { resolve } from 'node:path';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const FIND_VITE_SECRET_ENV_VARS_RE = /^\s*(VITE_[A-Za-z0-9_]+)\s*=/;
+
+
 const VITE_ENV_NAME = /^VITE_[A-Za-z0-9_]+$/;
 const SECRET_NAME = /(?:api_?key|access_?token|secret|token|password|private_?key|credential)/i;
 const VITE_ENV_FILE = /^\.env(?:\.[A-Za-z0-9_-]+)?(?:\.local)?$/;
@@ -24,8 +28,8 @@ function localViteEnvFiles(rootDir) {
 
 export function findViteSecretEnvVars(source) {
   const names = new Set();
-  for (const line of source.split(/\r?\n/)) {
-    const match = line.match(/^\s*(VITE_[A-Za-z0-9_]+)\s*=/);
+  for (const line of source.split(LINE_BREAK_RE)) {
+    const match = line.match(FIND_VITE_SECRET_ENV_VARS_RE);
     if (match && isViteSecretEnvVar(match[1])) names.add(match[1]);
   }
   return [...names].sort();

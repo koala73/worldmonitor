@@ -12,6 +12,9 @@ import {
 import ISO2_TO_ISO3 from '../../shared/iso2-to-iso3.js';
 import weoFiscalPeriods from '../shared/weo-fiscal-periods.mjs';
 
+const SORT_NAME_RE = /^The /;
+
+
 // Monthly seed; health allows 60 days (api/health.js nationalDebt).
 const MAX_AGE_MS = 60 * 24 * 3_600_000;
 
@@ -29,7 +32,7 @@ function fiscalPeriodList() {
     group.names.push(row.name);
     groups.set(key, group);
   }
-  const sortName = (name) => name.replace(/^The /, '');
+  const sortName = (name) => name.replace(SORT_NAME_RE, '');
   const items = [...groups.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, { label, names }]) => {

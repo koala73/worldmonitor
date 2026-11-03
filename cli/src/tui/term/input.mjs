@@ -2,6 +2,8 @@
 // (CSI < b ; x ; y M/m), CSI/SS3 cursor keys, function keys, modifiers, and
 // UTF-8 text. Incomplete sequences are kept until more bytes arrive.
 
+const DECODE_ESCAPE_RE = /[0-9;]/;
+
 const CSI_KEYS = {
   A: 'up',
   B: 'down',
@@ -140,7 +142,7 @@ export class InputDecoder {
       const mouse = text[j] === '<';
       if (mouse) j++;
       let params = '';
-      while (j < text.length && /[0-9;]/.test(text[j])) params += text[j++];
+      while (j < text.length && DECODE_ESCAPE_RE.test(text[j])) params += text[j++];
       if (j >= text.length) return { incomplete: true };
       const final = text[j];
       const length = j - i + 1;

@@ -9,6 +9,9 @@ import { ARCHIVE_DIR, loadEnv } from '../lib/config.mjs';
 import { dig, WorldMonitorMcp } from '../lib/mcp-client.mjs';
 import { gdeltArticlesFrom } from '../lib/sources.mjs';
 
+const FILE_RE = /[:.]/g;
+
+
 loadEnv();
 
 async function snapshot() {
@@ -45,7 +48,7 @@ async function snapshot() {
     errors.push(`brief: ${error.message}`);
   }
   await mkdir(ARCHIVE_DIR, { recursive: true });
-  const file = path.join(ARCHIVE_DIR, `${takenAt.replace(/[:.]/g, '-')}.json`);
+  const file = path.join(ARCHIVE_DIR, `${takenAt.replace(FILE_RE, '-')}.json`);
   await writeFile(file, JSON.stringify({ takenAt, clusters: [...clusters.values()], intelligenceStories, gdeltArticles, brief, errors }));
   console.log(`${takenAt}  ${clusters.size} clusters, ${intelligenceStories.length} stories${errors.length ? `, ${errors.length} errors: ${errors.slice(0, 3).join('; ')}` : ''}  -> ${path.basename(file)}`);
   if (!clusters.size && errors.length) process.exitCode = 1;

@@ -18,6 +18,12 @@ import { SUPPRESSED_TRENDING_TERMS, escapeRegex, tokenize } from './text-analysi
 // #6428: spike "source diversity" counts publishers, not feed labels.
 import { PUBLISHER_FAMILIES, publisherFamilyFor } from './publisher-families.js';
 
+const AS_DISPLAY_TERM_RE = /^(cve-\d{4}-\d{4,}|apt\d+|fin\d+)$/i;
+const STRIP_SOURCE_ATTRIBUTION_RE = /[.!?]/;
+const IS_LIKELY_PROPER_NOUN_RE = /^\d/;
+const IS_LIKELY_PROPER_NOUN_RE_2 = /[A-Z]/;
+
+
 export const CVE_PATTERN = /CVE-\d{4}-\d{4,}/gi;
 export const APT_PATTERN = /APT\d+/gi;
 export const FIN_PATTERN = /FIN\d+/gi;
@@ -48,7 +54,7 @@ export function toTermKey(term) {
 }
 
 export function asDisplayTerm(term) {
-  if (/^(cve-\d{4}-\d{4,}|apt\d+|fin\d+)$/i.test(term)) {
+  if (AS_DISPLAY_TERM_RE.test(term)) {
     return term.toUpperCase();
   }
   return term.toLowerCase();
@@ -56,7 +62,7 @@ export function asDisplayTerm(term) {
 
 /** True when the term is one of the always-significant entity shapes. */
 export function isEntityShapedTerm(term) {
-  if (/^(cve-\d{4}-\d{4,}|apt\d+|fin\d+)$/i.test(term)) return true;
+  if (AS_DISPLAY_TERM_RE.test(term)) return true;
   return LEADER_PATTERNS.some(({ pattern }) => pattern.test(term));
 }
 
@@ -86,7 +92,7 @@ export function stripSourceAttribution(title) {
   const idx = title.lastIndexOf(' - ');
   if (idx === -1) return title;
   const after = title.slice(idx + 3).trim();
-  if (after.length > 0 && after.length <= 60 && !/[.!?]/.test(after)) {
+  if (after.length > 0 && after.length <= 60 && !STRIP_SOURCE_ATTRIBUTION_RE.test(after)) {
     return title.slice(0, idx).trim();
   }
   return title;
@@ -111,7 +117,7 @@ export function buildBaseTermCandidates(title) {
 
 export function isLikelyProperNoun(term, headlines) {
   if (term.includes(' ') && term.length > 5) return true;
-  if (/^\d/.test(term)) return true;
+  if (IS_LIKELY_PROPER_NOUN_RE.test(term)) return true;
 
   const titles = headlines.slice(0, 8).map(h => h.title);
   const termRe = new RegExp(`\\b${escapeRegex(term)}\\b`, 'gi');
@@ -122,7 +128,7 @@ export function isLikelyProperNoun(term, headlines) {
       const idx = m.index ?? 0;
       if (idx === 0) continue;
       midSentenceCount++;
-      if (/[A-Z]/.test(title[idx])) capitalizedCount++;
+      if (IS_LIKELY_PROPER_NOUN_RE_2.test(title[idx])) capitalizedCount++;
     }
   }
   if (midSentenceCount === 0) {

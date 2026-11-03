@@ -12,6 +12,9 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA, finnhubGate } from '../../../_shared/constants';
 import { searchRecentStockHeadlines } from '../../market/v1/stock-news-search';
 
+const ABSOLUTE_RE = /^https?:\/\//i;
+
+
 const PROFILE_TTL = 86_400;
 const EARNINGS_TTL = 43_200;
 const NEGATIVE_TTL = 300;
@@ -43,13 +46,13 @@ interface CompanyProfileResult {
 export function safeHttpUrl(raw: string | undefined | null): string {
   if (!raw) return '';
   try {
-    const absolute = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const absolute = ABSOLUTE_RE.test(raw) ? raw : `https://${raw}`;
     const u = new URL(absolute);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
     if (u.username || u.password) return '';
     // Keep the caller's form when it was already absolute http(s) so we do not
     // invent a trailing slash on bare hosts (URL.toString() would).
-    if (/^https?:\/\//i.test(raw)) return raw;
+    if (ABSOLUTE_RE.test(raw)) return raw;
     return `https://${u.host}${u.pathname === '/' ? '' : u.pathname}${u.search}${u.hash}`;
   } catch {
     return '';

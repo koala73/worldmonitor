@@ -21,6 +21,23 @@ import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetc
 import { decodeHtmlEntities } from './_html-entities.mjs';
 import countryNames from './shared/country-names.json' with { type: 'json' };
 
+const NORMALIZE_NAME_RE = /[̀-ͯ]/g;
+const NORMALIZE_NAME_RE_2 = /[''‘’`]/g;
+const NORMALIZE_NAME_RE_3 = /[^a-z0-9 ]/g;
+const WHITESPACE_RE = /\s+/g;
+const FROM_DATE_RE = /-/g;
+const FETCH_VIA_WAYBACK_RE = /^\d{14}$/;
+const YEAR_MATCH_RE = /\b(20\d{2})\b/;
+const STRIP_HTML_RE = /<[^>]*>/g;
+const STRIP_HTML_RE_2 = /&nbsp;/g;
+const EXTRACT_LISTED_COUNTRIES_RE = /\bcmp-/;
+const SLUG_DECODED_RE = /[^a-zA-Z0-9 ]/g;
+const FROM_URL_RE = /\b(20\d{2})[-_/]?(\d{2})[-_/]?(\d{2})?\b/;
+const HDR_RE = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(20\d{2})/i;
+const DETAIL_HREFS_RE = /\/en\/countries\/detail\//gi;
+const CMP_ANCHORS_RE = /\bcmp-/g;
+
+
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -51,12 +68,12 @@ function normalizeName(name) {
   return String(name)
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(NORMALIZE_NAME_RE, '')
     // Strip apostrophes BEFORE the alphanumeric filter, so "People's" →
     // "peoples" not "people s". Includes ASCII + smart quotes.
-    .replace(/[''‘’`]/g, '')
-    .replace(/[^a-z0-9 ]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_NAME_RE_2, '')
+    .replace(NORMALIZE_NAME_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -109,7 +126,7 @@ export async function fetchViaWayback(url, opts = {}) {
   const fromDate = new Date(Date.now() - lookbackDays * 86_400_000)
     .toISOString()
     .slice(0, 10)
-    .replace(/-/g, '');
+    .replace(FROM_DATE_RE, '');
   // CDX default sort is timestamp-ASCENDING. With a positive `limit=N` the
   // server returns the FIRST N captures within the window (i.e. the OLDEST
   // N), not the newest. FATF accumulates well over 20 captures per 180-day
@@ -128,7 +145,7 @@ export async function fetchViaWayback(url, opts = {}) {
   }
   const latest = rows[rows.length - 1];
   const timestamp = latest[1];
-  if (!/^\d{14}$/.test(timestamp)) {
+  if (!FETCH_VIA_WAYBACK_RE.test(timestamp)) {
     throw new Error(`Wayback CDX returned malformed timestamp "${timestamp}" for ${url}`);
   }
   const snapshotUrl = `https://web.archive.org/web/${timestamp}id_/${url}`;
@@ -313,7 +330,7 @@ export function findPublicationLink(html, labelFragment) {
       let resolved;
       try { resolved = new URL(href, FATF_ENTRY_URL).toString(); } catch { continue; }
       // Year extracted from the URL slug (preferred) or anchor text.
-      const yearMatch = /\b(20\d{2})\b/.exec(href) ?? /\b(20\d{2})\b/.exec(text);
+      const yearMatch = YEAR_MATCH_RE.exec(href) ?? YEAR_MATCH_RE.exec(text);
       const year = yearMatch ? Number.parseInt(yearMatch[1], 10) : 0;
       candidates.push({ url: resolved, text, year });
     }
@@ -329,7 +346,7 @@ export function findPublicationLink(html, labelFragment) {
 }
 
 function stripHtml(s) {
-  return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').replace(/&nbsp;/g, ' ').trim();
+  return s.replace(STRIP_HTML_RE, '').replace(WHITESPACE_RE, ' ').replace(STRIP_HTML_RE_2, ' ').trim();
 }
 
 // Extract country names from a FATF publication page. The page renders
@@ -373,7 +390,7 @@ export function extractListedCountries(html, nameLookup) {
     // (`cmp-list__item-link` only) missed snapshots where Wayback served
     // a slightly different DOM that hit other nav classes — surfaced as
     // 111 unmatched candidates in production 2026-04-25.
-    if (/\bcmp-/.test(attrsBefore + attrsAfter)) continue;
+    if (EXTRACT_LISTED_COUNTRIES_RE.test(attrsBefore + attrsAfter)) continue;
     // Strip HTML tags BEFORE decoding entities. If a malformed snapshot
     // contained `&lt;note&gt;` inside the anchor, decoding first would
     // produce `<note>` which stripHtml would then erase. Stripping first
@@ -391,7 +408,7 @@ export function extractListedCountries(html, nameLookup) {
     // Fall back to the href slug (handles cases where FATF stylises the
     // anchor text but keeps a canonical slug, e.g. "Lao PDR" anchor with
     // /en/countries/detail/Lao-People-s-Democratic-Republic.html slug).
-    const slugDecoded = slug.replace(/-/g, ' ').replace(/[^a-zA-Z0-9 ]/g, '');
+    const slugDecoded = slug.replace(FROM_DATE_RE, ' ').replace(SLUG_DECODED_RE, '');
     const fromSlug = nameLookup.get(normalizeName(slugDecoded));
     if (fromSlug) {
       isoSet.add(fromSlug);
@@ -408,14 +425,14 @@ export function extractListedCountries(html, nameLookup) {
 // header. Falls back to the current date if neither succeeds.
 export function extractPublicationDate(url, html) {
   // URL form: /en/publications/.../high-risk-jurisdictions-2026-02.html
-  const fromUrl = /\b(20\d{2})[-_/]?(\d{2})[-_/]?(\d{2})?\b/.exec(url);
+  const fromUrl = FROM_URL_RE.exec(url);
   if (fromUrl) {
     const [, y, mo, d] = fromUrl;
     return `${y}-${mo}-${d ?? '01'}`;
   }
   // Header form: "February 2026"
   const months = { january: '01', february: '02', march: '03', april: '04', may: '05', june: '06', july: '07', august: '08', september: '09', october: '10', november: '11', december: '12' };
-  const hdr = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(20\d{2})/i.exec(stripHtml(html));
+  const hdr = HDR_RE.exec(stripHtml(html));
   if (hdr) {
     return `${hdr[2]}-${months[hdr[1].toLowerCase()]}-01`;
   }
@@ -430,13 +447,13 @@ export function extractPublicationDate(url, html) {
 function previewHtmlForDiagnostic(html) {
   if (!html) return '<empty>';
   const len = html.length;
-  const detailHrefs = (html.match(/\/en\/countries\/detail\//gi) || []).length;
+  const detailHrefs = (html.match(DETAIL_HREFS_RE) || []).length;
   // Counts every `cmp-*` AEM class — must mirror the live discriminator
   // in extractListedCountries (line ~323). The previous narrower count
   // of `cmp-list__item-link` would report 0 even when the page was full
   // of `cmp-navigation`/`cmp-breadcrumb`/etc. anchors that the new
   // discriminator correctly filters, masking the exact diagnostic signal.
-  const cmpAnchors = (html.match(/\bcmp-/g) || []).length;
+  const cmpAnchors = (html.match(CMP_ANCHORS_RE) || []).length;
   // Detect leading control bytes / non-printable ASCII as a strong hint
   // that the body is compressed/binary (gzip starts with 0x1f 0x8b, brotli
   // is high-bit, etc.). Bypasses html.toString detection issues.

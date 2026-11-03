@@ -1,5 +1,8 @@
 import { CLOCK_SKEW_TOLERANCE_MS, isEmergencySquawk, isFresh, OBSERVATION_MAX_AGE_MS, type EmergencySnapshot } from '../../../../shared/aircraft-emergencies';
 
+const PARSE_EMERGENCY_RESPONSE_RE = /^~?[0-9a-f]{6}$/;
+
+
 const text = (value: unknown): string => typeof value === 'string' ? value.trim().slice(0, 160) : '';
 const numeric = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
@@ -18,7 +21,7 @@ export function parseEmergencyResponse(data: unknown, requestedCode: string, fet
     const a = row as Record<string, unknown>;
     if (!isEmergencySquawk(a.squawk)) continue;
     const address = text(a.hex).toLowerCase();
-    if (!/^~?[0-9a-f]{6}$/.test(address)) continue;
+    if (!PARSE_EMERGENCY_RESPONSE_RE.test(address)) continue;
     const observedAt = numeric(a.seen) && a.seen >= 0 ? responseAt - a.seen * 1000 : 0;
     const positionAt = numeric(a.seen_pos) && a.seen_pos >= 0 ? responseAt - a.seen_pos * 1000 : 0;
     const position = numeric(a.lat) && Math.abs(a.lat) <= 90 && numeric(a.lon) && Math.abs(a.lon) <= 180

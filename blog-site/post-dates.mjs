@@ -12,6 +12,12 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
+const RELATIVE_RE = /^\//;
+const GIT_FILE_LASTMOD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const GLOSSARY_SLUGS_FROM_SOURCE_RE = /slug:\s*'([^']+)'/g;
+
+
 const SITE_URL = 'https://www.worldmonitor.app';
 const BLOG_DIR = new URL('./src/content/blog/', import.meta.url);
 const GUIDES_DIR = new URL('./src/content/guides/', import.meta.url);
@@ -20,7 +26,7 @@ const AUTHORS_DIR = new URL('./src/pages/authors/', import.meta.url);
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 function readFrontmatterDate(markdown, key) {
-  const frontmatter = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const frontmatter = markdown.match(FRONTMATTER_RE);
   if (!frontmatter) return undefined;
 
   const match = frontmatter[1].match(new RegExp(`^${key}:\\s*["']?([^"'\\n]+)["']?\\s*$`, 'm'));
@@ -41,14 +47,14 @@ function gitFileLastmod(absoluteFileUrl) {
     const absolutePath = fileURLToPath(absoluteFileUrl);
     if (!existsSync(absolutePath)) return null;
     const relative = absolutePath.startsWith(REPO_ROOT)
-      ? absolutePath.slice(REPO_ROOT.length).replace(/^\//, '')
+      ? absolutePath.slice(REPO_ROOT.length).replace(RELATIVE_RE, '')
       : absolutePath;
     const out = execFileSync(
       'git',
       ['log', '-1', '--format=%cs', '--', relative],
       { cwd: REPO_ROOT, encoding: 'utf8' },
     ).trim();
-    return /^\d{4}-\d{2}-\d{2}$/.test(out) ? out : null;
+    return GIT_FILE_LASTMOD_RE.test(out) ? out : null;
   } catch {
     return null;
   }
@@ -56,14 +62,14 @@ function gitFileLastmod(absoluteFileUrl) {
 
 function laterDate(...values) {
   return values
-    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
+    .filter((value) => GIT_FILE_LASTMOD_RE.test(value ?? ''))
     .sort()
     .at(-1) ?? null;
 }
 
 function glossarySlugsFromSource(source) {
   const slugs = [];
-  for (const match of source.matchAll(/slug:\s*'([^']+)'/g)) {
+  for (const match of source.matchAll(GLOSSARY_SLUGS_FROM_SOURCE_RE)) {
     slugs.push(match[1]);
   }
   return slugs;

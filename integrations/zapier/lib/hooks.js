@@ -1,5 +1,13 @@
 'use strict';
 
+const NORMALIZED_RE = /^http[-_]/;
+const NORMALIZED_RE_2 = /_/g;
+const VERIFY_SIGNATURE_V2_RE = /^sha256=[0-9a-f]{64}$/;
+const VERIFY_SIGNATURE_V2_RE_2 = /^\d+$/;
+const VERIFY_SIGNATURE_V2_RE_3 = /^whd_[0-9a-f]{32}$/;
+const VERIFY_SIGNATURE_V2_RE_4 = /^[a-z0-9_]+(?:\.[a-z0-9_]+)*$/;
+
+
 const { createHmac, timingSafeEqual } = require('node:crypto');
 
 const { BASE_URL, PATHS, EVENT_REGISTRY, SUBSCRIPTION_RENEW_DAYS } = require('../constants');
@@ -63,7 +71,7 @@ function headerValue(headers, name) {
   if (!headers || typeof headers !== 'object') return undefined;
   const wanted = name.toLowerCase();
   for (const key of Object.keys(headers)) {
-    const normalized = key.toLowerCase().replace(/^http[-_]/, '').replace(/_/g, '-');
+    const normalized = key.toLowerCase().replace(NORMALIZED_RE, '').replace(NORMALIZED_RE_2, '-');
     if (normalized === wanted) return headers[key];
   }
   return undefined;
@@ -88,10 +96,10 @@ function hmacHeaderEquals(header, secret, ...parts) {
  */
 function verifySignatureV2(rawBody, { signature, timestamp, deliveryId, event }, secret, nowMs = Date.now()) {
   if (typeof rawBody !== 'string' || typeof secret !== 'string' || !secret) return 'mismatch';
-  if (typeof signature !== 'string' || !/^sha256=[0-9a-f]{64}$/.test(signature)) return 'mismatch';
-  if (typeof timestamp !== 'string' || !/^\d+$/.test(timestamp)) return 'mismatch';
-  if (typeof deliveryId !== 'string' || !/^whd_[0-9a-f]{32}$/.test(deliveryId)) return 'mismatch';
-  if (typeof event !== 'string' || !/^[a-z0-9_]+(?:\.[a-z0-9_]+)*$/.test(event)) return 'mismatch';
+  if (typeof signature !== 'string' || !VERIFY_SIGNATURE_V2_RE.test(signature)) return 'mismatch';
+  if (typeof timestamp !== 'string' || !VERIFY_SIGNATURE_V2_RE_2.test(timestamp)) return 'mismatch';
+  if (typeof deliveryId !== 'string' || !VERIFY_SIGNATURE_V2_RE_3.test(deliveryId)) return 'mismatch';
+  if (typeof event !== 'string' || !VERIFY_SIGNATURE_V2_RE_4.test(event)) return 'mismatch';
   const seconds = Number(timestamp);
   if (!Number.isSafeInteger(seconds)) return 'mismatch';
   if (!hmacHeaderEquals(signature, secret, `${timestamp}.${deliveryId}.${event}.`, rawBody)) return 'mismatch';

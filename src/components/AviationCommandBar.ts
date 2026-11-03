@@ -6,6 +6,24 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { declareOverlay } from '@/utils/open-modal';
 
+const RESOLVE_IATA_RE = /^[A-Z]{3}$/;
+const NAME_MATCHES_RE = /[\s\-–./]+/;
+const WHITESPACE_RE = /\s+/;
+const PARSE_INTENT_RE = /^OPS\b/;
+const PARSE_INTENT_RE_2 = /^STATUS\s/;
+const PARSE_INTENT_RE_3 = /^(FLIGHT|FLT)\s+[A-Z]{2,3}\d{1,4}/;
+const PARSE_INTENT_RE_4 = /[A-Z]{2,3}\d{1,4}\s+(STATUS|FLIGHT|FLT)/;
+const PARSE_INTENT_RE_5 = /^STATUS\s+[A-Z]{2,3}\d{1,4}/;
+const PARSE_INTENT_RE_6 = /[A-Z]{2,3}\d{1,4}/;
+const PARSE_INTENT_RE_7 = /^(FLY|FLIGHTS?|FARES?|BOOK)$/;
+const NON_KEYWORDS_RE = /^(FLY|FLIGHTS?|FARES?|BOOK|TO|FROM|ON|FOR)$/;
+const NON_KEYWORDS_RE_2 = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_RE = /\b(\d{4}-\d{2}-\d{2})\b/;
+const PARSE_INTENT_RE_8 = /^(NEWS|BRIEF)\s*/;
+const PARSE_INTENT_RE_9 = /^TRACK\s/;
+const PARSE_INTENT_RE_10 = /^[0-9A-F]{6}$/i;
+
+
 
 // ---- Intent types ----
 
@@ -39,14 +57,14 @@ const EXTRA_CITY_IATA: Record<string, string> = {
 
 function resolveIata(token: string): string | undefined {
     const up = token.toUpperCase();
-    if (/^[A-Z]{3}$/.test(up)) return up;
+    if (RESOLVE_IATA_RE.test(up)) return up;
     const low = token.toLowerCase();
     const cityMatch = MONITORED_AIRPORTS.find(a => a.city.toLowerCase() === low);
     if (cityMatch) return cityMatch.iata;
     if (EXTRA_CITY_IATA[low]) return EXTRA_CITY_IATA[low];
     // Whole-word name match — only if the token uniquely identifies one airport
     const nameMatches = MONITORED_AIRPORTS.filter(a =>
-        a.name.toLowerCase().split(/[\s\-–./]+/).includes(low)
+        a.name.toLowerCase().split(NAME_MATCHES_RE).includes(low)
     );
     if (nameMatches.length === 1) return nameMatches[0]!.iata;
     return undefined;
@@ -74,43 +92,43 @@ function extractAirports(words: string[]): string[] {
 
 function parseIntent(raw: string): Intent {
     const q = raw.trim().toUpperCase();
-    const words = q.split(/\s+/);
+    const words = q.split(WHITESPACE_RE);
 
     // OPS <AIRPORT | city name ...>
-    if (/^OPS\b/.test(q) || /^STATUS\s/.test(q)) {
+    if (PARSE_INTENT_RE.test(q) || PARSE_INTENT_RE_2.test(q)) {
         const airports = extractAirports(words.slice(1));
         if (airports.length) return { type: 'OPS', airports };
     }
 
     // FLIGHT <IATA-FLIGHT> or <IATA-FLIGHT> [STATUS|FLIGHT|FLT]
-    if (/^(FLIGHT|FLT)\s+[A-Z]{2,3}\d{1,4}/.test(q) || /[A-Z]{2,3}\d{1,4}\s+(STATUS|FLIGHT|FLT)/.test(q) || /^STATUS\s+[A-Z]{2,3}\d{1,4}/.test(q)) {
-        const match = q.match(/[A-Z]{2,3}\d{1,4}/);
+    if (PARSE_INTENT_RE_3.test(q) || PARSE_INTENT_RE_4.test(q) || PARSE_INTENT_RE_5.test(q)) {
+        const match = q.match(PARSE_INTENT_RE_6);
         if (match) {
-            const origin = words.find(w => /^[A-Z]{3}$/.test(w) && w !== match[0]);
+            const origin = words.find(w => RESOLVE_IATA_RE.test(w) && w !== match[0]);
             return { type: 'FLIGHT_STATUS', flightNumber: match[0], origin };
         }
     }
 
     // FLY / FLIGHTS / FARES / BOOK <ORG> <DST>  (supports city names)
-    if (words.some(w => /^(FLY|FLIGHTS?|FARES?|BOOK)$/.test(w))) {
-        const nonKeywords = words.filter(w => !/^(FLY|FLIGHTS?|FARES?|BOOK|TO|FROM|ON|FOR)$/.test(w) && !/^\d{4}-\d{2}-\d{2}$/.test(w));
+    if (words.some(w => PARSE_INTENT_RE_7.test(w))) {
+        const nonKeywords = words.filter(w => !NON_KEYWORDS_RE.test(w) && !NON_KEYWORDS_RE_2.test(w));
         const priceAirports = extractAirports(nonKeywords);
         if (priceAirports.length >= 2) {
-            const date = raw.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1];
+            const date = raw.match(DATE_RE)?.[1];
             return { type: 'PRICE_WATCH', origin: priceAirports[0]!, destination: priceAirports[1]!, date };
         }
     }
 
     // NEWS / BRIEF
-    if (/^(NEWS|BRIEF)\s*/.test(q)) {
+    if (PARSE_INTENT_RE_8.test(q)) {
         const entities = words.slice(1).filter(w => w.length >= 2);
         return { type: 'NEWS_BRIEF', entities };
     }
 
     // TRACK <ICAO24 | callsign>
-    if (/^TRACK\s/.test(q)) {
+    if (PARSE_INTENT_RE_9.test(q)) {
         const token = words[1] ?? '';
-        if (/^[0-9A-F]{6}$/i.test(token)) return { type: 'TRACK', icao24: token.toLowerCase() };
+        if (PARSE_INTENT_RE_10.test(token)) return { type: 'TRACK', icao24: token.toLowerCase() };
         if (token) return { type: 'TRACK', callsign: token };
     }
 

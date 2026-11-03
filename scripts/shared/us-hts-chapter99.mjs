@@ -22,6 +22,29 @@
 // Learning Resources v. Trump, and the Section 122 surcharge (9903.03.xx),
 // which expired on 2026-07-23.
 
+const HTML_TO_TEXT_RE = /<[^>]+>/g;
+const HTML_TO_TEXT_RE_2 = /&quot;/g;
+const HTML_TO_TEXT_RE_3 = /&#39;|&apos;/g;
+const HTML_TO_TEXT_RE_4 = /&lt;/g;
+const HTML_TO_TEXT_RE_5 = /&gt;/g;
+const HTML_TO_TEXT_RE_6 = /&nbsp;/g;
+const HTML_TO_TEXT_RE_7 = /&amp;/g;
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZE_CODE_RE = /^(\d{4}\.\d{2})\.(\d{2})(\d{2})$/;
+const INNER_RE = /^\(|\)$/g;
+const NEXT_MARKER_RE = /^\d+$/;
+const NEXT_MARKER_RE_2 = /^([a-z])\1*$/;
+const NEXT_MARKER_RE_3 = /^[A-Z]$/;
+const INDEX_LIST_ITEMS_RE = /<(\/?)(?:ul|ol)\b[^>]*>|<li\b[^>]*\bvalue='([^']*)'/g;
+const PARSE_ADDITIONAL_RATE_RE = /(?:\+|plus)\s*(\d+(?:\.\d+)?)\s*%\s*$/i;
+const PARSE_ADDITIONAL_RATE_RE_2 = /^The duty provided in the applicable subheading\.?$/i;
+const PARSE_ADDITIONAL_RATE_RE_3 = /^(\d+(?:\.\d+)?)\s*%$/;
+const HEADING_MAP_RE = /^99\d{2}\.\d{2}\.\d{2}$/;
+const THRESHOLD_RE = /column 1(?:-General)? (equal to or greater than|less than) (\d+(?:\.\d+)?) percent/;
+const N_RE = /^the /i;
+const MAKE_COUNTRY_RESOLVER_RE = /member state of the European Union/i;
+const MAKE_COUNTRY_RESOLVER_RE_2 = /^Hong Kong\b/i;
+
 export const US_HTS_INDEX_SCHEMA = 1;
 
 // Duty roles stored per HTS provision in a coverage shard.
@@ -35,38 +58,38 @@ const CODE_RE = /(?<![\d.])(\d{4}(?:\.\d{2}(?:\.(?:\d{4}|\d{2}(?:\.\d{2})?))?)?)
 /** HTML to plain text: tags to spaces, a few entities, whitespace collapsed. */
 export function htmlToText(html) {
   return String(html || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ')
+    .replace(HTML_TO_TEXT_RE, ' ')
+    .replace(HTML_TO_TEXT_RE_2, '"')
+    .replace(HTML_TO_TEXT_RE_3, "'")
+    .replace(HTML_TO_TEXT_RE_4, '<')
+    .replace(HTML_TO_TEXT_RE_5, '>')
+    .replace(HTML_TO_TEXT_RE_6, ' ')
+    .replace(HTML_TO_TEXT_RE_7, '&')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
 /** "8708.29.5060" -> "8708.29.50.60"; other shapes unchanged. */
 export function normalizeCode(code) {
-  const m = /^(\d{4}\.\d{2})\.(\d{2})(\d{2})$/.exec(code);
+  const m = NORMALIZE_CODE_RE.exec(code);
   return m ? `${m[1]}.${m[2]}.${m[3]}` : code;
 }
 
 /** The marker that follows `value` in its sequence: (b)->(c), (z)->(aa), (ii)->(iii), (3)->(4). */
 export function nextMarker(value) {
-  const inner = String(value || '').replace(/^\(|\)$/g, '');
-  if (/^\d+$/.test(inner)) return `(${Number(inner) + 1})`;
+  const inner = String(value || '').replace(INNER_RE, '');
+  if (NEXT_MARKER_RE.test(inner)) return `(${Number(inner) + 1})`;
   const roman = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'xi', 'xii', 'xiii', 'xiv', 'xv', 'xvi', 'xvii', 'xviii', 'xix', 'xx'];
   // "(i)" and "(v)" are both letters and numerals; the caller's depth bound
   // keeps the wrong reading from overrunning.
   const r = roman.indexOf(inner);
   if (r > 0 && r + 1 < roman.length && inner !== 'v' && inner !== 'x') return `(${roman[r + 1]})`;
-  if (/^([a-z])\1*$/.test(inner)) {
+  if (NEXT_MARKER_RE_2.test(inner)) {
     const c = inner[0];
     const n = inner.length;
     return c === 'z' ? `(${'a'.repeat(n + 1)})` : `(${String.fromCharCode(c.charCodeAt(0) + 1).repeat(n)})`;
   }
-  if (/^[A-Z]$/.test(inner)) return `(${String.fromCharCode(inner.charCodeAt(0) + 1)})`;
+  if (NEXT_MARKER_RE_3.test(inner)) return `(${String.fromCharCode(inner.charCodeAt(0) + 1)})`;
   return null;
 }
 
@@ -79,10 +102,10 @@ export function nextMarker(value) {
 export function indexListItems(html) {
   const items = [];
   let depth = 0;
-  const re = /<(\/?)(?:ul|ol)\b[^>]*>|<li\b[^>]*\bvalue='([^']*)'/g;
+  const re = INDEX_LIST_ITEMS_RE;
   for (const m of html.matchAll(re)) {
     if (m[2] === undefined) depth += m[1] ? -1 : 1;
-    else items.push({ pos: m.index, value: m[2].replace(/\s+/g, ''), depth });
+    else items.push({ pos: m.index, value: m[2].replace(WHITESPACE_RE, ''), depth });
   }
   return items;
 }
@@ -200,15 +223,15 @@ export function classifyCodes(text) {
 
 /** Additional ad valorem rate from a chapter 99 "general" cell. */
 export function parseAdditionalRate(general) {
-  const g = String(general || '').replace(/\s+/g, ' ').trim();
+  const g = String(general || '').replace(WHITESPACE_RE, ' ').trim();
   if (!g) return null;
   // "The duty provided in the applicable subheading + 25%" / "plus 7.5%"
-  let m = g.match(/(?:\+|plus)\s*(\d+(?:\.\d+)?)\s*%\s*$/i);
+  let m = g.match(PARSE_ADDITIONAL_RATE_RE);
   if (m) return { addPct: Number(m[1]), topUpTo: null };
   // "The duty provided in the applicable subheading" with no addition
-  if (/^The duty provided in the applicable subheading\.?$/i.test(g)) return { addPct: 0, topUpTo: null };
+  if (PARSE_ADDITIONAL_RATE_RE_2.test(g)) return { addPct: 0, topUpTo: null };
   // A bare "15%" replaces column 1 with a combined rate (EU/Japan-style deals).
-  m = g.match(/^(\d+(?:\.\d+)?)\s*%$/);
+  m = g.match(PARSE_ADDITIONAL_RATE_RE_3);
   if (m) return { addPct: null, topUpTo: Number(m[1]) };
   return null;
 }
@@ -374,7 +397,7 @@ function headingMap(rows) {
   const map = new Map();
   for (const r of rows || []) {
     const h = String(r?.htsno || '').trim();
-    if (/^99\d{2}\.\d{2}\.\d{2}$/.test(h)) map.set(h, r);
+    if (HEADING_MAP_RE.test(h)) map.set(h, r);
   }
   return map;
 }
@@ -515,7 +538,7 @@ export function buildUsDutyIndex({ notesHtml, headingRows, release, resolveCount
       if (state === 'EXPIRED') continue;
       // EU/Japan/Korea/Swiss/Taiwan headings come in pairs split on the
       // column 1 rate: the "equal to or greater than" half adds nothing.
-      const threshold = row.description.match(/column 1(?:-General)? (equal to or greater than|less than) (\d+(?:\.\d+)?) percent/);
+      const threshold = row.description.match(THRESHOLD_RE);
       measures[`${range.idPrefix}-${h}`] = {
         id: `${range.idPrefix}-${h}`, kind: 'duty', heading: h, authority: range.authority, program: range.program,
         partners, scope: 'ALL_PRODUCTS', rateText: row.general, addPct: rate.addPct, topUpTo: rate.topUpTo,
@@ -579,9 +602,9 @@ export function makeCountryResolver(nameToIso2, unToIso2) {
   const iso2ToUn = {};
   for (const [un, iso2] of Object.entries(unToIso2 || {})) if (!iso2ToUn[iso2]) iso2ToUn[iso2] = un;
   return (name) => {
-    const n = String(name || '').replace(/^the /i, '').trim();
-    if (/member state of the European Union/i.test(n)) return [...EU_MEMBERS_M49];
-    if (/^Hong Kong\b/i.test(n)) return ['344'];
+    const n = String(name || '').replace(N_RE, '').trim();
+    if (MAKE_COUNTRY_RESOLVER_RE.test(n)) return [...EU_MEMBERS_M49];
+    if (MAKE_COUNTRY_RESOLVER_RE_2.test(n)) return ['344'];
     const iso2 = nameToIso2(n);
     const un = iso2 ? iso2ToUn[iso2] : null;
     return un ? [un] : null;

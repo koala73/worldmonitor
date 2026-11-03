@@ -20,6 +20,11 @@ import { parseArgs } from 'node:util';
 import { loadEnvFile, withRetry } from './_seed-utils.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
+const ROW_FIELDS_RE = /^WAR_RISK_TIER_/;
+const CSV_CELL_RE = /[",\r\n]/;
+const BASE_RE = /\/+$/;
+
+
 loadEnvFile(import.meta.url, { only: ['WORLDMONITOR_API_KEY', 'API_BASE'] });
 
 export const SCHEMA_VERSION = '1.0.0';
@@ -68,7 +73,7 @@ export const ROW_FIELDS = [
     nullable: false,
     enum: ['unspecified', 'normal', 'elevated', 'high', 'critical', 'war_zone'],
     description: "War-risk tier derived from Lloyd's JWC Listed Areas and OSINT threat classification.",
-    from: (cp) => (cp.warRiskTier || 'WAR_RISK_TIER_UNSPECIFIED').replace(/^WAR_RISK_TIER_/, '').toLowerCase(),
+    from: (cp) => (cp.warRiskTier || 'WAR_RISK_TIER_UNSPECIFIED').replace(ROW_FIELDS_RE, '').toLowerCase(),
   },
   {
     name: 'congestion_level',
@@ -268,7 +273,7 @@ export function buildSnapshot(apiResponse, { snapshotDate, generatedAt } = {}) {
 function csvCell(value) {
   if (value === null) return '';
   const text = String(value);
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  return CSV_CELL_RE.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 export function toCsv(snapshot) {
@@ -400,7 +405,7 @@ export async function fetchChokepointStatus({
   userAgent = DEFAULT_USER_AGENT,
   fetchImpl = (...args) => globalThis.fetch(...args),
 } = {}) {
-  const base = apiBase.replace(/\/+$/, '');
+  const base = apiBase.replace(BASE_RE, '');
   const headers = { 'User-Agent': userAgent, Accept: 'application/json', Origin: base, Referer: `${base}/` };
   if (apiKey) {
     headers['X-WorldMonitor-Key'] = apiKey;

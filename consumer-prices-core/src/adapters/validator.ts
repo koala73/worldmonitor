@@ -15,6 +15,14 @@
 import { parseSize, type ParsedSize } from '../normalizers/size.js';
 import type { BasketItem } from '../config/types.js';
 
+const STEM_RE = /ies$/;
+const STEM_RE_2 = /es$/;
+const STEM_RE_3 = /s$/;
+const TOKENS_RE = /\W+/;
+const SPACED_RE = /[\s-]+/g;
+const URL_PATH_WORDS_RE = /[-_/.]+/g;
+
+
 /**
  * Base units that measure the product's CONTENT.
  *
@@ -77,11 +85,11 @@ const NON_FOOD_INDICATORS = new Set([
 ]);
 
 function stem(w: string): string {
-  return w.replace(/ies$/, 'y').replace(/es$/, '').replace(/s$/, '');
+  return w.replace(STEM_RE, 'y').replace(STEM_RE_2, '').replace(STEM_RE_3, '');
 }
 
 function tokens(s: string): string[] {
-  return s.toLowerCase().split(/\W+/).filter(Boolean);
+  return s.toLowerCase().split(TOKENS_RE).filter(Boolean);
 }
 
 // Compact size tokens (e.g. "1kg", "500g", "250ml", "12pk") must be stripped
@@ -114,7 +122,7 @@ function computeTokenOverlap(canonicalName: string, productName: string): number
 function findNegativeToken(productName: string, negativeTokens: readonly string[] | undefined): string | null {
   if (!negativeTokens || negativeTokens.length === 0) return null;
   const titleTokens = new Set(tokens(productName));
-  const spaced = productName.toLowerCase().replace(/[\s-]+/g, ' ');
+  const spaced = productName.toLowerCase().replace(SPACED_RE, ' ');
   for (const raw of negativeTokens) {
     const t = raw.toLowerCase().trim();
     if (!t) continue;
@@ -123,7 +131,7 @@ function findNegativeToken(productName: string, negativeTokens: readonly string[
     // hyphens turned into spaces. Single words use whole-token match so
     // "pastelaria" never matches "past".
     if (t.includes(' ') || t.includes('-')) {
-      if (spaced.includes(t.replace(/[\s-]+/g, ' '))) return raw;
+      if (spaced.includes(t.replace(SPACED_RE, ' '))) return raw;
     } else if (titleTokens.has(t)) {
       return raw;
     }
@@ -140,7 +148,7 @@ function findNegativeToken(productName: string, negativeTokens: readonly string[
 function urlPathWords(productUrl: string | undefined): string {
   if (!productUrl) return '';
   try {
-    return new URL(productUrl).pathname.replace(/[-_/.]+/g, ' ');
+    return new URL(productUrl).pathname.replace(URL_PATH_WORDS_RE, ' ');
   } catch {
     return '';
   }

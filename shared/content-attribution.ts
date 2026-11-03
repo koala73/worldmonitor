@@ -7,6 +7,10 @@
  * internal acquisition metadata can never be mistaken for a referral.
  */
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const NORMALIZED_RE = /^-+|-+$/g;
+const NORMALIZED_RE_2 = /-+$/;
+
 export const CONTENT_ATTRIBUTION_STORAGE_KEY = 'wm-content-attribution-v1';
 export const CONTENT_ATTRIBUTION_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 export const CONTENT_ATTRIBUTION_MAX_VALUE_LENGTH = 100;
@@ -102,10 +106,10 @@ export function normalizeContentToken(value: unknown, fallback = UNKNOWN): strin
   const normalized = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(NON_ALPHANUMERIC_RE, '-')
+    .replace(NORMALIZED_RE, '')
     .slice(0, CONTENT_ATTRIBUTION_MAX_VALUE_LENGTH)
-    .replace(/-+$/, '');
+    .replace(NORMALIZED_RE_2, '');
 
   return normalized && TOKEN_PATTERN.test(normalized) ? normalized : fallback;
 }

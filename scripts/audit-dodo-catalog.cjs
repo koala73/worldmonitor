@@ -43,6 +43,11 @@
  *   intended for nightly CI / on-demand operator use, not per-PR.
  */
 
+const CATALOG_START_RE = /PRODUCT_CATALOG\b[^=]*=\s*\{/;
+const ID_MATCH_RE = /\bdodoProductId\s*:\s*["']([^"']+)["']/;
+const KEY_MATCH_RE = /\bplanKey\s*:\s*["']([^"']+)["']/;
+const ALIASES_BLOCK_MATCH_RE = /LEGACY_PRODUCT_ALIASES[^=]*=\s*\{([\s\S]*?)\}\s*;/;
+
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -111,11 +116,11 @@ function loadCatalogProductIds() {
   // don't constrain key order, so an operator adding `planKey` before
   // `dodoProductId` in a new entry would have silently been missed by the
   // previous one-pass regex.
-  const catalogStart = src.search(/PRODUCT_CATALOG\b[^=]*=\s*\{/);
+  const catalogStart = src.search(CATALOG_START_RE);
   if (catalogStart !== -1) {
     for (const block of extractEntryBlocks(src, catalogStart)) {
-      const idMatch = block.match(/\bdodoProductId\s*:\s*["']([^"']+)["']/);
-      const keyMatch = block.match(/\bplanKey\s*:\s*["']([^"']+)["']/);
+      const idMatch = block.match(ID_MATCH_RE);
+      const keyMatch = block.match(KEY_MATCH_RE);
       if (idMatch && keyMatch) {
         byId.set(idMatch[1], { planKey: keyMatch[1], origin: 'PRODUCT_CATALOG' });
       }
@@ -125,7 +130,7 @@ function loadCatalogProductIds() {
   // LEGACY_PRODUCT_ALIASES entries: `"pdt_...": "planKey"`
   // Constrained to the LEGACY_PRODUCT_ALIASES block to avoid matching unrelated
   // string maps elsewhere in the file.
-  const aliasesBlockMatch = src.match(/LEGACY_PRODUCT_ALIASES[^=]*=\s*\{([\s\S]*?)\}\s*;/);
+  const aliasesBlockMatch = src.match(ALIASES_BLOCK_MATCH_RE);
   if (aliasesBlockMatch) {
     const aliasesBlock = aliasesBlockMatch[1];
     const aliasRe = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;

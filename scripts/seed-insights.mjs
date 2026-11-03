@@ -46,6 +46,16 @@ import {
   shouldSkipInsightsSynthesis,
   formatInsightsBreakerOpenWarning,
 } from './_insights-synthesis-diagnostics.mjs';
+
+const WHITESPACE_RE = /\s+/g;
+const SANITIZE_TITLE_RE = /<[^>]*>/g;
+const SANITIZE_TITLE_RE_2 = /[\x00-\x1f\x7f]/g;
+const TEXT_RE = /<think>[\s\S]*?<\/think>/gi;
+const TEXT_RE_2 = /<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi;
+const TEXT_RE_3 = /<think>[\s\S]*/gi;
+const HTTP_MATCH_RE = /HTTP (\d{3})/;
+const NORMALIZED_SIGNAL_TEXT_RE = /[^a-z0-9\s]/g;
+
 export {
   INSIGHTS_COMPOSER_THREW,
   INSIGHTS_SYNTHESIS_FAILURE_CODES,
@@ -234,7 +244,7 @@ export function buildInsightsFreshnessMetaPatch({
   // against which story set. Cleared on publish so a stale pair can never
   // suppress a later synthesis of a genuinely different run.
   const boundedDetail = typeof failureDetail === 'string' && failureDetail.length > 0
-    ? failureDetail.replace(/\s+/g, ' ').trim().slice(0, 80)
+    ? failureDetail.replace(WHITESPACE_RE, ' ').trim().slice(0, 80)
     : null;
   const boundedSignature = typeof storiesSignature === 'string' && storiesSignature.length > 0
     ? storiesSignature.slice(0, 16)
@@ -307,14 +317,14 @@ function stripReasoningPreamble(text) {
 function sanitizeTitle(title) {
   if (typeof title !== 'string') return '';
   return title
-    .replace(/<[^>]*>/g, '')
-    .replace(/[\x00-\x1f\x7f]/g, '')
+    .replace(SANITIZE_TITLE_RE, '')
+    .replace(SANITIZE_TITLE_RE_2, '')
     .slice(0, MAX_HEADLINE_LEN)
     .trim();
 }
 
 function clipText(value, maxLen) {
-  const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  const text = typeof value === 'string' ? value.replace(WHITESPACE_RE, ' ').trim() : '';
   return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
 }
 
@@ -642,9 +652,9 @@ async function callLLM(headline, options = {}) {
       }
 
       const text = stripReasoningPreamble(rawText)
-        .replace(/<think>[\s\S]*?<\/think>/gi, '')
-        .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
-        .replace(/<think>[\s\S]*/gi, '')
+        .replace(TEXT_RE, '')
+        .replace(TEXT_RE_2, '')
+        .replace(TEXT_RE_3, '')
         .trim();
 
       if (text.length < 20) {
@@ -700,7 +710,7 @@ async function callLLM(headline, options = {}) {
       return candidate;
     } catch (err) {
       console.warn(`  ${provider.name} failed: ${err.message}`);
-      const httpMatch = /HTTP (\d{3})/.exec(err.message || '');
+      const httpMatch = HTTP_MATCH_RE.exec(err.message || '');
       record(false, {
         reason: isLlmBudgetError(err) ? 'budget_exhausted'
           : err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout'
@@ -741,7 +751,7 @@ function categorizeStory(title) {
 }
 
 function normalizedSignalText(text) {
-  return (text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return (text || '').toLowerCase().replace(NORMALIZED_SIGNAL_TEXT_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function clusterHasDiplomacySignal(cluster) {

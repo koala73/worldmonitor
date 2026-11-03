@@ -31,6 +31,9 @@
 // Every match ends at a '>', so it lies before the last '>'. Without that
 // bound, each unterminated '<system' rescans the rest of the input and a run
 // of them is quadratic; replaceRoleTags scans only the closed prefix.
+const SANITIZE_FOR_PROMPT_RE = /\s{2,}/g;
+const WHITESPACE_RE = /\s+/g;
+
 const ROLE_TAG_RE = /<\/?(system|user|assistant|prompt|context|instruction)\b[^>]*>/gi;
 
 function replaceRoleTags(s) {
@@ -104,7 +107,7 @@ export function sanitizeForPrompt(input) {
     s = pattern === ROLE_TAG_RE ? replaceRoleTags(s) : s.replace(pattern, ' ');
   }
 
-  s = s.replace(/\s{2,}/g, ' ').trim();
+  s = s.replace(SANITIZE_FOR_PROMPT_RE, ' ').trim();
 
   return s;
 }
@@ -131,7 +134,7 @@ export function sanitizeForPrompt(input) {
  * @returns {string}
  */
 export function sanitizeForPromptLine(input) {
-  return sanitizeForPrompt(input).replace(/\s+/g, ' ').trim();
+  return sanitizeForPrompt(input).replace(WHITESPACE_RE, ' ').trim();
 }
 
 /**
@@ -176,7 +179,7 @@ export function sanitizeHeadline(input) {
     pattern.lastIndex = 0;
     s = pattern === ROLE_TAG_RE ? replaceRoleTags(s) : s.replace(pattern, ' ');
   }
-  return s.replace(/\s{2,}/g, ' ').trim();
+  return s.replace(SANITIZE_FOR_PROMPT_RE, ' ').trim();
 }
 
 /**

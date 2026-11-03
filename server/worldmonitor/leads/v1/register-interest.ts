@@ -13,6 +13,9 @@ import { ApiError, ValidationError } from '../../../../src/generated/server/worl
 import { getClientIp, verifyTurnstile } from '../../../_shared/turnstile';
 import { validateEmail } from '../../../_shared/email-validation';
 
+const TRAILING_SLASH_RE = /\/$/;
+
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
 const MAX_META_LENGTH = 100;
@@ -32,7 +35,7 @@ function convexSiteUrl(): string {
   return (
     process.env.CONVEX_SITE_URL ??
     (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site')
-  ).replace(/\/$/, '');
+  ).replace(TRAILING_SLASH_RE, '');
 }
 
 function isConvexRegisterResult(value: unknown): value is ConvexRegisterResult {

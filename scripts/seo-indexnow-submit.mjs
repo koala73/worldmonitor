@@ -23,6 +23,17 @@ import {
   SITEMAP_MAIN_FILENAME,
 } from './build-sitemap.mjs';
 
+const DECODE_XML_RE = /&apos;/g;
+const DECODE_XML_RE_2 = /&quot;/g;
+const DECODE_XML_RE_3 = /&gt;/g;
+const DECODE_XML_RE_4 = /&lt;/g;
+const DECODE_XML_RE_5 = /&amp;/g;
+const URLSET_SOURCE_RE = /<sitemapindex[\s>]/i;
+const URLS_RE = /<loc>\s*([^<]+?)\s*<\/loc>/g;
+const SLUGS_RE = /^\s*slug:\s*'([^']+)'/gm;
+const ROOT_RE = /^(?:<\?xml[^?]*\?>\s*)?<(sitemapindex|urlset)\b[^>]*>([\s\S]*)<\/\1>\s*$/;
+
+
 // Keys must be genuinely random (`openssl rand -hex 16`). The previous value
 // (a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b) is permanently rejected by Bing with
 // 403 UserForbiddedToAccessSite even though the key file served fine — never
@@ -42,11 +53,11 @@ const REQUEST_TIMEOUT_MS = 15_000;
 
 function decodeXml(value) {
   return String(value)
-    .replace(/&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&gt;/g, '>')
-    .replace(/&lt;/g, '<')
-    .replace(/&amp;/g, '&');
+    .replace(DECODE_XML_RE, "'")
+    .replace(DECODE_XML_RE_2, '"')
+    .replace(DECODE_XML_RE_3, '>')
+    .replace(DECODE_XML_RE_4, '<')
+    .replace(DECODE_XML_RE_5, '&');
 }
 
 function uniqueSorted(urls) {
@@ -57,17 +68,17 @@ export function getRootSitemapUrls() {
   const source = readFileSync(ROOT_SITEMAP, 'utf8');
   // /sitemap.xml is the root index: submissions follow the local URL set it
   // lists, never the index-member URLs themselves.
-  const urlsetSource = /<sitemapindex[\s>]/i.test(source)
+  const urlsetSource = URLSET_SOURCE_RE.test(source)
     ? readLocalIndexMember(source)
     : source;
-  const urls = [...urlsetSource.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+  const urls = [...urlsetSource.matchAll(URLS_RE)]
     .map((match) => decodeXml(match[1].trim()));
   if (urls.length === 0) throw new Error(`${ROOT_SITEMAP.pathname} contains no canonical URLs`);
   return urls;
 }
 
 export function readLocalIndexMember(indexSource) {
-  const member = [...indexSource.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+  const member = [...indexSource.matchAll(URLS_RE)]
     .map((match) => decodeXml(match[1].trim()))
     .find((loc) => loc.endsWith(`/${SITEMAP_MAIN_FILENAME}`));
   if (!member) {
@@ -100,7 +111,7 @@ function getBlogAuthorUrls() {
 
 function getBlogGlossaryUrls() {
   const source = readFileSync(GLOSSARY_SOURCE, 'utf8');
-  const slugs = [...source.matchAll(/^\s*slug:\s*'([^']+)'/gm)].map((match) => match[1]);
+  const slugs = [...source.matchAll(SLUGS_RE)].map((match) => match[1]);
   if (slugs.length === 0) throw new Error(`${GLOSSARY_SOURCE.pathname} contains no glossary slugs`);
   return slugs.map((slug) => `https://www.worldmonitor.app/blog/glossary/${slug}/`).sort();
 }
@@ -187,14 +198,14 @@ export async function getPublishedBatches({ fetchImpl = globalThis.fetch } = {})
     });
     if (response.status !== 200) throw new Error(`${location} returned ${response.status}, expected direct 200`);
     const source = (await response.text()).trim();
-    const root = /^(?:<\?xml[^?]*\?>\s*)?<(sitemapindex|urlset)\b[^>]*>([\s\S]*)<\/\1>\s*$/.exec(source);
+    const root = ROOT_RE.exec(source);
     if (!root) throw new Error(`invalid sitemap document: ${location}`);
     const tag = root[1] === 'sitemapindex' ? 'sitemap' : 'url';
     const entryPattern = new RegExp(`<!--[\\s\\S]*?-->|<${tag}>[\\s\\S]*?<\\/${tag}>`, 'g');
     const entries = [...root[2].matchAll(entryPattern)].filter(([entry]) => !entry.startsWith('<!--'));
     if (root[2].replace(entryPattern, '').trim()) throw new Error(`invalid sitemap entries: ${location}`);
     const urls = entries.map(([entry]) => {
-      const locations = [...entry.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)];
+      const locations = [...entry.matchAll(URLS_RE)];
       if (locations.length !== 1) throw new Error(`expected one location per sitemap entry: ${location}`);
       return decodeXml(locations[0][1].trim());
     });

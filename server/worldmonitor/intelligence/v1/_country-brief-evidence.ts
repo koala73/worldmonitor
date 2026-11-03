@@ -20,6 +20,16 @@ import { MONITORED_AIRPORTS } from '../../../../src/config/airports';
 import { TIER1_COUNTRIES } from './_shared';
 import type { ResolvedEnergyImportDependency } from './_energy-import-dependency';
 
+const LINE_RE = /"/g;
+const CHOKEPOINT_TRACKER_SLUG_RE = /[̀-ͯ]/g;
+const CHOKEPOINT_TRACKER_SLUG_RE_2 = /&/g;
+const CHOKEPOINT_TRACKER_SLUG_RE_3 = /[^a-zA-Z0-9]+/g;
+const CHOKEPOINT_TRACKER_SLUG_RE_4 = /^-+|-+$/g;
+const CHOKEPOINT_TRACKER_SLUG_RE_5 = /-{2,}/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const DATA_VERSION_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export type CountryBriefEvidenceKind =
   | 'cii'
   | 'advisory'
@@ -215,7 +225,7 @@ function httpsUrl(value: unknown): string | undefined {
 // line, and clipped. Double quotes become single so the fact text's own
 // quoting stays unambiguous.
 function thirdPartyTitle(value: unknown): string {
-  const line = sanitizeForPromptLine(value).replace(/"/g, "'");
+  const line = sanitizeForPromptLine(value).replace(LINE_RE, "'");
   return line.length > MAX_TITLE_LENGTH ? `${line.slice(0, MAX_TITLE_LENGTH - 1).trimEnd()}…` : line;
 }
 
@@ -224,11 +234,11 @@ function thirdPartyTitle(value: unknown): string {
 export function chokepointTrackerSlug(displayName: string): string {
   return displayName
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/&/g, ' and ')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-{2,}/g, '-')
+    .replace(CHOKEPOINT_TRACKER_SLUG_RE, '')
+    .replace(CHOKEPOINT_TRACKER_SLUG_RE_2, ' and ')
+    .replace(CHOKEPOINT_TRACKER_SLUG_RE_3, '-')
+    .replace(CHOKEPOINT_TRACKER_SLUG_RE_4, '')
+    .replace(CHOKEPOINT_TRACKER_SLUG_RE_5, '-')
     .toLowerCase();
 }
 
@@ -303,7 +313,7 @@ export function countryAirportNotamsFrom(raw: unknown, meta: unknown, countryCod
 
 export async function readCountryAirportNotams(countryCode: string, nowMs: number = Date.now()): Promise<CountryAirportNotam[]> {
   const code = String(countryCode ?? '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return [];
+  if (!COUNTRY_CODE_RE.test(code)) return [];
   try {
     const [raw, meta] = await Promise.all([readKey(NOTAM_CLOSURES_KEY), readKey(NOTAM_CLOSURES_META_KEY)]);
     return countryAirportNotamsFrom(raw, meta, code, nowMs);
@@ -360,7 +370,7 @@ function isObservedDimension(dimension: Json): boolean {
 
 function resilienceEvidence(raw: unknown, name: string, nowMs: number): EvidenceDraft[] {
   if (!isObject(raw)) return [];
-  const dataVersion = typeof raw.dataVersion === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.dataVersion)
+  const dataVersion = typeof raw.dataVersion === 'string' && DATA_VERSION_RE.test(raw.dataVersion)
     ? Date.parse(`${raw.dataVersion}T00:00:00Z`)
     : null;
   if (!isFresh(dataVersion, EVIDENCE_MAX_AGE_MS.resilience, nowMs)) return [];
@@ -513,7 +523,7 @@ export async function buildCountryBriefEvidence(
   opts: CountryBriefEvidenceOptions,
 ): Promise<CountryBriefEvidenceItem[]> {
   const code = String(countryCode ?? '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return [];
+  if (!COUNTRY_CODE_RE.test(code)) return [];
   const nowMs = opts.nowMs ?? Date.now();
   const name = countryDisplayName(code);
 

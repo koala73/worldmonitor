@@ -13,6 +13,9 @@ import { countryNo2Activity, projectNo2ActivitySnapshot } from '@/services/econo
 import { iso2ToIso3, iso2ToUnCode, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { toApiUrl } from '@/services/runtime';
 
+const PROJECT_CHINA_COUNTRY_SUMMARY_RE = /_/g;
+
+
 export type CountrySectionStatus =
   | { state: 'loading' }
   | { state: 'ready'; value: unknown }
@@ -172,10 +175,10 @@ export function projectChinaCountrySummary(snapshot: ChinaDecisionSignalSnapshot
       const translation = item.metadata.translation as { state?: unknown } | null;
       const supersession = item.metadata.supersession as { state?: unknown } | null;
       return {
-        label: item.label, value: item.summary, source: `${item.sourceName} · ${item.publisherType.replace(/_/g, ' ')}`,
+        label: item.label, value: item.summary, source: `${item.sourceName} · ${item.publisherType.replace(PROJECT_CHINA_COUNTRY_SUMMARY_RE, ' ')}`,
         sourceUrl: item.sourceUrl ?? undefined, observedAt: item.observedAt ?? undefined, publishedAt: item.publishedAt ?? undefined, effectiveAt: item.effectiveAt ?? undefined,
         status: typeof supersession?.state === 'string' ? supersession.state : undefined,
-        translationState: typeof translation?.state === 'string' ? translation.state.replace(/_/g, ' ') : undefined,
+        translationState: typeof translation?.state === 'string' ? translation.state.replace(PROJECT_CHINA_COUNTRY_SUMMARY_RE, ' ') : undefined,
         publisherType: item.publisherType, lineageId: item.lineageId, provenance: item.provenance, stale: item.stale,
       };
     }),

@@ -17,6 +17,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const NO2_REGIONS_PATH = 'scripts/shared/no2-regions.generated.mjs';
 export const NO2_GEOMETRIES_PATH = 'scripts/shared/no2-region-geometries.generated.json';
@@ -130,7 +133,7 @@ export function buildRegistry(geojson = JSON.parse(readFileSync(join(ROOT, COUNT
     regions.push(region(id, 'cluster', label, countryCode, bbox));
   }
   const countries = geojson.features
-    .filter((feature) => /^[A-Z]{2}$/.test(feature.properties?.['ISO3166-1-Alpha-2'] ?? '') && feature.geometry)
+    .filter((feature) => COUNTRY_CODE_RE.test(feature.properties?.['ISO3166-1-Alpha-2'] ?? '') && feature.geometry)
     .sort((left, right) => left.properties['ISO3166-1-Alpha-2'].localeCompare(right.properties['ISO3166-1-Alpha-2']));
   for (const feature of countries) {
     const iso2 = feature.properties['ISO3166-1-Alpha-2'];

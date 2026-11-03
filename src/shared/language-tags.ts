@@ -16,6 +16,8 @@
  * Only consulted when the tag carries no script subtag: an explicit `Hans`
  * outranks the region, so `zh-Hans-TW` stays Simplified.
  */
+const TAG_RE = /_/g;
+
 const TRADITIONAL_CHINESE_REGIONS: ReadonlySet<string> = new Set(['tw', 'hk', 'mo']);
 
 /**
@@ -55,7 +57,7 @@ function parseSubtags(subtags: readonly string[]): { script: string; region: str
  * preferences and hand-written config rather than from `navigator.language`.
  */
 export function resolveLanguageTag(lng: string, supported: ReadonlySet<string>): string {
-  const tag = (lng || 'en').toLowerCase().replace(/_/g, '-');
+  const tag = (lng || 'en').toLowerCase().replace(TAG_RE, '-');
   const subtags = tag.split('-');
   const base = subtags[0] || 'en';
 

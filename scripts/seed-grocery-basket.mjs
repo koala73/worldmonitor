@@ -2,6 +2,10 @@
 
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, readSeedSnapshot, bulkReadLearnedRoutes, bulkWriteLearnedRoutes, isAllowedRouteHost, processItemRoute, getSharedFxRates, SHARED_FX_FALLBACKS, allSettledWithConcurrency } from './_seed-utils.mjs';
 
+const API_KEY_RE = /[\n,]+/;
+const ALLOWED_HOSTS_RE = /^www\./;
+
+
 const config = loadSharedConfig('grocery-basket.json');
 export const COUNTRIES = config.countries;
 
@@ -21,7 +25,7 @@ const FX_FALLBACKS = SHARED_FX_FALLBACKS;
 
 
 async function searchExa(query, sites, locationCode) {
-  const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
+  const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(API_KEY_RE)[0].trim();
   if (!apiKey) throw new Error('EXA_API_KEYS or EXA_API_KEY not set');
 
   const body = {
@@ -219,7 +223,7 @@ function extractPrice(result, expectedCurrency) {
 // countries never collide).
 export async function fetchCountryItems(country, { fxRate, learnedRoutes, routeUpdates, routeDeletes, processItemRouteFn = processItemRoute }) {
   console.log(`\n  Processing ${country.flag} ${country.name} (${country.currency})...`);
-  const allowedHosts = country.sites.map(s => s.replace(/^www\./, '').split('/')[0]);
+  const allowedHosts = country.sites.map(s => s.replace(ALLOWED_HOSTS_RE, '').split('/')[0]);
 
   // Process all items concurrently — 100ms stagger to respect EXA/Firecrawl rate limits
   const settled = await Promise.allSettled(config.items.map(async (item, idx) => {

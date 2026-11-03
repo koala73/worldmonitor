@@ -15,6 +15,9 @@ import {
   normalizeHydratedChina,
 } from './macro-tiles-china';
 
+const PARTS_RE = /^(\d{4})-(\d{2})$/;
+
+
 let _client: EconomicServiceClient | null = null;
 async function getEconomicClient(): Promise<EconomicServiceClient> {
   if (!_client) {
@@ -94,7 +97,7 @@ const EU_CORE = ['DE', 'FR', 'IT', 'ES'];
 function fmtEuDate(d: string): string {
   if (!d) return '';
   // YYYY-MM → "Jan 2026"; YYYY-QN stays as-is
-  const parts = /^(\d{4})-(\d{2})$/.exec(d);
+  const parts = PARTS_RE.exec(d);
   if (parts) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const mon = months[parseInt(parts[2] ?? '0', 10) - 1];

@@ -17,6 +17,14 @@ import { stripNotificationControlChars, URL_TOKEN_PATTERN } from './notify-field
 import { checkScopedRateLimit } from './rate-limit';
 import { rateLimitKeyForIp } from './client-ip';
 
+const WHITESPACE_RE = /\s+/g;
+const IS_TOKEN_SHAPED_RE = /[0-9._~+/=-]|.[A-Z]/;
+const ABSOLUTE_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+const REDACT_URL_TOKEN_RE = /^https:\/\//;
+const REDACT_FEEDBACK_TEXT_RE = /^\d+$/;
+const TRAILING_SLASH_RE = /\/$/;
+
+
 export const FEEDBACK_KINDS = ['bug', 'missing_capability', 'data_quality', 'security'] as const;
 export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
 
@@ -78,7 +86,7 @@ function clipCodePoints(value: string, max: number): string {
 
 /** Decision 7: sanitize once at ingest. Also collapses whitespace runs. */
 function sanitize(value: string): string {
-  return stripNotificationControlChars(value).replace(/\s+/g, ' ').trim();
+  return stripNotificationControlChars(value).replace(WHITESPACE_RE, ' ').trim();
 }
 
 // In u-mode a valid pair is one code point, so only a lone surrogate matches.
@@ -191,7 +199,7 @@ function isHeaderValue(value: string): boolean {
 
 function isTokenShaped(value: string): boolean {
   if (value.length < 8 || !TOKEN_CHARS_RE.test(value)) return false;
-  return /[0-9._~+/=-]|.[A-Z]/.test(value) || value.length >= 16;
+  return IS_TOKEN_SHAPED_RE.test(value) || value.length >= 16;
 }
 
 const AUTH_VALUE_PATTERNS: ReadonlyArray<[RegExp, (value: string) => boolean]> = [
@@ -215,7 +223,7 @@ export const FEEDBACK_REDACTED = '[redacted]';
 export const FEEDBACK_EMAIL_PLACEHOLDER = '<email>';
 
 function redactUrlToken(token: string): string {
-  const absolute = /^[a-z][a-z0-9+.-]*:\/\//i.test(token) ? token : `https://${token}`;
+  const absolute = ABSOLUTE_RE.test(token) ? token : `https://${token}`;
   let parsed: URL;
   try {
     parsed = new URL(absolute);
@@ -232,14 +240,14 @@ function redactUrlToken(token: string): string {
   if (scrubUrl(parsed, FEEDBACK_EXTRA_URL_PARAM_RE)) changed = true;
   if (!changed) return token;
   const out = parsed.toString();
-  return absolute === token ? out : out.replace(/^https:\/\//, '');
+  return absolute === token ? out : out.replace(REDACT_URL_TOKEN_RE, '');
 }
 
 /** Scrubs URL credentials, credential shapes, then email addresses, in that order. */
 export function redactFeedbackText(value: string): { text: string; redacted: boolean } {
   let text = value.replace(URL_TOKEN_PATTERN, (token) => redactUrlToken(token));
   for (const [pattern, isCredential] of [
-    [BARE_QUERY_FIELD_RE, (fieldValue: string) => !/^\d+$/.test(fieldValue)],
+    [BARE_QUERY_FIELD_RE, (fieldValue: string) => !REDACT_FEEDBACK_TEXT_RE.test(fieldValue)],
     [COLON_FIELD_RE, isTokenShaped],
   ] as const) {
     text = text.replace(
@@ -327,7 +335,7 @@ export function surfaceKey(surface: FeedbackSurface): string {
 }
 
 export function normalizeForFingerprint(summary: string): string {
-  return summary.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+  return summary.normalize('NFKC').toLowerCase().replace(WHITESPACE_RE, ' ').trim();
 }
 
 export async function feedbackFingerprint(report: FeedbackReport): Promise<string> {
@@ -414,7 +422,7 @@ type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 function convexSiteUrl(): string {
   return (process.env.CONVEX_SITE_URL
-    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site')).replace(/\/$/, '');
+    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site')).replace(TRAILING_SLASH_RE, '');
 }
 
 async function postConvex(fetchImpl: FetchLike, path: string, body: unknown): Promise<Response | null> {

@@ -6,6 +6,11 @@
  * stripped first, and every remaining `: true` must belong to a parsed key, so
  * a layout the parser cannot read fails closed instead of understating the count.
  */
+const CODE_RE = /\/\*[\s\S]*?\*\//g;
+const CODE_RE_2 = /\/\/.*$/gm;
+const KEYS_RE = /^\s*['"]?(\w+)['"]?\s*:\s*true\b/gm;
+const TRUE_VALUES_RE = /:\s*true\b/g;
+
 const START = 'export const DEFAULT_MAP_LAYERS';
 const END = 'export const MOBILE_DEFAULT_MAP_LAYERS';
 
@@ -15,9 +20,9 @@ export function defaultOnLayerKeys(source) {
   if (start === -1 || end <= start) {
     throw new Error('default-map-layer-count: could not isolate DEFAULT_MAP_LAYERS in src/config/variants/full.ts');
   }
-  const code = source.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  const keys = [...code.matchAll(/^\s*['"]?(\w+)['"]?\s*:\s*true\b/gm)].map((m) => m[1]);
-  const trueValues = (code.match(/:\s*true\b/g) || []).length;
+  const code = source.slice(start, end).replace(CODE_RE, '').replace(CODE_RE_2, '');
+  const keys = [...code.matchAll(KEYS_RE)].map((m) => m[1]);
+  const trueValues = (code.match(TRUE_VALUES_RE) || []).length;
   if (keys.length !== trueValues) {
     throw new Error(`default-map-layer-count: ${trueValues} true values but ${keys.length} parsed keys — the DEFAULT_MAP_LAYERS layout changed`);
   }

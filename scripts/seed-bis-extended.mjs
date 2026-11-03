@@ -34,6 +34,10 @@ import {
 } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
+const SHIFT_QUARTER_RE = /^(\d{4})-Q([1-4])$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 // Content-age budget — the canonical key holds the quarterly BIS WS_DSR
 // debt-service-ratio series. BIS publishes DSR quarterly with a ~2-quarter
 // lag, so the newest period is normally ~6–9 months old. 15 months clears
@@ -201,7 +205,7 @@ function parseBisNumber(val) {
 // Shift a BIS quarter string by `delta` quarters. Returns null on unparsable
 // inputs so callers can fall back to their empty-data path.
 export function shiftQuarter(period, delta) {
-  const m = /^(\d{4})-Q([1-4])$/.exec(period ?? '');
+  const m = SHIFT_QUARTER_RE.exec(period ?? '');
   if (!m) return null;
   let year = Number(m[1]);
   let quarter = Number(m[2]) + delta;
@@ -213,7 +217,7 @@ export function shiftQuarter(period, delta) {
 // BIS returns quarters as `2023-Q3`. Normalise to first day of quarter.
 export function quarterToDate(period) {
   if (!period) return null;
-  const m = /^(\d{4})-Q([1-4])$/.exec(period);
+  const m = SHIFT_QUARTER_RE.exec(period);
   if (!m) return period; // let through anything that's already YYYY-MM or YYYY-MM-DD
   const year = m[1];
   const month = ({ '1': '01', '2': '04', '3': '07', '4': '10' })[m[2]];
@@ -244,7 +248,7 @@ function scoreSeriesMatch(firstRow, prefs) {
 export function selectBestSeriesByCountry(rows, { countryColumns, prefs }) {
   const groupedByCountry = new Map();
   for (const row of rows) {
-    const cc = countryColumns.map(col => row[col]).find(v => v && /^[A-Z]{2}$/.test(v));
+    const cc = countryColumns.map(col => row[col]).find(v => v && COUNTRY_CODE_RE.test(v));
     if (!cc) continue;
     const date = row.TIME_PERIOD || row['Time period'] || '';
     const val = parseBisNumber(row.OBS_VALUE ?? row['Observation value']);

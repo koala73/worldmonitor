@@ -40,6 +40,17 @@ import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 import { isCallerPremium } from '../../../_shared/premium-check';
 
+const CLEAN_RE = /<[^>]*>/g;
+const CLEAN_RE_2 = /[<>]/g;
+const WHITESPACE_RE = /\s+/g;
+const PARSE_AD_VALOREM_RE = /^free\b/i;
+const PARSE_AD_VALOREM_RE_2 = /^(\d+(?:\.\d+)?)%$/;
+const PARSE_SPECIAL_RATES_RE = /([^()]+?)\s*\(([^)]*)\)/g;
+const RATE_RE = /^[\s,;]+/;
+const RESOLVE_ADDITIONAL_DUTIES_RE = /\(.*$/;
+const RESOLVE_ADDITIONAL_DUTIES_RE_2 = /\.$/;
+
+
 export const HTS_REST_BASE = 'https://hts.usitc.gov/reststop';
 export const US_IMPORT_DUTY_SOURCE = 'USITC Harmonized Tariff Schedule';
 
@@ -205,7 +216,7 @@ export function exportListRange(code: string): { from: string; to: string } {
  * left over (e.g. from "<scr<script>ipt>") is removed, so no markup survives.
  */
 function clean(text: unknown): string {
-  return String(text ?? '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
+  return String(text ?? '').replace(CLEAN_RE, ' ').replace(CLEAN_RE_2, '').replace(WHITESPACE_RE, ' ').trim();
 }
 
 /**
@@ -263,16 +274,16 @@ async function fetchHtsLines(code: string): Promise<{ rows: HtsRow[] } | null> {
 /** Ad valorem percent of a rate cell, or null for specific/compound rates. */
 export function parseAdValorem(rate: string): number | null {
   const r = rate.trim();
-  if (/^free\b/i.test(r)) return 0;
-  const m = /^(\d+(?:\.\d+)?)%$/.exec(r);
+  if (PARSE_AD_VALOREM_RE.test(r)) return 0;
+  const m = PARSE_AD_VALOREM_RE_2.exec(r);
   return m ? Number(m[1]) : null;
 }
 
 /** "Free (A+,AU,...) 3.6% (KR)" -> [{ rate: 'Free', programs: [...] }, { rate: '3.6%', programs: ['KR'] }]. */
 export function parseSpecialRates(special: string): Array<{ rate: string; programs: string[] }> {
   const out: Array<{ rate: string; programs: string[] }> = [];
-  for (const m of special.matchAll(/([^()]+?)\s*\(([^)]*)\)/g)) {
-    const rate = m[1]!.replace(/^[\s,;]+/, '').trim();
+  for (const m of special.matchAll(PARSE_SPECIAL_RATES_RE)) {
+    const rate = m[1]!.replace(RATE_RE, '').trim();
     const programs = m[2]!.split(',').map((p) => p.trim()).filter(Boolean);
     if (rate && programs.length) out.push({ rate, programs });
   }
@@ -443,7 +454,7 @@ export function resolveAdditionalDuties(
     let condition = m.condition || '';
     if (bandUnknown) {
       status = STATUS.conditional;
-      condition = `Depends on the ad valorem equivalent of the column 1 rate (${m.note.replace(/\(.*$/, '')}(k)).`;
+      condition = `Depends on the ad valorem equivalent of the column 1 rate (${m.note.replace(RESOLVE_ADDITIONAL_DUTIES_RE, '')}(k)).`;
     } else if (partial) {
       status = STATUS.conditional;
       condition = `Covers only particular articles under this line (${m.note}).`;
@@ -477,7 +488,7 @@ export function resolveAdditionalDuties(
         if (c.chapters && (chapter < c.chapters[0] || chapter > c.chapters[1])) continue;
         if (c.overlaps === 'SECTION_232' && !has232) continue;
         status = STATUS.conditional;
-        condition = [`${c.condition.replace(/\.$/, '')} (${c.heading}, ${c.note}).`, ...narrower].join(' ');
+        condition = [`${c.condition.replace(RESOLVE_ADDITIONAL_DUTIES_RE_2, '')} (${c.heading}, ${c.note}).`, ...narrower].join(' ');
         break;
       }
     }

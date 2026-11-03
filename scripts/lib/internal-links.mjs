@@ -10,6 +10,40 @@
  * Pure: file reading, HTTP and writes belong to scripts/internal-links.mjs.
  */
 
+const SPLIT_CAMEL_RE = /([a-z0-9])([A-Z])/g;
+const SPLIT_CAMEL_RE_2 = /([A-Z]+)([A-Z][a-z])/g;
+const PARSE_MARKDOWN_RE = /^([A-Za-z][\w-]*):\s*(.*)$/;
+const PARSE_MARKDOWN_RE_2 = /^(["'])(.*)\1$/;
+const F_RE = /^(```+|~~~+)/;
+const PARSE_MARKDOWN_RE_3 = /\bhref=["']([^"']+)["']/g;
+const PARSE_MARKDOWN_RE_4 = /^<!--/;
+const PARSE_MARKDOWN_RE_5 = /--!?>/;
+const PARSE_MARKDOWN_RE_6 = /^\{\/\*/;
+const PARSE_MARKDOWN_RE_7 = /^<[A-Za-z]/;
+const PARSE_MARKDOWN_RE_8 = />\s*$/;
+const PARSE_MARKDOWN_RE_9 = />/;
+const PARSE_MARKDOWN_RE_10 = /"[^"]*"|'[^']*'/g;
+const PARSE_MARKDOWN_RE_11 = /^#{1,6}\s/;
+const PARSE_MARKDOWN_RE_12 = /^#+\s*/;
+const PARSE_MARKDOWN_RE_13 = /^(import|export)\s/;
+const PARSE_MARKDOWN_RE_14 = /^[<{|]/;
+const PARSE_MARKDOWN_RE_15 = /^[-*_]{3,}$/;
+const PARSE_MARKDOWN_RE_16 = /^[^.]{0,40}:$/;
+const PLAIN_RE = /<[^>]*>|[`*_]/g;
+const CANONICAL_HREF_RE = /^(mailto|tel):/i;
+const CANONICAL_HREF_RE_2 = /^https?:\/\//i;
+const CANONICAL_HREF_RE_3 = /(^|\.)worldmonitor\.app$/i;
+const CANONICAL_HREF_RE_4 = /[?#]/;
+const CANONICAL_HREF_RE_5 = /^\/(docs|blog)(\/|$)/;
+const CANONICAL_HREF_RE_6 = /\/+$/;
+const TOPIC_TEXT_RE = /[-_/%]+/g;
+const ANCHORS_RE = /(?<=[.!?:;])\s+|[,()"“”|/]/;
+const CAP_RE = /^\p{Lu}/u;
+const ANCHORS_RE_2 = /^\p{Ll}+$/u;
+const WHITESPACE_RE = /\s+/;
+const CHOICE_RE = /^a\d+$/;
+const ESCAPE_RE_RE = /[.*+?^${}()|[\]\\]/g;
+
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
 export const JEV_MODEL = 'jev-1.13.0';
 export const JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
@@ -63,7 +97,7 @@ const termOf = (w) => {
 export const tokens = (text) => words(text).map(({ w }) => termOf(w)).filter(Boolean);
 
 // `GetAirportOpsSummary` -> `Get Airport Ops Summary`.
-export const splitCamel = (s) => String(s).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+export const splitCamel = (s) => String(s).replace(SPLIT_CAMEL_RE, '$1 $2').replace(SPLIT_CAMEL_RE_2, '$1 $2');
 
 // Spans on one markdown line that must never hold or cross an inserted link:
 // a bold lead-in ('**Errors**:', '- **Desktop App:**', a bold FAQ question),
@@ -95,8 +129,8 @@ export function parseMarkdown(text) {
   let i = 0;
   if (lines[0]?.trim() === '---') {
     for (i = 1; i < lines.length && lines[i].trim() !== '---'; i++) {
-      const m = lines[i].match(/^([A-Za-z][\w-]*):\s*(.*)$/);
-      if (m) front[m[1]] = m[2].trim().replace(/^(["'])(.*)\1$/, '$2');
+      const m = lines[i].match(PARSE_MARKDOWN_RE);
+      if (m) front[m[1]] = m[2].trim().replace(PARSE_MARKDOWN_RE_2, '$2');
     }
     i++;
   }
@@ -108,7 +142,7 @@ export function parseMarkdown(text) {
   for (; i < lines.length; i++) {
     const raw = lines[i];
     const t = raw.trim();
-    const f = t.match(/^(```+|~~~+)/);
+    const f = t.match(F_RE);
     if (fence) {
       if (f && t.startsWith(fence)) fence = null;
       continue;
@@ -118,25 +152,25 @@ export function parseMarkdown(text) {
       continue;
     }
     if (closer) {
-      for (const m of raw.matchAll(/\bhref=["']([^"']+)["']/g)) hrefs.push(m[1]);
+      for (const m of raw.matchAll(PARSE_MARKDOWN_RE_3)) hrefs.push(m[1]);
       if (closer.test(raw)) closer = null;
       continue;
     }
-    if (/^<!--/.test(t) && !/--!?>/.test(t)) closer = /--!?>/;
-    else if (/^\{\/\*/.test(t) && !t.includes('*/}')) closer = /\*\/\}/;
-    else if (/^<[A-Za-z]/.test(t) && !/>\s*$/.test(t) && !/>/.test(t.replace(/"[^"]*"|'[^']*'/g, ''))) closer = />/;
+    if (PARSE_MARKDOWN_RE_4.test(t) && !PARSE_MARKDOWN_RE_5.test(t)) closer = /--!?>/;
+    else if (PARSE_MARKDOWN_RE_6.test(t) && !t.includes('*/}')) closer = /\*\/\}/;
+    else if (PARSE_MARKDOWN_RE_7.test(t) && !PARSE_MARKDOWN_RE_8.test(t) && !PARSE_MARKDOWN_RE_9.test(t.replace(PARSE_MARKDOWN_RE_10, ''))) closer = />/;
     for (const m of raw.matchAll(LINK)) if (!m[0].startsWith('!')) hrefs.push(m[2]);
-    for (const m of raw.matchAll(/\bhref=["']([^"']+)["']/g)) hrefs.push(m[1]);
-    if (/^#{1,6}\s/.test(t)) {
-      headings.push(t.replace(/^#+\s*/, ''));
+    for (const m of raw.matchAll(PARSE_MARKDOWN_RE_3)) hrefs.push(m[1]);
+    if (PARSE_MARKDOWN_RE_11.test(t)) {
+      headings.push(t.replace(PARSE_MARKDOWN_RE_12, ''));
       continue;
     }
-    if (!t || /^(import|export)\s/.test(t) || /^[<{|]/.test(t) || /^[-*_]{3,}$/.test(t)) continue;
+    if (!t || PARSE_MARKDOWN_RE_13.test(t) || PARSE_MARKDOWN_RE_14.test(t) || PARSE_MARKDOWN_RE_15.test(t)) continue;
     // A label that introduces a list ('Common errors:') names no subject of its own.
-    if (/^[^.]{0,40}:$/.test(t)) continue;
+    if (PARSE_MARKDOWN_RE_16.test(t)) continue;
     prose.push({ line: i, text: raw });
   }
-  const plain = prose.map((p) => p.text.replace(LINK, '$1').replace(/<[^>]*>|[`*_]/g, ' ')).join('\n');
+  const plain = prose.map((p) => p.text.replace(LINK, '$1').replace(PLAIN_RE, ' ')).join('\n');
   return { front, headings, prose, plain, hrefs };
 }
 
@@ -147,17 +181,17 @@ export function parseMarkdown(text) {
  */
 export function canonicalHref(href, sourceKind) {
   let h = String(href).trim();
-  if (h.startsWith('#') || /^(mailto|tel):/i.test(h)) return null;
-  if (/^https?:\/\//i.test(h)) {
+  if (h.startsWith('#') || CANONICAL_HREF_RE.test(h)) return null;
+  if (CANONICAL_HREF_RE_2.test(h)) {
     const u = new URL(h);
-    if (!/(^|\.)worldmonitor\.app$/i.test(u.hostname)) return null;
+    if (!CANONICAL_HREF_RE_3.test(u.hostname)) return null;
     h = u.pathname;
   } else {
-    h = h.split(/[?#]/)[0];
+    h = h.split(CANONICAL_HREF_RE_4)[0];
     if (!h.startsWith('/')) return null;
-    if (sourceKind === 'docs' && !/^\/(docs|blog)(\/|$)/.test(h)) h = `/docs${h}`;
+    if (sourceKind === 'docs' && !CANONICAL_HREF_RE_5.test(h)) h = `/docs${h}`;
   }
-  h = h.split(/[?#]/)[0].replace(/\/+$/, '').toLowerCase();
+  h = h.split(CANONICAL_HREF_RE_4)[0].replace(CANONICAL_HREF_RE_6, '').toLowerCase();
   return `${SITE_ORIGIN}${h || ''}`;
 }
 
@@ -184,7 +218,7 @@ export const mayLink = (source, target) =>
 // Share of the target's topic weight a phrase must carry to be offered as its anchor.
 const MIN_ANCHOR_COVER = 0.3;
 
-const topicText = (p) => [p.title, p.h1 ?? '', new URL(p.url).pathname.replace(/[-_/%]+/g, ' ')].join(' ');
+const topicText = (p) => [p.title, p.h1 ?? '', new URL(p.url).pathname.replace(TOPIC_TEXT_RE, ' ')].join(' ');
 
 export class LinkIndex {
   /** @param {Array<{key:string,url:string,kind:'docs'|'blog'|'site',title:string,name?:string,about:string,headings:string[],plain:string,prose:Array<{line:number,text:string}>,outbound:Set<string>,editable:boolean}>} pages */
@@ -249,10 +283,10 @@ export class LinkIndex {
     const found = new Map();
     for (const { line, text } of this.pages[i].prose) {
       for (const seg of plainSegments(text)) {
-        for (const sentence of seg.text.split(/(?<=[.!?:;])\s+|[,()"“”|/]/)) {
+        for (const sentence of seg.text.split(ANCHORS_RE)) {
           const ws = words(sentence);
           const ts = ws.map(({ w }) => termOf(w));
-          const cap = (k) => /^\p{Lu}/u.test(ws[k].w) && ((ws[k].w.length > 1 && ws[k].w === ws[k].w.toUpperCase()) || !STOP.has(ws[k].w.toLowerCase()));
+          const cap = (k) => CAP_RE.test(ws[k].w) && ((ws[k].w.length > 1 && ws[k].w === ws[k].w.toUpperCase()) || !STOP.has(ws[k].w.toLowerCase()));
           const joined = (k) => sentence.slice(ws[k].end, ws[k + 1].start) === ' ';
           const offer = (lo, hi, score, family) => {
             const span = sentence.slice(ws[lo].start, ws[hi].end);
@@ -283,7 +317,7 @@ export class LinkIndex {
               // 'premium stock' may be the head of 'premium stock analysis':
               // offer the next word too and let the judge pick the complete phrase.
               const next = ws[hi + 1]?.w;
-              if (!named && next && hi - lo < 5 && joined(hi) && /^\p{Ll}+$/u.test(next) && !STOP.has(next)) offer(lo, hi + 1, score, family);
+              if (!named && next && hi - lo < 5 && joined(hi) && ANCHORS_RE_2.test(next) && !STOP.has(next)) offer(lo, hi + 1, score, family);
             }
           }
         }
@@ -333,7 +367,7 @@ export function buildJevRequest(job, page, { copyWords = 1500, model = JEV_MODEL
   return {
     model,
     state: {
-      source: { url: page.url, title: page.title, copy: page.plain.split(/\s+/).slice(0, copyWords).join(' ') },
+      source: { url: page.url, title: page.title, copy: page.plain.split(WHITESPACE_RE).slice(0, copyWords).join(' ') },
       targets: job.targets.map((t) => ({ id: t.id, title: t.title, about: t.about })),
       lessons: rubric.lessons,
     },
@@ -348,7 +382,7 @@ export function parseJevAnswers(body, job) {
   for (const t of job.targets) {
     const link = Number(answers[`${t.id}_link`]?.noul);
     const anchor = answers[`${t.id}_anchor`];
-    const choice = anchor?.type === 'choice' && /^a\d+$/.test(anchor.choice) && t.anchors[Number(anchor.choice.slice(1)) - 1] ? anchor.choice : 'none';
+    const choice = anchor?.type === 'choice' && CHOICE_RE.test(anchor.choice) && t.anchors[Number(anchor.choice.slice(1)) - 1] ? anchor.choice : 'none';
     verdicts[t.id] = { link: Number.isFinite(link) ? link : 0, anchor: choice, anchorConfidence: Number(anchor?.confidence) || 0 };
   }
   return verdicts;
@@ -369,7 +403,7 @@ export function buildRelatedRequest(page, candidates, { copyWords = 800, model =
   return {
     model,
     state: {
-      page: { url: page.url, title: page.title, about: page.about, copy: page.plain.split(/\s+/).slice(0, copyWords).join(' ') },
+      page: { url: page.url, title: page.title, about: page.about, copy: page.plain.split(WHITESPACE_RE).slice(0, copyWords).join(' ') },
       targets: candidates.map((c, n) => ({ id: `t${n + 1}`, title: c.title, about: c.about.slice(0, 240) })),
     },
     questions: Object.fromEntries(candidates.map((c, n) => [
@@ -409,7 +443,7 @@ export function placeLinks(job, verdicts, rubric = RUBRIC) {
   return placed;
 }
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRe = (s) => s.replace(ESCAPE_RE_RE, '\\$&');
 
 /**
  * Wraps each link's anchor, on its recorded line, in `[anchor](href)`. Only a

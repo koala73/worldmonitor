@@ -28,6 +28,11 @@
 
 'use strict';
 
+const HOST_RE = /\.+$/;
+const NORMALIZE_SUPPRESSED_HOST_RE = /[^\x00-\x7f]/;
+const NORMALIZE_SUPPRESSED_HOST_RE_2 = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
+
+
 // Resolve exactly as the delivery classifier does (classifyNotificationLink in
 // ./notify-fields.cjs): only a scheme-bearing or `/`-leading value is
 // resolvable, and it resolves against the dashboard base. Parsing base-less
@@ -62,7 +67,7 @@ function normalizeSuppressedUrl(raw) {
   if (protocol !== 'http:' && protocol !== 'https:') return null;
   // Credentials exist only to make a hostile host read as a trusted one;
   // a suppressed entry never carries them, so drop them before comparing.
-  let host = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+  let host = parsed.hostname.toLowerCase().replace(HOST_RE, '');
   if (host.length === 0) return null;
   const isDefaultPort =
     (protocol === 'http:' && parsed.port === '80') ||
@@ -86,19 +91,19 @@ function normalizeSuppressedUrl(raw) {
  */
 function normalizeSuppressedHost(raw) {
   if (typeof raw !== 'string') return null;
-  let host = raw.trim().toLowerCase().replace(/\.+$/, '');
+  let host = raw.trim().toLowerCase().replace(HOST_RE, '');
   if (host.length === 0 || host.length > 253) return null;
   if (host.includes('/') || host.includes(':') || host.includes('?') || host.includes('#') || host.includes('@') || host.includes('\\')) return null;
   // An IDN entry must compare against the punycode host a URL parses to.
-  if (/[^\x00-\x7f]/.test(host)) {
+  if (NORMALIZE_SUPPRESSED_HOST_RE.test(host)) {
     try {
-      host = new URL(`http://${host}`).hostname.replace(/\.+$/, '');
+      host = new URL(`http://${host}`).hostname.replace(HOST_RE, '');
     } catch {
       return null;
     }
   }
   // Hostname labels, not free text: letters, digits, hyphens, dots.
-  if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host)) return null;
+  if (!NORMALIZE_SUPPRESSED_HOST_RE_2.test(host)) return null;
   return host;
 }
 
@@ -147,7 +152,7 @@ function isLinkSuppressed(candidate, parsed) {
   if (hosts.size === 0) return false;
   let candidateHost;
   try {
-    candidateHost = new URL(normalized).hostname.toLowerCase().replace(/\.+$/, '');
+    candidateHost = new URL(normalized).hostname.toLowerCase().replace(HOST_RE, '');
   } catch {
     return false;
   }

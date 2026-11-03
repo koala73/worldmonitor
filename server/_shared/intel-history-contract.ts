@@ -7,6 +7,9 @@
 import { ValidationError } from '../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 import { cachedFetchJsonWithMeta } from './redis';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const HISTORY_DOMAINS = new Set(['conflict', 'military', 'energy']);
 const SUCCESS_CACHE_TTL_SECONDS = 30 * 60;
 
@@ -39,7 +42,7 @@ export function validateHistoryScope(
   if (domain && !HISTORY_DOMAINS.has(domain)) {
     invalid('domain', 'domain must be one of conflict, military, or energy');
   }
-  if (country && !/^[A-Z]{2}$/.test(country)) {
+  if (country && !COUNTRY_CODE_RE.test(country)) {
     invalid('country', 'country must be an ISO 3166-1 alpha-2 code');
   }
   const from = integer(req.from ?? 0, 'from', Number.MAX_SAFE_INTEGER);

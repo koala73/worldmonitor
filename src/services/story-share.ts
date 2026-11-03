@@ -2,12 +2,15 @@ import type { StoryData } from './story-data';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { getCanonicalApiOrigin } from '@/services/runtime';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const VALID_STORY_TYPES = ['ciianalysis', 'convergence', 'brief'] as const;
 type StoryType = typeof VALID_STORY_TYPES[number];
 
 function sanitizeCountryCode(value: string): string {
   const code = String(value || '').trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(code) ? code : '';
+  return COUNTRY_CODE_RE.test(code) ? code : '';
 }
 
 function sanitizeStoryType(value: string | null): StoryType {

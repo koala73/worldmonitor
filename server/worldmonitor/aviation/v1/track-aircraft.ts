@@ -13,6 +13,10 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { sha256Hex } from '../../../_shared/hash';
 import { isOpenSkyProvider, requiresRedistributableProviders } from '../../../_shared/provider-redistribution';
 
+const TRACK_AIRCRAFT_RE = /^[0-9a-f]{6}$/;
+const TRACK_AIRCRAFT_RE_2 = /^[A-Z0-9]{1,8}$/;
+
+
 // 120s. This TTL was originally sized for the anonymous OpenSky tier's ~10 req/min
 // ceiling; that tier was removed in #6222, so the binding constraint is now the shared
 // authenticated credit pool the relay draws on — a shorter TTL multiplies bbox misses
@@ -131,8 +135,8 @@ export async function trackAircraft(
     if (rawCallsign.length > 16) throw new ValidationError([{ field: 'callsign', description: 'Aircraft identifier is too long' }]);
     const icao24 = rawIcao24.trim().toLowerCase();
     const callsign = rawCallsign.trim().toUpperCase();
-    if (rawIcao24 && !/^[0-9a-f]{6}$/.test(icao24)) throw new ValidationError([{ field: 'icao24', description: 'Expected a six-character hexadecimal ICAO address' }]);
-    if (rawCallsign && !/^[A-Z0-9]{1,8}$/.test(callsign)) throw new ValidationError([{ field: 'callsign', description: 'Expected an alphanumeric callsign of at most eight characters' }]);
+    if (rawIcao24 && !TRACK_AIRCRAFT_RE.test(icao24)) throw new ValidationError([{ field: 'icao24', description: 'Expected a six-character hexadecimal ICAO address' }]);
+    if (rawCallsign && !TRACK_AIRCRAFT_RE_2.test(callsign)) throw new ValidationError([{ field: 'callsign', description: 'Expected an alphanumeric callsign of at most eight characters' }]);
     const viewport = { sw_lat: req.swLat, sw_lon: req.swLon, ne_lat: req.neLat, ne_lon: req.neLon };
     const badCorner = Object.entries(viewport).find(([, value]) => !Number.isFinite(value));
     if (badCorner) throw new ValidationError([{ field: badCorner[0], description: 'Expected finite viewport coordinates' }]);

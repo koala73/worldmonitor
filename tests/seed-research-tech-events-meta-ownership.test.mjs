@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 
 import { TECH_EVENTS_SEED_META_KEY, writeTechEventsMirror } from '../scripts/seed-research.mjs';
 import { resolveSeedMetaKey } from '../scripts/_seed-utils.mjs';
@@ -98,7 +99,7 @@ test('the relay preserves data during an outage and publishes after recovery', a
   const writes = [];
   let feed = null;
   const warnings = [];
-  const seed = runInNewContext(`${source.slice(start, end)}
+  const seed = runInNewContext(`${moduleRegexDeclarations(source)}\n${source.slice(start, end)}
     techEventsFetchUrl = fetchFeed;
     seedTechEvents;
   `, {

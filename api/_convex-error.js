@@ -31,6 +31,11 @@
  * @param {string} code
  * @returns {boolean}
  */
+const IS_OPAQUE_CONVEX_SERVER_ERROR_RE = /^\[Request ID:\s*[\w-]+\]\s*Server Error$/i;
+const EXTRACT_CONVEX_ERROR_KIND_RE = /\bJSON\b/;
+const EXTRACT_CONVEX_ERROR_KIND_RE_2 = /Network connection lost/i;
+const EXTRACT_CONVEX_ERROR_KIND_RE_3 = /error code:\s*52[0-7]\b/i;
+
 function hasConvexCode(msg, code) {
   return new RegExp(`"code":\\s*"${code}"`).test(msg);
 }
@@ -50,7 +55,7 @@ function hasConvexCode(msg, code) {
  * @returns {boolean}
  */
 export function isOpaqueConvexServerError(msg) {
-  return /^\[Request ID:\s*[\w-]+\]\s*Server Error$/i.test(msg);
+  return IS_OPAQUE_CONVEX_SERVER_ERROR_RE.test(msg);
 }
 
 /**
@@ -102,7 +107,7 @@ export function extractConvexErrorKind(err, msg) {
   // arrive as ConvexError data or the opaque request-id wrapper. Sentry's
   // classifier tags these `transport_malformed_response` so they stay
   // queryable apart from timeouts and socket resets.
-  if (errName === 'SyntaxError' && /\bJSON\b/.test(msg)) return 'SERVICE_UNAVAILABLE';
+  if (errName === 'SyntaxError' && EXTRACT_CONVEX_ERROR_KIND_RE.test(msg)) return 'SERVICE_UNAVAILABLE';
   // Vercel edge runtime transient: the upstream connection dropped mid-flight
   // (Cloudflare Workers / Vercel edge surface `TypeError: Network connection
   // lost.` from the inner `fetch` when the socket is reset during an in-flight
@@ -111,7 +116,7 @@ export function extractConvexErrorKind(err, msg) {
   // 'unknown' error_shape bucket at error level instead of 503 + Retry-After.
   // Sentry's classifier tags these as `transport_network` so they're queryable
   // separately from genuine Convex 503s.
-  if (/Network connection lost/i.test(msg)) return 'SERVICE_UNAVAILABLE';
+  if (EXTRACT_CONVEX_ERROR_KIND_RE_2.test(msg)) return 'SERVICE_UNAVAILABLE';
   // Cloudflare edge errors (520-527) fronting the Convex deployment: a
   // transient origin/connection failure where Cloudflare returns a text/HTML
   // body containing `error code: 52x` instead of a JSON Convex response. The
@@ -121,7 +126,7 @@ export function extractConvexErrorKind(err, msg) {
   // falling through to the 'unknown' error_shape bucket at error level instead
   // of 503 + Retry-After. Sentry's classifier tags these `transport_cloudflare`
   // so they stay queryable apart from genuine Convex platform 5xx.
-  if (/error code:\s*52[0-7]\b/i.test(msg)) return 'SERVICE_UNAVAILABLE';
+  if (EXTRACT_CONVEX_ERROR_KIND_RE_3.test(msg)) return 'SERVICE_UNAVAILABLE';
   // Convex platform-level 401: when Clerk's OIDC token fails Convex's own
   // verification (token expired between our edge's `validateBearerToken`
   // and Convex's check, or Clerk JWKS rotated), the SDK surfaces a JSON

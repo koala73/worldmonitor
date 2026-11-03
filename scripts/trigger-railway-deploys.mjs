@@ -84,6 +84,13 @@ import {
   createResultManifest,
 } from './railway-reconcile-manifest.mjs';
 
+const ASSERT_WORKFLOW_MUTATION_AUTHORITY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const ASSERT_WORKFLOW_MUTATION_AUTHORITY_RE_2 = /^[1-9][0-9]{0,23}$/;
+const ASSERT_WORKFLOW_MUTATION_AUTHORITY_RE_3 = /^[1-9][0-9]{0,3}$/;
+const READ_EXACT_CURRENT_MAIN_AUTHORIZATION_RE = /^[0-9a-f]{40}$/;
+const CLOSED_REASON_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+
 const DEFAULT_ENVIRONMENT = 'production';
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
 const TARGET_WORKFLOW_FILE = 'railway-deploy-trigger.yml';
@@ -461,9 +468,9 @@ export function assertWorkflowMutationAuthority({
   if (!workflowRef.includes(`/.github/workflows/${TARGET_WORKFLOW_FILE}@`)) {
     throw new Error(`Railway mutation authority belongs only to ${TARGET_WORKFLOW_FILE}`);
   }
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(String(env.GITHUB_REPOSITORY ?? ''))
-    || !/^[1-9][0-9]{0,23}$/.test(String(env.GITHUB_RUN_ID ?? ''))
-    || !/^[1-9][0-9]{0,3}$/.test(String(env.GITHUB_RUN_ATTEMPT ?? ''))) {
+  if (!ASSERT_WORKFLOW_MUTATION_AUTHORITY_RE.test(String(env.GITHUB_REPOSITORY ?? ''))
+    || !ASSERT_WORKFLOW_MUTATION_AUTHORITY_RE_2.test(String(env.GITHUB_RUN_ID ?? ''))
+    || !ASSERT_WORKFLOW_MUTATION_AUTHORITY_RE_3.test(String(env.GITHUB_RUN_ATTEMPT ?? ''))) {
     throw new Error('Railway mutation requires an exact GitHub repository, run, and attempt identity');
   }
 }
@@ -529,8 +536,8 @@ export function readExactCurrentMainAuthorization({
   api = (path) => runGitHubApi(path, env),
   now = Date.now,
 }) {
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)
-    || !/^[0-9a-f]{40}$/.test(headSha)) {
+  if (!ASSERT_WORKFLOW_MUTATION_AUTHORITY_RE.test(repository)
+    || !READ_EXACT_CURRENT_MAIN_AUTHORIZATION_RE.test(headSha)) {
     throw new TypeError('exact-current-main authorization requires a repository and lowercase SHA');
   }
   const ref = api(`repos/${repository}/git/ref/heads/main`);
@@ -562,14 +569,14 @@ export function readCurrentMainLineageAuthorization({
   api = (path) => runGitHubApi(path, env),
   now = Date.now,
 }) {
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)
-    || !/^[0-9a-f]{40}$/.test(headSha)) {
+  if (!ASSERT_WORKFLOW_MUTATION_AUTHORITY_RE.test(repository)
+    || !READ_EXACT_CURRENT_MAIN_AUTHORIZATION_RE.test(headSha)) {
     throw new TypeError('current-main lineage authorization requires a repository and lowercase SHA');
   }
 
   const readMainHead = () => {
     const currentHead = api(`repos/${repository}/git/ref/heads/main`)?.object?.sha;
-    if (!/^[0-9a-f]{40}$/.test(currentHead ?? '')) {
+    if (!READ_EXACT_CURRENT_MAIN_AUTHORIZATION_RE.test(currentHead ?? '')) {
       throw new ReconcileAuthorizationError(
         'GITHUB_STATE_UNREADABLE',
         'current main did not resolve to a lowercase SHA',
@@ -591,7 +598,7 @@ export function readCurrentMainLineageAuthorization({
   if (currentHead !== headSha) {
     const comparison = api(`repos/${repository}/compare/${headSha}...${currentHead}`);
     if (typeof comparison?.status !== 'string'
-      || !/^[0-9a-f]{40}$/.test(comparison?.merge_base_commit?.sha ?? '')) {
+      || !READ_EXACT_CURRENT_MAIN_AUTHORIZATION_RE.test(comparison?.merge_base_commit?.sha ?? '')) {
       throw new ReconcileAuthorizationError(
         'GITHUB_STATE_UNREADABLE',
         'current-main lineage comparison was unreadable',
@@ -625,7 +632,7 @@ export function readCurrentMainLineageAuthorization({
 }
 
 function closedReason(plan, fallback = 'PLAN_SKIPPED') {
-  if (typeof plan?.reason === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(plan.reason)) {
+  if (typeof plan?.reason === 'string' && CLOSED_REASON_RE.test(plan.reason)) {
     return plan.reason;
   }
   if (plan?.action === 'error') return 'HISTORY_UNAVAILABLE';

@@ -19,6 +19,10 @@ import {
   type DigestLike,
 } from '../../../../scripts/shared/digest-acceptance.mjs';
 
+const IS_ELIGIBLE_SCOPE_RE = /^[a-z]{2}$/;
+const IS_ELIGIBLE_SCOPE_RE_2 = /^[a-z0-9-]+$/;
+
+
 export { countDigestItems, isAcceptableDigest, type DigestLike };
 
 /** Redis TTL for the accepted snapshot. Six hours, per the contract. */
@@ -112,7 +116,7 @@ export {
 /** Key-cardinality clamp: variant/lang are request-supplied — only write
  *  scope keys for known variants and well-formed 2-letter languages. */
 export function isEligibleScope(variant: string, lang: string): boolean {
-  return /^[a-z]{2}$/.test(lang) && /^[a-z0-9-]+$/.test(variant);
+  return IS_ELIGIBLE_SCOPE_RE.test(lang) && IS_ELIGIBLE_SCOPE_RE_2.test(variant);
 }
 
 export interface AcceptedSnapshotMeta {

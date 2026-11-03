@@ -15,6 +15,10 @@ import { computeEnergyShockScenario } from '../../intelligence/v1/compute-energy
 import { warRiskTierToInsurancePremiumBps } from './_insurance-tier';
 import { COST_SHOCK_KEY, CHOKEPOINT_STATUS_KEY } from '../../../_shared/cache-keys';
 
+const GET_COUNTRY_COST_SHOCK_RE = /^\d{1,2}$/;
+const MISSING_RE = /not modeled/;
+
+
 export async function getCountryCostShock(
   ctx: ServerContext,
   req: GetCountryCostShockRequest,
@@ -49,7 +53,7 @@ export async function getCountryCostShock(
     return { ...empty, iso2, chokepointId: chokepointId ?? '' };
   }
 
-  if (!/^\d{1,2}$/.test(hs2)) {
+  if (!GET_COUNTRY_COST_SHOCK_RE.test(hs2)) {
     return { ...empty, iso2, chokepointId: chokepointId ?? '' };
   }
 
@@ -92,7 +96,7 @@ export async function getCountryCostShock(
       // zeros that are "not modelled", never a zero-impact result. Surface the
       // handler's own reason when it has one.
       hasEnergyModel = false;
-      const missing = shock?.limitations?.find((l) => /not modeled/.test(l));
+      const missing = shock?.limitations?.find((l) => MISSING_RE.test(l));
       unavailableReason = shock
         ? `Oil shock modelling is unavailable for ${iso2}: ${missing ?? shock.assessment ?? 'required crude import inputs are missing'}`
         : `Oil shock modelling is unavailable for ${iso2}: the energy scenario could not be computed.`;

@@ -8,6 +8,21 @@
 
 import { loadEnvFile, readSeedSnapshot, runSeed, withRetry, resolveProxy, curlFetch } from './_seed-utils.mjs';
 
+const UNESCAPE_XML_RE = /&lt;/g;
+const UNESCAPE_XML_RE_2 = /&gt;/g;
+const UNESCAPE_XML_RE_3 = /&quot;/g;
+const UNESCAPE_XML_RE_4 = /&#0?39;/g;
+const UNESCAPE_XML_RE_5 = /&apos;/g;
+const UNESCAPE_XML_RE_6 = /&amp;/g;
+const RAW_TITLE_RE = /<title[^>]*>([\s\S]*?)<\/title>/i;
+const TITLE_MATCH_RE = /^\s*(8-K(?:\/A)?)\s+-\s+(.+?)\s+\((\d{7,10})\)/;
+const LINK_MATCH_RE = /<link[^>]*href=["']([^"']+)["']/i;
+const SUMMARY_RE = /<summary[^>]*>([\s\S]*?)<\/summary>/i;
+const ACCESSION_RE = /AccNo:<\/b>\s*([0-9-]+)/;
+const UPDATED_RE = /<updated[^>]*>([\s\S]*?)<\/updated>/i;
+const DETAIL_RE = /<entry[\s>]/i;
+
+
 loadEnvFile(import.meta.url);
 
 export const SEC_8K_STREAM_KEY = 'intelligence:sec-8k-stream:v1';
@@ -44,12 +59,12 @@ const FEED_URL = 'https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&typ
 
 function unescapeXml(text) {
   return String(text ?? '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
+    .replace(UNESCAPE_XML_RE, '<')
+    .replace(UNESCAPE_XML_RE_2, '>')
+    .replace(UNESCAPE_XML_RE_3, '"')
+    .replace(UNESCAPE_XML_RE_4, "'")
+    .replace(UNESCAPE_XML_RE_5, "'")
+    .replace(UNESCAPE_XML_RE_6, '&');
 }
 
 export function isSecGovUrl(value) {
@@ -74,8 +89,8 @@ export function parse8kAtomFeed(xml) {
   let match;
   while ((match = entryRegex.exec(String(xml ?? ''))) !== null) {
     const block = match[1];
-    const rawTitle = unescapeXml((block.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
-    const titleMatch = rawTitle.match(/^\s*(8-K(?:\/A)?)\s+-\s+(.+?)\s+\((\d{7,10})\)/);
+    const rawTitle = unescapeXml((block.match(RAW_TITLE_RE) || [])[1] || '');
+    const titleMatch = rawTitle.match(TITLE_MATCH_RE);
     if (!titleMatch) continue;
     const form = titleMatch[1];
     const company = titleMatch[2].trim();
@@ -83,11 +98,11 @@ export function parse8kAtomFeed(xml) {
 
     // Only sec.gov links are stored: the stream is rendered to API/MCP
     // consumers, so an unexpected host in the feed must not ride through.
-    const linkMatch = block.match(/<link[^>]*href=["']([^"']+)["']/i);
+    const linkMatch = block.match(LINK_MATCH_RE);
     const url = linkMatch && isSecGovUrl(unescapeXml(linkMatch[1])) ? unescapeXml(linkMatch[1]) : '';
 
-    const summary = unescapeXml((block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i) || [])[1] || '');
-    const accession = (summary.match(/AccNo:<\/b>\s*([0-9-]+)/) || [])[1] || '';
+    const summary = unescapeXml((block.match(SUMMARY_RE) || [])[1] || '');
+    const accession = (summary.match(ACCESSION_RE) || [])[1] || '';
 
     const items = [];
     const itemRegex = /Item\s+(\d+\.\d{2}):\s*([^<\n]+)/g;
@@ -96,7 +111,7 @@ export function parse8kAtomFeed(xml) {
       items.push({ code: itemMatch[1], description: itemMatch[2].trim() });
     }
 
-    const updated = (block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i) || [])[1] || '';
+    const updated = (block.match(UPDATED_RE) || [])[1] || '';
     const filedAtMs = Date.parse(updated.trim()) || 0;
 
     events.push({ company, cik, form, accession, filedAtMs, items, url });
@@ -136,7 +151,7 @@ export function mergeEventWindow(previousEvents, freshEvents, nowMs) {
 export function build8kStreamSnapshot(previous, xml, nowMs = Date.now()) {
   const parsed = parse8kAtomFeed(xml);
   if (parsed.length === 0) {
-    const detail = /<entry[\s>]/i.test(String(xml ?? ''))
+    const detail = DETAIL_RE.test(String(xml ?? ''))
       ? 'contains entries but none parsed — Atom shape drift'
       : 'returned no entries';
     throw new Error(`SEC 8-K feed ${detail}`);

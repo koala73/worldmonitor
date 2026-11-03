@@ -17,6 +17,7 @@ import { isIosLikeUserAgent } from '../src/bootstrap/platform-ua.ts';
 import { isolateNonProductionSentryEvent } from '../shared/sentry-build-metadata.ts';
 import { buildCheckoutReportTags } from '../src/services/checkout-sentry-policy.ts';
 import { scrubSentryCredentials } from '../shared/sensitive-url-params.ts';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +27,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // the dynamically imported build factory in sentry-init.ts. We parse it as a
 // standalone function to avoid importing Sentry/App bootstrap.
 const mainSrc = readFileSync(resolve(__dirname, '../src/bootstrap/sentry-init.ts'), 'utf-8');
+const regexDeclarations = moduleRegexDeclarations(mainSrc, ['SENTRY_IGNORE_ERRORS']);
 
 // Extract everything between `beforeSend(event) {` and the matching closing `},`
 const bsStart = mainSrc.indexOf('beforeSend(event) {');
@@ -56,7 +58,7 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 const rawBeforeSend = new Function(
   'event', 'isDebugBearRumScriptFrame', 'isIosLikeUserAgent', 'navigator',
   'isolateNonProductionSentryEvent', 'environment', 'scrubSentryCredentials',
-  `${tpMatch[0]}\n${fnBody}`,
+  `${regexDeclarations}\n${tpMatch[0]}\n${fnBody}`,
 );
 
 // User-Agent strings, because beforeSend's platform gates read `navigator.userAgent`
@@ -85,19 +87,11 @@ function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR, environment = 'pro
   return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, scrubSentryCredentials);
 }
 
-// Extract the `ignoreErrors` array literal so tests can assert which messages
-// Sentry's built-in (pre-beforeSend) filter drops. The array body contains
-// regex/string literals and `//` comments — all valid inside a JS array literal,
-// so it eval's directly. Closing token is the deferred builder's `\n    ],`.
-const ieStart = mainSrc.indexOf('ignoreErrors: [');
-assert.ok(ieStart !== -1, 'ignoreErrors array must exist in src/bootstrap/sentry-init.ts');
-const ieEnd = mainSrc.indexOf('\n    ],', ieStart);
-assert.ok(ieEnd > ieStart, 'Failed to find ignoreErrors closing bracket');
-const ieBody = mainSrc.slice(ieStart + 'ignoreErrors: ['.length, ieEnd);
-// The body's final entry ends in a `//` comment with no trailing newline, so the
-// closing bracket must go on its own line or it gets swallowed by that comment.
+// Read the module's `ignoreErrors` array so tests can assert which messages
+// Sentry's built-in (pre-beforeSend) filter drops.
+assert.match(mainSrc, /ignoreErrors:\s*SENTRY_IGNORE_ERRORS/);
 // eslint-disable-next-line no-new-func
-const ignoreErrors = new Function(`return [${ieBody}\n]`)();
+const ignoreErrors = new Function(`${regexDeclarations}\nreturn SENTRY_IGNORE_ERRORS`)();
 
 /**
  * Mirror Sentry's ignoreErrors semantics: RegExp → test, string → substring.

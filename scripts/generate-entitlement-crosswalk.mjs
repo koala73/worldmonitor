@@ -18,6 +18,34 @@ import { dirname } from 'node:path';
 import { argv } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+const MODULE_RE = /const (FREE|PRO|PRO_BUSINESS|API_STARTER|API_BUSINESS|ENTERPRISE)_FEATURES[^=]*=\s*\{([\s\S]*?)\n\};/g;
+const MODULE_RE_2 = /^\s*'(\/api\/[^']+)',/gm;
+const MODULE_RE_3 = /'(\/api\/[^']+)':\s*(\d)/g;
+const V_RE = /^const ([A-Z]+)_PANELS: Record<string, PanelConfig>/;
+const MODULE_RE_4 = /^\};/;
+const P_RE = /^\s*'?([a-zA-Z0-9_-]+)'?:\s*\{\s*name:\s*'([^']+)'/;
+const MODULE_RE_5 = /premium:/;
+const KIND_RE = /premium: 'locked'/;
+const DESKTOP_ONLY_RE = /_desktop &&/;
+const ENABLED_RE = /enabled: true/;
+const MODULE_RE_6 = /^\s*([a-zA-Z0-9_]+):\s*def\('([^']+)'[^\n]*?,\s*(?:_desktop \? )?'(locked|enhanced)'/gm;
+const MODULE_RE_7 = /^export const (FREE_[A-Z_]+)\s*=\s*([^;]+);/gm;
+const MODULE_RE_8 = /^([^:]+):(\d+):(.*)$/;
+const MODULE_RE_9 = /\.test\.|\/generated\//;
+const MODULE_RE_10 = /^(import|export type|type |interface )/;
+const PRED_RE = /features\.apiAccess/;
+const PRED_RE_2 = /features\.mcpAccess/;
+const PRED_RE_3 = /features\.dataExport/;
+const PRED_RE_4 = /has(?:Account)?EmbedAccess\(/;
+const PRED_RE_5 = /hasDesktopKeyAccess\(|admitsDesktopKeyPrincipal\(/;
+const PRED_RE_6 = /requiresPremium/;
+const PRED_RE_7 = /isCallerPremium\(/;
+const PRED_RE_8 = /resolvePremiumCallerIdentity\(/;
+const PRED_RE_9 = /hasPremiumAccess\(\)/;
+const PRED_RE_10 = /isProUser\(\)/;
+const PRED_RE_11 = /features\.tier|tier\s*[<>]=?\s*1/;
+
+
 const OUT = 'docs/generated/entitlement-crosswalk.json';
 const missingSources = [];
 const R = (p) => { try { return readFileSync(p, 'utf8'); } catch { missingSources.push(p); return ''; } };
@@ -31,7 +59,7 @@ const add = (source, id, detail) => rules.push({ rule: `${source}:${id}`, source
 {
   const s = R('convex/config/productCatalog.ts');
   const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','desktopKeyAccess','maxDesktopKeys','desktopKeyRequestsPerDay','desktopKeyBurstPerMinute','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays'];
-  for (const m of s.matchAll(/const (FREE|PRO|PRO_BUSINESS|API_STARTER|API_BUSINESS|ENTERPRISE)_FEATURES[^=]*=\s*\{([\s\S]*?)\n\};/g)) {
+  for (const m of s.matchAll(MODULE_RE)) {
     const [, plan, body] = m;
     for (const f of FIELDS) {
       const arr = body.match(new RegExp(`\\b${f}:\\s*(\\[[^\\]]*\\])`));
@@ -41,34 +69,34 @@ const add = (source, id, detail) => rules.push({ rule: `${source}:${id}`, source
   }
 }
 // 2. premium RPC paths
-for (const m of R('src/shared/premium-paths.ts').matchAll(/^\s*'(\/api\/[^']+)',/gm)) add('premiumPath', m[1], 'bearer gate');
+for (const m of R('src/shared/premium-paths.ts').matchAll(MODULE_RE_2)) add('premiumPath', m[1], 'bearer gate');
 // 3. tier-gated endpoints
-for (const m of R('server/_shared/entitlement-check.ts').matchAll(/'(\/api\/[^']+)':\s*(\d)/g)) add('tierGated', m[1], `tier>=${m[2]}`);
+for (const m of R('server/_shared/entitlement-check.ts').matchAll(MODULE_RE_3)) add('tierGated', m[1], `tier>=${m[2]}`);
 // 4. pro-fresh paths
-for (const m of R('src/shared/pro-fresh-rpc.ts').matchAll(/^\s*'(\/api\/[^']+)',/gm)) add('proFresh', m[1], 'live-browser 30s vs 300s');
+for (const m of R('src/shared/pro-fresh-rpc.ts').matchAll(MODULE_RE_2)) add('proFresh', m[1], 'live-browser 30s vs 300s');
 // 5. panel premium flags, per variant
 {
   const s = R('src/config/panels.ts').split('\n');
   let variant = null;
   for (const ln of s) {
-    const v = ln.match(/^const ([A-Z]+)_PANELS: Record<string, PanelConfig>/); if (v) { variant = v[1].toLowerCase(); continue; }
-    if (/^\};/.test(ln)) { variant = null; continue; }
+    const v = ln.match(V_RE); if (v) { variant = v[1].toLowerCase(); continue; }
+    if (MODULE_RE_4.test(ln)) { variant = null; continue; }
     if (!variant) continue;
-    const p = ln.match(/^\s*'?([a-zA-Z0-9_-]+)'?:\s*\{\s*name:\s*'([^']+)'/);
+    const p = ln.match(P_RE);
     if (!p) continue;
-    if (!/premium:/.test(ln)) continue;
-    const kind = /premium: 'locked'/.test(ln) ? 'locked' : 'enhanced';
-    const desktopOnly = /_desktop &&/.test(ln);
-    const enabled = /enabled: true/.test(ln);
+    if (!MODULE_RE_5.test(ln)) continue;
+    const kind = KIND_RE.test(ln) ? 'locked' : 'enhanced';
+    const desktopOnly = DESKTOP_ONLY_RE.test(ln);
+    const enabled = ENABLED_RE.test(ln);
     add('panel', `${variant}.${p[1]}`, `${kind}${desktopOnly ? ' (desktop only)' : ''}${enabled ? '' : ' [ships disabled]'} — ${p[2]}`);
   }
 }
 // 6. map layer premium flags
-for (const m of R('src/config/map-layer-definitions.ts').matchAll(/^\s*([a-zA-Z0-9_]+):\s*def\('([^']+)'[^\n]*?,\s*(?:_desktop \? )?'(locked|enhanced)'/gm))
+for (const m of R('src/config/map-layer-definitions.ts').matchAll(MODULE_RE_6))
   add('layer', m[2], m[3]);
 // 7. FREE_* caps
 for (const f of ['src/config/panels.ts','convex/constants.ts','src/services/gates/export-resolver.ts','src/services/followed-countries.ts','api/mcp/upgrade-constants.ts'])
-  for (const m of R(f).matchAll(/^export const (FREE_[A-Z_]+)\s*=\s*([^;]+);/gm)) add('cap', m[1], `${m[2].trim()} (${f})`);
+  for (const m of R(f).matchAll(MODULE_RE_7)) add('cap', m[1], `${m[2].trim()} (${f})`);
 
 
 // ------------------------------------------------------- code-site gates
@@ -77,27 +105,27 @@ const out = execSync(`grep -rnE "${PAT}" --include="*.ts" --include="*.js" src a
 const sites = [];
 for (const ln of out.split('\n')) {
   if (!ln.trim()) continue;
-  const m = ln.match(/^([^:]+):(\d+):(.*)$/); if (!m) continue;
+  const m = ln.match(MODULE_RE_8); if (!m) continue;
   const [, file, line, text] = m;
-  if (/\.test\.|\/generated\//.test(file)) continue;
+  if (MODULE_RE_9.test(file)) continue;
   const t = text.trim();
   if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) continue;   // comments
-  if (/^(import|export type|type |interface )/.test(t)) continue;                 // decls
+  if (MODULE_RE_10.test(t)) continue;                 // decls
   // Predicate kind is part of the identity. Keying on filename alone let a NEW
   // gate of a different kind inside an already-mapped file inherit that file's
   // capability silently — a real blind spot found in review.
   const pred =
-      /features\.apiAccess/.test(t)  ? 'apiAccess'
-    : /features\.mcpAccess/.test(t)  ? 'mcpAccess'
-    : /features\.dataExport/.test(t) ? 'dataExport'
-    : /has(?:Account)?EmbedAccess\(/.test(t) ? 'embedAccess'
-    : /hasDesktopKeyAccess\(|admitsDesktopKeyPrincipal\(/.test(t) ? 'desktopKeyAccess'
-    : /requiresPremium/.test(t)      ? 'requiresPremium'
-    : /isCallerPremium\(/.test(t)    ? 'isCallerPremium'
-    : /resolvePremiumCallerIdentity\(/.test(t) ? 'resolvePremiumCallerIdentity'
-    : /hasPremiumAccess\(\)/.test(t)  ? 'hasPremiumAccess'
-    : /isProUser\(\)/.test(t)         ? 'isProUser'
-    : /features\.tier|tier\s*[<>]=?\s*1/.test(t) ? 'tier'
+      PRED_RE.test(t)  ? 'apiAccess'
+    : PRED_RE_2.test(t)  ? 'mcpAccess'
+    : PRED_RE_3.test(t) ? 'dataExport'
+    : PRED_RE_4.test(t) ? 'embedAccess'
+    : PRED_RE_5.test(t) ? 'desktopKeyAccess'
+    : PRED_RE_6.test(t)      ? 'requiresPremium'
+    : PRED_RE_7.test(t)    ? 'isCallerPremium'
+    : PRED_RE_8.test(t) ? 'resolvePremiumCallerIdentity'
+    : PRED_RE_9.test(t)  ? 'hasPremiumAccess'
+    : PRED_RE_10.test(t)         ? 'isProUser'
+    : PRED_RE_11.test(t) ? 'tier'
     : 'other';
   sites.push({ rule: `site:${file}:${line}`, source: 'site', file, line: +line, pred, detail: t.slice(0, 130) });
 }

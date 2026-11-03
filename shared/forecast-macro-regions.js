@@ -41,6 +41,11 @@
  */
 
 /** @type {Readonly<Record<string, ForecastMacroRegionId>>} */
+const NORMALIZE_REGION_KEY_RE = /\p{Diacritic}/gu;
+const NORMALIZE_REGION_KEY_RE_2 = /&/g;
+const NORMALIZE_REGION_KEY_RE_3 = /[''.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+
 const ISO2_TO_REGION = Object.freeze({
   AD: 'europe',             AE: 'mena',               AF: 'south-asia',
   AG: 'latam',              AL: 'europe',             AM: 'europe',
@@ -498,11 +503,11 @@ const THEATER_TO_REGION = Object.freeze({
 function normalizeRegionKey(value) {
   return String(value)
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_REGION_KEY_RE, '')
     .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[''.(),/-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_REGION_KEY_RE_2, ' and ')
+    .replace(NORMALIZE_REGION_KEY_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 

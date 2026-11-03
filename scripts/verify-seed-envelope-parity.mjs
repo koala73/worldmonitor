@@ -16,6 +16,11 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
+const NORMALIZE_RE = /\/\/[^\n]*/g;
+const NORMALIZE_RE_2 = /\/\*[\s\S]*?\*\//g;
+const WHITESPACE_RE = /\s+/g;
+
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 
@@ -127,9 +132,9 @@ export function scanBalanced(source, start, open, close) {
 
 function normalize(s) {
   return s
-    .replace(/\/\/[^\n]*/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_RE, '')
+    .replace(NORMALIZE_RE_2, '')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 

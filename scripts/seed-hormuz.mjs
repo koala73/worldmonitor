@@ -15,6 +15,16 @@
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 
+const STRIP_TAGS_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const DERIVE_STATUS_RE = /\bclosed\b|\bclosure\b/;
+const DERIVE_STATUS_RE_2 = /disrupted|disruption|halt|standstill/;
+const DERIVE_STATUS_RE_3 = /restricted|congested|tension|heightened/;
+const DATE_M_RE = /<time[^>]*>(.*?)<\/time>/;
+const LI_M_RE = /Latest insights([\s\S]*?)See key insights/;
+const TITLE_M_RE = /<strong[^>]*>(Strategic Trade Insight:[\s\S]*?)<\/strong>/;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'supply_chain:hormuz_tracker:v1';
@@ -212,14 +222,14 @@ async function fetchPbiCharts() {
 }
 
 export function stripTags(s) {
-  return decodeHtmlEntities(s.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(s.replace(STRIP_TAGS_RE, '')).replace(WHITESPACE_RE, ' ').trim();
 }
 
 function deriveStatus(text) {
   const lc = text.toLowerCase();
-  if (/\bclosed\b|\bclosure\b/.test(lc)) return 'closed';
-  if (/disrupted|disruption|halt|standstill/.test(lc)) return 'disrupted';
-  if (/restricted|congested|tension|heightened/.test(lc)) return 'restricted';
+  if (DERIVE_STATUS_RE.test(lc)) return 'closed';
+  if (DERIVE_STATUS_RE_2.test(lc)) return 'disrupted';
+  if (DERIVE_STATUS_RE_3.test(lc)) return 'restricted';
   return 'open';
 }
 
@@ -239,11 +249,11 @@ async function scrapeWtoPage() {
   const html = await resp.text();
 
   // --- Date of latest insights ---
-  const dateM = html.match(/<time[^>]*>(.*?)<\/time>/);
+  const dateM = html.match(DATE_M_RE);
   const updatedDate = dateM ? stripTags(dateM[1]) : null;
 
   // --- "Latest insights" summary blurb (above "See key insights" link) ---
-  const liM = html.match(/Latest insights([\s\S]*?)See key insights/);
+  const liM = html.match(LI_M_RE);
   let summary = null;
   if (liM) {
     const chunk = liM[1];
@@ -253,7 +263,7 @@ async function scrapeWtoPage() {
   }
 
   // --- Title of latest strategic insight (bold text) ---
-  const titleM = html.match(/<strong[^>]*>(Strategic Trade Insight:[\s\S]*?)<\/strong>/);
+  const titleM = html.match(TITLE_M_RE);
   const title = titleM ? stripTags(titleM[1]) : null;
 
   // --- Full body paragraphs of the insight ---

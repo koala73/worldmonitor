@@ -4,6 +4,11 @@ import { ensureHydrated } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 
+const IS_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const IS_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const IS_POLICY_EVENT_RE = /^sha256:[0-9a-f]{64}$/;
+
+
 export const CHINA_POLICY_EVENTS_BOOTSTRAP_KEY = 'chinaPolicyEvents';
 export const CHINA_POLICY_EVENTS_CACHE_KEY = 'china-policy-events-v1';
 export const CHINA_POLICY_TRANSPORT_STALE_MS = 36 * 60 * 60 * 1000;
@@ -154,7 +159,7 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isDay(value: unknown): value is string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (typeof value !== 'string' || !IS_DAY_RE.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year!, month! - 1, day!));
   return date.getUTCFullYear() === year
@@ -164,7 +169,7 @@ function isDay(value: unknown): value is string {
 
 function isInstant(value: unknown): value is string {
   return typeof value === 'string'
-    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+    && IS_INSTANT_RE.test(value)
     && Number.isFinite(Date.parse(value));
 }
 
@@ -242,7 +247,7 @@ function isPolicyEvent(value: unknown): value is ChinaPolicyEvent {
     || !isStringArray(value.classification.matchedTerms)
     || typeof value.classification.uncertain !== 'boolean'
     || typeof value.contentHash !== 'string'
-    || !/^sha256:[0-9a-f]{64}$/.test(value.contentHash)
+    || !IS_POLICY_EVENT_RE.test(value.contentHash)
     || !isRecord(value.revision)
     || !['original', 'revised', 'corrected'].includes(String(value.revision.state))
     || !Number.isInteger(value.revision.sequence)

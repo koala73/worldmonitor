@@ -16,6 +16,35 @@ import { captureContentAttributionFromUrl } from '../shared/content-attribution'
 import { captureAgentRefFromSearch } from '../shared/agent-client-source';
 import { agentRefStorage } from '@/services/agent-ref';
 
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE = /^https:\/\/www\.youtube\.com\/iframe_api(?:\?|$)/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_2 = /^(?:chrome|moz|safari(?:-web)?|ms-browser)-extension/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_3 = /^blob:/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_4 = /^data:/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_5 = /^about:/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_6 = /manifest\.webmanifest$/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_7 = /gstatic\.com\/_\/translate/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_8 = /facebook\.net/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_9 = /^\/tr\/?$/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_10 = /googlevideo\.com|youtube\.com\/generate_204/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_11 = /securly\.com|goguardian\.com|contentkeeper\.com/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_12 = /_vercel\/insights\/script\.js/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_13 = /^style-src(-elem)?$/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_14 = /^https:\/\/cdn\.jsdelivr\.net\//;
+const CSS_FILE_RE = /\.css$/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_15 = /^\/css2?$/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_16 = /^\/[0-9a-f]+\.css$/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_17 = /^\/[^/]+\.css$/;
+const SHOULD_SUPPRESS_CSP_VIOLATION_RE_18 = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//;
+const META_CONNECT_SRC_RE = /connect-src\s+([^;]*)/;
+const WHITESPACE_RE = /\s+/;
+const META_MEDIA_SRC_RE = /media-src\s+([^;]*)/;
+const META_FONT_SRC_RE = /font-src\s+([^;]*)/;
+const _CSP_FONT_SRC_ALLOWS_CROSS_ORIGIN_RE = /^'[^']*'$/;
+const _CSP_FONT_SRC_ALLOWS_CROSS_ORIGIN_RE_2 = /^(?:data|blob):$/;
+const MODULE_RE = /\/favico\/favicon/g;
+const MODULE_RE_2 = /\/favico\/apple-touch-icon/g;
+
+
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
   // stylesheet applies asynchronously, so a brief base-theme flash is possible.
@@ -199,7 +228,7 @@ function shouldSuppressCspViolation(
   // (WORLDMONITOR-HP).
   if (
     (directive === 'script-src-elem' || directive === 'script-src')
-    && /^https:\/\/www\.youtube\.com\/iframe_api(?:\?|$)/.test(blockedURI)
+    && SHOULD_SUPPRESS_CSP_VIOLATION_RE.test(blockedURI)
   ) return true;
   // HeyTap Browser (the stock browser on OPPO / realme / OnePlus Android
   // devices) injects its own chrome scripts from `dhfs.heytapimage.com` — the
@@ -306,21 +335,21 @@ function shouldSuppressCspViolation(
   }
   // Browser extensions or injected scripts. `ms-browser-extension://` is Edge's
   // scheme for legacy/internal extensions (WORLDMONITOR-JM).
-  if (/^(?:chrome|moz|safari(?:-web)?|ms-browser)-extension/.test(sourceFile) || /^(?:chrome|moz|safari(?:-web)?|ms-browser)-extension/.test(blockedURI)) return true;
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_2.test(sourceFile) || SHOULD_SUPPRESS_CSP_VIOLATION_RE_2.test(blockedURI)) return true;
   // blob: — browsers report "blob" (scheme-only) or "blob:https://...".
-  if (blockedURI === 'blob' || /^blob:/.test(sourceFile) || /^blob:/.test(blockedURI)) return true;
+  if (blockedURI === 'blob' || SHOULD_SUPPRESS_CSP_VIOLATION_RE_3.test(sourceFile) || SHOULD_SUPPRESS_CSP_VIOLATION_RE_3.test(blockedURI)) return true;
   // eval/inline/data.
-  if (blockedURI === 'eval' || blockedURI === 'inline' || blockedURI === 'data' || /^data:/.test(blockedURI)) return true;
+  if (blockedURI === 'eval' || blockedURI === 'inline' || blockedURI === 'data' || SHOULD_SUPPRESS_CSP_VIOLATION_RE_4.test(blockedURI)) return true;
   // about: — browsers report "about" (scheme-only) or "about:blank" / "about:srcdoc"
   // for iframes created by extensions, ad-injectors, or Smart TV browsers (Samsung
   // Internet on Tizen). We never set frame src to about:* ourselves (WORLDMONITOR-JQ).
-  if (blockedURI === 'about' || /^about:/.test(blockedURI)) return true;
+  if (blockedURI === 'about' || SHOULD_SUPPRESS_CSP_VIOLATION_RE_5.test(blockedURI)) return true;
   // Android WebView video poster injection.
   if (blockedURI === 'android-webview-video-poster') return true;
   // Own manifest.webmanifest — stale CSP cache hit.
-  if (/manifest\.webmanifest$/.test(blockedURI)) return true;
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_6.test(blockedURI)) return true;
   // Third-party injectors: Google Translate, Facebook Pixel.
-  if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_7.test(blockedURI) || SHOULD_SUPPRESS_CSP_VIOLATION_RE_8.test(blockedURI)) return true;
   // Meta Pixel's form-post beacon. An injected server-side GTM tag (stape.io
   // collect breadcrumbs) submitted a form to https://www.facebook.com/tr/
   // (WORLDMONITOR-12G: 23 events from one user). The app ships no Meta Pixel,
@@ -330,7 +359,7 @@ function shouldSuppressCspViolation(
   if (directive === 'form-action') {
     try {
       const url = new URL(blockedURI);
-      if (url.protocol === 'https:' && url.host === 'www.facebook.com' && /^\/tr\/?$/.test(url.pathname)) return true;
+      if (url.protocol === 'https:' && url.host === 'www.facebook.com' && SHOULD_SUPPRESS_CSP_VIOLATION_RE_9.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // ---- font-src: one invariant, not a host list.
@@ -372,11 +401,11 @@ function shouldSuppressCspViolation(
     } catch { /* scheme-only values ('data', 'inline', 'eval') fall through */ }
   }
   // YouTube live stream manifests.
-  if (/googlevideo\.com|youtube\.com\/generate_204/.test(blockedURI)) return true;
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_10.test(blockedURI)) return true;
   // Corporate/school content filter injections.
-  if (/securly\.com|goguardian\.com|contentkeeper\.com/.test(blockedURI)) return true;
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_11.test(blockedURI)) return true;
   // Vercel Analytics script.
-  if (/_vercel\/insights\/script\.js/.test(blockedURI)) return true;
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_12.test(blockedURI)) return true;
   // Third-party stylesheet injection from public CDNs (browser extensions,
   // bookmarklets, "inspect element" UI tools loading antd/bootstrap/etc.).
   // We legitimately load JS from `cdn.jsdelivr.net` (chart.js in the
@@ -384,7 +413,7 @@ function shouldSuppressCspViolation(
   // jsDelivr is by definition third-party
   // injection (WORLDMONITOR-J0 — antd@4 CSS injection, 270 events / 26
   // users on finance.worldmonitor.app).
-  if (/^style-src(-elem)?$/.test(directive) && /^https:\/\/cdn\.jsdelivr\.net\//.test(blockedURI)) return true;
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_13.test(directive) && SHOULD_SUPPRESS_CSP_VIOLATION_RE_14.test(blockedURI)) return true;
   // Google Fonts CSS injected by extensions/user-style themes (DM Sans, Syne,
   // Roboto… — families we never reference). The dashboard self-hosts all fonts
   // and the deploy/config tests keep Google Fonts out of our source/CSP
@@ -392,15 +421,15 @@ function shouldSuppressCspViolation(
   // definition third-party injection — the stylesheet counterpart of the
   // fonts.gstatic.com font-src rule above (WORLDMONITOR-J0 round 2). Exact
   // host + /css path; Google Fonts under any other directive still surfaces.
-  if (/^style-src(-elem)?$/.test(directive)) {
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_13.test(directive)) {
     // Same reason as `fontFile` above: the plain suffix rules below would
     // otherwise re-type this per host, which is how such rules drift apart.
     // Two rules deliberately do NOT use it: Google Fonts matches a path PREFIX
     // (`/css`, `/css2`), and Typekit pins an exact path shape per host.
-    const cssFile = /\.css$/;
+    const cssFile = CSS_FILE_RE;
     try {
       const url = new URL(blockedURI);
-      if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/css2?$/.test(url.pathname)) return true;
+      if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && SHOULD_SUPPRESS_CSP_VIOLATION_RE_15.test(url.pathname)) return true;
       // Chinese-market extension CDN injecting its overlay stylesheet
       // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
       // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
@@ -424,14 +453,14 @@ function shouldSuppressCspViolation(
       // unpkg rule shipped on 2026-08-16). Exact host + kit-ID path; the kit's
       // JS loader under script-src still surfaces.
       if (url.protocol === 'https:' && url.hostname === 'kit.fontawesome.com'
-          && /^\/[0-9a-f]+\.css$/.test(url.pathname)) return true;
+          && SHOULD_SUPPRESS_CSP_VIOLATION_RE_16.test(url.pathname)) return true;
       // Adobe Typekit / Adobe Fonts kit CSS, from both hosts it serves:
       // `use.typekit.net/<kit>.css` and the `p.typekit.net/p.css?...` tracking
       // sheet — together 17% of this issue's current volume. We self-host every
       // font and reference no kit id, so these are injected by a theme
       // extension or the user's own stylesheet manager.
       if (url.protocol === 'https:'
-          && ((url.hostname === 'use.typekit.net' && /^\/[^/]+\.css$/.test(url.pathname))
+          && ((url.hostname === 'use.typekit.net' && SHOULD_SUPPRESS_CSP_VIOLATION_RE_17.test(url.pathname))
             || (url.hostname === 'p.typekit.net' && url.pathname === '/p.css'))) return true;
       // unpkg's Leaflet stylesheet. WorldMonitor renders every map with
       // MapLibre/deck.gl and has never depended on Leaflet — the string appears
@@ -455,7 +484,7 @@ function shouldSuppressCspViolation(
   // Null blocked URI from in-app browsers.
   if (blockedURI === 'null') return true;
   // localhost/loopback — Smart TV browsers (Tizen, webOS) and dev tools inject local service calls.
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(blockedURI)) return true;
+  if (SHOULD_SUPPRESS_CSP_VIOLATION_RE_18.test(blockedURI)) return true;
   return false;
 }
 // Detect once whether the effective dashboard CSP allows https: in connect-src.
@@ -466,16 +495,16 @@ const _cspAllowsHttps = (() => {
   const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
   if (!metaEl) return true;
   const metaCsp = metaEl.getAttribute('content') ?? '';
-  const metaConnectSrc = metaCsp.match(/connect-src\s+([^;]*)/)?.[1] ?? '';
-  return metaConnectSrc.split(/\s+/).includes('https:');
+  const metaConnectSrc = metaCsp.match(META_CONNECT_SRC_RE)?.[1] ?? '';
+  return metaConnectSrc.split(WHITESPACE_RE).includes('https:');
 })();
 // media-src counterpart of `_cspAllowsHttps`.
 const _cspMediaSrcAllowsHttps = (() => {
   const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
   if (!metaEl) return true;
   const metaCsp = metaEl.getAttribute('content') ?? '';
-  const metaMediaSrc = metaCsp.match(/media-src\s+([^;]*)/)?.[1] ?? '';
-  return metaMediaSrc.split(/\s+/).includes('https:');
+  const metaMediaSrc = metaCsp.match(META_MEDIA_SRC_RE)?.[1] ?? '';
+  return metaMediaSrc.split(WHITESPACE_RE).includes('https:');
 })();
 // font-src counterpart of `_cspAllowsHttps`, but asking a different question.
 // connect-/media-src ask "does the policy allow the https: SCHEME?"; font-src asks
@@ -490,11 +519,11 @@ const _cspFontSrcAllowsCrossOrigin = (() => {
   // tests/deploy-config.test.mjs pins it to zero cross-origin font sources.
   if (!metaEl) return false;
   const metaCsp = metaEl.getAttribute('content') ?? '';
-  const metaFontSrc = metaCsp.match(/font-src\s+([^;]*)/)?.[1] ?? '';
+  const metaFontSrc = metaCsp.match(META_FONT_SRC_RE)?.[1] ?? '';
   return metaFontSrc
-    .split(/\s+/)
+    .split(WHITESPACE_RE)
     .filter(Boolean)
-    .some(token => !/^'[^']*'$/.test(token) && !/^(?:data|blob):$/.test(token));
+    .some(token => !_CSP_FONT_SRC_ALLOWS_CROSS_ORIGIN_RE.test(token) && !_CSP_FONT_SRC_ALLOWS_CROSS_ORIGIN_RE_2.test(token));
 })();
 // Resolve our configured Convex deployment hostname once. Convex is multi-tenant —
 // the CSP filter must scope its first-party suppression to OUR specific hostname,
@@ -637,8 +666,8 @@ if (SITE_VARIANT && SITE_VARIANT !== 'full') {
   // Swap favicons to variant-specific versions before browser finishes fetching defaults
   document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach(link => {
     link.href = link.href
-      .replace(/\/favico\/favicon/g, `/favico/${SITE_VARIANT}/favicon`)
-      .replace(/\/favico\/apple-touch-icon/g, `/favico/${SITE_VARIANT}/apple-touch-icon`);
+      .replace(MODULE_RE, `/favico/${SITE_VARIANT}/favicon`)
+      .replace(MODULE_RE_2, `/favico/${SITE_VARIANT}/apple-touch-icon`);
   });
 }
 

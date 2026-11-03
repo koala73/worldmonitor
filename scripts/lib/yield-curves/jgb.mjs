@@ -5,13 +5,17 @@
 
 import { normalizeDateLabel, parseYieldNumber, collapseCurves } from './model.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const COLUMNS_RE = /^(\d+)Y$/;
+
+
 export function parseJgbCsv(csv) {
-  const lines = String(csv ?? '').split(/\r?\n/);
+  const lines = String(csv ?? '').split(LINE_BREAK_RE);
   // Find the header row: first line whose first cell is exactly "Date".
   const headerIndex = lines.findIndex((line) => line.split(',')[0]?.trim() === 'Date');
   if (headerIndex === -1) return [];
   const headers = lines[headerIndex].split(',').map((cell) => cell.trim());
-  const columns = headers.map((header) => (/^(\d+)Y$/.test(header) ? `${Number(RegExp.$1)}y` : null));
+  const columns = headers.map((header) => (COLUMNS_RE.test(header) ? `${Number(RegExp.$1)}y` : null));
   const out = [];
   for (const line of lines.slice(headerIndex + 1)) {
     if (!line.trim()) continue;

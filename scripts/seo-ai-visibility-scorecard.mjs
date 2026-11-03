@@ -29,6 +29,11 @@ import { dirname, resolve } from 'node:path';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const IS_ISO_CALENDAR_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ASSERT_ISO_UTC_DATE_TIME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
+const NUMERIC_LABEL_RE = /^(\d+)d$/;
+
+
 const defineDomain = (entries) => Object.freeze(
   entries.map(([id, label]) => Object.freeze({ id, label })),
 );
@@ -182,7 +187,7 @@ export function isNonEmptyString(value) {
 }
 
 function isIsoCalendarDate(value) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const match = IS_ISO_CALENDAR_DATE_RE.exec(value);
   if (!match) return false;
   const [, year, month, day] = match.map(Number);
   const parsed = new Date(Date.UTC(year, month - 1, day));
@@ -200,7 +205,7 @@ function assertIsoCalendarDate(value, field) {
 
 function assertIsoUtcDateTime(value, field) {
   const match = isNonEmptyString(value)
-    ? /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/.exec(value)
+    ? ASSERT_ISO_UTC_DATE_TIME_RE.exec(value)
     : null;
   invariant(
     match
@@ -321,7 +326,7 @@ function validateWindowedSource(
         `${windowLabel}.endDate must not be after the baseline observation date`,
       );
     }
-    const numericLabel = /^(\d+)d$/.exec(window.label);
+    const numericLabel = NUMERIC_LABEL_RE.exec(window.label);
     if (numericLabel) {
       const startDate = new Date(start);
       const endDate = new Date(end);

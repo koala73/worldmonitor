@@ -15,11 +15,14 @@
 
 import { briefGroundingGap, briefGroundingPublisherCount, coverage } from './wm.mjs';
 
+const HOST_OF_RE = /^www\./;
+
+
 const SUFFIX = /\s+[|–—-]\s+[^|–—-]{2,60}$/;
 
 function hostOf(url) {
   try {
-    return new URL(url).hostname.replace(/^www\./, '');
+    return new URL(url).hostname.replace(HOST_OF_RE, '');
   } catch {
     return null;
   }

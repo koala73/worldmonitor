@@ -48,6 +48,8 @@
  * tests/no-json-import-attributes-on-edge-path.test.mjs now enforces it.
  * A literal is the one form that works everywhere.
  */
+const LABELS_RE = /\.+$/;
+
 const PUBLISHER_FAMILY_DATA = {
   'miit': { publisher: "MIIT (China)", labels: [] },
   'a16z': { publisher: "Andreessen Horowitz", labels: ["a16z Blog", "a16z Insights", "a16z Podcast"] },
@@ -316,7 +318,7 @@ for (const [familyId, domains] of Object.entries(PUBLISHER_FAMILY_DOMAINS)) {
  */
 export function publisherFamilyForDomain(hostname) {
   if (typeof hostname !== 'string') return '';
-  const labels = hostname.trim().toLowerCase().replace(/\.+$/, '').split('.').filter(Boolean);
+  const labels = hostname.trim().toLowerCase().replace(LABELS_RE, '').split('.').filter(Boolean);
   for (let start = 0; start <= labels.length - 2; start += 1) {
     const family = familyByDomain.get(labels.slice(start).join('.'));
     if (family) return family;

@@ -25,6 +25,11 @@ import { fileURLToPath } from 'node:url';
 import { buildHistory, CHOKEPOINTS } from './seed-portwatch.mjs';
 import { CHROME_UA } from './_seed-utils.mjs';
 
+const PARSE_ARGS_RE = /^\d{4}-\d{2}$/;
+const PARSE_ARGS_RE_2 = /^\d{4}-\d{2}-\d{2}$/;
+const BUILD_WHERE_RE = /'/g;
+
+
 const ARCGIS_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query';
 const OUT_FIELDS = [
@@ -48,17 +53,17 @@ function parseArgs(argv) {
     else if (key === '--chokepoints') { args.chokepoints = value.split(',').map(s => s.trim()).filter(Boolean); i++; }
     else throw new Error(`Unknown argument: ${key}`);
   }
-  if (!/^\d{4}-\d{2}$/.test(args.edition ?? '')) {
+  if (!PARSE_ARGS_RE.test(args.edition ?? '')) {
     throw new Error('--edition YYYY-MM is required (names the snapshot file and edition id)');
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(args.since)) {
+  if (!PARSE_ARGS_RE_2.test(args.since)) {
     throw new Error(`--since must be YYYY-MM-DD, got: ${args.since}`);
   }
   return args;
 }
 
 function buildWhere(portname, since) {
-  return `portname='${portname.replace(/'/g, "''")}' AND date >= timestamp '${since} 00:00:00'`;
+  return `portname='${portname.replace(BUILD_WHERE_RE, "''")}' AND date >= timestamp '${since} 00:00:00'`;
 }
 
 export async function fetchAllPages(portname, since) {

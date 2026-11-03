@@ -11,6 +11,17 @@ import { sha256Hex } from './hash';
 import { cachedFetchJson, getCachedJson } from './redis';
 import { unwrapEnvelope } from './seed-envelope';
 
+const NON_DIGIT_RE = /\D/g;
+const SANITIZE_TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+const CLEAN_RE = /[^0-9-]/g;
+const FILING_INDEX_URL_RE = /-/g;
+const ACCESSION_DIGITS_RE = /[^0-9]/g;
+const SAFE_NAME_RE = /[^A-Za-z0-9._-]/g;
+const PARSE_ITEM_CODES_RE = /^\d+\.\d{2}$/;
+const FETCH_SEC_SUBMISSIONS_RE = /^\d{10}$/;
+const SEARCH_RE = /"/g;
+
+
 // SEC requires a declared User-Agent identifying the requester and rejects
 // browser-spoofing UAs on data.sec.gov/efts.sec.gov. Matches the precedent in
 // scripts/seed-regulatory-actions.mjs.
@@ -161,20 +172,20 @@ export interface EdgarSearchHit {
 }
 
 export function padCik(cik: number | string): string {
-  return String(cik).replace(/\D/g, '').padStart(10, '0');
+  return String(cik).replace(NON_DIGIT_RE, '').padStart(10, '0');
 }
 
 export function sanitizeTicker(raw: string): string {
   const t = (raw ?? '').trim().toUpperCase();
-  return /^[A-Z][A-Z0-9.\-]{0,9}$/.test(t) ? t : '';
+  return SANITIZE_TICKER_RE.test(t) ? t : '';
 }
 
 // Filing index page on sec.gov, e.g.
 // https://www.sec.gov/Archives/edgar/data/320193/000032019326000012/0000320193-26-000012-index.htm
 export function filingIndexUrl(cik: number | string, accession: string): string {
-  const cikNum = String(Number(String(cik).replace(/\D/g, '') || '0'));
-  const clean = accession.replace(/[^0-9-]/g, '');
-  return `https://www.sec.gov/Archives/edgar/data/${cikNum}/${clean.replace(/-/g, '')}/${clean}-index.htm`;
+  const cikNum = String(Number(String(cik).replace(NON_DIGIT_RE, '') || '0'));
+  const clean = accession.replace(CLEAN_RE, '');
+  return `https://www.sec.gov/Archives/edgar/data/${cikNum}/${clean.replace(FILING_INDEX_URL_RE, '')}/${clean}-index.htm`;
 }
 
 // Direct document URL inside a filing, used for full-text search hits whose _id
@@ -184,11 +195,11 @@ export function filingIndexUrl(cik: number | string, accession: string): string 
 // directory and emit a sec.gov URL pointing at unrelated content. Returns ''
 // when nothing safe survives so callers fall back to filingIndexUrl.
 export function filingDocumentUrl(cik: number | string, accession: string, filename: string): string {
-  const cikNum = String(Number(String(cik).replace(/\D/g, '') || '0'));
-  const accessionDigits = accession.replace(/[^0-9]/g, '');
+  const cikNum = String(Number(String(cik).replace(NON_DIGIT_RE, '') || '0'));
+  const accessionDigits = accession.replace(ACCESSION_DIGITS_RE, '');
   const safeName = filename
     .split('/')
-    .map(segment => segment.replace(/[^A-Za-z0-9._-]/g, ''))
+    .map(segment => segment.replace(SAFE_NAME_RE, ''))
     .filter(segment => segment && segment !== '.' && segment !== '..')
     .join('/');
   if (!accessionDigits || !safeName) return '';
@@ -201,7 +212,7 @@ export function parseItemCodes(items: string | undefined): string[] {
   return items
     .split(',')
     .map(s => s.trim())
-    .filter(s => /^\d+\.\d{2}$/.test(s));
+    .filter(s => PARSE_ITEM_CODES_RE.test(s));
 }
 
 // --- ticker/name → CIK resolution against the seeded SEC registry ------------
@@ -403,7 +414,7 @@ interface RawSubmissions {
 }
 
 export async function fetchSecSubmissions(cik10: string): Promise<SecCompanyProfile | null> {
-  if (!/^\d{10}$/.test(cik10)) return null;
+  if (!FETCH_SEC_SUBMISSIONS_RE.test(cik10)) return null;
   try {
     return await cachedFetchJson<SecCompanyProfile>(
       // v3 adds fetchedAtMs; older payloads cannot truthfully report freshness.
@@ -527,7 +538,7 @@ export async function searchEdgarFullText(params: {
   const endDate = params.endDate && isEdgarIsoDate(params.endDate) ? params.endDate : '';
   const size = Math.max(1, Math.min(params.size ?? EDGAR_SEARCH_SIZE, EDGAR_SEARCH_SIZE));
 
-  const search = new URLSearchParams({ q: `"${query.replace(/"/g, '')}"` });
+  const search = new URLSearchParams({ q: `"${query.replace(SEARCH_RE, '')}"` });
   search.set('size', String(size));
   if (forms) search.set('forms', forms);
   if (startDate) search.set('startdt', startDate);
@@ -559,7 +570,7 @@ export async function searchEdgarFullText(params: {
               cik: cikRaw ? padCik(cikRaw) : '',
               form: src.form ?? '',
               fileDate: src.file_date ?? '',
-              items: Array.isArray(src.items) ? src.items.filter(i => /^\d+\.\d{2}$/.test(i)) : [],
+              items: Array.isArray(src.items) ? src.items.filter(i => PARSE_ITEM_CODES_RE.test(i)) : [],
               url: cikRaw && accession && filename
                 ? filingDocumentUrl(cikRaw, accession, filename)
                 : (cikRaw && accession ? filingIndexUrl(cikRaw, accession) : ''),

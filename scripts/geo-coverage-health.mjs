@@ -25,6 +25,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 
+const SETUP_RE = /^@\/utils$/;
+const SETUP_RE_2 = /.*/;
+
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = join(SCRIPT_DIR, '..');
 
@@ -57,11 +61,11 @@ export async function bundleFeedsModule(repoRoot) {
   const stubUtilsPlugin = {
     name: 'stub-utils-barrel',
     setup(buildApi) {
-      buildApi.onResolve({ filter: /^@\/utils$/ }, () => ({
+      buildApi.onResolve({ filter: SETUP_RE }, () => ({
         path: 'stub-utils',
         namespace: 'stub',
       }));
-      buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
+      buildApi.onLoad({ filter: SETUP_RE_2, namespace: 'stub' }, () => ({
         contents: 'export function rssProxyUrl(url) { return url; }\n',
         loader: 'js',
       }));

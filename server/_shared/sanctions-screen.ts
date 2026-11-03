@@ -1,3 +1,11 @@
+
+
+const NAME_RE = /\p{M}/gu;
+const NAME_RE_2 = /\b(?:[a-z]\.){2,}/g;
+const NAME_RE_3 = /\./g;
+const NAME_RE_4 = /[^\p{L}\p{N}\s]/gu;
+const WHITESPACE_RE = /\s+/g;
+const IDENTIFIER_RE = /^(?:imo[\s:-]*)?(\d{7})$/i;
 export interface SanctionsIndexRecord {
   id: string;
   name: string;
@@ -18,9 +26,9 @@ export interface SanctionsScreenMatch extends SanctionsIndexRecord {
 const LEGAL_SUFFIX = /(?:\s|^)(?:llc|ltd|limited|inc|incorporated|corp|corporation|co|company|plc|gmbh|ag|sa|sarl|ooo|ao)$/u;
 
 export function normalizeSanctionsName(value: string): string {
-  let name = value.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
-    .replace(/\b(?:[a-z]\.){2,}/g, word => word.replace(/\./g, ''))
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  let name = value.normalize('NFKD').replace(NAME_RE, '').toLowerCase()
+    .replace(NAME_RE_2, word => word.replace(NAME_RE_3, ''))
+    .replace(NAME_RE_4, ' ').replace(WHITESPACE_RE, ' ').trim();
   while (LEGAL_SUFFIX.test(name)) name = name.replace(LEGAL_SUFFIX, '').trim();
   return name;
 }
@@ -75,7 +83,7 @@ function tokenSetScore(a: string, b: string): number {
 }
 
 export function screenSanctions(raw: unknown, query: string, minScore = 70): SanctionsScreenMatch[] {
-  const identifier = /^(?:imo[\s:-]*)?(\d{7})$/i.exec(query.trim());
+  const identifier = IDENTIFIER_RE.exec(query.trim());
   const needle = normalizeSanctionsName(query);
   if (!needle) return [];
   const matches: SanctionsScreenMatch[] = [];

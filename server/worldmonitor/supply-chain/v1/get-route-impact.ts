@@ -28,6 +28,10 @@ import { BYPASS_CORRIDORS_BY_CHOKEPOINT } from '../../../_shared/bypass-corridor
 import { getCachedResilienceScores } from '../../resilience/v1/_shared';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 
+const NON_DIGIT_RE = /\D/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const CACHE_TTL_SECONDS = 86400; // 24h
 
 interface PortClusterEntry { nearestRouteIds: string[]; coastSide: string; }
@@ -139,9 +143,9 @@ export async function readResilienceScore(iso2: string): Promise<number> {
 async function computeImpact(req: GetRouteImpactRequest): Promise<GetRouteImpactResponse | null> {
   const fromIso2 = req.fromIso2.trim().toUpperCase();
   const toIso2 = req.toIso2.trim().toUpperCase();
-  const hs2 = req.hs2.trim().replace(/\D/g, '') || '27';
+  const hs2 = req.hs2.trim().replace(NON_DIGIT_RE, '') || '27';
 
-  if (!/^[A-Z]{2}$/.test(fromIso2) || !/^[A-Z]{2}$/.test(toIso2)) {
+  if (!COUNTRY_CODE_RE.test(fromIso2) || !COUNTRY_CODE_RE.test(toIso2)) {
     return emptyResponse(req, 'missing');
   }
 
@@ -229,9 +233,9 @@ export async function getRouteImpact(
 
   const fromIso2 = req.fromIso2?.trim().toUpperCase() ?? '';
   const toIso2 = req.toIso2?.trim().toUpperCase() ?? '';
-  const hs2 = req.hs2?.trim().replace(/\D/g, '') || '27';
+  const hs2 = req.hs2?.trim().replace(NON_DIGIT_RE, '') || '27';
 
-  if (!/^[A-Z]{2}$/.test(fromIso2) || !/^[A-Z]{2}$/.test(toIso2)) {
+  if (!COUNTRY_CODE_RE.test(fromIso2) || !COUNTRY_CODE_RE.test(toIso2)) {
     return emptyResponse(req, 'missing');
   }
 

@@ -25,6 +25,9 @@
  * digits with no source on the page at all (#6270) — deterministically
  * impossible, which is the property the softened prompt's safety rests on.
  */
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const FRAC_SHORT_RE = /0$/;
+
 export type PriceEvidence = 'verified' | 'unverified' | 'no-content';
 
 const BRL_PRICE_TOKEN = /R\$\s*((?:\d{1,3}(?:\.\d{3})*|\d+))(?:,(\d{2}))?(?![\d,])/gi;
@@ -62,7 +65,7 @@ export function normalizeExaBrlMinorUnitPrice(price: number, content: string | n
 const SPLIT_ADJACENCY_WINDOW = 40;
 
 function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return s.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 /**
@@ -116,7 +119,7 @@ export function priceEvidenceOnPage(price: number, content: string | null | unde
 
   const fixed = price.toFixed(2); // "7.90"
   const [whole, fracPadded] = fixed.split('.');
-  const fracShort = fracPadded.replace(/0$/, ''); // "9" for 7.90, "79" stays
+  const fracShort = fracPadded.replace(FRAC_SHORT_RE, ''); // "9" for 7.90, "79" stays
   const isInteger = fracPadded === '00';
 
   const wholeForms = wholeFormsWithSeps(whole);

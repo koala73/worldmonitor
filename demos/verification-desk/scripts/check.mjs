@@ -10,6 +10,9 @@ import { WorldMonitorMcp } from '../lib/mcp-client.mjs';
 import path from 'node:path';
 import * as liveavatar from '../lib/liveavatar.mjs';
 
+const MODULE_RE = /HTTP 40[13]/;
+
+
 loadEnv();
 let failed = false;
 const pass = (m) => console.log(`PASS  ${m}`);
@@ -79,7 +82,7 @@ if (liveavatar.apiKey()) {
       const rows = await liveavatar.list(kind);
       pass(`LiveAvatar ${kind}: ${rows.length} available${rows.length ? `, e.g. ${rows.slice(0, 5).map((r) => `${r.name || '?'}${r.type ? ` (${r.type})` : ''} = ${r.id}`).join('; ')}` : ''}`);
     } catch (error) {
-      fail(`LiveAvatar ${kind}: ${error.message}${/HTTP 40[13]/.test(error.message) ? '. Is this a LiveAvatar key (app.liveavatar.com/developers)?' : ''}`);
+      fail(`LiveAvatar ${kind}: ${error.message}${MODULE_RE.test(error.message) ? '. Is this a LiveAvatar key (app.liveavatar.com/developers)?' : ''}`);
     }
   }
   if (!liveavatar.avatarId()) {

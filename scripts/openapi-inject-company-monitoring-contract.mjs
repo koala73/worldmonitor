@@ -13,6 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { serialize } from './lib/openapi-codegen.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
+const INDENT_OF_RE = /^ */;
+
+
 const scriptPath = fileURLToPath(import.meta.url);
 const root = resolve(dirname(scriptPath), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -139,7 +142,7 @@ function injectObject(spec, prefix) {
 }
 
 function indentOf(line) {
-  return line.match(/^ */)?.[0].length ?? 0;
+  return line.match(INDENT_OF_RE)?.[0].length ?? 0;
 }
 
 function blockEnd(lines, start, indent) {

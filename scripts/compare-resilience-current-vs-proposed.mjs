@@ -30,6 +30,11 @@ import {
 } from '../tests/helpers/resilience-matched-pairs.mts';
 import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
 
+const PRE_MATCH_RE = /^resilience-ranking-live-pre-repair-(\d{4}-\d{2}-\d{2})\.json$/;
+const POST_MATCH_RE = /^resilience-ranking-live-post-(.+?)-(\d{4}-\d{2}-\d{2})\.json$/;
+const PR_MATCH_RE = /^pr(\d+)$/i;
+
+
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..');
 const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
@@ -128,16 +133,16 @@ function rankCountries(scores) {
 // posts, higher PR number wins on numeric comparison; ties broken by
 // date. Returns null if no baseline is present.
 function parseBaselineSnapshotMeta(filename) {
-  const preMatch = /^resilience-ranking-live-pre-repair-(\d{4}-\d{2}-\d{2})\.json$/.exec(filename);
+  const preMatch = PRE_MATCH_RE.exec(filename);
   if (preMatch) {
     // kindRank 0 ensures any `post-*` snapshot supersedes every
     // `pre-repair-*` freeze regardless of date.
     return { filename, kind: 'pre-repair', kindRank: 0, prNumber: -1, date: preMatch[1] };
   }
-  const postMatch = /^resilience-ranking-live-post-(.+?)-(\d{4}-\d{2}-\d{2})\.json$/.exec(filename);
+  const postMatch = POST_MATCH_RE.exec(filename);
   if (postMatch) {
     const [, tag, date] = postMatch;
-    const prMatch = /^pr(\d+)$/i.exec(tag);
+    const prMatch = PR_MATCH_RE.exec(tag);
     // Unrecognised `post-<tag>` → prNumber 0 so it ranks between
     // pre-repair and any numbered post-PR snapshot. Better than
     // silently winning or silently losing; the tag is still printed

@@ -41,6 +41,15 @@ import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, release
 // CII scorer's own module, so this seeder and the CII cannot disagree on a coordinate.
 import { ciiCountryAt as geoToCountry } from './shared/cii-country-borders.mjs';
 
+const NORMALIZE_FOR_COUNTRY_MATCH_RE = /[\u0300-\u036f]/g;
+const NORMALIZE_FOR_COUNTRY_MATCH_RE_2 = /&/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const WHITESPACE_RE = /\s+/g;
+const ANALYZE_MMSI_RE = /^\d+$/;
+const GET_RELAY_BASE_URL_RE = /^ws(s?):\/\//;
+const TRAILING_SLASH_RE = /\/$/;
+
+
 loadEnvFile(import.meta.url);
 
 const LIVE_KEY = 'intelligence:military-cii:v1';
@@ -110,11 +119,11 @@ function normalizeForCountryMatch(value) {
   return String(value || '')
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(NORMALIZE_FOR_COUNTRY_MATCH_RE, '')
+    .replace(NORMALIZE_FOR_COUNTRY_MATCH_RE_2, ' and ')
+    .replace(NON_ALPHANUMERIC_RE, ' ')
     .trim()
-    .replace(/\s+/g, ' ');
+    .replace(WHITESPACE_RE, ' ');
 }
 
 const COUNTRY_KEYWORDS_NORMALIZED = Object.fromEntries(
@@ -230,7 +239,7 @@ function analyzeMmsi(mmsi) {
   // Shape-consistent with the other three returns below — `country` is always
   // present (possibly undefined) so call sites can rely on `result.country`
   // without a null-check on the result object itself.
-  if (!mmsi || mmsi.length < 9 || !/^\d+$/.test(mmsi)) return { isPotentialMilitary: false, country: undefined };
+  if (!mmsi || mmsi.length < 9 || !ANALYZE_MMSI_RE.test(mmsi)) return { isPotentialMilitary: false, country: undefined };
   const mid = mmsi.substring(0, 3);
   const country = MILITARY_MIDS[mid];
   for (const pattern of MILITARY_VESSEL_PATTERNS) {
@@ -338,7 +347,7 @@ async function preserveLastGoodMilitaryCii(url, token, reason, missingSuffix = '
 function getRelayBaseUrl() {
   const relayUrl = process.env.WS_RELAY_URL;
   if (!relayUrl) return null;
-  return relayUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/$/, '');
+  return relayUrl.replace(GET_RELAY_BASE_URL_RE, 'http$1://').replace(TRAILING_SLASH_RE, '');
 }
 
 function getRelayHeaders() {

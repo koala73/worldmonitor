@@ -1,3 +1,7 @@
+
+
+const CREATE_HOST_COUNTRY_DOWNLOAD_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}$/;
+const CREATE_HOST_COUNTRY_DOWNLOAD_RE_2 = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 export interface CountryTextArtifact {
   filename: string;
   mimeType: 'text/markdown;charset=utf-8' | 'text/html;charset=utf-8';
@@ -27,9 +31,9 @@ export function createHostCountryDownload(
   return async (artifact, signal) => {
     if (signal.aborted) return { state: 'unconfirmed' };
     if (!hostSupportsCountryDownload(initialization())) return { state: 'unsupported' };
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,159}$/.test(artifact.filename)
+    if (!CREATE_HOST_COUNTRY_DOWNLOAD_RE.test(artifact.filename)
       || !['text/markdown;charset=utf-8', 'text/html;charset=utf-8'].includes(artifact.mimeType)
-      || /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(artifact.content)
+      || CREATE_HOST_COUNTRY_DOWNLOAD_RE_2.test(artifact.content)
       || new TextEncoder().encode(artifact.content).length > COUNTRY_EXPORT_TEXT_BYTES) return { state: 'error' };
     const params = { contents: [{ type: 'resource', resource: {
       uri: `file:///${artifact.filename}`, mimeType: artifact.mimeType, text: artifact.content,

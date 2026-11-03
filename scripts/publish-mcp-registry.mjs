@@ -6,6 +6,13 @@ import { dirname, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+const REGISTRY_VERSION_URL_RE = /^https?:\/\//;
+const TRAILING_SLASH_RE = /\/$/;
+const IS_DUPLICATE_VERSION_PUBLISH_ERROR_RE = /invalid[-\s]version/i;
+const IS_DUPLICATE_VERSION_PUBLISH_ERROR_RE_2 = /cannot publish duplicate version/i;
+const LOOKUP_FAILED_RE = /fetch/i;
+
+
 export const MCP_REGISTRY_BASE_URL = 'https://registry.modelcontextprotocol.io';
 export const MCP_REGISTRY_USER_AGENT =
   'WorldMonitor-MCP-Registry-Publish/1.0 (+https://worldmonitor.app)';
@@ -77,10 +84,10 @@ export function registryVersionUrl(
 ) {
   const serverName = requireNonEmptyString(name, 'name');
   const serverVersion = requireNonEmptyString(version, 'version');
-  if (typeof baseUrl !== 'string' || !/^https?:\/\//.test(baseUrl)) {
+  if (typeof baseUrl !== 'string' || !REGISTRY_VERSION_URL_RE.test(baseUrl)) {
     throw new Error('baseUrl must be an http(s) URL');
   }
-  return `${baseUrl.replace(/\/$/, '')}/v0.1/servers/${encodeURIComponent(serverName)}/versions/${encodeURIComponent(serverVersion)}`;
+  return `${baseUrl.replace(TRAILING_SLASH_RE, '')}/v0.1/servers/${encodeURIComponent(serverName)}/versions/${encodeURIComponent(serverVersion)}`;
 }
 
 export function describeManifestDiff(desired, published) {
@@ -102,7 +109,7 @@ export function manifestsAreEquivalent(desired, published) {
 
 export function isDuplicateVersionPublishError(text) {
   if (typeof text !== 'string') return false;
-  return /invalid[-\s]version/i.test(text) || /cannot publish duplicate version/i.test(text);
+  return IS_DUPLICATE_VERSION_PUBLISH_ERROR_RE.test(text) || IS_DUPLICATE_VERSION_PUBLISH_ERROR_RE_2.test(text);
 }
 
 function isRetryableLookupError(error) {
@@ -255,7 +262,7 @@ export async function publishMcpRegistryIdempotent({
     const lookupFailed = error?.code === 'registry_lookup_failed'
       || error?.name === 'TimeoutError'
       || error?.name === 'AbortError'
-      || (error instanceof TypeError && /fetch/i.test(error.message ?? ''));
+      || (error instanceof TypeError && LOOKUP_FAILED_RE.test(error.message ?? ''));
     if (!lookupFailed) throw error;
     lookup = { found: false, lookupFailed: true, error };
   }

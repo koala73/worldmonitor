@@ -2,6 +2,17 @@ import { CHROME_UA } from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 import { extractDocumentNumber } from './normalize.mjs';
 
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+const PARSE_TAG_AT_RE = /[A-Za-z]/;
+const PARSE_TAG_AT_RE_2 = /[A-Za-z0-9:-]/;
+const PARSE_TAG_AT_RE_3 = /\/\s*$/;
+const WHITESPACE_RE = /\s+/g;
+const VALID_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_NEAR_ANCHOR_RE = /\b(20\d{2}-\d{2}-\d{2})\b/;
+const WHITESPACE_RE_2 = /\s+/;
+const EXTRACT_EFFECTIVE_DATE_RE = /(?:自|于)\s*(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:起)?(?:施行|实施|生效)/;
+
+
 const DEFAULT_FETCH = (...args) => globalThis.fetch(...args);
 const LIST_BYTES = 750_000;
 const DOCUMENT_BYTES = 2_000_000;
@@ -119,7 +130,7 @@ const VOID_TAGS = new Set([
 ]);
 
 function attributeValue(attributes, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = name.replace(ESCAPED_RE, '\\$&');
   const match = String(attributes ?? '').match(new RegExp(
     `(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`,
     'i',
@@ -149,9 +160,9 @@ function parseTagAt(html, start) {
     closing = true;
     cursor += 1;
   }
-  if (!/[A-Za-z]/.test(html[cursor] ?? '')) return null;
+  if (!PARSE_TAG_AT_RE.test(html[cursor] ?? '')) return null;
   let nameEnd = cursor + 1;
-  while (/[A-Za-z0-9:-]/.test(html[nameEnd] ?? '')) nameEnd += 1;
+  while (PARSE_TAG_AT_RE_2.test(html[nameEnd] ?? '')) nameEnd += 1;
   const name = html.slice(cursor, nameEnd).toLowerCase();
   const attributesStart = nameEnd;
   let quote = null;
@@ -175,7 +186,7 @@ function parseTagAt(html, start) {
     closing,
     end: complete ? end + 1 : html.length,
     name,
-    selfClosing: /\/\s*$/.test(attributes),
+    selfClosing: PARSE_TAG_AT_RE_3.test(attributes),
   };
 }
 
@@ -211,7 +222,7 @@ function walkHtml(input, { onTag, onText } = {}) {
 }
 
 function normalizeHtmlText(parts) {
-  return decodeHtmlEntities(parts.join(' ')).replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(parts.join(' ')).replace(WHITESPACE_RE, ' ').trim();
 }
 
 function stripHtml(input) {
@@ -224,7 +235,7 @@ function stripHtml(input) {
 
 function validDay(value) {
   const token = String(value ?? '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(token)) return null;
+  if (!VALID_DAY_RE.test(token)) return null;
   const parsed = Date.parse(`${token}T00:00:00.000Z`);
   return Number.isFinite(parsed) ? token : null;
 }
@@ -261,7 +272,7 @@ function canonicalizeSourceUrl(value, sourceConfig) {
 
 function dateNearAnchor(html, anchorEnd) {
   const nearby = html.slice(anchorEnd, anchorEnd + 500);
-  return validDay(nearby.match(/\b(20\d{2}-\d{2}-\d{2})\b/)?.[1]);
+  return validDay(nearby.match(DATE_NEAR_ANCHOR_RE)?.[1]);
 }
 
 function parseHtmlListing(agency, html, sourceConfig) {
@@ -449,7 +460,7 @@ function parsePolicyHtmlFields(html, options = {}) {
         };
       }
       if (!['div', 'td', 'article'].includes(tag.name)) return;
-      const classes = new Set((attributeValue(tag.attributes, 'class') ?? '').split(/\s+/));
+      const classes = new Set((attributeValue(tag.attributes, 'class') ?? '').split(WHITESPACE_RE_2));
       const priority = classPriority.findIndex((className) => classes.has(className));
       if (
         priority === -1
@@ -496,7 +507,7 @@ function runPolicyHtmlClosingTagRegressionProbe(html) {
 
 export function extractEffectiveDate(text) {
   const match = String(text).match(
-    /(?:自|于)\s*(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:起)?(?:施行|实施|生效)/,
+    EXTRACT_EFFECTIVE_DATE_RE,
   );
   if (!match) return null;
   const year = match[1];

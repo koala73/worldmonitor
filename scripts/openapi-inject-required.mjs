@@ -16,6 +16,18 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const TO_JSON_NAME_RE = /_([a-z0-9])/g;
+const TO_SNAKE_NAME_RE = /[A-Z]/g;
+const QUERY_BLOCK_RE = /\(sebuf\.http\.query\)\s*=\s*\{([\s\S]*?)\}/;
+const REQUIRED_BY_VALIDATE_RE = /\(buf\.validate\.field\)\.required\s*=\s*true/;
+const REQUIRED_BY_QUERY_RE = /\brequired\s*:\s*true\b/;
+const QUERY_NAME_RE = /\bname\s*:\s*"([^"]+)"/;
+const LEADING_SPACES_RE = /^ */;
+const INJECT_YAML_RE = /^(?:minItems|maxItems): \d+$/;
+const SPEC_FILES_RE = /Service\.openapi\.json$/;
+const YAML_PATH_RE = /\.json$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const bundlePath = resolve(apiDir, 'worldmonitor.openapi.yaml');
@@ -262,11 +274,11 @@ function findMatchingBrace(src, openIndex) {
 }
 
 function toJsonName(protoName) {
-  return protoName.replace(/_([a-z0-9])/g, (_m, ch) => ch.toUpperCase());
+  return protoName.replace(TO_JSON_NAME_RE, (_m, ch) => ch.toUpperCase());
 }
 
 function toSnakeName(jsonName) {
-  return jsonName.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`);
+  return jsonName.replace(TO_SNAKE_NAME_RE, (ch) => `_${ch.toLowerCase()}`);
 }
 
 function readProtoRequiredFields() {
@@ -286,13 +298,13 @@ function readProtoRequiredFields() {
       while ((fieldMatch = fieldRe.exec(body))) {
         const protoName = fieldMatch[1];
         const options = fieldMatch[2] ?? '';
-        const queryBlock = options.match(/\(sebuf\.http\.query\)\s*=\s*\{([\s\S]*?)\}/);
-        const requiredByValidate = /\(buf\.validate\.field\)\.required\s*=\s*true/.test(options);
-        const requiredByQuery = queryBlock ? /\brequired\s*:\s*true\b/.test(queryBlock[1]) : false;
+        const queryBlock = options.match(QUERY_BLOCK_RE);
+        const requiredByValidate = REQUIRED_BY_VALIDATE_RE.test(options);
+        const requiredByQuery = queryBlock ? REQUIRED_BY_QUERY_RE.test(queryBlock[1]) : false;
         if (!requiredByValidate && !requiredByQuery) continue;
 
         const jsonName = toJsonName(protoName);
-        const queryName = queryBlock?.[1].match(/\bname\s*:\s*"([^"]+)"/)?.[1] ?? protoName;
+        const queryName = queryBlock?.[1].match(QUERY_NAME_RE)?.[1] ?? protoName;
         const existingOrigin = requiredMessageOrigins.get(messageName);
         if (existingOrigin && existingOrigin !== file) {
           throw new Error(`required-field message name collision for ${messageName}: ${existingOrigin} and ${file}`);
@@ -415,7 +427,7 @@ function injectJson(spec) {
 }
 
 function leadingSpaces(line) {
-  return line.match(/^ */)[0].length;
+  return line.match(LEADING_SPACES_RE)[0].length;
 }
 
 function setYamlOperationParamRequired(lines, operationId, paramName) {
@@ -866,7 +878,7 @@ function injectYaml(text, contracts) {
         .map(line => line.trim().split(':')[0]));
       const bounds = [];
       for (let i = end - 1; i > start; i--) {
-        if (leadingSpaces(lines[i]) !== indent + 8 || !/^(?:minItems|maxItems): \d+$/.test(lines[i].trim())) continue;
+        if (leadingSpaces(lines[i]) !== indent + 8 || !INJECT_YAML_RE.test(lines[i].trim())) continue;
         if (!existing.has(lines[i].trim().split(':')[0])) bounds.unshift(`${' '.repeat(indent + 4)}${lines[i].trim()}`);
         lines.splice(i, 1);
         changed = true;
@@ -1000,7 +1012,7 @@ function failYamlContracts(failures) {
   throw new Error(`OpenAPI YAML requiredness injection failed:\n${failures.join('\n')}`);
 }
 
-const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+const specFiles = readdirSync(apiDir).filter((f) => SPEC_FILES_RE.test(f)).sort();
 let wouldChange = 0;
 const touched = [];
 const contractFailures = [];
@@ -1021,16 +1033,16 @@ for (const file of specFiles) {
     bundleContracts.schemas.set(schemaName, required);
   }
 
-  const yamlPath = jsonPath.replace(/\.json$/, '.yaml');
+  const yamlPath = jsonPath.replace(YAML_PATH_RE, '.yaml');
   try {
     const yamlRaw = readFileSync(yamlPath, 'utf8');
     const { text, changed } = injectYaml(yamlRaw, contracts);
     if (changed) {
       wouldChange++;
-      touched.push(file.replace(/\.json$/, '.yaml'));
+      touched.push(file.replace(YAML_PATH_RE, '.yaml'));
       if (!CHECK) writeFileSync(yamlPath, text);
     }
-    const failures = yamlContractFailures(text, contracts, file.replace(/\.json$/, '.yaml'));
+    const failures = yamlContractFailures(text, contracts, file.replace(YAML_PATH_RE, '.yaml'));
     contractFailures.push(...failures);
     if (!CHECK) failYamlContracts(failures);
   } catch (err) {

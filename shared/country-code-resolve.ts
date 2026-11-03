@@ -1,6 +1,13 @@
 import COUNTRY_NAMES from './country-names.json';
 import ISO3_TO_ISO2 from './iso3-to-iso2.json';
 
+const NORMALIZE_COUNTRY_TOKEN_RE = /\p{Diacritic}/gu;
+const NORMALIZE_COUNTRY_TOKEN_RE_2 = /&/g;
+const NORMALIZE_COUNTRY_TOKEN_RE_3 = /['’‘`.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const PARENTHETICAL_RE = /^([^(]*)\s*\(([^)]*)\)$/;
+
+
 /**
  * Resolve an opaque, caller-supplied country designator to ISO 3166-1 alpha-2.
  *
@@ -97,11 +104,11 @@ function asIso2(value: unknown): string | null {
 export function normalizeCountryToken(raw: unknown): string {
   return String(raw ?? '')
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE, '')
     .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/['’‘`.(),/-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE_2, ' and ')
+    .replace(NORMALIZE_COUNTRY_TOKEN_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -175,7 +182,7 @@ export function resolveCountryCode(raw: unknown): string | null {
   // as CN. In curated feed data the parenthetical is a historical alias
   // (`Russia (Soviet Union)`); in caller text it is usually a DISAMBIGUATOR,
   // and the two readings point at different countries.
-  const parenthetical = trimmed.match(/^([^(]*)\s*\(([^)]*)\)$/);
+  const parenthetical = trimmed.match(PARENTHETICAL_RE);
   if (!parenthetical) return null;
   const base = (parenthetical[1] ?? '').trim();
   const inner = (parenthetical[2] ?? '').trim();

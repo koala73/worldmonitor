@@ -1,4 +1,8 @@
 // Mongolia NSO weekly prices from the PXWeb API on data.1212.mn (www.1212.mn does not answer our hosts).
+const WHITESPACE_RE = /\s+/g;
+const REGIONS_RE = / region$/i;
+const PARSE_NSO_TABLE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 const API = 'https://data.1212.mn/api/v1/en/NSO/Economy,%20environment/Consumer%20Price%20Index/';
 export const CAPITAL_TABLE = 'DT_NSO_0600_001V4.px';
 export const AIMAG_TABLE = 'DT_NSO_0300_010V5.px';
@@ -39,7 +43,7 @@ const ITEMS = {
 // Fuel and livestock hay share these tables but are not food prices.
 const NOT_FOOD = /petrol|diesel|gasoline|аи-\d|автобензин|hay bale/i;
 
-const label = text => String(text ?? '').replace(/\s+/g, ' ').trim();
+const label = text => String(text ?? '').replace(WHITESPACE_RE, ' ').trim();
 
 function categories(table, code, size) {
   const category = table.dimension?.[code]?.category;
@@ -69,9 +73,9 @@ export function parseNsoTable(table, { market } = {}) {
   const strides = ids.map((_, i) => table.size.slice(i + 1).reduce((product, size) => product * size, 1));
   const catalogue = code => categories(table, code, table.size[ids.indexOf(code)]);
   const products = catalogue(PRODUCT);
-  const regions = market ? [{ position: 0, text: market }] : catalogue(REGION).filter(region => !/ region$/i.test(region.text));
+  const regions = market ? [{ position: 0, text: market }] : catalogue(REGION).filter(region => !REGIONS_RE.test(region.text));
   const times = catalogue(TIME);
-  if (times.some(time => !/^\d{4}-\d{2}-\d{2}$/.test(time.text) || Number.isNaN(Date.parse(`${time.text}T00:00:00Z`)))) {
+  if (times.some(time => !PARSE_NSO_TABLE_RE.test(time.text) || Number.isNaN(Date.parse(`${time.text}T00:00:00Z`)))) {
     throw new Error('nsomn week label format changed');
   }
   const food = products.filter(product => !NOT_FOOD.test(product.text));

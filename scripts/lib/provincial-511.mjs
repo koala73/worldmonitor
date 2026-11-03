@@ -12,6 +12,12 @@
 import { acquire511Slot } from '../_511-rate-limit.mjs';
 import { readBoundedJsonResponse } from '../_china-exchange-transport.mjs';
 import { finiteLat, finiteLon, lonLatPair } from './geo-coord.mjs';
+
+const REDACT_VENDOR511_SECRET_RE = /([?&]key=)[^&]*/gi;
+const SEVERITY_OF_RE = /snow|ice|closed|impassable|poor|drift/i;
+const IS_ACCIDENT_EVENT_RE = /accident/i;
+const IS_NO_REPORT_CONDITION_RE = /no report/i;
+
 // #6618 limiter v1 lives in scripts/_511-rate-limit.mjs only — no scripts/shared/ mirror.
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
@@ -91,7 +97,7 @@ export function vendor511RequestIdentity(opts) {
 export function redactVendor511Secret(value, secret) {
   let text = String(value ?? '');
   if (secret) text = text.split(secret).join('REDACTED');
-  return text.replace(/([?&]key=)[^&]*/gi, '$1REDACTED');
+  return text.replace(REDACT_VENDOR511_SECRET_RE, '$1REDACTED');
 }
 
 export function isVendor511Host(host) {
@@ -212,7 +218,7 @@ function severityOf(item, { isFullClosure, highImportance, kind } = {}) {
   if (raw && raw !== 'Unknown') return raw;
   if (highImportance || kind === 'alert' && item?.HighImportance) return 'Severe';
   const conditions = Array.isArray(item?.Condition) ? item.Condition.join(' ') : String(item?.Condition || '');
-  if (/snow|ice|closed|impassable|poor|drift/i.test(conditions)) return 'Moderate';
+  if (SEVERITY_OF_RE.test(conditions)) return 'Moderate';
   return raw || 'Unknown';
 }
 
@@ -294,13 +300,13 @@ export function normalize511Records(body, ctx) {
 export const MAX_RECORDS = 400;
 
 function isAccidentEvent(record) {
-  return record?.kind === 'event' && /accident/i.test(String(record.eventType || ''));
+  return record?.kind === 'event' && IS_ACCIDENT_EVENT_RE.test(String(record.eventType || ''));
 }
 
 function isNoReportCondition(record) {
   if (record?.kind !== 'condition') return false;
   const text = `${record.description || ''} ${record.headline || ''}`;
-  return /no report/i.test(text) || record.severity === 'Unknown';
+  return IS_NO_REPORT_CONDITION_RE.test(text) || record.severity === 'Unknown';
 }
 
 /**

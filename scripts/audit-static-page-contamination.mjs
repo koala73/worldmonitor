@@ -53,6 +53,9 @@
 import { isInstitutionalStaticPage } from './shared/url-classifier.js';
 import { getRedisCredentials } from './_seed-utils.mjs';
 
+const HASH_RE = /^story:track:v1:/;
+
+
 const VALID_MODES = ['url', 'age', 'residue', 'both'];
 
 export function parseArgs(argv) {
@@ -185,7 +188,7 @@ async function batchDel(url, token, keys) {
   const commands = [];
   for (const k of keys) {
     commands.push(['DEL', k]);
-    const hash = k.replace(/^story:track:v1:/, '');
+    const hash = k.replace(HASH_RE, '');
     if (hash && hash !== k) {
       commands.push(['DEL', `story:sources:v1:${hash}`]);
     }

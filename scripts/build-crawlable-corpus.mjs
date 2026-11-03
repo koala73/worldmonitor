@@ -106,6 +106,58 @@ import {
   renderChokepointLiveSection,
 } from './crawlable-chokepoint-live.mjs';
 
+const PULSE_DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}/;
+const LATER_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const NORMALIZE_BASE_URL_RE = /\/+$/;
+const DATASET_DOWNLOAD_FILE_RE = /^\/+/;
+const ESCAPE_JSON_SCRIPT_RE = /</g;
+const WHITESPACE_RE = /\s+/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const PRETTY_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME_MARKUP_RE = /^\d{4}(-\d{2}(-\d{2})?)?$/;
+const NORMALIZE_COUNTRY_RE = /^https:\/\/www\.wikidata\.org\/wiki\/Q\d+$/;
+const NORMALIZE_CRISES_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const EDITORIAL_SOURCE_URL_RE = /(^|\.)wikipedia\.org$/;
+const WHITESPACE_RE_2 = /\s+/g;
+const STRIP_MARKDOWN_INLINE_RE = /<((?:https?:\/\/|mailto:)[^<>\s]+|[^<>\s@]+@[^<>\s@]+)>/gi;
+const STRIP_MARKDOWN_INLINE_RE_2 = /\[([^\]]+)\]\([^)]+\)/g;
+const STRIP_MARKDOWN_INLINE_RE_3 = /`([^`]+)`/g;
+const STRIP_MARKDOWN_INLINE_RE_4 = /\*\*([^*]+)\*\*/g;
+const STRIP_MARKDOWN_INLINE_RE_5 = /\*+/g;
+const STRIP_MARKDOWN_INLINE_RE_6 = /<[^>]+>/g;
+const MATCHES_RE = /^## \[([^\]]+)\](?: - ([0-9-]+))?\s*$/gm;
+const LINE_BREAK_RE = /\r?\n/;
+const BULLET_MATCH_RE = /^- (.+)$/;
+const PARSE_CHANGELOG_RE = /^\s{2,}\S/;
+const HEADINGS_RE = /^###\s+(.+)$/gm;
+const HUMANIZE_ID_RE = /([a-z])([A-Z])/g;
+const HUMANIZE_ID_RE_2 = /-/g;
+const HUMANIZE_ID_RE_3 = /^./;
+const NEXT_RE = /^#{1,6}\s+/;
+const NEXT_RE_2 = /^\*\*(.*)\*\*$/;
+const APPLY_CRAWLABLE_BRIEF_EMPHASIS_RE = /\*\*(.+?)\*\*/g;
+const APPLY_CRAWLABLE_BRIEF_EMPHASIS_RE_2 = /\*\*/g;
+const HEADING_RE = /^WHAT THIS MEANS FOR\b/i;
+const HEADING_RE_2 = /:\s*$/;
+const FORMAT_CRAWLABLE_INTEL_BRIEF_RE = /^(?:[•\-]\s*|\*\s+)/;
+const FORMAT_CRAWLABLE_INTEL_BRIEF_RE_2 = /^NEXT \d/i;
+const CITATIONS_RE = /\[(\d+)\]/g;
+const VALID_RE = /^E\d{1,2}$/;
+const ASSERT_DEVELOPMENTS_BRIEF_RE = /\[(E\d{1,2})\]/g;
+const CORPUS_MAIN_HTML_RE = /<main\b[^>]*>([\s\S]*?)<\/main>/i;
+const CORPUS_MAIN_HTML_RE_2 = /<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const CORPUS_MAIN_HTML_RE_3 = /<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const INTEL_BRIEF_HTML_RE = /<div\b[^>]*\bdata-intel-brief\b[^>]*>([\s\S]*?)<\/div>/i;
+const CLAIMS_RE = /<(p|li)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
+const CLAIMS_RE_2 = /\bclass="source"/;
+const CLAIMS_RE_3 = /&(amp|lt|gt|quot|#39);/g;
+const HEADING_HITS_RE = /<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi;
+const BRIEF_LINES_RE = /<br\b[^>]*>|<\/(?:p|h[1-6]|li|div)>/gi;
+const BUILD_CHOKEPOINT_HUB_ROWS_RE = /^\d+(?:\.\d+)?$/;
+const OPENING_RE = /^[\s\S]*?\.(?=\s|$)/;
+const HOST_RE = /^www\./;
+
+
 export { hasObservedValue, LEGACY_ABSENT_STATUS_NOTE };
 import {
   briefCitationGroundingGap,
@@ -605,7 +657,7 @@ function isCanonicalIsoInstant(value) {
 }
 
 function pulseDateOnly(asOf, fallback) {
-  if (typeof asOf === 'string' && /^\d{4}-\d{2}-\d{2}/.test(asOf)) {
+  if (typeof asOf === 'string' && PULSE_DATE_ONLY_RE.test(asOf)) {
     return asOf.slice(0, 10);
   }
   return fallback;
@@ -677,13 +729,13 @@ export function buildCiiRankingEntries(countries, livePulse, { now = Date.now() 
 
 export function laterDate(...values) {
   return values
-    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
+    .filter((value) => LATER_DATE_RE.test(value ?? ''))
     .sort()
     .at(-1) ?? null;
 }
 
 function isCanonicalCalendarDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (typeof value !== 'string' || !LATER_DATE_RE.test(value)) return false;
   const timestamp = Date.parse(`${value}T00:00:00Z`);
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
 }
@@ -740,7 +792,7 @@ export function comparisonPageLastmod({
 }
 
 function normalizeBaseUrl(baseUrl) {
-  return String(baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, '');
+  return String(baseUrl || DEFAULT_BASE_URL).replace(NORMALIZE_BASE_URL_RE, '');
 }
 
 function absoluteUrl(baseUrl, pathname) {
@@ -833,7 +885,7 @@ function datasetDownloadHref(pagePath, filename) {
 }
 
 function datasetDownloadFile(pagePath, filename) {
-  return datasetDownloadHref(pagePath, filename).replace(/^\/+/, '');
+  return datasetDownloadHref(pagePath, filename).replace(DATASET_DOWNLOAD_FILE_RE, '');
 }
 
 function stableJson(value) {
@@ -1067,7 +1119,7 @@ const OG_IMAGE_PATH = '/favico/og-image.png';
 const OG_IMAGE_ALT = 'World Monitor — real-time global intelligence dashboard with live markets, geopolitical data, and infrastructure monitoring';
 
 function escapeJsonScript(value) {
-  return JSON.stringify(value).replace(/</g, '\\u003c');
+  return JSON.stringify(value).replace(ESCAPE_JSON_SCRIPT_RE, '\\u003c');
 }
 
 export { slugify };
@@ -1092,7 +1144,7 @@ function uniqueSlug(preferred, code, seen) {
 
 function titleCaseName(value) {
   return String(value ?? '')
-    .split(/\s+/)
+    .split(WHITESPACE_RE)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
@@ -1102,21 +1154,21 @@ function reverseCountryNames(forward) {
   const reverse = new Map();
   for (const [name, code] of Object.entries(forward || {})) {
     const iso2 = String(code || '').toUpperCase();
-    if (!/^[A-Z]{2}$/.test(iso2) || reverse.has(iso2)) continue;
+    if (!COUNTRY_CODE_RE.test(iso2) || reverse.has(iso2)) continue;
     reverse.set(iso2, titleCaseName(name));
   }
   return reverse;
 }
 
 function prettyDate(isoDate) {
-  const match = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const match = String(isoDate || '').match(PRETTY_DATE_RE);
   if (!match) return String(isoDate || '');
   const [, year, month, day] = match;
   return `${MONTHS[Number(month) - 1]} ${Number(day)}, ${year}`;
 }
 
 function timeMarkup(isoDate, label = prettyDate(isoDate)) {
-  if (typeof isoDate !== 'string' || !/^\d{4}(-\d{2}(-\d{2})?)?$/.test(isoDate)) {
+  if (typeof isoDate !== 'string' || !TIME_MARKUP_RE.test(isoDate)) {
     return escapeHtml(label);
   }
   return `<time datetime="${escapeHtml(isoDate)}">${escapeHtml(label)}</time>`;
@@ -1472,7 +1524,7 @@ function normalizeCountry(item, sourceStatus, seen, reverseNames) {
   );
   const officialName = identity.officialName || commonName;
   const sameAs = String(identity.sameAs || '');
-  if (!/^[A-Z]{2}$/.test(code) || !commonName || !/^https:\/\/www\.wikidata\.org\/wiki\/Q\d+$/.test(sameAs)) {
+  if (!COUNTRY_CODE_RE.test(code) || !commonName || !NORMALIZE_COUNTRY_RE.test(sameAs)) {
     throw new Error(`Invalid country identity in resilience snapshot: ${code || 'unknown'}`);
   }
   const slug = uniqueSlug(commonName, code, seen);
@@ -1555,7 +1607,7 @@ function normalizeCountryBounds(countryBboxes, countries, reverseNames = new Map
   const names = new Map(countries.map((country) => [country.code, country.name]));
   return Object.entries(countryBboxes || {})
     .map(([code, rawBounds]) => {
-      if (!/^[A-Z]{2}$/.test(code) || !Array.isArray(rawBounds) || rawBounds.length !== 4) return null;
+      if (!COUNTRY_CODE_RE.test(code) || !Array.isArray(rawBounds) || rawBounds.length !== 4) return null;
       const bounds = rawBounds.map(Number);
       const [south, west, north, east] = bounds;
       if (
@@ -1602,7 +1654,7 @@ function normalizeCrises(entries) {
       : [];
     const coverageCodes = new Set(coverage.map((country) => country.code));
     if (
-      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)
+      !NORMALIZE_CRISES_RE.test(slug)
       || seen.has(slug)
       || !entry.title
       || !entry.shortTitle
@@ -1613,7 +1665,7 @@ function normalizeCrises(entries) {
       || dashboardPath.startsWith('//')
       || coverage.length === 0
       || coverageCodes.size !== coverage.length
-      || coverage.some((country) => !/^[A-Z]{2}$/.test(country.code) || !country.name)
+      || coverage.some((country) => !COUNTRY_CODE_RE.test(country.code) || !country.name)
     ) {
       throw new Error(`Invalid crawlable crisis registry entry: ${slug || '(missing slug)'}`);
     }
@@ -1671,12 +1723,12 @@ function editorialSourceUrl(value, where) {
     throw new Error(`${where} needs a valid source URL`);
   }
   if (url.protocol !== 'https:') throw new Error(`${where} source must use https`);
-  if (/(^|\.)wikipedia\.org$/.test(url.hostname)) throw new Error(`${where} cites Wikipedia, which is not an accepted source`);
+  if (EDITORIAL_SOURCE_URL_RE.test(url.hostname)) throw new Error(`${where} cites Wikipedia, which is not an accepted source`);
   return url.href;
 }
 
 function editorialText(value, where) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  const text = String(value || '').replace(WHITESPACE_RE_2, ' ').trim();
   if (!text) throw new Error(`${where} is empty`);
   return text;
 }
@@ -1820,29 +1872,29 @@ function addCountryContext(countries, regionsByCode, crises) {
 
 function stripMarkdownInline(value) {
   return String(value || '')
-    .replace(/<((?:https?:\/\/|mailto:)[^<>\s]+|[^<>\s@]+@[^<>\s@]+)>/gi, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*+/g, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(STRIP_MARKDOWN_INLINE_RE, '$1')
+    .replace(STRIP_MARKDOWN_INLINE_RE_2, '$1')
+    .replace(STRIP_MARKDOWN_INLINE_RE_3, '$1')
+    .replace(STRIP_MARKDOWN_INLINE_RE_4, '$1')
+    .replace(STRIP_MARKDOWN_INLINE_RE_5, '')
+    .replace(STRIP_MARKDOWN_INLINE_RE_6, '')
+    .replace(WHITESPACE_RE_2, ' ')
     .trim();
 }
 
 export function parseChangelog(source) {
-  const matches = [...source.matchAll(/^## \[([^\]]+)\](?: - ([0-9-]+))?\s*$/gm)];
+  const matches = [...source.matchAll(MATCHES_RE)];
   return matches.map((match, index) => {
     const next = matches[index + 1];
     const body = source.slice(match.index + match[0].length, next ? next.index : source.length);
     const bulletItems = [];
     let currentBullet = null;
-    for (const line of body.split(/\r?\n/)) {
-      const bulletMatch = line.match(/^- (.+)$/);
+    for (const line of body.split(LINE_BREAK_RE)) {
+      const bulletMatch = line.match(BULLET_MATCH_RE);
       if (bulletMatch) {
         if (currentBullet) bulletItems.push(currentBullet.join(' '));
         currentBullet = [bulletMatch[1]];
-      } else if (currentBullet && /^\s{2,}\S/.test(line)) {
+      } else if (currentBullet && PARSE_CHANGELOG_RE.test(line)) {
         currentBullet.push(line.trim());
       } else if (currentBullet && line.trim() === '') {
       } else if (currentBullet) {
@@ -1855,7 +1907,7 @@ export function parseChangelog(source) {
       .map((line) => stripMarkdownInline(line))
       .filter(Boolean)
       .slice(0, 8);
-    const headings = [...body.matchAll(/^###\s+(.+)$/gm)]
+    const headings = [...body.matchAll(HEADINGS_RE)]
       .map(([, heading]) => stripMarkdownInline(heading))
       .filter(Boolean);
     return {
@@ -1873,7 +1925,7 @@ export function parseChangelog(source) {
 export function latestDatedChangelogRelease(changelog) {
   const dates = changelog
     .map((release) => release.date)
-    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ''))
+    .filter((date) => LATER_DATE_RE.test(date ?? ''))
     .sort();
   return dates[dates.length - 1] || null;
 }
@@ -1950,7 +2002,7 @@ function probeGitFileLastmod(rootDir, relativePath) {
         env: gitEnvForRoot(),
       },
     ).trim();
-    return /^\d{4}-\d{2}-\d{2}$/.test(out) ? out : null;
+    return LATER_DATE_RE.test(out) ? out : null;
   } catch {
     return null;
   }
@@ -1988,7 +2040,7 @@ export async function loadCorpusData({
   const microstateTerritoryCodes = new Set(
     (readJson(rootDir, MICROSTATE_TERRITORIES_PATH).iso2 || [])
       .map((code) => String(code || '').toUpperCase())
-      .filter((code) => /^[A-Z]{2}$/.test(code)),
+      .filter((code) => COUNTRY_CODE_RE.test(code)),
   );
   const reverseNames = reverseCountryNames(readJson(rootDir, COUNTRY_NAMES_PATH));
   const regionsByCode = readJson(rootDir, COUNTRY_REGIONS_PATH);
@@ -2012,7 +2064,7 @@ export async function loadCorpusData({
   const countryBboxByCode = new Map(
     Object.entries(countryBboxes || {})
       .map(([code, rawBounds]) => {
-        if (!/^[A-Z]{2}$/.test(code) || !Array.isArray(rawBounds) || rawBounds.length !== 4) return null;
+        if (!COUNTRY_CODE_RE.test(code) || !Array.isArray(rawBounds) || rawBounds.length !== 4) return null;
         const bounds = rawBounds.map(Number);
         if (bounds.some((value) => !Number.isFinite(value))) return null;
         return [code, bounds];
@@ -2933,9 +2985,9 @@ const DIMENSION_PRIMARY_SOURCES = Object.freeze({
 
 function humanizeId(value) {
   return String(value || '')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/-/g, ' ')
-    .replace(/^./, (letter) => letter.toUpperCase());
+    .replace(HUMANIZE_ID_RE, '$1 $2')
+    .replace(HUMANIZE_ID_RE_2, ' ')
+    .replace(HUMANIZE_ID_RE_3, (letter) => letter.toUpperCase());
 }
 
 function formatProseList(items) {
@@ -3553,8 +3605,8 @@ function unwrapBriefEmphasisLine(line) {
   let current = String(line || '').trim();
   for (let i = 0; i < 4; i++) {
     const next = current
-      .replace(/^#{1,6}\s+/, '')
-      .replace(/^\*\*(.*)\*\*$/, '$1')
+      .replace(NEXT_RE, '')
+      .replace(NEXT_RE_2, '$1')
       .trim();
     if (next === current) break;
     current = next;
@@ -3563,7 +3615,7 @@ function unwrapBriefEmphasisLine(line) {
 }
 
 function applyCrawlableBriefEmphasis(escaped) {
-  return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*\*/g, '');
+  return escaped.replace(APPLY_CRAWLABLE_BRIEF_EMPHASIS_RE, '<strong>$1</strong>').replace(APPLY_CRAWLABLE_BRIEF_EMPHASIS_RE_2, '');
 }
 
 // Frozen intel briefs are markdown-ish LLM text. Country pages are prerendered
@@ -3597,20 +3649,20 @@ export function formatCrawlableIntelBrief(text, countryName) {
     }
     if (isBriefSectionHeader(trimmed, { countryName: name })) {
       closeList();
-      const heading = /^WHAT THIS MEANS FOR\b/i.test(trimmed)
+      const heading = HEADING_RE.test(trimmed)
         ? `What this means for ${name}`
-        : trimmed.replace(/:\s*$/, '').toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
+        : trimmed.replace(HEADING_RE_2, '').toLowerCase().replace(HUMANIZE_ID_RE_3, (letter) => letter.toUpperCase());
       out.push(`          <h3>${escapeHtml(heading)}</h3>`);
       continue;
     }
-    if (/^(?:[•\-]\s*|\*\s+)/.test(trimmed)) {
+    if (FORMAT_CRAWLABLE_INTEL_BRIEF_RE.test(trimmed)) {
       openList();
-      const item = applyCrawlableBriefEmphasis(escapeHtml(trimmed.replace(/^(?:[•\-]\s*|\*\s+)/, '')));
+      const item = applyCrawlableBriefEmphasis(escapeHtml(trimmed.replace(FORMAT_CRAWLABLE_INTEL_BRIEF_RE, '')));
       out.push(`            <li>${item}</li>`);
       continue;
     }
     closeList();
-    if (/^NEXT \d/i.test(trimmed)) {
+    if (FORMAT_CRAWLABLE_INTEL_BRIEF_RE_2.test(trimmed)) {
       const colonIdx = trimmed.indexOf(':');
       if (colonIdx !== -1) {
         const label = applyCrawlableBriefEmphasis(escapeHtml(trimmed.slice(0, colonIdx)));
@@ -3626,9 +3678,9 @@ export function formatCrawlableIntelBrief(text, countryName) {
 }
 
 function briefHeadingText(heading, name) {
-  return /^WHAT THIS MEANS FOR\b/i.test(heading)
+  return HEADING_RE.test(heading)
     ? `What this means for ${name}`
-    : heading.replace(/:\s*$/, '').toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
+    : heading.replace(HEADING_RE_2, '').toLowerCase().replace(HUMANIZE_ID_RE_3, (letter) => letter.toUpperCase());
 }
 
 // Sections a page shows from an evidence-grounded brief. Situation is left
@@ -3780,7 +3832,7 @@ function assertDevelopmentsBrief(brief) {
     throw new Error('country developments brief carries no grounding sources');
   }
   for (const source of brief.sources) assertDevelopmentsHeadline(source);
-  const citations = [...brief.text.matchAll(/\[(\d+)\]/g)]
+  const citations = [...brief.text.matchAll(CITATIONS_RE)]
     .map((match) => Number(match[1]));
   if (citations.length === 0) {
     throw new Error('country developments brief carries no source citation');
@@ -3793,14 +3845,14 @@ function assertDevelopmentsBrief(brief) {
   const evidenceIds = new Set();
   for (const item of brief.evidence) {
     const valid = item && typeof item === 'object'
-      && /^E\d{1,2}$/.test(item.id)
+      && VALID_RE.test(item.id)
       && ['kind', 'label', 'value', 'factText'].every((field) => typeof item[field] === 'string' && item[field].trim())
       && typeof item.asOf === 'string' && isCanonicalIsoInstant(item.asOf)
       && (item.url === undefined || item.url === '' || isValidHttpsUrl(item.url));
     if (!valid) throw new Error('country developments brief evidence is missing id, label, value, fact text, ISO time, or an https URL');
     evidenceIds.add(item.id);
   }
-  for (const match of brief.text.matchAll(/\[(E\d{1,2})\]/g)) {
+  for (const match of brief.text.matchAll(ASSERT_DEVELOPMENTS_BRIEF_RE)) {
     if (!evidenceIds.has(match[1])) throw new Error('country developments brief cites evidence it does not carry');
   }
 }
@@ -3898,11 +3950,11 @@ export function assertCountryDevelopmentsRendered({
       .map((line) => unwrapBriefEmphasisLine(line.trim()))
       .filter(Boolean)
       .filter((line) => !isBriefSectionHeader(line, { countryCode, countryName }))
-      .map((line) => line.replace(/^(?:[•\-]\s*|\*\s+)/, '').replace(/\*\*/g, ''));
+      .map((line) => line.replace(FORMAT_CRAWLABLE_INTEL_BRIEF_RE, '').replace(APPLY_CRAWLABLE_BRIEF_EMPHASIS_RE_2, ''));
     const anchors = [contentLines[0], contentLines.at(-1)]
       .filter((line, index, all) => line && all.indexOf(line) === index)
       .map((line) => escapeHtml(line.slice(0, 120)));
-    const pageText = html.replace(/<[^>]+>/g, '');
+    const pageText = html.replace(STRIP_MARKDOWN_INLINE_RE_6, '');
     for (const anchor of anchors) {
       if (!pageText.includes(anchor)) {
         throw new Error(`${pagePath} dropped its frozen intel brief`);
@@ -3927,19 +3979,19 @@ export function assertCountryDevelopmentsRendered({
 
 function corpusMainHtml(html) {
   const source = String(html || '');
-  const match = source.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+  const match = source.match(CORPUS_MAIN_HTML_RE);
   const main = match ? match[1] : source;
   return main
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, '')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, '');
+    .replace(CORPUS_MAIN_HTML_RE_2, '')
+    .replace(CORPUS_MAIN_HTML_RE_3, '');
 }
 
 function corpusVisibleText(html) {
-  return corpusMainHtml(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return corpusMainHtml(html).replace(STRIP_MARKDOWN_INLINE_RE_6, ' ').replace(WHITESPACE_RE_2, ' ').trim();
 }
 
 function intelBriefHtml(html) {
-  const match = corpusMainHtml(html).match(/<div\b[^>]*\bdata-intel-brief\b[^>]*>([\s\S]*?)<\/div>/i);
+  const match = corpusMainHtml(html).match(INTEL_BRIEF_HTML_RE);
   return match ? match[1] : null;
 }
 
@@ -3958,9 +4010,9 @@ export function assertCountryBriefPresentation({ pagePath, html, sources, eviden
   if (brief && sources !== undefined) {
     // Check the rendered claim blocks as well as the input. A later formatter
     // must not add an entity or change a citation after publish-time validation.
-    const claims = [...brief.matchAll(/<(p|li)\b([^>]*)>([\s\S]*?)<\/\1>/gi)]
-      .filter((match) => !/\bclass="source"/.test(match[2]))
-      .map((match) => corpusVisibleText(match[3]).replace(/&(amp|lt|gt|quot|#39);/g,
+    const claims = [...brief.matchAll(CLAIMS_RE)]
+      .filter((match) => !CLAIMS_RE_2.test(match[2]))
+      .map((match) => corpusVisibleText(match[3]).replace(CLAIMS_RE_3,
         (entity) => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" })[entity]));
     // Rendered claims may cite only World Monitor evidence: the Situation
     // section that carries the headline citations is not rendered.
@@ -3968,16 +4020,16 @@ export function assertCountryBriefPresentation({ pagePath, html, sources, eviden
     if (gap) throw new Error(`${pagePath} brief has unsupported citation: ${gap}`);
   }
   const headingSource = brief ?? main;
-  const headingHits = [...headingSource.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)];
+  const headingHits = [...headingSource.matchAll(HEADING_HITS_RE)];
   for (const hit of headingHits) {
-    const text = hit[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const text = hit[1].replace(STRIP_MARKDOWN_INLINE_RE_6, ' ').replace(WHITESPACE_RE_2, ' ').trim();
     if (MEANS_FOR_ISO_RE.test(text)) {
       throw new Error(`${pagePath} heading leaks ISO code: ${text}`);
     }
   }
   const briefLines = corpusMainHtml(brief ?? html)
-    .replace(/<br\b[^>]*>|<\/(?:p|h[1-6]|li|div)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ');
+    .replace(BRIEF_LINES_RE, '\n')
+    .replace(STRIP_MARKDOWN_INLINE_RE_6, ' ');
   if (MEANS_FOR_ISO_RE.test(briefLines)) {
     throw new Error(`${pagePath} brief heading leaks an ISO-3166 alpha-2 code`);
   }
@@ -4357,7 +4409,7 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
     let score = Number.NaN;
     if (typeof rawScore === 'number') {
       score = rawScore;
-    } else if (typeof rawScore === 'string' && /^\d+(?:\.\d+)?$/.test(rawScore)) {
+    } else if (typeof rawScore === 'string' && BUILD_CHOKEPOINT_HUB_ROWS_RE.test(rawScore)) {
       score = Number(rawScore);
     }
     const status = publishedPulseLabel(pulse?.status, CHOKEPOINT_HUB_STATUS_LABELS);
@@ -4489,7 +4541,7 @@ ${oilTransitRows.map(({ row, eia }) => `          <tr><td><a href="/chokepoints/
       <dl data-chokepoint-context>
 ${chokepointHubRows.map((row) => {
     const blurb = CHOKEPOINT_CONTENT[row.chokepoint.id]?.blurb || '';
-    const opening = blurb.match(/^[\s\S]*?\.(?=\s|$)/)?.[0]?.trim() || '';
+    const opening = blurb.match(OPENING_RE)?.[0]?.trim() || '';
     return `        <dt><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></dt>
         <dd>${escapeHtml(opening || `${row.chokepoint.displayName} is a tracked maritime chokepoint in the ${row.region} corridor.`)}</dd>`;
   }).join('\n')}
@@ -4930,7 +4982,7 @@ const EDITORIAL_SOURCE_LABELS = new Map([
 ]);
 
 function editorialSourceLabel(url) {
-  const host = new URL(url).hostname.replace(/^www\./, '');
+  const host = new URL(url).hostname.replace(HOST_RE, '');
   return EDITORIAL_SOURCE_LABELS.get(host) || host;
 }
 
@@ -5617,7 +5669,7 @@ function writeGeneratedFile(outDir, relativePath, content) {
 }
 
 function routeFile(pathname) {
-  const withoutLeading = pathname.replace(/^\/+/, '');
+  const withoutLeading = pathname.replace(DATASET_DOWNLOAD_FILE_RE, '');
   return join(withoutLeading, 'index.html');
 }
 

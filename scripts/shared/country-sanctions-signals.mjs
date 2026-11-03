@@ -1,3 +1,8 @@
+
+
+const EPOCH_RE = /^[1-9]\d{0,15}$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const PROJECT_COUNTRY_SANCTIONS_RE = /^[a-zA-Z]{2}$/;
 const SOURCES = ['SDN', 'CONSOLIDATED', 'sema-ca'];
 const SOURCE_VERSION = 'ofac-sls-advanced-xml+sema-ca-json-v4';
 const POPULATION = 'top-12-first-iso2-display-v1';
@@ -7,14 +12,14 @@ const RETAIN_MS = 48 * 3600000;
 const MAX_STALE_MS = 720 * 60000;
 const count = value => Number.isSafeInteger(value) && value >= 0;
 const clock = value => Number.isSafeInteger(value) && value > 0 && value <= DATE_MAX;
-const epoch = value => typeof value === 'string' && /^[1-9]\d{0,15}$/.test(value) && clock(Number(value));
+const epoch = value => typeof value === 'string' && EPOCH_RE.test(value) && clock(Number(value));
 const vintage = value => value === '0' || epoch(value);
 const keys = (value, fields) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).length === fields.length && fields.every(field => Object.hasOwn(value, field));
 const byteLength = value => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
 export function projectCountrySanctions(snapshot, countryCode, readAt = Date.now()) {
-  if (typeof countryCode !== 'string' || !/^[A-Z]{2}$/.test(countryCode) || countryCode === 'XX') {
+  if (typeof countryCode !== 'string' || !COUNTRY_CODE_RE.test(countryCode) || countryCode === 'XX') {
     throw new TypeError('A normalized country ISO2 code is required');
   }
   const unavailable = reason => ({
@@ -94,7 +99,7 @@ export function projectCountrySanctions(snapshot, countryCode, readAt = Date.now
   }
   if (snapshot.totalCount === 0) return bounded({ ...unavailable('Empty producer sentinel'), source });
   for (const row of snapshot.countries) {
-    if (!row || typeof row.countryCode !== 'string' || !/^[a-zA-Z]{2}$/.test(row.countryCode)
+    if (!row || typeof row.countryCode !== 'string' || !PROJECT_COUNTRY_SANCTIONS_RE.test(row.countryCode)
       || typeof row.countryName !== 'string' || !row.countryName || row.countryName.length > 200
       || !['entryCount', 'newEntryCount', 'vesselCount', 'aircraftCount'].every(field => count(row[field]))
       || row.entryCount > snapshot.totalCount || row.newEntryCount > row.entryCount

@@ -41,6 +41,9 @@ import { pathToFileURL } from 'node:url';
 
 import { CHROME_UA, loadEnvFile, runSeed, sleep } from './_seed-utils.mjs';
 
+const FETCH_REEXPORT_SHARE_RE = /subscription-key=/i;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'resilience:recovery:reexport-share:v1';
@@ -300,7 +303,7 @@ async function fetchReexportShare() {
   // array or anywhere else in the envelope, fail the run loudly
   // instead of publishing the credential.
   const serialized = JSON.stringify(payload);
-  if (/subscription-key=/i.test(serialized)) {
+  if (FETCH_REEXPORT_SHARE_RE.test(serialized)) {
     throw new Error('[reexport-share] serialized payload contains subscription-key — refusing to publish');
   }
 

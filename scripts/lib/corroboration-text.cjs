@@ -1,5 +1,8 @@
 'use strict';
 
+const PARSE_CORROBORATION_RE = /^\d+$/;
+
+
 // Plain-text corroboration for alert and digest messages (#9213).
 //
 // The verdict itself comes from assessCorroboration in
@@ -42,7 +45,7 @@ function parseCorroboration(value) {
   let publishers;
   if (typeof value === 'string') {
     const [rawState, rawCount, ...rest] = value.split('|');
-    if (rest.length > 0 || !/^\d+$/.test(rawCount ?? '')) return null;
+    if (rest.length > 0 || !PARSE_CORROBORATION_RE.test(rawCount ?? '')) return null;
     state = rawState;
     publishers = Number(rawCount);
   } else if (value && typeof value === 'object') {

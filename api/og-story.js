@@ -4,6 +4,11 @@
  * Returns an SVG image (1200x630) — rich intelligence card for social previews.
  */
 
+const ESCAPE_XML_RE = /&/g;
+const ESCAPE_XML_RE_2 = /</g;
+const ESCAPE_XML_RE_3 = />/g;
+const ESCAPE_XML_RE_4 = /"/g;
+
 const COUNTRY_NAMES = {
   UA: 'Ukraine', RU: 'Russia', CN: 'China', US: 'United States',
   IR: 'Iran', IL: 'Israel', TW: 'Taiwan', KP: 'North Korea',
@@ -226,5 +231,5 @@ export default function handler(req, res) {
 }
 
 function escapeXml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return str.replace(ESCAPE_XML_RE, '&amp;').replace(ESCAPE_XML_RE_2, '&lt;').replace(ESCAPE_XML_RE_3, '&gt;').replace(ESCAPE_XML_RE_4, '&quot;');
 }

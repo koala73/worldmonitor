@@ -29,6 +29,20 @@ import {
   isInvalidPaginationCursorError,
 } from "./paginationCursor";
 
+const ALLOWED_ORIGIN_RE = /\.+$/;
+const ALLOWED_ORIGIN_RE_2 = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/;
+const DECODED_RE = /--/g;
+const DECODED_RE_2 = /-/g;
+const DECODED_RE_3 = /\0/g;
+const PROVIDED_RE = /^Bearer\s+(\S+)$/;
+const MODULE_RE = /^[0-9a-f]{64}$/;
+const CONFIRM_RE = /^wmpair:([A-Za-z0-9_-]{40,50})$/;
+const MODULE_RE_2 = /^\/start\s+([A-Za-z0-9_-]{40,50})$/;
+const MODULE_RE_3 = /[^A-Za-z0-9._-]/g;
+const MODULE_RE_4 = /^[a-f0-9]{64}$/;
+const PROVIDED_RE_2 = /^Bearer\s+/;
+
+
 // App-serving hosts only, aligned with api/_cors.js and server/cors.ts.
 const APP_ORIGIN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
 const TRUSTED_ORIGINS = [
@@ -51,13 +65,13 @@ function allowedOrigin(origin: string | null): string | null {
     const url = new URL(origin);
     // An Origin is a scheme/host/port, never a URL with credentials or a path.
     if (url.username || url.password || `${url.protocol}//${url.host}` !== origin) return null;
-    url.hostname = url.hostname.replace(/\.+$/, "");
+    url.hostname = url.hostname.replace(ALLOWED_ORIGIN_RE, "");
     const candidate = `${url.protocol}//${url.host}`;
     if (TRUSTED_ORIGINS.some(pattern => pattern.test(candidate))) return origin;
-    if (process.env.NODE_ENV !== "production" && /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(candidate)) return origin;
+    if (process.env.NODE_ENV !== "production" && ALLOWED_ORIGIN_RE_2.test(candidate)) return origin;
     if (url.protocol === "https:" && !url.port && url.hostname.endsWith(".translate.goog")) {
       const encoded = url.hostname.slice(0, -".translate.goog".length);
-      const decoded = encoded.replace(/--/g, "\0").replace(/-/g, ".").replace(/\0/g, "-");
+      const decoded = encoded.replace(DECODED_RE, "\0").replace(DECODED_RE_2, ".").replace(DECODED_RE_3, "-");
       if (!encoded.includes(".") && APP_ORIGIN.test(`https://${decoded}`)) return origin;
     }
   } catch {
@@ -98,7 +112,7 @@ async function authorizeTenantRelay(
   request: Request,
   roles: readonly (keyof typeof tenantRelaySecrets)[],
 ): Promise<Response | null> {
-  const provided = /^Bearer\s+(\S+)$/.exec(request.headers.get("Authorization") ?? "")?.[1];
+  const provided = PROVIDED_RE.exec(request.headers.get("Authorization") ?? "")?.[1];
   const deny = () => Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
   if (!provided) return deny();
   // A copied ingestion key must never acquire tenant authority under a new name.
@@ -657,7 +671,7 @@ http.route({
       return Response.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
     const body = await parseJsonObjectBody<{ retryKey?: unknown }>(request);
-    if (!body || typeof body.retryKey !== "string" || !/^[0-9a-f]{64}$/.test(body.retryKey)) {
+    if (!body || typeof body.retryKey !== "string" || !MODULE_RE.test(body.retryKey)) {
       return Response.json({ error: "INVALID_FEEDBACK", field: "retryKey" }, { status: 400 });
     }
     try {
@@ -888,7 +902,7 @@ http.route({
     if (callback) {
       const chat = callback.message?.chat;
       const confirm = typeof callback.data === "string"
-        ? callback.data.match(/^wmpair:([A-Za-z0-9_-]{40,50})$/)
+        ? callback.data.match(CONFIRM_RE)
         : null;
       // In a private chat the chat id is the user id, so requiring both to
       // match means only the person in that chat can confirm it.
@@ -931,7 +945,7 @@ http.route({
     const text = msg.text.trim();
     const chatId = String(msg.chat.id);
 
-    const match = text.match(/^\/start\s+([A-Za-z0-9_-]{40,50})$/);
+    const match = text.match(MODULE_RE_2);
     if (!match?.[1]) return new Response("OK", { status: 200 });
 
     // Step 1: record the chat and ask it to confirm. Nothing is bound yet.
@@ -1078,7 +1092,7 @@ http.route({
       200,
       `Unsubscribe from ${copy.name}?`,
       `<form method="post" action="${action}" style="margin:0;">
-<input type="hidden" name="t" value="${token.replace(/[^A-Za-z0-9._-]/g, "")}">
+<input type="hidden" name="t" value="${token.replace(MODULE_RE_3, "")}">
 <button type="submit" style="background:#4ade80;color:#0a0a0a;border:0;padding:12px 28px;font-weight:800;font-size:13px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;">Unsubscribe</button>
 </form>`,
     );
@@ -1862,7 +1876,7 @@ http.route({
       });
     }
 
-    if (typeof body.keyHash !== "string" || !/^[a-f0-9]{64}$/.test(body.keyHash)) {
+    if (typeof body.keyHash !== "string" || !MODULE_RE_4.test(body.keyHash)) {
       return new Response(JSON.stringify({ error: "INVALID_KEY_HASH" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -1905,7 +1919,7 @@ http.route({
       });
     }
 
-    if (typeof body.keyHash !== "string" || !/^[a-f0-9]{64}$/.test(body.keyHash)) {
+    if (typeof body.keyHash !== "string" || !MODULE_RE_4.test(body.keyHash)) {
       return new Response(JSON.stringify({ error: "INVALID_KEY_HASH" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -2459,7 +2473,7 @@ async function intelRelayUnauthorized(
   const secret = retraction
     ? (process.env.RELAY_RETRACT_SECRET ?? "")
     : (process.env.RELAY_SHARED_SECRET ?? "");
-  const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+  const provided = (request.headers.get("Authorization") ?? "").replace(PROVIDED_RE_2, "");
   if (!secret) return true;
   return !(await timingSafeEqualStrings(provided, secret));
 }

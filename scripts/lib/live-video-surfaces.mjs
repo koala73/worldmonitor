@@ -3,6 +3,15 @@
 // longer be read fails loudly instead of silently placing nothing (as mcp-preset-liveness.mjs does).
 import { readFileSync } from 'node:fs';
 
+const DECLARED_RE = /\bid:/g;
+const GRID_CELLS_RE = /const MAX_GRID_CELLS\s*=\s*(\d+)\s*;/;
+const EXTRACT_LIVE_VIDEO_SURFACES_RE = /\{\s*id:\s*'([^']+)'[^}]*\}/g;
+const EXTRACT_LIVE_VIDEO_SURFACES_RE_2 = /\bgeoAvailability\b/;
+const LIST_RE = /\bgeoAvailability:\s*\[((?:\s*'[A-Z]{2}'\s*,?)+)\s*\]/;
+const EXTRACT_LIVE_VIDEO_SURFACES_RE_3 = /'([A-Z]{2})'/g;
+const EXTRACT_LIVE_VIDEO_SURFACES_RE_4 = /_LIVE_CHANNELS$/;
+
+
 const WEBCAMS_PANEL = 'src/components/LiveWebcamsPanel.ts';
 // The Live News channel lists live in src/services/live-channels.ts (#8293), not in the panel.
 const NEWS_PANEL = 'src/services/live-channels.ts';
@@ -19,7 +28,7 @@ function arrays(source, pattern) {
 /** Every `{ id: '...' }` object in `body`, failing when one of them cannot be read. */
 function readObjects(body, objectPattern, file, name) {
   const read = [...body.matchAll(objectPattern)];
-  const declared = [...body.matchAll(/\bid:/g)].length;
+  const declared = [...body.matchAll(DECLARED_RE)].length;
   if (declared === 0 || read.length !== declared) throw new Error(`${file}: cannot read every entry of ${name}`);
   return read;
 }
@@ -35,7 +44,7 @@ export function extractLiveVideoSurfaces({ webcamsPanel, newsPanel }) {
   const webcamFeeds = readObjects(feeds.body, /\{\s*id:\s*'([^']+)'[^}]*?\bregion:\s*'([^']+)'[^}]*\}/g, WEBCAMS_PANEL, 'WEBCAM_FEEDS')
     .map(([, id, region]) => ({ id, region }));
 
-  const gridCells = Number(/const MAX_GRID_CELLS\s*=\s*(\d+)\s*;/.exec(webcamsPanel)?.[1]);
+  const gridCells = Number(GRID_CELLS_RE.exec(webcamsPanel)?.[1]);
   if (!Number.isSafeInteger(gridCells) || gridCells < 1) throw new Error(`${WEBCAMS_PANEL}: cannot read MAX_GRID_CELLS`);
 
   const newsDefaults = {};
@@ -44,14 +53,14 @@ export function extractLiveVideoSurfaces({ webcamsPanel, newsPanel }) {
   const newsGeoAvailability = {};
   for (const { name, body } of arrays(newsPanel, '[A-Z]+_LIVE_CHANNELS')) {
     const ids = readObjects(body, /\{\s*id:\s*'([^']+)'/g, NEWS_PANEL, name).map(([, id]) => id);
-    for (const [object, id] of body.matchAll(/\{\s*id:\s*'([^']+)'[^}]*\}/g)) {
-      if (!/\bgeoAvailability\b/.test(object)) continue;
-      const list = /\bgeoAvailability:\s*\[((?:\s*'[A-Z]{2}'\s*,?)+)\s*\]/.exec(object)?.[1];
+    for (const [object, id] of body.matchAll(EXTRACT_LIVE_VIDEO_SURFACES_RE)) {
+      if (!EXTRACT_LIVE_VIDEO_SURFACES_RE_2.test(object)) continue;
+      const list = LIST_RE.exec(object)?.[1];
       if (!list) throw new Error(`${NEWS_PANEL}: cannot read the geoAvailability of ${id} in ${name}`);
-      newsGeoAvailability[id] = [...list.matchAll(/'([A-Z]{2})'/g)].map(([, code]) => code);
+      newsGeoAvailability[id] = [...list.matchAll(EXTRACT_LIVE_VIDEO_SURFACES_RE_3)].map(([, code]) => code);
     }
     if (name === 'OPTIONAL_LIVE_CHANNELS') newsOptional = ids;
-    else newsDefaults[name.replace(/_LIVE_CHANNELS$/, '').toLowerCase()] = ids;
+    else newsDefaults[name.replace(EXTRACT_LIVE_VIDEO_SURFACES_RE_4, '').toLowerCase()] = ids;
   }
   if (!newsOptional) throw new Error(`${NEWS_PANEL}: cannot find OPTIONAL_LIVE_CHANNELS`);
   if (Object.keys(newsDefaults).length === 0) throw new Error(`${NEWS_PANEL}: cannot find a default *_LIVE_CHANNELS list`);

@@ -6,9 +6,11 @@
 // Tenor keys are lowercase maturity labels ("3m", "1y", "10y", …).
 
 /** Parse 'YYYY-MM-DD' or 'YYYY/M/D' into 'YYYY-MM-DD', or null. */
+const NORMALIZE_DATE_LABEL_RE = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/;
+
 export function normalizeDateLabel(raw) {
   const token = String(raw ?? '').trim();
-  const match = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/.exec(token);
+  const match = NORMALIZE_DATE_LABEL_RE.exec(token);
   if (!match) return null;
   const [, y, m, d] = match;
   const iso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;

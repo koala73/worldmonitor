@@ -4,6 +4,11 @@ import type {
   UsInterestRateSeries,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
+const RATE_DATE_MS_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const NORMALIZE_RATE_POINTS_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MERGE_RATE_HISTORIES_RE = /^economic:us-interest-rates:v1:([a-z0-9-]+):\d{4}$/;
+
+
 export const RATES_CANONICAL_KEY = 'economic:us-interest-rates:v1';
 export const RATES_ACTIVATION_KEY = 'seed-activated:economic:us-interest-rates';
 export const RATES_DECADES = [1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020, 2030] as const;
@@ -41,7 +46,7 @@ export function rateSeriesDecadeKey(id: RateSeriesId, decade: number): string {
 }
 
 export function rateDateMs(isoDate: string): number | undefined {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  const match = RATE_DATE_MS_RE.exec(isoDate);
   if (!match) return undefined;
   const ms = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   return Number.isFinite(ms) ? ms : undefined;
@@ -61,7 +66,7 @@ function seriesId(value: string): RateSeriesId | undefined {
 export function normalizeRatePoints(points: RatePoint[] | undefined): RatePoint[] {
   const byDate = new Map<string, number>();
   for (const point of points ?? []) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(point?.date ?? '') || !Number.isFinite(point.value)) continue;
+    if (!NORMALIZE_RATE_POINTS_RE.test(point?.date ?? '') || !Number.isFinite(point.value)) continue;
     byDate.set(point.date, point.value);
   }
   return [...byDate.entries()]
@@ -109,7 +114,7 @@ export function pointsFromShard(value: unknown): RatePoint[] {
     if (!point || typeof point !== 'object') return [];
     const date = 'date' in point ? String(point.date) : '';
     const raw = 'value' in point ? Number(point.value) : Number.NaN;
-    return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(raw) ? [{ date, value: raw }] : [];
+    return NORMALIZE_RATE_POINTS_RE.test(date) && Number.isFinite(raw) ? [{ date, value: raw }] : [];
   });
 }
 
@@ -121,7 +126,7 @@ export function snapshotFromSeed(value: unknown): RateSnapshot | undefined {
     if (!id || !point || typeof point !== 'object') continue;
     const date = 'date' in point ? String(point.date) : '';
     const raw = 'value' in point ? Number(point.value) : Number.NaN;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(raw)) continue;
+    if (!NORMALIZE_RATE_POINTS_RE.test(date) || !Number.isFinite(raw)) continue;
     snapshot[id] = { date, value: raw };
   }
   return Object.keys(snapshot).length > 0 ? snapshot : undefined;
@@ -130,7 +135,7 @@ export function snapshotFromSeed(value: unknown): RateSnapshot | undefined {
 export function mergeRateHistories(shards: Iterable<[string, RatePoint[]]>): RateHistories {
   const grouped: RateHistories = {};
   for (const [key, points] of shards) {
-    const match = /^economic:us-interest-rates:v1:([a-z0-9-]+):\d{4}$/.exec(key);
+    const match = MERGE_RATE_HISTORIES_RE.exec(key);
     const series = RATE_SERIES.find((item) => item.redisSuffix === match?.[1]);
     if (!series) continue;
     grouped[series.id] = [...(grouped[series.id] ?? []), ...points];

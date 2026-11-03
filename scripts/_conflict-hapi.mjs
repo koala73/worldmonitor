@@ -4,6 +4,11 @@ import {
   loadSharedConfig,
 } from './_seed-utils.mjs';
 
+const PARSED_RE = /^\ufeff/;
+const LENGTH_RE = /^\d+$/;
+const READ_BODY_RE = /\/resource\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\//i;
+
+
 export const HAPI_PAGE_LIMIT = 10_000;
 // 3 pages sized the admin-0-only sweep, which is ~650 rows — two orders of
 // magnitude of slack. The global admin-2 sweep that covers the HRP countries is
@@ -210,7 +215,7 @@ export function parseHapiHdxConflictCsv(
   const parsed = Papa.parse(String(csvText || ''), {
     header: true,
     skipEmptyLines: 'greedy',
-    transformHeader: (header) => header.replace(/^\ufeff/, '').trim(),
+    transformHeader: (header) => header.replace(PARSED_RE, '').trim(),
     step: (result) => {
       if (Array.isArray(result.errors) && result.errors.length > 0) {
         parseErrors.push(...result.errors.slice(0, 5 - parseErrors.length));
@@ -285,13 +290,13 @@ export async function fetchHapiHdxSnapshotRows({
       return await readBoundedHapiHdxText(response, maxBytes, { progress, readElapsedMs });
     } catch (error) {
       const rawLength = response.headers.get('content-length');
-      const length = rawLength !== null && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
+      const length = rawLength !== null && LENGTH_RE.test(rawLength) ? Number(rawLength) : NaN;
       const encoding = response.headers.get('content-encoding')?.toLowerCase();
       const reason = hapiHdxFailureReason(error);
       console.warn(`  HAPI HDX transfer ${JSON.stringify({
         stage,
         resourceYear: resource.year ?? null,
-        resourceId: resource.url?.match(/\/resource\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\//i)?.[1] ?? null,
+        resourceId: resource.url?.match(READ_BODY_RE)?.[1] ?? null,
         status: Number.isInteger(response.status) ? response.status : null,
         contentLength: Number.isSafeInteger(length) && length >= 0 ? length : null,
         contentEncoding: ['gzip', 'br', 'deflate', 'identity'].includes(encoding) ? encoding : null,

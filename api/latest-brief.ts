@@ -23,6 +23,8 @@
  * the most recent slot, then returns that slot's envelope preview.
  */
 
+const PUBLIC_BASE_URL_RE = /\/+$/;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -166,7 +168,7 @@ async function readLatestPointer(userId: string, timeoutMs: number): Promise<str
  */
 function publicBaseUrl(req: Request): string {
   const pinned = process.env.WORLDMONITOR_PUBLIC_BASE_URL;
-  if (pinned) return pinned.replace(/\/+$/, '');
+  if (pinned) return pinned.replace(PUBLIC_BASE_URL_RE, '');
   return new URL(req.url).origin;
 }
 

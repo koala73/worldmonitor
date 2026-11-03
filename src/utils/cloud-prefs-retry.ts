@@ -1,3 +1,7 @@
+
+
+const PARSE_RETRY_AFTER_SECONDS_RE = /^\d+$/;
+const PARSE_RETRY_AFTER_SECONDS_RE_2 = /\b\d{4}\b/;
 const RETRY_AFTER_MIN_SEC = 1;
 /**
  * Upper clamp on a honoured `Retry-After`. Exported so callers that must wait
@@ -20,12 +24,12 @@ export function parseRetryAfterSeconds(headers: Headers): number {
   const raw = headers.get('Retry-After');
   if (!raw) return RETRY_AFTER_DEFAULT_SEC;
   const trimmed = raw.trim();
-  if (/^\d+$/.test(trimmed)) {
+  if (PARSE_RETRY_AFTER_SECONDS_RE.test(trimmed)) {
     const n = Number(trimmed);
     if (!Number.isFinite(n)) return RETRY_AFTER_DEFAULT_SEC;
     return Math.min(Math.max(n, RETRY_AFTER_MIN_SEC), RETRY_AFTER_MAX_SEC);
   }
-  if (!/\b\d{4}\b/.test(trimmed) || !trimmed.includes(':')) return RETRY_AFTER_DEFAULT_SEC;
+  if (!PARSE_RETRY_AFTER_SECONDS_RE_2.test(trimmed) || !trimmed.includes(':')) return RETRY_AFTER_DEFAULT_SEC;
   const t = Date.parse(trimmed);
   if (!Number.isFinite(t)) return RETRY_AFTER_DEFAULT_SEC;
   const delta = Math.round((t - Date.now()) / 1000);

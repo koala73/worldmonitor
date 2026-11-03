@@ -21,6 +21,11 @@
  */
 import { publisherFamilyForItem } from './publisher-families.js';
 
+const WORDS_RE = /&(?:[a-z]+|#\d+|#x[0-9a-f]+);/gi;
+const WORDS_RE_2 = /\p{M}/gu;
+const WORDS_RE_3 = /[^\p{L}\p{N}]+/u;
+
+
 /** A lead with fewer words than this beyond the headline's is not enough text to call two items one copy. */
 export const SYNDICATION_MIN_LEAD_WORDS = 12;
 
@@ -45,11 +50,11 @@ const CURATED_FAMILY = (family) => typeof family === 'string' && family !== '' &
  */
 function words(text) {
   return String(text || '')
-    .replace(/&(?:[a-z]+|#\d+|#x[0-9a-f]+);/gi, ' ')
+    .replace(WORDS_RE, ' ')
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .split(/[^\p{L}\p{N}]+/u)
+    .replace(WORDS_RE_2, '')
+    .split(WORDS_RE_3)
     .filter(Boolean);
 }
 

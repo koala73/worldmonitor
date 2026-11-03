@@ -1,6 +1,9 @@
 import type { UcdpViolenceEvent as ProtoUcdpEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { UcdpGeoEvent } from '@/types';
 
+const DERIVE_CONFLICT_HISTORY_RE = /\b(\d{4})\b/;
+
+
 export type ConflictIntensity = 'none' | 'minor' | 'war';
 
 export interface UcdpConflictStatus {
@@ -32,7 +35,7 @@ export function deriveConflictHistory(
   }, 0);
 
   return {
-    conflictSince: zone.startDate?.match(/\b(\d{4})\b/)?.[1] ?? null,
+    conflictSince: zone.startDate?.match(DERIVE_CONFLICT_HISTORY_RE)?.[1] ?? null,
     recordedFatalities,
   };
 }

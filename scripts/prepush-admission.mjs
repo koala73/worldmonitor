@@ -12,6 +12,10 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
+const POSITIVE_INTEGER_RE = /^[1-9]\d*$/;
+const RELEASE_RE = /^slot-[1-9]\d*$/;
+
+
 const DEFAULT_MAX_PARALLEL = 2;
 const DEFAULT_POLL_MS = 250;
 const DEFAULT_STALE_MS = 30_000;
@@ -27,7 +31,7 @@ function positiveInteger(name, fallback) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
   const value = Number(raw);
-  if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(value)) {
+  if (!POSITIVE_INTEGER_RE.test(raw) || !Number.isSafeInteger(value)) {
     throw new TypeError(`${name} must be a positive integer`);
   }
   return value;
@@ -275,7 +279,7 @@ function release(root, encodedLease) {
   }
 
   const slotPath = resolve(String(lease.slotPath ?? ''));
-  if (dirname(slotPath) !== root || !/^slot-[1-9]\d*$/.test(slotPath.slice(root.length + 1))) {
+  if (dirname(slotPath) !== root || !RELEASE_RE.test(slotPath.slice(root.length + 1))) {
     throw new Error('Pre-push admission lease escapes its root');
   }
 

@@ -5,6 +5,9 @@ import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { billingAwareGateCopy, type GateCopy } from '@/components/ExportGateControl';
 
+const GET_TAB_BUTTON_ID_RE = /[^A-Za-z0-9_-]/g;
+
+
 export interface PanelTabBarCallbacks {
   onSelect(tabId: string): void;
   onAdd(): void;
@@ -324,7 +327,7 @@ export class PanelTabBar {
   }
 
   private getTabButtonId(tabId: string): string {
-    return `dashboard-tab-${tabId.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+    return `dashboard-tab-${tabId.replace(GET_TAB_BUTTON_ID_RE, '-')}`;
   }
 
   private updateControlledPanel(activeTabId: string): void {

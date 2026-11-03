@@ -3,6 +3,20 @@
 import { isIP } from 'node:net';
 import { loadEnvFile, CHROME_UA, runSeed, verifySeedKey, writeExtraKey } from './_seed-utils.mjs';
 
+const WHITESPACE_RE = /\s+/g;
+const IS_IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
+const IS_IPV6_RE = /^[0-9a-f:]+$/i;
+const NORM_COUNTRY_RE = /^[a-z]{2}$/i;
+const TAGS_RE = /[;,|]/g;
+const C2_INTEL_ROWS_RE = /^#?\s*ip,(?:description|ioc)$/i;
+const SEV_RE = /emotet|qakbot|trickbot|dridex|ransom/i;
+const MF_RE = /^Possible\s+/i;
+const MF_RE_2 = /\s+C2\s+IP$/i;
+const SEV_RE_2 = /cobaltstrike|cobalt.strike|brute.?ratel/i;
+const SEV_RE_3 = /ransomware|apt|c2|botnet/;
+const TYPE_RE = /c2|botnet/;
+
+
 loadEnvFile(import.meta.url);
 
 const ABUSEIPDB_RATE_KEY = 'rate:abuseipdb:last-call';
@@ -108,7 +122,7 @@ const COUNTRY_CENTROIDS = {
 
 function clean(value, maxLen = 120) {
   if (typeof value !== 'string') return '';
-  return value.trim().replace(/\s+/g, ' ').slice(0, maxLen);
+  return value.trim().replace(WHITESPACE_RE, ' ').slice(0, maxLen);
 }
 
 function toNum(value) {
@@ -121,11 +135,11 @@ function validCoords(lat, lon) {
 }
 
 function isIPv4(v) {
-  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(v)) return false;
+  if (!IS_IPV4_RE.test(v)) return false;
   return v.split('.').map(Number).every((n) => Number.isInteger(n) && n >= 0 && n <= 255);
 }
 
-function isIPv6(v) { return /^[0-9a-f:]+$/i.test(v) && v.includes(':'); }
+function isIPv6(v) { return IS_IPV6_RE.test(v) && v.includes(':'); }
 
 function isIp(v) {
   const c = clean(v, 80).toLowerCase();
@@ -135,7 +149,7 @@ function isIp(v) {
 function normCountry(v) {
   const r = clean(String(v ?? ''), 64);
   if (!r) return '';
-  return /^[a-z]{2}$/i.test(r) ? r.toUpperCase() : r;
+  return NORM_COUNTRY_RE.test(r) ? r.toUpperCase() : r;
 }
 
 function toEpochMs(v) {
@@ -150,7 +164,7 @@ function toEpochMs(v) {
 }
 
 function normTags(input, max = 8) {
-  const tags = Array.isArray(input) ? input : typeof input === 'string' ? input.split(/[;,|]/g) : [];
+  const tags = Array.isArray(input) ? input : typeof input === 'string' ? input.split(TAGS_RE) : [];
   const out = [];
   const seen = new Set();
   for (const t of tags) {
@@ -449,7 +463,7 @@ function c2IntelRows(text) {
     const line = rawLine.trim();
     if (!line) continue;
     if (!boundedText(line, 16384)) return null;
-    if (/^#?\s*ip,(?:description|ioc)$/i.test(line)) {
+    if (C2_INTEL_ROWS_RE.test(line)) {
       if (header || rows.length > 0) return null;
       header = true;
       continue;
@@ -482,7 +496,7 @@ async function fetchFeodo(cutoffMs) {
       const lastSeen = toEpochMs(r?.last_online || r?.last_seen || r?.last_seen_utc || r?.first_seen || r?.first_seen_utc);
       if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) continue;
       const mf = clean(r?.malware || r?.malware_family || r?.family, 80);
-      const sev = status === 'online' && /emotet|qakbot|trickbot|dridex|ransom/i.test(mf) ? 'critical'
+      const sev = status === 'online' && SEV_RE.test(mf) ? 'critical'
         : status === 'online' ? 'high' : 'medium';
       const t = sanitize({
         id: `feodo:${ip}`, type: 'c2_server', source: 'feodo', indicator: ip, indicatorType: 'ip',
@@ -574,14 +588,14 @@ async function fetchC2Intel() {
       const ip = clean(line.slice(0, ci), 80).toLowerCase();
       if (!isIp(ip)) continue;
       const desc = clean(line.slice(ci + 1), 200);
-      const mf = desc.replace(/^Possible\s+/i, '').replace(/\s+C2\s+IP$/i, '').trim() || 'Unknown';
+      const mf = desc.replace(MF_RE, '').replace(MF_RE_2, '').trim() || 'Unknown';
       const tags = ['c2'];
       const dl = desc.toLowerCase();
       if (dl.includes('cobaltstrike') || dl.includes('cobalt strike')) tags.push('cobaltstrike');
       if (dl.includes('metasploit')) tags.push('metasploit');
       if (dl.includes('sliver')) tags.push('sliver');
       if (dl.includes('brute ratel') || dl.includes('bruteratel')) tags.push('bruteratel');
-      const sev = /cobaltstrike|cobalt.strike|brute.?ratel/i.test(desc) ? 'high' : 'medium';
+      const sev = SEV_RE_2.test(desc) ? 'high' : 'medium';
       const t = sanitize({
         id: `c2intel:${ip}`, type: 'c2_server', source: 'c2intel', indicator: ip, indicatorType: 'ip',
         lat: null, lon: null, country: '', severity: sev, malwareFamily: mf, tags: normTags(tags),
@@ -621,8 +635,8 @@ async function fetchOtx(days) {
       const ip = clean(r?.indicator || r?.ip || '', 80).toLowerCase();
       if (!isIp(ip)) continue;
       const tags = normTags(r?.tags || []);
-      const sev = tags.some((t) => /ransomware|apt|c2|botnet/.test(t)) ? 'high' : 'medium';
-      const type = tags.some((t) => /c2|botnet/.test(t)) ? 'c2_server' : 'malware_host';
+      const sev = tags.some((t) => SEV_RE_3.test(t)) ? 'high' : 'medium';
+      const type = tags.some((t) => TYPE_RE.test(t)) ? 'c2_server' : 'malware_host';
       const title = clean(r?.title || r?.description || '', 200);
       const t = sanitize({
         id: `otx:${ip}`, type, source: 'otx', indicator: ip, indicatorType: 'ip',

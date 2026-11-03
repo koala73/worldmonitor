@@ -5,6 +5,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const CANONICAL_KEY = 'energy:crisis-policies:v1';
@@ -45,7 +48,7 @@ export function validateFn(data) {
   if (!data?.policies || !Array.isArray(data.policies)) return false;
   if (data.policies.length < 10) return false;
 
-  const iso2Re = /^[A-Z]{2}$/;
+  const iso2Re = COUNTRY_CODE_RE;
   for (const p of data.policies) {
     if (typeof p.country !== 'string' || p.country.length === 0) return false;
     if (!iso2Re.test(p.countryCode)) return false;

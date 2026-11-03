@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 
 // Execute the real router and inline handler without starting the relay's workers.
 const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
@@ -13,6 +14,7 @@ function section(start, end) {
   return source.slice(from, to);
 }
 const routeSource = [
+  moduleRegexDeclarations(source),
   section('function safeEnd(', 'const WORLD_BANK_COUNTRY_ALLOWLIST'),
   section('function safeTokenEquals(', 'function getRateLimitForPath('),
   section('async function handleWitsRequest(', '// ── World Bank proxy'),

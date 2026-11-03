@@ -1,8 +1,11 @@
 import type { Plugin } from 'vite';
 import type { ManifestTransform, RuntimeCaching } from 'workbox-build';
 
+const APP_CHUNK_RUNTIME_CACHE_RE = /^\/assets\/.+\.(?:js|css)$/i;
+
+
 export const appChunkRuntimeCache: RuntimeCaching = {
-  urlPattern: ({ url, sameOrigin }) => sameOrigin && /^\/assets\/.+\.(?:js|css)$/i.test(url.pathname),
+  urlPattern: ({ url, sameOrigin }) => sameOrigin && APP_CHUNK_RUNTIME_CACHE_RE.test(url.pathname),
   handler: 'StaleWhileRevalidate',
   options: {
     cacheName: 'app-chunks',

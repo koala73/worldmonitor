@@ -9,6 +9,8 @@
  * Used by both the /pro marketing page and the main dashboard.
  */
 
+const HANDLER_RE = /^\d{1,4}$/;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -259,7 +261,7 @@ export default async function handler(
             },
             429,
             cors,
-            { 'Retry-After': retryAfter && /^\d{1,4}$/.test(retryAfter) ? retryAfter : '10' },
+            { 'Retry-After': retryAfter && HANDLER_RE.test(retryAfter) ? retryAfter : '10' },
           ),
         );
       }

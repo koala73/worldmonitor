@@ -37,6 +37,11 @@ import { pathToFileURL } from 'node:url';
 import { loadEnvFile } from './_seed-utils.mjs';
 import { runConvexFunction } from './lib/convex-run-pages.mjs';
 
+const LONGEST_RE = /`+/g;
+const SENTRY_TRACE_URL_RE = /^[a-f0-9]{32}$/i;
+const EXIT_RE = /\(exit (\d+)\)/;
+
+
 const USER_AGENT = 'worldmonitor-feedback-triage/1.0';
 const AXIOM_QUERY_URL = 'https://api.axiom.co/v1/datasets/_apl?format=tabular';
 const AXIOM_DATASET = 'wm_api_usage';
@@ -62,7 +67,7 @@ export function escapeTerminal(value) {
 
 /** A backtick fence one longer than the longest backtick run in the text. */
 export function fenceFor(text) {
-  const longest = Math.max(0, ...[...String(text).matchAll(/`+/g)].map((m) => m[0].length));
+  const longest = Math.max(0, ...[...String(text).matchAll(LONGEST_RE)].map((m) => m[0].length));
   return '`'.repeat(Math.max(3, longest + 1));
 }
 
@@ -79,7 +84,7 @@ export function groupByFingerprint(rows) {
 }
 
 export function sentryTraceUrl(traceId, org = DEFAULT_SENTRY_ORG) {
-  if (!/^[a-f0-9]{32}$/i.test(String(traceId ?? ''))) return null;
+  if (!SENTRY_TRACE_URL_RE.test(String(traceId ?? ''))) return null;
   return `https://${org}.sentry.io/performance/trace/${traceId}/`;
 }
 
@@ -211,7 +216,7 @@ function convexRunner(run = runConvexFunction) {
     try {
       return run(fn, args);
     } catch (err) {
-      const exit = /\(exit (\d+)\)/.exec(err?.message ?? '')?.[1];
+      const exit = EXIT_RE.exec(err?.message ?? '')?.[1];
       throw new Error(`${fn} failed${exit ? ` (exit ${exit})` : ''}; rerun with npx convex run ${fn} to see the store error`);
     }
   };

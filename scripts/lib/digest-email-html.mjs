@@ -10,6 +10,13 @@ import { stripSourceSuffix } from './brief-dedup-jaccard.mjs';
 import { injectEmailSummary } from './email-summary-html.mjs';
 import { digestCoverageText } from './digest-corroboration.mjs';
 
+const TRIMMED_RE = /\s+\S*$/;
+const ESCAPED_URL_RE = /&/g;
+const ESCAPED_URL_RE_2 = /</g;
+const ESCAPED_URL_RE_3 = />/g;
+const ESCAPED_URL_RE_4 = /"/g;
+
+
 export const DIGEST_CRITICAL_LIMIT = Infinity;
 export const DIGEST_HIGH_LIMIT = 15;
 export const DIGEST_MEDIUM_LIMIT = 10;
@@ -86,7 +93,7 @@ export function formatDigestHtml(stories, nowMs, options = {}) {
     let snippetEl = '';
     if (typeof s.description === 'string' && s.description.length > 0) {
       const trimmed = s.description.length > 200
-        ? s.description.slice(0, 200).replace(/\s+\S*$/, '') + '…'
+        ? s.description.slice(0, 200).replace(TRIMMED_RE, '') + '…'
         : s.description;
       snippetEl = `<div style="margin-top: 6px; font-size: 12px; color: #999; line-height: 1.45;">${escapeHtml(trimmed)}</div>`;
     }
@@ -189,10 +196,10 @@ export function injectBriefCta(html, magazineUrl) {
   if (!html) return html;
   if (!magazineUrl) return html.replace('<div data-brief-cta-slot></div>', '');
   const escapedUrl = String(magazineUrl)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(ESCAPED_URL_RE, '&amp;')
+    .replace(ESCAPED_URL_RE_2, '&lt;')
+    .replace(ESCAPED_URL_RE_3, '&gt;')
+    .replace(ESCAPED_URL_RE_4, '&quot;');
   const ctaHtml = `<div style="margin:0 0 24px 0;">
 <a href="${escapedUrl}" style="display:inline-block;background:#f2ede4;color:#0a0a0a;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:0.08em;padding:14px 22px;border-radius:4px;">Open your WorldMonitor Brief →</a>
 <div style="margin-top:10px;font-size:11px;color:#888;line-height:1.5;">Your personalised editorial magazine. Opens in the browser — scroll or swipe through today's threads.</div>

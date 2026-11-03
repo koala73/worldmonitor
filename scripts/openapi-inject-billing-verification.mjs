@@ -21,6 +21,15 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, serialize, readPublicNoAuthPaths, readRetryableBillingCodes } from './lib/openapi-codegen.mjs';
 
+const FIND_YAML_SCHEMA_RANGE_RE = /^ {8}[^ ].*:/;
+const PATH_MATCH_RE = /^ {4}(\/\S+):\s*$/;
+const ENUMERATE_YAML_OPERATIONS_RE = /^\S/;
+const METHOD_MATCH_RE = /^ {8}(get|post|put|delete|patch|options|head):\s*$/;
+const FIND_YAML_RESPONSE_RANGE_RE = /^ {16}[^ ].*:/;
+const JSON_FILES_RE = /Service\.openapi\.json$/;
+const YAML_FILES_RE = /Service\.openapi\.yaml$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = process.env.WM_OPENAPI_API_DIR
   ? resolve(process.env.WM_OPENAPI_API_DIR)
@@ -178,7 +187,7 @@ function findYamlSchemaRange(lines, schemaName) {
   let end = start + 1;
   while (end < lines.length) {
     const line = lines[end];
-    if (line && /^ {8}[^ ].*:/.test(line)) break;
+    if (line && FIND_YAML_SCHEMA_RANGE_RE.test(line)) break;
     if (line && !line.startsWith('            ')) break;
     end++;
   }
@@ -200,7 +209,7 @@ function ensureYamlSchema(lines, name, block) {
   if (errorIndex !== -1) {
     while (insertAt < lines.length) {
       const line = lines[insertAt];
-      if (line && /^ {8}[^ ].*:/.test(line)) break;
+      if (line && FIND_YAML_SCHEMA_RANGE_RE.test(line)) break;
       if (line && !line.startsWith('            ')) break;
       insertAt++;
     }
@@ -213,16 +222,16 @@ function enumerateYamlOperations(lines) {
   const operations = [];
   let currentPath = null;
   for (let i = 0; i < lines.length; i++) {
-    const pathMatch = lines[i].match(/^ {4}(\/\S+):\s*$/);
+    const pathMatch = lines[i].match(PATH_MATCH_RE);
     if (pathMatch) {
       currentPath = pathMatch[1];
       continue;
     }
-    if (/^\S/.test(lines[i])) {
+    if (ENUMERATE_YAML_OPERATIONS_RE.test(lines[i])) {
       currentPath = null;
       continue;
     }
-    const methodMatch = lines[i].match(/^ {8}(get|post|put|delete|patch|options|head):\s*$/);
+    const methodMatch = lines[i].match(METHOD_MATCH_RE);
     if (!currentPath || !methodMatch) continue;
     operations.push({ path: currentPath, method: methodMatch[1] });
   }
@@ -266,7 +275,7 @@ function findYamlResponseRange(lines, op, statusLine) {
   let end = start + 1;
   while (end < op.end) {
     const line = lines[end];
-    if (line && /^ {16}[^ ].*:/.test(line)) break;
+    if (line && FIND_YAML_RESPONSE_RANGE_RE.test(line)) break;
     if (line && !line.startsWith('                    ')) break;
     end++;
   }
@@ -317,9 +326,9 @@ function injectYaml(text) {
   return { text: lines.join('\n'), changed };
 }
 
-const jsonFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+const jsonFiles = readdirSync(apiDir).filter((f) => JSON_FILES_RE.test(f)).sort();
 const yamlFiles = readdirSync(apiDir)
-  .filter((f) => /Service\.openapi\.yaml$/.test(f) || f === 'worldmonitor.openapi.yaml')
+  .filter((f) => YAML_FILES_RE.test(f) || f === 'worldmonitor.openapi.yaml')
   .sort();
 let wouldChange = 0;
 const touched = [];

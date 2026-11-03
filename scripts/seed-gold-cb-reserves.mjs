@@ -2,6 +2,9 @@
 
 import { loadEnvFile, CHROME_UA, runSeed, withRetry, normalizeSdmxPeriod, imfAuthHeaders, PERMANENT_4XX_STATUSES, parseRetryAfterMs } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
+
+const VALUE_IS_OUNCES_RE = /_FTO|_OZT|OUNCE/i;
+
 loadEnvFile(import.meta.url);
 
 // Re-exported for the test suite. The shared normalizer lives in _seed-utils
@@ -168,7 +171,7 @@ export function buildReservesPayload(raw, indicator, goldUsdByCountry = {}, tota
   // values are price-contaminated, so we flag non-ounces and skip deltas.
   // Backward-compat: legacy `_OZT`/`OUNCE` substrings (from pre-merge PR) also
   // satisfy the check.
-  const valueIsOunces = /_FTO|_OZT|OUNCE/i.test(indicator);
+  const valueIsOunces = VALUE_IS_OUNCES_RE.test(indicator);
 
   const toTonnes = (v) => valueIsOunces ? v / TROY_OZ_PER_TONNE : null;
 

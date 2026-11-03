@@ -5,6 +5,8 @@
  * plus a reviewed HS mapping.
  */
 
+const NON_DIGIT_RE = /\D/g;
+
 export const CHINA_COMTRADE_NATIONAL_CAPTION =
   'UN Comtrade reporter 156 is China-level official statistics. It is not a town, corridor, factory, port, or shipment export ledger.';
 
@@ -111,7 +113,7 @@ export type ChinaFactoryTradeQuery = {
 
 /** Two-digit HS chapter for a Comtrade commodity code, or '' when not derivable. */
 function hsChapterOf(cmdCode: string): string {
-  const digits = String(cmdCode).replace(/\D/g, '');
+  const digits = String(cmdCode).replace(NON_DIGIT_RE, '');
   if (!digits) return '';
   // A 1-digit code is an unpadded chapter (Comtrade emits '4' as well as '04').
   return digits.length === 1 ? digits.padStart(2, '0') : digits.slice(0, 2);

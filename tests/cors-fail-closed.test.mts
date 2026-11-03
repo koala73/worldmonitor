@@ -285,7 +285,8 @@ describe('CORS triplet parity — Google Translate + trailing-dot helpers stay i
 
   for (const rel of TWINS) {
     it(`${rel} decodes Google Translate hosts before allowlisting`, async () => {
-      const source = await readFile(new URL(rel, import.meta.url), 'utf8');
+      const { inlineModuleRegexReferences } = await import('./helpers/module-regex-declarations.mjs');
+      const source = inlineModuleRegexReferences(await readFile(new URL(rel, import.meta.url), 'utf8'));
       assert.ok(
         source.includes('isWorldMonitorGoogleTranslateOrigin'),
         `${rel} must share the Translate decode helper`,

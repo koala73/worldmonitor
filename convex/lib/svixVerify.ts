@@ -16,6 +16,8 @@
  * the verifier reaches every webhook at once.
  */
 
+const PARSE_TIMESTAMP_SECONDS_RE = /^\d{1,15}$/;
+
 export const SVIX_SECRET_PREFIX = "whsec_";
 
 /** Replay window every caller uses unless it asks for another. */
@@ -182,7 +184,7 @@ export async function computeSvixSignature(
  * parser, and the three copies disagreed on which to use.
  */
 function parseTimestampSeconds(raw: string): number | null {
-  return /^\d{1,15}$/.test(raw) ? Number(raw) : null;
+  return PARSE_TIMESTAMP_SECONDS_RE.test(raw) ? Number(raw) : null;
 }
 
 /**

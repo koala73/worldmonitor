@@ -10,6 +10,9 @@ import { streamCandidates } from '../data/select.mjs';
 import { openExternal, playInTerminal, playInWindow } from '../video.mjs';
 import { PaneView, selectedItem } from './base.mjs';
 
+const RESOLVED_NOW_RE = /channel\/(UC[\w-]+)/;
+
+
 const WEBCAM_REGION_LABELS = { 'middle-east': 'Middle East', europe: 'Europe', americas: 'Americas', asia: 'Asia-Pacific', space: 'Space' };
 
 export class LiveView extends PaneView {
@@ -171,7 +174,7 @@ export class LiveView extends PaneView {
         const hasHls = kinds.some((k) => k.kind === 'hls');
         const hasLive = kinds.some((k) => k.kind === 'youtube' || k.kind === 'youtube-channel');
         const resolvedNow = c.sources.some((sItem) => {
-          const m = /channel\/(UC[\w-]+)/.exec(sItem);
+          const m = RESOLVED_NOW_RE.exec(sItem);
           return m && resolved[m[1]]?.videoId;
         });
         return [

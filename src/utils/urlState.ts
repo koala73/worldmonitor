@@ -2,6 +2,10 @@ import type { MapLayers } from '@/types';
 import type { MapView, TimeRange } from '@/components/Map';
 import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 
+const COUNTRY_RE = /^[A-Z]{2}$/i;
+const CHOKEPOINT_RE = /^[a-z][a-z0-9_]{1,40}$/i;
+
+
 // The registry is typed Record<keyof MapLayers, …>, so every layer is here; a
 // hand-kept copy fell behind it and silently dropped 20 layers from deep links.
 const LAYER_KEYS = Object.keys(LAYER_REGISTRY) as (keyof MapLayers)[];
@@ -96,7 +100,7 @@ export function parseMapUrlState(
   const timeRange = parseEnumParam(params, 'timeRange', TIME_RANGES);
 
   const countryParam = params.get('country');
-  const country = countryParam && /^[A-Z]{2}$/i.test(countryParam.trim()) ? countryParam.trim().toUpperCase() : undefined;
+  const country = countryParam && COUNTRY_RE.test(countryParam.trim()) ? countryParam.trim().toUpperCase() : undefined;
 
   const expandedParam = params.get('expanded');
   const expanded = expandedParam === '1' ? true : undefined;
@@ -106,7 +110,7 @@ export function parseMapUrlState(
   // The map resolves it against STRATEGIC_WATERWAYS and no-ops on an unknown id,
   // so this only needs to reject obviously malformed input.
   const chokepointParam = params.get('chokepoint');
-  const chokepoint = chokepointParam && /^[a-z][a-z0-9_]{1,40}$/i.test(chokepointParam.trim())
+  const chokepoint = chokepointParam && CHOKEPOINT_RE.test(chokepointParam.trim())
     ? chokepointParam.trim().toLowerCase()
     : undefined;
 

@@ -19,6 +19,10 @@ import {
   type CountryProduct,
 } from './chokepoint-exposure-utils';
 
+const NON_DIGIT_RE = /\D/g;
+const GET_COUNTRY_CHOKEPOINT_INDEX_RE = /^\d{1,2}$/;
+
+
 const CACHE_TTL = 86400; // 24 hours
 const TRANSIENT_CACHE_TTL = 60; // 60s when bilateral data is still loading
 
@@ -75,9 +79,9 @@ export async function getCountryChokepointIndex(
   const isPro = await isCallerPremium(ctx.request);
   if (!isPro) return emptyResponse(req.iso2, req.hs2 || '27');
 
-  const hs2 = (req.hs2?.trim() || '27').replace(/\D/g, '') || '27';
+  const hs2 = (req.hs2?.trim() || '27').replace(NON_DIGIT_RE, '') || '27';
 
-  if (!/^\d{1,2}$/.test(hs2)) {
+  if (!GET_COUNTRY_CHOKEPOINT_INDEX_RE.test(hs2)) {
     return emptyResponse(req.iso2, req.hs2 || '27');
   }
 

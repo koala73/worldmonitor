@@ -7,6 +7,32 @@
 
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 
+const HREF_RE = /<link[^>]*\bhref=(["'])(.*?)\1[^>]*\/?>/i;
+const TERM_RE = /<category[^>]*\bterm=(["'])(.*?)\1[^>]*\/?>/i;
+const CLEAN_TEXT_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const MAP_ALERT_SEVERITY_RE = /\b(red|critical)\b/;
+const MAP_ALERT_SEVERITY_RE_2 = /\b(orange|warning)\b/;
+const MAP_ALERT_SEVERITY_RE_3 = /\b(yellow|advisory|watch)\b/;
+const MAP_ALERT_SEVERITY_RE_4 = /\b(blue|green|information|info)\b/;
+const MAP_ALERT_SEVERITY_RE_5 = /\btest\b/;
+const MAP_ALERT_SEVERITY_RE_6 = /\b(red|critical|orange|yellow|advisory|watch)\b/;
+const MAP_ALERT_SEVERITY_RE_7 = /\b(orange)\b/;
+const MAP_ALERT_SEVERITY_RE_8 = /\b(blue|green|information)\b/;
+const RESPONSE_RE = /[\s_-]/g;
+const PARSE_CAP_STATUS_RE = /<(?:[A-Za-z_][\w.-]*:)?alert\b[^>]*>/i;
+const HREF_FIRST_RE = /<link[^>]*\bhref=(["'])(.*?)\1[^>]*\brel=(["'])enclosure\3/i;
+const REL_FIRST_RE = /<link[^>]*\brel=(["'])enclosure\1[^>]*\bhref=(["'])(.*?)\2/i;
+const NUMS_RE = /[\s,]+/;
+const STRIPPED_RE = /^(?:red|orange|yellow|blue|green|critical|advisory|watch|warning|information|info|test)\b[\s:-]*/i;
+const STRIPPED_RE_2 = /\s*-\s*in effect\s*$/i;
+const STRIPPED_RE_3 = /^[-:\s]+/;
+const AREA_MATCH_RE = /Area:\s*\(([\s\S]*?)\)\s*$/;
+const AREA_MATCH_RE_2 = /Area:\s*([\s\S]+)$/;
+const PARSE_ALBERTA_EMERGENCY_ALERT_ATOM_RE = /<feed[\s>]/i;
+const PARSE_ALBERTA_EMERGENCY_ALERT_ATOM_RE_2 = /<entry[\s>]/i;
+
+
 export const AEA_HOST = 'www.alberta.ca';
 export const AEA_ATOM_URL = 'https://www.alberta.ca/data/aea/rss/feed-full.atom';
 export const AEA_SOURCE = 'alberta-aea';
@@ -58,19 +84,19 @@ function extractAllTags(block, tagName) {
 function extractLink(block) {
   const direct = extractTag(block, 'link');
   if (direct) return decodeHtmlEntities(direct).trim();
-  const href = (block.match(/<link[^>]*\bhref=(["'])(.*?)\1[^>]*\/?>/i) || [])[2] || '';
+  const href = (block.match(HREF_RE) || [])[2] || '';
   return decodeHtmlEntities(href).trim();
 }
 
 function extractCategory(block) {
   const tagged = extractTag(block, 'category') || extractTag(block, 'cap:category');
   if (tagged) return decodeHtmlEntities(tagged).trim();
-  const term = (block.match(/<category[^>]*\bterm=(["'])(.*?)\1[^>]*\/?>/i) || [])[2] || '';
+  const term = (block.match(TERM_RE) || [])[2] || '';
   return decodeHtmlEntities(term).trim();
 }
 
 function cleanText(raw) {
-  return decodeHtmlEntities(raw).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(raw).replace(CLEAN_TEXT_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 export function parseDateMs(...raws) {
@@ -93,10 +119,10 @@ export function mapAlertSeverity({ capSeverity, capUrgency, category, title, sum
 
   const categoryText = String(category || '').trim().toLowerCase();
   if (CAP_SEVERITY[categoryText]) return CAP_SEVERITY[categoryText];
-  if (/\b(red|critical)\b/.test(categoryText)) return 'Extreme';
-  if (/\b(orange|warning)\b/.test(categoryText)) return 'Severe';
-  if (/\b(yellow|advisory|watch)\b/.test(categoryText)) return 'Moderate';
-  if (/\b(blue|green|information|info)\b/.test(categoryText)) return 'Minor';
+  if (MAP_ALERT_SEVERITY_RE.test(categoryText)) return 'Extreme';
+  if (MAP_ALERT_SEVERITY_RE_2.test(categoryText)) return 'Severe';
+  if (MAP_ALERT_SEVERITY_RE_3.test(categoryText)) return 'Moderate';
+  if (MAP_ALERT_SEVERITY_RE_4.test(categoryText)) return 'Minor';
 
   const urgency = String(capUrgency || '').trim().toLowerCase();
   if (urgency === 'immediate') return 'Extreme';
@@ -104,13 +130,13 @@ export function mapAlertSeverity({ capSeverity, capUrgency, category, title, sum
   if (urgency === 'future') return 'Moderate';
 
   const blob = `${title || ''} ${summary || ''}`.toLowerCase();
-  if (/\btest\b/.test(blob) && !/\b(red|critical|orange|yellow|advisory|watch)\b/.test(blob)) {
+  if (MAP_ALERT_SEVERITY_RE_5.test(blob) && !MAP_ALERT_SEVERITY_RE_6.test(blob)) {
     return null;
   }
-  if (/\b(red|critical)\b/.test(blob)) return 'Extreme';
-  if (/\b(orange)\b/.test(blob)) return 'Severe';
-  if (/\b(yellow|advisory|watch)\b/.test(blob)) return 'Moderate';
-  if (/\b(blue|green|information)\b/.test(blob)) return 'Minor';
+  if (MAP_ALERT_SEVERITY_RE.test(blob)) return 'Extreme';
+  if (MAP_ALERT_SEVERITY_RE_7.test(blob)) return 'Severe';
+  if (MAP_ALERT_SEVERITY_RE_3.test(blob)) return 'Moderate';
+  if (MAP_ALERT_SEVERITY_RE_8.test(blob)) return 'Minor';
   return null;
 }
 
@@ -124,7 +150,7 @@ const ENDED_TOKEN_RE = /\b(ended|cancelled|canceled|all\s*clear|allclear)\b/i;
 export function isEndedOrAllClear({ title, summary, capResponseType, capUrgency, capMsgType } = {}) {
   const blob = `${title || ''} ${summary || ''}`;
   if (ENDED_TOKEN_RE.test(blob)) return true;
-  const response = String(capResponseType || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+  const response = String(capResponseType || '').trim().toLowerCase().replace(RESPONSE_RE, '');
   if (response === 'allclear') return true;
   const urgency = String(capUrgency || '').trim().toLowerCase();
   if (urgency === 'past') return true;
@@ -136,7 +162,7 @@ export function isEndedOrAllClear({ title, summary, capResponseType, capUrgency,
 export function parseCapStatus(xml) {
   if (typeof xml !== 'string' || !xml) return {};
   return {
-    capIsAlert: /<(?:[A-Za-z_][\w.-]*:)?alert\b[^>]*>/i.test(xml),
+    capIsAlert: PARSE_CAP_STATUS_RE.test(xml),
     capStatus: extractTag(xml, 'status') || extractTag(xml, 'cap:status'),
     capScope: extractTag(xml, 'scope') || extractTag(xml, 'cap:scope'),
     capExpires: extractTag(xml, 'expires') || extractTag(xml, 'cap:expires'),
@@ -176,16 +202,16 @@ export function isPublishableCapAlert(cap, nowMs = Date.now()) {
 }
 
 function extractEnclosureUrl(block) {
-  const hrefFirst = (block.match(/<link[^>]*\bhref=(["'])(.*?)\1[^>]*\brel=(["'])enclosure\3/i) || [])[2] || '';
+  const hrefFirst = (block.match(HREF_FIRST_RE) || [])[2] || '';
   if (hrefFirst) return decodeHtmlEntities(hrefFirst).trim();
-  const relFirst = (block.match(/<link[^>]*\brel=(["'])enclosure\1[^>]*\bhref=(["'])(.*?)\2/i) || [])[3] || '';
+  const relFirst = (block.match(REL_FIRST_RE) || [])[3] || '';
   return decodeHtmlEntities(relFirst).trim();
 }
 
 /** GeoRSS polygon/point pairs are lat lon (CAP/GeoRSS), returned as [lon, lat]. */
 export function parseGeorssCoordinates(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return [];
-  const nums = raw.trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
+  const nums = raw.trim().split(NUMS_RE).map(Number).filter(Number.isFinite);
   const out = [];
   for (let i = 0; i + 1 < nums.length; i += 2) {
     const lat = nums[i];
@@ -213,11 +239,11 @@ function extractCoordinates(block) {
 }
 
 function eventFromTitle(title) {
-  const cleaned = String(title || '').replace(/\s+/g, ' ').trim();
+  const cleaned = String(title || '').replace(WHITESPACE_RE, ' ').trim();
   const stripped = cleaned
-    .replace(/^(?:red|orange|yellow|blue|green|critical|advisory|watch|warning|information|info|test)\b[\s:-]*/i, '')
-    .replace(/\s*-\s*in effect\s*$/i, '')
-    .replace(/^[-:\s]+/, '')
+    .replace(STRIPPED_RE, '')
+    .replace(STRIPPED_RE_2, '')
+    .replace(STRIPPED_RE_3, '')
     .trim();
   return stripped || cleaned;
 }
@@ -251,8 +277,8 @@ export function normalizeAeaEntry(block) {
   const coords = extractCoordinates(block);
   const centroid = calculateCentroid(coords) || [...ALBERTA_CENTROID];
   const id = extractTag(block, 'cap:identifier') || extractTag(block, 'id') || title;
-  const areaMatch = summary.match(/Area:\s*\(([\s\S]*?)\)\s*$/) || summary.match(/Area:\s*([\s\S]+)$/);
-  const areaDesc = areaMatch ? areaMatch[1].replace(/\s+/g, ' ').trim() : '';
+  const areaMatch = summary.match(AREA_MATCH_RE) || summary.match(AREA_MATCH_RE_2);
+  const areaDesc = areaMatch ? areaMatch[1].replace(WHITESPACE_RE, ' ').trim() : '';
 
   return {
     id,
@@ -281,7 +307,7 @@ export function parseAlbertaEmergencyAlertAtom(xml) {
     throw new Error('alberta-aea: body is not parseable Atom');
   }
   const bounded = xml.length > MAX_PAYLOAD_BYTES ? xml.slice(0, MAX_PAYLOAD_BYTES) : xml;
-  if (!/<feed[\s>]/i.test(bounded) && !/<entry[\s>]/i.test(bounded)) {
+  if (!PARSE_ALBERTA_EMERGENCY_ALERT_ATOM_RE.test(bounded) && !PARSE_ALBERTA_EMERGENCY_ALERT_ATOM_RE_2.test(bounded)) {
     throw new Error('alberta-aea: body is not parseable Atom');
   }
   const records = [];

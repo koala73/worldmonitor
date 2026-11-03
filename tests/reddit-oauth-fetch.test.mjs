@@ -12,9 +12,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { inlineModuleRegexReferences } from './helpers/module-regex-declarations.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const relaySource = readFileSync(resolve(here, '../scripts/ais-relay.cjs'), 'utf8');
+const relaySource = inlineModuleRegexReferences(readFileSync(resolve(here, '../scripts/ais-relay.cjs'), 'utf8'));
 
 function fnBody(name, approxLen = 1200) {
   const start = relaySource.indexOf(name);

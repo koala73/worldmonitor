@@ -2,6 +2,11 @@
 
 import { loadEnvFile, runSeed, CHROME_UA, readSeedSnapshot } from './_seed-utils.mjs';
 
+const PARAMS_RE = /'/g;
+const LINES_RE = /^\uFEFF/;
+const CHOKEPOINTS_FROM_CSV_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const CANONICAL_KEY = 'supply_chain:portwatch:v1';
@@ -99,7 +104,7 @@ export async function fetchAllPages(portname, sinceEpoch) {
   let offset = 0;
   for (;;) {
     const params = new URLSearchParams({
-      where: `portname='${portname.replace(/'/g, "''")}' AND date >= ${epochToTimestamp(sinceEpoch)}`,
+      where: `portname='${portname.replace(PARAMS_RE, "''")}' AND date >= ${epochToTimestamp(sinceEpoch)}`,
       outFields: [
         'date',
         'n_container', 'n_dry_bulk', 'n_general_cargo', 'n_roro', 'n_tanker', 'n_total',
@@ -140,7 +145,7 @@ export function baselineWindow(nowMs = Date.now()) {
 
 export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeoutMs = BASELINE_REQUEST_TIMEOUT_MS) {
   const params = new URLSearchParams({
-    where: `portname='${portname.replace(/'/g, "''")}' AND date >= ${epochToTimestamp(fromEpoch)} AND date < ${epochToTimestamp(toEpoch)}`,
+    where: `portname='${portname.replace(PARAMS_RE, "''")}' AND date >= ${epochToTimestamp(fromEpoch)} AND date < ${epochToTimestamp(toEpoch)}`,
     outStatistics: JSON.stringify([
       { statisticType: 'avg', onStatisticField: 'n_total', outStatisticFieldName: 'avg_total' },
       { statisticType: 'count', onStatisticField: 'n_total', outStatisticFieldName: 'day_count' },
@@ -213,7 +218,7 @@ const CSV_NUMERIC_FIELDS = [
  * caller can fall back to the query service.
  */
 export function chokepointsFromCsv(text, sinceEpoch, window) {
-  const lines = text.replace(/^\uFEFF/, '').split('\n');
+  const lines = text.replace(LINES_RE, '').split('\n');
   const columns = lines[0].trim().split(',');
   const col = Object.fromEntries(columns.map((name, i) => [name, i]));
   for (const name of ['date', 'portname', ...CSV_NUMERIC_FIELDS]) {
@@ -234,7 +239,7 @@ export function chokepointsFromCsv(text, sinceEpoch, window) {
       throw new Error(`CSV export has a malformed row for ${cells[col.portname]}`);
     }
     const date = cells[col.date].replaceAll('/', '-');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || formatDate(Date.parse(`${date}T00:00:00Z`)) !== date) {
+    if (!CHOKEPOINTS_FROM_CSV_RE.test(date) || formatDate(Date.parse(`${date}T00:00:00Z`)) !== date) {
       throw new Error(`CSV export has an invalid date for ${cells[col.portname]}`);
     }
     if (date >= window.from && date < baselineEndDay && cells[col.n_total] !== '') {

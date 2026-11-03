@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -19,7 +20,7 @@ const fnParams = (fnMatch[1] ?? fnMatch[3])
   .map(p => p.replace(/:.*/s, '').trim())
   .filter(Boolean);
 // eslint-disable-next-line no-new-func
-const suppress = new Function(...fnParams, fnBody);
+const suppress = new Function(...fnParams, `${moduleRegexDeclarations(mainSrc)}\n${fnBody}`);
 
 describe('CSP violation filter (shouldSuppressCspViolation)', () => {
   describe('disposition gating', () => {

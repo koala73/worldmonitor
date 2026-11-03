@@ -13,6 +13,10 @@ import { isVerifiableArticleUrl } from '../../../../shared/article-url.js';
 import { INTEL_SOURCES, isServerFeedReachableForLanguage, VARIANT_FEEDS } from './_feeds';
 import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
 
+const WHITESPACE_RE = /\s+/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const HEADLINE_LIMIT = 5;
 
 function headlineFromCache(value: unknown, source: string, now: number, cutoff: number, revoked: ReadonlySet<string>): CountryHeadline | null {
@@ -23,7 +27,7 @@ function headlineFromCache(value: unknown, source: string, now: number, cutoff: 
     ? (typeof row.originPublisher === 'string' ? row.originPublisher.trim() : '')
     : source;
   if (!publisher || publisher.length > 200) return null;
-  const title = row.title.replace(/\s+/g, ' ').trim();
+  const title = row.title.replace(WHITESPACE_RE, ' ').trim();
   if (!title || title.length > 1000 || title.includes('**') || row.link.length > 2048) return null;
   if (typeof row.publishedAt !== 'number' || !Number.isFinite(row.publishedAt)
     || row.publishedAt <= 0 || row.publishedAt < cutoff || row.publishedAt > now + FUTURE_DATE_TOLERANCE_MS) return null;
@@ -40,7 +44,7 @@ export async function listCountryHeadlines(
   ctx: ServerContext,
   req: ListCountryHeadlinesRequest,
 ): Promise<ListCountryHeadlinesResponse> {
-  const codes = [...new Set(req.countryCodes.map(code => code.trim().toUpperCase()).filter(code => /^[A-Z]{2}$/.test(code)))].slice(0, 250);
+  const codes = [...new Set(req.countryCodes.map(code => code.trim().toUpperCase()).filter(code => COUNTRY_CODE_RE.test(code)))].slice(0, 250);
   const feeds = [...Object.values(VARIANT_FEEDS.full ?? {}).flat(), ...INTEL_SOURCES]
     .filter(feed => isServerFeedReachableForLanguage(feed, 'en'));
   const now = Date.now();

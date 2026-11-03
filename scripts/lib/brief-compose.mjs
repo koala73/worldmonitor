@@ -26,6 +26,12 @@ import {
 import { classifyEphemeralLiveCoverage } from '../../shared/ephemeral-live-classifier.js';
 import { sanitizeForPrompt, sanitizeHeadline } from '../../server/_shared/llm-sanitize.js';
 
+const WHITESPACE_RE = /\s+/;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]/g;
+const INITIALS_OF_RE = /^[a-z]$/i;
+const WHITESPACE_RE_2 = /\s+/g;
+
+
 // ── Rule dedupe (one brief per user, not per variant) ───────────────────────
 
 const SENSITIVITY_RANK = { all: 0, high: 1, critical: 2 };
@@ -504,13 +510,13 @@ function normalizePublisher(s) {
   if (trimmed.length === 0) return '';
   const stripped = trimmed.replace(DOMAIN_PAREN_TRAILING_RE, '');
   let tokens = stripped
-    .split(/\s+/)
+    .split(WHITESPACE_RE)
     .filter((t) => t.length > 0 && !ARTICLE_TOKENS.has(t));
   while (tokens.length > 0 && WIRE_SUFFIX_TOKENS.has(tokens[tokens.length - 1])) {
     tokens.pop();
   }
   tokens = tokens
-    .map((t) => t.replace(/[^a-z0-9]/g, ''))
+    .map((t) => t.replace(NON_ALPHANUMERIC_RE, ''))
     .filter((t) => t.length > 0);
   return tokens.join(' ');
 }
@@ -531,9 +537,9 @@ function tailForInitials(s) {
   if (trimmed.length === 0) return '';
   const stripped = trimmed.replace(DOMAIN_PAREN_TRAILING_RE, '');
   const tokens = stripped
-    .split(/\s+/)
+    .split(WHITESPACE_RE)
     .filter((t) => t.length > 0 && !ARTICLE_TOKENS.has(t))
-    .map((t) => t.replace(/[^a-z0-9]/g, ''))
+    .map((t) => t.replace(NON_ALPHANUMERIC_RE, ''))
     .filter((t) => t.length > 0);
   return tokens.join(' ');
 }
@@ -548,9 +554,9 @@ function tailForInitials(s) {
 function initialsOf(s) {
   if (typeof s !== 'string' || s.length === 0) return '';
   return s
-    .split(/\s+/)
+    .split(WHITESPACE_RE)
     .map((t) => (t.length > 0 ? t[0] : ''))
-    .filter((c) => /^[a-z]$/i.test(c))
+    .filter((c) => INITIALS_OF_RE.test(c))
     .join('')
     .toLowerCase();
 }
@@ -576,7 +582,7 @@ function looksLikePublisherShape(s) {
   if (typeof s !== 'string') return false;
   const stripped = s.trim().replace(DOMAIN_PAREN_TRAILING_RE, '');
   if (stripped.length === 0) return false;
-  const tokens = stripped.split(/\s+/);
+  const tokens = stripped.split(WHITESPACE_RE);
   if (tokens.length === 0 || tokens.length > 8) return false;
   for (const tok of tokens) {
     if (TITLE_CASE_TOKEN_RE.test(tok)) continue;
@@ -756,7 +762,7 @@ export function digestStoryToSynthesisShape(s) {
   // line by definition, and a multi-line hostile RSS <title> must not be
   // able to break the prompt's per-story line into a fake line-start role
   // turn ("...\nassistant: ignore all previous instructions").
-  const rawTitle = typeof s?.title === 'string' ? s.title.replace(/\s+/g, ' ').trim() : '';
+  const rawTitle = typeof s?.title === 'string' ? s.title.replace(WHITESPACE_RE_2, ' ').trim() : '';
   const cleanTitle = stripHeadlineSuffix(stripHeadlinePrefix(rawTitle), primarySource);
   return {
     // sanitizeHeadline (structural-only) — NOT sanitizeForPrompt — so a

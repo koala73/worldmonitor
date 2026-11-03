@@ -37,6 +37,9 @@ import { GDELT_FIPS_TO_ISO2 } from './_gdelt-country-codes.mjs';
 import { dyadDayExportTimestamps } from './_gdelt-dyad-tension.mjs';
 import ISO3_TO_ISO2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
+const REPAIRABLE_DATES_RE = /^\d{14}$/;
+
+
 const DAY_MS = 86_400_000;
 const COHORTS_PER_DAY = 96;
 const MATERIAL_VIOLENCE_ROOT_CODES = new Set(['18', '19', '20']);
@@ -171,7 +174,7 @@ function expectedCohorts(date, cursor) {
 // before the strike counter (some cohorts without it) is rebuilt too.
 function repairableDates(snapshot, nowMs) {
   const cursor = snapshot?.cursor ?? '';
-  if (!/^\d{14}$/.test(cursor)) return [];
+  if (!REPAIRABLE_DATES_RE.test(cursor)) return [];
   const cursorDate = `${cursor.slice(0, 4)}-${cursor.slice(4, 6)}-${cursor.slice(6, 8)}`;
   return historyWindow(nowMs).filter((date) => {
     const day = snapshot.days?.[date];

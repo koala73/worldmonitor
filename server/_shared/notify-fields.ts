@@ -43,6 +43,9 @@
  * esbuild for Vercel Edge (see scripts/check-edge-function-bundles.mjs).
  */
 
+const STRIP_NOTIFICATION_CONTROL_CHARS_RE = /[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g;
+const WHITESPACE_RE = /\s+/g;
+
 export const NOTIFY_TITLE_MAX_LENGTH = 200;
 export const NOTIFY_SOURCE_MAX_LENGTH = 120;
 export const NOTIFY_DESCRIPTION_MAX_LENGTH = 400;
@@ -93,11 +96,11 @@ export function stripNotificationControlChars(value: string): string {
   return value
     .normalize('NFKC')
     .replace(INVISIBLE_FORMAT_CHARS_PATTERN, ' ')
-    .replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029]+/g, ' ');
+    .replace(STRIP_NOTIFICATION_CONTROL_CHARS_RE, ' ');
 }
 
 function collapseWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
+  return value.replace(WHITESPACE_RE, ' ').trim();
 }
 
 /**

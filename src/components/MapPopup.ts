@@ -34,6 +34,13 @@ import { renderPopupSourceLinks } from './map-popup-source-links';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUG_RE = /^_+|_+$/g;
+const RENDER_BASE_POPUP_RE = /_/g;
+const TOKEN_RE = /[^A-Za-z0-9_-]/g;
+const TOKEN_RE_2 = /^[^A-Za-z_]/;
+
+
 
 // ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
 // Based on IEA/UNCTAD estimated trade composition. Updated periodically.
@@ -975,8 +982,8 @@ export class MapPopup {
   private getLocalizedHotspotSubtext(subtext: string): string {
     const slug = subtext
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
+      .replace(NON_ALPHANUMERIC_RE, '_')
+      .replace(SLUG_RE, '');
     const key = `popups.hotspotSubtexts.${slug}`;
     const localized = t(key);
     return localized === key ? subtext : localized;
@@ -1531,7 +1538,7 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         ${base.description ? `<p class="popup-description">${escapeHtml(base.description)}</p>` : ''}
-        ${enriched.kind ? `<p class="popup-description" style="opacity:0.7;margin-top:2px">${escapeHtml(enriched.kind.replace(/_/g, ' '))}</p>` : ''}
+        ${enriched.kind ? `<p class="popup-description" style="opacity:0.7;margin-top:2px">${escapeHtml(enriched.kind.replace(RENDER_BASE_POPUP_RE, ' '))}</p>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
@@ -1953,7 +1960,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
       abuseipdb: 'AbuseIPDB',
     };
     const sourceLabel = sourceLabels[threat.source] || threat.source;
-    const typeLabel = threat.type.replace(/_/g, ' ').toUpperCase();
+    const typeLabel = threat.type.replace(RENDER_BASE_POPUP_RE, ' ').toUpperCase();
     const tags = (threat.tags || []).slice(0, 6);
 
     return `
@@ -3263,7 +3270,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
   }
 
   private sanitizeClassToken(value: string | undefined, fallback = 'unknown'): string {
-    const token = String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '').replace(/^[^A-Za-z_]/, '');
+    const token = String(value || '').trim().replace(TOKEN_RE, '').replace(TOKEN_RE_2, '');
     return token || fallback;
   }
 

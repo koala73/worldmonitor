@@ -19,6 +19,13 @@
 
 import { sha256Hex } from '../_crypto.js';
 
+const BASE64URL_RE = /\+/g;
+const BASE64URL_RE_2 = /\//g;
+const BASE64URL_RE_3 = /=+$/;
+const READ_OAUTH_BIND_COOKIE_RE = /^__Secure-wm_oauth_bind_[a-f0-9-]{36}$/;
+const HOST_RE = /:\d+$/;
+
+
 export const OAUTH_BIND_COOKIE = '__Secure-wm_oauth_bind';
 const BIND_MAX_AGE_SECONDS = 600; // matches the oauth:nonce TTL
 const BIND_VALUE_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -26,11 +33,11 @@ const BIND_VALUE_RE = /^[A-Za-z0-9_-]{43}$/;
 function base64url(bytes) {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(bin).replace(BASE64URL_RE, '-').replace(BASE64URL_RE_2, '_').replace(BASE64URL_RE_3, '');
 }
 
 export function readOAuthBindCookie(req, name = OAUTH_BIND_COOKIE) {
-  if (name !== OAUTH_BIND_COOKIE && (typeof name !== 'string' || !/^__Secure-wm_oauth_bind_[a-f0-9-]{36}$/.test(name))) return null;
+  if (name !== OAUTH_BIND_COOKIE && (typeof name !== 'string' || !READ_OAUTH_BIND_COOKIE_RE.test(name))) return null;
   const header = req.headers.get('cookie') ?? '';
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');
@@ -48,7 +55,7 @@ export function resolveOAuthBindValue(req, name = OAUTH_BIND_COOKIE) {
 }
 
 export function oauthBindCookieHeader(value, req, name = OAUTH_BIND_COOKIE) {
-  const host = (req.headers.get('host') ?? new URL(req.url).host).toLowerCase().replace(/:\d+$/, '');
+  const host = (req.headers.get('host') ?? new URL(req.url).host).toLowerCase().replace(HOST_RE, '');
   const domain = host === 'worldmonitor.app' || host.endsWith('.worldmonitor.app') ? '; Domain=worldmonitor.app' : '';
   return `${name}=${value}; Max-Age=${BIND_MAX_AGE_SECONDS}; Path=/${domain}; Secure; HttpOnly; SameSite=Lax`;
 }

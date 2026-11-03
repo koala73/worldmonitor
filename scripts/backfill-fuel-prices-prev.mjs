@@ -19,6 +19,16 @@
 import ExcelJS from 'exceljs';
 import { loadEnvFile, CHROME_UA, writeExtraKey, getSharedFxRates, SHARED_FX_FALLBACKS } from './_seed-utils.mjs';
 
+const FETCH_US_EIA_PREV_RE = /api_key=[^&]+/;
+const S_RE = /\s/g;
+const PARSE_EUPRICE_RE = /,/g;
+const PARSE_EUPRICE_RE_2 = /\./g;
+const SHEET_NAME_RE = /with.tax/i;
+const SHEET_NAME_RE_2 = /price/i;
+const DMATCH_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+const DIESEL_COL_IDX_RE = /gas.oil|diesel/i;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:fuel-prices:v1';
@@ -113,7 +123,7 @@ async function fetchUS_EIA_prev() {
     const apiKey = process.env.EIA_API_KEY || '';
     if (!apiKey) { console.warn('  [US-prev] EIA_API_KEY not set, skipping'); return []; }
     const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&data[]=value&facets[series][]=EMM_EPMR_PTE_NUS_DPG&facets[series][]=EMD_EPD2DXL0_PTE_NUS_DPG&sort[0][column]=period&sort[0][direction]=desc&length=8`;
-    console.log(`  [US-prev] Fetching EIA: ${url.replace(/api_key=[^&]+/, 'api_key=***')}`);
+    console.log(`  [US-prev] Fetching EIA: ${url.replace(FETCH_US_EIA_PREV_RE, 'api_key=***')}`);
     const resp = await globalThis.fetch(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
@@ -155,13 +165,13 @@ async function fetchUS_EIA_prev() {
 // --- EU: fetch current XLSX (March 19 = last week relative to March 26) ---
 function parseEUPrice(raw) {
   if (raw == null || raw === '') return null;
-  const s = String(raw).trim().replace(/\s/g, '');
+  const s = String(raw).trim().replace(S_RE, '');
   if (!s) return null;
   let normalized = s;
   const dotIdx = s.lastIndexOf('.');
   const commaIdx = s.lastIndexOf(',');
   if (dotIdx > -1 && commaIdx > -1) {
-    normalized = dotIdx > commaIdx ? s.replace(/,/g, '') : s.replace(/\./g, '').replace(',', '.');
+    normalized = dotIdx > commaIdx ? s.replace(PARSE_EUPRICE_RE, '') : s.replace(PARSE_EUPRICE_RE_2, '').replace(',', '.');
   } else if (commaIdx > -1) {
     normalized = s.replace(',', '.');
   }
@@ -179,7 +189,7 @@ async function fetchEU_CSV() {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buf);
     const sheetNames = workbook.worksheets.map(ws => ws.name);
-    const sheetName = sheetNames.find(n => /with.tax/i.test(n)) ?? sheetNames.find(n => /price/i.test(n)) ?? sheetNames[0];
+    const sheetName = sheetNames.find(n => SHEET_NAME_RE.test(n)) ?? sheetNames.find(n => SHEET_NAME_RE_2.test(n)) ?? sheetNames[0];
     const sheet = workbook.getWorksheet(sheetName);
     const rows = [];
     sheet.eachRow({ includeEmpty: true }, (row) => {
@@ -209,11 +219,11 @@ async function fetchEU_CSV() {
 
     const dateStr = String(dateRow[0] ?? '').trim();
     let observedAt = '';
-    const dmatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    const dmatch = dateStr.match(DMATCH_RE);
     if (dmatch) observedAt = `${dmatch[3]}-${dmatch[2].padStart(2, '0')}-${dmatch[1].padStart(2, '0')}`;
 
     const e95ColIdx = headerRow.findIndex(c => String(c).includes('Euro-super'));
-    const dieselColIdx = headerRow.findIndex((c, i) => i > e95ColIdx && /gas.oil|diesel/i.test(String(c)));
+    const dieselColIdx = headerRow.findIndex((c, i) => i > e95ColIdx && DIESEL_COL_IDX_RE.test(String(c)));
 
     const results = [];
     for (let r = dataStartIdx; r < rows.length; r++) {

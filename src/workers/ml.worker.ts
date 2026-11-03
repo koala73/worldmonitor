@@ -8,6 +8,9 @@ import { MODEL_CONFIGS, type ModelConfig } from '@/config/ml-config';
 import { AsyncResourceLifecycle } from './async-resource-lifecycle';
 import { storeVectors, searchVectors, getCount, resetStore, sanitizeTitle, type VectorSearchResult } from './vector-db';
 
+const EXTRACT_ENTITIES_RE = /^(?:[BI]-)?(?:PER|ORG|LOC|MISC)$/i;
+
+
 // Configure transformers.js
 env.allowLocalModels = false;
 env.useBrowserCache = true;
@@ -263,7 +266,7 @@ async function extractEntities(
 
           if (
             typeof type !== 'string' ||
-            !/^(?:[BI]-)?(?:PER|ORG|LOC|MISC)$/i.test(type.trim()) ||
+            !EXTRACT_ENTITIES_RE.test(type.trim()) ||
             typeof word !== 'string' ||
             !word.trim() ||
             typeof score !== 'number' ||

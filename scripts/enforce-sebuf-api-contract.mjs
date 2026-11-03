@@ -24,6 +24,12 @@ import { join, relative, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { collectQueryParamContractViolations } from './lib/sebuf-query-param-contract.mjs';
 
+const MODULE_RE = /^#\d+$/;
+const KEBAB_TO_SNAKE_RE = /-/g;
+const MODULE_RE_2 = /^v\d+$/;
+const KEBAB_DOMAIN_RE = /_/g;
+
+
 const ROOT = process.cwd();
 const API_DIR = join(ROOT, 'api');
 const GEN_SERVER_DIR = join(ROOT, 'src/generated/server/worldmonitor');
@@ -185,7 +191,7 @@ for (const [idx, entry] of manifest.exceptions.entries()) {
       );
     } else if (
       entry.removal_issue !== 'TBD' &&
-      !/^#\d+$/.test(entry.removal_issue)
+      !MODULE_RE.test(entry.removal_issue)
     ) {
       violation(
         label,
@@ -231,7 +237,7 @@ for (const [idx, entry] of manifest.exceptions.entries()) {
 const GATEWAY_RE = /^api\/(?:([a-z][a-z0-9-]*)\/v(\d+)|v(\d+)\/([a-z][a-z0-9-]*))\/\[rpc\]\.(ts|tsx|js|mjs|cjs)$/;
 
 function kebabToSnake(s) {
-  return s.replace(/-/g, '_');
+  return s.replace(KEBAB_TO_SNAKE_RE, '_');
 }
 
 const seenGatewayDomains = new Set();
@@ -287,7 +293,7 @@ if (existsSync(GEN_SERVER_DIR)) {
     const domainPath = join(GEN_SERVER_DIR, snakeDomain);
     for (const versionDir of readdirSync(domainPath, { withFileTypes: true })) {
       if (!versionDir.isDirectory()) continue;
-      if (!/^v\d+$/.test(versionDir.name)) continue;
+      if (!MODULE_RE_2.test(versionDir.name)) continue;
       const serviceServer = join(
         domainPath,
         versionDir.name,
@@ -297,7 +303,7 @@ if (existsSync(GEN_SERVER_DIR)) {
       const key = `${snakeDomain}/${versionDir.name}`;
       seenGeneratedServices.add(key);
       if (!seenGatewayDomains.has(key) && !DEFERRED_GENERATED_SERVICES.has(key)) {
-        const kebabDomain = snakeDomain.replace(/_/g, '-');
+        const kebabDomain = snakeDomain.replace(KEBAB_DOMAIN_RE, '-');
         violation(
           relative(ROOT, serviceServer),
           `generated service ${snakeDomain}/${versionDir.name} has no HTTP gateway under api/`,

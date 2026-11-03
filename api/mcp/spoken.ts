@@ -2,6 +2,25 @@ import { displayNameForIso2 } from '../../server/_shared/country-normalize';
 import { arabicCountryDisplayName } from '../../shared/country-code-resolve-arabic';
 import { isPlainObject } from './utils';
 
+const HEAD_RE = /[\s,;:\-–—]+$/;
+const OUT_RE = /https?:\/\/\S+|www\.\S+/gi;
+const OUT_RE_2 = /\[\d+\]/g;
+const OUT_RE_3 = /[*_`#|<>{}[\]]/g;
+const OUT_RE_4 = /\s*\(([^)]*)\)/g;
+const OUT_RE_5 = /[%٪]/g;
+const OUT_RE_6 = /\b(?:[A-Z]\.){2,}/g;
+const OUT_RE_7 = /\./g;
+const OUT_RE_8 = /\s+([,،])/g;
+const OUT_RE_9 = /([,،])\s*[,،]/g;
+const WHITESPACE_RE = /\s+/g;
+const CLEAN_SPEECH_RE = /[,;:،؛]+$/;
+const CLEAN_SPEECH_RE_2 = /[.!?؟]$/;
+const TITLE_RE = /[.!?؟]+$/;
+const CLEAN_TITLE_RE = /[,;:\-–—]+$/;
+const HUMANIZE_ID_RE = /([a-z0-9])([A-Z])/g;
+const HUMANIZE_ID_RE_2 = /[_\-\s]+/;
+
+
 // ---------------------------------------------------------------------------
 // `response_mode: "spoken"` (#9722, voice and avatar consumers)
 //
@@ -142,7 +161,7 @@ function shortenSentence(sentence: string, limit: number): string {
   if (sentence.length <= limit) return sentence;
   const cut = sentence.slice(0, Math.max(1, limit - 1));
   const space = cut.lastIndexOf(' ');
-  const head = (space > 0 ? cut.slice(0, space) : cut).replace(/[\s,;:\-–—]+$/, '');
+  const head = (space > 0 ? cut.slice(0, space) : cut).replace(HEAD_RE, '');
   return head.length > 0 ? `${head}.` : sentence;
 }
 
@@ -158,30 +177,30 @@ export function cleanSpeech(text: string, lang: SpokenLanguage = 'en'): string {
   // Arabic prose takes the Arabic comma, and a percent sign is read "في المئة".
   const comma = lang === 'ar' ? '،' : ',';
   let out = text
-    .replace(/https?:\/\/\S+|www\.\S+/gi, '')
-    .replace(/\[\d+\]/g, '')
-    .replace(/[*_`#|<>{}[\]]/g, '')
-    .replace(/\s*\(([^)]*)\)/g, (_match, inner: string) => (inner.trim() ? `${comma} ${inner.trim()}` : ''))
-    .replace(/[%٪]/g, lang === 'ar' ? ' في المئة' : ' percent')
-    .replace(/\b(?:[A-Z]\.){2,}/g, (abbr) => abbr.replace(/\./g, ''))
-    .replace(/\s+([,،])/g, '$1')
-    .replace(/([,،])\s*[,،]/g, '$1')
-    .replace(/\s+/g, ' ')
+    .replace(OUT_RE, '')
+    .replace(OUT_RE_2, '')
+    .replace(OUT_RE_3, '')
+    .replace(OUT_RE_4, (_match, inner: string) => (inner.trim() ? `${comma} ${inner.trim()}` : ''))
+    .replace(OUT_RE_5, lang === 'ar' ? ' في المئة' : ' percent')
+    .replace(OUT_RE_6, (abbr) => abbr.replace(OUT_RE_7, ''))
+    .replace(OUT_RE_8, '$1')
+    .replace(OUT_RE_9, '$1')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
   if (out.length === 0) return out;
-  out = out.replace(/[,;:،؛]+$/, '');
-  if (!/[.!?؟]$/.test(out)) out += '.';
+  out = out.replace(CLEAN_SPEECH_RE, '');
+  if (!CLEAN_SPEECH_RE_2.test(out)) out += '.';
   return out;
 }
 
 /** A title or headline as it can sit inside a sentence: no markup, no terminal punctuation, bounded. */
 export function cleanTitle(value: unknown, maxChars = 120, lang: SpokenLanguage = 'en'): string {
   if (typeof value !== 'string') return '';
-  let title = cleanSpeech(value, lang).replace(/[.!?؟]+$/, '').trim();
+  let title = cleanSpeech(value, lang).replace(TITLE_RE, '').trim();
   if (title.length > maxChars) {
     const cut = title.slice(0, maxChars);
     const space = cut.lastIndexOf(' ');
-    title = (space > maxChars / 2 ? cut.slice(0, space) : cut).replace(/[,;:\-–—]+$/, '').trim();
+    title = (space > maxChars / 2 ? cut.slice(0, space) : cut).replace(CLEAN_TITLE_RE, '').trim();
   }
   return title;
 }
@@ -289,8 +308,8 @@ export function joinList(items: string[], lang: SpokenLanguage = 'en'): string {
 /** `hormuz_strait` -> "Hormuz Strait", `macroFiscal` -> "Macro Fiscal". */
 export function humanizeId(id: string): string {
   return id
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(/[_\-\s]+/)
+    .replace(HUMANIZE_ID_RE, '$1 $2')
+    .split(HUMANIZE_ID_RE_2)
     .filter((word) => word.length > 0)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');

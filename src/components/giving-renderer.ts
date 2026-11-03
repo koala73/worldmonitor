@@ -7,6 +7,9 @@ import type {
 } from '../services/giving/model';
 import { formatCurrency } from '../services/giving/model';
 
+const RECORDS_RE = /_/g;
+
+
 export type GivingTab = 'platforms' | 'categories' | 'institutional';
 export type GivingTranslate = (key: string, options?: Record<string, string | number>) => string;
 
@@ -232,7 +235,7 @@ function renderMethodology(data: GivingSummary, translate: GivingTranslate): str
   const records = data.provenance.map((entry) => `
     <li class="giving-methodology-item">
       <span class="giving-methodology-source">${renderSourceName(entry)}</span>
-      <span class="giving-source-meta">${escapeHtml(entry.referencePeriod)} · ${escapeHtml(entry.status.replace(/_/g, ' '))}</span>
+      <span class="giving-source-meta">${escapeHtml(entry.referencePeriod)} · ${escapeHtml(entry.status.replace(RECORDS_RE, ' '))}</span>
       <span class="giving-methodology-note">${escapeHtml(entry.notes)}</span>
     </li>`).join('');
 

@@ -4,6 +4,11 @@ import { createCircuitBreaker } from '@/utils';
 import { SITE_VARIANT } from '@/config';
 import { getHydratedData } from '@/services/bootstrap';
 
+const WORDS_RE = /\p{M}/gu;
+const WORDS_RE_2 = /[^\p{L}\p{N}]+/gu;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export interface PredictionMarket {
   id?: string;
   title: string;
@@ -205,9 +210,9 @@ interface CountrySearchIndex {
 function normalizeCountryText(value: string): string {
   const words = value
     .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
+    .replace(WORDS_RE, '')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(WORDS_RE_2, ' ')
     .trim();
   return words ? ` ${words} ` : '';
 }
@@ -357,7 +362,7 @@ function matchesCountryTerms(
 
 export async function fetchCountryMarkets(country: string, countryCode: string, onMetadata?: (metadata: { fetchedAt?: number }) => void): Promise<PredictionMarket[]> {
   const normalizedCode = countryCode.trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(normalizedCode)) {
+  if (COUNTRY_CODE_RE.test(normalizedCode)) {
     const response = await client.listPredictionMarkets({
       category: `country:${normalizedCode}`,
       query: '',

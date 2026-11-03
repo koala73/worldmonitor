@@ -16,6 +16,11 @@
 // Pruned list of highly-common tokens that dominate Jaccard numerators
 // without carrying topical signal. Extracted unchanged from the
 // pre-embedding seed-digest-notifications.mjs.
+const STRIP_SOURCE_SUFFIX_RE = /\s*[-–—]\s*[\w\s.]+\.(?:com|org|net|co\.uk)\s*$/i;
+const STRIP_SOURCE_SUFFIX_RE_2 = /\s*[-–—]\s*(?:Reuters|AP News|BBC|CNN|Al Jazeera|France 24|DW News|PBS NewsHour|CBS News|NBC|ABC|Associated Press|The Guardian|NOS Nieuws|Tagesschau|CNBC|The National)\s*$/i;
+const EXTRACT_TITLE_WORDS_RE = /[^\p{L}\p{N}\s]/gu;
+const WHITESPACE_RE = /\s+/;
+
 const STOP_WORDS = new Set([
   'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of', 'is', 'are', 'was', 'were',
   'has', 'have', 'had', 'be', 'been', 'by', 'from', 'with', 'as', 'it', 'its',
@@ -31,8 +36,8 @@ const STOP_WORDS = new Set([
  */
 export function stripSourceSuffix(title) {
   return title
-    .replace(/\s*[-–—]\s*[\w\s.]+\.(?:com|org|net|co\.uk)\s*$/i, '')
-    .replace(/\s*[-–—]\s*(?:Reuters|AP News|BBC|CNN|Al Jazeera|France 24|DW News|PBS NewsHour|CBS News|NBC|ABC|Associated Press|The Guardian|NOS Nieuws|Tagesschau|CNBC|The National)\s*$/i, '');
+    .replace(STRIP_SOURCE_SUFFIX_RE, '')
+    .replace(STRIP_SOURCE_SUFFIX_RE_2, '');
 }
 
 /**
@@ -44,8 +49,8 @@ export function extractTitleWords(title) {
   return new Set(
     stripSourceSuffix(title)
       .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, '')
-      .split(/\s+/)
+      .replace(EXTRACT_TITLE_WORDS_RE, '')
+      .split(WHITESPACE_RE)
       .filter((w) => w.length > 2 && !STOP_WORDS.has(w)),
   );
 }

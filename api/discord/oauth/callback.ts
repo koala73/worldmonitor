@@ -9,6 +9,13 @@
  * opener is unavailable.
  */
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+const ESCAPE_HTML_RE_5 = /'/g;
+const SAFE_JSON_IN_SCRIPT_RE = /<\//g;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -60,7 +67,7 @@ async function upstashGetDel(key: string): Promise<string | null> {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  return s.replace(ESCAPE_HTML_RE, '&amp;').replace(ESCAPE_HTML_RE_2, '&lt;').replace(ESCAPE_HTML_RE_3, '&gt;').replace(ESCAPE_HTML_RE_4, '&quot;').replace(ESCAPE_HTML_RE_5, '&#39;');
 }
 
 async function publishWelcome(userId: string): Promise<void> {
@@ -88,7 +95,7 @@ function htmlResponse(script: string, body: string, status = 200): Response {
 function safeJsonInScript(data: unknown): string {
   // Escape </ to prevent </script> from closing the enclosing script tag prematurely.
   // \/ is a valid JSON escape for forward slash and is semantically identical.
-  return JSON.stringify(data).replace(/<\//g, '<\\/');
+  return JSON.stringify(data).replace(SAFE_JSON_IN_SCRIPT_RE, '<\\/');
 }
 
 function postAndClose(data: Record<string, unknown>, openerOrigin: string): Response {

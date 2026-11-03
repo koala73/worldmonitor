@@ -22,6 +22,10 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+const IS_SOFTWARE_GL_RENDERER_RE = /\bsoftware\b/;
+const HARDWARE_GL_RE = /Apple|NVIDIA|AMD|Intel|Adreno|Mali|PowerVR|Radeon/i;
+
+
 export const FRAME_BUDGET_MS = 16;
 export const LONGTASK_MS = 50;
 export const MISSED_FRAME_MS = 20;
@@ -100,7 +104,7 @@ export function summarizeProfile(profile) {
 
 export function isSoftwareGlRenderer(glRenderer) {
   const text = String(glRenderer || '').toLowerCase();
-  return text.includes('swiftshader') || text.includes('llvmpipe') || /\bsoftware\b/.test(text);
+  return text.includes('swiftshader') || text.includes('llvmpipe') || IS_SOFTWARE_GL_RENDERER_RE.test(text);
 }
 
 export function decideTradeAnimationIsolation(tradeOn, tradeOff, options = {}) {
@@ -353,7 +357,7 @@ export function buildReport(result, args) {
   const tradeOn = meanSummaries(onSummaries);
   const tradeOff = meanSummaries(offSummaries);
   const softwareGl = Boolean(args?.softwareGl) || isSoftwareGlRenderer(tradeOn.glRenderer);
-  const hardwareGl = /Apple|NVIDIA|AMD|Intel|Adreno|Mali|PowerVR|Radeon/i.test(tradeOn.glRenderer || '') && !softwareGl;
+  const hardwareGl = HARDWARE_GL_RE.test(tradeOn.glRenderer || '') && !softwareGl;
   const decision = decideTradeAnimationIsolation(tradeOn, tradeOff, {
     softwareGl,
     hardware: hardwareGl && Boolean(args?.headed),

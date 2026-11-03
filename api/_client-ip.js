@@ -1,3 +1,9 @@
+
+
+const PARSE_IPV4_RE = /^(?:0|[1-9]\d{0,2})$/;
+const PARSE_IPV6_RE = /^[0-9a-f]{1,4}$/i;
+const V4_TAIL_RE = /^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/;
+const RATE_LIMIT_KEY_FOR_IP_RE = /^[0-9a-f]{1,4}$/;
 export const UNKNOWN_CLIENT_IP = 'unknown';
 
 // Marker headers set on degraded fail-closed responses so observability can
@@ -50,7 +56,7 @@ function parseIpv4(value) {
   if (parts.length !== 4) return null;
   let address = 0;
   for (const part of parts) {
-    if (!/^(?:0|[1-9]\d{0,2})$/.test(part)) return null;
+    if (!PARSE_IPV4_RE.test(part)) return null;
     const octet = Number(part);
     if (octet > 255) return null;
     address = (address * 256) + octet;
@@ -71,7 +77,7 @@ function parseIpv6(value) {
   const groups = halves.length === 2
     ? [...head, ...Array(8 - head.length - tail.length).fill('0'), ...tail]
     : head;
-  if (groups.some((group) => !/^[0-9a-f]{1,4}$/i.test(group))) return null;
+  if (groups.some((group) => !PARSE_IPV6_RE.test(group))) return null;
   return groups.map((group) => Number.parseInt(group, 16));
 }
 
@@ -224,7 +230,7 @@ export function getClientIp(request) {
 export function rateLimitKeyForIp(ip) {
   if (typeof ip !== 'string' || !ip.includes(':')) return ip;
   let addr = ip.split('%')[0].toLowerCase();
-  const v4Tail = addr.match(/^(.*:)(\d{1,3}(?:\.\d{1,3}){3})$/);
+  const v4Tail = addr.match(V4_TAIL_RE);
   if (v4Tail) {
     const octets = v4Tail[2].split('.').map(Number);
     if (octets.some((n) => n > 255)) return ip;
@@ -238,7 +244,7 @@ export function rateLimitKeyForIp(ip) {
   const missing = 8 - head.length - tail.length;
   if (halves.length === 1 ? missing !== 0 : missing < 1) return ip;
   const groups = [...head, ...new Array(halves.length === 2 ? missing : 0).fill('0'), ...tail];
-  if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return ip;
+  if (!groups.every((g) => RATE_LIMIT_KEY_FOR_IP_RE.test(g))) return ip;
   // IPv4-mapped (::ffff:a.b.c.d), in dotted or hex form, is one IPv4 client.
   const nums = groups.map((g) => parseInt(g, 16));
   if (nums.slice(0, 5).every((n) => n === 0) && nums[5] === 0xffff) {

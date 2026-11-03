@@ -6,6 +6,10 @@ import { severityColor } from '../ui/theme.mjs';
 import { ageOf, enumLabel, threatRank } from '../data/select.mjs';
 import { PaneView, selectedItem } from './base.mjs';
 
+const DOWN_RE = /OPERATIONAL$/;
+const OK_RE = /^operational$/;
+
+
 export class CyberView extends PaneView {
   constructor(app) {
     super(app, { id: 'cyber', label: 'Cyber', paneIds: ['threats', 'services', 'outages'], sources: ['cyberThreats', 'fast'] });
@@ -89,7 +93,7 @@ export class CyberView extends PaneView {
   renderServices(ctx, r) {
     const { t, now } = ctx;
     const services = this.data.serviceStatuses || [];
-    const down = services.filter((s) => !/OPERATIONAL$/.test(String(s.status || ''))).length;
+    const down = services.filter((s) => !DOWN_RE.test(String(s.status || ''))).length;
     const inner = panel(ctx, r, { title: 'Service status', focused: this.isFocused('services'), right: down ? `${down} degraded` : 'all operational', onClick: () => this.focusPane('services') });
     this.lists.services.draw(
       ctx,
@@ -97,7 +101,7 @@ export class CyberView extends PaneView {
       services,
       (s, _i, { width }) => {
         const st = enumLabel(s.status);
-        const ok = /^operational$/.test(st);
+        const ok = OK_RE.test(st);
         return [
           { text: `${ok ? '●' : '▲'} `, fg: ok ? t.good : severityColor(t, st) },
           { text: `${String(s.name || '').slice(0, 16).padEnd(16)} `, fg: t.text, attr: ok ? 0 : ATTR.BOLD },

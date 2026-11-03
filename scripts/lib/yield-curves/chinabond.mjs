@@ -8,6 +8,9 @@
 
 import { collapseCurves } from './model.mjs';
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export const CHINABOND_SAMPLE_YEARS = [0.25, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30];
 
 function tenorLabel(years) {
@@ -26,7 +29,7 @@ export function parseChinaBondSearch(json) {
   for (const entry of entries) {
     if (!entry || typeof entry !== 'object') continue;
     const worktime = String(entry.worktime ?? '');
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(worktime) ? worktime : null;
+    const date = DATE_RE.test(worktime) ? worktime : null;
     const seriesData = entry.seriesData;
     if (!date || !Array.isArray(seriesData)) continue;
     const byYears = new Map();

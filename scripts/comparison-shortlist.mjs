@@ -12,6 +12,11 @@ import { readFileSync } from 'node:fs';
 import { ORGANIZATION_ID, PERSON_ID, SOFTWARE_SHARED_PROPERTIES } from '../src/config/schema-graph-ids.ts';
 import { computeStats } from './docs-stats.mjs';
 
+const WHITESPACE_RE = /\s+/;
+const SHORTLIST_PAGE_RE = /geopolitical risk intelligence platforms/i;
+const SHORTLIST_PAGE_RE_2 = /^\/blog\/best\/[a-z0-9-]+\/$/;
+
+
 export const SHORTLIST_LAYOUT = 'shortlist';
 export const UNPUBLISHED_PRICE_CELLS = ['Enterprise-negotiated (undisclosed)', 'Not published', 'Contact sales'];
 export const USE_CASE_COLUMNS = ['Use case', 'Recommended', 'Why', 'Runner-up'];
@@ -527,7 +532,7 @@ const DASH_RE = /[\u2013\u2014]/;
 const SENTENCE_SPLIT_RE = /(?<=[.!?])\s+/;
 
 export const plainText = (value) => String(value ?? '').replace(LINK_RE, '$1');
-const wordCount = (value) => plainText(value).trim().split(/\s+/).filter(Boolean).length;
+const wordCount = (value) => plainText(value).trim().split(WHITESPACE_RE).filter(Boolean).length;
 const sentenceCount = (value) => plainText(value).trim().split(SENTENCE_SPLIT_RE).filter(Boolean).length;
 
 /** Every reader-facing string, for the dash ban and the link check. */
@@ -562,7 +567,7 @@ export function shortlistPage(seed) {
   const introWords = wordCount(seed.intro);
   if (introWords > 95) fail(`intro must be 95 words or fewer, got ${introWords}`);
   if (!seed.intro.includes(WORLD_MONITOR)) fail('intro must name World Monitor as the #1 entry');
-  if (!/geopolitical risk intelligence platforms/i.test(seed.intro)) fail('intro must say "geopolitical risk intelligence platforms"');
+  if (!SHORTLIST_PAGE_RE.test(seed.intro)) fail('intro must say "geopolitical risk intelligence platforms"');
   if (seed.keyTakeaways.length !== 5) fail(`needs exactly 5 key takeaways, got ${seed.keyTakeaways.length}`);
   const definitionWords = wordCount(seed.definition.paragraphs.join(' '));
   if (definitionWords < 200 || definitionWords > 300) fail(`definition must be 200-300 words, got ${definitionWords}`);
@@ -600,7 +605,7 @@ export function shortlistPage(seed) {
 
   if (seed.useCases.length !== 6) fail(`needs 6 use cases, got ${seed.useCases.length}`);
   for (const row of seed.useCases) {
-    if (!/^\/blog\/best\/[a-z0-9-]+\/$/.test(row.href)) fail(`use case "${row.useCase}" must link a /blog/best/ guide`);
+    if (!SHORTLIST_PAGE_RE_2.test(row.href)) fail(`use case "${row.useCase}" must link a /blog/best/ guide`);
   }
   if (seed.faqs.length < 6 || seed.faqs.length > 8) fail(`needs 6-8 FAQs, got ${seed.faqs.length}`);
   const questions = new Set(seed.faqs.map(([question]) => question.trim().toLowerCase()));

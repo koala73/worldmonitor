@@ -14,6 +14,11 @@
 // the same helper run on Node 18+, Vercel Edge, Cloudflare Workers,
 // and Tauri if ever needed from a non-cron path.
 
+const BASE64URL_RE = /\+/g;
+const BASE64URL_RE_2 = /\//g;
+const BASE64URL_RE_3 = /=+$/;
+const TRIMMED_RE = /\/+$/;
+
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 // YYYY-MM-DD-HHMM issue slot (local hour+minute of the compose run,
 // in the user's tz). Slot-per-run gives each digest dispatch its own
@@ -40,7 +45,7 @@ function assertShape(userId, issueDate) {
 function base64url(bytes) {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(bin).replace(BASE64URL_RE, '-').replace(BASE64URL_RE_2, '_').replace(BASE64URL_RE_3, '');
 }
 
 async function hmacSha256(secret, message) {
@@ -81,6 +86,6 @@ export async function signBriefToken(userId, issueDate, secret) {
  */
 export async function signBriefUrl({ userId, issueDate, baseUrl, secret }) {
   const token = await signBriefToken(userId, issueDate, secret);
-  const trimmed = baseUrl.replace(/\/+$/, '');
+  const trimmed = baseUrl.replace(TRIMMED_RE, '');
   return `${trimmed}/api/brief/${encodeURIComponent(userId)}/${encodeURIComponent(issueDate)}?t=${token}`;
 }

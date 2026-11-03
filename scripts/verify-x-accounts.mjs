@@ -15,6 +15,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import xNewsAccounts from './lib/x-news-accounts.cjs';
 
+const MAIN_RE = /^[1-9]\d{0,18}$/;
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REGISTRY = join(__dirname, '../data/x-accounts.json');
 const X_API_ORIGIN = 'https://api.x.com';
@@ -66,7 +69,7 @@ async function main() {
   const asJson = process.argv.slice(2).includes('--json');
   const token = String(process.env.X_BEARER_TOKEN || '').trim();
   const listId = String(process.env.X_CURATED_LIST_ID || '').trim();
-  if (!token || !/^[1-9]\d{0,18}$/.test(listId)) {
+  if (!token || !MAIN_RE.test(listId)) {
     console.error('X_BEARER_TOKEN and a numeric X_CURATED_LIST_ID are required.');
     return 2;
   }

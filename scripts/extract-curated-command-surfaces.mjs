@@ -7,6 +7,15 @@ import { fileURLToPath } from 'node:url';
 
 import { CURATED_COMMANDS } from '../cli/src/core.mjs';
 
+const MASK_TEXT_RE = /[^\n]/g;
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const FROM_TOOL_RE = /^get_/;
+const PARSE_PYTHON_FORWARDED_ARGS_RE = /(?:^|,)\s*([a-z_]\w*)\s*=/g;
+const PARSE_RUBY_FORWARDED_ARGS_RE = /\b([a-z_]\w*):/g;
+const PARSE_GO_FORWARDED_ARGS_RE = /withArg\(\s*args,\s*"([^"]+)"/g;
+const GO_TO_SNAKE_ARG_RE = /[A-Z]/g;
+
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
 
@@ -225,15 +234,15 @@ function maskCommentLines(source, prefix) {
 }
 
 function maskText(text) {
-  return text.replace(/[^\n]/g, ' ');
+  return text.replace(MASK_TEXT_RE, ' ');
 }
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 function methodToCommand(method, tool) {
-  const fromTool = tool.replace(/^get_/, '');
+  const fromTool = tool.replace(FROM_TOOL_RE, '');
   if (method === fromTool) return commandFromTool(tool);
   // CLI short names intentionally diverge from helper method names.
   const byMethod = {
@@ -283,7 +292,7 @@ function parsePythonRequiredArgs(params) {
 }
 
 function parsePythonForwardedArgs(callTail) {
-  return [...callTail.matchAll(/(?:^|,)\s*([a-z_]\w*)\s*=/g)].map((match) => match[1]);
+  return [...callTail.matchAll(PARSE_PYTHON_FORWARDED_ARGS_RE)].map((match) => match[1]);
 }
 
 function parseRubyRequiredArgs(params) {
@@ -297,7 +306,7 @@ function parseRubyRequiredArgs(params) {
 }
 
 function parseRubyForwardedArgs(callTail) {
-  return [...callTail.matchAll(/\b([a-z_]\w*):/g)].map((match) => match[1]);
+  return [...callTail.matchAll(PARSE_RUBY_FORWARDED_ARGS_RE)].map((match) => match[1]);
 }
 
 function parseGoRequiredArgs(params) {
@@ -312,7 +321,7 @@ function parseGoRequiredArgs(params) {
 }
 
 function parseGoForwardedArgs(callTail) {
-  return [...callTail.matchAll(/withArg\(\s*args,\s*"([^"]+)"/g)].map((match) => match[1]);
+  return [...callTail.matchAll(PARSE_GO_FORWARDED_ARGS_RE)].map((match) => match[1]);
 }
 
 function rubyToSnakeArg(name) {
@@ -320,11 +329,11 @@ function rubyToSnakeArg(name) {
 }
 
 function goToSnakeArg(name) {
-  return name.replace(/[A-Z]/g, (letter, index) => (index === 0 ? letter.toLowerCase() : `_${letter.toLowerCase()}`));
+  return name.replace(GO_TO_SNAKE_ARG_RE, (letter, index) => (index === 0 ? letter.toLowerCase() : `_${letter.toLowerCase()}`));
 }
 
 function pascalToSnake(name) {
-  return name.replace(/[A-Z]/g, (letter, index) => (index === 0 ? letter.toLowerCase() : `_${letter.toLowerCase()}`));
+  return name.replace(GO_TO_SNAKE_ARG_RE, (letter, index) => (index === 0 ? letter.toLowerCase() : `_${letter.toLowerCase()}`));
 }
 
 function sameStringArray(left, right) {

@@ -1,5 +1,18 @@
 'use strict';
 
+const NORMALIZE_PLACE_NAME_RE = /[̀-ًͯ-ٰٟٕٔ]/g;
+const NORMALIZE_PLACE_NAME_RE_2 = /[یى]/g;
+const NORMALIZE_PLACE_NAME_RE_3 = /ک/g;
+const NORMALIZE_PLACE_NAME_RE_4 = /[آأإ]/g;
+const NORMALIZE_PLACE_NAME_RE_5 = /['`‘’ʻʼʾʿ′]/g;
+const NORMALIZE_PLACE_NAME_RE_6 = /[^\p{L}\p{N}]+/gu;
+const BASE_RE = / /g;
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const BUILD_MATCHER_RE = /^[a-z0-9 ]+$/;
+const BUILD_MATCHER_RE_2 = /^(ksa|uae)$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 // Place resolution for the Middle East strike feed (conflict:iran-events:v1).
 //
 // Base table: scripts/data/outbreak-places.json (GeoNames cities15000 + admin1,
@@ -186,13 +199,13 @@ const LATIN_LEADING_ARTICLE = /^(?:al|el|ar|as|ad|an|az|ash|at|adh|ad) /;
 function normalizePlaceName(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[̀-ًͯ-ٰٟٕٔ]/g, '')
+    .replace(NORMALIZE_PLACE_NAME_RE, '')
     .toLowerCase()
-    .replace(/[یى]/g, 'ي') // Persian yeh / alef maksura -> Arabic yeh
-    .replace(/ک/g, 'ك') // Persian kaf -> Arabic kaf
-    .replace(/[آأإ]/g, 'ا') // alef variants (when not decomposed)
-    .replace(/['`‘’ʻʼʾʿ′]/g, '')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(NORMALIZE_PLACE_NAME_RE_2, 'ي') // Persian yeh / alef maksura -> Arabic yeh
+    .replace(NORMALIZE_PLACE_NAME_RE_3, 'ك') // Persian kaf -> Arabic kaf
+    .replace(NORMALIZE_PLACE_NAME_RE_4, 'ا') // alef variants (when not decomposed)
+    .replace(NORMALIZE_PLACE_NAME_RE_5, '')
+    .replace(NORMALIZE_PLACE_NAME_RE_6, ' ')
     .trim();
 }
 
@@ -254,7 +267,7 @@ function buildIndex() {
   const usedKeys = new Set();
   for (const place of places) {
     delete place.adminName;
-    const base = `${place.iso2}:${normalizePlaceName(place.name).replace(/ /g, '-')}`;
+    const base = `${place.iso2}:${normalizePlaceName(place.name).replace(BASE_RE, '-')}`;
     let key = base;
     for (let n = 2; usedKeys.has(key); n++) key = `${base}-${n}`;
     usedKeys.add(key);
@@ -266,7 +279,7 @@ function buildIndex() {
 const INDEX = buildIndex();
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 // One alternation per country, longest names first, so "Khamis Mushait" wins
@@ -277,8 +290,8 @@ function buildMatcher(terms) {
   const latin = [];
   const arabic = [];
   for (const term of [...new Set(terms)].sort((a, b) => b.length - a.length)) {
-    if (/^[a-z0-9 ]+$/.test(term)) {
-      if (term.length >= MIN_LATIN_ANCHOR_CHARS || /^(ksa|uae)$/.test(term)) latin.push(escapeRegExp(term));
+    if (BUILD_MATCHER_RE.test(term)) {
+      if (term.length >= MIN_LATIN_ANCHOR_CHARS || BUILD_MATCHER_RE_2.test(term)) latin.push(escapeRegExp(term));
     } else {
       arabic.push(escapeRegExp(term));
     }
@@ -377,7 +390,7 @@ function resolvePlace({ place, iso2, text } = {}) {
   const country = FOCUS_SET.has(iso2) ? iso2 : null;
   // A valid country code outside the theater means the impact was located
   // there ("Tripoli, LY"); it is not a hint to search the theater for the name.
-  if (!country && typeof iso2 === 'string' && /^[A-Z]{2}$/.test(iso2)) return null;
+  if (!country && typeof iso2 === 'string' && COUNTRY_CODE_RE.test(iso2)) return null;
   if (place && namesPalestinianPlace(place)) return null;
   if (place) {
     if (country) {

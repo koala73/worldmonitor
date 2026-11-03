@@ -1,5 +1,8 @@
 import type { ResilienceScoreResponse } from '@/services/resilience';
 
+const FORMAT_RESILIENCE_VISUAL_LEVEL_RE = /_/g;
+
+
 // Client-side mirror of the server-side authoritative set
 // (`RESILIENCE_RETIRED_DIMENSIONS` in
 // server/worldmonitor/resilience/v1/_dimension-scorers.ts). Duplicated
@@ -219,12 +222,12 @@ export function getResilienceVisualLevel(score: number): ResilienceVisualLevel {
 
 export function formatResilienceVisualLevel(level: ResilienceVisualLevel): string {
   if (level === 'unknown') return 'Insufficient data';
-  return level.replace(/_/g, ' ');
+  return level.replace(FORMAT_RESILIENCE_VISUAL_LEVEL_RE, ' ');
 }
 
 export function formatResilienceServerLevel(level: string | null | undefined): string {
   const normalized = String(level || '').trim().toLowerCase();
-  return normalized.length > 0 ? normalized.replace(/_/g, ' ') : 'unknown';
+  return normalized.length > 0 ? normalized.replace(FORMAT_RESILIENCE_VISUAL_LEVEL_RE, ' ') : 'unknown';
 }
 
 function hasAuthoritativeResilienceServerLevel(level: string | null | undefined): boolean {

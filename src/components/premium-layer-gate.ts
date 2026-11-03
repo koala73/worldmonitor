@@ -4,6 +4,9 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 
 const LOCK_ICON = '\uD83D\uDD12';
 
+const REMOVE_LOCK_ICON_RE = new RegExp(`\\s*${LOCK_ICON}\\s*$`);
+
+
 export type PremiumLayerKind = 'locked' | 'enhanced' | undefined;
 
 export interface PremiumLayerPresentation {
@@ -33,7 +36,7 @@ function removeLockIcon(label: HTMLElement): void {
   if (!labelText) return;
   for (const node of Array.from(labelText.childNodes)) {
     if (node.nodeType !== 3) continue;
-    node.textContent = node.textContent?.replace(new RegExp(`\\s*${LOCK_ICON}\\s*$`), '') ?? '';
+    node.textContent = node.textContent?.replace(REMOVE_LOCK_ICON_RE, '') ?? '';
   }
 }
 

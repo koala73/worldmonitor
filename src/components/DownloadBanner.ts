@@ -1,13 +1,21 @@
 import { t } from '@/services/i18n';
 import { getCanonicalApiOrigin } from '@/services/runtime';
 
+const DETECT_PLATFORM_RE = /Windows/i;
+const DETECT_PLATFORM_RE_2 = /Linux/i;
+const DETECT_PLATFORM_RE_3 = /Android/i;
+const DETECT_PLATFORM_RE_4 = /Mac/i;
+const DETECT_PLATFORM_RE_5 = /Apple M/i;
+const DETECT_PLATFORM_RE_6 = /Intel/i;
+
+
 export type Platform = 'macos-arm64' | 'macos-x64' | 'macos' | 'windows' | 'linux' | 'linux-x64' | 'linux-arm64' | 'unknown';
 
 export function detectPlatform(): Platform {
   const ua = navigator.userAgent;
-  if (/Windows/i.test(ua)) return 'windows';
-  if (/Linux/i.test(ua) && !/Android/i.test(ua)) return 'linux';
-  if (/Mac/i.test(ua)) {
+  if (DETECT_PLATFORM_RE.test(ua)) return 'windows';
+  if (DETECT_PLATFORM_RE_2.test(ua) && !DETECT_PLATFORM_RE_3.test(ua)) return 'linux';
+  if (DETECT_PLATFORM_RE_4.test(ua)) {
     try {
       const c = document.createElement('canvas');
       const gl = c.getContext('webgl') as WebGLRenderingContext | null;
@@ -15,8 +23,8 @@ export function detectPlatform(): Platform {
         const dbg = gl.getExtension('WEBGL_debug_renderer_info');
         if (dbg) {
           const renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
-          if (/Apple M/i.test(renderer)) return 'macos-arm64';
-          if (/Intel/i.test(renderer)) return 'macos-x64';
+          if (DETECT_PLATFORM_RE_5.test(renderer)) return 'macos-arm64';
+          if (DETECT_PLATFORM_RE_6.test(renderer)) return 'macos-x64';
         }
       }
     } catch { /* ignore */ }

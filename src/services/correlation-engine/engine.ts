@@ -15,6 +15,9 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 import type { CorrelationRuntimeMode } from '@/services/correlation-runtime-mode';
 
+const WORDS_RE = /\W+/;
+
+
 const LLM_SCORE_THRESHOLD = 60;
 const LLM_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const LLM_MAX_CONCURRENT = 3;
@@ -196,7 +199,7 @@ export class CorrelationEngine {
       // Try compound patterns first
       let matchedKey = COMPOUND_PATTERNS.find(p => lower.includes(p));
       if (!matchedKey) {
-        const words = lower.split(/\W+/);
+        const words = lower.split(WORDS_RE);
         matchedKey = words.find(w => SINGLE_KEYS.has(w));
       }
       if (!matchedKey) continue; // drop unmatched signals to avoid false convergence

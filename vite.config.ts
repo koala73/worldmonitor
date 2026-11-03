@@ -28,6 +28,114 @@ import {
   isExpectedEmptyRpcClientWarning,
 } from './scripts/vite-build-warning-policy.mts';
 
+const PANEL_KEY_FOR_COMPONENT_ID_RE = /\/([^/]+)\.ts$/;
+const RESULT_RE = /<title>.*?<\/title>/;
+const RESULT_RE_2 = /<meta name="title" content=".*?" \/>/;
+const RESULT_RE_3 = /<meta name="description" content=".*?" \/>/;
+const RESULT_RE_4 = /<meta name="keywords" content=".*?" \/>/;
+const RESULT_RE_5 = /<link rel="canonical" href=".*?" \/>/;
+const RESULT_RE_6 = /<meta name="application-name" content=".*?" \/>/;
+const RESULT_RE_7 = /<meta property="og:url" content=".*?" \/>/;
+const RESULT_RE_8 = /<meta property="og:title" content=".*?" \/>/;
+const RESULT_RE_9 = /<meta property="og:description" content=".*?" \/>/;
+const RESULT_RE_10 = /<meta property="og:site_name" content=".*?" \/>/;
+const RESULT_RE_11 = /<meta name="subject" content=".*?" \/>/;
+const RESULT_RE_12 = /<meta name="classification" content=".*?" \/>/;
+const RESULT_RE_13 = /<meta name="twitter:url" content=".*?" \/>/;
+const RESULT_RE_14 = /<meta name="twitter:title" content=".*?" \/>/;
+const RESULT_RE_15 = /<meta name="twitter:description" content=".*?" \/>/;
+const RESULT_RE_16 = /"name": "World Monitor"/;
+const RESULT_RE_17 = /"alternateName": "WorldMonitor"/;
+const RESULT_RE_18 = /"url": "https:\/\/worldmonitor\.app\/"/;
+const RESULT_RE_19 = /"description": "Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data."/;
+const RESULT_RE_20 = /"featureList": \[[\s\S]*?\]/;
+const RESULT_RE_21 = /\n/g;
+const TRANSFORM_INDEX_HTML_RE = /<meta name="theme-color" content=".*?" \/>/;
+const TRANSFORM_INDEX_HTML_RE_2 = /if\(v\)document\.documentElement\.dataset\.variant=v;/;
+const TRANSFORM_INDEX_HTML_RE_3 = /connect-src 'self' https: http:\/\/localhost:5173/;
+const TRANSFORM_INDEX_HTML_RE_4 = /frame-src 'self'/;
+const TRANSFORM_INDEX_HTML_RE_5 = /\/favico\/favicon/g;
+const TRANSFORM_INDEX_HTML_RE_6 = /\/favico\/apple-touch-icon/g;
+const TRANSFORM_INDEX_HTML_RE_7 = /\/favico\/android-chrome/g;
+const TRANSFORM_INDEX_HTML_RE_8 = /\/favico\/og-image/g;
+const HREF_RE = /\bhref=["']([^"']+\.css)["']/i;
+const BUNDLE_KEY_RE = /^\//;
+const DEFER_DASHBOARD_STYLESHEET_LINKS_RE = /<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["'][^"']+\.css["'])[^>]*>/gi;
+const DEFER_DASHBOARD_STYLESHEET_LINKS_RE_2 = /\bdata-wm-deferred-style=/;
+const DEFER_DASHBOARD_STYLESHEET_LINKS_RE_3 = /\bmedia=/;
+const DEFERRED_TAG_RE = /\s*\/?>$/;
+const TAG_RE = /[^a-z0-9-]/gi;
+const CONFIGURE_SERVER_RE = /^\/api\/(?:[a-z][a-z0-9-]*\/v\d+|v\d+\/[a-z][a-z0-9-]*)\//;
+const PATHNAME_RE = /[?#]/;
+const TRAILING_SLASH_RE = /\/$/;
+const MODULE_RE = /^\/api\//;
+const MODULE_RE_2 = /^\/rss\//;
+const MODULE_RE_3 = /^https:\/\/protomaps\.github\.io\//;
+const MODULE_RE_4 = /\/assets\/locale-.*\.js$/i;
+const MODULE_RE_5 = /\.(?:png|jpg|jpeg|svg|gif|webp)$/i;
+const RPC_CLIENT_MATCH_RE = /\/src\/generated\/client\/worldmonitor\/(.+)\/service_client\.ts$/;
+const MANUAL_CHUNKS_RE = /_/g;
+const MANUAL_CHUNKS_RE_2 = /\//g;
+const LOCALE_MATCH_RE = /\/locales\/(\w+)\.json$/;
+const MODULE_RE_6 = /^\/api\/yahoo/;
+const MODULE_RE_7 = /^\/api\/earthquake/;
+const MODULE_RE_8 = /^\/api\/pizzint/;
+const MODULE_RE_9 = /^\/rss\/bbc/;
+const MODULE_RE_10 = /^\/rss\/guardian/;
+const MODULE_RE_11 = /^\/rss\/npr/;
+const MODULE_RE_12 = /^\/rss\/aljazeera/;
+const MODULE_RE_13 = /^\/rss\/cnn/;
+const MODULE_RE_14 = /^\/rss\/hn/;
+const MODULE_RE_15 = /^\/rss\/arstechnica/;
+const MODULE_RE_16 = /^\/rss\/verge/;
+const MODULE_RE_17 = /^\/rss\/cnbc/;
+const MODULE_RE_18 = /^\/rss\/marketwatch/;
+const MODULE_RE_19 = /^\/rss\/defenseone/;
+const MODULE_RE_20 = /^\/rss\/warontherocks/;
+const MODULE_RE_21 = /^\/rss\/breakingdefense/;
+const MODULE_RE_22 = /^\/rss\/bellingcat/;
+const MODULE_RE_23 = /^\/rss\/techcrunch/;
+const MODULE_RE_24 = /^\/rss\/googlenews/;
+const MODULE_RE_25 = /^\/rss\/openai/;
+const MODULE_RE_26 = /^\/rss\/anthropic/;
+const MODULE_RE_27 = /^\/rss\/googleai/;
+const MODULE_RE_28 = /^\/rss\/deepmind/;
+const MODULE_RE_29 = /^\/rss\/huggingface/;
+const MODULE_RE_30 = /^\/rss\/techreview/;
+const MODULE_RE_31 = /^\/rss\/arxiv/;
+const MODULE_RE_32 = /^\/rss\/whitehouse/;
+const MODULE_RE_33 = /^\/rss\/statedept/;
+const MODULE_RE_34 = /^\/rss\/state/;
+const MODULE_RE_35 = /^\/rss\/defense/;
+const MODULE_RE_36 = /^\/rss\/justice/;
+const MODULE_RE_37 = /^\/rss\/cdc/;
+const MODULE_RE_38 = /^\/rss\/fema/;
+const MODULE_RE_39 = /^\/rss\/dhs/;
+const MODULE_RE_40 = /^\/rss\/fedreserve/;
+const MODULE_RE_41 = /^\/rss\/sec/;
+const MODULE_RE_42 = /^\/rss\/treasury/;
+const MODULE_RE_43 = /^\/rss\/cisa/;
+const MODULE_RE_44 = /^\/rss\/brookings/;
+const MODULE_RE_45 = /^\/rss\/cfr/;
+const MODULE_RE_46 = /^\/rss\/csis/;
+const MODULE_RE_47 = /^\/rss\/warzone/;
+const MODULE_RE_48 = /^\/rss\/defensegov/;
+const MODULE_RE_49 = /^\/rss\/krebs/;
+const MODULE_RE_50 = /^\/rss\/yahoonews/;
+const MODULE_RE_51 = /^\/rss\/diplomat/;
+const MODULE_RE_52 = /^\/rss\/venturebeat/;
+const MODULE_RE_53 = /^\/rss\/foreignpolicy/;
+const MODULE_RE_54 = /^\/rss\/ft/;
+const MODULE_RE_55 = /^\/rss\/reuters/;
+const MODULE_RE_56 = /^\/api\/cloudflare-radar/;
+const MODULE_RE_57 = /^\/api\/nga-msi/;
+const MODULE_RE_58 = /^\/api\/gdelt/;
+const MODULE_RE_59 = /^\/ws\/aisstream/;
+const MODULE_RE_60 = /^\/api\/faa/;
+const MODULE_RE_61 = /^\/api\/opensky/;
+const MODULE_RE_62 = /^\/api\/adsb-exchange/;
+
+
 // Env-dependent constants moved inside defineConfig function
 
 
@@ -186,7 +294,7 @@ const PANEL_SUPPORT_CLUSTER: Record<string, PanelSupportChunkName> = {
 
 function panelKeyForComponentId(id: string): string | null {
   if (!id.includes('/src/components/') || !id.endsWith('.ts')) return null;
-  const match = id.match(/\/([^/]+)\.ts$/);
+  const match = id.match(PANEL_KEY_FOR_COMPONENT_ID_RE);
   if (!match) return null;
   const fileBase = match[1];
   if (fileBase === 'Panel') return null;
@@ -238,31 +346,31 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
     name: 'html-variant',
     transformIndexHtml(html, ctx) {
       let result = PAGES_WITH_OWN_HEAD_META.has(basename(ctx.filename)) ? html : html
-        .replace(/<title>.*?<\/title>/, `<title>${activeMeta.title}</title>`)
-        .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${activeMeta.title}" />`)
-        .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${activeMeta.description}" />`)
-        .replace(/<meta name="keywords" content=".*?" \/>/, `<meta name="keywords" content="${activeMeta.keywords}" />`)
-        .replace(/<link rel="canonical" href=".*?" \/>/, `<link rel="canonical" href="${activeMeta.url}" />`)
-        .replace(/<meta name="application-name" content=".*?" \/>/, `<meta name="application-name" content="${activeMeta.siteName}" />`)
-        .replace(/<meta property="og:url" content=".*?" \/>/, `<meta property="og:url" content="${activeMeta.url}" />`)
-        .replace(/<meta property="og:title" content=".*?" \/>/, `<meta property="og:title" content="${activeMeta.title}" />`)
-        .replace(/<meta property="og:description" content=".*?" \/>/, `<meta property="og:description" content="${activeMeta.description}" />`)
-        .replace(/<meta property="og:site_name" content=".*?" \/>/, `<meta property="og:site_name" content="${activeMeta.siteName}" />`)
-        .replace(/<meta name="subject" content=".*?" \/>/, `<meta name="subject" content="${activeMeta.subject}" />`)
-        .replace(/<meta name="classification" content=".*?" \/>/, `<meta name="classification" content="${activeMeta.classification}" />`)
-        .replace(/<meta name="twitter:url" content=".*?" \/>/, `<meta name="twitter:url" content="${activeMeta.url}" />`)
-        .replace(/<meta name="twitter:title" content=".*?" \/>/, `<meta name="twitter:title" content="${activeMeta.title}" />`)
-        .replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${activeMeta.description}" />`)
-        .replace(/"name": "World Monitor"/, `"name": "${activeMeta.siteName}"`)
-        .replace(/"alternateName": "WorldMonitor"/, `"alternateName": "${activeMeta.siteName.replace(' ', '')}"`)
-        .replace(/"url": "https:\/\/worldmonitor\.app\/"/, `"url": "${activeMeta.url}"`)
-        .replace(/"description": "Real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data."/, `"description": "${activeMeta.description}"`)
-        .replace(/"featureList": \[[\s\S]*?\]/, `"featureList": ${JSON.stringify(activeMeta.features, null, 8).replace(/\n/g, '\n      ')}`);
+        .replace(RESULT_RE, `<title>${activeMeta.title}</title>`)
+        .replace(RESULT_RE_2, `<meta name="title" content="${activeMeta.title}" />`)
+        .replace(RESULT_RE_3, `<meta name="description" content="${activeMeta.description}" />`)
+        .replace(RESULT_RE_4, `<meta name="keywords" content="${activeMeta.keywords}" />`)
+        .replace(RESULT_RE_5, `<link rel="canonical" href="${activeMeta.url}" />`)
+        .replace(RESULT_RE_6, `<meta name="application-name" content="${activeMeta.siteName}" />`)
+        .replace(RESULT_RE_7, `<meta property="og:url" content="${activeMeta.url}" />`)
+        .replace(RESULT_RE_8, `<meta property="og:title" content="${activeMeta.title}" />`)
+        .replace(RESULT_RE_9, `<meta property="og:description" content="${activeMeta.description}" />`)
+        .replace(RESULT_RE_10, `<meta property="og:site_name" content="${activeMeta.siteName}" />`)
+        .replace(RESULT_RE_11, `<meta name="subject" content="${activeMeta.subject}" />`)
+        .replace(RESULT_RE_12, `<meta name="classification" content="${activeMeta.classification}" />`)
+        .replace(RESULT_RE_13, `<meta name="twitter:url" content="${activeMeta.url}" />`)
+        .replace(RESULT_RE_14, `<meta name="twitter:title" content="${activeMeta.title}" />`)
+        .replace(RESULT_RE_15, `<meta name="twitter:description" content="${activeMeta.description}" />`)
+        .replace(RESULT_RE_16, `"name": "${activeMeta.siteName}"`)
+        .replace(RESULT_RE_17, `"alternateName": "${activeMeta.siteName.replace(' ', '')}"`)
+        .replace(RESULT_RE_18, `"url": "${activeMeta.url}"`)
+        .replace(RESULT_RE_19, `"description": "${activeMeta.description}"`)
+        .replace(RESULT_RE_20, `"featureList": ${JSON.stringify(activeMeta.features, null, 8).replace(RESULT_RE_21, '\n      ')}`);
 
       // Theme-color meta — warm cream for happy variant
       if (activeVariant === 'happy') {
         result = result.replace(
-          /<meta name="theme-color" content=".*?" \/>/,
+          TRANSFORM_INDEX_HTML_RE,
           '<meta name="theme-color" content="#FAFAF5" />'
         );
       }
@@ -271,7 +379,7 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
       // before CSS loads. Web builds always use 'full' — runtime hostname detection handles variants.
       if (activeVariant !== 'full') {
         result = result.replace(
-          /if\(v\)document\.documentElement\.dataset\.variant=v;/,
+          TRANSFORM_INDEX_HTML_RE_2,
           `v='${activeVariant}';document.documentElement.dataset.variant=v;`
         );
       }
@@ -281,11 +389,11 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
       if (isDesktopBuild) {
         result = result
           .replace(
-            /connect-src 'self' https: http:\/\/localhost:5173/,
+            TRANSFORM_INDEX_HTML_RE_3,
             "connect-src 'self' https: http://localhost:5173 http://127.0.0.1:*"
           )
           .replace(
-            /frame-src 'self'/,
+            TRANSFORM_INDEX_HTML_RE_4,
             "frame-src 'self' http://127.0.0.1:*"
           );
       }
@@ -294,10 +402,10 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
       // Web builds use 'full' favicons in HTML; runtime JS swaps them per hostname.
       if (activeVariant !== 'full') {
         result = result
-          .replace(/\/favico\/favicon/g, `/favico/${activeVariant}/favicon`)
-          .replace(/\/favico\/apple-touch-icon/g, `/favico/${activeVariant}/apple-touch-icon`)
-          .replace(/\/favico\/android-chrome/g, `/favico/${activeVariant}/android-chrome`)
-          .replace(/\/favico\/og-image/g, `/favico/${activeVariant}/og-image`);
+          .replace(TRANSFORM_INDEX_HTML_RE_5, `/favico/${activeVariant}/favicon`)
+          .replace(TRANSFORM_INDEX_HTML_RE_6, `/favico/${activeVariant}/apple-touch-icon`)
+          .replace(TRANSFORM_INDEX_HTML_RE_7, `/favico/${activeVariant}/android-chrome`)
+          .replace(TRANSFORM_INDEX_HTML_RE_8, `/favico/${activeVariant}/og-image`);
       }
 
       return result;
@@ -411,10 +519,10 @@ function variantDashboardHtmlPlugin(): Plugin {
 }
 
 function shouldDeferDashboardStylesheet(tag: string, bundle: OutputBundle): boolean {
-  const href = tag.match(/\bhref=["']([^"']+\.css)["']/i)?.[1];
+  const href = tag.match(HREF_RE)?.[1];
   if (!href) return false;
 
-  const bundleKey = href.replace(/^\//, '');
+  const bundleKey = href.replace(BUNDLE_KEY_RE, '');
   const asset = bundle[bundleKey];
   if (!asset || asset.type !== 'asset') return false;
 
@@ -437,10 +545,10 @@ function shouldDeferDashboardStylesheet(tag: string, bundle: OutputBundle): bool
 // future *unconditional* inline rule will beat the bundle (see PR #4346) — keep
 // inline rules scoped to a transient/closed state.
 function deferDashboardStylesheetLinks(html: string, bundle: OutputBundle): string {
-  return html.replace(/<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["'][^"']+\.css["'])[^>]*>/gi, (tag) => {
-    if (/\bdata-wm-deferred-style=/.test(tag) || /\bmedia=/.test(tag)) return tag;
+  return html.replace(DEFER_DASHBOARD_STYLESHEET_LINKS_RE, (tag) => {
+    if (DEFER_DASHBOARD_STYLESHEET_LINKS_RE_2.test(tag) || DEFER_DASHBOARD_STYLESHEET_LINKS_RE_3.test(tag)) return tag;
     if (!shouldDeferDashboardStylesheet(tag, bundle)) return tag;
-    const deferredTag = tag.replace(/\s*\/?>$/, ' media="print" data-wm-deferred-style="dashboard">');
+    const deferredTag = tag.replace(DEFERRED_TAG_RE, ' media="print" data-wm-deferred-style="dashboard">');
     return `${deferredTag}\n    <noscript>${tag}</noscript>`;
   });
 }
@@ -465,7 +573,7 @@ function polymarketPlugin(): Plugin {
 
         const params = new URLSearchParams({ closed: closed!, order: order!, ascending: ascending!, limit: String(limit) });
         if (endpoint === 'events') {
-          const tag = (url.searchParams.get('tag') ?? '').replace(/[^a-z0-9-]/gi, '').slice(0, 100);
+          const tag = (url.searchParams.get('tag') ?? '').replace(TAG_RE, '').slice(0, 100);
           if (tag) params.set('tag_slug', tag);
         }
 
@@ -655,7 +763,7 @@ function sebufApiPlugin(): Plugin {
         //  - partner-URL-preservation /api/v{N}/{domain}/* (version-first, e.g.
         //    /api/v2/shipping/...). Only the second form applies when the
         //    external contract already uses a reversed layout.
-        if (!req.url || !/^\/api\/(?:[a-z][a-z0-9-]*\/v\d+|v\d+\/[a-z][a-z0-9-]*)\//.test(req.url)) {
+        if (!req.url || !CONFIGURE_SERVER_RE.test(req.url)) {
           return next();
         }
 
@@ -921,9 +1029,9 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        let pathname = (req.url ?? '/').split(/[?#]/, 1)[0];
+        let pathname = (req.url ?? '/').split(PATHNAME_RE, 1)[0];
         try { pathname = decodeURI(pathname); } catch { /* Vite handles malformed paths. */ }
-        pathname = posix.normalize(pathname).replace(/\/$/, '') || '/';
+        pathname = posix.normalize(pathname).replace(TRAILING_SLASH_RE, '') || '/';
         const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
         if (pathname === '/wm-widget-sandbox.html') {
           res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;");
@@ -1097,19 +1205,19 @@ export default defineConfig(({ mode }) => {
           runtimeCaching: [
             {
               urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-                sameOrigin && /^\/api\//.test(url.pathname),
+                sameOrigin && MODULE_RE.test(url.pathname),
               handler: 'NetworkOnly',
               method: 'GET',
             },
             {
               urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-                sameOrigin && /^\/api\//.test(url.pathname),
+                sameOrigin && MODULE_RE.test(url.pathname),
               handler: 'NetworkOnly',
               method: 'POST',
             },
             {
               urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-                sameOrigin && /^\/rss\//.test(url.pathname),
+                sameOrigin && MODULE_RE_2.test(url.pathname),
               handler: 'NetworkOnly',
               method: 'GET',
             },
@@ -1126,7 +1234,7 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
-              urlPattern: /^https:\/\/protomaps\.github\.io\//,
+              urlPattern: MODULE_RE_3,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'protomaps-assets',
@@ -1135,7 +1243,7 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
-              urlPattern: /\/assets\/locale-.*\.js$/i,
+              urlPattern: MODULE_RE_4,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'locale-files',
@@ -1145,7 +1253,7 @@ export default defineConfig(({ mode }) => {
             },
             appChunkRuntimeCache,
             {
-              urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
+              urlPattern: MODULE_RE_5,
               handler: 'StaleWhileRevalidate',
               options: {
                 cacheName: 'images',
@@ -1383,9 +1491,9 @@ export default defineConfig(({ mode }) => {
             // src/services/generated-rpc-clients.ts so real constructors parse only
             // on first RPC use. Stable names let the eager-chunk guard prove they
             // stay out of the dashboard entry and HTML modulepreload list. (#4493)
-            const rpcClientMatch = id.match(/\/src\/generated\/client\/worldmonitor\/(.+)\/service_client\.ts$/);
+            const rpcClientMatch = id.match(RPC_CLIENT_MATCH_RE);
             if (rpcClientMatch) {
-              return `rpc-client-${rpcClientMatch[1].replace(/_/g, '-').replace(/\//g, '-')}`;
+              return `rpc-client-${rpcClientMatch[1].replace(MANUAL_CHUNKS_RE, '-').replace(MANUAL_CHUNKS_RE_2, '-')}`;
             }
             // Co-locate the deck.gl renderer with the deck vendor chunk so
             // onlyExplicitManualChunks cannot split deck's transitive deps
@@ -1412,7 +1520,7 @@ export default defineConfig(({ mode }) => {
             // Give lazy-loaded locale chunks a recognizable prefix so the
             // service worker can exclude them from precache (en.json is
             // statically imported into the main bundle).
-            const localeMatch = id.match(/\/locales\/(\w+)\.json$/);
+            const localeMatch = id.match(LOCALE_MATCH_RE);
             if (localeMatch && localeMatch[1] !== 'en') {
               return `locale-${localeMatch[1]}`;
             }
@@ -1442,7 +1550,7 @@ export default defineConfig(({ mode }) => {
         '/api/yahoo': {
           target: 'https://query1.finance.yahoo.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/yahoo/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_6, ''),
         },
         // Polymarket handled by polymarketPlugin() — no prod proxy needed
         // USGS Earthquake API
@@ -1450,7 +1558,7 @@ export default defineConfig(({ mode }) => {
           target: 'https://earthquake.usgs.gov',
           changeOrigin: true,
           timeout: 30000,
-          rewrite: (path) => path.replace(/^\/api\/earthquake/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_7, ''),
           configure: (proxy) => {
             proxy.on('error', (err) => {
               console.log('Earthquake proxy error:', err.message);
@@ -1461,7 +1569,7 @@ export default defineConfig(({ mode }) => {
         '/api/pizzint': {
           target: 'https://www.pizzint.watch',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/pizzint/, '/api'),
+          rewrite: (path) => path.replace(MODULE_RE_8, '/api'),
           configure: (proxy) => {
             proxy.on('error', (err) => {
               console.log('PizzINT proxy error:', err.message);
@@ -1486,292 +1594,292 @@ export default defineConfig(({ mode }) => {
         '/rss/bbc': {
           target: 'https://feeds.bbci.co.uk',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/bbc/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_9, ''),
         },
         // RSS Feeds - Guardian
         '/rss/guardian': {
           target: 'https://www.theguardian.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/guardian/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_10, ''),
         },
         // RSS Feeds - NPR
         '/rss/npr': {
           target: 'https://feeds.npr.org',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/npr/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_11, ''),
         },
         // RSS Feeds - Al Jazeera
         '/rss/aljazeera': {
           target: 'https://www.aljazeera.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/aljazeera/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_12, ''),
         },
         // RSS Feeds - CNN
         '/rss/cnn': {
           target: 'http://rss.cnn.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/cnn/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_13, ''),
         },
         // RSS Feeds - Hacker News
         '/rss/hn': {
           target: 'https://hnrss.org',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/hn/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_14, ''),
         },
         // RSS Feeds - Ars Technica
         '/rss/arstechnica': {
           target: 'https://feeds.arstechnica.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/arstechnica/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_15, ''),
         },
         // RSS Feeds - The Verge
         '/rss/verge': {
           target: 'https://www.theverge.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/verge/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_16, ''),
         },
         // RSS Feeds - CNBC
         '/rss/cnbc': {
           target: 'https://www.cnbc.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/cnbc/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_17, ''),
         },
         // RSS Feeds - MarketWatch
         '/rss/marketwatch': {
           target: 'https://feeds.marketwatch.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/marketwatch/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_18, ''),
         },
         // RSS Feeds - Defense/Intel sources
         '/rss/defenseone': {
           target: 'https://www.defenseone.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/defenseone/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_19, ''),
         },
         '/rss/warontherocks': {
           target: 'https://warontherocks.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/warontherocks/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_20, ''),
         },
         '/rss/breakingdefense': {
           target: 'https://breakingdefense.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/breakingdefense/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_21, ''),
         },
         '/rss/bellingcat': {
           target: 'https://www.bellingcat.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/bellingcat/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_22, ''),
         },
         // RSS Feeds - TechCrunch (layoffs)
         '/rss/techcrunch': {
           target: 'https://techcrunch.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/techcrunch/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_23, ''),
         },
         // Google News RSS
         '/rss/googlenews': {
           target: 'https://news.google.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/googlenews/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_24, ''),
         },
         // AI Company Blogs
         '/rss/openai': {
           target: 'https://openai.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/openai/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_25, ''),
         },
         '/rss/anthropic': {
           target: 'https://www.anthropic.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/anthropic/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_26, ''),
         },
         '/rss/googleai': {
           target: 'https://blog.google',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/googleai/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_27, ''),
         },
         '/rss/deepmind': {
           target: 'https://deepmind.google',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/deepmind/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_28, ''),
         },
         '/rss/huggingface': {
           target: 'https://huggingface.co',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/huggingface/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_29, ''),
         },
         '/rss/techreview': {
           target: 'https://www.technologyreview.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/techreview/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_30, ''),
         },
         '/rss/arxiv': {
           target: 'https://rss.arxiv.org',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/arxiv/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_31, ''),
         },
         // Government
         '/rss/whitehouse': {
           target: 'https://www.whitehouse.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/whitehouse/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_32, ''),
         },
         '/rss/statedept': {
           target: 'https://www.state.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/statedept/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_33, ''),
         },
         '/rss/state': {
           target: 'https://www.state.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/state/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_34, ''),
         },
         '/rss/defense': {
           target: 'https://www.defense.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/defense/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_35, ''),
         },
         '/rss/justice': {
           target: 'https://www.justice.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/justice/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_36, ''),
         },
         '/rss/cdc': {
           target: 'https://tools.cdc.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/cdc/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_37, ''),
         },
         '/rss/fema': {
           target: 'https://www.fema.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/fema/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_38, ''),
         },
         '/rss/dhs': {
           target: 'https://www.dhs.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/dhs/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_39, ''),
         },
         '/rss/fedreserve': {
           target: 'https://www.federalreserve.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/fedreserve/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_40, ''),
         },
         '/rss/sec': {
           target: 'https://www.sec.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/sec/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_41, ''),
         },
         '/rss/treasury': {
           target: 'https://home.treasury.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/treasury/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_42, ''),
         },
         '/rss/cisa': {
           target: 'https://www.cisa.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/cisa/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_43, ''),
         },
         // Think Tanks
         '/rss/brookings': {
           target: 'https://www.brookings.edu',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/brookings/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_44, ''),
         },
         '/rss/cfr': {
           target: 'https://www.cfr.org',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/cfr/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_45, ''),
         },
         '/rss/csis': {
           target: 'https://www.csis.org',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/csis/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_46, ''),
         },
         // Defense
         '/rss/warzone': {
           target: 'https://www.thedrive.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/warzone/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_47, ''),
         },
         '/rss/defensegov': {
           target: 'https://www.defense.gov',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/defensegov/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_48, ''),
         },
         // Security
         '/rss/krebs': {
           target: 'https://krebsonsecurity.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/krebs/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_49, ''),
         },
         // Finance
         '/rss/yahoonews': {
           target: 'https://finance.yahoo.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/yahoonews/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_50, ''),
         },
         // Diplomat
         '/rss/diplomat': {
           target: 'https://thediplomat.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/diplomat/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_51, ''),
         },
         // VentureBeat
         '/rss/venturebeat': {
           target: 'https://venturebeat.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/venturebeat/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_52, ''),
         },
         // Foreign Policy
         '/rss/foreignpolicy': {
           target: 'https://foreignpolicy.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/foreignpolicy/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_53, ''),
         },
         // Financial Times
         '/rss/ft': {
           target: 'https://www.ft.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/ft/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_54, ''),
         },
         // Reuters
         '/rss/reuters': {
           target: 'https://www.reutersagency.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/rss\/reuters/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_55, ''),
         },
         // Cloudflare Radar - Internet outages
         '/api/cloudflare-radar': {
           target: 'https://api.cloudflare.com',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/cloudflare-radar/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_56, ''),
         },
         // NGA Maritime Safety Information - Navigation Warnings
         '/api/nga-msi': {
           target: 'https://msi.nga.mil',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/nga-msi/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_57, ''),
         },
         // GDELT GEO 2.0 API - Global event data
         '/api/gdelt': {
           target: 'https://api.gdeltproject.org',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/gdelt/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_58, ''),
         },
         // AISStream WebSocket proxy for live vessel tracking
         '/ws/aisstream': {
           target: 'wss://stream.aisstream.io',
           changeOrigin: true,
           ws: true,
-          rewrite: (path) => path.replace(/^\/ws\/aisstream/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_59, ''),
         },
         // FAA NASSTATUS - Airport delays and closures
         '/api/faa': {
           target: 'https://nasstatus.faa.gov',
           changeOrigin: true,
           secure: true,
-          rewrite: (path) => path.replace(/^\/api\/faa/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_60, ''),
           configure: (proxy) => {
             proxy.on('error', (err) => {
               console.log('FAA NASSTATUS proxy error:', err.message);
@@ -1786,7 +1894,7 @@ export default defineConfig(({ mode }) => {
           target: 'https://opensky-network.org/api',
           changeOrigin: true,
           secure: true,
-          rewrite: (path) => path.replace(/^\/api\/opensky/, '/states/all'),
+          rewrite: (path) => path.replace(MODULE_RE_61, '/states/all'),
           configure: (proxy) => {
             proxy.on('error', (err) => {
               console.log('OpenSky proxy error:', err.message);
@@ -1798,7 +1906,7 @@ export default defineConfig(({ mode }) => {
           target: 'https://adsbexchange.com/api',
           changeOrigin: true,
           secure: true,
-          rewrite: (path) => path.replace(/^\/api\/adsb-exchange/, ''),
+          rewrite: (path) => path.replace(MODULE_RE_62, ''),
           configure: (proxy) => {
             proxy.on('error', (err) => {
               console.log('ADS-B Exchange proxy error:', err.message);

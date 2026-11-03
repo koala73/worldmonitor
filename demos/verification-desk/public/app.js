@@ -3,6 +3,12 @@
 
 import * as avatar from './avatar.js';
 
+const SENTENCES_RE = /[^.!?]+[.!?]+["”']?\s*|[^.!?]+$/g;
+const SPEAK_BROWSER_RE = /en-(GB|US)/;
+const SPEAK_BROWSER_RE_2 = /Natural|Google|Daniel|Samantha|Aria|Guy/i;
+const WHITESPACE_RE = /\s+/;
+
+
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, text) => {
   const node = document.createElement(tag);
@@ -44,7 +50,7 @@ let level = () => 0;
 
 // Subtitles: the sentence being spoken, with the previous one dimmed above it.
 function renderCaption(text, spokenChars) {
-  const sentences = text.match(/[^.!?]+[.!?]+["”']?\s*|[^.!?]+$/g) ?? [text];
+  const sentences = text.match(SENTENCES_RE) ?? [text];
   let start = 0;
   let i = 0;
   for (; i < sentences.length - 1; i += 1) {
@@ -97,7 +103,7 @@ function speakBrowser(text, onProgress) {
     if (!('speechSynthesis' in window)) { onProgress(1); resolve(); return; }
     const u = new SpeechSynthesisUtterance(text);
     const voices = speechSynthesis.getVoices();
-    u.voice = voices.find((v) => /en-(GB|US)/.test(v.lang) && /Natural|Google|Daniel|Samantha|Aria|Guy/i.test(v.name)) ?? voices.find((v) => v.lang.startsWith('en')) ?? null;
+    u.voice = voices.find((v) => SPEAK_BROWSER_RE.test(v.lang) && SPEAK_BROWSER_RE_2.test(v.name)) ?? voices.find((v) => v.lang.startsWith('en')) ?? null;
     u.rate = 1.02;
     u.onboundary = (e) => onProgress(e.charIndex / text.length);
     u.onend = () => { onProgress(1); resolve(); };
@@ -271,7 +277,7 @@ async function runRecap() {
     if (s.credibility != null) chips.append(el('span', `chip cred band-${s.band}`, `CRED ${s.credibility}`));
     li.append(chips);
     list.append(li);
-    const key = s.title.split(/\s+/).slice(0, 3).join(' ').toLowerCase();
+    const key = s.title.split(WHITESPACE_RE).slice(0, 3).join(' ').toLowerCase();
     const at = data.script.toLowerCase().indexOf(key);
     marks.push({ li, at: at >= 0 ? at / data.script.length : null });
   }

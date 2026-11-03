@@ -28,6 +28,11 @@
 
 import { guardMetadataMethod } from './_agent-metadata';
 
+const BASE64URL_RE = /\+/g;
+const BASE64URL_RE_2 = /\//g;
+const BASE64URL_RE_3 = /=+$/;
+
+
 export const config = { runtime: 'edge' };
 
 // Ed25519 public key, base64url without padding (43 chars = 32 bytes). The
@@ -47,7 +52,7 @@ const KEY_TTL_SECONDS = 86400;
 function base64url(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(binary).replace(BASE64URL_RE, '-').replace(BASE64URL_RE_2, '_').replace(BASE64URL_RE_3, '');
 }
 
 // RFC 8037 App. A.3: base64url(SHA-256(canonical JWK)) where the canonical form

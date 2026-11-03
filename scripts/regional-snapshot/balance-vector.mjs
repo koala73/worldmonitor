@@ -21,6 +21,11 @@ import {
 } from '../shared/geography.js';
 import iso3ToIso2Raw from '../shared/iso3-to-iso2.json' with { type: 'json' };
 
+const CRITICAL_COUNT_RE = /CRITICAL/i;
+const HIGH_COUNT_RE = /HIGH/i;
+const ALLIANCE_REFS_RE = /alliance|treaty|coordination|coalition|nato|gcc/;
+
+
 /** @type {Record<string, string>} */
 const ISO3_TO_ISO2 = iso3ToIso2Raw;
 
@@ -89,8 +94,8 @@ function computeCoercivePressure(region, sources, drivers) {
   const xss = sources['intelligence:cross-source-signals:v1'];
   const signals = Array.isArray(xss?.signals) ? xss.signals : [];
   const inRegion = signals.filter((s) => isSignalInRegion(s?.theater, region));
-  const criticalCount = inRegion.filter((s) => /CRITICAL/i.test(String(s?.severity ?? ''))).length;
-  const highCount = inRegion.filter((s) => /HIGH/i.test(String(s?.severity ?? ''))).length;
+  const criticalCount = inRegion.filter((s) => CRITICAL_COUNT_RE.test(String(s?.severity ?? ''))).length;
+  const highCount = inRegion.filter((s) => HIGH_COUNT_RE.test(String(s?.severity ?? ''))).length;
 
   // ACLED conflict counts (region-scoped via country bbox - approximate via signal theater)
   // For Phase 0 we approximate via cross-source signal counts since ACLED key not directly fetched.
@@ -315,7 +320,7 @@ function computeAllianceCohesion(regionId, sources, drivers) {
   });
   const allianceRefs = inRegion.filter((f) => {
     const cf = JSON.stringify(f?.caseFile ?? {}).toLowerCase();
-    return /alliance|treaty|coordination|coalition|nato|gcc/.test(cf);
+    return ALLIANCE_REFS_RE.test(cf);
   }).length;
 
   const cActor = clip(allianceRefs / 5, 0, 1);

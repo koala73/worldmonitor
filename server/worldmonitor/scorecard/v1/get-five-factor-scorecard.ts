@@ -11,13 +11,16 @@ import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { asFiveFactorSnapshot, readFiveFactorSnapshot, type ScorecardSnapshotReader } from './_read-snapshot';
 import { toPublicCountryScorecard } from './_response';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export async function getFiveFactorScorecardWithReader(
   ctx: ServerContext,
   req: GetFiveFactorScorecardRequest,
   reader: ScorecardSnapshotReader,
 ): Promise<GetFiveFactorScorecardResponse> {
   const countryCode = String(req.countryCode || '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(countryCode)) {
+  if (!COUNTRY_CODE_RE.test(countryCode)) {
     throw new ValidationError([{ field: 'countryCode', description: 'countryCode must be a 2-letter ISO 3166-1 alpha-2 code' }]);
   }
   let snapshotValue: unknown;

@@ -14,6 +14,11 @@ import { loadRetailerConfig } from '../config/loader.js';
 import { SearchAdapter, SearchTargetError, type ExtractionFailure } from './search.js';
 import type { AdapterContext } from './types.js';
 
+const MODULE_RE = /failed host\/path check/;
+const MODULE_RE_2 = /repeated a URL already attempted/;
+const MODULE_RE_3 = /no pages found/;
+
+
 const slugs = process.argv.slice(2);
 if (slugs.length === 0) {
   console.error('usage: extraction.diag.ts <retailer-slug> [...]');
@@ -80,9 +85,9 @@ for (const slug of slugs) {
       const failures: readonly ExtractionFailure[] = err instanceof SearchTargetError ? err.failures : [];
       let reasonClass = 'unknown';
       let detail = message;
-      if (/failed host\/path check/.test(message)) reasonClass = 'discovery-filter';
-      else if (/repeated a URL already attempted/.test(message)) reasonClass = 'discovery-repeated';
-      else if (/no pages found/.test(message)) reasonClass = 'discovery-empty';
+      if (MODULE_RE.test(message)) reasonClass = 'discovery-filter';
+      else if (MODULE_RE_2.test(message)) reasonClass = 'discovery-repeated';
+      else if (MODULE_RE_3.test(message)) reasonClass = 'discovery-empty';
       if (failures.length > 0) {
         const counts = new Map<string, number>();
         for (const f of failures) counts.set(f.reason, (counts.get(f.reason) ?? 0) + 1);

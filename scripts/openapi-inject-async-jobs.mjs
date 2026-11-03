@@ -29,6 +29,16 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, serialize } from './lib/openapi-codegen.mjs';
 
+const FIND_HEADERS_BLOCK_RE = /^ {20}headers:\s*$/;
+const INJECT_YAML_RE = /^ {12}responses:\s*$/;
+const INJECT_YAML_RE_2 = /^ {20}description: /;
+const INJECT_YAML_RE_3 = /^ {20}content:\s*$/;
+const INJECT_YAML_RE_4 = /^ {24}Location:\s*$/;
+const INJECT_YAML_RE_5 = /^ {0,24}\S/;
+const JSON_FILES_RE = /Service\.openapi\.json$/;
+const YAML_FILES_RE = /Service\.openapi\.yaml$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const CHECK = process.argv.includes('--check');
@@ -147,7 +157,7 @@ function findResponseBlock(lines, responsesIndex, code) {
 
 function findHeadersBlock(lines, block) {
   for (let j = block.start + 1; j < block.end; j++) {
-    if (/^ {20}headers:\s*$/.test(lines[j])) {
+    if (FIND_HEADERS_BLOCK_RE.test(lines[j])) {
       return { start: j, end: blockEndAtIndent(lines, j, block.end, 20) };
     }
   }
@@ -178,7 +188,7 @@ export function injectYaml(text) {
 
     let responsesIndex = -1;
     for (let j = opStart + 1; j < opEnd; j++) {
-      if (/^ {12}responses:\s*$/.test(lines[j])) {
+      if (INJECT_YAML_RE.test(lines[j])) {
         responsesIndex = j;
         break;
       }
@@ -200,7 +210,7 @@ export function injectYaml(text) {
     if (!acceptedBlock) continue;
 
     for (let j = acceptedBlock.start + 1; j < acceptedBlock.end; j++) {
-      if (!/^ {20}description: /.test(lines[j])) continue;
+      if (!INJECT_YAML_RE_2.test(lines[j])) continue;
       const descriptionLine = `                    description: ${target.description}`;
       if (lines[j] !== descriptionLine) {
         lines[j] = descriptionLine;
@@ -215,8 +225,8 @@ export function injectYaml(text) {
     if (!headers) {
       let insertAt = acceptedBlock.start + 1;
       for (let j = acceptedBlock.start + 1; j < acceptedBlock.end; j++) {
-        if (/^ {20}description: /.test(lines[j])) insertAt = j + 1;
-        if (/^ {20}content:\s*$/.test(lines[j])) break;
+        if (INJECT_YAML_RE_2.test(lines[j])) insertAt = j + 1;
+        if (INJECT_YAML_RE_3.test(lines[j])) break;
       }
       lines.splice(insertAt, 0, '                    headers:', ...locationLines);
       changed = true;
@@ -225,7 +235,7 @@ export function injectYaml(text) {
 
     let locationStart = -1;
     for (let j = headers.start + 1; j < headers.end; j++) {
-      if (/^ {24}Location:\s*$/.test(lines[j])) {
+      if (INJECT_YAML_RE_4.test(lines[j])) {
         locationStart = j;
         break;
       }
@@ -236,7 +246,7 @@ export function injectYaml(text) {
       continue;
     }
     let locationEnd = locationStart + 1;
-    while (locationEnd < headers.end && !/^ {0,24}\S/.test(lines[locationEnd])) locationEnd++;
+    while (locationEnd < headers.end && !INJECT_YAML_RE_5.test(lines[locationEnd])) locationEnd++;
     const { replaced } = replaceLinesIfDifferent(lines, locationStart, locationEnd, locationLines);
     if (replaced) changed = true;
   }
@@ -252,9 +262,9 @@ const isEntryPoint =
   process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isEntryPoint) {
-  const jsonFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+  const jsonFiles = readdirSync(apiDir).filter((f) => JSON_FILES_RE.test(f)).sort();
   const yamlFiles = readdirSync(apiDir)
-    .filter((f) => /Service\.openapi\.yaml$/.test(f) || f === 'worldmonitor.openapi.yaml')
+    .filter((f) => YAML_FILES_RE.test(f) || f === 'worldmonitor.openapi.yaml')
     .sort();
   let wouldChange = 0;
   const touched = [];

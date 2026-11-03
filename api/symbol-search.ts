@@ -9,6 +9,9 @@
  * require a shared, fail-closed provider budget as well as caller admission.
  */
 
+const HANDLER_RE = /^[\p{L}\p{M}\p{N} .&’'\-]*$/u;
+const CACHE_KEY_RE = / +/g;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -172,7 +175,7 @@ export default async function handler(
   }
 
   const rawQuery = new URL(req.url).searchParams.get('q') ?? '';
-  if (rawQuery.length > 64 || !/^[\p{L}\p{M}\p{N} .&’'\-]*$/u.test(rawQuery)) {
+  if (rawQuery.length > 64 || !HANDLER_RE.test(rawQuery)) {
     return jsonResponse({ error: 'INVALID_QUERY' }, 400, cors);
   }
   const q = rawQuery.trim();
@@ -197,7 +200,7 @@ export default async function handler(
   // Normalize query for the cache key — case-insensitive, whitespace-folded.
   // The Finnhub upstream is case-insensitive, so 'NVDA', 'nvda', '  nvda '
   // all yield the same result set; share one cache entry.
-  const cacheKey = CACHE_KEY_PREFIX + await sha256Hex(q.toLowerCase().replace(/ +/g, ' '));
+  const cacheKey = CACHE_KEY_PREFIX + await sha256Hex(q.toLowerCase().replace(CACHE_KEY_RE, ' '));
 
   // Cache-first. A miss / Upstash hiccup / decode failure all fall through
   // to Finnhub — the cache is best-effort, never load-bearing.

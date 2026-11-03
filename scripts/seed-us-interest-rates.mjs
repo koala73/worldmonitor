@@ -7,6 +7,9 @@ import { loadEnvFile, fredFetchJson, resolveProxyForConnect, runSeed } from './_
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
+const FRED_RATE_OBSERVATIONS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const proxyAuth = resolveProxyForConnect();
@@ -40,7 +43,7 @@ export function fredRateObservations(payload) {
   for (const observation of observations) {
     const date = String(observation?.date ?? '').slice(0, 10);
     const value = Number(observation?.value);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || observation?.value === '.' || !Number.isFinite(value)) continue;
+    if (!FRED_RATE_OBSERVATIONS_RE.test(date) || observation?.value === '.' || !Number.isFinite(value)) continue;
     byDate.set(date, value);
   }
   return [...byDate.entries()]

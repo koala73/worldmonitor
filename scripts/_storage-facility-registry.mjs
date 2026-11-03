@@ -20,6 +20,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const STORAGE_FACILITIES_CANONICAL_KEY = 'energy:storage-facilities:v1';
 // Registry is near-static — weekly cron with 3× TTL cushion.
 export const STORAGE_FACILITIES_TTL_SECONDS = 21 * 24 * 3600;
@@ -78,7 +81,7 @@ export function validateRegistry(data) {
     if (typeof f.name !== 'string' || f.name.length === 0) return false;
     if (typeof f.operator !== 'string') return false;
     if (!VALID_FACILITY_TYPES.has(f.facilityType)) return false;
-    if (typeof f.country !== 'string' || !/^[A-Z]{2}$/.test(f.country)) return false;
+    if (typeof f.country !== 'string' || !COUNTRY_CODE_RE.test(f.country)) return false;
 
     if (!f.location || typeof f.location.lat !== 'number' || typeof f.location.lon !== 'number') return false;
     if (!isValidLatLon(f.location.lat, f.location.lon)) return false;

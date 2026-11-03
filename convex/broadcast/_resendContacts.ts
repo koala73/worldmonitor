@@ -27,6 +27,8 @@
  *      state is absent or malformed.
  */
 
+const IS_DUPLICATE_CONTACT_ERROR_RE = /already (exists|in (the )?(audience|segment))|duplicate/;
+
 export const RESEND_API_BASE = "https://api.resend.com";
 export const USER_AGENT =
   "WorldMonitor-PROLaunchExporter/1.0 (+https://worldmonitor.app)";
@@ -48,7 +50,7 @@ export function isDuplicateContactError(body: unknown): boolean {
   const name = typeof obj.name === "string" ? obj.name.toLowerCase() : "";
   const message = typeof obj.message === "string" ? obj.message.toLowerCase() : "";
   if (name.includes("already_exists") || name.includes("duplicate")) return true;
-  if (/already (exists|in (the )?(audience|segment))|duplicate/.test(message))
+  if (IS_DUPLICATE_CONTACT_ERROR_RE.test(message))
     return true;
   return false;
 }

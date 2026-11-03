@@ -1,5 +1,9 @@
 // App-serving hosts only; sibling vendor hosts do not inherit browser trust.
 // Keep aligned with convex/payments/returnUrlOrigin.ts and CORS parity tests.
+const DECODED_RE = /--/g;
+const DECODED_RE_2 = /-/g;
+const DECODED_RE_3 = /\0/g;
+
 const APP_ORIGIN_PATTERN = /^https:\/\/(?:(?:www|app|api|tech|finance|commodity|happy|energy)\.)?worldmonitor\.app$/;
 const MAX_ORIGIN_BYTES = 300;
 const ORIGIN_ENCODER = new TextEncoder();
@@ -134,7 +138,7 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
     if (!encoded || encoded.includes('.')) return false;
-    const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
+    const decoded = encoded.replace(DECODED_RE, '\0').replace(DECODED_RE_2, '.').replace(DECODED_RE_3, '-');
     return APP_ORIGIN_PATTERN.test(`https://${decoded}`);
   } catch {
     return false;

@@ -12,6 +12,31 @@ import ARXIV_CATEGORIES from './shared/research-arxiv-categories.json' with { ty
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
 
+const ID_RE = /<id>([\s\S]*?)<\/id>/;
+const TITLE_RE = /<title>([\s\S]*?)<\/title>/;
+const WHITESPACE_RE = /\s+/g;
+const SUMMARY_RE = /<summary>([\s\S]*?)<\/summary>/;
+const PUBLISHED_RE = /<published>([\s\S]*?)<\/published>/;
+const URL_MATCH_RE = /<link[^>]*rel="alternate"[^>]*href="([^"]+)"/;
+const AUTHOR_MATCHES_RE = /<author>\s*<name>([\s\S]*?)<\/name>/g;
+const CAT_MATCHES_RE = /<category[^>]*term="([^"]+)"/g;
+const SUMMARY_RE_2 = /SUMMARY:(.+)/;
+const LOCATION_RE = /LOCATION:(.+)/;
+const DTSTART_RE = /DTSTART;VALUE=DATE:(\d+)/;
+const DTEND_RE = /DTEND;VALUE=DATE:(\d+)/;
+const URL_RE = /URL:(.+)/;
+const UID_RE = /UID:(.+)/;
+const ITEMS_RE = /<item>([\s\S]*?)<\/item>/g;
+const TITLE_RE_2 = /<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/;
+const TITLE_RE_3 = /<title>(.*?)<\/title>/;
+const LINK_RE = /<link>(.*?)<\/link>/;
+const DESC_RE = /<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/;
+const DESC_RE_2 = /<description>([\s\S]*?)<\/description>/;
+const GUID_RE = /<guid[^>]*>(.*?)<\/guid>/;
+const DATE_MATCH_RE = /on\s+(\w+\s+\d{1,2},?\s+\d{4})/i;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]/g;
+
+
 loadEnvFile(import.meta.url);
 
 // The canonical key's staleness gate. Exported so the TTL invariant below is pinned by a test.
@@ -49,20 +74,20 @@ function parseArxivEntries(xml) {
   const papers = [];
   const entryBlocks = xml.split('<entry>').slice(1);
   for (const block of entryBlocks) {
-    const id = (block.match(/<id>([\s\S]*?)<\/id>/)?.[1] || '').trim().split('/').pop() || '';
-    const title = (block.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').trim().replace(/\s+/g, ' ');
-    const summary = (block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] || '').trim().replace(/\s+/g, ' ');
-    const published = block.match(/<published>([\s\S]*?)<\/published>/)?.[1]?.trim() || '';
+    const id = (block.match(ID_RE)?.[1] || '').trim().split('/').pop() || '';
+    const title = (block.match(TITLE_RE)?.[1] || '').trim().replace(WHITESPACE_RE, ' ');
+    const summary = (block.match(SUMMARY_RE)?.[1] || '').trim().replace(WHITESPACE_RE, ' ');
+    const published = block.match(PUBLISHED_RE)?.[1]?.trim() || '';
     const publishedAt = published ? new Date(published).getTime() : 0;
-    const urlMatch = block.match(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/);
+    const urlMatch = block.match(URL_MATCH_RE);
     const paperUrl = urlMatch?.[1] || `https://arxiv.org/abs/${id}`;
 
     const authors = [];
-    const authorMatches = block.matchAll(/<author>\s*<name>([\s\S]*?)<\/name>/g);
+    const authorMatches = block.matchAll(AUTHOR_MATCHES_RE);
     for (const m of authorMatches) authors.push(m[1].trim());
 
     const cats = [];
-    const catMatches = block.matchAll(/<category[^>]*term="([^"]+)"/g);
+    const catMatches = block.matchAll(CAT_MATCHES_RE);
     for (const m of catMatches) cats.push(m[1]);
 
     if (title && id) papers.push({ id, title, summary, authors, categories: cats, publishedAt, url: paperUrl });
@@ -186,12 +211,12 @@ async function fetchTechEvents() {
       const ics = await resp.text();
       const blocks = ics.split('BEGIN:VEVENT').slice(1);
       for (const block of blocks) {
-        const summary = block.match(/SUMMARY:(.+)/)?.[1]?.trim() || '';
-        const location = block.match(/LOCATION:(.+)/)?.[1]?.trim() || '';
-        const dtstart = block.match(/DTSTART;VALUE=DATE:(\d+)/)?.[1] || '';
-        const dtend = block.match(/DTEND;VALUE=DATE:(\d+)/)?.[1] || dtstart;
-        const url = block.match(/URL:(.+)/)?.[1]?.trim() || '';
-        const uid = block.match(/UID:(.+)/)?.[1]?.trim() || '';
+        const summary = block.match(SUMMARY_RE_2)?.[1]?.trim() || '';
+        const location = block.match(LOCATION_RE)?.[1]?.trim() || '';
+        const dtstart = block.match(DTSTART_RE)?.[1] || '';
+        const dtend = block.match(DTEND_RE)?.[1] || dtstart;
+        const url = block.match(URL_RE)?.[1]?.trim() || '';
+        const uid = block.match(UID_RE)?.[1]?.trim() || '';
         if (!summary || !dtstart) continue;
         let type = 'other';
         if (summary.startsWith('Earnings:')) type = 'earnings';
@@ -217,18 +242,18 @@ async function fetchTechEvents() {
     });
     if (resp.ok) {
       const rss = await resp.text();
-      const items = rss.matchAll(/<item>([\s\S]*?)<\/item>/g);
+      const items = rss.matchAll(ITEMS_RE);
       const today = new Date().toISOString().split('T')[0];
       for (const m of items) {
         const block = m[1];
-        const title = (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/)?.[1] ||
-                       block.match(/<title>(.*?)<\/title>/)?.[1] || '').trim();
-        const link = block.match(/<link>(.*?)<\/link>/)?.[1]?.trim() || '';
-        const desc = (block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/)?.[1] ||
-                      block.match(/<description>([\s\S]*?)<\/description>/)?.[1] || '').trim();
-        const guid = block.match(/<guid[^>]*>(.*?)<\/guid>/)?.[1]?.trim() || '';
+        const title = (block.match(TITLE_RE_2)?.[1] ||
+                       block.match(TITLE_RE_3)?.[1] || '').trim();
+        const link = block.match(LINK_RE)?.[1]?.trim() || '';
+        const desc = (block.match(DESC_RE)?.[1] ||
+                      block.match(DESC_RE_2)?.[1] || '').trim();
+        const guid = block.match(GUID_RE)?.[1]?.trim() || '';
         if (!title) continue;
-        const dateMatch = desc.match(/on\s+(\w+\s+\d{1,2},?\s+\d{4})/i);
+        const dateMatch = desc.match(DATE_MATCH_RE);
         let startDate = null;
         if (dateMatch) { const p = new Date(dateMatch[1]); if (!Number.isNaN(p.getTime())) startDate = p.toISOString().split('T')[0]; }
         if (!startDate || startDate < today) continue;
@@ -245,7 +270,7 @@ async function fetchTechEvents() {
   // Deduplicate
   const seen = new Set();
   const deduped = events.filter(e => {
-    const key = e.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30) + e.startDate.slice(0, 4);
+    const key = e.title.toLowerCase().replace(NON_ALPHANUMERIC_RE, '').slice(0, 30) + e.startDate.slice(0, 4);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

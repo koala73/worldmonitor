@@ -6,6 +6,8 @@
 // matched exactly as that client sends it. Google's Connected Apps callbacks
 // are the one prefix rule (isGoogleConnectedAppsRedirect below). Sources are listed in
 // docs/mcp-overview.mdx#redirect-uri-allowlist.
+const IS_GOOGLE_CONNECTED_APPS_REDIRECT_RE = /[?#]/;
+
 const ALLOWED_REDIRECT_URIS = new Set([
   // Claude
   'https://claude.ai/api/mcp/auth_callback',
@@ -86,7 +88,7 @@ const GOOGLE_CONNECTED_APPS_PATH = /^\/[ra](\/(?!\.{1,2}(?:\/|$))[A-Za-z0-9._~-]
 
 function isGoogleConnectedAppsRedirect(uri) {
   // A bare `?` or `#` leaves search and hash empty, so test the raw string.
-  if (typeof uri !== 'string' || /[?#]/.test(uri)) return false;
+  if (typeof uri !== 'string' || IS_GOOGLE_CONNECTED_APPS_REDIRECT_RE.test(uri)) return false;
   let u;
   try { u = new URL(uri); } catch { return false; }
   // href === uri rejects anything WHATWG URL would rewrite (case, default

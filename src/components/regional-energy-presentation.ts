@@ -1,5 +1,13 @@
 import type { RegionalEnergyFeed } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
+const HUMANISE_RE = /[._]+/g;
+const ZONE_RE = /^(?:LPG )?Schedule (\d+)$/;
+const CURRENCY_RE = /^([A-Z]{3})\/(.+)$/;
+const PER_RE = /^(\d+(?:\.\d+)?)([a-zA-Z³]+)$/;
+const PERIOD_TIME_RE = /^\d{4}-\d{2}$/;
+const PERIOD_TIME_RE_2 = /^\d{4}-\d{2}-\d{2}$/;
+
+
 // Plain-language presentation for the national energy feeds in the country deep-dive.
 // Source data keeps the provider's own codes and language; this module translates them for readers.
 
@@ -152,7 +160,7 @@ function capitalise(text: string): string {
 }
 
 function humanise(code: string): string {
-  return capitalise(code.replace(/[._]+/g, ' ').trim());
+  return capitalise(code.replace(HUMANISE_RE, ' ').trim());
 }
 
 export function regionalFeedTitle(feed: Pick<RegionalEnergyFeed, 'sourceId' | 'name'>): string {
@@ -178,7 +186,7 @@ function areaParts(area: string): string[] {
     .map(part => part.trim())
     .filter(part => part && !DROPPED_AREAS.has(part))
     .map(part => {
-      const zone = /^(?:LPG )?Schedule (\d+)$/.exec(part);
+      const zone = ZONE_RE.exec(part);
       if (zone) return `Price zone ${zone[1]}`;
       return capitalise(AREA_LABELS[part] ?? part);
     });
@@ -189,12 +197,12 @@ export function regionalAreaLabel(area: string): string {
 }
 
 function unitLabel(unit: string): { text: string; currency: boolean } {
-  const currency = /^([A-Z]{3})\/(.+)$/.exec(unit);
+  const currency = CURRENCY_RE.exec(unit);
   if (currency) {
     const denominator = currency[2]!;
     const per = denominator === 'l' ? 'litre'
       : denominator === 'gal' ? 'gallon'
-        : denominator.replace(/^(\d+(?:\.\d+)?)([a-zA-Z³]+)$/, '$1 $2');
+        : denominator.replace(PER_RE, '$1 $2');
     return { text: `${currency[1]} per ${per}`, currency: true };
   }
   if (unit === 'mln kWh') return { text: 'million kWh', currency: false };
@@ -215,8 +223,8 @@ export function formatRegionalValue(value: number, unit: string, signed = false)
 }
 
 function periodTime(period: string): number {
-  if (/^\d{4}-\d{2}$/.test(period)) return Date.parse(`${period}-01T00:00:00Z`);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(period)) return Date.parse(`${period}T00:00:00Z`);
+  if (PERIOD_TIME_RE.test(period)) return Date.parse(`${period}-01T00:00:00Z`);
+  if (PERIOD_TIME_RE_2.test(period)) return Date.parse(`${period}T00:00:00Z`);
   return Date.parse(period);
 }
 
@@ -225,9 +233,9 @@ export function formatRegionalPeriod(period: string): string {
   if (!Number.isFinite(time)) return period;
   const date = new Date(time);
   const month = MONTHS[date.getUTCMonth()]!;
-  if (/^\d{4}-\d{2}$/.test(period)) return `${month} ${date.getUTCFullYear()}`;
+  if (PERIOD_TIME_RE.test(period)) return `${month} ${date.getUTCFullYear()}`;
   const day = `${date.getUTCDate()} ${month} ${date.getUTCFullYear()}`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(period)) return day;
+  if (PERIOD_TIME_RE_2.test(period)) return day;
   const hh = String(date.getUTCHours()).padStart(2, '0');
   const mm = String(date.getUTCMinutes()).padStart(2, '0');
   return `${day}, ${hh}:${mm} UTC`;

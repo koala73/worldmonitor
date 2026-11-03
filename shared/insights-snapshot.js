@@ -4,6 +4,8 @@
  * normalization do not drift across the two agent-facing surfaces.
  */
 
+const WHITESPACE_RE = /\s+/g;
+
 export const INSIGHTS_MAX_AGE_MS = 60 * 60 * 1000;
 
 /**
@@ -34,7 +36,7 @@ function isRecord(value) {
 }
 
 function clipText(value, maxLen) {
-  const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  const text = typeof value === 'string' ? value.replace(WHITESPACE_RE, ' ').trim() : '';
   return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
 }
 

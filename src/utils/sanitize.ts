@@ -1,3 +1,7 @@
+
+
+const ESCAPE_HTML_RE = /[&<>"']/g;
+const VALIDATE_URL_RE = /^(\/|\.\/|\.\.\/|\?|#)/;
 const HTML_ESCAPE_MAP: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -31,7 +35,7 @@ function isSafeHtml(value: unknown): value is SafeHtml {
 
 export function escapeHtml(str: string): string {
   if (!str) return '';
-  return String(str).replace(/[&<>"']/g, (char) => HTML_ESCAPE_MAP[char] || char);
+  return String(str).replace(ESCAPE_HTML_RE, (char) => HTML_ESCAPE_MAP[char] || char);
 }
 
 export function safeHtml(
@@ -90,7 +94,7 @@ export function validateUrl(url: string): string {
     // Not an absolute URL, continue and validate as relative.
   }
 
-  if (!/^(\/|\.\/|\.\.\/|\?|#)/.test(trimmed)) {
+  if (!VALIDATE_URL_RE.test(trimmed)) {
     return '';
   }
 

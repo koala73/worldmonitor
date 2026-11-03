@@ -18,6 +18,8 @@
 //
 // See docs/methodology/pipelines.mdx §"How public badges move".
 
+const PARSE_VNUM_RE = /^v(\d+)$/i;
+
 export const PIPELINE_BADGE_DERIVER_VERSION = 'badge-deriver-v1';
 
 export type PipelinePublicBadge = 'flowing' | 'reduced' | 'offline' | 'disputed';
@@ -147,7 +149,7 @@ export function pickNewerClassifierVersion(
 }
 
 function parseVNum(v: string): number | null {
-  const m = v.match(/^v(\d+)$/i);
+  const m = v.match(PARSE_VNUM_RE);
   if (!m) return null;
   const n = Number(m[1]);
   return Number.isFinite(n) ? n : null;

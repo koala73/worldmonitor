@@ -1,3 +1,6 @@
+
+
+const GET_KEYWORD_REGEX_RE = /[.*+?^${}()|[\]\\]/g;
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 
 export const SEVERITY_VALUES: Record<ThreatLevel, number> = {
@@ -194,25 +197,20 @@ const SHORT_KEYWORDS = new Set([
   'virus', 'disease', 'flood',
 ]);
 
-const keywordRegexCache = new Map<string, RegExp>();
-
-function getKeywordRegex(kw: string): RegExp {
-  let re = keywordRegexCache.get(kw);
-  if (!re) {
-    re = SHORT_KEYWORDS.has(kw)
-      ? new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-      : new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    keywordRegexCache.set(kw, re);
-  }
-  return re;
-}
+const KEYWORD_PATTERNS = new Map(Object.keys({
+  ...CRITICAL_KEYWORDS, ...HIGH_KEYWORDS, ...MEDIUM_KEYWORDS, ...LOW_KEYWORDS,
+  ...TECH_HIGH_KEYWORDS, ...TECH_MEDIUM_KEYWORDS, ...TECH_LOW_KEYWORDS,
+}).map(kw => {
+  const escaped = kw.replace(GET_KEYWORD_REGEX_RE, '\\$&');
+  return [kw, new RegExp(SHORT_KEYWORDS.has(kw) ? `\\b${escaped}\\b` : escaped)] as const;
+}));
 
 function matchKeywords(
   titleLower: string,
   keywords: KeywordMap
 ): { keyword: string; category: EventCategory } | null {
   for (const [kw, cat] of Object.entries(keywords)) {
-    if (getKeywordRegex(kw).test(titleLower)) {
+    if (KEYWORD_PATTERNS.get(kw)!.test(titleLower)) {
       return { keyword: kw, category: cat };
     }
   }

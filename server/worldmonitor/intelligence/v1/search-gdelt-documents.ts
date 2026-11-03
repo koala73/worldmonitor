@@ -10,6 +10,9 @@ import { normalizeGdeltTopicSnapshot } from '../../../../shared/intelligence-sna
 import { readRevokedUrlSet } from '../../../_shared/digest-revocations';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 const SEEDED_KEY = 'intelligence:gdelt-intel:v1';
 // Mirrors GDELT_BULK_COUNTRY_ARTICLES_KEY in scripts/_gdelt-bulk-contract.mjs;
 // tests/search-gdelt-documents-country.test.mjs pins the two literals equal.
@@ -93,7 +96,7 @@ export function selectCountryArticles(
   const seen = new Set<string>();
   for (const row of rows) {
     if (out.length >= limit) break;
-    const title = typeof row?.title === 'string' ? row.title.replace(/\s+/g, ' ').trim() : '';
+    const title = typeof row?.title === 'string' ? row.title.replace(WHITESPACE_RE, ' ').trim() : '';
     const url = normalizeArticleUrl(row?.url);
     if (!title || !url || seen.has(url) || revokedUrls.has(url)) continue;
     if (!mentionsCountry(title, terms)) continue;

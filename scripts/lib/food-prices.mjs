@@ -1,5 +1,36 @@
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 
+const DROP_BLOCKS_RE = /<(script|style)\b[^<>]*>/g;
+const PLAIN_TEXT_RE = /<[^<>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const DMY_RE = /^(\d{2})[/.\-](\d{2})[/.\-](\d{4})$/;
+const TEXT_RE = /,/g;
+const PRICE_RE = /^\d+(?:\.\d+)?$/;
+const DATE_TEXT_RE = /PRICES ON \d{2}-\d{2}-\d{4}/;
+const DATE_RE = /\d{2}-\d{2}-\d{4}/;
+const PARSE_PBS_RE = /\b(?:rice|wheat|bread|beef|mutton|chicken|milk|curd|eggs?|oil|ghee|sugar|gur|pulse|potatoes|onions|tomatoes|chilies|salt|garlic|bananas|tea|daal)\b/i;
+const PARSE_DA_RE = /\s*,\s*/g;
+const NORMALIZE_RE = /[^a-z]/g;
+const CELLS_RE = /^(?:\d+(?:\.\d+)?|NOT AVAILABLE)$/;
+const UNIT_RE = /^Rs\.\//;
+const CELL_RE = /^(?:[\d,.]+|[-–])$/;
+const PAGES_RE = /P[aá]gina\s*\d+\s*de\s*(\d+)/i;
+const RANGE_RE = /Registros del\s+(\d{2}\/\d{2}\/\d{4})\s+al\s+(\d{2}\/\d{2}\/\d{4})/;
+const PARSE_ONAGRI_RE = /^\d+$/;
+const PARSE_ONAGRI_RE_2 = /[\u0600-\u06ff]/;
+const MILLIMES_RE = /\s/g;
+const PARSE_GIEWS_RE = /Reference Date:\s*(\d{1,2})-([A-Za-z]+)-(\d{4})/;
+const CODE_RE = /value=["']country\.jsp\?[^"']*code=([A-Z]{3})[^"']*["']/i;
+const DISCOVER_REPORTS_RE = /annexureExcel\s*:\s*["']([^"']+)["']/gi;
+const PARTS_RE = /\/Annex_(\d{2})\.(\d{2})\.(\d{4})\.xlsx$/i;
+const HREF_RE = /href=["']([^"']+)["']/i;
+const PARTS_RE_2 = /^Price-Monitoring-([A-Za-z]+)-(\d{1,2})-(\d{4})\.pdf$/i;
+const PARTS_RE_3 = /price_report_(\d{4})(\d{2})(\d{2})_e\.pdf$/i;
+const PARTS_RE_4 = /weekly-sensitive-price-indicator.*?(\d{2})-(\d{2})-(\d{4})\/?$/i;
+const PARTS_RE_5 = /Mercuriale Bir El Kassaa\s+([^\s]+)\s+(\d{4})/i;
+const DISCOVER_REPORTS_RE_2 = /\/uploads\/[^/]+\.html$/;
+
+
 // Drops closed <script>/<style> blocks. Once a tag has no closing element left, later openers of it are
 // kept for the tag pass, so publisher pages cannot force a rescan per opener (CWE-1333).
 function dropBlocks(text) {
@@ -7,7 +38,7 @@ function dropBlocks(text) {
   const closed = {};
   let out = '';
   let at = 0;
-  for (const match of lower.matchAll(/<(script|style)\b[^<>]*>/g)) {
+  for (const match of lower.matchAll(DROP_BLOCKS_RE)) {
     const tag = match[1];
     if (match.index < at || closed[tag] === -1) continue;
     if (closed[tag] === undefined || closed[tag] < match.index) closed[tag] = lower.indexOf(`</${tag}>`, match.index);
@@ -19,7 +50,7 @@ function dropBlocks(text) {
 }
 
 // [^<>] keeps an unclosed '<' from scanning to the end of the page once per '<'.
-export const plainText = value => decodeHtmlEntities(dropBlocks(String(value)).replace(/<[^<>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+export const plainText = value => decodeHtmlEntities(dropBlocks(String(value)).replace(PLAIN_TEXT_RE, ' ')).replace(WHITESPACE_RE, ' ').trim();
 const EN_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const FR_MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const pad = value => String(value).padStart(2, '0');
@@ -31,12 +62,12 @@ export function isoDate(year, month, day) {
 }
 
 const dmy = value => {
-  const match = /^(\d{2})[/.\-](\d{2})[/.\-](\d{4})$/.exec(value);
+  const match = DMY_RE.exec(value);
   return match ? isoDate(match[3], match[2], match[1]) : '';
 };
 const price = value => {
-  const text = String(value ?? '').trim().replace(/,/g, '');
-  return /^\d+(?:\.\d+)?$/.test(text) && Number(text) > 0 ? Number(text) : null;
+  const text = String(value ?? '').trim().replace(TEXT_RE, '');
+  return PRICE_RE.test(text) && Number(text) > 0 ? Number(text) : null;
 };
 const observation = (item, market, marketType, unit, currency, date, value, origin = '') => {
   const amount = price(value);
@@ -58,14 +89,14 @@ export function parsePbs(sheets) {
   for (const rows of sheets) {
     const headers = rows.flatMap((row, i) => row.includes('DESCRIPTION') && row.includes('UNIT') ? [i] : []);
     for (const [block, header] of headers.entries()) {
-      const dateText = rows[header + 2]?.find(value => /PRICES ON \d{2}-\d{2}-\d{4}/.test(String(value)));
-      const date = dmy(String(dateText).match(/\d{2}-\d{2}-\d{4}/)?.[0] ?? '');
+      const dateText = rows[header + 2]?.find(value => DATE_TEXT_RE.test(String(value)));
+      const date = dmy(String(dateText).match(DATE_RE)?.[0] ?? '');
       if (!date) throw new Error('PBS report date missing');
       const cities = rows[header - 1];
       for (const row of rows.slice(header + 3, headers[block + 1] === undefined ? undefined : headers[block + 1] - 1)) {
         if (typeof row[0] !== 'number' || typeof row[1] !== 'string' || typeof row[2] !== 'string') continue;
         // SPI also contains fuel, tobacco and services. Keep the food part of the published basket.
-        if (!/\b(?:rice|wheat|bread|beef|mutton|chicken|milk|curd|eggs?|oil|ghee|sugar|gur|pulse|potatoes|onions|tomatoes|chilies|salt|garlic|bananas|tea|daal)\b/i.test(row[1])) continue;
+        if (!PARSE_PBS_RE.test(row[1])) continue;
         for (let i = 3; i < cities.length - 1; i += 3) {
           if (rows[header][i + 1] !== 'AVG') continue;
           const value = observation(row[1], cities[i], 'retail', row[2], 'PKR', date, row[i + 1]);
@@ -129,10 +160,10 @@ export function parseDa(pages, date) {
   for (const [page, columns] of DA_COLUMNS.entries()) {
     const items = pages[page];
     const text = items?.map(item => item.text).join(' ') ?? '';
-    if (!printedDates.some(printed => text.toLowerCase().replace(/\s*,\s*/g, ',').includes(printed))) throw new Error('DA report date mismatch');
+    if (!printedDates.some(printed => text.toLowerCase().replace(PARSE_DA_RE, ',').includes(printed))) throw new Error('DA report date mismatch');
     if (!text.includes('COMMODITY (PHP/KG)') || !text.includes(columns[0]) || !text.includes('MARKET')) throw new Error('DA food PDF format changed');
     const headerY = items.find(item => item.text === 'COMMODITY (PHP/KG)').y;
-    const normalize = text => text.toLowerCase().replace(/[^a-z]/g, '');
+    const normalize = text => text.toLowerCase().replace(NORMALIZE_RE, '');
     for (const [index, column] of columns.entries()) {
       const parts = items.filter(item => item.y >= headerY - 25 && item.y < headerY - 5
         && item.x >= DA_HEADER_X[page][index] - 5 && item.x < (DA_HEADER_X[page][index + 1] ?? 800) - 5)
@@ -140,7 +171,7 @@ export function parseDa(pages, date) {
       if (normalize(parts.map(item => item.text).join('')) !== normalize(column)) throw new Error('DA food PDF column layout changed');
     }
     for (const row of pdfRows(items)) {
-      const cells = row.items.filter(item => item.x > 180 && /^(?:\d+(?:\.\d+)?|NOT AVAILABLE)$/.test(item.text));
+      const cells = row.items.filter(item => item.x > 180 && CELLS_RE.test(item.text));
       const market = row.items.filter(item => item.x < 180).map(item => item.text).join('').trim();
       if (cells.length !== columns.length || !market) continue;
       for (const [i, item] of columns.entries()) {
@@ -172,10 +203,10 @@ export function parseCbsl(pages, date) {
   }
   return pdfRows(items).flatMap(row => {
     const item = row.items.filter(item => item.x < 110).map(item => item.text).join(' ').trim();
-    const unit = row.items.find(item => item.x >= 110 && item.x < 150 && /^Rs\.\//.test(item.text))?.text.replace(/^Rs\.\//, '');
+    const unit = row.items.find(item => item.x >= 110 && item.x < 150 && UNIT_RE.test(item.text))?.text.replace(UNIT_RE, '');
     if (!unit || !item) return [];
     return columns.flatMap(([market, kind, left, right]) => {
-      const cell = row.items.find(item => item.x >= left && item.x < right && /^(?:[\d,.]+|[-–])$/.test(item.text));
+      const cell = row.items.find(item => item.x >= left && item.x < right && CELL_RE.test(item.text));
       const value = observation(item, market, kind, unit, 'LKR', date, cell?.text);
       return value ? [value] : [];
     });
@@ -207,9 +238,9 @@ function tableRows(html) {
 }
 
 export function parseSniim(html, item, expectedDate) {
-  const pages = /P[aá]gina\s*\d+\s*de\s*(\d+)/i.exec(plainText(html));
+  const pages = PAGES_RE.exec(plainText(html));
   if (pages && Number(pages[1]) > 1) throw new Error('SNIIM result is paginated');
-  const range = /Registros del\s+(\d{2}\/\d{2}\/\d{4})\s+al\s+(\d{2}\/\d{2}\/\d{4})/.exec(plainText(html));
+  const range = RANGE_RE.exec(plainText(html));
   const singleDate = range && range[1] === range[2] ? dmy(range[1]) : '';
   if (expectedDate && singleDate !== expectedDate) throw new Error('SNIIM report date mismatch');
   return tableRows(html).flatMap(row => {
@@ -227,8 +258,8 @@ export function parseOnagri(html, month) {
   if (!text.includes('مليم/كلغ')) throw new Error('ONAGRI price unit missing');
   return tableRows(html).flatMap(row => {
     const cells = row.filter(Boolean);
-    if (cells.length !== 8 || !/^\d+$/.test(cells[0]) || !/[\u0600-\u06ff]/.test(cells[7])) return [];
-    const millimes = price(cells[3].replace(/\s/g, ''));
+    if (cells.length !== 8 || !PARSE_ONAGRI_RE.test(cells[0]) || !PARSE_ONAGRI_RE_2.test(cells[7])) return [];
+    const millimes = price(cells[3].replace(MILLIMES_RE, ''));
     const value = observation(cells[7], 'Bir El Kassaa', 'wholesale', 'kg', 'TND', month, millimes === null ? null : millimes / 1000);
     return value ? [value] : [];
   });
@@ -236,7 +267,7 @@ export function parseOnagri(html, month) {
 
 export function parseGiews(html, country) {
   const text = plainText(html);
-  const match = /Reference Date:\s*(\d{1,2})-([A-Za-z]+)-(\d{4})/.exec(text);
+  const match = PARSE_GIEWS_RE.exec(text);
   const referenceDate = match ? isoDate(match[3], EN_MONTHS.indexOf(match[2].toLowerCase()) + 1, match[1]) : '';
   if (!referenceDate || !text.includes('FOOD SECURITY SNAPSHOT')) throw new Error('GIEWS reference date missing');
   return { countryCode: country.code, country: country.name, referenceDate, title: `GIEWS country brief: ${country.name}`, url: `https://www.fao.org/giews/countrybrief/country.jsp?code=${country.code}&lang=en` };
@@ -245,7 +276,7 @@ export function parseGiews(html, country) {
 export function giewsCountries(html) {
   const countries = new Map();
   for (const [open, inner] of htmlElements(html, ['option'])) {
-    const code = /value=["']country\.jsp\?[^"']*code=([A-Z]{3})[^"']*["']/i.exec(open)?.[1];
+    const code = CODE_RE.exec(open)?.[1];
     if (code) countries.set(code, { code, name: plainText(inner) });
   }
   return [...countries.values()];
@@ -262,16 +293,16 @@ export function discoverReports(html, source) {
   if (!base) throw new Error('unknown food report source');
   const reports = new Map();
   if (source === 'pbs') {
-    for (const match of html.matchAll(/annexureExcel\s*:\s*["']([^"']+)["']/gi)) {
+    for (const match of html.matchAll(DISCOVER_REPORTS_RE)) {
       const url = new URL(decodeHtmlEntities(match[1]), new URL('/', base));
-      const parts = /\/Annex_(\d{2})\.(\d{2})\.(\d{4})\.xlsx$/i.exec(url.pathname);
+      const parts = PARTS_RE.exec(url.pathname);
       const date = parts ? isoDate(parts[3], parts[2], parts[1]) : '';
       if (date && url.hostname === new URL(base).hostname && url.protocol === 'https:') reports.set(date, { date, url: url.href });
     }
   }
   const hasAnnexReports = reports.size > 0;
   for (const [open, inner] of htmlElements(html, ['a'])) {
-    const href = /href=["']([^"']+)["']/i.exec(open)?.[1];
+    const href = HREF_RE.exec(open)?.[1];
     if (!href) continue;
     const match = [open, href, inner];
     let url;
@@ -279,17 +310,17 @@ export function discoverReports(html, source) {
     if (url.hostname !== new URL(base).hostname || url.protocol !== 'https:') continue;
     let date = '';
     if (source === 'da') {
-      const parts = /^Price-Monitoring-([A-Za-z]+)-(\d{1,2})-(\d{4})\.pdf$/i.exec(url.pathname.split('/').at(-1));
+      const parts = PARTS_RE_2.exec(url.pathname.split('/').at(-1));
       if (parts) date = isoDate(parts[3], EN_MONTHS.indexOf(parts[1].toLowerCase()) + 1, parts[2]);
     } else if (source === 'cbsl') {
-      const parts = /price_report_(\d{4})(\d{2})(\d{2})_e\.pdf$/i.exec(url.pathname);
+      const parts = PARTS_RE_3.exec(url.pathname);
       if (parts) date = isoDate(parts[1], parts[2], parts[3]);
     } else if (source === 'pbs' && !hasAnnexReports) {
-      const parts = /weekly-sensitive-price-indicator.*?(\d{2})-(\d{2})-(\d{4})\/?$/i.exec(url.pathname);
+      const parts = PARTS_RE_4.exec(url.pathname);
       if (parts) date = isoDate(parts[3], parts[2], parts[1]);
     } else {
-      const parts = /Mercuriale Bir El Kassaa\s+([^\s]+)\s+(\d{4})/i.exec(plainText(match[2]));
-      if (parts && /\/uploads\/[^/]+\.html$/.test(url.pathname)) date = isoDate(parts[2], FR_MONTHS.indexOf(parts[1].toLowerCase()) + 1, 1);
+      const parts = PARTS_RE_5.exec(plainText(match[2]));
+      if (parts && DISCOVER_REPORTS_RE_2.test(url.pathname)) date = isoDate(parts[2], FR_MONTHS.indexOf(parts[1].toLowerCase()) + 1, 1);
     }
     if (date) reports.set(date, { date, url: url.href });
   }

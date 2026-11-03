@@ -1,6 +1,9 @@
 import { fetchLatestRelease } from './_github-release.js';
 import { jsonResponse } from './_json-response.js';
 
+const VERSION_RE = /^v/;
+
+
 export const config = { runtime: 'edge' };
 
 export default async function handler() {
@@ -10,7 +13,7 @@ export default async function handler() {
       return jsonResponse({ error: 'upstream' }, 502);
     }
     const tag = release.tag_name ?? '';
-    const version = tag.replace(/^v/, '');
+    const version = tag.replace(VERSION_RE, '');
 
     return jsonResponse({
       version,

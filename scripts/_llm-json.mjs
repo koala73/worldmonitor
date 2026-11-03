@@ -13,11 +13,15 @@
 /**
  * Strip C-style comments and trailing commas from a JSON-like string.
  */
+const CLEAN_JSON_TEXT_RE = /\/\*[\s\S]*?\*\//g;
+const CLEAN_JSON_TEXT_RE_2 = /\/\/[^\n]*/g;
+const CLEAN_JSON_TEXT_RE_3 = /,(\s*[}\]])/g;
+
 export function cleanJsonText(text) {
   return text
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '')
-    .replace(/,(\s*[}\]])/g, '$1')
+    .replace(CLEAN_JSON_TEXT_RE, '')
+    .replace(CLEAN_JSON_TEXT_RE_2, '')
+    .replace(CLEAN_JSON_TEXT_RE_3, '$1')
     .trim();
 }
 

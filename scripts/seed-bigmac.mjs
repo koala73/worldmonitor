@@ -2,6 +2,11 @@
 
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS, allSettledWithConcurrency } from './_seed-utils.mjs';
 
+const PARSE_NUM_RE = /[,\s]/g;
+const MATCH_PRICE_RE = /^\d/;
+const API_KEY_RE = /[\n,]+/;
+
+
 const CANONICAL_KEY = 'economic:bigmac:v1';
 const CACHE_TTL = 864000; // 10 days — weekly seed with 3-day cron-drift buffer
 const EXA_CONCURRENCY = 6; // in-flight EXA searches; bounds the 50-country loop under runSeed's 240s deadline (see fetchBigMacPrices / #4994)
@@ -85,13 +90,13 @@ const PRICE_PATTERNS = [
   new RegExp(`(${CCY})\\s*(${NUM})`, 'i'),
 ];
 
-function parseNum(s) { return parseFloat(s.replace(/[,\s]/g, '')); }
+function parseNum(s) { return parseFloat(s.replace(PARSE_NUM_RE, '')); }
 
 function matchPrice(text, url) {
   for (const re of PRICE_PATTERNS) {
     const match = text.match(re);
     if (match) {
-      const [price, currency] = /^\d/.test(match[1])
+      const [price, currency] = MATCH_PRICE_RE.test(match[1])
         ? [parseNum(match[1]), match[2].toUpperCase()]
         : [parseNum(match[2]), match[1].toUpperCase()];
       if (price > 0 && price < 10_000_000) return { price, currency, source: url || '' };
@@ -101,7 +106,7 @@ function matchPrice(text, url) {
 }
 
 async function searchExa(query, includeDomains = null) {
-  const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
+  const apiKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(API_KEY_RE)[0].trim();
   if (!apiKey) throw new Error('EXA_API_KEYS or EXA_API_KEY not set');
 
   const body = {

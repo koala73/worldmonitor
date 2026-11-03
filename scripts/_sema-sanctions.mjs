@@ -6,6 +6,29 @@ import { CHROME_UA } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 import { DAY_MIN, periodTokenToMs } from './_content-age-helpers.mjs';
 
+const VALUE_RE = /\u00a0/g;
+const WHITESPACE_RE = /\s+/g;
+const ENGLISH_COUNTRY_LABEL_RE = /\s*\/\s*/;
+const REGIME_LABEL_RE = /jvcfor|jvcfoa|justice for victims/i;
+const REGIME_LABEL_RE_2 = /^hamas/i;
+const REGIME_LABEL_RE_3 = /settler/i;
+const IS_WEAK_NAME_TOKEN_RE = /^i( i)*$/i;
+const SPLIT_ALIASES_RE = /\s*(?:;|\||(?:\s+or\s+))\s*/i;
+const SPLIT_ALIASES_RE_2 = /\s*,\s*/;
+const SPLIT_ALIASES_RE_3 = /^(?:Belarusian|Belarussian|Russian|Ukrainian|French|Arabic)\s*:\s*/i;
+const NORMALIZE_NAME_RE = /\p{Diacritic}/gu;
+const NORMALIZE_NAME_RE_2 = /["'«»`]/g;
+const NORMALIZE_NAME_RE_3 = /[^a-z0-9]+/gi;
+const NORMALIZE_IDENTIFIER_RE = /[^a-z0-9]/gi;
+const OFAC_REGISTRATION_TO_IDENTIFIER_RE = /imo|vessel registration/i;
+const OFAC_REGISTRATION_TO_IDENTIFIER_RE_2 = /^IMO\b/i;
+const NON_DIGIT_RE = /\D/g;
+const BLOCKS_RE = /<record\b[\s\S]*?<\/record>/gi;
+const SEMA_ROW_DEFECT_RE = /^[1-9]\d*$/;
+const SEMA_ROW_DEFECT_RE_2 = /^\d{7}$/;
+const PARSE_SEMA_JSON_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 const require = createRequire(import.meta.url);
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 
@@ -64,8 +87,8 @@ function xmlText(block, field) {
     const match = text.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i'));
     if (!match) continue;
     const value = decodeHtmlEntities(match[1])
-      .replace(/\u00a0/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(VALUE_RE, ' ')
+      .replace(WHITESPACE_RE, ' ')
       .trim();
     if (value) return value;
   }
@@ -78,7 +101,7 @@ function uniqueSorted(values) {
 }
 
 export function englishCountryLabel(raw) {
-  return String(raw || '').split(/\s*\/\s*/)[0].trim();
+  return String(raw || '').split(ENGLISH_COUNTRY_LABEL_RE)[0].trim();
 }
 
 export function countryFromSemaLabel(raw) {
@@ -91,9 +114,9 @@ export function countryFromSemaLabel(raw) {
 /** SEMA <Country> is the regulating schedule, not a person's nationality. */
 export function regimeLabel(raw) {
   const english = englishCountryLabel(raw);
-  if (/jvcfor|jvcfoa|justice for victims/i.test(english)) return 'JVCFOR';
-  if (/^hamas/i.test(english)) return 'Hamas';
-  if (/settler/i.test(english)) return 'Settler';
+  if (REGIME_LABEL_RE.test(english)) return 'JVCFOR';
+  if (REGIME_LABEL_RE_2.test(english)) return 'Hamas';
+  if (REGIME_LABEL_RE_3.test(english)) return 'Settler';
   return english;
 }
 
@@ -113,7 +136,7 @@ export function programFromSemaCountry(raw) {
 /** Initials and leftover Latin-i crumbs from Cyrillic aliases are not identity. */
 export function isWeakNameToken(token) {
   const normalized = String(token || '');
-  return normalized.length <= 2 || /^i( i)*$/i.test(normalized);
+  return normalized.length <= 2 || IS_WEAK_NAME_TOKEN_RE.test(normalized);
 }
 
 /**
@@ -132,9 +155,9 @@ export function isCorroboratingNameToken(token) {
 export function splitAliases(raw) {
   return uniqueSorted(
     String(raw || '')
-      .split(/\s*(?:;|\||(?:\s+or\s+))\s*/i)
-      .flatMap((part) => part.split(/\s*,\s*/))
-      .map((part) => part.replace(/^(?:Belarusian|Belarussian|Russian|Ukrainian|French|Arabic)\s*:\s*/i, '').trim())
+      .split(SPLIT_ALIASES_RE)
+      .flatMap((part) => part.split(SPLIT_ALIASES_RE_2))
+      .map((part) => part.replace(SPLIT_ALIASES_RE_3, '').trim())
       .filter((part) => part.length > 1 && !isWeakNameToken(normalizeName(part))),
   );
 }
@@ -142,20 +165,20 @@ export function splitAliases(raw) {
 export function normalizeName(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_NAME_RE, '')
     .toLowerCase()
-    .replace(/["'«»`]/g, '')
-    .replace(/[^a-z0-9]+/gi, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_NAME_RE_2, '')
+    .replace(NORMALIZE_NAME_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
 export function normalizeIdentifier(value) {
-  return String(value || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+  return String(value || '').replace(NORMALIZE_IDENTIFIER_RE, '').toUpperCase();
 }
 
 export function slugToken(value, fallback = 'unspecified') {
-  return normalizeName(value).replace(/\s+/g, '-') || fallback;
+  return normalizeName(value).replace(WHITESPACE_RE, '-') || fallback;
 }
 
 /** Schedule restarts Item per part, so the id must include Schedule. */
@@ -171,8 +194,8 @@ export function ofacRegistrationToIdentifier(typeName, rawNumber) {
   const type = String(typeName || '');
   const raw = String(rawNumber || '').trim();
   if (!raw) return '';
-  if (/imo|vessel registration/i.test(type) || /^IMO\b/i.test(raw)) {
-    const digits = raw.replace(/\D/g, '');
+  if (OFAC_REGISTRATION_TO_IDENTIFIER_RE.test(type) || OFAC_REGISTRATION_TO_IDENTIFIER_RE_2.test(raw)) {
+    const digits = raw.replace(NON_DIGIT_RE, '');
     if (digits.length >= 7 && digits.length <= 8) return `imo:${digits}`;
   }
   return '';
@@ -218,7 +241,7 @@ function listingEpoch(dateText) {
 }
 
 function compactNote(value) {
-  const note = String(value || '').replace(/\s+/g, ' ').trim();
+  const note = String(value || '').replace(WHITESPACE_RE, ' ').trim();
   if (!note) return '';
   return note.length > 240 ? `${note.slice(0, 237)}...` : note;
 }
@@ -236,7 +259,7 @@ function fieldsToCanonical(fields) {
   const lastName = fields.LastName;
   const givenName = fields.GivenName;
   const entityOrShip = fields.EntityOrShip;
-  const imo = fields.ShipIMONumber.replace(/\D/g, '');
+  const imo = fields.ShipIMONumber.replace(NON_DIGIT_RE, '');
   const aliases = splitAliases(fields.Aliases);
   const item = fields.Item;
   const listed = fields.DateOfListing;
@@ -283,7 +306,7 @@ function fieldsToCanonical(fields) {
 
 export function parseSemaXml(xml) {
   const records = [];
-  const blocks = String(xml || '').match(/<record\b[\s\S]*?<\/record>/gi) || [];
+  const blocks = String(xml || '').match(BLOCKS_RE) || [];
   let newest = 0;
   let oldest = Infinity;
   for (const block of blocks) {
@@ -328,8 +351,8 @@ export const SEMA_MAX_QUARANTINE_SHARE = 0.01;
 
 function semaRowDefect(fields) {
   if (!fields.Country) return 'MISSING_COUNTRY';
-  if (!/^[1-9]\d*$/.test(fields.Item)) return 'INVALID_ITEM';
-  if (fields.ShipIMONumber && !/^\d{7}$/.test(fields.ShipIMONumber)) return 'INVALID_IMO';
+  if (!SEMA_ROW_DEFECT_RE.test(fields.Item)) return 'INVALID_ITEM';
+  if (fields.ShipIMONumber && !SEMA_ROW_DEFECT_RE_2.test(fields.ShipIMONumber)) return 'INVALID_IMO';
   if (!(fields.EntityOrShip || fields.LastName || fields.GivenName)) return 'MISSING_NAME';
   return null;
 }
@@ -352,13 +375,13 @@ export function parseSemaJson(text) {
       const numericIdentifier = (field === 'Item' || field === 'ShipIMONumber')
         && Number.isSafeInteger(value) && value > 0;
       if (typeof value !== 'string' && !numericIdentifier) throw new Error('SEMA_INVALID_RECORD');
-      fields[field] = String(value).replace(/\s+/g, ' ').trim();
+      fields[field] = String(value).replace(WHITESPACE_RE, ' ').trim();
     }
     // The date and duplicate-ID contracts hold for every row, held back or not:
     // quarantine is for an unusable identity, never a way past a table-wide break.
     const listed = fields.DateOfListing;
     const epoch = listingEpoch(listed);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(listed) || !epoch) {
+    if (!PARSE_SEMA_JSON_RE.test(listed) || !epoch) {
       throw new Error('SEMA_INVALID_DATE');
     }
     const defect = semaRowDefect(fields);

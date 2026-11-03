@@ -16,6 +16,12 @@
 import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from './hormuz-crisis.js';
 import { ComtradeResponseError } from './comtrade-bilateral.mjs';
 
+const PARSE_LNG_ROWS_RE = /^\d{1,3}$/;
+const PARSE_LNG_ROWS_RE_2 = /^\d{4}(?:\d{2})?$/;
+const AGGREGATE_RE = /^0+$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const LNG_CMD_CODE = '271111';
 export const LNG_HORMUZ_SHARE_KEY = 'comtrade:lng-hormuz-share:v1';
 
@@ -121,8 +127,8 @@ export function parseLngRows(body, maxRecords = Infinity) {
     const partnerCode = String(r?.partnerCode ?? '');
     const period = String(r?.period ?? '');
     const value = Number(r?.primaryValue);
-    if (!r || String(r.cmdCode ?? '') !== LNG_CMD_CODE || !/^\d{1,3}$/.test(reporterCode) || !/^\d{1,3}$/.test(partnerCode)
-      || !/^\d{4}(?:\d{2})?$/.test(period) || r.primaryValue == null || !Number.isFinite(value) || value < 0) {
+    if (!r || String(r.cmdCode ?? '') !== LNG_CMD_CODE || !PARSE_LNG_ROWS_RE.test(reporterCode) || !PARSE_LNG_ROWS_RE.test(partnerCode)
+      || !PARSE_LNG_ROWS_RE_2.test(period) || r.primaryValue == null || !Number.isFinite(value) || value < 0) {
       throw new ComtradeResponseError('malformed', 'Malformed Comtrade LNG row');
     }
     // The request pins these aggregates; anything else is a breakdown row.
@@ -164,7 +170,7 @@ function aggregate(rows, partnerKind) {
       periods.set(row.period, { worldValue: 0, worldWeight: null, partnerValue: 0, partnerWeight: 0, partnerWeightMissing: false, hormuzValue: 0, hormuzWeight: 0, unattributedValue: 0 });
     }
     const agg = /** @type {PeriodAggregate} */ (periods.get(row.period));
-    if (/^0+$/.test(row.partnerCode)) {
+    if (AGGREGATE_RE.test(row.partnerCode)) {
       agg.worldValue = row.value;
       agg.worldWeight = row.netWeightKg;
       continue;
@@ -262,7 +268,7 @@ export function buildLngOriginShares(rows, { reporterIso2, partnerKind }) {
   for (const reporter of reporters) {
     const iso2 = reporterIso2(reporter);
     // Numeric order makes a second code for one country (Italy 380/381) deterministic: the first wins.
-    if (!/^[A-Z]{2}$/.test(iso2) || countries[iso2]) continue;
+    if (!COUNTRY_CODE_RE.test(iso2) || countries[iso2]) continue;
 
     const monthly = preCrisis.get(reporter);
     const monthAggs = preMonths.map((m) => monthly?.get(toPeriod(m)));

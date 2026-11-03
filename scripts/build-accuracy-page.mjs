@@ -17,6 +17,10 @@ import {
 } from './_forecast-scorecard.mjs';
 import { STANDING_ACCURACY_AUDIT, forecastAccuracyAudit, headlineFamilyGate } from '../shared/forecast-accuracy-audit.js';
 
+const PLAIN_RATE_INTERVALS_RE = /\[\[rate-interval ([\d.]+% to [\d.]+%)\]\]/g;
+const FORMAT_UTC_DATE_TIME_RE = /\.\d{3}Z$/;
+
+
 /** Bump when the page copy changes so its lastmod advances without touching every sibling. */
 export const ACCURACY_CONTENT_VERSION = '2026-10-09';
 
@@ -554,11 +558,11 @@ function intervalPhrase(estimate) {
 }
 
 function plainRateIntervals(text) {
-  return text.replace(/\[\[rate-interval ([\d.]+% to [\d.]+%)\]\]/g, '$1');
+  return text.replace(PLAIN_RATE_INTERVALS_RE, '$1');
 }
 
 function rateIntervalMarkup(html) {
-  return html.replace(/\[\[rate-interval ([\d.]+% to [\d.]+%)\]\]/g, '<span data-rate-interval>$1</span>');
+  return html.replace(PLAIN_RATE_INTERVALS_RE, '<span data-rate-interval>$1</span>');
 }
 
 // Bounds are marked so the page's population rule can tell them apart from a
@@ -611,7 +615,7 @@ function scoreIntervalText(interval) {
 }
 
 function formatUtcDateTime(ms) {
-  return new Date(ms).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+  return new Date(ms).toISOString().replace('T', ' ').replace(FORMAT_UTC_DATE_TIME_RE, ' UTC');
 }
 
 function formatAge(ageHours) {

@@ -1,5 +1,10 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 
+const VALID_OUTCOME_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
+const VALIDATE_ENVELOPE_RE = /[\u0000-\u001f\u007f]/;
+const MODULE_RE = /^application\/json(?:;|$)/i;
+
+
 export const CONTROL_PROTOCOL_VERSION = 1;
 export const CONTROL_CLIENT_USER_AGENT = 'worldmonitor-railway-reconcile-control/1';
 const CONTROL_HOST_LABEL = 'railway-reconcile-control';
@@ -99,7 +104,7 @@ function exactKeys(value, expected) {
 }
 
 function validOutcome(value) {
-  return typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(value);
+  return typeof value === 'string' && VALID_OUTCOME_RE.test(value);
 }
 
 function validateEnvelope(value) {
@@ -125,7 +130,7 @@ function validateEnvelope(value) {
     || typeof value.error.message !== 'string'
     || value.error.message.length < 1
     || value.error.message.length > 240
-    || /[\u0000-\u001f\u007f]/.test(value.error.message)) {
+    || VALIDATE_ENVELOPE_RE.test(value.error.message)) {
     throw new ControlPlaneError('CONTROL_SCHEMA_INVALID', 'control plane error response violates the closed schema');
   }
   if (value.outcome !== value.error.code) {
@@ -317,7 +322,7 @@ export class RailwayReconcileControlClient {
         });
       }
       const contentType = response.headers.get('content-type') ?? '';
-      if (!/^application\/json(?:;|$)/i.test(contentType)) {
+      if (!MODULE_RE.test(contentType)) {
         throw new ControlPlaneError('CONTROL_JSON_REQUIRED', 'control plane response must be JSON', { status: response.status });
       }
       let parsed;

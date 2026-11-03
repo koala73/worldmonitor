@@ -29,6 +29,15 @@ import { marked } from 'marked';
 
 import { digestLegalDocument, normalizeLegalBody } from './legal-digests.mjs';
 
+const VERSION_RE = /TERMS_VERSION = '([^']+)'/;
+const BLOCK_RE = /LEGAL_DOCUMENT_DIGESTS[^{]*\{([\s\S]*?)\n\};/;
+const DOCS_RE = /'([^']+)':\s*'([0-9a-f]*)'/g;
+const SLUG_OF_RE = /^docs\//;
+const SLUG_OF_RE_2 = /\.mdx$/;
+const FM_RE = /^---\n([\s\S]*?)\n---/;
+const TITLE_RE = /^title:\s*"?([^"\n]+)"?\s*$/m;
+
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT_DIR = join(ROOT, 'public', 'legal');
 const MANIFEST = join(OUT_DIR, 'manifest.json');
@@ -37,20 +46,20 @@ const CHECK = process.argv.includes('--check');
 /** Source of truth for which documents are covered and what version they carry. */
 function legalConstants() {
   const source = readFileSync(join(ROOT, 'shared', 'legal.ts'), 'utf8');
-  const version = source.match(/TERMS_VERSION = '([^']+)'/)?.[1];
+  const version = source.match(VERSION_RE)?.[1];
   if (!version) throw new Error('TERMS_VERSION not found in shared/legal.ts');
-  const block = source.match(/LEGAL_DOCUMENT_DIGESTS[^{]*\{([\s\S]*?)\n\};/);
+  const block = source.match(BLOCK_RE);
   if (!block) throw new Error('LEGAL_DOCUMENT_DIGESTS not found in shared/legal.ts');
-  const docs = [...block[1].matchAll(/'([^']+)':\s*'([0-9a-f]*)'/g)].map(([, path]) => path);
+  const docs = [...block[1].matchAll(DOCS_RE)].map(([, path]) => path);
   return { version, docs };
 }
 
 /** `docs/eula.mdx` -> `eula` */
-const slugOf = (docPath) => docPath.replace(/^docs\//, '').replace(/\.mdx$/, '');
+const slugOf = (docPath) => docPath.replace(SLUG_OF_RE, '').replace(SLUG_OF_RE_2, '');
 
 function frontmatterTitle(mdx, fallback) {
-  const fm = mdx.match(/^---\n([\s\S]*?)\n---/);
-  const title = fm?.[1].match(/^title:\s*"?([^"\n]+)"?\s*$/m)?.[1];
+  const fm = mdx.match(FM_RE);
+  const title = fm?.[1].match(TITLE_RE)?.[1];
   return (title ?? fallback).trim();
 }
 
@@ -87,7 +96,7 @@ function pageHtml({ title, bodyHtml, version, docPath }) {
 <body>
 <h1>${title}</h1>
 <p class="doc-meta">World Monitor · version <strong>${version}</strong> ·
-Authoritative text: https://www.worldmonitor.app/${docPath.replace(/\.mdx$/, '')} ·
+Authoritative text: https://www.worldmonitor.app/${docPath.replace(SLUG_OF_RE_2, '')} ·
 Previous versions: https://github.com/koala73/worldmonitor/commits/main/${docPath}</p>
 ${bodyHtml}
 </body></html>`;

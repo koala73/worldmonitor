@@ -10,6 +10,20 @@ import {
 } from './food-prices.mjs';
 import { FOOD_PRICE_ADAPTERS } from './food-prices-adapters/index.mjs';
 
+const LINKS_RE = /<a\b[^<>]*?href=["']([^"'<>]+)["'][^<>]*>/gi;
+const VALUE_RE = /value=["']([^"']+)["']/i;
+const UTF8_HEADER_RE = /[\x80-\xff]/;
+const UTF8_HEADER_RE_2 = /[^\x00-\xff]/;
+const COMMODITIES_RE = /^com_\d+$/;
+const ANNEX_RE = /\.xlsx$/i;
+const ANNEX_RE_2 = /\/annex[^/]*\.xlsx$/i;
+const BASKET_RE = /^Cebolla Bola - Primera$/;
+const BASKET_RE_2 = /^Cebolla Morada - Primera$/;
+const BASKET_RE_3 = /^Chile Jalapeño - Primera$/;
+const BASKET_RE_4 = /^Tomate Saladette - Primera$/;
+const BASKET_RE_5 = /^Papa Alpha - Primera$/;
+
+
 const DAY = 86400000;
 const dated = (now, offset) => new Date(now.getTime() + offset * DAY).toISOString().slice(0, 10);
 const dmy = date => date.split('-').reverse().join('/');
@@ -74,7 +88,7 @@ export function links(html, base) {
   const result = [];
   let consumed = 0;
   let close = 0;
-  for (const match of html.matchAll(/<a\b[^<>]*?href=["']([^"'<>]+)["'][^<>]*>/gi)) {
+  for (const match of html.matchAll(LINKS_RE)) {
     if (match.index < consumed) continue;
     const start = match.index + match[0].length;
     if (close !== -1 && close < start) close = lower.indexOf('</a>', start);
@@ -88,14 +102,14 @@ export function links(html, base) {
 export function selectOptions(html, name) {
   const select = htmlElements(html, ['select']).find(([open]) => new RegExp(`name=["']${name}["']`, 'i').test(open))?.[1] ?? '';
   return htmlElements(select, ['option']).flatMap(([open, inner]) => {
-    const value = /value=["']([^"']+)["']/i.exec(open)?.[1];
+    const value = VALUE_RE.exec(open)?.[1];
     return value ? [{ id: decodeHtmlEntities(value), name: plainText(inner) }] : [];
   });
 }
 
 // Fetch exposes header bytes as Latin-1; some publishers send raw UTF-8 file names in Location.
 export function utf8Header(value) {
-  if (!value || !/[\x80-\xff]/.test(value) || /[^\x00-\xff]/.test(value)) return value;
+  if (!value || !UTF8_HEADER_RE.test(value) || UTF8_HEADER_RE_2.test(value)) return value;
   const decoded = Buffer.from(value, 'latin1').toString('utf8');
   return decoded.includes('\uFFFD') ? value : decoded;
 }
@@ -186,7 +200,7 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
     } else if (id === 'pihps') {
       const base = 'https://www.bi.go.id/hargapangan/WebSite/TabelHarga/';
       const payload = JSON.parse(await get(`${base}GetRefCommodityAndCategory`));
-      const commodities = payload.data?.filter(item => /^com_\d+$/.test(item.id));
+      const commodities = payload.data?.filter(item => COMMODITIES_RE.test(item.id));
       if (!commodities?.length || commodities.length > 50) throw new Error('PIHPS commodity list changed');
       for (const commodity of commodities) {
         const query = new URLSearchParams({ price_type_id: '1', comcat_id: commodity.id, province_id: '', regency_id: '', showKota: 'false', showPasar: 'false', tipe_laporan: '1', start_date: dated(now, -14), end_date: dated(now, 0) });
@@ -206,7 +220,7 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
         try {
           let rows;
           if (id === 'pbs') {
-            const annex = /\.xlsx$/i.test(report.url) ? report : links(await get(report.url), report.url).find(link => /\/annex[^/]*\.xlsx$/i.test(new URL(link.url).pathname));
+            const annex = ANNEX_RE.test(report.url) ? report : links(await get(report.url), report.url).find(link => ANNEX_RE_2.test(new URL(link.url).pathname));
             if (!annex) throw new Error('PBS annex workbook link missing');
             rows = parsePbs(await readWorkbook(await get(annex.url, true)));
           } else {
@@ -224,7 +238,7 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
     } else if (id === 'sniim') {
       const form = await get(SNIIM_QUERY);
       const all = selectOptions(form, 'ddlProducto');
-      const basket = [/^Cebolla Bola - Primera$/, /^Cebolla Morada - Primera$/, /^Chile Jalapeño - Primera$/, /^Tomate Saladette - Primera$/, /^Papa Alpha - Primera$/];
+      const basket = [BASKET_RE, BASKET_RE_2, BASKET_RE_3, BASKET_RE_4, BASKET_RE_5];
       const products = basket.map(pattern => {
         const product = all.find(product => pattern.test(product.name));
         if (!product) throw new Error('SNIIM basket product missing');

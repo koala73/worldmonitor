@@ -24,6 +24,26 @@ import path from 'node:path';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const DISCOVER_DESKTOP_BUILD_WORKFLOWS_RE = /\.(?:yml|yaml)$/;
+const LINE_INDENT_RE = /^[ \t]*/;
+const YAML_VALUE_RE = /\s+#.*$/;
+const YAML_VALUE_RE_2 = /^(['"])(.*)\1$/;
+const LINES_RE = /\r\n/g;
+const STEPS_MATCH_RE = /^(\s*)steps:\s*(?:#.*)?$/;
+const EXTRACT_TAURI_BUILD_STEPS_RE = /^-\s*/;
+const EXTRACT_TAURI_BUILD_STEPS_RE_2 = /^\s*-\s*/;
+const FIRST_MAPPING_RE = /^([A-Za-z0-9_-]+):\s*(.*)$/;
+const MAPPING_INDENT_RE = /^[A-Za-z0-9_-]+:\s*/;
+const USES_FIELD_RE = /^uses:\s*/;
+const NAME_FIELD_RE = /^name:\s*/;
+const ENV_FIELD_RE = /^env:\s*$/;
+const KEY_RE = /^([A-Z0-9_]+):(?:\s|$)/;
+const ADD_RE = /^VITE_[A-Z0-9_]+$/;
+const PROPERTY_RE = /^([A-Za-z_$][A-Za-z0-9_$]*)/;
+const SCAN_RE = /\s/;
+const WALK_RE = /\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/;
+
+
 // Env keys every Tauri build step must declare. Secret-sourced keys render
 // empty until the repo secret exists — behavior is then unchanged from
 // before this check, so declaring them is always safe; the declaration is
@@ -69,20 +89,20 @@ export const EXCLUDED_DESKTOP_BUILD_ENV = {
 export function discoverDesktopBuildWorkflows(rootDir) {
   const workflowsDir = path.join(rootDir, '.github/workflows');
   return readdirSync(workflowsDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /\.(?:yml|yaml)$/.test(entry.name))
+    .filter((entry) => entry.isFile() && DISCOVER_DESKTOP_BUILD_WORKFLOWS_RE.test(entry.name))
     .map((entry) => path.join('.github/workflows', entry.name))
     .filter((workflowPath) => extractTauriBuildSteps(readFileSync(path.join(rootDir, workflowPath), 'utf8')).length > 0);
 }
 
 function lineIndent(line) {
-  return line.match(/^[ \t]*/)[0].length;
+  return line.match(LINE_INDENT_RE)[0].length;
 }
 
 function yamlValue(value) {
   return value
-    .replace(/\s+#.*$/, '')
+    .replace(YAML_VALUE_RE, '')
     .trim()
-    .replace(/^(['"])(.*)\1$/, '$2');
+    .replace(YAML_VALUE_RE_2, '$2');
 }
 
 /**
@@ -92,10 +112,10 @@ function yamlValue(value) {
  * npm dependencies in the install-free desktop-config CI job.
  */
 export function extractTauriBuildSteps(workflowSource) {
-  const lines = workflowSource.replace(/\r\n/g, '\n').split('\n');
+  const lines = workflowSource.replace(LINES_RE, '\n').split('\n');
   const steps = [];
   for (let stepsIndex = 0; stepsIndex < lines.length; stepsIndex++) {
-    const stepsMatch = lines[stepsIndex].match(/^(\s*)steps:\s*(?:#.*)?$/);
+    const stepsMatch = lines[stepsIndex].match(STEPS_MATCH_RE);
     if (!stepsMatch) continue;
     const stepsIndent = stepsMatch[1].length;
     let blockEnd = lines.length;
@@ -109,49 +129,49 @@ export function extractTauriBuildSteps(workflowSource) {
         blockEnd = index;
         break;
       }
-      if (itemIndent === null && indent >= stepsIndent && /^-\s*/.test(trimmed)) itemIndent = indent;
+      if (itemIndent === null && indent >= stepsIndent && EXTRACT_TAURI_BUILD_STEPS_RE.test(trimmed)) itemIndent = indent;
     }
     if (itemIndent === null) continue;
 
     const itemStarts = [];
     for (let index = stepsIndex + 1; index < blockEnd; index++) {
-      if (lineIndent(lines[index]) === itemIndent && /^\s*-\s*/.test(lines[index])) itemStarts.push(index);
+      if (lineIndent(lines[index]) === itemIndent && EXTRACT_TAURI_BUILD_STEPS_RE_2.test(lines[index])) itemStarts.push(index);
     }
     for (let itemIndex = 0; itemIndex < itemStarts.length; itemIndex++) {
       const start = itemStarts[itemIndex];
       const end = itemStarts[itemIndex + 1] ?? blockEnd;
       const itemLines = lines.slice(start, end);
-      const firstLine = itemLines[0].replace(/^\s*-\s*/, '');
-      const firstMapping = firstLine.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      const firstLine = itemLines[0].replace(EXTRACT_TAURI_BUILD_STEPS_RE_2, '');
+      const firstMapping = firstLine.match(FIRST_MAPPING_RE);
       const mappingIndent = itemLines
         .slice(1)
         .map((line) => ({ line, indent: lineIndent(line), trimmed: line.trim() }))
-        .find(({ indent, trimmed }) => indent > itemIndent && /^[A-Za-z0-9_-]+:\s*/.test(trimmed))?.indent;
+        .find(({ indent, trimmed }) => indent > itemIndent && MAPPING_INDENT_RE.test(trimmed))?.indent;
       const fieldIndent = mappingIndent ?? itemIndent;
       const fields = [
         ...(firstMapping ? [{ indent: itemIndent, text: firstLine }] : []),
         ...itemLines.slice(1).map((line) => ({ indent: lineIndent(line), text: line.trim() })),
       ];
-      const usesField = fields.find(({ indent, text }) => indent <= fieldIndent && /^uses:\s*/.test(text));
-      if (!usesField || !yamlValue(usesField.text.replace(/^uses:\s*/, '')).startsWith('tauri-apps/tauri-action@')) continue;
-      const nameField = fields.find(({ indent, text }) => indent <= fieldIndent && /^name:\s*/.test(text));
-      const envField = fields.find(({ indent, text }) => indent === fieldIndent && /^env:\s*$/.test(text));
+      const usesField = fields.find(({ indent, text }) => indent <= fieldIndent && USES_FIELD_RE.test(text));
+      if (!usesField || !yamlValue(usesField.text.replace(USES_FIELD_RE, '')).startsWith('tauri-apps/tauri-action@')) continue;
+      const nameField = fields.find(({ indent, text }) => indent <= fieldIndent && NAME_FIELD_RE.test(text));
+      const envField = fields.find(({ indent, text }) => indent === fieldIndent && ENV_FIELD_RE.test(text));
       const envKeys = [];
       if (envField) {
         const envIndex = itemLines.findIndex(
-          (line) => lineIndent(line) === envField.indent && /^env:\s*$/.test(line.trim()),
+          (line) => lineIndent(line) === envField.indent && ENV_FIELD_RE.test(line.trim()),
         );
         for (let index = envIndex + 1; index < itemLines.length; index++) {
           const line = itemLines[index];
           const trimmed = line.trim();
           if (!trimmed || trimmed.startsWith('#')) continue;
           if (lineIndent(line) <= envField.indent) break;
-          const key = trimmed.match(/^([A-Z0-9_]+):(?:\s|$)/);
+          const key = trimmed.match(KEY_RE);
           if (key) envKeys.push(key[1]);
         }
       }
       steps.push({
-        name: nameField ? yamlValue(nameField.text.replace(/^name:\s*/, '')) : `<unnamed tauri step #${steps.length + 1}>`,
+        name: nameField ? yamlValue(nameField.text.replace(NAME_FIELD_RE, '')) : `<unnamed tauri step #${steps.length + 1}>`,
         envKeys,
       });
     }
@@ -188,7 +208,7 @@ function readQuotedString(source, start) {
 function collectVitePropertyNames(source) {
   const vars = new Set();
   const add = (value) => {
-    if (/^VITE_[A-Z0-9_]+$/.test(value)) vars.add(value);
+    if (ADD_RE.test(value)) vars.add(value);
   };
   const scan = (start, stopAtBrace = false) => {
     let braceDepth = 0;
@@ -240,17 +260,17 @@ function collectVitePropertyNames(source) {
         continue;
       }
       if (character === '.') {
-        const property = source.slice(index + 1).match(/^([A-Za-z_$][A-Za-z0-9_$]*)/);
+        const property = source.slice(index + 1).match(PROPERTY_RE);
         if (property) add(property[1]);
       } else if (character === '[') {
         let quotedIndex = index + 1;
-        while (/\s/.test(source[quotedIndex] ?? '')) quotedIndex++;
+        while (SCAN_RE.test(source[quotedIndex] ?? '')) quotedIndex++;
         if (source[quotedIndex] === '\'' || source[quotedIndex] === '"') {
           const quoted = readQuotedString(source, quotedIndex);
           add(quoted.value);
         }
       }
-      if (!/\s/.test(character)) previousSignificant = character;
+      if (!SCAN_RE.test(character)) previousSignificant = character;
     }
     return source.length;
   };
@@ -266,7 +286,7 @@ export function collectSpaViteVars(rootDir) {
       const st = statSync(full);
       if (st.isDirectory()) {
         walk(full);
-      } else if (/\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$/.test(entry)) {
+      } else if (WALK_RE.test(entry)) {
         const source = readFileSync(full, 'utf8');
         for (const variable of collectVitePropertyNames(source)) vars.add(variable);
       }

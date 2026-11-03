@@ -4,6 +4,9 @@ import {
 } from '@/config/map-layer-definitions';
 import { escapeHtml } from '@/utils/sanitize';
 
+const LAYER_EXPLANATION_LIST_RE = /^\d+$/;
+
+
 export type LayerExplanationLookup = (key: string) => unknown;
 
 const LABEL_KEYS = {
@@ -23,7 +26,7 @@ export function layerExplanationList(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string');
   if (!value || typeof value !== 'object') return [];
   return Object.keys(value)
-    .filter((key) => /^\d+$/.test(key))
+    .filter((key) => LAYER_EXPLANATION_LIST_RE.test(key))
     .sort((a, b) => Number(a) - Number(b))
     .map((key) => (value as Record<string, unknown>)[key])
     .filter((item): item is string => typeof item === 'string');

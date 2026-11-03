@@ -3,6 +3,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const PACKAGE_SECTION_REGEX_RE = /\[package\][\s\S]*?(?=\n\[|$)/;
+const VERSION_REGEX_RE = /^version\s*=\s*"([^"]+)"\s*$/m;
+
+
 const CHECK_ONLY = process.argv.includes('--check');
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -13,14 +17,14 @@ const tauriConfPath = path.join(repoRoot, 'src-tauri', 'tauri.conf.json');
 const cargoTomlPath = path.join(repoRoot, 'src-tauri', 'Cargo.toml');
 
 function updateCargoPackageVersion(cargoToml, targetVersion) {
-  const packageSectionRegex = /\[package\][\s\S]*?(?=\n\[|$)/;
+  const packageSectionRegex = PACKAGE_SECTION_REGEX_RE;
   const packageSectionMatch = cargoToml.match(packageSectionRegex);
   if (!packageSectionMatch) {
     throw new Error('Could not find [package] section in src-tauri/Cargo.toml');
   }
 
   const packageSection = packageSectionMatch[0];
-  const versionRegex = /^version\s*=\s*"([^"]+)"\s*$/m;
+  const versionRegex = VERSION_REGEX_RE;
   const versionMatch = packageSection.match(versionRegex);
   if (!versionMatch) {
     throw new Error('Could not find package version in src-tauri/Cargo.toml');

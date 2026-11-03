@@ -13,6 +13,16 @@ import {
   latestValidGithubStarsSnapshot,
 } from '../scripts/github-stars-snapshot.mjs';
 
+const FIND_STYLESHEET_TAGS_RE = /<link\b[^>]*\brel="stylesheet"[^>]*>/gi;
+const SOURCE_RE = /<picture><source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/;
+const MATCHES_RE = /<div id="root">\s*<h1>([^<&]+)<\/h1>\s*(<section id="pro-overview"[\s\S]*?<\/section>)\s*<\/div>/g;
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const LEAKED_RE = /(?:\/pro\/src\/assets\/|\/@fs\/)[^"'<>\s]+/;
+const FILLED_RE = /\{\{(\w+)\}\}/g;
+const UNFILLED_RE = /\{\{\w+\}\}/;
+const IS_REPEATED_PROSE_RE = /^[A-Za-z][^\n]*$/;
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
@@ -197,7 +207,7 @@ const PAGE_CRITICAL_CSS = {
 const DEFERRED_STYLES_SCRIPT = "(function(){var links=document.querySelectorAll('link[data-wm-deferred-style]');for(var i=0;i<links.length;i++){(function(l){function a(){if(l.rel!=='stylesheet'){l.rel='stylesheet';}}l.addEventListener('load',a,{once:true});l.addEventListener('error',a,{once:true});setTimeout(a,3000);})(links[i]);}})();";
 
 function findStylesheetTags(html) {
-  return [...html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*>/gi)]
+  return [...html.matchAll(FIND_STYLESHEET_TAGS_RE)]
     .map((match) => match[0]);
 }
 
@@ -223,7 +233,7 @@ function tagAttribute(tag, name) {
 // AVIF at high priority ahead of the deferred stylesheet and entry script.
 const HERO_IMAGE_PRELOAD_MEDIA = '(min-width: 640px)';
 function heroImagePreloadTag(markup) {
-  const source = markup.match(/<picture><source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
+  const source = markup.match(SOURCE_RE);
   if (!source) {
     console.error('[prerender] ERROR: Could not find the hero AVIF <source> in welcome markup to preload.');
     process.exit(1);
@@ -263,7 +273,7 @@ function inlineCriticalCss(html, file, headTags = []) {
 // folds the <h1> text into the hero heading as a visually hidden lead, so the
 // built page keeps one <h1> and one <main>.
 function parseProTemplateRoot(html) {
-  const matches = [...html.matchAll(/<div id="root">\s*<h1>([^<&]+)<\/h1>\s*(<section id="pro-overview"[\s\S]*?<\/section>)\s*<\/div>/g)];
+  const matches = [...html.matchAll(MATCHES_RE)];
   if (matches.length !== 1) {
     console.error(`[prerender] ERROR: index.html #root must hold exactly one <h1> followed by <section id="pro-overview">; found ${matches.length} matches.`);
     process.exit(1);
@@ -323,7 +333,7 @@ function builtAssetHref(filenamePrefix, extension) {
 }
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 function rewriteBuiltAssetUrls(markup, assets, label) {
@@ -344,7 +354,7 @@ function rewriteBuiltAssetUrls(markup, assets, label) {
   // Catch any OTHER dev-only asset URL — a newly added asset import the rewrite
   // map above doesn't cover would otherwise ship a broken /pro/src/assets or
   // /@fs path into the static HTML and break hydration on the hashed client URL.
-  const leaked = rewritten.match(/(?:\/pro\/src\/assets\/|\/@fs\/)[^"'<>\s]+/);
+  const leaked = rewritten.match(LEAKED_RE);
   if (leaked) {
     console.error(`[prerender] ERROR: Unrewritten dev asset URL in ${label} markup: ${leaked[0]}. Pass its built asset to rewriteBuiltAssetUrls().`);
     process.exit(1);
@@ -396,8 +406,8 @@ function injectGithubStars(html, file) {
 const PROOF_FACTS = JSON.parse(readFileSync(resolve(__dirname, 'src/generated/depth-stats.json'), 'utf-8'));
 
 function fillProofFacts(html, file) {
-  const filled = html.replace(/\{\{(\w+)\}\}/g, (token, key) => (Object.hasOwn(PROOF_FACTS, key) ? String(PROOF_FACTS[key]) : token));
-  const unfilled = filled.match(/\{\{\w+\}\}/);
+  const filled = html.replace(FILLED_RE, (token, key) => (Object.hasOwn(PROOF_FACTS, key) ? String(PROOF_FACTS[key]) : token));
+  const unfilled = filled.match(UNFILLED_RE);
   if (unfilled) {
     console.error(`[prerender] ERROR: ${file} carries ${unfilled[0]}, which no build-measured figure fills.`);
     process.exit(1);
@@ -472,7 +482,7 @@ if (!metadata) throw new Error('Homepage agent context must have document metada
 // own at /home.md; drop any one-line prose paragraph the rendered page already
 // states. Headings, lists and fences are never dropped.
 const renderedLines = new Set(welcomeMarkdown.split('\n').map((line) => line.trim()).filter(Boolean));
-const isRepeatedProse = (paragraph) => /^[A-Za-z][^\n]*$/.test(paragraph) && renderedLines.has(paragraph);
+const isRepeatedProse = (paragraph) => IS_REPEATED_PROSE_RE.test(paragraph) && renderedLines.has(paragraph);
 const supplement = agentContext
   .slice(metadata[0].length)
   .trim()

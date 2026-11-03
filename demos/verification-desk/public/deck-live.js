@@ -13,6 +13,13 @@
 
 import * as heygen from './avatar.js';
 
+const PARTS_RE = /[^.!?]+[.!?]+["”’]?|[^.!?]+$/g;
+const AVATAR_WORDING_RE = /\ban AI voice\b/g;
+const AVATAR_WORDING_RE_2 = /\bAI voice\b/g;
+const FLAGS_RE = /^Reported by|^WorldMonitor credibility/;
+const ON_KEY_LIVE_RE = /^Digit[1-9]$/;
+
+
 /* global addScene, SC, S, CONFIG, ORDER_ALL, DATA, ASSETS, Voice, SFX, h, esc, $, $$, countUp, dialSVG, toast, go, cur, updateHud, HELP */
 
 const LIVE = { config: {}, board: null, boardError: null, result: null, n: 0, picks: [], pickSel: 0, timers: [] };
@@ -22,7 +29,7 @@ const clearTimers = () => { LIVE.timers.forEach(clearTimeout); LIVE.timers = [];
 /* ---------- narration: deck voice, ElevenLabs audio, or the HeyGen face ---------- */
 
 function proportionalCaps(text, ms) {
-  const parts = (text.match(/[^.!?]+[.!?]+["”’]?|[^.!?]+$/g) || [text]).map((s) => s.trim()).filter(Boolean);
+  const parts = (text.match(PARTS_RE) || [text]).map((s) => s.trim()).filter(Boolean);
   const total = parts.reduce((n, p) => n + p.length, 0) || 1;
   let t = 0;
   return parts.map((p) => { const d = (p.length / total) * ms; const c = [Math.round(t), Math.round(t + d), p]; t += d; return c; });
@@ -62,14 +69,14 @@ function showCaption(text) {
 }
 // The deck's recorded lines introduce "an AI voice"; with the face on screen
 // the same line is said by an avatar. Only the self-description changes.
-const avatarWording = (t) => t.replace(/\ban AI voice\b/g, 'an AI avatar').replace(/\bAI voice\b/g, 'AI avatar');
+const avatarWording = (t) => t.replace(AVATAR_WORDING_RE, 'an AI avatar').replace(AVATAR_WORDING_RE_2, 'AI avatar');
 
 Voice.play = async (id) => {
   if (!heygen.isActive() || !DATA.say[id]) return deckPlay(id);
   const text = avatarWording(DATA.say[id]);
   deckStop(true);
   const run = ++heygenRun;
-  const sentences = text.match(/[^.!?]+[.!?]+["”’]?|[^.!?]+$/g) || [text];
+  const sentences = text.match(PARTS_RE) || [text];
   $('#avatar').classList.add('speaking');
   try {
     await heygen.speak(text, (p) => {
@@ -427,7 +434,7 @@ function play(root, r, { setSt, parsed, lanes, vd, cl, run }) {
     setSt(4);
     const ul = root.querySelector('.issues ul');
     // The card's flags, without the two lines the tiles and dial already show.
-    const flags = (r.verdict?.reasons ?? []).filter((x) => !/^Reported by|^WorldMonitor credibility/.test(x));
+    const flags = (r.verdict?.reasons ?? []).filter((x) => !FLAGS_RE.test(x));
     (flags.length ? flags : ['Nothing flagged.']).slice(0, 4).forEach((x, i) => { const li = h('li', '', esc(x)); ul.appendChild(li); at(120 + i * 300, () => li.classList.add('in')); });
   });
   t += 1100;
@@ -483,7 +490,7 @@ window.onKey = function onKeyLive(e) {
   const code = e.code || '';
   const d = cur();
   if (k === 'g' || k === 'G') { $('#start')?.classList.add('gone'); toggleHeygen(); return; }
-  if (d.id === 'liveboard' && /^Digit[1-9]$/.test(code)) { checkPick(+code[5] - 1); return; }
+  if (d.id === 'liveboard' && ON_KEY_LIVE_RE.test(code)) { checkPick(+code[5] - 1); return; }
   // Shift+U: plain U is the deck's mute key, and a reflex mute must not spend WorldMonitor calls.
   if (d.id === 'liveboard' && k === 'U' && e.shiftKey) {
     toast('Refreshing from WorldMonitor…');
@@ -495,7 +502,7 @@ window.onKey = function onKeyLive(e) {
     });
     return;
   }
-  if (d.id === 'livecheck' && /^Digit[1-9]$/.test(code)) { checkPick(+code[5] - 1); return; }
+  if (d.id === 'livecheck' && ON_KEY_LIVE_RE.test(code)) { checkPick(+code[5] - 1); return; }
   if (d.id === 'livecheck' && (k === 't' || k === 'T')) { e.preventDefault?.(); resetCheck(); S.step = 0; updateHud(); openType(); return; }
   if (d.id === 'livecheck' && k === 'Backspace') { e.preventDefault?.(); resetCheck(); S.step = 0; updateHud(); highlightPick(); return; }
   // Enter re-runs the last headline, including after a failed check (whose result has no headline).

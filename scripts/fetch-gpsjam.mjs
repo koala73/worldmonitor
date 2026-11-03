@@ -18,6 +18,9 @@ import path from 'node:path';
 import { extendExistingTtl } from './_seed-utils.mjs';
 import { processHexes } from './_gpsjam-parse.mjs';
 
+const GET_LATEST_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, 'data');
 
@@ -59,7 +62,7 @@ async function getLatestDate() {
   const lines = csv.trim().split('\n');
   const last = lines[lines.length - 1];
   const date = last.split(',')[0];
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`Unexpected manifest tail: ${last.slice(0, 80)}`);
+  if (!GET_LATEST_DATE_RE.test(date)) throw new Error(`Unexpected manifest tail: ${last.slice(0, 80)}`);
   return date;
 }
 

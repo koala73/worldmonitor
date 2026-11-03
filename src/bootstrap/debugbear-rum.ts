@@ -1,3 +1,6 @@
+
+
+const IS_DEBUG_BEAR_RUM_SCRIPT_FRAME_RE = /debugbear/i;
 export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/lpMwA9KpC6pf.js';
 // 10% sampling. 100% overran the DebugBear RUM monthly quota (~529k/500k, 2026-07).
 // Bootstrap transfer evidence and ongoing web-vitals RUM need only a fraction.
@@ -43,7 +46,7 @@ export function shouldEnableDebugBearRum(hostname: string): boolean {
 
 /** Identifies a Sentry frame emitted by the configured DebugBear collector. */
 export function isDebugBearRumScriptFrame(filename: string): boolean {
-  return filename.endsWith(DEBUGBEAR_RUM_SCRIPT_PATHNAME) || /debugbear/i.test(filename);
+  return filename.endsWith(DEBUGBEAR_RUM_SCRIPT_PATHNAME) || IS_DEBUG_BEAR_RUM_SCRIPT_FRAME_RE.test(filename);
 }
 
 function loadDebugBearRumScript(): void {

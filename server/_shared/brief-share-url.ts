@@ -27,6 +27,11 @@
  * Vercel Edge, Node 18+, and Tauri.
  */
 
+const BASE64URL_RE = /\+/g;
+const BASE64URL_RE_2 = /\//g;
+const BASE64URL_RE_3 = /=+$/;
+const TRIMMED_BASE_RE = /\/+$/;
+
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 // YYYY-MM-DD-HHMM issue slot — matches the magazine signer's slot
 // format. The function parameter is still named issueDate for
@@ -61,7 +66,7 @@ function assertShape(userId: string, issueDate: string): void {
 function base64url(bytes: Uint8Array): string {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(bin).replace(BASE64URL_RE, '-').replace(BASE64URL_RE_2, '_').replace(BASE64URL_RE_3, '');
 }
 
 async function hmacSha256(secret: string, message: string): Promise<Uint8Array> {
@@ -134,7 +139,7 @@ export async function buildPublicBriefUrl({
   refCode?: string;
 }): Promise<{ url: string; hash: string }> {
   const hash = await deriveShareHash(userId, issueDate, secret);
-  const trimmedBase = baseUrl.replace(/\/+$/, '');
+  const trimmedBase = baseUrl.replace(TRIMMED_BASE_RE, '');
   const qs = refCode ? `?ref=${encodeURIComponent(refCode)}` : '';
   return {
     url: `${trimmedBase}/api/brief/public/${hash}${qs}`,
@@ -189,6 +194,6 @@ export function publicBaseUrl(req: Request): string {
     return requestOrigin;
   }
   const pinned = process.env.WORLDMONITOR_PUBLIC_BASE_URL;
-  if (pinned) return pinned.replace(/\/+$/, '');
+  if (pinned) return pinned.replace(TRIMMED_BASE_RE, '');
   return requestOrigin;
 }

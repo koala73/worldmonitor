@@ -9,6 +9,11 @@ import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 import { sha256Hex } from '../../../_shared/hash';
 
+const NORMALIZED_RE = /^(\d{4}-\d{2}-\d{2})(?:[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.(\d{1,9}))?([Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d))?$/;
+const NORMALIZED_RE_2 = /^\d{4}-/;
+const FRACTION_RE = /0+$/;
+
+
 const STAC_SEARCH = 'https://earth-search.aws.element84.com/v1/search';
 const COLLECTIONS = ['sentinel-2-l2a', 'sentinel-1-grd'];
 const CACHE_TTL = 3600;
@@ -32,16 +37,16 @@ function normalizeDatetime(value: string): string | null {
   if (parts.length > 2) return null;
   const normalized = parts.map(part => {
     if (parts.length === 2 && (part === '' || part === '..')) return { value: '..', order: '' };
-    const match = /^(\d{4}-\d{2}-\d{2})(?:[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.(\d{1,9}))?([Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d))?$/.exec(part);
+    const match = NORMALIZED_RE.exec(part);
     if (!match) return null;
     const date = match[1]!;
     const day = new Date(`${date}T00:00:00Z`);
     if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date) return null;
     if (!match[2]) return { value: date, order: `${date}T00:00:00.000000000Z` };
     const instant = new Date(`${date}T${match[2]}:${match[3]}:${match[4]}${match[6]!.toUpperCase()}`).toISOString();
-    if (!/^\d{4}-/.test(instant)) return null;
+    if (!NORMALIZED_RE_2.test(instant)) return null;
     const seconds = instant.slice(0, 19);
-    const fraction = (match[5] ?? '').replace(/0+$/, '');
+    const fraction = (match[5] ?? '').replace(FRACTION_RE, '');
     return {
       value: `${seconds}${fraction ? `.${fraction}` : ''}Z`,
       order: `${seconds}.${fraction.padEnd(9, '0')}Z`,

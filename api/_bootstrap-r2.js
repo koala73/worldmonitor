@@ -1,5 +1,8 @@
 import { AwsClient } from 'aws4fetch';
 
+const READ_CONFIG_RE = /\/+$/;
+
+
 const MINUTE_MS = 60_000;
 const MAX_FUTURE_SKEW_MS = 5 * MINUTE_MS;
 const MAX_AGE_MS = Object.freeze({
@@ -55,7 +58,7 @@ function readConfig(env) {
 
   if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) return null;
   return {
-    endpoint: endpoint.replace(/\/+$/, ''),
+    endpoint: endpoint.replace(READ_CONFIG_RE, ''),
     bucket,
     accessKeyId,
     secretAccessKey,

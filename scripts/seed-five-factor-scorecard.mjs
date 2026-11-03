@@ -6,6 +6,10 @@ import { register } from 'tsx/esm/api';
 import { getRedisCredentials, loadEnvFile, loadSharedConfig, runSeed, withRetry } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { listRankableCountries } from './shared/rankable-universe.mjs';
+
+const SAFE_RUN_ID_RE = /[^a-zA-Z0-9_-]/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
 register();
 
 // The Railway closure audit intentionally models a plain Node process for
@@ -94,7 +98,7 @@ export async function stageScorecardReadModel(snapshot, {
   pipeline = redisPipeline,
   batchSize = 24,
 } = {}) {
-  const safeRunId = String(runId || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const safeRunId = String(runId || '').replace(SAFE_RUN_ID_RE, '');
   if (!safeRunId) throw new Error('scorecard read model requires a runId');
   const stagingKey = `${FIVE_FACTOR_SCORECARD_READ_MODEL_KEY}:staging:${safeRunId}`;
   const readModel = buildFiveFactorReadModel(snapshot);
@@ -172,7 +176,7 @@ function techByIso2(rankings) {
   const iso3ToIso2 = loadSharedConfig('iso3-to-iso2.json');
   return Object.fromEntries((Array.isArray(rankings) ? rankings : [])
     .map((entry) => [iso3ToIso2[String(entry?.country || '').toUpperCase()], entry])
-    .filter(([iso2]) => /^[A-Z]{2}$/.test(iso2 || '')));
+    .filter(([iso2]) => COUNTRY_CODE_RE.test(iso2 || '')));
 }
 
 export async function readScorecardSources(

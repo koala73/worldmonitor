@@ -1,3 +1,4 @@
+import { moduleRegexDeclarations, moduleRegexBindings } from './helpers/module-regex-declarations.mjs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -48,7 +49,7 @@ describe('Saudi Civil Defense notification producer', () => {
       },
     }) };
     const context = { URL, Buffer, http: transport, https: transport, CLASSIFY_SYSTEM_PROMPT: 'fixture' };
-    vm.createContext(context);
+    vm.createContext(Object.assign(context, moduleRegexBindings(relay)));
     vm.runInContext(relay.slice(start, end), context);
     const text = 'x'.repeat(3000);
     await context.classifyFetchLlmSingle([text], '', 'https://provider.example', 'fixture', {}, {}, 1000, 4096);
@@ -64,7 +65,7 @@ describe('Saudi Civil Defense notification producer', () => {
       SAUDI_CIVIL_DEFENSE: { handle: 'SaudiDCD' }, MAX_POST_CHARS: 4096,
       TELEGRAM_MAX_TEXT_CHARS: 800, sanitizeTelegramUsername: (handle) => handle,
     };
-    vm.createContext(context);
+    vm.createContext(Object.assign(context, moduleRegexBindings(relay)));
     vm.runInContext(relay.slice(start, end), context);
     const msg = { id: 123, date: NOW / 1000, message: 'x'.repeat(3000) };
     const official = context.normalizeTelegramMessage(msg, { handle: 'SaudiDCD' });
@@ -167,7 +168,7 @@ describe('Saudi Civil Defense notification producer', () => {
       seedClassifyForVariant: async () => ({ fetchFailed: true, total: 0, classified: 0, skipped: 0 }),
       shouldWriteClassifySeedMeta: () => false,
     };
-    vm.createContext(context);
+    vm.createContext(Object.assign(context, moduleRegexBindings(relay)));
     await vm.runInContext(`${relay.slice(start, end)}\nseedClassify()`, context);
     assert.equal(h.events.length, 1);
     assert.equal(h.events[0].payload.countryCode, 'SA');

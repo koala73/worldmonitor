@@ -11,6 +11,9 @@ import {
   getClientRateLimitKey,
   hasUnprovenCloudflareClientIp,
 } from './_client-ip.js';
+
+const RATE_LIMIT_ERROR_LEVEL_RE = /Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|aborted due to timeout|TimeoutError|socket hang up|Redis unavailable|Redis unreachable/i;
+
 export {
   RATE_LIMIT_DEGRADED_HEADERS,
   UNKNOWN_CLIENT_IP,
@@ -89,7 +92,7 @@ async function getRatelimit(policy) {
 // the mirror drifting. tests/rate-limit.test.mts calls both copies directly.
 export function rateLimitErrorLevel(stage, msg) {
   if (stage.includes('missing-config')) return 'error';
-  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|aborted due to timeout|TimeoutError|socket hang up|Redis unavailable|Redis unreachable/i.test(msg)) {
+  if (RATE_LIMIT_ERROR_LEVEL_RE.test(msg)) {
     return 'warning';
   }
   return 'error';

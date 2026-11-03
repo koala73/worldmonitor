@@ -8,6 +8,9 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/d
 import { readCachedEnvelopeJson } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 
+const GET_INTERNAL_DISPLACEMENT_RE = /^[A-Z]{3}$/;
+
+
 export const DTM_CANONICAL_KEY = 'displacement:dtm:v1';
 
 // Railway (scripts/seed-dtm-displacement.mjs) owns fetching and aggregation;
@@ -17,7 +20,7 @@ export async function getInternalDisplacement(
   req: GetInternalDisplacementRequest,
 ): Promise<GetInternalDisplacementResponse> {
   const countryCode = (req.countryCode ?? '').trim().toUpperCase();
-  if (countryCode && !/^[A-Z]{3}$/.test(countryCode)) {
+  if (countryCode && !GET_INTERNAL_DISPLACEMENT_RE.test(countryCode)) {
     throw new ValidationError([{ field: 'countryCode', description: 'country_code must be an ISO 3166-1 alpha-3 code' }]);
   }
   const emptyResponse: GetInternalDisplacementResponse = { operations: [], fetchedAt: 0, dataAvailable: false };

@@ -1,3 +1,10 @@
+
+
+const VERIFY_PKCE_S256_RE = /^[A-Za-z0-9\-._~]+$/;
+const VERIFY_PKCE_S256_RE_2 = /^[A-Za-z0-9\-_]+$/;
+const COMPUTED_RE = /\+/g;
+const COMPUTED_RE_2 = /\//g;
+const COMPUTED_RE_3 = /=+$/;
 export async function sha256Hex(str) {
   if (typeof str !== 'string') return null;
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -13,18 +20,18 @@ export async function verifyPkceS256(codeVerifier, codeChallenge) {
   // Validate code_verifier: 43-128 chars, URL-safe charset [A-Za-z0-9-._~] (RFC 7636 §4.1)
   if (typeof codeVerifier !== 'string' ||
       codeVerifier.length < 43 || codeVerifier.length > 128 ||
-      !/^[A-Za-z0-9\-._~]+$/.test(codeVerifier)) {
+      !VERIFY_PKCE_S256_RE.test(codeVerifier)) {
     return null; // null = invalid_request (malformed input)
   }
   // Validate code_challenge: base64url-encoded SHA-256 = exactly 43 chars, no padding
   if (typeof codeChallenge !== 'string' ||
       codeChallenge.length !== 43 ||
-      !/^[A-Za-z0-9\-_]+$/.test(codeChallenge)) {
+      !VERIFY_PKCE_S256_RE_2.test(codeChallenge)) {
     return null;
   }
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
   const computed = btoa(String.fromCharCode(...new Uint8Array(hash)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    .replace(COMPUTED_RE, '-').replace(COMPUTED_RE_2, '_').replace(COMPUTED_RE_3, '');
   const enc = new TextEncoder();
   const a = enc.encode(computed), b = enc.encode(codeChallenge);
   let diff = 0;

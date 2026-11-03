@@ -28,8 +28,11 @@
  * lets an event through (safe) while a false positive would hide a real desktop
  * regression.
  */
+const IS_IOS_LIKE_USER_AGENT_RE = /(iPhone|iPad|iPod)/;
+const IS_IOS_LIKE_USER_AGENT_RE_2 = /Macintosh/;
+
 export function isIosLikeUserAgent(ua: string, maxTouchPoints = 0): boolean {
   if (!ua) return false;
-  if (/(iPhone|iPad|iPod)/.test(ua)) return true;
-  return /Macintosh/.test(ua) && maxTouchPoints > 1;
+  if (IS_IOS_LIKE_USER_AGENT_RE.test(ua)) return true;
+  return IS_IOS_LIKE_USER_AGENT_RE_2.test(ua) && maxTouchPoints > 1;
 }

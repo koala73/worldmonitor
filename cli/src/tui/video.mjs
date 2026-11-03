@@ -6,6 +6,9 @@ import { spawn } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
+const DETECT_TERMINAL_GRAPHICS_RE = /^screen/;
+
+
 export function findExecutable(name, env = process.env) {
   const exts = process.platform === 'win32' ? (env.PATHEXT || '.EXE;.CMD;.BAT').split(';') : [''];
   for (const dir of String(env.PATH || '').split(delimiter)) {
@@ -27,7 +30,7 @@ export function findExecutable(name, env = process.env) {
 export function detectTerminalGraphics(env = process.env) {
   if (env.WM_TUI_VO) return env.WM_TUI_VO;
   // tmux and screen do not pass the kitty graphics protocol through by default.
-  if (env.TMUX || /^screen/.test(String(env.TERM || ''))) return 'tct';
+  if (env.TMUX || DETECT_TERMINAL_GRAPHICS_RE.test(String(env.TERM || ''))) return 'tct';
   const tp = String(env.TERM_PROGRAM || '').toLowerCase();
   const term = String(env.TERM || '').toLowerCase();
   if (env.KITTY_WINDOW_ID || term.includes('kitty')) return 'kitty';

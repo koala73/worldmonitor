@@ -3,6 +3,7 @@ import { afterEach, test } from 'node:test';
 import Module, { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 import ts from 'typescript';
 import { DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
 
@@ -78,7 +79,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     const sends: any[] = [];
     let reads = 0;
     const metadata: any[] = [];
-    const run = runInNewContext([
+    const run = runInNewContext(moduleRegexDeclarations(source) + '\n' + [
       'main', 'sendTelegram', 'sanitizeTelegramHtml', 'truncateTelegramHtml',
     ].map(productionFunction).join('\n') + '\nmain', {
       Date, Map, Set, Intl, AbortSignal, process: { env: {} }, console: { log() {}, warn() {} },
@@ -86,6 +87,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       CONVEX_SITE_URL: 'https://convex.test', RELAY_SECRET: 'fake', DIGEST_LOOKBACK_MS: 86400000,
       TELEGRAM_BOT_TOKEN: 'fake', TELEGRAM_MAX_LEN: 4096, AI_DIGEST_ENABLED: false,
       scanAndEnqueueWatchlistStoryEvents: async () => {},
+      flushPendingLlmEvents: async () => {},
       fetch: async (url: string, init?: RequestInit) => {
         if (url.endsWith('/relay/digest-rules')) return Response.json([{ userId: 'owner', variant: 'full', channels: ['telegram'] }]);
         if (url.endsWith('/relay/channels')) { reads++; return Response.json([channel]); }

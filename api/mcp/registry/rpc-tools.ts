@@ -66,6 +66,12 @@ import { COMPANY_INTEL_TOOL } from './company-intel-tools';
 import { NO2_ACTIVITY_TOOL } from './_no2-activity';
 import { tradeCountryCode } from './tariff-tools';
 
+const WHITESPACE_RE = /\s+/g;
+const FOOD_STOCKS_COUNTRY_RE = /^(?:WORLD|WLD|_WORLD)$/;
+const RPC_TOOLS_RE = /<[^>]*>/g;
+const RPC_TOOLS_RE_2 = /^@/;
+
+
 type McpBriefSource = {
   title: string;
   source: string;
@@ -168,7 +174,7 @@ function briefSourceProvenance(source: string): BriefSourceProvenance {
 
 function clipBriefText(value: unknown, maxLen: number): string {
   if (typeof value !== 'string') return '';
-  const text = value.replace(/\s+/g, ' ').trim();
+  const text = value.replace(WHITESPACE_RE, ' ').trim();
   return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
 }
 
@@ -227,7 +233,7 @@ function collectBriefGroundingStories(
   maxStories = 6,
 ): McpBriefGroundingStory[] {
   const byTitle = new Map<string, { sources: string[]; corroborationCount: number }>();
-  const titleKey = (item: DigestItemForBrief) => (item.title ?? '').replace(/\s+/g, ' ').trim();
+  const titleKey = (item: DigestItemForBrief) => (item.title ?? '').replace(WHITESPACE_RE, ' ').trim();
   for (const item of evidenceItems) {
     const key = titleKey(item);
     if (!key || typeof item.source !== 'string' || !item.source.trim()) continue;
@@ -724,7 +730,7 @@ function intelTimelineScope(params: Record<string, unknown>) {
 
 function foodStocksCountry(params: Record<string, unknown>): string {
   const world = typeof params.country_code === 'string' ? params.country_code.trim().toUpperCase() : '';
-  if (/^(?:WORLD|WLD|_WORLD)$/.test(world)) return world;
+  if (FOOD_STOCKS_COUNTRY_RE.test(world)) return world;
   return requireCountryCode(params.country_code, 'get-food-stocks');
 }
 
@@ -1894,7 +1900,7 @@ export const RPC_TOOLS: ToolDef[] = [
           const error = (JSON.parse(detail) as { error?: unknown }).error ?? '';
           code = (typeof error === 'string' ? error : JSON.stringify(error)).slice(0, 120);
         } catch {
-          code = detail.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+          code = detail.replace(RPC_TOOLS_RE, ' ').replace(WHITESPACE_RE, ' ').trim().slice(0, 120);
         }
         throw new UpstreamHttpError(`get-country-intel-brief HTTP ${res.status}${code ? `: ${code}` : ''}`, res.status);
       }
@@ -2183,7 +2189,7 @@ export const RPC_TOOLS: ToolDef[] = [
       const limit = Math.max(1, Math.min(200, Number(params.limit ?? 50) || 50));
       qs.set('limit', String(limit));
       if (params.topic) qs.set('topic', String(params.topic));
-      if (params.account) qs.set('account', String(params.account).replace(/^@/, ''));
+      if (params.account) qs.set('account', String(params.account).replace(RPC_TOOLS_RE_2, ''));
       const url = `${base}/api/intelligence/v1/list-x-feed?${qs}`;
       const auth = await buildAuthHeaders(context, 'GET', url, null);
       const res = await fetchMcpDownstream(url, {

@@ -18,6 +18,9 @@ import { promisify } from 'node:util';
 
 import { limitDeploymentHistory } from './railway-deployments.mjs';
 
+const READ_EXPECTED_REPOSITORY_FLEET_RE = /^[0-9a-f]{40}$/;
+
+
 const execFileAsync = promisify(execFile);
 
 export const REPOSITORY = 'koala73/worldmonitor';
@@ -211,7 +214,7 @@ export function readExpectedRepositoryFleet(url = EXPECTED_REPOSITORY_FLEET_URL)
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)
     || manifest.version !== 1 || manifest.repository !== REPOSITORY
     || typeof manifest.acceptedHead !== 'string'
-    || !/^[0-9a-f]{40}$/.test(manifest.acceptedHead)
+    || !READ_EXPECTED_REPOSITORY_FLEET_RE.test(manifest.acceptedHead)
     || !Number.isSafeInteger(manifest.acceptedRunId)) {
     throw new Error('expected Railway repository fleet manifest is malformed');
   }

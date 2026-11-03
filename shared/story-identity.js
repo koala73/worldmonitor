@@ -38,6 +38,13 @@
  * rootDirectory=scripts and cannot see repo-root shared/).
  */
 
+const NORMALIZE_STORY_TEXT_RE = /[^\p{L}\p{N}\s]/gu;
+const WHITESPACE_RE = /\s+/g;
+const WHITESPACE_RE_2 = /\s+/;
+const CLEAN_RE = /[^\p{L}\p{N}]/gu;
+const CAPITALIZED_RE = /^\p{Lu}/u;
+const HAS_DIGIT_RE = /\p{N}/u;
+
 const DIM = 512;
 
 // Tuned on the labeled pair set in tests/story-identity.test.mjs
@@ -83,8 +90,8 @@ function fnv1a(str, seed) {
 export function normalizeStoryText(text) {
   return (text || '')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_STORY_TEXT_RE, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -237,15 +244,15 @@ export function stripAttributionSuffix(text, options) {
 function contentTokens(text) {
   const kept = [];
   const clamped = stripAttributionSuffix(text).slice(0, MAX_IDENTITY_CHARS);
-  for (const raw of clamped.split(/\s+/)) {
+  for (const raw of clamped.split(WHITESPACE_RE_2)) {
     // Strip everything that is not a Unicode letter/number, keeping the
     // original case so the entity heuristic can read it.
-    const clean = raw.replace(/[^\p{L}\p{N}]/gu, '');
+    const clean = raw.replace(CLEAN_RE, '');
     if (!clean) continue;
     const tok = clean.toLowerCase();
     if (!isNonAscii(tok) && tok.length < 3) continue;
-    const capitalized = /^\p{Lu}/u.test(clean);
-    const hasDigit = /\p{N}/u.test(clean);
+    const capitalized = CAPITALIZED_RE.test(clean);
+    const hasDigit = HAS_DIGIT_RE.test(clean);
     const boost = hasDigit ? BOOST_NUMBER : capitalized ? BOOST_ENTITY : 1;
     kept.push({ tok, boost });
   }

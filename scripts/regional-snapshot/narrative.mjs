@@ -31,6 +31,9 @@ import {
   OPENROUTER_PROVIDER_ROUTING,
 } from '../_llm-model-timeouts.mjs';
 
+const HTTP_MATCH_RE = /HTTP (\d{3})/;
+
+
 const CHROME_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 const NARRATIVE_MAX_TOKENS = 900;
@@ -428,7 +431,7 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[narrative] ${provider.name}: ${msg}`);
-      const httpMatch = /HTTP (\d{3})/.exec(msg);
+      const httpMatch = HTTP_MATCH_RE.exec(msg);
       record(false, {
         reason: isLlmBudgetError(err) ? 'budget_exhausted'
           : err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout'

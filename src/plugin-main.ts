@@ -22,6 +22,9 @@ import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 import { loadPluginHazardSnapshot, type PluginHazardSnapshot } from '@/services/plugin-map-snapshot';
 import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/panel-admission';
 
+const START_RE = /^https?:$/;
+
+
 function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
   if (keys.includes(requested)) return { category: requested };
   const normalized = requested.trim().toLowerCase();
@@ -566,7 +569,7 @@ function mountPlugin(): void {
         status.textContent = 'This article source link is unavailable.';
         return;
       }
-      if (!/^https?:$/.test(new URL(link.href).protocol)) return;
+      if (!START_RE.test(new URL(link.href).protocol)) return;
       event.preventDefault();
       if (openLinks) void request('ui/open-link', { url: link.href }).catch(() => { status.textContent = 'The host could not open this link.'; });
       else status.textContent = 'Opening links is unavailable in this host.';

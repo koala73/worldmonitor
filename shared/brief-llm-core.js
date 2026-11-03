@@ -18,6 +18,45 @@
  * Moved verbatim from scripts/lib/brief-llm.mjs so the edge endpoint
  * and the cron fallback emit the identical editorial voice.
  */
+const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PROSE_RE = /["'\u2019\u201D]+$/;
+const HAS_TERMINAL_PUNCTUATION_RE = /(?:\.\.\.|\u2026)$/;
+const HAS_TERMINAL_PUNCTUATION_RE_2 = /[.!?]$/;
+const PARSE_WHY_MATTERS_RE = /^[\u201C"']+/;
+const PARSE_WHY_MATTERS_RE_2 = /[\u201D"']+$/;
+const PARSE_WHY_MATTERS_RE_3 = /^story flagged by your sensitivity/i;
+const PARSE_WHY_MATTERS_V2_RE = /^(this matters because|the importance of|it is important|importantly,|in summary,|to summarize)/i;
+const PARSE_WHY_MATTERS_V2_RE_2 = /^(#|-|\*|\d+\.\s)/;
+const PARSE_WHY_MATTERS_V2_RE_3 = /^(situation|analysis|watch)\s*[:\-–—]/i;
+const PERCENTAGE_RE = /(?:^|[^\d.])(\d{1,3}(?:\.\d+)?)\s*(?:%|per\s*cent\b)/gi;
+const WHITESPACE_RE = /\s+/;
+const NORMALIZE_DOTTED_ACRONYMS_RE = /(\b[A-Z]\.(?:[A-Z]\.?)+)/g;
+const NORMALIZE_DOTTED_ACRONYMS_RE_2 = /\./g;
+const PROPER_NOUN_TOKEN_VALUE_RE = /[\p{Lu}\p{Lt}]/u;
+const STRIPPED_RE = /[.,;:'’]+$/g;
+const STRIPPED_RE_2 = /['’]s$/i;
+const PREPROCESSED_RE = /[\u2010\u2011]/g;
+const SENTENCES_RE = /[.!?]+\s+|\n+/;
+const TOKENS_RE = /[^\p{L}\p{N}'’-]+/u;
+const IS_ALL_CAPS_ACRONYM_RE = /^(?=.*\p{Lu})[\p{Lu}\p{N}]{2,6}$/u;
+const SOURCE_CAPITALIZED_RE = /^\p{Lu}/u;
+const NORMALIZE_DIGIT_FACT_RE = /,/g;
+const NORMALIZE_DIGIT_FACT_RE_2 = /^(\d+(?:\.\d+)?)(?:\s*(%|percent|thousands?|millions?|billions?|bil\b|trillions?))?$/;
+const SCALE_RE = /s$/;
+const WORDS_RE = /-/g;
+const WHITESPACE_RE_2 = /\s+/g;
+const ADD_DATE_EXPRESSION_FACTS_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+const ADD_DATE_EXPRESSION_FACTS_RE_2 = /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/;
+const ADD_DATE_EXPRESSION_FACTS_RE_3 = /^([A-Za-z]+)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?$/;
+const ADD_DATE_EXPRESSION_FACTS_RE_4 = /^(\d{1,2})\s+([A-Za-z]+)\.?\s*(?:\s+(\d{4}))?$/;
+const REMAINING_RE = /\[\d{1,3}\]/g;
+const IS_WORD_CHAR_RE = /[\p{L}\p{N}]/u;
+const STATUS_QUALIFIER_CLASS_OF_RE = /-$/;
+const ANY_CASE_RE = /\p{L}/gu;
+const GROUNDS_RE = /[^\p{L}\p{N}]+/u;
+const EXTRACT_ANCHOR_TOKENS_RE = /^[A-Z]/;
+const CLEANED_RE = /\s*\[(\d{1,3})\]/g;
+
 export const WHY_MATTERS_SYSTEM =
   'You are the editor of WorldMonitor Brief, a geopolitical intelligence magazine. ' +
   'For each story below, write ONE concise sentence (18–30 words) explaining the ' +
@@ -50,7 +89,7 @@ export const WHY_MATTERS_V2_MAX_CHARS = 500;
  * @returns {string}
  */
 export function briefDateLine(todayIso) {
-  const iso = typeof todayIso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(todayIso)
+  const iso = typeof todayIso === 'string' && ISO_RE.test(todayIso)
     ? todayIso
     : new Date().toISOString().slice(0, 10);
   return (
@@ -95,9 +134,9 @@ export function buildWhyMattersUserPrompt(story, todayIso) {
 export function hasTerminalPunctuation(text) {
   if (typeof text !== 'string') return false;
   const s = text.trim();
-  const prose = s.replace(/["'\u2019\u201D]+$/, '');
-  if (/(?:\.\.\.|\u2026)$/.test(prose)) return false;
-  return /[.!?]$/.test(prose);
+  const prose = s.replace(PROSE_RE, '');
+  if (HAS_TERMINAL_PUNCTUATION_RE.test(prose)) return false;
+  return HAS_TERMINAL_PUNCTUATION_RE_2.test(prose);
 }
 
 /**
@@ -112,13 +151,13 @@ export function parseWhyMatters(text) {
   if (typeof text !== 'string') return null;
   let s = text.trim();
   if (!s) return null;
-  s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
+  s = s.replace(PARSE_WHY_MATTERS_RE, '').replace(PARSE_WHY_MATTERS_RE_2, '').trim();
   // Dotted abbreviations make sentence splitting intrinsically ambiguous
   // (`U.S. Navy` vs `U.S. Markets rallied`). The prompt owns sentence count;
   // provider finish_reason plus this punctuation gate own completeness.
   if (!hasTerminalPunctuation(s)) return null;
   if (s.length < WHY_MATTERS_V1_MIN_CHARS || s.length > WHY_MATTERS_V1_MAX_CHARS) return null;
-  if (/^story flagged by your sensitivity/i.test(s)) return null;
+  if (PARSE_WHY_MATTERS_RE_3.test(s)) return null;
   return s;
 }
 
@@ -247,18 +286,18 @@ export function parseWhyMattersV2(text, provenance) {
   let s = text.trim();
   if (!s) return null;
   // Drop surrounding quotes if the model insisted.
-  s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
+  s = s.replace(PARSE_WHY_MATTERS_RE, '').replace(PARSE_WHY_MATTERS_RE_2, '').trim();
   if (s.length < WHY_MATTERS_V2_MIN_CHARS || s.length > WHY_MATTERS_V2_MAX_CHARS) return null;
   if (!hasTerminalPunctuation(s)) return null;
   // Reject the stub echo (same as v1).
-  if (/^story flagged by your sensitivity/i.test(s)) return null;
+  if (PARSE_WHY_MATTERS_RE_3.test(s)) return null;
   // Reject common preamble the system prompt explicitly banned.
-  if (/^(this matters because|the importance of|it is important|importantly,|in summary,|to summarize)/i.test(s)) {
+  if (PARSE_WHY_MATTERS_V2_RE.test(s)) {
     return null;
   }
   // Reject markdown / section-label leakage (we told it to use plain prose).
-  if (/^(#|-|\*|\d+\.\s)/.test(s)) return null;
-  if (/^(situation|analysis|watch)\s*[:\-–—]/i.test(s)) return null;
+  if (PARSE_WHY_MATTERS_V2_RE_2.test(s)) return null;
+  if (PARSE_WHY_MATTERS_V2_RE_3.test(s)) return null;
   // Forecast context is private reasoning input. Compare normalized percentage
   // values instead of nearby wording so paraphrases, distance, and newlines do
   // not bypass the guard. A value present in the public story remains valid
@@ -266,7 +305,7 @@ export function parseWhyMattersV2(text, provenance) {
   const percentageValues = (value) => {
     if (typeof value !== 'string' || value.length === 0) return new Set();
     const values = new Set();
-    const percentage = /(?:^|[^\d.])(\d{1,3}(?:\.\d+)?)\s*(?:%|per\s*cent\b)/gi;
+    const percentage = PERCENTAGE_RE;
     for (const match of value.matchAll(percentage)) {
       const number = Number(match[1]);
       if (Number.isFinite(number)) values.add(String(number));
@@ -446,7 +485,7 @@ const ACRONYM_NORMALIZE = (() => {
 
 const AND_JOINED_ACRONYM_VARIANTS = ACRONYM_EXPANSIONS
   .flatMap((group) => group)
-  .map((variant) => variant.toLowerCase().split(/\s+/))
+  .map((variant) => variant.toLowerCase().split(WHITESPACE_RE))
   .filter((tokens) => tokens.includes('and'));
 
 const DEMONYM_NORMALIZE = (() => {
@@ -522,12 +561,12 @@ const SENTENCE_START_AMBIGUOUS = new Set([
  *   "end of sentence."               → "end of sentence."    (single dot, no run)
  */
 function normalizeDottedAcronyms(text) {
-  return text.replace(/(\b[A-Z]\.(?:[A-Z]\.?)+)/g, (match) => match.replace(/\./g, ''));
+  return text.replace(NORMALIZE_DOTTED_ACRONYMS_RE, (match) => match.replace(NORMALIZE_DOTTED_ACRONYMS_RE_2, ''));
 }
 
 function properNounTokenValue(token) {
-  if (typeof token !== 'string' || token.length < 2 || !/[\p{Lu}\p{Lt}]/u.test(token)) return null;
-  const stripped = token.replace(/[.,;:'’]+$/g, '').replace(/['’]s$/i, '');
+  if (typeof token !== 'string' || token.length < 2 || !PROPER_NOUN_TOKEN_VALUE_RE.test(token)) return null;
+  const stripped = token.replace(STRIPPED_RE, '').replace(STRIPPED_RE_2, '');
   return (stripped || token).toLowerCase();
 }
 
@@ -576,10 +615,10 @@ function extractProperNounSequencesWithMeta(text) {
 
   // Normalize dotted acronyms BEFORE sentence-splitting so "U.S." isn't
   // misread as a sentence boundary or split into ['U', 'S'].
-  const preprocessed = normalizeDottedAcronyms(text).replace(/[\u2010\u2011]/g, '-');
+  const preprocessed = normalizeDottedAcronyms(text).replace(PREPROCESSED_RE, '-');
 
   // Split into sentences so sentence-start handling can run per-sentence.
-  const sentences = preprocessed.split(/[.!?]+\s+|\n+/);
+  const sentences = preprocessed.split(SENTENCES_RE);
 
   const sequences = [];
   // #6109: which non-empty sentence are we in? Only the FIRST one can carry the
@@ -592,7 +631,7 @@ function extractProperNounSequencesWithMeta(text) {
 
     // Tokenize: keep alphanumeric runs + apostrophes + hyphens
     // (preserves "Mar-a-Lago", "O'Brien").
-    const tokens = sentence.split(/[^\p{L}\p{N}'’-]+/u).filter(Boolean);
+    const tokens = sentence.split(TOKENS_RE).filter(Boolean);
     if (tokens.length === 0) continue;
 
     let current = [];
@@ -606,8 +645,8 @@ function extractProperNounSequencesWithMeta(text) {
       const token = tokens[tokenIndex];
       // Strip trailing punctuation and possessive 's / ’s so
       // "Beirut's" → "beirut" and "U.S." → "U.S" (handled below).
-      let stripped = token.replace(/[.,;:'’]+$/g, '');
-      stripped = stripped.replace(/['’]s$/i, '');
+      let stripped = token.replace(STRIPPED_RE, '');
+      stripped = stripped.replace(STRIPPED_RE_2, '');
       const tokenForLookup = stripped || token;
       const isTitlePrefix = TITLE_PREFIX_STOP.has(stripped);
       const isJoiner = PROPER_NOUN_JOINER.has(token.toLowerCase());
@@ -617,8 +656,8 @@ function extractProperNounSequencesWithMeta(text) {
       // and J."), middle initials in names, or "I" (the pronoun, already
       // handled by SENTENCE_START_AMBIGUOUS). None should register as
       // a standalone proper noun.
-      const isCapitalized = token.length >= 2 && /[\p{Lu}\p{Lt}]/u.test(token);
-      const isAllCapsAcronym = /^(?=.*\p{Lu})[\p{Lu}\p{N}]{2,6}$/u.test(token);
+      const isCapitalized = token.length >= 2 && PROPER_NOUN_TOKEN_VALUE_RE.test(token);
+      const isAllCapsAcronym = IS_ALL_CAPS_ACRONYM_RE.test(token);
       const isAmbiguousSentenceStart = firstToken
         && !isAllCapsAcronym
         && SENTENCE_START_AMBIGUOUS.has(token.toLowerCase());
@@ -760,9 +799,9 @@ const SENTENCE_INITIAL_ALLOWANCE_BLOCKED = new Set([
 function groundTokenSet(text) {
   const out = new Set();
   if (typeof text !== 'string' || text.length === 0) return out;
-  for (const raw of normalizeDottedAcronyms(text).split(/[^\p{L}\p{N}'’-]+/u)) {
+  for (const raw of normalizeDottedAcronyms(text).split(TOKENS_RE)) {
     if (!raw) continue;
-    const stripped = raw.replace(/[.,;:'’]+$/g, '').replace(/['’]s$/i, '');
+    const stripped = raw.replace(STRIPPED_RE, '').replace(STRIPPED_RE_2, '');
     const token = (stripped || raw).toLowerCase();
     if (!token) continue;
     // Do NOT let the acronym/demonym tables promote a token the source wrote in
@@ -778,7 +817,7 @@ function groundTokenSet(text) {
     // tokens the capital IS the identity, so the "case carries no signal"
     // premise does not hold. A source that CAPITALIZES the word still gets the
     // promotion, so "Israeli jets" -> "Israel struck" keeps working.
-    const sourceCapitalized = /^\p{Lu}/u.test(stripped || raw);
+    const sourceCapitalized = SOURCE_CAPITALIZED_RE.test(stripped || raw);
     if (!sourceCapitalized && (ACRONYM_NORMALIZE.has(token) || DEMONYM_NORMALIZE.has(token))) continue;
     out.add(normalizeToken(token));
   }
@@ -967,8 +1006,8 @@ function formatNumericFact(value) {
 }
 
 function normalizeDigitFact(raw) {
-  const match = raw.trim().toLowerCase().replace(/,/g, '').match(
-    /^(\d+(?:\.\d+)?)(?:\s*(%|percent|thousands?|millions?|billions?|bil\b|trillions?))?$/,
+  const match = raw.trim().toLowerCase().replace(NORMALIZE_DIGIT_FACT_RE, '').match(
+    NORMALIZE_DIGIT_FACT_RE_2,
   );
   if (!match) return `number:${raw.trim().toLowerCase()}`;
   const value = Number(match[1]);
@@ -976,12 +1015,12 @@ function normalizeDigitFact(raw) {
   const unit = match[2];
   if (!unit) return `number:${formatNumericFact(value)}`;
   if (unit === '%' || unit === 'percent') return `number:${formatNumericFact(value)}%`;
-  const scale = NUMBER_FACT_WORD_VALUES.get(unit === 'bil' ? 'billion' : unit.replace(/s$/, ''));
+  const scale = NUMBER_FACT_WORD_VALUES.get(unit === 'bil' ? 'billion' : unit.replace(SCALE_RE, ''));
   return scale ? `number:${formatNumericFact(value * scale)}` : `number:${formatNumericFact(value)} ${unit}`;
 }
 
 function normalizeNumberWordFact(raw) {
-  const words = raw.toLowerCase().replace(/-/g, ' ').split(/\s+/).filter(Boolean);
+  const words = raw.toLowerCase().replace(WORDS_RE, ' ').split(WHITESPACE_RE).filter(Boolean);
   let percent = false;
   if (words.at(-1) === 'percent') {
     percent = true;
@@ -1038,23 +1077,23 @@ function addDateFact(facts, year, month, day, dateParts = true) {
 }
 
 function addDateExpressionFacts(facts, raw, dateParts) {
-  const normalized = raw.trim().replace(/\s+/g, ' ');
-  let match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const normalized = raw.trim().replace(WHITESPACE_RE_2, ' ');
+  let match = normalized.match(ADD_DATE_EXPRESSION_FACTS_RE);
   if (match) {
     addDateFact(facts, match[1], match[2], match[3], dateParts);
     return;
   }
-  match = normalized.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?$/);
+  match = normalized.match(ADD_DATE_EXPRESSION_FACTS_RE_2);
   if (match) {
     addDateFact(facts, match[3], match[1], match[2], dateParts);
     return;
   }
-  match = normalized.match(/^([A-Za-z]+)\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?$/);
+  match = normalized.match(ADD_DATE_EXPRESSION_FACTS_RE_3);
   if (match) {
     addDateFact(facts, match[3], DATE_MONTH_NUMBERS.get(match[1].toLowerCase()), match[2], dateParts);
     return;
   }
-  match = normalized.match(/^(\d{1,2})\s+([A-Za-z]+)\.?\s*(?:\s+(\d{4}))?$/);
+  match = normalized.match(ADD_DATE_EXPRESSION_FACTS_RE_4);
   if (match) addDateFact(facts, match[3], DATE_MONTH_NUMBERS.get(match[2].toLowerCase()), match[1], dateParts);
 }
 
@@ -1076,7 +1115,7 @@ export function extractNumericFacts(text, { dateParts = true } = {}) {
   const facts = new Set();
   if (typeof text !== 'string' || text.length === 0) return facts;
 
-  let remaining = text.replace(/\[\d{1,3}\]/g, ' ');
+  let remaining = text.replace(REMAINING_RE, ' ');
   remaining = remaining.replace(DATE_EXPRESSION_RE, (match) => {
     addDateExpressionFacts(facts, match, dateParts);
     return ' '.repeat(match.length);
@@ -1084,7 +1123,7 @@ export function extractNumericFacts(text, { dateParts = true } = {}) {
   remaining = remaining.replace(DIGIT_FACT_RE, (match, offset, original) => {
     const before = original[offset - 1];
     const after = original[offset + match.length];
-    const isWordChar = (value) => typeof value === 'string' && /[\p{L}\p{N}]/u.test(value);
+    const isWordChar = (value) => typeof value === 'string' && IS_WORD_CHAR_RE.test(value);
     if (isWordChar(before) || isWordChar(after)) return match;
     facts.add(normalizeDigitFact(match));
     return ' '.repeat(match.length);
@@ -1124,7 +1163,7 @@ const STATUS_QUALIFIER_CLASSES = [
   ['late'],
 ];
 const STATUS_QUALIFIER_CLASS_OF = new Map(
-  STATUS_QUALIFIER_CLASSES.flatMap((cls) => cls.map((q) => [q.replace(/-$/, ''), cls])),
+  STATUS_QUALIFIER_CLASSES.flatMap((cls) => cls.map((q) => [q.replace(STATUS_QUALIFIER_CLASS_OF_RE, ''), cls])),
 );
 const PERSON_TITLE_WORDS =
   'president|prime minister|vice president|premier|chancellor|minister|secretary|senator|governor|mayor|'
@@ -1140,7 +1179,7 @@ const CALENDAR_WORDS =
   'Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|'
   + 'August|September|October|November|December';
 // No `i` flag: under `i`, \p{Lu} also matches lowercase, so "Former officials said" reads as a named person.
-const anyCase = (/** @type {string} */ word) => word.replace(/\p{L}/gu, (c) => `[${c.toUpperCase()}${c}]`);
+const anyCase = (/** @type {string} */ word) => word.replace(ANY_CASE_RE, (c) => `[${c.toUpperCase()}${c}]`);
 const PERSON_TITLE_RE_SOURCE = PERSON_TITLE_WORDS.split('|').map(anyCase).join('|');
 // A bridge word is part of the office name: a nationality or institution
 // ("US", "Brazilian", "White House"), an office modifier, or a title word
@@ -1179,12 +1218,12 @@ export function validateNoHallucinatedStatusQualifiers(summary, groundText) {
   const grounds = (Array.isArray(groundText) ? groundText : [groundText])
     .filter((g) => typeof g === 'string' && g.trim().length > 0)
     .map((g) => normalizeDottedAcronyms(g).toLowerCase())
-    .map((text) => ({ text, tokens: new Set(text.split(/[^\p{L}\p{N}]+/u)) }));
+    .map((text) => ({ text, tokens: new Set(text.split(GROUNDS_RE)) }));
   if (grounds.length === 0) return { ok: true };
   const hallucinated = [];
   for (const match of normalizeDottedAcronyms(summary).matchAll(STATUS_QUALIFIER_RE)) {
     const qualifier = match[1].toLowerCase();
-    const name = match[2].replace(/['’]s$/i, '').toLowerCase();
+    const name = match[2].replace(STRIPPED_RE_2, '').toLowerCase();
     const cls = STATUS_QUALIFIER_CLASS_OF.get(qualifier) ?? [qualifier];
     const grounded = grounds.some((g) => cls.some((q) => groundHasWord(g, q)) && groundHasWord(g, name));
     if (!grounded) hallucinated.push(match[0].trim());
@@ -1319,7 +1358,7 @@ export function extractAnchorTokens(s) {
   if (typeof s !== 'string' || s.length === 0) return [];
   const out = [];
   for (const w of s.split(GROUNDING_TOKEN_DELIMS)) {
-    if (w.length < 4 || !/^[A-Z]/.test(w)) continue;
+    if (w.length < 4 || !EXTRACT_ANCHOR_TOKENS_RE.test(w)) continue;
     const lower = w.toLowerCase();
     if (!GROUNDING_ANCHOR_STOPWORDS.has(lower)) out.push(lower);
   }
@@ -1518,7 +1557,7 @@ export function verifyCitationIndexes(text, sourceCount) {
   let stripped = 0;
   // 1-3 digits: [123] must not sail through unverified (review finding);
   // 4+ digit brackets ([2026]) are treated as prose, not citations.
-  const cleaned = text.replace(/\s*\[(\d{1,3})\]/g, (full, numStr) => {
+  const cleaned = text.replace(CLEANED_RE, (full, numStr) => {
     const n = Number.parseInt(numStr, 10);
     if (n >= 1 && n <= max) return full;
     stripped++;

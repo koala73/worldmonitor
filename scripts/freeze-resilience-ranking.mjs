@@ -25,6 +25,18 @@ import { Redis } from '@upstash/redis';
 
 import { loadEnvFile } from './_seed-utils.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const ARRAY_BODY_RE = /\/\*[\s\S]*?\*\//g;
+const ARRAY_BODY_RE_2 = /\/\/[^\n]*/g;
+const VALUES_RE = /['"]([^'"]+)['"]/g;
+const LOAD_COUNTRY_NAME_MAP_RE = /\b([a-z])/g;
+const QID_RE = /\/entity\/(Q\d+)$/;
+const SESSION_COOKIE_RE = /(?:^|,\s*)(wm-session=[^;]+)/;
+const RESOLVE_RANKING_SNAPSHOT_OUTPUT_PATH_RE = /[\\/]/;
+const RESOLVE_RANKING_SNAPSHOT_OUTPUT_PATH_RE_2 = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
+const RESOLVE_RANKING_SNAPSHOT_OUTPUT_PATH_RE_3 = /^resilience-ranking-live-post-pr1-(\d{4}-\d{2}-\d{2})\.json$/;
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -61,7 +73,7 @@ const METHODOLOGY_FORMULA =
 const FORMULA_CHECK_COUNTRIES = (process.env.RESILIENCE_RANKING_FORMULA_CHECK_COUNTRIES || 'NO,US,YE')
   .split(',')
   .map((countryCode) => countryCode.trim().toUpperCase())
-  .filter((countryCode) => /^[A-Z]{2}$/.test(countryCode));
+  .filter((countryCode) => COUNTRY_CODE_RE.test(countryCode));
 const FORMULA_SCORE_TOLERANCE = Number(process.env.RESILIENCE_RANKING_FORMULA_TOLERANCE || 0.25);
 const OUTPUT_BASENAME = process.env.RESILIENCE_RANKING_OUTPUT_BASENAME || '';
 const DETAILS_CONCURRENCY = Number(process.env.RESILIENCE_RANKING_DETAILS_CONCURRENCY || 6);
@@ -152,9 +164,9 @@ function getExportedStringCollection(sourceText, exportName) {
   }
 
   const arrayBody = match[1]
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '');
-  const values = [...arrayBody.matchAll(/['"]([^'"]+)['"]/g)].map((entry) => entry[1]);
+    .replace(ARRAY_BODY_RE, '')
+    .replace(ARRAY_BODY_RE_2, '');
+  const values = [...arrayBody.matchAll(VALUES_RE)].map((entry) => entry[1]);
   if (values.length === 0) {
     throw new Error(`${exportName} must contain at least one string literal`);
   }
@@ -246,9 +258,9 @@ async function loadCountryNameMap() {
   const reverse = {};
   for (const [name, iso2] of Object.entries(forward)) {
     const code = String(iso2 || '').toUpperCase();
-    if (!/^[A-Z]{2}$/.test(code)) continue;
+    if (!COUNTRY_CODE_RE.test(code)) continue;
     if (reverse[code]) continue;
-    reverse[code] = name.replace(/\b([a-z])/g, (_, c) => c.toUpperCase());
+    reverse[code] = name.replace(LOAD_COUNTRY_NAME_MAP_RE, (_, c) => c.toUpperCase());
   }
   return reverse;
 }
@@ -258,7 +270,7 @@ async function loadLegacyCountryNames() {
   return new Map(
     [...(snapshot.items || []), ...(snapshot.greyedOut || [])]
       .map((country) => [String(country.countryCode || '').toUpperCase(), country.countryName])
-      .filter(([code, name]) => /^[A-Z]{2}$/.test(code) && typeof name === 'string' && name),
+      .filter(([code, name]) => COUNTRY_CODE_RE.test(code) && typeof name === 'string' && name),
   );
 }
 
@@ -287,7 +299,7 @@ export function selectWikidataIdentities(countryCodes, bindings) {
   for (const binding of bindings || []) {
     const code = String(binding?.code?.value || '').toUpperCase();
     const entity = String(binding?.country?.value || '');
-    const qid = entity.match(/\/entity\/(Q\d+)$/)?.[1];
+    const qid = entity.match(QID_RE)?.[1];
     const commonName = String(binding?.countryLabel?.value || '').trim();
     if (!requested.has(code) || !qid || !commonName) continue;
     const identity = {
@@ -394,7 +406,7 @@ async function mintSessionCookie() {
   }
 
   const sessionCookie = readSetCookies(response.headers)
-    .map((cookie) => cookie.match(/(?:^|,\s*)(wm-session=[^;]+)/)?.[1])
+    .map((cookie) => cookie.match(SESSION_COOKIE_RE)?.[1])
     .find(Boolean);
   if (!sessionCookie) throw new Error(`No wm-session cookie returned by ${SESSION_URL}`);
   return sessionCookie;
@@ -712,12 +724,12 @@ function enrichItems(
 
 function resolveRankingSnapshotOutputPath(capturedAt, outputBasename = OUTPUT_BASENAME) {
   const basename = outputBasename || `resilience-ranking-${capturedAt}.json`;
-  if (/[\\/]/.test(basename)) {
+  if (RESOLVE_RANKING_SNAPSHOT_OUTPUT_PATH_RE.test(basename)) {
     throw new Error(`RESILIENCE_RANKING_OUTPUT_BASENAME must be a filename only, got ${basename}`);
   }
   const match =
-    /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/.exec(basename) ||
-    /^resilience-ranking-live-post-pr1-(\d{4}-\d{2}-\d{2})\.json$/.exec(basename);
+    RESOLVE_RANKING_SNAPSHOT_OUTPUT_PATH_RE_2.exec(basename) ||
+    RESOLVE_RANKING_SNAPSHOT_OUTPUT_PATH_RE_3.exec(basename);
   if (!match) {
     throw new Error(
       `RESILIENCE_RANKING_OUTPUT_BASENAME must match resilience-ranking-YYYY-MM-DD.json or resilience-ranking-live-post-pr1-YYYY-MM-DD.json, got ${basename}`,

@@ -25,6 +25,11 @@ import {
   transportFailureReason,
 } from '../_china-exchange-transport.mjs';
 
+const PARSED_RE = /,/gu;
+const ISO_DAY_FROM_COMPACT_RE = /^\d{8}$/u;
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/u;
+
+
 export const CHINA_STOCK_CONNECT_KEY = 'market:china:stock-connect:v1';
 
 // Northbound buy/sell disclosure ended on this date; the code below never
@@ -243,7 +248,7 @@ export function parseExchangeNumber(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!GROUPED_NUMBER_RE.test(trimmed)) return null;
-  const parsed = Number(trimmed.replace(/,/gu, ''));
+  const parsed = Number(trimmed.replace(PARSED_RE, ''));
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -258,14 +263,14 @@ function scaled(value, factor) {
 
 export function isoDayFromCompact(value) {
   const compact = String(value ?? '').trim();
-  if (!/^\d{8}$/u.test(compact)) return null;
+  if (!ISO_DAY_FROM_COMPACT_RE.test(compact)) return null;
   const day = `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)}`;
   return isoDay(day);
 }
 
 export function isoDay(value) {
   const day = String(value ?? '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(day)) return null;
+  if (!ISO_DAY_RE.test(day)) return null;
   const timestamp = Date.parse(`${day}T00:00:00.000Z`);
   return Number.isFinite(timestamp)
     && new Date(timestamp).toISOString().slice(0, 10) === day

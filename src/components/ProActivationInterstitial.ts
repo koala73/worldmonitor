@@ -83,6 +83,10 @@ import {
 } from '@/services/pro-activation-state';
 import { declareOverlay } from '@/utils/open-modal';
 
+const WHITESPACE_RE = /\s+/g;
+const IS_APPLE_PLATFORM_RE = /Mac|iPhone|iPad|iPod/i;
+
+
 /**
  * How an in-flow confirm resolved. `blocked` means the platform refused in a
  * way a retry cannot fix — a denied notification permission, which browsers
@@ -1233,7 +1237,7 @@ function readSelectedDigestHour(): number {
 }
 
 function truncatePreview(text: string): string {
-  const clean = text.replace(/\s+/g, ' ').trim();
+  const clean = text.replace(WHITESPACE_RE, ' ').trim();
   if (clean.length <= BRIEF_PREVIEW_MAX) return clean;
   const cut = clean.slice(0, BRIEF_PREVIEW_MAX);
   const lastSpace = cut.lastIndexOf(' ');
@@ -1341,7 +1345,7 @@ function buildBriefExtra(syncBrief: string | null, hourRef: DigestHourRef): ProA
 function commandSearchShortcut(): { keys: readonly string[]; label: string } {
   const isApplePlatform =
     typeof navigator !== 'undefined' &&
-    /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    IS_APPLE_PLATFORM_RE.test(navigator.userAgent);
   return isApplePlatform
     ? { keys: ['⌘', 'K'], label: '⌘K' }
     : { keys: ['Ctrl', 'K'], label: 'Ctrl+K' };

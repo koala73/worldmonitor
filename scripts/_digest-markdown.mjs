@@ -12,12 +12,33 @@
 
 // ── HTML escape (email: " encoded too for attribute safety) ──────────────────
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+const RENDER_EMAIL_INLINE_RE = /\*\*(.+?)\*\*/g;
+const RENDER_EMAIL_INLINE_RE_2 = /__(.+?)__/g;
+const RENDER_EMAIL_INLINE_RE_3 = /(?<!\*)\*([^*\n]+?)\*(?!\*)/g;
+const RENDER_EMAIL_INLINE_RE_4 = /^([A-Z][A-Za-z ]+): */;
+const BULLET_RE = /^\s*[*-]\s+(.+)$/;
+const MARKDOWN_TO_TELEGRAM_HTML_RE = /^[*-]\s+/gm;
+const MARKDOWN_TO_TELEGRAM_HTML_RE_2 = /^([A-Z][A-Za-z ]+): */gm;
+const MARKDOWN_TO_SLACK_MRKDWN_RE = /\u0001/g;
+const ESCAPE_DISCORD_TEXT_RE = /\\/g;
+const ESCAPE_DISCORD_TEXT_RE_2 = /\[/g;
+const MARKDOWN_TO_DISCORD_RE = /^\*\s+/gm;
+const WHITESPACE_RE = /\s+/g;
+const FORMAT_DIGEST_ITEM_TITLE_RE = /[<>|]/g;
+const FORMAT_DIGEST_ITEM_TITLE_RE_2 = /\|/g;
+const LABEL_RE = /[\\[\]*_~`|]/g;
+const FORMAT_DIGEST_ITEM_TITLE_RE_3 = /[()<>[\]]/g;
+
 export function escapeHtml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(ESCAPE_HTML_RE, '&amp;')
+    .replace(ESCAPE_HTML_RE_2, '&lt;')
+    .replace(ESCAPE_HTML_RE_3, '&gt;')
+    .replace(ESCAPE_HTML_RE_4, '&quot;');
 }
 
 // ── Email HTML ──────────────────────────────────────────────────────────────
@@ -26,13 +47,13 @@ export function escapeHtml(str) {
 export function renderEmailInline(text) {
   let out = text;
   // Bold: **text** or __text__
-  out = out.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#fff;">$1</strong>');
-  out = out.replace(/__(.+?)__/g, '<strong style="color:#fff;">$1</strong>');
+  out = out.replace(RENDER_EMAIL_INLINE_RE, '<strong style="color:#fff;">$1</strong>');
+  out = out.replace(RENDER_EMAIL_INLINE_RE_2, '<strong style="color:#fff;">$1</strong>');
   // Italic: *text* (not adjacent to another asterisk, avoids collision w/ bold)
-  out = out.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<em>$1</em>');
+  out = out.replace(RENDER_EMAIL_INLINE_RE_3, '<em>$1</em>');
   // Section header (label at start of the block, e.g. "Assessment:", "Signals to watch:")
   out = out.replace(
-    /^([A-Z][A-Za-z ]+): */,
+    RENDER_EMAIL_INLINE_RE_4,
     '<strong style="color:#4ade80;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">$1:</strong> ',
   );
   return out;
@@ -54,7 +75,7 @@ export function markdownToEmailHtml(md) {
     const trimmed = line.trim();
     if (!trimmed) { flush(); continue; }
 
-    const bullet = line.match(/^\s*[*-]\s+(.+)$/);
+    const bullet = line.match(BULLET_RE);
     if (bullet) {
       if (!current || current.type !== 'ul') { flush(); current = { type: 'ul', items: [] }; }
       current.items.push(bullet[1]);
@@ -83,22 +104,22 @@ export function markdownToEmailHtml(md) {
 
 export function escapeTelegramHtml(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(ESCAPE_HTML_RE, '&amp;')
+    .replace(ESCAPE_HTML_RE_2, '&lt;')
+    .replace(ESCAPE_HTML_RE_3, '&gt;');
 }
 
 export function markdownToTelegramHtml(md) {
   let html = escapeTelegramHtml(md);
   // Bullets first (Telegram HTML has no list elements, render as • char)
-  html = html.replace(/^[*-]\s+/gm, '• ');
+  html = html.replace(MARKDOWN_TO_TELEGRAM_HTML_RE, '• ');
   // Bold: **text** or __text__
-  html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-  html = html.replace(/__(.+?)__/g, '<b>$1</b>');
+  html = html.replace(RENDER_EMAIL_INLINE_RE, '<b>$1</b>');
+  html = html.replace(RENDER_EMAIL_INLINE_RE_2, '<b>$1</b>');
   // Italic: *text* (single asterisk, not part of bold)
-  html = html.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '<i>$1</i>');
+  html = html.replace(RENDER_EMAIL_INLINE_RE_3, '<i>$1</i>');
   // Section headers: Assessment: / Signals to watch:
-  html = html.replace(/^([A-Z][A-Za-z ]+): */gm, '<b>$1:</b> ');
+  html = html.replace(MARKDOWN_TO_TELEGRAM_HTML_RE_2, '<b>$1:</b> ');
   return html;
 }
 
@@ -107,25 +128,25 @@ export function markdownToTelegramHtml(md) {
 
 export function escapeSlackMrkdwn(str) {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(ESCAPE_HTML_RE, '&amp;')
+    .replace(ESCAPE_HTML_RE_2, '&lt;')
+    .replace(ESCAPE_HTML_RE_3, '&gt;');
 }
 
 export function markdownToSlackMrkdwn(md) {
   let txt = escapeSlackMrkdwn(md);
   // Bullets first (avoid collision with italic single-asterisk regex)
-  txt = txt.replace(/^[*-]\s+/gm, '• ');
+  txt = txt.replace(MARKDOWN_TO_TELEGRAM_HTML_RE, '• ');
   // Bold: **text** or __text__ → *text* (Slack uses single asterisk).
   // Use \u0001 placeholder so italic pass below doesn't re-match.
-  txt = txt.replace(/\*\*(.+?)\*\*/g, '\u0001$1\u0001');
-  txt = txt.replace(/__(.+?)__/g, '\u0001$1\u0001');
+  txt = txt.replace(RENDER_EMAIL_INLINE_RE, '\u0001$1\u0001');
+  txt = txt.replace(RENDER_EMAIL_INLINE_RE_2, '\u0001$1\u0001');
   // Italic: *text* → _text_
-  txt = txt.replace(/(?<!\*)\*([^*\n]+?)\*(?!\*)/g, '_$1_');
+  txt = txt.replace(RENDER_EMAIL_INLINE_RE_3, '_$1_');
   // Restore bold markers
-  txt = txt.replace(/\u0001/g, '*');
+  txt = txt.replace(MARKDOWN_TO_SLACK_MRKDWN_RE, '*');
   // Section headers → *bold*
-  txt = txt.replace(/^([A-Z][A-Za-z ]+): */gm, '*$1:* ');
+  txt = txt.replace(MARKDOWN_TO_TELEGRAM_HTML_RE_2, '*$1:* ');
   return txt;
 }
 
@@ -138,13 +159,13 @@ export function markdownToSlackMrkdwn(md) {
 // `[trusted](https://evil)` while bare URLs still render. Mirrors
 // escapeDiscordText in scripts/notification-relay.cjs.
 export function escapeDiscordText(str) {
-  return String(str).replace(/\\/g, '\\\\').replace(/\[/g, '\\[');
+  return String(str).replace(ESCAPE_DISCORD_TEXT_RE, '\\\\').replace(ESCAPE_DISCORD_TEXT_RE_2, '\\[');
 }
 
 export function markdownToDiscord(md) {
   let txt = escapeDiscordText(md);
-  txt = txt.replace(/^\*\s+/gm, '- ');
-  txt = txt.replace(/^([A-Z][A-Za-z ]+): */gm, '**$1:** ');
+  txt = txt.replace(MARKDOWN_TO_DISCORD_RE, '- ');
+  txt = txt.replace(MARKDOWN_TO_TELEGRAM_HTML_RE_2, '**$1:** ');
   return txt;
 }
 
@@ -177,19 +198,19 @@ function percentEncodeChar(ch) {
 export function formatDigestItemTitle(rawTitle, link, target) {
   // One line per item: a line break inside a link would let a line-boundary
   // cut split it.
-  const title = target === 'plain' ? rawTitle : String(rawTitle).replace(/\s+/g, ' ').trim();
+  const title = target === 'plain' ? rawTitle : String(rawTitle).replace(WHITESPACE_RE, ' ').trim();
   const url = target === 'plain' ? '' : safeHttpUrl(link);
   if (!url) return escapeDigestText(title, target);
   if (target === 'telegram') {
-    return `<a href="${escapeTelegramHtml(url).replace(/"/g, '&quot;')}">${escapeTelegramHtml(title)}</a>`;
+    return `<a href="${escapeTelegramHtml(url).replace(ESCAPE_HTML_RE_4, '&quot;')}">${escapeTelegramHtml(title)}</a>`;
   }
   if (target === 'slack') {
     // Slack has no escape for `|`; U+2223 keeps the headline readable.
-    return `<${url.replace(/[<>|]/g, percentEncodeChar)}|${escapeSlackMrkdwn(title).replace(/\|/g, '\u2223')}>`;
+    return `<${url.replace(FORMAT_DIGEST_ITEM_TITLE_RE, percentEncodeChar)}|${escapeSlackMrkdwn(title).replace(FORMAT_DIGEST_ITEM_TITLE_RE_2, '\u2223')}>`;
   }
   // Discord: `<url>` inside the masked link suppresses the embed preview.
-  const label = String(title).replace(/[\\[\]*_~`|]/g, '\\$&');
-  return `[${label}](<${url.replace(/[()<>[\]]/g, percentEncodeChar)}>)`;
+  const label = String(title).replace(LABEL_RE, '\\$&');
+  return `[${label}](<${url.replace(FORMAT_DIGEST_ITEM_TITLE_RE_3, percentEncodeChar)}>)`;
 }
 
 // Cuts at Discord's 2000-char limit without splitting a `\x` escape pair.

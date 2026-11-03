@@ -35,6 +35,11 @@
 // Railway records a refused push as a deployment whose status is SKIPPED, with
 // the reason it refused. The two reasons mean opposite things and must not be
 // collapsed: this one is the filter working as configured.
+const WATCH_PATTERN_TO_REG_EXP_RE = /[!{}[\]]/;
+const NORMALIZED_RE = /^\.?\/+/;
+const WATCH_PATTERN_TO_REG_EXP_RE_2 = /[.+^${}()|[\]\\]/g;
+const NORMALIZE_ROOT_DIRECTORY_RE = /^\/+|\/+$/g;
+
 export const NO_MATCHING_PATHS_REASON = 'No changes to watched files';
 
 // ...while this one is a deferral that has nothing to do with paths. Railway
@@ -55,14 +60,14 @@ export const CHECK_SUITE_FAILED_REASON = 'CI check suite failed';
  */
 export function watchPatternToRegExp(pattern) {
   if (typeof pattern !== 'string' || pattern.length === 0) return null;
-  if (/[!{}[\]]/.test(pattern)) return null;
+  if (WATCH_PATTERN_TO_REG_EXP_RE.test(pattern)) return null;
 
   // Railway's own documentation writes watch paths rooted at the repository as
   // `/src/**` and `/*.go`. Repository-relative paths carry no leading slash, so
   // compiling that shape literally produces a regex that can never match — a
   // closure silently narrowed to nothing, which is the one direction this
   // module must never fail in. Strip it instead. Same for a `./` prefix.
-  const normalized = pattern.replace(/^\.?\/+/, '');
+  const normalized = pattern.replace(NORMALIZED_RE, '');
   if (normalized.length === 0) return null;
 
   // Compiled per PATH SEGMENT, not per character. `**` means "zero or more
@@ -86,7 +91,7 @@ export function watchPatternToRegExp(pattern) {
     for (const char of segment) {
       if (char === '*') source += '[^/]*';
       else if (char === '?') source += '[^/]';
-      else source += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+      else source += char.replace(WATCH_PATTERN_TO_REG_EXP_RE_2, '\\$&');
     }
     if (!isLast) source += '/';
   }
@@ -102,7 +107,7 @@ function compile(pattern) {
 
 /** Strip the leading and trailing slashes Railway tolerates in a root directory. */
 export function normalizeRootDirectory(value) {
-  return typeof value === 'string' ? value.replace(/^\/+|\/+$/g, '') : '';
+  return typeof value === 'string' ? value.replace(NORMALIZE_ROOT_DIRECTORY_RE, '') : '';
 }
 
 // Where each registry deployMode roots its build context. Mirrors the map

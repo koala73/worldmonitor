@@ -1,3 +1,6 @@
+
+
+const PARSE_CHECKOUT_RETRY_AFTER_SECONDS_RE = /^\d{1,4}$/;
 export const DEFAULT_CHECKOUT_RETRY_AFTER_SECONDS = 10;
 export const MAX_CHECKOUT_RETRY_AFTER_SECONDS = 9_999;
 
@@ -9,7 +12,7 @@ export const MAX_CHECKOUT_RETRY_AFTER_SECONDS = 9_999;
 export function parseCheckoutRetryAfterSeconds(
   value: string | null | undefined,
 ): number {
-  if (!value || !/^\d{1,4}$/.test(value)) {
+  if (!value || !PARSE_CHECKOUT_RETRY_AFTER_SECONDS_RE.test(value)) {
     return DEFAULT_CHECKOUT_RETRY_AFTER_SECONDS;
   }
   return Math.min(Number(value), MAX_CHECKOUT_RETRY_AFTER_SECONDS);

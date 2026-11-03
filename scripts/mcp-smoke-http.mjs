@@ -1,3 +1,10 @@
+
+
+const TEXT_RE = /https?:\/\/[^\s]+/gi;
+const TEXT_RE_2 = /\b(Bearer|Basic)\s+[^\s,;]+/gi;
+const TEXT_RE_3 = /\b(authorization|cookie|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password)\s*[:=]\s*[^\s,;]+/gi;
+const TEXT_RE_4 = /[\r\n\t]+/g;
+const VALIDATE_MALFORMED_OAUTH_RESPONSE_RE = /application\/json/i;
 const RESPONSE_HEADER_ALLOWLIST = ['cf-ray', 'x-vercel-id', 'retry-after', 'content-type'];
 const MAX_ERROR_DEPTH = 3;
 const MAX_ERROR_ENTRIES = 3;
@@ -5,10 +12,10 @@ const MAX_ERROR_STRING_LENGTH = 320;
 
 function boundedText(value) {
   const text = String(value ?? '')
-    .replace(/https?:\/\/[^\s]+/gi, '[url redacted]')
-    .replace(/\b(Bearer|Basic)\s+[^\s,;]+/gi, '$1 [REDACTED]')
-    .replace(/\b(authorization|cookie|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password)\s*[:=]\s*[^\s,;]+/gi, '$1=[REDACTED]')
-    .replace(/[\r\n\t]+/g, ' ');
+    .replace(TEXT_RE, '[url redacted]')
+    .replace(TEXT_RE_2, '$1 [REDACTED]')
+    .replace(TEXT_RE_3, '$1=[REDACTED]')
+    .replace(TEXT_RE_4, ' ');
   return text.length > MAX_ERROR_STRING_LENGTH ? `${text.slice(0, MAX_ERROR_STRING_LENGTH)}…` : text;
 }
 
@@ -144,7 +151,7 @@ export function createTimedFetch({
 
 export function validateMalformedOAuthResponse(response, text) {
   if (response.status !== 400) return { ok: false, detail: `expected HTTP 400 JSON OAuth error, got HTTP ${response.status}` };
-  if (!/application\/json/i.test(response.headers.get('content-type') ?? '')) {
+  if (!VALIDATE_MALFORMED_OAUTH_RESPONSE_RE.test(response.headers.get('content-type') ?? '')) {
     return { ok: false, detail: 'HTTP 400 OAuth response lacks application/json content-type' };
   }
   try {

@@ -47,6 +47,9 @@ import { randomUUID } from 'node:crypto';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { REPLAY_WINDOW_DAYS } from './lib/brief-replay-constants.mjs';
 
+const ELIGIBLE_KEYS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export const DEFAULT_REPLAY_DAYS = REPLAY_WINDOW_DAYS;
 const REPLAY_KEY_PREFIX = 'digest:replay-log:v1';
 const SCAN_PAGE_SIZE = 200;
@@ -688,7 +691,7 @@ export async function fetchRecords(args, opts = {}) {
   const cutoffDate = new Date(cutoffMs).toISOString().slice(0, 10);
   const eligibleKeys = allKeys.filter((k) => {
     const dateSuffix = k.slice(-10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(dateSuffix) && dateSuffix >= cutoffDate;
+    return ELIGIBLE_KEYS_RE.test(dateSuffix) && dateSuffix >= cutoffDate;
   });
 
   if (eligibleKeys.length === 0) {

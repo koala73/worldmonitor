@@ -1,5 +1,8 @@
 'use strict';
 
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 const { createHash } = require('node:crypto');
 
 const { BASE_URL, PATHS, EVENT_REGISTRY } = require('../constants');
@@ -31,7 +34,7 @@ const perform = (z, bundle) => receive(z, bundle, { eventType: EVENT.key });
 // Same rule as the delivery worker (keywordMatches): whole word, case-insensitive.
 function matchedKeywords(title, keywords) {
   return keywords.filter((keyword) => {
-    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = keyword.replace(ESCAPED_RE, '\\$&');
     return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?=$|[^\\p{L}\\p{N}])`, 'iu').test(title);
   });
 }

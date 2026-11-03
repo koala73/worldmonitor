@@ -15,6 +15,9 @@ import {
 } from './_seed-utils.mjs';
 import { HS4_CODES, HS4_BATCHES, PREVIEW_MAX_RECORDS, parseRecords, groupByProduct, groupWorldExports, toCanonicalProduct, toPartnersProduct, comtradeFailureState, normalizeComtradePartner } from './shared/comtrade.mjs';
 import { LNG_CMD_CODE, LNG_HORMUZ_SHARE_KEY, MIN_LNG_PRE_CRISIS_COUNTRIES, buildLngOriginShares, lngOriginRequests, parseLngRows } from './shared/comtrade-lng-origin.mjs';
+
+const WHITESPACE_RE = /\s+/g;
+
 export { HS4_CODES, MAX_HS4_CODES_PER_BATCH, groupByProduct } from './shared/comtrade.mjs';
 import { candidatePeriods, periodWindow, recentPeriod } from './shared/comtrade-period.mjs';
 
@@ -449,7 +452,7 @@ export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequ
     // The refusal body names the cause (an exhausted quota says when it
     // replenishes); without it the October 2026 tail failures were unattributable
     // once Railway's log retention lapsed. Bounded, and it carries no key.
-    const detail = await resp.text().then(t => t.replace(/\s+/g, ' ').slice(0, 200)).catch(() => '');
+    const detail = await resp.text().then(t => t.replace(WHITESPACE_RE, ' ').slice(0, 200)).catch(() => '');
     console.warn(`    HTTP ${resp.status} for reporter ${label}${tag}${detail ? `: ${detail}` : ''}`);
     // 401 and 403 count with 429: Comtrade refuses an exhausted subscription
     // quota or an invalid key on every later request too, so the breaker should

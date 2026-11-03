@@ -1,3 +1,7 @@
+
+
+const IS_SETTINGS_KEY_RE = /^(?:worldmonitor-panels|worldmonitor-layers|worldmonitor-disabled-feeds)-(?:full|tech|finance|commodity|energy|happy)$/;
+const TS_RE = /[:.]/g;
 export interface ExportedSettings {
   version: number;
   timestamp: string;
@@ -49,7 +53,7 @@ function isDashboardTabsKey(key: string): boolean {
 
 function isSettingsKey(key: string): boolean {
   return SETTINGS_KEYS.includes(key)
-    || /^(?:worldmonitor-panels|worldmonitor-layers|worldmonitor-disabled-feeds)-(?:full|tech|finance|commodity|energy|happy)$/.test(key)
+    || IS_SETTINGS_KEY_RE.test(key)
     || isDashboardTabsKey(key);
 }
 
@@ -230,7 +234,7 @@ export function exportSettings(): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const ts = new Date().toISOString().replace(TS_RE, '-').slice(0, 19);
   a.download = `worldmonitor-settings-${ts}.json`;
   document.body.appendChild(a);
   a.click();

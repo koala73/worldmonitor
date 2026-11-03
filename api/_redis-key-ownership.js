@@ -23,6 +23,8 @@
  * which is the default. Add an entry here only when a Vercel route owns the
  * key's writes.
  */
+const IS_APP_OWNED_REDIS_KEY_RE = /^risk:scores:history:[A-Z]{2}$/;
+
 const APP_OWNED_KEYS = Object.freeze([
   // Written solely by Vercel RPC routes through the prefix-aware server
   // helpers (setCachedJson / cachedFetchJson / runRedisPipeline with
@@ -54,5 +56,5 @@ const APP_OWNED_KEY_SET = new Set(APP_OWNED_KEYS);
  * registry surface is seeder-owned and must be read raw.
  */
 export function isAppOwnedRedisKey(key) {
-  return typeof key === 'string' && (APP_OWNED_KEY_SET.has(key) || /^risk:scores:history:[A-Z]{2}$/.test(key));
+  return typeof key === 'string' && (APP_OWNED_KEY_SET.has(key) || IS_APP_OWNED_REDIS_KEY_RE.test(key));
 }

@@ -23,6 +23,9 @@
 
 import { register } from 'node:module';
 
+const MODULE_RE = /^http:\/\/localhost:\d+\//;
+
+
 const STUB = 'data:text/javascript,export default async function isOnline() { return true; }';
 
 register(`data:text/javascript,${encodeURIComponent(`
@@ -35,7 +38,7 @@ const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
   const response = await originalFetch(input, init);
   const url = String(input instanceof Request ? input.url : input);
-  if (!response.ok && /^http:\/\/localhost:\d+\//.test(url)) {
+  if (!response.ok && MODULE_RE.test(url)) {
     process.stderr.write(`mint-export: ${new URL(url).pathname} returned HTTP ${response.status}\n`);
   }
   return response;

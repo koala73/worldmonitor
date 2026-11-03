@@ -77,6 +77,15 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from '
 import { join, resolve } from 'node:path';
 import { isMainModule } from './lib/main-module.mjs';
 
+const CHUNK_NAME_FROM_FILE_NAME_RE = /^(.+)-[A-Za-z0-9_-]{8}\.js$/;
+const PATH_RE = /[?#]/;
+const INITIAL_DASHBOARD_ASSET_NAMES_RE = /(?:src|href)=["']([^"']+\.js(?:[?#][^"']*)?)["']/gi;
+const ENTRY_URL_RE = /<script\b[^>]*\btype=["']module["'][^>]*\bsrc=["']([^"']+\.js(?:[?#][^"']*)?)["']/i;
+const APP_IMPORT_RE = /import\(\s*["']\.\/(App-[A-Za-z0-9_-]{8}\.js)["']\s*\)/;
+const DEPS_CALL_RE = /__vite__mapDeps\(\[([\d,\s]*)\]\)/;
+const TABLE_SOURCE_RE = /m\.f=\[([^\]]*)\]/;
+
+
 export const DEFAULT_TOLERANCE_PCT = 2;
 export const DEFAULT_TOLERANCE_BYTES = 2048;
 // The total gets a far tighter band than any single chunk — see the header.
@@ -143,13 +152,13 @@ function reseedCommandForSurface(surface) {
  * chunk (.br/.map siblings, un-hashed dist-root files, CSS).
  */
 export function chunkNameFromFileName(fileName) {
-  const match = /^(.+)-[A-Za-z0-9_-]{8}\.js$/.exec(fileName);
+  const match = CHUNK_NAME_FROM_FILE_NAME_RE.exec(fileName);
   return match ? match[1] : null;
 }
 
 /** '/assets/main-x.js', 'assets/main-x.js?v=1' -> 'main-x.js'; null outside assets/. */
 function assetFileNameFromUrl(url) {
-  const path = url.split(/[?#]/, 1)[0];
+  const path = url.split(PATH_RE, 1)[0];
   const marker = path.lastIndexOf('/assets/');
   const fileName = marker >= 0
     ? path.slice(marker + '/assets/'.length)
@@ -171,7 +180,7 @@ function readDashboardHtml(distDir) {
 export function initialDashboardAssetNames(distDir) {
   const { dashboardPath, html } = readDashboardHtml(distDir);
   const assets = new Set();
-  for (const match of html.matchAll(/(?:src|href)=["']([^"']+\.js(?:[?#][^"']*)?)["']/gi)) {
+  for (const match of html.matchAll(INITIAL_DASHBOARD_ASSET_NAMES_RE)) {
     const fileName = assetFileNameFromUrl(match[1]);
     if (fileName) assets.add(fileName);
   }
@@ -194,7 +203,7 @@ export function initialDashboardAssetNames(distDir) {
  */
 export function deferredDashboardAppDependencies(distDir) {
   const { dashboardPath, html } = readDashboardHtml(distDir);
-  const entryUrl = /<script\b[^>]*\btype=["']module["'][^>]*\bsrc=["']([^"']+\.js(?:[?#][^"']*)?)["']/i
+  const entryUrl = ENTRY_URL_RE
     .exec(html)?.[1];
   const entryName = entryUrl ? assetFileNameFromUrl(entryUrl) : null;
   if (!entryName) {
@@ -208,7 +217,7 @@ export function deferredDashboardAppDependencies(distDir) {
     throw new Error(`cannot read dashboard entry ${entryPath}: ${error.message}`);
   }
 
-  const appImport = /import\(\s*["']\.\/(App-[A-Za-z0-9_-]{8}\.js)["']\s*\)/.exec(source);
+  const appImport = APP_IMPORT_RE.exec(source);
   if (!appImport) return null;
   const appFile = appImport[1];
   const unsupported = (reason) => new Error(
@@ -217,11 +226,11 @@ export function deferredDashboardAppDependencies(distDir) {
   );
 
   const afterImport = source.slice(appImport.index + appImport[0].length);
-  const depsCall = /__vite__mapDeps\(\[([\d,\s]*)\]\)/.exec(afterImport);
+  const depsCall = DEPS_CALL_RE.exec(afterImport);
   if (!depsCall || afterImport.slice(0, depsCall.index).includes('import(')) {
     throw unsupported('no Vite preload list');
   }
-  const tableSource = /m\.f=\[([^\]]*)\]/.exec(source)?.[1];
+  const tableSource = TABLE_SOURCE_RE.exec(source)?.[1];
   let table;
   try {
     table = JSON.parse(`[${tableSource}]`);

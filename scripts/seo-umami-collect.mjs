@@ -55,6 +55,12 @@ import { REFERRER_FAMILIES } from './seo-ai-visibility-collector.mjs';
 import { REFERRAL_METRICS } from './seo-ai-visibility-scorecard.mjs';
 import { markdownCell, percent } from './seo-gsc-collect.mjs';
 
+const FAILURE_REASON_RE = /^\[seo-umami\] /;
+const NOTES_RE = /[.!?]$/;
+const ASSERT_NO_SECRETS_RE = /[":\s]/g;
+const PARSE_ARGS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const UMAMI_ORIGIN = 'https://abacus.worldmonitor.app';
@@ -262,7 +268,7 @@ export function createLiveTransport({
 
 const unavailable = (endpoint, reason) => ({ endpoint, availability: 'unavailable', reason });
 
-const failureReason = (error) => error.message.replace(/^\[seo-umami\] /, '');
+const failureReason = (error) => error.message.replace(FAILURE_REASON_RE, '');
 
 async function fetchPayload(transport, endpoint, range) {
   try {
@@ -540,7 +546,7 @@ export function toScorecardReferralExport(snapshot, { classification }) {
     'The 90d window is null: Umami keeps 30 days of raw events.',
     'There are no referrer by landing-page segments: Umami referrer counts are visitor-days with no landing-page dimension.',
     `Referrer families, ${window.label} visitor-days by the Umami collector's host rules: ${families.join('; ')}.`,
-    ...sectionNotes.map((note) => (/[.!?]$/.test(note) ? note : `${note}.`)),
+    ...sectionNotes.map((note) => (NOTES_RE.test(note) ? note : `${note}.`)),
   ];
   return {
     status: sessions === null ? 'unavailable' : 'partial',
@@ -557,7 +563,7 @@ export function toScorecardReferralExport(snapshot, { classification }) {
 /** Refuse to write anything that carries a credential, the token, or an auth payload. */
 export function assertNoSecrets(serialized, { secrets = [] } = {}) {
   for (const marker of SECRET_MARKERS) {
-    invariant(!serialized.includes(marker), `refusing to write output containing ${marker.replace(/[":\s]/g, '')}`);
+    invariant(!serialized.includes(marker), `refusing to write output containing ${marker.replace(ASSERT_NO_SECRETS_RE, '')}`);
   }
   for (const value of secrets) {
     if (typeof value !== 'string' || value.length < 4) continue;
@@ -693,7 +699,7 @@ export function parseArgs(argv) {
   }
   invariant(options.fixtures !== null || options.live, 'pass --fixtures <dir> or --live');
   invariant(!(options.fixtures !== null && options.live), '--fixtures and --live are mutually exclusive');
-  invariant(options.date === null || /^\d{4}-\d{2}-\d{2}$/.test(options.date), '--date must be YYYY-MM-DD');
+  invariant(options.date === null || PARSE_ARGS_RE.test(options.date), '--date must be YYYY-MM-DD');
   return options;
 }
 

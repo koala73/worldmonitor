@@ -1,6 +1,11 @@
 import { markLcpDebug, type LcpMarkSnapshot } from '@/utils/lcp-debug';
 import { sanitizeWebVitalUrl } from '@/bootstrap/web-vitals-utils';
 
+const WHITESPACE_RE = /\s+/g;
+const ESCAPE_CLASS_NAME_RE = /[^a-zA-Z0-9_-]/g;
+const WHITESPACE_RE_2 = /\s+/;
+
+
 type LcpElementSnapshot = {
   className: string;
   closest: string;
@@ -91,7 +96,7 @@ type LcpPerformanceEntry = PerformanceEntry & {
 };
 
 function capText(value: string, maxLength = MAX_TEXT_LENGTH): string {
-  return value.replace(/\s+/g, ' ').trim().slice(0, maxLength);
+  return value.replace(WHITESPACE_RE, ' ').trim().slice(0, maxLength);
 }
 
 function getWindowStorage(kind: 'localStorage' | 'sessionStorage'): Storage | undefined {
@@ -158,14 +163,14 @@ function escapeClassName(name: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
     return CSS.escape(name);
   }
-  return name.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
+  return name.replace(ESCAPE_CLASS_NAME_RE, (char) => `\\${char}`);
 }
 
 function buildSelector(element: Element): string {
   const tag = element.tagName.toLowerCase();
   const id = element.id ? `#${element.id}` : '';
   const classes = getClassName(element)
-    .split(/\s+/)
+    .split(WHITESPACE_RE_2)
     .filter(Boolean)
     .slice(0, 4)
     .map((name) => `.${escapeClassName(name)}`)

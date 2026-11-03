@@ -47,6 +47,12 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { airportNotifyLocation } from './lib/airport-notify-location.mjs';
 import { NARROW_CLOSURE_TEXT, NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
 
+const FETCH_ICAO_NOTAMS_RE = /reach call limit/i;
+const FETCH_ICAO_NOTAMS_RE_2 = /quota.?exceed/i;
+const IS_CLOSURE_TEXT_RE = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/;
+const IS_RESTRICTION_TEXT_RE = /\b(RESTRICTED AREA|PROHIBITED AREA|DANGER AREA|TFR|TEMPORARY FLIGHT RESTRICTION)\b/;
+
+
 const {
   buildDedupMaterial,
   classifySetNxResult,
@@ -863,7 +869,7 @@ async function fetchIcaoNotams(apiKey) {
     signal: AbortSignal.timeout(30_000),
   });
   const body = await resp.text();
-  if (/reach call limit/i.test(body) || /quota.?exceed/i.test(body)) {
+  if (FETCH_ICAO_NOTAMS_RE.test(body) || FETCH_ICAO_NOTAMS_RE_2.test(body)) {
     throw new Error(`ICAO quota exhausted (HTTP ${resp.status} "Reach call limit")`);
   }
   if (!resp.ok) throw new Error(`ICAO HTTP ${resp.status}: ${body.slice(0, 120)}`);
@@ -904,8 +910,8 @@ async function seedNotamClosures() {
     const restrictionCode45 = code45 === 'RE' || code45 === 'RT';
     const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) && closureCode45;
     const isRestrictionCode = (NOTAM_RESTRICTION_QCODES.has(code23) || NOTAM_CLOSURE_QCODES.has(code23)) && restrictionCode45;
-    const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
-    const isRestrictionText = /\b(RESTRICTED AREA|PROHIBITED AREA|DANGER AREA|TFR|TEMPORARY FLIGHT RESTRICTION)\b/.test(text);
+    const isClosureText = IS_CLOSURE_TEXT_RE.test(text);
+    const isRestrictionText = IS_RESTRICTION_TEXT_RE.test(text);
     // Closure wins over restriction for the same NOTAM (mirrors _shared.ts
     // if/else chain at line 446-452).
     if (isClosureCode || isClosureText) {

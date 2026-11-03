@@ -14,6 +14,9 @@
  * carry a richer context (an array, or an object with an `@vocab`) keep it.
  */
 
+const TRAILING_SLASH_RE = /\/$/;
+const STRINGIFY_JSON_LD_RE = /</g;
+
 export const SCHEMA_ORG_CONTEXT = 'https://schema.org';
 
 const SCHEMA_ORG_CONTEXT_URLS = new Set(['https://schema.org', 'http://schema.org']);
@@ -30,7 +33,7 @@ type WithResolvableSchemaContext<T extends Record<string, unknown>> = Omit<T, '@
  */
 export function jsonLdContextIsResolvable(context: unknown): boolean {
   if (typeof context === 'string') {
-    return SCHEMA_ORG_CONTEXT_URLS.has(context.replace(/\/$/, ''));
+    return SCHEMA_ORG_CONTEXT_URLS.has(context.replace(TRAILING_SLASH_RE, ''));
   }
   if (Array.isArray(context)) return context.some((entry) => jsonLdContextIsResolvable(entry));
   if (context && typeof context === 'object') {
@@ -58,5 +61,5 @@ export function withSchemaContext<T extends Record<string, unknown>>(
  * containing `</script>` cannot close the block early.
  */
 export function stringifyJsonLd(value: Record<string, unknown>): string {
-  return JSON.stringify(withSchemaContext(value)).replace(/</g, '\\u003c');
+  return JSON.stringify(withSchemaContext(value)).replace(STRINGIFY_JSON_LD_RE, '\\u003c');
 }

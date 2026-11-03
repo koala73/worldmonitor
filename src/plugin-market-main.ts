@@ -3,10 +3,14 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { terminalChart } from '@/utils/terminal-chart';
 import { miniSparkline } from '@/utils/sparkline';
 
+const WHITESPACE_RE = /\s+/g;
+const FETCHED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+
 type RecordValue = Record<string, unknown>;
 const record = (value: unknown): RecordValue =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as RecordValue : {};
-const text = (value: unknown): string => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+const text = (value: unknown): string => typeof value === 'string' ? value.replace(WHITESPACE_RE, ' ').trim() : '';
 const number = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const groups = [
   { key: 'stocks-bootstrap', list: 'quotes', label: 'Equities' },
@@ -158,7 +162,7 @@ function mount(): void {
         node('p', 'qcoverage', 'Estimated USD flows use a volume/price heuristic, not verified net subscriptions or redemptions.'));
       if (source.rateLimited === true) section.append(node('p', 'qcoverage', 'Provider rate limit reported for this ETF snapshot.'));
       const timestamp = text(source.timestamp);
-      const fetchedAt = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(timestamp)
+      const fetchedAt = FETCHED_AT_RE.test(timestamp)
         && Number.isFinite(Date.parse(timestamp)) ? timestamp : 'unavailable';
       section.append(node('p', 'qcoverage etf-fetch-time', 'ETF data fetched: ' + fetchedAt));
       const usd = (value: unknown): string => {

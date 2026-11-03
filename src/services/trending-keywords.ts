@@ -27,6 +27,14 @@ import {
 import { PUBLISHER_FAMILIES, publisherFamilyFor } from '../../shared/publisher-families.js';
 import { t } from '@/services/i18n';
 
+const NORMALIZE_ENTITY_TYPE_RE = /^[BI]-/i;
+const NORMALIZE_MLENTITY_TEXT_RE = /^##/;
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZE_MLENTITY_TEXT_RE_2 = /^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g;
+const COLLECT_MLENTITIES_RE = /^\d+$/;
+const RECORD_TERM_CANDIDATES_RE = /^(CVE-\d{4}-\d{4,}|APT\d+|FIN\d+)$/i;
+
+
 export { extractEntities };
 
 export interface TrendingHeadlineInput {
@@ -192,7 +200,7 @@ function normalizeEntityType(type: unknown): string {
   }
 
   return type
-    .replace(/^[BI]-/i, '')
+    .replace(NORMALIZE_ENTITY_TYPE_RE, '')
     .trim()
     .toUpperCase();
 }
@@ -203,9 +211,9 @@ function normalizeMLEntityText(text: unknown): string {
   }
 
   return text
-    .replace(/^##/, '')
-    .replace(/\s+/g, ' ')
-    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '')
+    .replace(NORMALIZE_MLENTITY_TEXT_RE, '')
+    .replace(WHITESPACE_RE, ' ')
+    .replace(NORMALIZE_MLENTITY_TEXT_RE_2, '')
     .trim();
 }
 
@@ -219,7 +227,7 @@ function collectMLEntities(rawEntities: MLEntity[] | undefined): string[] {
     if (!Number.isFinite(entity.confidence) || entity.confidence < ML_ENTITY_MIN_CONFIDENCE) continue;
 
     const normalized = normalizeMLEntityText(entity.text);
-    if (normalized.length < 2 || /^\d+$/.test(normalized)) continue;
+    if (normalized.length < 2 || COLLECT_MLENTITIES_RE.test(normalized)) continue;
     entities.push(normalized);
   }
   return entities;
@@ -380,7 +388,7 @@ function recordTermCandidates(
         headlines: [],
       };
       termFrequency.set(term, record);
-    } else if (/^(CVE-\d{4}-\d{4,}|APT\d+|FIN\d+)$/i.test(meta.display)) {
+    } else if (RECORD_TERM_CANDIDATES_RE.test(meta.display)) {
       record.displayTerm = asDisplayTerm(meta.display);
     }
 

@@ -15,6 +15,14 @@ import type {
   GoldLabelSet,
 } from './company-monitoring-blind-evaluation.ts';
 
+const REQUIRE_TEXT_RE = /[\u0000-\u001f\u007f]/u;
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZED_CONTENT_RE = /[\p{P}\p{S}]+/gu;
+const TEXT_RE = /^www\./;
+const NORMALIZED_ORIGIN_RE = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
+const VALIDATE_CANDIDATE_RE = /^\d{1,20}$/;
+
+
 export type CompanyMonitoringGeography = 'US' | 'GB';
 export type CompanyMonitoringTimePrecision = 'day' | 'second';
 export type CompanyMonitoringEvidenceAuthority =
@@ -265,7 +273,7 @@ function requireText(value: unknown, code: string, maximumLength = 500): string 
     || value.length === 0
     || value !== value.trim()
     || value.length > maximumLength
-    || /[\u0000-\u001f\u007f]/u.test(value)
+    || REQUIRE_TEXT_RE.test(value)
   ) fail(code);
   return value;
 }
@@ -297,11 +305,11 @@ function evidenceTimestamp(value: unknown, precision: unknown, code: string): nu
 }
 
 function normalizedIdentity(value: string): string {
-  return value.normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, ' ').trim();
+  return value.normalize('NFKC').toLocaleLowerCase('en-US').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function normalizedContent(value: string): string {
-  return normalizedIdentity(value).replace(/[\p{P}\p{S}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  return normalizedIdentity(value).replace(NORMALIZED_CONTENT_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function sha256(value: unknown): string {
@@ -327,8 +335,8 @@ function sourceContentFingerprint(source: CompanyMonitoringCurationSource): stri
 }
 
 function normalizedOrigin(value: string, code: string): string {
-  const text = requireText(value, code, 253).toLocaleLowerCase('en-US').replace(/^www\./, '');
-  if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(text) || !text.includes('.')) fail(code);
+  const text = requireText(value, code, 253).toLocaleLowerCase('en-US').replace(TEXT_RE, '');
+  if (!NORMALIZED_ORIGIN_RE.test(text) || !text.includes('.')) fail(code);
   return text;
 }
 
@@ -351,7 +359,7 @@ function checkedUrl(value: unknown, code: string): URL {
 
 function validateOriginMatchesUrl(url: URL, origin: unknown, code: string): string {
   const normalized = normalizedOrigin(String(origin ?? ''), code);
-  const hostname = url.hostname.toLocaleLowerCase('en-US').replace(/^www\./, '');
+  const hostname = url.hostname.toLocaleLowerCase('en-US').replace(TEXT_RE, '');
   if (hostname !== normalized) fail(code);
   return normalized;
 }
@@ -458,7 +466,7 @@ function validateCandidate(
     requireText(accountId, 'company_x_accounts_invalid', 20)
   );
   if (
-    verifiedXAccountIds.some((accountId) => !/^\d{1,20}$/.test(accountId)) ||
+    verifiedXAccountIds.some((accountId) => !VALIDATE_CANDIDATE_RE.test(accountId)) ||
     new Set(verifiedXAccountIds).size !== verifiedXAccountIds.length
   ) fail('company_x_accounts_invalid');
   if (!GEOGRAPHIES.has(value.company.geography as CompanyMonitoringGeography)) {

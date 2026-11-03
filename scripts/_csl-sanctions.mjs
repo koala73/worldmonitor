@@ -9,6 +9,15 @@ import { withSourceRequestDiagnostics } from './lib/source-request-diagnostics.m
 import { CHROME_UA } from './_seed-utils.mjs';
 import { normalizeName, readResponseLimited } from './_sema-sanctions.mjs';
 
+const CLEAN_RE = /\u0092/g;
+const US_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+const MS_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TEXT_RE = /’/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const CAUSE_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
+const ERROR_RE = /[\u0000-\u001f\u007f-\u009f]/g;
+
+
 const require = createRequire(import.meta.url);
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 
@@ -36,13 +45,13 @@ export const CSL_SOURCES = Object.values(CSL_LISTS);
 export const CSL_ROW_ID = /^[0-9a-f]{32,64}$/;
 
 // A few rows carry the Windows-1252 apostrophe as the C1 control U+0092.
-const clean = value => value.replace(/\u0092/g, '’').trim();
+const clean = value => value.replace(CLEAN_RE, '’').trim();
 const strings = value => (Array.isArray(value) ? value : []).filter(v => typeof v === 'string' && v.trim()).map(clean);
 const dayMs = value => {
   const text = typeof value === 'string' ? value.trim() : '';
-  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+  const us = US_RE.exec(text);
   const iso = us ? `${us[3]}-${us[1].padStart(2, '0')}-${us[2].padStart(2, '0')}` : text;
-  const ms = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? Date.parse(`${iso}T00:00:00Z`) : NaN;
+  const ms = MS_RE.test(iso) ? Date.parse(`${iso}T00:00:00Z`) : NaN;
   return Number.isFinite(ms) ? ms : null;
 };
 // Spellings in the live file that the shared resolver does not know.
@@ -54,8 +63,8 @@ const CSL_COUNTRY_ALIASES = {
 };
 const countryCode = value => {
   if (typeof value !== 'string') return null;
-  const text = clean(value).replace(/’/g, "'");
-  if (/^[A-Z]{2}$/.test(text)) return text;
+  const text = clean(value).replace(TEXT_RE, "'");
+  if (COUNTRY_CODE_RE.test(text)) return text;
   return CSL_COUNTRY_ALIASES[text.toLowerCase()] ?? countryNameToIso2(text);
 };
 
@@ -154,9 +163,9 @@ export async function ingestCslEntries({
     });
   } catch (err) {
     const code = err?.cause?.code;
-    const cause = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? ` (cause: ${code})` : '';
+    const cause = typeof code === 'string' && CAUSE_RE.test(code) ? ` (cause: ${code})` : '';
     const error = String(err?.message || err || 'CSL_FETCH_FAILED')
-      .replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').slice(0, 512 - cause.length) + cause;
+      .replace(ERROR_RE, ' ').slice(0, 512 - cause.length) + cause;
     return { lists: {}, error };
   }
 }

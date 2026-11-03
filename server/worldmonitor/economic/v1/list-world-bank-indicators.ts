@@ -31,6 +31,9 @@ import {
   worldBankRpcCacheKey,
 } from '../../../../shared/world-bank-rpc-cache.js';
 
+const LIST_WORLD_BANK_INDICATORS_RE = /^[A-Z0-9_]+(?:\.[A-Z0-9_]+)+$/;
+
+
 const REDIS_CACHE_KEY = WORLD_BANK_RPC_CACHE_PREFIX;
 const REDIS_CACHE_TTL = 86400; // 24 hr — annual data
 const COUNTRY_CODES = new Map(Object.entries(ISO3_TO_ISO2).flatMap(([iso3, iso2]) => [
@@ -190,7 +193,7 @@ export async function listWorldBankIndicators(
   try {
     // The exported client accepts generic indicator codes, not just the tech
     // display catalogue. Bound their grammar without restricting that contract.
-    if (req.indicatorCode.length > 64 || !/^[A-Z0-9_]+(?:\.[A-Z0-9_]+)+$/.test(req.indicatorCode)) {
+    if (req.indicatorCode.length > 64 || !LIST_WORLD_BANK_INDICATORS_RE.test(req.indicatorCode)) {
       return { data: [], pagination: undefined };
     }
     if (!Number.isInteger(req.year)) return { data: [], pagination: undefined };

@@ -51,6 +51,11 @@ import { argStr, argStrList, ciIncludes } from '../filters';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import type { ToolDef, McpToolExecutionContext } from '../types';
 
+const PATTERN_ENTITY_KIND_RE = /^cve-/i;
+const PATTERN_ENTITY_KIND_RE_2 = /^apt\d+$/i;
+const PATTERN_ENTITY_KIND_RE_3 = /^fin\d+$/i;
+
+
 // ── #5697 on-demand NLP intelligence utilities ──────────────────────────────
 // Four deterministic (classify_event excepted — enum-validated LLM) utilities
 // over the shared NLP cores. Hard input caps keep the arbitrary-text surface
@@ -192,9 +197,9 @@ function nlpClampInt(value: unknown, min: number, max: number, fallback: number)
 }
 
 function patternEntityKind(value: string): 'cve' | 'apt' | 'fin' | 'leader' {
-  if (/^cve-/i.test(value)) return 'cve';
-  if (/^apt\d+$/i.test(value)) return 'apt';
-  if (/^fin\d+$/i.test(value)) return 'fin';
+  if (PATTERN_ENTITY_KIND_RE.test(value)) return 'cve';
+  if (PATTERN_ENTITY_KIND_RE_2.test(value)) return 'apt';
+  if (PATTERN_ENTITY_KIND_RE_3.test(value)) return 'fin';
   return 'leader';
 }
 

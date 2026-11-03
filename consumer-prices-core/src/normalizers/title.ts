@@ -1,3 +1,7 @@
+
+
+const WHITESPACE_RE = /\s+/g;
+const CLEAN_TITLE_RE = /[^\w\s\-&]/g;
 const PROMO_TOKENS = new Set([
   'fresh', 'save', 'sale', 'deal', 'offer', 'limited', 'new', 'best', 'value',
   'buy', 'get', 'free', 'bonus', 'extra', 'special', 'exclusive', 'online only',
@@ -10,8 +14,8 @@ export function cleanTitle(raw: string): string {
   return raw
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/[^\w\s\-&]/g, ' ')
+    .replace(WHITESPACE_RE, ' ')
+    .replace(CLEAN_TITLE_RE, ' ')
     .split(' ')
     .filter((t) => t.length > 1 && !PROMO_TOKENS.has(t))
     .join(' ')

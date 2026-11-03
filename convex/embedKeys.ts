@@ -7,6 +7,10 @@ import { mergeEntitlementFeatures } from "./lib/entitlements";
 import { hasAccountEmbedAccess } from "../shared/embed-access";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 
+const CREATE_EMBED_KEY_FOR_USER_RE = /^wme_[a-f0-9]{5}$/;
+const CREATE_EMBED_KEY_FOR_USER_RE_2 = /^[a-f0-9]{64}$/;
+
+
 /** Maximum number of active (non-revoked) embed keys per user. */
 const MAX_EMBED_KEYS_PER_USER = 5;
 /** Cap on declared embed origins per key — a partner declares sites, not a CDN. */
@@ -90,10 +94,10 @@ export const createEmbedKeyForUser = internalMutation({
     if (!args.name.trim()) {
       throw new ConvexError("INVALID_NAME");
     }
-    if (!/^wme_[a-f0-9]{5}$/.test(args.keyPrefix)) {
+    if (!CREATE_EMBED_KEY_FOR_USER_RE.test(args.keyPrefix)) {
       throw new ConvexError("INVALID_PREFIX");
     }
-    if (!/^[a-f0-9]{64}$/.test(args.keyHash)) {
+    if (!CREATE_EMBED_KEY_FOR_USER_RE_2.test(args.keyHash)) {
       throw new ConvexError("INVALID_HASH");
     }
     const allowedOrigins = normalizeAllowedOrigins(args.allowedOrigins);

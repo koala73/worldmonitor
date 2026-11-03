@@ -36,6 +36,9 @@ import {
   emitUsageEvents,
 } from '../server/_shared/usage.js';
 
+const SAFE_KEY_RE = /[\r\n]/g;
+
+
 // Node, not Edge (GHSA-887j): only Node lets the upstream socket be pinned to
 // the DoH-vetted address. Two earlier moves were reverted after production
 // 500s. #4749 exported a Web handler as `default`, which Vercel's Node runtime
@@ -511,8 +514,8 @@ function buildHeaders(customHeaders) {
     for (const [k, v] of Object.entries(customHeaders)) {
       if (typeof k === 'string' && typeof v === 'string') {
         // Strip CRLF to prevent header injection
-        const safeKey = k.replace(/[\r\n]/g, '');
-        const safeVal = v.replace(/[\r\n]/g, '');
+        const safeKey = k.replace(SAFE_KEY_RE, '');
+        const safeVal = v.replace(SAFE_KEY_RE, '');
         if (safeKey && !isForbiddenForwardHeader(safeKey.trim().toLowerCase())) {
           h[safeKey] = safeVal;
         }

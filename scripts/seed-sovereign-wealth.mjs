@@ -85,6 +85,20 @@ import { decodeHtmlEntities } from './_html-entities.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { groupFundsByCountry, loadSwfManifest } from './shared/swf-manifest-loader.mjs';
 
+const NORMALIZE_ABBREV_RE = /[-\s.]/g;
+const WHITESPACE_RE = /\s+/g;
+const STRIP_HTML_INLINE_RE = /<[^>]+>/g;
+const ASSETS_MATCH_RE = /^([\d,]+(?:\.\d+)?)(?:\s+\d+)?\s*$/;
+const AUM_BILLIONS_RE = /,/g;
+const INCEPTION_YEAR_MATCH_RE = /(\d{4})/;
+const DETECT_CURRENCY_RE = /[$]/g;
+const INFOBOX_MATCH_RE = /<table[^>]*class="[^"]*infobox[^"]*"[^>]*>([\s\S]*?)<\/table>/;
+const LABEL_RE = /<th[^>]*>([\s\S]*?)<\/th>/;
+const VALUE_RE = /<td[^>]*>([\s\S]*?)<\/td>/;
+const NUM_MATCH_RE = /([\d,]+(?:\.\d+)?)\s*(trillion|billion|million)/i;
+const YEAR_MATCH_RE = /\((\d{4})\)/;
+
+
 const REEXPORT_SHARE_CANONICAL_KEY = 'resilience:recovery:reexport-share:v1';
 const REEXPORT_SHARE_META_KEY = 'seed-meta:resilience:recovery:reexport-share';
 
@@ -314,15 +328,15 @@ const ISO2_TO_WIKIPEDIA_COUNTRY_NAME = new Map([
 ]);
 
 function normalizeAbbrev(value) {
-  return String(value || '').toUpperCase().replace(/[-\s.]/g, '');
+  return String(value || '').toUpperCase().replace(NORMALIZE_ABBREV_RE, '');
 }
 
 function normalizeFundName(value) {
-  return String(value || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  return String(value || '').toLowerCase().trim().replace(WHITESPACE_RE, ' ');
 }
 
 function normalizeCountryName(value) {
-  return String(value || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  return String(value || '').toLowerCase().trim().replace(WHITESPACE_RE, ' ');
 }
 
 function pushIndexed(map, key, record) {
@@ -343,10 +357,10 @@ function stripHtmlInline(value) {
   // invalid numeric refs, so a malformed ref can't weld neighboring digits
   // (`100&#999999999;200` -> `100 200`, never `100200`).
   return decodeHtmlEntities(
-    String(value || '').replace(/<[^>]+>/g, ' '),
+    String(value || '').replace(STRIP_HTML_INLINE_RE, ' '),
     { unknownEntity: 'blank' },
   )
-    .replace(/\s+/g, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -455,13 +469,13 @@ export function parseWikipediaRankingsTable(html) {
     const inceptionCell = stripHtmlInline(cells[4]);
 
     // "2,117 37" → 2117 billion (strip optional trailing footnote int)
-    const assetsMatch = assetsCell.match(/^([\d,]+(?:\.\d+)?)(?:\s+\d+)?\s*$/);
+    const assetsMatch = assetsCell.match(ASSETS_MATCH_RE);
     if (!assetsMatch) continue;
-    const aumBillions = parseFloat(assetsMatch[1].replace(/,/g, ''));
+    const aumBillions = parseFloat(assetsMatch[1].replace(AUM_BILLIONS_RE, ''));
     if (!Number.isFinite(aumBillions) || aumBillions <= 0) continue;
     const aum = aumBillions * 1_000_000_000;
 
-    const inceptionYearMatch = inceptionCell.match(/(\d{4})/);
+    const inceptionYearMatch = inceptionCell.match(INCEPTION_YEAR_MATCH_RE);
     const inceptionYear = inceptionYearMatch ? parseInt(inceptionYearMatch[1], 10) : null;
 
     // aumYear: null — the list article has no per-row data-year
@@ -556,7 +570,7 @@ export function detectCurrency(text) {
     // either a space before or start-of-string immediately before the
     // token, and a digit (optional space) after.
     if (symbol === '$' || symbol === 'kr') {
-      const re = new RegExp(`(^|\\s)${symbol.replace(/[$]/g, '\\$')}\\s*\\d`);
+      const re = new RegExp(`(^|\\s)${symbol.replace(DETECT_CURRENCY_RE, '\\$')}\\s*\\d`);
       if (re.test(haystack)) return iso;
       continue;
     }
@@ -580,7 +594,7 @@ export function detectCurrency(text) {
  * detection without a live fetch.
  */
 export function parseWikipediaArticleInfobox(html) {
-  const infoboxMatch = html.match(/<table[^>]*class="[^"]*infobox[^"]*"[^>]*>([\s\S]*?)<\/table>/);
+  const infoboxMatch = html.match(INFOBOX_MATCH_RE);
   if (!infoboxMatch) return null;
   const box = infoboxMatch[1];
 
@@ -589,8 +603,8 @@ export function parseWikipediaArticleInfobox(html) {
   while ((rowMatch = rowRe.exec(box)) !== null) {
     // Split the row into th (label) + td (value). Either can be missing
     // or out-of-order in edge cases, so use a two-pass extraction.
-    const label = (rowMatch[1].match(/<th[^>]*>([\s\S]*?)<\/th>/)?.[1] ?? '');
-    const value = (rowMatch[1].match(/<td[^>]*>([\s\S]*?)<\/td>/)?.[1] ?? '');
+    const label = (rowMatch[1].match(LABEL_RE)?.[1] ?? '');
+    const value = (rowMatch[1].match(VALUE_RE)?.[1] ?? '');
     const labelText = stripHtmlInline(label);
     if (!INFOBOX_AUM_LABELS.some((re) => re.test(labelText))) continue;
 
@@ -600,9 +614,9 @@ export function parseWikipediaArticleInfobox(html) {
     //   "US$ 1,128 billion"
     //   "€ 500 million"
     //   "NOK 18.7 trillion (2025)"
-    const numMatch = valueText.match(/([\d,]+(?:\.\d+)?)\s*(trillion|billion|million)/i);
+    const numMatch = valueText.match(NUM_MATCH_RE);
     if (!numMatch) continue;
-    const rawNum = parseFloat(numMatch[1].replace(/,/g, ''));
+    const rawNum = parseFloat(numMatch[1].replace(AUM_BILLIONS_RE, ''));
     if (!Number.isFinite(rawNum) || rawNum <= 0) continue;
     const unit = numMatch[2].toLowerCase();
     const unitMultiplier = unit === 'trillion'
@@ -614,7 +628,7 @@ export function parseWikipediaArticleInfobox(html) {
 
     const currencyNative = detectCurrency(valueText) ?? 'USD';
 
-    const yearMatch = valueText.match(/\((\d{4})\)/);
+    const yearMatch = valueText.match(YEAR_MATCH_RE);
     const aumYear = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
 
     return { valueNative, currencyNative, aumYear };

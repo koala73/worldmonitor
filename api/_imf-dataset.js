@@ -1,4 +1,6 @@
 // IMF WEO bootstrap datasets and the numeric fields each country row carries.
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
 export const IMF_DATASETS = {
   imfMacro: { fields: ['inflationPct', 'currentAccountPct', 'govRevenuePct', 'cpiIndex', 'cpiEopPct', 'govExpenditurePct', 'primaryBalancePct', 'year'] },
   imfGrowth: { fields: ['realGdpGrowthPct', 'gdpPerCapitaUsd', 'realGdpLcuB', 'realGdp', 'gdpPerCapitaPpp', 'gdpPpp', 'investmentPct', 'savingsPct', 'savingsInvestmentGap', 'year'] },
@@ -11,7 +13,7 @@ function isRecord(value) {
 }
 
 function isValidCountryRow(fields, code, row) {
-  if (!/^[A-Z]{2}$/.test(code) || !isRecord(row)) return false;
+  if (!COUNTRY_CODE_RE.test(code) || !isRecord(row)) return false;
   let hasValue = false;
   for (const field of fields) {
     const v = row[field];

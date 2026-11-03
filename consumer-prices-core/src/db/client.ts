@@ -1,5 +1,8 @@
 import pg from 'pg';
 
+const CA_RE = /\\n/g;
+
+
 const { Pool } = pg;
 
 export type QueryExecutor = <T extends pg.QueryResultRow = Record<string, unknown>>(
@@ -28,7 +31,7 @@ export function getPool(): pg.Pool {
     )) throw new Error('Remote DATABASE_URL requires verified TLS; use sslmode=verify-full');
     // Railway Postgres serves a chain from its own private root CA. Pinning that
     // root keeps chain and hostname verification on without trusting any CA.
-    const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, '\n').trim();
+    const ca = process.env.DATABASE_SSL_CA?.replace(CA_RE, '\n').trim();
     if (ca && !ca.startsWith('-----BEGIN CERTIFICATE-----')) {
       throw new Error('DATABASE_SSL_CA must be a PEM certificate');
     }

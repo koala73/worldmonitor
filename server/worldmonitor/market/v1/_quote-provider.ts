@@ -22,6 +22,10 @@
 import { CHROME_UA, finnhubGate } from '../../../_shared/constants';
 import stocksConfig from '../../../../shared/stocks.json';
 
+const FETCH_QUOTE_RE = /rate|limit|call frequency|premium|too busy|temporarily busy/i;
+const FETCH_QUOTE_RE_2 = /\b(?:invalid|unknown|unsupported)\s+(?:symbol|ticker)\b|\b(?:symbol|ticker)\s+(?:is\s+)?(?:invalid|unknown|not found|unsupported)\b/i;
+
+
 /** A quote as returned by a provider. Sparklines are seed-only; see `sparkline`. */
 export interface ProviderQuote {
   price: number;
@@ -205,7 +209,7 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
       // AV signals quota exhaustion with a Note / Information string and no quote body.
       const throttle = json.Note || json.Information;
       if (throttle) {
-        if (/rate|limit|call frequency|premium|too busy|temporarily busy/i.test(throttle)) {
+        if (FETCH_QUOTE_RE.test(throttle)) {
           return { status: 'rate_limited' };
         }
         return { status: 'error', message: throttle.slice(0, 120) };
@@ -216,7 +220,7 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
       // credential or config failure for 15 minutes.
       if (json['Error Message']) {
         const msg = json['Error Message'];
-        if (/\b(?:invalid|unknown|unsupported)\s+(?:symbol|ticker)\b|\b(?:symbol|ticker)\s+(?:is\s+)?(?:invalid|unknown|not found|unsupported)\b/i.test(msg)) {
+        if (FETCH_QUOTE_RE_2.test(msg)) {
           return { status: 'not_found' };
         }
         return { status: 'error', message: msg.slice(0, 120) };

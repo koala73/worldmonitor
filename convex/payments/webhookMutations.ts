@@ -24,6 +24,10 @@ import {
   billingDeletionForUser,
 } from "./subscriptionHelpers";
 
+const SANITIZE_FAILURE_MESSAGE_RE = /[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g;
+const SANITIZE_FAILURE_MESSAGE_RE_2 = /\b(bearer|token|secret|api[_-]?key|password)\s*[:=]\s*\S+/gi;
+
+
 const MAX_FAILURE_MESSAGE_LENGTH = 1000;
 const MAX_FAILURE_DATA_KEYS = 100;
 const MAX_DIAGNOSTIC_ROWS = 250;
@@ -45,8 +49,8 @@ function boundedString(value: unknown, maxLength: number): string | undefined {
 /** Keep failure rows useful to operators without copying payload values. */
 function sanitizeFailureMessage(value: string): string {
   return value
-    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "[redacted-email]")
-    .replace(/\b(bearer|token|secret|api[_-]?key|password)\s*[:=]\s*\S+/gi, "$1=[redacted]")
+    .replace(SANITIZE_FAILURE_MESSAGE_RE, "[redacted-email]")
+    .replace(SANITIZE_FAILURE_MESSAGE_RE_2, "$1=[redacted]")
     .slice(0, MAX_FAILURE_MESSAGE_LENGTH);
 }
 

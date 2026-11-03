@@ -9,6 +9,11 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { titleFromFileName } from './playwright-screenshot-gallery.mjs';
 
+const PARSE_POSITIVE_INTEGER_RE = /^[1-9]\d*$/;
+const MATCH_GH_VERSION_RE = /\bgh version (\d+)\.(\d+)\.(\d+)(-([^+\s]+))?(?:\+[^\s]+)?\b/i;
+const LINE_BREAK_RE = /\r?\n/;
+
+
 const execFileAsync = promisify(execFile);
 const MIN_GH_VERSION = [2, 99, 0];
 const MAX_ATTACHMENTS = 50;
@@ -53,14 +58,14 @@ export function parseArgs(argv = []) {
 }
 
 function parsePositiveInteger(value, flag) {
-  if (!/^[1-9]\d*$/.test(String(value))) throw new Error(`${flag} must be a positive integer`);
+  if (!PARSE_POSITIVE_INTEGER_RE.test(String(value))) throw new Error(`${flag} must be a positive integer`);
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) throw new Error(`${flag} must be a safe positive integer`);
   return parsed;
 }
 
 function matchGhVersion(output) {
-  const match = String(output).match(/\bgh version (\d+)\.(\d+)\.(\d+)(-([^+\s]+))?(?:\+[^\s]+)?\b/i);
+  const match = String(output).match(MATCH_GH_VERSION_RE);
   if (!match) throw new Error('Could not parse the GitHub CLI version');
   return match;
 }
@@ -160,7 +165,7 @@ export function commentsWithMarker(comments, { login, marker }) {
     (comment) =>
       comment?.user?.login === login &&
       typeof comment.body === 'string' &&
-      comment.body.split(/\r?\n/).includes(marker),
+      comment.body.split(LINE_BREAK_RE).includes(marker),
   );
 }
 

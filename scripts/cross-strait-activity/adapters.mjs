@@ -2,6 +2,49 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fetchJapanXOutcome, JAPAN_X_MAX_TEXT_LENGTH } from './japan-x.mjs';
 
+const OBSERVATION_PRECISION_RE = /^\d{4}-\d{2}-\d{2}$/;
+const IS_HTML_ELEMENT_TAG_RE = /^[a-z]/i;
+const IS_PLAUSIBLE_MALFORMED_TAG_TOKEN_RE = /^(?:\/?[a-z]|[!?])/i;
+const SCAN_HTML_TAGS_RE = /[\s/>]/;
+const SCAN_HTML_TAGS_RE_2 = /[\s/]/;
+const HAS_HTML_ATTRIBUTE_RE = /[\s=/>]/;
+const HAS_HTML_ATTRIBUTE_RE_2 = /\s/;
+const HAS_HTML_ATTRIBUTE_RE_3 = /[\s>]/;
+const WHITESPACE_RE = /\s+/;
+const DECODE_HTML_RE = /&#x([0-9a-f]+);/gi;
+const DECODE_HTML_RE_2 = /&#(\d+);/g;
+const DECODE_HTML_RE_3 = /&nbsp;/gi;
+const DECODE_HTML_RE_4 = /&quot;/gi;
+const DECODE_HTML_RE_5 = /&#39;|&apos;/gi;
+const DECODE_HTML_RE_6 = /&amp;/gi;
+const DECODE_HTML_RE_7 = /\r/g;
+const DECODE_HTML_RE_8 = /[ \t]+/g;
+const DECODE_HTML_RE_9 = /\n\s+/g;
+const DOTTED_DATE_RE = /^(\d{4})\.(\d{2})\.(\d{2})$/;
+const PARSE_TAIWAN_MND_LIST_RE = /\/News\/PLAAct\/\d+$/i;
+const MOVEMENT_COUNT_RE = /(\d+)\s+out\s+of\s+\d+\s+sorties?/i;
+const MEDIAN_LINE_CROSSINGS_RE = /median\s+line/i;
+const ADIZ_ENTRIES_RE = /\bADIZ\b/i;
+const TITLE_RE = /\n+/gu;
+const STATUS_RE = /^HTTP_(\d{3})$/u;
+const ERROR_CODE_RE = /timeout/i;
+const ERROR_CODE_RE_2 = /RESPONSE_TOO_LARGE/;
+const ERROR_CODE_RE_3 = /HTTP_/;
+const ERROR_CODE_RE_4 = /HTTP_[A-Z0-9_]+/;
+const ERROR_CODE_RE_5 = /MND_/;
+const ERROR_CODE_RE_6 = /MND_[A-Z0-9_]+/;
+const ERROR_CODE_RE_7 = /JMOD_/;
+const ERROR_CODE_RE_8 = /JMOD_[A-Z0-9_]+/;
+const NORMALIZED_RE = /(https?:\/\/)[^@\s/]+@/giu;
+const NORMALIZED_RE_2 = /(Proxy-Authorization:\s*)[^\r\n]+/giu;
+const NORMALIZED_RE_3 = /\s+/gu;
+const PROXY_FAILURE_DETAIL_RE = /Proxy CONNECT:/i;
+const PROXY_ERROR_CODE_RE = /Proxy CONNECT:[^\n]*\b407\b/i;
+const PROXY_ERROR_CODE_RE_2 = /Proxy CONNECT:[^\n]*\b403\b/i;
+const PROXY_ERROR_CODE_RE_3 = /PROXY_[A-Z0-9_]+/;
+const VALIDATE_CROSS_STRAIT_ACTIVITY_SNAPSHOT_RE = /^https:\/\/x\.com\/jointstaffpa\/status\/[1-9]\d{0,19}$/;
+
+
 const {
   parseProxyConfig,
   proxyConnectTunnel,
@@ -213,8 +256,8 @@ function buildProvenance({
   extractionConfidence,
   classificationConfidence,
 }) {
-  const observationPrecision = /^\d{4}-\d{2}-\d{2}$/.test(reportingTime) ? 'day' : 'instant';
-  const publicationPrecision = /^\d{4}-\d{2}-\d{2}$/.test(publicationTime) ? 'day' : 'instant';
+  const observationPrecision = OBSERVATION_PRECISION_RE.test(reportingTime) ? 'day' : 'instant';
+  const publicationPrecision = OBSERVATION_PRECISION_RE.test(publicationTime) ? 'day' : 'instant';
   return {
     contractVersion: 'decision-signal-provenance/v1',
     signalId,
@@ -578,7 +621,7 @@ function shouldHideHtmlElement(tag) {
 }
 
 function isHtmlElementTag(tag) {
-  return !tag.isComment && !tag.isMalformed && /^[a-z]/i.test(tag.name);
+  return !tag.isComment && !tag.isMalformed && IS_HTML_ELEMENT_TAG_RE.test(tag.name);
 }
 
 function createHtmlStack() {
@@ -899,7 +942,7 @@ function decodeNumericEntity(value, radix) {
 }
 
 function isPlausibleMalformedTagToken(value) {
-  return /^(?:\/?[a-z]|[!?])/i.test(String(value).trimStart());
+  return IS_PLAUSIBLE_MALFORMED_TAG_TOKEN_RE.test(String(value).trimStart());
 }
 
 function* scanHtmlTags(value) {
@@ -928,7 +971,7 @@ function* scanHtmlTags(value) {
           const nestedNameEnd = tagEnd + 1 + rawTextElement.length;
           if (
             source.slice(tagEnd + 1, nestedNameEnd).toLowerCase() === rawTextElement
-            && /[\s/>]/.test(source[nestedNameEnd] ?? '')
+            && SCAN_HTML_TAGS_RE.test(source[nestedNameEnd] ?? '')
           ) {
             scriptDoubleEscaped = true;
             continue;
@@ -939,7 +982,7 @@ function* scanHtmlTags(value) {
       const nameStart = tagEnd + 2;
       const nameEnd = nameStart + rawTextElement.length;
       if (source.slice(nameStart, nameEnd).toLowerCase() !== rawTextElement) continue;
-      if (!/[\s/>]/.test(source[nameEnd] ?? '')) continue;
+      if (!SCAN_HTML_TAGS_RE.test(source[nameEnd] ?? '')) continue;
       if (rawTextElement === 'script' && scriptDoubleEscaped) {
         scriptDoubleEscaped = false;
         continue;
@@ -1024,7 +1067,7 @@ function* scanHtmlTags(value) {
     const isClosing = token.startsWith('/');
     const nameStart = isClosing ? 1 : 0;
     let nameEnd = nameStart;
-    while (nameEnd < token.length && !/[\s/]/.test(token[nameEnd])) nameEnd += 1;
+    while (nameEnd < token.length && !SCAN_HTML_TAGS_RE_2.test(token[nameEnd])) nameEnd += 1;
     const name = token.slice(nameStart, nameEnd).toLowerCase();
     if (name) {
       yield {
@@ -1166,28 +1209,28 @@ function scanHtmlAnchors(value) {
 function hasHtmlAttribute(openingTag, attribute) {
   const target = attribute.toLowerCase();
   let cursor = 1;
-  while (cursor < openingTag.length && !/[\s/>]/.test(openingTag[cursor])) cursor += 1;
+  while (cursor < openingTag.length && !SCAN_HTML_TAGS_RE.test(openingTag[cursor])) cursor += 1;
 
   while (cursor < openingTag.length) {
-    while (cursor < openingTag.length && /[\s/]/.test(openingTag[cursor])) cursor += 1;
+    while (cursor < openingTag.length && SCAN_HTML_TAGS_RE_2.test(openingTag[cursor])) cursor += 1;
     if (cursor >= openingTag.length || openingTag[cursor] === '>') break;
 
     const nameStart = cursor;
-    while (cursor < openingTag.length && !/[\s=/>]/.test(openingTag[cursor])) cursor += 1;
+    while (cursor < openingTag.length && !HAS_HTML_ATTRIBUTE_RE.test(openingTag[cursor])) cursor += 1;
     const name = openingTag.slice(nameStart, cursor).toLowerCase();
     if (name === target) return true;
-    while (cursor < openingTag.length && /\s/.test(openingTag[cursor])) cursor += 1;
+    while (cursor < openingTag.length && HAS_HTML_ATTRIBUTE_RE_2.test(openingTag[cursor])) cursor += 1;
     if (openingTag[cursor] !== '=') continue;
 
     cursor += 1;
-    while (cursor < openingTag.length && /\s/.test(openingTag[cursor])) cursor += 1;
+    while (cursor < openingTag.length && HAS_HTML_ATTRIBUTE_RE_2.test(openingTag[cursor])) cursor += 1;
     const quote = openingTag[cursor];
     if (quote === '"' || quote === "'") {
       const valueEnd = openingTag.indexOf(quote, cursor + 1);
       if (valueEnd === -1) return false;
       cursor = valueEnd + 1;
     } else {
-      while (cursor < openingTag.length && !/[\s>]/.test(openingTag[cursor])) cursor += 1;
+      while (cursor < openingTag.length && !HAS_HTML_ATTRIBUTE_RE_3.test(openingTag[cursor])) cursor += 1;
     }
   }
 
@@ -1197,27 +1240,27 @@ function hasHtmlAttribute(openingTag, attribute) {
 function quotedHtmlAttribute(openingTag, attribute) {
   const target = attribute.toLowerCase();
   let cursor = 1;
-  while (cursor < openingTag.length && !/[\s/>]/.test(openingTag[cursor])) cursor += 1;
+  while (cursor < openingTag.length && !SCAN_HTML_TAGS_RE.test(openingTag[cursor])) cursor += 1;
 
   while (cursor < openingTag.length) {
-    while (cursor < openingTag.length && /[\s/]/.test(openingTag[cursor])) cursor += 1;
+    while (cursor < openingTag.length && SCAN_HTML_TAGS_RE_2.test(openingTag[cursor])) cursor += 1;
     if (cursor >= openingTag.length || openingTag[cursor] === '>') break;
 
     const nameStart = cursor;
-    while (cursor < openingTag.length && !/[\s=/>]/.test(openingTag[cursor])) cursor += 1;
+    while (cursor < openingTag.length && !HAS_HTML_ATTRIBUTE_RE.test(openingTag[cursor])) cursor += 1;
     const name = openingTag.slice(nameStart, cursor).toLowerCase();
     const isTarget = name === target;
-    while (cursor < openingTag.length && /\s/.test(openingTag[cursor])) cursor += 1;
+    while (cursor < openingTag.length && HAS_HTML_ATTRIBUTE_RE_2.test(openingTag[cursor])) cursor += 1;
     if (openingTag[cursor] !== '=') {
       if (isTarget) return null;
       continue;
     }
 
     cursor += 1;
-    while (cursor < openingTag.length && /\s/.test(openingTag[cursor])) cursor += 1;
+    while (cursor < openingTag.length && HAS_HTML_ATTRIBUTE_RE_2.test(openingTag[cursor])) cursor += 1;
     const quote = openingTag[cursor];
     if (quote !== '"' && quote !== "'") {
-      while (cursor < openingTag.length && !/[\s>]/.test(openingTag[cursor])) cursor += 1;
+      while (cursor < openingTag.length && !HAS_HTML_ATTRIBUTE_RE_3.test(openingTag[cursor])) cursor += 1;
       if (isTarget) return null;
       continue;
     }
@@ -1235,7 +1278,7 @@ function quotedHtmlAttribute(openingTag, attribute) {
 function htmlClassNames(openingTag) {
   return new Set(
     (quotedHtmlAttribute(openingTag, 'class') || '')
-      .split(/\s+/)
+      .split(WHITESPACE_RE)
       .filter(Boolean)
       .map(className => className.toLowerCase()),
   );
@@ -1308,24 +1351,24 @@ function extractHtmlElementBodies(value, tagNames, className = null, maxMatches 
 
 function decodeHtml(value) {
   return stripHtmlTags(value)
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => decodeNumericEntity(hex, 16))
-    .replace(/&#(\d+);/g, (_, digits) => decodeNumericEntity(digits, 10))
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
+    .replace(DECODE_HTML_RE, (_, hex) => decodeNumericEntity(hex, 16))
+    .replace(DECODE_HTML_RE_2, (_, digits) => decodeNumericEntity(digits, 10))
+    .replace(DECODE_HTML_RE_3, ' ')
+    .replace(DECODE_HTML_RE_4, '"')
+    .replace(DECODE_HTML_RE_5, "'")
     // &amp; must decode LAST so one pass decodes exactly one level
     // (`&amp;quot;` stays the literal text `&quot;`). Accepted residual,
     // same as PR #5432: `&#38;quot;` still double-decodes because numerics
     // run before the named entities.
-    .replace(/&amp;/gi, '&')
-    .replace(/\r/g, '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n\s+/g, '\n')
+    .replace(DECODE_HTML_RE_6, '&')
+    .replace(DECODE_HTML_RE_7, '')
+    .replace(DECODE_HTML_RE_8, ' ')
+    .replace(DECODE_HTML_RE_9, '\n')
     .trim();
 }
 
 function dottedDate(value) {
-  const match = String(value).trim().match(/^(\d{4})\.(\d{2})\.(\d{2})$/);
+  const match = String(value).trim().match(DOTTED_DATE_RE);
   if (!match) return null;
   const day = `${match[1]}-${match[2]}-${match[3]}`;
   const parsed = new Date(`${day}T00:00:00.000Z`);
@@ -1338,7 +1381,7 @@ export function parseTaiwanMndList(html) {
   const rows = [];
   for (const anchor of scanHtmlAnchors(html)) {
     const href = quotedHtmlAttribute(anchor.openingTag, 'href');
-    if (!href || !/\/News\/PLAAct\/\d+$/i.test(href)) continue;
+    if (!href || !PARSE_TAIWAN_MND_LIST_RE.test(href)) continue;
     const dateBody = extractHtmlElementBodies(anchor.body, ['h5', 'div'], 'date')[0];
     const publicationDay = dateBody?.includes('<') ? null : dottedDate(dateBody);
     if (!publicationDay) continue;
@@ -1417,14 +1460,14 @@ function mndCounts(text) {
     /(\d+)\s+official\s+ships?/i,
     /\bno\s+official\s+ships?\b/i,
   );
-  const movementCount = text.match(/(\d+)\s+out\s+of\s+\d+\s+sorties?/i);
+  const movementCount = text.match(MOVEMENT_COUNT_RE);
   const movementText = movementCount
     ? text.slice(movementCount.index ?? 0, (movementCount.index ?? 0) + 300)
     : '';
-  const medianLineCrossings = /median\s+line/i.test(movementText)
+  const medianLineCrossings = MEDIAN_LINE_CROSSINGS_RE.test(movementText)
     ? Number(movementCount?.[1])
     : null;
-  const adizEntries = /\bADIZ\b/i.test(movementText)
+  const adizEntries = ADIZ_ENTRIES_RE.test(movementText)
     ? Number(movementCount?.[1])
     : null;
   return {
@@ -1627,13 +1670,13 @@ export function parseJapanModIndex(html) {
     const documentDay = isoDayFromParts(match[1], match[2], match[3]);
     if (!documentDay) continue;
     const statedDay = firstHtmlElementAttribute(anchor.body, 'time', 'datetime');
-    const publicationDay = /^\d{4}-\d{2}-\d{2}$/.test(String(statedDay ?? ''))
+    const publicationDay = OBSERVATION_PRECISION_RE.test(String(statedDay ?? ''))
       && isoDayFromParts(...String(statedDay).split('-'))
       ? String(statedDay)
       : documentDay;
     const headingBody = extractHtmlElementBodies(anchor.body, ['h5'])[0];
     const title = decodeHtml(headingBody ?? anchor.body)
-      .replace(/\n+/gu, ' ')
+      .replace(TITLE_RE, ' ')
       .trim()
       .slice(0, JMOD_MAX_CANDIDATE_TITLE_CHARS);
     rows.push({
@@ -1765,7 +1808,7 @@ async function fetchMndViaProxy(input, init, proxyConfig, proxyRequestFn) {
 function shouldProxyJapanModFailure(error) {
   const code = errorCode(error);
   if (code === 'SOURCE_ERROR' || code === 'TIMEOUT' || code === 'JMOD_INDEX_EMPTY') return true;
-  const status = Number(/^HTTP_(\d{3})$/u.exec(code)?.[1]);
+  const status = Number(STATUS_RE.exec(code)?.[1]);
   return status === 403
     || status === 408
     || status === 425
@@ -2027,7 +2070,7 @@ function persistedStringsWithinLimit(value, longTextCandidates = null) {
 
 function safePreviousMndObservation(row) {
   return row?.sourceId === 'taiwan-mnd'
-    && /^\d{4}-\d{2}-\d{2}$/.test(row.reportingDay)
+    && OBSERVATION_PRECISION_RE.test(row.reportingDay)
     && Number.isFinite(Date.parse(row.reportingPeriod?.start))
     && Number.isFinite(Date.parse(row.reportingPeriod?.end))
     && isAllowedSourceUrl(row.sourceUrl, CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd)
@@ -2281,11 +2324,11 @@ function mndTransportErrorDiagnostic(error) {
 
 function errorCode(error) {
   const value = String(error?.message ?? error ?? 'UNKNOWN_ERROR');
-  if (/timeout/i.test(value)) return 'TIMEOUT';
-  if (/RESPONSE_TOO_LARGE/.test(value)) return 'RESPONSE_TOO_LARGE';
-  if (/HTTP_/.test(value)) return value.match(/HTTP_[A-Z0-9_]+/)?.[0] ?? 'HTTP_ERROR';
-  if (/MND_/.test(value)) return value.match(/MND_[A-Z0-9_]+/)?.[0] ?? 'MND_PARSE_ERROR';
-  if (/JMOD_/.test(value)) return value.match(/JMOD_[A-Z0-9_]+/)?.[0] ?? 'JMOD_PARSE_ERROR';
+  if (ERROR_CODE_RE.test(value)) return 'TIMEOUT';
+  if (ERROR_CODE_RE_2.test(value)) return 'RESPONSE_TOO_LARGE';
+  if (ERROR_CODE_RE_3.test(value)) return value.match(ERROR_CODE_RE_4)?.[0] ?? 'HTTP_ERROR';
+  if (ERROR_CODE_RE_5.test(value)) return value.match(ERROR_CODE_RE_6)?.[0] ?? 'MND_PARSE_ERROR';
+  if (ERROR_CODE_RE_7.test(value)) return value.match(ERROR_CODE_RE_8)?.[0] ?? 'JMOD_PARSE_ERROR';
   return 'SOURCE_ERROR';
 }
 
@@ -2300,9 +2343,9 @@ function isMndTransportFailure(code, diagnostic) {
 function boundedDiagnosticString(value, maxChars = PROXY_DIAGNOSTIC_MAX_CHARS) {
   if (typeof value !== 'string') return null;
   const normalized = value
-    .replace(/(https?:\/\/)[^@\s/]+@/giu, '$1[redacted]@')
-    .replace(/(Proxy-Authorization:\s*)[^\r\n]+/giu, '$1[redacted]')
-    .replace(/\s+/gu, ' ')
+    .replace(NORMALIZED_RE, '$1[redacted]@')
+    .replace(NORMALIZED_RE_2, '$1[redacted]')
+    .replace(NORMALIZED_RE_3, ' ')
     .trim();
   return normalized ? normalized.slice(0, maxChars) : null;
 }
@@ -2340,7 +2383,7 @@ function proxyFailureDetail(error) {
   return buildProxyDiagnosticDetail({
     stage: error?.proxyStage === 'response'
       ? 'response'
-      : (/Proxy CONNECT:/i.test(message) ? 'connect' : 'request'),
+      : (PROXY_FAILURE_DETAIL_RE.test(message) ? 'connect' : 'request'),
     httpStatus: error?.status,
     contentType: error?.contentType,
     bodyPrefix: error?.bodyPrefix,
@@ -2353,14 +2396,14 @@ function proxyErrorCode(error) {
   const code = errorCode(error);
   if (Number(error?.status) === 407
     || code === 'HTTP_407'
-    || /Proxy CONNECT:[^\n]*\b407\b/i.test(String(error?.message ?? ''))) {
+    || PROXY_ERROR_CODE_RE.test(String(error?.message ?? ''))) {
     return 'PROXY_AUTH_FAILED';
   }
   if (Number(error?.status) === 403
-    && /Proxy CONNECT:[^\n]*\b403\b/i.test(String(error?.message ?? ''))) {
+    && PROXY_ERROR_CODE_RE_2.test(String(error?.message ?? ''))) {
     return 'PROXY_CONNECT_FORBIDDEN';
   }
-  return String(error?.message ?? '').match(/PROXY_[A-Z0-9_]+/)?.[0] ?? code;
+  return String(error?.message ?? '').match(PROXY_ERROR_CODE_RE_3)?.[0] ?? code;
 }
 
 function blockedJapanProxyReason(directFailureCode, proxyFailureCode, proxyControlProbe) {
@@ -2493,7 +2536,7 @@ async function probeJapanEnglishIndex(fetchFn, sleepFn, { now, previousProbe }) 
     return { ...observation, status: 'reachable', httpStatus: status, errorCode: null };
   } catch (error) {
     const code = errorCode(error);
-    const status = Number(/^HTTP_(\d{3})$/u.exec(code)?.[1]);
+    const status = Number(STATUS_RE.exec(code)?.[1]);
     return {
       ...observation,
       status: code === 'HTTP_403' ? 'blocked' : 'error',
@@ -2956,7 +2999,7 @@ export async function fetchCrossStraitActivitySnapshot({
 }
 
 function validMndObservation(row) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(row.reportingDay)
+  return OBSERVATION_PRECISION_RE.test(row.reportingDay)
     && Number.isFinite(Date.parse(row.reportingPeriod?.start))
     && Number.isFinite(Date.parse(row.reportingPeriod?.end))
     && Date.parse(row.reportingPeriod.end) > Date.parse(row.reportingPeriod.start)
@@ -2989,7 +3032,7 @@ export function validateCrossStraitActivitySnapshot(snapshot) {
       .filter((source) => source?.id === 'japan-mod')
       .flatMap((source) => Array.isArray(source.candidates) ? source.candidates : [])
       .filter((candidate) => candidate?.admission === 'manual_review_required'
-        && /^https:\/\/x\.com\/jointstaffpa\/status\/[1-9]\d{0,19}$/.test(candidate.sourceUrl))))
+        && VALIDATE_CROSS_STRAIT_ACTIVITY_SNAPSHOT_RE.test(candidate.sourceUrl))))
     || serializedBytes(snapshot) > CROSS_STRAIT_ACTIVITY_MAX_SERIALIZED_BYTES
   ) return false;
   const mnd = snapshot.observations.filter((row) => row?.sourceId === 'taiwan-mnd');

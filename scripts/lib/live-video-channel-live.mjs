@@ -15,6 +15,15 @@
 
 import { createRequire } from 'node:module';
 
+const CANONICAL_HREF_RE = /<link\b[^>]*>/gi;
+const CANONICAL_HREF_RE_2 = /\brel\s*=\s*["']canonical["']/i;
+const CANONICAL_HREF_RE_3 = /\bhref\s*=\s*["']([^"']+)["']/i;
+const READ_CANONICAL_RE = /&amp;/g;
+const READ_CANONICAL_RE_2 = /^\/(?:channel\/UC[A-Za-z0-9_-]{22}|@[^/]+|c\/[^/]+|user\/[^/]+)\/?$/;
+const PLAYER_RESPONSE_JSON_RE = /ytInitialPlayerResponse\s*=\s*\{/;
+const IS_TIMEOUT_RE = /^(?:proxy fetch timeout|CONNECT tunnel timeout)$/;
+
+
 const { parseProxyConfigForAttempt, proxyFetch } = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
 // Duplicated from src/services/live-video/model.ts, which is TypeScript and cannot be imported here.
@@ -60,9 +69,9 @@ function canonicalHref(html) {
   // Only text up to the last '>' can hold a whole tag. Scanning past it made
   // every unclosed `<link` rescan the rest of the page.
   const closed = html.slice(0, html.lastIndexOf('>') + 1);
-  for (const [tag] of closed.matchAll(/<link\b[^>]*>/gi)) {
-    if (!/\brel\s*=\s*["']canonical["']/i.test(tag)) continue;
-    return /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1] ?? null;
+  for (const [tag] of closed.matchAll(CANONICAL_HREF_RE)) {
+    if (!CANONICAL_HREF_RE_2.test(tag)) continue;
+    return CANONICAL_HREF_RE_3.exec(tag)?.[1] ?? null;
   }
   return null;
 }
@@ -71,7 +80,7 @@ function canonicalHref(html) {
 function readCanonical(href) {
   let url;
   try {
-    url = new URL(href.replace(/&amp;/g, '&'));
+    url = new URL(href.replace(READ_CANONICAL_RE, '&'));
   } catch {
     return { kind: 'other' };
   }
@@ -80,7 +89,7 @@ function readCanonical(href) {
     const id = url.searchParams.get('v');
     return id && VIDEO_ID.test(id) ? { kind: 'watch', videoId: id } : { kind: 'other' };
   }
-  if (/^\/(?:channel\/UC[A-Za-z0-9_-]{22}|@[^/]+|c\/[^/]+|user\/[^/]+)\/?$/.test(url.pathname)) return { kind: 'channel' };
+  if (READ_CANONICAL_RE_2.test(url.pathname)) return { kind: 'channel' };
   return { kind: 'other' };
 }
 
@@ -89,7 +98,7 @@ function readCanonical(href) {
  * so a title containing `}` or `</script>` does not end it early. null when absent, undefined when broken.
  */
 function playerResponseJson(html) {
-  const match = /ytInitialPlayerResponse\s*=\s*\{/.exec(html);
+  const match = PLAYER_RESPONSE_JSON_RE.exec(html);
   if (!match) return null;
   const start = match.index + match[0].length - 1;
   let depth = 0;
@@ -152,7 +161,7 @@ function redact(text, proxy) {
 }
 
 const isTimeout = (error) => error?.name === 'TimeoutError'
-  || /^(?:proxy fetch timeout|CONNECT tunnel timeout)$/.test(String(error?.message ?? ''));
+  || IS_TIMEOUT_RE.test(String(error?.message ?? ''));
 
 /** The proxy refused our login (CONNECT 407): every exit will refuse it too, so rotating cannot help. */
 const isProxyAuthFailure = (error) => error?.proxyFailure?.proxyConnectStatus === 407;
@@ -160,7 +169,7 @@ const isProxyAuthFailure = (error) => error?.proxyFailure?.proxyConnectStatus ==
 /** A fetch that failed at the proxy exit rather than at YouTube: another exit may well succeed. */
 const isProxyFailure = (error) => !isProxyAuthFailure(error) && (error?.proxyConnect === true
   || PROXY_STAGES.has(error?.proxyFailure?.stage)
-  || /^(?:proxy fetch timeout|CONNECT tunnel timeout)$/.test(String(error?.message ?? '')));
+  || IS_TIMEOUT_RE.test(String(error?.message ?? '')));
 
 /**
  * The proxy route for one attempt, from the raw proxy value (any form parseProxyConfig reads). A Decodo sticky port

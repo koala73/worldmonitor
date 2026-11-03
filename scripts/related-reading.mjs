@@ -11,6 +11,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const RESOLVES_RE = /^\/docs\/[a-z0-9][a-z0-9/-]*$/;
+
+
 export const RELATED_READING_PATH = 'scripts/data/related-reading.json';
 export const MAX_RELATED_READING = 3;
 
@@ -36,7 +39,7 @@ export function loadRelatedReading({ rootDir, blogPostPaths }) {
     for (const item of items) {
       const href = item?.href;
       const resolves = typeof href === 'string'
-        && (blogPostPaths.has(href) || (/^\/docs\/[a-z0-9][a-z0-9/-]*$/.test(href) && docsFileExists(rootDir, href)));
+        && (blogPostPaths.has(href) || (RESOLVES_RE.test(href) && docsFileExists(rootDir, href)));
       if (!resolves || typeof item.title !== 'string' || !item.title.trim()) {
         throw new Error(`${RELATED_READING_PATH}: ${path} links to ${href}, which is not a blog post or docs page; rerun node scripts/internal-links.mjs related`);
       }

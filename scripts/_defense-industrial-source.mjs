@@ -2,6 +2,14 @@ import { createRequire } from 'node:module';
 import Papa from 'papaparse';
 import { CHROME_UA, sleep, withRetry } from './_seed-utils.mjs';
 
+const MAP_SIPRI_ENTITY_TO_ISO2_RE = /unknown/i;
+const MAP_SIPRI_ENTITY_TO_ISO2_RE_2 = /\*$/;
+const PARSED_RE = /^\uFEFF/;
+const CLEANED_RE = /[% ,]/g;
+const PARSE_SIPRI_SUPPLIER_CSV_RE = /^total exports to /i;
+const PREVIEW_RE = /[\u0000-\u001f\u007f]/g;
+
+
 const require = createRequire(import.meta.url);
 const ISO3_TO_ISO2 = require('./shared/iso3-to-iso2.json');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
@@ -130,12 +138,12 @@ function round4(value) {
 
 export function mapSipriEntityToIso2(name) {
   const value = String(name || '').trim();
-  if (!value || /unknown/i.test(value) || /\*$/.test(value)) return null;
+  if (!value || MAP_SIPRI_ENTITY_TO_ISO2_RE.test(value) || MAP_SIPRI_ENTITY_TO_ISO2_RE_2.test(value)) return null;
   return countryNameToIso2(value);
 }
 
 function csvRows(text) {
-  const parsed = Papa.parse(String(text || '').replace(/^\uFEFF/, ''), {
+  const parsed = Papa.parse(String(text || '').replace(PARSED_RE, ''), {
     dynamicTyping: false,
     skipEmptyLines: 'greedy',
     transform: (value) => value.trim(),
@@ -147,7 +155,7 @@ function csvRows(text) {
 }
 
 function numericCell(value) {
-  const cleaned = String(value || '').replace(/[% ,]/g, '').trim();
+  const cleaned = String(value || '').replace(CLEANED_RE, '').trim();
   if (!cleaned) return null;
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
@@ -167,7 +175,7 @@ export function parseSipriSupplierCsv(csv, { importerIso2, windowStartYear, wind
   const unmapped = [];
   for (const row of rows.slice(headerIndex + 1)) {
     const supplierName = row[0] || '';
-    if (!supplierName || /^total exports to /i.test(supplierName)) continue;
+    if (!supplierName || PARSE_SIPRI_SUPPLIER_CSV_RE.test(supplierName)) continue;
     const tiv = numericCell(row[totalIndex]);
     if (!(tiv > 0)) continue;
     const supplierIso2 = mapSipriEntityToIso2(supplierName);
@@ -341,7 +349,7 @@ export async function fetchSipriSupplierDependencies({
   const unmappedCatalog = resolvedCatalog.filter((entry) => !entry.iso2);
   if (unmappedCatalog.length > 0) {
     const preview = unmappedCatalog.slice(0, 25)
-      .map((entry) => String(entry?.Name || '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 80))
+      .map((entry) => String(entry?.Name || '').replace(PREVIEW_RE, ' ').slice(0, 80))
       .join(', ');
     logger.warn(`  SIPRI importer entities unmapped (${unmappedCatalog.length}/${catalog.length}): ${preview}`);
   }
@@ -417,7 +425,7 @@ export async function fetchSipriSupplierDependencies({
       } catch (error) {
         failedImporters.push({
           iso2: importer.iso2,
-          message: String(error?.message || error).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 160),
+          message: String(error?.message || error).replace(PREVIEW_RE, ' ').slice(0, 160),
         });
       }
       if (delayMs > 0) await sleep(delayMs);
@@ -449,7 +457,7 @@ export async function fetchSipriSupplierDependencies({
 
   if (unmapped.size > 0) {
     const preview = [...unmapped.entries()].slice(0, 25)
-      .map(([name, count]) => `${String(name).replace(/[\u0000-\u001f\u007f]/g, ' ')} (${count})`)
+      .map(([name, count]) => `${String(name).replace(PREVIEW_RE, ' ')} (${count})`)
       .join(', ');
     logger.warn(`  SIPRI unmapped supplier entities skipped (${unmapped.size} unique): ${preview}`);
   }

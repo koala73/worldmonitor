@@ -51,6 +51,9 @@ import {
 import { toScorecardSearchExport } from './seo-gsc-collect.mjs';
 import { toScorecardReferralExport } from './seo-umami-collect.mjs';
 
+const EARLIER_RE = /^\d{4}-\d{2}-\d{2}\.json$/;
+
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_DIR = 'docs/research/seo-ai-visibility';
 /** New cycles use the five-surface contract (see the directory README). */
@@ -187,7 +190,7 @@ const readOptional = (path) => (existsSync(path) ? readJson(path) : null);
 /** The newest `baselines/<date>.json` strictly before `date`, so a rerun is idempotent. */
 export function findPreviousBaseline(baselinesDir, date) {
   const earlier = readdirSync(baselinesDir)
-    .filter((name) => /^\d{4}-\d{2}-\d{2}\.json$/.test(name) && name.slice(0, 10) < date)
+    .filter((name) => EARLIER_RE.test(name) && name.slice(0, 10) < date)
     .sort();
   return earlier.length > 0 ? join(baselinesDir, earlier.at(-1)) : null;
 }

@@ -24,6 +24,9 @@ import { SIMILARITY_THRESHOLD, SUPPRESSED_TRENDING_TERMS, jaccardSimilarity, tok
 import { publisherFamilyFor } from './publisher-families.js';
 import { detectSyndication } from './syndication.js';
 
+const GENERATE_CLUSTER_ID_RE = /\W/g;
+
+
 export const MAX_CLUSTER_NEWS_ITEMS = 1000;
 
 const THREAT_PRIORITY = {
@@ -111,7 +114,7 @@ export function aggregateThreats(items) {
 function generateClusterId(items) {
   const sorted = [...items].sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime());
   const first = sorted[0];
-  return `${first.pubDate.getTime()}-${first.title.slice(0, 20).replace(/\W/g, '')}`;
+  return `${first.pubDate.getTime()}-${first.title.slice(0, 20).replace(GENERATE_CLUSTER_ID_RE, '')}`;
 }
 
 /**

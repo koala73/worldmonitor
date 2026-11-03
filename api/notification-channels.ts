@@ -9,6 +9,10 @@
  * CONVEX_TENANT_RELAY_SECRET — no Convex-specific JWT template required.
  */
 
+const GENERATE_WEBHOOK_SIGNING_SECRET_RE = /\+/g;
+const GENERATE_WEBHOOK_SIGNING_SECRET_RE_2 = /\//g;
+const GENERATE_WEBHOOK_SIGNING_SECRET_RE_3 = /=+$/;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -110,7 +114,7 @@ export function __setNotificationChannelsDepsForTests(
 function generateWebhookSigningSecret(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const b64 = btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
-  return `whsec_${b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+  return `whsec_${b64.replace(GENERATE_WEBHOOK_SIGNING_SECRET_RE, '-').replace(GENERATE_WEBHOOK_SIGNING_SECRET_RE_2, '_').replace(GENERATE_WEBHOOK_SIGNING_SECRET_RE_3, '')}`;
 }
 
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).

@@ -2,6 +2,9 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { channel } from 'node:diagnostics_channel';
 import { randomUUID } from 'node:crypto';
 
+const LISTENERS_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+
+
 const scope = new AsyncLocalStorage();
 const requests = new WeakMap();
 let activeScopes = 0;
@@ -48,7 +51,7 @@ const listeners = [
       if (name === 'content-type') {
         const type = value.split(';', 1)[0].trim().toLowerCase();
         if (['application/json', 'text/html', 'text/plain', 'application/problem+json'].includes(type)) progress.contentType = type;
-      } else if (/^[a-zA-Z0-9_-]{1,128}$/.test(value)) {
+      } else if (LISTENERS_RE.test(value)) {
         progress[name === 'cf-ray' ? 'cfRay' : 'responseRequestId'] = value;
       }
     }

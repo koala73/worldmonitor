@@ -1,5 +1,8 @@
 /** URL contract for the stock research overlay. DOM-free for node tests. */
 
+const IS_STOCK_RESEARCH_PATH_RE = /^\/stocks(?:\/[A-Za-z0-9.-]+)?\/?$/;
+const STOCK_RESEARCH_SYMBOL_FROM_PATH_RE = /^\/stocks(?:\/([^/]+))?\/?$/;
+
 const STOCK_SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,14}$/;
 
 export function normalizeStockResearchSymbol(raw: string | null | undefined): string | null {
@@ -8,11 +11,11 @@ export function normalizeStockResearchSymbol(raw: string | null | undefined): st
 }
 
 export function isStockResearchPath(pathname: string): boolean {
-  return /^\/stocks(?:\/[A-Za-z0-9.-]+)?\/?$/.test(pathname);
+  return IS_STOCK_RESEARCH_PATH_RE.test(pathname);
 }
 
 export function stockResearchSymbolFromPath(pathname: string): string | null {
-  const match = pathname.match(/^\/stocks(?:\/([^/]+))?\/?$/);
+  const match = pathname.match(STOCK_RESEARCH_SYMBOL_FROM_PATH_RE);
   if (!match) return null;
   return normalizeStockResearchSymbol(match[1] ?? '');
 }

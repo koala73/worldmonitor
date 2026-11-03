@@ -1,5 +1,8 @@
 'use strict';
 
+const DESCRIBE_COUNTRY_RE = /^[A-Za-z]{2}$/;
+
+
 // Microsoft Teams delivery (#9215). Shared by the realtime relay
 // (scripts/notification-relay.cjs) and the digest cron
 // (scripts/seed-digest-notifications.mjs).
@@ -51,7 +54,7 @@ function severityColor(severity) {
  * value is not a resolvable region code.
  */
 function describeCountry(code) {
-  if (typeof code !== 'string' || !/^[A-Za-z]{2}$/.test(code.trim())) return null;
+  if (typeof code !== 'string' || !DESCRIBE_COUNTRY_RE.test(code.trim())) return null;
   const iso2 = code.trim().toUpperCase();
   try {
     const name = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' }).of(iso2);

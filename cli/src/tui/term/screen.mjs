@@ -3,6 +3,9 @@
 // terminal from the previously flushed frame.
 import { CSI, charWidth, sanitize, sgrColor } from './ansi.mjs';
 
+const TO_LINES_RE = /\s+$/;
+
+
 export const ATTR = { BOLD: 1, DIM: 2, ITALIC: 4, UNDERLINE: 8, BLINK: 16, REVERSE: 32 };
 
 const WIDE_TAIL = '\u0000';
@@ -204,7 +207,7 @@ export class Screen {
         const ch = this.ch[y * this.cols + x];
         if (ch !== WIDE_TAIL) line += ch;
       }
-      lines.push(line.replace(/\s+$/, ''));
+      lines.push(line.replace(TO_LINES_RE, ''));
     }
     return lines;
   }

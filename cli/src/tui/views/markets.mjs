@@ -7,6 +7,16 @@ import { gauge, heading, kv, label, panel, segments, sparkline } from '../ui/wid
 import { fmtNum, fmtPct, fmtPrice, quoteGroups } from '../data/select.mjs';
 import { PaneView } from './base.mjs';
 
+const VERDICT_COLOR_RE = /BUY/i;
+const VERDICT_COLOR_RE_2 = /SELL/i;
+const BULL_RE = /normal|bull|positive|risk.?on|expan|uptrend|green/i;
+const BEAR_RE = /bear|negative|risk.?off|stress|contract|downtrend|red|gap/i;
+const LABEL_RE = /([A-Z])/g;
+const RENDER_MACRO_RE = /in/i;
+const RENDER_MACRO_RE_2 = /low/i;
+const RENDER_MACRO_RE_3 = /high/i;
+
+
 export class MarketsView extends PaneView {
   constructor(app) {
     super(app, { id: 'markets', label: 'Markets', paneIds: ['quotes', 'crypto'], sources: ['fast', 'slow'] });
@@ -112,7 +122,7 @@ export class MarketsView extends PaneView {
       if (y < inner.y + inner.h) segments(ctx, inner.x, y++, segs, inner.w, { bg: t.panel });
     };
     if (m) {
-      const verdictColor = /BUY/i.test(m.verdict) ? t.good : /SELL/i.test(m.verdict) ? t.bad : t.warn;
+      const verdictColor = VERDICT_COLOR_RE.test(m.verdict) ? t.good : VERDICT_COLOR_RE_2.test(m.verdict) ? t.bad : t.warn;
       line([
         { text: 'macro verdict ', fg: t.dim },
         { text: String(m.verdict || '—'), fg: verdictColor, attr: ATTR.BOLD },
@@ -123,9 +133,9 @@ export class MarketsView extends PaneView {
       let used = 0;
       for (const [k, v] of sig) {
         const status = String((v && (v.status || v.signal || v.label)) || '—');
-        const bull = /normal|bull|positive|risk.?on|expan|uptrend|green/i.test(status);
-        const bear = /bear|negative|risk.?off|stress|contract|downtrend|red|gap/i.test(status);
-        const label = k.replace(/([A-Z])/g, ' $1').toLowerCase();
+        const bull = BULL_RE.test(status);
+        const bear = BEAR_RE.test(status);
+        const label = k.replace(LABEL_RE, ' $1').toLowerCase();
         const piece = `${label} ${status.toLowerCase()}`;
         if (used + piece.length + 3 > inner.w) {
           line(segs);
@@ -148,7 +158,7 @@ export class MarketsView extends PaneView {
       const sum = etf.summary;
       line([
         { text: 'ETF flows     ', fg: t.dim },
-        { text: `${String(sum.netDirection || '').toUpperCase()} `, fg: /in/i.test(sum.netDirection) ? t.good : t.bad, attr: ATTR.BOLD },
+        { text: `${String(sum.netDirection || '').toUpperCase()} `, fg: RENDER_MACRO_RE.test(sum.netDirection) ? t.good : t.bad, attr: ATTR.BOLD },
         { text: `est ${fmtNum(sum.totalEstFlow)} · ${sum.inflowCount ?? 0} in / ${sum.outflowCount ?? 0} out`, fg: t.text },
       ]);
     }
@@ -159,7 +169,7 @@ export class MarketsView extends PaneView {
       ]);
     }
     if (es) {
-      line([{ text: 'econ stress   ', fg: t.dim }, { text: `${es.compositeScore} ${es.label || ''}`, fg: /low/i.test(es.label) ? t.good : /high/i.test(es.label) ? t.bad : t.warn, attr: ATTR.BOLD }]);
+      line([{ text: 'econ stress   ', fg: t.dim }, { text: `${es.compositeScore} ${es.label || ''}`, fg: RENDER_MACRO_RE_2.test(es.label) ? t.good : RENDER_MACRO_RE_3.test(es.label) ? t.bad : t.warn, attr: ATTR.BOLD }]);
     }
     const gulf = this.data.gulfQuotes?.quotes || [];
     if (gulf.length && y < inner.y + inner.h - 1) {

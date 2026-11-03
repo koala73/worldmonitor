@@ -12,6 +12,11 @@ import { pathToFileURL } from 'node:url';
 
 import { bundleFeedsModule } from '../geo-coverage-health.mjs';
 
+const IS_KEYWORD_SEARCH_ONLY_RE = /news\.google\.com\/rss\/search\?q=([^&]*)/;
+const IS_KEYWORD_SEARCH_ONLY_RE_2 = /\bsite:/;
+const VALIDATE_OUTLET_PROFILES_RE = /^[a-z]{2,3}$/;
+
+
 function feedUrls(url) {
   if (typeof url === 'string') return [url];
   if (url && typeof url === 'object') return Object.values(url).filter((value) => typeof value === 'string');
@@ -72,8 +77,8 @@ export function isKeywordSearchOnly(outlet) {
   const urls = outlet && outlet.urls instanceof Set ? [...outlet.urls] : [];
   if (urls.length === 0) return false;
   return urls.every((url) => {
-    const match = /news\.google\.com\/rss\/search\?q=([^&]*)/.exec(decodeURIComponent(url));
-    return match !== null && !/\bsite:/.test(match[1]);
+    const match = IS_KEYWORD_SEARCH_ONLY_RE.exec(decodeURIComponent(url));
+    return match !== null && !IS_KEYWORD_SEARCH_ONLY_RE_2.test(match[1]);
   });
 }
 
@@ -118,7 +123,7 @@ export function validateOutletProfiles({ profiles, catalog, validCountries, fami
     }
     if (!validCountries.has(profile.country)) problems.push(`${name}: invalid country ${profile.country}`);
     if (!AUDIENCES.has(profile.audience)) problems.push(`${name}: invalid audience ${profile.audience}`);
-    if (typeof profile.language !== 'string' || !/^[a-z]{2,3}$/.test(profile.language)) {
+    if (typeof profile.language !== 'string' || !VALIDATE_OUTLET_PROFILES_RE.test(profile.language)) {
       problems.push(`${name}: invalid language ${profile.language}`);
     }
     if (!OWNERSHIP_CLASSES.has(profile.ownershipClass)) {

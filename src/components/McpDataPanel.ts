@@ -8,6 +8,9 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { isProWidgetEnabled, getBrowserTesterKey, getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
 import { wrapProWidgetHtml } from '@/utils/widget-sanitizer';
 
+const HOST_RE = /^www\./;
+
+
 type McpResult = {
   content?: Array<{ type: string; text?: string }>;
   [key: string]: unknown;
@@ -271,7 +274,7 @@ export class McpDataPanel extends Panel {
 
   private buildMetaLine(): string {
     const host = (() => {
-      try { return new URL(this.spec.serverUrl).hostname.replace(/^www\./, ''); } catch { return ''; }
+      try { return new URL(this.spec.serverUrl).hostname.replace(HOST_RE, ''); } catch { return ''; }
     })();
     const ago = this.lastFetchedAt ? this.formatAgo(this.lastFetchedAt) : '';
     return [

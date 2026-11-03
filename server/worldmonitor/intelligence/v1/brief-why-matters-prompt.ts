@@ -16,6 +16,9 @@ import { WHY_MATTERS_ANALYST_SYSTEM_V2, briefDateLine } from '../../../../shared
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import type { BriefStoryContext } from './brief-story-context';
 
+const STORY_USES_LOCAL_CONTEXT_RE = /^(?:conflict|general)$/i;
+
+
 export interface StoryForPrompt {
   headline: string;
   source: string;
@@ -124,7 +127,7 @@ function storyUsesLocalContext(story: StoryForPrompt): boolean {
   // local stories. Specific categories (Energy, Economic, Diplomatic, etc.)
   // already carry stronger editorial intent and must keep their own policy
   // even when a headline happens to mention a court or ruling.
-  if (!/^(?:conflict|general)$/i.test(story.category)) return false;
+  if (!STORY_USES_LOCAL_CONTEXT_RE.test(story.category)) return false;
   const text = `${story.headline} ${story.description ?? ''}`;
   if (LOCAL_HISTORY_OR_HUMAN_INTEREST_RE.test(text)) return true;
   return LOCAL_JUSTICE_RE.test(text) && !ACTIVE_GEOPOLITICAL_RE.test(text);

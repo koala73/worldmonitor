@@ -28,6 +28,12 @@ import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { showToast } from '@/utils/toast';
 
+const ENCODED_RE = /^pk_(live|test)_/;
+const CLERK_FAPI_HOST_RE = /\$+$/;
+const B64_RE = /-/g;
+const B64_RE_2 = /_/g;
+
+
 type ClerkInstance = Clerk;
 type ClerkSession = NonNullable<ClerkInstance['session']>;
 
@@ -205,9 +211,9 @@ function getClerkUICtor(): unknown {
  * Returns '' when the key is malformed.
  */
 function clerkFapiHost(publishableKey: string): string {
-  const encoded = publishableKey.replace(/^pk_(live|test)_/, '');
+  const encoded = publishableKey.replace(ENCODED_RE, '');
   try {
-    return atob(encoded).replace(/\$+$/, '');
+    return atob(encoded).replace(CLERK_FAPI_HOST_RE, '');
   } catch {
     return '';
   }
@@ -916,7 +922,7 @@ function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
   const payload = token?.split('.')[1];
   if (!payload) return { exp: null, iat: null };
   try {
-    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const b64 = payload.replace(B64_RE, '+').replace(B64_RE_2, '/');
     const claims = JSON.parse(
       atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)),
     ) as Record<string, unknown>;

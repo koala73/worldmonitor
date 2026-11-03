@@ -38,6 +38,11 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+const LIST_CHANGED_FILES_RE = /\.(ts|tsx|mjs|js)$/;
+const CHANGED_LINE_RANGES_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+const FIND_UNSAFE_CATCHES_RE = /\}\s*catch\s*(?:\([^)]*\))?\s*\{/;
+
+
 const args = process.argv.slice(2);
 const SCAN_ALL = args.includes('--all');
 
@@ -235,7 +240,7 @@ function listChangedFiles() {
       .split('\n')
       .filter(Boolean)
       .filter((p) => TARGET_DIRS.some((d) => p.startsWith(`${d}/`)))
-      .filter((p) => /\.(ts|tsx|mjs|js)$/.test(p));
+      .filter((p) => LIST_CHANGED_FILES_RE.test(p));
   } catch {
     return [];
   }
@@ -255,7 +260,7 @@ function changedLineRanges(filePath) {
     const ranges = [];
     for (const line of out.split('\n')) {
       // Hunk header: @@ -oldStart,oldCount +newStart,newCount @@
-      const m = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+      const m = line.match(CHANGED_LINE_RANGES_RE);
       if (!m) continue;
       const start = Number(m[1]);
       const count = m[2] ? Number(m[2]) : 1;
@@ -294,7 +299,7 @@ function findUnsafeCatches(filePath, restrictToRanges) {
   // literals can no longer fool the depth tracker.
   let i = 0;
   while (i < src.length) {
-    const m = src.slice(i).match(/\}\s*catch\s*(?:\([^)]*\))?\s*\{/);
+    const m = src.slice(i).match(FIND_UNSAFE_CATCHES_RE);
     if (!m) break;
     const startInRest = m.index;
     const absStart = i + startInRest;

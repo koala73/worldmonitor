@@ -19,6 +19,9 @@ import { readFileSync } from 'node:fs';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const ENSURE_LABEL_RE = /already_exists|HTTP 422/;
+
+
 export const LABEL = 'needs-screenshot';
 export const LABEL_COLOR = 'd93f0b';
 export const LABEL_DESCRIPTION = 'UI report waiting for a screenshot or recording';
@@ -150,7 +153,7 @@ function ensureLabel({ gh, repo }) {
       input: JSON.stringify({ name: LABEL, color: LABEL_COLOR, description: LABEL_DESCRIPTION }),
     });
   } catch (error) {
-    if (!/already_exists|HTTP 422/.test(String(error?.message))) throw error;
+    if (!ENSURE_LABEL_RE.test(String(error?.message))) throw error;
   }
 }
 

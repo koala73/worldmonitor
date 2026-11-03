@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectTrafficAnomaly, THREAT_LEVEL } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
@@ -129,6 +130,7 @@ describe('seedTransitSummaries (relay)', () => {
   // than sliced out of the relay: the relay requires them from shared/, so
   // there is nothing to extract and nothing to hold in sync.
   const seedHarnessSrc = [
+    moduleRegexDeclarations(relaySrc),
     extractConstLine('PORTWATCH_REDIS_KEY'),
     extractConstLine('CORRIDOR_RISK_REDIS_KEY'),
     extractConstLine('TRANSIT_SUMMARY_REDIS_KEY'),

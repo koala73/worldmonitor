@@ -32,6 +32,10 @@ import {
   requestCompanyMonitoringClassification,
 } from './lib/company-monitoring-classifier-client.mjs';
 
+const CHECKPOINTS_RE = /^cm_example_[a-f0-9]{6}\.(started|completed)\.json$/;
+const RECONCILIATIONS_RE = /^cm_example_[a-f0-9]{6}\.reconciliation\.json$/;
+
+
 type Command = 'preflight' | 'run' | 'digest-observations' | 'reconcile' | 'extract-predictions';
 
 class UsageError extends Error {}
@@ -240,14 +244,14 @@ async function main(): Promise<void> {
     throw new CompanyMonitoringOfflinePredictionError('offline_checkpoint_directory_unavailable');
   }
   const checkpoints = readdirSync(checkpointDirectory)
-    .filter((name) => /^cm_example_[a-f0-9]{6}\.(started|completed)\.json$/.test(name))
+    .filter((name) => CHECKPOINTS_RE.test(name))
     .sort()
     .map((name) => readJson<OfflinePredictionCheckpoint>(join(checkpointDirectory, name)));
   const reconciliationDirectory = options.get('reconciliation-directory');
   const reconciliations = reconciliationDirectory === undefined
     ? []
     : readdirSync(reconciliationDirectory)
-      .filter((name) => /^cm_example_[a-f0-9]{6}\.reconciliation\.json$/.test(name))
+      .filter((name) => RECONCILIATIONS_RE.test(name))
       .sort()
       .map((name) => readJson<OfflinePredictionReconciliation>(join(reconciliationDirectory, name)));
   const result = await runCompanyMonitoringOfflinePredictions({

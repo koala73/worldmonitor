@@ -3,6 +3,16 @@ import { jsonResponse } from './_json-response.js';
 import { readRawJsonFromUpstash, setCachedData } from './_upstash-json.js';
 import { captureSilentError } from './_sentry-edge.js';
 
+const DECODE_TEXT_RE = /&(#x[\da-f]+|#\d+|amp|quot|apos|lt|gt|nbsp);/gi;
+const LISTING_TEXT_RE = /<[^<>]*>/g;
+const PARSE_MIIT_NEWS_RE = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+const DAY_RE = /<span\b[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*<\/span>/i;
+const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/i;
+const HREF_RE = /\shref\s*=\s*(["'])(.*?)\1/i;
+const PARSE_MIIT_NEWS_RE_2 = /^\/(?:[\w-]+\/)+art\/\d{4}\/art_[\da-f]+\.html$/i;
+const TITLE_RE = /\stitle\s*=\s*(["'])(.*?)\1/i;
+
+
 export const config = { runtime: 'edge' };
 
 const SOURCE_URL = 'https://www.miit.gov.cn/';
@@ -36,7 +46,7 @@ function chinaCalendarDaysBetween(day, nowMs) {
 
 function decodeText(value) {
   const named = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ' };
-  return value.replace(/&(#x[\da-f]+|#\d+|amp|quot|apos|lt|gt|nbsp);/gi, (entity, code) => {
+  return value.replace(DECODE_TEXT_RE, (entity, code) => {
     if (!code.startsWith('#')) return named[code.toLowerCase()];
     const point = code[1].toLowerCase() === 'x' ? Number.parseInt(code.slice(2), 16) : Number(code.slice(1));
     return point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff)
@@ -52,18 +62,18 @@ function listingText(value) {
   let previous;
   do {
     previous = value;
-    value = value.replace(/<[^<>]*>/g, '');
+    value = value.replace(LISTING_TEXT_RE, '');
   } while (value !== previous);
   return value;
 }
 
 export function parseMiitNews(html, nowMs = Date.now()) {
   const items = new Map();
-  for (const match of html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/gi)) {
+  for (const match of html.matchAll(PARSE_MIIT_NEWS_RE)) {
     const row = match[1];
-    const day = row.match(/<span\b[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*<\/span>/i)?.[1];
-    const anchor = row.match(/<a\b([^>]*)>([\s\S]*?)<\/a>/i);
-    const href = anchor?.[1].match(/\shref\s*=\s*(["'])(.*?)\1/i)?.[2];
+    const day = row.match(DAY_RE)?.[1];
+    const anchor = row.match(ANCHOR_RE);
+    const href = anchor?.[1].match(HREF_RE)?.[2];
     if (!day || !anchor || !href) continue;
     const date = new Date(`${day}T00:00:00+08:00`);
     const ageDays = chinaCalendarDaysBetween(day, nowMs);
@@ -73,11 +83,11 @@ export function parseMiitNews(html, nowMs = Date.now()) {
     try { url = new URL(decodeText(href), SOURCE_URL); } catch { continue; }
     if (!['http:', 'https:'].includes(url.protocol) || url.hostname !== 'www.miit.gov.cn'
       || url.username || url.password || url.port
-      || !/^\/(?:[\w-]+\/)+art\/\d{4}\/art_[\da-f]+\.html$/i.test(url.pathname)) continue;
+      || !PARSE_MIIT_NEWS_RE_2.test(url.pathname)) continue;
     url.protocol = 'https:';
     url.search = '';
     url.hash = '';
-    const title = decodeText(anchor[1].match(/\stitle\s*=\s*(["'])(.*?)\1/i)?.[2]
+    const title = decodeText(anchor[1].match(TITLE_RE)?.[2]
       ?? listingText(anchor[2]));
     if (!title || items.has(url.href)) continue;
     items.set(url.href, { title, link: url.href, date: date.toISOString() });

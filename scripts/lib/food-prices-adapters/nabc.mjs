@@ -1,5 +1,10 @@
 import { htmlElements, isoDate } from '../food-prices.mjs';
 
+const RAW_RE = /\bid=["']__NUXT_DATA__["']/i;
+const REVIVE_RE = /^(?:Shallow)?(?:Reactive|Ref)$/;
+const TRAILING_SLASH_RE = /\/$/;
+
+
 const BASE = 'https://www.nabc.go.th/commodity/';
 const DAY = 86400000;
 const UNITS = { 'บาท/ตัน': 'tonne', 'บาท/กก.': 'kg', 'บาท/ร้อยฟอง': '100 eggs' };
@@ -34,7 +39,7 @@ const validDate = value => typeof value === 'string' && isoDate(...value.split('
 const MAX_NUXT_DEPTH = 64;
 
 export function nuxtData(html, key) {
-  const raw = htmlElements(html, ['script']).find(([open]) => /\bid=["']__NUXT_DATA__["']/i.test(open))?.[1];
+  const raw = htmlElements(html, ['script']).find(([open]) => RAW_RE.test(open))?.[1];
   if (!raw) throw new Error('nabc page payload format changed');
   const nodes = JSON.parse(raw);
   const memo = new Map();
@@ -48,7 +53,7 @@ export function nuxtData(html, key) {
     let value = node;
     memo.set(index, undefined);
     const child = next => revive(next, depth + 1);
-    if (Array.isArray(node)) value = typeof node[0] === 'string' && /^(?:Shallow)?(?:Reactive|Ref)$/.test(node[0]) ? child(node[1]) : node.map(next => child(next));
+    if (Array.isArray(node)) value = typeof node[0] === 'string' && REVIVE_RE.test(node[0]) ? child(node[1]) : node.map(next => child(next));
     else if (node && typeof node === 'object') value = Object.fromEntries(Object.entries(node).map(([name, next]) => [name, child(next)]));
     memo.set(index, value);
     return value;
@@ -96,5 +101,5 @@ export async function collect(ctx) {
     observations.push(...rows);
   }
   const refreshedReports = [...new Set(observations.map(row => row.date))].map(date => ({ date }));
-  return { observations, contexts: [], refreshedReports, reportUrl: BASE.replace(/\/$/, '') };
+  return { observations, contexts: [], refreshedReports, reportUrl: BASE.replace(TRAILING_SLASH_RE, '') };
 }

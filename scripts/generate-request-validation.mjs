@@ -17,6 +17,11 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import protobuf from 'protobufjs';
 
+const NORMALIZED_TYPE_NAME_RE = /^\./;
+const CALLBACK_MATCHES_RE = /validateRequest\("([^"]+)"/g;
+const BODY_DECLARATIONS_RE = /const body(?:\s*:\s*([A-Za-z0-9_]+)\s*=|\s*=\s*await req\.json\(\)\s+as\s+([A-Za-z0-9_]+))/g;
+
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPT_DIR, '..');
 const PROTO_ROOT = join(ROOT, 'proto', 'worldmonitor');
@@ -75,7 +80,7 @@ function walkReflectionObjects(object, visit) {
 }
 
 function normalizedTypeName(type) {
-  return type.fullName.replace(/^\./, '');
+  return type.fullName.replace(NORMALIZED_TYPE_NAME_RE, '');
 }
 
 function validationOptions(field) {
@@ -149,7 +154,7 @@ function collectRequestTypes(services) {
       'service_server.ts',
     );
     const generatedSource = readFileSync(generatedPath, 'utf8');
-    const callbackMatches = [...generatedSource.matchAll(/validateRequest\("([^"]+)"/g)];
+    const callbackMatches = [...generatedSource.matchAll(CALLBACK_MATCHES_RE)];
     for (const callbackMatch of callbackMatches) {
       const callbackName = callbackMatch[1];
       if (requestTypeByMethod.has(callbackName)) {
@@ -161,7 +166,7 @@ function collectRequestTypes(services) {
 
       const bodyDeclarations = [...generatedSource
         .slice(0, callbackMatch.index)
-        .matchAll(/const body(?:\s*:\s*([A-Za-z0-9_]+)\s*=|\s*=\s*await req\.json\(\)\s+as\s+([A-Za-z0-9_]+))/g)];
+        .matchAll(BODY_DECLARATIONS_RE)];
       const lastBodyDeclaration = bodyDeclarations.at(-1);
       const requestTypeName = lastBodyDeclaration?.[1] ?? lastBodyDeclaration?.[2];
       const requestType = service.methodsArray

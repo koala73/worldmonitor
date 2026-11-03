@@ -11,6 +11,14 @@ import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import admin1Points from './data/dtm-admin1-points.json' with { type: 'json' };
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
+const CANONICAL_PCODE_RE = /^([A-Z]{2,3})(\d+)$/;
+const CANONICAL_PCODE_RE_2 = /^0/;
+const IS_KNOWN_PCODE_RE = /^[A-Z]{2,3}\d+$/;
+const NORMALIZE_REASON_RE = /^no (reason for )?displacement/i;
+const BUILD_OPERATIONS_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PCODES_RE = /^[A-Z]{3}$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const DTM_CANONICAL_KEY = 'displacement:dtm:v1';
@@ -63,10 +71,10 @@ async function dtmGet(path, apiKey) {
 export function canonicalPcode(pcode, points = admin1Points) {
   if (!pcode) return null;
   if (points[pcode]) return pcode;
-  const match = /^([A-Z]{2,3})(\d+)$/.exec(pcode);
+  const match = CANONICAL_PCODE_RE.exec(pcode);
   const iso2 = match && (match[1].length === 2 ? match[1] : iso3ToIso2[match[1]]);
   if (!iso2) return null;
-  for (const digits of [match[2], match[2].replace(/^0/, ''), match[2].padStart(3, '0')]) {
+  for (const digits of [match[2], match[2].replace(CANONICAL_PCODE_RE_2, ''), match[2].padStart(3, '0')]) {
     if (points[iso2 + digits]) return iso2 + digits;
   }
   return null;
@@ -78,11 +86,11 @@ export function resolveAdmin1Point(pcode, points = admin1Points) {
 }
 
 const toLocation = (point) => (point ? { latitude: point[0], longitude: point[1] } : undefined);
-const isKnownPcode = (pcode) => typeof pcode === 'string' && /^[A-Z]{2,3}\d+$/.test(pcode);
+const isKnownPcode = (pcode) => typeof pcode === 'string' && IS_KNOWN_PCODE_RE.test(pcode);
 
 function normalizeReason(reason) {
   const text = String(reason ?? '').trim();
-  if (!text || /^no (reason for )?displacement/i.test(text)) return 'Not reported';
+  if (!text || NORMALIZE_REASON_RE.test(text)) return 'Not reported';
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }
 
@@ -91,7 +99,7 @@ export function buildOperations(rows, { points = admin1Points } = {}) {
   const latestByOperation = new Map();
   for (const row of rows) {
     const date = String(row?.reportingDate ?? '').slice(0, 10);
-    if (!row?.admin0Pcode || !row?.operation || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!row?.admin0Pcode || !row?.operation || !BUILD_OPERATIONS_RE.test(date)) continue;
     const key = `${row.admin0Pcode}\u0000${row.operation}`;
     if (!latestByOperation.has(key) || date > latestByOperation.get(key)) latestByOperation.set(key, date);
   }
@@ -177,7 +185,7 @@ function lookbackStart(nowMs) {
 export async function fetchDtmDisplacement({ apiKey = process.env.DTM_API_KEY, nowMs = Date.now() } = {}) {
   if (!apiKey) throw new Error('DTM_API_KEY is not set');
   const countries = await dtmGet('country-list', apiKey);
-  const pcodes = [...new Set(countries.map((c) => c?.admin0Pcode).filter((p) => /^[A-Z]{3}$/.test(p ?? '')))];
+  const pcodes = [...new Set(countries.map((c) => c?.admin0Pcode).filter((p) => PCODES_RE.test(p ?? '')))];
   if (pcodes.length === 0) throw new Error('DTM country-list returned no countries');
 
   const from = lookbackStart(nowMs);

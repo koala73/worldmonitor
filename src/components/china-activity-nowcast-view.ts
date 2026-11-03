@@ -7,6 +7,9 @@ import type {
 } from '../../shared/china-activity-nowcast';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 
+const HUMANIZE_RE = /_/g;
+
+
 const STATE_LABELS: Record<ChinaActivityComparisonState, string> = {
   agreement: 'Official and proxies agree',
   proxy_leading_divergence: 'Proxy-leading divergence',
@@ -40,7 +43,7 @@ const UTC_DATE_FORMATTER = new Intl.DateTimeFormat('en', {
 });
 
 function humanize(value: string): string {
-  return value.replace(/_/g, ' ');
+  return value.replace(HUMANIZE_RE, ' ');
 }
 
 function formatInstant(value: string): string {

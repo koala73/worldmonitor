@@ -6,6 +6,10 @@
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { checkRateLimit } from '../_rate-limit.js';
 
+const HANDLE_RE_2 = /^@/;
+const HANDLER_RE = /^[A-Za-z0-9_-]{11}$/;
+
+
 export const config = { runtime: 'edge' };
 
 // Mirrors ENDPOINT_RATE_POLICIES['/api/youtube/live'] in
@@ -45,10 +49,10 @@ export default async function handler(request, ctx) {
   const url = new URL(request.url);
   const channel = url.searchParams.get('channel');
   const videoIdParam = url.searchParams.get('videoId');
-  const handle = channel?.replace(/^@/, '').normalize('NFC') || '';
+  const handle = channel?.replace(HANDLE_RE_2, '').normalize('NFC') || '';
   if ((channel && (channel.length > 128 || channel !== channel.trim()
     || (!CHANNEL_ID_RE.test(channel) && !HANDLE_RE.test(handle))))
-    || (videoIdParam && (videoIdParam.length !== 11 || !/^[A-Za-z0-9_-]{11}$/.test(videoIdParam)))) {
+    || (videoIdParam && (videoIdParam.length !== 11 || !HANDLER_RE.test(videoIdParam)))) {
     return new Response(JSON.stringify({ error: 'Invalid YouTube handle, channel ID or video ID' }), {
       status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
     });

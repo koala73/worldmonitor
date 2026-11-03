@@ -17,6 +17,9 @@ import type { RetailerConfig } from '../config/types.js';
 import { MARKET_NAMES } from './market-names.js';
 import { isAllowedHost } from './search.js';
 
+const MATCH_PRICE_RE = /^\d/;
+
+
 const CHROME_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -52,7 +55,7 @@ function matchPrice(text: string, expectedCurrency: string): number | null {
   for (const re of PRICE_PATTERNS) {
     const match = text.match(re);
     if (match) {
-      const [price, currency] = /^\d/.test(match[1])
+      const [price, currency] = MATCH_PRICE_RE.test(match[1])
         ? [parseFloat(match[1]), match[2].toUpperCase()]
         : [parseFloat(match[2]), match[1].toUpperCase()];
       if (currency !== expectedCurrency) continue;

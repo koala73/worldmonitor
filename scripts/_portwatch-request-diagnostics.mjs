@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
+const REDACTED_RE = /(https?:\/\/)[^\s/]*@/gi;
+const REDACTED_RE_2 = /\b(Bearer|Basic)\s+[^\s,;"']+/gi;
+const REDACTED_RE_3 = /([?&])([^=\s?&#"']+)=([^\s&#"']*)/g;
+const REDACTED_RE_4 = /(["']?(?:token|api[_-]?key|access_token|password|secret|signature)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;&}]+)/gi;
+
+
 const QUERY_FIELDS = [
   'where', 'outFields', 'orderByFields', 'resultOffset', 'resultRecordCount',
   'outStatistics', 'returnGeometry', 'outSR', 'f',
@@ -9,11 +15,11 @@ const MAX_ERROR_BODY_BYTES = 64 * 1024;
 
 function safeText(value, maxBytes = 256) {
   const redacted = String(value ?? '')
-    .replace(/(https?:\/\/)[^\s/]*@/gi, '$1[redacted]@')
-    .replace(/\b(Bearer|Basic)\s+[^\s,;"']+/gi, '$1 [redacted]')
-    .replace(/([?&])([^=\s?&#"']+)=([^\s&#"']*)/g, (match, separator, name) =>
+    .replace(REDACTED_RE, '$1[redacted]@')
+    .replace(REDACTED_RE_2, '$1 [redacted]')
+    .replace(REDACTED_RE_3, (match, separator, name) =>
       QUERY_FIELDS.includes(name) ? match : `${separator}${name}=[redacted]`)
-    .replace(/(["']?(?:token|api[_-]?key|access_token|password|secret|signature)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;&}]+)/gi, '$1[redacted]');
+    .replace(REDACTED_RE_4, '$1[redacted]');
   const buffer = Buffer.from(redacted);
   return buffer.length > maxBytes
     ? `${buffer.subarray(0, maxBytes).toString('utf8')} [truncated]` : redacted;

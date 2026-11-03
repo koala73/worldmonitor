@@ -1,8 +1,11 @@
+
+
+const NORMALIZE_COMTRADE_PARTNER_RE = /^\d{1,3}$/;
 export function createComtradePartnerNormalizer(registry, standardCodes) {
   /** Resolve provider semantics first; reporter overrides are not partner identities. */
   function normalizeComtradePartner(code) {
     const key = String(code ?? '');
-    if (!/^\d{1,3}$/.test(key)) return { iso2: '', kind: 'unknown', label: 'Unknown partner', note: '' };
+    if (!NORMALIZE_COMTRADE_PARTNER_RE.test(key)) return { iso2: '', kind: 'unknown', label: 'Unknown partner', note: '' };
     const provider = registry.partners[String(Number(key))];
     if (provider) return provider;
     const iso2 = standardCodes[key.padStart(3, '0')] ?? '';

@@ -29,8 +29,10 @@
  *
  * @param {string} dataMonth - e.g. "2024-08"
  */
+const DATA_MONTH_TO_END_OF_MONTH_MS_RE = /^\d{4}-\d{2}$/;
+
 export function dataMonthToEndOfMonthMs(dataMonth) {
-  if (typeof dataMonth !== 'string' || !/^\d{4}-\d{2}$/.test(dataMonth)) return null;
+  if (typeof dataMonth !== 'string' || !DATA_MONTH_TO_END_OF_MONTH_MS_RE.test(dataMonth)) return null;
   const [year, month] = dataMonth.split('-').map(Number);
   if (month < 1 || month > 12) return null;
   // Date.UTC month is 0-indexed; passing month (NOT month-1) and day=0

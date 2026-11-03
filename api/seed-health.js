@@ -25,6 +25,9 @@ import {
 import { applyRedisKeyPrefix, readExistsFlags, redisPipeline } from './_upstash-json.js';
 import { isAppOwnedRedisKey } from './_redis-key-ownership.js';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const config = { runtime: 'edge' };
 
 // Keep these literals in sync with scripts/_resilience-intervals.mjs. Edge
@@ -707,8 +710,8 @@ export async function handleSeedHealth(req, options = {}) {
     const redistributionPolicyPartial = cfg.requiredRedistributionPolicyVersion != null
       && redistributionPolicyVersion !== cfg.requiredRedistributionPolicyVersion;
     const bilateralGaps = domain === 'comtrade:bilateral-hs4' ? {
-      preservedCountries: Object.keys(meta.preserveStreaks ?? {}).filter(iso => /^[A-Z]{2}$/.test(iso)),
-      countryCoverage: Object.fromEntries(Object.entries(meta.countryCoverage ?? {}).filter(([iso]) => /^[A-Z]{2}$/.test(iso))),
+      preservedCountries: Object.keys(meta.preserveStreaks ?? {}).filter(iso => COUNTRY_CODE_RE.test(iso)),
+      countryCoverage: Object.fromEntries(Object.entries(meta.countryCoverage ?? {}).filter(([iso]) => COUNTRY_CODE_RE.test(iso))),
       productCoverageKnown: Boolean(meta.countryCoverage),
       // The run's two reserved world-export requests (R10). Null on a snapshot
       // written before the field existed, which is absence of evidence, not a

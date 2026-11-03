@@ -9,6 +9,11 @@
  */
 
 // Clustering constants
+const WORDS_RE = /[^a-z0-9\s]/g;
+const WHITESPACE_RE = /\s+/;
+const TOKENIZE_ANY_SCRIPT_RE = /[^\p{L}\p{N}\p{M}]+/u;
+const ESCAPE_REGEX_RE = /[.*+?^${}()|[\]\\]/g;
+
 export const SIMILARITY_THRESHOLD = 0.5;
 
 export const STOP_WORDS = new Set([
@@ -144,8 +149,8 @@ export const SUPPRESSED_TRENDING_TERMS = new Set([
 export function tokenize(text) {
   const words = text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
+    .replace(WORDS_RE, ' ')
+    .split(WHITESPACE_RE)
     .filter(w => w.length > 2 && !STOP_WORDS.has(w));
   return new Set(words);
 }
@@ -166,7 +171,7 @@ const HANGUL = /\p{Script=Hangul}/u;
  */
 export function tokenizeAnyScript(text) {
   const tokens = new Set();
-  for (const run of text.normalize('NFKC').toLowerCase().split(/[^\p{L}\p{N}\p{M}]+/u)) {
+  for (const run of text.normalize('NFKC').toLowerCase().split(TOKENIZE_ANY_SCRIPT_RE)) {
     if (!run) continue;
     const chars = [...run];
     if (UNSPACED_SCRIPT.test(run)) {
@@ -194,7 +199,7 @@ export function includesKeyword(text, keywords) {
 }
 
 export function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REGEX_RE, '\\$&');
 }
 
 export function containsTopicKeyword(text, keyword) {

@@ -5,6 +5,12 @@
  * always supplied by trusted server context, never by a request field.
  */
 
+const WHITESPACE_RE = /\s+/g;
+const DOMAIN_RE = /^www\./;
+const DOMAIN_RE_2 = /\.$/;
+const HANDLE_RE = /^@/;
+const ASSERT_OPAQUE_CURSOR_SHAPE_RE = /^cmc1\.[A-Za-z0-9_-]{16,1536}\.[A-Za-z0-9_-]{43}$/;
+
 export const COMPANY_MONITORING_LIMITS = {
   maxCompaniesPerAccount: 500,
   maxRequestBytes: 256 * 1024,
@@ -80,7 +86,7 @@ function assertPlainText(value: unknown, field: string, maxBytes: number): strin
   if (typeof value !== 'string') throw new Error(`${field} must be a string`);
   const unicodeNormalized = value.normalize('NFC');
   if (CONTROL_CHARACTERS.test(unicodeNormalized)) throw new Error(`${field} contains control characters`);
-  const normalized = unicodeNormalized.trim().replace(/\s+/g, ' ');
+  const normalized = unicodeNormalized.trim().replace(WHITESPACE_RE, ' ');
   if (!normalized) throw new Error(`${field} is required`);
   if (utf8Bytes(normalized) > maxBytes) throw new Error(`${field} exceeds ${maxBytes} bytes`);
   return normalized;
@@ -108,7 +114,7 @@ function normalizeDomain(value: unknown, index: number): string {
     value,
     `domains[${index}]`,
     COMPANY_MONITORING_LIMITS.maxDomainBytes,
-  ).toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+  ).toLowerCase().replace(DOMAIN_RE, '').replace(DOMAIN_RE_2, '');
   if (!DOMAIN.test(domain)) throw new Error(`invalid domain: ${domain}`);
   return domain;
 }
@@ -118,7 +124,7 @@ function normalizeXHandle(value: unknown, index: number): string {
     value,
     `xHandles[${index}]`,
     COMPANY_MONITORING_LIMITS.maxXHandleInputBytes,
-  ).replace(/^@/, '').toLowerCase();
+  ).replace(HANDLE_RE, '').toLowerCase();
   if (!X_HANDLE.test(handle)) throw new Error(`invalid X handle: ${handle}`);
   return handle;
 }
@@ -643,7 +649,7 @@ export function assertOpaqueCursorShape(cursor: string): string {
   if (utf8Bytes(cursor) > COMPANY_MONITORING_LIMITS.maxCursorBytes) {
     throw new Error(`cursor exceeds ${COMPANY_MONITORING_LIMITS.maxCursorBytes} bytes`);
   }
-  if (!/^cmc1\.[A-Za-z0-9_-]{16,1536}\.[A-Za-z0-9_-]{43}$/.test(cursor)) {
+  if (!ASSERT_OPAQUE_CURSOR_SHAPE_RE.test(cursor)) {
     throw new Error('signed opaque cursor is malformed');
   }
   return cursor;

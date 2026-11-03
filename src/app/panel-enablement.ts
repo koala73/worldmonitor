@@ -5,6 +5,9 @@ import {
   type SetPanelEnabledResult,
 } from '@/config/panel-enablement';
 
+const ESCAPED_RE = /["\\]/g;
+
+
 /** Matches SearchSelectionDispatcher's deferred-panel presentation wait. */
 export const PANEL_LIVE_WAIT_TIMEOUT_MS = 30_000;
 
@@ -106,7 +109,7 @@ export function isCatalogPanelLive(
   if (typeof document === 'undefined') return false;
   const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
     ? CSS.escape(panelId)
-    : panelId.replace(/["\\]/g, '\\$&');
+    : panelId.replace(ESCAPED_RE, '\\$&');
   const node = document.querySelector(`[data-panel="${escaped}"]:not([data-deferred-panel])`);
   return Boolean(node?.isConnected);
 }

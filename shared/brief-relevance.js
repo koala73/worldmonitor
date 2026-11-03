@@ -12,6 +12,9 @@
 // This predicate is a narrow, word-bounded title lexicon instead. It rejects
 // only what it can name; anything unmatched stays eligible.
 
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const WHITESPACE_RE = /\s+/g;
+
 const SPORT_TERMS = [
   'football', 'soccer', 'cricket', 'rugby', 'tennis', 'golf', 'basketball',
   'baseball', 'volleyball', 'handball', 'hockey', 'athletics', 'half marathon',
@@ -62,7 +65,7 @@ const FAREWELL_RE = /\bfarewell (?:match|game)\b|\binternational retirement\b|\b
 const KEEP_RE = /\b(?:kill(?:s|ed|ing)?|dead|dies|died|deaths?|execut(?:es?|ed|ion)|arrest(?:s|ed)?|jail(?:s|ed)?|sentenced|detain(?:s|ed)?|protest(?:s|ers?)?|tear gas|crush|stampede|attack(?:s|ed)?|bomb(?:s|ing|ed)?|shooting|court|appeal|arbitration|sanction(?:s|ed)?|coup|riots?|clash(?:es)?|police|(?:anti-)?government|minister|ban(?:s|ned)?|hunger strik(?:e|er)|match-fixing|corruption|fraud)\b/i;
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 function termsRegExp(terms) {
@@ -82,7 +85,7 @@ const TERM_RULES = [
  */
 export function briefIrrelevanceReason(title) {
   if (typeof title !== 'string') return null;
-  const text = title.replace(/\s+/g, ' ').trim();
+  const text = title.replace(WHITESPACE_RE, ' ').trim();
   if (!text || KEEP_RE.test(text)) return null;
   for (const [reason, re] of TERM_RULES) {
     if (re.test(text)) return reason;

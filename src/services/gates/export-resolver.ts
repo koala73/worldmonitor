@@ -21,6 +21,9 @@
 
 import { getBillingGateOverride, type BillingUxState } from '../billing-state';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]/g;
+
+
 /** Formats the dashboard can genuinely produce. Keep this list aligned with
  * `src/utils/export.ts`; unknown catalog values must never become UI actions. */
 export const SUPPORTED_EXPORT_FORMATS = ['csv', 'json', 'pdf'] as const;
@@ -257,7 +260,7 @@ const PRO_BUSINESS_MARKER = 'probusiness';
 const TIER_IDENTITY_FIELDS = ['id', 'group', 'tierGroup', 'planKey', 'localeKey', 'name'] as const;
 
 function normalizeIdentity(value: unknown): string {
-  return typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+  return typeof value === 'string' ? value.toLowerCase().replace(NON_ALPHANUMERIC_RE, '') : '';
 }
 
 /**

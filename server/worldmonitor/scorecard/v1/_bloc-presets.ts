@@ -1,5 +1,8 @@
 import { isInRankableUniverse } from '../../resilience/v1/_rankable-universe';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export type ScorecardBlocPreset = 'USMCA' | 'EU27' | 'BRICS' | 'GCC' | 'ASEAN' | 'NATO';
 export type ScorecardBlocSelection = { id: string; label: string; members: string[] };
 
@@ -34,7 +37,7 @@ export function resolveBlocSelection(input: { preset?: string; members?: string[
     return SCORECARD_BLOC_PRESETS[preset as ScorecardBlocPreset];
   }
   if (members.length < 2 || members.length > 30) throw new Error('Custom scorecard blocs require 2-30 members.');
-  if (members.some((member) => !/^[A-Z]{2}$/.test(member))) {
+  if (members.some((member) => !COUNTRY_CODE_RE.test(member))) {
     throw new Error('Custom scorecard bloc members must be uppercase ISO-2 codes.');
   }
   if (new Set(members).size !== members.length) throw new Error('Custom scorecard bloc members must be unique.');

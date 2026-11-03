@@ -6,6 +6,11 @@
 // and a last-price marker. Consumes the plain number[] intraday series that the
 // market data already carries — it does NOT invent OHLC/candlestick data.
 
+const ESC_ATTR_RE = /&/g;
+const ESC_ATTR_RE_2 = /"/g;
+const ESC_ATTR_RE_3 = /</g;
+const ESC_ATTR_RE_4 = />/g;
+
 export interface TerminalChartOptions {
   width?: number;
   height?: number;
@@ -22,10 +27,10 @@ export interface TerminalChartOptions {
 // opening a tag. Kept local to keep this util dependency-free, matching sparkline.ts.
 function escAttr(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(ESC_ATTR_RE, '&amp;')
+    .replace(ESC_ATTR_RE_2, '&quot;')
+    .replace(ESC_ATTR_RE_3, '&lt;')
+    .replace(ESC_ATTR_RE_4, '&gt;');
 }
 
 // Module-level counter gives each rendered chart a unique gradient/clip id so

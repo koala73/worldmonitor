@@ -10,6 +10,8 @@
  * Ownership is verified via Convex — the keyHash must belong to the caller.
  */
 
+const HANDLER_RE = /^[a-f0-9]{64}$/;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -58,7 +60,7 @@ export default async function handler(
   }
 
   const { keyHash } = body;
-  if (typeof keyHash !== 'string' || !/^[a-f0-9]{64}$/.test(keyHash)) {
+  if (typeof keyHash !== 'string' || !HANDLER_RE.test(keyHash)) {
     return jsonResponse({ error: 'Invalid keyHash' }, 422, cors);
   }
 

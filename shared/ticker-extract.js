@@ -31,6 +31,8 @@
  */
 
 /** Proto contract: NewsItem.tickers max_items=8 — never emit more. */
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+
 export const MAX_TICKERS = 8;
 
 // Company names that are also ordinary English words / common terms. Bare-name
@@ -52,7 +54,7 @@ const CASHTAG_RE = /(?<![A-Za-z0-9$])\$([A-Z]{1,5})(?![A-Za-z0-9])/g;
 
 /** @param {string} s */
 function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return s.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 /**

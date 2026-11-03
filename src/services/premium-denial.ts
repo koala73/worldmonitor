@@ -23,6 +23,9 @@
  */
 
 /** Minimum entitlement tier that counts as Pro (mirrors api/latest-brief.ts). */
+const NORMALIZE_CODE_RE = /[_-]+/g;
+const WHITESPACE_RE = /\s+/g;
+
 export const PRO_TIER = 1;
 
 export type PremiumDenialVerdict =
@@ -59,7 +62,7 @@ export interface PremiumDenialInput {
  * compare as one vocabulary.
  */
 function normalizeCode(code: string): string {
-  return code.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  return code.trim().toLowerCase().replace(NORMALIZE_CODE_RE, ' ').replace(WHITESPACE_RE, ' ');
 }
 
 /**

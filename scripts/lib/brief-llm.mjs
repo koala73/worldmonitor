@@ -54,6 +54,17 @@ import {
   validateNoHallucinatedStatusQualifiers,
 } from '../../shared/brief-llm-core.js';
 
+const NORMALIZE_ANALYST_WHY_MATTERS_RE = /^story flagged by your sensitivity/i;
+const WHITESPACE_RE = /\s+/g;
+const PARSE_STORY_DESCRIPTION_RE = /^[\u201C"']+/;
+const PARSE_STORY_DESCRIPTION_RE_2 = /[\u201D"']+$/;
+const PARSE_STORY_DESCRIPTION_RE_3 = /^[^.!?]+[.!?]/;
+const WHITESPACE_RE_2 = /\s+/;
+const NORMALIZE_GREETING_CORE_RE = /[.!]+$/u;
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+const PEEL_LEADING_DIGEST_GREETING_RE = /^([^\r\n]+)\r?\n+([\s\S]*)$/;
+
+
 // #4921: the grounding spine now lives in shared/brief-llm-core.js — re-export
 // for existing consumers of this module.
 export { checkLeadGrounding, leadGroundsAgainstStory };
@@ -153,7 +164,7 @@ function normalizeAnalystWhyMatters(value) {
   const minChars = Math.min(WHY_MATTERS_V1_MIN_CHARS, WHY_MATTERS_V2_MIN_CHARS);
   const maxChars = Math.max(WHY_MATTERS_V1_MAX_CHARS, WHY_MATTERS_V2_MAX_CHARS);
   if (normalized.length < minChars || normalized.length > maxChars) return null;
-  if (/^story flagged by your sensitivity/i.test(normalized)) return null;
+  if (NORMALIZE_ANALYST_WHY_MATTERS_RE.test(normalized)) return null;
   return hasTerminalPunctuation(normalized) ? normalized : null;
 }
 
@@ -307,7 +318,7 @@ export function buildStoryDescriptionPrompt(story) {
   // headlines from its parametric priors. Skip when description is empty or
   // normalise-equal to the headline (no grounding value; parser already
   // filters this but the prompt builder is a second belt-and-braces check).
-  const normalise = /** @param {string} x */ (x) => x.trim().toLowerCase().replace(/\s+/g, ' ');
+  const normalise = /** @param {string} x */ (x) => x.trim().toLowerCase().replace(WHITESPACE_RE, ' ');
   const rawDescription = typeof story.description === 'string' ? story.description.trim() : '';
   const contextUseful = rawDescription.length > 0
     && normalise(rawDescription) !== normalise(story.headline ?? '');
@@ -358,12 +369,12 @@ export function parseStoryDescription(text, headline, groundText) {
   if (typeof text !== 'string') return null;
   let s = text.trim();
   if (!s) return null;
-  s = s.replace(/^[\u201C"']+/, '').replace(/[\u201D"']+$/, '').trim();
-  const match = s.match(/^[^.!?]+[.!?]/);
+  s = s.replace(PARSE_STORY_DESCRIPTION_RE, '').replace(PARSE_STORY_DESCRIPTION_RE_2, '').trim();
+  const match = s.match(PARSE_STORY_DESCRIPTION_RE_3);
   const sentence = match ? match[0].trim() : s;
   if (sentence.length < 40 || sentence.length > 400) return null;
   if (typeof headline === 'string') {
-    const normalise = /** @param {string} x */ (x) => x.trim().toLowerCase().replace(/\s+/g, ' ');
+    const normalise = /** @param {string} x */ (x) => x.trim().toLowerCase().replace(WHITESPACE_RE, ' ');
     // Reject outputs that are a verbatim echo of the headline — that
     // is exactly the fallback we're replacing, shipping it as
     // "LLM enrichment" would be dishonest about cache spend.
@@ -666,7 +677,7 @@ export function validateDigestProseShape(obj, stories) {
     .map((x) => x.trim())
     .filter((x) => {
       if (x.length === 0 || x.length >= 220) return false;
-      const words = x.split(/\s+/).filter(Boolean).length;
+      const words = x.split(WHITESPACE_RE_2).filter(Boolean).length;
       return words <= 18;
     })
     .slice(0, 6);
@@ -794,7 +805,7 @@ function stripDigestFences(text) {
 }
 
 function normalizeGreetingCore(s) {
-  return s.trim().replace(/[.!]+$/u, '').replace(/\s+/g, ' ').toLowerCase();
+  return s.trim().replace(NORMALIZE_GREETING_CORE_RE, '').replace(WHITESPACE_RE, ' ').toLowerCase();
 }
 
 /**
@@ -827,13 +838,13 @@ function greetingLineMatchesExpected(line, expected) {
 }
 
 function normalizeGreetingPrefix(line) {
-  return `${line.trim().replace(/[.!]+$/u, '')}.`;
+  return `${line.trim().replace(NORMALIZE_GREETING_CORE_RE, '')}.`;
 }
 
 function leadAlreadyOpensWithGreeting(lead, greeting) {
-  const core = greeting.trim().replace(/[.!]+$/u, '');
+  const core = greeting.trim().replace(NORMALIZE_GREETING_CORE_RE, '');
   if (!core) return false;
-  const escaped = core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = core.replace(ESCAPED_RE, '\\$&');
   // Match at end of lead or any non-word boundary so "Good morning,"
   // (comma) and "Good morning." (period) both count as already open.
   return new RegExp(`^${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'iu').test(lead.trim());
@@ -851,7 +862,7 @@ function leadAlreadyOpensWithGreeting(lead, greeting) {
 function peelLeadingDigestGreeting(text, expectedGreeting) {
   const s = stripDigestFences(text.trim());
   if (!s || s.startsWith('{')) return { json: s, greeting: '' };
-  const match = s.match(/^([^\r\n]+)\r?\n+([\s\S]*)$/);
+  const match = s.match(PEEL_LEADING_DIGEST_GREETING_RE);
   if (!match) return { json: s, greeting: '' };
   const firstLine = match[1].trim();
   const rest = stripDigestFences(match[2].trim());

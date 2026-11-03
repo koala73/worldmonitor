@@ -20,6 +20,9 @@ import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import countryCentroids from './data/country-centroids.json' with { type: 'json' };
 
+const LATEST_BY_COUNTRY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const require = createRequire(import.meta.url);
@@ -158,7 +161,7 @@ export function latestByCountry(rows) {
     const name = String(row?.geomaster_name ?? '').trim();
     const individuals = Number(row?.individuals);
     const date = String(row?.date ?? '').slice(0, 10);
-    if (!name || !Number.isFinite(individuals) || individuals < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!name || !Number.isFinite(individuals) || individuals < 0 || !LATEST_BY_COUNTRY_RE.test(date)) continue;
     const prev = byCountry.get(name);
     if (prev && (prev.date > date || (prev.date === date && prev.individuals >= individuals))) continue;
     const lat = Number(row.centroid_lat);
@@ -356,7 +359,7 @@ async function buildTrend(situation, nowMs) {
       const date = p.data_date ?? (p.year && p.month ? `${p.year}-${String(p.month).padStart(2, '0')}-01` : null);
       return [date, Number(p.individuals)];
     })
-    .filter(([date, n]) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? '') && Number.isFinite(n)))
+    .filter(([date, n]) => LATEST_BY_COUNTRY_RE.test(date ?? '') && Number.isFinite(n)))
     .slice(-TREND_POINTS);
   if (points.length === 0) return undefined;
   if (isFlow) {

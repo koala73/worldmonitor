@@ -2,6 +2,10 @@
 // the theme id. Colours are hex strings; the renderer maps them to truecolor
 // or the nearest xterm-256 entry.
 
+const SEVERITY_COLOR_RE = /critical|extreme|severe|high|crit|do-not-travel|unhealthy|major/;
+const SEVERITY_COLOR_RE_2 = /elevated|medium|moderate|warn|reconsider|degraded|partial|minor/;
+const SEVERITY_COLOR_RE_3 = /low|normal|ok|healthy|operational|caution/;
+
 export const THEMES = {
   neon: {
     id: 'neon',
@@ -212,8 +216,8 @@ export function changeColor(t, value) {
 
 export function severityColor(t, level) {
   const l = String(level || '').toLowerCase();
-  if (/critical|extreme|severe|high|crit|do-not-travel|unhealthy|major/.test(l)) return t.bad;
-  if (/elevated|medium|moderate|warn|reconsider|degraded|partial|minor/.test(l)) return t.warn;
-  if (/low|normal|ok|healthy|operational|caution/.test(l)) return t.good;
+  if (SEVERITY_COLOR_RE.test(l)) return t.bad;
+  if (SEVERITY_COLOR_RE_2.test(l)) return t.warn;
+  if (SEVERITY_COLOR_RE_3.test(l)) return t.good;
   return t.info;
 }

@@ -12,6 +12,8 @@
  * directly.
  */
 
+const DECLARED_HTML_CANONICAL_RE = /[\t\n\f\r ]+/;
+
 const LINK_TAG = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
 const LINK_ATTRIBUTE = /([^\s"'<>/=]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
 const FIRST_PARTY_HOST = /(^|\.)worldmonitor\.app$/i;
@@ -27,7 +29,7 @@ export function declaredHtmlCanonical(html) {
       if (!attributes.has(key)) attributes.set(key, doubleQuoted ?? singleQuoted ?? unquoted ?? '');
     }
     const rel = attributes.get('rel') ?? '';
-    if (rel.toLowerCase().split(/[\t\n\f\r ]+/).includes('canonical')) {
+    if (rel.toLowerCase().split(DECLARED_HTML_CANONICAL_RE).includes('canonical')) {
       return attributes.get('href')?.trim() || null;
     }
   }

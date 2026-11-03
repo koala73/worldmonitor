@@ -1,5 +1,8 @@
 'use strict';
 
+const IS_TIMEOUT_ERROR_RE = /timed? ?out|timeout|timed out/;
+
+
 // Shared operational contract for relay-backed ingestion routes. The relay
 // records these classes without changing the data-serving fallback behavior;
 // callers can therefore distinguish expected throttling from application
@@ -18,7 +21,7 @@ const RSS_MIN_SERVED_COVERAGE = 0.7;
 
 function isTimeoutError(error) {
   const message = String(error?.message || error || '').toLowerCase();
-  return error?.name === 'TimeoutError' || /timed? ?out|timeout|timed out/.test(message);
+  return error?.name === 'TimeoutError' || IS_TIMEOUT_ERROR_RE.test(message);
 }
 
 function classifyUpstreamOutcome({ status, error } = {}) {

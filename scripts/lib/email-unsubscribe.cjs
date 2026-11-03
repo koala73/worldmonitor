@@ -1,5 +1,11 @@
 'use strict';
 
+const ESCAPE_ATTR_RE = /&/g;
+const ESCAPE_ATTR_RE_2 = /</g;
+const ESCAPE_ATTR_RE_3 = />/g;
+const ESCAPE_ATTR_RE_4 = /"/g;
+
+
 /**
  * One-click unsubscribe (RFC 8058) helpers for the Railway mail workers
  * (seed-digest-notifications.mjs: daily brief; notification-relay.cjs: alerts).
@@ -32,10 +38,10 @@ function listUnsubscribeHeaders(url) {
 
 function escapeAttr(value) {
   return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(ESCAPE_ATTR_RE, '&amp;')
+    .replace(ESCAPE_ATTR_RE_2, '&lt;')
+    .replace(ESCAPE_ATTR_RE_3, '&gt;')
+    .replace(ESCAPE_ATTR_RE_4, '&quot;');
 }
 
 /**

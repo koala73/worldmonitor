@@ -23,6 +23,25 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, serialize, readIdempotencyExemptPaths } from './lib/openapi-codegen.mjs';
 
+const ENSURE_YAML_IDEMPOTENCY_PARAM_RE = /^ {16}- name: Idempotency-Key\s*$/;
+const ENSURE_YAML_IDEMPOTENCY_PARAM_RE_2 = /^ {12}parameters:\s*$/;
+const YAML400_HAS_IDEMPOTENCY_CONTRACT_RE = /^ {38}- error\s*$/;
+const YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_2 = /^ {40}- error\s*$/;
+const YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_3 = /^ {38}- message\s*$/;
+const YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_4 = /^ {40}- message\s*$/;
+const YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_5 = /^ {40}error:\s*$/;
+const YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_6 = /^ {40}message:\s*$/;
+const ENSURE_YAML_SUCCESS_HEADERS_RE = /^ {20}headers:\s*$/;
+const ENSURE_YAML_SUCCESS_HEADERS_RE_2 = /^ {20}content:\s*$/;
+const PATH_MATCH_RE = /^ {4}(\/\S+):\s*$/;
+const INJECT_YAML_RE = /^\S/;
+const INJECT_YAML_RE_2 = /^ {8}post:\s*$/;
+const INJECT_YAML_RE_3 = /^ {0,8}\S/;
+const INJECT_YAML_RE_4 = /^ {12}responses:\s*$/;
+const JSON_FILES_RE = /Service\.openapi\.json$/;
+const YAML_FILES_RE = /Service\.openapi\.yaml$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const CHECK = process.argv.includes('--check');
@@ -338,11 +357,11 @@ function ensureYamlIdempotencyParam(lines, postIndex, end) {
   let paramsIndex = -1;
   let paramIndex = -1;
   for (let j = postIndex + 1; j < end; j++) {
-    if (/^ {16}- name: Idempotency-Key\s*$/.test(lines[j])) {
+    if (ENSURE_YAML_IDEMPOTENCY_PARAM_RE.test(lines[j])) {
       paramIndex = j;
       break;
     }
-    if (paramsIndex === -1 && /^ {12}parameters:\s*$/.test(lines[j])) paramsIndex = j;
+    if (paramsIndex === -1 && ENSURE_YAML_IDEMPOTENCY_PARAM_RE_2.test(lines[j])) paramsIndex = j;
   }
 
   if (paramIndex !== -1) {
@@ -406,10 +425,10 @@ function yaml400HasIdempotencyContract(lines, start, blockEnd) {
   const block = lines.slice(start, blockEnd);
   return (
     block.some((line) => line.includes("#/components/schemas/ValidationError")) &&
-    block.some((line) => /^ {38}- error\s*$/.test(line) || /^ {40}- error\s*$/.test(line)) &&
-    block.some((line) => /^ {38}- message\s*$/.test(line) || /^ {40}- message\s*$/.test(line)) &&
-    block.some((line) => /^ {40}error:\s*$/.test(line)) &&
-    block.some((line) => /^ {40}message:\s*$/.test(line))
+    block.some((line) => YAML400_HAS_IDEMPOTENCY_CONTRACT_RE.test(line) || YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_2.test(line)) &&
+    block.some((line) => YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_3.test(line) || YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_4.test(line)) &&
+    block.some((line) => YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_5.test(line)) &&
+    block.some((line) => YAML400_HAS_IDEMPOTENCY_CONTRACT_RE_6.test(line))
   );
 }
 
@@ -455,7 +474,7 @@ function ensureYamlSuccessHeaders(lines, responsesIndex, end) {
   );
 
   for (let j = blockStart + 1; j < blockEnd; j++) {
-    if (/^ {20}headers:\s*$/.test(lines[j])) {
+    if (ENSURE_YAML_SUCCESS_HEADERS_RE.test(lines[j])) {
       const headersEnd = findIndentedBlockEnd(lines, j, blockEnd, /^ {20}\S/, /^ {0,16}\S/);
       return replaceLinesIfDifferent(lines, j, headersEnd, YAML_SUCCESS_HEADERS);
     }
@@ -463,7 +482,7 @@ function ensureYamlSuccessHeaders(lines, responsesIndex, end) {
 
   let insertAt = blockEnd;
   for (let j = blockStart + 1; j < blockEnd; j++) {
-    if (/^ {20}content:\s*$/.test(lines[j])) {
+    if (ENSURE_YAML_SUCCESS_HEADERS_RE_2.test(lines[j])) {
       insertAt = j;
       break;
     }
@@ -478,22 +497,22 @@ function injectYaml(text) {
   let currentPath = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const pathMatch = line.match(/^ {4}(\/\S+):\s*$/);
+    const pathMatch = line.match(PATH_MATCH_RE);
     if (pathMatch) {
       currentPath = pathMatch[1];
       continue;
     }
-    if (/^\S/.test(line)) {
+    if (INJECT_YAML_RE.test(line)) {
       currentPath = null; // left the paths: block
       continue;
     }
-    if (!currentPath || !/^ {8}post:\s*$/.test(line)) continue;
+    if (!currentPath || !INJECT_YAML_RE_2.test(line)) continue;
     if (IDEMPOTENCY_EXEMPT_PATHS.has(currentPath)) continue;
 
     // Op block spans until the next line at <= 8-space indent (next method /
     // path / top-level key).
     let end = i + 1;
-    while (end < lines.length && !/^ {0,8}\S/.test(lines[end])) end++;
+    while (end < lines.length && !INJECT_YAML_RE_3.test(lines[end])) end++;
 
     // `replaced` drives `changed`, `delta` drives the end bound — never infer
     // one from the other (see replaceLinesIfDifferent).
@@ -503,7 +522,7 @@ function injectYaml(text) {
 
     let responsesIndex = -1;
     for (let j = i + 1; j < end; j++) {
-      if (/^ {12}responses:\s*$/.test(lines[j])) {
+      if (INJECT_YAML_RE_4.test(lines[j])) {
         responsesIndex = j;
         break;
       }
@@ -530,9 +549,9 @@ function injectYaml(text) {
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
-const jsonFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+const jsonFiles = readdirSync(apiDir).filter((f) => JSON_FILES_RE.test(f)).sort();
 const yamlFiles = readdirSync(apiDir)
-  .filter((f) => /Service\.openapi\.yaml$/.test(f) || f === 'worldmonitor.openapi.yaml')
+  .filter((f) => YAML_FILES_RE.test(f) || f === 'worldmonitor.openapi.yaml')
   .sort();
 let wouldChange = 0;
 const touched = [];

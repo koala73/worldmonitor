@@ -13,6 +13,11 @@ import { acquire511Slot } from '../_511-rate-limit.mjs';
 import { readBoundedJsonResponse } from '../_china-exchange-transport.mjs';
 import { lonLatPair } from './geo-coord.mjs';
 
+const IS_FULL_CLOSURE_OF_RE = /\b(road is closed|all lanes closed|bridge is closed|highway is closed)\b/i;
+const IS_ACCIDENT_EVENT_RE = /construction/i;
+const IS_ACCIDENT_EVENT_RE_2 = /accident|incident|collision|crash/i;
+
+
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -128,7 +133,7 @@ function roadsOf(item) {
 function isFullClosureOf(item, roads) {
   if (roads.some((road) => String(road.state || '').toUpperCase() === 'CLOSED')) return true;
   const blob = `${item?.headline || ''} ${item?.description || ''}`;
-  return /\b(road is closed|all lanes closed|bridge is closed|highway is closed)\b/i.test(blob);
+  return IS_FULL_CLOSURE_OF_RE.test(blob);
 }
 
 function severityOf(item, { isFullClosure } = {}) {
@@ -389,9 +394,9 @@ export const MAX_RECORDS = 400;
 
 function isAccidentEvent(record) {
   const type = String(record?.eventType || '');
-  if (/construction/i.test(type)) return false;
+  if (IS_ACCIDENT_EVENT_RE.test(type)) return false;
   const blob = `${type} ${record?.headline || ''} ${record?.description || ''}`;
-  return /accident|incident|collision|crash/i.test(blob);
+  return IS_ACCIDENT_EVENT_RE_2.test(blob);
 }
 
 /** Lower is kept first so the 400-record cap cannot drop closures/accidents. */

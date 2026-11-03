@@ -4,6 +4,36 @@ import ExcelJS from 'exceljs';
 import { unzipSync, strFromU8 } from 'fflate';
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
+const FETCH_US_EIA_RE = /api_key=[^&]+/;
+const S_RE = /\s/g;
+const PARSE_EUPRICE_RE = /,/g;
+const PARSE_EUPRICE_RE_2 = /\./g;
+const SHEET_NAME_RE = /with.tax/i;
+const SHEET_NAME_RE_2 = /price/i;
+const FETCH_EU_CSV_RE = /euro.super/i;
+const GASOL_IDX_RE = /euro.super.95/i;
+const DIESEL_IDX_RE = /gas.oil|gasoil/i;
+const DDMMYYYY_RE = /^(\d{2})\/(\d{2})\/(\d{4})/;
+const HEADER_RE = /^"|"$/g;
+const PROD_IDX_RE = /produto/i;
+const DATE_IDX_RE = /data.*coleta/i;
+const LATEST_COM_COM_FUEL_DATA_URL_RE = /href="(\/assets\/[^"]*?Fuel-price-monitoring-Data-to-(\d{1,2})-([A-Za-z]+)-(\d{4})\.xlsx)"/g;
+const XML_TEXT_RE = /&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi;
+const JOINED_TEXT_RE = /<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g;
+const FIRST_SHEET_ID_RE = /<(?:\w+:)?sheet\b[^>]*?\br:id="([^"]+)"/;
+const TARGET_RE = /<Relationship\b[^>]*>/g;
+const TARGET_RE_2 = /Target="([^"]+)"/;
+const SHARED_RE = /<(?:\w+:)?si\b[^>]*>([\s\S]*?)<\/(?:\w+:)?si>/g;
+const READ_XLSX_FIRST_SHEET_RE = /<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/g;
+const READ_XLSX_FIRST_SHEET_RE_2 = /<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g;
+const REF_RE = /\br="([A-Z]+)\d+"/;
+const TYPE_RE = /\bt="([^"]+)"/;
+const RAW_RE = /<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/;
+const PARSE_NZ_COM_COM_FUEL_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+const DM_RE = /(\d{2})\/(\d{2})\/(\d{4})/;
+const NEWEST_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -263,7 +293,7 @@ export async function fetchUS_EIA({ baseDelayMs } = {}) {
       return [];
     }
     const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&data[]=value&facets[series][]=EMM_EPMR_PTE_NUS_DPG&facets[series][]=EMD_EPD2DXL0_PTE_NUS_DPG&sort[0][column]=period&sort[0][direction]=desc&length=4`;
-    console.log(`  [US] Fetching EIA: ${url.replace(/api_key=[^&]+/, 'api_key=***')}`);
+    console.log(`  [US] Fetching EIA: ${url.replace(FETCH_US_EIA_RE, 'api_key=***')}`);
     // EIA's gateway intermittently 502s. US is a critical + untolerated source,
     // so a single unretried blip rejects the whole publish — retry transient errors.
     const resp = await withFuelRetry('US', async () => {
@@ -313,14 +343,14 @@ const EU_XLSX_URL = 'https://energy.ec.europa.eu/document/download/264c2d0f-f161
 
 function parseEUPrice(raw) {
   if (raw == null || raw === '') return null;
-  const s = String(raw).trim().replace(/\s/g, '');
+  const s = String(raw).trim().replace(S_RE, '');
   if (!s) return null;
   // Handle both "1234.56" (xlsx default) and "1.234,56" / "1,234.56" with thousand separators
   let normalized = s;
   const dotIdx = s.lastIndexOf('.');
   const commaIdx = s.lastIndexOf(',');
   if (dotIdx > -1 && commaIdx > -1) {
-    normalized = dotIdx > commaIdx ? s.replace(/,/g, '') : s.replace(/\./g, '').replace(',', '.');
+    normalized = dotIdx > commaIdx ? s.replace(PARSE_EUPRICE_RE, '') : s.replace(PARSE_EUPRICE_RE_2, '').replace(',', '.');
   } else if (commaIdx > -1) {
     normalized = s.replace(',', '.');
   }
@@ -349,8 +379,8 @@ async function fetchEU_CSV() {
     console.log(`  [EU] XLSX sheets: ${sheetNames.join(', ')}`);
 
     // Find the "with taxes" sheet, or fall back to first sheet
-    const sheetName = sheetNames.find(n => /with.tax/i.test(n))
-      ?? sheetNames.find(n => /price/i.test(n))
+    const sheetName = sheetNames.find(n => SHEET_NAME_RE.test(n))
+      ?? sheetNames.find(n => SHEET_NAME_RE_2.test(n))
       ?? sheetNames[0];
     const sheet = workbook.getWorksheet(sheetName);
 
@@ -379,7 +409,7 @@ async function fetchEU_CSV() {
     // Detect header row by finding "Euro-super" in any cell.
     let headerRowIdx = -1;
     for (let i = 0; i < Math.min(rows.length, 10); i++) {
-      if (rows[i].some(cell => /euro.super/i.test(String(cell)))) {
+      if (rows[i].some(cell => FETCH_EU_CSV_RE.test(String(cell)))) {
         headerRowIdx = i;
         break;
       }
@@ -393,9 +423,9 @@ async function fetchEU_CSV() {
     // Country is always column 0 (labeled "in EUR", not "Country")
     const countryIdx = 0;
     // Gasoline: "Euro-super 95 (I)" — with taxes column
-    const gasolIdx = header.findIndex(h => /euro.super.95/i.test(h));
+    const gasolIdx = header.findIndex(h => GASOL_IDX_RE.test(h));
     // Diesel: "Gas oil automobile" / "Automotive gas oil"
-    const dieselIdx = header.findIndex(h => /gas.oil|gasoil/i.test(h));
+    const dieselIdx = header.findIndex(h => DIESEL_IDX_RE.test(h));
 
     if (gasolIdx < 0 || dieselIdx < 0) {
       console.warn(`  [EU] XLSX: couldn't find price columns. Headers: ${header.join(' | ')}`);
@@ -404,7 +434,7 @@ async function fetchEU_CSV() {
     // Row after header is the date/units row — extract the observed date from it
     const dateRow = rows[headerRowIdx + 1] ?? [];
     const rawDate = String(dateRow[0] ?? '').trim();
-    const ddmmyyyy = rawDate.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    const ddmmyyyy = rawDate.match(DDMMYYYY_RE);
     const observedAt = ddmmyyyy
       ? `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`
       : new Date().toISOString().slice(0, 10);
@@ -463,13 +493,13 @@ async function fetchBrazil() {
   function nationalMean(csvText, productoFilter, priceField) {
     const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length < 2) return null;
-    const header = lines[0].split(';').map(h => h.replace(/^"|"$/g, '').trim());
-    const prodIdx = header.findIndex(h => /produto/i.test(h));
+    const header = lines[0].split(';').map(h => h.replace(HEADER_RE, '').trim());
+    const prodIdx = header.findIndex(h => PROD_IDX_RE.test(h));
     const priceIdx = header.findIndex(h => h.toLowerCase().includes(priceField.toLowerCase()));
-    const dateIdx = header.findIndex(h => /data.*coleta/i.test(h));
+    const dateIdx = header.findIndex(h => DATE_IDX_RE.test(h));
     if (prodIdx < 0 || priceIdx < 0 || dateIdx < 0) return null;
 
-    const rows = lines.slice(1).map(l => l.split(';').map(c => c.replace(/^"|"$/g, '').trim()));
+    const rows = lines.slice(1).map(l => l.split(';').map(c => c.replace(HEADER_RE, '').trim()));
     const filtered = rows.filter(r => r[prodIdx] === productoFilter);
     if (!filtered.length) return null;
 
@@ -528,7 +558,7 @@ const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 
 
 export function latestComComFuelDataUrl(html) {
   let best = null;
-  for (const m of String(html).matchAll(/href="(\/assets\/[^"]*?Fuel-price-monitoring-Data-to-(\d{1,2})-([A-Za-z]+)-(\d{4})\.xlsx)"/g)) {
+  for (const m of String(html).matchAll(LATEST_COM_COM_FUEL_DATA_URL_RE)) {
     const month = MONTHS.indexOf(m[3].toLowerCase());
     if (month < 0) continue;
     const time = Date.UTC(Number(m[4]), month, Number(m[2]));
@@ -538,7 +568,7 @@ export function latestComComFuelDataUrl(html) {
 }
 
 function xmlText(s) {
-  return s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e) => {
+  return s.replace(XML_TEXT_RE, (_, e) => {
     const k = e.toLowerCase();
     if (k[0] === '#') return String.fromCodePoint(k[1] === 'x' ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10));
     return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[k];
@@ -546,7 +576,7 @@ function xmlText(s) {
 }
 
 function joinedText(xml) {
-  return [...xml.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g)].map(m => xmlText(m[1])).join('');
+  return [...xml.matchAll(JOINED_TEXT_RE)].map(m => xmlText(m[1])).join('');
 }
 
 // Reads the first worksheet as rows of strings. ExcelJS cannot load workbooks whose
@@ -558,30 +588,30 @@ export function readXlsxFirstSheet(bytes) {
   let sheetPath = 'xl/worksheets/sheet1.xml';
   const workbook = part('xl/workbook.xml');
   const rels = part('xl/_rels/workbook.xml.rels');
-  const firstSheetId = workbook?.match(/<(?:\w+:)?sheet\b[^>]*?\br:id="([^"]+)"/)?.[1];
+  const firstSheetId = workbook?.match(FIRST_SHEET_ID_RE)?.[1];
   if (firstSheetId && rels) {
-    const target = [...rels.matchAll(/<Relationship\b[^>]*>/g)].map(m => m[0])
-      .find(tag => tag.includes(`Id="${firstSheetId}"`))?.match(/Target="([^"]+)"/)?.[1];
+    const target = [...rels.matchAll(TARGET_RE)].map(m => m[0])
+      .find(tag => tag.includes(`Id="${firstSheetId}"`))?.match(TARGET_RE_2)?.[1];
     if (target) sheetPath = target.startsWith('/') ? target.slice(1) : `xl/${target}`;
   }
   const sheet = part(sheetPath);
   if (!sheet) throw new Error(`worksheet ${sheetPath} missing`);
-  const shared = [...(part('xl/sharedStrings.xml') ?? '').matchAll(/<(?:\w+:)?si\b[^>]*>([\s\S]*?)<\/(?:\w+:)?si>/g)].map(m => joinedText(m[1]));
+  const shared = [...(part('xl/sharedStrings.xml') ?? '').matchAll(SHARED_RE)].map(m => joinedText(m[1]));
   const rows = [];
-  for (const rowMatch of sheet.matchAll(/<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
+  for (const rowMatch of sheet.matchAll(READ_XLSX_FIRST_SHEET_RE)) {
     const row = [];
     let position = 0;
-    for (const cell of rowMatch[1].matchAll(/<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g)) {
+    for (const cell of rowMatch[1].matchAll(READ_XLSX_FIRST_SHEET_RE_2)) {
       const attrs = cell[1];
-      const ref = attrs.match(/\br="([A-Z]+)\d+"/)?.[1];
+      const ref = attrs.match(REF_RE)?.[1];
       const col = ref ? [...ref].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1 : position;
       // Excel stops at column XFD (16,384). A larger index would pad the row
       // until the heap runs out, which no try/catch can recover from.
       if (col >= XLSX_MAX_COLUMNS) throw new Error(`cell column ${ref ?? col} is past the last Excel column`);
       position = col + 1;
       const body = cell[2] ?? '';
-      const type = attrs.match(/\bt="([^"]+)"/)?.[1];
-      const raw = body.match(/<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/)?.[1];
+      const type = attrs.match(TYPE_RE)?.[1];
+      const raw = body.match(RAW_RE)?.[1];
       let value = '';
       if (type === 's' && raw != null) value = shared[Number(raw)] ?? '';
       else if (type === 'inlineStr') value = joinedText(body);
@@ -601,7 +631,7 @@ export function parseNzComComFuel(rows, nowMs = Date.now()) {
   if (header.join('|') !== 'DATE|FUEL_TYPE|REFINED_COSTS|RETAIL_PRICES_AVG') return null;
   const byDay = new Map();
   for (const [date, fuel, , retail] of rows.slice(1)) {
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(date ?? '').trim());
+    const m = PARSE_NZ_COM_COM_FUEL_RE.exec(String(date ?? '').trim());
     if (!m) continue;
     const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
     const day = byDay.get(iso) ?? {};
@@ -691,7 +721,7 @@ async function fetchUK_DESNZ() {
     const dslPrice = ulsd > 0 ? +(ulsd / 100).toFixed(4) : null;
 
     // Parse DD/MM/YYYY -> YYYY-MM-DD
-    const dm = dateStr?.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    const dm = dateStr?.match(DM_RE);
     const observedAt = dm ? `${dm[3]}-${dm[2]}-${dm[1]}` : dateStr;
 
     console.log(`  [GB] ULSP=${gasPrice} GBP/L, ULSD=${dslPrice} GBP/L (${observedAt})`);
@@ -804,7 +834,7 @@ export function regionalFuelEntries(snapshots, nowMs = Date.now()) {
     const pick = fuel => {
       const newest = record.observations
         .filter(p => p?.metric === 'fuel.retail_price' && p.area === fuel.area && p.unit === fuel.unit
-          && Number.isFinite(p.value) && p.value > 0 && /^\d{4}-\d{2}-\d{2}$/.test(p.period ?? ''))
+          && Number.isFinite(p.value) && p.value > 0 && NEWEST_RE.test(p.period ?? ''))
         .sort((a, b) => b.period.localeCompare(a.period))[0];
       if (!newest || nowMs - Date.parse(`${newest.period}T00:00:00Z`) > src.maxAgeDays * 86400000) return null;
       return { localPrice: +(newest.value * (fuel.perLitre ?? 1)).toFixed(4), grade: fuel.grade, source: src.source, observedAt: newest.period };

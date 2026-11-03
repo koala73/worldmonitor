@@ -14,6 +14,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const ENERGY_DISRUPTIONS_CANONICAL_KEY = 'energy:disruptions:v1';
 export const ENERGY_DISRUPTIONS_TTL_SECONDS = 21 * 24 * 3600;
 
@@ -168,7 +171,7 @@ export function validateRegistry(data) {
     // staleness so health alarms fire).
     if (!Array.isArray(e.countries) || e.countries.length === 0) return false;
     for (const c of e.countries) {
-      if (typeof c !== 'string' || !/^[A-Z]{2}$/.test(c)) return false;
+      if (typeof c !== 'string' || !COUNTRY_CODE_RE.test(c)) return false;
     }
   }
   return true;

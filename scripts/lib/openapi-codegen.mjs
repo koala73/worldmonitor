@@ -12,6 +12,29 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const NORMALIZE_KEY_RE = /[_\-\s]/g;
+const CODE_RE = /^[ \t]*\/\/.*$/gm;
+const QUOTED_LITERALS_RE = /'([^']+)'/g;
+const BLOCK_RE = /PUBLIC_NO_AUTH_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/;
+const BLOCK_RE_2 = /ENDPOINT_ENTITLEMENTS\s*:\s*Record<string,\s*number>\s*=\s*\{([\s\S]*?)\};/;
+const ENTRIES_RE = /'([^']+)'\s*:\s*(\d+)/g;
+const BLOCK_RE_3 = /PREMIUM_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/;
+const BLOCK_RE_4 = /export type BillingVerificationStatus\s*=([\s\S]*?);/;
+const READ_ENTITLEMENT_UNAVAILABLE_CODE_RE = /code:\s*'(entitlement_verification_unavailable)'/;
+const BLOCK_RE_5 = /IDEMPOTENCY_EXEMPT_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/;
+const SKIP_TRIVIA_RE = /\s/;
+const TYPE_ONLY_SUFFIX_RE = /^(?:as\s+const\s*)?(?:satisfies\s+(?:readonly\s+)?[$A-Z_a-z][$\w]*(?:\s*\.\s*[$A-Z_a-z][$\w]*)*(?:\s*\[\s*\])*\s*)?$/;
+const KEY_RE = /^[$A-Z_a-z][$\w]*/;
+const MAX_ITEMS_MATCH_RE = /^(\d+)\b/;
+const VERSION_RE = /DECISION_SIGNAL_PROVENANCE_CONTRACT_VERSION\s*=\s*'([^']+)'\s+as const/;
+const FAMILY_POLICIES_RE = /^\s{2}([a-z0-9_]+): declaration\(\n\s{4}'([^']+)',[\s\S]*?\n\s{4}\{\n([\s\S]*?)\n\s{4}\},\n\s{2}\),/gm;
+const POLICIES_RE = /^\s{6}([a-z_]+): '(required|unknown_allowed|not_applicable)',?$/gm;
+const SCHEMA_VERSION_RE = /CHINA_DECISION_SIGNAL_SCHEMA_VERSION\s*=\s*(\d+)\s+as const/;
+const STATE_BLOCK_RE = /export type ChinaDecisionSignalState\s*=\s*([\s\S]*?);/;
+const ACCESS_BLOCK_RE = /access:\s*\{([\s\S]*?)\};\s*\}/;
+const ACCESS_RE = /\b(anonymous|pro|operator):\s*'([^']+)'/g;
+
+
 // scripts/lib/ -> repo root.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -44,7 +67,7 @@ export const serialize = (obj) => goEscape(JSON.stringify(sortRec(obj)));
 export const eq = (a, b) => JSON.stringify(sortRec(a)) === JSON.stringify(sortRec(b));
 
 // Normalize a parameter name to a lookup key (strip separators, lowercase).
-export const normalizeKey = (name = '') => String(name).replace(/[_\-\s]/g, '').toLowerCase();
+export const normalizeKey = (name = '') => String(name).replace(NORMALIZE_KEY_RE, '').toLowerCase();
 
 // ── Shared decision-signal provenance schemas ────────────────────────────────
 // Corridors and decision signals carry the same provenance contract. Keep the
@@ -429,13 +452,13 @@ export function provenanceValueSchema(dimension, provenanceContract) {
  * otherwise pair with the next quote and swallow the entries that follow.
  */
 function quotedLiterals(block) {
-  const code = block.replace(/^[ \t]*\/\/.*$/gm, '');
-  return [...code.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const code = block.replace(CODE_RE, '');
+  return [...code.matchAll(QUOTED_LITERALS_RE)].map((m) => m[1]);
 }
 
 export function readPublicNoAuthPaths() {
   const src = readFileSync(resolve(root, 'server/gateway.ts'), 'utf8');
-  const block = src.match(/PUBLIC_NO_AUTH_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
+  const block = src.match(BLOCK_RE);
   if (!block) throw new Error('could not locate PUBLIC_NO_AUTH_RPC_PATHS in server/gateway.ts');
   const paths = quotedLiterals(block[1]);
   if (paths.length === 0) throw new Error('PUBLIC_NO_AUTH_RPC_PATHS parsed as empty — refusing to run');
@@ -444,16 +467,16 @@ export function readPublicNoAuthPaths() {
 
 export function readEndpointEntitlements() {
   const src = readFileSync(resolve(root, 'server/_shared/entitlement-check.ts'), 'utf8');
-  const block = src.match(/ENDPOINT_ENTITLEMENTS\s*:\s*Record<string,\s*number>\s*=\s*\{([\s\S]*?)\};/);
+  const block = src.match(BLOCK_RE_2);
   if (!block) throw new Error('could not locate ENDPOINT_ENTITLEMENTS in server/_shared/entitlement-check.ts');
-  const entries = [...block[1].matchAll(/'([^']+)'\s*:\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]);
+  const entries = [...block[1].matchAll(ENTRIES_RE)].map((m) => [m[1], Number(m[2])]);
   if (entries.length === 0) throw new Error('ENDPOINT_ENTITLEMENTS parsed as empty — refusing to run');
   return new Map(entries);
 }
 
 export function readPremiumRpcPaths() {
   const src = readFileSync(resolve(root, 'src/shared/premium-paths.ts'), 'utf8');
-  const block = src.match(/PREMIUM_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
+  const block = src.match(BLOCK_RE_3);
   if (!block) throw new Error('could not locate PREMIUM_RPC_PATHS in src/shared/premium-paths.ts');
   return quotedLiterals(block[1]);
 }
@@ -469,9 +492,9 @@ export function readPremiumRpcPaths() {
 // parsers above).
 export function readBillingVerificationStatuses() {
   const src = readFileSync(resolve(root, 'server/_shared/entitlement-check.ts'), 'utf8');
-  const block = src.match(/export type BillingVerificationStatus\s*=([\s\S]*?);/);
+  const block = src.match(BLOCK_RE_4);
   if (!block) throw new Error('could not locate BillingVerificationStatus in server/_shared/entitlement-check.ts');
-  const statuses = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const statuses = [...block[1].matchAll(QUOTED_LITERALS_RE)].map((m) => m[1]);
   if (statuses.length === 0) throw new Error('BillingVerificationStatus parsed as empty — refusing to run');
   return statuses;
 }
@@ -486,7 +509,7 @@ export const LAPSED_BILLING_STATUS = 'subscription_lapsed';
 export function readEntitlementUnavailableCode() {
   for (const file of ['server/_shared/entitlement-check.ts', 'server/gateway.ts']) {
     const src = readFileSync(resolve(root, file), 'utf8');
-    const match = src.match(/code:\s*'(entitlement_verification_unavailable)'/);
+    const match = src.match(READ_ENTITLEMENT_UNAVAILABLE_CODE_RE);
     if (match) return match[1];
   }
   throw new Error('could not locate the entitlement_verification_unavailable code in gateway sources — refusing to run');
@@ -514,7 +537,7 @@ export function readRetryableBillingCodes() {
  */
 export function readIdempotencyExemptPaths() {
   const src = readFileSync(resolve(root, 'server/_shared/idempotency.ts'), 'utf8');
-  const block = src.match(/IDEMPOTENCY_EXEMPT_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
+  const block = src.match(BLOCK_RE_5);
   if (!block) {
     throw new Error('could not locate IDEMPOTENCY_EXEMPT_RPC_PATHS in server/_shared/idempotency.ts');
   }
@@ -523,7 +546,7 @@ export function readIdempotencyExemptPaths() {
 
 function readConstStringArray(src, name) {
   const block = src.match(new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`));
-  return block ? [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1]) : [];
+  return block ? [...block[1].matchAll(QUOTED_LITERALS_RE)].map((match) => match[1]) : [];
 }
 
 function skipQuotedLiteral(source, start) {
@@ -558,7 +581,7 @@ function skipComment(source, start) {
 function skipTrivia(source, start) {
   let index = start;
   while (index < source.length) {
-    if (/\s/.test(source[index])) {
+    if (SKIP_TRIVIA_RE.test(source[index])) {
       index += 1;
       continue;
     }
@@ -699,7 +722,7 @@ function assertStaticLiteralInitializer(source, literalEnd, label) {
   }
   const suffix = withoutComments(source.slice(literalEnd, terminator)).trim();
   const typeOnlySuffix =
-    /^(?:as\s+const\s*)?(?:satisfies\s+(?:readonly\s+)?[$A-Z_a-z][$\w]*(?:\s*\.\s*[$A-Z_a-z][$\w]*)*(?:\s*\[\s*\])*\s*)?$/;
+    TYPE_ONLY_SUFFIX_RE;
   if (!typeOnlySuffix.test(suffix)) {
     throw new Error(
       `${label} must be a static literal with optional type-only assertions`,
@@ -716,7 +739,7 @@ function readManifestStringProperty(entry, property) {
       index += 1;
       continue;
     }
-    const key = entry.slice(index).match(/^[$A-Z_a-z][$\w]*/)?.[0];
+    const key = entry.slice(index).match(KEY_RE)?.[0];
     if (!key) {
       throw new Error('expected a property name in China decision-signal manifest');
     }
@@ -790,7 +813,7 @@ export function parseChinaDecisionSignalManifest(source) {
     index = entry.end;
   }
 
-  const maxItemsMatch = source.slice(maxItemsStart).match(/^(\d+)\b/);
+  const maxItemsMatch = source.slice(maxItemsStart).match(MAX_ITEMS_MATCH_RE);
   if (!maxItemsMatch) {
     throw new Error('could not parse the China decision-signal manifest');
   }
@@ -813,7 +836,7 @@ export function readDecisionSignalProvenanceContract() {
     'utf8',
   );
   const version = src.match(
-    /DECISION_SIGNAL_PROVENANCE_CONTRACT_VERSION\s*=\s*'([^']+)'\s+as const/,
+    VERSION_RE,
   )?.[1];
   const dimensions = readConstStringArray(src, 'DECISION_SIGNAL_PROVENANCE_DIMENSIONS');
   const claimStatuses = readConstStringArray(src, 'DECISION_SIGNAL_PROVENANCE_CLAIM_STATUSES');
@@ -846,7 +869,7 @@ export function readDecisionSignalProvenanceContract() {
   };
   const familyPolicies = Object.fromEntries(
     [...familySrc.matchAll(
-      /^\s{2}([a-z0-9_]+): declaration\(\n\s{4}'([^']+)',[\s\S]*?\n\s{4}\{\n([\s\S]*?)\n\s{4}\},\n\s{2}\),/gm,
+      FAMILY_POLICIES_RE,
     )].map((match) => {
       const key = match[1];
       const id = match[2];
@@ -854,7 +877,7 @@ export function readDecisionSignalProvenanceContract() {
         throw new Error(`decision-signal provenance family key/id mismatch: ${key} != ${id}`);
       }
       const policies = Object.fromEntries(
-        [...match[3].matchAll(/^\s{6}([a-z_]+): '(required|unknown_allowed|not_applicable)',?$/gm)]
+        [...match[3].matchAll(POLICIES_RE)]
           .map((policyMatch) => [policyMatch[1], policyMatch[2]]),
       );
       if (
@@ -939,24 +962,24 @@ export function readChinaDecisionSignalWireContract() {
     maxItemsPerGroup,
   } = parseChinaDecisionSignalManifest(manifestSrc);
   const schemaVersion = Number(src.match(
-    /CHINA_DECISION_SIGNAL_SCHEMA_VERSION\s*=\s*(\d+)\s+as const/,
+    SCHEMA_VERSION_RE,
   )?.[1]);
   const groupIds = groupManifest.map(({ groupId }) => groupId);
   const provenanceFamilyIds = groupManifest.map(
     ({ provenanceFamily }) => provenanceFamily,
   );
   const stateBlock = src.match(
-    /export type ChinaDecisionSignalState\s*=\s*([\s\S]*?);/,
+    STATE_BLOCK_RE,
   )?.[1];
   const states = stateBlock
-    ? [...stateBlock.matchAll(/'([^']+)'/g)].map((match) => match[1])
+    ? [...stateBlock.matchAll(QUOTED_LITERALS_RE)].map((match) => match[1])
     : [];
   const accessBlock = src.match(
-    /access:\s*\{([\s\S]*?)\};\s*\}/,
+    ACCESS_BLOCK_RE,
   )?.[1];
   const access = Object.fromEntries(
     accessBlock
-      ? [...accessBlock.matchAll(/\b(anonymous|pro|operator):\s*'([^']+)'/g)]
+      ? [...accessBlock.matchAll(ACCESS_RE)]
         .map((match) => [match[1], match[2]])
       : [],
   );

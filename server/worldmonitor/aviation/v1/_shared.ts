@@ -18,6 +18,11 @@ import { readCachedJson } from '../../../_shared/redis';
 import { requirePremiumRpcAccess } from '../../../_shared/premium-check';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
+
+const XML_PARSER_RE = /\.(Ground_Delay|Ground_Stop|Delay|Airport)$/;
+const IS_CLOSURE_TEXT_RE = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/;
+const IS_RESTRICTION_TEXT_RE = /\b(RESTRICTED AREA|PROHIBITED AREA|DANGER AREA|TFR|TEMPORARY FLIGHT RESTRICTION)\b/;
+
 export { parseStringArray } from '../../../_shared/parse-string-array';
 
 export type IntlCoverage = { iata: string; status: 'normal' | 'disruption' | 'omitted' | 'failed'; flightCount: number };
@@ -101,7 +106,7 @@ export const xmlParser = new XMLParser({
   ignoreAttributes: true,
   isArray: (_name: string, jpath: unknown) => {
     // Force arrays for list items regardless of count to prevent single-item-as-object bug
-    return typeof jpath === 'string' && /\.(Ground_Delay|Ground_Stop|Delay|Airport)$/.test(jpath);
+    return typeof jpath === 'string' && XML_PARSER_RE.test(jpath);
   },
 });
 
@@ -373,8 +378,8 @@ export async function fetchNotamClosures(
     const restrictionCode45 = code45 === 'RE' || code45 === 'RT';
     const isClosureCode = NOTAM_CLOSURE_QCODES.has(code23) && closureCode45;
     const isRestrictionCode = (NOTAM_RESTRICTION_QCODES.has(code23) || NOTAM_CLOSURE_QCODES.has(code23)) && restrictionCode45;
-    const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
-    const isRestrictionText = /\b(RESTRICTED AREA|PROHIBITED AREA|DANGER AREA|TFR|TEMPORARY FLIGHT RESTRICTION)\b/.test(text);
+    const isClosureText = IS_CLOSURE_TEXT_RE.test(text);
+    const isRestrictionText = IS_RESTRICTION_TEXT_RE.test(text);
 
     if (isClosureCode || isClosureText) {
       result.closedIcaoCodes.add(icao);

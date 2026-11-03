@@ -19,6 +19,10 @@ import { BYPASS_CORRIDORS_BY_CHOKEPOINT, corridorServesOrigin, type CargoType } 
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const NON_DIGIT_RE = /\D/g;
+
+
 interface PortClusterEntry {
   nearestRouteIds: string[];
   coastSide: string;
@@ -46,7 +50,7 @@ export async function routeIntelligence(
 
   const fromIso2 = (req.fromIso2 ?? '').trim().toUpperCase();
   const toIso2 = (req.toIso2 ?? '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(fromIso2) || !/^[A-Z]{2}$/.test(toIso2)) {
+  if (!COUNTRY_CODE_RE.test(fromIso2) || !COUNTRY_CODE_RE.test(toIso2)) {
     throw new ValidationError([
       { field: 'fromIso2', description: 'fromIso2 and toIso2 must be valid 2-letter ISO country codes' },
     ]);
@@ -54,7 +58,7 @@ export async function routeIntelligence(
 
   const cargoTypeRaw = (req.cargoType ?? '').trim().toLowerCase();
   const cargoType: CargoType = (VALID_CARGO_TYPES.has(cargoTypeRaw) ? cargoTypeRaw : 'container') as CargoType;
-  const hs2 = (req.hs2 ?? '').trim().replace(/\D/g, '') || '27';
+  const hs2 = (req.hs2 ?? '').trim().replace(NON_DIGIT_RE, '') || '27';
 
   const clusters = COUNTRY_PORT_CLUSTERS as unknown as Record<string, PortClusterEntry>;
   const fromCluster = clusters[fromIso2];

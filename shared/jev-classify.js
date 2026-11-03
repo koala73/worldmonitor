@@ -8,6 +8,10 @@
  * would be a numeric comparison it is documented to get wrong).
  */
 
+const JEV_ENDPOINT_RE = /\/+$/;
+const HAS_NON_LATIN_LETTERS_RE = /(?=\p{L})\P{Script=Latin}/u;
+const SANITIZE_HEADLINE_RE = /[\n\r]/g;
+
 export const JEV_MODEL = 'jev-1.13.0';
 export const JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 
@@ -16,7 +20,7 @@ export const JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 // Jev-compatible model) instead of api.typesafe.ai.
 export function jevEndpoint(env) {
   const base = typeof env?.TYPESAFE_BASE_URL === 'string' ? env.TYPESAFE_BASE_URL.trim() : '';
-  return base ? checkJevEndpoint(`${base.replace(/\/+$/, '')}/v1/systemone`) : JEV_ENDPOINT;
+  return base ? checkJevEndpoint(`${base.replace(JEV_ENDPOINT_RE, '')}/v1/systemone`) : JEV_ENDPOINT;
 }
 
 // Every call carries the API key as a bearer token, so plain http is only
@@ -81,10 +85,10 @@ export const CATEGORY_CRITERIA = {
 
 // TypeSafe documents non-English scripts as weaker, and the judged set held
 // none, so callers keep these titles off Jev until they are measured.
-export const hasNonLatinLetters = (title) => /(?=\p{L})\P{Script=Latin}/u.test(title);
+export const hasNonLatinLetters = (title) => HAS_NON_LATIN_LETTERS_RE.test(title);
 
 export function sanitizeHeadline(title, maxTextChars = 200) {
-  return String(title).replace(/[\n\r]/g, ' ').slice(0, maxTextChars).trim();
+  return String(title).replace(SANITIZE_HEADLINE_RE, ' ').slice(0, maxTextChars).trim();
 }
 
 const levelQuestion = (subject) => ({

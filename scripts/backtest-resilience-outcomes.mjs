@@ -12,6 +12,10 @@ import {
   validationFormulaMetadata,
 } from './lib/resilience-formula.mjs';
 
+const PROCESS_ENTRY_RE = /phase\s*[345]/i;
+const IS_STRICT_VALIDATION_CLI_RE = /^(1|true|yes|on)$/i;
+
+
 // Normalize any country identifier the upstream seeders emit (ISO2, ISO3, or
 // full English name) to canonical uppercase ISO2, or null when unrecognized.
 // Each detect* function calls this instead of assuming the payload already
@@ -421,7 +425,7 @@ function detectFoodCrisis(data, _allCountries) {
       labels.set(cc.toUpperCase(), true);
     }
     const text = entry.fcsPhase ?? entry.classification ?? '';
-    if (typeof text === 'string' && /phase\s*[345]/i.test(text)) {
+    if (typeof text === 'string' && PROCESS_ENTRY_RE.test(text)) {
       labels.set(cc.toUpperCase(), true);
     }
   };
@@ -749,7 +753,7 @@ function buildBacktestOutput(familyResults, totalCountries) {
 
 const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('backtest-resilience-outcomes.mjs');
 function isStrictValidationCli(argv = process.argv, env = process.env) {
-  return argv.includes('--strict') || /^(1|true|yes|on)$/i.test(String(env.RESILIENCE_VALIDATION_STRICT ?? ''));
+  return argv.includes('--strict') || IS_STRICT_VALIDATION_CLI_RE.test(String(env.RESILIENCE_VALIDATION_STRICT ?? ''));
 }
 
 function backtestCliExitCode(result, strict = false) {

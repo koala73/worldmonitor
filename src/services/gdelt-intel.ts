@@ -7,6 +7,13 @@ import { getHydratedData } from '@/services/bootstrap';
 import { normalizeGdeltSearchResponse, normalizeGdeltTopicSnapshot } from '../../shared/intelligence-snapshots.js';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
+const SELECT_HOTSPOT_TOPIC_ID_RE = /cyber|ransomware|hack|malware|breach/;
+const SELECT_HOTSPOT_TOPIC_ID_RE_2 = /nuclear|uranium|iaea|reactor|enrichment/;
+const SELECT_HOTSPOT_TOPIC_ID_RE_3 = /sanction|embargo|tariff|trade war/;
+const SELECT_HOTSPOT_TOPIC_ID_RE_4 = /spy|espionage|intelligence|surveillance/;
+const SELECT_HOTSPOT_TOPIC_ID_RE_5 = /maritime|naval|piracy|strait|shipping|\bport\b(?!-)|sea lane|south china sea|warship/;
+
+
 export interface GdeltArticle {
   title: string;
   url: string;
@@ -231,11 +238,11 @@ export function selectHotspotTopicId(hotspot: Pick<Hotspot, 'name' | 'keywords' 
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
     .toLowerCase();
-  if (/cyber|ransomware|hack|malware|breach/.test(text)) return 'cyber';
-  if (/nuclear|uranium|iaea|reactor|enrichment/.test(text)) return 'nuclear';
-  if (/sanction|embargo|tariff|trade war/.test(text)) return 'sanctions';
-  if (/spy|espionage|intelligence|surveillance/.test(text)) return 'intelligence';
-  if (/maritime|naval|piracy|strait|shipping|\bport\b(?!-)|sea lane|south china sea|warship/.test(text)) return 'maritime';
+  if (SELECT_HOTSPOT_TOPIC_ID_RE.test(text)) return 'cyber';
+  if (SELECT_HOTSPOT_TOPIC_ID_RE_2.test(text)) return 'nuclear';
+  if (SELECT_HOTSPOT_TOPIC_ID_RE_3.test(text)) return 'sanctions';
+  if (SELECT_HOTSPOT_TOPIC_ID_RE_4.test(text)) return 'intelligence';
+  if (SELECT_HOTSPOT_TOPIC_ID_RE_5.test(text)) return 'maritime';
   return 'military';
 }
 

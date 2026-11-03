@@ -9,6 +9,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { USE_CASE_WORKFLOWS } from './data/use-case-workflows.mjs';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const STEP_SLUG_RE = /^-|-$/g;
+
+
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
 export const USE_CASES_CONTENT_VERSION = '2026-10-29';
 
@@ -128,7 +132,7 @@ function faqPageLd(questions) {
 }
 
 function stepSlug(name) {
-  return `step-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+  return `step-${name.toLowerCase().replace(NON_ALPHANUMERIC_RE, '-').replace(STEP_SLUG_RE, '')}`;
 }
 
 function stepUrl(pageUrl, name) {

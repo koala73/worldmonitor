@@ -1,4 +1,7 @@
 'use strict';
+
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
 const fs = require('fs');
 const path = require('path');
 
@@ -16,7 +19,7 @@ const result = {};
 for (const f of geojson.features) {
   const iso2 = f.properties['ISO3166-1-Alpha-2'];
   // Skip entries with non-standard ISO codes (e.g. "-99" for disputed/unassigned territories)
-  if (!iso2 || !f.geometry || !/^[A-Z]{2}$/.test(iso2)) continue;
+  if (!iso2 || !f.geometry || !COUNTRY_CODE_RE.test(iso2)) continue;
   const coords = coordsFromGeom(f.geometry);
   if (!coords.length) continue;
   let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;

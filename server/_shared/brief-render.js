@@ -23,6 +23,11 @@
 
 import { BRIEF_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
 
+const COVER_GREETING_RE = /\.+$/;
+const EXTRACT_ISO2_TOKENS_RE = /[\s/]+/;
+const EXTRACT_ISO2_TOKENS_RE_2 = /^[a-zA-Z]{2}$/;
+
+
 /**
  * @typedef {import('../../shared/brief-envelope.js').BriefEnvelope} BriefEnvelope
  * @typedef {import('../../shared/brief-envelope.js').BriefData} BriefData
@@ -455,7 +460,7 @@ function digestRunningHead(dateShort, label) {
  */
 function coverGreeting(greeting) {
   if (typeof greeting !== 'string' || greeting.length === 0) return 'Hello';
-  return greeting.replace(/\.+$/, '').trim() || 'Hello';
+  return greeting.replace(COVER_GREETING_RE, '').trim() || 'Hello';
 }
 
 /**
@@ -646,8 +651,8 @@ function extractIso2Tokens(country) {
   if (typeof country !== 'string' || country.length === 0) return [];
   /** @type {string[]} */
   const out = [];
-  for (const raw of country.split(/[\s/]+/)) {
-    if (raw.length === 2 && /^[a-zA-Z]{2}$/.test(raw)) {
+  for (const raw of country.split(EXTRACT_ISO2_TOKENS_RE)) {
+    if (raw.length === 2 && EXTRACT_ISO2_TOKENS_RE_2.test(raw)) {
       out.push(raw.toUpperCase());
     }
   }

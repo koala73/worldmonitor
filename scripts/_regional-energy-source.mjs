@@ -27,6 +27,13 @@ import {
   URSEA_TOPIC_URL, discoverUrseaPages, parseUrseaMaximumPrices, parseUrseaReferencePrices,
 } from './lib/regional-fuel-feeds.mjs';
 
+const ASSERT_WORKBOOK_WITHIN_BUDGET_RE = /expands past/;
+const RESOURCES_RE = /BALANCO_ENERGIA_SUBSISTEMA_20\d{2}\.csv$/;
+const TRADE_URL_RE = /href="([^"]+)"/g;
+const TRADE_URL_RE_2 = /\/ie\/derivados\/importacoes-exportacoes-derivados-[^/]+\.csv$/;
+const PRICE_URL_RE = /\/resumo[_-]semanal[_-]lpc[_-].+\.xlsx$/;
+
+
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
 // The ANP national price sheet uses about a dozen columns, MEM's ten.
 const SHEET_COLUMNS = 64;
@@ -67,7 +74,7 @@ function assertWorkbookWithinBudget(bytes, source) {
   try {
     assertZipExpansionWithin(bytes, 50_000_000);
   } catch (err) {
-    throw new Error(/expands past/.test(err.message) ? `${source} workbook exceeds size budget` : `${source} workbook is ${err.message}`);
+    throw new Error(ASSERT_WORKBOOK_WITHIN_BUDGET_RE.test(err.message) ? `${source} workbook exceeds size budget` : `${source} workbook is ${err.message}`);
   }
 }
 const cellValue = cell => (cell.value && typeof cell.value === 'object' && !(cell.value instanceof Date)
@@ -200,17 +207,17 @@ export async function fetchRegionalEnergyFeed(id, { fetchFn = sourceFetch, nowMs
   if (id === 'ons') {
     const catalog = await read(feed.sourceUrl, 'json');
     if (catalog.success !== true) throw new Error('ONS catalog unavailable');
-    const resources = (catalog.result?.resources ?? []).filter(r => r.format === 'CSV' && /BALANCO_ENERGIA_SUBSISTEMA_20\d{2}\.csv$/.test(r.url)).sort((a, b) => b.url.localeCompare(a.url));
+    const resources = (catalog.result?.resources ?? []).filter(r => r.format === 'CSV' && RESOURCES_RE.test(r.url)).sort((a, b) => b.url.localeCompare(a.url));
     if (!resources.length) throw new Error('Missing ONS balance CSV');
     points = parseOns(await read(resources[0].url));
   }
   if (id === 'anp') {
     const tradePage = await read('https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/importacoes-e-exportacoes');
-    const tradeUrl = [...tradePage.matchAll(/href="([^"]+)"/g)].find(m => /\/ie\/derivados\/importacoes-exportacoes-derivados-[^/]+\.csv$/.test(m[1]))?.[1];
+    const tradeUrl = [...tradePage.matchAll(TRADE_URL_RE)].find(m => TRADE_URL_RE_2.test(m[1]))?.[1];
     if (!tradeUrl) throw new Error('Missing ANP petroleum trade CSV');
     const trade = parseAnpTrade(await read(tradeUrl));
     const pricePage = await read('https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/levantamento-de-precos-de-combustiveis-ultimas-semanas-pesquisadas');
-    const priceUrl = [...pricePage.matchAll(/href="([^"]+)"/g)].find(m => /\/resumo[_-]semanal[_-]lpc[_-].+\.xlsx$/.test(m[1]))?.[1];
+    const priceUrl = [...pricePage.matchAll(TRADE_URL_RE)].find(m => PRICE_URL_RE.test(m[1]))?.[1];
     if (!priceUrl) throw new Error('Missing ANP weekly price workbook');
     const sheetRows = await readSheetRows(await read(priceUrl, 'bytes'), 'BRASIL', 'ANP');
     points = [...trade, ...parseAnpPriceRows(sheetRows)];

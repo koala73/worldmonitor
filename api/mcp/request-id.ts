@@ -10,6 +10,8 @@
 // streamed SSE responses and bodiless responses pass through untouched, and a
 // response with no error envelope is returned as the same object.
 
+const ATTACH_REQUEST_ID_TO_ERRORS_RE = /application\/json/i;
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -32,7 +34,7 @@ function stampMessage(message: unknown, requestId: string): boolean {
 export async function attachRequestIdToErrors(res: Response, requestId: string): Promise<Response> {
   if (!requestId || res.body === null) return res;
   const contentType = res.headers.get('Content-Type') ?? '';
-  if (!/application\/json/i.test(contentType)) return res;
+  if (!ATTACH_REQUEST_ID_TO_ERRORS_RE.test(contentType)) return res;
 
   const text = await res.clone().text();
   // Tool results can be large; skip the parse when no envelope can be present.

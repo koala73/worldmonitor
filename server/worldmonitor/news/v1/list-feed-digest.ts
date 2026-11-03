@@ -142,6 +142,28 @@ import {
   publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
 
+const NORMALIZE_SCORING_TEXT_RE = /[^a-z0-9\s]/g;
+const WHITESPACE_RE = /\s+/g;
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+const LOOKS_LIKE_RSS_XML_RE = /<!doctype\s+html|<html[\s>]/;
+const LOOKS_LIKE_RSS_XML_RE_2 = /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/;
+const LABEL_RE = /charset\s*=\s*["']?([\w.:-]+)/i;
+const DECODE_FEED_BODY_RE = /^\s*<\?xml[^>]*\bencoding\s*=\s*["']([\w.:-]+)["']/i;
+const CHANNEL_DATE_MS_RE = /[\s>]/;
+const HREF_MATCH_RE = /<link[^<>]+href=["']([^"']+)["']/;
+const PARSE_RSS_XML_RE = /^https?:\/\/[^/?#*]+\/[^*?#]*\*(?=https?:\/\/)/i;
+const PARSE_RSS_XML_RE_2 = /^https?:\/\//i;
+const ASCII_LOWER_RE = /[A-Z]+/g;
+const DECODE_XML_ENTITIES_RE = /&lt;/g;
+const DECODE_XML_ENTITIES_RE_2 = /&gt;/g;
+const DECODE_XML_ENTITIES_RE_3 = /&quot;/g;
+const DECODE_XML_ENTITIES_RE_4 = /&apos;/g;
+const DECODE_XML_ENTITIES_RE_5 = /&#(\d+);/g;
+const DECODE_XML_ENTITIES_RE_6 = /&#x([0-9a-fA-F]+);/g;
+const DECODE_XML_ENTITIES_RE_7 = /&amp;/g;
+const NORMALIZE_TITLE_RE = /[^\p{L}\p{N}\s]/gu;
+
+
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
 export const VALID_VARIANTS = new Set<string>(SERVER_EDITIONS);
@@ -689,7 +711,7 @@ interface ImportanceScoreContext {
 }
 
 function normalizeScoringText(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return text.toLowerCase().replace(NORMALIZE_SCORING_TEXT_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 // Word-start containment in normalized text. Mirrors
@@ -698,7 +720,7 @@ function normalizeScoringText(text: string): string {
 // 'iranian' (demonym preserved). PR #3909 review (P2).
 function containsKeywordToken(text: string, kw: string): boolean {
   if (!kw) return false;
-  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = kw.replace(ESCAPED_RE, '\\$&');
   return new RegExp(`(^|\\s)${escaped}`).test(text);
 }
 
@@ -824,8 +846,8 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
  */
 export function looksLikeRssXml(text: string): boolean {
   const head = text.slice(0, 2048).toLowerCase();
-  if (/<!doctype\s+html|<html[\s>]/.test(head)) return false;
-  return /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
+  if (LOOKS_LIKE_RSS_XML_RE.test(head)) return false;
+  return LOOKS_LIKE_RSS_XML_RE_2.test(head);
 }
 
 /** HTTP validators from a direct 200, replayed as a conditional GET on refresh. */
@@ -865,12 +887,12 @@ export function decodeFeedBody(bytes: Uint8Array, contentType: string | null): s
       : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be'
         : null;
   if (bom) return new TextDecoder(bom).decode(bytes);
-  let label = /charset\s*=\s*["']?([\w.:-]+)/i.exec(contentType ?? '')?.[1];
+  let label = LABEL_RE.exec(contentType ?? '')?.[1];
   if (!label) {
     // The prolog is ASCII in every encoding a feed declares, so a Latin-1
     // read of the first bytes finds it without knowing the charset yet.
     const head = new TextDecoder('latin1').decode(bytes.subarray(0, 256));
-    label = /^\s*<\?xml[^>]*\bencoding\s*=\s*["']([\w.:-]+)["']/i.exec(head)?.[1];
+    label = DECODE_FEED_BODY_RE.exec(head)?.[1];
   }
   if (label) {
     try {
@@ -1295,7 +1317,7 @@ function usableFeedDateMs(raw: string): number | null {
 function channelDateMs(xml: string, xmlLower: string, isAtom: boolean): number | null {
   const opener = isAtom ? '<entry' : '<item';
   let end = xmlLower.indexOf(opener);
-  while (end !== -1 && !/[\s>]/.test(xmlLower[end + opener.length] ?? '')) {
+  while (end !== -1 && !CHANNEL_DATE_MS_RE.test(xmlLower[end + opener.length] ?? '')) {
     end = xmlLower.indexOf(opener, end + 1);
   }
   const head = end === -1 ? xml : xml.slice(0, end);
@@ -1343,7 +1365,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     if (isAtom) {
       // `[^<>]+`, not `[^>]+`: an opener's scan stops at the next tag, so a
       // run of unterminated `<link` openers no longer rescans to the end.
-      const hrefMatch = block.match(/<link[^<>]+href=["']([^"']+)["']/);
+      const hrefMatch = block.match(HREF_MATCH_RE);
       link = hrefMatch?.[1] ?? '';
     } else {
       link = extractTag(block, 'link', blockLower);
@@ -1351,9 +1373,9 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // A publisher click counter carries the article URL after a `*`
     // (redir.folha.com.br/.../*https://www1.folha.uol.com.br/...). Keep the
     // article URL; the publisher-link gate below still checks its host.
-    link = link.replace(/^https?:\/\/[^/?#*]+\/[^*?#]*\*(?=https?:\/\/)/i, '');
+    link = link.replace(PARSE_RSS_XML_RE, '');
     // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
-    if (!/^https?:\/\//i.test(link)) link = '';
+    if (!PARSE_RSS_XML_RE_2.test(link)) link = '';
 
     // #8398: ingest-side publisher-link gate — an item whose link leaves its
     // own publisher's domain is the suspicious case. The expected set is
@@ -1536,7 +1558,7 @@ function replaceBeforeLast(s: string, terminator: string, re: RegExp, replacemen
 }
 
 function normalizeForDescriptionEquality(s: string): string {
-  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+  return s.toLowerCase().replace(WHITESPACE_RE, ' ').trim();
 }
 
 /**
@@ -1565,7 +1587,7 @@ function extractDescription(
     // stripping; otherwise `<...>` removal consumes the wrapper and its text.
     const unwrapped = replaceBeforeLast(raw, ']]>', /<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
     const cleaned = replaceBeforeLast(decodeXmlEntities(unwrapped), '>', /<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(WHITESPACE_RE, ' ')
       .trim();
     if (cleaned.length > best.length) best = cleaned;
   }
@@ -1599,7 +1621,7 @@ const JS_WHITESPACE = /\s/;
 
 /** Lowercase A-Z only. Index-preserving, unlike toLowerCase (`İ` grows to 2 units). */
 function asciiLower(s: string): string {
-  return s.replace(/[A-Z]+/g, (run) => run.toLowerCase());
+  return s.replace(ASCII_LOWER_RE, (run) => run.toLowerCase());
 }
 
 function isJsWhitespace(c: string | undefined): boolean {
@@ -1717,16 +1739,16 @@ function decodeNumericReference(codePoint: number): string {
 
 function decodeXmlEntities(s: string): string {
   return s
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => decodeNumericReference(Number(n)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => decodeNumericReference(parseInt(n, 16)))
+    .replace(DECODE_XML_ENTITIES_RE, '<')
+    .replace(DECODE_XML_ENTITIES_RE_2, '>')
+    .replace(DECODE_XML_ENTITIES_RE_3, '"')
+    .replace(DECODE_XML_ENTITIES_RE_4, "'")
+    .replace(DECODE_XML_ENTITIES_RE_5, (_, n) => decodeNumericReference(Number(n)))
+    .replace(DECODE_XML_ENTITIES_RE_6, (_, n) => decodeNumericReference(parseInt(n, 16)))
     // `&amp;` MUST be decoded last. Decoding it first turns the escaped
     // ampersand of `&amp;lt;` into a live `&`, which the very next replace then
     // consumes as `&lt;` — one pass decoding twice.
-    .replace(/&amp;/g, '&');
+    .replace(DECODE_XML_ENTITIES_RE_7, '&');
 }
 
 /**
@@ -1882,8 +1904,8 @@ function normalizeTitle(title: string): string {
     ? stripped.slice(0, NORMALIZED_TITLE_SCAN)
     : stripped;
   return bounded
-    .replace(/[^\p{L}\p{N}\s]/gu, '')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_TITLE_RE, '')
+    .replace(WHITESPACE_RE, ' ')
     .trim()
     .slice(0, 120);
 }

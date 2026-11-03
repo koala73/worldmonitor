@@ -4,6 +4,9 @@ import { isBlockedResolvedAddress } from '../../../_shared/ip-address-classifica
 import eventTriggers from '../../../../shared/event-triggers.json';
 import type { StoredWebhookScope } from './webhook-scope';
 
+const IS_IP_LITERAL_RE = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+
+
 export const WEBHOOK_TTL = 86400 * 30; // 30 days
 // Every live subscriber, across owners. The delivery worker prunes ids whose
 // record has expired, so this set carries no TTL.
@@ -61,7 +64,7 @@ const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.shippingV2.resolveWebhookHost
 type ResolveHostname = (hostname: string) => Promise<string[]>;
 
 function isIpLiteral(hostname: string): boolean {
-  return hostname.includes(':') || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+  return hostname.includes(':') || IS_IP_LITERAL_RE.test(hostname);
 }
 
 function getResolveHostnameForTest(): ResolveHostname | undefined {

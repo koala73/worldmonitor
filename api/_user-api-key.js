@@ -9,6 +9,9 @@ import {
 import { DESKTOP_KEY_LIMIT_ERROR, admitsDesktopKeyPrincipal } from '../shared/desktop-key-access.js';
 import { chargeDesktopKeyBudget } from './_desktop-key-meter.js';
 
+const RESOLVE_USER_API_KEY_HASH_RE = /^[a-f0-9]{64}$/;
+
+
 const USER_API_KEY_RE = /^wm_[a-f0-9]{40}$/;
 // Plan 2026-10-25-001 (KTD3, KTD8). Cache-entry version for the shared
 // user-api-key:<hash> entry; tests/user-api-key-desktop-kind.test.mts pins it
@@ -358,7 +361,7 @@ export async function validateBootstrapUserApiKeyPrincipal(key) {
 // `{ ok: true, entry }` with a current cache entry, or to the same failure
 // objects the validators return (401 invalid / 503 unavailable).
 async function resolveUserApiKeyHash(keyHash) {
-  if (typeof keyHash !== 'string' || !/^[a-f0-9]{64}$/.test(keyHash)) return invalidKey('malformed');
+  if (typeof keyHash !== 'string' || !RESOLVE_USER_API_KEY_HASH_RE.test(keyHash)) return invalidKey('malformed');
   return coalesce(userKeyInFlight, keyHash, () => resolveUserApiKeyHashUncached(keyHash));
 }
 

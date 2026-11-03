@@ -22,12 +22,15 @@ import {
   stringValue,
 } from './_vulnerability-projection';
 
+const GET_CHOKEPOINT_DEPENDENCIES_RE = /^[a-z0-9_-]{1,80}$/;
+
+
 export async function getChokepointDependencies(
   ctx: ServerContext,
   req: GetChokepointDependenciesRequest,
 ): Promise<GetChokepointDependenciesResponse> {
   const chokepointId = (req.chokepointId || '').trim().toLowerCase();
-  if (!/^[a-z0-9_-]{1,80}$/.test(chokepointId)) {
+  if (!GET_CHOKEPOINT_DEPENDENCIES_RE.test(chokepointId)) {
     throw new ValidationError([{ field: 'chokepointId', description: 'chokepointId must be a canonical chokepoint id' }]);
   }
 

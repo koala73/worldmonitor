@@ -20,6 +20,9 @@ import { publisherFamilyFor } from '../shared/publisher-families.js';
 import { SOURCE_PROPAGANDA_RISK, getSourceType } from '../shared/source-provenance.ts';
 import { TELEGRAM_CHANNEL_TRUST } from '../shared/telegram-channel-trust.ts';
 
+const SITE_RE = /site:([^\s)]+)/;
+
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const includeProfiled = process.argv.includes('--all');
 
@@ -32,7 +35,7 @@ function publisherHost(rawUrl) {
     return null;
   }
   if (url.hostname === 'news.google.com') {
-    const site = /site:([^\s)]+)/.exec(url.searchParams.get('q') ?? '');
+    const site = SITE_RE.exec(url.searchParams.get('q') ?? '');
     return site ? site[1].toLowerCase() : null;
   }
   return url.hostname.toLowerCase();

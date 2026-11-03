@@ -18,6 +18,9 @@ import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-
 import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 import { safeJsonRpcId } from './mcp/utils';
 
+const LIFT_PROTOCOL_ERROR_FROM_TOOL_RESULT_RE = /^MCP error (-\d+): ([\s\S]+)$/;
+
+
 export const config = { runtime: 'edge' };
 
 const UPSTREAM_URL = 'https://worldmonitor.mintlify.dev/docs/mcp';
@@ -136,7 +139,7 @@ export function liftProtocolErrorFromToolResult(rpc: unknown): Record<string, un
       (block): block is { type: string; text: string } =>
         typeof (block as { text?: unknown })?.text === 'string',
     );
-    const match = textBlock?.text.match(/^MCP error (-\d+): ([\s\S]+)$/);
+    const match = textBlock?.text.match(LIFT_PROTOCOL_ERROR_FROM_TOOL_RESULT_RE);
     if (match) {
       code = Number(match[1]);
       message = match[2] ?? null;

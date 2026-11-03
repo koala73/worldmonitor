@@ -6,6 +6,12 @@ import { getUSNIRegionApproxCoords, getUSNIRegionCoords, HULL_HOMEPORT } from '@
 import type { GetUSNIFleetReportResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
 import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
 
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZE_HULL_RE = /[–—]/g;
+const AIS_NAME_RE = /^USS\s+/i;
+const USNI_NAME_RE = /^USNS\s+/i;
+
+
 const client = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 const breaker = createCircuitBreaker<USNIFleetReport | null>({
@@ -71,7 +77,7 @@ export async function fetchUSNIFleetReport(): Promise<USNIFleetReport | null> {
 
 function normalizeHull(hull: string | undefined): string {
   if (!hull) return '';
-  return hull.toUpperCase().replace(/\s+/g, '').replace(/[–—]/g, '-');
+  return hull.toUpperCase().replace(WHITESPACE_RE, '').replace(NORMALIZE_HULL_RE, '-');
 }
 
 function scatterOffset(hullNumber: string, index: number): { lat: number; lon: number } {
@@ -114,7 +120,7 @@ function resolvePortCoords(
   }
   // Option B — hull number fallback table
   if (hullNumber) {
-    const normalized = hullNumber.toUpperCase().replace(/\s+/g, '').replace(/[–—]/g, '-');
+    const normalized = hullNumber.toUpperCase().replace(WHITESPACE_RE, '').replace(NORMALIZE_HULL_RE, '-');
     const portName = HULL_HOMEPORT[normalized];
     if (portName) {
       const coords = getUSNIRegionCoords(portName);
@@ -159,12 +165,12 @@ export function mergeUSNIWithAIS(
   // Also try name matching for vessels without hull numbers
   for (const vessel of merged) {
     if (vessel.usniRegion) continue; // Already matched
-    const aisName = vessel.name.replace(/^USS\s+/i, '').toUpperCase().trim();
+    const aisName = vessel.name.replace(AIS_NAME_RE, '').toUpperCase().trim();
     if (!aisName) continue;
 
     for (const usniVessel of usniReport.vessels) {
       if (matchedHulls.has(normalizeHull(usniVessel.hullNumber))) continue;
-      const usniName = usniVessel.name.replace(/^USS\s+/i, '').replace(/^USNS\s+/i, '').toUpperCase().trim();
+      const usniName = usniVessel.name.replace(AIS_NAME_RE, '').replace(USNI_NAME_RE, '').toUpperCase().trim();
       if (aisName === usniName || aisName.includes(usniName) || usniName.includes(aisName)) {
         vessel.usniRegion = usniVessel.region;
         vessel.usniDeploymentStatus = usniVessel.deploymentStatus;
@@ -268,7 +274,7 @@ function buildUSNIClusters(vessels: MilitaryVessel[]): MilitaryVesselCluster[] {
     const hasCarrier = groupVessels.some((v) => v.vesselType === 'carrier');
 
     clusters.push({
-      id: `usni-cluster-${name.toLowerCase().replace(/\s+/g, '-')}`,
+      id: `usni-cluster-${name.toLowerCase().replace(WHITESPACE_RE, '-')}`,
       name: hasCarrier ? `${name} CSG` : `${name} Naval Group`,
       lat: avgLat,
       lon: avgLon,

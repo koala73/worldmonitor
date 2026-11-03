@@ -11,6 +11,11 @@
  */
 
 /** Minimum track width assumed for `repeat(auto-fill, minmax(280px, 1fr))`. */
+const IS_PANEL_GRID_COLUMN_COUNT_READY_RE = /repeat\(\s*\d+\s*,/i;
+const IS_PANEL_GRID_COLUMN_COUNT_READY_RE_2 = /repeat\(\s*auto-(fill|fit)\s*,/i;
+const REPEAT_COUNT_MATCH_RE = /repeat\(\s*(\d+)\s*,/i;
+const WHITESPACE_RE = /\s+/;
+
 export const PANELS_GRID_MIN_TRACK_PX = 280;
 /** Maximum row span supported by the CSS (`.panel.span-1` … `.panel.span-4`). */
 export const MAX_PANEL_ROW_SPAN = 4;
@@ -39,8 +44,8 @@ export function isPanelGridColumnCountReady(element: HTMLElement): boolean {
   const style = window.getComputedStyle(grid);
   const template = style.gridTemplateColumns;
   if (!template || template === 'none' || !template.includes('repeat(')) return true;
-  if (/repeat\(\s*\d+\s*,/i.test(template)) return true;
-  if (/repeat\(\s*auto-(fill|fit)\s*,/i.test(template)) {
+  if (IS_PANEL_GRID_COLUMN_COUNT_READY_RE.test(template)) return true;
+  if (IS_PANEL_GRID_COLUMN_COUNT_READY_RE_2.test(template)) {
     return getPanelGridWidth(grid) > 0;
   }
   return true;
@@ -59,14 +64,14 @@ export function getGridColumnCount(element: HTMLElement): number {
   if (!template || template === 'none') return MAX_PANEL_COL_SPAN;
 
   if (template.includes('repeat(')) {
-    const repeatCountMatch = template.match(/repeat\(\s*(\d+)\s*,/i);
+    const repeatCountMatch = template.match(REPEAT_COUNT_MATCH_RE);
     if (repeatCountMatch) {
       const parsed = Number.parseInt(repeatCountMatch[1] ?? '0', 10);
       if (Number.isFinite(parsed) && parsed > 0) return parsed;
     }
 
     // For repeat(auto-fill/auto-fit, minmax(...)), infer count from rendered width.
-    const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
+    const autoRepeatMatch = template.match(IS_PANEL_GRID_COLUMN_COUNT_READY_RE_2);
     if (autoRepeatMatch) {
       const gap = Number.parseFloat(style.columnGap || '0') || 0;
       const width = getPanelGridWidth(grid);
@@ -77,7 +82,7 @@ export function getGridColumnCount(element: HTMLElement): number {
     }
   }
 
-  const columns = template.trim().split(/\s+/).filter(Boolean);
+  const columns = template.trim().split(WHITESPACE_RE).filter(Boolean);
   return columns.length > 0 ? columns.length : MAX_PANEL_COL_SPAN;
 }
 

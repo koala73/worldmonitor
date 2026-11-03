@@ -8,6 +8,26 @@
 
 import { publisherFamilyFor, publisherFamilyForDomain } from '../shared/publisher-families.js';
 import { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl } from '../shared/article-url.js';
+
+const HOSTNAME_OF_RE = /\.+$/;
+const RAW_RE = /:\s*$/;
+const COUNTRY_RE = /^WHAT THIS MEANS FOR (.+)$/;
+const IS_BRIEF_SECTION_HEADER_RE = /\p{L}/u;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const LINES_RE = /\s+$/;
+const PREAMBLE_IS_THEATRE_RE = /\[\d+\]/;
+const NORMALIZE_BRIEF_TEXT_RE = /\n{3,}/g;
+const COMPARABLE_RE = /\p{M}/gu;
+const INDEXES_RE = /\[(\d+)\]/g;
+const EVIDENCE_IDS_RE = /\[(E\d{1,2})\]/g;
+const CLAIM_TEXT_RE = /\[\d+\]/g;
+const CLAIM_TEXT_RE_2 = /\[E\d{1,2}\]/g;
+const CLAIM_TEXT_RE_3 = /^(?:[•-]\s*|\*\s+)/;
+const CLAIM_TEXT_RE_4 = /^NEXT \d+H:\s*/i;
+const CLAIM_TEXT_RE_5 = /^WHAT THIS MEANS FOR\s+/i;
+const MARKERS_RE = /\[(\d{1,2}|E\d{1,2})\]/g;
+const PARSE_BRIEF_SECTIONS_RE = /^\d/;
+
 export { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl };
 import { validateNoHallucinatedFacts, validateNoHallucinatedProperNouns, validateNoHallucinatedStatusQualifiers } from '../shared/brief-llm-core.js';
 import { energyEvidenceGrounded, evidenceNumbersGrounded, isEvidenceLimitClaim } from '../shared/brief-claim-rules.js';
@@ -24,22 +44,22 @@ export const COUNTRY_INDEX_ORIGIN = 'country-index';
 
 function hostnameOf(url) {
   try {
-    return new URL(String(url || '').trim()).hostname.toLowerCase().replace(/\.+$/, '');
+    return new URL(String(url || '').trim()).hostname.toLowerCase().replace(HOSTNAME_OF_RE, '');
   } catch {
     return '';
   }
 }
 
 export function isBriefSectionHeader(line, { countryCode = '', countryName = '' } = {}) {
-  const raw = String(line || '').trim().replace(/:\s*$/, '');
+  const raw = String(line || '').trim().replace(RAW_RE, '');
   const upper = raw.toUpperCase();
   if (BRIEF_SECTION_HEADERS.includes(upper)) return true;
-  const country = upper.match(/^WHAT THIS MEANS FOR (.+)$/)?.[1];
+  const country = upper.match(COUNTRY_RE)?.[1];
   // The server writes this heading in capitals with its own display name,
   // which the resolver cannot always map back ("CÔTE D’IVOIRE"). A line wholly
   // in capitals is a heading; mixed-case prose that opens with the phrase is not.
-  if (country && raw === upper && /\p{L}/u.test(country)) return true;
-  return Boolean(country && (/^[A-Z]{2}$/.test(country)
+  if (country && raw === upper && IS_BRIEF_SECTION_HEADER_RE.test(country)) return true;
+  return Boolean(country && (COUNTRY_CODE_RE.test(country)
     || country === String(countryCode).trim().toUpperCase()
     || country === String(countryName).trim().toUpperCase()
     || resolveIso2({ name: country }) === String(countryCode).trim().toUpperCase()));
@@ -65,7 +85,7 @@ const SECOND_LEVEL_SUFFIX_LABELS = new Set(['ac', 'co', 'com', 'edu', 'go', 'gov
 export function registrableDomain(url) {
   let hostname = '';
   try {
-    hostname = new URL(String(url || '').trim()).hostname.toLowerCase().replace(/\.+$/, '');
+    hostname = new URL(String(url || '').trim()).hostname.toLowerCase().replace(HOSTNAME_OF_RE, '');
   } catch {
     return '';
   }
@@ -172,13 +192,13 @@ export function normalizeBriefText(text, { countryCode = '', countryName = '' } 
   const lines = String(text || '')
     .replace(MARKDOWN_MARKERS_RE, '')
     .split('\n')
-    .map((line) => line.replace(/\s+$/, '').replace(MARKDOWN_HEADING_RE, ''));
+    .map((line) => line.replace(LINES_RE, '').replace(MARKDOWN_HEADING_RE, ''));
   const firstHeader = lines.findIndex((line) => isBriefSectionHeader(line, { countryCode: code, countryName: name }));
   // Theatre carries no citations. A lead the model wrote under its own
   // header name ("CURRENT SITUATION ... [1]") is content, so a preamble with
   // a [n] citation anywhere is kept whole rather than guessed at.
   const preambleIsTheatre = firstHeader > 0
-    && !lines.slice(0, firstHeader).some((line) => /\[\d+\]/.test(line));
+    && !lines.slice(0, firstHeader).some((line) => PREAMBLE_IS_THEATRE_RE.test(line));
   const body = preambleIsTheatre ? lines.slice(firstHeader) : lines;
   const repaired = body
     .filter((line) => !LEGACY_NOTICE_RE.test(line.trim()))
@@ -194,7 +214,7 @@ export function normalizeBriefText(text, { countryCode = '', countryName = '' } 
     const next = repaired.slice(index + 1).find((candidate) => candidate.trim());
     return next !== undefined && !isBriefSectionHeader(next, { countryCode: code, countryName: name });
   });
-  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return kept.join('\n').replace(NORMALIZE_BRIEF_TEXT_RE, '\n\n').trim();
 }
 
 // The snapshot retains source titles, not article bodies. Never use a URL,
@@ -211,7 +231,7 @@ export function briefCitationGroundingGap(brief, country = {}, { requireHeadline
     || brief.sources.some((source) => typeof source?.title !== 'string' || !source.title.trim())) {
     return 'missing source titles';
   }
-  const comparable = (text) => text.normalize('NFKD').replace(/\p{M}/gu, '');
+  const comparable = (text) => text.normalize('NFKD').replace(COMPARABLE_RE, '');
   const titles = brief.sources.map((source) => comparable(stripMarkdownMarkers(source.title)));
   // An evidence array marks the evidence-grounded format, whose claims follow
   // the server's rules (shared/brief-claim-rules.js); pre-migration briefs keep
@@ -224,16 +244,16 @@ export function briefCitationGroundingGap(brief, country = {}, { requireHeadline
   for (const rawLine of normalizeBriefText(brief.text, country).split('\n')) {
     const line = rawLine.trim();
     if (!line || isBriefSectionHeader(line, country)) continue;
-    const indexes = [...line.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1]));
+    const indexes = [...line.matchAll(INDEXES_RE)].map((match) => Number(match[1]));
     citationCount += indexes.length;
     if (indexes.some((index) => index < 1 || index > titles.length)) return 'out-of-range citation';
-    const evidenceIds = [...line.matchAll(/\[(E\d{1,2})\]/g)].map((match) => match[1]);
+    const evidenceIds = [...line.matchAll(EVIDENCE_IDS_RE)].map((match) => match[1]);
     if (evidenceIds.some((id) => !evidenceById.has(id))) return 'unknown evidence citation';
     if (!requireHeadlineCitation) citationCount += evidenceIds.length;
-    const claimText = line.replace(/\[\d+\]/g, '').replace(/\[E\d{1,2}\]/g, '')
-      .replace(/^(?:[•-]\s*|\*\s+)/, '')
-      .replace(/^NEXT \d+H:\s*/i, '')
-      .replace(/^WHAT THIS MEANS FOR\s+/i, '').trim();
+    const claimText = line.replace(CLAIM_TEXT_RE, '').replace(CLAIM_TEXT_RE_2, '')
+      .replace(CLAIM_TEXT_RE_3, '')
+      .replace(CLAIM_TEXT_RE_4, '')
+      .replace(CLAIM_TEXT_RE_5, '').trim();
     const claim = comparable(claimText);
     if (!claim) return 'empty cited claim';
     if (evidenceFormat && indexes.length + evidenceIds.length > 0) {
@@ -291,16 +311,16 @@ export function parseBriefSections(text, country = {}) {
     const line = rawLine.trim();
     if (!line) continue;
     if (isBriefSectionHeader(line, country)) {
-      const heading = line.replace(/:\s*$/, '');
+      const heading = line.replace(RAW_RE, '');
       sections.push({ key: briefSectionKey(heading) ?? 'other', heading, claims: [] });
       continue;
     }
     if (sections.length === 0) sections.push({ key: 'other', heading: '', claims: [] });
     const match = line.match(CLAIM_LINE_RE);
-    const markers = match ? [...match[2].matchAll(/\[(\d{1,2}|E\d{1,2})\]/g)].map((marker) => marker[1]) : [];
+    const markers = match ? [...match[2].matchAll(MARKERS_RE)].map((marker) => marker[1]) : [];
     sections.at(-1).claims.push({
       text: match ? match[1] : line,
-      sourceIndexes: markers.filter((marker) => /^\d/.test(marker)).map(Number),
+      sourceIndexes: markers.filter((marker) => PARSE_BRIEF_SECTIONS_RE.test(marker)).map(Number),
       evidenceIds: markers.filter((marker) => marker.startsWith('E')),
     });
   }

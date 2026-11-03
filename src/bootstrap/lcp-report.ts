@@ -25,6 +25,9 @@ import {
   WEB_VITAL_SAMPLE_RATE,
 } from '@/bootstrap/web-vitals-utils';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 const MAX_LCP_ELEMENT_TAG_LENGTH = 200;
 
 /** Structural subset of web-vitals' LCP attribution (kept local to avoid the dep). */
@@ -45,7 +48,7 @@ export interface LcpMetricLike {
 }
 
 function normalizeLcpElementTag(target: string | undefined): string {
-  const normalized = (target ?? '').replace(/\s+/g, ' ').trim();
+  const normalized = (target ?? '').replace(WHITESPACE_RE, ' ').trim();
   return normalized ? normalized.slice(0, MAX_LCP_ELEMENT_TAG_LENGTH) : 'unknown';
 }
 

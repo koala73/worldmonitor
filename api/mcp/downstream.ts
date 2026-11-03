@@ -13,6 +13,10 @@ import type {
   McpToolExecutionContext,
 } from './types';
 
+const CLASSIFY_FAILURE_REASON_RE = /^HTTP (\d+)/;
+const CLASSIFY_FAILURE_REASON_RE_2 = /\b(auth|secret|key|unauthorized|forbidden)\b/i;
+
+
 export const MCP_CANONICAL_API_ORIGIN = 'https://api.worldmonitor.app';
 
 const VARIANT_HOSTS: ReadonlySet<string> = new Set([
@@ -368,9 +372,9 @@ export async function assertMcpToolFetchOk(
 export function classifyFailureReason(reason: unknown): string {
   if (reason instanceof Error) {
     if (reason.name === 'AbortError' || reason.name === 'TimeoutError') return 'timeout';
-    const m = reason.message.match(/^HTTP (\d+)/);
+    const m = reason.message.match(CLASSIFY_FAILURE_REASON_RE);
     if (m) return `http_${m[1]}`;
-    if (/\b(auth|secret|key|unauthorized|forbidden)\b/i.test(reason.message)) return 'auth_error';
+    if (CLASSIFY_FAILURE_REASON_RE_2.test(reason.message)) return 'auth_error';
     return 'error';
   }
   return reason == null ? 'unknown' : String(reason);

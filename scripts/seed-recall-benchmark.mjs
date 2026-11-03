@@ -25,6 +25,9 @@ import { pathToFileURL } from 'node:url';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { GDELT_BULK_ARTICLES_KEY } from './_gdelt-bulk-contract.mjs';
 
+const URL_RE = /^https?:\/\//;
+
+
 const RECALL_KEY = 'news:recall-benchmark:v1';
 const META_KEY = 'seed-meta:news:recall-benchmark';
 const DIGEST_KEY = 'news:digest:v1:full:en';
@@ -47,7 +50,7 @@ export function materializedReferenceItems(payload) {
   const seenUrls = new Set();
   return (Array.isArray(payload?.articles) ? payload.articles : []).flatMap((article) => {
     const title = typeof article?.title === 'string' ? article.title.trim() : '';
-    const url = typeof article?.url === 'string' && /^https?:\/\//.test(article.url)
+    const url = typeof article?.url === 'string' && URL_RE.test(article.url)
       ? article.url
       : undefined;
     if (title.length < 10 || (url && seenUrls.has(url))) return [];
@@ -154,7 +157,7 @@ export async function runRecallBenchmark({
       ...m,
       title: String(m.title).slice(0, 200),
       // Only http(s) URLs, clamped — GDELT fields are untrusted input.
-      url: typeof m.url === 'string' && /^https?:\/\//.test(m.url) ? m.url.slice(0, 300) : undefined,
+      url: typeof m.url === 'string' && URL_RE.test(m.url) ? m.url.slice(0, 300) : undefined,
     })),
   };
   await _redisCommand(creds, ['SET', RECALL_KEY, JSON.stringify(payload), 'EX', String(3 * 86400)]);

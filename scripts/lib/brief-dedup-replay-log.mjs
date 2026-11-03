@@ -26,6 +26,10 @@ import { cacheKeyFor, normalizeForEmbedding } from './brief-embedding.mjs';
 import { defaultRedisPipeline } from './_upstash-pipeline.mjs';
 import { REPLAY_WINDOW_DAYS } from './brief-replay-constants.mjs';
 
+const RAW_RE = /[^A-Za-z0-9:_-]/g;
+const SAFE_RULE_ID_RE = /[_:-]/g;
+
+
 const KEY_PREFIX = 'digest:replay-log:v1';
 
 /**
@@ -109,8 +113,8 @@ export function buildReplayLogKey(ruleId, tsMs) {
   // pathological inputs like ':::' producing keys like
   // `digest:replay-log:v1::::2026-04-23` that confuse Redis namespace
   // tooling (SCAN / KEYS / redis-cli tab completion).
-  const raw = String(ruleId ?? '').replace(/[^A-Za-z0-9:_-]/g, '_');
-  const safeRuleId = raw.replace(/[_:-]/g, '') === '' ? 'unknown' : raw;
+  const raw = String(ruleId ?? '').replace(RAW_RE, '_');
+  const safeRuleId = raw.replace(SAFE_RULE_ID_RE, '') === '' ? 'unknown' : raw;
   const iso = new Date(tsMs).toISOString();
   const dateKey = iso.slice(0, 10); // YYYY-MM-DD
   return `${KEY_PREFIX}:${safeRuleId}:${dateKey}`;

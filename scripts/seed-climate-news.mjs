@@ -6,6 +6,11 @@ import { decodeHtmlEntities } from './_html-entities.mjs';
 // real code (no replicas, no drift). See helpers module header for rationale.
 import { climateNewsContentMeta, CLIMATE_NEWS_MAX_CONTENT_AGE_MIN } from './_climate-news-helpers.mjs';
 
+const CLEAN_SUMMARY_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const HREF_RE = /<link[^>]*\bhref=(["'])(.*?)\1[^>]*\/?>/i;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'climate:news-intelligence:v1';
@@ -40,7 +45,7 @@ function extractTag(block, tagName) {
 }
 
 function cleanSummary(raw) {
-  return decodeHtmlEntities(raw).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+  return decodeHtmlEntities(raw).replace(CLEAN_SUMMARY_RE, ' ').replace(WHITESPACE_RE, ' ').trim().slice(0, 300);
 }
 
 function parseDateMs(block) {
@@ -56,7 +61,7 @@ function parseDateMs(block) {
 function extractLink(block) {
   const direct = extractTag(block, 'link');
   if (direct) return decodeHtmlEntities(direct).trim();
-  const href = (block.match(/<link[^>]*\bhref=(["'])(.*?)\1[^>]*\/?>/i) || [])[2] || '';
+  const href = (block.match(HREF_RE) || [])[2] || '';
   return decodeHtmlEntities(href).trim();
 }
 

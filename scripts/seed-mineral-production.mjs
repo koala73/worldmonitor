@@ -18,6 +18,11 @@ import {
   buildMineralProductionPayload,
 } from './shared/mineral-production-parse.mjs';
 
+const YEAR_MATCH_RE = /20\d{2}/;
+const CSV_RE = /commodities_data\.csv$/i;
+const QS_RE = /'/g;
+
+
 loadEnvFile(import.meta.url);
 
 export { CANONICAL_KEY };
@@ -68,10 +73,10 @@ export function pickUsgsMcsCsvFromCatalog(catalog) {
   const scored = [];
   for (const item of items) {
     const title = String(item.title || '');
-    const yearMatch = title.match(/20\d{2}/);
+    const yearMatch = title.match(YEAR_MATCH_RE);
     const year = yearMatch ? Number(yearMatch[0]) : 0;
     const files = Array.isArray(item.files) ? item.files : [];
-    const csv = files.find((f) => /commodities_data\.csv$/i.test(f.name || ''));
+    const csv = files.find((f) => CSV_RE.test(f.name || ''));
     if (!csv?.downloadUri && !csv?.url) continue;
     scored.push({ year, title, url: csv.downloadUri || csv.url });
   }
@@ -124,7 +129,7 @@ export async function fetchBgsFill(vocab, usgsRows = []) {
     const qs = new URLSearchParams({
       f: 'json',
       limit: '2000',
-      filter: `commodity='${name.replace(/'/g, "''")}' AND statistic_type='Production'`,
+      filter: `commodity='${name.replace(QS_RE, "''")}' AND statistic_type='Production'`,
     });
     const body = await fetchJson(`${BGS_ITEMS}?${qs}`, BGS_FETCH_TIMEOUT_MS);
     const features = Array.isArray(body?.features) ? body.features : [];

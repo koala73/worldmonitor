@@ -13,6 +13,9 @@ import {
   fetchChinaCorporateDisclosureSnapshot,
 } from './china-corporate-disclosures/adapters.mjs';
 
+const SZSE_TRANSPORT_FAILURE_FROM_MARKER_RE = /^[a-z0-9_]{1,80}$/iu;
+
+
 loadEnvFile(import.meta.url);
 
 export const CHINA_CORPORATE_DISCLOSURE_TTL_SECONDS = 3 * DAY_MIN * 60;
@@ -67,7 +70,7 @@ export function szseTransportFailureFromMarker(marker) {
     ...(lastFailure ? { lastFailure } : {}),
     checkedAt: new Date(failureAt).toISOString(),
     errorCode: typeof marker.errorCode === 'string'
-      && /^[a-z0-9_]{1,80}$/iu.test(marker.errorCode)
+      && SZSE_TRANSPORT_FAILURE_FROM_MARKER_RE.test(marker.errorCode)
       ? marker.errorCode
       : 'FETCH_FAILED',
     consecutiveFailures: Number.isInteger(marker.consecutiveFailures)
@@ -88,7 +91,7 @@ export async function recordSzseTransportFailure(
     throw new Error('SZSE transport failure is missing a valid checkedAt');
   }
   const errorCode = typeof source.errorCode === 'string'
-    && /^[a-z0-9_]{1,80}$/iu.test(source.errorCode)
+    && SZSE_TRANSPORT_FAILURE_FROM_MARKER_RE.test(source.errorCode)
     ? source.errorCode
     : 'FETCH_FAILED';
   const consecutiveFailures = Number.isInteger(

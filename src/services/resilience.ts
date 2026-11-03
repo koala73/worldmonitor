@@ -3,6 +3,9 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { ResilienceServiceClient } from '@/services/generated-rpc-clients';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export type ResilienceScoreResponse = GetResilienceScoreResponse;
 export type ResilienceRankingResponse = GetResilienceRankingResponse;
 export type FoodStocksResponse = GetFoodStocksResponse;
@@ -27,7 +30,7 @@ function getClient(): InstanceType<typeof ResilienceServiceClient> {
 
 function normalizeCountryCode(countryCode: string): string {
   const normalized = countryCode.trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(normalized) ? normalized : '';
+  return COUNTRY_CODE_RE.test(normalized) ? normalized : '';
 }
 
 export async function getResilienceScore(countryCode: string): Promise<ResilienceScoreResponse> {

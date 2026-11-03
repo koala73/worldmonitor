@@ -1,3 +1,6 @@
+
+
+const TRAILING_SLASH_RE = /\/$/;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_POLYMARKET_LIMIT = 100;
 const DEFAULT_KALSHI_PAGE_SIZE = 200;
@@ -27,7 +30,7 @@ export async function fetchPolymarketEventsByTag(tag, {
     ascending: 'false',
     limit: String(limit),
   });
-  const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/events?${params}`, {
+  const response = await fetchFn(`${baseUrl.replace(TRAILING_SLASH_RE, '')}/events?${params}`, {
     headers: requestHeaders(userAgent),
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -60,7 +63,7 @@ export async function fetchKalshiEvents({
 
     let data;
     try {
-      const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/events?${params}`, {
+      const response = await fetchFn(`${baseUrl.replace(TRAILING_SLASH_RE, '')}/events?${params}`, {
         headers: requestHeaders(userAgent),
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -92,7 +95,7 @@ export async function fetchKalshiSeries({
   timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
   const params = new URLSearchParams({ include_volume: 'true' });
-  const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/series?${params}`, {
+  const response = await fetchFn(`${baseUrl.replace(TRAILING_SLASH_RE, '')}/series?${params}`, {
     headers: requestHeaders(userAgent),
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -142,7 +145,7 @@ export async function fetchKalshiMarketsBySeries(seriesTickers, {
 
       requestCount += 1;
       onRequest?.({ requestCount, seriesTicker, page: page + 1 });
-      const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/markets?${params}`, {
+      const response = await fetchFn(`${baseUrl.replace(TRAILING_SLASH_RE, '')}/markets?${params}`, {
         headers: requestHeaders(userAgent),
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -220,7 +223,7 @@ export async function fetchKalshiOrderbookDepths(tickers, {
     const params = new URLSearchParams(chunk.map((ticker) => ['tickers', ticker]));
     try {
       const books = await retry(async () => {
-        const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/markets/orderbooks?${params}`, {
+        const response = await fetchFn(`${baseUrl.replace(TRAILING_SLASH_RE, '')}/markets/orderbooks?${params}`, {
           headers: requestHeaders(userAgent),
           signal: AbortSignal.timeout(timeoutMs),
         });

@@ -3,6 +3,10 @@
 import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const WHITESPACE_RE = /\s+/;
+
+
 loadEnvFile(import.meta.url);
 
 export const CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
@@ -32,10 +36,10 @@ function formatMonth(year, month) {
 
 export function parseNoaaRows(text) {
   return text
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#'))
-    .map((line) => line.split(/\s+/));
+    .map((line) => line.split(WHITESPACE_RE));
 }
 
 export function parseCo2DailyRows(text) {

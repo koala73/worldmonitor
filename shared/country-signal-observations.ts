@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { resolveCountryCode } from './country-code-resolve';
 import { countryActivityQueries } from './country-activity-query';
 import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
+
+const MILLIS_RE = /^\d+$/;
+
 export { COUNTRY_SIGNAL_PATH, COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';
 const countryFlightSchema = z.object({
   id: z.string().min(1).max(200), source: z.string().min(1).max(500),
@@ -94,7 +97,7 @@ export function projectQualifiedCountrySignalContext(value: QualifiedCountrySign
 }
 
 export function sourceClock(value: unknown): string | null {
-  const millis = typeof value === 'string' && !/^\d+$/.test(value) ? Date.parse(value) : Number(value);
+  const millis = typeof value === 'string' && !MILLIS_RE.test(value) ? Date.parse(value) : Number(value);
   return Number.isFinite(millis) && millis > 0 && millis <= 8.64e15 ? new Date(millis).toISOString() : null;
 }
 

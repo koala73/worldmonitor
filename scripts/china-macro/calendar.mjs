@@ -1,6 +1,22 @@
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 import { fetchThroughProxy, hasUsableProxy, shouldRetryViaProxy } from './source-runtime.mjs';
 
+const STRIP_HTML_RE = /<br\s*\/?\s*>/gi;
+const STRIP_HTML_RE_2 = /<[^>]+>/g;
+const STRIP_HTML_RE_3 = /[ \t\u00A0]+/g;
+const CELLS_FROM_ROW_RE = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi;
+const ROWS_RE = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+const PARSE_NBS_RELEASE_CALENDAR_RE = /^\d+$/;
+const PARSE_NBS_RELEASE_CALENDAR_RE_2 = /^(?:…+|\.{3,})$/;
+const PARSE_NBS_RELEASE_CALENDAR_RE_3 = /\s/g;
+const DAYS_RE = /(?:^|\s)(\d{1,2})\s*\/[A-Za-z]+/g;
+const RELEASE_TIME_RE = /\b(\d{1,2}:\d{2})\b/;
+const PARSE_CHINA_MONEY_LPR_NOTICES_RE = /受权公布贷款市场报价利率.*LPR/i;
+const PARSE_CHINA_MONEY_LPR_NOTICES_RE_2 = /^20\d{2}-\d{2}-\d{2}$/;
+const REASON_FOR_RE = /timeout/i;
+const IS_CERTIFICATE_VALIDATION_FAILURE_RE = /self.signed certificate|certificate chain|certificate has expired|unable to verify|altname/i;
+
+
 export const NBS_CALENDAR_INDEX_URL = 'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/';
 // NBS is a REQUIRED source: any failure aborts the whole run, so a single
 // transient socket error costs a full 36h refresh interval against a 4,320min
@@ -50,27 +66,27 @@ function isoDate(year, month, day) {
 
 function stripHtml(value) {
   return decodeHtmlEntities(value
-    .replace(/<br\s*\/?\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' '))
-    .replace(/[ \t\u00A0]+/g, ' ')
+    .replace(STRIP_HTML_RE, '\n')
+    .replace(STRIP_HTML_RE_2, ' '))
+    .replace(STRIP_HTML_RE_3, ' ')
     .trim();
 }
 
 function cellsFromRow(row) {
-  return [...row.matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((match) => stripHtml(match[1]));
+  return [...row.matchAll(CELLS_FROM_ROW_RE)].map((match) => stripHtml(match[1]));
 }
 
 export function parseNbsReleaseCalendar(html, year, sourceUrl = NBS_CALENDAR_INDEX_URL) {
   const events = [];
-  const rows = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map((match) => cellsFromRow(match[1]));
+  const rows = [...html.matchAll(ROWS_RE)].map((match) => cellsFromRow(match[1]));
   for (const cells of rows) {
-    if (cells.length < 14 || !/^\d+$/.test(cells[0])) continue;
+    if (cells.length < 14 || !PARSE_NBS_RELEASE_CALENDAR_RE.test(cells[0])) continue;
     const event = cells[1];
     for (let month = 1; month <= 12; month++) {
       const cell = cells[month + 1] || '';
-      if (!cell || /^(?:…+|\.{3,})$/.test(cell.replace(/\s/g, ''))) continue;
-      const days = [...cell.matchAll(/(?:^|\s)(\d{1,2})\s*\/[A-Za-z]+/g)].map((match) => Number(match[1]));
-      const releaseTime = cell.match(/\b(\d{1,2}:\d{2})\b/)?.[1] || '09:30';
+      if (!cell || PARSE_NBS_RELEASE_CALENDAR_RE_2.test(cell.replace(PARSE_NBS_RELEASE_CALENDAR_RE_3, ''))) continue;
+      const days = [...cell.matchAll(DAYS_RE)].map((match) => Number(match[1]));
+      const releaseTime = cell.match(RELEASE_TIME_RE)?.[1] || '09:30';
       for (const day of days) {
         const releaseDate = isoDate(year, month, day);
         events.push({
@@ -133,9 +149,9 @@ export function buildLprCandidates(year) {
 export function parseChinaMoneyLprNotices(data) {
   const records = Array.isArray(data?.records) ? data.records : [];
   return [...new Set(records
-    .filter((record) => /受权公布贷款市场报价利率.*LPR/i.test(String(record?.title || '')))
+    .filter((record) => PARSE_CHINA_MONEY_LPR_NOTICES_RE.test(String(record?.title || '')))
     .map((record) => String(record?.releaseDate || '').slice(0, 10))
-    .filter((date) => /^20\d{2}-\d{2}-\d{2}$/.test(date)))]
+    .filter((date) => PARSE_CHINA_MONEY_LPR_NOTICES_RE_2.test(date)))]
     .sort();
 }
 
@@ -154,7 +170,7 @@ function sourceDecision(source, host, status, reason, checkedAt, requestCount = 
 function reasonFor(error) {
   if (typeof error?.reason === 'string' && error.reason) return error.reason;
   if (Number.isInteger(error?.status)) return `HTTP_${error.status}`;
-  if (error?.name === 'TimeoutError' || /timeout/i.test(String(error?.message))) return 'TIMEOUT';
+  if (error?.name === 'TimeoutError' || REASON_FOR_RE.test(String(error?.message))) return 'TIMEOUT';
   return 'FETCH_FAILED';
 }
 
@@ -317,7 +333,7 @@ function isCertificateValidationFailure(error) {
   // Message backstop for runtimes that surface a cert failure without a code.
   // Anchored alternatives only — no nested quantifiers to backtrack on.
   const certMessage = `${String(error?.message)} ${String(error?.cause?.message)}`;
-  return /self.signed certificate|certificate chain|certificate has expired|unable to verify|altname/i.test(certMessage);
+  return IS_CERTIFICATE_VALIDATION_FAILURE_RE.test(certMessage);
 }
 
 /**

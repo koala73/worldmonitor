@@ -6,6 +6,12 @@
 import { query } from '../db/client.js';
 import { INDEX_METHODOLOGY_VERSION } from '../index-methodology.js';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUG_RE = /^-|-$/g;
+const BUILD_TOP_CATEGORIES_RE = /_/g;
+const BUILD_TOP_CATEGORIES_RE_2 = /\b\w/g;
+
+
 // ---------------------------------------------------------------------------
 // Snapshot interfaces — mirror proto-generated response types exactly
 // (asOf is int64 → string per protobuf JSON mapping)
@@ -170,11 +176,11 @@ async function buildTopCategories(basketId: string, rangeDays = 7): Promise<WMCa
     const changePct = prev && prev > 0 ? Math.round(((cur - prev) / prev) * 100 * 10) / 10 : 0;
     const slug = r.category
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
+      .replace(NON_ALPHANUMERIC_RE, '-')
+      .replace(SLUG_RE, '');
     return {
       slug,
-      name: r.category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      name: r.category.replace(BUILD_TOP_CATEGORIES_RE, ' ').replace(BUILD_TOP_CATEGORIES_RE_2, (c) => c.toUpperCase()),
       wowPct: rangeDays <= 7 ? changePct : 0,
       momPct: rangeDays > 7 ? changePct : 0,
       currentIndex: Math.round(cur * 10) / 10,

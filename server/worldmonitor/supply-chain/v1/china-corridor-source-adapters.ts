@@ -12,6 +12,13 @@ import {
   type CorridorTimePrecision,
 } from '../../../../shared/china-corridor-control-towers';
 
+const DATE_ONLY_TIMESTAMP_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIMESTAMP_PRECISION_RE = /^\d{4}$/;
+const TIMESTAMP_PRECISION_RE_2 = /^\d{4}-\d{2}$/;
+const TIMESTAMP_PRECISION_RE_3 = /^\d{4}-\d{2}-\d{2}$/;
+const OBSERVATION_MONTH_INDEX_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+
 type UnknownRecord = Record<string, unknown>;
 
 export interface ChinaCorridorRawSnapshots {
@@ -68,7 +75,7 @@ function isoTimestamp(value: unknown): string | null {
 
 function dateOnlyTimestamp(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const match = DATE_ONLY_TIMESTAMP_RE.exec(value);
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -90,9 +97,9 @@ function yearTimestamp(value: unknown): string | null {
 function timestampPrecision(value: unknown): CorridorTimePrecision {
   if (typeof value === 'number') return 'instant';
   if (typeof value !== 'string') return 'unknown';
-  if (/^\d{4}$/.test(value)) return 'year';
-  if (/^\d{4}-\d{2}$/.test(value)) return 'month';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'day';
+  if (TIMESTAMP_PRECISION_RE.test(value)) return 'year';
+  if (TIMESTAMP_PRECISION_RE_2.test(value)) return 'month';
+  if (TIMESTAMP_PRECISION_RE_3.test(value)) return 'day';
   return Number.isFinite(Date.parse(value)) ? 'instant' : 'unknown';
 }
 
@@ -535,12 +542,12 @@ const MAX_DEMAND_CHANGE_PRODUCTS = 5;
 const MAX_DEMAND_CHANGE_PERCENT = 50;
 
 function observationMonthIndex(value: unknown): number | null {
-  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(stringValue(value) ?? '');
+  const match = OBSERVATION_MONTH_INDEX_RE.exec(stringValue(value) ?? '');
   return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : null;
 }
 
 function monthPeriodEnd(value: unknown): string | null {
-  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(stringValue(value) ?? '');
+  const match = OBSERVATION_MONTH_INDEX_RE.exec(stringValue(value) ?? '');
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);

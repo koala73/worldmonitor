@@ -1,5 +1,13 @@
 import ARABIC_COUNTRY_NAMES from './country-names-ar.json';
 
+const NORMALIZE_ARABIC_COUNTRY_TOKEN_RE = /[ؐ-ًؚ-ٰٟۖ-ۭـ]/g;
+const NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_2 = /[ٱ-ٳٵ]/g;
+const NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_3 = /[ىی]/g;
+const NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_4 = /ک/g;
+const NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_5 = /ة/g;
+const NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_6 = /[^\p{L}\p{N}]+/gu;
+
+
 /**
  * Arabic country names for caller-supplied country arguments (#9722).
  *
@@ -33,13 +41,13 @@ export function normalizeArabicCountryToken(raw: unknown): string {
   if (typeof raw !== 'string') return '';
   return raw
     .normalize('NFKD')
-    .replace(/[ؐ-ًؚ-ٰٟۖ-ۭـ]/g, '')
-    .replace(/[ٱ-ٳٵ]/g, 'ا')
-    .replace(/[ىی]/g, 'ي')
-    .replace(/ک/g, 'ك')
-    .replace(/ة/g, 'ه')
+    .replace(NORMALIZE_ARABIC_COUNTRY_TOKEN_RE, '')
+    .replace(NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_2, 'ا')
+    .replace(NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_3, 'ي')
+    .replace(NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_4, 'ك')
+    .replace(NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_5, 'ه')
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(NORMALIZE_ARABIC_COUNTRY_TOKEN_RE_6, ' ')
     .trim()
     .split(' ')
     .filter(Boolean)

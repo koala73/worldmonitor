@@ -1,3 +1,9 @@
+
+
+const NORMALIZE_TELEGRAM_USERNAME_RE = /^https?:\/\/t\.me\//i;
+const NORMALIZE_TELEGRAM_USERNAME_RE_2 = /^@+/;
+const NORMALIZE_TELEGRAM_USERNAME_RE_3 = /[?#].*$/;
+const NORMALIZE_TELEGRAM_USERNAME_RE_4 = /\/+$/;
 export interface TelegramWatchlistEntry {
   username: string;
   title?: string;
@@ -18,10 +24,10 @@ export function normalizeTelegramUsername(raw: string): string {
   if (!value) return '';
 
   value = value
-    .replace(/^https?:\/\/t\.me\//i, '')
-    .replace(/^@+/, '')
-    .replace(/[?#].*$/, '')
-    .replace(/\/+$/, '')
+    .replace(NORMALIZE_TELEGRAM_USERNAME_RE, '')
+    .replace(NORMALIZE_TELEGRAM_USERNAME_RE_2, '')
+    .replace(NORMALIZE_TELEGRAM_USERNAME_RE_3, '')
+    .replace(NORMALIZE_TELEGRAM_USERNAME_RE_4, '')
     .trim();
 
   if (!USERNAME_RE.test(value)) return '';

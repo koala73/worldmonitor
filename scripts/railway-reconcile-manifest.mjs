@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 
 import { canonicalJson } from './railway-reconcile-control-client.mjs';
 
+const SAFE_IDENTIFIER_RE = /(?:bearer|token|secret|gh[pousr]_)/i;
+const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+
 export const INTENT_VERSION = 'railway-reconcile-intent/v1';
 export const RESULT_VERSION = 'railway-reconcile-result/v1';
 
@@ -36,7 +40,7 @@ function exactKeys(value, expected, label) {
 function safeIdentifier(value, label, { nullable = false } = {}) {
   if (nullable && value === null) return null;
   if (typeof value !== 'string' || !SAFE_IDENTIFIER.test(value)
-    || /(?:bearer|token|secret|gh[pousr]_)/i.test(value)) {
+    || SAFE_IDENTIFIER_RE.test(value)) {
     throw new TypeError(`${label} must be a safe non-token identifier`);
   }
   return value;
@@ -50,7 +54,7 @@ function reasonCode(value, label) {
 }
 
 function timestamp(value, label) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+  if (typeof value !== 'string' || !TIMESTAMP_RE.test(value)
     || !Number.isFinite(Date.parse(value))) {
     throw new TypeError(`${label} must be an ISO timestamp`);
   }

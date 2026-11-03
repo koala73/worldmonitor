@@ -1,5 +1,11 @@
 import { isoDate, plainText } from '../food-prices.mjs';
 
+const ARABIC_KEY_RE = /ـ/g;
+const WHITESPACE_RE = /\s+/g;
+const NUMBER_RE = /^\d+(?:\.\d+)?$/;
+const AMMAN_REPORT_DATE_RE = /أسعار الخضار والفواكه\s+(\d{2})-(\d{2})-(\d{4})/;
+
+
 export const AMMAN_URL = 'https://ammancity.gov.jo/ar/market/prices.aspx';
 const MARKET = 'Amman Central Market';
 const UNITS = { 'كيلو': 'kg' };
@@ -30,11 +36,11 @@ export const AMMAN_ITEMS = {
   'ميرمية': 'Sage', 'نعنع': 'Mint', 'هندبة': 'Chicory',
 };
 
-const arabicKey = value => value.replace(/ـ/g, '').replace(/\s+/g, ' ').trim();
-const number = value => (/^\d+(?:\.\d+)?$/.test(value ?? '') ? Number(value) : null);
+const arabicKey = value => value.replace(ARABIC_KEY_RE, '').replace(WHITESPACE_RE, ' ').trim();
+const number = value => (NUMBER_RE.test(value ?? '') ? Number(value) : null);
 
 export function ammanReportDate(html) {
-  const match = /أسعار الخضار والفواكه\s+(\d{2})-(\d{2})-(\d{4})/.exec(plainText(html));
+  const match = AMMAN_REPORT_DATE_RE.exec(plainText(html));
   const date = match ? isoDate(match[3], match[2], match[1]) : '';
   if (!date) throw new Error('amman report date missing; format changed');
   return date;

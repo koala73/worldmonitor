@@ -12,6 +12,14 @@ import type {
 import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/leads/v1/service_server';
 import { getClientIp, verifyTurnstile } from '../../../_shared/turnstile';
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+const SANITIZE_FOR_SUBJECT_RE = /[\r\n\0]/g;
+const TRAILING_SLASH_RE = /\/$/;
+
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // RFC 5321 path limit. Checked before EMAIL_RE, which backtracks
 // super-linearly on long '@'-free runs.
@@ -35,14 +43,14 @@ export const FREE_EMAIL_DOMAINS = new Set<string>([
 
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(ESCAPE_HTML_RE, '&amp;')
+    .replace(ESCAPE_HTML_RE_2, '&lt;')
+    .replace(ESCAPE_HTML_RE_3, '&gt;')
+    .replace(ESCAPE_HTML_RE_4, '&quot;');
 }
 
 function sanitizeForSubject(str: string, maxLen = 50): string {
-  return str.replace(/[\r\n\0]/g, '').slice(0, maxLen);
+  return str.replace(SANITIZE_FOR_SUBJECT_RE, '').slice(0, maxLen);
 }
 
 async function sendNotificationEmail(
@@ -151,7 +159,7 @@ export async function submitContact(
   const safeSource = source ? source.slice(0, 100) : 'enterprise-contact';
 
   const convexUrl = (process.env.CONVEX_SITE_URL
-    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site')).replace(/\/$/, '');
+    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site')).replace(TRAILING_SLASH_RE, '');
   const secret = process.env.CONVEX_SERVER_SHARED_SECRET;
   if (!convexUrl || !secret) {
     throw new ApiError(503, 'Service unavailable', '');

@@ -14,6 +14,9 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/r
 import { readCachedJson, type CacheReadResult } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const DEMOGRAPHICS_CAPABILITY_KEY = 'demographics:capability:v1';
 
 function logReadFailure(key: string, error: unknown): void {
@@ -231,7 +234,7 @@ function emptyResponse(countryCode: string): GetDemographicsCapabilityResponse {
 
 export function normalizeDemographicsCountryCode(raw: string): string | null {
   const normalized = raw.trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+  return COUNTRY_CODE_RE.test(normalized) ? normalized : null;
 }
 
 export function toDemographicsCapabilityResponse(

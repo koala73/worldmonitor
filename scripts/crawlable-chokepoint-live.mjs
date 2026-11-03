@@ -12,16 +12,26 @@ import {
   chokepointOfficialMetrics,
 } from './crawlable-live-tools.mjs';
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+const ESCAPE_HTML_RE_5 = /'/g;
+const NUMERIC_VALUE_RE = /,/g;
+const FORMAT_SCORE_NUMBER_RE = /\.0$/;
+const CLEANED_RE = /^[\s;·—-]+|[\s;·—-]+$/g;
+
+
 export const CHOKEPOINT_LIVE_START = '<!--wm-live:chokepoint-->';
 export const CHOKEPOINT_LIVE_END = '<!--/wm-live:chokepoint-->';
 
 export function escapeHtml(value) {
   return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(ESCAPE_HTML_RE, '&amp;')
+    .replace(ESCAPE_HTML_RE_2, '&lt;')
+    .replace(ESCAPE_HTML_RE_3, '&gt;')
+    .replace(ESCAPE_HTML_RE_4, '&quot;')
+    .replace(ESCAPE_HTML_RE_5, '&#39;');
 }
 
 export function formatStaticDateTime(iso) {
@@ -56,7 +66,7 @@ export const OBSERVED_EVIDENCE = Object.freeze({ coverage: true });
 // Enumerating the withheld classes instead would fail OPEN on any fifth class
 // (it already omitted 'stable-absence', whose imputed scores run 85-88).
 export function hasObservedValue(value, { coverage, evidenceState = '' } = {}) {
-  const numericValue = typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
+  const numericValue = typeof value === 'string' ? value.replace(NUMERIC_VALUE_RE, '').trim() : value;
   const numericCoverage = Number(coverage);
   return numericValue !== ''
     && numericValue != null
@@ -68,12 +78,12 @@ export function hasObservedValue(value, { coverage, evidenceState = '' } = {}) {
 
 export function formatObservedNumber(value, evidence, formatter, fallback = '—') {
   if (!hasObservedValue(value, evidence)) return fallback;
-  const numeric = Number(typeof value === 'string' ? value.replace(/,/g, '') : value);
+  const numeric = Number(typeof value === 'string' ? value.replace(NUMERIC_VALUE_RE, '') : value);
   return formatter(numeric);
 }
 
 export function formatScoreNumber(numeric) {
-  return numeric.toFixed(1).replace(/\.0$/, '');
+  return numeric.toFixed(1).replace(FORMAT_SCORE_NUMBER_RE, '');
 }
 
 export function formatScore(value, evidence) {
@@ -109,7 +119,7 @@ const NO_ACTIVE_DISRUPTIONS_DESCRIPTION = 'No active disruptions';
 export function publishableChokepointDescription(value) {
   const cleaned = String(value || '')
     .replace(INTERNAL_NOTE_RE, '')
-    .replace(/^[\s;·—-]+|[\s;·—-]+$/g, '')
+    .replace(CLEANED_RE, '')
     .trim();
   return cleaned && cleaned !== NO_ACTIVE_DISRUPTIONS_DESCRIPTION ? cleaned : null;
 }

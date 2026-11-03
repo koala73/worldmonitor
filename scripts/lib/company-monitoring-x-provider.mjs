@@ -3,6 +3,25 @@ import { promises as dns } from 'node:dns';
 import https from 'node:https';
 import { createRequire } from 'node:module';
 
+const WHITESPACE_RE = /\s+/g;
+const DOMAIN_RE = /^www\./;
+const DOMAIN_RE_2 = /\.$/;
+const NORMALIZE_DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const HANDLE_RE = /^@/;
+const HOSTNAME_RE = /^\[|\]$/g;
+const NORMALIZED_RE = /&/g;
+const NORMALIZED_RE_2 = /[^\p{L}\p{N}]+/gu;
+const TOKENS_RE = /\s+/u;
+const PAGE_MATCHES_DOMICILE_RE = /addressCountry["']?\s*:\s*["']?(?:US|USA|United States)\b/i;
+const PAGE_MATCHES_DOMICILE_RE_2 = /\b(?:United States of America|United States|U\.S\.A\.|USA)\b/i;
+const PAGE_MATCHES_DOMICILE_RE_3 = /addressCountry["']?\s*:\s*["']?(?:GB|UK|United Kingdom)\b/i;
+const PAGE_MATCHES_DOMICILE_RE_4 = /\b(?:United Kingdom|Great Britain|England|Scotland|Wales|Northern Ireland)\b/i;
+const LINKED_XHANDLES_RE = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})(?=[^A-Za-z0-9_]|$)/gi;
+const PROTECTED_CONTENT_RE = /\bprotected\b/i;
+const DEFINITIVE_DELETION_RE = /\b(?:not found|does not exist|deleted)\b/i;
+const DEFINITIVE_DELETION_RE_2 = /\b(?:authori[sz]ation|forbidden|suspended|protected)\b/i;
+
+
 const require = createRequire(import.meta.url);
 const { isBlockedResolvedAddress } = require('./notification-webhook-ssrf.cjs');
 const { assertXPostBudgetAdmission } = require('./x-post-budget.cjs');
@@ -46,22 +65,22 @@ function sha256(value) {
 
 function plainText(value, field, maxBytes = 512) {
   if (typeof value !== 'string') throw new Error(`${field} must be a string`);
-  const normalized = value.normalize('NFC').trim().replace(/\s+/g, ' ');
+  const normalized = value.normalize('NFC').trim().replace(WHITESPACE_RE, ' ');
   if (!normalized || CONTROL_CHARACTERS.test(normalized)) throw new Error(`${field} is invalid`);
   if (Buffer.byteLength(normalized) > maxBytes) throw new Error(`${field} is too long`);
   return normalized;
 }
 
 function normalizeDomain(value) {
-  const domain = plainText(value, 'officialDomain', 253).toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
-  if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(domain)) {
+  const domain = plainText(value, 'officialDomain', 253).toLowerCase().replace(DOMAIN_RE, '').replace(DOMAIN_RE_2, '');
+  if (!NORMALIZE_DOMAIN_RE.test(domain)) {
     throw new Error('officialDomain is invalid');
   }
   return domain;
 }
 
 function normalizeHandle(value, field = 'currentHandle') {
-  const handle = plainText(value, field, 16).replace(/^@/, '');
+  const handle = plainText(value, field, 16).replace(HANDLE_RE, '');
   if (!X_HANDLE.test(handle)) throw new Error(`${field} is invalid`);
   return handle.toLowerCase();
 }
@@ -86,7 +105,7 @@ export function assertSafeOfficialUrl(rawUrl, allowedDomains) {
   if (url.port && url.port !== '443') {
     throw new CompanyMonitoringXSsrfError('Official URL must use the HTTPS default port');
   }
-  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const hostname = url.hostname.toLowerCase().replace(HOSTNAME_RE, '');
   if (BLOCKED_HOSTNAMES.has(hostname) || isBlockedResolvedAddress(hostname)) {
     throw new CompanyMonitoringXSsrfError('Official URL points to a forbidden target');
   }
@@ -288,11 +307,11 @@ function nameTokens(value) {
   const normalized = plainText(value, 'name', 256)
     .normalize('NFKC')
     .toLocaleLowerCase('en-US')
-    .replace(/&/g, ' and ')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(NORMALIZED_RE, ' and ')
+    .replace(NORMALIZED_RE_2, ' ')
     .trim();
   if (!normalized) return [];
-  const tokens = normalized.split(/\s+/u);
+  const tokens = normalized.split(TOKENS_RE);
   while (tokens.length > 1 && COMPANY_SUFFIXES.has(tokens[tokens.length - 1])) tokens.pop();
   return tokens;
 }
@@ -316,7 +335,7 @@ function pageMatchesName(html, name) {
   const pageText = String(html)
     .normalize('NFKC')
     .toLocaleLowerCase('en-US')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ');
+    .replace(NORMALIZED_RE_2, ' ');
   const tokens = nameTokens(name);
   return tokens.length > 0 && pageText.includes(tokens.join(' '));
 }
@@ -324,19 +343,19 @@ function pageMatchesName(html, name) {
 function pageMatchesDomicile(html, domicileCountry) {
   const source = String(html);
   if (domicileCountry === 'US') {
-    return /addressCountry["']?\s*:\s*["']?(?:US|USA|United States)\b/i.test(source)
-      || /\b(?:United States of America|United States|U\.S\.A\.|USA)\b/i.test(source);
+    return PAGE_MATCHES_DOMICILE_RE.test(source)
+      || PAGE_MATCHES_DOMICILE_RE_2.test(source);
   }
   if (domicileCountry === 'GB') {
-    return /addressCountry["']?\s*:\s*["']?(?:GB|UK|United Kingdom)\b/i.test(source)
-      || /\b(?:United Kingdom|Great Britain|England|Scotland|Wales|Northern Ireland)\b/i.test(source);
+    return PAGE_MATCHES_DOMICILE_RE_3.test(source)
+      || PAGE_MATCHES_DOMICILE_RE_4.test(source);
   }
   return false;
 }
 
 function linkedXHandles(html) {
   const handles = new Set();
-  const pattern = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/([A-Za-z0-9_]{1,15})(?=[^A-Za-z0-9_]|$)/gi;
+  const pattern = LINKED_XHANDLES_RE;
   for (const match of String(html).matchAll(pattern)) handles.add(match[1].toLowerCase());
   return handles;
 }
@@ -354,7 +373,7 @@ function profileLinksOfficialDomain(profile, domain) {
   return profileDeclaredUrls(profile).some((rawUrl) => {
     try {
       const url = new URL(rawUrl);
-      const hostname = url.hostname.toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+      const hostname = url.hostname.toLowerCase().replace(DOMAIN_RE, '').replace(DOMAIN_RE_2, '');
       return url.protocol === 'https:' && domainAllowsHostname(hostname, domain);
     } catch {
       return false;
@@ -1100,11 +1119,11 @@ export function createXRecentSearchExecutor(options = {}) {
           if (returnedIds.has(String(tracked.postId))) continue;
           const error = errorsById.get(String(tracked.postId));
           const errorText = `${error?.title ?? ''} ${error?.detail ?? ''}`;
-          const protectedContent = protectedAccountIds.has(String(tracked.authorAccountId)) || /\bprotected\b/i.test(errorText);
+          const protectedContent = protectedAccountIds.has(String(tracked.authorAccountId)) || PROTECTED_CONTENT_RE.test(errorText);
           const definitiveDeletion = profiledAccountIds.has(String(tracked.authorAccountId)) &&
             Boolean(error) &&
-            /\b(?:not found|does not exist|deleted)\b/i.test(errorText) &&
-            !/\b(?:authori[sz]ation|forbidden|suspended|protected)\b/i.test(errorText);
+            DEFINITIVE_DELETION_RE.test(errorText) &&
+            !DEFINITIVE_DELETION_RE_2.test(errorText);
           if (protectedContent || definitiveDeletion) {
             complianceEvents.push({
               type: protectedContent ? 'protected' : 'delete',

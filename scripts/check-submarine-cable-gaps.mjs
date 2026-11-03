@@ -5,6 +5,10 @@
 import { writeFileSync } from 'node:fs';
 import { CABLE_REGIONS } from './seed-submarine-cables.mjs';
 
+const LENGTH_KM_RE = /[^0-9.]/g;
+const LINES_RE = /\|/g;
+
+
 const BASE = 'https://www.submarinecablemap.com/api/v3';
 const args = process.argv.slice(2);
 const outPath = args.includes('--out') ? args[args.indexOf('--out') + 1] : null;
@@ -51,7 +55,7 @@ if (failures.length > 0) {
   throw new Error(`Incomplete cable gap scan (${failures.length} failed):\n${failures.join('\n')}`);
 }
 
-const lengthKm = (s) => Number(String(s).replace(/[^0-9.]/g, '')) || 0;
+const lengthKm = (s) => Number(String(s).replace(LENGTH_KM_RE, '')) || 0;
 gaps.sort((a, b) => b.countries.length - a.countries.length || lengthKm(b.length) - lengthKm(a.length));
 
 const lines = [
@@ -64,7 +68,7 @@ const lines = [
   '',
   '| Slug | Name | RFS | Length | Countries |',
   '| --- | --- | --- | --- | --- |',
-  ...gaps.map((g) => `| ${g.id} | ${g.name.replace(/\|/g, '/')} | ${g.rfs ?? ''} | ${g.length} | ${g.countries.join(', ')} |`),
+  ...gaps.map((g) => `| ${g.id} | ${g.name.replace(LINES_RE, '/')} | ${g.rfs ?? ''} | ${g.length} | ${g.countries.join(', ')} |`),
   '',
 ];
 if (outPath) writeFileSync(outPath, lines.join('\n'));

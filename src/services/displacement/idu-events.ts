@@ -2,6 +2,8 @@
 // free of browser-only imports so tests can load it directly.
 
 /** One IDMC figure at one location. */
+const SNAPSHOT_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export interface DisplacementEventPoint {
   id: string;
   countryCode: string;
@@ -45,7 +47,7 @@ export const EMPTY_DISPLACEMENT_EVENTS: DisplacementEventsData = { countries: []
 // the seed envelope, so this is the one date the browser has.
 const WINDOW_DAYS = 180;
 function snapshotDate(windowFrom: unknown): string {
-  if (typeof windowFrom !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(windowFrom)) return '';
+  if (typeof windowFrom !== 'string' || !SNAPSHOT_DATE_RE.test(windowFrom)) return '';
   const start = Date.parse(`${windowFrom}T00:00:00Z`);
   if (!Number.isFinite(start)) return '';
   return new Date(start + (WINDOW_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);

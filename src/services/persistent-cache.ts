@@ -3,6 +3,9 @@ import { invokeTauri } from './tauri-bridge';
 import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from '@/utils/storage-quota';
 import { safeStorageKeys, safeStorageRemove } from '@/utils/safe-storage';
 
+const VALIDATE_BREAKER_PREFIX_RE = /\w/;
+
+
 type CacheEnvelope<T> = {
   key: string;
   updatedAt: number;
@@ -112,7 +115,7 @@ export const __testing__ = { deleteFromLocalStorageByPrefix };
 function validateBreakerPrefix(prefix: string): void {
   const trimmed = prefix.trim();
   const suffix = trimmed.slice('breaker:'.length);
-  if (!trimmed.startsWith('breaker:') || suffix.length === 0 || !/\w/.test(suffix)) {
+  if (!trimmed.startsWith('breaker:') || suffix.length === 0 || !VALIDATE_BREAKER_PREFIX_RE.test(suffix)) {
     throw new Error('deletePersistentCacheByPrefix requires a specific breaker: prefix');
   }
 }

@@ -8,6 +8,8 @@
 // Used by BOTH JMESPath gates AND `scripts/measure-jmespath-savings.mjs`
 // so the runtime contract and the reported PR numbers operate on the same
 // byte definition. Exported for the measurement script.
+const SENTENCE_MATCH_RE = /^[\s\S]+?[.!?](?:\s|$)/;
+
 export function utf8ByteLength(s: string): number {
   return new TextEncoder().encode(s).length;
 }
@@ -50,7 +52,7 @@ export function compressDescription(text: string, maxBytes: number): string {
   // `<EOL>`), though it does still split on a leading `e.g. ...` — that
   // edge case is documented in U1 test scenarios. Tool descriptions in
   // TOOL_REGISTRY don't start with abbreviations, audited at write-time.
-  const sentenceMatch = text.match(/^[\s\S]+?[.!?](?:\s|$)/);
+  const sentenceMatch = text.match(SENTENCE_MATCH_RE);
   const candidate = sentenceMatch ? sentenceMatch[0].trim() : text;
   if (utf8ByteLength(candidate) <= maxBytes) return candidate;
   // Byte-truncate without splitting a codepoint mid-cut. TextEncoder

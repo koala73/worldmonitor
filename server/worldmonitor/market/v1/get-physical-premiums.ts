@@ -11,6 +11,9 @@ import { readCachedJson } from '../../../_shared/redis';
 import { SeedUnavailableError } from '../../../_shared/required-seed';
 import { parseStringArray } from './_shared';
 
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+
 const PHYSICAL_PREMIUM_KEY = 'market:physical-premium:v1';
 const SUPPORTED_METALS = new Set(['gold', 'silver']);
 const MAX_ECHOED_METALS = 5;
@@ -64,7 +67,7 @@ function isoInstant(value: unknown): value is string {
 
 function isoDate(value: unknown): value is string {
   if (!string(value)) return false;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const match = ISO_DATE_RE.exec(value);
   if (!match) return false;
   const date = new Date(`${value}T00:00:00Z`);
   return date.getUTCFullYear() === Number(match[1])

@@ -17,6 +17,11 @@
 import { START_UPGRADE_TOOL } from './checkout';
 import { INFORM_ONLY_MESSAGES, informOnlyNextStep, type McpDenialReason } from './upgrade';
 
+const IS_CHAT_GPT_HOST_RE = /^openai-mcp\//i;
+const IS_CHAT_GPT_HOST_RE_2 = /\(codex\)/i;
+const APPLY_CHAT_GPT_COMMERCE_POLICY_RE = /application\/json/i;
+
+
 /**
  * ChatGPT sends `openai-mcp/<version>` on every MCP request, plain or followed
  * by ` (ChatGPT)`. The Codex CLI sends the same product token followed by
@@ -25,7 +30,7 @@ import { INFORM_ONLY_MESSAGES, informOnlyNextStep, type McpDenialReason } from '
  */
 export function isChatGptHost(req: Request): boolean {
   const userAgent = req.headers.get('User-Agent') ?? '';
-  return /^openai-mcp\//i.test(userAgent) && !/\(codex\)/i.test(userAgent);
+  return IS_CHAT_GPT_HOST_RE.test(userAgent) && !IS_CHAT_GPT_HOST_RE_2.test(userAgent);
 }
 
 /** Tools a ChatGPT request never sees or reaches. */
@@ -65,7 +70,7 @@ function rewriteError(message: unknown): boolean {
  */
 export async function applyChatGptCommercePolicy(res: Response): Promise<Response> {
   if (res.status === 200 || res.body === null) return res;
-  if (!/application\/json/i.test(res.headers.get('Content-Type') ?? '')) return res;
+  if (!APPLY_CHAT_GPT_COMMERCE_POLICY_RE.test(res.headers.get('Content-Type') ?? '')) return res;
   const text = await res.clone().text();
   if (!text.includes('"reason"')) return res;
   let parsed: unknown;

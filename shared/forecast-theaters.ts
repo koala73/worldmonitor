@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+const PARSE_FORECAST_THEATER_RESULT_RE = /^\d{13,}-[a-z0-9-]{1,64}$/i;
+
+
 export const forecastTheaterReadSchema = z.object({}).strict();
 const strings = (max: number) => z.array(z.string()).max(max);
 const pathSchema = z.object({
@@ -36,7 +39,7 @@ export function parseForecastTheaterResult(value: unknown): ForecastTheaterResul
     if (source.theaterCount || source.eligibleTheaterCount || source.failedTheaterCount || source.allTheatersFailed || source.completionStatus) return null;
     return { ...source, status: source.error ? 'unavailable' : source.processing ? 'processing' : 'missing' };
   }
-  if (!/^\d{13,}-[a-z0-9-]{1,64}$/i.test(source.runId) || !source.generatedAt || source.processing
+  if (!PARSE_FORECAST_THEATER_RESULT_RE.test(source.runId) || !source.generatedAt || source.processing
     || source.theaterCount + source.failedTheaterCount !== source.eligibleTheaterCount
     || source.allTheatersFailed && (source.theaterCount !== 0 || source.failedTheaterCount === 0)) return null;
   let status: ForecastTheaterStatus;

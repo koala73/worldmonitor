@@ -3,6 +3,29 @@ import {
   type IndexableLandingLocale,
 } from '../../shared/indexable-landing-locales';
 
+const ESCAPE_ATTR_RE = /&/g;
+const ESCAPE_ATTR_RE_2 = /"/g;
+const ESCAPE_ATTR_RE_3 = /</g;
+const ESCAPE_HTML_RE = />/g;
+const REPLACE_HTML_LANG_RE = /<html\b[^>]*\blang="/i;
+const REPLACE_HTML_LANG_RE_2 = /(<html\b[^>]*\blang=")[^"]*(")/i;
+const REPLACE_HTML_LANG_RE_3 = /<html\b/i;
+const BODY_RE = /<body\b/i;
+const STRIP_BODY_NOSCRIPT_RE = /<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi;
+const HTML_TAG_RE = /<html\b[^>]*>/i;
+const NEXT_TAG_RE = /\sdir="[^"]*"/i;
+const REL_RE = /\brel="([^"]*)"/i;
+const WHITESPACE_RE = /\s+/;
+const IS_CANONICAL_OR_HREFLANG_LINK_RE = /\bhreflang="/i;
+const OPEN_RE = /<head\b[^>]*>/i;
+const CLOSE_OFFSET_RE = /<\/head\b/i;
+const LINK_RE_RE = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+const SET_PRERENDER_LANG_RE = /\bdata-wm-prerender-lang="/i;
+const SET_PRERENDER_LANG_RE_2 = /(\bdata-wm-prerender-lang=")[^"]*(")/i;
+const SET_PRERENDER_LANG_RE_3 = /<div id="root"/i;
+const LOCALIZE_WELCOME_DOCUMENT_RE = /<title>[^<]*<\/title>/i;
+
+
 export interface WelcomeLandingCopy {
   title: string;
   description: string;
@@ -16,42 +39,42 @@ const JSON_LD_SCRIPT_RE =
 
 function escapeAttr(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;');
+    .replace(ESCAPE_ATTR_RE, '&amp;')
+    .replace(ESCAPE_ATTR_RE_2, '&quot;')
+    .replace(ESCAPE_ATTR_RE_3, '&lt;');
 }
 
 function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(ESCAPE_ATTR_RE, '&amp;')
+    .replace(ESCAPE_ATTR_RE_3, '&lt;')
+    .replace(ESCAPE_HTML_RE, '&gt;');
 }
 
 // Every rewrite below uses a replacer FUNCTION. A replacement string expands
 // `$1`, `$&`, `` $` `` and `$'`, and translated copy is not ours to rule out
 // (see the #root injection note in prerender.mjs).
 function replaceHtmlLang(html: string, lang: string): string {
-  if (/<html\b[^>]*\blang="/i.test(html)) {
-    return html.replace(/(<html\b[^>]*\blang=")[^"]*(")/i, (_m, open: string, close: string) => `${open}${lang}${close}`);
+  if (REPLACE_HTML_LANG_RE.test(html)) {
+    return html.replace(REPLACE_HTML_LANG_RE_2, (_m, open: string, close: string) => `${open}${lang}${close}`);
   }
-  return html.replace(/<html\b/i, () => `<html lang="${lang}"`);
+  return html.replace(REPLACE_HTML_LANG_RE_3, () => `<html lang="${lang}"`);
 }
 
 // Body-only: the <head> keeps its <noscript><link rel="stylesheet"> fallback
 // that the critical-CSS inliner emits.
 function stripBodyNoscript(html: string): string {
-  const body = html.search(/<body\b/i);
+  const body = html.search(BODY_RE);
   if (body < 0) return html;
-  return html.slice(0, body) + html.slice(body).replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, '');
+  return html.slice(0, body) + html.slice(body).replace(STRIP_BODY_NOSCRIPT_RE, '');
 }
 
 function setDocumentDir(html: string, dir: 'ltr' | 'rtl'): string {
-  const htmlTag = html.match(/<html\b[^>]*>/i)?.[0];
+  const htmlTag = html.match(HTML_TAG_RE)?.[0];
   if (!htmlTag) return html;
-  let nextTag = htmlTag.replace(/\sdir="[^"]*"/i, '');
+  let nextTag = htmlTag.replace(NEXT_TAG_RE, '');
   if (dir === 'rtl') {
-    nextTag = nextTag.replace(/<html\b/i, '<html dir="rtl"');
+    nextTag = nextTag.replace(REPLACE_HTML_LANG_RE_3, '<html dir="rtl"');
   }
   return html.replace(htmlTag, nextTag);
 }
@@ -85,27 +108,27 @@ function clusterLinkTags(): string {
 }
 
 function linkRelations(tag: string): string[] {
-  const rel = tag.match(/\brel="([^"]*)"/i)?.[1]?.toLowerCase() ?? '';
-  return rel.split(/\s+/).filter(Boolean);
+  const rel = tag.match(REL_RE)?.[1]?.toLowerCase() ?? '';
+  return rel.split(WHITESPACE_RE).filter(Boolean);
 }
 
 function isCanonicalOrHreflangLink(tag: string): boolean {
   const relations = linkRelations(tag);
   return relations.includes('canonical')
-    || (relations.includes('alternate') && /\bhreflang="/i.test(tag));
+    || (relations.includes('alternate') && IS_CANONICAL_OR_HREFLANG_LINK_RE.test(tag));
 }
 
 function rewriteCanonicalAndHreflang(html: string, canonical: string): string {
   const canonicalTag = `    <link rel="canonical" href="${canonical}" />`;
   const block = `${canonicalTag}\n${clusterLinkTags()}\n`;
-  const open = html.match(/<head\b[^>]*>/i);
+  const open = html.match(OPEN_RE);
   if (!open || open.index === undefined) return `${html}${block}`;
   const innerStart = open.index + open[0].length;
-  const closeOffset = html.slice(innerStart).search(/<\/head\b/i);
+  const closeOffset = html.slice(innerStart).search(CLOSE_OFFSET_RE);
   if (closeOffset < 0) return `${html}${block}`;
   const inner = html.slice(innerStart, innerStart + closeOffset);
   const kept: string[] = [];
-  const linkRe = /<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  const linkRe = LINK_RE_RE;
   let cursor = 0;
   for (const match of inner.matchAll(linkRe)) {
     const index = match.index ?? 0;
@@ -191,20 +214,20 @@ function rewriteJsonLd(
 ): string {
   return html.replace(JSON_LD_SCRIPT_RE, (_script, body: string) => {
     const next = rewriteJsonLdValue(JSON.parse(body), locale, copy);
-    const serialized = JSON.stringify(next).replace(/</g, '\\u003c');
+    const serialized = JSON.stringify(next).replace(ESCAPE_ATTR_RE_3, '\\u003c');
     return `<script type="application/ld+json">${serialized}</script>`;
   });
 }
 
 function setPrerenderLang(html: string, localeId: string): string {
-  if (/\bdata-wm-prerender-lang="/i.test(html)) {
+  if (SET_PRERENDER_LANG_RE.test(html)) {
     return html.replace(
-      /(\bdata-wm-prerender-lang=")[^"]*(")/i,
+      SET_PRERENDER_LANG_RE_2,
       (_m, open: string, close: string) => `${open}${localeId}${close}`,
     );
   }
   return html.replace(
-    /<div id="root"/i,
+    SET_PRERENDER_LANG_RE_3,
     () => `<div id="root" data-wm-prerendered="welcome" data-wm-prerender-lang="${localeId}"`,
   );
 }
@@ -226,7 +249,7 @@ export function localizeWelcomeDocument(
   let next = replaceHtmlLang(html, locale.htmlLang);
   next = setDocumentDir(next, locale.dir);
   if (!locale.isDefault) {
-    next = next.replace(/<title>[^<]*<\/title>/i, () => `<title>${escapeHtml(copy.title)}</title>`);
+    next = next.replace(LOCALIZE_WELCOME_DOCUMENT_RE, () => `<title>${escapeHtml(copy.title)}</title>`);
     next = setMeta(next, 'name', 'description', copy.description);
     next = setMeta(next, 'property', 'og:title', copy.ogTitle);
     next = setMeta(next, 'property', 'og:description', copy.ogDescription);

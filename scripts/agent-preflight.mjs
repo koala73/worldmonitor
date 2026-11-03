@@ -21,6 +21,17 @@ import {
   resolveGhBinary,
 } from './agent-pr-snapshot.mjs';
 
+const PARSE_ARGS_RE = /^\d+$/;
+const PARSE_ARGS_RE_2 = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const REDACT_SECRETS_RE = /(https?:\/\/)[^/@\s]+@/gi;
+const EXPECTED_MAJOR_RE = /^v/;
+const PARSE_STATUS_RE = /[RC]/;
+const WHITESPACE_RE = /\s+/;
+const RESOLVED_RE = /^[0-9a-f]{40}$/;
+const LINE_BREAK_RE = /\r?\n/;
+const ENV_KEYS_FROM_FILE_RE = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/;
+
+
 const SCHEMA = 'worldmonitor-agent-preflight/v1';
 const ACTION_SCHEMA = 'worldmonitor-agent-preflight/v2';
 const MODES = ['review', 'tests', 'repair'];
@@ -91,14 +102,14 @@ export function parseArgs(argv = []) {
   if (options.mode !== null && !MODES.includes(options.mode)) {
     throw new Error('--mode must be review, tests, or repair');
   }
-  if (options.issue && !/^\d+$/.test(options.issue)) {
+  if (options.issue && !PARSE_ARGS_RE.test(options.issue)) {
     throw new Error('--issue must be a GitHub issue number');
   }
   if (!Number.isInteger(options.bootstrapTimeoutMs) || options.bootstrapTimeoutMs <= 0) {
     throw new Error('--bootstrap-timeout-ms must be a positive integer');
   }
   for (const key of options.requireEnv) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+    if (!PARSE_ARGS_RE_2.test(key)) {
       throw new Error(`Invalid environment variable name: ${key}`);
     }
   }
@@ -179,7 +190,7 @@ function output(result) {
 }
 
 function redactSecrets(value) {
-  return value.replace(/(https?:\/\/)[^/@\s]+@/gi, '$1[redacted]@');
+  return value.replace(REDACT_SECRETS_RE, '$1[redacted]@');
 }
 
 function git(runner, rootDir, args, options = {}) {
@@ -196,7 +207,7 @@ function git(runner, rootDir, args, options = {}) {
 
 export function supportedNode(rootDir = process.cwd(), version = process.versions.node) {
   const expectedRaw = readFileSync(resolve(rootDir, '.nvmrc'), 'utf8').trim();
-  const expectedMajor = Number.parseInt(expectedRaw.replace(/^v/, '').split('.')[0], 10);
+  const expectedMajor = Number.parseInt(expectedRaw.replace(EXPECTED_MAJOR_RE, '').split('.')[0], 10);
   const actualMajor = Number.parseInt(version.split('.')[0], 10);
   return {
     actual: version,
@@ -330,7 +341,7 @@ function parseStatus(raw) {
     const status = entry.slice(0, 2);
     if (['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU'].includes(status)) unmerged = true;
     paths.push(entry.slice(3));
-    if (/[RC]/.test(status) && fields[index + 1]) {
+    if (PARSE_STATUS_RE.test(status) && fields[index + 1]) {
       paths.push(fields[index + 1]);
       index += 1;
     }
@@ -378,14 +389,14 @@ export function currentOriginMain(rootDir, runner, allowStaleMain) {
   const head = git(runner, rootDir, ['rev-parse', 'HEAD']);
   const originMain = git(runner, rootDir, ['rev-parse', 'origin/main']);
   const counts = git(runner, rootDir, ['rev-list', '--left-right', '--count', 'HEAD...origin/main']);
-  const [aheadRaw, behindRaw] = counts.value.split(/\s+/);
+  const [aheadRaw, behindRaw] = counts.value.split(WHITESPACE_RE);
   const ahead = Number.parseInt(aheadRaw, 10);
   const behind = Number.parseInt(behindRaw, 10);
   const resolved = head.ok
     && originMain.ok
     && counts.ok
-    && /^[0-9a-f]{40}$/.test(head.value)
-    && /^[0-9a-f]{40}$/.test(originMain.value)
+    && RESOLVED_RE.test(head.value)
+    && RESOLVED_RE.test(originMain.value)
     && Number.isInteger(ahead)
     && Number.isInteger(behind);
   if (!resolved) {
@@ -424,8 +435,8 @@ export function currentOriginMain(rootDir, runner, allowStaleMain) {
 function envKeysFromFile(path) {
   if (!existsSync(path)) return new Set();
   const keys = new Set();
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+  for (const line of readFileSync(path, 'utf8').split(LINE_BREAK_RE)) {
+    const match = line.match(ENV_KEYS_FROM_FILE_RE);
     if (!match) continue;
     const value = match[2].trim();
     if (value && value !== "''" && value !== '""') keys.add(match[1]);
@@ -476,7 +487,7 @@ function credentialState(rootDir, runner, requiredEnv) {
 function parseWorktrees(raw) {
   const records = [];
   let current = null;
-  for (const line of raw.split(/\r?\n/)) {
+  for (const line of raw.split(LINE_BREAK_RE)) {
     if (line.startsWith('worktree ')) {
       current = { path: line.slice('worktree '.length) };
       records.push(current);
@@ -911,7 +922,7 @@ export function runAgentPreflight(options = {}, runner = createPreflightRunner()
     checks.inventoryFacts.required = existsSync(resolve(rootDir, 'scripts/generate-inventory-facts.mjs'));
     const head = git(runner, rootDir, ['rev-parse', '--verify', 'HEAD^{commit}']);
     checks.source = {
-      ok: head.ok && /^[0-9a-f]{40}$/.test(head.value),
+      ok: head.ok && RESOLVED_RE.test(head.value),
       headOid: head.ok ? head.value : null,
       prHeadOid: prSnapshot?.head.oid ?? null,
       scope: prSnapshot?.head.oid === head.value ? 'pull_request_head' : 'local_commit',

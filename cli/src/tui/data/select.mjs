@@ -1,6 +1,12 @@
 // Pure selectors and formatters over the store's data. Kept free of terminal
 // concerns so they can be unit-tested with fixture payloads.
 
+const ENUM_LABEL_RE = /^unspecified$/;
+const YOUTUBE_CHANNEL_ID_RE = /youtube\.com\/channel\/(UC[\w-]{20,})/i;
+const YOUTUBE_VIDEO_ID_RE = /^[\w-]{11}$/;
+const YOUTUBE_VIDEO_ID_RE_2 = /(?:v=|youtu\.be\/|\/live\/|\/embed\/)([\w-]{11})/;
+const STREAM_CANDIDATES_RE = /\.m3u8/i;
+
 export function fmtAge(ms) {
   if (!Number.isFinite(ms) || ms < 0) return '—';
   const s = Math.floor(ms / 1000);
@@ -58,7 +64,7 @@ export function enumLabel(value) {
     if (['LEVEL', 'TYPE', 'STATUS', 'DIRECTION', 'PHASE', 'OPERATOR'].includes(parts[i - 1] || '')) break;
   }
   const words = (tail.length ? tail : parts).map((w) => w.toLowerCase());
-  return words.join(' ').replace(/^unspecified$/, '').trim();
+  return words.join(' ').replace(ENUM_LABEL_RE, '').trim();
 }
 
 export function threatRank(level) {
@@ -210,14 +216,14 @@ export function trendArrow(trend) {
 // --- live video ------------------------------------------------------------------
 
 export function youtubeChannelId(url) {
-  const m = /youtube\.com\/channel\/(UC[\w-]{20,})/i.exec(url || '');
+  const m = YOUTUBE_CHANNEL_ID_RE.exec(url || '');
   return m ? m[1] : null;
 }
 
 export function youtubeVideoId(entry) {
   if (!entry) return null;
-  if (/^[\w-]{11}$/.test(entry)) return entry;
-  const m = /(?:v=|youtu\.be\/|\/live\/|\/embed\/)([\w-]{11})/.exec(entry);
+  if (YOUTUBE_VIDEO_ID_RE.test(entry)) return entry;
+  const m = YOUTUBE_VIDEO_ID_RE_2.exec(entry);
   return m ? m[1] : null;
 }
 
@@ -234,7 +240,7 @@ export function streamCandidates(sources, resolved, now = Date.now()) {
   };
   const channels = resolved?.channels || {};
   for (const entry of sources || []) {
-    if (/\.m3u8/i.test(entry)) {
+    if (STREAM_CANDIDATES_RE.test(entry)) {
       add({ kind: 'hls', url: entry, label: new URL(entry).hostname });
       continue;
     }
@@ -244,7 +250,7 @@ export function streamCandidates(sources, resolved, now = Date.now()) {
       const at = r?.resolvedAt ? Date.parse(r.resolvedAt) : 0;
       // videoId comes from a bootstrap payload; only a bare 11-char YouTube id
       // may reach the URL, label and the terminal banner.
-      if (typeof r?.videoId === 'string' && /^[\w-]{11}$/.test(r.videoId) && now - at < 36 * 3600 * 1000) {
+      if (typeof r?.videoId === 'string' && YOUTUBE_VIDEO_ID_RE.test(r.videoId) && now - at < 36 * 3600 * 1000) {
         add({ kind: 'youtube', url: `https://www.youtube.com/watch?v=${r.videoId}`, label: `resolved live ${r.videoId}` });
       }
       add({ kind: 'youtube-channel', url: `https://www.youtube.com/channel/${channelId}/live`, label: `channel live` });

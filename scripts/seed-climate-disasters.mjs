@@ -8,6 +8,17 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+const TITLE_CASE_RE = /\b\w/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const NORMALIZE_DISASTER_NAME_RE = /^[\u{1F534}\u{1F7E0}\u{1F7E2}\s-]+/u;
+const IS_CLIMATE_NATURAL_EVENT_RE = /tropical|cyclone|hurricane|typhoon|depression/;
+const MAP_NATURAL_SEVERITY_RE = /\bred\b/;
+const MAP_NATURAL_SEVERITY_RE_2 = /\borange\b/;
+const GET_COUNTRY_CODE_FROM_ISO3_RE = /^[A-Z]{3}$/;
+const FETCH_RELIEF_WEB_RE = /approved appname/i;
+const FETCH_RELIEF_WEB_RE_2 = /HTTP 40[13]/;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'climate:disasters:v1';
@@ -33,13 +44,13 @@ const ISO3_TO_ISO2 = loadSharedConfig('iso3-to-iso2.json');
 const COUNTRY_NAMES_RAW = loadSharedConfig('country-names.json');
 
 function titleCase(str) {
-  return str.replace(/\b\w/g, (c) => c.toUpperCase());
+  return str.replace(TITLE_CASE_RE, (c) => c.toUpperCase());
 }
 
 const COUNTRY_NAME_BY_CODE = {};
 for (const [name, iso2] of Object.entries(COUNTRY_NAMES_RAW)) {
   const code = String(iso2 || '').trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(code) && name && !COUNTRY_NAME_BY_CODE[code]) {
+  if (COUNTRY_CODE_RE.test(code) && name && !COUNTRY_NAME_BY_CODE[code]) {
     COUNTRY_NAME_BY_CODE[code] = titleCase(name);
   }
 }
@@ -83,7 +94,7 @@ function normalizeStatus(status) {
 
 function normalizeDisasterName(value) {
   return String(value || '')
-    .replace(/^[\u{1F534}\u{1F7E0}\u{1F7E2}\s-]+/u, '')
+    .replace(NORMALIZE_DISASTER_NAME_RE, '')
     .trim();
 }
 
@@ -125,7 +136,7 @@ function isClimateNaturalEvent(event) {
 
   const text = `${event.categoryTitle || ''} ${event.classification || ''} ${event.title || ''}`.toLowerCase();
   if (event.stormId || event.stormName) return true;
-  return /tropical|cyclone|hurricane|typhoon|depression/.test(text);
+  return IS_CLIMATE_NATURAL_EVENT_RE.test(text);
 }
 
 function mapNaturalType(event) {
@@ -146,8 +157,8 @@ function mapNaturalSeverity(event, source) {
   const desc = String(event.description || '').toLowerCase();
   const stormCategory = Number(event.stormCategory);
 
-  if (title.includes('\u{1F534}') || /\bred\b/.test(desc)) return 'red';
-  if (title.includes('\u{1F7E0}') || /\borange\b/.test(desc)) return 'orange';
+  if (title.includes('\u{1F534}') || MAP_NATURAL_SEVERITY_RE.test(desc)) return 'red';
+  if (title.includes('\u{1F7E0}') || MAP_NATURAL_SEVERITY_RE_2.test(desc)) return 'orange';
   if (Number.isFinite(stormCategory)) {
     if (stormCategory >= 3) return 'red';
     if (stormCategory >= 1) return 'orange';
@@ -179,7 +190,7 @@ function getCountryCenter(countryCode) {
 
 function normalizeCountryCode(code) {
   const value = String(code || '').toUpperCase();
-  return /^[A-Z]{2}$/.test(value) ? value : '';
+  return COUNTRY_CODE_RE.test(value) ? value : '';
 }
 
 function getCountryName(countryCode) {
@@ -188,7 +199,7 @@ function getCountryName(countryCode) {
 
 function getCountryCodeFromIso3(code) {
   const value = String(code || '').toUpperCase();
-  return /^[A-Z]{3}$/.test(value) ? (ISO3_TO_ISO2[value] || '') : '';
+  return GET_COUNTRY_CODE_FROM_ISO3_RE.test(value) ? (ISO3_TO_ISO2[value] || '') : '';
 }
 
 function findCountryCodeByCoordinates(lat, lng) {
@@ -336,7 +347,7 @@ async function fetchReliefWeb() {
       } catch (err) {
         lastError = err;
         const message = String(err?.message || err);
-        if (/approved appname/i.test(message) || /HTTP 40[13]/.test(message)) {
+        if (FETCH_RELIEF_WEB_RE.test(message) || FETCH_RELIEF_WEB_RE_2.test(message)) {
           const cfgErr = new Error(`ReliefWeb rejected RELIEFWEB_APPNAME="${appname}" — configure an approved appname`);
           cfgErr.isConfigError = true;
           throw cfgErr;

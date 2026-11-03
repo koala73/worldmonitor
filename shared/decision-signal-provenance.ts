@@ -33,6 +33,13 @@ import {
 } from './decision-signal-provenance-families';
 import { getSourceProvenanceState } from './source-provenance';
 
+const IS_ISO_INSTANT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
+const IS_CALENDAR_MONTH_RE = /^(\d{4})-(\d{2})$/;
+const IS_CALENDAR_DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const IS_PROVENANCE_TIMESTAMP_RE = /^\d{4}$/;
+const VALIDATE_ORIGINAL_REFERENCE_RE = /^sha256:[a-f0-9]{64}$/;
+
+
 export * from './decision-signal-provenance-contract';
 export {
   DECISION_SIGNAL_PROVENANCE_FAMILY_DECLARATIONS,
@@ -104,7 +111,7 @@ function validateRequiredString(
 function isIsoInstant(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const match = value.match(
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/,
+    IS_ISO_INSTANT_RE,
   );
   if (!match) return false;
   return isValidCalendarDate(Number(match[1]), Number(match[2]), Number(match[3]))
@@ -135,7 +142,7 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
 
 function isCalendarMonth(value: unknown): value is string {
   if (typeof value !== 'string') return false;
-  const match = value.match(/^(\d{4})-(\d{2})$/);
+  const match = value.match(IS_CALENDAR_MONTH_RE);
   if (!match) return false;
   const month = Number(match[2]);
   return month >= 1 && month <= 12;
@@ -143,7 +150,7 @@ function isCalendarMonth(value: unknown): value is string {
 
 function isCalendarDay(value: unknown): value is string {
   if (typeof value !== 'string') return false;
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const match = value.match(IS_CALENDAR_DAY_RE);
   if (!match) return false;
   return isValidCalendarDate(Number(match[1]), Number(match[2]), Number(match[3]));
 }
@@ -152,7 +159,7 @@ function isProvenanceTimestamp(value: unknown): value is string {
   return isIsoInstant(value)
     || isCalendarDay(value)
     || isCalendarMonth(value)
-    || (typeof value === 'string' && /^\d{4}$/.test(value));
+    || (typeof value === 'string' && IS_PROVENANCE_TIMESTAMP_RE.test(value));
 }
 
 function validateTimestampValue(
@@ -165,7 +172,7 @@ function validateTimestampValue(
   if (precision === 'instant') valid = isIsoInstant(value);
   if (precision === 'day') valid = isCalendarDay(value);
   if (precision === 'month') valid = isCalendarMonth(value);
-  if (precision === 'year') valid = typeof value === 'string' && /^\d{4}$/.test(value);
+  if (precision === 'year') valid = typeof value === 'string' && IS_PROVENANCE_TIMESTAMP_RE.test(value);
   if (!valid) {
     pushIssue(errors, path, 'INVALID_VALUE', `Invalid ${String(precision)} timestamp`);
   }
@@ -362,7 +369,7 @@ function validateOriginalReference(
   validateRequiredString(value.id, `${path}.id`, errors);
   if (value.contentHash !== undefined && (
     typeof value.contentHash !== 'string'
-    || !/^sha256:[a-f0-9]{64}$/.test(value.contentHash)
+    || !VALIDATE_ORIGINAL_REFERENCE_RE.test(value.contentHash)
   )) {
     pushIssue(errors, `${path}.contentHash`, 'INVALID_VALUE', 'Expected a lowercase sha256 content hash');
   }

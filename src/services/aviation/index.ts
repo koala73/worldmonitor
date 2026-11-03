@@ -5,6 +5,9 @@ import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
 import { AviationServiceClient } from '@/services/generated-rpc-clients';
 import { premiumFetch } from '@/services/premium-fetch';
 
+const TO_DISPLAY_PRICE_QUOTE_RE = /_/g;
+
+
 // ---- Consumer-friendly display types ----
 
 export type FlightDelaySource = 'faa' | 'eurocontrol' | 'computed' | 'aviationstack' | 'notam' | 'unspecified';
@@ -282,7 +285,7 @@ function toDisplayPriceQuote(p: ProtoPriceQuote): PriceQuote {
     carrierIata: p.carrier?.iataCode ?? '', carrierName: p.carrier?.name ?? '',
     priceAmount: p.priceAmount,
     currency: p.currency?.toUpperCase() || 'USD',
-    cabin: p.cabin?.replace('CABIN_CLASS_', '').replace(/_/g, ' ') ?? 'Economy',
+    cabin: p.cabin?.replace('CABIN_CLASS_', '').replace(TO_DISPLAY_PRICE_QUOTE_RE, ' ') ?? 'Economy',
     stops: p.stops, durationMinutes: p.durationMinutes, isIndicative: p.isIndicative,
     provider: p.provider || 'demo',
     expiresAt: p.expiresAt > 0 ? new Date(p.expiresAt) : null,

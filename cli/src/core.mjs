@@ -9,6 +9,11 @@
 // user API key. A small REST escape hatch (`health`, `get <path>`) and an
 // OpenAPI listing (`list`) round it out for host-relative and self-hosted use.
 
+const IS_FLAG_RE = /[0-9]/;
+const NAME_RE = /^--?/;
+const SUMMARIZE_SPEC_RE = /^\/api\/([^/]+)\/v\d+\//;
+const PRINTABLE_RE = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g;
+
 export const VERSION = '0.2.2';
 
 // Cloudflare's WAF challenges generic library User-Agents (node, curl,
@@ -121,7 +126,7 @@ const BOOL_FLAGS = new Map([
 function isFlag(token) {
   if (token.startsWith('--')) return true;
   // single-dash short flag (-h, -v) but not a negative number (-5, -1.2)
-  return token.length === 2 && token[0] === '-' && !/[0-9]/.test(token[1]);
+  return token.length === 2 && token[0] === '-' && !IS_FLAG_RE.test(token[1]);
 }
 
 // Split argv into { command, positionals, options, params }. `options` holds
@@ -145,7 +150,7 @@ export function parseArgs(argv) {
       continue;
     }
 
-    let name = token.replace(/^--?/, '');
+    let name = token.replace(NAME_RE, '');
     let inlineValue;
     const eq = name.indexOf('=');
     if (eq !== -1) {
@@ -336,7 +341,7 @@ export function summarizeSpec(spec, serviceFilter) {
   const paths = (spec && spec.paths) || {};
   const rows = [];
   for (const p of Object.keys(paths).sort()) {
-    const match = p.match(/^\/api\/([^/]+)\/v\d+\//);
+    const match = p.match(SUMMARIZE_SPEC_RE);
     const service = match ? match[1] : '(other)';
     if (serviceFilter && service !== serviceFilter) continue;
     for (const method of Object.keys(paths[p])) {
@@ -354,7 +359,7 @@ export function summarizeSpec(spec, serviceFilter) {
 
 export function renderListing(rows) {
   if (!rows.length) return 'No operations found.';
-  const printable = (value) => String(value).replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g,
+  const printable = (value) => String(value).replace(PRINTABLE_RE,
     ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
   const lines = rows.map(
     (r) => `${printable(r.method).padEnd(5)} ${printable(r.path)}${r.summary ? `  — ${printable(r.summary)}` : ''}`,

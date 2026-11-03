@@ -1,6 +1,12 @@
 // Terminal escape sequences and colour math. Pure functions, no process access
 // except through the `env` argument of detectColorDepth.
 
+const DECODE_ENTITIES_RE = /&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi;
+const SANITIZE_RE = /\t/g;
+const SANITIZE_RE_2 = /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const LINE_BREAK_RE = /\r?\n/;
+const WHITESPACE_RE = /\s+/;
+
 export const ESC = '\x1b';
 export const CSI = `${ESC}[`;
 
@@ -176,7 +182,7 @@ export function center(str, width) {
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', hellip: '…', mdash: '—', ndash: '–', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', copy: '©', reg: '®', deg: '°', euro: '€', pound: '£' };
 
 export function decodeEntities(str) {
-  return String(str ?? '').replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, code) => {
+  return String(str ?? '').replace(DECODE_ENTITIES_RE, (m, code) => {
     if (code[0] === '#') {
       const n = code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
       return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m;
@@ -189,15 +195,15 @@ export function decodeEntities(str) {
 // Strip control characters that would corrupt the cell grid (keeps tabs as spaces).
 export function sanitize(str) {
   return decodeEntities(str)
-    .replace(/\t/g, ' ')
-    .replace(/[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '');
+    .replace(SANITIZE_RE, ' ')
+    .replace(SANITIZE_RE_2, '');
 }
 
 // Word-wrap into lines of at most `width` columns.
 export function wrap(text, width) {
   const lines = [];
-  for (const para of String(text ?? '').split(/\r?\n/)) {
-    const words = sanitize(para).split(/\s+/).filter(Boolean);
+  for (const para of String(text ?? '').split(LINE_BREAK_RE)) {
+    const words = sanitize(para).split(WHITESPACE_RE).filter(Boolean);
     let line = '';
     for (const word of words) {
       if (strWidth(word) > width) {

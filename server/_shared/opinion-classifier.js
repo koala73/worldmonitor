@@ -32,6 +32,8 @@
 // review). `/analysis/` is deliberately NOT here either — many
 // outlets file hard-news explainers under /analysis/ (it is a
 // CORROBORATING signal below).
+const TIMESTAMP_RE = /^\d+$/;
+
 const STRONG_URL_SEGMENTS = [
   '/opinion/',
   '/opinions/',
@@ -133,7 +135,7 @@ const HISTORICAL_EVENT_YEAR_RE =
 
 function publishedYear(publishedAt) {
   if (typeof publishedAt !== 'number' && typeof publishedAt !== 'string') return null;
-  const timestamp = typeof publishedAt === 'string' && /^\d+$/.test(publishedAt)
+  const timestamp = typeof publishedAt === 'string' && TIMESTAMP_RE.test(publishedAt)
     ? Number(publishedAt)
     : publishedAt;
   const date = new Date(timestamp);

@@ -6,6 +6,11 @@
 
 import { createRequire } from 'node:module';
 
+const ERROR_CODE_FOR_RE = /timeout/i;
+const TRANSPORT_FAILURE_REASON_RE = /^[A-Z][A-Z0-9_]+$/u;
+const STATUS_RE = /^HTTP_(\d{3})$/u;
+
+
 const {
   parseProxyConfigForAttempt,
   proxyFetch,
@@ -86,19 +91,19 @@ export function errorCodeFor(error) {
   const status = Number(error?.status);
   if (Number.isInteger(status) && status >= 100 && status <= 599) return `HTTP_${status}`;
   if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return 'TIMEOUT';
-  if (/timeout/i.test(String(error?.message))) return 'TIMEOUT';
+  if (ERROR_CODE_FOR_RE.test(String(error?.message))) return 'TIMEOUT';
   return 'FETCH_FAILED';
 }
 
 export function transportFailureReason(error) {
   const causeCode = String(error?.cause?.code ?? '');
-  return /^[A-Z][A-Z0-9_]+$/u.test(causeCode)
+  return TRANSPORT_FAILURE_REASON_RE.test(causeCode)
     ? causeCode
     : errorCodeFor(error);
 }
 
 export function isRetryableExchangeHttpStatus(code) {
-  const status = Number(/^HTTP_(\d{3})$/u.exec(code)?.[1]);
+  const status = Number(STATUS_RE.exec(code)?.[1]);
   return status === 408
     || status === 425
     || status === 429

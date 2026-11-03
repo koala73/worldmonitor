@@ -32,6 +32,11 @@
  * `tags`, or `ErrorEvent` stops satisfying `PolicyEvent` and every
  * `marketingBeforeSend` call site fails to compile.
  */
+const MARKETING_BEFORE_SEND_RE = /^TypeError: /;
+const HAS_FIRST_PARTY_RE = /\.(ts|tsx)$/;
+const MARKETING_BEFORE_SEND_RE_2 = /^TypeError:/;
+const MARKETING_BEFORE_SEND_RE_3 = /\bcontentWindow\b/;
+
 type PolicyPrimitive = number | string | boolean | bigint | symbol | null | undefined;
 
 /** Minimal structural view of the Sentry event fields this policy reads. */
@@ -636,7 +641,7 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   if (
     event.tags?.kind === undefined
     && (exceptionType === 'TypeError' || msg.startsWith('TypeError: '))
-    && MARKETING_NETWORK_NOISE.test(msg.replace(/^TypeError: /, ''))
+    && MARKETING_NETWORK_NOISE.test(msg.replace(MARKETING_BEFORE_SEND_RE, ''))
   ) return null;
 
   const frames = exceptionValues[0]?.stacktrace?.frames ?? [];
@@ -648,7 +653,7 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
       !SENTRY_CHUNK_FRAME.test(f.filename),
   );
   const hasFirstParty = nonInfraFrames.some(
-    (f) => /\.(ts|tsx)$/.test(f.filename ?? '') || MARKETING_ASSET_FRAME.test(f.filename ?? ''),
+    (f) => HAS_FIRST_PARTY_RE.test(f.filename ?? '') || MARKETING_ASSET_FRAME.test(f.filename ?? ''),
   );
 
   // A Puppeteer-driven crawler dispatching synthetic events. Puppeteer tags the
@@ -910,10 +915,10 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // original source scan did not read — so an error dereferencing one can only
   // have come from injected code. `tests/pro-sentry-filter-policy.test.mts`
   // pins that across all three file kinds, so the licence cannot rot.
-  if ((excType === 'TypeError' || /^TypeError:/.test(msg))
+  if ((excType === 'TypeError' || MARKETING_BEFORE_SEND_RE_2.test(msg))
       && exceptionValues.length === 1
       && !hasFirstParty
-      && /\bcontentWindow\b/.test(msg)
+      && MARKETING_BEFORE_SEND_RE_3.test(msg)
       && nonInfraFrames.length > 0
       && nonInfraFrames.every((f) => MARKETING_DOCUMENT_FRAME.test(f.filename ?? ''))) return null;
 

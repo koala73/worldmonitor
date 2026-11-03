@@ -53,6 +53,15 @@ import DIGEST_EDITIONS from './shared/news-digest-editions.json' with { type: 'j
 import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
 import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
 
+const TRAILING_SLASH_RE = /\/$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const CITATIONS_RE = /\[(\d+)\]/g;
+const BRIEF_RECORD_RE = /\[(E\d{1,2})\]/g;
+const BRIEF_EVIDENCE_RECORDS_RE = /^E\d{1,2}$/;
+const WHITESPACE_RE = /\s+/g;
+const SNAPSHOT_RE = /\[E\d{1,2}\]/;
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -260,7 +269,7 @@ function sleep(ms) {
 }
 
 function normalizeApiBase(apiBase) {
-  return String(apiBase || API_BASE).replace(/\/$/, '');
+  return String(apiBase || API_BASE).replace(TRAILING_SLASH_RE, '');
 }
 
 // Parse before accepting an external URL. Besides enforcing HTTPS, URL's
@@ -353,7 +362,7 @@ async function resolveLatestResilienceSnapshot() {
   ];
   const codes = rows
     .map((row) => String(row?.code || row?.countryCode || '').toUpperCase())
-    .filter((code) => /^[A-Z]{2}$/.test(code));
+    .filter((code) => COUNTRY_CODE_RE.test(code));
   return { relativePath, codes: [...new Set(codes)].sort() };
 }
 
@@ -459,7 +468,7 @@ function briefRecord(payload, digestUrls) {
       publishedAt: new Date(publishedMs).toISOString(),
     };
   });
-  const citations = [...text.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1]));
+  const citations = [...text.matchAll(CITATIONS_RE)].map((match) => Number(match[1]));
   if (citations.length === 0) {
     throw new Error('brief response carried no source citation');
   }
@@ -471,7 +480,7 @@ function briefRecord(payload, digestUrls) {
   const evidence = Array.isArray(payload?.evidence) ? briefEvidenceRecords(payload.evidence) : null;
   if (evidence) {
     const ids = new Set(evidence.map((item) => item.id));
-    for (const match of text.matchAll(/\[(E\d{1,2})\]/g)) {
+    for (const match of text.matchAll(BRIEF_RECORD_RE)) {
       if (!ids.has(match[1])) throw new Error(`brief response cited evidence it did not return: ${match[1]}`);
     }
   }
@@ -497,7 +506,7 @@ function briefEvidenceRecords(value) {
     const id = String(item?.id || '').trim();
     const fields = ['kind', 'label', 'value', 'factText'].map((field) => String(item?.[field] || '').trim());
     const asOfMs = new Date(String(item?.asOf || '')).getTime();
-    if (!/^E\d{1,2}$/.test(id) || fields.some((field) => !field) || !Number.isFinite(asOfMs)) {
+    if (!BRIEF_EVIDENCE_RECORDS_RE.test(id) || fields.some((field) => !field) || !Number.isFinite(asOfMs)) {
       throw new Error('brief response carried an invalid evidence item');
     }
     const [kind, label, displayValue, factText] = fields;
@@ -514,7 +523,7 @@ function timelineRecord(record) {
   const occurredMs = Number(record?.occurredAt);
   const sourceUrl = normalizeHttpsUrl(record?.sourceUrl);
   if (!title || !Number.isFinite(occurredMs) || occurredMs <= 0 || !sourceUrl) return null;
-  const summary = String(record?.summary || '').replace(/\s+/g, ' ').trim();
+  const summary = String(record?.summary || '').replace(WHITESPACE_RE, ' ').trim();
   return {
     title,
     summary: summary.length > 400 ? `${summary.slice(0, 399).trim()}...` : summary,
@@ -620,7 +629,7 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
 // unpublishable: it would render literally in <main> (#7738 guard).
 function selectCountryHeadlines(digestItems, code, limit = COUNTRY_HEADLINE_LIMIT) {
   const normalized = String(code || '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(normalized) || !Array.isArray(digestItems)) return [];
+  if (!COUNTRY_CODE_RE.test(normalized) || !Array.isArray(digestItems)) return [];
   const terms = countryMentionTerms(normalized);
   return digestItems
     .map((item) => {
@@ -694,7 +703,7 @@ function buildBriefContext(headlines, maxChars = BRIEF_CONTEXT_MAX_CHARS) {
   // cleanTitle applies ONLY to the Headlines: lines. The Source JSON keeps
   // the exact frozen title (JSON.stringify already neutralizes newlines, and
   // exact parity keeps citation indexes aligned with the frozen rows).
-  const cleanTitle = (headline) => String(headline.title || '').replace(/\s+/g, ' ').trim();
+  const cleanTitle = (headline) => String(headline.title || '').replace(WHITESPACE_RE, ' ').trim();
   const lines = headlines.map((headline, index) => {
     const payload = { title: headline.title, source: headline.source, url: headline.url };
     if (headline.publishedAt) payload.publishedAt = headline.publishedAt;
@@ -1387,7 +1396,7 @@ export async function freezeCrawlableLivePulse({
       // ones a page shows beyond Situation (which "Recent developments" covers).
       briefEvidenceFormatCount: evidenceFormatBriefs(countries).length,
       briefEvidenceCitedCount: evidenceFormatBriefs(countries)
-        .filter(({ brief }) => /\[E\d{1,2}\]/.test(brief.text)).length,
+        .filter(({ brief }) => SNAPSHOT_RE.test(brief.text)).length,
       briefAnalysisCount: evidenceFormatBriefs(countries)
         .filter(({ code, brief }) => parseBriefSections(brief.text, { countryCode: code })
           .some((section) => section.key !== 'situation')).length,

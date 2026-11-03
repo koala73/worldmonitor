@@ -24,6 +24,38 @@ import { fileURLToPath } from 'node:url';
 import { sortRec, serialize, eq, normalizeKey } from './lib/openapi-codegen.mjs';
 import { EMERGENCY_CODES } from '../shared/aircraft-emergencies.ts';
 
+const IDS_RE = /\bid:\s*['"`]([a-z0-9-]+)['"`]/g;
+const AFFECTED_RE = /affectedChokepointIds:\s*\[([^\]]*)\]/;
+const IDS_RE_2 = /['"`]([^'"`]+)['"`]/g;
+const CONSUMER_PRICE_BASKET_EXAMPLE_ID_RE = /\bDEFAULT_BASKET\s*=\s*['"`]([^'"`]+)['"`]/;
+const CONSUMER_PRICE_RANGE_EXAMPLE_ID_RE = /VALID_RANGES\s*=\s*new Set\(\[([^\]]+)\]\)/;
+const REGIONAL_INTELLIGENCE_EXAMPLE_ID_RE = /\bREGION_IDS\s*=\s*\[([\s\S]*?)\]/;
+const IDS_RE_3 = /['"`]([a-z0-9-]+)['"`]/g;
+const NORMALIZE_DESCRIPTION_VALUE_RE = /^["'`]+|["'`]+$/g;
+const NORMALIZE_DESCRIPTION_VALUE_RE_2 = /\s*\([^)]*\)/g;
+const NORMALIZE_DESCRIPTION_VALUE_RE_3 = /\s*\[[^\]]*\]/g;
+const NORMALIZE_DESCRIPTION_VALUE_RE_4 = /[),.;:]+$/g;
+const CANDIDATE_LOOKS_LIKE_CLOSED_VALUE_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const FIRST_CLOSED_VALUE_RE = /\bdefault\b/i;
+const EXTRACT_DELIMITED_VALUES_RE = /"([^"]*)"/g;
+const SPLIT_VALUE_LIST_RE = /\bor\b/g;
+const SPLIT_VALUE_LIST_RE_2 = /\band\b/g;
+const WHITESPACE_RE = /\s+/g;
+const CLOSED_LIST_MATCH_RE = /\b(?:one of|supported values?|valid values?|allowed values?|accepted values?)\b(?:\s*(?:are|is|:))?\s*([^.;]+)/i;
+const LABELED_SET_MATCH_RE = /\b(?:cabin class|stop filter|sort order|sort mode|summarization mode|fuel mode|policy category|status)\s*:\s*([^.;]+)/i;
+const TOPIC_MATCH_RE = /\bTopic ID\s*\(([^)]+)\)/i;
+const SIMPLE_ALTERNATION_RE = /^\^\(([^)]+)\)\$/;
+const COMPANY_MONITORING_LOGICAL_ID_RE = /^\^(cm_(?:company|claim|event|evidence|impact)_)\[0-9A-HJKMNP-TV-Z\]\{26\}\$$/;
+const PATTERN_STRING_RE = /scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/;
+const PATTERN_STRING_RE_2 = /^\^?\[A-Z\]\{3\}\$?$/;
+const PATTERN_STRING_RE_3 = /^\^?\[A-Z\]\{2\}\$?$/;
+const SUCCESS_RESPONSES_RE = /^2\d\d$/;
+const COUNT_INDENT_RE = /^ */;
+const REPLACE_PARAM_EXAMPLE_RE = /^(\s*)-\s+name:\s+(.+)$/;
+const YAML_FILE_RE = /\.json$/;
+const SPEC_FILES_RE = /Service\.openapi\.json$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const bundlePath = resolve(apiDir, 'worldmonitor.openapi.yaml');
@@ -90,7 +122,7 @@ const CHOKEPOINT_EXAMPLE_ID = (() => {
 // template literals (the interface uses `id: string;`, no quotes).
 const SCENARIO_EXAMPLE_ID = (() => {
   const src = readRepoText('server/worldmonitor/supply-chain/v1/scenario-templates.ts');
-  const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
+  const ids = [...src.matchAll(IDS_RE)].map((m) => m[1]);
   return ids.includes('hormuz-tanker-blockade') ? 'hormuz-tanker-blockade' : (ids[0] ?? 'hormuz-tanker-blockade');
 })();
 
@@ -100,8 +132,8 @@ const SCENARIO_RESULT_AFFECTED_CHOKEPOINT_IDS = (() => {
   const start = idMatch ? src.lastIndexOf('{', idMatch.index) : -1;
   const end = start >= 0 ? src.indexOf('\n  },', start) : -1;
   const block = start >= 0 && end > start ? src.slice(start, end) : '';
-  const affected = block.match(/affectedChokepointIds:\s*\[([^\]]*)\]/)?.[1] ?? '';
-  const ids = [...affected.matchAll(/['"`]([^'"`]+)['"`]/g)].map((m) => m[1]);
+  const affected = block.match(AFFECTED_RE)?.[1] ?? '';
+  const ids = [...affected.matchAll(IDS_RE_2)].map((m) => m[1]);
   return ids;
 })();
 
@@ -139,21 +171,21 @@ const BASELINE_TYPE_EXAMPLE_ID = (() => {
 
 const CONSUMER_PRICE_BASKET_EXAMPLE_ID = (() => {
   const src = readRepoText('server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts');
-  const match = src.match(/\bDEFAULT_BASKET\s*=\s*['"`]([^'"`]+)['"`]/);
+  const match = src.match(CONSUMER_PRICE_BASKET_EXAMPLE_ID_RE);
   return match?.[1] ?? 'essentials-ae';
 })();
 
 const CONSUMER_PRICE_RANGE_EXAMPLE_ID = (() => {
   const src = readRepoText('server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts');
-  const match = src.match(/VALID_RANGES\s*=\s*new Set\(\[([^\]]+)\]\)/);
-  const ranges = match ? [...match[1].matchAll(/['"`]([^'"`]+)['"`]/g)].map((m) => m[1]) : [];
+  const match = src.match(CONSUMER_PRICE_RANGE_EXAMPLE_ID_RE);
+  const ranges = match ? [...match[1].matchAll(IDS_RE_2)].map((m) => m[1]) : [];
   return ranges.includes('7d') ? '7d' : (ranges[0] ?? '7d');
 })();
 
 const REGIONAL_INTELLIGENCE_EXAMPLE_ID = (() => {
   const src = readRepoText('scripts/shared/geography.js');
-  const match = src.match(/\bREGION_IDS\s*=\s*\[([\s\S]*?)\]/);
-  const ids = match ? [...match[1].matchAll(/['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]) : [];
+  const match = src.match(REGIONAL_INTELLIGENCE_EXAMPLE_ID_RE);
+  const ids = match ? [...match[1].matchAll(IDS_RE_3)].map((m) => m[1]) : [];
   return ids.includes('mena') ? 'mena' : (ids.find((id) => id !== 'global') ?? 'mena');
 })();
 
@@ -162,7 +194,7 @@ const GDELT_TOPIC_EXAMPLE_ID = (() => {
   // longer runs on any Railway service after the #5843 materializer cutover,
   // so reading its topic ids would silently drift from what is published.
   const src = readRepoText('scripts/_gdelt-bulk-materializer.mjs');
-  const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
+  const ids = [...src.matchAll(IDS_RE)].map((m) => m[1]);
   return ids.includes('military') ? 'military' : (ids[0] ?? 'military');
 })();
 
@@ -395,21 +427,21 @@ function overrideStringExample(key, context = {}) {
 function normalizeDescriptionValue(value) {
   return String(value)
     .trim()
-    .replace(/^["'`]+|["'`]+$/g, '')
-    .replace(/\s*\([^)]*\)/g, '')
-    .replace(/\s*\[[^\]]*\]/g, '')
-    .replace(/[),.;:]+$/g, '')
+    .replace(NORMALIZE_DESCRIPTION_VALUE_RE, '')
+    .replace(NORMALIZE_DESCRIPTION_VALUE_RE_2, '')
+    .replace(NORMALIZE_DESCRIPTION_VALUE_RE_3, '')
+    .replace(NORMALIZE_DESCRIPTION_VALUE_RE_4, '')
     .trim();
 }
 
 function candidateLooksLikeClosedValue(value) {
-  return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value);
+  return CANDIDATE_LOOKS_LIKE_CLOSED_VALUE_RE.test(value);
 }
 
 function firstClosedValue(candidates) {
   for (const raw of candidates) {
     const value = normalizeDescriptionValue(raw);
-    if (/\bdefault\b/i.test(String(raw)) && value.toLowerCase() !== 'default' && candidateLooksLikeClosedValue(value)) return value;
+    if (FIRST_CLOSED_VALUE_RE.test(String(raw)) && value.toLowerCase() !== 'default' && candidateLooksLikeClosedValue(value)) return value;
   }
   for (const raw of candidates) {
     const value = normalizeDescriptionValue(raw);
@@ -420,13 +452,13 @@ function firstClosedValue(candidates) {
 }
 
 function extractDelimitedValues(text) {
-  return [...text.matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+  return [...text.matchAll(EXTRACT_DELIMITED_VALUES_RE)].map((m) => m[1]);
 }
 
 function splitValueList(text) {
   return text
-    .replace(/\bor\b/g, ',')
-    .replace(/\band\b/g, ',')
+    .replace(SPLIT_VALUE_LIST_RE, ',')
+    .replace(SPLIT_VALUE_LIST_RE_2, ',')
     .split(',')
     .map((part) => normalizeDescriptionValue(part))
     .filter(Boolean);
@@ -438,24 +470,24 @@ function closedValueFromSegment(segment) {
 }
 
 function descriptionClosedValueExample(description) {
-  const text = String(description ?? '').replace(/\s+/g, ' ').trim();
+  const text = String(description ?? '').replace(WHITESPACE_RE, ' ').trim();
   if (!text) return undefined;
 
   const closedListMatch = text.match(
-    /\b(?:one of|supported values?|valid values?|allowed values?|accepted values?)\b(?:\s*(?:are|is|:))?\s*([^.;]+)/i,
+    CLOSED_LIST_MATCH_RE,
   );
   if (closedListMatch) {
     return closedValueFromSegment(closedListMatch[1] ?? '');
   }
 
   const labeledSetMatch = text.match(
-    /\b(?:cabin class|stop filter|sort order|sort mode|summarization mode|fuel mode|policy category|status)\s*:\s*([^.;]+)/i,
+    LABELED_SET_MATCH_RE,
   );
   if (labeledSetMatch) {
     return closedValueFromSegment(labeledSetMatch[1] ?? '');
   }
 
-  const topicMatch = text.match(/\bTopic ID\s*\(([^)]+)\)/i);
+  const topicMatch = text.match(TOPIC_MATCH_RE);
   if (topicMatch) return firstClosedValue(splitValueList(topicMatch[1] ?? ''));
 
   return undefined;
@@ -649,20 +681,20 @@ function patternString(pattern, key) {
   if (pattern.includes('(?:www\\.)?') && pattern.includes('[A-Za-z0-9-]')) {
     return 'example.com';
   }
-  const simpleAlternation = pattern.match(/^\^\(([^)]+)\)\$/);
+  const simpleAlternation = pattern.match(SIMPLE_ALTERNATION_RE);
   if (simpleAlternation) return simpleAlternation[1].split('|')[0];
   const companyMonitoringLogicalId = pattern.match(
-    /^\^(cm_(?:company|claim|event|evidence|impact)_)\[0-9A-HJKMNP-TV-Z\]\{26\}\$$/,
+    COMPANY_MONITORING_LOGICAL_ID_RE,
   );
   if (companyMonitoringLogicalId) {
     return `${companyMonitoringLogicalId[1]}01ARZ3NDEKTSV4RRFFQ69G5FAV`;
   }
-  if (/scenario:\[0-9\]\{13\}:\[a-z0-9\]\{8\}/.test(pattern) || pattern.includes('scenario:')) {
+  if (PATTERN_STRING_RE.test(pattern) || pattern.includes('scenario:')) {
     return 'scenario:1717200000000:abcd1234';
   }
   if (pattern.includes('summary:v\\d+:')) return 'summary:v1:example-cache';
-  if (/^\^?\[A-Z\]\{3\}\$?$/.test(pattern)) return 'USA';
-  if (/^\^?\[A-Z\]\{2\}\$?$/.test(pattern)) return 'US';
+  if (PATTERN_STRING_RE_2.test(pattern)) return 'USA';
+  if (PATTERN_STRING_RE_3.test(pattern)) return 'US';
   if (pattern.includes('[0-9]{13}')) return '1717200000000';
   if (pattern.includes('[a-z0-9]')) return 'example1';
   if (key.includes('email')) return 'analyst@example.com';
@@ -1449,7 +1481,7 @@ function setExample(holder, example) {
 
 function successResponses(op) {
   return Object.entries(op.responses ?? {}).filter(([code, response]) =>
-    /^2\d\d$/.test(code) && response?.content?.[JSON_MEDIA]?.schema,
+    SUCCESS_RESPONSES_RE.test(code) && response?.content?.[JSON_MEDIA]?.schema,
   );
 }
 
@@ -1611,7 +1643,7 @@ function injectSpecExamples(spec) {
 }
 
 function countIndent(line) {
-  return line.match(/^ */)?.[0].length ?? 0;
+  return line.match(COUNT_INDENT_RE)?.[0].length ?? 0;
 }
 
 function blockEnd(lines, start, indent) {
@@ -1738,7 +1770,7 @@ function removeSiblingBlocks(lines, start, end, indent) {
 
 function replaceParamExample(lines, opStart, opEnd, name, example) {
   for (let i = opStart + 1; i < opEnd; i++) {
-    const match = lines[i].match(/^(\s*)-\s+name:\s+(.+)$/);
+    const match = lines[i].match(REPLACE_PARAM_EXAMPLE_RE);
     if (!match || countIndent(lines[i]) !== 16) continue;
     if (unquoteYamlScalar(match[2]) !== name) continue;
     const propIndent = 18;
@@ -1758,7 +1790,7 @@ function replaceParamExample(lines, opStart, opEnd, name, example) {
 
 function replaceParamSchema(lines, opStart, opEnd, name, schema) {
   for (let i = opStart + 1; i < opEnd; i++) {
-    const match = lines[i].match(/^(\s*)-\s+name:\s+(.+)$/);
+    const match = lines[i].match(REPLACE_PARAM_EXAMPLE_RE);
     if (!match || countIndent(lines[i]) !== 16) continue;
     if (unquoteYamlScalar(match[2]) !== name) continue;
     const propIndent = 18;
@@ -1920,7 +1952,7 @@ function processServiceSpec(file) {
   const jsonChanged = readFileSync(jsonPath, 'utf8') !== serialized;
   if (jsonChanged && !CHECK) writeFileSync(jsonPath, serialized);
 
-  const yamlFile = file.replace(/\.json$/, '.yaml');
+  const yamlFile = file.replace(YAML_FILE_RE, '.yaml');
   const yamlPath = resolve(apiDir, yamlFile);
   const yamlRaw = readFileSync(yamlPath, 'utf8');
   const yamlText = patchYamlExamples(yamlRaw, spec, yamlFile);
@@ -1941,7 +1973,7 @@ function processBundle(serviceSpecs) {
   return { changed };
 }
 
-const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+const specFiles = readdirSync(apiDir).filter((f) => SPEC_FILES_RE.test(f)).sort();
 let operations = 0;
 let requestBearingOperations = 0;
 let responseOperations = 0;

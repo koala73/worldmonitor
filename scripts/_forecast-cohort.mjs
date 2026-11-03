@@ -38,6 +38,9 @@ import {
   windowQuestionKey,
 } from './seed-forecast-resolutions.mjs';
 
+const FREEZE_COHORT_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+
 // 3: each entry carries its own service level, which the whole-manifest hash
 // covers.
 export const COHORT_SCHEMA_VERSION = 3;
@@ -179,7 +182,7 @@ export function freezeCohort({
   sources = {},
   priorManifest = null,
 }) {
-  if (!cohortId || !/^[a-z0-9][a-z0-9-]*$/.test(cohortId)) throw new Error('cohortId must be lowercase letters, digits and dashes');
+  if (!cohortId || !FREEZE_COHORT_RE.test(cohortId)) throw new Error('cohortId must be lowercase letters, digits and dashes');
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) throw new Error('the emission window needs start < end');
   if (!Number.isFinite(nowMs) || nowMs < endMs) throw new Error('a cohort is frozen only after its emission window closes');
   refuseUncoveredHistory('forecast history', historySnapshots, startMs);

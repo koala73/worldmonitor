@@ -56,6 +56,9 @@ import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetc
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -147,7 +150,7 @@ export function extractClaimsByCounterparty(sdmxJson) {
     // (3P, 1C, 5J, etc.) are rejected by the regex (any digit present).
     // Plus an explicit reject-list for any future 2-letter ALL-ALPHA
     // aggregates BIS might introduce (e.g. `EU`).
-    if (!cpCode || !/^[A-Z]{2}$/.test(cpCode) || ALPHA_AGGREGATE_CODES.has(cpCode)) continue;
+    if (!cpCode || !COUNTRY_CODE_RE.test(cpCode) || ALPHA_AGGREGATE_CODES.has(cpCode)) continue;
 
     const obs = series.observations ?? {};
     let latestIdx = -1;

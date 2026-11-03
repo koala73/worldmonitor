@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { unlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const IS_UTC_ISO_INSTANT_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):(\d{2}))$/;
+const VALIDATE_HEALTH_PROBE_CUTOVERS_RE = /^seed-activated:[a-z0-9][a-z0-9:-]*$/;
+
+
 const HEALTH_URL = new URL('../api/health.js', import.meta.url);
 
 type JsonRecord = Record<string, unknown>;
@@ -33,7 +37,7 @@ function seedMetaKey(config: unknown): string | null {
 export function isUtcIsoInstant(value: unknown): boolean {
   if (typeof value !== 'string') return false;
   const match = value.match(
-    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):(\d{2}))$/,
+    IS_UTC_ISO_INSTANT_RE,
   );
   if (!match) return false;
   const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone, offsetHourText, offsetMinuteText] = match;
@@ -131,7 +135,7 @@ export function validateHealthProbeCutovers({
     } else if (cutover.mode === 'activation-marker') {
       if (
         typeof cutover.activationKey !== 'string'
-        || !/^seed-activated:[a-z0-9][a-z0-9:-]*$/.test(cutover.activationKey)
+        || !VALIDATE_HEALTH_PROBE_CUTOVERS_RE.test(cutover.activationKey)
         || config.activationKey !== cutover.activationKey
       ) {
         throw new Error(

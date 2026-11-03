@@ -1,4 +1,8 @@
 'use strict';
+
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const MODULE_RE = /^[A-Z]{3}$/;
+
 const fs = require('fs');
 const path = require('path');
 
@@ -13,13 +17,13 @@ for (const f of geojson.features) {
   const iso2 = String(props['ISO3166-1-Alpha-2'] || '').trim();
   const iso3 = String(props['ISO3166-1-Alpha-3'] || '').trim();
 
-  if (!/^[A-Z]{2}$/.test(iso2)) {
-    if (/^[A-Z]{3}$/.test(iso3)) {
+  if (!COUNTRY_CODE_RE.test(iso2)) {
+    if (MODULE_RE.test(iso3)) {
       discrepancies.push(`Skipped ${iso3} (${props.name}): invalid ISO2 "${props['ISO3166-1-Alpha-2']}"`);
     }
     continue;
   }
-  if (!/^[A-Z]{3}$/.test(iso3)) {
+  if (!MODULE_RE.test(iso3)) {
     discrepancies.push(`Skipped ${props.name} (${iso2}): invalid ISO3 "${props['ISO3166-1-Alpha-3']}"`);
     continue;
   }

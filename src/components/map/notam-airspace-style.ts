@@ -1,5 +1,12 @@
 import type { NotamAirspaceKind, NotamAirspaceRestriction } from '@/services/notam-airspace';
 
+const RAW_RE = /[\r\n]/;
+const RAW_RE_2 = /[).]+$/;
+const FL_RE = /^FL\s*(\d{1,3})$/;
+const READ_LIMIT_RE = /^(\d+)\s*(FT|M)?\b(.*)$/;
+const AGL_RE = /\bAGL\b/;
+
+
 // Red for closures and no-go areas, warm tones for restrictions, cool tones
 // for activity notices that do not by themselves bar entry.
 export const NOTAM_AIRSPACE_COLORS: Record<NotamAirspaceKind, [number, number, number]> = {
@@ -40,14 +47,14 @@ interface Limit {
  */
 function readLimit(value: string | undefined): Limit | null {
   if (!value) return null;
-  const raw = value.split(/[\r\n]/)[0]!.trim().replace(/[).]+$/, '').toUpperCase();
+  const raw = value.split(RAW_RE)[0]!.trim().replace(RAW_RE_2, '').toUpperCase();
   if (GROUND.test(raw)) return { feet: 0, agl: true };
   if (UNLIMITED.test(raw)) return { feet: Infinity, agl: false };
-  const fl = /^FL\s*(\d{1,3})$/.exec(raw);
+  const fl = FL_RE.exec(raw);
   if (fl) return { feet: Number(fl[1]) * 100, agl: false };
-  const m = /^(\d+)\s*(FT|M)?\b(.*)$/.exec(raw);
+  const m = READ_LIMIT_RE.exec(raw);
   if (!m) return null;
-  const agl = /\bAGL\b/.test(m[3]!);
+  const agl = AGL_RE.test(m[3]!);
   if (m[2] !== 'M') return { feet: Number(m[1]), agl };
   const feet = Number(m[1]) * 3.28084;
   const step = feet >= 1000 ? 100 : 10;

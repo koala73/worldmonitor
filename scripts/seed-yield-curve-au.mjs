@@ -9,6 +9,11 @@ import { parseRbaCsv } from './lib/yield-curves/rba.mjs';
 import { countCurves } from './lib/yield-curves/model.mjs';
 import { YIELD_CURVE_MAX_CONTENT_AGE_MIN, YIELD_CURVE_MAX_STALE_MIN, YIELD_CURVE_TTL_SECONDS, canonicalKey, latestExtraKeyEntry, makeValidate, markYieldCurveActivated, contentMeta, seedResource, yearExtraKeyEntry } from './seed-yield-curves-shared.mjs';
 
+const BODY_MARKER_RE = /captcha|cf-chl-|just a moment/i;
+const BODY_MARKER_RE_2 = /access denied|forbidden/i;
+const DECLARED_BYTES_RE = /^\d{1,16}$/;
+
+
 loadEnvFile(import.meta.url);
 
 // The same F2 table as tables/xls/f02d.xlsx, whose 8.2 MB ExcelJS load peaked
@@ -43,12 +48,12 @@ async function describeRbaRejection(response, elapsedMs) {
     }
   }
   const text = sample.subarray(0, sampledBytes).toString('utf8');
-  const bodyMarker = /captcha|cf-chl-|just a moment/i.test(text) ? 'challenge_marker'
-    : /access denied|forbidden/i.test(text) ? 'denial_marker' : sampledBytes ? 'other' : 'empty';
+  const bodyMarker = BODY_MARKER_RE.test(text) ? 'challenge_marker'
+    : BODY_MARKER_RE_2.test(text) ? 'denial_marker' : sampledBytes ? 'other' : 'empty';
   const type = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
   const server = response.headers.get('server')?.trim().toLowerCase();
   const length = response.headers.get('content-length');
-  const declaredBytes = length && /^\d{1,16}$/.test(length) && Number.isSafeInteger(Number(length)) ? Number(length) : null;
+  const declaredBytes = length && DECLARED_BYTES_RE.test(length) && Number.isSafeInteger(Number(length)) ? Number(length) : null;
   return {
     event: 'rba_http_rejection', status: response.status, elapsedMs,
     redirected: response.redirected, expectedUrl: response.url === F2_CSV,

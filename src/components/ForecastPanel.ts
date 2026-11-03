@@ -10,6 +10,10 @@ import { accuracyAuditOverride, type ForecastAccuracyAudit } from '../../shared/
 import { panelAccuracyAudit, projectFamilyHistory, projectForecastRecord, projectReliability, renderForecastRecord, renderReliabilityBadge, renderResolutionChips, type FamilyHistory, type ForecastRecord, type ReliabilityTable } from './forecast-record';
 import { bindActivationKeys } from '@/utils/activation';
 
+const ERROR_DETAIL_RE = /_/g;
+const SIGNALS_HTML_RE = /^[\s\u2013\u2014-]+/;
+
+
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
 // Scored-horizon labels in display order (#7075).
@@ -669,7 +673,7 @@ export class ForecastPanel extends Panel {
 
   private renderSourceNotice(): string {
     if (!this.sourceState.degraded && !this.sourceState.stale && !this.sourceState.error) return '';
-    const errorDetail = this.sourceState.degraded ? '' : this.sourceState.error.replace(/_/g, ' ');
+    const errorDetail = this.sourceState.degraded ? '' : this.sourceState.error.replace(ERROR_DETAIL_RE, ' ');
     const parts = [
       this.sourceState.degraded ? 'Forecast source degraded' : '',
       this.sourceState.stale ? 'stale cache' : '',
@@ -816,7 +820,7 @@ export class ForecastPanel extends Panel {
     const sigs = f.signals || [];
     const signalsHtml = sigs.length > 0
       ? sigs.map(s =>
-          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014-]+/, ''))}</div>`
+          `<div class="fc-signal">${escapeHtml(s.value.replace(SIGNALS_HTML_RE, ''))}</div>`
         ).join('')
       : '';
 

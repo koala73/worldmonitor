@@ -23,6 +23,9 @@
 import { guardMetadataMethod, resolveMetadataOrigin } from './_agent-metadata';
 import { stripTrailingSlashes } from '../shared/strip-trailing-slashes.js';
 
+const SUFFIX_RE = /\/oauth-protected-resource\/(.+)$/;
+
+
 export const config = { runtime: 'edge' };
 
 // RFC 9728 §3.1: a resource identifier carrying a path publishes its metadata
@@ -52,7 +55,7 @@ function resolveResourcePath(req: Request): string | null {
   if (flag !== null) return RESOURCE_PATHS.has(flag) ? `/${flag}` : null;
   // Only a suffix under the well-known URI names a specific resource. Anything
   // else — including the rewrite destination path — is the origin-wide document.
-  const suffix = path.match(/\/oauth-protected-resource\/(.+)$/)?.[1];
+  const suffix = path.match(SUFFIX_RE)?.[1];
   if (suffix === undefined) return '';
   return RESOURCE_PATHS.has(suffix) ? `/${suffix}` : null;
 }

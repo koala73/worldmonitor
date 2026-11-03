@@ -3,6 +3,17 @@ import { parseFrontex, parsePanama } from './border-authorized-reports.mjs';
 import { withRetry } from '../_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from '../_upstash-rest.mjs';
 
+const ATTACHMENT_RE = /^https:\/\/assets\.publishing\.service\.gov\.uk\/[^?#]+\.ods$/;
+const LINKS_RE = /href="([^"\s]+\.csv)"/g;
+const FILES_RE = /^\/sites\/default\/files\/\d{4}-\d{2}\/nationwide-encounters-[\w-]+-aor(?:_\d+)?\.csv$/;
+const FILES_RE_2 = /href=["']([^"']+Monthly_detections_of_IBC_\d{4}_\d{2}_\d{2}\.xlsx)["']/gi;
+const FILES_RE_3 = /^\/assets\/Migratory_routes\/\d{4}\//;
+const FILES_RE_4 = /<a\b[^>]*href=["']([^"']+IRREGULARES[-_]POR[-_]DARIEN[^"']*\.pdf)["'][^>]*>/gi;
+const FILES_RE_5 = /Dari.n\s+(20\d{2})/i;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const ROUTE_SEED_OPTIONS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 const UK = 'https://www.gov.uk';
 const UK_PATH = '/government/publications/migrants-detected-crossing-the-english-channel-in-small-boats';
 const CBP = 'https://www.cbp.gov';
@@ -44,7 +55,7 @@ async function request(url, format = 'text') {
 
 export async function fetchUk() {
   const [page, daily] = await Promise.all([request(`${UK}/api/content${UK_PATH}`, 'json'), request(`${UK}/api/content${UK_PATH}/migrants-detected-crossing-the-english-channel-in-small-boats-last-7-days`, 'json')]);
-  const attachment = page?.details?.attachments?.find(a => /^https:\/\/assets\.publishing\.service\.gov\.uk\/[^?#]+\.ods$/.test(a.url));
+  const attachment = page?.details?.attachments?.find(a => ATTACHMENT_RE.test(a.url));
   if (!attachment) throw new Error('Home Office ODS attachment missing');
   const history = parseUkOds(await request(attachment.url, 'bytes'));
   const recent = parseUkDaily(daily?.details?.body ?? '');
@@ -53,8 +64,8 @@ export async function fetchUk() {
 
 export async function fetchCbp() {
   const html = await request(BORDER_SOURCES.cbp.url);
-  const links = [...new Set([...html.matchAll(/href="([^"\s]+\.csv)"/g)].map(m => m[1]))];
-  const files = links.filter(p => /^\/sites\/default\/files\/\d{4}-\d{2}\/nationwide-encounters-[\w-]+-aor(?:_\d+)?\.csv$/.test(p)).sort().reverse();
+  const links = [...new Set([...html.matchAll(LINKS_RE)].map(m => m[1]))];
+  const files = links.filter(p => FILES_RE.test(p)).sort().reverse();
   if (!files.length) throw new Error('CBP area-of-responsibility CSV missing');
   const points = parseCbp(await request(`${CBP}${files[0]}`));
   return { routes: [{ id: 'us-southwest-border', name: 'US southwest land border encounters', kind: 'encounter', measure: 'monthly', countryCode: 'US', latitude: 31.5, longitude: -109.5, ...monthlyRoute(points) }] };
@@ -62,9 +73,9 @@ export async function fetchCbp() {
 
 export async function fetchFrontex() {
   const html = await request(BORDER_SOURCES.frontex.url);
-  const files = [...html.matchAll(/href=["']([^"']+Monthly_detections_of_IBC_\d{4}_\d{2}_\d{2}\.xlsx)["']/gi)]
+  const files = [...html.matchAll(FILES_RE_2)]
     .map(m => new URL(m[1], BORDER_SOURCES.frontex.url))
-    .filter(url => url.origin === 'https://www.frontex.europa.eu' && /^\/assets\/Migratory_routes\/\d{4}\//.test(url.pathname))
+    .filter(url => url.origin === 'https://www.frontex.europa.eu' && FILES_RE_3.test(url.pathname))
     .sort((a, b) => b.pathname.localeCompare(a.pathname));
   if (!files.length) throw new Error('Frontex monthly workbook missing');
   return { routes: await parseFrontex(await request(files[0].href, 'bytes')) };
@@ -72,8 +83,8 @@ export async function fetchFrontex() {
 
 export async function fetchPanama() {
   const html = await request(BORDER_SOURCES.panama.url);
-  const files = [...html.matchAll(/<a\b[^>]*href=["']([^"']+IRREGULARES[-_]POR[-_]DARIEN[^"']*\.pdf)["'][^>]*>/gi)]
-    .map(m => ({ url: new URL(m[1], BORDER_SOURCES.panama.url), year: Number(m[0].match(/Dari.n\s+(20\d{2})/i)?.[1]) }))
+  const files = [...html.matchAll(FILES_RE_4)]
+    .map(m => ({ url: new URL(m[1], BORDER_SOURCES.panama.url), year: Number(m[0].match(FILES_RE_5)?.[1]) }))
     .filter(file => file.url.origin === 'https://www.migracion.gob.pa' && file.url.pathname.startsWith('/wp-content/uploads/') && Number.isInteger(file.year))
     .sort((a, b) => b.year - a.year || b.url.pathname.localeCompare(a.url.pathname));
   if (!files.length) throw new Error('Panama Darién report missing');
@@ -88,9 +99,9 @@ export function routeSeedOptions(id) {
   const source = BORDER_SOURCES[id];
   return {
     validateFn: data => Array.isArray(data?.routes) && data.routes.length > 0 && data.routes.every(route =>
-      typeof route.id === 'string' && route.id.length > 0 && (/^[A-Z]{2}$/.test(route.countryCode) || id === 'frontex' && route.countryCode === '')
+      typeof route.id === 'string' && route.id.length > 0 && (COUNTRY_CODE_RE.test(route.countryCode) || id === 'frontex' && route.countryCode === '')
       && Number.isSafeInteger(route.latestCount) && route.latestCount >= 0
-      && /^\d{4}-\d{2}-\d{2}$/.test(route.asOf) && Date.parse(route.asOf) <= Date.now()),
+      && ROUTE_SEED_OPTIONS_RE.test(route.asOf) && Date.parse(route.asOf) <= Date.now()),
     declareRecords: data => data.routes.length,
     ttlSeconds: 3 * 86400, maxStaleMin: 2880, maxContentAgeMin: source.maxContentAgeMin,
     sourceVersion: 'border-routes-v1', schemaVersion: 1, emptyDataIsFailure: true,

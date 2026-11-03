@@ -11,6 +11,29 @@ import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+const IS_TRANSIENT_VERIFICATION_ERROR_RE = /timed out|timeout|network|fetch failed|failed to fetch|socket hang up/i;
+const JSON_FOR_SCRIPT_RE = /[<>&\u2028\u2029]/g;
+const NORMALIZED_RE = /^\[|\]$/g;
+const IS_PRIVATE_IP_RE = /^f[cd][0-9a-f]{2}:/i;
+const IS_PRIVATE_IP_RE_2 = /^fe[89ab][0-9a-f]:/i;
+const IS_PRIVATE_IP_RE_3 = /^ff[0-9a-f]{2}:/i;
+const CAN_COMPRESS_RE = /^image\/(jpeg|jpg|png|gif|webp|avif|heic|heif|bmp|tiff)(?:;|$)/;
+const PATH_PARTS_RE = /^\/api/;
+const RELATIVE_RE = /\\/g;
+const ROUTE_PATH_RE = /\.js$/;
+const ROUTE_PATH_RE_2 = /\/index$/;
+const TRAILING_SLASH_RE = /\/$/;
+const IS_AUTH_FAILURE_RE = /unauthori[sz]ed|forbidden|invalid api key|invalid token|bad credentials/i;
+const VALIDATE_SECRET_AGAINST_PROVIDER_RE = /invalid api key|not authorized|forbidden/i;
+const DISPATCH_RE = /^[A-Za-z0-9_-]{11}$/;
+const DISPATCH_RE_2 = /^UC[A-Za-z0-9_-]{22}$/;
+const IS_ALLOWED_PARENT_ORIGIN_RE = /^(tauri|asset):\/\/localhost$/;
+const IS_ALLOWED_PARENT_ORIGIN_RE_2 = /^https?:\/\/localhost(:\d{1,5})?$/;
+const IS_ALLOWED_PARENT_ORIGIN_RE_3 = /^https?:\/\/(?:[\w-]+\.)?tauri\.localhost(:\d{1,5})?$/;
+const DISPATCH_RE_3 = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+const CONVEX_SITE_URL_RE = /\.convex\.cloud\/?$/;
+
+
 const sharedResourceRoot = process.env.LOCAL_API_RESOURCE_DIR
   || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const { getConfiguredLlmHealthProviders } = await import(
@@ -84,7 +107,7 @@ function isTransientVerificationError(error) {
     return true;
   }
   if (error.name === 'AbortError') return true;
-  return /timed out|timeout|network|fetch failed|failed to fetch|socket hang up/i.test(error.message);
+  return IS_TRANSIENT_VERIFICATION_ERROR_RE.test(error.message);
 }
 
 // Global concurrency limiter for upstream requests.
@@ -123,7 +146,7 @@ function releaseUpstreamSlot() {
 // JSON literal safe to interpolate into an inline <script>: escapes the
 // characters that can close the element or start an HTML comment.
 function jsonForScript(value) {
-  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return JSON.stringify(value).replace(JSON_FOR_SCRIPT_RE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
 function isYahooFinanceHost(hostname) {
@@ -390,7 +413,7 @@ const BLOCKED_IPV4_RANGES = [
 // 16-bit groups. WHATWG URL parsing canonicalizes first, so an embedded dotted
 // quad and a `::` run both come back as plain hextets.
 function ipv6Hextets(ip) {
-  const normalized = String(ip).replace(/^\[|\]$/g, '');
+  const normalized = String(ip).replace(NORMALIZED_RE, '');
   if (isIP(normalized) !== 6) return null;
 
   let canonical;
@@ -448,9 +471,9 @@ function isPrivateIP(ip) {
   if (addr === '::1' || addr === '::') return true;
 
   // IPv6 link-local / unique-local
-  if (/^f[cd][0-9a-f]{2}:/i.test(addr)) return true; // fc00::/7 (ULA)
-  if (/^fe[89ab][0-9a-f]:/i.test(addr)) return true;  // fe80::/10 (link-local)
-  if (/^ff[0-9a-f]{2}:/i.test(addr)) return true;      // ff00::/8 multicast
+  if (IS_PRIVATE_IP_RE.test(addr)) return true; // fc00::/7 (ULA)
+  if (IS_PRIVATE_IP_RE_2.test(addr)) return true;  // fe80::/10 (link-local)
+  if (IS_PRIVATE_IP_RE_3.test(addr)) return true;      // ff00::/8 multicast
 
   const parts = addr.split('.').map(Number);
   if (parts.length !== 4 || parts.some(p => !Number.isInteger(p) || p < 0 || p > 255)) return false; // not an IPv4
@@ -487,7 +510,7 @@ async function isSafeUrl(urlString) {
   }
 
   // Check if the hostname is already an IP literal
-  const ipLiteral = hostname.replace(/^\[|\]$/g, '');
+  const ipLiteral = hostname.replace(NORMALIZED_RE, '');
   if (isPrivateIP(ipLiteral)) {
     return { safe: false, reason: 'Requests to private/reserved IP addresses are not allowed' };
   }
@@ -552,7 +575,7 @@ function canCompress(headers, body) {
   // Already-compressed rasters/media gain nothing from gzip/br and waste CPU (#7382).
   // SVG (image/svg+xml) is text and still compresses — keep it eligible.
   if (
-    /^image\/(jpeg|jpg|png|gif|webp|avif|heic|heif|bmp|tiff)(?:;|$)/.test(contentType)
+    CAN_COMPRESS_RE.test(contentType)
     || contentType.startsWith('audio/')
     || contentType.startsWith('video/')
     || contentType.includes('zip')
@@ -610,7 +633,7 @@ function routePriority(routePath) {
 
 function matchRoute(routePath, pathname) {
   const routeParts = splitRoutePath(routePath);
-  const pathParts = splitRoutePath(pathname.replace(/^\/api/, ''));
+  const pathParts = splitRoutePath(pathname.replace(PATH_PARTS_RE, ''));
 
   let i = 0;
   let j = 0;
@@ -672,8 +695,8 @@ async function buildRouteTable(root) {
       if (!entry.name.endsWith('.js')) continue;
       if (entry.name.startsWith('_')) continue;
 
-      const relative = path.relative(root, absolute).replace(/\\/g, '/');
-      const routePath = relative.replace(/\.js$/, '').replace(/\/index$/, '');
+      const relative = path.relative(root, absolute).replace(RELATIVE_RE, '/');
+      const routePath = relative.replace(ROUTE_PATH_RE, '').replace(ROUTE_PATH_RE_2, '');
       files.push({ routePath, modulePath: absolute });
     }
   }
@@ -734,7 +757,7 @@ function cloudUserAgent() {
 
 function cloudUrl(remoteBase, pathname) {
   const target = new URL(remoteBase);
-  target.pathname = `${target.pathname.replace(/\/$/, '')}${pathname}`;
+  target.pathname = `${target.pathname.replace(TRAILING_SLASH_RE, '')}${pathname}`;
   return target;
 }
 
@@ -1179,7 +1202,7 @@ async function importHandler(modulePath) {
 function remoteBaseLooksPrivate(remoteBase) {
   let parsed;
   try { parsed = new URL(remoteBase); } catch { return false; }
-  const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
+  const hostname = parsed.hostname.replace(NORMALIZED_RE, '');
   if (hostname === 'localhost') return true;
   if (isIP(hostname)) return isPrivateIP(hostname);
   return false;
@@ -1187,7 +1210,7 @@ function remoteBaseLooksPrivate(remoteBase) {
 
 function resolveConfig(options = {}) {
   const port = Number(options.port ?? process.env.LOCAL_API_PORT ?? 46123);
-  const remoteBase = String(options.remoteBase ?? process.env.LOCAL_API_REMOTE_BASE ?? 'https://api.worldmonitor.app').replace(/\/$/, '');
+  const remoteBase = String(options.remoteBase ?? process.env.LOCAL_API_REMOTE_BASE ?? 'https://api.worldmonitor.app').replace(TRAILING_SLASH_RE, '');
   const resourceDir = String(options.resourceDir ?? process.env.LOCAL_API_RESOURCE_DIR ?? process.cwd());
   const apiDir = options.apiDir
     ? String(options.apiDir)
@@ -1400,7 +1423,7 @@ function relayToHttpUrl(rawUrl) {
     const parsed = new URL(rawUrl);
     if (parsed.protocol === 'ws:') parsed.protocol = 'http:';
     if (parsed.protocol === 'wss:') parsed.protocol = 'https:';
-    return parsed.toString().replace(/\/$/, '');
+    return parsed.toString().replace(TRAILING_SLASH_RE, '');
   } catch {
     return null;
   }
@@ -1411,7 +1434,7 @@ function isAuthFailure(status, text = '') {
   // Callers MUST check isCloudflareChallenge403() first or CF challenge pages
   // may be misclassified as credential failures.
   if (status === 401 || status === 403) return true;
-  return /unauthori[sz]ed|forbidden|invalid api key|invalid token|bad credentials/i.test(text);
+  return IS_AUTH_FAILURE_RE.test(text);
 }
 
 function isCloudflareChallenge403(response, text = '') {
@@ -1599,7 +1622,7 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       if (isCloudflareChallenge403(response, text)) return ok('NASA FIRMS key stored (Cloudflare blocked verification)');
       if (isAuthFailure(response.status, text)) return fail('NASA FIRMS rejected this key');
       if (!response.ok) return fail(`NASA FIRMS probe failed (${response.status})`);
-      if (/invalid api key|not authorized|forbidden/i.test(text)) return fail('NASA FIRMS rejected this key');
+      if (VALIDATE_SECRET_AGAINST_PROVIDER_RE.test(text)) return fail('NASA FIRMS rejected this key');
       return ok('NASA FIRMS key verified');
     }
 
@@ -1767,10 +1790,10 @@ async function dispatch(requestUrl, req, routes, context) {
     if ((videoId === null) === (channel === null)) {
       return new Response('Pass exactly one of videoId or channel', { status: 400, headers: { 'content-type': 'text/plain' } });
     }
-    if (videoId !== null && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+    if (videoId !== null && !DISPATCH_RE.test(videoId)) {
       return new Response('Invalid videoId', { status: 400, headers: { 'content-type': 'text/plain' } });
     }
-    if (channel !== null && !/^UC[A-Za-z0-9_-]{22}$/.test(channel)) {
+    if (channel !== null && !DISPATCH_RE_2.test(channel)) {
       return new Response('Invalid channel', { status: 400, headers: { 'content-type': 'text/plain' } });
     }
     const autoplay = requestUrl.searchParams.get('autoplay') === '0' ? '0' : '1';
@@ -1783,9 +1806,9 @@ async function dispatch(requestUrl, req, routes, context) {
     // passed by the frontend so bridge messages reach it. Only accept known desktop origins;
     // an absent or unrecognized origin gets a local no-op bridge.
     const rawParentOrigin = requestUrl.searchParams.get('parentOrigin') || '';
-    const isAllowedParentOrigin = /^(tauri|asset):\/\/localhost$/.test(rawParentOrigin)
-      || /^https?:\/\/localhost(:\d{1,5})?$/.test(rawParentOrigin)
-      || /^https?:\/\/(?:[\w-]+\.)?tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
+    const isAllowedParentOrigin = IS_ALLOWED_PARENT_ORIGIN_RE.test(rawParentOrigin)
+      || IS_ALLOWED_PARENT_ORIGIN_RE_2.test(rawParentOrigin)
+      || IS_ALLOWED_PARENT_ORIGIN_RE_3.test(rawParentOrigin);
     // A channel embeds as videoId 'live_stream' with a channel player var.
     const safeVideoId = jsonForScript(videoId ?? 'live_stream');
     const channelPlayerVar = channel ? `channel:${jsonForScript(channel)},` : '';
@@ -1933,7 +1956,7 @@ async function dispatch(requestUrl, req, routes, context) {
       const parsed = JSON.parse(body);
       const email = parsed?.email;
       if (typeof email !== 'string' || email.length > MAX_REGISTRATION_EMAIL_LENGTH
-        || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
+        || !DISPATCH_RE_3.test(email)) {
         return json({ error: 'Invalid email address' }, 400);
       }
       const sharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
@@ -1942,8 +1965,8 @@ async function dispatch(requestUrl, req, routes, context) {
         return json({ error: 'Registration service unavailable' }, 503);
       }
       const convexSiteUrl = (
-        process.env.CONVEX_SITE_URL || convexUrl.replace(/\.convex\.cloud\/?$/, '.convex.site')
-      ).replace(/\/$/, '');
+        process.env.CONVEX_SITE_URL || convexUrl.replace(CONVEX_SITE_URL_RE, '.convex.site')
+      ).replace(TRAILING_SLASH_RE, '');
       const args = {
         email,
         source: typeof parsed.source === 'string' ? parsed.source : 'desktop',

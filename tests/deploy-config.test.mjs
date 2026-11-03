@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import { tmpdir } from 'node:os';
 import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
 import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
+import { inlineModuleRegexReferences } from './helpers/module-regex-declarations.mjs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 function readFileSync(path, options) {
   const content = originalReadFileSync(path, options);
@@ -62,7 +63,7 @@ import { AGENT_TEXT_FILES } from '../scripts/cloudflare-cache-rule.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
 const vercelConfig = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
-const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), 'utf-8');
+const viteConfigSource = inlineModuleRegexReferences(readFileSync(resolve(__dirname, '../vite.config.ts'), 'utf-8'));
 const proViteConfigSource = readFileSync(resolve(__dirname, '../pro-test/vite.config.ts'), 'utf-8');
 const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.config.ts'), 'utf-8');
 const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');

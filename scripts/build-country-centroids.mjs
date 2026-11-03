@@ -11,6 +11,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const SOURCE = new URL('../public/data/countries.geojson', import.meta.url);
 const FIFTY_M = new URL('../public/data/countries-50m.json', import.meta.url);
 const TARGET =new URL('./data/country-centroids.json', import.meta.url);
@@ -111,7 +114,7 @@ export function countryPolygons(geojson, fiftyM) {
   const missing = [];
   for (const f of geojson.features) {
     const code = f.properties?.['ISO3166-1-Alpha-2'];
-    if (!/^[A-Z]{2}$/.test(code ?? '') || out.has(code)) continue;
+    if (!COUNTRY_CODE_RE.test(code ?? '') || out.has(code)) continue;
     if (f.geometry) out.set(code, mainPolygon(f.geometry, code));
     else missing.push({ code, name: f.properties.name });
   }

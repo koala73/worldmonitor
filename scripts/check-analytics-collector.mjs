@@ -23,6 +23,9 @@ import {
   WRITE_RECEIPT_FIELDS,
 } from '../shared/collector-failure-metadata.js';
 
+const DESCRIBE_TRANSPORT_ERROR_RE = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+
 export { extractCollectorFailureMetadata, isBotFilteredBody };
 
 const DEFAULT_COLLECTOR_ORIGIN = 'https://abacus.worldmonitor.app';
@@ -279,7 +282,7 @@ function describeTransportError(error) {
     const current = pending[index];
     if (!current || typeof current !== 'object' || seen.has(current)) continue;
     seen.add(current);
-    if (typeof current.code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(current.code)) {
+    if (typeof current.code === 'string' && DESCRIBE_TRANSPORT_ERROR_RE.test(current.code)) {
       codes.add(current.code);
     }
     if (current.cause) pending.push(current.cause);

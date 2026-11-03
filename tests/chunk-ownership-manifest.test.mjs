@@ -154,6 +154,7 @@ describe('build <-> runtime contract', () => {
     // A chunk that has not evaluated yet is UNKNOWN, not vendor. Dropping the
     // fallback would make an unregistered chunk suppressible and regress the
     // dev/serve path, where no manifest exists at all.
-    assert.ok(sentryInitSrc.includes('const vendorChunk = /'), 'fallback regex must remain');
+    assert.match(sentryInitSrc, /const vendorChunk = [A-Z_0-9]+;/, 'fallback must use the module regex');
+    assert.match(sentryInitSrc, /const [A-Z_0-9]+ = \/\\\/\(maplibre\|deck-stack/, 'fallback regex must remain');
   });
 });

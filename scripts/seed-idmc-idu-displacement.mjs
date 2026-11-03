@@ -15,6 +15,12 @@ import { loadEnvFile, CHROME_UA, runSeed, withRetry } from './_seed-utils.mjs';
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
+const IS_ALLOWED_HDX_URL_RE = /^s3(\.[a-z0-9-]+)?\.amazonaws\.com$/;
+const PARSED_RE = /^\ufeff/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+const NORMALIZE_EVENTS_RE = /^[A-Z]{3}$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const IDU_CANONICAL_KEY = 'displacement:idmc-idu:v1';
@@ -58,7 +64,7 @@ export function isAllowedHdxUrl(value) {
   try { url = new URL(value); } catch { return false; }
   if (url.protocol !== 'https:' || url.port !== '' || url.username || url.password) return false;
   if (url.hostname === 'data.humdata.org') return true;
-  return /^s3(\.[a-z0-9-]+)?\.amazonaws\.com$/.test(url.hostname) && url.pathname.startsWith('/hdx-production-filestore/');
+  return IS_ALLOWED_HDX_URL_RE.test(url.hostname) && url.pathname.startsWith('/hdx-production-filestore/');
 }
 
 // Reads the body inside the retry so a dropped connection mid-download is
@@ -126,7 +132,7 @@ export function parseIduCsv(text) {
   const parsed = Papa.parse(String(text ?? ''), {
     header: true,
     skipEmptyLines: 'greedy',
-    transformHeader: (header) => header.replace(/^\ufeff/, '').trim(),
+    transformHeader: (header) => header.replace(PARSED_RE, '').trim(),
   });
   const fields = new Set(parsed.meta?.fields ?? []);
   const missing = REQUIRED_COLUMNS.filter((field) => !fields.has(field));
@@ -135,7 +141,7 @@ export function parseIduCsv(text) {
   return parsed.data;
 }
 
-const isoDate = (value) => (/^\d{4}-\d{2}-\d{2}/.test(value ?? '') ? value.slice(0, 10) : '');
+const isoDate = (value) => (ISO_DATE_RE.test(value ?? '') ? value.slice(0, 10) : '');
 const daysAgo = (nowMs, days) => new Date(nowMs - days * DAY_MS).toISOString().slice(0, 10);
 // First date of the last `days` calendar dates, today included.
 const windowStart = (nowMs, days) => daysAgo(nowMs, days - 1);
@@ -156,7 +162,7 @@ export function normalizeEvents(rows, { nowMs = Date.now() } = {}) {
     const latitude = Number(row.latitude);
     const longitude = Number(row.longitude);
     const countryCode = text(row.iso3).toUpperCase();
-    if (!Number.isFinite(figure) || figure <= 0 || !/^[A-Z]{3}$/.test(countryCode)) continue;
+    if (!Number.isFinite(figure) || figure <= 0 || !NORMALIZE_EVENTS_RE.test(countryCode)) continue;
     const hasPoint = text(row.latitude) !== '' && text(row.longitude) !== ''
       && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
     events.push({

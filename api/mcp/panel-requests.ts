@@ -17,6 +17,10 @@ import { conflictPanelReuseUntil, isConflictPanelSnapshotCacheable } from './reg
 import { resolveDailyLimit, type McpBudget } from './quota';
 import type { McpAuthContext, PipelineFn } from './types';
 
+const SCOPE_RE = /-/g;
+const AUTHORIZE_PANEL_READ_RE = /^(world-brief|chokepoints|news-intelligence|news|markets|predictions|forecasts|conflicts|disasters|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/;
+
+
 export const PANEL_REUSE_MS = 300_000;
 export const PANEL_READ_LIMIT = 64;
 const MAX_CACHED_BYTES = 524288;
@@ -125,7 +129,7 @@ async function admitPanel(context: McpAuthContext, budget: McpBudget | undefined
   const midnight = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate() + 1);
   const bucket = Math.floor(now / PANEL_REUSE_MS);
   let scope: PanelScope = {
-    panel: country, window: request.refresh ? `r${(request.request_id ?? crypto.randomUUID()).replace(/-/g, '').toLowerCase()}` : `b${bucket}`,
+    panel: country, window: request.refresh ? `r${(request.request_id ?? crypto.randomUUID()).replace(SCOPE_RE, '').toLowerCase()}` : `b${bucket}`,
     expires: Math.min(midnight, request.refresh ? now + PANEL_REUSE_MS : (bucket + 2) * PANEL_REUSE_MS),
   };
   const previous: PanelScope = { panel: country, window: `b${bucket - 1}`, expires: Math.min(midnight, (bucket + 1) * PANEL_REUSE_MS) };
@@ -229,7 +233,7 @@ function canonicalArguments(value: unknown): unknown {
 export async function authorizePanelRead(context: McpAuthContext, pipeline: PipelineFn, name: string, args: Record<string, unknown>, token: unknown, now = Date.now()) {
   const owner = userId(context);
   if (typeof token !== 'string' || token.length > 160) throw new PanelRequestError('Invalid panel request.', 'invalid');
-  const match = /^(world-brief|chokepoints|news-intelligence|news|markets|predictions|forecasts|conflicts|disasters|[A-Z]{2})\.(b\d{1,12}|r[a-f0-9]{32})\.(\d{13})\.([a-f0-9]{64})$/.exec(token);
+  const match = AUTHORIZE_PANEL_READ_RE.exec(token);
   if (!match) throw new PanelRequestError('Invalid panel request.', 'invalid');
   const scope: PanelScope = { panel: match[1]!, window: match[2]!, expires: Number(match[3]) };
   if (scope.expires <= now || scope.expires > now + 2 * PANEL_REUSE_MS) throw new PanelRequestError('Panel request expired. Open or refresh the panel.', 'invalid');

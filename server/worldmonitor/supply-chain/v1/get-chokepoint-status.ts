@@ -21,6 +21,10 @@ import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE, THREAT_LEVEL } f
 import { type ThreatLevel, threatLevelToWarRiskTier } from './_insurance-tier';
 import { CHOKEPOINT_STATUS_KEY as REDIS_CACHE_KEY } from '../../../_shared/cache-keys';
 import { narrowFlowSource } from '../../../_shared/flow-source';
+
+const NORMALIZE_TEXT_RE = /[^a-z0-9\s]/g;
+const WHITESPACE_RE = /\s+/g;
+
 const TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const FLOWS_KEY = 'energy:chokepoint-flows:v1';
 // NOTE: historical fallback via supply_chain:portwatch:v1 / corridorrisk / chokepoint_transits
@@ -210,8 +214,8 @@ export const CHOKEPOINTS: ChokepointConfig[] = [
 function normalizeText(input: string): string {
   return input
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_TEXT_RE, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 

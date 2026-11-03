@@ -35,6 +35,11 @@ import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { isMainModule } from './lib/main-module.mjs';
 
+const VISIT_RE = /ServiceClient$/;
+const COLLECT_SOURCE_FILES_RE = /\.(ts|tsx)$/;
+const COMPACT_RE = /\s/g;
+
+
 const ROOT = new URL('..', import.meta.url).pathname;
 const PREMIUM_PATHS_SRC = join(ROOT, 'src/shared/premium-paths.ts');
 const GEN_CLIENT_DIR = join(ROOT, 'src/generated/client');
@@ -210,7 +215,7 @@ function loadClientClassMap() {
       if (
         ts.isClassDeclaration(node) &&
         node.name &&
-        /ServiceClient$/.test(node.name.text) &&
+        VISIT_RE.test(node.name.text) &&
         node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
       ) {
         const methods = new Map();
@@ -253,7 +258,7 @@ function collectSourceFiles() {
   const out = [];
   walk(SRC_DIR, (file) => {
     if (file.startsWith(GEN_CLIENT_DIR)) return;
-    if (!/\.(ts|tsx)$/.test(file)) return;
+    if (!COLLECT_SOURCE_FILES_RE.test(file)) return;
     if (file.endsWith('.d.ts')) return;
     out.push(file);
   });
@@ -278,7 +283,7 @@ export function hasScopedCountrySource(ast) {
   let options = false;
   let callers = 0;
   let invalid = false;
-  const compact = node => node.getText(ast).replace(/\s/g, '');
+  const compact = node => node.getText(ast).replace(COMPACT_RE, '');
   function visit(node) {
     if (ts.isVariableDeclaration(node) && node.name.getText(ast) === 'options') {
       options = node.initializer && compact(node.initializer) === '{fetch:fetcher}';

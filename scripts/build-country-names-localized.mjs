@@ -4,6 +4,11 @@ import { assignedCountryCodes, buildArabicCountryNames } from './build-country-n
 import ENGLISH_NAMES from '../shared/country-names.json' with { type: 'json' };
 import ISO3_TO_ISO2 from '../shared/iso3-to-iso2.json' with { type: 'json' };
 
+const DECLARATION_RE = /const SUPPORTED_LANGUAGES = \[([^\]]+)\] as const/;
+const SUPPORTED_COUNTRY_LOCALES_RE = /'([^']+)'/g;
+const BUILD_LOCALIZED_COUNTRY_NAMES_RE = /^[a-z]{2,3}$/i;
+
+
 const OUTPUTS = [
   new URL('../shared/country-names-localized.json', import.meta.url),
   new URL('./shared/country-names-localized.json', import.meta.url),
@@ -14,9 +19,9 @@ const LOCALIZED_ALIASES = { vi: { RU: ['Liên bang Nga'] } };
 
 export function supportedCountryLocales() {
   const source = readFileSync(new URL('../src/services/i18n.ts', import.meta.url), 'utf8');
-  const declaration = source.match(/const SUPPORTED_LANGUAGES = \[([^\]]+)\] as const/);
+  const declaration = source.match(DECLARATION_RE);
   if (!declaration) throw new Error('Cannot read SUPPORTED_LANGUAGES from src/services/i18n.ts');
-  return [...declaration[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
+  return [...declaration[1].matchAll(SUPPORTED_COUNTRY_LOCALES_RE)].map((match) => match[1]);
 }
 
 export function buildLocalizedCountryNames() {
@@ -33,7 +38,7 @@ export function buildLocalizedCountryNames() {
       [...new Set([...displayNames.map((display) => display.of(code)),
         ...(LOCALIZED_ALIASES[locale]?.[code] ?? [])].filter((name) => {
         if (!name) return false;
-        if (!/^[a-z]{2,3}$/i.test(name)) return true;
+        if (!BUILD_LOCALIZED_COUNTRY_NAMES_RE.test(name)) return true;
         const reserved = ENGLISH_NAMES[name.toLowerCase()]
           ?? (name.length === 2 ? name.toUpperCase() : ISO3_TO_ISO2[name.toUpperCase()]);
         return !reserved || reserved === code;

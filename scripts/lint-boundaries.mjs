@@ -19,6 +19,16 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
+const PATTERNS_RE = /from\s+['"]@\/(\w+)/;
+const PATTERNS_RE_2 = /import\(['"]@\/(\w+)/;
+const MODULE_RE = /from\s+['"].*\/(components|app)\//;
+const MODULE_RE_2 = /(components|app)/;
+const MODULE_RE_3 = /from\s+['"]\.\..*\/src\//;
+const MODULE_RE_4 = /\/src\/generated\//;
+const MODULE_RE_5 = /from\s+['"]\.\.\/(?:src|server)\//;
+const MODULE_RE_6 = /\.\.\/(\w+)/;
+
+
 const SRC = 'src';
 const ROOT = process.cwd();
 
@@ -70,8 +80,8 @@ for (const file of srcFiles) {
 
     // Check both `from '@/layer'` imports and `import('@/layer')` type expressions
     const patterns = [
-      line.match(/from\s+['"]@\/(\w+)/),
-      line.match(/import\(['"]@\/(\w+)/),
+      line.match(PATTERNS_RE),
+      line.match(PATTERNS_RE_2),
     ];
 
     for (const match of patterns) {
@@ -107,12 +117,12 @@ for (const file of serverFiles) {
     if (line.includes('boundary-ignore')) continue;
     if (i > 0 && lines[i - 1].includes('boundary-ignore')) continue;
 
-    if (line.match(/from\s+['"].*\/(components|app)\//)) {
+    if (line.match(MODULE_RE)) {
       violations.push({
         file: relative(ROOT, file),
         line: i + 1,
         from: 'server',
-        to: 'src/' + line.match(/(components|app)/)[1],
+        to: 'src/' + line.match(MODULE_RE_2)[1],
         text: line.trim(),
         remedy: 'Server code must not import browser UI code. Extract shared logic into server/_shared/ or src/types/.',
       });
@@ -140,7 +150,7 @@ for (const file of apiFiles) {
 
     if (isTs) {
       // RPC .ts files: allow server/ and src/generated/, block src/ non-generated
-      if (line.match(/from\s+['"]\.\..*\/src\//) && !line.match(/\/src\/generated\//)) {
+      if (line.match(MODULE_RE_3) && !line.match(MODULE_RE_4)) {
         violations.push({
           file: relative(ROOT, file),
           line: i + 1,
@@ -152,12 +162,12 @@ for (const file of apiFiles) {
       }
     } else {
       // Legacy .js files: fully self-contained
-      if (line.match(/from\s+['"]\.\.\/(?:src|server)\//)) {
+      if (line.match(MODULE_RE_5)) {
         violations.push({
           file: relative(ROOT, file),
           line: i + 1,
           from: 'api (legacy)',
-          to: line.match(/\.\.\/(\w+)/)[1],
+          to: line.match(MODULE_RE_6)[1],
           text: line.trim(),
           remedy: 'Legacy Edge Functions must be self-contained. Only same-directory _*.js helpers and npm packages are allowed.',
         });

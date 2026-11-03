@@ -1,6 +1,10 @@
 import xPostBudget from '../lib/x-post-budget.cjs';
 import { defaultRedisEval } from '../lib/_upstash-pipeline.mjs';
 
+const PARSE_JAPAN_XPOSTS_RE = /^[1-9]\d{0,19}$/;
+const CODE_RE = /^JMOD_X_[A-Z0-9_]+$/;
+
+
 export const JAPAN_X_MAX_TEXT_LENGTH = 16_000;
 export const JAPAN_X_ACCOUNT_ID = '864751444586397696';
 // One read per 12-hour UTC slot; the shared X budget holds a read for each.
@@ -21,7 +25,7 @@ export function parseJapanXPosts(body) {
   const media = new Map((body.includes?.media ?? []).map(item => [item.media_key, item]));
   const candidates = [];
   for (const post of body.data) {
-    if (post.author_id !== JAPAN_X_ACCOUNT_ID || !/^[1-9]\d{0,19}$/.test(post.id)
+    if (post.author_id !== JAPAN_X_ACCOUNT_ID || !PARSE_JAPAN_XPOSTS_RE.test(post.id)
       || !Number.isFinite(Date.parse(post.created_at))) throw new Error('JMOD_X_INVALID_POST');
     const text = post.note_tweet?.text ?? post.text;
     if (typeof text !== 'string' || !text.trim() || text.length > JAPAN_X_MAX_TEXT_LENGTH) {
@@ -130,7 +134,7 @@ export async function fetchJapanXOutcome({
       xDiscovery: { checkedAt, ok: true, windowStart, windowEnd: new Date(now - 10000).toISOString(),
         postCount: body.meta.result_count, errorCodes: [] } };
   } catch (error) {
-    const code = /^JMOD_X_[A-Z0-9_]+$/.test(error?.message) ? error.message : 'JMOD_X_REQUEST_FAILED';
+    const code = CODE_RE.test(error?.message) ? error.message : 'JMOD_X_REQUEST_FAILED';
     return { ...base, ok: false, requestCount, errorCodes: [code],
       xDiscovery: { checkedAt, ok: false, errorCodes: [code] } };
   }

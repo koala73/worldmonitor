@@ -3,28 +3,36 @@ import { getCollection } from 'astro:content';
 import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+const ESCAPE_XML_RE = /&/g;
+const ESCAPE_XML_RE_2 = /</g;
+const ESCAPE_XML_RE_3 = />/g;
+const ESCAPE_XML_RE_4 = /"/g;
+const GET_PUBLIC_ASSET_PATH_RE = /^https?:\/\//;
+const WITHOUT_BLOG_BASE_RE = /^\//;
+
+
 const PUBLIC_DIR = join(process.cwd(), 'public');
 const DEFAULT_AUTHOR = 'Elie Habib';
 
 function escapeXml(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(ESCAPE_XML_RE, '&amp;')
+    .replace(ESCAPE_XML_RE_2, '&lt;')
+    .replace(ESCAPE_XML_RE_3, '&gt;')
+    .replace(ESCAPE_XML_RE_4, '&quot;');
 }
 
 function getPublicAssetPath(pathOrUrl: string | undefined): string | undefined {
-  if (!pathOrUrl || /^https?:\/\//.test(pathOrUrl)) return undefined;
+  if (!pathOrUrl || GET_PUBLIC_ASSET_PATH_RE.test(pathOrUrl)) return undefined;
   const withoutBlogBase = pathOrUrl.startsWith('/blog/')
     ? pathOrUrl.slice('/blog/'.length)
-    : pathOrUrl.replace(/^\//, '');
+    : pathOrUrl.replace(WITHOUT_BLOG_BASE_RE, '');
   return join(PUBLIC_DIR, withoutBlogBase);
 }
 
 function getEnclosure(heroImage: string | undefined) {
   if (!heroImage) return undefined;
-  const url = /^https?:\/\//.test(heroImage)
+  const url = GET_PUBLIC_ASSET_PATH_RE.test(heroImage)
     ? heroImage
     : `https://www.worldmonitor.app${heroImage}`;
   const localPath = getPublicAssetPath(heroImage);

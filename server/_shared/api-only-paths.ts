@@ -21,6 +21,9 @@
  */
 
 /** Every `/api/v2/` route is API-only. */
+const COLLAPSED_RE = /\/{2,}/g;
+const NORMALIZED_RE = /\/+$/;
+
 export const API_ONLY_PATH_PREFIXES: readonly string[] = Object.freeze(['/api/v2/']);
 
 /** The MCP edge and the OAuth key-grant edges, both rewritten and canonical. */
@@ -46,8 +49,8 @@ export const API_ONLY_EXACT_PATHS: ReadonlySet<string> = new Set([
  * slip a desktop principal past the prefix check.
  */
 export function isApiOnlyPath(pathname: string): boolean {
-  const collapsed = pathname.replace(/\/{2,}/g, '/');
-  const normalized = collapsed.length > 1 && collapsed.endsWith('/') ? collapsed.replace(/\/+$/, '') : collapsed;
+  const collapsed = pathname.replace(COLLAPSED_RE, '/');
+  const normalized = collapsed.length > 1 && collapsed.endsWith('/') ? collapsed.replace(NORMALIZED_RE, '') : collapsed;
   if (API_ONLY_EXACT_PATHS.has(normalized)) return true;
   return API_ONLY_PATH_PREFIXES.some((prefix) => normalized.startsWith(prefix) || normalized === prefix.slice(0, -1));
 }

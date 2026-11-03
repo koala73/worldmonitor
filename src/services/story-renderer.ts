@@ -1,6 +1,10 @@
 import type { StoryData } from './story-data';
 import { getLocale, t } from './i18n';
 
+const HUMANIZE_SIGNAL_TYPE_RE = /_/g;
+const HUMANIZE_SIGNAL_TYPE_RE_2 = /\b\w/g;
+
+
 const W = 1080;
 const H = 1920;
 
@@ -27,7 +31,7 @@ function humanizeSignalType(type: string): string {
     satellite_fire: 'Satellite Fires',
     radiation_anomaly: 'Radiation Anomalies',
   };
-  return map[type] || type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return map[type] || type.replace(HUMANIZE_SIGNAL_TYPE_RE, ' ').replace(HUMANIZE_SIGNAL_TYPE_RE_2, c => c.toUpperCase());
 }
 
 const LEVEL_COLORS: Record<string, string> = {

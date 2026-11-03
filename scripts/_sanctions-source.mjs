@@ -9,6 +9,9 @@ import {
   proxyFetch,
 } from './_proxy-utils.cjs';
 
+const DESCRIBE_FETCH_ERROR_RE = /^[A-Z][A-Z0-9_]*$/;
+
+
 const OFAC_ACCEPT = 'application/xml, text/xml, */*';
 // Native fetch keeps its signal attached while the caller streams the body, so
 // the headers and the 128 MB SDN body get separate deadlines on one controller.
@@ -42,7 +45,7 @@ function nonRetryableError(message) {
 export function describeFetchError(error) {
   const message = error?.message || String(error);
   const code = error?.cause?.code;
-  return typeof code === 'string' && /^[A-Z][A-Z0-9_]*$/.test(code) ? `${message} (${code})` : message;
+  return typeof code === 'string' && DESCRIBE_FETCH_ERROR_RE.test(code) ? `${message} (${code})` : message;
 }
 
 function terminalFetchError(error) {
