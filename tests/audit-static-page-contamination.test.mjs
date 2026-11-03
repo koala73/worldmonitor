@@ -1,16 +1,70 @@
-// Pure-function tests for the audit script's classifier + arg parser.
-// The Redis side (scanKeys, batchHgetAll, batchDel, main) is covered
-// only by manual dry-run invocation per the runbook in the script header.
+// Classifier, argument parsing, and selected-field Redis reads.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   classifyTrack,
   parseArgs,
+  readAuditTracks,
 } from '../scripts/audit-static-page-contamination.mjs';
 
 const HOUR = 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 3, 26, 8, 0, 0);
+
+describe('audit story-track selection', () => {
+  it('reads classification and report fields while preserving row alignment', async () => {
+    const originalFetch = globalThis.fetch;
+    const fields = ['link', 'publishedAt', 'lastSeen', 'severity', 'source', 'title'];
+    globalThis.fetch = async (_url, init) => {
+      if (JSON.parse(init.body)[0][0] === 'HLEN') {
+        assert.deepEqual(JSON.parse(init.body), [['HLEN', 'missing']]);
+        return { ok: true, json: async () => [{ result: 0 }] };
+      }
+      assert.deepEqual(JSON.parse(init.body), ['one', 'missing'].map(key => ['HMGET', key, ...fields]));
+      return { ok: true, json: async () => [
+        { result: ['https://www.defense.gov/About/', null, String(NOW), 'high', 'Defense', ''] },
+        { result: fields.map(() => null) },
+      ] };
+    };
+    try {
+      const rows = await readAuditTracks('https://redis.example', 'test', ['one', 'missing']);
+      assert.deepEqual(rows, [{ link: 'https://www.defense.gov/About/', lastSeen: String(NOW), severity: 'high', source: 'Defense', title: '' }, null]);
+      assert.deepEqual(classifyTrack(rows[0], { mode: 'url', maxAgeMs: HOUR, nowMs: NOW }), ['url']);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('fails closed on incomplete or malformed reads', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      for (const rows of [[], [{ error: 'WRONGTYPE' }], [{ result: ['short'] }]]) {
+        globalThis.fetch = async () => ({ ok: true, json: async () => rows });
+        await assert.rejects(readAuditTracks('https://redis.example', 'test', ['one']), /audit story-track/);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('keeps legacy hashes with no selected fields eligible for residue cleanup', async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async (_url, init) => {
+      const commands = JSON.parse(init.body);
+      calls += 1;
+      assert.equal(commands[0][0], calls === 1 ? 'HMGET' : 'HLEN');
+      return { ok: true, json: async () => [{ result: calls === 1 ? Array(6).fill(null) : 1 }] };
+    };
+    try {
+      const [track] = await readAuditTracks('https://redis.example', 'test', ['legacy']);
+      assert.deepEqual(track, {});
+      assert.deepEqual(classifyTrack(track, { mode: 'residue', maxAgeMs: HOUR, nowMs: NOW, residueMinStaleMs: HOUR }), ['residue']);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
 
 describe('classifyTrack — url mode', () => {
   it('matches institutional static page URL', () => {

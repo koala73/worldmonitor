@@ -720,7 +720,7 @@ describe('reader migration (#7082)', () => {
 describe('bounded backfill and cutover (#7082)', () => {
   const now = 1_750_000_000_000;
   const hash = 'e'.repeat(64);
-  const track = ['title', 'Backfilled event', 'link', 'https://example.test/e', 'description', 'body', 'publishedAt', String(now - 1_000)];
+  const track = ['Backfilled event', 'https://example.test/e', 'body', String(now - 1_000)];
 
   it('is a dry-run by default and never writes a cutover marker', async () => {
     const calls = [];
@@ -735,6 +735,10 @@ describe('bounded backfill and cutover (#7082)', () => {
       ], calls),
     });
     assert.equal(report.mode, 'dry-run');
+    assert.deepEqual(calls[2].command, [
+      ['GET', mod.forecastEvidenceRecordKey(hash)],
+      ['HMGET', `story:track:v1:${hash}`, 'title', 'link', 'description', 'publishedAt'],
+    ]);
     assert.equal(report.cutoverVerified, false);
     assert.equal(calls.some(call => call.command[0] === 'SET'), false);
   });
@@ -747,12 +751,27 @@ describe('bounded backfill and cutover (#7082)', () => {
       fetchFn: sequenceFetch([
         { result: [hash, String(now - 500)] },
         { result: ['f'.repeat(64), String(now - backfillMod.FORECAST_EVIDENCE_BACKFILL_WINDOW_MS - 1)] },
-        [{ result: null }, { result: [] }],
+        [{ result: null }, { result: [null, null, null, null] }],
+        [{ result: 0 }],
       ]),
     });
     assert.equal(report.cutoverVerified, false);
     assert.equal(report.missingRows, 1);
     assert.equal(report.writableRecords, 0);
+  });
+
+  it('keeps hashes with only unrelated fields classified as tombstones', async () => {
+    const report = await backfillMod.backfillForecastEvidenceArchive({
+      nowMs: now, redisUrl: 'https://redis.example', redisToken: 'token',
+      fetchFn: sequenceFetch([
+        { result: [hash, String(now - 500)] },
+        { result: ['f'.repeat(64), String(now - backfillMod.FORECAST_EVIDENCE_BACKFILL_WINDOW_MS - 1)] },
+        [{ result: null }, { result: [null, null, null, null] }],
+        [{ result: 1 }],
+      ]),
+    });
+    assert.equal(report.missingRows, 0);
+    assert.equal(report.tombstones, 1);
   });
 
   it('keeps cutover unverified when the oldest legacy member is newer than the window', async () => {

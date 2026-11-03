@@ -29,7 +29,7 @@ import { evaluateCalibrationShadow, resolveCalibrationMapForRun } from './_forec
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
-import { readStoryTracksChunked, STORY_TRACK_HGETALL_BATCH } from './lib/story-track-batch-reader.mjs';
+import { readStoryTracksChunked, STORY_TRACK_BATCH_SIZE } from './lib/story-track-batch-reader.mjs';
 import {
   FORECAST_EVIDENCE_KEY,
   FORECAST_EVIDENCE_COVERAGE_KEY,
@@ -3106,7 +3106,7 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   const archiveDeadlineMs = Date.now() + archiveTimeoutMs;
   const storyTrackBatchSize = Number.isFinite(options.storyTrackBatchSize)
     ? Math.max(1, Math.floor(options.storyTrackBatchSize))
-    : STORY_TRACK_HGETALL_BATCH;
+    : STORY_TRACK_BATCH_SIZE;
   const rows = await readStoryTracksChunked(selectedHashes, async (commands) => {
     const remainingMs = archiveDeadlineMs - Date.now();
     if (remainingMs <= 0) throw new Error(`Redis story-track pipeline exceeded ${archiveTimeoutMs}ms archive budget`);
@@ -3118,7 +3118,11 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
     });
     if (!pipelineResp.ok) throw new Error(`Redis story-track pipeline failed: HTTP ${pipelineResp.status}`);
     return pipelineResp.json();
-  }, { batchSize: storyTrackBatchSize, context: 'forecast-resolutions' });
+  }, {
+    fields: ['title', 'description', 'link', 'url', 'source', 'publisher', 'domain',
+      'publishedAt', 'lastSeen', 'firstSeen', 'severity', 'currentScore', 'score'],
+    batchSize: storyTrackBatchSize, context: 'forecast-resolutions',
+  });
   if (!rows) throw new Error('Redis story-track pipeline returned incomplete archive data');
   const items = [];
   let missingRows = 0;
@@ -3130,7 +3134,7 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
     const raw = rows[index]?.result;
     const flat = normalizeRedisHashResult(raw);
     if (!flat) {
-      throw new Error(`Redis story-track pipeline row ${index} returned invalid HGETALL result`);
+      throw new Error(`Redis story-track pipeline row ${index} returned invalid hash result`);
     }
     if (flat.length === 0) {
       missingRows += 1;

@@ -377,7 +377,9 @@ export function createRedisArchive(pipeline = defaultRedisPipeline) {
       const scoreAt = (flat, i) => (flat.length > i && Number.isFinite(Number(flat[i])) ? Number(flat[i]) : null);
       const oldestKept = scoreAt(kept, kept.length - 1);
       const coveredFromMs = truncated ? (oldestKept == null ? null : oldestKept + 1) : scoreAt(oldest, 1);
-      const tracks = await readStoryTracksChunked(members, pipeline, { context: 'market-alert-ledger' });
+      const tracks = await readStoryTracksChunked(members, pipeline, {
+        fields: ['title', 'firstSeen'], context: 'market-alert-ledger',
+      });
       if (!tracks) return null;
       const stories = [];
       for (let i = 0; i < members.length; i += 1) {
