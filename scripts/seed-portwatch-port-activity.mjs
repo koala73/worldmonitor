@@ -151,14 +151,12 @@ export const PER_COUNTRY_TIMEOUT_MS = 90_000;
 // 2026-05-14 to ease pressure on both ArcGIS direct AND Decodo proxy paths,
 // which were each hitting their own rate-limits in the post-3676/3681 runs
 // (24/30 successes on run #1, 5/30 on run #2 as Decodo throttled us).
-// Math at concurrency 6 + cold-fetch cap 30:
-//   5 batches × ~60s realistic (90s worst-case per country) + 4×5s backoff
-//   ≈ 320s realistic, 470s worst case — fits the 570s bundle budget.
+// RUN_DISPATCH_DEADLINE_MS, not the cold-fetch cap, bounds how many batches
+// of six start in a run.
 export const CONCURRENCY = 6;
 // Cooldown between activity-fetch batches. Spaces out per-batch bursts so
 // neither ArcGIS-direct nor Decodo-proxy hits its rate-limit window from
-// our run alone. 5s × 4 inter-batch gaps = 20s total added to a 30-country
-// run — negligible against the 570s bundle budget.
+// our run alone.
 const BATCH_BACKOFF_MS = 5_000;
 // Ceiling for a single rate-limit-escalated inter-batch gap.
 const MAX_RATE_LIMITED_BATCH_BACKOFF_MS = 40_000;
@@ -254,16 +252,19 @@ export const MAX_CACHE_AGE_MS = PORTWATCH_MAX_CACHE_AGE_MS;
 // 570s bundle budget (observed 2026-05-13: preflight alone took 360s, batch 1
 // of 15 hit 12 errors in 45s before container died at the budget cap).
 //
-// With this cap, an "everything stale" run refreshes the 30 countries with
-// the oldest persisted attempt timestamps and serves the remainder from prior
+// With this cap, an "everything stale" run queues the 60 countries with the
+// oldest persisted attempt timestamps and serves the remainder from prior
 // cache (marked staleAsof=true so downstream can see they're a window behind).
-// A full attempt sweep completes in 6 runs = 3 days at the 12h cron cadence,
-// well within the 7-day MAX_CACHE_AGE_MS.
 //
-// 30 is sized so the cold-fetch path (30 × ~3-5s/country with concurrency
-// 6 ≈ 15-25s, plus 20s of backoff) easily fits the 570s budget even when
-// ArcGIS is slow.
-export const MAX_COLD_FETCH_PER_RUN = 30;
+// The cap sizes the queue; RUN_DISPATCH_DEADLINE_MS bounds the run. Batches
+// stop being admitted at the deadline, and unattempted countries keep their
+// queue position. At 2026-11-03 ArcGIS latency (~39s per batch of six) that
+// admits about 42 countries a run. 30 was too few: cohorts of 27-28 countries
+// reach the seven-day expiry every 12h, so after a few failed runs the
+// expired backlog stayed above 30 and full coverage never returned (six days
+// publish-blocked at 132/174). tests/portwatch-rate-limit-rotation.test.mjs
+// replays that cache state.
+export const MAX_COLD_FETCH_PER_RUN = 60;
 // Concurrency for the cheap per-country maxDate preflight. These are tiny
 // outStatistics queries (returns 1 row), so we can push harder than the
 // expensive fetch concurrency without tripping ArcGIS 429s in practice.
@@ -1800,9 +1801,8 @@ export async function fetchAll(progress, {
   // per-run cap, refresh the oldest-attempt subset and serve the rest from
   // prior cache marked staleAsof=true. Prevents the catastrophic "everything
   // stale → 174 cold-fetches → bundle SIGTERM" failure mode that produced
-  // 37h of stale data after a single upstream-advance event. A nominal attempt
-  // sweep takes ceil(174/30) = 6 runs (3d); allow a seventh run when
-  // critical countries reserve repeat slots.
+  // 37h of stale data after a single upstream-advance event. The dispatch
+  // deadline, not the cap, limits how many of the queued countries start.
   let servedStaleCount = 0;
   let droppedTooOldCount = 0;
   let droppedNoCacheCount = 0;

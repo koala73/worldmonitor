@@ -359,8 +359,8 @@ describe('cold-fetch priority for the expiring tail (#8501)', () => {
     // The tier only matters through the MAX_COLD_FETCH_PER_RUN slice, which
     // every other case in this suite is too small to reach.
     const cap = portwatchSeed.MAX_COLD_FETCH_PER_RUN;
-    const expiring = Array.from({ length: 40 }, (_, i) => item(`E${String(i).padStart(2, '0')}`, {
-      // E00 is closest to the cliff, E39 furthest.
+    const expiring = Array.from({ length: cap + 10 }, (_, i) => item(`E${String(i).padStart(2, '0')}`, {
+      // E00 is closest to the cliff.
       cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS - 60_000 - i * 60_000),
       refreshAttemptedAt: NOW,
     }));
@@ -370,12 +370,12 @@ describe('cold-fetch priority for the expiring tail (#8501)', () => {
     }));
 
     const ordered = orderColdFetchQueue([...due, ...expiring], undefined, { now: NOW });
-    assert.equal(ordered.length, 180, 'ordering is a permutation');
-    assert.equal(new Set(ordered.map((e) => e.iso2)).size, 180, 'no country is duplicated');
+    assert.equal(ordered.length, cap + 150, 'ordering is a permutation');
+    assert.equal(new Set(ordered.map((e) => e.iso2)).size, cap + 150, 'no country is duplicated');
     assert.deepEqual(
       ordered.slice(0, cap).map((e) => e.iso2),
       expiring.slice(0, cap).map((e) => e.iso2),
-      'the capped run goes to the 30 closest to the cliff, in cliff order',
+      `the capped run goes to the ${cap} closest to the cliff, in cliff order`,
     );
   });
 
@@ -574,7 +574,20 @@ describe('rate-limit backoff (#8501)', () => {
     assert.ok(Number.isFinite(sectionTimeoutMs) && sectionTimeoutMs > 0,
       'the bundle section timeout must be readable, or this assertion proves nothing');
 
-    const batches = Math.ceil(portwatchSeed.MAX_COLD_FETCH_PER_RUN / portwatchSeed.CONCURRENCY);
+    // The cap sizes the queue; the dispatch deadline decides how many batches
+    // start. A batch is admitted only while now + PER_COUNTRY_TIMEOUT_MS is
+    // inside the deadline, so at worst every admitted batch runs its full wrap.
+    const dispatchDeadlineMs = Number(
+      readFileSync(
+        fileURLToPath(new URL('../scripts/seed-portwatch-port-activity.mjs', import.meta.url)),
+        'utf-8',
+      ).match(/RUN_DISPATCH_DEADLINE_MS = ([\d_]+)/)[1].replace(/_/g, ''),
+    );
+    const batches = Math.min(
+      Math.ceil(portwatchSeed.MAX_COLD_FETCH_PER_RUN / portwatchSeed.CONCURRENCY),
+      Math.floor((dispatchDeadlineMs - portwatchSeed.PER_COUNTRY_TIMEOUT_MS)
+        / (portwatchSeed.PER_COUNTRY_TIMEOUT_MS + 5_000)) + 1,
+    );
     const activityWorstCaseMs = batches * portwatchSeed.PER_COUNTRY_TIMEOUT_MS
       + (batches - 1) * 5_000;
 
