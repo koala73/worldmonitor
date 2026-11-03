@@ -12,7 +12,7 @@ export function stripTags(html) {
       .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
       .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ')
       .replace(/<br\s*\/?>|<\/p>|<\/div>|<\/li>/gi, ' ')
-      .replace(/<[^>]+>/g, ''),
+      .replace(/<[^<>]*>/g, ''), // no backtracking on unclosed tags
   )
     .replace(/\s+/g, ' ')
     .trim();
@@ -101,6 +101,9 @@ export async function fetchBody(url, { fetch = (...a) => globalThis.fetch(...a),
   }
 }
 
+// Instrument readings share a landing page per feed, so their identity is title + time, not URL.
+export const INSTRUMENT_KINDS = new Set(['alert', 'event', 'measurement']);
+
 export function eventId(sourceId, key) {
   let h = 2166136261;
   const s = `${sourceId}|${key}`;
@@ -182,7 +185,7 @@ export class FeedHub {
       const body = await fetchBody(url, { fetch: this.fetch, userAgent: this.userAgent, accept: s.accept || (s.kind === 'json' ? 'application/json' : '*/*'), maxBytes: s.maxBytes || MAX_BODY, timeoutMs: s.timeoutMs || 20000 });
       const parsed = s.kind === 'json' ? JSON.parse(body) : s.kind === 'feed' ? parseFeed(body) : body;
       const out = s.parse(parsed, { source: s, now: this.now() }) || {};
-      const events = (out.events || []).filter((e) => e && e.title).map((e) => ({ ...e, tags: Array.isArray(e.tags) ? e.tags : [], url: e.url || '', source: s.id, sourceLabel: s.label, group: s.group, id: e.id || eventId(s.id, e.url || e.title) }));
+      const events = (out.events || []).filter((e) => e && e.title).map((e) => ({ ...e, tags: Array.isArray(e.tags) ? e.tags : [], url: e.url || '', source: s.id, sourceLabel: s.label, group: s.group, id: e.id || eventId(s.id, INSTRUMENT_KINDS.has(e.kind) ? `${e.title}|${e.at || ''}` : e.url || e.title) }));
       st.events = events;
       if (out.signal) st.signal = { ...out.signal, source: s.id };
       st.loadedAt = this.now();
@@ -210,7 +213,7 @@ export class FeedHub {
     const all = [];
     for (const st of this.state.values()) {
       for (const e of st.events) {
-        const key = (e.url || e.title).toLowerCase();
+        const key = INSTRUMENT_KINDS.has(e.kind) ? e.id : (e.url || e.title).toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
         all.push(e);

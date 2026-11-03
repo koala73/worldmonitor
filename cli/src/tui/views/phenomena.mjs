@@ -82,6 +82,8 @@ export class PhenomenaView extends PaneView {
   }
 
   dispose() {
+    this.disposed = true;
+    this.queue = [];
     this.hub.close();
     this.voice.stop();
     this.runner.cancelAll();
@@ -101,6 +103,11 @@ export class PhenomenaView extends PaneView {
       this.mask = null;
     }
     return this.mask;
+  }
+
+  // The app keeps rendering while an explainer plays or a run streams, even with decorative animations off.
+  animating() {
+    return Boolean((this.mode === 'play' && this.player && !this.player.paused) || this.research?.status === 'running' || this.building);
   }
 
   finding(id) {
@@ -148,7 +155,7 @@ export class PhenomenaView extends PaneView {
         onEvent: (ev) => this.onResearchEvent(res, ev, topic),
       })
       .then((out) => {
-        if (this.research !== res) return;
+        if (this.research !== res || this.disposed) return;
         this.absorbFindings(res, topic, true);
         res.status = out.ok ? 'done' : 'error';
         res.error = out.ok ? '' : out.error;
@@ -206,14 +213,21 @@ export class PhenomenaView extends PaneView {
     const found = extractFindings(res.text, { addedAt: this.now() });
     const fresh = found.slice(res.count);
     if (!fresh.length) return;
+    let added = 0;
     for (const f of fresh) {
       f.topic = topic;
       f.appearedAt = this.now();
       const existing = this.findings.findIndex((x) => !x.demo && x.title.toLowerCase() === f.title.toLowerCase());
-      if (existing >= 0) this.findings[existing] = { ...this.findings[existing], ...f, id: this.findings[existing].id, status: this.findings[existing].status };
-      else this.findings.unshift(f);
+      let id = f.id;
+      if (existing >= 0) {
+        id = this.findings[existing].id;
+        this.findings[existing] = { ...this.findings[existing], ...f, id, status: this.findings[existing].status === 'ready' ? 'ready' : 'new' };
+      } else {
+        this.findings.unshift(f);
+        added += 1;
+      }
       this.log(res, `◆ ${f.title}`, 'finding');
-      this.enqueueBuild(f.id, false);
+      this.enqueueBuild(id, false);
     }
     res.count = found.length;
     try {
@@ -221,7 +235,7 @@ export class PhenomenaView extends PaneView {
     } catch {
       // the library is best-effort
     }
-    if (this.lists.rail.selected > 0) this.lists.rail.selected += fresh.length; // keep the cursor on the same row
+    if (this.lists.rail.selected > 0) this.lists.rail.selected += added; // keep the cursor on the same row
     void final;
   }
 
@@ -242,7 +256,7 @@ export class PhenomenaView extends PaneView {
   }
 
   pumpBuilds() {
-    if (this.building || !this.queue.length) return;
+    if (this.disposed || this.building || !this.queue.length) return;
     if (!this.runner.available) {
       for (const id of this.queue) {
         const f = this.finding(id);
@@ -267,10 +281,19 @@ export class PhenomenaView extends PaneView {
     f.status = 'building';
     this.building = id;
     this.app.markDirty();
-    this.runBuild(f, b, storyboardPrompt(f, { now: this.now() }), STORYBOARD_SYSTEM).then(() => {
-      this.building = null;
-      this.pumpBuilds();
-    });
+    this.runBuild(f, b, storyboardPrompt(f, { now: this.now() }), STORYBOARD_SYSTEM)
+      .catch((err) => {
+        // A bad answer or a full disk fails this explainer only.
+        b.status = 'error';
+        b.error = err && err.message ? err.message : String(err);
+        f.status = 'new';
+        this.app.toast(`explainer failed: ${truncate(b.error, 60)}`, 4000, 'bad');
+      })
+      .finally(() => {
+        this.building = null;
+        this.app.markDirty();
+        this.pumpBuilds();
+      });
   }
 
   async runBuild(f, b, prompt, system) {
@@ -290,6 +313,7 @@ export class PhenomenaView extends PaneView {
         }
       },
     });
+    if (this.disposed) return;
     if (!out.ok) {
       b.status = 'error';
       b.error = out.error;
@@ -299,7 +323,12 @@ export class PhenomenaView extends PaneView {
       return;
     }
     const json = extractJson(out.text);
-    const sb = normalizeStoryboard(json || {}, f);
+    let sb;
+    try {
+      sb = normalizeStoryboard(json || {}, f);
+    } catch (err) {
+      throw new Error(`the writer's JSON could not be read: ${err.message}`);
+    }
     sb.model = this.runner.model;
     const problems = validateStoryboard(sb);
     if (problems.length > 3 && b.attempts < 1 && json) {
@@ -337,6 +366,7 @@ export class PhenomenaView extends PaneView {
     this.selectedId = f.id;
     this.focusPane('stage');
     if (f.status === 'ready' || f.demo) return this.play(f);
+    this.voice.stop();
     this.mode = 'compiling';
     this.player = null;
     this.enqueueBuild(f.id, true);
@@ -422,23 +452,29 @@ export class PhenomenaView extends PaneView {
     if (!f || !sb || !question.trim()) return;
     if (!this.runner.available) return this.app.toast('local claude not found', 2500, 'bad');
     const q = question.trim();
+    const player = this.player;
     this.app.toast(`asking: ${truncate(q, 60)}`, 2500);
     this.runner.run({ prompt: askPrompt(sb, q), system: ASK_SYSTEM, tools: [], maxTurns: 1 }).then((out) => {
+      if (this.disposed) return;
       if (!out.ok) return this.app.toast(`ask failed: ${truncate(out.error, 60)}`, 4000, 'bad');
       const json = extractJson(out.text) || {};
       const scenes = Array.isArray(json.scenes) ? json.scenes.map((s, i) => normalizeScene(s, sb.scenes.length + i)) : [];
       for (const s of scenes) s.title = s.title.startsWith('Q:') ? s.title : `Q: ${s.title}`;
       if (!f.demo) {
-        const raw = this.lib.loadExplainer(f.id) || sb;
-        raw.scenes = [...(raw.scenes || []), ...scenes];
-        raw.qa = [...(raw.qa || []), { question: q, answer: String(json.answer || ''), at: this.now() }];
-        this.lib.saveExplainer(f.id, raw);
+        try {
+          const raw = this.lib.loadExplainer(f.id) || sb;
+          raw.scenes = [...(raw.scenes || []), ...scenes];
+          raw.qa = [...(raw.qa || []), { question: q, answer: String(json.answer || ''), at: this.now() }];
+          this.lib.saveExplainer(f.id, raw);
+        } catch {
+          this.app.toast('could not save the answer to disk', 3000, 'warn');
+        }
       }
       sb.scenes.push(...scenes);
       sb.totalS = sb.scenes.reduce((a, s) => a + s.duration, 0);
       const answer = String(json.answer || '').trim();
       this.app.openDetail({ title: `Q: ${q}`, subtitle: f.title, rows: scenes.length ? [['New scenes', scenes.map((s) => s.title).join(' · ')]] : [], body: answer || 'No answer text; see the new scenes.' });
-      if (this.player && scenes.length) this.player.seek(sb.scenes.length - scenes.length);
+      if (this.player === player && player && scenes.length) player.seek(sb.scenes.length - scenes.length);
       this.app.markDirty();
     });
   }

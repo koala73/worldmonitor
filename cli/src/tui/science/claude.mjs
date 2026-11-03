@@ -85,7 +85,9 @@ export class ClaudeRunner {
       const args = claudeArgs({ model: this.model, system, tools, maxTurns, effort });
       let child;
       try {
-        child = this.spawnImpl(this.bin, args, { cwd: this.cwd || undefined, env, stdio: ['pipe', 'pipe', 'pipe'] });
+        // npm's Windows shims are .cmd files and need a shell; elsewhere spawn directly so signals reach the CLI.
+        const shell = /\.(cmd|bat)$/i.test(this.bin);
+        child = this.spawnImpl(this.bin, args, { cwd: this.cwd || undefined, env, stdio: ['pipe', 'pipe', 'pipe'], shell });
       } catch (err) {
         return resolve({ ok: false, error: `could not start claude: ${err.message}`, text: '', cost: 0, durationMs: 0 });
       }
@@ -140,6 +142,8 @@ export class ClaudeRunner {
       });
       child.on('error', (err) => finish({ error: err.message }));
       child.on('close', () => finish());
+      // claude can exit before reading the whole prompt (auth, rate limit); EPIPE must not crash the dashboard.
+      child.stdin.on('error', () => {});
       child.stdin.end(prompt);
     });
   }

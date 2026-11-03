@@ -16,10 +16,13 @@ export const MS_PER_CHAR = 28;
 export const SCENE_MIN_S = 10;
 export const SCENE_MAX_S = 150;
 
-const n = (v, d, lo = -Infinity, hi = Infinity) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : d);
+// null counts as missing: JSON turns Infinity into null and a saved explainer must reload intact.
+const n = (v, d, lo = -Infinity, hi = Infinity) => (v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : d);
 const vec = (v, d = [0, 0, 0]) => (Array.isArray(v) && v.length >= 3 && v.every((x) => Number.isFinite(Number(x))) ? v.slice(0, 3).map(Number) : d);
 const str = (v, d = '') => (typeof v === 'string' ? v : v === null || v === undefined ? d : String(v));
 const arr = (v) => (Array.isArray(v) ? v : []);
+const objs = (v) => arr(v).filter((x) => x && typeof x === 'object');
+export const VANISH_NEVER = 1e9; // seconds; finite so it survives JSON
 
 export function sceneDuration(scene) {
   const chars = str(scene.narration).length + arr(scene.callouts).reduce((a, c) => a + str(c.text).length, 0) * 0.5;
@@ -37,7 +40,7 @@ function normCamera(c = {}) {
 
 function normElement(e, i) {
   const type = ELEMENT_TYPES.includes(e.type) ? e.type : 'sphere';
-  const out = { ...e, id: str(e.id, `e${i + 1}`), type, at: vec(e.at), color: str(e.color, 'accent'), label: str(e.label), appear: n(e.appear, 0, 0), vanish: n(e.vanish, Infinity, 0) };
+  const out = { ...e, id: str(e.id, `e${i + 1}`), type, at: vec(e.at), color: str(e.color, 'accent'), label: str(e.label), appear: n(e.appear, 0, 0), vanish: n(e.vanish, VANISH_NEVER, 0) };
   out.r = n(e.r, type === 'galaxy' ? 2 : type === 'earth' ? 1.2 : 0.8, 0.02, 40);
   out.spin = n(e.spin, type === 'galaxy' ? 8 : type === 'earth' ? 10 : 0, -720, 720);
   if (type === 'particles') {
@@ -71,7 +74,7 @@ function normElement(e, i) {
     out.h = n(e.h, 2, 0.1, 20);
   }
   if (type === 'torus') out.r2 = n(e.r2, out.r * 0.35, 0.01, 20);
-  if (type === 'strings') {
+  if (type === 'strings' || type === 'detector') {
     out.n = n(e.n, 9, 1, 100);
     out.h = n(e.h, 2, 0.1, 20);
     out.spacing = n(e.spacing, 0.4, 0.05, 5);
@@ -103,10 +106,10 @@ function normElement(e, i) {
 function normChart(c) {
   if (!c || typeof c !== 'object') return null;
   const type = CHART_TYPES.includes(c.type) ? c.type : 'line';
-  const series = arr(c.series).map((s) => ({ label: str(s.label), color: str(s.color, 'accent'), values: arr(s.values).map((p) => (Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [NaN, Number(p)])).filter((p) => Number.isFinite(p[1])) })).filter((s) => s.values.length);
-  const rows = arr(c.rows).map((r) => arr(r).map((x) => str(x)));
+  const series = objs(c.series).map((s) => ({ label: str(s.label), color: str(s.color, 'accent'), values: arr(s.values).map((p) => (Array.isArray(p) ? [Number(p[0]), Number(p[1])] : [NaN, Number(p)])).filter((p) => Number.isFinite(p[1])) })).filter((s) => s.values.length);
+  const rows = arr(c.rows).filter(Array.isArray).map((r) => r.map((x) => str(x)));
   if (!series.length && !rows.length && type !== 'timeline') return null;
-  return { type, title: str(c.title), xLabel: str(c.xLabel), yLabel: str(c.yLabel), series, rows, columns: arr(c.columns).map((x) => str(x)), events: arr(c.events).map((e) => ({ x: Number(e.x), label: str(e.label) })).filter((e) => Number.isFinite(e.x)), log: Boolean(c.log) };
+  return { type, title: str(c.title), xLabel: str(c.xLabel), yLabel: str(c.yLabel), series, rows, columns: arr(c.columns).map((x) => str(x)), events: objs(c.events).map((e) => ({ x: Number(e.x), label: str(e.label) })).filter((e) => Number.isFinite(e.x)), log: Boolean(c.log) };
 }
 
 export function normalizeScene(s, i) {
@@ -117,12 +120,12 @@ export function normalizeScene(s, i) {
     narration: str(s.narration).trim(),
     camera: normCamera(s.camera),
     elements: arr(s.elements).filter((e) => e && typeof e === 'object').map(normElement),
-    callouts: arr(s.callouts).filter((c) => c && typeof c === 'object' && str(c.text).trim()).map((c) => ({ t: n(c.t, 0, 0), text: str(c.text).trim(), target: str(c.target, '') || null, side: ['left', 'right', 'top', 'bottom'].includes(c.side) ? c.side : 'right', hold: n(c.hold, 0, 0) })),
+    callouts: objs(s.callouts).filter((c) => str(c.text).trim()).map((c) => ({ t: n(c.t, 0, 0), text: str(c.text).trim(), target: str(c.target, '') || null, side: ['left', 'right', 'top', 'bottom'].includes(c.side) ? c.side : 'right', hold: n(c.hold, 0, 0) })),
     chart: normChart(s.chart),
     equation: s.equation && str(s.equation.expr || s.equation).trim() ? { expr: str(s.equation.expr || s.equation).trim(), meaning: str(s.equation.meaning) } : null,
     card: s.card && typeof s.card === 'object' ? { kind: CARD_KINDS.includes(s.card.kind) ? s.card.kind : 'fact', title: str(s.card.title), lines: arr(s.card.lines).map((x) => str(x)).filter(Boolean), value: str(s.card.value), unit: str(s.card.unit), who: str(s.card.who), years: str(s.card.years) } : null,
     location: s.location && Number.isFinite(Number(s.location.lat)) && Number.isFinite(Number(s.location.lon)) ? { name: str(s.location.name), lat: Number(s.location.lat), lon: Number(s.location.lon) } : null,
-    sources: arr(s.sources).map((x) => (typeof x === 'string' ? { title: x, url: x } : { title: str(x.title, x.url), url: str(x.url) })).filter((x) => /^https?:/i.test(x.url)),
+    sources: arr(s.sources).filter((x) => x && (typeof x === 'string' || typeof x === 'object')).map((x) => (typeof x === 'string' ? { title: x, url: x } : { title: str(x.title, x.url), url: str(x.url) })).filter((x) => /^https?:/i.test(x.url)),
   };
   scene.duration = sceneDuration({ ...scene, duration: Number(s.duration) });
   scene.callouts.sort((a, b) => a.t - b.t);
@@ -140,15 +143,15 @@ export function normalizeStoryboard(raw, finding = {}) {
     field: str(sb.field, finding.field || ''),
     summary: str(sb.summary, finding.summary || ''),
     meta: {
-      people: arr(meta.people).map((p) => ({ name: str(p.name), years: str(p.years), role: str(p.role), note: str(p.note) })).filter((p) => p.name),
-      timeline: arr(meta.timeline).map((t) => ({ year: str(t.year), text: str(t.text) })).filter((t) => t.text),
-      locations: arr(meta.locations).map((l) => ({ name: str(l.name), lat: Number(l.lat), lon: Number(l.lon), note: str(l.note) })).filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lon)),
-      sources: arr(meta.sources).map((x) => (typeof x === 'string' ? { title: x, url: x } : { title: str(x.title, x.url), url: str(x.url) })).filter((x) => /^https?:/i.test(x.url)),
-      math: arr(meta.math).map((m) => ({ name: str(m.name), expr: str(m.expr), meaning: str(m.meaning) })).filter((m) => m.expr),
+      people: objs(meta.people).map((p) => ({ name: str(p.name), years: str(p.years), role: str(p.role), note: str(p.note) })).filter((p) => p.name),
+      timeline: objs(meta.timeline).map((t) => ({ year: str(t.year), text: str(t.text) })).filter((t) => t.text),
+      locations: objs(meta.locations).map((l) => ({ name: str(l.name), lat: Number(l.lat), lon: Number(l.lon), note: str(l.note) })).filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lon)),
+      sources: arr(meta.sources).filter((x) => x && (typeof x === 'string' || typeof x === 'object')).map((x) => (typeof x === 'string' ? { title: x, url: x } : { title: str(x.title, x.url), url: str(x.url) })).filter((x) => /^https?:/i.test(x.url)),
+      math: objs(meta.math).map((m) => ({ name: str(m.name), expr: str(m.expr), meaning: str(m.meaning) })).filter((m) => m.expr),
       uses: arr(meta.uses).map((u) => str(u)).filter(Boolean),
       secrecy: { level: SECRECY.includes(meta.secrecy?.level) ? meta.secrecy.level : finding.secrecy?.level || 'public', notes: str(meta.secrecy?.notes, finding.secrecy?.notes || '') },
       coveredUp: str(meta.coveredUp),
-      glossary: arr(meta.glossary).map((g) => ({ term: str(g.term), meaning: str(g.meaning) })).filter((g) => g.term),
+      glossary: objs(meta.glossary).map((g) => ({ term: str(g.term), meaning: str(g.meaning) })).filter((g) => g.term),
     },
     scenes,
     generatedAt: Number(sb.generatedAt) || Date.now(),
@@ -231,9 +234,9 @@ export function normalizeFinding(f, addedAt = Date.now()) {
     date: str(f.date).trim(),
     summary: str(f.summary).trim(),
     why: str(f.why_it_matters || f.why).trim(),
-    sources: arr(f.sources).map((x) => (typeof x === 'string' ? { title: x, url: x } : { title: str(x.title, x.url), url: str(x.url) })).filter((x) => /^https?:/i.test(x.url)).slice(0, 12),
-    people: arr(f.people).map((p) => (typeof p === 'string' ? { name: p, role: '' } : { name: str(p.name), role: str(p.role) })).filter((p) => p.name).slice(0, 12),
-    locations: arr(f.locations).map((l) => ({ name: str(l.name), lat: Number(l.lat), lon: Number(l.lon) })).filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lon)).slice(0, 8),
+    sources: arr(f.sources).filter((x) => x && (typeof x === 'string' || typeof x === 'object')).map((x) => (typeof x === 'string' ? { title: x, url: x } : { title: str(x.title, x.url), url: str(x.url) })).filter((x) => /^https?:/i.test(x.url)).slice(0, 12),
+    people: arr(f.people).filter((p) => p && (typeof p === 'string' || typeof p === 'object')).map((p) => (typeof p === 'string' ? { name: p, role: '' } : { name: str(p.name), role: str(p.role) })).filter((p) => p.name).slice(0, 12),
+    locations: objs(f.locations).map((l) => ({ name: str(l.name), lat: Number(l.lat), lon: Number(l.lon) })).filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lon)).slice(0, 8),
     secrecy: { level: SECRECY.includes(f.secrecy?.level) ? f.secrecy.level : 'public', notes: str(f.secrecy?.notes).trim() },
     confidence: n(f.confidence, 0.6, 0, 1),
     tags: arr(f.tags).map((t) => str(t).toLowerCase()).filter(Boolean).slice(0, 8),

@@ -221,7 +221,7 @@ export class DotCanvas {
 
   writeText(x, y, text, fg, bg, attr, pri) {
     let i = 0;
-    for (const ch of text) {
+    for (const ch of sanitize(String(text ?? ''))) {
       this.glyph(x + i, y, ch, fg, { bg, attr, pri });
       i += strWidth(ch);
     }

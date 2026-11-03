@@ -341,7 +341,7 @@ export const DEMO_STORYBOARD = {
         { t: 17, text: 'SNEWS: the next galactic supernova announces itself in neutrinos hours before light', target: 'sn', side: 'left' },
         { t: 25, text: 'MINERvA 2012: the word "neutrino" sent through 240 m of rock, unblockable', target: 'det', side: 'bottom' },
       ],
-      card: { kind: 'quote', title: 'Francis Halzen', lines: ['"We have been looking at the universe with', 'light for 400 years. Neutrinos give us', 'a completely new way to look."'] },
+      card: { kind: 'fact', title: 'A new sense', lines: ['400 years of astronomy with light', 'a decade of astronomy with neutrinos', 'sources so far: a blazar, a Seyfert galaxy, our own galaxy'] },
     },
     {
       id: 's14',

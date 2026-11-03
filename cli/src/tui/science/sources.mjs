@@ -147,7 +147,7 @@ export const SOURCES = [
           const far = num(s.far);
           const perYear = far ? far * 3.15576e7 : null;
           return {
-            title: `Gravitational-wave candidate ${s.superevent_id}${s.gw_id ? ` (${s.gw_id})` : ''}${perYear !== null ? `, one false alarm per ${perYear < 1 ? `${Math.round(1 / perYear)} years` : `${perYear.toFixed(1)} per year`}` : ''}`,
+            title: `Gravitational-wave candidate ${s.superevent_id}${s.gw_id ? ` (${s.gw_id})` : ''}${perYear !== null ? (perYear < 1 ? `, one false alarm per ${Math.round(1 / perYear)} years` : `, ${perYear.toFixed(1)} false alarms per year`) : ''}`,
             summary: `Pipeline ${s.preferred_event_data?.pipeline || '?'} (${s.preferred_event_data?.group || '?'}). Labels: ${(s.labels || []).join(', ') || 'none'}.`,
             url: `https://gracedb.ligo.org/superevents/${s.superevent_id}/view/`,
             at: parseDate(String(s.created || '').replace(' UTC', 'Z').replace(' ', 'T')),

@@ -80,6 +80,13 @@ export async function launchTui({ options = {}, config = {}, env = process.env, 
   const shutdown = () => {
     if (!active) return;
     active = false;
+    for (const v of app.views) {
+      try {
+        v.dispose?.(); // child processes (claude, speech) must not outlive the dashboard
+      } catch {
+        // keep shutting down
+      }
+    }
     if (timer) clearInterval(timer);
     if (escTimer) clearTimeout(escTimer);
     store.stop();

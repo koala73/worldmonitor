@@ -197,6 +197,7 @@ export class App {
   animating() {
     if (!this.boot.done) return true;
     if (this.toastState) return true;
+    if (this.view.animating?.()) return true; // playback and streaming runs keep their clocks even with decorations off
     if (!this.anim) return false;
     if (this.now() - this.tabSwitchedAt < 300) return true;
     return true; // ticker and map sweep run continuously while animations are on
