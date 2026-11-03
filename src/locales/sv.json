@@ -9,7 +9,6 @@
     "status": "Systemstatus",
     "insights": "AI-INSIKTER",
     "map": "Interactive Map",
-    "techMap": "Global Teknik",
     "politics": "Världsnyheter",
     "us": "USA",
     "europe": "Europa",
@@ -95,7 +94,7 @@
     "bigmacDesc": "Big Mac-priser i länder i Mellanöstern (Big Mac Index)",
     "bigmacWow": "Vecka över vecka",
     "bigmacCountry": "Land",
-    "faoFoodPriceIndex": "FAO-matschwindex",
+    "faoFoodPriceIndex": "Livsmedelspriser",
     "fuelPrices": "Bränslepriser",
     "fuelPricesDesc": "Detaljhandels bensin- och dieselpriser i 30+ länder världen över",
     "fuelPricesCountry": "Land",
@@ -760,8 +759,6 @@
       "relatedAssetsNear": "Relaterade tillgångar nära {{location}}",
       "summaryError": "Kunde inte skapa sammanfattning",
       "summaryFailed": "Sammanfattning misslyckades",
-      "sourceCoverage": "{{covered}}/{{total}} källor",
-      "sourceCoverageHint": "Visar {{covered}} av {{total}} aktiverade källor — den här panelen växlar mellan sina källor vid varje uppdatering",
       "sortBy": "Sortera efter",
       "sortNewest": "Senaste",
       "sortRelevance": "Relevans",
@@ -1432,7 +1429,12 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Reglering</strong> Regleringsåtgärder, policyändringar och tillsynsuppdateringar från globala tillsynsmyndigheter: finans-, teknik-, energi- och handelsmyndigheter. Källa: officiella statliga och regulatoriska publikationer."
+      "infoTooltip": "<strong>Reglering</strong> Regleringsåtgärder, policyändringar och tillsynsuppdateringar från globala tillsynsmyndigheter: finans-, teknik-, energi- och handelsmyndigheter. Källa: officiella statliga och regulatoriska publikationer.",
+      "latestActions": "Senast registrerade åtgärder",
+      "otherDeadlines": "Övriga efterlevnadsfrister",
+      "daysAgo": "dagar sedan",
+      "revokedCount": "Återkallade föreskrifter ({{count}})",
+      "lapsedCount": "Förfallna förslag ({{count}})"
     },
     "etfFlows": {
       "unavailable": "data för börshandlade fonder är tillfälligt otillgängligt",
@@ -1687,7 +1689,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Uppgradera till PRO för gruv- och raffinaderiländsandelar med koncentration (producentkoncentrationsindex) per steg."
+      "productionProLocked": "Uppgradera till PRO för gruv- och raffinaderiländsandelar med koncentration (producentkoncentrationsindex) per steg.",
+      "partialTransitCoverage": "Transitdata otillgänglig: {{names}}",
+      "oilPipelinesUnavailable": "Data om oljeledningar är inte tillgängliga",
+      "gasPipelinesUnavailable": "Data om gasledningar är inte tillgängliga"
     },
     "positiveNewsFeed": {
       "noStories": "Inga berättelser i denna kategori ännu"
@@ -2257,6 +2262,15 @@
             "mcpClients": "Konfigurera MCP",
             "channels": "Ställ in dem i aviseringsinställningarna"
           }
+        },
+        "about": {
+          "heading": "En sista sak: vad ska du använda World Monitor till?",
+          "body": "Tre snabba svar hjälper oss att bygga rätt verktyg för dig. Hoppa över de du vill.",
+          "confirmCta": "Spara mina svar",
+          "confirming": "Sparar…",
+          "doneNote": "Tack, vi har dina svar.",
+          "summaryLabel": "Om dig",
+          "summaryVerified": "Sparad. Tack."
         }
       },
       "status": {
@@ -2454,7 +2468,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Turkiska Sunden",
         "panama": "Panama",
-        "danishStraits": "Danska Sunden"
+        "doverStrait": "Doversundet"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
@@ -2619,6 +2633,95 @@
       "rosterSummaryTier1": "Rapporterat av {{publishers}}, varav {{tier1}} på nivå 1",
       "rosterPublishers_one": "{{count}} utgivare",
       "rosterPublishers_other": "{{count}} utgivare"
+    },
+    "foodPrices": {
+      "title": "Lokala livsmedelspriser",
+      "method": "Veckoförändringen jämför samma produkt, marknad, ursprung och enhet med priset exakt sju dagar tidigare. Länder använder olika varukorgar och valutor.",
+      "loading": "Laddar livsmedelspriser…",
+      "unavailable": "Ej tillgängligt",
+      "retry": "Försök igen",
+      "country": "Land",
+      "market": "Marknad",
+      "retail": "Detaljhandel",
+      "wholesale": "Partihandel",
+      "farmgate": "Gårdspris",
+      "export": "Export",
+      "prices": "Livsmedelspriser",
+      "product": "Produkt",
+      "price": "Pris / enhet",
+      "weekly": "Veckoförändring",
+      "origin": "Ursprung",
+      "versus": "jämfört med",
+      "noBaseline": "Föregående vecka saknas",
+      "context": "Livsmedelssäkerhet och månadsbakgrund",
+      "contextNote": "Dessa rapporter ger daterad bakgrund, inte veckovisa prisförändringar. Rapporter från Tunisien kan släpa efter flera månader.",
+      "briefCountry": "Landsrapport",
+      "report": "Rapportdatum",
+      "checked": "Senast kontrollerad",
+      "current": "Aktuellt",
+      "partial": "Vissa rapporter saknas eller är gamla",
+      "stale": "Äldre data",
+      "global": "FAO:s globala månadsindex"
+    },
+    "aboutYou": {
+      "title": "Hjälp oss bygga World Monitor för dig",
+      "ariaLabel": "Om dig",
+      "progress": "{{current}} av {{total}}",
+      "skip": "Hoppa över",
+      "close": "Stäng",
+      "done": "Klar",
+      "saving": "Sparar…",
+      "saveFailed": "Kunde inte spara det. Försök igen.",
+      "retry": "Försök igen",
+      "thanks": "Tack. Det hjälper oss att bestämma vad vi ska bygga härnäst.",
+      "questions": {
+        "primaryUse": {
+          "label": "Vad använder du huvudsakligen World Monitor till?",
+          "options": {
+            "news": "Nyheter och världshändelser",
+            "markets": "Marknader och handel",
+            "commodities": "Råvaror och försörjningskedjor",
+            "travel": "Resor och flyg",
+            "security": "Säkerhet och OSINT",
+            "research": "Forskning och journalistik",
+            "api-agent": "Bygga med API eller en AI-agent",
+            "other": "Något annat"
+          }
+        },
+        "usageContext": {
+          "label": "Använder du det för arbete eller privat bruk?",
+          "options": {
+            "personal": "Privat",
+            "work": "Arbete"
+          }
+        },
+        "payer": {
+          "label": "Vem betalar, eller skulle betala, för det?",
+          "options": {
+            "self": "Jag själv",
+            "employer": "Min arbetsgivare eller mitt team",
+            "not-paying": "Ingen än så länge"
+          }
+        },
+        "role": {
+          "label": "Vilken beskrivning passar bäst för din roll?",
+          "options": {
+            "analyst": "Analytiker eller forskare",
+            "trader": "Trader eller investerare",
+            "journalist": "Journalist",
+            "security": "Säkerhet eller risk",
+            "government": "Government eller policy",
+            "supply-chain": "Försörjningskedja eller verksamhet",
+            "developer": "Utvecklare",
+            "student": "Student",
+            "other": "Annat"
+          }
+        },
+        "alternative": {
+          "label": "Vad skulle du använda om World Monitor inte fanns?",
+          "placeholder": "Valfritt"
+        }
+      }
     }
   },
   "popups": {
@@ -4178,5 +4281,29 @@
     "reportedClaims": "Utgivarens rapporter. Påståenden kan fortfarande utredas.",
     "occurred": "Incident",
     "reported": "Publicerad"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Världsmarknadskarta",
+      "liveNews": "Marknadsnyheter",
+      "insights": "AI-marknadsinsikter"
+    },
+    "tech": {
+      "map": "Global teknikkarta",
+      "liveNews": "Tekniknyheter"
+    },
+    "commodity": {
+      "map": "Råvarukarta",
+      "liveNews": "Råvarunyheter",
+      "insights": "AI-råvaruinsikter"
+    },
+    "energy": {
+      "map": "Energiatlas-karta",
+      "liveNews": "Energinyheter",
+      "insights": "AI-energiinsikter"
+    },
+    "happy": {
+      "map": "Karta över goda nyheter"
+    }
   }
 }

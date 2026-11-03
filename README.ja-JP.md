@@ -144,6 +144,12 @@ World Monitor はブラウザだけでなく、エージェントやスクリプ
 
 ---
 
+## サポート
+
+World Monitor の Web アプリと API は [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 上で稼働しています。プロジェクトへの手厚いご支援に、Vercel に感謝いたします。
+
+---
+
 ## データソース
 
 WorldMonitor は、地政学、金融、エネルギー、気候、航空、サイバー、軍事、インフラ、ニュースインテリジェンスの各分野にわたる外部プロバイダーと API を集約しています。厳選フィードと鮮度モニターで追跡されます。プロバイダー、フィードのティア、収集方法の詳細は [データソースカタログ](https://www.worldmonitor.app/docs/data-sources) を参照してください。

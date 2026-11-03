@@ -684,7 +684,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetShippingStress
-            description: GetShippingStress returns carrier market data and a composite stress index.
+            description: GetShippingStress returns Yahoo Finance quotes for the BDRY dry bulk ETF and four shipping carriers, plus a 0-100 stress score from their average daily move.
             operationId: GetShippingStress
             parameters:
                 - name: jmespath
@@ -938,7 +938,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetBypassOptions
-            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated. Requires entitlement tier >= 1.
+            description: GetBypassOptions ranks a chokepoint's bypass corridors for a cargo type and closure share by cost and waypoint risk. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetBypassOptions
             security:
                 - WorldMonitorKey: []

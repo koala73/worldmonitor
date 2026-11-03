@@ -457,7 +457,6 @@
     "markets": "बाजार",
     "marketImplications": "एआई के बाजार असर",
     "map": "वैश्विक स्थिति",
-    "techMap": "वैश्विक तकनीक",
     "techHubs": "लोकप्रिय तकनीकी केंद्र",
     "status": "सिस्टम की स्थिति",
     "insights": "एआई की जानकारी",
@@ -545,7 +544,7 @@
     "bigmacDesc": "मध्य पूर्व के देशों में बिग मैक की कीमतें (बिग मैक इंडेक्स)",
     "bigmacWow": "सप्ताह-दर-सप्ताह",
     "bigmacCountry": "देश",
-    "faoFoodPriceIndex": "FAO खाद्य मूल्य सूचकांक",
+    "faoFoodPriceIndex": "खाद्य कीमतें",
     "fuelPrices": "ईंधन की कीमतें",
     "fuelPricesDesc": "30+ देशों में रिटेल पेट्रोल और डीजल की कीमतें",
     "fuelPricesCountry": "देश",
@@ -1022,7 +1021,12 @@
         "moderate": "मध्यम",
         "permissive": "अनुमेय",
         "undefined": "अपरिभाषित"
-      }
+      },
+      "latestActions": "नवीनतम दर्ज कार्रवाई",
+      "otherDeadlines": "अन्य अनुपालन समय सीमाएं",
+      "daysAgo": "दिन पहले",
+      "revokedCount": "निरस्त किए गए विनियम ({{count}})",
+      "lapsedCount": "समाप्त प्रस्ताव ({{count}})"
     },
     "economic": {
       "indicators": "सूचक",
@@ -1097,7 +1101,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "खनन और रिफाइनरी देश शेयर को एकाग्रता के साथ अपग्रेड करने के लिए PRO में अपग्रेड करें (उत्पादक एकाग्रता सूचकांक) चरण द्वारा।"
+      "productionProLocked": "खनन और रिफाइनरी देश शेयर को एकाग्रता के साथ अपग्रेड करने के लिए PRO में अपग्रेड करें (उत्पादक एकाग्रता सूचकांक) चरण द्वारा।",
+      "partialTransitCoverage": "{{names}} के लिए पारगमन डेटा उपलब्ध नहीं है",
+      "oilPipelinesUnavailable": "तेल पाइपलाइन डेटा उपलब्ध नहीं है",
+      "gasPipelinesUnavailable": "गैस पाइपलाइन डेटा उपलब्ध नहीं है"
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",
@@ -1967,8 +1974,6 @@
       "summaryFailed": "सारांश असफल",
       "sources": "{{count}} स्रोत",
       "relatedAssetsNear": "{{location}} के निकट संबंधित संसाधन",
-      "sourceCoverage": "{{covered}}/{{total}} स्रोत",
-      "sourceCoverageHint": "{{total}} सक्षम स्रोतों में से {{covered}} दिखाए जा रहे हैं — यह पैनल हर रिफ़्रेश पर अपने स्रोत बदलता रहता है",
       "sortBy": "क्रमित करें",
       "sortNewest": "नवीनतम",
       "sortRelevance": "प्रासंगिकता",
@@ -2710,6 +2715,15 @@
             "mcpClients": "MCP सेट करें",
             "channels": "उन्हें नोटिफिकेशन सेटिंग्स में सेट करें"
           }
+        },
+        "about": {
+          "heading": "एक आखिरी बात: आप World Monitor का उपयोग किसके लिए करेंगे?",
+          "body": "तीन तेज़ जवाब हमें आपके लिए सही उपकरण बनाने में मदद करते हैं। जो पसंद हो उन्हें छोड़ दें।",
+          "confirmCta": "मेरे उत्तर सहेजें",
+          "confirming": "सहेजा जा रहा है…",
+          "doneNote": "धन्यवाद, हमारे पास आपके उत्तर हैं।",
+          "summaryLabel": "आपके बारे में",
+          "summaryVerified": "सहेजा गया। धन्यवाद।"
         }
       },
       "status": {
@@ -2907,7 +2921,7 @@
         "babElMandeb": "बाब एल मंडेब",
         "bosphorus": "तुर्की जलडमरूमध्य",
         "panama": "पनामा",
-        "danishStraits": "डेनेस जलडमरूमध्य"
+        "doverStrait": "डोवर जलडमरूमध्य"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
@@ -3072,6 +3086,95 @@
       "rosterSummaryTier1": "{{publishers}} द्वारा रिपोर्ट किया गया, जिनमें {{tier1}} स्तर-1 शामिल हैं",
       "rosterPublishers_one": "{{count}} प्रकाशक",
       "rosterPublishers_other": "{{count}} प्रकाशक"
+    },
+    "foodPrices": {
+      "title": "स्थानीय खाद्य कीमतें",
+      "method": "साप्ताहिक बदलाव उसी उत्पाद, बाज़ार, उत्पत्ति और इकाई की कीमत की तुलना ठीक सात दिन पहले की कीमत से करता है। देशों की खाद्य टोकरी और मुद्राएँ अलग हैं।",
+      "loading": "खाद्य कीमतें लोड हो रही हैं…",
+      "unavailable": "उपलब्ध नहीं",
+      "retry": "फिर कोशिश करें",
+      "country": "देश",
+      "market": "बाज़ार",
+      "retail": "खुदरा",
+      "wholesale": "थोक",
+      "farmgate": "खेत पर मूल्य",
+      "export": "निर्यात",
+      "prices": "खाद्य कीमतें",
+      "product": "उत्पाद",
+      "price": "कीमत / इकाई",
+      "weekly": "साप्ताहिक बदलाव",
+      "origin": "उत्पत्ति",
+      "versus": "की तुलना में",
+      "noBaseline": "पिछला सप्ताह उपलब्ध नहीं",
+      "context": "खाद्य सुरक्षा और मासिक संदर्भ",
+      "contextNote": "ये रिपोर्ट तारीख सहित संदर्भ देती हैं, साप्ताहिक मूल्य बदलाव नहीं। ट्यूनीशिया की रिपोर्ट में कई महीनों की देरी हो सकती है।",
+      "briefCountry": "देश का संक्षिप्त विवरण",
+      "report": "रिपोर्ट की तारीख",
+      "checked": "अंतिम जाँच",
+      "current": "वर्तमान",
+      "partial": "कुछ रिपोर्ट उपलब्ध नहीं हैं या पुरानी हैं",
+      "stale": "पुराने आँकड़े",
+      "global": "एफएओ का वैश्विक मासिक सूचकांक"
+    },
+    "aboutYou": {
+      "title": "World Monitor को आपके लिए बेहतर बनाने में हमारी मदद करें",
+      "ariaLabel": "आपके बारे में",
+      "progress": "{{current}} का {{total}}",
+      "skip": "छोड़ें",
+      "close": "बंद करें",
+      "done": "पूर्ण",
+      "saving": "सहेजा जा रहा है…",
+      "saveFailed": "वह सहेजा नहीं जा सका। फिर से कोशिश करें।",
+      "retry": "पुनः प्रयास करें",
+      "thanks": "धन्यवाद। यह हमें अगला क्या बनाना है यह तय करने में मदद करता है।",
+      "questions": {
+        "primaryUse": {
+          "label": "आप मुख्य रूप से World Monitor का उपयोग किस लिए करते हैं?",
+          "options": {
+            "news": "समाचार और विश्व घटनाएं",
+            "markets": "बाजार और ट्रेडिंग",
+            "commodities": "कमोडिटीज और सप्लाई चेन",
+            "travel": "यात्रा और उड़ानें",
+            "security": "सुरक्षा और OSINT",
+            "research": "अनुसंधान और पत्रकारिता",
+            "api-agent": "API या AI एजेंट के साथ निर्माण",
+            "other": "कुछ और"
+          }
+        },
+        "usageContext": {
+          "label": "क्या आप इसे काम या व्यक्तिगत उपयोग के लिए करते हैं?",
+          "options": {
+            "personal": "व्यक्तिगत",
+            "work": "काम"
+          }
+        },
+        "payer": {
+          "label": "कौन भुगतान करता है, या करेगा?",
+          "options": {
+            "self": "मैं",
+            "employer": "मेरा नियोक्ता या टीम",
+            "not-paying": "अभी कोई नहीं"
+          }
+        },
+        "role": {
+          "label": "आपकी भूमिका को कौन सा विकल्प सर्वोत्तम बताता है?",
+          "options": {
+            "analyst": "विश्लेषक या शोधकर्ता",
+            "trader": "व्यापारी या निवेशक",
+            "journalist": "पत्रकार",
+            "security": "सुरक्षा या जोखिम",
+            "government": "सरकार या नीति",
+            "supply-chain": "सप्लाई चेन या संचालन",
+            "developer": "डेवलपर",
+            "student": "छात्र",
+            "other": "अन्य"
+          }
+        },
+        "alternative": {
+          "label": "अगर World Monitor मौजूद नहीं होता तो आप क्या उपयोग करते?",
+          "placeholder": "वैकल्पिक"
+        }
+      }
     }
   },
   "popups": {
@@ -4178,5 +4281,29 @@
     "reportedClaims": "प्रकाशक की रिपोर्ट। दावों की जाँच अभी जारी हो सकती है।",
     "occurred": "घटना",
     "reported": "प्रकाशित"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "वैश्विक बाजार मानचित्र",
+      "liveNews": "बाजार समाचार",
+      "insights": "AI बाजार अंतर्दृष्टि"
+    },
+    "tech": {
+      "map": "वैश्विक प्रौद्योगिकी मानचित्र",
+      "liveNews": "प्रौद्योगिकी समाचार"
+    },
+    "commodity": {
+      "map": "वस्तु मानचित्र",
+      "liveNews": "वस्तु समाचार",
+      "insights": "AI वस्तु अंतर्दृष्टि"
+    },
+    "energy": {
+      "map": "ऊर्जा एटलस मानचित्र",
+      "liveNews": "ऊर्जा समाचार",
+      "insights": "AI ऊर्जा अंतर्दृष्टि"
+    },
+    "happy": {
+      "map": "सकारात्मक समाचार मानचित्र"
+    }
   }
 }

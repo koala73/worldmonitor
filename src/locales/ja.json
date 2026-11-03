@@ -385,7 +385,6 @@
     "liveNews": "ライブニュース",
     "markets": "市場",
     "map": "グローバル情勢",
-    "techMap": "グローバルテック",
     "techHubs": "注目テックハブ",
     "status": "システム状態",
     "insights": "AIインサイト",
@@ -477,7 +476,7 @@
     "bigmacDesc": "中東各国のビッグマック価格(ビッグマック指数)",
     "bigmacWow": "週間変化率",
     "bigmacCountry": "国",
-    "faoFoodPriceIndex": "FAO 食料価格指数",
+    "faoFoodPriceIndex": "食品価格",
     "fuelPrices": "燃料価格",
     "fuelPricesDesc": "世界 30 か国以上の小売ガソリンおよびディーゼル価格",
     "fuelPricesCountry": "国",
@@ -927,7 +926,12 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>規制</strong> グローバル規制当局からの規制措置、政策変更、執行更新：金融、テクノロジー、エネルギー、貿易当局。ソース：政府および規制機関の公式出版物。"
+      "infoTooltip": "<strong>規制</strong> グローバル規制当局からの規制措置、政策変更、執行更新：金融、テクノロジー、エネルギー、貿易当局。ソース：政府および規制機関の公式出版物。",
+      "latestActions": "最新の記録されたアクション",
+      "otherDeadlines": "その他のコンプライアンス期限",
+      "daysAgo": "日前",
+      "revokedCount": "廃止された規制 ({{count}})",
+      "lapsedCount": "廃案になった提案 ({{count}})"
     },
     "economic": {
       "indicators": "指標",
@@ -993,7 +997,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "PROにアップグレードして、鉱山・精製所の国別シェアおよび段階別の集中度（生産者集中度指数）を確認してください。"
+      "productionProLocked": "PROにアップグレードして、鉱山・精製所の国別シェアおよび段階別の集中度（生産者集中度指数）を確認してください。",
+      "partialTransitCoverage": "通過データが利用できません：{{names}}",
+      "oilPipelinesUnavailable": "石油パイプラインデータが利用不可",
+      "gasPipelinesUnavailable": "ガスパイプラインデータが利用不可"
     },
     "tradePolicy": {
       "tariffs": "関税",
@@ -1821,8 +1828,6 @@
       "summaryFailed": "要約に失敗しました",
       "sources": "{{count}}件のソース",
       "relatedAssetsNear": "{{location}}付近の関連アセット",
-      "sourceCoverage": "{{covered}}/{{total}} ソース",
-      "sourceCoverageHint": "有効な {{total}} 件のソースのうち {{covered}} 件を表示中 — このパネルは更新のたびにソースを入れ替えて取得します",
       "sortBy": "並び替え",
       "sortNewest": "最新",
       "sortRelevance": "関連性",
@@ -2631,6 +2636,15 @@
             "mcpClients": "MCPをセットアップ",
             "channels": "通知設定でセットアップ"
           }
+        },
+        "about": {
+          "heading": "最後に1つ: World Monitor をどのようにご利用いただきますか?",
+          "body": "3つの簡単な質問にお答えいただくと、より適切なツール開発に役立ちます。スキップしても大丈夫です。",
+          "confirmCta": "回答を保存",
+          "confirming": "保存中…",
+          "doneNote": "ご回答ありがとうございました。",
+          "summaryLabel": "ユーザー情報",
+          "summaryVerified": "保存済み。ご協力ありがとうございます。"
         }
       },
       "status": {
@@ -2819,7 +2833,7 @@
         "babElMandeb": "バベルマンデブ",
         "bosphorus": "トルコ海峡",
         "panama": "パナマ",
-        "danishStraits": "デンマーク海峡"
+        "doverStrait": "ドーバー海峡"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
@@ -2983,6 +2997,95 @@
       "rosterSummary": "{{publishers}}が報道",
       "rosterSummaryTier1": "{{publishers}}が報道（うちティア1は{{tier1}}社）",
       "rosterPublishers_other": "{{count}}社の報道機関"
+    },
+    "foodPrices": {
+      "title": "地域の食品価格",
+      "method": "前週比は同じ商品・市場・産地・単位の価格を、ちょうど7日前の価格と比較します。国によって対象品目と通貨が異なります。",
+      "loading": "食品価格を読み込み中…",
+      "unavailable": "利用不可",
+      "retry": "再試行",
+      "country": "国",
+      "market": "市場",
+      "retail": "小売",
+      "wholesale": "卸売",
+      "farmgate": "農家庭先",
+      "export": "輸出",
+      "prices": "食品価格",
+      "product": "商品",
+      "price": "価格 / 単位",
+      "weekly": "前週比",
+      "origin": "産地",
+      "versus": "比較対象",
+      "noBaseline": "前週のデータなし",
+      "context": "食料安全保障と月次の背景情報",
+      "contextNote": "これらの報告は日付付きの背景情報であり、週次の価格変動を示すものではありません。チュニジアの報告は数か月遅れる場合があります。",
+      "briefCountry": "国別概要",
+      "report": "報告日",
+      "checked": "最終確認",
+      "current": "最新",
+      "partial": "一部の報告は未取得または古い情報です",
+      "stale": "古いデータ",
+      "global": "FAO世界月次指数"
+    },
+    "aboutYou": {
+      "title": "World Monitorをあなた向けに改善するお手伝い",
+      "ariaLabel": "あなたについて",
+      "progress": "{{current}}/{{total}}",
+      "skip": "スキップ",
+      "close": "閉じる",
+      "done": "完了",
+      "saving": "保存中…",
+      "saveFailed": "保存できませんでした。もう一度試してください。",
+      "retry": "再試行",
+      "thanks": "ありがとうございます。今後の開発方針の参考にさせていただきます。",
+      "questions": {
+        "primaryUse": {
+          "label": "World Monitorの主な用途は何ですか?",
+          "options": {
+            "news": "ニュースと世界情勢",
+            "markets": "市場とトレーディング",
+            "commodities": "コモディティと サプライチェーン",
+            "travel": "旅行とフライト",
+            "security": "セキュリティとOSINT",
+            "research": "調査とジャーナリズム",
+            "api-agent": "APIまたはAIエージェントでの開発",
+            "other": "その他"
+          }
+        },
+        "usageContext": {
+          "label": "仕事用ですか、それとも個人用ですか?",
+          "options": {
+            "personal": "個人用",
+            "work": "仕事用"
+          }
+        },
+        "payer": {
+          "label": "誰が支払いますか、または支払う予定ですか?",
+          "options": {
+            "self": "自分",
+            "employer": "勤務先またはチーム",
+            "not-paying": "まだ誰も支払っていない"
+          }
+        },
+        "role": {
+          "label": "あなたの職務を最もよく説明するものはどれですか?",
+          "options": {
+            "analyst": "アナリストまたは研究者",
+            "trader": "トレーダーまたは投資家",
+            "journalist": "ジャーナリスト",
+            "security": "セキュリティまたはリスク",
+            "government": "政府または政策",
+            "supply-chain": "サプライチェーンまたは運用",
+            "developer": "開発者",
+            "student": "学生",
+            "other": "その他"
+          }
+        },
+        "alternative": {
+          "label": "World Monitorがなかった場合、何を使いますか?",
+          "placeholder": "オプション"
+        }
+      }
     }
   },
   "popups": {
@@ -4158,5 +4261,29 @@
     "reportedClaims": "発行元の報告です。主張は調査中の場合があります。",
     "occurred": "発生",
     "reported": "公開"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "グローバルマーケットマップ",
+      "liveNews": "マーケットヘッドライン",
+      "insights": "AI マーケットインサイト"
+    },
+    "tech": {
+      "map": "グローバルテックマップ",
+      "liveNews": "テックヘッドライン"
+    },
+    "commodity": {
+      "map": "コモディティマップ",
+      "liveNews": "コモディティヘッドライン",
+      "insights": "AIコモディティインサイト"
+    },
+    "energy": {
+      "map": "エネルギーアトラスマップ",
+      "liveNews": "エネルギーヘッドライン",
+      "insights": "AIエネルギーインサイト"
+    },
+    "happy": {
+      "map": "グッドニュースマップ"
+    }
   }
 }

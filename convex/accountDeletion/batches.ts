@@ -44,6 +44,7 @@ export const PERSONAL_DELETE_TABLES = [
   "checkoutAdmissions",
   "checkoutSessionEvents",
   "followedCountriesUserMeta",
+  "agentFeedback",
   "users",
 ] as const;
 
@@ -94,6 +95,11 @@ async function takePersonalRows(
       return ctx.db
         .query("alertRules")
         .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "agentFeedback":
+      return ctx.db
+        .query("agentFeedback")
+        .withIndex("by_principal", (q) => q.eq("principalId", userId))
         .take(limit);
     case "telegramPairingTokens":
       return ctx.db

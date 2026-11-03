@@ -95,6 +95,7 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 | Mistral Le Chat | `https://callback.mistral.ai/v1/integrations_auth/oauth2_callback` |
 | Devin | `https://api.devin.ai/mcp/oauth/callback`（[Devin MCP 文档](https://docs.devin.ai/work-with-devin/mcp)） |
 | Google Antigravity | `https://antigravity.google/oauth-callback`（[Antigravity MCP 文档](https://antigravity.google/docs/mcp)） |
+| Gemini（Connected Apps 与自定义应用） | `https://oauth-redirect.googleusercontent.com`、`https://oauth-redirect-sandbox.googleusercontent.com` 或 `https://oauth-redirect-test.googleusercontent.com` 上 `/r/` 或 `/a/` 下的任意路径，其余路径由 Google 为每个应用或用户生成；不允许查询参数、片段、端口或百分号编码（[Google OAuth 指南](https://developers.google.com/connected-apps/mcp/oauth)） |
 | Vercel Connect | `https://connect.vercel.com/callback`（[Vercel Connect 提供方文档](https://vercel.com/docs/connect/providers)） |
 | Glama | `https://glama.ai/api/app/mcp/oauth/callback`（连接器与测试配置）、`https://glama.ai/mcp/inspector/oauth/callback`（[Glama MCP Inspector](https://glama.ai/mcp/inspector)） |
 | Make.com | `https://www.make.com/oauth/cb/mcp`（[Make MCP 客户端](https://apps.make.com/mcp-client)） |
@@ -108,7 +109,7 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/callback`（[客户端元数据](https://www.skydive.com/api/v1/external-oauth/client-metadata)） |
 | MCPJam | `https://app.mcpjam.com/oauth/callback`、`https://score.mcpjam.com/oauth/callback`（[客户端元数据](https://www.mcpjam.com/.well-known/oauth/client-metadata.json)） |
 
-Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose、Zed 与 MCP Inspector 使用本地回环形式。Notion、Linear、Lovable、Factory、Conductor、Skydive 与 MCPJam 优先使用客户端 ID 元数据文档（CIMD），现已可通过 CIMD 连接（受信任的文档 URL 列表见[英文版](/mcp-overview#client-id-metadata-documents)）；它们的回调仍保留在列表中，供仍使用注册的客户端使用。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。回调地址按用户或租户生成的客户端（例如 Gemini 自定义应用与 Microsoft Copilot Studio）无法精确匹配，暂不支持。
+Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose、Zed 与 MCP Inspector 使用本地回环形式。Notion、Linear、Lovable、Factory、Conductor、Skydive 与 MCPJam 优先使用客户端 ID 元数据文档（CIMD），现已可通过 CIMD 连接（受信任的文档 URL 列表见[英文版](/mcp-overview#client-id-metadata-documents)）；它们的回调仍保留在列表中，供仍使用注册的客户端使用。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。Gemini 是唯一的前缀匹配，限于 Google 公布的六个前缀。其他按用户或租户生成回调地址的客户端（例如 Microsoft Copilot Studio）无法精确匹配，暂不支持。
 
 授权响应携带 `iss`（[RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)），其值为发起流程的主机的 `issuer`。ChatGPT 需要该参数才会使用其固定回调地址。
 

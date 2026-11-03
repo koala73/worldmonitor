@@ -4326,6 +4326,13 @@ export class App {
         if (iranEvents) this.state.intelligenceCache.iranEvents = iranEvents;
         return this.dataLoader.loadIntelligenceSignals();
       }, REFRESH_INTERVALS.intelligence, () => this.shouldRefreshIntelligence());
+    } else {
+      // Other variants have no intelligence refresh, so Internet Disruptions
+      // gets its own. Drop the cached outages so loadOutages refetches.
+      this.refreshScheduler.scheduleRefresh('internet-disruptions', () => {
+        delete this.state.intelligenceCache.outages;
+        return this.dataLoader.loadOutages();
+      }, REFRESH_INTERVALS.intelligence, () => this.isPanelNearViewport('internet-disruptions'));
     }
 
     // Correlation engine refresh

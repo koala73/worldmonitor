@@ -387,7 +387,6 @@
     "liveNews": "Canli Haberler",
     "markets": "Piyasalar",
     "map": "Kuresel Durum",
-    "techMap": "Kuresel Teknoloji",
     "techHubs": "Populer Teknoloji Merkezleri",
     "status": "Sistem Durumu",
     "insights": "Yapay Zeka Analizleri",
@@ -479,7 +478,7 @@
     "bigmacDesc": "Orta Doğu ülkelerinde Big Mac fiyatları (Big Mac Endeksi)",
     "bigmacWow": "Haftadan haftaya",
     "bigmacCountry": "Ülke",
-    "faoFoodPriceIndex": "FAO Gıda Fiyat Endeksi",
+    "faoFoodPriceIndex": "Gıda fiyatları",
     "fuelPrices": "Yakıt Fiyatları",
     "fuelPricesDesc": "Dünya çapında 30+ ülkede perakende benzin ve dizel fiyatları",
     "fuelPricesCountry": "Ülke",
@@ -930,7 +929,12 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Düzenleme</strong> Küresel düzenleyicilerden düzenleyici eylemler, politika değişiklikleri ve uygulama güncellemeleri: finans, teknoloji, enerji ve ticaret otoriteleri. Kaynak: resmi hükümet ve düzenleyici kurum yayınları."
+      "infoTooltip": "<strong>Düzenleme</strong> Küresel düzenleyicilerden düzenleyici eylemler, politika değişiklikleri ve uygulama güncellemeleri: finans, teknoloji, enerji ve ticaret otoriteleri. Kaynak: resmi hükümet ve düzenleyici kurum yayınları.",
+      "latestActions": "En Son Kaydedilen İşlemler",
+      "otherDeadlines": "Diğer Uyum Tarihleri",
+      "daysAgo": "gün önce",
+      "revokedCount": "İptal Edilen Düzenlemeler ({{count}})",
+      "lapsedCount": "Süresi Dolan Teklifler ({{count}})"
     },
     "economic": {
       "indicators": "Gostergeler",
@@ -996,7 +1000,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Madencilik ve rafineri ülke payları için (üretici yoğunlaşma endeksi) aşama bazında yoğunlaşma ile PRO sürümüne yükseltin."
+      "productionProLocked": "Madencilik ve rafineri ülke payları için (üretici yoğunlaşma endeksi) aşama bazında yoğunlaşma ile PRO sürümüne yükseltin.",
+      "partialTransitCoverage": "{{names}} transit verileri kullanılamıyor",
+      "oilPipelinesUnavailable": "Petrol boru hattı verileri kullanılamıyor",
+      "gasPipelinesUnavailable": "Gaz boru hattı verileri kullanılamıyor"
     },
     "tradePolicy": {
       "tariffs": "Gümrük Tarifeleri",
@@ -1825,8 +1832,6 @@
       "summaryFailed": "Özet başarısız",
       "sources": "{{count}} kaynak",
       "relatedAssetsNear": "{{location}} yakinindaki ilgili varliklar",
-      "sourceCoverage": "{{covered}}/{{total}} kaynak",
-      "sourceCoverageHint": "Etkin {{total}} kaynaktan {{covered}} tanesi gösteriliyor — bu panel her yenilemede kaynaklarını sırayla çekiyor",
       "sortBy": "Sırala",
       "sortNewest": "En Yeni",
       "sortRelevance": "İlgili",
@@ -2641,6 +2646,15 @@
             "mcpClients": "MCP'yi kurun",
             "channels": "Bunları bildirim ayarlarından yapılandırın"
           }
+        },
+        "about": {
+          "heading": "Son bir şey: World Monitor'ü ne için kullanacaksınız?",
+          "body": "Üç hızlı cevap, sizin için doğru araçları geliştirmemize yardımcı olur. İstediğiniz soruları atlayabilirsiniz.",
+          "confirmCta": "Cevaplarımı kaydet",
+          "confirming": "Kaydediliyor…",
+          "doneNote": "Teşekkürler, cevaplarınız alındı.",
+          "summaryLabel": "Hakkında",
+          "summaryVerified": "Kaydedildi. Teşekkür ederiz."
         }
       },
       "status": {
@@ -2838,7 +2852,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Türk Boğazları",
         "panama": "Panama",
-        "danishStraits": "Dans Boğazları"
+        "doverStrait": "Dover Boğazı"
       },
       "flow": {
         "mbd": "{{value}} bin b/g",
@@ -3003,6 +3017,95 @@
       "rosterSummaryTier1": "{{publishers}} tarafından bildirildi; bunların {{tier1}} tanesi seviye 1",
       "rosterPublishers_one": "{{count}} yayıncı",
       "rosterPublishers_other": "{{count}} yayıncı"
+    },
+    "foodPrices": {
+      "title": "Yerel gıda fiyatları",
+      "method": "Haftalık değişim aynı ürün, pazar, menşe ve birimin fiyatını tam yedi gün önceki fiyatla karşılaştırır. Ülkeler farklı sepetler ve para birimleri kullanır.",
+      "loading": "Gıda fiyatları yükleniyor…",
+      "unavailable": "Kullanılamıyor",
+      "retry": "Yeniden dene",
+      "country": "Ülke",
+      "market": "Pazar",
+      "retail": "Perakende",
+      "wholesale": "Toptan",
+      "farmgate": "Çiftlik kapısı",
+      "export": "İhracat",
+      "prices": "Gıda fiyatları",
+      "product": "Ürün",
+      "price": "Fiyat / birim",
+      "weekly": "Haftalık değişim",
+      "origin": "Menşe",
+      "versus": "ile karşılaştırma",
+      "noBaseline": "Önceki hafta verisi yok",
+      "context": "Gıda güvenliği ve aylık bağlam",
+      "contextNote": "Bu raporlar tarihli bağlam sunar, haftalık fiyat değişimleri sunmaz. Tunus raporları birkaç ay gecikebilir.",
+      "briefCountry": "Ülke raporu",
+      "report": "Rapor tarihi",
+      "checked": "Son kontrol",
+      "current": "Güncel",
+      "partial": "Bazı raporlar eksik veya eski",
+      "stale": "Eski veriler",
+      "global": "FAO küresel aylık endeksi"
+    },
+    "aboutYou": {
+      "title": "World Monitor'ı sizin için geliştirmemize yardımcı olun",
+      "ariaLabel": "Sizin hakkınızda",
+      "progress": "{{current}} / {{total}}",
+      "skip": "Atla",
+      "close": "Kapat",
+      "done": "Bitti",
+      "saving": "Kaydediliyor…",
+      "saveFailed": "Kaydedilemedi. Lütfen tekrar deneyin.",
+      "retry": "Tekrar Dene",
+      "thanks": "Teşekkürler. Bu, neyi sonra geliştireceğimize karar vermemize yardımcı oluyor.",
+      "questions": {
+        "primaryUse": {
+          "label": "World Monitor'ı esas olarak ne için kullanıyorsunuz?",
+          "options": {
+            "news": "Haberler ve dünya olayları",
+            "markets": "Piyasalar ve ticaret",
+            "commodities": "Emtialar ve tedarik zinciri",
+            "travel": "Seyahat ve uçuşlar",
+            "security": "Güvenlik ve OSINT",
+            "research": "Araştırma ve gazetecilik",
+            "api-agent": "API veya AI ajanı ile geliştirme",
+            "other": "Başka bir şey"
+          }
+        },
+        "usageContext": {
+          "label": "Bunu iş için mi kişisel kullanım için mi kullanıyorsunuz?",
+          "options": {
+            "personal": "Kişisel",
+            "work": "İş"
+          }
+        },
+        "payer": {
+          "label": "Kimse ödedi veya ödeyecek?",
+          "options": {
+            "self": "Ben",
+            "employer": "İşverenim veya ekibim",
+            "not-paying": "Henüz kimse yok"
+          }
+        },
+        "role": {
+          "label": "Rolünüzü en iyi hangi seçenek açıklıyor?",
+          "options": {
+            "analyst": "Analist veya araştırmacı",
+            "trader": "Tüccar veya yatırımcı",
+            "journalist": "Gazeteci",
+            "security": "Güvenlik veya risk",
+            "government": "Hükümet veya politika",
+            "supply-chain": "Tedarik zinciri veya operasyon",
+            "developer": "Geliştirici",
+            "student": "Öğrenci",
+            "other": "Diğer"
+          }
+        },
+        "alternative": {
+          "label": "World Monitor olmasaydı ne kullanırdınız?",
+          "placeholder": "İsteğe bağlı"
+        }
+      }
     }
   },
   "popups": {
@@ -4178,5 +4281,29 @@
     "reportedClaims": "Yayıncı raporları. İddialar hâlâ araştırılıyor olabilir.",
     "occurred": "Olay",
     "reported": "Yayımlandı"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Küresel Piyasalar Haritası",
+      "liveNews": "Piyasa Başlıkları",
+      "insights": "Yapay Zeka Piyasa İçgörüleri"
+    },
+    "tech": {
+      "map": "Küresel Teknoloji Haritası",
+      "liveNews": "Teknoloji Başlıkları"
+    },
+    "commodity": {
+      "map": "Emtia Haritası",
+      "liveNews": "Emtia Başlıkları",
+      "insights": "Yapay Zeka Emtia İçgörüleri"
+    },
+    "energy": {
+      "map": "Enerji Atlas Haritası",
+      "liveNews": "Enerji Başlıkları",
+      "insights": "Yapay Zeka Enerji İçgörüleri"
+    },
+    "happy": {
+      "map": "İyi Haberler Haritası"
+    }
   }
 }

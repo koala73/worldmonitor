@@ -212,6 +212,7 @@ describe("Gap 3 — malformed keys are rejected without amplification", () => {
     ["40 UPPERCASE hex", `wm_${"A1B2C3D4E5".repeat(4)}`],
     ["40 non-hex chars", `wm_${"z".repeat(40)}`],
     ["prefix only", "wm_"],
+    ["wrong prefix with valid-length hex", `xx_${"a".repeat(40)}`],
     ["trailing whitespace", `wm_${"a".repeat(40)} `],
     ["leading whitespace", ` wm_${"a".repeat(40)}`],
     ["embedded newline", `wm_${"a".repeat(40)}\n`],

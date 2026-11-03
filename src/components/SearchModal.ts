@@ -1,6 +1,7 @@
 import { escapeHtml } from '@/utils/sanitize';
 import { debounce } from '@/utils';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
@@ -51,10 +52,6 @@ const CATEGORY_KEYS: Record<string, string> = {
   country: 'commands.categories.country',
 };
 
-function kebabToCamel(s: string): string {
-  return s.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-}
-
 function resolveCommandLabel(cmd: Command): string {
   const colonIdx = cmd.id.indexOf(':');
   if (colonIdx === -1) return cmd.label;
@@ -71,7 +68,7 @@ function resolveCommandLabel(cmd: Command): string {
       const panelId = panelCommandTargetId(cmd.id) ?? action;
       const panelName = action.includes('@')
         ? fallback
-        : t('panels.' + kebabToCamel(panelId), { defaultValue: fallback });
+        : getPanelDisplayName(panelId, fallback);
       return `${t('commands.prefixes.panel')}: ${panelName}`;
     }
     case 'country':

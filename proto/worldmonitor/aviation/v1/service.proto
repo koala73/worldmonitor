@@ -27,7 +27,7 @@ service AviationService {
     option (sebuf.http.config) = {path: "/list-aircraft-emergencies", method: HTTP_METHOD_GET};
   }
 
-  // ListAirportDelays retrieves current airport delay alerts.
+  // ListAirportDelays returns delay status for each monitored airport from seeded FAA and AviationStack data plus NOTAM closures, marking unreported hubs unknown.
   rpc ListAirportDelays(ListAirportDelaysRequest) returns (ListAirportDelaysResponse) {
     option (sebuf.http.config) = {
       path: "/list-airport-delays"
@@ -91,7 +91,7 @@ service AviationService {
     };
   }
 
-  // ListAviationNews retrieves filtered aviation news articles.
+  // ListAviationNews returns articles from nine aviation RSS feeds such as FlightGlobal and Aviation Week, filtered by up to 10 entities over a 1-168 hour window.
   rpc ListAviationNews(ListAviationNewsRequest) returns (ListAviationNewsResponse) {
     option (sebuf.http.config) = {
       path: "/list-aviation-news"
@@ -104,7 +104,7 @@ service AviationService {
     option (sebuf.http.config) = {path: "/search-google-flights", method: HTTP_METHOD_GET};
   }
 
-  // SearchGoogleDates finds the cheapest travel dates across a flexible date range via Google Flights.
+  // SearchGoogleDates returns the cheapest Google Flights fare per departure date over up to 31 days, one-way or round trip, with cabin and stop filters.
   rpc SearchGoogleDates(SearchGoogleDatesRequest) returns (SearchGoogleDatesResponse) {
     option (sebuf.http.config) = {path: "/search-google-dates", method: HTTP_METHOD_GET};
   }

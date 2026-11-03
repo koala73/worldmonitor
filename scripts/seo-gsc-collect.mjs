@@ -58,7 +58,7 @@
 
 import { createSign } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -116,8 +116,17 @@ const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
  * source compiled as a case-insensitive JavaScript RegExp, so the two can
  * never drift. It uses only syntax the two engines share.
  */
-export const BRAND_QUERY_PATTERN = '(world|word|wolrd|wrold)[ ._-]*monitor|ワールドモニター';
-const BRAND_QUERY_REGEX = new RegExp(BRAND_QUERY_PATTERN, 'i');
+/**
+ * The second alternative takes the misspellings Bing reported on 2026-11-02
+ * (moniter, montior, monitar, monotor, moniteur and so on). A vowel cluster or
+ * "in"/"ti" sits on at least one side of the `t`, which keeps "monetary" and
+ * "montreal" out, and requiring a non-letter (any script) or the end after it
+ * keeps "monterrey" and "montería" out while still accepting `_`, `.` and spaces.
+ * The first alternative stays unbounded so every query it matched before
+ * (worldmonitorapp, world monitoring) is still brand.
+ */
+export const BRAND_QUERY_PATTERN = '(world|word|wolrd|wrold)[ ._-]*monitor|(world|word|wolrd|wrold|worl|wold|wordl)[ ._-]*mon((i|o|a|in|ti)t(o|e|i|a|io|oe|eu|p)?|t(o|e|i|a|io|oe|eu|p))r(o|s|ing)?(app)?(\\P{L}|$)|ワールドモニター';
+const BRAND_QUERY_REGEX = new RegExp(BRAND_QUERY_PATTERN, 'iu');
 export const isBrandQuery = (query) => BRAND_QUERY_REGEX.test(String(query ?? ''));
 const BRAND_FILTER_EXPRESSION = `(?i)${BRAND_QUERY_PATTERN}`;
 const queryFilter = (operator) => ({
@@ -1136,84 +1145,6 @@ export function deriveWindows(observedAt) {
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Coverage totals recorded by hand
-// ---------------------------------------------------------------------------
-
-/**
- * The Page indexing report totals have no API, so an operator copies them from
- * the Search Console UI into `coverage-totals.json` once a month (#8700). The
- * weekly summary carries the whole series and says when the next reading is
- * due, so a skipped month shows up in the review PR instead of in a gap
- * nobody notices. This is a time series, unlike `reportedTotals`, which checks
- * one export's row cap.
- */
-const COVERAGE_LEDGER_FILE = 'coverage-totals.json';
-const COVERAGE_LEDGER_DIR = 'docs/research/seo-ai-visibility/gsc';
-const COVERAGE_READING_MAX_AGE_DAYS = 35;
-const COVERAGE_COUNT_FIELDS = Object.freeze([
-  'declaredUrls',
-  'pageWithRedirect',
-  'notFound404',
-  'crawledNotIndexed',
-]);
-
-export function parseCoverageLedger(text) {
-  let ledger;
-  try {
-    ledger = JSON.parse(text);
-  } catch (error) {
-    throw new Error(`[seo-gsc] coverage ledger is not valid JSON: ${error.message}`);
-  }
-  const readings = ledger?.readings;
-  invariant(Array.isArray(readings), 'coverage ledger: readings must be an array');
-  let previous = '';
-  return readings.map((raw, index) => {
-    const where = `coverage ledger reading ${index}`;
-    invariant(raw !== null && typeof raw === 'object', `${where}: must be an object`);
-    const { exportedOn, source } = raw;
-    invariant(
-      typeof exportedOn === 'string'
-        && /^\d{4}-\d{2}-\d{2}$/.test(exportedOn)
-        && new Date(`${exportedOn}T00:00:00Z`).toISOString().startsWith(exportedOn),
-      `${where}: exportedOn must be a real YYYY-MM-DD date`,
-    );
-    invariant(exportedOn > previous, `${where}: exportedOn must be strictly ascending`);
-    previous = exportedOn;
-    const reading = { exportedOn };
-    for (const field of COVERAGE_COUNT_FIELDS) {
-      invariant(
-        Number.isInteger(raw[field]) && raw[field] >= 0,
-        `${where}: ${field} must be a non-negative integer`,
-      );
-      reading[field] = raw[field];
-    }
-    invariant(
-      typeof source === 'string' && source.startsWith('https://'),
-      `${where}: source must be an https URL to where the reading was published`,
-    );
-    reading.source = source;
-    return reading;
-  });
-}
-
-function summarizeCoverageTotals(readings, observedAt) {
-  const latest = readings.at(-1) ?? null;
-  const latestAgeDays = latest
-    ? Math.floor((Date.parse(observedAt) - Date.parse(`${latest.exportedOn}T00:00:00Z`)) / 86_400_000)
-    : null;
-  invariant(
-    latestAgeDays === null || latestAgeDays >= 0,
-    `coverage ledger: reading ${latest?.exportedOn} is later than the snapshot date`,
-  );
-  return {
-    readings,
-    maxAgeDays: COVERAGE_READING_MAX_AGE_DAYS,
-    latestAgeDays,
-    overdue: latestAgeDays === null || latestAgeDays > COVERAGE_READING_MAX_AGE_DAYS,
-  };
-}
-
 function repositoryRevision() {
   try {
     return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
@@ -1239,15 +1170,10 @@ export async function collectGscSnapshot({
   concurrency = DEFAULT_CONCURRENCY,
   propertyKind = null,
   reportedTotals = {},
-  coverageReadings = [],
   revision = repositoryRevision(),
 }) {
   const inventory = buildInventory(documents);
   invariant(inventory.urls.length > 0, 'the sitemap inventory is empty');
-  // Before any API call: a bad ledger found after inspection would burn the
-  // day's quota and leave no snapshot to show for it.
-  const coverageTotals = summarizeCoverageTotals(coverageReadings, observedAt);
-
   // Search Analytics first: it is cheap, and an auth or permission failure
   // there must stop the run before any of the daily inspection quota is spent.
   const performanceRaw = await collectPerformance(transport, windows);
@@ -1448,7 +1374,6 @@ export async function collectGscSnapshot({
       ),
     },
     performance,
-    coverageTotals,
     samplingNotes,
     guardrails: [
       'Shares are measured over inspected rows. No sampled share is projected onto a reported total.',
@@ -1756,26 +1681,6 @@ export function renderGscMarkdown(snapshot) {
     lines.push('');
   }
 
-  const coverage = snapshot.coverageTotals;
-  lines.push('## Coverage totals (recorded by hand)');
-  lines.push('');
-  lines.push(`The Search Console Page indexing report has no API, so its totals are copied into \`${COVERAGE_LEDGER_FILE}\` by hand each month.`);
-  lines.push('');
-  if (coverage.overdue) {
-    lines.push(coverage.latestAgeDays === null
-      ? '**Overdue: no reading is recorded.** Add one before the next weekly run.'
-      : `**Overdue: the latest reading is ${coverage.latestAgeDays} days old** (limit ${coverage.maxAgeDays}). Add this month's reading.`);
-    lines.push('');
-  }
-  if (coverage.readings.length > 0) {
-    lines.push('| Exported | Declared URLs | Page with redirect | Not found (404) | Crawled, currently not indexed | Source |');
-    lines.push('|---|---:|---:|---:|---:|---|');
-    for (const row of coverage.readings) {
-      lines.push(`| ${row.exportedOn} | ${row.declaredUrls} | ${row.pageWithRedirect} | ${row.notFound404} | ${row.crawledNotIndexed} | ${markdownCell(row.source)} |`);
-    }
-    lines.push('');
-  }
-
   lines.push('## Sampling');
   lines.push('');
   if (snapshot.samplingNotes.length === 0) {
@@ -1796,38 +1701,84 @@ export function renderGscMarkdown(snapshot) {
  *
  * The scorecard stays the single report. This is the feed into it, not a
  * parallel one.
+ *
+ * - Window totals are the by-property `siteTotals.all`, the site aggregate the
+ *   performance chart shows. The page-row sum counts one search once per URL
+ *   it shows, so it is never passed off as a site total; without by-property
+ *   totals the window metrics are null.
+ * - Page-family rows are page-grouped sums, which is what a family can mean.
+ *   A family with no page row in a truncated window is unmeasured, not zero,
+ *   so it gets no row there.
+ * - Query rows exist only for reviewed queries, matched on exact text, among
+ *   the top queries the snapshot lists per window. Pass `querySet` to get them.
+ *
+ * `reason` is always set, because the collector downgrades a window without
+ * full query and family coverage to partial and must say why.
  */
-export function toScorecardSearchExport(snapshot) {
+export function toScorecardSearchExport(snapshot, { querySet = null } = {}) {
+  const { performance } = snapshot;
+  if (performance.status === 'unavailable') {
+    return {
+      status: 'unavailable',
+      reason: `Search Console performance was not collected: ${performance.reason}`,
+    };
+  }
   // The scorecard's indexedPages means HTML pages in the declared inventory.
   // The site total is only that number when every declared URL returned an
   // index status; a family row is exact when its own URLs all did. Anything
   // else is an absence of a measurement, so null.
   const { htmlPages, sample } = snapshot.indexation;
   const complete = sample.complete === true;
-  return {
-    status: snapshot.performance.status === 'available' ? 'available' : 'partial',
-    reason: snapshot.performance.status === 'available'
-      ? null
-      : 'Search Console performance rows are capped or truncated for at least one window.',
-    windows: snapshot.performance.windows.map((window) => ({
+  const reviewed = new Set((querySet?.queries ?? []).map((query) => query.query));
+  const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
+  const notes = [
+    'Window totals are Search Console by-property site totals. Page-family rows sum page-grouped rows, where one search counts once per URL it shows, so they are not shares of the site total.',
+    `Query rows exist only for reviewed queries that appear with exact text among the top ${MAX_TOP_QUERIES} queries the snapshot lists per window; a reviewed query outside that list has no row, which is not a zero.`,
+    complete
+      ? `indexedPages counts sitemap-declared HTML URLs that URL Inspection reported indexed when the snapshot ran (${snapshot.observedAt.slice(0, 10)}); the same count stands in both windows.`
+      : sentence(`indexedPages is null: the URL Inspection sample is not a complete count of the ${sample.declared} declared URLs (${snapshot.indexation.reason ?? 'no reason recorded'})`),
+  ];
+  const windows = performance.windows.map((window) => {
+    // `all` is null only when the by-property view itself failed. A failed
+    // brand or non-brand split makes siteTotals partial but leaves it valid.
+    const site = window.siteTotals?.all ?? null;
+    if (!site) notes.push(`${window.label}: no by-property site totals, so the window metrics are null (${window.siteTotals?.reason ?? 'not collected'}).`);
+    const truncated = window.status !== 'available';
+    if (truncated) notes.push(`${sentence(`${window.label}: ${window.reason}`)} Families with no page row in this window get no row.`);
+    return {
       label: window.label,
       startDate: window.startDate,
       endDate: window.endDate,
-      clicks: window.totals.clicks,
-      impressions: window.totals.impressions,
-      ctr: window.totals.ctr,
-      position: window.totals.averagePosition,
+      clicks: site ? site.clicks : null,
+      impressions: site ? site.impressions : null,
+      ctr: site ? site.ctr : null,
+      position: site ? site.averagePosition : null,
       indexedPages: complete ? htmlPages.indexed : null,
-      pageFamilyRows: Object.entries(window.byFamily).map(([pageFamily, metrics]) => ({
-        pageFamily,
-        clicks: metrics.clicks,
-        impressions: metrics.impressions,
-        ctr: metrics.ctr,
-        position: metrics.averagePosition,
-        indexedPages: htmlPages.indexedByFamily[pageFamily] ?? null,
-      })),
-      queryRows: [],
-    })),
+      pageFamilyRows: Object.entries(window.byFamily)
+        .filter(([, metrics]) => !truncated || metrics.urls > 0)
+        .map(([pageFamily, metrics]) => ({
+          pageFamily,
+          clicks: metrics.clicks,
+          impressions: metrics.impressions,
+          ctr: metrics.ctr,
+          position: metrics.averagePosition,
+          indexedPages: htmlPages.indexedByFamily[pageFamily] ?? null,
+        })),
+      queryRows: window.topQueries
+        .filter((row) => reviewed.has(row.query))
+        .map((row) => ({
+          query: row.query,
+          clicks: row.clicks,
+          impressions: row.impressions,
+          ctr: row.impressions > 0 ? roundTo(row.clicks / row.impressions, 4) : null,
+          position: finite(row.position),
+        })),
+    };
+  });
+  return {
+    status: performance.status === 'available' ? 'available' : 'partial',
+    reason: notes.join(' '),
+    windows,
   };
 }
 
@@ -1934,12 +1885,6 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     observedAt = new Date(now()).toISOString();
   }
 
-  // A live run must find the committed ledger; a fixture set may omit it.
-  const ledgerPath = resolve(REPO_ROOT, options.fixtures ?? COVERAGE_LEDGER_DIR, COVERAGE_LEDGER_FILE);
-  const coverageReadings = options.fixtures && !existsSync(ledgerPath)
-    ? []
-    : parseCoverageLedger(readFileSync(ledgerPath, 'utf8'));
-
   const windows = deriveWindows(observedAt);
   const snapshot = await collectGscSnapshot({
     transport,
@@ -1950,7 +1895,6 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     concurrency: options.concurrency,
     propertyKind,
     reportedTotals,
-    coverageReadings,
   });
 
   const date = options.date ?? observedAt.slice(0, 10);
@@ -1992,4 +1936,4 @@ if (isMainModule(import.meta.url, process.argv[1])) {
   });
 }
 
-export { QuotaExhaustedError, DEFAULT_SAMPLE_CAP, isCrawledNotIndexed };
+export { QuotaExhaustedError, DEFAULT_SAMPLE_CAP, isCrawledNotIndexed, markdownCell, number, percent };

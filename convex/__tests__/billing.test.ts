@@ -16,14 +16,18 @@ import { signAnonClaimToken, signUserId } from "../lib/identitySigning";
 
 // Control provider retrieval and portal responses without network access.
 // The billing actions, queries and storage still run through production code.
-const { dodoRetrieveMock, dodoPortalMock } = vi.hoisted(() => ({
+const { dodoRetrieveMock, dodoPortalMock, dodoSubscriptionRetrieveMock, dodoClientOptions } = vi.hoisted(() => ({
   dodoRetrieveMock: vi.fn(),
   dodoPortalMock: vi.fn(),
+  dodoSubscriptionRetrieveMock: vi.fn(),
+  dodoClientOptions: [] as Array<Record<string, unknown>>,
 }));
 vi.mock("dodopayments", () => ({
   DodoPayments: class {
     payments = { retrieve: dodoRetrieveMock };
     customers = { customerPortal: { create: dodoPortalMock } };
+    subscriptions = { retrieve: dodoSubscriptionRetrieveMock };
+    constructor(options: Record<string, unknown>) { dodoClientOptions.push(options); }
   },
 }));
 
@@ -42,6 +46,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   dodoRetrieveMock.mockReset();
   dodoPortalMock.mockReset();
+  dodoSubscriptionRetrieveMock.mockReset();
+  dodoClientOptions.length = 0;
   vi.useRealTimers();
   delete process.env.DODO_IDENTITY_SIGNING_SECRET;
   delete process.env.DODO_ANON_CLAIM_TOKEN_TTL_MS;
@@ -1082,6 +1088,38 @@ async function seedPaymentEvent(
 }
 
 describe("payments pending-payment dedup guard", () => {
+  test.each([-1, 0, 1])("pending-payment window excludes its exact 15-minute boundary (offset %i ms)", async (offset) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    expect(PENDING_PAYMENT_BLOCK_WINDOW_MS).toBe(15 * 60 * 1000);
+    const t = convexTest(schema, modules);
+    const occurredAt = NOW - 15 * 60 * 1000 + offset;
+    await seedPaymentEvent(t, {
+      status: "requires_customer_action", planKey: "pro_monthly", occurredAt,
+      suffix: `boundary_${offset}`,
+    });
+    const result = await t.query(internal.payments.billing.getBlockingPendingPayment, {
+      userId: TEST_USER_ID, productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+    });
+    if (offset > 0) expect(result).toMatchObject({ planKey: "pro_monthly", occurredAt });
+    else expect(result).toBeNull();
+  });
+
+  test.each([-1, 0, 1])("cancelled subscription stops blocking at its exact paid-through boundary (offset %i ms)", async (offset) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly", dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "cancelled", currentPeriodEnd: NOW + offset, suffix: `cancel_boundary_${offset}`,
+    });
+    const result = await t.query(internal.payments.billing.getCheckoutBlockingSubscription, {
+      userId: TEST_USER_ID, productId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+    });
+    if (offset > 0) expect(result).toMatchObject({ status: "cancelled", currentPeriodEnd: NOW + offset });
+    else expect(result).toBeNull();
+  });
+
   test("does not block when the user has no pending payments", async () => {
     const t = convexTest(schema, modules);
 
@@ -1909,6 +1947,9 @@ describe("payments stuck-pending reconciliation", () => {
     // what makes a post-send failure NON-re-emailing on the next run.
     expect(markerExistedAtEmailTime).toBe(true);
     expect(summary).toMatchObject({ candidates: 1, customerNotified: 1 });
+    expect(dodoRetrieveMock).toHaveBeenCalledExactlyOnceWith("pay_action_order", {
+      timeout: 10_000, maxRetries: 1,
+    });
 
     const marker = await t.run(async (ctx) =>
       ctx.db
@@ -4322,6 +4363,33 @@ describe("payments billing missed renewal reconciliation", () => {
   });
 
   describe("on-demand renewal verification", () => {
+    test.each(["on-demand", "scheduled"])("%s renewal lookup constructs the real client seam with bounded retries and timeout", async (mode) => {
+      process.env.DODO_API_KEY = "test_dodo_client_contract";
+      const t = convexTest(schema, modules);
+      await seedStaleActiveForReconcile(t, { suffix: "client_contract" });
+      const renewedEnd = NOW + 30 * DAY_MS;
+      dodoSubscriptionRetrieveMock.mockResolvedValue({
+        subscription_id: "sub_client_contract", product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        status: "active", previous_billing_date: new Date(NOW).toISOString(),
+        next_billing_date: new Date(renewedEnd).toISOString(),
+      });
+      if (mode === "on-demand") {
+        expect(await t.action(internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand, {
+          userId: TEST_USER_ID, now: NOW,
+        })).toEqual({ status: "active" });
+      } else {
+        const summary = await t.action(internal.payments.billing.reconcileMissedDodoRenewals, { now: NOW });
+        expect(summary.reconciled).toBe(1);
+      }
+      expect(dodoSubscriptionRetrieveMock).toHaveBeenCalledExactlyOnceWith("sub_client_contract");
+      expect(dodoClientOptions).toHaveLength(1);
+      expect(dodoClientOptions[0]).toMatchObject({
+        bearerToken: "test_dodo_client_contract", maxRetries: 0,
+        timeout: mode === "on-demand" ? 2_000 : 10_000,
+      });
+      expect((await readSub(t, "client_contract"))?.currentPeriodEnd).toBe(renewedEnd);
+    });
+
     test("restores premium access immediately when Dodo reports a future active period", async () => {
       const t = convexTest(schema, modules);
       const renewedEnd = NOW + 30 * DAY_MS;

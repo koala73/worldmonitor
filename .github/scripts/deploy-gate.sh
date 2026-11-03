@@ -312,6 +312,7 @@ discover() {
           pullRequests(first: 100, states: [OPEN], after: $endCursor) {
             nodes {
               headRefOid
+              author { login }
               commits(last: 1) {
                 nodes {
                   commit {
@@ -354,13 +355,24 @@ discover() {
       select(.commits.nodes[0].commit.status.context == null) |
       .headRefOid
     ')
+    # GitHub never fires workflow_run for a run whose actor is the Actions
+    # token, so a PR a scheduled workflow opens with github.token gets no
+    # event-driven gate at all and stays blocked until a human pushes (#10007).
+    # The sweep is the only writer such a head has: evaluate it directly. Its
+    # first status (usually pending) then moves it onto the 24-hour retry path.
+    unchained_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
+      .[].data.repository.pullRequests.nodes[] |
+      select(.commits.nodes[0].commit.status.context == null and .author.login == "github-actions") |
+      .headRefOid
+    ')
 
-    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg retry "$retry_shas" --arg missing "$missing_shas" --arg deferred "$deferred_shas" '
+    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg retry "$retry_shas" --arg missing "$missing_shas" --arg unchained "$unchained_shas" --arg deferred "$deferred_shas" '
       def shas: split("\n") | map(select(length > 0)) | reduce .[] as $sha ([]; if index($sha) then . else . + [$sha] end);
-      {kind:"sweep", stale:($stale|shas), retry:($retry|shas), missing:($missing|shas), deferred:($deferred|shas)}')
+      ($unchained|shas) as $unchained_list |
+      {kind:"sweep", stale:($stale|shas), retry:($retry|shas), missing:($missing|shas | map(select(. as $sha | $unchained_list | index($sha) | not))), unchained:$unchained_list, deferred:($deferred|shas)}')
   fi
   printf '%s\n' "$discovery" | jq -e '
-    [.stale[], .retry[], .missing[], .deferred[]?] as $shas |
+    [.stale[], .retry[], .missing[], .unchained[]?, .deferred[]?] as $shas |
     all($shas[]; test("^[0-9a-f]{40}$")) and ($shas|length) == ($shas|unique|length)
   ' >/dev/null
   matrix=$(printf '%s\n' "$discovery" | jq -c '{include:[.stale[]|{sha:.}]}')
@@ -477,6 +489,7 @@ print(json.dumps({
       then [{sha:$discovery.sha,check_attempts:2}]
       else ([$plan.stale[]|{sha:.,check_attempts:1}] +
         [$discovery.retry[]|{sha:.,check_attempts:2}] +
+        [$discovery.unchained[]?|{sha:.,check_attempts:2}] +
         [$recovered|split("\n")[]|select(length>0)|{sha:.,check_attempts:2}])
       end | reduce .[] as $row ([]; if any(.[]; .sha == $row.sha) then . else . + [$row] end))}')
   emit_matrix "$matrix"

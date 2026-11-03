@@ -3,6 +3,7 @@ import { requireCountryCode, resolveCountryFilter } from '../_country-args';
 import { buildAuthHeaders } from '../auth';
 import { RpcValidationError } from '../billing-denial';
 import { assertMcpToolFetchOk, fetchMcpDownstream } from '../downstream';
+import { spokenMediaPerspective } from '../spoken-narrators';
 import { OUTLET_AUDIENCES, OWNERSHIP_CLASSES } from '../../../server/_shared/outlet-profile';
 import { UN_M49_REGION_IDS } from '../../../server/_shared/un-m49-regions';
 
@@ -101,6 +102,7 @@ export const MEDIA_PERSPECTIVE_TOOL: ToolDef = {
     },
   },
   _validateArgs: parseArgs,
+  _spoken: spokenMediaPerspective,
   _fitToBudget(result, budgetBytes) {
     if (!Array.isArray(result.groups)) return result;
     // Trim headlines inside each group, never whole groups: a missing group

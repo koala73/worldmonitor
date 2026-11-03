@@ -457,7 +457,6 @@
     "markets": "Markets",
     "marketImplications": "AI Market Implications",
     "map": "Global Situation",
-    "techMap": "Global Tech",
     "techHubs": "Hot Tech Hubs",
     "status": "System Status",
     "insights": "AI Insights",
@@ -486,7 +485,7 @@
     "commodities": "Metals & Materials",
     "economic": "Macro Stress",
     "tradePolicy": "Trade Policy",
-    "supplyChain": "Supply Chain",
+    "supplyChain": "زنجیره تأمین",
     "finance": "Financial",
     "tech": "Technology",
     "crypto": "Crypto",
@@ -545,7 +544,7 @@
     "bigmacDesc": "Big Mac prices across Middle East countries (Big Mac Index)",
     "bigmacWow": "تغییر هفتگی",
     "bigmacCountry": "Country",
-    "faoFoodPriceIndex": "FAO Food Price Index",
+    "faoFoodPriceIndex": "قیمت مواد غذایی",
     "fuelPrices": "Fuel Prices",
     "fuelPricesDesc": "Retail gasoline and diesel prices across 30+ countries worldwide",
     "fuelPricesCountry": "Country",
@@ -1022,7 +1021,12 @@
         "moderate": "Moderate",
         "permissive": "Permissive",
         "undefined": "Undefined"
-      }
+      },
+      "latestActions": "آخرین اقدامات ثبت‌شده",
+      "otherDeadlines": "سایر موعد‌های انطباق",
+      "daysAgo": "روز پیش",
+      "revokedCount": "مقررات لغو‌شده ({{count}})",
+      "lapsedCount": "پیشنهادهای منقضی ({{count}})"
     },
     "economic": {
       "indicators": "Indicators",
@@ -1063,41 +1067,44 @@
       "infoTooltip": "<strong>مجموعه انرژی</strong> سیگنال‌های انرژی فیزیکی و قابل معامله در یک مکان:<ul><li><strong>معیارهای اداره اطلاعات انرژی ایالات متحده</strong>: WTI، Brent، تولید ایالات متحده و موجودی</li><li><strong>نوار زنده</strong>: قیمت‌های انرژی قابل معامله مانند نفت خام و گاز طبیعی</li><li><strong>منظور</strong>: جداکردن تنش انرژی فیزیکی از پانل‌های کلان و کالا</li></ul>"
     },
     "supplyChain": {
-      "chokepoints": "Chokepoints",
-      "shipping": "Shipping Rates",
-      "minerals": "Critical Minerals",
-      "noChokepoints": "Chokepoint data loading...",
-      "noShipping": "Shipping rate data not available",
-      "noMinerals": "Mineral data loading...",
-      "upstreamUnavailable": "Supply chain data temporarily unavailable — showing cached data",
-      "spikeAlert": "Spike detected — rate significantly above 52-week average (weekly)",
-      "warnings": "warning(s)",
+      "chokepoints": "نقاط تنگنا",
+      "shipping": "نرخ‌های حمل دریایی",
+      "minerals": "مواد معدنی حیاتی",
+      "noChokepoints": "در حال بارگذاری داده‌های نقاط تنگنا...",
+      "noShipping": "داده‌های نرخ حمل دریایی در دسترس نیست",
+      "noMinerals": "در حال بارگذاری داده‌های مواد معدنی...",
+      "upstreamUnavailable": "داده‌های زنجیره تأمین موقتاً در دسترس نیست — نمایش داده‌های ذخیره‌شده",
+      "spikeAlert": "جهش شناسایی شد — نرخ به‌طور چشمگیری بالاتر از میانگین ۵۲ هفته‌ای است (هفتگی)",
+      "warnings": "هشدار",
       "aisDisruptions": "اختلال‌های ردیابی کشتی",
       "wowChange": "تغییر هفتگی",
-      "riskLevel": "Risk level",
-      "disruption": "Disruption",
-      "vessels": "vessels",
-      "incidents7d": "incidents (7d)",
-      "flowUnavailable": "Flow data unavailable",
-      "containerRates": "Container Rates",
-      "bulkShipping": "Bulk Shipping",
-      "economicIndicators": "Economic Indicators",
-      "corridorDisruption": "Corridor Disruption",
-      "corridor": "Corridor",
-      "loadingCorridors": "Loading corridor data...",
-      "loadingHistory": "Loading transit history…",
-      "historyUnavailable": "Transit history unavailable",
-      "transitDataUnavailable": "Transit data unavailable (upstream partial)",
-      "mineral": "Mineral",
-      "topProducers": "Top Producers",
-      "risk": "Risk",
+      "riskLevel": "سطح ریسک",
+      "disruption": "اختلال",
+      "vessels": "کشتی",
+      "incidents7d": "رویداد (۷ روز)",
+      "flowUnavailable": "داده‌های جریان در دسترس نیست",
+      "containerRates": "نرخ کانتینر",
+      "bulkShipping": "حمل فله",
+      "economicIndicators": "شاخص‌های اقتصادی",
+      "corridorDisruption": "اختلال کریدور",
+      "corridor": "کریدور",
+      "loadingCorridors": "در حال بارگذاری داده‌های کریدور...",
+      "loadingHistory": "در حال بارگذاری تاریخچه ترانزیت…",
+      "historyUnavailable": "تاریخچه ترانزیت در دسترس نیست",
+      "transitDataUnavailable": "داده‌های ترانزیت در دسترس نیست (داده بالادستی ناقص)",
+      "mineral": "ماده معدنی",
+      "topProducers": "تولیدکنندگان برتر",
+      "risk": "ریسک",
       "infoTooltip": "<strong>مانیتور زنجیره تأمین</strong> پیگیری لجستیکی و منابع جهانی:<ul><li><strong>نقاط تنگناء</strong>: وضعیت ترانزیت دریایی، امتیازات اختلال و تعداد کشتی‌ها</li><li><strong>حمل‌و‌نقل دریایی</strong>: شاخص بالتیک و روند نرخ‌های حمل</li><li><strong>معادن</strong>: ریسک تمرکز معادن حیاتی (شاخص تمرکز تولیدکننده) و برترین تولیدکنندگان</li></ul>برای بسط نمودار تاریخچه ترانزیت، روی کارت نقطه تنگناء کلیک کنید.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "برای سهم کشور معدن و پالایشگاه با تمرکز (شاخص تمرکز تولید‌کننده) بر اساس مرحله، به PRO ارتقا دهید."
+      "mineStage": "استخراج",
+      "refineryStage": "پالایش",
+      "stageUnavailable": "برای این مرحله رقمی منتشر نشده است",
+      "withheldNote": "W = ارقام منتشرنشده",
+      "productionCaption": "سهم کشورها از تولید واقعی. لایه ذخایر نقشه نشان می‌دهد منابع کجا هستند؛ این جدول نشان می‌دهد چه کسانی آن‌ها را استخراج یا پالایش می‌کنند.",
+      "productionProLocked": "برای سهم کشور معدن و پالایشگاه با تمرکز (شاخص تمرکز تولید‌کننده) بر اساس مرحله، به PRO ارتقا دهید.",
+      "partialTransitCoverage": "داده‌های ترانزیت برای {{names}} در دسترس نیست",
+      "oilPipelinesUnavailable": "داده‌های خط لوله نفت در دسترس نیست",
+      "gasPipelinesUnavailable": "داده‌های خط لوله گاز در دسترس نیست"
     },
     "tradePolicy": {
       "overview": "Overview",
@@ -1967,8 +1974,6 @@
       "summaryFailed": "Summary failed",
       "sources": "{{count}} sources",
       "relatedAssetsNear": "Related assets near {{location}}",
-      "sourceCoverage": "{{covered}}/{{total}} منبع",
-      "sourceCoverageHint": "نمایش {{covered}} از {{total}} منبع فعال — این پنل در هر بازخوانی منابع خود را به نوبت می‌خواند",
       "sortBy": "Sort by",
       "sortNewest": "Newest",
       "sortRelevance": "Relevance",
@@ -2713,6 +2718,15 @@
             "mcpClients": "Set up MCP",
             "channels": "Set those up in notification settings"
           }
+        },
+        "about": {
+          "heading": "یک چیز آخر: World Monitor را برای چه کاری استفاده خواهید کرد؟",
+          "body": "سه پاسخ کوتاه به ما کمک می‌کند تا ابزارهای مناسب برایتان بسازیم. هر سؤالی را که دوست ندارید رد کنید.",
+          "confirmCta": "ذخیره پاسخ‌های من",
+          "confirming": "در حال ذخیره…",
+          "doneNote": "متشکریم، پاسخ‌های شما را دریافت کردیم.",
+          "summaryLabel": "درباره شما",
+          "summaryVerified": "ذخیره شد. متشکریم."
         }
       },
       "status": {
@@ -2900,25 +2914,25 @@
       }
     },
     "chokepointStrip": {
-      "title": "Chokepoint Status",
+      "title": "وضعیت نقاط تنگنا",
       "infoTooltip": "وضعیت زنده برای هفت نقطه تنگنای نفت و گاز جهانی. برآورد جریان از طریق ظرفیت حمل کشتی Portwatch + مشاهدات پایش کشتی کالیبره‌شده‌اند. برای روش‌شناسی به /docs/methodology/chokepoints مراجعه کنید.",
-      "unknown": "unknown",
+      "unknown": "نامشخص",
       "shortName": {
-        "hormuzStrait": "Hormuz",
-        "malaccaStrait": "Malacca",
-        "suez": "Suez",
-        "babElMandeb": "Bab el-Mandeb",
-        "bosphorus": "Turkish Straits",
-        "panama": "Panama",
-        "danishStraits": "Danish Straits"
+        "hormuzStrait": "هرمز",
+        "malaccaStrait": "مالاکا",
+        "suez": "سوئز",
+        "babElMandeb": "باب‌المندب",
+        "bosphorus": "تنگه‌های ترکیه",
+        "panama": "پاناما",
+        "doverStrait": "تنگه دوور"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
-        "pctOfBaseline": "{{pct}}% of baseline"
+        "pctOfBaseline": "{{pct}}٪ از خط‌مبنا"
       },
       "errors": {
-        "unavailable": "Chokepoint status unavailable",
-        "noData": "No chokepoint data yet"
+        "unavailable": "وضعیت نقاط تنگنا در دسترس نیست",
+        "noData": "هنوز داده‌ای از نقاط تنگنا موجود نیست"
       },
       "attribution": {
         "method": "ظرفیت حمل کشتی Portwatch + کالیبراسیون پایش کشتی",
@@ -3072,6 +3086,95 @@
       "rosterSummaryTier1": "گزارش‌شده توسط {{publishers}}، شامل {{tier1}} ناشر درجه ۱",
       "rosterPublishers_one": "{{count}} ناشر",
       "rosterPublishers_other": "{{count}} ناشر"
+    },
+    "foodPrices": {
+      "title": "قیمت محلی مواد غذایی",
+      "method": "تغییر هفتگی همان محصول، بازار، مبدأ و واحد را با قیمت دقیقاً هفت روز قبل مقایسه می‌کند. کشورها سبدها و ارزهای متفاوتی دارند.",
+      "loading": "در حال بارگذاری قیمت مواد غذایی…",
+      "unavailable": "در دسترس نیست",
+      "retry": "تلاش دوباره",
+      "country": "کشور",
+      "market": "بازار",
+      "retail": "خرده‌فروشی",
+      "wholesale": "عمده‌فروشی",
+      "farmgate": "سر مزرعه",
+      "export": "صادرات",
+      "prices": "قیمت مواد غذایی",
+      "product": "محصول",
+      "price": "قیمت / واحد",
+      "weekly": "تغییر هفتگی",
+      "origin": "مبدأ",
+      "versus": "در مقایسه با",
+      "noBaseline": "هفته قبل در دسترس نیست",
+      "context": "امنیت غذایی و زمینه ماهانه",
+      "contextNote": "این گزارش‌ها زمینه‌ای تاریخ‌دار ارائه می‌کنند، نه تغییرات هفتگی قیمت. گزارش‌های تونس ممکن است چند ماه تأخیر داشته باشند.",
+      "briefCountry": "گزارش کشور",
+      "report": "تاریخ گزارش",
+      "checked": "آخرین بررسی",
+      "current": "به‌روز",
+      "partial": "برخی گزارش‌ها موجود نیستند یا قدیمی‌اند",
+      "stale": "داده‌های قدیمی‌تر",
+      "global": "شاخص ماهانه جهانی فائو"
+    },
+    "aboutYou": {
+      "title": "کمک کنید تا World Monitor را برای شما بسازیم",
+      "ariaLabel": "درباره شما",
+      "progress": "{{current}} از {{total}}",
+      "skip": "رد کردن",
+      "close": "بستن",
+      "done": "انجام شد",
+      "saving": "درحال ذخیره…",
+      "saveFailed": "نتوانستیم آن را ذخیره کنیم. دوباره تلاش کنید.",
+      "retry": "تلاش مجدد",
+      "thanks": "متشکرم. این کمک می‌کند تا تصمیم بگیریم چه چیزی را بعد بسازیم.",
+      "questions": {
+        "primaryUse": {
+          "label": "عمدتاً World Monitor را برای چه کاری استفاده می‌کنید؟",
+          "options": {
+            "news": "اخبار و رویدادهای جهانی",
+            "markets": "بازارها و معاملات",
+            "commodities": "کالاها و زنجیره تأمین",
+            "travel": "سفر و پروازها",
+            "security": "امنیت و OSINT",
+            "research": "تحقیق و روزنامه‌نگاری",
+            "api-agent": "توسعه با API یا یک عامل هوش مصنوعی",
+            "other": "چیز دیگری"
+          }
+        },
+        "usageContext": {
+          "label": "آن را برای کار یا استفاده شخصی به‌کار می‌برید؟",
+          "options": {
+            "personal": "شخصی",
+            "work": "کاری"
+          }
+        },
+        "payer": {
+          "label": "چه کسی برای آن پرداخت می‌کند یا پرداخت خواهد کرد؟",
+          "options": {
+            "self": "من",
+            "employer": "کارفرمایی یا تیم من",
+            "not-paying": "هنوز هیچ کس"
+          }
+        },
+        "role": {
+          "label": "کدام گزینه نقش شما را بهترین توصیف می‌کند؟",
+          "options": {
+            "analyst": "تحلیل‌گر یا محقق",
+            "trader": "معامله‌گر یا سرمایه‌گذار",
+            "journalist": "روزنامه‌نگار",
+            "security": "امنیت یا ریسک",
+            "government": "دولتی یا خط‌مشی",
+            "supply-chain": "زنجیره تأمین یا عملیات",
+            "developer": "توسعه‌دهنده",
+            "student": "دانشجو",
+            "other": "دیگر"
+          }
+        },
+        "alternative": {
+          "label": "اگر World Monitor وجود نداشت، از چه استفاده می‌کردید؟",
+          "placeholder": "اختیاری"
+        }
+      }
     }
   },
   "popups": {
@@ -4178,5 +4281,29 @@
     "reportedClaims": "گزارش‌های ناشر. ادعاها ممکن است همچنان در دست بررسی باشند.",
     "occurred": "رویداد",
     "reported": "انتشار"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "نقشه بازارهای جهانی",
+      "liveNews": "تیتر‌های بازار",
+      "insights": "بینش‌های بازار با هوش مصنوعی"
+    },
+    "tech": {
+      "map": "نقشه تکنولوژی جهانی",
+      "liveNews": "تیتر‌های تکنولوژی"
+    },
+    "commodity": {
+      "map": "نقشه کالاها",
+      "liveNews": "تیتر‌های کالاها",
+      "insights": "بینش‌های کالاها با هوش مصنوعی"
+    },
+    "energy": {
+      "map": "نقشه انرژی",
+      "liveNews": "تیتر‌های انرژی",
+      "insights": "بینش‌های انرژی با هوش مصنوعی"
+    },
+    "happy": {
+      "map": "نقشه اخبار خوب"
+    }
   }
 }

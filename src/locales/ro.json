@@ -389,7 +389,6 @@
     "liveNews": "Știri Live",
     "markets": "Piețe",
     "map": "Situația globală",
-    "techMap": "Global Tech",
     "techHubs": "Hub-uri Tech",
     "status": "Stare sistem",
     "insights": "Analiză AI",
@@ -481,7 +480,7 @@
     "bigmacDesc": "Prețurile Big Mac în țările din Orientul Mijlociu (Big Mac Index)",
     "bigmacWow": "Variație săptămânală",
     "bigmacCountry": "Țară",
-    "faoFoodPriceIndex": "Indice FAO al prețurilor alimentelor",
+    "faoFoodPriceIndex": "Prețurile alimentelor",
     "fuelPrices": "Prețuri combustibil",
     "fuelPricesDesc": "Prețuri cu amănuntul pentru benzină și motorină în peste 30 de țări din întreaga lume",
     "fuelPricesCountry": "Țară",
@@ -933,7 +932,12 @@
         "permissive": "Permisiv",
         "undefined": "Nedefinit"
       },
-      "infoTooltip": "<strong>Reglementare</strong> Acțiuni de reglementare, modificări de politici și actualizări de aplicare de la reglementatorii globali: autorități financiare, tehnologice, energetice și comerciale. Sursă: publicații oficiale guvernamentale și de reglementare."
+      "infoTooltip": "<strong>Reglementare</strong> Acțiuni de reglementare, modificări de politici și actualizări de aplicare de la reglementatorii globali: autorități financiare, tehnologice, energetice și comerciale. Sursă: publicații oficiale guvernamentale și de reglementare.",
+      "latestActions": "Ultimele acțiuni înregistrate",
+      "otherDeadlines": "Alte termene de conformitate",
+      "daysAgo": "zile în urmă",
+      "revokedCount": "Regulamente revocate ({{count}})",
+      "lapsedCount": "Propuneri caduce ({{count}})"
     },
     "economic": {
       "indicators": "Indicatori",
@@ -999,7 +1003,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Upgrade la PRO pentru ponderi de țară ale minelor și rafinăriilor cu concentrare (indice de concentrare a producătorilor) pe etapă."
+      "productionProLocked": "Upgrade la PRO pentru ponderi de țară ale minelor și rafinăriilor cu concentrare (indice de concentrare a producătorilor) pe etapă.",
+      "partialTransitCoverage": "Date de tranzit indisponibile pentru {{names}}",
+      "oilPipelinesUnavailable": "Datele conductelor de petrol nu sunt disponibile",
+      "gasPipelinesUnavailable": "Datele conductelor de gaze nu sunt disponibile"
     },
     "tradePolicy": {
       "tariffs": "Tarife vamale",
@@ -1829,8 +1836,6 @@
       "summaryFailed": "Rezumatul a eșuat",
       "sources": "surse {{count}}",
       "relatedAssetsNear": "Materiale similare lângă {{location}}",
-      "sourceCoverage": "{{covered}}/{{total}} surse",
-      "sourceCoverageHint": "Se afișează {{covered}} din {{total}} surse active — acest panou își rotește sursele la fiecare reîmprospătare",
       "sortBy": "Sortează după",
       "sortNewest": "Cel mai recent",
       "sortRelevance": "Relevanță",
@@ -2651,6 +2656,15 @@
             "mcpClients": "Configurează MCP",
             "channels": "Configurează-le în setările de notificare"
           }
+        },
+        "about": {
+          "heading": "Ultimul lucru: pentru ce vei folosi World Monitor?",
+          "body": "Trei răspunsuri rapide ne ajută să construim instrumentele potrivite pentru tine. Poți sări peste orice dintre ele.",
+          "confirmCta": "Salvează răspunsurile",
+          "confirming": "Se salvează…",
+          "doneNote": "Mulțumim, am primit răspunsurile tale.",
+          "summaryLabel": "Despre tine",
+          "summaryVerified": "Salvat. Mulțumim."
         }
       },
       "status": {
@@ -2857,7 +2871,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Strâmtorii Turcești",
         "panama": "Panama",
-        "danishStraits": "Strâmtorii Daneze"
+        "doverStrait": "Strâmtoarea Dover"
       },
       "flow": {
         "mbd": "{{value}} mb/z",
@@ -3023,6 +3037,95 @@
       "rosterPublishers_one": "{{count}} editor",
       "rosterPublishers_few": "{{count}} editori",
       "rosterPublishers_other": "{{count}} de editori"
+    },
+    "foodPrices": {
+      "title": "Prețuri locale ale alimentelor",
+      "method": "Variația săptămânală compară același produs, piață, proveniență și unitate cu prețul de acum exact șapte zile. Țările folosesc coșuri și monede diferite.",
+      "loading": "Se încarcă prețurile alimentelor…",
+      "unavailable": "Indisponibil",
+      "retry": "Încearcă din nou",
+      "country": "Țară",
+      "market": "Piață",
+      "retail": "Cu amănuntul",
+      "wholesale": "Angro",
+      "farmgate": "Preț la poarta fermei",
+      "export": "Export",
+      "prices": "Prețurile alimentelor",
+      "product": "Produs",
+      "price": "Preț / unitate",
+      "weekly": "Variație săptămânală",
+      "origin": "Proveniență",
+      "versus": "față de",
+      "noBaseline": "Săptămâna anterioară indisponibilă",
+      "context": "Securitate alimentară și context lunar",
+      "contextNote": "Aceste rapoarte oferă context datat, nu variații săptămânale ale prețurilor. Rapoartele din Tunisia pot întârzia câteva luni.",
+      "briefCountry": "Raport de țară",
+      "report": "Data raportului",
+      "checked": "Ultima verificare",
+      "current": "Actual",
+      "partial": "Unele rapoarte lipsesc sau sunt vechi",
+      "stale": "Date mai vechi",
+      "global": "Indicele lunar global FAO"
+    },
+    "aboutYou": {
+      "title": "Ajută-ne să construim World Monitor pentru tine",
+      "ariaLabel": "Despre tine",
+      "progress": "{{current}} din {{total}}",
+      "skip": "Omite",
+      "close": "Închide",
+      "done": "Gata",
+      "saving": "Se salvează…",
+      "saveFailed": "Nu am putut salva. Încearcă din nou.",
+      "retry": "Încearcă din nou",
+      "thanks": "Mulțumim. Asta ne ajută să decidem ce să construim în continuare.",
+      "questions": {
+        "primaryUse": {
+          "label": "Pentru ce folosești în principal World Monitor?",
+          "options": {
+            "news": "Știri și evenimente mondiale",
+            "markets": "Piețe și tranzacționare",
+            "commodities": "Mărfuri și lanț de aprovizionare",
+            "travel": "Călătorii și zboruri",
+            "security": "Securitate și OSINT",
+            "research": "Cercetare și jurnalism",
+            "api-agent": "Construire cu API-ul sau un agent AI",
+            "other": "Altceva"
+          }
+        },
+        "usageContext": {
+          "label": "O folosești pentru muncă sau în scop personal?",
+          "options": {
+            "personal": "Personal",
+            "work": "Muncă"
+          }
+        },
+        "payer": {
+          "label": "Cine plătește sau ar plăti pentru ea?",
+          "options": {
+            "self": "Eu",
+            "employer": "Angajatorul sau echipa mea",
+            "not-paying": "Nimeni deocamdată"
+          }
+        },
+        "role": {
+          "label": "Care dintre acestea îți descrie cel mai bine rolul?",
+          "options": {
+            "analyst": "Analist sau cercetător",
+            "trader": "Trader sau investitor",
+            "journalist": "Jurnalist",
+            "security": "Securitate sau risc",
+            "government": "Guvern sau politică",
+            "supply-chain": "Lanț de aprovizionare sau operațiuni",
+            "developer": "Dezvoltator",
+            "student": "Student",
+            "other": "Altul"
+          }
+        },
+        "alternative": {
+          "label": "Ce ai folosi dacă World Monitor nu ar exista?",
+          "placeholder": "Opțional"
+        }
+      }
     }
   },
   "popups": {
@@ -4198,5 +4301,29 @@
     "reportedClaims": "Rapoarte ale editorului. Afirmațiile pot fi încă investigate.",
     "occurred": "Incident",
     "reported": "Publicat"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Harta Piețelor Globale",
+      "liveNews": "Titluri de Piață",
+      "insights": "Insight-uri AI pentru Piață"
+    },
+    "tech": {
+      "map": "Harta Tehnologiei Globale",
+      "liveNews": "Titluri Tehnologice"
+    },
+    "commodity": {
+      "map": "Harta Mărfurilor",
+      "liveNews": "Titluri Mărfuri",
+      "insights": "Insight-uri AI pentru Mărfuri"
+    },
+    "energy": {
+      "map": "Atlasul Energetic",
+      "liveNews": "Titluri Energetice",
+      "insights": "Insight-uri AI pentru Energie"
+    },
+    "happy": {
+      "map": "Harta Știrilor Bune"
+    }
   }
 }

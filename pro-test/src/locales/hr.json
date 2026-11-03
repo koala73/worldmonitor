@@ -380,15 +380,16 @@
       "api": {
         "description": "Gradite interno alate na temelju podataka užive obavještajne analize",
         "features": [
-          "REST API + službeni SDK-ovi (npm, PyPI, RubyGems, Go)",
-          "Uključen licencni / API ključ",
-          "Tokovi podataka u stvarnom vremenu",
-          "60 zahtjeva/minutu",
-          "1.000 zahtjeva/dan uključeno (REST + MCP kombinovano; live MCP poziv broji kao 2-3)",
-          "Webhook obavijesti"
+          "Uključena puna Pro nadzorna ploča (1 imenovani korisnik)",
+          "REST API + službeni SDKs (npm, PyPI, RubyGems, Go)",
+          "Uključena licenca / API ključ",
+          "Tokovi podataka u realnom vremenu",
+          "60 zahtjeva/minuta",
+          "1.000 zahtjeva/dan uključeno (REST + MCP kombinirano; jedan MCP poziv uživo računa se kao 2-3)",
+          "Obavijesti putem webhooks"
         ],
         "highlightFeatures": [
-          "Komercijalna licencija — za vašu organizaciju"
+          "Komercijalna upotreba — samo interno, ne za klijente"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Prioritetna podrška"
         ],
         "highlightFeatures": [
-          "Komercijalna licencija — za vaše klijente"
+          "Komercijalna upotreba — u vašim proizvodima za klijente"
         ]
       },
       "proBusiness": {
@@ -663,7 +664,8 @@
       "proF4": "MCP, REST API & službeni SDK — live alati pod jednim ključem",
       "proF5": "Prilagođeni builder widgeta za vlastite panele",
       "cta": "Pogledaj planove i cijene",
-      "note": "Od $39,99/mj · 3 mjeseca besplatno pri godišnjoj naplati"
+      "note": "Od $39,99/mj · 3 mjeseca besplatno pri godišnjoj naplati",
+      "disclaimer": "World Monitor služi isključivo u informativne svrhe i ne predstavlja financijske, investicijske ni pravne savjete, kao ni savjete o sigurnosti. Provjerite ono što vidite i posavjetujte se s kvalificiranim stručnjakom prije donošenja odluka pri kojima bi pogreška mogla prouzročiti gubitak ili štetu."
     },
     "faq": {
       "eyebrow": "Bez skrivenih troškova",
@@ -710,14 +712,14 @@
       "chokepointTitle": "Provjeri usko mjesto",
       "chokepointDesc": "Inspekcirajte status prekida, tokove brodova i rizik kroz {{chokepoints}} kritičnih pomorskih prolaza.",
       "countryRiskTitle": "Objasni politički rizik zemlje",
-      "countryRiskDesc": "Pratite političke, sigurnosne, ekonomske i signale otpornosti iza promjene zemlje, s otpornosti rangiranom za {{resilienceRanked}} zemalja.",
+      "countryRiskDesc": "Pratite političke, sigurnosne i ekonomske signale te signale otpornosti koji stoje iza promjene u nekoj zemlji. Otpornost je rangirana za {{resilienceRanked}} od {{resilienceUniverse}} zemalja, odnosno oko {{resilienceRankedPct}} %, pa se pomak može tumačiti u odnosu na dugoročnu strukturnu osnovu te zemlje, umjesto samo na temelju novinskih naslova ovog tjedna.",
       "open": "Otvori dokaze",
       "workflow": "Postupak korak po korak"
     },
     "voices": {
       "eyebrow": "Njihovim riječima",
       "title": "Što ljudi kažu o World Monitoru",
-      "sub": "{{users}} ljudi u {{countries}} zemalja koristilo je World Monitor. Evo što su rekli mediji i neki od njih.",
+      "sub": "{{users}} ljudi u {{countries}} zemalja koristilo je World Monitor. The Atlantic pisao je o njemu 14. ožujka 2026., a El País dva dana poslije. O njemu su izvještavali i WIRED, The Economic Times, Arabian Business i L'Orient Today. Evo što su rekli mediji i neki korisnici.",
       "translatedJa": "Prevedeno s japanskog",
       "prev": "Prethodni citati",
       "next": "Još citata"

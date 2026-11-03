@@ -389,7 +389,6 @@
     "liveNews": "Actualités en direct",
     "markets": "Marchés",
     "map": "Situation mondiale",
-    "techMap": "Tech mondiale",
     "status": "État du système",
     "insights": "Insights IA",
     "strategicPosture": "Posture stratégique IA",
@@ -481,7 +480,7 @@
     "bigmacDesc": "Prix du Big Mac dans les pays du Moyen-Orient (Indice Big Mac)",
     "bigmacWow": "Variation sur une semaine",
     "bigmacCountry": "Pays",
-    "faoFoodPriceIndex": "Indice des prix alimentaires de la FAO",
+    "faoFoodPriceIndex": "Prix alimentaires",
     "fuelPrices": "Prix des carburants",
     "fuelPricesDesc": "Prix de l'essence et du diesel au détail dans plus de 30 pays à travers le monde",
     "fuelPricesCountry": "Pays",
@@ -921,7 +920,12 @@
         "permissive": "Permissif",
         "undefined": "Indéfini"
       },
-      "infoTooltip": "<strong>Réglementation</strong> Actions réglementaires, changements de politique et mises à jour d'application des régulateurs mondiaux : autorités financières, technologiques, énergétiques et commerciales. Source : publications officielles gouvernementales et réglementaires."
+      "infoTooltip": "<strong>Réglementation</strong> Actions réglementaires, changements de politique et mises à jour d'application des régulateurs mondiaux : autorités financières, technologiques, énergétiques et commerciales. Source : publications officielles gouvernementales et réglementaires.",
+      "latestActions": "Dernières actions enregistrées",
+      "otherDeadlines": "Autres échéances de conformité",
+      "daysAgo": "jours écoulés",
+      "revokedCount": "Règlements révoqués ({{count}})",
+      "lapsedCount": "Propositions caduques ({{count}})"
     },
     "economic": {
       "indicators": "Indicateurs",
@@ -1701,8 +1705,6 @@
       "relatedAssetsNear": "Actifs associés à proximité de {{location}}",
       "summaryError": "Impossible de générer le résumé",
       "summaryFailed": "Échec du résumé",
-      "sourceCoverage": "{{covered}}/{{total}} sources",
-      "sourceCoverageHint": "Affiche {{covered}} des {{total}} sources activées — ce panneau alterne entre ses sources à chaque actualisation",
       "sortBy": "Trier par",
       "sortNewest": "Plus récent",
       "sortRelevance": "Pertinence",
@@ -2084,7 +2086,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Passez à PRO pour les parts de pays des mines et raffineries avec concentration (indice de concentration des producteurs) par étape."
+      "productionProLocked": "Passez à PRO pour les parts de pays des mines et raffineries avec concentration (indice de concentration des producteurs) par étape.",
+      "partialTransitCoverage": "Données de transit indisponibles : {{names}}",
+      "oilPipelinesUnavailable": "Données des oléoducs indisponibles",
+      "gasPipelinesUnavailable": "Données des gazoducs indisponibles"
     },
     "positiveNewsFeed": {
       "noStories": "Aucune histoire dans cette catégorie pour le moment"
@@ -2651,6 +2656,15 @@
             "mcpClients": "Configurer MCP",
             "channels": "Configurez-les dans les paramètres de notification"
           }
+        },
+        "about": {
+          "heading": "Dernière chose : à quoi utiliserez-vous World Monitor ?",
+          "body": "Trois questions rapides nous aident à développer les bons outils pour vous. Vous pouvez ignorer celles que vous souhaitez.",
+          "confirmCta": "Enregistrer mes réponses",
+          "confirming": "Enregistrement…",
+          "doneNote": "Merci, nous avons vos réponses.",
+          "summaryLabel": "À propos de vous",
+          "summaryVerified": "Enregistré. Merci."
         }
       },
       "status": {
@@ -2857,7 +2871,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Détroits turcs",
         "panama": "Panama",
-        "danishStraits": "Détroits danois"
+        "doverStrait": "Pas de Calais"
       },
       "flow": {
         "mbd": "{{value}} mb/j",
@@ -3023,6 +3037,95 @@
       "rosterPublishers_one": "{{count}} éditeur",
       "rosterPublishers_many": "{{count}} éditeurs",
       "rosterPublishers_other": "{{count}} éditeurs"
+    },
+    "foodPrices": {
+      "title": "Prix alimentaires locaux",
+      "method": "La variation hebdomadaire compare le même produit, marché, origine et unité au prix relevé exactement sept jours auparavant. Les pays utilisent des paniers et devises différents.",
+      "loading": "Chargement des prix alimentaires…",
+      "unavailable": "Indisponible",
+      "retry": "Réessayer",
+      "country": "Pays",
+      "market": "Marché",
+      "retail": "Détail",
+      "wholesale": "Gros",
+      "farmgate": "Prix à la ferme",
+      "export": "Export",
+      "prices": "Prix alimentaires",
+      "product": "Produit",
+      "price": "Prix / unité",
+      "weekly": "Variation hebdomadaire",
+      "origin": "Origine",
+      "versus": "par rapport à",
+      "noBaseline": "Semaine précédente indisponible",
+      "context": "Sécurité alimentaire et contexte mensuel",
+      "contextNote": "Ces rapports fournissent un contexte daté, pas des variations hebdomadaires des prix. Les rapports tunisiens peuvent avoir plusieurs mois de retard.",
+      "briefCountry": "Rapport national",
+      "report": "Date du rapport",
+      "checked": "Dernière vérification",
+      "current": "À jour",
+      "partial": "Certains rapports manquent ou sont anciens",
+      "stale": "Données anciennes",
+      "global": "Indice mensuel mondial de la FAO"
+    },
+    "aboutYou": {
+      "title": "Aidez-nous à construire World Monitor pour vous",
+      "ariaLabel": "À propos de vous",
+      "progress": "{{current}} sur {{total}}",
+      "skip": "Ignorer",
+      "close": "Fermer",
+      "done": "Terminé",
+      "saving": "Enregistrement…",
+      "saveFailed": "Impossible d'enregistrer. Réessayez.",
+      "retry": "Réessayer",
+      "thanks": "Merci. Cela nous aide à décider ce que nous allons construire ensuite.",
+      "questions": {
+        "primaryUse": {
+          "label": "À quoi utilisez-vous principalement World Monitor ?",
+          "options": {
+            "news": "Actualités et événements mondiaux",
+            "markets": "Marchés et trading",
+            "commodities": "Matières premières et chaîne d'approvisionnement",
+            "travel": "Voyage et vols",
+            "security": "Sécurité et OSINT",
+            "research": "Recherche et journalisme",
+            "api-agent": "Développement avec l'API ou un agent IA",
+            "other": "Autre"
+          }
+        },
+        "usageContext": {
+          "label": "L'utilisez-vous pour le travail ou un usage personnel ?",
+          "options": {
+            "personal": "Personnel",
+            "work": "Travail"
+          }
+        },
+        "payer": {
+          "label": "Qui paie ou paierait pour cela ?",
+          "options": {
+            "self": "Moi",
+            "employer": "Mon employeur ou mon équipe",
+            "not-paying": "Personne pour l'instant"
+          }
+        },
+        "role": {
+          "label": "Quel rôle vous décrit le mieux ?",
+          "options": {
+            "analyst": "Analyste ou chercheur",
+            "trader": "Trader ou investisseur",
+            "journalist": "Journaliste",
+            "security": "Sécurité ou gestion des risques",
+            "government": "Gouvernement ou politique",
+            "supply-chain": "Chaîne d'approvisionnement ou opérations",
+            "developer": "Développeur",
+            "student": "Étudiant",
+            "other": "Autre"
+          }
+        },
+        "alternative": {
+          "label": "Qu'utiliseriez-vous si World Monitor n'existait pas ?",
+          "placeholder": "Optionnel"
+        }
+      }
     }
   },
   "popups": {
@@ -4198,5 +4301,29 @@
     "reportedClaims": "Rapports de l’éditeur. Les affirmations peuvent encore faire l’objet d’une enquête.",
     "occurred": "Incident",
     "reported": "Publié"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Carte des marchés mondiaux",
+      "liveNews": "Titres des marchés",
+      "insights": "Insights IA sur les marchés"
+    },
+    "tech": {
+      "map": "Carte mondiale de la tech",
+      "liveNews": "Titres tech"
+    },
+    "commodity": {
+      "map": "Carte des matières premières",
+      "liveNews": "Titres des matières premières",
+      "insights": "Insights IA sur les matières premières"
+    },
+    "energy": {
+      "map": "Carte Atlas de l'énergie",
+      "liveNews": "Titres de l'énergie",
+      "insights": "Insights IA sur l'énergie"
+    },
+    "happy": {
+      "map": "Carte des bonnes nouvelles"
+    }
   }
 }

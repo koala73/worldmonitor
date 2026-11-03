@@ -1,0 +1,122 @@
+{
+ "chart": {
+  "result": [
+   {
+    "meta": {
+     "currency": "USX",
+     "symbol": "LE=F",
+     "exchangeName": "CME",
+     "fullExchangeName": "CME",
+     "instrumentType": "FUTURE",
+     "firstTradeDate": 983422800,
+     "regularMarketTime": 1793383499,
+     "hasPrePostMarketData": false,
+     "gmtoffset": -18000,
+     "timezone": "EST",
+     "exchangeTimezoneName": "America/New_York",
+     "regularMarketPrice": 220.95,
+     "regularMarketChangePercent": -2.364,
+     "fulldayPrice": 220.95,
+     "fulldayChange": -5.35,
+     "fulldayChangePercent": -2.364,
+     "fiftyTwoWeekHigh": 258.725,
+     "fiftyTwoWeekLow": 204.55,
+     "regularMarketDayHigh": 225.75,
+     "regularMarketDayLow": 220.475,
+     "regularMarketVolume": 33760,
+     "shortName": "Live Cattle Futures,Dec-2026",
+     "chartPreviousClose": 227.375,
+     "priceHint": 2,
+     "currentTradingPeriod": {
+      "pre": {
+       "timezone": "EST",
+       "start": 1793595600,
+       "end": 1793595600,
+       "gmtoffset": -18000
+      },
+      "regular": {
+       "timezone": "EST",
+       "start": 1793595600,
+       "end": 1793681940,
+       "gmtoffset": -18000
+      },
+      "post": {
+       "timezone": "EST",
+       "start": 1793681940,
+       "end": 1793681940,
+       "gmtoffset": -18000
+      }
+     },
+     "dataGranularity": "1d",
+     "range": "5d",
+     "validRanges": [
+      "1d",
+      "5d",
+      "1mo",
+      "3mo",
+      "6mo",
+      "1y",
+      "2y",
+      "5y",
+      "10y",
+      "ytd",
+      "max"
+     ]
+    },
+    "timestamp": [
+     1793160000,
+     1793246400,
+     1793332800,
+     1793595600
+    ],
+    "indicators": {
+     "quote": [
+      {
+       "volume": [
+        1618,
+        270,
+        270,
+        null
+       ],
+       "low": [
+        226.64999389648438,
+        226.0,
+        224.0,
+        null
+       ],
+       "close": [
+        227.375,
+        227.27499389648438,
+        224.0,
+        null
+       ],
+       "high": [
+        230.25,
+        227.375,
+        227.27499389648438,
+        null
+       ],
+       "open": [
+        230.0,
+        227.0,
+        227.27499389648438,
+        null
+       ]
+      }
+     ],
+     "adjclose": [
+      {
+       "adjclose": [
+        227.375,
+        227.27499389648438,
+        224.0,
+        null
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "error": null
+ }
+}

@@ -457,7 +457,6 @@
     "markets": "Piacok",
     "marketImplications": "AI Piaci Hatások",
     "map": "Globális Helyzet",
-    "techMap": "Globális Technológia",
     "techHubs": "Technológiai Központok",
     "status": "Rendszer Állapota",
     "insights": "AI Insights",
@@ -545,7 +544,7 @@
     "bigmacDesc": "Big Mac árak a Közel-Kelet országaiban (Big Mac Index)",
     "bigmacWow": "Heti változás",
     "bigmacCountry": "Ország",
-    "faoFoodPriceIndex": "FAO Élelmiszerár Index",
+    "faoFoodPriceIndex": "Élelmiszerárak",
     "fuelPrices": "Üzemanyag árak",
     "fuelPricesDesc": "Fogyasztói benzin és dízelár 30+ ország világszerte",
     "fuelPricesCountry": "Ország",
@@ -1022,7 +1021,12 @@
         "moderate": "Mérsékelt",
         "permissive": "Megengedő",
         "undefined": "Meghatározatlan"
-      }
+      },
+      "latestActions": "Legutóbbi rögzített műveletek",
+      "otherDeadlines": "Egyéb megfelelési határidők",
+      "daysAgo": "nappal ezelőtt",
+      "revokedCount": "Visszavont szabályozások ({{count}})",
+      "lapsedCount": "Lejárt javaslatok ({{count}})"
     },
     "economic": {
       "indicators": "Mutatók",
@@ -1097,7 +1101,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Frissítsen PRO-ra az erőmű- és finomítóország-részesedésekhez koncentrációval (szállítói koncentrációs index) szakaszonként."
+      "productionProLocked": "Frissítsen PRO-ra az erőmű- és finomítóország-részesedésekhez koncentrációval (szállítói koncentrációs index) szakaszonként.",
+      "partialTransitCoverage": "{{names}} tranzitadatai nem érhetők el",
+      "oilPipelinesUnavailable": "Olajvezeték-adatok nem érhetők el",
+      "gasPipelinesUnavailable": "Gázvezeték-adatok nem érhetők el"
     },
     "tradePolicy": {
       "overview": "Áttekintés",
@@ -1967,8 +1974,6 @@
       "summaryFailed": "Összegzés sikertelen",
       "sources": "{{count}} forrás",
       "relatedAssetsNear": "Kapcsolódó eszközök a közelben: {{location}}",
-      "sourceCoverage": "{{covered}}/{{total}} forrás",
-      "sourceCoverageHint": "{{total}} engedélyezett forrásból {{covered}} látszik — ez a panel minden frissítéskor váltogatja a forrásait",
       "sortBy": "Rendezés:",
       "sortNewest": "Legújabb",
       "sortRelevance": "Relevancia",
@@ -2710,6 +2715,15 @@
             "mcpClients": "MCP beállítása",
             "channels": "Állítsa be ezeket az értesítési beállításokban"
           }
+        },
+        "about": {
+          "heading": "Utolsó dolog: mire fogod használni a World Monitor-t?",
+          "body": "Három rövid kérdés segít nekünk megépíteni az ideális eszközöket számodra. Kihagyhatod, amit szeretnél.",
+          "confirmCta": "Válaszaim mentése",
+          "confirming": "Mentés…",
+          "doneNote": "Köszönjük, megkaptuk a válaszaidat.",
+          "summaryLabel": "Rólad",
+          "summaryVerified": "Mentve. Köszönjük."
         }
       },
       "status": {
@@ -2907,7 +2921,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Törökországi Szorosok",
         "panama": "Panama",
-        "danishStraits": "Dán Szorosok"
+        "doverStrait": "Doveri-szoros"
       },
       "flow": {
         "mbd": "{{value}} mb/nap",
@@ -3072,6 +3086,95 @@
       "rosterSummaryTier1": "{{publishers}} által közölve, köztük {{tier1}} 1. szintű",
       "rosterPublishers_one": "{{count}} kiadó",
       "rosterPublishers_other": "{{count}} kiadó"
+    },
+    "foodPrices": {
+      "title": "Helyi élelmiszerárak",
+      "method": "A heti változás ugyanazon termék, piac, származás és egység árát hasonlítja a pontosan hét nappal korábbi árhoz. Az országok eltérő kosarakat és pénznemeket használnak.",
+      "loading": "Élelmiszerárak betöltése…",
+      "unavailable": "Nem érhető el",
+      "retry": "Újrapróbálkozás",
+      "country": "Ország",
+      "market": "Piac",
+      "retail": "Kiskereskedelem",
+      "wholesale": "Nagykereskedelem",
+      "farmgate": "Termelői ár",
+      "export": "Export",
+      "prices": "Élelmiszerárak",
+      "product": "Termék",
+      "price": "Ár / egység",
+      "weekly": "Heti változás",
+      "origin": "Származás",
+      "versus": "összevetve",
+      "noBaseline": "Az előző hét nem érhető el",
+      "context": "Élelmezésbiztonság és havi háttér",
+      "contextNote": "Ezek a jelentések dátummal ellátott hátteret adnak, nem heti árváltozásokat. A tunéziai jelentések több hónapot késhetnek.",
+      "briefCountry": "Országjelentés",
+      "report": "Jelentés dátuma",
+      "checked": "Utolsó ellenőrzés",
+      "current": "Aktuális",
+      "partial": "Néhány jelentés hiányzik vagy régi",
+      "stale": "Régebbi adatok",
+      "global": "A FAO globális havi indexe"
+    },
+    "aboutYou": {
+      "title": "Segíts nekünk a World Monitort neked építeni",
+      "ariaLabel": "Rólad",
+      "progress": "{{current}} / {{total}}",
+      "skip": "Kihagyás",
+      "close": "Bezárás",
+      "done": "Kész",
+      "saving": "Mentés…",
+      "saveFailed": "Nem sikerült elmenteni. Próbáld újra.",
+      "retry": "Újrapróbálkozás",
+      "thanks": "Köszönjük. Ez segít dönteni, mit építsünk majd.",
+      "questions": {
+        "primaryUse": {
+          "label": "Mire használod elsősorban a World Monitor-t?",
+          "options": {
+            "news": "Hírek és világesemények",
+            "markets": "Piacok és kereskedés",
+            "commodities": "Árucikkek és ellátási lánc",
+            "travel": "Utazás és járatok",
+            "security": "Biztonság és OSINT",
+            "research": "Kutatás és újságírás",
+            "api-agent": "API vagy AI-ügynök fejlesztése",
+            "other": "Valami más"
+          }
+        },
+        "usageContext": {
+          "label": "Munkához vagy személyes használathoz?",
+          "options": {
+            "personal": "Személyes",
+            "work": "Munka"
+          }
+        },
+        "payer": {
+          "label": "Ki fizeti vagy fizetne érte?",
+          "options": {
+            "self": "Én",
+            "employer": "A munkáltatóm vagy a csapatom",
+            "not-paying": "Még senki"
+          }
+        },
+        "role": {
+          "label": "Melyik jellemzi legjobban a szerepedet?",
+          "options": {
+            "analyst": "Elemző vagy kutató",
+            "trader": "Kereskedő vagy befektető",
+            "journalist": "Újságíró",
+            "security": "Biztonság vagy kockázat",
+            "government": "Kormányzati vagy politikai",
+            "supply-chain": "Ellátási lánc vagy műveletek",
+            "developer": "Fejlesztő",
+            "student": "Hallgató",
+            "other": "Egyéb"
+          }
+        },
+        "alternative": {
+          "label": "Mit használnál, ha a World Monitor nem lenne?",
+          "placeholder": "Opcionális"
+        }
+      }
     }
   },
   "popups": {
@@ -4178,5 +4281,29 @@
     "reportedClaims": "A kiadó jelentései. Az állítások vizsgálata még folyamatban lehet.",
     "occurred": "Esemény",
     "reported": "Közzétéve"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Globális Piacok Térképe",
+      "liveNews": "Piaci Hírek",
+      "insights": "AI Piaci Elemzések"
+    },
+    "tech": {
+      "map": "Globális Technológiai Térkép",
+      "liveNews": "Technológiai Hírek"
+    },
+    "commodity": {
+      "map": "Árucikkek Térképe",
+      "liveNews": "Árucikkek Hírek",
+      "insights": "AI Árucikkek Elemzések"
+    },
+    "energy": {
+      "map": "Energia Atlasz Térképe",
+      "liveNews": "Energia Hírek",
+      "insights": "AI Energia Elemzések"
+    },
+    "happy": {
+      "map": "Jó Hírek Térképe"
+    }
   }
 }

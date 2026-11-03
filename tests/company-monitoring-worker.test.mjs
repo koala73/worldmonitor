@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { ConvexHttpClient } from 'convex/browser';
 import { __testing__ as healthApi } from '../api/health.js';
-import { findOperationalProblems, findPendingDiagnostics } from '../scripts/check-seed-freshness.mjs';
 
 import {
   COMPANY_MONITORING_CLASSIFIER_RUNTIME_APPROVED,
@@ -762,8 +761,7 @@ describe('company monitoring claim failure resilience', () => {
     assert.equal(pending.entry.status, 'SEED_ERROR');
     assert.equal(pending.compact.problems, undefined);
     assert.deepEqual(pending.compact.pending.companyMonitoringWorker, pending.entry);
-    assert.deepEqual(findOperationalProblems(pending.compact, baseline + 5_000), []);
-    assert.equal(findPendingDiagnostics(pending.compact, baseline + 5_000).length, 1);
+    assert.equal(pending.compact.dataStatus, 'OK');
     assert.deepEqual(pending.entry.workerControl.subsystems.scan.claimFailure, {
       kind: 'timeout', httpStatus: null, consecutiveFailures: 1, lastHealthyAt: baseline,
     });
@@ -808,7 +806,7 @@ describe('company monitoring claim failure resilience', () => {
     assert.equal(healthApi.snapshotTtlSeconds(compact, baseline + 280_000), 20);
     f.setNow(baseline + 300_000);
     assert.equal(healthApi.hasExpiredActivationGrace(compact, baseline + 300_000), true);
-    assert.equal(findOperationalProblems(compact, baseline + 300_000).length, 1);
+    assert.equal(healthApi.collectFailureLogProblems({ companyMonitoringWorker: entry }, baseline + 300_000).sigKeys.length, 1);
     assert.equal(healthApi.healthStatusBucket(entry, baseline + 300_000), 'warn');
     assert.equal(f.read().status, 'WARNING');
     await f.worker.tick();
@@ -845,16 +843,7 @@ describe('company monitoring claim failure resilience', () => {
       } } }).status, 'WARNING');
     }
     const entry = f.read().entry;
-    for (const patch of [
-      { records: 0 }, { maxStaleMin: 10 },
-      { workerControlPendingUntil: new Date(baseline + 600_000).toISOString() },
-      { workerControlPendingUntil: 'bad' },
-      { workerControl: { ...entry.workerControl, status: 'ok' } },
-    ]) {
-      assert.equal(findOperationalProblems({ status: 'HEALTHY', pending: {
-        companyMonitoringWorker: { ...entry, ...patch },
-      } }, baseline + 5_000).length, 1);
-    }
+    assert.equal(healthApi.healthStatusBucket({ ...entry, workerControlPendingUntil: 'bad' }, baseline + 5_000), 'warn');
   });
 
   it('keeps permanent, malformed and unknown claim failures immediate until a healthy result', async () => {

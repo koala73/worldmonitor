@@ -14,27 +14,27 @@ import "worldmonitor/climate/v1/list_climate_news.proto";
 service ClimateService {
   option (sebuf.http.service_config) = {base_path: "/api/climate/v1"};
 
-  // ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
+  // ListClimateAnomalies returns 7-day temperature and precipitation departures from 1991-2020 monthly normals per climate zone, using Open-Meteo ERA5 data.
   rpc ListClimateAnomalies(ListClimateAnomaliesRequest) returns (ListClimateAnomaliesResponse) {
     option (sebuf.http.config) = {path: "/list-climate-anomalies", method: HTTP_METHOD_GET};
   }
 
-  // ListClimateDisasters retrieves climate-relevant disaster events from seeded data.
+  // ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, EONET and FIRMS, up to 100 per page.
   rpc ListClimateDisasters(ListClimateDisastersRequest) returns (ListClimateDisastersResponse) {
     option (sebuf.http.config) = {path: "/list-climate-disasters", method: HTTP_METHOD_GET};
   }
 
-  // GetCo2Monitoring retrieves seeded NOAA greenhouse gas monitoring data.
+  // GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, refreshed every 3 days.
   rpc GetCo2Monitoring(GetCo2MonitoringRequest) returns (GetCo2MonitoringResponse) {
     option (sebuf.http.config) = {path: "/get-co2-monitoring", method: HTTP_METHOD_GET};
   }
 
-  // GetOceanIceData retrieves seeded Arctic sea ice, sea level, and ocean heat indicators.
+  // GetOceanIceData returns NSIDC Arctic sea ice extent and anomaly with a 12-month trend, NASA sea level rise, NOAA 0-700m ocean heat content and SST anomaly.
   rpc GetOceanIceData(GetOceanIceDataRequest) returns (GetOceanIceDataResponse) {
     option (sebuf.http.config) = {path: "/get-ocean-ice-data", method: HTTP_METHOD_GET};
   }
 
-  // ListAirQualityData retrieves recent PM2.5 station data from the shared air-quality seed.
+  // ListAirQualityData returns PM2.5 station readings from the last two hours from OpenAQ, plus WAQI when configured, with a US EPA AQI and risk level each.
   rpc ListAirQualityData(ListAirQualityDataRequest) returns (ListAirQualityDataResponse) {
     option (sebuf.http.config) = {path: "/list-air-quality-data", method: HTTP_METHOD_GET};
   }

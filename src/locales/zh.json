@@ -385,7 +385,6 @@
     "liveNews": "实时新闻",
     "markets": "市场",
     "map": "全球态势",
-    "techMap": "全球科技",
     "techHubs": "热门科技中心",
     "status": "系统状态",
     "insights": "AI洞察",
@@ -478,7 +477,7 @@
     "bigmacDesc": "中东国家的巨无霸汉堡价格（巨无霸指数）",
     "bigmacWow": "周环比",
     "bigmacCountry": "国家",
-    "faoFoodPriceIndex": "粮农组织食品价格指数",
+    "faoFoodPriceIndex": "食品价格",
     "fuelPrices": "燃料价格",
     "fuelPricesDesc": "全球 30 多个国家的零售汽油和柴油价格",
     "fuelPricesCountry": "国家",
@@ -927,7 +926,12 @@
         "permissive": "宽松",
         "undefined": "未定义"
       },
-      "infoTooltip": "<strong>监管</strong> 全球监管机构的监管行动、政策变更和执法更新：金融、科技、能源和贸易部门。来源：政府和监管机构官方出版物。"
+      "infoTooltip": "<strong>监管</strong> 全球监管机构的监管行动、政策变更和执法更新：金融、科技、能源和贸易部门。来源：政府和监管机构官方出版物。",
+      "latestActions": "最新记录的行动",
+      "otherDeadlines": "其他合规截止日期",
+      "daysAgo": "天前",
+      "revokedCount": "已撤销法规（{{count}}）",
+      "lapsedCount": "已失效提案 ({{count}})"
     },
     "economic": {
       "indicators": "指标",
@@ -993,7 +997,10 @@
       "stageUnavailable": "该阶段暂无公开数据",
       "withheldNote": "W 表示数据隐去",
       "productionCaption": "各国在实际产量中的份额。地图矿藏图层显示资源分布，此表显示由谁开采或冶炼。",
-      "productionProLocked": "升级至PRO版本以获取按阶段分类的采矿和炼油厂国家份额及集中度（生产商集中度指数）。"
+      "productionProLocked": "升级至PRO版本以获取按阶段分类的采矿和炼油厂国家份额及集中度（生产商集中度指数）。",
+      "partialTransitCoverage": "过境数据不可用：{{names}}",
+      "oilPipelinesUnavailable": "石油管道数据不可用",
+      "gasPipelinesUnavailable": "天然气管道数据不可用"
     },
     "tradePolicy": {
       "tariffs": "关税",
@@ -1821,8 +1828,6 @@
       "summaryFailed": "摘要失败",
       "sources": "{{count}}个来源",
       "relatedAssetsNear": "{{location}}附近的相关资产",
-      "sourceCoverage": "{{covered}}/{{total}} 个来源",
-      "sourceCoverageHint": "已显示 {{total}} 个已启用来源中的 {{covered}} 个 — 该面板每次刷新会轮换抓取不同来源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
       "sortRelevance": "相关性",
@@ -2631,6 +2636,15 @@
             "mcpClients": "设置 MCP",
             "channels": "在通知设置中进行配置"
           }
+        },
+        "about": {
+          "heading": "最后一件事：您将使用 World Monitor 做什么？",
+          "body": "三个快速问题能帮助我们为你打造合适的工具。你可以跳过任何问题。",
+          "confirmCta": "保存我的答案",
+          "confirming": "保存中…",
+          "doneNote": "感谢，我们已收到你的答案。",
+          "summaryLabel": "关于你",
+          "summaryVerified": "已保存。谢谢。"
         }
       },
       "status": {
@@ -2819,7 +2833,7 @@
         "babElMandeb": "曼德海峡",
         "bosphorus": "土耳其海峡",
         "panama": "巴拿马",
-        "danishStraits": "丹麦海峡"
+        "doverStrait": "多佛海峡"
       },
       "flow": {
         "mbd": "{{value}} 万桶/天",
@@ -2983,6 +2997,95 @@
       "rosterSummary": "由{{publishers}}报道",
       "rosterSummaryTier1": "由{{publishers}}报道，其中{{tier1}}家为一级来源",
       "rosterPublishers_other": "{{count}}家媒体"
+    },
+    "foodPrices": {
+      "title": "本地食品价格",
+      "method": "周环比将相同商品、市场、产地和单位的价格与恰好七天前的价格比较。各国采用不同的商品篮子和货币。",
+      "loading": "正在加载食品价格…",
+      "unavailable": "暂无数据",
+      "retry": "重试",
+      "country": "国家",
+      "market": "市场",
+      "retail": "零售",
+      "wholesale": "批发",
+      "farmgate": "农场收购价",
+      "export": "出口",
+      "prices": "食品价格",
+      "product": "商品",
+      "price": "价格 / 单位",
+      "weekly": "周环比",
+      "origin": "产地",
+      "versus": "对比",
+      "noBaseline": "上周数据不可用",
+      "context": "粮食安全与月度背景",
+      "contextNote": "这些报告提供带日期的背景信息，不提供每周价格变化。突尼斯的报告可能滞后数月。",
+      "briefCountry": "国家简报",
+      "report": "报告日期",
+      "checked": "最近检查",
+      "current": "最新",
+      "partial": "部分报告不可用或已过时",
+      "stale": "较早数据",
+      "global": "粮农组织全球月度指数"
+    },
+    "aboutYou": {
+      "title": "帮助我们为您打造 World Monitor",
+      "ariaLabel": "关于您",
+      "progress": "第 {{current}} / {{total}}",
+      "skip": "跳过",
+      "close": "关闭",
+      "done": "完成",
+      "saving": "保存中…",
+      "saveFailed": "保存失败。请重试。",
+      "retry": "重试",
+      "thanks": "感谢。这有助于我们决定下一步要开发什么。",
+      "questions": {
+        "primaryUse": {
+          "label": "您主要用 World Monitor 做什么？",
+          "options": {
+            "news": "新闻和世界事件",
+            "markets": "市场和交易",
+            "commodities": "商品和供应链",
+            "travel": "旅行和航班",
+            "security": "安全和 OSINT",
+            "research": "研究和新闻",
+            "api-agent": "使用 API 或 AI 智能体开发",
+            "other": "其他"
+          }
+        },
+        "usageContext": {
+          "label": "您是工作使用还是个人使用？",
+          "options": {
+            "personal": "个人",
+            "work": "工作"
+          }
+        },
+        "payer": {
+          "label": "谁支付或将支付费用？",
+          "options": {
+            "self": "我",
+            "employer": "我的雇主或团队",
+            "not-paying": "暂时没有"
+          }
+        },
+        "role": {
+          "label": "以下哪项最准确地描述您的角色？",
+          "options": {
+            "analyst": "分析师或研究员",
+            "trader": "交易员或投资者",
+            "journalist": "记者",
+            "security": "安全或风险",
+            "government": "政府或政策",
+            "supply-chain": "供应链或运营",
+            "developer": "开发者",
+            "student": "学生",
+            "other": "其他"
+          }
+        },
+        "alternative": {
+          "label": "如果 World Monitor 不存在，您会使用什么？",
+          "placeholder": "可选"
+        }
+      }
     }
   },
   "popups": {
@@ -4158,5 +4261,29 @@
     "reportedClaims": "发布方报告。相关说法可能仍在调查中。",
     "occurred": "事件",
     "reported": "发布"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "全球市场地图",
+      "liveNews": "市场头条",
+      "insights": "AI市场洞察"
+    },
+    "tech": {
+      "map": "全球科技地图",
+      "liveNews": "科技头条"
+    },
+    "commodity": {
+      "map": "商品地图",
+      "liveNews": "商品头条",
+      "insights": "AI商品洞察"
+    },
+    "energy": {
+      "map": "能源地图",
+      "liveNews": "能源头条",
+      "insights": "AI能源洞察"
+    },
+    "happy": {
+      "map": "好消息地图"
+    }
   }
 }

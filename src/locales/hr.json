@@ -460,7 +460,6 @@
     "markets": "Tržišta",
     "marketImplications": "Implikacije AI na tržištu",
     "map": "Globalna situacija",
-    "techMap": "Globalna tehnologija",
     "techHubs": "Vruća tehnološka središta",
     "status": "Stanje sustava",
     "insights": "AI uvidi",
@@ -548,7 +547,7 @@
     "bigmacDesc": "Cijene Big Maca u zemljama Bliskog Istoka (Indeks Big Maca)",
     "bigmacWow": "Promjena od tjedna do tjedna",
     "bigmacCountry": "Država",
-    "faoFoodPriceIndex": "FAO Indeks Cijene Hrane",
+    "faoFoodPriceIndex": "Cijene hrane",
     "fuelPrices": "Cijene Goriva",
     "fuelPricesDesc": "Maloprodajne cijene benzina i dizelskog goriva u 30+ zemalja širom svijeta",
     "fuelPricesCountry": "Država",
@@ -1029,7 +1028,12 @@
         "moderate": "Umjerena",
         "permissive": "Dozvoljiva",
         "undefined": "Nedefinisana"
-      }
+      },
+      "latestActions": "Najnovije zabilježene akcije",
+      "otherDeadlines": "Ostali rokovi za usklađenost",
+      "daysAgo": "dana unazad",
+      "revokedCount": "Opozvane Uredbe ({{count}})",
+      "lapsedCount": "Istekli prijedlozi ({{count}})"
     },
     "economic": {
       "indicators": "Pokazatelji",
@@ -1104,7 +1108,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Nadogradite se na PRO za udio rudnika i rafinerija po zemlji s koncentracijom (indeks koncentracije proizvođača) po fazi."
+      "productionProLocked": "Nadogradite se na PRO za udio rudnika i rafinerija po zemlji s koncentracijom (indeks koncentracije proizvođača) po fazi.",
+      "partialTransitCoverage": "Podaci o tranzitu nedostupni: {{names}}",
+      "oilPipelinesUnavailable": "Podaci o naftovodima nisu dostupni",
+      "gasPipelinesUnavailable": "Podaci o plinovodima nisu dostupni"
     },
     "tradePolicy": {
       "overview": "Pregled",
@@ -1976,8 +1983,6 @@
       "summaryFailed": "Sažetak neuspješan",
       "sources": "{{count}} izvora",
       "relatedAssetsNear": "Povezana sredstva blizu {{location}}",
-      "sourceCoverage": "{{covered}}/{{total}} izvora",
-      "sourceCoverageHint": "Prikazano {{covered}} od {{total}} uključenih izvora — ova ploča izmjenjuje svoje izvore pri svakom osvježavanju",
       "sortBy": "Sortiraj po",
       "sortNewest": "Najnovije",
       "sortRelevance": "Relevantnost",
@@ -2727,6 +2732,15 @@
             "mcpClients": "Postavi MCP",
             "channels": "Postavite ih u postavkama obavijesti"
           }
+        },
+        "about": {
+          "heading": "Još jedno: čemu ćete koristiti World Monitor?",
+          "body": "Tri brza odgovora pomoći će nam da gradimo prave alate za vas. Preskočite sve koje želite.",
+          "confirmCta": "Spremi moje odgovore",
+          "confirming": "Spremanje…",
+          "doneNote": "Hvala, imamo vaše odgovore.",
+          "summaryLabel": "O vama",
+          "summaryVerified": "Spremljeno. Hvala vam."
         }
       },
       "status": {
@@ -2933,7 +2947,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Turski prolazi",
         "panama": "Panamski",
-        "danishStraits": "Sjeverni prolazi"
+        "doverStrait": "Doverska vrata"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
@@ -3099,6 +3113,95 @@
       "rosterPublishers_one": "{{count}} izdavač",
       "rosterPublishers_few": "{{count}} izdavača",
       "rosterPublishers_other": "{{count}} izdavača"
+    },
+    "foodPrices": {
+      "title": "Lokalne cijene hrane",
+      "method": "Tjedna promjena uspoređuje isti proizvod, tržište, podrijetlo i jedinicu s cijenom točno sedam dana ranije. Države koriste različite košarice i valute.",
+      "loading": "Učitavanje cijena hrane…",
+      "unavailable": "Nedostupno",
+      "retry": "Pokušaj ponovno",
+      "country": "Država",
+      "market": "Tržište",
+      "retail": "Maloprodaja",
+      "wholesale": "Veleprodaja",
+      "farmgate": "Otkupna cijena",
+      "export": "Izvoz",
+      "prices": "Cijene hrane",
+      "product": "Proizvod",
+      "price": "Cijena / jedinica",
+      "weekly": "Tjedna promjena",
+      "origin": "Podrijetlo",
+      "versus": "u odnosu na",
+      "noBaseline": "Prethodni tjedan nije dostupan",
+      "context": "Sigurnost opskrbe hranom i mjesečni kontekst",
+      "contextNote": "Ova izvješća daju datirani kontekst, a ne tjedne promjene cijena. Izvješća iz Tunisa mogu kasniti nekoliko mjeseci.",
+      "briefCountry": "Izvješće za državu",
+      "report": "Datum izvješća",
+      "checked": "Zadnja provjera",
+      "current": "Aktualno",
+      "partial": "Neka izvješća nedostaju ili su stara",
+      "stale": "Stariji podaci",
+      "global": "Globalni mjesečni indeks FAO-a"
+    },
+    "aboutYou": {
+      "title": "Pomozite nam graditi World Monitor za vas",
+      "ariaLabel": "O vama",
+      "progress": "{{current}} od {{total}}",
+      "skip": "Preskoči",
+      "close": "Zatvori",
+      "done": "Gotovo",
+      "saving": "Spremanje…",
+      "saveFailed": "Nisam mogao to spremiti. Pokušajte ponovno.",
+      "retry": "Pokušaj ponovno",
+      "thanks": "Hvala. Ovo nam pomaže odlučiti što dalje graditi.",
+      "questions": {
+        "primaryUse": {
+          "label": "Za što primarno koristite World Monitor?",
+          "options": {
+            "news": "Vijesti i svjetski eventi",
+            "markets": "Tržišta i trgovanje",
+            "commodities": "Robe i dobavni lanac",
+            "travel": "Putovanje i letovi",
+            "security": "Sigurnost i OSINT",
+            "research": "Istraživanje i novinarstvo",
+            "api-agent": "Razvoj s API-jem ili AI agentom",
+            "other": "Nešto drugo"
+          }
+        },
+        "usageContext": {
+          "label": "Koristite li ga za posao ili osobnu upotrebu?",
+          "options": {
+            "personal": "Osobna",
+            "work": "Posao"
+          }
+        },
+        "payer": {
+          "label": "Tko plaća ili bi platio za to?",
+          "options": {
+            "self": "Ja",
+            "employer": "Moj poslodavac ili tim",
+            "not-paying": "Još nitko"
+          }
+        },
+        "role": {
+          "label": "Koja najbolje opisuje vašu ulogu?",
+          "options": {
+            "analyst": "Analitičar ili istraživač",
+            "trader": "Trgovac ili investitor",
+            "journalist": "Novinar",
+            "security": "Sigurnost ili rizik",
+            "government": "Državni ili politički sektor",
+            "supply-chain": "Dobavni lanac ili operacije",
+            "developer": "Programer",
+            "student": "Student",
+            "other": "Ostalo"
+          }
+        },
+        "alternative": {
+          "label": "Što biste koristili da World Monitor ne postoji?",
+          "placeholder": "Opcionalno"
+        }
+      }
     }
   },
   "popups": {
@@ -4209,5 +4312,29 @@
     "reportedClaims": "Izvješća izdavača. Tvrdnje mogu još biti pod istragom.",
     "occurred": "Incident",
     "reported": "Objavljeno"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Globalna mapa tržišta",
+      "liveNews": "Vijesti s tržišta",
+      "insights": "AI uvidi o tržištu"
+    },
+    "tech": {
+      "map": "Globalna tehnološka mapa",
+      "liveNews": "Tehnološke vijesti"
+    },
+    "commodity": {
+      "map": "Mapa sirovina",
+      "liveNews": "Vijesti o sirovinama",
+      "insights": "AI uvidi o sirovinama"
+    },
+    "energy": {
+      "map": "Energetski atlas",
+      "liveNews": "Energetske vijesti",
+      "insights": "AI uvidi o energiji"
+    },
+    "happy": {
+      "map": "Mapa dobrih vijesti"
+    }
   }
 }

@@ -3,7 +3,7 @@ import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { iso2ToCountryName } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
-import { t } from '@/services/i18n';
+import { pipelineCoverageWarning } from '@/services/supply-chain/pipeline-coverage';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
 import type {
@@ -416,8 +416,9 @@ export class PipelineStatusPanel extends Panel {
     });
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
-    const coverageWarning = this.data.upstreamUnavailable
-      ? `<div class="economic-warning">${escapeHtml(t('components.supplyChain.upstreamUnavailable'))}</div>`
+    const coverageText = pipelineCoverageWarning(this.data);
+    const coverageWarning = coverageText
+      ? `<div class="economic-warning">${escapeHtml(coverageText)}</div>`
       : '';
 
     const html = unsafeRawHtml(`

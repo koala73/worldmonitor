@@ -107,8 +107,10 @@ For mutations this avoids duplicating the side effect, including async enqueues 
 
 **MCP**: the server returns tool errors in the JSON-RPC result with `isError: true` and a text explanation — those are not HTTP errors. Handle them at the tool-call layer.
 
+**Reporting a failure**: every MCP error carries `error.data.requestId`. An unexpected tool failure (`-32603`) and an unknown tool (`-32602`) also carry `error.data.reportWith: "report_issue"`. On those, or when a tool you need does not exist, call [`report_issue`](/mcp-tools-reference#report_issue) with the `requestId`. Over REST, `POST /api/feedback/v1/submit-report` takes the same report, with the response's `x-vercel-id` as `requestId`. Both are credential-free. Billing denials, rate limits, upstream outages and validation errors are expected states and carry no `reportWith`: handle them, do not report them.
+
 ## Debugging
 
-- Every edge response includes `x-vercel-id` and `x-worldmonitor-deploy` headers — include those when reporting issues.
+- Every edge response includes `x-vercel-id` and `x-worldmonitor-deploy` headers — include those when reporting issues. An agent can send `x-vercel-id` as the `requestId` of a `report_issue` call.
 - Sentry alerts forward to [status.worldmonitor.app](https://status.worldmonitor.app/).
 - `GET /api/health` and `GET /api/seed-health` show per-seed freshness; a stale seed is the most common root cause of unexpected empty payloads.

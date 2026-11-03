@@ -474,7 +474,8 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
     `],
     ['@/services/data-freshness', `
       export const dataFreshness = {
-        setEnabled(source, enabled) {
+        setEnabled() {},
+        setMapLayerEnabled(source, enabled) {
           globalThis.__missionFreshness = globalThis.__missionFreshness || [];
           globalThis.__missionFreshness.push([source, enabled]);
         },

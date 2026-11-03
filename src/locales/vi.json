@@ -385,7 +385,6 @@
     "liveNews": "Tin tức Trực tiếp",
     "markets": "Thị trường",
     "map": "Tình hình Toàn cầu",
-    "techMap": "Công nghệ Toàn cầu",
     "techHubs": "Trung tâm Công nghệ Nổi bật",
     "status": "Trạng thái Hệ thống",
     "insights": "Phân tích AI",
@@ -477,7 +476,7 @@
     "bigmacDesc": "Giá Big Mac trên các nước Trung Đông (Big Mac Index)",
     "bigmacWow": "Thay đổi tuần so với tuần trước",
     "bigmacCountry": "Quốc gia",
-    "faoFoodPriceIndex": "Chỉ số Giá Thực phẩm FAO",
+    "faoFoodPriceIndex": "Giá thực phẩm",
     "fuelPrices": "Giá Nhiên liệu",
     "fuelPricesDesc": "Giá xăng lẻ và dầu diesel trên 30+ quốc gia trên thế giới",
     "fuelPricesCountry": "Quốc gia",
@@ -927,7 +926,12 @@
         "permissive": "Thoáng",
         "undefined": "Chưa xác định"
       },
-      "infoTooltip": "<strong>Quy định</strong> Các hành động quản lý, thay đổi chính sách và cập nhật thực thi từ các cơ quan quản lý toàn cầu: tài chính, công nghệ, năng lượng và thương mại. Nguồn: ấn phẩm chính thức của chính phủ và cơ quan quản lý."
+      "infoTooltip": "<strong>Quy định</strong> Các hành động quản lý, thay đổi chính sách và cập nhật thực thi từ các cơ quan quản lý toàn cầu: tài chính, công nghệ, năng lượng và thương mại. Nguồn: ấn phẩm chính thức của chính phủ và cơ quan quản lý.",
+      "latestActions": "Các hành động được ghi nhận mới nhất",
+      "otherDeadlines": "Các thời hạn tuân thủ khác",
+      "daysAgo": "ngày trước",
+      "revokedCount": "Quy định bị thu hồi ({{count}})",
+      "lapsedCount": "Đề xuất hết hiệu lực ({{count}})"
     },
     "economic": {
       "indicators": "Chỉ số",
@@ -993,7 +997,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Nâng cấp lên PRO để xem tỷ lệ mỏ và nhà máy lọc theo quốc gia với tập trung (chỉ số tập trung nhà sản xuất) theo giai đoạn."
+      "productionProLocked": "Nâng cấp lên PRO để xem tỷ lệ mỏ và nhà máy lọc theo quốc gia với tập trung (chỉ số tập trung nhà sản xuất) theo giai đoạn.",
+      "partialTransitCoverage": "Dữ liệu quá cảnh không khả dụng: {{names}}",
+      "oilPipelinesUnavailable": "Dữ liệu đường ống dầu không có sẵn",
+      "gasPipelinesUnavailable": "Dữ liệu đường ống khí không có sẵn"
     },
     "tradePolicy": {
       "tariffs": "Thuế quan",
@@ -1821,8 +1828,6 @@
       "summaryFailed": "Tóm tắt thất bại",
       "sources": "{{count}} nguồn",
       "relatedAssetsNear": "Tài sản liên quan gần {{location}}",
-      "sourceCoverage": "{{covered}}/{{total}} nguồn",
-      "sourceCoverageHint": "Đang hiển thị {{covered}} trong {{total}} nguồn đã bật — bảng này luân phiên các nguồn của nó sau mỗi lần làm mới",
       "sortBy": "Sắp xếp theo",
       "sortNewest": "Mới nhất",
       "sortRelevance": "Mức độ liên quan",
@@ -2631,6 +2636,15 @@
             "mcpClients": "Thiết lập MCP",
             "channels": "Thiết lập chúng trong cài đặt thông báo"
           }
+        },
+        "about": {
+          "heading": "Một điều cuối cùng: bạn sẽ dùng World Monitor để làm gì?",
+          "body": "Ba câu trả lời nhanh giúp chúng tôi xây dựng những công cụ phù hợp cho bạn. Bỏ qua những câu nào bạn muốn.",
+          "confirmCta": "Lưu câu trả lời của tôi",
+          "confirming": "Đang lưu…",
+          "doneNote": "Cảm ơn, chúng tôi đã ghi nhận câu trả lời của bạn.",
+          "summaryLabel": "Về bạn",
+          "summaryVerified": "Đã lưu. Cảm ơn bạn."
         }
       },
       "status": {
@@ -2819,7 +2833,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Eo biển Thổ Nhĩ Kỳ",
         "panama": "Panama",
-        "danishStraits": "Eo biển Đan Mạch"
+        "doverStrait": "Eo biển Dover"
       },
       "flow": {
         "mbd": "{{value}} mb/ngày",
@@ -2983,6 +2997,95 @@
       "rosterSummary": "Được đưa tin bởi {{publishers}}",
       "rosterSummaryTier1": "Được đưa tin bởi {{publishers}}, trong đó {{tier1}} thuộc cấp 1",
       "rosterPublishers_other": "{{count}} nhà xuất bản"
+    },
+    "foodPrices": {
+      "title": "Giá thực phẩm địa phương",
+      "method": "Thay đổi theo tuần so sánh cùng sản phẩm, thị trường, xuất xứ và đơn vị với giá đúng bảy ngày trước. Các quốc gia sử dụng giỏ hàng và tiền tệ khác nhau.",
+      "loading": "Đang tải giá thực phẩm…",
+      "unavailable": "Không có dữ liệu",
+      "retry": "Thử lại",
+      "country": "Quốc gia",
+      "market": "Thị trường",
+      "retail": "Bán lẻ",
+      "wholesale": "Bán buôn",
+      "farmgate": "Giá tại trang trại",
+      "export": "Xuất khẩu",
+      "prices": "Giá thực phẩm",
+      "product": "Sản phẩm",
+      "price": "Giá / đơn vị",
+      "weekly": "Thay đổi theo tuần",
+      "origin": "Xuất xứ",
+      "versus": "so với",
+      "noBaseline": "Không có dữ liệu tuần trước",
+      "context": "An ninh lương thực và bối cảnh tháng",
+      "contextNote": "Các báo cáo này cung cấp bối cảnh có ngày tháng, không phải thay đổi giá theo tuần. Báo cáo của Tunisia có thể chậm vài tháng.",
+      "briefCountry": "Báo cáo quốc gia",
+      "report": "Ngày báo cáo",
+      "checked": "Kiểm tra lần cuối",
+      "current": "Hiện tại",
+      "partial": "Một số báo cáo bị thiếu hoặc đã cũ",
+      "stale": "Dữ liệu cũ",
+      "global": "Chỉ số tháng toàn cầu của FAO"
+    },
+    "aboutYou": {
+      "title": "Giúp chúng tôi xây dựng World Monitor phù hợp với bạn",
+      "ariaLabel": "Về bạn",
+      "progress": "{{current}} trên {{total}}",
+      "skip": "Bỏ qua",
+      "close": "Đóng",
+      "done": "Xong",
+      "saving": "Đang lưu…",
+      "saveFailed": "Không thể lưu. Vui lòng thử lại.",
+      "retry": "Thử lại",
+      "thanks": "Cảm ơn. Điều này giúp chúng tôi quyết định tiếp theo sẽ xây dựng gì.",
+      "questions": {
+        "primaryUse": {
+          "label": "Bạn chủ yếu sử dụng World Monitor để làm gì?",
+          "options": {
+            "news": "Tin tức và sự kiện thế giới",
+            "markets": "Thị trường và giao dịch",
+            "commodities": "Hàng hóa và chuỗi cung ứng",
+            "travel": "Du lịch và chuyến bay",
+            "security": "An ninh và OSINT",
+            "research": "Nghiên cứu và báo chí",
+            "api-agent": "Phát triển với API hoặc AI agent",
+            "other": "Cái khác"
+          }
+        },
+        "usageContext": {
+          "label": "Bạn sử dụng nó cho công việc hay cá nhân?",
+          "options": {
+            "personal": "Cá nhân",
+            "work": "Công việc"
+          }
+        },
+        "payer": {
+          "label": "Ai trả tiền, hoặc sẽ trả tiền, cho nó?",
+          "options": {
+            "self": "Tôi",
+            "employer": "Nhà tuyển dụng hoặc đội của tôi",
+            "not-paying": "Chưa ai cả"
+          }
+        },
+        "role": {
+          "label": "Vai trò nào mô tả bạn tốt nhất?",
+          "options": {
+            "analyst": "Nhà phân tích hoặc nhà nghiên cứu",
+            "trader": "Nhà giao dịch hoặc nhà đầu tư",
+            "journalist": "Nhà báo",
+            "security": "An ninh hoặc rủi ro",
+            "government": "Chính phủ hoặc chính sách",
+            "supply-chain": "Chuỗi cung ứng hoặc hoạt động",
+            "developer": "Nhà phát triển",
+            "student": "Sinh viên",
+            "other": "Khác"
+          }
+        },
+        "alternative": {
+          "label": "Bạn sẽ sử dụng gì nếu World Monitor không tồn tại?",
+          "placeholder": "Tùy chọn"
+        }
+      }
     }
   },
   "popups": {
@@ -4158,5 +4261,29 @@
     "reportedClaims": "Báo cáo của bên xuất bản. Các tuyên bố có thể vẫn đang được điều tra.",
     "occurred": "Sự cố",
     "reported": "Đã xuất bản"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Bản đồ Thị trường Toàn cầu",
+      "liveNews": "Tin tức Thị trường",
+      "insights": "Thông tin Thị trường AI"
+    },
+    "tech": {
+      "map": "Bản đồ Công nghệ Toàn cầu",
+      "liveNews": "Tin tức Công nghệ"
+    },
+    "commodity": {
+      "map": "Bản đồ Hàng hóa",
+      "liveNews": "Tin tức Hàng hóa",
+      "insights": "Thông tin Hàng hóa AI"
+    },
+    "energy": {
+      "map": "Bản đồ Năng lượng",
+      "liveNews": "Tin tức Năng lượng",
+      "insights": "Thông tin Năng lượng AI"
+    },
+    "happy": {
+      "map": "Bản đồ Tin tức Tích cực"
+    }
   }
 }

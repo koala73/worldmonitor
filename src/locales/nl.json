@@ -9,7 +9,6 @@
     "status": "Systeemstatus",
     "insights": "AI-inzichten",
     "map": "Interactive Map",
-    "techMap": "Mondiale technologie",
     "politics": "Wereldnieuws",
     "us": "Verenigde Staten",
     "europe": "Europa",
@@ -95,7 +94,7 @@
     "bigmacDesc": "Big Mac-prijzen in landen in het Midden-Oosten (Big Mac Index)",
     "bigmacWow": "Week-over-week",
     "bigmacCountry": "Land",
-    "faoFoodPriceIndex": "FAO Voedselprijs-index",
+    "faoFoodPriceIndex": "Voedselprijzen",
     "fuelPrices": "Brandstofprijzen",
     "fuelPricesDesc": "Retailprijzen voor benzine en diesel in meer dan 30 landen wereldwijd",
     "fuelPricesCountry": "Land",
@@ -760,8 +759,6 @@
       "relatedAssetsNear": "Gerelateerde activa in de buurt van {{location}}",
       "summaryError": "Samenvatting kon niet worden gemaakt",
       "summaryFailed": "Samenvatting mislukt",
-      "sourceCoverage": "{{covered}}/{{total}} bronnen",
-      "sourceCoverageHint": "Toont {{covered}} van {{total}} ingeschakelde bronnen — dit paneel wisselt bij elke verversing van bron",
       "sortBy": "Sorteren op",
       "sortNewest": "Nieuwste",
       "sortRelevance": "Relevantie",
@@ -1432,7 +1429,12 @@
         "permissive": "Permissive",
         "undefined": "Undefined"
       },
-      "infoTooltip": "<strong>Regelgeving</strong> Regelgevende acties, beleidswijzigingen en handhavingsupdates van mondiale toezichthouders: financiële, technologische, energie- en handelsautoriteiten. Bron: officiële overheids- en regelgevende publicaties."
+      "infoTooltip": "<strong>Regelgeving</strong> Regelgevende acties, beleidswijzigingen en handhavingsupdates van mondiale toezichthouders: financiële, technologische, energie- en handelsautoriteiten. Bron: officiële overheids- en regelgevende publicaties.",
+      "latestActions": "Laatst geregistreerde acties",
+      "otherDeadlines": "Overige nalevingsdeadlines",
+      "daysAgo": "dagen geleden",
+      "revokedCount": "Ingetrokken regelgeving ({{count}})",
+      "lapsedCount": "Vervallen voorstellen ({{count}})"
     },
     "etfFlows": {
       "unavailable": "exchangegenoteerde fondsengegevens tijdelijk niet beschikbaar",
@@ -1687,7 +1689,10 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Upgrade naar PRO voor aandelen mijn- en raffinaderijen per land met concentratie (producentenconcentratie-index) per fase."
+      "productionProLocked": "Upgrade naar PRO voor aandelen mijn- en raffinaderijen per land met concentratie (producentenconcentratie-index) per fase.",
+      "partialTransitCoverage": "{{names}} transitgegevens niet beschikbaar",
+      "oilPipelinesUnavailable": "Oliepijplijngegevens niet beschikbaar",
+      "gasPipelinesUnavailable": "Gaspijplijngegevens niet beschikbaar"
     },
     "positiveNewsFeed": {
       "noStories": "Nog geen verhalen in deze categorie"
@@ -2257,6 +2262,15 @@
             "mcpClients": "MCP instellen",
             "channels": "Stel deze in bij de meldingsinstellingen"
           }
+        },
+        "about": {
+          "heading": "Nog één ding: waar ga je World Monitor voor gebruiken?",
+          "body": "Drie snelle vragen helpen ons de juiste tools voor jou te bouwen. Sla er gerust over.",
+          "confirmCta": "Mijn antwoorden opslaan",
+          "confirming": "Opslaan…",
+          "doneNote": "Dank je, we hebben je antwoorden ontvangen.",
+          "summaryLabel": "Over jou",
+          "summaryVerified": "Opgeslagen. Dank je."
         }
       },
       "status": {
@@ -2454,7 +2468,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Turkse Straten",
         "panama": "Panama",
-        "danishStraits": "Deense Straten"
+        "doverStrait": "Nauw van Calais"
       },
       "flow": {
         "mbd": "{{value}} mb/d",
@@ -2619,6 +2633,95 @@
       "rosterSummaryTier1": "Gemeld door {{publishers}}, waaronder {{tier1}} tier-1",
       "rosterPublishers_one": "{{count}} uitgever",
       "rosterPublishers_other": "{{count}} uitgevers"
+    },
+    "foodPrices": {
+      "title": "Lokale voedselprijzen",
+      "method": "De weekverandering vergelijkt hetzelfde product, dezelfde markt, herkomst en eenheid met de prijs van precies zeven dagen eerder. Landen gebruiken verschillende mandjes en valuta.",
+      "loading": "Voedselprijzen laden…",
+      "unavailable": "Niet beschikbaar",
+      "retry": "Opnieuw proberen",
+      "country": "Land",
+      "market": "Markt",
+      "retail": "Detailhandel",
+      "wholesale": "Groothandel",
+      "farmgate": "Af boerderij",
+      "export": "Export",
+      "prices": "Voedselprijzen",
+      "product": "Artikel",
+      "price": "Prijs / eenheid",
+      "weekly": "Weekverandering",
+      "origin": "Herkomst",
+      "versus": "ten opzichte van",
+      "noBaseline": "Vorige week niet beschikbaar",
+      "context": "Voedselzekerheid en maandelijkse context",
+      "contextNote": "Deze rapporten bieden gedateerde context, geen wekelijkse prijsveranderingen. Rapporten uit Tunesië kunnen enkele maanden achterlopen.",
+      "briefCountry": "Landenrapport",
+      "report": "Rapportdatum",
+      "checked": "Laatst gecontroleerd",
+      "current": "Actueel",
+      "partial": "Sommige rapporten ontbreken of zijn oud",
+      "stale": "Oudere gegevens",
+      "global": "Wereldwijde maandindex van FAO"
+    },
+    "aboutYou": {
+      "title": "Help ons World Monitor voor jou te bouwen",
+      "ariaLabel": "Over jou",
+      "progress": "{{current}} van {{total}}",
+      "skip": "Overslaan",
+      "close": "Sluiten",
+      "done": "Gereed",
+      "saving": "Opslaan…",
+      "saveFailed": "Dit kon niet worden opgeslagen. Probeer het opnieuw.",
+      "retry": "Opnieuw proberen",
+      "thanks": "Dank je wel. Dit helpt ons bepalen wat we volgende willen bouwen.",
+      "questions": {
+        "primaryUse": {
+          "label": "Waarvoor gebruik je World Monitor vooral?",
+          "options": {
+            "news": "Nieuws en wereldgebeurtenissen",
+            "markets": "Markten en handel",
+            "commodities": "Grondstoffen en toeleveringsketen",
+            "travel": "Reizen en vluchten",
+            "security": "Veiligheid en OSINT",
+            "research": "Onderzoek en journalistiek",
+            "api-agent": "Bouwen met de API of een AI-agent",
+            "other": "Iets anders"
+          }
+        },
+        "usageContext": {
+          "label": "Gebruik je het voor werk of persoonlijk gebruik?",
+          "options": {
+            "personal": "Persoonlijk",
+            "work": "Werk"
+          }
+        },
+        "payer": {
+          "label": "Wie betaalt, of zou betalen, ervoor?",
+          "options": {
+            "self": "Ik zelf",
+            "employer": "Mijn werkgever of team",
+            "not-paying": "Nog niemand"
+          }
+        },
+        "role": {
+          "label": "Welke beschrijving past het beste bij jouw rol?",
+          "options": {
+            "analyst": "Analist of onderzoeker",
+            "trader": "Handelaar of belegger",
+            "journalist": "Journalist",
+            "security": "Veiligheid of risico",
+            "government": "Regering of beleid",
+            "supply-chain": "Toeleveringsketen of operaties",
+            "developer": "Developer",
+            "student": "Student",
+            "other": "Overig"
+          }
+        },
+        "alternative": {
+          "label": "Wat zou je gebruiken als World Monitor niet bestond?",
+          "placeholder": "Optioneel"
+        }
+      }
     }
   },
   "popups": {
@@ -4178,5 +4281,29 @@
     "reportedClaims": "Meldingen van de uitgever. Beweringen worden mogelijk nog onderzocht.",
     "occurred": "Incident",
     "reported": "Gepubliceerd"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Wereldwijde marktkaart",
+      "liveNews": "Marktkoppen",
+      "insights": "AI-marktinzichten"
+    },
+    "tech": {
+      "map": "Wereldwijde technologiekaart",
+      "liveNews": "Technologiekoppen"
+    },
+    "commodity": {
+      "map": "Grondstoffenkaart",
+      "liveNews": "Grondstoffenkoppen",
+      "insights": "AI-grondstoffeninzichten"
+    },
+    "energy": {
+      "map": "Energieatlas-kaart",
+      "liveNews": "Energiekoppen",
+      "insights": "AI-energieinzichten"
+    },
+    "happy": {
+      "map": "Goed nieuws-kaart"
+    }
   }
 }

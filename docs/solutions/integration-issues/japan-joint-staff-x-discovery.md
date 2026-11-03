@@ -41,6 +41,10 @@ The read covers the previous three days, once per 12-hour UTC slot, with at most
 
 The shared X budget must admit the request and settle its returned-post count. Budget denial, API errors, missing media, and an additional results page fail the read. A valid empty window succeeds without creating observations. Cached results preserve the acquisition time. Failed reads retain previous candidates and the previous success time.
 
+A budget denial can be checked again after one hour, on the next scheduled seeder run. Every retry uses the same slot reservation, so an already-accounted slot cannot issue another request. Successful reads and other failures remain cached until the next UTC slot. A retry does not advance the genuine success time unless acquisition succeeds.
+
 The two existing manually reviewed observations remain the only admitted Japan observations. New X candidates require review before admission. Candidate text, image URLs, and poll diagnostics stay out of the public bootstrap response. Without the token, the existing MOD discovery path remains active.
+
+The Force Posture panel labels X discovery separately from the number of reviewed Japan reports in its snapshot. Successful discovery does not mean newly found posts have updated the displayed aircraft or vessel counts.
 
 On 2026-10-24, `seed-bundle-derived-signals` had the shared Redis variables but no `X_BEARER_TOKEN`. Activation requires the existing X credential on that service and deployment of this change. Neither was performed during this investigation. Local tests and captured API evidence do not establish scheduled production recovery.
