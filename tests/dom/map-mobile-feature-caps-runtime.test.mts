@@ -75,8 +75,8 @@ const iranEvent = (i: number) => ({ id: `ir-${i}`, occurredAt: Date.now() - i })
 
 describe('mobile feed caps are applied at runtime (#4546)', () => {
   it('reads real cap constants off the class', () => {
-    expect(MIN_MAG).toBeGreaterThan(0);
-    expect(MAX_IRAN).toBeGreaterThan(0);
+    expect(MIN_MAG).toBe(5);
+    expect(MAX_IRAN).toBe(50);
   });
 
   it('drops earthquakes below the mobile magnitude floor, keeps the boundary, and leaves desktop uncapped', () => {
