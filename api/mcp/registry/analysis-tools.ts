@@ -1,5 +1,6 @@
 import { RpcValidationError } from '../billing-denial';
 import { requireCountryCode } from '../_country-args';
+import { isAssignedCountryCode } from '../../../shared/country-code-resolve';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { CII_MOVERS_OUTPUT_SCHEMA, ciiHistoryDays, readCiiMovers } from '../_cii-history';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
@@ -22,9 +23,12 @@ import {
 import { GeoConvergenceEngine, getLocationName } from '../../../shared/analysis-geo-convergence';
 import {
   buildDependencyGraph,
+  CABLE_EXPOSURE_NOTE,
+  type CableHealthInput,
   calculateCascade,
   calculateChokepointCableCut,
   calculateMultiCascade,
+  getCountryCableExposure,
   getGraphStats,
 } from '../../../shared/analysis-infrastructure-cascade';
 import {
@@ -66,6 +70,32 @@ import type { FreshnessCheck, ToolDef } from '../types';
 // Full CII realtime signal-density coverage (conflict + news families since CII v14),
 // matching api/health.js riskScores minRecordCount.
 const CII_REALTIME_COVERAGE_MIN = 2;
+
+const MAX_EXPOSURE_COUNTRIES = 10;
+
+/** Resolve simulate_infrastructure_cascade `countries` to unique ISO-2 codes, rejecting bad input before any cache read. */
+function resolveExposureCountries(raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  const values = Array.isArray(raw) ? raw : [raw];
+  if (values.length > MAX_EXPOSURE_COUNTRIES) {
+    throw new RpcValidationError('simulate-infrastructure-cascade', [{
+      field: 'countries',
+      description: `Pass at most ${MAX_EXPOSURE_COUNTRIES} countries.`,
+    }]);
+  }
+  const codes = values.map((value) => {
+    const code = requireCountryCode(value, 'simulate-infrastructure-cascade', 'countries').toUpperCase();
+    // Shape alone admits unassigned codes such as ZZ, which would read as a real country with no cables.
+    if (!isAssignedCountryCode(code)) {
+      throw new RpcValidationError('simulate-infrastructure-cascade', [{
+        field: 'countries',
+        description: `${JSON.stringify(code)} is not an assigned ISO 3166-1 country code.`,
+      }]);
+    }
+    return code;
+  });
+  return [...new Set(codes)];
+}
 
 type PayloadValidator = (value: unknown) => boolean;
 
@@ -488,13 +518,15 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     title: 'Simulate an infrastructure cascade',
     _outputBudgetBytes: 131072,
     description:
-      'Infrastructure cascade simulation: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. ' +
-      'Builds the dependency graph from the seeded TeleGeography submarine-cable table plus curated pipeline, port, and ' +
-      'chokepoint registries, then propagates the failure breadth-first. Results list affected nodes, per-country impact ' +
-      'levels, alternative cables (ranked by whether they avoid the chokepoints the cut cables cross), and graph stats. ' +
-      'Call with no arguments for the catalog of node ids. source_ids or cut_cables_through (a chokepoint id) model a ' +
-      'simultaneous multi-cable cut, e.g. every cable through Hormuz. disruption_level ranges 0.1 to 1 (default 1). ' +
-      'Cable results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.',
+      'Infrastructure cascade simulation and subsea cable exposure: what fails downstream when a cable, chokepoint, ' +
+      'pipeline, or port is disrupted. Builds the dependency graph from the seeded TeleGeography submarine-cable table ' +
+      'plus curated pipeline, port, and chokepoint registries, then propagates the failure breadth-first. Results list ' +
+      'affected nodes, per-country impact levels, alternative cables (ranked by whether they avoid the chokepoints the ' +
+      'cut cables cross), and graph stats. Call with no arguments for the catalog of node ids. source_ids or ' +
+      'cut_cables_through (a chokepoint id) model a simultaneous multi-cable cut, e.g. every cable through Hormuz. ' +
+      'countries (up to 10) compares per-country cable exposure: cable count, landing stations, chokepoints crossed, ' +
+      'and cables the cable-health monitor flags as faulted. disruption_level ranges 0.1 to 1 (default 1). Cable ' +
+      'results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -510,6 +542,13 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           description: 'Chokepoint id (e.g. "chokepoint:hormuz_strait"): cut every cable whose route crosses it. Ignored when source_id or source_ids is given.',
         },
         disruption_level: { type: 'number', description: 'Initial failure severity between 0.1 and 1 (default 1).' },
+        countries: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 1,
+          maxItems: MAX_EXPOSURE_COUNTRIES,
+          description: 'Compare subsea cable exposure for these countries (ISO alpha-2, alpha-3 or English name): cables landing there, distinct landing stations, chokepoints those cables cross and their share, and active FAULT or DEGRADED cable incidents. Returned in data.exposure; combines with the cut arguments.',
+        },
       },
       required: [],
     },
@@ -525,6 +564,43 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             catalog: { type: ['object', 'null'], description: 'Node ids by type; present only when source_id is omitted.' },
             cascade: { type: ['object', 'null'], description: 'Cascade result; present only when source_id is given.' },
             stats: { type: 'object' },
+            exposure: {
+              type: 'array',
+              description: 'Per-country subsea cable exposure, in request order; present only when countries is given.',
+              items: {
+                type: 'object',
+                properties: {
+                  country: { type: 'string' },
+                  countryName: { type: 'string' },
+                  cableCount: { type: 'integer' },
+                  landingStationCount: { type: 'integer' },
+                  landingStations: { type: 'array', items: { type: 'object', properties: { city: { type: 'string' }, cables: { type: 'integer' } } } },
+                  cables: { type: 'array', items: { type: 'object', properties: {
+                    id: { type: 'string' }, name: { type: 'string' }, rfsYear: { type: ['integer', 'null'] },
+                    landingCities: { type: 'array', items: { type: 'string' } },
+                    chokepoints: { type: 'array', items: { type: 'string' } },
+                    health: { type: ['object', 'null'], description: 'Set only when the cable is flagged FAULT or DEGRADED.' },
+                  } } },
+                  chokepointExposure: { type: 'array', items: { type: 'object', properties: {
+                    chokepoint: { type: 'string' }, name: { type: 'string' }, cables: { type: 'integer' },
+                    share: { type: 'number', description: 'Share of the country cables that cross this chokepoint.' },
+                  } } },
+                  cablesAvoidingChokepoints: { type: 'integer' },
+                  largestSingleChokepointShare: { type: 'number' },
+                  activeIncidents: { type: 'array', items: { type: 'object', properties: {
+                    cableId: { type: 'string' }, name: { type: 'string' },
+                    status: { type: 'string', enum: ['FAULT', 'DEGRADED'] },
+                    score: { type: ['number', 'null'] }, confidence: { type: ['number', 'null'] },
+                    lastUpdated: { type: ['number', 'null'], description: 'Epoch ms of the newest notice.' },
+                    evidence: { type: 'array', items: { type: 'object', properties: {
+                      source: { type: 'string' }, summary: { type: 'string' }, ts: { type: ['number', 'null'] },
+                    } } },
+                  } } },
+                },
+              },
+            },
+            health_available: { type: 'boolean', description: 'False when the cable-health snapshot was unreadable; incidents are then unknown, not absent. Present only with countries.' },
+            exposure_note: { type: 'string', description: 'How exposure is derived and its limits. Present only with countries.' },
           },
           required: [],
         },
@@ -534,17 +610,40 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       required: ['cached_at', 'stale', 'data'],
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // Dispatch runs this before reserving quota, so a bad country costs nothing.
+    _validateArgs: (params) => { resolveExposureCountries(params.countries); },
     _execute: async (params) => {
+      const exposureCountries = resolveExposureCountries(params.countries);
+      const wantsExposure = exposureCountries.length > 0;
       const checks: FreshnessCheck[] = [
         { key: 'seed-meta:infrastructure:submarine-cables', maxStaleMin: 25200 },
+        ...(wantsExposure ? [{ key: 'seed-meta:cable-health', maxStaleMin: 90 }] : []),
       ];
-      const { payloads: [cablesPayload], freshness } = await readCachesWithFreshness(
-        ['infrastructure:submarine-cables:v1'],
+      const { payloads: [cablesPayload, healthPayload], freshness } = await readCachesWithFreshness(
+        wantsExposure ? ['infrastructure:submarine-cables:v1', 'cable-health-v1'] : ['infrastructure:submarine-cables:v1'],
         checks,
       );
       const cables = submarineCablesToCableInputs(cablesPayload);
       const graph = buildDependencyGraph({ cables, waterways: MCP_CASCADE_WATERWAYS });
       const stats = getGraphStats(graph);
+      let exposureData: Record<string, unknown> = {};
+      if (wantsExposure) {
+        if (cablesPayload === null) {
+          throw new McpSourceUnavailableError(
+            'The submarine-cable catalog is unavailable',
+            freshness.unavailable_inputs,
+            freshness.failed_inputs,
+          );
+        }
+        const healthCables = healthPayload && typeof healthPayload === 'object'
+          ? (healthPayload as { cables?: Record<string, CableHealthInput> }).cables ?? null
+          : null;
+        exposureData = {
+          exposure: exposureCountries.map((code) => getCountryCableExposure(graph, code, healthCables)),
+          health_available: healthCables !== null,
+          exposure_note: CABLE_EXPOSURE_NOTE,
+        };
+      }
 
       const sourceId = typeof params.source_id === 'string' ? params.source_id.trim() : '';
       const sourceIds = Array.isArray(params.source_ids)
@@ -568,13 +667,17 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           }
           return {
             ...freshness,
-            data: { catalog: null, cascade: null, stats },
+            data: { catalog: null, cascade: null, stats, ...exposureData },
             error: sourceIds.length > 0
               ? `unknown source_ids: ${sourceIds.filter(id => !graph.nodes.has(id)).join(', ')} — call without arguments for the full catalog`
               : `no cable crosses "${cutChokepoint}" or it is not a known chokepoint id`,
           };
         }
-        return { ...freshness, data: { catalog: null, cascade, stats } };
+        return { ...freshness, data: { catalog: null, cascade, stats, ...exposureData } };
+      }
+
+      if (!sourceId && wantsExposure) {
+        return { ...freshness, data: { catalog: null, cascade: null, stats, ...exposureData } };
       }
 
       if (!sourceId) {
@@ -597,16 +700,16 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         const sample = [...graph.nodes.keys()].filter((id) => !id.startsWith('country-')).slice(0, 12);
         return {
           ...freshness,
-          data: { catalog: null, cascade: null, stats },
+          data: { catalog: null, cascade: null, stats, ...exposureData },
           error: `unknown source_id "${sourceId}" — call without source_id for the full catalog`,
           known_id_sample: sample,
         };
       }
 
       const cascade = calculateCascade(graph, sourceId, disruptionLevel);
-      return { ...freshness, data: { catalog: null, cascade, stats } };
+      return { ...freshness, data: { catalog: null, cascade, stats, ...exposureData } };
     },
-    _coverageKeys: ['infrastructure:submarine-cables:v1'],
+    _coverageKeys: ['infrastructure:submarine-cables:v1', 'cable-health-v1'],
     _apiPaths: [],
   },
   {

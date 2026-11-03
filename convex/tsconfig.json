@@ -9,6 +9,7 @@
     "allowJs": true,
     "incremental": true,
     "tsBuildInfoFile": "../node_modules/.cache/convex-tsconfig.tsbuildinfo",
+    "rootDir": "..",
     "outDir": "./_generated"
   },
   "include": ["./**/*.ts"],

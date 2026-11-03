@@ -784,7 +784,26 @@ const HISTORY_COST_UPDATE_SCRIPT = [
   '',
 ].join('\n');
 
+// Pinned copy of scripts/_global-tender-receipts.mjs for the single-file proxy image.
+const TENDER_RECEIPT_UPSERT_SCRIPT = [
+  "",
+  "local entries = redis.call('LRANGE', KEYS[1], 0, -1)",
+  "for index, value in ipairs(entries) do",
+  "  if cjson.decode(value).runId == ARGV[1] then",
+  "    redis.call('LSET', KEYS[1], index - 1, ARGV[2])",
+  "    redis.call('EXPIRE', KEYS[1], ARGV[4])",
+  "    return 1",
+  "  end",
+  "end",
+  "redis.call('LPUSH', KEYS[1], ARGV[2])",
+  "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[3]) - 1)",
+  "redis.call('EXPIRE', KEYS[1], ARGV[4])",
+  "return 1",
+  "",
+].join('\n');
+
 const ALLOWED_EVAL_SCRIPTS = new Set([
+  TENDER_RECEIPT_UPSERT_SCRIPT,
   HISTORY_COST_UPDATE_SCRIPT,
   CII_DAILY_HISTORY_WRITE_SCRIPT,
   PANEL_REQUEST_RESERVE_SCRIPT,

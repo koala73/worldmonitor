@@ -734,6 +734,10 @@ test('real bundle gate admits one recovery at 30 minutes without changing health
       const result = await runAt(now);
       assert.equal(result.code, 0, result.stderr);
       assert.equal(result.stdout.includes('mnd-recovery-ran'), shouldRun, result.stdout);
+      if (!shouldRun) {
+        assert.match(result.stdout, /eligible after: 144min/);
+        assert.match(result.stdout, /next eligible at: \d{4}-\d{2}-\d{2}T/);
+      }
       if (shouldRun && now === firstAt + 30 * 60_000) {
         const claimed = JSON.parse(strings.get(`seed-meta:${recoverySection.seedMetaKey}`));
         assert.equal(claimed.fetchedAt, firstAt + 1000);

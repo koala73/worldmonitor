@@ -183,7 +183,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetInternalDisplacement
-            description: IDPs by region from IOM DTM, latest survey round per operation.
+            description: GetInternalDisplacement returns IOM DTM internally displaced persons by admin-1 region from each operation's latest survey round, filterable by ISO3 country.
             operationId: GetInternalDisplacement
             parameters:
                 - name: country_code
@@ -465,7 +465,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: Country population or estimated population within a radius.
+            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point from the nearest one's average density.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode

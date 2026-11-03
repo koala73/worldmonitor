@@ -207,6 +207,42 @@ describe('SEO/AI visibility collector', () => {
     assert.equal(normalized.pageFamilyRows[0].pageFamily, 'homepage');
   });
 
+  it('keeps an explicitly null window metric null instead of summing reviewed query rows into it', () => {
+    // Reviewed query rows cover a handful of queries, so their sum is not a
+    // site total. A provider that reports no site position (Bing traffic) or
+    // no site total must stay null, not inherit the query-row aggregate.
+    const source = searchRows({
+      indexedPages: null,
+      impressions: null,
+      clicks: null,
+      ctr: null,
+      averagePosition: null,
+    });
+    const normalized = normalizeSearchExport(source, {
+      querySet,
+      observedAt,
+      provider: 'googleSearchConsole',
+    });
+    assert.deepEqual(normalized.windows[0].metrics, {
+      indexedPages: null,
+      impressions: null,
+      clicks: null,
+      ctr: null,
+      averagePosition: null,
+    });
+    assert.equal(normalized.queryRows[0].metrics.impressions, 20, 'the query row itself is kept');
+
+    // An omitted metric still falls back to the row aggregate, as before.
+    const omitted = searchRows({ indexedPages: 3 });
+    const aggregated = normalizeSearchExport(omitted, {
+      querySet,
+      observedAt,
+      provider: 'googleSearchConsole',
+    });
+    assert.equal(aggregated.windows[0].metrics.impressions, 20);
+    assert.equal(aggregated.windows[0].metrics.indexedPages, 3);
+  });
+
   it('marks a search export partial when reviewed query or page-family breakdowns are empty', () => {
     const source = searchRows({
       indexedPages: 1,

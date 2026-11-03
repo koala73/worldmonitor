@@ -716,8 +716,9 @@ function makeDeferred() {
 class SseSession {
   constructor(sseUrl, headers) {
     this._sseUrl = sseUrl;
-    this._originHost = new URL(sseUrl).host;
-    this._originProtocol = new URL(sseUrl).protocol;
+    const url = new URL(sseUrl);
+    this._originHost = url.host;
+    this._originProtocol = url.protocol;
     this._headers = headers;
     this._endpointUrl = null;
     this._endpointDeferred = makeDeferred();

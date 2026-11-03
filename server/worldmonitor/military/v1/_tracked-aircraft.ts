@@ -36,12 +36,12 @@ async function loadTrackedAircraft(): Promise<{ set: ReadonlySet<string> | null;
   const set = new Set<string>();
   let found = false;
   let readFailed = false;
-  for (const key of [MILITARY_FLIGHTS_SEED_KEY, MILITARY_FLIGHTS_STALE_KEY]) {
-    try {
-      if (collectHexCodes(await getRawJson(key), set)) found = true;
-    } catch {
-      readFailed = true;
-    }
+  // Both snapshots are always read and merged into one set, so issue the two
+  // Redis reads together.
+  const reads = await Promise.allSettled([MILITARY_FLIGHTS_SEED_KEY, MILITARY_FLIGHTS_STALE_KEY].map((key) => getRawJson(key)));
+  for (const read of reads) {
+    if (read.status === 'rejected') readFailed = true;
+    else if (collectHexCodes(read.value, set)) found = true;
   }
   if (found) return { set, ttlMs: TRACKED_SET_TTL_MS };
   // Only a confirmed absence keeps the previous behaviour. If a snapshot could

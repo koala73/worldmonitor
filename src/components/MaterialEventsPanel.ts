@@ -1,9 +1,10 @@
 import type {
-  IntelligenceServiceClient,
   MaterialEvent,
   MaterialEventItem,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { Panel } from './Panel';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 import { getLocale } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
@@ -16,15 +17,7 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
  * variant, like earnings-calendar — enabling it is a product decision.
  */
 
-let _client: IntelligenceServiceClient | null = null;
-async function getIntelligenceClient(): Promise<IntelligenceServiceClient> {
-  if (!_client) {
-    const { IntelligenceServiceClient } = await import('@/generated/client/worldmonitor/intelligence/v1/service_client');
-    const { getRpcBaseUrl } = await import('@/services/rpc-client');
-    _client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
-  }
-  return _client;
-}
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 const EVENT_LIMIT = 30;
 
@@ -131,7 +124,7 @@ export class MaterialEventsPanel extends Panel {
     // the last good list — a failed one would leave the panel on the spinner.
     if (!this._hasData) this.showLoading();
     try {
-      const client = await getIntelligenceClient();
+      const client = getIntelligenceClient();
       const resp = await client.listMaterialEvents({ itemCode: '', limit: EVENT_LIMIT });
 
       const events = projectMaterialEvents(resp.events ?? []);

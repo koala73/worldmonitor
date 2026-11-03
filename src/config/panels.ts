@@ -669,7 +669,7 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
 // HAPPY VARIANT (Good News & Progress)
 // ============================================
 const HAPPY_PANELS: Record<string, PanelConfig> = {
-  map: { name: 'World Map', enabled: true, priority: 1 },
+  map: { name: 'Good News Map', enabled: true, priority: 1 },
   'positive-feed': { name: 'Good News Feed', enabled: true, priority: 1 },
   progress: { name: 'Human Progress', enabled: true, priority: 1 },
   counters: { name: 'Live Counters', enabled: true, priority: 1 },
@@ -1199,7 +1199,8 @@ export const VARIANT_DEFAULTS: Record<string, string[]> = {
 
 /**
  * Variant-specific label overrides for panels shared across variants.
- * Applied at render time, not just at seed time.
+ * Applied at render time, not just at seed time. Each `name` is translated
+ * as `panelVariants.<variant>.<camelCaseKey>` in src/locales.
  */
 export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<string, Partial<PanelConfig>>>>> = {
   finance: {
@@ -1210,7 +1211,6 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
   tech: {
     map:         { name: 'Global Tech Map' },
     'live-news': { name: 'Tech Headlines' },
-    insights:    { name: 'AI Insights' },
   },
   commodity: {
     map:         { name: 'Commodity Map' },
@@ -1223,7 +1223,7 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
     insights:    { name: 'AI Energy Insights' },
   },
   happy: {
-    map:         { name: 'World Map' },
+    map:         { name: 'Good News Map' },
   },
 };
 

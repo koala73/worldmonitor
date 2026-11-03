@@ -33,6 +33,15 @@ test('scan jobs cover every language with least privilege and stable categories'
   }
 });
 
+test('only the generated @vercel/og bundle is excluded from scanning', () => {
+  const init = workflow.jobs.analyze.steps.find(step => step.uses?.startsWith('github/codeql-action/init@'));
+  const config = YAML.parse(init.with.config ?? '');
+  // The bundle is upstream satori/opentype.js output from scripts/vendor-vercel-og.mjs; it
+  // re-raised 22 alerts after #9782. Our patched vendor copies and the script stay scanned.
+  assert.deepEqual(config?.['paths-ignore'], ['vendor/vercel-og/dist']);
+  assert.equal(config.paths, undefined, 'a paths list would narrow every other scan');
+});
+
 test('Dependabot updates all CodeQL actions together', () => {
   const dependabot = YAML.parse(readFileSync(new URL('../.github/dependabot.yml', import.meta.url), 'utf8'));
   const actions = dependabot.updates.find(update => update['package-ecosystem'] === 'github-actions');

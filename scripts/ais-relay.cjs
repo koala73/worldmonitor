@@ -122,6 +122,7 @@ const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
+const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
@@ -3458,7 +3459,14 @@ function _parseYahooChartJson(body) {
         .filter((value) => value != null)
         .map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value))
       : [];
-    return { price, change, sparkline };
+    return {
+      price,
+      change,
+      sparkline,
+      awaitingSessionOpen: awaitsSessionOpen(data),
+      lastTradeAt: meta.regularMarketTime,
+      chart: data,
+    };
   } catch { return null; }
 }
 
@@ -3490,7 +3498,29 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   });
 }
 
+// A rolled chart's previous close stays the same until the next trade, so one
+// daily-chart request per symbol covers a whole weekend of 5-minute cycles.
+const _previousSessionCloses = new Map();
+
+async function _withPreviousSessionChange(symbol, quote) {
+  let cached = _previousSessionCloses.get(symbol);
+  if (cached?.lastTradeAt !== quote.lastTradeAt) {
+    await sleep(150);
+    const daily = await _fetchYahooChartOnce(symbol, PREVIOUS_SESSION_CHART_QUERY);
+    const close = previousSessionClose(daily?.chart, quote.lastTradeAt);
+    if (!close) return quote;
+    cached = { lastTradeAt: quote.lastTradeAt, close };
+    _previousSessionCloses.set(symbol, cached);
+  }
+  return { ...quote, change: ((quote.price - cached.close) / cached.close) * 100 };
+}
+
 function fetchYahooChartDirect(symbol, query = '') {
+  return _fetchYahooChartOnce(symbol, query)
+    .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
+}
+
+function _fetchYahooChartOnce(symbol, query = '') {
   return _fetchYahooChartNoProxy(symbol, query).then((result) => {
     if (result) return result;
     if (!PROXY_URL) return null;
@@ -10534,7 +10564,10 @@ async function seedChokepointTransits() {
   const payload = { transits, transitCoverage, fetchedAt: now };
   const ok = await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: covered, sourceVersion: 'chokepoint-transits' });
   if (!ok) throw new Error('Transit count publication failed');
-  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  // Health names the measurable straits from this transitCoverage, so a dropped
+  // write must fail the tick instead of leaving the previous coverage in place.
+  const metaOk = await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  if (!metaOk) throw new Error('Transit coverage metadata write failed');
   console.log(`[Transit] Seeded ${covered}/${canonical.length} measured chokepoints (missing: ${missing.join(', ')})`);
 }
 
@@ -12509,6 +12542,9 @@ function fetchViaProxy(targetUrl, proxy) {
 const ICAO_API_KEY = process.env.ICAO_API_KEY;
 const notamCache = { data: null, ts: 0 };
 const NOTAM_CACHE_TTL = 30 * 60 * 1000; // 30 min
+// Comma-separated ICAO location indicators. The value is pasted into the ICAO
+// query string after the API key, so nothing else may get through.
+const NOTAM_LOCATIONS_RE = /^[A-Z0-9]{4}(?:,[A-Z0-9]{4}){0,199}$/;
 
 function handleNotamProxyRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -12516,6 +12552,10 @@ function handleNotamProxyRequest(req, res) {
   if (!locations) {
     return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
       JSON.stringify({ error: 'Missing locations parameter' }));
+  }
+  if (!NOTAM_LOCATIONS_RE.test(locations)) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Invalid locations parameter' }));
   }
   if (!ICAO_API_KEY) {
     return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },

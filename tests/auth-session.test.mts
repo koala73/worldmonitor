@@ -36,6 +36,7 @@ const EXPECTED_CLOCK_TOLERANCE_SECONDS = 5;
 type AuthSessionResult = {
   valid: boolean;
   userId?: string;
+  orgId?: string | null;
   role?: string;
   reason?: 'invalid' | 'unverifiable';
   acceptedWithinClockTolerance?: true;
@@ -655,21 +656,41 @@ describe('validateBearerToken (with JWKS)', () => {
     assert.equal(result.name, undefined);
   });
 
-  it('rejects a token with wrong issuer', async () => {
-    const token = await new SignJWT({ sub: 'user_wrongiss', plan: 'pro' })
-      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
-      .setIssuer('https://wrong-issuer.example.com')
-      .setAudience('convex')
-      .setSubject('user_wrongiss')
-      .setIssuedAt()
-      .setExpirationTime('1h')
-      .sign(privateKey);
+  for (const audience of ['convex', null]) {
+    it(`rejects a token with wrong issuer (${audience ?? 'no audience'})`, async () => {
+      const token = new SignJWT({ sub: 'user_wrongiss', plan: 'pro' })
+        .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+        .setIssuer('https://wrong-issuer.example.com')
+        .setSubject('user_wrongiss')
+        .setIssuedAt()
+        .setExpirationTime('1h');
+      if (audience !== null) token.setAudience(audience);
 
-    assert.deepEqual(
-      await validateBearerToken(token),
-      { valid: false, reason: 'invalid' },
-    );
-  });
+      assert.deepEqual(
+        await validateBearerToken(await token.sign(privateKey)),
+        { valid: false, reason: 'invalid' },
+      );
+    });
+  }
+
+  for (const audience of ['convex', null]) {
+    it(`extracts organization claims (${audience ?? 'no audience'})`, async () => {
+      for (const { claims, expected } of [
+        { claims: { org: { id: 'org_current' } }, expected: 'org_current' },
+        { claims: { org_id: 'org_legacy' }, expected: 'org_legacy' },
+        { claims: { org: { id: 'org_current' }, org_id: 'org_legacy' }, expected: 'org_current' },
+        { claims: { org: { id: 123 }, org_id: 'org_legacy' }, expected: 'org_legacy' },
+        { claims: { org: null, org_id: 'org_legacy' }, expected: 'org_legacy' },
+        { claims: { org: { id: 123 }, org_id: 456 }, expected: null },
+        { claims: {}, expected: null },
+      ]) {
+        const token = await signToken({ sub: 'user_org', plan: 'pro', ...claims }, { audience });
+        const result = await validateBearerToken(token);
+        assert.equal(result.valid, true);
+        assert.equal(result.orgId, expected, JSON.stringify(claims));
+      }
+    });
+  }
 
   it('rejects a token with no sub claim', async () => {
     const token = await new SignJWT({ plan: 'pro' })

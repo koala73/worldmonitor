@@ -343,7 +343,10 @@ it('service capture requests the selected heading and carries reader provenance 
   expect(snapshot.candidates[0]?.sharePct).toBe(39.2);
   expect(snapshot.candidates.find(c => c.origin === 'AU')).toMatchObject({sharePct:30,routeState:'unknown',routeIds:[],transitChokepoints:[]});
   expect(snapshot.candidates.find(c => c.origin === 'QA')).toMatchObject({sharePct:20,routeState:'exposed',affectedChokepoints:['hormuz_strait']});
-  expect(snapshot.coverage.join(' ')).toContain('Modeled routes: 1/3 listed origins');
+  // The legacy 842 row resolves to US, which has a modeled path to Japan
+  // through both coasts; Hormuz is not on it, Panama is.
+  expect(snapshot.candidates.find(c => c.origin === 'US')).toMatchObject({sharePct:39.2,routeState:'not_on_modeled_route',transitChokepoints:['panama']});
+  expect(snapshot.coverage.join(' ')).toContain('Modeled routes: 2/3 listed origins');
   expect(snapshot.capture.products.evidence?.state).toBe('partial');
   const article=renderCommodityBrief(snapshot);
   expect(article.querySelector('[data-origin="AU"]')?.textContent).toContain('Route unknown');
@@ -477,13 +480,13 @@ describe('commodity brief evidence depth', () => {
   });
 
   it('the hub preference never crosses route-state tiers', () => {
-    // NL avoids the blocked chokepoint on its modeled route; US has no modeled
+    // NL avoids the blocked chokepoint on its modeled route; CA has no modeled
     // route at all. That ordering is about the route, not the hub flag, so the
     // action still names NL and says the flag could not be avoided in its tier.
     const data = build({ hs4: '2804', description: '', totalValue: 1000, year: 2024, partnerBasis: 'share_threshold',
       omittedPartnerCount: 0, omittedPartnerShare: 0,
-      topExporters: [partner('US', 842, 0.392), partner('NL', 528, 0.1)] });
-    expect(data.candidates.map(c => c.origin)).toEqual(['NL', 'US']);
+      topExporters: [partner('CA', 124, 0.392), partner('NL', 528, 0.1)] });
+    expect(data.candidates.map(c => c.origin)).toEqual(['NL', 'CA']);
     expect(data.candidates[0]!.routeState).toBe('not_on_modeled_route');
     expect(data.candidates[1]!.routeState).toBe('unknown');
     expect(data.action.text).toContain("Validate NL's");

@@ -47,7 +47,7 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
     arguments: [
       {
         name: 'iso2',
-        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or an English country name ("Germany"). Case-insensitive.',
+        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or a country name in any supported dashboard locale (e.g. "Germany", "ألمانيا", "Deutschland", "德国"). Case-insensitive.',
         required: true,
       },
     ],
@@ -67,7 +67,7 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
     arguments: [
       {
         name: 'iso2',
-        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or an English country name ("Germany"). Case-insensitive.',
+        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or a country name in any supported dashboard locale (e.g. "Germany", "ألمانيا", "Deutschland", "德国"). Case-insensitive.',
         required: true,
       },
     ],

@@ -385,7 +385,6 @@
     "liveNews": "即時新聞",
     "markets": "市場",
     "map": "全球態勢",
-    "techMap": "全球科技",
     "techHubs": "熱門科技中心",
     "status": "系統狀態",
     "insights": "AI洞察",
@@ -478,7 +477,7 @@
     "bigmacDesc": "中東國家的巨無霸漢堡價格（巨無霸指數）",
     "bigmacWow": "周環比",
     "bigmacCountry": "國家",
-    "faoFoodPriceIndex": "糧農組織食品價格指數",
+    "faoFoodPriceIndex": "食品價格",
     "fuelPrices": "燃料價格",
     "fuelPricesDesc": "全球 30 多個國家的零售汽油和柴油價格",
     "fuelPricesCountry": "國家",
@@ -927,7 +926,12 @@
         "permissive": "寬鬆",
         "undefined": "未定義"
       },
-      "infoTooltip": "<strong>監管</strong> 全球監管機構的監管行動、政策變更和執法更新：金融、科技、能源和貿易部門。來源：政府和監管機構官方出版物。"
+      "infoTooltip": "<strong>監管</strong> 全球監管機構的監管行動、政策變更和執法更新：金融、科技、能源和貿易部門。來源：政府和監管機構官方出版物。",
+      "latestActions": "最新記錄的行動",
+      "otherDeadlines": "其他合規截止日期",
+      "daysAgo": "天前",
+      "revokedCount": "已撤銷法規（{{count}}）",
+      "lapsedCount": "已失效提案 ({{count}})"
     },
     "economic": {
       "indicators": "指標",
@@ -993,7 +997,10 @@
       "stageUnavailable": "該階段暫無公開資料",
       "withheldNote": "W 表示資料隱去",
       "productionCaption": "各國在實際產量中的份額。地圖礦藏圖層顯示資源分佈，此表顯示由誰開採或冶煉。",
-      "productionProLocked": "升級至PRO版本以獲取按階段分類的採礦和煉油廠國家份額及集中度（生產商集中度指數）。"
+      "productionProLocked": "升級至PRO版本以獲取按階段分類的採礦和煉油廠國家份額及集中度（生產商集中度指數）。",
+      "partialTransitCoverage": "過境資料不可用：{{names}}",
+      "oilPipelinesUnavailable": "石油管道資料不可用",
+      "gasPipelinesUnavailable": "天然氣管道資料不可用"
     },
     "tradePolicy": {
       "tariffs": "關稅",
@@ -1821,8 +1828,6 @@
       "summaryFailed": "摘要失敗",
       "sources": "{{count}}個來源",
       "relatedAssetsNear": "{{location}}附近的相關資產",
-      "sourceCoverage": "{{covered}}/{{total}} 個來源",
-      "sourceCoverageHint": "已顯示 {{total}} 個已啟用來源中的 {{covered}} 個 — 該面板每次重新整理會輪換抓取不同來源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
       "sortRelevance": "相關性",
@@ -2304,20 +2309,21 @@
       "proLocked": "升級至PRO以檢視商品脆弱性評分"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>荷爾木茲海峽貿易追蹤器</strong>透過全球最關鍵油氣運輸通道荷爾木茲海峽的即時船舶追蹤。監測油輪數量、中斷事件和周度流量變化。全球約20%的日均石油供應透過此處。",
+      "infoTooltip": "<strong>霍爾木茲貿易追蹤</strong> WTO DataLab 關於霍爾木茲海峽的日貨運指數：離開波斯灣的原油、液化天然氣和化肥，以及抵達的農產品。按體積計，2025年1–3月平均值 = 100，僅包括 AIS 可見船舶。狀態和日期來自 WTO 的最新分析。",
       "title": "霍爾木茲貿易追蹤",
       "noData": "無資料",
       "notAvailable": "不適用",
       "chartUnavailable": "圖表資料不可用",
       "sourcePrefix": "來源：",
       "units": {
-        "ktPerDay": "千噸/天",
-        "generic": "單位"
+        "index": "指數"
       },
       "errors": {
         "unavailable": "霍爾木茲資料不可用",
         "failedToLoad": "載入失敗"
-      }
+      },
+      "analysisDate": "WTO分析 {{date}}",
+      "indexNote": "貨運指數（按體積），2025年1–3月平均值 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>即時攝影機</strong> 來自全球地緣政治重要地點的直播：衝突區、首都、邊境口岸和戰略咽喉要道。流媒體來自YouTube和公共網路。"
@@ -2631,6 +2637,15 @@
             "mcpClients": "設定 MCP",
             "channels": "在通知設定中進行配置"
           }
+        },
+        "about": {
+          "heading": "最後一件事：您將使用 World Monitor 做什麼？",
+          "body": "三個快速問題能幫助我們為你打造合適的工具。你可以跳過任何問題。",
+          "confirmCta": "儲存我的答案",
+          "confirming": "儲存中…",
+          "doneNote": "感謝，我們已收到你的答案。",
+          "summaryLabel": "關於你",
+          "summaryVerified": "已儲存。謝謝。"
         }
       },
       "status": {
@@ -2819,7 +2834,7 @@
         "babElMandeb": "曼德海峽",
         "bosphorus": "土耳其海峽",
         "panama": "巴拿馬",
-        "danishStraits": "丹麥海峽"
+        "doverStrait": "多佛海峽"
       },
       "flow": {
         "mbd": "{{value}} 萬桶/天",
@@ -2983,6 +2998,95 @@
       "rosterSummary": "由{{publishers}}報道",
       "rosterSummaryTier1": "由{{publishers}}報道，其中{{tier1}}家為一級來源",
       "rosterPublishers_other": "{{count}}家媒體"
+    },
+    "foodPrices": {
+      "title": "本地食品價格",
+      "method": "周環比將相同商品、市場、產地和單位的價格與恰好七天前的價格比較。各國採用不同的商品籃子和貨幣。",
+      "loading": "正在載入食品價格…",
+      "unavailable": "暫無資料",
+      "retry": "重試",
+      "country": "國家",
+      "market": "市場",
+      "retail": "零售",
+      "wholesale": "批發",
+      "farmgate": "農場收購價",
+      "export": "出口",
+      "prices": "食品價格",
+      "product": "商品",
+      "price": "價格 / 單位",
+      "weekly": "周環比",
+      "origin": "產地",
+      "versus": "對比",
+      "noBaseline": "上週資料不可用",
+      "context": "糧食安全與月度背景",
+      "contextNote": "這些報告提供帶日期的背景資訊，不提供每週價格變化。突尼西亞的報告可能滯後數月。",
+      "briefCountry": "國家簡報",
+      "report": "報告日期",
+      "checked": "最近檢查",
+      "current": "最新",
+      "partial": "部分報告不可用或已過時",
+      "stale": "較早資料",
+      "global": "糧農組織全球月度指數"
+    },
+    "aboutYou": {
+      "title": "幫助我們為您打造 World Monitor",
+      "ariaLabel": "關於您",
+      "progress": "第 {{current}} / {{total}}",
+      "skip": "跳過",
+      "close": "關閉",
+      "done": "完成",
+      "saving": "儲存中…",
+      "saveFailed": "儲存失敗。請重試。",
+      "retry": "重試",
+      "thanks": "感謝。這有助於我們決定下一步要開發什麼。",
+      "questions": {
+        "primaryUse": {
+          "label": "您主要用 World Monitor 做什麼？",
+          "options": {
+            "news": "新聞和世界事件",
+            "markets": "市場和交易",
+            "commodities": "商品和供應鏈",
+            "travel": "旅行和航班",
+            "security": "安全和 OSINT",
+            "research": "研究和新聞",
+            "api-agent": "使用 API 或 AI 智慧體開發",
+            "other": "其他"
+          }
+        },
+        "usageContext": {
+          "label": "您是工作使用還是個人使用？",
+          "options": {
+            "personal": "個人",
+            "work": "工作"
+          }
+        },
+        "payer": {
+          "label": "誰支付或將支付費用？",
+          "options": {
+            "self": "我",
+            "employer": "我的僱主或團隊",
+            "not-paying": "暫時沒有"
+          }
+        },
+        "role": {
+          "label": "以下哪項最準確地描述您的角色？",
+          "options": {
+            "analyst": "分析師或研究員",
+            "trader": "交易員或投資者",
+            "journalist": "記者",
+            "security": "安全或風險",
+            "government": "政府或政策",
+            "supply-chain": "供應鏈或運營",
+            "developer": "開發者",
+            "student": "學生",
+            "other": "其他"
+          }
+        },
+        "alternative": {
+          "label": "如果 World Monitor 不存在，您會使用什麼？",
+          "placeholder": "可選"
+        }
+      }
     }
   },
   "popups": {
@@ -4158,5 +4262,29 @@
     "reportedClaims": "釋出方報告。相關說法可能仍在調查中。",
     "occurred": "事件",
     "reported": "釋出"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "全球市場地圖",
+      "liveNews": "市場頭條",
+      "insights": "AI市場洞察"
+    },
+    "tech": {
+      "map": "全球科技地圖",
+      "liveNews": "科技頭條"
+    },
+    "commodity": {
+      "map": "商品地圖",
+      "liveNews": "商品頭條",
+      "insights": "AI商品洞察"
+    },
+    "energy": {
+      "map": "能源地圖",
+      "liveNews": "能源頭條",
+      "insights": "AI能源洞察"
+    },
+    "happy": {
+      "map": "好訊息地圖"
+    }
   }
 }

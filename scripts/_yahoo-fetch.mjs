@@ -26,7 +26,8 @@
 // the CONNECT pool), add a second leg following the
 // scripts/_open-meteo-archive.mjs cascade pattern.
 
-import { CHROME_UA, sleep, resolveProxy, curlFetch } from './_seed-utils.mjs';
+import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart } from './_seed-utils.mjs';
+import { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } from './shared/yahoo-closed-session.cjs';
 
 const RETRYABLE_STATUSES = new Set([429, 503]);
 const MAX_RETRY_AFTER_MS = 60_000;
@@ -168,4 +169,23 @@ export async function fetchYahooJson(url, opts = {}) {
     `Yahoo retries exhausted for ${label}${lastDirectError ? ` (last direct: ${lastDirectError.message})` : ''}`,
     lastDirectError ? { cause: lastDirectError } : undefined,
   );
+}
+
+/**
+ * Fetch and parse one Yahoo quote. A chart rolled to a session that has not
+ * traded costs a second, staggered request for the daily chart holding the
+ * last completed session's previous close; without it the change reads 0.00%.
+ */
+export async function fetchYahooQuoteChart(symbol, {
+  delayMs = 150,
+  fetchJson = (url, options) => fetchYahooJson(url, { label: symbol, ...options }),
+} = {}) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
+  const chart = await fetchJson(url);
+  if (!awaitsSessionOpen(chart)) return parseYahooChart(chart, symbol);
+  await sleep(delayMs);
+  // Optional: a 429 with Retry-After must not hold the sequential basket for minutes.
+  const daily = await fetchJson(`${url}${PREVIOUS_SESSION_CHART_QUERY}`, { maxRetries: 0 }).catch(() => null);
+  const lastTradeAt = chart.chart.result[0].meta.regularMarketTime;
+  return parseYahooChart(chart, symbol, { previousClose: previousSessionClose(daily, lastTradeAt) });
 }

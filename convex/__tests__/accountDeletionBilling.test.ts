@@ -65,6 +65,7 @@ function payload() {
     customer: { customer_id: "cus_deleted", email: EMAIL, name: "Deleted Customer", phone_number: "+15555550123" },
     metadata: { wm_user_id: USER, wm_login_email: EMAIL, wm_user_id_sig: "stale-sig" },
     recurring_pre_tax_amount: 2900, currency: "USD",
+    cancellation_feedback: "too_expensive", cancellation_comment: "Costs more than my team budget",
   };
 }
 
@@ -93,6 +94,9 @@ describe("late billing events during account deletion", () => {
     expect(state.sub?.rawPayload.customer).toEqual(payload().customer);
     expect(state.sub?.rawPayload.metadata).toEqual({});
     expect(state.sub?.rawPayload.recurring_pre_tax_amount).toBe(2900);
+    // Cancellation reasons are personal answers, deleted with the account.
+    expect(state.sub?.rawPayload).not.toHaveProperty("cancellation_feedback");
+    expect(state.sub?.rawPayload).not.toHaveProperty("cancellation_comment");
     expect(state.customers).toHaveLength(1);
     // The complete-deletion fixture already seeded the tombstoned email;
     // the late handler must preserve it (no live-owner rewrite).
@@ -126,6 +130,8 @@ describe("late billing events during account deletion", () => {
     for (const row of state.events) {
       expect(row.rawPayload.data.customer).toEqual(payload().customer);
       expect(row.rawPayload.data.metadata).toEqual({});
+      expect(row.rawPayload.data).not.toHaveProperty("cancellation_feedback");
+      expect(row.rawPayload.data).not.toHaveProperty("cancellation_comment");
     }
     expect(state.entitlements).toEqual([]);
   });

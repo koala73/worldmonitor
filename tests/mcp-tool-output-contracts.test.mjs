@@ -63,6 +63,7 @@ const REQUIRED_ARGS = {
   get_us_import_duty: { partner: 'CN', hs_code: '010121' },
   classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
   start_upgrade: { plan: 'pro_monthly' },
+  report_issue: { kind: 'bug', summary: 'A controlled report.' },
   get_country_brief: { country_code: 'US' },
   open_country_brief: { country_code: 'US' },
   get_country_risk: { country_code: 'US' },

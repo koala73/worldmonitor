@@ -548,6 +548,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,
     marketingFeatures: [
+      "Full Pro dashboard included (1 named user)",
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "License / API key included",
       "Real-time data streams",
@@ -555,7 +556,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "Webhook notifications",
     ],
-    highlightFeatures: ["Commercial license — for your organization"],
+    highlightFeatures: ["Commercial use — internal only, not customer-facing"],
     selfServe: true,
     highlighted: false,
     currentForCheckout: true,
@@ -600,7 +601,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     // API Business is the paid Embed/OEM tier, so its bundled seats may go to
     // corporate addresses at any domain. The server still rejects free or
     // disposable addresses and enforces the four-invite cap.
-    highlightFeatures: ["Commercial license — for your customers"],
+    highlightFeatures: ["Commercial use — in your customer-facing products"],
     // Published + self-serve since #4945 (bet B4): the tier existed in the
     // billing system but was invisible on every pricing surface and had
     // zero customers. Starter→Business upgrades for existing subscribers

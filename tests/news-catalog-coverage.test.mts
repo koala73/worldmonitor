@@ -1,13 +1,12 @@
 /**
- * Source-coverage gate for the unified news catalog (plan U2, R3).
+ * Source-coverage gate for the unified news catalog (plan U2, R3, R4).
  *
  * Every source the browser can show must be fetched by a digest the server
  * builds, so the dashboard, MCP and every other digest reader see the same
- * news. Today's gap is held in shared/news-catalog-pending-migration.json,
- * which may only shrink.
+ * news. Panels read only digests, so a source no digest fetches would show
+ * nothing.
  */
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +18,7 @@ import { NEWS_LANGUAGES } from '../src/shared/public-rpc-cache';
 import {
   browserPlacedNames,
   servedLayout,
-  serverPlacedNames,
+  undigestedBrowserPlacements,
   uncoveredSources,
   unservedServerPlacements,
   unsupportedLanguages,
@@ -33,23 +32,19 @@ const catalog = readJson('shared/news-catalog.json') as {
   feeds: CoverageFeed[];
   layout: { server: Record<string, string[]> };
 };
-const pendingNames: string[] = readJson('shared/news-catalog-pending-migration.json').names;
-const pending = new Set(pendingNames);
 
 // The categories each digest fetches (buildServerVariantFeeds), plus the intel
 // list the full digest also fetches (INTEL_SOURCES).
 const SERVED = servedLayout(catalog.layout.server, VALID_VARIANTS, INTEL_EDITION);
 
-// Frozen snapshot of the browser-only sources when the gate landed. The pending
-// list may only drop names from it, so a swap (remove one, add another) fails.
-// The hash pins the snapshot: changing it is a deliberate, reviewable edit.
-const BASELINE_PATH = 'tests/fixtures/news-catalog-pending-baseline.json';
-const BASELINE_SHA256 = 'a1b4930b199adda8d4732123fd8298cbd019ac640ca8f0e4ae7ee159bfc686a3';
-
 describe('news catalog source coverage', () => {
-  it('every browser source is fetched by a served digest, or pending migration', () => {
-    const gaps = uncoveredSources(browserPlacedNames(catalog.feeds), catalog.feeds, SERVED, pending);
+  it('every browser source is fetched by a served digest', () => {
+    const gaps = uncoveredSources(browserPlacedNames(catalog.feeds), catalog.feeds, SERVED);
     assert.deepEqual(gaps, [], `browser sources no digest fetches: ${gaps.join(', ')}`);
+  });
+
+  it('every browser placement is fetched by a digest for that panel, from the same entry', () => {
+    assert.deepEqual(undigestedBrowserPlacements(catalog.feeds, SERVED, 'ondemand'), []);
   });
 
   it('server placements are only in edition/category pairs a digest fetches', () => {
@@ -60,27 +55,6 @@ describe('news catalog source coverage', () => {
     assert.deepEqual(unsupportedLanguages(catalog.feeds, NEWS_LANGUAGES), []);
   });
 
-  it('the pending list only drops names from the frozen baseline', () => {
-    const raw = readFileSync(join(root, BASELINE_PATH), 'utf8');
-    assert.equal(
-      createHash('sha256').update(raw).digest('hex'),
-      BASELINE_SHA256,
-      `${BASELINE_PATH} changed; it is frozen and must never gain names`,
-    );
-    const baseline = new Set<string>(JSON.parse(raw).names);
-    const added = pendingNames.filter((name) => !baseline.has(name));
-    assert.deepEqual(added, [], 'pending names not in the frozen baseline: place new sources on the server instead');
-    assert.equal(new Set(pendingNames).size, pendingNames.length, 'pending list has duplicate names');
-  });
-
-  it('every pending name is a real, still-unmigrated browser source', () => {
-    const browser = browserPlacedNames(catalog.feeds);
-    const served = serverPlacedNames(catalog.feeds, SERVED);
-    const unknown = pendingNames.filter((name) => !browser.has(name));
-    const migrated = pendingNames.filter((name) => served.has(name));
-    assert.deepEqual(unknown, [], 'pending names with no browser placement');
-    assert.deepEqual(migrated, [], 'pending names already placed on the server: remove them from the list');
-  });
 });
 
 describe('coverage rules (fixtures)', () => {
@@ -94,19 +68,35 @@ describe('coverage rules (fixtures)', () => {
 
   it('names an unknown source referenced by a default list (AE3)', () => {
     const feeds = [feed('Known', [{ edition: 'full', category: 'politics', serverOrder: 0, browserOrder: 0 }])];
-    assert.deepEqual(uncoveredSources(['Known', 'Ghost Wire'], feeds, served, new Set()), ['Ghost Wire']);
+    assert.deepEqual(uncoveredSources(['Known', 'Ghost Wire'], feeds, served), ['Ghost Wire']);
   });
 
-  it('a browser-only source fails unless pending', () => {
+  it('a browser-only source fails', () => {
     const feeds = [feed('Browser Only', [{ edition: 'full', category: 'politics', browserOrder: 0 }])];
-    const referenced = browserPlacedNames(feeds);
-    assert.deepEqual(uncoveredSources(referenced, feeds, served, new Set()), ['Browser Only']);
-    assert.deepEqual(uncoveredSources(referenced, feeds, served, new Set(['Browser Only'])), []);
+    assert.deepEqual(uncoveredSources(browserPlacedNames(feeds), feeds, served), ['Browser Only']);
+    assert.deepEqual(undigestedBrowserPlacements(feeds, served, 'ondemand'), ['Browser Only → full/politics']);
+  });
+
+  it('a browser entry fails when only a same-named entry with another URL is served', () => {
+    const feeds = [
+      feed('Wire', [{ edition: 'full', category: 'politics', serverOrder: 0 }]),
+      { ...feed('Wire', [{ edition: 'full', category: 'politics', browserOrder: 0 }]), url: 'https://wire.example/other' },
+    ];
+    assert.deepEqual(uncoveredSources(['Wire'], feeds, served), [], 'the name is served');
+    assert.deepEqual(undigestedBrowserPlacements(feeds, served, 'ondemand'), ['Wire → full/politics']);
+  });
+
+  it('an on-demand placement is served by any edition that fetches its category', () => {
+    const feeds = [feed('Desk', [
+      { edition: 'full', category: 'politics', serverOrder: 0 },
+      { edition: 'ondemand', category: 'politics', browserOrder: 0 },
+    ])];
+    assert.deepEqual(undigestedBrowserPlacements(feeds, served, 'ondemand'), []);
   });
 
   it('a server placement in an unserved edition does not count as covered', () => {
     const feeds = [feed('Energy Desk', [{ edition: 'energy', category: 'energy', serverOrder: 0, browserOrder: 0 }])];
-    assert.deepEqual(uncoveredSources(['Energy Desk'], feeds, served, new Set()), ['Energy Desk']);
+    assert.deepEqual(uncoveredSources(['Energy Desk'], feeds, served), ['Energy Desk']);
     assert.deepEqual(unservedServerPlacements(feeds, served), ['Energy Desk → energy/energy']);
   });
 
@@ -115,7 +105,7 @@ describe('coverage rules (fixtures)', () => {
       feed('Typo Wire', [{ edition: 'full', category: 'politcs', serverOrder: 0, browserOrder: 0 }]),
       feed('Intel Desk', [{ edition: 'intel', category: 'intel', serverOrder: 0 }]),
     ];
-    assert.deepEqual(uncoveredSources(['Typo Wire', 'Intel Desk'], feeds, served, new Set()), ['Typo Wire']);
+    assert.deepEqual(uncoveredSources(['Typo Wire', 'Intel Desk'], feeds, served), ['Typo Wire']);
     assert.deepEqual(unservedServerPlacements(feeds, served), ['Typo Wire → full/politcs']);
   });
 
@@ -192,7 +182,6 @@ describe('digests serve the categories that used to need per-feed browser fetche
       }
     }
     assert.deepEqual(missing, []);
-    assert.deepEqual(pendingNames, []);
     // GitHub Trending dates only its channel and links to github.com, so its
     // entry opts in to both.
     const trending = catalog.feeds.find(f => f.name === 'GitHub Trending') as { channelDated?: boolean; linkHosts?: string[] } | undefined;
@@ -203,31 +192,6 @@ describe('digests serve the categories that used to need per-feed browser fetche
       assert.match(feed?.url ?? '', /^https:\/\/news\.google\.com\/rss\/search\?q=site:[^&]+\+when:\d+d&/,
         `${name} reads a dated Google News site: query`);
     }
-  });
-
-  // The pending list is by name, so a source the server fetches in one edition
-  // used to hide a browser placement no digest fetches in another (MIT Tech
-  // Review on the tech edition's tech panel). Panels match items by source
-  // name, and the on-demand edition reads whichever digest carries its category.
-  it('every browser placement of a migrated source is fetched by a digest for that panel', () => {
-    const served = new Map<string, Set<string>>();
-    for (const feed of catalog.feeds) {
-      for (const p of feed.placements) {
-        if (p.serverOrder === undefined) continue;
-        const keys = served.get(feed.name) ?? new Set<string>();
-        keys.add(`${p.edition}|${p.category}`);
-        served.set(feed.name, keys);
-      }
-    }
-    const gaps = catalog.feeds.flatMap(feed => feed.placements
-      .filter(p => p.browserOrder !== undefined && !pending.has(feed.name))
-      .filter((p) => {
-        const keys = served.get(feed.name) ?? new Set<string>();
-        if (keys.has(`${p.edition}|${p.category}`)) return false;
-        return !(p.edition === 'ondemand' && [...keys].some(key => key.endsWith(`|${p.category}`)));
-      })
-      .map(p => `${p.edition}|${p.category}|${feed.name}`));
-    assert.deepEqual(gaps, []);
   });
 
   it('a Spanish outlet the browser shows in every language builds only in the Spanish digest', () => {
@@ -242,8 +206,8 @@ describe('digests serve the categories that used to need per-feed browser fetche
   });
 
   it('the browser catalog states exactly which digest languages carry each source', async () => {
-    // Panels read this to decide which sources a digest covers (direct
-    // fetch, #9796 source fill); it must match what each digest builds.
+    // Panels read this to decide which sources a digest covers (#9796
+    // source fill); it must match what each digest builds.
     const browser = projectBrowserCatalog();
     const mismatches: string[] = [];
     for (const edition of VALID_VARIANTS) {
@@ -254,7 +218,6 @@ describe('digests serve the categories that used to need per-feed browser fetche
           .map(entry => `${entry.category}|${entry.feed.name}`));
         for (const [category, feeds] of placed) {
           for (const feed of feeds) {
-            if (feed.browserOnly) continue;
             if (built.has(`${category}|${feed.name}`) !== digestCarriesFeed(feed, language)) {
               mismatches.push(`${edition}/${category}/${feed.name}/${language}`);
             }

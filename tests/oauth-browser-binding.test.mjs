@@ -187,6 +187,16 @@ describe('API-key consent POST requires the binding', () => {
     assert.equal(res.status, 400);
     assert.equal([...store.keys()].some((k) => k.startsWith('oauth:code:')), false);
   });
+
+  it('refuses a nonce stored without a binding hash', async () => {
+    installRedisStub();
+    const { nonce, nonceData, cookie } = await startFlow();
+    const { bind_hash: _bound, ...unbound } = nonceData;
+    store.set(`oauth:nonce:${nonce}`, JSON.stringify(unbound));
+    const res = await submitConsent(nonce, cookie);
+    assert.equal(res.status, 400);
+    assert.equal([...store.keys()].some((k) => k.startsWith('oauth:code:')), false);
+  });
 });
 
 describe('Pro grant bridge requires the binding', () => {

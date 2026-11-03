@@ -2,15 +2,15 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
   "name": "app.worldmonitor/mcp",
   "title": "WorldMonitor",
-  "description": "Real-time global intelligence across conflict, markets, energy, trade, shipping and cyber.",
+  "description": "Real-time global intelligence on conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.47.0",
+  "version": "1.48.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.47.0",
+    "version": "1.48.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -385,7 +385,7 @@
     },
     {
       "name": "get_procurement_opportunities",
-      "description": "Search open public-procurement notices aggregated from official sources (SAM.gov, TED, Contracts Finder, CanadaBuys, GETS, World Bank) and return compact records: title, buyer, country, source, deadline, estimated value, automationFit and a link, without descriptions or submission and eligibility payloads. Paged: page_size defaults to 10 (maximum 25) and nextCursor continues the same filters and sort. automationFit is keyword-relevance evidence only, never bidding eligibility, and participationMode \"unknown\" stays unknown; sourceStatuses and countryCoverage report which sources answered. Requires a paid plan; one live downstream fetch, weight 2 on API plans. Read-only.",
+      "description": "Search open public-procurement notices aggregated from official national and multilateral sources (including SAM.gov, TED, Pakistan EPADS, Georgia SPA and Armenia ARMEPS) and return compact records: title, buyer, country, source, deadline, estimated value, automationFit and a link, without descriptions or submission and eligibility payloads. Paged: page_size defaults to 10 (maximum 25) and nextCursor continues the same filters and sort. automationFit is keyword-relevance evidence only, never bidding eligibility, and participationMode \"unknown\" stays unknown; sourceStatuses and countryCoverage report which sources answered. Requires a paid plan; one live downstream fetch, weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -450,7 +450,7 @@
     },
     {
       "name": "get_food_stocks",
-      "description": "USDA PSD cereal stocks-to-use by marketing year. Ask for a country (ISO-2) plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.",
+      "description": "USDA PSD cereal stocks-to-use by marketing year. Ask for a country plus optional commodity (wheat, corn, rice, soybeans, barley, palmOil), or country_code=WORLD for the global balance. Returns ending stocks, production, use, and the stocks-to-use ratio. Marketing years are not calendar years and must not be compared across countries as if they were.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -458,7 +458,7 @@
     },
     {
       "name": "get_demographics_capability",
-      "description": "Return one country's demographic-capability observations from UN WPP, World Bank/UNESCO UIS and ILOSTAT: age structure, education and industrial-workforce groups, each reported independently with observation year, source, unit and an explicit available flag (a missing metric is marked unavailable rather than filled with zero). Annual statistics from seeded data, not estimates or projections. Requires a paid plan; one downstream fetch, weight 2 on API plans. country_code is ISO 3166-1 alpha-2, case-insensitive. Read-only.",
+      "description": "Return one country's demographic-capability observations from UN WPP, World Bank/UNESCO UIS and ILOSTAT: age structure, education and industrial-workforce groups, each reported independently with observation year, source, unit and an explicit available flag (a missing metric is marked unavailable rather than filled with zero). Annual statistics from seeded data, not estimates or projections. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -466,7 +466,7 @@
     },
     {
       "name": "get_resilience_indicators",
-      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires an ISO-2 country code and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.",
+      "description": "Explain one country's resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires a country and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -594,7 +594,7 @@
     },
     {
       "name": "simulate_infrastructure_cascade",
-      "description": "Infrastructure cascade simulation: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. Builds the dependency graph from the seeded TeleGeography submarine-cable table plus curated pipeline, port, and chokepoint registries, then propagates the failure breadth-first. Results list affected nodes, per-country impact levels, alternative cables (ranked by whether they avoid the chokepoints the cut cables cross), and graph stats. Call with no arguments for the catalog of node ids. source_ids or cut_cables_through (a chokepoint id) model a simultaneous multi-cable cut, e.g. every cable through Hormuz. disruption_level ranges 0.1 to 1 (default 1). Cable results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.",
+      "description": "Infrastructure cascade simulation and subsea cable exposure: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. Builds the dependency graph from the seeded TeleGeography submarine-cable table plus curated pipeline, port, and chokepoint registries, then propagates the failure breadth-first. Results list affected nodes, per-country impact levels, alternative cables (ranked by whether they avoid the chokepoints the cut cables cross), and graph stats. Call with no arguments for the catalog of node ids. source_ids or cut_cables_through (a chokepoint id) model a simultaneous multi-cable cut, e.g. every cable through Hormuz. countries (up to 10) compares per-country cable exposure: cable count, landing stations, chokepoints crossed, and cables the cable-health monitor flags as faulted. disruption_level ranges 0.1 to 1 (default 1). Cable results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -860,6 +860,14 @@
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "movement-infrastructure"
+      }
+    },
+    {
+      "name": "report_issue",
+      "description": "Stores one report for the WorldMonitor maintainers about a bug, a missing capability, wrong or stale data, or a security concern, and returns its reportId and status. requestId links the report to a failing call. Nothing is published and no reply is sent. Credentials and email addresses are redacted before storage; secrets and personal data do not belong in a report. Vulnerability details belong in the private advisory form at https://github.com/koala73/worldmonitor/security/advisories/new; kind security only flags that one exists. Credential-free: anonymous callers get 5 reports per hour per IP, and accounts with API access get 30 per day.",
+      "_meta": {
+        "worldmonitor/access": "free",
+        "worldmonitor/category": "meta"
       }
     }
   ],

@@ -1142,7 +1142,7 @@ export function naturalEventsPublishTransform(data) {
   return publicData;
 }
 
-export function naturalEventsAfterPublish(data) {
+export function naturalEventsAfterPublish(data, context = {}) {
   const nhc = data?._nhcSnapshot;
   const nhcFailed = nhc?.consecutiveFailures > 0;
   const gdacsFailed = data?._gdacsFailedTypes || [];
@@ -1161,6 +1161,21 @@ export function naturalEventsAfterPublish(data) {
     },
   ]));
   const patch = { sourceState: failedSources.length ? 'degraded' : 'ok', sourceHealth, failedSources };
+  if (context.runId) {
+    const identity = value => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,128}$/.test(value) ? value : null;
+    console.info(JSON.stringify({
+      event: 'natural_source_receipt',
+      schemaVersion: 1,
+      runId: context.runId,
+      publisher: identity(process.env.RAILWAY_SERVICE_NAME),
+      deploymentId: identity(process.env.RAILWAY_DEPLOYMENT_ID),
+      revision: identity(process.env.RAILWAY_GIT_COMMIT_SHA),
+      canonicalKey: context.canonicalKey,
+      recordCount: context.recordCount,
+      sourceFetchedAt: data.fetchedAt,
+      ...patch,
+    }));
+  }
   if (!failedSources.length) return { freshnessMetaPatch: patch };
 
   console.warn(`[natural-events] DEGRADED: ${failedSources.join(', ')}`);

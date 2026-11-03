@@ -1,4 +1,4 @@
-import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
+import { restoreWildfireBootstrapMetadata, sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { validateImfDataset } from './_imf-dataset.js';
 import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
@@ -335,7 +335,10 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
         // Envelope-aware: bootstrap is a public-boundary consumer — strip _seed
         // from contract-mode canonical keys so clients never see envelope
         // metadata. Legacy bare-shape values pass through unchanged.
-        result.set(keys[i], unwrapEnvelope(parsed).data);
+        const { data: payload, _seed } = unwrapEnvelope(parsed);
+        result.set(keys[i], keys[i] === BOOTSTRAP_CACHE_KEYS.wildfires
+          ? restoreWildfireBootstrapMetadata(payload, _seed)
+          : payload);
       } catch { /* skip malformed */ }
     }
   }

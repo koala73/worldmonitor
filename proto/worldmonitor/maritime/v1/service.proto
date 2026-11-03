@@ -11,7 +11,7 @@ import "worldmonitor/maritime/v1/list_ukmto_incidents.proto";
 service MaritimeService {
   option (sebuf.http.service_config) = {base_path: "/api/maritime/v1"};
 
-  // ListUkmtoIncidents returns UKMTO maritime incident reports and source freshness.
+  // ListUkmtoIncidents returns UKMTO maritime security reports with type, place and coordinates from a public republication, plus fetch time and a stale flag.
   rpc ListUkmtoIncidents(ListUkmtoIncidentsRequest) returns (ListUkmtoIncidentsResponse) {
     option (sebuf.http.config) = {path: "/list-ukmto-incidents", method: HTTP_METHOD_GET};
   }

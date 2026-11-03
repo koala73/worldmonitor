@@ -3,7 +3,8 @@
 
 // DCR is not open to arbitrary redirect URIs: the registered callback receives
 // the authorization code. Each entry is a vendor-owned MCP client callback,
-// matched exactly as that client sends it. Sources are listed in
+// matched exactly as that client sends it. Google's Connected Apps callbacks
+// are the one prefix rule (isGoogleConnectedAppsRedirect below). Sources are listed in
 // docs/mcp-overview.mdx#redirect-uri-allowlist.
 const ALLOWED_REDIRECT_URIS = new Set([
   // Claude
@@ -69,11 +70,42 @@ const ALLOWED_REDIRECT_URIS = new Set([
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+// Gemini Connected Apps and Gemini custom apps. Google generates one callback
+// path per app or per user, so these cannot be exact-matched. Google publishes
+// the six prefixes to allowlist (`https://<host>/r/*` and `/a/*` on these hosts:
+// developers.google.com/connected-apps/mcp/oauth). Only Google receives a code
+// sent to these hosts, which is the same bar the exact entries meet.
+const GOOGLE_CONNECTED_APPS_HOSTS = new Set([
+  'oauth-redirect.googleusercontent.com',
+  'oauth-redirect-sandbox.googleusercontent.com',
+  'oauth-redirect-test.googleusercontent.com',
+]);
+// One or more unreserved-character segments after /r/ or /a/. No dot-only
+// segments, percent-encoding, query or fragment.
+const GOOGLE_CONNECTED_APPS_PATH = /^\/[ra](\/(?!\.{1,2}(?:\/|$))[A-Za-z0-9._~-]+)+$/;
+
+function isGoogleConnectedAppsRedirect(uri) {
+  // A bare `?` or `#` leaves search and hash empty, so test the raw string.
+  if (typeof uri !== 'string' || /[?#]/.test(uri)) return false;
+  let u;
+  try { u = new URL(uri); } catch { return false; }
+  // href === uri rejects anything WHATWG URL would rewrite (case, default
+  // port, backslashes, empty query), so the checked form is the sent form.
+  return u.href === uri
+    && u.protocol === 'https:'
+    && GOOGLE_CONNECTED_APPS_HOSTS.has(u.hostname)
+    && u.port === ''
+    && u.username === ''
+    && u.password === ''
+    && GOOGLE_CONNECTED_APPS_PATH.test(u.pathname);
+}
+
 // Enforced at registration (api/oauth/register.js) and re-checked before a Pro
 // grant is minted (api/internal/mcp-grant-mint.ts), so tightening the list
 // also fails closed for clients registered under the old one.
 export function isAllowedRedirectUri(uri) {
   if (ALLOWED_REDIRECT_URIS.has(uri)) return true;
+  if (isGoogleConnectedAppsRedirect(uri)) return true;
   // localhost / 127.0.0.1 / [::1] any port (Claude Code, Cursor, VS Code, MCP
   // Inspector; goose registers [::1]). WHATWG URL keeps the IPv6 brackets.
   try {

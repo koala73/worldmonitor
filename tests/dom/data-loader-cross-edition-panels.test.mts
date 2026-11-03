@@ -7,8 +7,14 @@ const mocks = vi.hoisted(() => ({
   fetchCategoryFeeds: vi.fn(),
   checkBatchForBreakingAlerts: vi.fn(),
   ingestHeadlines: vi.fn(),
+  saved: new Map<string, { data: unknown; updatedAt: number }>(),
 }));
 
+vi.mock('@/services/persistent-cache', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/persistent-cache')>(),
+  getPersistentCache: async (key: string) => mocks.saved.get(key) ?? null,
+  setPersistentCache: async (key: string, data: unknown) => { mocks.saved.set(key, { data, updatedAt: Date.now() }); },
+}));
 vi.mock('@/services/analysis-worker', () => ({
   analysisWorker: { clusterNews: vi.fn(), analyzeCorrelations: vi.fn() },
 }));
@@ -31,10 +37,10 @@ interface NewsItemLike { source: string; title: string }
 interface CrossEditionInternals {
   loadNewsCategory(
     category: string,
-    feeds: Array<{ name: string; url: string; browserOnly?: true; digestLang?: string }>,
+    feeds: Array<{ name: string; url: string; digestLang?: string }>,
     digest: null,
     isCustom: boolean,
-    options: { allowDigestPendingFallback: boolean; recordBaselineSample: boolean },
+    options: { recordBaselineSample: boolean },
     generation?: number,
     recordSelectedFreshness?: (servedStale: boolean) => void,
   ): Promise<NewsItemLike[]>;
@@ -76,13 +82,13 @@ function editionsRequested(fetchMock: ReturnType<typeof digestFetch>): string[] 
   return fetchMock.mock.calls.map(([u]) => new URL(String(u), 'https://x.test').searchParams.get('variant') ?? '');
 }
 
-async function makeLoader() {
+async function makeLoader(panels: Record<string, unknown> = {}) {
   const ctx = {
     statusPanel: { updateDigestCoverage: vi.fn(), updateFeed: vi.fn(), updateApi: vi.fn() },
     disabledSources: new Set<string>(),
     newsCategoryPanelKeys: new Map<string, string>(),
     newsPanels: {},
-    panels: {},
+    panels,
     newsByCategory: {},
     currentTimeRange: 'all',
     allNews: [],
@@ -93,7 +99,7 @@ async function makeLoader() {
   return loader as unknown as CrossEditionInternals;
 }
 
-const OPTIONS = { allowDigestPendingFallback: false, recordBaselineSample: false };
+const OPTIONS = { recordBaselineSample: false };
 const feeds = (names: string[]) => names.map(name => ({ name, url: `https://feeds.example/${encodeURIComponent(name)}` }));
 
 describe('cross-edition panels read the digests of every edition that carries them', () => {
@@ -102,6 +108,7 @@ describe('cross-edition panels read the digests of every edition that carries th
     mocks.fetchCategoryFeeds.mockReset();
     mocks.checkBatchForBreakingAlerts.mockReset();
     mocks.ingestHeadlines.mockReset();
+    mocks.saved.clear();
   });
 
   it('merges a markets panel from both the finance and commodity digests', async () => {
@@ -110,12 +117,14 @@ describe('cross-edition panels read the digests of every edition that carries th
       commodity: editionDigest('markets', ['Commodity Desk']),
     });
     vi.stubGlobal('fetch', fetchMock);
-    const loader = await makeLoader();
+    const setRefreshDegraded = vi.fn();
+    const loader = await makeLoader({ markets: { setRefreshDegraded } });
 
     const items = await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS);
 
     expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk']));
     expect(editionsRequested(fetchMock).sort()).toEqual(['commodity', 'finance']);
+    expect(setRefreshDegraded).toHaveBeenLastCalledWith(false);
   });
 
   it('caps the merged panel at 40 items and keeps every source represented', async () => {
@@ -182,51 +191,13 @@ describe('cross-edition panels read the digests of every edition that carries th
     expect(mocks.checkBatchForBreakingAlerts).not.toHaveBeenCalled();
   });
 
-  it('clears the partial-coverage badge total when every source is digest-served', async () => {
-    vi.stubGlobal('fetch', digestFetch({ tech: editionDigest('podcasts', ['Show']) }));
-    const loader = await makeLoader();
-    const totals = (loader as unknown as { customNewsSourceTotals: Map<string, number> }).customNewsSourceTotals;
-
-    await loader.loadNewsCategory('podcasts', feeds(['Show']), null, true, OPTIONS);
-
-    expect(totals.has('podcasts')).toBe(false);
-  });
-
-  const directFetch = async (requested: Array<{ name: string }>) =>
-    requested.map((feed, i) => ({
-      source: feed.name,
-      title: `${feed.name} direct ${i}`,
-      link: `https://direct.example/${encodeURIComponent(feed.name)}`,
-      pubDate: new Date(Date.UTC(2026, 9, 27, 13, 0, i)),
-    }));
-  const BROWSER_ONLY = { name: 'Browser Only Wire', url: 'https://feeds.example/browser-only', browserOnly: true as const };
-
-  it('still fetches sources no digest carries yet, merged with the digest items', async () => {
-    vi.stubGlobal('fetch', digestFetch({
-      finance: editionDigest('markets', ['Finance Wire']),
-      commodity: editionDigest('markets', ['Commodity Desk']),
-    }));
-    mocks.fetchCategoryFeeds.mockImplementation(directFetch);
-    const loader = await makeLoader();
-
-    const items = await loader.loadNewsCategory('markets', [
-      ...feeds(['Finance Wire', 'Commodity Desk']),
-      BROWSER_ONLY,
-    ], null, true, OPTIONS);
-
-    const requested = mocks.fetchCategoryFeeds.mock.calls[0]![0] as Array<{ name: string }>;
-    expect(requested.map(f => f.name)).toEqual(['Browser Only Wire']);
-    expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk', 'Browser Only Wire']));
-  });
-
-  it('fetches a source directly when this language\'s digest omits it (digestLang)', async () => {
+  it('shows only digest items; a source this language\'s digest omits is not fetched directly (digestLang)', async () => {
     // BBC Persian is `fa` on the server but unrestricted in the browser: the
-    // English digest never carries it, so it must not count as digest-served.
+    // English digest never carries it, and panels read only digests.
     vi.stubGlobal('fetch', digestFetch({
       finance: editionDigest('markets', ['Finance Wire']),
       commodity: editionDigest('markets', ['Commodity Desk']),
     }));
-    mocks.fetchCategoryFeeds.mockImplementation(directFetch);
     const loader = await makeLoader();
 
     const persian = { name: 'Persian Service', url: 'https://feeds.example/persian', digestLang: 'fa' };
@@ -235,40 +206,99 @@ describe('cross-edition panels read the digests of every edition that carries th
       persian,
     ], null, true, OPTIONS);
 
-    const requested = mocks.fetchCategoryFeeds.mock.calls[0]![0] as Array<{ name: string }>;
-    expect(requested.map(f => f.name)).toEqual(['Persian Service']);
-    expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk', 'Persian Service']));
+    expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
+    expect(new Set(items.map(i => i.source))).toEqual(new Set(['Finance Wire', 'Commodity Desk']));
   });
 
-  it('falls back to fetching every source when one carrying edition digest is missing', async () => {
+  it('shows the editions that arrived as live when another carrying edition digest is missing on a cold load', async () => {
     // markets is placed in finance and commodity; commodity answers 503.
     vi.stubGlobal('fetch', digestFetch({ finance: editionDigest('markets', ['Finance Wire']) }));
-    mocks.fetchCategoryFeeds.mockImplementation(directFetch);
-    const loader = await makeLoader();
-
-    await loader.loadNewsCategory('markets', [
-      ...feeds(['Finance Wire', 'Commodity Desk']),
-      BROWSER_ONLY,
-    ], null, true, OPTIONS);
-
-    const requested = mocks.fetchCategoryFeeds.mock.calls[0]![0] as Array<{ name: string }>;
-    expect(requested.map(f => f.name)).toContain('Commodity Desk');
-  });
-
-  it('keeps a stale digest stale when direct feeds are merged onto it', async () => {
-    const stale = editionDigest('markets', ['Finance Wire']);
-    stale.coverage = { state: 'ok', servedStale: true } as never;
-    vi.stubGlobal('fetch', digestFetch({ finance: stale, commodity: editionDigest('markets', ['Commodity Desk']) }));
-    mocks.fetchCategoryFeeds.mockImplementation(directFetch);
-    const loader = await makeLoader();
+    const setRefreshDegraded = vi.fn();
+    const loader = await makeLoader({ markets: { setRefreshDegraded } });
     const recorded: boolean[] = [];
 
-    await loader.loadNewsCategory('markets', [
-      ...feeds(['Finance Wire', 'Commodity Desk']),
-      BROWSER_ONLY,
-    ], null, true, OPTIONS, undefined, servedStale => { recorded.push(servedStale); });
+    const items = await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS,
+      undefined, servedStale => { recorded.push(servedStale); });
 
-    expect(recorded.length).toBeGreaterThan(0);
-    expect(recorded[recorded.length - 1]).toBe(true);
+    expect(items.map(i => i.title).sort()).toEqual(['Finance Wire headline 0', 'Finance Wire headline 1']);
+    expect(setRefreshDegraded).toHaveBeenLastCalledWith(false);
+    expect(recorded).toEqual([false]);
+    expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
+  });
+
+  it('keeps the missing edition\'s last items beside the fresh ones while its digest is missing and nothing was saved', async () => {
+    vi.stubGlobal('fetch', digestFetch({
+      finance: editionDigest('markets', ['Finance Wire']),
+      commodity: editionDigest('markets', ['Commodity Desk']),
+    }));
+    const setRefreshDegraded = vi.fn();
+    const loader = await makeLoader({ markets: { setRefreshDegraded } });
+    await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS);
+    (loader as unknown as { crossEditionDigests: Map<string, unknown> }).crossEditionDigests.clear();
+    await vi.waitFor(() => expect(mocks.saved.size).toBe(2));
+    mocks.saved.clear();
+    const refreshed = editionDigest('markets', ['Finance Wire']);
+    for (const item of refreshed.categories.markets!.items) (item as { title: string }).title += ' (new)';
+    vi.stubGlobal('fetch', digestFetch({ finance: refreshed }));
+    const recorded: boolean[] = [];
+
+    const items = await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS,
+      undefined, servedStale => { recorded.push(servedStale); });
+
+    expect(items.map(i => i.title).sort()).toEqual([
+      'Commodity Desk headline 0',
+      'Commodity Desk headline 1',
+      'Finance Wire headline 0 (new)',
+      'Finance Wire headline 1 (new)',
+    ]);
+    expect(setRefreshDegraded).toHaveBeenLastCalledWith(true);
+    expect(recorded).toEqual([true]);
+    expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
+  });
+
+  it('keeps the panel\'s last items while no carrying edition digest arrives and nothing was saved', async () => {
+    vi.stubGlobal('fetch', digestFetch({
+      finance: editionDigest('markets', ['Finance Wire']),
+      commodity: editionDigest('markets', ['Commodity Desk']),
+    }));
+    const loader = await makeLoader();
+    const first = await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS);
+    (loader as unknown as { crossEditionDigests: Map<string, unknown> }).crossEditionDigests.clear();
+    await vi.waitFor(() => expect(mocks.saved.size).toBe(2));
+    mocks.saved.clear();
+    vi.stubGlobal('fetch', digestFetch({}));
+    const recorded: boolean[] = [];
+
+    const items = await loader.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS,
+      undefined, servedStale => { recorded.push(servedStale); });
+
+    expect(items.map(i => i.title).sort()).toEqual(first.map(i => i.title).sort());
+    expect(recorded).toEqual([true]);
+    expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
+  });
+
+  it('serves the edition digests a previous page load saved, marked cached, when they are down on a new page load', async () => {
+    vi.stubGlobal('fetch', digestFetch({
+      finance: editionDigest('markets', ['Finance Wire']),
+      commodity: editionDigest('markets', ['Commodity Desk']),
+    }));
+    const firstPage = await makeLoader();
+    const first = await firstPage.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS);
+    await vi.waitFor(() => expect(mocks.saved.size).toBe(2));
+    mocks.checkBatchForBreakingAlerts.mockClear();
+
+    vi.stubGlobal('fetch', digestFetch({}));
+    const setRefreshDegraded = vi.fn();
+    const secondPage = await makeLoader({ markets: { setRefreshDegraded } });
+    const recorded: boolean[] = [];
+
+    const items = await secondPage.loadNewsCategory('markets', feeds(['Finance Wire', 'Commodity Desk']), null, true, OPTIONS,
+      undefined, servedStale => { recorded.push(servedStale); });
+
+    expect(items.map(i => i.title).sort()).toEqual(first.map(i => i.title).sort());
+    expect(setRefreshDegraded).toHaveBeenLastCalledWith(true);
+    expect(recorded).toEqual([true]);
+    expect(mocks.checkBatchForBreakingAlerts).not.toHaveBeenCalled();
+    expect(mocks.fetchCategoryFeeds).not.toHaveBeenCalled();
   });
 });

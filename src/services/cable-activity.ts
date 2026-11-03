@@ -280,8 +280,13 @@ function formatNgaDate(epochMs: number): string {
 
 export async function fetchCableActivity(): Promise<CableActivity> {
   try {
-    await ensureCablesData();
-    const response = await maritimeClient.listNavigationalWarnings({ area: '', pageSize: 0, cursor: '' });
+    // The cable-geometry chunk and the NGA warning request are independent and
+    // both are needed before `processWarnings` runs, so load them together
+    // instead of paying a serialized module fetch plus a network round trip.
+    const [, response] = await Promise.all([
+      ensureCablesData(),
+      maritimeClient.listNavigationalWarnings({ area: '', pageSize: 0, cursor: '' }),
+    ]);
     const warnings: NgaWarning[] = response.warnings.map(protoToNgaWarning);
 
     const activity = processWarnings(warnings);

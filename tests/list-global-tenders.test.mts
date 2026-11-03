@@ -13,6 +13,36 @@ const tender = (id: string, overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+test('Pakistan cross-feed duplicates collapse after filtering and before pagination', () => {
+  const records = [
+    tender('epads', { source: 'pakistan-epads', countryCode: 'PK', buyer: 'Public Agency', title: 'Cloud & data platform' }),
+    tender('ppra', { source: 'pakistan-ppra', countryCode: 'PK', buyer: 'PUBLIC  AGENCY', title: 'Cloud & Data Platform.' }),
+    tender('other', { source: 'pakistan-ppra', countryCode: 'PK', buyer: 'Other Agency', title: 'Cloud & data platform' }),
+    tender('unknown', { source: 'pakistan-ppra', countryCode: 'PK', buyer: '', title: 'Cloud & data platform' }),
+  ];
+  const request = { country: 'PK', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0, currency: '', category: '', query: '', pageSize: 1, cursor: '', sort: 'closing_soon', buyer: '', publishedFrom: '', publishedTo: '', minAutomationScore: 0 };
+  const first = filterAndPaginateTenders(records, request);
+  assert.equal(first.total, 3);
+  const pages = [first.tenders[0].id];
+  let cursor = first.nextCursor;
+  while (cursor) {
+    const page = filterAndPaginateTenders(records, { ...request, cursor });
+    pages.push(...page.tenders.map((record) => record.id));
+    cursor = page.nextCursor;
+  }
+  assert.deepEqual(pages, ['epads', 'other', 'unknown']);
+  assert.equal(filterAndPaginateTenders(records, { ...request, source: 'pakistan-ppra' }).total, 3);
+  assert.equal(filterAndPaginateTenders(records, { ...request, source: 'pakistan-epads' }).total, 1);
+  assert.equal(filterAndPaginateTenders(records, { ...request, buyer: 'other agency' }).total, 1);
+  assert.equal(filterAndPaginateTenders(records.map((record) => ({ ...record, source: 'sam' })), request).total, 4);
+  const pair = records.slice(0, 2);
+  const distinct = tender('different-deadline', { ...pair[1], id: 'different-deadline', deadline: '2099-02-02T12:00:00Z' });
+  assert.equal(filterAndPaginateTenders([...pair, distinct], { ...request, country: '' }).total, 2);
+  const ambiguous = { ...pair[1], id: 'another-ppra' };
+  assert.equal(filterAndPaginateTenders([...pair, ambiguous], request).total, 3);
+  assert.equal(filterAndPaginateTenders(pair.map((record) => ({ ...record, deadline: '' })), request).total, 2);
+});
+
 test('filters by country, query, category, money and deadline without treating missing values as matches', () => {
   const result = filterAndPaginateTenders([
     tender('a'),
@@ -133,7 +163,7 @@ test('new provider records pass through the canonical snapshot and existing coun
   assert.equal(snapshot.availability, 'available');
   const status = snapshot.sourceStatuses.find((source: { source: string }) => source.source === 'brazil-pncp');
   assert.equal(sourceHealthMeta(status).fetchedAt, now);
-  const failed = await fetchGlobalTenders({ now: now + 180 * 60_000, previousSnapshot: snapshot,
+  const failed = await fetchGlobalTenders({ now: now + 24 * 60 * 60_000, previousSnapshot: snapshot,
     adapters: [['brazil-pncp', async () => { throw new Error('HTTP 503'); }]] });
   assert.equal(failed.tenders.length, 0);
   assert.equal(sourceHealthMeta(failed.sourceStatuses[0]).fetchedAt, now);

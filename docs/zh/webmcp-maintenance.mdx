@@ -1,6 +1,6 @@
 ---
 title: "维护与发布 WebMCP"
-description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免工具清单、UI 行为、安全边界与双语文档发生偏移。"
+description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免工具清单、UI 行为、安全边界与双语文档发生偏移。每次变更都是公开 UI 契约变更：规范名称在 src/config/webmcp.ts 中维护，每个工具须归类取消策略，并在每次调用时重新检查认证与权益。"
 ---
 
 更改 WorldMonitor WebMCP 实现时，请使用本指南。宿主设置、工具 schema、浏览器智能体流程与用户可见限制见 [WebMCP 参考](/zh/webmcp)。
