@@ -1934,19 +1934,20 @@
       "proLocked": "Uppgradera till PRO för råvarusårbarhetsbedömning"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Direkt skeppsspårning genom Hormuzsträndet, världens mest kritiska oljeflaskhals. Övervakar tankskeppet, avbrottshändelser och veckovisa flödesförändringar. Ungefär 20% av det globala oljeöverföringen passerar här dagligen.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab dagliga försändelsesindex för Hormuzsträndet: råolja, LNG och gödsel som lämnar Persiska golfen, lantbruksvaror som anländer. Efter volym, genomsnitt 2025 = 100, endast AIS-synliga fartyg. Status och datum kommer från WTO:s senaste analys.",
       "title": "Hormuz-handelsspårare",
       "noData": "Ingen data",
       "notAvailable": "Ej tillgänglig",
       "chartUnavailable": "Diagramdata är inte tillgänglig",
       "sourcePrefix": "Källa:",
-      "units": {
-        "ktPerDay": "kt/dag",
-        "generic": "enheter"
-      },
       "errors": {
         "unavailable": "Hormuz-data är inte tillgänglig",
         "failedToLoad": "Det gick inte att läsa in"
+      },
+      "analysisDate": "WTO-analys {{date}}",
+      "indexNote": "Fraktindex baserat på volym, 2025-genomsnitt = 100",
+      "units": {
+        "index": "index"
       }
     },
     "liveWebcams": {

@@ -51,7 +51,8 @@ function renderChart(chart: HormuzChart, idx: number): string {
   const last = chart.series[chart.series.length - 1];
   const lastVal = last ? Number(last.value).toFixed(0) : t('components.hormuzTracker.notAvailable');
   const lastDate = last ? last.date.slice(5) : '';
-  const unit = chart.label.includes('crude_oil') ? t('components.hormuzTracker.units.ktPerDay') : t('components.hormuzTracker.units.generic');
+  // Every WTO series is a volume index (2025 average = 100), not tonnage.
+  const unit = t('components.hormuzTracker.units.index');
 
   return `
     <div class="hz-chart" style="margin-bottom:12px">
@@ -246,7 +247,7 @@ export class HormuzPanel extends Panel {
       ? d.charts.map((c, i) => renderChart(c, i)).join('')
       : `<div style="color:var(--text-dim);font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:8px 0">${escapeHtml(t('components.hormuzTracker.chartUnavailable'))}</div>`;
 
-    const dateStr = d.updatedDate ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(d.updatedDate)}</span>` : '';
+    const dateStr = d.updatedDate ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.hormuzTracker.analysisDate', { date: d.updatedDate }))}</span>` : '';
     const dependencies = this.renderDependencies();
 
     const html = `
@@ -256,6 +257,7 @@ export class HormuzPanel extends Panel {
           <span style="background:${sColor};color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:0.08em">${d.status.toUpperCase()}</span>
           ${dateStr}
         </div>
+        <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:6px">${escapeHtml(t('components.hormuzTracker.indexNote'))}</div>
         <div>${charts}</div>
         ${dependencies}
         <div style="margin-top:4px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">

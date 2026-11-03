@@ -2309,20 +2309,21 @@
       "proLocked": "升級至PRO以檢視商品脆弱性評分"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>荷爾木茲海峽貿易追蹤器</strong>透過全球最關鍵油氣運輸通道荷爾木茲海峽的即時船舶追蹤。監測油輪數量、中斷事件和周度流量變化。全球約20%的日均石油供應透過此處。",
+      "infoTooltip": "<strong>霍爾木茲貿易追蹤器</strong> WTO DataLab 關於霍爾木茲海峽的日貨運指數：離開波斯灣的原油、液化天然氣和化肥，以及抵達的農產品。按體積計，2025年平均值 = 100，僅包括 AIS 可見船舶。狀態和日期來自 WTO 的最新分析。",
       "title": "霍爾木茲貿易追蹤",
       "noData": "無資料",
       "notAvailable": "不適用",
       "chartUnavailable": "圖表資料不可用",
       "sourcePrefix": "來源：",
       "units": {
-        "ktPerDay": "千噸/天",
-        "generic": "單位"
+        "index": "指數"
       },
       "errors": {
         "unavailable": "霍爾木茲資料不可用",
         "failedToLoad": "載入失敗"
-      }
+      },
+      "analysisDate": "WTO分析 {{date}}",
+      "indexNote": "貨運指數（按體積），2025年平均值 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>即時攝影機</strong> 來自全球地緣政治重要地點的直播：衝突區、首都、邊境口岸和戰略咽喉要道。流媒體來自YouTube和公共網路。"

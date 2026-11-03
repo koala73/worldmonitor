@@ -2336,19 +2336,20 @@
       "proLocked": "Upgradujte na PRO pro skórování zranitelnosti komodit"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Živé sledování lodí Průlivem Hormuzem, nejkritičtějším úzkým místem pro ropu na světě. Sleduje počty tankerů, narušovací události a týdenní změny toku. Přibližně 20 % globální nabídky ropy denně projde tímto místem.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> denní indexy zásilek WTO DataLab pro Hormudzký průliv: surová olej, LNG a hnojiva vyvážená z Perského zálivu, zemědělské produkty přicházející. Dle objemu, průměr roku 2025 = 100, pouze AIS-viditelné lodě. Stav a datum pochází z nejnovější analýzy WTO.",
       "title": "Sledování obchodu v Hormuzu",
       "noData": "Žádná data",
       "notAvailable": "N/A",
       "chartUnavailable": "Data grafu není dostupné",
       "sourcePrefix": "Zdroj:",
-      "units": {
-        "ktPerDay": "kt/den",
-        "generic": "jednotek"
-      },
       "errors": {
         "unavailable": "Data Hormuz není dostupná",
         "failedToLoad": "Načtení se nezdařilo"
+      },
+      "analysisDate": "WTO analýza {{date}}",
+      "indexNote": "Index přepravy podle objemu, průměr roku 2025 = 100",
+      "units": {
+        "index": "index"
       }
     },
     "liveWebcams": {

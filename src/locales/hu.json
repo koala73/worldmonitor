@@ -2594,19 +2594,20 @@
       "proLocked": "Frissítsen PRO verzióra az árucikk-sebezhetőségi pontszám megtekintéséhez"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuzi kereskedelmi követő</strong> Élő hajókövetés a Hormuzi szoroson keresztül, a világ legfontosabb olaj szűk pontján. Tankerszámokat, zavaró eseményeket és heti flow-változásokat figyel. A globális olajkészlet körülbelül 20%-a naponta tranzitál itt.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab napi szállítmányindexei a Hormuz-szorosra: az Öbölből eltávozó kőolaj, LNG és műtrágya, valamint az érkező mezőgazdasági termékek. Volumen szerint, 2025 éves átlaga = 100, csak AIS-látható hajók. Az állapot és dátum a WTO legújabb elemzéséből származik.",
       "title": "Hormuzi kereskedelemkövető",
       "noData": "Nincs adat",
       "notAvailable": "N/A",
       "chartUnavailable": "Diagramadatok nem érhetőek el",
       "sourcePrefix": "Forrás:",
-      "units": {
-        "ktPerDay": "kt/nap",
-        "generic": "egység"
-      },
       "errors": {
         "unavailable": "Hormuz adatok nem érhetőek el",
         "failedToLoad": "Betöltés sikertelen"
+      },
+      "analysisDate": "WTO elemzés {{date}}",
+      "indexNote": "Szállítmányi index térfogat szerint, 2025-ös átlag = 100",
+      "units": {
+        "index": "index"
       }
     },
     "liveWebcams": {

@@ -2336,20 +2336,21 @@
       "proLocked": "Uaktualnij do PRO, aby zobaczyć ocenę podatności surowców"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Śledzenie statków w czasie rzeczywistym na Cieśninie Hormuz, najbardziej krytycznym światowym wąskim gardłem dla transportu ropy naftowej. Monitoruje liczby tankowców, zdarzenia zakłóceń i tygodniowe zmiany przepływu. Około 20% światowych dostaw ropy naftowej przechodzi tędy codziennie.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> — codzienne indeksy wysyłek WTO DataLab dla Cieśniny Hormuz: ropa naftowa, LNG i nawozy opuszczające Zatokę, towary rolne przybywające. Według objętości, średnia 2025 = 100, tylko statki widoczne w AIS. Status i data pochodzą z najnowszej analizy WTO.",
       "title": "Tracker Handlu przez Hormuz",
       "noData": "Brak danych",
       "notAvailable": "Niedostępne",
       "chartUnavailable": "Dane wykresu niedostępne",
       "sourcePrefix": "Źródło:",
       "units": {
-        "ktPerDay": "kt/dzień",
-        "generic": "jednostek"
+        "index": "indeks"
       },
       "errors": {
         "unavailable": "Dane Hormuz niedostępne",
         "failedToLoad": "Nie udało się załadować"
-      }
+      },
+      "analysisDate": "Analiza WTO {{date}}",
+      "indexNote": "Indeks wysyłek według objętości, średnia 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Kamery na żywo</strong> Transmisje na żywo z geopolitycznie istotnych miejsc na całym świecie: strefy konfliktu, stolice, przejścia graniczne i strategiczne wąskie gardła. Transmisje z YouTube i sieci publicznych."

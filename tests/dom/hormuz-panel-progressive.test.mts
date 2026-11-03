@@ -36,6 +36,18 @@ vi.mock('@/services/panel-gating', async (importOriginal) => ({
   hasPremiumAccess: () => gateMocks.isPro,
 }));
 
+// The panel's English copy, interpolated, so the label test reads what a viewer reads.
+vi.mock('@/services/i18n', async (importOriginal) => {
+  const { readFileSync } = await import('node:fs');
+  const en = JSON.parse(readFileSync('src/locales/en.json', 'utf8'));
+  const lookup = (key: string): unknown => key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], en);
+  return {
+    ...await importOriginal<typeof import('@/services/i18n')>(),
+    t: (key: string, params: Record<string, unknown> = {}) =>
+      String(lookup(key) ?? key).replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(params[name] ?? '')),
+  };
+});
+
 vi.mock('@/services/hormuz-tracker', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/hormuz-tracker')>(),
   fetchHormuzTracker: serviceMocks.fetchTracker,
@@ -372,5 +384,30 @@ describe('HormuzPanel dates from a tracker payload stored before the ISO seeder 
       ['2026-10-30', '2026-10-31', '2026-11-01'],
       ['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'],
     ]);
+  });
+});
+
+describe('HormuzPanel shipment index labels', () => {
+  it('labels the WTO series as a 2025-based index and dates the WTO analysis', async () => {
+    serviceMocks.fetchTracker.mockResolvedValue({
+      ...tracker,
+      updatedDate: '2026-09-21',
+      status: 'disrupted' as const,
+      charts: [
+        { label: 'crude_oil_outbound', title: 'Crude Oil Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] },
+        { label: 'lng_outbound', title: 'LNG Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] },
+      ],
+    });
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('Crude Oil Outbound Shipments'));
+    const text = panel.getElement().textContent ?? '';
+    expect(text, 'the WTO series are an index, not tonnage').not.toMatch(/kt\/day|\bunits\b/);
+    expect(text).toContain('2025 average = 100');
+    expect(text).toContain('WTO analysis 2026-09-21');
   });
 });
