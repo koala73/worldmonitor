@@ -227,6 +227,19 @@ describe('makeFetchAll', () => {
     assert.deepEqual(Object.keys(payload.channels), [ID(1)]);
   });
 
+  it('logs why an unreadable channel failed, so a proxy rejection is visible in Railway logs', async () => {
+    const lines = [];
+    const fetchAll = makeFetchAll({
+      channels,
+      readPrevious: async () => null,
+      fetchPage: async (id) => (id === ID(1) ? unreadable(id, 'fetch-error', { detail: 'Proxy CONNECT: HTTP/1.1 407 Proxy Authentication Required' }) : live(id, VIDEO(7))),
+      now: () => NOW,
+      log: (line) => lines.push(line),
+    });
+    await fetchAll();
+    assert.ok(lines.some((line) => line.includes(ID(1)) && line.includes('unreadable/fetch-error: Proxy CONNECT: HTTP/1.1 407')), lines.join('\n'));
+  });
+
   it('logs titles and slots but never puts them in the payload', async () => {
     const lines = [];
     const fetchAll = makeFetchAll({ channels, readPrevious: async () => null, fetchPage: async (id) => live(id, VIDEO(7)), now: () => NOW, log: (line) => lines.push(line) });

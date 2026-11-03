@@ -83,7 +83,7 @@ export class FuelPricesPanel extends Panel {
 
     const html = `
       <div class="gb-wrapper">
-        <div class="gb-scroll">
+        <div class="gb-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
           <table class="gb-table">
             <thead><tr>
               <th scope="col" class="gb-item-col">${t('panels.fuelPricesCountry')}</th>

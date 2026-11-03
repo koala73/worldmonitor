@@ -1,12 +1,12 @@
 ---
 title: "We Grade Our Own Forecasts: Inside the Forecast Scorecard"
-description: "WorldMonitor publishes a Brier-score audit of 32 AI forecasts, including calibration results, overconfidence patterns, and comparison with prediction markets."
+description: "How WorldMonitor scores its own AI forecasts, with a July 2026 snapshot of 32 forecasts. An audit found scoring errors and withdrew those figures in October 2026."
 metaTitle: "AI Forecast Accuracy & Brier Scorecard | WorldMonitor"
 keywords: "AI forecast accuracy, Brier score forecasting, geopolitical forecast track record, forecast calibration, prediction accountability, forecast verification"
 audience: "Forecasters, superforecasting community, quant researchers, skeptical analysts, AI evaluation researchers"
 heroImage: "/blog/images/blog/ai-forecast-accuracy-brier-scorecard-worldmonitor.jpg"
 pubDate: "2026-07-21"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-10-07"
 ---
 
 Every AI product now makes predictions. Almost none of them tell you their error rate.
@@ -15,7 +15,7 @@ That asymmetry is the oldest trick in forecasting: make many confident calls, sh
 
 ## How the scorecard works
 
-Every forecast enters a **resolution ledger** when it's made: the claim, the probability, and what would count as resolution. When the outcome is knowable, the forecast is judged and scored. No retroactive editing, no quiet expiry — pending forecasts are counted as pending, and judged forecasts keep their original probabilities forever.
+Every forecast enters a **resolution ledger** when it's made: the claim, the probability, and what would count as resolution. When the outcome is knowable, the forecast is judged and scored. No retroactive editing, no quiet expiry — pending forecasts are counted as pending, and judged forecasts keep their original probabilities forever. (Update, October 7, 2026: the audit in issue #8990 found the scorer did not always follow this. Some windows were scored on a later probability than the one first published, and some were counted twice.)
 
 From the resolved ledger, the scorecard computes the metrics forecasting research actually uses:
 
@@ -27,6 +27,8 @@ From the resolved ledger, the scorecard computes the metrics forecasting researc
 The scoring runs over a rolling window with judged and pending counts visible, so you can see not just how good the record is but how much record there is.
 
 ## The actual scorecard, as of July 22, 2026
+
+> **Update, October 7, 2026.** An audit found errors in how these forecasts were scored: some outcomes were recorded without reading the data that decides them, some forecasts were counted more than once, and some were scored at a probability other than the one first published. The figures in this post are not reliable, and the method described above was not always followed. The findings and fixes are tracked in [issue #8990](https://github.com/koala73/worldmonitor/issues/8990).
 
 A post about publishing your numbers should publish the numbers. These were pulled from the live `get_forecast_scorecard` endpoint while writing, over the current 180-day rolling window:
 
@@ -63,7 +65,7 @@ Three reasons, in ascending order of importance:
 
 ## For developers and agents
 
-The `get_forecast_scorecard` MCP tool returns the full scorecard — Brier and log scores, calibration buckets, domain breakdowns, judged and pending counts — in one structured call, and `get_forecast_predictions` returns the current forecasts it will eventually grade. An agent can do something genuinely new with that pair: weight a forecast by the demonstrated track record of its domain before acting on it. The [risk-agent tutorial](/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/) shows the wiring; the [daily briefing workflow](/blog/posts/daily-intelligence-briefing-workflow-15-minutes/) shows where forecasts fit a human routine.
+The `get_forecast_scorecard` MCP tool returns the full scorecard — Brier and log scores, calibration buckets, domain breakdowns, judged and pending counts — in one structured call, and `get_forecast_predictions` returns the current forecasts it will eventually grade. An agent can do something genuinely new with that pair: weight a forecast by the demonstrated track record of its domain before acting on it (while the record is under audit, do not). The [risk-agent tutorial](/blog/posts/build-geopolitical-risk-agent-worldmonitor-mcp/) shows the wiring; the [daily briefing workflow](/blog/posts/daily-intelligence-briefing-workflow-15-minutes/) shows where forecasts fit a human routine.
 
 ## Limits
 
@@ -81,12 +83,12 @@ The mean squared difference between forecast probabilities and outcomes (0 or 1)
 
 **Can forecasts be edited or deleted after the fact?**
 
-No. Once a forecast enters the resolution ledger, its probability and claim are fixed. It resolves, or it's counted as pending — the two ways forecasts quietly vanish elsewhere are exactly what the ledger exists to prevent.
+No. Once a forecast enters the resolution ledger, its probability and claim are fixed. That is the design. The October 2026 audit (issue #8990) found the scorer sometimes replaced a forecast's first probability with a later one, and that is being fixed. A forecast resolves, or it's counted as pending — the two ways forecasts quietly vanish elsewhere are exactly what the ledger exists to prevent.
 
 **Where can I see or query the scorecard?**
 
-The standing record lives at [the forecast accuracy scorecard](https://www.worldmonitor.app/accuracy/), which republishes the current scores, calibration and sample sizes; the figures quoted in this post are a July 2026 snapshot and the ledger has grown a lot since. It is also in the forecast panel on the dashboard, and programmatically via the `get_forecast_scorecard` MCP tool or the forecast REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference).
+The standing record lives at [the forecast accuracy scorecard](https://www.worldmonitor.app/accuracy/), which publishes the forecast track record and its methodology; the figures quoted in this post are a July 2026 snapshot and are not reliable (see the update above). It is also in the forecast panel on the dashboard, and programmatically via the `get_forecast_scorecard` MCP tool or the forecast REST endpoints in the [API reference](https://www.worldmonitor.app/docs/api-reference).
 
 ---
 
-**Anyone can make predictions. The ledger currently reads Brier 0.202 over 32 scored calls, overconfident in the middle, beaten by the market head-to-head — published anyway, because a scorecard only counts if you print it before it flatters you.**
+**Anyone can make predictions. In July 2026 the ledger read Brier 0.202 over 32 scored calls, overconfident in the middle, beaten by the market head-to-head — published anyway, because a scorecard only counts if you print it before it flatters you.**

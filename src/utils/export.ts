@@ -300,6 +300,7 @@ export interface CountryEvidenceBundleInput {
   trend?: string;
   components?: CountryBriefExport['components'];
   signals?: Record<string, unknown>;
+  signalCoverageNotes?: readonly string[];
   brief?: string;
   headlines?: CountryEvidenceSourceInput[];
   generatedAt?: string;
@@ -488,6 +489,8 @@ function signalLabel(key: string): string {
 function buildEvidenceSignals(signals: Record<string, unknown> | undefined): CountryEvidenceSignal[] {
   if (!signals) return [];
   const normalized: Record<string, unknown> = { ...signals };
+  if (normalized.cyberThreats === null) normalized.cyberThreats = 'unavailable';
+  else if (normalized.cyberThreats === 0) normalized.cyberThreats = '0';
   for (const key of ['temporalAnomalies', 'globalTemporalAnomalies']) {
     if (key in normalized && normalized[key] === null) {
       normalized[key] = 'unavailable';
@@ -552,7 +555,7 @@ function buildEvidenceSources(
 
 function buildFreshnessNotes(input: CountryEvidenceBundleInput, exportedAt: string): string[] {
   const notes: string[] = [`Exported at ${exportedAt}.`];
-  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt ?? input.generatedAt);
+  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt);
   if (briefGeneratedAt) {
     notes.push(`Brief generated at ${briefGeneratedAt}${input.briefCached === true ? ' from cache' : ''}.`);
   } else {
@@ -560,6 +563,10 @@ function buildFreshnessNotes(input: CountryEvidenceBundleInput, exportedAt: stri
   }
   if (!input.headlines || input.headlines.length === 0) {
     notes.push('No headline source list was available for this export.');
+  }
+  for (const note of input.signalCoverageNotes?.slice(0, 12) ?? []) {
+    const clean = sanitizeEvidenceText(note).slice(0, 1600).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (clean) notes.push(clean);
   }
   return notes;
 }
@@ -586,7 +593,7 @@ function renderQuotedEvidenceBlock(value: string): string[] {
 export function buildCountryEvidenceBundle(input: CountryEvidenceBundleInput): CountryEvidenceBundle {
   const exportedAt = normalizeIsoTimestamp(input.exportedAt) ?? new Date().toISOString();
   const generatedAt = normalizeIsoTimestamp(input.generatedAt);
-  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt ?? input.generatedAt);
+  const briefGeneratedAt = normalizeIsoTimestamp(input.briefGeneratedAt);
   const brief = sanitizeEvidenceText(input.brief);
   return {
     country: sanitizeEvidenceText(input.country),
@@ -679,14 +686,15 @@ export function renderCountryEvidenceMarkdown(bundle: CountryEvidenceBundle): st
   return lines.join('\n');
 }
 
-export function exportCountryEvidenceMarkdown(data: CountryEvidenceBundleInput): void {
+export function countryEvidenceMarkdownArtifact(data: CountryEvidenceBundleInput): import('./country-text-download').CountryTextArtifact {
   const bundle = buildCountryEvidenceBundle(data);
   const timestamp = bundle.exportedAt.replace(/[:.]/g, '-');
-  downloadFile(
-    renderCountryEvidenceMarkdown(bundle),
-    `country-evidence-${bundle.code}-${timestamp}.md`,
-    'text/markdown;charset=utf-8',
-  );
+  return { content: renderCountryEvidenceMarkdown(bundle), filename: `country-evidence-${bundle.code}-${timestamp}.md`, mimeType: 'text/markdown;charset=utf-8' };
+}
+
+export function exportCountryEvidenceMarkdown(data: CountryEvidenceBundleInput): void {
+  const artifact = countryEvidenceMarkdownArtifact(data);
+  downloadFile(artifact.content, artifact.filename, artifact.mimeType);
 }
 
 export function exportCountryBriefJSON(data: CountryBriefExport): void {

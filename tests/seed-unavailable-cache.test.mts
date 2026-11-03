@@ -134,11 +134,11 @@ it('preserves a genuine PizzINT miss as a cacheable empty response', async () =>
   assert.match(response.headers.get('Cache-Control') ?? '', /^private, max-age=300(?:,|$)/);
   assert.deepEqual(await response.json(), { tensionPairs: [] });
 });
-it('preserves PizzINT includeGdelt filtering on a valid seed', async () => {
+it('never serves legacy PizzINT tension scores as World Monitor scores', async () => {
   mode = 'hit';
   const payload = { pizzint: { locations: [], defconLevel: 5 }, tensionPairs: [{ pair: 'usa_china' }] };
   cache.set('intelligence:pizzint:seed:v1', payload);
-  assert.deepEqual((await (await request('intelligence/v1/get-pizzint-status?include_gdelt=true')).json()).tensionPairs, payload.tensionPairs);
+  assert.deepEqual((await (await request('intelligence/v1/get-pizzint-status?include_gdelt=true')).json()).tensionPairs, []);
   assert.deepEqual((await (await request('intelligence/v1/get-pizzint-status?include_gdelt=false')).json()).tensionPairs, []);
 });
 for (const entry of cases.filter(entry => !entry.path.includes('pizzint'))) {
@@ -348,6 +348,24 @@ it('World Bank failure is 503 without cache writes and a zero-record provider re
   assert.equal(recovered.status, 200);
   assert.deepEqual((await recovered.json()).data, []);
 });
+it('World Bank serves a seeded all snapshot when the live provider is 503', async () => {
+  const currentYear = new Date().getFullYear();
+  mode = 'hit';
+  cache.set(`economic:worldbank:v2:SP.POP.TOTL:all:5:${currentYear}`, {
+    data: [{
+      countryCode: 'USA',
+      countryName: 'United States',
+      indicatorCode: 'SP.POP.TOTL',
+      indicatorName: 'Population',
+      year: currentYear - 1,
+      value: 1,
+    }],
+  });
+  const response = await request('economic/v1/list-world-bank-indicators?indicator_code=SP.POP.TOTL&country_code=US');
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data[0].countryCode, 'USA');
+  assert.equal(writes, 0);
+});
 it('default crypto missing seed is degraded and no-store', async () => {
   const response = await request('market/v1/list-crypto-quotes');
   assertNoStore(response);
@@ -387,3 +405,108 @@ for (const payload of [{}, [{ total: null }, null], [{ total: 1 }, {}]]) {
     assert.equal(writes, 0);
   });
 }
+
+it('serves bounded dyad scores independently of a missing pizza payload', async () => {
+  mode = 'hit';
+  const pair = { id: 'usa_russia', countries: ['US', 'RU'], label: 'US–Russia', score: 50,
+    trend: 'TREND_DIRECTION_STABLE', changePercent: 0, region: 'global' };
+  cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now(), tensionPairs: [pair, { ...pair, score: 101 }] });
+  const response = await request('intelligence/v1/get-pizzint-status?include_gdelt=true');
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.pizzint, undefined);
+  assert.deepEqual(body.tensionPairs, [{ ...pair, evidence: [] }]);
+  assertNoStore(response);
+  const pizzaOnly = await request('intelligence/v1/get-pizzint-status?include_gdelt=false');
+  assert.deepEqual((await pizzaOnly.json()).tensionPairs, []);
+});
+
+it('does not discard tensions when only the pizza Redis read fails', async () => {
+  mode = 'hit';
+  const pair = { id: 'usa_russia', countries: ['US', 'RU'], label: 'US–Russia', score: 50,
+    trend: 'TREND_DIRECTION_STABLE', changePercent: 0, region: 'global' };
+  cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now(), tensionPairs: [pair] });
+  const redisFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => decodeURIComponent(String(input)).includes('intelligence:pizzint:seed:v1')
+    ? new Response('', { status: 503 }) : redisFetch(input, init);
+  const response = await request('intelligence/v1/get-pizzint-status?include_gdelt=true');
+  assertNoStore(response);
+  assert.deepEqual((await response.json()).tensionPairs, [{ ...pair, evidence: [] }]);
+});
+
+it('withholds stale dyad scores while preserving pizza data', async () => {
+  mode = 'hit';
+  cache.set('intelligence:pizzint:seed:v1', { pizzint: { locations: [], defconLevel: 5 } });
+  cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now() - 46 * 60_000,
+    tensionPairs: [{ id: 'usa_russia', score: 50, changePercent: 0 }] });
+  const response = await request('intelligence/v1/get-pizzint-status?include_gdelt=true');
+  const body = await response.json();
+  assert.equal(body.pizzint.defconLevel, 5);
+  assert.deepEqual(body.tensionPairs, []);
+});
+
+const usaIran = { id: 'usa_iran', countries: ['US', 'IR'], label: 'US–Iran', score: 60,
+  trend: 'TREND_DIRECTION_RISING', changePercent: 12, region: 'middle_east' };
+const aircraft = { channel: 'military_aircraft', value: 9, baseline: 2.21, countries: ['US'], airports: [],
+  notable: true, observedAt: 1_792_927_824_832 };
+const closure = { channel: 'airports', value: 1, baseline: null, countries: [],
+  airports: [{ name: 'Tehran Imam Khomeini', status: 'closed' }], notable: true, observedAt: 1_792_926_076_895 };
+
+it('attaches only valid notable evidence to fresh tension rows', async () => {
+  mode = 'hit';
+  cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now(), tensionPairs: [usaIran] });
+  cache.set('intelligence:tension-evidence:v1', { updatedAt: Date.now() - 10 * 60_000, days: {}, live: {
+    usa_iran: [
+      aircraft,
+      closure,
+      { channel: 'sanctions', value: 4, baseline: 3, countries: ['IR'], airports: [], notable: false, observedAt: 1 },
+      { ...aircraft, channel: 'oil_price' },
+      { ...aircraft, value: -1 },
+      { ...closure, airports: [{ name: 'Tehran', status: 'open' }] },
+      { ...aircraft, countries: ['usa'] },
+    ],
+  } });
+  const body = await (await request('intelligence/v1/get-pizzint-status?include_gdelt=true')).json();
+  const { notable: _aircraftFlag, ...aircraftEvidence } = aircraft;
+  const { notable: _closureFlag, baseline: _noBaseline, ...closureEvidence } = closure;
+  assert.deepEqual(body.tensionPairs, [{ ...usaIran, evidence: [aircraftEvidence, closureEvidence] }]);
+});
+
+for (const [name, stored] of [
+  ['older than 45 minutes', () => ({ updatedAt: Date.now() - 46 * 60_000, days: {}, live: { usa_iran: [aircraft] } })],
+  ['from the future', () => ({ updatedAt: Date.now() + 60 * 60_000, days: {}, live: { usa_iran: [aircraft] } })],
+  ['malformed', () => ({ updatedAt: Date.now(), live: [aircraft] })],
+] as const) {
+  it(`serves tension rows without evidence that is ${name}`, async () => {
+    mode = 'hit';
+    cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now(), tensionPairs: [usaIran] });
+    cache.set('intelligence:tension-evidence:v1', stored());
+    const body = await (await request('intelligence/v1/get-pizzint-status?include_gdelt=true')).json();
+    assert.deepEqual(body.tensionPairs, [{ ...usaIran, evidence: [] }]);
+  });
+}
+
+it('serves tension rows when the evidence read fails', async () => {
+  mode = 'hit';
+  cache.set('intelligence:pizzint:seed:v1', { pizzint: { locations: [], defconLevel: 5 } });
+  cache.set('gdelt:bulk:dyad-tension:v1', { updatedAt: Date.now(), tensionPairs: [usaIran] });
+  const redisFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => decodeURIComponent(String(input)).includes('intelligence:tension-evidence:v1')
+    ? new Response('', { status: 503 }) : redisFetch(input, init);
+  const body = await (await request('intelligence/v1/get-pizzint-status?include_gdelt=true')).json();
+  assert.equal(body.pizzint.defconLevel, 5);
+  assert.deepEqual(body.tensionPairs, [{ ...usaIran, evidence: [] }]);
+});
+
+it('does not read the evidence for the pizza-only request', async () => {
+  mode = 'hit';
+  const keysRead: string[] = [];
+  const redisFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    keysRead.push(decodeURIComponent(String(input)));
+    return redisFetch(input, init);
+  };
+  await request('intelligence/v1/get-pizzint-status?include_gdelt=false');
+  assert.ok(keysRead.length > 0);
+  assert.ok(keysRead.every(url => !url.includes('intelligence:tension-evidence:v1')));
+});

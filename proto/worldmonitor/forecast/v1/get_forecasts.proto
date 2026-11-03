@@ -18,8 +18,7 @@ message GetForecastsResponse {
   // True when the forecast backend could not read the canonical cache.
   // Distinguishes an outage from a healthy empty forecast set.
   bool degraded = 3;
-  // True when forecasts are served from a stale fallback. Currently false for
-  // this endpoint because get-forecasts does not have a stale fallback cache.
+  // Always false: get-forecasts has no stale fallback.
   bool stale = 4;
   // Stable machine-readable reason when degraded=true, empty otherwise.
   // Value: "forecast_backend_unavailable" on Redis/backend read failures.

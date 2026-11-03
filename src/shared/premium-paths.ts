@@ -55,9 +55,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/resilience/v1/get-resilience-ranking',
   '/api/resilience/v1/get-food-stocks',
   '/api/resilience/v1/get-demographics-capability',
-  '/api/scorecard/v1/get-five-factor-scorecard',
-  '/api/scorecard/v1/list-five-factor-scorecards',
-  '/api/scorecard/v1/get-bloc-scorecard',
+  // The five-factor scorecard went free (#9742); it is no longer in this set.
   '/api/supply-chain/v1/get-country-chokepoint-index',
   '/api/supply-chain/v1/get-bypass-options',
   '/api/supply-chain/v1/get-country-cost-shock',
@@ -74,14 +72,17 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/supply-chain/v1/get-country-vulnerabilities',
   '/api/supply-chain/v1/get-chokepoint-dependencies',
   '/api/supply-chain/v1/list-vulnerability-rankings',
-  '/api/economic/v1/get-national-debt',
   // Global procurement is a Pro product surface. Keep this in the shared
   // registry so premiumFetch attaches the Clerk bearer and the gateway enforces
   // the same route as the entitlement map.
   '/api/economic/v1/list-global-tenders',
-  '/api/sanctions/v1/list-sanctions-pressure',
+  // Outlet-perspective grouping is a Pro MCP tool; the REST route matches it.
+  '/api/news/v1/list-media-perspective',
+  '/api/news/v1/list-news-pool',
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
+  '/api/trade/v1/get-bilateral-tariff',
+  '/api/trade/v1/get-us-import-duty',
   '/api/scenario/v1/run-scenario',
   '/api/scenario/v1/get-scenario-status',
   // #3734: PRO-gated mutation that enqueues a simulation task. Companion
@@ -104,7 +105,8 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/chat-analyst',
   // Single-aircraft Wingbits enrichment is a caller-controlled paid-provider
   // lookup. Keep the batch sibling outside this registry because the map uses
-  // that route as its existing anonymous, rate-limited enrichment path.
+  // that route as its existing anonymous, rate-limited enrichment path; it
+  // only spends the credential on aircraft in the published flight snapshot.
   '/api/military/v1/get-aircraft-details',
   // Arms-supplier dependency + World Bank military capacity (#6438). This one
   // also left PUBLIC_SHARED_RPC_PATHS: it had an anonymous `public=1` CDN

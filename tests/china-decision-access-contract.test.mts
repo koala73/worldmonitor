@@ -4,6 +4,7 @@ import sovereignStatus from '../scripts/shared/sovereign-status.json' with { typ
 
 import { issueSessionToken } from '../api/_session.js';
 import seedHealthHandler from '../api/seed-health.js';
+import { CII_RISK_SCORES_META_KEY, healthyCiiInputs } from './helpers/health-pipeline-fixture.mjs';
 import { __testing__ as healthTesting } from '../api/health.js';
 import {
   createDomainGateway,
@@ -16,10 +17,10 @@ const CHINA_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const OPERATOR_KEY = 'china-decision-test-operator-key';
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v12:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const RESILIENCE_INTERVAL_SOURCE_VERSION =
-  `resilience-intervals:resilience:intervals:v11:${RESILIENCE_INTERVAL_METHODOLOGY}`;
+  `resilience-intervals:resilience:intervals:v12:${RESILIENCE_INTERVAL_METHODOLOGY}`;
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
 const originalFetch = globalThis.fetch;
@@ -138,6 +139,7 @@ function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
           sourceVersion: key === 'seed-meta:resilience:intervals'
             ? RESILIENCE_INTERVAL_SOURCE_VERSION
             : 'test',
+          ...(key === CII_RISK_SCORES_META_KEY ? { inputs: healthyCiiInputs() } : {}),
         }),
       };
     });

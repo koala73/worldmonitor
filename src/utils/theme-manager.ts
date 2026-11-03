@@ -16,20 +16,6 @@ function updateThemeMetaColor(theme: Theme, variant = document.documentElement.d
   if (meta) meta.content = resolveThemeColor(theme, variant);
 }
 
-/**
- * Read the stored theme preference from localStorage.
- * Returns 'dark' or 'light' if valid, otherwise DEFAULT_THEME.
- */
-export function getStoredTheme(): Theme {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'dark' || stored === 'light') return stored;
-  } catch {
-    // localStorage unavailable (e.g., sandboxed iframe, private browsing)
-  }
-  return DEFAULT_THEME;
-}
-
 export function getThemePreference(): ThemePreference {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -123,7 +109,10 @@ export function applyStoredTheme(): void {
     effective = variant === 'happy' ? 'light' : resolveAutoTheme();
   }
 
-  updateAutoListener(raw === 'auto' ? 'auto' : effective);
+  // No stored preference reads as Auto in settings, so it follows the system
+  // theme too, except on Happy, which stays light.
+  const followsSystem = raw === 'auto' || (!hasExplicitPreference && variant !== 'happy');
+  updateAutoListener(followsSystem ? 'auto' : effective);
   document.documentElement.dataset.theme = effective;
   updateThemeMetaColor(effective, variant);
 }

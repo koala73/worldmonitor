@@ -37,6 +37,8 @@ import {
 import { SOURCE_RETRY_CLAIM_SCRIPT } from '../scripts/_bundle-runner.mjs';
 import { CABLE_HEALTH_REPAIR_SCRIPT } from '../shared/cable-health-repair-script.mjs';
 import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.cjs';
+import { recordHistoryCost } from '../scripts/lib/intel-history-cost.mjs';
+import { createTenderReceipt, writeTenderReceipt } from '../scripts/_global-tender-receipts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -92,6 +94,22 @@ const accepts = (gate, args) => {
     return false;
   }
 };
+
+it('accepts the emitted history-cost command and rejects a modified script', async () => {
+  const gate = buildGate();
+  let checked = false;
+  await recordHistoryCost({ domain: 'energy', resource: 'intelligence', at: Date.now(), runs: 1 }, {
+    env: { UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'test' },
+    fetchImpl: async (_url, init) => {
+      const command = JSON.parse(init.body);
+      assert.deepEqual(gate.commandForExecution(command), command.map(String));
+      assert.equal(accepts(gate, [command[0], `${command[1]} `, ...command.slice(2)]), false);
+      checked = true;
+      return Response.json({ result: 'OK' });
+    },
+  });
+  assert.equal(checked, true);
+});
 
 it('accepts the exact compare-and-delete script emitted by the Redis client', () => {
   const source = readFileSync(resolve(repoRoot, 'server/_shared/redis.ts'), 'utf8');
@@ -232,6 +250,28 @@ describe('redis-rest-proxy command gate', () => {
     assert.equal(accepts(gate, ['EVAL', "redis.call('FLUSHALL')", '0']), false,
       'an unpinned script must be rejected');
     assert.equal(accepts(gate, ['EVAL']), false, 'EVAL with no script must be rejected');
+  });
+
+  it('admits the procurement writer exact script and rejects a modified copy', async (t) => {
+    const gate = buildGate();
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.fixture';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    t.after(() => {
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+    });
+    let emitted;
+    t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      emitted = JSON.parse(options.body);
+      return Response.json({ result: 1 });
+    });
+    await writeTenderReceipt(createTenderReceipt());
+    assert.equal(accepts(gate, emitted), true, 'self-hosted proxy must accept the actual writer command');
+    assert.equal(accepts(gate, [emitted[0], `${emitted[1]} `, ...emitted.slice(2)]), false);
   });
 
   it('pins the physical-premium history append by exact bytes', () => {
@@ -436,4 +476,50 @@ describe('redis-rest-proxy command gate', () => {
       'a one-character script variant must stay blocked',
     );
   });
+});
+
+it('accepts the exact PizzINT archive script and rejects arbitrary edits', async () => {
+  const { default: history } = await import('../scripts/shared/pizzint-history.cjs');
+  const gate = buildGate();
+  assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(history.WRITE_LUA), true);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA, '2', 'history', 'metadata']), true);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA + ' ', '2', 'history', 'metadata']), false);
+  // Membership alone would still pass if the writer sent some OTHER script, so
+  // pin the call site too: recordPizzintHistory must put WRITE_LUA on the wire.
+  const source = readFileSync(new URL('../scripts/shared/pizzint-history.cjs', import.meta.url), 'utf8');
+  assert.match(source, /await evalCommand\(WRITE_LUA, write\.keys, args\)/);
+  assert.equal(accepts(gate, ['EVAL', history.WRITE_LUA, '3', 'bucket', 'bucket-meta', 'heartbeat']), true);
+});
+
+it('accepts the daily CII writer command and rejects modified scripts', () => {
+  const output = execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', `
+    import { persistCiiDailyHistory } from './server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+    import { CII_COUNTRY_CODES } from './shared/cii-weights.ts';
+    import { CII_FORMULA_VERSION } from './server/worldmonitor/intelligence/v1/_risk-config.ts';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    delete process.env.LOCAL_API_MODE;
+    let emitted;
+    globalThis.fetch = async (_input, init) => {
+      emitted = JSON.parse(init.body);
+      return Response.json([{ result: CII_COUNTRY_CODES.length }]);
+    };
+    await persistCiiDailyHistory({
+      ciiScores: CII_COUNTRY_CODES.map(region => ({
+        region, combinedScore: 40,
+        components: { ciiContribution: 1, geoConvergence: 2, militaryActivity: 3, newsActivity: 4 },
+        computedAt: Date.UTC(2026, 9, 18), methodologyVersion: CII_FORMULA_VERSION,
+      })),
+      strategicRisks: [], stale: false, degraded: false,
+    });
+    console.log(JSON.stringify(emitted));
+  `], { cwd: repoRoot, encoding: 'utf8' });
+  const pipeline = JSON.parse(output.trim().split('\n').at(-1));
+  assert.equal(pipeline.length, 1);
+  const command = pipeline[0];
+  assert.equal(command[0], 'EVAL');
+  assert.equal(command[2], 34);
+  const gate = buildGate();
+  assert.deepEqual(Array.from(gate.commandForExecution(command)), command.map(String));
+  assert.equal(accepts(gate, ['EVAL', `${command[1]} `, ...command.slice(2)]), false);
 });

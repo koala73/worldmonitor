@@ -21,7 +21,8 @@ export const RESEARCH_MAX_STALE_MIN = 150;
 // the ~hourly cron so a single arXiv blip stays a graceful exit-0 RETRY rather than exit-1 +
 // `researchArxivHnTrending` EMPTY in prod (issue #5409). Was 3600 (≈1× cron, BELOW the gate).
 export const ARXIV_TTL = 10800;
-const HN_TTL = 600;
+// ≈3× the hourly cron, like ARXIV_TTL: 600s left every HN feed EMPTY for ~50 min of each hour.
+export const HN_TTL = 10800;
 const TECH_EVENTS_TTL = 28800; // 8h — outlives maxStaleMin:480 for health buffer
 // Distinct seed-meta key for this seeder's tech-events mirror. MUST NOT share
 // seed-meta:research:tech-events with scripts/ais-relay.cjs: the relay writes
@@ -37,7 +38,8 @@ const TECH_EVENTS_TTL = 28800; // 8h — outlives maxStaleMin:480 for health buf
 // declared expected interval, not this seeder's real write cadence. See
 // incident 2026-09-23.
 export const TECH_EVENTS_SEED_META_KEY = 'seed-meta:research:tech-events:seeder';
-const TRENDING_TTL = 3600;
+// ≈3× the hourly cron, like ARXIV_TTL and HN_TTL.
+export const TRENDING_TTL = 10800;
 
 // ─── arXiv Papers ───
 
@@ -74,7 +76,7 @@ function parseArxivEntries(xml) {
 // every attempt failed (the caller isolates that per-category). `fetchFn`/`sleepFn` injectable
 // for tests.
 export async function fetchArxivCategory(cat, { fetchFn = fetch, retries = 1, sleepFn = sleep } = {}) {
-  const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&start=0&max_results=50`;
+  const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=50`;
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
@@ -303,14 +305,14 @@ async function fetchTrendingFromGitHubSearch(lang) {
   }));
 }
 
-async function fetchTrendingRepos() {
+export async function fetchTrendingRepos() {
   const languages = ['python', 'javascript', 'typescript'];
   const results = {};
 
   for (const lang of languages) {
     try {
       let repos = await fetchTrendingFromOSSInsight(lang);
-      if (!repos) repos = await fetchTrendingFromGitHubSearch(lang);
+      if (!repos?.length) repos = await fetchTrendingFromGitHubSearch(lang);
       if (!repos || repos.length === 0) { console.warn(`  Trending ${lang}: no data from any source`); continue; }
 
       const cacheKey = `research:trending:v1:${lang}:daily:50`;

@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import { DODO_PRODUCTS } from '@/config/products.generated';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import {
+  resolveHasUsedPowerFeature,
   decideActivationMount,
   computePendingMarker,
   parsePendingMarker,
@@ -563,6 +564,12 @@ describe('deriveSubscriptionKey (fire-once identity)', () => {
 });
 
 describe('fire-once record + TTL (KTD4)', () => {
+  it('preserves a not-eligible outcome through storage parsing', () => {
+    const record = computeFireOnceRecord('sub_x', NOW, 'not-eligible');
+    assert.deepEqual(record, { subscriptionKey: 'sub_x', shownAt: NOW, outcome: 'not-eligible' });
+    assert.deepEqual(parseFireOnceRecord(JSON.stringify(record)), record);
+  });
+
   it('computeFireOnceRecord captures the subscription key and shown time', () => {
     assert.deepEqual(computeFireOnceRecord('sub_x', NOW), {
       subscriptionKey: 'sub_x',
@@ -983,6 +990,48 @@ describe('summarizeActivationExit — funnel exit completion state', () => {
   });
 });
 
+describe('buildActivationSteps — About-you final step (U3)', () => {
+  it('appends about after power when the profile is due', () => {
+    const steps = buildActivationSteps(caps(), config({ aboutYouStatus: 'due' }));
+    assert.deepEqual(steps.map((s) => s.id), ['brief', 'alerts', 'power', 'about']);
+    assert.equal(steps.at(-1)?.state, 'confirmable');
+  });
+
+  it('is already-done when the profile is answered', () => {
+    const about = buildActivationSteps(caps(), config({ aboutYouStatus: 'answered' })).find((s) => s.id === 'about');
+    assert.equal(about?.state, 'already-done');
+  });
+
+  it('is omitted when the profile was skipped: a skip means do not ask, and "we have your answers" would be false', () => {
+    const steps = buildActivationSteps(caps(), config({ aboutYouStatus: 'skipped' }));
+    assert.deepEqual(steps.map((s) => s.id), ['brief', 'alerts', 'power']);
+  });
+
+  it('is omitted when the profile status is unreadable', () => {
+    for (const status of [null, undefined]) {
+      const steps = buildActivationSteps(caps(), config({ aboutYouStatus: status }));
+      assert.deepEqual(steps.map((s) => s.id), ['brief', 'alerts', 'power']);
+    }
+  });
+
+  it('stays out of the persisted outcome buckets; the profile records it', () => {
+    const buckets = buildActivationOutcomeBuckets([
+      { id: 'brief', outcome: 'confirmed' },
+      { id: 'about', outcome: 'skipped' },
+    ]);
+    assert.deepEqual(buckets, { confirmedSteps: ['brief'], skippedSteps: [], blockedSteps: [], failedSteps: [] });
+  });
+
+  it('a skipped about step alone does not raise the finish-setup chip', () => {
+    const results = [
+      { id: 'brief', outcome: 'confirmed' },
+      { id: 'power', outcome: 'done' },
+      { id: 'about', outcome: 'skipped' },
+    ] as const;
+    assert.equal(shouldShowFinishSetupChip(results, null, null, Date.now()), false);
+  });
+});
+
 describe('buildActivationOutcomeBuckets — durable outcome record (#5582)', () => {
   it('confirmed and done both land in confirmedSteps (both count as verified)', () => {
     assert.deepEqual(
@@ -1378,5 +1427,33 @@ describe('activation flow retry schedule', () => {
     assert.equal(activationFlowRetryDelay(0), 2_000);
     assert.equal(activationFlowRetryDelay(4), 30_000);
     assert.equal(activationFlowRetryDelay(5), null);
+  });
+});
+
+describe('resolveHasUsedPowerFeature (#5612)', () => {
+  it('counts a stored custom widget without consulting MCP clients', () => {
+    assert.equal(resolveHasUsedPowerFeature(1), true);
+    assert.equal(resolveHasUsedPowerFeature(3, []), true);
+  });
+
+  it('counts a used, unrevoked MCP client when no widget exists', () => {
+    const used = { lastUsedAt: 1_700_000_000_000 };
+    assert.equal(resolveHasUsedPowerFeature(0, [used]), true);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ ...used, revokedAt: null }]), true);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ ...used, revokedAt: 1_700_000_100_000 }, used]), true);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ lastUsedAt: 0 }]), true);
+  });
+
+  it('does not count authorized clients that have never been used', () => {
+    assert.equal(resolveHasUsedPowerFeature(0, [{}]), false);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: null, lastUsedAt: null }]), false);
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: undefined, lastUsedAt: undefined }]), false);
+  });
+
+  it('does not count revoked clients, an empty list, or an unavailable read', () => {
+    assert.equal(resolveHasUsedPowerFeature(0, [{ revokedAt: 1_700_000_100_000, lastUsedAt: 1_700_000_000_000 }]), false);
+    assert.equal(resolveHasUsedPowerFeature(0, []), false);
+    assert.equal(resolveHasUsedPowerFeature(0, null), false);
+    assert.equal(resolveHasUsedPowerFeature(0), false);
   });
 });

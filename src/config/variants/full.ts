@@ -56,6 +56,7 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
 
 // Map layers for geopolitical view
 export const DEFAULT_MAP_LAYERS: MapLayers = {
+  aircraftEmergencies: false,
   gpsJamming: false,
   satellites: false,
 
@@ -115,6 +116,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   ciiChoropleth: false,
   resilienceScore: false,
+  no2Activity: false,
   dayNight: false,
   // Commodity variant layers (disabled in full variant)
   miningSites: false,
@@ -179,6 +181,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   ciiChoropleth: false,
   resilienceScore: false,
+  no2Activity: false,
   dayNight: false,
   // Commodity variant layers (disabled in full variant)
   miningSites: false,

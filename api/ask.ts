@@ -15,7 +15,7 @@
 import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
 
 import { suggestTools } from './_agent-tool-suggest';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, checkIpScopedEdgeProof, getClientIp, rateLimitKeyForIp } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
 
@@ -206,7 +206,7 @@ export default async function handler(req: Request): Promise<Response> {
   // this surface is anonymous, quota-free, and cheap (pure token matching
   // over the public tool catalog — no gated data, no amplification to
   // protect). checkScopedRateLimit logs/Sentry-captures the degraded path.
-  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, rateLimitKeyForIp(ip));
   if (!scoped.allowed) {
     const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
     return new Response(

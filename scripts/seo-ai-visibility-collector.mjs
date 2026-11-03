@@ -24,6 +24,7 @@ import { dirname, resolve } from 'node:path';
 import {
   PAGE_FAMILIES,
   BING_AI_METRICS,
+  pageFamiliesForSchemaVersion,
   REFERRAL_METRICS,
   SEARCH_PERFORMANCE_METRICS,
   SEARCH_METRICS,
@@ -38,7 +39,7 @@ import { isMainModule } from './lib/main-module.mjs';
 const UTC_DAY_MS = 86_400_000;
 const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
 const AVAILABILITY_STATES = new Set(['available', 'partial', 'unavailable']);
-const REFERRER_FAMILIES = new Set([
+export const REFERRER_FAMILIES = new Set([
   'chatgpt',
   'perplexity',
   'google_search_ai',
@@ -271,11 +272,20 @@ function aggregateSearchRows(rows, includeIndexedPages) {
   };
 }
 
-function mergeMetrics(explicit, aggregate) {
+const SEARCH_METRIC_ALIASES = Object.freeze({ averagePosition: ['position'] });
+
+/**
+ * A metric the window omits falls back to the query-row aggregate. One the
+ * window states, even as `null`, is kept: reviewed query rows cover a handful
+ * of queries, so their sum is never a site total the provider declined to give.
+ */
+function mergeMetrics(explicit, aggregate, rawWindow) {
   return Object.fromEntries(
     SEARCH_METRICS.map((metric) => [
       metric,
-      explicit[metric] ?? aggregate[metric],
+      sourceValue(rawWindow, metric, SEARCH_METRIC_ALIASES[metric]) === undefined
+        ? explicit[metric] ?? aggregate[metric]
+        : explicit[metric],
     ]),
   );
 }
@@ -426,7 +436,7 @@ function hasBreakdownCoverage(rows, groupSelector, expectedGroups, windows) {
   ));
 }
 
-function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet) {
+function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet, schemaVersion) {
   if (requested === 'unavailable') return 'unavailable';
   const complete = windows.every(({ metrics }) => metricsAreComplete(metrics))
     && queryRows.every(({ metrics }) => performanceMetricsAreComplete(metrics))
@@ -440,13 +450,16 @@ function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet) {
     && hasBreakdownCoverage(
       pageFamilyRows,
       (row) => row.pageFamily,
-      PAGE_FAMILIES,
+      pageFamiliesForSchemaVersion(schemaVersion),
       windows,
     );
   return requested === 'partial' || !complete ? 'partial' : 'available';
 }
 
-export function normalizeSearchExport(raw, { querySet, observedAt, provider = 'search' }) {
+export function normalizeSearchExport(
+  raw,
+  { querySet, observedAt, provider = 'search', schemaVersion = 1 },
+) {
   if (!raw || raw.status === 'unavailable') {
     return unavailableSearchSource(
       observedAt,
@@ -498,7 +511,7 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
     }));
     const explicitMetrics = normalizeSearchMetrics(rawWindow, { includeIndexedPages: true });
     const aggregate = aggregateSearchRows(normalizedQueryRows, false);
-    const metrics = mergeMetrics(explicitMetrics, aggregate);
+    const metrics = mergeMetrics(explicitMetrics, aggregate, rawWindow);
     queryRows.push(...normalizedQueryRows);
     pageFamilyRows.push(...normalizedPageRows);
     normalizedWindows.push({
@@ -514,6 +527,7 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
     queryRows,
     pageFamilyRows,
     querySet,
+    schemaVersion,
   );
   return {
     status,
@@ -1021,12 +1035,12 @@ export function collectBaseline({
 
   const googleSearchConsole = normalizeSearchExport(
     sources.googleSearchConsole,
-    { querySet, observedAt, provider: 'Google Search Console' },
+    { querySet, observedAt, provider: 'Google Search Console', schemaVersion },
   );
   const bingSource = sources.bingWebmaster ?? {};
   const bingWebmaster = normalizeSearchExport(
     bingSource.search ?? bingSource,
-    { querySet, observedAt, provider: 'Bing Webmaster' },
+    { querySet, observedAt, provider: 'Bing Webmaster', schemaVersion },
   );
   bingWebmaster.aiPerformance = normalizeBingAiPerformance(
     bingSource.aiPerformance ?? sources.bingAiPerformance,

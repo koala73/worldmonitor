@@ -23,6 +23,7 @@
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
+import { CII_RISK_SCORES_META_KEY, healthyCiiInputs } from './helpers/health-pipeline-fixture.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -41,7 +42,7 @@ process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
 process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
 process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v12:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
@@ -1240,6 +1241,7 @@ describe('a prolonged relay rejection is visible in /api/seed-health', () => {
           recordCount: 10_000,
           rankableRecordCount: 10_000,
           redistributionPolicyVersion: 1,
+          ...(key === CII_RISK_SCORES_META_KEY ? { inputs: healthyCiiInputs() } : {}),
         }) };
       });
       return new Response(JSON.stringify(results), {

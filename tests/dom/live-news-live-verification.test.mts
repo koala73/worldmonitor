@@ -41,7 +41,7 @@ vi.mock('@/services/live-video/youtube-iframe-api', () => ({
 
 vi.mock('hls.js', () => {
   class FakeHls {
-    static readonly Events = { LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError' };
+    static readonly Events = { LEVEL_LOADED: 'hlsLevelLoaded', ERROR: 'hlsError', BUFFER_CREATED: 'hlsBufferCreated' };
     static isSupported(): boolean {
       return true;
     }
@@ -263,6 +263,42 @@ afterEach(() => {
 });
 
 describe('Live News live verification', () => {
+  it('discloses missing HLS audio, preserves the mute preference, and clears the notice on recovery and channel changes', async () => {
+    mount(['bloomberg', 'cnn']);
+    await playFromPlaceholder();
+    const mute = headerButton('Toggle sound');
+    const notice = () => internals().element.querySelector<HTMLElement>('.live-audio-status');
+    expect(mute.disabled).toBe(false);
+    expect(notice()?.hidden ?? true).toBe(true);
+    mute.click();
+    expect(mediaVideo().muted).toBe(false);
+
+    latestHls().emit('hlsBufferCreated', { tracks: { video: {} } });
+    await playHlsLive();
+    expect(notice()?.textContent).toBe('Audio unavailable');
+    expect(notice()?.hidden).toBe(false);
+    expect(mute.disabled).toBe(true);
+    expect(mute.classList.contains('unmuted')).toBe(false);
+    expect(mute.getAttribute('aria-label')).toBe('Audio unavailable');
+    expect(mediaVideo().paused).toBe(false);
+
+    latestHls().emit('hlsBufferCreated', { tracks: { video: {}, audio: {} } });
+    expect(notice()?.hidden).toBe(true);
+    expect(mute.disabled).toBe(false);
+    expect(mute.classList.contains('unmuted')).toBe(true);
+    expect(mediaVideo().muted).toBe(false);
+
+    const retired = latestHls();
+    retired.emit('hlsBufferCreated', { tracks: { video: {} } });
+    channelButton('cnn').click();
+    await flush();
+    expect(notice()?.hidden).toBe(true);
+    expect(mute.disabled).toBe(false);
+    retired.emit('hlsBufferCreated', { tracks: { video: {} } });
+    expect(notice()?.hidden).toBe(true);
+    expect(mute.disabled).toBe(false);
+  });
+
   it('loads no player or stream before play intent', () => {
     mount(['bloomberg', 'cnn']);
     expect(api().players).toHaveLength(0);
@@ -366,9 +402,13 @@ describe('Live News live verification', () => {
     await flush(POLL);
     expect(channelButton('cnn').classList.contains('offline')).toBe(true);
 
-    // Stop ownership so the next switch is preview-only (no playback intent).
+    // Stop ownership so the next switch is preview-only (no playback intent). The offline card still
+    // owns the media slot, so the first toggle resumes playback and the second one stops it.
     headerButton('Toggle playback').click();
     await flush();
+    headerButton('Toggle playback').click();
+    await flush();
+    expect(showsPlayIcon()).toBe(true);
 
     const bloomberg = internals().channels.find((channel) => channel.id === 'bloomberg');
     if (!bloomberg) throw new Error('bloomberg channel missing');
@@ -377,6 +417,8 @@ describe('Live News live verification', () => {
 
     expect(channelButton('bloomberg').classList.contains('active')).toBe(true);
     expect(channelButton('cnn').classList.contains('offline')).toBe(true);
+    // A preview-only switch starts no media.
+    expect(content().querySelectorAll('iframe, video.live-news-media')).toHaveLength(0);
   });
 
   it('keeps connecting and offline marks when the switcher is rebuilt from storage', async () => {

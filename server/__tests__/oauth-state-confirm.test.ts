@@ -79,11 +79,40 @@ for (const route of ROUTES) {
     vi.stubEnv(route.redirect, route.redirectValue);
     vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://fake-upstash.invalid');
     vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'tok');
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([{ result: 'OK' }]), { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([{ result: 'OK' }, { result: 'OK' }]), { status: 200 })));
     const { default: handler } = await import(route.modulePath);
     const res = await handler(requestFor(route.url));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.oauthUrl).toContain(route.host);
+    expect(body.browserBinding.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(body.browserBinding.url).toContain('/api/channel-oauth-bind?');
+    expect(body.browserBinding.url).not.toContain(body.browserBinding.token);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+}
+
+for (const route of ROUTES) {
+  test(`${route.name} keeps the trusted preview opener and confirms both state writes`, async () => {
+    vi.stubEnv(route.clientId, 'client');
+    vi.stubEnv(route.redirect, route.redirectValue);
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://fake-upstash.invalid');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'tok');
+    const preview = 'https://worldmonitor-git-review-eliewm.vercel.app';
+    const fetchMock = vi.fn(async (_url, init) => {
+      const commands = JSON.parse(init.body);
+      expect(commands).toHaveLength(2);
+      for (const [, , raw] of commands) {
+        expect(JSON.parse(raw).openerOrigin).toBe(preview);
+      }
+      return Response.json([{ result: 'OK' }, { error: 'OOM' }]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { default: handler } = await import(route.modulePath);
+    const res = await handler(new Request(route.url, {
+      method: 'POST', headers: { Authorization: 'Bearer test-jwt', Origin: preview },
+    }));
+    expect(res.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 }

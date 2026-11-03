@@ -18,6 +18,22 @@ World Monitor 是一个实时态势感知平台，面向那些需要超越传统
 - **通过 [MCP server](/zh/mcp-overview) 连接你自己的智能体** —— Claude、Cursor 和其他 MCP 客户端可通过 OAuth 2.1 或直接 API 密钥调用精选的 WorldMonitor 工具
 - **完全在浏览器中运行**，通过 ONNX Runtime Web 提供可选的离线 AI 功能，将数据保留在你的设备上
 
+## 使用 World Monitor 的方式
+
+| 形式 | 说明 | 入口 |
+|---|---|---|
+| **网页应用** | 在浏览器中通过 [worldmonitor.app](https://www.worldmonitor.app) 使用的完整仪表盘，另有科技、金融、大宗商品、能源与正向新闻版本 | [快速入门](/zh/getting-started) |
+| **桌面应用** | 以原生 Tauri 应用形式运行的同一仪表盘，支持 macOS、Windows 与 Linux，提供本地 API 处理程序与系统钥匙串存储 | [桌面应用](/zh/desktop-app) |
+| **终端仪表盘** | 在终端中运行的全屏仪表盘：世界地图、新闻、市场、冲突、军机、网络威胁、气候、直播电视。支持鼠标与配色主题，无需 API 密钥 | [终端仪表盘](/zh/cli-dashboard) |
+| **命令行客户端** | `worldmonitor` npm 命令，可在 shell 中脚本化调用简报、风险评分与 MCP 工具 | [命令行客户端](/zh/cli) |
+| **SDK** | Python、Ruby 与 Go 客户端库 | [SDK](/zh/sdks) |
+| **MCP 服务器** | 通过 OAuth 或 API 密钥连接 Claude、Cursor 等 AI 智能体 | [MCP 概览](/zh/mcp-overview) |
+| **REST API** | 所有形式背后的 HTTP API | [API 参考](/zh/api-reference) |
+
+<Frame caption="终端仪表盘（npx worldmonitor）显示与网页应用相同的实时数据。">
+  <img src="/images/tui/overview.webp" alt="World Monitor 终端仪表盘的 Overview 视图" />
+</Frame>
+
 ## 快速链接
 
 - **新用户？** 从 [入门](/zh/getting-started) 开始了解安装和设置

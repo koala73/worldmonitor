@@ -572,7 +572,7 @@ describe('gateway telemetry payload — bearer identity propagation', () => {
       validUntil: Date.now() + 60_000,
     };
     const spy = installAxiomFetchSpy(ORIGINAL_FETCH, {
-      apiKeyValidationResponse: { userId: 'user_free_api_key', keyId: 'key_free', name: 'Free key' },
+      apiKeyValidationResponse: { id: 'key_free', userId: 'user_free_api_key', name: 'Free key', keyKind: 'api' },
       entitlementsResponse: freeEntitlements,
     });
 
@@ -633,7 +633,7 @@ describe('gateway telemetry payload — bearer identity propagation', () => {
       validUntil: Date.now() + 60_000,
     };
     const spy = installAxiomFetchSpy(ORIGINAL_FETCH, {
-      apiKeyValidationResponse: { userId: 'user_active_api_key', keyId: 'key_active', name: 'Active key' },
+      apiKeyValidationResponse: { id: 'key_active', userId: 'user_active_api_key', name: 'Active key', keyKind: 'api' },
       entitlementsResponse: starterEntitlements,
     });
 

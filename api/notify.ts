@@ -35,7 +35,7 @@ import {
 } from '../server/_shared/rate-limit';
 
 const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
-const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome', 'watchlist_story_alert']);
+const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome', 'watchlist_story_alert', 'chokepoint_disruption']);
 
 // Publishes create relay-side delivery obligations and LPUSH onto the SHARED
 // wm:events:queue, so unlike low-stakes reads this limiter must bound both
@@ -165,7 +165,7 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'Invalid JSON' }, 400, cors);
   }
 
-  if (typeof body.eventType !== 'string' || !body.eventType || body.eventType.length > 64) {
+  if (typeof body.eventType !== 'string' || !body.eventType || body.eventType.length > 64 || /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/.test(body.eventType)) {
     return jsonResponse({ error: 'eventType required (string, max 64 chars)' }, 400, cors);
   }
 

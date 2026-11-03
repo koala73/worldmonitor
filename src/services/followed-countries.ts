@@ -762,8 +762,7 @@ async function _runHandoff(
   // Step 2: call mergeAnonymousLocal.
   let result: ServerMergeAnonymousLocalResult;
   try {
-    const client = await _convexClientGetter();
-    const api = await _convexApiGetter();
+    const [client, api] = await Promise.all([_convexClientGetter(), _convexApiGetter()]);
     if (!client || !api) {
       // Convex unavailable — treat as transient failure. Keep localStorage,
       // schedule retry on visibilitychange.
@@ -922,8 +921,7 @@ async function _startReactiveSubscription(
   // Idempotent — if a prior subscription is still active, replace it.
   _stopReactiveSubscription();
 
-  const client = await _convexClientGetter();
-  const api = await _convexApiGetter();
+  const [client, api] = await Promise.all([_convexClientGetter(), _convexApiGetter()]);
   if (!client || !api) {
     // No transport available (Convex disabled in this env). Subscription
     // stays empty; getFollowed() falls through to localStorage union or
@@ -1102,8 +1100,7 @@ export async function addCountry(input: string): Promise<FollowMutationResult> {
     const userIdAtStart = user.id;
     const genAtStart = _handoffGeneration;
     try {
-      const client = await _convexClientGetter();
-      const api = await _convexApiGetter();
+      const [client, api] = await Promise.all([_convexClientGetter(), _convexApiGetter()]);
       // P1 #11 — re-verify after the await. If a sign-out / user swap
       // happened, fall through to HANDOFF_PENDING (do NOT touch
       // localStorage; the new auth state's listener will handle merge).
@@ -1238,8 +1235,7 @@ export async function removeCountry(
     const userIdAtStart = user.id;
     const genAtStart = _handoffGeneration;
     try {
-      const client = await _convexClientGetter();
-      const api = await _convexApiGetter();
+      const [client, api] = await Promise.all([_convexClientGetter(), _convexApiGetter()]);
       if (!_authStillMatches(userIdAtStart, genAtStart)) {
         return { ok: false, reason: 'HANDOFF_PENDING' };
       }

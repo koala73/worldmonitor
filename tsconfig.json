@@ -20,11 +20,10 @@
     "noUncheckedIndexedAccess": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "shared/indexable-landing-locales.ts", "shared/pwa-precache.ts"],
   "exclude": ["src/workers/ml.worker.ts"]
 }

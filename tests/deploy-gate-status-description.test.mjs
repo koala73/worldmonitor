@@ -179,6 +179,7 @@ function runGate(conclusions, {
   sweepStatus,
   sweepStatuses,
   drift,
+  associatedPulls = [[]],
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -299,8 +300,9 @@ function runGate(conclusions, {
         check_runs: [...filler.map(toRestRun), ...requiredRuns.map(toRestRun)],
       }]),
     );
-    const sweepNode = (sha, status) => ({
+    const sweepNode = (sha, status, author = 'koala73') => ({
       headRefOid: sha,
+      author: author === null ? null : { login: author },
       commits: {
         nodes: [{
           commit: {
@@ -332,7 +334,7 @@ function runGate(conclusions, {
         data: {
           repository: {
             pullRequests: {
-              nodes: sweepStatuses?.map(({ sha, status }) => sweepNode(sha, status))
+              nodes: sweepStatuses?.map(({ sha, status, author }) => sweepNode(sha, status, author))
                 ?? [sweepNode(SHA, sweepStatus ?? null)],
               pageInfo: { hasNextPage: false, endCursor: 'done' },
             },
@@ -359,6 +361,15 @@ function runGate(conclusions, {
         '  exit 0',
         'fi',
         'case "$*" in',
+        '  *"/pulls?per_page=100"*)',
+        '    echo "associated-pulls" >> "$FAKE_CALLS"',
+        '    [ "$FAKE_ASSOCIATED_PULLS" = "unavailable" ] && exit 1',
+        '    case "$*" in',
+        '      *"--paginate --slurp"*) printf \'%s\\n\' "$FAKE_ASSOCIATED_PULLS" ;;',
+        '      *) printf \'%s\\n\' "$FAKE_ASSOCIATED_PULLS" | jq -c \'[.[0]]\' ;;',
+        '    esac',
+        '    exit 0',
+        '    ;;',
         '  *"pullRequests(first:"*)',
         '    paginate=0',
         '    slurp=0',
@@ -565,6 +576,7 @@ function runGate(conclusions, {
         env: {
           ...process.env,
           FAKE_CALLS: callsFile,
+          FAKE_ASSOCIATED_PULLS: typeof associatedPulls === 'string' ? associatedPulls : JSON.stringify(associatedPulls),
           FAKE_CURRENT_STATUSES: currentStatusesFile,
           FAKE_STATUS_READ_FAILURES: statusReadFailuresFile,
           FAKE_MALFORMED_STATUS: malformedStatusResponse ? '1' : '0',
@@ -889,6 +901,14 @@ describe('deploy gate commit-status description', () => {
       'the pending path must use four check pages and one write, with one bounded wait',
     );
     assert.equal(result.statusReads, 1);
+  });
+
+  it('blocks a failed Zapier check and accepts an unrelated skipped Zapier check', () => {
+    for (const [conclusion, state] of [['failure', 'failure'], ['skipped', 'success']]) {
+      const result = runGate({ ...conclusionsFor('success'), zapier: conclusion });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted[0].state, state);
+    }
   });
 
   it('posts a failure status when every required check failed', () => {
@@ -1296,6 +1316,45 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.posted, []);
   });
 
+  // GitHub does not fire workflow_run for a run whose actor is the Actions
+  // token, so a PR a scheduled workflow opens with github.token never gets an
+  // event-driven gate (#10007). The sweep is its only writer.
+  it('evaluates a missing gate on a PR opened with the Actions token', () => {
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: 'github-actions' }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls.slice(0, 2), ['graphql-sweep-page', 'graphql-sweep-page']);
+    assert.ok(!result.calls.includes('rest-failed-runs-page'), 'token-authored heads need no failed-run lookup');
+    assert.deepEqual(result.postTargets.at(-1), SHA);
+    assert.deepEqual(result.posted.at(-1), {
+      state: 'success',
+      description: stamped('All required PR gates passed'),
+    });
+  });
+
+  it('posts pending for an Actions-token PR whose checks are still running', () => {
+    const result = runGate({}, {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: 'github-actions' }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.at(-1)?.state, 'pending');
+  });
+
+  it('still skips a missing gate on a PR with no author', () => {
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: null }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, []);
+  });
+
   it('does not recover a missing gate from a stale failed run', () => {
     const result = runGate(conclusionsFor('success'), {
       failedRunCreatedAt: '2026-08-10T12:15:00Z',
@@ -1318,6 +1377,53 @@ describe('deploy gate commit-status description', () => {
 // predicate belongs here rather than in a one-shot PR job.
 describe('deploy gate stale-base drift', () => {
   const diverged = (extra) => ({ mergeBase: OLD_BASE, ...extra });
+  const mergedPull = { state: 'closed', merged_at: '2026-08-12T12:00:00Z', head: { sha: SHA } };
+  const overlap = diverged({ headFiles: ['api/widget-agent.ts'], mainFiles: ['api/widget-agent.ts'] });
+
+  it('passes a squash-merged exact head when a queued evaluation sees overlapping main changes', () => {
+    const result = runGate(conclusionsFor('success'), {
+      drift: overlap,
+      associatedPulls: [[], [mergedPull]],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [{
+      state: 'success', description: stamped('All required PR gates passed'),
+    }]);
+  });
+
+  it('keeps drift blocking for open exact heads, unmerged closures and unrelated merged heads', () => {
+    for (const associatedPulls of [
+      [[mergedPull], [{ state: 'open', merged_at: null, head: { sha: SHA } }]],
+      [[{ ...mergedPull, merged_at: null }]],
+      [[{ ...mergedPull, head: { sha: HEAD_TIP } }]],
+      [[]],
+    ]) {
+      const result = runGate(conclusionsFor('success'), { drift: overlap, associatedPulls });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted[0].state, 'failure');
+      assert.match(result.posted[0].description, /^Stale base:/);
+    }
+  });
+
+  it('leaves overlapping drift pending if the PR lifecycle cannot be verified', () => {
+    for (const associatedPulls of ['unavailable', [{ message: 'incomplete' }], [[{ head: { sha: SHA } }]]]) {
+      const result = runGate(conclusionsFor('success'), { drift: overlap, associatedPulls });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted[0].state, 'pending');
+      assert.match(result.posted[0].description, /could not read associated PRs/);
+    }
+  });
+
+  it('never lets a merged PR hide failed or pending required checks', () => {
+    for (const unit of ['failure', 'pending']) {
+      const result = runGate({ ...conclusionsFor('success'), unit }, {
+        drift: overlap, associatedPulls: [[mergedPull]],
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.posted[0].state, unit);
+      assert.ok(!result.calls.includes('associated-pulls'));
+    }
+  });
 
   it('blocks a head whose files main changed since its merge base', () => {
     // Two overlaps and a non-overlap on each side: the verdict must name the

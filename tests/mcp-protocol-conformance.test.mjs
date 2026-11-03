@@ -265,7 +265,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     // Step 5 — at counter=LIMIT-1, the next INCR lands at the cap and the
     // reservation succeeds. Counter sits AT the cap after this call.
     const step5Res = await mcpHandler(
-      proReq('POST', callBody('get_market_data', {}, 5)),
+      proReq('POST', callBody('get_country_macro', {}, 5)),
       depsCapped,
     );
     assert.equal(step5Res.status, 200, 'step 5 (tools/call at cap-1): expected HTTP 200');
@@ -285,7 +285,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     // (per the cap-exceeded branch in dispatchToolsCall), AND the
     // counter-unchanged invariant.
     const step6Res = await mcpHandler(
-      proReq('POST', callBody('get_market_data', {}, 6)),
+      proReq('POST', callBody('get_country_macro', {}, 6)),
       depsCapped,
     );
     assert.equal(step6Res.status, 429, `step 6 (tools/call at cap): expected HTTP 429, got ${step6Res.status}`);
@@ -333,7 +333,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     // sabotage 3 (a regression that DECRs the counter on initialize would
     // free one slot, flipping this 429 into a 200).
     const step8Res = await mcpHandler(
-      proReq('POST', callBody('get_market_data', {}, 8)),
+      proReq('POST', callBody('get_country_macro', {}, 8)),
       depsCapped,
     );
     assert.equal(

@@ -100,6 +100,10 @@ function embeddedIpv4FromIpv6(hextets: number[]): string | null {
   if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0xffff) {
     return toDotted(h6, h7);
   }
+  // IPv4-translated (SIIT) ::ffff:0:0:0/96
+  if (h0 === 0 && h1 === 0 && h2 === 0 && h3 === 0 && h4 === 0xffff && h5 === 0) {
+    return toDotted(h6, h7);
+  }
   // NAT64 64:ff9b::/96
   if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0 && h3 === 0 && h4 === 0 && h5 === 0) {
     return toDotted(h6, h7);
@@ -132,11 +136,14 @@ export function isBlockedNotificationResolvedAddress(address: string): boolean {
   const addr = mappedIpv4 ?? normalized;
 
   if (ipv6Hextets) {
-    const [h0, h1, h2, h3] = ipv6Hextets;
+    const [h0, h1, h2, h3] = ipv6Hextets as [number, number, number, number];
     // RFC 8215 local-use NAT64 prefix 64:ff9b:1::/48.
     if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0x0001) return true;
     // RFC 6666 discard-only prefix 100::/64.
     if (h0 === 0x0100 && h1 === 0 && h2 === 0 && h3 === 0) return true;
+    // 2001::/23 IETF protocol assignments (Teredo 2001::/32 tunnels to an
+    // arbitrary IPv4; benchmarking; ORCHID).
+    if (h0 === 0x2001 && h1 < 0x0200) return true;
   }
 
   if (addr === '::' || addr === '::1') return true;
@@ -195,6 +202,50 @@ export function blockedNotificationWebhookUrlReason(rawUrl: string): string | nu
     return 'Webhook URL must not point to a private/local address';
   }
 
+  return null;
+}
+
+// Microsoft Teams channel (#9215). Mirrors blockedTeamsWebhookUrlReason in
+// scripts/lib/notification-webhook-ssrf.cjs, where the Microsoft sources for
+// these hosts are cited; tests/notification-webhook-ssrf.test.mts asserts
+// both return the same verdict.
+const TEAMS_WEBHOOK_HOST_RULES: ReadonlyArray<{ suffix: string; pathPrefix: string }> = [
+  { suffix: '.environment.api.powerplatform.com', pathPrefix: '/powerautomate/automations/direct/' },
+  { suffix: '.logic.azure.com', pathPrefix: '/workflows/' },
+];
+const TEAMS_RETIRED_HOST_SUFFIXES = ['webhook.office.com', 'outlook.office.com'];
+const TEAMS_WEBHOOK_MAX_URL_LENGTH = 4096;
+
+function hostMatchesSuffix(hostname: string, suffix: string): boolean {
+  const bare = suffix.startsWith('.') ? suffix.slice(1) : suffix;
+  return hostname === bare || hostname.endsWith(`.${bare}`);
+}
+
+export function blockedTeamsWebhookUrlReason(rawUrl: string): string | null {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) return 'Webhook URL must not be empty';
+  const baseReason = blockedNotificationWebhookUrlReason(rawUrl);
+  if (baseReason) return baseReason;
+  if (rawUrl.length > TEAMS_WEBHOOK_MAX_URL_LENGTH) {
+    return 'Teams webhook URL is too long';
+  }
+  const parsed = new URL(rawUrl);
+  if (parsed.username || parsed.password) {
+    return 'Teams webhook URL must not contain credentials';
+  }
+  if (parsed.port !== '') {
+    return 'Teams webhook URL must use the default HTTPS port';
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  if (TEAMS_RETIRED_HOST_SUFFIXES.some(suffix => hostMatchesSuffix(hostname, suffix))) {
+    return 'Microsoft retired Office 365 connector webhooks in May 2026. Create a Workflows webhook in Teams and paste that URL';
+  }
+  const rule = TEAMS_WEBHOOK_HOST_RULES.find(candidate => hostname.endsWith(candidate.suffix));
+  if (!rule) {
+    return 'Teams webhook URL must be a Microsoft Workflows webhook (environment.api.powerplatform.com or logic.azure.com)';
+  }
+  if (!parsed.pathname.startsWith(rule.pathPrefix)) {
+    return 'Teams webhook URL path is not a Workflows webhook trigger';
+  }
   return null;
 }
 

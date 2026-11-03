@@ -1,0 +1,335 @@
+import type { GetForecastScorecardResponse } from '@/services/forecast';
+import { getLocale, t } from '@/services/i18n';
+import { isDesktopRuntime } from '@/services/runtime';
+import { CANONICAL_ORIGIN } from '@/config/schema-graph-ids';
+import { escapeHtml } from '@/utils/sanitize';
+import { STANDING_ACCURACY_AUDIT, forecastAccuracyAudit, headlineFamilyGate, type ForecastAccuracyAudit } from '../../shared/forecast-accuracy-audit';
+
+interface GradedRecord {
+  stale: boolean;
+  /** Epoch ms the seeder built the scorecard; 0 when the response carried none. */
+  generatedAt: number;
+  windowDays: number;
+}
+
+/**
+ * The track-record strip's state (#7074). `loading` is the panel's initial
+ * value, `unavailable` covers a degraded response and a failed request, and
+ * the other two come from a healthy response: `insufficient` when the headline
+ * cohort is below the scorecard's family minimums (#8990), `ready` when it
+ * meets them.
+ */
+export type ForecastRecord =
+  | { kind: 'loading' }
+  | { kind: 'unavailable' }
+  | ({ kind: 'insufficient' } & GradedRecord)
+  | ({
+      kind: 'ready';
+      brier: number;
+      graded: number;
+      /** YES share of the graded cohort; null when the seed predates skill.yesCount (#8891). */
+      yesShare: number | null;
+      /** Null when nothing resolved, so a 0-of-0 rate is never shown. */
+      voids: { count: number; resolved: number; rate: number } | null;
+    } & GradedRecord);
+
+const DEFAULT_WINDOW_DAYS = 180;
+
+function finite(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+export function projectForecastRecord(resp: GetForecastScorecardResponse): ForecastRecord {
+  if (resp.degraded || resp.error) return { kind: 'unavailable' };
+  const graded = {
+    stale: resp.stale === true,
+    generatedAt: finite(resp.generatedAt) && resp.generatedAt > 0 ? resp.generatedAt : 0,
+    windowDays: finite(resp.rollingWindowDays) && resp.rollingWindowDays > 0 ? resp.rollingWindowDays : DEFAULT_WINDOW_DAYS,
+  };
+  const skill = resp.skill;
+  const count = skill && finite(skill.count) ? skill.count : 0;
+  if (!skill || count <= 0 || !finite(skill.brier) || !meetsFamilyMinimums(resp)) return { kind: 'insufficient', ...graded };
+
+  const yesShare = finite(skill.yesCount) && skill.yesCount >= 0 && skill.yesCount <= count
+    ? skill.yesCount / count
+    : null;
+  const totals = resp.totals;
+  const voids = totals && finite(totals.resolved) && totals.resolved > 0 && finite(totals.void) && finite(totals.voidRate)
+    ? { count: totals.void, resolved: totals.resolved, rate: totals.voidRate }
+    : null;
+  return { kind: 'ready', ...graded, brier: skill.brier, graded: count, yesShare, voids };
+}
+
+/**
+ * The headline meets the family minimums (#8990), by the same gate that lifts
+ * the accuracy audit, so the strip and the audit cannot disagree.
+ */
+function meetsFamilyMinimums(resp: GetForecastScorecardResponse): boolean {
+  return headlineFamilyGate(resp) === 'met';
+}
+
+/**
+ * The audit the panel shows for this response. The server's flag holds; the
+ * local derivation backs it up, so a response from a server without the flag
+ * still withholds an unmeasurable or stale record. Without a response the
+ * record is not measurable, so the standing audit holds.
+ */
+export function panelAccuracyAudit(resp: GetForecastScorecardResponse | null): ForecastAccuracyAudit | null {
+  return forecastAccuracyAudit(resp, { capturedAudit: resp?.underAudit ?? null });
+}
+
+/** Mirror SKILL_MIN_FAMILIES and SKILL_MIN_OUTCOME_FAMILIES in scripts/_forecast-scorecard.mjs; a test pins them together. */
+export const SKILL_MIN_FAMILIES = 30;
+export const SKILL_MIN_OUTCOME_FAMILIES = 5;
+const PUBLISHED_BY_DOMAIN_SCHEMA = 2;
+
+export type DomainReliability =
+  | { kind: 'measured'; brier: number; n: number; yesShare: number; bss: number }
+  | { kind: 'unmeasured'; n: number };
+
+/** Published-origin per-domain rows for the card badges; null when the scorecard cannot vouch for them. */
+export interface ReliabilityTable {
+  windowDays: number;
+  stale: boolean;
+  byDomain: ReadonlyMap<string, DomainReliability>;
+}
+
+/**
+ * Reads only publishedByDomain. byDomain pools shadow and synthetic origins,
+ * so a response without the published breakdown yields no badges at all. The
+ * handler fills an absent field with [], so only a schema-2 seed vouches for it.
+ * The seeder writes a row's bss only once the domain meets the family
+ * minimums (#8990), so bss is the measured gate.
+ */
+export function projectReliability(resp: GetForecastScorecardResponse): ReliabilityTable | null {
+  if (resp.degraded || resp.error || !Array.isArray(resp.publishedByDomain)) return null;
+  if (!finite(resp.schemaVersion) || resp.schemaVersion < PUBLISHED_BY_DOMAIN_SCHEMA) return null;
+  const byDomain = new Map<string, DomainReliability>();
+  for (const row of resp.publishedByDomain) {
+    const n = finite(row.count) && row.count > 0 ? row.count : 0;
+    const validYes = Number.isInteger(row.yesCount) && row.yesCount >= 0 && row.yesCount <= n;
+    byDomain.set(row.domain, n > 0 && finite(row.bss) && finite(row.brier) && validYes
+      ? { kind: 'measured', brier: row.brier, n, yesShare: row.yesCount / n, bss: row.bss }
+      : { kind: 'unmeasured', n });
+  }
+  const windowDays = finite(resp.rollingWindowDays) && resp.rollingWindowDays > 0 ? resp.rollingWindowDays : DEFAULT_WINDOW_DAYS;
+  return { windowDays, stale: resp.stale === true, byDomain };
+}
+
+/** `since` is a calendar date, so it is formatted in UTC; a local zone west of UTC would print the day before. */
+function auditHint(audit: ForecastAccuracyAudit): string {
+  const since = new Date(`${audit.since}T00:00:00Z`);
+  let date: string;
+  try {
+    date = since.toLocaleDateString(getLocale(), { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  } catch {
+    date = audit.since;
+  }
+  return t('components.forecast.audit.hint', { date });
+}
+
+/** While an audit holds (#8990) the badge carries no score, whatever the scorecard says. */
+export function renderReliabilityBadge(
+  table: ReliabilityTable | null,
+  domain: string,
+  domainLabel: string,
+  audit: ForecastAccuracyAudit | null = STANDING_ACCURACY_AUDIT,
+): string {
+  if (audit) {
+    const text = t('components.forecast.audit.label');
+    return `<a class="fc-reliability" data-fc-reliability-state="under-audit" href="${escapeHtml(recordHref(isDesktopRuntime()))}" aria-label="${escapeHtml(`${text}. ${auditHint(audit)}`)}">${escapeHtml(text)}</a>`;
+  }
+  // A domain the scorecard has no published row for has graded nothing yet, so it reads as unmeasured with n=0.
+  if (!table) return '';
+  const r = table.byDomain.get(domain) ?? { kind: 'unmeasured', n: 0 };
+  const days = table.windowDays;
+  const [main, hint] = r.kind === 'measured'
+    ? [
+        t('components.forecast.reliability.measured', { domain: domainLabel, skill: formatSkill(r.bss), n: r.n }),
+        t('components.forecast.reliability.measuredHint', { domain: domainLabel, n: r.n, days, score: r.brier.toFixed(3), base: baseRateBrier(r.yesShare).toFixed(3) }),
+      ]
+    : [
+        t('components.forecast.reliability.unmeasured'),
+        t('components.forecast.reliability.unmeasuredHint', { domain: domainLabel, n: r.n, days, min: SKILL_MIN_FAMILIES, outcomes: SKILL_MIN_OUTCOME_FAMILIES }),
+      ];
+  // Stale and n lead: the badge is one line with an ellipsis, so a narrow card cuts the tail.
+  const text = table.stale ? `${t('components.forecast.record.stale')} · ${main}` : main;
+  return `<a class="fc-reliability" data-fc-reliability-state="${r.kind}" href="${escapeHtml(reliabilityHref(isDesktopRuntime()))}" aria-label="${escapeHtml(`${text}. ${hint}`)}">${escapeHtml(text)}</a>`;
+}
+
+const OUTCOMES = ['YES', 'NO', 'VOID'] as const;
+type Outcome = typeof OUTCOMES[number];
+// Distinct shapes, so the history never relies on colour; the words are in the screen-reader text.
+const OUTCOME_MARKS: Record<Outcome, string> = { YES: '✓', NO: '✗', VOID: '∅' };
+
+/** Public void-reason codes; mirrors RECEIPT_VOID_REASON_LABELS in scripts/_forecast-scorecard.mjs (a test pins the parity). */
+export const VOID_REASON_CODES = [
+  'no_establishable_metric', 'value_source_never_settled', 'count_source_window_not_retained', 'unsupported_window',
+  'unsupported_metric_key', 'not_hard_spec', 'missing_threshold', 'missing_deadline', 'missing_generated_at',
+  'beyond_archive_horizon', 'no_archive_evidence', 'all_judges_void', 'judge_disagreement', 'judge_retry_exhausted', 'withheld_unpublished', 'resolver_envelope_bug', 'market_price_not_outcome', 'judged_evidence_unreliable', 'judged_old_selection', 'late_read', 'feed_unavailable', 'resolver_could_not_read_feed', 'base_rate_placeholder', 'other',
+] as const;
+const VOID_REASONS = new Set<string>(VOID_REASON_CODES);
+
+interface FamilyWindow { outcome: Outcome; voidReason: string }
+
+/** Earlier resolved windows per forecast id, newest first; null when the scorecard cannot vouch for them. */
+export type FamilyHistory = ReadonlyMap<string, readonly FamilyWindow[]>;
+
+export function projectFamilyHistory(resp: GetForecastScorecardResponse): FamilyHistory | null {
+  if (resp.degraded || resp.error || !Array.isArray(resp.familyOutcomes)) return null;
+  const history = new Map<string, FamilyWindow[]>();
+  for (const row of resp.familyOutcomes) {
+    if (typeof row?.forecastId !== 'string' || !(OUTCOMES as readonly string[]).includes(row.outcome)) continue;
+    const voidReason = row.outcome === 'VOID' ? (VOID_REASONS.has(row.voidReason) ? row.voidReason : 'other') : '';
+    const windows = history.get(row.forecastId) ?? [];
+    windows.push({ outcome: row.outcome as Outcome, voidReason });
+    history.set(row.forecastId, windows);
+  }
+  return history;
+}
+
+function outcomeWord(outcome: Outcome): string {
+  return t(`components.forecast.resolution.outcome.${outcome.toLowerCase()}`);
+}
+
+const RES_GAP = '<span class="fc-res-gap" aria-hidden="true">&nbsp;</span>';
+
+/**
+ * The card is the open window, so the chip is the family's last resolved one; the history adds up to four earlier.
+ * A VOID window has a reason to read, so the row becomes a disclosure that tap and keyboard can open; `open`
+ * restores one the reader left open. The slot always holds two line boxes (chip, then history), filled with
+ * invisible gaps when absent, so a narrow card is the same height while loading, with history, and without.
+ */
+export function renderResolutionChips(
+  history: FamilyHistory | null,
+  forecastId: string,
+  open = false,
+  audit: ForecastAccuracyAudit | null = STANDING_ACCURACY_AUDIT,
+): string {
+  const windows = history?.get(forecastId);
+  if (!windows?.length) return `<span class="fc-res-slot">${RES_GAP}${RES_GAP}</span>`;
+  const reasonOf = (w: FamilyWindow) => (w.outcome === 'VOID' ? t(`components.forecast.resolution.void.${w.voidReason}`) : '');
+  const [last] = windows as [FamilyWindow, ...FamilyWindow[]];
+  const reason = reasonOf(last);
+  // Under audit the outcome is still shown, but as a recorded value, not a verified grade (#8990).
+  const unverified = audit ? t('components.forecast.audit.unverified') : '';
+  const title = [reason, unverified].filter(Boolean).join(' ');
+  const chip = `<span class="fc-res-chip" data-outcome="${last.outcome}"${title ? ` title="${escapeHtml(title)}"` : ''}>`
+    + `<span aria-hidden="true">${escapeHtml(t('components.forecast.resolution.last', { outcome: outcomeWord(last.outcome) }))}</span>`
+    + `<span class="fc-sr-only">${escapeHtml([t('components.forecast.resolution.lastSr', { outcome: outcomeWord(last.outcome) }), unverified].filter(Boolean).join(' '))}</span></span>`;
+  const slot = audit ? '<span class="fc-res-slot" data-unverified>' : '<span class="fc-res-slot">';
+  const disclosed = windows.some((w) => w.outcome === 'VOID');
+  const sentence = t('components.forecast.resolution.history', {
+    list: windows.map((w) => (reasonOf(w) ? `${outcomeWord(w.outcome)} (${reasonOf(w)})` : outcomeWord(w.outcome))).join(', '),
+  });
+  const marks = windows.map((w) => {
+    const why = reasonOf(w);
+    return `<span class="fc-res-mark" data-outcome="${w.outcome}" aria-hidden="true"${why ? ` title="${escapeHtml(why)}"` : ''}>${OUTCOME_MARKS[w.outcome]}</span>`;
+  }).join('');
+  const row = windows.length < 2
+    ? `${chip}${RES_GAP}`
+    : `${chip}<span class="fc-res-history">${marks}${disclosed ? '' : `<span class="fc-sr-only">${escapeHtml(sentence)}</span>`}</span>`;
+  if (!disclosed) return `${slot}${row}</span>`;
+  return `${slot}<details class="fc-res-void"${open ? ' open' : ''}><summary>${row}</summary><p class="fc-res-reasons">${escapeHtml(windows.length < 2 ? reason : sentence)}</p></details></span>`;
+}
+
+/** Brier of a forecaster who always answers the cohort's yes rate: p(1-p). */
+export function baseRateBrier(yesShare: number): number {
+  return yesShare * (1 - yesShare);
+}
+
+/** A skill score with its sign, to two decimals, as /accuracy/ prints it. */
+export function formatSkill(value: number): string {
+  const text = value.toFixed(2);
+  return Number(text) > 0 ? `+${text}` : text === '-0.00' ? '0.00' : text;
+}
+
+function formatDate(ms: number): string {
+  try {
+    return new Date(ms).toLocaleDateString(getLocale(), { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+}
+
+function label(hint?: string): string {
+  const title = hint ? ` title="${escapeHtml(hint)}"` : '';
+  return `<span class="fc-record-label"${title}>${escapeHtml(t('components.forecast.record.label'))}</span>`;
+}
+
+function note(text: string): string {
+  return `<span class="fc-record-note">${escapeHtml(text)}</span>`;
+}
+
+function item(text: string, hint: string): string {
+  return `<span class="fc-record-item" title="${escapeHtml(hint)}">${escapeHtml(text)}</span>`;
+}
+
+function staleBadge(record: GradedRecord): string {
+  if (!record.stale) return '';
+  const title = record.generatedAt > 0
+    ? ` title="${escapeHtml(t('components.forecast.record.staleHint', { date: formatDate(record.generatedAt) }))}"`
+    : '';
+  return `<span class="fc-record-stale"${title}>${escapeHtml(t('components.forecast.record.stale'))}</span>`;
+}
+
+/** The badge lands on the /accuracy/ table built from the same publishedByDomain rows. */
+export function reliabilityHref(desktop: boolean): string {
+  return `${recordHref(desktop)}#by-domain`;
+}
+
+/** The desktop bundle has no /accuracy/ page, so desktop links to the hosted one. */
+export function recordHref(desktop: boolean): string {
+  return desktop ? `${CANONICAL_ORIGIN}accuracy/` : '/accuracy/';
+}
+
+function link(): string {
+  return `<a class="fc-record-link" href="${escapeHtml(recordHref(isDesktopRuntime()))}">${escapeHtml(t('components.forecast.record.fullRecord'))}</a>`;
+}
+
+function wrap(kind: ForecastRecord['kind'], inner: string): string {
+  return `<div class="fc-record" data-fc-record="${kind}" role="group" aria-label="${escapeHtml(t('components.forecast.record.label'))}">${inner}</div>`;
+}
+
+export function renderForecastRecord(record: ForecastRecord, audit: ForecastAccuracyAudit | null = STANDING_ACCURACY_AUDIT): string {
+  if (audit) {
+    const hint = auditHint(audit);
+    return `<div class="fc-record" data-fc-record="under-audit" role="group" aria-label="${escapeHtml(t('components.forecast.record.label'))}">`
+      + `${label()}<span class="fc-record-note fc-record-audit" title="${escapeHtml(hint)}">${escapeHtml(t('components.forecast.audit.label'))}</span>`
+      + `<span class="fc-sr-only">${escapeHtml(hint)}</span>${link()}</div>`;
+  }
+  switch (record.kind) {
+    case 'loading':
+      return wrap('loading', `${label()}${note(t('common.loading'))}`);
+    case 'unavailable':
+      return wrap('unavailable', `${label()}${note(t('components.forecast.record.unavailable'))}${link()}`);
+    case 'insufficient': {
+      const hint = t('components.forecast.record.labelHint', { days: record.windowDays });
+      return wrap('insufficient', `${label(hint)}${staleBadge(record)}${note(t('components.forecast.record.insufficient'))}${link()}`);
+    }
+    case 'ready': {
+      const hint = t('components.forecast.record.labelHint', { days: record.windowDays });
+      const n = String(record.graded);
+      const reference = record.yesShare === null ? 0 : baseRateBrier(record.yesShare);
+      const items = [
+        reference > 0 ? item(
+          t('components.forecast.record.skill', { score: formatSkill(1 - record.brier / reference) }),
+          t('components.forecast.record.skillHint', { n }),
+        ) : '',
+        item(
+          t('components.forecast.record.brier', { score: record.brier.toFixed(3), n }),
+          t('components.forecast.record.brierHint', { n }),
+        ),
+        record.yesShare === null ? '' : item(
+          t('components.forecast.record.baseRate', { score: baseRateBrier(record.yesShare).toFixed(3), n }),
+          t('components.forecast.record.baseRateHint', { n, pct: Math.round(record.yesShare * 100) }),
+        ),
+        record.voids === null ? '' : item(
+          t('components.forecast.record.void', { pct: (record.voids.rate * 100).toFixed(1), count: record.voids.count, resolved: record.voids.resolved }),
+          t('components.forecast.record.voidHint', { resolved: record.voids.resolved }),
+        ),
+      ].join('');
+      return wrap('ready', `${label(hint)}${staleBadge(record)}${items}${link()}`);
+    }
+  }
+}

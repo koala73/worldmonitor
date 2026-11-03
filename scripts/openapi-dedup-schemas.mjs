@@ -52,8 +52,8 @@ const SCHEMA_SINGLE_KEYS = new Set([
 // cost, so selected groups always reduce the served artifact.
 // The pass stays lossless either way — every transform is resolved back to the
 // source document in tests — so the thresholds only trade emit time for bytes.
-const MIN_SHARED_SCHEMA_BYTES = 48;
-const MIN_GROUP_SAVING_BYTES = 48;
+const MIN_SHARED_SCHEMA_BYTES = 40;
+const MIN_GROUP_SAVING_BYTES = 20;
 
 function pointerSegment(value) {
   return value.replaceAll('~', '~0').replaceAll('/', '~1');
@@ -216,11 +216,11 @@ export function dedupeSharedSchemaSubtrees(spec) {
 /**
  * Component-name prefix for the subtree hoist below. Compact on purpose: the
  * name is paid at every ref, exactly like the `E<status>` response names in
- * openapi-dedup-responses.mjs — `WMShared12` buys back ~19 bytes per site over
+ * openapi-dedup-responses.mjs — `WM12` buys back ~25 bytes per site over
  * a descriptive name, which is most of the yield on the 60-70 byte subtrees
  * this pass exists for.
  */
-export const SHARED_SUBTREE_COMPONENT_PREFIX = 'WMShared';
+export const SHARED_SUBTREE_COMPONENT_PREFIX = 'WM';
 
 /**
  * Collect every Schema Object node that an existing document-local `$ref`
@@ -268,7 +268,7 @@ function refPointerPathNodes(spec) {
  * document is longer than the subtree itself, so an inline-target ref would
  * cost more than the repetition it removes. This pass is the escape hatch for
  * exactly those groups: the subtree moves into `components.schemas` under a
- * compact `WMShared<N>` name and every site, including the first, becomes a
+ * compact `WM<N>` name and every site, including the first, becomes a
  * short ref.
  *
  * Naming follows the dedupeErrorResponses precedent: deterministic (first-seen
@@ -292,11 +292,16 @@ export function dedupeSharedSubtreeComponents(spec) {
   const parentOf = new Map();
   const groups = new Map();
 
-  // Same traversal and overlap bookkeeping as dedupeSharedSchemaSubtrees — the
-  // only difference is the replacement strategy (named component ref instead of
-  // ref-to-shortest-inline-copy) and therefore the profitability arithmetic.
+  // Same overlap bookkeeping as dedupeSharedSchemaSubtrees, with a named
+  // component ref instead of a ref-to-shortest-inline-copy. Unlike that pass,
+  // this one also groups $ref nodes: a repeated ref to a long component name,
+  // or a ref carrying a repeated sibling description, becomes a WM ref to
+  // the same content. That adds one resolution hop and is lossless; the
+  // contract test resolves the chains back. On 2026-10-15 these groups freed
+  // about 7 KB and kept the bundle under SCANNER_BUDGET_BYTES; skipping them
+  // put it about 4 KB over.
   const visit = (schema, parent, key) => {
-    if (!schema || typeof schema !== 'object' || Array.isArray(schema) || schema.$ref) return;
+    if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
     parentOf.set(schema, parent);
     const serialized = canonical(schema);
     const unitBytes = Buffer.byteLength(serialized, 'utf8');
@@ -312,8 +317,15 @@ export function dedupeSharedSubtreeComponents(spec) {
     }
   };
   for (const [name, schema] of Object.entries(schemas)) visit(schema, schemas, name);
+  // Hoisted error responses (dedupeErrorResponses runs first) carry Schema
+  // Objects too, and their envelopes repeat across status codes.
+  for (const response of Object.values(spec.components?.responses ?? {})) {
+    for (const media of Object.values(response?.content ?? {})) {
+      if (media && typeof media === 'object' && media.schema) visit(media.schema, media, 'schema');
+    }
+  }
 
-  // Ref bytes for a name two ordinals wide: `WMShared99`. Selection only needs
+  // Ref bytes for a name two ordinals wide: `WM99`. Selection only needs
   // a stable estimate; the exact per-group saving is recomputed once the group
   // is picked and named.
   const estimatedRefBytes = Buffer.byteLength(
@@ -506,12 +518,50 @@ export function dedupeSharedResponseHeaders(spec) {
   return stats;
 }
 
-/** Reuse sebuf's exact repeated int64 precision-warning schema. */
+// Bound keywords that may sit beside the int64 $ref on a described site. Any
+// other extra keyword leaves the site inline: only shapes whose meaning is the
+// shared component plus these siblings are rewritten.
+const INT64_SIBLING_KEYS = new Set(['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum']);
+export const INT64_WARNING_SUFFIX = `. ${INT64_SCHEMA.description}`;
+
+/**
+ * Split a sebuf int64 field that carries its own comment in front of the
+ * generated precision warning (`<comment>. Warning: Values > 2^53 ...`).
+ * Returns the comment and any bound siblings, or null when the site is not
+ * exactly that shape.
+ */
+function describedInt64Site(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return null;
+  if (schema.type !== INT64_SCHEMA.type || schema.format !== INT64_SCHEMA.format) return null;
+  const { description } = schema;
+  if (typeof description !== 'string' || !description.endsWith(INT64_WARNING_SUFFIX)) return null;
+  const lead = description.slice(0, -INT64_WARNING_SUFFIX.length);
+  if (!lead) return null;
+  const siblings = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === 'type' || key === 'format' || key === 'description') continue;
+    if (!INT64_SIBLING_KEYS.has(key)) return null;
+    siblings[key] = value;
+  }
+  return { lead, siblings };
+}
+
+/**
+ * Reuse sebuf's repeated int64 precision-warning schema.
+ *
+ * Exact copies become a bare $ref. Described copies — the field's own comment
+ * followed by the generated warning — become a $ref with the comment (and any
+ * numeric bounds) as OpenAPI 3.1 sibling keywords, so the shared component
+ * carries the type, format and warning once. Resolving restores the original
+ * exactly: `{ ...component, ...siblings, description: comment + ". " +
+ * component.description }`.
+ */
 export function dedupeRepeatedInt64Schemas(spec) {
-  const stats = { replacedRefs: 0 };
+  const stats = { replacedRefs: 0, describedRefs: 0 };
   const schemas = spec?.components?.schemas;
   if (!schemas || typeof schemas !== 'object') return stats;
   const sites = [];
+  const describedSites = [];
 
   const visit = (value) => {
     if (!value || typeof value !== 'object') return;
@@ -520,18 +570,28 @@ export function dedupeRepeatedInt64Schemas(spec) {
       return;
     }
     for (const [key, child] of Object.entries(value)) {
-      if (child && typeof child === 'object' && eq(child, INT64_SCHEMA)) sites.push({ parent: value, key });
+      if (child && typeof child === 'object' && eq(child, INT64_SCHEMA)) {
+        sites.push({ parent: value, key });
+        continue;
+      }
+      const described = describedInt64Site(child);
+      if (described) describedSites.push({ parent: value, key, ...described });
       else visit(child);
     }
   };
   for (const schema of Object.values(schemas)) visit(schema);
-  if (sites.length < 2) return stats;
+  if (sites.length + describedSites.length < 2) return stats;
 
   const name = availableComponentName(schemas, 'WorldMonitorInt64', INT64_SCHEMA);
   schemas[name] ??= structuredClone(INT64_SCHEMA);
+  const $ref = `#/components/schemas/${pointerSegment(name)}`;
   for (const { parent, key } of sites) {
-    parent[key] = { $ref: `#/components/schemas/${pointerSegment(name)}` };
+    parent[key] = { $ref };
     stats.replacedRefs += 1;
+  }
+  for (const { parent, key, lead, siblings } of describedSites) {
+    parent[key] = { $ref, ...siblings, description: lead };
+    stats.describedRefs += 1;
   }
   return stats;
 }

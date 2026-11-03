@@ -28,6 +28,7 @@ export interface CrossStraitActivityPanelModel {
   heading: string;
   disclaimer: string;
   coverageLabel: string;
+  japanCoverageLabel: string | null;
   mnd: {
     publisher: string;
     reportingLabel: string;
@@ -69,11 +70,11 @@ const CATEGORY_LABELS: ReadonlyArray<[
   keyof TaiwanMndActivityCategories,
   string,
 ]> = [
-  ['plaAircraftSorties', 'PLA aircraft sorties'],
-  ['planShips', 'PLAN ships'],
-  ['officialShips', 'Official ships'],
-  ['medianLineCrossings', 'Median-line crossings'],
-  ['adizEntries', 'ADIZ entries'],
+  ['plaAircraftSorties', 'Chinese military aircraft flights'],
+  ['planShips', 'Chinese navy ships'],
+  ['officialShips', 'Other official vessels'],
+  ['medianLineCrossings', 'Taiwan Strait median-line crossings'],
+  ['adizEntries', 'Air defense identification zone entries'],
 ];
 
 const JAPAN_CATEGORY_KEYS = [
@@ -226,7 +227,7 @@ function isObservation(value: unknown): boolean {
     || !Number.isInteger(value.revision.sequence)
     || typeof value.revision.state !== 'string'
     || typeof value.revision.vintageId !== 'string'
-    || !Array.isArray(value.history)
+    || (value.history !== undefined && !Array.isArray(value.history))
     || !('provenance' in value)
     || (value.summary !== undefined && typeof value.summary !== 'string')
     || !isRecord(value.categories)
@@ -266,6 +267,7 @@ function isSourceHealth(value: unknown): boolean {
       value.transportPath === undefined
       || value.transportPath === 'direct'
       || value.transportPath === 'proxy'
+      || value.transportPath === 'x_api'
     )
     && (
       value.blockedReason === undefined
@@ -369,13 +371,13 @@ function comparisonModel(window: CrossStraitBaselineWindow): CrossStraitComparis
   if (window.state !== 'sufficient' || window.value == null) {
     return {
       label: `${window.windowDays}-report median unavailable`,
-      coverage: `n=${window.sampleSize}/${window.requiredSampleSize}`,
+      coverage: `Reports: ${window.sampleSize}/${window.requiredSampleSize}`,
       state: 'insufficient_data',
     };
   }
   return {
     label: `${window.windowDays}-report median ${numberLabel(window.value)}`,
-    coverage: `n=${window.sampleSize}; ${window.calendarSpanDays} calendar days; ${window.missingCalendarDays} missing`,
+    coverage: `Reports: ${window.sampleSize}; ${window.calendarSpanDays} calendar days; ${window.missingCalendarDays} missing`,
     state: 'sufficient',
   };
 }
@@ -417,21 +419,25 @@ export function buildCrossStraitActivityPanelModel(
       })
     : [];
 
-  const japan = snapshot.observations
-    .filter((row) => row.sourceId === 'japan-mod')
+  const japanObservations = snapshot.observations.filter((row) => row.sourceId === 'japan-mod');
+  const japanSource = snapshot.sources.find((source) => source.id === 'japan-mod');
+  const japanCoverageLabel = japanSource?.transportPath === 'x_api'
+    ? `Japan X discovery: last success ${japanSource.lastSuccessAt ?? 'not recorded'}.${japanSource.transportStatus === 'fresh' ? '' : ' Latest check unavailable.'} ${japanObservations.length} reviewed report${japanObservations.length === 1 ? '' : 's'} in this snapshot. New posts require review before they update these counts.`
+    : null;
+  const japan = japanObservations
     .sort((a, b) => b.reportingDay.localeCompare(a.reportingDay))
     .slice(0, 3)
     .map((row) => {
       const counts = row.categories;
       const countSummary = [
-        counts.plaAircraft != null ? `${counts.plaAircraft} PLA aircraft` : null,
-        counts.planShips != null ? `${counts.planShips} PLAN ships` : null,
+        counts.plaAircraft != null ? `${counts.plaAircraft} Chinese military aircraft` : null,
+        counts.planShips != null ? `${counts.planShips} Chinese navy ships` : null,
         counts.russianNavyShips != null ? `${counts.russianNavyShips} Russian Navy ships` : null,
       ].filter(Boolean).join(', ');
       return {
         label: `Japan Joint Staff · ${countSummary || 'reviewed activity document'}`,
         reportingLabel: row.reportingDay,
-        summary: row.summary ?? 'Reviewed regional augmentation; not reconciled with Taiwan MND counts.',
+        summary: row.summary ?? 'Reviewed regional augmentation; not reconciled with Taiwan Ministry of National Defense counts.',
         sourceUrl: safeOfficialSourceUrl(row.sourceUrl) ?? '',
       };
     });
@@ -465,7 +471,7 @@ export function buildCrossStraitActivityPanelModel(
     : null;
   return {
     heading: 'Official activity claims',
-    disclaimer: 'Publisher claim · category counts are kept separate and are not ADS-B or AIS tracks.',
+    disclaimer: 'Publisher claim · category counts are kept separate and are not aircraft or ship transponder tracks.',
     coverageLabel: snapshot.coverage.backfillComplete
       ? `${progress} · source backfill complete`
       : `${progress} · backfill in progress`,
@@ -478,6 +484,7 @@ export function buildCrossStraitActivityPanelModel(
         }
       : null,
     japan,
+    japanCoverageLabel,
     sourceHealth,
   };
 }

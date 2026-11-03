@@ -24,3 +24,12 @@ export function getRelayHeaders(extra: Record<string, string> = {}): Record<stri
   }
   return headers;
 }
+
+/** Error message for a non-OK relay response, carrying the relay's own `error` reason when it sent one. */
+export async function relayFailureMessage(resp: Response): Promise<string> {
+  const reason = await resp.json().then(
+    (body: { error?: unknown } | null) => (typeof body?.error === 'string' ? body.error.slice(0, 200) : ''),
+    () => '',
+  );
+  return reason ? `relay returned ${resp.status}: ${reason}` : `relay returned ${resp.status}`;
+}

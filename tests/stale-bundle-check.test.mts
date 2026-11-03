@@ -1,7 +1,12 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installStaleBundleCheck } from '../src/bootstrap/stale-bundle-check.ts';
-import { RELOAD_BLOCKING_MODAL_SELECTOR, type VisibleElementLike } from '../src/utils/open-modal.ts';
+import { _setFetchBeforeWindowPatchesForTests, installStaleBundleCheck } from '../src/bootstrap/stale-bundle-check.ts';
+import {
+  _resetSentryDeferStateForTests,
+  _setSentryLoaderForTests,
+  scheduleSentryInit,
+} from '../src/bootstrap/sentry-defer.ts';
+import { RELOAD_BLOCKING_MODAL_SELECTOR, RELOAD_POLICY_ATTR, type VisibleElementLike } from '../src/utils/open-modal.ts';
 import type { DeferralReport } from '../src/bootstrap/stale-bundle-check.ts';
 
 // ---------------------------------------------------------------------------
@@ -18,11 +23,19 @@ interface FakeEnv {
   clock: { value: number; tick(ms: number): void };
   visibilityState: 'visible' | 'hidden';
   /**
-   * What OPEN_MODAL_SELECTOR finds in the fake document. 'mounted-hidden'
-   * models UnifiedSettings at rest: the overlay is in the DOM for the whole
-   * session but display:none, so it must NOT suppress a reload.
+   * What RELOAD_BLOCKING_MODAL_SELECTOR finds in the fake document.
+   *
+   *   'mounted-hidden'          UnifiedSettings at rest: in the DOM for the
+   *                             whole session but display:none, so it must NOT
+   *                             suppress a reload.
+   *   'open'                    a silent rendered overlay (the Clerk backdrop),
+   *                             policy undeclared.
+   *   'open-declared-blocking'  a rendered overlay carrying
+   *                             data-reload-policy="blocking".
+   *   'open-reload-safe'        excluded from the result set, as the real DOM
+   *                             does for the `:not(...)` clause.
    */
-  modal: 'none' | 'open' | 'mounted-hidden' | 'open-reload-safe';
+  modal: 'none' | 'open' | 'mounted-hidden' | 'open-reload-safe' | 'open-declared-blocking';
   /** When set, the fetch fake awaits it before answering (in-flight race). */
   fetchGate: Promise<void> | null;
   /**
@@ -62,11 +75,31 @@ function makeEnv(initial: Partial<{ ok: boolean; status: number; body: string }>
   };
 }
 
-function install(env: FakeEnv, currentHash = 'sha-running-bundle', minIntervalMs = 60_000, wedgeAfterDeferrals?: number) {
+const USE_PRODUCTION_FETCH = Symbol('production-fetch');
+
+function install(
+  env: FakeEnv,
+  currentHash = 'sha-running-bundle',
+  minIntervalMs = 60_000,
+  wedgeAfterDeferrals?: number,
+  /** true leaves the module's own Sentry reporter in place instead of the recording fake. */
+  useDefaultReporter = false,
+  fetchImpl?: typeof globalThis.fetch | typeof USE_PRODUCTION_FETCH,
+) {
+  const injectedFetch = fetchImpl === USE_PRODUCTION_FETCH
+    ? undefined
+    : fetchImpl ?? (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+      env.fetchCalls.push({ url, init });
+      if (env.fetchGate) await env.fetchGate;
+      const { ok, status, body } = env.fetchResponse;
+      return new Response(body, { status, statusText: ok ? 'OK' : 'Error' });
+    });
   return installStaleBundleCheck({
     currentHash,
     minIntervalMs,
     ...(wedgeAfterDeferrals === undefined ? {} : { wedgeAfterDeferrals }),
+    fetch: injectedFetch,
     eventTarget: {
       addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
         if (type === 'focus') env.focusListeners.push(listener as EventListener);
@@ -95,12 +128,14 @@ function install(env: FakeEnv, currentHash = 'sha-running-bundle', minIntervalMs
         // selector must not leave this suite green.
         if (sel !== RELOAD_BLOCKING_MODAL_SELECTOR) return [];
         if (env.modal === 'none') return [];
-        // The real DOM applies `:not([data-reload-safe])` for this selector,
-        // so an opted-out overlay simply is not in the result set.
+        // The real DOM applies `:not([data-reload-policy="safe"])` for this
+        // selector, so a declared-safe overlay simply is not in the result set.
         if (env.modal === 'open-reload-safe') return [];
+        const declared = env.modal === 'open-declared-blocking';
         const el = (visible: boolean): Element & VisibleElementLike => ({
           getClientRects: () => ({ length: visible ? 1 : 0 }),
-          className: 'cl-modalBackdrop',
+          className: declared ? 'modal-overlay' : 'cl-modalBackdrop',
+          getAttribute: (name: string) => (name === RELOAD_POLICY_ATTR && declared ? 'blocking' : null),
           ...(env.supportsCheckVisibility ? { checkVisibility: () => visible } : {}),
         } as unknown as Element & VisibleElementLike);
         if (env.modal === 'mounted-hidden') return [el(false)];
@@ -113,17 +148,53 @@ function install(env: FakeEnv, currentHash = 'sha-running-bundle', minIntervalMs
       env.intervalCallbacks.push(cb);
       return env.intervalCallbacks.length; // dummy handle
     },
-    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
-      env.fetchCalls.push({ url, init });
-      if (env.fetchGate) await env.fetchGate;
-      const { ok, status, body } = env.fetchResponse;
-      return new Response(body, { status, statusText: ok ? 'OK' : 'Error' });
-    },
     reload: () => { env.reloadCalls++; },
-    reportDeferral: (report: DeferralReport) => { env.deferralReports.push(report); },
+    ...(useDefaultReporter ? {} : { reportDeferral: (report: DeferralReport) => { env.deferralReports.push(report); } }),
     now: () => env.clock.value,
   });
+}
+
+function restoreGlobalProperty(name: 'window' | 'setTimeout', descriptor: PropertyDescriptor | undefined): void {
+  if (descriptor) {
+    Object.defineProperty(globalThis, name, descriptor);
+  } else {
+    Reflect.deleteProperty(globalThis, name);
+  }
+}
+
+/**
+ * Drain everything queued through `enqueueSentryCall` into a recording
+ * `captureMessage`, the way tests/sentry-defer-replay.test.mts drives the real
+ * deferred-init path: a bare `window` so init schedules at all, and a captured
+ * `setTimeout` so the 10s audit-window delay is a callback we invoke.
+ */
+async function drainSentryCalls(): Promise<Array<{ message: string; tags: Record<string, string> }>> {
+  const captured: Array<{ message: string; tags: Record<string, string> }> = [];
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const previousSetTimeout = Object.getOwnPropertyDescriptor(globalThis, 'setTimeout');
+  let delayedCallback: (() => void) | null = null;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { addEventListener() {}, removeEventListener() {} },
+  });
+  Object.defineProperty(globalThis, 'setTimeout', {
+    configurable: true,
+    value: (cb: () => void) => { delayedCallback = cb; return 1; },
+  });
+  _setSentryLoaderForTests(async () => ({
+    captureMessage(message: string, context: { tags: Record<string, string> }) {
+      captured.push({ message, tags: context.tags });
+    },
+  } as never));
+  try {
+    const initPromise = scheduleSentryInit();
+    delayedCallback?.();
+    await initPromise;
+  } finally {
+    restoreGlobalProperty('window', previousWindow);
+    restoreGlobalProperty('setTimeout', previousSetTimeout);
+  }
+  return captured;
 }
 
 async function fireFocus(env: FakeEnv): Promise<void> {
@@ -150,6 +221,21 @@ async function fireInterval(env: FakeEnv): Promise<void> {
   }
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function rejectionMessagesDuring(run: () => Promise<void>): Promise<string[]> {
+  const messages: string[] = [];
+  const onRejection = (reason: unknown) => {
+    messages.push(reason instanceof Error ? reason.message : String(reason));
+  };
+  process.on('unhandledRejection', onRejection);
+  try {
+    await run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return messages;
+  } finally {
+    process.off('unhandledRejection', onRejection);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -370,13 +456,14 @@ describe('installStaleBundleCheck', () => {
     assert.equal(env.reloadCalls, 1, 'a hidden overlay is not an open modal');
   });
 
-  // --- reload opt-out (WORLDMONITOR-15X) -------------------------------------
-  // The onboarding popover auto-opens for every preset-less user and carries
-  // role="dialog". Before the opt-out it deferred reloads for a broad
+  // --- reload contract (WORLDMONITOR-15X / 15Z) ------------------------------
+  // The onboarding popover auto-opens for every preset-less user, and the
+  // SignalModal auto-opens from background correlation with no auto-dismiss.
+  // While both counted as blocking they deferred reloads for a broad
   // population, which suppressed PR #3466's safety net far beyond the sign-up
-  // case this guard exists for.
+  // case this guard exists for. Each now declares itself reload-safe.
 
-  it('DOES reload when the only open overlay opted out of blocking reloads', async () => {
+  it('DOES reload when the only open overlay declared itself reload-safe', async () => {
     env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy' };
     env.modal = 'open-reload-safe';
     install(env);
@@ -384,6 +471,81 @@ describe('installStaleBundleCheck', () => {
     await fireFocus(env);
     assert.equal(env.reloadCalls, 1, 'a reload-safe overlay must not hold the reload off');
     assert.equal(env.deferralReports.length, 0, 'and must not report a deferral');
+  });
+
+  it('reports the blocker as undeclared when it carries no contract', async () => {
+    // The legitimate Clerk deferral. After the migration every first-party
+    // overlay is declared, so an 'undeclared' report with a non-`cl-` label is
+    // a lint-gate escape, and this field is what makes that visible in Sentry.
+    env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy' };
+    env.modal = 'open';
+    install(env);
+
+    await fireFocus(env);
+    assert.equal(env.deferralReports.length, 1);
+    assert.equal(env.deferralReports[0]?.blockedBy, 'cl-modalBackdrop');
+    assert.equal(env.deferralReports[0]?.reloadPolicy, 'undeclared');
+  });
+
+  it('reports the blocker as blocking on both reports of an episode when it declared itself', async () => {
+    // A wedge under a declared-blocking overlay is a judgment to revisit, not
+    // a gate escape; the second report must say so too, because that is the
+    // one an alert rule for "declared and still wedged" keys on.
+    env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy' };
+    env.modal = 'open-declared-blocking';
+    install(env, 'sha-running-bundle', 60_000, 3);
+
+    for (let i = 0; i < 3; i++) {
+      env.clock.tick(5 * 60_000);
+      await fireFocus(env);
+    }
+    assert.equal(env.reloadCalls, 0, 'a declared-blocking overlay holds the reload off');
+    assert.deepEqual(env.deferralReports.map((r) => r.phase), ['started', 'suspected-wedge']);
+    assert.deepEqual(env.deferralReports.map((r) => r.blockedBy), ['modal-overlay', 'modal-overlay']);
+    assert.deepEqual(env.deferralReports.map((r) => r.reloadPolicy), ['blocking', 'blocking']);
+  });
+
+  it('default reporter sends nothing to Sentry when an episode only starts', async () => {
+    // A modal open when a deploy lands is the state this guard exists for, not
+    // a failure. Reporting it made WORLDMONITOR-15X an always-open issue.
+    _resetSentryDeferStateForTests();
+    try {
+      env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy' };
+      env.modal = 'open-declared-blocking';
+      install(env, 'sha-running-bundle', 60_000, 3, true);
+      await fireFocus(env);
+      assert.equal(env.reloadCalls, 0, 'precondition: the reload was deferred');
+
+      const captured = await drainSentryCalls();
+      assert.equal(captured.length, 0, 'an episode start is expected and stays out of Sentry');
+    } finally {
+      _resetSentryDeferStateForTests();
+    }
+  });
+
+  it('default reporter publishes a suspected wedge with reload_policy beside blocked_by', async () => {
+    // Pins the tag set an alert rule keys on, through the real deferred Sentry
+    // queue rather than the recording fake the other tests use.
+    _resetSentryDeferStateForTests();
+    try {
+      env.fetchResponse = { ok: true, status: 200, body: 'sha-newer-deploy' };
+      env.modal = 'open-declared-blocking';
+      install(env, 'sha-running-bundle', 60_000, 3, true);
+      for (let i = 0; i < 3; i++) {
+        env.clock.tick(5 * 60_000);
+        await fireFocus(env);
+      }
+      assert.equal(env.reloadCalls, 0, 'precondition: the reload stayed deferred');
+
+      const captured = await drainSentryCalls();
+      assert.equal(captured.length, 1, 'one Sentry message per wedged episode');
+      assert.equal(captured[0]?.message, '[stale-bundle] reload still deferred, modal never closed');
+      assert.equal(captured[0]?.tags.blocked_by, 'modal-overlay');
+      assert.equal(captured[0]?.tags.reload_policy, 'blocking');
+      assert.equal(captured[0]?.tags.deferrals, '3');
+    } finally {
+      _resetSentryDeferStateForTests();
+    }
   });
 
   it('reports a suspected wedge once when an overlay outlasts any plausible email wait', async () => {
@@ -523,5 +685,73 @@ describe('installStaleBundleCheck', () => {
     env.clock.tick(1_000);
     await fireFocus(env);
     assert.equal(env.reloadCalls, 1, 'and still reload over a hidden persistent overlay');
+  });
+
+  it('a rejected fetch from focus is not an unhandled rejection, and the next trigger reloads on a new hash', async () => {
+    let calls = 0;
+    const messages = await rejectionMessagesDuring(async () => {
+      install(env, 'sha-running-bundle', 60_000, undefined, false, async () => {
+        calls += 1;
+        if (calls === 1) throw new TypeError('Failed to fetch');
+        return new Response('sha-newer-deploy');
+      });
+      await fireFocus(env);
+      assert.equal(env.reloadCalls, 0, 'a network failure is not a hash mismatch');
+      env.clock.tick(60_001);
+      await fireFocus(env);
+    });
+    assert.deepEqual(messages, []);
+    assert.equal(calls, 2, 'the next focus after the dedupe window checks again');
+    assert.equal(env.reloadCalls, 1, 'a real hash change still reloads');
+  });
+
+  it('a rejected fetch from the interval is not an unhandled rejection, and the next tick checks again', async () => {
+    let calls = 0;
+    const messages = await rejectionMessagesDuring(async () => {
+      install(env, 'sha-running-bundle', 60_000, undefined, false, async () => {
+        calls += 1;
+        if (calls === 1) throw new DOMException('The operation was aborted', 'AbortError');
+        return new Response('sha-running-bundle');
+      });
+      await fireInterval(env);
+      assert.equal(env.reloadCalls, 0);
+      env.clock.tick(60_001);
+      await fireInterval(env);
+    });
+    assert.deepEqual(messages, []);
+    assert.equal(calls, 2, 'the next interval tick checks again');
+    assert.equal(env.reloadCalls, 0, 'a matching hash after an abort does not reload');
+  });
+
+  it('a one-sided then on the live fetch does not leave an unhandled rejection from focus or the interval', async () => {
+    const previousFetch = globalThis.fetch;
+    let calls = 0;
+    const previousSnapshot = _setFetchBeforeWindowPatchesForTests(async () => {
+      calls += 1;
+      if (calls === 1) throw new TypeError('Failed to fetch');
+      return new Response('sha-newer-deploy');
+    });
+    globalThis.fetch = (() => {
+      const rejected = Promise.reject(new TypeError('Failed to fetch'));
+      // Observes success only, then returns the original promise. The derived
+      // promise rejects with nobody waiting on it.
+      rejected.then(() => {});
+      return rejected;
+    }) as typeof globalThis.fetch;
+    try {
+      const messages = await rejectionMessagesDuring(async () => {
+        install(env, 'sha-running-bundle', 0, undefined, false, USE_PRODUCTION_FETCH);
+        await fireFocus(env);
+        assert.equal(env.reloadCalls, 0);
+        env.clock.tick(1);
+        await fireInterval(env);
+      });
+      assert.deepEqual(messages, []);
+      assert.equal(calls, 2, 'focus and the next interval both reach the pre-patch fetch');
+      assert.equal(env.reloadCalls, 1, 'a real hash change still reloads');
+    } finally {
+      globalThis.fetch = previousFetch;
+      _setFetchBeforeWindowPatchesForTests(previousSnapshot);
+    }
   });
 });

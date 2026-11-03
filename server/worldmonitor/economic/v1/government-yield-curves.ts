@@ -35,10 +35,12 @@ export const COVERED_MARKETS: readonly CoveredMarket[] = [
   { country: 'SE', resource: 'yield-curve-se', source: 'se-riksbank', measure: 'benchmark', startYear: 1990 },
 ];
 
-/** Monthly OECD MEI 10Y benchmark, keyed per market without a covered daily curve. */
+/** Monthly 10Y benchmark (ECB IRS or OECD MEI), keyed per market without a covered daily curve. */
 export const OECD_LT_KEY = `${GOV_YIELD_KEY_PREFIX}:oecd-lt:v1`;
 export const OECD_LT_LATEST_KEY = `${GOV_YIELD_KEY_PREFIX}:oecd-lt:v1:latest`;
 export const OECD_LT_RESOURCE = 'oecd-lt-rates';
+/** Provenance of payloads seeded before per-market sources were recorded. */
+export const OECD_LT_DEFAULT_SOURCE = 'oecd-mei-monthly';
 
 export function govYieldCanonicalKey(country: string): string {
   return `${GOV_YIELD_KEY_PREFIX}:${country.toLowerCase()}:v1`;
@@ -126,13 +128,22 @@ export function govYieldCurvesFromShards(values: unknown[]): NormalizedCurve[] {
   return [...byDate.values()].sort((left, right) => left.date - right.date);
 }
 
+function oecdLtEntryForCountry(value: unknown, country: string): unknown {
+  if (!value || typeof value !== 'object') return undefined;
+  const countries = (value as { countries?: unknown }).countries;
+  if (!countries || typeof countries !== 'object' || Array.isArray(countries)) return undefined;
+  const entry = (countries as Record<string, unknown>)[country.trim().toUpperCase()];
+  return entry && typeof entry === 'object' ? entry : undefined;
+}
+
 /** Extract one country's monthly curves from the OECD canonical payload. */
 export function oecdLtCurvesForCountry(value: unknown, country: string): NormalizedCurve[] {
-  if (!value || typeof value !== 'object') return [];
-  const countries = (value as { countries?: unknown }).countries;
-  if (!countries || typeof countries !== 'object' || Array.isArray(countries)) return [];
-  const normalized = country.trim().toUpperCase();
-  const entry = (countries as Record<string, unknown>)[normalized];
-  if (!entry || typeof entry !== 'object') return [];
-  return curvesFromPayload(entry);
+  const entry = oecdLtEntryForCountry(value, country);
+  return entry ? curvesFromPayload(entry) : [];
+}
+
+/** The publisher of one country's latest monthly print, as recorded by the seeder. */
+export function oecdLtSourceForCountry(value: unknown, country: string): string {
+  const source = (oecdLtEntryForCountry(value, country) as { source?: unknown } | undefined)?.source;
+  return typeof source === 'string' && source !== '' ? source : OECD_LT_DEFAULT_SOURCE;
 }

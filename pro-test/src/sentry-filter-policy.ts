@@ -37,6 +37,7 @@ type PolicyPrimitive = number | string | boolean | bigint | symbol | null | unde
 /** Minimal structural view of the Sentry event fields this policy reads. */
 interface PolicyFrame {
   filename?: string;
+  function?: string;
 }
 interface PolicyException {
   type?: string;
@@ -218,6 +219,17 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // separate Sentry clients, so the marketing copy was the gap that let
   // WORLDMONITOR-108 through.
   /webkit\.messageHandlers/,
+  // Brave iOS's injected wallet shim. Brave's user script assigns
+  // `window.ethereum.selectedAddress = undefined` in every document, and throws
+  // when the page has no `window.ethereum` object. WORLDMONITOR-16Z is the
+  // shape: Brave / iOS 18.7 on `/pro`, a single frame on the document itself.
+  // The dashboard drops it with a bare `/window\.ethereum/`; the two surfaces
+  // run separate Sentry clients. Keyed on the full spaced assignment rather
+  // than the global, so a first-party message that merely names
+  // `window.ethereum` still reports, and minified code never has those spaces.
+  // `tests/pro-sentry-filter-policy.test.mts` pins that no first-party source
+  // on this surface touches `ethereum.selectedAddress`.
+  /evaluating 'window\.ethereum\.selectedAddress = undefined'/,
   // A bare `jQuery` global reference from an injected script.
   // WORLDMONITOR-11F is the shape: `ReferenceError: jQuery is not defined` on
   // Firefox 148 / Linux, sent by `sentry.javascript.react` with a null release,
@@ -324,6 +336,38 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // The dashboard has carried only the WebKit half (`/Can't find variable:
   // _0x/`) since #4005; this pass adds the same shape there alongside it.
   /\b_0x[0-9a-f]{4,}\b/,
+  // A browser extension's main-world SDK referencing its own global before
+  // define. WORLDMONITOR-185 is the shape: `ReferenceError: mainWorldSdk is
+  // not defined` on Chrome 154 / Windows at `/`, an `onerror` capture whose
+  // only frames are two `<anonymous>:1` entries. The dashboard has dropped the
+  // same name since WORLDMONITOR-TG; the two surfaces run separate Sentry
+  // clients, which is the same gap that let WORLDMONITOR-11P through.
+  //
+  // Licensed by the identifier, like the `_0x` entry above: `mainWorldSdk`
+  // appears nowhere in `pro-test/src`, the `shared/` leaves it imports, or
+  // either inline script (tests/pro-sentry-filter-policy.test.mts pins that),
+  // so a message naming it can never be ours. Both engine phrasings — Chromium
+  // `X is not defined`, WebKit `Can't find variable: X` — are covered by the
+  // bare word-bounded name.
+  /\bmainWorldSdk\b/,
+  // An injected script evaluated twice in the same realm. WORLDMONITOR-10B's
+  // 2026-10-12 event is the shape: `SyntaxError: Identifier 'nativeIframe'
+  // has already been declared` on Chrome 155 / Windows at `/`, an `onerror`
+  // capture whose only frame is the document URL at `1:1` — the slot V8
+  // gives an inline script it cannot attribute. Line 1 of every marketing
+  // document is `<!doctype html>`, so that frame proves the script was not
+  // ours. The dashboard carries the same identifier in its
+  // `Identifier '(?:…|nativeIframe)' has already been declared` entry.
+  //
+  // Frame-blind on purpose: the SAME document frame would sit under a parse
+  // failure in our own inline bootstrap, so no frame gate can separate the
+  // two — the identifier is the licence. `nativeIframe` appears nowhere in
+  // the marketing bundle's first-party sources (same scan as `mainWorldSdk`),
+  // and a redeclaration can only name an identifier the colliding script
+  // itself declares. The bare `SyntaxError: Unexpected end of input` siblings
+  // in that issue are NOT covered here; a parse failure stays reporting
+  // unless something names its origin (see PARSE_FAILURE).
+  /^Identifier 'nativeIframe' has already been declared$/,
   // WebAuthn on a shell that has no authenticator. WORLDMONITOR-11Q is the
   // shape: `NotSupportedError: The user agent does not support public key
   // credentials.` (`DOMException.code: 9`) on Electron 33.4.11 / Windows at
@@ -355,6 +399,18 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // surface has none, so the caller is Clerk's sign-in UI. Anchored to the whole
   // sentence for the same reason: bare `NotSupportedError` stays reportable.
   /^(?:Error: )?NotSupportedError: Error connecting to Web Authentication service\.$/,
+  // The same WebAuthn surface failing at the OS end. WORLDMONITOR-11B is the
+  // shape: `NotReadableError: An unknown error occurred while talking to the
+  // credential manager.` on Chrome 149 / Linux and Chrome Mobile 150 / Android
+  // 10 at `/pro`, via `onunhandledrejection` with zero frames, breadcrumbs
+  // ending at Clerk's `POST /v1/client/sign_ins`. It is Chromium's CredMan
+  // bridge wording for an unavailable or wedged OS credential service, so only
+  // a WebAuthn CALLER can hit it, and the scan pinned for the entries above
+  // shows this surface has none. The dashboard has suppressed it since the
+  // first 11B event, but that event came from this surface, so the dashboard
+  // rule never applied here. Anchored to the whole sentence: bare
+  // `NotReadableError` is also a failed file or media read.
+  /^(?:Error: )?NotReadableError: An unknown error occurred while talking to the credential manager\.$/,
   // The same WebAuthn surface as the entry above, reached from the other
   // direction: a SECOND credential request issued while one is still
   // outstanding. WORLDMONITOR-11T is the shape: `Error: OperationError: A
@@ -403,12 +459,24 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // ever match Clerk. A user's flaky connection to Clerk is not actionable here;
   // Clerk's UI already tells them to retry.
   /^(?:Error: )?ClerkJS: Network error\b/,
+  // Android WebView autofill injects `xbrowser` and `swbrowser`, then reads
+  // them before the host defines them.
+  /^ReferenceError: xbrowser is not defined$/,
+  /^ReferenceError: swbrowser is not defined$/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */
 const SENTRY_CHUNK_FRAME = /\/assets\/sentry-[A-Za-z0-9_-]+\.js/;
 /** Marketing bundle output. `pro-test/vite.config.ts` sets `base: '/pro/'`. */
 const MARKETING_ASSET_FRAME = /\/pro\/assets\/[A-Za-z0-9_-]+\.js/;
+/**
+ * Code evaluated by Puppeteer, which tags it with a `pptr:` source URL. The
+ * scheme, not the word `puppeteer`, is the key: a colon cannot occur in a bundle
+ * asset path or a function name, so a frame of ours can never carry it.
+ */
+const PUPPETEER_FRAME = /\bpptr:/;
+/** The root service-worker script, which only a worker should ever run. */
+const SERVICE_WORKER_SCRIPT_FRAME = /^(?:https?:\/\/[^/]+)?\/sw\.js$/;
 /** A whole message that is nothing but a short identifier. */
 const BARE_SYMBOL_MESSAGE = /^[a-zA-Z_$]+$/;
 /**
@@ -582,6 +650,21 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   const hasFirstParty = nonInfraFrames.some(
     (f) => /\.(ts|tsx)$/.test(f.filename ?? '') || MARKETING_ASSET_FRAME.test(f.filename ?? ''),
   );
+
+  // A Puppeteer-driven crawler dispatching synthetic events. Puppeteer tags the
+  // code it evaluates with a `pptr:` source URL, so its frame sits in the stack
+  // of everything that script sets off, including Clerk handlers it fires with
+  // `isTrusted: false` events. No real user runs Puppeteer, so no frame gate
+  // applies (WORLDMONITOR-169). Mirrors the dashboard's `beforeSend`.
+  if (frames.some((f) => PUPPETEER_FRAME.test(`${f.function ?? ''} ${f.filename ?? ''}`))) return null;
+
+  // The service worker's own script evaluated in a page. `/sw.js` is only ever
+  // registered as a worker, where this client cannot see it, so an all-`/sw.js`
+  // stack comes from a client that loaded it as a page script
+  // (WORLDMONITOR-168). Mirrors the dashboard's `beforeSend`.
+  if (nonInfraFrames.length > 0 && nonInfraFrames.every((f) => SERVICE_WORKER_SCRIPT_FRAME.test(f.filename ?? ''))) {
+    return null;
+  }
 
   // Stale-chunk-after-deploy: the browser fires these as synthetic TypeErrors
   // at fetch/link time, not at any first-party call site, so they arrive with

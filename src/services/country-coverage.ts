@@ -1,6 +1,5 @@
 import type { EventCategory, NewsItem, ThreatLevel } from '@/types';
 import { rssProxyUrl } from '@/utils';
-import { isDesktopRuntime } from './runtime';
 import { effectivePubDateMs } from './feed-date';
 import { BRIEF_ONLY_RSS_FETCH_POLICY, fetchFeed } from './rss';
 import {
@@ -38,9 +37,6 @@ function googleNewsFeedUrl(query: string): string {
   feedUrl.searchParams.set('hl', 'en-US');
   feedUrl.searchParams.set('gl', 'US');
   feedUrl.searchParams.set('ceid', 'US:en');
-  if (isDesktopRuntime()) {
-    return `/api/rss-proxy?${new URLSearchParams({ url: feedUrl.toString() }).toString()}`;
-  }
   return rssProxyUrl(feedUrl.toString());
 }
 

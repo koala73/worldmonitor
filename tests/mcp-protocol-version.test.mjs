@@ -1,8 +1,9 @@
 // Protocol-version-floor + negotiation contract:
 //
-//   - By DEFAULT (env unset, or =on) the server supports both
-//     [2025-03-26, 2025-06-18] and negotiates 2025-06-18 — kept in lock-step
-//     with the static server card, which advertises 2025-06-18.
+//   - By DEFAULT (env unset, or =on) the server supports
+//     [2025-03-26, 2025-06-18, 2025-11-25] and negotiates 2025-11-25 — kept in
+//     lock-step with the static server card, which advertises 2025-11-25.
+//   - With MCP_PROTOCOL_2025_11_25=off it drops back to [2025-03-26, 2025-06-18].
 //   - With MCP_PROTOCOL_FLOOR_2025_06_18=off the server pins back to the
 //     legacy [2025-03-26]-only floor (the explicit rollback kill-switch).
 //   - On `initialize`, the server returns the client's requested version
@@ -59,16 +60,14 @@ describe('api/mcp.ts — protocol-version floor', () => {
     Object.assign(process.env, originalEnv);
   });
 
-  it('env on + client requests 2025-06-18 → server returns 2025-06-18 (latest supported)', async () => {
+  it('env on + client requests 2025-06-18 → server returns 2025-06-18 verbatim (a supported version)', async () => {
     process.env.MCP_PROTOCOL_FLOOR_2025_06_18 = 'on';
     try {
       const mod = await import(`../api/mcp.ts?t=${Date.now()}_on_new`);
       const res = await mod.default(makeInitReq('2025-06-18'));
       assert.equal(res.status, 200);
       const body = await res.json();
-      // Assert against the live exported constant so this test can't drift
-      // if the latest-supported string ever changes in a future spec revision.
-      assert.equal(body.result?.protocolVersion, mod.MCP_PROTOCOL_VERSION);
+      assert.equal(body.result?.protocolVersion, '2025-06-18');
     } finally {
       delete process.env.MCP_PROTOCOL_FLOOR_2025_06_18;
     }
@@ -116,6 +115,31 @@ describe('api/mcp.ts — protocol-version floor', () => {
     assert.equal(body.result?.protocolVersion, '2025-06-18');
   });
 
+  it('env unset (default) + client requests 2025-11-25 → server returns 2025-11-25 (the card version)', async () => {
+    delete process.env.MCP_PROTOCOL_FLOOR_2025_06_18;
+    delete process.env.MCP_PROTOCOL_2025_11_25;
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}_default_2025_11_25`);
+    const res = await mod.default(makeInitReq('2025-11-25'));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    // Hardcoded: the version the static server card advertises.
+    assert.equal(body.result?.protocolVersion, '2025-11-25');
+    assert.equal(mod.MCP_PROTOCOL_VERSION, '2025-11-25');
+  });
+
+  it('MCP_PROTOCOL_2025_11_25=off + client requests 2025-11-25 → server negotiates down to 2025-06-18', async () => {
+    process.env.MCP_PROTOCOL_2025_11_25 = 'off';
+    try {
+      const mod = await import(`../api/mcp.ts?t=${Date.now()}_off_2025_11_25`);
+      const res = await mod.default(makeInitReq('2025-11-25'));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.result?.protocolVersion, '2025-06-18');
+    } finally {
+      delete process.env.MCP_PROTOCOL_2025_11_25;
+    }
+  });
+
   it('env off (kill-switch) + client requests 2025-06-18 → server returns 2025-03-26 (legacy floor)', async () => {
     process.env.MCP_PROTOCOL_FLOOR_2025_06_18 = 'off';
     try {
@@ -131,16 +155,25 @@ describe('api/mcp.ts — protocol-version floor', () => {
     }
   });
 
-  it('MCP_SUPPORTED_PROTOCOL_VERSIONS defaults to both versions; =off pins to the legacy floor', async () => {
-    // Default (env unset): both versions supported, latest = 2025-06-18.
+  it('MCP_SUPPORTED_PROTOCOL_VERSIONS defaults to three versions; each kill-switch narrows it', async () => {
+    // Default (env unset): three versions supported, latest = 2025-11-25.
     delete process.env.MCP_PROTOCOL_FLOOR_2025_06_18;
+    delete process.env.MCP_PROTOCOL_2025_11_25;
     const modDefault = await import(`../api/mcp.ts?t=${Date.now()}_supported_default`);
-    assert.deepEqual([...modDefault.MCP_SUPPORTED_PROTOCOL_VERSIONS], ['2025-03-26', '2025-06-18']);
+    assert.deepEqual([...modDefault.MCP_SUPPORTED_PROTOCOL_VERSIONS], ['2025-03-26', '2025-06-18', '2025-11-25']);
     // Latest-supported convention: MCP_PROTOCOL_VERSION is the last entry.
     assert.equal(
       modDefault.MCP_PROTOCOL_VERSION,
       modDefault.MCP_SUPPORTED_PROTOCOL_VERSIONS[modDefault.MCP_SUPPORTED_PROTOCOL_VERSIONS.length - 1],
     );
+    process.env.MCP_PROTOCOL_2025_11_25 = 'off';
+    try {
+      const modNoNewest = await import(`../api/mcp.ts?t=${Date.now()}_supported_no_2025_11_25`);
+      assert.deepEqual([...modNoNewest.MCP_SUPPORTED_PROTOCOL_VERSIONS], ['2025-03-26', '2025-06-18']);
+      assert.equal(modNoNewest.MCP_PROTOCOL_VERSION, '2025-06-18');
+    } finally {
+      delete process.env.MCP_PROTOCOL_2025_11_25;
+    }
     // Kill-switch (=off): legacy floor only.
     process.env.MCP_PROTOCOL_FLOOR_2025_06_18 = 'off';
     try {
@@ -152,14 +185,14 @@ describe('api/mcp.ts — protocol-version floor', () => {
     }
   });
 
-  it('server-card.json advertises protocolVersion 2025-06-18 unconditionally', () => {
+  it('server-card.json advertises protocolVersion 2025-11-25 unconditionally', () => {
     const card = JSON.parse(
       readFileSync(
         new URL('../public/.well-known/mcp/server-card.json', import.meta.url),
         'utf8',
       ),
     );
-    assert.equal(card.protocolVersion, '2025-06-18');
+    assert.equal(card.protocolVersion, '2025-11-25');
   });
 
   it('MCP_SUPPORTED_CLIENT_MATRIX lists each canonical client with a non-empty minimum', async () => {

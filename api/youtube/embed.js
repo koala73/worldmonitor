@@ -50,6 +50,90 @@ function sanitizeParentOrigin(raw, fallback) {
   return sanitizeAllowedOrigin(raw, fallback, ALLOWED_PARENT_ORIGINS);
 }
 
+// Constant so its SHA-256 can be listed in the /api/youtube/embed CSP
+// (vercel.json); per-request values reach it through #player-config.
+const PLAYER_SCRIPT = `
+    // Request unpartitioned cookie access so the YouTube player can use the
+    // user's cached YouTube session (bypasses bot-check for signed-in users).
+    // Most browsers require a user gesture; we try eagerly here (Chrome may
+    // grant it automatically if the user has visited youtube.com), then retry
+    // on the first overlay click as a gesture-gated fallback.
+    function tryStorageAccess() {
+      if (document.requestStorageAccess) {
+        document.requestStorageAccess().catch(function(){});
+      }
+    }
+    tryStorageAccess();
+    var tag=document.createElement('script');
+    tag.src='https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+    var config=JSON.parse(document.getElementById('player-config').textContent);
+    var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncIntervalId,parentOrigin=config.parentOrigin,allowedOrigin=config.parentOrigin;
+    function hideOverlay(){overlay.classList.add('hidden')}
+    function readMuted(){
+      if(!player)return null;
+      if(typeof player.isMuted==='function')return player.isMuted();
+      if(typeof player.getVolume==='function')return player.getVolume()===0;
+      return null;
+    }
+    function stopMuteSync(){if(muteSyncIntervalId){clearInterval(muteSyncIntervalId);muteSyncIntervalId=null}}
+    function startMuteSync(){
+      if(muteSyncIntervalId)return;
+      var lastMuted=readMuted();
+      if(lastMuted!==null)window.parent.postMessage({type:'yt-mute-state',muted:lastMuted},parentOrigin);
+      muteSyncIntervalId=setInterval(function(){
+        var m=readMuted();
+        if(m!==null&&m!==lastMuted){lastMuted=m;window.parent.postMessage({type:'yt-mute-state',muted:m},parentOrigin)}
+      },500);
+    }
+    function onYouTubeIframeAPIReady(){
+      player=new YT.Player('player',{
+        videoId:config.videoId,
+        host:'https://www.youtube.com',
+        playerVars:{autoplay:config.autoplay,mute:config.mute,playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:config.origin,widget_referrer:config.origin},
+        events:{
+          onReady:function(){
+            window.parent.postMessage({type:'yt-ready'},parentOrigin);
+            if(config.vq&&player.setPlaybackQuality)player.setPlaybackQuality(config.vq);
+            if(config.autoplay===1){player.playVideo()}
+            startMuteSync();
+          },
+          onError:function(e){stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},parentOrigin)},
+          onStateChange:function(e){
+            window.parent.postMessage({type:'yt-state',state:e.data},parentOrigin);
+            if(e.data===1||e.data===3){hideOverlay();started=true}
+          }
+        }
+      });
+    }
+    overlay.addEventListener('click',function(){
+      // Gesture-gated fallback: retry storage access on first user interaction,
+      // which satisfies browsers that require a gesture before granting access.
+      tryStorageAccess();
+      if(player&&player.playVideo){player.playVideo();player.unMute();hideOverlay()}
+    });
+    setTimeout(function(){if(!started)overlay.classList.remove('hidden')},3000);
+    window.addEventListener('message',function(e){
+      if(allowedOrigin!=='*'&&e.origin!==allowedOrigin)return;
+      if(!player||!player.getPlayerState)return;
+      var m=e.data;if(!m||!m.type)return;
+      switch(m.type){
+        case'play':player.playVideo();break;
+        case'pause':player.pauseVideo();break;
+        case'mute':player.mute();break;
+        case'unmute':player.unMute();break;
+        case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;
+        case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break;
+      }
+    });
+  `;
+
+// JSON inside <script type="application/json">: escape the characters that
+// could close the element or open markup.
+function jsonForScript(value) {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
 export default async function handler(request) {
   const url = new URL(request.url);
   const videoId = sanitizeVideoId(url.searchParams.get('videoId'));
@@ -95,80 +179,8 @@ export default async function handler(request) {
 <body>
   <div id="player"></div>
   <div id="play-overlay"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div>
-  <script>
-    // Request unpartitioned cookie access so the YouTube player can use the
-    // user's cached YouTube session (bypasses bot-check for signed-in users).
-    // Most browsers require a user gesture; we try eagerly here (Chrome may
-    // grant it automatically if the user has visited youtube.com), then retry
-    // on the first overlay click as a gesture-gated fallback.
-    function tryStorageAccess() {
-      if (document.requestStorageAccess) {
-        document.requestStorageAccess().catch(function(){});
-      }
-    }
-    tryStorageAccess();
-    var tag=document.createElement('script');
-    tag.src='https://www.youtube.com/iframe_api';
-    document.head.appendChild(tag);
-    var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncIntervalId,parentOrigin=${JSON.stringify(parentOrigin)},allowedOrigin=${JSON.stringify(parentOrigin)};
-    function hideOverlay(){overlay.classList.add('hidden')}
-    function readMuted(){
-      if(!player)return null;
-      if(typeof player.isMuted==='function')return player.isMuted();
-      if(typeof player.getVolume==='function')return player.getVolume()===0;
-      return null;
-    }
-    function stopMuteSync(){if(muteSyncIntervalId){clearInterval(muteSyncIntervalId);muteSyncIntervalId=null}}
-    function startMuteSync(){
-      if(muteSyncIntervalId)return;
-      var lastMuted=readMuted();
-      if(lastMuted!==null)window.parent.postMessage({type:'yt-mute-state',muted:lastMuted},parentOrigin);
-      muteSyncIntervalId=setInterval(function(){
-        var m=readMuted();
-        if(m!==null&&m!==lastMuted){lastMuted=m;window.parent.postMessage({type:'yt-mute-state',muted:m},parentOrigin)}
-      },500);
-    }
-    function onYouTubeIframeAPIReady(){
-      player=new YT.Player('player',{
-        videoId:'${videoId}',
-        host:'https://www.youtube.com',
-        playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${JSON.stringify(origin)},widget_referrer:${JSON.stringify(origin)}},
-        events:{
-          onReady:function(){
-            window.parent.postMessage({type:'yt-ready'},parentOrigin);
-            ${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality('${vq}');` : ''}
-            if(${autoplay}===1){player.playVideo()}
-            startMuteSync();
-          },
-          onError:function(e){stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},parentOrigin)},
-          onStateChange:function(e){
-            window.parent.postMessage({type:'yt-state',state:e.data},parentOrigin);
-            if(e.data===1||e.data===3){hideOverlay();started=true}
-          }
-        }
-      });
-    }
-    overlay.addEventListener('click',function(){
-      // Gesture-gated fallback: retry storage access on first user interaction,
-      // which satisfies browsers that require a gesture before granting access.
-      tryStorageAccess();
-      if(player&&player.playVideo){player.playVideo();player.unMute();hideOverlay()}
-    });
-    setTimeout(function(){if(!started)overlay.classList.remove('hidden')},3000);
-    window.addEventListener('message',function(e){
-      if(allowedOrigin!=='*'&&e.origin!==allowedOrigin)return;
-      if(!player||!player.getPlayerState)return;
-      var m=e.data;if(!m||!m.type)return;
-      switch(m.type){
-        case'play':player.playVideo();break;
-        case'pause':player.pauseVideo();break;
-        case'mute':player.mute();break;
-        case'unmute':player.unMute();break;
-        case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;
-        case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break;
-      }
-    });
-  </script>
+  <script type="application/json" id="player-config">${jsonForScript({ videoId, autoplay: Number(autoplay), mute: Number(mute), vq, origin, parentOrigin })}</script>
+  <script>${PLAYER_SCRIPT}</script>
 </body>
 </html>`;
 

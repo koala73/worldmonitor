@@ -43,7 +43,80 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 
-const { parseClassifyCacheHit } = __testing__;
+const { parseClassifyCacheHit, enrichWithAiCache } = __testing__;
+
+type DigestItem = Parameters<typeof enrichWithAiCache>[0][number];
+
+function keywordItem(title: string): DigestItem {
+  return {
+    source: 'Reuters World',
+    originPublisher: '',
+    originPublisherTrusted: false,
+    title,
+    link: 'https://www.reuters.com/world/example',
+    publishedAt: Date.parse('2026-10-12T00:00:00Z'),
+    isAlert: false,
+    level: 'low',
+    category: 'general',
+    confidence: 0.3,
+    classSource: 'keyword',
+    importanceScore: 0,
+    credibilityScore: 0,
+    corroborationCount: 0,
+    entityCorroborationCount: 0,
+    lang: 'en',
+    description: '',
+  } as unknown as DigestItem;
+}
+
+const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'LOCAL_API_MODE'] as const;
+
+async function enrichWithCacheRow(row: unknown): Promise<DigestItem> {
+  const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  const originalFetch = globalThis.fetch;
+  delete process.env.LOCAL_API_MODE;
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (!url.includes('/pipeline')) throw new Error(`unexpected fetch ${url}`);
+    const commands = JSON.parse(String(init?.body)) as unknown[];
+    return new Response(JSON.stringify(commands.map(() => ({ result: JSON.stringify(row) }))), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const item = keywordItem('Port strike halts container traffic in Rotterdam');
+    await enrichWithAiCache([item]);
+    return item;
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+}
+
+describe('enrichWithAiCache — value policy on a cache hit', () => {
+  it('applies a hit whose level and category are classify values', async () => {
+    const item = await enrichWithCacheRow({ level: 'high', category: 'conflict', timestamp: Date.now() });
+    assert.equal(item.classSource, 'llm');
+    assert.equal(item.category, 'conflict');
+    assert.equal(item.level, 'high', 'a high hit on a low keyword stays within the low+2 cap');
+  });
+
+  it('keeps the keyword classification when the cached category is outside the enum', async () => {
+    const item = await enrichWithCacheRow({ level: 'high', category: '<img src=x onerror=alert(1)>', timestamp: Date.now() });
+    assert.equal(item.classSource, 'keyword');
+    assert.equal(item.category, 'general');
+    assert.equal(item.level, 'low');
+  });
+
+  it('keeps the keyword classification when the cached level is outside the enum', async () => {
+    const item = await enrichWithCacheRow({ level: 'apocalyptic', category: 'conflict', timestamp: Date.now() });
+    assert.equal(item.classSource, 'keyword');
+    assert.equal(item.category, 'general');
+  });
+});
 
 describe('parseClassifyCacheHit — valid shapes', () => {
   it('valid string level + category → returns the pair unchanged', () => {
@@ -196,6 +269,14 @@ describe('parseClassifyCacheHit — call-site wiring (mutation lock)', () => {
       /parseClassifyCacheHit\(cached\.get\(key\)\)/.test(digestSrc),
       'enrichWithAiCache must read the classify cache through parseClassifyCacheHit — ' +
         'the validator is dead weight unless the call site uses it (#3753)',
+    );
+  });
+
+  it('enrichWithAiCache drops a hit whose level or category is outside the classify enum', () => {
+    assert.ok(
+      /isValidClassifyHit\(hit\)/.test(digestSrc),
+      'enrichWithAiCache must reject out-of-enum hits — item.category is rendered as a NewsPanel badge ' +
+        'and the cache row is shared Redis JSON (security audit 2026-10-12, F9)',
     );
   });
 

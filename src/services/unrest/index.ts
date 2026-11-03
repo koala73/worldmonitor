@@ -55,26 +55,27 @@ function mapConfidence(c: string): 'high' | 'medium' | 'low' {
 /** Exported for the embed loader, which receives this wire shape from the
  *  composed map-frame endpoint rather than from this module's own fetch. */
 export function toSocialUnrestEvent(e: UnrestEvent): SocialUnrestEvent {
+  const mediaSignal = e.sourceType === 'UNREST_SOURCE_TYPE_GDELT';
   return {
     id: e.id,
     title: e.title,
     summary: e.summary || undefined,
-    eventType: mapEventType(e.eventType),
+    eventType: mediaSignal ? 'civil_unrest' : mapEventType(e.eventType),
     city: e.city || undefined,
     country: e.country,
     region: e.region || undefined,
     lat: e.location?.latitude ?? 0,
     lon: e.location?.longitude ?? 0,
     time: new Date(e.occurredAt),
-    severity: mapSeverity(e.severity),
+    severity: mediaSignal ? 'low' : mapSeverity(e.severity),
     fatalities: e.fatalities > 0 ? e.fatalities : undefined,
     sources: e.sources,
     sourceUrls: e.sourceUrls?.length ? e.sourceUrls : undefined,
     sourceType: mapSourceType(e.sourceType),
     tags: e.tags.length > 0 ? e.tags : undefined,
     actors: e.actors.length > 0 ? e.actors : undefined,
-    confidence: mapConfidence(e.confidence),
-    validated: mapConfidence(e.confidence) === 'high',
+    confidence: mediaSignal ? 'low' : mapConfidence(e.confidence),
+    validated: !mediaSignal && mapConfidence(e.confidence) === 'high',
   };
 }
 

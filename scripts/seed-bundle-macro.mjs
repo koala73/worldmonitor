@@ -50,6 +50,10 @@ const MACRO_SECTIONS = [
   // fail-closed preflight (RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true).
   { label: 'WB-External-Debt', script: 'seed-wb-external-debt.mjs', seedMetaKey: 'economic:wb-external-debt', canonicalKey: 'economic:wb-external-debt:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
   { label: 'BIS-LBS', script: 'seed-bis-lbs.mjs', seedMetaKey: 'economic:bis-lbs', canonicalKey: 'economic:bis-lbs:v1', intervalMs: 7 * DAY, timeoutMs: 300_000 },
+  // Cross-country capital flows: IMF BOP quarterly + annual + PIP and two BIS
+  // LBS pulls, all in parallel, plus World Bank GDP. PIP (~43s) is the long
+  // pole; per-call timeouts with one retry keep the worst case under 300_000.
+  { label: 'Capital-Flows', script: 'seed-capital-flows.mjs', seedMetaKey: 'economic:capital-flows', canonicalKey: 'economic:capital-flows:v1', completionMetaKey: 'seed-completion:economic:capital-flows', intervalMs: 7 * DAY, timeoutMs: 300_000 },
   // FATF fetches 3 URLs (entry sequential, black+grey parallel) through a 6-tier
   // fallback chain (direct → proxy → wayback-cdx-direct → wayback-cdx-proxy →
   // wayback-snap-direct → wayback-snap-proxy, ≤125s/URL). Worst-case ≤250s;
@@ -72,9 +76,33 @@ const MACRO_SECTIONS = [
   // selects a per-country source with a staleness fall-through.
   { label: 'World-CPI-IMF', script: 'seed-world-cpi-imf.mjs', seedMetaKey: 'economic:world-cpi-imf', canonicalKey: 'economic:world-cpi:imf:v1', completionMetaKey: 'seed-completion:economic:world-cpi-imf', intervalMs: DAY, timeoutMs: 240_000 },
   { label: 'World-CPI-Eurostat', script: 'seed-world-cpi-eurostat.mjs', seedMetaKey: 'economic:world-cpi-eurostat', canonicalKey: 'economic:world-cpi:eurostat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-eurostat', intervalMs: DAY, timeoutMs: 180_000 },
-  { label: 'World-CPI-OECD', script: 'seed-world-cpi-oecd.mjs', seedMetaKey: 'economic:world-cpi-oecd', canonicalKey: 'economic:world-cpi:oecd:v1', completionMetaKey: 'seed-completion:economic:world-cpi-oecd', intervalMs: DAY, timeoutMs: 240_000 },
   { label: 'World-CPI-JP', script: 'seed-world-cpi-estat.mjs', requiredEnv: ['ESTAT_APPID'], seedMetaKey: 'economic:world-cpi-estat', canonicalKey: 'economic:world-cpi:estat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-estat', intervalMs: DAY, timeoutMs: 120_000 },
   { label: 'World-CPI-AU', script: 'seed-world-cpi-abs.mjs', seedMetaKey: 'economic:world-cpi-abs', canonicalKey: 'economic:world-cpi:abs:v1', completionMetaKey: 'seed-completion:economic:world-cpi-abs', intervalMs: DAY, timeoutMs: 120_000 },
+  // #9841: independent source jobs retain last-good data on report failures.
+  // Each timeout is the source's fetchBudgetMs plus 15s for the last-good snapshot read
+  // (FOOD_FETCH_MARGIN_MS) plus runSeed's 40s publish reserve, so the section timeout never
+  // cuts the fetch phase short of its own collection budget.
+  { label: 'Food-PIHPS', script: 'seed-food-prices-pihps.mjs', seedMetaKey: 'economic:food-prices-pihps', canonicalKey: 'economic:food-prices:pihps:v1', completionMetaKey: 'seed-completion:economic:food-prices-pihps', intervalMs: DAY, timeoutMs: 145_000 },
+  { label: 'Food-PBS', script: 'seed-food-prices-pbs.mjs', seedMetaKey: 'economic:food-prices-pbs', canonicalKey: 'economic:food-prices:pbs:v1', completionMetaKey: 'seed-completion:economic:food-prices-pbs', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-DA', script: 'seed-food-prices-da.mjs', seedMetaKey: 'economic:food-prices-da', canonicalKey: 'economic:food-prices:da:v1', completionMetaKey: 'seed-completion:economic:food-prices-da', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-CBSL', script: 'seed-food-prices-cbsl.mjs', seedMetaKey: 'economic:food-prices-cbsl', canonicalKey: 'economic:food-prices:cbsl:v1', completionMetaKey: 'seed-completion:economic:food-prices-cbsl', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-SNIIM', script: 'seed-food-prices-sniim.mjs', seedMetaKey: 'economic:food-prices-sniim', canonicalKey: 'economic:food-prices:sniim:v1', completionMetaKey: 'seed-completion:economic:food-prices-sniim', intervalMs: DAY, timeoutMs: 145_000 },
+  { label: 'Food-GIEWS', script: 'seed-food-prices-giews.mjs', seedMetaKey: 'economic:food-prices-giews', canonicalKey: 'economic:food-prices:giews:v1', completionMetaKey: 'seed-completion:economic:food-prices-giews', intervalMs: DAY, timeoutMs: 285_000 },
+  { label: 'Food-ONAGRI', script: 'seed-food-prices-onagri.mjs', seedMetaKey: 'economic:food-prices-onagri', canonicalKey: 'economic:food-prices:onagri:v1', completionMetaKey: 'seed-completion:economic:food-prices-onagri', intervalMs: DAY, timeoutMs: 85_000 },
+  { label: 'Food-NABC', script: 'seed-food-prices-nabc.mjs', seedMetaKey: 'economic:food-prices-nabc', canonicalKey: 'economic:food-prices:nabc:v1', completionMetaKey: 'seed-completion:economic:food-prices-nabc', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-NSCKG', script: 'seed-food-prices-nsckg.mjs', seedMetaKey: 'economic:food-prices-nsckg', canonicalKey: 'economic:food-prices:nsckg:v1', completionMetaKey: 'seed-completion:economic:food-prices-nsckg', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-STATKZ', script: 'seed-food-prices-statkz.mjs', seedMetaKey: 'economic:food-prices-statkz', canonicalKey: 'economic:food-prices:statkz:v1', completionMetaKey: 'seed-completion:economic:food-prices-statkz', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-STATUZ', script: 'seed-food-prices-statuz.mjs', seedMetaKey: 'economic:food-prices-statuz', canonicalKey: 'economic:food-prices:statuz:v1', completionMetaKey: 'seed-completion:economic:food-prices-statuz', intervalMs: DAY, timeoutMs: 85_000 },
+  { label: 'Food-MAGA', script: 'seed-food-prices-maga.mjs', seedMetaKey: 'economic:food-prices-maga', canonicalKey: 'economic:food-prices:maga:v1', completionMetaKey: 'seed-completion:economic:food-prices-maga', intervalMs: DAY, timeoutMs: 85_000 },
+  { label: 'Food-OCPV', script: 'seed-food-prices-ocpv.mjs', seedMetaKey: 'economic:food-prices-ocpv', canonicalKey: 'economic:food-prices:ocpv:v1', completionMetaKey: 'seed-completion:economic:food-prices-ocpv', intervalMs: DAY, timeoutMs: 145_000 },
+  { label: 'Food-SIMA', script: 'seed-food-prices-sima.mjs', seedMetaKey: 'economic:food-prices-sima', canonicalKey: 'economic:food-prices:sima:v1', completionMetaKey: 'seed-completion:economic:food-prices-sima', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-MIT', script: 'seed-food-prices-mit.mjs', seedMetaKey: 'economic:food-prices-mit', canonicalKey: 'economic:food-prices:mit:v1', completionMetaKey: 'seed-completion:economic:food-prices-mit', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-UCDA', script: 'seed-food-prices-ucda.mjs', seedMetaKey: 'economic:food-prices-ucda', canonicalKey: 'economic:food-prices:ucda:v1', completionMetaKey: 'seed-completion:economic:food-prices-ucda', intervalMs: DAY, timeoutMs: 145_000 },
+  { label: 'Food-AMMAN', script: 'seed-food-prices-amman.mjs', seedMetaKey: 'economic:food-prices-amman', canonicalKey: 'economic:food-prices:amman:v1', completionMetaKey: 'seed-completion:economic:food-prices-amman', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-TCB', script: 'seed-food-prices-tcb.mjs', seedMetaKey: 'economic:food-prices-tcb', canonicalKey: 'economic:food-prices:tcb:v1', completionMetaKey: 'seed-completion:economic:food-prices-tcb', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-MADR', script: 'seed-food-prices-madr.mjs', seedMetaKey: 'economic:food-prices-madr', canonicalKey: 'economic:food-prices:madr:v1', completionMetaKey: 'seed-completion:economic:food-prices-madr', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-NSOMN', script: 'seed-food-prices-nsomn.mjs', seedMetaKey: 'economic:food-prices-nsomn', canonicalKey: 'economic:food-prices:nsomn:v1', completionMetaKey: 'seed-completion:economic:food-prices-nsomn', intervalMs: DAY, timeoutMs: 85_000 },
+
 ];
 
 // Education is normally last so a persistent failure in the new flag-dark

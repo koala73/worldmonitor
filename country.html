@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <meta name="referrer" content="no-referrer" />
+  <title>WorldMonitor country brief</title>
+</head>
+<body class="country-plugin-body">
+  <main id="countryRoot">
+    <form id="countryControls"><label>Country <input name="country" aria-label="Country name or code" required maxlength="100" placeholder="USA, Ukraine, China…" /></label><button type="button" id="openCountry">Open country</button><button type="button" id="refreshCountry">Refresh country</button><button type="button" id="refreshAssessment" title="Generate a fresh AI assessment. Uses assessment quota.">New AI assessment</button></form>
+    <div role="status" id="countryUsage" hidden></div>
+    <div role="status" id="countryStatus">Connecting to WorldMonitor…</div>
+  </main>
+  <script type="module" src="/src/plugin-country-main.ts"></script>
+</body>
+</html>

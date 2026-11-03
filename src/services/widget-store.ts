@@ -175,7 +175,7 @@ function migrateLegacyKeyStorage(): void {
   widgetSessionHint = !!widgetKey;
   proSessionHint = !!proKey;
   void migrateLegacyKeysToHttpOnlySession({ widgetKey, proKey })
-    .catch(() => { /* retry on next boot; keep legacy storage until success */ });
+    .catch(() => { /* retry on next boot; a transport failure keeps legacy storage */ });
 }
 
 export async function setWidgetKey(key: string): Promise<boolean> {

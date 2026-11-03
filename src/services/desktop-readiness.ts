@@ -21,7 +21,6 @@ export interface DesktopReadinessCheck {
 
 const keyBackedFeatures: RuntimeFeatureId[] = [
   'aiOllama',
-  'aiGroq',
   'aiOpenRouter',
   'economicFred',
   'internetOutages',
@@ -62,11 +61,7 @@ export const DESKTOP_PARITY_FEATURES: DesktopParityFeature[] = [
     id: 'strategic-risk',
     panel: 'StrategicRiskPanel',
     serviceFiles: ['src/services/cached-risk-scores.ts'],
-    // The sebuf RPC behind cached-risk-scores.ts (IntelligenceServiceClient.
-    // getRiskScores). This entry kept citing the pre-sebuf edge route and its
-    // handler file long after the gateway split deleted both, and the string
-    // surfaced in Service Status (#5910). tests/desktop-readiness-registry-
-    // paths.test.mjs now pins every cited path to a file that exists.
+    // cached-risk-scores.ts calls the intelligence RPC through its generated client.
     apiRoutes: ['/api/intelligence/v1/get-risk-scores'],
     apiHandlers: ['server/worldmonitor/intelligence/v1/get-risk-scores.ts'],
     locality: 'api-key',
@@ -136,7 +131,7 @@ export function getDesktopReadinessChecks(localBackendEnabled: boolean): Desktop
     { id: 'startup', label: 'Desktop startup + sidecar API health', ready: localBackendEnabled },
     { id: 'map', label: 'Map rendering (local layers + static geo assets)', ready: true },
     { id: 'core-intel', label: 'Core intelligence panels (Live News, Monitor, Strategic Risk)', ready: true },
-    { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiOllama') || isFeatureAvailable('aiGroq') || isFeatureAvailable('aiOpenRouter') },
+    { id: 'summaries', label: 'Summaries (provider-backed or browser fallback)', ready: isFeatureAvailable('aiOllama') || isFeatureAvailable('aiOpenRouter') },
     { id: 'market', label: 'Market panel live data paths', ready: true },
     { id: 'live-tracking', label: 'At least one live-tracking mode (AIS or OpenSky)', ready: liveTrackingReady },
   ];

@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// SubmitErrorReportRequest is a reader's report that a WorldMonitor label or story is wrong. Stored for review; never applied automatically.
+message SubmitErrorReportRequest {
+  // What is wrong, in the reader's words.
+  string message = 1 [
+    (buf.validate.field).string.min_len = 10,
+    (buf.validate.field).string.max_len = 2000
+  ];
+  // Story identity hash the report concerns, when known (64 hex characters).
+  string story_id = 2 [(buf.validate.field).string.max_len = 64];
+  // Article or WorldMonitor URL the report concerns, when known.
+  string url = 3 [(buf.validate.field).string.max_len = 2048];
+  // Optional email for a reply. Never published.
+  string contact = 4 [(buf.validate.field).string.max_len = 320];
+  // Honeypot. Leave empty: a filled value is accepted and discarded.
+  string website = 5;
+}
+
+// SubmitErrorReportResponse acknowledges a stored report.
+message SubmitErrorReportResponse {
+  // received | queue-full.
+  string status = 1;
+  // Report id, empty unless received.
+  string report_id = 2;
+}
+
+// ErrorReport is one stored report as an operator sees it.
+message ErrorReport {
+  // Report id.
+  string id = 1;
+  // pending | accepted | rejected.
+  string status = 2;
+  // Reader's message.
+  string message = 3;
+  // Story identity hash, if given.
+  string story_id = 4;
+  // URL, if given.
+  string url = 5;
+  // Reply email, if given.
+  string contact = 6;
+  // Submission time, Unix epoch milliseconds.
+  int64 created_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Review time, Unix epoch milliseconds; 0 while pending.
+  int64 reviewed_at = 8 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Operator's public note, published with an accepted report.
+  string public_note = 9;
+}
+
+// ListErrorReportsRequest selects reports for review. Requires the X-Trust-Review-Key header.
+message ListErrorReportsRequest {
+  // pending (default) | reviewed.
+  string status = 1 [
+    (sebuf.http.query) = { name: "status" },
+    (buf.validate.field).string.max_len = 16
+  ];
+}
+
+// ListErrorReportsResponse lists reports, oldest pending first or newest reviewed first.
+message ListErrorReportsResponse {
+  // Reports.
+  repeated ErrorReport reports = 1;
+  // ok | unavailable.
+  string state = 2;
+}
+
+// ReviewErrorReportRequest accepts or rejects one report. Requires the X-Trust-Review-Key header.
+message ReviewErrorReportRequest {
+  // Report id.
+  string report_id = 1 [(buf.validate.field).string.min_len = 1, (buf.validate.field).string.max_len = 64];
+  // accept | reject.
+  string decision = 2 [(buf.validate.field).string.max_len = 16];
+  // Public note. Required to accept: it is what the label log publishes.
+  string public_note = 3 [(buf.validate.field).string.max_len = 500];
+}
+
+// ReviewErrorReportResponse returns the reviewed report.
+message ReviewErrorReportResponse {
+  // The report after review.
+  ErrorReport report = 1;
+}

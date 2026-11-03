@@ -1,10 +1,10 @@
 import { v } from "convex/values";
-import { internalAction, internalQuery } from "./_generated/server";
+import { internalAction, internalQuery, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { PRODUCT_CATALOG } from "./config/productCatalog";
 import { MAX_EMAIL_ATTEMPTS } from "./apiPlanLimitNotices";
+import { ResendSendError, sendResendEmail } from "./lib/resendEmail";
 
-const RESEND_URL = "https://api.resend.com/emails";
 const FROM = "World Monitor <noreply@worldmonitor.app>";
 const SUPPORT_EMAIL = "support@worldmonitor.app";
 const MAX_FAILURE_MESSAGES = 3;
@@ -123,24 +123,31 @@ function noticeHtml(notice: NoticeEmailRow): string {
 </div>`;
 }
 
-async function sendEmail(apiKey: string, to: string, subject: string, html: string): Promise<void> {
-  const res = await fetch(RESEND_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+// Shared helper re-checks suppression at send time (getNoticeRecipient
+// already filters, so this only closes the read-to-send race).
+async function sendEmail(
+  ctx: Pick<ActionCtx, "runQuery">,
+  apiKey: string,
+  to: string,
+  subject: string,
+  html: string,
+): Promise<boolean> {
+  try {
+    const result = await sendResendEmail(ctx, {
+      apiKey,
       from: FROM,
-      to: [to],
+      to,
       subject,
       html,
-      reply_to: SUPPORT_EMAIL,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`[apiPlanLimitEmails] Resend ${res.status}: ${body}`);
+      replyTo: SUPPORT_EMAIL,
+      purpose: "transactional",
+    });
+    return result.sent;
+  } catch (err) {
+    if (err instanceof ResendSendError) {
+      throw new Error(`[apiPlanLimitEmails] Resend ${err.status}: ${err.body}`);
+    }
+    throw err;
   }
 }
 
@@ -231,12 +238,13 @@ export const sendDuePlanLimitEmails = internalAction({
         continue;
       }
       try {
-        await sendEmail(apiKey, recipient.email, noticeSubject(notice), noticeHtml(notice));
+        const sent = await sendEmail(ctx, apiKey, recipient.email, noticeSubject(notice), noticeHtml(notice));
         await ctx.runMutation(
           (internal as any).apiPlanLimitNotices.markEmailStatus,
-          { noticeId: notice._id, emailStatus: "sent", emailedAt: now },
+          { noticeId: notice._id, emailStatus: sent ? "sent" : "suppressed", emailedAt: now },
         );
-        summary.sent += 1;
+        if (sent) summary.sent += 1;
+        else summary.skipped += 1;
       } catch (err) {
         // Count the attempt so a permanently undeliverable recipient stops
         // being retried after MAX_EMAIL_ATTEMPTS (listEmailDue drops it),

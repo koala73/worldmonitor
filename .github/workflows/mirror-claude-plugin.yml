@@ -1,0 +1,70 @@
+name: Mirror Claude Plugin
+
+# Copies claude-plugin/ to koala73/worldmonitor-plugins, the repository the
+# Claude directory tracks. The directory cannot read this repository: its
+# validator rejects archives over 50 MiB compressed. The directory scans each
+# new commit on the mirror's main branch and serves passing versions, so this
+# repository stays the only place the plugin is edited and tested
+# (tests/claude-plugin-package.test.mjs).
+#
+# Auth: PLUGINS_MIRROR_DEPLOY_KEY is the private half of a write deploy key
+# installed on the mirror repository only.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'claude-plugin/**'
+      - '.github/workflows/mirror-claude-plugin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-claude-plugin
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: ${{ github.repository == 'koala73/worldmonitor' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Always mirror the current main, not the triggering SHA: a re-run of an
+      # older job would otherwise copy an older bundle over a newer mirror.
+      - name: Check out current main
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Push claude-plugin/ to the mirror
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_MIRROR_DEPLOY_KEY }}
+          # GitHub's published ed25519 host key (docs: githubs-ssh-key-fingerprints).
+          GITHUB_HOST_KEY: github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+        run: |
+          set -euo pipefail
+          test -n "${DEPLOY_KEY}"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${DEPLOY_KEY}" > ~/.ssh/mirror_key
+          chmod 600 ~/.ssh/mirror_key
+          printf '%s\n' "${GITHUB_HOST_KEY}" > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/mirror_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+
+          git clone --depth 1 git@github.com:koala73/worldmonitor-plugins.git mirror
+          rm -rf mirror/claude-plugin
+          cp -R claude-plugin mirror/claude-plugin
+          find mirror/claude-plugin \( -name .DS_Store -o -name Thumbs.db -o -name desktop.ini \) -delete
+
+          cd mirror
+          git add -A claude-plugin
+          if git diff --cached --quiet; then
+            echo "Mirror already matches ${SOURCE_SHA}"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "Mirror claude-plugin/ from koala73/worldmonitor@${SOURCE_SHA}"
+          git push origin HEAD:main

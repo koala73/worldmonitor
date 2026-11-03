@@ -11,8 +11,8 @@ const src = readFileSync(resolve(root, 'src/services/desktop-readiness.ts'), 'ut
 /**
  * #5910: DESKTOP_PARITY_FEATURES is a hand-maintained registry of which
  * service files, RPC routes and handler files back each desktop panel. Its
- * strings surface in the Service Status UI, and nothing checked them against
- * the tree — the strategic-risk entry cited `/api/risk-scores` and
+ * strings should agree with the tree. The strategic-risk entry cited
+ * `/api/risk-scores` and
  * `api/risk-scores.js` long after the gateway split deleted both. Parsed from
  * source (the module imports runtime-config, which reads Tauri globals) so
  * this stays a plain node:test file.

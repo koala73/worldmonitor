@@ -371,3 +371,22 @@ describe('Railway service registry coverage', () => {
     assert.equal(m![1], 'seed-bundle-fake');
   });
 });
+
+// The live audit gives an unregistered service a watch-path contract only when
+// its start command is a seeder (`node seed-*`): it must watch scripts/** and
+// shared/**. Any other live service outside the registry keeps whatever
+// patterns were set by hand, and nothing checks them against its imports.
+// notification-relay (`npm run notification-relay`) watched six paths while
+// seventeen files it requires went unwatched, so fixes to those never deployed (#9265).
+describe('Railway fleet registry coverage', () => {
+  it('registers every live non-seeder service', () => {
+    const fleet = JSON.parse(
+      readFileSync(resolve(repoRoot, 'scripts/railway-native-autodeploy-fleet.json'), 'utf8'),
+    ) as { services: { id: string; name: string }[] };
+    const registered = new Set(registry.map((entry) => entry.service));
+    const unregistered = fleet.services
+      .map((service) => service.name)
+      .filter((name) => !name.startsWith('seed-') && !registered.has(name));
+    assert.deepEqual(unregistered, [], 'register these services in scripts/railway-services.json');
+  });
+});

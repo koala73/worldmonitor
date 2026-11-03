@@ -129,7 +129,13 @@ export default async function handler(
   ) {
     return htmlResponse(req, 404, NOT_FOUND_PAGE);
   }
-  const rawHash = decodeURIComponent(parts[3] ?? '');
+  // A malformed percent-escape is a bad link, not a server fault.
+  let rawHash: string;
+  try {
+    rawHash = decodeURIComponent(parts[3] ?? '');
+  } catch {
+    return htmlResponse(req, 404, NOT_FOUND_PAGE);
+  }
   if (!isValidShareHashShape(rawHash)) {
     return htmlResponse(req, 404, NOT_FOUND_PAGE);
   }

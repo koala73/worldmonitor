@@ -35,10 +35,6 @@ const scanSrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'lib', 'watchlist-story-scan.mjs'),
   'utf-8',
 );
-const relaySrc = readFileSync(
-  resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
-  'utf-8',
-);
 
 const DICT = buildTickerDictionary([
   // 'Microsoft' (distinctive) drives the builder fixtures; 'Apple' is an
@@ -193,12 +189,8 @@ describe('resolveWatchlistScoreMin — env threshold', () => {
     assert.equal(DEFAULT_WATCHLIST_STORY_SCORE_MIN, 69);
     assert.equal(resolveWatchlistScoreMin({}), 69);
     assert.equal(resolveWatchlistScoreMin(undefined), 69);
-    // Lock the alignment against the relay source itself.
-    assert.match(
-      relaySrc,
-      /:\s*effectiveSensitivity === 'high' \? 69/,
-      "relay 'high' threshold moved — realign DEFAULT_WATCHLIST_STORY_SCORE_MIN",
-    );
+    // Alignment with the relay's runtime 'high' threshold is asserted in
+    // tests/notification-relay-should-notify.test.mjs.
   });
 
   it('honors WATCHLIST_STORY_SCORE_MIN when a valid non-negative integer', () => {

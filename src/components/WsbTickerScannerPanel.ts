@@ -123,7 +123,7 @@ export class WsbTickerScannerPanel extends Panel {
     }).join('');
 
     this.setSafeContent(unsafeRawHtml(`
-      <div style="overflow-x:auto;overflow-y:auto;max-height:480px">
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title" style="overflow-y:auto;max-height:480px">
         <table style="width:100%;border-collapse:collapse;border-spacing:0">
           <thead>
             <tr style="border-bottom:1px solid var(--border)">

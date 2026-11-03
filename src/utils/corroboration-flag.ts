@@ -1,6 +1,12 @@
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import type { Corroboration } from '../../server/_shared/corroboration';
+import type { NewsCorroboration } from '@/types';
+
+// NewsCorroboration is the types-layer copy of Corroboration; each must accept the other.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const corroborationTypesMatch: Same<NewsCorroboration, Corroboration> = true;
+void corroborationTypesMatch;
 
 // The browser's one entry point to the rule, so components never reach into server/.
 export {
@@ -35,6 +41,25 @@ export function corroborationFlag(c: Corroboration): CorroborationFlag | null {
     case 'unknown':
       return null;
   }
+}
+
+/**
+ * #9213: a label for every known state, for surfaces with no separate count
+ * badge (map popups and tooltips). null for unknown.
+ */
+export function corroborationLabel(c: Corroboration): CorroborationFlag | null {
+  if (c.state === 'corroborated') {
+    return { text: t('components.corroboration.rosterPublishers', { count: c.publishers }), hint: '' };
+  }
+  return corroborationFlag(c);
+}
+
+/** corroborationLabel as escaped pill markup; '' for unknown or absent. */
+export function corroborationLabelHtml(c: Corroboration | undefined): string {
+  const label = c ? corroborationLabel(c) : null;
+  if (!label) return '';
+  const title = label.hint ? ` title="${escapeHtml(label.hint)}"` : '';
+  return `<span class="corroboration-flag"${title}>${escapeHtml(label.text)}</span>`;
 }
 
 /** The pill as escaped markup for string-template renderers; '' when there is nothing to disclose. */

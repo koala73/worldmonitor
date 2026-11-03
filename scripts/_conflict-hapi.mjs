@@ -130,7 +130,17 @@ export function selectHapiHdxCsvResources(resources, { nowMs = Date.now() } = {}
   return selected;
 }
 
-export async function readBoundedHapiHdxText(response, maxResponseBytes) {
+export async function readBoundedHapiHdxText(response, maxResponseBytes, observation) {
+  const startedAt = observation?.readElapsedMs();
+  const recordChunk = (bytes) => {
+    if (!observation) return;
+    const elapsed = Math.max(0, Math.round(observation.readElapsedMs() - startedAt));
+    observation.progress.applicationBytes = (observation.progress.applicationBytes ?? 0) + bytes;
+    if (bytes > 0) {
+      observation.progress.firstChunkElapsedMs ??= elapsed;
+      observation.progress.lastChunkElapsedMs = elapsed;
+    }
+  };
   const contentLength = response.headers.get('content-length');
   if (
     contentLength != null
@@ -145,6 +155,8 @@ export async function readBoundedHapiHdxText(response, maxResponseBytes) {
 
   if (!response.body?.getReader) {
     const body = await response.arrayBuffer();
+    recordChunk(body.byteLength);
+    if (observation) observation.progress.bodyComplete = true;
     if (body.byteLength > maxResponseBytes) {
       throw hapiHdxError(
         `HAPI HDX response exceeds ${maxResponseBytes} bytes`,
@@ -155,12 +167,17 @@ export async function readBoundedHapiHdxText(response, maxResponseBytes) {
   }
 
   const reader = response.body.getReader();
+  if (observation) observation.progress.applicationBytes = 0;
   const chunks = [];
   let totalBytes = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        if (observation) observation.progress.bodyComplete = true;
+        break;
+      }
+      recordChunk(value.byteLength);
       totalBytes += value.byteLength;
       if (totalBytes > maxResponseBytes) {
         await reader.cancel().catch(() => {});
@@ -255,6 +272,38 @@ export async function fetchHapiHdxSnapshotRows({
     },
     signal: createTimeoutSignal(timeoutMs),
   });
+  const readBody = (stage, response, maxBytes, resource = {}) => atStage(stage, async () => {
+    const startedAt = readElapsedMs();
+    // Fetch delivers decoded application bytes, not wire bytes. An unstreamed failure is unknown.
+    const progress = {
+      applicationBytes: null,
+      firstChunkElapsedMs: null,
+      lastChunkElapsedMs: null,
+      bodyComplete: false,
+    };
+    try {
+      return await readBoundedHapiHdxText(response, maxBytes, { progress, readElapsedMs });
+    } catch (error) {
+      const rawLength = response.headers.get('content-length');
+      const length = rawLength !== null && /^\d+$/.test(rawLength) ? Number(rawLength) : NaN;
+      const encoding = response.headers.get('content-encoding')?.toLowerCase();
+      const reason = hapiHdxFailureReason(error);
+      console.warn(`  HAPI HDX transfer ${JSON.stringify({
+        stage,
+        resourceYear: resource.year ?? null,
+        resourceId: resource.url?.match(/\/resource\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\//i)?.[1] ?? null,
+        status: Number.isInteger(response.status) ? response.status : null,
+        contentLength: Number.isSafeInteger(length) && length >= 0 ? length : null,
+        contentEncoding: ['gzip', 'br', 'deflate', 'identity'].includes(encoding) ? encoding : null,
+        reason: ['HDX_TIMEOUT', 'HDX_DNS_ERROR', 'RESPONSE_TOO_LARGE'].includes(reason) ? reason : 'HDX_FETCH_FAILED',
+        transportCode: ['UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET', 'ECONNRESET', 'ETIMEDOUT', 'Z_DATA_ERROR']
+          .find((code) => code === error?.code || code === error?.cause?.code) ?? null,
+        elapsedMs: Math.max(0, Math.round(readElapsedMs() - startedAt)),
+        ...progress,
+      })}`);
+      throw error;
+    }
+  });
   const metadataResponse = await atStage('metadata_headers', () => fetchFn(
     HAPI_HDX_PACKAGE_URL,
     requestOptions('application/json', HAPI_HDX_METADATA_TIMEOUT_MS),
@@ -266,10 +315,10 @@ export async function fetchHapiHdxSnapshotRows({
     });
   }
 
-  const metadataText = await atStage('metadata_body', () => readBoundedHapiHdxText(
+  const metadataText = await readBody('metadata_body',
     metadataResponse,
     HAPI_HDX_METADATA_MAX_RESPONSE_BYTES,
-  ));
+  );
   let metadata;
   try {
     metadata = JSON.parse(metadataText);
@@ -307,9 +356,7 @@ export async function fetchHapiHdxSnapshotRows({
         reasonCode: 'HDX_CSV_INVALID',
       });
     }
-    const csvText = await atStage('csv_body', () => readBoundedHapiHdxText(
-      response, HAPI_HDX_MAX_RESPONSE_BYTES,
-    ));
+    const csvText = await readBody('csv_body', response, HAPI_HDX_MAX_RESPONSE_BYTES, resource);
     rows.push(...parseHapiHdxConflictCsv(csvText, { nowMs, countryCodes }));
   }
   return rows;

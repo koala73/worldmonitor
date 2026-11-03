@@ -4,6 +4,7 @@ import {createRedisFetch} from './helpers/fake-upstash-redis.mts';
 import rpc from '../api/infrastructure/v1/[rpc].ts';
 import {issueSessionToken} from '../api/_session.js';
 import {getTemporalBaseline} from '../server/worldmonitor/infrastructure/v1/get-temporal-baseline.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 const PATH='https://api.worldmonitor.app/api/infrastructure/v1/get-temporal-baseline';
 async function setup(t: TestContext) {
   for (const [name, value] of Object.entries({
@@ -65,7 +66,7 @@ test('supported session and enterprise callers cannot select arbitrary baseline 
    const response=await request('?type=military_flights&count=2&region='+encodeURIComponent(region),key);
    assert.equal(response.status,400); assert.match(await response.text(),/region/);
   }
-  await assert.rejects(getTemporalBaseline({} as never,{type:'military_flights',count:2,region}), (error: unknown)=> (error as {statusCode:number}).statusCode===400);
+  await assert.rejects(getTemporalBaseline({} as never,{type:'military_flights',count:2,region}), validationFailure('region', /only global/));
  }
  assert.equal(reads.length,0);
 });

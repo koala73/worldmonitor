@@ -10,7 +10,7 @@ import { publisherFamilyFor, publisherFamilyForDomain } from '../shared/publishe
 import { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl } from '../shared/article-url.js';
 export { AGGREGATOR_LINK_HOSTS, isVerifiableArticleUrl };
 import { validateNoHallucinatedFacts, validateNoHallucinatedProperNouns, validateNoHallucinatedStatusQualifiers } from '../shared/brief-llm-core.js';
-import { evidenceNumbersGrounded, isEvidenceLimitClaim } from '../shared/brief-claim-rules.js';
+import { energyEvidenceGrounded, evidenceNumbersGrounded, isEvidenceLimitClaim } from '../shared/brief-claim-rules.js';
 import { resolveIso2 } from './_country-resolver.mjs';
 import { BRIEF_FIXED_SECTION_HEADINGS, briefSectionKey } from '../shared/brief-sections.js';
 const BRIEF_SECTION_HEADERS = BRIEF_FIXED_SECTION_HEADINGS;
@@ -219,7 +219,7 @@ export function briefCitationGroundingGap(brief, country = {}, { requireHeadline
   const evidenceFormat = Array.isArray(brief.evidence);
   const evidenceById = new Map((evidenceFormat ? brief.evidence : [])
     .filter((item) => typeof item?.id === 'string' && typeof item?.factText === 'string')
-    .map((item) => [item.id, { value: String(item.value ?? ''), factText: comparable(item.factText) }]));
+    .map((item) => [item.id, { kind: item.kind, value: String(item.value ?? ''), factText: item.factText }]));
   let citationCount = 0;
   for (const rawLine of normalizeBriefText(brief.text, country).split('\n')) {
     const line = rawLine.trim();
@@ -230,21 +230,27 @@ export function briefCitationGroundingGap(brief, country = {}, { requireHeadline
     const evidenceIds = [...line.matchAll(/\[(E\d{1,2})\]/g)].map((match) => match[1]);
     if (evidenceIds.some((id) => !evidenceById.has(id))) return 'unknown evidence citation';
     if (!requireHeadlineCitation) citationCount += evidenceIds.length;
-    const claim = comparable(line.replace(/\[\d+\]/g, '').replace(/\[E\d{1,2}\]/g, '')
+    const claimText = line.replace(/\[\d+\]/g, '').replace(/\[E\d{1,2}\]/g, '')
       .replace(/^(?:[•-]\s*|\*\s+)/, '')
       .replace(/^NEXT \d+H:\s*/i, '')
-      .replace(/^WHAT THIS MEANS FOR\s+/i, '').trim());
+      .replace(/^WHAT THIS MEANS FOR\s+/i, '').trim();
+    const claim = comparable(claimText);
     if (!claim) return 'empty cited claim';
     if (evidenceFormat && indexes.length + evidenceIds.length > 0) {
       // One claim over everything it cites, exactly as the server validated it.
       if (isEvidenceLimitClaim(claim)) return 'evidence-limit claim';
       const cited = evidenceIds.map((id) => evidenceById.get(id));
+      if (!energyEvidenceGrounded(claimText, indexes.length, cited)) return 'energy evidence must stand alone as its complete fact';
       const citedTitles = indexes.map((index) => titles[index - 1]);
-      const grounds = [...citedTitles, ...cited.map((item) => item.factText)];
+      const grounds = [...citedTitles, ...cited.map((item) => comparable(item.factText))];
       const names = validateNoHallucinatedProperNouns(claim, grounds.join(' . '), { failClosed: true });
       if (!names.ok) return `citations do not ground ${JSON.stringify(names.hallucinated || [])}`;
+      const citesEnergy = cited.some((item) => item.kind === 'energy');
       const numbersGrounded = cited.length > 0
-        ? evidenceNumbersGrounded(claim, cited)
+        ? evidenceNumbersGrounded(
+          citesEnergy ? claimText : claim,
+          citesEnergy ? cited : cited.map((item) => ({ ...item, factText: comparable(item.factText) })),
+        )
         : validateNoHallucinatedFacts(claim, citedTitles.join(' . ')).ok;
       if (!numbersGrounded) return 'citations do not ground its numbers';
       if (!validateNoHallucinatedStatusQualifiers(claim, grounds).ok) return 'citations do not ground its status qualifier';

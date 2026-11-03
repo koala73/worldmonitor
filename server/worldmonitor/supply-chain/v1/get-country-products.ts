@@ -3,6 +3,7 @@ import type {
   ProductExporter, ExporterScale,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { ValidationError } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { normalizeComtradeProducts, HS4_CODES, HS4_LABELS } from '../../../../scripts/shared/comtrade';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { getCachedJson, getLargeRawJson, logCacheReadError, readCachedJson } from '../../../_shared/redis';
@@ -201,8 +202,10 @@ export async function getCountryProducts(
   req: GetCountryProductsRequest,
 ): Promise<GetCountryProductsResponse> {
   const iso2 = (req.iso2 ?? '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(iso2)) {
-    throw new ValidationError([{ field: 'iso2', description: 'iso2 must be a 2-letter uppercase ISO country code' }]);
+  // The proto checks shape only. An unassigned code such as ZZ would otherwise
+  // read the cache and write an unsupported_reporter sentinel for it.
+  if (!isAssignedCountryCode(iso2)) {
+    throw new ValidationError([{ field: 'iso2', description: 'iso2 must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".' }]);
   }
   const hs4 = req.hs4?.trim();
   if (hs4 && !HS4_CODES.includes(hs4)) {

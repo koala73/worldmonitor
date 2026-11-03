@@ -1,9 +1,8 @@
-import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
-import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
 import { localYmd } from '@/utils/local-date';
 import { unsafeRawHtml } from '@/utils/sanitize';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
+import { EconomicServiceClient, MarketServiceClient } from '@/services/generated-rpc-clients';
 import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 import { LatestRequestGuard } from '@/utils/latest-request-guard';
 import { NQ_EARNINGS_WINDOW_DAYS, NQ_MACRO_WINDOW_DAYS, NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
@@ -16,28 +15,8 @@ import {
 
 export const NQ_CATALYSTS_REQUEST_TIMEOUT_MS = 15_000;
 
-let economicClient: EconomicServiceClient | null = null;
-let marketClient: MarketServiceClient | null = null;
-
-async function getEconomicClient(): Promise<EconomicServiceClient> {
-  if (!economicClient) {
-    const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
-    economicClient = new EconomicServiceClient(getRpcBaseUrl(), {
-      fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-    });
-  }
-  return economicClient;
-}
-
-async function getMarketClient(): Promise<MarketServiceClient> {
-  if (!marketClient) {
-    const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
-    marketClient = new MarketServiceClient(getRpcBaseUrl(), {
-      fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-    });
-  }
-  return marketClient;
-}
+const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
+const getMarketClient = createLazyClient(() => new MarketServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 export class NqCatalystsPanel extends Panel {
   private readonly requestGuard = new LatestRequestGuard();
@@ -70,14 +49,14 @@ export class NqCatalystsPanel extends Panel {
 
     try {
       const [macroSettled, earningsSettled] = await Promise.allSettled([
-        getEconomicClient().then((client) => client.getEconomicCalendar(
+        getEconomicClient().getEconomicCalendar(
           { fromDate: macroFrom, toDate: macroTo },
           { signal: macroSignal },
-        )),
-        getMarketClient().then((client) => client.listEarningsCalendar(
+        ),
+        getMarketClient().listEarningsCalendar(
           { fromDate: earningsFrom, toDate: earningsTo },
           { signal: earningsSignal },
-        )),
+        ),
       ]);
       if (!this.requestGuard.isCurrent(generation) || this.signal.aborted) return false;
 

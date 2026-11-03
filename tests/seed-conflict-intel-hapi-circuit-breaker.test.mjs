@@ -451,7 +451,12 @@ for (const stage of ['metadata_headers', 'metadata_body', 'csv_headers', 'csv_bo
       },
     }), (caught) => caught === error);
     assert.equal(hapiHdxFailureReason(error), 'HDX_TIMEOUT');
-    assert.deepEqual(logs, [[`  HAPI HDX timeout stage=${stage} elapsedMs=${stage.endsWith('headers') ? 7 : 13} reason=HDX_TIMEOUT`]]);
+    assert.deepEqual(logs.filter(([line]) => line.startsWith('  HAPI HDX timeout')), [[`  HAPI HDX timeout stage=${stage} elapsedMs=${stage.endsWith('headers') ? 7 : 13} reason=HDX_TIMEOUT`]]);
+    if (stage.endsWith('body')) {
+      const diagnostic = JSON.parse(logs.find(([line]) => line.startsWith('  HAPI HDX transfer'))[0].slice('  HAPI HDX transfer '.length));
+      assert.equal(diagnostic.applicationBytes, null, 'failed arrayBuffer has unknown progress');
+      assert.doesNotMatch(JSON.stringify(diagnostic), /secret|private/);
+    }
     assert.equal(requests, stage.startsWith('metadata') ? 1 : 2);
     assert.deepEqual(deadlines, stage.startsWith('metadata') ? [60_000] : [60_000, 120_000]);
   });
@@ -483,7 +488,7 @@ test('HAPI HDX diagnoses a streamed CSV timeout and releases its reader', async 
         },
   }), (caught) => caught === error);
   assert.equal(released, true);
-  assert.deepEqual(logs, [['  HAPI HDX timeout stage=csv_body elapsedMs=10 reason=HDX_TIMEOUT']]);
+  assert.deepEqual(logs.filter(([line]) => line.startsWith('  HAPI HDX timeout')), [['  HAPI HDX timeout stage=csv_body elapsedMs=10 reason=HDX_TIMEOUT']]);
 });
 
 test('HAPI HDX does not label non-timeout failures as timeouts', async (t) => {
@@ -495,6 +500,114 @@ test('HAPI HDX does not label non-timeout failures as timeouts', async (t) => {
   assert.deepEqual(logs, []);
   assert.equal(hapiHdxFailureReason(error), 'HDX_DNS_ERROR');
 });
+
+for (const chunks of [0, 2]) {
+  test(`HDX body failure reports ${chunks} chunks without exposing response secrets`, async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (...args) => logs.push(args.join(' ')));
+    const error = Object.assign(new DOMException('secret URL and body', 'TimeoutError'), {
+      cause: Object.assign(new Error('private'), { code: 'UND_ERR_BODY_TIMEOUT' }),
+    });
+    let elapsed = 0;
+    let reads = 0;
+    await assert.rejects(fetchHapiHdxSnapshotRows({
+      nowMs: NOW,
+      readElapsedMs: () => elapsed,
+      fetchFn: async (url) => String(url).includes('/api/3/')
+        ? Response.json(hapiHdxMetadata())
+        : {
+            ok: true, status: 200,
+            headers: new Headers({ 'content-length': '1234', 'content-encoding': 'gzip', 'set-cookie': 'secret' }),
+            body: { getReader: () => ({
+              read: async () => {
+                elapsed += 5;
+                if (reads++ < chunks) return { done: false, value: new Uint8Array(3) };
+                throw error;
+              },
+              releaseLock() {},
+            }) },
+          },
+    }), (caught) => caught === error);
+    const line = logs.find((entry) => entry.startsWith('  HAPI HDX transfer '));
+    assert.ok(line, 'failed body must expose bounded transfer progress');
+    const diagnostic = JSON.parse(line.slice('  HAPI HDX transfer '.length));
+    assert.equal(diagnostic.stage, 'csv_body');
+    assert.equal(diagnostic.resourceYear, 2026);
+    assert.equal(diagnostic.status, 200);
+    assert.equal(diagnostic.contentLength, 1234);
+    assert.equal(diagnostic.contentEncoding, 'gzip');
+    assert.equal(diagnostic.applicationBytes, chunks * 3);
+    assert.equal(diagnostic.firstChunkElapsedMs, chunks ? 5 : null);
+    assert.equal(diagnostic.lastChunkElapsedMs, chunks ? 10 : null);
+    assert.equal(diagnostic.bodyComplete, false);
+    assert.equal(diagnostic.elapsedMs, (chunks + 1) * 5);
+    assert.equal(diagnostic.transportCode, 'UND_ERR_BODY_TIMEOUT');
+    assert.doesNotMatch(line, /secret|cookie|https:/);
+  });
+}
+
+test('HDX transfer diagnostics reject arbitrary header and error text', async (t) => {
+  const logs = [];
+  t.mock.method(console, 'warn', (...args) => logs.push(args.join(' ')));
+  const error = Object.assign(new Error('secret'), { reasonCode: 'private-token' });
+  await assert.rejects(fetchHapiHdxSnapshotRows({
+    nowMs: NOW,
+    fetchFn: async (url) => String(url).includes('/api/3/')
+      ? Response.json(hapiHdxMetadata())
+      : { ok: true, status: 200,
+          headers: new Headers({ 'content-length': 'secret', 'content-encoding': 'private' }),
+          arrayBuffer: async () => { throw error; },
+        },
+  }), (caught) => caught === error);
+  const diagnostic = JSON.parse(logs.find((line) => line.startsWith('  HAPI HDX transfer ')).slice('  HAPI HDX transfer '.length));
+  assert.equal(diagnostic.reason, 'HDX_FETCH_FAILED');
+  assert.equal(diagnostic.contentLength, null);
+  assert.equal(diagnostic.contentEncoding, null);
+  assert.equal(diagnostic.applicationBytes, null);
+  assert.doesNotMatch(JSON.stringify(diagnostic), /secret|private/);
+});
+
+for (const [retryAfter, expectedSeconds, expectedDate] of [
+  ['120', 120, null],
+  ['Sun, 26 Jul 2026 15:30:00 GMT', null, '2026-07-26T15:30:00.000Z'],
+  ['Sunday, 26-Jul-26 15:30:00 GMT', null, '2026-07-26T15:30:00.000Z'],
+  ['Sun Jul 26 15:30:00 2026', null, '2026-07-26T15:30:00.000Z'],
+  ['Sun Jul  5 15:30:00 2026', null, '2026-07-05T15:30:00.000Z'],
+  ['secret https://private.invalid', null, null],
+]) {
+  test(`HAPI rejection diagnoses Retry-After ${expectedSeconds ?? expectedDate ?? 'invalid'} without changing cooldown`, async (t) => {
+    const logs = [];
+    t.mock.method(console, 'warn', (...args) => logs.push(args.join(' ')));
+    let backoff;
+    let calls = 0;
+    await fetchAllHumanitarianSummaries({
+      now: () => NOW,
+      countryCodes: ['SD'],
+      loadPreviousMarker: async () => null,
+      loadFailureBackoff: async () => null,
+      snapshotFetchFn: async () => new Response('', { status: 503 }),
+      fetchFn: async () => {
+        calls += 1;
+        return new Response('Too Many Requests', { status: 429, headers: {
+          'retry-after': retryAfter, 'set-cookie': 'secret',
+        } });
+      },
+      writeFailureBackoff: async (value) => { backoff = value; },
+      writeFailureMeta: async () => {},
+      preserveLastGood: async () => {},
+    });
+    const line = logs.find((entry) => entry.startsWith('  HAPI API rejection '));
+    assert.ok(line, 'rejection must expose safe retry advice');
+    const diagnostic = JSON.parse(line.slice('  HAPI API rejection '.length));
+    assert.deepEqual(diagnostic, {
+      status: 429, country: 'global', adminLevel: '0', offset: 0,
+      retryAfterSeconds: expectedSeconds, retryAfterAt: expectedDate,
+    });
+    assert.doesNotMatch(line, /secret|cookie|https:/);
+    assert.equal(calls, 1);
+    assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+  });
+}
 
 test('HAPI HDX metadata identity avoids the Railway WAF challenge', async () => {
   let metadataCalls = 0;

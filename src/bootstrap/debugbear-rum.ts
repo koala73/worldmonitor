@@ -19,12 +19,13 @@ export const DEBUGBEAR_RUM_HOSTS = new Set([
 
 import type { BootstrapTransferRumSample } from './bootstrap-transfer-rum';
 import { whenUrlFreeOfSensitiveParams } from '../../shared/sensitive-url-params';
+import { getDeviceTier } from '../utils/device-tier';
 
 type DebugBearRumEvent =
   | ['presampling', number]
   | ['error' | 'unhandledrejection', Event]
   | ['metric1' | 'metric2' | 'metric3', number]
-  | ['tag1' | 'tag2' | 'tag3', string];
+  | ['tag1' | 'tag2' | 'tag3' | 'tag4', string];
 
 declare global {
   interface Window {
@@ -81,6 +82,9 @@ export function initDebugBearRum(): void {
   const queue = window.dbbRum ?? [];
   window.dbbRum = queue;
   queue.push(['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
+  // tag4 = device tier, so low-end-mode INP can be compared against the
+  // pre-change baseline (tags 1-3 belong to the bootstrap transfer sample).
+  queue.push(['tag4', getDeviceTier()]);
 
   const target = window;
   const onError = (event: Event) => {

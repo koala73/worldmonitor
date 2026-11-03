@@ -7,6 +7,7 @@ import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { LatestRequestGuard } from '@/utils/latest-request-guard';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 let modalEl: HTMLElement | null = null;
@@ -29,6 +30,8 @@ export function openStoryModal(data: StoryData): void {
   modalEl.className = 'story-modal-overlay';
   modalEl.setAttribute('role', 'dialog');
   modalEl.setAttribute('aria-modal', 'true');
+  // A generated share card; a reload regenerates it from the same data.
+  declareOverlay(modalEl, { reload: 'safe' });
   setTrustedHtml(modalEl, trustedHtml(`
     <div class="story-modal">
       <button class="story-close-x" aria-label="${t('modals.story.close')}">

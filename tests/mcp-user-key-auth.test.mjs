@@ -28,7 +28,7 @@ function makeUserKeyDeps(overrides = {}) {
     validateUserApiKey: async (key) => (key === USER_KEY ? { userId: USER_KEY_USER_ID } : null),
     getEntitlements: async () => ({
       planKey: 'api_starter',
-      features: { tier: 2, mcpAccess: true },
+      features: { tier: 2, mcpAccess: true, apiAccess: true },
       validUntil: Date.now() + 86_400_000,
     }),
     ...overrides,
@@ -122,6 +122,48 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
     assert.equal(pipe.count, 1, 'user_key tools/call must consume the daily quota (no unmetered cache-tool loophole)');
   });
 
+  it('serves the archived ordinary market response within budget and preserves API-key panel allowance reuse', async () => {
+    const { readFileSync } = await import('node:fs');
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/jmespath-samples/fat-get-market-data.response.json', import.meta.url), 'utf8'));
+    const original = structuredClone(fixture);
+    const keyToSection = {
+      'market:stocks-bootstrap:v1': 'stocks-bootstrap', 'market:commodities-bootstrap:v1': 'commodities-bootstrap',
+      'market:physical-premium:v1': 'physical-premium', 'market:physical-divergence:v1': 'physical-divergence',
+      'market:crypto:v1': 'crypto', 'market:sectors:v2': 'sectors', 'market:etf-flows:v1': 'etf-flows',
+      'market:gulf-quotes:v1': 'gulf-quotes', 'market:fear-greed:v1': 'fear-greed',
+    };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://api-market-fixture.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    const reads = [];
+    globalThis.fetch = async input => {
+      const url = new URL(String(input));
+      assert.equal(url.origin, 'https://api-market-fixture.invalid');
+      assert.ok(url.pathname.startsWith('/get/'));
+      const key = decodeURIComponent(url.pathname.slice(5));
+      assert.ok(Object.hasOwn(keyToSection, key) || ['seed-meta:market:stocks', 'seed-meta:market:sectors'].includes(key));
+      reads.push(key);
+      return Response.json({ result: JSON.stringify(Object.hasOwn(keyToSection, key) ? fixture.data[keyToSection[key]] : { fetchedAt: Date.now() }) });
+    };
+    const { deps, pipe } = makeUserKeyDeps();
+    for (const reused of [false, true]) {
+      const response = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      const value = body.result.structuredContent;
+      assert.equal(value._budget_exceeded, undefined);
+      assert.ok(Buffer.byteLength(body.result.content[0].text) <= 131072);
+      assert.ok(value.data['stocks-bootstrap'].quotes.length > 0);
+      assert.ok(value.data['commodities-bootstrap'].quotes.length > 0);
+      assert.equal(value.transportCoverage.count_scope, 'post_filter_snapshot');
+      assert.equal(value.panelRequest.panel, 'markets');
+      assert.equal(value.panelRequest.reused, reused);
+      assert.equal(pipe.count, 1);
+    }
+    assert.equal(reads.length, 22);
+    assert.equal(pipe.ops.flat().filter(operation => operation[0] === 'SET' && String(operation[1]).includes(':markets:')).length, 0);
+    assert.deepEqual(fixture, original);
+  });
+
   it('cap: user key with 50 calls today → 51st rejected 429 -32029, counter back at 50', async () => {
     const { deps, pipe } = makeUserKeyDeps({ pipelineOpts: { initialCount: 50 } });
     const res = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
@@ -192,6 +234,55 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
     assert.equal(res.headers.get('Retry-After'), '5');
+  });
+
+  // ── Plan 2026-10-25-001 KTD5 — MCP via wm_ key needs the OWNER's apiAccess ──
+
+  it('KTD5: a downgraded owner (Pro, no apiAccess) is rejected on gated calls via wm_ key', async () => {
+    const { deps, pipe } = makeUserKeyDeps({
+      getEntitlements: async () => ({
+        planKey: 'pro_monthly',
+        features: { tier: 1, mcpAccess: true, apiAccess: false, desktopKeyAccess: true, maxDesktopKeys: 2 },
+        validUntil: Date.now() + 86_400_000,
+      }),
+    });
+    const res = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
+    assert.equal(res.status, 403, 'a Pro-only owner cannot use MCP through a key (AE6)');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.reason, 'upgrade-required');
+    assert.match(body.error?.message, /API/i);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(pipe.count, 0, 'nothing is reserved for a rejected caller');
+  });
+
+  it('KTD5: a warm pre-deploy entry (tier 1, no desktopKeyAccess field) is read fail-closed — still rejected', async () => {
+    const { deps, pipe } = makeUserKeyDeps({
+      getEntitlements: async () => ({
+        planKey: 'pro_monthly',
+        features: { tier: 1, mcpAccess: true, apiAccess: false },
+        validUntil: Date.now() + 86_400_000,
+      }),
+    });
+    const res = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
+    assert.equal(res.status, 403, 'an unproven API plan cannot use MCP through a key while its legacy entry is warm');
+    const body = await res.json();
+    assert.equal(body.error?.data?.reason, 'upgrade-required');
+    assert.equal(pipe.count, 0);
+  });
+
+  it('KTD5: a free owner\'s key keeps the metered free-account path (tier 0 is never read as a desktop-key plan)', async () => {
+    const { deps } = makeUserKeyDeps({
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false, apiAccess: false }, validUntil: 0 }),
+    });
+    const res = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
+    assert.equal(res.status, 200);
+  });
+
+  it('KTD5: an active API-plan owner still passes (apiAccess true)', async () => {
+    const { deps } = makeUserKeyDeps();
+    const res = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
+    assert.equal(res.status, 200);
   });
 
   it('unknown wm_ key (not env, not a user key) → 401 -32001 Invalid API key', async () => {

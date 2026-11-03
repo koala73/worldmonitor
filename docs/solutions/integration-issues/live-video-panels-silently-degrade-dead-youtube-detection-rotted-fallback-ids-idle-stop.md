@@ -142,7 +142,7 @@ The current tree has 47 unique Live News fallback IDs. The session audited 46 an
 - several returned LOGIN_REQUIRED.
 - kan-11's fallback `TCnaIE_SAtM` (`src/components/LiveNewsPanel.ts:160`) belongs to Taiwan CTV news.
 
-The existing structural tests only check presence. `tests/live-news-hls.test.mjs:63-71` checks that each `DIRECT_HLS_MAP` channel has a fallback ID, an `hlsUrl`, or a handle. `:96-101` checks that full-variant channels have a `fallbackVideoId`. No test, script, or workflow checks whether an ID is still live.
+The structural tests of the time only checked presence. The Live News source-text suite (since deleted; catalog checks now live in `tests/live-video-catalog.test.mts`) checked that each `DIRECT_HLS_MAP` channel had a fallback ID, an `hlsUrl`, or a handle, and that full-variant channels had a `fallbackVideoId`. No test, script, or workflow checked whether an ID was still live.
 
 Fix (#8163, 2026-09-14):
 

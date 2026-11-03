@@ -55,7 +55,16 @@ function isSeedUnrestEvent(value: unknown): value is UnrestEvent {
 function decodeUnrestSeed(value: unknown): ListUnrestEventsResponse | undefined {
   const data = value as { events?: unknown } | null;
   if (!data || !Array.isArray(data.events)) return undefined;
-  const events = data.events.filter(isSeedUnrestEvent);
+  const events = data.events.filter(isSeedUnrestEvent).map((event) => {
+    if (event.sourceType !== 'UNREST_SOURCE_TYPE_GDELT') return event;
+    return {
+      ...event,
+      eventType: 'UNREST_EVENT_TYPE_UNSPECIFIED' as const,
+      severity: 'SEVERITY_LEVEL_UNSPECIFIED' as const,
+      confidence: 'CONFIDENCE_LEVEL_LOW' as const,
+      summary: 'Unverified media signal. This location is mentioned in unrest-related articles; a local event is not verified.',
+    };
+  });
   if (data.events.length > 0 && events.length === 0) return undefined;
   return { events, clusters: [], pagination: undefined };
 }

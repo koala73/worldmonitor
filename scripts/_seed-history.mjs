@@ -34,6 +34,8 @@
 
 import { httpRetryError, resolveConvexSiteUrl } from './_seed-utils.mjs';
 import { embedBatch, normalizeForEmbedding } from './lib/brief-embedding.mjs';
+import { EMBED_MODEL } from './lib/brief-dedup-consts.mjs';
+import { HISTORY_COST_TIMEOUT_MS, recordHistoryCost } from './lib/intel-history-cost.mjs';
 
 // Per-run cap. A seed tick that suddenly emits thousands of "historic"
 // rows is a bug upstream, not a reason to spend the embedding budget —
@@ -826,11 +828,12 @@ export async function recordHistoryIngestHealth({ domain, resource, runId, resul
  * @param {object} [deps]
  * @param {typeof fetch} [deps.fetchImpl]
  * @param {(texts: string[], budget: {deadline: number, now: () => number,
- *   wallClockMs: number}) => Promise<number[][]>} [deps.embed]
+ *   wallClockMs: number, onUsage: (usage: object) => void}) => Promise<number[][]>} [deps.embed]
  * @param {Record<string, string | undefined>} [deps.env]
  * @param {() => number} [deps.now]        clock seam for the budget
  * @param {(ms: number) => Promise<void>} [deps.sleep] retry-delay seam
  * @param {number} [deps.budgetMs]         aggregate wall-clock budget override
+ * @param {(observation: object, deps: object) => Promise<boolean>} [deps.recordCost]
  * @returns {Promise<{inserted: number, skipped: number, retracted: number,
  *   chunks: number, abandoned: number, failedChunks: number,
  *   inputRecords: number, normalizedRecords: number, droppedRecords: number}
@@ -841,6 +844,35 @@ export async function recordHistoryIngestHealth({ domain, resource, runId, resul
  * throws for missing configuration.
  */
 export async function appendSeedHistory({ domain, resource, runId, records }, deps = {}) {
+  const at = Date.now();
+  const cost = {
+    domain, resource, model: EMBED_MODEL, at, runs: 1, failedRuns: 0,
+    inserted: 0, deduped: 0, retracted: 0, failedChunks: 0, abandoned: 0,
+    unknownEmbeddingRuns: 0,
+  };
+  const env = deps.env ?? process.env;
+  const configured = resolveRelayConfig(env).missing.length === 0;
+  try {
+    return await appendHistoryWithCost({ domain, resource, runId, records }, {
+      ...deps,
+      budgetMs: deps.budgetMs ?? (HISTORY_TOTAL_BUDGET_MS - HISTORY_COST_TIMEOUT_MS),
+    }, cost);
+  } catch (error) {
+    cost.failedRuns = 1;
+    throw error;
+  } finally {
+    if (configured && typeof domain === 'string' && domain.trim() && typeof resource === 'string' && resource.trim()) {
+      try {
+        const recorded = await (deps.recordCost ?? recordHistoryCost)(cost, { env, fetchImpl: deps.fetchImpl });
+        console.log(`[intel-history-cost] ${JSON.stringify({ ...cost, recorded: recorded === true })}`);
+      } catch {
+        console.warn(`[intel-history-cost] ${JSON.stringify({ ...cost, recorded: false })}`);
+      }
+    }
+  }
+}
+
+async function appendHistoryWithCost({ domain, resource, runId, records }, deps, cost) {
   const env = deps.env ?? process.env;
 
   const config = resolveRelayConfig(env);
@@ -863,6 +895,7 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
   const sanitized = normalizeHistoryRecords(records);
   const inputRecords = Array.isArray(records) ? records.length : 0;
   const normalizedRecords = sanitized.length;
+  cost.unknownEmbeddingRuns = sanitized.length > 0 ? 1 : 0;
   const droppedRecords = Math.max(0, inputRecords - normalizedRecords);
   if (sanitized.length === 0) {
     return {
@@ -891,12 +924,17 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
         _apiKey: config.openrouterKey,
         now,
         wallClockMs: options.wallClockMs,
+        onUsage: options.onUsage,
       }));
 
   const vectors = await embed(sanitized.map(buildHistoryEmbeddingText), {
     deadline,
     now,
     wallClockMs: Math.max(1, deadline - now()),
+    onUsage: usage => {
+      Object.assign(cost, usage);
+      cost.unknownEmbeddingRuns = 0;
+    },
   });
   if (!Array.isArray(vectors) || vectors.length !== sanitized.length) {
     throw new SeedHistoryError(
@@ -907,6 +945,7 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
   }
 
   if (now() >= deadline) {
+    cost.abandoned = sanitized.length;
     console.warn(
       `[seed-history] budget exhausted during embedding; abandoning ${sanitized.length} record(s)`,
     );
@@ -998,6 +1037,7 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
     }
   }
 
+  Object.assign(cost, { inserted, deduped: skipped, retracted, abandoned, failedChunks });
   if (chunks === 0 && failedChunks > 0) throw lastError;
 
   return {

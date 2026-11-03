@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { STORAGE_KEYS } from '@/config/variants/base';
-import { customChannelEntry, loadChannelsFromStorage, saveChannelsToStorage } from '@/services/live-channels';
+import { customChannelEntry, liveVideoSourceFor, loadChannelsFromStorage, saveChannelsToStorage } from '@/services/live-channels';
 
 /**
  * The live-channels record exactly as main's channel management (src/live-channels-window.ts before the
@@ -67,5 +67,16 @@ describe('live channels saved by main', () => {
       ],
     });
     expect(loadChannelsFromStorage()).toEqual(upgraded);
+  });
+});
+
+describe('live video source for a custom channel', () => {
+  it('gets its own failure-memory slot, so one dead custom stream does not mark the others offline', () => {
+    const custom = loadChannelsFromStorage().filter((channel) => channel.id.startsWith('custom-'));
+    const sources = custom.map(liveVideoSourceFor);
+
+    expect(sources.map((source) => source.slot)).toEqual(custom.map((channel) => `live-news/${channel.id}`));
+    expect(new Set(sources.map((source) => source.slot)).size).toBe(custom.length);
+    expect(sources.every((source) => source.origin === 'custom')).toBe(true);
   });
 });

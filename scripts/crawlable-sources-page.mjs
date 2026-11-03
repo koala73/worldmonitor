@@ -103,13 +103,34 @@ const SOURCE_DOMAIN_MATCHERS = [
   ['infrastructure', /infrastructure|cyber|cable|cloudflare|service-status|pipeline|internet-outage|portwatch|chokepoint|maritime|navigational-warning|abuseipdb|abuse\.ch/],
   ['finance', /econom|market|finance|stock|crypto|coin|exchange-rate|\bfx\b|yield|central-bank|trade|supply-chain|grocery|bigmac|debt|bis-|ecb-|eurostat|world-bank|comtrade|fao-food|treasury|fiscaldata|world-cpi|oecd|e-stat|abs\.gov\.au/],
   ['technology', /research|company|github|agentskills|technology|regulatory|tender|patent|startup|product-hunt|ossinsight|exa\.ai|firecrawl/],
-  ['geopolitics', /conflict|unrest|acled|ucdp|gdelt|security-advisor|sanction|travel-advisor|displacement|resilience|country-fact|prediction-market|forecast-market|hapi/],
+  ['geopolitics', /conflict|unrest|acled|ucdp|gdelt|security-advisor|sanction|travel-advisor|displacement|cross-border|resilience|country-fact|prediction-market|forecast-market|hapi/],
 ];
 
 // The manifest records providers and code references, not a marketing domain.
 // Keep ambiguous structured providers explicit so a new unmatched provider
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
+  ['ammancity.gov.jo', 'finance'],
+  ['data.1212.mn', 'finance'],
+  ['madr.gov.dz', 'finance'],
+  ['api.siat.stat.uz', 'finance'],
+  ['precios.maga.gob.gt', 'finance'],
+  ['simaniger.net', 'finance'],
+  ['stat.gov.kg', 'finance'],
+  ['stat.gov.kz', 'finance'],
+  ['stat.uz', 'finance'],
+  ['tcb.gov.bd', 'finance'],
+  ['ugandacoffee.go.ug', 'finance'],
+  ['www.nabc.go.th', 'finance'],
+  ['www.ocpv-ci.com', 'finance'],
+  ['www.viwanda.go.tz', 'finance'],
+  ['www.bi.go.id', 'finance'],
+  ['www.cbsl.gov.lk', 'finance'],
+  ['www.da.gov.ph', 'finance'],
+  ['www.economia-sniim.gob.mx', 'finance'],
+  ['www.onagri.nat.tn', 'finance'],
+  ['www.pbs.gov.pk', 'finance'],
+  ['hormuz.data-tracking.net', 'infrastructure'],
   ['Alberta Emergency Alert', 'environment'],
   ['B.C. Evacuation Orders and Alerts', 'environment'],
   ['SaskAlert', 'environment'],
@@ -117,6 +138,14 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['Barchart', 'finance'],
   ['TradingView', 'finance'],
   ['api.rainviewer.com', 'environment'],
+  // #9094: locates published fact-checks for /verify and verify_claim.
+  ['factchecktools.googleapis.com', 'news'],
+  // BestTime live busyness is the fallback feed for the PizzINT (Pentagon pizza) panel.
+  ['besttime.app', 'military'],
+  // Turkey's crude imports by origin for the energy shock model.
+  ['www.epdk.gov.tr', 'energy'],
+  // UN M49 region table behind media-perspective outlet_regions (build-time only).
+  ['unstats.un.org', 'news'],
   ['api.scrapecreators.com', 'news'],
   ['api.telegram.org', 'news'],
   ['api.tzevaadom.co.il', 'military'],
@@ -124,6 +153,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['api.windy.com', 'environment'],
   ['archive-api.open-meteo.com', 'environment'],
   ['open-meteo.caseyjhand.com', 'environment'],
+  ['identity.dataspace.copernicus.eu', 'environment'],
+  ['sh.dataspace.copernicus.eu', 'environment'],
   ['British Geological Survey World Mineral Statistics', 'energy'],
   ['Bank of Canada', 'finance'],
   ['bothsidesofthetable.com', 'technology'],
@@ -190,7 +221,9 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
 // Keep the hostname as the traceability link, but never make it do double duty
 // as the visible provider title.
 const SOURCE_NAME_OVERRIDES = new Map([
+  ['hormuz.data-tracking.net', 'UK Maritime Trade Operations (UKMTO) via hormuz.data-tracking.net'],
   ['acleddata.com', 'ACLED'],
+  ['factchecktools.googleapis.com', 'Google Fact Check Tools API'],
   ['adsb.lol', 'ADSB.lol'],
   ['aerotime.aero', 'AeroTime'],
   ['agentskills.io', 'Agent Skills'],
@@ -218,6 +251,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['api.ted.europa.eu', 'Tenders Electronic Daily (TED)'],
   ['api.tzevaadom.co.il', 'Tzeva Adom'],
   ['api.unhcr.org', 'UNHCR'],
+  ['data.unhcr.org', 'UNHCR Operational Data Portal'],
   ['api.usaspending.gov', 'USAspending.gov'],
   ['api.weather.gc.ca', 'Environment and Climate Change Canada (ECCC)'],
   ['api.weather.gov', 'U.S. National Weather Service'],
@@ -264,6 +298,8 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['feodotracker.abuse.ch', 'Feodo Tracker'],
   ['finance.yahoo.com', 'Yahoo Finance'],
   ['firms.modaps.eosdis.nasa.gov', 'NASA FIRMS'],
+  ['identity.dataspace.copernicus.eu', 'Copernicus Data Space Ecosystem (identity)'],
+  ['sh.dataspace.copernicus.eu', 'Copernicus Sentinel Hub (Sentinel-5P TROPOMI)'],
   ['gain.nd.edu', 'Notre Dame Global Adaptation Initiative'],
   ['gamma-api.polymarket.com', 'Polymarket'],
   ['geospatial-usace.opendata.arcgis.com', 'U.S. Army Corps of Engineers'],
@@ -363,12 +399,33 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['urlhaus-api.abuse.ch', 'URLhaus'],
   ['wabi-europe-north-b-api.analysis.windows.net', 'Microsoft Power BI'],
   ['web.archive.org', 'Internet Archive'],
+  ['ammancity.gov.jo', 'Greater Amman Municipality Central Market'],
+  ['data.1212.mn', 'National Statistics Office of Mongolia'],
+  ['madr.gov.dz', 'Algeria Ministry of Agriculture (MADR)'],
+  ['api.siat.stat.uz', 'Uzbekistan Statistics Agency'],
+  ['precios.maga.gob.gt', 'Guatemala Ministry of Agriculture (MAGA)'],
+  ['simaniger.net', 'SIMA Niger'],
+  ['stat.gov.kg', 'National Statistical Committee of Kyrgyzstan'],
+  ['stat.gov.kz', 'Kazakhstan Bureau of National Statistics'],
+  ['stat.uz', 'Uzbekistan Statistics Agency'],
+  ['tcb.gov.bd', 'Trading Corporation of Bangladesh'],
+  ['ugandacoffee.go.ug', 'Uganda Coffee Development Authority'],
+  ['www.nabc.go.th', 'Thailand National Agricultural Big Data Center'],
+  ['www.ocpv-ci.com', "Côte d'Ivoire OCPV"],
+  ['www.viwanda.go.tz', 'Tanzania Ministry of Industry and Trade'],
+  ['www.bi.go.id', 'Bank Indonesia PIHPS'],
+  ['www.cbsl.gov.lk', 'Central Bank of Sri Lanka'],
+  ['www.da.gov.ph', 'Philippines Department of Agriculture'],
+  ['www.economia-sniim.gob.mx', 'Mexico SNIIM'],
+  ['www.onagri.nat.tn', 'Tunisia ONAGRI'],
+  ['www.pbs.gov.pk', 'Pakistan Bureau of Statistics'],
   ['www.cbr.ru', 'Bank of Russia'],
   ['www.contractsfinder.service.gov.uk', 'UK Contracts Finder'],
   ['www.cidrap.umn.edu', 'Center for Infectious Disease Research and Policy (CIDRAP)'],
   ['www.ecb.europa.eu', 'European Central Bank (ECB)'],
   ['www.ecdc.europa.eu', 'European Centre for Disease Prevention and Control'],
   ['www.eia.gov', 'U.S. Energy Information Administration (EIA)'],
+  ['www.epdk.gov.tr', 'Energy Market Regulatory Authority of Türkiye (EPDK)'],
   ['www.fao.org', 'UN Food and Agriculture Organization (FAO)'],
   ['www.federalreserve.gov', 'U.S. Federal Reserve'],
   ['www.gdacs.org', 'Global Disaster Alert and Coordination System (GDACS)'],
@@ -378,7 +435,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['www.iea.org', 'International Energy Agency (IEA)'],
   ['www.jodidata.org', 'Joint Organisations Data Initiative (JODI)'],
   ['www.gets.govt.nz', 'New Zealand Government Electronic Tenders Service'],
-  ['www.mbie.govt.nz', 'New Zealand Ministry of Business, Innovation and Employment'],
+  ['www.comcom.govt.nz', 'New Zealand Commerce Commission'],
   ['www.mnd.gov.tw', 'Taiwan Ministry of National Defense'],
   ['www.mod.go.jp', 'Japan Ministry of Defense'],
   ['www.ncei.noaa.gov', 'NOAA National Centers for Environmental Information'],
@@ -392,6 +449,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['www.stats.gov.cn', 'National Bureau of Statistics of China'],
   ['www.szse.cn', 'Shenzhen Stock Exchange'],
   ['www.unep.org', 'UN Environment Programme (UNEP)'],
+  ['www.unognewsroom.org', 'UN Geneva Newsroom'],
   ['www.war.gov', 'Pentagon'],
   ['www.weather.gov.hk', 'Hong Kong Observatory'],
   ['www.whitehouse.gov', 'The White House'],
@@ -803,16 +861,25 @@ export function buildSourcePages(sourceCatalog) {
   });
 }
 
+function sourceCategoryDocumentTitle(name) {
+  const longTitle = `${name}: Data Sources and Providers | World Monitor`;
+  const title = [...longTitle].length > 60
+    ? `${name} Data Sources | World Monitor`
+    : longTitle;
+  if ([...title].length > 60) {
+    throw new Error(`${name} document title is ${[...title].length} characters: ${title}`);
+  }
+  return title;
+}
+
 export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers, directoryPages = null, sourcePage = null, catalogAnchors = sourceCardAnchors(sourceCatalog), siblingPages = [] }) {
-  const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument, withUtmSource } = helpers;
+  const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument } = helpers;
   const path = sourcePage?.path || '/sources/';
   const pageUrl = absoluteUrl(baseUrl, path);
   const description = sourcePage
     ? `Browse ${sourceCatalog.length} providers in ${sourcePage.name}, with source hosts, origins and coverage. Part of World Monitor's complete source catalog.`
     : `Explore ${sourceStats.providerCount} active providers and ${sourceStats.activeHosts} source hosts across World Monitor's global intelligence, markets, energy, cyber, aviation, climate and news coverage.`;
-  // Query precedes the fragment — withUtmSource() would append after the
-  // anchor and push the query into the fragment, so build these by hand.
-  const docsHref = (anchor) => `/docs/data-sources?utm_source=seo-sources${anchor ? `#${anchor}` : ''}`;
+  const docsHref = (anchor) => `/docs/data-sources${anchor ? `#${anchor}` : ''}`;
   const domainCounts = new Map(SOURCE_DOMAINS.map((domain) => [domain.id, 0]));
   for (const provider of sourceCatalog) {
     domainCounts.set(provider.domainId, (domainCounts.get(provider.domainId) || 0) + 1);
@@ -866,14 +933,15 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
         </a>
         <span class="source-nav-links">
           <a href="/sources/" aria-current="page">Sources</a>
+          <a href="/reference/coverage/">Coverage</a>
           <a href="/blog/">Blog</a>
-          <a href="/docs">Docs</a>
+          <a href="/docs/documentation">Docs</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer">GitHub</a>
         </span>
-        <a class="source-nav-cta" href="${withUtmSource('/dashboard', 'sources-nav')}">Launch dashboard <span aria-hidden="true">→</span></a>`;
+        <a class="source-nav-cta" href="/dashboard">Launch dashboard <span aria-hidden="true">→</span></a>`;
   const sourceFooter = `<div class="source-footer-inner">
       <span><strong>WORLD MONITOR</strong><small>Open-source global intelligence</small></span>
-      <span class="source-footer-links"><a href="/sources/">Sources</a><a href="${docsHref('')}">Data docs</a><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Attribution ledger</a><a href="/docs/terms">Terms</a></span>
+      <span class="source-footer-links"><a href="/sources/">Sources</a><a href="${docsHref('')}">Data docs</a><a href="/docs/source-attribution">Attribution ledger</a><a href="/docs/terms">Terms</a></span>
     </div>`;
   const catalogNavigation = directoryPages
     ? `<ul class="source-pages source-directory">${directoryPages.map((page) => `<li><a href="${page.path}">${escapeHtml(page.name)}</a> (${page.providers.length} providers)</li>`).join('')}</ul>`
@@ -885,7 +953,7 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets
           <p class="lede">The map is only as useful as the signals behind it. World Monitor combines ${sourceStats.providerCount} active providers across ${sourceStats.activeHosts} observed source hosts spanning news, conflict, markets, military, climate, aviation, infrastructure and technology. ${sourcePage ? 'This page lists ' + sourceCatalog.length + ' providers. <a href="/sources/#catalog">Search all providers</a> or browse the pages below.' : 'Browse providers by domain, or search the full inventory below.'}</p>
           <div class="hero-actions">
             <a class="cta" href="#catalog">${sourcePage ? 'Browse this page' : 'Find a provider'} <span aria-hidden="true">↓</span></a>
-            <a class="secondary-cta" href="${withUtmSource('/dashboard', 'sources-hero')}">Open the live dashboard <span aria-hidden="true">→</span></a>
+            <a class="secondary-cta" href="/dashboard">Open the live dashboard <span aria-hidden="true">→</span></a>
           </div>
           <p class="trust-line"><span>Manifest-derived</span><span>Build-checked</span><span>Source-attributed</span></p>
           <p class="catalog-updated">Catalog last updated ${escapeHtml(lastmod)} · ${sourceStats.providerCount} active providers across ${sourceStats.activeHosts} source hosts</p>
@@ -921,7 +989,7 @@ ${domainCards}
         <div><p class="eyebrow">Trust through traceability</p><h2 id="trust-heading">The count follows the code.</h2></div>
         <div>
           <p>This inventory is generated from the source-attribution manifest and checked against the external URLs that World Monitor uses. Adding or removing a source changes this page at build time.</p>
-          <p>An active listing confirms use and attribution tracking. It does not claim that a provider's redistribution terms have completed review. The <a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">attribution ledger</a> records that posture, and the <a href="${docsHref('source-credibility-%26-feed-tiering')}">credibility methodology</a> explains feed tiers and bias metadata.</p>
+          <p>An active listing confirms use and attribution tracking. It does not claim that a provider's redistribution terms have completed review. The <a href="/docs/source-attribution">attribution ledger</a> records that posture, and the <a href="${docsHref('source-credibility-%26-feed-tiering')}">credibility methodology</a> explains feed tiers and bias metadata.</p>
         </div>
       </section>
       <section class="provenance-section" aria-labelledby="provenance-heading">
@@ -946,7 +1014,7 @@ ${domainCards}
           <label for="source-coverage"><span>Country covered</span><select id="source-coverage"><option value="all">All coverage</option>${coverageOptions.map((country) => `<option value="${country.code}">${escapeHtml(country.name)}</option>`).join('')}</select></label>
           <button type="button" class="reset-filter" data-source-filter="all">Reset</button>
         </div>
-        <div class="catalog-meta"><p id="source-results" aria-live="polite">${directoryPages ? 'Choose a filter or enter a provider name.' : `${sourceCatalog.length} providers shown`}</p><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Open the host-by-host ledger <span aria-hidden="true">↗</span></a></div>
+        <div class="catalog-meta"><p id="source-results" aria-live="polite">${directoryPages ? 'Choose a filter or enter a provider name.' : `${sourceCatalog.length} providers shown`}</p><a href="/docs/source-attribution">Open the host-by-host ledger <span aria-hidden="true">↗</span></a></div>
         <p class="catalog-country-note" id="source-country-note" aria-live="polite" hidden></p>
         <div class="provider-grid" id="source-catalog" data-source-catalog>
 ${providerCards}
@@ -960,7 +1028,7 @@ ${providerCards}
         <p class="eyebrow">From source to signal</p>
         <h2>Now watch the signals converge.</h2>
         <p>Open the live map to follow the providers above as one real-time global operating picture.</p>
-        <a class="cta" href="${withUtmSource('/dashboard', 'sources-footer')}">Launch World Monitor <span aria-hidden="true">→</span></a>
+        <a class="cta" href="/dashboard">Launch World Monitor <span aria-hidden="true">→</span></a>
       </section>`;
   const extraStyles = `      .sources-page { --bg: #030504; --panel: #090d0b; --panel-2: #0d1410; --text: #f1f7f2; --muted: #8e9b92; --line: #1d2921; --accent: #4ade80; background: radial-gradient(circle at 50% 0, rgba(74,222,128,.09), transparent 27rem), var(--bg); }
       .sources-page header, .sources-page main, .sources-page footer { max-width: none; padding-left: 0; padding-right: 0; }
@@ -1153,7 +1221,7 @@ ${providerCards}
   return pageDocument({
     baseUrl,
     path,
-    title: sourcePage ? `${sourcePage.name} sources | World Monitor` : 'Data Source Catalog | World Monitor',
+    title: sourcePage ? sourceCategoryDocumentTitle(sourcePage.name) : 'Global Data Sources: OSINT, Markets, Energy | World Monitor',
     description,
     lastmod,
     jsonLd: [

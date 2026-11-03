@@ -1,0 +1,88 @@
+name: Publish Rust SDK to crates.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing rust-vX.Y.Z tag to verify or publish'
+        type: string
+        required: true
+      dry_run:
+        description: 'Verify only. First publication requires a maintainer account and a local publish.'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-rust
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'koala73/worldmonitor' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
+    steps:
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^rust-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid Rust release tag'; exit 1; }
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify release version and main ancestry
+        id: commit
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          python3 - <<'PY'
+          import os, tomllib
+          with open('sdk/rust/Cargo.toml', 'rb') as manifest:
+              version = tomllib.load(manifest)['package']['version']
+          assert os.environ['RELEASE_TAG'] == f'rust-v{version}', 'Tag and crate version differ'
+          PY
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy --no-self-update
+          rustup default stable
+      - working-directory: sdk/rust
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo publish --locked --dry-run
+
+  publish:
+    needs: verify
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ needs.verify.outputs.commit }}
+          persist-credentials: false
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+        id: auth
+      - name: Publish verified crate
+        working-directory: sdk/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked

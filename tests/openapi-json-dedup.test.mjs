@@ -22,7 +22,17 @@ import {
   dedupeSharedSubtreeComponents,
   SHARED_SUBTREE_COMPONENT_PREFIX,
 } from '../scripts/openapi-dedup-schemas.mjs';
-import { buildBundle } from '../scripts/build-openapi-json.mjs';
+import {
+  buildBundle,
+  collapseSoftLineBreaks,
+  dropDefaultParameterRequired,
+  compactEntitlementNotes,
+  dropDuplicateOperationSummaries,
+  dropOperationIdDescriptionPrefixes,
+  dropUnreferencedSecuritySchemes,
+  shortenGeneratedSuccessDescriptions,
+  trimResponseExampleLists,
+} from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 // Guards the served public/openapi.json against the ~1 MB scanner body cap.
@@ -40,6 +50,27 @@ import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const buildScriptPath = resolve(root, 'scripts/build-openapi-json.mjs');
+
+describe('duplicate generated operation summaries', () => {
+  it('removes only exact operationId copies and leaves schemas and custom summaries intact', () => {
+    const spec = {
+      paths: {
+        '/example': {
+          get: { operationId: 'GetExample', summary: 'GetExample', responses: { 200: { description: 'OK' } } },
+          post: { operationId: 'PostExample', summary: 'Create an example' },
+          'x-metadata': { operationId: 'Metadata', summary: 'Metadata' },
+        },
+        '/missing-id': { get: { summary: 'Useful summary' }, post: { operationId: '', summary: '' } },
+      },
+      components: { schemas: { Example: { type: 'object', properties: { value: { type: 'number' } } } } },
+    };
+    const expected = structuredClone(spec);
+    delete expected.paths['/example'].get.summary;
+    assert.deepEqual(dropDuplicateOperationSummaries(spec), { dropped: 1 });
+    assert.deepEqual(spec, expected);
+    assert.deepEqual(dropDuplicateOperationSummaries(spec), { dropped: 0 });
+  });
+});
 
 // Leave headroom under the ~1 MB cap: the spec sat at ~752 KB when the check
 // last passed and ~853 KB deduped today. If this fails, either extend the
@@ -188,12 +219,31 @@ function restoreGeneratedSchemaRefs(before, after, transformedRoot) {
   return after;
 }
 
+// A $ref with sibling keywords is a described int64 site: the shared component
+// carries type, format and the generated warning, and the site keeps its own
+// comment (plus any numeric bounds). Restore the inline original the generator
+// emitted — `<comment>. <warning>` — instead of dropping the siblings.
+function restoreRefSite(site, target) {
+  const { $ref, ...siblings } = site;
+  const restored = structuredClone(target);
+  if (Object.keys(siblings).length === 0) return restored;
+  const { description, ...bounds } = siblings;
+  assert.equal(typeof description, 'string', `${$ref} sibling site must carry its own description`);
+  return { ...restored, ...bounds, description: `${description}. ${target.description}` };
+}
+
 function expandLocalRefs(spec, targets, { skipSchemaNames = [] } = {}) {
   const visit = (value) => {
     if (!value || typeof value !== 'object') return;
     for (const [key, child] of Object.entries(value)) {
-      const target = child?.$ref ? targets.get(child.$ref) : null;
-      if (target) value[key] = structuredClone(target);
+      let target = child?.$ref ? targets.get(child.$ref) : null;
+      const seen = new Set();
+      while (target) {
+        assert.ok(!seen.has(value[key].$ref), 'added schema refs must not form a cycle');
+        seen.add(value[key].$ref);
+        value[key] = restoreRefSite(value[key], target);
+        target = targets.get(value[key]?.$ref);
+      }
       // A replacement can itself carry refs to other added components (a
       // hoisted subtree holding an expanded ChinaDatePrecision ref, say), so
       // the walk descends into what it just inserted as well.
@@ -465,7 +515,7 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
 
   const expandSharedSubtrees = (spec) => {
     const names = Object.keys(spec.components.schemas)
-      .filter((name) => name.startsWith('WMShared'));
+      .filter((name) => name.startsWith(SHARED_SUBTREE_COMPONENT_PREFIX));
     expandLocalRefs(
       spec,
       new Map(names.map((name) => [`#/components/schemas/${name}`, spec.components.schemas[name]])),
@@ -482,7 +532,7 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
 
     assert.equal(stats.groups, 1);
     assert.equal(stats.replacedRefs, 3, 'every site including the first becomes a ref');
-    const name = Object.keys(transformed.components.schemas).find((n) => n.startsWith('WMShared'));
+    const name = Object.keys(transformed.components.schemas).find((n) => n.startsWith(SHARED_SUBTREE_COMPONENT_PREFIX));
     assert.ok(name, 'the hoisted subtree lands in components.schemas');
     assert.deepEqual(
       transformed.components.schemas[name],
@@ -490,6 +540,21 @@ describe('dedupeSharedSubtreeComponents (fixture)', () => {
       'the component holds the subtree bytes verbatim',
     );
     assert.deepEqual(expandSharedSubtrees(structuredClone(transformed)), original);
+  });
+
+  it('preserves repeated reference schemas and their sibling descriptions', () => {
+    const original = fixture();
+    original.components.schemas.ExampleValue = { type: 'string' };
+    for (const schema of Object.values(original.components.schemas).filter(schema => schema.properties)) {
+      schema.properties.report = {
+        $ref: '#/components/schemas/ExampleValue',
+        description: 'Reported provider value. Unknown values remain unknown; this description applies beside the reference.',
+      };
+    }
+    const transformed = structuredClone(original);
+    const stats = dedupeSharedSubtreeComponents(transformed);
+    assert.ok(stats.groups >= 2);
+    assert.deepEqual(expandSharedSubtrees(transformed), original);
   });
 
   it('never replaces a node an existing $ref resolves through', () => {
@@ -605,7 +670,7 @@ describe('additional lossless schema dedupe (fixtures)', () => {
     };
 
     const stats = dedupeRepeatedInt64Schemas(spec);
-    assert.deepEqual(stats, { replacedRefs: 2 });
+    assert.deepEqual(stats, { replacedRefs: 2, describedRefs: 0 });
     assert.deepEqual(spec.components.schemas.WorldMonitorInt64, repeated);
     assert.deepEqual(spec.components.schemas.A.properties.measuredAt, {
       $ref: '#/components/schemas/WorldMonitorInt64',
@@ -614,6 +679,54 @@ describe('additional lossless schema dedupe (fixtures)', () => {
       $ref: '#/components/schemas/WorldMonitorInt64',
     });
     assert.deepEqual(spec.components.schemas.C.properties.id, { type: 'integer', format: 'int64' });
+  });
+
+  it('points described int64 fields at the shared warning schema and keeps their own comment', () => {
+    const warning = 'Warning: Values > 2^53 may lose precision in JavaScript';
+    const spec = {
+      components: {
+        schemas: {
+          A: {
+            properties: {
+              updatedAt: { type: 'integer', format: 'int64', description: `Last update, as Unix epoch milliseconds.. ${warning}` },
+              count: { type: 'integer', minimum: 0, format: 'int64', description: `Non-negative count.. ${warning}` },
+              plain: { type: 'integer', format: 'int64', description: warning },
+            },
+          },
+          B: {
+            properties: {
+              // Not the generated shape: kept inline.
+              other: { type: 'integer', format: 'int64', description: 'No warning here.' },
+              enumerated: { type: 'integer', format: 'int64', enum: [1, 2], description: `Picked.. ${warning}` },
+            },
+          },
+        },
+      },
+    };
+    const original = structuredClone(spec);
+
+    const stats = dedupeRepeatedInt64Schemas(spec);
+    assert.deepEqual(stats, { replacedRefs: 1, describedRefs: 2 });
+    const ref = '#/components/schemas/WorldMonitorInt64';
+    assert.deepEqual(spec.components.schemas.A.properties.updatedAt, {
+      $ref: ref,
+      description: 'Last update, as Unix epoch milliseconds.',
+    });
+    assert.deepEqual(spec.components.schemas.A.properties.count, {
+      $ref: ref,
+      minimum: 0,
+      description: 'Non-negative count.',
+    });
+    assert.deepEqual(spec.components.schemas.A.properties.plain, { $ref: ref });
+    assert.deepEqual(spec.components.schemas.B, original.components.schemas.B);
+
+    const component = spec.components.schemas.WorldMonitorInt64;
+    for (const key of ['updatedAt', 'count', 'plain']) {
+      assert.deepEqual(
+        restoreRefSite(spec.components.schemas.A.properties[key], component),
+        original.components.schemas.A.properties[key],
+      );
+    }
   });
 
   it('reuses identical China decision-signal date-precision unions', () => {
@@ -742,11 +855,11 @@ describe('ensureInlineTypedInput (fixture)', () => {
     // The copy exists so a JSON-only scanner sees a typed, described input —
     // not so the component's full caveats are repeated on every operation.
     assert.equal(restored.schema.type, 'string');
-    // Jmespath carries a curated summary: the lead sentence plus the two
-    // limits the API contract states on every operation.
+    // Jmespath carries a curated summary: the name plus the two limits the
+    // API contract states on every operation.
     assert.equal(
       restored.description,
-      'JMESPath JSON response. 1024 UTF-8 bytes. 256 KB output cap. HTTP 400.',
+      'JMESPath; 1024 UTF-8 bytes; 256 KB output cap.',
     );
     assert.ok(
       Buffer.byteLength(restored.description, 'utf8') <= INLINE_DESCRIPTION_MAX_BYTES,
@@ -909,8 +1022,15 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   });
 
   it('engages the exact repeated headers and generated scalar/date schemas', () => {
-    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 39 });
-    assert.equal(int64Stats.replacedRefs, 38);
+    // #9093 adds two POST operations to the YAML bundle; only submit carries
+    // the 2 idempotency headers (review is exempt from replay). #8721 adds
+    // feedback submit-report, which carries the same 2 headers.
+    assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 43 });
+    assert.equal(int64Stats.replacedRefs, 53);
+    // Described int64 fields (own comment + generated warning) keep their
+    // comment beside the shared $ref; a regression to zero would silently give
+    // back ~4 KB of the scanner budget.
+    assert.ok(int64Stats.describedRefs >= 100, `described int64 dedup: ${int64Stats.describedRefs} refs`);
     assert.equal(chinaDateStats.replacedRefs, 9);
   });
 
@@ -1047,6 +1167,43 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   });
 });
 
+function referencedSecuritySchemes(spec) {
+  const names = new Set();
+  const collect = (security) => {
+    for (const requirement of security ?? []) for (const name of Object.keys(requirement)) names.add(name);
+  };
+  collect(spec.security);
+  for (const ops of Object.values(spec.paths ?? {})) {
+    for (const op of Object.values(ops ?? {})) {
+      if (op && typeof op === 'object') collect(op.security);
+    }
+  }
+  return names;
+}
+
+describe('dropUnreferencedSecuritySchemes', () => {
+  it('drops a scheme only excluded operations used and keeps the rest', () => {
+    const spec = {
+      security: [{ WorldMonitorKey: [] }],
+      paths: { '/a': { get: { security: [{ WorldMonitorKey: [] }, { BearerAuth: [] }] } } },
+      components: {
+        securitySchemes: { WorldMonitorKey: {}, BearerAuth: {}, TrustReviewKey: {} },
+      },
+    };
+    assert.deepEqual(dropUnreferencedSecuritySchemes(spec), { dropped: 1 });
+    assert.deepEqual(Object.keys(spec.components.securitySchemes), ['WorldMonitorKey', 'BearerAuth']);
+  });
+
+  it('declares only schemes the served JSON references (#9192)', () => {
+    // The review-key operations are excluded from this artifact, so their
+    // TrustReviewKey scheme would be an orphan spending scanner budget.
+    const { spec } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    const declared = Object.keys(spec.components?.securitySchemes ?? {}).sort();
+    assert.ok(declared.includes('WorldMonitorKey'));
+    assert.deepEqual(declared, [...referencedSecuritySchemes(spec)].sort());
+  });
+});
+
 describe('build-openapi-json wiring', () => {
   it('keeps the transform source reviewable as text', () => {
     const src = readFileSync(resolve(root, 'scripts/openapi-dedup-responses.mjs'));
@@ -1094,11 +1251,184 @@ describe('build-openapi-json wiring', () => {
     assert.equal(schemaStats.replacedRefs, schemaStats.compared);
     assert.ok(chinaDateStats.replacedRefs >= 5, `China date dedup: ${chinaDateStats.replacedRefs} refs`);
     assert.ok(int64Stats.replacedRefs >= 30, `int64 dedup: ${int64Stats.replacedRefs} refs`);
+    assert.ok(int64Stats.describedRefs >= 100, `described int64 dedup: ${int64Stats.describedRefs} refs`);
     assert.ok(headerStats.replacedRefs >= 30, `response-header dedup: ${headerStats.replacedRefs} refs`);
     assert.ok(
       schemaSubtreeStats.replacedRefs > 0,
       `shared schema-subtree dedup: ${schemaSubtreeStats.replacedRefs} refs`,
     );
     assert.ok(unreachableStats.dropped >= 150, `unreachable drop: ${unreachableStats.dropped} schemas`);
+  });
+});
+
+describe('JSON-only description and parameter compaction', () => {
+  it('collapses proto wrap points to spaces but keeps block-level line breaks', () => {
+    const spec = {
+      paths: { '/x': { get: { description: 'Applied tariff on one\n product between\n two countries.' } } },
+      components: {
+        schemas: {
+          S: {
+            description: 'Values:\n - first\n * second\n 1. third\n   indented\n | a | b |\n ```\n # heading\n > quote',
+            properties: { f: { type: 'string', description: 'Lead\n continues here.' } },
+          },
+        },
+      },
+    };
+    const stats = collapseSoftLineBreaks(spec);
+    assert.equal(spec.paths['/x'].get.description, 'Applied tariff on one product between two countries.');
+    assert.equal(spec.components.schemas.S.properties.f.description, 'Lead continues here.');
+    assert.equal(
+      spec.components.schemas.S.description,
+      'Values:\n - first\n * second\n 1. third\n   indented\n | a | b |\n ```\n # heading\n > quote',
+      'list, quote, heading, table, fence and indented lines keep their break',
+    );
+    assert.equal(stats.collapsed, 3);
+  });
+
+  it('never joins lines inside a fenced code block', () => {
+    const fenced = 'Run:\n ```sh\n curl -s https://x\n echo done\n ```\n then\n read it.';
+    const spec = { paths: { '/x': { get: { description: fenced } } } };
+    collapseSoftLineBreaks(spec);
+    assert.equal(
+      spec.paths['/x'].get.description,
+      'Run:\n ```sh\n curl -s https://x\n echo done\n ``` then read it.',
+    );
+  });
+
+  it('protects tilde fences and longer backtick fences the same way', () => {
+    const spec = {
+      paths: {
+        '/t': { get: { description: 'A\n ~~~\n one\n two\n ~~~\n b\n c.' } },
+        '/q': { get: { description: 'A\n ````md\n one\n ```\n two\n ````\n b\n c.' } },
+      },
+    };
+    collapseSoftLineBreaks(spec);
+    assert.equal(spec.paths['/t'].get.description, 'A\n ~~~\n one\n two\n ~~~ b c.');
+    assert.equal(spec.paths['/q'].get.description, 'A\n ````md\n one\n ```\n two\n ```` b c.');
+  });
+
+  it('drops only the default required:false, never from path parameters', () => {
+    const spec = {
+      paths: {
+        '/a/{id}': {
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+          get: {
+            parameters: [
+              { name: 'q', in: 'query', required: false, schema: { type: 'string' } },
+              { name: 'must', in: 'query', required: true, schema: { type: 'string' } },
+              { $ref: '#/components/parameters/P' },
+            ],
+          },
+        },
+      },
+      components: { parameters: { P: { name: 'h', in: 'header', required: false, schema: { type: 'string' } } } },
+    };
+    const stats = dropDefaultParameterRequired(spec);
+    const [q, must] = spec.paths['/a/{id}'].get.parameters;
+    assert.equal('required' in q, false);
+    assert.equal(must.required, true);
+    assert.equal(spec.paths['/a/{id}'].parameters[0].required, true);
+    assert.equal('required' in spec.components.parameters.P, false);
+    assert.equal(stats.dropped, 2);
+  });
+
+  it('shortens only the generated 2xx description, and keeps every 2xx response inline', () => {
+    const ok = { description: 'Successful response', content: { 'application/json': { schema: { type: 'object' } } } };
+    const spec = {
+      paths: {
+        '/a': {
+          get: { responses: { 200: structuredClone(ok), 400: { description: 'Successful response' } } },
+          post: { responses: { 201: { description: 'Created with a hand-written note' }, 202: { $ref: '#/components/responses/R' } } },
+        },
+      },
+      components: { responses: { R: { description: 'Successful response' } } },
+    };
+    const stats = shortenGeneratedSuccessDescriptions(spec);
+    const get = spec.paths['/a'].get.responses;
+    assert.equal(get[200].description, 'OK');
+    assert.deepEqual(get[200].content, ok.content);
+    assert.equal(get[400].description, 'Successful response', 'non-2xx left alone');
+    assert.equal(spec.paths['/a'].post.responses[201].description, 'Created with a hand-written note');
+    assert.equal(spec.components.responses.R.description, 'Successful response', 'components left alone');
+    assert.equal(stats.shortened, 1);
+  });
+
+  it('keeps one item of each object list in a response example, and leaves scalar lists and schemas alone', () => {
+    const example = {
+      rows: [{ id: 'a', tags: [{ k: 1 }, { k: 2 }] }, { id: 'b' }],
+      bbox: [1, 2, 3, 4],
+      empty: [],
+    };
+    const spec = {
+      paths: {
+        '/a': {
+          get: {
+            responses: {
+              200: { description: 'OK', content: { 'application/json': { example: structuredClone(example), schema: { type: 'object', example: structuredClone(example) } } } },
+              202: { $ref: '#/components/responses/R' },
+            },
+          },
+        },
+      },
+      components: { responses: { R: { description: 'OK', content: { 'application/json': { example: structuredClone(example) } } } } },
+    };
+    const stats = trimResponseExampleLists(spec);
+    const served = spec.paths['/a'].get.responses[200].content['application/json'];
+    assert.deepEqual(served.example, { rows: [{ id: 'a', tags: [{ k: 1 }] }], bbox: [1, 2, 3, 4], empty: [] });
+    assert.deepEqual(served.schema.example, example, 'schema examples left alone');
+    assert.deepEqual(spec.components.responses.R.content['application/json'].example, example, 'components left alone');
+    assert.equal(stats.trimmed, 2);
+  });
+
+  it('drops only a leading operationId copy from operation descriptions', () => {
+    const spec = {
+      paths: {
+        '/a': {
+          get: { operationId: 'ListThings', description: 'ListThings returns things.' },
+          post: { operationId: 'PostThing', description: 'Posts a thing. PostThing is idempotent.' },
+          put: { operationId: 'PutThing', description: 'PutThingAlias writes.' },
+          'x-meta': { operationId: 'Meta', description: 'Meta returns metadata.' },
+        },
+      },
+      components: { schemas: { S: { description: 'ListThings returns things.' } } },
+    };
+    assert.deepEqual(dropOperationIdDescriptionPrefixes(spec), { dropped: 1 });
+    assert.equal(spec.paths['/a'].get.description, 'Returns things.');
+    assert.equal(spec.paths['/a'].post.description, 'Posts a thing. PostThing is idempotent.');
+    assert.equal(spec.paths['/a'].put.description, 'PutThingAlias writes.');
+    assert.equal(spec.paths['/a']['x-meta'].description, 'Meta returns metadata.');
+    assert.equal(spec.components.schemas.S.description, 'ListThings returns things.');
+    assert.deepEqual(dropOperationIdDescriptionPrefixes(spec), { dropped: 0 });
+  });
+
+  it('compacts the injected entitlement note and keeps the tier', () => {
+    const spec = {
+      paths: {
+        '/a': {
+          get: { description: 'Returns data. PRO-gated. Requires entitlement tier >= 2.' },
+          post: { description: 'Pro-gated feed. Requires entitlement tier >= 1.' },
+          put: { description: 'Free data.' },
+        },
+      },
+    };
+    assert.deepEqual(compactEntitlementNotes(spec), { compacted: 2 });
+    assert.equal(spec.paths['/a'].get.description, 'Returns data. PRO tier 2+.');
+    assert.equal(spec.paths['/a'].post.description, 'Pro-gated feed. PRO tier 1+.');
+    assert.equal(spec.paths['/a'].put.description, 'Free data.');
+  });
+
+  it('every emit-time pass engages on the real bundle', () => {
+    const {
+      json, softBreakStats, defaultRequiredStats, successDescriptionStats, exampleListStats,
+      descriptionPrefixStats, entitlementNoteStats,
+    } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    assert.ok(descriptionPrefixStats.dropped >= 180, `operationId prefixes dropped: ${descriptionPrefixStats.dropped}`);
+    assert.ok(entitlementNoteStats.compacted >= 30, `entitlement notes compacted: ${entitlementNoteStats.compacted}`);
+    assert.equal(json.includes('Requires entitlement tier'), false, 'no long entitlement note survives');
+    assert.ok(softBreakStats.collapsed >= 500, `soft breaks collapsed: ${softBreakStats.collapsed}`);
+    assert.ok(defaultRequiredStats.dropped >= 200, `default required dropped: ${defaultRequiredStats.dropped}`);
+    assert.ok(successDescriptionStats.shortened >= 200, `success descriptions shortened: ${successDescriptionStats.shortened}`);
+    assert.equal(json.includes('"Successful response"'), false, 'no generated success description survives');
+    assert.ok(exampleListStats.trimmed >= 5, `example lists trimmed: ${exampleListStats.trimmed}`);
   });
 });

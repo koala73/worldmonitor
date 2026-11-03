@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getCachedJsonBatch } from '../../../_shared/redis';
+import { macroHistoryWindow } from './macro-history-window';
 import {
   WORLD_CPI_CANONICAL_KEYS,
   WORLD_CPI_LATEST_KEYS,
@@ -21,7 +22,7 @@ function isPayload(value: unknown): value is NonNullable<WorldCpiSourcePayloads[
 }
 
 /**
- * Read the five source payloads in one Redis pipeline. `raw` is required: the
+ * Read the four source payloads in one Redis pipeline. `raw` is required: the
  * seeders write unprefixed keys and this reader must not add a prefix.
  *
  * `getCachedJsonBatch` returns an empty Map on HTTP error or timeout instead of
@@ -46,6 +47,7 @@ export async function getWorldCpiMonthly(
   _ctx: ServerContext,
   req: GetWorldCpiMonthlyRequest,
 ): Promise<GetWorldCpiMonthlyResponse> {
+  const recent = macroHistoryWindow(req.limit);
   try {
     const history = req.history === true;
     const sources = await readSources(history);
@@ -56,7 +58,7 @@ export async function getWorldCpiMonthly(
       typeof req.country === 'string' ? req.country : undefined,
     );
     if (Object.keys(selected).length === 0) return { countries: [], unavailable: true };
-    return { countries, unavailable: false };
+    return { countries: countries.map(country => ({ ...country, periods: recent(country.periods) })), unavailable: false };
   } catch {
     return { countries: [], unavailable: true };
   }

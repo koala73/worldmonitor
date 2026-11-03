@@ -2,9 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { MACHINE_READABLE_URLS } from '../scripts/build-sitemap.mjs';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 function readFileSync(path, options) {
   const content = originalReadFileSync(path, options);
   if (typeof content === 'string') {
@@ -42,7 +45,12 @@ function parseRobotsGroups(source) {
   return groups;
 }
 import { fileURLToPath } from 'node:url';
-import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
+import {
+  guardProBuiltOutput,
+  isProBuiltOutputPath,
+  shouldSkipProBuiltOutput,
+  withoutUnbuiltProPaths,
+} from './_lib/pro-built-output.mjs';
 import { CACHE_POLICY_HEADER_NAME, isSharedCacheable } from './helpers/shared-cache-policy.mjs';
 import {
   CONTENT_CORPUS_PREFIXES,
@@ -76,7 +84,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|accuracy|monitor-the-situation|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|desktop-sign-in\\.html|desktop-sign-in|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -88,21 +96,23 @@ const WEBMCP_PRODUCTION_HOSTS = [
   'happy.worldmonitor.app',
   'energy.worldmonitor.app',
 ];
-const WEBMCP_TRIAL_EXPIRY = 1_794_873_600;
+const WEBMCP_TRIAL_EXPIRY = 1_806_364_800;
 const WEBMCP_TOKEN_RENEWAL_BUFFER_SECONDS = 14 * 24 * 60 * 60;
 const WEBMCP_TOKEN_SHA256_BY_HOST = {
-  'www.worldmonitor.app': '97b1029dd642731a33c2c6696f21358afe3f1e3bebf87079be26ba5891d950ce',
-  'tech.worldmonitor.app': 'd230e2454012d19baebd987709beeefbd985b0e0f62aa080b220da80a6e6b31d',
-  'finance.worldmonitor.app': 'e1f3483bd6cfae1ace66dc041c9f8584233c45e9e0c335394f6cf9bdfe9af489',
-  'commodity.worldmonitor.app': '0e0bde1d1b87976889126b2f3ddcfd06df78cc3c13598e80e0a3a45701d2c0b6',
-  'happy.worldmonitor.app': '72c2026ac2266553d9007ef0615ab46c0ca080002b86b11fc1e71cadb37f23f8',
-  'energy.worldmonitor.app': '0f2fec8b51e7f29db5f12bcaaeb859d1f1d1c71156648d57d28e1bc86954d0d4',
+  'www.worldmonitor.app': '552d58ed3da1968f39f1576e7d94402079869f7f344d81b78c6bb883129acbc4',
+  'tech.worldmonitor.app': '675f2fadcf1999b06566207fd29b71c40300dcb95de2393f369e9671592cda2a',
+  'finance.worldmonitor.app': '0c87a1ec606efb59910f4744204c6ee8fff2eb42a418a68cc29f3c1ea801c449',
+  'commodity.worldmonitor.app': 'c6ae7f7c91dc7cda5c7143e10ac1fe95ab61c528be8c73c389df0288feaad924',
+  'happy.worldmonitor.app': '9c3337b1b80f2050f473ed64943f0d6d135d9c9ca0126b2631cef01fdf97b0da',
+  'energy.worldmonitor.app': '49eb184a6eb92c01c868c97620168f8a2881b0106416955b4309512decd7b71f',
 };
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
   'index.html',
   'settings.html',
   'live-channels.html',
   'mcp-grant.html',
+  'desktop-sign-in.html',
+  'verify.html',
   'public/offline.html',
   'public/pro/index.html',
   'public/pro/welcome.html',
@@ -112,6 +122,8 @@ const GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES = [
   'settings.html',
   'live-channels.html',
   'mcp-grant.html',
+  'desktop-sign-in.html',
+  'verify.html',
   'public/pro/index.html',
   'public/pro/welcome.html',
 ];
@@ -382,6 +394,11 @@ const KNOWN_FRAME_WILDCARDS = [
   'https://*.custom.hs.dodopayments.com',
 ];
 const OPEN_CSP_SOURCES = ['*', 'https:', 'http:', 'data:', 'blob:'];
+const findOpenDesktopScriptSources = (tokens) => tokens.filter((token) =>
+  token === "'unsafe-inline'" || token === "'unsafe-eval'" ||
+  OPEN_CSP_SOURCES.includes(token) ||
+  (token.includes('*') && token !== 'https://*.clerk.accounts.dev')
+);
 // Exported-by-hoisting so the guard's own negative test can drive it directly
 // rather than asserting through the real config, which cannot show a widening.
 const findOpenFrameSources = (tokens) => tokens.filter((token) => {
@@ -479,6 +496,40 @@ describe('vercel.json source matching', () => {
   });
 });
 
+describe('open data under /data/v1', () => {
+  it('revalidates versioned open data hourly instead of caching it as immutable', () => {
+    assert.equal(effectiveCacheControl('/data/v1/chokepoints/latest.json'), 'public, max-age=3600');
+  });
+
+  it('keeps open data readable cross-origin', () => {
+    assert.equal(effectiveHeader('/data/v1/chokepoints/latest.csv', 'Access-Control-Allow-Origin'), '*');
+  });
+
+  it('lets the CDN serve stale open data briefly while it revalidates', () => {
+    assert.equal(
+      effectiveHeader('/data/v1/chokepoints/latest.json', 'CDN-Cache-Control'),
+      'public, s-maxage=3600, stale-while-revalidate=600',
+    );
+  });
+
+  it('leaves unversioned /data assets immutable', () => {
+    assert.equal(effectiveCacheControl('/data/countries-50m.json'), 'public, max-age=31536000, immutable');
+  });
+
+  const nginxLocation = (prefix) => {
+    const match = dockerNginxSource.match(new RegExp(`^ {4}location ${prefix.replace(/\//g, '\\/')} \\{\\n([\\s\\S]*?)^ {4}\\}`, 'm'));
+    assert.ok(match, `docker/nginx.conf must declare location ${prefix}`);
+    return match[1];
+  };
+
+  it('gives the self-hosted image the same hourly, cross-origin rule for /data/v1/', () => {
+    const block = nginxLocation('/data/v1/');
+    assert.match(block, /add_header Cache-Control "public, max-age=3600";/);
+    assert.match(block, /add_header Access-Control-Allow-Origin "\*" always;/);
+    assert.match(nginxLocation('/data/'), /add_header Cache-Control "public, max-age=31536000, immutable";/);
+  });
+});
+
 describe('crawlable content corpus deployment contracts', () => {
   const staticCorpusPaths = [
     '/countries/ukraine/',
@@ -554,7 +605,7 @@ describe('crawlable content corpus deployment contracts', () => {
     );
     assert.equal(
       packageJson.scripts['build:sitemap'],
-      'node scripts/build-sitemap.mjs'
+      'node --import tsx scripts/build-sitemap.mjs'
     );
 
     for (const scriptName of ['build', 'build:full']) {
@@ -646,6 +697,15 @@ describe('crawlable content corpus deployment contracts', () => {
     assert.ok(!packageJson.scripts['build:full'].includes('npm run build:blog &&'), 'build:full must not regenerate inventory facts inside build:blog');
   });
 
+  it('builds frontend assets on the host platform and keeps nginx on the target platform', () => {
+    const stages = frontendDockerfileSource.match(/^FROM .+$/gm);
+    assert.equal(stages.length, 2);
+    assert.match(stages[0], /^FROM --platform=\$BUILDPLATFORM node:.+ AS builder$/);
+    assert.match(stages[1], /^FROM nginx:.+ AS runtime$/);
+    assert.match(frontendDockerfileSource, /^COPY --from=builder \/app\/dist\/ \.\/$/m);
+    assert.doesNotMatch(frontendDockerfileSource, /^COPY --from=builder .*node_modules/m);
+  });
+
   it('builds Vercel when corpus source files change', () => {
     assert.ok(vercelIgnoreSource.includes("'CHANGELOG.md'"));
     assert.ok(vercelIgnoreSource.includes("'docs/snapshots/'"));
@@ -653,15 +713,23 @@ describe('crawlable content corpus deployment contracts', () => {
       'docs/docs.json',
       'scripts/build-comparison-pages.mjs',
       'scripts/comparison-page-narratives.mjs',
+      'scripts/comparison-shortlist.mjs',
       'scripts/unranked-country-inventory.mjs',
       'scripts/build-use-cases.mjs',
+      'scripts/data/use-case-workflows.mjs',
       'scripts/build-accuracy-page.mjs',
+      'scripts/build-situation-page.mjs',
+      'scripts/situation-page/',
+      'scripts/slugify.mjs',
       'scripts/crawlable-sources-page.mjs',
       'scripts/source-origin.mjs',
       'scripts/source-origin.d.mts',
       'scripts/generate-inventory-facts.mjs',
       'scripts/docs-stats.mjs',
       'scripts/source-attribution.mjs',
+      'scripts/country-related-links.mjs',
+      'scripts/data/country-centroids.json',
+      'scripts/related-reading.mjs',
     ]) {
       assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
     }
@@ -687,15 +755,23 @@ describe('crawlable content corpus deployment contracts', () => {
         'docs/docs.json',
         'scripts/build-comparison-pages.mjs',
       'scripts/comparison-page-narratives.mjs',
+      'scripts/comparison-shortlist.mjs',
         'scripts/unranked-country-inventory.mjs',
         'scripts/build-use-cases.mjs',
+        'scripts/data/use-case-workflows.mjs',
         'scripts/build-accuracy-page.mjs',
+        'scripts/build-situation-page.mjs',
+        'scripts/situation-page/sections.mjs',
+        'scripts/slugify.mjs',
         'scripts/crawlable-sources-page.mjs',
         'scripts/source-origin.mjs',
         'scripts/source-origin.d.mts',
         'scripts/generate-inventory-facts.mjs',
         'scripts/docs-stats.mjs',
         'scripts/source-attribution.mjs',
+        'scripts/country-related-links.mjs',
+        'scripts/data/country-centroids.json',
+        'scripts/related-reading.mjs',
       ]) {
         const previous = git('rev-parse', 'HEAD').trim();
         mkdirSync(dirname(join(fixture, path)), { recursive: true });
@@ -720,6 +796,130 @@ describe('crawlable content corpus deployment contracts', () => {
           `${path} must request a Vercel preview build`,
         );
       }
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('builds the prediction policy merge on main and preview while skipping unrelated scripts and tests', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-policy-'));
+    try {
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
+      const actual = [];
+      const expected = [];
+      for (const { paths, status } of [
+        { paths: ['scripts/shared/prediction-country-language.json', 'tests/prediction-country-index.test.mjs', 'tests/prediction-country-markets-pools.test.mts'], status: 1 },
+        { paths: ['scripts/seed-unrelated.mjs'], status: 0 },
+        { paths: ['tests/unrelated.test.mjs'], status: 0 },
+      ]) {
+        const previous = git('rev-parse', 'HEAD').trim();
+        for (const path of paths) {
+          mkdirSync(dirname(join(fixture, path)), { recursive: true });
+          writeFileSync(join(fixture, path), `${path}\n`);
+        }
+        git('add', '.');
+        git('commit', '-qm', paths.join(', '));
+        git('update-ref', 'refs/remotes/origin/main', previous);
+        for (const ref of ['main', 'feature/prediction-policy']) {
+          const result = spawnSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+            cwd: fixture,
+            env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: ref, VERCEL_GIT_PREVIOUS_SHA: previous },
+            encoding: 'utf8',
+          });
+          assert.ifError(result.error);
+          actual.push({ paths, ref, status: result.status });
+          expected.push({ paths, ref, status });
+        }
+      }
+      assert.deepEqual(actual, expected);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('builds a deliberate same-commit redeploy on main so rotated env vars reach production (#8216)', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-redeploy-'));
+    try {
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
+      const deployed = git('rev-parse', 'HEAD').trim();
+      const run = (previous) => spawnSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+        cwd: fixture,
+        env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_PREVIOUS_SHA: previous },
+        encoding: 'utf8',
+      });
+
+      // Vercel sets VERCEL_GIT_PREVIOUS_SHA to the last successful deployment, so it
+      // equals HEAD only when that same commit is redeployed after an env change.
+      const redeploy = run(deployed);
+      assert.ifError(redeploy.error);
+      assert.equal(redeploy.status, 1, 'a same-commit redeploy must build');
+
+      mkdirSync(join(fixture, 'scripts'), { recursive: true });
+      writeFileSync(join(fixture, 'scripts/seed-unrelated.mjs'), 'seed\n');
+      git('add', '.');
+      git('commit', '-qm', 'seed only');
+      const push = run(deployed);
+      assert.ifError(push.error);
+      assert.equal(push.status, 0, 'a new commit with no web changes must still skip');
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('builds a same-commit preview redeploy when the shallow clone has no origin/main', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-preview-redeploy-'));
+    try {
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
+      const deployed = git('rev-parse', 'HEAD').trim();
+      const run = (previous) => spawnSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+        cwd: fixture,
+        env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'feat/env-flag', VERCEL_GIT_PREVIOUS_SHA: previous },
+        encoding: 'utf8',
+      });
+
+      // Vercel's preview clone has no origin/main, so the script falls back to
+      // PREVIOUS_SHA. A redeploy to pick up a preview env var sets it to HEAD.
+      const redeploy = run(deployed);
+      assert.ifError(redeploy.error);
+      assert.equal(redeploy.status, 1, 'a same-commit preview redeploy must build');
+
+      mkdirSync(join(fixture, 'scripts'), { recursive: true });
+      writeFileSync(join(fixture, 'scripts/seed-unrelated.mjs'), 'seed\n');
+      git('add', '.');
+      git('commit', '-qm', 'seed only');
+      const push = run(deployed);
+      assert.ifError(push.error);
+      assert.equal(push.status, 0, 'a new preview commit with no web changes must still skip');
     } finally {
       rmSync(fixture, { recursive: true, force: true });
     }
@@ -768,6 +968,14 @@ describe('crawlable content corpus deployment contracts', () => {
   // pointing at these files, and a disallowed URL is a claim Google is
   // forbidden to verify (#7660).
   it('marks the machine-readable data surface noindex without touching corpus HTML or the AI-citation surface (#8608)', () => {
+    const dataHeaderRules = vercelConfig.headers
+      .filter(({ source }) => /\.(?:json|ya?ml)$/i.test(source))
+      .filter(({ source }) => !source.replaceAll('\\', '').startsWith('/.well-known/'));
+    for (const { source, headers } of dataHeaderRules) {
+      const robotsTag = headers.find(({ key }) => key.toLowerCase() === 'x-robots-tag');
+      assert.equal(robotsTag?.value ?? null, 'noindex, follow', source);
+    }
+
     const dataFiles = [
       // Corpus dataset downloads - scripts/build-crawlable-corpus.mjs.
       '/country-instability-index/cii-ranking.json',
@@ -1218,11 +1426,12 @@ describe('deploy/cache configuration guardrails', () => {
   });
 
   it('keeps PWA precache glob free of HTML files', () => {
+    assert.match(viteConfigSource, /includeManifestIcons:\s*false/);
     assert.match(
       viteConfigSource,
-      /globPatterns:\s*\['\*\*\/\*\.\{js,css,ico,png,svg,woff2\}'\]/
+      /globPatterns:\s*\['assets\/\*\*\/\*\.\{js,css\}'\]/
     );
-    assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
+    assert.match(viteConfigSource, /manifestTransforms:\s*\[dashboardPrecache\.manifestTransform\]/);
   });
 
   it('emits public sourcemaps for preview attribution while production stays opt-in (#7382)', () => {
@@ -1234,36 +1443,98 @@ describe('deploy/cache configuration guardrails', () => {
   });
 
 
-  it('keeps off-page public assets out of the PWA precache', () => {
-    const assertGlobIgnore = (pattern) => {
-      assert.match(
-        viteConfigSource,
-        new RegExp(`globIgnores:\\s*\\[[\\s\\S]*'${escapeRegExp(pattern)}'[\\s\\S]*\\]`)
-      );
-    };
-
-    assert.match(viteConfigSource, /includeManifestIcons:\s*false/);
-    assert.doesNotMatch(
-      viteConfigSource,
-      /globIgnores:[\s\S]*'assets\/\*\*'/
-    );
-    assertGlobIgnore('pro/**');
-    assertGlobIgnore('favico/**');
-    assertGlobIgnore('textures/**');
-    assertGlobIgnore('**/*.woff2');
-    // #4891: blog OG covers exist only in prod builds (blog generated at
-    // deploy), so a local dist/sw.js never exposes the regression — guard the
-    // config directly. Without this ignore, every first dashboard visit
-    // precached ~40 blog PNGs (~700KB) through the service worker.
-    assertGlobIgnore('blog/**');
-  });
-
-  it('keeps the lazy Clerk SDK out of the PWA precache', () => {
-    assert.match(viteConfigSource, /globIgnores:\s*\[[^\]]*'\*\*\/clerk-\*\.js'[^\]]*\]/s);
+  it('assigns a stable chunk name to the Clerk SDK', () => {
     assert.match(
       viteConfigSource,
       /if\s*\(\s*id\.includes\('\/@clerk\/clerk-js\/'\)\s*\)\s*\{[^{}]*\breturn 'clerk';\s*\}/
     );
+  });
+
+  const swPath = resolve(__dirname, '../dist/sw.js');
+  guardBuiltOutput(swPath);
+  function readPwaWorker() {
+    let manifest;
+    let appChunkCache;
+    function workboxStub() {} // Used as both a constructor and an ordinary helper.
+    const workbox = new Proxy({
+      precacheAndRoute(entries) { manifest = entries; },
+      ExpirationPlugin: class {
+        constructor(options) { Object.assign(this, options); }
+      },
+      StaleWhileRevalidate: class {
+        constructor(options) {
+          if (options.cacheName === 'app-chunks') appChunkCache = options;
+        }
+      },
+    }, { get: (target, name) => target[name] ?? workboxStub });
+    const define = (_dependencies, factory) => factory(workbox);
+    runInNewContext(readFileSync(swPath, 'utf8'), {
+      define,
+      self: { define, skipWaiting() {}, addEventListener() {} },
+      importScripts() {},
+    }, { timeout: 5_000 });
+    assert.ok(Array.isArray(manifest) && manifest.length > 0, 'generated SW must register a precache');
+    return { manifest, appChunkCache };
+  }
+
+  function assertPwaPrecache(manifest) {
+    const urls = Array.from(manifest, ({ url }) => url);
+    assert.ok(urls.length <= 32, `PWA precache has ${urls.length} entries; budget is 32`);
+    let totalBytes = 0;
+    const dist = dirname(swPath);
+    for (const url of urls) {
+      const path = resolve(dist, url);
+      assert.ok(path.startsWith(`${dist}${sep}`), `precache URL escapes dist: ${url}`);
+      totalBytes += statSync(path).size;
+      assert.doesNotMatch(url, /^(?:pro|blog|textures|trust|research-assets)\//);
+      if (!url.startsWith('favico/')) assert.doesNotMatch(url, /\.(?:woff2?|png|svg)$/i);
+      assert.doesNotMatch(url, /(?:^|\/)(?:App-|MapContainer-|GlobeMap-|maplibre-|protomaps-|deck-stack-|h3-js-|UnifiedSettings-|settings-window-|checkout-|rpc-client-|panel-support-|panels-(?:economy|markets|risk|energy|defense|news|intel)-)/, `Optional chunk must stay out of precache: ${url}`);
+      if (/\.html$/.test(url)) assert.equal(url, 'offline.html');
+    }
+    assert.ok(totalBytes <= 2 * 1024 * 1024, `PWA precache is ${totalBytes} bytes; budget is 2 MiB`);
+    for (const url of ['offline.html', 'manifest.webmanifest', 'favico/favicon.ico', 'favico/apple-touch-icon.png', 'favico/favicon-32x32.png']) {
+      assert.ok(urls.includes(url), `missing required precache file: ${url}`);
+    }
+    assert.ok(urls.some((url) => /^assets\/main-.*\.js$/.test(url)), 'dashboard entry is missing');
+  }
+
+  it('bounds the generated PWA precache and excludes optional/off-page assets (#5373)', {
+    skip: shouldSkipBuiltOutput(swPath),
+  }, () => {
+    assertPwaPrecache(readPwaWorker().manifest);
+  });
+
+  it('keeps enough runtime-cache capacity for the emitted JS/CSS build (#5373)', {
+    skip: shouldSkipBuiltOutput(swPath),
+  }, () => {
+    const { appChunkCache } = readPwaWorker();
+    assert.ok(appChunkCache, 'generated SW must register the app chunk runtime cache');
+    const expiration = appChunkCache.plugins.find((plugin) => Number.isFinite(plugin.maxEntries));
+    assert.ok(expiration, 'app chunk runtime cache must have bounded capacity');
+    // Counting every chunk is conservative: shell and locale routes own some of them.
+    const assets = readdirSync(resolve(dirname(swPath), 'assets')).filter((name) => /\.(?:js|css)$/i.test(name));
+    assert.ok(expiration.maxEntries >= assets.length,
+      `Runtime cache holds ${expiration.maxEntries} entries but the build emits ${assets.length} JS/CSS files; normal use can evict the app entry`);
+  });
+
+  it('rejects forbidden map and panel chunks even when they fit the precache budgets (#5373)', {
+    skip: shouldSkipBuiltOutput(swPath),
+  }, () => {
+    const { manifest } = readPwaWorker();
+    const dist = dirname(swPath);
+    const assets = readdirSync(resolve(dist, 'assets'));
+    for (const prefix of [
+      'protomaps-', 'h3-js-', 'UnifiedSettings-', 'settings-window-', 'checkout-',
+      'panel-support-', 'panels-news-', 'panels-intel-',
+    ]) {
+      const asset = assets.find((name) => name.startsWith(prefix) && name.endsWith('.js'));
+      assert.ok(asset, `missing built chunk for negative test: ${prefix}`);
+      const polluted = [...manifest, { url: `assets/${asset}`, revision: null }];
+      assert.ok(polluted.length <= 32, 'negative test must stay within the entry budget');
+      const bytes = polluted.reduce((sum, { url }) => sum + statSync(resolve(dist, url)).size, 0);
+      assert.ok(bytes <= 2 * 1024 * 1024, 'negative test must stay within the byte budget');
+      assert.throws(() => assertPwaPrecache(polluted), /Optional chunk must stay out of precache/);
+    }
   });
 
   it('explicitly disables navigateFallback when HTML is not precached', () => {
@@ -1317,9 +1588,15 @@ const DASHBOARD_HTML_DESTINATION = '/dashboard.html';
 // src/services/referral-capture.ts — a CTA spelled with either one is captured
 // as an affiliate code and forwarded to Dodo.
 const AFFILIATE_PARAM_IN_URL = /[?&](?:ref|wm_referral)=/;
-// Dashboard-bound CTA queries, in the two shapes the welcome sections use: the
-// DASHBOARD_PATH template literal and an absolute variant-host URL.
-const DASHBOARD_CTA_QUERY = /(?:\$\{DASHBOARD_PATH\}|worldmonitor\.app\/dashboard)\?([^`'"\s]*)/g;
+// Dashboard-bound CTAs, in the shapes the welcome sections use: the
+// DASHBOARD_PATH constant (bare or interpolated) and an absolute variant-host
+// URL. The capture is the tail AFTER the path, so an untagged CTA matches with
+// an empty capture and a tagged one exposes its query — matching only on `?`
+// would make the scan silently skip every CTA the moment tagging stops.
+// The tail includes a quoted concatenation (`DASHBOARD_PATH + '?utm_source=…'`).
+// Stopping at the space left that tail empty, so the CTA still counted as clean.
+const DASHBOARD_CTA = /href[=:]\s*[{`'"]*(?:\$\{DASHBOARD_PATH\}|DASHBOARD_PATH|https:\/\/[a-z]+\.worldmonitor\.app\/dashboard)((?:[^`'"\s,}]|\s*\+\s*['"][^'"]*['"])*)/g;
+const INDEX_NOISE_IN_HREF = /href\s*[:=]\s*["'`][^"'`]*[?&](?:utm_[a-z0-9_]+|ref|wm_referral)=/i;
 
 function readWelcomeSources() {
   const welcomeDir = resolve(__dirname, '../pro-test/src/welcome');
@@ -1530,6 +1807,16 @@ describe('welcome landing page routing', () => {
     assert.equal(redirect.permanent, true);
   });
 
+  it('sends a followed Clerk virtual-router href back to the dashboard instead of a 404', () => {
+    const redirect = firstRedirectFor({
+      host: 'www.worldmonitor.app',
+      path: '/CLERK-ROUTER/VIRTUAL/sign-in/factor-one',
+    });
+    assert.ok(redirect, 'expected a redirect for /CLERK-ROUTER/*');
+    assert.equal(redirect.destination, '/dashboard');
+    assert.equal(redirect.permanent, false);
+  });
+
   it('redirects direct /index.html requests to / permanently', () => {
     const redirect = vercelConfig.redirects.find((r) => r.source === '/index.html');
     assert.ok(redirect, 'expected a redirect for /index.html');
@@ -1580,6 +1867,24 @@ describe('welcome landing page routing', () => {
     assertPublicHtmlEntryCache('/');
   });
 
+  it('gives indexable locale landings the same public HTML cache as the English homepage', () => {
+    // Last matching header wins. Without an explicit later rule, /es/ inherits
+    // the SPA catch-all `private, no-cache` instead of the homepage CDN policy.
+    // Two-letter locale ids stay out of that catch-all's prefix lookahead so
+    // `/debug` or `/archive` cannot be excluded by `de` / `ar`.
+    const homepageLink = effectiveHeader('/', 'Link');
+    for (const locale of nonDefaultLandingLocales()) {
+      assertPublicHtmlEntryCache(`/${locale.pathSegment}`);
+      assertPublicHtmlEntryCache(locale.canonicalPath);
+      assert.equal(effectiveHeader(locale.canonicalPath, 'Link'), homepageLink);
+      assert.equal(
+        effectiveCacheControl(`/${locale.pathSegment}/not-a-landing`),
+        'private, no-cache, must-revalidate',
+        `/${locale.pathSegment}/not-a-landing must stay on the SPA HTML cache policy`,
+      );
+    }
+  });
+
   it('requires revalidation for direct dashboard.html without disabling bfcache', () => {
     assertPublicHtmlEntryCache('/dashboard.html');
   });
@@ -1590,6 +1895,15 @@ describe('welcome landing page routing', () => {
       assert.ok(apiRedirect, `expected a redirect for ${source}`);
       assert.equal(apiRedirect.destination, '/docs/api-reference');
       assert.equal(apiRedirect.permanent, false);
+    }
+  });
+
+  it('redirects bare /docs to the docs home permanently, with or without a trailing slash', () => {
+    for (const source of ['/docs', '/docs/']) {
+      const docsRedirect = vercelConfig.redirects.find((r) => r.source === source);
+      assert.ok(docsRedirect, `expected a redirect for ${source}`);
+      assert.equal(docsRedirect.destination, '/docs/documentation');
+      assert.equal(docsRedirect.permanent, true);
     }
   });
 
@@ -1714,36 +2028,41 @@ describe('welcome landing page routing', () => {
     );
   });
 
-  it('tags welcome dashboard CTAs with utm params, never an affiliate referral param', { skip: shouldSkipProBuiltOutput() }, () => {
+  it('leaves welcome dashboard CTAs untagged, and never uses an affiliate referral param', { skip: shouldSkipProBuiltOutput() }, () => {
     // `ref=` and `wm_referral=` on a dashboard URL are read by
     // src/services/referral-capture.ts as an AFFILIATE code: persisted for 7
     // days and forwarded to Dodo as `affonso_referral`. Internal welcome CTAs
-    // tagged that way credit "welcome-nav" for organic purchases (#6493), so
-    // the source tag must be a utm_* param — which Umami reports natively and
-    // referral-capture ignores. Both param names are banned: wm_referral is
-    // read FIRST, so a CTA spelled that way is the identical bug.
+    // tagged that way credit "welcome-nav" for organic purchases (#6493).
+    // Both param names are banned: wm_referral is read FIRST, so a CTA spelled
+    // that way is the identical bug.
+    //
+    // The utm_* replacement these CTAs used to carry is banned too (#8603):
+    // middleware strips every INDEX_NOISE_QUERY_KEY with a 308, so a tagged
+    // internal link sent Googlebot through a redirect on every welcome CTA.
+    // Attribution rides data-umami-event-target, which Umami reports natively
+    // and which costs no redirect hop.
     const welcomeSources = readWelcomeSources();
 
-    let taggedCtas = 0;
+    let scannedCtas = 0;
     for (const [file, source] of welcomeSources) {
       assert.doesNotMatch(
         source,
         AFFILIATE_PARAM_IN_URL,
         `${file}: welcome CTAs must never use an affiliate referral param (see REFERRAL_PARAM_NAMES in referral-capture.ts)`
       );
-      for (const [, query] of source.matchAll(DASHBOARD_CTA_QUERY)) {
-        assert.match(
-          query,
-          /(?:^|&)utm_source=welcome(?:&|$)/,
-          `${file}: dashboard CTA "?${query}" must carry utm_source=welcome`
+      for (const [, tail] of source.matchAll(DASHBOARD_CTA)) {
+        assert.equal(
+          tail,
+          '',
+          `${file}: dashboard CTA carries "${tail}" — middleware 308s index-noise query keys away`
         );
-        taggedCtas += 1;
+        scannedCtas += 1;
       }
     }
     // Exact, not a floor: a floor with slack lets a CTA drop out of the scan
     // (moved behind a helper, or re-pointed off /dashboard) while still
     // reading as covered. Bump this deliberately when a CTA is added.
-    assert.equal(taggedCtas, 12, `expected all 12 welcome dashboard CTAs to be scanned, saw ${taggedCtas}`);
+    assert.equal(scannedCtas, 12, `expected all 12 welcome dashboard CTAs to be scanned, saw ${scannedCtas}`);
 
     const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
     assert.doesNotMatch(
@@ -1759,6 +2078,31 @@ describe('welcome landing page routing', () => {
       AFFILIATE_PARAM_IN_URL,
       'prerendered welcome HTML still ships affiliate referral CTAs — rebuild pro-test (npm run build:pro)'
     );
+    const generatedWelcomeJs = readGeneratedWelcomeAsset(generatedWelcomeHtml);
+    assert.doesNotMatch(
+      generatedWelcomeJs,
+      INDEX_NOISE_IN_HREF,
+      'generated welcome JS still ships an index-noise query on an href — middleware 308s utm_*, ref, and wm_referral'
+    );
+    assert.doesNotMatch(
+      generatedWelcomeHtml.replace(/&amp;/g, '&'),
+      INDEX_NOISE_IN_HREF,
+      'prerendered welcome HTML still ships an index-noise query on an href'
+    );
+  });
+
+  it('treats a concatenated dashboard query as part of the CTA', () => {
+    const tagged = [..."href={DASHBOARD_PATH + '?utm_source=welcome'}".matchAll(DASHBOARD_CTA)].map((match) => match[1]);
+    assert.deepEqual(tagged, [" + '?utm_source=welcome'"]);
+    assert.notEqual(tagged[0], '');
+    for (const clean of [
+      'href={DASHBOARD_PATH}',
+      'href={`${DASHBOARD_PATH}`}',
+      'href="https://tech.worldmonitor.app/dashboard"',
+    ]) {
+      const tails = [...clean.matchAll(DASHBOARD_CTA)].map((match) => match[1]);
+      assert.deepEqual(tails, [''], clean);
+    }
   });
 
   it('keeps every critical-CSS anchor rule bound to an anchor the prerender actually emits', { skip: shouldSkipProBuiltOutput() }, () => {
@@ -1770,18 +2114,31 @@ describe('welcome landing page routing', () => {
       // Comments in this file discuss selectors (including ones that no longer
       // exist); scanning them would fail the guard over prose.
       .replace(/^[ \t]*\/\/.*$/gm, '');
-    const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
+    // Every landing the prerender writes ships this same critical CSS, and
+    // the localized ones translate attribute text such as aria-label, so a
+    // rule must bind on each of them, not only on the English page.
+    const generatedWelcomePages = [
+      ['public/pro/welcome.html', readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8')],
+      ...nonDefaultLandingLocales().map((locale) => {
+        const rel = `public/${locale.pathSegment}/index.html`;
+        return [rel, readFileSync(resolve(__dirname, '..', rel), 'utf-8')];
+      }),
+    ];
 
     // Region-scoped: a `main a[...]` rule is dead if only a <nav> anchor
     // matches it, so each selector is checked against anchors from its own
     // region rather than the whole document.
-    const anchorsByRegion = new Map(['main', 'nav'].map((region) => {
-      const markup = generatedWelcomeHtml.match(new RegExp(`<${region}\\b[\\s\\S]*?</${region}>`))?.[0] ?? '';
-      return [region, markup.match(/<a\b[^>]*>/g) ?? []];
-    }));
-    for (const [region, anchors] of anchorsByRegion) {
-      assert.ok(anchors.length > 0, `prerendered welcome HTML must contain <${region}> anchors`);
-    }
+    const anchorsByRegionFor = (html, page) => {
+      const byRegion = new Map(['main', 'nav'].map((region) => {
+        const markup = html.match(new RegExp(`<${region}\\b[\\s\\S]*?</${region}>`))?.[0] ?? '';
+        return [region, markup.match(/<a\b[^>]*>/g) ?? []];
+      }));
+      for (const [region, anchors] of byRegion) {
+        assert.ok(anchors.length > 0, `${page} must contain <${region}> anchors`);
+      }
+      return byRegion;
+    };
+    const pageAnchors = generatedWelcomePages.map(([page, html]) => [page, anchorsByRegionFor(html, page)]);
 
     // `[~|^$*]?` covers every CSS attribute operator, so a rule rewritten with
     // one we do not model fails loudly below instead of dropping out of the
@@ -1799,7 +2156,10 @@ describe('welcome landing page routing', () => {
       // would paint any story slug containing "moments" as a hero CTA until the
       // deferred stylesheet lands.
       'main a[href="#moments"]',
-      'nav[data-wm-nav] a[aria-label*="Launch"]',
+      // The analytics marker, not the aria-label: localized landings
+      // translate the label ("Dashboard starten"), so an `aria-label*="Launch"`
+      // rule left their Launch button unstyled until the stylesheet landed.
+      'nav[data-wm-nav] a[data-umami-event-target="welcome-nav"]',
     ]) {
       assert.ok(scanned.has(required), `critical CSS must still style the welcome CTA via ${required}`);
     }
@@ -1814,19 +2174,21 @@ describe('welcome landing page routing', () => {
       // rather than defaulted: an unknown region silently reports every rule in
       // it as dead, which reads as a broken CTA instead of a broken guard.
       const anchorRegion = region.startsWith('nav') ? 'nav' : region;
-      assert.ok(
-        anchorsByRegion.has(anchorRegion),
-        `critical CSS region "${region}" has no anchor pool — teach this guard the region or it stops checking every rule inside it`
-      );
-      const matched = anchorsByRegion.get(anchorRegion).some((tag) => {
-        const actual = tag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1];
-        if (actual === undefined) return false;
-        return operator === '*' ? actual.includes(value) : actual === value;
-      });
-      assert.ok(
-        matched,
-        `critical CSS selector ${region} a[${attribute}${operator}="${value}"] matches no prerendered <${region}> anchor — the rule is dead and its CTA paints unstyled`
-      );
+      for (const [page, anchorsByRegion] of pageAnchors) {
+        assert.ok(
+          anchorsByRegion.has(anchorRegion),
+          `critical CSS region "${region}" has no anchor pool — teach this guard the region or it stops checking every rule inside it`
+        );
+        const matched = anchorsByRegion.get(anchorRegion).some((tag) => {
+          const actual = tag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1];
+          if (actual === undefined) return false;
+          return operator === '*' ? actual.includes(value) : actual === value;
+        });
+        assert.ok(
+          matched,
+          `critical CSS selector ${region} a[${attribute}${operator}="${value}"] matches no prerendered <${region}> anchor in ${page} — the rule is dead there and its CTA paints unstyled`
+        );
+      }
     }
   });
 
@@ -2417,7 +2779,7 @@ describe('security header guardrails', () => {
       const location = locationBlock.match(/^ {4}location ([^{]+)\{/)?.[1].trim() ?? '<unknown>';
       assert.match(
         locationBlock,
-        /include \/etc\/nginx\/(?:embed_)?security_headers\.conf;/,
+        /include \/etc\/nginx\/(?:embed_|oauth_authorize_|youtube_embed_)?security_headers\.conf;/,
         `docker/nginx.conf.template ${location} must include an origin-keying header set`,
       );
     }
@@ -2427,7 +2789,7 @@ describe('security header guardrails', () => {
     const rules = vercelConfig.headers.filter((entry) =>
       entry.headers?.some((header) => header.key.toLowerCase() === 'origin-trial')
     );
-    assert.equal(rules.length, 3 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
+    assert.equal(rules.length, 4 + (WEBMCP_PRODUCTION_HOSTS.length - 1) * 2);
 
     for (const host of WEBMCP_PRODUCTION_HOSTS) {
       const hostPattern = '^' + host.replaceAll('.', '\\.') + '$';
@@ -2435,11 +2797,11 @@ describe('security header guardrails', () => {
         rule.has?.some((condition) => condition.type === 'host' && condition.value === hostPattern)
       );
       const expectedSources = host === 'www.worldmonitor.app'
-        ? ['/', '/dashboard', '/dashboard.html']
+        ? ['/', '/(es|pt|ru|fr|de|ar)/', '/dashboard', '/dashboard.html']
         : ['/dashboard', '/dashboard.html'];
       assert.deepEqual(
         hostRules.map((rule) => rule.source).sort(),
-        expectedSources,
+        expectedSources.slice().sort(),
         host + ' must enroll only documents that directly return WebMCP HTML',
       );
       if (host === 'www.worldmonitor.app') {
@@ -2457,6 +2819,20 @@ describe('security header guardrails', () => {
           false,
           host + ' must not attach an Origin-Trial token to /?mode=agent',
         );
+        const landingRule = hostRules.find((rule) => rule.source === '/(es|pt|ru|fr|de|ar)/');
+        assert.ok(landingRule, host + ' must enroll prerendered locale landings');
+        assert.deepEqual(
+          landingRule.missing,
+          [{ type: 'query', key: 'mode', value: 'agent' }],
+          host + ' must exclude locale-landing ?mode=agent from enrollment',
+        );
+        for (const locale of nonDefaultLandingLocales()) {
+          assert.equal(headerRuleMatchesRequest(landingRule, { path: locale.canonicalPath, host }), true);
+          assert.equal(
+            headerRuleMatchesRequest(landingRule, { path: locale.canonicalPath, host, query: { mode: 'agent' } }),
+            false,
+          );
+        }
       }
       assert.equal(
         hostRules.some((rule) => headerRuleMatchesRequest(rule, { path: '/dashboard', host })),
@@ -2582,6 +2958,72 @@ describe('security header guardrails', () => {
     assert.ok(headerMediaSrc.split(/\s+/).includes('https:'), 'header media-src must keep https: for live media and CSP filtering');
   });
 
+  it('desktop (Tauri) CSP lets the sidecar YouTube embed frame and HLS media load', () => {
+    // Desktop Live News plays YouTube through the sidecar's /api/youtube-embed page on
+    // 127.0.0.1/localhost, and HLS streams directly from https CDNs.
+    const tauriConfig = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'));
+    const tauriCsp = tauriConfig.app.security.csp;
+    const sidecarOrigins = ['http://127.0.0.1:*', 'http://localhost:*'];
+    const frameSrc = getCspDirectiveTokens(tauriCsp, 'frame-src');
+    const mediaSrc = getCspDirectiveTokens(tauriCsp, 'media-src');
+    for (const origin of sidecarOrigins) {
+      assert.ok(frameSrc.includes(origin), `Tauri CSP frame-src must allow ${origin} for the sidecar embed iframe`);
+      assert.ok(mediaSrc.includes(origin), `Tauri CSP media-src must allow ${origin} for sidecar media`);
+    }
+    assert.ok(mediaSrc.includes('https:'), 'Tauri CSP media-src must allow https: for direct HLS CDN streams');
+  });
+
+  it('desktop (Tauri) CSP limits cleartext WebSockets to loopback dev servers', () => {
+    const tauriConfig = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'));
+    const connectSrc = getCspDirectiveTokens(tauriConfig.app.security.csp, 'connect-src');
+    const cleartextWebSockets = connectSrc.filter((token) => token === 'ws:' || token.startsWith('ws://')).sort();
+    assert.deepEqual(cleartextWebSockets, ['ws://127.0.0.1:*', 'ws://localhost:*'], 'only Vite HMR on loopback may use a cleartext WebSocket under tauri dev');
+    assert.ok(connectSrc.includes('wss:'), 'Tauri CSP connect-src must keep wss: for the relay');
+  });
+
+  it('desktop (Tauri) CSP admits the production Clerk Frontend API and Turnstile (#9134)', () => {
+    // loadClerkUmd() derives the script host from the publishable key, so a
+    // pk_live build loads clerk.browser.js and ui.browser.js from
+    // clerk.worldmonitor.app, not *.clerk.accounts.dev. Sign-up then loads
+    // Turnstile from challenges.cloudflare.com as a script and a frame.
+    const tauriConfig = JSON.parse(readFileSync(resolve(__dirname, '../src-tauri/tauri.conf.json'), 'utf-8'));
+    const tauriCsp = tauriConfig.app.security.csp;
+    const scriptSrc = getCspDirectiveTokens(tauriCsp, 'script-src');
+    const frameSrc = getCspDirectiveTokens(tauriCsp, 'frame-src');
+    for (const origin of ['https://clerk.worldmonitor.app', 'https://challenges.cloudflare.com']) {
+      assert.ok(scriptSrc.includes(origin), `Tauri CSP script-src must allow ${origin}`);
+      assert.ok(frameSrc.includes(origin), `Tauri CSP frame-src must allow ${origin}`);
+    }
+    assert.deepEqual(findOpenDesktopScriptSources(scriptSrc), [],
+      'Tauri CSP script-src must stay an exact-origin allowlist except for the known Clerk dev wildcard');
+  });
+
+  it('the desktop script-src guard rejects unsafe keywords and unapproved open sources', () => {
+    for (const widened of [
+      "'unsafe-inline'",
+      "'unsafe-eval'",
+      'https://*.example.com',
+      'http://*.example.com',
+      'https://*',
+      '*.example.com',
+      '*',
+      'https:',
+      'http:',
+      'data:',
+      'blob:',
+    ]) {
+      assert.deepEqual(findOpenDesktopScriptSources([widened]), [widened],
+        `guard must reject ${widened} in desktop script-src`);
+    }
+    assert.deepEqual(findOpenDesktopScriptSources([
+      "'self'",
+      "'wasm-unsafe-eval'",
+      'https://*.clerk.accounts.dev',
+      'https://clerk.worldmonitor.app',
+      'https://challenges.cloudflare.com',
+    ]), []);
+  });
+
   it('CSP connect-src does not contain localhost in production', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
@@ -2666,7 +3108,7 @@ describe('security header guardrails', () => {
     const scriptHashTokens = getCspDirectiveTokens(csp, 'script-src')
       .filter((token) => token.startsWith("'sha256-"));
     const committedFiles = GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES
-      .filter((file) => !file.startsWith('public/pro/'));
+      .filter((file) => !isProBuiltOutputPath(file));
     assert.ok(
       committedFiles.length > 0,
       'committed-HTML population is empty — this guard would pass vacuously',
@@ -2942,6 +3384,21 @@ describe('security header guardrails', () => {
     const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
     assert.match(secTxt, /^Contact:/m, 'security.txt must have a Contact field');
     assert.match(secTxt, /^Expires:/m, 'security.txt must have an Expires field');
+  });
+
+  it('security.txt points GitHub disclosures at the repository SECURITY.md names', () => {
+    const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
+    const securityMd = readFileSync(resolve(__dirname, '../SECURITY.md'), 'utf-8');
+    const policyRepo = securityMd.match(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/security\/advisories\/new/)?.[1];
+    assert.ok(policyRepo, 'SECURITY.md must link the private vulnerability reporting form');
+
+    const githubUrls = [...secTxt.matchAll(/https:\/\/github\.com\/[^\s]+/g)].map(([url]) => url);
+    assert.ok(githubUrls.length > 0, 'security.txt must offer a GitHub disclosure channel');
+    for (const url of githubUrls) {
+      assert.ok(url.startsWith(`https://github.com/${policyRepo}/`), `${url} must name ${policyRepo}`);
+    }
+    assert.match(secTxt, new RegExp(`^Contact: https://github\\.com/${policyRepo}/security/advisories/new$`, 'm'));
+    assert.match(secTxt, new RegExp(`^Policy: https://github\\.com/${policyRepo}/security/policy$`, 'm'));
   });
 });
 
@@ -3294,7 +3751,29 @@ describe('agent readiness: api-catalog + openapi build', () => {
       !JSON.stringify({ url: card.url, serverUrl: card.serverUrl }).includes('mintlify.dev'),
       'docs card endpoint fields must not point at the dead mintlify.dev host'
     );
-    assert.ok(Array.isArray(card.tools) && card.tools.length >= 1, 'docs card must list at least one tool');
+    assert.deepEqual(card.remotes, [{ type: 'streamable-http', url: WORKING }], 'docs card remotes[].url must name the facade');
+    // Under the v1 $schema the live tools/list is authoritative; the docs
+    // server is anonymous, so a copied tools[] only goes stale.
+    assert.equal(card.tools, undefined, 'docs card must not carry tools[]');
+  });
+
+  it('publishes the docs server card where card-following scanners look', () => {
+    // orank resolves a card per MCP server from ai-catalog.json entries or
+    // <server URL>/server-card, matched on remotes[].url. The Link header
+    // alone left the docs server without a card.
+    const catalog = JSON.parse(readFileSync(resolve(__dirname, '../public/.well-known/ai-catalog.json'), 'utf-8'));
+    const docsEntry = catalog.entries.find((e) => e.url === 'https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json');
+    assert.ok(docsEntry, 'ai-catalog must list the docs MCP server card');
+    assert.equal(docsEntry.type, 'application/mcp-server-card+json');
+
+    const rewrites = vercelConfig.rewrites;
+    const cardIdx = rewrites.findIndex((r) => r.source === '/docs/mcp/server-card');
+    const mintlifyIdx = rewrites.findIndex((r) => r.source === '/docs/:match*');
+    assert.ok(cardIdx >= 0, 'missing /docs/mcp/server-card rewrite');
+    assert.equal(rewrites[cardIdx].destination, '/.well-known/mcp/docs-server-card.json');
+    assert.ok(cardIdx < mintlifyIdx, '/docs/mcp/server-card must precede the Mintlify /docs proxy');
+    assert.equal(getHeaderValueForSource('/docs/mcp/server-card', 'Content-Type'), 'application/json; charset=utf-8');
+    assert.equal(getHeaderValueForSource('/docs/mcp/server-card', 'Access-Control-Allow-Origin'), '*');
   });
 
   it('the api host root has its own context object', () => {
@@ -3659,8 +4138,14 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       // WorkOS auth.md agent_auth discovery block (only `anonymous` is honest —
       // WM has no ID-JAG identity endpoint, so identity_assertion is not advertised).
       assert.ok(json.agent_auth, `agent_auth block present for ${host}`);
-      assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill round-trips to /auth.md for ${host}`);
+      // Scanners require skill == <issuer>/auth.md. The apex serves it because
+      // /auth.md is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
+      assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill is the issuer's /auth.md for ${host}`);
       assert.equal(json.agent_auth.register_uri, `https://${host}/oauth/register`);
+      // auth.md v0.2's identity_endpoint takes {"type":"anonymous"} and returns
+      // an identity_assertion; /oauth/register is RFC 7591 DCR, so it must not
+      // be advertised under that key.
+      assert.equal(json.agent_auth.identity_endpoint, undefined);
       assert.deepEqual(json.agent_auth.identity_types_supported, ['anonymous']);
       // Only `access_token` — an api_key is user-minted (carries a user
       // identity), so it is not an anonymous-registration credential.
@@ -4004,8 +4489,9 @@ describe('vercel.json functions config (none expected after carousel moved to ed
 // header advertising every well-known resource. Each rel is either
 // an IANA-registered token (api-catalog, service-desc, service-doc,
 // status) or the full IANA URI form (RFC 9728 OAuth rels). The MCP
-// card rel carries anchor="/mcp" because the server card describes
-// the /mcp endpoint, not the document URL being fetched.
+// card rel carries an absolute apex anchor because the server card
+// describes the apex /mcp endpoint, not the document URL being fetched; a
+// relative anchor resolves against the www page and names the 410 alias (#9722).
 describe('agent readiness: public document Link headers', () => {
   const vercel = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 
@@ -4039,11 +4525,10 @@ describe('agent readiness: public document Link headers', () => {
         );
       }
 
-      // MCP card rel must carry anchor="/mcp" (server card describes /mcp, not homepage)
       assert.match(
         linkHeader.value,
-        /<\/\.well-known\/mcp\/server-card\.json>[^,]*anchor="\/mcp"/,
-        'mcp-server-card rel must carry anchor="/mcp"'
+        /<\/\.well-known\/mcp\/server-card\.json>[^,]*anchor="https:\/\/worldmonitor\.app\/mcp"/,
+        'mcp-server-card rel must carry the absolute canonical anchor; anchor="/mcp" resolves to www/mcp, which answers 410'
       );
 
       // The docs MCP server (#4958) is advertised in the Link header directly —
@@ -4139,7 +4624,10 @@ describe('agent readiness: Content-Signal declarations', () => {
   it('vercel.json serves an origin-wide Content-Signal header', () => {
     const value = headerValue();
     assert.ok(value, 'vercel.json must carry a Content-Signal response header');
-    assert.match(value, /ai-train=(yes|no)/);
+    // Owner decision: training by assistant vendors is welcome (brand recall in
+    // future models). The training crawlers are allowed in robots.txt, so the
+    // signal must say yes — a `no` here contradicts the crawl rules.
+    assert.match(value, /ai-train=yes/);
     assert.match(value, /search=(yes|no)/);
     assert.match(value, /ai-input=(yes|no)/);
   });
@@ -4211,7 +4699,9 @@ describe('agent readiness: Content-Signal declarations', () => {
 // #4952 — a named `User-agent` group replaces the `*` group for that crawler.
 // Autonomous search crawlers restate the full `*` rule set. User-triggered
 // fetchers keep the bounded path protections but can open shared map links.
-// The training-only group stays a hard `Disallow: /`.
+// Autonomous AI crawlers (search indexers AND training crawlers of vendors
+// whose assistants cite us) share one group. The bulk-scraper group stays a
+// hard `Disallow: /`.
 describe('agent readiness: robots.txt AI crawler policy', () => {
   const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 
@@ -4222,9 +4712,15 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
   const trainingBlockGroup = groups.find((g) => g.agents.includes('ccbot'));
 
   const REQUIRED_AI_SEARCH_AGENTS = [
+    'oai-searchbot',
+    'claude-searchbot',
+    'perplexitybot',
+    'duckassistbot',
+  ];
+  // Training crawlers / training-control tokens. Allowed because ai-train=yes.
+  const REQUIRED_AI_TRAINING_AGENTS = [
     'gptbot',
     'claudebot',
-    'perplexitybot',
     'google-extended',
     'applebot-extended',
   ];
@@ -4234,14 +4730,14 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
     'perplexity-user',
     'mistralai-user',
   ];
-  const BLOCKED_TRAINING_AGENTS = ['ccbot', 'bytespider', 'anthropic-ai'];
+  const BLOCKED_TRAINING_AGENTS = ['ccbot', 'bytespider'];
 
-  it('explicitly allows the AI search crawlers in one named group', () => {
-    assert.ok(aiAllowGroup, 'robots.txt must have a named AI search group (GPTBot et al.)');
-    for (const agent of REQUIRED_AI_SEARCH_AGENTS) {
+  it('explicitly allows the AI search and training crawlers in one named group', () => {
+    assert.ok(aiAllowGroup, 'robots.txt must have a named AI crawler group (GPTBot et al.)');
+    for (const agent of [...REQUIRED_AI_SEARCH_AGENTS, ...REQUIRED_AI_TRAINING_AGENTS]) {
       assert.ok(
         aiAllowGroup.agents.includes(agent),
-        `AI search group must include User-agent: ${agent}`
+        `AI crawler group must include User-agent: ${agent}`
       );
     }
     assert.ok(
@@ -4284,7 +4780,11 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
   });
 
   it('never lists an allowed AI agent in the blocked group (and vice versa)', () => {
-    for (const agent of [...REQUIRED_AI_SEARCH_AGENTS, ...REQUIRED_USER_FETCH_AGENTS]) {
+    for (const agent of [
+      ...REQUIRED_AI_SEARCH_AGENTS,
+      ...REQUIRED_AI_TRAINING_AGENTS,
+      ...REQUIRED_USER_FETCH_AGENTS,
+    ]) {
       assert.ok(
         !trainingBlockGroup.agents.includes(agent),
         `${agent} drives citations and must not be in the blocked group`
@@ -4546,10 +5046,11 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     // the worst of both, and it moves the volume into "Blocked by robots.txt"
     // rather than removing it.
     //
-    // Shapes are the ones the corpus builders actually emit
-    // (scripts/build-crawlable-corpus.mjs withUtmSource, scripts/build-use-cases.mjs
-    // content attribution, scripts/crawlable-sources-page.mjs,
-    // scripts/build-research-reports.mjs).
+    // Shapes are the ones the corpus builders actually emit: the parameterised
+    // dashboard deep links in scripts/build-crawlable-corpus.mjs and
+    // scripts/build-research-reports.mjs, plus the wm_content_* attribution in
+    // scripts/build-use-cases.mjs. The utm_source wrapper that used to sit on
+    // top of those was deleted in #8603.
     // `/*?*lat=` is a substring match over the whole query, not a parameter-NAME
     // match: it also catches any param ending in the token (`?colon=` matches
     // `/*?*lon=`) and value-side text (`?q=flat=earth` matches `/*?*lat=`).
@@ -4625,7 +5126,9 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
           // bare prose mention (`// [sw_lat, sw_lon, …]` documenting an array
           // order) is not a parameter and must not trip this.
           const asQueryKey = new RegExp(`['"\`]${needle}['"\`]|[?&]${needle}=`);
-          if (asQueryKey.test(body)) acc.push({ path: full, apiScoped: body.includes('/api/') });
+          // MCP tool arguments travel in JSON-RPC POST bodies, never in a URL.
+          const mcpArgument = relative(resolve(__dirname, '..'), full).startsWith(join('api', 'mcp') + sep);
+          if (asQueryKey.test(body)) acc.push({ path: full, apiScoped: body.includes('/api/') || mcpArgument });
         }
         return acc;
       };
@@ -4670,15 +5173,20 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
         });
       }
 
+      // Six: the parameterised dashboard deep links, including both `layers=`
+      // use-case CTAs this test was written to catch. It was eight until #8603
+      // deleted the two `?utm_source=` literals, which were redirect hops.
       assert.ok(
-        emitted.size >= 8,
+        emitted.size >= 6,
         `expected to read the corpus builders' query-bearing hrefs, found ${emitted.size} — ` +
           'the extraction regex probably stopped matching, which would make this test vacuous'
       );
 
-      // The attribution wrappers every builder applies on top of those literals.
+      // The attribution wrapper build-use-cases.mjs applies on top of those
+      // literals. wm_content_* only: utm_* keys were removed in #8603 because
+      // middleware 308s them away.
       const TAGGED = (href) =>
-        `${href}${href.includes('?') ? '&' : '?'}wm_content_source=worldmonitor-use-cases&utm_source=seo-use-case`;
+        `${href}${href.includes('?') ? '&' : '?'}wm_content_source=worldmonitor-use-cases`;
 
       const blocked = [];
       for (const [href, where] of emitted) {
@@ -4834,10 +5342,6 @@ describe('agent readiness: registry branding + ARD catalog', () => {
 });
 
 describe('variant subdomain dashboard SEO (#4996)', () => {
-  // No hardcoded variant list: every set is extracted from its real source
-  // and compared BIDIRECTIONALLY, so adding a variant to any one surface
-  // (middleware host map, generator, vercel.json rewrites) without the
-  // others fails here instead of shipping a subdomain with full-brand meta.
   const dashboardRewrites = vercelConfig.rewrites.filter((r) => r.source === '/dashboard');
 
   const rewriteVariants = dashboardRewrites
@@ -4848,10 +5352,6 @@ describe('variant subdomain dashboard SEO (#4996)', () => {
     })
     .sort();
 
-  const middlewareVariants = [...middlewareSource.matchAll(/'([a-z]+)\.worldmonitor\.app': '([a-z]+)'/g)]
-    .map((m) => m[2])
-    .sort();
-
   const variantHtmlSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
   const generatorArrayMatch = variantHtmlSource.match(/WEB_DASHBOARD_VARIANTS = \[([^\]]+)\]/);
   const generatorVariants = (generatorArrayMatch?.[1] ?? '')
@@ -4860,14 +5360,12 @@ describe('variant subdomain dashboard SEO (#4996)', () => {
     .filter(Boolean)
     .sort();
 
-  it('extracted all three variant sets (extraction regressions fail loudly)', () => {
+  it('extracts both the rewrite and generator variant sets', () => {
     assert.ok(rewriteVariants.length > 0, 'no host-conditioned /dashboard rewrites found in vercel.json');
-    assert.ok(middlewareVariants.length > 0, 'VARIANT_HOST_MAP extraction from middleware.ts found nothing');
     assert.ok(generatorVariants.length > 0, 'WEB_DASHBOARD_VARIANTS extraction from variant-dashboard-html.ts found nothing');
   });
 
-  it('vercel.json rewrites, middleware host map, and the generator cover the SAME variant set (bidirectional)', () => {
-    assert.deepEqual(rewriteVariants, middlewareVariants, 'vercel.json /dashboard host rewrites vs middleware VARIANT_HOST_MAP diverged');
+  it('vercel.json rewrites and the generator cover the same variant set', () => {
     assert.deepEqual(rewriteVariants, generatorVariants, 'vercel.json /dashboard host rewrites vs WEB_DASHBOARD_VARIANTS diverged');
   });
 
@@ -4986,12 +5484,16 @@ describe('markdown canonical Link headers (#4999)', () => {
     });
   }
 
-  it('every sitemap-listed .md URL has the canonical Link header rule', () => {
-    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
-    const mdUrls = [...sitemap.matchAll(/<loc>https:\/\/www\.worldmonitor\.app(\/[^<]+\.md)<\/loc>/g)].map((m) => m[1]);
-    assert.ok(mdUrls.length > 0, 'expected .md entries in sitemap-main.xml');
+  it('every announced .md URL has the canonical Link header rule', () => {
+    // The markdown twins left the sitemap (#8608); MACHINE_READABLE_URLS is
+    // now the list IndexNow announces, so the canonical-header sweep reads it.
+    const mdUrls = MACHINE_READABLE_URLS
+      .map((url) => new URL(url))
+      .filter((url) => url.hostname === 'www.worldmonitor.app' && url.pathname.endsWith('.md'))
+      .map((url) => url.pathname);
+    assert.ok(mdUrls.length > 0, 'expected .md entries in MACHINE_READABLE_URLS');
     for (const path of mdUrls) {
-      assert.ok(MD_PAGES.includes(path), `${path} is in sitemap-main.xml but has no canonical Link header rule — add it to vercel.json and this test`);
+      assert.ok(MD_PAGES.includes(path), `${path} is announced but has no canonical Link header rule — add it to vercel.json and this test`);
     }
   });
 });
@@ -5045,10 +5547,10 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       f,
       readFileSync(resolve(__dirname, `../public/${f}`), 'utf-8'),
     ]);
-    // The sitemap and the indexed "Build on World Monitor" blog post are the two
-    // web-search discovery surfaces (candidate fixes #1/#3 of the issue) — assert
-    // them directly so a dropped sitemap entry or blog cross-link is caught here,
-    // not only via the reverse #4999 sitemap->MD_PAGES sweep.
+    // IndexNow and the indexed "Build on World Monitor" blog post are the two
+    // web-search discovery surfaces (candidate fixes #1/#3 of the issue). The
+    // pages left the sitemap in #8608 because they are files, not pages; the
+    // IndexNow list replaced it here.
     const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
     const blogPost = readFileSync(
       resolve(__dirname, '../blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md'),
@@ -5061,10 +5563,8 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       for (const [name, content] of surfaces) {
         assert.ok(content.includes(page.path), `public/${name} must link ${page.path}`);
       }
-      assert.ok(
-        sitemap.includes(`https://www.worldmonitor.app${page.path}`),
-        `sitemap-main.xml must register ${page.path} on the www host`
-      );
+      assert.ok(MACHINE_READABLE_URLS.includes(url), `IndexNow must announce ${url}`);
+      assert.ok(!sitemap.includes(`<loc>${url}</loc>`), `sitemap-main.xml must not declare the file ${page.path}`);
       assert.ok(blogPost.includes(page.path), `the developer blog post must cross-link ${page.path}`);
     }
   });
@@ -5601,5 +6101,26 @@ describe('cold-load metric evidence reaches the CI artifact (#7837)', () => {
       /assertDashboardMetricBudgets\(samples\.map\(\(sample\) => sample\.quiescence/,
       'the settled sample is recorded, never asserted (#7837)',
     );
+  });
+});
+
+// Google Connected Console fetches this file to verify domain ownership and
+// rejects any redirect (https://developers.google.com/connected-apps/gpc/perform-the-steps).
+// The file's own shape is pinned in tests/google-connected-apps-verification.test.mjs.
+describe('Google Connected Apps verification route', () => {
+  const path = '/.well-known/google-connected-apps';
+
+  it('is served directly as JSON on every host Google may fetch', () => {
+    for (const host of ['worldmonitor.app', 'www.worldmonitor.app']) {
+      assert.equal(firstRedirectFor({ host, path }), null, `${host}${path} must not redirect`);
+      assert.equal(firstRewriteFor({ host, path }), null, `${host}${path} must serve the static file`);
+    }
+    assert.equal(effectiveHeader(path, 'content-type'), 'application/json; charset=utf-8');
+  });
+
+  it('would catch a wildcard rule that does not name the file', () => {
+    for (const source of ['/.well-known/(.*)', '/.well-known/:path*', '/:path*']) {
+      assert.equal(sourceToRegExp(source).test(path), true, `${source} must be modelled as matching ${path}`);
+    }
   });
 });

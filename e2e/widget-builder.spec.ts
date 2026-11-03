@@ -60,7 +60,7 @@ function buildWidgetSseResponse({ endpoint, title, html }: MockWidgetResponse): 
 }
 
 async function installWidgetAgentMocks(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
   responses: MockWidgetResponse[],
   requestBodies: unknown[] = [],
   healthDelayMs = 0,
@@ -134,7 +134,7 @@ function buildProWidgetBody(title: string, markerClass: string): string {
 }
 
 async function installProWidgetAgentMocks(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
   responses: MockWidgetResponse[],
   requestBodies: unknown[] = [],
   proKeyConfigured = true,

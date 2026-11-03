@@ -1,7 +1,7 @@
-import { SUB_REQUEST_MARKER_HEADER } from './sub-request-admission';
+import { SUB_REQUEST_MARKER_HEADER } from './sub-request-admission.js';
 import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
-import { getClientIp, hasUnprovenCloudflareClientIp, UNKNOWN_CLIENT_IP } from './client-ip';
+import { getClientIp, getClientRateLimitKey, hasUnprovenCloudflareClientIp, UNKNOWN_CLIENT_IP } from './client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
@@ -13,7 +13,7 @@ import { durationToSeconds, limitWithFallback, resetRateLimitFallbackForTest } f
 // the helpers' original home and existing callers import them from this
 // module (getClientIp: api/ask.ts, api/a2a.ts, api/mcp-proxy.ts;
 // UNKNOWN_CLIENT_IP: turnstile.ts; plus the rate-limit test suites).
-export { getClientIp, hasCloudflareTransitProof, hasUnprovenCloudflareClientIp, UNKNOWN_CLIENT_IP } from './client-ip';
+export { getClientIp, getClientRateLimitKey, hasCloudflareTransitProof, hasUnprovenCloudflareClientIp, rateLimitKeyForIp, UNKNOWN_CLIENT_IP } from './client-ip.js';
 
 // @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
 // before surfacing an unreachable-Redis error. The node test runner sets
@@ -325,7 +325,7 @@ export type EndpointRateLimitOptions = RateLimitOptions;
 export const TRUSTED_RATE_LIMIT_PRINCIPAL_HEADER = 'x-wm-rl-principal';
 
 /** Opaque single-use admission, authenticated by consumeSubRequestAdmission. */
-export { SUB_REQUEST_MARKER_HEADER } from './sub-request-admission';
+export { SUB_REQUEST_MARKER_HEADER } from './sub-request-admission.js';
 
 export function formatTrustedRateLimitPrincipal(
   principalUserId: string,
@@ -568,16 +568,18 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
   // principals use a separate namespace.
   const identifier =
     getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    getClientIp(request);
+    getClientRateLimitKey(request);
 
   try {
-    const { success, limit, reset } = await limitWithFallback(
+    const { success, limit, reset, reason } = await limitWithFallback(
       rl,
       identifier,
       `rl:fw:${identifier}`,
       GLOBAL_RATE_LIMIT,
       GLOBAL_RATE_WINDOW_SECONDS,
     );
+
+    if (reason === 'timeout') throw new Error('rate-limit decision timed out');
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
@@ -603,7 +605,16 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/scorecard/v1/get-five-factor-scorecard': { limit: 30, window: '60 s' },
+  '/api/scorecard/v1/get-bloc-scorecard': { limit: 30, window: '60 s' },
+  '/api/scorecard/v1/list-five-factor-scorecards': { limit: 30, window: '60 s' },
+  // #9094 /verify fact-check lookup: public, and a cache miss spends the
+  // Google Fact Check Tools API quota.
+  '/api/news/v1/search-fact-checks': { limit: 20, window: '60 s' },
+  // /verify claim search: public; a cache miss reads every feed cache.
+  '/api/news/v1/search-claim-headlines': { limit: 30, window: '60 s' },
   '/api/aviation/v1/track-aircraft': { limit: 30, window: '60 s' },
+  '/api/aviation/v1/list-aircraft-emergencies': { limit: 20, window: '60 s' },
   '/api/aviation/v1/search-google-flights': { limit: 30, window: '60 s' },
   '/api/aviation/v1/search-google-dates': { limit: 10, window: '60 s' },
   '/api/aviation/v1/list-aviation-news': { limit: 30, window: '60 s' },
@@ -658,6 +669,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/intelligence/v1/search-intel-history': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/get-similar-events': { limit: 30, window: '60 s' },
   '/api/intelligence/v1/get-intel-timeline': { limit: 120, window: '60 s' },
+  '/api/intelligence/v1/get-country-history': { limit: 60, window: '60 s' },
   // Batch humanitarian-summary fans out to the external HAPI (humdata) provider
   // on cache miss — up to 25 countries per request, 5 concurrent upstream
   // fetches. Batch aircraft-details fans out to the external Wingbits provider —
@@ -699,8 +711,8 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/intelligence/v1/search-sec-filings': { limit: 30, window: '60 s' },
   // Public market/economic provider proxies (#6236): caller-controlled symbols,
   // indicators, and year ranges create unbounded cache-key cardinality; the
-  // country-index route is bounded to the 45-country contract but still
-  // proxies Yahoo Finance on a cache miss. None may inherit the global
+  // country-index and price-history routes are bounded to their tracked
+  // symbol sets but still proxy Yahoo Finance on a cache miss. None may inherit the global
   // fail-open budget. The dashboard can legitimately fan out across 50 Pro
   // watchlist symbols, so those three per-symbol routes admit one full load
   // plus headroom. analyze-stock remains separately constrained by the
@@ -712,6 +724,7 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/market/v1/backtest-stock': { limit: 60, window: '60 s' },
   '/api/market/v1/get-insider-transactions': { limit: 60, window: '60 s' },
   '/api/market/v1/get-country-stock-index': { limit: 30, window: '60 s' },
+  '/api/market/v1/get-price-history': { limit: 30, window: '60 s' },
   // Stablecoins are seed-backed for the DEFAULT request, but naming coins the
   // snapshot does not carry reaches CoinGecko, and the caller picks the IDs —
   // unbounded cardinality, so the per-ID-set cache cannot bound spend alone.
@@ -756,6 +769,17 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // these hit Convex + Resend per request.
   '/api/leads/v1/submit-contact': { limit: 3, window: '1 h' },
   '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
+  // #9093 reader error reports: anonymous writes to the review queue.
+  '/api/news/v1/submit-error-report': { limit: 5, window: '1 h' },
+  // #8721 agent feedback: coarse outer guard only. The real model is the five
+  // buckets in admitFeedbackReport (server/_shared/agent-feedback.ts), which
+  // the MCP report_issue tool shares.
+  '/api/feedback/v1/submit-report': { limit: 20, window: '1 h' },
+  // #9093 /trust page read: public and CDN-cached, bounded per IP.
+  '/api/news/v1/list-label-changes': { limit: 60, window: '60 s' },
+  // Operator review: secret-gated, but still bounded against secret guessing.
+  '/api/news/v1/list-error-reports': { limit: 60, window: '60 s' },
+  '/api/news/v1/review-error-report': { limit: 60, window: '60 s' },
   // Scenario engine: legacy /api/scenario/v1/run capped at 10 jobs/min/IP via
   // inline Upstash INCR. Gateway preserves the same budget while using a
   // trusted paid-user principal when available, otherwise the client IP.
@@ -890,6 +914,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/aviation/v1/track-aircraft': {
     reason: 'Distinct aircraft viewports call Wingbits on cache misses and can fall back to authenticated OpenSky quota.',
   },
+  '/api/aviation/v1/list-aircraft-emergencies': {
+    reason: 'Public emergency aircraft reads fan out to three provider queries on shared cache misses.',
+  },
   '/api/aviation/v1/search-google-flights': { reason: 'Public flight searches perform a live Google shopping request on each cache miss.' },
   '/api/aviation/v1/search-google-dates': { reason: 'Public date searches can trigger up to six Google calendar requests per cache miss.' },
   '/api/aviation/v1/list-aviation-news': {
@@ -946,6 +973,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/market/v1/get-country-stock-index': {
     reason: 'Per-country stock-index lookups proxy Yahoo Finance on cache miss.',
   },
+  '/api/market/v1/get-price-history': {
+    reason: 'Per-symbol daily-close history proxies Yahoo Finance on cache miss, up to four symbols per request.',
+  },
   '/api/market/v1/list-crypto-quotes': {
     reason: 'Caller-named coin IDs absent from the seed snapshot fan out to CoinGecko on cache miss.',
   },
@@ -991,11 +1021,29 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   '/api/sanctions/v1/lookup-sanction-entity': {
     reason: 'Live sanctions lookup proxies an external provider.',
   },
+  '/api/news/v1/search-fact-checks': {
+    reason: 'Public fact-check lookup proxies the quota-limited Google Fact Check Tools API on cache misses (#9094).',
+  },
+  '/api/news/v1/search-claim-headlines': {
+    reason: 'Public claim search reads every full-variant RSS feed cache on a pool miss.',
+  },
   '/api/leads/v1/submit-contact': {
     reason: 'Lead capture writes to Convex and sends email.',
   },
   '/api/leads/v1/register-interest': {
     reason: 'Lead capture writes to Convex and sends email.',
+  },
+  '/api/news/v1/submit-error-report': {
+    reason: 'Anonymous error reports write to the review queue (#9093).',
+  },
+  '/api/feedback/v1/submit-report': {
+    reason: 'Anonymous agent feedback writes to Convex and can email the owner (#8721).',
+  },
+  '/api/news/v1/list-error-reports': {
+    reason: 'Operator review is gated by a shared secret; the limit bounds guessing (#9093).',
+  },
+  '/api/news/v1/review-error-report': {
+    reason: 'Operator review is gated by a shared secret; the limit bounds guessing (#9093).',
   },
   '/api/scenario/v1/run-scenario': {
     reason: 'Scenario runs are mutation-like jobs with a historical 10/min cap.',
@@ -1163,7 +1211,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
 
   const identifier =
     getPrincipalRateLimitIdentifier(opts.principalUserId, opts.principalScope) ??
-    `ip:${getClientIp(request)}`;
+    `ip:${getClientRateLimitKey(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
@@ -1311,7 +1359,7 @@ export async function checkFailClosedScopedIpRateLimit(
 ): Promise<Response | null> {
   const proofDenied = checkIpScopedEdgeProof(request, corsHeaders);
   if (proofDenied) return proofDenied;
-  const result = await checkScopedRateLimit(scope, limit, window, getClientIp(request));
+  const result = await checkScopedRateLimit(scope, limit, window, getClientRateLimitKey(request));
   if (result.degraded) return rateLimitDegradedResponse(corsHeaders);
   if (!result.allowed) {
     return tooManyRequestsResponse(result.limit, result.reset, corsHeaders, durationToSeconds(window));

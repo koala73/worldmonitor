@@ -486,19 +486,7 @@ describe('one list failing does not empty the panel', () => {
     assert.ok(merged.every((row) => row.sourceLists.includes(SEMA_SOURCE)));
   });
 
-  it('seeder catches each list independently and only throws when every list failed', () => {
-    assert.match(seedSrc, /SEMA fetch failed/);
-    assert.match(seedSrc, /all sanctions lists failed/);
-    assert.match(seedSrc, /mergeSanctionEntries/);
-    assert.match(seedSrc, /ingestSemaEntries/);
-    assert.match(seedSrc, /semaError/);
-    assert.match(seedSrc, /sanctionsSemaHealthMeta/);
-    const fnStart = seedSrc.indexOf('async function fetchSanctionsPressure()');
-    const fnEnd = seedSrc.indexOf('\nfunction validate(');
-    const body = seedSrc.slice(fnStart, fnEnd);
-    assert.match(body, /try \{/);
-    assert.match(body, /semaEntries/);
-  });
+
 });
 
 describe('byte cap, allowlist, cache key, UA, redirect', () => {
@@ -725,7 +713,7 @@ describe('UI and seed surface SEMA beside OFAC', () => {
     assert.match(panelSrc, /semaError/);
     assert.match(panelSrc, /summary\.sema/);
     assert.match(panelSrc, /sourceLists/);
-    assert.match(localeEn, /Source: OFAC · GAC SEMA/);
+    assert.match(localeEn, /Source: Office of Foreign Assets Control · GAC SEMA/);
     assert.match(localeEn, /"sema": "SEMA"/);
     assert.match(serviceSrc, /semaCount/);
     assert.match(serviceSrc, /semaError/);
@@ -803,7 +791,7 @@ describe('SEMA failure stays visible when OFAC succeeds', () => {
 
     assert.match(seedSrc, /ingestSemaEntries/);
     assert.match(seedSrc, /semaError/);
-    assert.match(seedSrc, /sanctionsSemaHealthMeta/);
+    assert.match(seedSrc, /sourceHealth/);
     assert.match(seedSrc, /freshnessMetaPatch/);
     assert.match(healthSrc, /sourceDegraded/);
     assert.match(seedHealthSrc, /sourceError/);
@@ -811,57 +799,4 @@ describe('SEMA failure stays visible when OFAC succeeds', () => {
   });
 });
 
-describe('SEMA outage must not delete the last-good Canadian cohort', () => {
-  // The failure this closes: a SEMA fetch error left semaEntries empty while the
-  // OFAC half still succeeded, so the run COMPLETED and overwrote the canonical
-  // key with an OFAC-only merge. Every Canadian designation vanished from the
-  // published list until GAC recovered. preserveKeys does not help — it is the
-  // whole-seed-failure cohort, and this run does not fail.
-  //
-  // sanctionsSemaHealthMeta already made the failure visible; visibility does not
-  // put the entries back. These pin the carry-forward itself.
-
-  it('re-reads the canonical key and keeps the sema-ca entries when SEMA errors', () => {
-    // The read has to be of the CANONICAL key, not the state key: the state key
-    // holds ids for isNew diffing, not the entries themselves.
-    const carryBlock = /if \(semaError\) \{[\s\S]*?\} else \{/.exec(seedSrc);
-    assert.ok(carryBlock, 'the SEMA error branch must exist');
-    assert.match(carryBlock[0], /verifySeedKey\(CANONICAL_KEY\)/);
-    assert.match(carryBlock[0], /sourceLists[\s\S]*?includes\(SEMA_SOURCE\)/);
-    assert.match(carryBlock[0], /semaEntries = carried/);
-  });
-
-  it('filters the carried cohort by sourceLists, the field that survives publication', () => {
-    // _regime is stripped by the public transform, so it cannot identify a
-    // carried entry. sourceLists is not stripped — depending on _regime here
-    // would silently carry nothing.
-    assert.match(seedSrc, /const \{ _aliases, _identifiers, _publishedAt, _regime, \.\.\.publicEntry \}/);
-    assert.equal(
-      /verifySeedKey\(CANONICAL_KEY\)[\s\S]{0,400}?_regime/.test(seedSrc),
-      false,
-      'carry-forward must not filter on a field the public transform removes',
-    );
-  });
-
-  it('keeps the failure loud while carrying data forward', () => {
-    // Carrying last-good must not launder the outage into a healthy read. The
-    // afterPublish patch still reports sourceState error for the same run.
-    assert.match(seedSrc, /sanctionsSemaHealthMeta\(data\.semaError\)/);
-    assert.match(seedSrc, /freshnessMetaPatch: semaHealth/);
-    const meta = sanctionsSemaHealthMeta('GAC 503');
-    assert.equal(meta.sourceState, 'error');
-  });
-
-  it('does not carry anything forward on a healthy SEMA run', () => {
-    // The carry-forward lives inside the error branch only. If it ran
-    // unconditionally, a recovered SEMA list would be unioned with stale
-    // entries and delistings would never take effect.
-    const elseBlock = /\} else \{\s*console\.log\(` {2}SEMA:/.exec(seedSrc);
-    assert.ok(elseBlock, 'the success branch must remain a plain log');
-    assert.equal(
-      /else \{[\s\S]{0,200}?verifySeedKey\(CANONICAL_KEY\)/.test(seedSrc),
-      false,
-      'a successful SEMA fetch must replace the cohort, not union with last-good',
-    );
-  });
-});
+// Complete producer retention and health behavior is exercised in sanctions-source-lifecycle.test.mjs.

@@ -308,6 +308,13 @@ export class MiniElement extends MiniNode {
     return null;
   }
 
+  replaceWith(node: MiniElement): void {
+    const parent = this.parentNode;
+    if (!parent || node === this) return;
+    parent.insertBefore(node, this);
+    parent.removeChild(this);
+  }
+
   remove(): void {
     if (this.parentNode) {
       this.parentNode.removeChild(this);

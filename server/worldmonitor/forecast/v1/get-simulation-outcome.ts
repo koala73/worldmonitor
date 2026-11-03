@@ -4,7 +4,7 @@ import type {
   GetSimulationOutcomeRequest,
   GetSimulationOutcomeResponse,
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
-import { ApiError } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 import { getRawJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 // Both keys come from the shim — single source of truth. Importing
@@ -95,7 +95,7 @@ export const getSimulationOutcome: ForecastServiceHandler['getSimulationOutcome'
     typeof req.runId !== 'string' || req.runId.length > 128
     || req.runId !== req.runId.trim() || !validateRunId(req.runId)
   )) {
-    throw new ApiError(400, 'Invalid simulation run ID', '');
+    throw new ValidationError([{ field: 'runId', description: 'Invalid simulation run ID' }]);
   }
   // Read path when caller supplied a specific runId:
   //   1. By-run hit (real outcome) → return it.

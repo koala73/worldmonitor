@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
@@ -74,6 +74,70 @@ describe('reported landing-page SEO metadata', () => {
     assertDescription('Pro locale', proLocale.meta.description);
     assertDescription('English sandbox', englishSandboxDescription);
     assertDescription('Chinese sandbox', sandboxDescription);
+  });
+
+  it('keeps the homepage description product-led, canonical, and bounded', () => {
+    const welcomeHtml = source('pro-test/welcome.html');
+    const welcomeLocale = JSON.parse(source('pro-test/src/locales/en.json')).welcome.meta;
+    const expectedDescription = 'World Monitor: real-time geopolitical intelligence dashboard. A free live map of conflicts, shipping, flights, markets and cyber, with an API and MCP server.';
+    const expectedTitle = 'World Monitor: Free Geopolitical Intelligence Dashboard';
+
+    assertTitle('homepage locale', welcomeLocale.title);
+    assertDescription('homepage locale', welcomeLocale.description);
+    assert.equal(welcomeLocale.title, expectedTitle);
+    assert.equal(welcomeLocale.ogTitle, expectedTitle);
+    assert.equal(welcomeLocale.description, expectedDescription);
+    assert.equal(welcomeLocale.ogDescription, expectedDescription);
+
+    const htmlTitle = welcomeHtml.match(/<title>([^<]+)<\/title>/)?.[1];
+    const htmlDescription = welcomeHtml.match(/<meta name="description" content="([^"]+)"/)?.[1];
+    const ogDescription = welcomeHtml.match(/<meta property="og:description" content="([^"]+)"/)?.[1];
+    const twitterDescription = welcomeHtml.match(/<meta name="twitter:description" content="([^"]+)"/)?.[1];
+    assert.equal(htmlTitle, expectedTitle);
+    assert.equal(htmlDescription, expectedDescription);
+    assert.equal(ogDescription, expectedDescription);
+    assert.equal(twitterDescription, expectedDescription);
+
+    // The paragraph after the H1 is the slogan, so speakable must name the
+    // definition paragraph by class rather than by position.
+    assert.match(welcomeHtml, /"cssSelector": \["h1", "\.welcome-seo-summary"\]/);
+    assert.match(
+      source('pro-test/src/welcome/Hero.tsx'),
+      /<p className="welcome-seo-summary[^"]*">\{t\('welcome\.hero\.whatIsBody'/,
+    );
+  });
+
+  // Every locale serves its own welcome title and description, so the search
+  // snippet limits apply to each one, and a key left in English is a missed
+  // translation the EN baseline would otherwise mark as current.
+  it('keeps every localized homepage title and description translated and bounded', () => {
+    const dir = resolve(root, 'pro-test/src/locales');
+    const welcome = (file) => JSON.parse(readFileSync(resolve(dir, file), 'utf8')).welcome;
+    const en = welcome('en.json');
+    const translatedKeys = [
+      ['meta', 'title'],
+      ['meta', 'description'],
+      ['hero', 'headline1'],
+      ['hero', 'headline2'],
+      ['hero', 'sub'],
+      ['hero', 'whatIsBestFor'],
+    ];
+    const locales = readdirSync(dir).filter((file) => file.endsWith('.json') && file !== 'en.json');
+    assert.ok(locales.length >= 20, 'expected the welcome locales');
+    for (const file of locales) {
+      const { meta, hero } = welcome(file);
+      assertTitle(`${file} homepage`, meta.title);
+      assert.ok(meta.description.length <= 160, `${file} description must be at most 160 characters, got ${meta.description.length}`);
+      assert.equal(meta.ogTitle, meta.title, `${file} og:title must match the title`);
+      assert.equal(meta.ogDescription, meta.description, `${file} og:description must match the description`);
+      for (const [group, key] of translatedKeys) {
+        const value = welcome(file)[group][key];
+        assert.notEqual(value, en[group][key], `${file} welcome.${group}.${key} is still English`);
+      }
+      for (const value of [meta.title, meta.description, hero.headline1, hero.headline2, hero.sub]) {
+        assert.doesNotMatch(value, /[，。、：；！？]\s/, `${file} has a space after full-width punctuation: ${value}`);
+      }
+    }
   });
 
   it('keeps full and variant dashboard descriptions bounded and synchronized', () => {

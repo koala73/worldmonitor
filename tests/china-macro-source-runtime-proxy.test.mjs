@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 import { fetchChinaMacroSnapshot } from '../scripts/china-macro/adapters.mjs';
 import {
   fetchText,
+  fetchThroughProxy,
+  hasUsableProxy,
   PROXY_FALLBACK_BUDGET_MS,
   requestBudget,
   shouldRetryViaProxy,
@@ -225,6 +227,38 @@ describe('china-macro proxy fallback (#6676 NBS egress block)', () => {
         },
       }));
       assert.equal(proxyCalls, 1, 'a spent fallback budget must not start another 12s exit');
+    });
+  });
+
+  describe('fetchThroughProxy', () => {
+    it('reports whether a proxy URL is usable', () => {
+      assert.equal(hasUsableProxy(PARSEABLE_PROXY), true);
+      assert.equal(hasUsableProxy(null), false);
+      assert.equal(hasUsableProxy('not a proxy'), false);
+    });
+
+    it('clamps the exit ladder to an earlier caller deadline and skips it under the floor', async (t) => {
+      t.mock.method(console, 'warn', () => {});
+      let now = 1_000;
+      const timeouts = [];
+      const options = {
+        now: () => now,
+        proxyFetchFn: async (_url, _config, { timeoutMs }) => {
+          timeouts.push(timeoutMs);
+          now += timeoutMs;
+          throw new Error('exit hang');
+        },
+      };
+      await assert.rejects(
+        fetchThroughProxy(new URL('https://example.test/a'), {}, PARSEABLE_PROXY, { ...options, deadlineAt: now + 5_000 }),
+        /exit hang/,
+      );
+      assert.deepEqual(timeouts, [5_000], 'a 5s remainder must cap the first exit and leave no second one');
+      assert.equal(
+        await fetchThroughProxy(new URL('https://example.test/a'), {}, PARSEABLE_PROXY, { ...options, deadlineAt: now + 100 }),
+        null,
+      );
+      assert.equal(timeouts.length, 1, 'under the floor no exit runs');
     });
   });
 

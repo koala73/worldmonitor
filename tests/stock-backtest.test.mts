@@ -26,6 +26,7 @@ import {
   hasFreshStoredStockBacktests,
 } from '../src/services/stock-backtest.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -922,7 +923,7 @@ describe('stored stock backtest batch cap', () => {
     const symbols = Array.from({ length: STOCK_ANALYSIS_PRO_LIMIT + 1 }, (_, index) => `C${index}`);
     await assert.rejects(
       () => listStoredStockBacktests({} as never, { symbols, evalWindowDays: 10 }),
-      (error: unknown) => error instanceof ApiError && error.statusCode === 400,
+      validationFailure('symbols', /at most/),
     );
   });
 });

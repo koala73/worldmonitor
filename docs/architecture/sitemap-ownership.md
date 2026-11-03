@@ -18,8 +18,10 @@ The root inventory lives in `STATIC_ROUTE_MANIFEST` in
 `scripts/build-sitemap.mjs`. Every static route declares the repository paths
 that materially determine its content:
 
-- The welcome and Pro pages use their `pro-test` page/component, generated
-  product-fact, style, and product-catalog sources.
+- The welcome landing cluster (`/` plus `/es/`, `/pt/`, `/ru/`, `/fr/`, `/de/`,
+  `/ar/`) and the Pro page use their `pro-test` page/component, generated
+  product-fact, style, locale, and product-catalog sources. Landing URLs carry
+  `xhtml:link` hreflang alternates; other root sitemap URLs do not.
 - Dashboard entries use the app shell, orchestration, components, configuration,
   locales, styles, and the corresponding variant configuration.
 - Markdown and text references use the file served at the canonical URL.

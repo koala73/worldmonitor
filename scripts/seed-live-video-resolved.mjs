@@ -171,7 +171,7 @@ export function makeFetchAll({
         const result = results.get(id);
         const kept = result?.status === 'unreadable' && payload.channels[id] ? ` (kept ${payload.channels[id].videoId})` : '';
         const title = result?.title ? ` "${result.title}"` : '';
-        log(`  ${id} [${(slotsById.get(id) ?? []).join(', ')}] ${result?.status ?? 'missing'}${result?.reason ? `/${result.reason}` : ''}${result?.videoId ? ` -> ${result.videoId}` : ''}${title}${kept}`);
+        log(`  ${id} [${(slotsById.get(id) ?? []).join(', ')}] ${result?.status ?? 'missing'}${result?.reason ? `/${result.reason}` : ''}${result?.detail ? `: ${String(result.detail).slice(0, 160)}` : ''}${result?.videoId ? ` -> ${result.videoId}` : ''}${title}${kept}`);
       }
       const { stats } = payload;
       log(`  stats: ${STAT_FIELDS.map((field) => `${field}=${stats[field]}`).join(' ')} proxySession=${session.current} durationMs=${now() - startedAt}`);

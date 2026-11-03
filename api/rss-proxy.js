@@ -2,6 +2,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders } from './_relay.js';
+import { relayFailureLevel } from './_relay-failure-level.js';
 import { isAllowedDomain, hostMatchForms } from './_rss-allowed-domain-match.js';
 import { RSS_BROWSER_UA, rssFetchHeadersForHost } from './_rss-fetch-headers.js';
 import { jsonResponse } from './_json-response.js';
@@ -44,6 +45,9 @@ const MAX_FEED_ITEMS = 20;
 const ITEM_CLOSE_PATTERN = /<\/(?:item|entry)\s*>/gi;
 // Longest `</entry  >` spelling we rescan across a chunk seam.
 const ITEM_CLOSE_SEAM = 16;
+// Real feeds nest a handful of levels. Holding more open than this is hostile,
+// and bounding it keeps closeOpenElements' memory flat under the byte cap.
+const MAX_OPEN_ELEMENTS = 512;
 
 /**
  * Closing tags for every element still open in `xml`, outermost last.
@@ -56,6 +60,10 @@ const ITEM_CLOSE_SEAM = 16;
  */
 function closeOpenElements(xml) {
   const stack = [];
+  // Stack positions per element name, so a close tag finds its opener without
+  // scanning the stack: a run of unmatched closers would otherwise cost N^2.
+  // Holds only names that are currently open.
+  const positions = new Map();
   let i = 0;
   while (i < xml.length) {
     const lt = xml.indexOf('<', i);
@@ -81,9 +89,21 @@ function closeOpenElements(xml) {
     const name = raw.replace(/^\//, '').match(/^[A-Za-z_][\w.:-]*/)?.[0];
     if (name) {
       if (raw.startsWith('/')) {
-        const open = stack.lastIndexOf(name);
-        if (open !== -1) stack.length = open;
+        const open = positions.get(name)?.at(-1);
+        if (open !== undefined) {
+          while (stack.length > open) {
+            const popped = stack.pop();
+            const at = positions.get(popped);
+            at.pop();
+            if (at.length === 0) positions.delete(popped);
+          }
+        }
       } else if (!raw.endsWith('/')) {
+        // Fails like an item wider than the byte cap: nothing well-formed to keep.
+        if (stack.length >= MAX_OPEN_ELEMENTS) throw new Error('Feed body too large');
+        const at = positions.get(name);
+        if (at) at.push(stack.length);
+        else positions.set(name, [stack.length]);
         stack.push(name);
       }
     }
@@ -233,7 +253,7 @@ function assertAllowedRedirect(url) {
   // Apply the same www-normalization as the initial domain check so that
   // canonical redirects (e.g. apex -> www) are not incorrectly rejected when
   // only one form is in the allowlist.
-  if (!isAllowedDomain(url.hostname)) {
+  if (!isAllowedDomain(url.hostname) || url.port !== '') {
     throw new RssProxyPolicyError('Redirect to disallowed domain');
   }
 }
@@ -285,7 +305,8 @@ export default async function handler(req, ctx) {
 
     // Security: Check if domain is allowed (normalize www prefix)
     const hostname = parsedUrl.hostname;
-    if (!isAllowedDomain(hostname)) {
+    // The allowlist names hosts, not services: only their default ports.
+    if (!isAllowedDomain(hostname) || parsedUrl.port !== '') {
       return jsonResponse({ error: 'Domain not allowed' }, 403, corsHeaders);
     }
 
@@ -370,8 +391,19 @@ export default async function handler(req, ctx) {
           // either way. Capturing it reported routine upstream latency at error
           // level (WORLDMONITOR-11G); #7438 made the same call for
           // api/telegram-feed.js. Real relay failures still report.
+          //
+          // Established-then-dropped connections (Network connection lost,
+          // ECONNRESET, …) still capture, but at `warning` via
+          // relayFailureLevel — same boundary as api/telegram-feed.js
+          // (WORLDMONITOR-R1 / WORLDMONITOR-17M). Default `error` would page
+          // on-call for Vercel edge transport churn the product cannot fix.
           if (relayError?.name !== 'AbortError') {
-            captureSilentError(relayError, { tags: { route: 'api/rss-proxy', step: 'relay-retry', feed: feedUrl }, fingerprint: rssProxyErrorFingerprint('relay-retry', relayError), ctx });
+            captureSilentError(relayError, {
+              tags: { route: 'api/rss-proxy', step: 'relay-retry', feed: feedUrl },
+              fingerprint: rssProxyErrorFingerprint('relay-retry', relayError),
+              level: relayFailureLevel(relayError),
+              ctx,
+            });
           }
         }
         if (relayResponse?.ok) {
@@ -410,8 +442,14 @@ export default async function handler(req, ctx) {
     console.error('RSS proxy error:', feedUrl, error.message);
     // Skip Sentry capture on timeout — Sentry would drown in transient
     // upstream-feed timeouts which are routine. Only surface "real" errors.
+    // Dropped connections use warning (relayFailureLevel); refuse/DNS stay error.
     if (!isTimeout) {
-      captureSilentError(error, { tags: { route: 'api/rss-proxy', step: 'fetch', feed: feedUrl }, fingerprint: rssProxyErrorFingerprint('fetch', error), ctx });
+      captureSilentError(error, {
+        tags: { route: 'api/rss-proxy', step: 'fetch', feed: feedUrl },
+        fingerprint: rssProxyErrorFingerprint('fetch', error),
+        level: relayFailureLevel(error),
+        ctx,
+      });
     }
     return jsonResponse({
       error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed',

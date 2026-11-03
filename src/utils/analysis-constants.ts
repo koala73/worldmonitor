@@ -5,9 +5,10 @@
  * The pure text primitives (tokenize, jaccardSimilarity, STOP_WORDS,
  * TOPIC_KEYWORDS, SUPPRESSED_TRENDING_TERMS, …) now live in
  * shared/text-analysis-core.js (issue #5697) so server-side MCP tools share
- * them; they are re-exported here unchanged. This module additionally carries
- * the client-only pieces (signal context/i18n, correlation thresholds), which
- * is why server code must import the shared module, never this one.
+ * them; they are re-exported here unchanged, as are the correlation thresholds
+ * and signal id/dedupe helpers from shared/market-alert-core.js (issue #8867).
+ * This module additionally carries the client-only signal context/i18n, which
+ * is why server code must import the shared modules, never this one.
  */
 
 export {
@@ -21,65 +22,19 @@ export {
   escapeRegex,
   containsTopicKeyword,
 } from '../../shared/text-analysis-core.js';
-import { containsTopicKeyword } from '../../shared/text-analysis-core.js';
-
-// Correlation constants
-export const PREDICTION_SHIFT_THRESHOLD = 5;
-export const MARKET_MOVE_THRESHOLD = 2;
-export const NEWS_VELOCITY_THRESHOLD = 3;
-export const FLOW_PRICE_THRESHOLD = 1.5;
-export const ENERGY_COMMODITY_SYMBOLS = new Set(['CL=F', 'NG=F']);
-
-export const PIPELINE_KEYWORDS = ['pipeline', 'pipelines', 'line', 'terminal'];
-export const FLOW_DROP_KEYWORDS = [
-  'flow', 'throughput', 'capacity', 'outage', 'leak', 'rupture', 'shutdown',
-  'maintenance', 'curtailment', 'force majeure', 'halt', 'halted', 'reduced',
-  'reduction', 'drop', 'offline', 'suspend', 'suspended', 'stoppage',
-];
-
-
-
-export const TOPIC_MAPPINGS: Record<string, string[]> = {
-  'iran': ['iran', 'israel', 'oil', 'sanctions'],
-  'israel': ['israel', 'iran', 'war', 'gaza'],
-  'ukraine': ['ukraine', 'russia', 'war', 'nato'],
-  'russia': ['russia', 'ukraine', 'sanctions'],
-  'china': ['china', 'taiwan', 'tariff', 'trade'],
-  'taiwan': ['taiwan', 'china'],
-  'trump': ['trump', 'election', 'tariff'],
-  'fed': ['fed', 'interest', 'inflation', 'recession'],
-  'bitcoin': ['crypto', 'bitcoin'],
-  'recession': ['recession', 'fed', 'inflation'],
-};
-
-
-export function findRelatedTopics(prediction: string): string[] {
-  const title = prediction.toLowerCase();
-  const related: string[] = [];
-
-  for (const [key, topics] of Object.entries(TOPIC_MAPPINGS)) {
-    if (containsTopicKeyword(title, key)) {
-      related.push(...topics);
-    }
-  }
-
-  return [...new Set(related)];
-}
-
-export function generateSignalId(): string {
-  return `sig-${crypto.randomUUID()}`;
-}
-
-export function generateDedupeKey(type: string, identifier: string, value: number): string {
-  // Market signals dedupe by symbol only (not by change value)
-  // This prevents duplicates when price fluctuates slightly
-  const marketSignals = ['silent_divergence', 'flow_price_divergence', 'explained_market_move'];
-  if (marketSignals.includes(type)) {
-    return `${type}:${identifier}`;
-  }
-  const roundedValue = Math.round(value * 10) / 10;
-  return `${type}:${identifier}:${roundedValue}`;
-}
+export {
+  PREDICTION_SHIFT_THRESHOLD,
+  MARKET_MOVE_THRESHOLD,
+  NEWS_VELOCITY_THRESHOLD,
+  FLOW_PRICE_THRESHOLD,
+  ENERGY_COMMODITY_SYMBOLS,
+  PIPELINE_KEYWORDS,
+  FLOW_DROP_KEYWORDS,
+  TOPIC_MAPPINGS,
+  findRelatedTopics,
+  generateSignalId,
+  generateDedupeKey,
+} from '../../shared/market-alert-core.js';
 
 // Signal context: "Why it matters" explanations (Quick Win #3)
 // Each signal type has a brief explanation of its analytical significance
@@ -107,8 +62,8 @@ export interface SignalContext {
 
 export const SIGNAL_CONTEXT: Record<SignalType, SignalContext> = {
   prediction_leads_news: {
-    whyItMatters: 'Prediction markets often price in information before it becomes news—traders may have early access to developments.',
-    actionableInsight: 'Monitor for breaking news in the next 1-6 hours that could explain the market move.',
+    whyItMatters: 'A prediction market moved while news coverage of the topic stayed low—the market may be reacting to information that has not been reported yet.',
+    actionableInsight: 'Monitor for breaking news that could explain the market move.',
     confidenceNote: 'Higher confidence if multiple prediction markets move in same direction.',
   },
   news_leads_markets: {
