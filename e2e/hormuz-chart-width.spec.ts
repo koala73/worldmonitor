@@ -92,4 +92,29 @@ test('Hormuz bar charts fill the panel body at every width', async ({ page }) =>
   expect(Math.abs(tip.center - bar.x), 'tooltip is centred on the hovered bar').toBeLessThanOrEqual(4);
   expect(tip.bottom, 'tooltip sits above the bar').toBeLessThanOrEqual(bar.y);
   expect(tip.right, 'tooltip stays inside the panel').toBeLessThanOrEqual(tip.panelRight);
+
+  // Scrolled so a chart sits at the top of the panel body, there is no room
+  // above the bar: the body clips anything above it, so the tooltip flips below.
+  const topBar = await page.evaluate(async () => {
+    const host = document.body.lastElementChild as HTMLElement;
+    host.style.height = '200px';
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const content = document.querySelector<HTMLElement>('.panel-content')!;
+    const svg = document.querySelector('.hz-svg')!;
+    content.scrollTop += svg.getBoundingClientRect().top - content.getBoundingClientRect().top - 2;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const r = svg.querySelectorAll('.hbar')[5]!.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + 10, scrolled: content.scrollTop };
+  });
+  expect(topBar.scrolled, 'the body scrolled the chart to its top edge').toBeGreaterThan(0);
+  await page.mouse.move(topBar.x - 1, topBar.y);
+  await page.mouse.move(topBar.x, topBar.y);
+  await page.waitForTimeout(200);
+  const clipped = await page.evaluate(() => {
+    const t = document.querySelector<HTMLElement>('.hz-tip')!.getBoundingClientRect();
+    const body = document.querySelector('.panel-content')!.getBoundingClientRect();
+    return { top: t.top, bottom: t.bottom, bodyTop: body.top, bodyBottom: body.bottom };
+  });
+  expect(clipped.top, 'tooltip stays below the top of the scrolled body').toBeGreaterThanOrEqual(clipped.bodyTop);
+  expect(clipped.bottom, 'tooltip stays above the bottom of the body').toBeLessThanOrEqual(clipped.bodyBottom);
 });

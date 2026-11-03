@@ -243,19 +243,22 @@ export class HormuzPanel extends Panel {
       if (!tip) return;
       const barRect = (target as SVGRectElement).getBoundingClientRect();
       tip.textContent = `${date}  ${val} ${unit}`;
-      // .panel's `contain: content` makes it the containing block for this
-      // fixed tooltip, so viewport coordinates would land offset by the
-      // panel's own position. Measure where (0, 0) lands and place from there,
-      // centred on the bar and kept inside the panel.
+      // The scrolling panel body's layout containment makes it the containing
+      // block for this fixed tooltip, and its overflow clips it. Viewport
+      // coordinates would land offset by the body's position, so measure
+      // where (0, 0) lands and place from there, centred on the bar, inside
+      // the visible body, and below the bar when there is no room above it.
       tip.style.transform = 'none';
       tip.style.left = '0px';
       tip.style.top = '0px';
       const origin = tip.getBoundingClientRect();
-      const panel = (this.element as HTMLElement).getBoundingClientRect();
+      const body = (tip.closest('.panel-content') ?? this.element as HTMLElement).getBoundingClientRect();
       const half = origin.width / 2;
-      const centre = Math.min(Math.max(barRect.left + barRect.width / 2, panel.left + half + 4), panel.right - half - 4);
+      const centre = Math.min(Math.max(barRect.left + barRect.width / 2, body.left + half + 4), body.right - half - 4);
+      const above = barRect.top - origin.height - 6;
+      const top = above >= body.top + 4 ? above : Math.min(barRect.bottom + 6, body.bottom - origin.height - 4);
       tip.style.left = `${centre - half - origin.left}px`;
-      tip.style.top = `${Math.max(panel.top + 4, barRect.top - 28) - origin.top}px`;
+      tip.style.top = `${top - origin.top}px`;
       tip.style.opacity = '1';
     });
 
