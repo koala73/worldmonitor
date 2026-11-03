@@ -86,8 +86,8 @@ helper below do not exist yet. Implement and test them in the migration PR
 before starting this procedure. Changing only the shared constants is unsafe.
 
 The migration must add `intelHistoryV2:embeddingModelInventory` with the same
-`limit`, `cursor`, `models`, `partial`, and `nextCursor` contract as the old-table
-query. Before backfill validation, deploy and test both queries. Then inventory
+`limit` and `cursor` inputs and `current`, `scanned`, `models`, `partial`, and
+`nextCursor` outputs as the old-table query. Before backfill validation, deploy and test both queries. Then inventory
 each table separately, paging each cursor to completion:
 
 ```sh
@@ -155,8 +155,13 @@ rewrite vectors already accepted in V2 or recreate deleted source rows.
 
 Before the read flip:
 
-- Complete the paginated inventory of each table. Every target row must
-  have the new stamp and dimension. No unstamped row belongs in V2.
+- Complete the paginated inventory of each table. Parity checks must assert
+  all output fields, including `current` (the old or new model stamp for that
+  table) and `scanned` (the page row count, equal to the sum of its model
+  tallies). Sum `scanned` across pages and reconcile the eligible source-row
+  total with V2 after accounting for concurrent writes, retractions and expiry.
+  Every target row must have the new stamp and dimension. No unstamped row
+  belongs in V2.
 - Compare eligible `dedupeKey` sets and event fields in bounded pages.
   Matching totals alone do not prove completeness. Account for concurrent
   appends, retractions and retention expiry before accepting the comparison.
