@@ -307,7 +307,7 @@
   },
   "header": {
     "world": "MUNDO",
-    "tech": "TECH",
+    "tech": "TECNOLOGÍA",
     "live": "VIVO",
     "search": "Buscar",
     "settings": "AJUSTES",
@@ -460,7 +460,7 @@
     "gulfIndices": "Índices del Golfo",
     "gulfCurrencies": "Monedas del Golfo",
     "gulfOil": "Petróleo del Golfo",
-    "bigmac": "Real Big Mac Index",
+    "bigmac": "Índice Big Mac real",
     "fearGreed": "Miedo y codicia",
     "marketImplications": "Implicaciones de Mercado de IA",
     "energyComplex": "Complejo Energético",
@@ -636,12 +636,12 @@
       "seeAllCommands": "Ver todos los comandos",
       "hideCommandList": "Volver",
       "flightOnGround": "En tierra",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} nudos",
       "flightMilitary": "Militar · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militar · {{type}} · en tierra",
       "flightSearchHint": "Presiona Enter o haz clic para buscar la posición en vivo",
       "flightNotFound": "No se encontró posición en vivo para {{callsign}}",
-      "addPanel": "Add"
+      "addPanel": "Añadir"
     },
     "signal": {
       "title": "ENCUENTRO DE INTELIGENCIA",
@@ -1155,8 +1155,8 @@
         "renewableInstallations": "Energía limpia",
         "radiationSpike": "Pico de radiación",
         "radiationElevated": "Radiación elevada",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "Carreteras de Canadá",
+        "canadaAlerts": "Alertas de Canadá",
         "notamAirspace": "Restricciones de espacio aéreo NOTAM",
         "no2Activity": "Actividad industrial"
       },
@@ -1279,8 +1279,8 @@
           "financeGulfInvestments": "Inversiones de fondos soberanos del Consejo de Cooperación del Golfo e inversión extranjera directa",
           "geoBoundaries": "Zonas desmilitarizadas, líneas de alto el fuego y fronteras en disputa",
           "ciiChoropleth": "Mapa de calor del Índice de Inestabilidad de País — colorea países por puntuación (verde=estable, rojo=crítico)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "canadaRoads": "Incidentes viales oficiales, alertas, condiciones, cierres, obras y peligros en las jurisdicciones canadienses compatibles",
+          "canadaAlerts": "Alertas provinciales de seguridad pública de Alberta Emergency Alert, B.C. Evacuation Orders and Alerts y SaskAlert",
           "notamAirspace": "Restricciones de vuelo temporales y espacio aéreo restringido, de peligro y prohibido de NOTAMs de la FAA, en vigencia ahora o comenzando dentro de 24 horas",
           "no2Activity": "Dirección de la actividad de NO2 de Sentinel-5P para 167 países y 32 clústeres industriales: la última ventana de 56 días frente a las mismas fechas de años anteriores, tras una banda muerta del 10 %. Contiene datos modificados de Copernicus Sentinel."
         },
@@ -1333,7 +1333,7 @@
       "high": "ALTO",
       "medium": "MED",
       "low": "BAJO",
-      "info": "INFO"
+      "info": "INFORMACIÓN"
     },
     "pizzint": {
       "indexSource": "Índice: World Monitor",
@@ -1390,7 +1390,7 @@
     "stablecoins": {
       "pegHealth": "Salud del anclaje",
       "supplyVolume": "Oferta y volumen",
-      "token": "Token",
+      "token": "Ficha",
       "mcap": "Cap. mercado",
       "vol24h": "Vol. 24h",
       "chg24h": "Chg. 24h",
@@ -1473,12 +1473,12 @@
       "upcoming": "Próximos",
       "conferences": "Conferencias",
       "earnings": "Resultados",
-      "all": "All",
+      "all": "Todos",
       "conferencesCount": "{{count}} conferencias",
       "onMap": "{{count}} en el mapa",
       "techmemeEvents": "Eventos de Techmeme ↗",
-      "today": "TODAY",
-      "soon": "SOON",
+      "today": "HOY",
+      "soon": "PRÓXIMAMENTE",
       "infoTooltip": "<strong>Eventos tecnológicos</strong> Eventos tecnológicos próximos y recientes: conferencias, lanzamientos de productos, audiencias regulatorias y llamadas de resultados. Agregados de calendarios oficiales y fuentes de la industria."
     },
     "techReadiness": {
@@ -1690,7 +1690,7 @@
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Incluye línea base por país + multiplicador de evento — véase /docs/methodology/cii-risk-scores para la tabla publicada",
       "sectionFollowing": "Seguidos",
-      "sectionAll": "All",
+      "sectionAll": "Todo",
       "sourceStates": {
         "degraded": "degradado",
         "stale": "obsoleto"
@@ -1729,12 +1729,12 @@
       "loading": "Conectando con el relay de cuentas de noticias de X...",
       "empty": "No hay publicaciones disponibles",
       "disabled": "El relay de cuentas de noticias de X no está activo",
-      "filterAll": "All",
+      "filterAll": "Todo",
       "filterBreaking": "Última hora",
       "filterConflict": "Conflicto",
       "filterOsint": "inteligencia de fuentes abiertas",
       "filterMiddleeast": "Oriente Medio",
-      "live": "LIVE",
+      "live": "EN VIVO",
       "viewSource": "Ver fuente",
       "filterGeopolitics": "Geopolítica",
       "filterCyber": "Ciber"
@@ -1744,7 +1744,7 @@
       "searchPlaceholder": "Buscar activos, países, entidades…",
       "allCountries": "Todos los países",
       "saudiArabia": "Arabia Saudí",
-      "uae": "UAE",
+      "uae": "EAU",
       "allSectors": "Todos los sectores",
       "allEntities": "Todas las entidades",
       "allStatuses": "Todos los estados",
@@ -1755,7 +1755,7 @@
       "divested": "Desinvertido",
       "asset": "Activo",
       "country": "País",
-      "sector": "Sector",
+      "sector": "Sector económico",
       "investment": "Inversión",
       "year": "Año",
       "noMatch": "Ninguna inversión coincide con los filtros",
@@ -1868,7 +1868,7 @@
       "streamAlwaysOnLabel": "Reproducir automáticamente transmisiones en vivo en el panel",
       "streamAlwaysOnDesc": "Inicia Live News y Live Webcams automáticamente cuando están visibles. Déjalo desactivado para cargar video solo después de hacer clic en Reproducir.",
       "globeRenderScaleOptions": {
-        "1": "Eco (1x)",
+        "1": "Eco (1×)",
         "2": "4K (2x)",
         "3": "Extremo (3x)",
         "auto": "Auto (dispositivo)",
@@ -1929,7 +1929,7 @@
       "netOutflow": "SALIDA NETA",
       "netNeutral": "NEUTRO",
       "table": {
-        "ticker": "Ticker",
+        "ticker": "Símbolo",
         "issuer": "Emisor",
         "estFlow": "Flujo est.",
         "volume": "Volumen",
@@ -1974,7 +1974,7 @@
       "degraded": "Degradado",
       "outage": "Caída",
       "categories": {
-        "all": "All",
+        "all": "Todos",
         "cloud": "Nube",
         "dev": "Herramientas de desarrollo",
         "comm": "Comunicaciones",
@@ -2055,14 +2055,14 @@
       "noMatching": "No hay alertas para este filtro",
       "critical": "Crítico",
       "health": "Salud",
-      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
+      "sources": "Dpto. de Estado de EE. UU., DFAT de Australia, FCDO del Reino Unido, CDC, ECDC, OMS, embajadas de EE. UU.",
       "refresh": "Actualizar",
       "levels": {
         "doNotTravel": "No viajar",
         "reconsider": "Reconsiderar viaje",
         "caution": "Precaución",
         "normal": "Normal",
-        "info": "Info"
+        "info": "Información"
       },
       "time": {
         "justNow": "ahora",
@@ -2555,7 +2555,7 @@
       "cotSection": "Posicionamiento de petróleo / oro / plata + índices (Commitments of Traders)",
       "stocksSection": "Principales acciones estadounidenses: Cambio diario",
       "longShort": "Largo {{long}} / Corto {{short}}",
-      "lev": "Lev",
+      "lev": "Apal.",
       "noCot": "No hay filas de Commitments of Traders disponibles.",
       "noStocks": "No hay cotizaciones de acciones principales disponibles.",
       "reportDate": "Fecha del informe Commitments of Traders: {{date}}",
@@ -2757,7 +2757,7 @@
       "headers": {
         "station": "Estación",
         "reading": "Lectura",
-        "delta": "Delta",
+        "delta": "Variación",
         "status": "Estado",
         "observed": "Observado"
       },
@@ -2921,9 +2921,9 @@
         "hoursAgo": "hace {{count}}h",
         "daysAgo": "hace {{count}}d",
         "compactNow": "ahora",
-        "compactMinutes": "{{count}}m",
+        "compactMinutes": "{{count}} min",
         "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "compactDays": "{{count}} d"
       }
     },
     "exportGate": {
@@ -2952,10 +2952,10 @@
       "currency": "Moneda",
       "pair": "Par",
       "rate": "Tipo",
-      "yoy": "12m",
+      "yoy": "12 meses",
       "drawdown": "Caída 24m",
       "peakToTrough": "Máximo → Mínimo",
-      "change1d": "1d",
+      "change1d": "1 d",
       "perUsd": "Por 1 USD",
       "usdPerUnit": "USD por unidad",
       "usdBase": "Frente al dólar estadounidense",
@@ -3175,7 +3175,7 @@
       "navPerformance": "Aeronaves afectadas",
       "samples": "Número de aeronaves afectadas",
       "aircraft": "Aeronaves observadas",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "Hexágono H3"
     },
     "flight": {
       "groundStop": "PARADA EN TIERRA",
@@ -3306,7 +3306,7 @@
       "components": {
         "news": "Noticias",
         "cii": "Índice de Inestabilidad de País",
-        "geo": "Geo",
+        "geo": "Geografía",
         "military": "Militar"
       },
       "levels": {
@@ -3477,17 +3477,17 @@
       "speed": "VELOCIDAD",
       "heading": "TÍTULO",
       "mmsi": "Identidad del Servicio Móvil Marítimo",
-      "region": "REGION",
-      "strikeGroup": "STRIKE GROUP",
+      "region": "REGIÓN",
+      "strikeGroup": "GRUPO DE ATAQUE",
       "usniIntel": "Inteligencia del Instituto Naval de EE.UU.",
       "usniSource": "Fuente: Rastreador de Flota del Centro de Noticias del Instituto Naval de EE.UU.",
       "approximatePosition": "Posición aproximada — basada en informe semanal del Instituto Naval de EE.UU., no en seguimiento de buque en tiempo real.",
       "darkDescription": "⚠ El buque ha desaparecido — señal de seguimiento de buque perdida. Puede indicar operaciones sensibles.",
       "recentTracking": "Seguimiento reciente",
-      "lastReport": "LATEST",
-      "nearChokepoint": "NEAR CHOKEPOINT",
-      "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN",
+      "lastReport": "ÚLTIMO",
+      "nearChokepoint": "CERCA DE PUNTO DE ESTRANGULAMIENTO",
+      "nearBase": "CERCA DE BASE",
+      "lastSeen": "VISTO POR ÚLTIMA VEZ",
       "estPosition": "POS. EST.",
       "aisLive": "Seguimiento de buque en vivo"
     },
