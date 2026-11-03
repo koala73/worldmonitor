@@ -2717,7 +2717,8 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         series_ids: {
           type: 'array',
-          items: { type: 'string' },
+          minItems: 1,
+          items: { type: 'string', pattern: '\\S' },
           description:
             `FRED series ids (case-insensitive), bounded to the seeded allowlist: ${filterParamContracts.economicFredSeriesIds.join(', ')}.`,
         },
@@ -2746,9 +2747,10 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
-      const seriesIds = argStrList(params.series_ids)
+      const seriesIds = Array.from(new Set(argStrList(params.series_ids)
         .map((id) => id.trim().toUpperCase())
-        .filter(Boolean)
+        .filter((id) => filterParamContracts.economicFredSeriesIds.includes(id))))
+        .sort()
         .slice(0, 20);
       const requestedLimit = argNum(params.limit);
       // Bounded by default: the RPC's own default is 120 observations, which

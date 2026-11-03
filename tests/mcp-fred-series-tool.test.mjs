@@ -125,8 +125,35 @@ describe('get_fred_series MCP tool (#5707)', () => {
     const downstream = requests.find((entry) => String(entry.url).includes(FRED_RPC_PATH));
     const sent = JSON.parse(downstream.init.body);
     assert.equal(sent.limit, 1000);
-    assert.equal(sent.seriesIds.length, 20);
-    assert.ok(sent.seriesIds.every((id) => ['UNRATE', 'CPIAUCSL'].includes(id)));
+    assert.deepEqual(sent.seriesIds, ['CPIAUCSL', 'UNRATE']);
+  });
+
+  it('rejects empty arrays and blank ids before making a downstream request', async () => {
+    for (const series_ids of [[], [''], [' \t '], ['UNRATE', ' ']]) {
+      requests = [];
+      const { deps } = makeProDeps();
+      const response = await mcpHandler(proReq('POST', callBody('get_fred_series', { series_ids })), deps);
+      const body = await response.json();
+      assert.equal(body.error?.code, -32602, JSON.stringify({ series_ids, body }));
+      assert.equal(requests.filter((entry) => String(entry.url).includes(FRED_RPC_PATH)).length, 0);
+    }
+  });
+
+  it('filters unsupported ids and duplicates before the canonical sorted twenty-series cap', async () => {
+    const { economicFredSeriesIds: allowed } = JSON.parse(readFileSync('shared/openapi-filter-param-contracts.json', 'utf8'));
+    for (const series_ids of [
+      [...Array(20).fill('UNKNOWN_ID'), 'unrate'],
+      [...Array(20).fill('UNRATE'), ' cpiAUCSL '],
+      [...allowed].reverse(),
+    ]) {
+      requests = [];
+      const { deps } = makeProDeps();
+      await mcpHandler(proReq('POST', callBody('get_fred_series', { series_ids })), deps);
+      const downstream = requests.find((entry) => String(entry.url).includes(FRED_RPC_PATH));
+      const sent = JSON.parse(downstream.init.body);
+      const expected = [...new Set(series_ids.map((id) => id.trim().toUpperCase()).filter((id) => allowed.includes(id)))].sort().slice(0, 20);
+      assert.deepEqual(sent.seriesIds, expected);
+    }
   });
 
   it('rejects fractional and out-of-range limits before making a downstream request', async () => {
