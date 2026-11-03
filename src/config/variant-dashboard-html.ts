@@ -1,3 +1,8 @@
+import {
+  CANONICAL_ORIGIN,
+  ORGANIZATION_ID,
+  WEBSITE_ID,
+} from './schema-graph-ids';
 import { VARIANT_META, type VariantMeta } from './variant-meta';
 import {
   VARIANT_SEO_PARAGRAPHS,
@@ -17,7 +22,7 @@ export function renderVariantSeoSummaryHtml(variant: VariantSeoKey): string {
     throw new Error(`[variant-dashboard-html] missing SEO paragraphs for "${variant}"`);
   }
   const body = paragraphs.map((p) => `<p>${escHtml(p)}</p>`).join('\n      ');
-  return `<section class="app-seo-summary" aria-hidden="true">\n      ${body}\n    </section>`;
+  return `<section class="app-seo-summary">\n      ${body}\n    </section>`;
 }
 
 export function renderVariantNoscriptMainHtml(variant: VariantSeoKey, meta: VariantMeta): string {
@@ -26,17 +31,17 @@ export function renderVariantNoscriptMainHtml(variant: VariantSeoKey, meta: Vari
   return `<main id="dashboard-noscript" class="dashboard-noscript">
         <h2>${escHtml(meta.siteName)} requires JavaScript for the live map</h2>
         ${about}
-        <p>Visit the <a href="/">World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
+        <p>Visit the <a href="${CANONICAL_ORIGIN}">World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
         <nav aria-label="${escHtml(meta.siteName)} references">
           <ul>
-            <li><a href="/countries/">Country intelligence</a></li>
-            <li><a href="/chokepoints/">Maritime chokepoints</a></li>
-            <li><a href="/crises/">Crisis trackers</a></li>
-            <li><a href="/tools/">Live tools</a></li>
-            <li><a href="/research/">Research reports</a></li>
-            <li><a href="/blog/">Blog</a></li>
-            <li><a href="/docs">Documentation</a></li>
-            <li><a href="/pro#pricing">Pricing</a></li>
+            <li><a href="${CANONICAL_ORIGIN}countries/">Country intelligence</a></li>
+            <li><a href="${CANONICAL_ORIGIN}chokepoints/">Maritime chokepoints</a></li>
+            <li><a href="${CANONICAL_ORIGIN}crises/">Crisis trackers</a></li>
+            <li><a href="${CANONICAL_ORIGIN}tools/">Live tools</a></li>
+            <li><a href="${CANONICAL_ORIGIN}research/">Research reports</a></li>
+            <li><a href="${CANONICAL_ORIGIN}blog/">Blog</a></li>
+            <li><a href="${CANONICAL_ORIGIN}docs/documentation">Documentation</a></li>
+            <li><a href="${CANONICAL_ORIGIN}pro#pricing">Pricing</a></li>
             <li><a href="https://github.com/koala73/worldmonitor">GitHub</a></li>
           </ul>
         </nav>
@@ -94,21 +99,78 @@ function replaceCounted(
 const ONE: CountBounds = { min: 1, max: 1 };
 const TWO: CountBounds = { min: 2, max: 2 };
 
-function removeJsonLdType(html: string, expectedType: string): string {
-  let count = 0;
+function jsonLdScript(payload: Record<string, unknown>): string {
+  // generateBundle runs after Vite stamps html.cspNonce onto dashboard.html, so
+  // the nonce is added here for consistency with every other script in the
+  // document. It is not load-bearing: `application/ld+json` is a data block, and
+  // CSP script-src is never consulted for one — an un-nonced JSON-LD block would
+  // not have been blocked (#7459c).
+  const serialized = JSON.stringify(payload, null, 2)
+    .replace(/\n/g, '\n    ')
+    // Escape `<` so a `</script>` in any value cannot close the element early.
+    .replace(/</g, '\\u003c');
+  return `<script type="application/ld+json" nonce="wm-static-bootstrap">\n    ${serialized}\n    </script>`;
+}
+
+function variantWebPageJsonLd(meta: VariantMeta): string {
+  return jsonLdScript({
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': `${meta.url}#webpage`,
+    url: meta.url,
+    name: meta.title,
+    description: meta.description,
+    isPartOf: { '@id': WEBSITE_ID },
+    publisher: { '@id': ORGANIZATION_ID },
+    mainEntity: { '@id': `${meta.url}#software` },
+    breadcrumb: { '@id': `${meta.url}#breadcrumb` },
+    speakable: {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.app-seo-summary'],
+    },
+  });
+}
+
+function variantBreadcrumbJsonLd(meta: VariantMeta): string {
+  return jsonLdScript({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    '@id': `${meta.url}#breadcrumb`,
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'World Monitor',
+        item: CANONICAL_ORIGIN,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: meta.siteName,
+        item: meta.url,
+      },
+    ],
+  });
+}
+
+function removeJsonLdTypes(html: string, expectedTypes: readonly string[]): string {
+  const counts = new Map(expectedTypes.map((type) => [type, 0]));
   const result = html.replace(
     /[ \t]*<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*([\s\S]*?)\s*<\/script>\s*/gi,
     (script, json: string) => {
       const type = JSON.parse(json)['@type'];
-      if (type !== expectedType) return script;
-      count += 1;
+      if (!counts.has(type)) return script;
+      counts.set(type, counts.get(type)! + 1);
       return '';
     },
   );
-  if (count !== 1) {
-    throw new Error(
-      `[variant-dashboard-html] JSON-LD type "${expectedType}" matched ${count} time(s), expected 1`,
-    );
+  for (const expectedType of expectedTypes) {
+    const count = counts.get(expectedType)!;
+    if (count !== 1) {
+      throw new Error(
+        `[variant-dashboard-html] JSON-LD type "${expectedType}" matched ${count} time(s), expected 1`,
+      );
+    }
   }
   return result;
 }
@@ -116,7 +178,7 @@ function removeJsonLdType(html: string, expectedType: string): string {
 // Derive a variant subdomain dashboard page from the built full-variant
 // dashboard.html. Only identity/meta surfaces change: title/description/
 // keywords/subject/classification metas, canonical + English discovery links,
-// og/twitter cards, the WebApplication JSON-LD block, and the visually
+// og/twitter cards, the SoftwareApplication JSON-LD block, and the visually
 // hidden <h1>.
 export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: string): string {
   const meta: VariantMeta | undefined = VARIANT_META[variant];
@@ -168,8 +230,7 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
     'hreflang alternates',
   );
 
-  // Social card images (per-variant OG assets exist under public/favico/<variant>/,
-  // same files middleware.ts VARIANT_OG points at).
+  // Social card images use the per-variant assets under public/favico/<variant>/.
   html = replaceCounted(
     html,
     /(<meta (?:property="og:image"|name="twitter:image") content=")[^"]*(" \/>)/g,
@@ -178,38 +239,59 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
     'og/twitter image',
   );
 
-  // WebApplication JSON-LD block: id, name, url, screenshot, featureList.
+  // SoftwareApplication JSON-LD block: id, name, url, screenshot, featureList.
+  // Each anchor requires the property to sit at the node's own indentation
+  // (newline + exactly six spaces). A bare `"url": ` anchor matches the FIRST
+  // textual url after the type, which a valid reordering that moves `offers`
+  // ahead of it turns into `offers[0].url` — one match, so the ONE bound accepts
+  // it and the wrong field is silently rewritten. Nested entries sit at ten
+  // spaces, so this anchor cannot reach them: a reorder now matches zero times
+  // and replaceCounted throws instead.
   html = replaceCounted(
     html,
-    /("@type": "WebApplication",[\s\S]{0,200}?"@id": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,200}?\n {6}"@id": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(`${meta.url}#software`)}`,
     ONE,
-    'WebApplication id',
+    'SoftwareApplication id',
   );
   html = replaceCounted(
     html,
-    /("@type": "WebApplication",[\s\S]{0,300}?"name": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,300}?\n {6}"name": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(meta.siteName)}`,
     ONE,
-    'WebApplication name',
+    'SoftwareApplication name',
   );
   html = replaceCounted(
     html,
-    /("@type": "WebApplication",[\s\S]{0,600}?"url": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,600}?\n {6}"url": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(meta.url)}`,
     ONE,
-    'WebApplication url',
+    'SoftwareApplication url',
   );
-  html = replaceCounted(html, /("screenshot": )"[^"]*"/g, (_m, a) => `${a}${JSON.stringify(ogImage)}`, ONE, 'WebApplication screenshot');
+  html = replaceCounted(html, /(\n {6}"screenshot": )"[^"]*"/g, (_m, a) => `${a}${JSON.stringify(ogImage)}`, ONE, 'SoftwareApplication screenshot');
   html = replaceCounted(
     html,
     /("featureList": )\[[\s\S]*?\]/g,
     (_m, a) => `${a}${JSON.stringify(meta.features, null, 8).replace(/\n/g, '\n      ')}`,
     ONE,
-    'WebApplication featureList',
+    'SoftwareApplication featureList',
   );
 
-  html = removeJsonLdType(html, 'WebSite');
+  html = removeJsonLdTypes(html, ['WebSite', 'WebPage', 'BreadcrumbList']);
+
+  // Variants stay on their own canonical URL but must not be entity-orphaned:
+  // join the canonical Organization/WebSite via WebPage + breadcrumbs + speakable
+  // instead of redeclaring those nodes (#7459c).
+  html = replaceCounted(
+    html,
+    // /g so replaceCounted can observe a SECOND SoftwareApplication block and throw.
+    // Without it String.replace stops at the first match, count can never exceed
+    // 1, and the ONE bound's max half is unenforceable.
+    /(<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*\{[\s\S]*?"@type": "SoftwareApplication"[\s\S]*?<\/script>)/g,
+    (_m, script) => `${script}\n    ${variantWebPageJsonLd(meta)}\n    ${variantBreadcrumbJsonLd(meta)}`,
+    ONE,
+    'variant WebPage and BreadcrumbList',
+  );
 
   // Visually-hidden <h1> — the topic signal crawlers read on this page.
   html = replaceCounted(html, /(<h1 class="app-heading">)[^<]*(<\/h1>)/g, (_m, a, b) => `${a}${escHtml(meta.title)}${b}`, ONE, 'app-heading h1');
@@ -220,7 +302,7 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   const seoKey = variant as VariantSeoKey;
   html = replaceCounted(
     html,
-    /<section class="app-seo-summary" aria-hidden="true">[\s\S]*?<\/section>/,
+    /<section class="app-seo-summary">[\s\S]*?<\/section>/,
     () => renderVariantSeoSummaryHtml(seoKey),
     ONE,
     'app-seo-summary',

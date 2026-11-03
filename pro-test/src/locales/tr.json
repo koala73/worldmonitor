@@ -23,7 +23,7 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Senin AI analistin. Kişisel bir istihbarat masası. Üzerine inşa edebileceğin bir platform. Canlı hizmetlerde tek anahtarla.",
+    "proDesc": "Senin AI analistin. Kişisel bir istihbarat masası. Üzerine inşa edebileceğin bir platform.",
     "proF1": "WM Analyst sohbeti — canlı hizmetleri konuşarak sorgula",
     "proF2": "AI özeti — günlük, günde iki kez veya haftalık — Slack, Discord, Telegram, E-posta veya webhook'a",
     "proF3": "Custom Widget Builder — HTML/CSS/JS ile AI destekli düzenleme",
@@ -32,7 +32,7 @@
     "proF6": "Uçuş arama ve fiyat karşılaştırma",
     "proF7": "Uyarı kuralı motoru — özel tetikleyiciler, sessiz saatler, AES-256 şifreli kanallar",
     "proF8": "Pazar watchlist'i, makro ve merkez bankası takibi",
-    "proF9": "AI Market Implications ve Regional Intelligence (Yakında: yörünge gözetimi, premium harita katmanları, uzatılmış geçmiş)",
+    "proF9": "AI Pazar Etkileri ve Bölgesel İstihbarat",
     "choosePlan": "Planınızı seçin",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Paylaşılan izleme, API erişimi, deployment seçenekleri, TV uygulamaları ve doğrudan desteğe ihtiyaç duyan ekipler için.",
@@ -48,7 +48,8 @@
     "entF10": "Bulut, on-premises veya air-gapped deployment",
     "entF11": "Adanmış onboarding ve destek",
     "entCta": "Satışla konuşun",
-    "freeF2": "Seçilmiş akışlar, atfedilmiş kaynaklar ve harita katmanları"
+    "freeF2": "Seçilmiş akışlar, atfedilmiş kaynaklar ve harita katmanları",
+    "proF10": "İntel belleği — geçmiş arama, zaman çizelgeleri ve benzer olay arama"
   },
   "whyUpgrade": {
     "title": "World Monitor Pro'ya neden yükseltme yapmalısınız?",
@@ -87,10 +88,7 @@
     "uniqueVisitors": "Benzersiz ziyaretçiler",
     "peakDailyUsers": "Günlük kullanıcı (zirve)",
     "countriesReached": "Ulaşılan ülke",
-    "liveDataSources": "Canlı veri kaynakları",
-    "quote": "Piyasalar, para politikası, jeopolitik, enerji — her şey şimdi birlikte hareket ediyor. Bu kuvvetlerin gerçek zamanlı olarak nasıl bağlandığını gösteren bir şeye ihtiyacım vardı; sadece manşetler değil, altta yatan itici güçler.",
-    "ceo": "CEO'su",
-    "asToldTo": "anlatıldığı kişi"
+    "liveDataSources": "Canlı veri kaynakları"
   },
   "audience": {
     "title": "World Monitor kimlere yönelik olarak tasarlanmıştır?",
@@ -155,13 +153,14 @@
     "economyAnalyticsDesc": "GSYH, enflasyon, faiz oranları ve büyüme döngüleri. Piyasa sinyalleri ve jeopolitik olaylarla ilişkili makro veriler.",
     "riskMonitoring": "Risk izleme ve senaryolar",
     "riskMonitoringDesc": "Küresel risk puanlama, senaryo analizi ve jeopolitik risk değerlendirmesi. Piyasa ve siyasi sinyaller arasında yakınsama tespiti.",
-    "orbitalSurveillance": "Yörünge gözetimi",
-    "orbitalSurveillanceDesc": "(Yakında) Yörünge geçiş tahminleri, yeniden ziyaret frekansı analizi ve görüntüleme penceresi uyarıları. İstihbarat uydularının ilgi alanlarınızı ne zaman gözlediğini bilin.",
     "morningBriefs": "Kişisel istihbarat masası",
     "morningBriefsDesc": "Özet başına 30'a kadar sıralanmış haber, kaynaklar arasında kopyasız. Günlük, iki günlük veya haftalık cadenceyi seç — veya kritik olaylar için gerçek zamanlı uyarılar. AI Değerlendirmesi ve İzlenecek Sinyallerle birlikte Slack, Discord, Telegram, Email veya webhook'a gönderilir. Haber bülteni değil — bir analist.",
     "oneKey": "Canlı Hizmetler, 1 Anahtarla",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky ve daha fazlası — hepsi aktif, ayrı kayıt yok.",
-    "deliveryLabel": "İstihbaratın sizi nasıl bulacağını seçin"
+    "deliveryLabel": "İstihbaratın sizi nasıl bulacağını seçin",
+    "supplyChainLab": "Tedarik Zinciri Stres Laboratuvarı",
+    "supplyChainLabDesc": "Ülkeler ve sektörler arasında maliyet şokunun modelini oluşturun. Darboğaz bağımlılığına göre emtia kırılganlığını sıralayın. Madenden rafineri haline kadar konsantrasyon ve SGE–COMEX fiziksel premium farklılaşmasını izleyin — manşet gelmeden hareket eden seri.",
+    "roadmapNote": "Yol haritasında: yörüngesel gözetim, daha uzun geçmiş, premium harita katmanları."
   },
   "slackMock": {
     "morningBrief": "Sabah brifi",
@@ -242,12 +241,12 @@
     "infraLayers": "Altyapı katmanları",
     "satellite": "Yörünge gözetimi",
     "connectorsRow": "Konnektörler",
-    "deployment": "Deployment",
+    "deployment": "Dağıtım",
     "securityRow": "Güvenlik",
     "f5_15min": "5-15 dk",
     "fLt60s": "<60 saniye",
     "fPerRequest": "İstek başına",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "Canlı",
     "f50panels": "Panolar",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -363,14 +362,15 @@
       "pro": {
         "description": "Tam istihbarat gösterge paneli",
         "features": [
-          "Ücretsizde her şey",
-          "AI hisse senedi analizi ve geri test",
-          "Günlük pazar özeti",
-          "Askeri ve jeopolitik izleme",
-          "Özel widget oluşturucu",
-          "10 özel pano (3'e karşılık)",
+          "Ücretsiz tarafta her şey — paneller, kaynaklar ve izlenen ülkeler sınırsız",
+          "WM Analist sohbeti + AI hisse senedi analizi ve geriye dönük test",
+          "Maliyet şoku modelleme ve tedarik zinciri stres testleri",
+          "İntel belleği — geçmiş arama, zaman çizelgeleri ve benzer olaylar",
+          "Fiziksel metaller farklılaşması, mineraller konsantrasyonu ve egemen borç verileri",
+          "Planlı AI özeti + uyarı kuralları motoru",
           "Claude Desktop ve diğer AI istemcileri için MCP + SDK erişimi (50 çağrı/gün)",
-          "Öncelikli veri yenileme"
+          "Özel parçacıklar ve 10 pano (vs 3)",
+          "Masaüstü uygulaması için anahtar (2 anahtar)"
         ],
         "highlightFeatures": [
           "Kişisel lisans",
@@ -380,15 +380,16 @@
       "api": {
         "description": "Canlı istihbarat verileri üzerinde dahili araçlar oluşturun",
         "features": [
-          "REST API + resmî SDK'lar (npm, PyPI, RubyGems, Go)",
+          "Tam Pro dashboard dahil (1 adlandırılmış kullanıcı)",
+          "REST API + resmi SDK'lar (npm, PyPI, RubyGems, Go)",
           "Lisans / API anahtarı dahil",
           "Gerçek zamanlı veri akışları",
-          "Dakikada 60 istek",
-          "Günde 1.000 istek dahil",
+          "60 istek/dakika",
+          "1.000 istek/gün dahil (REST + MCP birleşik; canlı MCP çağrısı 2-3 sayılır)",
           "Webhook bildirimleri"
         ],
         "highlightFeatures": [
-          "Ticari lisans — kuruluşunuz için"
+          "Ticari kullanım — yalnızca dahili, müşteriye yönelik değil"
         ]
       },
       "enterprise": {
@@ -412,14 +413,14 @@
         "description": "WorldMonitor verileri üzerinde kendi ürününüzü başlatın",
         "features": [
           "API Starter'daki her şey",
-          "Yeniden dağıtım hakları — verilerimizi sattığınız şeye yerleştirin",
+          "R1–R3 müşteriye yönelik ürünler için yeniden dağıtım hakları",
           "300 istek/dakika",
-          "10.000 istek/gün dahil",
+          "Günde 10.000 istek dahil (REST + MCP birleşik; canlı MCP çağrısı 2-3 olarak sayılır)",
           "5 Pro lisansı — herhangi bir kurumsal e-posta alan adına sahip kullanıcıları davet edin",
           "Öncelikli destek"
         ],
         "highlightFeatures": [
-          "Ticari lisans — müşterileriniz için"
+          "Ticari kullanım — müşteriye yönelik ürünlerinizde"
         ]
       },
       "proBusiness": {
@@ -430,6 +431,7 @@
           "Veri dışa aktarma — CSV, JSON ve PDF raporları",
           "25 özel pano (vs 10)",
           "MCP + SDK: 250 çağrı/gün (vs 50)",
+          "Masaüstü uygulaması için anahtar (3 anahtar)",
           "Öncelikli destek"
         ],
         "highlightFeatures": [
@@ -449,13 +451,13 @@
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Ücretsiz Gerçek Zamanlı Global İstihbarat Panosu",
-      "description": "Haber olduğunda zaten biliyordun. Çatışmalar, nakliye darboğazları, askeri uçuşlar, piyasalar ve siber olaylar AI analizi ile tek bir ücretsiz canlı dünya haritasında. Kayıt yok.",
-      "ogTitle": "World Monitor — Haber olduğunda zaten biliyordun.",
-      "ogDescription": "Dünyanın ham sinyalleri — gemiler, jetler, sirenler, kablolar, piyasalar — AI ile birlikte tek bir ücretsiz canlı istihbarat haritasında ve bunlar bir şeye dönüştüğünde flaglenir. Ücretsiz, kayıt yok."
+      "title": "World Monitor: Ücretsiz jeopolitik istihbarat panosu",
+      "description": "World Monitor: gerçek zamanlı jeopolitik istihbarat panosu. Çatışmalar, gemiler, uçuşlar, piyasalar ve siber için ücretsiz canlı harita; API ve MCP ile.",
+      "ogTitle": "World Monitor: Ücretsiz jeopolitik istihbarat panosu",
+      "ogDescription": "World Monitor: gerçek zamanlı jeopolitik istihbarat panosu. Çatışmalar, gemiler, uçuşlar, piyasalar ve siber için ücretsiz canlı harita; API ve MCP ile."
     },
     "nav": {
-      "useCases": "Korelasyonlar",
+      "useCases": "Kullanım örnekleri",
       "firstFive": "İlk 5 dakika",
       "depth": "Derinlik",
       "pricing": "Fiyatlandırma",
@@ -464,13 +466,14 @@
       "launch": "Panoyu Başlat",
       "blog": "Blog",
       "menu": "Menü",
-      "agents": "Yapay zeka ajanları için"
+      "agents": "Yapay zeka ajanları için",
+      "skipToContent": "İçeriğe geç"
     },
     "hero": {
       "eyebrow": "Ücretsiz global istihbarat panosu · şimdi canlı",
-      "headline1": "Haber olduğunda,",
-      "headline2": "zaten biliyordun.",
-      "sub": "Başlıklar gecikme. World Monitor, dünyanın ham sinyallerini — gemiler, jetler, sirenler, kablolar, piyasalar — tek bir canlı haritaya akıtır ve bunlar önemli bir şeye dönüştüğünde flaglemeyi yapan AI ile.",
+      "headline1": "Gerçek zamanlı jeopolitik",
+      "headline2": "istihbarat panosu",
+      "sub": "Haber olduğunda, zaten biliyordun.",
       "ctaPrimary": "Panoyu başlat",
       "ctaFree": "Ücretsiz · Kayıt yok · Saniyeler içinde yüklenir",
       "ctaSecondary": "İnsanlar bunu nasıl kullanıyor ↓",
@@ -479,14 +482,19 @@
       "screenshotAlt": "World Monitor canlı istihbarat panosu — çatışma, nakliye ve pazar katmanları olan global harita",
       "plateNote": "Canlı haritadan yakalandı — açmak için tıkla",
       "trustBuild": "Buna katkıda bulun:",
-      "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil"
+      "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil",
+      "asOf": "{{date}} itibarıyla",
+      "whatIsTitle": "World Monitor Nedir?",
+      "whatIsBody": "World Monitor, 2M+ kişi tarafından kullanılan ücretsiz ($0), açık kaynaklı (AGPL-3.0) bir paneldir. {{feeds}} haber ve OSINT akışını {{providers}} atfedilen sağlayıcıdan {{mapLayers}} harita katmanı türüyle tek bir canlı dünya haritasına aktarır; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirerek yakınsayan olayları başlıklardan önce ortaya çıkarır. Her rakam kaynaklıdır ve her yöntem belgelenmiştir.",
+      "whatIsBestFor": "Canlı jeopolitik sinyallere ihtiyaç duyan analistler, gazeteciler, trader'lar ve geliştiriciler için ideal."
     },
     "live": {
       "eyebrow": "Şu anda canlı",
       "title": "Bu sayfa şu anda hangi canlı verileri gösteriyor?",
       "subtitle": "World Monitor'un gece gündüz izlediği yüz artı sinyal arasından dört tanesi.",
       "liveBadge": "Canlı",
-      "sampleBadge": "Örnek",
+      "pulseBadge": "Yayımlanan pulse {{date}}",
+      "refreshNote": "Yenilemek için JavaScript'i etkinleştirin — yukarıdaki yayımlanan pulse bunu olmadan da kullanılabilir kalır.",
       "cardHeadlines": "Üst sinyaller",
       "cardCii": "İstikrarsızlık endeksi",
       "ciiNote": "Ülke başına 12 füzyone sinyal",
@@ -503,7 +511,7 @@
     "moments": {
       "eyebrow": "Korelasyon motoru",
       "title": "World Monitor sinyalleri nasıl ilişkilendirir?",
-      "sub": "Feed'leri yüz yerde bulabilirsiniz. Kenar, jeopolitik, denizcilik, emtialar, makro, pazarlar, hava durumu, altyapı, siber, haber ve ülke riski birbirini açıklayabileceği tek bir yüzey.",
+      "sub": "{{mapLayers}} harita katmanı türünü tek bir yüzey üzerinde gösterir; böylece jeopolitika, gemi taşımacılığı, emtialar, makro, piyasalar, hava durumu, altyapı, siber, haberler ve ülke riski birbirini açıklayabilir. Akışları herkes toplayabilir; bunların bir harita üzerinde birlikte hareket etmesini görmek farkı yaratır.",
       "signalStack": "Füzyonlaştırılan sinyaller",
       "correlation": "Korelasyon",
       "bridge1": "Feed listesi değil.",
@@ -512,7 +520,7 @@
         "kicker": "Jeopolitik + pazarlar + makro",
         "title1": "Pazar hareketi",
         "title2": "haritası vardır.",
-        "s1": "Ülke riski, yaptırımlar, sıcak nokta tırmanışları, resmi uyarılar ve haber hızı, jeopolitik baskının nerede yükseldiğini gösterir.",
+        "s1": "{{hotspots}} puanlanmış sıcak noktada ülke riski, yaptırımlar, tırmanış; resmi uyarılar ve haber hızı jeopolitik basıncın arttığı yeri gösterir.",
         "s2": "Gemiler, darboğazlar, uçuşlar, kablolar ve altyapı yakınlığı, bu baskının arz, ticaret veya sermaye rotalarına çarpıp çarpmayacağını gösterir.",
         "s3": "Oranlar, döviz, öz kaynaklar, kripto, enerji ve güvenli liman varlıkları, hangi pazar rejiminin yeniden fiyatlandırıldığını gösterir.",
         "s4": "Kenar, jeopolitik baskıyı, iletim yolunu ve fiyat hareketini fikir birliği notu haline gelmeden önce görüyor.",
@@ -526,7 +534,7 @@
         "kicker": "Emtialar + darboğazlar + hava durumu",
         "title1": "Emtia hareketleri",
         "title2": "fiziksel dünyada başlar.",
-        "s1": "AIS, limanlar, boru hatları, LNG, rafineriler, su yolları ve darboğazlar, arzın ne zaman yavaşladığını, yeniden yönlendirildiğini veya yoğunlaştığını gösterir.",
+        "s1": "AIS, limanlar, boru hatları, LNG, rafineriler, su yolları ve {{chokepoints}} dar geçit arz yavaşladığında, yeniden yönlendirildiğinde veya yoğunlaştığında gösterir.",
         "s2": "Hava durumu, yangınlar, depremler, kesintiler ve çatışma katmanları, üretimi veya taşımayı etkileyebilecek fiziksel olayları gösterir.",
         "s3": "Petrol, gaz, altın, tahıllar, madencilik şirketleri, gemi isimleri ve emtia bağlantılı para birimleri, şokun nasıl fiyatlandırıldığını gösterir.",
         "s4": "Emtia istihbaratı ancak fiziksel akış, kesinti sinyali ve pazar spreadı birlikte görüldüğünde işe yarar.",
@@ -540,7 +548,7 @@
         "kicker": "AI altyapısı + enerji + iklim",
         "title1": "AI patlamasının",
         "title2": "fiziksel bilançosu vardır.",
-        "s1": "AI veri merkezleri şebekeler, boru hatları, LNG, nükleer tesisler, bulut bölgeleri ve güç pazar maruziyeti yanında yer alır.",
+        "s1": "{{aiDatacenters}} yapay zeka veri merkezi şebekeler, boru hatları, LNG, nükleer tesisler, bulut bölgeleri ve enerji piyasası riski yanında yer alır.",
         "s2": "Şebeke stresi, kesintiler, sıcak, yangın ve hava durumu katmanları, hangi işlem koridorlarının bugün baskı altında olduğunu gösterir.",
         "s3": "Şirket, borsa ve makro paneller, enerji, işlem gücü ve sermaye çarpıştığında kimin risk altında olduğunu gösterir.",
         "s4": "AI altyapı riski ancak fiziksel varlıklar, iklim sinyalleri ve pazarlar aynı ekranda olduğunda görünür.",
@@ -553,7 +561,7 @@
       "m4": {
         "kicker": "Kablolar + kesintiler + ticaret",
         "title": "Kablo arızası kademeli bir kriz haline dönüşüyor",
-        "s1": "Denizaltı kabloları, iniş istasyonları, limanlar, boru hatları ve darboğazlar birlikte haritalanmıştır.",
+        "s1": "{{submarineCables}} denizaltı kabloları, iniş istasyonları, limanlar, boru hatları ve dar geçitler birlikte eşlenir.",
         "s2": "İnternet ve BGP anomali beslemeleri fiziksel bir arızanın dijital bir kesintiye dönüşüp dönüşmediğini gösterir.",
         "s3": "Ticaret koridorları, ülke esnekliği ve yedeklilik verileri hangi ülkelerin ilk olarak yedek rotalarını kaybettiğini gösterir.",
         "s4": "Kablo hasarı, telekomünikasyon yedekliliği, ticaret koridorları ve ülke maruziyeti bir araya geldiğinde önemli hale gelir.",
@@ -567,65 +575,50 @@
     "firstFive": {
       "eyebrow": "Sıfırdan oryantasyon",
       "title": "Harita üzerindeki ilk beş dakikanızda ne olur?",
-      "sub": "Tur yok, boş durumlar yok, kayıt duvarı yok. Gerçekte neler oluyor.",
+      "sub": "Tur yok, boş ekranlar yok, kayıt duvarı yok. İlk 5 dakikada gerçekten olan budur.",
       "f1Title": "Harita zaten hareket ediyor",
       "f1Desc": "Çatışmalar, gemiler, uçaklar, yangınlar ve kesintiler sayfa yüklenirken render edilir. Önce yapılandırılacak bir şey yok.",
       "f2Title": "Herhangi bir ülkeyi tıkla",
-      "f2Desc": "Tam bir dosya açılır: bileşenleriyle istikrarsızlık puanı, alıntılanan başlıkları içeren AI özeti, aktif sinyaller, 7 günlük zaman çizelgesi.",
+      "f2Desc": "O ülke için tam bir dosya açılır: istikrarsızlık puanı bunu oluşturan bileşenlere ayrılmış, kullandığı başlıkları alıntılayan bir yapay zeka özeti, haritadaki aktif sinyaller ve değişenlerin 7 günlük zaman çizelgesi. Öncesinde bir şey kurulması gerekmez; bir tıkla hepsi açılır.",
       "f3Title": "⌘K / Ctrl-K tuşuna bas",
-      "f3Desc": "Komutlar. Kullanıcı arayüzünü öğrenmeden herhangi bir katmana, panoya veya ülkeye atlayabilirsin.",
+      "f3Desc": "{{commands}} komut. Arayüzü öğrenmeden herhangi bir katmana, panele veya ülkeye atlayın.",
       "f4Title": "Lensini seç",
-      "f4Desc": "Dünya, Tech, Finans, Emtia, Enerji veya Happy — aynı motor, ayarlanmış monitörler, bir tıkla ulaşabilirsin.",
+      "f4Desc": "Dünya, Teknoloji, Finans, Emtia, Enerji veya Happy — aynı motor, altı ayarlanmış monitor, bir tık uzakta.",
       "f5Title": "Belki onda birini gördün",
-      "f5Desc": "Geri kalanı dünya hareket ettikçe ortaya çıkıyor — uydu geçişleri, GPS sıkışması, karanlık gemiler, protesto kümeleri, siren uyarıları.",
+      "f5Desc": "Harita masaüstünde açıldığında, {{defaultOnLayers}} / {{mapLayers}} harita katmanı türünden, yaklaşık {{defaultOnLayerPct}}% açık duruma getirilir. Geri kalanlar dünya hareket ettikçe ortaya çıkar: uydu geçişleri, GPS jamming, AIS boşluklarından işaretlenen karanlık gemiler, protesto kümeleri ve sivil savunma siren uyarıları. Çoğu katman menüsünden veya ⌘K paletinden açılabilir.",
       "cta": "Kronometreyi başlat"
     },
     "depth": {
       "eyebrow": "Kapak altında",
       "title": "World Monitor veri modeli ne kadar derindir?",
       "sub": "Aşağıdaki her sayı bugün panosunda canlıdır — bir yol haritası değil.",
-      "s1v": "Paylaşılan",
-      "s1l": "Harita katmanları",
-      "s2v": "Seçilmiş",
-      "s2l": "Seçilmiş beslemeler",
-      "s3v": "Atfedilmiş",
-      "s3l": "Veri sağlayıcıları",
-      "s4v": "Canlı",
+      "s1l": "Harita katmanı türleri",
+      "s2l": "Haberler ve OSINT kaynakları",
+      "s3l": "Atfedilen sağlayıcılar",
       "s4l": "Darboğazlar · canlı AIS",
-      "s5v": "Tier-1",
       "s5l": "İstikrarsızlık endeksi · canlı",
-      "s6v": "Herkese Açık",
       "s6l": "Esneklik sıralamaları",
-      "s7v": "Harita Üzerinde İşaretlenmiş",
       "s7l": "Denizaltı kabloları",
-      "s8v": "Harita Üzerinde İşaretlenmiş",
       "s8l": "Boru hatları & LNG",
-      "s9v": "Harita Üzerinde İşaretlenmiş",
       "s9l": "AI veri merkezleri haritalanmış",
-      "s10v": "Puanlanmış",
       "s10l": "Puanlanan sıcak noktalar",
-      "s11v": "Canlı",
       "s11l": "Borsalar & varlıklar",
-      "s12v": "Canlı",
       "s12l": "MCP araçları",
-      "s13v": "Hızlı",
-      "s13l": "⌘K komutları",
-      "s14v": "Yerelleştirilmiş",
+      "s13l": "⌘K komut tanımları",
       "s14l": "Diller · RTL dahil",
-      "s15v": "5",
       "s15l": "Bağımsız uyarı kaynakları",
       "n1Title": "Uydu izleme",
-      "n1Desc": "Tarayıcıda SGP4 ile hesaplanan canlı yörünge konumları — ISS, Starlink ve askeri uyduları başınızın üstünde izleyin.",
+      "n1Desc": "SGP4 ile tarayıcıda hesaplanan canlı yörünge konumları her 3 saniyede güncelleniyor — CelesTrak'tan askeri ve Yer gözlem uyduları, 2 saatte bir yenileniyor.",
       "n2Title": "GPS müdahale bölgeleri",
-      "n2Desc": "GPS'in degradasyona uğradığı veya sahte sinyal gönderildiği yerleri gösteren canlı RF-girişim haritası.",
+      "n2Desc": "Uçak raporlarından günlük RF-parazit haritası: en az 2% oranında uçağın bozulmuş GPS gördüğü hücreler işaretlenir, 10% üzerindekiler yüksek olarak işaretlenir. Hücreler bu raporlardan günde bir kez yeniden oluşturulan altıgenlerdir; bu nedenle harita uçuşların son gün içinde karıştırma veya yanıltmaya maruz kaldığı yerleri gösterir, bu dakikayı değil.",
       "n3Title": "Boğaz geçiş istihbaratı",
       "n3Desc": "Hormuz, Süveyş, Bab el-Mendeb ve 10 kanaldan daha fazlasından geçen gemi sayıları — kesinti puanlaması ile.",
       "n4Title": "AI veri merkezi haritası",
-      "n4Desc": "313 AI veri merkezi güç ve operatör meta verileri ile haritalanmış — AI yarışının fiziksel katmanı.",
+      "n4Desc": "{{aiDatacenters}} yapay zeka veri merkezi güç ve operatör metaveri ile eşlendi — yapay zeka yarışının fiziksel katmanı.",
       "n5Title": "Denizaltı kabloları",
-      "n5Desc": "İnterneti taşıyan deniz altı kabloları, kesinti ve tehdit sinyalleriyle birlikte gösterilmiş.",
+      "n5Desc": "{{submarineCables}} interneti taşıyan denizaltı kablosu, kesinti ve tehdit sinyalleriyle üst üste.",
       "n6Title": "Protesto izleme",
-      "n6Desc": "Çift kaynaklı protesto tespiti çapraz kaynak deduplasiyon ile — sinyal, söylenti değil.",
+      "n6Desc": "ACLED ve GDELT'ten protesto tespiti; aynı gün içinde aynı 0,1° hücrede bir kaynaktan gelen raporlar tek bir olaya birleştirilir — sinyal, söylenti değil.",
       "faith": "Sayılara körü körüne inanmayın —",
       "faithCta": "uygulamayı açın ve sayın.",
       "faithNote": "Kaynaklar her panelde gösterilmiştir."
@@ -633,8 +626,8 @@
     "agents": {
       "eyebrow": "İnşaatçılar & AI ajanları için",
       "title": "World Monitor'ı kendi yığınımdan nasıl geliştirim?",
-      "sub": "Haritadaki her şey aynı zamanda bir API'dir. Claude üzerinde MCP ile entegre edin, REST uç noktalarını nereden de çağırın veya Python, Ruby, Go veya JavaScript için yerel istemci kurun — kodunuz eğitim verileri anılarından ziyade canlı veri ile araştırma yapar.",
-      "b1": "MCP araçları — risk puanları, darboğazlar, çatışmalar, piyasalar, özetler",
+      "sub": "Haritadaki her şey aynı zamanda bir API'dir. MCP üzerinden Claude'a {{mcpTools}} canlı araçla bağlayın, herhangi bir yerden REST uç noktalarını çağırın veya Python, Ruby, Go ya da JavaScript için yerel bir istemci yükleyin — kodunuz eğitim verisi anıları yerine canlı verilerle araştırma yapar. MCP erişimi Pro ile gelir, ${{proMonthlyPrice}}/ay'dan.",
+      "b1": "{{mcpTools}} MCP aracı — risk puanları, dar geçitler, çatışmalar, pazar, kısa raporlar",
       "b2": "Belgelenmiş REST API — bir OpenAPI 3.1 spec'i, bir anahtarla",
       "b3": "npm, PyPI, RubyGems ve Go'da resmi SDK'lar — sıfır bağımlılık, MCP-first",
       "b4": "Her çağrıda JMESPath projeksiyonu — ihtiyacınız olan alanları getirin",
@@ -656,14 +649,14 @@
       "eyebrow": "Erişim",
       "title1": "Ücretsiz gözlemcilik istasyonudur.",
       "title2": "Pro operasyon odasıdır.",
-      "sub": "Pano ücretsiz — Resilience hariç her harita katmanı, her feed, kayıt gerekmiyor. Pro karar katmanını ekler.",
-      "freeTitle": "Ücretsiz",
-      "freeDesc": "Ücretsiz sürüm tam bir üründür, deneme değildir. Resilience hariç her harita katmanı, her feed, her monitor — kayıt yok, deneme süresi yok.",
+      "sub": "Dashboard 0$ ile ücretsizdir — Resilience dışında her harita katmanı, kaydolmaya gerek yok. Pro, karar katmanını ekler.",
+      "freeTitle": "Ücretsiz plan",
+      "freeDesc": "Ücretsiz katman tam bir üründür, deneme sürümü değil. Resilience dışında her harita katmanı, altı monitörün tamamı — kaydolmaya gerek yok, deneme saati yok.",
       "freeF1": "Resilience hariç tüm harita katmanları ve seçilmiş beslemeler",
       "freeF2": "Ülke brifler, sıcak noktalar, istikrarsızlık puanları",
       "freeF3": "Boğazlar, kablolar, kaskad analizi",
       "freeF4": "Son dakika uyarı hattı & izleme listeleri",
-      "proTitle": "Pro",
+      "proTitle": "Pro planı",
       "proDesc": "Harekete geç. Yukarıdaki anlarda kullanılan karar katmanı:",
       "proF1": "WM Analyst — canlı hizmetler arasında sohbet et, alıntılarla birlikte",
       "proF2": "Senaryo motoru & Rota Gezgini — aksamaları başlamadan önce simüle edin",
@@ -671,37 +664,41 @@
       "proF4": "MCP, REST API ve resmi SDK'lar — tek anahtarla canlı araçlar",
       "proF5": "Kendi panelleriniz için özel widget oluşturucu",
       "cta": "Planları & fiyatlandırmayı görmek",
-      "note": "Başlangıç fiyatı $39,99/ay · Yıllık ödeme ile 3 ay ücretsiz"
+      "note": "Başlangıç fiyatı $39,99/ay · Yıllık ödeme ile 3 ay ücretsiz",
+      "disclaimer": "World Monitor yalnızca bilgilendirme amaçlıdır ve finans, yatırım, hukuk, güvenlik veya emniyet konularında tavsiye niteliği taşımaz. Gördüklerinizi doğrulayın ve bir hatanın kayba veya zarara yol açabileceği kararları vermeden önce yetkin bir uzmana danışın."
     },
     "faq": {
       "eyebrow": "Ek koşul yok",
       "title": "World Monitor hakkında yaygın sorular nelerdir?",
       "q1": "World Monitor gerçekten ücretsiz mi?",
-      "a1": "Evet. Canlı harita — Resilience hariç her katman, seçilmiş beslemeler, ülke özetleri, kesintiye uğrayan uyarılar ve izleme yüzeyleri — kaydolmaksızın ve deneme saati olmaksızın ücretsiz. Pro beslemelere ödeme yapar: WM Analyst, senaryo motorunu, Route Explorer'ı, planlanan özetleri, AI istemcileri için MCP erişimini ve Resilience harita katmanını ekler. Reklam yok, ve hesap olmadığı için satılacak kullanıcı verisi yok.",
+      "a1": "Evet. Canlı harita hiçbir kayıt ve deneme süresi olmaksızın 0 $ tutarındadır: {{mapLayers}} harita katmanı türü, Resilience hariç hepsi, ve küratörlü feed'ler, ülke briefler, breaking uyarıları ve izleme yüzeyleri. Pro, feed'leri destekler: WM Analyst, senaryo motorunu, Route Explorer'ı, planlı özet bilgileri, AI istemcileri için MCP erişimini ve Resilience harita katmanını ekler. Reklam yok ve hesap olmadığı için satmak için kullanıcı verisi yok.",
       "q2": "Global istihbarat panosu nedir?",
       "a2": "Çoğu aracın ayrı tuttuğu sinyalleri birleştiren tek bir canlı görünüm: çatışma olayları, gemi ve uçak takibi, nakliye darboğazları, uyduları, denizaltı kabloları, boru hatları, pazarlar ve siber tehditleri — tek bir gerçek zamanlı dünya haritasında, AI puanlandırması ve özetleriyle. World Monitor ücretsiz olanıdır.",
       "q3": "Veriler nereden geliyor?",
-      "a3": "Adlandırılan sağlayıcılar arasında çatışma için ACLED ve UCDP, canlı gemiler için AISStream, uçaklar için OpenSky, yangınlar için NASA FIRMS, depremler için USGS, piyasalar ve makro için IMF, BIS, FRED ve Finnhub bulunur — ayrıca seçilmiş haber beslemeleri. Her panel kaynağını ve zaman damgasını satır içinde belirtir.",
+      "a3": "{{providers}} atfedilen sağlayıcıdan. Adı geçenler arasında çatışma için ACLED ve UCDP, canlı gemiler için AISStream, uçaklar için OpenSky, yangınlar için NASA FIRMS, depremler için USGS, pazar ve makro için IMF, BIS, FRED ve Finnhub — ayrıca seçilmiş haber akışları yer almaktadır. Her panel kaynaklarını ve zaman damgalarını satır içinde alıntılamaktadır.",
       "q4": "Hormuz veya Bab el-Mandeb gibi darboğazları gerçek zamanlı olarak izleyebilir miyim?",
-      "a4": "Evet. Darboğazlar, canlı AIS gemi sayıları, hafta bazında transit değişikliği ve kesinti puanlaması ile izlenir — ve yoğunluk anomalileri her boğazın hareketli çizgisine karşı işaretlenir.",
+      "a4": "Evet. Hormuzu ve Bab el-Mandeb'den Süveyş'e kadar boğazlar ve kanallar olmak üzere {{chokepoints}} darboğaz, canlı AIS gemi sayılarıyla, haftalık transit değişimiyle ve kesinti puanlamasıyla izlenmektedir — yoğunluk anormallikleri her darboğazın hareketli taban çizgisine karşı işaretlenir.",
       "q5": "Bu, Liveuamap gibi bir çatışma haritasından nasıl farklı?",
-      "a5": "Çatışma bir harita katmanıdır. World Monitor çatışmaları gemi trafiği, askeri uçaklar, altyapı, piyasalar ve siber tehditlerle birleştirir — ardından AI yakınsama ilişkisini puanlandırır: istikrarsızlık endeksleri, kritik bölge yoğunlaşması, doğrulanmış acil haberler ve günlük briefler.",
+      "a5": "Çatışma tek bir harita katmanıdır. World Monitor çatışmaları denizcilik, askeri uçuşlar, altyapı, piyasalar ve siber alanla birleştirir — ardından yapay zeka yakınsama değerlendirir: istikrarsızlık endeksleri, sıcak nokta yükselmesi, doğrulanmış acil haberler ve günlük raporlar. World Monitor'u Liveuamap ve diğer çatışma haritalarıyla karşılaştırın: worldmonitor.app/compare/liveuamap-alternatives. Daha geniş izleme seçenekleri için bkz. worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
       "q6": "Uyarıya neden güvenmeliyim?",
-      "a6": "Bölünmüş bir afiş yalnızca bağımsız kaynak türleri doğrulandığında harekete geçer — haber sınıflandırması, anahtar kelime hızı, sıcak nokta yoğunlaşması, askeri artışlar, resmi sirenler — deduplicated ve hız sınırlı. Daha az uyarı, gerçek olanlar.",
+      "a6": "Çünkü bir banner sabit kapılardan geçmelidir. Kritik veya yüksek tehdit olarak sınıflandırılan haber öğeleri ve resmi sivil savunma sirenlerinde tetiklenir. Bir haber uyarısı 15 dakikadan daha eski olamaz, aynı haber 30 dakika süreyle beklemeye alınır ve herhangi bir uyarının ardından 60 saniyelik bir bekleme süresi izlenir; yeni uyarı daha şiddetli olmadıkça. Düşük seviye kaynaklardan yalnızca anahtar sözcükle eşleşen öğeler de yapay zeka onayı gerektirir. Sirenler zamansal kritikliğe sahip oldukları için yaş ve bekleme süresi kapılarını atlayabilir.",
       "q7": "Claude veya GPT gibi AI ajanlar bunu kullanabilir mi?",
-      "a7": "Evet. World Monitor, canlı bir araç kaydıyla MCP sunucusu içerir; Claude, GPT veya herhangi bir MCP uyumlu ajan canlı risk puanları, boğaz durumu, çatışmalar, piyasalar ve briefleri sorgulayabilir — JMESPath projeksiyonu sayesinde ajanlar ihtiyaç duydukları bilgileri tam olarak alabilir.",
+      "a7": "Evet. World Monitor'ın MCP sunucusu {{mcpTools}} canlı aracı ortaya koymakta, bu nedenle Claude, GPT veya herhangi bir MCP uyumlu ajan risk puanları, dar geçit durumu, çatışmalar, pazar ve kısa raporlar sorgulayabilmektedir — ajanlar tam olarak ihtiyaç duydukları şeyi alabilmesi için JMESPath projeksiyonu ile.",
       "q8": "Hesaba ihtiyacım var mı?",
       "a8": "Hayır. Pano kaydolmadan anında çalışır. Bir hesap yalnızca Pro'ya yükselttikten sonra veya cihazlar arasında ayarları senkronize etmek istediğinizde önemlidir.",
       "q9": "Açık kaynaklı mı?",
-      "a9": "Evet — GitHub'da AGPL-3.0 altında açık kaynaklı: kodu okuyun, kendi sunucunuzda barındırın veya üzerine kurun. Windows, macOS ve Linux için yerel masaüstü uygulamaları ve duvar ekranları için Android TV uygulaması da mevcuttur.",
+      "a9": "Evet — GitHub'da AGPL-3.0 altında açık kaynak: kodu okuyun, kendi barındırın veya üzerine inşa edin. Pro ve Pro Business masaüstü anahtarları içerir, böylece kendi masaüstü yapınız Pro bulut verilerini yükleyebilir; Docker kopyaları kendi verileri üzerinde çalışır. Windows, macOS ve Linux için yerel masaüstü uygulamalar ve duvar ekranları için Android TV uygulaması da mevcuttur.",
       "q10": "World Monitor neden Palantir değil?",
       "a10": "Palantir, bir kurumun kendi verilerini o kurum içinde operasyonel hale getirir. World Monitor ise ters yönden başlar: halka açık verileri toplar, normalleştirir, ilişkilendirir ve izler, ardından bu istihbarat katmanını ücretsiz bir pano ve açık kaynak kod aracılığıyla yayınlar. Farklı görev, farklı ürün.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
+      "q11": "Hangi World Monitor lisansına ihtiyacım var?",
+      "a11": "Çıktıyı kimin kullanacağına göre seçin. Pro'nun kişisel lisansı, World Monitor'ı kendi araştırması ve kararları için kullanan bir kişi içindir. Pro Business, lisanslı bir kullanıcının bunu şirket veya müşteri işi, dahili araçlar ve raporlar için kullanmasına izin verir. API Starter, tek bir kuruluş içinde API kullanımını kapsar ve müşterilere yeniden dağıtım içermez. API Business, o kuruluşun World Monitor verilerini müşterileri için ürün ve hizmetlere gömmesine izin verir. Enterprise özel koltukları, White-label'ı ve deployment'ları kapsar. Bu abonelik lisansları, AGPL/MIT kaynak kodu lisanslarından ayrıdır. Tam koşullar: worldmonitor.app/docs/terms.",
+      "sub": "{{answers}} fiyat, veri, uyarılar ve AI erişimi hakkında net cevaplar. Kısa versiyonu: dashboard $0 tutarındadır, hesap gerektirmez ve kod AGPL-3.0 altında açık kaynaktır.",
+      "q12": "Haberlere yansıyan küresel kriz ve aksaklıkları takip etmek için en iyi yazılım nedir?",
+      "a12": "World Monitor ücretsiz ve açık kaynaklı bir seçenektir: adı belirtilen {{providers}} sağlayıcıdan gelen {{feeds}} haber ve OSINT akışını, {{mapLayers}} harita katmanı türüne sahip tek bir canlı dünya haritasında yayınlar; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirir, böylece aynı anda gelişen aksaklıklar manşetlere çıkmadan önce görünür hale gelir. Diğer araçlarla karşılaştırmak için worldmonitor.app/compare/best-geopolitical-risk-dashboards adresine bakın."
     },
     "cta": {
       "title": "Dünya haritasını izlemeye nasıl başlarım?",
-      "subtitle": "Bu sayfayı okurken her şey hareket etmeye devam ediyor — boğazlar, kritik bölgeler, piyasalar, seçilmiş haberler. Bunlardan biri yarının manşet haberi olacak. Onu ilk bulun — ücretsiz, hesap gerekmez.",
+      "subtitle": "worldmonitor.app/dashboard'u herhangi bir tarayıcıda $0'a, hesap olmadan açın: {{mapLayers}} harita katmanı türü, Resilience dışında hepsi ücretsiz olarak açılabilir. Herhangi bir ülkenin brifingini görmek için tıklayın veya komut paletine erişmek için ⌘K / Ctrl-K tuşlarına basın. Harita bu sayfayı okurken güncellenmeye devam etmiştir.",
       "button": "İlk olarak bul",
       "note": "Ücretsiz · Kaydolmaya gerek yok · Saniyeler içinde yüklenir",
       "secondary": "Veya Pro planlarını görmek →"
@@ -709,14 +706,37 @@
     "tasks": {
       "eyebrow": "Soruyla başlayın",
       "title": "Neyi öğrenmek istiyorsunuz?",
-      "sub": "İş başınızla eşleşen kanıt izini seçin. Her rota boş bir panelden değil, kaynakça destekli bir görünüm açar.",
+      "sub": "{{routes}} kanıt izinden hangisi işinin başında seni destekleyecekse onu seç. Her rota kaynak destekli bir görünüm açar, boş dashboard değil.",
       "verifyTitle": "Kırılan bir olayı doğrulayın",
       "verifyDesc": "Bir haber niteliğindeki iddiaya güvenmeden önce mevcut kriz takip araçlarını, güncel metrikleri ve referans alınan bağlamı kontrol edin.",
       "chokepointTitle": "Bir boğazı kontrol edin",
-      "chokepointDesc": "Kritik deniz boğazları boyunca kesinti durumunu, gemi akışlarını ve riski inceleyin.",
+      "chokepointDesc": "{{chokepoints}} kritik deniz dar geçidinde kesinti durumunu, gemi akışlarını ve riski inceleyin.",
       "countryRiskTitle": "Bir ülke riski hareketini açıklayın",
-      "countryRiskDesc": "Bir ülkenin değişiminin arkasındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin.",
-      "open": "Kanıt görüntüle"
+      "countryRiskDesc": "Bir ülkedeki değişimin ardındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin. {{resilienceUniverse}} ülkenin {{resilienceRanked}} tanesi, yani yaklaşık {{resilienceRankedPct}}%, için dayanıklılık sıralaması bulunur. Böylece bir hareket, yalnızca bu haftanın haber başlıklarına göre değil, o ülkenin uzun vadeli yapısal temeline göre yorumlanabilir.",
+      "open": "Kanıt görüntüle",
+      "workflow": "Adım adım iş akışı"
+    },
+    "voices": {
+      "eyebrow": "Kendi sözleriyle",
+      "title": "İnsanlar World Monitor hakkında ne diyor",
+      "sub": "{{countries}} ülkede {{users}} kişi World Monitor’ü kullandı. The Atlantic 14 Mart 2026 tarihinde, El País ise iki gün sonra World Monitor hakkında yazdı. WIRED, The Economic Times, Arabian Business ve L'Orient Today de haber yaptı. İşte basının ve bazı kullanıcıların söyledikleri.",
+      "translatedJa": "Japoncadan çevrildi",
+      "prev": "Önceki alıntılar",
+      "next": "Daha fazla alıntı"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Gemi sevkiyat günlüğü",
+    "title": "WorldMonitor'daki yenilikler",
+    "subtitle": "Son 30 gündeki yeni özellikler — düzeltmeler ve altyapı güncellemeleri dahil değil.",
+    "proTag": "PRO",
+    "m1": "Medya perspektifi — her ülkenin medyasının herhangi bir ülkeyi nasıl haberleştirdiği, yapay zekâ ajanları ve API için",
+    "m2": "/verify — her iddia için yayımlanmış doğruluk kontrollerine atıf yapan bir kanıt kartı",
+    "m3": "Uyarılarda, özetlerde ve harita açılır pencerelerinde doğrulayan kaynak sayısı, ayrıca herkese açık /trust sayfası",
+    "m4": "Otomatik saldırı takibi — ülke riski saldırı altında yükselir, saldırılar durunca toparlanır",
+    "m5": "FAA NOTAM'larından hava sahası kapanışları ve bildirilen uçak acil durumları için bir harita katmanı",
+    "m6": "Sentinel-5P uydusunun NO2 verilerinden sanayi faaliyeti haritası",
+    "m7": "230 ekonomi ve her ülke çifti için sermaye akışları, yapay zekâ ajanları ve API için",
+    "m8": "Terminal panosu ve yakınlaştırılabilir CLI haritası — brew install worldmonitor"
   }
 }

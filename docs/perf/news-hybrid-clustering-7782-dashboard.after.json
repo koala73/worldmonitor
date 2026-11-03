@@ -1,0 +1,838 @@
+{
+  "issue": 7782,
+  "generatedAt": "2026-09-06T16:18:48.763Z",
+  "surface": "production-minified full dashboard with local ML available",
+  "host": {
+    "node": "v24.20.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36"
+  },
+  "build": {
+    "productionMinify": true,
+    "viteE2EInstrumentation": true,
+    "graphics": "SwiftShader (headless capability support; clustering is CPU-attributed)",
+    "assetScripts": [
+      "/assets/main-BYcrR7En.js",
+      "https://abacus.worldmonitor.app/script.js",
+      "/_vercel/insights/script.js"
+    ]
+  },
+  "fixture": {
+    "path": "docs/perf/news-hybrid-clustering-7782.fixture.json",
+    "capturedAt": "2026-09-06T12:01:48.463288+00:00",
+    "generatedAt": "2026-09-06T11:50:08.529Z",
+    "source": "https://www.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=en&public=1"
+  },
+  "budgets": {
+    "frameMs": 16.7,
+    "longTaskMs": 50
+  },
+  "samplesPerCaseAndPath": 3,
+  "cpuThrottleRates": [
+    1,
+    6
+  ],
+  "cases": [
+    {
+      "cpuThrottleRate": 1,
+      "name": "representative",
+      "path": "hybrid",
+      "sampleCount": 3,
+      "itemCount": 289,
+      "clusterCount": 249,
+      "pathProof": {
+        "selectedEverySample": true,
+        "mlAvailableEverySample": true
+      },
+      "totalLatencyMs": {
+        "n": 3,
+        "min": 2115.3,
+        "median": 2175.5,
+        "p90": 7299.2,
+        "max": 7299.2,
+        "mean": 3863.333
+      },
+      "mainThreadTaskMs": {
+        "n": 3,
+        "min": 54.2,
+        "median": 75.058,
+        "p90": 451.481,
+        "max": 451.481,
+        "mean": 193.58
+      },
+      "coreMs": {
+        "n": 3,
+        "min": 4.6,
+        "median": 4.9,
+        "p90": 14.6,
+        "max": 14.6,
+        "mean": 8.033
+      },
+      "coreFrameBudgetMissCount": 0,
+      "pathFrameBudgetMissCount": 0,
+      "coreLongTaskCount": 0,
+      "repeatableCoreFrameMiss": false,
+      "coldStart": {
+        "generation": 3,
+        "selectedPath": "hybrid",
+        "mlAvailableAtSelection": true,
+        "itemCount": 289,
+        "clusterCount": 249,
+        "totalLatencyMs": 7299.199999988079,
+        "coreMs": 14.600000023841858,
+        "pathFrameIntervalsMs": [],
+        "coreFrameIntervalsMs": [
+          8.300000000000068,
+          8.299999999999955,
+          8.399999999999977
+        ],
+        "coreLongTasksMs": [],
+        "pathFrameBudgetExceeded": false,
+        "coreFrameBudgetExceeded": false,
+        "coldStart": true,
+        "mainThreadTaskMs": 451.481
+      },
+      "raw": [
+        {
+          "generation": 3,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 249,
+          "totalLatencyMs": 7299.199999988079,
+          "coreMs": 14.600000023841858,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            8.300000000000068,
+            8.299999999999955,
+            8.399999999999977
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": true,
+          "mainThreadTaskMs": 451.481
+        },
+        {
+          "generation": 4,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 249,
+          "totalLatencyMs": 2175.5,
+          "coreMs": 4.899999976158142,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            7.900000000000546
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 75.058
+        },
+        {
+          "generation": 5,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 249,
+          "totalLatencyMs": 2115.300000011921,
+          "coreMs": 4.600000023841858,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            8.299999999999272
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 54.2
+        }
+      ]
+    },
+    {
+      "cpuThrottleRate": 1,
+      "name": "representative",
+      "path": "analysis-worker",
+      "sampleCount": 3,
+      "itemCount": 289,
+      "clusterCount": 261,
+      "pathProof": {
+        "selectedEverySample": true,
+        "mlAvailableEverySample": true
+      },
+      "totalLatencyMs": {
+        "n": 3,
+        "min": 3.8,
+        "median": 4,
+        "p90": 4.5,
+        "max": 4.5,
+        "mean": 4.1
+      },
+      "mainThreadTaskMs": {
+        "n": 3,
+        "min": 7.244,
+        "median": 8.214,
+        "p90": 10.286,
+        "max": 10.286,
+        "mean": 8.581
+      },
+      "coreMs": {
+        "n": 3,
+        "min": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "coreFrameBudgetMissCount": 0,
+      "pathFrameBudgetMissCount": 0,
+      "coreLongTaskCount": 0,
+      "repeatableCoreFrameMiss": false,
+      "coldStart": {
+        "generation": 6,
+        "selectedPath": "analysis-worker",
+        "mlAvailableAtSelection": true,
+        "itemCount": 289,
+        "clusterCount": 261,
+        "totalLatencyMs": 4.5,
+        "coreMs": 0,
+        "pathFrameIntervalsMs": [],
+        "coreFrameIntervalsMs": [],
+        "coreLongTasksMs": [],
+        "pathFrameBudgetExceeded": false,
+        "coreFrameBudgetExceeded": false,
+        "coldStart": true,
+        "mainThreadTaskMs": 10.286
+      },
+      "raw": [
+        {
+          "generation": 6,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 261,
+          "totalLatencyMs": 4.5,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": true,
+          "mainThreadTaskMs": 10.286
+        },
+        {
+          "generation": 7,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 261,
+          "totalLatencyMs": 4,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 8.214
+        },
+        {
+          "generation": 8,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 261,
+          "totalLatencyMs": 3.800000011920929,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 7.244
+        }
+      ]
+    },
+    {
+      "cpuThrottleRate": 1,
+      "name": "highDiversity1500",
+      "path": "hybrid",
+      "sampleCount": 3,
+      "itemCount": 1500,
+      "clusterCount": 753,
+      "pathProof": {
+        "selectedEverySample": true,
+        "mlAvailableEverySample": true
+      },
+      "totalLatencyMs": {
+        "n": 3,
+        "min": 2084.3,
+        "median": 2098.6,
+        "p90": 2105.1,
+        "max": 2105.1,
+        "mean": 2096
+      },
+      "mainThreadTaskMs": {
+        "n": 3,
+        "min": 66.526,
+        "median": 68.237,
+        "p90": 79.782,
+        "max": 79.782,
+        "mean": 71.515
+      },
+      "coreMs": {
+        "n": 3,
+        "min": 5.7,
+        "median": 6,
+        "p90": 6.5,
+        "max": 6.5,
+        "mean": 6.067
+      },
+      "coreFrameBudgetMissCount": 0,
+      "pathFrameBudgetMissCount": 0,
+      "coreLongTaskCount": 0,
+      "repeatableCoreFrameMiss": false,
+      "coldStart": null,
+      "raw": [
+        {
+          "generation": 9,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 753,
+          "totalLatencyMs": 2105.099999964237,
+          "coreMs": 6.5,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            8.399999999999636
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 79.782
+        },
+        {
+          "generation": 10,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 753,
+          "totalLatencyMs": 2098.600000023842,
+          "coreMs": 6,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            7.899999999999636
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 68.237
+        },
+        {
+          "generation": 11,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 753,
+          "totalLatencyMs": 2084.300000011921,
+          "coreMs": 5.699999988079071,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            8.299999999999272
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 66.526
+        }
+      ]
+    },
+    {
+      "cpuThrottleRate": 1,
+      "name": "highDiversity1500",
+      "path": "analysis-worker",
+      "sampleCount": 3,
+      "itemCount": 1500,
+      "clusterCount": 1000,
+      "pathProof": {
+        "selectedEverySample": true,
+        "mlAvailableEverySample": true
+      },
+      "totalLatencyMs": {
+        "n": 3,
+        "min": 5,
+        "median": 5.5,
+        "p90": 6.7,
+        "max": 6.7,
+        "mean": 5.733
+      },
+      "mainThreadTaskMs": {
+        "n": 3,
+        "min": 9.111,
+        "median": 9.328,
+        "p90": 13.188,
+        "max": 13.188,
+        "mean": 10.542
+      },
+      "coreMs": {
+        "n": 3,
+        "min": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "coreFrameBudgetMissCount": 0,
+      "pathFrameBudgetMissCount": 0,
+      "coreLongTaskCount": 0,
+      "repeatableCoreFrameMiss": false,
+      "coldStart": null,
+      "raw": [
+        {
+          "generation": 12,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 1000,
+          "totalLatencyMs": 6.699999988079071,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 13.188
+        },
+        {
+          "generation": 13,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 1000,
+          "totalLatencyMs": 5,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 9.111
+        },
+        {
+          "generation": 14,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 1000,
+          "totalLatencyMs": 5.5,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 9.328
+        }
+      ]
+    },
+    {
+      "cpuThrottleRate": 6,
+      "name": "representative",
+      "path": "hybrid",
+      "sampleCount": 3,
+      "itemCount": 289,
+      "clusterCount": 249,
+      "pathProof": {
+        "selectedEverySample": true,
+        "mlAvailableEverySample": true
+      },
+      "totalLatencyMs": {
+        "n": 3,
+        "min": 2201.7,
+        "median": 2211.6,
+        "p90": 2221,
+        "max": 2221,
+        "mean": 2211.433
+      },
+      "mainThreadTaskMs": {
+        "n": 3,
+        "min": 305.53,
+        "median": 323.188,
+        "p90": 335.317,
+        "max": 335.317,
+        "mean": 321.345
+      },
+      "coreMs": {
+        "n": 3,
+        "min": 7.8,
+        "median": 7.9,
+        "p90": 9.6,
+        "max": 9.6,
+        "mean": 8.433
+      },
+      "coreFrameBudgetMissCount": 0,
+      "pathFrameBudgetMissCount": 0,
+      "coreLongTaskCount": 0,
+      "repeatableCoreFrameMiss": false,
+      "coldStart": null,
+      "raw": [
+        {
+          "generation": 15,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 249,
+          "totalLatencyMs": 2211.600000023842,
+          "coreMs": 7.800000011920929,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            8.299999999999272
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 323.188
+        },
+        {
+          "generation": 16,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 249,
+          "totalLatencyMs": 2201.699999988079,
+          "coreMs": 7.899999976158142,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            8.200000000000728,
+            9
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 305.53
+        },
+        {
+          "generation": 17,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 249,
+          "totalLatencyMs": 2221,
+          "coreMs": 9.600000023841858,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            9.200000000000728,
+            8.299999999999272
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 335.317
+        }
+      ]
+    },
+    {
+      "cpuThrottleRate": 6,
+      "name": "representative",
+      "path": "analysis-worker",
+      "sampleCount": 3,
+      "itemCount": 289,
+      "clusterCount": 261,
+      "pathProof": {
+        "selectedEverySample": true,
+        "mlAvailableEverySample": true
+      },
+      "totalLatencyMs": {
+        "n": 3,
+        "min": 7.1,
+        "median": 7.3,
+        "p90": 9.4,
+        "max": 9.4,
+        "mean": 7.933
+      },
+      "mainThreadTaskMs": {
+        "n": 3,
+        "min": 43.646,
+        "median": 44.739,
+        "p90": 47.518,
+        "max": 47.518,
+        "mean": 45.301
+      },
+      "coreMs": {
+        "n": 3,
+        "min": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "coreFrameBudgetMissCount": 0,
+      "pathFrameBudgetMissCount": 0,
+      "coreLongTaskCount": 0,
+      "repeatableCoreFrameMiss": false,
+      "coldStart": null,
+      "raw": [
+        {
+          "generation": 18,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 261,
+          "totalLatencyMs": 9.400000035762787,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 47.518
+        },
+        {
+          "generation": 19,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 261,
+          "totalLatencyMs": 7.300000011920929,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 43.646
+        },
+        {
+          "generation": 20,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 289,
+          "clusterCount": 261,
+          "totalLatencyMs": 7.100000023841858,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 44.739
+        }
+      ]
+    },
+    {
+      "cpuThrottleRate": 6,
+      "name": "highDiversity1500",
+      "path": "hybrid",
+      "sampleCount": 3,
+      "itemCount": 1500,
+      "clusterCount": 753,
+      "pathProof": {
+        "selectedEverySample": true,
+        "mlAvailableEverySample": true
+      },
+      "totalLatencyMs": {
+        "n": 3,
+        "min": 2090.9,
+        "median": 2112.7,
+        "p90": 2145.2,
+        "max": 2145.2,
+        "mean": 2116.267
+      },
+      "mainThreadTaskMs": {
+        "n": 3,
+        "min": 268.911,
+        "median": 290.081,
+        "p90": 384.25,
+        "max": 384.25,
+        "mean": 314.414
+      },
+      "coreMs": {
+        "n": 3,
+        "min": 13.6,
+        "median": 14.1,
+        "p90": 14.4,
+        "max": 14.4,
+        "mean": 14.033
+      },
+      "coreFrameBudgetMissCount": 0,
+      "pathFrameBudgetMissCount": 0,
+      "coreLongTaskCount": 0,
+      "repeatableCoreFrameMiss": false,
+      "coldStart": null,
+      "raw": [
+        {
+          "generation": 21,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 753,
+          "totalLatencyMs": 2112.699999988079,
+          "coreMs": 14.399999976158142,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            8.299999999999272,
+            7.80000000000291,
+            8.599999999998545
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 290.081
+        },
+        {
+          "generation": 22,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 753,
+          "totalLatencyMs": 2145.2000000476837,
+          "coreMs": 14.100000023841858,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            7.400000000001455,
+            8.19999999999709,
+            8.80000000000291
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 384.25
+        },
+        {
+          "generation": 23,
+          "selectedPath": "hybrid",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 753,
+          "totalLatencyMs": 2090.900000035763,
+          "coreMs": 13.600000023841858,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [
+            8.200000000000728,
+            8.799999999999272,
+            8.5
+          ],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 268.911
+        }
+      ]
+    },
+    {
+      "cpuThrottleRate": 6,
+      "name": "highDiversity1500",
+      "path": "analysis-worker",
+      "sampleCount": 3,
+      "itemCount": 1500,
+      "clusterCount": 1000,
+      "pathProof": {
+        "selectedEverySample": true,
+        "mlAvailableEverySample": true
+      },
+      "totalLatencyMs": {
+        "n": 3,
+        "min": 13.4,
+        "median": 14.7,
+        "p90": 16.3,
+        "max": 16.3,
+        "mean": 14.8
+      },
+      "mainThreadTaskMs": {
+        "n": 3,
+        "min": 57.605,
+        "median": 62.66,
+        "p90": 64.021,
+        "max": 64.021,
+        "mean": 61.429
+      },
+      "coreMs": {
+        "n": 3,
+        "min": 0,
+        "median": 0,
+        "p90": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "coreFrameBudgetMissCount": 0,
+      "pathFrameBudgetMissCount": 0,
+      "coreLongTaskCount": 0,
+      "repeatableCoreFrameMiss": false,
+      "coldStart": null,
+      "raw": [
+        {
+          "generation": 24,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 1000,
+          "totalLatencyMs": 13.400000035762787,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 57.605
+        },
+        {
+          "generation": 25,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 1000,
+          "totalLatencyMs": 16.30000001192093,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 62.66
+        },
+        {
+          "generation": 26,
+          "selectedPath": "analysis-worker",
+          "mlAvailableAtSelection": true,
+          "itemCount": 1500,
+          "clusterCount": 1000,
+          "totalLatencyMs": 14.700000047683716,
+          "coreMs": 0,
+          "pathFrameIntervalsMs": [],
+          "coreFrameIntervalsMs": [],
+          "coreLongTasksMs": [],
+          "pathFrameBudgetExceeded": false,
+          "coreFrameBudgetExceeded": false,
+          "coldStart": false,
+          "mainThreadTaskMs": 64.021
+        }
+      ]
+    }
+  ],
+  "gate": {
+    "decision": "no-change",
+    "reason": "No representative dashboard frame miss or 16.7 ms core overrun repeated across samples."
+  }
+}

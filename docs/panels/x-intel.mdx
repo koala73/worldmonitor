@@ -25,7 +25,7 @@ Panel id is `x-intel`; canonical component is `src/components/XIntelPanel.ts`. T
 
 ## Data sources
 
-- `@/services/x-intel` — backed by `/api/x-feed`, which proxies to the Railway ais-relay poller. The poller uses the official X API `GET /2/users/:id/tweets` with `since_id` on a 5–15 minute cadence. Account coverage is product-managed rather than user-configurable.
+- `@/services/x-intel` — backed by `/api/x-feed`, which proxies to the Railway ais-relay poller. The poller uses the official X API `GET /2/lists/:id/tweets`, reading the newest page of a verified public List once per fixed 15-minute UTC slot. Account coverage is product-managed rather than user-configurable.
 
 ### Backed by endpoints
 
@@ -36,7 +36,7 @@ Panel id is `x-intel`; canonical component is `src/components/XIntelPanel.ts`. T
 
 ## Refresh cadence
 
-The relay polls every 5–15 minutes. The panel refreshes on mount and on the `xIntel` interval in `src/config/variants/base.ts`.
+The relay reads one List page per fixed 15-minute UTC slot. The panel refreshes on mount and on the `xIntel` interval in `src/config/variants/base.ts`.
 
 ## Content policy
 

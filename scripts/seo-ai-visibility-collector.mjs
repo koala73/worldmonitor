@@ -22,12 +22,13 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 
 import {
-  AI_PLATFORMS,
   PAGE_FAMILIES,
   BING_AI_METRICS,
+  pageFamiliesForSchemaVersion,
   REFERRAL_METRICS,
   SEARCH_PERFORMANCE_METRICS,
   SEARCH_METRICS,
+  aiPlatformsForSchemaVersion,
   computeQuerySetDigest,
   isNonEmptyString,
   isWorldMonitorUrl,
@@ -38,7 +39,7 @@ import { isMainModule } from './lib/main-module.mjs';
 const UTC_DAY_MS = 86_400_000;
 const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
 const AVAILABILITY_STATES = new Set(['available', 'partial', 'unavailable']);
-const REFERRER_FAMILIES = new Set([
+export const REFERRER_FAMILIES = new Set([
   'chatgpt',
   'perplexity',
   'google_search_ai',
@@ -271,11 +272,20 @@ function aggregateSearchRows(rows, includeIndexedPages) {
   };
 }
 
-function mergeMetrics(explicit, aggregate) {
+const SEARCH_METRIC_ALIASES = Object.freeze({ averagePosition: ['position'] });
+
+/**
+ * A metric the window omits falls back to the query-row aggregate. One the
+ * window states, even as `null`, is kept: reviewed query rows cover a handful
+ * of queries, so their sum is never a site total the provider declined to give.
+ */
+function mergeMetrics(explicit, aggregate, rawWindow) {
   return Object.fromEntries(
     SEARCH_METRICS.map((metric) => [
       metric,
-      explicit[metric] ?? aggregate[metric],
+      sourceValue(rawWindow, metric, SEARCH_METRIC_ALIASES[metric]) === undefined
+        ? explicit[metric] ?? aggregate[metric]
+        : explicit[metric],
     ]),
   );
 }
@@ -426,7 +436,7 @@ function hasBreakdownCoverage(rows, groupSelector, expectedGroups, windows) {
   ));
 }
 
-function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet) {
+function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet, schemaVersion) {
   if (requested === 'unavailable') return 'unavailable';
   const complete = windows.every(({ metrics }) => metricsAreComplete(metrics))
     && queryRows.every(({ metrics }) => performanceMetricsAreComplete(metrics))
@@ -440,13 +450,16 @@ function sourceStatus(requested, windows, queryRows, pageFamilyRows, querySet) {
     && hasBreakdownCoverage(
       pageFamilyRows,
       (row) => row.pageFamily,
-      PAGE_FAMILIES,
+      pageFamiliesForSchemaVersion(schemaVersion),
       windows,
     );
   return requested === 'partial' || !complete ? 'partial' : 'available';
 }
 
-export function normalizeSearchExport(raw, { querySet, observedAt, provider = 'search' }) {
+export function normalizeSearchExport(
+  raw,
+  { querySet, observedAt, provider = 'search', schemaVersion = 1 },
+) {
   if (!raw || raw.status === 'unavailable') {
     return unavailableSearchSource(
       observedAt,
@@ -498,7 +511,7 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
     }));
     const explicitMetrics = normalizeSearchMetrics(rawWindow, { includeIndexedPages: true });
     const aggregate = aggregateSearchRows(normalizedQueryRows, false);
-    const metrics = mergeMetrics(explicitMetrics, aggregate);
+    const metrics = mergeMetrics(explicitMetrics, aggregate, rawWindow);
     queryRows.push(...normalizedQueryRows);
     pageFamilyRows.push(...normalizedPageRows);
     normalizedWindows.push({
@@ -514,6 +527,7 @@ export function normalizeSearchExport(raw, { querySet, observedAt, provider = 's
     queryRows,
     pageFamilyRows,
     querySet,
+    schemaVersion,
   );
   return {
     status,
@@ -849,9 +863,13 @@ function normalizeCollectionContext(raw, fallback) {
   };
 }
 
-function normalizeAiSurfaces(raw) {
+function normalizeAiSurfaces(raw, schemaVersion) {
+  const supportedPlatforms = aiPlatformsForSchemaVersion(schemaVersion);
+  if (schemaVersion === 2) {
+    invariant(raw != null, 'aiSurfaces is required for baseline schemaVersion 2');
+  }
   const surfaces = raw == null
-    ? AI_PLATFORMS.map((platform) => ({
+    ? supportedPlatforms.map((platform) => ({
       platform,
       status: 'unavailable',
       reason: 'No current AI surface manifest was supplied.',
@@ -1012,15 +1030,17 @@ export function collectBaseline({
     'repositoryRevision must be supplied when the local git revision is unavailable',
   );
   const normalizedRevision = boundedNonEmptyString(repositoryRevision, 'repositoryRevision');
+  const schemaVersion = sources.schemaVersion ?? template.schemaVersion;
+  aiPlatformsForSchemaVersion(schemaVersion);
 
   const googleSearchConsole = normalizeSearchExport(
     sources.googleSearchConsole,
-    { querySet, observedAt, provider: 'Google Search Console' },
+    { querySet, observedAt, provider: 'Google Search Console', schemaVersion },
   );
   const bingSource = sources.bingWebmaster ?? {};
   const bingWebmaster = normalizeSearchExport(
     bingSource.search ?? bingSource,
-    { querySet, observedAt, provider: 'Bing Webmaster' },
+    { querySet, observedAt, provider: 'Bing Webmaster', schemaVersion },
   );
   bingWebmaster.aiPerformance = normalizeBingAiPerformance(
     bingSource.aiPerformance ?? sources.bingAiPerformance,
@@ -1035,12 +1055,12 @@ export function collectBaseline({
     sources.collectionContext,
     template.collectionContext,
   );
-  const aiSurfaces = normalizeAiSurfaces(sources.aiSurfaces);
+  const aiSurfaces = normalizeAiSurfaces(sources.aiSurfaces, schemaVersion);
   const aiObservations = normalizeAiObservations(sources.aiObservations, querySet);
   const opportunities = normalizeOpportunities(sources.opportunities, template.opportunities);
   const guardrails = normalizeStringArray(template.guardrails, 'template.guardrails');
   const baseline = {
-    schemaVersion: template.schemaVersion,
+    schemaVersion,
     baselineId: observedAt.slice(0, 10),
     querySetId: querySet.querySetId,
     querySetDigest: computeQuerySetDigest(querySet),

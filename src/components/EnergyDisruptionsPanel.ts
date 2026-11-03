@@ -217,18 +217,20 @@ export class EnergyDisruptionsPanel extends Panel {
       <div class="ed-wrap">
         <div class="ed-summary">${escapeHtml(summary)}</div>
         <div class="ed-filters">${typeButtons}${ongoingBtn}</div>
-        <table class="ed-table">
-          <thead>
-            <tr>
-              <th scope="col">Event</th>
-              <th scope="col">Asset</th>
-              <th scope="col">Window</th>
-              <th scope="col">Offline</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rows || `<tr><td colspan="5" class="ed-empty">No events match the current filter.</td></tr>`}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="ed-table">
+            <thead>
+              <tr>
+                <th scope="col">Event</th>
+                <th scope="col">Asset</th>
+                <th scope="col">Window</th>
+                <th scope="col">Offline</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows || `<tr><td colspan="5" class="ed-empty">No events match the current filter.</td></tr>`}</tbody>
+          </table>
+        </div>
         ${attribution}
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
@@ -251,6 +253,12 @@ export class EnergyDisruptionsPanel extends Panel {
         .ed-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .ed-empty { text-align: center; color: var(--text-dim, #888); padding: 20px; font-style: italic; }
         .ed-offline { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
+        @container panel-body (max-width: 480px) {
+          .ed-table th, .ed-table td { padding-inline: 4px; }
+        }
+        @media (max-width: 768px) {
+          .ed-sub, .ed-asset-id { overflow-wrap: anywhere; }
+        }
       </style>
     `, 'legacy Panel.setContent() migration'));
 

@@ -92,7 +92,7 @@ describe('leads gateway public access', { concurrency: 1 }, () => {
     const { gateway } = await loadLeadsGateway();
 
     // Same honeypot short-circuit as submit-contact: registerInterest returns
-    // a silent success before Turnstile/desktop-HMAC/Convex, isolating the
+    // a silent success before Turnstile/Convex, isolating the
     // gateway auth layer for the waitlist path too.
     const res = await gateway(new Request('https://api.worldmonitor.app/api/leads/v1/register-interest', {
       method: 'POST',

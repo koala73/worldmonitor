@@ -24,11 +24,8 @@ test.describe('GCC investments coverage', () => {
       const mapLayers = { gulfInvestments: false };
 
       focusInvestmentOnMap(
-        map as unknown as {
-          enableLayer: (layer: 'gulfInvestments') => void;
-          setCenter: (lat: number, lon: number, zoom: number) => void;
-        },
-        mapLayers as unknown as { gulfInvestments: boolean } & Record<string, boolean>,
+        map as unknown as Parameters<typeof focusInvestmentOnMap>[0],
+        mapLayers as unknown as Parameters<typeof focusInvestmentOnMap>[1],
         24.4667,
         54.3667
       );
@@ -140,3 +137,24 @@ test.describe('GCC investments coverage', () => {
     expect(result.clickedId).toBe(result.firstRowId);
   });
 });
+
+for (const width of [1280, 390]) {
+  test(`search retains focus while typing at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/tests/runtime-harness.html');
+    await page.evaluate(async () => {
+      await import('/src/styles/main.css');
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      const { InvestmentsPanel } = await import('/src/components/InvestmentsPanel.ts');
+      document.body.replaceChildren(new InvestmentsPanel().getElement());
+    });
+    const search = page.locator('.fdi-search');
+    await search.click();
+    await search.pressSequentially('port', { delay: 180 });
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue('port');
+    await expect(page.locator('.fdi-row').first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`investments-search-${width}.png`), fullPage: true });
+  });
+}

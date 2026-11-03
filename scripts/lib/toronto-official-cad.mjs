@@ -13,6 +13,7 @@
 
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 import { CHROME_UA, MAX_PAYLOAD_BYTES } from '../_seed-utils.mjs';
+import { finiteLat, finiteLon } from './geo-coord.mjs';
 
 export const TFS_HOST = 'www.toronto.ca';
 export const TFS_PAGE_PATH = '/community-people/public-safety-alerts/alerts-notifications/toronto-fire-active-incidents/';
@@ -32,8 +33,8 @@ export const TPS_METADATA_URL = `${TPS_LAYER_URL}?f=pjson`;
 export const TPS_QUERY_URL = 'https://services.arcgis.com/S9th0jAJ7bqgIRjw/arcgis/rest/services/C4S_Public_NoGO/FeatureServer/0/query';
 export const TPS_SOURCE = 'toronto-tps';
 export const TPS_KEY = 'safety:toronto-tps:v1';
-export const TPS_MAX_STALE_MIN = 45;
-export const TPS_TTL_SECONDS = 5400;
+export const TPS_MAX_STALE_MIN = 90;
+export const TPS_TTL_SECONDS = 10800;
 export const TPS_SOURCE_VERSION = 'toronto-tps-c4s-v1';
 
 export const TORONTO_CAD_JURISDICTION = 'Toronto';
@@ -153,12 +154,6 @@ export function parseTorontoLocalMs(raw) {
   return null;
 }
 
-function finiteCoord(value) {
-  if (value == null || value === '') return null;
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
 function torontoPoint(lon, lat) {
   if (lon == null || lat == null) return { lat: null, lon: null };
   if (lon < -80.5 || lon > -78.5 || lat < 43.3 || lat > 44.1) return { lat: null, lon: null };
@@ -242,14 +237,15 @@ function featureAttributes(feature) {
 
 function featureCoords(feature, attributes) {
   const geometry = feature?.geometry;
-  if (geometry && Number.isFinite(Number(geometry.x)) && Number.isFinite(Number(geometry.y))) {
-    return torontoPoint(Number(geometry.x), Number(geometry.y));
-  }
+  const point = (lon, lat) => torontoPoint(finiteLon(lon), finiteLat(lat));
+  const xy = point(geometry?.x, geometry?.y);
+  if (xy.lat != null && xy.lon != null) return xy;
   const coords = geometry?.coordinates;
   if (Array.isArray(coords) && coords.length >= 2) {
-    return torontoPoint(finiteCoord(coords[0]), finiteCoord(coords[1]));
+    const coordinatePair = point(coords[0], coords[1]);
+    if (coordinatePair.lat != null && coordinatePair.lon != null) return coordinatePair;
   }
-  return torontoPoint(finiteCoord(attributes?.LONGITUDE), finiteCoord(attributes?.LATITUDE));
+  return point(attributes?.LONGITUDE, attributes?.LATITUDE);
 }
 
 function classifyTpsFeature(feature) {

@@ -402,7 +402,7 @@ test('#6449: static-ref-heavy claims durable turns per invocation, not calendar-
   assert.equal(ackCommands[0][0], 'EVAL');
   assert.deepEqual(ackCommands[0].slice(-2), ['claim-a', '0']);
 
-  let durableTurn = 0;
+  const durableTurn = 0;
   let lease = null;
   let loseFirstResponse = true;
   const ambiguousFetch = async (_url, init) => {

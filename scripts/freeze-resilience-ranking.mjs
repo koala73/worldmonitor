@@ -351,7 +351,8 @@ function normalizeCountryIdentity(code, identity, legacyName, fallbackName) {
   const officialName = identity?.officialName || identity?.commonName || commonName;
   const legacyNames = legacyName && legacyName !== commonName ? [legacyName] : [];
   const alternateNames = [...new Set([legacyName, identity?.commonName, officialName]
-    .filter((name) => name && name !== commonName))];
+    .filter((name) => name && name !== commonName)
+    .map((name) => name === 'Macao S A R' ? 'Macao SAR' : name))];
   return {
     commonName,
     officialName,
@@ -775,8 +776,8 @@ async function main() {
       ? 'Production Upstash Redis resilience ranking snapshot'
       : `Live capture via ${RANKING_URL}`,
     snapshotNote: METHODOLOGY_FORMULA === 'pillar-combined-penalized-v1'
-      ? `Post-P1-1 full-universe capture: pillar scores applied domain design weights inside pillar aggregation on ${capturedAt}.`
-      : `Historical full-universe capture using the ${METHODOLOGY_FORMULA} formula on ${capturedAt}.`,
+      ? `This ${capturedAt} snapshot applies domain design weights inside pillar aggregation. Earlier published CRI numbers used coverage-only member aggregation and are not directly comparable.`
+      : `Historical full-universe capture using the ${METHODOLOGY_FORMULA} formula on ${capturedAt}. Earlier published CRI numbers may use a different formula and are not directly comparable.`,
     detailSource: CAPTURE_SOURCE === 'redis'
       ? 'Production Upstash Redis per-country resilience score snapshots'
       : SCORE_URL,

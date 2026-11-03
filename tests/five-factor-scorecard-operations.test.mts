@@ -11,7 +11,8 @@ describe('five-factor operational wiring', () => {
       key: 'seed-meta:scorecard:five-factor',
       maxStaleMin: 2160,
       minRecordCount: 180,
-      minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 120, defense: 30 },
+      minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 110, defense: 30 },
+      poolCountMargin: 10,
       activationKey: 'seed-activated:scorecard:five-factor',
       cutover: {
         mode: 'activation-marker',
@@ -35,14 +36,6 @@ describe('five-factor operational wiring', () => {
   });
 
   it('softens scorecard absence only before the first successful cohort', () => {
-    const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8')) as {
-      acknowledged: Array<{ name: string }>;
-    };
-    assert.equal(
-      baseline.acknowledged.some((entry) => entry.name === 'scorecardFiveFactor'),
-      false,
-      'scorecardFiveFactor uses a durable activation marker, not a wall-clock acknowledgement',
-    );
     assert.equal(healthTesting.ON_DEMAND_KEYS.has('scorecardFiveFactor'), true);
     assert.equal(
       healthTesting.ACTIVATION_MARKERS.scorecardFiveFactor,

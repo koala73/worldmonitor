@@ -10,11 +10,14 @@ import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { assessCorroboration, badgePublisherCount, corroborationFlagHtml, evidenceFromCluster, evidenceFromStory, publisherRoster } from '@/utils/corroboration-flag';
+import { describePublisherRoster, renderPublisherRosterHtml } from './news/publisher-roster';
 import { collectBriefCitationSources, collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getAiFlowSettings, isAnyAiProviderEnabled, subscribeAiFlowChange } from '@/services/ai-flow-settings';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
@@ -22,6 +25,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
 import { fetchServerInsights, getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
 import { computeISQ, type SignalQuality, type SignalQualityInput } from '@/utils/signal-quality';
+import { TimeoutError, withTimeout } from '@/utils/with-timeout';
 import { extractEntitiesFromTitle } from '@/services/entity-extraction';
 import { getEntityIndex } from '@/services/entity-index';
 
@@ -29,10 +33,19 @@ import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
 const getAuthoritativeCountryScore = getCachedCountryScoreValue;
 
+// The server snapshot is seeded from the full-variant digest only, so it is
+// always the world brief. Only the client pipeline runs a variant prompt.
+type BriefScope = 'world' | 'tech' | 'commodity' | 'energy';
+
+function parseBriefScope(value: unknown): BriefScope {
+  return value === 'tech' || value === 'commodity' || value === 'energy' ? value : 'world';
+}
+
 export class InsightsPanel extends Panel {
   private lastBriefUpdate = 0;
   private cachedBrief: string | null = null;
   private cachedBriefSources: BriefSource[] = [];
+  private cachedBriefScope: BriefScope = 'world';
   private lastMissedStories: AnalyzedHeadline[] = [];
   private lastConvergenceZones: RegionalConvergence[] = [];
   private lastFocalPoints: FocalPoint[] = [];
@@ -48,11 +61,19 @@ export class InsightsPanel extends Panel {
   // list at the legacy 6 orphans [7]/[8] citations on the early paint (#4890)
   // and client cooldown renders. Keep read + write on this shared bound.
   private static readonly BRIEF_CACHE_MAX_SOURCES = 12;
+  // #7464: local paint wait only — do not pass this to fetchServerInsights.
+  // The loader's shared AbortController follows the longest caller budget; a
+  // 2500ms abort here would cut off the later 5s updateInsights recovery
+  // (insights-loader.ts:166-168). Longer than the 1.2s FAST-tier abort so a
+  // cold `?keys=insights` recovery can still win LCP, shorter than the 5s
+  // fetch default so a hung request cannot replace the 0.6–1.0s skeleton
+  // with a 5s blank. Same wait as the Pro-activation brief preview.
+  private static readonly EARLY_PAINT_INSIGHTS_TIMEOUT_MS = 2500;
 
   constructor() {
     super({
       id: 'insights',
-      title: t('panels.insights'),
+      title: getPanelDisplayName('insights'),
       showCount: false,
       infoTooltip: t('components.insights.infoTooltip'),
     });
@@ -115,7 +136,7 @@ export class InsightsPanel extends Panel {
 
   private async loadBriefFromCache(): Promise<boolean> {
     if (this.cachedBrief) return false;
-    const entry = await getPersistentCache<{ summary: string; sources?: BriefSource[] }>(InsightsPanel.BRIEF_CACHE_KEY);
+    const entry = await getPersistentCache<{ summary: string; sources?: BriefSource[]; scope?: BriefScope }>(InsightsPanel.BRIEF_CACHE_KEY);
     if (!entry?.data?.summary) return false;
     const { sources, legacySourceShape } = normalizeCachedBriefSources(entry.data, InsightsPanel.BRIEF_CACHE_MAX_SOURCES);
     if (legacySourceShape) {
@@ -124,6 +145,7 @@ export class InsightsPanel extends Panel {
     }
     this.cachedBrief = entry.data.summary;
     this.cachedBriefSources = sources;
+    this.cachedBriefScope = parseBriefScope(entry.data.scope);
     this.lastBriefUpdate = entry.updatedAt;
     return true;
   }
@@ -160,29 +182,53 @@ export class InsightsPanel extends Panel {
    * bootstrap tier (api/_bootstrap-tier-keys.js), so on a cold visit the
    * brief is usually already hydrated — fall back to it. The cache is still
    * preferred: it is the cheaper read and needs no bootstrap round trip.
+   *
+   * #7464: that fallback was a single synchronous sample. Panel construction
+   * can lose the race with `populateCache` (or the 1.2s FAST-tier abort can
+   * leave `insights` empty), so a cold visitor fell through to the slow
+   * pipeline and the brief became LCP at p75 2.5–8s. Await the coalesced
+   * on-demand fetch when the sync read misses; fetchServerInsights memoises
+   * on success, so updateInsights() still sees the payload. Race a local
+   * 2500ms wait via withTimeout — do not pass that budget into
+   * fetchServerInsights, or the shared abort would kill the request before
+   * updateInsights can join with the 5s recovery.
    */
   private async paintCachedBriefEarly(): Promise<void> {
-    if (this.updateGeneration > 0) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
     await this.loadBriefFromCache();
-    if (this.updateGeneration > 0) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
 
     let brief = this.cachedBrief;
     let sources = this.cachedBriefSources;
+    let scope = this.cachedBriefScope;
     if (!brief) {
-      // getServerInsights() is synchronous and memoises on success, so this
-      // opens no new race window and does not deprive the later
-      // updateInsights() pass of the payload.
-      const server = getServerInsights();
+      let server = getServerInsights();
+      if (!server) {
+        try {
+          server = await withTimeout(
+            fetchServerInsights(),
+            InsightsPanel.EARLY_PAINT_INSIGHTS_TIMEOUT_MS,
+            'insights-early-paint',
+          );
+        } catch (err) {
+          if (!(err instanceof TimeoutError)) throw err;
+        }
+        if (this.signal.aborted || this.updateGeneration > 0) return;
+        // Bootstrap populateCache may have landed while the fetch raced.
+        server ??= getServerInsights();
+      }
       if (server?.worldBrief) {
         brief = server.worldBrief;
         sources = InsightsPanel.serverBriefSources(server);
+        scope = 'world';
       }
     }
     if (!brief) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
 
     this.setDataBadge('cached');
     this.setSafeContent(unsafeRawHtml(
-      this.renderWorldBrief(brief, sources),
+      this.renderWorldBrief(brief, sources, scope),
       'renderWorldBrief formats and links the cached summary (#4890 early brief paint)',
     ));
   }
@@ -367,7 +413,7 @@ export class InsightsPanel extends Panel {
       // resolves inside the debounce window this paint costs nothing.
       if (serverInsights.worldBrief) {
         this.setSafeContent(unsafeRawHtml(
-          this.renderWorldBrief(serverInsights.worldBrief, InsightsPanel.serverBriefSources(serverInsights)),
+          this.renderWorldBrief(serverInsights.worldBrief, InsightsPanel.serverBriefSources(serverInsights), 'world'),
           'renderWorldBrief formats and links the server summary (#7118 pre-sentiment paint)',
         ));
       }
@@ -388,6 +434,9 @@ export class InsightsPanel extends Panel {
   }
 
   private async updateFromClient(clusters: ClusteredEvent[], thisGeneration: number): Promise<void> {
+    if (this.updateGeneration !== thisGeneration) return;
+    this.lastMissedStories = [];
+
     // Web-only: if no AI providers enabled, show disabled state
     if (!isDesktopRuntime() && !isAnyAiProviderEnabled()) {
       this.setDataBadge('unavailable');
@@ -402,7 +451,7 @@ export class InsightsPanel extends Panel {
       skipBrowserFallback: !aiFlow.browserModel,
     };
 
-    const totalSteps = 4;
+    const totalSteps = 3;
 
     try {
       // Step 1: Signal aggregation + focal point detection (must run BEFORE ranking)
@@ -410,9 +459,10 @@ export class InsightsPanel extends Panel {
 
       // Run parallel multi-perspective analysis in background
       const parallelPromise = parallelAnalysis.analyzeHeadlines(clusters).then(report => {
-        this.lastMissedStories = report.missedByKeywords;
+        return report.missedByKeywords;
       }).catch(err => {
         console.warn('[ParallelAnalysis] Error:', err);
+        return [];
       });
 
       let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
@@ -525,8 +575,13 @@ export class InsightsPanel extends Panel {
           worldBrief = result.summary;
           this.cachedBrief = worldBrief;
           this.cachedBriefSources = currentBriefSources;
+          this.cachedBriefScope = parseBriefScope(SITE_VARIANT);
           this.lastBriefUpdate = now;
-          void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: worldBrief, sources: currentBriefSources });
+          void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, {
+            summary: worldBrief,
+            sources: currentBriefSources,
+            scope: this.cachedBriefScope,
+          });
         }
       } else {
         this.setProgress(3, totalSteps, t('components.insights.usingCachedBrief'));
@@ -534,18 +589,22 @@ export class InsightsPanel extends Panel {
 
       this.setDataBadge(worldBrief ? 'live' : 'unavailable');
 
-      // Step 4: Wait for parallel analysis to complete
-      this.setProgress(4, totalSteps, t('components.insights.multiPerspectiveAnalysis'));
-      await parallelPromise;
+      const briefSources = this.cachedBriefSources.length > 0 ? this.cachedBriefSources : currentBriefSources;
+      // #7464: the brief is already in hand. #7118 named holding it behind
+      // the parallel-analysis await and did not ship the change — that wait
+      // held `#insightsContent .brief-para` until ONNX NER/embeddings
+      // finished, which is the 8.7s-of-pure-render-delay cohort. Missed-story
+      // chrome is debug-gated; re-render when the analysis lands. Do not
+      // setProgress(4) here: that would replace the brief with a bar and put
+      // the wait back on LCP.
+      this.renderInsights(importantItems, sentiments, worldBrief, briefSources, this.cachedBriefScope);
+
+      const missedStories = await parallelPromise;
 
       if (this.updateGeneration !== thisGeneration) return;
 
-      this.renderInsights(
-        importantItems,
-        sentiments,
-        worldBrief,
-        this.cachedBriefSources.length > 0 ? this.cachedBriefSources : currentBriefSources,
-      );
+      this.lastMissedStories = missedStories;
+      this.renderInsights(importantItems, sentiments, worldBrief, briefSources, this.cachedBriefScope);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
       this.showError();
@@ -556,10 +615,11 @@ export class InsightsPanel extends Panel {
     items: Array<{ cluster: ClusteredEvent; isq: SignalQuality }>,
     sentiments: Array<{ label: string; score: number }> | null,
     worldBrief: string | null,
-    worldBriefSources: BriefSource[] = [],
+    worldBriefSources: BriefSource[],
+    briefScope: BriefScope,
   ): void {
     const clusters = items.map(({ cluster }) => cluster);
-    const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief, worldBriefSources) : '';
+    const briefHtml = worldBrief ? this.renderWorldBrief(worldBrief, worldBriefSources, briefScope) : '';
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
@@ -587,7 +647,7 @@ export class InsightsPanel extends Panel {
   ): void {
     const worldBriefSources = InsightsPanel.serverBriefSources(insights);
     const briefHtml = insights.worldBrief
-      ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, this.renderBriefExtras(insights))
+      ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, 'world', this.renderBriefExtras(insights))
       : '';
     if (insights.worldBrief) {
       // #4890: keep the persistent brief cache warm from the dominant server
@@ -595,8 +655,13 @@ export class InsightsPanel extends Panel {
       // visitors had an empty cache and nothing to early-paint at boot).
       this.cachedBrief = insights.worldBrief;
       this.cachedBriefSources = worldBriefSources;
+      this.cachedBriefScope = 'world';
       this.lastBriefUpdate = Date.now();
-      void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: insights.worldBrief, sources: this.cachedBriefSources });
+      void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, {
+        summary: insights.worldBrief,
+        sources: this.cachedBriefSources,
+        scope: this.cachedBriefScope,
+      });
     }
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
@@ -634,14 +699,20 @@ export class InsightsPanel extends Panel {
 
       // #6428: the "✓ N sources" badge is a corroboration claim, so it counts
       // PUBLISHERS. story.sourceCount is the article count — nine reprints of
-      // one wire across one newsroom's feeds rendered "✓ 9 sources". Fail
-      // closed on a pre-#6428 cached payload rather than fall back to it.
-      const storyPublishers = story.uniqueSourceCount ?? 0;
+      // one wire across one newsroom's feeds rendered "✓ 9 sources". The
+      // number is the corroboration verdict's, so it matches the roster
+      // summary; a pre-#6428 payload never falls back to the article count.
+      const storyEvidence = evidenceFromStory(story);
+      const storyCorroboration = assessCorroboration(storyEvidence);
+      const storyPublishers = badgePublisherCount(storyCorroboration, story.uniqueSourceCount ?? 0);
       if (storyPublishers >= 3) {
         badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: storyPublishers })}</span>`);
       } else if (storyPublishers >= 2) {
         badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: storyPublishers })}</span>`);
       }
+      const storyFlag = corroborationFlagHtml(storyCorroboration);
+      if (storyFlag) badges.push(storyFlag);
+      const rosterView = describePublisherRoster(storyCorroboration, publisherRoster(storyEvidence));
 
       if (story.isAlert) {
         badges.push(`<span class="insight-badge alert">⚠ ${t('components.insights.alert')}</span>`);
@@ -666,6 +737,7 @@ export class InsightsPanel extends Panel {
             <span class="insight-story-title">${escapeHtml(story.primaryTitle.slice(0, 100))}${story.primaryTitle.length > 100 ? '...' : ''}</span>
           </div>
           ${badges.length > 0 ? `<div class="insight-badges">${badges.join('')}</div>` : ''}
+          ${rosterView ? renderPublisherRosterHtml(rosterView) : ''}
         </div>
       `;
     }).join('');
@@ -736,12 +808,12 @@ export class InsightsPanel extends Panel {
     return linesHtml + footer;
   }
 
-  private renderWorldBrief(brief: string, sources: BriefSource[] = [], extrasHtml = ''): string {
+  private renderWorldBrief(brief: string, sources: BriefSource[], scope: BriefScope, extrasHtml = ''): string {
     const heading =
-      SITE_VARIANT === 'tech'      ? `🚀 ${t('components.insights.briefTech')}`
-    : SITE_VARIANT === 'commodity' ? `⛏️ ${t('components.insights.briefCommodity')}`
-    : SITE_VARIANT === 'energy'    ? `⚡ ${t('components.insights.briefEnergy')}`
-    :                                `🌍 ${t('components.insights.briefWorld')}`;
+      scope === 'tech'      ? `🚀 ${t('components.insights.briefTech')}`
+    : scope === 'commodity' ? `⛏️ ${t('components.insights.briefCommodity')}`
+    : scope === 'energy'    ? `⚡ ${t('components.insights.briefEnergy')}`
+    :                         `🌍 ${t('components.insights.briefWorld')}`;
     return `
       <div class="insights-brief">
         <div class="insights-section-title">${heading}</div>
@@ -773,12 +845,17 @@ export class InsightsPanel extends Panel {
       }
 
       // #6428: publishers, not articles — see renderServerStories above.
-      const clusterPublishers = cluster.uniquePublisherCount ?? 0;
+      const clusterEvidence = evidenceFromCluster(cluster);
+      const clusterCorroboration = assessCorroboration(clusterEvidence);
+      const clusterPublishers = badgePublisherCount(clusterCorroboration, cluster.uniquePublisherCount ?? 0);
       if (clusterPublishers >= 3) {
         badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: clusterPublishers })}</span>`);
       } else if (clusterPublishers >= 2) {
         badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: clusterPublishers })}</span>`);
       }
+      const clusterFlag = corroborationFlagHtml(clusterCorroboration);
+      if (clusterFlag) badges.push(clusterFlag);
+      const rosterView = describePublisherRoster(clusterCorroboration, publisherRoster(clusterEvidence));
 
       if (cluster.velocity && cluster.velocity.level !== 'normal') {
         const velIcon = cluster.velocity.trend === 'rising' ? '↑' : '';
@@ -796,6 +873,7 @@ export class InsightsPanel extends Panel {
             <span class="insight-story-title">${escapeHtml(cluster.primaryTitle.slice(0, 100))}${cluster.primaryTitle.length > 100 ? '...' : ''}</span>
           </div>
           ${badges.length > 0 ? `<div class="insight-badges">${badges.join('')}</div>` : ''}
+          ${rosterView ? renderPublisherRosterHtml(rosterView) : ''}
         </div>
       `;
     }).join('');

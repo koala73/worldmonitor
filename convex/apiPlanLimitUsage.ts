@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import {
   PRODUCT_CATALOG,
   getPlanLimit,
+  hasSharedApiBudget,
   type PlanLimitDimension,
 } from "./config/productCatalog";
 import {
@@ -28,6 +29,7 @@ type ScannerUsageRow = {
   dimension: PlanLimitDimension;
   usage: number;
   minuteBuckets?: number[];
+  minuteStart?: number;
   source: string;
   sourceFreshAt?: number;
 };
@@ -103,25 +105,21 @@ function windowForDimension(dimension: PlanLimitDimension, now: number) {
   };
 }
 
-// Plans whose MCP calls are metered by the Redis `mcp:pro-usage` counter — i.e.
-// the plans that authenticate into the MCP edge's `pro` context and hit the
-// INCR-first reservation in api/mcp/dispatch.ts. Both a producer (the Redis
-// read) and a consumer (the Axiom-row drop) key on this, and they must agree:
-// see the dual-sourcing note above `redisMcpDailyUsers`.
-function isRedisMeteredMcpPlan(planKey: string): boolean {
-  return (
-    planKey === "pro_monthly" || planKey === "pro_annual"
-    || planKey === "pro_business_monthly" || planKey === "pro_business_annual"
-  );
-}
-
 function dodoUpgradeNotice(planKey: string, dimension: PlanLimitDimension): Omit<NoticeInput, "state"> {
-  // Pro AND Pro Business both top out below API Starter's MCP allowance, and
-  // both are self-serve checkout products — so a capped caller on either gets
-  // the same "buy API Starter" CTA. Without the pro_business arm the notice
-  // falls through to `{ctaKind: 'none'}`: the customer is told they hit the cap
-  // with no way out of it.
-  if (isRedisMeteredMcpPlan(planKey)) {
+  // Pro AND Pro Business both top out below API Starter's request allowance,
+  // and both are self-serve checkout products — so a capped caller on either
+  // gets the same "buy API Starter" CTA. Without the pro_business arm the
+  // notice falls through to `{ctaKind: 'none'}`: the customer is told they hit
+  // the cap with no way out of it.
+  //
+  // Derived from the catalog rather than a plan list so a new dedicated-counter
+  // plan routes correctly on the day it ships — but bounded to a PAID plan on a
+  // FINITE counter of its own. `free` also has a dedicated counter (0/day) and
+  // Enterprise's is unlimited (`null`), and neither belongs in a self-serve API
+  // Starter checkout. Today that resolves to exactly pro_monthly, pro_annual
+  // and the two pro_business variants.
+  const features = PRODUCT_CATALOG[planKey]?.features;
+  if (features && features.tier > 0 && typeof features.planLimits?.mcpCallsPerDay === "number") {
     return { upgradeTargetPlanKey: "api_starter", ctaKind: "checkout" };
   }
   if (planKey === "api_starter" || planKey === "api_starter_annual") {
@@ -166,61 +164,190 @@ function noticeForRow(
   return { state, ...dodoUpgradeNotice(planKey, row.dimension) };
 }
 
-// A recognized Axiom `?format=legacy` result envelope carries its rows under one
-// of these array fields — an EMPTY array is a valid "no rows" result. Keep the
-// branches in sync with normalizeAxiomRows.
-function isRecognizedAxiomResultShape(data: unknown): boolean {
-  const d = data as any;
-  return (
-    Array.isArray(d?.matches) ||
-    Array.isArray(d?.tables?.[0]?.rows) ||
-    Array.isArray(d?.rows)
-  );
+// Axiom may omit row arrays for a complete zero-match result. Accept that
+// form only when its metadata confirms a complete query against our dataset.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-// Decide whether an HTTP-200 body that ISN'T a recognized result envelope should
-// BLOCK the dimension (a genuine Axiom error) or be read as an EMPTY result.
-// Block only when the body is a non-object or carries an explicit Axiom error
-// signature (error / message / code). An unrecognized-but-error-free object is
-// treated as empty (normalizeAxiomRows yields []): this is deliberately biased
-// toward "empty" so a drift in the shape of the EMPTY summarize response can't
-// classify every routine no-burst scan as axiom_unexpected_body and freeze every
-// open burst notice via the recovery sweep. A real Axiom failure still carries an
-// error field and blocks, and a genuine outage rejects the fetch (axiom_query_error).
-function isAxiomErrorBody(data: unknown): boolean {
-  if (data == null || typeof data !== "object") return true;
-  if (isRecognizedAxiomResultShape(data)) return false;
-  const d = data as any;
-  return typeof d.error !== "undefined" || typeof d.message === "string" || typeof d.code !== "undefined";
+function isNonnegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function normalizeAxiomRows(data: unknown, dimension: PlanLimitDimension): ScannerUsageRow[] {
-  const rawRows =
-    Array.isArray((data as any)?.matches)
-      ? (data as any).matches.map((match: any) => match.data ?? match)
-      : Array.isArray((data as any)?.tables?.[0]?.rows)
-        ? (data as any).tables[0].rows
-        : Array.isArray((data as any)?.rows)
-          ? (data as any).rows
-          : [];
+function isAxiomDateTime(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!parts || !Number.isFinite(Date.parse(value))) return false;
+  const year = Number(parts[1]);
+  const month = Number(parts[2]);
+  const day = Number(parts[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return daysInMonth !== undefined && day >= 1 && day <= daysInMonth;
+}
 
-  return rawRows.flatMap((row: any) => {
+type AxiomRowSet = { entries: unknown[]; fromMatches: boolean };
+
+type AxiomAggregateRow = { customer_id: string; minute?: string; usage: number };
+
+function parseAxiomCount(value: unknown): number | null {
+  if ((typeof value !== "number" && typeof value !== "string") ||
+    (typeof value === "string" && value.trim().length === 0)) return null;
+  const count = Number(value);
+  return isNonnegativeInteger(count) ? count : null;
+}
+
+function parseAxiomAggregateGroup(entry: unknown): AxiomAggregateRow | null {
+  if (!isRecord(entry) || !isRecord(entry.group) ||
+    !Array.isArray(entry.aggregations) || entry.aggregations.length !== 1) return null;
+  const aggregation = entry.aggregations[0];
+  const userId = entry.group.customer_id;
+  const minute = entry.group.minute;
+  if (!isRecord(aggregation) || (aggregation.op !== "count" && aggregation.op !== "usage") ||
+    typeof userId !== "string" || userId.trim().length === 0 ||
+    (minute !== undefined && !isAxiomDateTime(minute))) return null;
+  const usage = parseAxiomCount(aggregation.value);
+  if (usage === null) return null;
+  return { customer_id: userId, minute, usage };
+}
+
+function extractAxiomAggregateRows(buckets: Record<string, unknown>): unknown[] | null {
+  if ((buckets.series === undefined && buckets.totals === undefined) ||
+    (buckets.series !== undefined && !Array.isArray(buckets.series)) ||
+    (buckets.totals !== undefined && !Array.isArray(buckets.totals))) return null;
+  const totals: AxiomAggregateRow[] = [];
+  for (const entry of buckets.totals ?? []) {
+    const row = parseAxiomAggregateGroup(entry);
+    if (row === null) return null;
+    totals.push(row);
+  }
+  const rows: AxiomAggregateRow[] = [];
+  if (Array.isArray(buckets.series) && buckets.series.length > 0) {
+    for (const interval of buckets.series) {
+      if (!isRecord(interval) || !isAxiomDateTime(interval.startTime) ||
+        !isAxiomDateTime(interval.endTime) ||
+        Date.parse(interval.endTime) <= Date.parse(interval.startTime) ||
+        (interval.groups !== undefined && !Array.isArray(interval.groups))) return null;
+      for (const entry of interval.groups ?? []) {
+        const row = parseAxiomAggregateGroup(entry);
+        if (row === null) return null;
+        const minute = row.minute ?? (Date.parse(interval.endTime) - Date.parse(interval.startTime) === 60_000
+          ? interval.startTime : undefined);
+        if (minute === undefined) return null;
+        rows.push({ ...row, minute });
+      }
+    }
+    // Totals and series describe the same events. Check both, then emit only
+    // series so inconsistent/truncated data cannot clear a customer's notice.
+    if (buckets.totals !== undefined) {
+      const compareMinutes = totals.every((row) => row.minute !== undefined);
+      const keyFor = (row: AxiomAggregateRow) => JSON.stringify([
+        row.customer_id, compareMinutes && row.minute !== undefined ? Date.parse(row.minute) : null,
+      ]);
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        const key = keyFor(row);
+        counts.set(key, (counts.get(key) ?? 0) + row.usage);
+      }
+      const seenTotals = new Set<string>();
+      for (const row of totals) {
+        const key = keyFor(row);
+        if (seenTotals.has(key) || counts.get(key) !== row.usage) return null;
+        seenTotals.add(key);
+      }
+      if (counts.size !== seenTotals.size) return null;
+    }
+    return rows;
+  }
+  return totals.every((row) => row.minute !== undefined) ? totals : null;
+}
+
+function extractAxiomRowSets(data: unknown): AxiomRowSet[] | null {
+  if (!isRecord(data) || (data.status !== undefined && !isRecord(data.status))) return null;
+  const status = isRecord(data.status) ? data.status : null;
+  if (
+    data.error !== undefined ||
+    data.code !== undefined ||
+    data.message !== undefined ||
+    (status !== null && (status.isPartial !== false ||
+      (status.isEstimate !== undefined && status.isEstimate !== false) ||
+      (Array.isArray(status.messages) && status.messages.some((message) =>
+        isRecord(message) && (message.priority === "error" || message.priority === "fatal")))))
+  ) return null;
+  // Another result layout must not hide a malformed row container.
+  if ((data.matches !== undefined && !Array.isArray(data.matches)) ||
+    (data.rows !== undefined && !Array.isArray(data.rows)) ||
+    (data.tables !== undefined && (!Array.isArray(data.tables) ||
+      data.tables.some((table) => !isRecord(table) || !Array.isArray(table.rows))))) return null;
+  const rowSets: AxiomRowSet[] = [];
+  if (Array.isArray(data.matches)) rowSets.push({ entries: data.matches, fromMatches: true });
+  if (Array.isArray(data.tables)) {
+    rowSets.push(...data.tables.map((table) => ({ entries: table.rows, fromMatches: false })));
+  }
+  if (Array.isArray(data.rows)) rowSets.push({ entries: data.rows, fromMatches: false });
+  if (data.buckets !== undefined) {
+    if (!isRecord(data.buckets)) return null;
+    // Omitted aggregates need the complete zero-row metadata check below.
+    if (data.buckets.series !== undefined || data.buckets.totals !== undefined) {
+      if (status === null || !isNonnegativeInteger(status.rowsMatched) ||
+        !isNonnegativeInteger(status.numGroups)) return null;
+      const entries = extractAxiomAggregateRows(data.buckets);
+      if (entries === null) return null;
+      rowSets.push({ entries, fromMatches: false });
+    }
+  }
+  if (rowSets.length > 0) {
+    // An empty array cannot prove zero usage if the query reports groups.
+    if (rowSets.every((result) => result.entries.length === 0) && status !== null &&
+      ((status.numGroups !== undefined && status.numGroups !== 0) ||
+        (status.rowsMatched !== undefined && status.rowsMatched !== 0))) return null;
+    return rowSets;
+  }
+
+  if (
+    data.format === "legacy" &&
+    Array.isArray(data.datasetNames) &&
+    data.datasetNames.length === 1 && data.datasetNames[0] === "wm_api_usage" &&
+    status !== null && status.rowsMatched === 0 && status.numGroups === 0 &&
+    [status.blocksExamined, status.elapsedTime, status.rowsExamined].every(isNonnegativeInteger) &&
+    isNonnegativeInteger(status.cacheStatus) && status.cacheStatus <= 255 &&
+    isAxiomDateTime(status.maxBlockTime) && isAxiomDateTime(status.minBlockTime)
+  ) return [{ entries: [], fromMatches: false }];
+  return null;
+}
+
+function normalizeAxiomRows(result: AxiomRowSet, dimension: PlanLimitDimension): ScannerUsageRow[] | null {
+  const rows: ScannerUsageRow[] = [];
+  const seen = new Set<string>();
+  for (const entry of result.entries) {
+    const row = result.fromMatches && isRecord(entry) && entry.data !== undefined
+      ? entry.data
+      : entry;
+    if (!isRecord(row)) return null;
     const userId = row.customer_id ?? row.customerId ?? row.user_id ?? row.userId;
-    const usage = Number(row.usage ?? row.requests ?? row.count ?? 0);
-    if (typeof userId !== "string" || userId.length === 0 || !Number.isFinite(usage) || usage < 0) return [];
+    const usage = parseAxiomCount(row.usage ?? row.requests ?? row.count);
+    if (typeof userId !== "string" || userId.trim().length === 0 || usage === null ||
+      !isAxiomDateTime(row.minute)) return null;
+    const minuteStart = Date.parse(row.minute);
+    if (minuteStart % 60_000 !== 0) return null;
+    const key = JSON.stringify([userId, minuteStart]);
+    if (seen.has(key)) return null;
+    seen.add(key);
     const minuteBuckets = Array.isArray(row.minuteBuckets)
       ? row.minuteBuckets.map(Number).filter(Number.isFinite)
       : undefined;
-    return [{
+    rows.push({
       userId,
       planKey: typeof row.planKey === "string" ? row.planKey : undefined,
       dimension,
       usage,
       minuteBuckets,
+      minuteStart,
       source: "axiom:wm_api_usage",
       sourceFreshAt: Date.now(),
-    }];
-  });
+    });
+  }
+  return rows;
 }
 
 async function queryAxiom(apl: string, dimension: PlanLimitDimension): Promise<{
@@ -250,14 +377,35 @@ async function queryAxiom(apl: string, dimension: PlanLimitDimension): Promise<{
       return { rows: [], blockedReason: `axiom_query_http_${resp.status}` };
     }
     const json = await resp.json();
-    if (isAxiomErrorBody(json)) {
-      // HTTP 200 carrying an Axiom error signature (or a non-object body). Block
-      // the dimension instead of letting normalizeAxiomRows yield an empty [] that
-      // reads identically to a genuinely-empty result. A recognized-or-plausibly-
-      // empty body falls through and normalizes (to [] when it has no rows).
+    const rowSets = extractAxiomRowSets(json);
+    if (rowSets === null) {
+      // An unknown HTTP-200 body cannot prove zero usage. Keep live notices
+      // until a recognized result arrives.
       return { rows: [], blockedReason: "axiom_unexpected_body" };
     }
-    return { rows: normalizeAxiomRows(json, dimension) };
+    let rows: ScannerUsageRow[] = [];
+    for (const result of rowSets) {
+      const normalized = normalizeAxiomRows(result, dimension);
+      if (normalized === null) return { rows: [], blockedReason: "axiom_unexpected_body" };
+      // Empty arrays may be placeholders; populated representations must agree.
+      if (rows.length > 0 && normalized.length > 0) {
+        const keyFor = (row: ScannerUsageRow) => JSON.stringify([row.userId, row.minuteStart, row.usage]);
+        const keys = new Set(rows.map(keyFor));
+        if (normalized.length !== rows.length || normalized.some((row) => !keys.has(keyFor(row)))) {
+          return { rows: [], blockedReason: "axiom_unexpected_body" };
+        }
+      }
+      if (normalized.length > 0) rows = normalized;
+    }
+    // This count() query partitions all matching events by customer/minute.
+    // Missing groups must not look like zero usage for the omitted customers.
+    const matched = isRecord(json) && isRecord(json.status) ? json.status.rowsMatched : undefined;
+    const counted = rows.reduce((sum, row) => sum + row.usage, 0);
+    if (!isNonnegativeInteger(counted) || (matched !== undefined &&
+      (!isNonnegativeInteger(matched) || matched !== counted))) {
+      return { rows: [], blockedReason: "axiom_unexpected_body" };
+    }
+    return { rows };
   } catch {
     return { rows: [], blockedReason: "axiom_query_error" };
   }
@@ -354,7 +502,6 @@ async function buildProductionRows(
 ): Promise<{ rows: ScannerUsageRow[]; blocked: ScannerSummary["blocked"] }> {
   const blocked: ScannerSummary["blocked"] = [];
   const rows: ScannerUsageRow[] = [];
-  const day = utcDayKey(now);
 
   // api_daily_requests is now sourced from the enforcement Redis meter, keyed by
   // userId, in the Upstash-gated block below (not an Axiom count() by customer_id).
@@ -379,10 +526,12 @@ async function buildProductionRows(
   if (burst.blockedReason) {
     blocked.push({ dimension: "api_minute_burst", reason: burst.blockedReason });
   } else {
+    const window = windowForDimension("api_minute_burst", now);
     const byUser = new Map<string, number[]>();
     for (const row of burst.rows) {
-      const buckets = byUser.get(row.userId) ?? [];
-      buckets.push(row.usage);
+      if (row.minuteStart === undefined || row.minuteStart < window.windowStart || row.minuteStart >= window.windowEnd) continue;
+      const buckets = byUser.get(row.userId) ?? [0, 0, 0, 0, 0];
+      buckets[(row.minuteStart - window.windowStart) / 60_000] = row.usage;
       byUser.set(row.userId, buckets);
     }
     for (const [userId, minuteBuckets] of byUser) {
@@ -397,62 +546,35 @@ async function buildProductionRows(
     }
   }
 
-  // mcp_daily_calls for Pro accounts is authoritatively metered by the Redis
-  // mcp:pro-usage counter (read in the Upstash block below), NOT the Axiom
-  // mcp.toolcall count. The Axiom count also tallies quota-EXEMPT calls, so it
-  // reads structurally higher, and dual-sourcing mints a second row that flaps
-  // the same-dimension notice within one scan. Drop the Axiom row for those
-  // users so the Redis read (or its blocked entry) is their single source; the
-  // Axiom row still stands for api-tier mcpAccess plans that have no Redis
-  // counter. Mirrors the U8 api_daily_requests move to a single Redis source.
-  const redisMcpDailyUsers = new Set(
-    active
-      .filter((e) => isRedisMeteredMcpPlan(e.planKey) && e.mcpAccess)
-      .map((e) => e.userId),
-  );
-  const mcpDailyApl = `['wm_api_usage']
-| where tag == "mcp.toolcall" and ok == true and _time >= datetime(${day}T00:00:00Z)
-| where isnotnull(user_id) and user_id != ""
-| summarize usage = count() by user_id`;
-  const mcpDaily = await queryAxiom(mcpDailyApl, "mcp_daily_calls");
-  rows.push(...mcpDaily.rows
-    .filter((row) => !redisMcpDailyUsers.has(row.userId))
-    .map((row) => ({
-      ...row,
-      source: "axiom:mcp_toolcall",
-    })));
-  if (mcpDaily.blockedReason) blocked.push({ dimension: "mcp_daily_calls", reason: mcpDaily.blockedReason });
+  // mcp_daily_calls is metered entirely in Redis. The Axiom fallback that used
+  // to cover API-tier plans queried `where tag == "mcp.toolcall" ... by user_id`
+  // against `wm_api_usage`, which has neither column — the query returned
+  // HTTP 400 on every scan, so the dimension was recorded as blocked rather
+  // than evaluated, and no API-tier customer could ever receive a cap warning.
+  // Nothing repaired it because the comment claimed those plans "have no Redis
+  // counter"; they always did. The Redis reads below are the single source for
+  // every plan.
 
-  const mcpBurstApl = `['wm_api_usage']
-| where tag == "mcp.rate_limit_hit" and dimension == "mcp_minute_burst" and _time > ago(10m)
-| where isnotnull(user_id) and user_id != ""
-| summarize hits = count(), observed_limit = max(todouble(limit)) by user_id, minute = bin(_time, 1m)
-| extend usage = coalesce(observed_limit, 60) + hits`;
-  const mcpBurst = await queryAxiom(mcpBurstApl, "mcp_minute_burst");
-  if (mcpBurst.blockedReason) {
-    blocked.push({ dimension: "mcp_minute_burst", reason: mcpBurst.blockedReason });
-  } else {
-    const byUser = new Map<string, number[]>();
-    for (const row of mcpBurst.rows) {
-      const buckets = byUser.get(row.userId) ?? [];
-      buckets.push(row.usage);
-      byUser.set(row.userId, buckets);
-    }
-    for (const [userId, minuteBuckets] of byUser) {
-      rows.push({
-        userId,
-        dimension: "mcp_minute_burst",
-        usage: Math.max(...minuteBuckets, 0),
-        minuteBuckets,
-        source: "axiom:mcp_rate_limit_hit",
-        sourceFreshAt: now,
-      });
-    }
-  }
+  // mcp_minute_burst has NO readable source, and is recorded as blocked rather
+  // than queried. The APL that stood here — `['wm_api_usage'] | where tag ==
+  // "mcp.rate_limit_hit" ... by user_id` — repeated, immediately below it, the
+  // very defect the paragraph above describes, and could not return a row for
+  // three independent reasons: `wm_api_usage`'s RequestEvent carries
+  // `customer_id` and no `tag` / `user_id` / `dimension` / `limit` column at all
+  // (server/_shared/usage.ts); MCP limiter telemetry never reaches Axiom in the
+  // first place, because `emitTelemetry` is a bare console.log to the Vercel log
+  // drain (api/mcp/telemetry.ts); and `emitMcpRateLimitHit` sets `user_id` only
+  // for the `pro` auth context, so wm_-key callers would be invisible even if
+  // the other two were repaired. A query that can only ever return zero rows
+  // reads as a passing check while measuring nothing. Blocking says plainly that
+  // the dimension is unmonitored, and keeps the recovery sweep from clearing a
+  // burst notice on evidence it never had. Reviving the axis needs an Axiom sink
+  // for MCP limiter hits, not another query.
+  blocked.push({ dimension: "mcp_minute_burst", reason: "mcp_burst_telemetry_never_reaches_axiom" });
 
   if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
     blocked.push({ dimension: "api_daily_requests", reason: "missing_upstash_credentials_for_daily_meter" });
-    blocked.push({ dimension: "mcp_daily_calls", reason: "missing_upstash_credentials_for_pro_daily_fallback" });
+    blocked.push({ dimension: "mcp_daily_calls", reason: "missing_upstash_credentials_for_mcp_daily_meter" });
     return { rows, blocked };
   }
 
@@ -462,21 +584,45 @@ async function buildProductionRows(
     planKey: string;
     dimension: PlanLimitDimension;
     source: string;
+    /** Whether this plan's MCP calls and REST requests share one sold budget. */
+    sharedBudget?: boolean;
   };
   const reads: DailyRead[] = [];
   for (const ent of active) {
+    // An entitlement can outlive its catalog entry: `planKey` is a bare
+    // v.string() in the schema, so a plan renamed or retired leaves live rows
+    // pointing at a key `getEntitlementFeatures` throws on by design. Nothing
+    // catches above here — the cron invokes the action directly — so one stale
+    // row would abort the hourly scan for every other customer. Skip it, and
+    // record it blocked so the recovery sweep cannot read "produced no usage
+    // row" as "fell back under the cap".
+    if (!PRODUCT_CATALOG[ent.planKey]) {
+      blocked.push({ userId: ent.userId, dimension: "api_daily_requests", reason: "unknown_plan_key" });
+      blocked.push({ userId: ent.userId, dimension: "mcp_daily_calls", reason: "unknown_plan_key" });
+      continue;
+    }
     // api_daily_requests: read the SAME per-account daily meter #3199 enforces
     // on, keyed by userId. Skip unlimited plans (null limit == enterprise; the
     // gateway never meters them, so the key is absent anyway).
     if (ent.apiAccess && getPlanLimit(ent.planKey, "api_daily_requests") != null) {
       reads.push({ userId: ent.userId, planKey: ent.planKey, dimension: "api_daily_requests", source: "redis:apikey_day" });
     }
-    // mcp_daily_calls: the pro-family daily-counter read that pairs with the
-    // Axiom-row drop above. The two sets MUST stay identical — a plan in one
-    // and not the other either dual-sources the dimension (notice flap) or
-    // leaves it unmetered.
-    if (isRedisMeteredMcpPlan(ent.planKey) && ent.mcpAccess) {
-      reads.push({ userId: ent.userId, planKey: ent.planKey, dimension: "mcp_daily_calls", source: "redis:mcp_pro_daily" });
+    // mcp_daily_calls comes off the dedicated `mcp:pro-usage` counter for EVERY
+    // MCP plan, shared-budget ones included. While API_RATE_LIMIT_ENFORCE is off
+    // that counter is precisely where an API tier's MCP calls are charged, at
+    // the sold allowance (`budgetCounterKey` with counter: 'mcp' — api/mcp/
+    // quota.ts). Skipping those plans here is what left an API Starter customer
+    // with no warning at all before their first 429, which is the defect this
+    // scan exists to prevent. Convex cannot read the edge's flag and does not
+    // need to: the read below degrades on its own once the flag flips.
+    if (ent.mcpAccess && getPlanLimit(ent.planKey, "mcp_daily_calls") != null) {
+      reads.push({
+        userId: ent.userId,
+        planKey: ent.planKey,
+        dimension: "mcp_daily_calls",
+        source: "redis:mcp_pro_daily",
+        sharedBudget: hasSharedApiBudget(ent.planKey),
+      });
     }
   }
 
@@ -495,6 +641,16 @@ async function buildProductionRows(
       blocked.push({ userId: read.userId, dimension: read.dimension, reason: "redis_read_failed" });
       continue;
     }
+    // Once REST enforcement is on, a shared-budget plan's MCP calls move to the
+    // REST key `api_daily_requests` already read, and this counter stops being
+    // written. An ABSENT Upstash key reads as 0, not as a failure (see
+    // readRedisInteger), so without this the scan would publish a permanent
+    // "0 of 1,000 MCP calls" rollup alongside the api_daily_requests row that
+    // holds the real figure for that same sold budget — the one budget reported
+    // twice, once falsely. Zero on a shared budget carries no information in
+    // either state, and dropping the row leaves the stale-notice sweep to clear
+    // anything open, which it does on exactly the same evidence.
+    if (read.sharedBudget && usage === 0) continue;
     rows.push({
       userId: read.userId,
       planKey: read.planKey,
@@ -543,6 +699,13 @@ async function scanHandler(ctx: any, args: {
   // notice minted before this gate) would never clear.
   const evaluated = new Set<string>();
 
+  // (user::dimension) pairs this scan could not JUDGE at all, because the row's
+  // planKey has left the catalog and there is no limit to compare against. The
+  // sweep must treat these like a blocked source rather than a recovery:
+  // clearing the notice would tell a customer they are back under a cap that
+  // nothing measured this scan.
+  const unjudged = new Set<string>();
+
   for (const row of source.rows) {
     const ent = byUser.get(row.userId);
     if (!ent) {
@@ -562,6 +725,16 @@ async function scanHandler(ctx: any, args: {
       continue;
     }
     const planKey = row.planKey ?? ent.planKey;
+    // Same catalog-outlives-entitlement guard as buildProductionRows, repeated
+    // because a burst row carries a userId from Axiom and reaches here without
+    // passing through that loop. `getPlanLimit` throws on an unknown key and
+    // this loop body sits OUTSIDE the per-row try below, so one stale planKey
+    // would abort the scan for every user after it.
+    if (!PRODUCT_CATALOG[planKey]) {
+      summary.skipped.push({ userId: row.userId, dimension: row.dimension, reason: "unknown_plan_key" });
+      unjudged.add(`${row.userId}::${row.dimension}`);
+      continue;
+    }
     const limit = getPlanLimit(planKey, row.dimension);
     const window = windowForDimension(row.dimension, now);
     summary.evaluated += 1;
@@ -650,6 +823,7 @@ async function scanHandler(ctx: any, args: {
     for (const key of openKeys) {
       const pair = `${key.userId}::${key.dimension}`;
       if (evaluated.has(pair)) continue; // evaluated this scan — handled by the loop above
+      if (unjudged.has(pair)) continue; // row seen, but its plan has no catalog limit
       if (blockedDimensions.has(key.dimension)) continue;
       if (blockedUserDimensions.has(pair)) continue;
       const result = await ctx.runMutation(

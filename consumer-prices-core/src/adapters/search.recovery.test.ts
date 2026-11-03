@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { SearchAdapter, SearchTargetError } from './search.js';
 import type { ExaProvider } from '../acquisition/exa.js';
 import type { FirecrawlProvider } from '../acquisition/firecrawl.js';
-import type { AdapterContext } from './types.js';
+import type { AdapterContext, Target } from './types.js';
 import type { RetailerConfig } from '../config/types.js';
-import { loadRetailerConfig } from '../config/loader.js';
+import { loadBasketConfig, loadRetailerConfig } from '../config/loader.js';
 
 function makeConfig(overrides: Partial<RetailerConfig['searchConfig']> = {}): RetailerConfig {
   return {
@@ -49,7 +49,128 @@ function makeTarget() {
   };
 }
 
+function makeBrazilTarget(
+  config: RetailerConfig,
+  fixture: {
+    id: string;
+    category: string;
+    canonicalName: string;
+    baseUnit: string;
+    minBaseQty: number;
+    maxBaseQty: number;
+  },
+): Target {
+  return {
+    id: fixture.id,
+    url: config.baseUrl,
+    category: fixture.category,
+    metadata: {
+      canonicalName: fixture.canonicalName,
+      domain: new URL(config.baseUrl).hostname,
+      currency: config.currencyCode,
+      basketSlug: 'essentials-br',
+      itemConstraints: {
+        baseUnit: fixture.baseUnit,
+        minBaseQty: fixture.minBaseQty,
+        maxBaseQty: fixture.maxBaseQty,
+      },
+      direct: false,
+    },
+  };
+}
+
 describe('SearchAdapter recovery path', () => {
+  it.each([
+    { slug: 'noon_grocery_ae', url: 'https://www.noon.com/uae-en/cola/p/REPLAY/' },
+    { slug: 'lulu_ae', url: 'https://gcc.luluhypermarket.com/en-ae/cola-350-ml/p/REPLAY' },
+  ])('refuses a different drink for $slug without losing digit-prefixed identity', async ({ slug, url }) => {
+    const config = loadRetailerConfig(slug);
+    const response = {
+      data: { productName: 'Cola 350ml', price: 3.95, currency: 'AED', sizeText: '350ml' },
+      pageContent: 'Cola 350ml\nAED 3.95',
+    };
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url }]),
+      extract: vi.fn().mockResolvedValue(response),
+    } as unknown as ExaProvider;
+    const firecrawl = { extract: vi.fn().mockResolvedValue(response) } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const target = { id: 'digit-brand', url: config.baseUrl, category: 'beverage', metadata: {
+      canonicalName: '7up 330ml', domain: new URL(config.baseUrl).hostname,
+      currency: config.currencyCode, basketSlug: 'synthetic-drink-guard',
+      itemConstraints: { baseUnit: 'ml', minBaseQty: 300, maxBaseQty: 350 }, direct: false,
+    } };
+
+    const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SearchTargetError);
+    const failures = (error as SearchTargetError).failures;
+    expect(failures.length).toBeGreaterThan(0);
+    expect(failures.every(({ reason }) => reason === 'title-mismatch')).toBe(true);
+  });
+
+  describe('AE tomato title replay', () => {
+    const item = loadBasketConfig('essentials_ae').items.find(({ id }) => id === 'tomatoes_1kg')!;
+    const fixtures = [
+      { slug: 'lulu_ae', productName: 'Tomato 1 kg', url: 'https://gcc.luluhypermarket.com/en-ae/tomato-1-kg/p/1962513' },
+      { slug: 'noon_grocery_ae', productName: 'Tomato', url: 'https://www.noon.com/uae-en/tomato/p/REPLAY/' },
+    ];
+
+    it.each(fixtures)('lets the retained $slug title reach structured validation', async ({ slug, productName, url }) => {
+      const config = loadRetailerConfig(slug);
+      const exa = { search: vi.fn().mockResolvedValue([{ url }]), extract: vi.fn().mockResolvedValue({
+        data: { productName, price: 3.95, currency: 'AED', sizeText: '1 kg', inStock: true },
+        pageContent: `${productName}\n1 kg\nAED 3.95`,
+      }) } as unknown as ExaProvider;
+      const firecrawl = { extract: vi.fn().mockResolvedValue({
+        data: { productName, price: 3.95, currency: 'AED', sizeText: '1 kg', inStock: true },
+        pageContent: `${productName}\n1 kg\nAED 3.95`,
+      }) } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const context = makeContext(config);
+      const target = { id: item.id, url: config.baseUrl, category: item.category, metadata: {
+        canonicalName: item.canonicalName, domain: new URL(config.baseUrl).hostname,
+        currency: config.currencyCode, basketSlug: 'essentials-ae', itemConstraints: item, direct: false,
+      } };
+
+      const result = await adapter.fetchTarget(context, target);
+      const products = await adapter.parseListing(context, result);
+
+      expect(products).toHaveLength(1);
+      expect(products[0]?.rawTitle).toBe(productName);
+      expect(products[0]?.price).toBe(3.95);
+      expect(exa.extract).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { productName: 'Tomato', sizeText: '2 kg', reason: 'size-window-fail:2000g' },
+      { productName: 'Pomi Chopped Tomatoes 1 kg', sizeText: '1 kg', reason: 'negative-token:chopped' },
+    ])('keeps the strict refusal for $productName / $sizeText', async ({ productName, sizeText, reason }) => {
+      const config = loadRetailerConfig('noon_grocery_ae');
+      const exa = { search: vi.fn().mockResolvedValue([{ url: 'https://www.noon.com/uae-en/tomato/p/REPLAY/' }]), extract: vi.fn().mockResolvedValue({
+        data: { productName, sizeText, price: 3.95, currency: 'AED' },
+        pageContent: `${productName}\n${sizeText}\nAED 3.95`,
+      }) } as unknown as ExaProvider;
+      const firecrawl = { extract: vi.fn().mockResolvedValue({
+        data: { productName, sizeText, price: 3.95, currency: 'AED' },
+        pageContent: `${productName}\n${sizeText}\nAED 3.95`,
+      }) } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const target = { id: item.id, url: config.baseUrl, category: item.category, metadata: {
+        canonicalName: item.canonicalName, domain: new URL(config.baseUrl).hostname,
+        currency: config.currencyCode, basketSlug: 'essentials-ae', itemConstraints: item, direct: false,
+      } };
+
+      const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures).toEqual([
+        expect.objectContaining({ reason: 'validator-rejected', detail: expect.stringContaining(reason) }),
+      ]);
+      expect(exa.extract).not.toHaveBeenCalled();
+    });
+  });
+
   it('falls back to Exa when Firecrawl confuses quantity with price', async () => {
     const exa = {
       search: vi.fn().mockResolvedValue([{ url: 'https://coldstorage.com.sg/en/p/bread/i/1.html' }]),
@@ -89,6 +210,219 @@ describe('SearchAdapter recovery path', () => {
     );
     expect(products[0]?.price).toBe(4.95);
     expect(products[0]?.rawPayload.extractionProvider).toBe('exa');
+  });
+
+  describe('Brazil retailer extraction recovery', () => {
+    const fixtures = [
+      {
+        slug: 'pao_de_acucar_br',
+        id: 'rice_1kg',
+        url: 'https://www.paodeacucar.com/produto/102639/arroz-branco-tipo-1-qualita-pacote-1kg',
+        category: 'rice',
+        canonicalName: 'Arroz Branco 1kg',
+        productName: 'Arroz Branco Tipo 1 Qualitá Pacote 1kg',
+        sizeText: '1kg',
+        baseUnit: 'g',
+        minBaseQty: 900,
+        maxBaseQty: 1100,
+        extractedPrice: 5.49,
+        pageContent: 'Arroz Branco Tipo 1 Qualitá Pacote 1kg\nPreço por 1kg - R$ 5,49',
+        expectedPrice: 5.49,
+      },
+      {
+        slug: 'carrefour_br',
+        id: 'rice_1kg',
+        url: 'https://mercado.carrefour.com.br/arroz-branco-longo-fino-tipo-1-tio-joao-1-kg-387606/p',
+        category: 'rice',
+        canonicalName: 'Arroz Branco 1kg',
+        productName: 'Arroz Branco Longo-fino Tipo 1 Tio João 1 Kg',
+        sizeText: '1kg',
+        baseUnit: 'g',
+        minBaseQty: 900,
+        maxBaseQty: 1100,
+        extractedPrice: 529,
+        pageContent: 'Arroz Branco Longo-fino Tipo 1 Tio João 1 Kg\nR$ 6,29\nR$ 5,29\nR$ 5,29',
+        expectedPrice: 5.29,
+      },
+    ] as const;
+
+    it.each(fixtures)('accepts the current $slug fallback shape through its configured safety gates', async (fixture) => {
+      const config = loadRetailerConfig(fixture.slug);
+      const exa = {
+        search: vi.fn().mockResolvedValue([{ url: fixture.url }]),
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: fixture.productName,
+            price: fixture.extractedPrice,
+            currency: 'BRL',
+            inStock: true,
+            sizeText: fixture.sizeText,
+          },
+          pageContent: fixture.pageContent,
+        }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: fixture.canonicalName,
+            price: null,
+            currency: 'BRL',
+            inStock: false,
+            sizeText: fixture.sizeText,
+          },
+          pageContent: `${fixture.canonicalName}\nProduto indisponível`,
+        }),
+      } as unknown as FirecrawlProvider;
+      const context = makeContext(config);
+      const adapter = new SearchAdapter(exa, firecrawl);
+
+      const result = await adapter.fetchTarget(context, makeBrazilTarget(config, fixture));
+      const [product] = await adapter.parseListing(context, result);
+
+      expect(exa.extract).toHaveBeenCalledOnce();
+      expect(product?.price).toBe(fixture.expectedPrice);
+      expect(product?.rawPayload).toMatchObject({
+        extractionProvider: 'exa',
+        priceEvidence: 'verified',
+      });
+    });
+
+    it.each([
+      {
+        name: 'missing price',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: null, currency: 'BRL', sizeText: '1kg' },
+        pageContent: 'Arroz Branco Tipo 1 1kg\nProduto indisponível',
+        reason: 'missing-price',
+      },
+      {
+        name: 'unrelated product',
+        data: { productName: 'Sabão em Pó 1kg', price: 5.29, currency: 'BRL', sizeText: '1kg' },
+        pageContent: 'Sabão em Pó 1kg\nR$ 5,29',
+        reason: 'title-mismatch',
+      },
+      {
+        name: 'wrong currency',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: 529, currency: 'USD', sizeText: '1kg' },
+        pageContent: 'Arroz Branco Tipo 1 1kg\nR$ 5,29',
+        reason: 'currency-mismatch',
+      },
+      {
+        name: 'unmatched price evidence',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: 529, currency: 'BRL', sizeText: '1kg' },
+        pageContent: 'Arroz Branco Tipo 1 1kg\nR$ 6,29',
+        reason: 'price-evidence-missing',
+      },
+      {
+        name: 'integer with no page content',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: 529, currency: 'BRL', sizeText: '1kg' },
+        pageContent: undefined,
+        reason: 'price-evidence-missing',
+      },
+    ])('rejects the Carrefour Brazil $name fallback shape', async ({ data, pageContent, reason }) => {
+      const config = loadRetailerConfig('carrefour_br');
+      const url = 'https://mercado.carrefour.com.br/arroz-branco-tipo-1-1-kg-123/p';
+      const exa = {
+        search: vi.fn().mockResolvedValue([{ url }]),
+        extract: vi.fn().mockResolvedValue({ data, pageContent }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto indisponível' }),
+      } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const target = makeBrazilTarget(config, {
+        id: 'rice_1kg',
+        category: 'rice',
+        canonicalName: 'Arroz Branco 1kg',
+        baseUnit: 'g',
+        minBaseQty: 900,
+        maxBaseQty: 1100,
+      });
+
+      const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+      expect(exa.extract).toHaveBeenCalledOnce();
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures.map((failure) => failure.reason)).toContain(reason);
+    });
+
+    it('rejects a package quantity before BRL minor-unit normalization', async () => {
+      const config = loadRetailerConfig('carrefour_br');
+      const url = 'https://mercado.carrefour.com.br/pao-de-forma-500-g-123/p';
+      const exa = {
+        search: vi.fn().mockResolvedValue([{ url }]),
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: 'Pão de Forma 500g',
+            price: 500,
+            currency: 'BRL',
+            sizeText: '500g',
+          },
+          pageContent: 'Pão de Forma 500g\nProdutos recomendados\nR$ 5,00',
+        }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto indisponível' }),
+      } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const target = makeBrazilTarget(config, {
+        id: 'bread_500g',
+        category: 'bread',
+        canonicalName: 'Pão de Forma 500g',
+        baseUnit: 'g',
+        minBaseQty: 450,
+        maxBaseQty: 550,
+      });
+
+      const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures.map((failure) => failure.reason)).toContain('quantity-as-price');
+    });
+
+    it('keeps the out-of-range Carrefour chicken visible to the direct-pin rejection gate', async () => {
+      const config = loadRetailerConfig('carrefour_br');
+      const url = 'https://mercado.carrefour.com.br/produto/frango-inteiro-resfriado-com-osso-carrefour-kg-15787';
+      const exa = {
+        search: vi.fn(),
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: 'Frango Inteiro Resfriado com Osso Carrefour 1,5Kg - Carrefour',
+            price: 1790,
+            currency: 'BRL',
+            inStock: false,
+            sizeText: '1,5Kg',
+          },
+          pageContent: 'Frango Inteiro Resfriado com Osso Carrefour 1,5Kg\nR$ 17,90',
+        }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto indisponível' }),
+      } as unknown as FirecrawlProvider;
+      const target = makeBrazilTarget(config, {
+        id: 'chicken_whole_1kg',
+        category: 'chicken',
+        canonicalName: 'Frango Inteiro Resfriado 1kg',
+        baseUnit: 'g',
+        minBaseQty: 800,
+        maxBaseQty: 1200,
+      });
+      target.url = url;
+      target.metadata = { ...target.metadata, direct: true };
+      const context = makeContext(config);
+      const adapter = new SearchAdapter(exa, firecrawl);
+
+      const result = await adapter.fetchTarget(context, target);
+      const [product] = await adapter.parseListing(context, result);
+
+      expect(product?.price).toBe(17.9);
+      expect(product?.rawPayload).toMatchObject({
+        direct: true,
+        validator: { ok: false },
+        extractionProvider: 'exa',
+        priceEvidence: 'verified',
+      });
+      expect(exa.search).not.toHaveBeenCalled();
+    });
   });
 
   it('does not retry a failed pinned URL when Exa returns it again', async () => {
@@ -404,17 +738,20 @@ describe('SearchAdapter recovery path', () => {
     // jiomart_in moved OFF `/p/groceries/`, which now answers 200 with a
     // "We couldn't find the page" SPA shell on every sampled URL; coldstorage_sg
     // serves a second legacy `/product/<slug>` route alongside the catalogue one.
+    // jiomart_in has no Exa extraction fallback: Exa's render of its pages
+    // lacks the selling price and every Exa observation was a modal
+    // placeholder (₹3,700 / ₹77,000).
     const recoveryPolicies = [
-      ['jiomart_in', '/product/', 'www.jiomart.com'],
-      ['noon_grocery_ae', ['/p/', '/now-product/'], 'minutes.noon.com'],
-      ['noon_sa', ['/p/', '/now-product/'], 'minutes.noon.com'],
-      ['carrefour_sa', '/p/', 'www.carrefourksa.com'],
-      ['coldstorage_sg', ['/p/', '/product/'], 'www.coldstorage.com.sg'],
+      ['jiomart_in', '/product/', 'www.jiomart.com', 'none'],
+      ['noon_grocery_ae', ['/p/', '/now-product/'], 'minutes.noon.com', 'exa'],
+      ['noon_sa', ['/p/', '/now-product/'], 'minutes.noon.com', 'exa'],
+      ['carrefour_sa', '/p/', 'www.carrefourksa.com', 'exa'],
+      ['coldstorage_sg', ['/p/', '/product/'], 'www.coldstorage.com.sg', 'exa'],
     ] as const;
 
-    for (const [slug, path, alias] of recoveryPolicies) {
+    for (const [slug, path, alias, fallback] of recoveryPolicies) {
       const searchConfig = loadRetailerConfig(slug).searchConfig;
-      expect(searchConfig?.extractionFallback, slug).toBe('exa');
+      expect(searchConfig?.extractionFallback, slug).toBe(fallback);
       expect(searchConfig?.requireStrictValidator, slug).toBe(true);
       expect(searchConfig?.urlPathContains, slug).toEqual(path);
       expect(searchConfig?.allowedHosts, slug).toContain(alias);

@@ -117,6 +117,20 @@ describe('prepush-identity-gate.sh', () => {
     assert.equal(status, 0);
   });
 
+  it('fails closed on an unfetched remote tip instead of passing vacuously', () => {
+    // Force-push contract: the advertised remote SHA may be absent from the
+    // local object database. git log <absent>..<local> errors — and a
+    // swallowed error must not read as "no new commits" (the reviewer-
+    // reproduced vacuous pass). The gate must fall back to scanning what
+    // origin does not have, which here finds the fixture-authored commit.
+    const repo = makeRepo({ name: 'Fixture', email: 'fixture@example.invalid' });
+    const sha = git(repo, ['rev-parse', 'HEAD']);
+    const absent = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+    const { status, out } = runGate(repo, [`refs/heads/main ${sha} refs/heads/main ${absent}`]);
+    assert.equal(status, 1, `unresolvable range must not pass the gate; output:\n${out}`);
+    assert.match(out, /fixture@example\.invalid/);
+  });
+
   it('blocks when the shared config is currently poisoned, even with clean commits', () => {
     const repo = makeRepo({ name: 'Real Person', email: 'real@worldmonitor.dev' });
     const sha = git(repo, ['rev-parse', 'HEAD']);

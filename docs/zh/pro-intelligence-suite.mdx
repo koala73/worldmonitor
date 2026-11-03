@@ -1,6 +1,6 @@
 ---
 title: "Pro 情报套件"
-description: "仅限 Pro 的衍生数据集——实物金属溢价与背离、矿产集中度、国防工业基础、人口结构、粮食库存、韧性指标、供应脆弱性与五因子记分卡——附每个数据集的 REST 路由、种子节奏，以及存在时的 MCP 表面。"
+description: "仅限 Pro 的衍生数据集：实物金属溢价与背离、矿产集中度、国防工业基础、人口结构、粮食库存、韧性指标与供应脆弱性，附每个数据集的 REST 路由、种子节奏，以及存在时的 MCP 表面。所有数据集均为只读，并带有明确的来源出处与缺失数据信号。"
 ---
 
 一组衍生数据集位于 Pro 层之后。每一个都回答原始数据源无法回答的问题：不是"黄金价格是多少"，而是"当前黄金的实物溢价是否异常"；不是"钴在哪里"，而是"谁在精炼它，集中度有多高"。
@@ -20,7 +20,7 @@ description: "仅限 Pro 的衍生数据集——实物金属溢价与背离、�
 REST 与 SDK 调用方使用 HTTP 信封。未认证的调用返回 `401` 及 `{"error":"Pro authentication required"}`。已登录的免费账户返回 `403`，其顶层载荷类似 `{"error":"Upgrade required","requiredTier":1,"currentTier":0,"planKey":"pro"}`。MCP 调用方改用 JSON-RPC 信封：同一权限拒绝出现在 `error.data.reason = "upgrade-required"` 下，并且可以包含 `upgradeUrl`。两类拒绝都是最终答复而非临时故障——不要重试。携带 `X-Billing-Verification` 的 `503` **可以**重试；请遵守 `Retry-After`。参见[使用错误](/zh/usage-errors)。
 
 <Note>
-一个刻意保留的狭窄例外：`get_market_data` MCP 工具是基于缓存的数据包，已登录的免费账户可在其小额每日配额内使用，其中两个数据集（`physical-premium`、`physical-divergence`）与下文的金属路由重叠。专用 REST 路由以及本页表格中的每个工具仍然仅限 Pro。
+`get_market_data` MCP 工具是基于缓存的数据包，已登录的免费账户可在其小额每日配额内使用。其中两个数据集（`physical-premium`、`physical-divergence`）就是下文的金属数据，因此免费账户只会在 `locked` 中看到它们，并附带 `upgradeUrl`；只有订阅用户能拿到数据。专用 REST 路由以及本页表格中的每个工具仍然仅限 Pro。
 </Note>
 
 ## 实物与纸面贵金属
@@ -88,7 +88,7 @@ SIPRI 的许可允许衍生合计值，不允许再分发完整数据库，因�
 
 `GET /api/resilience/v1/get-food-stocks?countryCode=WORLD` · MCP `get_food_stocks`
 
-USDA PSD 谷物期末库存、产量、消费量以及库存消费比，按国家与商品划分。`countryCode=WORLD` 返回全球平衡表。`commodity` 接受 `wheat`、`corn`、`rice`、`soybeans`、`barley`、`palmOil`。FAOSTAT 的仅产量行使用库存占位字段，因此在把库存数字当作测量值之前，请先读 `hasEndingStocks` 与 `hasStocksToUse`。
+USDA PSD 谷物期末库存、产量、消费量以及库存消费比，按国家与商品划分。`countryCode=WORLD` 返回全球平衡表。`commodity` 接受 `wheat`、`corn`、`rice`、`soybeans`、`barley`、`palmOil`。当 PSD 没有完整平衡表时，FAOSTAT 粮食平衡表提供同一日历年的产量与国内供应量。FAOSTAT 行没有库存测量值，因此在使用库存数字之前，请先读 `hasEndingStocks` 与 `hasStocksToUse`。
 
 销售年度不是日历年度，且因国家与商品而异。两个国家标注为"2025/26"的数据可能覆盖不同月份——切勿当作同一时期比较。每一行都注明自己的销售年度正是出于此因。
 

@@ -37,12 +37,14 @@ jobs:
       run:
         working-directory: workers/api-cors-preflight
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: workers/api-cors-preflight/package-lock.json
       - name: Install
-        run: npm install --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run unit tests
         run: npm test
 
@@ -54,12 +56,14 @@ jobs:
       run:
         working-directory: workers/api-cors-preflight
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: workers/api-cors-preflight/package-lock.json
       - name: Install
-        run: npm install --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       # The KV shadow (BOOTSTRAP_KV_SHADOW=1) emits to Axiom; the Worker reads AXIOM_API_TOKEN
       # as a secret. Set it before deploy. Absent secret => the shadow no-ops silently
       # (warnDeliveryFailure 'missing_token'), never an error — so a missing secret can't
@@ -92,8 +96,8 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
       - name: Wait for Worker propagation

@@ -75,17 +75,19 @@ export class ClimateAnomalyPanel extends Panel {
 
     this.setSafeContent(safeHtml`
       <div class="climate-panel-content">
-        <table class="climate-table">
-          <thead>
-            <tr>
-              <th scope="col">${t('components.climate.zone')}</th>
-              <th scope="col">${t('components.climate.temp')}</th>
-              <th scope="col">${t('components.climate.precip')}</th>
-              <th scope="col">${t('components.climate.severityLabel')}</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="climate-table">
+            <thead>
+              <tr>
+                <th scope="col">${t('components.climate.zone')}</th>
+                <th scope="col">${t('components.climate.temp')}</th>
+                <th scope="col">${t('components.climate.precip')}</th>
+                <th scope="col">${t('components.climate.severityLabel')}</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
       </div>
     `);
   }

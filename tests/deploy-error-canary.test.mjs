@@ -19,6 +19,7 @@ import {
   DEFAULT_CANARY_OPTIONS,
   evaluateDeployCanary,
   buildCanaryApl,
+  runDeployErrorCanary,
 } from '../scripts/deploy-error-canary.mjs';
 
 const ROUTE = '/api/military/v1/get-aircraft-details-batch';
@@ -121,5 +122,49 @@ describe('buildCanaryApl', () => {
     assert.match(apl, /wm_api_usage/);
     assert.match(apl, /status >= 400/);
     assert.match(apl, /by route/);
+  });
+});
+
+describe('Axiom response boundary', () => {
+  const row = (total, errors) => ({
+    group: { route: ROUTE },
+    aggregations: [{ op: 'total', value: total }, { op: 'errors', value: errors }],
+  });
+  const log = { log() {}, error() {} };
+
+  it('queries both windows and reports an alert from their parsed aggregates', async () => {
+    const calls = [];
+    const result = await runDeployErrorCanary({
+      token: 'test-token', log,
+      fetchImpl: async (url, init) => {
+        calls.push({ url, init });
+        return Response.json({ buckets: { totals: [calls.length === 1 ? row(40_000, 40) : row(3_000, 2_900)] } });
+      },
+    });
+    assert.equal(calls.length, 2);
+    assert.match(calls[0].init.headers['User-Agent'], /WorldMonitor/);
+    assert.equal(result.ok, false);
+    assert.equal(result.report.alerts[0].route, ROUTE);
+    assert.equal(result.report.alerts[0].currentErrors, 2_900);
+  });
+
+  for (const invalid of [
+    { group: { route: ROUTE }, aggregations: [] },
+    { ...row(100, 90), group: {} },
+    row(null, 90), row('100', 90), row(100, -1), row(100, 101), row(100, 0.5),
+  ]) {
+    it(`rejects malformed aggregation rows instead of reporting health: ${JSON.stringify(invalid)}`, async () => {
+      await assert.rejects(runDeployErrorCanary({
+        token: 'test-token', log,
+        fetchImpl: async () => Response.json({ buckets: { totals: [invalid] } }),
+      }), /invalid route aggregate/);
+    });
+  }
+
+  it('rejects partial query results instead of treating incomplete telemetry as health', async () => {
+    await assert.rejects(runDeployErrorCanary({
+      token: 'test-token', log,
+      fetchImpl: async () => Response.json({ status: { isPartial: true }, buckets: { totals: [row(100, 0)] } }),
+    }), /partial query result/);
   });
 });

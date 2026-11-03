@@ -9,7 +9,8 @@
 ## Decision
 
 Use `google/gemma-4-26b-a4b-it:free` as the default zero-price fallback.
-Use `openai/gpt-oss-20b:free` as the backup.
+Use `openai/gpt-oss-20b:free` as the backup. (Superseded: see the 2026-09-24
+addendum below.)
 
 Do not use `nvidia/nemotron-3-super-120b-a12b:free` in production, despite its
 stronger technical profile. OpenRouter's endpoint notice says NVIDIA logs free
@@ -23,6 +24,55 @@ capacity replacement. OpenRouter says free models are usually unsuitable for
 production. The shared free-model allowance is only 50 requests per day unless
 the account has purchased at least $10 of credits, after which it is 1,000
 requests per day.
+
+## Addendum 2026-09-24: backup is now Nemotron 3 Super (#8570)
+
+This supersedes the backup choice above and the "Do not use" line for
+`nvidia/nemotron-3-super-120b-a12b:free`.
+
+OpenRouter delisted both earlier backups from the free tier:
+`openai/gpt-oss-20b:free` (found 2026-08-28) and then `minimax/minimax-m3:free`
+(found 2026-09-24). Each returned HTTP 404 on every call. On 2026-09-24 no other
+free model was usable as a production backup:
+
+- `qwen/qwen3.8-27b:free`, `z-ai/glm-5.2:free`, and
+  `google/gemma-4-31b-it:free` returned 429 on every probe.
+- Both `nex-agi/nex-n2.5-*:free` models expire on 2026-09-25.
+- `thinkingmachines/inkling*:free` returned 403 (agent harnesses only).
+- `inclusionai/ling-3.0-*:free` is served only by providers that
+  `OPENROUTER_PROVIDER_ROUTING` ignores.
+- `dots-studio/dots-3-note-preview:free` worked but expires on 2026-12-31.
+
+Nemotron 3 Super answered 7 of 8 real completions in 0.6 to 2.4 seconds with
+clean prose and JSON. We accept the NVIDIA logging notice and trial terms for a
+best-effort outage leg, with one limit: the reasoning profile in
+`server/_shared/llm.ts`, which carries text that users type (chat analyst,
+situation deductions), skips this model. The daily
+`openrouter-free-models-live.yml` probe fails when either free model is delisted,
+is within 14 days of its expiration date, or loses its last usable endpoint.
+
+## Addendum 2026-11-03: backup is now Nemotron 3.5 Super VL
+
+`nvidia/nemotron-3-super-120b-a12b:free` left the OpenRouter listing around
+2026-10-21, when the daily probe started failing. It was replaced by its
+successor, `nvidia/nemotron-3.5-super-vl:free`. That model is the same
+120B-parameter mixture of experts with 12B active parameters, and NVIDIA serves
+it through the same free endpoint under the same terms, so the decision in the
+2026-09-24 addendum still applies, including the exclusion from the reasoning
+profile. It answered 8 of 8 completions in production's request shape
+(reasoning off, `OPENROUTER_PROVIDER_ROUTING`) in 0.5 to 0.8 seconds, with clean
+prose, bare JSON, and no reasoning tokens.
+
+Rejected alternatives on 2026-11-03:
+
+- `nvidia/nemotron-3-ultra-550b-a55b:free` answered 8 of 8 but took 0.8 to 3.6
+  seconds.
+- `nvidia/nemotron-3.5-lightning:free` returned an empty reply after 45 seconds
+  on one of 8 calls.
+- `xingchen-agi/xing4.0-29b-a4b:free` returned 429 on 6 of 8 calls.
+- `dots-studio/dots-3-note-preview:free` expires on 2026-12-31, and
+  `thinkingmachines/inkling*:free` expire on 2026-11-04.
+- `recursive/flint-v1.0:free` had no healthy endpoint.
 
 ## Why this fits WorldMonitor
 

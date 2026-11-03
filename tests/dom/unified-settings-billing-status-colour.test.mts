@@ -56,6 +56,7 @@ vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => ({ planKey: 'pro_monthly', validUntil: Date.now() + 1e9 }),
   getEntitlementVerificationStatus: () => 'ready',
   hasFeature: () => true,
+  hasEmbedAccessForAccount: () => true,
   isEntitled: () => true,
   onEntitlementChange: () => () => {},
   onEntitlementVerificationChange: () => () => {},
@@ -193,6 +194,18 @@ afterEach(() => {
 });
 
 describe('UnifiedSettings billing status colour (#7315)', () => {
+  it('shows neutral support guidance when Manage Billing has no safe portal', async () => {
+    mockSubscription = subscription();
+    settings.open('billing');
+    const button = document.querySelector<HTMLButtonElement>('.manage-billing-btn');
+    expect(button).not.toBeNull();
+    button!.click();
+    await vi.waitFor(() => {
+      expect(document.querySelector('[role="status"]')?.textContent)
+        .toBe('Billing portal unavailable. Email support@worldmonitor.app for help.');
+    });
+  });
+
   it('paints a paid-through cancellation non-red and keeps the access-until copy', () => {
     mockSubscription = subscription({
       status: 'cancelled',
@@ -206,6 +219,22 @@ describe('UnifiedSettings billing status colour (#7315)', () => {
     // Not the ended tone — the dot, the plan name, the border and the
     // background tint all derive from the same data-billing-tone.
     expect(html).not.toContain('data-billing-tone="ended"');
+  });
+
+  it('shows a portal-scheduled cancellation as ending with its access-until date, not "Renews"', () => {
+    const periodEnd = Date.now() + 12 * DAY;
+    mockSubscription = subscription({
+      status: 'active',
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: periodEnd,
+    });
+    const html = (settings as unknown as SettingsInternals).renderUpgradeSection();
+
+    expect(html).toContain(
+      `Cancellation scheduled -- access until ${new Date(periodEnd).toLocaleDateString()}`,
+    );
+    expect(html).not.toContain('Renews:');
+    expect(planTone(html)).toBe('ending');
   });
 
   it('paints a cancellation past its paid period red', () => {

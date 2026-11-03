@@ -38,6 +38,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const apiDir = join(__dirname, '..', 'api');
+// The desktop sidecar authenticates every local request against LOCAL_API_TOKEN.
+const sidecarDir = join(__dirname, '..', 'src-tauri', 'sidecar');
 
 // Variable-name fragments we treat as secret-bearing. Matched
 // case-insensitively as a SUBSTRING of an identifier, so `secret` alone
@@ -293,6 +295,8 @@ describe('no non-timing-safe secret comparison in api/ (#3803)', () => {
 
   it('no `<secretish> (===|!==) (process.env.* | expected* | <secretish>)` comparison exists in any api/ source', async () => {
     const files = await walk(apiDir);
+    assert.ok(files.includes(join(apiDir, 'seed-contract-probe.ts')), 'the real scan must include the original vulnerable endpoint');
+    assert.ok(files.length > 50, `the real scan must inspect api/ source files, got ${files.length}`);
     const violations: string[] = [];
 
     // See buildSecretComparePattern for the shapes this matches. The
@@ -314,6 +318,19 @@ describe('no non-timing-safe secret comparison in api/ (#3803)', () => {
       `Non-timing-safe secret comparison detected in: ${violations.join(', ')}. ` +
         `Use timingSafeEqual from server/_shared/internal-auth.ts instead. See issue #3803.`,
     );
+  });
+
+  it('no such comparison exists in the desktop sidecar sources either', async () => {
+    const files = await walk(sidecarDir);
+    assert.ok(files.some((file) => file.endsWith('local-api-server.mjs')), 'sidecar walk must include local-api-server.mjs');
+    const pattern = buildSecretComparePattern();
+    const violations: string[] = [];
+    for (const file of files) {
+      if (pattern.test(normaliseForScan(await readFile(file, 'utf8')))) {
+        violations.push(file.slice(file.indexOf('/src-tauri/') + 1));
+      }
+    }
+    assert.deepEqual(violations, [], `Non-timing-safe secret comparison detected in: ${violations.join(', ')}`);
   });
 
   it('the scan can actually FAIL — a violation planted in every real api/ file is caught', async () => {

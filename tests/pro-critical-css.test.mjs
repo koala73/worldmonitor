@@ -3,13 +3,19 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
+import { nonDefaultLandingLocales } from '../shared/indexable-landing-locales.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const PRO_PAGES = [
   { relPath: 'public/pro/index.html', label: '/pro' },
   { relPath: 'public/pro/welcome.html', label: '/' },
+  ...nonDefaultLandingLocales().map((locale) => ({
+    relPath: `public/${locale.pathSegment}/index.html`,
+    label: locale.canonicalPath,
+  })),
 ];
 
 function src(relPath) {
@@ -82,6 +88,38 @@ function inlineStyleTags(html) {
   return [...html.matchAll(/<style\b[^>]*>[\s\S]*?<\/style>/gi)].map((match) => match[0]);
 }
 
+/**
+ * Body of the first `@layer <name> {…}` block, brace-balanced. A non-greedy
+ * `[\s\S]*?}` stops at the first nested rule's closing brace, which silently
+ * returns an empty-looking block and makes the assertion below unfalsifiable.
+ */
+function layerBlock(css, name) {
+  const open = css.indexOf(`@layer ${name}{`);
+  if (open === -1) return null;
+  const start = css.indexOf('{', open);
+  let depth = 0;
+  for (let i = start; i < css.length; i++) {
+    if (css[i] === '{') depth += 1;
+    if (css[i] === '}' && --depth === 0) {
+      return { body: css.slice(start + 1, i), whole: css.slice(open, i + 1) };
+    }
+  }
+  return null;
+}
+
+function hasBareAnchorColorRule(css) {
+  return /(?:^|[;{}])\s*a\s*\{[^}]*\bcolor\s*:/.test(css);
+}
+
+/** The inline critical CSS, stripped of its <style> wrapper. */
+function criticalStyleText(html) {
+  const firstPreload = deferredStylePreloadTags(html)[0];
+  return inlineStyleTags(html)
+    .filter((tag) => html.indexOf(tag) < html.indexOf(firstPreload))
+    .map((tag) => tag.replace(/^<style\b[^>]*>/i, '').replace(/<\/style>$/i, ''))
+    .join('\n');
+}
+
 describe('pro critical CSS parser', () => {
   it('detects stylesheet links regardless of attribute order', () => {
     assert.deepEqual(
@@ -105,14 +143,26 @@ describe('pro critical CSS parser', () => {
       ['/assets/main.css', '/assets/screen.css'],
     );
   });
+
+  it('detects spaced bare-anchor colour rules left outside the base layer', () => {
+    for (const css of [
+      '@layer base{a{color:inherit}}a { color: inherit }',
+      '@layer base{a{color:inherit}}@media(min-width:640px){a { color: inherit }}',
+    ]) {
+      const base = layerBlock(css, 'base');
+      assert.ok(base);
+      assert.equal(hasBareAnchorColorRule(css.replace(base.whole, '')), true);
+    }
+  });
 });
 
 describe('pro critical CSS source contract', () => {
   it('applies the shared critical CSS transform to every pro-test page', () => {
     const prerender = src('pro-test/prerender.mjs');
     assert.doesNotMatch(prerender, /seo-prerender/);
-    assert.match(prerender, /const PAGES = \[/);
-    assert.match(prerender, /html = inlineCriticalCss\(html, file\);/);
+    assert.match(prerender, /inlineCriticalCss\(indexHtml, 'index\.html'\)/);
+    assert.match(prerender, /inlineCriticalCss\(welcomeBase, 'welcome\.html', \[heroImagePreloadTag\(englishWelcome\.html\)\]\)/);
+    assert.match(prerender, /localizeWelcomeDocument\(injected, page\.locale, page\.copy\)/);
     assert.doesNotMatch(prerender, /file === 'welcome\.html'/);
   });
 });
@@ -209,15 +259,66 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
     });
   }
 
-  it('/pro seeds a crawlable H1 in #root without duplicating it in the no-JavaScript fallback', () => {
+  it('/pro seeds crawlable pricing copy in #root without a hidden SEO sibling', () => {
     const html = builtSrc('public/pro/index.html');
-    const rootMatch = html.match(/<div id="root">(?<content>[\s\S]*?)<\/div>\s*<noscript>/);
-    assert.ok(rootMatch?.groups, 'the /pro static H1 should be seeded inside #root');
-    assert.equal([...rootMatch.groups.content.matchAll(/<h1\b/g)].length, 1);
+    const root = crawlerDocumentSnapshot(html).visibleRootMarkup;
+    assert.equal([...root.matchAll(/<h1\b/g)].length, 1);
     assert.equal([...stripNoscript(html).matchAll(/<h1\b/g)].length, 1);
+    assert.match(root, /How much does World Monitor Pro cost\?/);
+    assert.match(root, /\$39\.99/);
     assert.match(html, /World Monitor Pro/);
     assert.doesNotMatch(html, /id="seo-prerender"/);
     assert.doesNotMatch(html, /html\.js #seo-prerender/);
+  });
+
+  // The React hero used to be the first thing on /pro to paint at its final
+  // size, so its mount emitted the page's LCP entry 1.8-2.4s after FCP. The
+  // prerender now ships that hero first, inside the same page structure the
+  // crawlable copy lives in (e2e/pro-hero-lcp.spec.ts proves the LCP effect).
+  it('/pro prerenders the hero first, with one <h1> and one <main> around the crawlable copy', () => {
+    const html = stripNoscript(builtSrc('public/pro/index.html'));
+    const root = crawlerDocumentSnapshot(html).visibleRootMarkup;
+
+    const headings = [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)];
+    assert.equal(headings.length, 1, 'exactly one <h1>');
+    assert.match(
+      headings[0][1],
+      /^<span class="sr-only">World Monitor Pro — The Geopolitical AI Layer <\/span>.*Noise.*Signal/,
+      'the hero <h1> must lead with the curated title, visually hidden, before the visible hero words',
+    );
+    assert.equal([...root.matchAll(/<main\b/g)].length, 1, 'exactly one <main>');
+    assert.equal([...html.matchAll(/<main\b/g)].length, 1, 'exactly one <main> in the page');
+
+    const mainOpen = root.indexOf('<main>');
+    const hero = root.indexOf('<section class="pt-28');
+    const overview = root.indexOf('<section id="pro-overview"');
+    const mainClose = root.indexOf('</main>');
+    assert.ok(
+      mainOpen !== -1 && mainOpen < hero && hero < overview && overview < mainClose,
+      'the hero section must precede the curated overview, both inside <main>',
+    );
+    assert.ok(root.indexOf('<nav data-wm-nav="primary"') < mainOpen, 'the nav precedes <main>');
+    assert.doesNotMatch(root, /\/pro\/src\/|\/@fs\//, 'no dev-server asset URL may ship');
+  });
+
+  it('/ and /pro ship the same shared critical CSS, then only their own hero mirrors', () => {
+    const proCritical = criticalStyleText(builtSrc('public/pro/index.html'));
+    const welcomeCritical = criticalStyleText(builtSrc('public/pro/welcome.html'));
+    // The welcome hero block opens with its section rule (prerender.mjs
+    // WELCOME_HERO_CRITICAL_CSS); everything before it is the shared block.
+    const welcomeHeroAt = welcomeCritical.indexOf('main>section[data-wm-hero]{');
+    assert.ok(welcomeHeroAt > 0, '/ must ship its own hero mirrors after the shared block');
+    const shared = welcomeCritical.slice(0, welcomeHeroAt);
+    assert.ok(proCritical.startsWith(shared), '/pro must ship the shared block unchanged, then its own');
+    const proOnly = proCritical.slice(shared.length);
+    const welcomeOnly = welcomeCritical.slice(shared.length);
+    assert.match(proOnly, /\.sr-only\{/, '/pro must mirror the hero h1 sr-only lead');
+    assert.match(proOnly, /main>section:first-child>div:first-child\{/, '/pro keeps its hero wash geometry');
+    assert.ok(!welcomeCritical.includes(proOnly), 'the /pro block must not reach /');
+    assert.ok(!proCritical.includes(welcomeOnly), 'the / hero block must not reach /pro');
+    // A blanket `main p` rule is unlayered, so it would override every
+    // paragraph's own margin and max-width on / for the life of the page.
+    assert.doesNotMatch(welcomeCritical, /(^|[}])main p\{/, '/ must not ship a blanket main p rule');
   });
 
   it('/ welcome ships its real, user-visible SSR app without a hidden sibling', () => {
@@ -227,5 +328,51 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
     assert.doesNotMatch(html, /html\.js #seo-prerender/);
     assert.match(html, /<h1\b/);
     assert.match(html, /fetchPriority="high"/);
+  });
+
+  // The reset's `a{color:inherit}` used to sit unlayered, and unlayered CSS
+  // outranks every @layer. Tailwind v4 emits utilities into @layer utilities,
+  // so `text-wm-bg` lost to the reset on every anchor and the nav's "Upgrade
+  // to Pro" CTA painted #f3f4f6 on #4ade80 — 1.58:1 where 4.5:1 is required.
+  describe('critical-CSS reset loses to Tailwind utilities (cascade layers)', () => {
+    for (const { relPath, label } of PRO_PAGES) {
+      it(`${label} declares the Tailwind layer order before any rule`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        const order = critical.match(/@layer\s+([a-z,\s]+);/);
+        assert.ok(order, 'critical CSS must declare a cascade-layer order');
+        assert.deepEqual(
+          order[1].split(',').map((name) => name.trim()),
+          ['properties', 'theme', 'base', 'components', 'utilities'],
+          'layer order must match the order Tailwind emits in the external sheet',
+        );
+        assert.ok(
+          order.index < critical.indexOf('{'),
+          'the layer statement must precede every rule so later @layer blocks slot into it',
+        );
+      });
+
+      it(`${label} keeps the anchor reset inside @layer base`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        const base = layerBlock(critical, 'base');
+        assert.ok(base, 'critical CSS must ship an @layer base block');
+        assert.match(base.body, /a\{color:inherit/, 'the anchor reset belongs in @layer base');
+        // Outside the base block there must be no unlayered bare-`a` colour
+        // rule left to outrank the utilities again.
+        assert.equal(
+          hasBareAnchorColorRule(critical.replace(base.whole, '')),
+          false,
+          'no unlayered bare-anchor colour rule may survive',
+        );
+      });
+
+      it(`${label} mirrors text-wm-bg for the nav, not just main`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        assert.match(
+          critical,
+          /nav\[data-wm-nav\][^{]*\[class~=text-wm-bg\]\{color:#050505\}/,
+          'the nav CTA needs the dark-on-green colour during the pre-stylesheet window',
+        );
+      });
+    }
   });
 });

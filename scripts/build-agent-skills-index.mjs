@@ -34,7 +34,13 @@ const SKILLS_DIR = resolve(ROOT, 'public/.well-known/agent-skills');
 const PLUGIN_SKILLS_DIR = resolve(ROOT, 'skills');
 const INDEX_PATH = join(SKILLS_DIR, 'index.json');
 const MCP_SKILLS_PATH = resolve(ROOT, 'api/mcp/skill-extension/generated.ts');
+// The apex serves `/.well-known/*` directly — that path is on the Cloudflare
+// apex→www exemption list (ARCHITECTURE.md §2), so skill URLs stay apex.
 const PUBLIC_BASE = 'https://worldmonitor.app';
+// Everything NOT on that exemption list 301s to www. Publishing the apex form
+// hands every agent and crawler a redirect instead of a document (#7660), so
+// non-exempt links in generated output must name www.
+const WWW_BASE = 'https://www.worldmonitor.app';
 
 // Canonical v0.2.0 discovery-schema URL. Graders (orank/ora.ai Identity
 // `agent-skills-index-v2`) string-match this exact value; the earlier
@@ -57,6 +63,8 @@ const INSTRUCTIONS = [
   '- Use `fetch-country-brief` when the user asks for a strategic read on one country’s geopolitical, economic, or security situation (a source-attributed narrative brief).',
   '- Use `fetch-resilience-score` when the user asks how resilient a country is, or wants its composite 0–100 resilience score, 30-day trend, or per-domain/pillar breakdown.',
   '- Use `check-chokepoint-status` when the user asks whether a maritime chokepoint (Suez, Hormuz, Malacca…) is disrupted, congested, or safe right now.',
+  '- Use `research-stocks` when the user asks for current stock research, a technical backtest or saved watchlist research; preserve model and simulation limitations.',
+  '- Use `compare-macro-history` when the user asks for inflation, interest-rate or sovereign-yield trends; preserve dates, source definitions and missing readings.',
   '- Use `get-market-quotes` when the user asks for current equity/index/ETF prices or a quick market snapshot.',
   '- Use `track-conflict-events` when the user asks about recent fighting or attacks — geolocated UCDP events with parties and fatality bands.',
   '- Use `scan-cyber-threats` when the user asks about active malware IOCs, C2 infrastructure, or CISA known-exploited vulnerabilities.',
@@ -67,14 +75,16 @@ const INSTRUCTIONS = [
   '- Use `monitor-internet-outages` when the user asks whether a country’s internet is down, shut down, or throttled.',
   '- Use `track-earthquakes` when the user asks about recent seismic activity, including test-site proximity concern scoring.',
   '- Use `get-prediction-markets` when the user asks what the market odds are on a geopolitical, economic, or election outcome.',
-  '- Use `track-tariff-trends` when the user asks how tariffs between two countries changed or what rate a sector faces (Pro-gated).',
+  '- Use `track-tariff-trends` when the user asks how a country\'s average MFN applied tariff changed over time (Pro-gated). It is not bilateral or product-level.',
+  '- Use `lookup-bilateral-tariff` when the user asks what tariff one HS6 product pays between two specific countries, or whether a trade agreement lowers it (Pro-gated).',
+  '- Use `lookup-us-import-duty` when the user asks what the US charges today on a product from a specific country, including Section 301 China tariffs and other additional duties (Pro-gated).',
   '- Use `track-vessel-traffic` when the user asks what ships are in an area or whether maritime traffic is disrupted (AIS snapshot).',
   '- Use `assess-energy-shock` when the user asks how a chokepoint disruption could affect a country\'s oil, gas, fuel products, or strategic cover.',
   '- Use `monitor-energy-disruptions` when the user asks which pipelines, storage facilities, LNG terminals, or fuel assets are disrupted, sanctioned, offline, or under watch.',
   '- Use `monitor-supply-chain-stress` when the user asks whether container shipping or carrier-market indicators show current supply-chain pressure.',
   '- Use `trace-trade-flows` when the user asks who trades a strategic commodity, whether flows changed sharply, or which reporter/partner pairs look anomalous (Pro-gated).',
   '- Use `track-unrest-events` when the user asks about protests, riots, strikes, demonstrations, or civil unrest in a country or time window.',
-  '- Use `monitor-webcams` when the user asks for live visual context near a location, route, border, port, airport, or city.',
+  '- Use `monitor-webcams` when the user asks for recent visual context near a location, route, border, port, airport, or city.',
   '- Use `track-climate-hazards` when the user asks about floods, cyclones, droughts, heatwaves, wildfires, climate anomalies, or climate disruption headlines.',
   '- Use `monitor-health-alerts` when the user asks about disease outbreaks or PM2.5 air-quality health warnings.',
   '- Use `check-forecast-signals` when the user asks what World Monitor is forecasting, how probabilities shifted, or how calibrated the forecasts are.',
@@ -85,9 +95,9 @@ const INSTRUCTIONS = [
   '',
   'How an agent should call it:',
   '- MCP server (recommended): https://worldmonitor.app/mcp — Streamable HTTP; issue `tools/list` for the live inventory.',
-  '- REST API: base https://api.worldmonitor.app — OpenAPI spec at https://worldmonitor.app/openapi.yaml.',
+  '- REST API: base https://api.worldmonitor.app — OpenAPI spec at https://www.worldmonitor.app/openapi.yaml.',
   '- CLI (shell/scripts): the `worldmonitor` npm package wraps these tools — `npx worldmonitor tools` (public, no key) or `npm i -g worldmonitor`, then pass `--api-key` for data calls. https://www.npmjs.com/package/worldmonitor',
-  '- Auth: OAuth2 (`scope=mcp`) or an API-key header `X-WorldMonitor-Key: wm_<40-hex>`. Issue a key at https://worldmonitor.app/pro.',
+  '- Auth: OAuth2 (`scope=mcp`) or an API-key header `X-WorldMonitor-Key: wm_<40-hex>`. Issue a key at https://www.worldmonitor.app/pro.',
 ].join('\n');
 
 // Closing fence must be anchored to its own line so values that happen to
@@ -116,14 +126,19 @@ export function buildResourceContent(content, mimeType) {
 // public site origin already advertised by plugin.json. That keeps the
 // portable package off Vite env hosts that secret scanners treat as
 // credentials when they appear in newly added files.
+//
+// The apex is rewritten too (#7660): `/api/*` is not on the Cloudflare
+// apex-exemption list, so an apex REST example 301s and the documented
+// `curl -s` (no -L) against it returns an empty body. www is the only host
+// here that serves the path it names.
 export function rewriteWellKnownSkillForPlugin(md) {
   return md.replace(/https:\/\/([A-Za-z0-9.-]+)(\/api\/)/g, (full, host, suffix) => {
     const normalized = host.toLowerCase();
-    if (normalized === 'worldmonitor.app' || normalized === 'www.worldmonitor.app') {
+    if (normalized === 'www.worldmonitor.app') {
       return full;
     }
-    if (normalized.endsWith('.worldmonitor.app')) {
-      return `${PUBLIC_BASE}${suffix}`;
+    if (normalized === 'worldmonitor.app' || normalized.endsWith('.worldmonitor.app')) {
+      return `${WWW_BASE}${suffix}`;
     }
     return full;
   });

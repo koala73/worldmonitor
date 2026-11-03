@@ -1,0 +1,149 @@
+{
+  "capturedAt": "2026-10-26",
+  "source": "https://api.elections.kalshi.com/trade-api/v2/markets/orderbooks?tickers=KXELONMARS-99&tickers=KXNEXTNATOSECGEN-99-KIOH&tickers=KXNEXTNATOSECGEN-99-KKAL&tickers=KXNEXTNATOSECGEN-99-BWAL",
+  "note": "levels trimmed to the first 4 per side",
+  "response": {
+    "orderbooks": [
+      {
+        "ticker": "KXELONMARS-99",
+        "orderbook_fp": {
+          "no_dollars": [
+            [
+              "0.0100",
+              "13501.00"
+            ],
+            [
+              "0.0200",
+              "44.00"
+            ],
+            [
+              "0.0300",
+              "1.00"
+            ],
+            [
+              "0.0400",
+              "555.00"
+            ]
+          ],
+          "yes_dollars": [
+            [
+              "0.0100",
+              "3007.78"
+            ],
+            [
+              "0.0200",
+              "507.17"
+            ],
+            [
+              "0.0300",
+              "18458.00"
+            ],
+            [
+              "0.0400",
+              "58.01"
+            ]
+          ]
+        }
+      },
+      {
+        "ticker": "KXNEXTNATOSECGEN-99-KIOH",
+        "orderbook_fp": {
+          "no_dollars": [
+            [
+              "0.0100",
+              "50.00"
+            ],
+            [
+              "0.0400",
+              "100.00"
+            ],
+            [
+              "0.1600",
+              "459.00"
+            ],
+            [
+              "0.1700",
+              "53.00"
+            ]
+          ],
+          "yes_dollars": [
+            [
+              "0.0100",
+              "250.00"
+            ]
+          ]
+        }
+      },
+      {
+        "ticker": "KXNEXTNATOSECGEN-99-KKAL",
+        "orderbook_fp": {
+          "no_dollars": [
+            [
+              "0.0100",
+              "103.00"
+            ],
+            [
+              "0.0600",
+              "70.00"
+            ],
+            [
+              "0.1300",
+              "100.00"
+            ],
+            [
+              "0.1600",
+              "5.82"
+            ]
+          ],
+          "yes_dollars": [
+            [
+              "0.0100",
+              "50.00"
+            ],
+            [
+              "0.0200",
+              "296.00"
+            ],
+            [
+              "0.0300",
+              "48.00"
+            ],
+            [
+              "0.1200",
+              "205.00"
+            ]
+          ]
+        }
+      },
+      {
+        "ticker": "KXNEXTNATOSECGEN-99-BWAL",
+        "orderbook_fp": {
+          "no_dollars": [
+            [
+              "0.0100",
+              "50.00"
+            ],
+            [
+              "0.1500",
+              "649.00"
+            ],
+            [
+              "0.1600",
+              "100.00"
+            ],
+            [
+              "0.4400",
+              "133.00"
+            ]
+          ],
+          "yes_dollars": [
+            [
+              "0.0100",
+              "57.75"
+            ]
+          ]
+        }
+      }
+    ]
+  }
+}

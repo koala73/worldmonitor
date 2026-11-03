@@ -3,10 +3,12 @@
 # Multi-stage build for the World Monitor web app (frontend only).
 
 # Stage 1: Build the frontend with TypeScript + Vite.
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS builder
+# Only static assets reach nginx. Keep Node native to avoid QEMU crashes during npm ci.
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS builder
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # Copy source and build.
 COPY . .
@@ -47,6 +49,11 @@ RUN npm run build:pro
 # and the prebuild openapi/agent-skills generators.
 RUN npx tsc && npx vite build
 RUN test -s dist/product-facts.json
+# The SPA entry point. vite.config.ts's dashboardHtmlOutputPlugin renames
+# index.html -> dashboard.html, and docker/nginx.conf.template both indexes it
+# and falls back to it from `location /` — so if the rename ever changes, every
+# route in the image serves a 404 while every other assertion here still passes.
+RUN test -s dist/dashboard.html
 # Assert the /pro pages survived the public/ -> dist/ copy. build:pro succeeding
 # proves public/pro/ exists; it does NOT prove Vite copied it, and nginx routes
 # `location ^~ /pro` regardless (#6898). Without this an outDir/publicDir change
@@ -55,7 +62,7 @@ RUN test -s dist/pro/index.html && test -s dist/pro/welcome.html
 
 
 # Stage 2: Serve the built assets from nginx.
-FROM nginx:alpine@sha256:db35bfc6b2951e7f8a72db5db120288c127ffaeeb4a6d4b95a26fead017d5913 AS runtime
+FROM nginx:alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3 AS runtime
 
 WORKDIR /usr/share/nginx/html
 
@@ -66,6 +73,8 @@ COPY --from=builder /app/dist/ ./
 COPY docker/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY docker/nginx-security-headers.conf /etc/nginx/security_headers.conf
 COPY docker/nginx-embed-security-headers.conf /etc/nginx/embed_security_headers.conf
+COPY docker/nginx-oauth-authorize-security-headers.conf /etc/nginx/oauth_authorize_security_headers.conf
+COPY docker/nginx-youtube-embed-security-headers.conf /etc/nginx/youtube_embed_security_headers.conf
 COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 

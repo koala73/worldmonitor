@@ -354,6 +354,31 @@ describe('a poisoned shared hooksPath self-heals at push time (#6104)', () => {
   });
 });
 
+describe('workflow documentation contracts before push', () => {
+  for (const path of ['.github/workflows/new-sdk.yml', '.github/workflows/new-sdk.yaml', 'ARCHITECTURE.md', 'scripts/docs-stats.mjs']) {
+    test(`checks documentation contracts when ${path} changes`, () => {
+      const fixture = makeFixture({ branchFiles: { [path]: 'changed\n' } });
+      const result = fixture.run();
+      assert.equal(result.status, 0, result.stdout);
+      assert.match(result.invocations, /== npm\n>run\n>docs:check\n/);
+    });
+  }
+
+  test('a failed documentation contract blocks the push and does not attest the tree', () => {
+    const fixture = makeFixture({ branchFiles: { '.github/workflows/new-sdk.yml': 'changed\n' } });
+    const result = fixture.run({ WM_PREPUSH_STUB_FAIL: 'npm run docs:check' });
+    assert.equal(result.status, 1, result.stdout);
+    assert.equal(fixture.cached(), null);
+  });
+
+  test('does not add the documentation check to unrelated SDK edits', () => {
+    const fixture = makeFixture({ branchFiles: { 'sdk/rust/src/lib.rs': 'changed\n' } });
+    const result = fixture.run();
+    assert.equal(result.status, 0, result.stdout);
+    assert.doesNotMatch(result.invocations, />docs:check\n/);
+  });
+});
+
 describe('a clean push runs the changed tests and attests the tree', () => {
   test('dispatches the changed test and caches HEAD^{tree}', () => {
     const fixture = makeFixture({ branchFiles: { 'tests/alpha.test.mjs': 'x\n' } });
@@ -684,6 +709,24 @@ describe('pro-test freshness install prefers the shared npm cache (#6766)', () =
     const { status, stdout } = fixture.run();
     assert.equal(status, 1, stdout);
     assert.match(stdout, /product catalog, generated config, or pro locales is stale/);
+  });
+
+  test('git diff 128 is not reported as a stale catalog (#7445)', () => {
+    // `git diff --exit-code` exits 128 on an unknown path — the same status
+    // as "fatal: this operation must be run in a work tree". Drop a listed
+    // freshness path from the index and the worktree so the command cannot
+    // run, then assert the hook does not print the regenerate-config recipe.
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+    });
+    fixture.git(['rm', '--cached', '--quiet', 'src/config/products.generated.ts']);
+    rmSync(join(fixture.root, 'src/config/products.generated.ts'));
+
+    const { status, stdout } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /freshness check could not run/);
+    assert.doesNotMatch(stdout, /product catalog, generated config, or pro locales is stale/);
+    assert.doesNotMatch(stdout, /npx tsx scripts\/generate-product-config/);
   });
 
   test('refuses a pro-test/node_modules symlink instead of installing through it', (t) => {

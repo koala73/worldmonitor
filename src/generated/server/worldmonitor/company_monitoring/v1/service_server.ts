@@ -260,7 +260,7 @@ export type CompanyClaimTrustState = "COMPANY_CLAIM_TRUST_STATE_UNSPECIFIED" | "
 
 export type CompanyClaimType = "COMPANY_CLAIM_TYPE_UNSPECIFIED" | "COMPANY_CLAIM_TYPE_ALIAS" | "COMPANY_CLAIM_TYPE_DOMAIN" | "COMPANY_CLAIM_TYPE_LEGAL_IDENTIFIER" | "COMPANY_CLAIM_TYPE_X_ACCOUNT_ID" | "COMPANY_CLAIM_TYPE_X_HANDLE" | "COMPANY_CLAIM_TYPE_LOCATION" | "COMPANY_CLAIM_TYPE_CUSTOMER_REFERENCE";
 
-export type CompanyCoverageState = "COMPANY_COVERAGE_STATE_UNSPECIFIED" | "COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN" | "COMPANY_COVERAGE_STATE_ADEQUATE" | "COMPANY_COVERAGE_STATE_PARTIAL" | "COMPANY_COVERAGE_STATE_STALE" | "COMPANY_COVERAGE_STATE_UNAVAILABLE" | "COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION";
+export type CompanyCoverageState = "COMPANY_COVERAGE_STATE_UNSPECIFIED" | "COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN" | "COMPANY_COVERAGE_STATE_ADEQUATE" | "COMPANY_COVERAGE_STATE_PARTIAL" | "COMPANY_COVERAGE_STATE_STALE" | "COMPANY_COVERAGE_STATE_UNAVAILABLE" | "COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION" | "COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED";
 
 export type CompanyEventPollState = "COMPANY_EVENT_POLL_STATE_UNSPECIFIED" | "COMPANY_EVENT_POLL_STATE_CURRENT" | "COMPANY_EVENT_POLL_STATE_SNAPSHOT_REQUIRED";
 
@@ -385,7 +385,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -428,7 +428,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -471,7 +471,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -514,7 +514,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -564,7 +564,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -615,7 +615,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -663,7 +663,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -710,7 +710,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -757,7 +757,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -794,7 +794,7 @@ export function createCompanyMonitoringServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

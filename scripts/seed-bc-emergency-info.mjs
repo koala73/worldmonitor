@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 // B.C. Evacuation Orders and Alerts member of seed-bundle-canada (#6659).
 
-import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile, readSeedSnapshot, resolveSeedMetaTtl, runSeed, writeExtraKey } from './_seed-utils.mjs';
 import {
-  BC_ALERTS_MAX_CONTENT_AGE_MIN,
-  bcAlertsContentMeta,
   declareBcAlertRecords,
   fetchBcEmergencyInfoAlerts,
   validateBcAlertsEnvelope,
@@ -21,16 +19,23 @@ const CACHE_TTL = 5_400;
 
 runSeed('alerts', 'bc-emergency-info', SOURCE.key, () => (
   fetchBcEmergencyInfoAlerts({ userAgent: CHROME_UA })
+    .catch(async (error) => {
+      const previous = await readSeedSnapshot(SOURCE.metaKey, { strict: true });
+      await writeExtraKey(SOURCE.metaKey, {
+        ...previous,
+        sourceState: 'error',
+        errorCode: 'BC_ACTIVE_LIST_FAILED',
+      }, resolveSeedMetaTtl(undefined, CACHE_TTL));
+      throw error;
+    })
 ), {
   validateFn: validateBcAlertsEnvelope,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'bc-evacuation-orders-alerts-v1',
+  sourceVersion: 'bc-evacuation-orders-alerts-v2',
   declareRecords: declareBcAlertRecords,
   zeroIsValid: true,
   schemaVersion: 1,
   maxStaleMin: 45,
-  contentMeta: bcAlertsContentMeta,
-  maxContentAgeMin: BC_ALERTS_MAX_CONTENT_AGE_MIN,
   afterPublish: async (data) => {
     await rebuildCanadaAlertsUnion({
       currentSource: { province: 'BC', snapshot: data },

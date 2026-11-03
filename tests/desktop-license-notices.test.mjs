@@ -1,3 +1,8 @@
+// Build-contract check by design (#8690, section 2): this suite pins
+// installer settings, bundled resources, package commands, and About text.
+// These declarations require source checks; the notices generator runs for
+// real below, but does not verify its own build configuration.
+//
 /**
  * The desktop bundle must carry its licence and its third-party notices (#6977).
  *

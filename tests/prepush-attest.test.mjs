@@ -45,6 +45,9 @@ const GIT_LOCAL_ENV_VARS = execFileSync('git', ['rev-parse', '--local-env-vars']
 function isolatedGitEnv(overrides = {}) {
   const env = { ...process.env, ...overrides, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
   for (const name of GIT_LOCAL_ENV_VARS) delete env[name];
+  // A stacked push exports WM_BASE_REF for the real hook, and the pre-push run of this file inherits
+  // it. base-guard reads it, so a fixture sees it only when a case passes it explicitly.
+  if (!Object.hasOwn(overrides, 'WM_BASE_REF')) delete env.WM_BASE_REF;
   return env;
 }
 
@@ -86,20 +89,22 @@ function makeRepo({ baseFiles = { 'README.md': 'base\n' }, branchFiles = {} } = 
 }
 
 /** Runs a mode and returns its exit status plus the NUL-delimited stdout, split. */
-function attest(cwd, args) {
+function attest(cwd, args, extraEnv = {}) {
   let status = 0;
   let stdout = '';
+  let stderr = '';
   try {
     stdout = execFileSync('bash', [SCRIPT, ...args], {
       cwd,
-      env: isolatedGitEnv(),
+      env: { ...isolatedGitEnv(), ...extraEnv },
       encoding: 'utf8',
     });
   } catch (err) {
     status = err.status;
     stdout = err.stdout ?? '';
+    stderr = err.stderr ?? '';
   }
-  return { status, paths: stdout.split('\0').filter(Boolean), stdout };
+  return { status, paths: stdout.split('\0').filter(Boolean), stdout, stderr };
 }
 
 describe('changed-path enumeration survives every legal git path', () => {
@@ -452,6 +457,21 @@ describe('pre-push wiring: the hook must consume these decisions', () => {
     has(/^ATTEST="scripts\/prepush-attest\.sh"$/m);
   });
 
+  test('routes both --exit-code freshness diffs through worktree-diff', () => {
+    has(
+      /"\$ATTEST" worktree-diff "\$WM_PREPUSH_ROOT" -- src\/generated\/ docs\/api\//,
+      'proto freshness must use the tri-state worktree diff',
+    );
+    has(
+      /"\$ATTEST" worktree-diff "\$WM_PREPUSH_ROOT" -- \\\n\s+src\/config\/products\.generated\.ts[\s\S]*?pro-test\/src\/locales\//,
+      'product freshness must use the tri-state worktree diff',
+    );
+    lacks(
+      /if ! git diff --exit-code/,
+      '`if ! git diff --exit-code` collapses git 1 (stale) and 128 (could not run)',
+    );
+  });
+
   test('routes the changed-path enumeration through prepush-attest.sh', () => {
     has(/"\$ATTEST" changed origin\/main/, 'scoping list must come from the NUL-safe enumeration');
     has(/"\$ATTEST" changed-live /, 'the runner list must exclude pushed deletions');
@@ -647,14 +667,15 @@ describe('base-guard fetches lazily and only to disprove a violation (#6764)', (
       const fixture = makeCloneWithOrigin({ aheadCommits });
       if (removeRef) git(fixture.clone, ['update-ref', '-d', 'refs/remotes/origin/main']);
       const path = makeTimeoutlessPath(fixture);
-      const started = Date.now();
       const result = baseGuard(fixture, ['main', '20'], {
         path,
         WM_PREPUSH_FETCH_TIMEOUT_MS: '200',
       });
 
-      const elapsed = Date.now() - started;
-      assert.ok(elapsed < 3000, `${label} must return after the portable deadline`);
+      // No elapsed-time bound here: origin is a local clone, so the fetch is
+      // fast whether or not the portable deadline binds. The assertion could
+      // only ever measure runner load, and it flaked doing exactly that. That
+      // the guard RAN without timeout/gtimeout on PATH is what this proves.
       assert.ok(fetchCount(fixture) >= 1, `${label} must exercise the corrective fetch (result=${JSON.stringify(result)})`);
       if (removeRef) {
         assert.equal(result.status, 0);
@@ -767,5 +788,63 @@ describe('per-gate cache keys one gate on its own worktree inputs (#6765)', () =
     const fx = makeGateRepo();
     assert.equal(gateWrite(fx, '../evil', 'true', 'true', ['docs']), 2);
     assert.equal(existsSync(join(fx.root, '.git', 'evil')), false);
+  });
+});
+
+describe('worktree-diff distinguishes clean, stale, and could-not-run (#7445)', () => {
+  // `git diff --exit-code` uses 0 = clean, 1 = real diff, anything else
+  // (typically 128) = could not run. The pre-push freshness gates used to
+  // collapse 1 and 128 via `if !`, so a work-tree-resolution failure was
+  // printed as a stale catalog. This mode is the three-valued wrapper those
+  // gates now call: 0 clean, 3 dirty, 1 could-not-run.
+
+  test('a clean path is 0', () => {
+    const root = makeRepo({ baseFiles: { 'src/config/products.generated.ts': 'export const PRODUCTS = [];\n' } });
+    assert.equal(attest(root, ['worktree-diff', '--', 'src/config/products.generated.ts']).status, 0);
+  });
+
+  test('a real diff is 3, not 1', () => {
+    const root = makeRepo({ baseFiles: { 'src/config/products.generated.ts': 'export const PRODUCTS = [];\n' } });
+    write(root, 'src/config/products.generated.ts', 'export const PRODUCTS = ["stale"];\n');
+    assert.equal(attest(root, ['worktree-diff', '--', 'src/config/products.generated.ts']).status, 3);
+  });
+
+  test('git diff 128 on an unknown path is 1, not 3', () => {
+    const root = makeRepo();
+    const result = attest(root, ['worktree-diff', '--', 'src/config/products.generated.ts']);
+    assert.equal(result.status, 1, result.stderr);
+    assert.notEqual(result.status, 3, '128 must not be classified as a stale catalog');
+  });
+
+  test('cwd inside the git dir is could-not-run unless an explicit root is passed', () => {
+    // The hook's pro-test gate symlinks pro-test/node_modules/.vite into
+    // $common/wm-vite-cache/. A git invocation whose cwd resolves through
+    // that link is physically inside .git, where show-toplevel dies with
+    // "fatal: this operation must be run in a work tree" (exit 128).
+    const root = makeRepo({ baseFiles: { 'src/config/products.generated.ts': 'export const PRODUCTS = [];\n' } });
+    const cache = join(root, '.git', 'wm-vite-cache', 'pro-test-abc');
+    mkdirSync(cache, { recursive: true });
+
+    const lost = attest(cache, ['worktree-diff', '--', 'src/config/products.generated.ts']);
+    assert.equal(lost.status, 1, lost.stderr);
+    assert.match(lost.stderr, /this operation must be run in a work tree|not a git repository|unknown revision or path/);
+
+    const pinned = attest(cache, ['worktree-diff', root, '--', 'src/config/products.generated.ts']);
+    assert.equal(pinned.status, 0, pinned.stderr);
+  });
+
+  test('GIT_DIR pointing at the git dir does not override an explicit root after the strip', () => {
+    const root = makeRepo({ baseFiles: { 'src/config/products.generated.ts': 'export const PRODUCTS = [];\n' } });
+    const result = attest(
+      '/tmp',
+      ['worktree-diff', root, '--', 'src/config/products.generated.ts'],
+      { GIT_DIR: join(root, '.git') },
+    );
+    assert.equal(result.status, 0, result.stderr);
+  });
+
+  test('a missing -- pathspec is a usage error', () => {
+    const root = makeRepo();
+    assert.equal(attest(root, ['worktree-diff']).status, 2);
   });
 });

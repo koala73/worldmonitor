@@ -19,7 +19,7 @@ import { LEGAL_FOOTER_LINKS } from '../../../shared/legal';
 export const LegalFooterNav = () => (
   <nav
     aria-label="Legal"
-    className="max-w-7xl mx-auto mt-6 pt-4 border-t border-wm-border/60 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-wm-muted font-mono"
+    className="max-w-7xl mx-auto mt-6 pt-4 border-t border-wm-border/60 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-wm-muted font-mono"
   >
     {LEGAL_FOOTER_LINKS.map(link => (
       <a key={link.path} href={link.path} className="hover:text-wm-text transition-colors">

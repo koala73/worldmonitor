@@ -132,10 +132,13 @@ export class FinnhubQuoteProvider implements MarketQuoteProvider {
         return { status: 'error', message: 'malformed JSON' };
       }
 
-      // Finnhub answers an unknown ticker with an all-zero quote rather than a
-      // 404, so a non-positive last price is the only "no such symbol" signal
-      // available here.
-      if (!Number.isFinite(data.c) || (data.c as number) <= 0) return { status: 'not_found' };
+      // Missing/invalid prices are provider failures, not proof that the ticker
+      // is unknown. Only the zero-price response may enter the negative cache.
+      if (!data || typeof data !== 'object' || !Number.isFinite(data.c) || (data.c as number) < 0) {
+        return { status: 'error', message: 'invalid quote payload' };
+      }
+      // Finnhub answers an unknown ticker with an all-zero quote rather than a 404.
+      if (data.c === 0) return { status: 'not_found' };
 
       return {
         status: 'ok',
@@ -220,10 +223,17 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
       }
 
       const gq = json['Global Quote'];
-      if (!gq || typeof gq !== 'object') return { status: 'not_found' };
+      if (!gq || typeof gq !== 'object' || Array.isArray(gq)) {
+        return { status: 'error', message: 'invalid quote payload' };
+      }
+      // An empty quote is AV's unknown-symbol response. A missing envelope or
+      // a nonempty quote with a broken price must remain retryable instead.
+      if (Object.keys(gq).length === 0) return { status: 'not_found' };
 
       const price = parseFloat(gq['05. price'] ?? '');
-      if (!Number.isFinite(price) || price <= 0) return { status: 'not_found' };
+      if (!Number.isFinite(price) || price <= 0) {
+        return { status: 'error', message: 'invalid quote payload' };
+      }
 
       const changePctRaw = (gq['10. change percent'] ?? '').replace('%', '');
       const changePct = parseFloat(changePctRaw);

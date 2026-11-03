@@ -65,14 +65,32 @@ describe('published resilience snapshot freshness', () => {
       assert.equal(dataset?.dateModified, data.resilience.capturedAt);
       assert.equal(dataset?.temporalCoverage, data.resilience.capturedAt);
       assert.ok(data.resilience.snapshotNote, 'canonical snapshots must explain their publication state');
+      assert.doesNotMatch(data.resilience.snapshotNote, /Post-P1-1/);
       assert.ok(norway.includes(data.resilience.snapshotNote), 'country page must surface snapshotNote verbatim');
+      assert.match(norway, /href="\/docs\/corrections"/);
       assert.match(
         norway,
         new RegExp(`<meta name="lastmod" content="${data.lastmod.countries}">`),
       );
+      // The repo path stays machine-readable on the source line; the visible
+      // text names the snapshot by its date instead of a repository path.
       assert.ok(
-        norway.includes(`Source: ${data.sources.resilienceSnapshot}.`),
+        norway.includes(`data-snapshot-source="${data.sources.resilienceSnapshot}"`),
         'country page must identify the selected dated snapshot',
+      );
+      assert.match(norway, /Source: World Monitor Country Resilience Index snapshot, \w+ \d{1,2}, \d{4}\./);
+      // Coverage-story pages (Tuvalu, Macau, San Marino) swap the shared snapshot
+      // note for a country-specific reading guide (#7527) but keep the corrections
+      // link and the dated snapshot source line.
+      const tuvalu = readFileSync(join(outDir, 'countries', 'tuvalu', 'index.html'), 'utf8');
+      assert.ok(
+        !tuvalu.includes(data.resilience.snapshotNote),
+        'coverage-story pages omit the shared snapshot note by design',
+      );
+      assert.match(tuvalu, /href="\/docs\/corrections"/);
+      assert.ok(
+        tuvalu.includes(`data-snapshot-source="${data.sources.resilienceSnapshot}"`),
+        'coverage-story pages must still identify the selected dated snapshot',
       );
     } finally {
       rmSync(outDir, { recursive: true, force: true });
@@ -92,6 +110,23 @@ describe('published resilience snapshot freshness', () => {
     assert.match(revisions, /2026-06-01/);
     assert.match(revisions, /P1-1/);
     assert.match(revisions, /coverage-only member aggregation/);
+    assert.match(revisions, /first day of each month/);
+    assert.match(revisions, /resilience-ranking-2026-08-29/);
+    assert.match(revisions, /[Oo]ff-cycle/);
+
+    // The log held one revision while three derived chokepoint fields were
+    // withdrawn across all 13 pages on 2026-09-01 and source availability was
+    // separated on 2026-09-02 — both material, neither logged (#7530). Pin the
+    // rows and their PR references so a withdrawal cannot ship unlogged again.
+    for (const source of [
+      revisions,
+      readFileSync(join(repoRoot, 'docs', 'zh', 'corrections.mdx'), 'utf8'),
+    ]) {
+      assert.match(source, /2026-09-01/);
+      assert.match(source, /2026-09-02/);
+      assert.match(source, /pull\/7515/);
+      assert.match(source, /pull\/7535/);
+    }
   });
 
   it('runs a credentialed monthly capture and opens an idempotent review PR', () => {
@@ -105,11 +140,33 @@ describe('published resilience snapshot freshness', () => {
     assert.match(workflow, /node scripts\/freeze-resilience-ranking\.mjs/);
     assert.match(workflow, /npm run build:crawlable-corpus/);
     assert.match(workflow, /npm run build:sitemap/);
+    assert.match(workflow, /npm run build:llms-full/);
+    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/sitemap-main\.xml public\/llms-full\.txt/);
     assert.match(workflow, /gh pr list --state all/);
     assert.match(workflow, /gh pr create/);
     assert.doesNotMatch(workflow, /push --force/);
-
     const parsed = YAML.parse(workflow);
+    const verify = parsed.jobs.refresh.steps.find((step) => step.name === 'Rebuild and verify published artifacts');
+    const consumers = new RegExp(verify.env.SNAPSHOT_CONSUMERS);
+    for (const suite of [
+      'crawlable-corpus.test.mjs',
+      'seo-geo-residue.test.mjs',
+      'sitemap-generation.test.mjs',
+      'resilience-ranking-snapshot.test.mts',
+      'ai-search-product-facts.test.mjs',
+      'country-corpus-slugs-freshness.test.mjs',
+      'public-product-facts.test.mjs',
+      'seo-landing-metadata.test.mjs',
+    ]) {
+      assert.match(readFileSync(join(repoRoot, 'tests', suite), 'utf8'), consumers, `the refresh must verify ${suite}`);
+    }
+    assert.match(verify.run, /grep -lE "\$SNAPSHOT_CONSUMERS" tests\/\*\.test\.mjs tests\/\*\.test\.mts/);
+    // The job never builds, so a built-output filter would drop whole suites
+    // whose committed-source checks still apply.
+    assert.match(verify.run, /^node scripts\/run-data-tests\.mjs "\$\{suites\[@\]\}"$/m);
+    assert.doesNotMatch(verify.run, /--built-output/);
+    assert.doesNotMatch(JSON.stringify(verify.env), /WM_EXPECT_BUILT_OUTPUT/);
+
     const checkout = parsed.jobs.refresh.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
     assert.equal(
       checkout?.with?.ref,

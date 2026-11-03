@@ -128,8 +128,10 @@ export function buildSandboxFixtures(repoRoot = root) {
       'Fetch any fixture below with plain HTTP — no auth, no quota, safe for CI. Each fixture mirrors the exact ' +
       'envelope the production endpoint returns; switch to productionUrl with an X-WorldMonitor-Key header to go live.',
     docs: 'https://www.worldmonitor.app/docs/sandbox',
-    openapi: 'https://worldmonitor.app/openapi.json',
-    authGuide: 'https://worldmonitor.app/auth.md',
+    // www: neither path is on the Cloudflare apex-exemption list, so the apex
+    // form is a 301 an agent pays for before reaching the file (#7660).
+    openapi: 'https://www.worldmonitor.app/openapi.json',
+    authGuide: 'https://www.worldmonitor.app/auth.md',
     operations: indexOperations,
   };
   files['public/sandbox/index.json'] = `${JSON.stringify(index, null, 2)}\n`;

@@ -33,6 +33,7 @@
 #   bash scripts/prepush-attest.sh base-guard   <base-ref> [limit]  # "<base>\t<count>" on stdout
 #   bash scripts/prepush-attest.sh gate-read    <cache-dir> <gate> <diff-resolved> -- <pathspec>...
 #   bash scripts/prepush-attest.sh gate-write   <cache-dir> <gate> <diff-resolved> <attestable> -- <pathspec>...
+#   bash scripts/prepush-attest.sh worktree-diff [<root>] -- <pathspec>...
 #
 # Exit codes are three-valued on purpose. A gate that answers "no" and a gate
 # that could not run must never collapse into the same status as "yes":
@@ -41,12 +42,16 @@
 #   3  no  / drift / dirty / miss / refused   (the list, or the reason, on stdout)
 #   2  usage error
 #   1  internal failure (git unavailable, unwritable cache, ...)
+#
+# worktree-diff maps `git diff --exit-code` onto that same scale so a freshness
+# gate can tell 0 (clean) from 1 (real diff → 3) from 128 (could not run → 1).
+# `if ! git diff --exit-code` collapses the last two (#7445).
 
 mode="${1:-}"
 case "$mode" in
-  changed | changed-live | drift | dirty | cache-read | cache-write | base-guard | gate-read | gate-write) ;;
+  changed | changed-live | drift | dirty | cache-read | cache-write | base-guard | gate-read | gate-write | worktree-diff) ;;
   *)
-    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write|base-guard|gate-read|gate-write> [args]" >&2
+    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write|base-guard|gate-read|gate-write|worktree-diff> [args]" >&2
     exit 2
     ;;
 esac
@@ -411,6 +416,42 @@ NODE
       exit 3
     fi
     printf '%s\n' "$tree" > "$cache_file" || exit 1
+    ;;
+
+  worktree-diff)
+    # Three-valued `git diff --exit-code` (#7445). The pre-push freshness
+    # gates used `if ! git diff --exit-code`, which treats git 1 (real diff)
+    # and git 128 (could not run — unknown path, or cwd inside .git so there
+    # is no work tree) as the same "stale" failure. Map onto this file's
+    # scale: 0 clean, 3 dirty, 1 could-not-run.
+    #
+    # GIT_DIR/GIT_WORK_TREE override `git -C`, so strip the hook-exported
+    # list first. An explicit <root> is the worktree captured before any
+    # later `cd` or vite-cache symlink into $common/wm-vite-cache/; without
+    # it, discovery uses show-toplevel from cwd and correctly fails inside
+    # the git dir with 1 rather than inventing a stale catalog.
+    for _git_env in $(git rev-parse --local-env-vars 2>/dev/null); do
+      unset "$_git_env" 2>/dev/null || true
+    done
+    unset _git_env
+    shift
+    root=""
+    if [ "${1:-}" != "--" ] && [ -n "${1:-}" ]; then
+      root="$1"
+      shift
+    fi
+    [ "${1:-}" = "--" ] && shift
+    [ "$#" -gt 0 ] || usage_error "[<root>] -- <pathspec>..."
+    if [ -z "$root" ]; then
+      root=$(git rev-parse --show-toplevel) || exit 1
+    fi
+    git -C "$root" diff --exit-code "$@"
+    status=$?
+    case "$status" in
+      0) exit 0 ;;
+      1) exit 3 ;;
+      *) exit 1 ;;
+    esac
     ;;
 esac
 

@@ -37,3 +37,15 @@ export async function defaultRedisPipeline(commands, { timeoutMs = 10_000 } = {}
     return null;
   }
 }
+
+/**
+ * Execute one pinned Redis script through the same pipeline transport.
+ * Returns null on transport or Redis failure so budget callers fail closed.
+ */
+export async function defaultRedisEval(script, keys, args, options) {
+  const rows = await defaultRedisPipeline([
+    ['EVAL', script, String(keys.length), ...keys, ...args.map(String)],
+  ], options);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.error) return null;
+  return rows[0]?.result ?? null;
+}

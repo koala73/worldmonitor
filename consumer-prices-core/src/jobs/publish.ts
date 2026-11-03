@@ -1,6 +1,6 @@
 /**
  * Publish job: builds compact WorldMonitor snapshot payloads and writes to Redis.
- * Runs as an independent Railway cron service (02:30 UTC daily) after aggregate.
+ * Runs as an independent Railway cron service (02:30-05:30 UTC, hourly) after aggregate.
  * This is the handoff point between consumer-prices-core and WorldMonitor.
  */
 import {
@@ -40,13 +40,16 @@ function recordCount(data: unknown): number {
   return Array.isArray(arr) ? arr.length : 1;
 }
 
-async function upstashCommand(url: string, token: string, command: unknown[]): Promise<void> {
+async function upstashCommand(url: string, token: string, command: unknown[]): Promise<unknown> {
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(command),
   });
   if (!resp.ok) throw new Error(`Upstash ${command[0]} failed: HTTP ${resp.status}`);
+  const body = await resp.json() as { result?: unknown; error?: string };
+  if (body.error || !Object.hasOwn(body, 'result')) throw new Error(`Upstash ${command[0]} failed`);
+  return body.result;
 }
 
 // Seed envelope shape — mirrored from scripts/_seed-envelope-source.mjs.
@@ -72,6 +75,24 @@ function buildEnvelope(data: unknown, count: number): { _seed: Record<string, un
   };
 }
 
+// Keep data and its count together. A retained-clock write compares the raw
+// metadata read below so it cannot overwrite a concurrent publisher's result.
+// JSON is encoded in JS, not Lua cjson, which changes nested empty arrays to {}.
+const PUBLISH_SNAPSHOT = `
+if ARGV[5] == 'retained' and (redis.call('GET', KEYS[2]) or '') ~= ARGV[4] then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+if ARGV[3] ~= '' then
+  if ARGV[5] == 'fresh' then
+    redis.call('SET', KEYS[2], ARGV[3], 'EX', tonumber(ARGV[2]) * 2)
+  else
+    redis.call('SET', KEYS[2], ARGV[3], 'XX', 'KEEPTTL')
+  end
+end
+return 1
+`;
+
 async function writeSnapshot(
   url: string,
   token: string,
@@ -94,7 +115,9 @@ async function writeSnapshot(
   // below so unmigrated readers keep working during dual-write.
   const envelope = buildEnvelope(data, count);
   const json = JSON.stringify(envelope);
-  await upstashCommand(url, token, ['SET', key, json, 'EX', ttlSeconds]);
+  const metaKey = makeKey(['seed-meta', key]);
+  let metaJson = '';
+  let retainedJson = '';
   if (advanceSeedMeta) {
     const meta: Record<string, unknown> = { fetchedAt: Date.now(), recordCount: count };
     if (coverage) {
@@ -111,14 +134,27 @@ async function writeSnapshot(
         ...(coverage.retailers ? { retailers: coverage.retailers } : {}),
       };
     }
-    await upstashCommand(url, token, [
-      'SET',
-      makeKey(['seed-meta', key]),
-      JSON.stringify(meta),
-      'EX',
-      ttlSeconds * 2,
-    ]);
+    metaJson = JSON.stringify(meta);
+  } else {
+    const retained = await upstashCommand(url, token, ['GET', metaKey]);
+    retainedJson = typeof retained === 'string' ? retained : '';
+    try {
+      const meta = JSON.parse(retainedJson);
+      if (
+        meta && !Array.isArray(meta)
+        && typeof meta.fetchedAt === 'number' && Number.isFinite(meta.fetchedAt) && meta.fetchedAt > 0
+      ) {
+        // Count describes the replacement payload; fetchedAt and TTL still
+        // describe the last publication that passed the scraper freshness gate.
+        metaJson = JSON.stringify({ ...meta, recordCount: count });
+      }
+    } catch { /* Preserve missing/unreadable metadata without inventing freshness. */ }
   }
+  const published = await upstashCommand(url, token, [
+    'EVAL', PUBLISH_SNAPSHOT, 2, key, metaKey, json, ttlSeconds,
+    metaJson, retainedJson, advanceSeedMeta ? 'fresh' : 'retained',
+  ]);
+  if (published !== 1) throw new Error(`Snapshot publication not confirmed for ${key}`);
   logger.info(`  wrote ${key} (${json.length} bytes, records=${count}, ttl=${ttlSeconds}s, meta=${advanceSeedMeta})`);
 }
 
@@ -160,6 +196,7 @@ export async function publishAll() {
 
     let pagesOk = 0;
     let pagesFailed = 0;
+    let pagesSkipped = 0;
 
     try {
       const coverage = await buildCoverageSnapshot(marketCode);
@@ -195,11 +232,20 @@ export async function publishAll() {
       logger.error(`overview:${marketCode} failed: ${err}`);
     }
 
-    for (const days of [7, 30]) {
+    for (const days of [7, 30, 90]) {
       try {
         const movers = await buildMoversSnapshot(marketCode, days);
-        await writeSnapshot(url, token, makeKey(['consumer-prices', 'movers', marketCode, `${days}d`]), movers, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
-        pagesOk++;
+        // Null is a data-quality skip, not an infrastructure failure: every
+        // candidate was gated, so the last good snapshot outlives its would-be
+        // replacement. It must not count toward pagesFailed or the whole cron
+        // exits 1 over one thin market.
+        if (movers === null) {
+          pagesSkipped++;
+          logger.warn(`movers:${marketCode}:${days}d skipped: all candidates gated as implausible`);
+        } else {
+          await writeSnapshot(url, token, makeKey(['consumer-prices', 'movers', marketCode, `${days}d`]), movers, TTL, advanceSeedMeta, { pagesOk: 1, pagesFailed: 0, rejectedCount: 0 });
+          pagesOk++;
+        }
       } catch (err) {
         pagesFailed++;
         logger.error(`movers:${marketCode}:${days}d failed: ${err}`);
@@ -266,7 +312,10 @@ export async function publishAll() {
 
     const totalSnapshots = pagesOk + pagesFailed;
     const completionRatio = totalSnapshots > 0 ? Number((pagesOk / totalSnapshots).toFixed(4)) : 0;
-    logger.info(`  market ${marketCode} done: ${pagesOk}/${totalSnapshots} ok, ratio=${completionRatio}`);
+    // Skips are neither ok nor failed, so they are absent from the ratio. Say
+    // so rather than logging a clean "N/N ok, ratio=1" over withheld writes.
+    const skipNote = pagesSkipped > 0 ? `, ${pagesSkipped} skipped` : '';
+    logger.info(`  market ${marketCode} done: ${pagesOk}/${totalSnapshots} ok, ratio=${completionRatio}${skipNote}`);
     totalPagesFailed += pagesFailed;
   }
 

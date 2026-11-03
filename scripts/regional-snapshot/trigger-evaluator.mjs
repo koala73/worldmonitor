@@ -79,7 +79,16 @@ function resolveMetric(metric, sources, balance, regionId) {
     }
     if (field === 'transit_count') {
       const summaries = sources['supply_chain:transit-summaries:v1']?.summaries ?? {};
-      return num(summaries[cpId]?.todayTotal, 0);
+      // Absent means "no AIS crossings recorded in the 24h window", which the
+      // relay cannot distinguish from a measured zero, so it writes null
+      // (#7457). Defaulting that to 0 would make an empty window look like a
+      // total traffic collapse: `delta_lt -0.20 vs trailing_7d` is the live
+      // Hormuz trigger, and it is dormant only until Phase 0 gains a baseline
+      // reader. Return null so the metric is unevaluable instead of alarming.
+      // Guard explicitly: `num(null, null)` returns 0, because Number(null) is
+      // 0 and 0 is finite -- the fallback never fires.
+      const todayTotal = summaries[cpId]?.todayTotal;
+      return todayTotal == null ? null : num(todayTotal, null);
     }
     return null;
   }

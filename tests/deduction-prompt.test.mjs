@@ -104,7 +104,7 @@ describe('postProcessDeductionOutput', () => {
 
 describe('inferProviderLabel', () => {
   it('maps known providers and falls back to hostname', () => {
-    assert.equal(inferProviderLabel('https://api.groq.com/openai/v1/chat/completions'), 'groq');
+    assert.equal(inferProviderLabel('https://openrouter.ai/api/v1/chat/completions'), 'openrouter');
     assert.equal(inferProviderLabel('https://example.internal/v1/chat/completions'), 'example.internal');
   });
 });

@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { joinSafeHtml, safeHtml, unsafeRawHtml, type SafeHtml } from '@/utils/sanitize';
 import { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from '@/services/supply-chain';
+import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import type { GetChokepointStatusResponse, ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 
@@ -24,7 +25,7 @@ function shortName(id: string): string {
     case 'suez': return t('components.chokepointStrip.shortName.suez');
     case 'bab_el_mandeb': return t('components.chokepointStrip.shortName.babElMandeb');
     case 'bosphorus': return t('components.chokepointStrip.shortName.bosphorus');
-    case 'dover_strait': return t('components.chokepointStrip.shortName.danishStraits');
+    case 'dover_strait': return t('components.chokepointStrip.shortName.doverStrait');
     case 'panama': return t('components.chokepointStrip.shortName.panama');
     // Empty string lets the call site's `|| cp.name` fallback fire so any
     // future chokepoint added to the API but not yet in this switch
@@ -102,7 +103,7 @@ export class ChokepointStripPanel extends Panel {
       const color = statusColor(cp.status);
       const short = shortName(cp.id) || cp.name;
       const flow = formatFlow(cp);
-      const warnings = cp.activeWarnings > 0
+      const warnings = cp.navigationalWarningsAvailable === true && cp.activeWarnings > 0
         ? safeHtml`<span class="cp-chip-warn">${cp.activeWarnings}</span>`
         : safeHtml``;
       return safeHtml`
@@ -114,8 +115,15 @@ export class ChokepointStripPanel extends Panel {
           </div>
         </div>`;
     }));
+    const coverageText = chokepointCoverageWarning(this.data);
+    const coverageWarning = coverageText
+      ? safeHtml`<div class="cp-strip-warning">${coverageText}</div>`
+      : safeHtml``;
 
-    const nAis = ordered.reduce((sum, cp) => sum + (cp.aisDisruptions ?? 0), 0);
+    const nAis = ordered.reduce(
+      (sum, cp) => sum + (cp.aisSnapshotAvailable === true ? cp.aisDisruptions : 0),
+      0,
+    );
     const footer: SafeHtml = unsafeRawHtml(attributionFooterHtml({
       sourceType: 'ais',
       method: t('components.chokepointStrip.attribution.method'),
@@ -126,12 +134,14 @@ export class ChokepointStripPanel extends Panel {
     }), 'attributionFooterHtml escapes fields and returns shared footer markup');
 
     this.setSafeContent(safeHtml`
+      ${coverageWarning}
       <div class="cp-strip-wrap">
         <div class="cp-strip">${chips}</div>
         ${footer}
       </div>
       ${unsafeRawHtml(ATTRIBUTION_FOOTER_CSS, 'static attribution footer CSS constant')}
       <style>
+        .cp-strip-warning { margin: 0 0 6px; color: var(--warning, #f59e0b); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
         .cp-strip-wrap { padding: 4px 0; }
         .cp-strip { display: flex; flex-wrap: wrap; gap: 8px; }
         .cp-chip {

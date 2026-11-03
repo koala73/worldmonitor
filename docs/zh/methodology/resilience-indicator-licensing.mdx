@@ -1,7 +1,35 @@
 ---
 title: "国家韧性指标许可"
-description: "国家韧性指数 72 项指标的原始值再分发决策与署名要求。"
+description: "了解 WorldMonitor 国家韧性指标的原始值再分发规则、提供商许可审查和署名要求。区分可公开的派生分数与受限制的原始数据，查看缺失、插补、回退或来源失败时的处理方式，以及观测状态、抓取时间和来源溯源如何共同决定是否发布数值，理解未经审查来源的默认扣留规则与接口禁止投影的原因，避免把空白误读为零。"
 ---
+
+_本方法论由 World Monitor 创始人 [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/) 维护。已发布的修订记录在[更正日志](/zh/corrections)中。_
+
+## 从这里开始
+
+**为什么有些数字明明存在，却是空白的。**
+
+WorldMonitor 从数十家发布机构购买、抓取并据以计算数据。其中许多机构允许我们*使用*它们的数字，却不允许我们*再发布*它们。这是两种不同的许可，而这个区别正是本页的全部主题。
+
+因此指标下钻同时做两件事：
+
+- **始终**提供 WorldMonitor 自己的派生结果——归一化分数、权重、贡献值，以及对底层数据发布方的完整署名。
+- **有时**也一并提供上游的原始数字，但仅限于该发布方的条款明确允许的情况。
+
+原始值空白**绝不**意味着"它等于零"。但它有两种不同的成因，而记录本身会告诉你是哪一种：
+
+- **许可原因**——该数值存在且已被使用，只是我们无权再发布它。这正是下方表格逐一记录的内容。
+- **状态原因**——一开始就没有可发布的实测值。状态为 `imputed`、`fallback`、`missing`、`inactive`、`retired`、`not-applicable` 或 `source-failure` 的行，无论许可如何都不会携带原始值；提供方或抓取时间不明确的行同样如此。
+
+**在从一个空白得出任何结论之前，请先读该行的 `state` 及其原始值策略状态。** 把每一次缺失都当成许可限制，会把真实的数据缺口和未启用的指标错误归类。
+
+该策略是**默认失败关闭（fail-closed）**的：如果某个来源尚未完成审查，或某个复合指标引用了一个尚未审查的来源，原始值就会被扣下。公开可访问不等于许可，我们自己注册表里的宽泛许可标签同样不等于许可——只有对确切数据集完成的审查才算数。
+
+<Note>
+这也是这个特定响应拒绝 JMESPath 投影的原因。投影可能把一个获授权的原始值与授权其发布的署名和抓取字段分离开来，因此 REST 与 MCP 都会在此处拒绝非空投影，而不是冒剥离署名的风险。
+</Note>
+
+## 详细策略
 
 Pro 指标下钻会返回全部 72 行已注册指标，并在评分器具备归一化分数时一并返回该分数。只有在以下条件全部成立时才会返回原始来源值：该观测值是实测得到的、每个参与贡献的提供方都已完成再分发审查、响应中包含所需署名，且确切的贡献种子具有抓取时间戳。插补、回退、缺失、未启用、已退役、不适用、来源失败、提供方不明确或抓取时间不明确的行，永远不会包含原始值。
 
@@ -21,8 +49,8 @@ REST 与 MCP 的发现接口不为该响应公布 JMESPath 投影能力。两个
 | 受限 | [国际清算银行](https://data.bis.org/) | `householdDebtService`、`fxVolatility`、`fxDeviation`、`bisLbsXborderPctGdp`、`financialCenterRedundancy` | 依据本仓库的非商业/受限决策，拒绝原始值再分发。可在标注 BIS 并链接到相关统计页面的前提下提供归一化分数。 |
 | 受限 | [经济与和平研究所 / 全球和平指数](https://www.visionofhumanity.org/maps/) | `gpiScore` | 依据本仓库的非商业决策，拒绝原始值再分发。提供归一化分数时须标注 Institute for Economics & Peace 与 Vision of Humanity。 |
 | 受限，待确切数据集审查 | [乌普萨拉冲突数据项目](https://ucdp.uu.se/downloads/) | `ucdpConflict`、`recoveryConflictPressure` | 当前下载页面标示 CC BY 4.0。在本仓库针对该确切数据集及其署名要求更新决策之前，运行时原始输出仍被拒绝。评分允许清单不构成再分发授权。 |
-| 有条件 | World Bank 或 Eurostat | `energyImportDependency` | 仅当选定观测值确为 World Bank 数据时允许。Eurostat 观测值的审查尚不完整。 |
-| 有条件 | World Bank，可能含 Eurostat 组成部分 | `importedFossilDependence` | 化石电力输入为 World Bank WDI `EG.ELC.FOSL.ZS`。仅当净进口溯源同样来自 World Bank 时允许；若有 Eurostat 覆盖值参与贡献，则抑制原始输出。 |
+| 允许 | [World Bank API](https://api.worldbank.org/v2/) 或 [Eurostat](https://ec.europa.eu/eurostat/databrowser/view/nrg_ind_id/default/table?lang=en) | `energyImportDependency` | 两个经审查的观测值均可发布：World Bank `EG.IMP.CONS.ZS` 适用 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)，Eurostat `nrg_ind_id` 适用 [Eurostat 再利用政策](https://ec.europa.eu/eurostat/help/copyright-notice)（欧盟委员会决定 2011/833/EU）。须标注选定观测值的确切提供方，并附数据集 URL 与提取日期。仅给出提供方根 URL 时按失败关闭处理。 |
+| 有条件 | World Bank，净进口组成部分可为 World Bank 或 Eurostat | `importedFossilDependence` | 化石电力输入为 World Bank WDI `EG.ELC.FOSL.ZS`，且为必需项。净进口组成部分可来自 World Bank `EG.IMP.CONS.ZS` 或 Eurostat `nrg_ind_id`。若净进口溯源缺失或无法识别，则抑制原始输出。 |
 | 有条件 | World Bank，可选用 UN Comtrade 调整 | `recoveryLiquidReserveMonths` | 允许未经调整的 World Bank 观测值。若有 UN Comtrade 转口调整参与贡献，则抑制原始值。 |
 | 审查未完成 | [国际货币基金组织](https://www.imf.org/en/Data)与各国债务来源 | `govRevenuePct`、`debtGrowthRate`、`currentAccountPct`、`unemploymentPct`、`inflationStability`、`recoveryGovRevenue`、`recoveryFiscalBalance`、`recoveryDebtToGdp`、`debtSustainabilityGap` | 在确切的 IMF 或各国债务提供方条款与署名被记录为已审查之前，抑制原始值。 |
 | 审查未完成 | [加拿大统计局 Web Data Service](https://www.statcan.gc.ca/en/developers/wds/user-guide) | 加拿大的 `unemploymentPct` 与 `inflationStability` 观测值 | 加拿大覆盖层会记录确切的加拿大统计局观测日期、发布时间、Web Data Service 端点与[开放许可](https://www.statcan.gc.ca/en/terms-conditions/open-licence)。在确切的向量级再分发决策通过审查之前，原始输出在指标策略下仍失败关闭。 |
@@ -44,7 +72,7 @@ REST 与 MCP 的发现接口不为该响应公布 JMESPath 投影能力。两个
 
 当一个复合指标使用了不同年份的观测值时，`sourceYear` 取贡献年份中最早的一个。这一保守规则可防止较新的组成部分掩盖较旧输入的年龄。
 
-复合指标必须列出对选定值有贡献的每一个提供方。上述 World Bank/Eurostat 与 World Bank/UN Comtrade 的有条件决策都依赖这一点。
+复合指标必须列出对选定值有贡献的每一个提供方。上述 World Bank/Eurostat 与 World Bank/UN Comtrade 决策都依赖这一点。
 
 ## 抑制原始值时的归一化分数
 

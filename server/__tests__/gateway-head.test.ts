@@ -29,7 +29,7 @@ vi.mock('../_shared/rate-limit', async (importActual) => {
 import { createDomainGateway } from '../gateway';
 
 const ctx = { waitUntil: () => {} };
-const STATIC_PATH = '/api/natural/v1/list-natural-events';
+const STATIC_PATH = '/api/intelligence/v1/get-china-decision-signals';
 const DYNAMIC_PATH_PATTERN = '/api/foo/v1/items/{id}';
 const DYNAMIC_PATH = '/api/foo/v1/items/abc';
 const POST_ONLY_PATH = '/api/leads/v1/submit-contact';

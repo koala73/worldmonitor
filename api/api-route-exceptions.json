@@ -3,6 +3,41 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/mcp/registry/media-perspective-tool.ts",
+      "category": "external-protocol",
+      "reason": "MCP media-perspective tool definition. It forwards to the generated news RPC with the verified caller's credential and exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/country-history-tool.ts",
+      "category": "external-protocol",
+      "reason": "MCP country-history tool definition. It forwards to the generated intelligence RPC with the verified caller's credential and exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/miit-news.js",
+      "category": "non-json",
+      "reason": "Adapts the fixed official MIIT dated news listing to RSS/XML for the existing browser and server feed readers. Success responses use application/rss+xml; the RSS transport cannot use a JSON proto envelope.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/public-domain-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool definitions for gold enrichment and internet observations. Fixed existing sebuf RPCs retain source schemas and gateway access; this module exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/country-view.ts",
+      "category": "external-protocol",
+      "reason": "MCP country-view tool definitions and fixed section readers. The external MCP protocol defines the tool/resource envelopes; this module exports no HTTP route and reads existing sebuf RPCs plus fixed bootstrap datasets.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/ask.ts",
       "category": "external-protocol",
       "reason": "NLWeb /ask endpoint (Microsoft NLWeb protocol) — request/response envelope (_meta {response_type, version}, SSE start/result/complete event stream) dictated by the NLWeb spec, not something we can redefine as proto. Anonymous discovery answers over the public MCP tool catalog only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
@@ -31,6 +66,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/alias.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool-alias table and resolve() for renamed tools/call names. Not an HTTP route. Same external-protocol constraint as the MCP dispatcher.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/auth.ts",
       "category": "external-protocol",
       "reason": "MCP auth resolution (Bearer + X-WorldMonitor-Key), Pro pre-checks, rate-limiter init, and PRODUCTION_DEPS bundle for the MCP handler. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
@@ -41,6 +83,13 @@
       "path": "api/mcp/quota.ts",
       "category": "external-protocol",
       "reason": "MCP Pro daily-quota INCR-first reservation + F4 clamp loop. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/panel-requests.ts",
+      "category": "internal-helper",
+      "reason": "Bounded paid country-request admission, signed reader scope, and response reuse for the MCP JSON-RPC dispatcher. Exports no HTTP route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -73,6 +122,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/bounded-json.ts",
+      "category": "internal-helper",
+      "reason": "MCP proxy JSON nesting guard for untrusted request bodies, streamable responses, and legacy SSE messages (#7556). Pure helper module for the external-protocol MCP proxy — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/body-limits.ts",
       "category": "internal-helper",
       "reason": "Leaf MCP JSON-RPC POST body-size constant (#7406). Kept outside api/mcp/constants.ts so Edge facades (docs-mcp, mcp-proxy) can import the number without the MCP upgrade/attribution module graph. Pure constant module — exports no route.",
@@ -83,6 +139,20 @@
       "path": "api/mcp/downstream.ts",
       "category": "internal-helper",
       "reason": "Canonical sibling-request routing and credential-safe downstream error classification for MCP RPC tools (#5514). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/spoken.ts",
+      "category": "internal-helper",
+      "reason": "response_mode \"spoken\" mechanism for MCP tools (#9722): the response_mode input schema, the sentence-and-citations envelope builder and the speech helpers narrators share. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/spoken-narrators.ts",
+      "category": "internal-helper",
+      "reason": "Per-tool spoken narrators (#9722): deterministic sentence templates over each analytical tool's documented payload, declared as _spoken on the registry entries. Pure helper module for the external-protocol MCP handler family above — exports no route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -122,6 +192,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/news-dashboard.ts",
+      "category": "external-protocol",
+      "reason": "MCP tool definitions for the WorldMonitor news dashboard and analysis adapter. Uses existing sebuf news RPCs; tool metadata and execution envelopes follow the external MCP protocol. No HTTP handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/analysis-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY composite-analysis tool entries and their cache orchestration. Extracted from rpc-tools.ts to keep the external-protocol registry maintainable; exports no JSON data route.",
@@ -145,7 +222,7 @@
     {
       "path": "api/mcp/registry/nlp-tools.ts",
       "category": "external-protocol",
-      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
+      "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes, verify_claim). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -154,6 +231,48 @@
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY source-discovery tool entry (get_sources). Reads the committed shared/ source-attribution manifest and source-tiers registry to report coverage, licensing status, editorial tier, and provenance; exports no JSON data route and performs no network I/O. Same external-protocol constraint as its sibling registry modules.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/macro-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY macro-history tool entry (get_macro_history) over the existing sebuf economic RPCs (US CPI, US interest rates, US Treasury and government yield curves, world CPI). Tool metadata and execution envelopes follow the external MCP protocol; exports no JSON data route. Same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/stock-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP stock-research tool definition and fixed MarketService dispatch. Exports no standalone JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/cost-shock-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP cost-shock tool definition and fixed SupplyChainService dispatch. Exports no standalone JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/tariff-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP tariff tool definitions and fixed TradeService dispatch to get-tariff-trends, get-bilateral-tariff and get-us-import-duty. Exports no standalone JSON data route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/webcam-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP webcam tool definitions and fixed WebcamService dispatch. Exports no standalone JSON data route.",
+      "owner": "@FayezBast",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/feedback-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP report_issue tool definition. It adapts the shared agent feedback write path (server/_shared/agent-feedback.ts) to MCP and exports no standalone JSON data route; the REST twin is the FeedbackService sebuf RPC.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {
@@ -178,9 +297,30 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/domains.ts",
+      "category": "internal-helper",
+      "reason": "One source for each MCP tool's category, the server card toolCategories and tags, and the domain list the discovery surfaces quote. Read at build time by scripts/generate-public-product-facts.mjs and by tests; exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/upgrade.ts",
       "category": "external-protocol",
       "reason": "MCP paid-funnel (#6716) structured denial builders and upgrade-URL re-exports. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/checkout.ts",
+      "category": "external-protocol",
+      "reason": "MCP start_upgrade tool (#9144): plan mapping and the server-side relay to the existing Convex create-checkout action, with its JSON-RPC refusal mapping. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/host-policy.ts",
+      "category": "external-protocol",
+      "reason": "Per-host commerce policy for the MCP surface: ChatGPT requests get no start_upgrade tool and inform-only denial copy, per ChatGPT's app submission guidelines. Part of the streamable-HTTP MCP surface — not a JSON data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -229,7 +369,7 @@
     {
       "path": "api/mcp/utils.ts",
       "category": "external-protocol",
-      "reason": "MCP utf8ByteLength + compressDescription — UTF-8 byte counting and tools/list description compression. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "reason": "MCP utf8ByteLength + compressDescription — UTF-8 byte counting and the tools/list description-cap backstop. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -238,6 +378,27 @@
       "category": "external-protocol",
       "reason": "MCP JSON-RPC 2.0 envelope helpers (rpcOk + rpcError). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/request-id.ts",
+      "category": "external-protocol",
+      "reason": "Stamps error.data.requestId on MCP JSON-RPC error envelopes at the handler's single exit (#8721 phase 5). Pure helper for the external-protocol MCP handler family; exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/modern.ts",
+      "category": "external-protocol",
+      "reason": "MCP 2026-07-28 (modern era) envelope detection and per-request _meta/header validation for the /mcp handler. Part of the same external-protocol transport, not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/structured-content.ts",
+      "category": "external-protocol",
+      "reason": "MCP tools/call structuredContent builder + the anyOf outputSchema it is advertised under (#8328). Pure helper imported by the MCP dispatcher and registry, not a route; same external-protocol constraint as the parent shim.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {
@@ -321,6 +482,13 @@
       "path": "api/mcp/ui/news-intelligence-app.ts",
       "category": "external-protocol",
       "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/news-intelligence.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/news-dashboard-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps HTML resource loader for the compiled WorldMonitor dashboard. The ui:// resource envelope and CSP metadata follow the external MCP Apps protocol. No standalone HTTP data endpoint.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -423,6 +591,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/channel-oauth-bind.ts",
+      "category": "external-protocol",
+      "reason": "OAuth popup form target. Sets the browser binding after a one-time secret check and returns an HTML navigation to Slack or Discord.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/discord/oauth/callback.ts",
       "category": "external-protocol",
       "reason": "Discord OAuth redirect target — response is an HTML popup-closer page, query-param shape fixed by Discord.",
@@ -450,7 +625,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/download.js",
       "category": "non-json",
@@ -481,8 +655,8 @@
     },
     {
       "path": "api/youtube/live.js",
-      "category": "non-json",
-      "reason": "Streams YouTube live metadata — chunked text response, not a typed JSON payload.",
+      "category": "upstream-proxy",
+      "reason": "Names a YouTube video through YouTube's public oEmbed endpoint for channel management; channel live detection is retired and answers 410.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -493,7 +667,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
@@ -550,7 +723,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
     {
       "path": "api/health.js",
       "category": "ops-admin",
@@ -629,20 +801,19 @@
       "removal_issue": null
     },
     {
-      "path": "api/fwdstart.js",
-      "category": "non-json",
-      "reason": "Scrapes the fwdstart.me newsletter archive for the dashboard feed panel and serves an RSS/XML response with HTTP Content-Type application/xml, not JSON.",
-      "owner": "@SebastienMelki",
-      "removal_issue": null
-    },
-    {
       "path": "api/notify.ts",
       "category": "internal-helper",
       "reason": "Authenticated PRO event-publish endpoint that validates Clerk bearer auth, rejects relay-internal control events, and enqueues accepted events outside sebuf because it is queue plumbing rather than a typed domain RPC.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
-
+    {
+      "path": "api/notification-suppressions.js",
+      "category": "internal-helper",
+      "reason": "Anonymous operator incident-control read for the service worker: serves the Redis notification link-suppression set (blocked URLs/hosts) so already-delivered push payloads stop navigating on click. Kept outside sebuf because the SW consults it via a plain GET with no auth context at click time, and the shape is an unversioned incident snapshot rather than a typed domain RPC.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
     {
       "path": "api/bootstrap.js",
       "category": "internal-helper",
@@ -707,6 +878,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/embed/map-frame.ts",
+      "category": "internal-helper",
+      "reason": "The single composed read the partner /embed map frame polls, replacing four separate anonymous RPC calls. Not a product data API: it accepts one parameter (`layers`) and returns the verbatim payloads of handlers already published as sebuf RPCs — no bbox, page size, or time window, because every knob is a knob a stolen embed credential could turn. Deliberately NOT a sebuf RPC of its own: the free and keyed tiers need different Cache-Control on one path, and CACHE_TIER_BY_PATH in the domain gateway is per-path, so routing it there would let a keyless response be cached and served to a keyed caller. Shareability is decided from the URL alone, before any credential is read (a CDN hit answers before the origin sees a header — #5386): only the exact raw query `layers=<canonical free subset>&public=1` is shared-cacheable, bounding the CDN key space to the free tier's seven non-empty subsets. Every other shape, credentialed or not, is served `private, no-store`, so a near-miss degrades to correct-but-uncached rather than to a shared entry that could answer the wrong caller. Builder and validator are one module (shared/embed-map-frame.ts) so an emitted URL and a cacheable URL cannot drift.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/embed/session.ts",
+      "category": "internal-helper",
+      "reason": "Credential exchange for the partner /embed iframe: trades the account's wme_ embed key for a short-lived, panel-scoped wmg_ grant that the frame then polls with. Not a product data API — it returns only a bearer token and its expiry. Deliberately NOT a sebuf RPC: a domain gateway route accepts only wms_ sessions, wm_ keys, or PUBLIC_NO_AUTH_RPC_PATHS membership, and teaching the shared auth cascade a third credential family would widen the very blast radius this exchange exists to narrow. Response is private, no-store because the body IS a credential.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/user/mcp-quota.ts",
       "category": "internal-helper",
       "reason": "Settings-UI-only read of the caller's Pro MCP daily-quota counter (plan 2026-05-10-001 U9). Clerk-authenticated; reads the SAME `mcp:pro-usage:<userId>:<YYYY-MM-DD>` Redis key that api/mcp.ts U7 writes via INCR-first reservation. Returns `{used, limit, resetsAt}` where `limit` is the caller's plan allowance resolved through api/mcp/quota.ts's `resolveDailyLimit` (`null` = unlimited, plan 2026-07-25-001 U3b) — informational, not authoritative; the hard cap is enforced server-side at INCR time. Shape exists purely so the Connected MCP clients tab can show `X / <plan limit> used today, resets in <countdown>` without exposing the underlying Redis schema. Modeling as a sebuf RPC would publish a per-user counter implementation detail as user-facing API surface for a single-feature display widget.",
@@ -721,13 +906,40 @@
       "removal_issue": null
     },
     {
+      "path": "api/user-api-keys.ts",
+      "category": "internal-helper",
+      "reason": "First-party API and desktop key issuance. Requires a locally verified Clerk session, a fail-closed per-user limiter, and a live session check before the gateway-only Convex relay can create a key.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user-embed-keys.ts",
+      "category": "internal-helper",
+      "reason": "First-party embed key issuance. Requires a locally verified Clerk session, a fail-closed per-user limiter, a live session check, and a server-side Clerk role lookup before the gateway-only Convex relay can create a key.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/desktop-auth/authorize.ts",
+      "category": "internal-helper",
+      "reason": "Desktop browser sign-in, browser half (#9396 follow-up). POST {code_challenge} from the Clerk-protected /desktop-sign-in page; returns a one-time code bound to the desktop's PKCE challenge, which the page hands to the desktop on a 127.0.0.1 loopback redirect (RFC 8252). Private plumbing of one first-party flow, not a product data API.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/desktop-auth/token.ts",
+      "category": "external-protocol",
+      "reason": "Desktop browser sign-in, desktop half (#9396 follow-up). POST {code, code_verifier}: an RFC 7636 PKCE code redemption that returns a single-use, 60-second Clerk sign-in ticket. Shape follows the OAuth native-app pattern (RFC 8252) rather than the sebuf contract.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/user/passkey-offer.ts",
       "category": "internal-helper",
       "reason": "Passkey-offer controller reservation endpoint. Clerk-authenticated; claims one of three account slots with Redis HSETNX so concurrent or stale browsers cannot lower or bypass the lifetime prompt cap. Clerk unsafe metadata remains a migration source and browser-readable terminal mirror. The unversioned response is private UI coordination state, not a product data API.",
       "owner": "@koala73",
       "removal_issue": null
     },
-
     {
       "path": "api/latest-brief.ts",
       "category": "deferred",
@@ -798,7 +1010,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },
-
     {
       "path": "api/scenario/v1/run.ts",
       "category": "deferred",
@@ -834,7 +1045,6 @@
       "owner": "@SebastienMelki",
       "removal_issue": "#3282"
     },
-
     {
       "path": "api/v2/shipping/webhooks/[subscriberId].ts",
       "category": "migration-pending",

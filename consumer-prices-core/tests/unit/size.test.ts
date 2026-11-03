@@ -131,4 +131,58 @@ describe('parseSize', () => {
     const up = unitPrice(10, size);
     expect(up).toBeCloseTo(0.01); // 10 AED per 1000g = 0.01 per g
   });
+
+  it('normalizes explicit count packs only with count-item context', () => {
+    const size = parseSize('12 Pack', { baseUnit: 'ct', marketCode: 'ae' });
+    expect(size).toMatchObject({ packCount: 1, baseQuantity: 12, baseUnit: 'ct', rawText: '12 Pack' });
+    expect(unitPrice(16.25, size!)).toBeCloseTo(16.25 / 12);
+    expect(parseSize('12 Pack')).toBeNull();
+    expect(parseSize('12 Pack', { baseUnit: 'g', marketCode: 'ae' })).toBeNull();
+  });
+
+  it('normalizes a GB volume pint without choosing a unit for other markets', () => {
+    const size = parseSize('2 Pint', { baseUnit: 'ml', marketCode: 'gb' });
+    expect(size).toMatchObject({ packCount: 1, baseUnit: 'ml', rawText: '2 Pint' });
+    expect(size?.baseQuantity).toBeCloseTo(1136.5225);
+    expect(unitPrice(1.2, size!)).toBeCloseTo(1.2 / 1136.5225);
+    expect(parseSize('2 Pint')).toBeNull();
+    expect(parseSize('2 Pint', { baseUnit: 'ml', marketCode: 'us' })).toBeNull();
+    expect(parseSize('2 Pint', { baseUnit: 'g', marketCode: 'gb' })).toBeNull();
+  });
+
+  it.each(['0 Pack', '-12 Pack', '1.5 Pack', '9007199254740992 Pack', '2x6 Pack', '12 Packs', '12 PACKS', 'case of 12 Pack', 'Each'])('declines ambiguous or invalid count label %s', raw => {
+    expect(parseSize(raw, { baseUnit: 'ct', marketCode: 'ae' })).toBeNull();
+  });
+
+  it.each(['0 Pint', '-2 Pint', '2x2 Pint', '2 Pint or 1L', 'case of 2 Pint'])('declines ambiguous or invalid pint label %s', raw => {
+    expect(parseSize(raw, { baseUnit: 'ml', marketCode: 'gb' })).toBeNull();
+  });
+
+  it('still reads a size from a long product name', () => {
+    const name = `Organic Free-Range Brown Eggs from Pasture-Raised Hens, Grade A Large, Family Pack ${'Value '.repeat(40)}12 x 500g`;
+    expect(name.length).toBeGreaterThan(300);
+    expect(parseSize(name)?.baseQuantity).toBe(6000);
+  });
+
+  it.each([
+    ['2\nx\n500g', 2, 1000],
+    ['6 x\n330ml', 6, 1980],
+    ['3 pack\n\n250 g', 3, 750],
+  ])('reads a pack split across lines: %j', (raw, packCount, baseQuantity) => {
+    expect(parseSize(raw)).toMatchObject({ packCount, baseQuantity });
+  });
+
+  it('does not read a pack whose size is not on the last line', () => {
+    expect(parseSize('2 x 1\n500g')).toBeNull();
+  });
+
+  it.each([
+    ['a long digit run', '1'.repeat(100_000)],
+    ['repeated pack prefixes before a line break', `${' 1x'.repeat(33_000)}\na`],
+  ])('declines %s in bounded time', (_label, raw) => {
+    // Both size patterns backtrack across the whole text from every start.
+    const started = performance.now();
+    expect(parseSize(raw)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(250);
+  });
 });

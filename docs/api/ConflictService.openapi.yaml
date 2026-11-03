@@ -15,7 +15,6 @@ paths:
             summary: ListAcledEvents
             description: ListAcledEvents retrieves ACLED armed-conflict events with country, location, actors, event type and fatalities, filterable by country and inclusive time range.
             operationId: ListAcledEvents
-            security: []
             parameters:
                 - name: start
                   in: query
@@ -94,6 +93,23 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/ValidationError'
                                     - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
                 "429":
                     description: Rate limit exceeded.
                     headers:
@@ -119,6 +135,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -132,7 +173,7 @@ paths:
             tags:
                 - ConflictService
             summary: ListUcdpEvents
-            description: ListUcdpEvents retrieves georeferenced violence events from the UCDP dataset.
+            description: Browse cached, georeferenced UCDP violence events with optional country filtering, event dates and fatality estimates for country-level conflict data analysis.
             operationId: ListUcdpEvents
             parameters:
                 - name: start
@@ -197,8 +238,8 @@ paths:
                             example:
                                 "events":
                                     - "country": "US"
-                                      "dateEnd": 1
-                                      "dateStart": 1
+                                      "dateEnd": 1717200000000
+                                      "dateStart": 1717200000000
                                       "deathsBest": 1
                                       "deathsHigh": 1
                                       "id": "example-id"
@@ -295,7 +336,7 @@ paths:
             tags:
                 - ConflictService
             summary: GetHumanitarianSummary
-            description: GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
+            description: Retrieve a cached HAPI conflict summary for a country, with event counts, fatalities, demonstrations, reference period and update time for humanitarian context.
             operationId: GetHumanitarianSummary
             parameters:
                 - name: country_code
@@ -780,7 +821,7 @@ paths:
             tags:
                 - ConflictService
             summary: GetHumanitarianSummaryBatch
-            description: GetHumanitarianSummaryBatch retrieves humanitarian summaries for multiple countries in one call.
+            description: Retrieve humanitarian summaries for multiple countries in one request, with country indicators and requested versus fetched counts for coverage comparison.
             operationId: GetHumanitarianSummaryBatch
             requestBody:
                 content:
@@ -1321,11 +1362,11 @@ components:
                 conflictPoliticalViolenceEvents:
                     type: integer
                     format: int32
-                    description: Political violence + civilian targeting event count.
+                    description: Political-violence category events only.
                 conflictFatalities:
                     type: integer
                     format: int32
-                    description: Total fatalities from political violence and civilian targeting.
+                    description: Political-violence category fatalities only.
                 referencePeriod:
                     type: string
                     description: Reference period start date (YYYY-MM-DD).

@@ -17,8 +17,35 @@ function mergeLastGoodQuotes(marketSymbols, freshQuotes, previousQuotes) {
     .filter(Boolean);
 }
 
+function freshSymbolSet(freshQuotes) {
+  return new Set(
+    (Array.isArray(freshQuotes) ? freshQuotes : [])
+      .filter((quote) => quote && typeof quote.symbol === 'string')
+      .map((quote) => quote.symbol),
+  );
+}
+
+/**
+ * Batch `asOf` must not advance when any published quote was retained from
+ * last-good. NQ Pulse labels the whole basket from this stamp, so a fresh
+ * timestamp on stale Yahoo-only rows would read as Current.
+ */
+function resolveMergedQuotesAsOf(freshQuotes, mergedQuotes, previousAsOf, fetchedAtMs) {
+  const freshSymbols = freshSymbolSet(freshQuotes);
+  const retained = (Array.isArray(mergedQuotes) ? mergedQuotes : []).some(
+    (quote) => quote && typeof quote.symbol === 'string' && !freshSymbols.has(quote.symbol),
+  );
+  if (retained) {
+    return typeof previousAsOf === 'string' ? previousAsOf : '';
+  }
+  const fetchedAt = Number(fetchedAtMs);
+  if (!Number.isFinite(fetchedAt) || fetchedAt <= 0) return '';
+  return new Date(fetchedAt).toISOString();
+}
+
 function planYahooRefresh({
   mandatoryYahooSymbols,
+  everyCycleSymbols,
   missedPrimarySymbols,
   nowMs,
   lastRefreshAt,
@@ -29,16 +56,18 @@ function planYahooRefresh({
   const interval = Number(refreshIntervalMs);
   const due = !Number.isFinite(last) || last <= 0 || !Number.isFinite(now)
     || !Number.isFinite(interval) || interval <= 0 || now < last || now - last >= interval;
+  const always = [...new Set(everyCycleSymbols || [])];
 
   return {
     due,
     symbols: due
-      ? [...new Set([...(mandatoryYahooSymbols || []), ...(missedPrimarySymbols || [])])]
-      : [],
+      ? [...new Set([...(mandatoryYahooSymbols || []), ...(missedPrimarySymbols || []), ...always])]
+      : always,
   };
 }
 
 module.exports = {
   mergeLastGoodQuotes,
   planYahooRefresh,
+  resolveMergedQuotesAsOf,
 };

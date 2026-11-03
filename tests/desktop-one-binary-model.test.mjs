@@ -220,8 +220,8 @@ test('a pushed tag must match the version actually being built', () => {
 test('the desktop workflow exposes no per-variant build selector', () => {
   assert.deepEqual(
     Object.keys(workflowTriggers.workflow_dispatch.inputs),
-    ['draft'],
-    'A variant input implies per-variant binaries; a tag push would still build full regardless (the v* trigger matches v*-tech).'
+    ['draft', 'release_tag'],
+    'Manual inputs may control publication and the shared release lock, but must not select a binary variant.'
   );
 });
 

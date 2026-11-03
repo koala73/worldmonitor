@@ -1,0 +1,186 @@
+<!-- Captured 2026-10-16 10:47 UTC from https://mausam.imd.gov.in/Forecast/coastal_bulletin_new.php?id=6. Content: India Meteorological Department (IMD), reused with attribution under the RTI non-commercial terms. -->
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+table, th, td {
+  border: 1px solid #92a8d1;
+  border-collapse: collapse;
+}
+.outer-box{
+	border: 1px solid #777;
+	padding: 20px;
+	border-radius: 4px;
+	margin: 0 auto;
+	width:70%;
+}
+textarea{
+	width:96%;
+}
+.td-1{
+	width:25%;
+	color:  #922109 ;
+}
+.td-2{
+	width:70%;
+}
+.tr{
+	width:100%;
+}
+
+.tr tr:nth-child(even) { background-color: #f2f2f2; }
+.tr tr td {	padding: 5px; }
+.date-right{
+	text-align:right; 
+	margin-right:20px;
+	font-weight: bold;
+}
+.caption{
+	text-align:left; 
+	font-weight: bold;
+	color: blue;
+}
+.button {
+  background-color: #4CAF50;
+	color: white;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+	border: 0;
+	border-radius: 4px;
+	padding: 8px 12px;
+  font-size: 14px;
+  margin: 4px 2px;
+  }
+
+	.sur-chart {
+		width: 100%;
+		max-width: 920px;
+	}
+
+	@media print {
+		/* All your print styles go here */
+		html, body { margin: 0; padding: 0;}
+		.outer-box{ width: 100%; margin: 0; padding: 0; border:0; }
+		.button { display: none; }
+		.tr tr td { width: 1; }
+		.td-1 {width: 1;}
+	}
+</style>
+</head>
+<body>
+<div class="outer-box">
+<div style="float:right;">
+	<button class=button onclick="window.print()">Print</button>
+</div>
+<div>
+	<img src="../img/logo/imd_logo_a.png" style="margin-left: auto; margin-right: auto; display: block; width:70px; height:110px; ">
+</div>
+<div>
+	<p style="text-align:center; font-weight: bold; color: #922109 ;">India Meteorological Department/ भारत मौसम विज्ञान विभाग</p><p  style="text-align:center; font-weight: bold;">ACWC CHENNAI	/ ए .सी .डबब्लू .सी चेन्नई  	</p>
+</div>
+
+<div style="text-align:center; font-weight: bold;">
+	<p style="color: blue;"><u>Coastal Weather Bulletin</u></p>
+		<p >DAILY ONE Bulletin Valid for 12 hrs from 10 UTC of 2026-10-16 
+		to 22 UTC of 2026-10-16</p>
+
+<!--	<p id='datetime'></p>-->
+</div>
+
+<div class="tr caption">&nbsp;</div>	
+<table class="tr">
+	<tr>
+		<td class="td-1">Synoptic Situation</td>
+		<td >NIL</td>
+	</tr>
+</table>
+<br>
+
+<div class="tr caption">&nbsp;</div>
+
+
+	
+
+	
+<!-- Layer -->
+<table class="tr ">
+	<caption class="caption">
+		North Tamilnadu coast	</caption>
+	
+	<tr>
+		<td class="td-1">Wind</td>
+		<td >SOUTHERLY/ SOUTHWESTERLY 10-15 KNOTS.</td>
+	</tr>
+	<tr>
+		<td class="td-1">Weather</td>
+		<td >FAIRLY WIDESPREAD RAIN/THUNDERSHOWERS WITH ISOLATED HEAVY FALLS.</td>
+	</tr>
+	<tr>
+		<td class="td-1">Visibility</td>
+		<td >POOR; BECOMING VERY POOR IN THUNDERSHOWERS AND HEAVY FALLS.</td>
+	</tr>
+	<tr>
+		<td class="td-1">Sea Condition</td>
+		<td >SLIGHT.</td>
+	</tr>
+	<tr>
+		<td class="td-1">Port Signal</td>
+		<td >NIL AT ALL PORTS</td>
+	</tr>
+	<tr>
+		<td class="td-1">Storm Surge/Tidal Warning</td>
+		<td >NIL</td>
+	</tr>
+</table>
+<br>
+	
+<!-- Layer -->
+<table class="tr ">
+	<caption class="caption">
+		South Tamilnadu coast	</caption>
+	
+	<tr>
+		<td class="td-1">Wind</td>
+		<td >MAINLY SOUTHWESTERLY 10-15 KNOTS.</td>
+	</tr>
+	<tr>
+		<td class="td-1">Weather</td>
+		<td >FAIRLY WIDESPREAD RAIN/THUNDERSHOWERS WITH ISOLATED HEAVY FALLS.</td>
+	</tr>
+	<tr>
+		<td class="td-1">Visibility</td>
+		<td >POOR; BECOMING VERY POOR IN THUNDERSHOWERS AND HEAVY FALLS.</td>
+	</tr>
+	<tr>
+		<td class="td-1">Sea Condition</td>
+		<td >SLIGHT.</td>
+	</tr>
+	<tr>
+		<td class="td-1">Port Signal</td>
+		<td >NIL AT ALL PORTS</td>
+	</tr>
+	<tr>
+		<td class="td-1">Storm Surge/Tidal Warning</td>
+		<td >NIL</td>
+	</tr>
+</table>
+<br>
+	
+
+<table class="tr "><tr><td class="td-1">Time of Issue</td><td>15:02 IST of 2026-10-16</td></tr></table>
+	
+</div>
+</body>
+
+<script type="text/javascript">
+	var date = new Date(); 
+	var tomorrow = date.getDate()+1+'-'+(date.getMonth()+1)+'-'+date.getFullYear();
+	var today = date.getDate()+'-'+(date.getMonth()+1)+'-'+date.getFullYear();
+			
+	document.getElementById("datetime").innerHTML = "Daily Bulletin Valid for 12 Hours From "+today+" to "+tomorrow;
+	
+	document.getElementById("date-right").innerHTML = today;
+		</script>
+
+</html>

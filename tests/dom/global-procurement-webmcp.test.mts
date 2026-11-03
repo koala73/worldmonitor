@@ -196,6 +196,22 @@ describe('GlobalProcurementPanel declarative WebMCP tool', () => {
       ['canada-buys', 'CanadaBuys'],
       ['gets', 'GETS'],
       ['world-bank', 'World Bank'],
+      ['colombia-secop', 'Colombia SECOP II'],
+      ['kenya-ppip', 'Kenya PPIP'],
+      ['south-africa-etenders', 'South Africa eTenders'],
+      ['chile-mercado-publico', 'Chile Mercado Público'],
+      ['brazil-pncp', 'Brazil PNCP'],
+      ['ukraine-prozorro', 'Ukraine Prozorro'],
+      ['bulgaria-eop', 'Bulgaria EOP'],
+      ['latvia-iub', 'Latvia IUB'],
+      ['poland-bzp', 'Poland BZP'],
+      ['pakistan-ppra', 'Pakistan PPRA'],
+      ['pakistan-epads', 'Pakistan EPADS'],
+      ['georgia-spa', 'Georgia SPA'],
+      ['armenia-armeps', 'Armenia ARMEPS'],
+      ['albania-app', 'Albania APP'],
+      ['dominican-republic-dgcp', 'Dominican Republic DGCP'],
+      ['malaysia-myprocurement', 'Malaysia MyProcurement'],
     ]);
     const sort = tools[0]?.elements.namedItem('sort') as HTMLSelectElement;
     expect([...sort.options].map((option) => option.value)).toEqual([
@@ -511,6 +527,54 @@ describe('GlobalProcurementPanel declarative WebMCP tool', () => {
     expect(form(panel).classList.contains('webmcp-tool-active')).toBe(false);
     expect(form(panel).classList.contains('webmcp-request-pending')).toBe(false);
     expect([...form(panel).elements].every((control) => !control.hasAttribute('aria-disabled'))).toBe(true);
+  });
+
+  it('blanks a retained declarative form during principal reset before deferred cleanup', async () => {
+    const panel = mount(() => new Promise<void>(() => undefined));
+    commitResponse(panel);
+    const currentForm = form(panel);
+    const query = currentForm.elements.namedItem('query') as HTMLInputElement;
+    const buyer = currentForm.elements.namedItem('buyer') as HTMLInputElement;
+    const country = currentForm.elements.namedItem('country') as HTMLInputElement;
+    query.value = 'alpha-secret';
+    buyer.value = 'Secret Buyer';
+    country.value = 'US';
+
+    const pendingInvocation = dispatchAgentSubmit(currentForm);
+    panel.clearSensitiveContent();
+
+    expect(currentForm.isConnected).toBe(true);
+    expect(query.value).toBe('');
+    expect(buyer.value).toBe('');
+    expect(country.value).toBe('');
+    expect(panel.getElement().querySelector('[data-procurement-filters]')).toBe(currentForm);
+
+    await expectRetryableFailure(pendingInvocation.response, 'panel_unavailable');
+    expect(currentForm.isConnected).toBe(true);
+    expect(query.value).toBe('');
+
+    vi.advanceTimersByTime(0);
+    expect(currentForm.isConnected).toBe(false);
+    expect(panel.getElement().textContent).not.toContain('alpha-secret');
+    expect(panel.getElement().textContent).not.toContain('Secret Buyer');
+
+    const settlingPanel = mount(() => new Promise<void>(() => undefined));
+    commitResponse(settlingPanel);
+    const settlingForm = form(settlingPanel);
+    const settlingQuery = settlingForm.elements.namedItem('query') as HTMLInputElement;
+    settlingQuery.value = 'settling-secret';
+    const settlingInvocation = dispatchAgentSubmit(settlingForm);
+    settlingPanel.update(response({ total: 3 }));
+    expect(settlingQuery.value).toBe('settling-secret');
+    expect(settlingForm.isConnected).toBe(true);
+
+    settlingPanel.clearSensitiveContent();
+    expect(settlingForm.isConnected).toBe(true);
+    expect(settlingQuery.value).toBe('');
+    await settlingInvocation.response;
+    vi.advanceTimersByTime(0);
+    expect(settlingForm.isConnected).toBe(false);
+    expect(settlingPanel.getElement().textContent).not.toContain('settling-secret');
   });
 
   it('defers synchronous terminal cleanup until the response promise is observable', async () => {

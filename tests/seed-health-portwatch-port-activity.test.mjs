@@ -1,6 +1,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
+import { CII_RISK_SCORES_META_KEY, healthyCiiInputs } from './helpers/health-pipeline-fixture.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -24,7 +25,7 @@ const PORTWATCH_CONTENT_BUDGET_MINUTES = 10 * 24 * 60;
 const TEST_NOW = Date.parse('2026-08-03T14:42:58.000Z');
 const DECISION_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v12:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
@@ -96,8 +97,29 @@ function installSeedHealthPipelineMock(
           }),
         };
       }
-      if (key === DECISION_META_KEY && chinaDecisionMeta) {
-        return { result: JSON.stringify(chinaDecisionMeta) };
+      if (key === DECISION_META_KEY) {
+        return { result: JSON.stringify(chinaDecisionMeta ?? {
+          fetchedAt: now,
+          recordCount: 6,
+          groupStates: Object.fromEntries([
+            'macro',
+            'policy-enforcement',
+            'cross-strait-activity',
+            'corporate-disclosures',
+            'corridor-conditions',
+            'activity-nowcast',
+          ].map((id) => [id, 'available'])),
+          groupCounts: {
+            populated: 6,
+            partial: 0,
+            stale: 0,
+            unavailable: 0,
+            healthyQuiet: 0,
+            operationallyCovered: 6,
+          },
+          unavailableCauses: {},
+          lastDecisionCoverageSuccessAt: now,
+        }) };
       }
       if (key === PHYSICAL_DIVERGENCE_META_KEY && physicalDivergenceMeta) {
         return { result: JSON.stringify(physicalDivergenceMeta) };
@@ -146,6 +168,7 @@ function installSeedHealthPipelineMock(
         recordCount: 10_000,
         rankableRecordCount: 10_000,
         redistributionPolicyVersion: 1,
+        ...(key === CII_RISK_SCORES_META_KEY ? { inputs: healthyCiiInputs() } : {}),
       }) };
     });
     return new Response(JSON.stringify(results), {
@@ -303,11 +326,11 @@ test('seed-health publishes partial and stale China decision groups like /api/he
         'activity-nowcast': 'unavailable',
       },
       groupCounts: {
-        populated: 1,
+        populated: 3,
         partial: 1,
         stale: 1,
         unavailable: 3,
-        healthyQuiet: 0,
+        healthyQuiet: 1,
         operationallyCovered: 3,
       },
       unavailableCauses: {
@@ -315,13 +338,66 @@ test('seed-health publishes partial and stale China decision groups like /api/he
         'corridor-conditions': 'insufficient_data',
         'activity-nowcast': 'upstream_unavailable',
       },
+      lastDecisionCoverageSuccessAt: TEST_NOW - 30 * 60_000,
     },
   });
 
   const { body } = await readSeedHealth();
   const entry = body.seeds['intelligence:china-decision-signals'];
 
+  assert.equal(body.overall, 'warning');
+  assert.equal(entry.status, 'coverage_partial');
   assert.deepEqual(entry.partialGroups, ['macro']);
   assert.deepEqual(entry.staleGroups, ['policy-enforcement']);
   assert.deepEqual(entry.quietGroups, ['corporate-disclosures']);
+  assert.equal(entry.coverageLastSuccessAt, TEST_NOW - 30 * 60_000);
+});
+
+test('seed-health warns when China decision diagnostics or failure evidence are invalid', async () => {
+  const coveredStates = Object.fromEntries([
+    'macro',
+    'policy-enforcement',
+    'cross-strait-activity',
+    'corporate-disclosures',
+    'corridor-conditions',
+    'activity-nowcast',
+  ].map((id) => [id, 'available']));
+  const validCounts = {
+    populated: 6,
+    partial: 0,
+    stale: 0,
+    unavailable: 0,
+    healthyQuiet: 0,
+    operationallyCovered: 6,
+  };
+  const cases = [
+    {
+      name: 'group diagnostics',
+      meta: { fetchedAt: TEST_NOW, recordCount: 6 },
+      expectedReason: 'GROUP_DIAGNOSTICS_INVALID',
+    },
+    {
+      name: 'failure evidence',
+      meta: {
+        fetchedAt: TEST_NOW,
+        recordCount: 6,
+        groupStates: coveredStates,
+        groupCounts: validCounts,
+        unavailableCauses: {},
+        lastDecisionCoverageSuccessAt: TEST_NOW + 5 * 60_000,
+      },
+      expectedReason: 'LAST_SUCCESS_INVALID',
+    },
+  ];
+
+  for (const testCase of cases) {
+    installSeedHealthPipelineMock(174, { chinaDecisionMeta: testCase.meta });
+    const { res, body } = await readSeedHealth();
+    const entry = body.seeds['intelligence:china-decision-signals'];
+
+    assert.equal(res.status, 200, testCase.name);
+    assert.equal(body.overall, 'warning', testCase.name);
+    assert.equal(entry.status, 'coverage_partial', testCase.name);
+    assert.equal(entry.coverageFailureInvalidReason, testCase.expectedReason, testCase.name);
+  }
 });

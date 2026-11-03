@@ -1,5 +1,4 @@
 import { query } from '../client.js';
-import type { CanonicalProduct, RetailerProduct } from '../models.js';
 
 export async function upsertRetailerProduct(input: {
   retailerId: string;
@@ -36,22 +35,6 @@ export async function upsertRetailerProduct(input: {
     ],
   );
   return result.rows[0].id;
-}
-
-export async function getRetailerProductsByRetailer(retailerId: string): Promise<RetailerProduct[]> {
-  const result = await query<RetailerProduct>(
-    `SELECT * FROM retailer_products WHERE retailer_id = $1 AND active = true`,
-    [retailerId],
-  );
-  return result.rows;
-}
-
-export async function getCanonicalProducts(marketCode?: string): Promise<CanonicalProduct[]> {
-  const result = await query<CanonicalProduct>(
-    `SELECT * FROM canonical_products WHERE active = true ORDER BY canonical_name`,
-    [],
-  );
-  return result.rows;
 }
 
 export async function upsertCanonicalProduct(input: {

@@ -17,7 +17,10 @@
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 0,
       "dashboardAiCallsPerDay": 0,
-      "mcpBurstRequestsPerMinute": 0
+      "mcpBurstRequestsPerMinute": 0,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Get Started",
     "href": "https://worldmonitor.app/dashboard",
@@ -30,14 +33,15 @@
     "annualPrice": 359.99,
     "description": "Full intelligence dashboard",
     "features": [
-      "Everything in Free",
-      "AI stock analysis & backtesting",
-      "Daily market briefs",
-      "Military & geopolitical tracking",
-      "Custom widget builder",
-      "10 custom dashboards (vs 3)",
+      "Everything in Free — panels, sources & followed countries uncapped",
+      "WM Analyst chat + AI stock analysis & backtesting",
+      "Cost-shock modelling & supply-chain stress tests",
+      "Intel memory — historical search, timelines & similar events",
+      "Physical metals divergence, minerals concentration & sovereign debt data",
+      "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-      "Priority data refresh"
+      "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)"
     ],
     "highlightFeatures": [
       "Personal license",
@@ -48,7 +52,10 @@
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 50,
       "dashboardAiCallsPerDay": 500,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
     "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ",
@@ -66,6 +73,7 @@
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
+      "Desktop key for the desktop app (3 keys)",
       "Priority support"
     ],
     "highlightFeatures": [
@@ -77,7 +85,10 @@
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 250,
       "dashboardAiCallsPerDay": 2500,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "monthlyProductId": "pdt_0NjyFDbhURh2oROgPIU3G",
     "annualProductId": "pdt_0Nk072fxPUcHWivZRtlQW",
@@ -90,22 +101,26 @@
     "annualPrice": 899.99,
     "description": "Build internal tools on live intelligence data",
     "features": [
+      "Full Pro dashboard included (1 named user)",
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "License / API key included",
       "Real-time data streams",
       "60 requests/minute",
-      "1,000 requests/day included",
+      "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "Webhook notifications"
     ],
     "highlightFeatures": [
-      "Commercial license — for your organization"
+      "Commercial use — internal only, not customer-facing"
     ],
     "planLimits": {
       "apiRequestsPerDay": 1000,
       "apiBurstRequestsPerMinute": 60,
       "mcpCallsPerDay": 1000,
       "dashboardAiCallsPerDay": 1000,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
+      "mcpDailyBudgetSharedWithRest": true
     },
     "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
     "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV",
@@ -119,21 +134,24 @@
     "description": "Launch your own product on WorldMonitor data",
     "features": [
       "Everything in API Starter",
-      "Redistribution rights — embed our data in what you sell",
+      "R1–R3 redistribution rights for customer-facing products",
       "300 requests/minute",
-      "10,000 requests/day included",
+      "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
       "Priority support"
     ],
     "highlightFeatures": [
-      "Commercial license — for your customers"
+      "Commercial use — in your customer-facing products"
     ],
     "planLimits": {
       "apiRequestsPerDay": 10000,
       "apiBurstRequestsPerMinute": 300,
       "mcpCallsPerDay": 10000,
       "dashboardAiCallsPerDay": 10000,
-      "mcpBurstRequestsPerMinute": 300
+      "mcpBurstRequestsPerMinute": 300,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
+      "mcpDailyBudgetSharedWithRest": true
     },
     "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
     "annualProductId": "pdt_0NkHjzMhGp3m45sZLQ7BQ",
@@ -158,11 +176,14 @@
       "Fully white-labeled — with or without revenue sharing"
     ],
     "planLimits": {
-      "apiRequestsPerDay": null,
+      "apiRequestsPerDay": 100000,
       "apiBurstRequestsPerMinute": 1000,
-      "mcpCallsPerDay": null,
-      "dashboardAiCallsPerDay": null,
-      "mcpBurstRequestsPerMinute": 1000
+      "mcpCallsPerDay": 25000,
+      "dashboardAiCallsPerDay": 25000,
+      "mcpBurstRequestsPerMinute": 1000,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",

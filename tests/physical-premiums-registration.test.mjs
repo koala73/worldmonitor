@@ -4,6 +4,11 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { __testing__ as health } from '../api/health.js';
+import {
+  EDUCATION_PRIORITY_UTC_DAY,
+  EDUCATION_PRIORITY_UTC_HOUR,
+  orderMacroSections,
+} from '../scripts/_macro-bundle-order.mjs';
 import { PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS } from '../shared/physical-divergence-staleness.js';
 
 const root = resolve(import.meta.dirname, '..');
@@ -35,6 +40,24 @@ describe('physical premium production registration', () => {
     assert.ok(macro.watchPatterns.includes('scripts/shared/physical-divergence-contract.js'));
   });
 
+  it('protects the physical publisher with an early slot and one retry window', () => {
+    const registry = JSON.parse(read('scripts/railway-services.json'));
+    const macro = registry.find((entry) => entry.entry === 'scripts/seed-bundle-macro.mjs');
+    const orderAt = (instant) => orderMacroSections(
+      new Date(instant),
+      'Education',
+      'Physical',
+      ['BIS', 'China'],
+    );
+
+    assert.equal(macro?.cronSchedule, '0 8,9 * * *');
+    assert.equal(EDUCATION_PRIORITY_UTC_DAY, 0);
+    assert.equal(EDUCATION_PRIORITY_UTC_HOUR, 8);
+    assert.deepEqual(orderAt('2026-09-06T08:00:00Z'), ['Education', 'Physical', 'BIS', 'China']);
+    assert.deepEqual(orderAt('2026-09-06T09:00:00Z'), ['Physical', 'BIS', 'China', 'Education']);
+    assert.deepEqual(orderAt('2026-09-07T08:00:00Z'), ['Physical', 'BIS', 'China', 'Education']);
+  });
+
   it('aligns paper freshness with the daily publisher and health alarm', () => {
     const bundle = read('scripts/seed-bundle-macro.mjs');
     const runbook = read('docs/railway-seed-consolidation-runbook.md');
@@ -47,8 +70,8 @@ describe('physical premium production registration', () => {
     );
     assert.match(
       runbook,
-      /seed-bundle-macro[\s\S]*?`0 8 \* \* \*` \(daily 08:00 UTC\)/,
-      'the documented Railway publisher cadence must stay daily',
+      /seed-bundle-macro[\s\S]*?`0 8,9 \* \* \*` \(daily 08:00 and 09:00 UTC\)/,
+      'the documented Railway invocation cadence must include one bounded retry',
     );
     assert.equal(PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS, 36 * 60 * 60 * 1000);
     assert.match(

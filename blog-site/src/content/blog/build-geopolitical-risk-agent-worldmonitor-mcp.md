@@ -95,7 +95,7 @@ For a route-risk check, use:
 
 ## Ask for compact payloads
 
-WorldMonitor tools support JMESPath projection where useful. That matters because intelligence payloads can get large, and agents perform better when they receive the exact fields needed for the task.
+WorldMonitor tools support [JMESPath projection](https://www.worldmonitor.app/docs/mcp-jmespath) where useful. That matters because intelligence payloads can get large, and agents perform better when they receive the exact fields needed for the task.
 
 Example: ask for only the country score, advisory state, component breakdown, and freshness fields:
 

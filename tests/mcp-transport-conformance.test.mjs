@@ -7,12 +7,16 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
+import { Ratelimit } from '@upstash/ratelimit';
 
 import {
   HMAC_SECRET,
   PRO_BEARER,
+  PRO_TOKEN_ID,
+  PRO_USER_ID,
   makeProDeps,
 } from './helpers/mcp-pro-deps.mjs';
+import { assertJsonRpcError, assertJsonRpcResult } from './helpers/mcp-jsonrpc-schema.mjs';
 
 const originalEnv = { ...process.env };
 
@@ -146,6 +150,346 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     Object.assign(process.env, originalEnv);
   });
 
+  it('returns method parameter errors and valid controls over HTTP JSON and SSE', async () => {
+    const initialized = await fetch(server.url, {
+      method: 'POST', headers: mcpHeaders({ Accept: 'application/json' }),
+      body: JSON.stringify(initBody()),
+    });
+    const sessionId = initialized.headers.get('mcp-session-id');
+    assert.ok(sessionId);
+    await initialized.json();
+    const cases = [
+      ...['tools/list', 'prompts/list', 'resources/list', 'resources/templates/list']
+        .map((method) => [method, { cursor: 17 }, { cursor: 'opaque-token' }]),
+      ['prompts/get', { name: 'market-open-prep', arguments: 17 }, { name: 'market-open-prep' }],
+      ['prompts/get', { name: 'country-view', arguments: { iso2: 17 } }, { name: 'country-view', arguments: { iso2: '17' } }],
+    ];
+    for (const accept of ['application/json', 'text/event-stream']) {
+      for (const [method, invalid, valid] of cases) {
+        for (const [params, expectedError] of [[invalid, true], [valid, false]]) {
+          const res = await fetch(server.url, {
+            method: 'POST',
+            headers: mcpHeaders({ Accept: accept, 'MCP-Protocol-Version': '2025-06-18', 'Mcp-Session-Id': sessionId }),
+            body: JSON.stringify(rpcBody('method-params', method, params)),
+          });
+          assert.equal(res.status, 200);
+          assert.match(res.headers.get('cache-control'), /\bno-store\b/);
+          assert.ok(res.headers.get('content-type').startsWith(accept));
+          const body = accept === 'text/event-stream'
+            ? JSON.parse((await readAllSseEvents(res))[0].data)
+            : await res.json();
+          if (expectedError) {
+            assertJsonRpcError(body, { id: 'method-params', code: -32602 });
+          } else {
+            assertJsonRpcResult(body, { id: 'method-params' });
+          }
+        }
+      }
+    }
+  });
+
+  it('rejects unsupported transport versions before dispatching a request', async () => {
+    for (const [method, version] of [
+      ['POST', '2099-99-99'], ['GET', '2099-99-99'], ['HEAD', '2099-99-99'],
+      ['POST', ''], ['POST', '2026-07-28'], ['POST', 'not-a-version'],
+    ]) {
+      // An anonymous plain GET is an OAuth discovery probe and gets the 401
+      // challenge instead (covered below), so the GET case carries credentials.
+      const res = await fetch(server.url, {
+        method,
+        headers: {
+          'MCP-Protocol-Version': version,
+          ...(method === 'GET' ? { Authorization: `Bearer ${PRO_BEARER}` } : {}),
+        },
+        ...(method === 'POST' ? { body: '{' } : {}),
+      });
+      assert.equal(res.status, 400, method);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      if (method !== 'HEAD') {
+        assert.equal((await res.json()).error.code, -32600);
+      }
+    }
+  });
+
+  // Production 2026-10-23: ~124k of 127k weekly 400s were `initialize` requests
+  // from clients (the Python SDK, Hermes) that send their newest version in the
+  // header while negotiating. No version has been agreed before `initialize`
+  // answers, so the body governs it there; every later request keeps the 400.
+  it('negotiates initialize from the body when the header names an unsupported version', async () => {
+    for (const version of ['2026-07-28', '2024-11-05', '2099-99-99']) {
+      const body = initBody(1);
+      body.params.protocolVersion = version;
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': version }),
+        body: JSON.stringify(body),
+      });
+      assert.equal(res.status, 200, version);
+      const result = await res.json();
+      assert.equal(result.id, 1, version);
+      assert.equal(result.result.protocolVersion, '2025-11-25', version);
+
+      const next = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': result.result.protocolVersion }),
+        body: JSON.stringify(rpcBody(2, 'ping')),
+      });
+      assert.deepEqual(await next.json(), { jsonrpc: '2.0', id: 2, result: {} }, version);
+    }
+
+    // The body decides, not the header: a supported body version must win.
+    const legacy = initBody(3);
+    legacy.params.protocolVersion = '2025-03-26';
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' }),
+      body: JSON.stringify(legacy),
+    });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).result.protocolVersion, '2025-03-26');
+  });
+
+  it('challenges an anonymous initialize instead of refusing its newer header', async () => {
+    const body = initBody(1);
+    body.params.protocolVersion = '2026-07-28';
+    const res = await fetch(server.url, {
+      method: 'POST',
+      // A connector User-Agent: fetch's default `node` completes the handshake
+      // anonymously (see mcp-transport-challenge.test.mjs).
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28', 'User-Agent': 'Claude-User' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(res.status, 401);
+    assert.match(res.headers.get('www-authenticate') ?? '', /resource_metadata=/);
+    assert.equal((await res.json()).id, 1);
+  });
+
+  it('keeps refusing an unsupported header on every request other than initialize', async () => {
+    const init = initBody(1);
+    init.params.protocolVersion = '2026-07-28';
+    for (const body of [
+      rpcBody(1, 'ping'),
+      rpcBody(1, 'tools/list'),
+      { jsonrpc: '2.0', method: 'notifications/initialized' },
+      [init],
+      { ...init, jsonrpc: '1.0' },
+      { ...init, id: null },
+      // No body version to negotiate from, so the header is the only signal.
+      { ...init, params: {} },
+      { ...init, params: { ...init.params, protocolVersion: 20260728 } },
+    ]) {
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' }),
+        body: JSON.stringify(body),
+      });
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+      const result = await res.json();
+      assert.equal(result.error.code, -32600, JSON.stringify(body));
+      assert.equal(result.error.message, 'Unsupported MCP-Protocol-Version', JSON.stringify(body));
+    }
+  });
+
+  // SEP-1303 (MCP 2025-11-25): input validation failures are tool execution
+  // errors the model can read and correct. Older revisions keep the documented
+  // -32602 + error.data.violations contract (#6559).
+  it('reports invalid tool arguments as an isError result on 2025-11-25 and as -32602 before it', async () => {
+    // Each argument-validation path: alias resolution, the registered tool's
+    // input schema, and a tool-specific argument check.
+    const cases = [
+      ['alias', { name: 'get_tariff_trends', arguments: { dataset: ['tariffs', 'bigmac'], country: 'DE' } },
+        (data) => assert.equal(data.violations[0].field, 'dataset')],
+      ['input schema', { name: 'get_consumer_prices', arguments: { limit: 'many' } },
+        (data) => assert.ok(data.violations.length > 0)],
+      ['tool-specific', { name: 'start_upgrade', arguments: { plan: 'no_such_plan' } },
+        (data) => assert.ok(Array.isArray(data.plans) && data.plans.length > 0)],
+    ];
+    for (const [label, params, checkData] of cases) {
+      for (const version of ['2025-11-25', '2025-06-18', null]) {
+        const res = await fetch(server.url, {
+          method: 'POST',
+          headers: mcpHeaders({ Accept: 'application/json', ...(version ? { 'MCP-Protocol-Version': version } : {}) }),
+          body: JSON.stringify(rpcBody(9, 'tools/call', params)),
+        });
+        const where = `${label} ${version}`;
+        assert.equal(res.status, 200, where);
+        const body = await res.json();
+        if (version === '2025-11-25') {
+          assert.equal(body.error, undefined, `${where}: ${JSON.stringify(body)}`);
+          assert.equal(body.result.isError, true, where);
+          assert.equal(body.result.structuredContent, undefined, where);
+          const payload = JSON.parse(body.result.content[0].text);
+          assert.equal(typeof payload.error, 'string', where);
+          // The payload is flat, so a message must not point at `data.*`.
+          assert.doesNotMatch(payload.error, /\bdata\./, where);
+          checkData(payload);
+        } else {
+          assert.equal(body.result, undefined, `${where}: ${JSON.stringify(body)}`);
+          assert.equal(body.error.code, -32602, where);
+          checkData(body.error.data);
+        }
+      }
+    }
+
+    // Panel arguments the strict panel view rejects after registry validation
+    // (an undeclared property here) are argument errors too (review: coderabbit).
+    for (const version of ['2025-11-25', '2025-06-18']) {
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': version }),
+        body: JSON.stringify(rpcBody(11, 'tools/call', { name: 'get_market_data', arguments: { unexpected: 'x' } })),
+      });
+      assert.equal(res.status, 200, version);
+      const body = await res.json();
+      if (version === '2025-11-25') {
+        assert.equal(body.error, undefined, `panel ${version}: ${JSON.stringify(body)}`);
+        assert.equal(body.result.isError, true);
+        assert.equal(typeof JSON.parse(body.result.content[0].text).error, 'string');
+      } else {
+        assert.equal(body.error.code, -32602, `panel ${version}: ${JSON.stringify(body)}`);
+      }
+    }
+
+    // An unknown tool is still a protocol error on every revision.
+    const unknown = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Accept: 'application/json', 'MCP-Protocol-Version': '2025-11-25' }),
+      body: JSON.stringify(rpcBody(10, 'tools/call', { name: 'no_such_tool', arguments: {} })),
+    });
+    assert.equal((await unknown.json()).error.code, -32602);
+  });
+
+  it('uses the active protocol floor for headers as well as initialize negotiation', async () => {
+    process.env.MCP_PROTOCOL_FLOOR_2025_06_18 = 'off';
+    const newer = await fetch(server.url, { method: 'POST',
+      headers: { 'MCP-Protocol-Version': '2025-06-18' }, body: JSON.stringify(rpcBody(1, 'ping')) });
+    assert.equal(newer.status, 400);
+    await newer.text();
+    const legacy = await fetch(server.url, { method: 'POST',
+      headers: { 'MCP-Protocol-Version': '2025-03-26' }, body: JSON.stringify(rpcBody(1, 'ping')) });
+    assert.equal(legacy.status, 200);
+    assert.deepEqual((await legacy.json()).result, {});
+  });
+
+  it('returns Parse error for malformed JSON', async () => {
+    const res = await fetch(server.url, { method: 'POST', body: '{' });
+    const result = await res.json();
+    assert.equal(result.error?.code, -32700);
+    assert.equal(result.id, null);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+  });
+
+  it('rejects invalid JSON-RPC envelopes before notification or method dispatch', async () => {
+    const cases = [
+      [JSON.stringify({ id: 1, method: 'ping' }), -32600],
+      [JSON.stringify({ jsonrpc: '1.0', id: 1, method: 'ping' }), -32600],
+      [JSON.stringify({ jsonrpc: 2, method: 'notifications/initialized' }), -32600],
+      ['null', -32600],
+      ['[]', -32600],
+    ];
+    for (const [body, code] of cases) {
+      const res = await fetch(server.url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+      });
+      const result = await res.json();
+      assert.equal(result.jsonrpc, '2.0');
+      assert.equal(result.error?.code, code, body);
+      assert.equal(result.id, null, body);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+  });
+
+  it('enforces MCP request IDs and object params on the wire', async () => {
+    const cases = [
+      ...[null, 1.25, -1.25, true, {}, []].map(id => [{ jsonrpc: '2.0', id, method: 'ping' }, null]),
+      ...[null, [], 17, 'params', false].map(params => [{ jsonrpc: '2.0', id: 'params', method: 'ping', params }, 'params']),
+      ...[null, [], 17, 'params', false].map(params => [{ jsonrpc: '2.0', method: 'notifications/initialized', params }, null]),
+      [{ jsonrpc: '2.0', id: null, method: 'notifications/initialized' }, null],
+    ];
+    for (const [body, errorId] of cases) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify(body) });
+      const result = await res.json();
+      assert.equal(res.status, body.id === undefined ? 400 : 200);
+      assert.equal(result.error?.code, -32600, JSON.stringify(body));
+      assert.equal(result.id, errorId);
+      assert.equal(res.headers.get('cache-control'), 'no-store');
+    }
+    for (const id of [0, -1, 1e100, '', 'wire-id']) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id, method: 'ping' }) });
+      assert.deepEqual(await res.json(), { jsonrpc: '2.0', id, result: {} });
+    }
+    for (const method of ['notifications/initialized', 'notifications/cancelled', 'ping']) {
+      const res = await fetch(server.url, { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', method, params: {} }) });
+      assert.equal(res.status, 202);
+      assert.equal(await res.text(), '');
+    }
+  });
+
+  it('rejects invalid origins on every HTTP entry before transport or auth', async () => {
+    for (const origin of [
+      'not a valid origin', 'null', '', 'https://client.example/path',
+      'https://client.example?query', 'https://client.example#fragment',
+      'https://user:pass@client.example', 'https://one.example https://two.example',
+      'http://remote.example', 'http://localhost.attacker.example',
+      'http://192.168.1.2:6274', 'file://client.example',
+    ]) {
+      for (const method of ['OPTIONS', 'POST', 'GET', 'HEAD', 'DELETE']) {
+        const res = await fetch(server.url, {
+          method,
+          headers: { Origin: origin, Accept: 'text/event-stream', 'Last-Event-ID': 'untrusted' },
+          ...(method === 'POST' ? { body: '{' } : {}),
+        });
+        assert.equal(res.status, 403, `${method} ${origin}`);
+        assert.equal(res.headers.get('cache-control'), 'no-store');
+      }
+      for (const pathname of ['/mcp', '/.well-known/mcp', '/api/mcp']) {
+        const discovery = await fetch(new URL(pathname, server.url), { headers: { Origin: origin } });
+        assert.equal(discovery.status, 403, `${pathname} ${origin}`);
+        await discovery.text();
+      }
+    }
+  });
+
+  it('preserves public clients, explicit credentials and initialization negotiation', async () => {
+    for (const origin of [undefined, 'https://claude.ai', 'https://chatgpt.com',
+      'https://custom-client.example:8443', 'http://localhost:6274',
+      'http://127.0.0.1:6274', 'http://[::1]:6274']) {
+      const headers = { 'Content-Type': 'application/json', Accept: 'application/json',
+        ...(origin === undefined ? {} : { Origin: origin }) };
+      const preflight = await fetch(server.url, { method: 'OPTIONS', headers });
+      assert.equal(preflight.status, 204, origin);
+      for (const version of ['2025-03-26', '2025-06-18', '2025-11-25', '2026-07-28']) {
+        const body = initBody(0);
+        body.params.protocolVersion = version;
+        const res = await fetch(server.url, { method: 'POST',
+          headers: { ...headers, Authorization: `Bearer ${PRO_BEARER}` }, body: JSON.stringify(body) });
+        assert.equal(res.status, 200, origin);
+        const result = await res.json();
+        assert.equal(result.id, 0);
+        assert.equal(result.result.protocolVersion, version === '2026-07-28' ? '2025-11-25' : version);
+      }
+      for (const version of ['2025-03-26', '2025-06-18', '2025-11-25']) {
+        const res = await fetch(server.url, { method: 'POST',
+          headers: { ...headers, 'MCP-Protocol-Version': version },
+          body: JSON.stringify(rpcBody('', 'ping')) });
+        assert.deepEqual(await res.json(), { jsonrpc: '2.0', id: '', result: {} });
+      }
+      const catalog = await fetch(server.url, { method: 'POST', headers,
+        body: JSON.stringify(rpcBody(1, 'tools/list')) });
+      assert.equal(catalog.status, 200, origin);
+      assert.ok((await catalog.json()).result.tools.length > 0, origin);
+      const notification = await fetch(server.url, { method: 'POST', headers,
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) });
+      assert.equal(notification.status, 202, origin);
+      assert.equal(await notification.text(), '');
+      const paid = await fetch(server.url, { method: 'POST', headers,
+        body: JSON.stringify(rpcBody(3, 'tools/call', { name: 'get_market_data', arguments: {} })) });
+      assert.equal(paid.status, 401, origin);
+      assert.equal((await paid.json()).error.code, -32001);
+    }
+  });
+
   it('streams initialize as a single JSON-RPC event and guards the Last-Event-ID replay channel', async () => {
     const initialize = await fetch(server.url, {
       method: 'POST',
@@ -224,6 +568,166 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.equal((await revoked.json()).error?.code, -32001);
   });
 
+  // ── GHSA-5j39-mmw6-cqw6: replay buffers are bound to their owner ──────────
+  //
+  // The replay path authenticated the reconnecting caller and checked
+  // entitlement and per-minute limits, then looked the buffer up by the
+  // caller-supplied Mcp-Session-Id and Last-Event-ID alone. Nothing compared
+  // the authenticated principal against the principal that stored the buffer.
+
+  const SECOND_BEARER = 'pro-bearer-second-principal';
+  const SECOND_USER_ID = 'user_pro_second';
+  const SECOND_TOKEN_ID = 'k57mcptokenid2nd';
+
+  function admitTwoPrincipals() {
+    deps.resolveBearerToContext = async (token) => {
+      if (token === PRO_BEARER) return { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: PRO_TOKEN_ID };
+      if (token === SECOND_BEARER) return { kind: 'pro', userId: SECOND_USER_ID, mcpTokenId: SECOND_TOKEN_ID };
+      return null;
+    };
+    deps.validateProMcpToken = async (id) => {
+      if (id === PRO_TOKEN_ID) return { userId: PRO_USER_ID };
+      if (id === SECOND_TOKEN_ID) return { userId: SECOND_USER_ID };
+      return null;
+    };
+  }
+
+  async function openBufferedStream(bearer) {
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Authorization: `Bearer ${bearer}` }),
+      body: JSON.stringify(initBody(1)),
+    });
+    if (res.status !== 200) {
+      assert.fail(`initialize failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
+    }
+    const sessionId = res.headers.get('mcp-session-id');
+    assert.ok(sessionId, 'initialize must mint a session id');
+    const [event] = await readAllSseEvents(res);
+    assert.ok(event?.id, 'initialize must buffer one replayable event');
+    return { sessionId, eventId: event.id };
+  }
+
+  function replayAs(bearer, { sessionId, eventId }) {
+    return fetch(server.url, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${bearer}`,
+        'Mcp-Session-Id': sessionId,
+        'Last-Event-ID': eventId,
+      },
+    });
+  }
+
+  it('refuses to replay a stream belonging to a different principal', async () => {
+    admitTwoPrincipals();
+    const victim = await openBufferedStream(PRO_BEARER);
+
+    const attacker = await replayAs(SECOND_BEARER, victim);
+
+    // This returned 200 before the owner binding. The replay slice is always
+    // empty, so no tool output crossed, but 200-vs-404 still confirmed that
+    // another principal's (session, stream) pair existed.
+    assert.equal(attacker.status, 404, 'a different principal must not replay this session');
+    assert.match(
+      (await attacker.json()).error?.message ?? '',
+      /different server instance/,
+      'an owner mismatch must be indistinguishable from an ordinary replay miss',
+    );
+  });
+
+  it('still replays for the principal that stored the stream', async () => {
+    admitTwoPrincipals();
+    const owner = await openBufferedStream(PRO_BEARER);
+
+    const reconnect = await replayAs(PRO_BEARER, owner);
+    assert.equal(reconnect.status, 200, 'the owner must still resume its own stream');
+    assert.equal((await readAllSseEvents(reconnect)).length, 0, 'nothing follows the delivered response');
+  });
+
+  it('does not let a foreign principal evict the owner\'s buffered stream', async () => {
+    admitTwoPrincipals();
+    const victim = await openBufferedStream(PRO_BEARER);
+
+    // Only `initialize` mints a session id onto the response, so every later
+    // call reads it off the request instead. That made the session bucket
+    // reachable by anyone who knew the id: past the per-session stream cap,
+    // foreign writes evicted the owner's own buffered stream. The write path
+    // now refuses a session owned by someone else, so the cap is never reached.
+    for (let i = 0; i < 30; i++) {
+      const foreign = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({
+          Authorization: `Bearer ${SECOND_BEARER}`,
+          'Mcp-Session-Id': victim.sessionId,
+        }),
+        body: JSON.stringify(rpcBody(200 + i, 'ping')),
+      });
+      assert.equal(foreign.status, 200, 'the foreign ping itself is a legitimate request');
+      await foreign.text();
+    }
+
+    const reconnect = await replayAs(PRO_BEARER, victim);
+    assert.equal(reconnect.status, 200, 'foreign writes must not evict the owner\'s buffer');
+    assert.equal((await readAllSseEvents(reconnect)).length, 0);
+  });
+
+  it('caps replay sessions per principal so one caller cannot flush the shared store', async () => {
+    admitTwoPrincipals();
+    const other = await openBufferedStream(SECOND_BEARER);
+    const first = await openBufferedStream(PRO_BEARER);
+    for (let i = 0; i < 20; i++) await openBufferedStream(PRO_BEARER);
+
+    const evicted = await replayAs(PRO_BEARER, first);
+    assert.equal(evicted.status, 404, 'past the per-owner cap the owner\'s oldest session is dropped');
+    await evicted.text();
+
+    const untouched = await replayAs(SECOND_BEARER, other);
+    assert.equal(untouched.status, 200, 'another principal\'s session must survive');
+    assert.equal((await readAllSseEvents(untouched)).length, 0);
+  });
+
+  it('binds a JSON-initialized session before the first SSE write', async () => {
+    admitTwoPrincipals();
+    const initialize = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({
+        Accept: 'application/json, text/event-stream;q=0',
+        Authorization: `Bearer ${PRO_BEARER}`,
+      }),
+      body: JSON.stringify(initBody(2)),
+    });
+    assert.equal(initialize.status, 200);
+    const sessionId = initialize.headers.get('mcp-session-id');
+    assert.ok(sessionId, 'JSON initialize must mint an owner-bound session id');
+    await initialize.json();
+
+    const foreign = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({
+        Authorization: `Bearer ${SECOND_BEARER}`,
+        'Mcp-Session-Id': sessionId,
+      }),
+      body: JSON.stringify(rpcBody(3, 'ping')),
+    });
+    const [foreignEvent] = await readAllSseEvents(foreign);
+    assert.ok(foreignEvent?.id, 'the foreign caller still receives its live response');
+    const foreignReplay = await replayAs(SECOND_BEARER, { sessionId, eventId: foreignEvent.id });
+    assert.equal(foreignReplay.status, 404, 'a foreign first writer must not claim the initialized session');
+
+    const owner = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ 'Mcp-Session-Id': sessionId }),
+      body: JSON.stringify(rpcBody(4, 'ping')),
+    });
+    const [ownerEvent] = await readAllSseEvents(owner);
+    assert.ok(ownerEvent?.id, 'the initializer must still buffer its later SSE response');
+    const ownerReplay = await replayAs(PRO_BEARER, { sessionId, eventId: ownerEvent.id });
+    assert.equal(ownerReplay.status, 200, 'the initializer must own the replay bucket');
+    assert.equal((await readAllSseEvents(ownerReplay)).length, 0);
+  });
+
   it('emits the JSON-RPC result as the FIRST SSE event so strict handshake scanners parse it', async () => {
     // orank's `mcp-server` handshake check (and any non-SDK scanner) reads the
     // FIRST SSE event of a POST initialize and JSON.parse()s its `data`. A
@@ -239,6 +743,10 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     });
     assert.equal(initialize.status, 200);
     assert.match(initialize.headers.get('content-type') ?? '', /text\/event-stream/i);
+    // #8403: jsonResponse advertises Content-Length for the bare JSON body.
+    // SSE framing is larger — the converted stream must not keep that length
+    // or the wire truncates mid-JSON (Unterminated string).
+    assert.equal(initialize.headers.get('content-length'), null);
 
     const events = await readAllSseEvents(initialize);
     assert.ok(events.length >= 1, 'stream must contain at least one event');
@@ -553,6 +1061,25 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       'discovery representation must declare the apex endpoint canonical');
   });
 
+  it('challenges an anonymous MCP client probing GET /mcp, whatever version it names', async () => {
+    // rmcp (Codex) probes the resource with a plain GET carrying
+    // MCP-Protocol-Version: 2024-11-05, looking for the 401 that names the
+    // protected-resource metadata (RFC 9728 §5.1). A browser never sends the header.
+    for (const version of ['2024-11-05', '2025-11-25']) {
+      const res = await fetch(server.url, { headers: { 'MCP-Protocol-Version': version } });
+      assert.equal(res.status, 401, version);
+      assert.equal(res.headers.get('cache-control'), 'no-store', version);
+      assert.match(res.headers.get('www-authenticate') ?? '',
+        /resource_metadata="https:\/\/worldmonitor\.app\/\.well-known\/oauth-protected-resource\/mcp"/, version);
+    }
+
+    // A credentialed probe keeps the guide, and an unsupported version is still refused.
+    const authed = await fetch(server.url, { headers: { 'MCP-Protocol-Version': '2025-11-25', Authorization: `Bearer ${PRO_BEARER}` } });
+    assert.equal(authed.status, 200);
+    const refused = await fetch(server.url, { headers: { 'MCP-Protocol-Version': '2024-11-05', Authorization: `Bearer ${PRO_BEARER}` } });
+    assert.equal(refused.status, 400);
+  });
+
   it('redirects discovery reads when deployment static-asset self-fetches fail', async () => {
     // Import the implementation directly with a unique query so its module-scope
     // document caches start empty; api/mcp.ts re-exports a shared handler module.
@@ -632,6 +1159,8 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       'a cacheable 200 negotiated on Accept MUST Vary on Accept, or a shared cache serves it to an SSE GET');
     assert.match(vary, /\bLast-Event-ID\b/i,
       'the same URL branches on Last-Event-ID into authenticated replay — that must be part of the cache key too');
+    assert.match(vary, /\bOrigin\b/i, 'a cached success must not bypass Origin rejection');
+    assert.match(vary, /\bMCP-Protocol-Version\b/i, 'a cached success must not bypass version rejection');
   });
 
   it('the /mcp transport URL never emits a cacheable 200 body', async () => {
@@ -727,5 +1256,158 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     });
     assert.equal(res.status, 405);
     assert.match(res.headers.get('allow') ?? '', /\bPOST\b/);
+  });
+});
+
+// #7818 — a rate-limit denial has to survive the WIRE, not just the handler
+// return value. An MCP client parses whatever comes back through the spec's
+// `JSONRPCMessage` union (`RequestId = string | number`), so an `id: null`
+// error envelope is rejected as `invalid_union` before the client can see the
+// -32029 at all. `assertJsonRpcError` applies that union rule to the parsed
+// HTTP body, which is why this check belongs at the transport layer rather than
+// beside the in-process handler cases in
+// tests/mcp-rate-limit-request-id.test.mjs.
+//
+// Keep this block LAST in the file. It is the only one that ENABLES the Upstash
+// env; the blocks above delete it, so `getMcpAnonRatelimit()` returns null up
+// there and never memoizes. auth.ts's limiter singletons are module-scoped and
+// the `?t=` cache-bust below does not reach them (api/mcp.ts re-exports
+// ./mcp/auth by a plain specifier), so a describe appended after this one that
+// also enables the env would silently inherit this block's stubbed limiter.
+describe('api/mcp.ts — rate-limit denials stay correlatable over the wire (#7818)', () => {
+  const ORIGINAL_SLIDING_WINDOW = Ratelimit.slidingWindow;
+  let server;
+  let denyLimiter;
+  let limiterKeys;
+
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub-token';
+    denyLimiter = false;
+    limiterKeys = [];
+    // `denyLimiter` is read at CALL time, not captured at construction time.
+    // That matters because auth.ts memoizes its limiter singletons, so the
+    // instance built during the first test survives into the next one; a stub
+    // that closed over a value would freeze the first test's verdict for the
+    // whole describe. `limiterKeys` is what keeps the allowed case honest —
+    // without it, an unstubbed or unconfigured limiter would return null and
+    // the read would pass for the wrong reason.
+    Ratelimit.slidingWindow = (tokens, window) => () => ({
+      async limit(_ctx, key) {
+        limiterKeys.push(key);
+        return {
+          success: !denyLimiter,
+          limit: tokens,
+          remaining: denyLimiter ? 0 : tokens - 1,
+          reset: Date.now() + 60_000,
+          pending: Promise.resolve(),
+          window,
+        };
+      },
+    });
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}-rl`);
+    server = await startMcpServer(mod.mcpHandler, makeProDeps().deps);
+  });
+
+  afterEach(async () => {
+    Ratelimit.slidingWindow = ORIGINAL_SLIDING_WINDOW;
+    if (server) await server.close();
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  it('an over-limit anonymous resources/read parses as a spec-valid JSONRPCError carrying the request id', async () => {
+    denyLimiter = true;
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'ora-agent',
+        'x-real-ip': '198.51.100.77',
+      },
+      body: JSON.stringify(rpcBody('ora-read-7818', 'resources/read', { uri: 'ui://worldmonitor/country-risk.html' })),
+    });
+
+    assert.equal(res.status, 200, 'a JSON-RPC rate-limit denial rides HTTP 200 on this surface');
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assertJsonRpcError(await res.json(), {
+      id: 'ora-read-7818',
+      code: -32029,
+      label: 'over-the-wire anonymous denial',
+    });
+    assert.ok(
+      limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')),
+      'the real anonymous discovery limiter must be what rejected, not a stubbed-out no-op',
+    );
+  });
+
+  it('the same read succeeds and correlates once the window recovers', async () => {
+    denyLimiter = false;
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'ora-agent',
+        'x-real-ip': '198.51.100.77',
+      },
+      body: JSON.stringify(rpcBody(9001, 'resources/read', { uri: 'ui://worldmonitor/country-risk.html' })),
+    });
+
+    assert.equal(res.status, 200);
+    assertJsonRpcResult(await res.json(), { id: 9001, label: 'recovered anonymous read' });
+    assert.ok(
+      limiterKeys.some((key) => key.startsWith('rl:mcp:anon:')),
+      'the recovered read must still have been metered — otherwise this control proves nothing',
+    );
+  });
+
+  it('serves anonymous get_sources across supported browser origins under the free limiter', async () => {
+    for (const origin of [undefined, 'https://chatgpt.com', 'https://custom-client.example', 'http://localhost:6274']) {
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json',
+          ...(origin === undefined ? {} : { Origin: origin }) },
+        body: JSON.stringify(rpcBody(2, 'tools/call', { name: 'get_sources', arguments: {} })),
+      });
+      assert.equal(res.status, 200, origin);
+      const body = await res.json();
+      assert.ok(body.result?.content?.length > 0, JSON.stringify(body));
+      assert.notEqual(body.result.isError, true);
+    }
+    assert.ok(limiterKeys.some((key) => key.startsWith('rl:mcp:free:')),
+      'anonymous sources must still pass the free limiter');
+  });
+});
+
+describe('api/mcp/handler.ts — SSE replay byte budget', () => {
+  it('one principal at its session cap cannot evict another principal\'s replay', async () => {
+    const { __sseReplayStoreForTest: store } = await import('../api/mcp/handler.ts');
+    store.reset();
+    try {
+      const big = 'x'.repeat(120 * 1024);
+      assert.equal(store.store('victim-session', 'victim-stream', big, 'victim'), true);
+      const victimBytes = store.ownerBytes('victim');
+
+      // Twenty sessions of two large responses each is ~4.8 MiB, above the
+      // shared 4 MiB budget. Before the per-owner byte budget, storing them
+      // evicted the victim's stream from the shared LRU.
+      for (let s = 0; s < 20; s++) {
+        for (let r = 0; r < 2; r++) {
+          assert.equal(store.store(`attacker-${s}`, `stream-${r}`, big, 'attacker'), true);
+        }
+      }
+
+      assert.equal(store.ownerBytes('victim'), victimBytes, 'the victim\'s replay must survive');
+      assert.ok(store.ownerBytes('attacker') <= 1024 * 1024, 'the attacker stays within its own budget');
+      assert.ok(store.totalBytes() <= 4 * 1024 * 1024);
+    } finally {
+      store.reset();
+    }
   });
 });

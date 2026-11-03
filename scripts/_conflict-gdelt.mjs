@@ -9,23 +9,53 @@
 // country NAME (not FIPS locationcc, which diverges from ISO2 — UA→UP, SD→SU …), and
 // the emitted event `country` is the full name so it matches UCDP country names /
 // the EMA engine's normalizeCountry.
+// This map is the conflict feed's whole country gate: the bulk mapper drops any
+// row located elsewhere, and the seeder's DOC sweep iterates its keys. Its keys
+// are exactly the original 20 priority countries plus every
+// shared/crawlable-crises.json coverage country, nothing hand-picked
+// (pinned by tests/conflict-gdelt-country-coverage.test.mts). It stays a literal
+// rather than a registry read because server/ and the bulk materializer import
+// this module, and the names must match the downstream country resolvers.
 export const GDELT_COUNTRY_NAMES = {
   AF: 'Afghanistan', SY: 'Syria', UA: 'Ukraine', SD: 'Sudan', SS: 'South Sudan',
   SO: 'Somalia', CD: 'Democratic Republic of Congo', MM: 'Myanmar', YE: 'Yemen',
   ET: 'Ethiopia', IQ: 'Iraq', PS: 'Palestinian Territories', LY: 'Libya',
   ML: 'Mali', BF: 'Burkina Faso', NE: 'Niger', NG: 'Nigeria', CM: 'Cameroon',
   MZ: 'Mozambique', HT: 'Haiti',
+  // From shared/crawlable-crises.json coverage.
+  SA: 'Saudi Arabia', IR: 'Iran', IL: 'Israel', LB: 'Lebanon', QA: 'Qatar',
+  AE: 'United Arab Emirates', KW: 'Kuwait', BH: 'Bahrain', OM: 'Oman',
+  RU: 'Russia', DJ: 'Djibouti', ER: 'Eritrea',
 };
 
 export const GDELT_CONFLICT_TERMS = '(clashes OR airstrike OR shelling OR militants OR offensive OR killed)';
 export const GDELT_MAX_ARTICLES_PER_COUNTRY = 250;
+
+/**
+ * Parse `iso` (a UTC instant with no offset suffix) to epoch ms, or NaN when
+ * any field is out of range. Date.parse normalizes rather than rejects those,
+ * so re-serializing and comparing the first `length` characters is the only
+ * way to tell an impossible stamp from a real one.
+ */
+function parseExactUtc(iso, length) {
+  const ms = Date.parse(`${iso}Z`);
+  if (!Number.isFinite(ms)) return Number.NaN;
+  return new Date(ms).toISOString().slice(0, length) === iso.slice(0, length) ? ms : Number.NaN;
+}
 
 // GDELT seendate is 'YYYYMMDDTHHMMSSZ' (or a digits-only variant). Return 'YYYY-MM-DD'
 // (the format the EMA engine parses via Date.parse(ev.event_date)), or '' if unparseable.
 export function gdeltSeenDateToIso(seendate) {
   const s = String(seendate || '').replace(/[^0-9]/g, '');
   if (s.length < 8) return '';
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  if (s.length !== 8 && !Number.isFinite(gdeltSeenDateToMs(s))) return '';
+  const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  // Slicing alone emitted impossible days verbatim: '20260231' became the
+  // string '2026-02-31'. Date.parse does not reject those, it rolls them into
+  // the next month (February 31 parses as March 3), so every consumer that
+  // parses this value silently reads a different day. Round-tripping the
+  // parsed instant back to ISO is what catches it.
+  return Number.isFinite(parseExactUtc(`${iso}T00:00:00`, 10)) ? iso : '';
 }
 
 // Same stamp family, full precision: GDELT 14-digit timestamp → epoch ms, NaN
@@ -36,10 +66,11 @@ export function gdeltSeenDateToIso(seendate) {
 export function gdeltSeenDateToMs(value) {
   const digits = String(value || '').replace(/[^0-9]/g, '');
   if (digits.length < 14) return Number.NaN;
-  return Date.parse(
-    `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
-      + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}Z`,
-  );
+  const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+    + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}`;
+  // Same rollover as above, and it also catches a 24:00:00 clock stamp, which
+  // Date.parse accepts as midnight on the following day.
+  return parseExactUtc(iso, 19);
 }
 
 export function buildGdeltConflictUrl(cc, name = GDELT_COUNTRY_NAMES[cc], maxRecords = GDELT_MAX_ARTICLES_PER_COUNTRY) {

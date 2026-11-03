@@ -22,9 +22,6 @@ const src = readFileSync(join(root, 'scripts/seed-bundle-canada.mjs'), 'utf8');
 const RUNNER_SRC = readFileSync(join(root, 'scripts/_bundle-runner.mjs'), 'utf8');
 const TORONTO_TFS_SEEDER_SRC = readFileSync(join(root, 'scripts/seed-toronto-tfs.mjs'), 'utf8');
 const TORONTO_TPS_SEEDER_SRC = readFileSync(join(root, 'scripts/seed-toronto-tps.mjs'), 'utf8');
-const ACCEPTANCE_BASELINE = JSON.parse(
-  readFileSync(join(root, 'scripts/seed-freshness-baseline.json'), 'utf8'),
-);
 const sections = extractBundleSections(src);
 
 const MIN = 60_000;
@@ -36,7 +33,7 @@ function section(label) {
   return found;
 }
 
-test('declares exactly the ten active Canada members', () => {
+test('declares exactly the twelve active Canada members', () => {
   assert.deepEqual(
     sections.map((s) => s.label).sort(),
     [
@@ -45,6 +42,8 @@ test('declares exactly the ten active Canada members', () => {
       'BC-Open511',
       'Provincial-511',
       'SaskAlert',
+      'TPS-Calls-Attended',
+      'TPS-MCI',
       'TTC-Alerts',
       'Toronto-Roads',
       'Toronto-TFS',
@@ -69,7 +68,11 @@ test('per-member cadence is the declared one, not TTC\'s cron inherited', () => 
     ['VIA-Rail-Live', 15 * MIN],
     ['TTC-Alerts', 5 * MIN],
     ['Toronto-TFS', 5 * MIN],
-    ['Toronto-TPS', 15 * MIN],
+    ['Toronto-TPS', 30 * MIN],
+    // Retrospective MCI and an annual aggregate: 6h keeps our copy warm inside
+    // the 24h canonical TTL rather than chasing upstream, which edits monthly.
+    ['TPS-MCI', 6 * HOUR],
+    ['TPS-Calls-Attended', 6 * HOUR],
   ];
   for (const [label, intervalMs] of expected) {
     assert.equal(
@@ -83,7 +86,7 @@ test('per-member cadence is the declared one, not TTC\'s cron inherited', () => 
 test('Manitoba cutover acknowledgement reaches the first eligible Provincial-511 admission', () => {
   const provincial = section('Provincial-511');
   const intervalMs = resolveExpr(src, provincial.intervalMsExpr);
-  const freshnessGuard = /elapsed\s*<\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(RUNNER_SRC);
+  const freshnessGuard = /const\s+eligibilityMs\s*=\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(RUNNER_SRC);
   assert.ok(freshnessGuard, 'bundle runner must expose its interval freshness admission ratio');
   const freshnessRatio = Number(freshnessGuard[1]);
   assert.ok(freshnessRatio > 0 && freshnessRatio <= 1, 'freshness admission ratio must be in (0, 1]');
@@ -106,20 +109,6 @@ test('Manitoba cutover acknowledgement reaches the first eligible Provincial-511
     15 * MIN,
     'the first eligible Provincial-511 admission must still be three */5 ticks out',
   );
-
-  // Directional: no ack is required now, but one added later must span exactly
-  // that window rather than expiring on the activation tick.
-  const manitoba = ACCEPTANCE_BASELINE.acknowledged.find((entry) => entry.name === 'manitobaRoads');
-  if (manitoba) {
-    const activatedAt = Date.parse(manitoba.cutover?.activatedAt);
-    const firstScheduledRunAt = Date.parse(manitoba.cutover?.firstScheduledRunAt);
-    assert.equal(
-      firstScheduledRunAt,
-      activatedAt + firstEligibleDelayMs,
-      'the cutover must include */5 ticks skipped by the runner\'s 0.8-interval freshness gate',
-    );
-    assert.equal(Date.parse(manitoba.expiresAt), firstScheduledRunAt);
-  }
 });
 
 test('seed-meta keys follow runSeed(domain, resource), not the canonical key', () => {
@@ -142,6 +131,11 @@ test('seed-meta keys follow runSeed(domain, resource), not the canonical key', (
     'TTC-Alerts': ['seed-meta:transit:ttc-alerts', 'transit:ttc:alerts:v1'],
     'Toronto-TFS': ['seed-meta:safety:toronto-tfs', 'safety:toronto-tfs:v1'],
     'Toronto-TPS': ['seed-meta:safety:toronto-tps', 'safety:toronto-tps:v1'],
+    // Same hyphen-vs-colon trap as TTC: the resources are 'tps-mci' and
+    // 'tps-calls-attended', so the meta keys carry hyphens while the canonical
+    // keys nest under safety:toronto:.
+    'TPS-MCI': ['seed-meta:safety:tps-mci', 'safety:toronto:tps-mci:v1'],
+    'TPS-Calls-Attended': ['seed-meta:safety:tps-calls-attended', 'safety:toronto:tps-calls-attended:v1'],
   };
   // The shared parser does not expose these fields, so read them off the section
   // literal — anchored on the label so a key can never be matched against the
@@ -221,10 +215,6 @@ test('Toronto sources use provider freshness, bounded execution, and durable act
     assert.match(contract.seederSrc, new RegExp(`afterPublish:\\s*mark${contract.label === 'Toronto-TFS' ? 'Tfs' : 'Tps'}Activated`));
     assert.match(contract.seederSrc, new RegExp(contract.activationKey));
   }
-
-  const acknowledged = new Set(ACCEPTANCE_BASELINE.acknowledged.map((entry) => entry.name));
-  assert.equal(acknowledged.has('torontoTfs'), false);
-  assert.equal(acknowledged.has('torontoTps'), false);
 });
 
 test('skips a member whose script is absent instead of failing the whole bundle', () => {
@@ -250,11 +240,8 @@ test('is registered as an active service now that it is provisioned', () => {
   assert.ok(Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
   assert.deepEqual(
     entry.requiredEnv,
-    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'MANITOBA_511_KEY', 'ALBERTA_511_KEY'],
-    'members publish through runSeed (Upstash REST pair); Manitoba and Alberta 511 each '
-    + 'need their Railway key. Alberta was keyless until 2026-08-19, when the vendor began '
-    + 'answering an unkeyed GET with HTTP 400 "Invalid Key" and the jurisdiction went stale '
-    + 'for 88 hours while the bundle still reported OK.',
+    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'MANITOBA_511_KEY', 'ALBERTA_511_KEY', 'ONTARIO_511_KEY'],
+    'members publish through runSeed (Upstash REST pair); all three provincial 511 sources need their own key',
   );
 });
 
@@ -287,24 +274,56 @@ test('every member script and its bundle entry is a watch path', () => {
 // tests/seed-ttl-outlives-health-staleness.test.mjs compares TTL to staleness
 // and passed throughout, because it never sees the interval. This is the check
 // that does.
-function resolveTtlSeconds(script) {
-  const seederPath = join(root, 'scripts', script);
-  const seederSrc = readFileSync(seederPath, 'utf8');
-  const m = /ttlSeconds:\s*([A-Za-z_]\w*|\d+)/.exec(seederSrc);
-  assert.ok(m, `${script} must declare ttlSeconds, or this guard silently skips it`);
+// Resolve `ttlSeconds` out of one module: locally, or by following the import
+// that defines the identifier. Returns null when this module cannot answer, so
+// the caller can try the next candidate rather than failing on a near-miss.
+function ttlFromModule(modulePath, moduleSrc) {
+  const m = /ttlSeconds:\s*([A-Za-z_]\w*|\d+)/.exec(moduleSrc);
+  if (!m) return null;
   const expr = m[1];
-  const local = resolveExpr(seederSrc, expr);
+  const local = resolveExpr(moduleSrc, expr);
   if (local != null) return local;
   // Imported constant: follow the import to its defining module rather than
   // skipping, or the members that share a TTL constant go unchecked.
   const imp = new RegExp(
     `import\\s*\\{[^}]*\\b${expr}\\b[^}]*\\}\\s*from\\s*'(\\.[^']+)'`,
-  ).exec(seederSrc);
-  assert.ok(imp, `${script}: cannot resolve ttlSeconds identifier ${expr}`);
-  const fromSrc = readFileSync(join(dirname(seederPath), imp[1]), 'utf8');
+  ).exec(moduleSrc);
+  if (!imp) return null;
+  let fromSrc;
+  try {
+    fromSrc = readFileSync(join(dirname(modulePath), imp[1]), 'utf8');
+  } catch {
+    return null;
+  }
   const resolved = resolveExpr(fromSrc, expr);
-  assert.ok(Number.isFinite(resolved), `${script}: ${expr} did not resolve to a number`);
-  return resolved;
+  return Number.isFinite(resolved) ? resolved : null;
+}
+
+// A member declares ttlSeconds inline, or delegates its whole runSeed option bag
+// to a shared runner module — the TPS pair does the latter through
+// lib/tps-seed-runner.mjs. Follow that hop instead of letting a delegating
+// member slip past; the point of this guard is that no member escapes it.
+// Candidates are tried in order and the first that resolves to a NUMBER wins,
+// because _seed-utils.mjs also mentions `ttlSeconds` in its own option
+// validation — matching on the word alone would bind to that instead.
+function resolveTtlSeconds(script) {
+  const seederPath = join(root, 'scripts', script);
+  const seederSrc = readFileSync(seederPath, 'utf8');
+  const direct = ttlFromModule(seederPath, seederSrc);
+  if (direct != null) return direct;
+
+  for (const imp of seederSrc.matchAll(/from\s*'(\.[^']+)'/g)) {
+    const candidatePath = join(dirname(seederPath), imp[1]);
+    let candidateSrc;
+    try {
+      candidateSrc = readFileSync(candidatePath, 'utf8');
+    } catch {
+      continue;
+    }
+    const viaImport = ttlFromModule(candidatePath, candidateSrc);
+    if (viaImport != null) return viaImport;
+  }
+  assert.fail(`${script} must declare a resolvable ttlSeconds, or this guard silently skips it`);
 }
 
 test('every member’s TTL and health staleness budget cover its bundle interval', () => {
@@ -347,7 +366,7 @@ test('every member’s TTL and health staleness budget cover its bundle interval
     checked += 1;
   }
 
-  assert.equal(checked, 10, 'all ten active members must be checked, or this guard is partly vacuous');
+  assert.equal(checked, 12, 'all twelve active members must be checked, or this guard is partly vacuous');
 });
 
 describe('per-member kill switch (#6711)', () => {
@@ -385,7 +404,7 @@ describe('per-member kill switch (#6711)', () => {
     assert.match(RUNNER_SRC, /names unknown section\(s\)/);
     assert.match(RUNNER_SRC, /Refusing to start/);
     // It must throw, not warn-and-continue.
-    const guard = /const unknownDisabled[\s\S]*?\n  \}/.exec(RUNNER_SRC);
+    const guard = /const unknownDisabled[\s\S]*?\n {2}\}/.exec(RUNNER_SRC);
     assert.ok(guard, 'the unknown-label guard must exist');
     assert.match(guard[0], /throw new Error/);
   });
@@ -401,7 +420,7 @@ describe('per-member kill switch (#6711)', () => {
     // Counting it as ran would let a fully-disabled bundle report a healthy
     // tick; counting it as failed would crash the service on a deliberate
     // operator action.
-    const block = /if \(disabledMembers\.has\(section\.label\)\) \{[\s\S]*?continue;\n    \}/.exec(RUNNER_SRC);
+    const block = /if \(disabledMembers\.has\(section\.label\)\) \{[\s\S]*?continue;\n {4}\}/.exec(RUNNER_SRC);
     assert.ok(block, 'the disable branch must exist');
     assert.match(block[0], /disabled\+\+/);
     assert.equal(/ran\+\+|failed\+\+|gracefulFailed\+\+/.test(block[0]), false);

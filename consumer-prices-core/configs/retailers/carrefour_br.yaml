@@ -28,6 +28,9 @@ retailer:
     urlPathContains:
       - "/produto/"
       - "/p"
+    # 2026-09-02: Exa returned current BRL page text after Firecrawl price
+    # misses. Its lost decimal separator is corrected only from exact R$ proof.
+    extractionFallback: exa
 
   rateLimit:
     requestsPerMinute: 10

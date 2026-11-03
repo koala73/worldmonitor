@@ -2,6 +2,8 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { listCryptoQuotes } from '../server/worldmonitor/market/v1/list-crypto-quotes';
+import { createMarketServiceRoutes, type MarketServiceHandler } from '../src/generated/server/worldmonitor/market/v1/service_server';
+import { fetchCoinGeckoMarkets } from '../server/worldmonitor/market/v1/_shared';
 import { GENERATED_MESSAGE_RULES } from '../src/generated/server/request_validation';
 
 const SEED = {
@@ -54,6 +56,7 @@ afterEach(() => {
  */
 interface FetchPlan {
   seed?: unknown;
+  redisFailure?: 'seed' | 'gap';
   provider?: Record<string, unknown[]>;
   relay?: { quotes?: Array<{ id?: string; name?: string; symbol?: string; price?: number; change?: number; sparkline?: number[] }> } | null;
 }
@@ -72,6 +75,10 @@ function stubFetch(plan: FetchPlan): { calls: string[]; writes: Array<{ url: str
       });
     }
     if (url.includes('/get/')) {
+      const isSeed = url.includes(encodeURIComponent('market:crypto:v1'));
+      if ((plan.redisFailure === 'seed' && isSeed) || (plan.redisFailure === 'gap' && !isSeed)) {
+        return new Response('unavailable', { status: 503 });
+      }
       if (plan.seed && url.includes(encodeURIComponent('market:crypto:v1'))) {
         return new Response(JSON.stringify({ result: JSON.stringify(plan.seed) }), {
           status: 200,
@@ -235,7 +242,7 @@ describe('listCryptoQuotes parameterized gap resolution (#6306)', () => {
     const negWrites = writes.filter((w) => w.body.includes('__WM_NEG__') && w.body.includes('"EX","120"'));
     assert.equal(negWrites.length, 1, 'exactly one short negative write for the unresolved gap set');
     assert.equal(
-      writes.some((w) => w.body.includes('market:crypto:gap:v1:') && w.body.endsWith('"EX","600"')),
+      writes.some((w) => w.body.includes('market:crypto:gap:v2:') && w.body.endsWith('"EX","600"')),
       false,
       'an empty provider result must NOT be cached as a 600s positive entry',
     );
@@ -307,7 +314,7 @@ describe('listCryptoQuotes parameterized gap resolution (#6306)', () => {
     assert.equal(out1.provider, 'degraded');
     assert.deepEqual(out1.unresolvedIds, ['dogecoin']);
     assert.equal(
-      writes.filter((w) => w.body.includes('market:crypto:gap:v1:dogecoin')).length,
+      writes.filter((w) => w.body.includes('market:crypto:gap:v2:')).length,
       0,
       'a throwing provider must NOT write a positive OR negative cache entry',
     );
@@ -345,6 +352,11 @@ describe('listCryptoQuotes parameterized gap resolution (#6306)', () => {
     const gapCache = new Map<string, Record<string, unknown>>();
     globalThis.fetch = (async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
+      if (_init?.method === 'POST' && _init.body) {
+        const [command, key, value] = JSON.parse(String(_init.body));
+        if (command === 'SET') gapCache.set(key, JSON.parse(value));
+        return new Response(JSON.stringify({ result: 'OK' }));
+      }
       if (url.includes('/get/')) {
         const key = decodeURIComponent((url.match(/\/get\/([^/?]+)/) ?? [])[1] ?? '');
         if (key === 'market:crypto:v1') {
@@ -353,7 +365,7 @@ describe('listCryptoQuotes parameterized gap resolution (#6306)', () => {
             headers: { 'Content-Type': 'application/json' },
           });
         }
-        if (key.startsWith('market:crypto:gap:v1:')) {
+        if (key.startsWith('market:crypto:gap:v2:')) {
           const cached = gapCache.get(key);
           if (cached) {
             return new Response(JSON.stringify({ result: JSON.stringify(cached) }), {
@@ -373,9 +385,6 @@ describe('listCryptoQuotes parameterized gap resolution (#6306)', () => {
       }
       if (url.includes('coingecko')) {
         coingeckoCalls += 1;
-        const quote = { dogecoin: { name: 'Dogecoin', symbol: 'DOGE', price: 0.16, change: 4.2, sparkline: [1, 2] } };
-        // Record the cache write so the second request hits it.
-        gapCache.set('market:crypto:gap:v1:dogecoin', quote);
         return new Response(
           JSON.stringify([{ id: 'dogecoin', name: 'Dogecoin', symbol: 'doge', current_price: 0.16, price_change_percentage_24h: 4.2, sparkline_in_7d: { price: [1, 2] } }]),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -404,5 +413,70 @@ describe('listCryptoQuotes parameterized gap resolution (#6306)', () => {
     const rule = rules['worldmonitor.market.v1.ListCryptoQuotesRequest'];
     assert.ok(rule, 'ListCryptoQuotesRequest must have a generated validation rule');
     assert.equal(rule.fields.ids?.repeatedMaxItems, 25);
+  });
+});
+
+describe('crypto quote provider boundary', () => {
+  it('splits comma-bearing repeated parameters before applying the 25-ID bound', async () => {
+    configureRemoteRedis();
+    const ids = Array.from({ length: 30 }, (_, i) => `bounded-coin-${i}`);
+    const { calls } = stubFetch({ seed: SEED });
+    console.warn = () => {};
+    const route = createMarketServiceRoutes({ listCryptoQuotes } as MarketServiceHandler)
+      .find(route => route.path === '/api/market/v1/list-crypto-quotes')!;
+    const url = new URL('https://worldmonitor.app/api/market/v1/list-crypto-quotes');
+    url.searchParams.append('ids', ids.join(','));
+    url.searchParams.append('ids', ids[0]);
+    const response = await route.handler(new Request(url));
+    assert.equal(response.status, 200);
+    const gecko = new URL(calls.find(url => url.includes('coingecko'))!);
+    assert.deepEqual(gecko.searchParams.get('ids')!.split(','), ids.slice(0, 25));
+    const result = await response.json();
+    assert.deepEqual(result.unresolvedIds.slice(0, 5), ids.slice(25));
+  });
+
+  it('rejects query delimiters and overlong IDs without treating them as a default request', async () => {
+    configureRemoteRedis();
+    const { calls } = stubFetch({ seed: SEED });
+    console.warn = () => {};
+    const out = await listCryptoQuotes(ctx(), { ids: ['bitcoin&per_page=250', 'ethereum#fragment', 'x'.repeat(1000)] });
+    assert.deepEqual(out.quotes, []);
+    assert.equal(out.provider, 'degraded');
+    assert.equal(out.unresolvedIds.length, 3);
+    assert.ok(out.unresolvedIds.every(id => id.length <= 64));
+    assert.ok(calls.every(url => !url.includes('coingecko') && !url.includes('coinpaprika') && !url.includes('/crypto-quotes')));
+  });
+
+  for (const redisFailure of ['seed', 'gap'] as const) {
+    it(`${redisFailure} cache failure prevents provider and relay work`, async () => {
+      configureRemoteRedis();
+      process.env.WS_RELAY_URL = 'https://relay.example.test';
+      const { calls, writes } = stubFetch({ seed: SEED, redisFailure });
+      const warnings: unknown[][] = [];
+      console.warn = (...args) => { warnings.push(args); };
+      console.error = () => {};
+      const out = await listCryptoQuotes(ctx(), { ids: ['bitcoin', `outage-${redisFailure}`] });
+      assert.equal(out.provider, 'degraded');
+      assert.deepEqual(out.quotes.map(quote => quote.symbol), redisFailure === 'seed' ? [] : ['BTC']);
+      assert.ok(calls.every(url => !url.includes('coingecko') && !url.includes('coinpaprika') && !url.includes('/crypto-quotes')));
+      assert.equal(writes.length, 0);
+      if (redisFailure === 'seed') {
+        assert.ok(warnings.some(args => args[0] === '[redis] getCachedJson failed:'));
+      }
+    });
+  }
+
+  it('uses fixed-size gap cache keys and encodes upstream IDs as a single parameter', async () => {
+    configureRemoteRedis();
+    const { calls } = stubFetch({ seed: SEED });
+    console.warn = () => {};
+    await listCryptoQuotes(ctx(), { ids: ['key-bound-coin'] });
+    const gapRead = calls.find(url => decodeURIComponent(url).includes('market:crypto:gap:'))!;
+    assert.match(decodeURIComponent(gapRead), /market:crypto:gap:v2:[a-f0-9]{64}$/);
+    await fetchCoinGeckoMarkets(['id&vs_currency=eur#fragment']);
+    const upstream = new URL(calls.filter(url => url.includes('coingecko')).at(-1)!);
+    assert.equal(upstream.searchParams.get('ids'), 'id&vs_currency=eur#fragment');
+    assert.equal(upstream.searchParams.get('vs_currency'), 'usd');
+    assert.equal(upstream.hash, '');
   });
 });

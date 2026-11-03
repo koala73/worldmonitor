@@ -14,6 +14,10 @@ export interface CatalogSymbol extends MarketSymbol {
 
 export const STOCK_CATALOG: CatalogSymbol[] = stocksConfig.symbols as CatalogSymbol[];
 
+export const AUXILIARY_STOCK_CATALOG: CatalogSymbol[] = (
+  (stocksConfig as { auxiliarySymbols?: CatalogSymbol[] }).auxiliarySymbols ?? []
+) as CatalogSymbol[];
+
 export const REGION_LABELS: Record<string, string> = stocksConfig.regions;
 
 const CATALOG_BY_SYMBOL = new Map(STOCK_CATALOG.map((symbol) => [symbol.symbol, symbol]));

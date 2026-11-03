@@ -1,11 +1,17 @@
 import { convexTest } from "convex-test";
-import { expect, test, describe } from "vitest";
+import { afterEach, beforeEach, expect, test, describe, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 
 const modules = import.meta.glob("../**/*.ts");
 
 const BASE_TIMESTAMP = new Date("2026-03-21T10:00:00Z").getTime();
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(BASE_TIMESTAMP);
+});
+afterEach(() => vi.useRealTimers());
 
 /**
  * Capture-and-attribute path for Dodo events we cannot own.

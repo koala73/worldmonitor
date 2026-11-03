@@ -4,6 +4,7 @@
  * snapshots can be written to Redis and read directly by WorldMonitor handlers.
  */
 import { query } from '../db/client.js';
+import { INDEX_METHODOLOGY_VERSION } from '../index-methodology.js';
 
 // ---------------------------------------------------------------------------
 // Snapshot interfaces — mirror proto-generated response types exactly
@@ -33,7 +34,7 @@ export interface WMOverviewSnapshot {
   coveragePct: number;
   freshnessLagMin: number;
   topCategories: WMCategorySnapshot[];
-  upstreamUnavailable: false;
+  upstreamUnavailable: boolean;
 }
 
 export interface WMPriceMover {
@@ -127,11 +128,13 @@ async function buildTopCategories(basketId: string, rangeDays = 7): Promise<WMCa
        SELECT category, metric_key, metric_value::float AS metric_value
        FROM computed_indices
        WHERE basket_id = $1 AND category IS NOT NULL AND retailer_id IS NULL AND metric_date = CURRENT_DATE
+         AND (metric_key <> 'essentials_index' OR methodology_version = $3)
      ),
      prev_period AS (
        SELECT category, metric_key, metric_value::float AS metric_value
        FROM computed_indices
        WHERE basket_id = $1 AND category IS NOT NULL AND retailer_id IS NULL
+         AND (metric_key <> 'essentials_index' OR methodology_version = $3)
          AND metric_date = (
            SELECT MAX(metric_date) FROM computed_indices
            WHERE basket_id = $1 AND category IS NOT NULL
@@ -158,7 +161,7 @@ async function buildTopCategories(basketId: string, rangeDays = 7): Promise<WMCa
      HAVING MAX(CASE WHEN t.metric_key = 'essentials_index' THEN 1 ELSE 0 END) = 1
      ORDER BY ABS(COALESCE(MAX(CASE WHEN t.metric_key = 'essentials_index' THEN t.metric_value END), 100) - 100) DESC
      LIMIT 8`,
-    [basketId, lookbackDays],
+    [basketId, lookbackDays, INDEX_METHODOLOGY_VERSION],
   );
 
   return result.rows.map((r) => {
@@ -204,11 +207,12 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
          JOIN baskets b ON b.id = ci.basket_id
          WHERE b.market_code = $1
            AND ci.retailer_id IS NULL AND ci.category IS NULL
+           AND (ci.metric_key NOT IN ('essentials_index', 'value_index') OR ci.methodology_version = $2)
            AND ci.metric_date = (
              SELECT MAX(metric_date) FROM computed_indices ci2 JOIN baskets b2 ON b2.id = ci2.basket_id
              WHERE b2.market_code = $1 AND ci2.retailer_id IS NULL
            )`,
-        [marketCode],
+        [marketCode, INDEX_METHODOLOGY_VERSION],
       ),
       query<{ metric_key: string; metric_value: string }>(
         `SELECT ci.metric_key, ci.metric_value
@@ -216,12 +220,13 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
          JOIN baskets b ON b.id = ci.basket_id
          WHERE b.market_code = $1
            AND ci.retailer_id IS NULL AND ci.category IS NULL
+           AND (ci.metric_key NOT IN ('essentials_index', 'value_index') OR ci.methodology_version = $2)
            AND ci.metric_date = (
              SELECT MAX(metric_date) FROM computed_indices ci2 JOIN baskets b2 ON b2.id = ci2.basket_id
              WHERE b2.market_code = $1 AND ci2.retailer_id IS NULL
                AND ci2.metric_date < CURRENT_DATE - INTERVAL '6 days'
            )`,
-        [marketCode],
+        [marketCode, INDEX_METHODOLOGY_VERSION],
       ),
       query<{ metric_key: string; metric_value: string }>(
         `SELECT ci.metric_key, ci.metric_value
@@ -229,12 +234,13 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
          JOIN baskets b ON b.id = ci.basket_id
          WHERE b.market_code = $1
            AND ci.retailer_id IS NULL AND ci.category IS NULL
+           AND (ci.metric_key NOT IN ('essentials_index', 'value_index') OR ci.methodology_version = $2)
            AND ci.metric_date = (
              SELECT MAX(metric_date) FROM computed_indices ci2 JOIN baskets b2 ON b2.id = ci2.basket_id
              WHERE b2.market_code = $1 AND ci2.retailer_id IS NULL
                AND ci2.metric_date < CURRENT_DATE - INTERVAL '29 days'
            )`,
-        [marketCode],
+        [marketCode, INDEX_METHODOLOGY_VERSION],
       ),
       query<{ spread_pct: string }>(
         `SELECT metric_value AS spread_pct FROM computed_indices ci
@@ -252,7 +258,7 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
         `SELECT AVG(EXTRACT(EPOCH FROM (NOW() - last_successful_run_at)) / 60)::int AS avg_lag_min
          FROM data_source_health dsh
          JOIN retailers r ON r.id = dsh.retailer_id
-         WHERE r.market_code = $1`,
+         WHERE r.market_code = $1 AND r.active = true`,
         [marketCode],
       ),
     ]);
@@ -265,6 +271,32 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
 
   const prevMonth: Record<string, number> = {};
   for (const row of prevMonthResult.rows) prevMonth[row.metric_key] = parseFloat(row.metric_value);
+
+  const freshnessLagMin = freshnessResult.rows[0]?.avg_lag_min
+    ? parseInt(freshnessResult.rows[0].avg_lag_min, 10)
+    : 0;
+
+  // Aggregate records zero coverage on a day no fresh product priced the
+  // basket. Its newest index is then the last covered day's, so publishing it
+  // under a current asOf would present an expired price level as today's.
+  // Covered rows with no current-methodology index (no item has a baseline)
+  // are equally unpublishable: the fallback would present 100 as a measurement.
+  if (!((metrics.coverage_pct ?? 0) > 0) || metrics.essentials_index == null) {
+    return {
+      marketCode,
+      asOf: String(now),
+      currencyCode: currencyResult.rows[0]?.currency_code ?? 'USD',
+      essentialsIndex: 0,
+      valueBasketIndex: 0,
+      wowPct: 0,
+      momPct: 0,
+      retailerSpreadPct: 0,
+      coveragePct: 0,
+      freshnessLagMin,
+      topCategories: [],
+      upstreamUnavailable: true,
+    };
+  }
 
   const ess = metrics.essentials_index ?? 100;
   const val = metrics.value_index ?? 100;
@@ -287,9 +319,7 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
       ? Math.round(parseFloat(spreadResult.rows[0].spread_pct) * 10) / 10
       : 0,
     coveragePct: Math.round((metrics.coverage_pct ?? 0) * 10) / 10,
-    freshnessLagMin: freshnessResult.rows[0]?.avg_lag_min
-      ? parseInt(freshnessResult.rows[0].avg_lag_min, 10)
-      : 0,
+    freshnessLagMin,
     topCategories,
     upstreamUnavailable: false,
   };
@@ -302,16 +332,47 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
 // (#2322).
 export const MAX_MOVE_RATIO = 4;
 
+// How many movers each direction publishes. Presentation only.
+export const MOVERS_PER_DIRECTION = 10;
+
+// How many candidates an all-gated window needs before it is loud enough to
+// fail the run. Deliberately NOT MOVERS_PER_DIRECTION: retuning how many
+// movers the UI shows must not move an alarm threshold. Sample size governs
+// only the severity of an all-gated window, never whether it is trustworthy —
+// too few candidates to tell a systemic parse break from a thin market means
+// stay quiet, not publish anyway.
+//
+// Sized against the real candidate universe, which is far smaller than the
+// query's LIMIT 200 suggests: scrape targets come from basket items
+// (adapters/search.ts discoverTargets), baskets hold 12 items, and enabled
+// retailers per market run 2 to 4. The ceiling is therefore 24 to 48 rows,
+// and a row also needs a current in-stock price AND an observation inside the
+// one-day slot rangeDays back, so live counts sit far below it — market `in`
+// produced 1. A floor of 10 would be 42% of the smallest ceiling and would
+// leave this alarm effectively unreachable. 5 stays above the thin-window
+// noise that caused the #5445 gate to fail the cron while remaining reachable
+// for a market with real coverage.
+//
+// This wants a distribution query against production candidate counts to
+// confirm; it is currently reasoned from the config ceilings, not measured.
+export const MIN_PARSE_BREAK_SAMPLE = 5;
+
 export function isPlausiblePriceMove(changePct: number): boolean {
   if (!Number.isFinite(changePct)) return false;
   const ratio = 1 + changePct / 100; // newPrice / pastPrice
   return ratio >= 1 / MAX_MOVE_RATIO && ratio <= MAX_MOVE_RATIO;
 }
 
+// Null means "candidates existed but none survived the plausibility gate", a
+// third outcome distinct from both a real snapshot and an empty window. The
+// caller must skip the write so the last good snapshot lives out its TTL:
+// publishing zero movers here would overwrite it and, because recordCount()
+// floors movers at 1, stamp the envelope OK — a market whose every candidate
+// failed validation would read as fresh, valid and quiet.
 export async function buildMoversSnapshot(
   marketCode: string,
   rangeDays: number,
-): Promise<WMMoversSnapshot> {
+): Promise<WMMoversSnapshot | null> {
   const now = Date.now();
   const range = `${rangeDays}d`;
 
@@ -375,21 +436,29 @@ export async function buildMoversSnapshot(
     );
   }
   if (all.length > 0 && plausible.length === 0) {
-    // Every candidate was gated as a parse artifact. Publishing an empty but
-    // "healthy" snapshot would overwrite the last good one and render as a
-    // false "no movers" — fail loudly instead; the publish job's per-snapshot
-    // catch keeps the previous snapshot alive under its TTL (#5445).
-    throw new Error(
-      `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
+    // Nothing here is publishable either way — the caller skips the write and
+    // the last good snapshot stands (#5445). Only the alarm level depends on
+    // how much evidence there is: a full window of artifacts means the parser
+    // broke, so fail the run. Too thin to make that call and the run stays
+    // green, because one chronically sparse market must not exit the whole
+    // publish job 1 while every other market publishes fine.
+    if (all.length >= MIN_PARSE_BREAK_SAMPLE) {
+      throw new Error(
+        `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
+      );
+    }
+    console.warn(
+      `[movers] ${marketCode} ${range}: all ${all.length} candidate(s) gated as implausible — too few to call a parse break; skipping the write and keeping the last good snapshot`,
     );
+    return null;
   }
 
   return {
     marketCode,
     asOf: String(now),
     range,
-    risers: plausible.filter((r) => r.changePct > 0).slice(0, 10),
-    fallers: plausible.filter((r) => r.changePct < 0).slice(0, 10),
+    risers: plausible.filter((r) => r.changePct > 0).slice(0, MOVERS_PER_DIRECTION),
+    fallers: plausible.filter((r) => r.changePct < 0).slice(0, MOVERS_PER_DIRECTION),
     upstreamUnavailable: false,
   };
 }
@@ -558,10 +627,11 @@ export async function buildBasketSeriesSnapshot(
        JOIN baskets b ON b.id = ci.basket_id
        WHERE b.slug = $1 AND b.market_code = $2
          AND ci.metric_key = 'essentials_index'
+         AND ci.methodology_version = $4
          AND ci.retailer_id IS NULL AND ci.category IS NULL
          AND ci.metric_date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
        ORDER BY ci.metric_date ASC`,
-      [basketSlug, marketCode, days],
+      [basketSlug, marketCode, days, INDEX_METHODOLOGY_VERSION],
     ),
     query<{ metric_date: Date; metric_value: string }>(
       `SELECT ci.metric_date, ci.metric_value
@@ -569,10 +639,11 @@ export async function buildBasketSeriesSnapshot(
        JOIN baskets b ON b.id = ci.basket_id
        WHERE b.slug = $1 AND b.market_code = $2
          AND ci.metric_key = 'value_index'
+         AND ci.methodology_version = $4
          AND ci.retailer_id IS NULL AND ci.category IS NULL
          AND ci.metric_date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
        ORDER BY ci.metric_date ASC`,
-      [basketSlug, marketCode, days],
+      [basketSlug, marketCode, days, INDEX_METHODOLOGY_VERSION],
     ),
     query<{ currency_code: string }>(
       `SELECT currency_code FROM retailers WHERE market_code = $1 AND active = true LIMIT 1`,

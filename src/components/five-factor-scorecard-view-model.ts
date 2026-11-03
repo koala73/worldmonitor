@@ -15,6 +15,8 @@ export interface FiveFactorPillarLabels {
 export interface FiveFactorPillarRow {
   pillar: FiveFactorPillarId;
   status: 'scored' | 'insufficient';
+  score: number | null;
+  coverage: number;
   scoreLabel: string;
   coverageLabel: string;
   reasons: string[];
@@ -43,10 +45,12 @@ export function buildFiveFactorPillarRows(
   const byId = new Map(pillars.map((pillar) => [pillar.pillar, pillar]));
   return FIVE_FACTOR_PILLARS.map((pillar) => {
     const value = byId.get(pillar);
-    const scored = value?.hasScore === true;
+    const scored = value?.hasScore === true && Number.isFinite(value.score) && value.score >= 1 && value.score <= 5;
     return {
       pillar,
       status: scored ? 'scored' : 'insufficient',
+      score: scored ? value.score : null,
+      coverage: Math.round((value?.inputCoverage ?? 0) * 100),
       scoreLabel: scored ? labels.score(value.score) : labels.insufficient,
       coverageLabel: labels.coverage(Math.round((value?.inputCoverage ?? 0) * 100)),
       reasons: value?.insufficientReasons ?? ['pillar-unavailable'],

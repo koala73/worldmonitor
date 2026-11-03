@@ -3,7 +3,7 @@
   "host": {
     "displayName": "World Monitor",
     "identifier": "did:web:worldmonitor.app",
-    "documentationUrl": "https://worldmonitor.app/docs/documentation"
+    "documentationUrl": "https://www.worldmonitor.app/docs/documentation"
   },
   "entries": [
     {
@@ -11,7 +11,7 @@
       "displayName": "World Monitor MCP server",
       "type": "application/mcp-server-card+json",
       "url": "https://worldmonitor.app/.well-known/mcp/server-card.json",
-      "description": "Live global-intelligence MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
+      "description": "Live global-intelligence MCP server with real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
       "tags": [
         "news-and-intelligence",
         "news",
@@ -31,7 +31,7 @@
         "get_chokepoint_status",
         "get_supply_chain_data",
         "analyze_situation",
-        "generate_forecasts"
+        "get_forecast_predictions"
       ],
       "representativeQueries": [
         "what is happening in the Red Sea right now",
@@ -46,10 +46,26 @@
       }
     },
     {
+      "identifier": "urn:air:worldmonitor.app:mcp:worldmonitor-docs",
+      "displayName": "World Monitor Docs MCP server",
+      "type": "application/mcp-server-card+json",
+      "url": "https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json",
+      "description": "Public, anonymous MCP server for searching and reading the World Monitor developer docs, API references and guides. Use it for how-to questions; use the World Monitor MCP server for live data.",
+      "tags": [
+        "docs",
+        "search",
+        "mcp"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
       "identifier": "urn:air:worldmonitor.app:api:worldmonitor",
       "displayName": "World Monitor REST API",
       "type": "application/vnd.oai.openapi+json;version=3.1",
-      "url": "https://worldmonitor.app/openapi.json",
+      "url": "https://www.worldmonitor.app/openapi.json",
       "description": "World Monitor's public REST API spans conflict, markets, energy, maritime, aviation, climate, health, and supply-chain intelligence, with API-key and OAuth access. Read the linked OpenAPI document for the live operation inventory.",
       "tags": [
         "news-and-intelligence",
@@ -66,7 +82,7 @@
       "identifier": "urn:air:worldmonitor.app:agent-plugin:worldmonitor",
       "displayName": "World Monitor agent plugin",
       "type": "application/json",
-      "url": "https://worldmonitor.app/plugin.json",
+      "url": "https://www.worldmonitor.app/plugin.json",
       "description": "Agent Plugins 1.0.0 manifest for World Monitor: MCP servers plus task-focused agent skills, packaged from the public GitHub repository.",
       "tags": [
         "news-and-intelligence",

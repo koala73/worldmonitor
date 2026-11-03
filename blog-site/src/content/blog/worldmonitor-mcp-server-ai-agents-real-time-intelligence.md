@@ -34,7 +34,7 @@ It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first c
 | `get_conflict_events` | Active conflict and unrest events with coordinates |
 | `get_market_data` | Equities, commodities, crypto, FX, fear-greed composite |
 | `analyze_situation` | Ad-hoc geopolitical deduction from a query, with confidence and supporting signals |
-| `generate_forecasts` | Fresh probability estimates for developing situations |
+| `get_forecast_predictions` | Published probability forecasts for developing situations, with case files |
 
 The rest cover sanctions, cyber threats, energy intelligence, displacement, natural disasters, aviation status, prediction markets, supply chains, and more. Your agent can call `describe_tool` to pull the full definition of any tool. That call is quota-exempt, so exploration is free.
 
@@ -105,7 +105,7 @@ World Monitor treats autonomous agents as first-class clients. From the root URL
 - `/.well-known/mcp/server-card.json`: transport, endpoint, OAuth scopes, capability flags
 - `/openapi.yaml`: one bundled OpenAPI 3.1 spec covering the complete REST service registry
 
-So an agent that has never heard of World Monitor can start from `https://worldmonitor.app/`, read the Link headers, and wire itself up without a human in the loop. If you prefer raw REST over MCP, the same data is available through the [developer API](/blog/posts/build-on-worldmonitor-developer-api-open-source/), and the two share authentication.
+So an agent that has never heard of World Monitor can start from `https://www.worldmonitor.app/`, read the Link headers, and wire itself up without a human in the loop. If you prefer raw REST over MCP, the same data is available through the [developer API](/blog/posts/build-on-worldmonitor-developer-api-open-source/), and the two share authentication.
 
 ## Quotas, Honestly
 

@@ -366,7 +366,7 @@ npx tsc --noEmit   # 零错误
 - [ ] 若由缓存支持，确认工具具有正确的 `_cacheKeys` / `_coverageKeys`、新鲜度元数据和 `seed-meta:<key>` 健康覆盖。
 - [ ] 若否，在 `tests/mcp-api-parity.test.mjs` 中添加或更新排除项，附带匹配的类别前缀和具体原因。
 - [ ] 若为 `fetch-on-miss`，包含一个强制的辅助信号（`high-cardinality-input`、`paid-upstream` 或 `llm-cost`），并说明使当前开放 MCP 暴露不安全的上游成本、基数和分层策略。
-- [ ] 若为 `mutating` 或 `llm-passthrough`，在提出 MCP 封装前记录独立的威胁/成本模型。
+- [ ] 若为 `mutating` 或 `llm-passthrough`，在提出 MCP 封装前记录独立的威胁/成本模型。若为 `mutating`，须回答下文「变更型 MCP 工具」一节中的每个问题。
 - [ ] 运行 `./node_modules/.bin/tsx --test tests/mcp-api-parity.test.mjs` 并在 PR 中包含结果。
 
 `covered` 操作在工具的 `_apiPaths` 条目中声明。对于 REST 专属操作，对等测试接受以下排除类别：
@@ -380,7 +380,21 @@ npx tsc --noEmit   # 零错误
 | `manual-mapping` | 该操作使用参数化缓存键、内联 Redis/Convex 结构，或静态对等遍历器无法自动证明的其他映射。 |
 | `deferred-to-future-tool` | 该操作是纯读取且对 agent 有用，但属于未来的 MCP 工具或扩展包，而非当前注册表。 |
 
-MCP 参考文档在 [MCP 概览](/zh/mcp-overview#api-coverage) 中渲染当前的 `_apiPaths` 覆盖表。对等测试是当前已覆盖/已排除拆分的权威来源，因此不要依赖 PR 描述中的过时计数。
+MCP 参考文档在 [MCP 概览](/zh/mcp-overview#api-覆盖) 中渲染当前的 `_apiPaths` 覆盖表。对等测试是当前已覆盖/已排除拆分的权威来源，因此不要依赖 PR 描述中的过时计数。
+
+### 变更型 MCP 工具
+
+目前所有 MCP 工具都是只读的。agent 反馈通道（#8721）计划引入第一个写入状态的工具。写入状态的工具是一种新的接口：任何 agent 都可以调用它，而且往往没有账户，它的输入会到达我们拥有的人员和系统。在为变更型操作提供 MCP 封装之前，先在 `docs/architecture/` 中编写一份决策记录，为下列每个问题给出具体数值，并在 PR 中链接它。
+
+1. **滥用。** 匿名调用方能否触发写入？按 IP、按主体以及全局的限额分别是多少？每个入口路径上分别由哪段代码执行每项限额？MCP 入口不会经过网关的端点限流器。这些限额是否全部失败即关闭（fail-closed），包括 Redis 降级时？只要允许匿名写入，就必须设置全局配额桶，因为轮换 IP 可以绕过按 IP 的限额。明确哪些调用方算作“有密钥”：免费账户和匿名会话的创建成本为零。
+2. **幂等性。** 同一调用到达两次会发生什么？说明用于识别重试的键。将重试处理与任何基于内容的去重分开，因为后者可能悄悄丢弃后来调用方的证据。根据答案设置 `idempotentHint`，而不是沿用默认值。
+3. **注入。** 谁或什么会读取存储的文本：邮件、终端、GitHub、LLM？针对每一种读取方如何转义文本？是否有任何自动化会据此行动？
+4. **隐私。** 存储哪些身份信息，它们来自认证还是来自请求体？入库时会脱敏哪些凭据形态？每种状态保留多久？
+5. **成本。** 在配置的限额下，写入、存储、邮件、LLM 花费和上游请求的每日上限各是多少？
+6. **工具契约。** 说明访问级别以及全部四个注解（`readOnlyHint`、`destructiveHint`、`idempotentHint`、`openWorldHint`）。说明下游路径。免费层工具不得访问任何需要凭据的下游，因此任何例外都必须明确说明并由测试固定。说明工具如何获取调用方的 IP、user agent 和请求 ID，因为 `_execute` 不会收到请求本身。
+7. **重新评估条件。** 哪些未来的变更会使该记录失效？
+
+[`agent-feedback-threat-model.md`](https://github.com/koala73/worldmonitor/blob/main/docs/architecture/agent-feedback-threat-model.md) 是第一份此类记录，可作为范例。第二个变更型工具需要自己的记录，不能沿用已有的记录及其例外。
 
 ## Proto 约定
 

@@ -496,9 +496,7 @@ components:
                     format: double
                     description: |-
                         Reported fire size in HECTARES. 0 when unknown or not applicable — FIRMS
-                         detections report radiative power, not area. Named to match the key the
-                         seeder actually emits: a proto field the payload never populates is worse
-                         than no field, because consumers see it in the schema and get nothing.
+                         detections report radiative power, not area.
             required:
                 - id
             description: FireDetection represents a satellite-detected active fire from NASA FIRMS.

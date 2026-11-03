@@ -40,7 +40,6 @@
   },
   "zeroDefaultOnAllowlist": {
     "AR": "Clarín / Infobae Americas are es locale-gated; no EN default-on local source.",
-    "GB": "By design: covered via global-remit UK outlets (BBC World, Guardian World); no UK-domestic feed in catalog.",
     "IQ": "Catalog has Rudaw (Kurdistan Region of Iraq); not EN default-on.",
     "AU": "ABC News Australia / Guardian Australia in catalog; not EN default-on.",
     "CD": "Actualite.cd / Radio Okapi are fr locale-gated; no EN default-on local source.",

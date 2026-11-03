@@ -7,10 +7,13 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import { discoverContentCorpusPages } from '../scripts/discover-content-corpus-pages.mjs';
+import { USE_CASE_WORKFLOWS } from '../scripts/data/use-case-workflows.mjs';
 
 import {
   buildCorpus,
-  CORPUS_GENERATOR_CONTENT_VERSION,
+  gitFileLastmod,
+  WORLD_MONITOR_ORG,
 } from '../scripts/build-crawlable-corpus.mjs';
 import {
   HANDOFF_PRESERVE_SCRIPT,
@@ -19,10 +22,14 @@ import {
 } from '../scripts/build-use-cases.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+// Same inputs as useCasesLastmod in scripts/build-crawlable-corpus.mjs: version
+// stamps plus the UTC git lastmod of the use-cases builder. A pinned calendar
+// date fails when that file is committed on a later UTC day.
 const EXPECTED_USE_CASES_LASTMOD = [
   USE_CASES_CONTENT_VERSION,
-  CORPUS_GENERATOR_CONTENT_VERSION,
-].sort().at(-1);
+  gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
+  gitFileLastmod(repoRoot, 'scripts/data/use-case-workflows.mjs'),
+].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')).sort().at(-1);
 
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
@@ -37,12 +44,8 @@ function faqQuestion(name, text) {
   };
 }
 
-function itemListElement(steps) {
-  return steps.map((name, index) => ({
-    '@type': 'ListItem',
-    position: index + 1,
-    name,
-  }));
+function stepSlug(name) {
+  return `step-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
 }
 
 /** Visible <ol> step titles from the workflow / checklist sections. */
@@ -52,7 +55,7 @@ function visibleWorkflowStepNames(html) {
       /<h2>(?:End-to-end workflow|Routine monitoring checklist|Incident-response checklist)<\/h2>\s*<ol>([\s\S]*?)<\/ol>/g,
     ),
   ].flatMap(([, ol]) =>
-    [...ol.matchAll(/<li><strong>([^<]+)<\/strong>/g)].map(([, name]) => name.replace(/\.$/, '').trim()),
+    [...ol.matchAll(/<li[^>]*><strong>([^<]+)<\/strong>/g)].map(([, name]) => name.replace(/\.$/, '').trim()),
   );
 }
 
@@ -223,16 +226,16 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
   });
 
   it('publishes the hub and child pages with crawlable discovery', () => {
-    assert.equal(USE_CASE_PAGES.length, 3);
+    assert.equal(USE_CASE_PAGES.length, 12);
     assert.deepEqual(
-      USE_CASE_PAGES.map((page) => page.path),
+      USE_CASE_PAGES.slice(0, 3).map((page) => page.path),
       [
         '/use-cases/monitor-country-risk/',
         '/use-cases/verify-breaking-news/',
         '/use-cases/monitor-supply-chain-disruptions/',
       ],
     );
-    assert.match(hubHtml, /<h1>Evergreen monitoring workflows<\/h1>/);
+    assert.match(hubHtml, /<h1>Intelligence monitoring use cases<\/h1>/);
     assert.match(hubHtml, /href="\/use-cases\/monitor-country-risk\/"/);
     assert.match(hubHtml, /href="\/use-cases\/verify-breaking-news\/"/);
     assert.match(hubHtml, /href="\/use-cases\/monitor-supply-chain-disruptions\/"/);
@@ -269,7 +272,7 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
         html,
         new RegExp(`rel="canonical" href="https://www\\.worldmonitor\\.app${canonical.replaceAll('/', '\\/')}"`),
       );
-      assert.match(html, /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/);
+      assert.match(html, /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/);
       const [ld] = jsonLdObjects(html);
       assert.notEqual(ld['@type'], 'BlogPosting');
       assert.match(html, new RegExp(`<meta name="lastmod" content="${EXPECTED_USE_CASES_LASTMOD}">`));
@@ -278,33 +281,58 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
     const [hubLd] = jsonLdObjects(hubHtml);
     const [pageLd] = jsonLdObjects(supplyChainHtml);
     assert.equal(hubLd['@type'], 'CollectionPage');
+    assert.equal(hubLd['@id'], 'https://www.worldmonitor.app/use-cases/#webpage');
+    assert.deepEqual(hubLd.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.lede'],
+    });
     assert.equal(pageLd['@type'], 'WebPage');
 
-    for (const [label, html] of [
-      ['country-risk', countryRiskHtml],
-      ['breaking-news', breakingNewsHtml],
-      ['supply-chain', supplyChainHtml],
+    for (const [label, html, canonical] of [
+      ['country-risk', countryRiskHtml, '/use-cases/monitor-country-risk/'],
+      ['breaking-news', breakingNewsHtml, '/use-cases/verify-breaking-news/'],
+      ['supply-chain', supplyChainHtml, '/use-cases/monitor-supply-chain-disruptions/'],
     ]) {
       const expected = USE_CASE_STRUCTURED_DATA[label];
-      const types = new Set(jsonLdObjects(html).map((ld) => ld['@type']));
+      const pageUrl = `https://www.worldmonitor.app${canonical}`;
+      const objects = jsonLdObjects(html);
+      const types = new Set(objects.map((ld) => ld['@type']));
       assert.ok(types.has('WebPage'), `${label} missing WebPage JSON-LD`);
       assert.ok(types.has('FAQPage'), `${label} missing FAQPage JSON-LD for AI extraction (#7381)`);
-      assert.ok(types.has('ItemList'), `${label} missing ItemList JSON-LD for AI extraction (#7381)`);
-      const faq = jsonLdObjects(html).find((ld) => ld['@type'] === 'FAQPage');
+      assert.equal(types.has('ItemList'), false, `${label} must not duplicate its HowTo steps in ItemList JSON-LD (#7506)`);
+      assert.ok(types.has('HowTo'), `${label} missing HowTo JSON-LD for AI extraction (#7462)`);
+      const faq = objects.find((ld) => ld['@type'] === 'FAQPage');
       assert.deepEqual(faq.mainEntity, expected.faq, `${label} FAQPage questions`);
-      const list = jsonLdObjects(html).find((ld) => ld['@type'] === 'ItemList');
-      assert.equal(list.name, expected.itemListName, `${label} ItemList name`);
-      assert.equal(list.numberOfItems, expected.steps.length, `${label} ItemList numberOfItems`);
-      assert.deepEqual(
-        list.itemListElement,
-        itemListElement(expected.steps),
-        `${label} ItemList steps`,
-      );
+      const webPage = objects.find((ld) => ld['@type'] === 'WebPage');
+      assert.equal(webPage['@id'], `${pageUrl}#webpage`, `${label} WebPage @id`);
+      assert.deepEqual(webPage.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
+      assert.deepEqual(webPage.publisher, WORLD_MONITOR_ORG);
+      assert.deepEqual(webPage.breadcrumb, { '@id': `${pageUrl}#breadcrumb` });
+      assert.deepEqual(webPage.speakable, {
+        '@type': 'SpeakableSpecification',
+        cssSelector: ['h1', '.lede'],
+      });
+      assert.deepEqual(webPage.mainEntity, { '@id': `${pageUrl}#howto` });
+      const howto = objects.find((ld) => ld['@type'] === 'HowTo');
+      assert.equal(howto['@id'], `${pageUrl}#howto`);
+      assert.equal(howto.name, expected.itemListName);
+      assert.equal(howto.step.length, expected.steps.length);
       assert.deepEqual(
         visibleWorkflowStepNames(html),
         expected.steps,
-        `${label} visible workflow steps must match ItemList names`,
+        `${label} visible workflow steps must match HowTo names`,
       );
+      for (const [index, name] of expected.steps.entries()) {
+        const url = `${pageUrl}#${stepSlug(name)}`;
+        const step = howto.step[index];
+        assert.equal(step['@type'], 'HowToStep');
+        assert.equal(step.position, index + 1);
+        assert.equal(step.name, name);
+        assert.equal(step.url, url);
+        assert.match(step.text, /\S/, `${label} HowTo ${name} needs a description`);
+        assert.ok(html.includes(step.text), `${label} HowTo ${name} text must match visible copy`);
+        assert.ok(html.includes(`id="${stepSlug(name)}"`), `${label} missing visible step id ${stepSlug(name)}`);
+      }
     }
   });
 
@@ -351,7 +379,10 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
 
         const url = new URL(attributes.href, 'https://www.worldmonitor.app');
         assert.equal(url.pathname, expectedPaths[destination], label);
-        assert.equal(url.searchParams.get('utm_source'), 'seo-use-case', label);
+        // The published href carries wm_content_* attribution only. A utm_*
+        // key here is a redirect hop: middleware strips index-noise query
+        // keys with a 308 (#8603).
+        assert.equal(url.searchParams.has('utm_source'), false, label);
         assert.equal(url.searchParams.get('wm_content_source'), 'worldmonitor-use-cases', label);
         assert.equal(url.searchParams.get('wm_content_medium'), 'owned-content', label);
         assert.equal(url.searchParams.get('wm_content_campaign'), campaign, label);
@@ -400,8 +431,8 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
 
   it('records the family in the crawlable corpus manifest and countries hub', () => {
     assert.equal(manifest.sections.useCases.index, '/use-cases/');
-    assert.equal(manifest.sections.useCases.count, 3);
-    assert.deepEqual(manifest.sections.useCases.routes, [
+    assert.equal(manifest.sections.useCases.count, 12);
+    assert.deepEqual(manifest.sections.useCases.routes.slice(0, 3), [
       '/use-cases/monitor-country-risk/',
       '/use-cases/verify-breaking-news/',
       '/use-cases/monitor-supply-chain-disruptions/',
@@ -409,6 +440,62 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
     const countriesHub = readFileSync(join(outDir, 'countries', 'index.html'), 'utf8');
     assert.match(countriesHub, /href="\/use-cases\/monitor-country-risk\/"/);
     assert.match(countriesHub, /href="\/use-cases\/"/);
+  });
+
+  it('publishes every added workflow with matching visible schema and a working discovery path', () => {
+    const discovered = discoverContentCorpusPages({ publicDir: outDir });
+    const titles = new Set();
+    const descriptions = new Set();
+    const layers = readFileSync(join(repoRoot, 'src/config/map-layer-definitions.ts'), 'utf8');
+    for (const page of USE_CASE_WORKFLOWS) {
+      const path = `/use-cases/${page.slug}/`;
+      const html = readFileSync(join(outDir, path, 'index.html'), 'utf8');
+      assert.ok(hubHtml.includes(`href="${path}"`), `${path} absent from hub`);
+      assert.ok(manifest.sections.useCases.routes.includes(path));
+      assert.ok(discovered.some((entry) => entry.loc === `https://www.worldmonitor.app${path}`), 'missing sitemap discovery');
+      assert.ok(html.includes(`rel="canonical" href="https://www.worldmonitor.app${path}"`));
+      assert.equal((html.match(/<h1>/g) || []).length, 1);
+      const description = html.match(/<meta name="description" content="([^"]+)"/)?.[1];
+      assert.ok(description?.length >= 155 && description.length <= 160);
+      assert.ok(!descriptions.has(description), 'duplicate description');
+      assert.ok(!titles.has(page.title), 'duplicate title');
+      descriptions.add(description);
+      titles.add(page.title);
+      const structured = jsonLdObjects(html).flatMap((item) => item['@graph'] ?? item);
+      const howTo = structured.find((item) => item['@type'] === 'HowTo');
+      assert.equal(howTo.step.length, page.steps.length);
+      assert.deepEqual(visibleWorkflowStepNames(html), page.steps.map(([name]) => name));
+      for (const step of howTo.step) {
+        assert.ok(html.includes(`id="${new URL(step.url).hash.slice(1)}"`));
+      }
+      const faq = structured.find((item) => item['@type'] === 'FAQPage');
+      assert.equal(faq.mainEntity[0].name, page.question);
+      assert.equal(faq.mainEntity[0].acceptedAnswer.text, page.answer);
+      assert.ok(html.includes(page.question));
+      assert.match(html, /Illustrative scenario:/);
+      assert.match(html, /class="cta"[^>]*data-use-case-handoff/);
+      assert.match(html, /data-umami-event="use-case-product-cta-click"/);
+      const href = html.match(/href="([^"]+)"[^>]*data-use-case-handoff/)?.[1].replaceAll('&amp;', '&');
+      const handoff = new URL(href, 'https://www.worldmonitor.app');
+      assert.equal(handoff.pathname, '/dashboard');
+      assert.equal(handoff.searchParams.get('wm_content_campaign'), page.slug);
+      assert.equal(handoff.searchParams.get('layers'), new URL(page.dashboard, handoff).searchParams.get('layers'));
+      for (const layer of handoff.searchParams.get('layers').split(',')) {
+        assert.ok(layers.includes(`def('${layer}',`), `unknown layer ${layer}`);
+      }
+      for (const slug of page.related) {
+        assert.ok(html.includes(`href="/use-cases/${slug}/"`));
+        assert.ok(manifest.sections.useCases.routes.includes(`/use-cases/${slug}/`));
+      }
+      for (const [href] of page.sources) {
+        if (href.startsWith('/docs/')) {
+          assert.ok(readFileSync(join(repoRoot, `${href.slice(1)}.mdx`), 'utf8').length > 0);
+        } else {
+          assert.ok(readFileSync(join(outDir, href, 'index.html'), 'utf8').length > 0);
+        }
+      }
+      assert.doesNotMatch(html, /TODO|lorem ipsum|coming soon|placeholder/i);
+    }
   });
 
   it('rejects indexable placeholder copy', () => {

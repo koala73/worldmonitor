@@ -1,0 +1,68 @@
+name: Resilience Snapshot Rehearsal
+
+# Replays the monthly resilience snapshot refresh's rebuild-and-verify step
+# against a drifted copy of the committed snapshot
+# (scripts/rehearse-resilience-snapshot-refresh.mjs). #9954 opened red because a
+# corpus test pinned three figures from the previous snapshot; the pin passed on
+# its own PR and broke on the bot PR. This runs on the PR that adds the pin.
+#
+# The refresh verifies every test whose source matches SNAPSHOT_CONSUMERS, so
+# the path filter admits any test change and the script's --base check skips
+# PRs whose changed tests the refresh would not select.
+# tests/rehearse-resilience-snapshot-refresh.test.mjs asserts the filter covers
+# every script the refresh step runs (through npm scripts) and every other
+# trigger file.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/snapshots/resilience-ranking-*.json'
+      - 'scripts/build-crawlable-corpus.mjs'
+      - 'scripts/build-sitemap.mjs'
+      - 'scripts/build-llms-full.mjs'
+      - 'scripts/build-ai-search.mjs'
+      - 'scripts/crawlable-*.mjs'
+      - 'scripts/microstate-coverage-stories.mjs'
+      - 'scripts/generate-public-product-facts.mjs'
+      - 'scripts/generate-inventory-facts.mjs'
+      - 'scripts/generate-country-corpus-slugs.mjs'
+      - 'scripts/sync-resilience-coverage.mjs'
+      - 'scripts/run-data-tests.mjs'
+      - 'scripts/rehearse-resilience-snapshot-refresh.mjs'
+      - 'tests/*.test.mjs'
+      - 'tests/*.test.mts'
+      - '.github/workflows/resilience-snapshot-refresh.yml'
+      - '.github/workflows/resilience-snapshot-rehearsal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: resilience-snapshot-rehearsal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # The corpus build reads git history for lastmod dates, and --base
+          # diffs against the PR base.
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - name: Rehearse the refresh against a drifted snapshot
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            node scripts/rehearse-resilience-snapshot-refresh.mjs --base "$BASE_SHA"
+          else
+            node scripts/rehearse-resilience-snapshot-refresh.mjs
+          fi

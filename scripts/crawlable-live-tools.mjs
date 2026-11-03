@@ -1,10 +1,13 @@
 const REQUEST_TIMEOUT_MS = 8_000;
 const MIN_VALID_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
-const MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
-const MAX_LIVE_SNAPSHOT_AGE_MS = 48 * 60 * 60 * 1_000;
+export const MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
+export const MAX_LIVE_SNAPSHOT_AGE_MS = 48 * 60 * 60 * 1_000;
 const MAX_AIRSPACE_OBSERVATION_AGE_MS = 24 * 60 * 60 * 1_000;
 const MAX_RENDERED_ROWS = 5;
 
+// The country intel brief labels CII bands from shared/cii-band.js; this file
+// cannot import it (see the verbatim-copy note below), so
+// tests/country-brief-evidence.test.mts holds the two tables equal.
 const SCORE_BANDS = [
   { min: 81, label: 'Critical' },
   { min: 66, label: 'High' },
@@ -34,6 +37,274 @@ function formatNumber(value, maximumFractionDigits = 1) {
   return new Intl.NumberFormat('en-US', {
     maximumFractionDigits,
   }).format(value);
+}
+
+// This module is copied verbatim into public/tools/live-tools.js by
+// build-crawlable-corpus.mjs, so it must stay import-free at module scope. The
+// generator imports THESE exports rather than mirroring them -- a "keep in
+// sync" comment is a contract nothing can fail on.
+export function publishedTransitCountLabel(value, { allowZero = false } = {}) {
+  if (value == null || value === '') return null;
+  const numeric = typeof value === 'number'
+    ? value
+    : Number(String(value).replace(/,/g, ''));
+  // Always re-format the parsed number instead of echoing the input string:
+  // a passthrough would publish "1e3" or "0x10" verbatim, and a fraction such
+  // as 0.4 clears a `> 0` gate only to render as the "0" this exists to stop.
+  if (
+    !Number.isFinite(numeric)
+    || numeric < 0
+    || (numeric > 0 && numeric < 1)
+    || (numeric === 0 && !allowZero)
+  ) return null;
+  return formatNumber(numeric, 0);
+}
+
+const ISO_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isoDay(value) {
+  return typeof value === 'string' && ISO_DAY_PATTERN.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
+    ? value
+    : null;
+}
+
+export function formatPortwatchDay(value) {
+  const day = isoDay(value);
+  if (day === null) return null;
+  return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${day}T00:00:00Z`));
+}
+
+function formatPortwatchMonth(day) {
+  return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', timeZone: 'UTC' })
+    .format(new Date(`${day}T00:00:00Z`));
+}
+
+// "Oct 2024–Oct 2025": the baseline is a year, so month granularity is the
+// honest resolution for prose; the exact days stay in the record.
+export function formatPortwatchRange(from, to) {
+  const start = isoDay(from);
+  const end = isoDay(to);
+  if (start === null || end === null) return null;
+  const startLabel = formatPortwatchMonth(start);
+  const endLabel = formatPortwatchMonth(end);
+  return startLabel === endLabel ? startLabel : `${startLabel}–${endLabel}`;
+}
+
+// Share of the year-earlier baseline, e.g. "4%". Whole percentages from 1%
+// up; one decimal below that so a near-closure reads "0.4%", not "0%".
+export function formatBaselineShare(avg7d, baselineAvgDaily) {
+  const current = nonNegativeNumber(avg7d);
+  const baseline = finiteNumber(baselineAvgDaily);
+  if (current === null || baseline === null || baseline <= 0) return null;
+  const pct = (current / baseline) * 100;
+  return `${pct >= 1 || pct === 0 ? formatNumber(pct, 0) : formatNumber(pct, 1)}%`;
+}
+
+/**
+ * Labels for the official IMF PortWatch figures. The latest count publishes a
+ * measured 0 (PortWatch reported 0 transits for Hormuz on 2026-10-17); only
+ * an absent day withholds. The average line carries the baseline share when
+ * the seeder stored a baseline and omits it otherwise, never inventing one.
+ */
+export function chokepointOfficialMetrics({
+  officialLatestDate,
+  officialLatestTotal,
+  officialAvg7d,
+  baselineAvgDaily,
+  baselineFrom,
+  baselineTo,
+}) {
+  const latestDate = formatPortwatchDay(officialLatestDate);
+  const latestTransits = latestDate === null
+    ? null
+    : publishedTransitCountLabel(officialLatestTotal, { allowZero: true });
+  const published = latestTransits !== null;
+  const average = published ? nonNegativeNumber(officialAvg7d) : null;
+  const averageLabel = average === null ? null : `${formatNumber(average, 1)} a day`;
+  const share = average === null ? null : formatBaselineShare(average, baselineAvgDaily);
+  const baselineRange = share === null ? null : formatPortwatchRange(baselineFrom, baselineTo);
+  const baselineAverage = baselineRange === null ? null : formatNumber(baselineAvgDaily, 1);
+  return {
+    latestTransits: published ? latestTransits : null,
+    latestDate: published ? latestDate : null,
+    averageLabel,
+    baselineShare: baselineAverage === null ? null : share,
+    baselineAverage,
+    baselineRange,
+    average: averageLabel === null
+      ? null
+      : (baselineAverage === null ? averageLabel : `${averageLabel} · ${share} of ${baselineAverage}`),
+  };
+}
+
+export function chokepointCoverageMetrics({
+  navigationalWarnings,
+  navigationalWarningsAvailable,
+  aisDisruptions,
+  aisSnapshotAvailable,
+  congestionLevel,
+  weekMovement,
+}) {
+  const warningCount = Math.max(0, nonNegativeNumber(navigationalWarnings) ?? 0);
+  const disruptionCount = Math.max(0, nonNegativeNumber(aisDisruptions) ?? 0);
+  const warningLabel = typeof navigationalWarnings === 'string' && navigationalWarnings.trim()
+    ? navigationalWarnings.trim()
+    : `${formatNumber(warningCount, 0)} ${warningCount === 1 ? 'warning' : 'warnings'}`;
+  const disruptionLabel = typeof aisDisruptions === 'string' && aisDisruptions.trim()
+    ? aisDisruptions.trim()
+    : `${formatNumber(disruptionCount, 0)} AIS ${disruptionCount === 1 ? 'disruption' : 'disruptions'}`;
+  return {
+    navigationalWarnings: navigationalWarningsAvailable === true
+      ? warningLabel
+      : null,
+    aisDisruptions: aisSnapshotAvailable === true
+      ? disruptionLabel
+      : null,
+    congestion: aisSnapshotAvailable === true
+      ? (humanizeToken(congestionLevel) || 'Not reported')
+      : null,
+    weekMovement,
+  };
+}
+
+// Strict score coercion: only finite numbers and non-blank numeric strings
+// qualify. A bare Number() would turn null and '' into 0 — a measured calm
+// reading manufactured from an absence.
+function chokepointScoreNumber(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value.replace(/,/g, ''));
+  return Number.NaN;
+}
+
+function chokepointBandLabel(score) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  if (numeric < 20) return 'Green';
+  if (numeric < 50) return 'Yellow';
+  return 'Red';
+}
+
+// Segments of the live status note that are NEITHER the threat baseline NOR
+// the anomaly signal: absence/coverage phrasing and operator review-hygiene
+// text. The live API always sends a non-empty description, so without this
+// filter every calm waterway would read as threat-driven.
+const NON_SCORE_DESCRIPTION_PATTERNS = [
+  /no active disruptions/i,
+  /source coverage incomplete/i,
+  /threat baseline last reviewed/i,
+];
+
+// The transit-anomaly signal (+10 score bonus) is observed traffic collapse,
+// not baseline — surface it as its own clause, never as the threat weight.
+const ANOMALY_DESCRIPTION_PATTERN = /traffic down \d+% vs .*baseline.*/i;
+
+function splitScoreDescription(description) {
+  const segments = String(description || '')
+    .split(';')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const anomaly = segments.find((segment) => ANOMALY_DESCRIPTION_PATTERN.test(segment)) ?? null;
+  const threatSegments = segments.filter((segment) => segment !== anomaly
+    && !NON_SCORE_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(segment)));
+  return {
+    threat: threatSegments.length ? threatSegments.join('; ') : null,
+    anomaly,
+  };
+}
+
+function chokepointArticleName(displayName) {
+  const name = String(displayName || '').trim() || 'this chokepoint';
+  return `the ${name}`;
+}
+
+// The official-figure sentences shared by the passage and the score driver.
+// "IMF PortWatch counted 4 transits through the Strait of Hormuz on Oct 18,
+// 2026 (latest published day). The 7-day average is 3.7 a day, 4% of the
+// 87.4-a-day average for Oct 2024–Oct 2025." The comparison clause exists only
+// when the seeder stored a baseline; it is omitted, never estimated.
+function officialCountSentences(official, name, { through }) {
+  if (official.latestTransits === null) return null;
+  const count = Number(official.latestTransits.replace(/,/g, ''));
+  const noun = count === 1 ? 'transit' : 'transits';
+  const where = through ? ` through ${name}` : '';
+  const counted = `IMF PortWatch counted ${official.latestTransits} ${noun}${where} on ${official.latestDate} (latest published day).`;
+  if (official.averageLabel === null) return counted;
+  const comparison = official.baselineAverage === null
+    ? ''
+    : `, ${official.baselineShare} of the ${official.baselineAverage}-a-day average for ${official.baselineRange}`;
+  return `${counted} The 7-day average is ${official.averageLabel}${comparison}.`;
+}
+
+// Shared evidence policy for both static HTML and live hydration. The badge is
+// a disruption-risk signal, not evidence that operators have opened or closed
+// a waterway. AIS severity contributes to the score; the number of AIS events
+// and the official PortWatch daily count are context only.
+export function chokepointEvidenceNarrative({
+  displayName,
+  score,
+  bandLabel,
+  description,
+  asOfText,
+  partial,
+  warningsLabel,
+  congestionLabel,
+  aisEventCountLabel,
+  officialLatestDate,
+  officialLatestTotal,
+  officialAvg7d,
+  baselineAvgDaily,
+  baselineFrom,
+  baselineTo,
+}) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  const band = String(bandLabel || '').trim() || chokepointBandLabel(numeric);
+  const formatted = Number.isInteger(numeric) ? String(numeric) : String(Math.round(numeric * 10) / 10);
+  const warnings = String(warningsLabel || '').trim() || null;
+  const severity = String(congestionLabel || '').trim() || null;
+  const aisEvents = String(aisEventCountLabel || '').trim() || null;
+  const official = chokepointOfficialMetrics({
+    officialLatestDate, officialLatestTotal, officialAvg7d, baselineAvgDaily, baselineFrom, baselineTo,
+  });
+  const name = chokepointArticleName(displayName);
+  const dated = String(asOfText || '').trim();
+  const snapshotLead = dated ? `As of ${dated}` : 'In the latest published snapshot';
+
+  let passage;
+  if (partial === true) {
+    const officialClause = officialCountSentences(official, name, { through: false })
+      ?? 'No IMF PortWatch daily transit count is published for this snapshot.';
+    passage = `${snapshotLead}, source coverage for ${name} is partial. ${officialClause} World Monitor cannot verify operational passage status from this snapshot.`;
+  } else {
+    const officialClause = officialCountSentences(official, name, { through: true })
+      ?? `no IMF PortWatch daily transit count is published for ${name}.`;
+    passage = `${snapshotLead}, ${officialClause} The ${band} disruption score is a risk signal; it does not verify unrestricted passage or operational closure.`;
+  }
+
+  const { threat, anomaly } = splitScoreDescription(description);
+  const baseline = threat
+    ? `Configured geopolitical baseline: ${threat.replace(/[.]+$/, '')}.`
+    : 'Configured geopolitical baseline: no additional threat weight.';
+  const observedInputs = [
+    warnings,
+    severity ? `maximum AIS congestion severity ${severity}` : null,
+    anomaly ? `PortWatch daily-transit anomaly: ${anomaly.replace(/[.]+$/, '')}` : null,
+  ].filter(Boolean);
+  const unavailableInputs = [
+    warnings === null ? 'navigational warning count' : null,
+    severity === null ? 'maximum AIS congestion severity' : null,
+  ].filter(Boolean);
+  const observed = observedInputs.length
+    ? `Observed score inputs: ${observedInputs.join('; ')}.`
+    : 'Observed score inputs: none available.';
+  const unavailable = unavailableInputs.length
+    ? ` Unavailable score inputs: ${unavailableInputs.join('; ')}.`
+    : '';
+  const context = `Context only (not score inputs): AIS event count ${aisEvents ? `(${aisEvents})` : 'unavailable'}; IMF PortWatch latest daily count ${official.latestTransits !== null ? `(${official.latestTransits} on ${official.latestDate})` : 'unavailable'}.`;
+  const scoreDriver = `The score of ${formatted} (${band}) has this evidence basis. ${baseline} ${observed}${unavailable} ${context}`;
+
+  return { passage, scoreDriver };
 }
 
 function humanizeToken(value, prefixes = []) {
@@ -76,16 +347,75 @@ export function formatAdvisory(value) {
   return normalized || 'Not present';
 }
 
+export const CII_MOVEMENT_UNCHANGED = 'Unchanged';
+export const CII_MOVEMENT_NO_EARLIER_READING = 'No earlier reading';
+// Labels frozen before "Unchanged" and "No earlier reading" were split. They
+// covered both a measured zero and a missing prior reading, so a snapshot
+// carrying one supports no movement claim at all.
+const LEGACY_CONFLATED_CII_MOVEMENT_LABELS = new Set([
+  'Stable',
+  'Stable / unavailable',
+  'Stable or unavailable',
+]);
+
+export function isLegacyConflatedCiiMovementLabel(label) {
+  return LEGACY_CONFLATED_CII_MOVEMENT_LABELS.has(String(label || '').trim());
+}
+
+function hasComparedTrend(trend) {
+  const token = String(trend || '').trim().toUpperCase();
+  return token !== '' && token !== 'TREND_DIRECTION_UNSPECIFIED';
+}
+
 export function formatTrend(dynamicScore, trend) {
   const delta = finiteNumber(dynamicScore);
   if (delta !== null) {
     if (delta > 0) return `Rising +${formatNumber(delta)}`;
     if (delta < 0) return `Falling ${formatNumber(delta)}`;
+    // The server sends dynamicScore 0 with UNSPECIFIED when it had no usable
+    // prior reading; only a compared trend makes the zero a real "no change".
+    return hasComparedTrend(trend) ? CII_MOVEMENT_UNCHANGED : CII_MOVEMENT_NO_EARLIER_READING;
   }
 
   const normalized = humanizeToken(trend, ['TREND_DIRECTION_']);
   if (normalized && normalized !== 'Unspecified') return normalized;
-  return 'Stable / unavailable';
+  return CII_MOVEMENT_NO_EARLIER_READING;
+}
+
+export const DEFAULT_CII_MOVEMENT_INTERVAL = 'over approximately 24 hours';
+
+export function parseCiiMovement(trend, { intervalPhrase = DEFAULT_CII_MOVEMENT_INTERVAL } = {}) {
+  const interval = String(intervalPhrase || '').trim() || DEFAULT_CII_MOVEMENT_INTERVAL;
+  const normalized = String(trend || '').trim();
+  if (normalized === CII_MOVEMENT_UNCHANGED) {
+    return { change24h: 0, movementText: `unchanged ${interval}` };
+  }
+  // movementText null tells callers to drop the movement clause entirely.
+  if (
+    normalized === CII_MOVEMENT_NO_EARLIER_READING
+    || LEGACY_CONFLATED_CII_MOVEMENT_LABELS.has(normalized)
+  ) {
+    return { change24h: null, movementText: null };
+  }
+  const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
+  if (!match) throw new Error(`Invalid CII movement label: ${normalized || '(empty)'}`);
+  const change24h = Number(match[2]);
+  const magnitude = Math.abs(change24h);
+  const unit = magnitude === 1 ? 'point' : 'points';
+  const direction = match[1] === 'Rising' ? 'up' : 'down';
+  return {
+    change24h,
+    movementText: `${direction} ${magnitude} ${unit} ${interval}`,
+  };
+}
+
+function compareCiiRankingRows(left, right, publishedCodes = []) {
+  const scoreDelta = right.scoreValue - left.scoreValue;
+  if (scoreDelta !== 0) return scoreDelta;
+  if (publishedCodes.length === 0) return 0;
+  const order = new Map(publishedCodes.map((code, index) => [code, index]));
+  return (order.get(left.code) ?? Number.POSITIVE_INFINITY)
+    - (order.get(right.code) ?? Number.POSITIVE_INFINITY);
 }
 
 export function liveRiskViewModel(payload, now = Date.now()) {
@@ -154,6 +484,62 @@ export function liveRiskViewModel(payload, now = Date.now()) {
   };
 }
 
+export function ciiRankingViewModel(payload, now = Date.now()) {
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.ciiScores)) {
+    throw new Error('CII ranking response is unavailable');
+  }
+  if (payload.degraded === true || payload.stale === true) {
+    throw new Error('CII ranking response is degraded or stale');
+  }
+  if (payload.ciiScores.length === 0) {
+    throw new Error('CII ranking response is unavailable');
+  }
+
+  const seenCodes = new Set();
+  const methodologyVersions = new Set();
+  const rows = payload.ciiScores.map((entry) => {
+    const code = String(entry?.region || '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(code)) throw new Error('CII ranking country code is invalid');
+    if (seenCodes.has(code)) throw new Error(`CII ranking contains duplicate country ${code}`);
+    seenCodes.add(code);
+
+    const scoreValue = finiteNumber(entry?.combinedScore);
+    const band = instabilityBand(scoreValue);
+    const change24h = finiteNumber(entry?.dynamicScore);
+    if (scoreValue === null || band === null || change24h === null || change24h < -100 || change24h > 100) {
+      throw new Error(`CII ranking score is invalid for ${code}`);
+    }
+    const computedAt = requireTimestamp(
+      entry?.computedAt,
+      now,
+      `CII ranking ${code}`,
+      MAX_LIVE_SNAPSHOT_AGE_MS,
+    );
+    const methodologyVersion = String(entry?.methodologyVersion || '').trim();
+    if (!methodologyVersion) throw new Error(`CII ranking methodology is unavailable for ${code}`);
+    methodologyVersions.add(methodologyVersion);
+
+    return {
+      code,
+      score: formatNumber(scoreValue),
+      scoreValue,
+      band,
+      trend: formatTrend(change24h, entry?.trend),
+      computedAt,
+      methodologyVersion,
+    };
+  }).sort((left, right) => compareCiiRankingRows(left, right));
+
+  if (methodologyVersions.size !== 1) {
+    throw new Error('CII ranking response mixes methodology versions');
+  }
+  return {
+    rows,
+    updatedAt: Math.max(...rows.map((row) => row.computedAt)),
+    methodologyVersion: rows[0].methodologyVersion,
+  };
+}
+
 function normalizeBounds(bounds) {
   if (!Array.isArray(bounds) || bounds.length !== 4) return null;
   const values = bounds.map(finiteNumber);
@@ -202,25 +588,58 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     'Chokepoint status',
     MAX_LIVE_SNAPSHOT_AGE_MS,
   );
-  const activeWarnings = Math.max(0, nonNegativeNumber(row.activeWarnings) ?? 0);
-  const aisDisruptions = Math.max(0, nonNegativeNumber(row.aisDisruptions) ?? 0);
   const transit = row.transitSummary;
+  // dataAvailable is PortWatch history presence, so it gates wowChangePct and
+  // the official figures below. The relay's AIS window count (todayTotal) is
+  // deliberately not read: it counts vessels leaving a wide geofence around
+  // the waterway, port traffic included, and reached the page as "transits"
+  // (38 for Hormuz on 2026-10-22 against PortWatch's 4).
   const transitAvailable = transit?.dataAvailable === true;
-  const todayTotal = transitAvailable ? nonNegativeNumber(transit.todayTotal) : null;
   const weekMovement = transitAvailable ? finiteNumber(transit.wowChangePct) : null;
+  // The proto carries absence as an empty date / empty baseline_from with the
+  // numbers at 0; a 0 here is never a measurement, so both are read together.
+  const officialLatestDate = transitAvailable ? isoDay(transit.officialLatestDate) : null;
+  const officialLatestTotal = officialLatestDate === null ? null : nonNegativeNumber(transit.officialLatestTotal);
+  const officialAvg7d = officialLatestTotal === null ? null : nonNegativeNumber(transit.officialAvg7d);
+  const baselineFrom = transitAvailable ? isoDay(transit.baselineFrom) : null;
+  const baselineTo = baselineFrom === null ? null : isoDay(transit.baselineTo);
+  const baselineAvgDaily = baselineTo === null ? null : finiteNumber(transit.baselineAvgDaily);
+  const baselineAvailable = baselineAvgDaily !== null && baselineAvgDaily > 0;
+  const coverageMetrics = chokepointCoverageMetrics({
+    navigationalWarnings: row.activeWarnings,
+    navigationalWarningsAvailable: row.navigationalWarningsAvailable === true,
+    aisDisruptions: row.aisDisruptions,
+    aisSnapshotAvailable: row.aisSnapshotAvailable === true,
+    congestionLevel: row.congestionLevel,
+    weekMovement: weekMovement === null
+      ? null
+      : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
+  });
 
   return {
     disruptionScore: formatNumber(score, 0),
     status,
-    congestion: humanizeToken(row.congestionLevel) || 'Not reported',
-    warnings: `${formatNumber(activeWarnings, 0)} ${activeWarnings === 1 ? 'warning' : 'warnings'} · ${formatNumber(aisDisruptions, 0)} AIS ${aisDisruptions === 1 ? 'disruption' : 'disruptions'}`,
-    description: String(row.description || '').trim() || 'No additional status note was supplied.',
-    todayTransits: todayTotal === null ? null : formatNumber(todayTotal, 0),
-    weekMovement: weekMovement === null
-      ? null
-      : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
+    congestion: coverageMetrics.congestion,
+    navigationalWarnings: coverageMetrics.navigationalWarnings,
+    aisDisruptions: coverageMetrics.aisDisruptions,
+    // null, never a placeholder sentence — see publishableChokepointDescription in
+    // scripts/crawlable-chokepoint-live.mjs (#7530).
+    description: String(row.description || '').trim() || null,
+    officialLatestDate: officialLatestTotal === null ? null : officialLatestDate,
+    officialLatestTotal,
+    officialAvg7d,
+    baselineAvgDaily: baselineAvailable ? baselineAvgDaily : null,
+    baselineFrom: baselineAvailable ? baselineFrom : null,
+    baselineTo: baselineAvailable ? baselineTo : null,
+    weekMovement: coverageMetrics.weekMovement,
     fetchedAt,
-    partial: payload.upstreamUnavailable === true || !transitAvailable || todayTotal === null,
+    // A missing baseline is not missing coverage: the official count still
+    // answers the question, only the year-earlier comparison is omitted.
+    partial: payload.upstreamUnavailable === true
+      || !transitAvailable
+      || officialLatestTotal === null
+      || coverageMetrics.navigationalWarnings === null
+      || coverageMetrics.aisDisruptions === null,
   };
 }
 
@@ -487,6 +906,78 @@ export function militaryFlightsViewModel(payload, now = Date.now()) {
   };
 }
 
+// The relay stores the seed for 45 minutes (PIZZINT_SEED_TTL in ais-relay.cjs);
+// the margin covers edge caching. Older than this is not the current level.
+const MAX_PIZZINT_AGE_MS = 60 * 60 * 1_000;
+
+// English activity labels as the dashboard header shows them
+// (components.pizzint.defconLabels in src/locales/en.json).
+const PIZZINT_LEVEL_LABELS = {
+  1: 'Maximum Activity',
+  2: 'High Activity',
+  3: 'Elevated Activity',
+  4: 'Above Normal',
+  5: 'Normal Activity',
+};
+
+// Mirrors PizzIntIndicator.getStatusLabel and the toLocation baseline rule in
+// src/services/pizzint.ts, in sentence case for a reading page.
+// A fresh, open venue with a live signal, as the relay's hasLiveSignal reads it.
+function isLivePizzIntVenue(location) {
+  return location?.dataFreshness === 'DATA_FRESHNESS_FRESH'
+    && location.isClosedNow !== true
+    && location.noLiveSignal !== true;
+}
+
+function pizzIntVenueStatus(location) {
+  // A stale row can ride along in a fresh poll; its stored busyness is not current.
+  if (location.dataFreshness !== 'DATA_FRESHNESS_FRESH') return 'No data';
+  if (location.isClosedNow === true) return 'Closed';
+  if (location.noLiveSignal === true) return 'No data';
+  const percentage = location.hasBaseline === true
+    ? finiteNumber(location.percentageOfUsual)
+    : finiteNumber(location.percentageOfUsual) || null;
+  if (percentage === null) return 'No baseline';
+  const deviation = Math.round(percentage - 100);
+  if (location.isSpike === true) return `Spike +${deviation}%`;
+  if (Math.abs(deviation) <= 10) return 'Normal';
+  return `${deviation > 0 ? '+' : '−'}${Math.abs(deviation)}% vs usual`;
+}
+
+export function pizzIntViewModel(payload, now = Date.now()) {
+  const status = payload?.pizzint;
+  const unavailable = { available: false, level: '—', label: 'No current reading', updatedAt: null, venues: [] };
+  // The relay publishes nothing without a live reading, so an expired seed is
+  // the normal "no venue is reporting" answer, not a failure.
+  if (status === undefined || status === null) return unavailable;
+  if (typeof status !== 'object') throw new Error('Pizza Index status is malformed');
+  const level = status.defconLevel;
+  if (!Number.isInteger(level) || !PIZZINT_LEVEL_LABELS[level]) {
+    throw new Error('Pizza Index level is outside 1-5');
+  }
+  const updatedAt = validTimestamp(status.updatedAt, now, MAX_PIZZINT_AGE_MS);
+  const locations = Array.isArray(status.locations) ? status.locations : [];
+  if (
+    updatedAt === null
+    || status.dataFreshness !== 'DATA_FRESHNESS_FRESH'
+    || !(status.locationsMonitored > 0)
+    // The relay also publishes closed-only polls; those are not a live reading.
+    || !locations.some(isLivePizzIntVenue)
+  ) {
+    return unavailable;
+  }
+  return {
+    available: true,
+    level: String(level),
+    label: PIZZINT_LEVEL_LABELS[level],
+    updatedAt,
+    venues: locations.map((location) => ({
+      name: String(location?.name || 'Unnamed venue'),
+      status: pizzIntVenueStatus(location ?? {}),
+    })),
+  };
+}
+
 async function fetchWithTimeout(
   url,
   options = {},
@@ -651,6 +1142,26 @@ function setText(root, selector, value) {
   if (element) element.textContent = value;
 }
 
+function setOptionalMetric(root, selector, value) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  const metric = element.closest('.metric');
+  const available = value !== null && value !== undefined;
+  element.textContent = available ? value : '';
+  if (metric) metric.hidden = !available;
+}
+
+// The status note is optional prose, not a labelled metric: hide the paragraph
+// itself rather than leaving an empty <p> or writing a placeholder sentence
+// into it (#7530).
+function setOptionalDescription(root, selector, value) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  const text = value === null || value === undefined ? '' : String(value);
+  element.textContent = text;
+  element.hidden = text === '';
+}
+
 function formatDateTime(timestamp) {
   if (timestamp === null) return 'Time unavailable';
   return new Intl.DateTimeFormat('en-US', {
@@ -659,6 +1170,9 @@ function formatDateTime(timestamp) {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    // UTC to match the static page's timestamps (formatStaticDateTime in
+    // build-crawlable-corpus.mjs); the reader's zone put "GMT+4" beside "UTC".
+    timeZone: 'UTC',
     timeZoneName: 'short',
   }).format(new Date(timestamp));
 }
@@ -678,7 +1192,9 @@ function setToolState(tool, state, status) {
     fallback.hidden = revealValues;
   }
   for (const description of tool.querySelectorAll('[data-chokepoint-description]')) {
-    if (revealValues) description.hidden = false;
+    // Only reveal a note that has text. The status note is optional (#7530),
+    // so an unconditional reveal would surface an empty paragraph.
+    if (revealValues && description.textContent.trim()) description.hidden = false;
   }
   for (const control of tool.querySelectorAll('[data-live-refresh]')) {
     control.disabled = state === 'loading';
@@ -783,10 +1299,12 @@ function updateCountryQuery(select, dashboardLink) {
   else url.searchParams.delete('country');
   window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   if (dashboardLink) {
-    // Keep conversion attribution on dynamically-rewritten dashboard links.
+    // No utm tag: middleware 308s index-noise query keys away, so a tagged
+    // link is a redirect hop for anything that follows it (#8603). Umami
+    // records the referrer path for same-site navigation.
     dashboardLink.href = code
-      ? `/?country=${encodeURIComponent(code)}&expanded=1&utm_source=seo-tool`
-      : '/?utm_source=seo-tool';
+      ? `/dashboard?country=${encodeURIComponent(code)}&expanded=1`
+      : '/dashboard';
   }
 }
 
@@ -834,8 +1352,8 @@ function renderCountryRiskViewModel(tool, view) {
     }
   }
   markPublishedLivePulse(tool);
-  if (view.partial) setToolState(tool, 'partial', 'Partial API result');
-  else setToolState(tool, 'ready', 'API result');
+  if (view.partial) setToolState(tool, 'partial', 'Partial live reading');
+  else setToolState(tool, 'ready', 'Live reading');
 }
 
 /** True when the score cell still holds a published numeric value. */
@@ -895,6 +1413,81 @@ export async function loadCountryRisk(tool) {
   }
 }
 
+function renderCiiRankingViewModel(tool, view) {
+  const publishedMethodologyVersion = String(tool.dataset.ciiMethodologyVersion || '').trim();
+  if (
+    !publishedMethodologyVersion
+    || publishedMethodologyVersion !== view.methodologyVersion
+  ) {
+    throw new Error('CII ranking response does not match the published methodology');
+  }
+  const body = tool.querySelector('[data-cii-ranking-body]');
+  if (!body) throw new Error('CII ranking table body is unavailable');
+  const rowByCode = new Map(
+    [...body.querySelectorAll('[data-cii-country]')].map((row) => [row.dataset.ciiCountry, row]),
+  );
+  if (
+    rowByCode.size !== view.rows.length
+    || view.rows.some((entry) => !rowByCode.has(entry.code))
+  ) {
+    throw new Error('CII ranking response does not match the published country set');
+  }
+
+  const publishedCodes = [...body.querySelectorAll('[data-cii-country]')].map(
+    (row) => row.dataset.ciiCountry,
+  );
+  const rows = [...view.rows].sort((left, right) => compareCiiRankingRows(left, right, publishedCodes));
+  for (const entry of rows) {
+    const row = rowByCode.get(entry.code);
+    const scoreCell = row.querySelector('[data-cii-score]');
+    if (scoreCell) {
+      scoreCell.textContent = entry.score;
+      scoreCell.setAttribute('value', entry.score);
+    }
+    setText(row, '[data-cii-trend]', entry.trend);
+    setText(row, '[data-cii-band]', entry.band);
+    const updated = row.querySelector('[data-cii-updated]');
+    if (updated) {
+      updated.textContent = formatDateTime(entry.computedAt);
+      updated.setAttribute('datetime', new Date(entry.computedAt).toISOString());
+    }
+    body.append(row);
+  }
+  setTime(tool, '[data-cii-ranking-updated]', view.updatedAt, 'Latest score');
+  tool.dataset.ciiHydrated = 'true';
+  markPublishedLivePulse(tool);
+  setToolState(tool, 'ready', `Live reading · ${view.methodologyVersion}`);
+}
+
+function renderCiiRankingError(tool) {
+  setToolState(
+    tool,
+    'error',
+    tool.dataset.ciiHydrated === 'true'
+      ? 'Live refresh unavailable — showing last loaded rankings'
+      : 'Live refresh unavailable — showing published rankings',
+  );
+}
+
+export async function loadCiiRanking(tool) {
+  setToolState(tool, 'loading', 'Refreshing live scores…');
+  try {
+    await runLatestToolRequest(
+      tool,
+      async (signal) => {
+        const payload = await requestLiveJson('/api/intelligence/v1/get-risk-scores', {
+          signal,
+          preflightSession: true,
+        });
+        return ciiRankingViewModel(payload);
+      },
+      (view) => renderCiiRankingViewModel(tool, view),
+    );
+  } catch {
+    renderCiiRankingError(tool);
+  }
+}
+
 export async function loadChokepoint(tool) {
   const state = beginToolRequest(tool);
   const id = String(tool.dataset.chokepointId || '');
@@ -908,14 +1501,42 @@ export async function loadChokepoint(tool) {
     if (!isCurrentRequest(tool, state)) return;
     setText(tool, '[data-chokepoint-score]', view.disruptionScore);
     setText(tool, '[data-chokepoint-band]', view.status);
-    setText(tool, '[data-chokepoint-congestion]', view.congestion);
-    setText(tool, '[data-chokepoint-warnings]', view.warnings);
-    setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? 'Unavailable');
-    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? 'Unavailable');
-    setText(tool, '[data-chokepoint-description]', view.description);
+    const narrative = chokepointEvidenceNarrative({
+      displayName: tool.dataset.chokepointName || '',
+      score: view.disruptionScore,
+      bandLabel: view.status,
+      description: view.description,
+      asOfText: formatDateTime(view.fetchedAt),
+      partial: view.partial,
+      warningsLabel: view.navigationalWarnings,
+      congestionLabel: view.congestion,
+      aisEventCountLabel: view.aisDisruptions,
+      officialLatestDate: view.officialLatestDate,
+      officialLatestTotal: view.officialLatestTotal,
+      officialAvg7d: view.officialAvg7d,
+      baselineAvgDaily: view.baselineAvgDaily,
+      baselineFrom: view.baselineFrom,
+      baselineTo: view.baselineTo,
+    });
+    const openStatus = tool.querySelector('[data-chokepoint-open-status]');
+    if (openStatus && narrative !== null) openStatus.textContent = narrative.passage;
+    const scoreDriver = tool.querySelector('[data-chokepoint-score-driver]');
+    if (scoreDriver && narrative !== null) {
+      scoreDriver.hidden = false;
+      scoreDriver.textContent = narrative.scoreDriver;
+    }
+    setOptionalMetric(tool, '[data-chokepoint-congestion]', view.congestion);
+    setOptionalMetric(tool, '[data-chokepoint-warnings]', view.navigationalWarnings);
+    setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', view.aisDisruptions);
+    const official = chokepointOfficialMetrics(view);
+    setText(tool, '[data-chokepoint-official-transits]', official.latestTransits ?? '—');
+    setText(tool, '[data-chokepoint-official-date]', official.latestDate ?? '');
+    setText(tool, '[data-chokepoint-official-average]', official.average ?? '—');
+    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (official.latestTransits === null ? '—' : 'Unavailable'));
+    setOptionalDescription(tool, '[data-chokepoint-description]', view.description);
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
     markPublishedLivePulse(tool);
-    setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial API result' : 'API result');
+    setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial live reading' : 'Live reading');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
     if (hasPublishedLivePulse(tool)) {
@@ -924,13 +1545,110 @@ export async function loadChokepoint(tool) {
     }
     setText(tool, '[data-chokepoint-score]', '—');
     setText(tool, '[data-chokepoint-band]', 'Unavailable');
-    setText(tool, '[data-chokepoint-congestion]', 'Unavailable');
-    setText(tool, '[data-chokepoint-warnings]', 'Unavailable');
-    setText(tool, '[data-chokepoint-transits]', 'Unavailable');
+    setOptionalMetric(tool, '[data-chokepoint-congestion]', null);
+    setOptionalMetric(tool, '[data-chokepoint-warnings]', null);
+    setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', null);
+    // Total fetch failure: match the sibling cells. An em dash here is the
+    // "withheld" signal, which would read as an unexplained blank next to
+    // four "Unavailable"s.
+    setText(tool, '[data-chokepoint-official-transits]', 'Unavailable');
+    setText(tool, '[data-chokepoint-official-date]', '');
+    setText(tool, '[data-chokepoint-official-average]', 'Unavailable');
     setText(tool, '[data-chokepoint-movement]', 'Unavailable');
-    setText(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
+    setOptionalDescription(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
     setTime(tool, '[data-live-updated]', null, 'Snapshot');
     setToolState(tool, 'error', 'Temporarily unavailable');
+  }
+}
+
+// The level numeral is hidden without a reading; the label carries the state.
+function setPizzIntLevel(tool, level, label) {
+  const numeral = tool.querySelector('[data-pizzint-level]');
+  if (numeral) {
+    numeral.textContent = level;
+    numeral.hidden = level === '—';
+  }
+  setText(tool, '[data-pizzint-label]', label);
+}
+
+function renderPizzIntView(tool, view, checkedAt) {
+  setPizzIntLevel(tool, view.level, view.label);
+  renderList(
+    tool,
+    '[data-pizzint-venues]',
+    view.venues,
+    (venue) => `${venue.name} · ${venue.status}`,
+    'No venue is reporting live busyness right now. The level returns with the next live reading.',
+  );
+  if (view.updatedAt === null) setTime(tool, '[data-live-updated]', checkedAt, 'Checked');
+  else setTime(tool, '[data-live-updated]', view.updatedAt, 'Updated');
+}
+
+// The relay polls every 15 minutes. An open page reloads on that cadence, and
+// sooner when the shown reading would otherwise outlive MAX_PIZZINT_AGE_MS.
+const PIZZINT_REFRESH_MS = 15 * 60 * 1_000;
+const MIN_PIZZINT_REFRESH_MS = 60 * 1_000;
+const pizzIntRefreshes = new WeakMap();
+
+export function pizzIntRefreshDelay(view, now = Date.now()) {
+  if (!view?.available || view.updatedAt === null) return PIZZINT_REFRESH_MS;
+  const untilExpiry = view.updatedAt + MAX_PIZZINT_AGE_MS - now;
+  // Reload at expiry, however close; the floor only guards an already-expired input.
+  if (untilExpiry <= 0) return MIN_PIZZINT_REFRESH_MS;
+  return Math.min(PIZZINT_REFRESH_MS, untilExpiry);
+}
+
+export function cancelPizzIntRefresh(tool) {
+  const pending = pizzIntRefreshes.get(tool);
+  if (pending) clearTimeout(pending.timer);
+  pizzIntRefreshes.delete(tool);
+}
+
+function schedulePizzIntRefresh(tool, view) {
+  cancelPizzIntRefresh(tool);
+  const delay = pizzIntRefreshDelay(view);
+  const timer = setTimeout(() => {
+    pizzIntRefreshes.delete(tool);
+    void loadPizzInt(tool);
+  }, delay);
+  // Node test runs must not wait 15 minutes on this timer; browsers lack unref.
+  timer?.unref?.();
+  pizzIntRefreshes.set(tool, { timer, dueAt: Date.now() + delay });
+}
+
+// Hidden tabs throttle timers, so a returning reader could see an expired
+// level. Reload at once when the scheduled refresh is already overdue.
+export function resumePizzIntRefresh(tool, now = Date.now()) {
+  const pending = pizzIntRefreshes.get(tool);
+  if (!pending || pending.dueAt > now) return;
+  cancelPizzIntRefresh(tool);
+  void loadPizzInt(tool);
+}
+
+export async function loadPizzInt(tool) {
+  cancelPizzIntRefresh(tool);
+  setToolState(tool, 'loading', 'Connecting…');
+  try {
+    await runLatestToolRequest(
+      tool,
+      async (signal) => pizzIntViewModel(await requestLiveJson('/api/intelligence/v1/get-pizzint-status', {
+        signal,
+        preflightSession: true,
+      })),
+      (view) => {
+        renderPizzIntView(tool, view, Date.now());
+        if (view.available) setToolState(tool, 'ready', 'Live reading');
+        else setToolState(tool, 'empty', 'Live feed checked');
+        schedulePizzIntRefresh(tool, view);
+      },
+    );
+  } catch {
+    setPizzIntLevel(tool, '—', 'Unavailable');
+    tool.querySelector('[data-pizzint-venues]')?.replaceChildren();
+    setTime(tool, '[data-live-updated]', null, 'Updated');
+    setText(tool, '[data-live-updated]', '');
+    setToolState(tool, 'error', 'Temporarily unavailable');
+    schedulePizzIntRefresh(tool, null);
   }
 }
 
@@ -979,7 +1697,7 @@ export async function loadCrisis(tool) {
     }
     setTime(tool, '[data-live-updated]', view.updatedAt, 'Retrieved');
     markPublishedLivePulse(tool);
-    setToolState(tool, view.state, view.state === 'partial' ? 'Partial API result' : 'API result');
+    setToolState(tool, view.state, view.state === 'partial' ? 'Partial live reading' : 'Live reading');
   } catch {
     if (!isCurrentRequest(tool, state)) return;
     if (hasPublishedLivePulse(tool)) {
@@ -1020,6 +1738,7 @@ export async function loadHazards(tool) {
       async (signal) => {
         const payload = await requestLiveJson('/api/natural/v1/list-natural-events', {
           signal,
+          preflightSession: true,
         });
         return hazardPulseViewModel(payload, { bounds });
       },
@@ -1032,7 +1751,7 @@ export async function loadHazards(tool) {
           `${event.title} · ${event.category} · ${event.source} · ${formatDateTime(event.date)}`
         ));
         setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
-        setToolState(tool, 'ready', 'API result');
+        setToolState(tool, 'ready', 'Live reading');
       },
     );
   } catch {
@@ -1134,8 +1853,8 @@ async function loadAirspace(tool) {
       }
 
       updateCountryQuery(select, dashboardLinkFor(tool));
-      if (readySections === 2) setToolState(tool, 'ready', 'API results');
-      else if (readySections === 1) setToolState(tool, 'partial', 'Partial API result');
+      if (readySections === 2) setToolState(tool, 'ready', 'Live readings');
+      else if (readySections === 1) setToolState(tool, 'partial', 'Partial live reading');
       else setToolState(tool, 'error', 'Temporarily unavailable');
     },
   );
@@ -1151,6 +1870,10 @@ function applyInitialCountrySelection(tool) {
 }
 
 export function initLiveTools(root = document) {
+  for (const tool of root.querySelectorAll('[data-live-cii-ranking]')) {
+    tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCiiRanking(tool));
+    void loadCiiRanking(tool);
+  }
   for (const tool of root.querySelectorAll('[data-live-country-risk]')) {
     tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCountryRisk(tool));
     void loadCountryRisk(tool);
@@ -1162,6 +1885,18 @@ export function initLiveTools(root = document) {
   for (const tool of root.querySelectorAll('[data-live-crisis]')) {
     tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCrisis(tool));
     void loadCrisis(tool);
+  }
+  const pizzIntTools = [...root.querySelectorAll('[data-live-pizzint]')];
+  for (const tool of pizzIntTools) {
+    tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadPizzInt(tool));
+    void loadPizzInt(tool);
+  }
+  if (pizzIntTools.length > 0) {
+    const documentRoot = root.ownerDocument || root;
+    documentRoot.addEventListener?.('visibilitychange', () => {
+      if (documentRoot.visibilityState !== 'visible') return;
+      for (const tool of pizzIntTools) resumePizzIntRefresh(tool);
+    });
   }
   for (const tool of root.querySelectorAll('[data-natural-hazard-tool]')) {
     applyInitialCountrySelection(tool);

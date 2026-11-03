@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/news/v1/news_item.proto";
+
+message ListNewsPoolRequest {
+  // Content languages (ISO 639-1), at most 8. Empty means en.
+  repeated string languages = 1 [
+    (sebuf.http.query) = { name: "languages" },
+    (buf.validate.field).repeated.max_items = 8
+  ];
+  // Digest editions, e.g. full, tech, finance. Empty means full.
+  repeated string editions = 2 [
+    (sebuf.http.query) = { name: "editions" },
+    (buf.validate.field).repeated.max_items = 8
+  ];
+  // One category key within the selected editions.
+  string category = 3 [
+    (sebuf.http.query) = { name: "category" },
+    (buf.validate.field).string.max_len = 32
+  ];
+}
+
+message ListNewsPoolResponse {
+  // Newest first, one per article URL.
+  repeated NewsPoolItem items = 1;
+  // One per (edition, language) read: the English digest cells, and each
+  // other language's feeds in that edition.
+  repeated NewsPoolCell cells = 2;
+  // complete, partial, stale or unavailable.
+  string state = 3;
+  string generated_at = 4;
+}
+
+message NewsPoolItem {
+  NewsItem item = 1;
+  // ISO 639-1 content language of the outlet. Titles are untranslated.
+  string language = 2;
+  // Editions that carry this article, in catalog order.
+  repeated string editions = 3;
+  string category = 4;
+}
+
+message NewsPoolCell {
+  string edition = 1;
+  string language = 2;
+  // English digest cell: complete or partial (a fresh build), stale (a
+  // last-good replay), or missing. Other languages: complete (every feed
+  // cached), partial (some), or missing (none).
+  string state = 3;
+  // Items this cell contributed after the language and category filters.
+  int32 items = 4;
+  int32 stale_age_seconds = 5;
+  string generated_at = 6;
+}

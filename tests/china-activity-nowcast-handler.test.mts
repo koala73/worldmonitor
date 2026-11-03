@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   CHINA_ACTIVITY_NOWCAST_MARKET_KEYS,
+  CHINA_ACTIVITY_NOWCAST_SEED_KEYS,
   CHINA_ACTIVITY_NOWCAST_TTL_SECONDS,
   buildChinaActivityNowcastInputs,
   composeChinaActivityNowcastSnapshot,
@@ -23,6 +24,8 @@ import type {
 import type {
   ChinaCorridorDirectionalSnapshot,
 } from '../server/worldmonitor/economic/v1/china-corridor-breadth-history';
+import { NO2_ACTIVITY_KEY } from '../scripts/shared/no2-activity.mjs';
+import { no2ActivityDataset } from './helpers/no2-activity-fixture.mjs';
 
 const EVALUATED_AT = '2026-07-25T12:00:00.000Z';
 
@@ -885,7 +888,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     });
 
     assert.deepEqual(reads, [{
-      keys: Object.values(CHINA_ACTIVITY_NOWCAST_MARKET_KEYS),
+      keys: [...CHINA_ACTIVITY_NOWCAST_SEED_KEYS],
       raw: true,
     }]);
     assert.deepEqual(writes, [{
@@ -920,7 +923,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.match(response.historicalEvaluation.reason, /historical proxy ledger/i);
     assert.deepEqual(
       response.missingInputs.map((item) => item.family),
-      ['corridor'],
+      ['corridor', 'atmosphere'],
     );
 
     // Withholding the change puts energy back among the missing families —
@@ -933,7 +936,7 @@ describe('China activity nowcast cache/API composition (#5579)', () => {
     assert.equal(coverageOnly.confidence.eligibleFamilies, 5);
     assert.deepEqual(
       coverageOnly.missingInputs.map((item) => item.family),
-      ['energy', 'corridor'],
+      ['energy', 'corridor', 'atmosphere'],
     );
     assert.equal(
       response.contributions.find((item) => item.family === 'freight')?.direction,
@@ -1433,12 +1436,129 @@ describe('China activity nowcast fail-closed contract (#6060)', () => {
     // shared fixture now supplies a real directional freight move.
     assert.deepEqual(
       response.missingInputs.map((input) => input.family),
-      ['energy', 'corridor'],
+      ['energy', 'corridor', 'atmosphere'],
     );
     assert.equal(
       response.contributions.find((item) => item.seriesId === 'ccfi_freight_rate_change')?.included,
       true,
       'freight recovered via #6066 and must stay a real contribution',
     );
+  });
+});
+
+describe('Sentinel-5P NO2 atmosphere contribution (#9722)', () => {
+  const RECENT = { generatedAt: '2026-07-24T06:10:00.000Z', windowEnd: '2026-07-21' };
+
+  async function atmosphereContribution(payload: unknown) {
+    let requestedKeys: string[] = [];
+    const response = await composeChinaActivityNowcastSnapshot(EVALUATED_AT, {
+      getMacro: async () => macroSnapshot() as never,
+      getCorridors: async () => corridorSnapshot(),
+      readMarketBatch: async (keys) => {
+        requestedKeys = keys;
+        return new Map<string, unknown>([
+          ...marketValues(),
+          ...(payload === undefined ? [] : [[NO2_ACTIVITY_KEY, payload] as const]),
+        ]);
+      },
+    });
+    assert.ok(requestedKeys.includes(NO2_ACTIVITY_KEY), 'the NO2 key joins the batch read');
+    return response.contributions.find((item) => item.family === 'atmosphere');
+  }
+
+  const STRONG = { 'jing-jin-ji': 14.2, 'yangtze-river-delta': 12.8, 'pearl-river-delta': 9.1, shandong: 16.5 };
+
+  it('reads the Chinese clusters of the seeded dataset as a dated, attributed atmosphere observation', async () => {
+    const contribution = await atmosphereContribution(no2ActivityDataset({ ...RECENT, changes: STRONG }));
+    assert.equal(contribution?.seriesId, 's5p_no2_industrial_activity_change');
+    assert.equal(contribution?.included, true);
+    assert.equal(contribution?.direction, 'strengthening');
+    assert.equal(contribution?.rawValue, 13.5);
+    assert.equal(contribution?.observedAt, '2026-07-22T00:00:00.000Z');
+    const provenance = contribution?.provenance as Record<string, unknown>;
+    assert.match(String(provenance.attribution), /^Contains modified Copernicus Sentinel data/);
+    assert.deepEqual(provenance.regionIds, [
+      'jing-jin-ji',
+      'yangtze-river-delta',
+      'pearl-river-delta',
+      'shandong',
+    ]);
+    assert.equal(provenance.changeBasis, 'same_calendar_window_prior_years');
+    assert.equal(provenance.aggregation, 'median_of_eligible_cluster_changes');
+    assert.equal(provenance.windowEnd, '2026-07-21');
+    assert.equal(provenance.timeliness, 'OFFL');
+    assert.equal(provenance.minQa, 75);
+    assert.deepEqual(
+      (provenance.regions as Array<Record<string, unknown>>).map((region) => [region.id, region.direction]),
+      [['jing-jin-ji', 'strengthening'], ['yangtze-river-delta', 'strengthening'], ['pearl-river-delta', 'unchanged'], ['shandong', 'strengthening']],
+    );
+    assert.equal(provenance.deadBandPercent, 10);
+    assert.equal(provenance.generatedAt, RECENT.generatedAt);
+  });
+
+  it('dates a retained composite by its oldest successful refresh', async () => {
+    const payload = no2ActivityDataset({ ...RECENT, changes: STRONG });
+    payload.regions['jing-jin-ji'].series.refreshedAt = '2026-07-20T06:10:00.000Z';
+    const contribution = await atmosphereContribution(payload);
+    assert.equal(contribution?.included, true);
+    assert.equal(contribution?.observedAt, '2026-07-20T06:10:00.000Z');
+  });
+
+  it('expires retained input at evaluation time even when generation was recent', async () => {
+    const payload = no2ActivityDataset({ ...RECENT, changes: STRONG });
+    payload.regions['jing-jin-ji'].series.refreshedAt = '2026-07-18T06:10:00.000Z';
+    const contribution = await atmosphereContribution(payload);
+    assert.equal(contribution?.included, false);
+    assert.equal(contribution?.exclusionReason, 'freshness_budget_exceeded');
+  });
+
+  it('does not refresh an old region through the dataset generation clock', async () => {
+    const payload = no2ActivityDataset({ ...RECENT, changes: STRONG });
+    payload.regions['jing-jin-ji'].series.refreshedAt = '2026-07-17T00:00:00.000Z';
+    const contribution = await atmosphereContribution(payload);
+    assert.equal(contribution?.included, false);
+    assert.equal(contribution?.exclusionReason, 'no_observation');
+  });
+
+  it('reports a change inside the dead band as unchanged rather than as a missing input', async () => {
+    const contribution = await atmosphereContribution(no2ActivityDataset({
+      ...RECENT,
+      changes: { 'jing-jin-ji': 3, 'yangtze-river-delta': -2, 'pearl-river-delta': 1, shandong: 4 },
+    }));
+    assert.equal(contribution?.included, true);
+    assert.equal(contribution?.direction, 'unchanged');
+    assert.equal(contribution?.rawValue, 0);
+    assert.equal((contribution?.provenance as Record<string, unknown>).changePercent, 2);
+  });
+
+  it('excludes a cloud-starved composite under its own reason', async () => {
+    const contribution = await atmosphereContribution(no2ActivityDataset({
+      ...RECENT,
+      changes: { 'jing-jin-ji': null, 'yangtze-river-delta': 'pending', 'pearl-river-delta': null, shandong: 20 },
+    }));
+    assert.equal(contribution?.included, false);
+    assert.equal(contribution?.rawValue, null);
+    assert.equal(contribution?.exclusionReason, 'missing_directional_value');
+    assert.equal((contribution?.provenance as Record<string, unknown>).exclusion, 'insufficient_regions');
+  });
+
+  it('ignores a payload that does not carry the reviewed method', async () => {
+    const payload = no2ActivityDataset({ ...RECENT, changes: STRONG });
+    payload.method.deadBandPercent = 5;
+    const contribution = await atmosphereContribution(payload);
+    assert.equal(contribution?.included, false);
+    assert.equal(contribution?.exclusionReason, 'no_observation');
+    const absent = await atmosphereContribution(undefined);
+    assert.equal(absent?.exclusionReason, 'no_observation');
+  });
+
+  it('drops a window past the freshness budget instead of carrying it forward', async () => {
+    const contribution = await atmosphereContribution(no2ActivityDataset({
+      generatedAt: '2026-07-13T06:10:00.000Z',
+      windowEnd: '2026-07-10',
+      changes: STRONG,
+    }));
+    assert.equal(contribution?.included, false);
+    assert.equal(contribution?.exclusionReason, 'freshness_budget_exceeded');
   });
 });

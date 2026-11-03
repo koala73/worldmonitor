@@ -1,4 +1,5 @@
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { declareOverlay } from '@/utils/open-modal';
 /**
  * `?` cheat-sheet overlay for the Route Explorer keyboard bindings.
  */
@@ -28,6 +29,8 @@ export class KeyboardHelp {
     this.element = document.createElement('div');
     this.element.className = 're-help';
     this.element.setAttribute('role', 'dialog');
+    // A static shortcut table.
+    declareOverlay(this.element, { reload: 'safe' });
     this.element.setAttribute('aria-label', 'Route Explorer keyboard shortcuts');
 
     const header = document.createElement('div');

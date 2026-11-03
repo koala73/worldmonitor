@@ -109,7 +109,7 @@ export class MarketPanel extends Panel {
         </div>
         <div class="market-data">
           ${miniSparkline(stock.sparkline, stock.change)}
-          <span class="market-price">${formatPrice(stock.price!)}</span>
+          <span class="market-price">${escapeHtml(formatPrice(stock.price!))}</span>
           <span class="market-change ${getChangeClass(stock.change!)}">${formatChange(stock.change!)}</span>
         </div>
       </div>
@@ -157,13 +157,26 @@ export class HeatmapPanel extends Panel {
   constructor() {
     super({ id: 'heatmap', title: t('panels.heatmap'), infoTooltip: t('components.heatmap.infoTooltip') });
     this.content.addEventListener('click', (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
-      const tab = btn?.dataset.tab;
-      if (tab === 'performance' || tab === 'valuations') {
-        this._tab = tab;
-        this._render();
-      }
+      const tab = this.tabFromEvent(e);
+      if (tab) this.selectTab(tab);
     });
+    this.content.addEventListener('keydown', (e) => {
+      if (e.repeat || (e.key !== 'Enter' && e.key !== ' ')) return;
+      const tab = this.tabFromEvent(e);
+      if (!tab) return;
+      e.preventDefault();
+      this.selectTab(tab);
+    });
+  }
+
+  private tabFromEvent(e: Event): HeatmapTab | null {
+    const tab = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab;
+    return tab === 'performance' || tab === 'valuations' ? tab : null;
+  }
+
+  private selectTab(tab: HeatmapTab): void {
+    this._tab = tab;
+    this._render('user');
   }
 
   public renderHeatmap(
@@ -218,20 +231,27 @@ export class HeatmapPanel extends Panel {
     </div>`;
   }
 
-  private _render(): void {
+  private _render(origin: 'user' | 'data' = 'data'): void {
     if (this._heatmapData.length === 0) {
       this.showRetrying(t('common.failedSectorData'));
       return;
     }
 
     const tabBar = this._buildTabBar();
-
-    if (this._tab === 'valuations' && Object.keys(this._valuations).length > 0) {
-      this.setSafeContent(unsafeRawHtml(tabBar + this._renderValuations(), 'legacy Panel.setContent() migration'));
+    const body =
+      this._tab === 'valuations' && Object.keys(this._valuations).length > 0
+        ? this._renderValuations()
+        : this._renderPerformance();
+    const html = unsafeRawHtml(tabBar + body, 'legacy Panel.setContent() migration');
+    if (origin === 'user') {
+      this.setSafeContentImmediate(html, () => this.restoreSelectedTabFocus());
       return;
     }
+    this.setSafeContent(html);
+  }
 
-    this.setSafeContent(unsafeRawHtml(tabBar + this._renderPerformance(), 'legacy Panel.setContent() migration'));
+  private restoreSelectedTabFocus(): void {
+    this.content.querySelector<HTMLButtonElement>(`.panel-tab[data-tab="${this._tab}"]`)?.focus();
   }
 
   private _renderPerformance(): string {
@@ -356,7 +376,7 @@ export class HeatmapPanel extends Panel {
     <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Trail P/E</th>
     <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Fwd P/E</th>
     <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Beta</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">YTD</th>
+    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Year to date</th>
   </tr></thead>
   <tbody>${tableRows}</tbody>
 </table></div>`;
@@ -882,7 +902,7 @@ export class CommoditiesPanel extends Panel {
         <div class="commodity-item">
           <div class="commodity-name">${escapeHtml(c.display)}</div>
           ${miniSparkline(c.sparkline, c.change, 60, 18)}
-          <div class="commodity-price">${formatPrice(c.price!)}</div>
+          <div class="commodity-price">${escapeHtml(formatPrice(c.price!))}</div>
           <div class="commodity-change ${getChangeClass(c.change!)}">${formatChange(c.change!)}</div>
         </div>
       `).join('') + '</div>';
@@ -912,7 +932,7 @@ export class CryptoPanel extends Panel {
         </div>
         <div class="market-data">
           ${miniSparkline(coin.sparkline, coin.change)}
-          <span class="market-price">$${coin.price.toLocaleString()}</span>
+          <span class="market-price">${escapeHtml(Number.isFinite(coin.price) && Math.abs(coin.price) >= 1 ? `$${coin.price.toLocaleString()}` : formatPrice(coin.price))}</span>
           <span class="market-change ${getChangeClass(coin.change)}">${formatChange(coin.change)}</span>
         </div>
       </div>
@@ -970,7 +990,7 @@ export class TokenListPanel extends Panel {
           <span class="market-symbol">${escapeHtml(tok.symbol)}</span>
         </div>
         <div class="market-data">
-          <span class="market-price">$${tok.price.toLocaleString(undefined, { maximumFractionDigits: tok.price < 1 ? 6 : 2 })}</span>
+          <span class="market-price">${escapeHtml(Number.isFinite(tok.price) && Math.abs(tok.price) >= 1 ? `$${tok.price.toLocaleString(undefined, { maximumFractionDigits: tok.price < 1 ? 6 : 2 })}` : formatPrice(tok.price))}</span>
           <span class="market-change ${getChangeClass(tok.change24h)}">${formatChange(tok.change24h)}</span>
           <span class="market-change market-change--7d ${getChangeClass(tok.change7d)}">${formatChange(tok.change7d)}W</span>
         </div>

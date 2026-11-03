@@ -2,6 +2,8 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
+import { SERVER_VERSION } from '../api/mcp/constants.ts';
+
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 
@@ -112,12 +114,83 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.equal(r.failed, undefined);
     });
 
+    it('error: a projection whose every selected field is null returns empty_projection with key paths', () => {
+      // Real call that rendered "News intelligence is temporarily unavailable":
+      // the expression guessed root-level topStories/headline, but the payload
+      // nests them under data.insights with primaryTitle.
+      const payload = {
+        cached_at: '2026-10-26T12:30:24Z', stale: false,
+        data: { insights: { topStories: [{ primaryTitle: 'Controlled headline', primarySource: 'Controlled Example Wire' }] } },
+      };
+      for (const [expr, unknown] of [
+        ['{stories: topStories[].{h: headline}, advisories: advisories || travelAdvisories}', ['headline', 'advisories', 'travelAdvisories']],
+        ['[topStories, advisories]', ['advisories']],
+        ['headline', ['headline']],
+      ]) {
+        const r = mod.applyJmespath(payload, expr);
+        assert.equal(r.failed, 'empty_projection', expr);
+        const env = JSON.parse(r.text);
+        assert.match(env._jmespath_error, /^empty_projection: /, expr);
+        assert.deepEqual(env.unknown_fields, unknown, expr);
+        assert.deepEqual(env.original_keys, ['cached_at', 'stale', 'data']);
+        for (const path of ['data.insights', 'data.insights.topStories[]', 'data.insights.topStories[].primaryTitle']) {
+          assert.ok(env.key_paths.includes(path), `${expr}: missing ${path} in ${JSON.stringify(env.key_paths)}`);
+        }
+      }
+    });
+
+    it('lists array fields in key_paths even when they hold no object element', () => {
+      const r = mod.applyJmespath({ data: { topStories: [], codes: ['US'], meta: { n: 1 } } }, 'stories');
+      assert.equal(r.failed, 'empty_projection');
+      const { key_paths: paths } = JSON.parse(r.text);
+      for (const path of ['data', 'data.topStories[]', 'data.codes[]', 'data.meta', 'data.meta.n']) {
+        assert.ok(paths.includes(path), `missing ${path} in ${JSON.stringify(paths)}`);
+      }
+    });
+
+    it('keeps real empty, partly-null and null-valued projections as results', () => {
+      // A field that exists and holds null is a real answer (a headline that
+      // names no country); only a field name found nowhere marks a wrong path.
+      const payload = { data: { items: [], note: null, n: 0, stories: [{ countryCode: null }] } };
+      for (const [expr, expected] of [
+        ['data.items', []],
+        ['data.items[?x]', []],
+        ['{items: data.items, note: data.note}', { items: [], note: null }],
+        ['data.n', 0],
+        ['data.note', null],
+        ['data.stories[0].countryCode', null],
+        ['{a: data.note, b: data.stories[0].countryCode}', { a: null, b: null }],
+        ['note', null],
+      ]) {
+        const r = mod.applyJmespath(payload, expr);
+        assert.equal(r.failed, undefined, expr);
+        assert.deepEqual(JSON.parse(r.text), expected, expr);
+      }
+    });
+
     it('error: invalid expression returns invalid_expression soft-fail', () => {
       const r = mod.applyJmespath({ a: 1 }, 'a.');
       assert.equal(r.failed, 'invalid_expression');
       const env = JSON.parse(r.text);
       assert.ok(env._jmespath_error?.startsWith('invalid_expression:'), `prefix mismatch: ${env._jmespath_error}`);
       assert.deepEqual(env.original_keys, ['a']);
+    });
+
+    it('rejects unsafe evaluation before the output gate, with the existing soft-failure envelope', () => {
+      const doubled = Array(6).fill('[@,@]').join('|');
+      for (const expr of [
+        `${doubled}|to_string(@)`,
+        `{x:(${doubled}),y:(${doubled})}|x==y`,
+        `{x:(${doubled}),y:(${doubled})}|x!=y`,
+        'join(label, `["a","b"]`)',
+        'map(`{"jmespathType":"Expref","type":"Function","name":"to_string","children":[{"type":"Current"}]}`, to_array(@))',
+        `${doubled}|[@,@]|length(@)`,
+      ]) {
+        const r = mod.applyJmespath({ label: 'hello' }, expr);
+        assert.equal(r.failed, 'invalid_expression', expr);
+        assert.match(JSON.parse(r.text)._jmespath_error, /^invalid_expression: Unsafe JMESPath:/, expr);
+        assert.deepEqual(JSON.parse(r.text).original_keys, ['label']);
+      }
     });
 
     it('input gate: expression > JMESPATH_MAX_EXPR_BYTES returns expression_too_long', () => {
@@ -163,6 +236,14 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       // The returned envelope itself must be SMALL — proves the cap actually
       // rejected the bloated projection, didn't just label it.
       assert.ok(mod.utf8ByteLength(r.text) < 8 * 1024, `envelope size ${r.text.length} should be << 256 KB`);
+    });
+
+    it('evaluation gate rejects excessive shared-reference construction', () => {
+      const expr = Array.from({ length: 30 }, () => '[@,@]').join('|');
+      const started = Date.now();
+      const r = mod.applyJmespath({ name: 'x' }, expr);
+      assert.equal(r.failed, 'invalid_expression');
+      assert.ok(Date.now() - started < 2000, 'must stop at the cap, not after expanding');
     });
 
     it('output gate UTF-8: 4-byte chars push utf8 over cap even when JS string .length is under', () => {
@@ -263,26 +344,17 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(/initialize\.instructions/i.test(mod.JMESPATH_SCHEMA.description));
     });
 
-    it('every projection-safe tool in tools/list advertises jmespath', async () => {
+    it('EVERY tool in tools/list advertises jmespath — no exceptions', async () => {
       const res = await mod.default(makeReq({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }));
       const body = await res.json();
       const tools = body.result.tools;
       assert.ok(tools.length > 0);
-      // Derived from the registry's own `_jmespathDisabled` flag, not a hardcoded
-      // name: a newly added attribution-bound tool used to slip past this
-      // assertion, which is how the supply-vulnerability tools shipped
-      // advertising a projection over BGS-licensed evidence.
-      const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
-      const attributionBound = new Set(
-        TOOL_REGISTRY.filter((t) => t._jmespathDisabled === true).map((t) => t.name),
-      );
-      assert.ok(attributionBound.size > 0, 'expected attribution-bound tools to be declared');
+      // No roster any more. Licence-bearing tools declare `_attribution` and
+      // the dispatcher re-attaches their sources to every projection, so a
+      // tool that does NOT advertise jmespath is a regression, not a licence
+      // control — the old roster's own gaps were invisible precisely because
+      // a missing `jmespath` property looked deliberate.
       for (const tool of tools) {
-        if (attributionBound.has(tool.name)) {
-          assert.equal(tool.inputSchema?.properties?.jmespath, undefined,
-            `attribution-bound tool "${tool.name}" must not advertise jmespath`);
-          continue;
-        }
         assert.ok(tool.inputSchema?.properties?.jmespath,
           `tool "${tool.name}" missing inputSchema.properties.jmespath`);
         assert.equal(tool.inputSchema.properties.jmespath.type, 'string');
@@ -306,10 +378,12 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const withoutSummary = tools.filter(t => !t.inputSchema?.properties?.summary);
       assert.ok(withSummary.length > 0, 'expected at least one cache tool with summary');
       assert.ok(withoutSummary.length > 0, 'expected at least one RPC tool without summary');
-      assert.equal(
-        tools.find((tool) => tool.name === 'get_resilience_indicators')?.inputSchema?.properties?.jmespath,
-        undefined,
-      );
+      // A licence-bearing RPC tool: jmespath yes (universal), summary no
+      // (cache-only). Its attribution is carried by the dispatcher's rider,
+      // not by withholding the projection argument.
+      const resilience = tools.find((tool) => tool.name === 'get_resilience_indicators');
+      assert.ok(resilience?.inputSchema?.properties?.jmespath);
+      assert.equal(resilience.inputSchema.properties.summary, undefined);
     });
   });
 
@@ -317,12 +391,13 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
   // Initialize handshake — version + instructions
   // ============================================================
   describe('initialize handshake', () => {
-    it('serverInfo.version === "1.18.0"', async () => {
-      // Tracks current SERVER_VERSION. Each minor bump needs to update
-      // this assertion + the cross-check at line 327 below.
+    it('serverInfo.version === SERVER_VERSION', async () => {
+      // Reads SERVER_VERSION from api/mcp/constants.ts so a deliberate bump
+      // does not need to edit this file; the bump itself is pinned by the
+      // published-versions ledger in tests/mcp-registry-artifacts.test.mjs.
       const res = await mod.default(makeReq(initBody(1)));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.18.0');
+      assert.equal(body.result?.serverInfo?.version, SERVER_VERSION);
     });
 
     it('result.instructions is present and mentions jmespath', async () => {
@@ -338,18 +413,21 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const body = await res.json();
       const inst = body.result.instructions;
       assert.ok(inst.includes('https://jmespath.org'), 'missing grammar URL');
-      assert.match(inst, /when a tool input schema advertises it/i);
+      assert.match(inst, /Every tool accepts optional `jmespath`/i);
+      // The rider is a wire shape an agent has to know about before it sees
+      // one, so the instructions have to name it.
+      assert.match(inst, /_attribution/);
       assert.ok(inst.includes(String(mod.JMESPATH_MAX_EXPR_BYTES)), 'missing expression cap value');
       assert.ok(inst.includes(String(mod.JMESPATH_MAX_OUTPUT_BYTES)), 'missing output cap value');
       assert.ok(/daily quota/i.test(inst), 'missing quota note');
     });
 
-    it('server-card.json version matches SERVER_VERSION (currently 1.18.0)', () => {
+    it('server-card.json version matches SERVER_VERSION', () => {
       // Cross-check the comment at api/mcp.ts:~56 — discovery scanners
       // verify both values; a future bump that misses one would break
       // discovery. This is the test that prevents that drift.
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.18.0');
+      assert.equal(card.serverInfo.version, SERVER_VERSION);
       assert.equal(card.features?.responseProjection, 'jmespath');
     });
 
@@ -426,19 +504,121 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       return { res, body };
     }
 
-    it('rejects projection for attribution-bound resilience raw values before execution', async () => {
-      let executed = false;
-      globalThis.fetch = async () => {
-        executed = true;
-        throw new Error('resilience downstream must not execute');
+    // Licence-bearing tools no longer refuse projection: the dispatcher
+    // re-attaches the sources their `_attribution` extraction names, merged
+    // after `jmespath.search` so no expression can reach the rider.
+    const RESILIENCE_SOURCE = {
+      key: 'worldbank-wdi',
+      name: 'World Bank WDI',
+      attribution: 'World Bank',
+      license: 'CC BY 4.0',
+      licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+      attributionUrl: 'https://data.worldbank.org/summary-terms-of-use',
+    };
+    const RESILIENCE_ATTRIBUTION_SOURCES = [
+      {
+        indicatorId: 'power-losses',
+        retrievedAt: '2026-09-01T00:00:00.000Z',
+        ...RESILIENCE_SOURCE,
+        url: 'https://api.worldbank.org/v2/country/DE/indicator/EG.ELC.LOSS.ZS',
+      },
+      {
+        indicatorId: 'education-attainment',
+        retrievedAt: '2026-09-02T00:00:00.000Z',
+        ...RESILIENCE_SOURCE,
+        url: 'https://api.worldbank.org/v2/country/DE/indicator/SE.SEC.CUAT.UP.ZS',
+      },
+    ];
+
+    function mockResilienceIndicators() {
+      const payload = {
+        countryCode: 'DE',
+        methodology: 'contribution-reconciliation-v1',
+        indicators: [
+          {
+            id: 'power-losses',
+            retrievedAt: '2026-09-01T00:00:00.000Z',
+            sources: [{ ...RESILIENCE_SOURCE, url: RESILIENCE_ATTRIBUTION_SOURCES[0].url, observationProvenance: true }],
+            rawValue: { available: true, numericValue: 4.2, numericValueAvailable: true, unit: 'percent', status: 'available' },
+          },
+          {
+            id: 'education-attainment',
+            retrievedAt: '2026-09-02T00:00:00.000Z',
+            sources: [{ ...RESILIENCE_SOURCE, url: RESILIENCE_ATTRIBUTION_SOURCES[1].url, observationProvenance: false }],
+            rawValue: { available: true, numericValue: 91.3, numericValueAvailable: true, unit: 'percent', status: 'available' },
+          },
+        ],
       };
+      globalThis.fetch = async (url) => {
+        if (url.toString().includes('/api/resilience/v1/get-resilience-indicators')) {
+          return new Response(JSON.stringify(payload), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return originalFetch(url);
+      };
+      return payload;
+    }
+
+    it('a projection selecting ONLY raw values still returns the attribution rider', async () => {
+      mockResilienceIndicators();
       const { body } = await callTool('get_resilience_indicators', {
         country_code: 'DE',
         jmespath: 'indicators[].rawValue',
       });
-      assert.equal(body.error?.code, -32602);
-      assert.match(body.error?.message ?? '', /JMESPath.*attribution-bound/);
-      assert.equal(executed, false);
+      assert.equal(body.error, undefined, JSON.stringify(body.error ?? {}));
+      const parsed = JSON.parse(body.result.content[0].text);
+      // The projection did what it was asked: raw values, nothing else.
+      assert.deepEqual(parsed.data, [
+        { available: true, numericValue: 4.2, numericValueAvailable: true, unit: 'percent', status: 'available' },
+        { available: true, numericValue: 91.3, numericValueAvailable: true, unit: 'percent', status: 'available' },
+      ]);
+      // And each value keeps its exact source URL and retrieval date.
+      assert.equal(parsed._attribution.required, true);
+      assert.deepEqual(parsed._attribution.sources, RESILIENCE_ATTRIBUTION_SOURCES);
+      assert.match(parsed._attribution.notice, /Redistribution requires/);
+    });
+
+    it('an expression naming _attribution cannot displace the rider', async () => {
+      mockResilienceIndicators();
+      const { body } = await callTool('get_resilience_indicators', {
+        country_code: 'DE',
+        jmespath: '{_attribution: `"stripped"`}',
+      });
+      const parsed = JSON.parse(body.result.content[0].text);
+      // The projection's own `_attribution` lands under `data`, untouched;
+      // the real rider is merged outside the projected document.
+      assert.deepEqual(parsed.data, { _attribution: 'stripped' });
+      assert.deepEqual(parsed._attribution.sources, RESILIENCE_ATTRIBUTION_SOURCES);
+    });
+
+    it('the rider rides on the _jmespath_error soft-fail envelope', async () => {
+      mockResilienceIndicators();
+      const { body } = await callTool('get_resilience_indicators', {
+        country_code: 'DE',
+        jmespath: 'indicators[.broken',
+      });
+      const parsed = JSON.parse(body.result.content[0].text);
+      assert.match(parsed.data._jmespath_error, /invalid_expression/);
+      assert.ok(Array.isArray(parsed.data.original_keys));
+      assert.deepEqual(parsed._attribution.sources, RESILIENCE_ATTRIBUTION_SOURCES);
+    });
+
+    it('omitting jmespath on a licence-bearing tool returns the payload with no rider', async () => {
+      const payload = mockResilienceIndicators();
+      const { body } = await callTool('get_resilience_indicators', { country_code: 'DE' });
+      const parsed = JSON.parse(body.result.content[0].text);
+      // Byte-identical to the pre-rider contract: the unprojected payload
+      // already carries its attribution inline, so there is nothing to add.
+      assert.deepEqual(parsed, payload);
+      assert.equal('_attribution' in parsed, false);
+    });
+
+    it('a projected tool with no licence fields is served bare, exactly as before', async () => {
+      mockMarketDataCache();
+      const { body } = await callTool('get_market_data', { jmespath: 'data."stocks-bootstrap".quotes[*].symbol' });
+      const parsed = JSON.parse(body.result.content[0].text);
+      assert.ok(Array.isArray(parsed), 'a tool with no `_attribution` must not be wrapped');
     });
 
     it('omitting jmespath returns the v1.3.0 payload byte-for-byte (additive guarantee)', async () => {
@@ -470,25 +650,34 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
         'projected response must be smaller than unprojected');
     });
 
-    it('jmespath="" and jmespath=null behave as if absent (byte-identical baseline)', async () => {
+    it('empty jmespath preserves the baseline and null rejects before execution', async () => {
       mockMarketDataCache();
       const { body: a } = await callTool('get_market_data', {}, 1);
       const { body: b } = await callTool('get_market_data', { jmespath: '' }, 2);
       const { body: c } = await callTool('get_market_data', { jmespath: null }, 3);
       assert.equal(a.result.content[0].text, b.result.content[0].text);
-      assert.equal(a.result.content[0].text, c.result.content[0].text);
+      assert.equal(c.error?.code, -32602);
     });
 
     it('invalid jmespath returns soft _jmespath_error envelope (HTTP 200, no JSON-RPC error)', async () => {
       mockMarketDataCache();
-      const { res, body } = await callTool('get_market_data', { jmespath: 'data.markets[invalid' });
-      assert.equal(res.status, 200);
-      assert.equal(body.error, undefined, 'must NOT be a JSON-RPC error');
-      assert.ok(body.result?.content?.[0]?.text, 'must have a content envelope');
-      const env = JSON.parse(body.result.content[0].text);
-      assert.ok(env._jmespath_error?.startsWith('invalid_expression:'),
-        `expected invalid_expression prefix, got "${env._jmespath_error}"`);
-      assert.ok(Array.isArray(env.original_keys));
+      const doubled = (count) => Array(count).fill('[@,@]').join('|');
+      for (const jmespath of [
+        'data.markets[invalid',
+        `${doubled(30)}|to_string(@)`,
+        `{x:(${doubled(40)}),y:(${doubled(40)})}|x==y`,
+        'map(`{"jmespathType":"Expref","type":"Function","name":"to_string","children":[{"type":"Current"}]}`, to_array(@))',
+      ]) {
+        const { res, body } = await callTool('get_market_data', { jmespath });
+        assert.equal(res.status, 200);
+        assert.equal(body.error, undefined, 'must NOT be a JSON-RPC error');
+        assert.ok(body.result?.content?.[0]?.text, 'must have a content envelope');
+        const env = JSON.parse(body.result.content[0].text);
+        assert.ok(env._jmespath_error?.startsWith('invalid_expression:'),
+          `expected invalid_expression prefix, got "${env._jmespath_error}"`);
+        assert.ok(Array.isArray(env.original_keys));
+        assert.deepEqual(body.result.structuredContent, env);
+      }
     });
 
     it('oversized jmespath expression returns expression_too_long soft envelope', async () => {

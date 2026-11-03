@@ -33,7 +33,7 @@ import {
 } from '../server/worldmonitor/market/v1/list-market-quotes';
 
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
-const CTX = {} as ServerContext;
+const CTX = { request: new Request('https://worldmonitor.app/api/market/v1/list-market-quotes') } as ServerContext;
 
 const ORIGINAL_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
@@ -73,6 +73,7 @@ function seedPayload(symbols: string[]): ListMarketQuotesResponse {
     skipReason: '',
     rateLimited: false,
     unavailableSymbols: [],
+    asOf: '2026-08-31T12:00:00.000Z',
   };
 }
 
@@ -431,6 +432,27 @@ describe('listMarketQuotes seed-first resolution', () => {
     assert.deepEqual(lines.filter((line) => line.includes('gap-fetch cutoffs')), []);
   });
 
+  it('does not negative-cache a malformed HTTP-200 quote and recovers on retry', async () => {
+    const h = installHarness({
+      seed: seedPayload(['AAPL']),
+      provider: { RIVN: { status: 200, body: {} } },
+    });
+
+    const first = await listMarketQuotes(CTX, { symbols: ['AAPL', 'RIVN'] });
+
+    assert.equal(reasonFor(first, 'RIVN'), 'MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR');
+    assert.ok(!h.redisSets.some((s) => s.key === 'market:custom-quote:v1:RIVN'));
+
+    h.provider.set('RIVN', okQuote(12.5, 2));
+    // Simulate expiry of the intentional three-second local error backoff.
+    __clearLocalUnavailableBackoffForTests();
+    const second = await listMarketQuotes(CTX, { symbols: ['AAPL', 'RIVN'] });
+
+    assert.deepEqual(symbolsOf(second), ['AAPL', 'RIVN']);
+    assert.deepEqual(h.finnhubCalls, ['RIVN', 'RIVN']);
+    assert.equal(second.quotes.find((q) => q.symbol === 'RIVN')?.price, 12.5);
+  });
+
   it('surfaces a provider rate limit on both the symbol and the response flag', async () => {
     installHarness({ seed: seedPayload(['AAPL']), provider: { AFRM: { status: 429 } } });
     const lines: string[] = [];
@@ -508,7 +530,16 @@ describe('listMarketQuotes seed-first resolution', () => {
     const startedAt = Date.now();
     const resp = await listMarketQuotes(CTX, { symbols: ['AAPL', 'STALL'] });
 
-    assert.ok(Date.now() - startedAt < 500, 'the response must not wait for the 3s provider timeout');
+    // This bound cannot be dropped the way its siblings could (#7534): if the
+    // 30ms override fails to apply, QUOTE_PROVIDER_TIMEOUT_MS (3s) aborts the
+    // stalled lookup and the call RETURNS late rather than hanging. Measured by
+    // mutation 2026-09-02: neutering the override fails this test at ~3004ms.
+    // The reason below cannot tell the two apart -- classifyGapFetchFailure
+    // reports BUDGET_EXHAUSTED whenever `now >= deadline`, true at 3s as well.
+    // 1.5s sits ~2x under that 3s regression and ~30x over the ~50ms healthy
+    // path, so it detects the regression without measuring runner scheduling
+    // the way the old 500ms bound did under --test-concurrency=16.
+    assert.ok(Date.now() - startedAt < 1_500, 'the response must cut off at our 30ms deadline, not the 3s provider timeout');
     assert.equal(
       reasonFor(resp, 'STALL'),
       'MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED',

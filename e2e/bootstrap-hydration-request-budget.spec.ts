@@ -47,14 +47,8 @@ const NATURAL_EVENT = {
   categoryTitle: 'Severe Storms', lat: 12.5, lon: -70.1,
   date: '2026-08-01T00:00:00Z', closed: false,
 };
-// Field names come from the generated FireDetection contract
-// (src/generated/client/worldmonitor/wildfire/v1/service_client.ts:22-39), NOT
-// from the snake_case shape in tests/bootstrap-hydration-reuse.test.mts. That
-// unit fixture only ever reaches fetchAllFires(), whose sole gate is
-// `fireDetections.length > 0`, so it never notices the mismatch. The browser
-// goes one step further into data-loader's `new Date(f.detectedAt)`, which
-// throws RangeError on a missing field and kills the satellite-fires surface —
-// leaving the request counter green over a dead consumer.
+// The browser renders detectedAt, so this fixture uses the generated
+// FireDetection fields rather than the older snake_case service-test shape.
 const FIRE_DETECTION = {
   id: 'fire-1', region: 'BR', brightness: 330.5, frp: 12.5,
   confidence: 'FIRE_CONFIDENCE_HIGH', satellite: 'NOAA-20',
@@ -150,7 +144,7 @@ const HYDRATION_DATASETS: readonly HydrationDataset[] = [
     key: 'wildfires',
     tier: 'slow',
     rpcGlob: '**/api/wildfire/v1/list-fire-detections*',
-    payload: { fireDetections: [FIRE_DETECTION], fetchedAt: 1_754_000_000, dataAvailable: true },
+    payload: { fireDetections: [FIRE_DETECTION], fetchedAt: Date.now(), dataAvailable: true },
   },
   {
     key: 'sanctionsPressure',
@@ -212,6 +206,19 @@ const WEB_FAST_TIER_DEADLINE_MS = 1_200;
 
 const HYDRATION_DATASET_KEYS = HYDRATION_DATASETS.map((dataset) => dataset.key);
 
+/** Playwright can throw a GUID bind error synchronously on a dead Route. */
+async function ignoreDeadRoute(work: () => Promise<unknown>): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/Target closed|Route is already handled|Cannot find context with specified id|guid/i.test(message)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 /** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
 
@@ -242,19 +249,36 @@ async function installHydrationRequestAccounting(
   // decide whether a request-budget assertion passes.
   await page.route(
     /^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i,
-    (route) => route.abort('blockedbyclient'),
+    (route) => ignoreDeadRoute(() => route.abort('blockedbyclient')),
   );
 
   await page.route('**/api/bootstrap*', async (route) => {
     log.inflight += 1;
     try {
-      const url = new URL(route.request().url());
+      let url: URL;
+      try {
+        url = new URL(route.request().url());
+      } catch {
+        return;
+      }
       const tier = url.searchParams.get('tier');
 
       if (tier === 'fast' || tier === 'slow') {
         log.tiers.push(tier);
         if (tier === 'fast' && options.fastTierDelayMs) {
-          await new Promise((resolve) => setTimeout(resolve, options.fastTierDelayMs));
+          await new Promise<void>((resolve) => {
+            let settled = false;
+            const finish = () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              page.off('close', finish);
+              resolve();
+            };
+            const timer = setTimeout(finish, options.fastTierDelayMs);
+            page.once('close', finish);
+          });
+          if (page.isClosed()) return;
         }
         const data: Record<string, unknown> = {};
         const missing: string[] = [];
@@ -264,20 +288,21 @@ async function installHydrationRequestAccounting(
           else missing.push(dataset.key);
         }
         if (tier === 'slow') Object.assign(data, options.extraSlowTierData ?? {});
-        // The client aborts the fast tier at its deadline, which rejects the
-        // fulfill of a request that no longer exists. That rejection IS the
+        // The client aborts the fast tier at its deadline. Fulfill then
+        // throws on a request that no longer exists, either as a rejected
+        // promise or a synchronous Playwright GUID bind error. That IS the
         // scenario under test, not a spec failure.
-        await route.fulfill({
+        await ignoreDeadRoute(() => route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({ data, missing }),
-        }).catch(() => {});
+        }));
         return;
       }
 
       const keys = requestedKeys(url.href);
       for (const key of keys) log.counts[key] = (log.counts[key] ?? 0) + 1;
-      await route.fulfill({
+      await ignoreDeadRoute(() => route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
@@ -291,7 +316,7 @@ async function installHydrationRequestAccounting(
           ])),
           missing: [],
         }),
-      }).catch(() => {});
+      }));
     } finally {
       log.inflight -= 1;
     }
@@ -306,13 +331,13 @@ async function installHydrationRequestAccounting(
       log.inflight += 1;
       try {
         log.counts[dataset.key] = (log.counts[dataset.key] ?? 0) + 1;
-        await route.fulfill({
+        await ignoreDeadRoute(() => route.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(
             options.uncacheableFallbacks ? EMPTY_FALLBACK_PAYLOAD : dataset.payload,
           ),
-        }).catch(() => {});
+        }));
       } finally {
         log.inflight -= 1;
       }

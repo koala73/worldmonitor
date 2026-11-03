@@ -4,6 +4,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { getCachedJsonBatch, runRedisPipeline, setCachedJson } from '../../../_shared/redis';
 import { sanitizeSymbol } from './_shared';
+import { SeedUnavailableError } from '../../../_shared/required-seed';
 
 const ANALYSIS_HISTORY_LIMIT = 32;
 const ANALYSIS_HISTORY_TTL_SECONDS = 90 * 24 * 60 * 60;
@@ -14,20 +15,18 @@ const BACKTEST_STORE_TTL_SECONDS = 30 * 24 * 60 * 60;
 type AnalysisHistoryRecord = Record<string, AnalyzeStockResponse[]>;
 
 function compareAnalysisDesc<T extends { analysisAt: number; generatedAt: string }>(a: T, b: T): number {
-  const aTime = a.analysisAt || Date.parse(a.generatedAt || '') || 0;
-  const bTime = b.analysisAt || Date.parse(b.generatedAt || '') || 0;
+  const aTime = Date.parse(a.generatedAt || '') || a.analysisAt || 0;
+  const bTime = Date.parse(b.generatedAt || '') || b.analysisAt || 0;
   return bTime - aTime;
 }
 
 function analysisHistoryIndexKey(symbol: string, includeNews: boolean): string {
-  // v5: rotate retained snapshots written before the backward-compatible
-  // ratingSignal/compositeScore pair became the surfaced rating contract.
-  return `market:stock-analysis-history:index:v5:${sanitizeSymbol(symbol)}:${includeNews ? 'news' : 'core'}`;
+  // v6 excludes snapshots whose narratives could contain caller labels (#9287).
+  return `market:stock-analysis-history:index:v6:${sanitizeSymbol(symbol)}:${includeNews ? 'news' : 'core'}`;
 }
 
 function analysisItemKey(analysisId: string): string {
-  // v5: see analysisHistoryIndexKey note.
-  return `market:stock-analysis-history:item:v5:${analysisId}`;
+  return `market:stock-analysis-history:item:v6:${analysisId}`;
 }
 
 function backtestSnapshotKey(symbol: string, evalWindowDays: number): string {
@@ -63,6 +62,7 @@ function normalizeAnalysisRecord(
   return {
     ...snapshot,
     symbol,
+    name: symbol,
     analysisId,
     analysisAt,
     engineVersion,
@@ -88,10 +88,10 @@ function normalizeLedgerRecord(snapshot: AnalyzeStockResponse): AnalyzeStockResp
   };
 }
 
-async function zrevrange(key: string, limit: number): Promise<string[]> {
-  if (limit <= 0) return [];
+async function zrevrange(key: string, limit?: number): Promise<string[]> {
+  if (limit !== undefined && limit <= 0) return [];
   const data = await runRedisPipeline([
-    ['ZREVRANGE', key, 0, Math.max(0, limit - 1)],
+    ['ZREVRANGE', key, 0, limit === undefined ? -1 : Math.max(0, limit - 1)],
   ]);
   return Array.isArray(data[0]?.result)
     ? data[0]!.result!.map((item) => String(item))
@@ -109,12 +109,17 @@ async function loadAnalysisRecords(ids: string[], itemKeyFor: (analysisId: strin
     .sort(compareAnalysisDesc);
 }
 
-async function trimIndexTail(indexKey: string, ids: string[], keepLimit: number): Promise<void> {
+async function trimIndexTail(
+  indexKey: string,
+  ids: string[],
+  keepLimit: number,
+  itemKeyFor?: (analysisId: string) => string,
+): Promise<void> {
   if (ids.length <= keepLimit) return;
   const overflow = ids.slice(keepLimit);
-  await runRedisPipeline([
-    ['ZREM', indexKey, ...overflow],
-  ]);
+  const commands: Array<Array<string | number>> = [['ZREM', indexKey, ...overflow]];
+  if (itemKeyFor) commands.push(['DEL', ...overflow.map(itemKeyFor)]);
+  await runRedisPipeline(commands);
 }
 
 export async function storeStockAnalysisSnapshot(
@@ -129,12 +134,12 @@ export async function storeStockAnalysisSnapshot(
 
   await runRedisPipeline([
     ['SET', itemKey, JSON.stringify(record), 'EX', ANALYSIS_HISTORY_TTL_SECONDS],
-    ['ZADD', indexKey, record.analysisAt, record.analysisId],
+    ['ZADD', indexKey, Date.parse(record.generatedAt) || record.analysisAt, record.analysisId],
     ['EXPIRE', indexKey, ANALYSIS_HISTORY_TTL_SECONDS],
   ]);
 
-  const ids = await zrevrange(indexKey, ANALYSIS_HISTORY_LIMIT + 4);
-  await trimIndexTail(indexKey, ids, ANALYSIS_HISTORY_LIMIT);
+  const ids = await zrevrange(indexKey);
+  await trimIndexTail(indexKey, ids, ANALYSIS_HISTORY_LIMIT, analysisItemKey);
 }
 
 export async function getStoredStockAnalysisHistory(
@@ -147,8 +152,30 @@ export async function getStoredStockAnalysisHistory(
   const out: AnalysisHistoryRecord = {};
 
   await Promise.all(normalized.map(async (symbol) => {
-    const ids = await zrevrange(analysisHistoryIndexKey(symbol, includeNews), clampedLimit);
-    out[symbol] = await loadAnalysisRecords(ids, analysisItemKey);
+    const indexKey = analysisHistoryIndexKey(symbol, includeNews);
+    const index = await runRedisPipeline([['ZREVRANGE', indexKey, 0, clampedLimit - 1]]);
+    const ids = index[0]?.result;
+    if (index.length !== 1 || index[0]?.error || !Array.isArray(ids)
+      || !ids.every(id => typeof id === 'string')) throw new SeedUnavailableError(indexKey);
+    if (ids.length === 0) {
+      out[symbol] = [];
+      return;
+    }
+    const records = await runRedisPipeline(ids.map(id => ['GET', analysisItemKey(String(id))]));
+    if (records.length !== ids.length) throw new SeedUnavailableError(indexKey);
+    out[symbol] = records.flatMap(record => {
+      if (record.error) throw new SeedUnavailableError(indexKey);
+      if (record.result === null) return [];
+      if (typeof record.result !== 'string') throw new SeedUnavailableError(indexKey);
+      let snapshot: AnalyzeStockResponse;
+      try {
+        snapshot = JSON.parse(record.result);
+      } catch {
+        throw new SeedUnavailableError(indexKey);
+      }
+      if (!snapshot || typeof snapshot !== 'object') throw new SeedUnavailableError(indexKey);
+      return snapshot.available ? [snapshot] : [];
+    }).sort(compareAnalysisDesc);
   }));
 
   return out;
@@ -203,6 +230,7 @@ export async function storeStockBacktestSnapshot(
   await setCachedJson(key, {
     ...snapshot,
     symbol: sanitizeSymbol(snapshot.symbol),
+    name: sanitizeSymbol(snapshot.symbol),
   }, BACKTEST_STORE_TTL_SECONDS);
 }
 
@@ -215,7 +243,10 @@ export async function getStoredStockBacktestSnapshots(
   const cached = await getCachedJsonBatch(keys);
 
   return normalized
-    .map((_, index) => cached.get(keys[index]!) as BacktestStockResponse | undefined)
+    .map((symbol, index) => {
+      const item = cached.get(keys[index]!) as BacktestStockResponse | undefined;
+      return item ? { ...item, symbol, name: symbol } : undefined;
+    })
     .filter((item): item is BacktestStockResponse => !!item?.available)
     .sort((a, b) => (Date.parse(b.generatedAt || '') || 0) - (Date.parse(a.generatedAt || '') || 0));
 }

@@ -117,7 +117,7 @@ WorldMonitor 附有许多**磁贴式**指标、关联和信号面板 — 紧凑�
 | `GET` | `/api/infrastructure/v1/get-ip-geo` | 用于基础设施感知体验的调用方 IP 地理定位工具；无面板直接从其水合。 |
 | `GET` | `/api/infrastructure/v1/reverse-geocode` | 面向 API 使用者与 v1 调用方的坐标到地点查找工具；部分 UI 路径仍使用遗留的轻量 `/api/reverse-geocode` 助手。 |
 | `GET` | `/api/infrastructure/v1/get-bootstrap-data` | 针对所选 bootstrap/cache 键的批量缓存读取 RPC；补充顶层 bootstrap 水合路径。 |
-| `POST` | `/api/infrastructure/v1/record-baseline-snapshot` | 时序异常追踪使用的后台基线更新；它写入观测值，自身不渲染可见磁贴。 |
+| `POST` | `/api/infrastructure/v1/record-baseline-snapshot` | 已弃用的兼容路由。客户端提交的共享基线写入已禁用。 |
 
 ## 共享行为
 

@@ -9,7 +9,7 @@ import {
   isPanelNativeToVariant,
 } from './panels';
 
-export const SET_PANEL_ENABLED_ID_PATTERN = /^[a-z0-9][a-z0-9@_-]*$/;
+export const SET_PANEL_ENABLED_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9@_-]*$/;
 export const SET_PANEL_ENABLED_ID_MAX_CHARS = 96;
 
 export type SetPanelEnabledStatus = 'applied' | 'denied' | 'invalid';

@@ -8,6 +8,7 @@ import {
   PRO_USER_ID,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
+import { documentedOutputSchema } from './helpers/mcp-output-schema.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -97,13 +98,13 @@ describe('get_defense_industrial_base MCP tool', () => {
     const tool = (await listed.json()).result.tools.find((entry) => entry.name === 'get_defense_industrial_base');
     assert.ok(tool, 'tool must be discoverable through tools/list');
     assert.deepEqual(tool.inputSchema.required, ['country_code']);
-    assert.deepEqual(tool.outputSchema.properties.expenditurePctGdp.required, [
+    assert.deepEqual(documentedOutputSchema(tool).properties.expenditurePctGdp.required, [
       'available', 'value', 'year', 'previousValue', 'previousYear', 'source',
     ]);
-    assert.equal(tool.outputSchema.properties.expenditurePctGdp.properties.year.type, 'integer');
-    assert.equal(tool.outputSchema.properties.suppliers.items.properties.tivShare.maximum, 1);
-    assert.equal(tool.outputSchema.properties.supplierHhi.maximum, 1);
-    assert.equal(tool.outputSchema.properties.supplierMappingCoverage.maximum, 1);
+    assert.equal(documentedOutputSchema(tool).properties.expenditurePctGdp.properties.year.type, 'integer');
+    assert.equal(documentedOutputSchema(tool).properties.suppliers.items.properties.tivShare.maximum, 1);
+    assert.equal(documentedOutputSchema(tool).properties.supplierHhi.maximum, 1);
+    assert.equal(documentedOutputSchema(tool).properties.supplierMappingCoverage.maximum, 1);
 
     requests = [];
     const { deps } = makeProDeps();
@@ -124,6 +125,33 @@ describe('get_defense_industrial_base MCP tool', () => {
     assert.equal(requestUrl.searchParams.get('public'), null);
     assertSignedProHeaders(downstream.init.headers);
     assert.deepEqual(JSON.parse(body.result.content[0].text), canonicalResponse);
+  });
+
+  // WORLDMONITOR-181 sibling: the tool used to forward `country_code` as
+  // typed (uppercased), so a country name reached the RPC and 400'd there.
+  it('resolves a country name to the alpha-2 code before the military RPC', async () => {
+    requests = [];
+    const { deps } = makeProDeps();
+    const response = await mcpHandler(
+      proReq('POST', callBody('get_defense_industrial_base', { country_code: 'Ukraine' })),
+      deps,
+    );
+    assert.equal(response.status, 200);
+    const downstream = findMilitaryRpcRequest(requests);
+    assert.equal(new URL(downstream.url).searchParams.get('country_code'), 'UA');
+  });
+
+  it('rejects an unresolvable country at the tool without calling the RPC', async () => {
+    requests = [];
+    const { deps } = makeProDeps();
+    const response = await mcpHandler(
+      proReq('POST', callBody('get_defense_industrial_base', { country_code: 'Atlantis' })),
+      deps,
+    );
+    const body = await response.json();
+    assert.equal(body.error?.code, -32602, JSON.stringify(body));
+    assert.ok(body.error.data.violations.some((v) => v.field === 'country_code'), JSON.stringify(body.error));
+    assert.equal(requests.filter((r) => String(r.url).includes(MILITARY_RPC_PATH)).length, 0);
   });
 
   it('authenticates a local loopback self-fetch with the sidecar token and Pro HMAC', async () => {

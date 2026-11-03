@@ -27,6 +27,34 @@
  */
 export type PriceEvidence = 'verified' | 'unverified' | 'no-content';
 
+const BRL_PRICE_TOKEN = /R\$\s*((?:\d{1,3}(?:\.\d{3})*|\d+))(?:,(\d{2}))?(?![\d,])/gi;
+
+/**
+ * Exa can drop the Brazilian decimal separator and return the minor-unit
+ * digits as an integer. Correct that shape only when the same response has
+ * one distinct explicit BRL decimal value whose digits prove the conversion.
+ */
+export function normalizeExaBrlMinorUnitPrice(price: number, content: string | null | undefined): number {
+  if (!Number.isInteger(price) || price <= 0 || !content?.trim()) return price;
+
+  const explicitValues = new Map<number, { hasDecimal: boolean; minorUnits: number }>();
+  for (const match of content.matchAll(BRL_PRICE_TOKEN)) {
+    const whole = Number(match[1].replaceAll('.', ''));
+    const fraction = match[2];
+    const value = fraction ? whole + Number(fraction) / 100 : whole;
+    if (!Number.isFinite(value)) continue;
+    explicitValues.set(value, {
+      hasDecimal: fraction !== undefined || explicitValues.get(value)?.hasDecimal === true,
+      minorUnits: whole * 100 + Number(fraction ?? '00'),
+    });
+  }
+
+  if (explicitValues.has(price)) return price;
+
+  const matches = [...explicitValues.entries()].filter(([, token]) => token.hasDecimal && token.minorUnits === price);
+  return matches.length === 1 ? matches[0][0] : price;
+}
+
 /** Max characters between the whole part and the fraction part of a price the
  * page renders as separate elements ("49" … ".79" … "AED"). Markdown flattening
  * inserts blank lines between them; unrelated digits hundreds of characters
@@ -46,7 +74,9 @@ function escapeRegExp(s: string): string {
  * "455g"). The list is deliberately unit-ish only: currency codes (AED, SAR,
  * INR…) never collide with it, so genuine price renders stay matchable.
  */
-const UNIT_SUFFIX = String.raw`\s?(?:%|(?:g|gm|gr|kg|mg|ml|cl|l|ltr|litre|liter|oz|lb|lbs|pcs|pc|pk|ct)\b)`;
+// Pack size is a field heading; Markdown markers can close a quantity unit.
+const UNIT_TOKEN = String.raw`(?:%|(?:g|gm|gr|kg|mg|ml|cl|l|ltr|litre|liter|oz|lb|lbs|pcs|pc|pk|ct|pints?|packs?(?![\s*_\x60]*size(?![a-z0-9])))(?![a-z0-9]))`;
+const UNIT_SUFFIX = String.raw`\s*(?:[-|]\s*)?(?:[*_\x60]+\s*)?${UNIT_TOKEN}`;
 
 /** Digit-boundary guard: `4.60` must not match inside `34.601`, and a size or
  * percentage token (`400g`, `4.6%`) is not price evidence. */
@@ -118,7 +148,7 @@ export function priceEvidenceOnPage(price: number, content: string | null | unde
     const sepClass = seps.length === 2 ? '[.,]' : `[${escapeRegExp(seps[0])}]`;
     for (const f of fracForms) {
       const splitPattern = new RegExp(
-        `(?<![\\d.,])${escapeRegExp(w)}(?!\\d|[.,]\\d)[\\s\\S]{0,${SPLIT_ADJACENCY_WINDOW}}?(?<!\\d)${sepClass}${escapeRegExp(f)}(?!\\d|${UNIT_SUFFIX})`,
+        `(?<![\\d.,])${escapeRegExp(w)}(?!\\d|[.,]\\d|${UNIT_SUFFIX})[\\s\\S]{0,${SPLIT_ADJACENCY_WINDOW}}?(?<!\\d)${sepClass}${escapeRegExp(f)}(?!\\d|${UNIT_SUFFIX})`,
         'i',
       );
       if (splitPattern.test(content)) return 'verified';

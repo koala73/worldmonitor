@@ -10,6 +10,8 @@
  */
 
 import { acquire511Slot } from '../_511-rate-limit.mjs';
+import { readBoundedJsonResponse } from '../_china-exchange-transport.mjs';
+import { lonLatPair } from './geo-coord.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
@@ -53,12 +55,6 @@ function hostnameOf(baseUrl) {
   return hostname;
 }
 
-function finiteCoord(value) {
-  if (value == null || value === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
 function textOf(...values) {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -93,10 +89,7 @@ function pairFrom(value) {
   if (!Array.isArray(value) || value.length < 2) return null;
   // Help-page Point samples sometimes wrap [lon, lat] in an extra array.
   if (Array.isArray(value[0])) return pairFrom(value[0]);
-  const lon = finiteCoord(value[0]);
-  const lat = finiteCoord(value[1]);
-  if (lon == null || lat == null) return null;
-  return [lon, lat];
+  return lonLatPair(value);
 }
 
 export function geometryFromOpen511(geography) {
@@ -202,16 +195,15 @@ export function validateOpen511Envelope(envelope) {
   return envelope != null && typeof envelope === 'object' && Array.isArray(envelope.records);
 }
 
+// Streams the body and cancels it at the cap; a body without a declared
+// length is never buffered whole.
 async function readLimitedJson(resp, maxBytes) {
-  const contentLength = resp.headers?.get?.('content-length');
-  if (contentLength && Number(contentLength) > maxBytes) {
-    throw new Error(`open511: payload exceeds ${maxBytes} bytes`);
+  try {
+    return await readBoundedJsonResponse(resp, maxBytes);
+  } catch (err) {
+    if (err?.code === 'RESPONSE_TOO_LARGE') throw new Error(`open511: payload exceeds ${maxBytes} bytes`);
+    throw err?.code === 'MALFORMED_RESPONSE' && err.cause ? err.cause : err;
   }
-  const buffer = Buffer.from(await resp.arrayBuffer());
-  if (buffer.byteLength > maxBytes) {
-    throw new Error(`open511: payload exceeds ${maxBytes} bytes`);
-  }
-  return JSON.parse(buffer.toString('utf8'));
 }
 
 function eventsUrl(baseUrl, { status = 'ACTIVE', limit = DEFAULT_LIMIT, offset } = {}) {

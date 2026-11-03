@@ -365,9 +365,10 @@ describe('api/telegram-feed contract normalization', () => {
 
   it('maps a relay AbortError to 504 Relay timeout (WORLDMONITOR-11G)', async () => {
     // fetchWithTimeout aborts on TELEGRAM_RELAY_TIMEOUT_MS; AbortError is the
-    // expected timeout signal. Sentry skip (`if (!isTimeout)`) mirrors
-    // api/rss-proxy.js — captureSilentError is a no-op under NODE_TEST_CONTEXT,
-    // so this asserts only the 504 mapping (same deliberate limit as rss-proxy).
+    // expected timeout signal. This asserts only the 504 mapping:
+    // captureSilentError is a no-op under NODE_TEST_CONTEXT, so the capture
+    // policy (warning level, `mode` tag, `timeout_ms`) is pinned separately in
+    // tests/telegram-feed-relay-timeout-canary.test.mts, which clears that var.
     globalThis.fetch = async () => {
       const err = new Error('The operation was aborted');
       err.name = 'AbortError';

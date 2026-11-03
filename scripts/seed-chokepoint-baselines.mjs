@@ -1,26 +1,28 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import {
+  EIA_OIL_TRANSIT_CHOKEPOINTS,
+  EIA_OIL_TRANSIT_REFERENCE_YEAR,
+  EIA_OIL_TRANSIT_SOURCE,
+} from './chokepoint-eia-baselines.mjs';
+
+export {
+  buildEiaOilTransitBaselines,
+  EIA_OIL_TRANSIT_REFERENCE_YEAR,
+  EIA_OIL_TRANSIT_SOURCE,
+} from './chokepoint-eia-baselines.mjs';
 
 loadEnvFile(import.meta.url);
 
 export const CANONICAL_KEY = 'energy:chokepoint-baselines:v1';
 export const CHOKEPOINT_TTL_SECONDS = 34_560_000;
-
-export const CHOKEPOINTS = [
-  { id: 'hormuz',  relayId: 'hormuz_strait',  name: 'Strait of Hormuz',   mbd: 21.0, lat: 26.6, lon: 56.3  },
-  { id: 'malacca', relayId: 'malacca_strait', name: 'Strait of Malacca',  mbd: 17.2, lat: 1.3,  lon: 103.8 },
-  { id: 'suez',    relayId: 'suez',           name: 'Suez Canal / SUMED', mbd: 7.6,  lat: 30.7, lon: 32.3  },
-  { id: 'babelm',  relayId: 'bab_el_mandeb',  name: 'Bab el-Mandeb',      mbd: 6.2,  lat: 12.6, lon: 43.4  },
-  { id: 'danish',  relayId: 'dover_strait',   name: 'Danish Straits',      mbd: 3.0,  lat: 57.5, lon: 10.5  },
-  { id: 'turkish', relayId: 'bosphorus',      name: 'Turkish Straits',     mbd: 2.9,  lat: 41.1, lon: 29.0  },
-  { id: 'panama',  relayId: 'panama',         name: 'Panama Canal',        mbd: 0.9,  lat: 9.1,  lon: -79.7 },
-];
+export const CHOKEPOINTS = EIA_OIL_TRANSIT_CHOKEPOINTS;
 
 export function buildPayload() {
   return {
-    source: 'EIA World Oil Transit Chokepoints',
-    referenceYear: 2023,
+    source: EIA_OIL_TRANSIT_SOURCE,
+    referenceYear: EIA_OIL_TRANSIT_REFERENCE_YEAR,
     updatedAt: new Date().toISOString(),
     chokepoints: CHOKEPOINTS,
   };

@@ -4,10 +4,43 @@ import assert from 'node:assert/strict';
 import {
   hasPoolCoverageShortfall,
   parsePoolCounts,
+  poolCoverageMargins,
   PREDICTION_MARKET_MIN_POOL_COUNTS,
 } from '../api/_pool-coverage.js';
 
 const FLOORS = PREDICTION_MARKET_MIN_POOL_COUNTS;
+
+// Margin reporting answers a question the shortfall check structurally cannot:
+// health's minimums are byte-identical to the producer's publication floors, so
+// a producer that refuses to publish below its floor means health only ever
+// sees a passing cohort or a stale one. "How close is this to blocking?" has to
+// be read from a passing cohort or it is never read at all.
+test('poolCoverageMargins reports distance to each floor and flags the thin ones', () => {
+  assert.deepEqual(
+    poolCoverageMargins({ geopolitical: 1, tech: 5, finance: 11 }, FLOORS, 10),
+    {
+      geopolitical: { count: 1, floor: 1, margin: 0, low: true },
+      tech: { count: 5, floor: 1, margin: 4, low: true },
+      finance: { count: 11, floor: 1, margin: 10, low: false },
+    },
+  );
+});
+
+test('poolCoverageMargins treats a breached floor as low rather than hiding it', () => {
+  const margins = poolCoverageMargins({ geopolitical: 0, tech: 1, finance: 1 }, FLOORS, 10);
+  assert.deepEqual(margins.geopolitical, { count: 0, floor: 1, margin: -1, low: true });
+});
+
+test('poolCoverageMargins fails closed on unusable input', () => {
+  assert.equal(poolCoverageMargins(null, FLOORS, 10), null);
+  assert.equal(poolCoverageMargins({ geopolitical: 1, tech: 1, finance: 1 }, null, 10), null);
+  // A missing or malformed count cannot yield an honest margin.
+  assert.equal(poolCoverageMargins({ geopolitical: 1, tech: 1 }, FLOORS, 10), null);
+  assert.equal(poolCoverageMargins({ geopolitical: 1, tech: 1, finance: '1' }, FLOORS, 10), null);
+  // A margin threshold is required and must be a non-negative integer.
+  assert.equal(poolCoverageMargins({ geopolitical: 1, tech: 1, finance: 1 }, FLOORS, null), null);
+  assert.equal(poolCoverageMargins({ geopolitical: 1, tech: 1, finance: 1 }, FLOORS, -1), null);
+});
 
 test('parsePoolCounts accepts a complete non-negative integer map', () => {
   assert.deepEqual(

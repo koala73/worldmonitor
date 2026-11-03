@@ -118,6 +118,16 @@ describe('legal version ↔ published text', () => {
     assert.equal(normalizeLegalBody(annotated), normalizeLegalBody(original));
   });
 
+  it('a Mintlify heading id does not change the digest', () => {
+    // `{#id}` is heading-id syntax, not wording a reader is bound by. Restoring
+    // a dead in-page anchor must not bump TERMS_VERSION (which re-prompts every
+    // user to re-accept). The visible heading text is unchanged.
+    const original = readFileSync(join(ROOT, 'docs/terms.mdx'), 'utf8');
+    const annotated = original.replace(/^## .+$/m, (line) => `${line} {#test-heading-id}`);
+    assert.notEqual(annotated, original, 'expected the fixture edit to apply');
+    assert.equal(normalizeLegalBody(annotated), normalizeLegalBody(original));
+  });
+
   it('points a reader at the history that holds previous versions', () => {
     assert.equal(
       legalHistoryUrl('docs/terms.mdx'),

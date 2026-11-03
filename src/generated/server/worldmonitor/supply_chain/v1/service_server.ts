@@ -57,6 +57,8 @@ export interface ChokepointInfo {
   transitSummary?: TransitSummary;
   flowEstimate?: FlowEstimate;
   warRiskTier: WarRiskTier;
+  navigationalWarningsAvailable: boolean;
+  aisSnapshotAvailable: boolean;
 }
 
 export interface DirectionalDwt {
@@ -78,6 +80,13 @@ export interface TransitSummary {
   riskSummary: string;
   riskReportAction: string;
   dataAvailable: boolean;
+  todayCountsAvailable: boolean;
+  officialLatestDate: string;
+  officialLatestTotal: number;
+  officialAvg7d?: number;
+  baselineAvgDaily: number;
+  baselineFrom: string;
+  baselineTo: string;
 }
 
 export interface TransitDayCount {
@@ -292,12 +301,14 @@ export interface GetCountryCostShockResponse {
 
 export interface GetCountryProductsRequest {
   iso2: string;
+  hs4?: string;
 }
 
 export interface GetCountryProductsResponse {
   iso2: string;
   products: CountryProduct[];
   fetchedAt: string;
+  evidence?: CountryProductEvidence;
 }
 
 export interface CountryProduct {
@@ -306,6 +317,11 @@ export interface CountryProduct {
   totalValue: number;
   topExporters: ProductExporter[];
   year: number;
+  denominatorBasis?: string;
+  fetchedAt?: string;
+  partnerBasis?: string;
+  omittedPartnerCount?: number;
+  omittedPartnerShare?: number;
 }
 
 export interface ProductExporter {
@@ -313,6 +329,31 @@ export interface ProductExporter {
   partnerIso2: string;
   value: number;
   share: number;
+  netWeightKg?: number;
+  netWeightEstimated?: boolean;
+  quantity?: number;
+  quantityUnitCode?: number;
+  scale?: ExporterScale;
+}
+
+export interface ExporterScale {
+  worldExportsUsd: number;
+  worldExportsKg?: number;
+  rank: number;
+  year: number;
+  reporterCount: number;
+  unrankedReporterCount?: number;
+}
+
+export interface CountryProductEvidence {
+  state: string;
+  source: string;
+  requestedHs4s: string[];
+  missingHs4s: string[];
+  lastAttemptAt: string;
+  lastAttemptState: string;
+  recoveredHs4s: string[];
+  worldExportsFetchedAt?: string;
 }
 
 export interface GetMultiSectorCostShockRequest {
@@ -937,7 +978,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -974,7 +1015,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1021,7 +1062,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1058,7 +1099,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1107,7 +1148,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1144,7 +1185,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1192,7 +1233,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1241,7 +1282,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1290,7 +1331,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1308,6 +1349,7 @@ export function createSupplyChainServiceRoutes(
           const params = url.searchParams;
           const body: GetCountryProductsRequest = {
             iso2: params.get("iso2") ?? "",
+            hs4: params.get("hs4") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("getCountryProducts", body);
@@ -1337,7 +1379,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1386,7 +1428,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1434,7 +1476,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1484,7 +1526,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1533,7 +1575,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1580,7 +1622,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1627,7 +1669,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1674,7 +1716,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1721,7 +1763,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1770,7 +1812,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1817,7 +1859,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1866,7 +1908,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1903,7 +1945,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1950,7 +1992,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1998,7 +2040,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2048,7 +2090,7 @@ export function createSupplyChainServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

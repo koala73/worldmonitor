@@ -19,7 +19,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { shouldSkipSentryForAction, SENTRY_SKIP_ACTIONS } from '../src/services/checkout-sentry-policy.ts';
+import {
+  buildCheckoutReportTags,
+  CHECKOUT_REPORT_KIND,
+  shouldSkipSentryForAction,
+  SENTRY_SKIP_ACTIONS,
+} from '../src/services/checkout-sentry-policy.ts';
 import { checkoutErrorTelemetryLevel } from '../src/services/checkout.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -109,6 +114,75 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
       ].sort(),
     );
   });
+
+  // WORLDMONITOR-Q4: the `kind` tag is the only thing keeping a checkout
+  // timeout visible. The transport's 15s budget rejects with a browser-minted
+  // `TimeoutError: signal timed out` DOMException whose stack is the header
+  // line alone, so the zero-frame gate in src/bootstrap/sentry-init.ts drops
+  // it as extension noise unless `kind` is present. Deleting the tag here
+  // leaves tests/sentry-beforesend.test.mjs green — it supplies its own
+  // fixture tags — while production goes silent, so the emit side needs its
+  // own lock. Asserted as source text because `reportCheckoutError` is
+  // module-private.
+  it('puts the first-party `kind` on TAGS, where beforeSend reads it', () => {
+    // Asserted on the real object, not by grepping the file. beforeSend reads
+    // only `event.tags.kind`, and a source regex for the literal matches it
+    // just as happily inside `extra` or a comment — so moving the key one
+    // field over would leave every test green while production went dark.
+    const tags = buildCheckoutReportTags({ action: 'exception', code: 'service_unavailable' });
+    assert.equal(tags.kind, CHECKOUT_REPORT_KIND);
+    assert.equal(tags.component, 'dodo-checkout');
+    assert.equal(tags.action, 'exception');
+    assert.equal(tags.code, 'service_unavailable');
+    // The upstream identity tags stay optional — absent, not empty strings, so
+    // the Sentry tag list does not fill with blanks (WORLDMONITOR-RN).
+    assert.ok(!('cfRay' in tags));
+    assert.ok(!('upstreamServer' in tags));
+    const withUpstream = buildCheckoutReportTags({
+      action: 'http-error',
+      code: 'service_unavailable',
+      cfRay: 'a1b2c3-SIN',
+      upstreamServer: 'cloudflare',
+    });
+    assert.equal(withUpstream.cfRay, 'a1b2c3-SIN');
+    assert.equal(withUpstream.upstreamServer, 'cloudflare');
+    assert.equal(withUpstream.kind, CHECKOUT_REPORT_KIND);
+  });
+
+  it('builds the report tags through that helper rather than a local literal', () => {
+    // The helper is only load-bearing if reportCheckoutError actually uses it.
+    assert.match(
+      src,
+      /tags:\s*buildCheckoutReportTags\(/,
+      'reportCheckoutError must build its tag block via buildCheckoutReportTags, so the assertion above tests the shipped object',
+    );
+  });
+
+  it('actually hands the tagged payload to the Sentry capture calls', () => {
+    // Building `payload` is not the same as delivering it. Dropping the second
+    // argument — `s.captureException(caught)` — leaves the tag block above
+    // untouched, so the assertion above still passes while production timeout
+    // reports lose their exemption and go silent again. The gate's own suite
+    // cannot catch this either: it supplies fixture tags of its own.
+    assert.match(
+      src,
+      /captureException\(caught,\s*payload\)/,
+      'the caught exception must be captured WITH the payload that carries the kind tag',
+    );
+    assert.match(
+      src,
+      /captureMessage\(`Checkout error: \$\{error\.code\}`,\s*payload\)/,
+      'the message path must be captured WITH the payload that carries the kind tag',
+    );
+  });
+
+  // The gate's own half of this contract is asserted behaviourally in
+  // tests/sentry-beforesend.test.mjs, which compiles the real beforeSend and
+  // drives a captureException through it. A source-text regex was tried here
+  // and removed: six behaviour-preserving spellings of the same condition
+  // (`== null`, `'kind' in ...`, an extracted helper, destructuring) all failed
+  // it, and a false red on a correct refactor is what teaches the next author
+  // to delete the assertion.
 
   it('keeps duplicate-subscription checkout attempts at info level', () => {
     assert.equal(checkoutErrorTelemetryLevel({ code: 'duplicate_subscription' }), 'info');

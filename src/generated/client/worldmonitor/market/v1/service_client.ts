@@ -11,6 +11,7 @@ export interface ListMarketQuotesResponse {
   skipReason: string;
   rateLimited: boolean;
   unavailableSymbols: MarketQuoteUnavailable[];
+  asOf: string;
 }
 
 export interface MarketQuote {
@@ -257,6 +258,25 @@ export interface GetCountryStockIndexResponse {
   weekChangePercent: number;
   currency: string;
   fetchedAt: string;
+}
+
+export interface GetPriceHistoryRequest {
+  symbols: string;
+  range: string;
+}
+
+export interface GetPriceHistoryResponse {
+  range: string;
+  series: PriceSeries[];
+  unavailable: string[];
+}
+
+export interface PriceSeries {
+  symbol: string;
+  name: string;
+  currency: string;
+  timestamps: number[];
+  closes: number[];
 }
 
 export interface ListGulfQuotesRequest {
@@ -576,6 +596,7 @@ export interface ListEarningsCalendarResponse {
   toDate: string;
   total: number;
   unavailable: boolean;
+  asOf: string;
 }
 
 export interface EarningsEntry {
@@ -750,6 +771,8 @@ export interface GoldCbReserves {
   topHolders: GoldCbHolder[];
   topBuyers12m: GoldCbMover[];
   topSellers12m: GoldCbMover[];
+  indicator: string;
+  valueIsOunces?: boolean;
 }
 
 export interface GoldCbHolder {
@@ -1081,6 +1104,32 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as GetCountryStockIndexResponse;
+  }
+
+  async getPriceHistory(req: GetPriceHistoryRequest, options?: MarketServiceCallOptions): Promise<GetPriceHistoryResponse> {
+    let path = "/api/market/v1/get-price-history";
+    const params = new URLSearchParams();
+    if (req.symbols != null && req.symbols !== "") params.set("symbols", String(req.symbols));
+    if (req.range != null && req.range !== "") params.set("range", String(req.range));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetPriceHistoryResponse;
   }
 
   async listGulfQuotes(_req: ListGulfQuotesRequest, options?: MarketServiceCallOptions): Promise<ListGulfQuotesResponse> {

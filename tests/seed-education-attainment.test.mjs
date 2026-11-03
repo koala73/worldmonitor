@@ -205,14 +205,13 @@ describe('fetch and Railway bundle budgets', () => {
       bundleSource,
       /Education-Attainment[^\n]+timeoutMs:\s*EDUCATION_SECTION_TIMEOUT_MS/,
     );
-    assert.match(bundleSource, /EDUCATION_PRIORITY_UTC_DAY\s*=\s*0/);
     assert.match(
       bundleSource,
-      /educationRunsFirst[\s\S]+\? \[EDUCATION_SECTION, \.\.\.MACRO_SECTIONS\][\s\S]+: \[\.\.\.MACRO_SECTIONS, EDUCATION_SECTION\]/,
+      /orderMacroSections\([\s\S]+EDUCATION_SECTION,[\s\S]+PHYSICAL_PREMIUM_SECTION,[\s\S]+MACRO_SECTIONS/,
     );
     assert.match(
       bundleSource,
-      /normally last[\s\S]+first priority on one UTC day each week[\s\S]+production keeps the other[\s\S]+six days/,
+      /normally last[\s\S]+first priority on the 08:00 Sunday tick[\s\S]+09:00 retry always restores[\s\S]+Physical to the first slot/,
     );
   });
 });

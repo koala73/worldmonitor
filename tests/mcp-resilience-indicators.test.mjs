@@ -18,7 +18,14 @@ describe('get_resilience_indicators MCP tool', () => {
   test('is subscription-only with exact API, coverage, schema and annotation metadata', () => {
     const tool = TOOL_REGISTRY.find((candidate) => candidate.name === 'get_resilience_indicators');
     assert.ok(tool);
-    assert.equal(tool._jmespathDisabled, true);
+    // Projection is universal now; the licence obligation is discharged by the
+    // `_attribution` extraction the dispatcher re-attaches to every projected
+    // response, not by refusing the argument.
+    assert.equal(tool._jmespathDisabled, undefined);
+    assert.equal(
+      tool._attribution,
+      'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
+    );
     assert.deepEqual(tool._apiPaths, ['GET /api/resilience/v1/get-resilience-indicators']);
     assert.deepEqual(tool.inputSchema.required, ['country_code']);
     assert.equal(tool._outputBudgetBytes, 262144);

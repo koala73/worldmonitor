@@ -702,6 +702,42 @@ describe('Company Monitoring identity, confidence, and lifecycle invariants', ()
 });
 
 describe('Company Monitoring coverage and cursor invariants', () => {
+  it('accepts identity_unresolved as a coverage state but never as a quiet result (#7044)', () => {
+    // The state itself is valid with unknown observation…
+    assert.doesNotThrow(() => assertCoverageObservation({
+      coverage: 'identity_unresolved',
+      observation: 'unknown',
+      providers: [],
+      assessmentReady: false,
+    }));
+    // …but it can never carry a no-events observation: a company with no
+    // independent identity binding cannot be scanned, so reporting it as
+    // quiet is exactly the false quiet #6002's stop conditions prohibit.
+    assert.throws(
+      () => assertCoverageObservation({
+        coverage: 'identity_unresolved',
+        observation: 'no_events_observed',
+        providers: [
+          { provider: 'exa', state: 'complete', capped: false, fresh: true },
+          { provider: 'x', state: 'complete', capped: false, fresh: true },
+        ],
+        assessmentReady: true,
+      }),
+      /no_events_observed requires adequate, complete, uncapped, fresh coverage/,
+    );
+  });
+
+  it('normalizes both spellings of the identity_unresolved coverage filter (#7044)', () => {
+    assert.deepEqual(
+      normalizeCoverageFilters(['identity_unresolved']),
+      ['identity_unresolved'],
+    );
+    assert.deepEqual(
+      normalizeCoverageFilters(['COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED']),
+      ['identity_unresolved'],
+    );
+  });
+
   it('never conflates incomplete coverage with a trustworthy quiet observation', () => {
     assert.doesNotThrow(() => assertCoverageObservation({
       coverage: 'adequate',

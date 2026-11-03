@@ -461,3 +461,53 @@ export async function verifyCheckoutLoginEmail(
   if (age < -CHECKOUT_LOGIN_EMAIL_CLOCK_SKEW_MS) return "invalid";
   return "valid";
 }
+
+const DUNNING_PORTAL_TOKEN_VERSION = "v1";
+const DUNNING_PORTAL_USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+// Covers a week of reading time on the day-7 final notice. The relay also
+// refuses the token once the user has no open hold, so the link is not a
+// standing billing credential.
+export const DUNNING_PORTAL_TOKEN_TTL_MS = 8 * 24 * 60 * 60 * 1000;
+
+function dunningPortalPayload(userId: string, expiresAt: number): string {
+  return `dunning-portal:${DUNNING_PORTAL_TOKEN_VERSION}:${userId.length}:${userId}:${expiresAt}`;
+}
+
+export async function signDunningPortalToken(
+  userId: string,
+  nowMs: number,
+): Promise<string> {
+  if (!DUNNING_PORTAL_USER_ID_RE.test(userId)) {
+    throw new Error("[identity-signing] dunning portal token requires a Clerk-shaped userId");
+  }
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0) {
+    throw new Error("[identity-signing] dunning portal token requires a non-negative integer nowMs");
+  }
+  const expiresAt = nowMs + DUNNING_PORTAL_TOKEN_TTL_MS;
+  const signature = await signPayload(dunningPortalPayload(userId, expiresAt));
+  return `${DUNNING_PORTAL_TOKEN_VERSION}.${userId}.${expiresAt}.${signature}`;
+}
+
+export async function verifyDunningPortalToken(
+  token: string | undefined,
+  nowMs: number,
+): Promise<string | null> {
+  if (!token || !Number.isFinite(nowMs)) return null;
+  const [version, userId, expiresAtRaw, signature, ...extra] = token.split(".");
+  if (version !== DUNNING_PORTAL_TOKEN_VERSION || extra.length > 0) return null;
+  if (!userId || !DUNNING_PORTAL_USER_ID_RE.test(userId)) return null;
+  if (typeof expiresAtRaw !== "string" || typeof signature !== "string") return null;
+  // Canonical digits only: a leading-zero variant would re-verify the same
+  // signature under a different string, i.e. a fresh edge rate-limit bucket.
+  if (!/^[1-9]\d*$/.test(expiresAtRaw) || !signature) return null;
+  const expiresAt = Number(expiresAtRaw);
+  if (!Number.isSafeInteger(expiresAt)) return null;
+  try {
+    const expected = await signPayload(dunningPortalPayload(userId, expiresAt));
+    if (!timingSafeEqualHex(expected, signature)) return null;
+  } catch {
+    return null;
+  }
+  if (expiresAt <= nowMs) return null;
+  return userId;
+}

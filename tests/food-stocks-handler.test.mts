@@ -69,12 +69,12 @@ describe('flattenSnapshot', () => {
         corn: {
           marketingYear: '2023/24',
           production: 12000,
-          consumption: null,
+          consumption: 9500,
           imports: null,
           exports: null,
           endingStocks: null,
           stocksToUseRatio: null,
-          totalUse: 0,
+          totalUse: 9500,
           unit: '1000 MT',
           source: 'faostat',
         },
@@ -179,14 +179,15 @@ describe('flattenSnapshot', () => {
     assert.equal(zw.stocksToUse, 0);
   });
 
-  test('a FAOSTAT production-only row is distinguishable from a genuine zero', () => {
+  test('a FAOSTAT balance row is distinguishable from a genuine stock zero', () => {
     const [ng] = flattenSnapshot(snapshot as never, 'NG');
     assert.equal(ng.source, 'faostat');
     assert.equal(ng.stocksToUse, 0);
     assert.equal(ng.hasStocksToUse, false, 'gap-fill rows never carry a measured ratio');
     assert.equal(ng.hasEndingStocks, false);
-    assert.equal(ng.totalUseTmt, 0);
-    assert.equal(ng.productionTmt, 12000, 'production is real even though stocks are not');
+    assert.equal(ng.totalUseTmt, 9500);
+    assert.equal(ng.productionTmt, 12000);
+    assert.equal(ng.consumptionTmt, 9500, 'domestic supply is real even though stocks are not');
   });
 
   test('a fully-populated PSD row reports both values present', () => {

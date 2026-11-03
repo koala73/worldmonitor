@@ -28,11 +28,12 @@
 // scope. `Panel` itself is exempted BY NAME below, not by the incidental fact
 // that `class Panel` currently has no `extends` clause.
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isMainModule } from './lib/main-module.mjs';
+import { collectTsFiles, lexSource } from './lib/source-scan.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -136,10 +137,6 @@ export const LEGACY_DIRECT_CONTENT_WRITES = [
   'src/components/LatestBriefPanel.ts :: clearChildren(this.content) x1',
   'src/components/LatestBriefPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/LatestBriefPanel.ts :: this.content.appendChild(…) x1',
-  'src/components/LiveNewsPanel.ts :: setTrustedHtml(this.content, …) x3',
-  'src/components/LiveNewsPanel.ts :: this.content.appendChild(…) x3',
-  'src/components/LiveWebcamsPanel.ts :: setTrustedHtml(this.content, …) x2',
-  'src/components/LiveWebcamsPanel.ts :: this.content.appendChild(…) x3',
   'src/components/ProgressChartsPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/ProgressChartsPanel.ts :: setTrustedHtml(this.content, …) x1',
   'src/components/ProgressChartsPanel.ts :: this.content.appendChild(…) x3',
@@ -154,7 +151,6 @@ export const LEGACY_DIRECT_CONTENT_WRITES = [
   'src/components/SpeciesComebackPanel.ts :: this.content.appendChild(…) x2',
   'src/components/SupplyChainPanel.ts :: this.content.prepend(…) x1',
   'src/components/TechEventsPanel.ts :: replaceChildren(this.content, …) x1',
-  'src/components/TelegramIntelPanel.ts :: replaceChildren(this.content, …) x3',
 ];
 
 /**
@@ -186,18 +182,11 @@ export const GUARD_EXEMPT_FILES = new Set(['src/components/Panel.ts']);
  */
 export const MIN_PANEL_SUBCLASS_FILES = 100;
 
-/**
- * Blank out comments while preserving offsets and line count. A mention of an
- * idiom in a comment is not a call: scanning raw text both false-fails a
- * correctly-migrated file that documents the rule, and — worse, because it is
- * silent — keeps a legacy entry "observed" after its only real call is gone,
- * so the stale check never asks anyone to delete it.
- */
-export function stripComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
-}
+// `stripComments` and `collectTsFiles` moved to ./lib/source-scan.mjs in #7833.
+// The copy that lived here ran its block-comment regex over RAW source, so a
+// `/*` inside a line comment or string opened a bogus region — it was blanking
+// 106 lines of src/components/ that this guard therefore never scanned.
+export { stripComments } from './lib/source-scan.mjs';
 
 // `(?:<[^>]*>)?` so a generic subclass (`class Foo<T> extends Panel`) is not
 // silently dropped from the population.
@@ -242,22 +231,21 @@ export function adviceFor(label) {
   return 'render through Panel.setContentNodes() / setTrustedContent() / setSafeContent()';
 }
 
-function collectTsFiles(dir) {
-  const out = [];
-  for (const entry of readdirSync(dir)) {
-    const abs = path.join(dir, entry);
-    if (statSync(abs).isDirectory()) out.push(...collectTsFiles(abs));
-    else if (abs.endsWith('.ts')) out.push(abs);
-  }
-  return out.sort();
-}
-
 /** Scan the tree and return everything the assertions and the CLI both need. */
 export function scanRepo(root = REPO_ROOT) {
   const componentsDir = path.join(root, 'src/components');
-  const allFiles = collectTsFiles(componentsDir);
+  const allFiles = collectTsFiles(componentsDir, { readdirSync, lstatSync, join: path.join });
+  // Track files the lexer could not read confidently. A mis-lex does not throw
+  // — it silently blanks real code, and the guard then reports a clean scan of
+  // a file it never saw. Surfacing it is the difference between a gate that is
+  // wrong and a gate that is wrong AND quiet (#7833 review).
+  const unlexable = [];
   const codeByFile = new Map(
-    allFiles.map((abs) => [abs, stripComments(readFileSync(abs, 'utf8'))]),
+    allFiles.map((abs) => {
+      const { code, ok, terminalMode } = lexSource(readFileSync(abs, 'utf8'));
+      if (!ok) unlexable.push(`${path.relative(root, abs)} (ended in ${terminalMode})`);
+      return [abs, code];
+    }),
   );
 
   const baseOf = new Map();
@@ -286,6 +274,7 @@ export function scanRepo(root = REPO_ROOT) {
   const observedFiles = new Set(observed.map((pair) => pair.split(' :: ')[0]));
 
   return {
+    unlexable,
     subclassFiles,
     observed,
     observedFiles,
@@ -301,6 +290,13 @@ export function scanRepo(root = REPO_ROOT) {
 function main() {
   const result = scanRepo();
   const problems = [];
+
+  if (result.unlexable.length > 0) {
+    problems.push(
+      'These files could not be lexed confidently, so this guard scanned less of them than it reports. Fix the scanner in scripts/lib/source-scan.mjs rather than lowering this check:',
+      ...result.unlexable.map((entry) => `  - ${entry}`),
+    );
+  }
 
   if (result.subclassFiles.length < MIN_PANEL_SUBCLASS_FILES) {
     problems.push(

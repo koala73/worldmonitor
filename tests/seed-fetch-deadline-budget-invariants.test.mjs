@@ -57,12 +57,18 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
     );
   });
 
-  it('grocery-basket: lock/deadline covers its ~600s degraded serial runtime (24 serial countries)', () => {
+  it('grocery-basket: lock/deadline covers its worst-case runtime (countries in bounded-concurrency waves)', async () => {
+    // seed-grocery-basket is import-safe (runSeed is argv-guarded).
+    const { COUNTRIES, COUNTRY_CONCURRENCY } = await import('../scripts/seed-grocery-basket.mjs');
     const src = read('seed-grocery-basket.mjs');
     const lock = optValue(src, 'lockTtlMs');
-    assert.ok(lock, 'grocery-basket runSeed must set lockTtlMs (default 120s → 240s deadline is below its serial runtime)');
-    // Degraded run ≈ 600s (24 countries × ~25s critical path). Deadline must clear it.
-    assert.ok(deadlineFromLock(lock) >= 600_000, `deadline ${deadlineFromLock(lock)}ms must cover the ~600s degraded runtime`);
+    assert.ok(lock, 'grocery-basket runSeed must set lockTtlMs (default 120s → 240s deadline is below its runtime)');
+    // Per-country critical path: 8s direct fetch + 0.5s + 30s Firecrawl + 15s EXA
+    // + 2×30s Firecrawl ≈ 115s. The serial loop measured ~42s/country × 24 ≈ 1000s
+    // and crashed at the 840s deadline (2026-10-30).
+    const PER_COUNTRY_WORST_MS = 115_000;
+    const worst = Math.ceil(COUNTRIES.length / COUNTRY_CONCURRENCY) * PER_COUNTRY_WORST_MS;
+    assert.ok(deadlineFromLock(lock) >= worst, `deadline ${deadlineFromLock(lock)}ms must cover the ${worst}ms worst case`);
   });
 
   it('supply-chain-trade: lock/deadline covers the WTO ~10min budget so runs complete + republish', () => {
@@ -82,10 +88,12 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
       GDELT_SWEEP_BUDGET_MS,
       GDELT_COUNTRY_FETCH_OPTS,
       ACLED_INTEL_LOCK_TTL_MS,
+      HAPI_FALLBACK_BUDGET_MS,
     } = await import('../scripts/seed-conflict-intel.mjs');
     const {
       HAPI_HDX_METADATA_TIMEOUT_MS,
       HAPI_HDX_SNAPSHOT_TIMEOUT_MS,
+      HAPI_MAX_PAGES,
     } = await import('../scripts/_conflict-hapi.mjs');
     const { GDELT_BULK_WORST_NETWORK_MS } = await import('../scripts/_conflict-gdelt-bulk.mjs');
 
@@ -103,14 +111,46 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
       SWEEP_CONCURRENCY * GDELT_COUNTRY_FETCH_OPTS.proxyMaxAttempts * PROXY_CURL_CEILING_MS,
     );
 
-    // HAPI bot-block fallback worst at the January boundary: one 15s direct
-    // request, 60s metadata, then the current and previous annual snapshots.
-    // It runs inside the same parallel auxiliary phase as the GDELT sweep, so
-    // the two occupy the same window (max), they do not stack (sum).
+    // HAPI runs inside the same parallel auxiliary phase as the GDELT sweep, so
+    // the two occupy the same window (max), they do not stack (sum). It has two
+    // routes since #7658 made the HDX snapshot the authoritative channel.
     const HAPI_DIRECT_REQUEST_MS = 15_000;
-    const HAPI_WORST_MS = HAPI_DIRECT_REQUEST_MS
-      + HAPI_HDX_METADATA_TIMEOUT_MS
+    const HAPI_GLOBAL_SWEEPS = 2;
+    // Primary route: the snapshot, worst at the January boundary — 60s metadata
+    // then the current and previous annual downloads. The two global sweeps and
+    // the fan-out then cost NOTHING; they filter rows already in memory.
+    const HAPI_SNAPSHOT_WORST_MS = HAPI_HDX_METADATA_TIMEOUT_MS
       + 2 * HAPI_HDX_SNAPSHOT_TIMEOUT_MS;
+    // Demoted route: the snapshot may spend almost HAPI_FALLBACK_BUDGET_MS
+    // before failing. After demotion, every API page launch shares one new
+    // absolute deadline. One page can still be in flight when that deadline
+    // closes, but no later page from either global sweep or the country fallback
+    // may launch. This is the bound the injected-clock pagination test proves.
+    const HAPI_DEMOTED_API_WINDOW_MS = HAPI_FALLBACK_BUDGET_MS + HAPI_DIRECT_REQUEST_MS;
+    const HAPI_DEMOTED_WORST_MS = HAPI_FALLBACK_BUDGET_MS + HAPI_DEMOTED_API_WINDOW_MS;
+    const HAPI_WORST_MS = Math.max(HAPI_SNAPSHOT_WORST_MS, HAPI_DEMOTED_WORST_MS);
+
+    // The envelope every HAPI comment in the seeder re-derives against. Assert
+    // it DIRECTLY: the previous form of this check (worst < ungated-stack)
+    // reduced algebraically to HAPI_FALLBACK_BUDGET_MS < HAPI_SNAPSHOT_WORST_MS
+    // and would still have passed with the budget raised to 200s, so it no
+    // longer pinned the constant its own prose claimed to pin.
+    const HAPI_ENVELOPE_MS = 315_000;
+    assert.ok(HAPI_SNAPSHOT_WORST_MS <= HAPI_ENVELOPE_MS,
+      `snapshot route ${HAPI_SNAPSHOT_WORST_MS}ms must fit the ${HAPI_ENVELOPE_MS}ms envelope`);
+    assert.ok(HAPI_DEMOTED_WORST_MS <= HAPI_ENVELOPE_MS,
+      `demoted route ${HAPI_DEMOTED_WORST_MS}ms (demotion cutoff + one shared page-launch window) must fit the ${HAPI_ENVELOPE_MS}ms envelope`);
+    // The demotion gate is what keeps those two routes from becoming one sum: a
+    // snapshot that fails only AFTER burning its own timeouts has already spent
+    // the tick, so the seeder fails closed instead of putting the sweeps behind
+    // the full snapshot cost.
+    const HAPI_UNGATED_SWEEP_MS = HAPI_GLOBAL_SWEEPS * HAPI_MAX_PAGES * HAPI_DIRECT_REQUEST_MS;
+    const HAPI_UNGATED_STACK_MS = HAPI_SNAPSHOT_WORST_MS
+      + HAPI_UNGATED_SWEEP_MS
+      + HAPI_DIRECT_REQUEST_MS;
+    assert.ok(HAPI_UNGATED_STACK_MS > HAPI_ENVELOPE_MS,
+      'this guard is only meaningful while an ungated stack would actually breach the envelope');
+
     const EXTRA_KEY_WRITE_SLACK_MS = 30_000;
     const worstFetchAttempt = Math.max(HAPI_WORST_MS, GDELT_SWEEP_BUDGET_MS + worstBatch)
       + GDELT_BULK_WORST_NETWORK_MS

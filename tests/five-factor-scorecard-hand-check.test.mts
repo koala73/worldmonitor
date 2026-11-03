@@ -42,12 +42,15 @@ function handCheckCountry(countryCode: string, rawValues: number[]) {
       armsImportsTiv: metric((1 - industrialBalance) * 100, 'World Bank'),
     } } },
     energyMix: { [countryCode]: {
-      balanceYear: 2024,
+      primaryEnergyConsumptionYear: 2024,
       primaryEnergyConsumptionTwh: 100,
-      balanceImportSharePercent: (1 - energyBalance) * 100,
     } },
     staticByCountry: { [countryCode]: {
       aquastat: { ...metric(waterStress, 'worldbank-aquastat'), indicator: 'water stress' },
+      iea: {
+        source: 'worldbank-energy-imports',
+        energyImportDependency: metric((1 - energyBalance) * 100, 'worldbank'),
+      },
       infrastructure: null,
     } },
     lowCarbon: null,

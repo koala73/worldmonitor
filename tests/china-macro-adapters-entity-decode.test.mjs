@@ -84,3 +84,11 @@ describe('china-macro adapters decodeHtml: one pass must decode exactly one leve
     );
   });
 });
+
+it('ignores script-only statistics when end tags contain whitespace or attributes', () => {
+  for (const closing of ['script ', 'script foo="bar"', 'script/']) {
+    const html = nbsIndustrialHtml('June 2026 Industrial Production').replace('<body>', `<body><script>total value added of industrial enterprises above the designated size increased by 99% year on year</${closing}>`);
+    const result = parseNbsIndustrialRelease(html, { retrievalTime: '2026-07-15T03:00:00.000Z', sourceUrl: SOURCE_URL });
+    assert.equal(result.value, 6.8);
+  }
+});

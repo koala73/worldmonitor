@@ -2,9 +2,8 @@
  * Slot B regression tests: NWS event-family coalesce.
  *
  * Verifies the contract that adjacent-zone NWS alerts (same VTEC family)
- * collapse to one notification per user. Source-grep tests because the
- * relay scripts are runtime side-effect modules with no exports — the same
- * pattern used by tests/notification-relay-effective-sensitivity.test.mjs.
+ * collapse to one notification per user. The relay wiring checks are
+ * source-grep tests.
  *
  * The VTEC parser (deriveWeatherCoalesceKey) and the notification family/slot
  * selection live in scripts/_weather-alert-select.mjs and are imported and
@@ -85,13 +84,13 @@ describe('notification-relay checkDedup — SETNX transport outcomes', () => {
       UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
       CONVEX_URL: process.env.CONVEX_URL,
       CONVEX_SITE_URL: process.env.CONVEX_SITE_URL,
-      RELAY_SHARED_SECRET: process.env.RELAY_SHARED_SECRET,
+      CONVEX_NOTIFICATION_RELAY_SECRET: process.env.CONVEX_NOTIFICATION_RELAY_SECRET,
     };
     process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.example.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     process.env.CONVEX_URL = 'https://example.convex.cloud';
     process.env.CONVEX_SITE_URL = 'https://example.convex.site';
-    process.env.RELAY_SHARED_SECRET = 'secret';
+    process.env.CONVEX_NOTIFICATION_RELAY_SECRET = 'secret';
     delete require.cache[require.resolve(relayPath)];
 
     const originalLoad = Module._load;
@@ -301,10 +300,8 @@ describe('market alert producer — asset-family coalesce key', () => {
       /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}`/,
       'market coalesce key must separate asset class, instrument, direction, and severity band',
     );
-    // Lock the normalization line itself so a source change (dropping the
-    // 'unknown' fallback or the trim/lowercase) is caught — the behavioral test
-    // below re-derives this logic inline, so without this assertion the two
-    // could drift together silently. PR #4985 review finding #4.
+    // Lock the normalization line itself so dropping the fallback or
+    // trim/lowercase normalization is caught. PR #4985 review finding #4.
     assert.match(
       aisRelaySrc,
       /const stableIdentifier = String\(identifier \|\| 'unknown'\)\.trim\(\)\.toLowerCase\(\)/,
@@ -322,19 +319,6 @@ describe('market alert producer — asset-family coalesce key', () => {
         `market_alert block must pass coalesceKey:\n${block}`,
       );
     }
-  });
-
-  it('rounded percent changes within the same critical commodity surge collapse to one family', () => {
-    const coalesce = (assetClass, identifier, direction, severity) =>
-      `market:${assetClass}:${String(identifier || 'unknown').trim().toLowerCase()}:${direction}:${severity}`;
-    const coffee11 = coalesce('commodity', 'KC=F', 'surge', 'critical');
-    const coffee13 = coalesce('commodity', 'KC=F', 'surge', 'critical');
-    assert.equal(coffee11, coffee13, 'Coffee +11% and +13% critical surge must share one dedup family');
-    assert.notEqual(
-      coffee11,
-      coalesce('commodity', 'KC=F', 'surge', 'high'),
-      'a high-to-critical threshold crossing may notify as a severity upgrade',
-    );
   });
 });
 

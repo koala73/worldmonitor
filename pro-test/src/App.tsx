@@ -9,7 +9,7 @@ import {
   Bell, Brain, Key, Plug, PanelTop, ExternalLink,
   BarChart3, Clock, Radio, Ship, Plane, Flame,
   Cable, Wifi, MapPin, TrendingUp,
-  Filter, Lightbulb, SlidersHorizontal, Telescope,
+  Boxes, Filter, Lightbulb, SlidersHorizontal, Telescope,
   LineChart, Search, Shield, Building2,
   Landmark, Fuel
 } from 'lucide-react';
@@ -20,7 +20,7 @@ import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-u
 import { hasLiveClientSession } from './services/clerk-session';
 import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
 import { PricingSection } from './components/PricingSection';
-import { SoonBadge } from './components/SoonBadge';
+import { WhatsNew } from './components/WhatsNew';
 import { Logo } from './components/Logo';
 import { WiredBadge } from './components/WiredBadge';
 import { Footer } from './components/Footer';
@@ -30,7 +30,7 @@ import {
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from './assets/dashboard-screenshot';
 import { ensureTurnstileScript } from './turnstile';
-import wiredLogo from './assets/wired-logo.svg';
+import { VoiceCards } from './components/Voices';
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
   DASHBOARD_PATH,
@@ -40,8 +40,12 @@ import { appendStoredContentAttributionToUrl } from '../../shared/content-attrib
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
-import { PressFooterNav } from './components/PressFooterNav';
+import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
+import {
+  isDesktopCheckoutHandoff,
+  parseMissionPreviewAttributionFromSearch,
+} from '../../shared/checkout-attribution';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -86,6 +90,7 @@ export function renderTurnstileWidgets(): number {
  * referral-capture guard (#6493).
  */
 function getRefCode(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
   const params = new URLSearchParams(window.location.search);
   const code = params.get('ref') || undefined;
   if (!code || isInternalSourceTag(code)) return undefined;
@@ -96,6 +101,7 @@ function getMcpAttributionSource(): string | undefined {
   // Uses the shared allowlist rather than an inline literal so the /pro page,
   // the checkout edge function, and the Convex webhook reader can never disagree
   // about what the campaign marker is (#6716).
+  if (typeof window === 'undefined') return undefined;
   return readMcpAttributionFromSearch(window.location.search);
 }
 
@@ -385,6 +391,18 @@ const SignalBars = () => {
           const scaleY = isSignal
             ? [0.5, 1, 0.65, 0.9]
             : [1, 0.3, 0.7, 0.15, 0.5];
+          // Motion accelerates `transform` but not the individual `scaleY`
+          // shorthand, so complete transform strings keep these 60 forever-
+          // repeating bars on the browser's compositor instead of Motion's
+          // JavaScript frame loop. Collapsing this back to `scaleY: [...]`
+          // looks identical and silently restores that main-thread cost.
+          const transform = scaleY.map((scale) => `scaleY(${scale})`);
+          // Motion's JS path expands a single `ease` into one easing per
+          // keyframe segment; its native path would apply a lone easing across
+          // the whole iteration and interpolate linearly between keyframes.
+          // Passing the array keeps the per-segment curve the bars had before,
+          // and still leaves the animation eligible for the native path.
+          const ease = scaleY.slice(1).map(() => 'easeInOut' as const);
 
           return (
             <div
@@ -401,14 +419,14 @@ const SignalBars = () => {
                     ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` }
                     : null),
                 }}
-                initial={{ scaleY: initialScale, opacity: isSignal ? 0.4 : 0.08 }}
+                initial={{ transform: `scaleY(${initialScale})`, opacity: isSignal ? 0.4 : 0.08 }}
                 animate={isSignal
                   ? {
-                      scaleY,
+                      transform,
                       opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
                     }
                   : {
-                      scaleY,
+                      transform,
                       opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
                     }
                 }
@@ -417,7 +435,7 @@ const SignalBars = () => {
                   repeat: Infinity,
                   repeatType: 'reverse',
                   delay: isSignal ? distFromCenter * 0.07 : jitter(i, 2) * 0.6,
-                  ease: 'easeInOut',
+                  ease,
                 }}
               />
             </div>
@@ -428,7 +446,7 @@ const SignalBars = () => {
   );
 };
 
-const Hero = () => {
+const Hero = ({ srLead }: { srLead?: string }) => {
   const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
   // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
@@ -444,8 +462,10 @@ const Hero = () => {
     <section className="pt-28 pb-12 px-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
       <div className="max-w-4xl mx-auto text-center relative z-10">
+        {/* The prerendered /pro HTML paints this hero before React mounts, so
+            an opacity:0 initial state would blank it out until the bundle ran. */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
@@ -454,6 +474,7 @@ const Hero = () => {
           </div>
 
           <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
+            {srLead && <span className="sr-only">{srLead} </span>}
             <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
             <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
@@ -510,16 +531,9 @@ const SocialProof = () => (
           </div>
         ))}
       </div>
-      <blockquote className="max-w-3xl mx-auto text-center">
-        <p className="text-lg md:text-xl text-wm-muted italic leading-relaxed">
-          "{t('socialProof.quote')}"
-        </p>
-        <footer className="mt-6 flex items-center justify-center gap-3">
-          <a href="https://www.wired.com/story/world-monitor-elie-habib/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
-          </a>
-        </footer>
-      </blockquote>
+      <h2 className="text-2xl md:text-3xl font-display font-bold mb-8 text-center">{t('welcome.voices.title')}</h2>
+      <VoiceCards />
+      <PressNav className="mt-6" />
     </div>
   </section>
 );
@@ -534,7 +548,7 @@ const TwoPathSplit = () => (
         <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.proTitle')}</h3>
         <p className="text-sm text-wm-muted mb-6">{t('twoPath.proDesc')}</p>
         <ul className="space-y-3 mb-8">
-          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9')].map((f, i) => (
+          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9'), t('twoPath.proF10')].map((f, i) => (
             <li key={i} className="flex items-start gap-3 text-sm">
               <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
               <span className="text-wm-muted">{f}</span>
@@ -776,13 +790,10 @@ const ProShowcase = () => (
             </div>
           </div>
           <div className="flex gap-4">
-            <Telescope className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
+            <Boxes className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
             <div>
-              <h4 className="font-bold mb-1">
-                {t('proShowcase.orbitalSurveillance')}
-                <SoonBadge />
-              </h4>
-              <p className="text-sm text-wm-muted">{t('proShowcase.orbitalSurveillanceDesc').replace(/^\(Soon\)\s*/, '')}</p>
+              <h4 className="font-bold mb-1">{t('proShowcase.supplyChainLab')}</h4>
+              <p className="text-sm text-wm-muted">{t('proShowcase.supplyChainLabDesc')}</p>
             </div>
           </div>
           <div className="flex gap-4">
@@ -801,6 +812,8 @@ const ProShowcase = () => (
           </div>
         </div>
 
+        <p className="mt-6 text-xs text-wm-muted">{t('proShowcase.roadmapNote')}</p>
+
         <div className="mt-10 pt-8 border-t border-wm-border">
           <p className="font-mono text-xs text-wm-muted uppercase tracking-widest mb-4">{t('proShowcase.deliveryLabel')}</p>
           <div className="flex gap-6">
@@ -813,7 +826,7 @@ const ProShowcase = () => (
             ].map((ch, i) => (
               <div key={i} className="flex flex-col items-center gap-1.5 text-wm-muted hover:text-wm-text transition-colors cursor-pointer">
                 {ch.icon}
-                <span className="text-[10px] font-mono">{ch.label}</span>
+                <span className="text-xs font-mono">{ch.label}</span>
               </div>
             ))}
           </div>
@@ -897,7 +910,7 @@ const AudiencePersonas = () => {
 const ApiSection = () => (
   <section className="py-24 px-6 border-y border-wm-border bg-[#0a0a0a]" id="api">
     <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
-      <div className="order-2 lg:order-1">
+      <div className="order-2 lg:order-1 min-w-0">
         <div className="bg-black border border-wm-border rounded-lg overflow-hidden font-mono text-sm">
           <div className="bg-wm-card px-4 py-2 border-b border-wm-border flex items-center gap-2">
             <Terminal className="w-4 h-4 text-wm-muted" aria-hidden="true" />
@@ -924,7 +937,7 @@ const ApiSection = () => (
         </div>
       </div>
 
-      <div className="order-1 lg:order-2">
+      <div className="order-1 lg:order-2 min-w-0">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-wm-border bg-wm-card text-wm-muted text-xs font-mono mb-6">
           {t('apiSection.apiTier')}
         </div>
@@ -1109,7 +1122,7 @@ const PricingTable = () => {
         {rows.map((row, i) => (
           <div key={i} className="bg-wm-card border border-wm-border p-4 rounded-sm">
             <p className="font-medium text-sm mb-3">{row.feature}</p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-2 text-xs break-words">
               <div><span className="text-wm-muted">{t('tiers.free')}:</span> {row.free}</div>
               <div><span className="text-wm-green">{t('tiers.pro')}:</span> <span className="text-wm-green">{row.pro}</span></div>
               <div><span className="text-wm-muted">{t('nav.api')}:</span> {row.api}</div>
@@ -1363,15 +1376,14 @@ const EnterprisePage = () => (
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
           <a href={ABOUT_DOCS_PATH} className="hover:text-wm-text transition-colors">About</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
-          <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
+          <a href="https://www.worldmonitor.app/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-          <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
-          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
         </div>
-        <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
+        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
-      <PressFooterNav />
+      <PressNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
           checkout — so the documents they are agreeing to have to be one click
           from here, not one FAQ answer deep (#6976). */}
@@ -1381,6 +1393,26 @@ const EnterprisePage = () => (
 );
 
 /* ─── Page Layout ─── */
+/**
+ * The home page's first viewport and landmark structure. prerender.mjs renders
+ * it to static HTML (pro-first-viewport-prerender.tsx) so the hero paints, at
+ * its final size, before the bundle mounts and replaces #root.
+ */
+export const ProHomeShell = ({ heroSrLead, footer, children }: {
+  heroSrLead?: string;
+  footer?: ReactNode;
+  children: ReactNode;
+}) => (
+  <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+    <Navbar />
+    <main>
+      <Hero srLead={heroSrLead} />
+      {children}
+    </main>
+    {footer}
+  </div>
+);
+
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
@@ -1430,27 +1462,28 @@ export default function App() {
 
   return (
     <ProEntitlementProvider>
-      <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-        <Navbar />
-        <main>
-          <Hero />
-          <SourceMarquee />
-          <Pillars />
-          <WhyUpgrade />
-          <TwoPathSplit />
-          <ProShowcase />
-          <DeliveryDesk />
-          <AudiencePersonas />
-          <SocialProof />
-          <LivePreview />
-          <PricingSection refCode={getRefCode()} attributionSource={getMcpAttributionSource()} />
-          <PricingTable />
-          <ApiSection />
-          <EnterpriseShowcase />
-          <FAQ />
-        </main>
-        <Footer />
-      </div>
+      <ProHomeShell footer={<Footer />}>
+        <SourceMarquee />
+        <Pillars />
+        <WhyUpgrade />
+        <SocialProof />
+        <TwoPathSplit />
+        <ProShowcase />
+        <DeliveryDesk />
+        <AudiencePersonas />
+        <LivePreview />
+        <WhatsNew />
+        <PricingSection
+          refCode={getRefCode()}
+          attributionSource={getMcpAttributionSource()}
+          checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
+          desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+        />
+        <PricingTable />
+        <ApiSection />
+        <EnterpriseShowcase />
+        <FAQ />
+      </ProHomeShell>
     </ProEntitlementProvider>
   );
 }

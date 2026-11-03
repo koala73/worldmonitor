@@ -2,7 +2,7 @@
   "symbols": [
     { "symbol": "^GSPC", "name": "S&P 500", "display": "SPX", "region": "us" },
     { "symbol": "^DJI", "name": "Dow Jones", "display": "DOW", "region": "us" },
-    { "symbol": "^IXIC", "name": "NASDAQ", "display": "NDX", "region": "us" },
+    { "symbol": "^IXIC", "name": "NASDAQ Composite", "display": "COMP", "region": "us" },
     { "symbol": "AAPL", "name": "Apple", "display": "AAPL", "region": "us" },
     { "symbol": "MSFT", "name": "Microsoft", "display": "MSFT", "region": "us" },
     { "symbol": "NVDA", "name": "NVIDIA", "display": "NVDA", "region": "us" },
@@ -103,7 +103,14 @@
     "ADANIENT.NS", "SUNPHARMA.NS", "TITAN.NS", "M&M.NS", "TATASTEEL.NS", "KOTAKBANK.NS",
     "^FTSE", "^GDAXI", "^FCHI", "^SSMI", "^AEX", "^IBEX", "FTSEMIB.MI", "NESN.SW",
     "^N225", "^KS11", "^TWII", "^AXJO", "^STI", "^JKSE", "9984.T", "7203.T", "005930.KS", "9988.HK",
-    "^TASI.SR", "DFMGI.AE", "2222.SR", "2010.SR", "^BVSP", "^GSPTSE", "^MXX", "^MERV", "SHOP.TO"
+    "^TASI.SR", "DFMGI.AE", "2222.SR", "2010.SR", "^BVSP", "^GSPTSE", "^MXX", "^MERV", "SHOP.TO",
+    "NQ=F", "QQQ", "^VXN", "^TNX"
+  ],
+  "auxiliarySymbols": [
+    { "symbol": "NQ=F", "name": "E-mini Nasdaq-100", "display": "NQ", "region": "us" },
+    { "symbol": "QQQ", "name": "Invesco QQQ", "display": "QQQ", "region": "us" },
+    { "symbol": "^VXN", "name": "Nasdaq-100 VIX", "display": "VXN", "region": "us" },
+    { "symbol": "^TNX", "name": "US 10-Year Yield", "display": "US 10Y", "region": "us" }
   ],
   "regions": {
     "us": "US Markets",

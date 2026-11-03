@@ -85,6 +85,7 @@ These panels visualise cross-domain correlation over a rolling window — useful
 | `economic-correlation` | Economic Warfare | Sanctions × markets |
 | `disaster-correlation` | Disaster Cascade | Natural × infra |
 | `cross-source-signals` | Cross-Source Signals | Multi-source signal agreement |
+| `news-market-correlation` | News ↔ Markets | GDELT topic volume × hourly returns for six assets, with a ±6h lead/lag scan. See [News ↔ Markets](/panels/news-market-correlation). |
 
 ## Misc signals
 
@@ -117,7 +118,7 @@ The compact infrastructure tiles use the generated InfrastructureService client.
 | `GET` | `/api/infrastructure/v1/get-ip-geo` | Caller IP geolocation utility for infrastructure-aware experiences; no panel hydrates from it directly. |
 | `GET` | `/api/infrastructure/v1/reverse-geocode` | Coordinate-to-place lookup utility for API consumers and v1 callers; some UI paths still use the legacy thin `/api/reverse-geocode` helper. |
 | `GET` | `/api/infrastructure/v1/get-bootstrap-data` | Batch cache read RPC for selected bootstrap/cache keys; complements the top-level bootstrap hydration path. |
-| `POST` | `/api/infrastructure/v1/record-baseline-snapshot` | Background baseline update used by temporal anomaly tracking; it writes observations and does not render a visible tile by itself. |
+| `POST` | `/api/infrastructure/v1/record-baseline-snapshot` | Deprecated compatibility route. Client-supplied shared baseline writes are disabled. |
 
 ## Shared behaviour
 

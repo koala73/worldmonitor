@@ -159,7 +159,9 @@ describe('empty 200 degraded handler responses', () => {
     assert.equal(response.summary, undefined);
   });
 
-  it('marks chokepoint status cache misses with the documented empty fetchedAt sentinel', async () => {
+  it('marks chokepoint cache and upstream misses with the documented empty fetchedAt sentinel', async () => {
+    globalThis.fetch = async () => new Response('upstream unavailable', { status: 503 });
+
     const response = await getChokepointStatus({} as never, {});
 
     assert.deepEqual(response, {

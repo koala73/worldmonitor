@@ -9,8 +9,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
+import { Window } from 'happy-dom';
+import { htmlToMarkdown } from '../api/_md-url-twin.ts';
 
-import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
+import { buildCorpus, loadCorpusData } from '../scripts/build-crawlable-corpus.mjs';
 import {
   assertNoUnresolvedTokens,
   computeReportMetrics,
@@ -18,6 +20,7 @@ import {
   formatMetric,
   mean,
   resolveMetricTokens,
+  renderResearchReportPage,
 } from '../scripts/build-research-reports.mjs';
 import {
   enumerateMissingDates,
@@ -43,9 +46,11 @@ describe('research report corpus (#5668)', () => {
   let hubHtml;
   let csv;
   let dataJson;
+  let corpusData;
 
   before(async () => {
     outDir = mkdtempSync(join(tmpdir(), 'wm-research-corpus-'));
+    corpusData = await loadCorpusData({ rootDir: repoRoot });
     await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
     html = readFileSync(join(outDir, 'research', report.slug, 'index.html'), 'utf8');
     hubHtml = readFileSync(join(outDir, 'research', 'index.html'), 'utf8');
@@ -82,6 +87,7 @@ describe('research report corpus (#5668)', () => {
   it('keeps dates ordered and consistent across surfaces', () => {
     const [reportLd] = jsonLdObjects(html);
     assert.equal(reportLd['@type'], 'Report');
+    assert.equal(reportLd['@id'], `https://www.worldmonitor.app/research/${report.slug}/#report`);
     assert.ok(report.datePublished <= report.dateModified, 'published must not postdate modified');
     assert.equal(reportLd.datePublished, report.datePublished);
     assert.equal(reportLd.dateModified, report.dateModified);
@@ -92,7 +98,10 @@ describe('research report corpus (#5668)', () => {
       focus.observationEnd <= String(snapshot.capturedAt).slice(0, 10),
       'observation period must end on or before the retrieval date',
     );
-    assert.match(html, /<meta name="lastmod" content="2026-08-30">/);
+    assert.match(
+      html,
+      new RegExp(`<meta name="lastmod" content="${corpusData.lastmod.research}">`),
+    );
     assert.match(
       html,
       new RegExp(`published <time datetime="${report.datePublished}">`),
@@ -105,11 +114,29 @@ describe('research report corpus (#5668)', () => {
     assert.match(html, new RegExp(`<h1>${report.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</h1>`));
     assert.equal(reportLd.name, report.title);
     assert.equal(dataJson.title, report.title);
-    assert.equal(reportLd.author.name, report.author.name);
+    // The "World Monitor Research" byline stays on the page and in the download;
+    // in the entity graph author/publisher fold into the canonical Organization
+    // so the page does not publish a second org claiming the same homepage
+    // (#7459b). Assert both roles against GENERATED output, not generator source.
+    const CANONICAL_ORG_ROLE = {
+      '@id': 'https://www.worldmonitor.app/#organization',
+      '@type': 'Organization',
+      name: 'World Monitor',
+      url: 'https://www.worldmonitor.app/',
+    };
+    assert.deepEqual(reportLd.author, CANONICAL_ORG_ROLE);
+    assert.deepEqual(reportLd.publisher, CANONICAL_ORG_ROLE);
+    assert.deepEqual(reportLd.hasPart.creator, CANONICAL_ORG_ROLE);
+    assert.match(html, new RegExp(report.author.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.equal(dataJson.author, report.author.name);
     assert.equal(reportLd.version, report.version);
     assert.equal(dataJson.version, report.version);
     assert.equal(reportLd.url, `https://www.worldmonitor.app/research/${report.slug}/`);
+    assert.equal(reportLd['@id'], `${reportLd.url}#report`);
+    assert.deepEqual(reportLd.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.lede'],
+    });
     assert.equal(dataJson.canonicalUrl, reportLd.url);
     // Headline metric agreement: the decline percentage rendered on the page
     // matches the JSON download byte-for-value.
@@ -186,7 +213,11 @@ describe('research report corpus (#5668)', () => {
     assert.match(hubHtml, new RegExp(`href="/research/${report.slug}/"`));
     assert.match(html, /href="\/docs\/methodology\/chokepoints"/);
     assert.match(html, /href="\/chokepoints\/strait-of-hormuz\/"[^>]*data-umami-event-target="chokepoint-page"/);
-    assert.match(html, /utm_source=research-report/);
+    // Attribution rides the data-umami-event-target attribute, not a query
+    // key: a utm_* key on a published href is a 308 hop through the
+    // middleware index-noise strip (#8603).
+    assert.match(html, /href="https:\/\/www\.worldmonitor\.app\/pro"[^>]*data-umami-event-target="pricing"/);
+    assert.doesNotMatch(html, /utm_source=/, 'research CTAs must not carry utm_source; middleware 308s it away');
     assert.doesNotMatch(html, /[?&]ref=/, 'research CTAs must never use the affiliate ref= param');
     const [reportLd] = jsonLdObjects(html);
     for (const distribution of reportLd.hasPart.distribution) {
@@ -210,6 +241,72 @@ describe('research report corpus (#5668)', () => {
       /^World Monitor — real-time global intelligence dashboard/,
       'report OG alt must describe the report, not the generic site card',
     );
+  });
+
+  it('points the dated direct answer at the live chokepoint page', () => {
+    const summary = html.match(/<section id="summary">([\s\S]*?)<\/section>/)?.[1];
+    assert.ok(summary, 'report must render a summary section');
+    const focus = snapshot.chokepoints[report.focusChokepointId];
+    assert.match(
+      summary,
+      new RegExp(`through ${focus.observationEnd}[^<]*<a href="/chokepoints/strait-of-hormuz/"[^>]*data-umami-event-target="chokepoint-page"`),
+      'the direct answer must say how old it is and link the live status page next to it',
+    );
+  });
+
+  it('connects historical focus and comparison research in main content and Markdown', () => {
+    const window = new Window();
+    try {
+      for (const [slug, role] of [
+        ['strait-of-hormuz', 'Focus'],
+        ['bab-el-mandeb', 'Comparison'],
+        ['suez-canal', 'Comparison'],
+        ['cape-of-good-hope', 'Comparison'],
+      ]) {
+        window.document.body.innerHTML = html;
+        const href = `/chokepoints/${slug}/`;
+        assert.ok(window.document.querySelector(`main a[href="${href}"]`), `report links ${slug} in content`);
+        assert.ok(htmlToMarkdown(html).includes(`](${href})`));
+        const trackerHtml = readFileSync(join(outDir, 'chokepoints', slug, 'index.html'), 'utf8');
+        window.document.body.innerHTML = trackerHtml;
+        const links = window.document.querySelectorAll(`main a[href="/research/${report.slug}/"]`);
+        assert.equal(links.length, 1, `${slug} has one report return path`);
+        assert.match(links[0].parentElement.textContent, new RegExp(`${role}.*historical research.*${report.datePublished}`, 'i'));
+        assert.ok(htmlToMarkdown(trackerHtml).includes(`](/research/${report.slug}/)`));
+      }
+    } finally {
+      window.close();
+    }
+  });
+
+  it('rejects a declared comparison without a canonical tracker route', () => {
+    assert.throws(() => renderResearchReportPage({
+      report, snapshot, tpl: {},
+      chokepointSlugById: new Map([['hormuz_strait', 'strait-of-hormuz']]),
+    }), /contextChokepointId bab_el_mandeb.*chokepoint registry/);
+  });
+
+  it('keeps one backlink when a focus waterway also appears as comparison context', async () => {
+    const duplicateOut = mkdtempSync(join(tmpdir(), 'wm-research-duplicate-'));
+    const originalIds = report.contextChokepointIds;
+    try {
+      report.contextChokepointIds = [...originalIds, report.focusChokepointId, ...originalIds];
+      await buildCorpus({ rootDir: repoRoot, outDir: duplicateOut });
+      const window = new Window();
+      try {
+        window.document.write(readFileSync(join(duplicateOut, 'chokepoints/strait-of-hormuz/index.html'), 'utf8'));
+        const links = window.document.querySelectorAll(`main a[href="/research/${report.slug}/"]`);
+        assert.equal(links.length, 1);
+        assert.match(links[0].parentElement.textContent, /Focus in historical research/);
+        window.document.body.innerHTML = readFileSync(join(duplicateOut, 'research', report.slug, 'index.html'), 'utf8');
+        assert.equal(window.document.querySelectorAll('main table a[href="/chokepoints/suez-canal/"]').length, 1);
+      } finally {
+        window.close();
+      }
+    } finally {
+      report.contextChokepointIds = originalIds;
+      rmSync(duplicateOut, { recursive: true, force: true });
+    }
   });
 
   it('separates evidence layers and states failure modes in plain language', () => {

@@ -45,6 +45,25 @@ export const COMPANY_MONITORING_ROLLOUT_FLAGS = {
   alerts: false,
 } as const;
 
+/**
+ * `mcpCallsPerDay` marker for plans whose MCP calls consume the plan's REST
+ * budget rather than a separate allowance. Declared here rather than as a bare
+ * string literal so every reader imports the same token.
+ */
+export const SHARED_API_BUDGET = "shared-api-budget";
+
+/**
+ * Per-account daily ceiling on desktop-key traffic (KTD6), shared by Pro and
+ * Pro Business. Counted per owner userId and UTC date across every route, so
+ * revoking and recreating keys cannot reset it.
+ */
+// Desktop-key daily ceiling per account: 3x the p99 daily request count of
+// desktop-like clients (Axiom wm_api_usage, 2026-10-25), rounded up. Sized to
+// a dashboard, not to scripted API traffic, so a key cannot back another app.
+export const DESKTOP_KEY_DAILY_CEILING = 7_500;
+/** Per-minute burst for desktop keys; covers startup bursts (p99.9 ~200/IP). */
+export const DESKTOP_KEY_BURST_PER_MINUTE = 120;
+
 export type PlanLimits = {
   /**
    * Daily REST/gateway request allowance. `null` means unlimited for plans
@@ -57,10 +76,17 @@ export type PlanLimits = {
    */
   apiBurstRequestsPerMinute: number | null;
   /**
-   * Daily MCP tool/resource call allowance. Current runtime enforcement only
-   * has a Pro daily counter; API-tier counters need scanner/source support.
+   * Daily MCP tool/resource call allowance.
+   *
+   * `SHARED_API_BUDGET` means the plan has no separate MCP allowance: its MCP
+   * calls charge `apiRequestsPerDay` at a per-tool weight (`api/mcp/quota.ts`).
+   * Only plans that own a real REST budget may declare it — Pro and Pro
+   * Business are `apiAccess: false` with `apiRequestsPerDay: 0`, so they must
+   * keep a number of their own.
+   *
+   * A number is a dedicated MCP counter; `null` is unlimited.
    */
-  mcpCallsPerDay: number | null;
+  mcpCallsPerDay: number | null | typeof SHARED_API_BUDGET;
   /**
    * Daily dashboard-AI/REST LLM allowance. This is deliberately separate from
    * `mcpCallsPerDay`: MCP clients and dashboard/API callers have different
@@ -72,6 +98,15 @@ export type PlanLimits = {
    * telemetry is durable enough to scan.
    */
   mcpBurstRequestsPerMinute: number | null;
+  /**
+   * Per-account daily ceiling on desktop-key requests, across every route
+   * (plan 2026-10-25-001, KTD6). `0` on plans without `desktopKeyAccess`.
+   * Plan structure: the catalog value wins over a stored row in
+   * `mergeEntitlementFeatures`, so a ceiling change reaches existing rows.
+   */
+  desktopKeyRequestsPerDay: number;
+  /** Per-account per-minute burst on desktop-key requests. Catalog wins, as above. */
+  desktopKeyBurstPerMinute: number;
 };
 
 export type PlanLimitDimension =
@@ -82,6 +117,7 @@ export type PlanLimitDimension =
 
 export type PlanFeatures = {
   tier: number;
+  historyDays: number;
   maxDashboards: number;
   apiAccess: boolean;
   apiRateLimit: number;
@@ -108,6 +144,46 @@ export type PlanFeatures = {
    * (fail-closed). Catalog entries below ALWAYS set the field explicitly.
    */
   mcpAccess?: boolean;
+  /**
+   * Partner-embed key issuance — gates minting `wme_…` keys
+   * (`convex/embedKeys.ts`). Deliberately NOT `apiAccess`: an embed key is
+   * pasted into the partner's PUBLIC HTML (`data-key` on `public/embed.js`),
+   * so it is worthless outside the embed surface and must be reachable by
+   * every paid tier — including Pro and Pro Business, which are
+   * `apiAccess: false` and therefore cannot mint a `wm_…` key at all.
+   *
+   * A named flag rather than a bare `tier >= 1` at each call site, for the
+   * same reason `mcpAccess` is one: the paywall ledger
+   * (`scripts/generate-entitlement-crosswalk.mjs`) can only certify a rule it
+   * can see, and a capability spelled out per-plan is what a pricing change
+   * edits. `shared/embed-access.ts` holds the single predicate that reads it.
+   *
+   * Optional for the same reason as `mcpAccess`: rows written before this
+   * field existed omit it, and the read-time catalog merge
+   * (`convex/entitlements.ts`) supplies the plan default. Consumers treat
+   * `undefined` as false (fail-closed). Catalog entries below ALWAYS set the
+   * field explicitly.
+   */
+  embedAccess?: boolean;
+  /**
+   * Desktop-key issuance and use (plan 2026-10-25-001) — a `wm_` key for the
+   * official desktop app or a self-built desktop copy, scoped to what a
+   * signed-in Pro session reaches minus the API-only surfaces. True for Pro
+   * and Pro Business only; deliberately not `apiAccess`.
+   * `shared/desktop-key-access.js` holds the single predicate that reads it.
+   *
+   * Optional for the same reason as `embedAccess`: rows written before the
+   * field existed omit it, the read-time catalog merge supplies the plan
+   * default, and consumers treat `undefined` as false (fail-closed). Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  desktopKeyAccess?: boolean;
+  /**
+   * Most active desktop keys one account may hold (R5). `0` where
+   * `desktopKeyAccess` is false. Plan structure: catalog wins in
+   * `mergeEntitlementFeatures`. Optional only because legacy rows omit it.
+   */
+  maxDesktopKeys?: number;
   /**
    * Per-account daily REST request allowance (the "included" number). Read by
    * the per-account rate-limit layer (#3199): the daily usage meter counts but
@@ -171,6 +247,7 @@ export interface CatalogEntry {
 
 const FREE_FEATURES: PlanFeatures = {
   tier: 0,
+  historyDays: 7,
   maxDashboards: 3,
   apiAccess: false,
   apiRateLimit: 0,
@@ -189,15 +266,21 @@ const FREE_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 0,
     dashboardAiCallsPerDay: 0,
     mcpBurstRequestsPerMinute: 0,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: false,
   exportFormats: [],
   mcpAccess: false,
+  embedAccess: false,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: false,
 };
 
 const PRO_FEATURES: PlanFeatures = {
   tier: 1,
+  historyDays: 90,
   maxDashboards: 10,
   apiAccess: false,
   apiRateLimit: 0,
@@ -208,10 +291,15 @@ const PRO_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 50,
     dashboardAiCallsPerDay: 500,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: DESKTOP_KEY_DAILY_CEILING,
+    desktopKeyBurstPerMinute: DESKTOP_KEY_BURST_PER_MINUTE,
   },
   prioritySupport: false,
   exportFormats: [],
   mcpAccess: true,
+  embedAccess: true,
+  desktopKeyAccess: true,
+  maxDesktopKeys: 2,
   dataExport: false,
 };
 
@@ -228,6 +316,7 @@ const PRO_FEATURES: PlanFeatures = {
  */
 const PRO_BUSINESS_FEATURES: PlanFeatures = {
   tier: 1,
+  historyDays: 90,
   maxDashboards: 25,
   apiAccess: false,
   apiRateLimit: 0,
@@ -238,15 +327,21 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 250,
     dashboardAiCallsPerDay: 2_500,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: DESKTOP_KEY_DAILY_CEILING,
+    desktopKeyBurstPerMinute: DESKTOP_KEY_BURST_PER_MINUTE,
   },
   prioritySupport: true,
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
+  embedAccess: true,
+  desktopKeyAccess: true,
+  maxDesktopKeys: 3,
   dataExport: true,
 };
 
 const API_STARTER_FEATURES: PlanFeatures = {
   tier: 2,
+  historyDays: 365,
   maxDashboards: 25,
   apiAccess: true,
   apiRateLimit: 60,
@@ -254,18 +349,24 @@ const API_STARTER_FEATURES: PlanFeatures = {
   planLimits: {
     apiRequestsPerDay: 1_000,
     apiBurstRequestsPerMinute: 60,
-    mcpCallsPerDay: 1_000,
+    mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 1_000,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: false,
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
+  embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
 };
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
   tier: 2,
+  historyDays: 365,
   maxDashboards: 100,
   apiAccess: true,
   apiRateLimit: 300,
@@ -273,35 +374,53 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   planLimits: {
     apiRequestsPerDay: 10_000,
     apiBurstRequestsPerMinute: 300,
-    mcpCallsPerDay: 10_000,
+    mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 10_000,
     mcpBurstRequestsPerMinute: 300,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: true,
   // xlsx removed (#4974): no XLSX exporter exists anywhere in the product.
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
+  embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
 };
 
+// Enterprise is sold as "Unlimited API requests" under fair use. The daily
+// numbers below are circuit breakers against a leaked key, not plan limits:
+// every one is at least 2.5× the largest self-serve plan, and the high-usage
+// alarm (server/_shared/high-usage-alarm.ts) pages at a quarter of each. An
+// unknown Dodo product also resolves here (FALLBACK_PLAN_KEY in
+// payments/subscriptionHelpers.ts), so "unlimited" was reachable without a
+// sales contract. Pinned by tests/high-usage-alarm.test.mts.
 const ENTERPRISE_FEATURES: PlanFeatures = {
   tier: 3,
+  historyDays: 365,
   maxDashboards: -1,
   apiAccess: true,
   apiRateLimit: 1000,
-  apiDailyAllowance: -1,
+  apiDailyAllowance: 100_000,
   planLimits: {
-    apiRequestsPerDay: null,
+    apiRequestsPerDay: 100_000,
     apiBurstRequestsPerMinute: 1000,
-    mcpCallsPerDay: null,
-    dashboardAiCallsPerDay: null,
+    mcpCallsPerDay: 25_000,
+    dashboardAiCallsPerDay: 25_000,
     mcpBurstRequestsPerMinute: 1000,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: true,
   // xlsx + api-stream removed for the same reason xlsx left API Business
   // (#4974): neither has an exporter, and this array is display truth.
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
+  embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
 };
 
@@ -339,14 +458,15 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "pro",
     features: PRO_FEATURES,
     marketingFeatures: [
-      "Everything in Free",
-      "AI stock analysis & backtesting",
-      "Daily market briefs",
-      "Military & geopolitical tracking",
-      "Custom widget builder",
-      "10 custom dashboards (vs 3)",
+      "Everything in Free — panels, sources & followed countries uncapped",
+      "WM Analyst chat + AI stock analysis & backtesting",
+      "Cost-shock modelling & supply-chain stress tests",
+      "Intel memory — historical search, timelines & similar events",
+      "Physical metals divergence, minerals concentration & sovereign debt data",
+      "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-      "Priority data refresh",
+      "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)",
     ],
     highlightFeatures: ["Personal license", "1 named user"],
     selfServe: true,
@@ -388,6 +508,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
+      "Desktop key for the desktop app (3 keys)",
       "Priority support",
     ],
     highlightFeatures: ["Commercial license included", "1 named user — not a shared login"],
@@ -427,14 +548,15 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,
     marketingFeatures: [
+      "Full Pro dashboard included (1 named user)",
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "License / API key included",
       "Real-time data streams",
       "60 requests/minute",
-      "1,000 requests/day included",
+      "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "Webhook notifications",
     ],
-    highlightFeatures: ["Commercial license — for your organization"],
+    highlightFeatures: ["Commercial use — internal only, not customer-facing"],
     selfServe: true,
     highlighted: false,
     currentForCheckout: true,
@@ -470,16 +592,16 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     features: API_BUSINESS_FEATURES,
     marketingFeatures: [
       "Everything in API Starter",
-      "Redistribution rights — embed our data in what you sell",
+      "R1–R3 redistribution rights for customer-facing products",
       "300 requests/minute",
-      "10,000 requests/day included",
+      "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
       "Priority support",
     ],
     // API Business is the paid Embed/OEM tier, so its bundled seats may go to
     // corporate addresses at any domain. The server still rejects free or
     // disposable addresses and enforces the four-invite cap.
-    highlightFeatures: ["Commercial license — for your customers"],
+    highlightFeatures: ["Commercial use — in your customer-facing products"],
     // Published + self-serve since #4945 (bet B4): the tier existed in the
     // billing system but was invisible on every pricing surface and had
     // zero customers. Starter→Business upgrades for existing subscribers
@@ -613,6 +735,16 @@ export function getEntitlementFeatures(planKey: string): PlanFeatures {
   return entry.features;
 }
 
+/**
+ * True when the plan's MCP calls charge its REST budget rather than a counter
+ * of their own. Derived from the catalog so a new plan cannot be added to one
+ * list and forgotten in another — the drift that left API-tier MCP usage read
+ * from an Axiom query that could not answer it.
+ */
+export function hasSharedApiBudget(planKey: string): boolean {
+  return getEntitlementFeatures(planKey).planLimits?.mcpCallsPerDay === SHARED_API_BUDGET;
+}
+
 export function getPlanLimit(
   planKey: string,
   dimension: PlanLimitDimension,
@@ -625,7 +757,13 @@ export function getPlanLimit(
     case "api_minute_burst":
       return limits.apiBurstRequestsPerMinute;
     case "mcp_daily_calls":
-      return limits.mcpCallsPerDay;
+      // A shared-budget plan has no MCP ceiling of its own: its MCP calls are
+      // charged to the REST budget, so that IS the limit a notice must warn
+      // against. Returning the marker (or a stale second number) here is what
+      // let the API tiers advertise 1,000 MCP calls/day that never existed.
+      return limits.mcpCallsPerDay === SHARED_API_BUDGET
+        ? limits.apiRequestsPerDay
+        : limits.mcpCallsPerDay;
     case "mcp_minute_burst":
       return limits.mcpBurstRequestsPerMinute;
   }

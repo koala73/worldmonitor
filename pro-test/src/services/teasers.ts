@@ -14,11 +14,14 @@
  */
 
 import fallbackJson from '../generated/teasers.json';
+import { dedupeByArticleUrl } from '../../../shared/article-identity.js';
 import { createTimeoutSignal } from './timeout-signal';
 
 export interface TeaserHeadline {
   title: string;
   source: string;
+  /** Article URL. A headline rendered beside a masthead must be checkable (#7608). */
+  url: string;
   publishedAt: number;
 }
 
@@ -43,6 +46,8 @@ export interface TeaserQuote {
 }
 
 export interface TeaserState {
+  /** Capture date (YYYY-MM-DD) of the frozen snapshot behind the fallback rows. */
+  capturedAt: string;
   headlines: { items: TeaserHeadline[]; live: boolean };
   cii: { items: TeaserCiiScore[]; live: boolean };
   chokepoints: { items: TeaserChokepoint[]; total: number; disrupted: number; live: boolean };
@@ -51,26 +56,102 @@ export interface TeaserState {
 
 const FETCH_TIMEOUT_MS = 5000;
 
+// Mirrors AGGREGATOR_LINK_HOSTS in scripts/freeze-crawlable-live-pulse.mjs.
+// pro-test is an isolated package and cannot import from scripts/, so this list
+// is duplicated on purpose — keep the two in step. An aggregator redirect is an
+// opaque, expiring URL: the masthead beside it is real but the link does not
+// let a reader verify the story, which is the whole point of showing it (#7608).
+const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
+
+function articleUrl(link: string | undefined): string {
+  if (!link) return '';
+  try {
+    const parsed = new URL(link);
+    const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+    return parsed.protocol === 'https:' && hostname && !AGGREGATOR_LINK_HOSTS.has(hostname)
+      ? link
+      : '';
+  } catch {
+    return '';
+  }
+}
+
 interface FallbackShape {
+  capturedAt: string;
   headlines: TeaserHeadline[];
   cii: TeaserCiiScore[];
   chokepoints: TeaserChokepoint[];
+  chokepointDisrupted: number;
   chokepointTotal: number;
   quotes: TeaserQuote[];
 }
 
 const fallback = fallbackJson as unknown as FallbackShape;
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Render a snapshot capture date (YYYY-MM-DD) the way the crawlable corpus
+ * names its dates ("Sep 4, 2026") — the homepage badge must read as the same
+ * publication event, not a second date dialect (#7654).
+ */
+export function formatSnapshotDate(capturedAt: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(capturedAt || ''));
+  if (!match) return String(capturedAt || '');
+  return `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}, ${match[1]}`;
+}
+
+/**
+ * The capture date of the committed pulse freeze. `build-welcome-teasers.mjs`
+ * writes the same date into the homepage `lastmod` and `dateModified`, so the
+ * hero's visible "As of" date reads from here and cannot trail them (#8701).
+ */
+export const PUBLISHED_PULSE_DATE: string = (fallbackJson as { capturedAt: string }).capturedAt;
+
+// Locale tags whose Intl default differs from the date the copy has always
+// shown: day-first English, and Latin digits in Arabic. Every locale also
+// forces the Gregorian calendar, which Thai and Persian do not default to.
+const HERO_DATE_LOCALES: Record<string, string> = {
+  en: 'en-GB',
+  ar: 'ar-u-nu-latn',
+  zh: 'zh-CN',
+};
+
+/**
+ * A YYYY-MM-DD capture date as a long localized date ("28 September 2026",
+ * "2026年9月28日"). Read in UTC so the prerender and every browser time zone
+ * print the same day.
+ */
+export function formatLocalizedDate(capturedAt: string, language: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(capturedAt || ''))) return String(capturedAt || '');
+  return new Intl.DateTimeFormat(HERO_DATE_LOCALES[language] ?? language, {
+    calendar: 'gregory',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${capturedAt}T00:00:00Z`));
+}
+
 const isDisrupted = (c: { status: string }) => c.status !== 'green';
 
 export function getFallbackTeasers(): TeaserState {
   return {
+    // The fallback rows are a frozen capture of real published data (#7608),
+    // so they carry the capture date for the Published-pulse badge. A card
+    // earns LIVE only when its fetch succeeds (see fetchLiveTeasers); until
+    // then it is an attributable snapshot, never a sample (#7654).
+    capturedAt: fallback.capturedAt,
     headlines: { items: fallback.headlines, live: false },
     cii: { items: fallback.cii, live: false },
     chokepoints: {
       items: fallback.chokepoints,
+      // Both halves come from the full capture. Counting `disrupted` off
+      // `fallback.chokepoints` — the five rows the card renders — published
+      // "5 of 13" into the prerender against a real 7 of 13, because the
+      // numerator was capped by the display slice and the denominator was not.
       total: fallback.chokepointTotal,
-      disrupted: fallback.chokepoints.filter(isDisrupted).length,
+      disrupted: fallback.chokepointDisrupted,
       live: false,
     },
     quotes: { items: fallback.quotes, live: false },
@@ -167,9 +248,12 @@ interface CryptoQuotesResponse {
 const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
 const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
-const QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+// Exported so tests/welcome-teasers.test.mjs can pin these against the
+// duplicated copies in scripts/freeze-crawlable-live-pulse.mjs (pro-test is an
+// isolated package and cannot share the constants directly).
+export const QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 
-const QUOTE_LABELS: Record<string, string> = {
+export const QUOTE_LABELS: Record<string, string> = {
   '^GSPC': 'S&P 500',
   '^IXIC': 'Nasdaq',
   '^VIX': 'VIX',
@@ -235,7 +319,7 @@ async function fetchQuotes(): Promise<{ items: TeaserQuote[]; live: boolean } | 
 }
 
 interface FeedDigestResponse {
-  categories?: Record<string, { items?: Array<{ title?: string; source?: string; publishedAt?: number; importanceScore?: number }> }>;
+  categories?: Record<string, { items?: Array<{ title?: string; source?: string; link?: string; publishedAt?: number; importanceScore?: number }> }>;
   generatedAt?: string;
 }
 
@@ -248,10 +332,26 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
     .flatMap(c => c?.items ?? [])
     .filter(i => typeof i.title === 'string' && i.title.length > 0);
   if (!all.length) return null;
-  const items = all
-    .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
+  const ranked = all
+    // Same three-level ordering as selectFrozenHeadlines in
+    // scripts/freeze-crawlable-live-pulse.mjs. Sorting on importance alone
+    // leaves ties to array order, so a tie at the fourth slot could swap which
+    // headline the live fetch shows versus the frozen row it replaces.
+    .sort((a, b) => (
+      (b.importanceScore ?? 0) - (a.importanceScore ?? 0)
+      || (b.publishedAt ?? 0) - (a.publishedAt ?? 0)
+      || (a.title ?? '').localeCompare(b.title ?? '')
+    ));
+  const items = dedupeByArticleUrl(ranked, i => i.link)
     .slice(0, 4)
-    .map(i => ({ title: i.title as string, source: i.source ?? '', publishedAt: i.publishedAt ?? 0 }));
+    .map(i => ({
+      title: i.title as string,
+      source: i.source ?? '',
+      // Anything not a verifiable https article URL degrades to plain text
+      // rather than becoming a live href (LiveStrip renders a <span> for '').
+      url: articleUrl(i.link),
+      publishedAt: i.publishedAt ?? 0,
+    }));
   // The digest response carries no degraded/stale booleans — its freshness
   // signal is generatedAt. Only claim LIVE when the digest is recent; an
   // unparseable/missing timestamp keeps the badge (matches the other
@@ -264,7 +364,9 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
 /**
  * Fetch all four teasers, merging successes over the committed fallback.
  * Never throws; cards whose fetch failed keep their fallback values with
- * live=false so the UI shows SAMPLE instead of LIVE.
+ * live=false so the UI shows the Published-pulse snapshot instead of LIVE.
+ * The capture date always travels with the state — live cards and snapshot
+ * cards alike answer "as of when" from the same field.
  */
 export async function fetchLiveTeasers(): Promise<TeaserState> {
   const state = getFallbackTeasers();
@@ -275,9 +377,9 @@ export async function fetchLiveTeasers(): Promise<TeaserState> {
     fetchChokepoints(),
     fetchQuotes(),
   ]);
-  if (headlines) state.headlines = headlines;
-  if (cii) state.cii = cii;
-  if (chokepoints) state.chokepoints = chokepoints;
-  if (quotes) state.quotes = quotes;
+  if (headlines?.live) state.headlines = headlines;
+  if (cii?.live) state.cii = cii;
+  if (chokepoints?.live) state.chokepoints = chokepoints;
+  if (quotes?.live) state.quotes = quotes;
   return state;
 }

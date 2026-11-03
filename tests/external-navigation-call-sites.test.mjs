@@ -1,3 +1,6 @@
+// These source checks pin helper use and allowed window.open counts in the
+// migrated renderer files (#8690, section 2).
+// Runtime tests of openExternalUrl cannot prove that every listed caller uses it.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -6,12 +9,12 @@ import { describe, it } from 'node:test';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callSiteFiles = [
-  'src/components/Panel.ts',
-  'src/components/ResilienceWidget.ts',
+  'src/services/upgrade-flow.ts',
   'src/app/event-handlers.ts',
   'src/app/desktop-updater.ts',
   'src/settings-main.ts',
   'src/components/RuntimeConfigPanel.ts',
+  'src/App.ts', // followed-countries cap-drop toast upgrade action (#5911)
 ];
 
 describe('external navigation call-site contract (#6120)', () => {
@@ -52,12 +55,12 @@ describe('external navigation call-site contract (#6120)', () => {
     // fire-and-forget (the handle is never read), which is why passing
     // `noopener,noreferrer` — and getting null back — is harmless here.
     const ALLOWED_WINDOW_OPEN = new Map([
-      ['src/components/Panel.ts', 1], //            web checkout fallback
-      ['src/components/ResilienceWidget.ts', 2], // web upgrade fallbacks
+      ['src/services/upgrade-flow.ts', 1], //       web checkout fallback (shared funnel helper)
       ['src/app/event-handlers.ts', 2], //          download-banner links
       ['src/app/desktop-updater.ts', 1], //         non-desktop update link
       ['src/settings-main.ts', 0],
       ['src/components/RuntimeConfigPanel.ts', 0],
+      ['src/App.ts', 0],
     ]);
 
     const unaccounted = [];

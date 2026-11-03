@@ -256,6 +256,43 @@ export interface GetChinaActivityNowcastResponse {
   payloadJson: string;
 }
 
+export interface GetNo2ActivityRequest {
+  countryCode: string;
+  regionId: string;
+  kind: No2RegionKind;
+}
+
+export interface GetNo2ActivityResponse {
+  regions: No2ActivityRegion[];
+  generatedAt: string;
+  stale: boolean;
+  methodVersion: string;
+  attribution: string;
+  unavailableReason: No2ActivityUnavailableReason;
+  upstreamUnavailable: boolean;
+}
+
+export interface No2ActivityRegion {
+  id: string;
+  kind: No2RegionKind;
+  label: string;
+  countryCode: string;
+  bbox: number[];
+  current?: No2Window;
+  baselineYears: number[];
+  baselineMeanNo2MolM2?: number;
+  changePercent?: number;
+  direction: No2Direction;
+  exclusion: No2RegionExclusion;
+}
+
+export interface No2Window {
+  windowStart: string;
+  windowEnd: string;
+  validDays: number;
+  meanNo2MolM2?: number;
+}
+
 export interface GetEnergyCapacityRequest {
   energySources: string[];
   years: number;
@@ -487,6 +524,7 @@ export interface GetEconomicCalendarResponse {
   toDate: string;
   total: number;
   unavailable: boolean;
+  asOf: string;
 }
 
 export interface EconomicEvent {
@@ -660,6 +698,55 @@ export interface FaoFoodPricePoint {
   cereals: number;
   oils: number;
   sugar: number;
+}
+
+export interface GetFoodPricesRequest {
+}
+
+export interface GetFoodPricesResponse {
+  sources: FoodPriceSource[];
+  unavailable: boolean;
+}
+
+export interface FoodPriceSource {
+  id: string;
+  name: string;
+  country: string;
+  countryCode: string;
+  url: string;
+  cadence: string;
+  contextOnly: boolean;
+  fetchedAt: string;
+  latestReportDate: string;
+  status: string;
+  prices: FoodMarketPrice[];
+  contexts: FoodSecurityContext[];
+  attribution: string;
+}
+
+export interface FoodMarketPrice {
+  item: string;
+  market: string;
+  marketType: string;
+  origin: string;
+  unit: string;
+  currency: string;
+  date: string;
+  price: number;
+  wowAvailable: boolean;
+  wowPct: number;
+  previousDate: string;
+  previousPrice: number;
+}
+
+export interface FoodSecurityContext {
+  countryCode: string;
+  country: string;
+  referenceDate: string;
+  title: string;
+  url: string;
+  fetchedAt: string;
+  status: string;
 }
 
 export interface GetOilStocksAnalysisRequest {
@@ -887,6 +974,307 @@ export interface TenderSourceStatus {
   paced: boolean;
 }
 
+export interface GetUsCpiMonthlyRequest {
+  history: boolean;
+  limit?: number;
+}
+
+export interface GetUsCpiMonthlyResponse {
+  months: UsCpiMonth[];
+  unavailable: boolean;
+}
+
+export interface UsCpiMonth {
+  month: number;
+  headline?: UsCpiReading;
+  core?: UsCpiReading;
+  food?: UsCpiReading;
+  energy?: UsCpiReading;
+  shelter?: UsCpiReading;
+  services?: UsCpiReading;
+}
+
+export interface UsCpiReading {
+  index: number;
+  monthOverMonth?: UsCpiPercentChange;
+  yearOverYear?: UsCpiPercentChange;
+}
+
+export interface UsCpiPercentChange {
+  percent: number;
+}
+
+export interface GetUsTreasuryParYieldCurveRequest {
+  history: boolean;
+  limit?: number;
+}
+
+export interface GetUsTreasuryParYieldCurveResponse {
+  curves: UsTreasuryParYieldCurve[];
+  unavailable: boolean;
+}
+
+export interface UsTreasuryParYieldCurve {
+  date: number;
+  oneMonth?: number;
+  oneAndAHalfMonth?: number;
+  twoMonth?: number;
+  threeMonth?: number;
+  fourMonth?: number;
+  sixMonth?: number;
+  oneYear?: number;
+  twoYear?: number;
+  threeYear?: number;
+  fiveYear?: number;
+  sevenYear?: number;
+  tenYear?: number;
+  twentyYear?: number;
+  thirtyYear?: number;
+}
+
+export interface GetUsInterestRatesRequest {
+  history: boolean;
+  limit?: number;
+}
+
+export interface GetUsInterestRatesResponse {
+  series: UsInterestRateSeries[];
+  unavailable: boolean;
+}
+
+export interface UsInterestRateSeries {
+  id: string;
+  points: UsInterestRateObservation[];
+}
+
+export interface UsInterestRateObservation {
+  date: number;
+  percent: number;
+}
+
+export interface GetCapitalFlowsRequest {
+  country: string;
+  includeSeries: boolean;
+  counterpart: string;
+}
+
+export interface GetCapitalFlowsResponse {
+  countries: CapitalFlowCountry[];
+  latest?: CapitalFlowLatest;
+  seededAt: number;
+  unavailable: boolean;
+  sources: string[];
+  method: Record<string, string>;
+  pair?: CapitalFlowPair;
+}
+
+export interface CapitalFlowCountry {
+  country: string;
+  iso3: string;
+  gdpUsdBn?: number;
+  gdpYear: number;
+  bop?: CapitalFlowBop;
+  bank?: CapitalFlowBank;
+  portfolio?: CapitalFlowPortfolio;
+  fdi?: CapitalFlowFdi;
+}
+
+export interface CapitalFlowBop {
+  frequency: string;
+  latestPeriod: string;
+  state?: CapitalFlowState;
+  episodes?: CapitalFlowEpisodes;
+  totals?: CapitalFlowTotals;
+  series: CapitalFlowPeriod[];
+}
+
+export interface CapitalFlowState {
+  inflow: string;
+  outflow: string;
+  inflowZ?: number;
+  outflowZ?: number;
+}
+
+export interface CapitalFlowEpisodes {
+  surge: CapitalFlowEpisode[];
+  stop: CapitalFlowEpisode[];
+  flight: CapitalFlowEpisode[];
+  retrenchment: CapitalFlowEpisode[];
+}
+
+export interface CapitalFlowEpisode {
+  start: string;
+  end: string;
+  quarters: number;
+  peakZ: number;
+  peakPeriod: string;
+}
+
+export interface CapitalFlowTotals {
+  inflowsUsdBn?: number;
+  outflowsUsdBn?: number;
+  netUsdBn?: number;
+  inflowsPctGdp?: number;
+  outflowsPctGdp?: number;
+  inflowsYoyPct?: number;
+  outflowsYoyPct?: number;
+}
+
+export interface CapitalFlowPeriod {
+  period: string;
+  inflows?: CapitalFlowComponents;
+  outflows?: CapitalFlowComponents;
+  errorsOmissions?: number;
+}
+
+export interface CapitalFlowComponents {
+  fdi?: number;
+  portfolio?: number;
+  other?: number;
+  total?: number;
+}
+
+export interface CapitalFlowBank {
+  latestPeriod: string;
+  nonBankDepositsAbroad?: CapitalFlowPosition;
+  householdDepositsAbroad?: CapitalFlowPosition;
+  nonBankBorrowingFromAbroad?: CapitalFlowPosition;
+  topBankLocations: CapitalFlowCounterparty[];
+  publishesBilateral: boolean;
+  topDepositorOrigins: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowPosition {
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+}
+
+export interface CapitalFlowCounterparty {
+  country: string;
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+}
+
+export interface CapitalFlowPortfolio {
+  year: number;
+  foreignHoldingsUsdBn?: number;
+  foreignHoldingsPrevYearUsdBn?: number;
+  changePct?: number;
+  reporterCount: number;
+  topHolders: CapitalFlowCounterparty[];
+  holdingsAbroadUsdBn?: number;
+  topDestinations: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowFdi {
+  year: number;
+  inwardUsdBn?: number;
+  topInvestors: CapitalFlowCounterparty[];
+  outwardUsdBn?: number;
+  topDestinations: CapitalFlowCounterparty[];
+}
+
+export interface CapitalFlowLatest {
+  bopQuarter: string;
+  bopYear: string;
+  bisQuarter: string;
+  pipYear: number;
+  fdiYear: number;
+}
+
+export interface CapitalFlowPair {
+  country: string;
+  counterpart: string;
+  bankPeriod: string;
+  portfolioYear: number;
+  aDepositsInB?: CapitalFlowPairLeg;
+  bDepositsInA?: CapitalFlowPairLeg;
+  aBorrowingFromB?: CapitalFlowPairLeg;
+  bBorrowingFromA?: CapitalFlowPairLeg;
+  aHoldingsOfB?: CapitalFlowPairLeg;
+  bHoldingsOfA?: CapitalFlowPairLeg;
+  aFdiInB?: CapitalFlowPairLeg;
+  bFdiInA?: CapitalFlowPairLeg;
+  fdiYear: number;
+}
+
+export interface CapitalFlowPairLeg {
+  status: string;
+  stockUsdBn?: number;
+  flow4qUsdBn?: number;
+  prevYearUsdBn?: number;
+  basis: string;
+  counterpartReportUsdBn?: number;
+  history: CapitalFlowPairPoint[];
+  instrument: string;
+}
+
+export interface CapitalFlowPairPoint {
+  period: string;
+  usdBn: number;
+}
+
+export interface GetWorldCpiMonthlyRequest {
+  history: boolean;
+  country: string;
+  limit?: number;
+}
+
+export interface GetWorldCpiMonthlyResponse {
+  countries: WorldCpiCountry[];
+  unavailable: boolean;
+}
+
+export interface WorldCpiCountry {
+  country: string;
+  source: string;
+  frequency: string;
+  indexBase: string;
+  periods: WorldCpiPeriod[];
+}
+
+export interface WorldCpiPeriod {
+  period: number;
+  reading?: WorldCpiReading;
+}
+
+export interface WorldCpiReading {
+  index: number;
+  periodOverPeriod?: WorldCpiPercentChange;
+  yearOverYear?: WorldCpiPercentChange;
+}
+
+export interface WorldCpiPercentChange {
+  percent: number;
+}
+
+export interface GetGovernmentYieldCurveRequest {
+  country: string;
+  history: boolean;
+  limit?: number;
+}
+
+export interface GetGovernmentYieldCurveResponse {
+  country: string;
+  source: string;
+  measure: string;
+  curves: YieldCurvePoint[];
+  unavailable: boolean;
+}
+
+export interface YieldCurvePoint {
+  date: number;
+  tenors: Record<string, number>;
+}
+
+export type No2ActivityUnavailableReason = "NO2_ACTIVITY_UNAVAILABLE_REASON_UNSPECIFIED" | "NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST" | "NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED" | "NO2_ACTIVITY_UNAVAILABLE_REASON_SEED_MISSING" | "NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_DATASET" | "NO2_ACTIVITY_UNAVAILABLE_REASON_CACHE_UNAVAILABLE";
+
+export type No2Direction = "NO2_DIRECTION_UNSPECIFIED" | "NO2_DIRECTION_STRENGTHENING" | "NO2_DIRECTION_WEAKENING" | "NO2_DIRECTION_UNCHANGED";
+
+export type No2RegionExclusion = "NO2_REGION_EXCLUSION_UNSPECIFIED" | "NO2_REGION_EXCLUSION_REQUEST_FAILED" | "NO2_REGION_EXCLUSION_BASELINE_BACKFILL_PENDING" | "NO2_REGION_EXCLUSION_INSUFFICIENT_VALID_DAYS" | "NO2_REGION_EXCLUSION_INSUFFICIENT_BASELINE_YEARS";
+
+export type No2RegionKind = "NO2_REGION_KIND_UNSPECIFIED" | "NO2_REGION_KIND_COUNTRY" | "NO2_REGION_KIND_CLUSTER";
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -1082,6 +1470,33 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetChinaActivityNowcastResponse;
+  }
+
+  async getNo2Activity(req: GetNo2ActivityRequest, options?: EconomicServiceCallOptions): Promise<GetNo2ActivityResponse> {
+    let path = "/api/economic/v1/get-no2-activity";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.regionId != null && req.regionId !== "") params.set("region_id", String(req.regionId));
+    if (req.kind != null && req.kind !== "NO2_REGION_KIND_UNSPECIFIED") params.set("kind", String(req.kind));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetNo2ActivityResponse;
   }
 
   async getEnergyCapacity(req: GetEnergyCapacityRequest, options?: EconomicServiceCallOptions): Promise<GetEnergyCapacityResponse> {
@@ -1554,6 +1969,29 @@ export class EconomicServiceClient {
     return await resp.json() as GetFaoFoodPriceIndexResponse;
   }
 
+  async getFoodPrices(_req: GetFoodPricesRequest, options?: EconomicServiceCallOptions): Promise<GetFoodPricesResponse> {
+    let path = "/api/economic/v1/get-food-prices";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFoodPricesResponse;
+  }
+
   async getOilStocksAnalysis(_req: GetOilStocksAnalysisRequest, options?: EconomicServiceCallOptions): Promise<GetOilStocksAnalysisResponse> {
     let path = "/api/economic/v1/get-oil-stocks-analysis";
     const url = this.baseURL + path;
@@ -1667,6 +2105,165 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as ListGlobalTendersResponse;
+  }
+
+  async getUsCpiMonthly(req: GetUsCpiMonthlyRequest, options?: EconomicServiceCallOptions): Promise<GetUsCpiMonthlyResponse> {
+    let path = "/api/economic/v1/get-us-cpi-monthly";
+    const params = new URLSearchParams();
+    if (req.history) params.set("history", String(req.history));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetUsCpiMonthlyResponse;
+  }
+
+  async getUsTreasuryParYieldCurve(req: GetUsTreasuryParYieldCurveRequest, options?: EconomicServiceCallOptions): Promise<GetUsTreasuryParYieldCurveResponse> {
+    let path = "/api/economic/v1/get-us-treasury-par-yield-curve";
+    const params = new URLSearchParams();
+    if (req.history) params.set("history", String(req.history));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetUsTreasuryParYieldCurveResponse;
+  }
+
+  async getUsInterestRates(req: GetUsInterestRatesRequest, options?: EconomicServiceCallOptions): Promise<GetUsInterestRatesResponse> {
+    let path = "/api/economic/v1/get-us-interest-rates";
+    const params = new URLSearchParams();
+    if (req.history) params.set("history", String(req.history));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetUsInterestRatesResponse;
+  }
+
+  async getCapitalFlows(req: GetCapitalFlowsRequest, options?: EconomicServiceCallOptions): Promise<GetCapitalFlowsResponse> {
+    let path = "/api/economic/v1/get-capital-flows";
+    const params = new URLSearchParams();
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    if (req.includeSeries) params.set("include_series", String(req.includeSeries));
+    if (req.counterpart != null && req.counterpart !== "") params.set("counterpart", String(req.counterpart));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCapitalFlowsResponse;
+  }
+
+  async getWorldCpiMonthly(req: GetWorldCpiMonthlyRequest, options?: EconomicServiceCallOptions): Promise<GetWorldCpiMonthlyResponse> {
+    let path = "/api/economic/v1/get-world-cpi-monthly";
+    const params = new URLSearchParams();
+    if (req.history) params.set("history", String(req.history));
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetWorldCpiMonthlyResponse;
+  }
+
+  async getGovernmentYieldCurve(req: GetGovernmentYieldCurveRequest, options?: EconomicServiceCallOptions): Promise<GetGovernmentYieldCurveResponse> {
+    let path = "/api/economic/v1/get-government-yield-curve";
+    const params = new URLSearchParams();
+    if (req.country != null && req.country !== "") params.set("country", String(req.country));
+    if (req.history) params.set("history", String(req.history));
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetGovernmentYieldCurveResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

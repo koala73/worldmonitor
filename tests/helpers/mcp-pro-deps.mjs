@@ -1,3 +1,5 @@
+import { PANEL_REQUEST_READ_SCRIPT, PANEL_REQUEST_RESERVE_SCRIPT } from '../../shared/panel-request-scripts.mjs';
+
 // Shared dependency-injection fixtures for the Pro-path MCP test surface.
 // Consumers: `tests/mcp.test.mjs` (U7 Pro-path), `tests/mcp-quota-concurrent.test.mjs`,
 // `tests/mcp-tool-output-contracts.test.mjs`. Single source of truth for the
@@ -18,6 +20,9 @@ export const PRO_TOKEN_ID = 'k57mcptokenid';
 export const PRO_BEARER = 'pro-bearer-uuid';
 export const HMAC_SECRET = 'test-secret-mcp-internal-32-bytes-1234';
 export const BASE_URL = 'https://worldmonitor.app/mcp';
+// The transport at BASE_URL challenges an unauthenticated `initialize`. A full
+// anonymous handshake is served on the machine-discovery alias (same handler).
+export const ANON_DISCOVERY_URL = 'https://worldmonitor.app/.well-known/mcp';
 
 /**
  * In-memory pipeline stub over Pro INCR / DECR / EXPIRE, the Pro daily
@@ -43,6 +48,7 @@ export function makePipelineMock({
   throwOnEval = false,
   decrFails = false,
 } = {}) {
+  const store = new Map();
   let counter = initialCount;
   let limitFloor = initialLimitFloor;
   let freeRequestCount = 0;
@@ -64,7 +70,27 @@ export function makePipelineMock({
     }
     const out = [];
     for (const cmd of commands) {
-      if (cmd[0] === 'EVAL' && Number(cmd[2]) === 3 && cmd.length >= 10) {
+      if (cmd[0] === 'EVAL' && cmd[1] === PANEL_REQUEST_RESERVE_SCRIPT) {
+        const marker = cmd[5];
+        if (store.has(marker)) { out.push({ result: [2, counter, Number(store.get(marker))] }); continue; }
+        if (store.has(cmd[6])) { out.push({ result: [3, counter, Number(store.get(cmd[6]))] }); continue; }
+        const limit = cmd[7] === '' ? null : Number(cmd[7]);
+        if (limit !== null && counter + 1 > limit) { out.push({ result: [0, counter] }); continue; }
+        counter++;
+        if (limit === null) limitFloor = -1;
+        else if (limitFloor !== -1) limitFloor = Math.max(limitFloor ?? 0, limit);
+        store.set(marker, String(cmd[12]));
+        out.push({ result: [1, counter, Number(cmd[12])] });
+      } else if (cmd[0] === 'EVAL' && cmd[1] === PANEL_REQUEST_READ_SCRIPT) {
+        const used = Number(store.get(cmd[4]) ?? 0);
+        if (store.get(cmd[3]) !== String(cmd[7])) out.push({ result: [-1, 0] });
+        else if (used >= Number(cmd[5])) out.push({ result: [0, used] });
+        else { store.set(cmd[4], used + 1); out.push({ result: [1, used + 1] }); }
+      } else if (cmd[0] === 'GET') {
+        out.push({ result: store.get(cmd[1]) ?? null });
+      } else if (cmd[0] === 'SET') {
+        store.set(cmd[1], cmd[2]); out.push({ result: 'OK' });
+      } else if (cmd[0] === 'EVAL' && Number(cmd[2]) === 3 && cmd.length >= 10) {
         const nowMs = Number(cmd[6]);
         const idleGapMs = Number(cmd[7]);
         const callsLimit = Number(cmd[8]);
@@ -96,13 +122,18 @@ export function makePipelineMock({
         const limitRaw = cmd[5];
         const unlimited = limitRaw === '' || limitRaw === undefined || limitRaw === null;
         const limit = unlimited ? null : Number(limitRaw);
-        counter += 1;
+        // ARGV[3] is the per-tool weight. Mirror the script's INCRBY: charging 1
+        // here regardless made a weight-2 call look like it had reserved less
+        // than it charged, which reserveQuota reads as a Redis fault (503).
+        const weightRaw = Number(cmd[7]);
+        const weight = Number.isFinite(weightRaw) && weightRaw >= 1 ? weightRaw : 1;
+        counter += weight;
         const reserved = counter;
         if (unlimited) {
           limitFloor = -1;
           out.push({ result: [1, reserved] });
         } else if (!Number.isFinite(limit) || limit < 0) {
-          counter = Math.max(0, counter - 1);
+          counter = Math.max(0, counter - weight);
           out.push({ result: [-1, 0] });
         } else if (reserved <= limit) {
           if (limitFloor !== -1 && (limitFloor === null || limit > limitFloor)) {
@@ -110,7 +141,7 @@ export function makePipelineMock({
           }
           out.push({ result: [1, reserved] });
         } else {
-          counter = Math.max(0, counter - 1);
+          counter = Math.max(0, counter - weight);
           if (limitFloor !== -1) {
             const clampTo = limitFloor !== null && limitFloor > limit ? limitFloor : limit;
             if (counter > clampTo) counter = clampTo;
@@ -123,6 +154,9 @@ export function makePipelineMock({
       } else if (cmd[0] === 'DECR') {
         counter = Math.max(0, counter - 1);
         out.push({ result: counter });
+      } else if (cmd[0] === 'DECRBY') {
+        counter = Math.max(0, counter - Number(cmd[2] ?? 1));
+        out.push({ result: counter });
       } else if (cmd[0] === 'EXPIRE') {
         out.push({ result: 1 });
       } else {
@@ -134,6 +168,7 @@ export function makePipelineMock({
   return {
     pipeline,
     ops,
+    store,
     get count() { return counter; },
     get limitFloor() { return limitFloor; },
   };

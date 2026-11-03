@@ -105,10 +105,10 @@ test('seed-token-panels: an empty AI panel from a partial fetch is skipped, not 
 
 // ─── validateFn also runs on post-transform shape ────────────────────────
 //
-// atomicPublish() calls validateFn(publishData). A validate() written against
-// the pre-transform shape returns false on transformed input → skipped path →
-// no write. This bug survived the declareRecords fix because runSeed never
-// reached the RETRY branch — it exited earlier via `publishResult.skipped`.
+// atomicPublish() calls validateFn(publishData). The imported validate() cases
+// below must accept the transformed panel and reject empty or zero-price data;
+// that production contract prevents a pre-transform shape check from silently
+// skipping the write.
 
 test('seed-token-panels: validate accepts transformed defi panel with priced tokens', async () => {
   const { validate } = await import('../scripts/seed-token-panels.mjs');
@@ -127,33 +127,6 @@ test('seed-token-panels: validate rejects empty/missing tokens', async () => {
   assert.equal(validate({ tokens: [] }), false);
   assert.equal(validate({}), false);
   assert.equal(validate(null), false);
-});
-
-test('seed-token-panels: pre-fix validate would have returned false on transformed shape', async () => {
-  // Repro-guard: if a future refactor puts validate() back to checking
-  // data.defi.tokens / data.ai.tokens / data.other.tokens, it will fail on
-  // the transformed payload (publishTransform narrows to the defi panel).
-  const transformed = { tokens: [{ symbol: 'UNI', price: 1 }] };
-  const buggyOld = (data) =>
-    Array.isArray(data?.defi?.tokens) &&
-    data.defi.tokens.length >= 1 &&
-    (data.defi.tokens.some((t) => t.price > 0) ||
-      data.ai.tokens.some((t) => t.price > 0) ||
-      data.other.tokens.some((t) => t.price > 0));
-  assert.equal(Boolean(buggyOld(transformed)), false, 'Pre-fix behavior — MUST NOT return to this');
-});
-
-// ─── Commit B sanity: old bug reproduction ───────────────────────────────
-
-test('seed-token-panels: old buggy signature would have returned 0', async () => {
-  // This test documents what the PRE-fix code did, proving the RETRY bug. If
-  // declareRecords were *still* counting defi+ai+other from pre-transform
-  // fields on the transformed payload, it would return 0 and runSeed would
-  // RETRY. Keep this so anyone "simplifying" back to the old form fails.
-  const transformedDefi = { tokens: [{ symbol: 'UNI' }] };
-  const buggyOld = (data) =>
-    (data?.defi?.tokens?.length || 0) + (data?.ai?.tokens?.length || 0) + (data?.other?.tokens?.length || 0);
-  assert.equal(buggyOld(transformedDefi), 0, 'Pre-fix behavior — MUST NOT return to this');
 });
 
 // ─── Commit E: resolveRecordCount contract invariants ────────────────────

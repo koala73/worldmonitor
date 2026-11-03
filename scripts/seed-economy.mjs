@@ -395,37 +395,37 @@ async function fetchMacroSignals(proxyAuth = null) {
   };
 }
 
-// ─── EIA Crude Oil Inventories (WCRSTUS1) ───
+// ─── EIA Commercial Crude Oil Inventories (WCESTUS1) ───
 
-async function fetchCrudeInventories() {
+export async function fetchCrudeInventories() {
   const apiKey = process.env.EIA_API_KEY;
   if (!apiKey) throw new Error('Missing EIA_API_KEY');
 
   const params = new URLSearchParams({
     api_key: apiKey,
-    'facets[series][]': 'WCRSTUS1',
+    'facets[series][]': 'WCESTUS1',
     frequency: 'weekly',
     'data[]': 'value',
     'sort[0][column]': 'period',
     'sort[0][direction]': 'desc',
     length: '9', // fetch 9 so the oldest of 8 has a prior week for weeklyChangeMb
   });
-  const data = await eiaFetchJson(`https://api.eia.gov/v2/petroleum/stoc/wstk/data/?${params}`, 'WCRSTUS1');
+  const data = await eiaFetchJson(`https://api.eia.gov/v2/petroleum/stoc/wstk/data/?${params}`, 'WCESTUS1');
   const rows = data.response?.data;
-  if (!rows || rows.length === 0) throw new Error('EIA WCRSTUS1: no data rows');
+  if (!rows || rows.length === 0) throw new Error('EIA WCESTUS1: no data rows');
 
   // rows are sorted newest-first; compute weeklyChangeMb for each week vs. next (older)
   const weeks = [];
   for (let i = 0; i < Math.min(rows.length, 9); i++) {
     const row = rows[i];
-    const stocksMb = row.value != null ? parseFloat(String(row.value)) : null;
+    const stocksMb = row.value != null ? parseFloat(String(row.value)) / 1000 : null;
     if (stocksMb == null || !Number.isFinite(stocksMb)) continue;
     const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
 
     const olderRow = rows[i + 1];
     let weeklyChangeMb = null;
     if (olderRow?.value != null) {
-      const olderStocks = parseFloat(String(olderRow.value));
+      const olderStocks = parseFloat(String(olderRow.value)) / 1000;
       if (Number.isFinite(olderStocks)) weeklyChangeMb = +(stocksMb - olderStocks).toFixed(3);
     }
 
@@ -438,7 +438,7 @@ async function fetchCrudeInventories() {
     if (weeks.length === 8) break; // only return 8 weeks to client
   }
 
-  if (weeks.length < CRUDE_MIN_WEEKS) throw new Error(`EIA WCRSTUS1: only ${weeks.length} valid rows (need >= ${CRUDE_MIN_WEEKS})`);
+  if (weeks.length < CRUDE_MIN_WEEKS) throw new Error(`EIA WCESTUS1: only ${weeks.length} valid rows (need >= ${CRUDE_MIN_WEEKS})`);
   const latestPeriod = weeks[0]?.period ?? '';
   console.log(`  Crude inventories: ${weeks.length} weeks, latest=${latestPeriod}`);
   return { weeks, latestPeriod };
@@ -501,13 +501,13 @@ async function fetchNatGasStorage() {
  */
 export function parseEiaSprRow(row) {
   if (!row) return null;
-  const barrels = row.value != null ? parseFloat(String(row.value)) : null;
+  const barrels = row.value != null ? parseFloat(String(row.value)) / 1000 : null;
   if (barrels == null || !Number.isFinite(barrels)) return null;
   const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
   return { barrels: +barrels.toFixed(3), period };
 }
 
-async function fetchSprLevels() {
+export async function fetchSprLevels() {
   const apiKey = process.env.EIA_API_KEY;
   if (!apiKey) throw new Error('Missing EIA_API_KEY');
 
@@ -566,7 +566,7 @@ async function fetchSprLevels() {
  */
 export function parseEiaRefineryRow(row) {
   if (!row) return null;
-  const inputsMbblpd = row.value != null ? parseFloat(String(row.value)) : null;
+  const inputsMbblpd = row.value != null ? parseFloat(String(row.value)) / 1000 : null;
   if (inputsMbblpd == null || !Number.isFinite(inputsMbblpd)) return null;
   const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
   return { inputsMbblpd: +inputsMbblpd.toFixed(3), period };

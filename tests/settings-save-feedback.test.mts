@@ -133,7 +133,7 @@ async function loadPreferencesModule(): Promise<PreferencesModule> {
     ['@/services/i18n', 'export const LANGUAGES = []; export function getCurrentLanguageTag(){ return "en"; } export function changeLanguage(value){ return globalThis.__settingsChangeLanguage?.(value) ?? Promise.resolve(true); } export function t(key){ return key; }'],
     ['@/services/ai-flow-settings', 'export const STREAM_QUALITY_OPTIONS = []; export function getAiFlowSettings(){ return { cloudLlm: false, browserModel: false, mapNewsFlash: false, headlineMemory: false, badgeAnimation: false }; } export function getStreamQuality(){ return "auto"; } export function setStreamQuality(value){ globalThis.__settingsSavedQuality = value; } export function setAiFlowSetting(){}'],
     ['@/config/basemap', 'export const MAP_PROVIDER_OPTIONS = []; export const MAP_THEME_OPTIONS = { carto: [] }; export function getMapProvider(){ return "carto"; } export function setMapProvider(){} export function getMapTheme(){ return "dark"; } export function setMapTheme(){}'],
-    ['@/services/live-stream-settings', 'export function getLiveStreamsAlwaysOn(){ return false; } export function setLiveStreamsAlwaysOn(){}'],
+    ['@/services/live-stream-settings', 'export const LIVE_MEDIA_IDLE_STOP_OPTIONS = [15, 30, 60, 120, 240, "never"]; export function getLiveStreamsAlwaysOn(){ return false; } export function setLiveStreamsAlwaysOn(){} export function getLiveMediaIdleStop(){ return 60; } export function setLiveMediaIdleStop(value){ globalThis.__settingsSavedIdleStop = value; } export function parseLiveMediaIdleStop(value){ return LIVE_MEDIA_IDLE_STOP_OPTIONS.find((option) => String(option) === value); } export function formatIdleStopMinutes(minutes){ return `${minutes} min`; }'],
     ['@/services/globe-render-settings', 'export const GLOBE_VISUAL_PRESET_OPTIONS = []; export function getGlobeVisualPreset(){ return "default"; } export function setGlobeVisualPreset(){}'],
     ['@/utils/theme-manager', 'export function getThemePreference(){ return "auto"; } export function setThemePreference(){}'],
     ['@/services/font-settings', 'export function getFontFamily(){ return "mono"; } export function setFontFamily(){}'],
@@ -156,7 +156,10 @@ async function loadPreferencesModule(): Promise<PreferencesModule> {
 
 describe('settings save feedback', () => {
   it('persists recognized preference controls and rejects unrelated changes', async () => {
-    const runtime = globalThis as typeof globalThis & { __settingsSavedQuality?: string };
+    const runtime = globalThis as typeof globalThis & {
+      __settingsSavedQuality?: string;
+      __settingsSavedIdleStop?: unknown;
+    };
     try {
       const { handlePreferenceChange } = await loadPreferencesModule();
       const host = { isDesktopApp: false };
@@ -164,10 +167,57 @@ describe('settings save feedback', () => {
 
       assert.equal(handlePreferenceChange({ id: 'us-stream-quality', value: 'hd720' } as HTMLInputElement, container, host), true);
       assert.equal(runtime.__settingsSavedQuality, 'hd720');
+      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: 'never' } as HTMLInputElement, container, host), true);
+      assert.equal(runtime.__settingsSavedIdleStop, 'never');
+      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: '240' } as HTMLInputElement, container, host), true);
+      assert.equal(runtime.__settingsSavedIdleStop, 240);
+      assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: 'forever' } as HTMLInputElement, container, host), false);
+      assert.equal(runtime.__settingsSavedIdleStop, 240);
       assert.equal(handlePreferenceChange({ id: 'us-font-scale', value: 'invalid' } as HTMLInputElement, container, host), false);
       assert.equal(handlePreferenceChange({ id: 'unrelated-control' } as HTMLInputElement, container, host), false);
     } finally {
       delete runtime.__settingsSavedQuality;
+      delete runtime.__settingsSavedIdleStop;
+    }
+  });
+
+  it('renders the idle-stop select after the autoplay toggle with the saved value selected', async () => {
+    const originalWindow = globalThis.window;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        addEventListener: () => undefined,
+        dispatchEvent: () => true,
+        location: { reload: () => undefined },
+      },
+      writable: true,
+    });
+
+    try {
+      const { renderPreferences } = await loadPreferencesModule();
+      const { html } = renderPreferences({ isDesktopApp: false });
+
+      const autoplayAt = html.indexOf('us-live-streams-always-on');
+      const selectOpen = '<select class="unified-settings-select" id="us-live-media-idle-stop" aria-labelledby="us-live-media-idle-stop-label">';
+      const selectAt = html.indexOf(selectOpen);
+      assert.ok(autoplayAt > -1, 'autoplay toggle renders');
+      assert.ok(selectAt > autoplayAt, 'idle-stop select renders after the autoplay toggle');
+      assert.match(html, /id="us-live-media-idle-stop-label">components\.insights\.streamIdleStopLabel</);
+      assert.match(html, /components\.insights\.streamIdleStopDesc/);
+
+      const select = html.slice(selectAt, html.indexOf('</select>', selectAt));
+      const options = [...select.matchAll(/<option value="([^"]+)"( selected)?>([^<]*)<\/option>/g)]
+        .map((match) => [match[1], Boolean(match[2]), match[3]]);
+      assert.deepEqual(options, [
+        ['15', false, '15 min'],
+        ['30', false, '30 min'],
+        ['60', true, '60 min'],
+        ['120', false, '120 min'],
+        ['240', false, '240 min'],
+        ['never', false, 'components.insights.streamIdleStopNever'],
+      ]);
+    } finally {
+      restoreGlobal('window', originalWindow);
     }
   });
 

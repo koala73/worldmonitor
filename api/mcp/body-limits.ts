@@ -12,3 +12,8 @@
 // (256 KiB): large enough for real tools/call envelopes, small enough to
 // bound Edge CPU before method dispatch.
 export const MAX_JSON_RPC_BODY_BYTES = 256 * 1024;
+
+// Foreign MCP servers are outside our trust boundary. Bound each response
+// before JSON or SSE parsing so the proxy cannot amplify an authenticated
+// request into an unbounded Edge allocation.
+export const MAX_MCP_PROXY_RESPONSE_BYTES = 1024 * 1024;

@@ -13,8 +13,7 @@ import {
 import { buildBootstrapTierEnvelope } from '../shared/bootstrap-tier-envelope.js';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { evaluatePublishedBootstrapVolume } from './_bootstrap-payload-budget.mjs';
-import { compactNaturalEventsDashboardPayload } from './_natural-events-dashboard.mjs';
-import { compactWildfireDashboardPayload } from './_wildfire-dashboard.mjs';
+import { restoreWildfireBootstrapMetadata, sanitizeBootstrapValue } from './_bootstrap-public-payload.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
   putR2JsonObject,
@@ -38,19 +37,7 @@ const PUBLISHER_LARGEST_KEY_LIMIT = 5;
 // `text` is the X post body (first-party only, via /api/x-feed); `pollState` is
 // seed-internal cursor state.
 // Kept in sync with stripXFeedRestrictedFields in api/bootstrap.js.
-export function stripXFeedRestrictedFields(value) {
-  if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
-  const { pollState: _pollState, ...rest } = value;
-  if (!Array.isArray(rest.items)) return rest;
-  return {
-    ...rest,
-    items: rest.items.map((item) => {
-      if (item == null || typeof item !== 'object' || Array.isArray(item)) return item;
-      const { text: _text, ...itemRest } = item;
-      return itemRest;
-    }),
-  };
-}
+export { stripXFeedRestrictedFields } from './_bootstrap-public-payload.mjs';
 
 function assertTier(tier) {
   if (!Object.hasOwn(TIER_INTERVAL_MS, tier)) {
@@ -80,7 +67,7 @@ function redisCredentials(env) {
   return { url, token };
 }
 
-function parseBootstrapPipelineEntry(entry, index) {
+function parseBootstrapPipelineEntry(entry, index, key) {
   if (!entry || typeof entry !== 'object' || !Object.hasOwn(entry, 'result') || entry.error != null) {
     throw new Error(`Bootstrap Redis pipeline command failed at index ${index}`);
   }
@@ -92,7 +79,11 @@ function parseBootstrapPipelineEntry(entry, index) {
       // Presence is independent of the unwrapped value. A well-formed envelope
       // can unwrap to `data === undefined`; origin still records Map.has(key)
       // and reports that field missing instead of applying a sibling fallback.
-      return { present: true, value: unwrapEnvelope(parsed).data };
+      const { data, _seed } = unwrapEnvelope(parsed);
+      return {
+        present: true,
+        value: key === BOOTSTRAP_CACHE_KEYS.wildfires ? restoreWildfireBootstrapMetadata(data, _seed) : data,
+      };
     }
   } catch {
     // Malformed values match /api/bootstrap: omit from data and report missing.
@@ -140,7 +131,7 @@ export async function assembleBootstrapTierPayload(registry, options = {}) {
 
   const valuesByKey = new Map();
   for (let index = 0; index < readKeys.length; index += 1) {
-    const parsed = parseBootstrapPipelineEntry(results[index], index);
+    const parsed = parseBootstrapPipelineEntry(results[index], index, readKeys[index]);
     if (parsed.present) valuesByKey.set(readKeys[index], parsed.value);
   }
 
@@ -157,38 +148,7 @@ export async function assembleBootstrapTierPayload(registry, options = {}) {
       continue;
     }
 
-    if (
-      names[index] === 'forecasts'
-      && value !== null
-      && typeof value === 'object'
-      && !Array.isArray(value)
-      && Object.hasOwn(value, 'enrichmentMeta')
-    ) {
-      const { enrichmentMeta: _stripped, ...rest } = value;
-      value = rest;
-    }
-    // R4 (#6654): X post bodies must never reach a published tier artifact.
-    // The slow tier is served unauthenticated at `?tier=slow&public=1` with
-    // ACAO:* and a 2h CDN shield, so anything here reaches embed/OEM and
-    // server-to-server callers — the audience R4 excludes. `xFeed` is
-    // deliberately NOT registered in BOOTSTRAP_CACHE_KEYS (same as
-    // `telegramFeed`); this strip is the regression guard if it is ever
-    // re-added. Kept in sync with stripXFeedRestrictedFields in api/bootstrap.js.
-    if (
-      names[index] === 'xFeed'
-      && value !== null
-      && typeof value === 'object'
-      && !Array.isArray(value)
-    ) {
-      value = stripXFeedRestrictedFields(value);
-    }
-    if (names[index] === 'wildfires') value = compactWildfireDashboardPayload(value);
-    // NHC forecast cones on natural:events:v1 are seasonally unbounded
-    // (~346 KB for four storms on 2026-08-28) and ride the slow tier that
-    // every client downloads. Compact at publish time; the canonical Redis
-    // value stays intact for RPC / MCP (#7288).
-    if (names[index] === 'naturalEvents') value = compactNaturalEventsDashboardPayload(value);
-    data[names[index]] = value;
+    data[names[index]] = sanitizeBootstrapValue(names[index], value);
   }
 
   return { data, missing };

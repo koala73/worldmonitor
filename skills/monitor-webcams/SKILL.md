@@ -1,12 +1,12 @@
 ---
 name: monitor-webcams
 version: 1
-description: Discover live webcams in a map viewport and resolve thumbnails or player URLs. Use when the user asks for visual context near a location, route, border, port, or city.
+description: Discover webcams and recent visual context in a map viewport and resolve thumbnails or player URLs. Use when the user asks for visual context near a location, route, border, port, or city.
 ---
 
 # monitor-webcams
 
-Use this skill when the user asks for live visual context near an event, infrastructure asset, chokepoint, airport, port, border crossing, or city. First list webcams in a viewport, then resolve a selected `webcamId` to image/player URLs.
+Use this skill when the user asks for recent visual context near an event, infrastructure asset, chokepoint, airport, port, border crossing, or city. First list webcams in a viewport, then resolve a selected `webcamId` to image/player URLs.
 
 ## Authentication
 
@@ -21,8 +21,8 @@ Issue a key at https://www.worldmonitor.app/pro.
 ## Endpoints
 
 ```
-GET https://worldmonitor.app/api/webcam/v1/list-webcams
-GET https://worldmonitor.app/api/webcam/v1/get-webcam-image
+GET https://www.worldmonitor.app/api/webcam/v1/list-webcams
+GET https://www.worldmonitor.app/api/webcam/v1/get-webcam-image
 ```
 
 ## Parameters
@@ -75,7 +75,9 @@ Resolving one webcam:
 }
 ```
 
-If `error` is non-empty or URL fields are empty, the upstream webcam provider did not return media for that id.
+If `error` is non-empty or URL fields are empty, the upstream webcam provider did not return media for that id. `lastUpdated` is the image capture time; `resolvedAt` is the separate URL resolution time. `mediaType` identifies the selected snapshot, timelapse, or provider-supplied live player; a URL does not prove the camera is online.
+
+Media is recent visual context, without guaranteed real-time conditions. Provider image URLs are short-lived and may return HTTP 401 after expiry; resolve again rather than persisting URLs. Link every displayed image to `windyUrl` or `playerUrl` and include “Webcams provided by Windy.com — add a webcam” with links to https://www.windy.com/ and https://www.windy.com/webcams/add. See https://api.windy.com/webcams/docs and https://api.windy.com/webcams/terms.
 
 ## Worked example
 
@@ -85,7 +87,7 @@ Find cameras around the Strait of Hormuz, then resolve the first camera's media 
 WEBCAM_ID=$(curl -s --get \
   -H "X-WorldMonitor-Key: $WM_API_KEY" \
   -H "User-Agent: worldmonitor-agent-skill/1.0" \
-  'https://worldmonitor.app/api/webcam/v1/list-webcams' \
+  'https://www.worldmonitor.app/api/webcam/v1/list-webcams' \
   --data-urlencode 'zoom=8' \
   --data-urlencode 'bound_w=55.5' --data-urlencode 'bound_s=25.5' \
   --data-urlencode 'bound_e=57.5' --data-urlencode 'bound_n=27.2' \
@@ -99,7 +101,7 @@ fi
 curl -s --get \
   -H "X-WorldMonitor-Key: $WM_API_KEY" \
   -H "User-Agent: worldmonitor-agent-skill/1.0" \
-  'https://worldmonitor.app/api/webcam/v1/get-webcam-image' \
+  'https://www.worldmonitor.app/api/webcam/v1/get-webcam-image' \
   --data-urlencode "webcam_id=$WEBCAM_ID" \
   | jq '{title, thumbnailUrl, playerUrl, lastUpdated}'
 ```
@@ -121,9 +123,9 @@ Only fetch or render returned media when the user explicitly asked for visual co
 - For authoritative satellite imagery search, use `GET /api/imagery/v1/search-imagery`.
 - For vessel positions or AIS disruption candidates, use `track-vessel-traffic`.
 - For airport operational delays, use `check-airport-delays`.
-- Via MCP, use the visual/infrastructure context tools on `https://worldmonitor.app/mcp`.
+- Via MCP, use `find_webcams` followed by `get_webcam_media` on `https://worldmonitor.app/mcp`. This skill remains the REST/OpenAPI workflow.
 
 ## References
 
-- OpenAPI: https://worldmonitor.app/openapi.json - operations `ListWebcams` and `GetWebcamImage`.
+- OpenAPI: https://www.worldmonitor.app/openapi.json - operations `ListWebcams` and `GetWebcamImage`.
 - Auth matrix: https://www.worldmonitor.app/docs/usage-auth

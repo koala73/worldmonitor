@@ -1,3 +1,7 @@
+// Docs-parity check by design (#8690, section 2): this suite pins selected
+// published signal counts, scoring formulas, weights, and limits to source.
+// Runtime scoring tests do not check the published wording and values.
+//
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -25,7 +29,7 @@ function extractHotspotSegment(source: string): string {
 function extractHotspotBaselines(source: string): Array<{ id: string; name: string; baseline: number }> {
   const segment = extractHotspotSegment(source);
   const entries: Array<{ id: string; name: string; baseline: number }> = [];
-  const blockRe = /^  \{\n([\s\S]*?)^  \},/gm;
+  const blockRe = /^ {2}\{\n([\s\S]*?)^ {2}\},/gm;
   let blockMatch: RegExpExecArray | null;
   while ((blockMatch = blockRe.exec(segment)) !== null) {
     const block = blockMatch[1]!;
@@ -106,7 +110,7 @@ test('public signal docs stay aligned with hotspot escalation math', () => {
       /static_?baseline[\s\S]{0,120}escalationScore|escalationScore[\s\S]{0,120}staticBaseline/i,
       `${label} must publish hotspot static baseline source`,
     );
-    assert.match(doc, /0\.30[\s\S]{0,120}0\.70/, `${label} must publish hotspot 30\/70 blend`);
+    assert.match(doc, /0\.30[\s\S]{0,120}0\.70/, `${label} must publish hotspot 30/70 blend`);
     assert.match(doc, /1-5/, `${label} must state hotspot scores are on a 1-5 scale`);
     assert.doesNotMatch(doc, /proximity_boost/, `${label} must not document a nonexistent hotspot proximity boost`);
   }
@@ -273,8 +277,9 @@ test('public algorithms docs describe flow_drop the way the detector actually wo
   // FLOW_DROP_KEYWORDS hit within the same cluster. Two other surfaces already
   // described it correctly - docs/signal-intelligence.mdx and the SIGNAL_CONTEXT
   // copy in src/utils/analysis-constants.ts - which is what makes the algorithms
-  // row an outlier rather than a difference of emphasis.
-  const detector = readRepo('src/services/analysis-core.ts');
+  // row an outlier rather than a difference of emphasis. The detector lives in
+  // shared/market-alert-core.js (#8867).
+  const detector = readRepo('shared/market-alert-core.js');
   assert.match(detector, /const hasPipeline = titles\.some\(title => includesKeyword\(title, PIPELINE_KEYWORDS\)\)/);
   assert.match(detector, /const hasFlowDrop = titles\.some\(title => includesKeyword\(title, FLOW_DROP_KEYWORDS\)\)/);
   assert.doesNotMatch(detector, /ETF/);

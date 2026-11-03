@@ -21,6 +21,10 @@ const jsonLd = {
       name: 'Elie Habib — World Monitor',
       description,
       mainEntity: { '@id': personId },
+      speakable: {
+        '@type': 'SpeakableSpecification',
+        cssSelector: ['h1', '.author-page-bio'],
+      },
     },
     {
       '@type': 'Person',
@@ -35,6 +39,9 @@ const jsonLd = {
       sameAs: [
         'https://x.com/eliehabib',
         'https://github.com/koala73',
+        'https://www.linkedin.com/in/eliashabib',
+        'https://www.wikidata.org/wiki/Q121365724',
+        'https://www.crunchbase.com/person/elie-habib-2',
       ],
       knowsAbout: [
         'Open-source intelligence',

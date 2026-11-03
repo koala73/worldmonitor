@@ -2,19 +2,7 @@ import { describe, it } from 'node:test';
 import { guardProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import {
-  existsSync,
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
@@ -27,53 +15,11 @@ import {
   validateVolatileInventoryClaims,
   VOLATILE_INVENTORY_CLAIM_RE,
 } from '../scripts/docs-stats.mjs';
-import { buildInventoryFacts, generateInventoryFacts, loadStatsForInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
-import { buildSourceAttributionStats, checkSourceAttribution } from '../scripts/source-attribution.mjs';
+import { buildSourceAttributionStats } from '../scripts/source-attribution.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(resolve(ROOT, path), 'utf8');
 const readJson = (path) => JSON.parse(read(path));
-
-function makeAttributionFixture({ kind = 'structured', references = [{ path: 'scripts/stale-source.mjs' }] } = {}) {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), 'wm-attribution-fixture-'));
-  for (const path of ['api', 'docs', 'scripts', 'server', 'shared', 'src']) {
-    mkdirSync(join(fixtureRoot, path), { recursive: true });
-  }
-  writeFileSync(join(fixtureRoot, 'scripts/live-source.mjs'), "export const DATA_URL = 'https://upstream.example/data';\n");
-  writeFileSync(join(fixtureRoot, 'docs/source-attribution.mdx'), '# Attribution\n');
-  writeFileSync(join(fixtureRoot, 'shared/source-attribution-manifest.json'), `${JSON.stringify({
-    version: 1,
-    entries: [{
-      host: 'upstream.example',
-      provider: 'upstream.example',
-      license: 'Provider terms',
-      attribution: 'Credit upstream.example.',
-      observed: true,
-      kind,
-      status: 'reviewed',
-      references,
-    }],
-    logicalEntries: [],
-  }, null, 2)}\n`);
-  return fixtureRoot;
-}
-
-function inventoryStatsFromAttributionFixture(fixtureRoot, warnings) {
-  const baseStats = computeStats();
-  return () => loadStatsForInventoryFacts({
-    compute: ({ sourceAttribution } = {}) => {
-      const attribution = sourceAttribution
-        ?? buildSourceAttributionStats({ rootDir: fixtureRoot });
-      return {
-        ...baseStats,
-        sourceAttribution: attribution,
-        sourceAttributionHosts: attribution.activeHosts,
-      };
-    },
-    fallbackAttribution: () => buildSourceAttributionStats({ rootDir: fixtureRoot, validate: false }),
-    warn: (message) => warnings.push(message),
-  });
-}
 
 const registryToolNames = () => TOOL_REGISTRY.map((tool) => tool.name);
 const registryToolCount = () => TOOL_REGISTRY.length;
@@ -249,175 +195,6 @@ describe('public product facts generation contract', () => {
     );
   });
 
-  it('fails closed when any published inventory extractor collapses to zero', () => {
-    const stats = computeStats();
-    const capabilityStatKeys = [
-      'mcpToolCount',
-      'locales',
-      'variantCount',
-      'layerDefinitions',
-      'panelClasses',
-      'feedDefinitions',
-      'freshnessSources',
-      'sourceAttributionHosts',
-    ];
-    for (const key of capabilityStatKeys) {
-      assert.throws(
-        () => buildInventoryFacts({ ...stats, [key]: 0 }),
-        /must be a positive integer/,
-        `${key} parser collapse must fail generation`,
-      );
-    }
-    assert.throws(
-      () => buildInventoryFacts({
-        ...stats,
-        sourceAttribution: { ...stats.sourceAttribution, providerCount: 0 },
-      }),
-      /must be a positive integer/,
-      'provider parser collapse must fail generation',
-    );
-    assert.throws(
-      () => buildInventoryFacts({ ...stats, localeCodes: [] }),
-      /localeCodes must be a non-empty unique locale-code registry/,
-      'locale membership extraction must not collapse while its count stays positive',
-    );
-  });
-
-  it('fails the inventory check for missing or stale build outputs', () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-facts-'));
-    mkdirSync(join(tempRoot, 'api'));
-    mkdirSync(join(tempRoot, 'public'));
-    const expected = new Map([
-      ['api/_inventory-facts.generated.js', 'edge'],
-      ['public/product-facts.json', 'public'],
-    ]);
-    try {
-      assert.throws(
-        () => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }),
-        /missing or stale: api\/_inventory-facts\.generated\.js, public\/product-facts\.json/,
-      );
-      generateInventoryFacts({ outputs: expected, rootDir: tempRoot });
-      assert.doesNotThrow(() => (
-        generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot })
-      ));
-      writeFileSync(join(tempRoot, 'api/_inventory-facts.generated.js'), 'stale');
-      assert.throws(
-        () => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }),
-        /missing or stale: api\/_inventory-facts\.generated\.js/,
-      );
-    } finally {
-      rmSync(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('stops consumers on an interrupted publication and repairs it on the next run', () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-facts-interrupted-'));
-    mkdirSync(join(tempRoot, 'api'));
-    mkdirSync(join(tempRoot, 'public'));
-    const expected = new Map([
-      ['api/_inventory-facts.generated.js', 'edge'],
-      ['public/product-facts.json', 'public'],
-    ]);
-    let renames = 0;
-    let consumerRan = false;
-    const interruptedFileOps = {
-      mkdirSync,
-      writeFileSync,
-      unlinkSync,
-      renameSync(from, to) {
-        renames += 1;
-        if (renames === 2) throw new Error('simulated publication interruption');
-        renameSync(from, to);
-      },
-    };
-    try {
-      assert.throws(() => {
-        generateInventoryFacts({ outputs: expected, rootDir: tempRoot, fileOps: interruptedFileOps });
-        consumerRan = true;
-      }, /simulated publication interruption/);
-      assert.equal(consumerRan, false, 'a failed generator must stop the next consumer command');
-      assert.equal(readFileSync(join(tempRoot, 'api/_inventory-facts.generated.js'), 'utf8'), 'edge');
-      assert.equal(existsSync(join(tempRoot, `public/product-facts.json.tmp-${process.pid}`)), false);
-      assert.throws(
-        () => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }),
-        /public\/product-facts\.json/,
-      );
-      generateInventoryFacts({ outputs: expected, rootDir: tempRoot });
-      assert.doesNotThrow(() => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }));
-    } finally {
-      rmSync(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('publishes all default inventory outputs from a stale but structurally valid attribution ledger', () => {
-    const warnings = [];
-    const fixtureRoot = makeAttributionFixture();
-    const publishRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-default-publication-'));
-    try {
-      const strict = checkSourceAttribution(fixtureRoot);
-      assert.ok(strict.errors.length > 0, 'strict source attribution checking must remain red for parity drift');
-      assert.match(strict.errors.join('\n'), /stale manifest entry/);
-
-      const loadStats = inventoryStatsFromAttributionFixture(fixtureRoot, warnings);
-      generateInventoryFacts({ rootDir: publishRoot, loadStats });
-      for (const path of [
-        'public/product-facts.json',
-        'scripts/shared/inventory-facts.generated.json',
-        'api/_inventory-facts.generated.js',
-        'docs/generated/stats.json',
-      ]) {
-        assert.ok(existsSync(join(publishRoot, path)), `default generator did not publish ${path}`);
-      }
-      assert.doesNotThrow(() => generateInventoryFacts({ check: true, rootDir: publishRoot, loadStats }));
-      assert.match(warnings.join('\n'), /proceeding with committed attribution counts/);
-    } finally {
-      rmSync(fixtureRoot, { recursive: true, force: true });
-      rmSync(publishRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('does not swallow non-attribution inventory failures', () => {
-    assert.throws(
-      () => loadStatsForInventoryFacts({
-        compute: () => {
-          throw new Error('docs-stats: could not isolate STOCK_EXCHANGES block');
-        },
-      }),
-      /STOCK_EXCHANGES/,
-    );
-  });
-
-  it('does not publish inventory outputs from a malformed attribution ledger', () => {
-    const warnings = [];
-    const fixtureRoot = makeAttributionFixture({ kind: 'not-a-source-kind' });
-    const publishRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-invalid-ledger-'));
-    try {
-      const strict = checkSourceAttribution(fixtureRoot);
-      assert.ok(strict.errors.length > 0, 'strict source attribution checking must reject malformed ledger entries');
-      assert.match(strict.errors.join('\n'), /invalid manifest kind/);
-
-      assert.throws(
-        () => generateInventoryFacts({
-          rootDir: publishRoot,
-          loadStats: inventoryStatsFromAttributionFixture(fixtureRoot, warnings),
-        }),
-        /invalid manifest kind/,
-      );
-      for (const path of [
-        'public/product-facts.json',
-        'scripts/shared/inventory-facts.generated.json',
-        'api/_inventory-facts.generated.js',
-        'docs/generated/stats.json',
-      ]) {
-        assert.equal(existsSync(join(publishRoot, path)), false, `malformed ledger published ${path}`);
-      }
-      assert.equal(warnings.length, 0, 'a malformed ledger must not emit a proceeding warning');
-    } finally {
-      rmSync(fixtureRoot, { recursive: true, force: true });
-      rmSync(publishRoot, { recursive: true, force: true });
-    }
-  });
-
   it('keeps stable product facts separate from build-owned inventory facts', () => {
     const stableFacts = readJson('shared/product-facts.generated.json');
     const publicFacts = readJson('public/product-facts.json');
@@ -489,6 +266,13 @@ describe('public product facts generation contract', () => {
       assert.equal(locale.footer?.beFirstInLine, undefined, `${name}: legacy queue copy`);
       assert.equal(locale.form, undefined, `${name}: legacy waitlist form copy`);
       assert.equal(locale.referral, undefined, `${name}: legacy waitlist referral copy`);
+      // The "Under the hood" band renders measured numerals (depth-stats.json),
+      // so the retired adjective value slots must not linger in any locale —
+      // a future re-wiring to t('welcome.depth.sNv') would resurrect the
+      // non-numeric band the subhead's "every number below is live" contradicts.
+      for (let slot = 1; slot <= 15; slot += 1) {
+        assert.equal(locale.welcome?.depth?.[`s${slot}v`], undefined, `${name}: retired depth slot value s${slot}v`);
+      }
     }
   });
 
@@ -654,5 +438,111 @@ describe('public product facts generation contract', () => {
         { cwd: ROOT, stdio: 'pipe' },
       );
     });
+  });
+
+  it('states the measured source inventory on every surface that quotes it', () => {
+    const stats = buildSourceAttributionStats({ validate: false });
+    const providers = `${stats.providerCount} attributed providers`;
+    const hosts = `${stats.activeHosts} observed source hosts`;
+    const surfaces = [
+      ['index.html', [`${stats.feedHosts} news and OSINT feeds from ${providers} across ${hosts}`]],
+      ['docs/about.mdx', [`${stats.feedHosts} news and OSINT feeds from ${providers}`, `all ${providers}`]],
+      ['ARCHITECTURE.md', [hosts]],
+      ['public/llms-full.txt', [`${providers} across ${hosts}`]],
+      ['blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', [`${providers} across ${hosts}`]],
+      ['api/oauth/authorize.js', [`events from ${providers}`]],
+      ['mcp-grant.html', [`events from ${providers}`]],
+    ];
+    for (const [path, phrases] of surfaces) {
+      const text = read(path);
+      for (const phrase of phrases) assert.ok(text.includes(phrase), `${path} must state "${phrase}"`);
+      // The hand-typed totals these surfaces had drifted to before they were restated.
+      assert.doesNotMatch(text, /\b(?:578\+? observed upstream hosts|574 active providers|100\+ global sources)\b/, path);
+    }
+  });
+
+  it('derives hero proof stats from live registries, not literals', async () => {
+    const { getCompleteLayerCatalogKeys } = await import('../src/config/map-layer-definitions.ts');
+    const { loadManifest, scanUpstreamHosts, sourceAttributionStats } = await import('../scripts/source-attribution.mjs');
+    const facts = readJson('shared/product-facts.generated.json');
+    const stats = sourceAttributionStats(scanUpstreamHosts(ROOT), loadManifest(ROOT));
+    assert.equal(facts.heroProofStats.mapLayers, getCompleteLayerCatalogKeys('full').length);
+    assert.equal(facts.heroProofStats.feeds, stats.feedHosts);
+    assert.equal(facts.heroProofStats.providers, stats.providerCount);
+    assert.equal(facts.heroProofStats.alertOrigins, 5);
+  });
+
+  it('derives depth proof stats from live registries, not literals', async () => {
+    // The "Under the hood" band sits under a subhead promising "Every number
+    // below is live in the dashboard today" (#7745). Each slot must equal its
+    // registry — the same sources build-ai-search.mjs publishes in ai-search.md.
+    const { AI_DATA_CENTERS } = await import('../src/config/ai-datacenters.ts');
+    const { CHOKEPOINT_REGISTRY } = await import('../src/config/chokepoint-registry.ts');
+    const { UNDERSEA_CABLES } = await import('../src/config/geo-map.ts');
+    const { getCompleteLayerCatalogKeys } = await import('../src/config/map-layer-definitions.ts');
+    const { INTEL_HOTSPOTS } = await import('../shared/geo-data.ts');
+    const { PIPELINES } = await import('../shared/pipelines-data.ts');
+    const { lngFacilityCount } = await import('../scripts/_storage-facility-registry.mjs');
+    const { publishedRankedCountries } = await import('../scripts/build-crawlable-corpus.mjs');
+    const { commandPaletteCommandCount } = await import('../scripts/lib/command-palette-count.mjs');
+    const facts = readJson('shared/product-facts.generated.json');
+    const depth = facts.depthProofStats;
+    const stats = computeStats();
+    assert.equal(depth.mapLayers, getCompleteLayerCatalogKeys('full').length);
+    assert.equal(depth.chokepoints, CHOKEPOINT_REGISTRY.length);
+    assert.equal(depth.instabilityCountries, stats.tier1Countries);
+    assert.equal(depth.resilienceRanked, publishedRankedCountries(ROOT).ranked);
+    assert.equal(depth.submarineCables, UNDERSEA_CABLES.length);
+    assert.equal(depth.pipelinesLng, PIPELINES.length + lngFacilityCount());
+    assert.match(
+      read('public/ai-search.md'),
+      new RegExp(`- ${PIPELINES.length + lngFacilityCount()} pipelines and LNG assets`),
+    );
+    assert.equal(depth.aiDatacenters, AI_DATA_CENTERS.length);
+    assert.equal(depth.hotspots, INTEL_HOTSPOTS.length);
+    assert.equal(depth.stockExchanges, stats.stockExchangeCount);
+    assert.equal(depth.mcpTools, TOOL_REGISTRY.length);
+    assert.equal(depth.commands, commandPaletteCommandCount());
+    assert.equal(
+      readJson('pro-test/src/locales/en.json').welcome.depth.s13l,
+      '⌘K command definitions',
+    );
+    assert.equal(depth.languages, stats.locales);
+    // Slots whose labels match the hero rail publish the same figures.
+    assert.equal(depth.feeds, facts.heroProofStats.feeds);
+    assert.equal(depth.providers, facts.heroProofStats.providers);
+    assert.equal(depth.alertOrigins, facts.heroProofStats.alertOrigins);
+  });
+
+  it('fails closed when the command palette registry cannot be counted', async () => {
+    const { commandPaletteCommandCount } = await import('../scripts/lib/command-palette-count.mjs');
+    assert.throws(
+      () => commandPaletteCommandCount({ source: 'export const UNRELATED = 1;' }),
+      /could not isolate the COMMANDS array/,
+    );
+  });
+
+  it('renders the Under the hood band from generated numerals, not locale adjectives', () => {
+    const source = read('pro-test/src/welcome/Depth.tsx');
+    assert.match(
+      source,
+      /import depthProofStats from '\.\.\/generated\/depth-stats\.json';/,
+      'the band must render build-time measured numerals',
+    );
+    assert.doesNotMatch(
+      source,
+      /s\$\{n\}v/,
+      'depth slot values must not be read back out of locale keys',
+    );
+    assert.match(source, /welcome\.depth\.s1l/, 'slot labels stay localized');
+    const depthStats = readJson('pro-test/src/generated/depth-stats.json');
+    assert.equal(Object.keys(depthStats).length, 15, 'all 15 band slots must carry a measured value');
+    for (const [key, value] of Object.entries(depthStats)) {
+      assert.equal(
+        Number.isInteger(value) && value > 0,
+        true,
+        `depth-stats.json slot ${key} must be a positive integer, got ${JSON.stringify(value)}`,
+      );
+    }
   });
 });

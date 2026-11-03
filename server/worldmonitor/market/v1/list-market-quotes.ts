@@ -42,6 +42,8 @@ import {
 } from './_quote-provider';
 import { CachedFetchTimeoutError, cachedFetchJson, readCachedJson } from '../../../_shared/redis';
 
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
+
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
 
 /** Per-symbol gap-fetch cache. Prefixed (app-owned), unlike the seed key. */
@@ -361,11 +363,19 @@ function seedUnavailableResponse(symbols: string[]): ListMarketQuotesResponse {
     skipReason: '',
     rateLimited: false,
     unavailableSymbols: symbols.map((symbol) => ({ symbol, reason: REASON.seedUnavailable })),
+    asOf: '',
   };
 }
 
+function withQuoteAsOf(
+  response: Omit<ListMarketQuotesResponse, 'asOf'> & { asOf?: string },
+  asOf: string | undefined,
+): ListMarketQuotesResponse {
+  return { ...response, asOf: asOf ?? '' };
+}
+
 export async function listMarketQuotes(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListMarketQuotesRequest,
 ): Promise<ListMarketQuotesResponse> {
   const { accepted, dropped } = normalizeRequestedSymbols(parseStringArray(req.symbols));
@@ -375,7 +385,7 @@ export async function listMarketQuotes(
     // Distinguished from a miss on purpose: a read failure that looks like an
     // empty snapshot is how a dead pipeline stays invisible.
     console.warn('[ListMarketQuotes] seed read failed — skipping the provider gap fetch');
-    return seedUnavailableResponse([...accepted, ...dropped]);
+    return markNoStoreFallbackResponse(ctx.request, seedUnavailableResponse([...accepted, ...dropped]));
   }
 
   const bootstrap = seed.status === 'hit' ? (seed.value as ListMarketQuotesResponse | null) : null;
@@ -384,11 +394,16 @@ export async function listMarketQuotes(
   // empty response instead of throwing. Validate the shape to keep that
   // fail-soft behaviour without the catch-all that also hid real bugs.
   if (!Array.isArray(bootstrap?.quotes) || bootstrap.quotes.length === 0) {
-    return seedUnavailableResponse([...accepted, ...dropped]);
+    return markNoStoreFallbackResponse(ctx.request, seedUnavailableResponse([...accepted, ...dropped]));
   }
 
   // No symbol filter: the caller wants the seed universe as-is.
-  if (accepted.length === 0) return { ...bootstrap, unavailableSymbols: bootstrap.unavailableSymbols ?? [] };
+  if (accepted.length === 0) {
+    return withQuoteAsOf(
+      { ...bootstrap, unavailableSymbols: bootstrap.unavailableSymbols ?? [] },
+      bootstrap.asOf,
+    );
+  }
 
   const seeded = filterMarketQuotes(bootstrap, accepted);
   const seededBySymbol = new Map(seeded.quotes.map((quote) => [quote.symbol, quote]));
@@ -401,13 +416,13 @@ export async function listMarketQuotes(
 
   // Every requested symbol is seeded — the whole point of the seed-first order.
   if (missing.length === 0) {
-    return {
+    return withQuoteAsOf({
       quotes: seeded.quotes,
       finnhubSkipped: false,
       skipReason: '',
       rateLimited: false,
       unavailableSymbols: overflow,
-    };
+    }, bootstrap.asOf);
   }
 
   const resolved = await resolveMissingSymbols(missing);
@@ -438,11 +453,11 @@ export async function listMarketQuotes(
   }
 
   const skipped = !resolved.providerConfigured;
-  return {
+  return withQuoteAsOf({
     quotes,
     finnhubSkipped: skipped,
     skipReason: skipped ? providerNotConfiguredReason() : '',
     rateLimited: resolved.rateLimited,
     unavailableSymbols: [...unavailable, ...overflow],
-  };
+  }, bootstrap.asOf);
 }

@@ -1,31 +1,18 @@
-import { httpAction, internalMutation } from "../_generated/server";
+import { httpAction, internalMutation, internalQuery, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireEnv } from "../lib/env";
+import {
+  STANDARD_WEBHOOK_HEADER_NAMES,
+  type SvixVerifyFailure,
+  verifySvixSignature,
+} from "../lib/svixVerify";
 import {
   WebhookPayloadSchema,
   type WebhookPayload,
 } from "@dodopayments/core";
 
 const WEBHOOK_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
-
-async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.generateKey(
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const [sigA, sigB] = await Promise.all([
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
-    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
-  ]);
-  const aArr = new Uint8Array(sigA);
-  const bArr = new Uint8Array(sigB);
-  let diff = 0;
-  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
-  return diff === 0;
-}
 
 /**
  * Signature-only half of the SDK's verifyWebhookPayload, same vendored
@@ -35,50 +22,34 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
  * but fails to parse or validate is handled as a provider-side defect
  * (dead-letter + 500) instead of being mislabeled as a signature failure
  * (401). Throws Error with the SDK's message on any verification failure.
+ *
+ * The verification itself is the shared Svix verifier (#8491); this wrapper
+ * only maps its failure reasons onto the messages the SDK would have thrown,
+ * which is what the failure-tracking rows and Sentry signal record.
  */
+const DODO_SIGNATURE_ERROR_MESSAGES: Record<SvixVerifyFailure, string> = {
+  missing_headers: "Invalid Signature Headers",
+  invalid_timestamp: "Invalid Signature Headers",
+  timestamp_too_old: "Message timestamp too old",
+  timestamp_too_new: "Message timestamp too new",
+  no_matching_signature: "No matching signature found",
+  // Not an SDK message: before the shared verifier, atob's or importKey's own
+  // error landed here. Still a 401 plus the signature report, as then.
+  malformed_secret: "Malformed webhook secret",
+};
+
 async function verifyDodoSignature(
   webhookKey: string,
-  webhookId: string,
-  webhookTimestamp: string,
-  webhookSignature: string,
+  headers: Headers,
   body: string,
 ): Promise<void> {
-  const now = Math.floor(Date.now() / 1000);
-  const timestamp = Number.parseInt(webhookTimestamp, 10);
-  if (Number.isNaN(timestamp)) {
-    throw new Error("Invalid Signature Headers");
+  const verified = await verifySvixSignature(body, headers, webhookKey, {
+    headerNames: STANDARD_WEBHOOK_HEADER_NAMES,
+    skewSeconds: WEBHOOK_SIGNATURE_TOLERANCE_SECONDS,
+  });
+  if (!verified.ok) {
+    throw new Error(DODO_SIGNATURE_ERROR_MESSAGES[verified.reason]);
   }
-  if (now - timestamp > WEBHOOK_SIGNATURE_TOLERANCE_SECONDS) {
-    throw new Error("Message timestamp too old");
-  }
-  if (timestamp > now + WEBHOOK_SIGNATURE_TOLERANCE_SECONDS) {
-    throw new Error("Message timestamp too new");
-  }
-
-  const secretBytes = Uint8Array.from(
-    atob(webhookKey.replace("whsec_", "")),
-    (c) => c.charCodeAt(0),
-  );
-  const key = await crypto.subtle.importKey(
-    "raw",
-    secretBytes,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const computed = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(`${webhookId}.${timestamp}.${body}`),
-  );
-  const expected = btoa(String.fromCharCode(...new Uint8Array(computed)));
-
-  for (const versionedSignature of webhookSignature.split(" ")) {
-    const [version, signature] = versionedSignature.split(",");
-    if (version !== "v1" || !signature) continue;
-    if (await timingSafeEqualStrings(signature, expected)) return;
-  }
-  throw new Error("No matching signature found");
 }
 
 /**
@@ -93,8 +64,9 @@ async function verifyDodoSignature(
  * Why `internalMutation` and not `internalAction`: Convex auto-retries
  * failed actions per its scheduler retry policy, which would produce N
  * duplicate Sentry events per signature failure during outages.
- * Mutations are NOT auto-retried — exactly one Sentry event per failed
- * signature check. Don't "simplify" this to an action.
+ * Mutations are NOT auto-retried — exactly one Sentry event per scheduled
+ * report. Don't "simplify" this to an action. The caller schedules at most
+ * one report per cooldown (DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS).
  *
  * Without this, a botched secret rotation could 401 every Dodo webhook
  * silently for hours — same observability gap shape as the canary OCC
@@ -105,13 +77,115 @@ export const reportDodoSignatureFailure = internalMutation({
     webhookId: v.optional(v.string()),
     webhookTimestamp: v.optional(v.string()),
     errorMessage: v.string(),
+    // Keep accepting reports queued before shared admission replaced the counter.
+    suppressedSinceLastReport: v.optional(v.number()),
   },
-  handler: async (_ctx, { webhookId, webhookTimestamp, errorMessage }) => {
+  handler: async (_ctx, { webhookId, webhookTimestamp, errorMessage, suppressedSinceLastReport }) => {
+    const suppressed = suppressedSinceLastReport
+      ? ` (+${suppressedSinceLastReport} more since the last report)`
+      : "";
     throw new Error(
-      `[webhook] Dodo signature verification failed (webhookId=${webhookId ?? "<missing>"}, ts=${webhookTimestamp ?? "<missing>"}): ${errorMessage}`,
+      `[webhook] Dodo signature verification failed (webhookId=${webhookId ?? "<missing>"}, ts=${webhookTimestamp ?? "<missing>"}): ${errorMessage}${suppressed}`,
     );
   },
 });
+
+/**
+ * Largest body the webhook reads. Dodo deliveries are a few KB; without a cap
+ * an unauthenticated caller could make the handler buffer and HMAC up to
+ * Convex's 20 MB request limit per request. Enforced while streaming, so an
+ * oversize body is never fully buffered.
+ */
+export const DODO_WEBHOOK_MAX_BODY_BYTES = 1024 * 1024;
+
+/**
+ * Minimum gap between two scheduled signature-failure reports.
+ *
+ * The endpoint is unauthenticated, so without this every forged request cost
+ * a scheduler write plus a Sentry event — anyone could burn the Sentry quota.
+ * A botched secret rotation fails every real delivery continuously, so one
+ * report per window still surfaces it within minutes. Exact suppressed counts
+ * are omitted so rejected requests do not each need a database write.
+ */
+export const DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS = 10 * 60 * 1000;
+
+async function readSignatureFailureReportGate(ctx: Pick<QueryCtx, "db">) {
+  const summary = await ctx.db
+    .query("paymentWebhookFailureSummary")
+    .withIndex("by_key", (q) => q.eq("key", "global"))
+    .first();
+  if (!summary) {
+    throw new Error(
+      "Dodo webhook failure summary is not seeded; run payments/webhookMutations:_seedFailureSummary",
+    );
+  }
+  return summary;
+}
+
+function signatureFailureReportIsDue(lastReportedAt: number | undefined, now: number): boolean {
+  return lastReportedAt === undefined ||
+    now - lastReportedAt >= DODO_SIGNATURE_FAILURE_REPORT_COOLDOWN_MS;
+}
+
+// Convex HTTP actions start with fresh module state on every request. Read the
+// existing seeded summary so rejected requests need no writes or scheduler jobs.
+export const getLastDodoSignatureFailureReportAt = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<number | null> => {
+    const summary = await readSignatureFailureReportGate(ctx);
+    return summary.lastSignatureFailureReportedAt ?? null;
+  },
+});
+
+export const scheduleDodoSignatureFailureReport = internalMutation({
+  args: {
+    webhookId: v.string(),
+    webhookTimestamp: v.string(),
+    errorMessage: v.string(),
+  },
+  handler: async (ctx, args): Promise<boolean> => {
+    const summary = await readSignatureFailureReportGate(ctx);
+    const now = Date.now();
+    if (!signatureFailureReportIsDue(summary.lastSignatureFailureReportedAt, now)) return false;
+
+    // Recheck and schedule in the same transaction. Concurrent candidates share
+    // the seeded document, and a scheduling failure rolls the timestamp back.
+    await ctx.db.patch(summary._id, { lastSignatureFailureReportedAt: now });
+    await ctx.scheduler.runAfter(0, internal.payments.webhookHandlers.reportDodoSignatureFailure, args);
+    return true;
+  },
+});
+
+/**
+ * The request body as text, or null once it exceeds `maxBytes`. Checks a
+ * declared Content-Length first, then counts streamed bytes, so neither a
+ * lying header nor a chunked upload gets past the cap.
+ */
+async function readBodyWithinLimit(request: Request, maxBytes: number): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
 
 /**
  * Custom webhook HTTP action for Dodo Payments.
@@ -138,8 +212,12 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     return new Response("Missing required webhook headers", { status: 400 });
   }
 
-  // 3. Read raw body for signature verification
-  const body = await request.text();
+  // 3. Read raw body for signature verification, bounded before any crypto
+  const body = await readBodyWithinLimit(request, DODO_WEBHOOK_MAX_BODY_BYTES);
+  if (body === null) {
+    console.warn(`[webhook] Dodo webhook body over ${DODO_WEBHOOK_MAX_BODY_BYTES} bytes; refused`);
+    return new Response("Payload too large", { status: 413 });
+  }
 
   // Shared failure persistence: record the sanitized projection, then queue
   // the production ops signal after the row commits. Both the validation
@@ -210,13 +288,7 @@ export const webhookHandler = httpAction(async (ctx, request) => {
   //    credentials that do not verify — see step 5 for authenticated but
   //    malformed payloads.
   try {
-    await verifyDodoSignature(
-      webhookKey,
-      webhookId,
-      webhookTimestamp,
-      webhookSignature,
-      body,
-    );
+    await verifyDodoSignature(webhookKey, request.headers, body);
   } catch (error) {
     // sentry-coverage-ok: the scheduled mutation below throws a
     // structured error that Convex auto-Sentry captures. Required because
@@ -231,16 +303,19 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     // here MUST NOT block the 401 path. Without this guard, a thrown
     // `runAfter` would surface as an uncaught 500 to Dodo, triggering
     // exactly the retry-storm this whole pattern exists to prevent.
+    //
     try {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.payments.webhookHandlers.reportDodoSignatureFailure,
-        {
-          webhookId: webhookId ?? undefined,
-          webhookTimestamp: webhookTimestamp ?? undefined,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        },
+      const lastReportedAt = await ctx.runQuery(
+        internal.payments.webhookHandlers.getLastDodoSignatureFailureReportAt,
+        {},
       );
+      if (signatureFailureReportIsDue(lastReportedAt ?? undefined, Date.now())) {
+        await ctx.runMutation(internal.payments.webhookHandlers.scheduleDodoSignatureFailureReport, {
+          webhookId,
+          webhookTimestamp,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+      }
     } catch (scheduleErr) {
       // Best-effort — log and continue. The 401 below is the
       // contract-critical path; Sentry capture is the bonus.

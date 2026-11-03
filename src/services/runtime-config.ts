@@ -1,8 +1,8 @@
 import { isDesktopRuntime } from './runtime';
+import { safeStorageSet } from '@/utils/safe-storage';
 import { invokeTauri } from './tauri-bridge';
 
 export type RuntimeSecretKey =
-  | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
   | 'EXA_API_KEYS'
   | 'BRAVE_API_KEYS'
@@ -31,7 +31,6 @@ export type RuntimeSecretKey =
   | 'ICAO_API_KEY';
 
 export type RuntimeFeatureId =
-  | 'aiGroq'
   | 'aiOpenRouter'
   | 'stockNewsSearchExa'
   | 'stockNewsSearchBrave'
@@ -52,7 +51,7 @@ export type RuntimeFeatureId =
   | 'aiOllama'
   | 'wtoTrade'
   | 'supplyChain'
-  | 'newsPerFeedFallback'
+  | 'newsOutageFallback'
   | 'aviationStack'
   | 'ucdpConflicts'
   | 'icaoNotams';
@@ -81,7 +80,6 @@ export interface RuntimeConfig {
 const TOGGLES_STORAGE_KEY = 'worldmonitor-runtime-feature-toggles';
 
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
-  aiGroq: true,
   aiOpenRouter: true,
   stockNewsSearchExa: true,
   stockNewsSearchBrave: true,
@@ -103,7 +101,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiOllama: true,
   wtoTrade: true,
   supplyChain: true,
-  newsPerFeedFallback: false,
+  newsOutageFallback: true,
   aviationStack: true,
   icaoNotams: true,
 };
@@ -114,19 +112,12 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Ollama local summarization',
     description: 'Local LLM provider via OpenAI-compatible endpoint (Ollama or LM Studio, desktop-first).',
     requiredSecrets: ['OLLAMA_API_URL', 'OLLAMA_MODEL'],
-    fallback: 'Falls back to Groq, then OpenRouter, then local browser model.',
-  },
-  {
-    id: 'aiGroq',
-    name: 'Groq summarization',
-    description: 'Primary fast LLM provider used for AI summary generation.',
-    requiredSecrets: ['GROQ_API_KEY'],
     fallback: 'Falls back to OpenRouter, then local browser model.',
   },
   {
     id: 'aiOpenRouter',
     name: 'OpenRouter summarization',
-    description: 'Secondary LLM provider for AI summary fallback.',
+    description: 'Hosted LLM provider used for AI summary generation.',
     requiredSecrets: ['OPENROUTER_API_KEY'],
     fallback: 'Falls back to local browser model only.',
   },
@@ -156,6 +147,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'FRED economic indicators',
     description: 'Macro indicators from Federal Reserve Economic Data.',
     requiredSecrets: ['FRED_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Economic panel remains available with non-FRED metrics.',
   },
   {
@@ -163,6 +156,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'EIA oil analytics',
     description: 'US Energy Information Administration oil metrics.',
     requiredSecrets: ['EIA_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Oil analytics cards show disabled state.',
   },
   {
@@ -170,6 +165,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Cloudflare outage radar',
     description: 'Internet outages from Cloudflare Radar annotations API.',
     requiredSecrets: ['CLOUDFLARE_API_TOKEN'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Outage layer is disabled and map continues with other feeds.',
   },
   {
@@ -256,6 +253,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'WTO trade policy data',
     description: 'Trade restrictions, tariff trends, barriers, and flows from WTO.',
     requiredSecrets: ['WTO_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Trade policy panel shows disabled state.',
   },
   {
@@ -263,14 +262,16 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Supply Chain Intelligence',
     description: 'Shipping rates via FRED Baltic Dry Index. Chokepoints and minerals use public data.',
     requiredSecrets: ['FRED_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Chokepoints and minerals always available; shipping requires FRED key.',
   },
   {
-    id: 'newsPerFeedFallback',
-    name: 'News per-feed fallback',
-    description: 'If digest aggregation is unavailable, use stale headlines first and optionally fetch a limited feed subset.',
+    id: 'newsOutageFallback',
+    name: 'News outage fallback',
+    description: 'If the news digest is unavailable and a panel has no headlines, fetch a few of its feeds directly (desktop only).',
     requiredSecrets: [],
-    fallback: 'Stale headlines remain available; limited per-feed fallback is disabled.',
+    fallback: 'Panels keep their last headlines; with none, they stay empty until the digest returns.',
   },
   {
     id: 'aviationStack',
@@ -449,7 +450,7 @@ export function getEffectiveSecrets(feature: RuntimeFeatureDefinition): RuntimeS
 
 export function setFeatureToggle(featureId: RuntimeFeatureId, enabled: boolean): void {
   runtimeConfig.featureToggles[featureId] = enabled;
-  localStorage.setItem(TOGGLES_STORAGE_KEY, JSON.stringify(runtimeConfig.featureToggles));
+  safeStorageSet(TOGGLES_STORAGE_KEY, JSON.stringify(runtimeConfig.featureToggles));
   notifyConfigChanged();
 }
 

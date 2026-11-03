@@ -17,7 +17,8 @@
 #   UPSTASH_REDIS_REST_URL
 #   UPSTASH_REDIS_REST_TOKEN
 #   CONVEX_URL                    (or CONVEX_SITE_URL)
-#   RELAY_SHARED_SECRET
+#   CONVEX_NOTIFICATION_RELAY_SECRET
+#   RELAY_SHARED_SECRET (analyst enrichment only)
 #   RESEND_API_KEY
 #   TELEGRAM_BOT_TOKEN
 #   BRIEF_URL_SIGNING_SECRET      (brief compose disabled without this)
@@ -28,7 +29,7 @@
 #   AI_DIGEST_ENABLED=0           (kill switch for AI summary LLM call)
 # =============================================================================
 
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43
+FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
 
 WORKDIR /app
 
@@ -48,6 +49,7 @@ RUN npm ci --prefix scripts --omit=dev
 # Digest cron + shared script helpers it imports via createRequire.
 COPY scripts/seed-digest-notifications.mjs ./scripts/
 COPY scripts/_digest-markdown.mjs ./scripts/
+COPY scripts/_env-file.mjs ./scripts/
 COPY scripts/lib/ ./scripts/lib/
 # Sprint 1 / U4 operator one-shot — `clearDeliveredEntry` primitive
 # pairs with the delivered-log writer in scripts/lib/digest-delivered-
@@ -91,6 +93,9 @@ COPY shared/diplomacy-keywords.json ./shared/
 COPY shared/ticker-extract.js shared/ticker-extract.d.ts ./shared/
 COPY shared/stocks.json ./shared/
 COPY scripts/shared/notification-dedup.cjs ./scripts/shared/
+# notify-fields.cjs: link classifier for the Teams digest card
+# (scripts/lib/notification-teams.cjs, #9215).
+COPY scripts/shared/notify-fields.cjs ./scripts/shared/
 # #6428: corroboration counts publishers, not feed labels. Imported by
 # seed-digest-notifications.mjs (the corroboration run metric) as
 # shared/publisher-families.js, and by scripts/lib/digest-delivery-plan.mjs

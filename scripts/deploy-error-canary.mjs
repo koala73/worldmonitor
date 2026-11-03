@@ -122,6 +122,7 @@ async function queryWindow(window, { token, fetchImpl = fetch }) {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      'User-Agent': 'WorldMonitor deploy-error-canary (+https://www.worldmonitor.app)',
     },
     body: JSON.stringify({
       apl: buildCanaryApl(window),
@@ -134,17 +135,22 @@ async function queryWindow(window, { token, fetchImpl = fetch }) {
     throw new Error(`Axiom APL query failed: HTTP ${resp.status} ${await resp.text().catch(() => '')}`);
   }
   const payload = await resp.json();
+  if (payload?.status?.isPartial === true) throw new Error('Axiom APL returned a partial query result');
   const totals = payload?.buckets?.totals;
   if (!Array.isArray(totals)) throw new Error('Axiom APL answer carried no buckets.totals');
   return totals.map((row) => {
     const aggs = Array.isArray(row?.aggregations) ? row.aggregations : [];
     const byOp = new Map(aggs.map((a) => [a?.op, a?.value]));
-    return {
-      route: String(row?.group?.route ?? ''),
-      total: Number(byOp.get('total') ?? 0),
-      errors: Number(byOp.get('errors') ?? 0),
-    };
-  }).filter((row) => row.route !== '');
+    const route = row?.group?.route;
+    const total = byOp.get('total');
+    const errors = byOp.get('errors');
+    if (typeof route !== 'string' || !route.trim()
+      || !Number.isSafeInteger(total) || total < 0
+      || !Number.isSafeInteger(errors) || errors < 0 || errors > total) {
+      throw new Error('Axiom APL answer carried an invalid route aggregate');
+    }
+    return { route, total, errors };
+  });
 }
 
 function isoHoursAgo(hours, now = Date.now()) {

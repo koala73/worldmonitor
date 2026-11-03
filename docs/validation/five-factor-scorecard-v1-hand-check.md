@@ -50,3 +50,10 @@ and running those two upstream producer changes, then observing a scorecard run
 that meets all frozen publication floors. Repository tests and a local dry-run
 do not prove a Railway deployment, a scheduled production write, public API
 availability, or acceptance completion.
+
+On 2026-08-31, a full upstream refresh measured 196 countries with scoreable
+pillar counts of food 86, energy 186, demographics 176, technology 116, and
+defense 40. The earlier technology publication floor of 120 exceeded the fully
+refreshed source corpus. Before the first scorecard activation, that operational
+floor was corrected to 110, retaining six countries of outage headroom while
+leaving every country evidence, scoring, freshness, and null rule unchanged.

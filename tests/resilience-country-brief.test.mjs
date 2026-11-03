@@ -50,6 +50,9 @@ const sampleEnergyProfile = {
   solarShare: 10,
   hydroShare: 30,
   importShare: 15,
+  importShareAvailable: true,
+  importShareYear: 2023,
+  importShareSource: 'World Bank Open Data',
   gasStorageAvailable: false,
   gasStorageFillPct: 0,
   gasStorageChange1d: 0,
@@ -253,6 +256,29 @@ test('country deep-dive panel forwards pending energy mix to the lazy resilience
     const widget = harness.getWidgets().at(-1);
     assert.ok(widget, 'expected lazy widget instance');
     assert.equal(widget.energyMixData, sampleEnergyProfile);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test('country deep-dive panel does not label missing import data as a net exporter', async () => {
+  const harness = await createCountryDeepDivePanelHarness();
+  try {
+    const panel = harness.createPanel();
+    panel.show('Malta', 'MT', sampleScore, emptySignals);
+    panel.updateEnergyProfile({
+      ...sampleEnergyProfile,
+      mixAvailable: true,
+      importShare: 0,
+      importShareAvailable: false,
+      importShareYear: 0,
+      importShareSource: '',
+    });
+    await waitForLazyWidget(harness);
+
+    const text = harness.getPanelRoot()?.textContent ?? '';
+    assert.match(text, /Import dependency:Unavailable/);
+    assert.doesNotMatch(text, /Net exporter/);
   } finally {
     harness.cleanup();
   }

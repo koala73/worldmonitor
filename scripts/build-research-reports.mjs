@@ -15,7 +15,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const UMAMI_SCRIPT_TAG =
+export const UMAMI_SCRIPT_TAG =
   '<script async defer src="https://abacus.worldmonitor.app/script.js" '
   + 'data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" '
   + 'data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" '
@@ -26,6 +26,18 @@ const DATASET_LICENSE = {
   name: 'World Monitor Terms of Service (27 July 2026)',
   url: 'https://www.worldmonitor.app/docs/terms',
 };
+
+// Mirrors WORLD_MONITOR_ORG in scripts/build-crawlable-corpus.mjs. Declared here
+// rather than imported because that module injects this one's template functions,
+// so importing back would close a cycle. Carries `@type` + `name` alongside the
+// `@id`: parsers resolve `@id` within one document and no /research/ page declares
+// the canonical Organization, so a bare reference would not resolve (#7459b).
+const WORLD_MONITOR_ORG = Object.freeze({
+  '@id': 'https://www.worldmonitor.app/#organization',
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: 'https://www.worldmonitor.app/',
+});
 
 const CHART_WIDTH = 720;
 const LINE_CHART_HEIGHT = 260;
@@ -688,20 +700,26 @@ export function renderResearchReportPage({
   tpl,
   baseUrl,
   lastmod,
-  chokepointSlug,
+  chokepointSlugById,
   dataCatalog,
   includedInDataCatalog,
 }) {
-  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
   if (!SLUG_PATTERN.test(report.slug) || !SLUG_PATTERN.test(report.id)) {
     throw new Error(`Report slug/id must match ${SLUG_PATTERN}: ${report.slug} / ${report.id}`);
   }
-  if (!chokepointSlug) {
-    throw new Error(
-      `Report ${report.id}: focusChokepointId ${report.focusChokepointId} has no entry in the chokepoint registry — refusing to render a /chokepoints/undefined/ handoff link`,
-    );
+  for (const [role, ids] of [
+    ['focusChokepointId', [report.focusChokepointId]],
+    ['contextChokepointId', report.contextChokepointIds],
+  ]) {
+    for (const id of ids) {
+      if (!SLUG_PATTERN.test(chokepointSlugById.get(id) ?? '')) {
+        throw new Error(`Report ${report.id}: ${role} ${id} has no valid route in the chokepoint registry`);
+      }
+    }
   }
+  const chokepointSlug = chokepointSlugById.get(report.focusChokepointId);
   const path = `/research/${report.slug}/`;
   const canonical = absoluteUrl(baseUrl, path);
   const focus = snapshot.chokepoints[report.focusChokepointId];
@@ -735,11 +753,11 @@ ${monthly.map((row) => `          <tr><td>${monthLabel(row.month)}${row.month ==
         </tbody>
       </table></div>`;
 
-  const contextRows = report.contextChokepointIds.map((id) => {
+  const contextRows = [...new Set(report.contextChokepointIds)].map((id) => {
     const chokepoint = snapshot.chokepoints[id];
     const history = chokepoint.history;
     const cell = (start, end) => round1(mean(inRange(history, start, end), 'total')).toFixed(1);
-    return `          <tr><td>${escapeHtml(chokepoint.portwatchName)}</td><td>${cell('2025-01-01', '2025-12-31')}</td><td>${cell('2026-02-01', '2026-02-28')}</td><td>${cell('2026-06-01', '2026-06-30')}</td><td>${cell('2026-07-01', focus.observationEnd)}</td></tr>`;
+    return `          <tr><td><a href="/chokepoints/${escapeHtml(chokepointSlugById.get(id))}/">${escapeHtml(chokepoint.portwatchName)}</a></td><td>${cell('2025-01-01', '2025-12-31')}</td><td>${cell('2026-02-01', '2026-02-28')}</td><td>${cell('2026-06-01', '2026-06-30')}</td><td>${cell('2026-07-01', focus.observationEnd)}</td></tr>`;
   }).join('\n');
   const contextTable = `<div style="overflow-x:auto"><table>
         <caption>Context chokepoints: average daily transits (same snapshot, same units)</caption>
@@ -821,10 +839,15 @@ ${provenanceRows}
         <blockquote><p>${escapeHtml(`${report.author.name}, “${report.title}”, version ${report.version}, published ${report.datePublished}. ${canonical} — underlying transit data: IMF PortWatch (portwatch.imf.org).`)}</p></blockquote>
         <p>The canonical URL is stable, editions are append-only, and corrections bump the version and modified date rather than silently rewriting figures.</p>`);
         break;
+      case 'current-pointer':
+        // AI answers quote the direct answer on its own, so its age and the
+        // live page sit beside it rather than at the foot of the report.
+        parts.push(`        <p>This answer covers IMF PortWatch data through ${escapeHtml(focus.observationEnd)}. For today's transit count and disruption score, see the ${trackedLink(`/chokepoints/${chokepointSlug}/`, `live ${escapeHtml(focus.portwatchName)} status page`, 'chokepoint-page', escapeHtml)}.</p>`);
+        break;
       case 'live-handoff': {
-        const dashboardUrl = withUtmSource(absoluteUrl(baseUrl, `/?chokepoint=${report.focusChokepointId}`), 'research-report');
+        const dashboardUrl = absoluteUrl(baseUrl, `/dashboard?chokepoint=${report.focusChokepointId}`);
         parts.push(`        <p>This report is a dated snapshot. For the current picture: the ${trackedLink(`/chokepoints/${chokepointSlug}/`, 'live Strait of Hormuz status page', 'chokepoint-page', escapeHtml)} shows today's disruption pulse, and the ${trackedLink(dashboardUrl, 'World Monitor dashboard', 'dashboard', escapeHtml)} adds map layers, alerts, and vessel context around it.</p>
-        <p>Programmatic access: the same chokepoint status and transit history are available through the ${trackedLink('/docs/api-reference', 'World Monitor REST API', 'developer', escapeHtml)} and the ${trackedLink('/docs/mcp-overview', 'MCP server', 'developer', escapeHtml)} for AI agents. Higher request limits and research briefings come with ${trackedLink(withUtmSource(absoluteUrl(baseUrl, '/pro'), 'research-report'), 'World Monitor Pro', 'pricing', escapeHtml)}. The research itself stays free and ungated.</p>`);
+        <p>Programmatic access: the same chokepoint status and transit history are available through the ${trackedLink('/docs/api-reference', 'World Monitor REST API', 'developer', escapeHtml)} and the ${trackedLink('/docs/mcp-overview', 'MCP server', 'developer', escapeHtml)} for AI agents. Higher request limits and research briefings come with ${trackedLink(absoluteUrl(baseUrl, '/pro'), 'World Monitor Pro', 'pricing', escapeHtml)}. The research itself stays free and ungated.</p>`);
         break;
       }
       default:
@@ -857,11 +880,12 @@ ${notCovered}
 ${sectionsHtml}
 ${notCoveredSection}
 ${justification}
-      <p class="source">Snapshot: ${escapeHtml(report.snapshotPath)} (retrieved ${escapeHtml(String(snapshot.capturedAt))}). Attribution: ${escapeHtml(snapshot.source.attribution)} Methodology: <a href="/docs/methodology/chokepoints">chokepoint monitoring methodology</a>.</p>
+      <p class="source" data-snapshot-source="${escapeHtml(report.snapshotPath)}">Snapshot: World Monitor chokepoint transit snapshot, retrieved ${escapeHtml(String(snapshot.capturedAt).slice(0, 10))}. Attribution: ${escapeHtml(snapshot.source.attribution)} Methodology: <a href="/docs/methodology/chokepoints">chokepoint monitoring methodology</a>.</p>
       ${UMAMI_SCRIPT_TAG}`;
 
   const jsonLd = {
     '@context': 'https://schema.org',
+    '@id': `${canonical}#report`,
     '@type': 'Report',
     headline: report.title,
     name: report.title,
@@ -871,8 +895,12 @@ ${justification}
     dateModified: report.dateModified,
     version: report.version,
     inLanguage: 'en-US',
-    author: { '@type': 'Organization', name: report.author.name, url: report.author.url },
-    publisher: { '@type': 'Organization', name: 'World Monitor', url: 'https://www.worldmonitor.app/' },
+    // The "World Monitor Research" byline stays in the visible page text and the
+    // citation block; in the entity graph it folds into the canonical Organization
+    // so the page stops publishing a second, differently-named org claiming the
+    // same homepage url (#7459b).
+    author: { ...WORLD_MONITOR_ORG },
+    publisher: { ...WORLD_MONITOR_ORG },
     isBasedOn: 'https://portwatch.imf.org/',
     temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,
     hasPart: {
@@ -880,7 +908,8 @@ ${justification}
       name: `Strait of Hormuz daily transit calls, ${focus.observationStart} to ${focus.observationEnd}`,
       description:
         'Daily AIS-observed vessel transit calls by class with deadweight-tonnage aggregates, from IMF PortWatch, frozen in a versioned snapshot.',
-      creator: { '@type': 'Organization', name: report.author.name, url: report.author.url },
+      keywords: ['AIS vessel transits', 'Strait of Hormuz', 'maritime trade', 'IMF PortWatch'],
+      creator: { ...WORLD_MONITOR_ORG },
       license: DATASET_LICENSE,
       datePublished: report.datePublished,
       temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,
@@ -1008,7 +1037,7 @@ export function writeResearchSection({ data, outDir, baseUrl, tpl, dataCatalog, 
         tpl,
         baseUrl,
         lastmod: data.lastmod.research,
-        chokepointSlug: chokepointSlugById.get(report.focusChokepointId),
+        chokepointSlugById,
         dataCatalog,
         includedInDataCatalog,
       }),

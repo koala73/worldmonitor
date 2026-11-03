@@ -11,7 +11,7 @@ import {
   PSD_ATTRIBUTES,
   PSD_COMMODITIES,
   COMMODITY_KCAL_PER_KG,
-  applyFaostatProductionFill,
+  applyFaostatFoodBalanceFill,
   bucketKey,
   buildCountryRecord,
   computeCalorieWeightedStocksToUse,
@@ -44,6 +44,16 @@ describe('PSD commodity registry', () => {
     assert.equal(PSD_COMMODITIES.soybeans.code, '2222000');
     assert.equal(PSD_COMMODITIES.barley.code, '0430000');
     assert.equal(PSD_COMMODITIES.palmOil.code, '4243000');
+    assert.deepEqual(Object.fromEntries(
+      Object.entries(PSD_COMMODITIES).map(([slug, commodity]) => [slug, commodity.faostatBalanceItem]),
+    ), {
+      wheat: 2511,
+      corn: 2514,
+      rice: 2807,
+      soybeans: 2555,
+      barley: 2513,
+      palmOil: 2577,
+    });
   });
 
   test('storage key and world sentinel match the issue contract', () => {
@@ -131,8 +141,8 @@ describe('computeStocksToUseRatio', () => {
   });
 });
 
-describe('FAOSTAT production fill', () => {
-  test('fills production-only rows for countries PSD does not cover', () => {
+describe('FAOSTAT Food Balances fill', () => {
+  test('uses one production and domestic-supply pair only when PSD has no complete balance', () => {
     const psd = [
       {
         countryCode: 'US',
@@ -147,25 +157,94 @@ describe('FAOSTAT production fill', () => {
         unit: '1000 MT',
         source: 'psd',
       },
+      {
+        countryCode: 'FR',
+        commodity: 'wheat',
+        marketingYear: '2024/25',
+        production: 35,
+        consumption: null,
+        imports: 8,
+        exports: 4,
+        endingStocks: 6,
+        stocksToUseRatio: null,
+        unit: '1000 MT',
+        source: 'psd',
+      },
+      {
+        countryCode: 'KE',
+        commodity: 'wheat',
+        marketingYear: '2024/25',
+        production: 12,
+        consumption: null,
+        imports: 3,
+        exports: 0,
+        endingStocks: null,
+        stocksToUseRatio: null,
+        unit: '1000 MT',
+        source: 'psd',
+      },
     ];
-    const filled = applyFaostatProductionFill(psd, [
-      { countryCode: 'US', commodity: 'wheat', production: 999, calendarYear: 2024 },
-      { countryCode: 'TZ', commodity: 'wheat', production: 120, calendarYear: 2024 },
+    const filled = applyFaostatFoodBalanceFill(psd, [
+      { countryCode: 'US', commodity: 'wheat', production: 999, consumption: 888, calendarYear: 2023 },
+      { countryCode: 'FR', commodity: 'wheat', production: 31, consumption: 47, calendarYear: 2023 },
+      { countryCode: 'KE', commodity: 'wheat', production: 9, consumption: 18, calendarYear: 2023 },
+      { countryCode: 'TZ', commodity: 'wheat', production: 120, consumption: 95, calendarYear: 2023 },
     ], { commodity: 'wheat' });
 
     const us = filled.find((rec) => rec.countryCode === 'US');
+    const fr = filled.find((rec) => rec.countryCode === 'FR');
+    const ke = filled.find((rec) => rec.countryCode === 'KE');
     const tz = filled.find((rec) => rec.countryCode === 'TZ');
-    assert.equal(us.production, 50, 'FAOSTAT must not overwrite a PSD production value');
+    assert.equal(us.production, 50, 'FAOSTAT must not overwrite a complete PSD balance');
+    assert.equal(us.consumption, 30);
     assert.equal(us.source, 'psd');
+    assert.equal(fr.source, 'psd', 'USDA stock evidence must not be replaced by a FAOSTAT pair');
+    assert.equal(fr.production, 35);
+    assert.equal(fr.consumption, null);
+    assert.equal(fr.endingStocks, 6);
+    assert.equal(fr.stocksToUseRatio, null);
+    assert.equal(ke.source, 'faostat');
+    assert.equal(ke.production, 9);
+    assert.equal(ke.consumption, 18);
+    assert.equal(ke.endingStocks, null, 'a stockless incomplete PSD row may be replaced, but stocks stay unset');
+    assert.equal(ke.stocksToUseRatio, null);
     assert.equal(tz.source, 'faostat');
     assert.equal(tz.production, 120);
+    assert.equal(tz.consumption, 95);
     assert.equal(tz.endingStocks, null);
     assert.equal(tz.stocksToUseRatio, null);
-    assert.equal(tz.marketingYear, '2024/25');
+    assert.equal(tz.totalUse, 95);
+    assert.equal(tz.marketingYear, '2023/24');
   });
 
-  test('FAOSTAT calendar year becomes its own marketing year, not the latest PSD MY', () => {
-    const filled = applyFaostatProductionFill([
+  test('keeps a PSD row with production=null and a finite stock ratio', () => {
+    const filled = applyFaostatFoodBalanceFill([
+      {
+        countryCode: 'EG',
+        commodity: 'wheat',
+        marketingYear: '2024/25',
+        production: null,
+        consumption: 20,
+        imports: 5,
+        exports: 0,
+        endingStocks: 8,
+        stocksToUseRatio: 0.4,
+        unit: '1000 MT',
+        source: 'psd',
+      },
+    ], [
+      { countryCode: 'EG', commodity: 'wheat', production: 99, consumption: 88, calendarYear: 2023 },
+    ], { commodity: 'wheat' });
+
+    assert.equal(filled.length, 1);
+    assert.equal(filled[0].source, 'psd');
+    assert.equal(filled[0].production, null);
+    assert.equal(filled[0].endingStocks, 8);
+    assert.equal(filled[0].stocksToUseRatio, 0.4);
+  });
+
+  test('rejects an incomplete FAOSTAT pair', () => {
+    const filled = applyFaostatFoodBalanceFill([
       {
         countryCode: 'US',
         commodity: 'wheat',
@@ -180,12 +259,12 @@ describe('FAOSTAT production fill', () => {
         source: 'psd',
       },
     ], [
-      { countryCode: 'TZ', commodity: 'wheat', production: 120, calendarYear: 2023 },
+      { countryCode: 'TZ', commodity: 'wheat', production: 120, consumption: null, calendarYear: 2023 },
+      { countryCode: 'FR', commodity: 'wheat', production: null, consumption: 95, calendarYear: 2023 },
     ], { commodity: 'wheat' });
 
-    const tz = filled.find((rec) => rec.countryCode === 'TZ');
-    assert.equal(tz.marketingYear, '2023/24');
-    assert.notEqual(tz.marketingYear, '2025/26');
+    assert.equal(filled.length, 1);
+    assert.equal(filled[0].countryCode, 'US');
   });
 
   test('a failed FAOSTAT stage leaves the PSD rows untouched', () => {
@@ -205,9 +284,9 @@ describe('FAOSTAT production fill', () => {
       },
     ];
     const frozen = structuredClone(psd);
-    const out = applyFaostatProductionFill(psd, null, { commodity: 'corn' });
+    const out = applyFaostatFoodBalanceFill(psd, null, { commodity: 'corn' });
     assert.deepEqual(out, frozen);
-    const outErr = applyFaostatProductionFill(psd, new Error('FAOSTAT 502'), { commodity: 'corn' });
+    const outErr = applyFaostatFoodBalanceFill(psd, new Error('FAOSTAT 502'), { commodity: 'corn' });
     assert.deepEqual(outErr, frozen);
   });
 });

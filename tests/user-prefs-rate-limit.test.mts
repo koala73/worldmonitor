@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
+import { PREFERENCE_VARIANTS } from '../shared/cloud-preferences-contract.ts';
+import { SITE_VARIANTS } from '../src/config/variant.ts';
 
 import handler, {
   __setUserPrefsDepsForTests,
@@ -457,5 +459,135 @@ describe('user-prefs POST write rate limit', () => {
 
     assert.equal(res.status, 400);
     assert.deepEqual(await res.json(), { error: 'BLOB_TOO_LARGE' });
+  });
+});
+
+describe('user-prefs variant boundary', () => {
+  it('supports exactly the current app variants', () => {
+    assert.deepEqual(PREFERENCE_VARIANTS, SITE_VARIANTS);
+  });
+  const variants = ['full', 'tech', 'finance', 'happy', 'commodity', 'energy'];
+  const invalidVariants = ['', 'FULL', ' full', 'full ', 'unknown', '__proto__', 'x'.repeat(1024)];
+
+  for (const variant of [...variants, ...invalidVariants]) {
+    it(`validates GET and POST variant ${JSON.stringify(variant.slice(0, 20))}`, async () => {
+      process.env.CONVEX_URL = 'https://convex.test';
+      const { calls } = installDeps({ allowed: true, limit: 30, reset: 0, degraded: false });
+      const valid = variants.includes(variant);
+      const get = await handler(new Request(
+        `https://worldmonitor.app/api/user-prefs?variant=${encodeURIComponent(variant)}`,
+        { headers: { Authorization: 'Bearer test-token' } },
+      ));
+      const post = await handler(makePost({ variant, data: { theme: 'dark' }, expectedSyncVersion: 0 }));
+      assert.equal(get.status, valid ? 200 : 400);
+      assert.equal(post.status, valid ? 200 : 400);
+      const operations = calls.filter(c => c.kind === 'query' || c.kind === 'mutation');
+      if (valid) {
+        assert.deepEqual(operations.map(c => c.args.variant), [variant, variant]);
+      } else {
+        assert.deepEqual(await get.json(), { error: 'INVALID_VARIANT' });
+        assert.deepEqual(await post.json(), { error: 'INVALID_VARIANT' });
+        assert.deepEqual(operations, []);
+      }
+    });
+  }
+
+  it('defaults only an absent GET variant to full', async () => {
+    process.env.CONVEX_URL = 'https://convex.test';
+    const { calls } = installDeps({ allowed: true, limit: 30, reset: 0, degraded: false });
+    const response = await handler(new Request('https://worldmonitor.app/api/user-prefs', {
+      headers: { Authorization: 'Bearer test-token' },
+    }));
+    assert.equal(response.status, 200);
+    assert.deepEqual(calls.find(c => c.kind === 'query')?.args, { variant: 'full' });
+  });
+});
+
+describe('user-prefs POST during account deletion', () => {
+  it('maps ACCOUNT_DELETION_IN_PROGRESS to a terminal 403 without an error capture', async () => {
+    process.env.CONVEX_URL = 'https://convex.test';
+    const errorMock = mock.method(console, 'error', () => {});
+    const warnMock = mock.method(console, 'warn', () => {});
+
+    __setUserPrefsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: TEST_USER_ID }),
+      checkScopedRateLimit: async () => ({
+        allowed: true,
+        limit: USER_PREFS_WRITE_RATE_LIMIT,
+        reset: TEST_NOW + 60_000,
+        degraded: false,
+      }),
+      createConvexClient: () => ({
+        setAuth(): void {},
+        async query(): Promise<unknown> {
+          return null;
+        },
+        async mutation(): Promise<unknown> {
+          // The shape Convex's HTTP client builds for an object-data ConvexError.
+          const err = new Error('{"kind":"ACCOUNT_DELETION_IN_PROGRESS"}') as Error & {
+            data?: Record<string, unknown>;
+          };
+          err.data = { kind: 'ACCOUNT_DELETION_IN_PROGRESS' };
+          throw err;
+        },
+      }),
+    });
+
+    const res = await handler(makePost());
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Retry-After'), null);
+    assert.deepEqual(await res.json(), { error: 'ACCOUNT_DELETION_IN_PROGRESS' });
+    assert.equal(errorMock.mock.calls.length, 0);
+    assert.equal(warnMock.mock.calls.length, 1);
+    assert.match(String(warnMock.mock.calls[0].arguments[0]), /account deletion in progress/);
+  });
+
+  it('stores the keyed 403 and replays it without reaching Convex', async () => {
+    process.env.CONVEX_URL = 'https://convex.test';
+    mock.method(console, 'warn', () => {});
+    let completed: string | null = null;
+    installRedisPipeline((commands) => {
+      const [command] = commands;
+      if (command[0] === 'GET') return [{ result: completed }];
+      if (command[0] === 'SET' && command.includes('NX')) return [{ result: 'OK' }, { result: null }];
+      if (command[0] === 'SET') completed = command[2];
+      return [{ result: 'OK' }];
+    });
+    let mutations = 0;
+    __setUserPrefsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: TEST_USER_ID }),
+      checkScopedRateLimit: async () => ({
+        allowed: true,
+        limit: USER_PREFS_WRITE_RATE_LIMIT,
+        reset: TEST_NOW + 60_000,
+        degraded: false,
+      }),
+      createConvexClient: () => ({
+        setAuth(): void {},
+        async query(): Promise<unknown> {
+          return null;
+        },
+        async mutation(): Promise<unknown> {
+          mutations += 1;
+          const err = new Error('{"kind":"ACCOUNT_DELETION_IN_PROGRESS"}') as Error & {
+            data?: Record<string, unknown>;
+          };
+          err.data = { kind: 'ACCOUNT_DELETION_IN_PROGRESS' };
+          throw err;
+        },
+      }),
+    });
+
+    const first = await handler(makePost(undefined, { 'Idempotency-Key': IDEMPOTENCY_KEY }));
+    assert.equal(first.status, 403);
+    assert.equal(first.headers.get('Idempotent-Replayed'), 'false');
+    assert.equal(JSON.parse(completed ?? '{}').status, 403, 'the terminal 403 should be stored for replay');
+
+    const replay = await handler(makePost(undefined, { 'Idempotency-Key': IDEMPOTENCY_KEY }));
+    assert.equal(replay.status, 403);
+    assert.equal(replay.headers.get('Idempotent-Replayed'), 'true');
+    assert.deepEqual(await replay.json(), { error: 'ACCOUNT_DELETION_IN_PROGRESS' });
+    assert.equal(mutations, 1, 'the replay should not reach Convex');
   });
 });

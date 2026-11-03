@@ -40,6 +40,14 @@ const LOCK_DOMAIN = 'energy:spine';
 const LOCK_TTL_MS = 20 * 60 * 1000; // 20 min (pipeline write of 200+ countries)
 const MIN_COVERAGE_RATIO = 0.80; // abort if new spine < 80% of previous country count
 
+export function areCoreSourcesEmpty(jodiCount, owidCount) {
+  return jodiCount === 0 && owidCount === 0;
+}
+
+export function isSpineCountDrop(newCount, previousCount) {
+  return previousCount > 0 && newCount / previousCount < MIN_COVERAGE_RATIO;
+}
+
 const ISO2_TO_UN = Object.fromEntries(Object.entries(UN_TO_ISO2).map(([unCode, iso2]) => [iso2, unCode]));
 
 // Only these reporters are seeded in comtrade:flows for spine shock inputs.
@@ -190,7 +198,7 @@ function buildGasFields(jodiGas) {
 }
 
 function buildMixFields(mix) {
-  if (!mix) return { coalShare: 0, gasShare: 0, oilShare: 0, nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0, importShare: 0 };
+  if (!mix) return { coalShare: 0, gasShare: 0, oilShare: 0, nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0 };
   return {
     coalShare: mix.coalShare ?? 0,
     gasShare: mix.gasShare ?? 0,
@@ -200,7 +208,6 @@ function buildMixFields(mix) {
     windShare: mix.windShare ?? 0,
     solarShare: mix.solarShare ?? 0,
     hydroShare: mix.hydroShare ?? 0,
-    importShare: mix.importShare ?? 0,
   };
 }
 
@@ -396,7 +403,7 @@ export async function main() {
       return;
     }
 
-    if (jodiCount === 0 && owidCount === 0) {
+    if (areCoreSourcesEmpty(jodiCount, owidCount)) {
       console.error('[energy-spine] Both JODI oil and OWID mix returned zero countries — aborting to preserve snapshot');
       const prevCountries = await redisGet(SPINE_COUNTRIES_KEY).catch(() => null);
       if (Array.isArray(prevCountries) && prevCountries.length > 0) {
@@ -412,22 +419,20 @@ export async function main() {
     // Step 2: Count-drop guard — check against previous _countries count
     const prevCountries = await redisGet(SPINE_COUNTRIES_KEY).catch(() => null);
     const prevCount = Array.isArray(prevCountries) ? prevCountries.length : 0;
-    if (prevCount > 0) {
+    if (isSpineCountDrop(countries.length, prevCount)) {
       const coverageRatio = countries.length / prevCount;
-      if (coverageRatio < MIN_COVERAGE_RATIO) {
-        console.error(
-          `[energy-spine] Count-drop guard triggered: ${countries.length} countries = ` +
-          `${(coverageRatio * 100).toFixed(1)}% of previous ${prevCount} — aborting to preserve snapshot`,
-        );
-        // Extend TTL on existing spine keys
-        const prevKeys = prevCountries.map(iso2 => `${SPINE_KEY_PREFIX}${iso2}`);
-        await extendExistingTtl(
-          [...prevKeys, SPINE_COUNTRIES_KEY, SPINE_META_KEY],
-          SPINE_TTL_SECONDS,
-        );
-        await writeMeta(0, 'count_drop_guard');
-        return;
-      }
+      console.error(
+        `[energy-spine] Count-drop guard triggered: ${countries.length} countries = ` +
+        `${(coverageRatio * 100).toFixed(1)}% of previous ${prevCount} — aborting to preserve snapshot`,
+      );
+      // Extend TTL on existing spine keys
+      const prevKeys = prevCountries.map(iso2 => `${SPINE_KEY_PREFIX}${iso2}`);
+      await extendExistingTtl(
+        [...prevKeys, SPINE_COUNTRIES_KEY, SPINE_META_KEY],
+        SPINE_TTL_SECONDS,
+      );
+      await writeMeta(0, 'count_drop_guard');
+      return;
     }
 
     // Read SPR policy registry once (global key, not per-country)

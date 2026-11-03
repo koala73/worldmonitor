@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { afterEach, describe, it } from 'node:test';
 
 import {
+  __setConvexAuthTimersForTests,
   __setConvexClientFactoryForTests,
   __setConvexClientForTests,
   getConvexClient,
@@ -17,6 +18,7 @@ import {
   rebindConvexAuthForWatchHandoff,
   waitForConvexAuth,
 } from '../src/services/convex-client.ts';
+import { createEmbedKey } from '../src/services/embed-keys.ts';
 import { createApiKey, listApiKeys } from '../src/services/api-keys.ts';
 import {
   acknowledgePlanLimitNotice,
@@ -129,6 +131,42 @@ function deferred<T>(): {
   return { promise, resolve: resolvePromise, reject: rejectPromise };
 }
 
+/**
+ * Manual scheduler for convex-client's auth timers (#5841). The bounded auth
+ * wait and the transient-rebind retry delay fire ONLY when a test fires them,
+ * so these paths are driven deterministically instead of by elapsed wall time
+ * — the two timing-shaped cases below used to red the merge-blocking `unit`
+ * job whenever CI scheduling latency starved a real 1 ms retry hop, a real
+ * 5 ms bounded wait, or the 1 s polling deadline that watched them.
+ */
+function installManualAuthTimers(): {
+  pending: () => Array<{ ms: number }>;
+  fireNext: () => void;
+} {
+  type ManualTimer = { fn: () => void; ms: number; cancelled: boolean; fired: boolean };
+  const timers: ManualTimer[] = [];
+  __setConvexAuthTimersForTests({
+    setTimeout: (fn, ms) => {
+      const timer: ManualTimer = { fn, ms, cancelled: false, fired: false };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimeout: (id) => {
+      const timer = id as ManualTimer | null;
+      if (timer) timer.cancelled = true;
+    },
+  });
+  return {
+    pending: () => timers.filter((t) => !t.cancelled && !t.fired).map((t) => ({ ms: t.ms })),
+    fireNext: () => {
+      const timer = timers.find((t) => !t.cancelled && !t.fired);
+      assert.ok(timer, 'expected a live auth timer to fire');
+      timer.fired = true;
+      timer.fn();
+    },
+  };
+}
+
 function installFakeClient(): FakeConvexClient {
   const fake = new FakeConvexClient();
   __setConvexClientForTests(fake);
@@ -136,12 +174,15 @@ function installFakeClient(): FakeConvexClient {
   return fake;
 }
 
+const originalFetch = globalThis.fetch;
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   destroyEntitlementSubscription();
   destroySubscriptionWatch();
   __setConvexClientFactoryForTests(null);
   __setConvexClientForTests(null);
   __setClerkInstanceForTests(null);
+  __setConvexAuthTimersForTests(null);
 });
 
 describe('generation-scoped Convex auth handoff', () => {
@@ -244,6 +285,7 @@ describe('generation-scoped Convex auth handoff', () => {
 
   it('retries a transient terminal token failure for the current identity', async () => {
     const fake = installFakeClient();
+    const timers = installManualAuthTimers();
     const attached: string[] = [];
     let current = true;
     const handoff = rebindConvexAuthForWatchHandoff(
@@ -256,11 +298,15 @@ describe('generation-scoped Convex auth handoff', () => {
       await flushMicrotasks();
 
       fake.authConfigs[1].onChange(false);
-      await waitForCondition(
-        () => fake.authConfigs.length === 3,
-        'current B should install one bounded retry config',
-      );
+      await flushMicrotasks();
 
+      // The terminal failure settles the barrier, so the bounded wait resolves
+      // without its timeout; what remains live is exactly the retry delay.
+      assert.deepEqual(timers.pending(), [{ ms: 1 }], 'one live retry-delay timer');
+      timers.fireNext();
+      await flushMicrotasks();
+
+      assert.equal(fake.authConfigs.length, 3, 'current B installs one bounded retry config');
       fake.authConfigs[2].onChange(true);
       assert.equal(await handoff, true);
       assert.deepEqual(attached, ['B']);
@@ -273,6 +319,7 @@ describe('generation-scoped Convex auth handoff', () => {
 
   it('recovers current-user watches after a bounded wait times out', async () => {
     const fake = installFakeClient();
+    const timers = installManualAuthTimers();
     const attached: string[] = [];
     const handoff = rebindConvexAuthForWatchHandoff(
       () => true,
@@ -281,6 +328,11 @@ describe('generation-scoped Convex auth handoff', () => {
       [],
     );
     await flushMicrotasks();
+
+    // The bounded wait expires only when the TEST fires it — never by
+    // elapsed wall time.
+    assert.deepEqual(timers.pending(), [{ ms: 5 }], 'one live bounded-wait timer');
+    timers.fireNext();
 
     assert.equal(await handoff, false);
     assert.deepEqual(attached, []);
@@ -394,38 +446,76 @@ describe('generation-scoped Convex auth handoff', () => {
   });
 
   it('does not dispatch an API-key create if A changes while auth is pending', async () => {
+    const token = deferred<string | null>();
+    let tokenRequested = false;
     __setClerkInstanceForTests({
-      session: { getToken: async () => 'token-a' },
+      session: { getToken: async () => { tokenRequested = true; return token.promise; } },
       user: { id: 'A' },
     } as never);
-    const fake = installFakeClient();
-
-    // Leave A's barrier unresolved so the sensitive operation is in flight
-    // when Clerk selects B.
-    const createRejected = assert.rejects(
-      createApiKey('A key'),
-      /Account changed while creating the API key/,
-    );
-    await flushMicrotasks();
-
+    const calls: unknown[] = [];
+    globalThis.fetch = async (...args) => { calls.push(args); return Response.json({}); };
+    const rejected = assert.rejects(createApiKey('A key'), /Account changed while creating the API key/);
+    await waitForCondition(() => tokenRequested, 'session token must be pending');
     __setClerkInstanceForTests({
-      session: { getToken: async () => 'token-b' },
-      user: { id: 'B' },
+      session: { getToken: async () => 'token-b' }, user: { id: 'B' },
     } as never);
-    const handoffB = rebindConvexAuthForWatchHandoff(
-      () => true,
-      () => {},
-      1_000,
-      [],
-    );
-    await flushMicrotasks();
-
-    await createRejected;
-    assert.equal(fake.mutations.length, 0, 'no account-bound mutation may cross the switch');
-
-    fake.authConfigs[1].onChange(true);
-    assert.equal(await handoffB, true);
+    token.resolve('token-a');
+    await rejected;
+    assert.equal(calls.length, 0, 'no API-key fetch may cross the switch');
   });
+
+  it('does not dispatch an embed-key create if A changes while auth is pending', async () => {
+    const token = deferred<string | null>();
+    let tokenRequested = false;
+    __setClerkInstanceForTests({
+      session: { getToken: async () => { tokenRequested = true; return token.promise; } },
+      user: { id: 'A' },
+    } as never);
+    const calls: unknown[] = [];
+    globalThis.fetch = async (...args) => { calls.push(args); return Response.json({}); };
+    const rejected = assert.rejects(createEmbedKey('A key'), /Account changed while creating the embed key/);
+    await waitForCondition(() => tokenRequested, 'session token must be pending');
+    __setClerkInstanceForTests({
+      session: { getToken: async () => 'token-b' }, user: { id: 'B' },
+    } as never);
+    token.resolve('token-a');
+    await rejected;
+    assert.equal(calls.length, 0, 'no embed-key fetch may cross the switch');
+  });
+
+  it('creates an embed key through the standard session route and sends only its hash', async () => {
+    const tokenOptions: unknown[] = [];
+    __setClerkInstanceForTests({
+      session: { getToken: async (options: unknown) => { tokenOptions.push(options); return 'session-a'; } },
+      user: { id: 'A' },
+    } as never);
+    let sent: Record<string, string> | undefined;
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, '/api/user-embed-keys');
+      assert.equal(init?.method, 'POST');
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer session-a');
+      sent = JSON.parse(String(init?.body));
+      return Response.json({ id: 'embed_a', name: sent!.name, keyPrefix: sent!.keyPrefix });
+    };
+    const result = await createEmbedKey('  Partner  ');
+    assert.deepEqual(tokenOptions, [{ skipCache: true }], 'must not request the convex template');
+    assert.equal(result.id, 'embed_a');
+    assert.equal(result.name, 'Partner');
+    assert.match(result.key, /^wme_[a-f0-9]{40}$/);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(result.key));
+    const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    assert.deepEqual(sent, { name: 'Partner', keyPrefix: result.key.slice(0, 9), keyHash: hash });
+  });
+
+  for (const code of ['KEY_LIMIT_REACHED', 'EMBED_ACCESS_REQUIRED']) {
+    it(`preserves embed creation error ${code} for Settings`, async () => {
+      __setClerkInstanceForTests({
+        session: { getToken: async () => 'session-a' }, user: { id: 'A' },
+      } as never);
+      globalThis.fetch = async () => Response.json({ error: code }, { status: 403 });
+      await assert.rejects(createEmbedKey('Partner'), { message: code });
+    });
+  }
 
   it('checks the initiating account immediately before dispatch', async () => {
     __setClerkInstanceForTests({
@@ -503,34 +593,46 @@ describe('generation-scoped Convex auth handoff', () => {
 
   it('rejects an A API key that resolves after Clerk selects B', async () => {
     __setClerkInstanceForTests({
-      session: { getToken: async () => 'token-a' },
-      user: { id: 'A' },
+      session: { getToken: async () => 'token-a' }, user: { id: 'A' },
     } as never);
-    const fake = installFakeClient();
-    fake.authConfigs[0].onChange(true);
-    const mutation = deferred<{
-      id: string;
-      name: string;
-      keyPrefix: string;
-    }>();
-    fake.mutationResult = mutation.promise;
-
-    const rejected = assert.rejects(
-      createApiKey('A key'),
-      /Account changed while creating the API key/,
-    );
-    await waitForCalls(fake.mutations, 1);
-
-    mutation.resolve({ id: 'key_a', name: 'A key', keyPrefix: 'wm_a' });
-    queueMicrotask(() => {
-      __setClerkInstanceForTests({
-        session: { getToken: async () => 'token-b' },
-        user: { id: 'B' },
-      } as never);
-    });
-
+    const response = deferred<Response>();
+    const calls: unknown[] = [];
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, '/api/user-api-keys');
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer token-a');
+      calls.push(url);
+      return response.promise;
+    };
+    const rejected = assert.rejects(createApiKey('A key'), /Account changed while creating the API key/);
+    await waitForCondition(() => calls.length === 1, 'A fetch must be pending');
+    __setClerkInstanceForTests({
+      session: { getToken: async () => 'token-b' }, user: { id: 'B' },
+    } as never);
+    response.resolve(Response.json({ id: 'key_a', name: 'A key', keyPrefix: 'wm_a' }));
     await rejected;
-    assert.equal(fake.mutations.length, 1, 'the A mutation completed, but its plaintext stayed discarded');
+    assert.equal(calls.length, 1, 'the A request completed, but its plaintext stayed discarded');
+  });
+
+  it('rejects an A embed key that resolves after Clerk selects B', async () => {
+    __setClerkInstanceForTests({
+      session: { getToken: async () => 'token-a' }, user: { id: 'A' },
+    } as never);
+    const response = deferred<Response>();
+    const calls: unknown[] = [];
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, '/api/user-embed-keys');
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer token-a');
+      calls.push(url);
+      return response.promise;
+    };
+    const rejected = assert.rejects(createEmbedKey('A key'), /Account changed while creating the embed key/);
+    await waitForCondition(() => calls.length === 1, 'A fetch must be pending');
+    __setClerkInstanceForTests({
+      session: { getToken: async () => 'token-b' }, user: { id: 'B' },
+    } as never);
+    response.resolve(Response.json({ id: 'key_a', name: 'A key', keyPrefix: 'wme_a' }));
+    await rejected;
+    assert.equal(calls.length, 1, 'the A request completed, but its plaintext stayed discarded');
   });
 
   it('rejects a notice acknowledgement when the identity-bound auth gate fails', async () => {

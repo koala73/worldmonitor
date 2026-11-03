@@ -22,6 +22,7 @@ Some endpoints explicitly reject anonymous browser session cookies and require a
 - `/api/widget-agent`, `/api/chat-analyst`, `/api/mcp-proxy`
 - `/api/market/v1/analyze-stock`, `/api/market/v1/backtest-stock`
 - `/api/intelligence/v1/classify-event`, `/api/intelligence/v1/search-intel-history`
+- `/api/intelligence/v1/get-country-intel-brief`, `/api/intelligence/v1/get-country-coverage` — country reads whose cost is live outbound fetches, unlike the cheap cached `get-country-risk`
 - `/api/scenario/v1/run-scenario`, `/api/supply-chain/v1/get-route-impact`
 - `/api/aviation/v1/get-flight-status`, `/api/trade/v1/list-comtrade-flows`
 - Vendor / partner endpoints
@@ -46,7 +47,7 @@ See [CORS](/cors) for the origin patterns.
 
 ### Generate a key
 
-API-tier subscribers get a key automatically on subscription. To rotate, contact support.
+API Starter and API Business subscribers create their own `wm_` keys from **Settings → API Keys**. See [Find or replace your API key](/api-keys).
 
 ### Use it
 
@@ -100,5 +101,6 @@ From the browser, `premiumFetch()` (`src/services/premium-fetch.ts`) handles thi
 | Anonymous | Public reads only (conflicts, natural disasters, markets basics) |
 | Signed-in free | Same as anonymous + user preferences |
 | PRO | All endpoints, MCP, AI Brief, Shipping v2, Scenarios |
+| API Starter / API Business (`wm_` key) | Every Pro-gated REST route and MCP tool, within the plan's daily request allowance. API plans are entitlement tier 2, above the tier-1 gate these routes use. No dashboard seat on API Starter. |
 
 Tier is resolved from Convex on each call, so a subscription change takes effect on the next request (after cache invalidation).

@@ -168,14 +168,17 @@ describe('agent-mode view (/?mode=agent)', () => {
 
   it('every discovery URL it advertises resolves to a tracked file or a live rewrite', () => {
     // Static, repo-tracked surfaces — a typo here ships a dead link to agents.
+    // Host split is the Cloudflare apex-exemption list (ARCHITECTURE.md §2):
+    // `/.well-known/*` is served on the apex, everything else 301s to www, and
+    // publishing the redirecting form costs every agent a wasted fetch (#7660).
     const trackedPaths = {
-      'https://worldmonitor.app/plugin.json': 'public/plugin.json',
+      'https://www.worldmonitor.app/plugin.json': 'public/plugin.json',
       'https://worldmonitor.app/.well-known/agent-skills/index.json':
         'public/.well-known/agent-skills/index.json',
       'https://worldmonitor.app/.well-known/api-catalog': 'public/.well-known/api-catalog',
       'https://worldmonitor.app/.well-known/ai-catalog.json': 'public/.well-known/ai-catalog.json',
-      'https://worldmonitor.app/product-facts.json': 'public/product-facts.json',
-      'https://worldmonitor.app/llms.txt': 'public/llms.txt',
+      'https://www.worldmonitor.app/product-facts.json': 'public/product-facts.json',
+      'https://www.worldmonitor.app/llms.txt': 'public/llms.txt',
     };
     for (const [url, path] of Object.entries(trackedPaths)) {
       assert.equal(

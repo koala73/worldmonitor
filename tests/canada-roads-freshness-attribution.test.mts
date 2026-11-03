@@ -79,7 +79,7 @@ test('the freshness ids are declared in the DataSourceId union', () => {
 });
 
 test('the loader records per source rather than one blanket ontario_511', () => {
-  const block = /const records = await fetchCanadaRoads\(\);[\s\S]*?\n  \}/.exec(loaderSrc);
+  const block = /const records = await fetchCanadaRoads\(\);[\s\S]*?\n {2}\}/.exec(loaderSrc);
   assert.ok(block, 'loadCanadaRoads must exist');
 
   assert.match(block[0], /for \(const \{ key, freshnessId \} of CANADA_ROAD_FRESHNESS_IDS\)/);

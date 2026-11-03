@@ -179,7 +179,7 @@ describe('Panel content-write invariant (#6557)', () => {
       assert.ok(match, `Panel.${helper} is missing — the guard has nothing to point call sites at`);
       const code = stripComments(match[1]);
       assert.ok(
-        !/\n  (?:protected|private|public) /.test(code),
+        !/\n {2}(?:protected|private|public) /.test(code),
         `Panel.${helper}'s body capture ran past the method — the extraction regex has drifted`,
       );
       assert.match(

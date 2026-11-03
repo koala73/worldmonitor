@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { roundGeoCoordinate } from './_seed-utils.mjs';
+import { finiteLat, finiteLon, lonLatPair } from './lib/geo-coord.mjs';
 
 const ISO3_TO_ISO2 = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'shared/iso3-to-iso2.json'), 'utf8'),
@@ -32,19 +33,20 @@ export const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active';
 export const ECCC_HOST = 'api.weather.gc.ca';
 // Live ECCC vocabulary is issued/continued/ended — not 'active'.
 // status_en=active returns an empty collection. CQL IN also returned 0,
-// so issued and continued are fetched as two separate GETs. limit is set
-// high so each national collection returns in one page; GeoMet defaults
-// to 10 without it.
+// so issued and continued are paged separately in stable feature_id order.
 export const ECCC_LIVE_STATUSES = Object.freeze(['issued', 'continued']);
+const ECCC_PAGE_SIZE = 250;
 const ECCC_ALERTS_COLLECTION = 'https://api.weather.gc.ca/collections/weather-alerts/items';
 export const ECCC_ALERTS_URLS = Object.freeze(
-  ECCC_LIVE_STATUSES.map((status) => `${ECCC_ALERTS_COLLECTION}?f=json&status_en=${status}&limit=10000`),
+  ECCC_LIVE_STATUSES.map((status) => `${ECCC_ALERTS_COLLECTION}?f=json&status_en=${status}&limit=${ECCC_PAGE_SIZE}&offset=0&sortby=feature_id`),
 );
 // Issued URL kept as the single-URL handle for existing host-policy tests.
 export const ECCC_ALERTS_URL = ECCC_ALERTS_URLS[0];
 // National GeoJSON exceeds HKO's 256KiB; 4 MiB is the upper end of the
 // deliberate 2–4 MiB ceiling for this collection.
 export const ECCC_MAX_BYTES = 4 * 1024 * 1024;
+const ECCC_MAX_AGGREGATE_BYTES = 8 * 1024 * 1024;
+const ECCC_MAX_PAGES = 8;
 
 export const SWIC_HOST = 'severeweather.wmo.int';
 export const SWIC_ALERTS_URL = 'https://severeweather.wmo.int/json/wmo_all.json';
@@ -142,10 +144,14 @@ function isClosedLinearRing(ring) {
   // rounded: sub-metre-adjacent vertices collapse onto each other, so a ring can
   // keep 4+ positions and matching endpoints while enclosing zero area. PostGIS
   // accepts that as "closed" and it reaches third-party webhooks as a degenerate
-  // Polygon. A real ring has at least 3 distinct vertices.
+  // Polygon. A real ring has at least 3 distinct vertices, and every one of
+  // them has to be a usable position: NaN and Infinity serialize as null in
+  // the outgoing GeoJSON, which PostGIS rejects at the far end of the webhook.
   const distinct = new Set();
   for (const position of ring) {
-    if (Array.isArray(position)) distinct.add(`${position[0]},${position[1]}`);
+    const pair = lonLatPair(position);
+    if (!pair) return false;
+    distinct.add(`${pair[0]},${pair[1]}`);
   }
   return distinct.size >= 3;
 }
@@ -163,8 +169,9 @@ export function calculateCentroid(coords) {
     && coords[0][0] === coords[coords.length - 1][0]
     && coords[0][1] === coords[coords.length - 1][1];
   const ring = closed ? coords.slice(0, -1) : coords;
+  if (ring.length === 0 || ring.some((position) => lonLatPair(position) == null)) return undefined;
   const sum = ring.reduce((acc, [lon, lat]) => [acc[0] + lon, acc[1] + lat], [0, 0]);
-  return [sum[0] / ring.length, sum[1] / ring.length];
+  return lonLatPair([sum[0] / ring.length, sum[1] / ring.length]) || undefined;
 }
 
 /**
@@ -615,19 +622,18 @@ export function requireSwicItems(data) {
 
 function swicCentroid(item, member) {
   const coords = extractCoordinates(item?.geometry);
-  if (coords.length) {
-    return { coordinates: coords, centroid: calculateCentroid(coords), geometryPrecision: 'polygon' };
+  const polygonCentroid = calculateCentroid(coords);
+  if (polygonCentroid) {
+    return { coordinates: coords, centroid: polygonCentroid, geometryPrecision: 'polygon' };
   }
-  const itemLat = Number(item?.lat ?? item?.latitude);
-  const itemLon = Number(item?.lon ?? item?.lng ?? item?.longitude);
-  if (Number.isFinite(itemLat) && Number.isFinite(itemLon)
-    && itemLat >= -90 && itemLat <= 90 && itemLon >= -180 && itemLon <= 180) {
+  const itemLat = finiteLat(item?.lat ?? item?.latitude);
+  const itemLon = finiteLon(item?.lon ?? item?.lng ?? item?.longitude);
+  if (itemLat != null && itemLon != null) {
     return { coordinates: [], centroid: [itemLon, itemLat], geometryPrecision: 'point' };
   }
-  const memberLat = Number(member?.lat);
-  const memberLon = Number(member?.lng ?? member?.lon);
-  if (Number.isFinite(memberLat) && Number.isFinite(memberLon)
-    && memberLat >= -90 && memberLat <= 90 && memberLon >= -180 && memberLon <= 180) {
+  const memberLat = finiteLat(member?.lat);
+  const memberLon = finiteLon(member?.lng ?? member?.lon);
+  if (memberLat != null && memberLon != null) {
     return { coordinates: [], centroid: [memberLon, memberLat], geometryPrecision: 'country' };
   }
   return null;
@@ -697,7 +703,7 @@ export async function fetchSwicAlertCatalog({
   };
 }
 
-async function readResponseLimited(response, maxBytes) {
+async function readResponseLimited(response, maxBytes, byteBudget) {
   const advertisedLength = Number(response.headers?.get?.('content-length'));
   if (Number.isFinite(advertisedLength) && advertisedLength > maxBytes) {
     try { await response.body?.cancel?.(); } catch { /* still reject */ }
@@ -706,7 +712,10 @@ async function readResponseLimited(response, maxBytes) {
   const reader = response.body?.getReader?.();
   if (!reader) {
     const text = await response.text();
-    if (Buffer.byteLength(text, 'utf8') > maxBytes) throw new Error('RESPONSE_TOO_LARGE');
+    const bytes = Buffer.byteLength(text, 'utf8');
+    if (byteBudget) byteBudget.remaining -= bytes;
+    if (bytes > maxBytes) throw new Error('RESPONSE_TOO_LARGE');
+    if (byteBudget?.remaining < 0) throw new Error('ECCC_AGGREGATE_TOO_LARGE');
     return JSON.parse(text);
   }
   const chunks = [];
@@ -716,9 +725,10 @@ async function readResponseLimited(response, maxBytes) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > maxBytes) {
+      if (byteBudget) byteBudget.remaining -= value.byteLength;
+      if (total > maxBytes || byteBudget?.remaining < 0) {
         await reader.cancel().catch(() => {});
-        throw new Error('RESPONSE_TOO_LARGE');
+        throw new Error(total > maxBytes ? 'RESPONSE_TOO_LARGE' : 'ECCC_AGGREGATE_TOO_LARGE');
       }
       chunks.push(value);
     }
@@ -729,40 +739,66 @@ async function readResponseLimited(response, maxBytes) {
 }
 
 /**
- * Fetch issued + continued as two GETs and concatenate features.
- * One URL failing still returns the other; throws only if both fail.
+ * Fetch complete issued + continued collections within a shared byte/page budget.
+ * One status failing returns a partial result; throws only if both fail.
  */
 export async function fetchEcccAlertFeatures({
   fetchFn = globalThis.fetch,
   userAgent,
   maxBytes = ECCC_MAX_BYTES,
 } = {}) {
-  const results = await Promise.allSettled(
-    ECCC_ALERTS_URLS.map((url) => fetchApprovedWeatherJson(url, {
-      allowedHosts: [ECCC_HOST],
-      maxBytes,
-      fetchFn,
-      userAgent,
-    }).then(requireAlertFeatures)),
-  );
-
+  const byteBudget = { remaining: ECCC_MAX_AGGREGATE_BYTES };
+  let pages = 0;
+  const seenIds = new Set();
   const features = [];
   const failures = [];
   const failedStatuses = [];
-  results.forEach((result, index) => {
-    if (result.status === 'fulfilled') {
-      features.push(...result.value);
-    } else {
-      failures.push(result.reason);
-      failedStatuses.push(ECCC_LIVE_STATUSES[index]);
+  // Sequential paging makes the shared resource limits deterministic.
+  for (const [index, status] of ECCC_LIVE_STATUSES.entries()) {
+    const statusFeatures = [];
+    let matched;
+    try {
+      do {
+        if (pages >= ECCC_MAX_PAGES) throw new Error('ECCC_PAGE_LIMIT');
+        if (byteBudget.remaining <= 0) throw new Error('ECCC_AGGREGATE_TOO_LARGE');
+        const url = new URL(ECCC_ALERTS_URLS[index]);
+        url.searchParams.set('offset', String(statusFeatures.length));
+        pages += 1;
+        const data = await fetchApprovedWeatherJson(url.toString(), {
+          allowedHosts: [ECCC_HOST], maxBytes, fetchFn, userAgent, byteBudget,
+        });
+        const page = requireAlertFeatures(data);
+        if (data.type !== 'FeatureCollection'
+          || !Number.isSafeInteger(data.numberMatched) || data.numberMatched < 0
+          || !Number.isSafeInteger(data.numberReturned) || data.numberReturned !== page.length
+          || page.length > ECCC_PAGE_SIZE) {
+          throw new Error('ECCC_MALFORMED_PAGE');
+        }
+        if (matched !== undefined && data.numberMatched !== matched) throw new Error('ECCC_COUNT_DRIFT');
+        matched = data.numberMatched;
+        if (statusFeatures.length + page.length > matched
+          || (page.length === 0 && statusFeatures.length < matched)) {
+          throw new Error('ECCC_PAGE_PROGRESS');
+        }
+        for (const feature of page) {
+          if (typeof feature?.id !== 'string' || !feature.id.trim()) throw new Error('ECCC_INVALID_ID');
+          if (seenIds.has(feature.id)) throw new Error('ECCC_DUPLICATE_ID');
+          seenIds.add(feature.id);
+        }
+        statusFeatures.push(...page);
+      } while (statusFeatures.length < matched);
+      features.push(...statusFeatures);
+    } catch (err) {
+      failures.push(err);
+      failedStatuses.push(status);
     }
-  });
-  if (failures.length === results.length) {
+  }
+  if (failures.length === ECCC_LIVE_STATUSES.length) {
     const detail = failures.map((err) => err?.message || String(err)).join('; ');
     throw new Error(`ECCC issued and continued fetches both failed: ${detail}`);
   }
   // Returns an OBJECT, not a bare array, so a partial fetch cannot be consumed
-  // as if it were the whole set. `issued` and `continued` are two separate GETs
+  // as if it were the whole set. `issued` and `continued` are separate collections
   // and each carries alerts the other does not: `continued` is where an ONGOING
   // warning lives after its first issue. Returning just the surviving features
   // when one status 500s publishes a silently truncated national alert set —
@@ -787,6 +823,7 @@ export async function fetchApprovedWeatherJson(url, {
   userAgent = CHROME_UA,
   timeoutMs = 15_000,
   accept = 'application/geo+json',
+  byteBudget,
 } = {}) {
   const parsed = new URL(url);
   const allowed = new Set((allowedHosts || []).map((host) => String(host).toLowerCase()));
@@ -799,5 +836,5 @@ export async function fetchApprovedWeatherJson(url, {
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return readResponseLimited(response, maxBytes);
+  return readResponseLimited(response, maxBytes, byteBudget);
 }

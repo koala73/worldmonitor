@@ -1,4 +1,8 @@
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
+import {
+  parseWildfireFiresSummary,
+  WILDFIRE_FIRES_SUMMARY_KEY,
+} from '../../../../scripts/shared/wildfire-fires-summary.mjs';
 
 // ========================================================================
 // Constants
@@ -29,18 +33,52 @@ export interface BaselineEntry {
   lastUpdated: string;
 }
 
+// The `v1` segment is new as of GHSA-gxj5-54wh-7vgr and deliberately orphans
+// every previously written row. Those rows were accumulated from unvalidated,
+// unauthenticated, once-per-page-load samples, so a mean or variance among
+// them cannot be told apart from a poisoned one. They age out on their own TTL.
+//
+// Not to be confused with makeBaselineKeyV2 below: that is a different
+// pipeline (the locked server-side rebuild), not a later version of this one.
 export function makeBaselineKey(type: string, region: string, weekday: number, month: number): string {
-  return `baseline:${type}:${region}:${weekday}:${month}`;
+  return `baseline:v1:${type}:${region}:${weekday}:${month}`;
 }
 
 export function makeBaselineKeyV2(type: string, region: string, weekday: number, month: number): string {
   return `baseline:v2:${type}:${region}:${weekday}:${month}`;
 }
 
-export const COUNT_SOURCE_KEYS: Record<string, string> = {
+/**
+ * Server-side count sources for the temporal baselines.
+ *
+ * `news` and `satellite_fires` were always server-counted (#1194). The other
+ * three moved here from the retired client-reported producer (#7574,
+ * GHSA-gxj5-54wh-7vgr): browser sessions can no longer fold samples into
+ * shared baselines, so each type counts a trusted server-side Redis payload
+ * instead. That re-bases the meaning of all three — deliberately:
+ *
+ *   - military_flights ← `military:flights:v1` (raw payload, seeder + RPC):
+ *     the globally tracked military flights, not the requesting browser's
+ *     viewport-filtered set.
+ *   - vessels ← `theater-posture:sebuf:v1` (seed envelope): the relay's
+ *     strictly-filtered military vessels inside the monitored theater
+ *     bounds, not a browser's own AIS-websocket tracker.
+ *   - ais_gaps ← `maritime:ais-gaps:v1` (seed envelope, published by the
+ *     relay): dark ships that returned after extended AIS silence, not a
+ *     per-session gap observation.
+ *
+ * The v2 baselines start empty for all three (MIN_SAMPLES warm-up), so no
+ * pre-existing statistics are silently re-based.
+ */
+export const COUNT_SOURCE_KEYS = {
   news: 'news:insights:v1',
-  satellite_fires: 'wildfire:fires:v1',
-};
+  // Derived by seed-fire-detections from the 2-5 MB canonical wildfire:fires:v1
+  // (#9509): total count plus the FIRMS clock, small enough for the 1.5 s GET.
+  satellite_fires: WILDFIRE_FIRES_SUMMARY_KEY,
+  military_flights: 'military:flights:v1',
+  vessels: 'theater-posture:sebuf:v1',
+  ais_gaps: 'maritime:ais-gaps:v1',
+} satisfies Record<string, string>;
 
 export const TEMPORAL_ANOMALIES_KEY = 'temporal:anomalies:v1';
 
@@ -154,68 +192,133 @@ function firesContentClock(
   data: unknown,
   skewLimit: number,
 ): TemporalAnomaliesContentAge | null | undefined {
-  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
-  const payload = data as {
-    fireDetections?: unknown;
-    _firmsState?: unknown;
-    _firmsPartial?: unknown;
-    _firmsCount?: unknown;
-  };
+  // The summary (scripts/shared/wildfire-fires-summary.mjs) carries the FIRMS
+  // clock the canonical rows used to be scanned for: rows, newest/oldest
+  // observation (skew-filtered by the producer at seed time) and the merge's
+  // coverage flags. A present-but-unparsable summary is undatable, not absent.
+  if (data == null) return undefined;
+  const summary = parseWildfireFiresSummary(data);
+  if (!summary) return null;
+  const { firms } = summary;
   // Canonical wildfire merge preserves explicit FIRMS coverage failures even
   // when CWFIS/BC still publish. A full loss is Canada-only coverage; a partial
   // loss leaves known regions dark. Neither is a skippable empty FIRMS window —
   // returning undefined here lets a live news clock hide an incomplete global
   // source behind a fresh temporal-anomalies clock.
-  if (payload._firmsState === 'failed' || payload._firmsPartial === true) return null;
-  // Same outage, older payload shape: before the #7141 follow-up the merge
+  if (firms.state === 'failed' || firms.partial) return null;
+  // Same outage, older merge behaviour: before the #7141 follow-up the merge
   // graded FIRMS on promise settlement alone, so a total outage published
   // `{_firmsState: 'ok', _firmsCount: 0}` with Canada-only rows. The producer
-  // now marks that 'failed', but a payload written by the previous version can
-  // still be in Redis (2h TTL) across a deploy, so fail closed on the declared
-  // count too.
+  // now marks that 'failed', so fail closed on the declared count too.
   //
   // This deliberately also fails closed on a genuinely empty WORLDWIDE FIRMS
-  // window, which is indistinguishable from the outage in this payload shape.
-  // That is the intended bias: zero satellite detections across every
-  // monitored region in a 1-day window is vanishingly rare, a global FIRMS
-  // outage is not, and a false STALE_CONTENT is recoverable where a silently
-  // green monitor is the bug this contract exists to prevent. Once legacy
-  // payloads age out, the `_firmsState: 'failed'` guard above is what fires.
-  if (payload._firmsState === 'ok' && payload._firmsCount === 0) return null;
-  const fires = payload.fireDetections;
-  if (!Array.isArray(fires) || fires.length === 0) {
+  // window, which is indistinguishable from the outage in this shape. That is
+  // the intended bias: zero satellite detections across every monitored region
+  // in a 1-day window is vanishingly rare, a global FIRMS outage is not, and a
+  // false STALE_CONTENT is recoverable where a silently green monitor is the
+  // bug this contract exists to prevent.
+  if (firms.state === 'ok' && firms.count === 0) return null;
+  if (summary.totalCount === 0) {
     // A live FIRMS 1-day window can be empty in the monitored regions. That is
     // "no satellite observations right now", not "we cannot date this".
     return undefined;
   }
-  const timestamps: number[] = [];
-  let firmsRows = 0;
-  for (const fire of fires) {
-    if (!fire || typeof fire !== 'object') continue;
-    const row = fire as Record<string, unknown>;
-    const source = row.source;
-    const isFirms = source == null || source === '' || source === 'firms';
-    if (!isFirms) continue;
-    firmsRows += 1;
-    const ts = parseObservationMs(row.detectedAt, skewLimit);
-    if (ts != null) timestamps.push(ts);
-  }
-  if (firmsRows === 0) {
+  if (firms.rows === 0) {
     // Agency-only payload without an explicit FIRMS failure: skip rather than
     // clock off ignition dates that can be days old on ongoing fires.
     return undefined;
+  }
+  const newest = parseObservationMs(firms.newestDetectedAt, skewLimit);
+  const oldest = parseObservationMs(firms.oldestDetectedAt, skewLimit);
+  if (newest == null || oldest == null) return null;
+  return { newestItemAt: newest, oldestItemAt: oldest };
+}
+
+/**
+ * `military:flights:v1` clock — the seeder's assessment timestamp.
+ *
+ * A present payload with no `fetchedAt` cannot be dated, so it fails closed;
+ * an empty flights array WITH a timestamp is a legitimate zero-traffic window,
+ * not an outage.
+ */
+function flightsContentClock(
+  data: unknown,
+  skewLimit: number,
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const fetchedAt = parseObservationMs((data as { fetchedAt?: unknown }).fetchedAt, skewLimit);
+  if (fetchedAt == null) return null;
+  return { newestItemAt: fetchedAt, oldestItemAt: fetchedAt };
+}
+
+/**
+ * `theater-posture:sebuf:v1` clock — the theaters' per-theater assessment
+ * timestamps, reduced like every other multi-observation payload: newest is
+ * the max within the payload, oldest the min. One stalled theater ages the
+ * source clock instead of hiding behind its fresher sibling. An absent or
+ * empty theaters array is undatable (the theater set is static and never
+ * legitimately empty), so it fails closed.
+ */
+function postureContentClock(
+  data: unknown,
+  skewLimit: number,
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const theaters = (data as { theaters?: unknown }).theaters;
+  if (!Array.isArray(theaters) || theaters.length === 0) return null;
+  const timestamps: number[] = [];
+  for (const theater of theaters) {
+    if (!theater || typeof theater !== 'object') continue;
+    const ts = parseObservationMs((theater as Record<string, unknown>).assessedAt, skewLimit);
+    if (ts != null) timestamps.push(ts);
   }
   if (timestamps.length === 0) return null;
   return reduceTimestamps(timestamps);
 }
 
+/** `maritime:ais-gaps:v1` clock — the relay's dark-ship sampling timestamp. */
+function gapsContentClock(
+  data: unknown,
+  skewLimit: number,
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  const sampledAt = parseObservationMs((data as { sampledAt?: unknown }).sampledAt, skewLimit);
+  if (sampledAt == null) return null;
+  return { newestItemAt: sampledAt, oldestItemAt: sampledAt };
+}
+
+/** Unwrapped count-source payloads as the rebuild reads them from Redis.
+ *  Derived from COUNT_SOURCE_KEYS so a new source cannot forget its slot. */
+export type CountSourcePayloads = {
+  [K in keyof typeof COUNT_SOURCE_KEYS]?: unknown;
+};
+
+/**
+ * One content-clock extractor per configured COUNT_SOURCE_KEYS type.
+ *
+ * Typed against CountSourcePayloads (itself derived from COUNT_SOURCE_KEYS)
+ * so adding a source without an extractor is a COMPILE error; the runtime
+ * parity test in tests/temporal-anomalies-cache.test.mts is the behavioral
+ * belt-and-braces on top.
+ */
+const CONTENT_CLOCK_EXTRACTORS: Record<
+  keyof CountSourcePayloads,
+  (data: unknown, skewLimit: number) => TemporalAnomaliesContentAge | null | undefined
+> = {
+  news: newsContentClock,
+  satellite_fires: firesContentClock,
+  military_flights: flightsContentClock,
+  vessels: postureContentClock,
+  ais_gaps: gapsContentClock,
+};
+
 /**
  * Content-age of a temporal-anomalies rebuild from the upstream payloads that
  * actually contributed a count this cycle.
  *
- * Two independently-failing sources (`news:insights:v1`, `wildfire:fires:v1`).
- * One clock per source, reduced with min() — a live fires feed must not hide a
- * frozen news feed, and vice versa. See CONCEPTS.md "Content-Age Contract" and
+ * Every configured COUNT_SOURCE_KEYS source contributes a clock, reduced with
+ * min() — a live fires feed must not hide a frozen news feed, and vice versa.
+ * See CONCEPTS.md "Content-Age Contract" and
  * docs/solutions/design-patterns/multi-source-freshness-clock-must-reduce-with-min.md.
  *
  * Returns null when no contributing source is datable, when a contributing
@@ -228,27 +331,11 @@ function firesContentClock(
  * STALE_CONTENT.
  */
 export function temporalAnomaliesContentMeta(
-  sources: { news?: unknown; satellite_fires?: unknown },
+  sources: CountSourcePayloads,
   nowMs = Date.now(),
 ): TemporalAnomaliesContentAge | null {
-  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
-  const clocks: TemporalAnomaliesContentAge[] = [];
-  for (const clock of [
-    // Missing configured source → null (fail closed), not undefined (skip).
-    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : null,
-    sources.satellite_fires !== undefined
-      ? firesContentClock(sources.satellite_fires, skewLimit)
-      : null,
-  ]) {
-    if (clock === undefined) continue;
-    if (clock === null) return null;
-    clocks.push(clock);
-  }
-  if (clocks.length === 0) return null;
-  return {
-    newestItemAt: Math.min(...clocks.map((clock) => clock.newestItemAt)),
-    oldestItemAt: Math.min(...clocks.map((clock) => clock.oldestItemAt)),
-  };
+  const collected = collectSourceClocks(sources, nowMs + CONTENT_AGE_CLOCK_SKEW_MS, null);
+  return collected.status === 'ok' ? collected.clock : null;
 }
 
 /**
@@ -275,20 +362,33 @@ export type TemporalAnomaliesReadableClock =
   | { status: 'no-signal' };
 
 export function temporalAnomaliesReadableContentMeta(
-  sources: { news?: unknown; satellite_fires?: unknown },
+  sources: CountSourcePayloads,
   nowMs = Date.now(),
 ): TemporalAnomaliesReadableClock {
-  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
+  return collectSourceClocks(sources, nowMs + CONTENT_AGE_CLOCK_SKEW_MS, undefined);
+}
+
+/**
+ * The shared collector behind both content-meta functions.
+ *
+ * They differ in exactly ONE input — what an ABSENT configured source means:
+ *   - `null` (strict): a configured source that was not read fail-closes the
+ *     whole clock. Right when absence means "the key is gone".
+ *   - `undefined` (readable): absence is skipped. Right when absence means
+ *     "this one read timed out".
+ * Everything else (per-source extraction, fail-closed on an unhealthy source,
+ * no-signal when nothing is datable, min-reduction) is identical.
+ */
+function collectSourceClocks(
+  sources: CountSourcePayloads,
+  skewLimit: number,
+  absentClock: TemporalAnomaliesContentAge | null | undefined,
+): TemporalAnomaliesReadableClock {
   const clocks: TemporalAnomaliesContentAge[] = [];
-  for (const clock of [
-    // Absent here means "not readable this cycle", which the caller handles —
-    // so absence is skipped rather than fail-closed. That is the ONLY
-    // difference from temporalAnomaliesContentMeta.
-    sources.news !== undefined ? newsContentClock(sources.news, skewLimit) : undefined,
-    sources.satellite_fires !== undefined
-      ? firesContentClock(sources.satellite_fires, skewLimit)
-      : undefined,
-  ]) {
+  for (const [type, extractClock] of Object.entries(CONTENT_CLOCK_EXTRACTORS)) {
+    const clock = sources[type as keyof CountSourcePayloads] !== undefined
+      ? extractClock(sources[type as keyof CountSourcePayloads], skewLimit)
+      : absentClock;
     if (clock === undefined) continue;
     if (clock === null) return { status: 'fail-closed' };
     clocks.push(clock);
@@ -316,35 +416,3 @@ export function temporalAnomaliesReadableContentMeta(
 export const BASELINE_SAMPLE_INTERVAL_MS = 60 * 60 * 1000;
 export const BASELINE_LOCK_KEY = 'baseline:lock';
 export const BASELINE_LOCK_TTL = 30;
-
-
-// ========================================================================
-// Upstash Redis MGET helper (edge-compatible)
-// getCachedJson / setCachedJson are imported from ../../../_shared/redis.ts
-// ========================================================================
-
-import { unwrapEnvelope } from '../../../_shared/seed-envelope';
-
-export async function mgetJson(keys: string[]): Promise<(unknown | null)[]> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return keys.map(() => null);
-  try {
-    const resp = await fetch(`${url}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(['MGET', ...keys]),
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!resp.ok) return keys.map(() => null);
-    const data = (await resp.json()) as { result?: (string | null)[] };
-    // Envelope-aware: several of these count-source keys (wildfire:fires:v1,
-    // news:insights:v1) are contract-mode canonical keys post-PR-2.
-    return (data.result || []).map(v => v ? unwrapEnvelope(JSON.parse(v)).data : null);
-  } catch {
-    return keys.map(() => null);
-  }
-}

@@ -768,7 +768,7 @@ describe('runLaneWithLease (#6683)', () => {
     const warns = [];
     const ac = new AbortController();
     let started = 0;
-    let passedSignal = undefined;
+    let passedSignal ;
     const neverSettles = (sig) => {
       started += 1;
       passedSignal = sig;

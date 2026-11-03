@@ -106,6 +106,7 @@ const EXPECTED_BANNED = [
   '曆史',
   '髮生',
   '隻基金',
+  '列錶',
 ];
 
 /** Flatten to dotted paths, descending into arrays — the plan-feature bullets live there. */
@@ -159,12 +160,6 @@ interface KeyRule {
 
 /** The per-entry rules, written out for the same reason as EXPECTED_BANNED. */
 const EXPECTED_KEY_RULES: KeyRule[] = [
-  {
-    catalogue: 'src',
-    path: 'modals.settingsWindow.worldMonitor.register.description',
-    from: '請訪問',
-    to: '請造訪',
-  },
   { catalogue: 'src', path: 'popups.techEvent.days.inDays', from: '天后', to: '天後' },
   { catalogue: 'pro-test', path: 'faq.q5', from: '這隻', to: '這只' },
 ];
@@ -182,7 +177,6 @@ const EXPECTED_KEY_RULES: KeyRule[] = [
  * A future entry that legitimately needs one of these adds its path here.
  */
 const KEY_OVERRIDE_ALLOWED_PATHS = new Map<string, readonly string[]>([
-  ['請訪問', []],
   ['天后', []],
   ['這隻', []],
 ]);
@@ -422,7 +416,7 @@ describe('zh-TW catalogues — the generator is the freshness gate', () => {
   const workflow = loadYaml(readFileSync(repoPath('.github/workflows/test.yml'), 'utf8')) as {
     jobs: Record<string, WorkflowJob | undefined>;
   };
-  const unit = workflow.jobs.unit;
+  const unit = workflow.jobs['unit-built-output'];
   const stepsOf = (job: WorkflowJob | undefined): WorkflowStep[] => job?.steps ?? [];
   const checkCommand = 'python3 scripts/convert-zh-tw.py --check';
 
@@ -497,7 +491,7 @@ describe('zh-TW catalogues — the generator is the freshness gate', () => {
 
     const diff = stepsOf(workflow.jobs.changes).find((step) => step.id === 'diff');
     assert.ok(diff?.run, 'could not find the diff step of the changes job');
-    const program = diff.run.match(/CODE=\$\(echo "\$FILES" \| awk '([\s\S]*?)'\)/);
+    const program = diff.run.match(/CODE=\$\(printf '%s\\n' "\$FILES" \| awk '([\s\S]*?)'\)/);
     assert.ok(program, 'could not read the CODE filter out of the changes job');
     const body = program[1]!;
 
@@ -545,9 +539,9 @@ describe('zh-TW catalogues — the generator is the freshness gate', () => {
   });
 
   test('requires the unit job before deploying', () => {
-    const gate = readFileSync(repoPath('.github/workflows/deploy-gate.yml'), 'utf8');
+    const gate = readFileSync(repoPath('.github/scripts/deploy-gate.sh'), 'utf8');
     const required = gate.match(/required='(\[[^']*\])'/);
-    assert.ok(required, 'could not read the required-job list from deploy-gate.yml');
+    assert.ok(required, 'could not read the required-job list from deploy-gate.sh');
     assert.ok(
       (JSON.parse(required[1]!) as string[]).includes('unit'),
       'the unit job is no longer gate-required, so the catalogue check stopped blocking merges',

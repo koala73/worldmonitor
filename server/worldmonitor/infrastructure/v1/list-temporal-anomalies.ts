@@ -5,8 +5,14 @@ import type {
   TemporalAnomaly as TemporalAnomalyProto,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
-import { getCachedJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
-import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
+import {
+  getCachedJson,
+  readCachedJson,
+  setCachedJson,
+  setCachedJsonIfAbsent,
+  type CacheReadResult,
+} from '../../../_shared/redis';
+import { summarizeWildfireDetections } from '../../../../scripts/shared/wildfire-fires-summary.mjs';
 import {
   BASELINE_TTL,
   MIN_SAMPLES,
@@ -25,6 +31,7 @@ import {
   temporalAnomaliesContentMeta,
   temporalAnomaliesReadableContentMeta,
   type BaselineEntry,
+  type CountSourcePayloads,
 } from './_shared';
 
 interface AnomalySnapshot {
@@ -40,6 +47,9 @@ const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
 const TYPE_LABELS: Record<string, string> = {
   news: 'News velocity',
   satellite_fires: 'Satellite fire detections',
+  military_flights: 'Military flights',
+  vessels: 'Military vessels',
+  ais_gaps: 'AIS gaps',
 };
 
 function getSeverity(zScore: number): string {
@@ -54,29 +64,26 @@ function formatMessage(type: string, count: number, mean: number, multiplier: nu
   return `${TYPE_LABELS[type] || type} ${mult} normal for ${WEEKDAY_NAMES[weekday]} (${MONTH_NAMES[month]}) — ${count} vs baseline ${Math.round(mean)}`;
 }
 
-function redisCmd(cmd: string[]): { url: string; token: string; body: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return { url, token, body: JSON.stringify(cmd) };
+async function tryAcquireLock(): Promise<boolean> {
+  return setCachedJsonIfAbsent(BASELINE_LOCK_KEY, 1, BASELINE_LOCK_TTL);
 }
 
-async function tryAcquireLock(): Promise<boolean> {
-  const r = redisCmd(['SET', BASELINE_LOCK_KEY, '1', 'NX', 'EX', String(BASELINE_LOCK_TTL)]);
-  if (!r) return false;
-  try {
-    const resp = await fetch(r.url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${r.token}`, 'Content-Type': 'application/json' },
-      body: r.body,
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (!resp.ok) return false;
-    const data = (await resp.json()) as { result?: string | null };
-    return data.result === 'OK';
-  } catch {
-    return false;
-  }
+/**
+ * The fires count source is the derived summary (#9509). seed-fire-detections
+ * writes it right after the canonical key in the same run, so a miss means the
+ * reader deployed before the seeder's next tick or that extra-key write failed:
+ * recompute the projection from the canonical key then, and only then. A
+ * present-but-unusable summary keeps its own verdict, a read error on either
+ * key stays an error, and a canonical payload that cannot be summarized is
+ * handed over as read so the parser rejects it: present and undatable, which
+ * fails the content clock closed, never "absent".
+ */
+async function readFiresSummary(summaryKey: string): Promise<CacheReadResult> {
+  const summary = await readCachedJson(summaryKey, true);
+  if (summary.status !== 'miss') return summary;
+  const canonical = await readCachedJson('wildfire:fires:v1', true);
+  if (canonical.status !== 'hit') return canonical;
+  return { status: 'hit', value: summarizeWildfireDetections(canonical.value) ?? canonical.value };
 }
 
 /**
@@ -93,6 +100,11 @@ async function readPriorContentAge(
     `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}); `
     + 'carrying the previous content clock forward rather than stamping a false STALE_CONTENT',
   );
+  // seed-meta:temporal:anomalies is ROUTE-stamped (app-owned): this handler is
+  // its only producer, so unlike the seeder-written seed-meta:* keys it must
+  // stay on the prefixed (non-raw) read to remain in the deployment namespace.
+  // Pattern-matching the "seed-meta" prefix into raw=true would cross namespaces
+  // on preview — the inverse of #7575.
   const prior = await getCachedJson('seed-meta:temporal:anomalies').catch(() => null);
   if (!prior || typeof prior !== 'object') return null;
   const meta = prior as { newestItemAt?: unknown; oldestItemAt?: unknown };
@@ -126,7 +138,7 @@ async function readPriorContentAge(
  *      when the readable source is live.
  */
 async function resolveContentAge(
-  countPayloads: { news?: unknown; satellite_fires?: unknown },
+  countPayloads: CountSourcePayloads,
   erroredSourceTypes: string[],
   nowMs: number,
 ): Promise<{ newestItemAt: number | null; oldestItemAt: number | null } | null> {
@@ -199,6 +211,48 @@ async function writeTemporalAnomaliesSeedMeta(
   }, 604800).catch(() => false);
 }
 
+/**
+ * One count extractor per configured COUNT_SOURCE_KEYS type, typed against
+ * CountSourcePayloads (derived from COUNT_SOURCE_KEYS in _shared.ts) so a new
+ * source without an extractor is a COMPILE error. Without it, a future
+ * source would silently drop out of typesWithCounts: no anomalies, no
+ * baseline folds, and no coverage alarm (no consumer sets minRecordCount).
+ */
+const COUNT_EXTRACTORS: Record<keyof CountSourcePayloads, (data: Record<string, unknown>) => number> = {
+  news: (data) => (data.topStories as unknown[] | undefined)?.length ?? 0,
+  // The summary's totalCount is the pre-cap total: wildfire:fires:v1 is capped at
+  // WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866), and counting a capped array would
+  // saturate this baseline at the cap, flattening every fire-volume anomaly above
+  // it — the z-score would read "normal" during a record fire season.
+  satellite_fires: (data) => {
+    const total = Number(data.totalCount);
+    return Number.isFinite(total) && total >= 0 ? total : 0;
+  },
+  // military:flights:v1 is a RAW payload (no seed envelope): the globally
+  // tracked military flights from the seeder/RPC producer.
+  military_flights: (data) => (data.flights as unknown[] | undefined)?.length ?? 0,
+  // theater-posture:sebuf:v1 arrives envelope-unwrapped. The count is the sum
+  // of per-theater strictly-filtered military vessels — NOT the theaters
+  // array length, and not the envelope recordCount, which counts theaters.
+  vessels: (data) => {
+    const theaters = data.theaters as Array<{ trackedVessels?: unknown }> | undefined;
+    let vessels = 0;
+    if (Array.isArray(theaters)) {
+      for (const theater of theaters) {
+        const tracked = Number(theater?.trackedVessels);
+        if (Number.isFinite(tracked)) vessels += tracked;
+      }
+    }
+    return vessels;
+  },
+  // maritime:ais-gaps:v1 arrives envelope-unwrapped: dark ships that returned
+  // after extended AIS silence, counted by the relay.
+  ais_gaps: (data) => {
+    const darkShips = Number(data.darkShips);
+    return Number.isFinite(darkShips) ? darkShips : 0;
+  },
+};
+
 export async function listTemporalAnomalies(
   _ctx: ServerContext,
   _req: ListTemporalAnomaliesRequest,
@@ -232,18 +286,24 @@ export async function listTemporalAnomalies(
       const anomalies: TemporalAnomalyProto[] = [];
 
       const counts: Record<string, number> = {};
-      const countPayloads: { news?: unknown; satellite_fires?: unknown } = {};
+      const countPayloads: CountSourcePayloads = {};
       // Status-aware reads: getCachedJson collapses a genuine miss and a
       // transient read ERROR (timeout, non-2xx, parse failure) into the same
       // null, and the content clock fails closed on a missing source. Without
-      // the distinction one Redis blip stamps newestItemAt:null on two live
-      // feeds, which health reads as STALE_CONTENT immediately (it never
-      // reaches the 48h budget) and the scheduled monitor pages on with no
-      // debounce. An errored read means "unknown this cycle", not "frozen".
+      // the distinction one Redis blip stamps newestItemAt:null on every
+      // other live feed, which health reads as STALE_CONTENT immediately (it
+      // never reaches the 48h budget) and the scheduled monitor pages on with
+      // no debounce. An errored read means "unknown this cycle", not "frozen".
       const countReads = await Promise.all(
         Object.entries(COUNT_SOURCE_KEYS).map(async ([type, sourceKey]) => [
           type,
-          await readCachedJson(sourceKey),
+          // raw = true: these are seeder-owned keys written unprefixed by the
+          // Railway seeders (same convention as every other seed-key read in
+          // server/). The prefixing default made preview rebuilds request
+          // rows nothing ever writes, silently emptying the route (#7575).
+          type === 'satellite_fires'
+            ? await readFiresSummary(sourceKey)
+            : await readCachedJson(sourceKey, true),
         ] as const),
       );
       const erroredSourceTypes = countReads
@@ -255,24 +315,11 @@ export async function listTemporalAnomalies(
       ] as const);
       for (const [type, data] of countEntries) {
         if (!data) continue;
-        if (type === 'news' || type === 'satellite_fires') {
-          countPayloads[type] = data;
-        }
-
-        if (type === 'news') {
-          const stories = (data as { topStories?: unknown[] })?.topStories;
-          counts[type] = stories?.length ?? 0;
-        } else if (type === 'satellite_fires') {
-          // wildfire:fires:v1 is itself capped at WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866)
-          // and carries the pre-cap FIRMS total in `pagination`. Counting the array instead
-          // would saturate this baseline at the cap, silently flattening every fire-volume
-          // anomaly above it — the z-score would read "normal" during a record fire season.
-          const fires = (data as { fireDetections?: unknown[] })?.fireDetections;
-          counts[type] = resolveFireDetectionTotalCount({
-            fireDetections: fires ?? [],
-            pagination: (data as { pagination?: { totalCount?: number } })?.pagination,
-          });
-        }
+        // Every configured source contributes its payload to the content-age
+        // contract — the strict clock fail-closes on any configured source
+        // that was not read this cycle.
+        countPayloads[type as keyof CountSourcePayloads] = data;
+        counts[type] = COUNT_EXTRACTORS[type as keyof CountSourcePayloads](data);
       }
 
       const typesWithCounts = trackedTypes.filter(t => counts[t] !== undefined);

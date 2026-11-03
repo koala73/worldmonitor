@@ -99,58 +99,6 @@ async function fetchTextWithRelay(url: string): Promise<string | null> {
   return null;
 }
 
-// Curated major tech events that may fall off limited RSS feeds
-const CURATED_EVENTS: TechEvent[] = [
-  {
-    id: 'gitex-global-2026',
-    title: 'GITEX Global 2026',
-    type: 'conference',
-    location: 'Dubai World Trade Centre, Dubai',
-    coords: { lat: 25.2285, lng: 55.2867, country: 'UAE', original: 'Dubai World Trade Centre, Dubai', virtual: false },
-    startDate: '2026-12-07',
-    endDate: '2026-12-11',
-    url: 'https://www.gitex.com',
-    source: 'curated',
-    description: 'World\'s largest tech & startup show',
-  },
-  {
-    id: 'token2049-dubai-2026',
-    title: 'TOKEN2049 Dubai 2026',
-    type: 'conference',
-    location: 'Dubai, UAE',
-    coords: { lat: 25.2048, lng: 55.2708, country: 'UAE', original: 'Dubai, UAE', virtual: false },
-    startDate: '2026-04-29',
-    endDate: '2026-04-30',
-    url: 'https://www.token2049.com',
-    source: 'curated',
-    description: 'Premier crypto event in Dubai',
-  },
-  {
-    id: 'collision-2026',
-    title: 'Collision 2026',
-    type: 'conference',
-    location: 'Toronto, Canada',
-    coords: { lat: 43.6532, lng: -79.3832, country: 'Canada', original: 'Toronto, Canada', virtual: false },
-    startDate: '2026-06-22',
-    endDate: '2026-06-25',
-    url: 'https://collisionconf.com',
-    source: 'curated',
-    description: 'North America\'s fastest growing tech conference',
-  },
-  {
-    id: 'web-summit-2026',
-    title: 'Web Summit 2026',
-    type: 'conference',
-    location: 'Lisbon, Portugal',
-    coords: { lat: 38.7223, lng: -9.1393, country: 'Portugal', original: 'Lisbon, Portugal', virtual: false },
-    startDate: '2026-11-02',
-    endDate: '2026-11-05',
-    url: 'https://websummit.com',
-    source: 'curated',
-    description: 'The world\'s premier tech conference',
-  },
-];
-
 // ---------- Geocoding ----------
 
 function normalizeLocation(location: string | null): (TechEventCoords) | null {
@@ -315,7 +263,7 @@ function parseDevEventsRSS(rssText: string): TechEvent[] {
 const EXTERNAL_SOURCE_COUNT = 2;
 
 /**
- * Collect the FULL event set: both feeds, plus curated, deduped and sorted.
+ * Collect the FULL event set: both feeds, deduped and sorted.
  *
  * Takes no request and applies no narrowing, by design. This is the writer for
  * the shared, request-independent `research:tech-events:v1` key, so it must
@@ -358,16 +306,6 @@ async function fetchAllTechEvents(): Promise<ListTechEventsResponse> {
     console.warn(`[tech-events] dev.events RSS: no data (direct + relay both failed)`);
   }
 
-  // Add curated events (major conferences that may fall off limited RSS feeds)
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  for (const curated of CURATED_EVENTS) {
-    const eventDate = new Date(curated.startDate);
-    if (eventDate >= now) {
-      events.push(curated);
-    }
-  }
-
   // Deduplicate by title similarity (rough match)
   const seen = new Set<string>();
   events = events.filter(e => {
@@ -388,7 +326,7 @@ async function fetchAllTechEvents(): Promise<ListTechEventsResponse> {
   const mappableCount = conferences.filter(e => e.coords && !e.coords.virtual).length;
 
   if (externalSourcesFailed > 0) {
-    console.warn(`[tech-events] ${externalSourcesFailed}/${EXTERNAL_SOURCE_COUNT} external sources failed, returning ${events.length} events (curated fallback)`);
+    console.warn(`[tech-events] ${externalSourcesFailed}/${EXTERNAL_SOURCE_COUNT} external sources failed, returning ${events.length} events`);
   }
 
   return {
@@ -477,8 +415,7 @@ export async function fetchWidestTechEvents(): Promise<ListTechEventsResponse | 
   // request rather than on the seeder's next cycle.
   //
   // The test is whether any event actually came from UPSTREAM, not whether a
-  // fetch threw. `CURATED_EVENTS` alone always clears an `events.length > 0`
-  // bar, so a curated-only payload would otherwise be pinned under the
+  // fetch threw. A curated-only payload must not be pinned under the
   // seeder-owned key for 6h and served to every client as `success: true`.
   // Keying on a fetch-failure counter misses the common shape where a feed
   // answers HTTP 200 with an error page or an empty calendar: the body clears

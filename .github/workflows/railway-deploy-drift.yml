@@ -15,7 +15,7 @@ permissions:
 jobs:
   monitor:
     name: Railway native deployment health
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ (github.ref == 'refs/heads/main') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -25,7 +25,7 @@ jobs:
       - name: Start deploy-health run budget
         run: echo "RAILWAY_DRIFT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           filter: blob:none
@@ -40,7 +40,7 @@ jobs:
           echo "RAILWAY_COMPARISON_SHA=$checked_out" >> "$GITHUB_ENV"
           git fetch --quiet origin +refs/heads/main:refs/remotes/origin/main
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 

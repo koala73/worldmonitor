@@ -13,6 +13,10 @@ export const GDELT_MASTER_FILELIST_URL = `${GDELT_STORAGE_ORIGIN}/gdeltv2/master
 export const GDELT_MAX_EXPORT_ZIP_BYTES = 5_000_000;
 export const GDELT_MAX_EXPORT_CSV_BYTES = 30_000_000;
 export const GDELT_ROLLING_WINDOW_MAX_EVENTS = 5_000;
+// GDELT lists each 15-minute file about 11 minutes before its nominal
+// timestamp (20261003193000 appeared at 19:18:45 UTC), so the newest cohort
+// is routinely in the future. Allow one interval of lead, no more.
+export const GDELT_PUBLICATION_LEAD_MS = 15 * 60 * 1000;
 
 const MASTER_TAIL_BYTES = 16_384;
 const RECENT_EXPORT_COUNT = 8;
@@ -24,13 +28,12 @@ export const GDELT_BULK_WORST_NETWORK_MS = REQUEST_TIMEOUT_MS
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
 const MATERIAL_VIOLENCE_ROOT_CODES = new Set(['18', '19', '20']);
 
-// GDELT ActionGeo_CountryCode uses FIPS 10-4 rather than ISO-2.
-// Palestine can appear as either Gaza (GZ) or West Bank (WE).
-export const GDELT_FIPS_TO_ISO2 = Object.freeze({
-  AF: 'AF', SY: 'SY', UP: 'UA', SU: 'SD', OD: 'SS', SO: 'SO', CG: 'CD',
-  BM: 'MM', YM: 'YE', ET: 'ET', IZ: 'IQ', GZ: 'PS', WE: 'PS', LY: 'LY',
-  ML: 'ML', UV: 'BF', NG: 'NE', NI: 'NG', CM: 'CM', MZ: 'MZ', HA: 'HT',
-});
+// GDELT ActionGeo_CountryCode uses FIPS 10-4 rather than ISO-2. The full
+// table lives in the dependency-free scripts/_gdelt-country-codes.mjs (the
+// per-country article index needs it without this module's seed-runtime
+// imports, #7748); re-exported here for this module's existing consumers.
+export { GDELT_FIPS_TO_ISO2 } from './_gdelt-country-codes.mjs';
+import { GDELT_FIPS_TO_ISO2 } from './_gdelt-country-codes.mjs';
 
 function boundedPositiveInteger(value, label, max) {
   const parsed = Number(value);

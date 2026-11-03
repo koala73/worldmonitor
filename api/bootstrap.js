@@ -1,3 +1,6 @@
+import { restoreWildfireBootstrapMetadata, sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
+import { validateImfDataset } from './_imf-dataset.js';
+import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
@@ -16,11 +19,13 @@ import {
   validateApiKey,
 } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import { checkRateLimit } from './_rate-limit.js';
 import {
+  checkBootstrapDesktopKeyBudget,
   checkBootstrapUserApiKeyRateLimit,
   isCanonicalUserApiKey,
-  validateBootstrapUserApiAccess,
-  validateBootstrapUserApiKey,
+  resolveBootstrapUserKeyAccess,
+  validateBootstrapUserApiKeyPrincipal,
 } from './_user-api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
@@ -63,19 +68,7 @@ const FAST_KEYS = new Set(bootstrapTierKeyNames('fast', { iranEventsEnabled: IRA
 // /api/x-feed), but alerts, MCP, and embed/OEM partners get derived facts plus
 // a permalink only. `pollState` is seed-internal cursor state.
 // Kept in sync with stripXFeedRestrictedFields in scripts/publish-bootstrap-tiers.mjs.
-export function stripXFeedRestrictedFields(value) {
-  if (value == null || typeof value !== 'object' || Array.isArray(value)) return value;
-  const { pollState: _pollState, ...rest } = value;
-  if (!Array.isArray(rest.items)) return rest;
-  return {
-    ...rest,
-    items: rest.items.map((item) => {
-      if (item == null || typeof item !== 'object' || Array.isArray(item)) return item;
-      const { text: _text, ...itemRest } = item;
-      return itemRest;
-    }),
-  };
-}
+export { stripXFeedRestrictedFields } from './_bootstrap-public-payload.js';
 
 function bootstrapRedisReadKeys(keys) {
   const extra = extraCanadaAlertsCutoverReadKeys(keys, BOOTSTRAP_CACHE_KEYS.canadaAlerts);
@@ -105,6 +98,10 @@ const TIER_CDN_CACHE = {
 // budget guarantees the shield outlives a complete seed cycle.
 // tests/bootstrap-on-demand-cache-budget.test.mts enforces the ceiling.
 const ON_DEMAND_CACHE_PROFILES = {
+  ukmtoIncidents: {
+    browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
+    cdn: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=60',
+  },
   // Correlation cards publish every 5 minutes and have a 30-minute health
   // budget. The conservative complete CDN window is 11m.
   correlationCards: {
@@ -153,18 +150,30 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
   },
-  // Planned IMD cyclone/port/coastal/marine seeder on a 15min interval against
+  // IMD cyclone/port/coastal/marine seeder on a 15min interval against
   // a 45min health budget (#7005). The public on-demand URL would otherwise
   // inherit the 2h slow shield and outlive health's stale declaration.
   imdCycloneMarine: {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
   },
+  // FAA NMS seeder on a 5min interval against a 20min health budget.
+  notamAirspace: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=300, stale-while-revalidate=120, stale-if-error=900',
+  },
   // seed-aviation aggregate, 90min health budget. Default 2h on-demand
   // shield would outlive the budget after #7046 moved this key off FAST.
   flightDelays: {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=1800',
     cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=1800',
+  },
+  // seed-live-video-resolved publishes every 6h against an 18h health budget
+  // (#8545). A 30-minute shield keeps a fresh video id reaching players within
+  // the hour after a refresh; the default 2h shield would hold a rotated id.
+  liveVideoResolved: {
+    browser: 'max-age=300, stale-while-revalidate=300, stale-if-error=1800',
+    cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
   },
 };
 
@@ -188,7 +197,7 @@ export function isAnonymousWeatherBootstrapRequest(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
   const url = new URL(req.url);
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  const pathname = stripTrailingSlashes(url.pathname);
   if (pathname !== '/api/bootstrap') return false;
 
   const params = Array.from(url.searchParams.keys());
@@ -270,7 +279,7 @@ function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDuration
   return response;
 }
 
-const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', 'wm-pro-key', 'wm-widget-key']);
+const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', '__Host-wm-pro-key', '__Host-wm-widget-key']);
 
 function hasBootstrapCredentialCookie(req) {
   const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
@@ -293,7 +302,9 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
 
   // Always read unprefixed keys — bootstrap is a read-only consumer of
   // production cache data. Preview/branch deploys don't run handlers that
-  // populate prefixed keys, so prefixing would always miss.
+  // populate prefixed keys, so prefixing would always miss. Declared
+  // explicitly since #7674 made the shared pipeline helpers prefix
+  // app-owned keys by default.
   const pipeline = keys.map((k) => ['GET', k]);
   if (shadowMarkerTier) {
     // This intentionally-missing marker makes shadow origin requests uniquely
@@ -301,7 +312,7 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
     // so canonical GET counts alone no longer distinguish it from serving.
     pipeline.push(['GET', `bootstrap:r2-shadow-origin-marker:${shadowMarkerTier}`]);
   }
-  const data = await redisPipeline(pipeline, 3000);
+  const data = await redisPipeline(pipeline, 3000, true);
   if (!Array.isArray(data) || data.length !== pipeline.length) {
     throw new Error('Bootstrap Redis pipeline unavailable');
   }
@@ -324,7 +335,10 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
         // Envelope-aware: bootstrap is a public-boundary consumer — strip _seed
         // from contract-mode canonical keys so clients never see envelope
         // metadata. Legacy bare-shape values pass through unchanged.
-        result.set(keys[i], unwrapEnvelope(parsed).data);
+        const { data: payload, _seed } = unwrapEnvelope(parsed);
+        result.set(keys[i], keys[i] === BOOTSTRAP_CACHE_KEYS.wildfires
+          ? restoreWildfireBootstrapMetadata(payload, _seed)
+          : payload);
       } catch { /* skip malformed */ }
     }
   }
@@ -385,7 +399,13 @@ async function validateBootstrapAuth(req, cors) {
     // leak-free strings) rather than hardcoding 401/403: a Convex outage surfaces
     // as a retryable 503 + Retry-After (status 503, unavailable:true) instead of
     // a misleading "Invalid API key" 401, mirroring the rate-limit path above.
-    const userKeyResult = await validateBootstrapUserApiKey(headerKey);
+    //
+    // Desktop-aware (plan 2026-10-25-001, KTD3): the principal carries its
+    // kind, and resolveBootstrapUserKeyAccess decides whether the owner's
+    // API plan (today's path) or the desktop entitlement admits it. Bootstrap
+    // serves one payload to every credentialed caller, so a desktop principal
+    // gets what a signed-in Pro session gets here — under the desktop meter.
+    const userKeyResult = await validateBootstrapUserApiKeyPrincipal(headerKey);
     if (!userKeyResult.ok) {
       return {
         ok: false,
@@ -398,7 +418,7 @@ async function validateBootstrapAuth(req, cors) {
       };
     }
 
-    const entitlementResult = await validateBootstrapUserApiAccess(userKeyResult.userId);
+    const entitlementResult = await resolveBootstrapUserKeyAccess(userKeyResult);
     if (!entitlementResult.ok) {
       return {
         ok: false,
@@ -417,6 +437,16 @@ async function validateBootstrapAuth(req, cors) {
           entitlementResult.headers,
         ),
       };
+    }
+
+    if (entitlementResult.scope === 'desktop') {
+      const budget = await checkBootstrapDesktopKeyBudget(userKeyResult.userId, entitlementResult.entitlement);
+      if (!budget.ok) {
+        return {
+          ok: false,
+          response: authFailure(budget.body ?? { error: budget.error }, budget.status, cors, budget.headers),
+        };
+      }
     }
 
     return { ok: true, kind: 'user' };
@@ -500,6 +530,9 @@ function successCacheHeaders(requestedTier, authKind, cors, onDemandKey = null) 
   };
 }
 
+const SESSION_BOOTSTRAP_RATE_SCOPE = 'bootstrap-session';
+const SESSION_BOOTSTRAP_RATE_LIMIT = 120;
+
 export default async function handler(req, ctx) {
   // no-store because this rejection is decided by the Origin header, which no
   // cache layer here keys on (CF ignores Vary — see TIER_CACHE above). Without
@@ -516,6 +549,18 @@ export default async function handler(req, ctx) {
 
   const auth = await validateBootstrapAuth(req, cors);
   if (!auth.ok) return auth.response;
+  // Anonymous wms_ sessions are free to mint and their reads are no-store, so
+  // every request is a full Redis read plus egress. Give them a per-address
+  // budget well above a dashboard boot; wm_ user keys have their own limiter.
+  if (auth.kind === 'session') {
+    const limited = await checkRateLimit(req, cors, {
+      ctx,
+      scope: SESSION_BOOTSTRAP_RATE_SCOPE,
+      limit: SESSION_BOOTSTRAP_RATE_LIMIT,
+      window: '60 s',
+    });
+    if (limited) return limited;
+  }
 
   const url = new URL(req.url);
   const tier = url.searchParams.get('tier');
@@ -572,30 +617,13 @@ export default async function handler(req, ctx) {
   const data = {};
   const missing = [];
   for (let i = 0; i < names.length; i++) {
-    const val = keys[i] === BOOTSTRAP_CACHE_KEYS.canadaAlerts
+    const raw = keys[i] === BOOTSTRAP_CACHE_KEYS.canadaAlerts
       && !cached.has(BOOTSTRAP_CACHE_KEYS.canadaAlerts)
       ? canadaAlertsCutoverFallbackValue(cached)
       : cached.get(keys[i]);
+    const val = raw === undefined ? undefined : validateImfDataset(names[i], raw);
     if (val !== undefined) {
-      let responseValue = val;
-      // Strip seed-internal metadata not intended for API clients
-      if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
-        const { enrichmentMeta: _stripped, ...rest } = val;
-        responseValue = rest;
-      }
-      // R4 (#6654): X post bodies must never leave the first-party path.
-      // `?tier=slow&public=1` is unauthenticated, ACAO:*, and CDN-cacheable for
-      // 2h, so anything here reaches embed/OEM and server-to-server callers —
-      // exactly the audience R4 excludes. `xFeed` is deliberately NOT registered
-      // in BOOTSTRAP_CACHE_KEYS (same as `telegramFeed`); this strip is the
-      // regression guard if it is ever re-added. Post text is served only by
-      // /api/x-feed. Mirrored in scripts/publish-bootstrap-tiers.mjs.
-      if (names[i] === 'xFeed' && val != null && typeof val === 'object' && !Array.isArray(val)) {
-        responseValue = stripXFeedRestrictedFields(val);
-      }
-      if (names[i] === 'wildfires') responseValue = compactWildfireBootstrapPayload(responseValue);
-      if (names[i] === 'naturalEvents') responseValue = compactNaturalEventsDashboardPayload(responseValue);
-      data[names[i]] = responseValue;
+      data[names[i]] = sanitizeBootstrapValue(names[i], val);
     } else {
       missing.push(names[i]);
     }

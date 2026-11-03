@@ -52,6 +52,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     unavailableReason: 'snapshot-unavailable',
   });
   const scorecardMode = JSON.stringify(options.scorecardMode ?? 'success');
+  const demographicsMode = JSON.stringify(options.demographicsMode ?? 'success');
   const tempDir = createTempDir('wm-country-deep-dive-');
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
   const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
@@ -123,38 +124,27 @@ async function loadCountryDeepDivePanel(options = {}) {
       export function getSourceTier(sourceName) {
         return sourceProvenance[sourceName]?.tier ?? 4;
       }
+      export function declaredSourceTier(sourceName) {
+        return sourceProvenance[sourceName]?.tier ?? null;
+      }
       export function getSourceType(sourceName) {
         return sourceProvenance[sourceName]?.type ?? 'unknown';
       }
+      export function computeCredibilityScore() { return 50; }
+      export function resolveTelegramSourceName(value) { return value; }
+      export function resolveRegisteredTelegramSourceName(value) { return value; }
       export function getSourceTierBadgeTitle(sourceType) {
         if (sourceType === 'wire') return 'Wire Service - Highest reliability';
         if (sourceType === 'gov') return 'Official Government Source';
         if (sourceType === 'unknown') return 'Source type not yet reviewed';
         return 'News source';
       }
-      export function describePropagandaBadge(profile, sourceType = 'unknown') {
-        if (profile.risk === 'unknown') {
-          return {
-            risk: 'unknown',
-            label: '? Unreviewed',
-            shortLabel: '?',
-            title: profile.note || 'Provenance not yet reviewed',
-          };
-        }
-        const title = profile.note
-          || (profile.stateAffiliated ? 'State-affiliated: ' + profile.stateAffiliated : 'Provenance not yet reviewed');
-        if (sourceType === 'gov') {
-          return { risk: profile.risk, label: 'Official Government Source', shortLabel: 'Gov', title };
-        }
-        if (profile.risk === 'low') return null;
-        if (profile.risk === 'high') {
-          return { risk: 'high', label: '⚠ State Media', shortLabel: '⚠', title };
-        }
-        if (profile.risk === 'medium') {
-          return { risk: 'medium', label: '! Caution', shortLabel: '!', title };
-        }
-        return { risk: 'unknown', label: '? Unreviewed', shortLabel: '?', title };
-      }
+      export {
+        PERSPECTIVE_LABEL_CAVEAT,
+        composeProvenanceSummary,
+        describePropagandaBadge,
+        getProvenanceFacts,
+      } from ${JSON.stringify(resolve(root, 'shared/source-provenance.ts'))};
     `],
     ['country-geometry-stub', `
       export function getCountryCentroid() {
@@ -194,11 +184,18 @@ async function loadCountryDeepDivePanel(options = {}) {
       export function escapeHtml(value) { return value ?? ''; }
       export function safeHtmlToString(value) { return String(value ?? ''); }
     `],
-    ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
+    ['intel-brief-stub', `
+      export function formatIntelBrief(value) { return value; }
+      export function renderBriefEvidenceFooter(items, options = {}) {
+        if (!items || !items.length) return '';
+        return '<details class="' + (options.className ?? '') + '">' + items.map((item) => item.id + ' ' + item.label).join('; ') + '</details>';
+      }
+    `],
     ['export-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
-      export function exportCountryEvidenceMarkdown(data) {
+      export function countryEvidenceMarkdownArtifact(data) {
         state.evidenceExports.push(data);
+        return { filename: 'fixture.md', mimeType: 'text/markdown;charset=utf-8', content: JSON.stringify(data) };
       }
     `],
     ['utils-stub', `
@@ -217,17 +214,28 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['chokepoint-registry-stub', `export const CHOKEPOINT_REGISTRY = [];`],
     ['supplier-route-risk-stub', `
       export function computeAlternativeSuppliers(exporters) {
-        return exporters.map(e => ({ ...e, risk: { riskLevel: 'safe', transitChokepoints: [], maxDisruptionScore: 0, recommendation: '', routeIds: [], exporterIso2: e.partnerIso2, importerIso2: '' }, safeAlternative: null }));
+        return exporters.map(e => ({ ...e, risk: { riskLevel: 'safe', unknownReason: null, transitChokepoints: [], maxDisruptionScore: null, recommendation: '', routeIds: [], exporterIso2: e.partnerIso2, importerIso2: '' }, safeAlternative: null }));
       }
       export function computeSupplierRouteRisk() {
-        return { riskLevel: 'safe', transitChokepoints: [], maxDisruptionScore: 0, recommendation: '', routeIds: [], exporterIso2: '', importerIso2: '' };
+        return { riskLevel: 'safe', unknownReason: null, transitChokepoints: [], maxDisruptionScore: null, recommendation: '', routeIds: [], exporterIso2: '', importerIso2: '' };
+      }
+      export function chokepointScoreEvidence() {
+        return { scores: new Map(), current: false };
       }
     `],
     ['supply-chain-stub', `
+      export function fetchMultiSectorExposure() { return Promise.resolve([]); }
+      export const SEEDED_HS2_CODES = [];
       export function fetchBypassOptions() { return Promise.resolve({ corridors: [] }); }
       export function getCountryChokepointIndex() { return null; }
       export function fetchChokepointStatus() { return Promise.resolve({ chokepoints: [], fetchedAt: '', upstreamUnavailable: false }); }
-      export function fetchMultiSectorCostShock() { return Promise.resolve({ iso2: '', chokepointId: '', closureDays: 30, warRiskTier: 'WAR_RISK_TIER_UNSPECIFIED', sectors: [], totalAddedCost: 0, fetchedAt: '', unavailableReason: '' }); }
+      export function fetchMultiSectorCostShock(code, chokepoint, days, options) {
+        const state = globalThis.__wmCountryDeepDiveTestState;
+        return new Promise(resolve => {
+          state.costShockRequests.push({ code, chokepoint, days, signal: options?.signal, resolve });
+          if (!state.deferCostShock) resolve({ iso2: code, chokepointId: chokepoint, closureDays: days, warRiskTier: 'WAR_RISK_TIER_UNSPECIFIED', sectors: [], totalAddedCost: 0, fetchedAt: '', unavailableReason: '' });
+        });
+      }
       export const HS2_SHORT_LABELS = { '27': 'Energy', '84': 'Machinery', '85': 'Electronics', '87': 'Vehicles', '30': 'Pharma', '72': 'Iron & Steel', '39': 'Plastics', '29': 'Chemicals', '10': 'Cereals', '62': 'Apparel' };
     `],
     ['runtime-stub', `
@@ -241,6 +249,8 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['panel-gating-stub', `
       export function hasPremiumAccess() { return globalThis.__wmCountryDeepDiveTestState.premiumAccess; }
       export function getPanelGateReason() { return 'none'; }
+      export function readPremiumAccessGrant() { return globalThis.__wmCountryDeepDiveTestState.premiumGrant; }
+      export function readClientEntitlementBelief() { return globalThis.__wmCountryDeepDiveTestState.entitlementBelief; }
     `],
     ['auth-state-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
@@ -263,6 +273,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['resilience-service-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
       const demographicsResponse = ${demographicsResponse};
+      const demographicsMode = ${demographicsMode};
       export async function getFoodStocks() {
         return { commodities: [], unavailable: true };
       }
@@ -271,6 +282,13 @@ async function loadCountryDeepDivePanel(options = {}) {
           countryCode: options.countryCode,
           hasSignal: options.signal instanceof AbortSignal,
         });
+        // Held open and deliberately not wired to the signal: models a read the
+        // panel supersedes without aborting it.
+        if (demographicsMode === 'deferred') {
+          return new Promise((resolve, reject) => {
+            state.demographicsPending.push({ countryCode: options.countryCode, resolve, reject });
+          });
+        }
         return { ...demographicsResponse, countryCode: options.countryCode };
       }
     `],
@@ -284,6 +302,15 @@ async function loadCountryDeepDivePanel(options = {}) {
           hasSignal: signal instanceof AbortSignal,
         });
         if (scorecardMode === 'reject') throw new Error('synthetic scorecard failure');
+        // The generated service clients throw ApiError, which carries the HTTP
+        // status on \`statusCode\`. Synthetic values only — never a captured body.
+        if (scorecardMode === 'denied' || scorecardMode === 'forbidden') {
+          const error = new Error('Request failed with status ' + (scorecardMode === 'denied' ? 401 : 403));
+          error.name = 'ApiError';
+          error.statusCode = scorecardMode === 'denied' ? 401 : 403;
+          error.body = '';
+          throw error;
+        }
         if (scorecardMode === 'timeout') {
           await new Promise((resolve) => setTimeout(resolve, 10));
           const error = new Error('synthetic scorecard timeout');
@@ -339,7 +366,17 @@ async function loadCountryDeepDivePanel(options = {}) {
     `],
   ]);
 
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
   const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
     ['@/config/feeds', 'feeds-stub'],
     ['@/services/country-geometry', 'country-geometry-stub'],
     ['@/services/i18n', 'i18n-stub'],
@@ -380,6 +417,7 @@ async function loadCountryDeepDivePanel(options = {}) {
       buildApi.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
         contents: stubModules.get(args.path),
         loader: 'js',
+        resolveDir: root,
       }));
     },
   };
@@ -391,6 +429,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     platform: 'browser',
     target: 'es2020',
     write: false,
+    loader: { '.css': 'text' },
     plugins: [plugin],
   });
 
@@ -425,9 +464,18 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     sentryExceptions: [],
     sentryMessages: [],
     demographicsCalls: [],
+    demographicsPending: [],
     scorecardCalls: [],
     scorecardPending: [],
+    costShockRequests: [],
+    deferCostShock: options.deferCostShock === true,
     premiumAccess: options.premiumAccess === true,
+    // Which arm of hasPremiumAccess granted access, and what the client itself
+    // believes about the plan. Defaults mirror the common case (a signed-in Pro
+    // whose entitlement snapshot has landed) so existing cases are unaffected;
+    // a denial test overrides them to model a browser-local grant.
+    premiumGrant: options.premiumGrant ?? (options.premiumAccess === true ? 'pro_user' : 'none'),
+    entitlementBelief: options.entitlementBelief ?? { entitlementTier: null, authRole: null },
     authListeners: new Set(),
     entitlementListeners: new Set(),
     sentryUser: undefined,
@@ -469,8 +517,8 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     throw error;
   }
 
-  function createPanel() {
-    return new CountryDeepDivePanel(null);
+  function createPanel(download = async () => ({ state: 'attempted' })) {
+    return new CountryDeepDivePanel(null, undefined, download);
   }
 
   function getPanelRoot() {
@@ -508,8 +556,17 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     getDemographicsCalls() {
       return state.demographicsCalls;
     },
+    rejectDemographics(index, error = new Error('synthetic demographics failure')) {
+      state.demographicsPending[index]?.reject(error);
+    },
+    getPendingDemographics() {
+      return state.demographicsPending;
+    },
     getScorecardCalls() {
       return state.scorecardCalls;
+    },
+    getCostShockRequests() {
+      return state.costShockRequests;
     },
     resolveScorecard(index, response) {
       state.scorecardPending[index]?.resolve(response);

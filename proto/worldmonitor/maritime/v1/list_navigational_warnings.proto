@@ -24,4 +24,7 @@ message ListNavigationalWarningsResponse {
   repeated NavigationalWarning warnings = 1;
   // Pagination metadata.
   worldmonitor.core.v1.PaginationResponse pagination = 2;
+  // True when NGA returned a valid response, including a valid empty list.
+  // False means warnings are withheld because the fetch or payload failed.
+  bool data_available = 3;
 }

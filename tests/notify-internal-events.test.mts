@@ -10,6 +10,10 @@ describe('/api/notify reserved event types', () => {
     assert.equal(isInternalNotifyEventType('watchlist_story_alert'), true);
   });
 
+  it('reserves the relay-produced chokepoint disruption event (#9217)', () => {
+    assert.equal(isInternalNotifyEventType('chokepoint_disruption'), true);
+  });
+
   it('does not reserve ordinary user-publishable event types', () => {
     assert.equal(isInternalNotifyEventType('rss_alert'), false);
     assert.equal(isInternalNotifyEventType('market_alert'), false);

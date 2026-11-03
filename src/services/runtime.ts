@@ -1,6 +1,7 @@
 import { SITE_VARIANT } from '@/config/variant';
+import { safeStorageGet } from '@/utils/safe-storage';
 import { getClerkToken } from '@/services/clerk';
-import { withBillingVerificationRetry } from '@/services/billing-retry';
+import { sleepBeforeRetry, withBillingVerificationRetry } from '@/services/billing-retry';
 import { hasExplicitDesktopSignals, isDesktopRuntime } from './desktop-runtime';
 
 // The detector lives in a dependency-free leaf (#5911) so consumers that need
@@ -323,6 +324,27 @@ function isKeyFreeApiTarget(target: string): boolean {
     || target.startsWith('/api/version');
 }
 
+// Key issuance (API and embed) asks Clerk whether the caller's session is live.
+// It needs the caller's standard session token (it carries `sid`). The desktop
+// cloud credential is a template token without one.
+function isSessionBoundApiTarget(target: string): boolean {
+  const path = target.split('?')[0];
+  return path === '/api/user-api-keys' || path === '/api/user-embed-keys';
+}
+
+function callerBearer(input: RequestInfo | URL, init?: RequestInit): string | undefined {
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+  const value = headers.get('Authorization');
+  return value?.startsWith('Bearer ') ? value : undefined;
+}
+
+function canRetryRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
+  const request = input instanceof Request ? input : undefined;
+  const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+  const signal = init?.signal === undefined ? request?.signal : init.signal;
+  return (method === 'GET' || method === 'HEAD') && !signal?.aborted;
+}
+
 async function fetchLocalWithStartupRetry(
   target: string,
   input: RequestInfo | URL,
@@ -330,17 +352,23 @@ async function fetchLocalWithStartupRetry(
 ): Promise<Response> {
   const maxAttempts = 4;
   let lastError: unknown = null;
-  const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+  const signal = init?.signal === undefined ? (input instanceof Request ? input.signal : undefined) : init.signal;
+  // Routes that can carry local secrets never leave the machine, so they
+  // never need the user's cloud credential.
+  const userAuthorization = isLocalOnlyApiTarget(target)
+    ? undefined
+    : isSessionBoundApiTarget(target)
+      ? callerBearer(input, init)
+      : (await (await import('@/services/desktop-cloud-auth')).getDesktopCloudAuthorization()) ?? undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const { proxyLocalApiRequest } = await import('@/services/tauri-bridge');
-      return await proxyLocalApiRequest(target, input, init);
+      return await proxyLocalApiRequest(target, input, init, userAuthorization);
     } catch (error) {
       lastError = error;
 
-      // Preserve caller intent for aborted requests.
-      if (signal?.aborted) {
+      if (!canRetryRequest(input, init)) {
         throw error;
       }
 
@@ -348,7 +376,7 @@ async function fetchLocalWithStartupRetry(
         break;
       }
 
-      await sleep(125 * attempt);
+      await sleepBeforeRetry(125 * attempt, signal ?? null);
     }
   }
 
@@ -371,7 +399,7 @@ export function installRuntimeFetchPatch(): void {
   const nativeFetch = window.fetch.bind(window);
   const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
-    const debug = localStorage.getItem('wm-debug-log') === '1';
+    const debug = safeStorageGet('wm-debug-log') === '1';
 
     if (!target?.startsWith('/api/')) {
       if (debug) {
@@ -382,7 +410,7 @@ export function installRuntimeFetchPatch(): void {
     }
 
     if (debug) console.log(`[fetch] intercept → ${target}`);
-    let allowCloudFallback = !isLocalOnlyApiTarget(target);
+    let allowCloudFallback = !isLocalOnlyApiTarget(target) && canRetryRequest(input, init);
 
     if (allowCloudFallback && !isKeyFreeApiTarget(target)) {
       try {
@@ -398,12 +426,12 @@ export function installRuntimeFetchPatch(): void {
     }
 
     const cloudFallback = async () => {
-      if (!allowCloudFallback) {
+      if (!allowCloudFallback || !canRetryRequest(input, init)) {
         throw new Error(`Cloud fallback blocked for ${target}`);
       }
       const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
-      return nativeFetch(cloudUrl, init);
+      return nativeFetch(input instanceof Request ? new Request(cloudUrl, input) : cloudUrl, init);
     };
 
     try {
@@ -422,7 +450,7 @@ export function installRuntimeFetchPatch(): void {
       return response;
     } catch (error) {
       if (debug) console.warn(`[runtime] Local API unavailable for ${target}`, error);
-      if (!allowCloudFallback) {
+      if (!allowCloudFallback || !canRetryRequest(input, init)) {
         throw error;
       }
       return cloudFallback();
@@ -520,9 +548,10 @@ export function installWebApiRedirect(): void {
     ): Promise<Response> => {
       try {
         const redirectedResponse = await nativeFetch(redirectedInput, originalInit);
-        if (!shouldFallbackToOrigin(redirectedResponse.status)) return redirectedResponse;
+        if (!canRetryRequest(originalInput, originalInit) || !shouldFallbackToOrigin(redirectedResponse.status)) return redirectedResponse;
         return nativeFetch(originalInput, originalInit);
       } catch (error) {
+        if (!canRetryRequest(originalInput, originalInit)) throw error;
         try {
           return await nativeFetch(originalInput, originalInit);
         } catch {
@@ -538,12 +567,15 @@ export function installWebApiRedirect(): void {
           const enriched = await enrichInitForPremium(input, init);
           return fetchWithRedirectFallback(`${API_BASE}${input}`, input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
-        // Absolute URL already targeting the API base (generated clients call fetch
-        // with full URLs like https://api.worldmonitor.app/api/...) — just inject auth.
+        // Generated clients construct an absolute API-base URL, so they cannot
+        // rely on the relative-path branch above for origin recovery. Keep the
+        // same fallback here: browser extensions and network policy can block
+        // api.worldmonitor.app while the page's own /api/ route remains usable.
         if (input.startsWith(`${API_BASE}/api/`)) {
           const pathAndSearch = input.slice(API_BASE.length);
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
+          const initWithCredentials = enriched ? withCredentials(enriched) : withCredentials(init);
+          return fetchWithRedirectFallback(input, pathAndSearch, initWithCredentials);
         }
       }
       if (input instanceof URL) {

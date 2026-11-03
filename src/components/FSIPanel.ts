@@ -1,30 +1,14 @@
-import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
-import type { EconomicServiceClient, GetEuFsiResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type { GetEuFsiResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
+import { EconomicServiceClient, MarketServiceClient } from '@/services/generated-rpc-clients';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { CISS_STALE_THRESHOLD_MS } from '@/shared/ciss-staleness';
 
-let _marketClient: MarketServiceClient | null = null;
-async function getMarketClient(): Promise<MarketServiceClient> {
-  if (!_marketClient) {
-    const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
-    const { getRpcBaseUrl } = await import('@/services/rpc-client');
-    _marketClient = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
-  }
-  return _marketClient;
-}
-
-let _economicClient: EconomicServiceClient | null = null;
-async function getEconomicClient(): Promise<EconomicServiceClient> {
-  if (!_economicClient) {
-    const { EconomicServiceClient } = await import('@/generated/client/worldmonitor/economic/v1/service_client');
-    const { getRpcBaseUrl } = await import('@/services/rpc-client');
-    _economicClient = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
-  }
-  return _economicClient;
-}
+const getMarketClient = createLazyClient(() => new MarketServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
+const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 function fsiLabelColor(label: string): string {
   if (label === 'Low Stress') return '#27ae60';
@@ -44,9 +28,11 @@ function fsiLabelDisplay(label: string): string {
   if (label === 'Low Stress') return t('components.fsi.labels.lowStress');
   if (label === 'Moderate Stress') return t('components.fsi.labels.moderateStress');
   if (label === 'Elevated Stress') return t('components.fsi.labels.elevatedStress');
-  if (label === 'Severe Stress') return t('components.fsi.labels.severeStress');
+  if (label === 'Severe Stress' || label === 'High Stress') return t('components.fsi.labels.severeStress');
   return label;
 }
+
+export { fsiLabelDisplay };
 
 function cissLabelDisplay(label: string): string {
   if (label === 'Low') return t('components.fsi.cissLabels.low');
@@ -104,12 +90,16 @@ export class FSIPanel extends Panel {
         const hdr = (hydrated.headerMetrics ?? {}) as Record<string, Record<string, unknown> | null>;
         fsiValue = Number(hdr?.fsi?.value ?? 0);
         fsiLabel = String(hdr?.fsi?.label ?? '');
+        hygPrice = Number(hdr?.fsi?.hygPrice ?? 0);
+        tltPrice = Number(hdr?.fsi?.tltPrice ?? 0);
+        if (!Number.isFinite(hygPrice)) hygPrice = 0;
+        if (!Number.isFinite(tltPrice)) tltPrice = 0;
         vix = Number(hdr?.vix?.value ?? 0);
         hySpread = Number(hdr?.hySpread?.value ?? 0);
       }
 
       if (fsiValue <= 0) {
-        const client = await getMarketClient();
+        const client = getMarketClient();
         const resp = await client.getFearGreedIndex({});
         if (!resp.unavailable && resp.fsiValue > 0) {
           fsiValue = resp.fsiValue;
@@ -133,7 +123,7 @@ export class FSIPanel extends Panel {
         if (hydratedEuFsi && !hydratedEuFsi.unavailable && Number.isFinite(hydratedEuFsi.latestValue)) {
           euFsi = hydratedEuFsi;
         } else {
-          const econClient = await getEconomicClient();
+          const econClient = getEconomicClient();
           const euResp = await econClient.getEuFsi({});
           if (!euResp.unavailable && Number.isFinite(euResp.latestValue)) euFsi = euResp;
         }

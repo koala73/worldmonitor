@@ -8,10 +8,12 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import {
   cachedFetchJsonWithMeta,
   getCachedJson,
   setCachedJson,
+  setCachedJsonIfAbsent,
   getCachedJsonBatch,
   readCachedJson,
   runRedisPipeline,
@@ -20,6 +22,7 @@ import {
 } from '../../../_shared/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
+import { readBoundedResponseBody } from '../../../../api/mcp/bounded-body';
 import {
   classifyStaleSnapshot,
   filterRevokedUrls,
@@ -29,6 +32,7 @@ import {
 import {
   beginDigestAttempt,
   completeDigestAttempt,
+  deferDigestAttempt,
   publishAcceptedSnapshot,
   publishFailedAttempt,
   readAcceptedSnapshot,
@@ -40,6 +44,7 @@ import {
   type LastGoodRead,
 } from './_lastgood-store';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
+import { getUsageScope } from '../../../_shared/usage';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import {
@@ -47,8 +52,11 @@ import {
   orderServerFeedEntries,
   VARIANT_FEEDS,
   INTEL_SOURCES,
+  SERVER_EDITIONS,
+  digestGateProfile,
   type ServerFeed,
 } from './_feeds';
+import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import {
   buildDigestCoverage,
@@ -63,18 +71,24 @@ import {
 import {
   FORECAST_EVIDENCE_KEY,
   FORECAST_EVIDENCE_COVERAGE_KEY,
-  FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
   FORECAST_EVIDENCE_TTL_S,
   accumulatorPruneBounds,
   advanceForecastEvidenceCoverage,
   buildForecastEvidenceMember,
+  buildForecastEvidenceRecordWrite,
+  forecastEvidenceLinkHost,
   evidencePruneBounds,
-  forecastEvidenceCoversWindow,
   forecastEvidenceRecordKey,
   isEligibleForecastEvidence,
   parseForecastEvidenceCoverage,
 } from '../../../../scripts/_forecast-evidence-archive.mjs';
 import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
+import {
+  feedPublisherHost,
+  isPublisherLink,
+  linkHostname,
+} from '../../../../shared/publisher-link-gate.js';
+import { stripAttributionSuffix } from '../../../../shared/story-identity.js';
 // @ts-expect-error — JS module, no declaration file
 import { STORY_ALIAS_PUBLISH_SCRIPT } from '../../../../shared/story-alias-publish-script.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
@@ -83,13 +97,28 @@ import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live
 import { deriveCoreStoryPhase } from '../../../../shared/story-phase.js';
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
-import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
-import { getSourceTier, hasSourceTier } from '../../../_shared/source-tiers';
+import { buildClassifyCacheKey, isValidClassifyHit } from '../../intelligence/v1/_shared';
+import { declaredSourceTier, getSourceTier } from '../../../_shared/source-tiers';
 import {
   getSourcePropagandaRisk,
   hasReviewedPropagandaRisk,
 } from '../../../../shared/source-provenance';
 import { computeCredibilityScore } from '../../../../shared/news-credibility.js';
+import {
+  STORY_CORROBORATION_FIELD,
+  STORY_LABEL_FIELD,
+  countLabels,
+  encodeStoryCorroboration,
+  encodeStoryLabel,
+  keepUnrecordedLabels,
+  labelChangeFor,
+  labelCountsCommand,
+  recordLabelChanges,
+  storyLabel,
+  type LabelChange,
+  type LabelCounts,
+  type StoryLabel,
+} from '../../../_shared/label-history';
 import {
   STORY_TRACK_KEY,
   STORY_SOURCES_KEY,
@@ -102,19 +131,72 @@ import {
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
+import { normalizeFeedDateZone } from '../../../../shared/feed-date-zone.js';
+import { NEWS_LANGUAGES } from '../../../../src/shared/public-rpc-cache';
 // #6428: entity corroboration must count publishers, not feed labels.
 import {
   MIN_CORROBORATING_PUBLISHERS,
   PUBLISHER_FAMILIES,
+  PUBLISHER_FAMILY_DOMAIN_TABLE,
   publisherFamilyFor,
   publisherFamilyForItem,
 } from '../../../../shared/publisher-families.js';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
-const VALID_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity']);
+export const VALID_VARIANTS = new Set<string>(SERVER_EDITIONS);
+// The one digest language set, shared with the gateway's public-shape
+// classifier so a CDN-shielded `?lang=xx&public=1` shape and the handler can
+// never disagree. Anything outside it is a 400 (#8360).
+const DIGEST_LANGUAGES = NEWS_LANGUAGES;
+const DEFAULT_DIGEST_LANG = 'en';
+const ISOLATE_FALLBACK_MAX_KEYS = 50;
 const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: number }>();
+
+/**
+ * Move an entry to the back of the insertion order so it counts as recently
+ * used. Map has no reorder primitive, so delete + re-set is the idiom.
+ *
+ * #8385 review: recency used to be bumped only when a digest was REBUILT, not
+ * when one was served from this tier. `full:en` is the hottest key and the one
+ * degraded serving depends on, but it is rebuilt rarely — so it drifted to the
+ * front of the order and was evicted first, while being read on every request.
+ */
+function touchIsolateEntry(key: string): void {
+  const entry = fallbackDigestCache.get(key);
+  if (!entry) return;
+  fallbackDigestCache.delete(key);
+  fallbackDigestCache.set(key, entry);
+}
+
+/**
+ * Evict the least-recently-used entry, never the default-language shard.
+ *
+ * #8385 review: the cap (50) is below the legitimate key space — VALID_VARIANTS
+ * x DIGEST_LANGUAGES is 135 — so ordinary multi-locale traffic, not just
+ * abuse, can cycle past it. Pinning `<variant>:en` costs one slot per variant
+ * and keeps the shard every degraded serve falls back to, which is the whole
+ * point of this tier. Raising the cap to 135 instead would mean ~17MB of 126KB
+ * snapshots resident per isolate.
+ */
+function evictOldestIsolateEntry(): void {
+  for (const key of fallbackDigestCache.keys()) {
+    if (key.endsWith(`:${DEFAULT_DIGEST_LANG}`)) continue;
+    fallbackDigestCache.delete(key);
+    return;
+  }
+  // Every resident entry is a pinned default-lang shard: drop the oldest so the
+  // cache still cannot grow without bound.
+  const oldest = fallbackDigestCache.keys().next();
+  if (!oldest.done) fallbackDigestCache.delete(oldest.value);
+}
 const ITEMS_PER_FEED = 5;
+// Full-variant entries kept past the dashboard cap, for country headlines and
+// /verify claim search. A Google News site: feed returns up to 100 entries and
+// a wire publishes fast: on 2026-10-17 AP's first 30 covered 6.6 hours, and
+// stories Google News World led with sat at AP entries 61, 92 and 95. Keeping
+// the whole feed grows the pool from about 4,400 to 8,300 headlines.
+const COUNTRY_ITEMS_PER_FEED = 100;
 const MAX_ITEMS_PER_CATEGORY = 20;
 const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
@@ -160,6 +242,19 @@ async function settleBeforeDeadline<T>(
   }
 }
 
+function finishSuccessfulDigestAttempt(
+  variant: string,
+  lang: string,
+  slot: ReturnType<typeof beginDigestAttempt>,
+): null {
+  completeDigestAttempt(variant, lang, slot);
+  // Publication remains inside the shared in-flight promise. Clear the build
+  // identity before that phase starts so an outer response timeout cannot
+  // relabel a completed build as `build-error` and overwrite its canonical
+  // publication with a negative sentinel.
+  return null;
+}
+
 type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
 
 /**
@@ -169,7 +264,7 @@ type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed }
  * on the next request rather than on the next rebuild. Returns the original
  * object untouched when nothing was suppressed, so the common path stays free.
  */
-function suppressRevoked(
+export function suppressRevoked(
   data: ListFeedDigestResponse,
   revoked: ReadonlySet<string>,
 ): { data: ListFeedDigestResponse; dropped: number } {
@@ -349,31 +444,6 @@ function markFallbackCoverageStale(
   };
 }
 
-// U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
-// Items older than this are dropped before scoring. The 24h `recencyScore`
-// component already treats anything older than 24h as zero recency, so the
-// freshness floor is purely a "don't surface week-old news" guard, not a
-// scoring input.
-//
-// 2026-05-03: bumped 48 → 96 after a production incident where every
-// single-source category panel (GitHub Trending: github.blog/feed/, Product
-// Hunt: producthunt.com/feed) went UNAVAILABLE over a weekend. Both feeds
-// publish on a weekday cadence; over a Sat-Sun window their newest item
-// sits at ~50-70h old, which the 48h floor wholesale dropped → category
-// renders zero items → panel reads "UNAVAILABLE". 96h covers a Fri→Mon
-// weekend with margin so we don't flip empty on Sunday-night dashboard
-// checks. The 24h recencyScore still naturally de-ranks 48-96h items vs
-// anything fresher, so the visible-but-de-ranked outcome is correct:
-// better than "no news" but lower priority than today.
-//
-// Out-of-range / unparseable env values fall back to the default silently.
-// See R3 in docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
-function resolveMaxAgeMs(): number {
-  const raw = Number.parseInt(process.env.NEWS_MAX_AGE_HOURS ?? '', 10);
-  const hours = Number.isInteger(raw) && raw > 0 ? raw : 96;
-  return hours * 60 * 60 * 1000;
-}
-
 const LEVEL_TO_PROTO: Record<ThreatLevel, ProtoThreatLevel> = {
   critical: 'THREAT_LEVEL_CRITICAL',
   high: 'THREAT_LEVEL_HIGH',
@@ -462,7 +532,7 @@ const ENTITY_CORROBORATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DIPLOMACY_SEVERITY_PROMOTION_MIN_TIER12_SOURCES = 3;
 
 
-interface ParsedItem {
+export interface ParsedItem {
   source: string;
   // Originating publisher from the RSS <source> element ('' when absent).
   // Google News feeds — which back 154 of the 366 server digest labels —
@@ -475,6 +545,9 @@ interface ParsedItem {
   originPublisherTrusted: boolean;
   title: string;
   link: string;
+  // Host of a link the ingest publisher gate blanked (#8990). Internal: lets
+  // the evidence writer drop a stored link on a host the gate now rejects.
+  blankedLinkHost?: string;
   publishedAt: number;
   isAlert: boolean;
   level: ThreatLevel;
@@ -543,9 +616,9 @@ function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
   // Prefer one identity reviewed by both registries so tier and risk describe
   // the same publisher; then degrade toward whichever curated signal exists.
   return candidates.find(candidate =>
-    hasReviewedPropagandaRisk(candidate) && hasSourceTier(candidate))
+    hasReviewedPropagandaRisk(candidate) && declaredSourceTier(candidate) !== null)
     ?? candidates.find(hasReviewedPropagandaRisk)
-    ?? candidates.find(hasSourceTier)
+    ?? candidates.find(candidate => declaredSourceTier(candidate) !== null)
     ?? rawName;
 }
 
@@ -589,7 +662,7 @@ function compareAnchorCandidates(a: ParsedItem, b: ParsedItem): number {
   return 0;
 }
 
-function computeItemCredibilityScore(
+export function computeItemCredibilityScore(
   item: CredibilitySourceItem,
   independentCorroborationCount: number,
 ): number {
@@ -672,7 +745,7 @@ function entityCorroborationScore(count: number | undefined): number {
   return Math.min(Math.max(finite, 0), 5) * ENTITY_CORROBORATION_SCORE_PER_SOURCE;
 }
 
-function computeImportanceScore(
+export function computeImportanceScore(
   level: ThreatLevel,
   source: string,
   corroborationCount: number,
@@ -711,7 +784,9 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
     controller.abort();
   }, FEED_TIMEOUT_MS);
   const onAbort = () => controller.abort();
-  parentSignal.addEventListener('abort', onAbort, { once: true });
+  // An abort event that already fired never reaches a listener added now.
+  if (parentSignal.aborted) controller.abort();
+  else parentSignal.addEventListener('abort', onAbort, { once: true });
 
   return {
     controller,
@@ -753,32 +828,134 @@ export function looksLikeRssXml(text: string): boolean {
   return /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
 }
 
+/** HTTP validators from a direct 200, replayed as a conditional GET on refresh. */
+export interface FeedValidators {
+  etag?: string;
+  lastModified?: string;
+}
+
+interface RssTextResult {
+  text: string | null;
+  failure: FeedFetchAttempt['failure'];
+  /** True only for a 304 to a conditional request: the cached parse is still current. */
+  notModified?: boolean;
+  validators?: FeedValidators;
+}
+
+function responseValidators(resp: Response): FeedValidators | undefined {
+  const etag = resp.headers.get('etag') ?? undefined;
+  const lastModified = resp.headers.get('last-modified') ?? undefined;
+  return etag || lastModified ? { etag, lastModified } : undefined;
+}
+
+/** Mirrors `RSS_MAX_BODY_BYTES` in scripts/ais-relay.cjs (the relay leg's cap). */
+const RSS_MAX_BODY_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Decode a feed body in the charset it declares: the Content-Type charset,
+ * else the XML prolog's encoding, else UTF-8. Folha de S.Paulo serves
+ * ISO-8859-1 with a bare `text/xml`, so a fixed UTF-8 decode garbled every
+ * accented title. An unknown label falls back to UTF-8.
+ */
+export function decodeFeedBody(bytes: Uint8Array, contentType: string | null): string {
+  // A byte-order mark wins over any declaration, as in browsers. UTF-16 has
+  // no ASCII prolog to sniff, so the BOM is the only way to find it.
+  const bom = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 'utf-8'
+    : bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le'
+      : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be'
+        : null;
+  if (bom) return new TextDecoder(bom).decode(bytes);
+  let label = /charset\s*=\s*["']?([\w.:-]+)/i.exec(contentType ?? '')?.[1];
+  if (!label) {
+    // The prolog is ASCII in every encoding a feed declares, so a Latin-1
+    // read of the first bytes finds it without knowing the charset yet.
+    const head = new TextDecoder('latin1').decode(bytes.subarray(0, 256));
+    label = /^\s*<\?xml[^>]*\bencoding\s*=\s*["']([\w.:-]+)["']/i.exec(head)?.[1];
+  }
+  if (label) {
+    try {
+      return new TextDecoder(label).decode(bytes);
+    } catch {
+      // Unknown label: fall through to UTF-8.
+    }
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
-): Promise<{ text: string | null; failure: FeedFetchAttempt['failure'] }> {
+  validators?: FeedValidators,
+): Promise<RssTextResult> {
   const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
 
   try {
-    const resp = await fetch(url, {
-      headers: {
-        'User-Agent': CHROME_UA,
-        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      signal: controller.signal,
-    });
+    const headers: Record<string, string> = {
+      'User-Agent': CHROME_UA,
+      'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+    };
+    if (validators?.etag) headers['If-None-Match'] = validators.etag;
+    if (validators?.lastModified) headers['If-Modified-Since'] = validators.lastModified;
+    const resp = await fetch(url, { headers, signal: controller.signal });
+    if (resp.status === 304 && validators) return { text: null, failure: null, notModified: true };
     if (!resp.ok) return { text: null, failure: 'direct-error' };
-    const text = await resp.text();
+    // Same 5 MiB ceiling the relay leg enforces; an oversized body throws
+    // here and falls through to the relay like any other direct failure.
+    const text = decodeFeedBody(
+      await readBoundedResponseBody(resp, RSS_MAX_BODY_BYTES),
+      resp.headers.get('content-type'),
+    );
     // Defensive: upstream may return HTTP 200 with an HTML interstitial
     // (Cloudflare bot challenge, captcha page). Reject up front so the
     // caller's relay fallback fires instead of caching an empty parse.
     if (!looksLikeRssXml(text)) return { text: null, failure: 'direct-error' };
-    return { text, failure: null };
+    return { text, failure: null, validators: responseValidators(resp) };
   } catch {
     return {
       text: null,
       failure: timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'direct-error',
+    };
+  } finally {
+    cleanup();
+  }
+}
+
+interface RelayTextResult {
+  text: string | null;
+  attempted: boolean;
+  status: number | null;
+  failure: FeedFetchAttempt['failure'];
+  bodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error';
+}
+
+/** The Railway relay leg: a different IP for feeds that block Vercel. */
+async function fetchViaRelay(url: string, signal: AbortSignal): Promise<RelayTextResult> {
+  const relayBase = getRelayBaseUrl();
+  if (!relayBase) return { text: null, attempted: false, status: null, failure: null, bodyShape: 'no-relay' };
+  const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(url)}`;
+  const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
+  let status: number | null = null;
+  try {
+    const resp = await fetch(relayUrl, {
+      headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
+      signal: controller.signal,
+    });
+    status = resp.status;
+    if (!resp.ok) return { text: null, attempted: true, status, failure: null, bodyShape: 'fetch-error' };
+    const relayText = await resp.text();
+    // Relay can also return CF-challenge HTML if the relay's IP is
+    // challenged — apply the same sniff to keep the cache clean.
+    return looksLikeRssXml(relayText)
+      ? { text: relayText, attempted: true, status, failure: null, bodyShape: 'rss' }
+      : { text: null, attempted: true, status, failure: null, bodyShape: 'html-or-empty' };
+  } catch {
+    return {
+      text: null,
+      attempted: true,
+      status,
+      failure: timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'relay-error',
+      bodyShape: 'fetch-error',
     };
   } finally {
     cleanup();
@@ -791,14 +968,23 @@ async function fetchRssText(
  * an unrecognized date dialect — see U2 in
  * docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md).
  */
-interface ParseResult {
+export interface ParseResult {
   items: ParsedItem[];
-  parsedTotal: number;     // count of <item>/<entry> blocks attempted
-  droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
+  // Lightweight entries after the dashboard cap, for full-variant country snapshots.
+  countryItems?: Pick<ParsedItem, 'source' | 'title' | 'link' | 'publishedAt' | 'originPublisher' | 'originPublisherTrusted'>[];
+  parsedTotal: number;     // titled blocks attempted within the dashboard cap
+  droppedUndated: number;  // dashboard entries with empty/unparseable/future dates
   droppedFeedCap?: number; // #4920: items beyond ITEMS_PER_FEED, previously uncounted
   // #7083: how the fetch leg of this attempt actually ended. Absent on
   // cache entries written before the field existed.
   attempt?: FeedFetchAttempt;
+  // When upstream last confirmed this parse (a 200 or a 304). Absent on
+  // entries written before background refresh; those simply age out.
+  fetchedAt?: number;
+  // When the feed body was last parsed in full. A 304 renews fetchedAt but not
+  // this, so the parse-time date gates still rerun at least hourly.
+  parsedAt?: number;
+  validators?: FeedValidators;
 }
 
 // Cache TTLs: a successful parse (parsedTotal > 0) caches for an hour to
@@ -810,7 +996,18 @@ interface ParseResult {
 const CACHE_TTL_HEALTHY_S = 3600;
 const CACHE_TTL_EMPTY_S = 300;
 
-async function fetchAndParseRss(
+/**
+ * Fetch one feed and parse it: direct, then the relay when direct is blocked,
+ * with a Cloudflare-challenge body sniff and a strict date gate.
+ *
+ * Exported since #7526 so the country-coverage RPC uses this transport instead
+ * of standing up a second RSS fetcher. Its cache key already carries the whole
+ * feed URL, so a per-country query is keyed per country for free. Note that
+ * `item.level` / `item.category` are stamped by the DIGEST classifier
+ * (`./_classifier`); a caller that must agree with the browser re-labels the
+ * title with shared/threat-keyword-classifier instead of reading those fields.
+ */
+export async function fetchAndParseRss(
   feed: ServerFeed,
   variant: string,
   signal: AbortSignal,
@@ -841,7 +1038,10 @@ async function fetchAndParseRss(
   // v8→v9 (#7083): ParseResult gained the `attempt` field. Warm v8 rows
   // lack it, so zero-item entries could not be classified between
   // negative-cache and fresh-failure; force a cold parse on rollout.
-  const cacheKey = `rss:feed:v9:${variant}:${feed.url}`;
+  // v9→v10 (#7748): retain a bounded country headline pool beyond entry five.
+  // v10→v11 (#8398): items gained the publisher-link ingest gate. Warm v10
+  // rows carry un-gated links, so force a cold parse to gate every link.
+  const cacheKey = rssFeedCacheKey(variant, feed.url);
 
   try {
     // Read cache unconditionally — the v5 prefix guarantees pre-fix
@@ -859,51 +1059,33 @@ async function fetchAndParseRss(
         // so cache hits keep the normal `empty` verdict.
         return { ...cached, attempt: cachedAttemptFrom(cached.attempt) };
       }
+      // Serve the cached parse now; confirm it with upstream after the
+      // response, so the next build sees new items without this one waiting.
+      if (isDueForRefresh(cached, Date.now())) scheduleFeedRefresh(feed, variant, cached);
       return cached;
     }
 
     // Try direct fetch first
     const direct = await fetchRssText(feed.url, signal);
     let text = direct.text;
-    let failure: FeedFetchAttempt['failure'] = direct.failure;
+    const failure: FeedFetchAttempt['failure'] = direct.failure;
     let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
     let relayStatus: number | null = null;
     let relayFailure: FeedFetchAttempt['failure'] = null;
     let relayAttempted = false;
     let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
 
-    // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
-    if (!text) {
-      const relayBase = getRelayBaseUrl();
-      if (relayBase) {
-        relayAttempted = true;
-        relayBodyShape = 'fetch-error';
-        const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
-        const { controller, cleanup, timedOut } = createTimeoutLinkedController(signal);
-        try {
-          const resp = await fetch(relayUrl, {
-            headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
-            signal: controller.signal,
-          });
-          relayStatus = resp.status;
-          if (resp.ok) {
-            const relayText = await resp.text();
-            // Relay can also return CF-challenge HTML if the relay's IP is
-            // challenged — apply the same sniff to keep the cache clean.
-            if (looksLikeRssXml(relayText)) {
-              text = relayText;
-              source = 'relay';
-              relayBodyShape = 'rss';
-            } else {
-              relayBodyShape = 'html-or-empty';
-            }
-          }
-        } catch {
-          /* relay also failed */
-          relayFailure = timedOut() ? 'per-feed-timeout' : signal.aborted ? 'deadline-abort' : 'relay-error';
-        } finally {
-          cleanup();
-        }
+    // Fallback: route through Railway relay (different IP, avoids Vercel blocks).
+    // Not once the digest deadline has passed: nothing would wait for it.
+    if (!text && !signal.aborted) {
+      const relay = await fetchViaRelay(feed.url, signal);
+      relayAttempted = relay.attempted;
+      relayBodyShape = relay.bodyShape;
+      relayStatus = relay.status;
+      relayFailure = relay.failure;
+      if (relay.text) {
+        text = relay.text;
+        source = 'relay';
       }
     }
 
@@ -934,7 +1116,11 @@ async function fetchAndParseRss(
         negativeCache: false,
       };
       const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0, attempt };
-      await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      // Our own deadline says nothing about the feed: caching it would make
+      // the next builds serve an empty row for 5 minutes instead of fetching.
+      if (attempt.failure !== 'deadline-abort') {
+        await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      }
       return empty;
     }
 
@@ -951,6 +1137,10 @@ async function fetchAndParseRss(
       failure: null,
       negativeCache: false,
     };
+    result.fetchedAt = Date.now();
+    result.parsedAt = result.fetchedAt;
+    // Relay responses carry the relay's validators, not the publisher's.
+    if (source === 'direct' && direct.validators) result.validators = direct.validators;
     // Long cache only for healthy parses; short cache for zero-from-zero so
     // transient upstream issues don't sticky-fail for an hour.
     const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
@@ -966,6 +1156,96 @@ async function fetchAndParseRss(
   }
 }
 
+// A healthy parse stays servable for CACHE_TTL_HEALTHY_S, but once it is this
+// old the next build that reads it also asks upstream, after its response, for
+// anything newer. A conditional GET makes the common "nothing new" answer a
+// bodiless 304.
+export const FEED_REFRESH_AFTER_MS = 5 * 60_000;
+// One refresher per feed across concurrent builds and isolates.
+const FEED_REFRESH_LOCK_S = 120;
+// Bounds a build's background fan-out; the rest wait for a free slot.
+const FEED_REFRESH_CONCURRENCY = 20;
+
+export type FeedRefreshOutcome = 'locked' | 'not-modified' | 'updated' | 'failed';
+
+export function isDueForRefresh(cached: ParseResult, now: number): boolean {
+  return cached.parsedTotal > 0
+    && typeof cached.fetchedAt === 'number'
+    && now - cached.fetchedAt >= FEED_REFRESH_AFTER_MS;
+}
+
+/**
+ * Re-confirms one cached feed parse with upstream. Never replaces a healthy
+ * parse with a failure or an empty body: those leave the entry to serve until
+ * it expires, when the foreground fetch path takes over as before.
+ */
+export async function refreshFeedCache(
+  feed: ServerFeed,
+  variant: string,
+  cached: ParseResult,
+  signal: AbortSignal = AbortSignal.timeout(FEED_TIMEOUT_MS * 2),
+): Promise<FeedRefreshOutcome> {
+  const cacheKey = rssFeedCacheKey(variant, feed.url);
+  const locked = await setCachedJsonIfAbsent(`rss:feed-refresh-lock:v1:${variant}:${feed.url}`, 1, FEED_REFRESH_LOCK_S);
+  if (!locked) return 'locked';
+
+  // parseRssXml drops items dated too far ahead or behind *now*. An unchanged
+  // body can still change which items pass, so reparse it at least hourly, as
+  // the plain one-hour TTL used to.
+  const lastFullParse = cached.parsedAt ?? cached.fetchedAt ?? 0;
+  const conditional = Date.now() - lastFullParse < CACHE_TTL_HEALTHY_S * 1000;
+  const direct = await fetchRssText(feed.url, signal, conditional ? cached.validators : undefined);
+  if (direct.notModified) {
+    await setCachedJson(cacheKey, { ...cached, fetchedAt: Date.now() }, CACHE_TTL_HEALTHY_S);
+    return 'not-modified';
+  }
+  let text = direct.text;
+  let source: 'direct' | 'relay' = 'direct';
+  if (!text) {
+    const relay = await fetchViaRelay(feed.url, signal);
+    if (!relay.text) return 'failed';
+    text = relay.text;
+    source = 'relay';
+  }
+  const parsed = parseRssXml(text, feed, variant);
+  // parsedTotal counts titled entries before the date gates, so it can be
+  // positive with nothing usable. Only a parse with items replaces a healthy one.
+  if (!parsed || parsed.items.length === 0) return 'failed';
+  const now = Date.now();
+  const result: ParseResult = {
+    ...parsed,
+    attempt: { source, failure: null, negativeCache: false },
+    fetchedAt: now,
+    parsedAt: now,
+  };
+  if (source === 'direct' && direct.validators) result.validators = direct.validators;
+  await setCachedJson(cacheKey, result, CACHE_TTL_HEALTHY_S);
+  return 'updated';
+}
+
+let refreshesRunning = 0;
+const refreshQueue: Array<() => void> = [];
+
+async function withRefreshSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (refreshesRunning >= FEED_REFRESH_CONCURRENCY) {
+    await new Promise<void>((resolve) => refreshQueue.push(resolve));
+  }
+  refreshesRunning += 1;
+  try {
+    return await task();
+  } finally {
+    refreshesRunning -= 1;
+    refreshQueue.shift()?.();
+  }
+}
+
+function scheduleFeedRefresh(feed: ServerFeed, variant: string, cached: ParseResult): void {
+  const refresh = withRefreshSlot(() => refreshFeedCache(feed, variant, cached)).catch(() => 'failed' as const);
+  const ctx = getUsageScope()?.ctx;
+  if (ctx) ctx.waitUntil(refresh);
+  else void refresh;
+}
+
 // Date-tag priority lists. RSS feeds typically carry <pubDate>; Atom carries
 // <published>/<updated>; ArXiv (and other Dublin Core dialects) carry <dc:date>
 // or <dc:Date.Issued>; some hybrid feeds emit RSS-shaped items with Atom-style
@@ -974,9 +1254,6 @@ const DATE_TAG_PRIORITY = {
   rss: ['pubDate', 'dc:date', 'dc:Date.Issued', 'published'] as const,
   atom: ['published', 'updated', 'dc:date', 'dc:Date.Issued'] as const,
 };
-
-// Future-dated guard: items > 1h ahead of now are clock-skew or malformed.
-const FUTURE_DATE_TOLERANCE_MS = 60 * 60 * 1000;
 
 // RSS <source> is upstream-provided text. Only these server-configured
 // aggregator endpoints are allowed to vouch for it as publisher provenance;
@@ -994,73 +1271,109 @@ function isTrustedOriginAggregator(feedUrl: string): boolean {
   }
 }
 
-function extractFirstDateTag(block: string, isAtom: boolean): string {
+function extractFirstDateTag(block: string, isAtom: boolean, lower = asciiLower(block)): string {
   const tags = isAtom ? DATE_TAG_PRIORITY.atom : DATE_TAG_PRIORITY.rss;
   for (const tag of tags) {
-    const value = extractTag(block, tag);
+    const value = extractTag(block, tag, lower);
     if (value) return value;
   }
   return '';
 }
 
+/** Epoch ms of a feed date that parses and is not in the future, else null. */
+function usableFeedDateMs(raw: string): number | null {
+  if (!raw) return null;
+  const ms = new Date(normalizeFeedDateZone(raw)).getTime();
+  if (Number.isNaN(ms) || ms > Date.now() + FUTURE_DATE_TOLERANCE_MS) return null;
+  return ms;
+}
+
+/**
+ * The date of a snapshot feed's channel, read from the markup before its first
+ * item, so an item's own date is never mistaken for it.
+ */
+function channelDateMs(xml: string, xmlLower: string, isAtom: boolean): number | null {
+  const opener = isAtom ? '<entry' : '<item';
+  let end = xmlLower.indexOf(opener);
+  while (end !== -1 && !/[\s>]/.test(xmlLower[end + opener.length] ?? '')) {
+    end = xmlLower.indexOf(opener, end + 1);
+  }
+  const head = end === -1 ? xml : xml.slice(0, end);
+  const tags = isAtom ? ['updated', 'published'] : ['pubDate', 'lastBuildDate', 'dc:date'];
+  const headLower = asciiLower(head);
+  for (const tag of tags) {
+    const value = extractTag(head, tag, headLower);
+    if (value) return usableFeedDateMs(value);
+  }
+  return null;
+}
+
 function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResult | null {
   const items: ParsedItem[] = [];
+  const countryItems: NonNullable<ParseResult['countryItems']> = [];
+  const retainCountryItems = variant === 'full';
   let parsedTotal = 0;
   let droppedUndated = 0;
 
-  const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
-  const entryRegex = /<entry[\s>]([\s\S]*?)<\/entry>/gi;
-
-  let matches = [...xml.matchAll(itemRegex)];
+  const xmlLower = asciiLower(xml);
+  let matches = scanTagBlocks(xml, xmlLower, 'item');
   const isAtom = matches.length === 0;
-  if (isAtom) matches = [...xml.matchAll(entryRegex)];
+  if (isAtom) matches = scanTagBlocks(xml, xmlLower, 'entry');
+  const originPublisherTrusted = !isAtom && isTrustedOriginAggregator(feed.url);
+  const snapshotDateMs = feed.channelDated ? channelDateMs(xml, xmlLower, isAtom) : null;
 
   // #4920 coverage ledger: items beyond the per-feed cap were previously
   // dropped with no counter anywhere — fully invisible.
   const droppedFeedCap = Math.max(0, matches.length - ITEMS_PER_FEED);
 
-  for (const match of matches.slice(0, ITEMS_PER_FEED)) {
-    const block = match[1]!;
+  const parseLimit = retainCountryItems ? COUNTRY_ITEMS_PER_FEED : ITEMS_PER_FEED;
+  // One log line per feed for gated pool links: a deep pool can drop dozens.
+  const poolLinkDrops = new Map<string, number>();
+  for (const [index, block] of matches.slice(0, parseLimit).entries()) {
+    const blockLower = asciiLower(block);
+    const forDigest = index < ITEMS_PER_FEED;
 
-    const title = extractTag(block, 'title');
+    const title = extractTag(block, 'title', blockLower);
     if (!title) continue;
 
-    parsedTotal++;
+    if (forDigest) parsedTotal++;
 
     let link: string;
+    let blankedLinkHost = '';
     if (isAtom) {
-      const hrefMatch = block.match(/<link[^>]+href=["']([^"']+)["']/);
+      // `[^<>]+`, not `[^>]+`: an opener's scan stops at the next tag, so a
+      // run of unterminated `<link` openers no longer rescans to the end.
+      const hrefMatch = block.match(/<link[^<>]+href=["']([^"']+)["']/);
       link = hrefMatch?.[1] ?? '';
     } else {
-      link = extractTag(block, 'link');
+      link = extractTag(block, 'link', blockLower);
     }
+    // A publisher click counter carries the article URL after a `*`
+    // (redir.folha.com.br/.../*https://www1.folha.uol.com.br/...). Keep the
+    // article URL; the publisher-link gate below still checks its host.
+    link = link.replace(/^https?:\/\/[^/?#*]+\/[^*?#]*\*(?=https?:\/\/)/i, '');
     // Strip non-HTTP links (javascript:, data:, etc.) before any downstream use.
     if (!/^https?:\/\//i.test(link)) link = '';
+
+    // #8398: ingest-side publisher-link gate — an item whose link leaves its
+    // own publisher's domain is the suspicious case. The expected set is
+    // composed below (after the origin publisher is known); the check itself
+    // runs per branch so a rejected link never reaches the item builders.
+    // `link` is NOT cleared here: clearing would conflate "rejected" with
+    // "absent" for the counters below. Each branch drops-or-blanks.
 
     // Strict date gate (R2): walk the dialect-specific tag priority list and
     // require at least one non-empty, parseable, non-future timestamp. Items
     // that fail the gate are dropped — never silently stamped with Date.now()
     // (which is the bug that let static institutional pages reach the brief).
-    const pubDateStr = extractFirstDateTag(block, isAtom);
-    if (!pubDateStr) {
-      droppedUndated++;
+    // A channel-dated snapshot feed's undated item takes the channel's date,
+    // which passes the same gate.
+    const pubDateStr = extractFirstDateTag(block, isAtom, blockLower);
+    const publishedAt = pubDateStr ? usableFeedDateMs(pubDateStr) : snapshotDateMs;
+    if (publishedAt === null) {
+      if (forDigest) droppedUndated++;
       continue;
     }
-    const parsedDate = new Date(pubDateStr);
-    const parsedMs = parsedDate.getTime();
-    if (Number.isNaN(parsedMs)) {
-      droppedUndated++;
-      continue;
-    }
-    if (parsedMs > Date.now() + FUTURE_DATE_TOLERANCE_MS) {
-      droppedUndated++;
-      continue;
-    }
-    const publishedAt = parsedMs;
-
-    const threat = classifyByKeyword(title, variant);
-    const isAlert = threat.level === 'critical' || threat.level === 'high';
-    const description = extractDescription(block, isAtom, title);
 
     // RSS 2.0 <source url="...">Name</source> — the originating publisher,
     // emitted per item by Google News. Atom's <source> is a metadata
@@ -1068,14 +1381,75 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     // dialect is read; extractTag's [^<]* body would not match a container
     // anyway, but skipping Atom keeps that an invariant rather than a
     // regex accident.
-    const originPublisher = isAtom ? '' : extractTag(block, 'source');
+    const extractedOriginPublisher = isAtom ? '' : extractTag(block, 'source', blockLower);
+    // Ordinary feeds cannot vouch for RSS <source>. The country reader already
+    // ignores untrusted origin metadata, so keep those late headlines and store
+    // an empty publisher. Trusted aggregators still have the 200-character
+    // identity bound.
+    const originPublisher = originPublisherTrusted ? extractedOriginPublisher : '';
+    if (!forDigest) {
+
+      // #8398: country-pool branch. parseRssXml is feed-scoped (it knows
+      // `feed`), so the ingest gate runs here — the per-category assembly
+      // below is item-scoped and no longer knows which feed an item came
+      // from (it only carries `source`, the feed label). A rejected link
+      // drops the item: the row never reaches the pool (the pool has its own
+      // link-length cap below, which a hostile link would otherwise satisfy).
+      if (
+        link &&
+        !isItemLinkAllowed(
+          link,
+          { source: feed.name, originPublisher, originPublisherTrusted },
+          feed,
+        )
+      ) {
+        const host = linkHostnameForLog(link);
+        poolLinkDrops.set(host, (poolLinkDrops.get(host) ?? 0) + 1);
+        continue;
+      }
+      if (title.length <= 1000 && link.length <= 2048 && originPublisher.length <= 200) {
+        countryItems.push({
+          source: feed.name, title, link, publishedAt,
+          originPublisher, originPublisherTrusted,
+        });
+        continue;
+      }
+      continue;
+    }
+
+    const threat = classifyByKeyword(title, variant);
+    const isAlert = threat.level === 'critical' || threat.level === 'high';
+    const description = extractDescription(block, isAtom, title, blockLower);
+
+    // #8398: digest branch — same ingest gate as the country-pool branch
+    // above (this is the last feed-scoped point before items lose their feed;
+    // see the comment there for why the gate cannot run later). The link is
+    // blanked rather than the item dropped: the title still carries
+    // corroboration/brief signal while no hostile link can be persisted to
+    // story:track or fanned out by the relay.
+    if (
+      link &&
+      !isItemLinkAllowed(
+        link,
+        { source: feed.name, originPublisher: extractedOriginPublisher, originPublisherTrusted },
+        feed,
+      )
+    ) {
+      console.warn(
+        `[digest] publisher-link-gate blank feed="${feed.name}" variant=${variant} ` +
+          `host="${linkHostnameForLog(link)}"`,
+      );
+      blankedLinkHost = forecastEvidenceLinkHost(link);
+      link = '';
+    }
 
     items.push({
       source: feed.name,
-      originPublisher,
-      originPublisherTrusted: !isAtom && isTrustedOriginAggregator(feed.url),
+      originPublisher: extractedOriginPublisher,
+      originPublisherTrusted,
       title,
       link,
+      ...(blankedLinkHost ? { blankedLinkHost } : {}),
       publishedAt,
       isAlert,
       level: threat.level,
@@ -1112,23 +1486,24 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     );
   }
 
-  // Two cases:
-  //
-  // (a) parsedTotal > 0 — we recognized at least one <item>/<entry> block in
-  //     the XML, so the stats are meaningful (whether all dropped, partially
-  //     dropped, or none dropped). Return the struct so cachedFetchJson
-  //     positive-caches it for the full TTL and the 'all-undated' branch in
-  //     buildDigest's caller can fire (parsedTotal>0 ∧ items=[] ∧ dropped>0).
-  //
-  // (b) parsedTotal === 0 — the XML body had no recognizable items at all.
-  //     This covers genuinely empty feeds (channel exists, no items),
-  //     malformed XML responses, transient block pages, and Cloudflare
-  //     interstitials that don't match the item/entry regexes. Return null
-  //     so cachedFetchJson writes NEG_SENTINEL with the short negativeTtl
-  //     (default 120s) — the feed retries quickly instead of being pinned
-  //     empty for the full 3600s TTL.
-  if (parsedTotal === 0) return null;
-  return { items, parsedTotal, droppedUndated, droppedFeedCap };
+  if (poolLinkDrops.size > 0) {
+    const byHost = [...poolLinkDrops].sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
+    console.warn(
+      `[digest] publisher-link-gate drop feed="${feed.name}" variant=${variant} ` +
+        `hosts="${byHost.map(([host, n]) => `${host}:${n}`).join(',')}" ` +
+        `count=${byHost.reduce((sum, [, n]) => sum + n, 0)}`,
+    );
+  }
+
+  // Keep dashboard health counters even when its dated items are empty.
+  // Later country entries can survive an untitled first-five window; retain
+  // them while preserving the digest's empty-result counters and short TTL.
+  if (parsedTotal === 0 && countryItems.length === 0) return null;
+  return {
+    items, parsedTotal, droppedUndated,
+    ...(parsedTotal > 0 ? { droppedFeedCap } : {}),
+    ...(retainCountryItems ? { countryItems } : {}),
+  };
 }
 
 /**
@@ -1139,25 +1514,25 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
  * Returns the raw content without entity decoding — caller strips HTML and
  * decodes entities via `decodeXmlEntities`.
  */
-const DESCRIPTION_TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
+function extractRawTagBody(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return cdata;
+  return matchTagBody(xml, lower, tag) ?? '';
+}
 
-function extractRawTagBody(xml: string, tag: string): string {
-  let cached = DESCRIPTION_TAG_REGEX_CACHE.get(tag);
-  if (!cached) {
-    cached = {
-      cdata: new RegExp(
-        `<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`,
-        'i',
-      ),
-      plain: new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'),
-    };
-    DESCRIPTION_TAG_REGEX_CACHE.set(tag, cached);
-  }
-  const cdataMatch = xml.match(cached.cdata);
-  if (cdataMatch) return cdataMatch[1] ?? '';
-
-  const match = xml.match(cached.plain);
-  return match ? match[1] ?? '' : '';
+/**
+ * `s.replace(re, replacement)` for a global regex whose every match ends with
+ * `terminator`. Each failed match attempt scans to the end of the string, so a
+ * long unterminated tail (`<<<<…`, `<![CDATA[…` with no `]]>`) made the replace
+ * quadratic. No match can end past the last terminator, so only the prefix
+ * through it is handed to the regex, where each attempt stops at the next
+ * terminator; the tail is appended unchanged. Same result as the plain replace.
+ */
+function replaceBeforeLast(s: string, terminator: string, re: RegExp, replacement: string): string {
+  const end = s.lastIndexOf(terminator);
+  if (end < 0) return s;
+  const cut = end + terminator.length;
+  return s.slice(0, cut).replace(re, replacement) + s.slice(cut);
 }
 
 function normalizeForDescriptionEquality(s: string): string {
@@ -1172,20 +1547,24 @@ function normalizeForDescriptionEquality(s: string): string {
  * MIN_DESCRIPTION_LEN, or normalises-equal to the headline — in those cases
  * downstream consumers must fall back to the cleaned headline (R6).
  */
-function extractDescription(block: string, isAtom: boolean, title: string): string {
+function extractDescription(
+  block: string,
+  isAtom: boolean,
+  title: string,
+  lower = asciiLower(block),
+): string {
   const tags = isAtom ? DESCRIPTION_TAG_PRIORITY.atom : DESCRIPTION_TAG_PRIORITY.rss;
 
   let best = '';
   for (const tag of tags) {
-    const raw = extractRawTagBody(block, tag);
+    const raw = extractRawTagBody(block, tag, lower);
     if (!raw) continue;
     // Some publisher feeds place entity-encoded thumbnail markup before a
     // literal CDATA summary in one tag body (Times of India is one example).
     // Unwrap complete embedded CDATA sections before entity decoding and HTML
     // stripping; otherwise `<...>` removal consumes the wrapper and its text.
-    const unwrapped = raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
-    const cleaned = decodeXmlEntities(unwrapped)
-      .replace(/<[^>]+>/g, ' ')
+    const unwrapped = replaceBeforeLast(raw, ']]>', /<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+    const cleaned = replaceBeforeLast(decodeXmlEntities(unwrapped), '>', /<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     if (cleaned.length > best.length) best = cleaned;
@@ -1198,36 +1577,130 @@ function extractDescription(block: string, isAtom: boolean, title: string): stri
   return best.slice(0, MAX_DESCRIPTION_LEN);
 }
 
-const TAG_REGEX_CACHE = new Map<string, { cdata: RegExp; plain: RegExp }>();
-const KNOWN_TAGS = [
-  'title',
-  'link',
-  'pubDate',
-  'published',
-  'updated',
-  // Dublin Core date dialects (ArXiv and similar feeds publish via these
-  // instead of <pubDate>). Pre-caching their regexes mirrors the perf
-  // pattern used for other hot-path tags.
-  'dc:date',
-  'dc:Date.Issued',
-] as const;
-for (const tag of KNOWN_TAGS) {
-  TAG_REGEX_CACHE.set(tag, {
-    cdata: new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i'),
-    plain: new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i'),
-  });
+function extractTag(xml: string, tag: string, lower = asciiLower(xml)): string {
+  const cdata = matchCdataTag(xml, lower, tag);
+  if (cdata !== null) return cdata.trim();
+
+  const text = matchTagText(xml, lower, tag);
+  return text !== null ? decodeXmlEntities(text.trim()) : '';
 }
 
-function extractTag(xml: string, tag: string): string {
-  const cached = TAG_REGEX_CACHE.get(tag);
-  const cdataRe = cached?.cdata ?? new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*<\\/${tag}>`, 'i');
-  const plainRe = cached?.plain ?? new RegExp(`<${tag}[^>]*>([^<]*)<\\/${tag}>`, 'i');
+// ── Linear tag scanners ─────────────────────────────────────────────────────
+// Feed bodies are publisher-controlled and parsed synchronously on the edge
+// isolate. The lazy/`[^>]*` tag regexes these replace backtrack quadratically
+// on unterminated markup (a 1 MB run of `<title` took ~2 min), so each scanner
+// below reproduces one regex's first match with indexOf walks that never
+// revisit a character more than a constant number of times. Tag names are
+// matched literally and ASCII-case-insensitively, like the `/i` regexes did.
+// `lower` must be `asciiLower(xml)`: index-aligned with `xml`, so a match
+// found in `lower` is sliced from `xml` with the original case.
 
-  const cdataMatch = xml.match(cdataRe);
-  if (cdataMatch) return cdataMatch[1]!.trim();
+const JS_WHITESPACE = /\s/;
 
-  const match = xml.match(plainRe);
-  return match ? decodeXmlEntities(match[1]!.trim()) : '';
+/** Lowercase A-Z only. Index-preserving, unlike toLowerCase (`İ` grows to 2 units). */
+function asciiLower(s: string): string {
+  return s.replace(/[A-Z]+/g, (run) => run.toLowerCase());
+}
+
+function isJsWhitespace(c: string | undefined): boolean {
+  return c !== undefined && JS_WHITESPACE.test(c);
+}
+
+/**
+ * For each `<tag` opener in order, yields the index of the first `>` after
+ * it: where `<tag[^>]*>` ends for that opener. The `>` lookup is reused while
+ * it still lies past the opener, so a run of openers before one `>` costs
+ * O(n) in total.
+ */
+function* tagOpeners(lower: string, tag: string): Generator<number> {
+  const open = `<${tag.toLowerCase()}`;
+  let pos = 0;
+  let gt = -1;
+  for (;;) {
+    const o = lower.indexOf(open, pos);
+    if (o < 0) return;
+    if (gt < o + open.length) gt = lower.indexOf('>', o + open.length);
+    if (gt < 0) return; // no `>` after this opener, so none after a later one
+    yield gt;
+    pos = o + 1;
+  }
+}
+
+/** Every `/<tag[\s>]([\s\S]*?)<\/tag>/gi` capture, in order (item/entry split). */
+function scanTagBlocks(xml: string, lower: string, tag: string): string[] {
+  const open = `<${tag}`;
+  const close = `</${tag}>`;
+  const blocks: string[] = [];
+  let pos = 0;
+  for (;;) {
+    const o = lower.indexOf(open, pos);
+    if (o < 0) break;
+    const next = lower[o + open.length];
+    if (next !== '>' && !isJsWhitespace(next)) {
+      pos = o + 1;
+      continue;
+    }
+    const bodyStart = o + open.length + 1;
+    const c = lower.indexOf(close, bodyStart);
+    if (c < 0) break; // no close after this opener, so none after a later one
+    blocks.push(xml.slice(bodyStart, c));
+    pos = c + close.length;
+  }
+  return blocks;
+}
+
+/** First `<tag[^>]*>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/tag>` capture (`/i`), or null. */
+function matchCdataTag(xml: string, lower: string, tag: string): string | null {
+  const close = `</${tag.toLowerCase()}>`;
+  let lastGt = -1;
+  let bodyStart = -1;
+  for (const gt of tagOpeners(lower, tag)) {
+    if (gt !== lastGt) {
+      // Openers sharing one `>` share the same verdict.
+      lastGt = gt;
+      let j = gt + 1;
+      while (isJsWhitespace(lower[j])) j++;
+      bodyStart = lower.startsWith('<![cdata[', j) ? j + 9 : -1;
+    }
+    if (bodyStart < 0) continue;
+    // The first CDATA opener decides: a later opener's body starts later, so
+    // it cannot reach a terminator this one did not.
+    let k = lower.indexOf(']]>', bodyStart);
+    while (k >= 0) {
+      let j = k + 3;
+      while (isJsWhitespace(lower[j])) j++;
+      if (lower.startsWith(close, j)) return xml.slice(bodyStart, k);
+      k = lower.indexOf(']]>', k + 1);
+    }
+    return null;
+  }
+  return null;
+}
+
+/** First `<tag[^>]*>([^<]*)<\/tag>` capture (`/i`), or null. */
+function matchTagText(xml: string, lower: string, tag: string): string | null {
+  const close = `</${tag.toLowerCase()}>`;
+  let lastGt = -1;
+  let lt = -1;
+  for (const gt of tagOpeners(lower, tag)) {
+    if (gt !== lastGt) {
+      lastGt = gt;
+      lt = lower.indexOf('<', gt + 1);
+    }
+    if (lt < 0) return null; // no `<` left for any later opener either
+    if (lower.startsWith(close, lt)) return xml.slice(gt + 1, lt);
+  }
+  return null;
+}
+
+/** First `<tag[^>]*>([\s\S]*?)<\/tag>` capture (`/i`), or null. */
+function matchTagBody(xml: string, lower: string, tag: string): string | null {
+  for (const gt of tagOpeners(lower, tag)) {
+    // The first opener decides: a later one's body starts no earlier.
+    const c = lower.indexOf(`</${tag.toLowerCase()}>`, gt + 1);
+    return c < 0 ? null : xml.slice(gt + 1, c);
+  }
+  return null;
 }
 
 /**
@@ -1313,6 +1786,10 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
     // operative skip check today. Locked by the `_skip` cases in
     // tests/news-classify-cache-hit-validation.test.mts.
     if (!hit || hit.level === '_skip' || !hit.level || !hit.category) continue;
+    // Shape is the parser's job; the value policy is ours. A level or category
+    // outside the classify enum never reaches item.category, which the
+    // dashboard renders as a badge.
+    if (!isValidClassifyHit(hit)) continue;
 
     for (const item of relatedItems) {
       // L3 defense-in-depth runs FIRST, BEFORE capLlmUpgrade. If the
@@ -1397,17 +1874,14 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
 
 // ── Story persistence tracking ────────────────────────────────────────────────
 
+const NORMALIZED_TITLE_SCAN = 2_000;
+
 function normalizeTitle(title: string): string {
-  // \p{L} = any Unicode letter; \p{N} = any Unicode number.
-  // The `u` flag is required for Unicode property escapes — without it \w
-  // matches only ASCII [A-Za-z0-9_], stripping all Arabic/CJK/Cyrillic chars
-  // and collapsing every non-Latin title to the same empty hash.
-  return title
-    .toLowerCase()
-    // Strip source attribution suffixes ("- Reuters", "- reuters.com", etc.)
-    // so the same story from different domains hashes identically.
-    .replace(/\s*[-\u2013\u2014]\s*[\w\s.]+\.(?:com|org|net|co\.uk)\s*$/, '')
-    .replace(/\s*[-\u2013\u2014]\s*(?:reuters|ap news|bbc|cnn|al jazeera|france 24|dw news|pbs newshour|cbs news|nbc|abc|associated press|the guardian|nos nieuws|tagesschau|cnbc|the national)\s*$/, '')
+  const stripped = stripAttributionSuffix(title.toLowerCase(), { allowPipe: false });
+  const bounded = stripped.length > NORMALIZED_TITLE_SCAN
+    ? stripped.slice(0, NORMALIZED_TITLE_SCAN)
+    : stripped;
+  return bounded
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -1494,6 +1968,8 @@ interface StoryTrack {
   lastSeen: number;
   mentionCount: number;
   sourceCount: number;
+  /** Last recorded corroboration label (#9093), `state|publishers`; absent on rows from before it. */
+  label?: string;
 }
 
 /**
@@ -1548,10 +2024,16 @@ function derivePhase(track: StoryTrack, nowMs: number = Date.now()): ProtoStoryP
 /**
  * Batch-read existing story:track hashes from Redis for a list of title hashes.
  * Returns a Map<titleHash, StoryTrack>. Missing entries are absent from the map.
+ *
+ * `unread`, when given, receives every hash whose row could not be read (no
+ * time left, a failed pipeline, or a per-command error). Absent from the map
+ * then means "unknown", not "new story" (#9093 label history must not treat
+ * an unread row as a first sighting and overwrite its label).
  */
 async function readStoryTracks(
   titleHashes: string[],
   deadlineAt = Number.POSITIVE_INFINITY,
+  unread?: Set<string>,
 ): Promise<Map<string, StoryTrack>> {
   if (titleHashes.length === 0) return new Map();
   // currentScore and peakScore are deliberately NOT read here. derivePhase is
@@ -1562,15 +2044,22 @@ async function readStoryTracks(
   // trims two fields from every per-story HMGET in the batch. The WRITE side is
   // unchanged — buildStoryTrackHsetFields still persists currentScore, which
   // scripts/seed-digest-notifications.mjs reads.
-  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount'];
+  const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', STORY_LABEL_FIELD];
   const commands = titleHashes.map(h => [
     'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
   const timeoutMs = redisTimeoutForDeadline(deadlineAt);
-  if (timeoutMs === undefined) return new Map();
+  if (timeoutMs === undefined) {
+    for (const hash of titleHashes) unread?.add(hash);
+    return new Map();
+  }
   const results = await runRedisPipeline(commands, false, timeoutMs);
   const map = new Map<string, StoryTrack>();
   for (let i = 0; i < titleHashes.length; i++) {
+    if (results.length !== titleHashes.length || results[i]?.error) {
+      unread?.add(titleHashes[i]!);
+      continue;
+    }
     const vals = results[i]?.result as string[] | null;
     if (!vals || !vals[0]) continue; // firstSeen missing → new story
     map.set(titleHashes[i]!, {
@@ -1578,6 +2067,7 @@ async function readStoryTracks(
       lastSeen:     Number(vals[1] ?? 0),
       mentionCount: Number(vals[2] ?? 0),
       sourceCount:  Number(vals[3] ?? 0),
+      ...(typeof vals[4] === 'string' && vals[4] !== '' ? { label: vals[4] } : {}),
     });
   }
   return map;
@@ -1844,7 +2334,7 @@ async function readAdoptionState(
   return { aliasTargetByHash, trackFirstSeenByHash, incompleteHashes };
 }
 
-function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
+export function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsItem {
   return {
     source: item.source,
     title: item.title,
@@ -1872,7 +2362,10 @@ export async function listFeedDigest(
   req: ListFeedDigestRequest,
 ): Promise<ListFeedDigestResponse> {
   const variant = VALID_VARIANTS.has(req.variant) ? req.variant : 'full';
-  const lang = req.lang || 'en';
+  const lang = req.lang === undefined || req.lang === '' ? 'en' : req.lang;
+  if (typeof lang !== 'string' || !DIGEST_LANGUAGES.has(lang)) {
+    throw new ValidationError([{ field: 'lang', description: 'must be a lowercase two-letter language code' }]);
+  }
 
   const digestCacheKey = `news:digest:v1:${variant}:${lang}`;
   const fallbackKey = `${variant}:${lang}`;
@@ -1931,6 +2424,11 @@ export async function listFeedDigest(
       console.log(`[digest-serving] outcome=unavailable reason=${reason} variant=${variant} lang=${lang}`);
       return empty(at, reason);
     }
+    // A serve-time hit is the strongest possible signal this key is in use, so
+    // it must refresh recency — otherwise the tier evicts the very entry it
+    // exists to keep warm. Safe before the gates below: a key that later proves
+    // unservable is deleted outright by those branches.
+    touchIsolateEntry(fallbackKey);
     if (!revoked.readable) {
       // Same fail-closed rule as the durable tier: replayed content must not
       // go out unfiltered when the suppression set could not be read.
@@ -2041,7 +2539,7 @@ export async function listFeedDigest(
             const result = await buildDigest(variant, lang, (await revokedPromise).urls);
             const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
             if (totalItems > 0) {
-              completeDigestAttempt(variant, lang, leaderSlot);
+              leaderSlot = finishSuccessfulDigestAttempt(variant, lang, leaderSlot);
               return result;
             }
             leaderFailure = publishFailedAttempt(
@@ -2055,15 +2553,17 @@ export async function listFeedDigest(
             completeDigestAttempt(variant, lang, leaderSlot);
             return null;
           } catch (err) {
-            leaderFailure = publishFailedAttempt(
-              variant,
-              lang,
-              digestCacheKey,
-              leaderSlot,
-              'build-error',
-              30,
-            );
-            completeDigestAttempt(variant, lang, leaderSlot);
+            if (leaderSlot) {
+              leaderFailure = publishFailedAttempt(
+                variant,
+                lang,
+                digestCacheKey,
+                leaderSlot,
+                'build-error',
+                30,
+              );
+              completeDigestAttempt(variant, lang, leaderSlot);
+            }
             throw err;
           }
         },
@@ -2073,13 +2573,31 @@ export async function listFeedDigest(
           // The fetcher publishes attempt + sentinel atomically. Letting the
           // generic wrapper write its own sentinel first would detach identity.
           cacheFailures: false,
+          cachePositiveResult: false,
+          onPositiveResult: async (result) => {
+            if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
+              const publication = await settleBeforeDeadline(
+                publishAcceptedSnapshot(variant, lang, result, digestCacheKey, digestGateProfile(variant)),
+                responseDeadlineAt,
+                'unavailable',
+              );
+              if (publication === 'unavailable') deferDigestAttempt(digestCacheKey, 30);
+              if (publication === 'accepted') await publishAcceptedLabelCounts(result, responseDeadlineAt);
+            } else {
+              deferDigestAttempt(digestCacheKey, 30);
+              console.warn(
+                `[digest-lastgood] publish skipped (over deadline budget) variant=${variant} lang=${lang} ` +
+                  `elapsed_ms=${Date.now() - requestStart}`,
+              );
+            }
+          },
           shouldFetch: () => shouldStartDigestAttempt(digestCacheKey),
         },
       ),
       responseDeadlineAt,
       { data: null, source: 'skipped', leader: false },
     );
-    const { data: fresh, source, leader } = cachedResult;
+    const { data: fresh, source } = cachedResult;
 
     if (fresh === null) {
       markNoCacheResponse(ctx.request);
@@ -2097,7 +2615,18 @@ export async function listFeedDigest(
       return await serveDegraded('empty-rebuild', leaderFailure, source !== 'cache');
     }
 
-    if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
+    // LRU eviction: the legitimate variant x lang key space (135) exceeds the
+    // cap, so ordinary multi-locale traffic must not wipe the warm high-traffic
+    // keys (e.g. full:en) that degraded serving relies on when Redis is unreadable.
+    // Map preserves insertion order, so the first key is the least-recently-used;
+    // re-inserting the touched key refreshes its recency (touchIsolateEntry does
+    // the same on a serve-time hit, so a key being read every request cannot be
+    // evicted as "old" just because it is not due for a rebuild).
+    if (!fallbackDigestCache.has(fallbackKey) && fallbackDigestCache.size >= ISOLATE_FALLBACK_MAX_KEYS) {
+      evictOldestIsolateEntry();
+    } else {
+      fallbackDigestCache.delete(fallbackKey);
+    }
     // Anchor the isolate entry to the CONTENT clock, exactly like acceptedAt:
     // stamping Date.now() re-aged unchanged content on every cache hit, so a
     // steadily-hit digest never expired from this tier and a later replay
@@ -2126,28 +2655,6 @@ export async function listFeedDigest(
       });
       markNoCacheResponse(ctx.request);
       return empty(fresh.coverage?.attemptedAt || attemptedAt, '');
-    }
-    // Only the coalescing LEADER of a real build publishes: followers resolve
-    // with source 'fresh' too, and each would repeat the full ~126KB guarded
-    // write for a body identical to the one the leader just published. The
-    // deadline gate keeps the worst case inside the 25s Edge ceiling: a
-    // maximally slow build (~19s with its own cache writes) plus this
-    // publish's worst case (~6.5s of Redis timeouts) would exceed it, and
-    // the publish is best-effort by contract — skipping it under pressure
-    // loses nothing the next uncontended build will not restore.
-    if (source === 'fresh' && leader) {
-      if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
-        await settleBeforeDeadline(
-          publishAcceptedSnapshot(variant, lang, fresh),
-          responseDeadlineAt,
-          undefined,
-        );
-      } else {
-        console.warn(
-          `[digest-lastgood] publish skipped (over deadline budget) variant=${variant} lang=${lang} ` +
-            `elapsed_ms=${Date.now() - requestStart}`,
-        );
-      }
     }
     // #7084: while ANY revocation is live, stop feeding shared caches. This
     // endpoint is the gateway's `slow` tier (s-maxage=1800, CDN-Cache-Control
@@ -2190,38 +2697,28 @@ function redisPipelineConfirmed(
 }
 
 /**
- * The prune is destructive, so this gate takes no staleness budget: the marker
- * handed in was written by THIS publication and must already reach `nowMs`.
- * (The read path in seed-forecast-resolutions.mjs is the only caller that opts
- * into FORECAST_EVIDENCE_COVERAGE_MAX_LAG_MS.)
+ * Member pruning bounds every accumulator at ACCUMULATOR_RETENTION_MS, the
+ * widest live reader's lookback (inventory on that constant). A scope is pruned
+ * only when this cycle's tracking writes and the key-TTL refresh were confirmed.
  *
- * `evidenceDropped` is deliberately separate from `evidenceWritesConfirmed`:
- * a story whose member could not be built never reached Redis, so it says
- * nothing about whether the writes that DID happen were confirmed. It still
- * blocks the marker advance (and therefore this gate, via coverageAdvanced),
- * but it must not be laundered into a write-failure signal.
+ * `full:en` additionally waits for FORECAST_EVIDENCE_CUTOVER_ENABLED, the
+ * operator's switch for the one-time drop from ~183 days to 8. It no longer
+ * waits for a backfill-certified coverage marker: that marker protected the
+ * resolver's accumulator fallback, which #8995 deleted. Judging reads only the
+ * evidence archive, which this prune never touches, so archive write and
+ * coverage outcomes say nothing about whether the accumulator tail is still
+ * needed (#7082, owner decision 2026-10-08).
  */
 function shouldPruneAccumulator(options: {
   evidenceEligible: boolean;
   cutoverEnabled: boolean;
-  coverage: unknown;
-  nowMs: number;
   trackingWritesConfirmed: boolean;
-  evidenceWritesConfirmed: boolean;
-  coverageAdvanced: boolean;
   accumulatorTtlConfirmed: boolean;
 }): boolean {
   if (!options.trackingWritesConfirmed || !options.accumulatorTtlConfirmed) return false;
-  if (!options.evidenceEligible) return true;
-  return options.cutoverEnabled
-    && options.evidenceWritesConfirmed
-    && options.coverageAdvanced
-    && forecastEvidenceCoversWindow(
-      options.coverage,
-      options.nowMs - FORECAST_EVIDENCE_MAX_LOOKBACK_MS,
-      options.nowMs,
-    );
+  return !options.evidenceEligible || options.cutoverEnabled;
 }
+
 /**
  * Build the HSET field list for a story:track:v1 row.
  *
@@ -2236,7 +2733,114 @@ function shouldPruneAccumulator(options: {
  * empty is the authoritative signal that the current mention has no body;
  * consumers then fall back to the cleaned headline (R6) honestly, and the
  * next mention with a body re-populates the field naturally.
+ *
+ * #8398: log-safe host of a rejected link. Never logs the full URL — a
+ * hostile link may carry a phishing path/query worth no free print.
  */
+function linkHostnameForLog(link: string): string {
+  return linkHostname(link) || 'unparseable';
+}
+
+/**
+ * #8398: expected publisher hosts for a parsed feed item's link.
+ *
+ * A story link must resolve to the publisher the item claims. The expected
+ * set is unioned from three server-known signals so one missing registry
+ * cannot wedge a whole publisher:
+ *   1. the configured feed URL's own host (`feedPublisherHost`) — the
+ *      publisher domain as registered for this feed;
+ *   2. the curated family table (`PUBLISHER_FAMILY_DOMAINS` behind
+ *      `publisherFamilyForDomain`-style lookup) via `PUBLISHER_FAMILIES` —
+ *      covers the edition/CDN split where the article host differs from the
+ *      feed host (e.g. `amp.` editions);
+ *   3. the trusted-aggregator origin publisher (RSS `<source>`, only when the
+ *      parser marked this feed trusted) — a wire syndicated through Google
+ *      News is still the wire's article, not the aggregator's;
+ *   4. the feed's catalog `linkHosts`, for a feed that lists another site's
+ *      pages.
+ *
+ * The RSS `<source>` element on an UNTRUSTED feed is upstream text and never
+ * enters the set (same rule as `publisherFamilyForItem`): a hostile feed
+ * cannot self-attest an arbitrary publisher domain. Returns an empty array
+ * when no server-known signal exists — `isPublisherLink` then fails closed
+ * and the item's link is dropped at ingest.
+ */
+function expectedPublisherHostsForItem(
+  item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+  feed: Pick<ServerFeed, 'url' | 'linkHosts'>,
+): string[] {
+  const hosts = new Set<string>();
+  const feedHost = feedPublisherHost(feed?.url);
+  if (feedHost) hosts.add(feedHost);
+  for (const host of feed?.linkHosts ?? []) hosts.add(host);
+  const sourceFamily = publisherFamilyFor(item?.source ?? '');
+  const familyDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[sourceFamily];
+  if (Array.isArray(familyDomains)) for (const domain of familyDomains) hosts.add(domain);
+  // Trusted-aggregator origin: map the origin NAME to its family the same
+  // way corroboration does, then add that family's domains.
+  if (item?.originPublisherTrusted === true) {
+    const originFamily = publisherFamilyFor(item?.originPublisher ?? '');
+    const originDomains = PUBLISHER_FAMILY_DOMAIN_TABLE[originFamily];
+    if (Array.isArray(originDomains)) for (const domain of originDomains) hosts.add(domain);
+  }
+  return [...hosts];
+}
+
+// Persistence no longer has the feed object. Recover its host from the
+// server-owned registry, never from upstream item metadata. Build once so
+// each story lookup stays independent of the number of configured feeds.
+const registeredFeedHostsBySource = new Map<string, Set<string>>();
+for (const categories of Object.values(VARIANT_FEEDS)) {
+  for (const feeds of Object.values(categories)) {
+    for (const feed of feeds) {
+      const host = feedPublisherHost(feed.url);
+      if (!host) continue;
+      const hosts = registeredFeedHostsBySource.get(feed.name) ?? new Set<string>();
+      hosts.add(host);
+      for (const linkHost of feed.linkHosts ?? []) hosts.add(linkHost);
+      registeredFeedHostsBySource.set(feed.name, hosts);
+    }
+  }
+}
+
+/**
+ * #8398: ingest-side publisher-link gate.
+ *
+ * Defense in depth behind the parse-time gate in `parseRssXml`: that gate
+ * covers items parsed from a feed, but `buildStoryTrackHsetFields` is also
+ * reachable with reconstructed items (tests, backfills, residue replays).
+ * Persisting happens here, so the check happens here too — a stored
+ * hostile link is harder to contain than a rejected one, and the relay
+ * fans stored rows out to every matching user.
+ *
+ * Recheck against the configured feed hosts, curated family domains, and
+ * trusted-aggregator origin publisher. Unknown sources without a curated
+ * publisher still fail closed. Item-supplied feed URLs cannot extend the
+ * expected host set.
+ */
+function storyTrackLinkForPersist(
+  item: Pick<ParsedItem, 'link' | 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+): string {
+  const link = typeof item.link === 'string' ? item.link : '';
+  if (!link) return '';
+  const hosts = new Set(expectedPublisherHostsForItem(item, { url: '' }));
+  for (const host of registeredFeedHostsBySource.get(item.source) ?? []) hosts.add(host);
+  if (isPublisherLink(link, hosts)) return link;
+  console.warn(
+    `[digest] publisher-link-gate persist-blank source="${item?.source ?? ''}" ` +
+      `host="${linkHostnameForLog(link)}"`,
+  );
+  return '';
+}
+
+function isItemLinkAllowed(
+  link: string,
+  item: Pick<ParsedItem, 'source' | 'originPublisher' | 'originPublisherTrusted'>,
+  feed: Pick<ServerFeed, 'url' | 'linkHosts'>,
+): boolean {
+  return isPublisherLink(link, expectedPublisherHostsForItem(item, feed));
+}
+
 function buildStoryTrackHsetFields(
   item: ParsedItem,
   nowStr: string,
@@ -2250,7 +2854,9 @@ function buildStoryTrackHsetFields(
     // eligibility stamp is present. Legacy rows without it fail closed.
     'anchorEligible', anchorEligible ? '1' : '0',
     'title', item.title,
-    'link', item.link,
+    // #8398: never persist a link that fails the publisher gate (see
+    // storyTrackLinkForPersist above — fail-closed, blank on rejection).
+    'link', storyTrackLinkForPersist(item),
     'severity', item.level,
     'lang', item.lang,
     'description', item.description ?? '',
@@ -2306,6 +2912,74 @@ function buildStoryTrackHsetFields(
   ];
 }
 
+function groupByTitleHash(items: readonly ParsedItem[]): Map<string, ParsedItem[]> {
+  const byHash = new Map<string, ParsedItem[]>();
+  for (const item of items) {
+    const hash = item.titleHash;
+    if (!hash) continue;
+    const members = byHash.get(hash);
+    if (members) members.push(item);
+    else byHash.set(hash, [item]);
+  }
+  return byHash;
+}
+
+/**
+ * #9093: this cycle's corroboration label for every served story, and the
+ * changes from the label each story's track row recorded last cycle. A label
+ * reads the story's whole servable cluster, because the category cap can drop a
+ * member whose publisher the cluster-wide count includes. The stored source
+ * roster is then capped by labelChangeFor; the publisher count is never capped.
+ */
+function storyLabelChanges(
+  served: readonly ParsedItem[],
+  servable: readonly ParsedItem[],
+  tracks: ReadonlyMap<string, StoryTrack>,
+  now: number,
+  unread: ReadonlySet<string> = new Set(),
+): { labelByHash: Map<string, string>; labelChanges: LabelChange[]; labelCounts: LabelCounts } {
+  const clusterByHash = groupByTitleHash(servable);
+  const labelByHash = new Map<string, string>();
+  const labelChanges: LabelChange[] = [];
+  const states: StoryLabel['state'][] = [];
+  for (const [hash, members] of groupByTitleHash(served)) {
+    const label = storyLabel(clusterByHash.get(hash) ?? members);
+    // Counts describe today's labels, whether or not the track row was read.
+    states.push(label.state);
+    // An unread track row is unknown, not new: leave its label untouched so
+    // the next cycle compares against the real previous label.
+    if (unread.has(hash)) continue;
+    labelByHash.set(hash, encodeStoryLabel(label));
+    const lead = members.reduce((best, item) => (item.importanceScore > best.importanceScore ? item : best));
+    const change = labelChangeFor(hash, tracks.get(hash)?.label, label, {
+      at: now,
+      title: lead.title,
+      link: storyTrackLinkForPersist(lead),
+      credibilityScore: lead.credibilityScore,
+    });
+    if (change) labelChanges.push(change);
+  }
+  return { labelByHash, labelChanges, labelCounts: countLabels(states, now) };
+}
+
+/**
+ * #9213: the verdict every served story carries this cycle, encoded for its
+ * track row. Read like storyLabelChanges, over the story's whole servable
+ * cluster, but for every variant and all four states: alert and digest text
+ * show it, and an untracked tier4-only story still needs saying so.
+ */
+function storyCorroborationByHash(
+  served: readonly ParsedItem[],
+  servable: readonly ParsedItem[],
+): Map<string, string> {
+  const clusterByHash = groupByTitleHash(servable);
+  const byHash = new Map<string, string>();
+  for (const [hash, members] of groupByTitleHash(served)) {
+    byHash.set(hash, encodeStoryCorroboration(storyLabel(clusterByHash.get(hash) ?? members)));
+  }
+  return byHash;
+}
+
 async function writeStoryTracking(
   items: ParsedItem[],
   variant: string,
@@ -2314,6 +2988,11 @@ async function writeStoryTracking(
   memberHashesByFinal?: Map<string, Set<string>>,
   deadlineAt = Number.POSITIVE_INFINITY,
   clusterAnchorEligibleByHash?: ReadonlyMap<string, boolean>,
+  // #9093: this cycle's corroboration label per story, persisted on the track
+  // row so the next cycle can tell whether it changed. Absent → not written.
+  labelByHash?: ReadonlyMap<string, string>,
+  // #9213: this cycle's verdict per story for this variant, read by digest text.
+  corroborationByHash?: ReadonlyMap<string, string>,
 ): Promise<void> {
   if (items.length === 0) return;
   if (redisTimeoutForDeadline(deadlineAt) === undefined) {
@@ -2325,9 +3004,9 @@ async function writeStoryTracking(
   // The archive/coverage keys are written raw (see the pipeline call below), so
   // getKeyPrefix() does NOT isolate them per deployment the way the accumulator
   // ZADD on the adjacent line is isolated. Preview and dev deployments share
-  // this Upstash instance, and the marker they would rewrite is the artefact
-  // that authorises destructive accumulator pruning — so production is the only
-  // deployment allowed to publish evidence at all.
+  // this Upstash instance, and the archive and marker they would rewrite are
+  // what forecast judging reads — so production is the only deployment allowed
+  // to publish evidence at all.
   const productionDeployment = (process.env.VERCEL_ENV ?? 'production') === 'production';
   const evidenceEligible = isEligibleForecastEvidence(variant, lang) && productionDeployment;
   const cutoverEnabled = process.env.FORECAST_EVIDENCE_CUTOVER_ENABLED === '1';
@@ -2414,12 +3093,18 @@ async function writeStoryTracking(
         const anchorFieldAt = hsetFieldsWithEligibility.indexOf('anchorEligible');
         const anchorEligible = anchorFieldAt >= 0
           && hsetFieldsWithEligibility[anchorFieldAt + 1] === '1';
-        const hsetFields = anchorFieldAt >= 0
-          ? [
-            ...hsetFieldsWithEligibility.slice(0, anchorFieldAt),
-            ...hsetFieldsWithEligibility.slice(anchorFieldAt + 2),
-          ]
-          : hsetFieldsWithEligibility;
+        const label = labelByHash?.get(hash);
+        const corroboration = corroborationByHash?.get(hash);
+        const hsetFields = [
+          ...(anchorFieldAt >= 0
+            ? [
+              ...hsetFieldsWithEligibility.slice(0, anchorFieldAt),
+              ...hsetFieldsWithEligibility.slice(anchorFieldAt + 2),
+            ]
+            : hsetFieldsWithEligibility),
+          ...(label ? [STORY_LABEL_FIELD, label] : []),
+          ...(corroboration ? [STORY_CORROBORATION_FIELD(variant, lang), corroboration] : []),
+        ];
         commands.push(
           ['HINCRBY', trackKey, 'mentionCount', '1'],
           ['HSET', trackKey, ...hsetFields],
@@ -2439,12 +3124,16 @@ async function writeStoryTracking(
         // evidence archive member is self-contained (title/link/description
         // ride on the member; no story:track dependency) and only the
         // full/English scope that judging actually reads is archived.
+        // #8398: the evidence link rides the same persist-time gate as
+        // story:track — the member is a second stored copy of the link, so
+        // it must not carry a hostile URL the track row blanks.
         if (evidenceEligible) {
+          const evidenceLink = storyTrackLinkForPersist(representative);
           const evidenceMember = buildForecastEvidenceMember(
             {
               hash,
               title: representative.title,
-              link: representative.link,
+              link: evidenceLink,
               description: representative.description,
               publishedAt: representative.publishedAt,
             },
@@ -2455,7 +3144,11 @@ async function writeStoryTracking(
             // representative fields live in a self-contained, independently
             // retained record key, so refreshing one story cannot create a
             // second index member or crowd unique evidence out of the cap.
-            evidenceBatchCommands.push(['SET', forecastEvidenceRecordKey(hash), evidenceMember, 'EX', FORECAST_EVIDENCE_TTL_S]);
+            // A blanked link never replaces a stored link for the same story (#8990).
+            evidenceBatchCommands.push(buildForecastEvidenceRecordWrite(
+              forecastEvidenceRecordKey(hash), evidenceMember, evidenceLink, FORECAST_EVIDENCE_TTL_S, now,
+              evidenceLink ? '' : (representative.blankedLinkHost || forecastEvidenceLinkHost(representative.link)),
+            ));
             evidenceBatchCommands.push(['ZADD', FORECAST_EVIDENCE_KEY, nowStr, hash]);
             evidenceAttempted += 1;
           } else {
@@ -2495,9 +3188,11 @@ async function writeStoryTracking(
     // Archive keys are deliberately raw: the Railway resolver and backfill
     // operate outside a Vercel deployment prefix and must read this same
     // durable evidence namespace.
+    // Keep each record's lastSeen and its index score in the same transaction.
+    // Concurrent pipelines can otherwise leave a mixed pair and block recovery.
     const evidenceTimeoutMs = redisTimeoutForDeadline(deadlineAt);
     const evidencePromise = evidenceEligible && evidenceTimeoutMs !== undefined
-      ? runRedisPipeline(evidenceBatchCommands, true, evidenceTimeoutMs)
+      ? runRedisTransaction(evidenceBatchCommands, true, evidenceTimeoutMs)
       : Promise.resolve([]);
     if (evidenceEligible && evidenceTimeoutMs === undefined) evidenceWritesConfirmed = false;
     for (const trackingChunk of chunkRedisCommands(commands)) {
@@ -2641,18 +3336,10 @@ async function writeStoryTracking(
     coverageAdvanced = canAdvance && redisPipelineConfirmed(coverageResults, coverageCommands.length);
   }
 
-  // For the judged full/en accumulator, pruning is destructive migration:
-  // retain legacy evidence until backfill has installed a verified coverage
-  // marker AND this cycle's archive writes and coverage update are confirmed.
-  // Other accumulator scopes are not used by forecast judging.
   const pruneAllowed = shouldPruneAccumulator({
     evidenceEligible,
     cutoverEnabled,
-    coverage: coverageAfter,
-    nowMs: now,
     trackingWritesConfirmed,
-    evidenceWritesConfirmed,
-    coverageAdvanced,
     accumulatorTtlConfirmed,
   });
   let pruneConfirmed = true;
@@ -2684,13 +3371,26 @@ async function writeStoryTracking(
       `writes_confirmed=${evidenceWritesConfirmed} coverage_advanced=${coverageAdvanced} ` +
       `accumulator_ttl_confirmed=${accumulatorTtlConfirmed} maintenance_confirmed=${maintenanceConfirmed} ` +
       `accumulator_pruned=${pruneAllowed} accumulator_prune_confirmed=${pruneConfirmed} ` +
-      `cutover_enabled=${cutoverEnabled} cutover_verified=${pruneAllowed} ` +
+      `cutover_enabled=${cutoverEnabled} ` +
       `key=${FORECAST_EVIDENCE_KEY} ttl_s=${FORECAST_EVIDENCE_TTL_S}`;
     if (evidenceWritesConfirmed && coverageAdvanced && maintenanceConfirmed && pruneConfirmed) console.info(message);
     else console.warn(message);
   } else if (!pruneConfirmed) {
     console.warn(`[forecast-evidence] accumulator prune unconfirmed key=${accKey}`);
   }
+}
+
+/**
+ * Fetches each full-variant feed's depthUrl so its cache entry stays warm for
+ * claim search. It runs beside the feed batches rather than in a batch slot,
+ * so a slow depth fetch never holds back a digest feed; the build's deadline
+ * signal bounds it, and a failure is ignored. Its items never reach the digest.
+ */
+async function warmDepthFeeds(entries: DigestFeedEntry[], variant: string, signal: AbortSignal): Promise<void> {
+  if (variant !== 'full') return;
+  await Promise.allSettled(entries.flatMap(({ feed }) => feed.depthUrl
+    ? [fetchAndParseRss({ name: feed.name, url: feed.depthUrl, ...(feed.lang ? { lang: feed.lang } : {}) }, variant, signal)]
+    : []));
 }
 
 function buildDigestFeedBatches(variant: string, lang: string): {
@@ -2722,9 +3422,17 @@ function buildDigestFeedBatches(variant: string, lang: string): {
   // behind the global deadline.
   const priorityOrdered = orderServerFeedEntries(allEntries);
   const priorityHead = priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) > 0);
+  // A category the priority head already starts takes its interleave turn
+  // last, so the first wave spends its slots on categories with no feed in
+  // flight yet (the China trio is all asia).
+  const headCategories = new Set(priorityHead.map((entry) => entry.category));
+  const rest = priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) <= 0);
   const orderedEntries = [
     ...priorityHead,
-    ...interleaveByCategory(priorityOrdered.filter((entry) => (entry.feed.deadlinePriority ?? 0) <= 0)),
+    ...interleaveByCategory([
+      ...rest.filter((entry) => !headCategories.has(entry.category)),
+      ...rest.filter((entry) => headCategories.has(entry.category)),
+    ]),
   ];
   const batches: DigestFeedEntry[][] = [];
   for (let i = 0; i < orderedEntries.length; i += BATCH_CONCURRENCY) {
@@ -2755,6 +3463,7 @@ async function buildDigest(
 
   try {
     const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
+    const depthWarming = warmDepthFeeds(allEntries, variant, deadlineController.signal);
 
     const results = new Map<string, ParsedItem[]>();
     const buildStart = Date.now();
@@ -2797,6 +3506,8 @@ async function buildDigest(
         };
       },
     );
+
+    await depthWarming;
 
     for (const { value } of attempts.fulfilled) {
       const { category, items, droppedUndated, droppedFeedCap } = value;
@@ -3039,6 +3750,7 @@ async function buildDigest(
 
     // Sort by importanceScore desc, then pubDate desc; then truncate per category.
     const slicedByCategory = new Map<string, ParsedItem[]>();
+    const servableItems: ParsedItem[] = [];
     for (const [category, items] of results) {
       items.sort((a, b) =>
         b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
@@ -3048,6 +3760,7 @@ async function buildDigest(
       const servable = revokedUrls.size === 0
         ? items
         : items.filter((item) => typeof item.link !== 'string' || !revokedUrls.has(item.link));
+      servableItems.push(...servable);
       ledgerDrops.perCategoryCap += Math.max(0, servable.length - MAX_ITEMS_PER_CATEGORY);
       slicedByCategory.set(category, servable.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
@@ -3065,8 +3778,35 @@ async function buildDigest(
     // mentionCount. We merge read state + this cycle's increment in memory to
     // produce accurate, current StoryMeta without a second Redis round-trip.
     const uniqueHashes = [...new Set(titleHashes)];
-    const storyTracks = await readStoryTracks(uniqueHashes, storyTrackingDeadlineAt)
-      .catch(() => new Map<string, StoryTrack>());
+    const unreadTracks = new Set<string>();
+    const storyTracks = await readStoryTracks(uniqueHashes, storyTrackingDeadlineAt, unreadTracks)
+      .catch(() => {
+        for (const hash of uniqueHashes) unreadTracks.add(hash);
+        return new Map<string, StoryTrack>();
+      });
+
+    // #9093 label history. Only full/en records it: the story:track row is
+    // shared by every variant, and a variant that keeps fewer of a story's
+    // feeds would flip the label back and forth.
+    const { labelByHash, labelChanges, labelCounts } = variant === 'full' && lang === 'en'
+      ? storyLabelChanges(allSliced, servableItems, storyTracks, now, unreadTracks)
+      : { labelByHash: undefined, labelChanges: [], labelCounts: undefined };
+    // #9213: every variant persists the verdict it served, for digest text.
+    const corroborationByHash = storyCorroborationByHash(allSliced, servableItems);
+
+    // Record changes before persisting the new labels: a story whose entry
+    // was not written keeps its previous label, so the change is detected
+    // again next cycle instead of being lost.
+    if (labelByHash && labelChanges.length > 0) {
+      const historyDeadlineAt = storyTrackingDeadlineAt - REDIS_PIPELINE_TIMEOUT_MS;
+      const recorded = historyDeadlineAt <= Date.now()
+        ? new Set<string>()
+        : await recordLabelChanges(labelChanges, historyDeadlineAt).catch((err: unknown) => {
+          console.warn('[digest] label history write failed:', err);
+          return new Set<string>();
+        });
+      keepUnrecordedLabels(labelByHash, labelChanges, recorded);
+    }
 
     // Write story tracking. Errors never fail the digest build.
     await writeStoryTracking(
@@ -3077,6 +3817,8 @@ async function buildDigest(
       memberHashesByFinal,
       storyTrackingDeadlineAt,
       clusterAnchorEligibleByFinalHash,
+      labelByHash,
+      corroborationByHash,
     ).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
@@ -3127,7 +3869,7 @@ async function buildDigest(
     // Key-cardinality clamp: variant/lang are request-supplied — only write
     // ledgers for known variants and well-formed 2-letter langs so a caller
     // spraying arbitrary values cannot inflate the keyspace.
-    if (VARIANT_FEEDS[variant] && /^[a-z]{2}$/.test(lang)) {
+    if (VARIANT_FEEDS[variant] && DIGEST_LANGUAGES.has(lang)) {
       // #4927 review P2: awaited — a fire-and-forget write can be killed
       // when the response finishes before the side write lands.
       await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>
@@ -3151,29 +3893,59 @@ async function buildDigest(
       buildStartMs: buildStart,
     });
 
-    return {
+    const response: ListFeedDigestResponse = {
       categories,
       feedStatuses,
       generatedAt: new Date().toISOString(),
       coverage,
     };
+    if (labelCounts) rememberLabelCounts(response, labelCounts);
+    return response;
   } finally {
     clearTimeout(deadlineTimeout);
   }
 }
 
+// #9093: today's stories by label, for /trust, keyed by the build they describe.
+// They are written only after the acceptance gate takes that build.
+const pendingLabelCounts = new WeakMap<ListFeedDigestResponse, LabelCounts>();
+
+function rememberLabelCounts(response: ListFeedDigestResponse, counts: LabelCounts): void {
+  // An empty build is never accepted, so it must not replace the served counts.
+  if (counts.stories > 0) pendingLabelCounts.set(response, counts);
+}
+
+/**
+ * Write the counts of a build the gate accepted. A rejected or unpublished
+ * build leaves /trust describing the digest that is still served.
+ */
+async function publishAcceptedLabelCounts(response: ListFeedDigestResponse, deadlineAt: number): Promise<void> {
+  const counts = pendingLabelCounts.get(response);
+  if (!counts) return;
+  pendingLabelCounts.delete(response);
+  const timeoutMs = redisTimeoutForDeadline(deadlineAt);
+  if (timeoutMs === undefined) return;
+  await runRedisPipeline([labelCountsCommand(counts)], false, timeoutMs)
+    .catch((err: unknown) => console.warn('[digest] label counts write failed:', err));
+}
+
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  storyCorroborationByHash,
   // #7084 serving path. Exported so the wiring can be EXECUTED in tests rather
   // than asserted against this file's own source text — a grep for
   // `serveLastGood(...)` passes whether or not the function behaves.
   publishAcceptedSnapshot,
+  rememberLabelCounts,
   serveLastGood,
   readRevokedUrlSet,
   suppressRevoked,
   fallbackDigestCache,
+  evictOldestIsolateEntry,
+  touchIsolateEntry,
   markFallbackCoverageStale,
   settleBeforeDeadline,
+  finishSuccessfulDigestAttempt,
   lastGoodStoreTesting,
   beginDigestAttempt,
   completeDigestAttempt,
@@ -3181,13 +3953,23 @@ export const __testing__ = {
   recoverFailedAttempt,
   shouldStartDigestAttempt,
   buildDigestFeedBatches,
+  warmDepthFeeds,
   parseRssXml,
   isTrustedOriginAggregator,
   decodeXmlEntities,
   extractDescription,
   extractRawTagBody,
   extractFirstDateTag,
+  asciiLower,
+  scanTagBlocks,
+  matchCdataTag,
+  matchTagText,
+  matchTagBody,
+  replaceBeforeLast,
   buildStoryTrackHsetFields,
+  storyTrackLinkForPersist,
+  isItemLinkAllowed,
+  expectedPublisherHostsForItem,
   isAnchorEligible,
   isIdentityAnchorEligible,
   computeImportanceScore,
@@ -3205,6 +3987,7 @@ export const __testing__ = {
   resolveMaxAgeMs,
   capLlmUpgrade,
   parseClassifyCacheHit,
+  enrichWithAiCache,
   VERCEL_INITIAL_RESPONSE_LIMIT_MS,
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,
@@ -3217,8 +4000,10 @@ export const __testing__ = {
   redisPipelineConfirmed,
   shouldPruneAccumulator,
   writeStoryTracking,
+  storyLabelChanges,
   MAX_REDIS_PIPELINE_COMMANDS,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,
+  normalizeTitle,
 };

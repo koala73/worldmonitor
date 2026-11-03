@@ -36,7 +36,7 @@ export async function getHumanitarianSummaryBatch(
 
     const results: Record<string, HumanitarianCountrySummary> = {};
     const cacheKeys = limitedList.map((cc) => `${REDIS_CACHE_KEY}:${cc}`);
-    const cachedMap = await getCachedJsonBatch(cacheKeys);
+    const cachedMap = await getCachedJsonBatch(cacheKeys, true);
 
     for (let i = 0; i < limitedList.length; i++) {
       const cc = limitedList[i]!;

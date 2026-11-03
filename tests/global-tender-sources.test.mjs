@@ -68,6 +68,17 @@ test('Contracts Finder adapter requests current tender-stage OCDS releases', asy
   assert.equal(result.records[0].region, 'Europe');
 });
 
+test('Contracts Finder rejects unusable releases instead of clearing last-good records as valid empty', async () => {
+  for (const release of [{}, {
+    id: 'missing-deadline', tender: { title: 'Network services', status: 'active' },
+  }]) {
+    await assert.rejects(fetchContractsFinder({ now: NOW, fetchJsonFn: async () => ({ releases: [release] }) }), /malformed releases/);
+  }
+  const empty = await fetchContractsFinder({ now: NOW, fetchJsonFn: async () => ({ releases: [] }) });
+  assert.equal(empty.status.state, 'ok');
+  assert.equal(empty.records.length, 0);
+});
+
 test('World Bank adapter uses the current v2 opportunity fields', async () => {
   let requested;
   const result = await fetchWorldBank({

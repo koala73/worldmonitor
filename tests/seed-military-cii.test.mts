@@ -11,7 +11,7 @@ import {
   readMilitaryFlights,
 } from '../scripts/seed-military-cii.mjs';
 
-test('geoToCountry resolves points inside a TIER1 bbox', () => {
+test('geoToCountry resolves points inside a Tier-1 border', () => {
   assert.equal(geoToCountry(39, -98), 'US');
   assert.equal(geoToCountry(31.5, 35), 'IL');
   assert.equal(geoToCountry(55.7, 37.6), 'RU'); // Moscow

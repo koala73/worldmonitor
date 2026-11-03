@@ -22,14 +22,13 @@ const STRICT_PROJECTIONS = [...MISSING_DATA_IS_FAILURE_KEYS];
 // These sources intentionally refresh only metadata on quiet cycles, so a missing
 // payload with fresh metadata remains healthy rather than generating a false alarm.
 const QUIET_META_ONLY_KEYS = [
-  'ddosAttacks',
-  'trafficAnomalies',
   'weatherAlerts',
-  'newsThreatSummary',
 ];
 
 const AUDITED_PRESENT_PAYLOAD_KEYS = [
   'cableHealth',
+  'ddosAttacks',
+  'trafficAnomalies',
   'notamClosures',
   // canadaRoads does NOT refresh metadata only on quiet cycles: the seeder
   // publishes an explicit {records: []} envelope on every successful tick
@@ -52,6 +51,11 @@ const AUDITED_PRESENT_PAYLOAD_KEYS = [
   'canadaAlertsAbSource',
   'canadaAlertsBcSource',
   'canadaAlertsSkSource',
+  // The relay classify loop writes news:threat:summary:v1 on every cycle that
+  // reached a digest, with `byCountry: {}` when nothing matched, and advances
+  // its seed-meta only after that write lands. A vanished summary beside fresh
+  // seed-meta is the 2026-10-21 expiry that zeroed every CII news score.
+  'newsThreatSummary',
 ];
 
 function classifyMissing(name, meta) {
@@ -77,6 +81,30 @@ function classifyPresent(name, meta) {
     now: NOW,
   });
 }
+
+test('optional DDoS target degradation is diagnostic only across health states', () => {
+  for (const [classify, age, expected] of [
+    [classifyPresent, 1, 'OK'],
+    [classifyPresent, 61, 'STALE_SEED'],
+    [classifyMissing, 1, 'EMPTY'],
+  ]) {
+    const meta = { fetchedAt: NOW - age * 60_000, recordCount: 0 };
+    const baseline = classify('ddosAttacks', meta);
+    const degraded = classify('ddosAttacks', { ...meta, targetLocationsDegraded: true });
+    assert.equal(degraded.status, expected);
+    assert.deepEqual(degraded, { ...baseline, targetLocationsDegraded: true });
+  }
+  for (const value of [undefined, false, 'true', 1, {}]) {
+    const entry = classifyPresent('ddosAttacks', {
+      fetchedAt: NOW, recordCount: 0, targetLocationsDegraded: value,
+    });
+    assert.equal(Object.hasOwn(entry, 'targetLocationsDegraded'), false);
+  }
+  const unrelated = classifyPresent('trafficAnomalies', {
+    fetchedAt: NOW, recordCount: 0, targetLocationsDegraded: true,
+  });
+  assert.equal(Object.hasOwn(unrelated, 'targetLocationsDegraded'), false);
+});
 
 test('published strict projections escalate when their data key vanishes', () => {
   for (const name of STRICT_PROJECTIONS) {
@@ -172,4 +200,19 @@ test('audited sparse sources require a payload even when zero records is valid',
       `${name}: a present quiet payload remains healthy`,
     );
   }
+});
+
+test('newsThreatSummary: a vanished summary is critical on the live health path, not an excused on-demand gap', () => {
+  const redisKey = STANDALONE_KEYS.newsThreatSummary;
+  const seedCfg = SEED_META.newsThreatSummary;
+  const entry = classifyKey('newsThreatSummary', redisKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[redisKey, 0]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[seedCfg.key, JSON.stringify({ fetchedAt: NOW - 15 * 60_000, recordCount: 27 })]]),
+    keyMetaErrors: new Map(),
+    now: NOW,
+  });
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+  assert.equal(entry.onDemand, undefined, 'the gap must not read as on-demand');
 });

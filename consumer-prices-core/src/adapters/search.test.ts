@@ -56,6 +56,20 @@ describe('isTitlePlausible', () => {
     expect(isTitlePlausible('Basmati Rice 1kg', 'Tilda Pure Basmati Rice 1kg')).toBe(true);
   });
 
+  it.each(['Tomato 1 kg', 'Tomato'])('accepts the retained AE title %s without counting the compact size as identity', (title) => {
+    expect(isTitlePlausible('Tomatoes Fresh 1kg', title)).toBe(true);
+  });
+
+  it('does not accept a different product solely because its compact size matches', () => {
+    expect(isTitlePlausible('Onions 1kg', 'Tomatoes 1kg')).toBe(false);
+  });
+
+  it('preserves digit-prefixed product identity instead of treating it as a quantity unit', () => {
+    expect(isTitlePlausible('7up 330ml', 'Cola 350ml')).toBe(false);
+    expect(isTitlePlausible('7up 330ml', 'Cola 500ml')).toBe(false);
+    expect(isTitlePlausible('7up 330ml', '7up')).toBe(true);
+  });
+
   it('rejects gross mismatches (seeds vs vegetables)', () => {
     expect(isTitlePlausible('Tomatoes Fresh 1kg', 'GGOOT Tomato Seeds 100 pcs Vegetable Garden')).toBe(false);
     expect(isTitlePlausible('Onions 1kg', 'Red Karmen Onion Sets for Planting x200')).toBe(false);
@@ -125,6 +139,15 @@ describe('matchesAnyPathFilter', () => {
 
   it('rejects when no filter matches', () => {
     expect(matchesAnyPathFilter('https://x.com/category/foo', ['/product/', '/item/'])).toBe(false);
+  });
+
+  it('matches only the pathname and fails closed for malformed URLs', () => {
+    const filters = ['/produto/'];
+
+    expect(matchesAnyPathFilter('https://x.com/busca?next=/produto/144583', filters)).toBe(false);
+    expect(matchesAnyPathFilter('https://x.com/busca#/produto/144583', filters)).toBe(false);
+    expect(matchesAnyPathFilter('https://x.com/produto/144583?next=/busca', filters)).toBe(true);
+    expect(matchesAnyPathFilter('not-a-url/produto/144583', filters)).toBe(false);
   });
 
   // Documents a known tradeoff for the carrefour_br fix: `/p` over-matches

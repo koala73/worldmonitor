@@ -72,6 +72,18 @@ describe('five-factor absolute bands', () => {
 });
 
 describe('five-factor evidence and coverage', () => {
+  it('scores food at 75% coverage when stock evidence is unavailable', () => {
+    const food = scoreCountry(country('FR', 68, {
+      'food.productionBalance': available('food.productionBalance', 0.9),
+      'food.waterSecurity': available('food.waterSecurity', 25),
+      'food.importDiversity': available('food.importDiversity', 0.2),
+    })).pillars.food;
+
+    assert.equal(food.inputCoverage, 0.75);
+    assert.equal(food.hasScore, true);
+    assert.equal(food.inputs.find((input) => input.inputId === 'food.stocksToUse')?.availability, 'unavailable');
+  });
+
   it('scores at every exact coverage floor and rejects the next tested subset below it', () => {
     const cases = [
       {

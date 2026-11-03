@@ -19,6 +19,7 @@ interface MapContainerHarness {
       whenRendererReady: () => Promise<void>;
       whenViewportSettled: (viewportActionToken?: number) => Promise<void>;
       switchToGlobe: () => Promise<{ renderer: 'globe' | 'deck' | 'svg'; mode: 'globe' | 'flat'; fallback: boolean }>;
+      switchToFlat: () => Promise<{ renderer: 'globe' | 'deck' | 'svg'; mode: 'globe' | 'flat'; fallback: boolean }>;
       isGlobeMode: () => boolean;
       isDeckGLActive: () => boolean;
       destroy: () => void;
@@ -33,6 +34,27 @@ before(async () => {
   const lifecycleOnlyStubs: Plugin = {
     name: 'map-viewport-lifecycle-stubs',
     setup(buildApi) {
+      buildApi.onResolve({ filter: /^\.\/(Map|DeckGLMap)$/ }, (args) => ({
+        path: args.path,
+        namespace: 'startup-renderer',
+      }));
+      buildApi.onLoad({ filter: /.*/, namespace: 'startup-renderer' }, (args) => {
+        const name = args.path === './Map' ? 'MapComponent' : 'DeckGLMap';
+        return { loader: 'js', contents: `
+          export class ${name} {
+            constructor(container) {
+              const startup = container.startup;
+              startup.events.push('construct');
+              Object.assign(this, startup.renderer);
+              this.whenReady = () => {
+                startup.events.push('whenReady');
+                startup.entered();
+                return startup.ready;
+              };
+            }
+          }
+        ` };
+      });
       buildApi.onResolve({ filter: /^@\/(utils|config\/map-layer-definitions|services\/widget-store|services\/auth-state|services\/panel-gating|services\/analytics|services\/i18n|utils\/lcp-debug)$/ }, (args) => ({
         path: args.path,
         namespace: 'viewport-stub',
@@ -53,6 +75,10 @@ before(async () => {
             export const sanitizeLockedLayers = (layers) => layers;
             export const shouldSanitizeLockedLayers = () => false;
             export const getLayersForVariant = () => [];
+            export const sanitizeResilienceScoreForRenderer = (layers, isDeckGLActive) =>
+              layers.resilienceScore && !isDeckGLActive
+                ? { ...layers, resilienceScore: false }
+                : layers;
             export const resolveLayerLabel = (key) => key;
             export const bindLayerSearch = () => () => {};
             export const getLayerExplanation = () => null;
@@ -82,7 +108,13 @@ before(async () => {
         export function createMapContainerHarness() {
           const map = Object.create(MapContainer.prototype);
           const internals = {
-            container: { removeEventListener() {} },
+            container: {
+              removeEventListener() {},
+              classList: { remove() {}, add() {} },
+              dataset: {},
+              removeAttribute() {},
+              textContent: '',
+            },
             rendererReady: false,
             rendererReadyWaiters: new Set(),
             rendererDemandRequested: false,
@@ -100,6 +132,8 @@ before(async () => {
             globeMap: null,
             svgMap: null,
             deckGLMap: null,
+            emergencyLayer: { setEnabled() {}, destroy() {} },
+            notamAirspaceLayer: { setEnabled() {}, destroy() {} },
             rendererDemandCleanup: null,
             resizeObserver: null,
             globeInitToken: 0,
@@ -117,14 +151,12 @@ before(async () => {
     define: { 'import.meta.env': '{"DEV":false,"PROD":true,"VITE_VARIANT":"full"}' },
     format: 'esm',
     logLevel: 'silent',
+    loader: { '.css': 'empty' },
     platform: 'node',
     plugins: [lifecycleOnlyStubs],
     target: 'node20',
     external: [
-      './Map',
-      './DeckGLMap',
       './GlobeMap',
-      'maplibre-gl/dist/maplibre-gl.css',
     ],
     write: false,
   });
@@ -133,7 +165,304 @@ before(async () => {
   harness = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`) as MapContainerHarness;
 });
 
+describe('deferred renderer replay (#8690)', () => {
+  function deferredHarness() {
+    const { map, internals } = harness.createMapContainerHarness();
+    const calls: Array<[string, unknown]> = [];
+    const renderer = {
+      setView() {}, setCenter() {}, destroy() {},
+      getState: () => ({ view: 'global', zoom: 2, pan: { x: 0, y: 0 }, layers: {}, timeRange: '24h' }),
+      setTrafficAnomalies: (v: unknown) => calls.push(['trafficAnomalies', v]),
+      setDdosLocations: (v: unknown) => calls.push(['ddosLocations', v]),
+      setChokepointData: (v: unknown) => calls.push(['chokepointData', v]),
+      openChokepoint: (v: unknown) => calls.push(['openChokepoint', v]),
+    };
+    Object.assign(internals as Record<string, unknown>, {
+      cachedNotamAirspace: [],
+      layerLoadingState: new Map(),
+      layerReadyState: new Map(),
+      hiddenLayerToggles: new Set(),
+    });
+    return { map: map as unknown as Record<string, (...args: unknown[]) => unknown>, internals, calls, renderer };
+  }
+
+  it('caches data setters that arrive before the renderer exists and replays them on rehydrate', () => {
+    const { map, internals, calls, renderer } = deferredHarness();
+    const anomalies = [{ id: 'a1' }];
+    const ddos = [{ id: 'd1' }];
+    const chokepoints = { chokepoints: [] };
+    map.setTrafficAnomalies(anomalies);
+    map.setDdosLocations(ddos);
+    map.setChokepointData(chokepoints);
+    assert.deepEqual(calls, [], 'no renderer yet, so nothing is forwarded');
+
+    internals.deckGLMap = renderer;
+    (internals.rehydrateActiveMap as () => void).call(map);
+    assert.deepEqual(calls, [
+      ['trafficAnomalies', anomalies],
+      ['ddosLocations', ddos],
+      ['chokepointData', chokepoints],
+    ]);
+  });
+
+  it('queues a chokepoint open until the renderer is ready and does not consume it on rehydrate', () => {
+    const { map, internals, calls, renderer } = deferredHarness();
+    map.openChokepoint('hormuz');
+    assert.equal(internals.pendingChokepointOpen, 'hormuz');
+
+    internals.deckGLMap = renderer;
+    (internals.rehydrateActiveMap as () => void).call(map);
+    assert.equal(internals.pendingChokepointOpen, 'hormuz', 'rehydrate must not open a chokepoint before readiness or fallback settles');
+    assert.equal(calls.some(([name]) => name === 'openChokepoint'), false);
+
+    (internals.markRendererReady as (token: number) => void).call(map, 7);
+    assert.deepEqual(calls.filter(([name]) => name === 'openChokepoint'), [['openChokepoint', 'hormuz']]);
+    assert.equal(internals.pendingChokepointOpen, null);
+
+    map.openChokepoint('suez');
+    assert.deepEqual(calls.filter(([name]) => name === 'openChokepoint').map(([, id]) => id), ['hormuz', 'suez'], 'a ready renderer opens directly');
+    assert.equal(internals.pendingChokepointOpen, null);
+  });
+});
+
+describe('concrete renderer startup', () => {
+  for (const renderer of ['deck', 'svg'] as const) {
+    it(`replays cached data before ${renderer} startup publishes readiness`, async () => {
+      const { map, internals } = harness.createMapContainerHarness();
+      const events: string[] = [];
+      const data = { chokepoints: [] };
+      let resolveReady!: () => void;
+      let entered!: () => void;
+      const ready = new Promise<void>((resolve) => { resolveReady = resolve; });
+      const waiting = new Promise<void>((resolve) => { entered = resolve; });
+      Object.assign(internals, {
+        useDeckGL: renderer === 'deck',
+        cachedNotamAirspace: [],
+        layerLoadingState: new Map(),
+        layerReadyState: new Map(),
+        hiddenLayerToggles: new Set(),
+        cachedChokepointData: data,
+      });
+      (internals.container as Record<string, unknown>).startup = {
+        events, ready, entered,
+        renderer: {
+          getState: () => internals.initialState,
+          setChokepointData: (value: unknown) => { assert.deepEqual(value, data); events.push('replay'); },
+        },
+      };
+      let published = false;
+      const requested = map.whenRendererReady().then(() => { published = true; events.push('ready'); });
+      const startup = renderer === 'deck'
+        ? (internals.createDeckGLMap as (token: number) => Promise<void>).call(map, 7)
+        : (internals.initSvgMap as (message: string, token: number) => Promise<void>).call(map, 'SVG startup test', 7);
+      if (renderer === 'deck') {
+        await waiting;
+        assert.deepEqual(events, ['construct', 'replay', 'whenReady']);
+        assert.equal(published, false, 'readiness must wait for the concrete renderer');
+        resolveReady();
+      }
+      await startup;
+      assert.equal(internals.rendererReady, true, 'startup must publish readiness itself');
+      await requested;
+      assert.deepEqual(events, renderer === 'deck'
+        ? ['construct', 'replay', 'whenReady', 'ready']
+        : ['construct', 'replay', 'ready']);
+    });
+  }
+});
+
+describe('desktop renderer scheduling', () => {
+  for (const signal of ['pointerdown', 'wheel', 'touchstart', 'keydown', 'visible idle', 'backstop', 'cancel'] as const) {
+    it(`holds construction until ${signal} and clears the demand resources`, async (t) => {
+      const descriptors = ['window', 'IntersectionObserver'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const);
+      const timers = new Map<number, { callback: () => void; delay: number }>();
+      const idle = new Map<number, () => void>();
+      const listeners = new Map<string, () => void>();
+      let nextId = 0;
+      let visibility!: (entries: { isIntersecting: boolean }[]) => void;
+      let disconnected = false;
+      Object.defineProperty(globalThis, 'window', { configurable: true, value: {
+        setTimeout: (callback: () => void, delay: number) => { const id = ++nextId; timers.set(id, { callback, delay }); return id; },
+        clearTimeout: (id: number) => timers.delete(id),
+        requestIdleCallback: (callback: () => void) => { const id = ++nextId; idle.set(id, callback); return id; },
+        cancelIdleCallback: (id: number) => idle.delete(id),
+      } });
+      Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: class {
+        constructor(callback: typeof visibility) { visibility = callback; }
+        observe() {}
+        disconnect() { disconnected = true; }
+      } });
+      t.after(() => {
+        for (const [key, descriptor] of descriptors) {
+          if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+          else Reflect.deleteProperty(globalThis, key);
+        }
+      });
+      const { map, internals } = harness.createMapContainerHarness();
+      Object.assign(internals.container, {
+        addEventListener: (name: string, callback: () => void) => listeners.set(name, callback),
+        removeEventListener: (name: string) => listeners.delete(name),
+      });
+      let constructed = false;
+      internals.showRendererShell = () => {};
+      internals.startResizeObserver = () => {};
+      internals.createDeckGLMap = async () => { constructed = true; };
+      const initialization = (internals.init as () => Promise<void>).call(map);
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.equal(constructed, false);
+      assert.equal(listeners.size, 4);
+      const fireTimer = (delay: number) => {
+        const entry = [...timers].find(([, timer]) => timer.delay === delay);
+        assert.ok(entry, `expected timer for ${delay}ms`);
+        timers.delete(entry[0]); entry[1].callback();
+      };
+      if (signal === 'visible idle') {
+        visibility([{ isIntersecting: true }]);
+        fireTimer(3500);
+        assert.equal(constructed, false);
+        visibility([{ isIntersecting: false }]);
+        assert.equal(idle.size, 0, 'leaving the viewport cancels idle demand');
+        visibility([{ isIntersecting: true }]);
+        fireTimer(3500);
+        assert.equal(idle.size, 1);
+        const callback = [...idle.values()][0]!;
+        idle.clear(); callback();
+      } else if (signal === 'backstop') fireTimer(12000);
+      else if (signal === 'cancel') (internals.rendererDemandCleanup as () => void)();
+      else listeners.get(signal)!();
+      await initialization;
+      assert.equal(constructed, signal !== 'cancel');
+      assert.equal(timers.size, 0);
+      assert.equal(idle.size, 0);
+      assert.equal(listeners.size, 0);
+      assert.equal(disconnected, true);
+      assert.equal(internals.rendererDemandCleanup, null);
+    });
+  }
+});
+
+describe('renderer readiness demand', () => {
+  for (const timing of ['before', 'during'] as const) {
+    it(`releases the DeckGL demand gate when readiness is requested ${timing} the wait`, async (t) => {
+      const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+      const timers = new Set<number>();
+      let timerId = 0;
+      Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: {
+          setTimeout: () => { timers.add(++timerId); return timerId; },
+          clearTimeout: (id: number) => timers.delete(id),
+        },
+      });
+      t.after(() => {
+        if (windowDescriptor) Object.defineProperty(globalThis, 'window', windowDescriptor);
+        else Reflect.deleteProperty(globalThis, 'window');
+      });
+      const { map, internals } = harness.createMapContainerHarness();
+      (internals.container as Record<string, unknown>).addEventListener = () => {};
+      const waitForDemand = internals.waitForDeckRendererDemand as (token: number) => Promise<boolean>;
+      let ready: Promise<void>;
+      let demandReleased: boolean | undefined;
+      if (timing === 'before') ready = map.whenRendererReady();
+      const demand = waitForDemand.call(map, 7).then((released) => { demandReleased = released; });
+      await Promise.resolve();
+      if (timing === 'during') {
+        assert.equal(demandReleased, undefined, 'the demand gate must start pending');
+        assert.equal(timers.size, 1, 'the backstop is armed but never fired');
+        ready = map.whenRendererReady();
+        await Promise.resolve();
+      }
+      assert.equal(demandReleased, true, 'explicit demand must release without a timer or user interaction');
+      assert.equal(timers.size, 0, 'explicit demand must clear the backstop');
+      assert.equal(internals.releaseRendererDemand, null);
+      await demand;
+      internals.deckGLMap = {};
+      (internals.markRendererReady as (token: number) => void).call(map, 7);
+      await ready!;
+    });
+  }
+});
+
 describe('map viewport runtime lifecycle', () => {
+  it('preserves the live viewport and layers when DeckGL fails at runtime', () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    const snapshot = { view: 'eu', zoom: 5, pan: { x: 0, y: 0 }, layers: { conflicts: true }, timeRange: '7d' };
+    let removed = false;
+    internals.deckGLMap = {
+      getState: () => { assert.equal(removed, false); return snapshot; },
+      getCenter: () => { assert.equal(removed, false); return { lat: 48, lon: 12 }; },
+      destroy: () => { removed = true; },
+    };
+    internals.showRendererShell = () => {};
+    let fallback: unknown;
+    internals.initSvgMap = async () => {
+      fallback = { state: internals.initialState, center: internals.pendingCenter };
+    };
+    const fail = internals.handleDeckGLRuntimeFailure as (token: number, error: unknown) => void;
+    fail.call(map, 6, new Error('stale renderer'));
+    assert.equal(removed, false);
+    fail.call(map, 7, new Error('WebGL unavailable'));
+    assert.equal(removed, true);
+    assert.deepEqual(fallback, { state: snapshot, center: { lat: 48, lon: 12, zoom: 5 } });
+    assert.equal(internals.useDeckGL, false);
+    assert.equal(internals.rendererInitToken, 8);
+  });
+
+  it('continues SVG recovery when DeckGL teardown throws', async () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    internals.deckGLMap = {
+      getState: () => internals.initialState, getCenter: () => null,
+      destroy: () => { throw new Error('GPU cleanup failed'); },
+    };
+    internals.showRendererShell = () => {};
+    internals.initSvgMap = async (_message: string, token: number) => {
+      internals.svgMap = {};
+      (internals.markRendererReady as (token: number) => void).call(map, token);
+    };
+    const ready = map.whenRendererReady();
+    (internals.handleDeckGLRuntimeFailure as (token: number, error: unknown) => void)
+      .call(map, 7, new Error('GPU unavailable'));
+    await ready;
+    assert.equal(internals.useDeckGL, false);
+    assert.equal(internals.deckGLMap, null);
+    assert.equal(internals.rendererReady, true);
+  });
+
+  it('settles current and future readiness callers when SVG recovery rejects', async () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    internals.deckGLMap = { getState: () => internals.initialState, getCenter: () => null, destroy() {} };
+    internals.showRendererShell = () => {};
+    const failure = new Error('SVG chunk unavailable');
+    internals.initSvgMap = async () => { throw failure; };
+    const ready = assert.rejects(map.whenRendererReady(), /SVG chunk unavailable/);
+    (internals.handleDeckGLRuntimeFailure as (token: number, error: unknown) => void)
+      .call(map, 7, new Error('GPU unavailable'));
+    await ready;
+    await assert.rejects(map.whenRendererReady(), /SVG chunk unavailable/);
+    assert.equal((internals.container as { textContent: string }).textContent, 'common.unavailable');
+    assert.equal(internals.rendererReady, false);
+    assert.equal((internals.rendererReadyWaiters as Set<unknown>).size, 0);
+  });
+
+  it('ignores an SVG rejection after a newer renderer becomes ready', async () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    internals.deckGLMap = { getState: () => internals.initialState, getCenter: () => null, destroy() {} };
+    internals.showRendererShell = () => {};
+    let rejectFallback!: (error: Error) => void;
+    internals.initSvgMap = () => new Promise<void>((_resolve, reject) => { rejectFallback = reject; });
+    (internals.handleDeckGLRuntimeFailure as (token: number, error: unknown) => void)
+      .call(map, 7, new Error('GPU unavailable'));
+    internals.rendererInitToken = 9;
+    internals.globeMap = {};
+    (internals.markRendererReady as (token: number) => void).call(map, 9);
+    rejectFallback(new Error('stale SVG failure'));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    await map.whenRendererReady();
+    assert.equal(internals.rendererReady, true);
+    assert.equal(internals.rendererInitToken, 9);
+  });
+
   it('invalidates delayed agent authority when direct map interaction starts', () => {
     const { map, internals } = harness.createMapContainerHarness();
 
@@ -298,6 +627,37 @@ describe('map viewport runtime lifecycle', () => {
     );
   });
 
+  it('disables the Deck-only resilience layer when switching to the globe renderer', async () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    const snapshot = {
+      view: 'global',
+      zoom: 2,
+      pan: { x: 0, y: 0 },
+      layers: { resilienceScore: true },
+      timeRange: '24h',
+    };
+    internals.deckGLMap = {
+      getState: () => snapshot,
+      getCenter: () => null,
+    };
+    internals.destroyFlatMap = () => {
+      internals.deckGLMap = null;
+    };
+    internals.init = async () => {};
+    internals.waitForRendererSwitch = async () => ({
+      renderer: 'globe',
+      mode: 'globe',
+      fallback: false,
+    });
+
+    await map.switchToGlobe();
+
+    assert.equal(
+      (internals.initialState as { layers: MapLayers }).layers.resilienceScore,
+      false,
+    );
+  });
+
   it('denies set_map_mode 3d after handleGlobeInitFailure falls back to SVG', async () => {
     const { map, internals } = harness.createMapContainerHarness();
     internals.destroyFlatMap = () => {
@@ -358,3 +718,25 @@ describe('map viewport runtime lifecycle', () => {
   });
 
 });
+
+for (const scenario of [
+  { name: 'embedded desktop preference', mobile: true, preferDesktop: true, webgl: true, renderer: 'deck' },
+  { name: 'phone default', mobile: true, preferDesktop: false, webgl: true, renderer: 'svg' },
+  { name: 'desktop without WebGL2', mobile: true, preferDesktop: true, webgl: false, renderer: 'svg' },
+  { name: 'ordinary wide desktop', mobile: false, preferDesktop: false, webgl: true, renderer: 'deck' },
+]) {
+  it(`returns to the correct flat renderer for ${scenario.name}`, async () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    internals.useGlobe = true;
+    internals.isMobile = scenario.mobile;
+    internals.preferDesktopRenderer = scenario.preferDesktop;
+    internals.hasWebGLSupport = () => scenario.webgl;
+    internals.globeMap = { destroy() {}, getCenter: () => null, getState: () => internals.initialState };
+    internals.init = async () => {
+      internals.rendererReady = true;
+      if (internals.useDeckGL) internals.deckGLMap = {};
+      else internals.svgMap = {};
+    };
+    assert.deepEqual(await map.switchToFlat(), { renderer: scenario.renderer, mode: 'flat', fallback: false });
+  });
+}

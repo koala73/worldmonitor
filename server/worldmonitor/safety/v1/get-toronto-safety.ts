@@ -1,5 +1,5 @@
 import {
-  ApiError,
+  ValidationError,
   type GetTorontoSafetyRequest,
   type GetTorontoSafetyResponse,
   type ServerContext,
@@ -93,12 +93,15 @@ export async function queryTorontoSafety(
 ): Promise<GetTorontoSafetyResponse> {
   const semantic = request.dataset || TORONTO_SAFETY_SEMANTICS.reportedOccurrence;
   if (!VALID_DATASETS.has(semantic)) {
-    throw new ApiError(400, 'dataset must be reported_occurrence or annual_aggregate', '');
+    throw new ValidationError([{ field: 'dataset', description: 'dataset must be reported_occurrence or annual_aggregate' }]);
   }
 
   const sourceId = semantic === TORONTO_SAFETY_SEMANTICS.reportedOccurrence ? 'tps-mci' : 'tps-calls-attended';
   const descriptor = torontoSafetySourceById(sourceId);
-  if (!descriptor || descriptor.productionWriter !== 'on-demand') throw new Error(`missing Toronto safety source: ${sourceId}`);
+  // Gate on the writer being enabled, not on which writer it is: the TPS pair
+  // moved from manual invocation to seed-bundle-canada members in #7036, and
+  // only 'disabled' (GTA Update, pending its rights gate) must refuse to serve.
+  if (!descriptor || descriptor.productionWriter === 'disabled') throw new Error(`missing Toronto safety source: ${sourceId}`);
 
   const [snapshotRead, metaRead] = await Promise.all([
     readCache(descriptor.canonicalKey, true),

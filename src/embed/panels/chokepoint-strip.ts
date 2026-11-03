@@ -3,6 +3,7 @@ import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import type { ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { buildWorldMonitorAttributionUrl } from '@/embed/embed-url';
 import { createKeyedEmbedFetch } from '@/embed/embed-fetch';
+import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
 
 const STRIP_ORDER = [
   'hormuz_strait',
@@ -21,7 +22,7 @@ function shortName(id: string): string {
     case 'suez': return t('components.chokepointStrip.shortName.suez');
     case 'bab_el_mandeb': return t('components.chokepointStrip.shortName.babElMandeb');
     case 'bosphorus': return t('components.chokepointStrip.shortName.bosphorus');
-    case 'dover_strait': return t('components.chokepointStrip.shortName.danishStraits');
+    case 'dover_strait': return t('components.chokepointStrip.shortName.doverStrait');
     case 'panama': return t('components.chokepointStrip.shortName.panama');
     default: return '';
   }
@@ -72,6 +73,14 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
   heading.textContent = t('components.chokepointStrip.title');
   wrap.appendChild(heading);
 
+  const coverageText = chokepointCoverageWarning(data);
+  if (coverageText) {
+    const warning = document.createElement('div');
+    warning.className = 'wm-embed-cp-warning';
+    warning.textContent = coverageText;
+    wrap.appendChild(warning);
+  }
+
   const strip = document.createElement('div');
   strip.className = 'wm-embed-cp-strip';
   for (const cp of ordered) {
@@ -90,7 +99,7 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
     const name = document.createElement('div');
     name.className = 'wm-embed-cp-name';
     name.textContent = shortName(cp.id) || cp.name;
-    if (cp.activeWarnings > 0) {
+    if (cp.navigationalWarningsAvailable === true && cp.activeWarnings > 0) {
       const warn = document.createElement('span');
       warn.className = 'wm-embed-cp-warn';
       warn.textContent = String(cp.activeWarnings);

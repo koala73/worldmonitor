@@ -26,7 +26,7 @@ export const REPORT = {
   // markup) so the meta description, JSON-LD, and lede can never disagree
   // with the data the way hand-written numbers can.
   description:
-    'Strait of Hormuz transits are down {{m:declinePct}} since the March 2026 closure — {{m:disruptionDailyAvg}} ships/day since March 1 versus {{m:sameWindow2025DailyAvg}} in the same 2025 window — with July at about {{m:julVsFebShare}} of the February baseline, from IMF PortWatch daily data.',
+    'Strait of Hormuz ship traffic is down {{m:declinePct}} since the March 2026 closure: {{m:disruptionDailyAvg}} transits/day vs {{m:sameWindow2025DailyAvg}} in the same 2025 window, from IMF PortWatch daily data.',
   disruptionStart: '2026-03-01',
   author: {
     name: 'World Monitor Research',
@@ -41,7 +41,7 @@ export const REPORT = {
   // Why this topic: the evidence trail required by #5668 AC#1, kept in the
   // published report so readers can audit the selection logic itself.
   topicJustification: [
-    'Issue #5667 recorded a 2026-07-26 spot check in which World Monitor was absent from returned results for “Strait of Hormuz live traffic tracker” — the exact reviewed query q07 in the visibility baseline (use-case intent, chokepoints page family, IMF PortWatch as named source).',
+    'Topic selected after a 2026-07-26 spot check found no authoritative public source for daily Strait of Hormuz transit counts — the exact reviewed query q07 in the visibility baseline (use-case intent, chokepoints page family, IMF PortWatch as named source).',
     'The 2026-07-27 visibility baseline shows the category query already earning AI citations (4/4 platform mentions, 3/4 direct) while use-case queries have no observed visibility, so the next authority asset belongs on a use-case surface.',
     'The baseline’s expansion gate allows at most one evidence-rich report experiment before credentialed demand data arrives; this pilot is that single experiment.',
   ],
@@ -95,6 +95,7 @@ export const REPORT = {
       id: 'summary',
       heading: 'Direct answer',
       layer: 'derived',
+      block: 'current-pointer',
       paragraphs: [
         'Is the Strait of Hormuz open? Commercial transit has partially resumed but remains far below normal. Between 2026-03-01 and {{m:observationEnd}}, IMF PortWatch recorded {{m:disruptionTransits}} vessel transits — a daily average of {{m:disruptionDailyAvg}} against {{m:sameWindow2025DailyAvg}} in the same 2025 window, a {{m:declinePct}} decline. July traffic to date averages {{m:julToDateAvgTotal}} transits per day, about {{m:julVsFebShare}} of the February 2026 pre-disruption baseline.',
         'This report quantifies the collapse and partial recovery using daily AIS-derived transit counts, keeps observed data separate from third-party event reporting, and documents exactly what this data cannot show — including vessels transiting with AIS transmitters off.',

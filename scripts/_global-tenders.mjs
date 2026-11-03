@@ -18,7 +18,36 @@ const OFFICIAL_SOURCE_HOSTS = {
   'canada-buys': ['canadabuys.canada.ca', 'www.merx.com', 'portal.us.bn.cloud.ariba.com', 'discovery.ariba.com'],
   gets: ['gets.govt.nz'],
   'world-bank': ['worldbank.org'],
+  'colombia-secop': ['secop.gov.co'],
+  'kenya-ppip': ['tenders.go.ke'],
+  'south-africa-etenders': ['etenders.gov.za'],
+  'chile-mercado-publico': ['mercadopublico.cl'],
+  'brazil-pncp': ['pncp.gov.br'],
+  'ukraine-prozorro': ['prozorro.gov.ua'],
+  'bulgaria-eop': ['app.eop.bg'],
+  'latvia-iub': ['eis.gov.lv', 'pvs.iub.gov.lv'],
+  'poland-bzp': ['ezamowienia.gov.pl'],
+  'pakistan-ppra': ['epms.ppra.gov.pk'],
+  'pakistan-epads': ['epads.gov.pk'],
+  'georgia-spa': ['tenders.procurement.gov.ge'],
+  'armenia-armeps': ['www.armeps.am', 'armeps.am'],
+  // APP publishes no public per-procedure page; notices link to the official export.
+  'albania-app': ['www.app.gov.al'],
+  'dominican-republic-dgcp': ['comunidad.comprasdominicana.gob.do'],
+  'malaysia-myprocurement': ['myprocurement.treasury.gov.my'],
 };
+
+// A failed source keeps its last-good open tenders for a day: procurement
+// portals rate-limit, publish daily, and go quiet over weekends, and a
+// day-old open tender is still actionable until its own deadline.
+export const TENDER_SOURCE_RETENTION_MS = 24 * 60 * 60_000;
+
+export function tracksTenderFreshness(source) {
+  return ['contracts-finder', 'world-bank', 'colombia-secop', 'kenya-ppip', 'south-africa-etenders',
+    'chile-mercado-publico', 'brazil-pncp', 'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub',
+    'poland-bzp', 'pakistan-ppra', 'pakistan-epads', 'georgia-spa', 'armenia-armeps',
+    'albania-app', 'dominican-republic-dgcp', 'malaysia-myprocurement'].includes(source);
+}
 
 function string(value) { return typeof value === 'string' ? value.trim() : ''; }
 function firstString(...values) { return values.map(string).find(Boolean) || ''; }
@@ -117,6 +146,8 @@ function normalize({ source, sourceNoticeId, officialUrl, countryCode = '', regi
     automationFit: classifyAutomationFit({ title, description, categories: [...normalizedCategories, ...normalizedSectors] }),
   };
 }
+
+export { normalize as normalizePublicTender };
 
 export function normalizeSamOpportunity(raw) {
   const noticeId = firstString(raw?.noticeId, raw?.notice_id, raw?.solicitationNumber);
@@ -230,7 +261,8 @@ export function buildSnapshot({ results, sourceStatuses, fetchedAt = Date.now() 
 
 export function mergeTenderSourceResults({ settled, sourceNames, previousSnapshot, attemptedAt = new Date().toISOString() }) {
   const previousTenders = Array.isArray(previousSnapshot?.tenders) ? previousSnapshot.tenders : [];
-  const previousStatuses = new Map((previousSnapshot?.sourceStatuses || []).map((status) => [status.source, status]));
+  const previousStatuses = new Map((Array.isArray(previousSnapshot?.sourceStatuses) ? previousSnapshot.sourceStatuses : [])
+    .filter((status) => status?.source).map((status) => [status.source, status]));
   const records = [];
   const sourceStatuses = [];
 
@@ -244,26 +276,60 @@ export function mergeTenderSourceResults({ settled, sourceNames, previousSnapsho
         fetchedAt: result.value.status.fetchedAt || attemptedAt,
         lastSuccessfulAt: result.value.status.lastSuccessfulAt || result.value.status.fetchedAt || attemptedAt,
         stale: false,
+        ...(tracksTenderFreshness(source) ? { consecutiveFailures: 0, firstFailureAt: '' } : {}),
       });
       continue;
     }
 
     const attemptedAtMs = Date.parse(attemptedAt);
-    const priorRecords = previousTenders.filter((tender) => tender.source === source && isOpenOpportunity(tender, attemptedAtMs));
+    const priorRecords = previousTenders.filter((tender) => tender?.source === source && isOpenOpportunity(tender, attemptedAtMs));
     const priorStatus = previousStatuses.get(source);
     const fulfilledStatus = result.status === 'fulfilled' ? result.value?.status : null;
     const error = string(fulfilledStatus?.error || result.reason?.message || 'upstream request failed').slice(0, 200);
+    if (tracksTenderFreshness(source)) {
+      // A bundle success or a failed source attempt is not a source success.
+      const lastSuccessfulAt = firstString(priorStatus?.lastSuccessfulAt,
+        priorStatus?.state === 'ok' ? priorStatus.fetchedAt : '');
+      const successMs = Date.parse(lastSuccessfulAt);
+      const fresh = successMs > 0 && successMs <= attemptedAtMs && attemptedAtMs < successMs + TENDER_SOURCE_RETENTION_MS;
+      const retained = fresh ? priorRecords.filter((tender) =>
+        string(tender.id) && string(tender.title) && safeOfficialUrl(tender.officialUrl, source)
+        && ['active', 'open'].includes(tender.status)
+        && [tender.categoryCodes, tender.sectors].every((values) => Array.isArray(values) && values.every((value) => typeof value === 'string'))) : [];
+      const confirmedEmpty = fresh && previousSnapshot?.dataAvailable === true
+        && Array.isArray(previousSnapshot.tenders)
+        && previousSnapshot.tenders.every((tender) => tender && tender.source !== source)
+        && previousSnapshot.sourceStatuses.filter((status) => status?.source === source).length === 1
+        && priorStatus?.recordCount === 0
+        && (priorStatus.state === 'ok' ? priorStatus.fetchedAt === lastSuccessfulAt : priorStatus.confirmedEmpty === true);
+      const alreadyFailed = priorStatus && priorStatus.state !== 'ok';
+      const previousFailures = Number.isSafeInteger(priorStatus?.consecutiveFailures) && priorStatus.consecutiveFailures >= 1
+        ? priorStatus.consecutiveFailures : 1;
+      records.push(...retained);
+      sourceStatuses.push({
+        source, state: retained.length ? 'stale' : 'error', recordCount: retained.length,
+        fetchedAt: attemptedAt, lastSuccessfulAt, stale: retained.length > 0, error,
+        ...(confirmedEmpty ? { confirmedEmpty: true } : {}),
+        consecutiveFailures: alreadyFailed ? Math.min(previousFailures + 1, 100) : 1,
+        firstFailureAt: alreadyFailed ? string(priorStatus.firstFailureAt) : attemptedAt,
+      });
+      continue;
+    }
+    // A fulfilled status reports its own last attempt: a paced SAM run made no
+    // request and carries the prior attempt time forward, which is what its
+    // pacing gate measures (#8505). Only a rejection is stamped with this run.
+    const fetchedAt = fulfilledStatus?.fetchedAt || attemptedAt;
     if (priorRecords.length > 0) {
       const lastSuccessfulAt = firstString(priorStatus?.lastSuccessfulAt, priorStatus?.fetchedAt,
         isoTimestamp(previousSnapshot?.fetchedAt));
       records.push(...priorRecords);
       sourceStatuses.push({
-        source, state: 'stale', recordCount: priorRecords.length, fetchedAt: attemptedAt,
+        source, state: 'stale', recordCount: priorRecords.length, fetchedAt,
         lastSuccessfulAt, stale: true, ...(error ? { error } : {}),
       });
     } else {
       sourceStatuses.push({
-        source, state: fulfilledStatus?.state || 'error', recordCount: 0, fetchedAt: attemptedAt,
+        source, state: fulfilledStatus?.state || 'error', recordCount: 0, fetchedAt,
         lastSuccessfulAt: firstString(priorStatus?.lastSuccessfulAt, priorStatus?.fetchedAt), stale: false,
         ...(error ? { error } : {}),
       });

@@ -8,8 +8,10 @@ import {
   orderServerFeedEntries,
   VARIANT_FEEDS,
 } from '../server/worldmonitor/news/v1/_feeds.ts';
+import { buildBrowserCategoryFeeds } from '../shared/news-catalog.ts';
 import { __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance.ts';
+import { parseMiitNews, renderMiitRss } from '../api/miit-news.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readText = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -42,37 +44,11 @@ const CHINA_BASKET: StockEntry[] = [
   { symbol: '0857.HK', name: 'PetroChina', display: 'PETROCHINA-H', region: 'asia' },
 ];
 
-const CLIENT_VARIANT_BLOCKS: Record<string, string> = {
-  full: 'FULL_FEEDS',
-  finance: 'FINANCE_FEEDS',
-};
-
-function clientCategoryBlock(variant: string, category: string): string | null {
-  const src = readText('src/config/feeds.ts');
-  const variantBlock = CLIENT_VARIANT_BLOCKS[variant];
-  assert.ok(variantBlock, `client variant ${variant} must have a feed block mapping`);
-  const variantMarker = `const ${variantBlock}: Record<string, Feed[]> = {`;
-  const variantStart = src.indexOf(variantMarker);
-  assert.notEqual(variantStart, -1, `client variant block ${variantBlock} must exist`);
-  const variantRest = src.slice(variantStart + variantMarker.length);
-  const nextVariant = variantRest.search(/^const [A-Z_]+_FEEDS:/m);
-  const variantBody = nextVariant === -1 ? variantRest : variantRest.slice(0, nextVariant);
-  const marker = `  ${category}: [`;
-  const start = variantBody.indexOf(marker);
-  if (start === -1) return null;
-  const bodyStart = start + marker.length;
-  const rest = variantBody.slice(bodyStart);
-  const nextCategory = rest.search(/^ {2}[A-Za-z][\w-]*:\s*\[/m);
-  return nextCategory === -1 ? rest : rest.slice(0, nextCategory);
-}
-
 function clientRouteClass(variant: string, category: string, name: string): 'google-news' | 'direct' | null {
-  const block = clientCategoryBlock(variant, category);
-  if (!block) return null;
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = block.match(new RegExp(`name:\\s*['"]${escaped}['"][^\\n]*url:\\s*([^\\n]+)`));
-  if (!match) return null;
-  return /news\.google\.com\/rss\/search/i.test(match[1]!) ? 'google-news' : 'direct';
+  const feed = buildBrowserCategoryFeeds(variant)[category]?.find((entry) => entry.name === name);
+  if (!feed) return null;
+  const urls = typeof feed.url === 'string' ? [feed.url] : Object.values(feed.url);
+  return urls.some((url) => /news\.google\.com\/rss\/search/i.test(url)) ? 'google-news' : 'direct';
 }
 
 function serverRouteClass(variant: string, category: string, name: string): 'google-news' | 'direct' | null {
@@ -100,8 +76,8 @@ describe('China A/H-share market coverage (#5272)', () => {
   it('keeps both seeders on the complete shared catalog instead of private symbol lists', () => {
     const relay = readText('scripts/ais-relay.cjs');
     const standalone = readText('scripts/seed-market-quotes.mjs');
-    assert.match(relay, /const MARKET_SYMBOLS = _stockCfg\.symbols\.map\(\(s\) => s\.symbol\)/);
-    assert.match(standalone, /const MARKET_SYMBOLS = stocksConfig\.symbols\.map\(s => s\.symbol\)/);
+    assert.match(relay, /loadMarketSeedUniverse\(_stockCfg\)/);
+    assert.match(standalone, /loadMarketSeedUniverse\(stocksConfig\)/);
     assert.equal(canonical.symbols.length, 93);
     assert.ok(canonical.symbols.every((entry) => entry.region), 'every catalog symbol needs region metadata');
   });
@@ -109,8 +85,8 @@ describe('China A/H-share market coverage (#5272)', () => {
   it('makes the long-running Railway relay consume stock symbols and metadata from the shared config', () => {
     const relay = readText('scripts/ais-relay.cjs');
     assert.match(relay, /const _stockCfg = requireShared\('stocks\.json'\)/);
-    assert.match(relay, /const MARKET_SYMBOLS = _stockCfg\.symbols\.map\(\(s\) => s\.symbol\)/);
-    assert.match(relay, /const MARKET_META = new Map\(_stockCfg\.symbols\.map/);
+    assert.match(relay, /loadMarketSeedUniverse\(_stockCfg\)/);
+    assert.match(relay, /const MARKET_META = _stockUniverse\.metaBySymbol/);
   });
 
   it('keeps available quotes when one requested China symbol is unavailable', async () => {
@@ -123,6 +99,7 @@ describe('China A/H-share market coverage (#5272)', () => {
       finnhubSkipped: true,
       skipReason: 'test fallback',
       rateLimited: false,
+      asOf: '2026-08-31T12:00:00.000Z',
     }, ['600519.SS', '999999.SS', '0700.HK']);
 
     assert.deepEqual(response.quotes.map((quote) => quote.symbol), ['600519.SS', '0700.HK']);
@@ -132,6 +109,27 @@ describe('China A/H-share market coverage (#5272)', () => {
 });
 
 describe('China client/server news digest parity (#5272)', () => {
+  it('MIIT reads the official listing adapter without depending on Google indexing', () => {
+    const feed = VARIANT_FEEDS.full!.asia!.find((entry) => entry.name === 'MIIT (China)');
+    assert.equal(feed?.url, 'https://api.worldmonitor.app/api/miit-news');
+  });
+  it('the digest parser retains official MIIT article identity and publication day', () => {
+    const link = 'https://www.miit.gov.cn/zwgk/zcwj/wjfb/tz/art/2026/art_7d2e760b4be94217b8f55caec840b30d.html';
+    const title = '四部门关于开展集成电路企业清单制定工作的通知';
+    const now = Date.now();
+    const day = new Date(now - 86400000).toISOString().slice(0, 10);
+    const rss = renderMiitRss(parseMiitNews(`<li><span>${day}</span><p><a href="${link}">${title}</a></p></li>`, now));
+    const feed = VARIANT_FEEDS.full!.asia!.find((entry) => entry.name === 'MIIT (China)')!;
+    const parsed = digestTesting.parseRssXml(rss, feed, 'full');
+    assert.equal(parsed?.parsedTotal, 1);
+    assert.equal(parsed?.droppedUndated, 0);
+    assert.equal(parsed?.items[0]?.title, title);
+    assert.equal(parsed?.items[0]?.link, link);
+    assert.equal(parsed?.items[0]?.source, 'MIIT (China)');
+    assert.equal(parsed?.items[0]?.publishedAt, Date.parse(`${day}T00:00:00+08:00`));
+    const hostile = digestTesting.parseRssXml(rss.replaceAll(link, 'https://foreign.example/article'), feed, 'full');
+    assert.equal(hostile?.items[0]?.link, '');
+  });
   const expectedMembership = new Map<string, { variant: string; category: string }>([
     ['Xinhua', { variant: 'full', category: 'asia' }],
     ['MIIT (China)', { variant: 'full', category: 'asia' }],

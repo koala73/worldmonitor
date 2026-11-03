@@ -8,7 +8,12 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, runSeed } from '../scripts/_seed-utils.mjs';
+import {
+  BUNDLE_SECTION_TIMEOUT_MS_ENV,
+  GRACEFUL_FETCH_FAILURE_EXIT_CODE,
+  markPreservableFetchFailure,
+  runSeed,
+} from '../scripts/_seed-utils.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -18,21 +23,40 @@ const ORIGINAL_ENV = {
 };
 const ORIGINAL_SIGTERM_LISTENERS = new Set(process.rawListeners('SIGTERM'));
 
+// Cap idle retry waits — attempt count and logged wait stay real (see the
+// WM_SEED_RETRY_DELAY_MS comment in scripts/_seed-utils.mjs withRetry).
+const originalRetryDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+beforeEach(() => {
+  process.env.WM_SEED_RETRY_DELAY_MS = '0';
+});
+afterEach(() => {
+  if (originalRetryDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+  else process.env.WM_SEED_RETRY_DELAY_MS = originalRetryDelay;
+});
+
 let recordedCalls;
 let expireResult;
+let expirePipelineStatus;
+// Redis GET result for seed-meta reads; undefined keeps the generic OK reply.
+let seedMetaGetResult;
 
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example.com';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
   recordedCalls = [];
   expireResult = 0;
+  expirePipelineStatus = 200;
+  seedMetaGetResult = undefined;
 
   globalThis.fetch = async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
     // Lock acquire: SET NX returns OK. Pipeline (EXPIRE) returns array. Default: OK.
     if (Array.isArray(body) && Array.isArray(body[0])) {
-      return new Response(JSON.stringify(body.map(() => ({ result: expireResult }))), { status: 200 });
+      return new Response(JSON.stringify(body.map(() => ({ result: expireResult }))), { status: expirePipelineStatus });
+    }
+    if (seedMetaGetResult !== undefined && String(url).includes('/get/seed-meta%3A')) {
+      return new Response(JSON.stringify({ result: seedMetaGetResult }), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
   };
@@ -107,6 +131,50 @@ function runEmptyContractRetry(resource, opts = {}) {
   );
 }
 
+async function captureSeedLogs(fn) {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const logs = [];
+  const warnings = [];
+  const errors = [];
+  console.log = (...args) => logs.push(args.join(' '));
+  console.warn = (...args) => warnings.push(args.join(' '));
+  console.error = (...args) => errors.push(args.join(' '));
+  try {
+    const exitCode = await fn();
+    return { exitCode, logs, warnings, errors };
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+    console.error = originalError;
+  }
+}
+
+function runSkippedExtraKey(resource, extraKeyOptions = {}) {
+  return captureSeedLogs(() => runWithExitTrap(() => runSeed(
+    'test',
+    resource,
+    `test:${resource}:v1`,
+    async () => ({ events: [{ id: 'canonical' }], completion: [] }),
+    {
+      validateFn: (data) => Array.isArray(data?.events),
+      ttlSeconds: 3600,
+      sourceVersion: 'test-v1',
+      schemaVersion: 1,
+      maxStaleMin: 120,
+      declareRecords: (data) => data.events.length,
+      extraKeys: [{
+        key: `test:${resource}:completion`,
+        transform: (data) => data.completion,
+        declareRecords: (completion) => completion.length,
+        skipWhenEmpty: true,
+        ...extraKeyOptions,
+      }],
+    },
+  )));
+}
+
 test('fetch failure extends existing TTL and exits with graceful-failure code', async () => {
   const exitCode = await runWithExitTrap(() =>
     runSeed('test', 'fetch-fail', 'test:fetch-fail:v1', async () => {
@@ -135,6 +203,86 @@ test('fetch failure extends existing TTL and exits with graceful-failure code', 
     countMetaSets('fetch-fail'), 0,
     'fetch failure must not write fresh seed-meta while reporting graceful failure',
   );
+});
+
+const MINUTE_MS = 60_000;
+const freshMeta = () => JSON.stringify({ fetchedAt: Date.now() - 30 * MINUTE_MS, recordCount: 1 });
+
+for (const scenario of [
+  { label: 'confirmed fresh retention', expected: 0 },
+  { label: 'missing last-good', retained: 0, expected: 75 },
+  { label: 'unconfirmed retention', retained: null, expected: 75 },
+  { label: 'Redis retention failure', status: 403, expected: 75 },
+  { label: 'default policy', optIn: false, expected: 75 },
+  { label: 'untagged (configuration or code) error', tagged: false, expected: 75 },
+  { label: 'last-good older than maxStaleMin', meta: () => JSON.stringify({ fetchedAt: Date.now() - 121 * MINUTE_MS }), expected: 75 },
+  { label: 'unreadable seed-meta', meta: () => 'not json', expected: 75 },
+  { label: 'bundle-runner child', bundle: true, expected: 75 },
+]) {
+  test(`fetch failure with ${scenario.label} preserves the failure and selects the correct exit`, async () => {
+    expireResult = scenario.retained === undefined ? 1 : scenario.retained;
+    expirePipelineStatus = scenario.status ?? 200;
+    seedMetaGetResult = (scenario.meta ?? freshMeta)();
+    const originalSectionTimeout = process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV];
+    if (scenario.bundle) process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV] = '600000';
+    let afterPublishCalls = 0;
+    let result;
+    try {
+      result = await captureSeedLogs(() => runWithExitTrap(() => runSeed(
+        'test', 'fetch-policy', 'test:fetch-policy:v1',
+        async () => {
+          const err = Object.assign(new Error('upstream unavailable'), { nonRetryable: true });
+          throw scenario.tagged === false ? err : markPreservableFetchFailure(err);
+        },
+        {
+          ttlSeconds: 3600,
+          maxStaleMin: 120,
+          allowPreservedFetchFailure: scenario.optIn ?? true,
+          afterPublish: () => { afterPublishCalls++; },
+        },
+      )));
+    } finally {
+      if (originalSectionTimeout === undefined) delete process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV];
+      else process.env[BUNDLE_SECTION_TIMEOUT_MS_ENV] = originalSectionTimeout;
+    }
+
+    assert.equal(result.exitCode, scenario.expected);
+    assert.deepEqual(expireKeys(), ['test:fetch-policy:v1', 'seed-meta:test:fetch-policy']);
+    assert.equal(countSetsFor('test:fetch-policy:v1'), 0);
+    assert.equal(countMetaSets('fetch-policy'), 0);
+    assert.equal(afterPublishCalls, 0);
+    // Log markers must agree with the exit code: triage counts "Failed
+    // gracefully" as an exit-75 tick.
+    const failedGracefully = result.logs.some((line) => line.includes('=== Failed gracefully'));
+    const retainedMarker = result.logs.some((line) => line.includes('=== Refresh failed; last-good retained'));
+    assert.equal(failedGracefully, scenario.expected === 75);
+    assert.equal(retainedMarker, scenario.expected === 0);
+  });
+}
+
+test('allowPreservedFetchFailure without maxStaleMin is a contract violation', async () => {
+  const result = await captureSeedLogs(() => runWithExitTrap(() => runSeed(
+    'test', 'fetch-policy-no-stale', 'test:fetch-policy-no-stale:v1',
+    async () => ['unused'],
+    { ttlSeconds: 3600, allowPreservedFetchFailure: true },
+  )));
+  assert.equal(result.exitCode, 1);
+  assert.ok(result.errors.some((line) => line.includes('allowPreservedFetchFailure requires a positive maxStaleMin')));
+});
+
+test('allowPreservedFetchFailure does not suppress publish errors', async () => {
+  expireResult = 1;
+  await assert.rejects(
+    () => runSeed('test', 'publish-policy', 'test:publish-policy:v1', async () => ['new data'], {
+      ttlSeconds: 3600,
+      maxStaleMin: 120,
+      allowPreservedFetchFailure: true,
+      publishTransform: () => { throw new Error('fixture publish failed'); },
+    }),
+    /fixture publish failed/,
+  );
+  assert.equal(countSetsFor('test:publish-policy:v1'), 0);
+  assert.equal(countMetaSets('publish-policy'), 0);
 });
 
 test('contract RETRY hard-fails when expired keys make last-good preservation impossible', async () => {
@@ -265,6 +413,111 @@ test('skipWhenEmpty preserves the last-good extra key without refreshing its see
     expireKeys().includes('test:extra-meta-empty:warnings'),
     'the skipped extra key must have its TTL extended to preserve last-good data',
   );
+});
+
+test('allowMissingOnSkip suppresses missing-key warnings and does not claim TTL preservation', async () => {
+  expireResult = 0;
+  const { exitCode, logs, warnings } = await runSkippedExtraKey('optional-extra-missing', {
+    allowMissingOnSkip: true,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.doesNotMatch(
+    warnings.join('\n'),
+    /manual seed required/,
+    'an opted-in optional extra key may be absent when its empty write is skipped',
+  );
+  assert.doesNotMatch(
+    logs.join('\n'),
+    /extended TTL to preserve last-good/,
+    'EXPIRE 0 must not be reported as a successful TTL extension',
+  );
+});
+
+test('allowMissingOnSkip reports preservation only when EXPIRE confirms it', async () => {
+  expireResult = 1;
+  const { exitCode, logs, warnings } = await runSkippedExtraKey('optional-extra-preserved', {
+    allowMissingOnSkip: true,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(logs.join('\n'), /skipped write, extended TTL to preserve last-good/);
+  assert.doesNotMatch(warnings.join('\n'), /manual seed required/);
+});
+
+test('allowMissingOnSkip keeps an unconfirmed expiry warning and does not claim preservation', async () => {
+  expireResult = null;
+  const { exitCode, logs, warnings } = await runSkippedExtraKey('optional-extra-unconfirmed', {
+    allowMissingOnSkip: true,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(warnings.join('\n'), /unconfirmed/i);
+  assert.doesNotMatch(logs.join('\n'), /extended TTL to preserve last-good/);
+});
+
+test('allowMissingOnSkip keeps a failed expiry warning and does not claim preservation', async () => {
+  expirePipelineStatus = 401;
+  const { exitCode, logs, warnings, errors } = await runSkippedExtraKey('optional-extra-failed', {
+    allowMissingOnSkip: true,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match([...warnings, ...errors].join('\n'), /TTL.*failed|failed.*TTL/i);
+  assert.doesNotMatch(logs.join('\n'), /extended TTL to preserve last-good/);
+});
+
+test('allowMissingOnSkip also silences the warning on the fetch-failure preservation path', async () => {
+  // The empty-skip branch is only one of six preservation paths. The others
+  // (fetch failure, SIGTERM, contract RETRY, atomic-publish failure, validation
+  // skip) all go through preserveExistingKeys, which preserves the same extra
+  // keys -- so without threading the allowance there, the optional completion
+  // marker still triggers "manual seed required" on every failed tick.
+  // Every key in this fixture is absent, so the canonical key and its seed-meta
+  // warn legitimately. What must change is the COUNT: the optional completion
+  // marker is excluded, and the strict control below proves the difference is
+  // the allowance and not the fixture.
+  const runFetchFailure = (resource, extraKeyOptions) => {
+    expireResult = 0;
+    return captureSeedLogs(() => runWithExitTrap(() => runSeed(
+      'test',
+      resource,
+      `test:${resource}:v1`,
+      async () => { throw new Error('upstream down'); },
+      {
+        validateFn: (data) => Array.isArray(data?.events),
+        ttlSeconds: 3600,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 120,
+        declareRecords: (data) => data.events.length,
+        extraKeys: [{
+          key: `test:${resource}:completion`,
+          transform: (data) => data.completion,
+          declareRecords: (completion) => completion.length,
+          skipWhenEmpty: true,
+          ...extraKeyOptions,
+        }],
+      },
+    )));
+  };
+
+  const optional = await runFetchFailure('optional-extra-fetch-fail', { allowMissingOnSkip: true });
+  const strict = await runFetchFailure('strict-extra-fetch-fail', {});
+
+  assert.equal(optional.exitCode, 75);
+  assert.equal(strict.exitCode, 75);
+  assert.match(optional.warnings.join('\n'), /WARNING: 2 key\(s\) were expired\/missing/);
+  assert.match(strict.warnings.join('\n'), /WARNING: 3 key\(s\) were expired\/missing/);
+});
+
+test('skipWhenEmpty remains strict for a missing extra key without allowMissingOnSkip', async () => {
+  expireResult = 0;
+  const { exitCode, logs, warnings } = await runSkippedExtraKey('strict-extra-missing');
+
+  assert.equal(exitCode, 0);
+  assert.match(warnings.join('\n'), /manual seed required/);
+  assert.doesNotMatch(logs.join('\n'), /extended TTL to preserve last-good/);
 });
 
 // PR #3582: When validateFn rejects a transient blip but canonical key still
@@ -403,7 +656,7 @@ test('Sprint 1: validation failure with canonical contentAge MIRRORS newestItemA
     contentAge: {
       newestItemAt: FROZEN_NEWEST_AT,
       oldestItemAt: FROZEN_OLDEST_AT,
-      maxContentAgeMin: 12960,    // 9 days, matching disease-outbreaks pilot
+      maxContentAgeMin: 12960,
     },
   });
 

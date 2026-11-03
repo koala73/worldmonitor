@@ -56,14 +56,14 @@ curl -s 'https://api.worldmonitor.app/api/bootstrap' \
 
 服务器到服务器调用使用相同的主机与请求头格式。`/api/bootstrap` 不需要单独的网关 URL、令牌交换、激活步骤或 IP 白名单。
 
-响应结构详见 [平台端点](/zh/api-platform#bootstrap)。
+响应结构详见 [平台端点](/zh/api-platform#引导)。
 
 ## 4. 接入 MCP 客户端
 
 将任意兼容 MCP 的客户端指向服务器 URL — 客户端会自动处理 OAuth：
 
 ```
-https://api.worldmonitor.app/api/mcp
+https://worldmonitor.app/mcp
 ```
 
 针对具体客户端的配置详见 [MCP](/zh/mcp-overview)。

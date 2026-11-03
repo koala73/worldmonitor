@@ -101,7 +101,7 @@ test('event lat/lon are preserved as centroid [lon, lat]', () => {
 });
 
 test('missing lat/lon falls back to a polyline centroid', () => {
-  const encoded = 'yklkG|jqcNC?aDd@mCd@eC`@sARe@HqAR}Cf@{@LsARqBZaBVUBqEp@{@L{@JwAP_CRu@DkF^qJp@}F';
+  const encoded = 'yklkG|jqcNC?aDd@mCd@eC`@sARe@HqAR}Cf@{@LsARqBZaBVUBqEp@{@L{@JwAP_CRu@DkF^qJp@}F?';
   const path = decodeEncodedPolyline(encoded);
   assert.ok(path.length > 1);
   const expected = centroidOfPath(path);
@@ -120,8 +120,16 @@ test('missing lat/lon falls back to a polyline centroid', () => {
   assert.ok(record.centroid[0] < -74 && record.centroid[0] > -90);
 });
 
+test('truncated or invalid encoded polylines do not create a zero centroid', () => {
+  for (const encoded of ['?', '_', '_?', '"?']) {
+    assert.deepEqual(decodeEncodedPolyline(encoded), []);
+    assert.equal(normalize511Record({ EncodedPolyline: encoded }, { kind: 'event' }).centroid, null);
+  }
+  assert.deepEqual(decodeEncodedPolyline('??'), [[0, 0]]);
+});
+
 test('roadconditions EncodedPolyline arrays decode to a path and centroid', () => {
-  const encoded = 'yklkG|jqcNC?aDd@mCd@eC`@sARe@HqAR}Cf@{@LsARqBZaBVUBqEp@{@L{@JwAP_CRu@DkF^qJp@}F';
+  const encoded = 'yklkG|jqcNC?aDd@mCd@eC`@sARe@HqAR}Cf@{@LsARqBZaBVUBqEp@{@L{@JwAP_CRu@DkF^qJp@}F?';
   const record = normalize511Record({
     LocationDescription: 'From Highway 17 to Pukaskwa Park',
     Condition: ['No Report'],
@@ -557,6 +565,24 @@ test('responses larger than 5MB are rejected', async () => {
   );
 });
 
+test('an undeclared oversized body is cancelled at the 5MB cap, not buffered', async () => {
+  let pulled = 0;
+  const chunk = new Uint8Array(1 << 20).fill(0x20);
+  const fetchFn = async () => new Response(new ReadableStream({
+    pull(controller) {
+      if (pulled >= 64 * chunk.length) return controller.close();
+      pulled += chunk.length;
+      controller.enqueue(chunk);
+    },
+    // No read-ahead: each chunk is pulled only when the reader asks for it.
+  }, { highWaterMark: 0 }), { headers: { 'content-type': 'application/json' } });
+  await assert.rejects(
+    () => get('https://511on.ca', 'event', { fetchFn, acquireSlot: async () => {} }),
+    /exceeds 5242880 bytes/,
+  );
+  assert.ok(pulled <= 5 * 1024 * 1024 + chunk.length, `pulled ${pulled} bytes`);
+});
+
 const ALBERTA_ALERTS_FIXTURE = JSON.parse(
   readFileSync(new URL('./fixtures/alberta-511-alerts.json', import.meta.url), 'utf8'),
 );
@@ -794,19 +820,7 @@ test('Manitoba partial poll must not replace last-good or flip health green', as
   );
 });
 
-test('manitobaRoads publishes, so its cutover acknowledgement is gone and the probe wiring is what stays pinned', () => {
-  // The #6622 ack was pruned on 2026-08-20: the live monitor reported
-  // manitobaRoads:EMPTY as "no longer reported", and the entry had already
-  // passed its own expiresAt. Asserting ABSENCE is what stops it being
-  // reinstated — an acknowledgement that outlives its problem silently absorbs
-  // the NEXT outage of the same probe.
-  const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
-  assert.equal(
-    baseline.acknowledged.some((row) => row.name === 'manitobaRoads'),
-    false,
-    'manitobaRoads publishes; do not suppress a future recurrence',
-  );
-
+test('manitobaRoads probe watches the exact key its seeder writes', () => {
   // What the ack was pinning as a side effect, and the only reason its
   // probeKey was ever worth asserting: health must watch the exact seed-meta
   // key the seeder writes. runSeed derives `seed-meta:${domain}:${resource}`,

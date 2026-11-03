@@ -177,3 +177,79 @@ describe('algorithm parity with handler', () => {
       'Hormuz should appear from SA exporter routes via union-based coverage');
   });
 });
+
+describe('seed coverage manifest', () => {
+  it('publishes the exact country/sector universe with its exposure records', async () => {
+    const { main, META_KEY, HS2_CODES } = await import('../scripts/seed-hs2-chokepoint-exposure.mjs');
+    const originalFetch = globalThis.fetch;
+    const env = { ...process.env };
+    const writes = [];
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fixture.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    globalThis.fetch = async (url, init) => {
+      const commands = JSON.parse(init.body);
+      if (!String(url).endsWith('/pipeline')) return Response.json({ result: 'OK' });
+      return Response.json(commands.map(command => {
+        if (command[0] === 'GET') return { result: null };
+        writes.push(command);
+        return { result: 'OK' };
+      }));
+    };
+    try {
+      await main();
+      const meta = JSON.parse(writes.find(c => c[1] === META_KEY)[2]);
+      const countries = Object.keys(CLUSTERS).filter(k => /^[A-Z]{2}$/.test(k));
+      assert.deepEqual(meta.countryIds, countries);
+      assert.deepEqual(meta.hs2Codes, HS2_CODES);
+      assert.equal(meta.manifestVersion, 1);
+      assert.equal(meta.recordCount, countries.length * HS2_CODES.length);
+      assert.equal(meta.status, 'ok');
+      assert.ok(meta.countryIds.includes('DE') && meta.countryIds.includes('JP'));
+      const keys = new Set(writes.map(c => c[1]));
+      for (const country of countries) for (const hs2 of HS2_CODES) {
+        assert.ok(keys.has(`supply-chain:exposure:${country}:${hs2}:v1`));
+      }
+    } finally { globalThis.fetch = originalFetch; process.env = env; }
+  });
+
+  // The gap that let the manifest blackout ship: only the success path was covered, so
+  // writeMeta's error output could silently drop the fields the scenario worker gates on.
+  it('keeps the country/sector universe in seed-meta when the run fails', async () => {
+    const { main, META_KEY, HS2_CODES } = await import('../scripts/seed-hs2-chokepoint-exposure.mjs');
+    const originalFetch = globalThis.fetch;
+    const env = { ...process.env };
+    const writes = [];
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fixture.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    globalThis.fetch = async (url, init) => {
+      const commands = JSON.parse(init.body);
+      if (!String(url).endsWith('/pipeline')) return Response.json({ result: 'OK' });
+      // Fail the bulk data write, which is what drives main() into its catch block.
+      if (commands.some(c => c[0] === 'SET' && String(c[1]).startsWith('supply-chain:exposure:'))) {
+        return Response.json(commands.map(() => ({ error: 'ERR simulated write failure' })));
+      }
+      return Response.json(commands.map(command => {
+        if (command[0] === 'GET') return { result: null };
+        writes.push(command);
+        return { result: 'OK' };
+      }));
+    };
+    try {
+      await assert.rejects(main());
+      // Filter on SET: the catch block also issues an EXPIRE on META_KEY via
+      // extendExistingTtl, whose argument would parse as a bare number.
+      const metaWrite = writes.find(c => c[0] === 'SET' && c[1] === META_KEY);
+      assert.ok(metaWrite, 'the error path must still publish seed-meta');
+      const meta = JSON.parse(metaWrite[2]);
+      // The run FAILED: status and recordCount say so...
+      assert.equal(meta.status, 'error');
+      assert.equal(meta.recordCount, 0);
+      // ...but the universe is static config and stays true, so the scenario worker can
+      // still resolve its country/sector scope instead of blacking the feature out.
+      const countries = Object.keys(CLUSTERS).filter(k => /^[A-Z]{2}$/.test(k));
+      assert.equal(meta.manifestVersion, 1);
+      assert.deepEqual(meta.countryIds, countries);
+      assert.deepEqual(meta.hs2Codes, HS2_CODES);
+    } finally { globalThis.fetch = originalFetch; process.env = env; }
+  });
+});

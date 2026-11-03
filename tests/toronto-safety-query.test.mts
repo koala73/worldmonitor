@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ApiError } from '../src/generated/server/worldmonitor/safety/v1/service_server.ts';
 import { queryTorontoSafety } from '../server/worldmonitor/safety/v1/get-toronto-safety.ts';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const MCI_KEY = 'safety:toronto:tps-mci:v1';
 const MCI_META = 'seed-meta:safety:tps-mci';
@@ -98,6 +98,7 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
     assert.equal(result.aggregates[0]?.incidentPoint, false);
     assert.equal(result.degraded, true);
     assert.equal(result.newestContentYear, 2025);
+    assert.equal(result.attribution, 'Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/');
   });
 
   it('reports an unpublished on-demand key as unavailable and rejects unknown datasets', async () => {
@@ -106,7 +107,7 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
     assert.deepEqual(missing.occurrences, []);
     await assert.rejects(
       queryTorontoSafety(request({ dataset: 'live_dispatch' }), reader(new Map())),
-      (error: unknown) => error instanceof ApiError && error.statusCode === 400,
+      validationFailure('dataset'),
     );
   });
 
@@ -132,6 +133,9 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
 
     const callsData = {
       annual_aggregates: {
+        // A snapshot cached before the CKAN migration still carries the retired
+        // licence claim; the MCP surface must not pass it through.
+        attribution: 'Contains information licensed under the Open Government Licence - Ontario.',
         records: [
           { eventYear: 2025, divisionOriginal: 'D51', divisionFinal: 'D52', neighbourhood158: 'Harbourfront' },
           { eventYear: 2024, divisionOriginal: 'D51', divisionFinal: 'D51', neighbourhood158: 'Downtown' },
@@ -140,5 +144,7 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
     };
     calls._postFilter(callsData, { year: 2025, division: '52' });
     assert.equal(callsData.annual_aggregates.records.length, 1);
+    assert.doesNotMatch(callsData.annual_aggregates.attribution, /Open Government Licence/);
+    assert.match(callsData.annual_aggregates.attribution, /via City of Toronto Open Data/);
   });
 });

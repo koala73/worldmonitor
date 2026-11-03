@@ -178,6 +178,21 @@ function createBindings(overrides = {}) {
         panels: { mounted: ['map'], enabled: ['map'] },
       },
     }),
+    listFollowedCountries: async () => ({
+      ok: true,
+      enabled: true,
+      countries: ['DE'],
+      count: 1,
+      access: 'free',
+      limit: 3,
+    }),
+    setCountryFollowed: async (iso2, followed) => ({
+      ok: true,
+      status: 'accepted',
+      iso2,
+      followed,
+      message: 'Followed-country state accepted.',
+    }),
 
     getPanelLayout: async () => ({
       regions: {
@@ -350,7 +365,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 30, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 32, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { clearWelcomeRoot } from '../pro-test/src/welcome-root.ts';
+import { clearWelcomeRoot, prepareWelcomeRoot } from '../pro-test/src/welcome-root.ts';
 import { resolveEffectiveWelcomeContentLanguage } from '../pro-test/src/welcome-language.ts';
 
 const readLocale = (language: string): Record<string, unknown> => JSON.parse(
@@ -37,6 +37,33 @@ describe('welcome bootstrap root clearing', () => {
     clearWelcomeRoot(root);
 
     assert.equal(root.textContent, '');
+  });
+});
+
+describe('welcome bootstrap mount plan', () => {
+  it('returns null when #root is missing so dataset access cannot throw', () => {
+    assert.equal(prepareWelcomeRoot(null, 'en'), null);
+    assert.equal(prepareWelcomeRoot(undefined, 'en'), null);
+  });
+
+  it('hydrates when prerender markers match the content language', () => {
+    const root = {
+      dataset: { wmPrerendered: 'welcome', wmPrerenderLang: 'nl' },
+    };
+    assert.deepEqual(prepareWelcomeRoot(root, 'nl'), { mode: 'hydrate', root });
+  });
+
+  it('falls back to a fresh render when prerender markers are absent or mismatched', () => {
+    const bare = { dataset: {} };
+    assert.deepEqual(prepareWelcomeRoot(bare, 'en'), { mode: 'render', root: bare });
+
+    const mismatched = {
+      dataset: { wmPrerendered: 'welcome', wmPrerenderLang: 'en' },
+    };
+    assert.deepEqual(prepareWelcomeRoot(mismatched, 'nl'), {
+      mode: 'render',
+      root: mismatched,
+    });
   });
 });
 

@@ -29,15 +29,26 @@ module graph).
 | `mission-picker-shown` | `openMissionPresetPopover` (single emission site) | `trigger`: `auto` \| `manual` \| `agent`; `surface`: `desktop` \| `mobile` | `auto` = deferred first-paint prompt; `agent` = WebMCP entry — exclude from human-funnel reads |
 | `mission-selected` | `applyMissionPreset`, after the preset persists | `missionId` (bucketed), `source`: `user` \| `agent` | `agent` = WebMCP apply |
 | `panel-viewed` | IntersectionObserver in `setupPanelViewTracking` (≥30% visible) | `panelKey` (bucketed) | Global denominator. Deduped **once per panel per tab session** (sessionStorage, KTD5); late-mounted panels join via a MutationObserver. Agent-driven views suppressed by `agent-analytics-privacy` (search flows and agent mission applies) |
-| `pro-preview-viewed` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Preview rendered beside free content |
+| `pro-preview-viewed` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | First VIEW, not render: emits when the preview first intersects the viewport, once per preview per tab session, and is suppressed for agent-driven mounts (WebMCP mission applies and panel enables use the same per-panel suppression window as `panel-viewed`) |
 | `pro-preview-cta` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Upgrade CTA clicked |
 | `pro-preview-dismissed` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Dismissal persists; the guardrail metric |
 | `checkout-start` | `startCheckout` → `trackCheckoutStart` | `surface` now includes `mission-preview`; `variant`, `deviceClass`; `missionId` (ambient mission context on generic surfaces, preview-attributed on `mission-preview`), optional `panelKey` | Attribution rides the durable pending-conversion entry and the post-sign-in resume intent, so both the replay (`replayed: true`) and the `dashboard-resume` re-emit carry it; entries are re-sanitized on replay (storage is attacker-writable) |
-| `mission-returned-after-purchase` | `ProPreviewSection` return leg (Release 1) | `missionId`, `panelKey` | Completion-side attribution: fires when the buyer lands back on the originating mission/panel |
+| `mission-returned-after-purchase` | checkout-return reconciliation (Release 1) | `missionId`, `panelKey`, `surface` when known | Completion-side attribution, carried on the durable checkout-attempt record (the pending-conversion entry is usually collector-confirmed and cleared before the redirect). `surface: mission-preview` marks preview-originated purchases and is the only case that scrolls back to the originating panel |
 
 The `pro-preview-*` and `mission-returned-after-purchase` names are pinned
 from Release 0 so dashboards can be built ahead of Release 1, which ships
 their emission sites with the preview component.
+
+## Variant coverage caveat
+
+Funnel events exist only for hosts listed in `UMAMI_DOMAINS`
+(`src/services/analytics.ts`) — the tracker self-disables everywhere else.
+As of 2026-09-04 that is the apex, `www`, `happy`, and `finance` (finance
+re-added so the finance-only `nq-day-trader` mission became measurable;
+upstream Umami #4183 still drops ~4-8% of collector writes on affected
+hosts, an accepted noise floor). `tech` and `commodity` remain dark: a
+mission scoped to those variants produces **no funnel data**, and zero
+events from such a mission means "unmeasured", never "unused".
 
 ## Baseline and threshold procedure
 
@@ -62,3 +73,43 @@ baselines exist — this section records how, not numbers.
    the clean treated-vs-untouched window is weeks 2–4; after Release 2 adds
    universal panels to all missions (week 4+), the contrast becomes
    "preview + panels vs panels-only" — do not pool across that boundary.
+
+## Pre-registered thresholds — set 2026-09-04, before Release 1 exposure
+
+Baseline window: 2026-08-31 through 2026-09-04 (first full days after the
+Release 0 merge), production Umami, `source: user` only.
+
+Measured baselines (daily means): `panel-viewed` ~118k across ~11.5k
+sessions (dedupe mean 1.09 events per session+panel); `mission-picker-shown`
+~1.4k; `mission-selected` ~545 (crisis-desk ~194, osint ~75, supply-chain ~71,
+macro ~61, tech-ai ~59, energy ~46, good-news ~40); `checkout-start` ~85, of
+which ~6.3% carried ambient mission attribution.
+
+Fixed now, before any preview is exposed:
+
+1. **Per-mission rollback** (weekly read; remove that mission's registry
+   entry): dismissal rate `pro-preview-dismissed / pro-preview-viewed`
+   exceeds **50%** over at least **200 viewed**, OR the mission's weekly
+   `mission-selected` (source `user`) falls below **75% of its baseline
+   weekly mean** while untouched missions hold within 10% of theirs.
+2. **Free-experience guardrail** (global): total weekly `mission-selected`
+   drops below **75%** of the baseline weekly mean → pause Release 1
+   entirely, not per mission.
+3. **Day-30 continue bar**: weekly mission-attributed `checkout-start`
+   (surface `mission-preview`, or ambient attribution on a treated mission)
+   reaches at least **150% of the baseline ambient weekly mean** (~38/week
+   → ≥57/week), with the treated-vs-untouched contrast favoring treated.
+4. **Read discipline**: day-30 segments at the Release 2 boundary (weeks
+   2–4 are the clean treated-vs-untouched window) and excludes
+   `trigger/source: agent` events and dark-variant missions per the caveat
+   above.
+
+### Crisis-desk caveat (KTD7)
+
+crisis-desk's preview is the pre-existing ResilienceWidget locked surface: it
+has **no dismiss affordance**, so threshold 1's dismissal-rate arm cannot fire
+for it — its rollback signal is the `mission-selected` floor only. Its viewed
+events share the global once-per-session dedupe, but unlike the component
+previews it still renders on terminal verification failure (it gates real
+content and must show a verdict), so its funnel rows include outage windows
+the other treated missions structurally exclude.
