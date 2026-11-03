@@ -42,6 +42,8 @@ describe('legacy handler 405 responses carry an Allow header', () => {
       }), ctx);
       assert.equal(res.status, 405);
       assert.equal(res.headers.get('allow'), allow, `${name} must name its supported methods`);
+      const exposed = (res.headers.get('access-control-expose-headers') ?? '').toLowerCase().split(/,\s*/);
+      assert.ok(exposed.includes('allow'), `${name} must expose Allow to browser clients`);
     });
 
     it(`${name}: Allow matches the preflight method list`, async () => {
