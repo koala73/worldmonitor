@@ -1,14 +1,15 @@
 // @ts-expect-error — JS module, no declaration file
-import { keyFingerprint, sha256Hex } from './_crypto.js';
+import { getOperatorKeys, keyFingerprint, sha256Hex } from './_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { getRedisCredentials } from './_upstash-json.js';
+import { validateUserApiKeyHash } from './_user-api-key.js';
 
 /**
  * Bearer-to-context resolver for the OAuth + MCP edge.
  *
  * U6 of plan 2026-05-10-001 (`feat-pro-mcp-clerk-auth-quota-plan`) introduced
  * the discriminated `McpAuthContext` union — the same `oauth:token:<uuid>`
- * Redis namespace now stores TWO disjoint shapes:
+ * Redis namespace stores three disjoint shapes:
  *
  *   Legacy (env-key issued, written by `storeNewTokens` / `storeLegacyToken`
  *   in `api/oauth/token.js`): a bare JSON-string holding either a 64-hex
@@ -21,7 +22,11 @@ import { getRedisCredentials } from './_upstash-json.js';
  *   object carrying the Convex `mcpProTokens` row id and the user id.
  *     stored = { kind: 'pro', userId: 'user_abc', mcpTokenId: 'k57...' }
  *
- * Both shapes coexist forever — there is no migration. Resolver dispatches
+ *   Dashboard key: { kind: 'user_key', api_key_hash: '<sha256>' }.
+ *   Resolve its current owner through the shared key validator on each use;
+ *   MCP applies the same entitlement and quota checks as header-based keys.
+ *
+ * The shapes coexist without a migration. Resolver dispatches
  * on `typeof raw` then on `raw.kind`. Authorization-code / refresh-token
  * issued access tokens also get `oauth:tokenfam:<uuid>`; when
  * `oauth:famrev:<family_id>` exists, the resolver rejects that bearer so
@@ -77,7 +82,7 @@ async function isRefreshFamilyRevoked(familyId) {
 // Legacy: 16-char fingerprint for client_credentials tokens (backward compat)
 export async function resolveApiKeyFromFingerprint(fingerprint) {
   if (typeof fingerprint !== 'string' || !fingerprint) return null;
-  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+  const validKeys = getOperatorKeys();
   for (const k of validKeys) {
     if (await keyFingerprint(k) === fingerprint) return k;
   }
@@ -87,7 +92,7 @@ export async function resolveApiKeyFromFingerprint(fingerprint) {
 // New: full SHA-256 (64 hex chars) for authorization_code / refresh_token issued tokens
 export async function resolveApiKeyFromHash(fullHash) {
   if (typeof fullHash !== 'string' || fullHash.length !== 64) return null;
-  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+  const validKeys = getOperatorKeys();
   for (const k of validKeys) {
     if (await sha256Hex(k) === fullHash) return k;
   }
@@ -99,6 +104,7 @@ export async function resolveApiKeyFromHash(fullHash) {
  *
  *   { kind: 'env_key', apiKey: string }
  *   | { kind: 'pro',   userId: string, mcpTokenId: string }
+ *   | { kind: 'user_key', userId: string }
  *   | null
  *
  * Branch logic:
@@ -136,6 +142,12 @@ export async function resolveBearerToContext(token) {
     if (raw.length === 64) apiKey = await resolveApiKeyFromHash(raw);
     else if (raw.length === 16) apiKey = await resolveApiKeyFromFingerprint(raw);
     return apiKey ? { kind: 'env_key', apiKey } : null;
+  }
+
+  if (raw && typeof raw === 'object' && raw.kind === 'user_key') {
+    const result = await validateUserApiKeyHash(raw.api_key_hash);
+    if (!result.ok && result.status === 503) throw new Error('API key validation unavailable');
+    return result.ok ? { kind: 'user_key', userId: result.userId } : null;
   }
 
   // New Pro object shape — defensive shape-check before trusting.

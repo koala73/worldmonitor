@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  areCoreSourcesEmpty,
   buildDemandChangeEntry,
   buildSpineEntry,
+  isSpineCountDrop,
   SPINE_KEY_PREFIX,
   SPINE_COUNTRIES_KEY,
   SPINE_META_KEY,
@@ -501,24 +503,15 @@ describe('exported key constants', () => {
 
 describe('count-drop guard math', () => {
   it('80% threshold: 160/200 is acceptable', () => {
-    const prevCount = 200;
-    const newCount = 160;
-    const ratio = newCount / prevCount;
-    assert.ok(ratio >= 0.80, `${ratio} should be >= 0.80`);
+    assert.equal(isSpineCountDrop(160, 200), false);
   });
 
   it('80% threshold: 159/200 triggers guard', () => {
-    const prevCount = 200;
-    const newCount = 159;
-    const ratio = newCount / prevCount;
-    assert.ok(ratio < 0.80, `${ratio} should be < 0.80`);
+    assert.equal(isSpineCountDrop(159, 200), true);
   });
 
   it('no guard when prevCount is 0 (first run)', () => {
-    const prevCount = 0;
-    // Guard should not activate on first run (prevCount <= 0)
-    const guardActive = prevCount > 0;
-    assert.equal(guardActive, false);
+    assert.equal(isSpineCountDrop(0, 0), false);
   });
 });
 
@@ -594,17 +587,12 @@ describe('buildSpineEntry with SPR policy data', () => {
 // ---------------------------------------------------------------------------
 
 describe('core-source guard when JODI and OWID are empty', () => {
-  it('assembleCountryList returns jodiCount and owidCount', () => {
-    const jodiCount = 0;
-    const owidCount = 0;
-    const shouldAbort = jodiCount === 0 && owidCount === 0;
-    assert.ok(shouldAbort, 'should abort when both core sources are empty');
+  it('aborts when both core source counts are zero', () => {
+    assert.equal(areCoreSourcesEmpty(0, 0), true);
   });
 
   it('does not abort when at least one core source has data', () => {
-    const jodiCount = 100;
-    const owidCount = 0;
-    const shouldAbort = jodiCount === 0 && owidCount === 0;
-    assert.ok(!shouldAbort, 'should not abort when JODI has data');
+    assert.equal(areCoreSourcesEmpty(100, 0), false);
+    assert.equal(areCoreSourcesEmpty(0, 100), false);
   });
 });

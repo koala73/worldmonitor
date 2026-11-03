@@ -67,3 +67,14 @@ describe('htmlToPlainText: one pass must decode exactly one level', () => {
     assert.equal(htmlToPlainText(html), 'effective tariff rate reaching 7.5%');
   });
 });
+
+it('removes raw script and style text with valid noncanonical end tags', () => {
+  for (const closing of ['script ', 'script foo="bar"', 'script/']) {
+    assert.equal(htmlToPlainText(`<script>fake rate 99%</${closing}><p>real rate 5%</p>`), 'real rate 5%');
+  }
+});
+
+it('does not treat NBSP as an HTML script end-tag delimiter', () => {
+  const html = '<main><script>const marker="</script\u00a0>";PRIVATE_SCRIPT()</script><p>Public text</p></main>';
+  assert.equal(htmlToPlainText(html), 'Public text');
+});

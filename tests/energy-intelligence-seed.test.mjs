@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   parseRssItems,
+  fetchEnergyIntelligence,
   filterEnergyRelevant,
   deduplicateByUrl,
   validate,
@@ -135,19 +136,33 @@ describe('deduplicateByUrl', () => {
 // ---------------------------------------------------------------------------
 
 describe('age filter', () => {
-  it('item older than 30 days is excluded via AGE_LIMIT_MS threshold', () => {
-    const now = Date.now();
-    const oldTs = now - (31 * 24 * 3600 * 1000);
-    const AGE_LIMIT_MS = 30 * 24 * 3600 * 1000;
+  it('fetchEnergyIntelligence excludes feed items older than 30 days', async (t) => {
+    const now = Date.parse('2026-04-05T10:00:00Z');
+    t.mock.method(Date, 'now', () => now);
 
-    const items = [
-      { id: 'old', title: 'Old oil report', url: 'https://example.com/old', source: 'IEA', publishedAt: oldTs, summary: '' },
-      { id: 'new', title: 'New gas update', url: 'https://example.com/new', source: 'IEA', publishedAt: now, summary: '' },
-    ];
+    const ageFixture = `<rss version="1.0"><channel>
+      <item>
+        <title>Old oil report</title>
+        <link>https://example.com/old</link>
+        <pubDate>${new Date(now - 31 * 24 * 3600 * 1000).toUTCString()}</pubDate>
+      </item>
+      <item>
+        <title>New gas update</title>
+        <link>https://example.com/new</link>
+        <pubDate>${new Date(now).toUTCString()}</pubDate>
+      </item>
+    </channel></rss>`;
+    const emptyFixture = '<rss version="1.0"><channel></channel></rss>';
 
-    const recent = items.filter((item) => item.publishedAt >= now - AGE_LIMIT_MS);
-    assert.equal(recent.length, 1);
-    assert.equal(recent[0].id, 'new');
+    t.mock.method(globalThis, 'fetch', async (input) => new Response(
+      String(input).includes('oilprice.com') ? ageFixture : emptyFixture,
+      { status: 200, headers: { 'Content-Type': 'application/rss+xml' } },
+    ));
+
+    const result = await fetchEnergyIntelligence();
+
+    assert.deepEqual(result.items.map((item) => item.title), ['New gas update']);
+    assert.equal(result.fetchedAt, now);
   });
 });
 

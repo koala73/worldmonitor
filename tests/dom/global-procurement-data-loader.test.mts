@@ -57,6 +57,7 @@ describe('Global procurement DataLoader cancellation', () => {
 
     const procurementPanel = {
       setRequestHandler: vi.fn((_handler: RequestHandler) => undefined),
+      setPrincipalResetHandler: vi.fn(),
       setLoading: vi.fn(),
       update: vi.fn(),
       clear: vi.fn(),
@@ -107,6 +108,7 @@ describe('Global procurement DataLoader cancellation', () => {
   it('invalidates an unscoped procurement load when the DataLoader is destroyed', async () => {
     const procurementPanel = {
       setRequestHandler: vi.fn(),
+      setPrincipalResetHandler: vi.fn(),
       setLoading: vi.fn(),
       update: vi.fn(),
       clear: vi.fn(),

@@ -1,3 +1,6 @@
+// These checks pin the tracked archive/playground paths and Mintlify exclusions
+// (#8690, section 2).
+// Application runtime tests cannot verify Git tracking or documentation exclusions.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';

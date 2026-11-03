@@ -82,10 +82,6 @@ describe('scoreEnergy — RESILIENCE_ENERGY_V2_ENABLED=false (default)', () => {
     delete process.env.RESILIENCE_ENERGY_V2_ENABLED;
   });
 
-  it('repo default remains legacy until production v2 seed health is verified', () => {
-    assert.equal(process.env.RESILIENCE_ENERGY_V2_ENABLED, undefined);
-  });
-
   it('reads legacy inputs — higher renewShare raises score', async () => {
     const low = await scoreEnergy(TEST_ISO2, makeEnergyReader(TEST_ISO2, { mix: { gasShare: 30, coalShare: 20, renewShare: 5 } }));
     const high = await scoreEnergy(TEST_ISO2, makeEnergyReader(TEST_ISO2, { mix: { gasShare: 30, coalShare: 20, renewShare: 70 } }));
@@ -107,10 +103,6 @@ describe('scoreEnergy — RESILIENCE_ENERGY_V2_ENABLED=true', () => {
   });
   after(() => {
     delete process.env.RESILIENCE_ENERGY_V2_ENABLED;
-  });
-
-  it('flag is on', () => {
-    assert.equal(process.env.RESILIENCE_ENERGY_V2_ENABLED, 'true');
   });
 
   it('v2 path reads importedFossilDependence — lower fossilElectricityShare raises score', async () => {

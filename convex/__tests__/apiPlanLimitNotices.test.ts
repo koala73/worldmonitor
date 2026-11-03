@@ -353,6 +353,146 @@ describe("api plan-limit notice persistence", () => {
     expect(visible).toHaveLength(1);
   });
 
+  // #4807 item 1: notice identity is per-UTC-day, but the email cadence must
+  // not restart with it. A customer emailed late on day one must not be
+  // emailed again minutes into day two for the same (dimension, state).
+  describe("email cadence across the day boundary", () => {
+    const DAY_ONE = "2026-07-02";
+    const DAY_TWO = "2026-07-03";
+    // 23:18Z on day one and 00:05Z on day two, relative to the fixed clock.
+    const LATE_DAY_ONE = NOW + 15 * 60 * 60 * 1000 + 18 * 60 * 1000;
+    const EARLY_DAY_TWO = LATE_DAY_ONE + 47 * 60 * 1000;
+
+    async function overLimitOn(t: ReturnType<typeof convexTest>, windowKey: string, computedAt: number, state: "warning" | "over_limit" = "over_limit") {
+      return t.mutation(internalFns.recordUsageEvaluation, {
+        rollup: rollup({ usage: state === "over_limit" ? 1_200 : 850, windowKey, computedAt }),
+        notice: { state, ctaKind: "billing_portal", upgradeTargetPlanKey: "api_business" },
+      });
+    }
+
+    test("a new window inherits the superseded notice's delivery and is not re-emailed", async () => {
+      const t = convexTest(schema, modules);
+      const dayOne = await overLimitOn(t, DAY_ONE, LATE_DAY_ONE);
+      await t.mutation(internalFns.markEmailStatus, {
+        noticeId: dayOne.noticeId,
+        emailStatus: "sent",
+        emailedAt: LATE_DAY_ONE + 1_000,
+      });
+
+      const dayTwo = await overLimitOn(t, DAY_TWO, EARLY_DAY_TWO);
+      expect(dayTwo.noticeId).not.toBe(dayOne.noticeId);
+
+      const current = await t.run((ctx) => ctx.db.get(dayTwo.noticeId!));
+      expect(current).toMatchObject({
+        windowKey: DAY_TWO,
+        current: true,
+        emailStatus: "sent",
+        lastEmailedAt: LATE_DAY_ONE + 1_000,
+      });
+
+      const due = await t.query(internalFns.listEmailDue, { now: EARLY_DAY_TWO + 60_000 });
+      expect(due).toHaveLength(0);
+    });
+
+    test("the inherited cadence still comes due once its interval has elapsed", async () => {
+      const t = convexTest(schema, modules);
+      const dayOne = await overLimitOn(t, DAY_ONE, LATE_DAY_ONE);
+      await t.mutation(internalFns.markEmailStatus, {
+        noticeId: dayOne.noticeId,
+        emailStatus: "sent",
+        emailedAt: LATE_DAY_ONE + 1_000,
+      });
+
+      const cadenceElapsed = LATE_DAY_ONE + 1_000 + 24 * 60 * 60 * 1000;
+      const dayTwo = await overLimitOn(t, DAY_TWO, cadenceElapsed);
+
+      const current = await t.run((ctx) => ctx.db.get(dayTwo.noticeId!));
+      expect(current).toMatchObject({ windowKey: DAY_TWO, emailStatus: "pending", lastEmailedAt: LATE_DAY_ONE + 1_000 });
+      const due = await t.query(internalFns.listEmailDue, { now: cadenceElapsed });
+      expect(due.map((notice) => notice._id)).toEqual([dayTwo.noticeId]);
+    });
+
+    test("a suppressed prior notice carries its own status, not a delivery it never made", async () => {
+      const t = convexTest(schema, modules);
+      const dayOne = await overLimitOn(t, DAY_ONE, LATE_DAY_ONE);
+      await t.mutation(internalFns.markEmailStatus, {
+        noticeId: dayOne.noticeId,
+        emailStatus: "suppressed",
+        emailedAt: LATE_DAY_ONE + 1_000,
+      });
+
+      const dayTwo = await overLimitOn(t, DAY_TWO, EARLY_DAY_TWO);
+
+      const current = await t.run((ctx) => ctx.db.get(dayTwo.noticeId!));
+      expect(current).toMatchObject({
+        windowKey: DAY_TWO,
+        emailStatus: "suppressed",
+        lastEmailedAt: LATE_DAY_ONE + 1_000,
+      });
+      const due = await t.query(internalFns.listEmailDue, { now: EARLY_DAY_TWO + 60_000 });
+      expect(due).toHaveLength(0);
+      const readiness = await t.query(internalFns.getEnforcementReadiness, { now: EARLY_DAY_TWO + 60_000 });
+      expect(readiness.notified).toHaveLength(0);
+      expect(readiness.skipped).toHaveLength(1);
+      expect(readiness.unknown).toHaveLength(0);
+    });
+
+    test("a failed prior notice does not carry its earlier delivery into the new window", async () => {
+      const t = convexTest(schema, modules);
+      const dayOne = await overLimitOn(t, DAY_ONE, LATE_DAY_ONE);
+      await t.mutation(internalFns.markEmailStatus, {
+        noticeId: dayOne.noticeId,
+        emailStatus: "sent",
+        emailedAt: LATE_DAY_ONE - 30 * 60 * 60 * 1000,
+      });
+      await t.mutation(internalFns.markEmailStatus, {
+        noticeId: dayOne.noticeId,
+        emailStatus: "failed",
+        emailAttempts: 1,
+      });
+
+      const dayTwo = await overLimitOn(t, DAY_TWO, EARLY_DAY_TWO);
+
+      const current = await t.run((ctx) => ctx.db.get(dayTwo.noticeId!));
+      expect(current).toMatchObject({ windowKey: DAY_TWO, emailStatus: "pending" });
+      expect(current?.lastEmailedAt).toBeUndefined();
+      expect(current?.emailAttempts).toBeUndefined();
+      const due = await t.query(internalFns.listEmailDue, { now: EARLY_DAY_TWO + 60_000 });
+      expect(due.map((notice) => notice._id)).toEqual([dayTwo.noticeId]);
+    });
+
+    test("an undelivered prior notice carries nothing into the new window", async () => {
+      const t = convexTest(schema, modules);
+      await overLimitOn(t, DAY_ONE, LATE_DAY_ONE);
+
+      const dayTwo = await overLimitOn(t, DAY_TWO, EARLY_DAY_TWO);
+
+      const current = await t.run((ctx) => ctx.db.get(dayTwo.noticeId!));
+      expect(current).toMatchObject({ windowKey: DAY_TWO, emailStatus: "pending" });
+      expect(current?.lastEmailedAt).toBeUndefined();
+      const due = await t.query(internalFns.listEmailDue, { now: EARLY_DAY_TWO + 60_000 });
+      expect(due.map((notice) => notice._id)).toEqual([dayTwo.noticeId]);
+    });
+
+    test("an escalation across the boundary is a new state and still emails", async () => {
+      const t = convexTest(schema, modules);
+      const warning = await overLimitOn(t, DAY_ONE, LATE_DAY_ONE, "warning");
+      await t.mutation(internalFns.markEmailStatus, {
+        noticeId: warning.noticeId,
+        emailStatus: "sent",
+        emailedAt: LATE_DAY_ONE + 1_000,
+      });
+
+      const escalated = await overLimitOn(t, DAY_TWO, EARLY_DAY_TWO, "over_limit");
+
+      const current = await t.run((ctx) => ctx.db.get(escalated.noticeId!));
+      expect(current).toMatchObject({ state: "over_limit", windowKey: DAY_TWO, emailStatus: "pending" });
+      expect(current?.lastEmailedAt).toBeUndefined();
+      const due = await t.query(internalFns.listEmailDue, { now: EARLY_DAY_TWO + 60_000 });
+      expect(due.map((notice) => notice._id)).toEqual([escalated.noticeId]);
+    });
+  });
+
   test("stops retrying a failed notice after MAX_EMAIL_ATTEMPTS", async () => {
     const t = convexTest(schema, modules);
     const created = await t.mutation(internalFns.recordUsageEvaluation, {

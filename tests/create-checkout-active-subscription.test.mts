@@ -10,9 +10,10 @@ function restoreEnv(): void {
   Object.assign(process.env, originalEnv);
 }
 
-async function importFreshCreateCheckout() {
+async function importFreshCreateCheckout(options: { missingGatewaySecret?: boolean } = {}) {
   process.env.CONVEX_SITE_URL = 'https://convex.test';
-  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  if (options.missingGatewaySecret) delete process.env.CONVEX_TENANT_RELAY_SECRET;
+  else process.env.CONVEX_TENANT_RELAY_SECRET = 'relay-secret';
   return import(`../api/create-checkout.ts?test=${Date.now()}-${Math.random()}`);
 }
 
@@ -34,6 +35,21 @@ function makeCheckoutRequest(): Request {
 afterEach(() => {
   mock.restoreAll();
   restoreEnv();
+});
+
+it('reproduces the missing gateway credential 503 without using the ingestion key', async () => {
+  process.env.RELAY_SHARED_SECRET = 'synthetic-ingestion-secret';
+  const mod = await importFreshCreateCheckout({ missingGatewaySecret: true });
+  const relayFetch = mock.fn(async () => Response.json({}));
+  mod.__setCreateCheckoutDepsForTests({
+    validateBearerToken: async () => ({ valid: true, userId: 'user_test' }),
+    checkRateLimit: async () => null,
+    fetch: relayFetch,
+  });
+  const response = await mod.default(makeCheckoutRequest());
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: 'Service unavailable' });
+  assert.equal(relayFetch.mock.calls.length, 0);
 });
 
 describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () => {
@@ -58,6 +74,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         email: 'pro@example.com',
         name: 'Existing Pro',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -72,6 +89,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
     assert.equal(consoleError.mock.calls.length, 0);
     assert.equal(relayFetch.mock.calls.length, 1);
     const relayInit = relayFetch.mock.calls[0].arguments[1] as RequestInit;
+    assert.equal((relayInit.headers as Record<string, string>).Authorization, 'Bearer relay-secret');
     assert.equal((relayInit.headers as Record<string, string>)['User-Agent'], 'worldmonitor-checkout-edge/1.0');
   });
 
@@ -94,6 +112,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_pending_payment',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -115,7 +134,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
     const relayFetch = mock.fn(async () =>
       Response.json(
         {
-          error: 'Checkout failed: Request timed out.',
+          error: 'CHECKOUT_TIMED_OUT',
           message: 'Dodo checkout request exceeded its provider timeout',
         },
         { status: 500 },
@@ -127,6 +146,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_retryable_failure',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -134,13 +154,13 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
 
     assert.equal(res.status, 500);
     assert.deepEqual(await res.json(), {
-      error: 'Checkout failed: Request timed out.',
+      error: 'CHECKOUT_TIMED_OUT',
     });
     assert.equal(consoleError.mock.calls.length, 1);
     assert.equal(String(consoleError.mock.calls[0].arguments[0]), '[create-checkout] Relay error:');
     assert.equal(consoleError.mock.calls[0].arguments[1], 500);
     assert.deepEqual(consoleError.mock.calls[0].arguments[2], {
-      error: 'Checkout failed: Request timed out.',
+      error: 'CHECKOUT_TIMED_OUT',
       message: 'Dodo checkout request exceeded its provider timeout',
     });
     assert.equal(relayFetch.mock.calls.length, 1, 'one logical relay create call');
@@ -158,6 +178,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_relay_network_failure',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -193,6 +214,7 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
         valid: true,
         userId: 'user_rate_limited',
       }),
+      checkRateLimit: async () => null,
       fetch: relayFetch,
     });
 
@@ -206,4 +228,64 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
     });
     assert.equal(consoleError.mock.calls.length, 0);
   });
+});
+
+it('forwards invalid checkout product as HTTP 400 without a transport retry signal', async () => {
+  const mod = await importFreshCreateCheckout();
+  const relayFetch = mock.fn(async () => Response.json({ error: 'INVALID_CHECKOUT_PRODUCT' }, { status: 400 }));
+  mod.__setCreateCheckoutDepsForTests({
+    validateBearerToken: async () => ({ valid: true, userId: 'user_product_admission' }),
+    checkRateLimit: async () => null,
+    fetch: relayFetch,
+  });
+  const response = await mod.default(makeCheckoutRequest());
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: 'INVALID_CHECKOUT_PRODUCT' });
+  assert.equal(relayFetch.mock.calls.length, 1);
+});
+
+it('masks unexpected relay exception text while retaining server diagnostics', async () => {
+  const mod = await importFreshCreateCheckout();
+  const log = mock.method(console, 'error', () => {});
+  const sentinel = 'synthetic-private-relay-detail';
+  mod.__setCreateCheckoutDepsForTests({
+    validateBearerToken: async () => ({ valid: true, userId: 'user_error_boundary' }),
+    checkRateLimit: async () => null,
+    fetch: async () => Response.json({ error: sentinel }, { status: 500 }),
+  });
+  const response = await mod.default(makeCheckoutRequest());
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: 'CHECKOUT_FAILED' });
+  assert.ok(JSON.stringify(log.mock.calls).includes(sentinel));
+});
+
+it('replays a completed account-scoped checkout without reaching admission at the relay', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'synthetic-token';
+  const mod = await importFreshCreateCheckout();
+  const req = makeCheckoutRequest();
+  req.headers.set('Idempotency-Key', 'completed-checkout');
+  const body = await req.clone().text();
+  const sha = async (value: string) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
+  const reqHash = await sha(body);
+  const expectedKey = `idem:v1:${await sha('user:user_existing_pro\n/api/create-checkout\ncompleted-checkout')}`;
+  const stored = JSON.stringify({ state: 'completed', status: 200, contentType: 'application/json', reqHash, body: JSON.stringify({ checkout_url: 'https://checkout.example/original' }) });
+  mock.method(globalThis, 'fetch', async (url, init) => {
+    assert.equal(String(url), 'https://upstash.test/pipeline');
+    const commands = JSON.parse(String(init?.body));
+    assert.ok(commands.every((command: string[]) => command[1] === expectedKey));
+    // One reply per command, so the peek's single GET and the begin pipeline's
+    // SET NX + GET both read the slot they actually sent. A completed record
+    // already holds the key, so SET NX takes no lock.
+    return Response.json(commands.map((command: string[]) => (command[0] === 'GET' ? { result: stored } : { result: null })));
+  });
+  const relay = mock.fn(async () => { throw new Error('Replay must not invoke relay admission'); });
+  mod.__setCreateCheckoutDepsForTests({
+    validateBearerToken: async () => ({ valid: true, userId: 'user_existing_pro' }),
+    fetch: relay,
+  });
+  const response = await mod.default(req);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { checkout_url: 'https://checkout.example/original' });
+  assert.equal(relay.mock.callCount(), 0);
 });

@@ -2,10 +2,24 @@ import assert from 'node:assert/strict';
 import { afterEach, before, describe, it } from 'node:test';
 
 import { createDomainGateway } from '../server/gateway.ts';
+import { __resetRateLimitForTest } from '../server/_shared/rate-limit';
 import { issueSessionToken } from '../api/_session.js';
 
 const originalKeys = process.env.WORLDMONITOR_VALID_KEYS;
 const originalSecret = process.env.WM_SESSION_SECRET;
+const originalEnv = { ...process.env };
+const originalFetch = globalThis.fetch;
+
+function allowRateAdmission() {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://cdn-policy-redis.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  __resetRateLimitForTest();
+  globalThis.fetch = async (input, init) => {
+    assert.equal(new URL(String(input)).hostname, 'cdn-policy-redis.invalid');
+    const commands = JSON.parse(String(init?.body));
+    return Response.json(commands.map(() => ({ result: [29, 30] })));
+  };
+}
 
 // Anonymous browser access now requires a wms_ session token (issue #3541).
 // Tests mint one once and pass it on every "browser-like" request.
@@ -17,6 +31,12 @@ before(async () => {
 });
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
+  for (const key of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']) {
+    if (originalEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = originalEnv[key];
+  }
+  __resetRateLimitForTest();
   if (originalKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
   else process.env.WORLDMONITOR_VALID_KEYS = originalKeys;
   if (originalSecret == null) delete process.env.WM_SESSION_SECRET;
@@ -29,7 +49,7 @@ function createHandler(options: { handlerCdnCacheHeader?: string; publicRouteBod
   return createDomainGateway([
     {
       method: 'GET',
-      path: '/api/market/v1/list-crypto-quotes',
+      path: '/api/market/v1/list-gulf-quotes',
       handler: async () => new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: options.handlerCdnCacheHeader ? { 'CDN-Cache-Control': options.handlerCdnCacheHeader } : undefined,
@@ -37,7 +57,7 @@ function createHandler(options: { handlerCdnCacheHeader?: string; publicRouteBod
     },
     {
       method: 'GET',
-      path: '/api/conflict/v1/list-acled-events',
+      path: '/api/intelligence/v1/get-china-decision-signals',
       handler: async () => new Response(JSON.stringify(options.publicRouteBody ?? { ok: true }), { status: 200 }),
     },
     {
@@ -65,7 +85,7 @@ function createHandler(options: { handlerCdnCacheHeader?: string; publicRouteBod
 
 async function requestPublicRoute(origin: string) {
   const handler = createHandler();
-  return handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+  return handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
     headers: { Origin: origin, 'X-WorldMonitor-Key': sessionToken },
   }));
 }
@@ -114,7 +134,7 @@ describe('gateway CDN origin policy', () => {
     const origin = 'tauri://localhost';
     process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
     const handler = createHandler();
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
       headers: {
         Origin: origin,
         'X-WorldMonitor-Key': 'real-key-123',
@@ -129,7 +149,7 @@ describe('gateway CDN origin policy', () => {
   it('preserves CDN caching for explicit anonymous public no-auth GETs', async () => {
     const origin = 'https://worldmonitor.app';
     const handler = createHandler();
-    const res = await handler(new Request('https://worldmonitor.app/api/conflict/v1/list-acled-events', {
+    const res = await handler(new Request('https://worldmonitor.app/api/intelligence/v1/get-china-decision-signals', {
       headers: { Origin: origin },
     }));
     assert.equal(res.status, 200);
@@ -143,6 +163,7 @@ describe('gateway CDN origin policy', () => {
     '/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1',
   ]) {
     it(`CDN-shields the exact caller-invariant public RPC variant: ${path}`, async () => {
+      allowRateAdmission();
       const handler = createHandler();
       const res = await handler(new Request(`https://worldmonitor.app${path}`, {
         headers: { Origin: 'https://worldmonitor.app' },
@@ -153,6 +174,7 @@ describe('gateway CDN origin policy', () => {
     });
 
     it(`keeps the public RPC response invariant when credentials are attached: ${path}`, async () => {
+      allowRateAdmission();
       const handler = createHandler();
       const res = await handler(new Request(`https://worldmonitor.app${path}`, {
         headers: {
@@ -175,6 +197,7 @@ describe('gateway CDN origin policy', () => {
     ['/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1', 'get-displacement-summary'],
   ] as const) {
     it(`CDN-shields the public RPC variant when the router echoes ?rpc=: ${path}`, async () => {
+      allowRateAdmission();
       const handler = createHandler();
       const res = await handler(new Request(`https://worldmonitor.app${path}&rpc=${rpc}`, {
         headers: { Origin: 'https://worldmonitor.app' },
@@ -219,7 +242,7 @@ describe('gateway CDN origin policy', () => {
     const handler = createHandler({
       publicRouteBody: { events: [], fetchedAt: 0, dataAvailable: false },
     });
-    const res = await handler(new Request('https://worldmonitor.app/api/conflict/v1/list-acled-events?_debug=1', {
+    const res = await handler(new Request('https://worldmonitor.app/api/intelligence/v1/get-china-decision-signals?_debug=1', {
       headers: { Origin: origin },
     }));
     const body = await res.json();
@@ -236,7 +259,7 @@ describe('gateway CDN origin policy', () => {
     const handler = createHandler({
       handlerCdnCacheHeader: 'public, s-maxage=9999, stale-while-revalidate=9999',
     });
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
       headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': sessionToken },
     }));
 
@@ -246,7 +269,7 @@ describe('gateway CDN origin policy', () => {
 
   it('still blocks disallowed origins before route handling', async () => {
     const handler = createHandler();
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
       headers: { Origin: 'https://evil.example.com' },
     }));
     assert.equal(res.status, 403);
@@ -279,7 +302,7 @@ describe('gateway CDN origin policy', () => {
 
   it('fails closed before unknown wm_ validation when the pre-auth limiter is unavailable', async () => {
     const handler = createHandler();
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-crypto-quotes?ids=bitcoin', {
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-gulf-quotes', {
       headers: {
         Origin: 'https://worldmonitor.app',
         'X-WorldMonitor-Key': 'wm_revoked_or_unknown_key',

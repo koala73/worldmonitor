@@ -10,7 +10,8 @@
  *
  *   pushBatchAction → _resumeBatchInfo (lease guard) → _getPendingBatch
  *                   → upsertContactToSegment (Resend, with 429/5xx backoff)
- *                   → _markContactPushed | _markContactFailed (per-row CAS)
+ *                   → _markContactPushed | _markContactFailed |
+ *                     _markContactSuppressed (per-row CAS)
  *                   → schedule next pushBatchAction OR finalizeWaveAction
  *
  *   finalizeWaveAction → createProLaunchBroadcast → _markBroadcastCreated
@@ -80,8 +81,9 @@ const PERSIST_CHUNK_SIZE = 500;
 const CLEANUP_CHUNK_SIZE = 500;
 
 /** Rolling failure-rate ceiling. If a `pushBatchAction` brings
- *  `failedCount/totalCount` above this fraction, the whole run flips to
- *  `failed/batch-failure-rate-exceeded` — operator must `discardWaveRun`. */
+ *  `failedCount/(totalCount-suppressedCount)` above this fraction, the whole
+ *  run flips to `failed/batch-failure-rate-exceeded` — operator must
+ *  `discardWaveRun`. */
 const FAILURE_RATE_THRESHOLD = 0.05;
 
 /** Resend backoff schedule (ms) for 429/5xx. The loop runs for
@@ -102,8 +104,8 @@ const REGISTRATIONS_PAGE_SIZE = 1000;
  *
  *  Below this threshold, pickWaveAction treats the run as terminal —
  *  marks `failed/pool-too-small`, deactivates the ramp, and clears the
- *  lease. The waitlist is effectively drained; operator must extend the
- *  curve OR restart the ramp manually if more contacts are wanted. */
+ *  lease. Resume only when at least 100 eligible contacts are available
+ *  and the requested count is at least 100. Direct calls use this guard too. */
 const MIN_USABLE_POOL_SIZE = 100;
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -117,6 +119,19 @@ function maskEmail(email: string): string {
   const domain = email.slice(at);
   const visible = local.slice(0, Math.min(2, local.length));
   return `${visible}${"*".repeat(Math.max(1, local.length - visible.length))}${domain}`;
+}
+
+function getFailureRate(
+  totalCount: number,
+  failedCount: number,
+  suppressedCount: number,
+): number {
+  const eligibleCount = Math.max(0, totalCount - suppressedCount);
+  return eligibleCount > 0 ? failedCount / eligibleCount : 0;
+}
+
+function failureRateThresholdError(failureRate: number): string {
+  return `failure rate ${(failureRate * 100).toFixed(2)}% exceeds ${(FAILURE_RATE_THRESHOLD * 100).toFixed(0)}% threshold`;
 }
 
 class Reservoir<T> {
@@ -542,6 +557,7 @@ export const _claimWaveRunLease = internalMutation({
       underfilled: false,
       pushedCount: 0,
       failedCount: 0,
+      suppressedCount: 0,
       batchSize: args.batchSize,
       createdAt: now,
       updatedAt: now,
@@ -650,7 +666,7 @@ export const _markPickFailed = internalMutation({
 
     // Terminal-completion substatuses: clear the lease AND deactivate the
     // ramp. Both 'empty-pool' (zero picked) and 'pool-too-small' (picked
-    // below MIN_USABLE_POOL_SIZE) mean the waitlist is drained — without
+    // below MIN_USABLE_POOL_SIZE) cannot produce a usable wave — without
     // deactivating, the next cron tick would re-fire pickWaveAction and
     // hit the same condition repeatedly. For 'pool-too-small' specifically,
     // the alternative — let the wave proceed with say 50 contacts — would
@@ -697,7 +713,7 @@ export const pickWaveAction = internalAction({
     if (!apiKey) {
       throw new Error("[pickWaveAction] RESEND_API_KEY not set");
     }
-    if (!Number.isFinite(args.requestedCount) || args.requestedCount <= 0) {
+    if (!Number.isInteger(args.requestedCount) || args.requestedCount <= 0) {
       throw new Error(
         `[pickWaveAction] requestedCount must be a positive integer; got ${args.requestedCount}`,
       );
@@ -832,11 +848,9 @@ export const pickWaveAction = internalAction({
       // Pool-too-small guard. picked.length < MIN_USABLE_POOL_SIZE means
       // the wave's delivered count will never reach the kill-gate threshold,
       // so the next cron tick would get stuck on `awaiting-prior-stats`
-      // forever. Treat as terminal completion: deactivate the ramp + clear
-      // the lease, surface for operator triage. Operator can re-activate
-      // and extend `rampCurve` if more sends are wanted, OR run a final
-      // wave manually via direct `pickWaveAction` call (which bypasses this
-      // guard since the operator is taking deliberate action).
+      // forever. Deactivate the ramp and clear the lease. Resume only when
+      // both the eligible pool and requested count meet the minimum;
+      // direct operator calls enforce the same guard.
       if (picked.length < MIN_USABLE_POOL_SIZE) {
         await ctx.runMutation(internal.broadcast.waveRuns._markPickFailed, {
           runId: args.runId,
@@ -844,7 +858,8 @@ export const pickWaveAction = internalAction({
           error:
             `picked ${picked.length} contacts (< MIN_USABLE_POOL_SIZE=${MIN_USABLE_POOL_SIZE}); ` +
             `ramp deactivated to avoid stranding the next cron tick on awaiting-prior-stats. ` +
-            `Operator: extend rampCurve + resumeRamp if more sends desired, or run a final wave manually.`,
+            `Operator: resume only with at least ${MIN_USABLE_POOL_SIZE} eligible contacts and ` +
+            `requestedCount >= ${MIN_USABLE_POOL_SIZE} (set the ramp tier accordingly). Direct calls use the same minimum.`,
         });
         return { ok: false, reason: "pool-too-small" };
       }
@@ -945,6 +960,7 @@ export const _resumeBatchInfo = internalQuery({
         totalCount: run.totalCount,
         pushedCount: run.pushedCount,
         failedCount: run.failedCount,
+        suppressedCount: run.suppressedCount ?? 0,
         batchSize: run.batchSize,
         broadcastId: run.broadcastId,
       },
@@ -1022,8 +1038,15 @@ export const _markContactPushed = internalMutation({
       contact.status !== "pending" ||
       contact.normalizedEmail !== normalizedEmail
     ) {
-      // CAS: no-op if already-pushed/failed, runId mismatch, or row deleted.
+      // CAS: no-op if already-pushed/failed/suppressed, runId mismatch, or row deleted.
       return { ok: false as const, reason: "not-pending" as const };
+    }
+    const run = await ctx.db
+      .query("waveRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", runId))
+      .unique();
+    if (!run || (run.status !== "pushing" && run.status !== "segment-created")) {
+      return { ok: false as const, reason: "run-not-pushing" as const };
     }
     const now = Date.now();
     await ctx.db.patch(contact._id, { status: "pushed", pushedAt: now });
@@ -1039,7 +1062,8 @@ export const _markContactPushed = internalMutation({
     let stampResult: "stamped" | "alreadyStamped" | "notFound";
     if (!reg) {
       stampResult = "notFound";
-    } else if (reg.proLaunchWave === waveLabel) {
+    } else if (reg.proLaunchWave !== undefined) {
+      // A late worker must preserve ownership and the original assignment time.
       stampResult = "alreadyStamped";
     } else {
       await ctx.db.patch(reg._id, {
@@ -1050,17 +1074,11 @@ export const _markContactPushed = internalMutation({
     }
 
     // Bump waveRuns.pushedCount + lastBatchAt atomically with the row patch.
-    const run = await ctx.db
-      .query("waveRuns")
-      .withIndex("by_runId", (q) => q.eq("runId", runId))
-      .unique();
-    if (run) {
-      await ctx.db.patch(run._id, {
-        pushedCount: run.pushedCount + 1,
-        lastBatchAt: now,
-        updatedAt: now,
-      });
-    }
+    await ctx.db.patch(run._id, {
+      pushedCount: run.pushedCount + 1,
+      lastBatchAt: now,
+      updatedAt: now,
+    });
     return { ok: true as const, stampResult };
   },
 });
@@ -1105,7 +1123,11 @@ export const _markContactFailed = internalMutation({
     if (!run) return { ok: true as const, runFailed: false as const };
 
     const newFailedCount = run.failedCount + 1;
-    const failureRate = run.totalCount > 0 ? newFailedCount / run.totalCount : 0;
+    const failureRate = getFailureRate(
+      run.totalCount,
+      newFailedCount,
+      run.suppressedCount ?? 0,
+    );
     const exceeded = failureRate > FAILURE_RATE_THRESHOLD;
     await ctx.db.patch(run._id, {
       failedCount: newFailedCount,
@@ -1115,7 +1137,65 @@ export const _markContactFailed = internalMutation({
         ? {
             status: "failed" as const,
             failureSubstatus: "batch-failure-rate-exceeded",
-            error: `failure rate ${(failureRate * 100).toFixed(2)}% exceeds ${(FAILURE_RATE_THRESHOLD * 100).toFixed(0)}% threshold`,
+            error: failureRateThresholdError(failureRate),
+          }
+        : {}),
+    });
+    return { ok: true as const, runFailed: exceeded };
+  },
+});
+
+/**
+ * Mark a contact that Resend reports as globally unsubscribed. This is a
+ * terminal row state, but it is not an exporter failure and must not count
+ * toward the wave failure-rate threshold. Because it changes that threshold's
+ * denominator, the mutation re-evaluates the rolling rate atomically.
+ */
+export const _markContactSuppressed = internalMutation({
+  args: {
+    contactId: v.id("wavePickedContacts"),
+    runId: v.string(),
+    normalizedEmail: v.string(),
+  },
+  handler: async (ctx, { contactId, runId, normalizedEmail }) => {
+    const contact = await ctx.db.get(contactId);
+    if (
+      !contact ||
+      contact.runId !== runId ||
+      contact.status !== "pending" ||
+      contact.normalizedEmail !== normalizedEmail
+    ) {
+      return { ok: false as const, reason: "not-pending" as const };
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(contact._id, {
+      status: "suppressed",
+      suppressedAt: now,
+    });
+
+    const run = await ctx.db
+      .query("waveRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", runId))
+      .unique();
+    if (!run) return { ok: true as const, runFailed: false as const };
+
+    const newSuppressedCount = (run.suppressedCount ?? 0) + 1;
+    const failureRate = getFailureRate(
+      run.totalCount,
+      run.failedCount,
+      newSuppressedCount,
+    );
+    const exceeded = failureRate > FAILURE_RATE_THRESHOLD;
+    await ctx.db.patch(run._id, {
+      suppressedCount: newSuppressedCount,
+      lastBatchAt: now,
+      updatedAt: now,
+      ...(exceeded
+        ? {
+            status: "failed" as const,
+            failureSubstatus: "batch-failure-rate-exceeded",
+            error: failureRateThresholdError(failureRate),
           }
         : {}),
     });
@@ -1187,6 +1267,29 @@ export const pushBatchAction = internalAction({
     let runFailed = false;
     for (const contact of batch) {
       const result = await pushWithBackoff(apiKey, contact.normalizedEmail, info.run.segmentId);
+      if (result.kind === "unsubscribed") {
+        await ctx.runMutation(internal.emailSuppressions.suppress, {
+          email: contact.normalizedEmail,
+          reason: "unsubscribe",
+          source: "resend-contact-read",
+        });
+        const suppressResult = await ctx.runMutation(
+          internal.broadcast.waveRuns._markContactSuppressed,
+          {
+            contactId: contact._id,
+            runId,
+            normalizedEmail: contact.normalizedEmail,
+          },
+        );
+        if (suppressResult.ok && suppressResult.runFailed) {
+          runFailed = true;
+          console.error(
+            `[pushBatchAction] runId=${runId} batch=${batchN} failure-rate threshold tripped`,
+          );
+          break;
+        }
+        continue;
+      }
       if (result.kind === "failed") {
         const failResult = await ctx.runMutation(
           internal.broadcast.waveRuns._markContactFailed,
@@ -1469,6 +1572,32 @@ export const _finalizeWaveRun = internalMutation({
   },
 });
 
+/** Stop an unsent, drained wave that cannot satisfy the next delivery gate. */
+export const _stopUndersizedWave = internalMutation({
+  args: { runId: v.string() },
+  handler: async (ctx, { runId }) => {
+    const run = await ctx.db.query("waveRuns").withIndex("by_runId", q => q.eq("runId", runId)).unique();
+    const config = await ctx.db.query("broadcastRampConfig").withIndex("by_key", q => q.eq("key", "current")).unique();
+    if (!run || config?.pendingRunId !== runId || run.broadcastId ||
+        (run.status !== "pushing" && run.status !== "segment-created") ||
+        run.pushedCount >= MIN_USABLE_POOL_SIZE) return false;
+    const pending = await ctx.db.query("wavePickedContacts")
+      .withIndex("by_runId_status", q => q.eq("runId", runId).eq("status", "pending")).take(1);
+    if (pending.length > 0) return false;
+    const now = Date.now();
+    await ctx.db.patch(run._id, {
+      status: "failed", failureSubstatus: "pool-too-small",
+      error: `Only ${run.pushedCount} usable recipients remain; need ${MIN_USABLE_POOL_SIZE}`,
+      updatedAt: now,
+    });
+    await ctx.db.patch(config._id, {
+      active: false, pendingRunId: undefined, pendingRunStartedAt: undefined, pendingWaveLabel: undefined,
+      lastRunStatus: "ramp-complete-pool-too-small", lastRunAt: now,
+    });
+    return true;
+  },
+});
+
 export const finalizeWaveAction = internalAction({
   args: { runId: v.string() },
   handler: async (
@@ -1483,6 +1612,12 @@ export const finalizeWaveAction = internalAction({
     if (!info.configHoldsLease) return { ok: false, reason: "lost-lease" };
     if (!info.run.segmentId) {
       throw new Error(`[finalizeWaveAction] runId=${runId} missing segmentId`);
+    }
+
+    if (info.hasPending) return { ok: false, reason: "contacts-pending" };
+    if (await ctx.runMutation(internal.broadcast.waveRuns._stopUndersizedWave, { runId })) {
+      await ctx.runAction(internal.broadcast.waveRuns.cleanupDiscardedWavePickedContactsAction, { runId });
+      return { ok: false, reason: "pool-too-small" };
     }
 
     // Path 1: run is in 'pushing' (or 'segment-created' as a defensive case)
@@ -1709,12 +1844,9 @@ export const markFinalizeRecovered = internalMutation({
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
- * Soft-discard. Marks the run failed and rotates `waveLabelOffset` so the
- * NEXT wave doesn't reuse the discarded label. Does NOT physically delete
- * `wavePickedContacts` rows — the daily cleanup cron does that in chunks.
- *
- * Operator must inspect Resend dashboard separately for the segment +
- * any partially-created broadcast.
+ * Abort picking or discard a terminal pre-broadcast failure, then clean up.
+ * Push and finalize-phase runs must use their recovery path: a send may
+ * already be in flight even when its completion has not been recorded.
  */
 export const discardWaveRun = internalMutation({
   args: {
@@ -1727,6 +1859,16 @@ export const discardWaveRun = internalMutation({
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
     if (!run) throw new Error(`[discardWaveRun] no run ${runId}`);
+    // Picking can be aborted safely: _markPickComplete requires picking, so
+    // a late picker cannot advance after this transaction marks it failed.
+    const canAbortPicking = run.status === "picking" && run.broadcastId === undefined;
+    if (!canAbortPicking && !canUnstampAbandonedWave(run)) {
+      throw new Error(
+        `[discardWaveRun] cannot discard run ${runId} in status=${run.status} ` +
+        `substatus=${run.failureSubstatus ?? "<none>"}; only picking runs or terminal pre-broadcast failures can be discarded. ` +
+        `Use resumeStalledWaveRun or resumeFinalizeWaveRun; use markFinalizeRecovered when the provider confirms the broadcast was sent.`,
+      );
+    }
     const config = await ctx.db
       .query("broadcastRampConfig")
       .withIndex("by_key", (q) => q.eq("key", "current"))
@@ -1912,7 +2054,12 @@ export const _cleanupDiscardedWavePickedContacts = internalMutation({
       .query("waveRuns")
       .withIndex("by_runId", (q) => q.eq("runId", runId))
       .unique();
-    const waveLabel = run?.waveLabel;
+    // Recheck in the write transaction; callers and queued cleanup jobs may
+    // hold stale state. A recorded broadcast makes prior delivery uncertain.
+    if (!run || !canUnstampAbandonedWave(run)) {
+      return { deleted: 0, unstamped: 0, hasMore: false };
+    }
+    const waveLabel = run.waveLabel;
 
     const rows = await ctx.db
       .query("wavePickedContacts")
@@ -2050,6 +2197,17 @@ const TERMINAL_FAILURE_SUBSTATUSES = [
   "batch-failure-rate-exceeded",
 ] as const;
 
+function canUnstampAbandonedWave(run: {
+  status: string;
+  broadcastId?: string;
+  failureSubstatus?: string;
+}): boolean {
+  return run.status === "failed"
+    && run.broadcastId === undefined
+    && run.failureSubstatus !== undefined
+    && (TERMINAL_FAILURE_SUBSTATUSES as readonly string[]).includes(run.failureSubstatus);
+}
+
 /** Max failed runs to consider per cleanup cron tick. Bounded so a
  *  long-lived deployment with many discarded waves doesn't load the
  *  whole table into memory at once. The cron runs daily — at 100/day,
@@ -2065,14 +2223,7 @@ export const _listFailedWaveRunsForCleanup = internalQuery({
       .withIndex("by_status", (q) => q.eq("status", "failed"))
       .take(CLEANUP_CANDIDATES_PER_TICK);
     return failed
-      .filter(
-        (r) =>
-          r.updatedAt < cutoff &&
-          r.failureSubstatus !== undefined &&
-          (TERMINAL_FAILURE_SUBSTATUSES as readonly string[]).includes(
-            r.failureSubstatus,
-          ),
-      )
+      .filter((r) => r.updatedAt < cutoff && canUnstampAbandonedWave(r))
       .map((r) => r.runId);
   },
 });
@@ -2139,6 +2290,7 @@ export const getWaveRunStatus = internalQuery({
       totalCount: run.totalCount,
       pushedCount: run.pushedCount,
       failedCount: run.failedCount,
+      suppressedCount: run.suppressedCount ?? 0,
       underfilled: run.underfilled,
       hasPendingContacts: pending.length > 0,
       lastActivityAt: run.lastBatchAt ?? run.updatedAt,

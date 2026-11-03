@@ -93,7 +93,9 @@ describe('five-factor scorecard CRI isolation', () => {
   // the same live scorer, so a defect in the shared CRI code moves them together
   // and passes. It proves the scorecard's additions to shared seed keys do not
   // perturb CRI -- nothing more. Claims of "byte-identical CRI scores" must not
-  // lean on it; that would need a checked-in golden fixture.
+  // lean on it; the independent golden non-regression baseline lives in
+  // tests/resilience-cri-golden-baseline.test.mts (#7728), with rationale in
+  // docs/methodology/country-resilience-index/golden-baseline.md.
   it('keeps CRI country scores and ranking bytes identical when source-safe scorecard fields are added', async () => {
     const beforeBytes = await frozenCriBytes(createReader(false));
     const afterBytes = await frozenCriBytes(createReader(true));

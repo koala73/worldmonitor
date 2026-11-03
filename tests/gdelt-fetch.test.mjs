@@ -14,13 +14,14 @@ import {
   resolveGdeltProxy,
   resolveGdeltProxyRoute,
 } from '../scripts/_gdelt-fetch.mjs';
-import { curlFetch } from '../scripts/_seed-utils.mjs';
+import { curlFetch, resolveProxy } from '../scripts/_seed-utils.mjs';
 
 const URL = 'https://api.gdeltproject.org/api/v2/doc/doc?query=climate&mode=ArtList&format=json';
 const PAYLOAD = { articles: [{ url: 'https://example.com/x', title: 'foo' }] };
 const savedProxyEnv = {
   GDELT_PROXY_URL: process.env.GDELT_PROXY_URL,
   PROXY_URL: process.env.PROXY_URL,
+  PROXY_ALLOW_INSECURE_HTTP: process.env.PROXY_ALLOW_INSECURE_HTTP,
 };
 
 function setProxyEnv(values = {}) {
@@ -118,6 +119,50 @@ test('curlFetch keeps the 15-second ceiling for callers that do not override it'
   const maxTimeIndex = invocation.args.indexOf('--max-time');
   assert.equal(invocation.args[maxTimeIndex + 1], '15');
   assert.equal(invocation.options.timeout, 20_000);
+});
+
+test('curlFetch preserves proxy TLS from configuration through the curl invocation', () => {
+  for (const raw of [
+    'https://user:pass@proxy.test:8443',
+    'user:pass@proxy.test:8443',
+    'proxy.test:8443:user:pass',
+  ]) {
+    let proxyUrl;
+    curlFetch(URL, resolveProxy(raw), {}, {
+      exec: (_command, args) => {
+        proxyUrl = args[args.indexOf('-x') + 1];
+        return '{}\n200';
+      },
+    });
+    assert.equal(proxyUrl, 'https://user:pass@proxy.test:8443');
+  }
+  let proxyUrl;
+  curlFetch(URL, 'user:pass@proxy.test:8443', {}, {
+    exec: (_command, args) => {
+      proxyUrl = args[args.indexOf('-x') + 1];
+      return '{}\n200';
+    },
+  });
+  assert.equal(proxyUrl, 'https://user:pass@proxy.test:8443');
+});
+
+test('curlFetch rejects plain HTTP proxies before execution unless explicitly allowed', () => {
+  const proxy = resolveProxy('http://user:pass@proxy.test:8080');
+  assert.equal(proxy, 'http://user:pass@proxy.test:8080');
+  let calls = 0;
+  const exec = (_command, args) => {
+    calls += 1;
+    assert.equal(args[args.indexOf('-x') + 1], proxy);
+    return '{}\n200';
+  };
+  for (const value of ['', '0', 'true']) {
+    process.env.PROXY_ALLOW_INSECURE_HTTP = value;
+    assert.throws(() => curlFetch(URL, proxy, {}, { exec }), /PROXY_ALLOW_INSECURE_HTTP=1/);
+  }
+  assert.equal(calls, 0);
+  process.env.PROXY_ALLOW_INSECURE_HTTP = '1';
+  assert.equal(curlFetch(URL, proxy, {}, { exec }), '{}');
+  assert.equal(calls, 1);
 });
 
 test('PROXY_URL remains the compatibility route when GDELT_PROXY_URL is absent', async () => {

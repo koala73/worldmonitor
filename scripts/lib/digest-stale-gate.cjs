@@ -1,5 +1,7 @@
 'use strict';
 
+const { gateRelayStoryLink } = require('./publisher-link-relay-gate.cjs');
+
 // #7084: should the relay's digest-derived candidates participate in this
 // classification pass?
 //
@@ -18,7 +20,28 @@ function isStaleDigestReplay(digest) {
   return digest?.coverage?.servedStale === true;
 }
 
-function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs) {
+// #8398: the relay needs the publisher FAMILY of a digest item to gate its
+// link, but the digest response carries only the feed label
+// (`item.source`). The curated label->family map is ESM-only
+// (shared/publisher-families.js), unreachable from this CJS module — so the
+// gate resolves the label itself through publisher-link-relay-gate.cjs,
+// which mirrors that table (sync-guarded by test). When no resolver is
+// provided the gate fails closed (blank link).
+function candidateLinkFor(item, resolveFamily) {
+  const link = typeof item?.link === 'string' ? item.link : '';
+  if (!link) return '';
+  const source = typeof item?.source === 'string' ? item.source : '';
+  let family = '';
+  try {
+    family = typeof resolveFamily === 'function' ? resolveFamily(source) : source;
+  } catch {
+    family = '';
+  }
+  if (typeof family !== 'string' || family.length === 0) return '';
+  return gateRelayStoryLink(link, family);
+}
+
+function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs, resolveFamily) {
   const candidates = new Map();
   const oldestAllowedAt = now - recencyMs;
 
@@ -32,7 +55,10 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs)
             source: item.source ?? variant,
             publishedAt: item.publishedAt ?? now,
             corroborationCount: item.corroborationCount ?? 1,
-            link: item.link ?? '',
+            // #8398: relay-emitted rss_alert events must not carry a link
+            // outside the item's registered publisher set. The gate blanks
+            // hostile links; the title still classifies and alerts.
+            link: candidateLinkFor(item, resolveFamily),
           });
         }
       }
@@ -53,4 +79,4 @@ function buildClassifyCandidateMap(digest, xCandidates, variant, now, recencyMs)
   return candidates;
 }
 
-module.exports = { buildClassifyCandidateMap, isStaleDigestReplay };
+module.exports = { buildClassifyCandidateMap, isStaleDigestReplay, candidateLinkFor };

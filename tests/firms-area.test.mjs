@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { describe, it } from 'node:test';
+import { beforeEach, describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import {
   hasCompleteWorldwideWildfireCoverage,
@@ -34,6 +34,86 @@ function captureLogger() {
 }
 
 describe('NASA FIRMS Area API sequence', () => {
+  beforeEach((t) => t.mock.method(Date, 'now', () => Date.parse('2026-09-04T12:00:00Z')));
+  it('emits bounded correlated transport attempts without leaking error details', async (t) => {
+    let clock = 20;
+    t.mock.method(performance, 'now', () => clock);
+    const { logger, messages } = captureLogger();
+    const cause = new AggregateError([
+      { code: 'ETIMEDOUT', syscall: 'connect', family: 4, address: '192.0.2.1' },
+      { code: 'ENETUNREACH', syscall: 'connect', family: 'IPv6', address: '2001:db8::1' },
+      { code: 'PRIVATE_KEY', syscall: 'secret', family: 'secret' },
+    ], 'private-map-key');
+    cause.cause = cause;
+    await assert.rejects(fetchFirmsRegionSource('private-map-key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+      fetchFn: async () => { clock += 15; throw new TypeError('private-map-key', { cause }); },
+      sleepFn: async () => { clock += 6_000; },
+      logger,
+      diagnosticContext: { runId: '1793534400000-abcdef', deploymentId: 'f212391f-97a5-4009-914f-a1f3eb9525c1', commitSha: 'a'.repeat(40) },
+    }));
+    const events = messages.log.map(JSON.parse);
+    assert.equal(events.length, 2);
+    for (const [index, event] of events.entries()) {
+      assert.equal(event.event, 'firms_attempt_failure');
+      assert.equal(event.runId, '1793534400000-abcdef');
+      assert.equal(event.attempt, index + 1);
+      assert.equal(event.durationMs, 15);
+      assert.equal(event.phase, 'request');
+      assert.equal(event.httpStatus, null);
+      assert.equal(event.timeout, false);
+      assert.deepEqual(event.transport, [
+        { code: 'ETIMEDOUT', syscall: 'connect', family: 4 },
+        { code: 'ENETUNREACH', syscall: 'connect', family: 6 },
+      ]);
+    }
+    assert.doesNotMatch(JSON.stringify(messages), /private-map-key|PRIVATE_KEY|192\.0\.2|2001:db8|secret/);
+  });
+
+  it('caps transport output and traversal, and reports body failures and HTTP status', async () => {
+    const deep = Array.from({ length: 20 }, () => ({}));
+    deep.forEach((value, index) => { value.cause = deep[index + 1]; });
+    deep.at(-1).code = 'EPIPE';
+    for (const failure of [deep[0], new AggregateError(Array.from({ length: 50 }, () => ({ code: 'ECONNRESET', syscall: 'read', family: 4 })))]) {
+      const { logger, messages } = captureLogger();
+      await assert.rejects(fetchFirmsRegionSource('key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+        fetchFn: async () => ({ ok: true, status: 200, text: async () => { throw failure; } }),
+        sleepFn: async () => {}, logger,
+      }));
+      const events = messages.log.map(JSON.parse);
+      assert.equal(events.length, 2);
+      assert.ok(events.every(event => event.phase === 'body' && event.transport.length <= 8));
+      assert.ok(events.every(event => event.httpStatus === 200));
+      assert.ok(events.every(event => !event.transport.some(entry => entry.code === 'EPIPE')));
+      if (failure === deep[0]) assert.equal(events[0].transport.length, 0);
+      else assert.ok(events[0].transport.length > 0);
+    }
+    const { logger, messages } = captureLogger();
+    await assert.rejects(fetchFirmsRegionSource('key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+      fetchFn: async () => response(403), logger,
+    }));
+    const [event] = messages.log.map(JSON.parse);
+    assert.equal(event.httpStatus, 403);
+    assert.deepEqual(event.transport, []);
+  });
+
+  it('keeps retry and timeout behavior when the diagnostic logger fails', async () => {
+    let attempts = 0;
+    const { logger, messages } = captureLogger();
+    logger.log = (message) => {
+      messages.log.push(message);
+      throw new Error('logger unavailable');
+    };
+    const result = await fetchFirmsRegionSource('key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+      fetchFn: async () => {
+        if (++attempts === 1) throw new DOMException('private-key', 'TimeoutError');
+        return response(200);
+      },
+      sleepFn: async () => {}, logger,
+    });
+    assert.equal(attempts, 2);
+    assert.deepEqual(result, []);
+    assert.equal(JSON.parse(messages.log[0]).timeout, true);
+  });
   it('recovers complete coverage with one paced retry on the primary host', async () => {
     const urls = [];
     const sleeps = [];
@@ -160,6 +240,94 @@ describe('NASA FIRMS Area API sequence', () => {
     }
   });
 
+  it('classifies nested request failures without exposing arbitrary error fields', async () => {
+    const secret = 'private-map-key';
+    const detail = `https://provider.invalid/${secret} address=192.0.2.1`;
+    const reset = Object.assign(new Error(detail), { code: 'ECONNRESET' });
+    const unknown = Object.assign(new Error(detail), { code: 'PRIVATE_MAP_KEY' });
+    const dns = Object.assign(new Error(detail), { code: 'EAI_AGAIN' });
+    const beyondLimit = Object.assign(new Error(detail), { code: 'EPIPE' });
+    const aggregate = new AggregateError([reset, unknown, reset, dns, null, null, null, null, beyondLimit], detail);
+    aggregate.cause = aggregate;
+    const failure = new TypeError(detail, { cause: aggregate });
+    const { logger, messages } = captureLogger();
+    const sleeps = [];
+    let attempts = 0;
+    await assert.rejects(fetchFirmsRegionSource(secret, 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+      fetchFn: async () => { attempts++; throw failure; },
+      sleepFn: async (ms) => sleeps.push(ms),
+      logger,
+    }), (error) => {
+      assert.equal(error.message, 'FIRMS VIIRS_SNPP_NRT/Ukraine failed (primary request error [ECONNRESET, EAI_AGAIN], primary retry request error [ECONNRESET, EAI_AGAIN])');
+      assert.doesNotMatch(JSON.stringify([error.message, messages]), /private-map-key|PRIVATE_MAP_KEY|provider|192\.0\.2\.1|TypeError/);
+      return true;
+    });
+    assert.equal(attempts, 2);
+    assert.deepEqual(sleeps, [6_000]);
+    assert.equal(messages.warn[0], '  [FIRMS] VIIRS_SNPP_NRT/Ukraine: primary request error [ECONNRESET, EAI_AGAIN]; trying primary retry');
+  });
+
+  it('distinguishes a failed response body from a failed request', async () => {
+    const { logger, messages } = captureLogger();
+    let attempts = 0;
+    const rows = await fetchFirmsRegionSource('private-map-key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+      fetchFn: async () => {
+        attempts++;
+        if (attempts === 2) return response(200);
+        return { ok: true, text: async () => { throw new TypeError('private-map-key', {
+          cause: Object.assign(new Error('private body'), { code: 'UND_ERR_SOCKET' }),
+        }); } };
+      },
+      sleepFn: async () => {},
+      logger,
+    });
+    assert.deepEqual(rows, []);
+    assert.equal(attempts, 2);
+    assert.equal(messages.warn[0], '  [FIRMS] VIIRS_SNPP_NRT/Ukraine: primary body error [UND_ERR_SOCKET]; trying primary retry');
+    assert.doesNotMatch(JSON.stringify(messages), /private/);
+  });
+
+  it('preserves allowlisted DNS, connect-timeout and TLS codes in terminal coverage diagnostics', async () => {
+    for (const code of ['EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'ERR_TLS_CERT_ALTNAME_INVALID']) {
+      const { logger, messages } = captureLogger();
+      const failedPath = `/${FIRMS_SOURCES[0]}/${MONITORED_REGIONS.Ukraine}/`;
+      const result = await fetchAllFirmsRegions('private-map-key', {
+        fetchFn: async (url) => {
+          if (new URL(url).pathname.includes(failedPath)) {
+            throw new TypeError(`private-map-key ${url}`, { cause: { code } });
+          }
+          return response(200);
+        },
+        sleepFn: async () => {},
+        logger,
+      });
+      assert.equal(result._firmsFulfilledCalls, 26);
+      assert.equal(result._firmsFailedCalls, 1);
+      assert.equal(messages.error[0], `  [FIRMS] VIIRS_SNPP_NRT/Ukraine: FIRMS VIIRS_SNPP_NRT/Ukraine failed (primary request error [${code}], primary retry request error [${code}])`);
+      assert.doesNotMatch(JSON.stringify(messages), /private-map-key|https:/);
+    }
+  });
+
+  it('bounds diagnostic traversal and preserves unknown-error redaction', async () => {
+    const cycle = { code: 'PRIVATE_MAP_KEY', message: 'private-map-key' };
+    cycle.cause = cycle;
+    const deep = Array.from({ length: 20 }, () => new Error('private-map-key'));
+    deep.forEach((error, index) => { error.cause = deep[index + 1]; });
+    deep.at(-1).code = 'ECONNRESET';
+    for (const failure of [cycle, deep[0], null, 'private-map-key']) {
+      const { logger, messages } = captureLogger();
+      await assert.rejects(fetchFirmsRegionSource('private-map-key', 'Ukraine', MONITORED_REGIONS.Ukraine, FIRMS_SOURCES[0], {
+        fetchFn: async () => { throw failure; },
+        sleepFn: async () => {},
+        logger,
+      }), (error) => {
+        assert.equal(error.message, 'FIRMS VIIRS_SNPP_NRT/Ukraine failed (primary request error, primary retry request error)');
+        assert.doesNotMatch(JSON.stringify(messages), /private|PRIVATE/);
+        return true;
+      });
+    }
+  });
+
   it('keeps the source-major 27-call worldwide sequence and six-second cadence', async () => {
     const urls = [];
     const sleeps = [];
@@ -197,7 +365,7 @@ describe('NASA FIRMS Area API sequence', () => {
     assert.deepEqual(
       requestPaths.slice(0, 9),
       Object.values(MONITORED_REGIONS).map(
-        (bbox) => `/api/area/csv/test-map-key/${FIRMS_SOURCES[0]}/${bbox}/1`,
+        (bbox) => `/api/area/csv/test-map-key/${FIRMS_SOURCES[0]}/${bbox}/2`,
       ),
     );
     assert.match(requestPaths[9], new RegExp(`/${FIRMS_SOURCES[1]}/`));
@@ -225,5 +393,56 @@ describe('NASA FIRMS Area API sequence', () => {
       /VIIRS_SNPP_NRT\/Ukraine failed \(primary HTTP 500, primary retry HTTP 500\)/,
     );
     assert.doesNotMatch(messages.error[0], /test-map-key/);
+  });
+});
+
+describe('NASA FIRMS rolling observation window', () => {
+  const csv = readFileSync(new URL('./fixtures/wildfire/firms-ukraine-2026-09-06.csv', import.meta.url), 'utf8');
+  const header = `${csv.split('\n')[0]}\n`;
+
+  for (const [at, count] of [
+    ['2026-09-07T00:00:00Z', 4],
+    ['2026-09-07T02:41:00Z', 2],
+    ['2026-09-07T23:44:00Z', 1],
+    ['2026-09-07T23:44:00.001Z', 0],
+    ['2026-09-06T12:00:00Z', 3],
+  ]) {
+    it(`keeps only the rolling 24-hour observations at ${at}`, async (t) => {
+      const now = Date.parse(at);
+      t.mock.method(Date, 'now', () => now);
+      const urls = [];
+      const { logger } = captureLogger();
+      const result = await fetchAllFirmsRegions('test-map-key', {
+        fetchFn: async (url) => {
+          urls.push(url);
+          return response(200, url.includes('/VIIRS_SNPP_NRT/22,44,40,53/2') ? csv : header);
+        },
+        sleepFn: async () => {},
+        logger,
+      });
+      assert.equal(result.fireDetections.length, count);
+      assert.equal(result._firmsFulfilledCalls, 27);
+      assert.equal(result._firmsFailedCalls, 0);
+      assert.equal(urls.length, 27);
+      assert.ok(result.fireDetections.every(({ detectedAt }) => detectedAt <= now && detectedAt >= now - 86_400_000));
+      if (at === '2026-09-07T02:41:00Z') {
+        assert.deepEqual(result.fireDetections.map(({ detectedAt }) => detectedAt), [
+          Date.parse('2026-09-06T11:30:00Z'), Date.parse('2026-09-06T23:44:00Z'),
+        ]);
+      }
+    });
+  }
+
+  it('does not publish undatable satellite observations', async (t) => {
+    t.mock.method(Date, 'now', () => Date.parse('2026-09-07T02:41:00Z'));
+    const { logger } = captureLogger();
+    const result = await fetchAllFirmsRegions('test-map-key', {
+      fetchFn: async () => response(200, csv.replaceAll('2026-09-06', 'invalid-date')),
+      sleepFn: async () => {},
+      logger,
+    });
+    assert.deepEqual(result.fireDetections, []);
+    assert.equal(result._firmsFulfilledCalls, 27);
+    assert.equal(result._firmsFailedCalls, 0);
   });
 });

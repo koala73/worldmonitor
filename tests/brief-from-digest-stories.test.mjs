@@ -1905,16 +1905,9 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
   // ── Error path companion: missing-clusterId on digest side throws clearly ──
 
   it('error path: digest story with no mergedHashes, hash, or sourceUrl throws a clear diagnostic', () => {
-    // Defends against a producer regression: if a future buildDigest variant
-    // omits `hash` from the per-story shape AND there's no mergedHashes
-    // AND no sourceUrl, projectDigestEmitClusterId throws BEFORE the subset
-    // check runs — the consequence is otherwise a `Set([undefined])`
-    // membership glitch that would fail the subset check with a confusing
-    // "undefined not in set" message rather than naming the producer
-    // regression. (Note: we use `link` not `sourceUrl` here to keep the
-    // story shape clearly absent of all three sources; a future digest
-    // story carrying `sourceUrl` would correctly fall through to the
-    // level-3 url-fallback covered below.)
+    // This expected-side oracle does not execute the live digest producer.
+    // It verifies that a producer-shaped fixture with no cluster identifier
+    // fails before the subset check with a clear diagnostic.
     assert.throws(
       () => projectDigestEmitClusterId({ title: 'no hash here', link: 'https://example.com/x' }),
       /cannot derive clusterId/,

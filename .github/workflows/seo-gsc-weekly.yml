@@ -1,0 +1,233 @@
+name: Weekly Search Console Snapshot
+
+# Collects the weekly Search Console snapshot (#8606) and opens or updates a
+# review PR with it. The snapshot answers which URLs Google declined and why,
+# and which families earn impressions per indexed page. The same PR carries
+# the Bing Webmaster snapshot (#10024) when BING_WEBMASTER_API_KEY is set, and
+# the Umami referral snapshot when UMAMI_API_USERNAME and UMAMI_API_PASSWORD are.
+# Last, it regenerates the AI-visibility baseline and scorecard from whichever
+# snapshots this run wrote, so no export is supplied by hand.
+#
+# Gated on the credential. Until the owner creates the service account and adds
+# GSC_SERVICE_ACCOUNT_JSON plus GSC_PROPERTY, the guard job reports that the run
+# was skipped and the collect job never starts. A missing secret is a pending
+# prerequisite, not a failure, so this workflow stays green in the meantime.
+#
+# It never merges. It opens the PR and reports it as ready; a human merges.
+
+on:
+  schedule:
+    - cron: '17 5 * * 2'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: seo-gsc-weekly
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Check for the Search Console credential
+        id: check
+        env:
+          # Secrets cannot be read from a job-level condition, so the gate is a
+          # step that publishes a plain output the collect job depends on.
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_PROPERTY: ${{ secrets.GSC_PROPERTY }}
+        run: |
+          if [ -z "${GSC_SERVICE_ACCOUNT_JSON:-}" ] || [ -z "${GSC_PROPERTY:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping: GSC_SERVICE_ACCOUNT_JSON and GSC_PROPERTY are not both configured. See issue 8606 for the owner prerequisites."
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+  collect:
+    needs: guard
+    # Only this job pushes the weekly branch and opens its PR.
+    permissions:
+      contents: write
+      pull-requests: write
+    if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      branch: ${{ steps.reconcile.outputs.branch }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          # A workflow_dispatch can target a feature branch; publication always
+          # branches from main so the review PR stays free of unrelated commits.
+          ref: refs/heads/main
+      - name: Reconcile the weekly review branch
+        id: reconcile
+        env:
+          # Prefer a user or app token when one is configured. A PR opened with
+          # github.token needs the repository setting that lets Actions create
+          # pull requests, and it triggers no CI, which the required checks on
+          # main then block. With REVIEW_PR_TOKEN unset this falls back to
+          # github.token.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+        run: |
+          # ISO year-week keys the branch, so a rerun in the same week updates
+          # that week rather than opening a second PR.
+          period=$(date -u +%G-W%V)
+          branch="automation/seo-gsc-${period}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          # Only an open or merged PR means this week is done. A closed one was
+          # rejected, so the week is collected again.
+          existing_pr=$(gh pr list --state all --head "$branch" --json number,state \
+            --jq '[.[] | select(.state != "CLOSED")][0].number // empty')
+          if [ -n "$existing_pr" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Search Console PR ${existing_pr} already exists for ${period}."
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.reconcile.outputs.skip != 'true'
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        if: steps.reconcile.outputs.skip != 'true'
+        run: npm ci --ignore-scripts
+      - name: Collect the snapshot
+        id: collect
+        if: steps.reconcile.outputs.skip != 'true'
+        env:
+          # The collector reads these through loadEnvFile, which falls through
+          # to process.env, and never prints either value. The snapshot writer
+          # refuses to emit a file containing the property identifier.
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_PROPERTY: ${{ secrets.GSC_PROPERTY }}
+        run: node scripts/seo-gsc-collect.mjs --live
+      - name: Collect the Bing Webmaster snapshot
+        id: bing
+        if: steps.collect.outcome == 'success'
+        # Bing is a second source in the same PR, not a gate on it: a missing
+        # key skips this step and a Bing failure leaves the Search Console
+        # snapshot to ship on its own.
+        continue-on-error: true
+        env:
+          BING_WEBMASTER_API_KEY: ${{ secrets.BING_WEBMASTER_API_KEY }}
+        run: |
+          if [ -z "${BING_WEBMASTER_API_KEY:-}" ]; then
+            echo "::notice::Skipping Bing: BING_WEBMASTER_API_KEY is not configured. See issue 10024."
+            exit 0
+          fi
+          node scripts/seo-bing-collect.mjs --live
+      - name: Collect the Umami referral snapshot
+        id: umami
+        if: steps.collect.outcome == 'success'
+        # Optional and non-blocking, like Bing. The self-hosted instance takes
+        # one to two minutes per 28-day query, so this step has its own bound.
+        continue-on-error: true
+        timeout-minutes: 25
+        env:
+          UMAMI_API_USERNAME: ${{ secrets.UMAMI_API_USERNAME }}
+          UMAMI_API_PASSWORD: ${{ secrets.UMAMI_API_PASSWORD }}
+        run: |
+          if [ -z "${UMAMI_API_USERNAME:-}" ] || [ -z "${UMAMI_API_PASSWORD:-}" ]; then
+            echo "::notice::Skipping Umami: UMAMI_API_USERNAME and UMAMI_API_PASSWORD are not both configured. See issue 10024."
+            exit 0
+          fi
+          node scripts/seo-umami-collect.mjs --live
+      - name: Regenerate the AI-visibility baseline and scorecard
+        id: baseline
+        if: steps.collect.outcome == 'success'
+        # Derived from the snapshots above, so it needs no credential. A failure
+        # writes neither file and leaves the snapshots to ship on their own.
+        continue-on-error: true
+        run: node scripts/seo-weekly-baseline.mjs --date "$(date -u +%F)"
+      - name: Verify the snapshot contract
+        if: steps.collect.outcome == 'success'
+        run: |
+          node --import tsx --test --test-concurrency=1 \
+            tests/seo-gsc-collector.test.mjs \
+            tests/seo-bing-collector.test.mjs \
+            tests/seo-umami-collector.test.mjs \
+            tests/seo-url-taxonomy.test.mjs \
+            tests/seo-weekly-baseline.test.mjs
+      - name: Open the weekly snapshot PR
+        if: steps.collect.outcome == 'success'
+        env:
+          # Same preference as the reconcile step, for the same reasons.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BING_OUTCOME: ${{ steps.bing.outcome }}
+          UMAMI_OUTCOME: ${{ steps.umami.outcome }}
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+        run: |
+          snapshot_date=$(date -u +%F)
+          git switch -c "$BRANCH_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # An optional source that skipped or failed writes no directory, and
+          # git add refuses a missing pathspec, so stage only what exists.
+          for source in gsc bing umami baselines scorecards; do
+            if [ -d "docs/research/seo-ai-visibility/${source}" ]; then
+              git add "docs/research/seo-ai-visibility/${source}"
+            fi
+          done
+          if git diff --cached --quiet; then
+            echo "::notice::The collector produced no change to commit."
+            exit 0
+          fi
+          git commit -m "chore(seo): Search Console snapshot ${snapshot_date} (#8606)"
+          # The branch belongs to this workflow and is rebuilt from main on every
+          # run. A branch left behind by a run whose PR step failed, or by a
+          # closed PR, is replaced rather than rejected as non-fast-forward.
+          git push --force --set-upstream origin "$BRANCH_NAME"
+          if [ "$BING_OUTCOME" = "failure" ]; then
+            bing_note="The Bing Webmaster collection failed in this run, so this PR carries the Search Console snapshot only. See the run log."
+          elif [ -f "docs/research/seo-ai-visibility/bing/${snapshot_date}.json" ]; then
+            bing_note="Also carries the Bing Webmaster snapshot. Its totals come from daily site rows; its query and page sums are top-100-per-week, not totals."
+          else
+            bing_note="No Bing Webmaster snapshot this week: BING_WEBMASTER_API_KEY is not configured."
+          fi
+          if [ "$UMAMI_OUTCOME" = "failure" ]; then
+            umami_note="The Umami referral collection failed in this run. See the run log."
+          elif [ -f "docs/research/seo-ai-visibility/umami/${snapshot_date}.json" ]; then
+            umami_note="Also carries the Umami referral snapshot: visitors by channel and by referrer family over the 28 complete days before the run. Channel and referrer rows overlap, so their sums are not totals."
+          else
+            umami_note="No Umami referral snapshot this week: UMAMI_API_USERNAME and UMAMI_API_PASSWORD are not both configured."
+          fi
+          if [ "$BASELINE_OUTCOME" = "failure" ]; then
+            baseline_note="The AI-visibility baseline and scorecard failed to regenerate in this run, so neither is in this PR. See the run log."
+          else
+            baseline_note="Also regenerates the AI-visibility baseline and scorecard (baselines/${snapshot_date}.json, scorecards/${snapshot_date}.md) from these snapshots, compared with the previous baseline. A source without a snapshot is unavailable with a reason, never zero, and the AI-answer surfaces are unavailable because the manual panel was dropped (#10024)."
+          fi
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore(seo): Search Console snapshot ${snapshot_date} (#8606)" \
+            --body "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+              "Weekly Search Console snapshot. Per-URL index state and per-family search performance, collected from the API rather than transcribed from the UI." \
+              "Read the HTML indexability headline, not the raw coverage count: render subresources and machine-readable twins are bucketed separately on purpose. Shares are measured over inspected rows and are never projected onto a reported total." \
+              "$bing_note" \
+              "$umami_note" \
+              "$baseline_note" \
+              "Collected in ${RUN_URL}. Review and merge by hand; this workflow never merges.")"
+
+  # A PR opened with github.token fires no workflow_run event for its CI, so
+  # Deploy Gate would reach it only on its 30-minute sweep.
+  deploy-gate:
+    needs: collect
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/bot-pr-deploy-gate.yml
+    with:
+      branch: ${{ needs.collect.outputs.branch }}

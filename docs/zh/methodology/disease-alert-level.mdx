@@ -3,6 +3,8 @@ title: "疾病爆发警报级别"
 description: "疾病爆发面板如何基于对新闻条目标题与描述文本运行的关键词分类器，逐条推导出 ALERT、WARNING 与 WATCH 三级警报等级 —— 面向新闻编辑室、值班团队与公共卫生分析师的快速分诊与优先级排序工作流，而非取代临床或流行病学专业评估的替代方案，仅作为早期信号参考。"
 ---
 
+_本方法论由 World Monitor 创始人 [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/) 维护。已发布的修订记录在[更正日志](/zh/corrections)中。_
+
 ## 从这里开始
 
 "疾病爆发"面板为每个条目标注 **ALERT**、**WARNING** 或 **WATCH**。以下是关于这个标签的诚实版本：
@@ -41,7 +43,7 @@ description: "疾病爆发面板如何基于对新闻条目标题与描述文本
 分类器看到的是经过按来源解析器规范化后的条目 `title` 与 `desc` 字段：
 
 - WHO Disease Outbreak News（`whoNormalizeItem`）
-- CDC HAN 和 Outbreak News Today RSS（`rssNormalizeItem`）
+- CDC HAN、ECDC 流行病学更新与 CIDRAP 疾病新闻 RSS（`rssNormalizeItem`）
 - ThinkGlobalHealth 疾病追踪器，由 ProMED 来源的实时告警支持（`tghNormalizeItem`）
 
 没有数值评分权重。标签纯粹是分类的，面板中显示的顺序是 `alert > warning > watch`。

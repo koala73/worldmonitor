@@ -2,6 +2,7 @@
 
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep, resolveProxyForConnect } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { readPublishedPctAbove200d } from './_sp500-breadth.mjs';
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -52,7 +53,7 @@ async function fetchCBOE() {
       headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!resp.ok) { console.warn(`  Barchart $CPC: HTTP ${resp.status}`); return {}; }
+    if (resp.status !== 200) { console.warn(`  Barchart $CPC: HTTP ${resp.status}`); return {}; }
     const html = await resp.text();
     const block = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? html;
     const m = block.match(/"lastPrice"\s*:\s*"?([\d.]+)"?/);
@@ -63,20 +64,22 @@ async function fetchCBOE() {
   } catch (e) { console.warn(`  Barchart $CPC: ${e.message}`); return {}; }
 }
 
-// --- Barchart $S5TH: % of S&P 500 above 200d MA ---
-async function fetchBarchartS5TH() {
+// --- % of S&P 500 above 200d MA, from the published breadth-history series ---
+// One TradingView scan lives in seed-market-breadth. Reading that key keeps
+// Fear & Greed on last-good 200d when the scanner is down, instead of scoring
+// a quiet 50 while the dedicated seeder crash-loops.
+async function fetchPctAbove200d() {
   try {
-    const resp = await fetch('https://www.barchart.com/stocks/quotes/%24S5TH', {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
-      signal: AbortSignal.timeout(10_000),
+    const value = await readPublishedPctAbove200d({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
     });
-    if (!resp.ok) { console.warn(`  Barchart $S5TH: HTTP ${resp.status}`); return null; }
-    const html = await resp.text();
-    const block = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? html;
-    const m = block.match(/"lastPrice"\s*:\s*"?([\d.]+)"?/);
-    const val = m ? parseFloat(m[1]) : NaN;
-    return Number.isFinite(val) ? val : null;
-  } catch (e) { console.warn('  Barchart $S5TH fetch failed:', e.message); return null; }
+    if (value == null) console.warn('  S&P 500 % above 200d: unpublished (using RSP/SPY proxy if possible)');
+    return value;
+  } catch (e) {
+    console.warn('  S&P 500 % above 200d: unread:', e.message);
+    return null;
+  }
 }
 
 // --- CNN Fear & Greed ---
@@ -345,13 +348,13 @@ async function fetchAll() {
   const prevSnapshot = await readSeedSnapshot(FEAR_GREED_KEY).catch(() => null);
   const previousScore = prevSnapshot?.composite?.score ?? null;
 
-  const [yahooResults, cboeResult, cnnResult, aaiiResult, macroSignals, barchartResult] = await Promise.allSettled([
+  const [yahooResults, cboeResult, cnnResult, aaiiResult, macroSignals, breadthResult] = await Promise.allSettled([
     fetchAllYahoo(),
     fetchCBOE(),
     fetchCNN(),
     fetchAAII(),
     readMacroSignals(),
-    fetchBarchartS5TH(),
+    fetchPctAbove200d(),
   ]);
 
   const yahoo = yahooResults.status === 'fulfilled' ? yahooResults.value : {};
@@ -362,13 +365,13 @@ async function fetchAll() {
 
   // Source status summary — visible in Railway container logs
   const yahooCount = Object.values(yahoo).filter(Boolean).length;
-  console.log(`  Sources: Yahoo=${yahooCount}/${YAHOO_SYMBOLS.length} | putCall=${cboe.totalPc ?? 'null'} | CNN=${cnn ? cnn.score : 'null'} | AAII bull=${aaii ? aaii.bull : 'null'} | Barchart=$S5TH=${barchartResult.status === 'fulfilled' ? (barchartResult.value ?? 'null') : 'err'} | proxy=${_proxyAuth ? 'yes' : 'no'}`);
+  console.log(`  Sources: Yahoo=${yahooCount}/${YAHOO_SYMBOLS.length} | putCall=${cboe.totalPc ?? 'null'} | CNN=${cnn ? cnn.score : 'null'} | AAII bull=${aaii ? aaii.bull : 'null'} | S5>200d=${breadthResult.status === 'fulfilled' ? (breadthResult.value ?? 'null') : 'err'} | proxy=${_proxyAuth ? 'yes' : 'no'}`);
 
   if (yahooResults.status === 'rejected') console.warn('  Yahoo batch failed:', yahooResults.reason?.message);
   if (cboeResult.status === 'rejected') console.warn('  CBOE failed:', cboeResult.reason?.message);
   if (cnnResult.status === 'rejected') console.warn('  CNN failed:', cnnResult.reason?.message);
   if (aaiiResult.status === 'rejected') console.warn('  AAII failed:', aaiiResult.reason?.message);
-  if (barchartResult.status === 'fulfilled' && barchartResult.value == null) console.warn('  Barchart $S5TH: unavailable (using RSP/SPY proxy if possible)');
+  if (breadthResult.status === 'fulfilled' && breadthResult.value == null) console.warn('  S&P 500 % above 200d: unavailable (using RSP/SPY proxy if possible)');
 
   const [hyObs, igObs, m2Obs, walclObs, sofrObs, fedObs, curveObs, unrateObs, vixObs, dgs10Obs] = await Promise.all([
     readFred('BAMLH0A0HYM2'), readFred('BAMLC0A0CM'), readFred('M2SL'), readFred('WALCL'),
@@ -392,10 +395,10 @@ async function fetchAll() {
   const skewPrice = skew?.price ?? null;
   const sofrRate = fredLatest(sofrObs);
 
-  // Barchart $S5TH: exact % of S&P 500 above 200d MA.
+  // Exact % of S&P 500 constituents above their 200d MA.
   // Used for both breadth scoring and header display. Null → header shows N/A, breadth
   // defaults to neutral 50 (rspScore still captures RSP/SPY signal independently).
-  const pctAbove200d = barchartResult.status === 'fulfilled' ? barchartResult.value : null;
+  const pctAbove200d = breadthResult.status === 'fulfilled' ? breadthResult.value : null;
   const cryptoFg = macro?.fearGreed?.score ?? macro?.signals?.fearGreed?.value ?? null;
 
   const cats = {

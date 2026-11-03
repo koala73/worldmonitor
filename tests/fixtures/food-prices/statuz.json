@@ -1,0 +1,539 @@
+[
+{
+"metadata": [
+{
+"name_uz": "So'nggi o'zgartirilgan sana",
+"name_ru": "Дата последнего изменения",
+"name_en": "Last modified date",
+"name_uzc": "Сўнгги ўзгартирилган сана",
+"value_uz": "2026-10-15",
+"value_ru": "2026-10-15",
+"value_en": "2026-10-15",
+"value_uzc": "2026-10-15"
+},
+{
+"name_uz": "Ma'lumotlar to'plami identifikatsiya raqami (kodi)",
+"name_ru": "Идентификационный номер индикатора (код)",
+"name_en": "Indicator identification number (code)",
+"name_uzc": "Маълумотлар тўплами идентификация рақами (коди)",
+"value_uz": "1.11.03.0001",
+"value_ru": "1.11.03.0001",
+"value_en": "1.11.03.0001",
+"value_uzc": "1.11.03.0001"
+},
+{
+"name_uz": "So'nggi o'zgartirilgan sana",
+"name_ru": "Дата последнего изменения",
+"name_en": "Last modified date",
+"name_uzc": null,
+"value_uz": "2024-01-18",
+"value_ru": "2024-01-18",
+"value_en": "2024-01-18",
+"value_uzc": null
+},
+{
+"name_uz": "Ma'lumotlar to'plami identifikatsiya raqami (kodi)",
+"name_ru": "Идентификационный номер индикатора (код)",
+"name_en": "Indicator identification number (code)",
+"name_uzc": null,
+"value_uz": "1.11.03.0001",
+"value_ru": "1.11.03.0001",
+"value_en": "1.11.03.0001",
+"value_uzc": null
+},
+{
+"name_uz": "Ma’lumotlar to‘plami nomi",
+"name_ru": "Имя индикатора",
+"name_en": "Indicator name",
+"name_uzc": "Маълумотлар тўплами номи",
+"value_uz": "Bozorlar va do‘konlardagi ayrim tovarlarning o‘rtacha narxlari dinamikasi",
+"value_ru": "Динамика средних цен на отдельные товары на рынках и в магазинах",
+"value_en": "Dynamics of average prices of some goods in markets and stores",
+"value_uzc": "Бозорлар ва дўконлардаги айрим товарларнинг ўртача нархлари динамикаси"
+},
+{
+"name_uz": "Davriyligi",
+"name_ru": "Периодичность",
+"name_en": "Periodicity",
+"name_uzc": "Даврийлиги",
+"value_uz": "oylik",
+"value_ru": "ежемесячный",
+"value_en": "monthly",
+"value_uzc": "ойлик"
+},
+{
+"name_uz": "O‘lchov birligi",
+"name_ru": "Единица измерения",
+"name_en": "Unit of measurement",
+"name_uzc": "Ўлчов бирлиги",
+"value_uz": "1 kg so‘mda",
+"value_ru": "В сумах за кг",
+"value_en": "In soums for kilogram",
+"value_uzc": "1 кг сўмда"
+},
+{
+"name_uz": "Rasmiy statistika tayyorlovchi",
+"name_ru": "Составитель официальной статистики",
+"name_en": "Official statistics preparer",
+"name_uzc": "Расмий статистика тайёрловчи",
+"value_uz": "O‘zbekiston Respublikasi Milliy statistika qo'mitasi",
+"value_ru": "Национальный комитет республики Узбекистан по статистике",
+"value_en": "National statistics committee of the republic of Uzbekistan",
+"value_uzc": "Ўзбекистон Республикаси Миллий статистика қўмитаси"
+}
+],
+"data": [
+{
+"Code": "001",
+"Klassifikator": "Guruch",
+"Klassifikator_ru": "Рис",
+"Klassifikator_en": "Rice",
+"Klassifikator_uzc": "Гуруч",
+"2021-М01": 10092.2,
+"2026-M07": 15929.7,
+"2026-M08": 16024.5,
+"2026-M09": 16029.8
+},
+{
+"Code": "003",
+"Klassifikator": "Arpa",
+"Klassifikator_ru": "Ячмень",
+"Klassifikator_en": "Barley",
+"Klassifikator_uzc": "Арпа",
+"2021-М01": 2842.8,
+"2026-M07": 4196.7,
+"2026-M08": 4217.5,
+"2026-M09": 4223.5
+},
+{
+"Code": "0004",
+"Klassifikator": "Bug'doy",
+"Klassifikator_ru": "Пшеница",
+"Klassifikator_en": "Wheat",
+"Klassifikator_uzc": "Буғдой",
+"2021-М01": 3254.8,
+"2026-M07": 3922.3,
+"2026-M08": 3951.7,
+"2026-M09": 3971.0
+},
+{
+"Code": "005",
+"Klassifikator": "Jo'hori",
+"Klassifikator_ru": "Кукуруза",
+"Klassifikator_en": "Corn",
+"Klassifikator_uzc": "Жўҳори",
+"2021-М01": 3313.0,
+"2026-M07": 4862.6,
+"2026-M08": 4838.3,
+"2026-M09": 4712.0
+},
+{
+"Code": "006",
+"Klassifikator": "Kepak",
+"Klassifikator_ru": "Отруби",
+"Klassifikator_en": "Bran",
+"Klassifikator_uzc": "Кепак",
+"2021-М01": 2114.0,
+"2026-M07": 3527.5,
+"2026-M08": 3544.2,
+"2026-M09": 3563.1
+},
+{
+"Code": "0008",
+"Klassifikator": "Shrot",
+"Klassifikator_ru": "Шрот",
+"Klassifikator_en": "Schroth",
+"Klassifikator_uzc": "Шрот",
+"2021-М01": 3141.4,
+"2026-M07": 5404.5,
+"2026-M08": 5410.0,
+"2026-M09": 5422.0
+},
+{
+"Code": "009",
+"Klassifikator": "Shulxa",
+"Klassifikator_ru": "Шелуха",
+"Klassifikator_en": "Husk",
+"Klassifikator_uzc": "Шулха",
+"2021-М01": 2448.5,
+"2026-M07": 4577.6,
+"2026-M08": 4608.9,
+"2026-M09": 4659.7
+},
+{
+"Code": "010",
+"Klassifikator": "Kombikorm",
+"Klassifikator_ru": "Комбикорм",
+"Klassifikator_en": "Compound feed",
+"Klassifikator_uzc": "Комбикорм",
+"2021-М01": 2276.2,
+"2026-M07": 4188.1,
+"2026-M08": 4195.2,
+"2026-M09": 4205.6
+},
+{
+"Code": "011",
+"Klassifikator": "Oliy navli bug'doy uni",
+"Klassifikator_ru": "Мука пшеничная высшего сорта",
+"Klassifikator_en": "High-grade wheat flour",
+"Klassifikator_uzc": "Олий навли буғдой уни",
+"2021-М01": 5385.7,
+"2026-M07": 9911.5,
+"2026-M08": 9892.2,
+"2026-M09": 9924.4
+},
+{
+"Code": "0012",
+"Klassifikator": "1-navli bug'doy uni",
+"Klassifikator_ru": "Мука пшеничная первого сорта",
+"Klassifikator_en": "First grade wheat flour",
+"Klassifikator_uzc": "1-навли буғдой уни",
+"2021-М01": 4119.8,
+"2026-M07": 6617.3,
+"2026-M08": 6606.1,
+"2026-M09": 6607.3
+},
+{
+"Code": "013",
+"Klassifikator": "1-nav bug'doy unidan non",
+"Klassifikator_ru": "Хлеб пшеничный из муки 1-го сорта",
+"Klassifikator_en": "Wheat bread from 1st grade flour",
+"Klassifikator_uzc": "1-нав буғдой унидан нон",
+"2021-М01": 3137.1,
+"2026-M07": 6308.3,
+"2026-M08": 6291.8,
+"2026-M09": 6305.9
+},
+{
+"Code": "017",
+"Klassifikator": "Mol go'shti",
+"Klassifikator_ru": "Говядина",
+"Klassifikator_en": "Beef",
+"Klassifikator_uzc": "Мол гўшти",
+"2021-М01": 59081.6,
+"2026-M07": 126021.1,
+"2026-M08": 125838.0,
+"2026-M09": 127857.3
+},
+{
+"Code": "0020",
+"Klassifikator": "Qo'y go'shti",
+"Klassifikator_ru": "Баранина",
+"Klassifikator_en": "Mutton",
+"Klassifikator_uzc": "Қўй гўшти",
+"2021-М01": 61937.0,
+"2026-M07": 135742.9,
+"2026-M08": 136208.6,
+"2026-M09": 138080.5
+},
+{
+"Code": "022",
+"Klassifikator": "Tovuq go'shti",
+"Klassifikator_ru": "Мясо птицы",
+"Klassifikator_en": "Poultry",
+"Klassifikator_uzc": "Товуқ гўшти",
+"2021-М01": 21844.0,
+"2026-M07": 33806.6,
+"2026-M08": 33800.7,
+"2026-M09": 34359.7
+},
+{
+"Code": "026",
+"Klassifikator": "Turli baliqlar",
+"Klassifikator_ru": "Рыба всякая",
+"Klassifikator_en": "Fish of all kinds",
+"Klassifikator_uzc": "Турли балиқлар",
+"2021-М01": 20817.1,
+"2026-M07": 47645.8,
+"2026-M08": 47983.6,
+"2026-M09": 46435.5
+},
+{
+"Code": "027",
+"Klassifikator": "Yangi sog'ilgan sut (1 litr)",
+"Klassifikator_ru": "Молоко свежее (1 литр)",
+"Klassifikator_en": "Fresh milk (1 liter)",
+"Klassifikator_uzc": "Янги соғилган сут (1 литр)",
+"2021-М01": 5619.1,
+"2026-M07": 8077.5,
+"2026-M08": 8037.1,
+"2026-M09": 8065.3
+},
+{
+"Code": "034",
+"Klassifikator": "Tuxum (10 dona)",
+"Klassifikator_ru": "Яйца (10 штук)",
+"Klassifikator_en": "Eggs (10 pieces )",
+"Klassifikator_uzc": "Тухум (10 дона)",
+"2021-М01": 11231.3,
+"2026-M07": 12513.3,
+"2026-M08": 12791.2,
+"2026-M09": 13452.6
+},
+{
+"Code": "035",
+"Klassifikator": "Paxta yog'i (1 litr)",
+"Klassifikator_ru": "Масло хлопковое (1 литр)",
+"Klassifikator_en": "Cottonseed oil (1 liter)",
+"Klassifikator_uzc": "Пахта ёғи (1 литр)",
+"2021-М01": 13082.2,
+"2026-M07": 20503.1,
+"2026-M08": 20473.9,
+"2026-M09": 20559.9
+},
+{
+"Code": "0036",
+"Klassifikator": "Kungaboqar yog'i (1 litr)",
+"Klassifikator_ru": "Масло подсолнечное (1 литр)",
+"Klassifikator_en": "Sunflower oil (1 liter)",
+"Klassifikator_uzc": "Кунгабоқар ёғи (1 литр)",
+"2021-М01": 14698.5,
+"2026-M07": 21968.9,
+"2026-M08": 21951.6,
+"2026-M09": 21979.7
+},
+{
+"Code": "037",
+"Klassifikator": "Sariyog'",
+"Klassifikator_ru": "Масло сливочное",
+"Klassifikator_en": "Butter",
+"Klassifikator_uzc": "Сариёғ",
+"2021-М01": 50401.9,
+"2026-M07": 90320.2,
+"2026-M08": 90552.7,
+"2026-M09": 91095.9
+},
+{
+"Code": "039",
+"Klassifikator": "Limon",
+"Klassifikator_ru": "Лимоны",
+"Klassifikator_en": "Lemons",
+"Klassifikator_uzc": "Лимон",
+"2021-М01": 18647.1,
+"2026-M07": 51830.8,
+"2026-M08": 51895.4,
+"2026-M09": 46200.2
+},
+{
+"Code": "0040",
+"Klassifikator": "Olma",
+"Klassifikator_ru": "Яблоки",
+"Klassifikator_en": "Apples",
+"Klassifikator_uzc": "Олма",
+"2021-М01": 9802.2,
+"2026-M07": 15106.1,
+"2026-M08": 14320.6,
+"2026-M09": 13646.2
+},
+{
+"Code": "041",
+"Klassifikator": "Nok",
+"Klassifikator_ru": "Груши",
+"Klassifikator_en": "Pears",
+"Klassifikator_uzc": "Нок",
+"2021-М01": 20067.7,
+"2026-M07": 20329.5,
+"2026-M08": 19735.2,
+"2026-M09": 19656.3
+},
+{
+"Code": "049",
+"Klassifikator": "Uzum",
+"Klassifikator_ru": "Виноград",
+"Klassifikator_en": "Grape",
+"Klassifikator_uzc": "Узум",
+"2021-М01": 16901.5,
+"2026-M07": 16196.1,
+"2026-M08": 14865.1,
+"2026-M09": 14029.6
+},
+{
+"Code": "0050",
+"Klassifikator": "Tarvuz",
+"Klassifikator_ru": "Арбуз",
+"Klassifikator_en": "Watermelon",
+"Klassifikator_uzc": "Тарвуз",
+"2021-М01": 3183.0,
+"2026-M07": 2336.2,
+"2026-M08": 2732.0,
+"2026-M09": 2786.3
+},
+{
+"Code": "0051",
+"Klassifikator": "Qovun",
+"Klassifikator_ru": "Дыня",
+"Klassifikator_en": "Melon",
+"Klassifikator_uzc": "Қовун",
+"2021-М01": 3819.6,
+"2026-M07": 5273.1,
+"2026-M08": 4745.7,
+"2026-M09": 4479.8
+},
+{
+"Code": "053",
+"Klassifikator": "Mayiz",
+"Klassifikator_ru": "Кишмиш",
+"Klassifikator_en": "Kishmish",
+"Klassifikator_uzc": "Майиз",
+"2021-М01": 30528.8,
+"2026-M07": 60211.3,
+"2026-M08": 59863.2,
+"2026-M09": 59872.4
+},
+{
+"Code": "055",
+"Klassifikator": "Karam",
+"Klassifikator_ru": "Капуста",
+"Klassifikator_en": "Cabbage",
+"Klassifikator_uzc": "Карам",
+"2021-М01": 2075.0,
+"2026-M07": 3928.1,
+"2026-M08": 4004.8,
+"2026-M09": 4148.1
+},
+{
+"Code": "057",
+"Klassifikator": "Bodring",
+"Klassifikator_ru": "Огурцы",
+"Klassifikator_en": "Cucumbers",
+"Klassifikator_uzc": "Бодринг",
+"2021-М01": 19244.2,
+"2026-M07": 6283.2,
+"2026-M08": 6660.7,
+"2026-M09": 7991.1
+},
+{
+"Code": "058",
+"Klassifikator": "Pomidor",
+"Klassifikator_ru": "Помидоры",
+"Klassifikator_en": "Tomatoes",
+"Klassifikator_uzc": "Помидор",
+"2021-М01": 10820.4,
+"2026-M07": 6391.8,
+"2026-M08": 7733.5,
+"2026-M09": 9349.9
+},
+{
+"Code": "059",
+"Klassifikator": "Baqlajon",
+"Klassifikator_ru": "Баклажаны",
+"Klassifikator_en": "Eggplant",
+"Klassifikator_uzc": "Бақлажон",
+"2021-М01": 16227.2,
+"2026-M07": 5989.2,
+"2026-M08": 5460.1,
+"2026-M09": 5913.4
+},
+{
+"Code": "0060",
+"Klassifikator": "Bulg'or qalampiri",
+"Klassifikator_ru": "Перец болгарский",
+"Klassifikator_en": "Bell pepper",
+"Klassifikator_uzc": "Булғор қалампири",
+"2021-М01": 20474.4,
+"2026-M07": 8941.0,
+"2026-M08": 8205.2,
+"2026-M09": 9060.1
+},
+{
+"Code": "061",
+"Klassifikator": "Qovoq",
+"Klassifikator_ru": "Тыква",
+"Klassifikator_en": "Pumpkin",
+"Klassifikator_uzc": "Қовоқ",
+"2021-М01": 2348.0,
+"2026-M07": 6738.9,
+"2026-M08": 5631.8,
+"2026-M09": 4733.7
+},
+{
+"Code": "063",
+"Klassifikator": "Sabzi",
+"Klassifikator_ru": "Морковь",
+"Klassifikator_en": "Carrot",
+"Klassifikator_uzc": "Сабзи",
+"2021-М01": 2073.2,
+"2026-M07": 4810.1,
+"2026-M08": 5248.2,
+"2026-M09": 5930.6
+},
+{
+"Code": "065",
+"Klassifikator": "Sarimsoq",
+"Klassifikator_ru": "Чеснок",
+"Klassifikator_en": "Garlic",
+"Klassifikator_uzc": "Саримсоқ",
+"2021-М01": 22186.1,
+"2026-M07": 18907.8,
+"2026-M08": 18149.8,
+"2026-M09": 17726.3
+},
+{
+"Code": "066",
+"Klassifikator": "Piyoz",
+"Klassifikator_ru": "Лук репчатый",
+"Klassifikator_en": "Onion",
+"Klassifikator_uzc": "Пиёз",
+"2021-М01": 2081.3,
+"2026-M07": 2614.7,
+"2026-M08": 2811.3,
+"2026-M09": 2899.6
+},
+{
+"Code": "069",
+"Klassifikator": "Kartoshka",
+"Klassifikator_ru": "Картофель",
+"Klassifikator_en": "Potatoes",
+"Klassifikator_uzc": "Картошка",
+"2021-М01": 4033.4,
+"2026-M07": 4766.8,
+"2026-M08": 4667.3,
+"2026-M09": 4991.4
+},
+{
+"Code": "0070",
+"Klassifikator": "Loviya",
+"Klassifikator_ru": "Фасоль",
+"Klassifikator_en": "Beans",
+"Klassifikator_uzc": "Ловия",
+"2021-М01": 12959.7,
+"2026-M07": 19402.9,
+"2026-M08": 19238.1,
+"2026-M09": 19261.1
+},
+{
+"Code": "071",
+"Klassifikator": "No'xot",
+"Klassifikator_ru": "Горох",
+"Klassifikator_en": "Peas",
+"Klassifikator_uzc": "Нўхот",
+"2021-М01": 12035.5,
+"2026-M07": 21768.6,
+"2026-M08": 21490.3,
+"2026-M09": 21397.8
+},
+{
+"Code": "0072",
+"Klassifikator": "Mosh",
+"Klassifikator_ru": "Маш",
+"Klassifikator_en": "Mash",
+"Klassifikator_uzc": "Мош",
+"2021-М01": 11768.1,
+"2026-M07": 20454.4,
+"2026-M08": 20534.0,
+"2026-M09": 20529.8
+},
+{
+"Code": "073",
+"Klassifikator": "Shakar",
+"Klassifikator_ru": "Сахар песок",
+"Klassifikator_en": "Sugar",
+"Klassifikator_uzc": "Шакар",
+"2021-М01": 7359.7,
+"2026-M07": 13216.5,
+"2026-M08": 13095.9,
+"2026-M09": 12963.0
+}
+]
+}
+]

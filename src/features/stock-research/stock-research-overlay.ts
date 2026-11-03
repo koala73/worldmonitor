@@ -27,6 +27,7 @@ import {
   normalizeStockResearchSymbol,
   stockResearchUrl,
 } from './stock-research-route';
+import { declareOverlay } from '@/utils/open-modal';
 
 /** '/' is rewritten to the marketing page in production; the app lives here. */
 const DASHBOARD_PATH = '/dashboard';
@@ -45,6 +46,8 @@ let openGeneration = 0;
 let returnUrl: string | null = null;
 
 const ANALYZE_TIMEOUT_MS = 20_000;
+const CHART_MAX_WIDTH = 640;
+const CHART_HEIGHT = 240;
 
 /**
  * Resolve the badge for the header quote.
@@ -139,19 +142,13 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
   overlayEl.className = 'stock-research-overlay';
   overlayEl.setAttribute('role', 'dialog');
   overlayEl.setAttribute('aria-modal', 'true');
+  // A reload aborts an in-flight premium RPC the user would have to re-spend.
+  declareOverlay(overlayEl, { reload: 'blocking' });
   overlayEl.setAttribute('aria-label', `${symbol} research`);
 
   const entitled = hasPremiumAccess();
   const tape = tapeNote();
-  const chart = stock && hasPlottableMarketSeries(stock)
-    ? terminalChart(stock.sparkline, {
-      change: stock.change,
-      width: 640,
-      height: 240,
-      formatValue: (value) => formatPrice(value),
-      ariaLabel: `${stock.display} price chart`,
-    })
-    : '';
+  const plottable = stock && hasPlottableMarketSeries(stock) ? stock : null;
 
   setTrustedHtml(
     overlayEl,
@@ -164,12 +161,12 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
             <div class="stock-research-name">${escapeHtml(stock?.name || symbol)}</div>
           </div>
           <div class="stock-research-quote">
-            <span>${stock ? formatPrice(stock.price) : '—'}</span>
+            <span>${stock ? escapeHtml(formatPrice(stock.price)) : '—'}</span>
             <span class="${stock ? getChangeClass(stock.change) : ''}">${stock ? formatChange(stock.change) : ''}</span>
             ${tape ? `<div class="stock-research-tape" data-tape-claim="${escapeHtml(tape.claim)}">${escapeHtml(tape.label)}</div>` : ''}
           </div>
         </header>
-        <div class="stock-research-chart">${chart || '<p>No plottable Yahoo series for this symbol yet.</p>'}</div>
+        <div class="stock-research-chart">${plottable ? '' : '<p>No plottable Yahoo series for this symbol yet.</p>'}</div>
         <section class="stock-research-analyze" data-analyze-state="${entitled ? 'loading' : 'locked'}">
           ${entitled ? '<p>Loading analysis…</p>' : '<p>Premium stock analysis and backtest stay locked.</p>'}
         </section>
@@ -178,6 +175,22 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
   );
 
   document.body.append(overlayEl);
+  const chartHost = overlayEl.querySelector('.stock-research-chart');
+  if (plottable && chartHost instanceof HTMLElement) {
+    // Render at the width the room actually has so axis labels keep their size on
+    // phones; scaling a 640px SVG down to fit shrank them to ~4px.
+    const width = Math.min(CHART_MAX_WIDTH, chartHost.clientWidth || CHART_MAX_WIDTH);
+    setTrustedHtml(
+      chartHost,
+      trustedHtml(terminalChart(plottable.sparkline, {
+        change: plottable.change,
+        width,
+        height: CHART_HEIGHT,
+        formatValue: (value) => formatPrice(value),
+        ariaLabel: `${plottable.display} price chart`,
+      }), 'Shared chart renderer escapes the label and uses finite numeric points'),
+    );
+  }
   overlayEl.querySelector('.stock-research-close')?.addEventListener('click', () => closeStockResearchOverlay());
   overlayEl.addEventListener('click', (event) => {
     if (event.target === overlayEl) closeStockResearchOverlay();
@@ -200,7 +213,18 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
     );
     // A superseded open (or a close) must not paint over the live overlay.
     if (generation !== openGeneration || !analyzeHost.isConnected) return;
-    const headlines = (analysis.headlines ?? []).slice(0, 3).map((headline) => {
+    // available: false is the server's empty response (history timeout, a
+    // symbol with no history, an empty symbol). It also carries fallback: true,
+    // but no indicators were computed, so it must not be labelled a template.
+    if (analysis.available === false) {
+      analyzeHost.dataset.analyzeState = 'unavailable';
+      analyzeHost.replaceChildren();
+      analyzeHost.append(Object.assign(document.createElement('p'), {
+        textContent: `No analysis is available for ${symbol} right now.`,
+      }));
+      return;
+    }
+    const headlines =(analysis.headlines ?? []).slice(0, 3).map((headline) => {
       const aligned = headline.alignedTradingDate
         ? ` aligned ${escapeHtml(headline.alignedTradingDate)}`
         : '';
@@ -217,11 +241,22 @@ export async function openStockResearchOverlay(rawSymbol: string, stock?: Market
     const sentiment = analysis.newsSentiment == null
       ? ''
       : `<p data-news-overlay="model">News overlay (model): ${analysis.newsSentiment.toFixed(2)}</p>`;
+    // analyze-stock substitutes a deterministic template (provider 'rules',
+    // fallback true) built from the same indicators whenever the LLM call
+    // fails or times out. The prose reads like the model's, so the reader has
+    // to be told which one they are looking at (#5498). The numbers are
+    // genuine either way; only the narrative framing changes.
+    const isRulesFallback = analysis.fallback === true || analysis.provider === 'rules';
+    const provenance = isRulesFallback
+      ? '<p class="stock-research-provenance" data-analysis-provenance="rules-fallback">Rules-based template: AI commentary was unavailable when this analysis was generated, so the summary below is assembled from the indicators alone.</p>'
+      : `<p class="stock-research-provenance" data-analysis-provenance="model">AI commentary${analysis.provider ? ` · ${escapeHtml(analysis.provider)}` : ''}${analysis.model ? ` (${escapeHtml(analysis.model)})` : ''}</p>`;
     analyzeHost.dataset.analyzeState = 'ready';
+    analyzeHost.dataset.analysisProvenance = isRulesFallback ? 'rules-fallback' : 'model';
     setTrustedHtml(
       analyzeHost,
       trustedHtml(`
         <h2>Analysis</h2>
+        ${provenance}
         <p>${escapeHtml(analysis.ratingSummary || analysis.summary || 'No analysis summary.')}</p>
         ${sentiment}
         ${headlines ? `<ul class="stock-research-news">${headlines}</ul>` : '<p>No headlines.</p>'}

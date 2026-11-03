@@ -26,6 +26,16 @@ export function resolveMetadataOrigin(req: Request): string {
 }
 
 /**
+ * The published auth.md walkthrough for an origin. Every allowed host serves
+ * it without a redirect: the apex `/auth.md` is on the Cloudflare apex-to-www
+ * exemption list (ARCHITECTURE.md §2). Readiness scanners require the skill
+ * URL to equal `<issuer>/auth.md`, so it stays on the request origin.
+ */
+export function authSkillUrl(origin: string): string {
+  return `${origin}/auth.md`;
+}
+
+/**
  * These documents are read-only. Answer CORS preflights, allow GET/HEAD, and
  * reject everything else with a spec-correct 405 + Allow. Returns null when the
  * request should proceed to the metadata handler.

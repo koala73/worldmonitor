@@ -416,7 +416,7 @@ export async function fetchFeed(feed: Feed, options: FetchFeedOptions = {}): Pro
     if (signal?.aborted || isAbortError(e)) {
       throw e instanceof Error ? e : new DOMException('The operation was aborted.', 'AbortError');
     }
-    console.error(`Failed to fetch ${feed.name}:`, e);
+    console.error('Failed to fetch feed:', feed.name, e);
     recordFeedFailure(feedScope);
     const persistent = await loadPersistentFeed(feedScope);
     return cached?.items || persistent || [];

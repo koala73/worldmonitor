@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// GetPriceHistoryRequest names up to four tracked Yahoo symbols and a lookback window.
+message GetPriceHistoryRequest {
+  // Comma-separated Yahoo symbols, at most 4 (e.g. "GC=F,SI=F"). Only symbols
+  // carried by the commodity, market and Gulf quote sets are served; others
+  // are reported in `unavailable`. A single string because the widget relay
+  // sets each query parameter once.
+  string symbols = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 100,
+    (buf.validate.field).string.pattern = "^ *[A-Za-z0-9^=.&-]{1,20} *(, *[A-Za-z0-9^=.&-]{1,20} *){0,3}$",
+    (sebuf.http.query) = {name: "symbols"}
+  ];
+  // Lookback window: 1mo, 3mo, 6mo or 1y. Empty means 3mo.
+  string range = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.pattern = "^(1mo|3mo|6mo|1y)?$",
+    (sebuf.http.query) = {name: "range"}
+  ];
+}
+
+// PriceSeries holds one symbol's daily closes as aligned parallel arrays.
+message PriceSeries {
+  // Yahoo symbol (e.g. "GC=F").
+  string symbol = 1;
+  // Display name (e.g. "Gold").
+  string name = 2;
+  // Quote currency reported by Yahoo (e.g. "USD").
+  string currency = 3;
+  // One timestamp per trading day, Unix epoch milliseconds, ascending.
+  repeated int64 timestamps = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Daily close for the timestamp at the same index.
+  repeated double closes = 5;
+}
+
+// GetPriceHistoryResponse contains one series per served symbol.
+message GetPriceHistoryResponse {
+  // The lookback window that was served.
+  string range = 1;
+  // Series in request order, one per served symbol.
+  repeated PriceSeries series = 2;
+  // Requested symbols reported unavailable because they are outside the
+  // tracked set or Yahoo could not serve them.
+  repeated string unavailable = 3;
+}

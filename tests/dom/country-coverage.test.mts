@@ -24,7 +24,7 @@ import {
   clusterCountryTimelineIncidents,
   reconcileCountryTimelineIncidents,
   type CountryTimelineIncident,
-} from '@/services/country-timeline-events';
+} from '../../shared/country-timeline-events';
 import { BRIEF_ONLY_RSS_FETCH_POLICY } from '@/services/rss';
 
 function newsItem(

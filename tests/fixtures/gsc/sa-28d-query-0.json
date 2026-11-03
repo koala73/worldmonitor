@@ -1,0 +1,23 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "world monitor dashboard"
+      ],
+      "clicks": 30,
+      "impressions": 900,
+      "ctr": 0.033333,
+      "position": 3.2
+    },
+    {
+      "keys": [
+        "geopolitical risk dashboard"
+      ],
+      "clicks": 4,
+      "impressions": 260,
+      "ctr": 0.015385,
+      "position": 14.9
+    }
+  ],
+  "responseAggregationType": "byQuery"
+}

@@ -13,11 +13,6 @@
  * Telegram and X tiers are additive typed overlays. Keeping them out of the RSS
  * JSON makes their registries mechanically testable and prevents renamed
  * channels or accounts from leaving stale public tier keys.
- *
- * Tier 1: Wire services / official gov/intl orgs — fastest, most authoritative
- * Tier 2: Major established outlets — high-quality journalism
- * Tier 3: Specialty / regional / think tank sources — domain expertise
- * Tier 4: Aggregators and blogs — useful but less authoritative
  */
 import sourceTiersData from '../../shared/source-tiers.json';
 import { TELEGRAM_SOURCE_TIERS } from '../../shared/telegram-channel-trust';
@@ -33,6 +28,43 @@ export function getSourceTier(sourceName: string): number {
   return SOURCE_TIERS[sourceName] ?? 4;
 }
 
-export function hasSourceTier(sourceName: string): boolean {
-  return Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName);
+export type DeclaredTier = 1 | 2 | 3 | 4;
+
+/** What each tier means, in the words the docs table, the app and MCP schemas use. */
+export const TIER_MEANING: Readonly<Record<DeclaredTier, string>> = Object.freeze({
+  1: 'Wire services and official bodies',
+  2: 'Major outlets',
+  3: 'Specialist, regional and think-tank sources',
+  4: 'Aggregators and blogs',
+});
+
+/** The public tier table's path on the web origin. The docs site keeps "&" in heading anchors. */
+export const TIER_DOCS_PATH = '/docs/data-sources#source-credibility-%26-feed-tiering';
+
+/**
+ * The tier a label was explicitly assigned in the RSS, Telegram or X tables,
+ * or null. Unlike getSourceTier it never defaults: an undeclared source has an
+ * unknown tier, and treating it as tier 4 would claim something about the
+ * source that no table says.
+ */
+export function declaredSourceTier(sourceName: string): DeclaredTier | null {
+  const tier = Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName)
+    ? SOURCE_TIERS[sourceName]
+    : declaredTierByNormalizedName().get(normalizeSourceName(sourceName));
+  return tier === 1 || tier === 2 || tier === 3 || tier === 4 ? tier : null;
+}
+
+// Publisher families fold case and trim, so a label that differs from its table
+// key only in case must resolve to the same declared tier. Exact keys still win.
+const normalizeSourceName = (name: string) => name.trim().toLowerCase();
+let normalizedTiers: Map<string, number> | null = null;
+function declaredTierByNormalizedName(): Map<string, number> {
+  if (!normalizedTiers) {
+    normalizedTiers = new Map();
+    for (const [name, tier] of Object.entries(SOURCE_TIERS)) {
+      const key = normalizeSourceName(name);
+      if (!normalizedTiers.has(key)) normalizedTiers.set(key, tier);
+    }
+  }
+  return normalizedTiers;
 }

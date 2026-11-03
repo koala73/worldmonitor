@@ -1,0 +1,12 @@
+{
+  "label": "SYNTHETIC edge cases. These are not live incidents.",
+  "now": 1792087200000,
+  "ac": [
+    {"hex":"a00001","flight":"TEST7500","squawk":"7500","dbFlags":0,"r":"SYNTH-1","t":"A320","lat":51.5,"lon":-0.1,"seen":2,"seen_pos":3,"alt_baro":24000,"gs":320},
+    {"hex":"a00002","flight":"TEST7600","squawk":"7600","dbFlags":0,"lat":48.85,"lon":2.35,"seen":2,"seen_pos":3},
+    {"hex":"a00003","flight":"TEST7700","squawk":"7700","dbFlags":0,"lat":25.2,"lon":55.3,"seen":2,"seen_pos":3},
+    {"hex":"ae0001","flight":"RCH7500","squawk":"7500","dbFlags":1,"lat":38.9,"lon":-77.0,"seen":2,"seen_pos":3},
+    {"hex":"ae0002","flight":"RCH7600","squawk":"7600","dbFlags":1,"lat":35.7,"lon":139.7,"seen":2,"seen_pos":3},
+    {"hex":"ae0003","flight":"RCH7700","squawk":"7700","dbFlags":1,"lat":-33.9,"lon":151.2,"seen":2,"seen_pos":3}
+  ]
+}

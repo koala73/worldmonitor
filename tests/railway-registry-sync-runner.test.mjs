@@ -65,6 +65,7 @@ describe('Railway registry sync runner', () => {
       env: {
         ...baseEnv,
         RAILWAY_TOKEN: 'mutation',
+        GITHUB_STEP_SUMMARY: '/tmp/registry-summary.md',
         UNRELATED_SECRET: 'must-not-cross',
       },
       spawnImpl,
@@ -90,6 +91,7 @@ describe('Railway registry sync runner', () => {
       '2',
     ]);
     assert.equal(calls[0][2].env.RAILWAY_TOKEN, 'mutation');
+    assert.equal(calls[0][2].env.GITHUB_STEP_SUMMARY, '/tmp/registry-summary.md');
     assert.equal(calls[1][2].env.RAILWAY_API_TOKEN, 'viewer');
     assert.equal(calls[1][2].env.RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS, '1234');
     assert.equal(calls[0][2].env.UNRELATED_SECRET, undefined);

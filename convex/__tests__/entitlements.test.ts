@@ -79,6 +79,7 @@ describe("entitlement query", () => {
 
     expect(result.planKey).toBe("pro_monthly");
     expect(result.features.tier).toBe(1);
+    expect(result.features.historyDays).toBe(90);
     expect(result.features.apiAccess).toBe(false);
   });
 

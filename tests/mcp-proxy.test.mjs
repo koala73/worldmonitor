@@ -146,11 +146,30 @@ function dnsJsonResponse(records) {
 }
 
 describe('api/mcp-proxy', () => {
+  it('rejects an unproven CF IP after premium auth and before proxy dispatch', async () => {
+    const previous = process.env.CF_EDGE_PROOF_SECRET;
+    process.env.CF_EDGE_PROOF_SECRET = 'test-edge-proof';
+    let fetches = 0;
+    globalThis.fetch = async () => { fetches += 1; throw new Error('must not dispatch'); };
+    try {
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }, 'https://worldmonitor.app', {
+        extra: { 'cf-connecting-ip': '203.0.113.7' },
+      }));
+      assert.equal(res.status, 403);
+      assert.equal(res.headers.get('X-RateLimit-Mode'), 'edge-proof');
+      assertNoStore(res, 'edge-proof refusal');
+      assert.equal(fetches, 0);
+    } finally {
+      if (previous === undefined) delete process.env.CF_EDGE_PROOF_SECRET;
+      else process.env.CF_EDGE_PROOF_SECRET = previous;
+    }
+  });
+
   beforeEach(async () => {
     // mcp-proxy migrated .js → .ts in PR #3768 to unlock the
     // premium-check import from server/. Test must follow the rename.
     const mod = await import(`../api/mcp-proxy.ts?t=${Date.now()}`);
-    handler = mod.default;
+    handler = mod.handler;
     assert.equal(mod.__setMcpProxyResolveHostnameForTest, undefined);
     setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
   });
@@ -160,7 +179,70 @@ describe('api/mcp-proxy', () => {
     globalThis.fetch = originalFetch;
   });
 
+  it('rejects query credentials before resolving or calling an upstream', async () => {
+    let calls = 0;
+    setResolveHostnameForTest(async () => { calls++; return [PUBLIC_TEST_ADDRESS]; });
+    globalThis.fetch = async () => { calls++; throw new Error('unexpected fetch'); };
+    for (const headers of ['', JSON.stringify({ Authorization: 'Bearer synthetic-secret' })]) {
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp', headers }));
+      assert.equal(res.status, 400);
+      assert.doesNotMatch(await res.text(), /synthetic-secret/);
+    }
+    assert.equal(calls, 0);
+  });
+
+  it('bounds and redacts upstream JSON-RPC error messages', async () => {
+    globalThis.fetch = async () => Response.json({ error: { message: 'synthetic-secret'.repeat(20000) } });
+    const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+    assert.equal(res.status, 422);
+    const text = await res.text();
+    assert.ok(text.length < 200);
+    assert.doesNotMatch(text, /synthetic-secret/);
+  });
+
   // ── Auth gate (issue #3723) ───────────────────────────────────────────────
+
+  for (const [name, makeResponse, expected] of [
+    ['transport', () => { throw new Error('fetch synthetic-secret'); }, 'MCP server request failed'],
+    ['stream', () => new Response(new ReadableStream({ start(controller) { controller.error(new Error('stream synthetic-secret')); } })), 'Invalid MCP server response'],
+    ['JSON parser', () => new Response('synthetic-secret', { headers: { 'Content-Type': 'application/json' } }), 'Invalid MCP server response'],
+  ]) {
+    it(`hides unexpected ${name} exception details`, async () => {
+      globalThis.fetch = async () => makeResponse();
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      assert.deepEqual(await res.json(), { error: expected });
+    });
+  }
+
+  it('hides unexpected internal errors outside the upstream wrappers', async () => {
+    globalThis.fetch = async () => new Response(new ReadableStream({
+      start(controller) { controller.error(new Error('SSE synthetic-secret')); },
+    }), { headers: { 'Content-Type': 'text/event-stream' } });
+    const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+    assert.equal(res.status, 422);
+    assert.deepEqual(await res.json(), { error: 'MCP proxy request failed' });
+  });
+
+  it('preserves timeout status when reading the upstream body', async () => {
+    globalThis.fetch = async () => new Response(new ReadableStream({
+      start(controller) { controller.error(new DOMException('synthetic-secret', 'TimeoutError')); },
+    }));
+    const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+    assert.equal(res.status, 504);
+    assert.deepEqual(await res.json(), { error: 'MCP server timed out' });
+  });
+
+  it('hides DNS failures during the dispatch recheck', async () => {
+    let lookups = 0;
+    setResolveHostnameForTest(async () => {
+      if (++lookups === 1) return [PUBLIC_TEST_ADDRESS];
+      throw new Error('DNS synthetic-secret');
+    });
+    const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+    assert.equal(res.status, 422);
+    assert.deepEqual(await res.json(), { error: 'serverUrl DNS resolution failed' });
+  });
 
   describe('Auth gate', () => {
     it('returns 401 when no X-WorldMonitor-Key is provided', async () => {
@@ -246,6 +328,120 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 200);
     });
 
+    // Plan 2026-10-25-001 KTD6 / R6: a desktop key is premium here (Pro-session
+    // treatment), and because this edge is not served by the gateway it must
+    // charge the owner's per-account desktop meter itself. Real premium-check,
+    // real validators and real meter over the fake Upstash plus a stubbed
+    // Convex; the upstream MCP server is the usual stub. The clock is frozen so
+    // the day and minute counter names cannot straddle a boundary mid-test.
+    describe('desktop keys are metered per owner (KTD6)', () => {
+      const DESKTOP_KEY = `wm_${'d5'.repeat(20)}`;
+      const OWNER = 'user_desktop_owner';
+      const FROZEN_NOW = Date.UTC(2026, 9, 25, 12, 0, 30);
+      const DAY_KEY = `rl:desktopkey:day:${OWNER}:2026-10-25`;
+      const MINUTE_KEY = `rl:desktopkey:min:${OWNER}:${Math.floor(FROZEN_NOW / 60_000)}`;
+      const ENV = ['CONVEX_SITE_URL', 'CONVEX_SERVER_SHARED_SECRET', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV', 'DODO_PAYMENTS_ENVIRONMENT'];
+      let saved;
+      let redis;
+      let keyHash;
+
+      beforeEach(async (t) => {
+        t.mock.timers.enable({ apis: ['Date'], now: FROZEN_NOW });
+        saved = new Map(ENV.map((k) => [k, process.env[k]]));
+        process.env.CONVEX_SITE_URL = 'https://convex.test';
+        process.env.CONVEX_SERVER_SHARED_SECRET = 'desktop-key-shared-secret';
+        delete process.env.DODO_PAYMENTS_ENVIRONMENT;
+        const { installRedis } = await import('./helpers/fake-upstash-redis.mts');
+        const { __resetKeyPrefixCacheForTests, __clearLocalUnavailableBackoffForTests } = await import('../server/_shared/redis.ts');
+        const { __resetEntitlementNegativeCacheForTests } = await import('../server/_shared/entitlement-check.ts');
+        const { __resetRateLimitForTest } = await import('../server/_shared/rate-limit.ts');
+        __resetKeyPrefixCacheForTests();
+        __clearLocalUnavailableBackoffForTests();
+        __resetEntitlementNegativeCacheForTests();
+        // The scoped per-IP limiter memoizes a Redis client per scope on first
+        // use; drop it so a client bound to the fake never outlives this block.
+        __resetRateLimitForTest();
+        redis = installRedis({});
+        const { getEntitlementFeatures } = await import('../convex/config/productCatalog.ts');
+        const { createHash } = await import('node:crypto');
+        keyHash = createHash('sha256').update(DESKTOP_KEY).digest('hex');
+        const redisFetch = globalThis.fetch;
+        const mcpFetch = makeMcpFetch({ tools: [] });
+        globalThis.fetch = async (input, init) => {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+          if (url.endsWith('/api/internal-validate-api-key')) {
+            const body = JSON.parse(String(init?.body ?? '{}'));
+            return Response.json(body.keyHash === keyHash
+              ? { id: 'key_desk', userId: OWNER, name: 'laptop', keyKind: 'desktop', activeKeyRank: 0 }
+              : null);
+          }
+          if (url.endsWith('/api/internal-entitlements')) {
+            return Response.json({ planKey: 'pro_monthly', validUntil: FROZEN_NOW + 86_400_000, features: getEntitlementFeatures('pro_monthly') });
+          }
+          if (new URL(url).hostname === 'redis.example') return redisFetch(input, init);
+          return mcpFetch(input, init);
+        };
+      });
+
+      afterEach(async (t) => {
+        t.mock.timers.reset();
+        for (const [k, v] of saved) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+        const { __resetRateLimitForTest } = await import('../server/_shared/rate-limit.ts');
+        __resetRateLimitForTest();
+      });
+
+      const desktopGet = () => new Request('https://worldmonitor.app/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp', {
+        method: 'GET',
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': DESKTOP_KEY, 'x-real-ip': uniqueCallerIp() },
+      });
+
+      it('a desktop key is served and charges the owner day counter once per request', async () => {
+        const res = await handler(desktopGet());
+        assert.equal(res.status, 200, await res.clone().text());
+        assert.equal(redis.redis.get(DAY_KEY), '1');
+        assert.equal(redis.redis.get(MINUTE_KEY), '1');
+        assert.equal((await handler(desktopGet())).status, 200);
+        assert.equal(redis.redis.get(DAY_KEY), '2');
+      });
+
+      it('an owner past the daily ceiling gets the shared 429 and no upstream call', async () => {
+        redis.redis.set(DAY_KEY, '7500');
+        const res = await handler(desktopGet());
+        assert.equal(res.status, 429);
+        assert.deepEqual(await res.json(), {
+          error: 'Daily request limit reached',
+          plan: 'pro_monthly',
+          limit: 7500,
+          limit_type: 'daily',
+          reset: new Date(Date.UTC(2026, 9, 26)).toISOString(),
+        });
+        assert.equal(res.headers.get('Retry-After'), String(12 * 3600 - 30));
+        assertNoStore(res, 'desktop 429');
+        assert.equal(redis.redis.get(DAY_KEY), '7500', 'a rejected request is not charged');
+      });
+
+      it('a Redis failure on the meter is the degraded 503', async () => {
+        const redisFetch = globalThis.fetch;
+        globalThis.fetch = async (input, init) => {
+          const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+          if (new URL(url).hostname === 'redis.example' && String(init?.body ?? '').includes('rl:desktopkey:')) {
+            return new Response('upstream error', { status: 500 });
+          }
+          return redisFetch(input, init);
+        };
+        const res = await handler(desktopGet());
+        assert.equal(res.status, 503);
+        assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+        assert.deepEqual(await res.json(), { error: 'Rate-limit service temporarily unavailable' });
+      });
+
+      it('an enterprise key never touches the desktop meter', async () => {
+        const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+        assert.equal(res.status, 200);
+        assert.equal([...redis.redis.keys()].some((k) => k.startsWith('rl:desktopkey:')), false);
+      });
+    });
+
     // Bearer-JWT acceptance is the OTHER positive path (normal web Pro
     // users). End-to-end coverage would need a stubbed Clerk
     // validateBearerToken — out of scope for this unit test. The Bearer
@@ -274,15 +470,15 @@ describe('api/mcp-proxy', () => {
 
     it('drops Metadata-Flavor / X-aws-ec2-metadata-token but forwards legit headers', async () => {
       const captured = captureForwardedHeaders();
-      const res = await handler(makeGetRequest({
+      const res = await handler(makePostRequest({ action: 'tools/list',
         serverUrl: 'https://mcp.example.com/mcp',
-        headers: JSON.stringify({
+        customHeaders: {
           'Metadata-Flavor': 'Google',
           'metadata': 'true',
           'X-aws-ec2-metadata-token': 'stolen-token',
           'X-aws-ec2-metadata-token-ttl-seconds': '21600',
           'Authorization': 'Bearer legit-mcp-token',
-        }),
+        },
       }));
       assert.equal(res.status, 200);
       assert.ok(captured.headers, 'target fetch must have been called');
@@ -292,6 +488,248 @@ describe('api/mcp-proxy', () => {
       assert.ok(!lowerKeys.includes('x-aws-ec2-metadata-token'), 'AWS IMDSv2 token header must be stripped');
       assert.ok(!lowerKeys.includes('x-aws-ec2-metadata-token-ttl-seconds'), 'AWS IMDSv2 ttl header must be stripped');
       assert.ok(lowerKeys.includes('authorization'), 'legitimate Authorization must pass through');
+    });
+  });
+
+  // A vendor moved a shipped preset's endpoint and left a 308 behind, which
+  // `redirect: 'manual'` turned into a hard "Initialize failed: HTTP 308" for
+  // every caller. The proxy now follows one method-preserving hop — but the
+  // manual mode is an SSRF control, so each of these pins a way the follow
+  // must NOT become a bypass.
+  describe('bounded redirect follow', () => {
+    const OLD = 'https://mcp.old.example.com';
+    const NEW = 'https://mcp.new.example.com';
+
+    // Route the stub on the PARSED origin, never a string prefix:
+    // `startsWith('https://mcp.old.example.com')` also matches
+    // `https://mcp.old.example.com.attacker.test`, so a prefix check here would
+    // model the upstream less precisely than the code under test — which
+    // compares `url.origin`. Same reason CodeQL objects to it.
+    const originOf = (u) => { try { return new URL(String(u)).origin; } catch { return ''; } };
+    const hostOf = (u) => { try { return new URL(String(u)).host; } catch { return ''; } };
+    const protocolOf = (u) => { try { return new URL(String(u)).protocol; } catch { return ''; } };
+
+    // Host OLD permanently redirects to host NEW; NEW speaks MCP. `status` and
+    // `location` let a case reshape the redirect it emits.
+    function redirectingServer({ status = 308, location = `${NEW}/mcp`, target = NEW } = {}) {
+      const seen = { urls: [], headersAtTarget: null };
+      globalThis.fetch = async (url, opts) => {
+        seen.urls.push(String(url));
+        if (originOf(url) === OLD) {
+          return new Response(null, { status, headers: location ? { location } : {} });
+        }
+        if (originOf(url) === originOf(target)) {
+          seen.headersAtTarget = opts?.headers ?? {};
+          const body = opts?.body ? JSON.parse(opts.body) : {};
+          const result = body.method === 'tools/list'
+            ? { tools: [{ name: 'moved_tool', description: 'd', inputSchema: { type: 'object' } }] }
+            : { protocolVersion: '2025-03-26', capabilities: {}, serverInfo: { name: 't', version: '1' } };
+          return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      };
+      return seen;
+    }
+
+    it('follows one 308 hop and serves the moved server', async () => {
+      const seen = redirectingServer();
+      const res = await handler(makePostRequest({ action: 'tools/list', serverUrl: `${OLD}/mcp` }));
+      assert.equal(res.status, 200);
+      const payload = await res.json();
+      assert.deepEqual(payload.tools?.map((t) => t.name), ['moved_tool']);
+      assert.ok(seen.urls.some((u) => originOf(u) === NEW), 'must have re-dispatched to the redirect target');
+    });
+
+    it('drops caller credentials when the hop crosses an origin', async () => {
+      const seen = redirectingServer();
+      const res = await handler(makePostRequest({
+        action: 'tools/list',
+        serverUrl: `${OLD}/mcp`,
+        customHeaders: { Authorization: 'Bearer caller-api-key' },
+      }));
+      assert.equal(res.status, 200);
+      const lowerKeys = Object.keys(seen.headersAtTarget || {}).map((k) => k.toLowerCase());
+      assert.ok(
+        !lowerKeys.includes('authorization'),
+        'Authorization must NOT reach a host the upstream chose via Location',
+      );
+      assert.ok(lowerKeys.includes('accept'), 'transport headers must survive the hop');
+    });
+
+    it('keeps caller credentials when the hop stays on the same origin', async () => {
+      const seen = redirectingServer({ location: `${OLD}/mcp/v2`, target: `${OLD}/mcp/v2` });
+      globalThis.fetch = async (url, opts) => {
+        seen.urls.push(String(url));
+        if (String(url) === `${OLD}/mcp`) {
+          return new Response(null, { status: 308, headers: { location: `${OLD}/mcp/v2` } });
+        }
+        seen.headersAtTarget = opts?.headers ?? {};
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        const result = body.method === 'tools/list'
+          ? { tools: [] }
+          : { protocolVersion: '2025-03-26', capabilities: {}, serverInfo: { name: 't', version: '1' } };
+        return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      };
+      const res = await handler(makePostRequest({
+        action: 'tools/list',
+        serverUrl: `${OLD}/mcp`,
+        customHeaders: { Authorization: 'Bearer caller-api-key' },
+      }));
+      assert.equal(res.status, 200);
+      const lowerKeys = Object.keys(seen.headersAtTarget || {}).map((k) => k.toLowerCase());
+      assert.ok(lowerKeys.includes('authorization'), 'a same-origin hop must not strip the caller key');
+    });
+
+    for (const status of [307, 308]) {
+      for (const action of ['tools/list', 'tools/call']) {
+        for (const targetOrigin of [OLD, NEW]) {
+          it(`keeps a stateful ${status} ${action} session at the ${targetOrigin === OLD ? 'same' : 'new'} origin`, async () => {
+            const targetUrl = `${targetOrigin}/mcp/v2`;
+            const seen = [];
+            const resolvedHosts = [];
+            const targetFetch = makeMcpFetch({
+              tools: [{ name: 'moved_tool' }],
+              callResult: { content: [{ type: 'text', text: 'moved result' }] },
+            });
+            setResolveHostnameForTest(async (hostname) => {
+              resolvedHosts.push(hostname);
+              return [PUBLIC_TEST_ADDRESS];
+            });
+            globalThis.fetch = async (url, opts) => {
+              const body = JSON.parse(opts.body);
+              const headers = new Headers(opts.headers);
+              seen.push({ url: String(url), method: body.method, headers });
+              if (String(url) === `${OLD}/mcp`) {
+                return new Response(null, { status, headers: { location: targetUrl } });
+              }
+              assert.equal(String(url), targetUrl);
+              if (body.method !== 'initialize' && headers.get('mcp-session-id') !== 'target-session') {
+                return new Response(null, { status: 400 });
+              }
+              const response = await targetFetch(url, opts);
+              if (body.method === 'initialize') response.headers.set('Mcp-Session-Id', 'target-session');
+              return response;
+            };
+
+            const res = await handler(makePostRequest({
+              action: action === 'tools/list' ? action : undefined,
+              serverUrl: `${OLD}/mcp`, toolName: 'moved_tool',
+              customHeaders: { Authorization: 'Bearer caller-key', 'X-Vendor-Key': 'vendor-key' },
+            }));
+            assert.equal(res.status, 200);
+            const payload = await res.json();
+            if (action === 'tools/list') assert.equal(payload.tools[0].name, 'moved_tool');
+            else assert.equal(payload.result.content[0].text, 'moved result');
+            assert.deepEqual(seen.map(({ url, method }) => [url, method]), [
+              [`${OLD}/mcp`, 'initialize'],
+              [targetUrl, 'initialize'],
+              [targetUrl, 'notifications/initialized'],
+              [targetUrl, action],
+            ]);
+            assert.equal(seen[0].headers.get('mcp-session-id'), null);
+            assert.equal(seen[0].headers.get('authorization'), 'Bearer caller-key');
+            for (const [index, request] of seen.slice(1).entries()) {
+              assert.equal(request.headers.get('mcp-session-id'), index === 0 ? null : 'target-session');
+              assert.equal(request.headers.get('authorization'), targetOrigin === OLD ? 'Bearer caller-key' : null);
+              assert.equal(request.headers.get('x-vendor-key'), targetOrigin === OLD ? 'vendor-key' : null);
+            }
+            assert.deepEqual(resolvedHosts, [hostOf(OLD), ...seen.map(({ url }) => hostOf(url))]);
+          });
+        }
+      }
+    }
+
+    it('aborts pending redirect DNS at the shared exchange deadline', { timeout: 5_000 }, async (t) => {
+      const exchange = new AbortController();
+      const originalTimeout = AbortSignal.timeout;
+      t.mock.method(AbortSignal, 'timeout', (ms) => ms === 15_000 ? exchange.signal : originalTimeout(ms));
+      setResolveHostnameForTest(null);
+      const targetDnsSignals = [];
+      const releaseDns = [];
+      const upstreamUrls = [];
+      let notifyDnsStarted;
+      const dnsStarted = new Promise((resolve) => { notifyDnsStarted = resolve; });
+      globalThis.fetch = async (url, opts) => {
+        const parsed = new URL(String(url));
+        if (parsed.origin === 'https://cloudflare-dns.com') {
+          const response = () => dnsJsonResponse(parsed.searchParams.get('type') === 'A'
+            ? [{ type: 1, data: PUBLIC_TEST_ADDRESS }] : []);
+          if (parsed.searchParams.get('name') !== hostOf(NEW)) return response();
+          return new Promise((resolve, reject) => {
+            targetDnsSignals.push(opts.signal);
+            releaseDns.push(() => resolve(response()));
+            opts.signal.addEventListener('abort', () => reject(opts.signal.reason), { once: true });
+            if (targetDnsSignals.length === 2) notifyDnsStarted();
+          });
+        }
+        upstreamUrls.push(String(url));
+        opts.signal.throwIfAborted();
+        return new Response(null, { status: 308, headers: { location: `${NEW}/mcp` } });
+      };
+      const pending = handler(makePostRequest({ action: 'tools/list', serverUrl: `${OLD}/mcp` }));
+      try {
+        await dnsStarted;
+        exchange.abort(new DOMException('The operation timed out', 'TimeoutError'));
+        assert.ok(targetDnsSignals.every((signal) => signal.aborted), 'both DNS lookups must abort with the exchange');
+        assert.equal((await pending).status, 504);
+        assert.deepEqual(upstreamUrls, [`${OLD}/mcp`]);
+      } finally {
+        for (const release of releaseDns) release();
+        await pending;
+      }
+    });
+
+    it('refuses a second hop rather than chasing a redirect chain', async () => {
+      const urls = [];
+      globalThis.fetch = async (url) => {
+        urls.push(String(url));
+        if (originOf(url) === OLD) {
+          return new Response(null, { status: 308, headers: { location: `${NEW}/mcp` } });
+        }
+        return new Response(null, { status: 308, headers: { location: 'https://mcp.third.example.com/mcp' } });
+      };
+      const res = await handler(makePostRequest({ action: 'tools/list', serverUrl: `${OLD}/mcp` }));
+      assert.notEqual(res.status, 200);
+      assert.ok(
+        !urls.some((u) => hostOf(u) === 'mcp.third.example.com'),
+        'the second hop must never be dispatched',
+      );
+    });
+
+    it('refuses an http:// Location instead of downgrading the hop', async () => {
+      const urls = [];
+      globalThis.fetch = async (url) => {
+        urls.push(String(url));
+        return new Response(null, { status: 308, headers: { location: 'http://mcp.new.example.com/mcp' } });
+      };
+      const res = await handler(makePostRequest({ action: 'tools/list', serverUrl: `${OLD}/mcp` }));
+      assert.notEqual(res.status, 200);
+      assert.ok(!urls.some((u) => protocolOf(u) === 'http:'), 'must never dispatch over plaintext');
+    });
+
+    it('does not follow a 302, which would rewrite the JSON-RPC POST to GET', async () => {
+      const seen = redirectingServer({ status: 302 });
+      const res = await handler(makePostRequest({ action: 'tools/list', serverUrl: `${OLD}/mcp` }));
+      assert.notEqual(res.status, 200);
+      assert.ok(!seen.urls.some((u) => originOf(u) === NEW), '302 must not be followed');
+    });
+
+    it('re-runs the SSRF guard on the redirect target', async () => {
+      // OLD resolves public; the host it redirects to resolves to link-local.
+      setResolveHostnameForTest(async (hostname) => (
+        hostname === 'mcp.old.example.com' ? [PUBLIC_TEST_ADDRESS] : ['169.254.169.254']
+      ));
+      const seen = redirectingServer();
+      const res = await handler(makePostRequest({ action: 'tools/list', serverUrl: `${OLD}/mcp` }));
+      assert.notEqual(res.status, 200);
+      assert.ok(
+        !seen.urls.some((u) => originOf(u) === NEW),
+        'a redirect onto a blocked address must be refused before dispatch',
+      );
     });
   });
 
@@ -396,6 +834,13 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 400);
     });
 
+    it('rejects local-use translation and discard-only IPv6 literals', async () => {
+      for (const address of ['64:ff9b:1::808:808', '100::1']) {
+        const res = await handler(makeGetRequest({ serverUrl: `https://[${address}]/mcp` }));
+        assert.equal(res.status, 400);
+      }
+    });
+
     it('returns 400 when DNS resolves a hostname to blocked private/reserved addresses', async () => {
       const cases = [
         ['private IPv4', '10.0.0.5'],
@@ -410,6 +855,8 @@ describe('api/mcp-proxy', () => {
         ['hex v4-mapped loopback', '::ffff:7f00:1'],
         ['hex v4-mapped metadata IP', '::ffff:a9fe:a9fe'],
         ['uppercase hex v4-mapped RFC1918', '::FFFF:0A00:0001'],
+        ['local-use NAT64', '64:ff9b:1::808:808'],
+        ['discard-only IPv6', '100::1'],
         ['NAT64 RFC1918', '64:ff9b::a00:1'],
         ['NAT64 metadata IP', '64:ff9b::a9fe:a9fe'],
         ['IPv4-compatible loopback', '::7f00:1'],
@@ -598,7 +1045,7 @@ describe('api/mcp-proxy', () => {
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 422);
       const data = await res.json();
-      assert.match(data.error, /Method not found/i);
+      assert.match(data.error, /MCP server rejected request/i);
     });
 
     it('returns 504 on fetch timeout', async () => {
@@ -609,18 +1056,33 @@ describe('api/mcp-proxy', () => {
       };
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 504);
+      // The proxy already captured the upstream timeout server-side at
+      // warning. The marker lets premium-fetch's origin-5xx canary skip this
+      // 504 instead of re-reporting it from every browser as an origin error
+      // (WORLDMONITOR-17A).
+      assert.equal(res.headers.get('X-Wm-Upstream-Timeout'), '1');
       const data = await res.json();
       assert.match(data.error, /timed out/i);
     });
 
-    it('ignores invalid JSON in headers param', async () => {
+    it('does not mark an upstream JSON-RPC rejection as an upstream timeout', async () => {
+      globalThis.fetch = async () => new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'Method not found' } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      assert.equal(res.headers.get('X-Wm-Upstream-Timeout'), null);
+    });
+
+    it('rejects invalid JSON in the removed query-header channel', async () => {
       globalThis.fetch = makeMcpFetch({ tools: [] });
       const url = new URL('https://worldmonitor.app/api/mcp-proxy');
       url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
       url.searchParams.set('headers', 'not json');
       const req = new Request(url.toString(), { method: 'GET', headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': ENTERPRISE_KEY } });
       const res = await handler(req);
-      assert.equal(res.status, 200);
+      assert.equal(res.status, 400);
     });
 
     it('passes custom headers to upstream', async () => {
@@ -629,9 +1091,9 @@ describe('api/mcp-proxy', () => {
         capturedHeaders = Object.fromEntries(Object.entries(opts?.headers || {}));
         return makeMcpFetch({ tools: [] })(url, opts);
       };
-      const res = await handler(makeGetRequest({
+      const res = await handler(makePostRequest({ action: 'tools/list',
         serverUrl: 'https://mcp.example.com/mcp',
-        headers: JSON.stringify({ Authorization: 'Bearer test-key' }),
+        customHeaders: { Authorization: 'Bearer test-key' },
       }));
       assert.equal(res.status, 200);
       assert.equal(capturedHeaders['Authorization'], 'Bearer test-key');
@@ -643,9 +1105,9 @@ describe('api/mcp-proxy', () => {
         capturedHeaders = Object.fromEntries(Object.entries(opts?.headers || {}));
         return makeMcpFetch({ tools: [] })(url, opts);
       };
-      const res = await handler(makeGetRequest({
+      const res = await handler(makePostRequest({ action: 'tools/list',
         serverUrl: 'https://mcp.example.com/mcp',
-        headers: JSON.stringify({ 'X-Evil\r\nInjected': 'bad' }),
+        customHeaders: { 'X-Evil\r\nInjected': 'bad' },
       }));
       assert.equal(res.status, 200);
       for (const k of Object.keys(capturedHeaders)) {
@@ -899,7 +1361,7 @@ describe('api/mcp-proxy', () => {
       }));
       assert.equal(res.status, 422);
       const data = await res.json();
-      assert.match(data.error, /Unknown tool/i);
+      assert.match(data.error, /MCP server rejected request/i);
     });
 
     it('returns 504 on a native fetch TimeoutError during tool call', async () => {
@@ -1100,6 +1562,67 @@ describe('api/mcp-proxy', () => {
         `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_DEPTH} nesting levels`,
       );
     });
+
+    // The pending RPC deferred can reject (stream close or RPC timer) while send()
+    // is still awaiting the endpoint POST. Without a handler attached at creation,
+    // Node reports an unhandled rejection, which by default kills the process.
+    for (const [name, closeStreamOnCall, expectedStatus, expectedError] of [
+      ['the SSE stream closes', true, 422, 'SSE stream closed'],
+      ['the RPC timer fires', false, 504, 'MCP server timed out'],
+    ]) {
+      it(`does not leak an unhandled rejection when ${name} during a slow tools/call POST`, async () => {
+        const unhandled = [];
+        const onUnhandled = (reason) => { unhandled.push(reason); };
+        process.on('unhandledRejection', onUnhandled);
+        try {
+          const encoder = new TextEncoder();
+          let sseController;
+          let toolsCallPosted = false;
+          globalThis.fetch = async (_url, opts) => {
+            if (!opts?.body) {
+              const stream = new ReadableStream({
+                start(controller) {
+                  sseController = controller;
+                  controller.enqueue(encoder.encode('event: endpoint\ndata: /messages\n\n'));
+                },
+              });
+              return new Response(stream, {
+                status: 200,
+                headers: { 'Content-Type': 'text/event-stream' },
+              });
+            }
+            const body = JSON.parse(opts.body);
+            if (body.method === 'initialize') {
+              sseController.enqueue(encoder.encode(`data: ${JSON.stringify({
+                jsonrpc: '2.0',
+                id: body.id,
+                result: { protocolVersion: '2024-11-05', capabilities: {} },
+              })}\n\n`));
+            }
+            if (body.method === 'tools/call') {
+              toolsCallPosted = true;
+              if (closeStreamOnCall) sseController.close();
+              // Hold the POST past SSE_RPC_TIMEOUT_MS (200 ms under node:test).
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            return new Response(null, { status: 202 });
+          };
+
+          const res = await handler(makePostRequest({
+            serverUrl: 'https://mcp.example.com/sse',
+            toolName: 'search',
+          }));
+          await new Promise((resolve) => setImmediate(resolve));
+
+          assert.equal(toolsCallPosted, true, 'the race must happen during the tools/call POST');
+          assert.equal(res.status, expectedStatus);
+          assert.deepEqual(await res.json(), { error: expectedError });
+          assert.deepEqual(unhandled.map((e) => e?.message ?? String(e)), []);
+        } finally {
+          process.off('unhandledRejection', onUnhandled);
+        }
+      });
+    }
   });
 
   // ── SSE SSRF protection ───────────────────────────────────────────────────
@@ -1341,7 +1864,7 @@ describe('api/mcp-proxy', () => {
       assert.ok(redisBodies.some((body) => body.includes(`/api/mcp-proxy:${ip}`)), 'scoped limiter key should include the proofed CF client IP');
     });
 
-    it('does not let missing Cloudflare proof rotate the MCP proxy scoped limiter key', async () => {
+    it('rejects missing Cloudflare proof before the MCP proxy scoped limiter', async () => {
       process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
       process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
@@ -1365,9 +1888,9 @@ describe('api/mcp-proxy', () => {
         'https://worldmonitor.app',
         { extra: { 'cf-connecting-ip': spoofedIp, 'x-real-ip': '192.0.2.5' } },
       ));
-      assert.equal(res.status, 200);
-      assert.ok(redisBodies.some((body) => body.includes('/api/mcp-proxy:192.0.2.5')), 'scoped limiter should fall back to x-real-ip without proof');
-      assert.ok(!redisBodies.some((body) => body.includes(`/api/mcp-proxy:${spoofedIp}`)), 'spoofed cf-connecting-ip must not reach the scoped limiter key without proof');
+      assert.equal(res.status, 403);
+      assert.equal(res.headers.get('X-RateLimit-Mode'), 'edge-proof');
+      assert.deepEqual(redisBodies, [], 'unproven CF IP must be rejected before Redis');
     });
   });
 
@@ -1412,10 +1935,11 @@ describe('api/mcp-proxy', () => {
 
     it('audit log contains header NAMES but never header VALUES (no secret leakage)', async () => {
       globalThis.fetch = makeMcpFetch({ tools: [] });
-      const res = await handler(makeGetRequest(
+      const res = await handler(makePostRequest(
         {
+          action: 'tools/list',
           serverUrl: 'https://mcp.example.com/mcp',
-          headers: JSON.stringify({ Authorization: 'Bearer super-secret-token-XYZ', 'X-Api-Key': 'k_abc123' }),
+          customHeaders: { Authorization: 'Bearer super-secret-token-XYZ', 'X-Api-Key': 'k_abc123' },
         },
         'https://worldmonitor.app',
         { extra: { 'cf-connecting-ip': uniqueCallerIp() } },
@@ -1537,7 +2061,7 @@ describe('api/mcp-proxy — observability', () => {
     process.env.USAGE_TELEMETRY = '1';
     process.env.AXIOM_API_TOKEN = 'test-axiom-token-not-a-real-secret';
     const mod = await import(`../api/mcp-proxy.ts?obs=${Date.now()}`);
-    obsHandler = mod.default;
+    obsHandler = mod.handler;
     setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
   });
 
@@ -1584,6 +2108,9 @@ describe('api/mcp-proxy — observability', () => {
     assert.equal(rows[0].reason, 'auth_401');
     assert.equal(rows[0].event_type, 'request');
     assert.equal(rows[0].domain, 'mcp', 'joins with the /mcp surface');
+    assert.equal(rows[0].res_bytes, null, 'proxied size is unknown — never a fake zero (#8403)');
+    assert.equal(rows[0].rpc_method, null, 'proxy is not the JSON-RPC MCP transport');
+    assert.equal(rows[0].tool_name, null);
   });
 
   it('labels a disallowed origin as origin_403, not a generic failure', async () => {
@@ -1678,16 +2205,156 @@ describe('api/mcp-proxy — observability', () => {
 
     assert.deepEqual(
       proxyFailureFor(new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
-      { isTimeout: true, level: 'warning' },
+      { isTimeout: true, level: 'warning', errorClass: 'timeout', report: true },
     );
     assert.deepEqual(
-      proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 401')),
-      { isTimeout: false, level: 'warning' },
+      proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 500', { upstreamStatus: 500 })),
+      { isTimeout: false, level: 'warning', errorClass: 'McpProxyUpstreamError', report: true },
     );
     assert.deepEqual(
       proxyFailureFor(new Error('unexpected local invariant failure')),
-      { isTimeout: false, level: 'error' },
+      { isTimeout: false, level: 'error', errorClass: 'Error', report: true },
     );
+  });
+
+  // The remote MCP server refusing the caller's own credentials is the
+  // caller's configuration, not a proxy fault. One Pro panel saved without its
+  // Tavily key sent 108 such events in three hours (WORLDMONITOR-172). The
+  // audit log keeps the upstream status instead.
+  it('does not report an upstream credential rejection to Sentry', async () => {
+    const { McpProxyUpstreamError, proxyFailureFor } = await import(
+      `../api/mcp-proxy.ts?credential=${Date.now()}`
+    );
+    for (const status of [401, 403]) {
+      const failure = proxyFailureFor(
+        new McpProxyUpstreamError(`Initialize failed: HTTP ${status}`, { upstreamStatus: status }),
+      );
+      assert.equal(failure.report, false, `upstream ${status} is the caller's credential`);
+      assert.equal(failure.level, 'warning');
+    }
+    // Only the recorded status decides; a message that merely reads like one does not.
+    assert.equal(proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 401')).report, true);
+    assert.equal(proxyFailureFor(new Error('HTTP 401')).report, true);
+  });
+
+  // HTTP 429 is the remote server rate-limiting the caller (a keyless panel
+  // polling past its free quota), the HTTP shape of the same verdict as a
+  // JSON-RPC rejection. One search.parallel.ai panel sent 1,019 such events in
+  // a day after the 401/403 and JSON-RPC exclusions shipped (WORLDMONITOR-172
+  // second regrowth). The audit log keeps the upstream status.
+  it('does not report an upstream rate limit to Sentry, but still reports upstream server faults', async () => {
+    const { McpProxyUpstreamError, proxyFailureFor } = await import(
+      `../api/mcp-proxy.ts?rate-limit=${Date.now()}`
+    );
+    const limited = proxyFailureFor(
+      new McpProxyUpstreamError('tools/call failed: HTTP 429', { upstreamStatus: 429 }),
+    );
+    assert.equal(limited.report, false, "upstream 429 is the remote's quota decision about the caller");
+    assert.equal(limited.level, 'warning');
+    for (const status of [500, 502, 503, 404, 400]) {
+      assert.equal(
+        proxyFailureFor(new McpProxyUpstreamError(`tools/call failed: HTTP ${status}`, { upstreamStatus: status })).report,
+        true,
+        `upstream ${status} still reports`,
+      );
+    }
+    assert.equal(proxyFailureFor(new McpProxyUpstreamError('tools/call failed: HTTP 429')).report, true);
+  });
+
+  it('audits the upstream status of a rate-limited call', async () => {
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => { logs.push(args); };
+    try {
+      stubAxiom(async () => new Response('Too Many Requests', { status: 429 }));
+      const res = await obsHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+    } finally {
+      console.log = originalLog;
+    }
+    const audit = logs.find(([tag, entry]) => tag === '[mcp-proxy]' && entry?.event === 'mcp_proxy_call');
+    assert.ok(audit, 'the proxy call is still audited');
+    assert.equal(audit[1].upstream_status, 429);
+  });
+
+  // A JSON-RPC `error` object answered on HTTP 200 is the remote server's
+  // decision about the caller's own request (a keyless panel over its free
+  // quota, an unknown tool name). One search.parallel.ai panel saved without
+  // a key produced 226 such events in two weeks (WORLDMONITOR-172 regrowth).
+  // The caller still gets the 422; the audit log keeps the JSON-RPC code.
+  it('does not report a JSON-RPC rejection answered by the upstream to Sentry', async () => {
+    const { McpProxyUpstreamError, proxyFailureFor } = await import(
+      `../api/mcp-proxy.ts?rpc-rejection=${Date.now()}`
+    );
+    const rejected = new McpProxyUpstreamError('Initialize error: MCP server rejected request', {
+      upstreamRpcError: { code: -32000, message: 'Rate limit exceeded' },
+    });
+    assert.equal(rejected.upstreamRpcCode, -32000);
+    const failure = proxyFailureFor(rejected);
+    assert.equal(failure.report, false, 'the upstream answered; its JSON-RPC error is not a proxy fault');
+    assert.equal(failure.level, 'warning');
+    // A malformed error object still counts as a rejection but records no code.
+    const codeless = new McpProxyUpstreamError('tools/call error: MCP server rejected request', {
+      upstreamRpcError: { message: 'nope' },
+    });
+    assert.equal(codeless.upstreamRpcCode, null);
+    assert.equal(proxyFailureFor(codeless).report, false);
+    // The message alone does not decide.
+    assert.equal(proxyFailureFor(new McpProxyUpstreamError('Initialize error: MCP server rejected request')).report, true);
+  });
+
+  it('audits the JSON-RPC code of an upstream rejection', async () => {
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => { logs.push(args); };
+    try {
+      stubAxiom(async () => new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'Rate limit exceeded' } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ));
+      const res = await obsHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      assert.match((await res.json()).error, /MCP server rejected request/);
+    } finally {
+      console.log = originalLog;
+    }
+    const audit = logs.find(([tag, entry]) => tag === '[mcp-proxy]' && entry?.event === 'mcp_proxy_call');
+    assert.ok(audit, 'the proxy call is still audited');
+    assert.equal(audit[1].upstream_status, null);
+    assert.equal(audit[1].upstream_rpc_code, -32000);
+  });
+
+  it('answers an upstream 401 with 422, no Sentry capture, and the status in the audit log', async () => {
+    const logs = [];
+    const originalLog = console.log;
+    console.log = (...args) => { logs.push(args); };
+    try {
+      stubAxiom(async () => new Response('unauthorized', { status: 401 }));
+      const res = await obsHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 422);
+      assert.match((await res.json()).error, /Initialize failed: HTTP 401/);
+    } finally {
+      console.log = originalLog;
+    }
+    const audit = logs.find(([tag, entry]) => tag === '[mcp-proxy]' && entry?.event === 'mcp_proxy_call');
+    assert.ok(audit, 'the proxy call is still audited');
+    assert.equal(audit[1].upstream_status, 401);
+  });
+
+  // The Sentry fingerprint keys on errorClass, so expected upstream warnings,
+  // timeouts and unknown proxy defects land in separate issues. A timeout
+  // detected only from its message still buckets as 'timeout', and a thrown
+  // non-Error cannot put an arbitrary value into the fingerprint.
+  it('classifies failures into bounded fingerprint classes', async () => {
+    const { proxyFailureFor } = await import(`../api/mcp-proxy.ts?failure-class=${Date.now()}`);
+    const { ResponseBodyTooLargeError } = await import('../api/mcp/bounded-body.ts');
+    const { McpProxyJsonDepthError } = await import('../api/mcp/bounded-json.ts');
+
+    assert.equal(proxyFailureFor(new Error('MCP server timed out after 10s')).errorClass, 'timeout');
+    assert.equal(proxyFailureFor(new ResponseBodyTooLargeError(1024)).errorClass, 'ResponseBodyTooLargeError');
+    assert.equal(proxyFailureFor(new McpProxyJsonDepthError(128)).errorClass, 'McpProxyJsonDepthError');
+    assert.equal(proxyFailureFor(new TypeError('x is undefined')).errorClass, 'TypeError');
+    assert.equal(proxyFailureFor('https://attacker.example/some/path').errorClass, 'Error');
   });
 
   // Every value below must be a member of the RequestReason union in
@@ -1720,8 +2387,14 @@ describe('api/mcp-proxy — observability', () => {
     assert.ok(catchAt > 0, 'the top-level catch still classifies failures');
     const tail = src.slice(catchAt, src.indexOf('logProxyCall({', catchAt));
 
-    assert.match(tail, /captureSilentError\(err,/, 'a swallowed handler fault must not be silent');
+    assert.match(tail, /captureSilentError\(new Error\(/, 'a swallowed handler fault must not be silent');
+    assert.match(tail, /if \(failure\.report\)/, 'only credential rejections may skip the capture');
     assert.match(tail, /step:\s*'proxy-dispatch'/);
+    assert.match(
+      tail,
+      /fingerprint:\s*\['api\/mcp-proxy', 'proxy-dispatch', failure\.errorClass\]/,
+      'timeouts, expected upstream failures and proxy defects must not share one Sentry issue',
+    );
     assert.match(
       tail,
       /level:\s*failure\.level/,
@@ -1735,5 +2408,249 @@ describe('api/mcp-proxy — observability', () => {
       /target_host/,
       'target_host must never become a Sentry tag',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GHSA-887j: upstream sockets are pinned to the DoH-vetted address.
+//
+// The Edge runtime could only re-resolve before fetch(), so a DNS answer that
+// changed between the check and the connect (rebinding, split horizon) could
+// send the proxy to loopback or cloud metadata. On Node every upstream request
+// carries its own undici dispatcher whose lookup returns the vetted address.
+// ---------------------------------------------------------------------------
+describe('api/mcp-proxy — Node runtime module shape (GHSA-887j)', () => {
+  it('exports per-method Web handlers and no default, so Vercel Node invokes them with a Request', async () => {
+    const mod = await import(`../api/mcp-proxy.ts?shape=${Date.now()}`);
+    // @vercel/node unwraps `default` first and then ignores the method
+    // exports, calling the default as (IncomingMessage, ServerResponse).
+    assert.equal(mod.default, undefined);
+    assert.equal(mod.config.runtime, 'nodejs');
+    for (const method of ['GET', 'POST', 'OPTIONS']) assert.equal(mod[method], mod.handler, method);
+  });
+});
+
+describe('api/mcp-proxy — pinned upstream dispatch (GHSA-887j)', () => {
+  let pinHandler;
+  let pinning;
+  let Agent;
+  let Dispatcher1Wrapper;
+
+  beforeEach(async () => {
+    const mod = await import(`../api/mcp-proxy.ts?pin=${Date.now()}`);
+    pinHandler = mod.handler;
+    pinning = mod.__testing__;
+    ({ Agent, Dispatcher1Wrapper } = await import('undici'));
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
+  });
+
+  /**
+   * Wraps an upstream stub; records whether each MCP upstream dispatch carried
+   * a pinned dispatcher. First-party calls (the rate limiter's Redis, usage
+   * telemetry) share globalThis.fetch and are not upstream dispatches.
+   */
+  const UPSTREAM_HOSTS = new Set(['mcp.example.com', 'old.example.com', 'new.example.com']);
+
+  function recordDispatches(upstream) {
+    const dispatches = [];
+    globalThis.fetch = async (url, init) => {
+      const { hostname } = new URL(String(url));
+      if (UPSTREAM_HOSTS.has(hostname)) {
+        dispatches.push({ hostname, method: init?.method ?? 'GET', pinned: init?.dispatcher instanceof Dispatcher1Wrapper });
+      }
+      return upstream(url, init);
+    };
+    return dispatches;
+  }
+
+  it('pins every streamable-HTTP dispatch, including a followed redirect hop', async () => {
+    const resolved = [];
+    setResolveHostnameForTest(async (hostname) => { resolved.push(hostname); return [PUBLIC_TEST_ADDRESS]; });
+    const upstream = makeMcpFetch({ tools: [{ name: 't', inputSchema: {} }] });
+    const dispatches = recordDispatches(async (url, init) => {
+      if (String(url).startsWith('https://old.example.com/')) {
+        return new Response(null, { status: 308, headers: { Location: 'https://new.example.com/mcp' } });
+      }
+      return upstream(url, init);
+    });
+
+    const list = await pinHandler(makeGetRequest({ serverUrl: 'https://old.example.com/mcp' }));
+    assert.equal(list.status, 200);
+    const call = await pinHandler(makePostRequest({ serverUrl: 'https://new.example.com/mcp', toolName: 't', toolArgs: {} }));
+    assert.equal(call.status, 200);
+
+    assert.ok(dispatches.length >= 4, `expected the full exchange, saw ${dispatches.length}`);
+    assert.deepEqual(dispatches.filter((d) => !d.pinned), [], 'every upstream dispatch must carry a pinned dispatcher');
+    assert.ok(dispatches.some((d) => d.hostname === 'new.example.com'), 'the redirect hop was followed');
+    assert.ok(resolved.some((hostname) => hostname === 'new.example.com'), 'the redirect target is vetted before its own dispatch');
+  });
+
+  it('pins the legacy SSE stream, its RPC POSTs and the initialized notification', async () => {
+    const encoder = new TextEncoder();
+    let sse;
+    const dispatches = recordDispatches(async (_url, init) => {
+      if (!init?.body) {
+        return new Response(new ReadableStream({
+          start(controller) {
+            sse = controller;
+            controller.enqueue(encoder.encode('event: endpoint\ndata: /messages\n\n'));
+          },
+        }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      const rpc = JSON.parse(init.body);
+      const result = rpc.method === 'initialize'
+        ? { protocolVersion: '2025-03-26', capabilities: {} }
+        : rpc.method === 'tools/list' ? { tools: [{ name: 'sse_tool', inputSchema: {} }] } : undefined;
+      if (rpc.id !== undefined && result) {
+        setTimeout(() => sse.enqueue(encoder.encode(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result })}\n\n`)), 0);
+      }
+      return new Response(null, { status: 202 });
+    });
+
+    const res = await pinHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).tools[0].name, 'sse_tool');
+    const posts = dispatches.filter((d) => d.method === 'POST');
+    assert.ok(posts.length >= 3, `expected initialize, initialized and tools/list POSTs, saw ${posts.length}`);
+    assert.deepEqual(dispatches.filter((d) => !d.pinned), [], 'every SSE dispatch must carry a pinned dispatcher');
+  });
+
+  it('refuses before dispatch when the vetted answer is private', async () => {
+    setResolvedAddresses(['10.0.0.7']);
+    const dispatches = recordDispatches(async () => { throw new Error('must not dispatch'); });
+    const res = await pinHandler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+    assert.equal(res.status, 400);
+    assert.equal(dispatches.length, 0);
+  });
+
+  it('pins an IPv4 answer when both families are vetted, and re-checks the chosen address', async () => {
+    const agent = pinning.pinnedDispatcher(['2606:2800:220:1:248:1893:25c8:1946', PUBLIC_TEST_ADDRESS]);
+    assert.ok(agent instanceof Agent);
+    await agent.close();
+    assert.throws(() => pinning.pinnedDispatcher(['127.0.0.1']), /not allowed/);
+    assert.throws(() => pinning.pinnedDispatcher([]), /no addresses/);
+  });
+
+  it('answers every lookup calling convention with the pinned address', () => {
+    const lookup = pinning.pinnedLookup(PUBLIC_TEST_ADDRESS, 4);
+    const seen = [];
+    lookup('rebind.example', { all: true }, (err, addresses) => seen.push([err, addresses]));
+    lookup('rebind.example', { family: 4 }, (err, address, family) => seen.push([err, address, family]));
+    lookup('rebind.example', (err, address, family) => seen.push([err, address, family]));
+    assert.deepEqual(seen, [
+      [null, [{ address: PUBLIC_TEST_ADDRESS, family: 4 }]],
+      [null, PUBLIC_TEST_ADDRESS, 4],
+      [null, PUBLIC_TEST_ADDRESS, 4],
+    ]);
+  });
+});
+
+// Real sockets: the advisory's attack shape. The platform resolver (simulated by
+// the global dispatcher) answers 127.0.0.1 for every name; the vetted address is
+// ::1. Both servers share one port, so only the address decides which is hit.
+describe('api/mcp-proxy — pinned socket on a real TLS connection (GHSA-887j)', () => {
+  let tls;
+  let pinning;
+  let undici;
+
+  before(async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { mkdtempSync, readFileSync } = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'mcp-pin-'));
+    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+      '-subj', '/CN=rebind.example', '-addext', 'subjectAltName=DNS:rebind.example',
+      '-keyout', path.join(dir, 'key.pem'), '-out', path.join(dir, 'cert.pem')], { stdio: 'ignore' });
+    tls = { key: readFileSync(path.join(dir, 'key.pem')), cert: readFileSync(path.join(dir, 'cert.pem')) };
+    pinning = (await import(`../api/mcp-proxy.ts?socket=${Date.now()}`)).__testing__;
+    undici = await import('undici');
+  });
+
+  async function listen(onRequest, host, port = 0) {
+    const https = await import('node:https');
+    const server = https.createServer(tls, onRequest);
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(port, host, resolve);
+    });
+    return server;
+  }
+
+  /** A vetted server on ::1 and a rebind target on 127.0.0.1, on the same port. */
+  async function listenPair(onVetted, onRebind) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const vetted = await listen(onVetted, '::1');
+      const port = vetted.address().port;
+      try {
+        return { vetted, rebind: await listen(onRebind, '127.0.0.1', port), port };
+      } catch {
+        vetted.close();
+      }
+    }
+    throw new Error('could not bind ::1 and 127.0.0.1 on one port');
+  }
+
+  function loopbackPlatformResolver(calls) {
+    return new undici.Agent({ connect: { ca: tls.cert, lookup: (hostname, options, callback) => {
+      calls.push(hostname);
+      const done = typeof options === 'function' ? options : callback;
+      if (options?.all) done(null, [{ address: '127.0.0.1', family: 4 }]);
+      else done(null, '127.0.0.1', 4);
+    } } });
+  }
+
+  it('connects to the vetted address even when the platform resolver says loopback', async () => {
+    const hits = { vetted: [], rebind: 0 };
+    const { vetted, rebind, port } = await listenPair(
+      (req, res) => { hits.vetted.push({ sni: req.socket.servername, host: req.headers.host }); res.end('vetted'); },
+      (_req, res) => { hits.rebind += 1; res.end('internal'); },
+    );
+    const platformLookups = [];
+    const previous = undici.getGlobalDispatcher();
+    undici.setGlobalDispatcher(loopbackPlatformResolver(platformLookups));
+    const pinned = new undici.Agent({ connect: { ca: tls.cert, lookup: pinning.pinnedLookup('::1', 6) } });
+    try {
+      const res = await fetch(`https://rebind.example:${port}/mcp`, { dispatcher: new undici.Dispatcher1Wrapper(pinned) });
+      assert.equal(await res.text(), 'vetted');
+      assert.deepEqual(platformLookups, [], 'a pinned request must never consult the platform resolver');
+      assert.equal(hits.rebind, 0, 'the rebind target must receive nothing');
+      assert.deepEqual(hits.vetted, [{ sni: 'rebind.example', host: `rebind.example:${port}` }]);
+
+      // Control: without the pinned dispatcher the same URL follows the
+      // platform resolver onto the rebind target, which is the reported bug.
+      const unpinned = await fetch(`https://rebind.example:${port}/mcp`);
+      assert.equal(await unpinned.text(), 'internal');
+      assert.deepEqual(platformLookups, ['rebind.example']);
+    } finally {
+      await pinned.close();
+      undici.setGlobalDispatcher(previous);
+      vetted.close();
+      rebind.close();
+    }
+  });
+
+  it('keeps streaming a response body after its dispatcher is closed', async () => {
+    const server = await listen((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('event: endpoint\ndata: /messages\n\n');
+      setTimeout(() => { res.write('data: late\n\n'); res.end(); }, 50);
+    }, '127.0.0.1');
+    const agent = new undici.Agent({ connect: { ca: tls.cert, lookup: pinning.pinnedLookup('127.0.0.1', 4) } });
+    try {
+      const res = await fetch(`https://rebind.example:${server.address().port}/sse`, { dispatcher: new undici.Dispatcher1Wrapper(agent) });
+      // fetchMcpUpstream closes the dispatcher as soon as fetch() resolves.
+      const closed = agent.close();
+      const body = await res.text();
+      await closed;
+      assert.match(body, /event: endpoint/);
+      assert.match(body, /data: late/, 'a graceful close must not cut off a streaming body');
+    } finally {
+      server.close();
+    }
   });
 });

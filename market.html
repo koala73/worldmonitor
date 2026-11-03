@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Market Radar | WorldMonitor</title>
+</head>
+<body>
+  <main id="marketRoot">
+    <header><h1>Market Radar</h1><span>WorldMonitor Markets</span></header>
+    <p id="marketUsage" role="status" hidden></p>
+    <p id="marketStatus" role="status">Connecting to WorldMonitor…</p>
+    <div id="marketContent" tabindex="0" aria-label="Loaded market quotes"></div>
+    <footer id="marketSnapshot"></footer>
+  </main>
+  <script type="module" src="/src/plugin-market-main.ts"></script>
+</body>
+</html>

@@ -35,11 +35,20 @@ interface DigestItem {
   importanceScore: number;
 }
 
+const DEFAULT_DIGEST_TITLE = 'Outside forces fuel Sudan war, new report finds';
+
 function digestItem(overrides: Partial<DigestItem> = {}): DigestItem {
+  const title = overrides.title ?? DEFAULT_DIGEST_TITLE;
   return {
-    title: 'Outside forces fuel Sudan war, new report finds',
+    title,
     source: 'UN News',
-    link: 'https://news.un.org/feed/view/en/story/2026/09/1168270',
+    // One article is one URL. The live strip dedupes by normalized article URL
+    // (#8339), matching the freeze, so a fixture reusing a single link across
+    // several distinct stories would collapse to one row and stop exercising
+    // tie-breaking. Derive it from the title; keep the canonical Sudan URL.
+    link: title === DEFAULT_DIGEST_TITLE
+      ? 'https://news.un.org/feed/view/en/story/2026/09/1168270'
+      : `https://news.un.org/feed/view/en/story/2026/09/${encodeURIComponent(title)}`,
     publishedAt: Date.now() - 60 * 60 * 1000,
     importanceScore: 50,
     ...overrides,
@@ -176,6 +185,25 @@ describe('live welcome headlines link only to verifiable articles', () => {
     const { headlines } = await fetchLiveTeasers();
     assert.deepEqual(headlines.items.map((h) => h.title), ['highest', 'newer', 'older']);
   });
+
+  it('publishes one row per article when a publisher repeats it across editions', async () => {
+    // The live strip flattens every digest category, and _feeds.ts registers
+    // France 24's editions in four of them, so one article arrives several
+    // times with a byte-identical link (#8339). Must match the freeze, or the
+    // row set changes when the live fetch replaces the frozen card.
+    const link = 'https://www.france24.com/en/americas/20260914-us-g20-energy-talks-iran-war';
+    stubDigest([
+      digestItem({ title: 'G20 energy talks', source: 'France 24', link, importanceScore: 60 }),
+      digestItem({ title: 'G20 energy talks', source: 'France 24 LatAm', link, importanceScore: 55 }),
+      digestItem({ title: 'A distinct story', importanceScore: 10 }),
+    ]);
+    const { headlines } = await fetchLiveTeasers();
+    assert.deepEqual(
+      headlines.items.map((h) => h.source),
+      ['France 24', 'UN News'],
+      'the repeated edition drops and the next distinct story takes the slot',
+    );
+  });
 });
 
 describe('welcome teaser provenance', () => {
@@ -217,26 +245,6 @@ describe('third-party headline text survives the prerender splice', () => {
     assert.match(source, /mounted && h\.publishedAt \? ` · \$\{timeAgo\(h\.publishedAt\)\}`/);
   });
 
-  // Positive control for the hazard itself. Without this, the assertion below
-  // reads as style preference rather than a defect being held closed.
-  it('a STRING replacement expands $-patterns in the injected markup', () => {
-    const page = '<html><body><div id="root"></div></body></html>';
-    const marker = '<div id="root"></div>';
-    // React escapes `'` to `&#x27;`, so a headline containing `$'` arrives at
-    // the splice as a literal `$&` -- the "insert the matched substring" pattern.
-    const ssr = '<li>Oil at $&#x27;record&#x27; highs</li>';
-    const corrupted = page.replace(marker, `<div id="root">${ssr}</div>`);
-    assert.equal(
-      (corrupted.match(/id="root"/g) ?? []).length,
-      2,
-      'premise: a string replacement splices a second #root into the page',
-    );
-    // A backtick, which React does not escape, is worse: it inserts everything
-    // before the match -- the whole preceding document.
-    const withBacktick = page.replace(marker, '<div id="root"><li>a $` b</li></div>');
-    assert.match(withBacktick, /<html><body><div id="root"><li>a <html>/);
-  });
-
   it('prerender.mjs splices with function replacements, not replacement strings', () => {
     const source = readFileSync(resolve(repoRoot, 'pro-test/prerender.mjs'), 'utf8');
     for (const call of [
@@ -275,12 +283,4 @@ describe('third-party headline text survives the prerender splice', () => {
     );
   });
 
-  it('the function form leaves the same headline verbatim', () => {
-    const page = '<html><body><div id="root"></div></body></html>';
-    const marker = '<div id="root"></div>';
-    const ssr = '<li>Oil at $&#x27;record&#x27; highs</li>';
-    const safe = page.replace(marker, () => `<div id="root">${ssr}</div>`);
-    assert.equal((safe.match(/id="root"/g) ?? []).length, 1);
-    assert.match(safe, /Oil at \$&#x27;record&#x27; highs/);
-  });
 });

@@ -62,6 +62,34 @@ export function projectChinaDecisionGroupDiagnostics(
     }
   }
 
+  const expectedCounts = {
+    populated: groupIds.filter((groupId) => groupStates[groupId] !== 'unavailable').length,
+    partial: partialGroups.length,
+    stale: staleGroups.length,
+    unavailable: quietGroups.length + unavailableGroups.length,
+    healthyQuiet: quietGroups.length,
+    operationallyCovered: groupIds.length - staleGroups.length - unavailableGroups.length,
+  };
+  if (Object.entries(expectedCounts).some(([key, value]) => counts[key] !== value)) return null;
+
+  const fetchedAt = Number.isSafeInteger(meta?.fetchedAt) && meta.fetchedAt > 0
+    ? meta.fetchedAt
+    : null;
+  const lastSuccessAt = Number.isSafeInteger(meta?.lastDecisionCoverageSuccessAt)
+    && meta.lastDecisionCoverageSuccessAt > 0
+      ? meta.lastDecisionCoverageSuccessAt
+      : null;
+  const legacyLastSuccessAt = expectedCounts.operationallyCovered === groupIds.length
+    && fetchedAt !== null
+      ? fetchedAt
+      : null;
+  const coverageLastSuccessAt = lastSuccessAt ?? legacyLastSuccessAt;
+  const coverageFailureInvalidReason = coverageLastSuccessAt === null
+    ? 'LAST_SUCCESS_MISSING'
+    : fetchedAt === null || coverageLastSuccessAt > fetchedAt
+      ? 'LAST_SUCCESS_INVALID'
+      : null;
+
   return {
     groupStates,
     groupCounts: {
@@ -76,5 +104,7 @@ export function projectChinaDecisionGroupDiagnostics(
     partialGroups,
     staleGroups,
     unavailableGroups,
+    ...(coverageLastSuccessAt !== null ? { coverageLastSuccessAt } : {}),
+    ...(coverageFailureInvalidReason ? { coverageFailureInvalidReason } : {}),
   };
 }

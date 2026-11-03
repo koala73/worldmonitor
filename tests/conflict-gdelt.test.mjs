@@ -8,9 +8,14 @@ import {
 } from '../scripts/_conflict-gdelt.mjs';
 import { computeEmaWindows } from '../scripts/_ema-threat-engine.mjs';
 import {
+  CONFLICT_COUNTRIES,
   fetchGdeltConflictEvents,
   GDELT_MIN_SUCCESSFUL_COUNTRIES,
 } from '../scripts/seed-conflict-intel.mjs';
+
+// Counts derive from the live list so adding a country cannot silently skew them.
+const SWEEP_TOTAL = CONFLICT_COUNTRIES.length;
+const SWEEP_FLOOR = GDELT_MIN_SUCCESSFUL_COUNTRIES;
 
 const BULK_FIXTURE_NOW = Date.parse('2026-07-13T12:00:00Z');
 
@@ -117,7 +122,7 @@ test('fetchGdeltConflictEvents fails closed when too many country fetches fail',
         return { country: cc, ok: false, events: [], error: 'proxy unavailable' };
       },
     }),
-    /coverage below floor: 15\/20 countries succeeded \(min 16\)/,
+    new RegExp(`coverage below floor: ${SWEEP_FLOOR - 1}/${SWEEP_TOTAL} countries succeeded \\(min ${SWEEP_FLOOR}\\)`),
   );
 });
 
@@ -165,7 +170,7 @@ test('fetchGdeltConflictEvents rejects when bulk fails and the DOC sweep succeed
       fetchCountryEvents: async (cc) => ({ country: cc, ok: true, events: [] }),
       fetchBulkEvents: async () => { throw new Error('mirror unreachable'); },
     }),
-    /bulk event export failed: mirror unreachable.*returned zero events across 20\/20 successful countries/s,
+    new RegExp(`bulk event export failed: mirror unreachable.*returned zero events across ${SWEEP_TOTAL}/${SWEEP_TOTAL} successful countries`, 's'),
   );
 });
 
@@ -307,7 +312,7 @@ test('a slow-failing bulk export does not starve the DOC sweep window (#5849)', 
     },
   });
 
-  assert.equal(calls, 20, `sweep must still get its full window after a slow bulk failure, attempted ${calls}/20`);
+  assert.equal(calls, SWEEP_TOTAL, `sweep must still get its full window after a slow bulk failure, attempted ${calls}/${SWEEP_TOTAL}`);
   assert.equal(result.source, 'gdelt');
 });
 
@@ -400,7 +405,7 @@ test('the bulk-elapsed credit cannot resurrect a window that expired before entr
         return { country: cc, ok: true, events: [] };
       },
     }),
-    /coverage below floor: 0\/20/,
+    new RegExp(`coverage below floor: 0/${SWEEP_TOTAL}`),
   );
   assert.equal(calls, 0);
 });
@@ -520,7 +525,7 @@ test('fetchGdeltConflictEvents launches nothing when the phase cutoff already pa
         return { country: cc, ok: true, events: [] };
       },
     }),
-    /coverage below floor: 0\/20/,
+    new RegExp(`coverage below floor: 0/${SWEEP_TOTAL}`),
   );
   assert.equal(calls, 0);
 });
@@ -538,9 +543,9 @@ test('fetchGdeltConflictEvents stops sweeping once the coverage floor is unreach
     }),
     /coverage below floor/,
   );
-  // With no successful canary, requests stay sequential. After 5 failures:
-  // 0 successes + 15 remaining < the 16-country floor.
-  assert.equal(calls, 5);
+  // With no successful canary, requests stay sequential. After k failures the
+  // floor is out of reach once 0 successes + (total - k) remaining < floor.
+  assert.equal(calls, SWEEP_TOTAL - SWEEP_FLOOR + 1);
 });
 
 test('early-stop reason names BOTH conditions when budget and floor trip together (#5140)', async (t) => {
@@ -548,27 +553,33 @@ test('early-stop reason names BOTH conditions when budget and floor trip togethe
   t.mock.method(console, 'warn', (...args) => { warns.push(args.join(' ')); });
   let calls = 0;
   let fakeTime = 0;
+  // 4 successes (canary + 3 of the first batch), then failures. The sweep
+  // attempts 1 + 4b countries after b batches; the floor becomes unreachable at
+  // the first such count where 4 + (total - attempted) < floor. Each call costs
+  // 10s, so a cutoff 5s before that count's clock trips both at the same check.
+  const SUCCESSES = 4;
+  let stopAt = 1;
+  while (SUCCESSES + (SWEEP_TOTAL - stopAt) >= SWEEP_FLOOR) stopAt += 4;
   await assert.rejects(
     fetchGdeltConflictEvents({
       pace: async () => {},
       now: () => fakeTime,
-      deadlineAt: 85_000,
+      deadlineAt: stopAt * 10_000 - 5_000,
       fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
       fetchCountryEvents: async (cc) => {
         calls += 1;
         fakeTime += 10_000;
         // Canary/first batch succeed; the next batch fails → the floor drifts out of reach
         // while the clock runs out, so both stop conditions hold at once.
-        return calls <= 4
+        return calls <= SUCCESSES
           ? { country: cc, ok: true, events: [] }
           : { country: cc, ok: false, events: [], error: 'down' };
       },
     }),
     /coverage below floor/,
   );
-  // Before the next batch: clock 90s ≥ 85s cutoff AND
-  // 4 successes + 11 remaining < 16.
-  assert.equal(calls, 9);
+  // Before the next batch: clock past the cutoff AND the floor out of reach.
+  assert.equal(calls, stopAt);
   assert.ok(
     warns.some((w) => w.includes('sweep budget exhausted + coverage floor unreachable')),
     `expected combined stop reason in warns: ${warns.join(' | ')}`,

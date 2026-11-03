@@ -15,6 +15,8 @@ import { timingSafeIncludes } from '../_crypto.js';
 import { checkEndpointRateLimit } from '../../server/_shared/rate-limit';
 import { getEntitlements, isEntitlementBackendConfigured } from '../../server/_shared/entitlement-check';
 import { validateUserApiKey } from '../../server/_shared/user-api-key';
+import { embedCredentialFromHeaders, validateEmbedKey } from '../../server/_shared/embed-key';
+import { lookupClerkPlan } from '../../server/auth-session';
 import {
   evaluateEmbedEntitlement,
   parseEnterpriseApiKeys,
@@ -26,11 +28,6 @@ function requestWithoutCookies(req: Request): Request {
   const headers = new Headers(req.headers);
   headers.delete('cookie');
   return new Request(req, { headers });
-}
-
-function embeddingApiKeyFromHeaders(headers: Headers): string | null {
-  const key = (headers.get('X-WorldMonitor-Key') ?? headers.get('X-Api-Key') ?? '').trim();
-  return key || null;
 }
 
 export default async function handler(req: Request): Promise<Response> {
@@ -54,12 +51,14 @@ export default async function handler(req: Request): Promise<Response> {
   const url = new URL(stripped.url);
   const result = await evaluateEmbedEntitlement(
     url.searchParams.get('panel'),
-    embeddingApiKeyFromHeaders(stripped.headers),
+    embedCredentialFromHeaders(stripped.headers),
     {
       getValidEnterpriseKeys: () => parseEnterpriseApiKeys(process.env.WORLDMONITOR_VALID_KEYS),
       timingSafeIncludes,
       validateUserApiKey,
+      validateEmbedKey,
       getEntitlements,
+      getAccountPlan: lookupClerkPlan,
       isEntitlementBackendConfigured,
     },
   );

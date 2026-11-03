@@ -1,3 +1,9 @@
+---
+title: "World Monitor REST API versioning"
+description: "API compatibility, deprecation headers, sunset policy, and migration."
+canonical: "https://www.worldmonitor.app/api-versioning.md"
+---
+
 # World Monitor REST API versioning and deprecation
 
 Last updated: August 29, 2026

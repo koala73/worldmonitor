@@ -116,7 +116,33 @@ describe('get_fred_series MCP tool (#5707)', () => {
     );
   });
 
-  it("the description's advertised allowlist is the server's ALLOWED_SERIES, verbatim", async () => {
+  it('forwards valid bounded limits and at most twenty normalized ids', async () => {
+    const { deps } = makeProDeps();
+    await mcpHandler(proReq('POST', callBody('get_fred_series', {
+      series_ids: Array.from({ length: 25 }, (_, i) => i % 2 ? ' unrate ' : ' cpiAUCSL '),
+      limit: 1000,
+    })), deps);
+    const downstream = requests.find((entry) => String(entry.url).includes(FRED_RPC_PATH));
+    const sent = JSON.parse(downstream.init.body);
+    assert.equal(sent.limit, 1000);
+    assert.equal(sent.seriesIds.length, 20);
+    assert.ok(sent.seriesIds.every((id) => ['UNRATE', 'CPIAUCSL'].includes(id)));
+  });
+
+  it('rejects fractional and out-of-range limits before making a downstream request', async () => {
+    for (const limit of [1.5, 1001, 0, -1]) {
+      requests = [];
+      const { deps } = makeProDeps();
+      const response = await mcpHandler(proReq('POST', callBody('get_fred_series', {
+        series_ids: ['UNRATE'], limit,
+      })), deps);
+      const body = await response.json();
+      assert.equal(body.error.code, -32602);
+      assert.equal(requests.filter((entry) => String(entry.url).includes(FRED_RPC_PATH)).length, 0);
+    }
+  });
+
+  it("the description advertises the canonical server series allowlist", async () => {
     const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -124,10 +150,9 @@ describe('get_fred_series MCP tool (#5707)', () => {
     }));
     const tool = (await listed.json()).result.tools.find((entry) => entry.name === 'get_fred_series');
 
-    const serverSource = readFileSync('server/worldmonitor/economic/v1/get-fred-series-batch.ts', 'utf8');
-    const setBlock = serverSource.match(/const ALLOWED_SERIES = new Set<string>\(\[([\s\S]*?)\]\);/);
-    assert.ok(setBlock, 'server allowlist must stay a literal Set');
-    const serverIds = [...setBlock[1].matchAll(/'([A-Z0-9]+)'/g)].map((m) => m[1]);
+    const { economicFredSeriesIds: serverIds } = JSON.parse(
+      readFileSync('shared/openapi-filter-param-contracts.json', 'utf8'),
+    );
     assert.ok(serverIds.length > 10);
 
     for (const id of serverIds) {

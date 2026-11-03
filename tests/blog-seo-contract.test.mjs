@@ -5,6 +5,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { computeStats, validateCategoryExplainerCopy } from '../scripts/docs-stats.mjs';
+import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
+import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
+import { RESEARCH_REPORTS } from '../shared/research-reports/index.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -24,7 +27,109 @@ function parsePost(file) {
 
 const posts = postFiles.map(parsePost);
 
+const RESTRICTED_VENDOR_PRICE_ALLOWLIST = new Map();
+const UNSUPPORTED_VENDOR_PRICE_SOURCE = String.raw`(?:\$\s*\d[\d,.]*(?:[KM])?\+?|\b\d[\d,.]*(?:[KM])\b\+?|multi[- ]?million|six[- ]?figures?)`;
+const UNSUPPORTED_VENDOR_PRICE_TERMS = new RegExp(UNSUPPORTED_VENDOR_PRICE_SOURCE, 'i');
+const DISALLOWED_COMPARISON_PRICE_TERMS = /\$1M\+|\$100K\+|multi[- ]?million|six[- ]?figures?/i;
+const RESTRICTED_VENDORS = ['Palantir', 'Dataminr', 'Recorded Future', 'Crisis24', 'Everbridge'];
+
+function markdownTableCells(line) {
+  if (!line.startsWith('|') || !line.endsWith('|')) return [];
+  return line.slice(1, -1).split('|').map((cell) => cell.trim());
+}
+
+function assertNoUnsupportedVendorPrice(post, vendor) {
+  const namedPriceSource = RESTRICTED_VENDOR_PRICE_ALLOWLIST.get(`${post.file}:${vendor}`);
+  if (namedPriceSource) {
+    assert.ok(post.source.includes(namedPriceSource), `${post.file}: ${vendor} allowlist entry must name its price source`);
+    return;
+  }
+
+  const vendorPattern = new RegExp(`\\b${vendor}\\b`, 'i');
+  const directPricePattern = new RegExp(
+    `(?:\\b${vendor}\\b[^\\n.]{0,120}${UNSUPPORTED_VENDOR_PRICE_SOURCE}|${UNSUPPORTED_VENDOR_PRICE_SOURCE}(?:\\s+[\\w/-]+){0,3}\\s+\\b${vendor}\\b)`,
+    'i',
+  );
+  assert.doesNotMatch(
+    post.source,
+    directPricePattern,
+    `${post.file}: ${vendor} pricing needs a named source before publication`,
+  );
+
+  for (const section of post.source.split(/(?=^#{1,6}\s)/m)) {
+    const heading = section.split('\n', 1)[0];
+    if (vendorPattern.test(heading)) {
+      assert.doesNotMatch(
+        section,
+        UNSUPPORTED_VENDOR_PRICE_TERMS,
+        `${post.file}: ${vendor} pricing needs a named source before publication`,
+      );
+    }
+  }
+
+  const lines = post.source.split('\n');
+  for (let lineIndex = 0; lineIndex < lines.length - 2; lineIndex += 1) {
+    const header = markdownTableCells(lines[lineIndex]);
+    const vendorColumn = header.findIndex((cell) => vendorPattern.test(cell));
+    if (vendorColumn === -1 || !/^\\|(?:\\s*:?-{3,}:?\\s*\\|)+\\s*$/.test(lines[lineIndex + 1])) continue;
+
+    for (let rowIndex = lineIndex + 2; rowIndex < lines.length; rowIndex += 1) {
+      const row = markdownTableCells(lines[rowIndex]);
+      if (!row.length) break;
+      if (/^price$/i.test(row[0])) {
+        assert.doesNotMatch(
+          row[vendorColumn] ?? '',
+          UNSUPPORTED_VENDOR_PRICE_TERMS,
+          `${post.file}: ${vendor} table price needs a named source before publication`,
+        );
+      }
+    }
+  }
+}
+
 describe('blog SEO and GEO corpus contract', () => {
+  it('connects the worked editorial examples to their country, crisis, and waterway pages', () => {
+    const expectedLinks = JSON.parse(readFileSync(join(root, 'tests/fixtures/editorial-corpus-links.json'), 'utf8'));
+    for (const [slug, targets] of Object.entries(expectedLinks)) {
+      const article = posts.find((post) => post.file === `${slug}.md`);
+      const prose = article.body.replace(/```[\s\S]*?```/g, '');
+      for (const target of targets) {
+        const href = `https://www.worldmonitor.app${target}`;
+        assert.equal(prose.split(`](${href})`).length - 1, 1, `${slug} links ${target} once outside code examples`);
+      }
+    }
+  });
+  it('links all thirteen waterways from the maritime explainer and the existing glossary entries', () => {
+    const article = posts.find((post) => post.file === 'what-is-a-maritime-chokepoint.md');
+    const routes = [
+      'strait-of-hormuz', 'strait-of-malacca', 'suez-canal', 'bab-el-mandeb',
+      'panama-canal', 'taiwan-strait', 'cape-of-good-hope', 'strait-of-gibraltar',
+      'bosporus-strait', 'korea-strait', 'dover-strait', 'kerch-strait', 'lombok-strait',
+    ];
+    for (const route of routes) {
+      const href = `https://www.worldmonitor.app/chokepoints/${route}/`;
+      assert.equal(article.body.split(`](${href})`).length - 1, 1, `maritime explainer links ${route} once`);
+    }
+    for (const slug of ['suez-canal', 'strait-of-malacca']) {
+      const term = GLOSSARY_TERMS.find((entry) => entry.slug === slug);
+      assert.equal(term.learnMore?.filter((link) => link.href === `https://www.worldmonitor.app/chokepoints/${slug}/`).length ?? 0, 1);
+    }
+  });
+  it('connects the Hormuz glossary, energy article, and methodology to existing trackers and research', () => {
+    const tracker = 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/';
+    const report = RESEARCH_REPORTS.find((entry) => entry.focusChokepointId === 'hormuz_strait');
+    assert.ok(CHOKEPOINT_REGISTRY.some((entry) => entry.id === report.focusChokepointId));
+    const term = GLOSSARY_TERMS.find((entry) => entry.slug === 'strait-of-hormuz');
+    assert.equal(term.learnMore.filter((link) => link.href === tracker).length, 1);
+    const article = posts.find((post) => post.file === 'energy-shock-monitoring-chokepoints-worldmonitor.md');
+    const reportUrl = `https://www.worldmonitor.app/research/${report.slug}/`;
+    for (const href of [tracker, reportUrl]) {
+      assert.ok(article.body.includes(`](${href})`), `article content links ${href}`);
+    }
+    assert.match(article.body, /historical.*July 2026/i);
+    const methodology = readFileSync(join(root, 'docs/methodology/chokepoints.mdx'), 'utf8');
+    assert.ok(methodology.includes(`](${tracker})`));
+  });
   it('keeps every post complete, unique, current, and answer-first', () => {
     assert.ok(posts.length >= 53, 'expected the complete published blog corpus');
     const titles = new Set();
@@ -82,6 +187,40 @@ describe('blog SEO and GEO corpus contract', () => {
     );
   });
 
+  it('does not publish unsupported prices for enterprise-negotiated vendors', () => {
+    for (const post of posts) {
+      for (const vendor of RESTRICTED_VENDORS) {
+        assertNoUnsupportedVendorPrice(post, vendor);
+      }
+    }
+
+    for (const source of [
+      '---\ntitle: Pricing fixture\n---\n\nThis preamble is not a vendor heading.\n\n### World Monitor vs. Dataminr\n\n- Price: free vs. six-figure annual licenses',
+      '| Product | Dataminr |\n| --- | --- |\n| Price | $50K |',
+      'A $100K+ Palantir license',
+      'A Palantir license costs 100K+ annually',
+    ]) {
+      assert.throws(
+        () => assertNoUnsupportedVendorPrice({ file: 'price-claim-fixture.md', source }, source.includes('Palantir') ? 'Palantir' : 'Dataminr'),
+        /pricing needs a named source|table price needs a named source/,
+      );
+    }
+
+    const comparison = posts.find((post) => post.file === 'worldmonitor-vs-traditional-intelligence-tools.md');
+    assert.ok(comparison, 'missing the traditional intelligence comparison post');
+    assert.match(
+      comparison.source,
+      /Quartz reported in 2022[^\n]*\$24,000 per year/,
+      'the Bloomberg figure must name its published source and year',
+    );
+    assert.match(
+      comparison.source,
+      /\| Price \| \$24K\/yr \(Quartz, 2022\) \| Undisclosed \(enterprise-negotiated\) \| Undisclosed \(enterprise-negotiated\) \| Undisclosed \(enterprise-negotiated\) \| Free \|/,
+      'the price row must not turn negotiated vendor prices into estimates',
+    );
+    assert.doesNotMatch(comparison.source, DISALLOWED_COMPARISON_PRICE_TERMS);
+  });
+
   // The explainer's own contract lives in scripts/docs-stats.mjs — its numeric
   // counts as claims() entries, its answer-first shape as
   // validateCategoryExplainerCopy — because the `unit` job that runs this file
@@ -110,6 +249,29 @@ describe('blog SEO and GEO corpus contract', () => {
     assert.match(index, /"@type": "CollectionPage"/);
     assert.match(index, /"@type": "BreadcrumbList"/);
     assert.match(index, /"@type": "SpeakableSpecification"/);
+  });
+
+  it('keeps glossary and profile pages distinct from editorial articles', () => {
+    const glossary = readFileSync(resolve(root, 'blog-site/src/pages/glossary/[slug].astro'), 'utf8');
+    const author = readFileSync(resolve(root, 'blog-site/src/pages/authors/elie-habib.astro'), 'utf8');
+    const post = readFileSync(resolve(root, 'blog-site/src/layouts/BlogPost.astro'), 'utf8');
+    const base = readFileSync(resolve(root, 'blog-site/src/layouts/Base.astro'), 'utf8');
+
+    assert.match(glossary, /ogType="website"/);
+    assert.match(glossary, /'@type': 'DefinedTerm'/);
+    assert.match(author, /ogType="profile"/);
+    assert.match(author, /'@type': 'ProfilePage'/);
+    for (const page of [glossary, author]) {
+      assert.doesNotMatch(page, /['"]@type['"]:\s*['"](?:Article|BlogPosting|NewsArticle)['"]/);
+    }
+    assert.match(post, /ogType="article"/);
+    assert.match(post, /"@type": "BlogPosting"/);
+    for (const field of ['headline', 'datePublished', 'dateModified', 'author', 'image']) {
+      assert.ok(post.includes(`"${field}":`), `posts retain ${field}`);
+    }
+    const articleBlock = base.match(/\{resolvedOgType === 'article' && \(\s*<>([\s\S]*?)<\/>\s*\)\}/);
+    assert.ok(articleBlock, 'article metadata must be gated by the page type');
+    assert.doesNotMatch(base.replace(articleBlock[0], ''), /property="article:/);
   });
 
   // blog-site is a live JSON-LD emitter separate from the crawlable corpus: the

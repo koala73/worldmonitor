@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { fetchJapanXOutcome, JAPAN_X_MAX_TEXT_LENGTH } from './japan-x.mjs';
 
 const {
   parseProxyConfig,
@@ -1459,6 +1460,31 @@ function isImplausiblyFuture(dayOrInstant, retrievedAt) {
     || value > retrieval + DAY_MS;
 }
 
+// The reporting window is
+//   /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?\(UTC\+8\)/i
+// matched as three forward searches. As one regex, its lazy spans rescanned
+// the rest of the body from every "6 a.m." start. The searches give the same
+// match: no part can end differently in a way the next part could use, and a
+// later start can only find a later "to" part, so if the leftmost start has
+// no "to" part followed by "(UTC+8)", no start does.
+const MND_WINDOW_FROM = /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})/gi;
+const MND_WINDOW_TO = /to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})/gi;
+const MND_WINDOW_MARKER = /\(UTC\+8\)/gi;
+
+function nextMatchFrom(pattern, text, from) {
+  pattern.lastIndex = from;
+  return pattern.exec(text);
+}
+
+function matchMndReportingWindow(text) {
+  const from = nextMatchFrom(MND_WINDOW_FROM, text, 0);
+  if (!from) return null;
+  const to = nextMatchFrom(MND_WINDOW_TO, text, from.index + from[0].length);
+  if (!to) return null;
+  if (!nextMatchFrom(MND_WINDOW_MARKER, text, to.index + to[0].length)) return null;
+  return [from[1], from[2], to[1], to[2]];
+}
+
 export function parseTaiwanMndDetail(
   html,
   {
@@ -1481,10 +1507,9 @@ export function parseTaiwanMndDetail(
   }
 
   const text = decodeHtml(extractMndReportBody(html));
-  const windowMatch = text.match(
-    /6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?to\s*6\s*a\.m\.\s*([A-Za-z]{3})\.?\s*(\d{1,2})[\s\S]*?\(UTC\+8\)/i,
-  );
-  if (!windowMatch) throw new Error('MND_REPORTING_WINDOW_MISSING');
+  const windowParts = matchMndReportingWindow(text);
+  if (!windowParts) throw new Error('MND_REPORTING_WINDOW_MISSING');
+  const windowMatch = [null, ...windowParts];
   const publicationYear = Number(publicationTime.slice(0, 4));
   const start = localSixAmToUtc(
     publicationYear,
@@ -1681,18 +1706,60 @@ function boundedHtmlRequestInit(sourceContract) {
   };
 }
 
-async function fetchBoundedTextWithStatus(fetchFn, url, sourceContract) {
+async function fetchBoundedTextWithStatus(fetchFn, url, sourceContract, diagnostic = null) {
   if (!isAllowedSourceUrl(url, sourceContract)) {
     throw new Error('UNSAFE_SOURCE_URL');
   }
-  const response = await fetchFn(url, boundedHtmlRequestInit(sourceContract));
+  let response;
+  try {
+    response = await fetchFn(url, boundedHtmlRequestInit(sourceContract));
+  } catch (error) {
+    if (diagnostic?.transport === 'proxy') {
+      const details = error?.proxyFailure;
+      diagnostic.stage = ['proxy_connection', 'proxy_connect', 'target_tls', 'response_headers', 'response_body']
+        .includes(details?.stage) ? details.stage : 'unknown';
+      diagnostic.httpStatus = diagnostic.stage === 'response_body'
+        && Number.isInteger(details?.httpStatus) && details.httpStatus >= 100 && details.httpStatus <= 599
+        ? details.httpStatus : null;
+      diagnostic.proxyConnectStatus = ['proxy_connect', 'target_tls'].includes(diagnostic.stage)
+        && Number.isInteger(details?.proxyConnectStatus) && details.proxyConnectStatus >= 100 && details.proxyConnectStatus <= 599
+        ? details.proxyConnectStatus : null;
+    }
+    throw error;
+  }
+  if (diagnostic) {
+    diagnostic.httpStatus = response.status;
+    diagnostic.stage = response.ok ? 'response_body' : 'response_headers';
+  }
   const text = await readBoundedTextResponse(response, sourceContract.maxResponseBytes);
+  if (diagnostic) diagnostic.stage = 'parse';
   return { text, status: response.status };
 }
 
-async function fetchBoundedText(fetchFn, url, sourceContract) {
-  const { text } = await fetchBoundedTextWithStatus(fetchFn, url, sourceContract);
+async function fetchBoundedText(fetchFn, url, sourceContract, diagnostic = null) {
+  const { text } = await fetchBoundedTextWithStatus(fetchFn, url, sourceContract, diagnostic);
   return text;
+}
+
+async function fetchMndViaProxy(input, init, proxyConfig, proxyRequestFn) {
+  const maxResponseBytes = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.maxResponseBytes;
+  const result = await proxyRequestFn(String(input), proxyConfig, {
+    headers: init.headers,
+    maxResponseBytes,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    signal: init.signal,
+  });
+  if (!Number.isInteger(result?.status) || result.status < 200 || result.status > 599) {
+    throw new Error('MND_PROXY_RESPONSE_INVALID');
+  }
+  if (result.status >= 300) {
+    return new Response(null, { status: result.status });
+  }
+  if (!Buffer.isBuffer(result.buffer)) throw new Error('MND_PROXY_RESPONSE_INVALID');
+  if (result.buffer.byteLength > maxResponseBytes) throw new Error('RESPONSE_TOO_LARGE');
+  return new Response(result.status === 204 || result.status === 205 ? null : result.buffer, {
+    status: result.status,
+  });
 }
 
 function shouldProxyJapanModFailure(error) {
@@ -1944,13 +2011,15 @@ function crossStraitSnapshotStatus(hasMnd, anyError, usableMndReportingDays) {
   return 'healthy';
 }
 
-function persistedStringsWithinLimit(value) {
+function persistedStringsWithinLimit(value, longTextCandidates = null) {
   if (typeof value === 'string') return value.length <= MAX_PERSISTED_STRING_LENGTH;
-  if (Array.isArray(value)) return value.every(persistedStringsWithinLimit);
+  if (Array.isArray(value)) return value.every((row) => persistedStringsWithinLimit(row, longTextCandidates));
   if (value && typeof value === 'object') {
     return Object.entries(value).every(([key, nested]) => (
       key.length <= MAX_PERSISTED_STRING_LENGTH
-      && persistedStringsWithinLimit(nested)
+      && (key === 'text' && longTextCandidates?.has(value)
+        ? typeof nested === 'string' && nested.length <= JAPAN_X_MAX_TEXT_LENGTH
+        : persistedStringsWithinLimit(nested, longTextCandidates))
     ));
   }
   return true;
@@ -2049,18 +2118,19 @@ export function buildCrossStraitActivitySnapshot({
       .map((row) => [row.id, row]),
   );
   const hasCurrentJapanIndex = japanOutcome?.ok === true;
+  const hasCurrentModIndex = hasCurrentJapanIndex && japanOutcome?.transportPath !== 'x_api';
   const availableJapanUrls = new Set(japanOutcome?.availableDocumentUrls ?? []);
   const japan = REVIEWED_JAPAN_MOD_OBSERVATIONS.map((row) => {
     const previous = previousJapanById.get(row.id);
     const previousPresence = previous?.indexPresence;
-    const indexPresence = hasCurrentJapanIndex
+    const indexPresence = hasCurrentModIndex
       ? japanIndexPresence(row.sourceUrl, availableJapanUrls)
       : (previousPresence === 'present'
         || previousPresence === 'not_observed_in_current_index'
         || previousPresence === 'unknown'
         ? previousPresence
         : 'unknown');
-    const indexCoverage = hasCurrentJapanIndex
+    const indexCoverage = hasCurrentModIndex
       ? japanIndexCoverage(row.sourceUrl, availableJapanUrls)
       : (previous?.indexCoverage === 'covered_by_current_index'
         || previous?.indexCoverage === 'not_covered_by_current_index'
@@ -2104,6 +2174,8 @@ export function buildCrossStraitActivitySnapshot({
       transportStatus: mndOutcome?.ok ? 'fresh' : 'error',
       requestCount: mndOutcome?.requestCount ?? 0,
       errorCodes: mndOutcome?.errorCodes ?? [],
+      refreshErrorCodes: mndOutcome?.refreshErrorCodes ?? [],
+      requestDiagnostics: mndOutcome?.requestDiagnostics ?? [],
       // WHEN this verdict was produced. lastSuccessAt is retained across failing
       // runs by design, so on its own an errored record cannot say whether the
       // seeder just ran or stopped running days ago — see the japan-mod note.
@@ -2149,7 +2221,7 @@ export function buildCrossStraitActivitySnapshot({
       // the record self-sufficient.
       lastAttemptAt: generatedAt,
       lastSuccessAt: japanOutcome?.ok
-        ? generatedAt
+        ? (japanOutcome.acquiredAt ?? generatedAt)
         : previousJapanSource?.lastSuccessAt ?? latestSourceSuccess(previousSnapshot, 'japan-mod'),
       admittedDocumentCount: REVIEWED_JAPAN_MOD_OBSERVATIONS.length,
       ...(Number.isInteger(unreviewedCandidateCount)
@@ -2159,6 +2231,7 @@ export function buildCrossStraitActivitySnapshot({
       // consistent with the retained `lastSuccessAt` they were discovered by;
       // a failure publishes no new candidate and never re-dates an old one.
       ...(japanCandidates.length > 0 ? { candidates: japanCandidates } : {}),
+      ...(japanOutcome?.xDiscovery ? { xDiscovery: japanOutcome.xDiscovery } : {}),
       ...(japanShadowIndexProbe ? { shadowIndexProbe: japanShadowIndexProbe } : {}),
     },
   ];
@@ -2183,6 +2256,29 @@ export function buildCrossStraitActivitySnapshot({
   });
 }
 
+const MND_TRANSPORT_ERROR_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE',
+  'ENETUNREACH', 'EHOSTUNREACH', 'EPROTO',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
+  'CERT_HAS_EXPIRED', 'CERT_NOT_YET_VALID', 'ERR_TLS_CERT_ALTNAME_INVALID',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'DEPTH_ZERO_SELF_SIGNED_CERT', 'SELF_SIGNED_CERT_IN_CHAIN',
+  'ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION', 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE',
+  'ERR_SSL_WRONG_VERSION_NUMBER', 'ERR_SSL_UNSUPPORTED_PROTOCOL',
+]);
+
+function mndTransportErrorDiagnostic(error) {
+  try {
+    const code = error?.code;
+    if (MND_TRANSPORT_ERROR_CODES.has(code)) return { transportErrorCode: code };
+    const causeCode = error?.cause?.code;
+    if (MND_TRANSPORT_ERROR_CODES.has(causeCode)) return { transportErrorCode: causeCode };
+  } catch {
+    // Diagnostic access must not replace the original request failure.
+  }
+  return {};
+}
+
 function errorCode(error) {
   const value = String(error?.message ?? error ?? 'UNKNOWN_ERROR');
   if (/timeout/i.test(value)) return 'TIMEOUT';
@@ -2191,6 +2287,14 @@ function errorCode(error) {
   if (/MND_/.test(value)) return value.match(/MND_[A-Z0-9_]+/)?.[0] ?? 'MND_PARSE_ERROR';
   if (/JMOD_/.test(value)) return value.match(/JMOD_[A-Z0-9_]+/)?.[0] ?? 'JMOD_PARSE_ERROR';
   return 'SOURCE_ERROR';
+}
+
+function isMndTransportFailure(code, diagnostic) {
+  // The proxy buffers bodies before returning, so its generic failures have no known stage.
+  return code === 'TIMEOUT'
+    || (code === 'SOURCE_ERROR' && diagnostic.transport !== 'proxy'
+      && diagnostic.stage === 'response_headers'
+      && diagnostic.httpStatus === null);
 }
 
 function boundedDiagnosticString(value, maxChars = PROXY_DIAGNOSTIC_MAX_CHARS) {
@@ -2297,7 +2401,7 @@ async function probeJapanProxyControlTunnel(host, {
   tunnel?.destroy?.();
 }
 
-function rotatingRefreshCandidates(previousMnd, excludedUrls, now) {
+function rotatingRefreshCandidates(previousMnd, excludedUrls, now, limit) {
   const eligible = [...new Map(
     previousMnd
       .filter((row) => (
@@ -2316,8 +2420,8 @@ function rotatingRefreshCandidates(previousMnd, excludedUrls, now) {
   ).values()];
   if (eligible.length === 0) return [];
   const offset = (Math.floor(now / MND_REFRESH_ROTATION_INTERVAL_MS)
-    * MND_REFRESH_DETAIL_REQUESTS_PER_RUN) % eligible.length;
-  return Array.from({ length: Math.min(MND_REFRESH_DETAIL_REQUESTS_PER_RUN, eligible.length) },
+    * limit) % eligible.length;
+  return Array.from({ length: Math.min(limit, eligible.length) },
     (_, index) => eligible[(offset + index) % eligible.length]);
 }
 
@@ -2560,14 +2664,24 @@ export async function fetchCrossStraitActivitySnapshot({
   mndListUrl = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd.listUrl,
   sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   proxyUrl = process.env.JAPAN_MOD_PROXY_URL || process.env.PROXY_URL || '',
+  mndProxyUrl = process.env.PROXY_URL || '',
   proxyRequestFn = proxyFetch,
   proxyConnectFn = proxyConnectTunnel,
   proxyConnectProbeFn = null,
+  japanXToken = process.env.X_BEARER_TOKEN || '',
+  japanXBudget,
 } = {}) {
   const generatedAt = new Date(now).toISOString();
   const previousMnd = (previousSnapshot?.observations ?? [])
-    .filter((row) => row?.sourceId === 'taiwan-mnd');
+    .filter((row) => safePreviousMndObservation(row)
+      && validMndObservation(row)
+      && MND_CATEGORY_KEYS.every((key) => Object.hasOwn(row.categories, key))
+      && typeof row.publicationTime === 'string'
+      && Number.isFinite(Date.parse(row.publicationTime)));
   const previousMndByUrl = new Map(previousMnd.map((row) => [row.sourceUrl, row]));
+  const hasRetainedCoverage = (row) => (
+    previousMndByUrl.get(row.sourceUrl)?.publicationTime.slice(0, 10) === row.publicationDay
+  );
   const needsBackfill = new Set(previousMnd.map((row) => row.reportingDay)).size
     < MND_REQUIRED_REPORTING_DAYS;
   const listPages = needsBackfill ? MND_MAX_LIST_PAGES_PER_BACKFILL_RUN : 1;
@@ -2575,7 +2689,18 @@ export async function fetchCrossStraitActivitySnapshot({
   const latestCandidates = new Map();
   const unseenBackfillCandidates = new Map();
   const mndErrors = [];
+  const mndRefreshErrors = [];
+  const mndRequestDiagnostics = [];
   const mndContract = CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd;
+  const mndProxyConfig = parseProxyConfig(mndProxyUrl);
+  const mndProxyFetchFn = mndProxyConfig
+    && Number.isInteger(mndProxyConfig.port) && mndProxyConfig.port > 0 && mndProxyConfig.port <= 65535
+    ? (input, init) => fetchMndViaProxy(input, init, mndProxyConfig, proxyRequestFn)
+    : null;
+  let mndPreferredFetchFn = fetchFn;
+  const mndTransportRetryFetchFn = () => mndProxyFetchFn && mndPreferredFetchFn === fetchFn
+    ? mndProxyFetchFn
+    : fetchFn;
   const resolvedJapanProxyFetchFn = proxyUrl
     ? (input, init) => fetchJapanModViaConfiguredProxy(input, init, {
         proxyUrl,
@@ -2593,17 +2718,26 @@ export async function fetchCrossStraitActivitySnapshot({
     ?? (previousSourceHealth?.id === CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.id
       ? previousSourceHealth
       : null);
-  const japanOutcomePromise = fetchJapanIndexOutcome(fetchFn, sleepFn, {
-    proxyFetchFn: resolvedJapanProxyFetchFn,
-    proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
-    now,
-    previousShadowIndexProbe: previousJapanSource?.shadowIndexProbe ?? null,
-  });
+  const japanOutcomePromise = japanXToken.trim()
+    ? fetchJapanXOutcome({
+        token: japanXToken,
+        now,
+        previousSource: previousJapanSource,
+        fetchFn,
+        budget: japanXBudget,
+      })
+    : fetchJapanIndexOutcome(fetchFn, sleepFn, {
+        proxyFetchFn: resolvedJapanProxyFetchFn,
+        proxyConnectProbeFn: resolvedJapanProxyConnectProbeFn,
+        now,
+        previousShadowIndexProbe: previousJapanSource?.shadowIndexProbe ?? null,
+      });
   let discoveredCount = 0;
   let requestCount = 0;
+  let listRequestCount = 0;
   const runStartedAt = nowFn();
 
-  for (let page = 1; page <= listPages; page += 1) {
+  for (let page = 1; page <= listPages && listRequestCount < MND_MAX_LIST_PAGES_PER_BACKFILL_RUN; page += 1) {
     const url = page === 1 ? mndListUrl : `${mndListUrl}/${page}`;
     const cadenceMs = requestCount > 0 ? REQUEST_CADENCE_MS : 0;
     if (!hasMndOutboundBudget({ runStartedAt, nowFn, cadenceMs })) {
@@ -2615,10 +2749,47 @@ export async function fetchCrossStraitActivitySnapshot({
       break;
     }
     try {
-      if (cadenceMs) await sleepFn(cadenceMs);
-      requestCount += 1;
-      const html = await fetchBoundedText(fetchFn, url, mndContract);
-      const rows = parseTaiwanMndList(html).map((row) => {
+      let rows;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (requestCount > 0) await sleepFn(REQUEST_CADENCE_MS);
+        requestCount += 1;
+        listRequestCount += 1;
+        const startedAt = monotonicNow();
+        const diagnostic = {
+          path: new URL(url).pathname, purpose: 'list', attempt: attempt + 1,
+          stage: 'response_headers', httpStatus: null,
+        };
+        const requestFetchFn = attempt > 0 ? mndTransportRetryFetchFn() : mndPreferredFetchFn;
+        if (requestFetchFn === mndProxyFetchFn) diagnostic.transport = 'proxy';
+        try {
+          const html = await fetchBoundedText(requestFetchFn, url, mndContract, diagnostic);
+          rows = parseTaiwanMndList(html);
+          if (rows.length === 0) {
+            mndErrors.push('MND_LIST_ROWS_MISSING');
+            mndRequestDiagnostics.push({
+              ...diagnostic, errorCode: 'MND_LIST_ROWS_MISSING', elapsedMs: Math.round(monotonicNow() - startedAt),
+            });
+          } else {
+            mndPreferredFetchFn = requestFetchFn;
+            if (attempt > 0 && mndProxyFetchFn) {
+              mndRequestDiagnostics.at(-1).recoveredVia = requestFetchFn === mndProxyFetchFn
+                ? 'proxy'
+                : 'direct';
+            }
+          }
+          break;
+        } catch (error) {
+          mndRequestDiagnostics.push({
+            ...diagnostic, ...mndTransportErrorDiagnostic(error), errorCode: errorCode(error), elapsedMs: Math.round(monotonicNow() - startedAt),
+          });
+          if (!isMndTransportFailure(errorCode(error), diagnostic) || attempt === 1
+            || listRequestCount >= MND_MAX_LIST_PAGES_PER_BACKFILL_RUN
+            || !hasMndOutboundBudget({ runStartedAt, nowFn, cadenceMs: REQUEST_CADENCE_MS })) {
+            throw error;
+          }
+        }
+      }
+      rows = rows.map((row) => {
         const previous = previousMndByUrl.get(row.sourceUrl);
         return {
           ...row,
@@ -2626,7 +2797,6 @@ export async function fetchCrossStraitActivitySnapshot({
           ...(previous ? { expectedReportingDay: previous.reportingDay } : {}),
         };
       });
-      if (rows.length === 0) mndErrors.push('MND_LIST_ROWS_MISSING');
       discoveredCount += rows.length;
       for (const row of rows) {
         if (page === 1) {
@@ -2640,7 +2810,8 @@ export async function fetchCrossStraitActivitySnapshot({
         }
       }
       if (
-        latestCandidates.size + unseenBackfillCandidates.size
+        [...latestCandidates.values()].filter((row) => !hasRetainedCoverage(row)).length
+          + unseenBackfillCandidates.size
         >= MND_MAX_DETAIL_REQUESTS_PER_RUN
       ) {
         break;
@@ -2651,26 +2822,30 @@ export async function fetchCrossStraitActivitySnapshot({
     }
   }
 
-  const primaryPool = [
-    ...latestCandidates.values(),
+  const unchangedCurrent = [...latestCandidates.values()].filter(hasRetainedCoverage);
+  const coveredCurrentUrls = new Set(unchangedCurrent.map((row) => row.sourceUrl));
+  const requiredCurrent = [...latestCandidates.values()]
+    .filter((row) => !coveredCurrentUrls.has(row.sourceUrl));
+  const unresolvedCurrentUrls = new Set(requiredCurrent.map((row) => row.sourceUrl));
+  const primaryCandidates = [
+    ...requiredCurrent,
     ...unseenBackfillCandidates.values(),
   ].slice(0, MND_MAX_DETAIL_REQUESTS_PER_RUN);
-  const refreshCandidates = rotatingRefreshCandidates(
+  const currentRefresh = unchangedCurrent.length === 0 ? [] : [{
+    ...unchangedCurrent[Math.floor(now / MND_REFRESH_ROTATION_INTERVAL_MS) % unchangedCurrent.length],
+    allowPublicationAdvance: true,
+  }];
+  const refreshCandidates = [...currentRefresh, ...rotatingRefreshCandidates(
     previousMnd,
-    new Set(primaryPool.map((row) => row.sourceUrl)),
+    new Set([...latestCandidates.keys(), ...unseenBackfillCandidates.keys()]),
     now,
-  );
-  const primaryCandidates = primaryPool.slice(
-    0,
-    MND_MAX_DETAIL_REQUESTS_PER_RUN - refreshCandidates.length,
-  );
-  const candidates = [...primaryCandidates, ...refreshCandidates]
-    .slice(0, MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    MND_REFRESH_DETAIL_REQUESTS_PER_RUN - currentRefresh.length,
+  )];
   const candidateSchedule = [
     ...primaryCandidates.map((candidate) => ({
       candidate,
       isRefresh: false,
-      reservedRefreshAttempts: refreshCandidates.length,
+      reservedRefreshAttempts: 0,
     })),
     ...refreshCandidates.map((candidate, index) => ({
       candidate,
@@ -2683,27 +2858,43 @@ export async function fetchCrossStraitActivitySnapshot({
   let primaryBudgetExhausted = false;
   candidateLoop:
   for (const { candidate, isRefresh, reservedRefreshAttempts } of candidateSchedule) {
+    const candidateErrors = isRefresh ? mndRefreshErrors : mndErrors;
     if (primaryBudgetExhausted && !isRefresh) continue;
-    const detailAttemptLimit = MND_MAX_DETAIL_REQUESTS_PER_RUN - reservedRefreshAttempts;
-    let retryingMissingMetadata = false;
+    // Required rows consume capacity first; only optional retries reserve room
+    // for the remaining optional first attempts.
+    const detailAttemptLimit = MND_MAX_DETAIL_REQUESTS_PER_RUN
+      - (isRefresh ? Math.min(reservedRefreshAttempts,
+        Math.max(0, MND_MAX_DETAIL_REQUESTS_PER_RUN - detailRequestCount - 1)) : 0);
+    let retryErrorCode = null;
     while (detailRequestCount < detailAttemptLimit) {
       if (!hasMndOutboundBudget({
         runStartedAt,
         nowFn,
         cadenceMs: REQUEST_CADENCE_MS,
-        reservedRequestCount: isRefresh && !retryingMissingMetadata ? 0 : reservedRefreshAttempts,
+        reservedRequestCount: isRefresh && !retryErrorCode ? 0 : reservedRefreshAttempts,
       })) {
-        if (retryingMissingMetadata) mndErrors.push('MND_PUBLICATION_METADATA_MISSING');
-        mndErrors.push('OUTBOUND_BUDGET_EXHAUSTED');
-        if (isRefresh && !retryingMissingMetadata) break candidateLoop;
+        if (retryErrorCode) candidateErrors.push(retryErrorCode);
+        candidateErrors.push('OUTBOUND_BUDGET_EXHAUSTED');
+        if (isRefresh && !retryErrorCode) break candidateLoop;
         if (!isRefresh) primaryBudgetExhausted = true;
         break;
       }
+      const diagnostic = {
+        path: new URL(candidate.sourceUrl).pathname,
+        purpose: isRefresh ? 'refresh' : 'detail', attempt: retryErrorCode ? 2 : 1,
+        stage: 'response_headers', httpStatus: null,
+      };
+      const requestFetchFn = retryErrorCode === 'TIMEOUT' || retryErrorCode === 'SOURCE_ERROR'
+        ? mndTransportRetryFetchFn()
+        : mndPreferredFetchFn;
+      if (requestFetchFn === mndProxyFetchFn) diagnostic.transport = 'proxy';
+      let startedAt;
       try {
         await sleepFn(REQUEST_CADENCE_MS);
         detailRequestCount += 1;
         requestCount += 1;
-        const html = await fetchBoundedText(fetchFn, candidate.sourceUrl, mndContract);
+        startedAt = monotonicNow();
+        const html = await fetchBoundedText(requestFetchFn, candidate.sourceUrl, mndContract, diagnostic);
         parsedMnd.push(parseTaiwanMndDetail(html, {
           sourceUrl: candidate.sourceUrl,
           retrievedAt: generatedAt,
@@ -2711,18 +2902,28 @@ export async function fetchCrossStraitActivitySnapshot({
           allowPublicationAdvance: candidate.allowPublicationAdvance === true,
           expectedReportingDay: candidate.expectedReportingDay ?? null,
         }));
+        unresolvedCurrentUrls.delete(candidate.sourceUrl);
+        mndPreferredFetchFn = requestFetchFn;
+        if (retryErrorCode && mndProxyFetchFn) {
+          mndRequestDiagnostics.at(-1).recoveredVia = requestFetchFn === mndProxyFetchFn
+            ? 'proxy'
+            : 'direct';
+        }
         break;
       } catch (error) {
         const code = errorCode(error);
+        if (startedAt !== undefined) mndRequestDiagnostics.push({
+          ...diagnostic, ...mndTransportErrorDiagnostic(error), errorCode: code, elapsedMs: Math.round(monotonicNow() - startedAt),
+        });
         if (
-          code === 'MND_PUBLICATION_METADATA_MISSING'
-          && !retryingMissingMetadata
+          (code === 'MND_PUBLICATION_METADATA_MISSING' || isMndTransportFailure(code, diagnostic))
+          && !retryErrorCode
           && detailRequestCount < detailAttemptLimit
         ) {
-          retryingMissingMetadata = true;
+          retryErrorCode = code;
           continue;
         }
-        mndErrors.push(code);
+        candidateErrors.push(code);
         break;
       }
     }
@@ -2732,13 +2933,18 @@ export async function fetchCrossStraitActivitySnapshot({
   const hasHardMndError = mndErrors.some(
     (code) => code !== 'OUTBOUND_BUDGET_EXHAUSTED',
   );
+  if (unresolvedCurrentUrls.size > 0 && !hasHardMndError) {
+    mndErrors.push('MND_CURRENT_LIST_INCOMPLETE');
+  }
   const mndOutcome = {
     ok: discoveredCount > 0
       && !hasHardMndError
-      && (candidates.length === 0 || parsedMnd.length > 0),
+      && unresolvedCurrentUrls.size === 0,
     requestCount,
     observations: parsedMnd,
     errorCodes: [...new Set(mndErrors)],
+    refreshErrorCodes: [...new Set(mndRefreshErrors)],
+    requestDiagnostics: mndRequestDiagnostics,
   };
   return buildCrossStraitActivitySnapshot({
     generatedAt,
@@ -2747,6 +2953,24 @@ export async function fetchCrossStraitActivitySnapshot({
     mndOutcome,
     japanOutcome,
   });
+}
+
+function validMndObservation(row) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(row.reportingDay)
+    && Number.isFinite(Date.parse(row.reportingPeriod?.start))
+    && Number.isFinite(Date.parse(row.reportingPeriod?.end))
+    && Date.parse(row.reportingPeriod.end) > Date.parse(row.reportingPeriod.start)
+    && isAllowedSourceUrl(row.sourceUrl, CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd)
+    && Object.values(row.categories ?? {}).length === MND_CATEGORY_KEYS.length
+    && Object.values(row.categories).every(
+      (value) => value == null || (Number.isInteger(value) && value >= 0),
+    )
+    && Array.isArray(row.history)
+    && row.history.length <= MND_MAX_REVISION_VINTAGES_PER_DAY
+    && Number.isInteger(row.revision?.sequence)
+    && row.revision.sequence >= 1
+    && row.provenance?.contractVersion === 'decision-signal-provenance/v1'
+    && row.provenance?.familyId === 'operational_activity_record';
 }
 
 export function validateCrossStraitActivitySnapshot(snapshot) {
@@ -2761,26 +2985,14 @@ export function validateCrossStraitActivitySnapshot(snapshot) {
     || snapshot.coverage.usableMndReportingDays < 1
     || snapshot.baselines?.sourceId !== 'taiwan-mnd'
     || snapshot.baselines?.semantics !== 'prior-usable-reporting-days-excluding-current'
-    || !persistedStringsWithinLimit(snapshot)
+    || !persistedStringsWithinLimit(snapshot, new Set(snapshot.sources
+      .filter((source) => source?.id === 'japan-mod')
+      .flatMap((source) => Array.isArray(source.candidates) ? source.candidates : [])
+      .filter((candidate) => candidate?.admission === 'manual_review_required'
+        && /^https:\/\/x\.com\/jointstaffpa\/status\/[1-9]\d{0,19}$/.test(candidate.sourceUrl))))
     || serializedBytes(snapshot) > CROSS_STRAIT_ACTIVITY_MAX_SERIALIZED_BYTES
   ) return false;
   const mnd = snapshot.observations.filter((row) => row?.sourceId === 'taiwan-mnd');
   if (mnd.length === 0) return false;
-  return mnd.every((row) => (
-    /^\d{4}-\d{2}-\d{2}$/.test(row.reportingDay)
-    && Number.isFinite(Date.parse(row.reportingPeriod?.start))
-    && Number.isFinite(Date.parse(row.reportingPeriod?.end))
-    && Date.parse(row.reportingPeriod.end) > Date.parse(row.reportingPeriod.start)
-    && isAllowedSourceUrl(row.sourceUrl, CROSS_STRAIT_SOURCE_CONTRACTS.taiwanMnd)
-    && Object.values(row.categories ?? {}).length === MND_CATEGORY_KEYS.length
-    && Object.values(row.categories).every(
-      (value) => value == null || (Number.isInteger(value) && value >= 0),
-    )
-    && Array.isArray(row.history)
-    && row.history.length <= MND_MAX_REVISION_VINTAGES_PER_DAY
-    && Number.isInteger(row.revision?.sequence)
-    && row.revision.sequence >= 1
-    && row.provenance?.contractVersion === 'decision-signal-provenance/v1'
-    && row.provenance?.familyId === 'operational_activity_record'
-  ));
+  return mnd.every(validMndObservation);
 }

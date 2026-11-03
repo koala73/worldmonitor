@@ -27,6 +27,7 @@ interface ProxyPersistentResponseCacheTestState {
   fetchCalls: Array<{ input: string; init?: RequestInit }>;
   networkOutcomes: NetworkOutcome[];
   writes: Array<{ key: string; data: CachedResponsePayload; updatedAt?: number }>;
+  persist?: () => Promise<void>;
 }
 
 declare global {
@@ -50,6 +51,7 @@ async function loadProxyModule(): Promise<{
       }
       export async function setPersistentCache(key, data, updatedAt) {
         globalThis.${TEST_STATE_KEY}.writes.push({ key, data, updatedAt });
+        await globalThis.${TEST_STATE_KEY}.persist?.();
       }
     `],
   ]);
@@ -145,6 +147,24 @@ afterEach(() => {
 });
 
 describe('fetchWithProxy persistent response freshness', () => {
+  it('rejects when aborted while the cache write is pending', async () => {
+    const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const persisted = Promise.withResolvers<void>();
+    state.persist = () => {
+      started.resolve();
+      return persisted.promise;
+    };
+    state.networkOutcomes.push(new Response('<rss>current</rss>'));
+    const request = proxyModule.fetchWithProxy(API_PATH, { signal: controller.signal });
+    const rejection = assert.rejects(request, { name: 'AbortError' });
+    await started.promise;
+    controller.abort();
+    persisted.resolve();
+    await rejection;
+  });
+
   it('returns a fresh cached response while revalidating it in the background', async () => {
     const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
     state.cached = cachedResponse('<rss>cached</rss>', 60_000);
@@ -267,19 +287,19 @@ describe('fetchWithProxy persistent response freshness', () => {
     assert.equal(await response.text(), '<rss>current</rss>');
   });
 
-  it('omits credentials for the public FwdStart feed and keeps RSS credentialed', async () => {
+  it('omits credentials for the public listing feed and keeps RSS credentialed', async () => {
     const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
     state.networkOutcomes.push(
-      new Response('<rss>fwdstart</rss>', { status: 200 }),
+      new Response('<rss>miit</rss>', { status: 200 }),
       new Response('<rss>proxy</rss>', { status: 200 }),
     );
 
-    await proxyModule.fetchWithProxy('/api/fwdstart');
+    await proxyModule.fetchWithProxy('/api/miit-news');
     await proxyModule.fetchWithProxy(API_PATH);
 
     assert.deepEqual(state.fetchCalls, [
       {
-        input: 'https://api.test/api/fwdstart',
+        input: 'https://api.test/api/miit-news',
         init: { cache: 'no-store', credentials: 'omit' },
       },
       {
@@ -304,5 +324,87 @@ describe('fetchWithProxy persistent response freshness', () => {
 
     assert.equal(await response.text(), '<rss>live-stale</rss>');
     assert.equal(state.writes.length, 0, 'no-store responses must not enter the API response cache');
+  });
+
+  it('propagates a mid-body abort instead of warning and returning a cancelled Response', async () => {
+    // WORLDMONITOR-132: Safari deep-dive close aborts after headers (breadcrumb
+    // 200) while clone().text() is still reading. Swallowing that AbortError,
+    // console.warn-ing it, and returning the Response left a cancelled body
+    // for the caller and an unhandledrejection with stack at abort().
+    const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
+    const controller = new AbortController();
+    const abortError = new DOMException('Fetch is aborted', 'AbortError');
+    state.networkOutcomes.push({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({
+        'cache-control': DEFAULT_CACHE_CONTROL,
+        'content-type': 'application/xml',
+      }),
+      clone() {
+        return this;
+      },
+      async text() {
+        controller.abort(abortError);
+        throw abortError;
+      },
+    } as unknown as Response);
+
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+    try {
+      await assert.rejects(
+        () => proxyModule.fetchWithProxy(API_PATH, { signal: controller.signal }),
+        (error: unknown) => error === abortError || (
+          error instanceof Error && error.name === 'AbortError'
+        ),
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(state.writes.length, 0);
+    assert.equal(
+      warnings.some((args) => String(args[0] ?? '').includes('Failed to persist API response cache')),
+      false,
+      'expected panel-close abort must not look like a cache persist fault',
+    );
+  });
+
+  it('propagates WebKit TypeError-wrapped Fetch is aborted from body read', async () => {
+    const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
+    const controller = new AbortController();
+    const webkitAbort = Object.assign(new TypeError('AbortError: Fetch is aborted'), {
+      name: 'TypeError',
+    });
+    state.networkOutcomes.push({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers({
+        'cache-control': DEFAULT_CACHE_CONTROL,
+        'content-type': 'application/xml',
+      }),
+      clone() {
+        return this;
+      },
+      async text() {
+        controller.abort();
+        throw webkitAbort;
+      },
+    } as unknown as Response);
+
+    await assert.rejects(
+      () => proxyModule.fetchWithProxy(API_PATH, { signal: controller.signal }),
+      (error: unknown) => (
+        error instanceof Error
+        && (error.name === 'AbortError' || /Fetch is aborted/i.test(error.message))
+      ),
+    );
+    assert.equal(state.writes.length, 0);
   });
 });

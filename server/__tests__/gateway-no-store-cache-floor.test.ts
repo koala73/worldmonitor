@@ -110,7 +110,7 @@ describe('gateway no-store floor + credentialed privacy (#6771)', () => {
   test('an anonymous request to a public route is NOT marked private (no over-broadening)', async () => {
     // Public no-auth route, no credential -> the private gate must not fire, so
     // shared/CDN caching of public data is preserved.
-    const path = '/api/natural/v1/list-natural-events';
+    const path = '/api/intelligence/v1/get-china-decision-signals';
     const res = await createDomainGateway([
       { method: 'GET', path, handler: healthyHandler({ events: [{ id: 1 }] }) },
     ])(

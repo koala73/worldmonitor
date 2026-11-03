@@ -33,8 +33,8 @@ export const TPS_METADATA_URL = `${TPS_LAYER_URL}?f=pjson`;
 export const TPS_QUERY_URL = 'https://services.arcgis.com/S9th0jAJ7bqgIRjw/arcgis/rest/services/C4S_Public_NoGO/FeatureServer/0/query';
 export const TPS_SOURCE = 'toronto-tps';
 export const TPS_KEY = 'safety:toronto-tps:v1';
-export const TPS_MAX_STALE_MIN = 45;
-export const TPS_TTL_SECONDS = 5400;
+export const TPS_MAX_STALE_MIN = 90;
+export const TPS_TTL_SECONDS = 10800;
 export const TPS_SOURCE_VERSION = 'toronto-tps-c4s-v1';
 
 export const TORONTO_CAD_JURISDICTION = 'Toronto';

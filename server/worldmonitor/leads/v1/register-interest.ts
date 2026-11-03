@@ -4,8 +4,6 @@
  * Sources: Convex registerInterest:register mutation + Resend confirmation email
  */
 
-import { ConvexHttpClient } from 'convex/browser';
-import { api } from '../../../../convex/_generated/api';
 import type {
   ServerContext,
   RegisterInterestRequest,
@@ -14,26 +12,13 @@ import type {
 import { ApiError, ValidationError } from '../../../../src/generated/server/worldmonitor/leads/v1/service_server';
 import { getClientIp, verifyTurnstile } from '../../../_shared/turnstile';
 import { validateEmail } from '../../../_shared/email-validation';
-import { checkScopedRateLimit } from '../../../_shared/rate-limit';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_EMAIL_LENGTH = 320;
 const MAX_META_LENGTH = 100;
 
-const DESKTOP_SOURCES = new Set<string>(['desktop-settings']);
-export const DESKTOP_AUTH_TIMESTAMP_HEADER = 'x-worldmonitor-desktop-timestamp';
-export const DESKTOP_AUTH_SIGNATURE_HEADER = 'x-worldmonitor-desktop-signature';
-export const DESKTOP_AUTH_WINDOW_MS = 5 * 60 * 1000;
-const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
-const DESKTOP_AUTH_ALLOW_LEGACY_ENV = 'WM_DESKTOP_AUTH_ALLOW_LEGACY';
-
-// Legacy api/register-interest.js capped desktop-source signups at 2/hr per IP
-// on top of the generic 5/hr endpoint budget. The desktop bypass is now
-// authenticated with HMAC headers when WM_DESKTOP_SHARED_SECRET is configured;
-// the scoped cap remains as a second-stage abuse backstop.
-const DESKTOP_RATE_SCOPE = '/api/leads/v1/register-interest#desktop';
-const DESKTOP_RATE_LIMIT = 2;
-const DESKTOP_RATE_WINDOW = '1 h' as const;
+const CONVEX_REGISTER_INTEREST_PATH = '/api/internal-register-interest';
+const CONVEX_REGISTER_INTEREST_TIMEOUT_MS = 5_000;
 
 interface ConvexRegisterResult {
   status: 'registered' | 'already_registered';
@@ -43,89 +28,24 @@ interface ConvexRegisterResult {
   emailSuppressed?: boolean;
 }
 
-function canonicalizeDesktopAuthPayload(req: RegisterInterestRequest): string {
-  return JSON.stringify({
-    email: typeof req.email === 'string' ? req.email : '',
-    source: typeof req.source === 'string' ? req.source : '',
-    appVersion: typeof req.appVersion === 'string' ? req.appVersion : '',
-    referredBy: typeof req.referredBy === 'string' ? req.referredBy : '',
-    website: typeof req.website === 'string' ? req.website : '',
-    turnstileToken: typeof req.turnstileToken === 'string' ? req.turnstileToken : '',
-  });
+function convexSiteUrl(): string {
+  return (
+    process.env.CONVEX_SITE_URL ??
+    (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site')
+  ).replace(/\/$/, '');
 }
 
-function desktopAuthMessage(timestamp: string, req: RegisterInterestRequest): string {
-  return `${timestamp}\n${canonicalizeDesktopAuthPayload(req)}`;
-}
-
-function toHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-async function hmacSha256Hex(secret: string, message: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
+function isConvexRegisterResult(value: unknown): value is ConvexRegisterResult {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const result = value as Partial<ConvexRegisterResult>;
+  return (
+    (result.status === 'registered' || result.status === 'already_registered') &&
+    typeof result.referralCode === 'string' &&
+    typeof result.referralCount === 'number' &&
+    Number.isSafeInteger(result.referralCount) &&
+    (result.position === undefined || Number.isSafeInteger(result.position)) &&
+    (result.emailSuppressed === undefined || typeof result.emailSuppressed === 'boolean')
   );
-  return toHex(await crypto.subtle.sign('HMAC', key, encoder.encode(message)));
-}
-
-function timingSafeStringEqual(a: string, b: string): boolean {
-  const maxLength = Math.max(a.length, b.length);
-  let diff = a.length ^ b.length;
-  for (let i = 0; i < maxLength; i += 1) {
-    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
-  }
-  return diff === 0;
-}
-
-export async function createDesktopAuthSignature(
-  secret: string,
-  timestamp: string,
-  req: RegisterInterestRequest,
-): Promise<string> {
-  return `sha256=${await hmacSha256Hex(secret, desktopAuthMessage(timestamp, req))}`;
-}
-
-async function verifyDesktopAuth(request: Request, req: RegisterInterestRequest): Promise<void> {
-  const secret = process.env[DESKTOP_AUTH_SECRET_ENV];
-  const timestamp = request.headers.get(DESKTOP_AUTH_TIMESTAMP_HEADER);
-  const signature = request.headers.get(DESKTOP_AUTH_SIGNATURE_HEADER);
-
-  if (!secret) {
-    if (!timestamp && !signature && process.env[DESKTOP_AUTH_ALLOW_LEGACY_ENV] === 'true') {
-      console.warn(
-        `[register-interest] ${DESKTOP_AUTH_ALLOW_LEGACY_ENV}=true and ${DESKTOP_AUTH_SECRET_ENV} is unset; accepting unsigned legacy desktop bypass`,
-      );
-      return;
-    }
-
-    console.warn(`[register-interest] ${DESKTOP_AUTH_SECRET_ENV} not set; rejecting desktop bypass`);
-    throw new ApiError(403, 'Desktop authentication failed', '');
-  }
-
-  if (!timestamp || !signature) {
-    throw new ApiError(403, 'Desktop authentication failed', '');
-  }
-
-  const timestampMs = Number(timestamp);
-  if (!Number.isSafeInteger(timestampMs) || Math.abs(Date.now() - timestampMs) > DESKTOP_AUTH_WINDOW_MS) {
-    throw new ApiError(403, 'Desktop authentication failed', '');
-  }
-
-  const supplied = signature.trim();
-  if (!/^sha256=[a-f0-9]{64}$/.test(supplied)) {
-    throw new ApiError(403, 'Desktop authentication failed', '');
-  }
-
-  const expected = await createDesktopAuthSignature(secret, timestamp, req);
-  if (!timingSafeStringEqual(supplied, expected)) {
-    throw new ApiError(403, 'Desktop authentication failed', '');
-  }
 }
 
 async function sendConfirmationEmail(email: string, referralCode: string): Promise<void> {
@@ -152,6 +72,8 @@ async function sendConfirmationEmail(email: string, referralCode: string): Promi
       body: JSON.stringify({
         from: 'World Monitor <noreply@worldmonitor.app>',
         to: [email],
+        // noreply@ is unattended; route replies to a human inbox.
+        reply_to: 'support@worldmonitor.app',
         subject: "You\u2019re on the World Monitor Pro waitlist",
         html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
@@ -290,34 +212,13 @@ export async function registerInterest(
   }
 
   const ip = getClientIp(ctx.request);
-  const isDesktopSource = typeof req.source === 'string' && DESKTOP_SOURCES.has(req.source);
-
-  // Desktop sources bypass Turnstile because the app shell has no browser
-  // captcha surface. Authenticate that bypass with a shared-secret HMAC, then
-  // keep the tighter per-IP budget as a second-stage abuse cap.
-  if (isDesktopSource) {
-    await verifyDesktopAuth(ctx.request, req);
-    const scoped = await checkScopedRateLimit(
-      DESKTOP_RATE_SCOPE,
-      DESKTOP_RATE_LIMIT,
-      DESKTOP_RATE_WINDOW,
-      ip,
-    );
-    if (scoped.degraded) {
-      throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
-    }
-    if (!scoped.allowed) {
-      throw new ApiError(429, 'Too many requests', '');
-    }
-  } else {
-    const turnstileOk = await verifyTurnstile({
-      token: req.turnstileToken || '',
-      ip,
-      logPrefix: '[register-interest]',
-    });
-    if (!turnstileOk) {
-      throw new ApiError(403, 'Bot verification failed', '');
-    }
+  const turnstileOk = await verifyTurnstile({
+    token: req.turnstileToken || '',
+    ip,
+    logPrefix: '[register-interest]',
+  });
+  if (!turnstileOk) {
+    throw new ApiError(403, 'Bot verification failed', '');
   }
 
   const { email, source, appVersion, referredBy } = req;
@@ -334,18 +235,53 @@ export async function registerInterest(
   const safeAppVersion = appVersion ? appVersion.slice(0, MAX_META_LENGTH) : 'unknown';
   const safeReferredBy = referredBy ? referredBy.slice(0, 20) : undefined;
 
-  const convexUrl = process.env.CONVEX_URL;
-  if (!convexUrl) {
+  const convexUrl = convexSiteUrl();
+  const convexSharedSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  if (!convexUrl || !convexSharedSecret) {
     throw new ApiError(503, 'Registration service unavailable', '');
   }
 
-  const client = new ConvexHttpClient(convexUrl);
-  const result = (await client.mutation(api.registerInterest.register, {
-    email,
-    source: safeSource,
-    appVersion: safeAppVersion,
-    referredBy: safeReferredBy,
-  })) as ConvexRegisterResult;
+  let convexResponse: Response;
+  try {
+    convexResponse = await fetch(`${convexUrl}${CONVEX_REGISTER_INTEREST_PATH}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-leads/1.0',
+        'x-convex-shared-secret': convexSharedSecret,
+      },
+      body: JSON.stringify({
+        email,
+        source: safeSource,
+        appVersion: safeAppVersion,
+        referredBy: safeReferredBy,
+      }),
+      signal: AbortSignal.timeout(CONVEX_REGISTER_INTEREST_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.warn(
+      '[register-interest] Convex request failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+    throw new ApiError(503, 'Registration service unavailable', '');
+  }
+
+  if (!convexResponse.ok) {
+    console.warn(`[register-interest] Convex HTTP ${convexResponse.status}`);
+    throw new ApiError(503, 'Registration service unavailable', '');
+  }
+
+  let resultBody: unknown;
+  try {
+    resultBody = await convexResponse.json();
+  } catch {
+    throw new ApiError(503, 'Registration service unavailable', '');
+  }
+  if (!isConvexRegisterResult(resultBody)) {
+    console.error('[register-interest] Convex returned an invalid registration response');
+    throw new ApiError(503, 'Registration service unavailable', '');
+  }
+  const result = resultBody;
 
   if (result.status === 'registered' && result.referralCode) {
     if (!result.emailSuppressed) {
@@ -355,11 +291,13 @@ export async function registerInterest(
     }
   }
 
+  // Bot verification does not prove address ownership. Keep both outcomes
+  // identical; referral details belong in the confirmation email above.
   return {
-    status: result.status,
-    referralCode: result.referralCode,
-    referralCount: result.referralCount,
-    position: result.position ?? 0,
-    emailSuppressed: result.emailSuppressed ?? false,
+    status: 'registered',
+    referralCode: '',
+    referralCount: 0,
+    position: 0,
+    emailSuppressed: false,
   };
 }

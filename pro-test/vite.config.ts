@@ -1,7 +1,16 @@
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
+import pkg from '../package.json';
+import { getSentryBuildMetadata } from '../shared/sentry-build-metadata';
+
+// Mirrors the root config's gate. WORLDMONITOR-11Y and -107 are marketing-bundle
+// events that arrived with zero usable frames, so covering only the dashboard
+// would leave this half of the surface unreadable.
+const uploadSourceMapsToSentry = Boolean(process.env.SENTRY_AUTH_TOKEN);
+const sentryBuild = getSentryBuildMetadata(pkg.version, process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev');
 
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
 
@@ -15,7 +24,39 @@ function isWelcomeHydrationPreload(dep: string) {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_HASH__: JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev'),
+  },
+  plugins: [
+    react(),
+    tailwindcss(),
+    ...(uploadSourceMapsToSentry
+      ? [sentryVitePlugin({
+          org: 'elie-habib',
+          project: 'worldmonitor',
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+          telemetry: false,
+          release: {
+            name: sentryBuild.release,
+            inject: false,
+            dist: sentryBuild.dist,
+            // The root build publishes the release after both bundles build.
+            create: false,
+            finalize: false,
+            setCommits: false,
+            deploy: false,
+          },
+          sourcemaps: {
+            // This bundle emits into ../public/pro, which the root build copies
+            // wholesale into dist — a leftover map would ship publicly whatever
+            // the root's preview flag says. Always sweep them, so public output
+            // stays exactly as it is today (no marketing maps served).
+            filesToDeleteAfterUpload: ['../public/pro/**/*.map'],
+          },
+        })]
+      : []),
+  ],
   base: '/pro/',
   // Local WebMCP testing uses chrome://flags/#enable-webmcp-testing instead of
   // an origin-trial token. Keep the browser security gates aligned with the
@@ -30,6 +71,8 @@ export default defineConfig({
     cspNonce: STATIC_SCRIPT_NONCE,
   },
   build: {
+    // Built only to be uploaded; filesToDeleteAfterUpload removes them again.
+    sourcemap: uploadSourceMapsToSentry,
     // @clerk/clerk-js ships as one monolithic vendor SDK (~3MB) that can't be
     // split further; it's already dynamically imported (services/clerk.ts)
     // so it never loads on first paint. Raise the warning threshold to match.

@@ -23,7 +23,7 @@ export interface NqMacroEvent {
   event: string;
   country: string;
   date: string;
-  impact: string;
+  impact?: string | null;
   actual?: string;
   estimate?: string;
   previous?: string;
@@ -57,7 +57,7 @@ export function filterNqMacroEvents(
   return events
     .filter((event) => (
       event.country === 'US'
-      && event.impact.toLowerCase() === 'high'
+      && event.impact?.toLowerCase() === 'high'
       && inLocalWindow(event.date, from, to)
     ))
     .sort((a, b) => a.date.localeCompare(b.date) || a.event.localeCompare(b.event));

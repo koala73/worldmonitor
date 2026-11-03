@@ -1,3 +1,9 @@
+---
+title: "World Monitor desktop downloads"
+description: "Download endpoint parameters and platform-specific release redirects."
+canonical: "https://www.worldmonitor.app/api/download.md"
+---
+
 # World Monitor desktop downloads
 
 `GET /api/download` redirects to the latest GitHub Release asset for the World Monitor desktop app. This markdown twin documents the redirect so agents can read it without following a binary `302`.

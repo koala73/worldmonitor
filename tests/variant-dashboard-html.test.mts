@@ -134,6 +134,16 @@ const escHtml = (s: string) =>
     .replace(/'/g, '&#39;');
 
 describe('renderVariantDashboardHtml (#4996)', () => {
+  it('synchronizes each variant description across crawler metadata', () => {
+    for (const variant of WEB_DASHBOARD_VARIANTS) {
+      const html = renderVariantDashboardHtml(fixture, variant);
+      const description = escHtml(VARIANT_META[variant].description);
+      for (const attribute of ['name="description"', 'property="og:description"', 'name="twitter:description"']) {
+        assert.ok(html.includes(`<meta ${attribute} content="${description}" />`), `${variant}: ${attribute}`);
+      }
+    }
+  });
+
   it('self-canonicalizes each variant on its own subdomain', () => {
     for (const variant of WEB_DASHBOARD_VARIANTS) {
       const html = renderVariantDashboardHtml(fixture, variant);

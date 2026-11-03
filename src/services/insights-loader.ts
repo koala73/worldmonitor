@@ -11,12 +11,17 @@ export interface ServerInsightStory {
   sourceCount: number;
   /**
    * Distinct PUBLISHERS behind the cluster (#6428). Written by
-   * scripts/seed-insights.mjs via countPublisherFamilies, so nine BBC feed
-   * labels count once. Optional only because a payload cached before the
+   * scripts/seed-insights.mjs from publisher families, so nine BBC feed
+   * labels count once, and so do outlets that carried the same copy (#9095). Optional only because a payload cached before the
    * field existed would not carry it; consumers must fail closed rather than
    * fall back to sourceCount, which counts articles.
    */
   uniqueSourceCount?: number;
+  /** Feed labels in the cluster, deduped. Absent on a payload cached before the seeder wrote it. */
+  sources?: string[];
+  /** Publisher families in `sources` whose items carried the same copy (#9095); each group is one publisher. */
+  sameCopy?: string[][];
+  corroborationCount?: number;
   importanceScore: number;
   /** 0-100 source reliability, distinct from importanceScore. Absent on pre-rollout cache. */
   credibilityScore?: number;
@@ -117,11 +122,26 @@ function abortInFlightRequest(): void {
   }
   if (!inFlightAbort || inFlightAbort.signal.aborted) return;
   try {
-    inFlightAbort.abort(
-      typeof DOMException === 'function'
-        ? new DOMException('signal timed out', 'TimeoutError')
-        : undefined,
-    );
+    let reason: DOMException | undefined;
+    if (typeof DOMException === 'function') {
+      reason = new DOMException('signal timed out', 'TimeoutError');
+      // Match AbortSignal.timeout's native reason, whose stack is the header
+      // only. Chromium leaves a JS-built DOMException stackless, and Sentry's
+      // fetch instrumentation backfills a stackless rejection with the fetch
+      // call site — so a browser extension's fetch hook that leaks this reason
+      // reported as a first-party insights-loader rejection
+      // (WORLDMONITOR-125/12Z/11N) instead of the zero-frame timeout it is.
+      try {
+        Object.defineProperty(reason, 'stack', {
+          value: 'TimeoutError: signal timed out',
+          configurable: true,
+          writable: true,
+        });
+      } catch {
+        /* engine pins `stack`; an unstamped reason must still abort below */
+      }
+    }
+    inFlightAbort.abort(reason);
   } catch {
     /* already aborted or exotic AbortController */
   }

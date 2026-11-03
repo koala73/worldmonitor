@@ -244,18 +244,30 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
     expect(infrastructureUpdates).toEqual(['AE', 'AE']);
   });
 
-  it('refreshes the visible military card from the current military cache', async () => {
+  it('refreshes the visible military card after lazy base data settles', async () => {
     geometryMocks.preloadCountryGeometry.mockResolvedValue(undefined);
     infraMocks.preloadInfrastructureTables.mockResolvedValue(undefined);
-    const { ctx, manager, militaryUpdates, open } = createBriefHarness('US');
+    const bases = deferred<[]>();
+    militaryMocks.preloadMilitaryBases.mockReturnValue(bases.promise);
+    const { manager, militaryUpdates, open } = createBriefHarness('US');
+    await open();
+    expect(militaryMocks.preloadMilitaryBases).toHaveBeenCalledOnce();
+    expect(militaryUpdates[militaryUpdates.length - 1]).toEqual(expect.objectContaining({ ownFlights: null,foreignPresence:null }));
+    militaryUpdates.length = 0;
+    Reflect.set(manager, 'qualifiedMilitarySummary', { code: 'US', page: Reflect.get(manager,'ctx').countryBriefPage, signalCounts: {militaryFlights:1,militaryFlightsInCountry:1,militaryVessels:0,militaryVesselsInCountry:0}, value: { ownFlights: 1, foreignFlights: 0, nearbyVessels: 0, foreignPresence: false, nearestBases: [], coverage: 'complete', coverageNotes: [] } });
+    await Promise.resolve();
+    expect(militaryUpdates).toHaveLength(0);
+    bases.resolve([]);
+    await vi.waitFor(() => expect(militaryUpdates).toEqual([expect.objectContaining({ ownFlights: 1, foreignFlights: 0 })]));
+  });
+
+  it('refreshes the visible military card from the current qualified military snapshot', async () => {
+    geometryMocks.preloadCountryGeometry.mockResolvedValue(undefined);
+    infraMocks.preloadInfrastructureTables.mockResolvedValue(undefined);
+    const { manager, militaryUpdates, open } = createBriefHarness('US');
     await open();
     militaryUpdates.length = 0;
-    ctx.intelligenceCache.military = {
-      flights: [{ lat: 40, lon: -100, operatorCountry: 'United States' }],
-      flightClusters: [],
-      vessels: [],
-      vesselClusters: [],
-    } as never;
+    Reflect.set(manager, 'qualifiedMilitarySummary', { code: 'US', page: Reflect.get(manager,'ctx').countryBriefPage, signalCounts: {militaryFlights:1,militaryFlightsInCountry:1,militaryVessels:0,militaryVesselsInCountry:0}, value: { ownFlights: 1, foreignFlights: 0, nearbyVessels: 0, foreignPresence: false, nearestBases: [], coverage: 'complete', coverageNotes: [] } });
 
     manager.refreshOpenMilitaryActivity();
 

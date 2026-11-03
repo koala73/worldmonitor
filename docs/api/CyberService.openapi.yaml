@@ -13,7 +13,7 @@ paths:
             tags:
                 - CyberService
             summary: ListCyberThreats
-            description: ListCyberThreats retrieves threat indicators from multiple intelligence sources.
+            description: Browse cached cyber threat indicators by type, source and minimum severity, with cursor pagination and indicator details for threat intelligence investigation.
             operationId: ListCyberThreats
             parameters:
                 - name: start

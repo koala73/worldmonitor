@@ -165,6 +165,52 @@ describe('checkTierProEntitlement', () => {
       'entitlement_verification_unavailable',
     );
   });
+
+  // The entitlement cache serves a billing-marker row for its full TTL without
+  // re-checking validUntil (entitlement-check.ts: "consumers must check expiry
+  // before granting access"). A paid fallback that lapses inside that window
+  // must not stay Pro here just because the row still carries tier 1.
+  it('denies a tier-1 marker row whose validUntil has already passed', async () => {
+    const result = await checkTierProEntitlement(
+      'user-expired-pending-renewal',
+      {},
+      async () => entitlements(1, {
+        validUntil: Date.now() - 1_000,
+        billingStatus: 'renewal_verification_pending',
+      }),
+    );
+
+    if (result.allowed) assert.fail('an expired entitlement must not grant Pro');
+    assert.equal(result.billingDenial?.status, 503);
+    assert.equal(
+      result.billingDenial?.headers.get('X-Billing-Verification'),
+      'renewal_verification_pending',
+    );
+  });
+
+  it('denies a confirmed subscription_lapsed row even while its fallback tier is 1', async () => {
+    const result = await checkTierProEntitlement(
+      'user-lapsed',
+      {},
+      async () => entitlements(1, { billingStatus: 'subscription_lapsed' }),
+    );
+
+    if (result.allowed) assert.fail('a lapsed subscription must not grant Pro');
+    assert.equal(
+      result.billingDenial?.headers.get('X-Billing-Verification'),
+      'subscription_lapsed',
+    );
+  });
+
+  it('denies a tier-1 row with a non-finite validUntil', async () => {
+    const result = await checkTierProEntitlement(
+      'user-nan-validity',
+      {},
+      async () => entitlements(1, { validUntil: Number.NaN }),
+    );
+
+    assert.equal(result.allowed, false);
+  });
 });
 
 /**

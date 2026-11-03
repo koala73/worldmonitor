@@ -1,7 +1,7 @@
 name: Analytics Collector Monitor
 
 # Probes the self-hosted Umami collector directly. Deliberately NOT gated on a
-# green main (unlike seed-freshness-monitor.yml): the collector's health is
+# green main: the collector's health is
 # independent of repo state, and a gate is one more way for this to go quiet —
 # which is exactly how a 4-day analytics blackout went unnoticed (#5565).
 
@@ -15,12 +15,13 @@ permissions:
 
 jobs:
   monitor:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 

@@ -144,15 +144,13 @@ describe('resolveScenarioLlmResult validation retry', () => {
   });
 
   it('tries a fallback provider after the primary validates to zero narratives', async () => {
-    const oldGroqKey = process.env.GROQ_API_KEY;
     const oldOpenRouterKey = process.env.OPENROUTER_API_KEY;
-    process.env.GROQ_API_KEY = 'groq-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-key';
     const providers = [];
     try {
       __setForecastLlmTransportForTests({
-        fetch: async (url) => {
-          const provider = url.includes('groq.com') ? 'groq' : 'openrouter';
+        fetch: async (_url, init) => {
+          const provider = JSON.parse(init.body).model.endsWith(':free') ? 'openrouter-free' : 'openrouter';
           providers.push(provider);
           return {
             ok: true,
@@ -160,7 +158,7 @@ describe('resolveScenarioLlmResult validation retry', () => {
               model: `${provider}-model`,
               choices: [{
                 message: {
-                  content: provider === 'groq'
+                  content: provider === 'openrouter-free'
                     ? 'The provider returned a semantically empty JSON payload: []'
                     : validCasePayload,
                 },
@@ -169,12 +167,11 @@ describe('resolveScenarioLlmResult validation retry', () => {
           };
         },
       });
-      const out = await resolveScenarioLlmResult(predictions, { providerOrder: ['groq', 'openrouter'], retryDelayMs: 1 });
-      assert.deepEqual(providers, ['groq', 'openrouter']);
+      const out = await resolveScenarioLlmResult(predictions, { providerOrder: ['openrouter-free', 'openrouter'], retryDelayMs: 1 });
+      assert.deepEqual(providers, ['openrouter-free', 'openrouter']);
       assert.equal(out.result.provider, 'openrouter');
       assert.equal(out.validCases.length, 1);
     } finally {
-      if (oldGroqKey === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = oldGroqKey;
       if (oldOpenRouterKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = oldOpenRouterKey;
     }
   });

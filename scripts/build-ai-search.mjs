@@ -23,14 +23,16 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 import { AI_DATA_CENTERS } from '../src/config/ai-datacenters.ts';
 import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
 import { UNDERSEA_CABLES } from '../src/config/geo-map.ts';
 import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions.ts';
 import { PIPELINES } from '../shared/pipelines-data.ts';
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
+import { lngFacilityCount } from './_storage-facility-registry.mjs';
 import { SOURCE_DOMAINS } from './crawlable-sources-page.mjs';
-import { resolveLatestResilienceSnapshotPath } from './build-crawlable-corpus.mjs';
+import { publishedRankedCountries } from './build-crawlable-corpus.mjs';
 import {
   AI_SEARCH_COVERAGE_CLOSE,
   AI_SEARCH_COVERAGE_HEADING,
@@ -59,26 +61,11 @@ const RECONCILED_RE = /^Coverage reconciled: \d{4}-\d{2}-\d{2}\b.*$/m;
 const FACTS_RECONCILED_RE = /^Facts reconciled: \d{4}-\d{2}-\d{2}\b.*$/m;
 
 const read = (rootDir, relativePath) => readFileSync(join(rootDir, relativePath), 'utf8');
-const readJson = (rootDir, relativePath) => JSON.parse(read(rootDir, relativePath));
 const count = (value) => value.toLocaleString('en-US');
 
 /** UTC so a late-evening run in a +04:00 timezone cannot date as tomorrow. */
 export function todayUtc() {
   return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * Countries in the latest published resilience ranking. The rankable universe
- * (196) and the published ranking (170) are different facts and third-party
- * coverage has conflated them, so ai-search.md states both with their
- * definitions attached.
- */
-export function publishedRankedCountries(rootDir = ROOT) {
-  const snapshot = readJson(rootDir, resolveLatestResilienceSnapshotPath(rootDir));
-  if (!Array.isArray(snapshot.items) || snapshot.items.length === 0) {
-    throw new Error('the published resilience ranking snapshot must contain ranked items');
-  }
-  return { ranked: snapshot.items.length, capturedAt: snapshot.capturedAt };
 }
 
 /**
@@ -131,11 +118,11 @@ export function buildCoverageBullets({ stats, resilience }) {
     `- ${count(stats.panelClasses)} concrete panel implementations across ${count(stats.variantCount)} product variants`,
     `- ${count(stats.mcpToolCount)} MCP tools; use \`tools/list\` for the live inventory`,
     `- ${count(stats.locales)} supported interface languages`,
-    `- ${count(stats.tier1Countries)} countries scored by the Country Instability Index (CII v8)`,
+    `- ${count(stats.tier1Countries)} countries scored by the Country Instability Index (CII ${CII_FORMULA_VERSION})`,
     `- ${count(stats.rankableUniverseCountries)}-country rankable universe for the Country Resilience Index, of which ${count(resilience.ranked)} are ranked in the published snapshot captured ${resilience.capturedAt}`,
     `- ${count(CHOKEPOINT_REGISTRY.length)} maritime chokepoints with AIS-based transit intelligence`,
     `- ${count(UNDERSEA_CABLES.length)} submarine cable routes`,
-    `- ${count(PIPELINES.length)} pipelines and LNG assets`,
+    `- ${count(PIPELINES.length + lngFacilityCount())} pipelines and LNG assets`,
     `- ${count(AI_DATA_CENTERS.length)} AI datacenters mapped`,
     `- ${count(INTEL_HOTSPOTS.length)} scored geopolitical hotspots`,
     `- ${count(stats.stockExchangeCount)} stock exchanges in the markets registry`,

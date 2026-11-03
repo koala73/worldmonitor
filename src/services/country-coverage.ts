@@ -1,12 +1,11 @@
 import type { EventCategory, NewsItem, ThreatLevel } from '@/types';
 import { rssProxyUrl } from '@/utils';
-import { isDesktopRuntime } from './runtime';
 import { effectivePubDateMs } from './feed-date';
 import { BRIEF_ONLY_RSS_FETCH_POLICY, fetchFeed } from './rss';
 import {
   clusterCountryTimelineIncidents,
   type CountryTimelineIncident,
-} from './country-timeline-events';
+} from '../../shared/country-timeline-events';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const EVENT_QUERY = 'protest OR demonstration OR riot OR conflict OR attack OR military OR earthquake OR flood OR wildfire';
@@ -38,9 +37,6 @@ function googleNewsFeedUrl(query: string): string {
   feedUrl.searchParams.set('hl', 'en-US');
   feedUrl.searchParams.set('gl', 'US');
   feedUrl.searchParams.set('ceid', 'US:en');
-  if (isDesktopRuntime()) {
-    return `/api/rss-proxy?${new URLSearchParams({ url: feedUrl.toString() }).toString()}`;
-  }
   return rssProxyUrl(feedUrl.toString());
 }
 

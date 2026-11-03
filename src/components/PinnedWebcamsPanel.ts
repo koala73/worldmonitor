@@ -9,12 +9,6 @@ import {
 } from '../services/webcams/pinned-store';
 
 const MAX_SLOTS = 4;
-const PLAYER_FALLBACK = 'https://webcams.windy.com/webcams/public/embed/player';
-
-function buildPlayerUrl(webcamId: string, playerUrl?: string): string {
-  if (playerUrl) return playerUrl;
-  return `${PLAYER_FALLBACK}/${encodeURIComponent(webcamId)}/day`;
-}
 
 export class PinnedWebcamsPanel extends Panel {
   private unsubscribe: (() => void) | null = null;
@@ -32,6 +26,8 @@ export class PinnedWebcamsPanel extends Panel {
 
     const active = getActiveWebcams();
     const allPinned = getPinnedWebcams();
+    const shown = active.slice(0, MAX_SLOTS);
+    const shownIds = new Set(shown.map(cam => cam.webcamId));
 
     const grid = document.createElement('div');
     grid.className = 'pinned-webcams-grid';
@@ -40,11 +36,11 @@ export class PinnedWebcamsPanel extends Panel {
       const slot = document.createElement('div');
       slot.className = 'pinned-webcam-slot';
 
-      const cam = active[i];
+      const cam = shown[i];
       if (cam) {
         const iframe = document.createElement('iframe');
         iframe.className = 'pinned-webcam-iframe';
-        iframe.src = buildPlayerUrl(cam.webcamId, cam.playerUrl);
+        iframe.src = cam.playerUrl;
         iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups');
         iframe.setAttribute('frameborder', '0');
         iframe.title = cam.title || cam.webcamId;
@@ -89,7 +85,7 @@ export class PinnedWebcamsPanel extends Panel {
 
     const children: HTMLElement[] = [grid];
 
-    if (allPinned.length > MAX_SLOTS) {
+    if (allPinned.some(cam => !shownIds.has(cam.webcamId))) {
       const listSection = document.createElement('div');
       listSection.className = 'pinned-webcams-list';
 

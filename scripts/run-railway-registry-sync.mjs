@@ -90,6 +90,9 @@ function registrySyncChildEnv(env) {
   if (hasValue(env, 'RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS')) {
     childEnv.RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS = env.RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS;
   }
+  if (hasValue(env, 'GITHUB_STEP_SUMMARY')) {
+    childEnv.GITHUB_STEP_SUMMARY = env.GITHUB_STEP_SUMMARY;
+  }
   return childEnv;
 }
 

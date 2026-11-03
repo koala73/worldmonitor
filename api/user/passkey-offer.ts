@@ -12,7 +12,7 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error JS module without declarations.
 import { captureSilentError } from '../_sentry-edge.js';
-import { resolveClerkSession } from '../../server/_shared/auth-session';
+import { resolveSessionUserId } from '../../server/_shared/auth-session';
 import {
   reservePasskeyOfferSlot,
   type PasskeyOfferReservation,
@@ -33,7 +33,7 @@ const SLOT_KEY_PREFIX = 'passkey-offer-slots';
 export type PasskeyOfferFailureStep = 'clerk-read' | 'redis-claim' | 'clerk-mirror';
 
 export interface PasskeyOfferDeps {
-  resolveUserId(request: Request): Promise<string | null>;
+  resolveUserId(request: Request): Promise<string | Response | null>;
   readMigratedCount(userId: string): Promise<number>;
   reserve(userId: string, migratedCount: number): Promise<PasskeyOfferReservation>;
   persistTerminalCount(userId: string): Promise<void>;
@@ -147,6 +147,10 @@ export async function passkeyOfferHandler(
   }
 
   const userId = await deps.resolveUserId(request);
+  if (userId instanceof Response) {
+    new Headers(jsonHeaders).forEach((value, key) => userId.headers.set(key, value));
+    return userId;
+  }
   if (!userId) {
     return new Response(JSON.stringify({ error: 'unauthenticated' }), {
       status: 401,
@@ -203,7 +207,7 @@ export async function passkeyOfferHandler(
 
 export default async function handler(request: Request): Promise<Response> {
   return passkeyOfferHandler(request, {
-    resolveUserId: async (req) => (await resolveClerkSession(req))?.userId ?? null,
+    resolveUserId: resolveSessionUserId,
     readMigratedCount: readClerkMigratedCount,
     reserve: (userId, migratedCount) => (
       reservePasskeyOfferSlot(createRedisSlotStore(userId), migratedCount)

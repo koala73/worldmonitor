@@ -12,7 +12,7 @@ const EXTRA_ALIASES = Object.freeze({
 });
 
 const COUNTRY_NAME_TO_ISO2 = Object.freeze(
-  Object.assign({}, COUNTRY_NAMES, EXTRA_ALIASES),
+  Object.assign(Object.create(null), COUNTRY_NAMES, EXTRA_ALIASES),
 );
 
 // Mirrors the key normalization in scripts/build-country-names.cjs so lookups

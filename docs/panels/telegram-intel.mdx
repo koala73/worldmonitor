@@ -39,6 +39,14 @@ Panel id is `telegram-intel`; canonical component is `src/components/TelegramInt
 
 Driven by the relay's poll cycle; the panel reads on mount and on relevant external refresh triggers.
 
+## Saudi Civil Defense alerts
+
+The curated full feed includes [Saudi Civil Defense](https://t.me/SaudiDCD) as a Tier 1 government source. Its official emergency notices are primary government reports; the source rating does not establish independent confirmation of every incident.
+
+Posts no older than 15 minutes enter the existing LLM classification pass. Only high or critical results can produce breaking-news notifications, with the original Telegram link and Saudi Arabia country scope. Routine posts, incomplete text, invalid timestamps, and failed classifications do not produce alerts. Normal subscription rules, severity filters, quiet hours, and delivery deduplication still apply. Adding a custom channel does not enable notifications from it.
+
+This path requires the Telegram relay, a configured classification provider, Redis, and the notification worker. Deployment and a natural successful delivery are separate from local fixture tests.
+
 ## Tier & gating
 
 **Free on web; PRO-locked on desktop.** Registered without `premium` on the web path; the desktop variant spreads `premium: 'locked'` via the `_desktop &&` clause.

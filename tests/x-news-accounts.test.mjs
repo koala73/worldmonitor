@@ -66,6 +66,131 @@ describe('data/x-accounts.json registry', () => {
   });
 });
 
+describe('X List transient recovery', () => {
+  const run = (options = {}) => xNews.pollXFeed({
+    accounts, state: { items: [] }, bearerToken: 'test-bearer',
+    listId: '1234567890123456789',
+    coverageId: 'list-slot:2026-09-03T12:00:00.000Z',
+    lookupDeletions: false, verifyMembership: false, now: () => NOW,
+    withReturnedPosts: withTestReturnedPostBudget, sleep: async () => {},
+    ...options,
+  });
+
+  it('retries one settled 503 using spare budget without consuming another scheduled slot', async () => {
+    const reservations = [];
+    let calls = 0;
+    const next = await run({
+      withReturnedPosts: (request) => {
+        reservations.push(request);
+        return withTestReturnedPostBudget(request);
+      },
+      fetchImpl: async () => ++calls === 1
+        ? new Response(null, { status: 503 })
+        : Response.json({ meta: { result_count: 0 } }),
+    });
+    assert.equal(calls, 2);
+    assert.equal(next.listAccepted, true);
+    assert.equal(next.lastError, null);
+    assert.equal(next.errorCode, null);
+    assert.equal(reservations[0].coverageUnitPosts, 5);
+    assert.equal(reservations[1].coverageUnitPosts, undefined);
+    assert.equal(reservations[1].coverageId, undefined);
+    assert.equal(reservations[1].receiptScope, reservations[0].receiptScope);
+    assert.equal(reservations[1].deadlineMs, reservations[0].deadlineMs);
+  });
+
+  it('keeps persistent transient failures visible and bounds requests at two', async () => {
+    let calls = 0;
+    const next = await run({ fetchImpl: async () => {
+      calls += 1;
+      return new Response(null, { status: 502 });
+    } });
+    assert.equal(calls, 2);
+    assert.equal(next.listAccepted, false);
+    assert.equal(next.errorCode, 'X_HTTP_TRANSIENT');
+    assert.match(next.lastError, /HTTP 502/);
+  });
+
+  for (const status of [401, 402, 403, 429, 404]) {
+    it(`does not retry HTTP ${status}`, async () => {
+      let calls = 0;
+      const next = await run({ fetchImpl: async () => {
+        calls += 1;
+        return new Response(null, { status });
+      } });
+      assert.equal(calls, 1);
+      assert.equal(next.listAccepted, false);
+    });
+  }
+
+  it('does not retry ambiguous transport or malformed successful responses', async () => {
+    for (const fetch of [
+      async () => { throw new Error('socket closed'); },
+      async () => new Response('not json'),
+    ]) {
+      let calls = 0;
+      const next = await run({ fetchImpl: async () => { calls += 1; return fetch(); } });
+      assert.equal(calls, 1);
+      assert.equal(next.listAccepted, false);
+    }
+  });
+
+  it('rejects coerced empty counts instead of publishing false success', async () => {
+    for (const result_count of [null, '', false, '0']) {
+      const next = await run({ fetchImpl: async () => Response.json({ meta: { result_count } }) });
+      assert.equal(next.listAccepted, false, JSON.stringify(result_count));
+      assert.equal(next.errorCode, 'X_INVALID_PAGE');
+    }
+  });
+
+  it('does not retry when settlement failed or the slot ended during the delay', async () => {
+    for (const mode of ['settlement', 'expired-slot']) {
+      let clock = NOW;
+      let calls = 0;
+      const next = await run({
+        now: () => clock,
+        sleep: async () => { clock += 15 * 60 * 1000; },
+        withReturnedPosts: async (request) => {
+          const result = await withTestReturnedPostBudget(request);
+          return mode === 'settlement' ? { ...result, completed: false } : result;
+        },
+        fetchImpl: async () => { calls += 1; return new Response(null, { status: 503 }); },
+      });
+      assert.equal(calls, 1);
+      assert.equal(next.listAccepted, false);
+    }
+  });
+
+  it('distinguishes a valid page with failed settlement from malformed provider data', async () => {
+    const next = await run({
+      fetchImpl: async () => Response.json({ meta: { result_count: 0 } }),
+      withReturnedPosts: async (request) => ({
+        ...await withTestReturnedPostBudget(request), completed: false, reason: 'settlement_failed',
+      }),
+    });
+    assert.equal(next.listAccepted, false);
+    assert.equal(next.errorCode, 'X_SETTLEMENT_FAILED');
+    assert.match(next.lastError, /settlement failed/);
+  });
+
+  it('respects retry-after and cancellation without publishing false success', async () => {
+    for (const mode of ['long-delay', 'abort']) {
+      let calls = 0;
+      const controller = new AbortController();
+      const next = await run({
+        signal: controller.signal,
+        sleep: async () => { controller.abort(); },
+        fetchImpl: async () => {
+          calls += 1;
+          return new Response(null, { status: 503, headers: { 'retry-after': mode === 'long-delay' ? '60' : '1' } });
+        },
+      });
+      assert.equal(calls, 1);
+      assert.equal(next.listAccepted, false);
+    }
+  });
+});
+
 describe('exact X List membership gate', () => {
   const listId = '1234567890123456789';
   const validList = {

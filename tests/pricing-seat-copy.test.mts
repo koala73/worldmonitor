@@ -122,11 +122,26 @@ const eula = read('docs/eula.mdx').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
     }
   });
 
-  it('API Starter is stated as having no dashboard seat', () => {
-    // The most common pre-sales question, and it has a real answer: none.
-    // Leaving it unstated is what made it a question.
-    assert.match(eula, /includes no World Monitor dashboard seat/i);
-    assert.match(read('docs/terms.mdx'), /API Starter is an API plan: it includes \*\*no dashboard seat\*\*/i);
+  it('API Starter is stated as including one internal-use dashboard seat', () => {
+    // The most common pre-sales question. Tier 2 unlocks every Pro gate, so
+    // the licence must say the seat exists and that it stays internal.
+    assert.match(eula, /The plan includes one dashboard seat/i);
+    assert.doesNotMatch(eula, /includes no World Monitor dashboard seat/i);
+    assert.match(read('docs/terms.mdx'), /API Starter includes \*\*one dashboard seat\*\*[^.]*internal use only, never customer-facing/i);
+    const seatLine = /^Full Pro dashboard included \(1 named user\)$/;
+    assert.ok(en.pricing.tiers.api.features.some((f: string) => seatLine.test(f)), 'the /pro API Starter card must list the dashboard seat');
+    assert.ok(
+      PRODUCT_CATALOG.api_starter.marketingFeatures.some((f: string) => seatLine.test(f)),
+      'the catalog API Starter features must list the dashboard seat',
+    );
+    assert.ok(
+      en.pricing.tiers.api.highlightFeatures.some((f: string) => /internal only, not customer-facing/i.test(f)),
+      'the API Starter card must say its commercial use is internal only',
+    );
+    assert.ok(
+      en.pricing.tiers.apiBusiness.highlightFeatures.some((f: string) => /customer-facing/i.test(f)),
+      'the API Business card must name customer-facing use',
+    );
   });
 
   it('no single-seat tier is sold under plural-user copy', () => {

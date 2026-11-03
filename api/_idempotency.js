@@ -71,10 +71,15 @@ function isRetryableStatus(status) {
 async function getRequestHashAndRedisKey(request, pathname, scope, idempotencyKey) {
   try {
     const bodyBuf = await request.clone().arrayBuffer();
-    const reqHash = await sha256Hex(bodyBuf);
+    // The request-body digest and the idempotency-key digest are independent;
+    // run them together so an idempotent write pays one hash latency, not two.
+    const [reqHash, keyHash] = await Promise.all([
+      sha256Hex(bodyBuf),
+      sha256Hex(`${scope}\n${pathname}\n${idempotencyKey}`),
+    ]);
     // App-owned idempotency record (#7674): rides the deployment-prefixed
     // default so a preview deployment's retries settle in its own namespace.
-    const redisKey = `idem:v1:${await sha256Hex(`${scope}\n${pathname}\n${idempotencyKey}`)}`;
+    const redisKey = `idem:v1:${keyHash}`;
     return { reqHash, redisKey };
   } catch {
     return null;
@@ -223,6 +228,7 @@ export async function beginStandaloneIdempotency({
       key: idempotencyKey,
       store: (status, body, contentType) =>
         storeStandaloneResult(resolved.redisKey, status, body, contentType, resolved.reqHash, completedTtlSeconds),
+      release: () => releaseProcessingLock(resolved.redisKey),
     };
   }
 
@@ -248,6 +254,21 @@ export async function completeStandaloneIdempotency(idempotency, response) {
     statusText: response.statusText,
     headers,
   });
+}
+
+/**
+ * Finish a claimed request without caching its response, for responses that
+ * must never be replayed (a one-time secret, for example). Releases the
+ * processing marker so a retry with the same key runs the action again.
+ */
+export async function abandonStandaloneIdempotency(idempotency, response) {
+  if (!idempotency || idempotency.kind !== 'proceed') return response;
+  try {
+    await idempotency.release();
+  } catch {
+    // Ignore release failures; the processing marker has a short TTL.
+  }
+  return response;
 }
 
 async function storeStandaloneResult(redisKey, status, body, contentType, reqHash, completedTtlSeconds) {

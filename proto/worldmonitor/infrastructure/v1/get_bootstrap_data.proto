@@ -2,14 +2,28 @@ syntax = "proto3";
 
 package worldmonitor.infrastructure.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
-// GetBootstrapDataRequest parameters for multi-key fetching.
+// GetBootstrapDataRequest selects a fixed tier or registered bootstrap keys.
+// Exactly one selector is required: use tier OR keys, never both.
+// Several keys are accepted when every key belongs to the fast or slow tier;
+// an on-demand key must be requested alone. Empty, unknown and mixed
+// selectors return HTTP 400.
 message GetBootstrapDataRequest {
-  // Predefined tiers or specific keys.
-  string tier = 1 [(sebuf.http.query) = {name: "tier"}];
-  // Specific bootstrap cache keys to fetch when tier is not sufficient.
-  repeated string keys = 2 [(sebuf.http.query) = {name: "keys"}];
+  // Fixed public tier: fast or slow. Leave empty when selecting a key.
+  string tier = 1 [
+    (sebuf.http.query) = {name: "tier"},
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.pattern = "^(fast|slow)$"
+  ];
+  // Registered bootstrap keys, for example insights. Repeat the parameter for
+  // several fast/slow keys. Omit when using tier.
+  repeated string keys = 2 [
+    (sebuf.http.query) = {name: "keys"},
+    (buf.validate.field).repeated.max_items = 100,
+    (buf.validate.field).repeated.items.string.min_len = 1
+  ];
 }
 
 // GetBootstrapDataResponse containing pooled data objects.

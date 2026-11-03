@@ -9,6 +9,49 @@ const usageFns = (internal as any).apiPlanLimitUsage;
 
 const NOW = 1_800_000_000_000;
 const FUTURE = NOW + 30 * 86_400_000;
+const EMPTY_AXIOM_LEGACY_RESULT = {
+  format: "legacy",
+  datasetNames: ["wm_api_usage"],
+  status: {
+    blocksExamined: 0,
+    cacheStatus: 0,
+    elapsedTime: 1,
+    isPartial: false,
+    maxBlockTime: "2026-11-02T00:00:00Z",
+    minBlockTime: "2026-11-02T00:00:00Z",
+    numGroups: 0,
+    rowsExamined: 0,
+    rowsMatched: 0,
+  },
+};
+const AXIOM_LOW_USAGE_ROW = {
+  customer_id: "user-starter",
+  minute: new Date(NOW - 60_000).toISOString(),
+  usage: 10,
+};
+
+// Legacy aggregate shape from @axiomhq/js QueryResult / Timeseries.
+function axiomBurstResult(usages: number[], layout: "totals" | "series", minutesAgo = usages.map((_, index) => usages.length - index)) {
+  const totals = usages.map((usage, index) => ({
+    id: index,
+    group: { customer_id: "user-starter", minute: new Date(NOW - minutesAgo[index] * 60_000).toISOString() },
+    aggregations: [{ op: "count", value: usage }],
+  }));
+  return {
+    ...EMPTY_AXIOM_LEGACY_RESULT,
+    status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: usages.reduce((sum, usage) => sum + usage, 0), numGroups: totals.length },
+    buckets: layout === "totals"
+      ? { totals, series: [] }
+      : {
+        series: totals.map((entry) => ({
+          startTime: entry.group.minute,
+          endTime: new Date(Date.parse(entry.group.minute) + 60_000).toISOString(),
+          groups: [{ ...entry, group: { customer_id: entry.group.customer_id } }],
+        })),
+        totals: [{ id: 0, group: { customer_id: "user-starter" }, aggregations: [{ op: "count", value: usages.reduce((sum, usage) => sum + usage, 0) }] }],
+      },
+  };
+}
 
 async function seedEntitlement(t: ReturnType<typeof convexTest>, userId: string, planKey: string) {
   await t.run(async (ctx) => {
@@ -19,6 +62,14 @@ async function seedEntitlement(t: ReturnType<typeof convexTest>, userId: string,
       validUntil: FUTURE,
       updatedAt: NOW,
     });
+  });
+}
+
+async function seedCurrentApiBurstNotice(t: ReturnType<typeof convexTest>) {
+  await seedEntitlement(t, "user-starter", "api_starter");
+  await t.action(usageFns.scanApiPlanLimitUsageInternal, {
+    now: NOW,
+    rows: [{ userId: "user-starter", dimension: "api_minute_burst", usage: 90, minuteBuckets: [61, 62, 63, 65, 66], source: "axiom:wm_api_usage" }],
   });
 }
 
@@ -466,40 +517,67 @@ describe("api plan-limit usage scanner", () => {
     expect(notices).toHaveLength(0);
   });
 
-  test("an HTTP-200 Axiom body with no result envelope blocks the dimension, not false-clears", async () => {
+  test("an HTTP-200 Axiom error body blocks api burst recovery", async () => {
     const t = convexTest(schema, modules);
-    await seedEntitlement(t, "user-pro", "pro_monthly");
-
-    // Scan 1 (injected): trip a sustained mcp burst so a live notice exists.
-    await t.action(usageFns.scanApiPlanLimitUsageInternal, {
-      now: NOW,
-      rows: [{
-        userId: "user-pro",
-        dimension: "mcp_minute_burst",
-        usage: 90,
-        minuteBuckets: [61, 62, 63, 65, 66],
-        source: "axiom:mcp_rate_limit_hit",
-      }],
-    });
+    await seedCurrentApiBurstNotice(t);
     expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
 
     // Scan 2 (production path): Axiom answers HTTP 200 but with a non-result body
     // (an error object, no matches/tables/rows array). normalizeAxiomRows would
     // yield [] -- indistinguishable from a genuinely empty result -- so without
-    // the shape guard the recovery sweep reads mcp_minute_burst as healthy-empty
+    // the shape guard the recovery sweep reads api_minute_burst as healthy-empty
     // and clears the live notice. It must degrade to a blocked source instead.
     vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
     vi.stubGlobal("fetch", vi.fn(async () =>
-      new Response(JSON.stringify({ error: "query failed", code: "bad_apl" }), { status: 200 }),
+      new Response(JSON.stringify({ ...EMPTY_AXIOM_LEGACY_RESULT, error: "query failed", code: "bad_apl" }), { status: 200 }),
     ));
     const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 3_600_000 });
 
-    expect(summary.blocked.some((b: { reason?: string }) => b.reason === "axiom_unexpected_body")).toBe(true);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
     expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
   });
 
-  test("an empty {matches: []} Axiom result does not block the dimension", async () => {
+  test.each(["error", "fatal"])("an Axiom %s status message preserves an active burst notice", async (priority) => {
     const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT,
+      status: {
+        ...EMPTY_AXIOM_LEGACY_RESULT.status,
+        messages: [{ priority: "info", count: 1, msg: "Query started" }, { priority, count: 1, msg: "Query failed" }],
+      },
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each(["info", "warn"])("an Axiom %s status message allows valid empty-result recovery", async (priority) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT,
+      status: {
+        ...EMPTY_AXIOM_LEGACY_RESULT.status,
+        messages: [{ priority, count: 1, msg: "Query diagnostic" }],
+      },
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test("an empty {matches: []} Axiom result recovers an idle burst notice", async () => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
     vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
     // Every Axiom query returns the canonical empty envelope. The common no-burst
     // scan must read as empty, never axiom_unexpected_body — otherwise the sweep
@@ -508,32 +586,389 @@ describe("api plan-limit usage scanner", () => {
       if (String(url).includes("api.axiom.co")) return new Response(JSON.stringify({ matches: [] }), { status: 200 });
       return new Response(JSON.stringify({ result: "0" }), { status: 200 });
     }));
-    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 3_600_000 });
     expect(summary.blocked.some((b: { reason?: string }) => b.reason === "axiom_unexpected_body")).toBe(false);
+    expect(summary.recovered).toBe(1);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
   });
 
-  test("a non-array error-free Axiom body reads as empty and still recovers the notice", async () => {
+  test.each([
+    { label: "without buckets", body: EMPTY_AXIOM_LEGACY_RESULT },
+    { label: "with empty buckets", body: { ...EMPTY_AXIOM_LEGACY_RESULT, buckets: {} } },
+    { label: "with empty tables and buckets", body: { ...EMPTY_AXIOM_LEGACY_RESULT, tables: [], buckets: {} } },
+  ])("a complete zero-row Axiom result $label recovers an idle burst notice", async ({ body }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 3_600_000 });
+
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked).not.toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test.each(["totals", "series"] as const)("legacy aggregate %s detect and recover a sustained API burst", async (layout) => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-starter", "api_starter");
-    // Rides on api_minute_burst, the burst dimension Axiom still sources.
-    // mcp_minute_burst is now recorded blocked unconditionally — its telemetry
-    // never reaches Axiom — and a blocked dimension is deliberately frozen
-    // rather than swept, so it can no longer express "reads as empty".
-    await t.action(usageFns.scanApiPlanLimitUsageInternal, {
-      now: NOW,
-      rows: [{ userId: "user-starter", dimension: "api_minute_burst", usage: 90, minuteBuckets: [61, 62, 63, 65, 66], source: "axiom:wm_api_usage" }],
-    });
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    let body = axiomBurstResult([61, 62, 63, 65, 66], layout);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+
+    const detected = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(detected.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect(detected.notified).toBe(1);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current))
+      .toMatchObject([{ userId: "user-starter", dimension: "api_minute_burst", state: "sustained_burst", usage: 66 }]);
+
+    body = axiomBurstResult([10, 11, 12, 13, 14], layout);
+    const recovered = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(recovered.recovered).toBe(1);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test("legacy aggregate minute groups are evaluated in time order", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t, "user-starter", "api_starter");
+    const body = axiomBurstResult([90, 90, 90, 90, 90, 10, 10, 10, 10, 10], "totals");
+    body.buckets.totals.reverse();
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.evaluated).toBe(1);
+    expect(summary.notified).toBe(0);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test.each(["totals", "series"] as const)("sparse legacy %s use the current five completed minutes", async (layout) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const body = axiomBurstResult([90, 90, 90, 10], layout, [9, 8, 7, 1]);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.notified).toBe(0);
+    expect(summary.recovered).toBe(1);
+    expect(await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect()))
+      .toMatchObject([{ usage: 10, current: false }]);
+  });
+
+  test.each(["missing user", "different count"])("legacy series contradicting totals (%s) preserve notices", async (mismatch) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const complete = axiomBurstResult([90, 90, 90, 90, 90], "series");
+    const extra = { id: 5, group: { customer_id: "other-user" }, aggregations: [{ op: "count", value: 10 }] };
+    const body = {
+      ...complete,
+      status: { ...complete.status, rowsMatched: mismatch === "missing user" ? 460 : 450 },
+      buckets: {
+        totals: mismatch === "missing user" ? [...complete.buckets.totals, extra] : complete.buckets.totals,
+        series: [{
+          startTime: new Date(NOW - 60_000).toISOString(), endTime: new Date(NOW).toISOString(),
+          groups: [{ ...extra, group: { customer_id: mismatch === "missing user" ? "other-user" : "user-starter" } }],
+        }],
+      },
+    };
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each(["totals", "series without totals", "both"])("truncated legacy %s block recovery using matched-row metadata", async (layout) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const short = axiomBurstResult([10], layout === "totals" ? "totals" : "series");
+    const body = {
+      ...short,
+      status: axiomBurstResult([90, 90, 90, 90, 90], "totals").status,
+      buckets: layout === "series without totals" ? { series: short.buckets.series } : short.buckets,
+    };
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each([
+    { label: "empty bucket object without legacy metadata", body: { status: { isPartial: false, rowsMatched: 0, numGroups: 0 }, buckets: {} } },
+    { label: "empty table array without legacy metadata", body: { status: { isPartial: false, rowsMatched: 0, numGroups: 0 }, tables: [], buckets: {} } },
+    { label: "empty bucket object with malformed matches", body: { ...EMPTY_AXIOM_LEGACY_RESULT, matches: "invalid", buckets: {} } },
+    { label: "empty bucket object with malformed rows", body: { ...EMPTY_AXIOM_LEGACY_RESULT, rows: "invalid", buckets: {} } },
+    { label: "empty bucket object with malformed tables", body: { ...EMPTY_AXIOM_LEGACY_RESULT, tables: [{ rows: "invalid" }], buckets: {} } },
+    { label: "empty bucket object for another dataset", body: { ...EMPTY_AXIOM_LEGACY_RESULT, datasetNames: ["other_dataset"], buckets: {} } },
+    { label: "empty bucket object with invalid block metadata", body: { ...EMPTY_AXIOM_LEGACY_RESULT, status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, minBlockTime: "invalid" }, buckets: {} } },
+    { label: "estimated empty result", body: { ...EMPTY_AXIOM_LEGACY_RESULT, status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, isEstimate: true }, buckets: { totals: [], series: [] } } },
+    { label: "estimated nonempty result", body: { ...axiomBurstResult([10], "totals"), status: { ...axiomBurstResult([10], "totals").status, isEstimate: true } } },
+    { label: "partial status", body: { ...axiomBurstResult([10], "totals"), status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, isPartial: true } } },
+    { label: "missing status", body: { buckets: axiomBurstResult([10], "totals").buckets } },
+    { label: "non-array totals", body: { ...EMPTY_AXIOM_LEGACY_RESULT, buckets: { totals: {} } } },
+    { label: "missing aggregation", body: { ...EMPTY_AXIOM_LEGACY_RESULT, buckets: { totals: [{ group: { customer_id: "user-starter", minute: new Date(NOW).toISOString() } }] } } },
+    { label: "whole-window total without minutes", body: { ...EMPTY_AXIOM_LEGACY_RESULT, buckets: { totals: [{ group: { customer_id: "user-starter" }, aggregations: [{ op: "count", value: 10 }] }] } } },
+    { label: "malformed minute count", body: { ...EMPTY_AXIOM_LEGACY_RESULT, buckets: { totals: [{ group: { customer_id: "user-starter", minute: new Date(NOW).toISOString() }, aggregations: [{ op: "count", value: "invalid" }] }] } } },
+    { label: "malformed series interval", body: { ...EMPTY_AXIOM_LEGACY_RESULT, buckets: { series: [{ startTime: "invalid", groups: [] }] } } },
+    { label: "multi-minute series without a minute group", body: { ...EMPTY_AXIOM_LEGACY_RESULT, buckets: { series: [{ startTime: new Date(NOW).toISOString(), endTime: new Date(NOW + 5 * 60_000).toISOString(), groups: [{ group: { customer_id: "user-starter" }, aggregations: [{ op: "count", value: 10 }] }] }] } } },
+    { label: "empty groups contradict matched rows", body: { ...axiomBurstResult([10], "totals"), buckets: { series: [], totals: [] } } },
+  ])("legacy aggregate $label preserves an existing notice", async ({ body }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each([
+    { label: "matches", fields: { matches: "invalid" } },
+    { label: "null matches", fields: { matches: null } },
+    { label: "rows", fields: { rows: "invalid" } },
+    { label: "null rows", fields: { rows: null } },
+    { label: "tables", fields: { tables: "invalid" } },
+    { label: "null tables", fields: { tables: null } },
+    { label: "table rows", fields: { tables: [{ rows: "invalid" }] } },
+    { label: "table record", fields: { tables: [null] } },
+    { label: "missing table rows", fields: { tables: [{}] } },
+    { label: "later table rows", fields: { tables: [{ rows: [] }, { rows: "invalid" }] } },
+    { label: "rows alongside valid empty matches", fields: { matches: [], rows: "invalid" } },
+    { label: "invalid rows hidden by empty matches", fields: { matches: [], rows: [null] } },
+    { label: "invalid row objects hidden by empty matches", fields: { matches: [], rows: [{}] } },
+    { label: "invalid table rows hidden by empty matches", fields: { matches: [], tables: [{ rows: [null] }] } },
+    { label: "invalid rows in a later table", fields: { tables: [{ rows: [] }, { rows: [null] }] } },
+    { label: "invalid later table after valid usage", fields: { tables: [{ rows: [AXIOM_LOW_USAGE_ROW] }, { rows: [null] }], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+    { label: "invalid rows alongside valid matches", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [null], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+    { label: "conflicting populated row layouts", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [{ ...AXIOM_LOW_USAGE_ROW, usage: 11 }], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+    { label: "same totals for different users", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [{ ...AXIOM_LOW_USAGE_ROW, customer_id: "other-user" }], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+    { label: "same totals for different minutes", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [{ ...AXIOM_LOW_USAGE_ROW, minute: new Date(NOW - 120_000).toISOString() }], status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, rowsMatched: 10, numGroups: 1 } } },
+  ].flatMap(({ label, fields }) => [
+    { label: `${label} with empty totals`, fields, buckets: { totals: [] } },
+    { label: `${label} with empty series`, fields, buckets: { series: [] } },
+    { label: `${label} with both empty aggregates`, fields, buckets: { totals: [], series: [] } },
+  ]))("malformed $label preserves an existing notice", async ({ fields, buckets }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT, ...fields, buckets,
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each([
+    { label: "rows after empty matches", fields: { matches: [], rows: [AXIOM_LOW_USAGE_ROW] } },
+    { label: "rows in a later table", fields: { tables: [{ rows: [] }, { rows: [AXIOM_LOW_USAGE_ROW] }] } },
+    { label: "matching populated layouts", fields: { matches: [{ data: AXIOM_LOW_USAGE_ROW }], rows: [AXIOM_LOW_USAGE_ROW], tables: [{ rows: [AXIOM_LOW_USAGE_ROW] }] } },
+  ])("valid $label recover an idle burst notice", async ({ fields }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const aggregate = axiomBurstResult([10], "totals");
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...aggregate, ...fields,
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test("matching populated representations may use different row orders", async () => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const usages = [10, 11, 12, 13, 14];
+    const rows = usages.map((usage, index) => ({
+      ...AXIOM_LOW_USAGE_ROW,
+      minute: new Date(NOW - (usages.length - index) * 60_000).toISOString(),
+      usage,
+    }));
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...axiomBurstResult(usages, "totals"),
+      matches: rows.map((data) => ({ data })),
+      rows: [...rows].reverse(),
+      tables: [{ rows }],
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.evaluated).toBe(1);
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test.each([
+    { label: "bucket object", buckets: null },
+    { label: "aggregate array", buckets: { totals: null } },
+    { label: "aggregate row", buckets: { totals: [null] } },
+  ])("valid rows cannot hide a malformed $label", async ({ buckets }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    const aggregate = axiomBurstResult([10], "totals");
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...aggregate, rows: [AXIOM_LOW_USAGE_ROW], buckets,
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test.each([
+    { label: "matches", fields: { matches: [] } },
+    { label: "rows", fields: { rows: [] } },
+    { label: "table rows", fields: { tables: [{ rows: [] }] } },
+    { label: "tables", fields: { tables: [] } },
+  ])("valid empty $label alongside aggregates recovers an idle burst notice", async ({ fields }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT, ...fields, buckets: { totals: [], series: [] },
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+  });
+
+  test.each([
+    { label: "totals", buckets: { totals: [] } },
+    { label: "series", buckets: { series: [] } },
+    { label: "totals and series", buckets: { totals: [], series: [] } },
+  ])("an empty legacy aggregate result with $label recovers an idle burst notice", async ({ buckets }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT, buckets,
+    }), { status: 200 })));
+
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 60_000 });
+
+    expect(summary.recovered).toBe(1);
+    expect(summary.blocked.filter((b: { dimension?: string }) => b.dimension === "api_minute_burst")).toEqual([]);
+  });
+
+  test.each([
+    {
+      label: "missing required status fields",
+      body: { format: "legacy", datasetNames: ["wm_api_usage"], status: { rowsMatched: 0, isPartial: false } },
+    },
+    {
+      label: "nonzero group count",
+      body: { ...EMPTY_AXIOM_LEGACY_RESULT, status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, numGroups: 1 } },
+    },
+    {
+      label: "invalid block timestamp",
+      body: { ...EMPTY_AXIOM_LEGACY_RESULT, status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, minBlockTime: "garbage" } },
+    },
+    {
+      label: "impossible block date",
+      body: { ...EMPTY_AXIOM_LEGACY_RESULT, status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, maxBlockTime: "2026-02-30T00:00:00Z" } },
+    },
+    {
+      label: "non-array matches in a zero-row result",
+      body: { ...EMPTY_AXIOM_LEGACY_RESULT, matches: "invalid" },
+    },
+    {
+      label: "missing usage in a match",
+      body: { matches: [{ data: { user_id: "user-starter" } }] },
+    },
+    {
+      label: "missing user ID in a match",
+      body: { matches: [{ data: { usage: 90 } }] },
+    },
+    {
+      label: "non-boolean partial status with matches",
+      body: { matches: [], status: { isPartial: "true" } },
+    },
+    {
+      label: "non-object status with matches",
+      body: { matches: [], status: [] },
+    },
+    {
+      label: "non-string error message with matches",
+      body: { matches: [], message: { error: "query failed" } },
+    },
+    {
+      label: "empty matches contradict a nonzero group count",
+      body: { matches: [], status: { isPartial: false, numGroups: 1, rowsMatched: 100 } },
+    },
+  ])("a malformed Axiom result ($label) preserves a burst notice", async ({ body }) => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 3_600_000 });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test("a partial Axiom result with empty matches does not recover a burst notice", async () => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
+
+    vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      ...EMPTY_AXIOM_LEGACY_RESULT,
+      status: { ...EMPTY_AXIOM_LEGACY_RESULT.status, isPartial: true },
+      matches: [],
+    }), { status: 200 })));
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 3_600_000 });
+
+    expect(summary.recovered).toBe(0);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+  });
+
+  test("an unrecognized error-free Axiom body blocks and preserves an api burst notice", async () => {
+    const t = convexTest(schema, modules);
+    await seedCurrentApiBurstNotice(t);
     expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
 
-    // The EMPTY summarize response drifts to a shape WITHOUT the result arrays and
-    // WITHOUT an error field. It must be treated as empty (not blocked) so a shape
-    // drift can't freeze notices — the burst is genuinely gone, so the sweep clears it.
+    // An unknown HTTP-200 shape has no trustworthy rows, even without an error
+    // field. Treating it as empty would false-clear this live notice.
     vi.stubEnv("AXIOM_QUERY_TOKEN", "test-token");
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ status: { rowsMatched: 0 } }), { status: 200 })));
     const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, { now: NOW + 3_600_000 });
 
-    expect(summary.blocked.some((b: { reason?: string }) => b.reason === "axiom_unexpected_body")).toBe(false);
-    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(0);
+    expect(summary.recovered).toBe(0);
+    expect((await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect())).filter((n) => n.current)).toHaveLength(1);
+    expect(summary.blocked).toContainEqual({ dimension: "api_minute_burst", reason: "axiom_unexpected_body" });
   });
 
   test("burst detection counts rate-limit rejections so it survives enforce mode", async () => {

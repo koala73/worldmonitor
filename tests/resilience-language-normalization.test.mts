@@ -67,47 +67,28 @@ describe('language coverage normalization (Phase 2 T2.9)', () => {
     );
   });
 
-  describe('normalization arithmetic', () => {
-    it('langFactor=1.0 leaves score unchanged', () => {
-      const rawScore = 10;
-      const langFactor = 1.0;
-      const adjusted = Math.min(rawScore / Math.max(langFactor, 0.1), 100);
-      assert.equal(adjusted, 10);
-    });
+  describe('production scorer weighting', () => {
+    it('attenuates live threat weight for countries with limited language coverage', async () => {
+      const makeReader = (countryCode: string): ResilienceSeedReader => async (key: string) => {
+        if (key === `resilience:static:${countryCode}`) {
+          return { rsf: { score: 60, rank: 50, year: 2025 } };
+        }
+        if (key === 'intelligence:social:reddit:v1') return { posts: [] };
+        if (key === 'news:threat:summary:v1') {
+          return {
+            byCountry: { [countryCode]: { critical: 0, high: 2, medium: 4, low: 2 } },
+            generatedAt: '2026-04-06T00:00:00.000Z',
+          };
+        }
+        return null;
+      };
 
-    it('langFactor=0.4 amplifies score by 2.5x', () => {
-      const rawScore = 10;
-      const langFactor = 0.4;
-      const adjusted = Math.min(rawScore / Math.max(langFactor, 0.1), 100);
-      assert.equal(adjusted, 25);
-    });
+      const primary = await scoreInformationCognitive('US', makeReader('US'));
+      const minimal = await scoreInformationCognitive('BF', makeReader('BF'));
 
-    it('langFactor=0.2 amplifies score by 5x', () => {
-      const rawScore = 10;
-      const langFactor = 0.2;
-      const adjusted = Math.min(rawScore / Math.max(langFactor, 0.1), 100);
-      assert.equal(adjusted, 50);
-    });
-
-    it('adjusted score is capped at 100', () => {
-      const rawScore = 30;
-      const langFactor = 0.2;
-      const adjusted = Math.min(rawScore / Math.max(langFactor, 0.1), 100);
-      assert.equal(adjusted, 100);
-    });
-
-    it('langFactor floor at 0.1 prevents division by zero', () => {
-      const rawScore = 5;
-      const langFactor = 0;
-      const adjusted = Math.min(rawScore / Math.max(langFactor, 0.1), 100);
-      assert.equal(adjusted, 50);
-    });
-
-    it('velocity cap matches real scorer cap of 1000', () => {
-      const rawScore = 500;
-      const langFactor = 0.2;
-      const adjusted = Math.min(rawScore / Math.max(langFactor, 0.1), 1000);
-      assert.equal(adjusted, 1000);
+      assert.equal(Math.round(primary.score), 45);
+      assert.equal(Math.round(minimal.score), 41);
+      assert.ok(minimal.score < primary.score);
     });
 
     it('RSF press freedom score is NOT language-adjusted (exercises scorer)', async () => {

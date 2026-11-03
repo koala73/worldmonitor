@@ -48,6 +48,8 @@ Before relying on such a guard, name the *specific* path it closes, then enumera
 - a wrapper script or task runner that exports before invoking,
 - a private copy of the loader that opted out (the third invariant in `tests/seed-env-hermeticity.test.mjs` exists precisely because a second copy of the loader once did).
 
+**And enumerate the other *times* the value arrives.** A pin (or guard) applied at runtime reaches only call-time reads. A value captured at module load — `export const X = (process.env.X ?? 'default').toLowerCase() === 'true'` at a module's top level — has already consumed the ambient environment by the time any test `before()` hook or setup function runs, and is immutable for the process lifetime. Classify each env read's capture timing before claiming a pin covers it: per-call read → hook-time `process.env` writes work; module-load capture → import the exported binding and fail fast on an unexpected captured value. `RESILIENCE_SCHEMA_V2_ENABLED` in `server/worldmonitor/resilience/v1/_shared.ts` is exactly this shape, and a multi-perspective review pass in the authoring session still missed it until an adversarial reviewer reproduced the failure — see [cri-golden-baseline-env-pinning-trap](../test-failures/cri-golden-baseline-env-pinning-trap.md).
+
 **When writing the claim into a comment, write the precondition with it.** "Fails closed under a test runtime" is the sentence that misleads. "Fails closed under a test runtime unless `PROXY_URL` is exported in the ambient environment, which `resolveProxyForConnect` reads directly" is the sentence that survives the next reader. A partial guarantee stated absolutely is worse than no comment, because it stops the reader from checking.
 
 **The general shape:** a guard that makes something *usually* unreachable reads, to everyone downstream, as making it unreachable. The gap between "usually" and "always" is where the billable request, the production write, or the flaky test lives.
@@ -86,3 +88,4 @@ return parseProxyConfig(process.env.PROXY_URL || '');   // reads whatever is alr
 ## Related
 
 - [assert-what-a-branch-produces-not-what-a-lenient-classifier-concludes-from-it](assert-what-a-branch-produces-not-what-a-lenient-classifier-concludes-from-it.md) — sibling from the same session: there an assertion was too coarse to separate branches, here a guarantee was read wider than its implementation. Both are cases of a real mechanism credited with more than it does.
+- [cri-golden-baseline-env-pinning-trap](../test-failures/cri-golden-baseline-env-pinning-trap.md) — concrete instance of this principle on the capture-timing axis: runtime env pinning credited with reaching a module-load-captured constant, with the fail-fast + exhaustiveness-grep remediation.

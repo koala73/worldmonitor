@@ -1,3 +1,9 @@
+// Cross-file source check by design (#8690, section 2): this suite compares
+// freshness declarations in api/seed-health.js and api/health.js and pins
+// relay warm-ping ownership of health metadata.
+// A runtime handler result does not expose those freshness declarations,
+// and importing the relay starts its server and background loops.
+//
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -43,8 +49,8 @@ test('seed-health CII risk score freshness mirrors api/health riskScores', () =>
   );
   assert.match(
     health,
-    /riskScores:\s*\{\s*key:\s*'seed-meta:intelligence:risk-scores',\s*maxStaleMin:\s*30,\s*minRecordCount:\s*3\s*\}/,
-    'api/health.js riskScores must degrade partial realtime signal-density coverage via minRecordCount=3',
+    /riskScores:\s*\{\s*key:\s*'seed-meta:intelligence:risk-scores',\s*maxStaleMin:\s*30,\s*minRecordCount:\s*2\s*\}/,
+    'api/health.js riskScores must degrade partial realtime signal-density coverage via minRecordCount=2 (conflict + news since CII v14)',
   );
   assert.match(
     health,

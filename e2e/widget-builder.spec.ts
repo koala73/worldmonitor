@@ -60,7 +60,7 @@ function buildWidgetSseResponse({ endpoint, title, html }: MockWidgetResponse): 
 }
 
 async function installWidgetAgentMocks(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
   responses: MockWidgetResponse[],
   requestBodies: unknown[] = [],
   healthDelayMs = 0,
@@ -134,7 +134,7 @@ function buildProWidgetBody(title: string, markerClass: string): string {
 }
 
 async function installProWidgetAgentMocks(
-  page: Parameters<typeof test>[0]['page'],
+  page: Page,
   responses: MockWidgetResponse[],
   requestBodies: unknown[] = [],
   proKeyConfigured = true,
@@ -206,6 +206,29 @@ test.describe('AI widget builder', () => {
         localStorage.setItem('wm-widget-key', key);
       }
     }, widgetKey);
+  });
+
+  test('keeps save disabled after an invalid completion error', async ({ page }) => {
+    await installProWidgetAgentMocks(page, []);
+    const message = 'Widget generation incomplete: expected nonempty HTML inside complete widget-html markers.';
+    await page.route('**/widget-agent', route => route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ type: 'error', message })}\n\n`,
+    }));
+
+    await page.goto('/');
+    await clickWidgetBuilderBlock(page, '#panelsGrid .ai-widget-block');
+    const modal = page.locator('.widget-chat-modal');
+    await modal.locator('.widget-chat-input').fill(createPrompt);
+    await expect(modal.locator('.widget-chat-send')).toBeEnabled();
+    await modal.locator('.widget-chat-send').click();
+
+    await expect(modal.locator('.widget-chat-footer')).toContainText(message);
+    await expect(modal.locator('.widget-chat-send')).toBeEnabled();
+    await expect(modal.locator('.widget-chat-action-btn')).toBeDisabled();
+    await expect(modal.locator('.widget-chat-preview-frame')).toHaveCount(0);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('wm-custom-widgets') || '[]'))).toEqual([]);
   });
 
   test('creates a widget through the live modal flow and persists it after reload', async ({ page }) => {

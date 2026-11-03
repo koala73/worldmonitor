@@ -22,7 +22,8 @@ const hydrationHandoff = createHydrationHandoff<ListDiseaseOutbreaksResponse>(
   'diseaseOutbreaks',
   (value) => {
     const payload = value as ListDiseaseOutbreaksResponse;
-    return payload?.outbreaks?.length ? payload : null;
+    return Array.isArray(payload?.outbreaks) && Number.isFinite(payload.fetchedAt) && payload.fetchedAt > 0
+      ? payload : null;
   },
 );
 

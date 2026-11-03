@@ -23,6 +23,14 @@ afterEach(() => {
 });
 
 describe('seed-climate-disasters helpers', () => {
+  it('locates Russia on both sides of the dateline without claiming the North Atlantic', () => {
+    assert.equal(findCountryCodeByCoordinates(65, 179), 'RU');
+    assert.equal(findCountryCodeByCoordinates(65, -175), 'RU');
+    assert.equal(findCountryCodeByCoordinates(55, -30), '');
+    assert.equal(findCountryCodeByCoordinates(52.52, 13.4), 'DE');
+    assert.equal(findCountryCodeByCoordinates(43.65, -79.38), 'CA');
+  });
+
   it('uses the documented ReliefWeb disaster type filter', () => {
     const [body] = buildReliefWebRequestBodies();
     const typeFilter = body.filter.conditions.find((condition) => condition.field.includes('type'));
@@ -215,4 +223,11 @@ describe('seed-climate-disasters helpers', () => {
     assert.equal(row.affectedPopulation, 42);
     assert.equal(row.sourceUrl, 'https://www.gdacs.org/');
   });
+});
+
+it('does not infer GDACS provenance from host prefixes, suffixes or URL paths', () => {
+  for (const sourceUrl of ['https://notgdacs.org', 'https://gdacs.org.example.com', 'https://example.org/gdacs.org']) {
+    assert.equal(isClimateNaturalEvent({ category: 'severeStorms', title: 'Tropical cyclone', sourceUrl }), false);
+  }
+  assert.equal(isClimateNaturalEvent({ category: 'severeStorms', title: 'Tropical cyclone', sourceUrl: 'https://www.gdacs.org/' }), true);
 });

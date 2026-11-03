@@ -15,32 +15,41 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 
 | Parameter | Values | Description |
 |-----------|--------|-------------|
-| `compact` | `1` | Omit per-key details; only return keys with problems. Public — no key required. |
+| `compact` | `1` | Return actionable problems and bounded pending diagnostics. Public, no key required. |
 | `history` | `1` | Operator history view of past health snapshots. Requires an operator/enterprise API key. |
 
 ### Response Status Codes
 
 | HTTP Status | Overall Status | Meaning |
 |-------------|---------------|---------|
-| `200` | `HEALTHY` | All checks OK, no warnings |
-| `200` | `WARNING` | Some keys stale or on-demand keys empty, but no critical failures |
+| `200` | `HEALTHY` | The user-visible platform is available. Checks are OK, or a contained warning cohort at or below 3% still serves usable last-good data |
+| `200` | `WARNING` | One or more warnings affect availability, or the contained warning cohort exceeds 3% of all probed keys |
 | `200` | `DEGRADED` | Critical keys empty, but ≤3% of all probed keys |
 | `200` | `UNHEALTHY` | Critical keys empty, >3% of all probed keys |
 | `401` | - | Detailed health or history requested without a valid operator/enterprise API key |
-| `503` | `REDIS_DOWN` | Could not connect to Redis — the **only** state that returns a non-200 code |
+| `503` | `REDIS_DOWN` | Redis could not provide the required health data |
+| `503` | `REFRESH_PENDING` | Another request owns the refresh lease and no earlier verdict is retained; retry after the `Retry-After` interval |
 
-> The overall health verdict lives in the JSON `status` field, not the HTTP code. Every state except `REDIS_DOWN` returns `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure.
+> The overall health verdict lives in the JSON `status` field, not the HTTP code. Evaluated health verdicts return `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure. `REFRESH_PENDING` also returns `503`, but only when no earlier verdict is retained while refresh is pending; it is not a confirmed Redis outage.
+
+On a cache miss, only the Redis lease owner performs the registry sweep. Other requests wait up to 3 seconds for its snapshot. If none lands, they return the last published verdict with HTTP `200`, plus `"stale": true` and `"staleReason": "REFRESH_PENDING"`. Its `status` and `checkedAt` are the ones that verdict was published with. The last verdict is retained for 10 minutes and is never served past a grace deadline. Only when no verdict is retained do they return `503` with `Retry-After: 3` and `{ "status": "REFRESH_PENDING", "error": "Health refresh is pending. Retry shortly.", "retryAfterSeconds": 3 }`. That response has no `checkedAt`, summary, or fabricated checks. Neither response is cached. The lease owner itself works against a 22-second request deadline: each Redis command and the relay-gate probe time out at the lower of its own timeout and the time left. An owner that runs out answers the same way a waiter does, instead of running past the 25-second edge first-byte limit: the last published verdict as a stale `200` when one is retained, otherwise `503` `REFRESH_PENDING` with `Retry-After: 3`.
+
+Expired snapshots and snapshots past a grace deadline are not served as current health. A failed owner releases only its token; a lost owner can be replaced after the 30-second lease expires. Expired owners cannot overwrite a successor's verdict snapshot. HTTP-only monitors see a temporary unavailable response only during a cold refresh with no retained verdict.
+
+The top-level `status` describes user-visible platform availability, not perfect data-source health. `HEALTHY` can therefore coexist with warnings in `summary` and `problems` when those warnings are contained by usable last-good data. `dataStatus` is the strict ingestion verdict over the same summary: `OK`, `DEGRADED` when any actionable warning exists (contained or not), or `CRITICAL` when any check is critical.
 
 ### Response Body
 
 ```json
 {
-  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
+  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
+  "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 291,
-    "ok": 291,
+    "total": 398,
+    "ok": 397,
     "warn": 0,
-    "onDemandWarn": 0,
+    "containedWarn": 0,
+    "onDemandWarn": 1,
     "staleContent": 0,
     "rolloutPending": 0,
     "crit": 0
@@ -57,13 +66,55 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 }
 ```
 
-`summary` fields: `total` is one entry per probed key, and grows as panels are added — read it from your own response rather than from this page. `warn` **excludes** on-demand-empty keys — those are surfaced separately as `onDemandWarn` so they don't drive the overall verdict to `WARNING`. `staleContent` counts all `STALE_CONTENT` diagnostics. It can be greater than `warn` while a source is inside its three-hour `staleContentGraceUntil` window. The source stays visible in `problems`, but it counts in `ok` until that deadline. `rolloutPending` is a **subset** of `warn` (a newly deployed schema still inside its bounded deploy-before-cron window). Only `crit` (`EMPTY`/`EMPTY_DATA`) drives `DEGRADED`/`UNHEALTHY`.
+`summary.total` counts probed keys. `warn` is the complete actionable warning census and excludes on-demand empty keys, which appear in `onDemandWarn`. `containedWarn` is a subset of `warn`, not an additional bucket. The containment-eligible statuses are `STALE_SEED`, `SEED_ERROR`, `STALE_CONTENT`, `COVERAGE_PARTIAL`, `COVERAGE_DEGRADED`, and `CHINA_DEGRADED`. A warning is contained only when the current health sweep finds the served payload, metadata proves a positive record count, and every required reader diagnostic is structurally usable. The warning's stale age remains visible but does not by itself mean that the platform stopped serving data. Availability remains `HEALTHY` while all actionable warnings are contained and the contained cohort is at or below 3% of probed keys.
 
-With `?compact=1`, the `checks` object is replaced by `problems` containing only non-OK keys.
+Containment checks all required diagnostics independently of the selected status and has no source-specific allowlist or denylist. Missing or unusable data, malformed or unknown evidence, incompatible reader policies or cache state, `REDIS_PARTIAL`, `ROLLOUT_PENDING`, any uncontained warning, a contained cohort above 3%, and every critical failure remain availability-affecting. `EMPTY_ON_DEMAND` and pending diagnostics retain their existing semantics. `staleContent` counts all `STALE_CONTENT` diagnostics, including entries inside their finite three-hour grace period. Active grace entries count in `ok` and the optional `pending` sub-count, not `warn`. `rolloutPending` is a subset of `warn`. Only `crit` drives `DEGRADED` or `UNHEALTHY`.
+
+`humanitarianSummary` needs more than its aggregate marker for containment. Health reads every country in the producer's required-country contract and checks each summary's identity, fields, timestamp, and finite Redis TTL. `containmentUntil` is the earliest country expiry or six hours after its original data timestamp. Failed refreshes do not renew country TTLs or advance `lastSuccessAt`. `seedAgeMin` continues to increase from that success. `lastSourceAttemptAt` and `retryAt` describe the failed refresh separately. The source warning and error code remain visible. During HAPI API cooldown, the worker permits one bounded HDX-only recovery probe per 15-minute interval; the API cooldown deadline stays fixed.
+
+With `?compact=1`, `problems` contains every actionable failure and on-demand empty entry, including warnings contained from the availability verdict. `pending` contains diagnostics inside an active grace period. Empty maps are omitted. Full `checks` retain the same diagnosis. Cached verdicts still expire at active grace deadlines, and the scheduled monitor rechecks them before suppressing an alert. Strict data-quality monitoring must inspect `summary.warn` and `problems`; it must not use the top-level availability status alone.
+
+### Sanctions source failures
+
+Sanctions ingestion tracks SDN, Consolidated, and Canadian SEMA independently. A failed or invalid source keeps `sourceState: error`, `failedSources`, and per-source `sourceHealth` in freshness metadata. Each source reports its attempt time, last success time, original publication time, retained deadline, and selected record count. Recovery clears the error only for the recovered source.
+
+The worker can retain a complete validated source snapshot for 48 hours after its last successful fetch, so a worker that loses egress to OFAC for several 6-hour runs keeps serving the last validated lists while `OFAC_INGEST_FAILED` stays visible. Failed attempts and healthy sibling sources do not extend that deadline. The 60-entry display preview is never a retention source; initial retention requires a successful full-source fetch. Private snapshots use bounded gzip storage and do not change public payload shapes.
+
+On each run, the worker excludes expired or invalid snapshots before rebuilding the pressure payload, entity index, and country counts. If no source remains usable, those outputs become empty while source errors remain visible. This is unavailable data, not a confirmed empty sanctions list. Readers do not independently remove expired source cohorts between worker runs; existing cache TTL and health checks still apply. Source publication dates remain unchanged.
+
+Snapshot reads distinguish a missing key from Redis errors. Snapshot persistence precedes canonical publication, but canonical, companion, and freshness writes are not one transaction. A later companion-write failure can leave the new canonical payload with older companion data or metadata; the run fails without a completed health patch. The empty envelope's `OK_ZERO` describes publication only: source metadata remains `error`, completion is `DEGRADED`, and the panel shows unavailable.
+
+### HAPI reference periods
+
+Each `conflict:humanitarian:v1:<COUNTRY>` payload keeps `summary` for the newest available HAPI reference period. Its optional `previousCompleteSummary` holds the previous UTC calendar month from the same fetch. Both summaries include `referencePeriod` and `updatedAt`. When the newest available period is the previous month, both fields contain that summary. If the source has no rows for the previous month, `previousCompleteSummary` is absent, not a zero total or an older substitute.
+
+The seeder writes both summaries in one country payload with the existing TTL and freshness metadata. The single-country RPC passes through this payload, including the extra field. Its declared schema still exposes only `summary`, and the batch RPC returns only the newest summary. Consumers of the retained field must match `referencePeriod` before comparing HAPI with another source. A complete calendar month does not guarantee that upstream reporting is final.
+
+### Cable cache continuity
+
+The cable-health handler recomputes its response after 30 minutes but retains the last valid payload for at most 90 minutes, matching its existing health budget. A cache hit does not advance `seed-meta:cable-health.fetchedAt`. Slow or failed refreshes leave the prior payload and its original success time intact; repairing an evicted payload does not reset its expiry or overwrite a concurrent fresh publication. A confirmed zero-cable result is valid data. An unavailable source with no usable last-good result is not published as a successful empty observation.
+
+Cache hits migrate legacy short TTLs to the snapshot's original 90-minute deadline and retry missing or incorrect metadata. The repair checks the current payload atomically before changing its expiry or metadata, so an older reader cannot alter a newer publication. Concurrent requests within one runtime share the full refresh, including cache publication when NGA data is already cached.
+
+### Contracts Finder refresh failures
+
+The hourly Global Tenders member runs within the half-hourly `seed-bundle-relay-backup` scheduler. Contracts Finder uses two 45-second attempts for its documented OCDS query; a valid response was observed taking 23.6 seconds to first byte, beyond the previous 20-second limit. This stays within the member's 180-second timeout.
+
+Failed refreshes retain only validated open Contracts Finder records less than 180 minutes after that source's last success. Attempts never advance the success clock, and successful sibling sources cannot renew this limit. Malformed releases, including active notices without a usable closing date, fail validation instead of replacing last-good data with an empty success. An actual successful response, including a verified empty result, clears the failure episode. Legacy failure metadata with no count does not qualify as a first failure.
+
+`globalTendersContractsFinder` keeps `SEED_ERROR`, the warning count, source error, attempt time, success time, and consecutive failure count visible. Availability can contain the first failed refresh only after reading and checking its records in the canonical tender snapshot. `containmentUntil` is the earliest of 90 minutes after the first failure, 180 minutes after source success, or a retained tender's closing time. The second failed refresh, missing or unreadable canonical data, malformed records, inconsistent metadata, or an expired deadline cannot qualify. Full and compact verdict caches expire at the same deadline; this does not change other sources' health policy.
+
+A failed refresh after a verified empty success can also qualify. The producer records `confirmedEmpty` only when the prior canonical envelope has an explicit zero source count, no source rows, and recent source success evidence. Health requires matching canonical and seed metadata, a fresh usable aggregate, and the same first-failure limits. Its deadline also includes aggregate freshness. Zero records without this proof, or records removed by expiry or validation, cannot qualify. The source remains `error` with `SEED_ERROR`; containment does not report a successful refresh.
+
+### BC active evacuation lists
+
+`canadaAlertsBcSource` uses successful active-list ingestion with a 45-minute freshness budget. BC orders remain active until their status changes or they are removed. Their event modification age is not an expiry rule. See [BC evacuation guidance](https://www2.gov.bc.ca/gov/content/safety/wildfire-status/partners/evacuation).
+
+The seeder validates every page before it replaces the snapshot. A verified empty list is valid. Malformed or failed responses retain the previous snapshot and success time. Event `updatedAt`, `publishedAt`, and `onset` retain the publisher's dates. The old three-day content-age fields disappear after the first successful v2 publication. Existing missing-data, source-failure, and stale-ingestion checks still apply.
 
 ### Bundle tick heartbeats
 
-`_bundle-runner.mjs` writes `bundle:heartbeat:<label>` on every container start, including skip-all ticks. Member seed-meta cannot see a daily cron that never fires when its sections are weekly or monthly. `/api/health` probes `staticRefBundleTick` (`bundle:heartbeat:static-ref`) and, as of #6806, `staticRefHeavyBundleTick` (`bundle:heartbeat:static-ref-heavy`) — one heartbeat for the consolidated heavy bundle carrying Arms-Suppliers, Military-Bases and Mineral-Production. A 48h silence is `STALE_SEED`. Missing keys before the first tick are `EMPTY` under an expiring acknowledgement, not a page-out.
+`_bundle-runner.mjs` writes `bundle:heartbeat:<label>` on every container start, including skip-all ticks. Member seed-meta cannot see a daily cron that never fires when its sections are weekly or monthly. `/api/health` probes `staticRefBundleTick` (`bundle:heartbeat:static-ref`) and, as of #6806, `staticRefHeavyBundleTick` (`bundle:heartbeat:static-ref-heavy`) — one heartbeat for the consolidated heavy bundle carrying Arms-Suppliers, Military-Bases and Mineral-Production. A 48h silence is `STALE_SEED`. Missing keys before the first tick were `EMPTY` under a since-retired expiring acknowledgement, not a page-out.
 
 ### Consumer-price source coverage
 
@@ -75,7 +126,11 @@ This operational contract complements, rather than replaces, the source-quality 
 
 The relay's public `GET /health` remains HTTP 200 for Railway/process-liveness probes, but its top-level JSON `status` now mirrors the aggregate ingestion verdict and can be `degraded`; `ingestion.status` carries the same application-level result. It becomes `degraded` when aviation or RSS served coverage falls below its configured floor, or when configured AIS is disconnected, has no usable current-connection position data, or serves zero snapshots after they are requested. AIS WebSocket upgrades time out after 30 seconds by default, and position readiness expires when an open stream stops delivering accepted position reports for five minutes by default; either failure re-enters the bounded reconnect schedule, while retained vessel data remains a stale fallback. Deployments intentionally missing AIS credentials report `enabled: false` and `status: "disabled"`; that optional adapter does not degrade aggregate health.
 
-The curated X feed uses one newest-page request from a verified public List in each fixed 15-minute UTC slot. The adapter is enabled only when the AIS relay has both `X_BEARER_TOKEN` and `X_CURATED_LIST_ID`. Before activation, run `node scripts/verify-x-accounts.mjs`: it requires the List to be public, readable in one page, and an exact immutable-ID match for the 64 enabled entries in `data/x-accounts.json`. The verifier reads List and User resources only; the first natural relay slot owns the paid Post contract check. Public xFeed freshness advances only after a valid settled List page, including an explicit empty page, is committed with its seed metadata. Its freshness timestamp stays bound to the original provider success if publication replays later. The daily deletion audit is ancillary maintenance: its failure remains visible in authenticated status but does not make an accepted List page unhealthy. Failed List attempts keep the last-good feed and age into the existing 45-minute, three-slot `STALE_SEED` threshold. The authenticated relay `GET /status` separates attempt, provider-success, and accepted-publication clocks and reports whether the next five-Post request is admissible. Note that the pre-existing `lastPollAt` field changed meaning in this release under the same name: it previously advanced on every completed cycle and now advances only with an accepted publication, matching `lastAcceptedPublicationAt`. The attempt clock it used to carry is `lastAttemptAt`, which is served on both `GET /status` and the public `GET /health`; monitoring built on the old attempt-freshness semantics should read `lastAttemptAt`.
+The curated X feed uses one newest-page request from a verified public List in each fixed 15-minute UTC slot. The adapter is enabled only when the AIS relay has both `X_BEARER_TOKEN` and `X_CURATED_LIST_ID`. Before activation, run `node scripts/verify-x-accounts.mjs`: it requires the List to be public, readable in one page, and an exact immutable-ID match for the 64 enabled entries in `data/x-accounts.json`. The verifier reads List and User resources only; the first natural relay slot owns the paid Post contract check. Public xFeed freshness advances only after a valid settled List page, including an explicit empty page, is committed with its seed metadata. Its freshness timestamp stays bound to the original provider success if publication replays later. The daily deletion audit is ancillary maintenance: its failure remains visible in authenticated status but does not make an accepted List page unhealthy.
+
+Failed List attempts keep the last-good feed and its original freshness clock. They refresh failure metadata with `sourceState: degraded`, a bounded `errorCode`, and the attempt time, so health reports `SEED_ERROR` with the retained record count and age instead of losing those diagnostics when metadata expires. The 45-minute freshness threshold is unchanged. One completed HTTP 408/500/502/503/504 response can retry after 1–5 seconds, using a new shared-budget admission from spare capacity; future scheduled coverage stays reserved. Longer Retry-After values, auth/credit/rate-limit failures, malformed successful payloads, and ambiguous paid transport or settlement outcomes are not retried. The relay wakes at a shared backoff deadline within the current slot, so a 30-minute backoff that ends milliseconds after a UTC boundary does not add another 15-minute delay. This path uses the official X API directly with one configured bearer and List; it has no account or proxy failover.
+
+The authenticated relay `GET /status` separates attempt, provider-success, and accepted-publication clocks and reports whether the next five-Post request is admissible. Note that the pre-existing `lastPollAt` field changed meaning in this release under the same name: it previously advanced on every completed cycle and now advances only with an accepted publication, matching `lastAcceptedPublicationAt`. The attempt clock it used to carry is `lastAttemptAt`, which is served on both `GET /status` and the public `GET /health`; monitoring built on the old attempt-freshness semantics should read `lastAttemptAt`.
 
 The cutover order is strict because the old AIS relay and company-monitoring worker used a different daily coverage hold. Create and verify the List first, then set `X_CURATED_LIST_ID` on the running AIS relay before deploying this code; the old relay ignores that variable. Deploy both `ais-relay` and `company-monitoring-worker` from the new head no earlier than 30 minutes before 00:00 UTC. The new relay starts with both X prerequisites and keeps the last-good feed while its limiter rejects the old unversioned coverage hold. Confirm that all old instances of both services have exited before the boundary, because either old service can initialize the legacy hold after midnight. At or after 00:00 UTC, verify the List again and observe the first natural List slot. Do not reset or rewrite the live budget counters. If any old instance does not exit before the boundary, stop the cutover and roll back the new services instead of leaving X disabled or waiting through another full day.
 
@@ -101,17 +156,50 @@ Keys are grouped into three tiers that determine alert severity:
 | `SOURCE_BLOCKED` | Green | The Japan MOD adapter proved no transport path reaches the publisher while retaining fresh reviewed records — either an upstream HTTP 403 after a successful proxy CONNECT (`HTTP_403`), or a target-scoped proxy CONNECT refusal corroborated by a successful control tunnel (`PROXY_TARGET_FORBIDDEN`). Uncorroborated CONNECT refusals, stale, empty, or unreviewed states still fail closed |
 | `COVERAGE_MARGIN_LOW` | Green | Every configured pool clears its floor, but at least one is within `poolCountMargin` of it (`scorecardFiveFactor`, margin 10). Informational, and deliberately not a warning: this probe's health minimums equal the producer's publication floors, so a passing cohort sitting a few records above the line is the normal steady state. Per-pool headroom is on `poolCoverageMargin` for every status, in the full payload (`?compact=1` omits `checks`); an actual breach is still `COVERAGE_PARTIAL` |
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
-| `STALE_CONTENT` | Warn after grace | Seeder is fresh but the upstream content stopped advancing or has no usable timestamp. It is counted in `summary.staleContent` and remains in `problems` during the three-hour grace. `staleContentGraceUntil` gives the deadline. At and after that time, it counts in `summary.warn` as usual. |
+| `STALE_CONTENT` | Warn after grace | Seeder is fresh but the upstream content stopped advancing or has no usable timestamp. During the three-hour grace, it appears in compact `pending` and counts in `summary.staleContent` and `summary.pending`. At `staleContentGraceUntil`, it moves to `problems` and counts in `summary.warn`. |
 | `COVERAGE_PARTIAL` | Warn | Aggregate records or a required subgroup is below the key's declared coverage floor (for example, 139/174 PortWatch countries or an empty prediction-market pool) |
 | `COVERAGE_DEGRADED` | Warn | The producer's own coverage diagnostics are missing, or its completion ratio is below the key's `minSuccessRate` (for example, a consumer-price market that completed 4 of 12 retailer pages) |
-| `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the health runtime persists a deployment-relative `rolloutPendingUntil` deadline in Redis, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. Counted in `summary.rolloutPending` |
+| `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the health runtime persists a deployment-relative `rolloutPendingUntil` deadline in Redis, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. A versioned data key (`family:vN:…`) whose key is absent while a fresh `seed-meta` names an older version of the same family in `sourceVersion` is also in this state: the reader deployed a key bump before the cron writer's next run. That window is the key's `maxStaleMin`, capped at 24 hours, claimed once per data key version. Counted in `summary.rolloutPending` |
 | `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run, a producer that serves last-known-good has failed often enough to cross its declared failure contract (see below), **or** the resilience static index reports one or more failed source adapters |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
 | `EMPTY` | Crit | Bootstrap or seeded standalone key has no data. Outranks any concurrent producer fault, which would otherwise report the softer `SEED_ERROR` (see below) |
 | `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
+| `RELAY_GATE_MISCONFIGURED` | Crit | The production build serving `/api/health` cannot see `CONVEX_TENANT_RELAY_SECRET` or a relay site URL (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), or the resolved URL is malformed or not `https:`; in every case the verdict is reached before any request is sent, so the tenant secret never travels over plaintext. On the missing-env shape checkout, the customer portal and notification channels answer 503 before reaching Convex. Reported on the `relayGatewayGate` liveness entry, which is not a data key; on a production build it is counted once in `summary.total`, so `total` there is the key-registry size plus one and the `ok + warn + onDemandWarn + crit` partition still holds. Set the value (`CONVEX_SITE_URL`, or `CONVEX_URL` as the gateways accept), then redeploy production; the ignored-build step builds a same-commit redeploy on `main` |
+| `RELAY_GATE_REJECTED` | Crit | The deployed Convex tenant-relay gate answered `401` to this build's gateway credential on a body-less `POST /relay/create-checkout`. Either side can be stale: a variable written after the last `convex deploy` reads as undefined inside deployed functions until the next push. The probe runs once per verdict snapshot (60 s), never per poll |
+| `RELAY_GATE_UNREACHABLE` | Warn after grace | The gate probe got no classifiable answer (network error, timeout, 5xx, or anything other than `401` / `400 MISSING_FIELDS`). A transport verdict, not a credential one. The first sighting carries a three-minute `transportGraceUntil` during which it counts as `ok`, appears in compact `pending` and is not an operational problem; a stall still present when the deadline passes moves to `problems` and counts in `summary.warn`. The deadline is kept in Redis across sweeps, including by a sweep that only waited on another sweep's probe (it stores its fallback with `probed: false`, which the next sweep re-probes rather than reuses), so a probing sweep that dies before publishing does not restart the grace — but only when another sweep was waiting on it, since that fallback is written only by a sweep that lost the probe lease. If the sole scheduled caller takes the lease and dies before publishing, nothing is stored and the next run is a first sighting. Once the deadline passes the streak continues under `transportGraceExpiredAt` instead, because republishing an expired softening deadline would make every verdict snapshot unservable and turn each poll into a full sweep instead of a warm read. The relay itself is not re-probed at that rate: whenever a reusable gate verdict is cached, the gateway is contacted about once per freshness window however often the endpoint is polled. Two paths leave no reusable verdict — a stored fallback from a sweep that only waited (`probed: false`), and a probe whose publish failed — and the sweep after either one probes again. Persistent across sweeps means a Convex outage or a wrong `CONVEX_SITE_URL` |
+
+### IMD Marine Bulletins
+
+The IMD seeder reads public bulletin pages and needs no credentials. A run with no storm warnings, port signals, or surge warnings reports `OK`. A run between bulletin validity windows publishes no records and also reports `OK`. A page that fails to load or parse reports `sourceState: degraded`, which health shows as a warning.
+
+The v2 activation marker requires at least one bulletin page that parsed in the current run. A page whose validity window has ended qualifies. Total failures and carried-only snapshots do not.
 
 ### Producers That Serve Last-Known-Good
+
+NHC current-point identity rejections log a bounded `[NHC identity]` diagnostic with the layer, failed field predicates, source attempt time and seed run start time. The seed run start and surrounding Run ID log correlate the diagnostic with its execution. Field summaries include types and lengths; only allowlisted short public identity/date representations are included. Nested values and unsafe or oversized strings are omitted. These diagnostics do not enter Redis payloads and do not change validation, retries, failure counts or retention. A logged identity rejection still needs its field evidence before a parser defect can be established.
+
+New successful EONET observations can remain available for 18 hours. This is an availability policy, not an extension of the 540-minute health limit. Failed attempts retain the original success time and absolute expiry; older nine-hour snapshots keep their existing deadlines. RPC, bootstrap Redis reads, MCP, and the climate-disaster seeder remove expired EONET records before filtering, while preserving healthy companion records. Legacy payloads without expiry metadata remain readable. Data already delivered to a browser follows its existing cache behavior; this policy does not schedule client-side removal.
+
+EONET acquisition keeps a 15-second header deadline and the shared 30.5-second request budget, including retry delay. A progressing body can use the remaining budget, but five seconds without a decoded body chunk aborts the attempt. Decoded responses are limited to 2 MiB. These limits address local acquisition behavior; they do not establish the cause of upstream delays. GDACS and NHC retention and transport limits are unchanged.
+
+Natural-event publishers emit one `natural_source_receipt` JSON log from the post-publication hook. It contains the run ID, Railway service, deployment and revision when available, canonical count, source freshness clock, and the same per-type health map returned for seed metadata. Successful, retained, and unavailable sources keep their actual success and expiry clocks. The receipt describes the published source state. Pair it with the subsequent `seed_complete` for that run to confirm execution completed. Completion alone does not prove metadata persistence. Check for a `WARNING: seed-meta write` message and verify the stored metadata, since the dedicated worker can complete after a best-effort metadata write fails. Logs remain available only for the hosting platform's retention period; this does not add a Redis archive. Both the dedicated worker and climate bundle use the hook.
+
+Request-failure `progress` includes a local request UUID and UTC start time for each observed redirect hop. HTTP responses add status, a recognized content type, and bounded `x-request-id` or `cf-ray` values when present. The local UUID is not sent upstream. Provider correlation requires the response ID or the request timestamp and worker identity. Bodies, cookies, authorization headers, URLs, and peer addresses are not logged. No response metadata is invented when headers never arrive. These facts help correlate existing provider traces but cannot alone establish the cause of a pre-header timeout.
+
+Taiwan MND records failed source attempts in its source metadata. One failed attempt is pending only while positive last-good records remain fresh. The same error on the next distinct attempt warns. The pending deadline is 210 minutes after the first failure, or the last-good freshness deadline if earlier. A different error does not extend that deadline. Health reads do not advance the failure count.
+
+Natural events apply the same bounded source-failure contract to the 15 required NHC forecast-point layers. One transient failed NHC slice is pending only while the aggregate still has positive records and a complete, validated NHC snapshot remains within its original 540-minute retention window. The next failed slice warns, and a changed failure reason does not reset the episode. Missing, expired, malformed, or future snapshot state warns immediately. Complete valid empty NHC coverage replaces the previous storm snapshot. A complete empty result from every provider is healthy, but an empty aggregate with a provider failure is not published. Optional forecast-cone and past-point failures do not remove a storm confirmed by the required point layers.
+
+MND retries a list timeout, detail timeout, or missing-publication response once within the existing request and time limits. After a first failed source attempt with usable last-good records, a completed retained-data publication allows one early scheduled recovery attempt after 30 minutes. Before starting that child, the runner atomically claims the existing completion marker with `sourceRetryClaimedFor`. Its timestamp and TTL stay unchanged. A crash cannot renew that allowance. A completed second failure also blocks renewal, even if the error changes. Normal completion-based admission then applies. This does not change the source success timestamp or extend the health pending deadline. Missing or inconsistent attempt metadata does not grant an early retry. A failed claim keeps normal admission. Incomplete publication retains its existing retry behavior.
+
+Unknown predecessor state stays actionable until a successful source run establishes a new baseline. Compact health retains the `SEED_ERROR` diagnosis under `pending` with `sourceFailurePendingUntil` until it becomes actionable. Dashboard freshness badges retain the diagnosis and data age from both compact maps. Pending does not mean newly published data.
+
+Company Monitoring applies a separate, bounded rule to scan-claim requests. After a healthy scan result, the first two consecutive known transient failures remain `SEED_ERROR` under compact `pending`, with `workerControlPendingUntil` fixed at that healthy result plus the existing five-minute freshness budget. A third failure or that deadline makes the warning actionable. Failed heartbeats do not renew the healthy clock, and a changed error category does not reset the streak. Only a healthy scan result resets it. The API verdict cache and scheduled freshness monitor enforce the same deadline.
+
+`workerControl.subsystems.scan.claimFailure` exposes a closed error kind, HTTP status when known, consecutive failure count, and last healthy scan timestamp. Timeout, known network errors, and HTTP 408/429/500/502/503/504 qualify. Missing payloads, startup without a healthy baseline, authentication failures, malformed responses, unknown errors, and finalization failures remain actionable. A hard scan failure invalidates the baseline until recovery. These fields describe control requests, not completed customer work or provider coverage. Response bodies, credentials, and customer/work identifiers are not included. Old worker metadata without this evidence remains strict; both worker and API changes must be deployed before the new pending behavior can apply.
+
+The weather relay records each provider's success time and consecutive failures in `sourceHealth`. A first partial failure is pending only when every failed provider has known last-good state and unexpired alerts in the selected payload. The previous envelope and source metadata must have matching publication timestamps; an incomplete pair cannot establish source history. The deadline is the earliest of 20 minutes after the first failure, 45 minutes after the provider's last success, or the earliest retained selected alert expiry. Aggregate `fetchedAt` does not renew source freshness. A second failure, total source outage, missing payload, or unusable source evidence warns. Successful empty responses still purge that provider's old alerts. Failed-source retention drops expired alerts before selection and notifications. The planned standalone writer has no source history and receives no pending allowance.
 
 Some producers are expected to miss individual runs — an LLM synthesis stage
 whose provider times out, for example — while the payload they last published
@@ -205,11 +293,12 @@ whenever their producer recorded one:
 | `ageMonths` | How many months behind the run that observation month is |
 | `unavailableSince` | Epoch milliseconds of the first run that **recorded** the gap, carried forward across runs. Best-effort: a run that cannot read the previous `seed-meta` (Redis blip, first run after deploy) re-dates it to that run. Read it as "first run that recorded this gap", never as a measured outage start |
 
-The block never moves the status. China's rows going unusable is an upstream
-fact no retry clears — every China row in both JODI files has carried
-`ASSESSMENT_CODE 3` ("null/uncertain") since at least 2026-08 — so grading it
-would be a warning nobody can act on. What it must not be is silent: the
-seeders publish the other 50-57 countries regardless of China, and this block
+The block never moves the status. A China row that carries no usable number
+is an upstream fact no retry clears, so grading it would be a warning nobody
+can act on. `ASSESSMENT_CODE 3` is not that case: it marks a value JODI has not
+assessed, every China cell in both JODI files carries it, and both seeders keep
+those values. What it must not be is silent: the
+seeders publish every other country regardless of China, and this block
 is what names the country that dropped out.
 
 It describes the producer's **last completed publish**, like every other
@@ -313,12 +402,62 @@ Some keys use fallback chains. If any sibling has data, empty siblings report `O
 
 `riskScores` is intentionally stricter than a raw feed heartbeat. Its
 `recordCount` is realtime signal-density coverage: the count of score-relevant
-Tier-1 conflict, news, and cyber signal families present during the CII refresh.
-The conflict family is satisfied by either the ACLED path or the UCDP event
-feed, matching the CII v8 scorer. When those feeds are reachable but quiet,
+Tier-1 conflict and news signal families present during the CII refresh
+(cyber IOC rows stopped counting in CII v14: they place attacker infrastructure).
+The conflict family is satisfied by the ACLED path, the UCDP event feed, or,
+while the ACLED path returns no events, a live GDELT snapshot from
+`gdelt:bulk:country-events:v1` for a Tier-1 country (fresh, with either its
+baseline and current window complete or its seven-day week ready), matching the
+CII v14 scorer. The GDELT snapshot counts even when its escalation and level
+scores are 0. When those feeds are reachable but quiet,
 `riskScores` can still report
 `COVERAGE_PARTIAL`; underlying feed freshness is tracked by the source-specific
 health entries where those feeds publish seed metadata.
+
+That count cannot see a dead input. ACLED credentials went missing around July
+2026 and Unrest and Conflict read 0 for every country for months while
+`riskScores` stayed `OK`, because the UCDP floor kept the conflict family
+counted. Each CII build therefore also reports every scored input on the same
+seed-meta, under `inputs`. The producer runs the scorer once per input against
+an otherwise empty build and records one of these states:
+
+| State | Meaning |
+| --- | --- |
+| `live` | The input moved at least one Tier-1 score |
+| `quiet` | Present and accepted, but moved no Tier-1 score; `quietSince` records when that started |
+| `missing` | The Redis key was absent |
+| `unusable` | Present, but the scorer rejected it as too old or malformed (for example a GDELT summary past its 6-hour gate) |
+| `not_configured` | Disabled by deployment design: ACLED without credentials, or the strike feed and strike tally with `IRAN_EVENTS_ENABLED` off |
+
+An unreadable input rejects the whole build, so it surfaces as a stale
+`riskScores` seed-meta, with the failed keys in
+`risk:scores:sebuf:rejected:<version>`.
+
+`/api/health` grades that report with `api/_cii-input-health.js` and attaches
+it to the `riskScores` entry as `ciiInputs` (`states`, `dead`,
+`notConfigured`, `unfedFamilies`). An input is dead when it is `missing`,
+`unusable`, not reported at all, `stale` because its own health check reads
+`STALE_SEED`, or `quiet` past its plausibility budget. Feeds that can be quiet
+indefinitely, such as earthquakes, outages and the strike feed, have no quiet
+budget, so quiet but fresh is never dead. An absent OREF history is quiet,
+because the relay writes it only when sirens change. `not_configured` is shown
+but never alarms on its own.
+
+| Condition | Status |
+| --- | --- |
+| A family has no live or plausibly quiet input, or the seed-meta has no `inputs` block | `COVERAGE_DEGRADED` |
+| An input is dead but every family is still fed | `COVERAGE_PARTIAL` |
+
+The families are `conflict` (ACLED and the GDELT country events, the realtime
+feeds behind Unrest and Conflict; UCDP is an annual floor and cannot stand in
+for them), `information` (news insights and the threat summary), and `security`
+(military activity, GPS jamming and aviation). These verdicts
+only raise an `OK` or `COVERAGE_PARTIAL` result, and they are never contained
+behind the served payload: the payload is present, but its scores are missing
+a signal. `ciiInputs` is operator-only: the anonymous `?compact=1` body keeps
+the status and drops the block. `/api/seed-health` grades the same report for
+`intelligence:risk-scores` and reports `coverage_partial` with the same
+`ciiInputs` block, without the sibling staleness checks.
 
 `portwatchPortActivity` also uses `minRecordCount`. A fresh
 `seed-meta:supply_chain:portwatch-ports` record below 174 countries reports
@@ -326,9 +465,44 @@ health entries where those feeds publish seed metadata.
 PortWatch cache entries, but the canonical country list and healthy seed-meta
 signal do not advance until full 174-country coverage returns.
 
+Port activity uses a rolling refresh: at most 30 countries per run, twice daily.
+Complete coverage can include retained country payloads strictly below the
+seven-day cache expiry; it does not require all countries to match the latest
+upstream date in one run. Country timestamps and content clocks remain unchanged
+when retained. Coverage diagnostics distinguish `currentCountryCount` from
+`retainedCountryCount` and expose `oldestCountryCacheWrittenAt`. Missing or expired
+countries and unresolved refresh failures still block a healthy publication.
+
+Run logs separate **usable country payloads** from **canonical-list membership**.
+Batch progress describes data assembled in memory; persistence is still pending.
+Only after the Redis transaction is confirmed does the seeder report saved state
+and whether the canonical list advanced or its TTL extension confirmed retention.
+If retention cannot be confirmed, the log labels the starting count as historical
+and reports `canonical retention unconfirmed`. For example:
+
+```text
+Recovery state saved; canonical list retained at 60 countries; usable coverage 150/174; full publication blocked; 0 unresolved refresh failures
+```
+
+Canonical membership is not a current API-availability count: the country reader
+also checks payload presence and age. The legacy `coverage.published` field means
+usable coverage from the run, including retained payloads; it does not mean the
+canonical list advanced. `recordCount` and success clocks remain unchanged on an
+incomplete run, which continues to exit nonzero. A merge or deployment alone does
+not prove recovery. A failed or ambiguous transaction response does not confirm
+that recovery state was saved or that publication advanced.
+
+Unchanged upstream dates also enter the refresh queue before cache expiry. With
+174 countries, the lead reserves seven 12-hour runs after allowing two recurring
+critical-country slots, plus one missed run. Thus full refreshes become due at
+three days, while validated retained data remains usable strictly below seven
+days. This can increase activity downloads for unchanged data, within the same
+30-country run cap. An already expired backlog still requires successful bounded
+refreshes before healthy publication resumes.
+
 `portwatchPortActivity` additionally requires per-country **content**
 freshness, which is a different question from transport freshness and country
-cardinality. The seeder reuses a cached country payload whenever upstream
+cardinality. The seeder can reuse a cached country payload when upstream
 `max(date)` has not advanced, so a run can report a fresh heartbeat and a
 complete 174/174 country list while an individual country's observation is
 days old. The producer therefore publishes a `contentFreshness` block, and the
@@ -348,6 +522,23 @@ narrow the alarm scope or widen its threshold silently: dropping `CN` from the
 seeder's list, or publishing a 30-day budget, would otherwise report `OK` with
 China days stale — the exact failure this check exists to catch. A producer set
 that covers the pinned countries and adds more is accepted.
+
+The one permitted narrowing is a pinned country the producer lists in
+`criticalSourceAbsentCountries`. The seeder lists a country there only after an
+indexed count proves that none of its reference ports has any row in PortWatch's
+`Daily_Ports_Data`. It never lists more than 35 such countries, and only in a run
+where another country returned a real max date. Such a country has no content to
+judge, so it is reported by name instead of as stale or missing. A country listed
+both as critical and as source-absent reads as
+`source_absent_overlaps_critical`. If every pinned country is absent, nothing
+remains to judge and the block does not report stale content. Any non-empty
+`coverage.sourceAbsentCountries` keeps the check at `COVERAGE_PARTIAL`, even when
+the published count still clears `minRecordCount`. A content-freshness verdict
+(`COVERAGE_DEGRADED` for an unusable block, `STALE_CONTENT` for stale critical
+content) takes precedence, so a long-lived absence never hides it. The seeder also deletes each
+absent country's per-country key in the same transaction that advances
+publication, so readers of those keys never see its last-good payload as
+current.
 
 The producer's counts are a measurement taken at seeder-run time, and seed
 metadata is only rewritten on a canonical-advancing 12-hour run. Health
@@ -503,6 +694,22 @@ degraded.
 
 ### Staleness Thresholds (maxStaleMin)
 
+Earthquake ingestion retries transient USGS or NRCan failures once. The internal `seismology:earthquakes:providers:v1` snapshot keeps each provider's parsed observations and original success clock separately. A failed provider can contribute last-good coverage for less than 30 minutes, provided its content is still within the existing 48-hour budget. Fresh events from the other provider continue to publish.
+
+The first exhausted transient failure remains visible as pending only with usable coverage from both providers. Its deadline is the earlier of 10 minutes after the first failed run or 30 minutes after the oldest provider success. A second failed run for that provider warns immediately. Missing, malformed, expired, or permanently failed coverage earns no pending period. Polling health cannot reset the deadline, and a successful provider fetch resets only that provider's failure streak. The five-minute cron and existing freshness thresholds are unchanged.
+
+Wildfire ingestion retries a transient CWFIS request once, unless the provider's Retry-After exceeds the retry budget. The internal `wildfire:cwfis-source:v1` snapshot preserves the complete Canadian source and its original success time. If the active layer fails, source data younger than three hours at the source attempt can be reused while fresh FIRMS and BC data continue to publish. A complete empty CWFIS response clears previous records.
+
+The first two consecutive exhausted transient CWFIS failures are pending for at most three hours, bounded by the source's three-hour retention limit. The third failed run warns. Missing, malformed, expired, or permanently failed coverage earns no pending period. Recovery state must persist before either public wildfire payload changes. Internal snapshot rows are excluded from both public payloads. The ten-minute cron, six-hour stale threshold, and existing FIRMS partial-coverage policy are unchanged.
+
+BC fire points use the internal `wildfire:bc-source:v1` snapshot to preserve validated source rows and their original success time after a failed request. A failed refresh can reuse source data younger than the existing two-hour wildfire cache lifetime at the source attempt. Repeated failures do not renew that source clock. The resulting aggregate keeps its existing two-hour publication TTL. Missing, malformed, future, or expired source snapshots supply no retained BC rows. A nonempty WFS page with invalid fire points fails validation.
+
+When a usable populated BC snapshot exists, an empty WFS result requires one uncached confirmation read before it can clear prior records. Confirmation and any following pages share the existing eight-request WFS budget and 30-second per-request timeout. A second complete empty result clears prior records; complete nonempty confirmation replaces them. Failed, malformed, or incomplete confirmation uses the same finite retention and failure metadata as a failed request. Without usable populated source data, complete empty results do not require confirmation. The `bc_fire_empty_confirmation` log event records the confirmation stage, page offset, and matched/returned counts without response prose.
+
+BC failures remain visible as `BC_WILDFIRE_SOURCE_FAILED` while healthy companion sources can publish. HTTP 400 is not retried and receives no pending allowance. The source snapshot persists before the public payload changes and is excluded from public payloads. Aggregate success and aggregate `fetchedAt` do not establish BC source success.
+
+The `bc_fire_request_failure` log event identifies the KML or WFS request, page offset, HTTP status, and recognized OGC exception code and parameter. It excludes response prose and request URLs. These fields support diagnosis of a future rejection without treating every HTTP 400 as transient.
+
 Selected thresholds from `SEED_META`:
 
 | Domain | Max Stale (min) | Notes |
@@ -510,6 +717,7 @@ Selected thresholds from `SEED_META`:
 | Market quotes, crypto, sectors, earthquakes, insights | 30 | High-frequency relay loops / critical event data |
 | Military flights | 30 | Near-real-time tracking |
 | Predictions, flight delays (FAA) | 90 | Polymarket / airport snapshots |
+| Toronto TPS live calls | 90 | 30-minute bundle member, 90-minute seed and content budgets, three-hour cache lifetime |
 | Unrest | 120 | 45min cron, 2h grace |
 | Cyber threats | 240 | APT data updated less frequently |
 | Wildfires | 360 | FIRMS NRT accumulates over hours |
@@ -518,28 +726,48 @@ Selected thresholds from `SEED_META`:
 
 > These are illustrative; `SEED_META` in `api/health.js` is the source of truth and each entry documents its own cadence rationale.
 
-### Scheduled monitor results
+### Ingestion incidents
 
-The Seed Freshness Monitor publishes a production acceptance summary on each
-workflow run and retains its JSON observation for seven days. The summary lists
-active incidents, acknowledged degradation, stale-content grace deadlines, and
-baseline entries that no longer appear in health.
+`/api/health` is the only source of truth for ingestion. `status` stays the
+availability verdict uptime monitors read; `dataStatus` (`OK`, `DEGRADED`,
+`CRITICAL`) is the strict verdict, so a contained source warning is never
+invisible at the top level.
 
-A successful workflow run can still have active source incidents. The workflow
-alerts on new or changed incidents and suppresses repeat alerts for unchanged
-failures. Read the production acceptance summary to determine whether the data
-passed. An unavailable observation is **Unverified**, never healthy.
+Each actionable `source:status` pair opens or regresses one Sentry issue
+(level `warning`, tags `health_source` and `health_status`, grouped by source
+and status) until Sentry accepts it; `health:incident-alerts` records accepted
+pairs, so a failed delivery is retried by the next sweep. An unchanged incident
+does not re-alert; a recovered source that breaks again does. `?history=1`
+lists the incident log.
 
-Generate the same report locally without publishing GitHub statuses:
+### MCP preset liveness
 
-```bash
-node scripts/check-seed-freshness.mjs \
-  --json-output /tmp/seed-freshness.json \
-  --markdown-output /tmp/seed-freshness.md
-```
+The **MCP Preset Liveness** workflow checks the Quick Connect catalog every
+Monday at 06:23 UTC and supports manual runs. It runs
+`LIVE_MCP_TESTS=1 node --test tests/mcp-presets.test.mjs`, deriving each endpoint
+and its authentication expectation from `MCP_PRESETS` in `src/services/mcp-store.ts`.
+Reserved example-domain templates, including the self-hosted PostgreSQL preset,
+are excluded. No vendor credentials are used.
 
-The command still exits nonzero when operational acceptance fails. It writes
-both reports from the same health observation before returning that verdict.
+Open presets require HTTP 200. Keyed presets also accept HTTP 401 or 403,
+preserving the existing live suite's reachability contract. Redirects, other
+HTTP statuses, DNS errors and timeouts are findings. Probes do not follow
+redirects, stop after 15 seconds, and run at most four at once. This proves HTTP
+reachability only; it does not prove authenticated tool execution.
+
+Findings create or update one open issue titled **MCP preset liveness: endpoint
+findings**, with preset names, catalog URLs, observed results and a workflow-run
+link. Maintainers should recheck the finding, repair or remove the catalog entry,
+and close the issue after confirming recovery. Healthy runs create no issue and
+do not close an existing incident. The workflow summary reports the latest
+finding count. A successful run can therefore still have endpoint findings.
+
+This weekly workflow is separate from PR and deployment gates. Vendor failures
+are reported as issues; missing or incomplete probe reports and publishing
+failures fail the monitor itself. To inspect the same observation locally without
+publishing an issue, set `MCP_PRESET_REPORT=/tmp/mcp-presets.json` when running the
+live suite. After this workflow is merged, validate its first manual or scheduled
+run within one week; confirm the probe count, summary, and any incident issue.
 
 ### Example Requests
 
@@ -553,7 +781,7 @@ curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
 
 # UptimeRobot / monitoring: check HTTP status code
 curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?compact=1"
-# Returns 503 only when Redis is unreachable (REDIS_DOWN); 200 for every other
+# Returns 503 for REDIS_DOWN or REFRESH_PENDING; 200 for evaluated health
 # state — the verdict (HEALTHY/WARNING/DEGRADED/UNHEALTHY) is in the body's `status`.
 ```
 
@@ -636,6 +864,8 @@ A seed is considered stale when its age exceeds **2x the configured interval**. 
 
 The commodity-vulnerability cohort is stricter than a non-empty check. The authoritative cohort pointer read by every vulnerability RPC must exist. Its seed metadata must clear the same dimensional floors the producer enforces before publication: country-specific import evidence for at least 110 countries, global production evidence for at least one commodity, at least 110 rankable countries, at least 220 rankable records (two scored commodities per country), at least one fresh rankable record, and the full reviewed commodity, HS4, and transit-HS2 input sets. Registry constants alone do not satisfy these measured coverage checks. The `completeCountryCount` field (countries with evidence for every reviewed commodity) is published as a diagnostic and does not move the status. The inverse projection must meet its configured chokepoint floor. Any shortfall or missing coverage field reports `COVERAGE_PARTIAL`; before the first atomic cohort activation, both checks remain rollout-pending.
 
+The `comtrade:bilateral-hs4` seed also reports `coverage_partial` with `stale: false` when its last run preserved a country's previous payload, recorded a country as `unavailable`, `malformed`, `incomplete` or `not_attempted`, or failed the run-level world-exports fetch. Valid observations do not count: a reporter with no positive rows (`no_records`), or an importer that does not trade every reviewed heading. The entry carries a `bilateralCoverage` diagnostic with four fields. `preservedCountries` lists ISO2 codes. `countryCoverage` holds each country's `state`, `attemptedAt`, `missingHs4s` for observed or empty reporters, and `rowCounts`, the raw rows the provider returned for each catalogue batch, so a response trimmed at the row cap is distinguishable from a reporter that genuinely trades little; a country whose second batch never ran carries a single count. `productCoverageKnown` is `false` until the seeder has written per-country coverage. `worldExports` is the outcome of the two requests the run reserves, before it attempts any reporter, to read every reporter's exports of every reviewed heading. On an `observed` run it carries `fetchedAt`, `headingCount` and `reporterCount`; otherwise it carries `state` (`no_records` for a valid empty answer, `unavailable`, `malformed`, or `incomplete` — the certain outcome on the keyless public route, whose row cap cannot hold every reporter) and `attemptedAt` alone, and the previous snapshot is kept. Any `worldExports` state other than `observed` is a coverage gap, because the brief's supplier scale and world rank come from that one key, while a `null` `worldExports` is a run recorded before the field existed — absence of evidence rather than a failure.
+
 **Consumers:** treat `status` and `overall` as authoritative for coverage. Do not rely on `stale` alone — pool shortfalls keep `stale: false` by design. When either coverage floor fails, the entry also sets `coveragePartial: true` so clients that only inspect booleans still see the shortfall.
 
 | Domain | Interval (min) | Stale After (min) |
@@ -681,14 +911,17 @@ curl -s https://api.worldmonitor.app/api/seed-health \
 
 ### UptimeRobot
 
-Use `/api/health?compact=1` as the public monitor URL. The HTTP status code only distinguishes a total Redis outage from everything else:
+Use `/api/health?compact=1` as the public monitor URL. The HTTP status code distinguishes an unavailable verdict from an evaluated verdict. Inspect the JSON status to identify the cause:
 
-- `503` = `REDIS_DOWN` (Redis unreachable — a true hard outage)
+- `503` + `REDIS_DOWN` = Redis health read failed.
+- `503` + `REFRESH_PENDING` = refresh contention; retry after 3 seconds.
 - `200` = every other state, including `DEGRADED` and `UNHEALTHY`
 
-So an HTTP-status-only monitor catches a full backend outage but **not** degraded/unhealthy data. For those, add a keyword monitor.
+An HTTP-status-only monitor catches unavailable verdicts, including refresh contention, but **not** degraded/unhealthy availability. For those, add a keyword monitor.
 
 Point the keyword monitor at `https://api.worldmonitor.app/api/health?compact=1` and alert when the compact token `"status":"HEALTHY"` (no space after the colon) is **absent** from the response body. Compact mode serializes with no indentation, so this exact token is stable regardless of formatting.
+
+This keyword monitor measures availability. A `HEALTHY` response can still carry contained warnings. A strict data-quality monitor must also alert when `summary.warn` is greater than zero and inspect `problems` for the affected sources.
 
 > The bare `/api/health` URL is now an operator view and returns `401` without an API key. Public monitoring should always use `?compact=1`.
 
@@ -713,15 +946,15 @@ fi
 | **Scope** | Data keys + seed metadata | Seed metadata only |
 | **Auth** | None (public) | API key or allowed origin |
 | **Data fetched** | Full Redis values (to count records) | Only `seed-meta:*` keys |
-| **HTTP 503** | Only `REDIS_DOWN` (DEGRADED/UNHEALTHY return 200) | No (always 200 unless Redis down) |
+| **HTTP 503** | `REDIS_DOWN` or `REFRESH_PENDING` (DEGRADED/UNHEALTHY return 200) | No (always 200 unless Redis down) |
 | **Best for** | Uptime monitoring, dashboard health | Debugging seed loop issues |
 | **Response size** | Larger (one entry per probed key, with record counts) | Smaller (seed-meta domains only) |
 
 ## Capture a source repair
 
-`scripts/capture-seed-recovery.mjs` records read-only recovery evidence for `wildfires`, `physicalDivergence`, and `crossStraitActivityTaiwanMnd`. It writes a local JSON checkpoint and a Markdown view. It does not run a seeder or change Railway or Redis.
+`scripts/capture-seed-recovery.mjs` records read-only recovery evidence for `wildfires`, `physicalDivergence`, `crossStraitActivityTaiwanMnd`, and `yieldCurveAu`. It writes a local JSON checkpoint and a Markdown view. It does not run a seeder or change Railway or Redis.
 
-Use Node.js 24, an authenticated Railway CLI, `WM_API_KEY` (or `WORLDMONITOR_API_KEY`), and the existing Upstash REST credentials. The command uses `loadEnvFile()` and reads only the registered source metadata keys. Run it from a checkout that contains the required and deployed Git commits; missing ancestry is unverified.
+Use Node.js 24, an authenticated Railway CLI, `WM_API_KEY` (or `WORLDMONITOR_API_KEY`), and the existing Upstash REST credentials. The command uses `loadEnvFile()` and reads only registered source keys. For AU, these include metadata, the completion marker, canonical data, and reader shards. Run it from a checkout that contains the required and deployed Git commits; missing ancestry is unverified.
 
 Use the repair's merge commit on `main`, then start before the first run you intend to count. A PR branch SHA can lose its ancestry after a squash merge. Set a concrete UTC deadline once:
 
@@ -741,6 +974,29 @@ The first successful capture fixes the baseline success time. Resume the same ch
 | `wildfires` | Three distinct consecutive successful runs, full 27-request coverage, zero source failures, and a successful run that used the primary retry | 60 minutes from deployment confirmation |
 | `crossStraitActivityTaiwanMnd` | Two separate three-hour member runs that advance Taiwan's success time and clear its error | 6 hours 30 minutes from deployment confirmation |
 | `physicalDivergence` | One successful publication with two records, future `inputFreshUntil`, and healthy status | Through 09:25 UTC on the first eligible schedule day |
+| `yieldCurveAu` | One schedule-aligned AU completion with matching run ID, canonical envelope, latest shard, all year shards, and healthy status | A fixed operator-selected deadline after an eligible daily 10:00 UTC run |
+
+For AU, use `--source yieldCurveAu` with the required merge commit. The recorder
+checks the configured cron against the registry and permits a container start
+before 10:05 UTC. It binds the completion marker's run ID to the AU log entry.
+It compares every historical shard with canonical data and preserves the source
+date separately from publication time. An absent current-year shard is allowed
+only when canonical data has no observations for that year.
+
+Choose an execution deadline before the content boundary. For example, use
+10:20 UTC after a verified eligible 10:00 slot, then resume after the run finishes
+but before that deadline. Resume after the deadline only to record failure.
+First confirm AU is due under the bundle's 80-percent daily interval gate;
+an earlier off-schedule publication can make the next slot legitimately skip AU.
+A missing completion or inaccessible evidence produces a failed or unverified
+checkpoint, even while content remains fresh. Give that result to the existing
+incident owner. The recorder does not send alerts or install a schedule.
+
+The AU checkpoint stores sanitized deployment and run evidence locally. It does
+not prove the scheduler's trigger identity, direct provider parity, or authenticated
+RPC parity. Do not retry denied access or substitute credentials to obtain it.
+Retain the original incident deadline separately when new source content advances
+the derived content boundary. A passing checkpoint is not ongoing monitoring.
 
 Wildfire acceptance targets the primary-retry repair in [PR #7701](https://github.com/koala73/worldmonitor/pull/7701). Its producer emits `trying primary retry`. An older producer's `trying secondary` message does not prove that repair. Use #7701's merge commit as the required revision after it merges.
 
@@ -751,3 +1007,64 @@ The command attributes execution from a container start near its configured cron
 Exit codes are `0` for passed, `1` for failed or unverified, and `2` for waiting or observing. An expired deadline remains failed on resume. A passed checkpoint records acceptance at that time; it is not an ongoing health guarantee. These are local report labels and do not change the public health statuses.
 
 For physical divergence, initial recovery does not complete the separate 48-hour schedule check. That check must include two 09:00 UTC ticks and the Sunday 08:00 ordering when applicable. Normal interval-gate skips do not count as successful publications. Keep the JSON checkpoint local: it contains operational identifiers, but no credentials, raw logs, or source payloads.
+
+### Forecast judged lane
+
+`forecastResolutions` monitors the resolution ledger and its existing
+`seed-meta:forecast:resolutions` metadata. After publishing the ledger and
+scorecard, the daily worker records judged-lane health through the shared
+seed-metadata writer. Missing publication becomes stale after 36 hours.
+
+Health reports whether the resolver runs and can read its inputs, not how
+well the judges score. The producer sets `status: error` and completes the run
+as `DEGRADED` only when judged entries are overdue and the run cannot read the
+evidence it needs to judge them. That happens when the evidence coverage marker
+is unverified (`coverage_unverified_with_overdue_entries`) or when the archive
+read failed (`archive_unreadable_with_overdue_entries`). The normal health
+classifier exposes either condition as `SEED_ERROR`.
+
+The metadata also records judged-lane quality, which never changes the status.
+`quality.noScoredWithinSlaRuns` (mirrored by `stalledRuns`, capped at 3) counts
+consecutive eligible runs without a new scored-within-SLA outcome. A judged
+entry is overdue, and its two-day SLA starts, at its deadline plus the 18-hour
+reporting grace, the first moment it can be judged. A run is
+eligible when judged entries remain overdue or judged outcomes were resolved
+since the preceding health observation. Old successes and VOID outcomes do not
+clear the streak. A new scored-within-SLA outcome or an idle lane resets it.
+`scoredWithinSla` and `pendingJudgePastDeadline` give the counts for the run.
+
+If the evidence coverage marker expires or either proof version becomes stale,
+the resolver attempts a bounded scan of the dedicated archive. Recovery allows
+30,000 records by default, compared with 15,000 for ordinary judging reads,
+within the same 25-second total deadline. An explicit archive hash-limit override
+still applies. Recovery requires at least 14 days of valid records,
+no gap longer than six hours (including the newest record to the read clock),
+matching index and record timestamps, and no truncation, duplicate hashes, or
+unreadable records. It installs a version-2 continuity marker with `SET NX` and
+the existing 15-day TTL. Stale markers are replaced only if their value still
+matches the value read before the scan. A concurrent publication is never
+overwritten. Publishers cannot advance version-2 proof across a gap longer
+than six hours; recovery requires a new complete continuity scan. Dry runs
+check recovery without publishing a marker.
+
+Continuity proves activity at the declared six-hour granularity; it cannot
+prove that every upstream story was captured. The marker names this proof and
+its archive source. Only judging opts into it. Accumulator pruning still
+requires the version-1 backfill proof. If the bounded scan cannot establish
+continuity, judging remains unavailable and the health signal names the stall.
+
+### Market alert ledger
+
+`marketAlertLedger` monitors `correlation:market-alerts:ledger:v1` through
+`seed-meta:correlation:market-alerts`. `marketAlertScorecard` monitors
+`correlation:market-alerts:scorecard:v1` through
+`seed-meta:correlation:market-alerts-scorecard`. The `seed-market-alert-ledger`
+section of `seed-bundle-derived-signals` rewrites both keys on every 5-minute
+tick, and each becomes stale after 30 minutes.
+
+The ledger stays empty until the first market alert fires, so an empty payload
+is a valid state for both keys and never reports `EMPTY`. Both checks bind the
+activation marker `seed-activated:correlation:market-alerts`, which the seeder
+sets after its first publish. Before the marker exists, a missing payload reads
+as the soft on-demand state. After it exists, a missing publication reports
+`STALE_SEED` once the 30-minute gate passes.

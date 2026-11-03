@@ -1,8 +1,14 @@
 // Pure Earthquakes Canada (NRCan) Atom parser + USGS merge/dedup helpers.
 // Tests import this module, not the seeder entrypoint.
 
-import { CHROME_UA, roundGeoCoordinate } from '../_seed-utils.mjs';
+import { withSourceRequestDiagnostics } from '../lib/source-request-diagnostics.mjs';
+import { createRequire } from 'node:module';
+import {
+  CHROME_UA, httpRetryError, redactProxyCredentials, roundGeoCoordinate, withRetry,
+} from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
+
+const { parseProxyConfigForAttempt, proxyFetch } = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
 export const NRCAN_ATOM_HOST = 'www.earthquakescanada.nrcan.gc.ca';
 export const NRCAN_ATOM_URL = 'https://www.earthquakescanada.nrcan.gc.ca/cache/earthquakes/canada-en.atom';
@@ -10,6 +16,8 @@ export const NRCAN_OFFICIAL_PAGE = 'https://www.earthquakescanada.nrcan.gc.ca/in
 // Live canada-en.atom was 343771 bytes on 2026-08-13; 342KB is below that, so raise.
 export const MAX_NRCAN_ATOM_BYTES = 1024 * 1024;
 export const EARTHQUAKES_MAX_CONTENT_AGE_MIN = 2 * 24 * 60; // 48h — min() of successful upstream newest
+export const EARTHQUAKE_PROVIDERS_KEY = 'seismology:earthquakes:providers:v1';
+const PROVIDER_MAX_AGE_MS = 30 * 60_000;
 // Align NRCan's 30-day national bulletin with the USGS M4.5+ week layer.
 export const USGS_MIN_MAGNITUDE = 4.5;
 export const EARTHQUAKES_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -27,6 +35,7 @@ export class NrcanAtomParseError extends Error {
     super(message);
     this.name = 'NrcanAtomParseError';
     this.code = 'SEED_ERROR';
+    this.nonRetryable = true;
   }
 }
 
@@ -172,12 +181,12 @@ export function parseNrcanAtom(xml) {
 async function readBoundedText(response, maxBytes) {
   const advertisedLength = Number(response.headers?.get?.('content-length'));
   if (Number.isFinite(advertisedLength) && advertisedLength > maxBytes) {
-    throw new Error('RESPONSE_TOO_LARGE');
+    throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
   }
   const reader = response.body?.getReader?.();
   if (!reader) {
     const text = await response.text();
-    if (Buffer.byteLength(text, 'utf8') > maxBytes) throw new Error('RESPONSE_TOO_LARGE');
+    if (Buffer.byteLength(text, 'utf8') > maxBytes) throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
     return text;
   }
   const chunks = [];
@@ -189,7 +198,7 @@ async function readBoundedText(response, maxBytes) {
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel().catch(() => {});
-        throw new Error('RESPONSE_TOO_LARGE');
+        throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
       }
       chunks.push(value);
     }
@@ -199,36 +208,119 @@ async function readBoundedText(response, maxBytes) {
   return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
 
+const NRCAN_ACCEPT = 'application/atom+xml, application/xml, text/xml, */*';
+const NRCAN_PROXY_EXITS = 3;
+const NRCAN_PROXY_TIMEOUT_MS = 12_000;
+
+function defaultNrcanProxyFetch(url, { attempt, proxyAuth, maxBytes }) {
+  const proxyConfig = parseProxyConfigForAttempt(proxyAuth, attempt);
+  if (!proxyConfig) throw Object.assign(new Error('Invalid proxy auth string'), { nonRetryable: true });
+  // proxyFetch never follows redirects, so a 3xx surfaces as !ok below.
+  return proxyFetch(url, proxyConfig, {
+    accept: NRCAN_ACCEPT,
+    headers: { 'User-Agent': CHROME_UA },
+    maxResponseBytes: maxBytes,
+    timeoutMs: NRCAN_PROXY_TIMEOUT_MS,
+  });
+}
+
+// NRCan moved behind Cloudflare on 2026-10-22, which answers Railway's datacenter
+// egress with 403 and residential exits with 200. Only a 403 earns the proxy leg:
+// every exit would answer a 5xx or 404 the same way. A refused, dropped, or
+// temporarily down exit rotates to the next sticky port. A gateway 4xx (rejected
+// credentials, quota, policy) and any other proxied status are final.
+async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, maxBytes }) {
+  let last;
+  let everyExitRefused = true;
+  for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
+    let result;
+    try {
+      result = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'proxy', attempt }, async observe => {
+        const response = await proxyFetchFn(url, { attempt, proxyAuth, maxBytes });
+        observe(response);
+        return response;
+      });
+    } catch (error) {
+      if (error?.code === 'RESPONSE_TOO_LARGE') {
+        throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
+      }
+      if (error?.nonRetryable) throw error;
+      if (error?.proxyConnect && error.status >= 400 && error.status < 500) {
+        error.nonRetryable = true;
+        throw error;
+      }
+      last = redactProxyCredentials(error?.message || error);
+      everyExitRefused = false;
+      continue;
+    }
+    if (result.ok) {
+      if (result.buffer.length > maxBytes) {
+        throw Object.assign(new Error('RESPONSE_TOO_LARGE'), { nonRetryable: true });
+      }
+      return result.buffer.toString('utf8');
+    }
+    last = `HTTP ${result.status}`;
+    if (result.status !== 403) {
+      // httpRetryError carries nonRetryable and Retry-After for the seeder's withRetry.
+      const error = httpRetryError(result, { remainingBudgetMs: 2_000 });
+      error.message = `direct HTTP ${directStatus}; proxy ${last}`;
+      throw error;
+    }
+  }
+  // Only when every exit refused is the failure permanent: an immediate retry restarts
+  // at exit 0 and meets the same refusals. Any dropped tunnel may recover, so stays retryable.
+  throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), {
+    status: directStatus,
+    nonRetryable: everyExitRefused,
+  });
+}
+
 export async function fetchApprovedAtom(url, {
   allowedHosts = [NRCAN_ATOM_HOST],
   maxBytes = MAX_NRCAN_ATOM_BYTES,
   fetchFn = globalThis.fetch,
+  proxyAuth = '',
+  proxyFetchFn = defaultNrcanProxyFetch,
   cache,
 } = {}) {
   const parsed = new URL(url);
   const allowed = new Set((allowedHosts || []).map((host) => String(host).toLowerCase()));
   if (parsed.protocol !== 'https:' || !allowed.has(parsed.hostname.toLowerCase())) {
-    throw new Error('UNTRUSTED_SOURCE_HOST');
+    throw Object.assign(new Error('UNTRUSTED_SOURCE_HOST'), { nonRetryable: true });
   }
   const cacheKey = nrcanAtomCacheKey(parsed.toString());
   if (cache?.has(cacheKey)) return cache.get(cacheKey);
 
-  const response = await fetchFn(parsed.toString(), {
-    headers: {
-      Accept: 'application/atom+xml, application/xml, text/xml, */*',
-      'User-Agent': CHROME_UA,
-    },
-    redirect: 'error',
-    signal: AbortSignal.timeout(15_000),
+  const { response, xml } = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'direct' }, async observe => {
+    const result = await fetchFn(parsed.toString(), {
+      headers: {
+        Accept: NRCAN_ACCEPT,
+        'User-Agent': CHROME_UA,
+      },
+      redirect: 'error',
+      signal: AbortSignal.timeout(15_000),
+    });
+    observe(result);
+    return { response: result, xml: result.ok ? await readBoundedText(result, maxBytes) : null };
   });
-  if (!response.ok) throw Object.assign(new Error(`HTTP_${response.status}`), { status: response.status });
-  const xml = await readBoundedText(response, maxBytes);
+  if (response.status === 403 && proxyAuth) {
+    await response.body?.cancel?.();
+    const xml = await fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, maxBytes });
+    cache?.set(cacheKey, xml);
+    return xml;
+  }
+  if (!response.ok) {
+    await response.body?.cancel?.();
+    throw httpRetryError(response, { remainingBudgetMs: 2_000 });
+  }
   cache?.set(cacheKey, xml);
   return xml;
 }
 
 export async function fetchNrcanAtom({
   fetchFn = globalThis.fetch,
+  proxyAuth,
+  proxyFetchFn,
   cache,
   url = NRCAN_ATOM_URL,
 } = {}) {
@@ -236,6 +328,8 @@ export async function fetchNrcanAtom({
     allowedHosts: [NRCAN_ATOM_HOST],
     maxBytes: MAX_NRCAN_ATOM_BYTES,
     fetchFn,
+    proxyAuth,
+    proxyFetchFn,
     cache,
   });
   const parsed = parseNrcanAtom(xml);
@@ -249,7 +343,7 @@ export async function fetchNrcanAtom({
 
 export function parseUsgsGeojson(geojson) {
   if (!geojson || typeof geojson !== 'object' || !Array.isArray(geojson.features)) {
-    throw new Error('SEED_ERROR');
+    throw Object.assign(new Error('SEED_ERROR'), { nonRetryable: true });
   }
   const earthquakes = [];
   let newestAt = null;
@@ -388,52 +482,81 @@ export function mergeEarthquakeFeeds(usgsEvents = [], nrcanEvents = [], nowMs = 
   ];
 }
 
-export async function fetchMergedEarthquakes({ fetchUsgs, fetchNrcan, nowMs = Date.now() }) {
-  const [usgsResult, nrcanResult] = await Promise.allSettled([
-    fetchUsgs(),
-    fetchNrcan(),
-  ]);
-  const usgsOk = usgsResult.status === 'fulfilled';
-  const nrcanOk = nrcanResult.status === 'fulfilled';
-  if (!usgsOk && !nrcanOk) {
-    const usgsErr = usgsResult.reason?.message || usgsResult.reason;
-    const nrcanErr = nrcanResult.reason?.message || nrcanResult.reason;
-    throw new Error(`All earthquake upstreams failed (usgs: ${usgsErr}; nrcan: ${nrcanErr})`);
-  }
-  if (!usgsOk) console.warn(`[earthquakes] USGS failed: ${usgsResult.reason?.message || usgsResult.reason}`);
-  if (!nrcanOk) console.warn(`[earthquakes] NRCan failed: ${nrcanResult.reason?.message || nrcanResult.reason}`);
+function usableProvider(snapshot, source, nowMs) {
+  return snapshot && Number.isSafeInteger(snapshot.fetchedAt)
+    && snapshot.fetchedAt > 0 && snapshot.fetchedAt <= nowMs
+    && nowMs - snapshot.fetchedAt < PROVIDER_MAX_AGE_MS
+    && Number.isSafeInteger(snapshot.newestAt) && snapshot.newestAt > 0
+    && snapshot.newestAt <= nowMs + CLOCK_SKEW_MS
+    && nowMs - snapshot.newestAt <= EARTHQUAKES_MAX_CONTENT_AGE_MIN * 60_000
+    && Array.isArray(snapshot.earthquakes)
+    && snapshot.earthquakes.every(eq => eq?.source === source && typeof eq.id === 'string'
+      && eq.id.length > 0 && Number.isFinite(eq.magnitude) && Number.isFinite(eq.occurredAt)
+      && Number.isFinite(eq.location?.latitude) && Number.isFinite(eq.location?.longitude));
+}
 
-  const usgsEvents = usgsOk ? (usgsResult.value.earthquakes || []) : [];
-  const nrcanEvents = nrcanOk ? (nrcanResult.value.earthquakes || []) : [];
-  // A failed upstream must be REPORTED, not merely omitted. earthquakesContentMeta
-  // takes min() over the upstreams that answered, which catches a FROZEN NRCan —
-  // its stale newestAt drags the minimum down — but not a FAILED one, whose null
-  // is filtered out and leaves USGS's fresh timestamp as the answer. An NRCan
-  // outage therefore published a fresh, healthy, USGS-only result with every
-  // Canadian event silently absent. Callers use _failedSources to degrade.
+export async function fetchMergedEarthquakes({ fetchUsgs, fetchNrcan, previousSources, nowMs = Date.now() }) {
+  const sources = ['usgs', 'nrcan'];
+  const results = await Promise.allSettled([fetchUsgs, fetchNrcan].map(fetchSource => withRetry(async () => {
+    try { return await fetchSource(); }
+    catch (error) {
+      if (error instanceof SyntaxError) error.nonRetryable = true;
+      throw error;
+    }
+  }, 1, 500)));
+  const snapshots = {};
+  const available = {};
   const failedSources = [];
-  if (!usgsOk) failedSources.push('usgs');
-  if (!nrcanOk) failedSources.push('nrcan');
+  const failureDetails = [];
+  for (const [index, source] of sources.entries()) {
+    const result = results[index];
+    if (result.status === 'fulfilled') {
+      snapshots[source] = { ...result.value, fetchedAt: nowMs, consecutiveFailures: 0, firstFailureAt: null };
+      available[source] = snapshots[source];
+      continue;
+    }
+    const previous = previousSources?.[source];
+    const usable = usableProvider(previous, source, nowMs);
+    const priorCount = previous?.consecutiveFailures;
+    const knownStreak = Number.isInteger(priorCount) && priorCount >= 0 && priorCount <= 100;
+    const firstFailureAt = knownStreak && priorCount > 0
+      && Number.isSafeInteger(previous.firstFailureAt) && previous.firstFailureAt > 0
+      && (previous.fetchedAt === undefined || previous.firstFailureAt >= previous.fetchedAt)
+      && previous.firstFailureAt <= nowMs ? previous.firstFailureAt : nowMs;
+    // Unknown predecessors, unusable coverage, and permanent failures earn no grace.
+    const nextCount = knownStreak ? Math.min(priorCount + 1, 100) : 2;
+    const consecutiveFailures = usable && !result.reason?.nonRetryable ? nextCount : Math.max(2, nextCount);
+    snapshots[source] = { ...(usable ? previous : {}), consecutiveFailures, firstFailureAt };
+    if (usable) available[source] = snapshots[source];
+    failedSources.push(source);
+    const cause = result.reason?.cause?.code || result.reason?.cause?.message;
+    failureDetails.push(`${source}: ${result.reason?.message || result.reason}${cause ? ` (${cause})` : ''}`);
+  }
+  const failureDetail = failureDetails.join('; ');
+  if (failureDetail) console.warn(`[earthquakes] upstream failure: ${failureDetail}`);
+  if (!available.usgs && !available.nrcan) {
+    // Per-provider retries are already exhausted; runSeed must not multiply them.
+    throw Object.assign(new Error(`All earthquake upstreams failed (${failureDetail})`), { nonRetryable: true });
+  }
   return {
-    earthquakes: mergeEarthquakeFeeds(usgsEvents, nrcanEvents, nowMs),
+    earthquakes: mergeEarthquakeFeeds(available.usgs?.earthquakes, available.nrcan?.earthquakes, nowMs),
+    _providerSnapshots: snapshots,
     _failedSources: failedSources,
-    _failureDetail: failedSources.length
-      ? [
-        usgsOk ? null : `usgs: ${usgsResult.reason?.message || usgsResult.reason}`,
-        nrcanOk ? null : `nrcan: ${nrcanResult.reason?.message || nrcanResult.reason}`,
-      ].filter(Boolean).join('; ')
-      : '',
-    _usgsNewestAt: usgsOk ? (usgsResult.value.newestAt ?? null) : null,
-    _usgsOldestAt: usgsOk ? (usgsResult.value.oldestAt ?? null) : null,
-    _nrcanNewestAt: nrcanOk ? (nrcanResult.value.newestAt ?? null) : null,
-    _nrcanOldestAt: nrcanOk ? (nrcanResult.value.oldestAt ?? null) : null,
+    _failureDetail: failureDetail,
+    _lastSourceSuccessAt: sources.every(source => usableProvider(available[source], source, nowMs))
+      ? Math.min(...sources.map(source => available[source].fetchedAt)) : null,
+    _sourceAttemptAt: nowMs,
+    _usgsNewestAt: available.usgs?.newestAt ?? null,
+    _usgsOldestAt: available.usgs?.oldestAt ?? null,
+    _nrcanNewestAt: available.nrcan?.newestAt ?? null,
+    _nrcanOldestAt: available.nrcan?.oldestAt ?? null,
   };
 }
 
 /**
- * Content-age is min() of successful upstream newest timestamps so USGS
- * freshness cannot hide an NRCan freeze. Failed upstreams are omitted —
- * never substituted with Date.now().
+ * Content-age is min() of live or retained provider timestamps so USGS
+ * freshness cannot hide an NRCan freeze. Missing coverage is reported separately;
+ * a retained provider keeps its original clock, never Date.now().
  */
 export function earthquakesContentMeta(data, nowMs = Date.now()) {
   const newestParts = [];
@@ -482,24 +605,10 @@ export function earthquakesPublishTransform(data) {
 }
 
 /**
- * Publishing a single-upstream result is right — one feed beats none — but it
- * must not read OK.
- *
- * earthquakesContentMeta above takes min() over the upstreams that ANSWERED.
- * That catches a FROZEN NRCan, whose stale newestAt drags the minimum down, but
- * not a FAILED one: its null is filtered out and USGS's fresh timestamp becomes
- * the answer. An NRCan outage therefore passed the staleness gate AND the
- * content-age gate while every Canadian event was missing — indistinguishable
- * from a quiet week in Canada.
- *
- * Lives here rather than in the seeder for two reasons: it is pure, and
- * importing seed-earthquakes.mjs executes runSeed() at module scope, so a test
- * could not reach it there.
- *
- * Must be wired as runSeed's `afterPublish`. That is the only path into
- * seed-meta — runSeed writes the metadata itself and merges only
- * `freshnessMetaPatch`. Returning these fields from the fetch function is inert:
- * publishTransform strips them and nothing reads them.
+ * Preserve the source diagnosis even when retained coverage earns bounded pending.
+ * Without complete coverage, content-age alone cannot detect a missing provider.
+ * Must be wired to runSeed's afterPublish: publishTransform strips diagnostics,
+ * and only freshnessMetaPatch reaches the health reader.
  */
 export function earthquakesAfterPublish(data) {
   const failed = Array.isArray(data?._failedSources) ? data._failedSources : [];
@@ -508,10 +617,16 @@ export function earthquakesAfterPublish(data) {
     `[earthquakes] DEGRADED — upstream(s) failed: ${data?._failureDetail || failed.join(', ')}`,
   );
   return {
+    completionState: 'DEGRADED',
     freshnessMetaPatch: {
       sourceState: 'degraded',
       errorCode: 'EARTHQUAKE_UPSTREAM_INCOMPLETE',
       skipReason: `upstream-failed:${failed.join('+')}`,
+      lastSourceSuccessAt: data._lastSourceSuccessAt ?? null,
+      lastSourceAttemptAt: data._sourceAttemptAt,
+      firstSourceFailureAt: Math.min(...failed.map(source => data._providerSnapshots?.[source]?.firstFailureAt ?? Infinity)),
+      consecutiveSourceFailures: Math.max(...failed.map(source => data._providerSnapshots?.[source]?.consecutiveFailures ?? 2)),
+      lastSourceFailureCode: 'EARTHQUAKE_UPSTREAM_INCOMPLETE',
     },
   };
 }

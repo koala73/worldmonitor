@@ -1,11 +1,10 @@
 # World Monitor
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+[English](README.md) | [Русский](README.ru.md) | [简体中文](README.zh-CN.md)
 
 **リアルタイム・グローバルインテリジェンスダッシュボード** — AI によるニュース集約、地政学モニタリング、インフラ追跡を統合された状況認識インターフェースで提供します。
 
 [![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/re63kWKxaz)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Last commit](https://img.shields.io/github/last-commit/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/commits/main)
@@ -52,7 +51,7 @@
 - **厳選ニュースフィード** — 複数カテゴリにわたり、AI が要約してブリーフを生成
 - **デュアルマップエンジン** — 3D グローブ (globe.gl) と WebGL フラットマップ (deck.gl)、共有マップレイヤーカタログ
 - **クロスストリーム相関分析** — 軍事・経済・災害・エスカレーションのシグナル収束を検出
-- **国家不安定指数 (CII)** — Tier-1 レジストリを対象に、サーバー側で確定する CII v8 ストレススコアリング
+- **国家不安定指数 (CII)** — Tier-1 レジストリを対象に、サーバー側で確定する CII v14 ストレススコアリング
 - **金融レーダー** — 証券取引所、コモディティ、暗号資産、7 シグナルのマーケットコンポジット
 - **ローカル AI** — Ollama ですべて実行可能、API キー不要
 - **単一コードベースからのサイトバリアント** (world、tech、finance、commodity、happy、energy)
@@ -109,7 +108,7 @@ npm run dev:energy     # energy.worldmonitor.app
 |----------|-------------|
 | **フロントエンド** | Vanilla TypeScript、Vite、globe.gl + Three.js、deck.gl + MapLibre GL |
 | **デスクトップ** | Tauri 2 (Rust) + Node.js サイドカー |
-| **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js (ブラウザ側) |
+| **AI/ML** | Ollama / OpenRouter、Transformers.js (ブラウザ側) |
 | **API コントラクト** | Protocol Buffers、sebuf HTTP アノテーション |
 | **デプロイ** | Vercel Edge Functions、Railway リレー、Tauri、PWA |
 | **キャッシュ** | Redis (Upstash)、3 層キャッシュ、CDN、Service Worker |
@@ -129,6 +128,7 @@ World Monitor はブラウザだけでなく、エージェントやスクリプ
   ```sh
   npx worldmonitor tools          # その場で実行 — すべての MCP ツールを一覧表示 (キー不要)
   npm install -g worldmonitor     # または `worldmonitor` (エイリアス `wm`) コマンドをインストール
+  brew install worldmonitor       # または Homebrew でインストール
   worldmonitor risk IR --api-key wm_xxx
   ```
 
@@ -141,6 +141,12 @@ World Monitor はブラウザだけでなく、エージェントやスクリプ
 ## フライトデータ
 
 フライトデータは、最先端の ADS-B フライトデータソリューションである [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) のご厚意により提供されています。
+
+---
+
+## サポート
+
+World Monitor の Web アプリと API は [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 上で稼働しています。プロジェクトへの手厚いご支援に、Vercel に感謝いたします。
 
 ---
 

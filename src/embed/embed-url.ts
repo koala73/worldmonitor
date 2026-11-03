@@ -2,9 +2,15 @@ import type { MapLayers } from '@/types';
 import {
   DEFAULT_EMBED_PANEL_ID,
   parseEmbedPanelId,
+  type EmbedLayerId,
   type EmbedPanelId,
 } from '../../shared/embed-panels';
 
+export type { EmbedLayerId };
+
+// Browser-side mapping for the shared `EMBED_LAYER_IDS` allowlist. An id
+// present there but missing here would silently render nothing; pinned by
+// tests/embed-url.test.mts.
 export const EMBEDDABLE_LAYERS = [
   { id: 'conflicts', mapLayer: 'conflicts', label: 'Conflicts' },
   { id: 'earthquakes', mapLayer: 'natural', label: 'Earthquakes' },
@@ -22,7 +28,6 @@ export const EMBEDDABLE_LAYERS = [
   { id: 'gulfInvestments', mapLayer: 'gulfInvestments', label: 'GCC Investments' },
 ] as const;
 
-export type EmbedLayerId = typeof EMBEDDABLE_LAYERS[number]['id'];
 export type EmbedTheme = 'dark' | 'light';
 export type EmbedVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'happy' | 'energy';
 
@@ -283,17 +288,59 @@ export function buildEmbedPanelUrl(
   return url.toString();
 }
 
+/** What `data-key` reads when the partner still has to paste their own. */
+export const EMBED_KEY_PLACEHOLDER = 'YOUR_WME_EMBED_KEY';
+
+/**
+ * The `<script>` loader form of an embed.
+ *
+ * `layers`/`center`/`zoom`/`variant` ride as `data-*` attributes that
+ * `public/embed.js` forwards to the iframe URL. They are optional because a
+ * paid-only panel has no map view; for the map they are what makes the keyed
+ * snippet show the SAME view as the free iframe snippet rather than the
+ * three-layer default.
+ *
+ * `key` defaults to a placeholder rather than being required: the plaintext of
+ * an embed key is shown exactly once at mint time and is not recoverable
+ * afterwards, so a snippet built later can only tell the partner where to
+ * paste it.
+ */
 export function buildEmbedLoaderSnippet(options: {
   src: string;
   panel: EmbedPanelId;
   theme?: EmbedTheme;
   height?: string;
+  key?: string;
+  layerIds?: readonly EmbedLayerId[];
+  center?: EmbedCenter | null;
+  zoom?: number;
+  variant?: EmbedVariant;
 }): string {
   const src = escapeAttribute(options.src);
   const panel = escapeAttribute(options.panel);
   const theme = escapeAttribute(options.theme ?? DEFAULT_EMBED_THEME);
   const height = sanitizePixelDimension(options.height ?? '420', 120, 1200);
-  return `<script src="${src}" data-panel="${panel}" data-key="YOUR_WM_API_KEY" data-theme="${theme}" data-height="${height}" async></script>`;
+  const key = escapeAttribute(options.key?.trim() || EMBED_KEY_PLACEHOLDER);
+
+  const view: string[] = [];
+  if (options.layerIds) {
+    view.push(`data-layers="${escapeAttribute([...new Set(options.layerIds)].join(','))}"`);
+  }
+  if (options.center) {
+    const center = normalizeCenter(options.center);
+    view.push(`data-center="${escapeAttribute(`${roundCoord(center.lat)},${roundCoord(center.lon)}`)}"`);
+  }
+  if (options.zoom !== undefined) {
+    const zoom = Number.isFinite(options.zoom) ? clamp(options.zoom, 1, 10) : DEFAULT_EMBED_ZOOM;
+    view.push(`data-zoom="${escapeAttribute(roundZoom(zoom))}"`);
+  }
+  if (options.variant) {
+    const variant = VALID_VARIANTS.has(options.variant) ? options.variant : DEFAULT_EMBED_VARIANT;
+    view.push(`data-variant="${escapeAttribute(variant)}"`);
+  }
+
+  const viewAttrs = view.length > 0 ? ` ${view.join(' ')}` : '';
+  return `<script src="${src}" data-panel="${panel}" data-key="${key}"${viewAttrs} data-theme="${theme}" data-height="${height}" async></script>`;
 }
 
 export function embedLayerIdsFromMapLayers(layers: MapLayers): EmbedLayerId[] {

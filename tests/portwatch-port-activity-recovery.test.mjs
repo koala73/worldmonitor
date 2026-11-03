@@ -5,6 +5,34 @@ import * as portwatchSeed from '../scripts/seed-portwatch-port-activity.mjs';
 
 const { orderColdFetchQueue } = portwatchSeed;
 const DAY = 86_400_000;
+// These rotation fixtures use epoch-relative cacheWrittenAt values, which are
+// far past MAX_CACHE_AGE_MS and therefore outside the expiry-priority tier.
+// Pin the clock so that stays a stated property of the test rather than an
+// accident of `now` defaulting to the wall clock: a fixture later given a
+// realistic 4-7-day-old cacheWrittenAt would silently start reordering, and
+// the failure would read as a rotation bug instead of a fixture one.
+const ROTATION_NOW = 60 * DAY;
+
+describe('PortWatch activity page validation', () => {
+  const row = { attributes: { portid: 'p1', date: '2026-09-09', portcalls_tanker: 1 } };
+  for (const [label, body] of [
+    ['missing features', {}],
+    ['null envelope', null],
+    ['invalid date', { features: [{ attributes: { ...row.attributes, date: 'bad' } }] }],
+    ['invalid metrics', { features: [{ attributes: { ...row.attributes, portcalls_tanker: 'bad' } }] }],
+    ['duplicate rows', { features: [row, row] }],
+    ['null row', { features: [null] }],
+  ]) {
+    it(`rejects ${label} instead of publishing partial totals`, async () => {
+      await assert.rejects(portwatchSeed.fetchCountryAccum('USA', {
+        anchorEpochMs: Date.parse('2026-09-09T00:00:00Z'), dateField: 'date',
+        fetchFn: async (url) => Response.json(new URL(url).searchParams.get('where').includes('<=')
+          ? { features: [] } : body),
+        proxyRetryFn: async () => assert.fail('invalid pages must not retry'),
+      }), /incomplete page/);
+    });
+  }
+});
 
 function cachedCountry(iso2, cacheWrittenAt = 0) {
   return {
@@ -285,7 +313,7 @@ describe('PortWatch cold-fetch recovery rotation', () => {
     const attempted = new Set();
 
     for (let run = 1; run <= 6; run += 1) {
-      const selected = orderColdFetchQueue(countries).slice(0, 30);
+      const selected = orderColdFetchQueue(countries, undefined, { now: ROTATION_NOW }).slice(0, 30);
       const attemptedAt = run * 1_000;
       for (const item of selected) {
         attempted.add(item.iso2);
@@ -305,7 +333,7 @@ describe('PortWatch cold-fetch recovery rotation', () => {
     const countries = Array.from({ length: 40 }, (_, index) =>
       cachedCountry(`C${String(index).padStart(2, '0')}`),
     );
-    const first = orderColdFetchQueue(countries).slice(0, 10);
+    const first = orderColdFetchQueue(countries, undefined, { now: ROTATION_NOW }).slice(0, 10);
     const firstIds = new Set(first.map((item) => item.iso2));
 
     for (const [index, item] of first.entries()) {
@@ -313,7 +341,7 @@ describe('PortWatch cold-fetch recovery rotation', () => {
       if (index >= 3) item.prevPayload.cacheWrittenAt = 1_000;
     }
 
-    const second = orderColdFetchQueue(countries).slice(0, 10);
+    const second = orderColdFetchQueue(countries, undefined, { now: ROTATION_NOW }).slice(0, 10);
     assert.ok(
       second.every((item) => !firstIds.has(item.iso2)),
       'failed attempts must rotate behind countries that have not received a slot',
@@ -443,7 +471,9 @@ describe('PortWatch last-good and gap reporting', () => {
     assert.equal(result, 'recovered');
     assert.equal(attempts, 2);
     assert.equal(sleepCalls.length, 1);
-    assert.equal(sleepCalls[0], 2_000);
+    // #8501 raised the cooldown from 2s, which was one token retry against an
+    // ArcGIS rate-limit window measured in minutes.
+    assert.equal(sleepCalls[0], 8_000);
   });
 
   it('does not retry unrelated ArcGIS failures', async () => {
@@ -465,6 +495,44 @@ describe('PortWatch last-good and gap reporting', () => {
 
     assert.equal(attempts, 1);
     assert.equal(sleepCalls.length, 0);
+  });
+
+  it('retries one intermittent invalid_query failure on the direct country leg', async () => {
+    let attempts = 0;
+    const sleepCalls = [];
+    const portAccumMap = new Map([['p1', { tanker: 1 }]]);
+    const result = await portwatchSeed.fetchCountryActivityWithRecovery('PRI', {
+      deadlineAt: Date.now() + 90_000,
+      anchorEpochMs: Date.parse('2026-11-01T00:00:00Z'),
+      dateField: 'date',
+      preflightObservation: { status: 'observed', maxDate: '2026-10-30' },
+      fetchAccumFn: async (_iso3, { forceProxy } = {}) => {
+        assert.equal(forceProxy, false);
+        attempts += 1;
+        if (attempts === 1) throw new Error('ArcGIS error: Cannot perform query. Invalid query parameters.');
+        return { portAccumMap, currentWindowRowCount: 3 };
+      },
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+    });
+    assert.equal(result.portAccumMap, portAccumMap);
+    assert.equal(attempts, 2);
+    assert.deepEqual(sleepCalls, [5_000]);
+  });
+
+  it('stops after one invalid_query retry per country', async () => {
+    let attempts = 0;
+    await assert.rejects(portwatchSeed.fetchCountryActivityWithRecovery('PRI', {
+      deadlineAt: Date.now() + 90_000,
+      anchorEpochMs: Date.parse('2026-11-01T00:00:00Z'),
+      dateField: 'date',
+      preflightObservation: { status: 'observed', maxDate: '2026-10-30' },
+      fetchAccumFn: async () => {
+        attempts += 1;
+        throw new Error('ArcGIS error: Cannot perform query. Invalid query parameters.');
+      },
+      sleepFn: async () => {},
+    }), /Invalid query parameters/);
+    assert.equal(attempts, 2);
   });
 
   it('bounds repeated rate-limit failures to one retry', async () => {
@@ -588,7 +656,7 @@ describe('PortWatch atomic publication', () => {
     );
   });
 
-  it('preserves the last-good canonical and seed-meta below the publish floor', async () => {
+  it('writes failure metadata alongside recovery state without advancing canonical', async () => {
     const publish = portwatchSeed.publishPortActivitySnapshot;
     assert.equal(typeof publish, 'function');
     const calls = [];
@@ -604,6 +672,9 @@ describe('PortWatch atomic publication', () => {
     input.countryData = new Map();
     input.countries = [];
     input.canonicalAdvances = false;
+    input.metaPayload = portwatchSeed.buildPortActivityFailureMeta({ fetchedAt: 123, recordCount: 174 }, {
+      coverage: input.metaPayload.coverage,
+    });
 
     await publish(input, {
       fetchFn,
@@ -611,15 +682,17 @@ describe('PortWatch atomic publication', () => {
     });
 
     assert.ok(
-      calls[0].every((command) =>
-        command[1] !== 'supply_chain:portwatch-ports:v1:_countries'
-        && command[1] !== 'seed-meta:supply_chain:portwatch-ports'),
+      calls[0].every((command) => command[1] !== 'supply_chain:portwatch-ports:v1:_countries'),
     );
     assert.deepEqual(
       calls[0].map((command) => command[1]),
-      ['supply_chain:portwatch-ports:v1:CY'],
+      ['supply_chain:portwatch-ports:v1:CY', 'seed-meta:supply_chain:portwatch-ports'],
       'scheduler-only failure state must persist even with zero publishable countries',
     );
+    const meta = JSON.parse(calls[0][1][2]);
+    assert.equal(meta.sourceState, 'error');
+    assert.equal(meta.fetchedAt, 123);
+    assert.equal(meta.recordCount, 174);
   });
 
   it('fails loudly when any transaction command reports an error', async () => {
@@ -642,5 +715,14 @@ describe('PortWatch atomic publication', () => {
       }),
       /transaction: 1\/5 commands failed/,
     );
+  });
+
+  it('rejects a shortened transaction acknowledgement', async () => {
+    await assert.rejects(portwatchSeed.publishPortActivitySnapshot(publicationInput(), {
+      fetchFn: async (_url, init) => Response.json(
+        JSON.parse(init.body).slice(1).map(() => ({ result: 'OK' })),
+      ),
+      credentials: { url: 'https://redis.example.test', token: 'token' },
+    }), /Redis transaction failed: invalid response/);
   });
 });

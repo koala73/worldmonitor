@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
 
 // Request budget for the news load on a default anonymous dashboard load (#5376).
 //
@@ -23,46 +24,38 @@ import { expect, test, type Page } from '@playwright/test';
 //     App.ts's bootstrap fan-out). Every trigger re-fetched the digest even
 //     though nothing about the news load is viewport-gated.
 //
-// This spec is the budget guard for both: one digest request, zero rss-proxy
-// requests, and none of the `Custom category …` warnings.
+// This spec is the budget guard for both: one digest request and zero rss-proxy
+// requests.
 //
-// Note on the "zero rss-proxy" assertion: preset categories missing from the
-// digest do NOT fall back to per-feed fetching on web — that path is gated off
-// by the `newsPerFeedFallback` runtime flag (default false). Custom categories
-// bypassed that gate entirely, which is why the trio showed up as raw proxy
-// traffic. So a non-zero count here means a category is being resolved that has
-// no business being fetched client-side.
+// Note on the "zero rss-proxy" assertion: web panels read only digests. The one
+// direct feed fetch left, the outage fallback, is desktop-only (unified news
+// catalog plan, KTD9), so ANY rss-proxy request from a web page is a regression.
 
 const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
 const RSS_PROXY_GLOB = '**/api/rss-proxy*';
 
-// Time to let a SECOND news load land if one is coming. Production saw the two
-// digest requests 1.2 s apart; the local dev server is faster, so this is a wide
-// margin over the interval being guarded.
-const SECOND_LOAD_SETTLE_MS = 8_000;
+// A SECOND news load comes from one of two places. The bootstrap fan-out runs its
+// own loadAllData(), and App sets `data-wm-initial-data-ready` only after that
+// fan-out resolves (both the normal and the slow-tier-timeout path), so waiting on
+// the flag covers it at any runner speed: with the #5376 gate removed, the second
+// digest fired before the flag in every test here. After the flag, the hydration
+// triggers (an immediate primeVisiblePanelData(), rAF / requestIdleCallback with a
+// 300 ms timeout, IntersectionObserver) get this quiet window. Production saw the
+// two digest requests 1.2 s apart; that interval sits inside the fan-out.
+const POST_FANOUT_QUIET_MS = 1_500;
 
-// src/app/data-loader.ts `perFeedFallbackCategoryFeedLimit`. Every per-feed
-// fallback is capped at this many feeds per category, custom categories included.
-//
-// The cap bounds a SINGLE LOAD, and since #5873 that is the whole of what it
-// bounds: a custom category now rotates its window by the cap on each refresh
-// cycle (fixed prefixes made feeds 4..N unreachable forever), so N loads reach
-// up to N × cap distinct feeds over time. This spec seeds a fresh anonymous
-// profile, so the persisted rotation cycle starts at 0 and the window is the
-// leading prefix — exactly the pre-rotation feed set.
-//
-// That makes the assertion below transitively a single-load guard too: a second
-// news load in one page load would advance the rotation and fetch 6 distinct
-// feeds instead of 3. It fails alongside the explicit `digestUrls.length === 1`
-// assertion rather than instead of it.
-const PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT = 3;
+async function settleAfterInitialFanout(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => document.documentElement.dataset.wmInitialDataReady === 'true',
+  );
+  await page.waitForTimeout(POST_FANOUT_QUIET_MS);
+}
 
 // A Tech news panel customized into a `full` session: absent from FULL_FEEDS, so
-// it resolves as a CUSTOM category and direct fetch is its only path. Priority 1
-// keeps it inside the 40-panel free-tier cap (FULL_PANELS enables 39 priority-1
-// panels), and its 10 TECH_FEEDS entries are well past the per-category cap.
+// it resolves as a CUSTOM category and reads the tech digest. Priority 1 keeps
+// it inside the 40-panel free-tier cap (FULL_PANELS enables 39 priority-1
+// panels).
 const CUSTOM_CATEGORY_KEY = 'startups';
-const CUSTOM_CATEGORY_FEED_COUNT = 10;
 
 // A full-variant preset news panel that sits below the fold, so it mounts after the
 // news load rather than during it. The digest stub carries no bucket for it.
@@ -110,7 +103,9 @@ async function fireHydrationTrigger(page: Page): Promise<void> {
       w.__wmResizeCount = (w.__wmResizeCount ?? 0) + 1;
     });
   });
-  await page.setViewportSize({ width: 1180, height: 800 });
+  // Alternate sizes so a second call still changes the viewport and fires.
+  const width = page.viewportSize()?.width === 1180 ? 1220 : 1180;
+  await page.setViewportSize({ width, height: 800 });
   await page.waitForFunction(
     () => ((window as unknown as { __wmResizeCount?: number }).__wmResizeCount ?? 0) > 0,
   );
@@ -214,22 +209,33 @@ const HEALTHY_DIGEST_CATEGORIES = ['politics', 'intel'];
 const HEALTHY_POLITICS_HEADLINE = 'Healthy last-good politics headline';
 const PARTIAL_POLITICS_HEADLINE = 'Fresh partial politics headline';
 
-function digestBody(categoryKeys: readonly string[], politicsHeadline?: string): string {
+function digestBody(
+  categoryKeys: readonly string[],
+  politicsHeadline?: string,
+  headlines: Readonly<Record<string, { source: string; title: string }>> = {},
+): string {
+  const headlineFor = (key: string): { source: string; title: string } | undefined =>
+    headlines[key] ?? (key === 'politics' && politicsHeadline
+      ? { source: 'BBC World', title: politicsHeadline }
+      : undefined);
   return JSON.stringify({
-    categories: Object.fromEntries(categoryKeys.map((key) => [
-      key,
-      {
-        items: key === 'politics' && politicsHeadline
-          ? [{
-              source: 'BBC World',
-              title: politicsHeadline,
-              link: `https://example.com/${encodeURIComponent(politicsHeadline)}`,
-              publishedAt: Date.now(),
-              isAlert: false,
-            }]
-          : [],
-      },
-    ])),
+    categories: Object.fromEntries(categoryKeys.map((key) => {
+      const headline = headlineFor(key);
+      return [
+        key,
+        {
+          items: headline
+            ? [{
+                source: headline.source,
+                title: headline.title,
+                link: `https://example.com/${encodeURIComponent(headline.title)}`,
+                publishedAt: Date.now(),
+                isAlert: false,
+              }]
+            : [],
+        },
+      ];
+    })),
     feedStatuses: {},
     generatedAt: new Date(0).toISOString(),
   });
@@ -252,6 +258,16 @@ async function installNewsRequestAccounting(
     healthyPoliticsHeadline?: string;
     degradedPoliticsHeadline?: string;
     failDigestLanguages?: readonly string[];
+    /**
+     * Bodies for OTHER editions' digests, keyed by `variant`. A cross-edition
+     * panel reads the digest of the edition that places its category; an
+     * edition absent here gets the healthy full-edition body, which carries
+     * none of that edition's categories.
+     */
+    editionDigests?: Readonly<Record<string, {
+      categories: readonly string[];
+      headlines?: Readonly<Record<string, { source: string; title: string }>>;
+    }>>;
   } = {},
 ): Promise<NewsRequestLog> {
   const log: NewsRequestLog = { digestUrls: [], rssProxyUrls: [] };
@@ -267,7 +283,17 @@ async function installNewsRequestAccounting(
   // bearing bucket would exercise rendering, not the request budget.
   await page.route(DIGEST_GLOB, async (route) => {
     log.digestUrls.push(route.request().url());
-    const requestLanguage = new URL(route.request().url()).searchParams.get('lang') ?? 'en';
+    const requestUrl = new URL(route.request().url());
+    const requestLanguage = requestUrl.searchParams.get('lang') ?? 'en';
+    const edition = options.editionDigests?.[requestUrl.searchParams.get('variant') ?? 'full'];
+    if (edition) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: digestBody(edition.categories, undefined, edition.headlines),
+      });
+      return;
+    }
     if (options.failDigestLanguages?.includes(requestLanguage)) {
       await route.fulfill({ status: 503, contentType: 'text/plain', body: 'digest unavailable' });
       return;
@@ -315,36 +341,34 @@ async function installNewsRequestAccounting(
 
 test.describe('dashboard news request budget (#5376)', () => {
   test('a default anonymous load issues one digest and zero rss-proxy requests', async ({ page }) => {
-    const customCategoryWarnings: string[] = [];
-    page.on('console', (message) => {
-      const text = message.text();
-      if (text.includes('[News] Custom category')) customCategoryWarnings.push(text);
-    });
-
     await seedFreshAnonymousFullVariant(page);
     const log = await installNewsRequestAccounting(page);
 
-    const firstDigest = page.waitForRequest(DIGEST_GLOB);
-    await page.goto('/');
-    await page.waitForFunction(
-      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    // Capture terminal signals only during boot, including its failure path.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
     );
-    await firstDigest;
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
 
     // The news load is not viewport-gated, so nothing needs scrolling to
     // provoke the second load — the bootstrap fan-out and the hydration
     // trigger both fire on their own during this window.
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.rssProxyUrls,
       'no category should reach /api/rss-proxy on a default load — the digest covers the preset, ' +
         'and a key owned by a non-news panel must never resolve as a news category (#5376)',
-    ).toEqual([]);
-
-    expect(
-      customCategoryWarnings,
-      'no default-visible category may be treated as a custom (digest-exempt) category',
     ).toEqual([]);
 
     expect(
@@ -355,78 +379,94 @@ test.describe('dashboard news request budget (#5376)', () => {
   });
 
   // The other half of the fix: a category that legitimately STAYS custom — a
-  // cross-variant panel the user enabled on purpose — must still load (that is
-  // #3687, the bug panel-driven resolution was introduced to fix) and must be
-  // capped like every other per-feed fallback. Custom categories used to be
-  // exempt from the cap on the theory that there were only ever a handful.
-  test('a deliberately customized category still loads, capped at the per-category feed limit', async ({ page }) => {
-    const capWarnings: string[] = [];
-    page.on('console', (message) => {
-      const text = message.text();
-      if (text.includes('[News] Custom category')) capWarnings.push(text);
-    });
-
+  // cross-variant panel the user enabled on purpose — reads the digest of the
+  // edition that places it (#3687 made resolution panel-driven). When that
+  // digest does not carry the category, web shows nothing rather than fetching
+  // feeds directly.
+  test('a cross-edition panel whose edition digest lacks its category makes zero direct feed requests', async ({ page }) => {
     await seedFreshAnonymousFullVariant(page, {
       [CUSTOM_CATEGORY_KEY]: { name: 'Startups & VC', enabled: true, priority: 1 },
     });
     const log = await installNewsRequestAccounting(page);
 
-    const firstDigest = page.waitForRequest(DIGEST_GLOB);
-    await page.goto('/');
-    await page.waitForFunction(
-      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    // Capture terminal signals only during boot, including its failure path.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
     );
-    await firstDigest;
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
-
-    const feeds = distinctProxiedFeeds(log.rssProxyUrls);
-
-    expect(
-      feeds.length,
-      `an enabled cross-variant news panel must still have its feeds fetched — a custom ` +
-        `category is never in the per-variant digest, so direct fetch is its only path (#3687)`,
-    ).toBeGreaterThan(0);
-
-    // Exactly the cap, not merely under it. `toBeLessThanOrEqual` alone would pass
-    // with the uncapped code restored the moment the category's feed list shrank to
-    // the cap — the assertion has to have a floor as well as a ceiling.
-    expect(
-      feeds.length,
-      `a custom category must fetch exactly perFeedFallbackCategoryFeedLimit ` +
-        `(${PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT}) feeds; "${CUSTOM_CATEGORY_KEY}" fetched ` +
-        `${feeds.length}: ${feeds.join(', ')}`,
-    ).toBe(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
-
-    // ...and the category must actually HAVE more sources than the cap, or the
-    // assertion above proves nothing. The warning carries the real ratio.
-    const ratio = capWarnings.join(' ').match(/fetching (\d+)\/(\d+) feeds directly/);
-    expect(ratio, `expected a "[News] Custom category" warning naming the N/M feed ratio, got: ${capWarnings.join(' | ')}`).not.toBeNull();
-    expect(
-      Number(ratio?.[2]),
-      `"${CUSTOM_CATEGORY_KEY}" must declare more than ${PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT} sources ` +
-        `for the cap assertion to mean anything (expected ~${CUSTOM_CATEGORY_FEED_COUNT})`,
-    ).toBeGreaterThan(PER_FEED_FALLBACK_CATEGORY_FEED_LIMIT);
-
-    // The window is ROTATING, not a fixed prefix (#5873) — and on a freshly
-    // seeded profile it must start at cycle 0, which is what makes the exact
-    // feed-set assertion above deterministic. A missing cycle in the warning
-    // means the rotation was never wired; a non-zero one means the persisted
-    // cycle leaked in from another test's profile and this spec is no longer
-    // measuring a first load.
-    const cycle = capWarnings.join(' ').match(/rotation cycle (\d+)/);
-    expect(
-      cycle,
-      `expected the "[News] Custom category" warning to name its rotation cycle, got: ${capWarnings.join(' | ')}`,
-    ).not.toBeNull();
-    expect(
-      Number(cycle?.[1]),
-      'a freshly seeded anonymous profile has no persisted rotation state, so the first load is cycle 0',
-    ).toBe(0);
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
+    await settleAfterInitialFanout(page);
 
     expect(
-      log.digestUrls.length,
-      'customizing a category must not add a second news load either',
+      distinctProxiedFeeds(log.rssProxyUrls),
+      'web panels read only digests; the outage fallback is desktop-only',
+    ).toEqual([]);
+
+    // The only extra request a cross-edition panel may add is ONE digest read
+    // for the edition that places its category (tech, for `startups`). A second
+    // full-edition digest would mean the whole news load re-ran.
+    const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
+    expect(
+      editions.filter((edition) => edition === 'full').length,
+      `customizing a category must not add a second news load either, got: ${log.digestUrls.join(', ')}`,
     ).toBe(1);
+    expect(
+      editions.filter((edition) => edition !== 'full'),
+      'a cross-edition panel reads exactly one digest of the edition that places its category',
+    ).toEqual(['tech']);
+  });
+
+  // The intended path since every category became digest-served: a
+  // cross-edition panel reads the digest of the edition that places it, and
+  // makes no direct feed requests at all.
+  test('a cross-edition panel is served by its edition digest with zero direct feed fetches', async ({ page }) => {
+    const headline = 'Cross-edition startups headline from the tech digest';
+    await seedFreshAnonymousFullVariant(page, {
+      [CUSTOM_CATEGORY_KEY]: { name: 'Startups & VC', enabled: true, priority: 1 },
+    });
+    const log = await installNewsRequestAccounting(page, {
+      editionDigests: {
+        tech: {
+          categories: [CUSTOM_CATEGORY_KEY],
+          headlines: { [CUSTOM_CATEGORY_KEY]: { source: 'TechCrunch Startups', title: headline } },
+        },
+      },
+    });
+
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget cross-edition boot',
+    );
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
+    await settleAfterInitialFanout(page);
+
+    const startupsPanel = await mountDeferredPanel(page, CUSTOM_CATEGORY_KEY);
+    await expect(
+      startupsPanel.getByText(headline).first(),
+      'the item the edition digest carries must render in the panel',
+    ).toBeAttached();
+    expect(distinctProxiedFeeds(log.rssProxyUrls), 'no source is fetched feed by feed').toEqual([]);
+    const editions = log.digestUrls.map((url) => new URL(url).searchParams.get('variant') ?? 'full');
+    expect(editions.filter((edition) => edition === 'full').length).toBe(1);
+    expect(editions.filter((edition) => edition !== 'full')).toEqual(['tech']);
   });
 
   // The other outage shape, and the one that actually happens: the digest answers
@@ -437,12 +477,28 @@ test.describe('dashboard news request budget (#5376)', () => {
     await seedFreshAnonymousFullVariant(page);
     const log = await installNewsRequestAccounting(page, { emptyDigestTimes: 1 });
 
-    const firstDigest = page.waitForRequest(DIGEST_GLOB);
-    await page.goto('/');
-    await page.waitForFunction(
-      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    // Capture terminal signals only during boot, including its failure path.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
     );
-    await firstDigest;
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
+    // Whether a boot fan-out trigger lands after the empty load settles is a
+    // race: when the first digest settles late, every fan-out trigger has
+    // already run and nothing else asks for news for the rest of the poll
+    // (6 of 8 local runs). Deliver one trigger after the fan-out so the
+    // assertion tests the hydration gate, not the boot timing.
+    await settleAfterInitialFanout(page);
+    await fireHydrationTrigger(page);
     await expect
       .poll(
         () => log.digestUrls.length,
@@ -488,12 +544,21 @@ test.describe('dashboard news request budget (#5376)', () => {
       healthyPoliticsHeadline: HEALTHY_POLITICS_HEADLINE,
     });
 
-    const firstDigest = page.waitForRequest(DIGEST_GLOB);
-    await page.goto('/');
-    await page.waitForFunction(
-      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    // Capture terminal signals only during boot, including its failure path.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
     );
-    await firstDigest;
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
 
     // Positive control: the healthy digest must actually reach the cache, or the
     // "still intact" assertion below would pass against an entry that was never
@@ -580,12 +645,21 @@ test.describe('dashboard news request budget (#5376)', () => {
       degradedPoliticsHeadline: PARTIAL_POLITICS_HEADLINE,
     });
 
-    const firstDigest = page.waitForRequest(DIGEST_GLOB);
-    await page.goto('/');
-    await page.waitForFunction(
-      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    // Capture terminal signals only during boot, including its failure path.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
     );
-    await firstDigest;
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
 
     await expect
       .poll(
@@ -598,7 +672,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.digestUrls.length,
@@ -647,7 +721,7 @@ test.describe('dashboard news request budget (#5376)', () => {
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await settleAfterInitialFanout(page);
 
     expect(
       log.digestUrls.some((url) => new URL(url).searchParams.get('lang') === 'fr'),
@@ -678,13 +752,22 @@ test.describe('dashboard news request budget (#5376)', () => {
     // to [] — exactly the shape a partial digest produces in production.
     await installNewsRequestAccounting(page);
 
-    const firstDigest = page.waitForRequest(DIGEST_GLOB);
-    await page.goto('/');
-    await page.waitForFunction(
-      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    // Capture terminal signals only during boot, including its failure path.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
     );
-    await firstDigest;
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
+    await settleAfterInitialFanout(page);
 
     const panel = page.locator(`[data-panel="${EMPTY_CATEGORY_PANEL}"]`);
     await panel.scrollIntoViewIfNeeded();
@@ -701,7 +784,7 @@ test.describe('dashboard news request budget (#5376)', () => {
   });
 
   // The gate must not turn a transient digest outage into a stuck-empty dashboard.
-  // When the digest is down, `newsPerFeedFallback` is off on web, so every preset
+  // When the digest is down, web has no outage fallback, so every preset
   // category renders empty and the load lands NOTHING. Recording the work-list for
   // that run would make the gate treat an empty dashboard as "already loaded" and
   // suppress every retry until RefreshScheduler's 20-minute tick — losing the
@@ -709,30 +792,54 @@ test.describe('dashboard news request budget (#5376)', () => {
   test('a news load that landed nothing recovers on the next trigger', async ({ page }) => {
     await seedFreshAnonymousFullVariant(page);
     const log = await installNewsRequestAccounting(page, { failDigestTimes: 1 });
+    // The log records a digest request when it is routed, before its response;
+    // count completions separately to know when the recovery load has its data.
+    let finishedDigests = 0;
+    page.on('requestfinished', (request) => {
+      if (request.url().includes('/api/news/v1/list-feed-digest')) finishedDigests += 1;
+    });
 
-    const firstDigest = page.waitForRequest(DIGEST_GLOB);
-    await page.goto('/');
-    await page.waitForFunction(
-      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    // Capture terminal signals only during boot, including its failure path.
+    const lossWatch = attachBrowserLossDiagnostics(
+      pageBrowserLossEvents(page),
+      'dashboard-news-request-budget boot',
     );
-    await firstDigest;
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    try {
+      const firstDigest = page.waitForRequest(DIGEST_GLOB);
+      await page.goto('/');
+      await page.waitForFunction(
+        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+      );
+      await firstDigest;
+    } finally {
+      lossWatch.dispose();
+    }
+    await settleAfterInitialFanout(page);
+    // As in the empty-200 test above: a boot fan-out trigger only sometimes
+    // lands after the failed load settles (1 of 8 local runs), so deliver one.
+    await fireHydrationTrigger(page);
 
     // Attempt 1 was served 503, so that load rendered every category empty. A
     // second attempt is the whole point: it is served 200 and the dashboard
     // recovers within the page load instead of waiting out the refresh interval.
-    expect(
-      log.digestUrls.length,
-      `a news load that landed nothing must stay retryable — the first digest was 503, ` +
-        `so a later trigger has to try again rather than be skipped as already-loaded ` +
-        `(attempts: ${log.digestUrls.length})`,
-    ).toBeGreaterThanOrEqual(2);
+    await expect
+      .poll(() => log.digestUrls.length, {
+        message:
+          'a news load that landed nothing must stay retryable — the first digest was 503, ' +
+          'so a later trigger has to try again rather than be skipped as already-loaded',
+        timeout: 10_000,
+      })
+      .toBeGreaterThanOrEqual(2);
 
     // ...and having recovered, it must settle: the successful load records the
     // work-list, so the gate stops the retries rather than looping every trigger.
+    // Let the recovery response arrive and its load finish first, so the next
+    // trigger probes the gate rather than coalescing into a load still running.
+    await expect.poll(() => finishedDigests, { timeout: 10_000 }).toBe(log.digestUrls.length);
+    await page.waitForTimeout(POST_FANOUT_QUIET_MS);
     const afterRecovery = log.digestUrls.length;
     await fireHydrationTrigger(page);
-    await page.waitForTimeout(3_000);
+    await page.waitForTimeout(POST_FANOUT_QUIET_MS);
     expect(
       log.digestUrls.length,
       `once a load has landed, further triggers must not re-fetch the digest ` +
@@ -742,6 +849,7 @@ test.describe('dashboard news request budget (#5376)', () => {
 });
 
 const STABLECOIN_GLOB = '**/api/market/v1/list-stablecoin-markets*';
+const SLOW_TIER_GATE_HOLD_MS = 4_000;
 const SCROLL_HYDRATION_PANEL_ORDER = [
   'live-news',
   'intel',
@@ -796,7 +904,7 @@ type DashboardScrollResult = {
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
 const INITIAL_FANOUT_COMPLETE_MARK = 'wm:data:initial-fanout-complete';
 
-async function seedScrollableDashboard(page: Page): Promise<void> {
+async function seedScrollableDashboard(page: Page, panelOrder = SCROLL_HYDRATION_PANEL_ORDER): Promise<void> {
   await seedFreshAnonymousFullVariant(page, {
     stablecoins: { name: 'Stablecoins', enabled: true, priority: 1 },
   });
@@ -806,7 +914,7 @@ async function seedScrollableDashboard(page: Page): Promise<void> {
     localStorage.setItem('worldmonitor-panel-prune-v1', 'done');
     localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
     localStorage.setItem('panel-order', JSON.stringify(panelOrder));
-  }, SCROLL_HYDRATION_PANEL_ORDER);
+  }, panelOrder);
 }
 
 async function installStablecoinContract(page: Page): Promise<string[]> {
@@ -990,11 +1098,16 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
   await page.route(/\/api\/bootstrap\?tier=slow(?:&|$)/, async (route) => {
     markRequested();
     await released;
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ data: {}, missing: [] }),
-    });
+    try {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: {}, missing: [] }),
+      });
+    } catch {
+      // The held slow-tier request can outlive the page. Fulfill then throws
+      // `Object with guid response@… was not bound in the connection`.
+    }
   });
   return {
     release,
@@ -1003,6 +1116,83 @@ async function installDelayedSlowBootstrap(page: Page): Promise<{
 }
 
 test.describe('dashboard container scroll hydration (#5876)', () => {
+  // Drop routes before Playwright tears the page down. An in-flight
+  // `route.fulfill` against a closed page surfaces as
+  // `Object with guid response@… was not bound in the connection`
+  // (playwright.config.ts retries). That is a harness race on teardown, not
+  // #6501 (browser gone during the first `page.goto`).
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
+  });
+
+  test('scroll during initial fan-out hydrates an already-mounted panel without another gesture', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const first = [
+      'live-news', 'intel', 'gdelt-intel', 'live-webcams', 'insights',
+      'threat-timeline', 'strategic-posture', 'stablecoins', 'forecast',
+    ];
+    const order = [...first, ...SCROLL_HYDRATION_PANEL_ORDER.filter((key) => !first.includes(key))];
+    await seedScrollableDashboard(page, order);
+    const stablecoinRequests = await installStablecoinContract(page);
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    await page.route(DIGEST_GLOB, async (route) => {
+      await pending;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: digestBody(HEALTHY_DIGEST_CATEGORIES),
+      });
+    });
+    const slowBootstrap = await installDelayedSlowBootstrap(page);
+    try {
+      const navigation = page.goto('/', { waitUntil: 'domcontentloaded' });
+      await slowBootstrap.waitUntilRequested();
+      await page.waitForSelector('[data-panel="stablecoins"]');
+      // Keep this fixture to already-mounted panels: a deferred neighbor's
+      // mount callback would independently prime data and mask the lost scroll.
+      await page.addStyleTag({ content: '[data-deferred-panel="true"] { display: none !important; }' });
+      // Hiding a shell does not cancel its in-flight import. Let active mount
+      // attempts settle before the initial viewport scan runs.
+      await page.waitForFunction(() => {
+        const debug = (window as unknown as {
+          __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string; detail?: { panel?: string } }> } };
+        }).__wmLcpDebug;
+        const marks = debug?.getSnapshot?.().marks;
+        if (!marks) return false;
+        const active = new Set<string>();
+        for (const { name, detail } of marks) {
+          if (!detail?.panel) continue;
+          if (name === 'wm:panel:deferred-mount-start') active.add(detail.panel);
+          if (name === 'wm:panel:deferred-mount-ready' || name === 'wm:panel:deferred-mount-unavailable') {
+            active.delete(detail.panel);
+          }
+        }
+        return active.size === 0;
+      });
+      slowBootstrap.release();
+      await navigation;
+      await waitForLcpMark(page, 'wm:data:initial-fanout-start');
+      const panel = page.locator('[data-panel="stablecoins"]');
+      await expect(panel).not.toHaveAttribute('data-deferred-panel', 'true');
+      const initial = await readScrollMetrics(page);
+      expect(initial.targetTop).toBeGreaterThan(initial.viewportHeight + 400);
+      expect(stablecoinRequests).toHaveLength(0);
+      expect(await lcpMarkCount(page, INITIAL_FANOUT_COMPLETE_MARK)).toBe(0);
+      await scrollDashboardAndCollect(page);
+      expect(stablecoinRequests).toHaveLength(0);
+      release();
+      await waitForLcpMark(page, INITIAL_FANOUT_COMPLETE_MARK);
+      await expect.poll(() => stablecoinRequests.length).toBe(1);
+      await expect(panel.locator('.stable-health')).toContainText('HEALTHY');
+      expect(await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK)).toBe(0);
+      await page.screenshot({ path: testInfo.outputPath('catchup-desktop.png') });
+    } finally {
+      release();
+      slowBootstrap.release();
+    }
+  });
+
   for (const viewport of [
     // From SPLIT_LAYOUT_MIN_WIDTH (900, src/app/split-layout.ts — #6417) the
     // split layout makes .panels-grid the scroll owner; below it the stacked
@@ -1012,7 +1202,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
     { label: 'mobile', width: 390, height: 844, scrollOwner: 'main-content' },
     { label: 'ultra-wide', width: 1720, height: 720, scrollOwner: 'panels-grid' },
   ]) {
-    test(`${viewport.label} container scroll hydrates a panel-specific data path`, async ({ page }) => {
+    test(`${viewport.label} container scroll hydrates a panel-specific data path`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await seedScrollableDashboard(page);
       const stablecoinRequests = await installStablecoinContract(page);
@@ -1074,6 +1264,7 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       ).toBe(1);
       await expect(stablecoins.locator('.stable-health')).toContainText('HEALTHY');
       expect(stablecoinRequests).toHaveLength(1);
+      await page.screenshot({ path: testInfo.outputPath(`hydrated-${viewport.label}.png`) });
     });
   }
 
@@ -1114,6 +1305,11 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         const target = document.querySelector('[data-panel="stablecoins"]');
         return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
       });
+      await page.waitForTimeout(SLOW_TIER_GATE_HOLD_MS);
+      expect(
+        await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
+        'the App viewport handler must stay dormant while the slow tier is pending',
+      ).toBe(dashboardScroll.hydrationMarksBefore);
       expect(
         stablecoinRequests,
         'the mounted panel callback must remain gated while slow-tier readiness is pending',

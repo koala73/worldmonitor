@@ -13,7 +13,7 @@ service.
 | Exchange | Launch status | Admission decision | Collection contract |
 | --- | --- | --- | --- |
 | `SSE` | `launched` | `admitted_metadata_only` | Public announcement metadata, bounded first page, document links retained but bodies not fetched |
-| `SZSE` | `launched` | `admitted_metadata_only` | Public announcement metadata, bounded first page, document links retained but bodies not fetched |
+| `SZSE` | `launched` | `admitted_metadata_only` | Public announcement metadata, bounded two-page metadata collection, document links retained but bodies not fetched |
 | `HKEX` | `blocked` | `rejected` | No automated collection; `TERMS_PROHIBIT_AUTOMATED_ACCESS` |
 
 The reviewed terms records are:
@@ -66,9 +66,11 @@ in a bounded diagnostic collection rather than promoted to decision signals.
 ## Bounded collection
 
 SSE requests at most 100 rows from one reviewed 90-day page. SZSE requests at
-most 50 rows from one reviewed page. Neither adapter silently follows
-additional pages. A saturated page reports `PAGE_LIMIT_REACHED`; three
-consecutive empty results report `COVERAGE_GAP`.
+most two 50-row pages from the same reviewed window. SZSE has a four-request
+total and three-proxy-request ceiling so one transient CONNECT 5xx can rotate
+to a second China sticky exit without dropping the bounded second page. Results
+beyond those hard bounds report `PAGE_LIMIT_REACHED`; three consecutive empty
+results report `COVERAGE_GAP`.
 
 The combined snapshot retains at most 100 classified events, at most 20
 revisions per event, and at most 100 unclassified revisions. The Railway
@@ -88,11 +90,16 @@ SZSE: SZSE_PROXY_URL → PROXY_URL
 This is configuration precedence, not sequential URL failover. After a proxy
 URL is selected, a failed attempt does not advance to the next environment
 variable. Distinct SZSE proxy attempts rotate eligible Decodo sticky gateway
-ports within the selected proxy configuration.
+ports within the selected proxy configuration. Supported sticky ranges are
+`10001–49999` for `gate.decodo.com` and `30001–39999` for `cn.decodo.com`, per
+the [provider's endpoint table](https://help.decodo.com/docs/cn/residential-proxy-endpoints-and-ports).
+Retries keep the selected host, credentials, and TLS mode. The China rotating
+port `30000` and unrecognized endpoint ranges stay unchanged.
 
 SSE uses up to four direct and four proxy requests with bounded concurrency.
-SZSE uses one direct attempt and up to two proxy attempts on distinct eligible
-gateway ports.
+SZSE uses at most 2 direct attempts and at most 3 proxy attempts on distinct
+eligible gateway ports. Both routes share a total ceiling of 4 requests per
+run.
 
 The fallback order applies only to transport failures. HTTP or schema results
 that prove an application-level response are recorded and do not trigger

@@ -11,7 +11,6 @@ import {
   BC_ALERTS_QUERY_URL,
   BC_ALERTS_SOURCE,
   BRITISH_COLUMBIA_CENTROID,
-  bcAlertsContentMeta,
   declareBcAlertRecords,
   fetchBcEmergencyInfoAlerts,
   isAllowedBcAlertsHost,
@@ -22,7 +21,7 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // First two records were captured from BC_ALERTS_QUERY_URL on 2026-08-17.
-// The All Clear and missing-status records are negative lifecycle test cases.
+// The All Clear record is a negative lifecycle test case.
 const fixture = JSON.parse(readFileSync(join(root, 'tests/fixtures/bc-emergency-info.geojson'), 'utf8'));
 
 test('maps only official active B.C. evacuation levels and fails closed otherwise', () => {
@@ -91,6 +90,14 @@ test('fails closed on an unknown ORDER_ALERT_STATUS instead of skipping the feat
     () => parseBcEmergencyInfoGeoJson(copy),
     /unknown ORDER_ALERT_STATUS: Warning/,
   );
+});
+
+test('a missing lifecycle status cannot verify an active list', () => {
+  for (const status of [null, '', '   ']) {
+    const feature = structuredClone(fixture.features[0]);
+    feature.properties.ORDER_ALERT_STATUS = status;
+    assert.throws(() => parseBcEmergencyInfoGeoJson({ type: 'FeatureCollection', features: [feature] }), /unknown ORDER_ALERT_STATUS/);
+  }
 });
 
 test('pins the official ArcGIS host and rejects redirects to lookalikes', () => {
@@ -188,17 +195,29 @@ test('fails closed instead of truncating when normalized valid alerts exceed the
   );
 });
 
-test('exposes the zero-valid envelope and content-age contract', () => {
+test('exposes the zero-valid envelope and preserves event dates', () => {
   const alerts = parseBcEmergencyInfoGeoJson(fixture);
   const envelope = { alerts };
   assert.equal(validateBcAlertsEnvelope(envelope), true);
   assert.equal(validateBcAlertsEnvelope({ alerts: 'nope' }), false);
   assert.equal(declareBcAlertRecords(envelope), 2);
   assert.equal(declareBcAlertRecords({ alerts: [] }), 0);
-  assert.deepEqual(bcAlertsContentMeta(envelope), {
-    newestItemAt: 1786956961000,
-    oldestItemAt: 1786894936000,
-  });
+  assert.deepEqual(alerts.map(alert => alert.updatedAt).sort(), [1786894936000, 1786956961000]);
+});
+
+test('rejects unusable active-event dates without imposing an event age limit', () => {
+  for (const timestamp of [null, 0, 'invalid', Date.now() + 2 * 60 * 60 * 1000]) {
+    const feature = structuredClone(fixture.features[0]);
+    feature.properties.DATE_MODIFIED = timestamp;
+    feature.properties.EVENT_START_DATE = null;
+    assert.throws(() => parseBcEmergencyInfoGeoJson({ type: 'FeatureCollection', features: [feature] }), /usable event timestamp/);
+  }
+  const feature = structuredClone(fixture.features[0]);
+  feature.properties.DATE_MODIFIED = null;
+  feature.properties.EVENT_START_DATE = Date.UTC(2020, 0, 1);
+  const [alert] = parseBcEmergencyInfoGeoJson({ type: 'FeatureCollection', features: [feature] });
+  assert.equal(alert.updatedAt, null);
+  assert.equal(alert.publishedAt, Date.UTC(2020, 0, 1));
 });
 
 test('map time filter uses DATE_MODIFIED so long-running evacuations stay visible', () => {

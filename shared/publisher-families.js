@@ -49,11 +49,15 @@
  * A literal is the one form that works everywhere.
  */
 const PUBLISHER_FAMILY_DATA = {
+  'miit': { publisher: "MIIT (China)", labels: [] },
   'a16z': { publisher: "Andreessen Horowitz", labels: ["a16z Blog", "a16z Insights", "a16z Podcast"] },
+  'abc-news': { publisher: "ABC News", labels: [] },
   'acquired': { publisher: "Acquired", labels: ["Acquired Episodes", "Acquired Podcast"] },
   'ap-news': { publisher: "Associated Press", labels: ["AP Mexico", "AP News"] },
+  'ars-technica': { publisher: "Ars Technica", labels: [] },
   'arxiv': { publisher: "arXiv", labels: ["ArXiv AI", "ArXiv ML"] },
   'asharq': { publisher: "Asharq News", labels: ["Asharq Business", "Asharq News"] },
+  'axios': { publisher: "Axios", labels: [] },
   'bbc': {
     publisher: "BBC",
     labels: [
@@ -66,7 +70,10 @@ const PUBLISHER_FAMILY_DATA = {
       "BBC Mundo",
       "BBC Persian",
       "BBC Russian",
+      "BBC Northern Ireland",
+      "BBC Science",
       "BBC Turkce",
+      "BBC UK",
       "BBC World",
     ],
   },
@@ -81,15 +88,22 @@ const PUBLISHER_FAMILY_DATA = {
     ],
   },
   'brookings': { publisher: "Brookings Institution", labels: ["Brookings", "Brookings Tech"] },
+  'business-wire': { publisher: "Business Wire", labels: [] },
   'cb-insights': { publisher: "CB Insights", labels: ["CB Insights", "CB Insights Unicorn"] },
   'chatham-house': { publisher: "Chatham House", labels: ["Chatham House", "Chatham House Tech"] },
   'cnbc': { publisher: "CNBC", labels: ["CNBC", "CNBC Commodities", "CNBC Markets", "CNBC Tech"] },
   'csis': { publisher: "CSIS", labels: ["CSIS", "CSIS Tech"] },
+  'die-zeit': { publisher: "Die Zeit", labels: [] },
   'dw': { publisher: "Deutsche Welle", labels: ["DW News", "DW Turkish"] },
   'eia': { publisher: "US Energy Information Administration", labels: ["EIA Press Room", "EIA Reports"] },
+  'el-mundo': { publisher: "El Mundo", labels: [] },
+  'el-pais': { publisher: "El País", labels: [] },
   'fao': { publisher: "UN Food and Agriculture Organization", labels: ["FAO GIEWS", "FAO News"] },
+  'fast-company': { publisher: "Fast Company", labels: [] },
   'financial-times': { publisher: "Financial Times", labels: ["FT Energy", "Financial Times"] },
-  'france-24': { publisher: "France 24", labels: ["France 24", "France 24 LatAm"] },
+  'fox-business': { publisher: "Fox Business", labels: [] },
+  'fox-news': { publisher: "Fox News", labels: [] },
+  'france-24': { publisher: "France 24", labels: ["France 24", "France 24 Africa", "France 24 Asia Pacific", "France 24 LatAm"] },
   'good-news-network': {
     publisher: "Good News Network",
     labels: [
@@ -105,14 +119,19 @@ const PUBLISHER_FAMILY_DATA = {
   'guardian': {
     publisher: "The Guardian",
     labels: [
+      "Guardian Africa",
       "Guardian Americas",
       "Guardian Australia",
+      "Guardian Caribbean",
       "Guardian ME",
+      "Guardian Pacific",
+      "Guardian Science",
       "Guardian World",
     ],
   },
   'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC News"] },
   'hromadske': { publisher: "Hromadske", labels: ["Hromadske", "Hromadske EN"] },
+  'infoq': { publisher: "InfoQ", labels: [] },
   'interfax': { publisher: "Interfax", labels: ["Interfax EN", "Interfax RU"] },
   'iea': { publisher: "International Energy Agency", labels: ["IEA Critical Minerals", "IEA News"] },
   'kitco': { publisher: "Kitco", labels: ["Kitco Gold", "Kitco News"] },
@@ -124,8 +143,13 @@ const PUBLISHER_FAMILY_DATA = {
       "MIT Tech Review AI",
     ],
   },
+  'nbc-news': { publisher: "NBC News", labels: [] },
   'ndtv': { publisher: "NDTV", labels: ["NDTV", "NDTV India"] },
+  'new-york-times': { publisher: "The New York Times", labels: ["Hard Fork (NYT)", "New York Times World"] },
+  'news24': { publisher: "News24", labels: [] },
   'nikkei': { publisher: "Nikkei", labels: ["Nikkei Asia", "Nikkei Tech"] },
+  'nos': { publisher: "NOS Nieuws", labels: [] },
+  'npr': { publisher: "NPR News", labels: [] },
   'pivot': { publisher: "Pivot (Vox Media)", labels: ["Pivot (Vox)", "Pivot Podcast"] },
   'politico': { publisher: "Politico", labels: ["Politico", "Politico Tech"] },
   'reuters': {
@@ -141,6 +165,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Reuters LatAm",
       "Reuters Markets",
       "Reuters Nasdaq Futures",
+      "Reuters Science",
       "Reuters US",
       "Reuters World",
     ],
@@ -154,6 +179,9 @@ const PUBLISHER_FAMILY_DATA = {
       "Seeking Alpha Tech",
     ],
   },
+  // Two titles, one owner: Sightline Media Group (owned by Regent) publishes
+  // both Defense News and Military Times, per each site's About page.
+  'sightline-media': { publisher: "Sightline Media", labels: ["Defense News", "Military Times"] },
   'sp-global': { publisher: "S&P Global", labels: ["S&P Global Commodity", "S&P Global Platts"] },
   'techcrunch': {
     publisher: "TechCrunch",
@@ -164,6 +192,7 @@ const PUBLISHER_FAMILY_DATA = {
       "TechCrunch Venture",
     ],
   },
+  'the-hacker-news': { publisher: "The Hacker News", labels: [] },
   'the-verge': {
     publisher: "The Verge",
     labels: [
@@ -176,11 +205,124 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'venturebeat': { publisher: "VentureBeat", labels: ["VentureBeat", "VentureBeat AI"] },
   'white-house': { publisher: "The White House", labels: ["White House", "White House Actions"] },
+  // #8398: the feed URL is a Dow Jones delivery host
+  // (feeds.content.dowjones.io) but item links point at the publisher apex
+  // (wsj.com, per the Dow Jones Investor Select RSS docs). Without this
+  // mapping the ingest gate blanks every WSJ link. Domain-only by design:
+  // the bare feed label ("Wall Street Journal") keeps its own singleton
+  // (failing closed on labels), while the wsj.com domain allowance is
+  // declared explicitly in PUBLISHER_FAMILY_DOMAINS below and the ingest
+  // gate composes the feed-host leg (dowjones.io) separately. Domain-only
+  // families are exempt from the two-label minimum (that rule targets label
+  // folding; a domain table entry cannot merge two publishers' counts).
+  // Exempted in tests/publisher-families.test.mjs via DOMAIN_ONLY_FAMILIES.
+  'wsj': { publisher: "Wall Street Journal", labels: [] },
+  // Same shape as 'wsj': the feed host (feeds.folha.uol.com.br) is not the
+  // article host (www1.folha.uol.com.br), so the ingest gate needs the
+  // folha.uol.com.br domain. Domain-only, exempted alongside 'wsj'.
+  'folha': { publisher: "Folha de S.Paulo", labels: [] },
   'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
 };
 
 export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
+
+/**
+ * Curated family -> the registrable domains that newsroom publishes on.
+ *
+ * Feed labels identify a publisher on the digest path; an article that
+ * arrives by URL alone (the per-country GDELT index, #7748) carries only its
+ * domain, so "BBC World" and bbc.co.uk would otherwise count as two
+ * newsrooms for any "N independent publishers" rule. Exact registrable
+ * domains only, no fuzzy matching (same fail-closed direction as labels): an
+ * unlisted domain stays its own singleton family. Multi-tenant hosts
+ * (yahoo.com, ycombinator.com) are deliberately absent because a domain
+ * that several publishers share cannot name one.
+ */
+const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
+  'miit': ['miit.gov.cn'],
+  'a16z': ['a16z.com'],
+  'abc-news': ['abcnews.com'],
+  'ap-news': ['apnews.com'],
+  'ars-technica': ['arstechnica.com'],
+  'arxiv': ['arxiv.org'],
+  'axios': ['axios.com'],
+  'bbc': ['bbc.com', 'bbc.co.uk'],
+  'bloomberg': ['bloomberg.com'],
+  'brookings': ['brookings.edu'],
+  'business-wire': ['businesswire.com'],
+  'cb-insights': ['cbinsights.com'],
+  'chatham-house': ['chathamhouse.org'],
+  'cnbc': ['cnbc.com'],
+  'csis': ['csis.org'],
+  'die-zeit': ['zeit.de'],
+  'dw': ['dw.com'],
+  'eia': ['eia.gov'],
+  'el-mundo': ['elmundo.es'],
+  'el-pais': ['elpais.com'],
+  'fao': ['fao.org'],
+  'fast-company': ['fastcompany.com'],
+  'folha': ['folha.uol.com.br'],
+  'financial-times': ['ft.com'],
+  'fox-business': ['foxbusiness.com'],
+  'fox-news': ['foxnews.com'],
+  'france-24': ['france24.com'],
+  'good-news-network': ['goodnewsnetwork.org'],
+  'guardian': ['theguardian.com'],
+  'hromadske': ['hromadske.ua'],
+  'iea': ['iea.org'],
+  'infoq': ['infoq.com'],
+  'interfax': ['interfax.com', 'interfax.ru'],
+  'kitco': ['kitco.com'],
+  'marketwatch': ['marketwatch.com'],
+  'mit-technology-review': ['technologyreview.com'],
+  'nbc-news': ['nbcnews.com', 'today.com'],
+  'ndtv': ['ndtv.com', 'ndtv.in'],
+  'new-york-times': ['nytimes.com'],
+  'news24': ['news24.com'],
+  'nikkei': ['nikkei.com'],
+  'nos': ['nos.nl'],
+  'npr': ['npr.org'],
+  'politico': ['politico.com', 'politico.eu'],
+  'reuters': ['reuters.com'],
+  'rt': ['rt.com', 'rt-english.com'],
+  'seeking-alpha': ['seekingalpha.com'],
+  'sightline-media': ['defensenews.com', 'militarytimes.com'],
+  'sp-global': ['spglobal.com'],
+  'techcrunch': ['techcrunch.com'],
+  'the-hacker-news': ['thehackernews.com'],
+  'the-verge': ['theverge.com'],
+  'venturebeat': ['venturebeat.com'],
+  'white-house': ['whitehouse.gov'],
+  // #8398: see the 'wsj' family entry above — the Dow Jones delivery host
+  // is not the article host.
+  'wsj': ['wsj.com'],
+});
+export const PUBLISHER_FAMILY_DOMAIN_TABLE = PUBLISHER_FAMILY_DOMAINS;
+
+const familyByDomain = new Map();
+for (const [familyId, domains] of Object.entries(PUBLISHER_FAMILY_DOMAINS)) {
+  for (const domain of domains) familyByDomain.set(domain, familyId);
+}
+
+/**
+ * Curated family id for an article host, or '' when no family lists it.
+ * Matches the host itself and every parent domain with at least two labels
+ * ("www.bbc.co.uk" -> "bbc.co.uk"), so a subdomain edition folds into its
+ * newsroom without a public-suffix list.
+ *
+ * @param {unknown} hostname
+ * @returns {string}
+ */
+export function publisherFamilyForDomain(hostname) {
+  if (typeof hostname !== 'string') return '';
+  const labels = hostname.trim().toLowerCase().replace(/\.+$/, '').split('.').filter(Boolean);
+  for (let start = 0; start <= labels.length - 2; start += 1) {
+    const family = familyByDomain.get(labels.slice(start).join('.'));
+    if (family) return family;
+  }
+  return '';
+}
 
 /**
  * How many distinct publishers make a story corroborated.

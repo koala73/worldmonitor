@@ -59,6 +59,9 @@ describe('get_sources — summary view', () => {
     assert.ok(Object.keys(summary.providersByKind).length > 1);
     assert.ok(Object.keys(summary.outletsByTier).length > 1);
     assert.ok(Object.keys(summary.providersByCountry).length > 1);
+    assert.ok(summary.provenanceCoverage.perspectiveLabelled > 0);
+    assert.ok(summary.provenanceCoverage.perspectiveLabelled < summary.provenanceCoverage.sources);
+    assert.match(summary.provenanceCoverage.caveat, /not assessed|has not been assessed/);
   });
 
   it('includes the summary in every view, so counts never need a second call', async () => {
@@ -267,6 +270,26 @@ describe('get_sources — input handling', () => {
     }
   });
 
+  it('fits a page at the declared maximum limit inside the output budget', async () => {
+    for (const view of ['providers', 'outlets']) {
+      const result = await run({ view, limit: 200 });
+      assert.equal(result.returned, 200);
+      const bytes = Buffer.byteLength(JSON.stringify(result));
+      assert.ok(
+        bytes < tool._outputBudgetBytes,
+        `${view} at limit 200 is ${bytes}B against a ${tool._outputBudgetBytes}B budget`,
+      );
+    }
+  });
+
+  it('keeps structured provenance facts on outlets but leaves out the prose summary', async () => {
+    const { outlets } = await run({ view: 'outlets', limit: 200 });
+    for (const outlet of outlets) {
+      assert.ok(Array.isArray(outlet.provenance.knownBiases), `${outlet.name} knownBiases`);
+      assert.equal('summary' in outlet.provenance, false, `${outlet.name} summary`);
+    }
+  });
+
   it('accepts the official CLI numeric-string limit form', async () => {
     const result = await run({ view: 'providers', limit: '5' });
     assert.equal(result.providers.length, 5);
@@ -279,5 +302,36 @@ describe('get_sources — input handling', () => {
     assert.equal(result.providers.length, 200, 'limit must be capped, not honoured verbatim');
     assert.equal(result.returned, result.providers.length);
     assertOutputSchema(result);
+  });
+});
+
+describe('get_sources — outlet profile', () => {
+  it('places BBC Persian in London writing for a diaspora, and IRNA in Iran writing for foreigners', () => {
+    const bbcPersian = outletRecord('BBC Persian').provenance;
+    assert.equal(bbcPersian.homeCountry, 'GB');
+    assert.equal(bbcPersian.audience, 'diaspora');
+    assert.equal(bbcPersian.language, 'fa');
+    const irna = outletRecord('IRNA').provenance;
+    assert.equal(irna.homeCountry, 'IR');
+    assert.equal(irna.audience, 'international');
+    assert.equal(irna.ownershipClass, 'state');
+  });
+
+  it('reports null profile fields for a name with no reviewed profile', () => {
+    const { provenance } = outletRecord('No Such Outlet');
+    assert.deepEqual(
+      [provenance.homeCountry, provenance.audience, provenance.language, provenance.ownershipClass],
+      [null, null, null, null],
+    );
+    assert.equal('summary' in provenance, false);
+  });
+
+  it('profiles every outlet the outlets view enumerates', async () => {
+    const result = await run({ view: 'outlets', limit: 200 });
+    assertOutputSchema(result);
+    assert.ok(result.outlets.length > 0);
+    for (const outlet of result.outlets) {
+      assert.notEqual(outlet.provenance.homeCountry, null, `${outlet.name} has no outlet profile`);
+    }
   });
 });

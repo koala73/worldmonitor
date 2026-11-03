@@ -1,9 +1,10 @@
 ---
-title: "Introduction"
+title: "Documentation Overview"
+sidebarTitle: "Introduction"
 description: "World Monitor is an open-source, real-time global intelligence dashboard aggregating news, markets, military, maritime, and AI analysis on one map."
 ---
 
-World Monitor is a real-time situational-awareness platform for people who need to understand what is happening in the world beyond traditional news headlines. The core surface is a 3D globe (or flat map) with toggleable data layers for conflict, military, maritime, aviation, infrastructure, and natural events; a panel system for synthesised intelligence and markets; a daily AI brief; and two flagship workflows (Route Explorer and Scenario Engine) for reasoning about supply-chain disruption. It ships as six specialised variants from one codebase — geopolitics, technology, finance, commodities, positive global trends, and energy — each pre-configured for its audience.
+World Monitor is a real-time situational-awareness platform for people who need to understand what is happening in the world beyond traditional news headlines. The core surface is a 3D globe (or flat map) with toggleable data layers for conflict, military, maritime, aviation, infrastructure, and natural events; a panel system for synthesised intelligence and markets; a daily AI brief; and two flagship workflows (Route Explorer and Scenario Engine) for reasoning about [supply-chain disruption](https://www.worldmonitor.app/use-cases/monitor-supply-chain-disruptions/). It ships as six specialised variants from one codebase — geopolitics, technology, finance, commodities, positive global trends, and energy — each pre-configured for its audience.
 
 The platform is designed for journalists, security analysts, researchers, PRO subscribers running operational workflows, and anyone who needs a faster read on a complex global situation than open-web searching allows.
 
@@ -17,6 +18,22 @@ The platform is designed for journalists, security analysts, researchers, PRO su
 - **Analyse financial signals** including market quotes, commodity prices, prediction markets, central-bank rates, EU macro indicators, and Gulf-economy dashboards
 - **Connect your own agent** via the [MCP server](/mcp-overview) — Claude, Cursor, and other MCP clients can call curated WorldMonitor tools over OAuth 2.1 or a direct API key
 - **Run entirely in your browser** with optional offline AI capabilities via ONNX Runtime Web, keeping your data on your device
+
+## Ways to use World Monitor
+
+| Surface | What it is | Start here |
+|---|---|---|
+| **Web app** | The full dashboard in your browser at [worldmonitor.app](https://www.worldmonitor.app), plus the tech, finance, commodity, energy and positive-news variants | [Getting Started](/getting-started) |
+| **Desktop app** | The same dashboard as a native Tauri app for macOS, Windows and Linux, with local API handlers and OS keychain storage | [Desktop App](/desktop-app) |
+| **Terminal dashboard** | A full-screen dashboard in your terminal: world map, news, markets, conflict, flights, cyber, climate, live TV. Mouse support, colour themes, no API key | [Terminal Dashboard](/cli-dashboard) |
+| **Command-line client** | The `worldmonitor` npm command for scripting briefs, risk scores and MCP tools from a shell | [Command-Line Client](/cli) |
+| **SDKs** | Python, Ruby and Go client libraries | [SDKs](/sdks) |
+| **MCP server** | Connect Claude, Cursor and other AI agents over OAuth or an API key | [MCP Overview](/mcp-overview) |
+| **REST API** | The HTTP API behind every surface | [API Reference](/api-reference) |
+
+<Frame caption="The terminal dashboard (npx worldmonitor) shows the same live data as the web app.">
+  <img src="/images/tui/overview.webp" alt="World Monitor terminal dashboard, Overview view" />
+</Frame>
 
 ## Quick links
 

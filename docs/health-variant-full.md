@@ -10,7 +10,7 @@
 | MCP tool | None registered under `get_health_data` |
 | Hostname variant | Not configured |
 
-The disease outbreaks seeder is solid (WHO DON API + CDC + Outbreak News Today + ThinkGlobalHealth/ProMED, 150 geo-pinned alerts). VPD tracker has good historical WHO annual case data. Everything else is missing.
+The disease outbreaks seeder is solid (WHO DON API + CDC + ECDC + CIDRAP + ThinkGlobalHealth/ProMED, 150 geo-pinned alerts). VPD tracker has good historical WHO annual case data. Everything else is missing.
 
 ---
 
@@ -184,7 +184,7 @@ message PathogenAlert {
 
 | Script | Interval | Key | TTL |
 |--------|----------|-----|-----|
-| `seed-disease-outbreaks.mjs` | Every 6h (existing) | `health:disease-outbreaks:v1` | 72h |
+| `seed-disease-outbreaks.mjs` | Daily bundle member; hourly tick, eligible after 19.2h | `health:disease-outbreaks:v1` | 72h |
 | `seed-vpd-tracker.mjs` | Daily (existing) | `health:vpd-tracker:realtime:v1` | 72h |
 | `seed-epidemic-trends.mjs` | Daily | `health:epidemic-trends:v1` | 24h |
 | `seed-vaccination-coverage.mjs` | Weekly (Sunday 02:00 UTC) | `health:vaccination-coverage:v1` | 7 days |

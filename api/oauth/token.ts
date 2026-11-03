@@ -33,13 +33,15 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
+import { getClientRateLimitKey, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
-import { keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
+import { getOperatorKeys, keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
 // @ts-expect-error — JS module, no declaration file
@@ -203,7 +205,7 @@ function reportTokenRateLimitDegraded(
 
 async function validateSecret(secret: string | null | undefined): Promise<boolean> {
   if (!secret) return false;
-  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+  const validKeys = getOperatorKeys();
   return timingSafeIncludes(secret, validKeys);
 }
 
@@ -313,14 +315,15 @@ async function storeNewTokens(
   clientId: string,
   scope: string,
   familyId: string,
+  kind?: 'user_key',
 ): Promise<boolean> {
   const results = await pipeline([
-    ['SET', `oauth:token:${accessUuid}`, JSON.stringify(apiKeyHash), 'EX', TOKEN_TTL_SECONDS],
+    ['SET', `oauth:token:${accessUuid}`, JSON.stringify(kind === 'user_key' ? { kind, api_key_hash: apiKeyHash } : apiKeyHash), 'EX', TOKEN_TTL_SECONDS],
     ['SET', accessTokenFamilyKey(accessUuid), JSON.stringify(familyId), 'EX', TOKEN_TTL_SECONDS],
     [
       'SET',
       `oauth:refresh:${refreshUuid}`,
-      JSON.stringify({ client_id: clientId, api_key_hash: apiKeyHash, scope, family_id: familyId }),
+      JSON.stringify({ kind, client_id: clientId, api_key_hash: apiKeyHash, scope, family_id: familyId }),
       'EX',
       REFRESH_TTL_SECONDS,
     ],
@@ -408,6 +411,8 @@ export interface TokenHandlerDeps extends RefreshRecoveryDeps {
   randomPointerId: () => string;
   /** Optional Vercel isolate context so limiter Sentry/usage survive teardown. */
   ctx?: WaitUntilCtx;
+  /** Fetch for CIMD client metadata documents; defaults to the global fetch. */
+  fetchClientMetadata?: typeof fetch;
 }
 
 interface CodeDataPro {
@@ -426,7 +431,7 @@ interface CodeDataLegacy {
   code_challenge: string;
   scope?: string;
   api_key_hash: string;
-  kind?: undefined;
+  kind?: 'user_key';
 }
 
 interface RefreshDataPro {
@@ -443,7 +448,7 @@ interface RefreshDataLegacy {
   api_key_hash: string;
   scope: string;
   family_id: string;
-  kind?: undefined;
+  kind?: 'user_key';
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +491,16 @@ async function handleAuthorizationCode(
     );
   }
 
+  // A CIMD client is resolved before the code is consumed: it may need a live
+  // fetch of its metadata document (always, for a no-store document such as
+  // VS Code's), and a vendor blip there must answer a retryable 503 with the
+  // code still redeemable, not burn it (#9244). DCR keeps its original order.
+  const cimdClient = isClientMetadataDocumentId(clientId);
+  if (cimdClient) {
+    const clientCheck = await checkClientExists(deps, clientId);
+    if (clientCheck) return clientCheck;
+  }
+
   // Atomically consume the auth code (GETDEL — prevents concurrent exchange race).
   let codeData: CodeDataPro | CodeDataLegacy | null;
   try {
@@ -521,15 +536,16 @@ async function handleAuthorizationCode(
     );
   }
 
-  const clientCheck = await checkClientExists(deps, clientId);
-  if (clientCheck) return clientCheck;
+  if (!cimdClient) {
+    const clientCheck = await checkClientExists(deps, clientId);
+    if (clientCheck) return clientCheck;
+  }
 
   const accessUuid = deps.randomUuid();
   const refreshUuid = deps.randomUuid();
   const familyId = deps.randomUuid();
 
-  // Branch by code-record kind. Pro records carry `userId` + `mcpTokenId`;
-  // legacy records carry the `api_key_hash` SHA-256.
+  // Pro records carry `userId` + `mcpTokenId`; API-key records carry a hash.
   if (codeData.kind === 'pro') {
     const scope = codeData.scope ?? 'mcp_pro';
     const stored = await storeProTokens(
@@ -554,7 +570,7 @@ async function handleAuthorizationCode(
     });
   }
 
-  // Legacy env-key path — unchanged
+  // Preserve dashboard-key identity; only operator keys use the legacy shape.
   const scope = codeData.scope ?? 'mcp';
   const stored = await storeNewTokens(
     deps.redisPipeline,
@@ -564,6 +580,7 @@ async function handleAuthorizationCode(
     clientId,
     scope,
     familyId,
+    codeData.kind,
   );
   if (!stored) {
     return jsonResp({ error: 'server_error', error_description: 'Token storage failed' }, 500);
@@ -621,6 +638,7 @@ async function handleRefreshToken(
 
   const refreshData = consume.refreshData as RefreshDataPro | RefreshDataLegacy;
   const attemptValue = consume.attemptValue;
+  const expiresAtMs = consume.expiresAtMs ?? null;
   if (!refreshData || typeof refreshData !== 'object') {
     return temporaryAuthFailure();
   }
@@ -649,6 +667,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'persist-family-pointer',
+      expiresAtMs,
     );
     return temporaryAuthFailure();
   }
@@ -671,6 +690,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'read-family-revocation',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -689,6 +709,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'client-validation',
+      expiresAtMs,
     );
     return restored ? clientCheck : temporaryAuthFailure();
   }
@@ -707,7 +728,10 @@ async function handleRefreshToken(
     // ever returns a different user for this tokenId (impossible under
     // U1's schema, but cheap), refuse rather than silently rotate to the
     // wrong identity.
-    const validation: ProMcpValidateUnion = await deps.validateProMcpToken(refreshData.mcpTokenId);
+    const validation: ProMcpValidateUnion = await deps.validateProMcpToken(
+      refreshData.mcpTokenId,
+      { recordUsage: false },
+    );
 
     if (validation.ok === 'transient') {
       // Restore the user's refresh token after the claim because Convex has not
@@ -725,6 +749,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'convex-transient',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -757,6 +782,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'store-rotated-token',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -770,7 +796,7 @@ async function handleRefreshToken(
     });
   }
 
-  // Legacy env-key path — unchanged
+  // Preserve dashboard-key identity across refresh rotation.
   const scope = refreshData.scope ?? 'mcp';
   const stored = await storeNewTokens(
     deps.redisPipeline,
@@ -780,6 +806,7 @@ async function handleRefreshToken(
     clientId,
     scope,
     refreshData.family_id,
+    refreshData.kind,
   );
   if (!stored) {
     await restoreRefreshAttempt(
@@ -789,6 +816,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'store-rotated-token',
+      expiresAtMs,
     );
     return temporaryAuthFailure();
   }
@@ -803,10 +831,12 @@ async function handleRefreshToken(
 }
 
 function temporaryAuthFailure(): Response {
-  return jsonResp(
+  const response = jsonResp(
     { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
     503,
   );
+  response.headers.set('Retry-After', '5');
+  return response;
 }
 
 function invalidRefreshGrant(): Response {
@@ -837,30 +867,35 @@ async function handleClientCredentials(
 }
 
 /**
- * Verify `oauth:client:<id>` exists; returns a Response on failure (caller
- * short-circuits) or null on success. Also fires the sliding-TTL EXPIRE.
+ * Verify the client still resolves — a DCR `oauth:client:<id>` row, or a CIMD
+ * document that is still trusted and valid (#9244), so a vendor revoking or
+ * changing its document takes effect on the next code exchange or refresh.
+ * Returns a Response on failure (caller short-circuits) or null on success.
+ * Also fires the DCR sliding-TTL EXPIRE.
  */
 async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Promise<Response | null> {
-  let client: unknown;
-  try {
-    client = await deps.redisGet(`oauth:client:${clientId}`);
-  } catch {
-    return jsonResp(
-      { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
-      503,
-    );
-  }
-  if (!client) {
+  const resolved = await resolveOAuthClient(clientId, {
+    redisGet: deps.redisGet,
+    redisSetEx: (key: string, value: unknown, ttl: number) =>
+      deps.redisPipeline([['SET', key, JSON.stringify(value), 'EX', ttl]]),
+    fetch: deps.fetchClientMetadata,
+  });
+  if (!resolved.ok) {
+    if (resolved.transient) return temporaryAuthFailure();
     return jsonResp(
       {
         error: 'invalid_client',
-        error_description: 'Client registration not found or expired. Please re-register.',
+        error_description: resolved.reason === 'unknown_client'
+          ? 'Client registration not found or expired. Please re-register.'
+          : 'Client metadata document is not accepted.',
       },
       401,
     );
   }
   // Extend client TTL (sliding 90-day window) — fire-and-forget
-  deps.redisPipeline([['EXPIRE', `oauth:client:${clientId}`, CLIENT_TTL_SECONDS]]).catch(() => {});
+  if (!resolved.client.cimd) {
+    deps.redisPipeline([['EXPIRE', `oauth:client:${clientId}`, CLIENT_TTL_SECONDS]]).catch(() => {});
+  }
   return null;
 }
 
@@ -875,8 +910,6 @@ async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Prom
 async function applyRateLimit(
   req: Request,
   grantType: string | null,
-  clientSecret: string | null,
-  clientId: string | null,
   ctx: WaitUntilCtx | undefined,
 ): Promise<TokenRateLimitDecision> {
   const rl = getRatelimit();
@@ -890,15 +923,8 @@ async function applyRateLimit(
     return { kind: 'degraded' };
   }
   try {
-    let rlKey: string;
-    if (grantType === 'client_credentials' && clientSecret) {
-      rlKey = `cred:${(await sha256Hex(clientSecret)).slice(0, 8)}`;
-    } else if (clientId) {
-      rlKey = `cid:${clientId}`;
-    } else {
-      rlKey = `ip:${getClientIp(req)}`;
-    }
-    const result = await rl.limit(rlKey);
+    // Unvalidated credentials and client IDs must not select their own abuse budget.
+    const result = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     // @upstash/ratelimit v2 races Redis against an internal timeout and
     // RESOLVES `{ success: true, reason: 'timeout' }` rather than rejecting,
     // so a slow Redis is indistinguishable from a genuine allow unless we
@@ -944,7 +970,7 @@ export async function tokenHandler(req: Request, deps: TokenHandlerDeps): Promis
   const clientSecret = params.get('client_secret');
   const clientId = params.get('client_id');
 
-  const rateLimit = await applyRateLimit(req, grantType, clientSecret, clientId, deps.ctx);
+  const rateLimit = await applyRateLimit(req, grantType, deps.ctx);
   if (rateLimit.kind === 'limited') {
     emitOAuthTokenUsage(deps.ctx, req, rateLimit.response, startedAt, 'rate_limit_429');
     return rateLimit.response;
@@ -995,6 +1021,7 @@ export default async function handler(
           step: 'refresh-restore',
           stage: context.stage,
         },
+        fingerprint: ['api/oauth/token', 'refresh-restore', 'Error'],
         ctx,
       });
     },

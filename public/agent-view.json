@@ -3,7 +3,7 @@
   "kind": "agent-view",
   "product": "World Monitor",
   "url": "https://www.worldmonitor.app",
-  "description": "Live global-intelligence platform: real-time markets, conflict events, country risk and resilience, global procurement opportunities, shipping chokepoints, aviation/maritime activity, energy, climate, health, cyber threats, on-demand NLP utilities (classification, entity extraction, news clusters, keyword spikes), forecasts and AI-generated briefs — machine-readable JSON, correlated across layers.",
+  "description": "Live global-intelligence platform serving machine-readable JSON, correlated across layers, with forecasts and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy. On-demand NLP utilities add classification, entity extraction, news clusters, and keyword spikes.",
   "endpoints": {
     "mcp": {
       "url": "https://worldmonitor.app/mcp",
@@ -14,6 +14,8 @@
     "rest": {
       "base": "https://api.worldmonitor.app",
       "openapi": "https://www.worldmonitor.app/openapi.json",
+      "protocol": "REST",
+      "graphql": false,
       "note": "Send a descriptive User-Agent; generic UAs are filtered at the edge. Fetch the OpenAPI spec for the full operation list."
     },
     "a2a": {
@@ -28,27 +30,42 @@
     "cli": {
       "package": "worldmonitor",
       "install": "npm install -g worldmonitor",
-      "url": "https://www.npmjs.com/package/worldmonitor"
+      "url": "https://www.npmjs.com/package/worldmonitor",
+      "homebrew": {
+        "install": "brew install worldmonitor",
+        "url": "https://formulae.brew.sh/formula/worldmonitor"
+      }
     },
     "sdks": {
       "javascript": {
+        "package": "worldmonitor",
+        "registry": "npm",
         "install": "npm install worldmonitor",
         "url": "https://www.npmjs.com/package/worldmonitor"
       },
       "python": {
+        "package": "worldmonitor-sdk",
+        "registry": "PyPI",
         "install": "pip install worldmonitor-sdk",
         "url": "https://pypi.org/project/worldmonitor-sdk/"
       },
       "ruby": {
+        "package": "worldmonitor",
+        "registry": "RubyGems",
         "install": "gem install worldmonitor",
         "url": "https://rubygems.org/gems/worldmonitor"
       },
       "go": {
+        "package": "github.com/koala73/worldmonitor/sdk/go",
+        "registry": "Go modules",
         "install": "go get github.com/koala73/worldmonitor/sdk/go",
-        "url": "https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go"
+        "url": "https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go",
+        "searchUrl": "https://pkg.go.dev/search?q=worldmonitor",
+        "moduleProxyUrl": "https://proxy.golang.org/github.com/koala73/worldmonitor/sdk/go/@latest",
+        "source": "https://github.com/koala73/worldmonitor/tree/main/sdk/go"
       },
       "guide": "https://www.worldmonitor.app/docs/sdks",
-      "note": "Official zero-dependency SDK packages; every registry entry sets its homepage to worldmonitor.app for provenance."
+      "note": "Use the exact package names above. npm, PyPI and RubyGems link to worldmonitor.app in their project metadata. Go modules have no homepage field: verify the module path in the official koala73/worldmonitor repository and its product links on pkg.go.dev. The Python package is worldmonitor-sdk; the PyPI package named worldmonitor is unrelated."
     },
     "docsMcp": {
       "url": "https://www.worldmonitor.app/docs/mcp",
@@ -94,7 +111,7 @@
   "documentation": "https://www.worldmonitor.app/docs/documentation",
   "capabilities": [
     "real-time market data (equities, commodities, crypto, FX)",
-    "global live conflict events and CII v8 scores for 31 Tier-1 countries",
+    "global live conflict events and CII v14 scores for 31 Tier-1 countries",
     "country resilience scores across the 196-country public rankable universe, with domain/pillar breakdown",
     "13 shipping chokepoints with live AIS transit intelligence",
     "maritime and aviation activity, airspace status",

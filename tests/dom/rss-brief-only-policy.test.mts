@@ -76,6 +76,18 @@ const OVERLAPPING_TITLES = [
 ];
 
 describe('brief-only RSS fetch policy', () => {
+  it('logs untrusted feed names as data rather than a format string', async () => {
+    const failure = new Error('fixture failure');
+    proxyMocks.fetchWithProxy.mockRejectedValue(failure);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await fetchFeed({ name: '%s%c test feed', url: 'https://example.com/format-fixture.xml' });
+      expect(log).toHaveBeenCalledWith('Failed to fetch feed:', '%s%c test feed', failure);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   beforeEach(() => {
     proxyMocks.fetchWithProxy.mockReset();
     trendingMocks.ingestHeadlines.mockReset();

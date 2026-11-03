@@ -23,6 +23,17 @@ const {
 
 const originalFetch = globalThis.fetch;
 
+// Cap idle retry waits — attempt count and logged wait stay real (see the
+// WM_SEED_RETRY_DELAY_MS comment in scripts/_seed-utils.mjs withRetry).
+const originalRetryDelay = process.env.WM_SEED_RETRY_DELAY_MS;
+beforeEach(() => {
+  process.env.WM_SEED_RETRY_DELAY_MS = '0';
+});
+afterEach(() => {
+  if (originalRetryDelay === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+  else process.env.WM_SEED_RETRY_DELAY_MS = originalRetryDelay;
+});
+
 // Upstash /pipeline returns an array of { result } objects, one per command,
 // in request order. EXPIRE returns 1 when the key existed (TTL refreshed) and
 // 0 when it was missing/expired (no-op).

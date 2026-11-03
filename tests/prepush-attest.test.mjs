@@ -45,6 +45,9 @@ const GIT_LOCAL_ENV_VARS = execFileSync('git', ['rev-parse', '--local-env-vars']
 function isolatedGitEnv(overrides = {}) {
   const env = { ...process.env, ...overrides, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
   for (const name of GIT_LOCAL_ENV_VARS) delete env[name];
+  // A stacked push exports WM_BASE_REF for the real hook, and the pre-push run of this file inherits
+  // it. base-guard reads it, so a fixture sees it only when a case passes it explicitly.
+  if (!Object.hasOwn(overrides, 'WM_BASE_REF')) delete env.WM_BASE_REF;
   return env;
 }
 

@@ -5,11 +5,8 @@
  *
  * Thin Finnhub-search wrapper with a short Upstash cache. Used by every user
  * (the market watchlist is not a PRO feature), so there's no entitlement
- * gate — just CORS + rate limiting + a 10-minute cache on the normalized
- * query. The cache is the real quota guard: Finnhub's free-tier 60/min is
- * per-key (shared across all users), not per-user, so client-side debounce
- * alone wouldn't protect it. The cache is best-effort — any Upstash hiccup
- * falls through to a direct Finnhub call.
+ * gate. Cached results remain available without upstream work; cold queries
+ * require a shared, fail-closed provider budget as well as caller admission.
  */
 
 export const config = { runtime: 'edge' };
@@ -24,6 +21,8 @@ import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
+// @ts-expect-error — JS module, no declaration file
+import { sha256Hex } from './_crypto.js';
 import { readRawJsonFromUpstash, setCachedData } from './_upstash-json.js';
 
 interface FinnhubSearchResult {
@@ -51,7 +50,7 @@ const UPSTREAM_TIMEOUT_MS = 8_000;
 // App-owned self-caches (#7674): this route is the only writer of both the
 // result cache and the Finnhub 429 cooldown, so every read and write rides
 // the deployment-prefixed helper default.
-const CACHE_KEY_PREFIX = 'symsearch:v1:';
+const CACHE_KEY_PREFIX = 'symsearch:v2:';
 const CACHE_TTL_SECONDS = 600;
 const FINNHUB_429_COOLDOWN_KEY = 'symsearch-cooldown:v1:finnhub-429';
 const FINNHUB_429_DEFAULT_RETRY_AFTER_SECONDS = 60;
@@ -172,6 +171,12 @@ export default async function handler(
     return jsonResponse({ error: 'Method not allowed' }, 405, cors);
   }
 
+  const rawQuery = new URL(req.url).searchParams.get('q') ?? '';
+  if (rawQuery.length > 64 || !/^[\p{L}\p{M}\p{N} .&’'\-]*$/u.test(rawQuery)) {
+    return jsonResponse({ error: 'INVALID_QUERY' }, 400, cors);
+  }
+  const q = rawQuery.trim();
+
   const keyCheck = await validateApiKey(req);
   if (keyCheck.required && !keyCheck.valid) {
     return jsonResponse({ error: keyCheck.error }, 401, cors);
@@ -180,7 +185,6 @@ export default async function handler(
   const rateLimitResponse = await checkRateLimit(req, cors);
   if (rateLimitResponse) return rateLimitResponse;
 
-  const q = (new URL(req.url).searchParams.get('q') ?? '').trim();
   if (!q) {
     return jsonResponse({ results: [] }, 200, cors);
   }
@@ -193,7 +197,7 @@ export default async function handler(
   // Normalize query for the cache key — case-insensitive, whitespace-folded.
   // The Finnhub upstream is case-insensitive, so 'NVDA', 'nvda', '  nvda '
   // all yield the same result set; share one cache entry.
-  const cacheKey = CACHE_KEY_PREFIX + q.toLowerCase().replace(/\s+/g, ' ');
+  const cacheKey = CACHE_KEY_PREFIX + await sha256Hex(q.toLowerCase().replace(/ +/g, ' '));
 
   // Cache-first. A miss / Upstash hiccup / decode failure all fall through
   // to Finnhub — the cache is best-effort, never load-bearing.
@@ -221,6 +225,14 @@ export default async function handler(
   } catch {
     // Cache infrastructure is best-effort; fall through to the real upstream.
   }
+
+  // One distributed admission bucket for every cold query and caller.
+  // Keep half of the 60/min provider allowance for other Finnhub consumers.
+  const quotaResponse = await checkRateLimit(req, cors, {
+    scope: 'symbol-search:finnhub', identifier: 'shared', limit: 30, window: '60 s',
+    failClosed: true, ctx,
+  });
+  if (quotaResponse) return quotaResponse;
 
   try {
     const url = `https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${encodeURIComponent(apiKey)}`;
@@ -269,8 +281,14 @@ export default async function handler(
       const isUpstreamGatewayTransient =
         resp.status === 502 || resp.status === 503 || resp.status === 504;
       if (!isUpstreamGatewayTransient) {
+        // A broken key and an exhausted quota need different fixes, so they
+        // group apart. Bucketed, never the raw status.
+        const finnhubFailure = resp.status === 429
+          ? 'quota'
+          : resp.status === 401 || resp.status === 403 ? 'auth' : 'http-other';
         captureSilentError(new Error(`Finnhub search HTTP ${resp.status}`), {
           tags: { route: 'api/symbol-search', step: 'finnhub_fetch' },
+          fingerprint: ['api/symbol-search', 'finnhub_fetch', finnhubFailure],
           extra: { q, finnhubStatus: resp.status, ...(retryAfterSeconds ? { retryAfterSeconds } : {}) },
           level: 'warning',
           ctx,
@@ -312,6 +330,7 @@ export default async function handler(
     console.error('[symbol-search] error:', err);
     captureSilentError(err, {
       tags: { route: 'api/symbol-search', step: 'handler' },
+      fingerprint: ['api/symbol-search', 'handler', err instanceof Error ? err.name : 'Error'],
       extra: { q },
       ctx,
     });

@@ -34,7 +34,7 @@ describe('LiveNewsPanel instantiation guard', () => {
   // -------------------------------------------------------------------------
 
   it('DEFAULT_LIVE_CHANNELS is [] on happy variant (crash source)', () => {
-    const liveNews = src('src/components/LiveNewsPanel.ts');
+    const liveNews = src('src/services/live-channels.ts');
     const match = liveNews.match(/DEFAULT_LIVE_CHANNELS\s*=\s*SITE_VARIANT\s*===\s*['"]tech['"]\s*\?[^:]+:\s*SITE_VARIANT\s*===\s*['"]happy['"]\s*\?\s*(\[[^\]]*\])/);
     assert.ok(match, 'DEFAULT_LIVE_CHANNELS assignment not found');
     assert.equal(match[1].replace(/\s/g, ''), '[]', 'happy variant DEFAULT_LIVE_CHANNELS must be []');
@@ -165,11 +165,10 @@ describe('LiveNewsPanel instantiation guard', () => {
 
 describe("live-news must not be shadowed by a generic NewsPanel (regression #4382)", () => {
   it("CANONICAL_FEEDS defines a 'live-news' key (the latent landmine)", () => {
-    const feeds = src('src/config/feeds.ts');
-    assert.match(
-      feeds,
-      /['"]live-news['"]\s*:/,
-      "expected a 'live-news' entry in feeds.ts (energy headlines) — this is what lets the CANONICAL_FEEDS loop spawn a NewsPanel that shadows the video panel",
+    const catalog = JSON.parse(src('shared/news-catalog.json'));
+    assert.ok(
+      Object.values(catalog.layout.browser).some((categories) => (categories as string[]).includes('live-news')),
+      "expected a 'live-news' category in the news catalog (energy headlines) — this is what lets the CANONICAL_FEEDS loop spawn a NewsPanel that shadows the video panel",
     );
   });
 

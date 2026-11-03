@@ -7,7 +7,7 @@ import { withTimeout } from '@/utils/with-timeout';
 
 /**
  * Upper bound on the LLM summarization step. The full chain
- * (newsClient.summarizeArticle → Vercel function → OpenRouter/Groq) has
+ * (newsClient.summarizeArticle → Vercel function → OpenRouter) has
  * no per-call timeout of its own; without this cap a hung upstream
  * leaves the panel stuck on "Building daily market brief..." and the
  * try/catch below is useless against a pending-forever promise. On

@@ -59,6 +59,7 @@ vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => null,
   getEntitlementVerificationStatus: () => 'ready',
   hasFeature: () => false,
+  hasEmbedAccessForAccount: () => false,
   // Free tier: the upgrade branch, not the manage-billing branch.
   isEntitled: () => false,
   onEntitlementChange: () => () => {},

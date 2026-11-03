@@ -6,12 +6,16 @@
  * records and entitlements.
  */
 
-import { MutationCtx, internalMutation } from "../_generated/server";
+import { MutationCtx, type QueryCtx, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
+import { isAccountDeleting } from "../accountDeletion/guard";
+import { redactBillingPayload, tombstoneUserId } from "../accountDeletion/registry";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import {
   PLAN_PRECEDENCE,
+  PRODUCT_CATALOG,
   LEGACY_PRODUCT_ALIASES,
   resolveProductToPlan,
 } from "../config/productCatalog";
@@ -24,6 +28,10 @@ import {
 import { DEV_USER_ID, isDev } from "../lib/auth";
 import { isChargedEventType, recordUnattributedEvent } from "./unattributedPayments";
 import { normalizeCheckoutAttributionSource } from "../../shared/mcp-attribution";
+
+export function isBusinessPlan(planKey: string): boolean {
+  return PRODUCT_CATALOG[planKey]?.tierGroup === "api_business";
+}
 
 // ---------------------------------------------------------------------------
 // Types for webhook payload data (narrowed from `any`)
@@ -42,6 +50,7 @@ interface DodoSubscriptionData {
   previous_billing_date?: string | number | Date;
   next_billing_date?: string | number | Date;
   cancelled_at?: string | number | Date;
+  cancel_at_next_billing_date?: boolean;
   metadata?: Record<string, string>;
   recurring_pre_tax_amount?: number;
   currency?: string;
@@ -63,6 +72,206 @@ interface DodoPaymentData {
   // requires_customer_action | …). On `payment.processing` this is where the
   // 3DS/SCA-pending state is surfaced. See derivePaymentEventStatus.
   status?: string;
+}
+
+/**
+ * The address a subscription's billing mail goes to, trimmed, or "" when
+ * nothing is known. A user repair (`billingEmailOverride`) wins while it is
+ * newer than the row's last webhook; a webhook generated after the repair
+ * carries Dodo's current address and takes over again. Otherwise the trust
+ * order mirrors the portal's: the sub's own rawPayload email first
+ * (per-Clerk-userId by construction), then the customers row for the SAME
+ * userId (customers rows can race across Clerk accounts, so never a
+ * cross-user lookup). Dunning and the billing UI's bounce flag must name the
+ * same recipient, so both read it here.
+ */
+export async function resolveBillingRecipient(
+  ctx: MutationCtx | QueryCtx,
+  sub: Pick<Doc<"subscriptions">, "userId" | "rawPayload" | "updatedAt" | "billingEmailOverride">,
+): Promise<string> {
+  const override = sub.billingEmailOverride;
+  if (override && override.observedAt > sub.updatedAt) return override.email.trim();
+  const rawEmail = (sub.rawPayload as { customer?: { email?: unknown } } | null)?.customer?.email;
+  if (typeof rawEmail === "string" && rawEmail.includes("@")) return rawEmail.trim();
+  const customer = await ctx.db
+    .query("customers")
+    .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
+    .first();
+  return customer?.email.trim() ?? "";
+}
+
+export async function billingDeletionForUser(ctx: MutationCtx | QueryCtx, userId: string) {
+  return userId.startsWith("deleted:")
+    ? ctx.db.query("accountDeletions")
+      .withIndex("by_userIdHash", (q) => q.eq("userIdHash", userId.slice("deleted:".length)))
+      .unique()
+    : ctx.db.query("accountDeletions")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+}
+
+/**
+ * Per-transaction memo of "which account does this event's payload belong to".
+ *
+ * Every Dodo delivery resolves this several times — once per handler, once
+ * more in processWebhookEvent to decide payload redaction, and a third time on
+ * subscription.active — and each resolution costs up to two sequential indexed
+ * queries plus an async HMAC verify, on the common path where no account is
+ * being deleted at all.
+ *
+ * Only the *identity* is cached, never the row: `retainDeletedSubscriptionEvent`
+ * patches the deletion mid-transaction, so the document is always re-read.
+ * Keyed by ctx as well as payload so a fixture object reused across calls in a
+ * test cannot leak one transaction's answer into the next.
+ */
+const eventOwnerMemo = new WeakMap<object, WeakMap<object, string | null>>();
+
+/** Stored ownership wins over checkout metadata, including after anonymization. */
+async function resolveEventOwnerId(
+  ctx: MutationCtx,
+  data: Record<string, unknown>,
+): Promise<string | null> {
+  if (typeof data.subscription_id === "string") {
+    const subscription = await ctx.db.query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", data.subscription_id as string))
+      .unique();
+    if (subscription) return subscription.userId;
+  }
+  const metadata = data.metadata as Record<string, unknown> | undefined;
+  const signedOwner = typeof metadata?.wm_user_id === "string" && typeof metadata.wm_user_id_sig === "string"
+    && await verifyUserId(metadata.wm_user_id, metadata.wm_user_id_sig)
+    ? metadata.wm_user_id
+    : null;
+  const customer = data.customer as DodoCustomer | undefined;
+  if (typeof customer?.customer_id === "string") {
+    const existing = await ctx.db.query("customers")
+      .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customer.customer_id!))
+      .first();
+    if (existing) {
+      // Dodo keeps one customer id per email, so a person who deleted their
+      // account and signs up again reuses the deleted account's customer id.
+      // A subscription we have not seen before, signed at checkout for a live
+      // account, belongs to that account; filing it under the deletion would
+      // withhold access and cancel the new subscription.
+      if (signedOwner && signedOwner !== existing.userId
+        && await billingDeletionForUser(ctx, existing.userId)
+        && !(await billingDeletionForUser(ctx, signedOwner))) {
+        return signedOwner;
+      }
+      return existing.userId;
+    }
+  }
+  return signedOwner;
+}
+
+export async function billingDeletionForEvent(
+  ctx: MutationCtx,
+  value: unknown,
+): Promise<Doc<"accountDeletions"> | null> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+
+  let perCtx = eventOwnerMemo.get(ctx);
+  if (!perCtx) {
+    perCtx = new WeakMap<object, string | null>();
+    eventOwnerMemo.set(ctx, perCtx);
+  }
+  let ownerId: string | null | undefined = perCtx.get(data);
+  if (ownerId === undefined) {
+    ownerId = await resolveEventOwnerId(ctx, data);
+    perCtx.set(data, ownerId);
+  }
+
+  return ownerId == null ? null : billingDeletionForUser(ctx, ownerId);
+}
+
+/** Retain billing evidence without reviving personal data, access or email work. */
+async function retainDeletedSubscriptionEvent(
+  ctx: MutationCtx,
+  data: DodoSubscriptionData,
+  eventTimestamp: number,
+  eventType: string,
+): Promise<boolean> {
+  const deletion = await billingDeletionForEvent(ctx, data);
+  if (!deletion) return false;
+  const existing = await ctx.db.query("subscriptions")
+    .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", data.subscription_id))
+    .unique();
+  if (existing && !isNewerEvent(existing.updatedAt, eventTimestamp)) return true;
+  const nextStatus = eventType === "subscription.updated" ? data.status : eventType.slice("subscription.".length);
+  const status = nextStatus === "active" || nextStatus === "renewed" ? "active"
+    : nextStatus === "on_hold" || nextStatus === "cancelled" || nextStatus === "expired" ? nextStatus
+    : existing?.status;
+  if (!status) return true;
+  const periodEnd = data.next_billing_date == null ? existing?.currentPeriodEnd ?? eventTimestamp
+    : toEpochMs(data.next_billing_date, "next_billing_date", eventTimestamp);
+  const record = {
+    userId: tombstoneUserId(deletion.userIdHash),
+    dodoSubscriptionId: data.subscription_id,
+    dodoProductId: data.product_id ?? existing?.dodoProductId ?? "",
+    planKey: data.product_id ? await resolvePlanKey(ctx, data.product_id) : existing?.planKey ?? "free",
+    status,
+    currentPeriodStart: data.previous_billing_date == null ? existing?.currentPeriodStart ?? eventTimestamp
+      : toEpochMs(data.previous_billing_date, "previous_billing_date", eventTimestamp),
+    currentPeriodEnd: status === "cancelled" ? Math.max(existing?.currentPeriodEnd ?? periodEnd, periodEnd) : periodEnd,
+    dodoCustomerId: data.customer?.customer_id ?? existing?.dodoCustomerId,
+    rawPayload: redactBillingPayload(data),
+    updatedAt: eventTimestamp,
+  };
+  const subscriptionId = existing?._id ?? await ctx.db.insert("subscriptions", record);
+  if (existing) await ctx.db.patch(existing._id, record);
+
+  // Later payment/refund events can carry only this customer ID. Keep its
+  // tombstoned ownership mapping so they resolve to the deletion record. The
+  // customers row keeps the Dodo contact email for billing-retention evidence.
+  if (record.dodoCustomerId) {
+    const customer = await ctx.db.query("customers")
+      .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", record.dodoCustomerId!))
+      .first();
+    const retained = { userId: record.userId, updatedAt: eventTimestamp };
+    if (!customer) {
+      // No prior row exists, so there is no real contact email to retain;
+      // fall back to the tombstone id rather than inventing one.
+      await ctx.db.insert("customers", { ...retained, email: record.userId,
+        dodoCustomerId: record.dodoCustomerId, createdAt: eventTimestamp });
+    } else if (customer.userId === deletion.userId || customer.userId === record.userId) {
+      await ctx.db.patch(customer._id, retained);
+    }
+  }
+
+  if (!(deletion.dodoSubscriptionIds ?? []).includes(data.subscription_id)) {
+    // A subscription arriving after the account was deleted has to be routed
+    // back into cleanup, or Dodo keeps billing a customer we reported deleted.
+    // Resuming only from `complete` or a failure AT the external step left the
+    // failure states markBatchFailed produces — follows / personal / grants /
+    // anonymize / email_keyed — recording the id and scheduling nothing.
+    // Any failed deletion is resumable: restart it at the step it stopped on.
+    // Re-running an earlier step is safe because every stepper re-queries its
+    // leftovers to compute `done`.
+    const resumeFromExternal = deletion.status === "complete"
+      || (deletion.status === "failed" && deletion.step === "external");
+    const resumeFromStep = deletion.status === "failed" && deletion.step !== "external";
+    const resume = resumeFromExternal || resumeFromStep;
+    await ctx.db.patch(deletion._id, {
+      dodoSubscriptionIds: [...(deletion.dodoSubscriptionIds ?? []), data.subscription_id],
+      subscriptionDocIds: [...(deletion.subscriptionDocIds ?? []), subscriptionId],
+      updatedAt: Date.now(),
+      ...(resume ? { status: "pending" as const,
+        ...(resumeFromExternal ? { step: "external" as const } : {}),
+        externalAttempts: 0, batchAttempts: undefined,
+        completedAt: undefined, lastError: undefined } : {}),
+    });
+    if (resumeFromExternal) {
+      await ctx.scheduler.runAfter(0, internal.accountDeletion.sideEffects.runExternalErase, {
+        deletionId: deletion._id,
+      });
+    } else if (resumeFromStep) {
+      await ctx.scheduler.runAfter(0, internal.accountDeletion.batches.advanceEraseSafely, {
+        deletionId: deletion._id,
+      });
+    }
+  }
+  return true;
 }
 
 // The payment/refund webhook event types we route to handlePaymentOrRefundEvent
@@ -212,6 +421,7 @@ export async function upsertEntitlements(
   validUntil: number,
   updatedAt: number,
 ): Promise<void> {
+  if (await billingDeletionForUser(ctx, userId)) return;
   const existing = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -329,6 +539,18 @@ export function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "current
 }
 
 /**
+ * Whether the customer has cancelled but Dodo is keeping the subscription
+ * active until period end. A portal cancel arrives as `subscription.updated`
+ * with this flag; `subscription.cancelled` only lands at or after period end.
+ * Reads the stored Dodo payload, so rows written before this predicate
+ * existed answer correctly without a backfill.
+ */
+export function isCancellationScheduled(sub: { status: string; rawPayload?: unknown }): boolean {
+  const payload = sub.rawPayload as { cancel_at_next_billing_date?: unknown } | null | undefined;
+  return sub.status === "active" && payload?.cancel_at_next_billing_date === true;
+}
+
+/**
  * A prior subscription is eligible for post-lapse reactivation messaging only
  * after access has actually ended. `on_hold` and cancelled rows remain
  * excluded while paid through: those users are still in recovery/current
@@ -358,7 +580,7 @@ function isLapsedAt<
  *   3. later `currentPeriodEnd` wins (duration tie-break — keep the longest-
  *      lived covering sub)
  *
- * Exported for testing; use `pickBestCoveringSub` for the picker.
+ * Shared by coverage selection and focused comparator tests.
  */
 export function compareSubscriptionsByCoverage<
   T extends Pick<SubscriptionRow, "planKey" | "currentPeriodEnd">,
@@ -371,35 +593,9 @@ export function compareSubscriptionsByCoverage<
 }
 
 /**
- * Picks the strongest covering subscription for a user, or null if none
- * cover. Reads ALL of the user's subscriptions via `by_userId`; pass the
- * post-write timestamp so a sub that was just patched (e.g. expired) is
- * correctly excluded.
- */
-async function pickBestCoveringSub(
-  ctx: MutationCtx,
-  userId: string,
-  at: number,
-): Promise<SubscriptionRow | null> {
-  const candidates = await ctx.db
-    .query("subscriptions")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .collect();
-
-  let best: SubscriptionRow | null = null;
-  for (const s of candidates) {
-    if (!isCoveringAt(s, at)) continue;
-    if (best === null || compareSubscriptionsByCoverage(s, best) > 0) {
-      best = s as SubscriptionRow;
-    }
-  }
-  return best;
-}
-
-/**
  * Picks the strongest accepted Business Pro grant for a user.
  *
- * An accepted grant tied to a covering `api_business` subscription confers a
+ * An accepted grant tied to a covering API Business subscription confers a
  * Pro-tier entitlement (planKey `pro_monthly`) valid until the Business
  * subscription's `currentPeriodEnd`. The grant is explicit and revocable;
  * it never creates a fake subscription row in `subscriptions`.
@@ -424,12 +620,12 @@ async function pickBestAcceptedBusinessGrant(
       )
       .unique();
     // Defense-in-depth: a grant only confers Pro while its parent sub is BOTH
-    // covering AND still on the api_business plan. isCoveringAt alone is not
+    // covering AND still in the API Business tier. isCoveringAt alone is not
     // enough — a subscription.plan_changed downgrade leaves status/currentPeriodEnd
     // untouched, so the primary revocation path is the plan_changed handler
     // wiring the grant-revoke call (see handleSubscriptionPlanChanged); this
     // check is the safety net for any lifecycle transition that doesn't.
-    if (!businessSub || businessSub.planKey !== "api_business" || !isCoveringAt(businessSub, at)) continue;
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, at)) continue;
 
     const candidate = { planKey: "pro_monthly", currentPeriodEnd: businessSub.currentPeriodEnd };
     if (best === null || compareSubscriptionsByCoverage(candidate, best) > 0) {
@@ -451,15 +647,14 @@ async function pickBestAcceptedBusinessGrant(
  * another paid sub still covers the user — see review feedback on PR #3470.
  *
  * Algorithm:
- *   1. Honor a standing comp floor: if compUntil is in the future, leave
- *      the entitlement untouched (goodwill credit outlives Dodo state).
- *   2. Pick the strongest covering sub via the deterministic comparator
- *      (tier > PLAN_PRECEDENCE > currentPeriodEnd).
+ *   1. Preserve legacy comp rows without source provenance pending audit.
+ *   2. Gather covering subscriptions, preserving active renewal candidates.
  *   3. Also consider any accepted Business Pro grant tied to a covering
  *      `api_business` subscription; it confers Pro-tier features without
  *      creating a fake subscription row.
- *   4. Write the best source's (planKey, currentPeriodEnd) if any cover,
- *      otherwise downgrade to free.
+ *   4. Include the recorded comp source. Prefer live coverage, then compare
+ *      tier > PLAN_PRECEDENCE > currentPeriodEnd. Recheck at its expiry while
+ *      comp is active; otherwise downgrade to free when no sources remain.
  *
  * Note: callers MUST persist their own subscription row patch BEFORE calling
  * this helper so the recompute sees the post-event state.
@@ -469,36 +664,51 @@ export async function recomputeEntitlementFromAllSubs(
   userId: string,
   observedAt: number,
 ): Promise<void> {
+  if (await billingDeletionForUser(ctx, userId)) return;
   const entitlement = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .first();
-  if (entitlement?.compUntil && entitlement.compUntil > observedAt) {
+  if (entitlement?.compUntil && entitlement.compUntil > observedAt && !entitlement.compPlanKey) {
     console.log(
-      `[subscriptionHelpers] recompute for ${userId} — comp floor active until ${new Date(entitlement.compUntil).toISOString()}, preserving entitlement`,
+      `[subscriptionHelpers] recompute for ${userId} — legacy comp source unknown; preserving entitlement pending audit`,
     );
     return;
   }
 
-  const bestSub = await pickBestCoveringSub(ctx, userId, observedAt);
+  const subscriptions = await ctx.db.query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId)).collect();
+  const candidates = subscriptions.filter((sub) => isCoveringAt(sub, observedAt))
+    .map(({ planKey, currentPeriodEnd }) => ({ planKey, currentPeriodEnd }));
   const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, observedAt);
+  if (bestGrant) candidates.push(bestGrant);
 
-  // Normalize both sources to the same comparison shape. A Business Pro grant
-  // confers Pro-tier features (`pro_monthly`) without creating a fake
-  // subscription row; pick whichever source outranks the other.
-  const best =
-    bestSub && bestGrant
-      ? compareSubscriptionsByCoverage(bestSub, bestGrant) >= 0
-        ? { planKey: bestSub.planKey, validUntil: bestSub.currentPeriodEnd }
-        : { planKey: bestGrant.planKey, validUntil: bestGrant.currentPeriodEnd }
-      : bestSub
-        ? { planKey: bestSub.planKey, validUntil: bestSub.currentPeriodEnd }
-        : bestGrant
-          ? { planKey: bestGrant.planKey, validUntil: bestGrant.currentPeriodEnd }
-          : null;
+  const comp = entitlement?.compPlanKey && entitlement.compUntil && entitlement.compUntil > observedAt
+    ? { planKey: entitlement.compPlanKey, currentPeriodEnd: entitlement.compUntil }
+    : null;
+  if (comp) candidates.push(comp);
+
+  // A stale active row remains a renewal-reconciliation candidate, but must
+  // not hide another source that still supplies access right now.
+  const liveCandidates = candidates.filter((candidate) => candidate.currentPeriodEnd > observedAt);
+  const eligible = liveCandidates.length > 0 ? liveCandidates : candidates;
+  let best: { planKey: string; currentPeriodEnd: number } | null = null;
+  for (const candidate of eligible) {
+    if (!best || compareSubscriptionsByCoverage(candidate, best) > 0) best = candidate;
+  }
 
   if (best) {
-    await upsertEntitlements(ctx, userId, best.planKey, best.validUntil, observedAt);
+    await upsertEntitlements(ctx, userId, best.planKey, best.currentPeriodEnd, observedAt);
+    const nextExpiry = best.currentPeriodEnd;
+    if (comp && candidates.some((candidate) => candidate.currentPeriodEnd > nextExpiry)) {
+      // The winning tier may end before another paid or comp source. Re-read
+      // current records at that boundary; never replay this entitlement snapshot.
+      await ctx.scheduler.runAt(
+        nextExpiry,
+        internal.payments.subscriptionHelpers.recomputeEntitlementForUser,
+        { userId },
+      );
+    }
     return;
   }
 
@@ -559,7 +769,7 @@ export const revokeBusinessProGrantsIfNotCovering = internalMutation({
  * lost, or the multi-week-delay `revokeBusinessProGrantsIfNotCovering`
  * mutation itself never fires (e.g. a scheduled-function drop), a live grant
  * can be left pointing at a subscription that no longer covers or is no
- * longer `api_business` — the invitee's own entitlement still self-expires
+ * longer in the API Business tier — the invitee's own entitlement still self-expires
  * correctly via its own `validUntil`, but the stuck grant row keeps counting
  * against the owner's 4-seat cap forever with no product-visible way to
  * clear it. Mirrors `dodo-renewal-reconciliation`'s pattern for the same
@@ -589,7 +799,7 @@ export const reconcileBusinessProGrants = internalMutation({
             q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
           )
           .unique();
-        const stillValid = sub !== null && sub.planKey === "api_business" && isCoveringAt(sub, now);
+        const stillValid = sub !== null && isBusinessPlan(sub.planKey) && isCoveringAt(sub, now);
         if (stillValid) continue;
 
         await ctx.db.patch(grant._id, { status: "revoked" });
@@ -1047,6 +1257,8 @@ export async function handleSubscriptionActive(
   // replay in `attributeUnattributedPayment` re-dispatch it correctly.
   eventType = "subscription.active",
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, eventType)) return;
+  if (await billingDeletionForEvent(ctx, data)) return;
   const planKey = await resolvePlanKey(ctx, data.product_id);
 
   const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date", eventTimestamp);
@@ -1110,9 +1322,16 @@ export async function handleSubscriptionActive(
     return;
   }
 
+  // A deleted account's customer mapping is billing evidence, not an owner a
+  // new (possibly anonymous) checkout should be folded into.
+  const liveCustomerOwner = existingCustomer
+    && !existingCustomer.userId.startsWith("deleted:")
+    && !(await billingDeletionForUser(ctx, existingCustomer.userId))
+    ? existingCustomer.userId
+    : undefined;
   const userId = existing
     ? existing.userId
-    : preferExistingCustomerOwner(existingCustomer?.userId, resolvedUserId);
+    : preferExistingCustomerOwner(liveCustomerOwner, resolvedUserId);
   // A returning checkout receives a NEW Dodo subscription id, so matching only
   // `existing` would misclassify the user as a first-time subscriber and send
   // the generic welcome + admin alert. Snapshot the user's prior rows before
@@ -1133,6 +1352,17 @@ export async function handleSubscriptionActive(
     priorSubscriptions.some((subscription) =>
       isLapsedAt(subscription, eventTimestamp),
     );
+
+  // Only the transition into a scheduled cancel opens a confirmation episode.
+  // Dodo re-sends the flag on every later update of the subscription.
+  const cancelScheduled = data.cancel_at_next_billing_date === true;
+  const enteringScheduledCancel =
+    cancelScheduled && !(existing !== null && isCancellationScheduled(existing));
+  const cancelScheduledAt = enteringScheduledCancel
+    ? eventTimestamp
+    : cancelScheduled
+      ? existing?.cancelScheduledAt
+      : undefined;
 
   if (existing) {
     await ctx.db.patch(existing._id, {
@@ -1161,6 +1391,7 @@ export async function handleSubscriptionActive(
       // next status transition, so wiping them here is safe.
       cancelledAt: undefined,
       onHoldAt: undefined,
+      cancelScheduledAt,
     });
   } else {
     await ctx.db.insert("subscriptions", {
@@ -1179,6 +1410,7 @@ export async function handleSubscriptionActive(
       attributionSource: normalizeCheckoutAttributionSource(data.metadata?.wm_attribution),
       rawPayload: data,
       updatedAt: eventTimestamp,
+      cancelScheduledAt,
     });
 
     // Referral attribution on conversion (Phase 9 / Todo #223).
@@ -1200,7 +1432,12 @@ export async function handleSubscriptionActive(
         .query("userReferralCodes")
         .withIndex("by_code", (q) => q.eq("code", referralCode))
         .first();
-      if (referrer) {
+      // Fence the REFERRER, not just the event's subscriber. `userReferralCredits`
+      // is keyed on referrerUserId and is swept by the deletion cascade, so a
+      // conversion landing mid-deletion would otherwise re-create a personal row
+      // for an account being erased. `registerInterest.ts` already guards the
+      // identical insert on the waitlist path; this is the same rule.
+      if (referrer && !(await isAccountDeleting(ctx, referrer.userId))) {
         const refereeEmail = (data.customer?.email ?? "").trim().toLowerCase();
         if (refereeEmail) {
           const existingCredit = await ctx.db
@@ -1221,9 +1458,27 @@ export async function handleSubscriptionActive(
     }
   }
 
+  if (existing && !isBusinessPlan(planKey)) {
+    await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+  } else if (isBusinessPlan(planKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, data.subscription_id, Date.now());
+  }
+
   // Recompute from ALL subs on this userId — the event's sub may be a
   // duplicate or lower-tier than another active sub (multi-active-sub guard).
   await recomputeEntitlementFromAllSubs(ctx, userId, eventTimestamp);
+
+  if (enteringScheduledCancel && currentPeriodEnd > eventTimestamp && process.env.RESEND_API_KEY) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.subscriptionEmails.sendDunningEmail,
+      {
+        dodoSubscriptionId: data.subscription_id,
+        step: "cancellation_confirm",
+        episodeAt: eventTimestamp,
+      },
+    );
+  }
 
   // Upsert customer record so portal session creation can find dodoCustomerId
   const email = data.customer?.email ?? "";
@@ -1231,6 +1486,17 @@ export async function handleSubscriptionActive(
 
   if (incomingDodoCustomerId) {
     if (existingCustomer) {
+      // Deleted accounts: the row must keep its tombstoned owner. Dodo
+      // contact data is retained as billing evidence; never revive the
+      // deletion with the live userId from a late webhook.
+      if (userId.startsWith("deleted:")) {
+        return;
+      }
+      // The reverse case: a live account reusing a deleted account's Dodo
+      // customer id. Keep the tombstoned mapping as the deletion's billing
+      // evidence; the new subscription row carries the customer id itself.
+      const keepDeletedOwner = existingCustomer.userId !== userId
+        && await billingDeletionForUser(ctx, existingCustomer.userId) != null;
       // Skip the rewrite when nothing changes. Dodo delivers related events
       // for one purchase in a burst (subscription.active + payment.succeeded
       // + subscription.updated within milliseconds), and re-patching the same
@@ -1242,7 +1508,7 @@ export async function handleSubscriptionActive(
         existingCustomer.userId === userId &&
         existingCustomer.email === email &&
         existingCustomer.normalizedEmail === normalizedEmail;
-      if (!customerUnchanged) {
+      if (!customerUnchanged && !keepDeletedOwner) {
         await ctx.db.patch(existingCustomer._id, {
           userId,
           email,
@@ -1328,6 +1594,7 @@ export async function handleSubscriptionActive(
         0,
         internal.payments.subscriptionEmails.sendReactivationEmail,
         {
+          userId,
           userEmail: recipientEmail,
           planKey,
           checkoutEmail: checkoutEmailDiffers ? email.trim() : undefined,
@@ -1362,6 +1629,21 @@ export async function handleSubscriptionActive(
   }
 }
 
+async function recomputeAcceptedBusinessInvitees(
+  ctx: MutationCtx,
+  subscriptionId: string,
+  observedAt: number,
+): Promise<void> {
+  const grants = await ctx.db.query("businessProGrants")
+    .withIndex("by_businessSubscriptionId", (q) => q.eq("businessSubscriptionId", subscriptionId))
+    .collect();
+  for (const grant of grants) {
+    if (grant.status === "accepted" && grant.inviteeUserId) {
+      await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, observedAt);
+    }
+  }
+}
+
 /**
  * Handles `subscription.renewed` -- a recurring payment succeeded and the
  * subscription period has been extended.
@@ -1371,6 +1653,7 @@ export async function handleSubscriptionRenewed(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.renewed")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1410,6 +1693,9 @@ export async function handleSubscriptionRenewed(
   // Recompute from ALL subs — a renewal on a lower-tier sub must NOT
   // clobber a higher-tier active sub on the same userId.
   await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+  if (isBusinessPlan(existing.planKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, Date.now());
+  }
 }
 
 /**
@@ -1422,6 +1708,7 @@ export async function handleSubscriptionOnHold(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.on_hold")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1561,6 +1848,7 @@ export async function handleSubscriptionCancelled(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.cancelled")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1586,9 +1874,15 @@ export async function handleSubscriptionCancelled(
   // new episode (cancelled → active → cancelled) passes through a
   // non-cancelled status first, so enteringCancelled correctly re-anchors.
   const enteringCancelled = existing.status !== "cancelled";
-  const eventCancelledAt = data.cancelled_at
+  // A cancel that was scheduled through the portal already opened its
+  // confirmation episode. Reusing that anchor makes the ledger dedupe the
+  // confirmation below and in the daily retry scan.
+  const scheduledCancelAt = isCancellationScheduled(existing)
+    ? existing.cancelScheduledAt
+    : undefined;
+  const eventCancelledAt = scheduledCancelAt ?? (data.cancelled_at
     ? toEpochMs(data.cancelled_at, "cancelled_at", eventTimestamp)
-    : eventTimestamp;
+    : eventTimestamp);
   const cancelledAt = enteringCancelled
     ? eventCancelledAt
     : (existing.cancelledAt ?? eventCancelledAt);
@@ -1646,7 +1940,7 @@ export async function handleSubscriptionCancelled(
   // actually stopped covering (paid-through cancellation still covers). For a
   // still-covering cancellation, schedule the revoke at currentPeriodEnd so
   // grants die with access.
-  if (existing.planKey === "api_business") {
+  if (isBusinessPlan(existing.planKey)) {
     if (!isCoveringAt(cancelledCoverage, eventTimestamp)) {
       await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
     } else {
@@ -1671,6 +1965,7 @@ export async function handleSubscriptionPlanChanged(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.plan_changed")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1685,26 +1980,37 @@ export async function handleSubscriptionPlanChanged(
     return;
   }
 
-  if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
+  // Dodo stamps every event of one change with the same timestamp, and
+  // `renewed` can land first without reading product_id (#8733). A plan change
+  // re-applies the same snapshot, so an equal timestamp is not stale.
+  if (eventTimestamp < existing.updatedAt) return;
 
   const newPlanKey = await resolvePlanKey(ctx, data.product_id);
-  const leftBusinessPlan = existing.planKey === "api_business" && newPlanKey !== "api_business";
+  const leftBusinessPlan = isBusinessPlan(existing.planKey) && !isBusinessPlan(newPlanKey);
 
   await ctx.db.patch(existing._id, {
     dodoProductId: data.product_id,
     planKey: newPlanKey,
+    currentPeriodStart: data.previous_billing_date == null
+      ? existing.currentPeriodStart
+      : toEpochMs(data.previous_billing_date, "previous_billing_date", existing.currentPeriodStart),
+    currentPeriodEnd: data.next_billing_date == null
+      ? existing.currentPeriodEnd
+      : toEpochMs(data.next_billing_date, "next_billing_date", existing.currentPeriodEnd),
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: data,
     updatedAt: eventTimestamp,
   });
 
   // Business Pro grants are tied to the owner's dodoSubscriptionId staying on
-  // api_business — status/currentPeriodEnd alone don't change on a plan
+  // the API Business tier — status/currentPeriodEnd alone don't change on a plan
   // change, so without this the grants would otherwise silently outlive the
   // Business plan they were issued under (see pickBestAcceptedBusinessGrant's
   // planKey defense-in-depth check for the other half of this fix).
   if (leftBusinessPlan) {
     await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+  } else if (isBusinessPlan(newPlanKey)) {
+    await recomputeAcceptedBusinessInvitees(ctx, existing.dodoSubscriptionId, Date.now());
   }
 
   // Recompute from ALL subs — the new plan may be lower-tier than another
@@ -1724,6 +2030,7 @@ export async function handleSubscriptionExpired(
   data: DodoSubscriptionData,
   eventTimestamp: number,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.expired")) return;
   const existing = await ctx.db
     .query("subscriptions")
     .withIndex("by_dodoSubscriptionId", (q) =>
@@ -1749,7 +2056,7 @@ export async function handleSubscriptionExpired(
 
   // Business Pro grants die with the Business sub — revoke them and recompute
   // each invitee before the owner's own recompute below.
-  if (existing.planKey === "api_business") {
+  if (isBusinessPlan(existing.planKey)) {
     await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
   }
 
@@ -1790,6 +2097,7 @@ export async function handleSubscriptionUpdated(
   webhookId: string,
   rawPayload: unknown,
 ): Promise<void> {
+  if (await retainDeletedSubscriptionEvent(ctx, data, eventTimestamp, "subscription.updated")) return;
   const status = (data.status ?? "").toString();
   switch (status) {
     case "active":
@@ -1905,7 +2213,9 @@ export async function handlePaymentOrRefundEvent(
     else console.warn(message);
     return;
   }
-  const userId = resolvedUserId;
+  const deletion = await billingDeletionForEvent(ctx, data)
+    ?? await billingDeletionForUser(ctx, resolvedUserId);
+  const userId = deletion ? tombstoneUserId(deletion.userIdHash) : resolvedUserId;
 
   const type = eventType.startsWith("refund.") ? "refund" : "charge";
   // Non-terminal payment states (processing, requires_customer_action / 3DS-SCA)
@@ -1931,9 +2241,10 @@ export async function handlePaymentOrRefundEvent(
     // pending row to its tierGroup (#4438). Undefined for sessions created
     // before the bridge shipped or events that drop session metadata.
     planKey: data.metadata?.wm_plan_key,
-    rawPayload: data,
+    rawPayload: deletion ? redactBillingPayload(data) : data,
     occurredAt: eventTimestamp,
   });
+  if (deletion) return;
 
   // Refund-without-prior-cancellation alert. Dodo Payments treats refund
   // and subscription cancellation as separate operations — refunding a
@@ -2019,6 +2330,9 @@ export function classifyRefundAlert(input: {
   if (input.subCancelledAt) {
     return { kind: "no-op", reason: "already-cancelled" };
   }
+  if (isCancellationScheduled({ status: input.subStatus, rawPayload: input.subRawPayload })) {
+    return { kind: "no-op", reason: "cancel-scheduled" };
+  }
   const subAmount = typeof input.subRawPayload?.recurring_pre_tax_amount === "number"
     ? input.subRawPayload.recurring_pre_tax_amount
     : 0;
@@ -2055,20 +2369,29 @@ export async function handleDisputeEvent(
   eventType: string,
   eventTimestamp: number,
 ): Promise<void> {
-  const existingSubscription = data.subscription_id
+  const payments = data.subscription_id ? [] : await ctx.db.query("paymentEvents")
+    .withIndex("by_dodoPaymentId", q => q.eq("dodoPaymentId", data.payment_id)).collect();
+  const subscriptionIds = [...new Set(payments.map(p => p.dodoSubscriptionId).filter((id): id is string => Boolean(id)))];
+  if (subscriptionIds.length > 1) throw new Error("Ambiguous disputed payment subscription");
+  const subscriptionId = data.subscription_id ?? subscriptionIds[0];
+  const existingSubscription = subscriptionId
     ? await ctx.db
         .query("subscriptions")
         .withIndex("by_dodoSubscriptionId", (q) =>
-          q.eq("dodoSubscriptionId", data.subscription_id ?? ""),
+          q.eq("dodoSubscriptionId", subscriptionId),
         )
         .unique()
     : null;
-  const userId = existingSubscription?.userId
+  const resolvedUserId = existingSubscription?.userId ?? payments[0]?.userId
     ?? await resolveUserId(
       ctx,
       data.customer?.customer_id ?? "",
       data.metadata,
     );
+  const deletion = existingSubscription
+    ? await billingDeletionForUser(ctx, resolvedUserId)
+    : await billingDeletionForEvent(ctx, data) ?? await billingDeletionForUser(ctx, resolvedUserId);
+  const userId = deletion ? tombstoneUserId(deletion.userIdHash) : resolvedUserId;
 
   const disputeStatusMap: Record<string, "dispute_opened" | "dispute_won" | "dispute_lost" | "dispute_closed"> = {
     "dispute.opened": "dispute_opened",
@@ -2089,8 +2412,8 @@ export async function handleDisputeEvent(
     amount: webhookAmount(data),
     currency: data.currency ?? "USD",
     status: disputeStatus,
-    dodoSubscriptionId: data.subscription_id ?? undefined,
-    rawPayload: data,
+    dodoSubscriptionId: subscriptionId,
+    rawPayload: deletion ? redactBillingPayload(data) : data,
     occurredAt: eventTimestamp,
   });
 
@@ -2102,7 +2425,8 @@ export async function handleDisputeEvent(
     if (existingSubscription && isNewerEvent(existingSubscription.updatedAt, eventTimestamp)) {
       await ctx.db.patch(existingSubscription._id, {
         status: "expired",
-        rawPayload: data,
+        ...(deletion ? { userId } : {}),
+        rawPayload: deletion ? redactBillingPayload(data) : data,
         updatedAt: eventTimestamp,
       });
     }

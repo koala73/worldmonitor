@@ -80,14 +80,22 @@ describe('free-tier roster', () => {
     }
   });
 
+  it('names every free tool, and report_issue is the one credentialed-downstream exception', () => {
+    // A new free tool needs a review, not a flag flip. report_issue reaches a
+    // credentialed downstream (a shared-secret Convex append) on purpose:
+    // docs/architecture/agent-feedback-threat-model.md states the exception,
+    // and it must stay the only one.
+    assert.deepEqual(freeTools.map((t) => t.name).sort(), ['get_sources', 'report_issue']);
+  });
+
   it('advertises the full access class while preserving free for anonymous tools', () => {
     for (const tool of TOOL_LIST_RESPONSE) {
       const internal = TOOL_REGISTRY.find((candidate) => candidate.name === tool.name);
       assert.ok(internal, `${tool.name} must exist in the registry`);
       const marker = tool._meta?.['worldmonitor/access'];
-      const expected = internal._freeTier === true
+      const expected = internal._subscriptionOnly ? 'subscription' : internal._freeTier === true
         ? 'free'
-        : internal._execute === undefined || internal.name === 'describe_tool'
+        : internal._execute === undefined || internal.name === 'describe_tool' || internal.name === 'get_mcp_allowance' || internal.name === 'start_upgrade'
           ? 'free-account'
           : 'subscription';
       assert.equal(marker, expected, `${tool.name} must advertise ${expected} access`);

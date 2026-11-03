@@ -85,7 +85,16 @@ export interface CascadeResult {
     id: string;
     name: string;
     capacityShare: number;
+    /** False when the alternative crosses a chokepoint that a cut cable also crosses. */
+    avoidsCutZone?: boolean;
   }[];
+  /** Every disrupted node when several were cut together (multi-cable / chokepoint cut). */
+  sources?: InfrastructureNode[];
+  /** Present when the result rests on estimated rather than measured inputs. */
+  dataQuality?: {
+    estimated: boolean;
+    note: string;
+  };
 }
 
 /** Structural shape of an undersea cable — mirrors the client `UnderseaCable`. */
@@ -596,64 +605,346 @@ function categorizeImpact(strength: number): CascadeImpactLevel {
   return 'low';
 }
 
-export function calculateCascade(
+/**
+ * Caveat attached to every cable-driven result. The cable table carries no
+ * measured per-country capacity or redundancy: `capacityShare` is derived as
+ * 1 / landing-country count (capped at 0.30) and `isRedundant` is true for
+ * every row, so cable impacts are structural estimates, not measurements.
+ */
+export const CABLE_ESTIMATE_NOTE =
+  'Estimated: cable capacity shares are approximated as 1 / landing-country count (capped at 30%) and every ' +
+  'cable-country link is assumed to have redundancy. No measured capacity or redundancy data is used, so ' +
+  'impact levels are indicative only.';
+
+/**
+ * Chokepoints whose enclosed basin is reachable only through the strait. A
+ * cable with a landing point inside the basin must cross the chokepoint even
+ * when its simplified route geometry never comes near the strait centre.
+ */
+export const CHOKEPOINT_ENCLOSED_BASINS: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }[]> = {
+  // Persian Gulf west of the Musandam peninsula. Fujairah / Kalba (lon >= 56.3) sit outside on the Gulf of Oman.
+  hormuz_strait: [{ minLat: 23.5, maxLat: 30.6, minLon: 47.5, maxLon: 56.2 }],
+};
+
+/** A cable route or landing point within this distance of a chokepoint centre counts as crossing it. */
+export const CHOKEPOINT_CROSSING_RADIUS_KM = 60;
+
+type BasinBox = { minLat: number; maxLat: number; minLon: number; maxLon: number };
+
+/** Red Sea with the Gulfs of Suez and Aqaba, north of Bab el-Mandeb. Djibouti, Aden and Port Said sit outside. */
+const RED_SEA_BASIN: BasinBox = { minLat: 12.7, maxLat: 30.0, minLon: 32.3, maxLon: 43.4 };
+const isMediterraneanSide = (lat: number, lon: number) => lat > 30 && lon < 40;
+
+/**
+ * Basins with two exits. A cable landing inside the basin crosses the exit
+ * when it also lands outside on that exit's side: Red Sea plus Indian Ocean
+ * leaves through Bab el-Mandeb, Red Sea plus Mediterranean crosses at Suez.
+ * Simplified routes keep about six vertices per cable, so route proximity
+ * alone misses most of these crossings.
+ */
+export const CHOKEPOINT_BASIN_EXITS: Record<string, { basin: BasinBox; outsideSide: (lat: number, lon: number) => boolean }> = {
+  bab_el_mandeb: { basin: RED_SEA_BASIN, outsideSide: (lat, lon) => !isMediterraneanSide(lat, lon) },
+  suez: { basin: RED_SEA_BASIN, outsideSide: isMediterraneanSide },
+};
+
+const inBox = (box: BasinBox, lat: number, lon: number) =>
+  lat >= box.minLat && lat <= box.maxLat && lon >= box.minLon && lon <= box.maxLon;
+
+function cableCrossesChokepoint(cable: CableInput, chokepointKey: string, lat: number, lon: number): boolean {
+  for (const [pLon, pLat] of cable.points ?? []) {
+    if (haversineKm(pLat, pLon, lat, lon) <= CHOKEPOINT_CROSSING_RADIUS_KM) return true;
+  }
+  const exit = CHOKEPOINT_BASIN_EXITS[chokepointKey];
+  if (exit) {
+    const landings = (cable.landingPoints ?? []).filter(
+      (lp): lp is typeof lp & { lat: number; lon: number } => typeof lp.lat === 'number' && typeof lp.lon === 'number',
+    );
+    const inside = landings.some((lp) => inBox(exit.basin, lp.lat, lp.lon));
+    if (inside && landings.some((lp) => !inBox(exit.basin, lp.lat, lp.lon) && exit.outsideSide(lp.lat, lp.lon))) return true;
+  }
+  const basins = CHOKEPOINT_ENCLOSED_BASINS[chokepointKey] ?? [];
+  const inBasin = (pLat: number, pLon: number) =>
+    basins.some(b => pLat >= b.minLat && pLat <= b.maxLat && pLon >= b.minLon && pLon <= b.maxLon);
+  let inside = false;
+  let outside = false;
+  for (const lp of cable.landingPoints ?? []) {
+    if (typeof lp.lat !== 'number' || typeof lp.lon !== 'number') continue;
+    if (haversineKm(lp.lat, lp.lon, lat, lon) <= CHOKEPOINT_CROSSING_RADIUS_KM) return true;
+    if (inBasin(lp.lat, lp.lon)) inside = true;
+    else outside = true;
+  }
+  // A cable lands inside the basin and also outside it, so it must pass through the strait.
+  // A cable that stays entirely inside the basin (e.g. Kuwait-Iran) does not cross it.
+  return basins.length > 0 && inside && outside;
+}
+
+const chokepointCrossingCache = new WeakMap<DependencyGraph, Map<string, Set<string>>>();
+
+/** Chokepoint node ids each cable node crosses (route or landing within radius, or landings both inside and outside an enclosed basin). */
+function getCableChokepoints(graph: DependencyGraph): Map<string, Set<string>> {
+  const cached = chokepointCrossingCache.get(graph);
+  if (cached) return cached;
+  const chokepoints = [...graph.nodes.values()].filter(n => n.type === 'chokepoint' && n.coordinates);
+  const result = new Map<string, Set<string>>();
+  for (const cable of graph.cables) {
+    const crossed = new Set<string>();
+    for (const cp of chokepoints) {
+      const [lon, lat] = cp.coordinates!;
+      if (cableCrossesChokepoint(cable, cp.id.replace('chokepoint:', ''), lat, lon)) crossed.add(cp.id);
+    }
+    result.set(`cable:${cable.id}`, crossed);
+  }
+  chokepointCrossingCache.set(graph, result);
+  return result;
+}
+
+/** Cable node ids (`cable:<id>`) whose route crosses the given chokepoint node (e.g. `chokepoint:hormuz_strait`). */
+export function getCablesThroughChokepoint(graph: DependencyGraph, chokepointId: string): string[] {
+  const id = chokepointId.startsWith('chokepoint:') ? chokepointId : `chokepoint:${chokepointId}`;
+  const out: string[] = [];
+  for (const [cableId, crossed] of getCableChokepoints(graph)) {
+    if (crossed.has(id)) out.push(cableId);
+  }
+  return out.sort();
+}
+
+/** A cable-health record in the `cable-health-v1` snapshot shape (status names keep the proto prefix). */
+export interface CableHealthInput {
+  status?: unknown;
+  score?: unknown;
+  confidence?: unknown;
+  lastUpdated?: unknown;
+  evidence?: unknown;
+}
+
+export interface CableIncident {
+  status: 'FAULT' | 'DEGRADED';
+  score: number | null;
+  confidence: number | null;
+  lastUpdated: number | null;
+  evidence: { source: string; summary: string; ts: number | null }[];
+}
+
+export interface CountryCableExposure {
+  country: string;
+  countryName: string;
+  cableCount: number;
+  landingStationCount: number;
+  /** Distinct landing cities in the country, most cables first. */
+  landingStations: { city: string; cables: number }[];
+  cables: {
+    id: string;
+    name: string;
+    rfsYear: number | null;
+    landingCities: string[];
+    /** Chokepoint node ids the cable route crosses. */
+    chokepoints: string[];
+    /** Present only when the cable-health monitor flags the cable FAULT or DEGRADED. */
+    health: CableIncident | null;
+  }[];
+  /** Chokepoints the country's cables cross, most cables first; share = cables / cableCount. */
+  chokepointExposure: { chokepoint: string; name: string; cables: number; share: number }[];
+  cablesAvoidingChokepoints: number;
+  /** Largest share of the country's cables that one chokepoint closure would sever (0 when none cross one). */
+  largestSingleChokepointShare: number;
+  activeIncidents: ({ cableId: string; name: string } & CableIncident)[];
+}
+
+export const CABLE_EXPOSURE_NOTE =
+  'Counts come from the seeded TeleGeography cable table: cables with a landing point in the country, grouped ' +
+  'by landing city. Chokepoint crossings use simplified route geometry. Health lists only cables the NGA ' +
+  'notice monitor flags FAULT or DEGRADED; no incident does not confirm a cable is healthy. No measured ' +
+  'capacity is used.';
+
+const MAX_INCIDENT_EVIDENCE = 2;
+const MAX_EVIDENCE_SUMMARY_CHARS = 240;
+
+function toIncident(raw: CableHealthInput | undefined): CableIncident | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const status = typeof raw.status === 'string' ? raw.status.replace(/^CABLE_HEALTH_STATUS_/, '') : '';
+  if (status !== 'FAULT' && status !== 'DEGRADED') return null;
+  const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  const evidence = (Array.isArray(raw.evidence) ? raw.evidence : [])
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+    .slice(0, MAX_INCIDENT_EVIDENCE)
+    .map((entry) => ({
+      source: typeof entry.source === 'string' ? entry.source : '',
+      summary: typeof entry.summary === 'string' ? entry.summary.slice(0, MAX_EVIDENCE_SUMMARY_CHARS) : '',
+      ts: num(entry.ts),
+    }));
+  return { status, score: num(raw.score), confidence: num(raw.confidence), lastUpdated: num(raw.lastUpdated), evidence };
+}
+
+/**
+ * Submarine-cable exposure of one country: which cables land there, at how
+ * many distinct landing stations, which chokepoints those cables cross, and
+ * which of them the cable-health monitor currently flags.
+ */
+export function getCountryCableExposure(
   graph: DependencyGraph,
-  sourceId: string,
-  disruptionLevel: number = 1.0,
-): CascadeResult | null {
-  const source = graph.nodes.get(sourceId);
+  countryCode: string,
+  health: Record<string, CableHealthInput> | null = null,
+): CountryCableExposure {
+  const code = countryCode.toUpperCase();
+  const crossings = getCableChokepoints(graph);
+  const stationCounts = new Map<string, number>();
+  const chokepointCounts = new Map<string, number>();
+  const cables: CountryCableExposure['cables'] = [];
+  let countryName = COUNTRY_NAMES[code] || '';
 
-  if (!source) return null;
+  for (const cable of graph.cables) {
+    const landings = (cable.landingPoints ?? []).filter((lp) => lp.country.toUpperCase() === code);
+    const served = landings.length > 0 || (cable.countriesServed ?? []).some((c) => c.country.toUpperCase() === code);
+    if (!served) continue;
+    if (!countryName) countryName = landings.find((lp) => lp.countryName)?.countryName ?? '';
+    const landingCities = [...new Set(landings.map((lp) => lp.city).filter((city): city is string => !!city))];
+    for (const city of landingCities) stationCounts.set(city, (stationCounts.get(city) ?? 0) + 1);
+    const chokepoints = [...(crossings.get(`cable:${cable.id}`) ?? [])].sort();
+    for (const cp of chokepoints) chokepointCounts.set(cp, (chokepointCounts.get(cp) ?? 0) + 1);
+    cables.push({
+      id: cable.id,
+      name: cable.name,
+      rfsYear: typeof cable.rfsYear === 'number' ? cable.rfsYear : null,
+      landingCities,
+      chokepoints,
+      health: toIncident(health?.[cable.id]),
+    });
+  }
 
-  const affected: Map<string, CascadeAffectedNode> = new Map();
-  const visited = new Set<string>();
-  visited.add(sourceId);
+  cables.sort((a, b) => a.name.localeCompare(b.name));
+  const cableCount = cables.length;
+  const round = (value: number) => Math.round(value * 1000) / 1000;
+  const chokepointExposure = [...chokepointCounts.entries()]
+    .map(([chokepoint, count]) => ({
+      chokepoint,
+      name: graph.nodes.get(chokepoint)?.name ?? chokepoint,
+      cables: count,
+      share: round(count / cableCount),
+    }))
+    .sort((a, b) => b.cables - a.cables || a.chokepoint.localeCompare(b.chokepoint));
 
-  const queue: { nodeId: string; depth: number; path: string[] }[] = [
-    { nodeId: sourceId, depth: 0, path: [sourceId] },
-  ];
+  return {
+    country: code,
+    countryName: countryName || code,
+    cableCount,
+    landingStationCount: stationCounts.size,
+    landingStations: [...stationCounts.entries()]
+      .map(([city, count]) => ({ city, cables: count }))
+      .sort((a, b) => b.cables - a.cables || a.city.localeCompare(b.city)),
+    cables,
+    chokepointExposure,
+    cablesAvoidingChokepoints: cables.filter((cable) => cable.chokepoints.length === 0).length,
+    largestSingleChokepointShare: chokepointExposure[0]?.share ?? 0,
+    activeIncidents: cables
+      .filter((cable) => cable.health)
+      .map((cable) => ({ cableId: cable.id, name: cable.name, ...cable.health! })),
+  };
+}
+
+interface PropagatedNode {
+  strength: number;
+  pathLength: number;
+  dependencyChain: string[];
+  redundancyAvailable: boolean;
+  estimatedRecovery?: string;
+}
+
+/**
+ * Breadth-first propagation from one source. A node is only marked visited once
+ * an edge actually reaches it above the cutoff, so a weak edge (e.g. a small
+ * `serves` share) no longer blocks a stronger edge to the same node (e.g. the
+ * same cable's `lands_at` edge).
+ */
+function propagate(graph: DependencyGraph, sourceId: string, disruptionLevel: number, countryImpactCutoff: number): Map<string, PropagatedNode> {
+  const reached = new Map<string, PropagatedNode>();
+  const visited = new Set<string>([sourceId]);
+  const queue: { nodeId: string; depth: number; path: string[] }[] = [{ nodeId: sourceId, depth: 0, path: [sourceId] }];
 
   while (queue.length > 0) {
     const { nodeId, depth, path } = queue.shift()!;
     if (depth >= 3) continue;
 
-    const dependents = graph.outgoing.get(nodeId) || [];
+    // Strongest edge per target first, so the reported chain/strength is the best one.
+    const dependents = [...(graph.outgoing.get(nodeId) || [])].sort(
+      (a, b) => b.strength * (1 - (b.redundancy || 0)) - a.strength * (1 - (a.redundancy || 0)),
+    );
 
     for (const edge of dependents) {
       if (visited.has(edge.to)) continue;
-      visited.add(edge.to);
 
       const impactStrength = edge.strength * disruptionLevel * (1 - (edge.redundancy || 0));
-      const targetNode = graph.nodes.get(edge.to);
+      const target = graph.nodes.get(edge.to);
+      if (!target || impactStrength < (target.type === 'country' ? countryImpactCutoff : 0.05)) continue;
+      visited.add(edge.to);
 
-      if (!targetNode || impactStrength < 0.05) continue;
-
-      affected.set(edge.to, {
-        node: targetNode,
-        impactLevel: categorizeImpact(impactStrength),
+      reached.set(edge.to, {
+        strength: impactStrength,
         pathLength: depth + 1,
         dependencyChain: [...path, edge.to],
         redundancyAvailable: (edge.redundancy || 0) > 0.3,
         estimatedRecovery: edge.metadata?.estimatedImpact,
       });
 
-      queue.push({
-        nodeId: edge.to,
-        depth: depth + 1,
-        path: [...path, edge.to],
-      });
+      queue.push({ nodeId: edge.to, depth: depth + 1, path: [...path, edge.to] });
     }
   }
 
+  return reached;
+}
+
+function involvesCables(graph: DependencyGraph, sourceIds: string[]): boolean {
+  return sourceIds.some(id => graph.nodes.get(id)?.type === 'cable');
+}
+
+function buildResult(
+  graph: DependencyGraph,
+  source: InfrastructureNode,
+  sourceIds: string[],
+  disruptionLevel: number,
+): CascadeResult {
+  const sourceSet = new Set(sourceIds);
+  const merged = new Map<string, PropagatedNode>();
+  const capacityByCountry = new Map<string, number>();
+
+  for (const sid of sourceIds) {
+    for (const [nodeId, hit] of propagate(graph, sid, disruptionLevel, sourceIds.length > 1 ? 0 : 0.05)) {
+      if (sourceSet.has(nodeId)) continue;
+      const node = graph.nodes.get(nodeId)!;
+      const prev = merged.get(nodeId);
+      if (node.type === 'country') {
+        const code = (node.metadata?.code as string) || nodeId.replace('country:', '');
+        const capacity = getCapacityForCountry(sid, code, graph, hit.dependencyChain);
+        capacityByCountry.set(nodeId, Math.min(1, (capacityByCountry.get(nodeId) ?? 0) + capacity));
+        // Independent cuts on the same country add up (capped at total loss).
+        merged.set(nodeId, prev
+          ? { ...prev, strength: Math.min(1, prev.strength + hit.strength), redundancyAvailable: prev.redundancyAvailable && hit.redundancyAvailable }
+          : hit);
+      } else if (!prev || hit.strength > prev.strength) {
+        merged.set(nodeId, hit);
+      }
+    }
+  }
+
+  const affectedNodes: CascadeAffectedNode[] = [];
   const countriesAffected: CascadeCountryImpact[] = [];
-  for (const [nodeId, affectedNode] of affected) {
-    if (affectedNode.node.type === 'country') {
-      const code = (affectedNode.node.metadata?.code as string) || nodeId.replace('country:', '');
+  for (const [nodeId, hit] of merged) {
+    if (hit.strength < 0.05) continue;
+    const node = graph.nodes.get(nodeId)!;
+    const impactLevel = categorizeImpact(hit.strength);
+    affectedNodes.push({
+      node,
+      impactLevel,
+      pathLength: hit.pathLength,
+      dependencyChain: hit.dependencyChain,
+      redundancyAvailable: hit.redundancyAvailable,
+      estimatedRecovery: hit.estimatedRecovery,
+    });
+    if (node.type === 'country') {
       countriesAffected.push({
-        country: code,
-        countryName: affectedNode.node.name,
-        impactLevel: affectedNode.impactLevel,
-        affectedCapacity: getCapacityForCountry(sourceId, code, graph, affectedNode.dependencyChain),
+        country: (node.metadata?.code as string) || nodeId.replace('country:', ''),
+        countryName: node.name,
+        impactLevel,
+        affectedCapacity: capacityByCountry.get(nodeId) ?? 0,
       });
     }
   }
@@ -663,14 +954,62 @@ export function calculateCascade(
     return (order[a.impactLevel] - order[b.impactLevel]) || (b.affectedCapacity - a.affectedCapacity);
   });
 
-  const redundancies = findRedundancies(graph, sourceId);
-
-  return {
+  const result: CascadeResult = {
     source,
-    affectedNodes: Array.from(affected.values()),
+    affectedNodes,
     countriesAffected,
-    redundancies,
+    redundancies: findRedundancies(graph, sourceIds),
   };
+  if (sourceIds.length > 1) result.sources = sourceIds.map(id => graph.nodes.get(id)!);
+  if (involvesCables(graph, sourceIds)) result.dataQuality = { estimated: true, note: CABLE_ESTIMATE_NOTE };
+  return result;
+}
+
+export function calculateCascade(
+  graph: DependencyGraph,
+  sourceId: string,
+  disruptionLevel: number = 1.0,
+): CascadeResult | null {
+  const source = graph.nodes.get(sourceId);
+  if (!source) return null;
+  return buildResult(graph, source, [sourceId], disruptionLevel);
+}
+
+/**
+ * Simultaneous cut of several nodes (e.g. every cable through Hormuz). Per-country
+ * impacts and capacity losses add up across the cut set; other nodes keep their
+ * strongest hit. Returns null when the cut is empty or any id is unknown.
+ */
+export function calculateMultiCascade(
+  graph: DependencyGraph,
+  sourceIds: string[],
+  disruptionLevel: number = 1.0,
+  label?: string,
+): CascadeResult | null {
+  const ids = [...new Set(sourceIds)];
+  if (ids.length === 0 || ids.some(id => !graph.nodes.has(id))) return null;
+  if (ids.length === 1 && !label) return calculateCascade(graph, ids[0]!, disruptionLevel);
+  const source: InfrastructureNode = {
+    id: `cut:${ids.join('+')}`,
+    type: 'route',
+    name: label ?? ids.map(id => graph.nodes.get(id)!.name).join(' + '),
+    metadata: { sourceIds: ids },
+  };
+  return buildResult(graph, source, ids, disruptionLevel);
+}
+
+/** Cut every cable crossing a chokepoint. Returns null when the chokepoint is unknown or no cable crosses it. */
+export function calculateChokepointCableCut(
+  graph: DependencyGraph,
+  chokepointId: string,
+  disruptionLevel: number = 1.0,
+): CascadeResult | null {
+  const id = chokepointId.startsWith('chokepoint:') ? chokepointId : `chokepoint:${chokepointId}`;
+  const chokepoint = graph.nodes.get(id);
+  if (!chokepoint) return null;
+  const cableIds = getCablesThroughChokepoint(graph, id);
+  if (cableIds.length === 0) return null;
+  return calculateMultiCascade(graph, cableIds, disruptionLevel, `All cables through ${chokepoint.name} (${cableIds.length})`);
 }
 
 function getCapacityForCountry(
@@ -716,31 +1055,50 @@ function getCapacityForCountry(
   return 0;
 }
 
-function findRedundancies(graph: DependencyGraph, sourceId: string): CascadeResult['redundancies'] {
-  if (!sourceId.startsWith('cable:')) return [];
+/**
+ * Alternative cables for the countries a cable cut affects. Ranked first by
+ * whether the alternative avoids every chokepoint the cut cables cross (the
+ * "cut zone"), then by how many affected countries it also serves, then by
+ * average (estimated) capacity share. Cables in the cut set are never offered.
+ */
+function findRedundancies(graph: DependencyGraph, sourceIds: string[]): CascadeResult['redundancies'] {
+  const cutCables = sourceIds.filter(id => id.startsWith('cable:'));
+  if (cutCables.length === 0) return [];
 
-  const cableId = sourceId.replace('cable:', '');
-  const sourceCable = graph.cables.find(c => c.id === cableId);
-  if (!sourceCable) return [];
-
-  const sourceCountries = new Set(sourceCable.countriesServed?.map(c => c.country) || []);
-  const alternatives: NonNullable<CascadeResult['redundancies']> = [];
-
-  for (const cable of graph.cables) {
-    if (cable.id === cableId) continue;
-
-    const sharedCountries = cable.countriesServed?.filter(c => sourceCountries.has(c.country)) || [];
-    if (sharedCountries.length > 0) {
-      const avgCapacity = sharedCountries.reduce((sum, c) => sum + c.capacityShare, 0) / sharedCountries.length;
-      alternatives.push({
-        id: cable.id,
-        name: cable.name,
-        capacityShare: avgCapacity,
-      });
-    }
+  const cutSet = new Set(cutCables);
+  const crossings = getCableChokepoints(graph);
+  const cutZone = new Set<string>();
+  const sourceCountries = new Set<string>();
+  for (const id of cutCables) {
+    crossings.get(id)?.forEach(cp => cutZone.add(cp));
+    const cable = graph.cables.find(c => `cable:${c.id}` === id);
+    cable?.countriesServed?.forEach(c => sourceCountries.add(c.country));
   }
 
-  return alternatives.slice(0, 5);
+  const candidates: (NonNullable<CascadeResult['redundancies']>[number] & { shared: number })[] = [];
+  for (const cable of graph.cables) {
+    const nodeId = `cable:${cable.id}`;
+    if (cutSet.has(nodeId)) continue;
+    const sharedCountries = cable.countriesServed?.filter(c => sourceCountries.has(c.country)) || [];
+    if (sharedCountries.length === 0) continue;
+    const crossed = crossings.get(nodeId) ?? new Set<string>();
+    const avoidsCutZone = ![...crossed].some(cp => cutZone.has(cp));
+    candidates.push({
+      id: cable.id,
+      name: cable.name,
+      capacityShare: sharedCountries.reduce((sum, c) => sum + c.capacityShare, 0) / sharedCountries.length,
+      avoidsCutZone,
+      shared: sharedCountries.length,
+    });
+  }
+
+  candidates.sort((a, b) =>
+    Number(b.avoidsCutZone) - Number(a.avoidsCutZone) ||
+    b.shared - a.shared ||
+    b.capacityShare - a.capacityShare ||
+    a.name.localeCompare(b.name));
+
+  return candidates.slice(0, 5).map(({ shared: _shared, ...rest }) => rest);
 }
 
 export function getCableById(id: string, cables: CableInput[]): CableInput | undefined {

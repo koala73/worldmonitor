@@ -40,20 +40,6 @@ function parseMethodologyLiveFlowMappings(source) {
     .map(([, canonicalId, baselineId]) => ({ canonicalId, baselineId }));
 }
 
-function parseSeededReporters(source) {
-  const match = source.match(/SEEDED_REPORTERS\s*=\s*\[([^\]]+)\]/);
-  assert.ok(match, 'SEEDED_REPORTERS declaration not found');
-  return [...match[1].matchAll(/'([A-Z]{2})'/g)].map(([, iso2]) => iso2);
-}
-
-function containsSeededReporters(text, seededReporters) {
-  const normalized = text
-    .replace(/`/g, '')
-    .replace(/, and /g, ', ')
-    .replace(/\s+/g, ' ');
-  return normalized.includes(seededReporters.join(', '));
-}
-
 function extractBetween(source, startNeedle, endNeedle, label) {
   const start = source.indexOf(startNeedle);
   assert.notEqual(start, -1, `${label} start not found`);
@@ -229,21 +215,63 @@ describe('scenario docs match worker scope and impact math', () => {
   const scenarioOpenApi = readRepo('docs/api/ScenarioService.openapi.yaml');
   const bundledOpenApi = readRepo('docs/api/worldmonitor.openapi.yaml');
 
-  it('discloses the seeded reporter scope wherever scope-all is documented', () => {
-    const seededReporters = parseSeededReporters(worker);
-    assert.deepEqual(seededReporters, ['US', 'CN', 'RU', 'IR', 'IN', 'TW']);
-
+  it('discloses bounded manifest scope and unknown coverage', () => {
+    assert.doesNotMatch(worker, /SEEDED_REPORTERS/);
+    assert.match(worker, /seed-meta:supply_chain:chokepoint-exposure/);
     for (const [label, text] of [
-      ['scenario engine doc', scenarioDoc],
-      ['API scenario doc', apiDoc],
-      ['supply-chain panel doc', panelDoc],
-      ['RunScenario proto', runProto],
-      ['ScenarioService OpenAPI', scenarioOpenApi],
-      ['bundled OpenAPI', bundledOpenApi],
+      ['scenario engine doc', scenarioDoc], ['API scenario doc', apiDoc],
+      ['supply-chain panel doc', panelDoc], ['RunScenario proto', runProto],
+      ['ScenarioService OpenAPI', scenarioOpenApi], ['bundled OpenAPI', bundledOpenApi],
     ]) {
-      assert.ok(text.includes(seededReporters.join(', ')) || containsSeededReporters(text, seededReporters), `${label} must list seeded reporters: ${seededReporters.join(', ')}`);
-      assert.doesNotMatch(text, /all countries with seeded exposure/i, `${label} still has stale scope-all wording`);
+      assert.match(text, /bounded country\/sector manifest/i, label);
+      assert.match(text, /unknown coverage/i, label);
+      // Bounded gaps rather than `.*`: this runs against the 2.9 MB bundled OpenAPI, where
+      // an unbounded pattern both backtracks catastrophically (~31 s) and matches those two
+      // letter pairs from unrelated country enums megabytes apart. `\\W{0,6}` still spans the
+      // separators a real list uses (`, `, `\`, \``, a newline) so a list broken across lines
+      // is still caught — which an `s`-less `.*` would have missed.
+      assert.doesNotMatch(text, /\bUS\b\W{0,6}\bCN\b\W{0,6}\bRU\b\W{0,6}\bIR\b\W{0,6}\bIN\b\W{0,6}\bTW\b/, label);
+      assert.doesNotMatch(text, /seeded reporter set/i, label);
     }
+  });
+
+  // Derived from the worker source rather than asserted as prose. The previous
+  // parseSeededReporters() gate read the reporter list out of the worker and compared it
+  // against the docs; replacing it with phrase greps meant a doc could drift from the
+  // code while still containing the right sentences. These re-derive the contract.
+  it('documents every coverage record state the worker can emit', () => {
+    // Three assignment shapes in the worker: `state: 'x'` in the record literal and in
+    // Object.assign, `record.state = 'x'` for the reject paths, and the
+    // `seeded ? 'missing' : 'not_seeded'` ternary.
+    const emitted = new Set([
+      ...[...worker.matchAll(/\bstate:\s*'([a-z_]+)'/g)].map(m => m[1]),
+      ...[...worker.matchAll(/\.state\s*=\s*'([a-z_]+)'/g)].map(m => m[1]),
+      ...[...worker.matchAll(/\?\s*'([a-z_]+)'\s*:\s*'([a-z_]+)'/g)].flatMap(m => [m[1], m[2]]),
+    ]);
+    assert.ok(emitted.size >= 4, `expected to parse the worker's record states, got ${[...emitted]}`);
+    for (const state of emitted) {
+      assert.ok(
+        statusProto.includes(state),
+        `GetScenarioStatus proto must document the '${state}' record state the worker emits`,
+      );
+      assert.ok(
+        scenarioDoc.includes(state),
+        `scenario engine doc must document the '${state}' record state the worker emits`,
+      );
+    }
+  });
+
+  it('keeps the documented batch behaviour tied to the worker constant', () => {
+    // The doc used to hardcode "at most 100 exposure keys per batch", which silently
+    // became false when the constant changed. It must reference the constant instead.
+    const batchConst = worker.match(/EXPOSURE_BATCH_SIZE\s*=\s*(\d+)/);
+    assert.ok(batchConst, 'worker must define EXPOSURE_BATCH_SIZE');
+    assert.doesNotMatch(
+      scenarioDoc,
+      /at most \d+ exposure keys per batch/i,
+      'scenario engine doc must not hardcode the batch size — reference EXPOSURE_BATCH_SIZE',
+    );
+    assert.match(scenarioDoc, /EXPOSURE_BATCH_SIZE/, 'scenario engine doc must name the batch constant');
   });
 
   it('documents relative impact math and queue backpressure precisely', () => {

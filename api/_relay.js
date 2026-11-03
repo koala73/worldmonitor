@@ -1,8 +1,9 @@
 // Edge function copy — canonical version at server/_shared/relay.ts
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { jsonResponse } from './_json-response.js';
+import { captureSilentError } from './_sentry-edge.js';
 
 export function getRelayBaseUrl() {
   const relayUrl = process.env.WS_RELAY_URL;
@@ -58,7 +59,10 @@ export function buildRelayResponse(response, body, headers) {
 
 export function createRelayHandler(cfg) {
   return async function handler(req) {
-    const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
+    const corsHeaders = {
+      ...getCorsHeaders(req, 'GET, OPTIONS'),
+      ...(cfg.publicCors ? { 'Cache-Control': 'no-store' } : {}),
+    };
 
     if (isDisallowedOrigin(req)) {
       return jsonResponse({ error: 'Origin not allowed' }, 403, corsHeaders);
@@ -111,13 +115,28 @@ export function createRelayHandler(cfg) {
       const isSuccess = response.status >= 200 && response.status < 300;
       const cacheHeaders = cfg.cacheHeaders ? cfg.cacheHeaders(isSuccess) : {};
 
-      return buildRelayResponse(response, body, { ...cacheHeaders, ...extraHeaders, ...corsHeaders });
+      const responseCors = cfg.publicCors && isSuccess ? getPublicCorsHeaders('GET, OPTIONS') : corsHeaders;
+      return buildRelayResponse(response, body, { ...cacheHeaders, ...extraHeaders, ...responseCors });
     } catch (error) {
       if (cfg.fallback) return cfg.fallback(req, corsHeaders);
       const isTimeout = error?.name === 'AbortError';
+      // No `details` in the body: the message can carry relay transport detail
+      // (undici cause chains, the internal WS_RELAY_URL) and the client has no
+      // use for it. Record it server-side instead — the same posture, and the
+      // same reasoning, as api/telegram-feed.js's relay catch. Without this the
+      // routes that pass no `cfg.fallback` (api/opensky.js, api/polymarket.js)
+      // answer a relay outage with a bare 502/504 and leave no trace anywhere.
+      const route = cfg.relayPath || 'api/_relay';
+      console.warn(`[relay] ${route} request failed:`, error?.message || String(error));
+      // Timeouts capture at `warning`: fetchWithTimeout aborts on cfg.timeout,
+      // so those 504s are relay latency rather than product defects.
+      void captureSilentError(error, {
+        tags: { route, step: 'relay-fetch' },
+        fingerprint: ['api/_relay', 'relay-fetch', error instanceof Error ? error.name : 'Error'],
+        ...(isTimeout ? { level: 'warning', extra: { timeout_ms: cfg.timeout || 15000 } } : {}),
+      });
       return jsonResponse({
         error: isTimeout ? 'Relay timeout' : 'Relay request failed',
-        details: error?.message || String(error),
       }, isTimeout ? 504 : 502, corsHeaders);
     }
   };

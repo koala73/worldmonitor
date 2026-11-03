@@ -23,7 +23,15 @@
  *   - health maxStaleMin = 24h = 2× interval (see api/health.js)
  */
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, extendExistingTtl, writeSeedMeta } from './_seed-utils.mjs';
+import {
+  loadEnvFile,
+  CHROME_UA,
+  getRedisCredentials,
+  runSeed,
+  extendExistingTtl,
+  resolveSeedMetaTtl,
+  withRetry,
+} from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 // Content-age budget — the canonical key holds the quarterly BIS WS_DSR
@@ -105,6 +113,18 @@ export const META_KEYS = {
 
 // Quarterly data, seeded on 12h cron. 3-day TTL absorbs 2 missed cycles.
 const TTL = 3 * 24 * 3600;
+const META_TTL = resolveSeedMetaTtl(undefined, TTL);
+const AGGREGATE_META_KEY = 'seed-meta:economic:bis-extended';
+
+const BIS_PRESERVE_KEY_TTLS = [
+  { key: AGGREGATE_META_KEY, ttlSeconds: META_TTL },
+  { key: KEYS.dsr, ttlSeconds: TTL },
+  { key: META_KEYS.dsr, ttlSeconds: META_TTL },
+  { key: KEYS.spp, ttlSeconds: TTL },
+  { key: META_KEYS.spp, ttlSeconds: META_TTL },
+  { key: KEYS.cpp, ttlSeconds: TTL },
+  { key: META_KEYS.cpp, ttlSeconds: META_TTL },
+];
 
 // ── HTTP / CSV helpers ─────────────────────────────────────────────────────
 
@@ -381,7 +401,7 @@ async function fetchProperty(dataset, kind) {
 
 // Each dataset is handled independently: a single fetch failure in any ONE
 // of DSR/SPP/CPP must not block the healthy ones from publishing fresh data.
-// We do SPP/CPP writes as side-effects of fetchAll (via writeExtraKey or
+// We do SPP/CPP writes as side-effects of fetchAll (via atomic pair writes or
 // extendExistingTtl, per-dataset). The DSR slice flows through the normal
 // runSeed canonical-write path; when DSR is empty, publishTransform yields
 // an empty payload that fails validate() → atomicPublish.skipped=true →
@@ -401,21 +421,7 @@ export async function fetchAll() {
   await publishDatasetIndependently(KEYS.spp, spp, META_KEYS.spp);
   await publishDatasetIndependently(KEYS.cpp, cpp, META_KEYS.cpp);
 
-  // NOTE: DSR per-dataset seed-meta is written by `dsrAfterPublish` (passed to
-  // runSeed below), NOT here. That guarantees seed-meta:economic:bis-dsr is
-  // refreshed only AFTER atomicPublish succeeds on the canonical DSR key — a
-  // Redis hiccup at publish time must not leave health reporting "fresh"
-  // while the canonical key is stale.
-
   return { dsr, spp, cpp };
-}
-
-// runSeed afterPublish hook — fires only on a successful atomicPublish of the
-// canonical DSR key. `data` is the raw fetchAll() return value; we re-derive
-// the DSR slice and refresh its per-dataset seed-meta.
-export async function dsrAfterPublish(data) {
-  if (planDatasetAction(data?.dsr) !== 'write') return;
-  await writeSeedMeta(KEYS.dsr, data.dsr.entries.length, META_KEYS.dsr).catch(() => {});
 }
 
 // Pure decision function: classifies what action should be taken for a
@@ -428,23 +434,60 @@ export function planDatasetAction(payload) {
   return 'extend';
 }
 
+async function preserveDatasetLastGood(key, metaKey) {
+  await Promise.all([
+    extendExistingTtl([key], TTL),
+    metaKey ? extendExistingTtl([metaKey], META_TTL) : true,
+  ]);
+}
+
+async function publishBisValuesAtomically(entries) {
+  const { url, token } = getRedisCredentials();
+  const commands = [
+    ['MSET', ...entries.flatMap(({ key, value }) => [key, JSON.stringify(value)])],
+    ...entries.map(({ key, ttlSeconds }) => ['EXPIRE', key, ttlSeconds]),
+  ];
+  const response = await fetch(`${url}/multi-exec`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': CHROME_UA,
+    },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) throw new Error(`BIS atomic publication failed: HTTP ${response.status}`);
+  const results = await response.json();
+  if (
+    !Array.isArray(results)
+    || results.length !== commands.length
+    || results[0]?.result !== 'OK'
+    || results.slice(1).some((result) => result?.result !== 1)
+  ) {
+    throw new Error('BIS atomic publication returned an invalid command result');
+  }
+}
+
 export async function publishDatasetIndependently(key, payload, metaKey) {
   const action = planDatasetAction(payload);
   if (action === 'write') {
     try {
-      await writeExtraKey(key, payload, TTL);
-      // Per-dataset seed-meta is written ONLY on a successful fresh write.
-      // On the extend-TTL branch we deliberately do NOT refresh seed-meta —
-      // that is what lets api/health.js flag a stale per-dataset outage.
-      if (metaKey) {
-        await writeSeedMeta(key, payload.entries.length, metaKey).catch(() => {});
-      }
+      const fetchedAt = Date.now();
+      await withRetry(() => publishBisValuesAtomically([
+        { key, value: payload, ttlSeconds: TTL },
+        {
+          key: metaKey,
+          value: { fetchedAt, recordCount: payload.entries.length },
+          ttlSeconds: META_TTL,
+        },
+      ]), 2, 1_000);
     } catch (err) {
-      console.warn(`  ${key}: write failed (${err.message}); extending existing TTL`);
-      await extendExistingTtl([key], TTL).catch(() => {});
+      console.warn(`  ${key}: atomic publication failed (${err.message}); extending existing payload and metadata TTL`);
+      await preserveDatasetLastGood(key, metaKey).catch(() => {});
     }
   } else {
-    await extendExistingTtl([key], TTL).catch(() => {});
+    await preserveDatasetLastGood(key, metaKey).catch(() => {});
   }
 }
 
@@ -476,19 +519,60 @@ export function bisDsrContentMeta(data) {
   return tokensToContentMeta(entries.map((e) => e?.period));
 }
 
-if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
-  runSeed('economic', 'bis-extended', KEYS.dsr, fetchAll, {
+export async function publishBisDsrAtomically(data, {
+  canonicalKey = KEYS.dsr,
+  payloadValue,
+  ttlSeconds = TTL,
+} = {}) {
+  if (planDatasetAction(data?.dsr) !== 'write') {
+    throw new Error('BIS DSR atomic publication requires a non-empty DSR slice');
+  }
+  const recordCount = data.dsr.entries.length;
+  const seed = payloadValue?._seed;
+  const fetchedAt = Number.isFinite(seed?.fetchedAt) ? seed.fetchedAt : Date.now();
+  const aggregateMeta = {
+    fetchedAt,
+    recordCount: Number.isInteger(seed?.recordCount) ? seed.recordCount : recordCount,
+    sourceVersion: typeof seed?.sourceVersion === 'string'
+      ? seed.sourceVersion
+      : 'bis-sdmx-csv-extended',
+  };
+  for (const field of ['newestItemAt', 'oldestItemAt', 'maxContentAgeMin']) {
+    if (Object.hasOwn(seed ?? {}, field)) aggregateMeta[field] = seed[field];
+  }
+  await publishBisValuesAtomically([
+    { key: canonicalKey, value: payloadValue ?? data.dsr, ttlSeconds },
+    { key: META_KEYS.dsr, value: { fetchedAt, recordCount }, ttlSeconds: META_TTL },
+    { key: AGGREGATE_META_KEY, value: aggregateMeta, ttlSeconds: META_TTL },
+  ]);
+}
+
+export async function runBisExtendedSeed({
+  fetchAllImpl = fetchAll,
+  runSeedImpl,
+} = {}) {
+  const options = {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'bis-sdmx-csv-extended',
     publishTransform,
-    afterPublish: dsrAfterPublish,
+    publishAtomically: publishBisDsrAtomically,
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 1440,
     contentMeta: bisDsrContentMeta,
     maxContentAgeMin: BIS_DSR_MAX_CONTENT_AGE_MIN,
-  }).catch((err) => {
+    preserveKeyTtls: BIS_PRESERVE_KEY_TTLS,
+  };
+
+  if (runSeedImpl) {
+    return runSeedImpl('economic', 'bis-extended', KEYS.dsr, fetchAllImpl, options);
+  }
+  return runSeed('economic', 'bis-extended', KEYS.dsr, fetchAllImpl, options);
+}
+
+if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
+  runBisExtendedSeed().catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);

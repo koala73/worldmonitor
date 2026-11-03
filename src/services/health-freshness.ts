@@ -20,13 +20,14 @@ interface HealthResponse {
   status?: string;
   checkedAt?: string;
   checks?: Record<string, HealthCheck>;
+  pending?: Record<string, HealthCheck>;
   problems?: Record<string, HealthCheck>;
 }
 
 // Detailed /api/health (full `checks`) is operator/enterprise-key-gated since
 // #4715 — an anonymous dashboard calling it 401s on every tick (#4902). The
-// compact variant is keyless: same per-check shape, but only non-OK entries
-// land in `problems` and healthy checks are omitted entirely.
+// compact variant is keyless: non-OK entries use the same per-check shape in
+// `problems` or `pending` during finite grace; healthy checks are omitted.
 const PUBLIC_HEALTH_ENDPOINT = '/api/health?compact=1';
 
 // One 401/403 per window is enough signal that the endpoint got (re-)gated;
@@ -143,7 +144,10 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
   const checkedAtMs = payload.checkedAt ? Date.parse(payload.checkedAt) : Date.now();
   const checkedAt = Number.isFinite(checkedAtMs) ? checkedAtMs : Date.now();
   const updatesBySource = new Map<DataSourceId, SeedHealthUpdate>();
-  const checks: Record<string, HealthCheck> = payload.checks ?? { ...(payload.problems ?? {}) };
+  const checks: Record<string, HealthCheck> = payload.checks ?? {
+    ...(payload.pending ?? {}),
+    ...(payload.problems ?? {}),
+  };
 
   if (Object.keys(checks).length === 0 && isRedisOutageStatus(payload.status)) {
     const status = payload.status;
@@ -157,8 +161,8 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
     return updates.length;
   }
 
-  // Compact responses omit healthy checks (only non-OK entries land in
-  // `problems`), so a mapped check that is absent was evaluated server-side
+  // Compact responses omit healthy checks (non-OK entries land in `problems`
+  // or `pending`), so a mapped check absent from both was evaluated server-side
   // and found within budget. Synthesize OK-as-of-checkedAt for those:
   // seedAgeMin 0 is required because recordSeedHealth keeps lastUpdate null
   // on an age-less update and calculateStatus then reports no_data.

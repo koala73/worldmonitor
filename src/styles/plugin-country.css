@@ -1,0 +1,25 @@
+body.country-plugin-body { overflow: auto; height: auto; min-height: 720px; }
+#countryControls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 18px; }
+#countryControls input, #countryControls button { background: var(--panel-bg); color: var(--text); border: 1px solid var(--border); padding: 8px 12px; font: inherit; }
+#countryUsage { padding: 0 18px 8px; color: var(--text-secondary); font-size: 13px; }
+#countryStatus { padding: 0 18px 8px; }
+.country-plugin-body #country-deep-dive-panel { position: relative; inset: auto; width: 100%; height: 720px; max-width: none; transform: none; display: none; box-shadow: none; border: 0; }
+.country-plugin-body #country-deep-dive-panel.active { display: flex; }
+.country-plugin-body #country-deep-dive-panel.maximized { position: relative; inset: auto; width: 100%; height: 900px; }
+.country-plugin-body #deep-dive-content { flex: 1; width: 100%; min-width: 0; }
+.country-plugin-body .cdp-shell { margin: 0 auto; }
+@media (max-width: 600px) {
+  #countryControls { gap: 8px; }
+  #countryControls input { width: 150px; }
+  .country-plugin-body #country-deep-dive-panel { height: 760px; }
+}
+
+.country-plugin-body .country-deep-dive-shell { flex: 1; width: 100%; min-width: 0; }
+
+.country-plugin-body .cdp-atlas-output { max-width: 980px; margin: 0 auto; }
+.country-plugin-body .cdp-atlas-output .panel { height: auto !important; min-height: 0; margin-top: 12px; }
+.country-plugin-body .cdp-atlas-output .panel-content { overflow: visible; content-visibility: visible; }
+.country-plugin-body .cdp-atlas-output .panel-resize-handle,
+.country-plugin-body .cdp-atlas-output .panel-col-resize-handle { display: none; }
+.country-plugin-body .cdp-atlas-output :is(.pp-drawer, .sf-drawer, .fs-drawer) { position: relative; inset: auto; overflow: visible; }
+.country-plugin-body .cdp-atlas-output :is(.pp-wrap, .sf-wrap, .fs-wrap):has(:is(.pp-drawer, .sf-drawer, .fs-drawer)) > :not(style, .pp-drawer, .sf-drawer, .fs-drawer) { display: none; }

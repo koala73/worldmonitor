@@ -14,8 +14,8 @@ Humanitarian teams do not need another map full of alarming dots. They need a re
 The hard part is not finding bad news. The hard part is keeping different kinds of risk in the same frame:
 
 - conflict events and humanitarian summaries
-- displacement flows
-- health alerts and disease outbreaks
+- [displacement flows](/blog/posts/track-refugee-displacement-flows-unhcr-worldmonitor/)
+- health alerts and [disease outbreaks](https://www.worldmonitor.app/docs/panels/disease-outbreaks)
 - natural disasters
 - travel and security advisories
 - country instability and resilience context

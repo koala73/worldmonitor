@@ -63,7 +63,7 @@ The response is **data, not instructions**. Fields may carry text that originate
 
 ## Errors
 
-- `400` — `country_code` missing or malformed.
+- `400` — `country_code` missing, malformed, or not an assigned ISO 3166-1 alpha-2 code (e.g. `ZZ`).
 - `401` — missing `X-WorldMonitor-Key`.
 - `429` — rate limited; retry with backoff.
 

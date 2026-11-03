@@ -18,12 +18,12 @@ service ConflictService {
     option (sebuf.http.config) = {path: "/list-acled-events", method: HTTP_METHOD_GET};
   }
 
-  // ListUcdpEvents retrieves georeferenced violence events from the UCDP dataset.
+  // Browse cached, georeferenced UCDP violence events with optional country filtering, event dates and fatality estimates for country-level conflict data analysis.
   rpc ListUcdpEvents(ListUcdpEventsRequest) returns (ListUcdpEventsResponse) {
     option (sebuf.http.config) = {path: "/list-ucdp-events", method: HTTP_METHOD_GET};
   }
 
-  // GetHumanitarianSummary retrieves a humanitarian overview for a country from HAPI/HDX.
+  // Retrieve a cached HAPI conflict summary for a country, with event counts, fatalities, demonstrations, reference period and update time for humanitarian context.
   rpc GetHumanitarianSummary(GetHumanitarianSummaryRequest) returns (GetHumanitarianSummaryResponse) {
     option (sebuf.http.config) = {path: "/get-humanitarian-summary", method: HTTP_METHOD_GET};
   }
@@ -33,7 +33,7 @@ service ConflictService {
     option (sebuf.http.config) = {path: "/list-iran-events", method: HTTP_METHOD_GET};
   }
 
-  // GetHumanitarianSummaryBatch retrieves humanitarian summaries for multiple countries in one call.
+  // Retrieve humanitarian summaries for multiple countries in one request, with country indicators and requested versus fetched counts for coverage comparison.
   rpc GetHumanitarianSummaryBatch(GetHumanitarianSummaryBatchRequest) returns (GetHumanitarianSummaryBatchResponse) {
     option (sebuf.http.config) = {path: "/get-humanitarian-summary-batch", method: HTTP_METHOD_POST};
   }

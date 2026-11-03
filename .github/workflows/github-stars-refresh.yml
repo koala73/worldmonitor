@@ -28,8 +28,11 @@ concurrency:
 
 jobs:
   refresh:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      branch: ${{ steps.reconcile.outputs.branch }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -66,7 +69,7 @@ jobs:
             exit 0
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.reconcile.outputs.skip != 'true'
         with:
           node-version: '24'
@@ -108,3 +111,16 @@ jobs:
             --head "$BRANCH_NAME" \
             --title "chore(geo): refresh github-stars snapshot ${snapshot_date}" \
             --body "Monthly public GitHub star-count freeze for the homepage InteractionCounter (#7641)."
+
+  # A PR opened with github.token fires no workflow_run event for its CI, so
+  # Deploy Gate would reach it only on its 30-minute sweep.
+  deploy-gate:
+    needs: refresh
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/bot-pr-deploy-gate.yml
+    with:
+      branch: ${{ needs.refresh.outputs.branch }}

@@ -53,9 +53,10 @@ async function loadChatAnalystPanel() {
     `],
     ['tauri-bridge-stub', `
       export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }
+      export function hasTauriInvokeBridge() { return false; }
     `],
     ['analytics-stub', `
-      export function trackPanelResized() {}
+      export function trackLayoutCustomized() {}
       export function trackAnalystControlAction(actionType, status, reason) {
         globalThis.__wmAnalystControlTelemetry?.push({
           actionType,
@@ -93,6 +94,7 @@ async function loadChatAnalystPanel() {
     `],
     ['analyst-markdown-stub', `
       export function postProcessAnalystHtml(html) { return html; }
+      export function balanceStreamingMarkdown(text) { return text; }
     `],
     ['marked-stub', `
       export const marked = { parse: (s) => s };

@@ -1,13 +1,22 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { readFileSync } from 'node:fs';
+
 import {
+  buildGdeltCountryIndex,
   extractGdeltBulkCsv,
+  GDELT_COUNTRY_INDEX_WINDOW_MS,
+  MAX_ARTICLES_PER_COUNTRY,
   materializeGdeltBulk,
   parseGdeltBulkDescriptors,
   parseGdeltGkgCsv,
+  recordCountryMentions,
   toArticle as gdeltArticleForTests,
 } from '../scripts/_gdelt-bulk-materializer.mjs';
+import { GDELT_FIPS_TO_ISO2 } from '../scripts/_gdelt-country-codes.mjs';
+import { GDELT_FIPS_TO_ISO2 as REEXPORTED_FIPS_TO_ISO2 } from '../scripts/_conflict-gdelt-bulk.mjs';
+import { extraKeyPayloadBytes, MAX_PAYLOAD_BYTES } from '../scripts/_seed-utils.mjs';
 
 function gkgRow({
   id,
@@ -522,4 +531,286 @@ describe('GKG column layout — #5863 review round', () => {
       assert.ok(location.name.length <= 200, 'location names must be bounded');
     }
   });
+});
+
+// Per-country article index (#7748). The crawlable country pages' "Recent
+// developments" were grounded on the news digest alone, which names roughly a
+// third of indexed countries in any week. GKG V1LOCATIONS names every country
+// an article mentions, so the materializer keeps a rolling per-country index
+// the freeze can top up the tail from.
+describe('GDELT per-country article index (#7748)', () => {
+  const NOW = Date.parse('2026-07-30T12:05:00Z');
+  const stamp = (offsetMs) => new Date(NOW - offsetMs).toISOString().replace(/\D/g, '').slice(0, 14);
+
+  function record({
+    id,
+    url = `https://example.com/${id}`,
+    title = `Story ${id}`,
+    ageMs = 3600_000,
+    locations = [],
+    source = 'example.com',
+    tone = 1,
+  }) {
+    return parseGdeltGkgCsv(gkgRow({
+      id,
+      url,
+      title,
+      themes: 'GENERAL,1',
+      timestamp: stamp(ageMs),
+      domain: source,
+      tone: `${tone},1,1,1,1,1,1`,
+      locations: locations.map(([name, fips]) => `1#${name}#${fips}##10.0#20.0#1`).join(';'),
+    }))[0];
+  }
+
+  it('maps every corpus country to at least one FIPS 10-4 source code', () => {
+    const snapshot = JSON.parse(readFileSync(new URL('./fixtures/crawlable-live-pulse-fixture.json', import.meta.url), 'utf8'));
+    const reachable = new Set(Object.values(GDELT_FIPS_TO_ISO2));
+    const missing = Object.keys(snapshot.countries).filter((code) => !reachable.has(code));
+    assert.deepEqual(missing, [], 'a corpus country without a FIPS source can never receive an index row');
+  });
+
+  it('keeps the FIPS collisions that differ from ISO on the FIPS side', () => {
+    // These are the pairs a naive "FIPS equals ISO" assumption gets wrong.
+    assert.equal(GDELT_FIPS_TO_ISO2.AG, 'DZ', 'FIPS AG is Algeria, not Antigua');
+    assert.equal(GDELT_FIPS_TO_ISO2.AC, 'AG');
+    assert.equal(GDELT_FIPS_TO_ISO2.AS, 'AU', 'FIPS AS is Australia');
+    assert.equal(GDELT_FIPS_TO_ISO2.AU, 'AT', 'FIPS AU is Austria');
+    assert.equal(GDELT_FIPS_TO_ISO2.CH, 'CN', 'FIPS CH is China');
+    assert.equal(GDELT_FIPS_TO_ISO2.SZ, 'CH', 'FIPS SZ is Switzerland');
+    assert.equal(GDELT_FIPS_TO_ISO2.GM, 'DE', 'FIPS GM is Germany');
+    assert.equal(GDELT_FIPS_TO_ISO2.GA, 'GM', 'FIPS GA is The Gambia');
+    assert.equal(GDELT_FIPS_TO_ISO2.NI, 'NG', 'FIPS NI is Nigeria');
+    assert.equal(GDELT_FIPS_TO_ISO2.NG, 'NE', 'FIPS NG is Niger');
+    assert.equal(GDELT_FIPS_TO_ISO2.UK, 'GB');
+    assert.equal(GDELT_FIPS_TO_ISO2.JA, 'JP');
+    assert.equal(GDELT_FIPS_TO_ISO2.IS, 'IL', 'FIPS IS is Israel');
+    assert.equal(GDELT_FIPS_TO_ISO2.IC, 'IS', 'FIPS IC is Iceland');
+    assert.equal(GDELT_FIPS_TO_ISO2.RS, 'RU', 'FIPS RS is Russia');
+    assert.equal(GDELT_FIPS_TO_ISO2.RI, 'RS', 'FIPS RI is Serbia');
+    assert.equal(GDELT_FIPS_TO_ISO2.PS, 'PW', 'FIPS PS is Palau');
+    assert.equal(GDELT_FIPS_TO_ISO2.GZ, 'PS');
+    assert.equal(GDELT_FIPS_TO_ISO2.WE, 'PS');
+    assert.equal(GDELT_FIPS_TO_ISO2.KV, 'XK');
+    // The conflict mapper's original entries are unchanged, and its module
+    // still exports the one table.
+    assert.equal(REEXPORTED_FIPS_TO_ISO2, GDELT_FIPS_TO_ISO2);
+    assert.equal(GDELT_FIPS_TO_ISO2.UP, 'UA');
+    assert.equal(GDELT_FIPS_TO_ISO2.SU, 'SD');
+    assert.equal(GDELT_FIPS_TO_ISO2.OD, 'SS');
+    assert.equal(GDELT_FIPS_TO_ISO2.CG, 'CD');
+    assert.equal(GDELT_FIPS_TO_ISO2.BM, 'MM');
+  });
+
+  it('indexes an article under the countries its locations name, primary first', () => {
+    const records = [
+      record({ id: 'palau', title: 'Palau signs maritime pact', locations: [['Koror, Palau', 'PS'], ['Palau', 'PS'], ['Japan', 'JA']] }),
+      record({ id: 'nauru', title: 'Nauru opens phosphate talks', ageMs: 7200_000, locations: [['Nauru', 'NR']] }),
+      record({ id: 'japan-first', title: 'Tokyo hosts Palau delegation', ageMs: 1800_000, locations: [['Tokyo, Japan', 'JA'], ['Palau', 'PS']] }),
+    ];
+    const { byCountry } = buildGdeltCountryIndex({ records, previous: null, nowMs: NOW });
+    assert.deepEqual(byCountry.PW.map((row) => [row.url, row.primary]), [
+      ['https://example.com/palau', true],
+      ['https://example.com/japan-first', false],
+    ], 'the article that is mostly about Palau outranks a newer one that mentions it');
+    assert.deepEqual(byCountry.JP.map((row) => row.url), [
+      'https://example.com/japan-first',
+      'https://example.com/palau',
+    ]);
+    assert.deepEqual(byCountry.NR.map((row) => row.url), ['https://example.com/nauru']);
+    assert.equal(byCountry.PW[0].countryCount, 2);
+    assert.equal(byCountry.PW[0].source, 'example.com');
+    assert.match(byCountry.PW[0].date, /^\d{8}T\d{6}Z$/, 'dates use the compact seendate the other products publish');
+    assert.equal(byCountry.PW[0].title, 'Palau signs maritime pact');
+  });
+
+  it('keeps a roundup only under its primary country', () => {
+    // An article that names six countries is a roundup; indexing it under all
+    // six would hand every small country the same unrelated story (the Togo
+    // "UN world map vote" contamination class, #7748).
+    const roundup = record({
+      id: 'roundup',
+      title: 'Pacific leaders meet',
+      locations: [['Fiji', 'FJ'], ['Fiji', 'FJ'], ['Tonga', 'TN'], ['Samoa', 'WS'], ['Nauru', 'NR'], ['Tuvalu', 'TV'], ['Palau', 'PS']],
+    });
+    const focused = record({
+      id: 'focused',
+      title: 'Tonga and Samoa sign ferry deal',
+      locations: [['Tonga', 'TN'], ['Samoa', 'WS'], ['Fiji', 'FJ']],
+    });
+    const { byCountry } = buildGdeltCountryIndex({ records: [roundup, focused], previous: null, nowMs: NOW });
+    assert.deepEqual(byCountry.FJ.map((row) => row.url), ['https://example.com/roundup', 'https://example.com/focused']);
+    assert.equal(byCountry.FJ[0].primary, true);
+    assert.equal(byCountry.FJ[0].countryCount, 6);
+    assert.deepEqual(byCountry.TO.map((row) => row.url), ['https://example.com/focused'], 'three named countries is focused reporting, six is a roundup');
+    assert.equal(byCountry.NR, undefined);
+    assert.equal(byCountry.PW, undefined);
+  });
+
+  it('ignores locations whose FIPS code has no ISO mapping and records without a country', () => {
+    const records = [
+      record({ id: 'sea', title: 'Storm crosses the ocean', locations: [['Pacific Ocean', 'OS']] }),
+      record({ id: 'none', title: 'Markets steady', locations: [] }),
+    ];
+    assert.deepEqual(buildGdeltCountryIndex({ records, previous: null, nowMs: NOW }).byCountry, {});
+  });
+
+  it('merges the previous index, de-duplicates by URL, prunes beyond the window and caps per country', () => {
+    const previous = {
+      byCountry: {
+        NR: [
+          // Same URL as a fresh record: the fresh row wins the slot.
+          { title: 'Nauru opens phosphate talks (old title)', url: 'https://example.com/nauru', source: 'example.com', date: stamp(3 * 86_400_000), tone: 0, primary: true, countryCount: 1 },
+          { title: 'Nauru budget passes', url: 'https://example.com/nauru-budget', source: 'example.com', date: stamp(6 * 86_400_000), tone: 0, primary: true, countryCount: 1 },
+          { title: 'Nauru last year', url: 'https://example.com/nauru-old', source: 'example.com', date: stamp(GDELT_COUNTRY_INDEX_WINDOW_MS + 60_000), tone: 0, primary: true, countryCount: 1 },
+          { title: 'malformed', url: '', source: 'example.com', date: stamp(1000), tone: 0, primary: true, countryCount: 1 },
+        ],
+        TV: [
+          { title: 'Tuvalu climate case', url: 'https://example.com/tuvalu', source: 'example.com', date: stamp(2 * 86_400_000), tone: 0, primary: true, countryCount: 1 },
+        ],
+      },
+    };
+    const records = [
+      record({ id: 'nauru', title: 'Nauru opens phosphate talks', ageMs: 1000, locations: [['Nauru', 'NR']] }),
+      ...Array.from({ length: 12 }, (_, index) => record({
+        id: `nauru-${index}`,
+        title: `Nauru story ${index}`,
+        ageMs: 10_000 * (index + 1),
+        locations: [['Nauru', 'NR']],
+      })),
+    ];
+    const { byCountry, windowMs } = buildGdeltCountryIndex({ records, previous, nowMs: NOW });
+    assert.equal(windowMs, GDELT_COUNTRY_INDEX_WINDOW_MS);
+    assert.equal(byCountry.NR.length, MAX_ARTICLES_PER_COUNTRY);
+    assert.ok(!byCountry.NR.some((row) => row.url === 'https://example.com/nauru-old'), 'rows older than the window are pruned');
+    assert.ok(!byCountry.NR.some((row) => row.url === ''), 'a malformed previous row is dropped');
+    const nauru = byCountry.NR.find((row) => row.url === 'https://example.com/nauru');
+    assert.equal(nauru.title, 'Nauru opens phosphate talks', 'the fresh row wins a URL tie');
+    assert.deepEqual(byCountry.TV.map((row) => row.url), ['https://example.com/tuvalu'], 'a country with no fresh rows keeps its previous ones');
+    // Newest first within the primary tier.
+    const dates = byCountry.NR.map((row) => row.date);
+    assert.deepEqual(dates, [...dates].sort().reverse());
+  });
+
+  it('materializes the index alongside the topic products', () => {
+    const csv = gkgRow({
+      id: 'gkg-index',
+      url: 'https://example.com/palau-pact',
+      title: 'Palau signs maritime pact',
+      themes: 'MILITARY,1',
+      timestamp: '20260730120000',
+      locations: '1#Palau#PS##7.5#134.5#1',
+    });
+    const materialized = materializeGdeltBulk({
+      batches: [{ timestamp: '20260730120000', records: parseGdeltGkgCsv(csv) }],
+      previous: { countryIndex: { byCountry: { NR: [{ title: 'Nauru budget passes', url: 'https://example.com/nauru-budget', source: 'example.com', date: '20260729T120000Z', tone: 0, primary: true, countryCount: 1 }] } } },
+      nowMs: NOW,
+    });
+    assert.deepEqual(Object.keys(materialized.countryIndex.byCountry).sort(), ['NR', 'PW']);
+    assert.equal(materialized.countryIndex.byCountry.PW[0].url, 'https://example.com/palau-pact');
+    assert.equal(materialized.countryIndex.fetchedAt, new Date(NOW).toISOString());
+  });
+});
+
+// Review round for #7748: ordering, caps and the persisted payload bound.
+describe('GDELT per-country article index ordering and bounds (#7748 review)', () => {
+  const NOW = Date.parse('2026-07-30T12:05:00Z');
+  const stamp = (offsetMs) => new Date(NOW - offsetMs).toISOString().replace(/\D/g, '').slice(0, 14);
+
+  function record({ id, url = `https://example.com/${id}`, title, ageMs = 3600_000, locations = [], source = 'example.com' }) {
+    return parseGdeltGkgCsv(gkgRow({
+      id,
+      url,
+      title,
+      themes: 'GENERAL,1',
+      timestamp: stamp(ageMs),
+      domain: source,
+      locations: locations.map(([name, fips]) => `1#${name}#${fips}##10.0#20.0#1`).join(';'),
+    }))[0];
+  }
+
+  it('never evicts a title-named article behind newer location-only datelines', () => {
+    // Ten fresh Koror datelines whose titles never say Palau, plus one
+    // older article actually about Palau: the reader can publish only the
+    // latter, so the index must keep it (cross-model review of #7748).
+    const datelines = Array.from({ length: 10 }, (_, index) => record({
+      id: `dateline-${index}`,
+      title: `Port expansion approved ${index}`,
+      ageMs: 1000 * (index + 1),
+      locations: [['Koror, Palau', 'PS']],
+    }));
+    const about = record({ id: 'about', title: 'Palau signs maritime pact', ageMs: 6 * 86_400_000, locations: [['Koror, Palau', 'PS']] });
+    const { byCountry } = buildGdeltCountryIndex({ records: [...datelines, about], previous: null, nowMs: NOW });
+    assert.equal(byCountry.PW.length, MAX_ARTICLES_PER_COUNTRY);
+    assert.equal(byCountry.PW[0].url, 'https://example.com/about', 'the title mention outranks every newer dateline');
+    assert.equal(byCountry.PW[0].titleMention, true);
+    assert.equal(byCountry.PW[1].titleMention, false);
+    // The same holds when the title-named row is the previous index's and
+    // the datelines are this run's.
+    const previous = { byCountry: { PW: byCountry.PW.filter((row) => row.titleMention) } };
+    const again = buildGdeltCountryIndex({ records: datelines, previous, nowMs: NOW });
+    assert.equal(again.byCountry.PW[0].url, 'https://example.com/about');
+  });
+
+  it("names the country by GKG's own location name, folding case and accents", () => {
+    const [mention] = recordCountryMentions(record({ id: 'a', title: 'CÔTE D’IVOIRE cocoa harvest begins', locations: [["Abidjan, Cote d'Ivoire", 'IV']] }));
+    assert.equal(mention.code, 'CI');
+    assert.equal(mention.titleMention, true);
+    const [plain] = recordCountryMentions(record({ id: 'b', title: 'Cocoa harvest begins', locations: [["Abidjan, Cote d'Ivoire", 'IV']] }));
+    assert.equal(plain.titleMention, false);
+    const [word] = recordCountryMentions(record({ id: 'c', title: 'Omani ports expand', locations: [['Muscat, Oman', 'MU']] }));
+    assert.equal(word.titleMention, false, 'a demonym is a whole-word miss here; the reader\'s matcher still publishes it');
+  });
+
+  it('breaks a primary tie toward the first-named country', () => {
+    const mentions = recordCountryMentions(record({ id: 'tie', title: 'Talks resume', locations: [['Tokyo, Japan', 'JA'], ['Palau', 'PS']] }));
+    assert.deepEqual(mentions.map((mention) => [mention.code, mention.primary]), [['JP', true], ['PW', false]]);
+  });
+
+  it('truncates over-long titles and refuses over-long URLs', () => {
+    const longTitle = 'Palau '.repeat(60).trim();
+    const kept = record({ id: 'long-title', title: longTitle, locations: [['Palau', 'PS']] });
+    const longUrl = record({ id: 'long-url', url: `https://example.com/${'p'.repeat(600)}`, title: 'Palau budget', locations: [['Palau', 'PS']] });
+    const { byCountry } = buildGdeltCountryIndex({ records: [kept, longUrl], previous: null, nowMs: NOW });
+    assert.deepEqual(byCountry.PW.map((row) => row.url), ['https://example.com/long-title']);
+    assert.equal(byCountry.PW[0].title.length, 200);
+  });
+
+  it('keeps the worst-case persisted index under the extra-key write ceiling', () => {
+    // Every FIPS-mapped country full, every row at the title and URL caps:
+    // the shape the key can reach after a week, measured with the seeder's
+    // own serializer.
+    const codes = [...new Set(Object.values(GDELT_FIPS_TO_ISO2))];
+    const byCountry = Object.fromEntries(codes.map((code) => [code, Array.from({ length: MAX_ARTICLES_PER_COUNTRY }, (_, index) => ({
+      title: 'T'.repeat(200),
+      url: `https://example.com/${'u'.repeat(512 - 24 - String(index).length)}${index}`,
+      source: 's'.repeat(200),
+      date: '20260730T120000Z',
+      tone: -12.3456,
+      primary: true,
+      countryCount: 3,
+      titleMention: true,
+    }))]));
+    const bytes = extraKeyPayloadBytes('gdelt:bulk:country-articles:v1', { byCountry, windowMs: 604_800_000, fetchedAt: '2026-07-30T12:05:00.000Z' });
+    assert.ok(bytes < MAX_PAYLOAD_BYTES, `worst case ${bytes} bytes must stay under ${MAX_PAYLOAD_BYTES}`);
+  });
+});
+
+it('keeps riot articles with unrelated location mentions as unverified media signals', () => {
+  const rows = Array.from({ length: 105 }, (_, i) => gkgRow({
+    id: `riot-${i}`, url: `https://news.example/riot-${i}`,
+    title: 'Riot in Cairo; Paris officials comment', themes: 'VIOLENT_UNREST,1',
+    locations: '1#Cairo, Egypt#EG#EG11#30.0444#31.2357#-290692;1#Paris, France#FR#FR11#48.8566#2.3522#123',
+  }));
+  const result = materializeGdeltBulk({
+    batches: [{ timestamp: '20260730120000', records: parseGdeltGkgCsv(rows.join('\n')) }],
+    previous: {}, nowMs: Date.parse('2026-07-30T12:05:00Z'),
+  });
+  assert.equal(result.unrest.events.length, 2);
+  for (const event of result.unrest.events) {
+    assert.equal(event.eventType, 'UNREST_EVENT_TYPE_UNSPECIFIED');
+    assert.equal(event.severity, 'SEVERITY_LEVEL_UNSPECIFIED');
+    assert.equal(event.confidence, 'CONFIDENCE_LEVEL_LOW');
+    assert.match(event.summary, /not verified/i);
+  }
 });
