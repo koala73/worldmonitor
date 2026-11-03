@@ -43,7 +43,10 @@ function barChart(series: HormuzSeries[], color: string, unit: string, width = 2
     return hit;
   });
 
-  return `<svg class="hz-svg" width="${width}" height="${height}" style="display:block;overflow:visible">${rects.join('')}${hits.join('')}</svg>`;
+  // Bars are laid out in a width-unit coordinate space and stretched to the
+  // panel body, so the chart never runs past a narrow column or stops short
+  // of a wide one. Height stays fixed.
+  return `<svg class="hz-svg" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none" style="display:block;overflow:visible">${rects.join('')}${hits.join('')}</svg>`;
 }
 
 function renderChart(chart: HormuzChart, idx: number): string {
@@ -56,7 +59,7 @@ function renderChart(chart: HormuzChart, idx: number): string {
 
   return `
     <div class="hz-chart" style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px">
         <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(chart.title)}</span>
         <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color}">${escapeHtml(lastVal)} <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${unit} · ${escapeHtml(lastDate)}</span></span>
       </div>
