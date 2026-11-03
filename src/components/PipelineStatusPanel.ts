@@ -424,7 +424,7 @@ export class PipelineStatusPanel extends Panel {
     const html = unsafeRawHtml(`
       <div class="pp-wrap">
         ${coverageWarning}
-        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
           <table class="pp-table" role="table">
             <thead role="rowgroup">
               <tr role="row">

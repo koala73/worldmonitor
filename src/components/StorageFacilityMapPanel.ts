@@ -399,7 +399,7 @@ export class StorageFacilityMapPanel extends Panel {
 
     const html = unsafeRawHtml(`
       <div class="sf-wrap">
-        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
           <table class="sf-table" role="table">
             <thead role="rowgroup">
               <tr role="row">
