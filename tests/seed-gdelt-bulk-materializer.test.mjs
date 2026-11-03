@@ -351,6 +351,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     let previousDyads = null;
     const deps = {
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async key => key === 'gdelt:bulk:dyad-tension:v1' ? previousDyads : null,
       _fetchFiles: async () => materializationFiles(),
@@ -367,6 +368,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     const nowMs = Date.parse('2026-07-30T11:48:50Z');
     const result = await fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
       _now: () => nowMs,
       _readSnapshot: async () => null,
       _fetchFiles: async () => materializationFiles(),
@@ -421,6 +423,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     const reads = [];
     const result = await fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async (key) => {
         reads.push(key);
@@ -428,6 +431,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
         if (key === GDELT_BULK_STATE_KEY) return previousState;
         if (key === GDELT_BULK_COUNTRY_ARTICLES_KEY) return null;
         if (key === 'gdelt:bulk:dyad-tension:v1') return null;
+        if (key === 'gdelt:bulk:country-events:v1') return null;
         throw new Error(`unexpected key ${key}`);
       },
       _fetchFiles: async ({ afterTimestamp }) => {
@@ -445,14 +449,14 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       },
     });
 
-    assert.deepEqual(reads.sort(), [GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, GDELT_BULK_COUNTRY_ARTICLES_KEY, 'gdelt:bulk:dyad-tension:v1'].sort());
+    assert.deepEqual(reads.sort(), [GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, GDELT_BULK_COUNTRY_ARTICLES_KEY, 'gdelt:bulk:dyad-tension:v1', 'gdelt:bulk:country-events:v1'].sort());
     assert.deepEqual(result._state.cursor, {
       gkg: '20260730120000',
       export: '20260730120000',
     });
     assert.equal(result._dyads.cursor, '20260730120000');
     assert.equal(result._dyads.days['2026-07-30'].cohorts, 1);
-    assert.equal(result._dyads.insufficientPairs.length, 4);
+    assert.equal(result._dyads.insufficientPairs.length, 8);
     assert.deepEqual(
       result._state.recentGkgBatches.flatMap((batch) =>
         batch.records.map((record) => record.id)),
@@ -488,6 +492,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     gkg[26] = '<PAGE_TITLE>Palau signs maritime pact</PAGE_TITLE>';
     const result = await fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async (key) => (key === GDELT_BULK_COUNTRY_ARTICLES_KEY ? previousIndex : null),
       _fetchFiles: async () => [
@@ -516,6 +521,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       await assert.rejects(
         fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
           _now: () => Date.parse('2026-07-30T12:05:00Z'),
           _fetchFiles: async () => { throw new Error('stop after the snapshot reads'); },
         }),
@@ -529,7 +535,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     // first attempt of every Railway run and crashed 1 in 8 (2026-09-23).
     assert.deepEqual(
       reads.map(({ key }) => key).sort(),
-      [GDELT_BULK_COUNTRY_ARTICLES_KEY, GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, 'gdelt:bulk:dyad-tension:v1'].sort(),
+      [GDELT_BULK_COUNTRY_ARTICLES_KEY, GDELT_BULK_STATE_KEY, GDELT_INTEL_KEY, 'gdelt:bulk:dyad-tension:v1', 'gdelt:bulk:country-events:v1'].sort(),
     );
     for (const { key, timeoutMs } of reads) {
       assert.ok(timeoutMs >= 30_000, `${key} read with ${timeoutMs}ms`);
@@ -544,6 +550,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     await assert.rejects(
       fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => materializationFiles().filter(
           ({ descriptor }) => descriptor.kind === 'gkg',
@@ -554,6 +561,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     await assert.rejects(
       fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => materializationFiles().filter(
           ({ descriptor }) => descriptor.kind === 'export',
@@ -564,6 +572,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     await assert.rejects(
       fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => materializationFiles({ records: [] }),
       }),
@@ -572,6 +581,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     await assert.rejects(
       fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => [
           materializationFiles()[0],
@@ -586,6 +596,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     await assert.rejects(
       fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
         ...baseDeps,
         _fetchFiles: async () => [
           {
@@ -613,6 +624,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     await assert.rejects(
       fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
         _now: () => Date.parse('2026-07-30T12:05:00Z'),
         _readSnapshot: async (key) => {
           if (key === GDELT_INTEL_KEY) {
@@ -650,6 +662,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     const legacyVolumePoint = { date: '2026-07-30T11:45:00.000Z', value: 7 };
     const result = await fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async (key) => {
         reads.push(key);
@@ -711,6 +724,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     };
     const first = await fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T11:05:00Z'),
       _readSnapshot: async (key) => key === GDELT_BULK_STATE_KEY ? previousState : null,
       _fetchFiles: async () => materializationFiles({ timestamp: '20260730110000' }),
@@ -733,6 +747,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
 
     const second = await fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T11:20:00Z'),
       _readSnapshot: async (key) => key === GDELT_BULK_STATE_KEY ? first._state : null,
       _fetchFiles: async () => materializationFiles({ timestamp: '20260730111500' }),
@@ -775,6 +790,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
     ];
     const result = await fetchMaterializedGdelt({
       _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: noDyadRepair,
       _now: () => Date.parse('2026-07-30T12:05:00Z'),
       _readSnapshot: async () => ({ cursor: {} }),
       _fetchFiles: async () => materializationFiles({ records }),
@@ -1150,9 +1166,15 @@ describe('dyad health activation', () => {
 });
 
 describe('dyad history repair', async () => {
-  const { repairDyadHistory } = await import('../scripts/seed-gdelt-bulk-materializer.mjs');
+  const { repairCountryEventsHistory, repairDyadHistory } = await import('../scripts/seed-gdelt-bulk-materializer.mjs');
   const { dyadDayExportTimestamps } = await import('../scripts/_gdelt-dyad-tension.mjs');
+  const { default: tensionPairs } = await import('../scripts/shared/gdelt-tension-pairs.json', { with: { type: 'json' } });
   const repairNow = Date.parse('2026-09-28T17:30:00Z');
+  // A complete day holds all 96 cohorts, a bucket for every configured pair, and
+  // (read only inside the hourly window) 24 complete hours.
+  const completeDay = () => ({ cohorts: 96, pairs: Object.fromEntries(tensionPairs
+    .map(pair => [pair.id, { total: 0, conflict: 0, intensity: 0, toneSum: 0, toneCount: 0 }])),
+  hours: Object.fromEntries(Array.from({ length: 24 }, (_, h) => [String(h).padStart(2, '0'), { cohorts: 4, pairs: {} }])) });
   const live = { cursor: '20260928171500', days: {} };
 
   // A manifest tail and the files it names. `count` trims a day's cohorts to
@@ -1259,6 +1281,7 @@ describe('dyad history repair', async () => {
       _readSnapshot: async key => key === 'gdelt:bulk:dyad-tension:v1' ? previousDyads : null,
       _fetchFiles: async () => materializationFiles(),
       _repairDyadHistory: repair,
+      _repairCountryEventsHistory: noDyadRepair,
     });
     const failed = await tick(async ({ failures }) => {
       failures['2026-07-29'] = Date.parse('2026-07-30T12:05:00Z');
@@ -1268,7 +1291,7 @@ describe('dyad history repair', async () => {
     let seen;
     const recovered = await tick(async ({ snapshot }) => {
       seen = snapshot.repairFailures;
-      return { days: { '2026-07-29': { cohorts: 96, pairs: {} } }, outcomes: { repaired: 1 } };
+      return { days: { '2026-07-29': completeDay() }, outcomes: { repaired: 1 } };
     }, failed._dyads);
     assert.deepEqual(seen, failed._dyads.repairFailures, 'the next tick plans against the stored failures');
     assert.equal(recovered._dyads.repairFailures, undefined);
@@ -1347,7 +1370,7 @@ describe('dyad history repair', async () => {
 
   it('does not repair a day the manifest tail does not reach', async () => {
     const source = repairSource(['2026-09-27']);
-    const snapshot = { ...live, days: { '2026-09-27': { cohorts: 96, pairs: {} } } };
+    const snapshot = { ...live, days: { '2026-09-27': completeDay() } };
     const result = await repairDyadHistory({ snapshot, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
     assert.deepEqual(result.days, {});
     assert.deepEqual(result.outcomes, { manifest_short: 1 }, '2026-09-26 predates the tail');
@@ -1356,7 +1379,7 @@ describe('dyad history repair', async () => {
 
   it('does nothing, not even the manifest read, when history is complete', async () => {
     const days = {};
-    for (let i = 1; i <= 90; i++) days[new Date(repairNow - i * 86_400_000).toISOString().slice(0, 10)] = { cohorts: 96, pairs: {} };
+    for (let i = 1; i <= 90; i++) days[new Date(repairNow - i * 86_400_000).toISOString().slice(0, 10)] = completeDay();
     const source = repairSource([]);
     const result = await repairDyadHistory({ snapshot: { ...live, days }, nowMs: repairNow, fetchImpl: source.fetchImpl });
     assert.deepEqual(result, { days: {}, outcomes: {}, failures: {} });
@@ -1367,6 +1390,7 @@ describe('dyad history repair', async () => {
     _now: () => Date.parse('2026-07-30T12:05:00Z'),
     _readSnapshot: async () => null,
     _fetchFiles: async () => materializationFiles(),
+    _repairCountryEventsHistory: noDyadRepair,
     ...overrides,
   });
 
@@ -1388,7 +1412,7 @@ describe('dyad history repair', async () => {
   it('keeps the days a repair finished before its budget ran out', async () => {
     const stalled = await liveTick({
       _repairDyadHistory: ({ into }) => {
-        into['2026-07-29'] = { cohorts: 96, pairs: {} };
+        into['2026-07-29'] = completeDay();
         return new Promise(() => {});
       },
       _dyadRepairBudgetMs: 20,
@@ -1401,11 +1425,91 @@ describe('dyad history repair', async () => {
     const result = await liveTick({
       _repairDyadHistory: async ({ snapshot }) => {
         seen = snapshot;
-        return { days: { '2026-07-29': { cohorts: 96, pairs: {} } }, outcomes: { repaired: 1 } };
+        return { days: { '2026-07-29': completeDay() }, outcomes: { repaired: 1 } };
       },
     });
     assert.equal(seen.cursor, '20260730120000', 'repair plans against the post-merge cursor');
     assert.equal(result._dyads.days['2026-07-29'].cohorts, 96);
     assert.equal(result._dyads.days['2026-07-30'].cohorts, 1, 'the live day is untouched');
+  });
+
+  it('gives the country-events history only the day allowance the dyads left', async () => {
+    const calls = [];
+    const countryRepair = async (opts) => {
+      calls.push(opts.maxDays);
+      return { days: {}, outcomes: {}, failures: {} };
+    };
+    await liveTick({ _repairDyadHistory: noDyadRepair, _repairCountryEventsHistory: countryRepair });
+    await liveTick({
+      _repairDyadHistory: async ({ into }) => {
+        into['2026-07-29'] = completeDay();
+        return { days: into, outcomes: { repaired: 1 }, failures: {} };
+      },
+      _repairCountryEventsHistory: countryRepair,
+    });
+    await liveTick({
+      _repairDyadHistory: async ({ into, failures }) => {
+        into['2026-07-29'] = completeDay();
+        failures['2026-07-28'] = 1;
+        return { days: into, outcomes: { repaired: 1, verify_failed: 1 }, failures };
+      },
+      _repairCountryEventsHistory: countryRepair,
+    });
+    assert.deepEqual(calls, [2, 1], 'two dyad days spend the whole tick; the country repair does not run');
+  });
+
+  it('publishes live country counts and merges a repaired country day under one budget', async () => {
+    let seen;
+    const result = await liveTick({
+      _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: async ({ snapshot, signal, deadlineAt }) => {
+        seen = { cursor: snapshot.cursor, signal, deadlineAt };
+        return {
+          days: { '2026-07-29': { cohorts: 96, strikeCohorts: 96, countries: { SA: [40, 12, 3, 5] } } },
+          outcomes: { repaired: 1 },
+          failures: {},
+        };
+      },
+    });
+    assert.equal(seen.cursor, '20260730120000', 'repair plans against the post-merge cursor');
+    assert.ok(seen.signal instanceof AbortSignal, 'the country repair shares the abort signal');
+    assert.ok(Number.isFinite(seen.deadlineAt));
+    assert.equal(result._countryEvents.days['2026-07-29'].countries.SA[1], 12);
+    assert.equal(result._countryEvents.days['2026-07-30'].cohorts, 1, 'the live cohort is counted');
+    assert.equal(result._countryEvents.baselineReady, false, 'one day is not a baseline');
+    assert.ok(result._countryEvents.byCountry && typeof result._countryEvents.byCountry === 'object');
+  });
+
+  it('a failing country repair leaves the live publication unchanged', async () => {
+    const baseline = await liveTick({ _repairDyadHistory: noDyadRepair });
+    const failed = await liveTick({
+      _repairDyadHistory: noDyadRepair,
+      _repairCountryEventsHistory: async () => { throw new Error('https://secret.invalid/?token=x'); },
+    });
+    assert.deepEqual(failed._countryEvents.days, baseline._countryEvents.days);
+    assert.deepEqual(failed._state, baseline._state);
+  });
+
+  it('repairs a country-events day from the 96 source exports', async () => {
+    const source = repairSource(['2026-09-27']);
+    // Today already holds every cohort through the cursor, so the past day is next.
+    const snapshot = { cursor: live.cursor, days: { '2026-09-28': { cohorts: 70, strikeCohorts: 70, countries: {} } } };
+    const result = await repairCountryEventsHistory({ snapshot, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
+    assert.deepEqual(Object.keys(result.days), ['2026-09-27']);
+    assert.equal(result.days['2026-09-27'].cohorts, 96);
+    assert.equal(result.days['2026-09-27'].strikeCohorts, 96, 'a rebuilt day carries the strike counter');
+    assert.deepEqual(result.outcomes, { repaired: 1 });
+  });
+
+  it('recovers today\'s cohorts an outage skipped, through the cursor only', async () => {
+    // The live downloader kept only the newest 8 cohorts after an outage, so
+    // today holds 8 of the 70 published through the 17:15 cursor.
+    const source = repairSource(['2026-09-28']);
+    const snapshot = { cursor: live.cursor, days: { '2026-09-28': { cohorts: 8, countries: {} } } };
+    const result = await repairCountryEventsHistory({ snapshot, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
+    assert.deepEqual(result.outcomes, { repaired: 1 });
+    assert.equal(result.days['2026-09-28'].cohorts, 70);
+    assert.equal(source.requests.filter((url) => url.endsWith('.export.CSV.zip')).length, 70,
+      'only the cohorts through the cursor are downloaded');
   });
 });

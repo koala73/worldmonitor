@@ -233,6 +233,8 @@ Before issue #8990 a bet window opened on its first emission whatever that emiss
 
 A row corrected after its receipt reached R2 (`resolver_envelope_bug`, `duplicate_window`, `judged_old_selection`, `late_read`, `resolver_could_not_read_feed`, `base_rate_placeholder`, a restored duplicate, a rescore, a late-read re-grade or a re-pointed duplicate) has its receipt written again. R2 writes run one at a time, at about 450 ms each, inside the run's 150-second fetch phase, so each run rewrites at most `RECEIPT_REARCHIVE_PER_RUN` (50) of these receipts, oldest first. The backlog drains over later runs, and pruning keeps a row until its corrected receipt is written.
 
+Successful R2 uploads do not complete a run until the ledger publishes their archive stamps. The retained forecast ledger has an explicit 8 MiB payload budget. Other seeders keep the default 5 MiB limit. The publisher also checks that the encoded Redis request fits within 10 MB before it writes a larger ledger. If publication fails, the prior ledger stays in place and those receipts remain queued, even if their R2 uploads succeeded.
+
 ### Evaluation corpus
 
 Each window records 3 provenance fields when it opens (issue #7072):

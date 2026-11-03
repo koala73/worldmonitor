@@ -8,6 +8,7 @@ import type {
 } from '@/services/supply-chain';
 import { fetchBypassOptions, fetchChokepointHistory } from '@/services/supply-chain';
 import type { TransitDayCount } from '@/services/supply-chain';
+import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
 import type { ScenarioResult } from '@/config/scenario-templates';
 import { SCENARIO_TEMPLATES } from '@/config/scenario-templates';
 import { TransitChart } from '@/utils/transit-chart';
@@ -283,9 +284,13 @@ export class SupplyChainPanel extends Panel {
       : this.mineralProductionData?.commodities?.length
         ? this.mineralProductionData
         : this.mineralsData;
-    const unavailableBanner = activeData?.upstreamUnavailable
-      && (this.activeTab === 'chokepoints' || !activeHasData)
-      ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
+    const unavailableText = this.activeTab === 'chokepoints' && this.chokepointData
+      ? chokepointCoverageWarning(this.chokepointData)
+      : activeData?.upstreamUnavailable && !activeHasData
+        ? t('components.supplyChain.upstreamUnavailable')
+        : '';
+    const unavailableBanner = unavailableText
+      ? `<div class="economic-warning">${escapeHtml(unavailableText)}</div>`
       : '';
 
     let contentHtml = '';

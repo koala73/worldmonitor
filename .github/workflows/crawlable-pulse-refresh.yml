@@ -168,6 +168,7 @@ jobs:
             tests/accuracy-corpus.test.mjs \
             tests/seo-geo-residue.test.mjs \
             tests/crawlable-corpus.test.mjs \
+            tests/situation-page.test.mjs \
             tests/crawlable-developments.test.mjs \
             tests/crawlable-live-tools.test.mjs \
             tests/country-mention.test.mjs \

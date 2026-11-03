@@ -24,6 +24,13 @@ export const SOURCES = {
     lazy: true,
   },
   vessels: { label: 'vessel snapshot', path: '/api/maritime/v1/get-vessel-snapshot', every: 2 * MIN, auth: 'session', lazy: true },
+  satellites: { label: 'satellite elements', path: '/api/intelligence/v1/list-satellites?country=', every: 30 * MIN, auth: 'session', lazy: true },
+  // Map-only registries (on-demand bootstrap keys), loaded while their layer is on.
+  pipelinesGas: { label: 'gas pipeline status', path: '/api/bootstrap?keys=pipelinesGas&public=1', every: 15 * MIN, bootstrap: true, lazy: true },
+  pipelinesOil: { label: 'oil pipeline status', path: '/api/bootstrap?keys=pipelinesOil&public=1', every: 15 * MIN, bootstrap: true, lazy: true },
+  storageFacilities: { label: 'energy storage', path: '/api/bootstrap?keys=storageFacilities&public=1', every: 30 * MIN, bootstrap: true, lazy: true },
+  energyDisruptions: { label: 'energy disruptions', path: '/api/bootstrap?keys=energyDisruptions&public=1', every: 15 * MIN, bootstrap: true, lazy: true },
+  canadaRoads: { label: 'canada roads', path: '/api/bootstrap?keys=canadaRoads&public=1', every: 15 * MIN, bootstrap: true, lazy: true },
 };
 
 // Sources loaded during the boot sequence, in order of usefulness.

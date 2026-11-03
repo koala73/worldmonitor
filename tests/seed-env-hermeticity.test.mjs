@@ -18,7 +18,8 @@
 //      the loader opts out of 1 and 2 silently, which is exactly how the second
 //      instance of this bug survived in fetch-pizzint-bases.mjs.
 //
-// 1 and 2 are exercised against the REAL scripts/_seed-utils.mjs through a
+// 1 and 2 are exercised against the REAL scripts/_env-file.mjs (via its
+// _seed-utils.mjs re-export) through a
 // fixture checkout in a temp dir, so the assertions are meaningful in CI (which
 // has no .env.local) as well as on developer machines. Deliberately no real
 // seeder is imported — that is its own repo landmine (top-level execution) — so
@@ -205,7 +206,8 @@ const ENV_PARSER_ALLOWLIST = new Set([
   // top-level IIFE with no direct-run guard, so importing it loaded credentials
   // at module scope with no isTestRuntime() check. It now takes the shared
   // helper's `only` option instead, which keeps its 2-key narrowing.
-  'scripts/_seed-utils.mjs',
+  // _seed-utils.mjs re-exports this loader for the 149 seeders.
+  'scripts/_env-file.mjs',
 ]);
 
 // Every way a script can get at a `.env` file's contents.

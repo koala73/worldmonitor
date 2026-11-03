@@ -83,10 +83,26 @@ interface SubscriptionPayload {
   userAgent: string;
 }
 
+const SUBSCRIBE_ATTEMPTS = 3;
+const SUBSCRIBE_SETTLE_MS = 800;
+
+function endpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).hostname;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Null when the subscription can't be registered: Chrome occasionally hands
+ * back null keys on first grant, and a revoked subscription carries a
+ * placeholder endpoint on the reserved `.invalid` TLD.
+ */
 function subscriptionToPayload(sub: PushSubscription): SubscriptionPayload | null {
   const p256dh = arrayBufferToBase64(sub.getKey('p256dh'));
   const auth = arrayBufferToBase64(sub.getKey('auth'));
-  if (!p256dh || !auth || !sub.endpoint) return null;
+  if (!p256dh || !auth || !sub.endpoint || endpointHost(sub.endpoint).endsWith('.invalid')) return null;
   return {
     endpoint: sub.endpoint,
     p256dh,
@@ -147,31 +163,45 @@ export async function subscribeToPush(expectedUserId?: string): Promise<Subscrip
   // sync even when the browser has a stale subscription — this is
   // important after sign-out/sign-in, where the browser's push
   // identity persists but the Convex row does not.
-  let sub = await reg.pushManager.getSubscription();
-  if (!sub) {
-    sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
-    });
-  }
-
-  const payload = subscriptionToPayload(sub);
-  if (!payload) {
-    // Chrome occasionally hands back a subscription with null keys on
-    // first-grant. Unsubscribe and retry once.
-    await sub.unsubscribe().catch(() => {});
-    const retry = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
-    });
-    const retryPayload = subscriptionToPayload(retry);
-    if (!retryPayload) throw new Error('Failed to extract push subscription keys.');
-    await postSubscription(retryPayload, expectedUserId);
-    return retryPayload;
-  }
-
+  const payload = await obtainSubscriptionPayload(reg.pushManager, {
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
+  });
   await postSubscription(payload, expectedUserId);
   return payload;
+}
+
+/**
+ * Return a registrable subscription, replacing an unusable one. Right after
+ * unsubscribe() Chromium can answer subscribe() with the revoked placeholder
+ * again, so each replacement waits before subscribing.
+ */
+export async function obtainSubscriptionPayload(
+  pushManager: PushManager,
+  options: PushSubscriptionOptionsInit,
+  settle: () => Promise<void> = () => new Promise((resolve) => setTimeout(resolve, SUBSCRIBE_SETTLE_MS)),
+): Promise<SubscriptionPayload> {
+  let sub = await pushManager.getSubscription();
+  for (let attempt = 0; ; attempt++) {
+    const payload = sub && subscriptionToPayload(sub);
+    if (payload) return payload;
+    if (attempt === SUBSCRIBE_ATTEMPTS) throw new Error('Failed to obtain a usable push subscription.');
+    if (sub) {
+      await sub.unsubscribe().catch(() => {});
+      await settle();
+    }
+    sub = await pushManager.subscribe(options);
+  }
+}
+
+/** Carries the endpoint's hostname (never its path, which holds the registration token). */
+export class PushRegistrationError extends Error {
+  readonly endpointHost: string;
+
+  constructor(message: string, endpointHost: string) {
+    super(message);
+    this.endpointHost = endpointHost;
+  }
 }
 
 /**
@@ -213,7 +243,7 @@ async function postSubscription(
     body: JSON.stringify({ action: 'set-web-push', ...payload }),
   }, expectedUserId);
   if (!res.ok) {
-    throw new Error(await describePushRegistrationFailure(res));
+    throw new PushRegistrationError(await describePushRegistrationFailure(res), endpointHost(payload.endpoint));
   }
 }
 

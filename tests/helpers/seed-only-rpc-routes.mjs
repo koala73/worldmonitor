@@ -20,7 +20,7 @@ import ts from 'typescript';
 
 // Redis read helpers exported by server/_shared/redis.ts, plus
 // readRequiredSeed (server/_shared/required-seed.ts), which wraps them.
-const REDIS_READ = /getCachedJson|readCachedJson|getCachedJsonBatch|readCachedJsonList|getCachedEnvelopeJson|readCachedEnvelopeJson|getRawJson|getLargeRawJson|getCachedRawString|getHashFieldsBatch|readRequiredSeed/;
+const REDIS_READ = /getCachedJson|readCachedJson|getCachedJsonBatch|readCachedJsonList|getCachedEnvelopeJson|readCachedEnvelopeJson|getRawJson|getLargeRawJson|getCachedRawString|getHashFieldsBatch|readRequiredSeed|runRedisPipeline\(\s*\[\s*\[\s*['"]ZRANGEBYSCORE['"]/;
 
 // Anything that can leave the process: fetch and every helper spelled
 // `xFetch…(`/`fetch…(` (wtoFetch, fredFetchJson, lazyFetchBilateralHs4,

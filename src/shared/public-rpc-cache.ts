@@ -29,6 +29,7 @@ const LIVE_TOPIC_PUBLIC_SEARCH = 'public=1';
 const PUBLIC_SHARED_RPC_PATHS = new Set([
   '/api/news/v1/list-feed-digest',
   '/api/displacement/v1/get-displacement-summary',
+  '/api/displacement/v1/get-cross-border-movements',
   '/api/forecast/v1/get-forecasts',
   '/api/supply-chain/v1/get-chokepoint-status',
   ...LIVE_TOPIC_RPC_PATHS,
@@ -142,6 +143,7 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
   if (!hasSingleValue(params, 'public') || params.get('public') !== '1') return false;
 
   if (pathname === '/api/news/v1/list-feed-digest') return isNewsDigestShape(params);
+  if (pathname === '/api/displacement/v1/get-cross-border-movements') return search === 'public=1';
   if (pathname === '/api/forecast/v1/get-forecasts') return search === FORECASTS_PUBLIC_SEARCH;
   if (pathname === '/api/supply-chain/v1/get-chokepoint-status') return search === CHOKEPOINT_STATUS_PUBLIC_SEARCH;
   if (LIVE_TOPIC_RPC_PATHS.includes(pathname)) return search === LIVE_TOPIC_PUBLIC_SEARCH;

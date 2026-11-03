@@ -1,7 +1,6 @@
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
+import { loadUpstashRatelimit } from './_upstash-ratelimit.js';
 import {
   durationToSeconds,
   limitWithFallback,
@@ -43,7 +42,7 @@ function getRateLimitPolicy(opts = {}) {
   };
 }
 
-function getRatelimit(policy) {
+async function getRatelimit(policy) {
   const cacheKey = `${policy.scope}|${policy.limit}|${policy.window}`;
   const cached = ratelimits.get(cacheKey);
   if (cached) return cached;
@@ -52,6 +51,7 @@ function getRatelimit(policy) {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
 
+  const { Ratelimit, Redis } = await loadUpstashRatelimit();
   const ratelimit = new Ratelimit({
     redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
@@ -205,7 +205,7 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
     return edgeProofRequiredResponse(corsHeaders);
   }
 
-  const rl = getRatelimit(policy);
+  const rl = await getRatelimit(policy);
   if (!rl) {
     if (opts.failClosed) {
       logRateLimitDegraded('checkRateLimit:missing-config', new Error('Upstash Redis is not configured'), opts.ctx);

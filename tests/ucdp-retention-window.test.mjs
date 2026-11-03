@@ -1,3 +1,9 @@
+// Deliberate constant pins by design (#8690, section 2; #8683): this suite
+// pins the one-year Redis retention, two-year CII classification window,
+// and separate relay page cap alongside their documentation.
+// Runtime samples cannot establish these declared limits, and the failure
+// messages require deliberate updates to the guard and docs together.
+//
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

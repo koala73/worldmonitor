@@ -101,6 +101,52 @@ export interface InternalDisplacementFlow {
   destinationLocation?: GeoCoordinates;
 }
 
+export interface GetCrossBorderMovementsRequest {
+  countryCode: string;
+  route: string;
+}
+
+export interface GetCrossBorderMovementsResponse {
+  movements: CrossBorderMovement[];
+  sources: CrossBorderSourceStatus[];
+  dataAvailable: boolean;
+}
+
+export interface CrossBorderMovement {
+  id: string;
+  route: string;
+  name: string;
+  kind: string;
+  measure: string;
+  countryCode: string;
+  originCode: string;
+  asOf: string;
+  period: string;
+  count: number;
+  last7Days?: number;
+  last30Days?: number;
+  changePct?: number;
+  surge: boolean;
+  stale: boolean;
+  source: string;
+  sourceUrl: string;
+  license: string;
+  licenseUrl: string;
+  location?: GeoCoordinates;
+  notice: string;
+  stockChange?: number;
+  stockChangeSince: string;
+}
+
+export interface CrossBorderSourceStatus {
+  id: string;
+  name: string;
+  status: string;
+  fetchedAt: number;
+  contentAt: number;
+  maxContentAgeMin: number;
+}
+
 export interface GetPopulationExposureRequest {
   mode: string;
   lat: number;
@@ -226,6 +272,32 @@ export class DisplacementServiceClient {
     }
 
     return await resp.json() as GetInternalDisplacementResponse;
+  }
+
+  async getCrossBorderMovements(req: GetCrossBorderMovementsRequest, options?: DisplacementServiceCallOptions): Promise<GetCrossBorderMovementsResponse> {
+    let path = "/api/displacement/v1/get-cross-border-movements";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    if (req.route != null && req.route !== "") params.set("route", String(req.route));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCrossBorderMovementsResponse;
   }
 
   async getPopulationExposure(req: GetPopulationExposureRequest, options?: DisplacementServiceCallOptions): Promise<GetPopulationExposureResponse> {

@@ -1476,11 +1476,17 @@ function familyCount(rows) {
 
 const brierDeltaStatistic = (sample) => mean(sample.map((row) => rowBrier(row, 'calibrated') - rowBrier(row, 'raw')));
 
+// The activation gate reads only the Brier interval. A caller that needs only
+// the verdict passes `eceIntervals: false` and gets `eceCi95: null`. Each
+// resample draws its families before any statistic runs, so dropping the ECE
+// statistics leaves the Brier interval unchanged.
 function summarizeShadowRows(rows, scope, options) {
   const intervals = pairedBootstrap(rows, {
     brierDelta: brierDeltaStatistic,
-    rawEce: (sample) => expectedCalibrationError(sample, 'raw'),
-    calibratedEce: (sample) => expectedCalibrationError(sample, 'calibrated'),
+    ...(options.eceIntervals !== false && {
+      rawEce: (sample) => expectedCalibrationError(sample, 'raw'),
+      calibratedEce: (sample) => expectedCalibrationError(sample, 'calibrated'),
+    }),
   }, { ...options, scope });
   const side = (field, eceCi95) => ({
     brier: round(mean(rows.map((row) => rowBrier(row, field)))),
@@ -1492,8 +1498,8 @@ function summarizeShadowRows(rows, scope, options) {
     count: rows.length,
     families: familyCount(rows),
     positives: rows.reduce((sum, row) => sum + row.y, 0),
-    raw: side('raw', intervals.rawEce),
-    calibrated: side('calibrated', intervals.calibratedEce),
+    raw: side('raw', intervals.rawEce ?? null),
+    calibrated: side('calibrated', intervals.calibratedEce ?? null),
     // calibrated − raw: negative means the map lowered Brier on this cohort.
     brierDelta: { mean: round(brierDeltaStatistic(rows)), ci95: intervals.brierDelta },
     ...(options.preBlendStage !== false && { internal: summarizeInternalStage(rows, scope, options) }),

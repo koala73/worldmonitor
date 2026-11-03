@@ -1,6 +1,6 @@
 # WorldMonitor TUI: design and implementation plan
 
-Date: 2026-10-17. Status: implemented (PR pending). Owner: CLI (`cli/`).
+Date: 2026-10-17, map/globe, brief and expand-everything added 2026-10-18. Status: implemented (PR pending). Owner: CLI (`cli/`).
 
 ## Intent
 
@@ -112,11 +112,54 @@ changes (alt screen, mouse, cursor) are undone in `finally` and on signals.
 Boundary rules from `AGENTS.md` hold: `cli/` imports nothing from `src/` or
 `server/`; the catalog is generated, not imported.
 
+## Map engine (`cli/src/tui/map/`)
+
+- `world.mjs` decodes the 50 m TopoJSON arcs packed into the catalog (zigzag
+  varints, ~250 KB) and rasterizes land per country with an even-odd scanline
+  fill in the flat projection, or by inverse-sampling a 1800x900 country mask
+  on the globe. Arcs shared by two countries are borders, the rest coastline.
+- `geo.mjs` holds the equirectangular and orthographic projections (zoom 1 =
+  360° across the viewport; globe zoom scales the disc), zoom-at-cursor, pan
+  clamping, great-circle helpers and the subsolar point for the terminator.
+- `canvas.mjs` is a braille dot canvas with one colour per cell, a glyph /
+  label layer with collision avoidance, and a compositor that paints over
+  half-block satellite imagery and applies day/night shading.
+- `png.mjs` + `imagery.mjs`: a minimal PNG decoder and a cache that asks NASA
+  GIBS (WMS, EPSG:4326, keyless) for exactly the visible bounding box at cell
+  resolution; newest request per slot wins (the superseded fetch is aborted),
+  two in flight, LRU eviction.
+- `backdrop.mjs`: which tiles a viewport needs (one per side when it crosses
+  the antimeridian) and the sampler that turns ready tiles and the night-lights
+  mosaic into half-block cell colours.
+- `shapes.mjs`: segment distance, point-in-ring and polyline length for hit
+  testing and the card's measurements.
+- `orbit.mjs`: TLE parsing and a Kepler + J2 propagator for satellite
+  sub-points and ground tracks.
+- `layers.mjs`: the layer registry. Static registries (cables, pipelines,
+  nuclear, bases, ports, airports, data centers, finance/tech/commodity sites…)
+  come from the catalog; live layers read the store. Every feature carries
+  name, position (or polyline / polygon), colour, size, `info` rows for the
+  hover card and detail overlay, and optional heading/speed (dead reckoning)
+  or TLE (propagation at draw time).
+- `views/map.mjs`: hover picking (points, then lines, then polygons, then the
+  country under the cursor), pin, detail, search, drag/wheel, keyboard,
+  auto-rotation, base-layer and imagery-cell caching per view, and the
+  animations (sweep, pulses, quake rings, flowing packets on focused lines,
+  terminator, imagery fade-in). `views/map-panels.mjs` draws its toolbar,
+  footer, layer sidebar, search box and info card.
+
 ## Views
 
 - Overview: braille world map with live blips (earthquakes, conflicts, unrest,
   wildfires, cyber C2), radar sweep, AI world brief (typewriter), top stories,
   market strip, theater posture, data freshness.
+- Map: the engine above with every layer, flat/globe, satellite imagery,
+  day/night, hover highlighting that dims every other layer, info cards,
+  search, persistence of view and layer state.
+- Brief: the AI world brief as a page: brief paragraph and numbered story
+  lines on the left; on the right the sources a line cites (`[n]` →
+  `worldBriefSources[n-1]`) and digest headlines ranked by keyword overlap,
+  each expandable and openable.
 - News: category tabs from the feed catalog; headline list with source, age and
   tier colour; detail pane with summary and link; `o` opens in browser.
 - Markets: indices, commodities, FX, sector heatmap, crypto, Gulf markets,
@@ -139,9 +182,14 @@ Boundary rules from `AGENTS.md` hold: `cli/` imports nothing from `src/` or
 
 ## Controls
 
-Tab / Shift+Tab or 1..9, 0 switch views; click a tab. Left / Right (h / l)
+Tab / Shift+Tab, 1..9, 0 or Alt+1.. (views past the tenth) switch views; click a tab. Left / Right (h / l)
 move between panes inside a view. Arrows, j/k, PgUp/PgDn, g/G move in lists;
-wheel scrolls; click a row selects, click again (or Enter) opens. `[` `]`
+wheel scrolls; click a row selects, click again (or Enter) expands it into the
+detail overlay (`ui/detail.mjs` describes any record generically; views can
+override `describe`). Map: drag pans, wheel zooms at the cursor, hover
+highlights a layer, click pins, Enter opens details, `g` globe, `s` satellite,
+`i` imagery, `d` day/night, `L` layers panel, `/` search, `z` reset, `p` pause
+rotation. `[` `]`
 change the News section or the Live region. `t` cycles theme, `T` opens the
 theme picker, `a` toggles animations, `r` refreshes the current view, `o` opens
 the selected link in the browser, `W` opens the web dashboard, `?` help, `q` /
@@ -158,10 +206,21 @@ in the browser, `s` cycles stream sources.
 - Headless App tests (`cli/test/tui-app.test.mjs`): render every view at
   160x45, 100x30 and 80x24 with fixture data, drive keys, tab clicks, row
   clicks, wheel, theme picker, help, lazy-source wanting, and Live fallbacks.
+- Map tests (`cli/test/tui-map.test.mjs`): projection round trips, world
+  decoding and antimeridian rendering, PNG decoding of a real GIBS tile,
+  imagery cache ordering and errors, orbit propagation, feature building for
+  every layer, hover picking, pinning, detail, drag/zoom, globe + satellite
+  compositing, layer toggles and persistence, search, dead reckoning, themes,
+  the detail overlay in other views and the brief view.
 - Manual: run in tmux at 160x45, capture frames of every view, convert to
   HTML, screenshot for the PR.
 
 ## Out of scope for this change, noted for later
+
+- Individual AIS vessel positions: the public vessel snapshot carries density
+  zones, disruptions and (when present) tanker reports, not per-ship tracks.
+- Webcam positions on the map (the catalog has no coordinates for them).
+- Sixel / Kitty raster output for imagery instead of half blocks.
 
 - MCP-backed country brief overlay when an API key is present.
 - Variant presets (tech, finance, happy) as selectable data profiles.

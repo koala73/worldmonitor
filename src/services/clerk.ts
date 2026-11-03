@@ -287,6 +287,25 @@ function loadClerkUmd(publishableKey: string): Promise<void> {
  * (mcp-grant page bootstrap, getClerkToken on first authenticated request).
  * Idempotent — repeated calls return the same in-flight promise.
  */
+/**
+ * Clerk's modal renders internal steps ("Use another method") as anchors whose
+ * href is a virtual-router path such as `/CLERK-ROUTER/VIRTUAL/sign-in/factor-one`.
+ * Clerk's React handler cancels the click and routes inside the modal, but a
+ * click stopped before it reaches React (1Password's passkey prompt does this)
+ * lets the browser follow the href to a 404. Cancel only the default action on
+ * the window capture phase; propagation is untouched, so Clerk still routes.
+ */
+export function installClerkVirtualLinkGuard(target: Window): () => void {
+  const guard = (event: MouseEvent) => {
+    const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (anchor instanceof HTMLAnchorElement && anchor.pathname.startsWith('/CLERK-ROUTER/')) {
+      event.preventDefault();
+    }
+  };
+  target.addEventListener('click', guard, true);
+  return () => target.removeEventListener('click', guard, true);
+}
+
 export async function initClerk(): Promise<void> {
   if (clerkInstance) return;
   if (loadPromise) return loadPromise;
@@ -319,6 +338,7 @@ export async function initClerk(): Promise<void> {
         ...clerkRuntimeLoadOptions(desktopRelay),
       } as Parameters<typeof clerk.load>[0]);
       clerkInstance = clerk;
+      installClerkVirtualLinkGuard(window);
       attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
@@ -984,6 +1004,31 @@ async function fetchClerkToken(session: ClerkSession, skipCache = false): Promis
     return { token: await session.getToken(cacheOptions), unavailable: false };
   } catch {
     return { token: null, unavailable: !firstRequestSucceeded };
+  }
+}
+
+/**
+ * Clerk's standard session token, uncached and with no JWT template.
+ *
+ * Only the session token carries `sid`; a JWT-template token (the `convex`
+ * one `getClerkToken()` prefers) gets just `azp, exp, iat, iss, jti, nbf,
+ * sub`. The routes that trade a bearer for a credential outliving it (desktop
+ * sign-in, the Pro MCP grant) confirm that `sid` is still live at Clerk, so
+ * they must be sent this token. Null when nobody is signed in.
+ */
+export async function getClerkSessionToken(): Promise<string | null> {
+  const session = clerkInstance?.session;
+  if (!session) return null;
+  const myGen = _tokenGen;
+  try {
+    // A fresh token: Clerk's cache may hand back one with seconds left, and the
+    // route this feeds still has Clerk calls of its own to make before it
+    // reads the claims. These are one-shot user clicks, not a hot path.
+    const token = await session.getToken({ skipCache: true });
+    if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
+    return token;
+  } catch {
+    return null;
   }
 }
 

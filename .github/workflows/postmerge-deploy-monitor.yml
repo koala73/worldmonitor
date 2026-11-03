@@ -9,7 +9,7 @@ name: Post-merge Deploy Monitor
 # workflow's run history on main and fails loudly when the newest run did not
 # deploy.
 #
-# Deliberately NOT gated on a green main (unlike seed-freshness-monitor.yml)
+# Deliberately NOT gated on a green main
 # and NOT wired into the deploy gate: the deploys this checks are post-merge,
 # and the incidents it exists to catch had green main while the deploy failed —
 # gating on main would silence exactly the alarms we want (#5565, the same
@@ -52,7 +52,7 @@ jobs:
           set -o pipefail
           # Pick up commits merged since the checkout so the convex=false skip
           # proof diffs the head the API reports, not the SHA the checkout was
-          # created at. Same shape as seed-freshness-monitor.yml's drift step.
+          # created at.
           # `--tags --force` is load-bearing: the convex/ skip proof compares
           # production's deployed commit (the force-moved `convex-deployed` tag
           # convex-deploy.yml writes) against main. Without --force the local

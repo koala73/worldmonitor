@@ -37,6 +37,8 @@ import {
 import { SOURCE_RETRY_CLAIM_SCRIPT } from '../scripts/_bundle-runner.mjs';
 import { CABLE_HEALTH_REPAIR_SCRIPT } from '../shared/cable-health-repair-script.mjs';
 import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.cjs';
+import { recordHistoryCost } from '../scripts/lib/intel-history-cost.mjs';
+import { createTenderReceipt, writeTenderReceipt } from '../scripts/_global-tender-receipts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -92,6 +94,22 @@ const accepts = (gate, args) => {
     return false;
   }
 };
+
+it('accepts the emitted history-cost command and rejects a modified script', async () => {
+  const gate = buildGate();
+  let checked = false;
+  await recordHistoryCost({ domain: 'energy', resource: 'intelligence', at: Date.now(), runs: 1 }, {
+    env: { UPSTASH_REDIS_REST_URL: 'https://redis.test', UPSTASH_REDIS_REST_TOKEN: 'test' },
+    fetchImpl: async (_url, init) => {
+      const command = JSON.parse(init.body);
+      assert.deepEqual(gate.commandForExecution(command), command.map(String));
+      assert.equal(accepts(gate, [command[0], `${command[1]} `, ...command.slice(2)]), false);
+      checked = true;
+      return Response.json({ result: 'OK' });
+    },
+  });
+  assert.equal(checked, true);
+});
 
 it('accepts the exact compare-and-delete script emitted by the Redis client', () => {
   const source = readFileSync(resolve(repoRoot, 'server/_shared/redis.ts'), 'utf8');
@@ -232,6 +250,28 @@ describe('redis-rest-proxy command gate', () => {
     assert.equal(accepts(gate, ['EVAL', "redis.call('FLUSHALL')", '0']), false,
       'an unpinned script must be rejected');
     assert.equal(accepts(gate, ['EVAL']), false, 'EVAL with no script must be rejected');
+  });
+
+  it('admits the procurement writer exact script and rejects a modified copy', async (t) => {
+    const gate = buildGate();
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.fixture';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    t.after(() => {
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+    });
+    let emitted;
+    t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      emitted = JSON.parse(options.body);
+      return Response.json({ result: 1 });
+    });
+    await writeTenderReceipt(createTenderReceipt());
+    assert.equal(accepts(gate, emitted), true, 'self-hosted proxy must accept the actual writer command');
+    assert.equal(accepts(gate, [emitted[0], `${emitted[1]} `, ...emitted.slice(2)]), false);
   });
 
   it('pins the physical-premium history append by exact bytes', () => {

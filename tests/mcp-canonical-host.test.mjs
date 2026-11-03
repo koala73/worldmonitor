@@ -177,11 +177,11 @@ describe('alias transport 410', () => {
     assert.equal(await res.text(), '');
   });
 
-  it('malformed JSON is still -32600, not a 410', async () => {
+  it('malformed JSON returns -32700 before the host decision', async () => {
     const res = await post(aliasUrl('happy', '/mcp'), '{');
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.equal(body.error?.code, -32600);
+    assert.equal(body.error?.code, -32700);
   });
 
   it('an oversized body is still HTTP 413 before the host decision', async () => {

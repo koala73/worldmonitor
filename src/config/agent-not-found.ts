@@ -134,6 +134,7 @@ export function suggestNotFoundSection(path: string): NotFoundSection | null {
 // tests/agent-friendly-404.test.mts so a new vercel.json route cannot
 // silently 404.
 export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
+  '/CLERK-ROUTER',
   '/a2a',
   '/about',
   '/accuracy',
@@ -163,6 +164,7 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/map-styles',
   '/mcp',
   '/mcp-grant',
+  '/monitor-the-situation',
   '/desktop-sign-in',
   '/oauth',
   '/pricing',
@@ -173,6 +175,7 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/research',
   '/research-assets',
   '/sandbox',
+  '/settings',
   '/sources',
   '/stocks',
   '/story',

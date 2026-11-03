@@ -7,13 +7,31 @@ import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
+// One Gulf crude share window (compute_energy_shock preCrisisBaseline / currentFlows).
+const CRUDE_SHARE_BASELINE_SCHEMA = { type: 'object', properties: {
+  basis: { type: 'string', enum: ['comtrade_monthly', 'national_monthly', 'comtrade_annual'] }, fromMonth: { type: 'string' }, toMonth: { type: 'string' },
+  monthsCovered: { type: 'number' }, gulfCrudeShare: { type: 'number' }, crudeLossKbd: { type: 'number' }, crudeLossAfterBypassKbd: { type: 'number' },
+} } as const;
+
 const MODES = {
   energy: '/api/supply-chain/v1/get-country-cost-shock',
   'multi-sector': '/api/supply-chain/v1/get-multi-sector-cost-shock',
 } as const;
 
+function costShockCountry(params: Record<string, unknown>): string {
+  const country = requireCountryCode(params.country, 'get_supply_chain_cost_shock', 'country');
+  if (params.mode === 'energy' && params.closure_days !== undefined) {
+    throw new RpcValidationError('get_supply_chain_cost_shock', [{ field: 'closure_days', description: 'Closure duration is only supported in multi-sector mode.' }]);
+  }
+  if (params.mode === 'multi-sector' && params.hs2 !== undefined) {
+    throw new RpcValidationError('get_supply_chain_cost_shock', [{ field: 'hs2', description: 'HS2 is only supported in energy mode.' }]);
+  }
+  return country;
+}
+
 export const COST_SHOCK_TOOLS: ToolDef[] = [{
   name: 'get_supply_chain_cost_shock',
+  _validateArgs: params => { costShockCountry(params); },
   title: 'Chokepoint closure cost shock',
   description: 'Model existing country energy exposure or multi-sector import costs for a chokepoint closure. Select energy or multi-sector mode, country and canonical chokepoint. Energy defaults to HS 27 mineral fuels; closure_days applies only to multi-sector and defaults to 30. Energy models cover only supported chokepoints. hasEnergyModel and unavailableReason mark missing models or imports, which are not measured zero impacts. Sector costs are estimates in USD using seeded imports, freight/insurance assumptions and closure duration, not realized losses or forecasts. Uses existing subscription access and seeded computations; no scenario is saved.',
   _outputBudgetBytes: 65536,
@@ -52,11 +70,9 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
     const mode = params.mode;
     if (typeof mode !== 'string' || !Object.prototype.hasOwnProperty.call(MODES, mode)) invalid('mode', 'Select energy or multi-sector mode.');
     const selected = mode as keyof typeof MODES;
-    const country = requireCountryCode(params.country, 'get_supply_chain_cost_shock', 'country');
+    const country = costShockCountry(params);
     const chokepoint = params.chokepoint_id;
     if (typeof chokepoint !== 'string' || !CHOKEPOINT_REGISTRY.some(point => point.id === chokepoint)) invalid('chokepoint_id', 'Select a canonical chokepoint ID.');
-    if (selected === 'energy' && params.closure_days !== undefined) invalid('closure_days', 'Closure duration is only supported in multi-sector mode.');
-    if (selected === 'multi-sector' && params.hs2 !== undefined) invalid('hs2', 'HS2 is only supported in energy mode.');
     const hs2 = params.hs2 ?? '27';
     if (typeof hs2 !== 'string' || !/^\d{1,2}$/.test(hs2)) invalid('hs2', 'Expected a one- or two-digit HS2 code.');
     const days = params.closure_days ?? 30;
@@ -76,8 +92,9 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
   _apiPaths: Object.values(MODES).map(path => `GET ${path}`),
 }, {
   name: 'compute_energy_shock',
+  _validateArgs: params => { requireCountryCode(params.country, 'compute_energy_shock', 'country'); },
   title: 'Energy supply shock scenario',
-  description: 'Compute the existing oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. An unavailable source is not a zero deficit; assumed LNG routing sensitivity is not a measured live-flow shock. Product output/demand are thousand barrels/day, gas quantities are terajoules, storage is TWh and cover is days. Derived scenarios may be cached; no trade or saved user scenario is created.',
+  description: 'Compute the oil/gas supply-sensitivity scenario for a country and supported chokepoint. Set disruption_pct (10..100, default 100) and fuel_mode (oil/gas/both, default oil). Results carry dataAvailable, coverage flags, coverageLevel, limitations, degraded, chokepointConfidence and gasSensitivity.modelBasis. Oil headline figures use preCrisisBaseline, the Gulf share over the 12 months before the 2026 Hormuz crisis (basis comtrade_annual is the annual fallback); currentFlows covers the latest 3 monthly filings and is absent when unavailable. Shares include the chokepoint route factor. For Hormuz, crudeLossKbd is after bypass rerouting (Saudi East-West, UAE ADCOP, Iraqi Kirkuk-Ceyhan); preCrisisBaseline.crudeLossKbd is before it. An unavailable source is not a zero deficit; assumed LNG routing is not a measured live-flow shock. Units: products kb/d, gas TJ, storage TWh, cover days. Non-IEA cover uses reportedStocks (JODI month-end stocks, not IEA data). Results may be cached; no user scenario is saved.',
   _outputBudgetBytes: 65536,
   inputSchema: {
     type: 'object',
@@ -98,6 +115,11 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
       jodiOilCoverage: { type: 'boolean' }, comtradeCoverage: { type: 'boolean' }, ieaStocksCoverage: { type: 'boolean' },
       portwatchCoverage: { type: 'boolean' }, coverageLevel: { type: 'string' }, degraded: { type: 'boolean' },
       chokepointConfidence: { type: 'string' }, liveFlowRatio: { type: 'number' },
+      preCrisisBaseline: CRUDE_SHARE_BASELINE_SCHEMA, currentFlows: CRUDE_SHARE_BASELINE_SCHEMA,
+      reportedStocks: { type: 'object', properties: {
+        source: { type: 'string', enum: ['jodi'] }, month: { type: 'string' },
+        crudeMb: { type: 'number' }, productsMb: { type: 'number' }, totalMb: { type: 'number' }, stockDays: { type: 'number' },
+      } },
       limitations: { type: 'array', items: { type: 'string' } },
       products: { type: 'array', items: { type: 'object', properties: {
         product: { type: 'string' }, outputLossKbd: { type: 'number' }, demandKbd: { type: 'number' }, deficitPct: { type: 'number' },

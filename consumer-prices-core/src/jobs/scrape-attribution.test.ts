@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ValidatorResult } from '../adapters/validator.js';
+import { parseSize } from '../normalizers/size.js';
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -37,10 +38,6 @@ vi.mock('../db/queries/matches.js', () => ({
   getPinnedUrlsForRetailer: mocks.getPinnedUrlsForRetailer,
   getDisabledPinsForRecovery: mocks.getDisabledPinsForRecovery,
   upsertProductMatch: mocks.upsertProductMatch,
-}));
-vi.mock('../normalizers/size.js', () => ({
-  parseSize: vi.fn(),
-  unitPrice: vi.fn(),
 }));
 vi.mock('../config/loader.js', () => ({
   loadRetailerConfig: mocks.loadRetailerConfig,
@@ -188,6 +185,25 @@ beforeEach(() => {
 });
 
 describe('scrapeRetailer failure attribution', () => {
+  it.each([
+    { sizeText: '12 Pack', context: { baseUnit: 'ct', marketCode: 'ae' }, price: 16.25, quantity: 12, unit: 'ct' },
+    { sizeText: '2 Pint', context: { baseUnit: 'ml', marketCode: 'gb' }, price: 1.2, quantity: 1136.5225, unit: 'ml' },
+  ])('writes the contextual $sizeText basis and unit price from the adapter', async fixture => {
+    const normalizedSize = parseSize(fixture.sizeText, fixture.context)!;
+    expect(normalizedSize).not.toBeNull();
+    mocks.parseListing.mockResolvedValueOnce([{
+      ...lowScoreProduct, rawSizeText: fixture.sizeText, price: fixture.price, normalizedSize,
+      rawPayload: { direct: false, validator: highScoreValidator },
+    }]);
+
+    await scrapeRetailer('retailer-a');
+
+    expect(mocks.insertObservation).toHaveBeenCalledWith(expect.objectContaining({
+      price: fixture.price, unitBasisQty: fixture.quantity, unitBasisUnit: fixture.unit,
+      unitPrice: fixture.price / fixture.quantity,
+    }));
+  });
+
   it('persists SearchTargetError reasons and a matching error count', async () => {
     mocks.fetchTarget.mockRejectedValueOnce(
       new SearchTargetError('all candidates failed', 0, [{ provider: 'firecrawl', reason: 'missing-price' }]),
@@ -223,6 +239,23 @@ describe('scrapeRetailer failure attribution', () => {
       0,
       JSON.stringify({ 'unknown-error': 1 }),
     ]);
+  });
+});
+
+// The next same-day tick skips a retailer once its run row is terminal
+// (scrape-resume.ts). Freshness must already be saved by then, or a kill
+// between the two writes leaves the retailer skipped with yesterday's health.
+describe('scrapeRetailer finalize order', () => {
+  it('writes data_source_health before the terminal scrape_runs status', async () => {
+    mocks.fetchTarget.mockRejectedValueOnce(new Error('adapter exploded'));
+
+    await scrapeRetailer('retailer-a');
+
+    const sqls = mocks.query.mock.calls.map(([sql]) => String(sql));
+    const health = sqls.findIndex((sql) => sql.includes('INSERT INTO data_source_health'));
+    const terminal = sqls.findIndex((sql) => sql.includes('UPDATE scrape_runs SET status=$2'));
+    expect(health).toBeGreaterThanOrEqual(0);
+    expect(terminal).toBeGreaterThan(health);
   });
 });
 

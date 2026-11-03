@@ -48,6 +48,11 @@
 # the runner fails. An empty list is a no-op, not a failure.
 
 TEST_TIMEOUT="${WM_PREPUSH_TEST_TIMEOUT:-120}"
+# The DOM half runs the whole vitest project under the hook's worker cap, not
+# just the changed files, so it gets its own budget. At 269 files and 2 workers
+# the suite took 129s on an idle machine (2026-10-20) — the shared 120s budget
+# killed every push touching tests/dom/ with no test having failed.
+DOM_TEST_TIMEOUT="${WM_PREPUSH_DOM_TEST_TIMEOUT:-600}"
 TEST_CONCURRENCY="${WM_PREPUSH_TEST_CONCURRENCY:-2}"
 case "$TEST_CONCURRENCY" in
   '' | 0 | *[!0-9]*)
@@ -55,6 +60,12 @@ case "$TEST_CONCURRENCY" in
     exit 2
     ;;
 esac
+# At least one nonzero digit: `timeout 00` is a zero duration, which GNU
+# timeout reads as no deadline at all.
+if ! [[ "$DOM_TEST_TIMEOUT" =~ ^[0-9]*[1-9][0-9]*$ ]]; then
+  echo "ERROR: WM_PREPUSH_DOM_TEST_TIMEOUT must be a positive integer (seconds)." >&2
+  exit 2
+fi
 
 mode="${1:-}"
 case "$mode" in
@@ -137,9 +148,9 @@ case "$mode" in
     # The whole project rather than the changed files: vitest treats positional
     # args as regex filters over paths, so a literal filename carrying a regex
     # metacharacter can match nothing and fail the push as "No test files
-    # found". The suite is a handful of files and happy-dom boots per file in
-    # milliseconds (see vitest.dom.config.mts), so scoping buys nothing here.
-    timeout "$TEST_TIMEOUT" npm run test:dom || exit 1
+    # found". The cost is the full suite on every DOM change, which is why
+    # this runner has its own DOM_TEST_TIMEOUT above.
+    timeout "$DOM_TEST_TIMEOUT" npm run test:dom || exit 1
     ;;
 esac
 

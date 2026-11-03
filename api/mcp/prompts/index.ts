@@ -47,7 +47,7 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
     arguments: [
       {
         name: 'iso2',
-        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or an English country name ("Germany"). Case-insensitive.',
+        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or a country name in any supported dashboard locale (e.g. "Germany", "ألمانيا", "Deutschland", "德国"). Case-insensitive.',
         required: true,
       },
     ],
@@ -67,7 +67,7 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
     arguments: [
       {
         name: 'iso2',
-        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or an English country name ("Germany"). Case-insensitive.',
+        description: 'Country designator, substituted into the tools\' country_code: an ISO 3166-1 alpha-2 code (e.g. "DE"), an alpha-3 code ("DEU"), or a country name in any supported dashboard locale (e.g. "Germany", "ألمانيا", "Deutschland", "德国"). Case-insensitive.',
         required: true,
       },
     ],
@@ -363,8 +363,15 @@ export interface BuildPromptResponseOk {
 // unknown-name and missing-required-arg, mirroring tools/call).
 export function buildPromptResponse(
   promptName: string,
-  providedArgs: Record<string, unknown> | undefined,
+  providedArgs: unknown,
 ): BuildPromptResponseOk | BuildPromptResponseError {
+  if (providedArgs !== undefined && (
+    providedArgs === null || typeof providedArgs !== 'object' || Array.isArray(providedArgs)
+    || Object.values(providedArgs).some((value) => typeof value !== 'string')
+  )) {
+    return { ok: false, code: -32602, message: 'Invalid params: prompt arguments must be an object with string values' };
+  }
+  const args = providedArgs as Record<string, string> | undefined;
   const prompt = PROMPT_REGISTRY.find((p) => p.name === promptName);
   if (!prompt) {
     return { ok: false, code: -32602, message: `Unknown prompt: ${promptName}` };
@@ -372,15 +379,14 @@ export function buildPromptResponse(
 
   const values: Record<string, string> = {};
   for (const arg of prompt.arguments) {
-    const raw = providedArgs?.[arg.name];
-    if (raw == null || raw === '') {
+    const value = args?.[arg.name];
+    if (value === undefined || value === '') {
       if (arg.required) {
         return { ok: false, code: -32602, message: `Missing required argument "${arg.name}" for prompt "${promptName}"` };
       }
       values[arg.name] = '';
       continue;
     }
-    const value = String(raw);
     if (value.length > MAX_PROMPT_ARG_LENGTH) {
       return {
         ok: false,

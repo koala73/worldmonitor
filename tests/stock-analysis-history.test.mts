@@ -568,6 +568,50 @@ describe('server-backed stock analysis history', () => {
     }
   });
 
+  it('keeps a restricted caller\'s analysis out of the shared history store', async (t) => {
+    const saved = Object.fromEntries(['CONVEX_SITE_URL', 'CONVEX_SERVER_SHARED_SECRET', 'ANTHROPIC_API_KEY'].map((k) => [k, process.env[k]]));
+    t.after(() => {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    process.env.CONVEX_SITE_URL = 'https://convex.example.test';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'shared-test-secret';
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    const state = createRedisAwareFetch();
+    const llmHosts: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input instanceof Request ? input.url : input));
+      if (url.host === 'convex.example.test') {
+        return new Response(JSON.stringify({ policy: { allowedProviders: ['anthropic'] } }), { status: 200 });
+      }
+      if (url.host === 'api.anthropic.com') {
+        llmHosts.push(url.host);
+        return new Response(JSON.stringify({
+          id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5',
+          content: [{ type: 'text', text: 'not json' }], stop_reason: 'end_turn', stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 2 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (url.host === 'openrouter.ai') llmHosts.push(url.host);
+      return state.fetch(input, init);
+    }) as typeof fetch;
+    const ctx = {
+      request: new Request('https://worldmonitor.app/api/market/v1/analyze-stock', { headers: { 'x-user-id': 'user_restricted' } }),
+      pathParams: {},
+      headers: {},
+    };
+    const response = await analyzeStock(ctx as never, { symbol: 'AAPL', name: 'Apple', includeNews: false });
+    assert.equal(response.symbol, 'AAPL');
+    // Non-empty first: `every` is vacuously true when no LLM call was made.
+    assert.ok(llmHosts.length > 0, 'expected the restricted analysis to call Anthropic');
+    assert.ok(llmHosts.every((host) => host === 'api.anthropic.com'), llmHosts.join(','));
+    assert.equal(state.sortedSets.get('market:stock-analysis-history:index:v6:AAPL:core'), undefined);
+  });
+
   it('retains distinct fresh runs for the same candle and returns the newest run first', async (t) => {
     let generatedAt = '2026-10-17T12:00:00.000Z';
     t.mock.method(Date.prototype, 'toISOString', () => generatedAt);

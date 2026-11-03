@@ -269,7 +269,7 @@ export class HormuzPanel extends Panel {
   private renderDependencies(): string {
     const response = this.dependencies;
     if (this.dependencyState === 'loading') {
-      return `<div class="hz-dependencies" data-state="loading" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.loading'))}</div></div>`;
+      return `<div class="hz-dependencies" data-state="loading"><div class="hz-dependencies-title">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty">${escapeHtml(t('components.supplyVulnerability.loading'))}</div></div>`;
     }
     if (this.dependencyState === 'pro-locked' || !response || response.upstreamUnavailable || response.dependencies.length === 0) {
       const emptyMessage = this.dependencyState === 'pro-locked'
@@ -277,7 +277,7 @@ export class HormuzPanel extends Panel {
         : !response || response.upstreamUnavailable
           ? t('components.supplyVulnerability.unavailable')
           : t('components.supplyVulnerability.noCoverage');
-      return `<div class="hz-dependencies" data-state="${this.dependencyState}" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(emptyMessage)}</div></div>`;
+      return `<div class="hz-dependencies" data-state="${this.dependencyState}"><div class="hz-dependencies-title">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty">${escapeHtml(emptyMessage)}</div></div>`;
     }
 
     const countries = new Map<string, typeof response.dependencies[number]>();
@@ -299,17 +299,17 @@ export class HormuzPanel extends Panel {
           : dependency.state === 'stale_input'
             ? t('components.supplyVulnerability.stateStale')
             : t('components.supplyVulnerability.stateInsufficient');
-        return `<li><span>${escapeHtml(label)}</span><span>${escapeHtml(context)} · ${escapeHtml(state)} · ${escapeHtml(score)}</span></li>`;
+        return `<li class="hz-dependency"><span class="hz-dependency-label">${escapeHtml(label)}</span><span class="hz-dependency-context">${escapeHtml(context)} · ${escapeHtml(state)} · ${escapeHtml(score)}</span></li>`;
       })
       .join('');
 
-    return `<div class="hz-dependencies" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)">
-      <div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div>
-      <div class="hz-dependencies-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:7px;font-size:calc(9px * var(--wm-panel-effective-scale, 1))">
-        <div><strong>${escapeHtml(t('components.supplyVulnerability.dependentCountries'))}</strong><ul style="list-style:none;margin:5px 0 0;padding:0">${renderItems([...countries.values()], 'country')}</ul></div>
-        <div><strong>${escapeHtml(t('components.supplyVulnerability.dependentCommodities'))}</strong><ul style="list-style:none;margin:5px 0 0;padding:0">${renderItems([...commodities.values()], 'commodity')}</ul></div>
+    return `<div class="hz-dependencies">
+      <div class="hz-dependencies-title">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div>
+      <div class="hz-dependencies-grid">
+        <div><strong class="hz-dependencies-heading">${escapeHtml(t('components.supplyVulnerability.dependentCountries'))}</strong><ul class="hz-dependencies-list">${renderItems([...countries.values()], 'country')}</ul></div>
+        <div><strong class="hz-dependencies-heading">${escapeHtml(t('components.supplyVulnerability.dependentCommodities'))}</strong><ul class="hz-dependencies-list">${renderItems([...commodities.values()], 'commodity')}</ul></div>
       </div>
-      <div class="hz-dependencies-method" style="margin-top:7px;color:var(--text-dim);font-size:calc(8px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.methodology'))}: ${escapeHtml(response.methodologyVersion)}</div>
+      <div class="hz-dependencies-method">${escapeHtml(t('components.supplyVulnerability.methodology'))}: ${escapeHtml(response.methodologyVersion)}</div>
     </div>`;
   }
 }

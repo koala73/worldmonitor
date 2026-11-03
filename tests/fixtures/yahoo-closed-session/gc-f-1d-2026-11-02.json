@@ -1,0 +1,120 @@
+{
+ "chart": {
+  "result": [
+   {
+    "meta": {
+     "currency": "USD",
+     "symbol": "GC=F",
+     "exchangeName": "CMX",
+     "fullExchangeName": "COMEX",
+     "instrumentType": "FUTURE",
+     "firstTradeDate": 967608000,
+     "regularMarketTime": 1793621760,
+     "hasPrePostMarketData": false,
+     "gmtoffset": -18000,
+     "timezone": "EST",
+     "exchangeTimezoneName": "America/New_York",
+     "regularMarketPrice": 3913.4,
+     "regularMarketChangePercent": 0.372,
+     "fulldayPrice": 3913.4,
+     "fulldayChange": 14.5,
+     "fulldayChangePercent": 0.372,
+     "fiftyTwoWeekHigh": 5586.2,
+     "fiftyTwoWeekLow": 3879.3,
+     "regularMarketDayHigh": 3928.1,
+     "regularMarketDayLow": 3889.0,
+     "regularMarketVolume": 59612,
+     "shortName": "Gold Dec 26",
+     "chartPreviousClose": 3898.9,
+     "previousClose": 3898.9,
+     "scale": 3,
+     "priceHint": 2,
+     "currentTradingPeriod": {
+      "pre": {
+       "timezone": "EST",
+       "end": 1793595600,
+       "start": 1793595600,
+       "gmtoffset": -18000
+      },
+      "regular": {
+       "timezone": "EST",
+       "end": 1793681940,
+       "start": 1793595600,
+       "gmtoffset": -18000
+      },
+      "post": {
+       "timezone": "EST",
+       "end": 1793681940,
+       "start": 1793681940,
+       "gmtoffset": -18000
+      }
+     },
+     "dataGranularity": "1m",
+     "range": "1d",
+     "validRanges": [
+      "1d",
+      "5d",
+      "1mo",
+      "3mo",
+      "6mo",
+      "1y",
+      "2y",
+      "5y",
+      "10y",
+      "ytd",
+      "max"
+     ]
+    },
+    "timestamp": [
+     1793621520,
+     1793621580,
+     1793621640,
+     1793621700,
+     1793621760
+    ],
+    "indicators": {
+     "quote": [
+      {
+       "close": [
+        3915.10009765625,
+        3914.800048828125,
+        3914.300048828125,
+        3913.199951171875,
+        3912.89990234375
+       ],
+       "open": [
+        3915.699951171875,
+        3915.0,
+        3914.699951171875,
+        3914.5,
+        3913.39990234375
+       ],
+       "high": [
+        3915.800048828125,
+        3915.60009765625,
+        3915.5,
+        3914.5,
+        3913.60009765625
+       ],
+       "volume": [
+        73,
+        67,
+        38,
+        52,
+        0
+       ],
+       "low": [
+        3914.800048828125,
+        3914.199951171875,
+        3914.199951171875,
+        3913.0,
+        3912.5
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "error": null
+ }
+}

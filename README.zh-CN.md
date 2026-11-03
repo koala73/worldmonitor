@@ -51,7 +51,7 @@
 - **精选新闻源**，覆盖全球和区域类别，并由 AI 综合生成简报
 - **双地图引擎** — 3D 地球仪（globe.gl）和 WebGL 平面地图（deck.gl），使用共享地图图层目录
 - **跨信息流关联** — 汇聚军事、经济、灾害和升级信号
-- **国家不稳定指数（CII）** — 面向一级国家注册表的服务器权威 CII v8 压力评分
+- **国家不稳定指数（CII）** — 面向一级国家注册表的服务器权威 CII v14 压力评分
 - **金融雷达** — 证券交易所、大宗商品、加密货币，以及市场综合指标
 - **本地 AI** — 通过 Ollama 运行全部功能，无需 API 密钥
 - **站点变体**，均来自同一代码库（World Monitor、Tech Monitor、Finance Monitor、Commodity Monitor、Happy Monitor、Energy Monitor）
@@ -128,6 +128,7 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
   ```sh
   npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
   npm install -g worldmonitor     # or install the `worldmonitor` (alias `wm`) command
+  brew install worldmonitor       # or install it with Homebrew
   worldmonitor risk IR --api-key wm_xxx
   ```
 
@@ -140,6 +141,12 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
 ## 航班数据
 
 航班数据由 [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 慷慨提供；Wingbits 是先进的 ADS-B 航班数据解决方案。
+
+---
+
+## 支持
+
+World Monitor 的 Web 应用和 API 运行在 [Vercel](https://vercel.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) 上。感谢 Vercel 对本项目的慷慨支持。
 
 ---
 

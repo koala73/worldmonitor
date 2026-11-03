@@ -73,7 +73,7 @@
 .sc-scenario-country-code { padding: 5px 7px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-weight: 600; }
 .sc-scenario-country strong { color: var(--text); font-size: calc(13px * var(--wm-panel-effective-scale, 1)); font-variant-numeric: tabular-nums; }
 .sc-scenario-relative { display: block; color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
-.sc-scenario-partial { color: var(--semantic-elevated); font-style: normal; }
+.sc-scenario-partial { color: var(--semantic-elevated-text, var(--semantic-elevated)); font-style: normal; }
 .sc-scenario-coverage-block { padding: 12px 16px; }
 .sc-scenario-banner .sc-scenario-coverage { margin: 6px 0 0; }
 .sc-scenario-coverage-counts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -111,7 +111,7 @@
 .sc-scenario-btn, .sc-scenario-export, .sc-scenario-dismiss { cursor: pointer; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 600; }
 .sc-scenario-btn { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .sc-scenario-btn:disabled { background: var(--surface-hover); color: var(--text-dim); border-color: var(--border); cursor: default; }
-.sc-scenario-btn--active:disabled { color: var(--semantic-positive); }
+.sc-scenario-btn--active:disabled { color: var(--semantic-positive-text, var(--semantic-positive)); }
 .sc-scenario-banner .sc-scenario-dismiss { flex: 0 0 30px; width: 30px; min-height: 30px; padding: 0; background: transparent; border-color: transparent; color: var(--text-dim); font-size: 20px; }
 .sc-scenario-export:hover, .sc-scenario-dismiss:hover { background: var(--surface-hover); color: var(--text); border-color: var(--border-strong); }
 .sc-scenario-btn:not(:disabled):hover { opacity: .85; }

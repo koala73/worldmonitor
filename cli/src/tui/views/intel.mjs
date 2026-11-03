@@ -47,7 +47,7 @@ export class IntelView extends PaneView {
 
   activate(pane) {
     if (pane === 'topics') this.focus = 1;
-    else if (this.selectedUrl()) this.app.openSelected();
+    else super.activate(pane);
   }
 
   onKey(ev) {

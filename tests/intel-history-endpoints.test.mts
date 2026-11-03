@@ -568,6 +568,38 @@ describe('getIntelTimeline handler', () => {
     }
   });
 
+  it('rejects a malformed cursor and still paginates a valid one', async () => {
+    stubFetch({
+      [CONVEX_TIMELINE_URL]: (call) => {
+        if (call.body?.cursor === 'not-a-cursor') return jsonResponse({ error: 'INVALID_CURSOR' }, 400);
+        if (call.body?.cursor === 'page-2') {
+          return jsonResponse({ records: [{ ...convexRecord, title: 'older' }], partial: false, nextCursor: '' });
+        }
+        return jsonResponse({ records: [convexRecord], partial: true, nextCursor: 'page-2' });
+      },
+    });
+
+    await assert.rejects(getIntelTimeline(ctx, {
+      domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 1, cursor: 'not-a-cursor',
+    }), validationFailure('cursor', /invalid/i));
+
+    const first = await getIntelTimeline(ctx, {
+      domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 1, cursor: '',
+    });
+    assert.equal(first.upstreamUnavailable, false);
+    assert.equal(first.partial, true);
+    assert.equal(first.nextCursor, 'page-2');
+    assert.deepEqual(first.records.map((record) => record.title), ['Shelling near Kharkiv']);
+
+    const second = await getIntelTimeline(ctx, {
+      domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 1, cursor: first.nextCursor,
+    });
+    assert.equal(second.upstreamUnavailable, false);
+    assert.equal(second.partial, false);
+    assert.equal(second.nextCursor, '');
+    assert.deepEqual(second.records.map((record) => record.title), ['older']);
+  });
+
   it('keeps continuation pages in separate opaque cache keys', async () => {
     stubFetch({ [CONVEX_TIMELINE_URL]: () => jsonResponse({ records: [], partial: false, nextCursor: '' }) });
     const scope = { domain: 'conflict', country: 'UA', from: 0, to: 0, limit: 2 };

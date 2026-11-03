@@ -5,6 +5,9 @@
  * Supports an optional 3D globe mode (globe.gl) selectable from Settings.
  */
 import { isMobileDevice } from '@/utils';
+import type { UkmtoMapIncident } from '../../shared/ukmto-incidents';
+import type { ListUkmtoIncidentsResponse } from '@/generated/client/worldmonitor/maritime/v1/service_client';
+import './ukmto-incidents.css';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import {
   isLayerToggleAllowed,
@@ -42,7 +45,7 @@ import type {
   CableHealthRecord,
 } from '@/types';
 import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
-import type { CrossBorderData, DisplacementFlow, InternalDisplacementData } from '@/services/displacement';
+import type { CrossBorderData, DisplacementEventsData, DisplacementFlow, InternalDisplacementData } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';
@@ -67,6 +70,9 @@ import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
 import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
 import { AircraftEmergencyLayer } from './AircraftEmergencyLayer';
+import { NotamAirspaceLayer } from './NotamAirspaceLayer';
+import type { NotamAirspaceRestriction } from '@/services/notam-airspace';
+import type { No2ActivitySnapshot } from '@/services/economic/no2-activity';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -229,6 +235,8 @@ export class MapContainer {
   private cachedCanadaAlerts: CanadaAlert[] | null = null;
   private cachedOutages: InternetOutage[] | null = null;
   private cachedAisDisruptions: AisDisruptionEvent[] | null = null;
+  private cachedUkmtoIncidents: UkmtoMapIncident[] | null = null;
+  private cachedUkmtoSnapshot: ListUkmtoIncidentsResponse | null = null;
   private cachedAisDensity: AisDensityZone[] | null = null;
   private cachedCableAdvisories: CableAdvisory[] | null = null;
   private cachedRepairShips: RepairShip[] | null = null;
@@ -247,6 +255,7 @@ export class MapContainer {
   private cachedDisplacementFlows: DisplacementFlow[] | null = null;
   private cachedInternalDisplacement: InternalDisplacementData | null = null;
   private cachedCrossBorderArrivals: CrossBorderData | null = null;
+  private cachedDisplacementEvents: DisplacementEventsData | null = null;
   private cachedClimateAnomalies: ClimateAnomaly[] | null = null;
   private cachedRadiationObservations: RadiationObservation[] | null = null;
   private cachedGpsJamming: GpsJamHex[] | null = null;
@@ -260,6 +269,7 @@ export class MapContainer {
   private cachedHappinessScores: HappinessData | null = null;
   private cachedCIIScores: CIIScore[] | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
+  private cachedNo2Activity: No2ActivitySnapshot | null = null;
   private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
@@ -273,12 +283,19 @@ export class MapContainer {
   private cachedChokepointData: GetChokepointStatusResponse | null | undefined;
   private cachedChinaCorridorSelection: ChinaCorridorControlTower | null = null;
   private emergencyLayer: AircraftEmergencyLayer;
+  // DeckGL-only layer: the feed runs only while the DeckGL renderer is active.
+  private notamAirspaceLayer: NotamAirspaceLayer;
+  private cachedNotamAirspace: NotamAirspaceRestriction[] = [];
 
   constructor(container: HTMLElement, initialState: MapContainerState, preferGlobe = false, options: MapContainerOptions = {}) {
     this.container = container;
     this.emergencyLayer = new AircraftEmergencyLayer(container, markers => {
       if (this.useDeckGL) this.deckGLMap?.setAircraftEmergencies(markers);
       else this.svgMap?.setAircraftEmergencies(markers);
+    });
+    this.notamAirspaceLayer = new NotamAirspaceLayer(restrictions => {
+      this.cachedNotamAirspace = restrictions;
+      if (this.useDeckGL) this.deckGLMap?.setNotamAirspace(restrictions);
     });
     this.initialState = initialState;
     this.chrome = options.chrome ?? true;
@@ -817,6 +834,8 @@ export class MapContainer {
     if (this.cachedCanadaAlerts) this.setCanadaAlerts(this.cachedCanadaAlerts);
     if (this.cachedOutages) this.setOutages(this.cachedOutages);
     if (this.cachedAisDisruptions != null && this.cachedAisDensity != null) this.setAisData(this.cachedAisDisruptions, this.cachedAisDensity);
+    if (this.cachedUkmtoIncidents != null) this.setUkmtoIncidents(this.cachedUkmtoIncidents);
+    if (this.cachedUkmtoSnapshot != null) this.renderUkmtoStatus();
     if (this.cachedCableAdvisories != null && this.cachedRepairShips != null) this.setCableActivity(this.cachedCableAdvisories, this.cachedRepairShips);
     if (this.cachedCableHealth) this.setCableHealth(this.cachedCableHealth);
     if (this.cachedProtests) this.setProtests(this.cachedProtests);
@@ -824,6 +843,8 @@ export class MapContainer {
     if (this.cachedAircraftPositions) this.setAircraftPositions(this.cachedAircraftPositions);
     if (this.cachedMilitaryFlights) this.setMilitaryFlights(this.cachedMilitaryFlights, this.cachedMilitaryFlightClusters ?? []);
     this.emergencyLayer.setEnabled(!this.useGlobe && this.getState().layers.aircraftEmergencies === true);
+    this.notamAirspaceLayer.setEnabled(this.useDeckGL && this.getState().layers.flights === true);
+    if (this.useDeckGL && this.cachedNotamAirspace.length) this.deckGLMap?.setNotamAirspace(this.cachedNotamAirspace);
     if (this.cachedMilitaryVessels) this.setMilitaryVessels(this.cachedMilitaryVessels, this.cachedMilitaryVesselClusters ?? []);
     if (this.cachedNaturalEvents) this.setNaturalEvents(this.cachedNaturalEvents);
     if (this.cachedFires) this.setFires(this.cachedFires);
@@ -832,6 +853,7 @@ export class MapContainer {
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedInternalDisplacement) this.setInternalDisplacement(this.cachedInternalDisplacement);
     if (this.cachedCrossBorderArrivals) this.setCrossBorderArrivals(this.cachedCrossBorderArrivals);
+    if (this.cachedDisplacementEvents) this.setDisplacementEvents(this.cachedDisplacementEvents);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
     if (this.cachedGpsJamming) {
@@ -849,6 +871,7 @@ export class MapContainer {
     if (this.cachedHappinessScores) this.setHappinessScores(this.cachedHappinessScores);
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
     if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
+    if (this.cachedNo2Activity) this.setNo2Activity(this.cachedNo2Activity);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -1070,7 +1093,9 @@ export class MapContainer {
       sanitized = sanitizeLockedLayers(sanitized, false);
     }
     this.initialState = { ...this.initialState, layers: sanitized };
+    this.renderUkmtoStatus(sanitized.ais);
     this.emergencyLayer.setEnabled(!this.useGlobe && sanitized.aircraftEmergencies === true);
+    this.notamAirspaceLayer.setEnabled(this.useDeckGL && sanitized.flights === true);
     if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
     if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
@@ -1154,6 +1179,37 @@ export class MapContainer {
     } else {
       this.svgMap?.setAisData(disruptions, density);
     }
+  }
+
+  public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
+    this.cachedUkmtoIncidents = incidents;
+    if (this.useGlobe) this.globeMap?.setUkmtoIncidents(incidents);
+    else if (this.useDeckGL) this.deckGLMap?.setUkmtoIncidents(incidents);
+    else this.svgMap?.setUkmtoIncidents(incidents);
+  }
+
+  public setUkmtoSnapshot(snapshot: ListUkmtoIncidentsResponse): void {
+    this.cachedUkmtoSnapshot = snapshot;
+    this.setUkmtoIncidents(snapshot.incidents.map(item => ({ ...item, stale: snapshot.stale })));
+    this.renderUkmtoStatus();
+  }
+
+  private renderUkmtoStatus(enabled = this.getState().layers.ais): void {
+    let status = this.container.querySelector<HTMLDivElement>('.ukmto-map-status');
+    const snapshot = this.cachedUkmtoSnapshot;
+    if (!snapshot || !enabled) {
+      status?.remove();
+      return;
+    }
+    if (!status) {
+      status = document.createElement('div');
+      status.className = 'ukmto-map-status';
+      status.setAttribute('role', 'status');
+      this.container.appendChild(status);
+    }
+    const key = !snapshot.dataAvailable ? 'unavailable' : snapshot.stale ? 'stale' : snapshot.incidents.length === 0 ? 'empty' : 'current';
+    const checked = snapshot.fetchedAt ? ` · ${new Date(snapshot.fetchedAt).toISOString().slice(0, 16).replace('T', ' ')} UTC` : '';
+    status.textContent = `UKMTO · ${t(`ukmto.${key}`)}${checked}`;
   }
 
   public setCableActivity(advisories: CableAdvisory[], repairShips: RepairShip[]): void {
@@ -1262,12 +1318,22 @@ export class MapContainer {
     }
   }
 
-  // Like the DTM layer, cross-border points are drawn by deck.gl only.
   public setCrossBorderArrivals(data: CrossBorderData): void {
     this.cachedCrossBorderArrivals = data;
-    if (this.useGlobe) return;
+    if (this.useGlobe) { this.globeMap?.setCrossBorderArrivals(data); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setCrossBorderArrivals(data);
+    } else {
+      this.svgMap?.setCrossBorderArrivals(data);
+    }
+  }
+
+  // IDMC event points, deck.gl only like the DTM and cross-border layers.
+  public setDisplacementEvents(data: DisplacementEventsData): void {
+    this.cachedDisplacementEvents = data;
+    if (this.useGlobe) return;
+    if (this.useDeckGL) {
+      this.deckGLMap?.setDisplacementEvents(data);
     }
   }
 
@@ -1412,6 +1478,11 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
   }
 
+  public setNo2Activity(snapshot: No2ActivitySnapshot | null): void {
+    this.cachedNo2Activity = snapshot;
+    if (this.useDeckGL) this.deckGLMap?.setNo2Activity(snapshot);
+  }
+
   public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {
     this.cachedResilienceRanking = items;
     this.cachedResilienceGreyedOut = greyedOut;
@@ -1489,7 +1560,9 @@ export class MapContainer {
   public setOnLayerChange(callback: (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void): void {
     this.cachedOnLayerChange = callback;
     const notify = (layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void => {
+      if (layer === 'ais') this.renderUkmtoStatus(enabled);
       if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(!this.useGlobe && enabled);
+      if (layer === 'flights') this.notamAirspaceLayer.setEnabled(this.useDeckGL && enabled);
       callback(layer, enabled, source);
     };
     if (this.useGlobe) { this.globeMap?.setOnLayerChange(notify); return; }
@@ -1606,6 +1679,7 @@ export class MapContainer {
     // The renderer reports the change through onLayerChange, which also starts
     // the emergency feed. Start it here too in case no listener is attached yet.
     if (layer === 'aircraftEmergencies') this.emergencyLayer.setEnabled(this.getState().layers.aircraftEmergencies === true);
+    if (layer === 'flights') this.notamAirspaceLayer.setEnabled(this.useDeckGL && this.getState().layers.flights === true);
   }
 
   public triggerHotspotClick(id: string): void {
@@ -1749,6 +1823,13 @@ export class MapContainer {
     this.deckGLMap?.highlightRoute(routeIds);
   }
 
+  public highlightLane(
+    lane: { routeId: string; path: [number, number][]; chokepointIds: string[] },
+    occluder?: { left: number; right: number },
+  ): void {
+    this.deckGLMap?.highlightLane(lane, occluder);
+  }
+
   public clearHighlightedRoute(): void {
     this.deckGLMap?.clearHighlightedRoute();
   }
@@ -1819,6 +1900,7 @@ export class MapContainer {
 
   public destroy(): void {
     this.emergencyLayer.destroy();
+    this.notamAirspaceLayer.destroy();
     this.destroyed = true;
     this.container.removeEventListener('pointerdown', this.invalidateViewportAuthority);
     this.container.removeEventListener('wheel', this.invalidateViewportAuthority);
@@ -1859,6 +1941,8 @@ export class MapContainer {
     this.cachedCanadaAlerts = null;
     this.cachedOutages = null;
     this.cachedAisDisruptions = null;
+    this.cachedUkmtoIncidents = null;
+    this.cachedUkmtoSnapshot = null;
     this.cachedAisDensity = null;
     this.cachedCableAdvisories = null;
     this.cachedRepairShips = null;

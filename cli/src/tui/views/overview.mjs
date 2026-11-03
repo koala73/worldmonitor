@@ -30,13 +30,6 @@ export class OverviewView extends PaneView {
     return [...q.slice(0, 8), ...c.slice(0, 3)];
   }
 
-  activate(pane) {
-    const url = this.selectedUrl();
-    if (pane === 'stories' && url) {
-      this.app.openSelected();
-    }
-  }
-
   selectedUrl() {
     if (this.focusedPane !== 'stories') return null;
     const story = selectedItem(this.lists.stories, this.topStories());
@@ -44,7 +37,7 @@ export class OverviewView extends PaneView {
   }
 
   hints() {
-    return 'o open story';
+    return 'Enter expand  o open story';
   }
 
   render(ctx, r) {

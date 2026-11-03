@@ -398,6 +398,29 @@ describe('callLlm', () => {
     assert.equal('reasoning' in (postBodies[0] ?? {}), false);
   });
 
+  it('the reasoning stream sends reasoning off when the caller opts out (chat-analyst budget, #9195 follow-up)', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.LLM_REASONING_PROVIDER;
+    delete process.env.LLM_REASONING_MODEL;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      return new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', { status: 200 });
+    }) as typeof fetch;
+
+    await new Response(callLlmReasoningStream({ messages: [{ role: 'user', content: 'x' }], enableReasoning: false })).text();
+    assert.deepEqual(bodies[0]?.reasoning, { enabled: false }, 'opt-out must disable hidden reasoning on the wire');
+
+    bodies.length = 0;
+    await new Response(callLlmReasoningStream({ messages: [{ role: 'user', content: 'y' }] })).text();
+    assert.equal('reasoning' in (bodies[0] ?? {}), false, 'the default still lets the model reason');
+  });
+
   it('callLlmReasoning honors enableReasoning:false to disable reasoning on the reasoning-tier model (#4983)', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     process.env.LLM_REASONING_PROVIDER = 'openrouter';

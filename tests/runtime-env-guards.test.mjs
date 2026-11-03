@@ -1,3 +1,8 @@
+// Env-source guard by design (#8690, section 2): this suite checks explicit
+// Vite env reads and rejects whole-object and dynamic-access source patterns.
+// Runtime values after Vite replaces env expressions cannot show which
+// source-access pattern produced them.
+//
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

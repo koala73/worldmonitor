@@ -6,7 +6,7 @@ import { CountryBriefController } from '@/components/CountryBriefController';
 import { countrySignalsFromMilitary } from '@/services/country-signals';
 import { loadHostCountryMilitaryActivity } from '@/services/country-military-activity';
 import { loadQualifiedCountrySignals } from '@/services/country-signal-projection';
-import { qualifiedFixtureOutcomes } from '../fixtures/qualified-country-signals';
+import { qualifiedFixtureOutcomes } from '../../src/e2e/fixtures/qualified-country-signals';
 import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../../shared/country-raw-signals';
 
 beforeAll(initTestI18n);
@@ -67,8 +67,8 @@ it.each(['IR', 'CN'])('measures %s panel and controller opening reads with ten s
     expect(calls.filter(call => call.section === 'cost')).toMatchObject([{ arguments: { closureDays: 30 } }]);
     expect(calls.filter(call => call.section === 'chokepoints')).toHaveLength(1);
     expect(calls.length + 2).toBeLessThanOrEqual(64);
-    expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(code === 'CN' ? 5 : 6);
-    expect(qualified.families.filter(family => family.reason?.startsWith('Deferred:'))).toHaveLength(1);
+    expect(calls.filter(call => call.section === 'countrySignals' && call.arguments.family !== 'COUNTRY_SIGNAL_FAMILY_FLIGHT_PAGE')).toHaveLength(code === 'CN' ? 4 : 5);
+    expect(qualified.families.filter(family => family.reason?.startsWith('Deferred:'))).toHaveLength(2);
     expect(qualified.details).not.toBeNull();
   } finally { controller.dispose(); panel.hide(); }
 });

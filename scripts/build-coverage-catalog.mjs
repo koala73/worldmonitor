@@ -21,6 +21,7 @@ export const COVERAGE_INPUT_PATHS = Object.freeze([
   'src/config/map-layer-definitions.ts',
   'src/locales/en.json',
   SERVER_FEEDS_PATH,
+  'shared/news-catalog.json',
   'api/mcp/registry',
 ]);
 
@@ -209,18 +210,18 @@ export function buildPanelGroups({
   return groups;
 }
 
-export function buildLayerEntries({ registry, explanations, catalogKeys, allowedKeysForVariant, locale }) {
+export function buildLayerEntries({ registry, catalogKeys, allowedKeysForVariant, locale }) {
   const labels = locale?.components?.deckgl?.layers || {};
   return catalogKeys.map((key) => {
     const definition = registry[key];
-    const explanation = explanations[key];
+    const copy = locale?.layerExplanation?.layers?.[key];
     return {
       id: key,
       name: labels[definition.i18nSuffix] || definition.fallbackLabel,
-      category: explanation?.category || null,
-      description: explanation?.purpose || null,
-      source: explanation?.source || null,
-      freshness: explanation?.freshness || null,
+      category: copy?.category || null,
+      description: copy?.purpose || null,
+      source: copy?.source || null,
+      freshness: copy?.freshness || null,
       pro: definition.premium === 'locked',
       variants: VARIANT_IDS.filter((variant) => allowedKeysForVariant(variant).has(key)),
     };
@@ -259,7 +260,6 @@ export async function loadCoverageCatalog({ importModule, readJson }) {
     }),
     layers: buildLayerEntries({
       registry: layers.LAYER_REGISTRY,
-      explanations: layers.LAYER_EXPLANATIONS,
       catalogKeys: layers.getCompleteLayerCatalogKeys('full'),
       allowedKeysForVariant: layers.getAllowedLayerKeys,
       locale,

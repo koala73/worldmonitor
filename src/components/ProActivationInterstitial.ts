@@ -53,6 +53,8 @@ import {
 import { getServerInsights, fetchServerInsights } from '@/services/insights-loader';
 import { loadWidgets, loadWidgetsStrict } from '@/services/widget-store';
 import { listMcpClients } from '@/services/mcp-clients';
+import { loadAboutYouStatus, recordAboutYouAnswers, skipAboutYou } from '@/services/audience-profile';
+import { ABOUT_YOU_CHOICE_QUESTIONS, type AboutYouChoiceQuestionId } from '../../shared/audience-profile';
 import {
   resolveHasUsedPowerFeature,
   ACTIVATION_EVENTS,
@@ -130,6 +132,12 @@ export interface ProActivationStepControls {
    * the interstitial must close first rather than sit over it).
    */
   confirmAndFinish(): void;
+  /**
+   * Freeze the frame while the extras' own write is in flight: Skip and close
+   * are disabled, and Escape or a backdrop click do not dismiss. Otherwise a
+   * dismiss would record a skip after answers that were saved.
+   */
+  setBusy(busy: boolean): void;
 }
 
 /** Per-step body extras injected by the high-level flow (U4/U6). */
@@ -143,6 +151,12 @@ export interface ProActivationStepExtra {
    * power step's pointers); a single "Continue" advances (counts as skip).
    */
   replacesPrimaryAction?: boolean;
+  /**
+   * When true the extras render their own confirm button (the About-you Save);
+   * the frame renders only "Skip for now". A "Continue" beside Save would skip
+   * the step and silently drop answers the user had picked.
+   */
+  ownsConfirm?: boolean;
 }
 
 /** Transient UI state for the CURRENT confirmable step only. */
@@ -226,6 +240,24 @@ function stepFrameCopy(id: ActivationStepId): StepFrameCopy {
           defaultValue: "You're already using your Pro tools.",
         }),
       };
+    case 'about':
+      return {
+        heading: t('components.proActivation.steps.about.heading', {
+          defaultValue: 'One last thing: what will you use World Monitor for?',
+        }),
+        body: t('components.proActivation.steps.about.body', {
+          defaultValue: 'Three quick answers help us build the right tools for you. Skip any you like.',
+        }),
+        confirmCta: t('components.proActivation.steps.about.confirmCta', {
+          defaultValue: 'Save my answers',
+        }),
+        confirming: t('components.proActivation.steps.about.confirming', {
+          defaultValue: 'Saving…',
+        }),
+        doneNote: t('components.proActivation.steps.about.doneNote', {
+          defaultValue: 'Thanks, we have your answers.',
+        }),
+      };
   }
 }
 
@@ -238,6 +270,8 @@ function summaryLabel(id: ActivationStepId): string {
       return t('components.proActivation.steps.alerts.summaryLabel', { defaultValue: 'Real-time alerts' });
     case 'power':
       return t('components.proActivation.steps.power.summaryLabel', { defaultValue: 'Pro toolkit' });
+    case 'about':
+      return t('components.proActivation.steps.about.summaryLabel', { defaultValue: 'About you' });
   }
 }
 
@@ -255,6 +289,10 @@ function summaryVerifiedDetail(id: ActivationStepId): string {
     case 'power':
       return t('components.proActivation.steps.power.summaryVerified', {
         defaultValue: 'Unlocked and ready when you are.',
+      });
+    case 'about':
+      return t('components.proActivation.steps.about.summaryVerified', {
+        defaultValue: 'Saved. Thank you.',
       });
   }
 }
@@ -446,6 +484,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     if (state === 'blocked' || state === 'unavailable') return cont('advance-skip');
     // confirmable
     // Power step: the extras' pointers ARE the actions — render only "Continue".
+    if (options.stepExtras?.[step.id]?.ownsConfirm) return skip();
     if (options.stepExtras?.[step.id]?.replacesPrimaryAction) return cont('advance-skip');
     if (transient === 'in-flight') return primary(copy.confirming, 'confirm', true);
     const label =
@@ -467,7 +506,12 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     const status = currentStatus(step);
     return `
       <div class="pro-activation-step">
-        <span class="pro-activation-status status-${status}">${escapeHtml(statusLabel(status))}</span>
+        ${
+          // A question has no set-up state; "Not set up" above it reads as an error.
+          step.id === 'about'
+            ? ''
+            : `<span class="pro-activation-status status-${status}">${escapeHtml(statusLabel(status))}</span>`
+        }
         <h2 class="pro-activation-heading">${escapeHtml(copy.heading)}</h2>
         <p class="pro-activation-step-body">${escapeHtml(copy.body)}</p>
         ${stepExtrasHtml(step)}
@@ -611,11 +655,13 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   };
 
   /** X and Escape both mean "skip remaining steps" → summary; on the summary they dismiss. */
+  // Set by a step's extras while their own write is in flight (setBusy).
+  let extrasBusy = false;
   const handleDismiss = (): void => {
     // A notification mutation cannot be cancelled once sent. Keep the modal
     // stable until it settles so the summary/telemetry cannot call a successful
     // write "skipped" simply because Escape or the backdrop won the race.
-    if (transient === 'in-flight') return;
+    if (transient === 'in-flight' || extrasBusy) return;
     if (onSummary()) finishFlow();
     else finalizeAndShowSummary();
   };
@@ -765,11 +811,19 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
       if (extra?.onMount) {
         const extrasRoot = modal.querySelector<HTMLElement>('[data-pro-activation-extras]');
         if (extrasRoot) {
+          extrasBusy = false;
           extra.onMount(extrasRoot, {
             confirmAndFinish: () => {
+              extrasBusy = false;
               outcomes.set(step.id, 'confirmed');
               recordProgress();
               finishFlow();
+            },
+            setBusy: (busy) => {
+              extrasBusy = busy;
+              for (const btn of modal.querySelectorAll<HTMLButtonElement>('.pro-activation-skip, .pro-activation-close')) {
+                btn.disabled = busy;
+              }
             },
           });
         }
@@ -777,7 +831,15 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     }
 
     requestAnimationFrame(() => {
-      modal.querySelector<HTMLElement>('.pro-activation-primary')?.focus();
+      const primary = modal.querySelector<HTMLElement>('.pro-activation-primary');
+      const body = modal.querySelector<HTMLElement>('.pro-activation-body');
+      if (!primary || !body) return;
+      const actionBounds = primary.getBoundingClientRect();
+      const bodyBounds = body.getBoundingClientRect();
+      const target = actionBounds.top >= bodyBounds.top && actionBounds.bottom <= bodyBounds.bottom
+        ? primary
+        : modal.querySelector<HTMLElement>('.pro-activation-close');
+      target?.focus({ preventScroll: true });
     });
   }
 
@@ -1146,9 +1208,16 @@ async function readActivationFlowContext(
       (connected) => ({ connected }),
       (error: unknown) => ({ error }),
     );
+  const aboutYouLookup = withTimeout(
+    loadAboutYouStatus(expectedUserId),
+    ACTIVATION_CONTEXT_TIMEOUT_MS,
+    'activation-about-you-read',
+  ).catch(() => null);
   const context = strict
     ? await readActivationContextStrict(expectedUserId)
     : await readActivationContext(expectedUserId);
+  // Unreadable omits the About-you step; it never blocks the flow (U3).
+  context.config.aboutYouStatus = (await aboutYouLookup)?.status ?? null;
   if (!mcpLookup || context.config.hasUsedPowerFeature) return context;
   const lookup = await mcpLookup;
   if ('connected' in lookup) context.config.hasUsedPowerFeature = lookup.connected;
@@ -1362,6 +1431,95 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
   };
 }
 
+/** The questions the activation step asks; the dashboard card asks the rest. */
+const ABOUT_STEP_QUESTIONS: readonly AboutYouChoiceQuestionId[] = ['primaryUse', 'usageContext', 'payer'];
+
+/**
+ * The About-you step (U3): pick answers, then Save records them and ends the
+ * flow (it is the last step). The frame's "Skip for now" records a profile
+ * skip through `onSkipStep`.
+ */
+function buildAboutExtra(options: ProActivationFlowOptions): ProActivationStepExtra {
+  const groups = ABOUT_STEP_QUESTIONS.map((questionId) => {
+    const labelId = `pro-activation-about-${questionId}`;
+    const buttons = ABOUT_YOU_CHOICE_QUESTIONS[questionId]
+      .map(
+        (optionId) =>
+          `<button type="button" class="pro-activation-about-option" aria-pressed="false" data-question="${questionId}" data-option="${optionId}">${escapeHtml(
+            t(`components.aboutYou.questions.${questionId}.options.${optionId}`, { defaultValue: optionId }),
+          )}</button>`,
+      )
+      .join('');
+    return `<div class="pro-activation-about-question"><p id="${labelId}" class="pro-activation-about-label">${escapeHtml(
+      t(`components.aboutYou.questions.${questionId}.label`, { defaultValue: questionId }),
+    )}</p><div class="pro-activation-about-options" role="group" aria-labelledby="${labelId}">${buttons}</div></div>`;
+  }).join('');
+  const save = escapeHtml(t('components.proActivation.steps.about.confirmCta', { defaultValue: 'Save my answers' }));
+  return {
+    html: trustedHtml(
+      `<div class="pro-activation-about">${groups}<button type="button" class="pro-activation-about-save" disabled>${save}</button><p class="pro-activation-about-status" role="status" aria-live="polite"></p></div>`,
+      'pro-activation about-you step; labels escaped via escapeHtml, ids from the shared taxonomy',
+    ),
+    ownsConfirm: true,
+    onMount: (root, controls) => {
+      const answers: Partial<Record<AboutYouChoiceQuestionId, string>> = {};
+      const saveBtn = root.querySelector<HTMLButtonElement>('.pro-activation-about-save');
+      const status = root.querySelector<HTMLElement>('.pro-activation-about-status');
+      // One busy state for the whole step: while a write is in flight the
+      // answers and Save are frozen here, and the frame refuses Skip, close,
+      // Escape, and backdrop dismissal (controls.setBusy).
+      let inFlight = false;
+      const setBusy = (busy: boolean): void => {
+        inFlight = busy;
+        controls.setBusy(busy);
+        if (saveBtn) {
+          saveBtn.disabled = busy || Object.keys(answers).length === 0;
+          if (busy) saveBtn.setAttribute('aria-busy', 'true');
+          else saveBtn.removeAttribute('aria-busy');
+        }
+      };
+      for (const btn of root.querySelectorAll<HTMLButtonElement>('.pro-activation-about-option')) {
+        btn.addEventListener('click', () => {
+          if (inFlight) return;
+          const questionId = btn.dataset.question as AboutYouChoiceQuestionId;
+          const optionId = btn.dataset.option ?? '';
+          const same = answers[questionId] === optionId;
+          if (same) delete answers[questionId];
+          else answers[questionId] = optionId;
+          for (const sibling of root.querySelectorAll<HTMLButtonElement>(`[data-question="${questionId}"]`)) {
+            sibling.setAttribute('aria-pressed', String(!same && sibling === btn));
+          }
+          if (saveBtn) saveBtn.disabled = Object.keys(answers).length === 0;
+        });
+      }
+      saveBtn?.addEventListener('click', () => {
+        if (saveBtn.disabled || inFlight) return;
+        setBusy(true);
+        if (status) status.textContent = t('components.proActivation.steps.about.confirming', { defaultValue: 'Saving…' });
+        void withTimeout(
+          recordAboutYouAnswers(options.accountUserId, 'activation', answers),
+          ACTIVATION_CONTEXT_TIMEOUT_MS,
+          'activation-about-you-write',
+        )
+          .catch(() => ({ ok: false as const, reason: 'timeout' }))
+          .then((result) => {
+            // The step was left (re-render or close) or the account changed.
+            if (!root.isConnected || !isFlowAccountCurrent(options)) return;
+            if (result.ok) {
+              options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, 'about');
+              controls.confirmAndFinish();
+              return;
+            }
+            setBusy(false);
+            if (status) {
+              status.textContent = t('components.aboutYou.saveFailed', { defaultValue: "Couldn't save that. Try again." });
+            }
+          });
+      });
+    },
+  };
+}
+
 /** Closed vocabulary of failure sites, so a typo'd Sentry tag is a compile error. */
 type ActivationFailureStage =
   | 'brief-confirm'
@@ -1399,6 +1557,10 @@ function reportActivationStepFailure(
 ): void {
   if (!isFlowAccountCurrent(options)) return;
   void scheduleSentryInit();
+  // PushRegistrationError's hostname names which push service the server refused.
+  const endpointHost = err instanceof Error && 'endpointHost' in err && typeof err.endpointHost === 'string'
+    ? err.endpointHost
+    : '';
   enqueueSentryCall((s) => s.captureException(
     err instanceof Error ? err : new Error(String(err)),
     {
@@ -1407,6 +1569,7 @@ function reportActivationStepFailure(
         step,
         stage,
         activation_path: options.onlyIfUnactivated ? 'retro' : 'day0',
+        ...(endpointHost ? { push_endpoint_host: endpointHost } : {}),
       },
     },
   ));
@@ -1774,6 +1937,7 @@ export async function openProActivationFlow(
   const stepExtras: Partial<Record<ActivationStepId, ProActivationStepExtra>> = {
     brief: buildBriefExtra(safeWorldBrief(), selectedHourRef),
     power: buildPowerExtra(options),
+    about: buildAboutExtra(options),
   };
 
   // Per-step re-entry guard: belt-and-suspenders on top of the shell disabling
@@ -1843,6 +2007,9 @@ export async function openProActivationFlow(
     onSkipStep: (stepId) => {
       const skipEvent = selectStepEvent('skipped');
       if (skipEvent) options.onEvent?.(skipEvent, stepId);
+      if (stepId === 'about' && isFlowAccountCurrent(options)) {
+        void skipAboutYou(options.accountUserId, 'activation');
+      }
     },
     onBlockStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepBlocked, stepId),
     onProgress: (results) => persistOutcome(results, false),

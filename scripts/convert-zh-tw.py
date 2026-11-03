@@ -108,10 +108,6 @@ PHRASE_OVERRIDES = {
 # Keyed by catalogue name, then by dotted path (array elements as `key[0]`).
 KEY_OVERRIDES = {
     "src": {
-        # "visit <url>", not data access.
-        "modals.settingsWindow.worldMonitor.register.description": {
-            "請訪問": "請造訪",
-        },
         # "IN {{count}} DAYS". OpenCC keeps 后 because 天后 is a word in its own
         # right (a deity, a diva) — here it is 天 + 后 meaning "days after".
         "popups.techEvent.days.inDays": {

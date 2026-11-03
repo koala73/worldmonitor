@@ -52,13 +52,36 @@ export class Screen {
     return x >= c.x && y >= c.y && x < c.x + c.w && y < c.y + c.h;
   }
 
+  cellAt(x, y) {
+    if (x < 0 || y < 0 || x >= this.cols || y >= this.rows) return null;
+    const i = y * this.cols + x;
+    return { ch: this.ch[i], fg: this.fg[i], bg: this.bg[i], attr: this.attr[i] };
+  }
+
   put(x, y, ch, style = {}) {
     if (!this.inClip(x, y)) return;
+    // A wide char (CJK, emoji) covers this cell and the next: the terminal
+    // advances two columns, so the model must too or the rest of the row drifts.
+    let wide = charWidth(ch) === 2;
+    if (wide && !this.inClip(x + 1, y)) {
+      ch = ' ';
+      wide = false;
+    }
     const i = y * this.cols + x;
     // Overwriting half of a wide char: blank the other half.
     if (this.ch[i] === WIDE_TAIL && x > 0) this.ch[i - 1] = ' ';
-    if (x + 1 < this.cols && this.ch[i + 1] === WIDE_TAIL && charWidth(ch) < 2) this.ch[i + 1] = ' ';
+    if (x + 1 < this.cols && this.ch[i + 1] === WIDE_TAIL && !wide) this.ch[i + 1] = ' ';
     this.ch[i] = ch;
+    this.setStyle(i, style);
+    if (wide) {
+      const j = i + 1;
+      if (x + 2 < this.cols && this.ch[j + 1] === WIDE_TAIL) this.ch[j + 1] = ' ';
+      this.ch[j] = WIDE_TAIL;
+      this.setStyle(j, style);
+    }
+  }
+
+  setStyle(i, style) {
     if (style.fg !== undefined) this.fg[i] = style.fg;
     if (style.bg !== undefined) this.bg[i] = style.bg;
     if (style.attr !== undefined) this.attr[i] = style.attr;
@@ -72,19 +95,8 @@ export class Screen {
       const w = charWidth(ch);
       if (w === 0) continue;
       if (used + w > maxWidth) break;
-      if (w === 2) {
-        if (!this.inClip(cx + 1, y)) break;
-        this.put(cx, y, ch, style);
-        // Set the tail directly: put() would see an old tail here and blank the head just drawn.
-        const i = y * this.cols + cx + 1;
-        if (cx + 2 < this.cols && this.ch[i + 1] === WIDE_TAIL) this.ch[i + 1] = ' ';
-        this.ch[i] = WIDE_TAIL;
-        if (style.fg !== undefined) this.fg[i] = style.fg;
-        if (style.bg !== undefined) this.bg[i] = style.bg;
-        if (style.attr !== undefined) this.attr[i] = style.attr;
-      } else {
-        this.put(cx, y, ch, style);
-      }
+      if (w === 2 && !this.inClip(cx + 1, y)) break;
+      this.put(cx, y, ch, style);
       cx += w;
       used += w;
     }

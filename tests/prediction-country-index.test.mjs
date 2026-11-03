@@ -34,6 +34,13 @@ describe('buildCountryMarketIndex', () => {
     const withoutEvent = buildCountryMarketIndex([first, second].map(({ eventKey, ...row }) => row), { now: NOW });
     assert.equal(withoutEvent.CN.length, 2);
   });
+  it('publishes reported liquidity and omits it when the venue supplied none', () => {
+    const liquid = market('Will China hold the vote in 2027?', 'polymarket', 30000, { liquidity: 125000 });
+    const unknown = market('Will China hold the summit in 2027?', 'kalshi', 20000, { url: 'https://kalshi.com/markets/KXSUMMIT-27-CN' });
+    const index = buildCountryMarketIndex([liquid, unknown], { now: NOW });
+    assert.equal(index.CN.find((row) => row.url === liquid.url)?.liquidity, 125000);
+    assert.equal('liquidity' in index.CN.find((row) => row.url === unknown.url), false);
+  });
   it('counts only published country-market arrays', () => {
     assert.equal(countCountryMarkets({ US: [{}, {}], CN: [{}], invalid: null }), 3);
     assert.equal(countCountryMarkets(undefined), 0);

@@ -56,6 +56,7 @@ message GoldDriver {
 message GoldCbHolder {
   string iso3 = 1;
   string name = 2;
+  // Measured only when value_is_ounces is true; otherwise a legacy zero placeholder.
   double tonnes = 3;
   double pct_of_reserves = 4;
 }
@@ -68,10 +69,16 @@ message GoldCbMover {
 
 message GoldCbReserves {
   string as_of_month = 1;
+  // Measured only when value_is_ounces is true; otherwise a legacy zero placeholder.
   double total_tonnes = 2;
   repeated GoldCbHolder top_holders = 3;
   repeated GoldCbMover top_buyers_12m = 4;
   repeated GoldCbMover top_sellers_12m = 5;
+  // IMF IRFCL indicator used by the reserve snapshot.
+  string indicator = 6;
+  // True for ounce-based measurements. False for the USD fallback, where
+  // tonnes are placeholders and physical movers are unavailable. Absent if unknown.
+  optional bool value_is_ounces = 7;
 }
 
 message GoldEtfFlows {

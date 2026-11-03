@@ -5,7 +5,10 @@ retailer:
   currencyCode: CHF
   adapter: search
   baseUrl: https://www.migros.ch
-  # disabled 2026-03: Exa returns competitor domain URLs (domain bleed) for all CH queries; 0/12 every run.
+  # disabled: discovery works (keyword search reaches /product/ pages for 11/12
+  # essentials-ch items, 2026-10-29) but Firecrawl priced only 2/11 of them.
+  # Migros renders prices per selected region and the extractor returns no
+  # price on most pages. Coop covers the CH basket.
   enabled: false
 
   searchConfig:

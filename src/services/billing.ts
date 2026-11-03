@@ -39,10 +39,18 @@ export interface SubscriptionInfo {
   displayName: string;
   status: 'active' | 'on_hold' | 'cancelled' | 'expired';
   currentPeriodEnd: number; // epoch ms, renewal date
+  // Cancelled in the Dodo portal but still `active` until currentPeriodEnd.
+  // Optional across a mixed frontend/backend deploy.
+  cancelAtPeriodEnd?: boolean;
   // #4771: verdict of the request-path renewal verification (#4770), null
   // when no verification episode is recorded. Drives the billing-aware
   // gating copy in billing-state.ts.
   renewalVerificationState: 'pending' | 'failed' | 'lapsed' | null;
+  // The address billing mail (receipts, dunning) resolves to, and whether
+  // Resend hard-bounced it. Optional across a mixed frontend/backend deploy;
+  // missing reads as not bounced.
+  billingEmail?: string | null;
+  billingEmailBounced?: boolean;
 }
 
 // Module-level state
@@ -559,6 +567,24 @@ export async function removeBusinessSeat(
       api.payments.businessSeats.removeSeat,
       { grantId: grantId as Id<'businessProGrants'> },
     ),
+  );
+}
+
+/**
+ * Replace the billing email at Dodo and locally. Rejects with a ConvexError
+ * whose `data.kind` (INVALID_EMAIL, EMAIL_SUPPRESSED, NO_CUSTOMER,
+ * DODO_CUSTOMER_UPDATE_ERROR) the banner maps to inline copy.
+ */
+export async function updateBillingEmail(email: string): Promise<{ email: string }> {
+  const userId = requireSignedInUserId('update the billing email');
+  const client = await getConvexClient();
+  const api = await getConvexApi();
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'updating the billing email');
+  return settleAccountOperation(
+    userId,
+    'updating the billing email',
+    () => client.action(api.payments.billing.updateBillingEmail, { email }),
   );
 }
 

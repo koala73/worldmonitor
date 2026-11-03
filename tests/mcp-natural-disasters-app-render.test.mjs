@@ -81,6 +81,12 @@ async function mount(wire, check) {
   } finally { await window.happyDOM.close(); }
 }
 const groups = document => document.getElementById('groups').textContent;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const utcLabel = value => {
+  const date = new Date(value);
+  const pad = number => String(number).padStart(2, '0');
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}, ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())} UTC`;
+};
 
 describe('Natural Disasters actual-handler resource source truth', () => {
   it('renders supplied HTTP and HTTPS other-event sources as safe original-title links', async () => {
@@ -153,7 +159,7 @@ describe('Natural Disasters actual-handler resource source truth', () => {
       reply({ id: requests[0].id, result: {} });
       assert.equal(document.getElementById('source-link-status').textContent, '');
       assert.equal(groups(document), before);
-      assert.match(before, /Measurement: 75 kt.*Active/);
+      assert.match(before, /75 kt.*Active/);
       assert.equal(document.getElementById('foot').textContent, footer);
       assert.equal(document.getElementById('panel-usage').textContent, usage);
     });
@@ -169,15 +175,15 @@ describe('Natural Disasters actual-handler resource source truth', () => {
       ];
     });
     await mount(wire, async (document, send) => {
-      assert.match(groups(document), /Wind.*Measurement: 75 kt/);
-      assert.match(groups(document), /Calm.*Measurement: 0 kt/);
-      assert.match(groups(document), /Placeholder or observation.*Reported value: 0; unit unavailable; measurement status unavailable/);
-      assert.match(groups(document), /Untyped value.*Reported value: 6; unit unavailable/);
-      assert.match(groups(document), /Literal unit.*Measurement: 4 <img src=x onerror=alert\(1\)>/);
+      assert.match(groups(document), /Wind75 kt/);
+      assert.match(groups(document), /Calm0 kt/);
+      assert.match(groups(document), /Placeholder or observation0 \(no unit given\)/);
+      assert.match(groups(document), /Untyped value6 \(no unit given\)/);
+      assert.match(groups(document), /Literal unit4 <img src=x onerror=alert\(1\)>/);
       assert.equal(document.querySelector('img'), null);
       assert.doesNotMatch(groups(document), /Magnitude /);
       await send(await result({ dataset: ['other'] }, 'empty'));
-      assert.doesNotMatch(groups(document), /Measurement:|Reported value:|Literal unit/);
+      assert.doesNotMatch(groups(document), / kt|no unit given|Literal unit/);
     });
   });
   it('keeps absent, nonfinite and nonnumeric event measurements unavailable', async () => {
@@ -185,8 +191,8 @@ describe('Natural Disasters actual-handler resource source truth', () => {
       await mount({ structuredContent: { data: { events: { events: [
         { title: 'Unknown measurement', magnitude, magnitudeUnit: 'kt' },
       ] } } } }, document => {
-        assert.match(groups(document), /Unknown measurement.*Measurement unavailable/);
-        assert.doesNotMatch(groups(document), /Measurement:|Reported value:|Magnitude /);
+        assert.match(groups(document), /Unknown measurement/);
+        assert.doesNotMatch(groups(document), / kt|no unit given|Magnitude |NaN|Infinity/);
       });
     }
   });
@@ -206,7 +212,7 @@ describe('Natural Disasters actual-handler resource source truth', () => {
       assert.match(groups(document), /Forecast track points: 0 returned from 400 original items/);
       assert.doesNotMatch(groups(document), /Regional warnings: 0|img src|No natural-hazard events available/);
       assert.equal(document.querySelector('img'), null);
-      assert.match(groups(document), /2026-10-02T12:34:56.000Z/);
+      assert.match(groups(document), /2 Oct 2026, 12:34 UTC/);
       assert.equal(document.querySelector('.dplace').getAttribute('href'), sourceUrl);
       const recovered = await result(); await send(recovered);
       assert.doesNotMatch(groups(document), /Some detail was simplified|original items/);
@@ -239,10 +245,10 @@ describe('Natural Disasters actual-handler resource source truth', () => {
   }
   it('preserves original earthquake and fire times distinct from the retrieval snapshot and safe source URL', async () => {
     await mount(await result(), document => {
-      assert.match(groups(document), /2026-10-02T12:34:56.000Z/);
-      assert.match(groups(document), /Detected 2026-10-01T11:22:33.000Z/);
+      assert.match(groups(document), /2 Oct 2026, 12:34 UTC/);
+      assert.match(groups(document), /Detected 1 Oct 2026, 11:22 UTC/);
       assert.equal(document.querySelector('a').href, sourceUrl);
-      assert.match(document.getElementById('foot').textContent, new RegExp(new Date(snapshot).toISOString().replaceAll('.', '\\.')));
+      assert.equal(document.getElementById('foot').textContent, 'Updated ' + utcLabel(snapshot));
     });
   });
   it('rejects unsafe source URLs and marks missing original dates as unavailable', async () => {
@@ -266,7 +272,7 @@ describe('Natural Disasters actual-handler resource source truth', () => {
     await mount(wire, document => {
       assert.match(groups(document), /Undated Canadian fire.*Detection time unavailable/);
       assert.doesNotMatch(groups(document), /1970|Detected /);
-      assert.match(groups(document), /brightness 0/);
+      assert.doesNotMatch(groups(document), / 0 K/, 'a zero brightness sentinel is not a measurement');
     });
   });
   it('discloses supplied provider partial and unavailable flags alongside populated lists', async () => {
@@ -288,7 +294,7 @@ describe('Natural Disasters actual-handler resource source truth', () => {
     const missing = await result({ dataset: ['other'] }, 'other', sources => sources.set('natural:events:v1', null));
     await mount(healthy, async (document, send) => {
       assert.doesNotMatch(groups(document), /partial|coverage is unavailable|temporarily unavailable/);
-      assert.match(groups(document), /Reported value: 6; unit unavailable/);
+      assert.match(groups(document), /6 \(no unit given\)/);
       await send(empty);
       assert.match(groups(document), /No natural-hazard events available/);
       await send(missing);
@@ -298,20 +304,20 @@ describe('Natural Disasters actual-handler resource source truth', () => {
   });
   it('discloses loaded row caps and reported summary counts for each family', async () => {
     await mount(await result({ limit: 0 }), document => {
-      assert.match(groups(document), /Showing 8 of 10 loaded/);
-      assert.match(groups(document), /Showing 6 of 8 loaded/);
-      assert.match(groups(document), /Showing 2 of 2 loaded/);
+      assert.match(groups(document), /Showing 8 of 10 returned events/);
+      assert.match(groups(document), /Showing 6 of 8 returned events/);
+      assert.doesNotMatch(groups(document), /of 2 events/, 'a fully shown list needs no count line');
     });
     await mount(await result({ summary: true, limit: 0 }), document => {
-      assert.match(groups(document), /Showing 3 sampled.*10 reported/);
-      assert.match(groups(document), /Showing 3 sampled.*8 reported/);
+      assert.match(groups(document), /Showing 3 of 10 events/);
+      assert.match(groups(document), /Showing 3 of 8 events/);
     });
   });
   it('never converts a nonzero or unknown summary total with no sample into authoritative empty', async () => {
     for (const count of [8, undefined]) {
       await mount({ structuredContent: { data: { events: { events: { count, sample: [] } } } } }, document => {
         assert.doesNotMatch(groups(document), /No natural-hazard events available/);
-        assert.match(groups(document), /sampled/);
+        assert.match(groups(document), count === 8 ? /Showing 0 of 8 events/ : /Showing 0 events; total unknown/);
       });
     }
   });
@@ -320,7 +326,7 @@ describe('Natural Disasters actual-handler resource source truth', () => {
       sources.set('seismology:earthquakes:v1', seeded({ earthquakes: [{ place: 'Epoch quake', occurredAt: 0, magnitude: 0 }] }));
     });
     await mount(wire, document => {
-      assert.match(groups(document), /Epoch quake.*1970-01-01T00:00:00.000Z/);
+      assert.match(groups(document), /Epoch quake.*1 Jan 1970, 00:00 UTC/);
       assert.doesNotMatch(groups(document), /Event time unavailable|Wildfire/);
     });
   });
@@ -372,11 +378,13 @@ for (const summary of [false, true]) {
     assert.equal(envelope.data.fires._bcAppendedCount, 0);
     await mount(wire, document => {
       const text = sectionText(document, 'Active Wildfires');
-      assert.match(text, /NASA FIRMS.*State: ok.*Source detections: 7246.*Partial: false.*Failed calls: 0.*Error: None reported/);
-      assert.match(text, /CWFIS.*Source detections: 207.*Active: 183.*Prescribed: 24/);
-      assert.match(text, /British Columbia.*Source records: 1444.*Transport: wfs.*Enriched: 71.*Appended: 0/);
+      assert.match(text, /NASA FIRMS.*OK · 7,246 detections/);
+      assert.match(text, /CWFIS.*OK · 207 detections · 183 active, 24 prescribed/);
+      assert.match(text, /British Columbia.*OK · 1,444 records/);
+      assert.doesNotMatch(text, /Partial|Failed calls|Error:|Transport|Enriched|Appended|State:/, 'pipeline internals stay out of the panel');
+      assert.equal(document.querySelectorAll('.dgroup details.dsources').length, 1, 'source status sits behind one disclosure');
       assert.doesNotMatch(groups(document), /Earthquakes|Other natural events|Source total|1444 fires|Canada cohort/);
-      assert.match(text, summary ? /Showing 3 sampled.*8 reported/ : /Showing 6 of 8 loaded/);
+      assert.match(text, summary ? /Showing 3 of 8 events/ : /Showing 6 of 8 returned events/);
     });
   });
 }
@@ -395,30 +403,29 @@ it('shows regional decision reasons without equating accepted HKO with complete 
     assert.equal(envelope.data.events.westernPacific.latestObservationAt, providerLatest);
     assert.equal(envelope.cached_at, new Date(snapshot).toISOString());
     await mount(wire, document => {
-    const text = sectionText(document, 'Other natural events');
-    assert.match(text, /JMA RSMC Tokyo.*blocked.*EXPERIMENTAL_CAP_NOT_OPERATIONAL.*Optional: false.*Requests: 0/);
-    assert.match(text, /JTWC.*blocked.*NOT_ENABLED_PENDING_RAILWAY_PREFLIGHT.*Optional: true.*Requests: 0/);
-    assert.match(text, /HKO warning summary.*accepted.*OK.*Optional: false.*Requests: 1/);
-    assert.match(text, /Decision check time: Unknown/);
-    assert.match(text, /Western Pacific source coverage is incomplete/);
-    assert.match(text, /Evaluation time: 2026-10-06T17:01:00.667Z/);
-    assert.match(text, /Dataset fetch time: 2026-10-06T17:02:00.667Z/);
-    assert.match(text, /latestObservationAt \(supplied\): 2026-10-06T17:00:00.667Z/);
-    assert.match(text, /latestObservationAt.*publication.*not established/);
-    assert.doesNotMatch(text, /JMA activated|JTWC activated|0 events|Provider publication time/);
-    assert.equal(document.getElementById('foot').textContent, 'Snapshot: ' + new Date(snapshot).toISOString());
-    assert.doesNotMatch(text, new RegExp(new Date(snapshot).toISOString().replaceAll('.', '\\.')));
-    });
-    const fallback = structuredClone(wire);
-    const fallbackEnvelope = summary ? fallback.structuredContent.projection : fallback.structuredContent;
-    fallbackEnvelope.data.events.westernPacific.latestObservationAt = Date.parse(providerEvaluation);
-    await mount(fallback, document => {
       const text = sectionText(document, 'Other natural events');
-      assert.match(text, /May use evaluation time as a fallback/);
-      assert.match(text, /latestObservationAt \(supplied\): 2026-10-06T17:01:00.667Z/);
-      assert.match(text, /publication.*not established/);
-      assert.match(text, /Dataset fetch time: 2026-10-06T17:02:00.667Z/);
-      assert.equal(document.getElementById('foot').textContent, 'Snapshot: ' + new Date(snapshot).toISOString());
+      assert.match(text, /JMA RSMC Tokyo · not connected/);
+      assert.match(text, /JTWC · not connected/);
+      assert.match(text, /HKO warning summary · OK/);
+      assert.equal(text.split('HKO warning summary').length - 1, 1, 'a source shared by both regions is listed once');
+      assert.match(text, /Checked 6 Oct 2026, 17:01 UTC/);
+      assert.doesNotMatch(text, /EXPERIMENTAL_CAP|NOT_ENABLED_PENDING|Optional:|Requests:|latestObservationAt|Decision check time/);
+      assert.doesNotMatch(text, /coverage is incomplete/, 'sources switched off by design are not a coverage warning');
+      assert.equal(document.querySelector('.dgroup .dwarning'), null);
+      assert.equal(document.getElementById('foot').textContent, 'Updated ' + utcLabel(snapshot));
+    });
+    const failed = structuredClone(wire);
+    const failedEnvelope = summary ? failed.structuredContent.projection : failed.structuredContent;
+    Object.assign(failedEnvelope.data.events.westernPacific.sourceDecisions[2], { status: 'blocked', reason: 'HTTP_503', requestCount: 1 });
+    await mount(failed, document => {
+      const text = sectionText(document, 'Other natural events');
+      assert.match(text, /Western Pacific coverage is incomplete: HKO warning summary · failed \(HTTP_503\)\./);
+      assert.doesNotMatch(text, /coverage is incomplete: [^.]*(JMA|JTWC)/, 'only the attempted source that failed is flagged');
+    });
+    failedEnvelope.data.events.westernPacific.dataAvailable = false;
+    await mount(failed, document => {
+      assert.match(sectionText(document, 'Other natural events'),
+        /Western Pacific coverage is unavailable: HKO warning summary · failed \(HTTP_503\)\./, 'an unavailable region still names the failed source');
     });
   }
 });
@@ -431,9 +438,9 @@ it('labels an explicitly projected decision sample without claiming a complete l
     data.events.westernPacific.sourceDecisions = { count, sample: [providerDecisions[0]] };
     await mount({ structuredContent: { projection: { data } } }, document => {
     const text = sectionText(document, 'Other natural events');
-    assert.match(text, count === 3 ? /Showing 1 sampled source decision.*3 reported.*Full decision list is not loaded/ : /Showing 1 sampled source decision.*total.*Unknown.*Full decision list is not loaded/);
-    assert.match(text, /EXPERIMENTAL_CAP_NOT_OPERATIONAL/);
-    assert.doesNotMatch(text, /NOT_ENABLED_PENDING_RAILWAY_PREFLIGHT|All 3 decisions loaded|complete provider list|0 reported/);
+    assert.match(text, count === 3 ? /Western Pacific: showing 1 of 3 sources\./ : /Western Pacific: showing 1 sources; total unknown\./);
+    assert.match(text, /JMA RSMC Tokyo · not connected/);
+    assert.doesNotMatch(text, /JTWC|All 3|complete provider list|0 reported/);
     });
   }
   const unsupported = await result({ dataset: ['other'], limit: 0, summary: true }, 'populated', sources => {
@@ -448,8 +455,8 @@ it('labels an explicitly projected decision sample without claiming a complete l
   assert.equal(regional.sourceDecisions, undefined);
   await mount(unsupported, document => {
     const text = sectionText(document, 'Other natural events');
-    assert.match(text, /Western Pacific.*Provider detail: Unknown/);
-    assert.doesNotMatch(text, /JMA RSMC Tokyo|JTWC|complete provider list|6 source decisions/);
+    assert.match(text, /Western Pacific: source details unavailable/);
+    assert.doesNotMatch(text, /JMA RSMC Tokyo|JTWC|complete provider list|6 source/);
   });
 });
 
@@ -462,8 +469,8 @@ it('keeps zero counters distinct from malformed counters and missing errors', as
     });
     await mount(wire, document => {
       const text = sectionText(document, 'Active Wildfires');
-      assert.match(text, value === 0 ? /NASA FIRMS.*Source detections: 0/ : /NASA FIRMS.*Source detections: Unknown/);
-      assert.match(text, /NASA FIRMS.*Partial: false.*Failed calls: 0.*Error: Unknown/);
+      assert.match(text, value === 0 ? /NASA FIRMS.*OK · 0 detections/ : /NASA FIRMS.*OK · detections count unknown/);
+      assert.doesNotMatch(text, /error:|partial|failed requests/);
     });
   }
 });
@@ -471,14 +478,13 @@ it('keeps zero counters distinct from malformed counters and missing errors', as
 it('renders supplied hostile reason text safely while retaining original event and snapshot clocks', async () => {
   const wire = await result({ dataset: ['other'] }, 'populated', sources => {
     addProviderDetails(sources);
-    sources.get('natural:events:v1').data.westernPacific.sourceDecisions[0].reason = '<script>provider-reason</script>';
-    sources.get('natural:events:v1').data.westernPacific.sourceDecisions[0].checkedAt = 'invalid';
+    Object.assign(sources.get('natural:events:v1').data.westernPacific.sourceDecisions[0],
+      { reason: '<script>provider-reason</script>', checkedAt: 'invalid', requestCount: 1 });
   });
   await mount(wire, document => {
-    assert.match(groups(document), /<script>provider-reason<\/script>/);
+    assert.match(groups(document), /JMA RSMC Tokyo · failed \(<script>provider-reason<\/script>\)/);
     assert.equal(document.querySelectorAll('#groups script').length, 0);
-    assert.match(groups(document), /Decision check time: Unknown/);
-    assert.doesNotMatch(groups(document), /Invalid Date|1970-01-01/);
+    assert.doesNotMatch(groups(document), /Invalid Date|1970/);
   });
 });
 
@@ -489,8 +495,8 @@ it('renders unknown provider detail without adding excluded families or inventin
   });
   await mount(wire, document => {
     const text = sectionText(document, 'Active Wildfires');
-    assert.match(text, /Provider detail: Unknown/);
-    assert.doesNotMatch(text, /Source detections: 0|No natural-hazard events available/);
+    assert.match(text, /No source details supplied/);
+    assert.doesNotMatch(text, /0 detections|No natural-hazard events available/);
     assert.doesNotMatch(groups(document), /Earthquakes|Other natural events/);
   });
 });
@@ -503,9 +509,12 @@ it('preserves actual booleans and does not coerce malformed optional or partial 
       sources.get('natural:events:v1').data.westernPacific.sourceDecisions[0].optional = value;
     });
     await mount(wire, document => {
-      const label = typeof value === 'boolean' ? String(value) : 'Unknown';
-      assert.match(sectionText(document, 'Active Wildfires'), new RegExp('NASA FIRMS.*Partial: ' + label));
-      assert.match(sectionText(document, 'Other natural events'), new RegExp('JMA RSMC Tokyo.*Optional: ' + label));
+      const fires = sectionText(document, 'Active Wildfires');
+      if (value === true) assert.match(fires, /NASA FIRMS.*partial/);
+      else if (value === false) assert.doesNotMatch(fires, /partial|completeness/);
+      else assert.match(fires, /NASA FIRMS.*completeness unknown/);
+      assert.match(sectionText(document, 'Other natural events'), /JMA RSMC Tokyo · not connected/);
+      assert.doesNotMatch(sectionText(document, 'Other natural events'), /Optional/);
     });
   }
 });
@@ -549,11 +558,11 @@ describe('Natural local geography and reported details', () => {
     const dates = [occurredAt, 0, undefined, null, '123', new Date(occurredAt).toISOString(), true, false, NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, 8640000000000001];
     for (const date of dates) await mount(localWire([geoEvent({ date, lat: undefined, lon: undefined })]), document => {
       const row = document.querySelector('.drow');
-      assert.match(row.textContent, /Measurement: 75 kt.*Active/);
+      assert.match(row.textContent, /75 kt.*Active/);
       assert.equal(row.querySelector('a').href, 'https://example.invalid/controlled-storm');
       assert.match(row.textContent, /No valid coordinates supplied/);
       assert.equal(row.querySelector('[data-select]'), null);
-      if (date === occurredAt || date === 0) assert.ok(row.textContent.includes('Reported event time: ' + new Date(date).toISOString()));
+      if (date === occurredAt || date === 0) assert.ok(row.textContent.includes(utcLabel(date)));
       else assert.match(row.textContent, /Event time unavailable/);
     });
   });
@@ -565,7 +574,7 @@ describe('Natural local geography and reported details', () => {
     });
     await mount(wire, async (document, send, messages) => {
       assert.equal(document.querySelectorAll('[data-select]').length, 15, '8 quake + 6 fire + 1 OTHER');
-      assert.match(document.getElementById('natural-map-status').textContent, /15 valid locations.*17 displayed/);
+      assert.match(document.getElementById('natural-map-status').textContent, /15 of 17 events in the shown layers have map locations/);
       const footer = document.getElementById('foot').textContent;
       const usage = document.getElementById('panel-usage').textContent;
       const row = activate(document, rowSelect); await tick(document);
@@ -579,6 +588,10 @@ describe('Natural local geography and reported details', () => {
       assert.equal(document.getElementById('natural-selection').textContent, '');
       activate(document, '[data-layer="fires"]'); activate(document, '[data-layer="earthquakes"]');
       assert.match(document.getElementById('natural-map-status').textContent, /Layers hidden/);
+      activate(document, '[data-layer="fires"]');
+      assert.equal(document.getElementById('natural-map-status').textContent, '6 events on the map.',
+        'hidden layers do not count against located events');
+      activate(document, '[data-layer="fires"]');
       activate(document, '[data-layer="events"]');
       assert.equal(row.getAttribute('aria-pressed'), 'false');
       assert.equal(document.getElementById('foot').textContent, footer);
@@ -799,7 +812,7 @@ describe('Natural independent review regressions', () => {
         assert.ok(document.getElementById('natural-selection').textContent.includes(magnitude === undefined ? '—' : 'M5.1'));
         assert.equal(document.querySelector('#natural-selection [data-select]'),null);
         activate(document,'[data-select="fires:0"]');
-        assert.match(document.getElementById('natural-selection').textContent,/High.*brightness 330/);
+        assert.match(document.getElementById('natural-selection').textContent,/high confidence.*330 K/);
       });
     }
   });

@@ -33,7 +33,7 @@ export class SystemView extends PaneView {
         this.store.refresh(row.id, { force: true }).catch(() => {});
         this.app.toast(`refreshing ${row.src.label}`);
       }
-    }
+    } else super.activate(pane);
   }
 
   hints() {

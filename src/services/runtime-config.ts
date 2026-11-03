@@ -53,7 +53,7 @@ export type RuntimeFeatureId =
   | 'aiOllama'
   | 'wtoTrade'
   | 'supplyChain'
-  | 'newsPerFeedFallback'
+  | 'newsOutageFallback'
   | 'aviationStack'
   | 'ucdpConflicts'
   | 'icaoNotams';
@@ -104,7 +104,7 @@ const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiOllama: true,
   wtoTrade: true,
   supplyChain: true,
-  newsPerFeedFallback: false,
+  newsOutageFallback: true,
   aviationStack: true,
   icaoNotams: true,
 };
@@ -157,6 +157,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'FRED economic indicators',
     description: 'Macro indicators from Federal Reserve Economic Data.',
     requiredSecrets: ['FRED_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Economic panel remains available with non-FRED metrics.',
   },
   {
@@ -164,6 +166,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'EIA oil analytics',
     description: 'US Energy Information Administration oil metrics.',
     requiredSecrets: ['EIA_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Oil analytics cards show disabled state.',
   },
   {
@@ -171,6 +175,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Cloudflare outage radar',
     description: 'Internet outages from Cloudflare Radar annotations API.',
     requiredSecrets: ['CLOUDFLARE_API_TOKEN'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Outage layer is disabled and map continues with other feeds.',
   },
   {
@@ -257,6 +263,8 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'WTO trade policy data',
     description: 'Trade restrictions, tariff trends, barriers, and flows from WTO.',
     requiredSecrets: ['WTO_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Trade policy panel shows disabled state.',
   },
   {
@@ -264,14 +272,16 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'Supply Chain Intelligence',
     description: 'Shipping rates via FRED Baltic Dry Index. Chokepoints and minerals use public data.',
     requiredSecrets: ['FRED_API_KEY'],
+    // Desktop reads this from the cloud seed cache; no local key is used (#5829).
+    desktopRequiredSecrets: [],
     fallback: 'Chokepoints and minerals always available; shipping requires FRED key.',
   },
   {
-    id: 'newsPerFeedFallback',
-    name: 'News per-feed fallback',
-    description: 'If digest aggregation is unavailable, use stale headlines first and optionally fetch a limited feed subset.',
+    id: 'newsOutageFallback',
+    name: 'News outage fallback',
+    description: 'If the news digest is unavailable and a panel has no headlines, fetch a few of its feeds directly (desktop only).',
     requiredSecrets: [],
-    fallback: 'Stale headlines remain available; limited per-feed fallback is disabled.',
+    fallback: 'Panels keep their last headlines; with none, they stay empty until the digest returns.',
   },
   {
     id: 'aviationStack',

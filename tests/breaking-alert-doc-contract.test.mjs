@@ -1,3 +1,6 @@
+// These text checks compare wired banner origins with the English and Chinese
+// documentation (#8690, section 2).
+// Executing alerts cannot verify that the published docs describe those origins.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

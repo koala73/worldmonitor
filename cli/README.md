@@ -25,6 +25,8 @@ scripting commands are a thin wrapper over the
 
 ```sh
 npm install -g worldmonitor   # installs the `worldmonitor` command (alias: `wm`)
+# or with Homebrew (macOS, Linux):
+brew install worldmonitor
 # or run without installing:
 npx worldmonitor tools
 ```
@@ -41,21 +43,36 @@ The dashboard boots in a couple of seconds. Views:
 | Key | View | What it shows |
 |---|---|---|
 | `1` | Overview | Braille world map with live blips and a radar sweep, AI world brief, ranked top stories, market strip, theater posture |
-| `2` | News | Digest sections, ranked and classified headlines, story detail |
-| `3` | Markets | Indices, commodities, FX, crypto with sparklines, sector heatmap, macro signals, fear & greed, ETF flows, Gulf markets |
-| `4` | Conflict | Country instability ranking, UCDP armed-conflict events, unrest signals, posture, correlation cards |
-| `5` | Air & Sea | Live military aircraft on the map, airport delays, chokepoints, vessel density, shipping stress |
-| `6` | Cyber | Threat indicators, DDoS mix, service status, internet outages and traffic anomalies |
-| `7` | Climate | Earthquakes, hazards and outbreaks, weather alerts, climate anomalies, planet vitals |
-| `8` | Predict | Prediction markets by domain and AI scenario forecasts |
-| `9` | Live | The dashboard's live news channels and webcams, played in the terminal |
-| `0` | Intel | GDELT topic feeds, sanctions pressure, travel advisories, social velocity, spending |
-| `Tab` | System | Platform health, per-source freshness, themes, player status |
+| `2` | Map | Zoomable world map and rotating globe with every dashboard layer, NASA satellite imagery, hover highlighting, info cards, search |
+| `3` | Brief | The AI world brief as a page: story lines beside the sources they cite and related live headlines |
+| `4` | News | Digest sections, ranked and classified headlines, story detail |
+| `5` | Markets | Indices, commodities, FX, crypto with sparklines, sector heatmap, macro signals, fear & greed, ETF flows, Gulf markets |
+| `6` | Conflict | Country instability ranking, UCDP armed-conflict events, unrest signals, posture, correlation cards |
+| `7` | Air & Sea | Live military aircraft on the map, airport delays, chokepoints, vessel density, shipping stress |
+| `8` | Cyber | Threat indicators, DDoS mix, service status, internet outages and traffic anomalies |
+| `9` | Climate | Earthquakes, hazards and outbreaks, weather alerts, climate anomalies, planet vitals |
+| `0` | Predict | Prediction markets by domain and AI scenario forecasts |
+| `Alt+1` | Live | The dashboard's live news channels and webcams, played in the terminal |
+| `Alt+2` | Intel | GDELT topic feeds, sanctions pressure, travel advisories, social velocity, spending |
+| `Alt+3` | System | Platform health, per-source freshness, themes, player status |
 
 Controls: `Tab` / `Shift+Tab` switch views, `←` `→` move between panes, `↑` `↓`
-move in lists, `Enter` opens, `o` opens the selected link in the browser, `t`
-cycles themes (`T` picks one), `a` toggles animations, `r` refreshes, `?` shows
-help, `q` quits. Everything is also clickable, and the wheel scrolls lists.
+move in lists, `Enter` expands the selected row of any view into a detail
+overlay, `o` opens its link in the browser, `t` cycles themes (`T` picks one),
+`a` toggles animations, `r` refreshes, `?` shows help, `q` quits. Everything is
+also clickable, and the wheel scrolls lists.
+
+The Map view zooms (wheel, `+` `-`) and pans (drag, arrows) a world map drawn
+from the dashboard's own 50 m geometry, or an auto-rotating globe (`g`), with
+NASA satellite imagery (`s`, `i` cycles Blue Marble, daily true colour and
+night lights) and the live day/night terminator (`d`). `L` picks the
+layers: cables, pipelines, energy storage and disruptions, data centers,
+ports, airports and delays, chokepoints, trade routes, bases, nuclear sites,
+radiation monitors, spaceports, military aircraft, satellites, hotspots,
+conflict zones, quakes, fires, storms, weather alerts, outbreaks, protests,
+outages, cyber infrastructure, ship-traffic density, exchanges, mines, tech
+HQs, choropleths and more. Hover anything to highlight its whole layer and read
+its card; click pins, `Enter` opens the full record, `/` searches.
 The [dashboard guide](https://www.worldmonitor.app/docs/cli-dashboard) has
 screenshots of every view, all keys, options and troubleshooting.
 

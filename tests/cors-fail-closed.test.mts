@@ -224,6 +224,40 @@ describe('RFC 9745 / RFC 8594 lifecycle headers are readable cross-origin', () =
   }
 });
 
+/**
+ * The per-header suites above only guard the headers someone remembered to
+ * list. #9140 added X-Wm-Upstream-Timeout to api/_cors.js and server/cors.ts
+ * but not to the Worker, which overwrites Expose-Headers on every
+ * api.worldmonitor.app response. Browsers could not read the marker, so
+ * premium-fetch kept reporting relayed MCP timeouts (Sentry WORLDMONITOR-17A).
+ * Every surface must expose exactly the set api/_cors.js does.
+ */
+describe('every CORS surface exposes the same header set', () => {
+  const canonical = [...new Set(exposedHeaders(getCorsHeadersJs(corsRequest())))].sort();
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} matches api/_cors.js getCorsHeaders`, () => {
+      assert.deepEqual([...new Set(exposedHeaders(build()))].sort(), canonical);
+    });
+  }
+});
+
+/**
+ * Same drift on the request side: the MCP 2026-07-28 metadata headers
+ * (Mcp-Method, Mcp-Name) reached api/_cors.js only, so the Worker's preflight
+ * on api.worldmonitor.app refused browser MCP clients that sent them.
+ * Every surface must allow exactly the set api/_cors.js does.
+ */
+describe('every CORS surface allows the same request header set', () => {
+  const allowedHeaders = (headers: Record<string, string>) =>
+    [...new Set(headers['Access-Control-Allow-Headers'].split(',').map((name) => name.trim()))].sort();
+  const canonical = allowedHeaders(getCorsHeadersJs(corsRequest()));
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} matches api/_cors.js getCorsHeaders`, () => {
+      assert.deepEqual(allowedHeaders(build()), canonical);
+    });
+  }
+});
+
 describe('IETF RateLimit headers are readable across every CORS surface', () => {
   const IETF_RATE_LIMIT_HEADERS = [
     'RateLimit',
@@ -390,11 +424,8 @@ describe('CORS Worker superset invariant — edge allowlist ⊇ function allowli
   // the preflight echoes the canonical worldmonitor.app fallback and the
   // browser blocks the request before it reaches Vercel.
   //
-  // The Worker's own test (workers/api-cors-preflight/index.test.mjs) lives
-  // OUTSIDE the test:data glob and only runs in deploy-worker.yml on
-  // workers/** changes — so a function-only change can silently leave the
-  // Worker narrower. THIS gate-resident check is what actually catches
-  // function↔Worker drift (the bug that left eliewm previews dark).
+  // The Worker suites also run in test:data. This cross-boundary check catches
+  // function/Worker drift when either allowlist changes.
   //
   // Localhost/127 are intentionally omitted: they are DEV-only on the function
   // side (NODE_ENV-gated) and never reach the prod-only Worker.

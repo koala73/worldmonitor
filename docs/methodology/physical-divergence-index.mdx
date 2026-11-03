@@ -69,7 +69,7 @@ explicit state — `missing_input`, `stale_input`, `insufficient_history`, or
 either metal is not `ok`. See [Explicit data states](#explicit-data-states).
 
 <Info>
-**Access.** The daily premiums come from `GET /api/market/v1/get-physical-premiums`; the derived index from `GET /api/market/v1/get-physical-divergence-index`. Both require a Pro subscription — see [Pro Intelligence Suite](/pro-intelligence-suite). The cache-backed MCP tool `get_market_data` also carries the `physical-premium` and `physical-divergence` datasets in its bundle, and that tool remains available to signed-in free accounts within their daily allowance.
+**Access.** The daily premiums come from `GET /api/market/v1/get-physical-premiums`; the derived index from `GET /api/market/v1/get-physical-divergence-index`. Both require a Pro subscription — see [Pro Intelligence Suite](/pro-intelligence-suite). The cache-backed MCP tool `get_market_data` carries the `physical-premium` and `physical-divergence` datasets for subscribers only. A signed-in free account can still call it for quotes, and the response lists both datasets in `locked`.
 </Info>
 
 ## History

@@ -116,6 +116,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   ciiChoropleth: false,
   resilienceScore: false,
+  no2Activity: false,
   dayNight: false,
   // Commodity variant layers (disabled in full variant)
   miningSites: false,
@@ -180,6 +181,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   ciiChoropleth: false,
   resilienceScore: false,
+  no2Activity: false,
   dayNight: false,
   // Commodity variant layers (disabled in full variant)
   miningSites: false,

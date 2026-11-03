@@ -1,5 +1,6 @@
 // Shared view scaffolding: a view with focusable panes, each holding a ListView.
 import { ListView } from '../ui/widgets.mjs';
+import { describeItem } from '../ui/detail.mjs';
 
 export class PaneView {
   constructor(app, { id, label, paneIds = [], sources = [] }) {
@@ -88,10 +89,27 @@ export class PaneView {
     return false;
   }
 
-  // Enter / click on the selected row of a pane: open its link when it has one.
-  // Views with richer behaviour (detail panes, playback) override this.
-  activate() {
-    if (this.selectedUrl()) this.app.openSelected();
+  // Items currently listed in a pane. Views override this so Enter / click can
+  // expand the selected row; `describe(item, pane)` customises the detail.
+  items(pane) {
+    const list = this.lists[pane];
+    return list && Array.isArray(list.items) ? list.items : null;
+  }
+
+  describe(item, pane) {
+    return describeItem(item, { subtitle: this.paneTitle ? this.paneTitle(pane) : `${this.label} · ${pane}` });
+  }
+
+  // Enter / second click on the selected row of a pane: expand it.
+  activate(pane) {
+    const items = this.items(pane);
+    const item = items && items.length ? selectedItem(this.lists[pane], items) : null;
+    if (!item) return;
+    if (item.header && Object.keys(item).length === 1) {
+      this.lists[pane].move(1); // group header rows are not records: step onto the first row
+      return;
+    }
+    this.app.openDetail(this.describe(item, pane));
   }
 
   // Common list options wiring focus and activation.

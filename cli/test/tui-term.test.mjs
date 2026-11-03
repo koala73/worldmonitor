@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   center,
+  charWidth,
   detectColorDepth,
   mix,
   parseHex,
@@ -84,6 +85,29 @@ describe('Screen', () => {
     assert.deepEqual(s.toLines(), ['日本']);
     s.put(1, 0, 'x');
     assert.equal(s.toLines()[0], ' x本');
+  });
+  it('measures emoji-presentation symbols as two columns, like terminals do', () => {
+    for (const ch of ['⚓', '⚡', '⛽', '🟠', '🚀', '⭐', '✅']) assert.equal(charWidth(ch), 2, ch);
+    for (const ch of ['☀', '✈', '⚠', '★', '☢', '✓', '✕', '≡', '◆']) assert.equal(charWidth(ch), 1, ch);
+  });
+  it('reserves the next cell when put() draws a wide character', () => {
+    const s = new Screen(5, 1);
+    s.put(0, 0, '🟠');
+    s.put(2, 0, 'x');
+    assert.equal(s.toLines()[0], '🟠x');
+    assert.ok(s.diff(null).includes('🟠x'), 'the terminal sees x right after the emoji');
+    s.put(4, 0, '⚓'); // no room for its right half
+    assert.equal(s.toLines()[0], '🟠x');
+  });
+  it('clears the old wide tail when a clip blanks a wide character', () => {
+    const s = new Screen(4, 1);
+    s.put(0, 0, '日');
+    s.pushClip({ x: 0, y: 0, w: 1, h: 1 });
+    s.put(0, 0, '月'); // its right half falls outside the clip
+    s.popClip();
+    s.put(2, 0, 'x');
+    assert.equal(s.toLines()[0], '  x');
+    assert.ok(s.diff(null).includes('  x'), 'the terminal sees x in the third column');
   });
   it('keeps a wide character drawn twice in the same cells', () => {
     const s = new Screen(4, 1);

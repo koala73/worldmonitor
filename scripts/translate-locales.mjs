@@ -169,7 +169,7 @@ Rules:
 9. This is an OSINT / geopolitics / markets dashboard. The strings are labels torn out of that context, so the everyday reading of a word is usually the wrong one. Translate these terms in the sense given here:
 ${DOMAIN_GLOSSARY}
 10. Product, brand and dataset names stay untranslated: Product Hunt, Techmeme, Big Mac Index, Smartraveller, GDELT, Polymarket, Hyperliquid, OpenSky, Cloudflare Radar, World Monitor. The same holds for the app's own component names a translation cannot rename: sidecar, widget, panel, dashboard, feed.
-
+${langName === 'Ukrainian' ? '11. Write Ukrainian (українська), never Russian. Use і, ї, є, and ґ where Ukrainian spelling requires them. Do not use Russian ы, э, or ъ.\n' : ''}${langName === 'Russian' ? '11. Write Russian. Do not use the Ukrainian letters і, ї, є, or ґ.\n' : ''}${langName === 'German' ? '11. Write German. Keep a word unchanged when it is already the normal German UI term.\n' : ''}
 Input (key<TAB>english):
 ${items}
 
@@ -277,6 +277,67 @@ function isPrivateKey(k) {
   return k.split('.').some(seg => seg.startsWith('_'));
 }
 
+// Tokens the translator is told to leave in English. A stored value that is
+// only these tokens is not a missed translation. Anything else that still
+// equals the English source is copied UI copy, and the freshness classifier
+// will not resend it: the key exists and the English source has not changed.
+const KEPT_ENGLISH_TOKENS = new Set([
+  'pro', 'ai', 'osint', 'gps', 'nato', 'gdp', 'ok', 'url', 'api', 'rss', 'json',
+  'mcp', 'cii', 'ads-b', 'ais', 'html', 'css', 'pdf', 'csv', 'xml', 'utc', 'etf',
+  'ipo', 'ceo', 'usd', 'eur', 'gbp', 'btc', 'eth', 'chart.js', 'world monitor',
+  'widget', 'panel', 'dashboard', 'feed', 'sidecar',
+]);
+
+function englishCopyBody(value) {
+  return value
+    .replace(/\{\{[^}]+\}\}/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/&[a-z]+;/g, ' ')
+    .trim();
+}
+
+function isCopiedEnglishValue(value) {
+  const body = englishCopyBody(value);
+  if (!body || /x{4,}/i.test(body)) return false;
+  const words = (body.match(/[A-Za-z][A-Za-z'’-]*[A-Za-z]/g) || []).map(word => word.toLowerCase());
+  if (words.length === 0) return false;
+  const whole = body.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (KEPT_ENGLISH_TOKENS.has(whole)) return false;
+  return words.some(word => !KEPT_ENGLISH_TOKENS.has(word));
+}
+
+// Keys whose stored value is still the English source and the text is
+// user-facing copy. `locale` names the catalogue being filled; the keep list
+// does not vary by language, but callers must say which catalogue they mean
+// so a fill pass cannot be pointed at "every locale" by accident.
+export function copiedEnglishKeys(localeFlat, expected, locale) {
+  if (typeof locale !== 'string' || locale.length === 0) {
+    throw new TypeError('copiedEnglishKeys requires a locale code');
+  }
+  const keys = [];
+  for (const [key, en] of Object.entries(expected)) {
+    if (isPrivateKey(key)) continue;
+    // Command-palette examples are the literal text a user can type
+    // ("brief china", "UAE528"). Mature catalogues leave them in English.
+    if (key.startsWith('commands.tips.') && key.endsWith('Example')) continue;
+    if (localeFlat[key] !== en) continue;
+    if (!isCopiedEnglishValue(en)) continue;
+    keys.push(key);
+  }
+  return keys.sort();
+}
+
+// A requested copy is finished only when this run wrote a value that is no
+// longer the English source. validateTranslation accepts an unchanged reply,
+// and translateLocale then records the key as refreshed, so membership in
+// that set is not enough on its own. Kept tokens, placeholders, and command
+// examples never enter `requested`, so an unchanged reply here is not one of
+// those permitted leftovers.
+export function copiedKeysStillOutstanding(requested, refreshed, localeFlat, expected) {
+  return requested.filter(key => !refreshed.has(key) || localeFlat[key] === expected[key]);
+}
+
 export function expectedKeysForLocale(enFlat, pluralBases, categories) {
   const expected = {};
   const pluralEnKeys = new Set();
@@ -366,10 +427,18 @@ export function mayAdvanceBaseline({
   baselineExisted,
   adoptBaseline = false,
   dryRun,
+  copiedOutstanding = 0,
 }) {
   if (dryRun) return { advance: false, reason: 'dry run' };
   if (unresolved > 0) return { advance: false, reason: `${unresolved} key(s) still missing, stale or orphaned` };
   if (rejected > 0) return { advance: false, reason: `${rejected} translation(s) rejected` };
+  // Copied English is classified fresh, so a batch that throws, a reply that
+  // omits those keys, or a reply that repeats the English never shows up as
+  // missing, stale, or orphaned. The run has to count that remainder, or it
+  // exits 0 and advances the baseline over an unfinished fill.
+  if (copiedOutstanding > 0) {
+    return { advance: false, reason: `${copiedOutstanding} copied-English key(s) were requested and are still the English source` };
+  }
   // Untracked keys mean the run is about to declare translations correct against
   // English it never checked them against. That is legitimate exactly once per
   // root — the initial adoption — and is a disaster every other time, so it has
@@ -592,9 +661,11 @@ export async function translateLocale({ loc, raw, expected, toTranslate, transla
         added++;
       }
     } catch (err) {
-      // A failed batch leaves its keys unrefreshed, so the post-run scan still
-      // sees them and the run exits non-zero. Failing the whole locale here
-      // would throw away the batches that did succeed.
+      // A failed batch leaves its keys unrefreshed. Missing and stale keys
+      // stay visible to the post-run scan. Copied-English keys do not, because
+      // classifyKeys calls them fresh, so main counts those from the request
+      // list. Failing the whole locale here would throw away the batches that
+      // did succeed.
       console.error(`[${loc}] batch ${i}-${i + batch.length} failed:`, err.message);
     }
     // Persist after every batch so an interrupted run keeps its progress.
@@ -613,8 +684,13 @@ async function main() {
   const dryRun = args.has('--dry-run');
   const proTest = args.has('--pro-test');
   const adoptBaseline = args.has('--adopt-baseline');
+  const fillCopiedEnglish = args.has('--fill-copied-english');
   const onlyArg = [...args].find(a => a.startsWith('--only='));
   const onlyLocales = onlyArg ? onlyArg.slice('--only='.length).split(',') : null;
+  if (fillCopiedEnglish && !onlyLocales) {
+    console.error('--fill-copied-english requires --only=<locales> so it cannot rewrite every catalogue.');
+    process.exit(1);
+  }
   const ROOT = localesRootFor(proTest);
 
   // An unknown locale in --only would otherwise be skipped with a note and the
@@ -660,6 +736,10 @@ async function main() {
   const targets = onlyLocales || TRANSLATABLE_LOCALES;
   // locale → keys this run successfully wrote. Consumed by unresolvedAfterRun.
   const refreshedByLocale = new Map();
+  // locale → copied-English keys this run asked to translate. The post-run
+  // scan cannot see a copy it failed to replace: the value still equals the
+  // English source, so classifyKeys calls it fresh.
+  const copiedRequestedByLocale = new Map();
   let totalMissing = 0;
   let totalStale = 0;
   let totalUntracked = 0;
@@ -703,13 +783,18 @@ async function main() {
       }
     }
     // Stale keys are sent alongside missing ones; setNested overwrites the
-    // rotted value in place.
-    const toTranslate = [...missing, ...stale];
+    // rotted value in place. Copied English is a third bucket: the value
+    // exists and matches the English source, so classifyKeys calls it fresh
+    // and a normal pass never resends it. --fill-copied-english sends those
+    // user-facing copies for the locales named by --only.
+    const copied = fillCopiedEnglish ? copiedEnglishKeys(flat, expected, loc) : [];
+    if (copied.length > 0) copiedRequestedByLocale.set(loc, copied);
+    const toTranslate = [...new Set([...missing, ...stale, ...copied])];
     if (toTranslate.length === 0) {
       console.log(`[${loc}] ✓ complete and fresh (CLDR categories: ${categories.join('/')})`);
       continue;
     }
-    console.log(`[${loc}] ${missing.length} missing + ${stale.length} stale keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
+    console.log(`[${loc}] ${missing.length} missing + ${stale.length} stale + ${copied.length} copied-English keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
     if (stale.length > 0) {
       console.log(`[${loc}]   stale e.g. ${stale.slice(0, 3).join(', ')}`);
     }
@@ -734,7 +819,7 @@ async function main() {
     const shortfall = toTranslate.length - added;
     console.log(
       shortfall > 0
-        ? `[${loc}] ✓ wrote ${added} translations (${shortfall} not returned or rejected — re-run to fill)`
+        ? `[${loc}] wrote ${added} translations (${shortfall} not returned or rejected — re-run to fill)`
         : `[${loc}] ✓ wrote ${added} translations`,
     );
   }
@@ -750,6 +835,7 @@ async function main() {
   // permanently.
   let unresolved = 0;
   let generatedOutstanding = 0;
+  let copiedOutstanding = 0;
   if (!dryRun) {
     for (const loc of LOCALES) {
       const locPath = path.join(ROOT, `${loc}.json`);
@@ -757,9 +843,16 @@ async function main() {
       const flat = flatten(JSON.parse(readFileSync(locPath, 'utf8')));
       const categories = getPluralCategories(loc);
       const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
+      const refreshed = refreshedByLocale.get(loc) ?? new Set();
+      const requestedCopied = copiedRequestedByLocale.get(loc) ?? [];
+      const copiedLeft = copiedKeysStillOutstanding(requestedCopied, refreshed, flat, expected);
+      if (copiedLeft.length > 0) {
+        console.error(`[${loc}] ✗ ${copiedLeft.length} copied-English key(s) still equal the English source (e.g. ${copiedLeft.slice(0, 3).join(', ')})`);
+        copiedOutstanding += copiedLeft.length;
+      }
       const left = unresolvedAfterRun(
         classifyKeys(flat, expected, baselineFor(categories), baselineFlat !== null),
-        refreshedByLocale.get(loc) ?? new Set(),
+        refreshed,
       );
       const outstanding = left.missing.length + left.stale.length + left.orphan.length;
       if (outstanding === 0) continue;
@@ -791,10 +884,11 @@ async function main() {
   // run in dry-run — printing 0 there reads as an all-clear next to a non-zero
   // orphan or stale count.
   const unresolvedReport = dryRun ? 'n/a (dry run)' : unresolved;
+  const copiedReport = dryRun ? 'n/a (dry run)' : copiedOutstanding;
   // Reported separately rather than folded into unresolved: it does not gate the
   // baseline, but a silent zero would read as "every locale is fresh".
   const generatedReport = generatedOutstanding > 0 ? `, generated-locale-outstanding ${generatedOutstanding} (rerun scripts/convert-zh-tw.py)` : '';
-  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}${generatedReport}`);
+  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}, copied-english-outstanding ${copiedReport}${generatedReport}`);
 
   const verdict = mayAdvanceBaseline({
     unresolved,
@@ -803,6 +897,7 @@ async function main() {
     baselineExisted: baselineFlat !== null,
     adoptBaseline,
     dryRun,
+    copiedOutstanding,
   });
   if (!dryRun && !verdict.advance) {
     console.error(`\n[FAIL] baseline not advanced — ${verdict.reason}.`);

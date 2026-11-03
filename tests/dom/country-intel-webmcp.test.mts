@@ -35,6 +35,72 @@ describe('CountryIntelManager WebMCP presentation cancellation', () => {
     expect(page.show).toHaveBeenCalledExactlyOnceWith('Taiwan', 'TW', null, {militaryFlights:null,militaryFlightsInCountry:null,militaryVessels:null,militaryVesselsInCountry:null});
   });
 
+  it('opens nothing for a placeholder -99 code', async () => {
+    const page = {
+      getCode: () => null,
+      isVisible: () => false,
+      showLoading: vi.fn(),
+      show: vi.fn(),
+      hide: vi.fn(),
+    };
+    const manager = new CountryIntelManager({
+      countryBriefPage: page,
+      isDestroyed: false,
+      map: { setRenderPaused: vi.fn() },
+    } as unknown as AppContext);
+    const getSignals = vi.fn(async () => ({}));
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
+    Reflect.set(manager, 'getCountrySignals', getSignals);
+
+    await manager.openCountryBriefByCode('-99', 'Somaliland', { trackAnalytics: false });
+
+    expect(getSignals).not.toHaveBeenCalled();
+    expect(page.showLoading).not.toHaveBeenCalled();
+    expect(page.show).not.toHaveBeenCalled();
+  });
+
+  it('does not let a placeholder -99 open supersede a pending valid open', async () => {
+    let visible = false;
+    let activeCode = '';
+    let stopAfterPresentation = false;
+    const shownCodes: string[] = [];
+    const page = {
+      getCode: () => activeCode,
+      hide: () => { visible = false; activeCode = ''; },
+      isVisible: () => visible,
+      show: (_country: string, code: string) => {
+        shownCodes.push(code);
+        visible = true;
+        activeCode = code;
+        stopAfterPresentation = true;
+      },
+      showLoading: () => { visible = true; activeCode = '__loading__'; },
+    };
+    const manager = new CountryIntelManager({
+      countryBriefPage: page,
+      get isDestroyed() { return stopAfterPresentation; },
+      map: { setRenderPaused: vi.fn() },
+    } as unknown as AppContext);
+    Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
+    let markSignalsRequested!: () => void;
+    const signalsRequested = new Promise<void>((resolve) => { markSignalsRequested = resolve; });
+    let resolveSignals!: (value: unknown) => void;
+    const heldSignals = new Promise<unknown>((resolve) => { resolveSignals = resolve; });
+    Reflect.set(manager, 'getCountrySignals', () => {
+      markSignalsRequested();
+      return heldSignals;
+    });
+
+    const validOpen = manager.openCountryBriefByCode('FR', 'France', { trackAnalytics: false });
+    await signalsRequested;
+    await manager.openCountryBriefByCode('-99', 'Somaliland', { trackAnalytics: false });
+    resolveSignals({});
+    await validOpen;
+
+    expect(shownCodes).toEqual(['FR']);
+    expect(activeCode).toBe('FR');
+  });
+
   it('removes the loading shell and never presents after an in-flight abort', async () => {
     let visible = false;
     let activeCode = '';

@@ -30,7 +30,6 @@ const SIGNAL_FAMILY_KEYS = [
   'conflict:ucdp-events:v1',
   'news:insights:v1',
   'news:threat:summary:v1',
-  'cyber:threats-bootstrap:v2',
 ];
 const LIVE_KEY = `risk:scores:sebuf:${CII_FORMULA_VERSION}`;
 const STALE_KEY = `risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`;
@@ -106,6 +105,34 @@ after(() => {
 });
 
 describe('risk-scores build with failed Redis reads', () => {
+  for (const key of ['displacement:cross-border:v1', 'displacement:border-uk:v1', 'displacement:border-cbp:v1', 'displacement:border-frontex:v1', 'displacement:border-panama:v1']) {
+    it(`retains the last good scores when ${key} cannot be read`, async () => {
+      stubRedis({ failing: [key], stored: { [STALE_KEY]: JSON.stringify(stalePayload) } });
+      const response = await getRiskScores({} as never, {} as never);
+      assert.equal(response.stale, true);
+      assert.equal(response.degraded, true);
+      assert.equal(response.ciiScores[0]?.score, 77);
+      assert.deepEqual(published(), []);
+      assert.ok(rejectionRecord().some(record => record.value.includes(key)));
+    });
+  }
+
+  it('uses the original envelope clock when applying an arrival surge', async () => {
+    stubRedis();
+    const base = await getRiskScores({} as never, {} as never);
+    const baseScore = base.ciiScores.find(score => score.region === 'GB')!.combinedScore;
+    const now = Date.now() - 60_000;
+    for (const [age, boost] of [[0, 5], [3 * 86400000, 0]]) {
+      stubRedis({ stored: { 'displacement:border-uk:v1': JSON.stringify({
+        _seed: { fetchedAt: now - age },
+        data: { routes: [{ id: 'english-channel', name: 'English Channel', countryCode: 'GB', kind: 'arrival', measure: 'daily',
+          asOf: new Date(now - 86400000).toISOString().slice(0, 10), period: 'day', latestCount: 2000, last7Days: 14000, surge: true }] },
+      }) } });
+      const result = await getRiskScores({} as never, {} as never);
+      assert.equal(result.ciiScores.find(score => score.region === 'GB')!.combinedScore, baseScore + boost);
+    }
+  });
+
   it('publishes nothing when the signal-family reads error', async () => {
     stubRedis({ failing: SIGNAL_FAMILY_KEYS });
     await getRiskScores({} as never, {} as never);
@@ -147,7 +174,7 @@ describe('risk-scores build with failed Redis reads', () => {
     stubRedis({
       failing: ['news:insights:v1'],
       stored: {
-        'cyber:threats-bootstrap:v2': `{"threats":[${marker}`,
+        'wildfire:fires-summary:v1': `{"byCountry":[${marker}`,
         'conflict:ucdp-events:v1': JSON.stringify({ events: [{ country: 'Ukraine', note: marker }] }),
       },
     });
@@ -158,13 +185,13 @@ describe('risk-scores build with failed Redis reads', () => {
     assert.deepEqual(
       [...record.failedReads].sort((a, b) => a.key.localeCompare(b.key)),
       [
-        { key: 'cyber:threats-bootstrap:v2', failure: 'parse' },
         { key: 'news:insights:v1', failure: 'timeout' },
+        { key: 'wildfire:fires-summary:v1', failure: 'parse' },
       ],
     );
     assert.ok(!rejectionRecord()[0]!.value.includes(marker), 'the record must not carry stored payload bytes');
     assert.equal(errorLogs.length, 1, 'one rejection log line');
-    assert.ok(errorLogs[0]!.includes('news:insights:v1') && errorLogs[0]!.includes('cyber:threats-bootstrap:v2'), 'the log names the failed keys');
+    assert.ok(errorLogs[0]!.includes('news:insights:v1') && errorLogs[0]!.includes('wildfire:fires-summary:v1'), 'the log names the failed keys');
     assert.ok(!errorLogs[0]!.includes(marker), 'the log must not carry stored payload bytes');
   });
 

@@ -19,6 +19,21 @@
 //               normal months and 0.3 for the UAE during the 2026 Hormuz
 //               closure, when ships ran dark), so it is never an export total.
 //
+// The payload also carries `crudeImportOrigin`: each importer's own monthly
+// Comtrade declaration of HS 2709 imports from World and from the seven
+// exporters that load inside the Strait of Hormuz. The energy shock model
+// reads it for its pre-crisis and current-flows Gulf shares
+// (shared/hormuz-crisis.js). The mirror above cannot serve: it keeps each
+// exporter's top buyers only and has no buyer total.
+//
+// `crudeImportOriginNational` fills importers that file no partner-level
+// crude imports to Comtrade from their own national statistics, in tonnes:
+// Turkey from the EPDK monthly petroleum market reports (_epdk-crude-imports.mjs).
+//
+// `productDemandNational` gives refined-product demand, kb/d, for importers
+// JODI carries without any: Malaysia from DOSM annual final consumption
+// (_dosm-product-demand.mjs).
+//
 // No source is turned into a modelled export estimate. A month a source does
 // not cover is null, never zero, and every source carries its newest observed
 // month and a status (ok, stale, not_reported, unavailable).
@@ -27,6 +42,8 @@ import { loadEnvFile, CHROME_UA, runSeed, withRetry, resolveProxyForConnect, htt
 import { DAY_MIN } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { fetchYearCsv, parseObsValue } from './seed-jodi-oil.mjs';
+import { fetchEpdkCrudeImports, epdkImporterColumns, isEpdkUrl } from './_epdk-crude-imports.mjs';
+import { DOSM_ENERGY_CONSUMPTION_URL, dosmProductDemand } from './_dosm-product-demand.mjs';
 import {
   compactCountry,
   lastCompleteMonth,
@@ -34,8 +51,14 @@ import {
   monthRange,
   shiftMonth,
 } from './shared/oil-trade-windows.js';
+// The scripts/shared mirror: Railway packages scripts/ only (#3811).
+import { PRE_CRISIS_WINDOW } from './shared/hormuz-crisis.js';
+import { createRequire } from 'node:module';
 
 loadEnvFile(import.meta.url);
+
+/** @type {Record<string, string>} */
+const ISO3_TO_ISO2 = createRequire(import.meta.url)('./shared/iso3-to-iso2.json');
 
 export const OIL_TRADE_CANONICAL_KEY = 'energy:oil-trade-series:v1';
 export const OIL_TRADE_ACTIVATION_KEY = 'seed-activated:energy:oil-trade-series';
@@ -427,6 +450,336 @@ async function fetchMirrorRows(spec, nowMs, keyIndex) {
   return rows;
 }
 
+// ── Crude import origin (importer-declared) ─────────────────────────────────
+
+// UN M49 codes of the exporters loading inside the Strait of Hormuz; the same
+// set as GULF_PARTNER_CODES in server/worldmonitor/intelligence/v1/_shock-compute.ts.
+export const CRUDE_ORIGIN_GULF_PARTNERS = [682, 784, 368, 414, 364, 634, 48];
+// Exporters with a Hormuz bypass route (SA, AE, IQ): HORMUZ_BYPASS_BY_EXPORTER in
+// server/worldmonitor/intelligence/v1/_hormuz-bypass.ts. Their values are also
+// stored per exporter so the shock model can apply recovery by supplier.
+export const CRUDE_ORIGIN_BYPASS_PARTNERS = [682, 784, 368];
+const BYPASS_PARTNER_ISO2 = { 682: 'SA', 784: 'AE', 368: 'IQ' };
+/** CRUDE_ORIGIN_GULF_PARTNERS as ISO2, for sources that name countries. */
+export const CRUDE_ORIGIN_GULF_ISO2 = ['SA', 'AE', 'IQ', 'KW', 'IR', 'QA', 'BH'];
+const CRUDE_ORIGIN_MAX_RECORDS = 100_000;
+const CRUDE_ORIGIN_SOURCE = 'UN Comtrade monthly HS 2709 imports declared by each importer, partners World and SA, AE, IQ, KW, IR, QA, BH; import value (USD million)';
+
+/**
+ * Period lists the run requests, one Comtrade call each (12 periods at most):
+ * the fixed pre-crisis window, then the last 12 complete months after it.
+ * @param {number} nowMs
+ */
+export function crudeImportOriginPeriods(nowMs) {
+  const pre = monthRange(PRE_CRISIS_WINDOW.startMonth, PRE_CRISIS_WINDOW.endMonth);
+  const end = lastCompleteMonth(nowMs);
+  const recentFrom = [shiftMonth(end, -11), shiftMonth(PRE_CRISIS_WINDOW.endMonth, 1)].sort().at(-1);
+  const recent = recentFrom <= end ? monthRange(recentFrom, end) : [];
+  return [pre, recent].filter((p) => p.length > 0);
+}
+
+const usdMillions = (v) => Math.round(v / 1000) / 1000;
+
+/**
+ * Per-importer monthly import values aligned to `months`. A month without a
+ * World row is not an observation (null in every column). A filed month with
+ * no Gulf partner row is a Gulf value of 0, because Comtrade omits zero rows.
+ * Gulf rows above the World total are a filing error and void the month.
+ * `bypassPartnersUsdM` holds the SA, AE and IQ parts of the Gulf column, for
+ * the exporters this importer bought from at all.
+ *
+ * @param {Array<{reporterISO?: string, partnerCode?: number|string, period?: string|number, cmdCode?: string, flowCode?: string, primaryValue?: number}>} rows
+ * @param {string[]} months
+ * @returns {Record<string, {worldUsdM: Array<number|null>, gulfUsdM: Array<number|null>, bypassPartnersUsdM: Record<string, Array<number|null>>}>}
+ */
+export function buildCrudeImportOrigin(rows, months) {
+  const index = new Map(months.map((m, i) => [m, i]));
+  const gulfPartners = new Set(CRUDE_ORIGIN_GULF_PARTNERS);
+  const byImporter = new Map();
+  for (const r of rows ?? []) {
+    if (String(r?.cmdCode) !== '2709' || r?.flowCode !== 'M') continue;
+    const iso2 = ISO3_TO_ISO2[String(r?.reporterISO ?? '')];
+    const i = index.get(`${String(r?.period).slice(0, 4)}-${String(r?.period).slice(4, 6)}`);
+    const value = Number(r?.primaryValue);
+    const partner = Number(r?.partnerCode);
+    if (!iso2 || i === undefined || !Number.isFinite(value) || value < 0) continue;
+    if (partner !== 0 && !gulfPartners.has(partner)) continue;
+    let entry = byImporter.get(iso2);
+    if (!entry) {
+      entry = { world: months.map(() => null), gulf: months.map(() => 0), bypass: {} };
+      byImporter.set(iso2, entry);
+    }
+    if (partner === 0) {
+      entry.world[i] = (entry.world[i] ?? 0) + value;
+      continue;
+    }
+    entry.gulf[i] += value;
+    const bypassIso2 = BYPASS_PARTNER_ISO2[partner];
+    if (bypassIso2) {
+      entry.bypass[bypassIso2] ??= months.map(() => 0);
+      entry.bypass[bypassIso2][i] += value;
+    }
+  }
+  const importers = {};
+  for (const [iso2, { world, gulf, bypass }] of [...byImporter].sort(([a], [b]) => a.localeCompare(b))) {
+    const observed = world.map((w, i) => w !== null && w > 0 && gulf[i] <= w);
+    if (!observed.some(Boolean)) continue;
+    const column = (values) => values.map((v, i) => (observed[i] ? usdMillions(v) : null));
+    importers[iso2] = {
+      worldUsdM: world.map((w, i) => (observed[i] ? usdMillions(w) : null)),
+      gulfUsdM: column(gulf),
+      bypassPartnersUsdM: Object.fromEntries(Object.keys(bypass).sort().map((p) => [p, column(bypass[p])])),
+    };
+  }
+  return importers;
+}
+
+/**
+ * The published `crudeImportOrigin` section. A failed or empty fetch keeps the
+ * previous section (status unavailable, carriedForward, its own fetchedAt)
+ * rather than publishing nothing over it. So does a requested window (one
+ * Comtrade call) that returned no rows: publishing the other window alone
+ * would drop every importer's pre-crisis or current baseline.
+ */
+export function crudeImportOriginSection({ months, rows, fetchedAt, error, previous, windowRowCounts = [] }) {
+  const emptyWindow = windowRowCounts.some((count) => !(count > 0));
+  const importers = error || emptyWindow ? {} : buildCrudeImportOrigin(rows, months);
+  if (Object.keys(importers).length > 0) {
+    return { status: 'ok', fetchedAt, source: CRUDE_ORIGIN_SOURCE, months, importers };
+  }
+  if (previous?.importers && Object.keys(previous.importers).length > 0) {
+    return { ...previous, status: 'unavailable', carriedForward: true };
+  }
+  return { status: 'unavailable', fetchedAt, source: CRUDE_ORIGIN_SOURCE, months, importers: {} };
+}
+
+/**
+ * One call per period list, failing over across the configured keys: a
+ * rate-limited or revoked first key must not cost the weekly refresh.
+ * `fetchJson` and `retries` are injectable for tests.
+ */
+export async function fetchCrudeImportOriginRows(periods, keys, { fetchJson = fetchComtradeJson, retries = 3 } = {}) {
+  const rows = [];
+  const windowRowCounts = [];
+  for (const months of periods) {
+    const params = new URLSearchParams({
+      period: months.map((m) => m.replace('-', '')).join(','),
+      partnerCode: ['0', ...CRUDE_ORIGIN_GULF_PARTNERS].join(','),
+      cmdCode: '2709',
+      flowCode: 'M',
+      customsCode: 'C00',
+      motCode: '0',
+      partner2Code: '0',
+      includeDesc: 'true',
+      maxRecords: String(CRUDE_ORIGIN_MAX_RECORDS),
+    });
+    const url = `https://comtradeapi.un.org/data/v1/get/C/M/HS?${params}`;
+    let data = null;
+    let lastError = null;
+    for (const key of keys) {
+      // A rejected key (401/403) will not recover on retry: fail over at once.
+      const fetchOnce = () => fetchJson(url, key).catch((err) => {
+        if (/^Comtrade HTTP 40[13]$/.test(err?.message ?? '')) err.nonRetryable = true;
+        throw err;
+      });
+      try {
+        data = retries > 0 ? await withRetry(fetchOnce, retries, 8000) : await fetchOnce();
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    if (data === null) throw lastError ?? new Error('no Comtrade key available');
+    // A capped answer silently drops reporters; refuse it.
+    if (data.length >= CRUDE_ORIGIN_MAX_RECORDS) throw new Error(`crude origin response capped at ${data.length} rows`);
+    windowRowCounts.push(data.length);
+    rows.push(...data);
+  }
+  return { rows, windowRowCounts };
+}
+
+async function fetchCrudeImportOrigin(nowMs, previous) {
+  const periods = crudeImportOriginPeriods(nowMs);
+  const months = periods.flat();
+  const fetchedAt = new Date(nowMs).toISOString();
+  const keys = (process.env.COMTRADE_API_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean);
+  try {
+    if (keys.length === 0) throw new Error('COMTRADE_API_KEYS not set');
+    const { rows, windowRowCounts } = await fetchCrudeImportOriginRows(periods, keys);
+    if (windowRowCounts.some((count) => count === 0)) console.warn(`  Crude import origin: a requested window returned no rows (${windowRowCounts.join(', ')}); keeping the previous section`);
+    const section = crudeImportOriginSection({ months, rows, fetchedAt, previous, windowRowCounts });
+    console.log(`  Crude import origin: ${Object.keys(section.importers).length} importers (${section.status}${section.carriedForward ? ', carried forward' : ''})`);
+    return section;
+  } catch (err) {
+    console.warn(`  Crude import origin unavailable: ${err.message}`);
+    return crudeImportOriginSection({ months, error: err, fetchedAt, previous });
+  }
+}
+
+// ── National crude-origin statistics ────────────────────────────────────────
+
+const EPDK_SOURCE = 'EPDK (Turkish energy market regulator) monthly petroleum market sector reports: crude oil imports by country of origin, tonnes; partners World and SA, AE, IQ, KW, IR, QA, BH';
+
+/**
+ * The published `crudeImportOriginNational` section: importers absent from
+ * Comtrade, from their own statistics, in tonnes. Same carry-forward rule
+ * as `crudeImportOrigin`: an empty or failed fetch keeps the previous section.
+ * A fetch that lost listed months fills them from the previous section and
+ * is published as carried forward (status unavailable, the previous
+ * fetchedAt), so the reader withholds current flows rather than presenting
+ * older months as the latest.
+ */
+export function crudeImportOriginNationalSection({ months, byMonth, failedMonths = [], fetchedAt, error, previous }) {
+  const importers = {};
+  if (!error && byMonth) {
+    const tr = epdkImporterColumns(byMonth, months, CRUDE_ORIGIN_GULF_ISO2, Object.values(BYPASS_PARTNER_ISO2));
+    if (tr.worldT.some((v) => v !== null)) importers.TR = { source: 'EPDK', ...tr };
+  }
+  const lost = failedMonths.filter((m) => months.includes(m));
+  if (importers.TR && lost.length > 0) {
+    const prevTr = previous?.importers?.TR;
+    const prevIndex = new Map((Array.isArray(previous?.months) ? previous.months : []).map((m, i) => [m, i]));
+    if (prevTr) {
+      for (const month of lost) {
+        const i = months.indexOf(month);
+        const j = prevIndex.get(month);
+        if (j === undefined || prevTr.worldT?.[j] == null) continue;
+        importers.TR.worldT[i] = prevTr.worldT[j];
+        importers.TR.gulfT[i] = prevTr.gulfT?.[j] ?? null;
+        for (const p of Object.keys(importers.TR.bypassPartnersT)) importers.TR.bypassPartnersT[p][i] = prevTr.bypassPartnersT?.[p]?.[j] ?? null;
+      }
+    }
+    return {
+      status: 'unavailable', carriedForward: true, fetchedAt: previous?.fetchedAt ?? fetchedAt,
+      source: EPDK_SOURCE, unit: 'tonnes', months, importers, failedMonths: lost,
+    };
+  }
+  if (Object.keys(importers).length > 0) {
+    return { status: 'ok', fetchedAt, source: EPDK_SOURCE, unit: 'tonnes', months, importers };
+  }
+  if (previous?.importers && Object.keys(previous.importers).length > 0) {
+    return { ...previous, status: 'unavailable', carriedForward: true };
+  }
+  return { status: 'unavailable', fetchedAt, source: EPDK_SOURCE, unit: 'tonnes', months, importers: {} };
+}
+
+// EPDK runs beside the other sources on its own budget, inside the run's
+// fetch deadline with room left to publish: stalled reports must cost the
+// national section (carried forward), never the whole series.
+const EPDK_BUDGET_MS = 150_000;
+const EPDK_REQUEST_TIMEOUT_MS = 30_000;
+const PUBLISH_RESERVE_MS = 90_000;
+// A report is a few MB; the cap bounds what one download can hold in memory.
+export const EPDK_MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+
+async function readCapped(resp, maxBytes) {
+  const tooLarge = () => new Error(`EPDK document too large (over ${maxBytes} bytes)`);
+  if (Number(resp.headers.get('content-length')) > maxBytes) {
+    await resp.body?.cancel().catch(() => {});
+    throw tooLarge();
+  }
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of resp.body ?? []) {
+    size += chunk.byteLength;
+    if (size > maxBytes) {
+      await resp.body.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+// EPDK serves Turkish government downloads that can stall or refuse foreign
+// datacenter egress; the proxy is the fallback, as for ArcGIS. Requests stay
+// on the EPDK origin: the URL is checked before either leg, and redirects are
+// refused (EPDK serves its documents directly; the proxy leg treats a 3xx as
+// an error). Each leg stops reading past `maxBytes`.
+export async function epdkFetch(url, deadlineAtMs, maxBytes = EPDK_MAX_DOCUMENT_BYTES) {
+  if (!isEpdkUrl(url)) throw new Error('EPDK off-origin URL refused');
+  const timeout = () => {
+    const left = deadlineAtMs - Date.now();
+    if (left <= 0) throw new Error('EPDK budget exhausted');
+    return Math.min(EPDK_REQUEST_TIMEOUT_MS, left);
+  };
+  try {
+    const resp = await fetch(url, { headers: { 'User-Agent': CHROME_UA }, redirect: 'error', signal: AbortSignal.timeout(timeout()) });
+    if (resp.status === 403 || resp.status === 429) throw Object.assign(new Error(`EPDK HTTP ${resp.status}`), { proxyable: true });
+    if (!resp.ok) throw new Error(`EPDK HTTP ${resp.status}`);
+    return await readCapped(resp, maxBytes);
+  } catch (err) {
+    const timeoutLike = err?.name === 'TimeoutError' || err?.proxyable || /fetch failed/i.test(err?.message ?? '');
+    const proxyAuth = timeoutLike ? resolveProxyForConnect() : null;
+    if (!proxyAuth) throw err;
+    if (err?.message === 'EPDK budget exhausted') throw err;
+    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { timeoutMs: timeout(), maxResponseBytes: maxBytes });
+    return buffer;
+  }
+}
+
+async function fetchCrudeImportOriginNational(nowMs, previous, runDeadlineAtMs = Infinity) {
+  const months = crudeImportOriginPeriods(nowMs).flat();
+  const fetchedAt = new Date(nowMs).toISOString();
+  const deadlineAtMs = Math.min(Date.now() + EPDK_BUDGET_MS, runDeadlineAtMs - PUBLISH_RESERVE_MS);
+  try {
+    // A cumulative (January-to-month) report needs the month before it too.
+    const wantedMonths = monthRange(shiftMonth(months[0], -1), months.at(-1));
+    const { months: byMonth, unmatched, failedMonths } = await fetchEpdkCrudeImports({
+      wantedMonths,
+      fetchText: async (url) => (await epdkFetch(url, deadlineAtMs)).toString('utf8'),
+      fetchBuffer: (url) => epdkFetch(url, deadlineAtMs),
+      log: (line) => console.warn(line),
+      deadlineAtMs,
+    });
+    if (unmatched.length > 0) console.warn(`  EPDK: unrecognised origin names void their months: ${unmatched.join(', ')}`);
+    if (failedMonths.length > 0) console.warn(`  EPDK: listed months without a usable table: ${failedMonths.join(', ')}`);
+    const section = crudeImportOriginNationalSection({ months, byMonth, failedMonths, fetchedAt, previous });
+    const filed = section.importers.TR?.worldT.filter((v) => v !== null).length ?? 0;
+    console.log(`  National crude origin: TR ${filed}/${months.length} months (${section.status}${section.carriedForward ? ', carried forward' : ''})`);
+    return section;
+  } catch (err) {
+    console.warn(`  National crude origin unavailable: ${err.message}`);
+    return crudeImportOriginNationalSection({ months, error: err, fetchedAt, previous });
+  }
+}
+
+const DOSM_SOURCE = 'DOSM (Department of Statistics Malaysia) open data, energy_consumption_commodity: annual final energy consumption by commodity, ktoe, converted to kb/d at IEA default net calorific values';
+
+/**
+ * The published `productDemandNational` section: refined-product demand,
+ * kb/d, from national statistics for importers JODI carries without any.
+ * An empty or failed fetch keeps the previous section, carried forward.
+ */
+export function productDemandNationalSection({ rows, fetchedAt, error, previous }) {
+  const my = error ? null : dosmProductDemand(rows);
+  if (my) {
+    return { status: 'ok', fetchedAt, source: DOSM_SOURCE, unit: 'kbd', countries: { MY: { source: 'DOSM', ...my } } };
+  }
+  if (previous?.countries && Object.keys(previous.countries).length > 0) {
+    return { ...previous, status: 'unavailable', carriedForward: true };
+  }
+  return { status: 'unavailable', fetchedAt, source: DOSM_SOURCE, unit: 'kbd', countries: {} };
+}
+
+async function fetchProductDemandNational(nowMs, previous) {
+  const fetchedAt = new Date(nowMs).toISOString();
+  try {
+    const rows = await withRetry(async () => {
+      const resp = await fetch(DOSM_ENERGY_CONSUMPTION_URL, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(30_000) });
+      if (!resp.ok) throw new Error(`DOSM HTTP ${resp.status}`);
+      return resp.json();
+    }, 2, 5000);
+    const section = productDemandNationalSection({ rows, fetchedAt, previous });
+    const my = section.countries.MY;
+    console.log(`  National product demand: MY ${my ? `${my.year} (${section.status}${section.carriedForward ? ', carried forward' : ''})` : 'none'}`);
+    return section;
+  } catch (err) {
+    console.warn(`  National product demand unavailable: ${err.message}`);
+    return productDemandNationalSection({ error: err, fetchedAt, previous });
+  }
+}
+
 // ── PortWatch AIS ───────────────────────────────────────────────────────────
 
 const PORTWATCH_PORTS_URL =
@@ -614,9 +967,12 @@ export function contentMeta(data) {
   return { newestItemAt: endOf(months.at(-1)), oldestItemAt: endOf(months[0]) };
 }
 
-export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
+export async function fetchOilTradeSeries({ nowMs = Date.now(), fetchDeadlineAtMs = Infinity } = {}) {
   // Best effort: a failed source keeps these months instead of being nulled.
   const previous = await readSeedSnapshot(OIL_TRADE_CANONICAL_KEY).catch(() => null);
+  // EPDK is a different host from every other source: start it now, on its own budget.
+  const nationalOrigin = fetchCrudeImportOriginNational(nowMs, previous?.crudeImportOriginNational, fetchDeadlineAtMs);
+  const nationalDemand = fetchProductDemandNational(nowMs, previous?.productDemandNational);
   const failed = { production: false, jodi: false };
   let eia = new Map();
   let jodi = new Map();
@@ -685,6 +1041,10 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
   }));
   // Stable key order regardless of completion order.
   const ordered = Object.fromEntries(OIL_TRADE_COUNTRIES.map((c) => [c.iso2, countries[c.iso2]]));
+  // Two more keyed Comtrade calls, after the per-country lanes have drained.
+  const crudeImportOrigin = await fetchCrudeImportOrigin(nowMs, previous?.crudeImportOrigin);
+  const crudeImportOriginNational = await nationalOrigin;
+  const productDemandNational = await nationalDemand;
 
   return {
     generatedAt: new Date(nowMs).toISOString(),
@@ -692,6 +1052,9 @@ export async function fetchOilTradeSeries({ nowMs = Date.now() } = {}) {
     conversion: { crudeBblPerTonne: CRUDE_BBL_PER_TONNE, productsBblPerTonne: PRODUCTS_BBL_PER_TONNE },
     unavailable,
     countries: ordered,
+    crudeImportOrigin,
+    crudeImportOriginNational,
+    productDemandNational,
   };
 }
 
@@ -724,7 +1087,7 @@ export const seedOptions = {
 };
 
 if (process.argv[1]?.endsWith('seed-oil-trade-series.mjs')) {
-  runSeed('energy', 'oil-trade-series', OIL_TRADE_CANONICAL_KEY, () => fetchOilTradeSeries(), seedOptions).catch((err) => {
+  runSeed('energy', 'oil-trade-series', OIL_TRADE_CANONICAL_KEY, ({ fetchDeadlineAtMs } = {}) => fetchOilTradeSeries({ fetchDeadlineAtMs }), seedOptions).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
     process.exit(1);

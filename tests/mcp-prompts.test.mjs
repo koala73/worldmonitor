@@ -161,6 +161,53 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
     }
   });
 
+  for (const args of [null, 17, false, 'DE', [], ['DE']]) {
+    it(`prompts/get rejects malformed arguments container ${JSON.stringify(args)}`, async () => {
+      const res = await handler(makeReq('POST', {
+        jsonrpc: '2.0', id: 'bad-arguments', method: 'prompts/get',
+        params: { name: 'market-open-prep', arguments: args },
+      }));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.id, 'bad-arguments');
+      assert.equal(body.error?.code, -32602);
+      assert.equal(body.result, undefined);
+    });
+  }
+
+  for (const value of [null, 17, false, [], {}]) {
+    for (const [name, args] of [
+      ['country-view', { iso2: value }],
+      ['energy-shock-watch', { country: value }],
+      ['market-open-prep', { undeclared: value }],
+    ]) {
+      it(`prompts/get rejects non-string values for ${name}: ${JSON.stringify(args)}`, async () => {
+        const res = await handler(makeReq('POST', {
+          jsonrpc: '2.0', id: 3, method: 'prompts/get', params: { name, arguments: args },
+        }));
+        assert.equal(res.status, 200);
+        const body = await res.json();
+        assert.equal(body.error?.code, -32602);
+        assert.equal(body.result, undefined);
+      });
+    }
+  }
+
+  it('prompts/get preserves omitted, empty and string-map arguments', async () => {
+    let expected;
+    for (const args of [undefined, {}, { undeclared: '17' }]) {
+      const res = await handler(makeReq('POST', {
+        jsonrpc: '2.0', id: 4, method: 'prompts/get',
+        params: { name: 'market-open-prep', arguments: args },
+      }));
+      const body = await res.json();
+      assert.equal(body.error, undefined);
+      assert.ok(body.result?.messages?.length);
+      if (expected) assert.deepEqual(body.result, expected);
+      expected = body.result;
+    }
+  });
+
   it('renders an executable country-view step for interactive clients', async () => {
     const res = await handler(makeReq('POST', {
       jsonrpc: '2.0', id: 3, method: 'prompts/get',

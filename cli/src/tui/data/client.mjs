@@ -16,7 +16,10 @@ export class ApiError extends Error {
 }
 
 function trimSlash(url) {
-  return String(url || '').replace(/\/+$/, '');
+  const text = String(url || '');
+  let end = text.length;
+  while (end > 0 && text.charCodeAt(end - 1) === 47) end--;
+  return text.slice(0, end);
 }
 
 export function createClient(options = {}) {
@@ -40,6 +43,9 @@ export function createClient(options = {}) {
     try {
       const res = await fetchImpl(url, {
         ...init,
+        // Never follow redirects: fetch would forward the key or session
+        // token in X-WorldMonitor-Key to the target, even on another host.
+        redirect: 'manual',
         headers: { 'user-agent': userAgent, accept: 'application/json', ...(init.headers || {}) },
         signal: controller.signal,
       });

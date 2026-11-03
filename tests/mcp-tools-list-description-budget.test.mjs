@@ -49,8 +49,8 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       assert.equal(TOOL_DESCRIPTION_MAX_BYTES, 1024);
     });
 
-    it('TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES === 64 KiB and exceeds the per-tool cap times a few tools', () => {
-      assert.equal(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES, 65536);
+    it('TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES === 68 KiB and exceeds the per-tool cap times a few tools', () => {
+      assert.equal(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES, 69632);
       assert.ok(TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES > TOOL_DESCRIPTION_MAX_BYTES * 8);
     });
 
@@ -366,6 +366,7 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       }));
       const body = await res.json();
       assert.equal(res.status, 200);
+      if (tool_name === undefined) return body;
       assert.equal(body.error, undefined, `describe_tool returned JSON-RPC error: ${JSON.stringify(body.error)}`);
       return JSON.parse(body.result.content[0].text);
     }
@@ -497,7 +498,14 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
         const listed = tools.find(t => t.name === name).description;
         assert.ok(mod.utf8ByteLength(listed) <= mod.TOOL_DESCRIPTION_MAX_BYTES);
         assert.match(listed, /schedule/i);
-        assert.match(listed, /2023/);
+        if (name === 'get_tariff_averages') {
+          assert.match(listed, /coverage\.dataset/);
+          assert.match(listed, /coverage\.latestYear/);
+          assert.doesNotMatch(listed, /schedule rates through \d{4}|Series run from about 1990 to \d{4}/);
+          assert.match(listed, /US preferences.*2021/);
+        } else {
+          assert.match(listed, /2023/);
+        }
         assert.match(listed, /Section 301/);
         const full = await callDescribeTool(name);
         assert.match(full.description, /unilateral duties are NOT included/);
@@ -605,9 +613,10 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       assert.ok(env.available.includes('describe_tool'));
     });
 
-    it('describe_tool({}) returns {error: "missing_tool_name"}', async () => {
+    it('describe_tool({}) returns Invalid params', async () => {
       const env = await callDescribeTool(undefined);
-      assert.equal(env.error, 'missing_tool_name');
+      assert.equal(env.error?.code, -32602);
+      assert.equal(env.error.data.violations[0].field, 'tool_name');
     });
 
     // ============================================================
@@ -678,12 +687,16 @@ describe('api/mcp.ts — tools/list description budget (v1.34.0)', () => {
       assert.match(card.name, /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/, 'top-level name must be reverse-DNS (Server Card schema)');
 
       // tools[] must be a name+description projection of the live registry,
-      // plus the same access marker tools/list emits and the card-only
-      // category from api/mcp/domains.ts, in the same order.
+      // plus the same access marker and MCP Apps link tools/list emits and the
+      // card-only category from api/mcp/domains.ts, in the same order.
       const expected = TOOL_REGISTRY.map((t) => ({
         name: t.name,
         description: t.description,
-        _meta: { 'worldmonitor/access': toolAccess(t), 'worldmonitor/category': TOOL_CATEGORY_BY_NAME[t.name] },
+        _meta: {
+          ...(t._uiResourceUri ? { ui: { resourceUri: t._uiResourceUri } } : {}),
+          'worldmonitor/access': toolAccess(t),
+          'worldmonitor/category': TOOL_CATEGORY_BY_NAME[t.name],
+        },
       }));
       assert.deepEqual(
         card.tools,

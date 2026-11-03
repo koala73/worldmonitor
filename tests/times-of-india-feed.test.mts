@@ -93,7 +93,7 @@ describe('Times of India licensed India feed', () => {
     assert.equal(entry.attribution, `Credit ${SOURCE} and link to the original item.`);
     assert.deepEqual(
       entry.references.map((reference) => reference.path).sort(),
-      ['server/worldmonitor/news/v1/_feeds.ts', 'src/config/feeds.ts'],
+      ['shared/news-catalog.json'],
     );
     assert.doesNotMatch(
       `${entry.license} ${entry.attribution}`,

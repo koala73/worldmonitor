@@ -203,7 +203,7 @@ async function executeDashboardTool(
 
 async function readTargetCancellationSupported(page: Page, toolName: string): Promise<boolean> {
   return page.evaluate((name) => {
-    const marks = (window as Window & {
+    const marks = (window as unknown as {
       __wmLcpDebug?: {
         getSnapshot?: () => {
           marks: Array<{
@@ -247,9 +247,10 @@ async function executeDashboardToolObserved(
 
   const readStoredObservation = async (): Promise<ObservedToolResult | null> => {
     return page.evaluate((key) => {
+      // No removeItem: a read that loses its context mid-way must leave the
+      // observation for the retry, and the key is unique to this call.
       const raw = sessionStorage.getItem(key);
       if (raw == null) return null;
-      sessionStorage.removeItem(key);
       try {
         const parsed = JSON.parse(raw) as ObservedToolResult;
         if (!parsed || typeof parsed !== 'object' || typeof parsed.targetCancellationSupported !== 'boolean') {
@@ -284,7 +285,7 @@ async function executeDashboardToolObserved(
       }
       // Read the mark before returning. switch_monitor reloads on success, and
       // a later evaluate can land on the next document, which has no mark.
-      const supported = (window as Window & {
+      const supported = (window as unknown as {
         __wmLcpDebug?: {
           getSnapshot?: () => {
             marks: Array<{
@@ -321,8 +322,19 @@ async function executeDashboardToolObserved(
     if (!isEvaluateNavigationDestroyedError(error)) throw error;
   }
 
-  await page.waitForLoadState('domcontentloaded');
-  const recovered = await readStoredObservation();
+  // This read can lose its context too when the page navigates again after
+  // waitForLoadState resolves. Every CI failure of this test (five on
+  // 2026-10-24) died here, not in the tool call, so retry only that error.
+  let recovered: ObservedToolResult | null = null;
+  for (let attempt = 1; ; attempt++) {
+    await page.waitForLoadState('domcontentloaded');
+    try {
+      recovered = await readStoredObservation();
+      break;
+    } catch (error) {
+      if (!isEvaluateNavigationDestroyedError(error) || attempt === 5) throw error;
+    }
+  }
   if (!recovered) {
     throw new Error(
       `executeDashboardToolObserved(${name}): evaluation context was destroyed by navigation and no sessionStorage observation was found`,
@@ -666,7 +678,7 @@ async function installColdStartContextProbe(page: Page): Promise<void> {
     type ExecutableModelContext = WebMCP.ModelContext & {
       executeTool(tool: WebMCP.RegisteredTool, input: Record<string, unknown>): Promise<unknown>;
     };
-    type ProbeWindow = Window & {
+    type ProbeWindow = Omit<Window, '__wmLcpDebug'> & {
       __wmLcpDebug?: { getSnapshot?: () => { marks: ToolStartMark[] } };
       __wmWebMcpColdStartContext?: Promise<ColdStartContextProbe>;
     };

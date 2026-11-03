@@ -102,19 +102,33 @@ describe('App input', () => {
     const { app, saved } = makeApp();
     app.render();
     app.handleEvent({ type: 'key', name: 'tab' });
-    assert.equal(app.view.id, 'news');
+    assert.equal(app.view.id, 'map');
     app.handleEvent({ type: 'key', name: 'tab', shift: true });
     assert.equal(app.view.id, 'overview');
     app.handleEvent({ type: 'key', name: '9', ch: '9' });
-    assert.equal(app.view.id, 'live');
+    assert.equal(app.view.id, 'climate');
     app.handleEvent({ type: 'key', name: '0', ch: '0' });
-    assert.equal(app.view.id, 'intel');
-    assert.equal(saved[saved.length - 1].view, 'intel');
+    assert.equal(app.view.id, 'predict');
+    assert.equal(saved[saved.length - 1].view, 'predict');
     app.render();
     const tabRow = app.screen.toLines()[1];
-    const x = tabRow.indexOf('3:Markets');
+    const x = tabRow.indexOf('5:Markets');
     app.handleEvent({ type: 'mouse', kind: 'down', button: 0, x: x + 1, y: 1 });
     assert.equal(app.view.id, 'markets');
+  });
+  it('reaches the views past the tenth with Alt+digit, and 0 still jumps from the map', () => {
+    const { app, show } = makeApp();
+    app.handleEvent({ type: 'key', name: '1', ch: '1', alt: true });
+    assert.equal(app.view.id, app.views[10].id);
+    app.handleEvent({ type: 'key', name: '3', ch: '3', alt: true });
+    assert.equal(app.view.id, app.views[12].id);
+    const wide = makeApp({ cols: 260 }).app;
+    wide.render();
+    assert.ok(wide.screen.toLines()[1].includes(`A-1:${wide.views[10].label}`), 'tab bar shows the Alt hotkey');
+    show('map');
+    app.render();
+    app.handleEvent({ type: 'key', name: '0', ch: '0' });
+    assert.equal(app.view.id, app.views[9].id, '0 is the tenth view, not a map shortcut');
   });
   it('moves list selection with keys, wheel and clicks, and opens on second click', () => {
     const { app, show } = makeApp();
@@ -197,15 +211,18 @@ describe('App input', () => {
     assert.equal(saved.length, 0);
     assert.equal(app.prefs.theme, original);
   });
-  it('opens the selected link on Enter in views without a detail pane', () => {
+  it('expands the selected row on Enter, carrying its link, and closes on Escape', () => {
     const { app, show } = makeApp();
     show('climate');
     app.render();
-    const opened = [];
-    app.openSelected = () => opened.push(app.view.selectedUrl());
     assert.match(app.view.selectedUrl(), /^https:\/\/earthquake\.usgs\.gov\//);
     app.handleEvent({ type: 'key', name: 'enter' });
-    assert.equal(opened.length, 1);
+    assert.ok(app.detail, 'Enter expands the row into the detail overlay');
+    assert.match(app.detail.spec.url, /^https:\/\/earthquake\.usgs\.gov\//);
+    app.render();
+    assert.match(text(app), /Magnitude/);
+    app.handleEvent({ type: 'key', name: 'escape' });
+    assert.equal(app.detail, null);
   });
   it('toggles animations and help, and quits on q', () => {
     const { app, saved } = makeApp();

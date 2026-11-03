@@ -166,6 +166,21 @@ export interface GdeltTensionPair {
   trend: TrendDirection;
   changePercent: number;
   region: string;
+  evidence: TensionEvidence[];
+}
+
+export interface TensionEvidence {
+  channel: string;
+  value: number;
+  baseline?: number;
+  countries: string[];
+  airports: TensionEvidenceAirport[];
+  observedAt: number;
+}
+
+export interface TensionEvidenceAirport {
+  name: string;
+  status: string;
 }
 
 export interface ClassifyEventRequest {
@@ -186,6 +201,47 @@ export interface EventClassification {
   confidence: number;
   analysis: string;
   entities: string[];
+}
+
+export interface GetCountryHistoryRequest {
+  country: string;
+  days: number;
+}
+
+export interface GetCountryHistoryResponse {
+  country: string;
+  requestedDays: number;
+  allowedDays: number;
+  effectiveDays: number;
+  returnedDays: number;
+  points: CountryHistoryPoint[];
+  upstreamUnavailable: boolean;
+  stale: boolean;
+  fetchedAt: number;
+}
+
+export interface CountryHistoryPoint {
+  date: string;
+  capturedAt: number;
+  cii?: CountryHistoryScore;
+  resilience?: CountryHistoryScore;
+  topEvents: CountryHistoryEvent[];
+  keySignals: string[];
+  ciiVersionBreak: boolean;
+  resilienceVersionBreak: boolean;
+}
+
+export interface CountryHistoryScore {
+  score: number;
+  version: string;
+  observedAt: number;
+}
+
+export interface CountryHistoryEvent {
+  title: string;
+  link: string;
+  source: string;
+  category: string;
 }
 
 export interface GetCountryRiskRequest {
@@ -848,6 +904,29 @@ export interface GetCountryEnergyProfileResponse {
   importShareAvailable: boolean;
   importShareYear: number;
   importShareSource: string;
+  regionalEnergyFeeds: RegionalEnergyFeed[];
+}
+
+export interface RegionalEnergyFeed {
+  sourceId: string;
+  name: string;
+  sourceUrl: string;
+  licence: string;
+  status: string;
+  fetchedAt: number;
+  observedAt: number;
+  dataUrls: string[];
+  observations: RegionalEnergyObservation[];
+  error: string;
+}
+
+export interface RegionalEnergyObservation {
+  metric: string;
+  period: string;
+  value: number;
+  unit: string;
+  area: string;
+  stale: boolean;
 }
 
 export interface ComputeEnergyShockScenarioRequest {
@@ -879,6 +958,11 @@ export interface ComputeEnergyShockScenarioResponse {
   /** @deprecated */
   gasImpact?: GasImpact;
   gasSensitivity?: GasSensitivity;
+  preCrisisBaseline?: CrudeShareBaseline;
+  currentFlows?: CrudeShareBaseline;
+  /** @deprecated */
+  reserveEstimate?: ReserveEstimate;
+  reportedStocks?: ReportedStocks;
 }
 
 export interface ProductImpact {
@@ -921,6 +1005,8 @@ export interface GasSensitivity {
   dataSource: string;
   dataMonth: string;
   modelBasis: string;
+  preCrisisBaseline?: LngShareBaseline;
+  currentFlows?: LngShareBaseline;
 }
 
 export interface GasStorageObservation {
@@ -931,6 +1017,45 @@ export interface GasStorageObservation {
   scope: string;
 }
 
+export interface LngShareBaseline {
+  basis: string;
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+  hormuzLngShare: number;
+  lngDisruptionTj: number;
+}
+
+export interface CrudeShareBaseline {
+  basis: string;
+  fromMonth: string;
+  toMonth: string;
+  monthsCovered: number;
+  gulfCrudeShare: number;
+  crudeLossKbd: number;
+  crudeLossAfterBypassKbd?: number;
+}
+
+export interface ReserveEstimate {
+  scope: string;
+  asOf: string;
+  credibility: string;
+  lowMb: number;
+  centralMb: number;
+  highMb: number;
+  coverDaysLow?: number;
+  coverDaysHigh?: number;
+}
+
+export interface ReportedStocks {
+  source: string;
+  month: string;
+  crudeMb: number;
+  productsMb: number;
+  totalMb: number;
+  stockDays?: number;
+}
+
 export interface GetCountryPortActivityRequest {
   countryCode: string;
 }
@@ -939,6 +1064,7 @@ export interface CountryPortActivityResponse {
   ports: PortActivityEntry[];
   fetchedAt: string;
   available: boolean;
+  stale: boolean;
 }
 
 export interface PortActivityEntry {
@@ -1327,6 +1453,7 @@ export interface IntelligenceServiceHandler {
   getRiskScores(ctx: ServerContext, req: GetRiskScoresRequest): Promise<GetRiskScoresResponse>;
   getPizzintStatus(ctx: ServerContext, req: GetPizzintStatusRequest): Promise<GetPizzintStatusResponse>;
   classifyEvent(ctx: ServerContext, req: ClassifyEventRequest): Promise<ClassifyEventResponse>;
+  getCountryHistory(ctx: ServerContext, req: GetCountryHistoryRequest): Promise<GetCountryHistoryResponse>;
   getCountryRisk(ctx: ServerContext, req: GetCountryRiskRequest): Promise<GetCountryRiskResponse>;
   getCountryIntelBrief(ctx: ServerContext, req: GetCountryIntelBriefRequest): Promise<GetCountryIntelBriefResponse>;
   getCountryCoverage(ctx: ServerContext, req: GetCountryCoverageRequest): Promise<GetCountryCoverageResponse>;
@@ -1407,7 +1534,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1454,7 +1581,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1501,7 +1628,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1551,7 +1678,55 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/get-country-history",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetCountryHistoryRequest = {
+            country: params.get("country") ?? "",
+            days: Number(params.get("days") ?? "0"),
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getCountryHistory", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getCountryHistory(ctx, body);
+          return new Response(JSON.stringify(result as GetCountryHistoryResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1598,7 +1773,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1646,7 +1821,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1695,7 +1870,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1746,7 +1921,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1789,7 +1964,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1836,7 +2011,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1883,7 +2058,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1930,7 +2105,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -1979,7 +2154,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2028,7 +2203,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2077,7 +2252,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2126,7 +2301,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2177,7 +2352,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2225,7 +2400,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2272,7 +2447,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2309,7 +2484,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2356,7 +2531,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2393,7 +2568,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2440,7 +2615,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2477,7 +2652,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2514,7 +2689,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2561,7 +2736,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2611,7 +2786,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2658,7 +2833,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2695,7 +2870,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2742,7 +2917,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2790,7 +2965,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2837,7 +3012,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2880,7 +3055,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2932,7 +3107,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },
@@ -2975,7 +3150,7 @@ export function createIntelligenceServiceRoutes(
           if (options?.onError) {
             return options.onError(err, req);
           }
-          const message = err instanceof Error ? err.message : String(err);
+          const message = "Internal server error";
           return new Response(JSON.stringify({ message }), {
             status: 500,
             headers: { "Content-Type": "application/json" },

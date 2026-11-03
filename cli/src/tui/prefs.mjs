@@ -3,7 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export const DEFAULT_PREFS = { theme: 'neon', animations: true, view: 'overview' };
+// map: the map view's position, layers and imagery choices (views/map.mjs).
+export const DEFAULT_PREFS = { theme: 'neon', animations: true, view: 'overview', map: null };
 
 export function prefsPath(env = process.env, home = homedir()) {
   const base = env.XDG_CONFIG_HOME || join(home, '.config');

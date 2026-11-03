@@ -46,6 +46,7 @@ export const predictionPanelReadSchema = z.object({
   category: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['geopolitical', 'tech', 'finance']).optional()),
   source: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined).pipe(z.enum(['kalshi', 'polymarket']).optional()),
   query: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined),
+  min_liquidity: z.number().finite().min(0).optional().transform(value => value || undefined),
   limit: z.number().default(30),
 }).strict();
 export const predictionPanelViewSchema = predictionPanelReadSchema.extend({
@@ -55,10 +56,22 @@ export const predictionPanelViewSchema = predictionPanelReadSchema.extend({
 
 export const conflictPanelAdmissionSchema = panelReceiptSchema.extend({ panel: z.literal('conflicts') });
 export type ConflictPanelAdmission = z.infer<typeof conflictPanelAdmissionSchema>;
+// Area and age filters shared by the conflict and disaster panels. Range and
+// combination rules are enforced earlier by the MCP argument validator.
+const latitude = z.number().finite().min(-90).max(90);
+const longitude = z.number().finite().min(-180).max(180);
+const eventAreaFields = {
+  bbox: z.object({ sw_lat: latitude, sw_lon: longitude, ne_lat: latitude, ne_lon: longitude }).strict().optional(),
+  lat: latitude.optional(),
+  lon: longitude.optional(),
+  radius_km: z.number().finite().positive().max(2000).optional(),
+  since_days: z.number().int().min(1).max(365).optional(),
+};
 export const conflictPanelReadSchema = z.object({
   country: z.string().optional().transform(value => value?.trim().toLowerCase() || undefined),
   min_fatalities: z.number().finite().optional(),
   limit: z.number().finite().default(30),
+  ...eventAreaFields,
 }).strict();
 export const conflictPanelViewSchema = conflictPanelReadSchema.extend({
   refresh: z.boolean().default(false),
@@ -72,6 +85,7 @@ export const disasterPanelReadSchema = z.object({
   min_magnitude: z.number().finite().optional(),
   active_only: z.boolean().optional(),
   limit: z.number().finite().default(30),
+  ...eventAreaFields,
 }).strict();
 export const disasterPanelViewSchema = disasterPanelReadSchema.extend({
   refresh: z.boolean().default(false),
@@ -83,6 +97,7 @@ export type NewsIntelligencePanelAdmission = z.infer<typeof newsIntelligencePane
 export const newsIntelligencePanelReadSchema = z.object({
   topic: z.unknown().optional(), category: z.unknown().optional(), country: z.unknown().optional(),
   alerts_only: z.unknown().optional(), query: z.unknown().optional(), min_importance: z.unknown().optional(), limit: z.unknown().optional(),
+  stories_cursor: z.unknown().optional(),
 }).strict();
 export const newsIntelligencePanelViewSchema = newsIntelligencePanelReadSchema.extend({
   refresh: z.boolean().default(false), request_id: z.string().uuid().optional(),

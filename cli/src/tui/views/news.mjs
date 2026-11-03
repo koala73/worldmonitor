@@ -33,8 +33,8 @@ export class NewsView extends PaneView {
   }
 
   activate(pane) {
-    if (pane === 'items' && this.selectedUrl()) this.app.openSelected();
     if (pane === 'cats') this.focus = 1;
+    else super.activate(pane);
   }
 
   onKey(ev) {
@@ -52,7 +52,7 @@ export class NewsView extends PaneView {
   }
 
   hints() {
-    return '[ ] category  o open';
+    return '[ ] category  Enter expand  o open';
   }
 
   render(ctx, r) {

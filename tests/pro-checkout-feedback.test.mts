@@ -41,11 +41,19 @@ async function fixture(options: {
   browser = new Window({ url: 'https://www.worldmonitor.app/pro#pricing' });
   const navigations: string[] = [];
   const signIns: unknown[] = [];
+  const pageListeners = new Map<string, Set<(event: { persisted: boolean }) => void>>();
   let requests = 0;
   const globals: Record<string, unknown> = {
     document: browser.document,
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; },
     window: {
+      addEventListener: (type: string, fn: (event: { persisted: boolean }) => void) => {
+        if (!pageListeners.has(type)) pageListeners.set(type, new Set());
+        pageListeners.get(type)!.add(fn);
+      },
+      removeEventListener: (type: string, fn: (event: { persisted: boolean }) => void) => {
+        pageListeners.get(type)?.delete(fn);
+      },
       location: { href: browser.location.href, assign: (url: string) => navigations.push(url) },
       sessionStorage: browser.sessionStorage,
       umami: { track() {} },
@@ -75,7 +83,10 @@ async function fixture(options: {
   const checkout = await import(`${moduleUrl}#${Math.random()}`);
   const phases: Array<{ kind: string; productId?: string }> = [];
   checkout.subscribeCheckoutPhase((phase: { kind: string }) => phases.push(phase));
-  return { checkout, phases, navigations, signIns, requests: () => requests, options };
+  const firePageShow = (persisted: boolean) => {
+    for (const fn of [...(pageListeners.get('pageshow') ?? [])]) fn({ persisted });
+  };
+  return { checkout, phases, navigations, signIns, requests: () => requests, options, firePageShow };
 }
 
 for (const [name, options] of [
@@ -115,7 +126,63 @@ it('clears the old error and redirects when a later attempt succeeds', async () 
   assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
   assert.ok(document.querySelector('[role="alert"]'));
   f.options.response = async () => Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
-  assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
-  assert.deepEqual(f.navigations, ['https://checkout.dodopayments.com/test']);
-  assert.equal(document.querySelector('[role="alert"]'), null);
+  // The redirect hold arms a timer that must not outlive the test.
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    assert.deepEqual(f.navigations, ['https://checkout.dodopayments.com/test']);
+    assert.equal(document.querySelector('[role="alert"]'), null);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+// `location.assign` only starts navigation: this page stays clickable until
+// Dodo's page loads. Releasing the guard on return let a second click create a
+// second Dodo session (same-account pairs 1-3 s apart in checkoutSessionEvents).
+it('refuses a second checkout while the redirect to Dodo is in progress', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+    assert.equal(await f.checkout.startCheckout('other-product'), false);
+    assert.equal(f.requests(), 1);
+    assert.deepEqual(f.navigations, ['https://checkout.dodopayments.com/test']);
+    assert.equal(f.phases.at(-1)?.kind, 'creating_checkout');
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+it('re-enables checkout when the buyer comes back from Dodo through the back-forward cache', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    f.firePageShow(false);
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), false, 'a non-restored pageshow is the first load, not a return');
+    f.firePageShow(true);
+    assert.equal(f.phases.at(-1)?.kind, 'idle');
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    assert.equal(f.requests(), 2);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+it('releases checkout when the redirect never leaves the page', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    mock.timers.tick(14_999);
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+    mock.timers.tick(1);
+    assert.equal(f.phases.at(-1)?.kind, 'idle');
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    assert.equal(f.requests(), 2);
+  } finally {
+    mock.timers.reset();
+  }
 });

@@ -171,6 +171,7 @@ export class ListView {
     this.height = 1;
     this.lastClickAt = 0;
     this.lastClickIndex = -1;
+    this.items = null; // the array drawn last, so views can expand the selected row
   }
 
   setCount(n) {
@@ -249,6 +250,7 @@ export class ListView {
     const rowHeight = opts.rowHeight || 1;
     const focused = opts.focused !== false;
     this.height = Math.max(1, Math.floor(r.h / rowHeight));
+    this.items = items;
     this.setCount(items.length);
     const showBar = items.length > this.height && r.w > 4;
     const width = r.w - (showBar ? 1 : 0);

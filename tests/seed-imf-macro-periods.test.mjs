@@ -9,6 +9,7 @@ test('macro retains each displayed metric period without executing the live seed
     GGXONLB_NGDP: { USA: { 2025: -7 } },
     GGX_NGDP: { USA: { 2024: 40 } },
     GGR_NGDP: { USA: { 2025: 30 } },
+    BCA_NGDPD: { USA: { 2024: -3 } },
     PCPI: { USA: { 2026: 'NaN' } },
   };
   globalThis.__imfPeriodIndicators = indicators;
@@ -28,10 +29,10 @@ test('macro retains each displayed metric period without executing the live seed
   });
   const macro = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
   const data = await macro.fetchImfMacro();
-  assert.deepEqual(data.countries.US.periods, { inflationPct: 2026, primaryBalancePct: 2025, govExpenditurePct: 2024, govRevenuePct: 2025 });
-  assert.deepEqual(data.countries.FR.periods, { inflationPct: 2025, primaryBalancePct: null, govExpenditurePct: null, govRevenuePct: null });
+  assert.deepEqual(data.countries.US.periods, { inflationPct: 2026, primaryBalancePct: 2025, govExpenditurePct: 2024, govRevenuePct: 2025, currentAccountPct: 2024 });
+  assert.deepEqual(data.countries.FR.periods, { inflationPct: 2025, primaryBalancePct: null, govExpenditurePct: null, govRevenuePct: null, currentAccountPct: null });
   const { periods, ...legacy } = data.countries.US;
-  assert.deepEqual(legacy, { inflationPct: 0, currentAccountPct: null, govRevenuePct: 30, cpiIndex: null, cpiEopPct: null, govExpenditurePct: 40, primaryBalancePct: -7, year: 2026, latestYear: 2026 });
+  assert.deepEqual(legacy, { inflationPct: 0, currentAccountPct: -3, govRevenuePct: 30, cpiIndex: null, cpiEopPct: null, govExpenditurePct: 40, primaryBalancePct: -7, year: 2026, latestYear: 2026 });
   assert.deepEqual(Object.keys(data.countries).sort(), ['FR', 'US']);
   assert.equal(data.seededAt, '2026-10-16T00:00:00.000Z');
 });

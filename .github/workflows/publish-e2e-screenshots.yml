@@ -15,7 +15,7 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.path == '.github/workflows/e2e-visual.yml' &&
-      contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event.workflow_run.event) &&
+      contains(fromJSON('["schedule","workflow_dispatch"]'), github.event.workflow_run.event) &&
       github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 10

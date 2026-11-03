@@ -44,6 +44,7 @@ export async function launchTui({ options = {}, config = {}, env = process.env, 
     createViews,
     player: detectPlayer(env),
     apiKeyPresent: Boolean(apiKey),
+    fetchImpl,
   });
 
   const fps = Math.max(5, Math.min(60, Number(options.fps) || 20));

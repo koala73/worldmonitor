@@ -38,16 +38,55 @@ Switch views with the number keys, `Tab` / `Shift+Tab`, or by clicking a tab.
 | Key | View | What it shows |
 |---|---|---|
 | `1` | Overview | World map with live markers and a radar sweep, AI world brief, ranked top stories, market strip, theater posture |
-| `2` | News | Digest sections with ranked, threat-classified headlines and a story detail pane |
-| `3` | Markets | Indices, commodities, FX and crypto with sparklines, sector heatmap, macro signals, fear & greed, ETF flows, stablecoins, Gulf markets |
-| `4` | Conflict | Country instability (CII) ranking, UCDP armed-conflict events, unrest, theater posture, correlation cards |
-| `5` | Air & Sea | Military aircraft on the map, airport delays, chokepoints, vessel density, shipping stress, freight indices |
-| `6` | Cyber | Threat indicators, DDoS protocol and vector mix, service status, internet outages, traffic anomalies |
-| `7` | Climate | Earthquakes, natural hazards, disease outbreaks, weather alerts, climate anomalies, planetary vitals |
-| `8` | Predict | Prediction markets by domain and AI scenario forecasts |
-| `9` | Live | Live news channels and webcams, played in the terminal or the browser |
-| `0` | Intel | GDELT topics, sanctions pressure, travel advisories, social velocity, US spending awards, tech events |
-| `Tab` from Intel | System | Platform health, per-source freshness, theme and animation settings, video player status |
+| `2` | Map | Zoomable world map and rotating globe with every dashboard layer, NASA satellite imagery, day/night terminator, hover highlighting, info cards, search |
+| `3` | Brief | The AI world brief as a page: numbered story lines beside the sources they cite and related live headlines |
+| `4` | News | Digest sections with ranked, threat-classified headlines and a story detail pane |
+| `5` | Markets | Indices, commodities, FX and crypto with sparklines, sector heatmap, macro signals, fear & greed, ETF flows, stablecoins, Gulf markets |
+| `6` | Conflict | Country instability (CII) ranking, UCDP armed-conflict events, unrest, theater posture, correlation cards |
+| `7` | Air & Sea | Military aircraft on the map, airport delays, chokepoints, vessel density, shipping stress, freight indices |
+| `8` | Cyber | Threat indicators, DDoS protocol and vector mix, service status, internet outages, traffic anomalies |
+| `9` | Climate | Earthquakes, natural hazards, disease outbreaks, weather alerts, climate anomalies, planetary vitals |
+| `0` | Predict | Prediction markets by domain and AI scenario forecasts |
+| `Alt+1` | Live | Live news channels and webcams, played in the terminal or the browser |
+| `Alt+2` | Intel | GDELT topics, sanctions pressure, travel advisories, social velocity, US spending awards, tech events |
+| `Alt+3` | System | Platform health, per-source freshness, theme and animation settings, video player status |
+
+Every row in every view expands: `Enter` (or a second click) opens a scrollable detail overlay with the full record; `o` opens its link, `Esc` closes it.
+
+### Map
+
+<Frame caption="Map: the flat world map with the default layers, the toolbar above and the layers panel on the right.">
+  <img src="/images/tui/map.webp" alt="Map view with live layers over the world map and the layers panel" />
+</Frame>
+
+The Map view draws the world from the dashboard's own 50 m country geometry, so it zooms from the whole planet to a city without losing detail.
+
+| Key | Action |
+|---|---|
+| Drag, `←` `→` `↑` `↓` (`h` `j` `k` `l`) | Pan (`Shift` pans faster) |
+| Wheel, `+` / `-` | Zoom at the cursor / around the centre |
+| `g` | Switch between the flat map and the globe. The globe rotates slowly while idle; `p` pauses it |
+| `s` | Satellite imagery on / off |
+| `i` | Cycle imagery: NASA Blue Marble, the latest daily VIIRS true-colour mosaic, Black Marble night lights |
+| `d` | Day/night terminator on / off (shades the night side; with imagery it blends in the night lights) |
+| `L` | Layers panel: opens it focused, then focuses the map, then hides it. `Space` / click toggles a layer, group headers toggle the whole group, `ALL` / `NONE` / `DEFAULT` buttons |
+| Hover | Highlights the feature's whole layer and dims everything else; the card shows name, coordinates, both ends of a cable, pipeline or route, and its facts. With nothing under the cursor the card names the country (with its CII and sanctions status when those overlays are on) |
+| Click | Pin the feature (click it again for details); `c` or `Esc` unpins |
+| `Enter` | Full record for the pinned or hovered feature; `m` inside the overlay recentres the map on it |
+| `/` | Search features and countries by name; `Enter` jumps and pins, `n` / `N` step through the results |
+| `z` | Reset the view |
+
+Layers: undersea cables with landing points, pipelines with live operator status, energy storage, energy disruptions, AI data centers, cloud regions, ports, airports with FAA delays, chokepoints with live transit status, trade routes, fuel shortages, military bases, nuclear sites, gamma irradiators, radiation monitors, spaceports, military aircraft (dead-reckoned along their heading between updates), surveillance satellites propagated from their orbital elements (ground track when focused), intel hotspots with theater posture, conflict zones, UCDP conflict events, earthquakes (recent strong ones pulse), fires and thermal anomaly clusters, storms and natural events, GDACS disaster alerts, severe-weather alert polygons, Canadian emergency alerts and road incidents, climate anomalies, disease outbreaks, protests and unrest, internet outages, BGP anomalies, cyber threat infrastructure, positive events, ship-traffic density, AIS disruptions, economic centers, stock exchanges, financial centers, central banks, commodity hubs, Gulf investments, mines and critical minerals, tech HQs, AI labs, startup hubs, plus the CII and sanctions choropleths, graticule, borders and country names as overlays. The view and the layer choices persist between runs.
+
+Imagery is requested from NASA GIBS without a key, for exactly the visible area, and painted as half-block cells; nothing else leaves your machine. Satellite elements, military aircraft and the vessel snapshot use the same anonymous session as the browser.
+
+### Brief
+
+<Frame caption="Brief: the AI world brief and its story lines on the left; the sources and coverage behind the selected line on the right.">
+  <img src="/images/tui/brief.webp" alt="Brief view with story lines and the cited source and related headlines" />
+</Frame>
+
+The Brief view shows the AI world brief as a page: the brief paragraph and its numbered story lines on the left, and on the right what the selected line is talking about: the sources it cites (`[n]`) first, then headlines from the live digest that share its keywords and matching ranked stories. `Enter` on a line jumps to that pane; `Enter` on an item expands it, `o` opens it in the browser.
 
 ### News
 
@@ -55,7 +94,7 @@ Switch views with the number keys, `Tab` / `Shift+Tab`, or by clicking a tab.
   <img src="/images/tui/news.webp" alt="News view with sections, ranked headlines and story detail" />
 </Frame>
 
-`[` and `]` change the section. `Enter` or `o` opens the selected story in your browser.
+`[` and `]` change the section. `Enter` expands the selected story; `o` opens it in your browser.
 
 ### Markets
 
@@ -137,12 +176,12 @@ Every action works from the keyboard, and tabs, rows and buttons are clickable. 
 
 | Key | Action |
 |---|---|
-| `1`–`9`, `0` | Jump to a view |
+| `1`–`9`, `0`, `Alt+1`–`Alt+3` | Jump to a view |
 | `Tab` / `Shift+Tab` | Next / previous view |
 | `←` `→` or `h` `l` | Move between panes |
 | `↑` `↓` or `j` `k` | Move in a list |
 | `PgUp` `PgDn`, `g` `G` | Page, first, last |
-| `Enter` | Open the selected item |
+| `Enter` | Expand the selected item into a detail overlay (`Esc` closes, `↑` `↓` scroll) |
 | `o` | Open the selected link in the browser |
 | `t` / `T` | Next theme / theme picker |
 | `a` | Toggle animations |

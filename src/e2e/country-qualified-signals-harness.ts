@@ -4,7 +4,7 @@ import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { countrySignalsFromMilitary } from '@/services/country-signals';
 import { initI18n } from '@/services/i18n';
 import { COUNTRY_SIGNAL_FAMILIES, projectQualifiedCountrySignals, unavailableCountrySignal } from '../../shared/country-signal-observations';
-import { qualifiedFixtureOutcomes } from '../../tests/fixtures/qualified-country-signals';
+import { qualifiedFixtureOutcomes } from './fixtures/qualified-country-signals';
 
 await initI18n({ waitForFullTranslation: true });
 const panel = new CountryDeepDivePanel();

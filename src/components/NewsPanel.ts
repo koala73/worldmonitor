@@ -16,11 +16,6 @@ import {
   renderPrimarySourceProvenance,
 } from './news/source-provenance';
 import { describePublisherRoster, renderPublisherRosterHtml } from './news/publisher-roster';
-import {
-  coverageBadgeString,
-  type CoverageStringKey,
-  type SourceCoverage,
-} from './news/source-coverage';
 
 
 type SortMode = 'relevance' | 'newest';
@@ -76,19 +71,6 @@ export class NewsPanel extends Panel {
   private lastRawClusters: ClusteredEvent[] | null = null;
   private lastRawItems: NewsItem[] | null = null;
   private relatedAssetTableRefreshPending = false;
-
-  /**
-   * How much of this category's enabled source list the panel is actually
-   * showing, or `null` when it shows all of it (#5873).
-   *
-   * Only a CUSTOM category sets this. It is never in the per-variant server
-   * digest, so it rotates through its sources a capped window at a time and
-   * accumulates — which means that for the first few refresh cycles the panel
-   * is genuinely incomplete while the Sources manager lists every source as
-   * enabled. Saying so on the badge is the difference between a panel that is
-   * partial and a panel that lies about being complete.
-   */
-  private sourceCoverage: SourceCoverage | null = null;
   private refreshDegraded = false;
   private renderedBadgeState: 'none' | 'live' | 'cached' | 'unavailable' = 'none';
 
@@ -338,6 +320,7 @@ export class NewsPanel extends Panel {
   }
 
   private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
+    if (element.hasAttribute('disabled')) return;
     // Target language for the translation, so the full tag — same reason as
     // handleSummarize above. The `en` short-circuit is unaffected: no tag that
     // resolves to a Chinese catalogue equals 'en'.
@@ -348,13 +331,19 @@ export class NewsPanel extends Panel {
     if (!titleEl) return;
 
     const originalText = titleEl.textContent || '';
+    const item = element.closest('.item');
+    item?.querySelector('.item-translation-error')?.remove();
 
     // Visual feedback
     setTrustedHtml(element, trustedHtml('...', "legacy direct innerHTML migration"));
+    element.setAttribute('disabled', '');
     element.style.pointerEvents = 'none';
 
     try {
-      const translated = await this.newsServices.translateText(text, currentLang);
+      const translated = await this.newsServices.translateText(text, currentLang).catch((e) => {
+        console.error('Translation failed', e);
+        return null;
+      });
       if (!this.element?.isConnected) return;
       if (translated) {
         titleEl.textContent = translated;
@@ -364,14 +353,15 @@ export class NewsPanel extends Panel {
         element.classList.add('translated');
       } else {
         setTrustedHtml(element, trustedHtml('文', "legacy direct innerHTML migration"));
-        // Shake animation or error state could be added here
+        const error = document.createElement('span');
+        error.className = 'item-translation-error';
+        error.setAttribute('role', 'status');
+        error.textContent = t('components.newsPanel.translationUnavailable');
+        item?.appendChild(error);
       }
-    } catch (e) {
-      if (!this.element?.isConnected) return;
-      console.error('Translation failed', e);
-      setTrustedHtml(element, trustedHtml('文', "legacy direct innerHTML migration"));
     } finally {
       if (element.isConnected) {
+        element.removeAttribute('disabled');
         element.style.pointerEvents = 'auto';
       }
     }
@@ -460,21 +450,6 @@ export class NewsPanel extends Panel {
   }
 
   /**
-   * Declare how many of the category's enabled sources this panel is showing.
-   *
-   * Pass `null` for the normal case (digest-backed, or every source fetched) —
-   * the badge then reads plain `LIVE` as before. The value is stored rather
-   * than painted directly so it survives the re-renders that don't reload data
-   * (time-range filter changes, sort toggles).
-   */
-  public setSourceCoverage(coverage: SourceCoverage | null): void {
-    this.sourceCoverage = coverage;
-    if (this.renderedBadgeState === 'live' || this.renderedBadgeState === 'cached') {
-      this.renderCurrentDataBadge();
-    }
-  }
-
-  /**
    * Retained headlines remain useful when a refresh window fails, but they
    * must not be relabelled LIVE by time-range or sort re-renders.
    */
@@ -485,14 +460,10 @@ export class NewsPanel extends Panel {
     }
   }
 
-  private coverageString(key: CoverageStringKey): string | undefined {
-    return coverageBadgeString(this.sourceCoverage, key, (path, vars) => t(path, vars));
-  }
-
   private renderCurrentDataBadge(): void {
     const state = this.refreshDegraded ? 'cached' : 'live';
     this.renderedBadgeState = state;
-    this.setDataBadge(state, this.coverageString('sourceCoverage'), this.coverageString('sourceCoverageHint'));
+    this.setDataBadge(state);
   }
 
   public renderNews(items: NewsItem[]): void {

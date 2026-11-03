@@ -1,6 +1,7 @@
 import { clearTelegramIntelCache } from '@/services/telegram-intel';
 import { subscribeRuntimeConfig } from '@/services/runtime-config';
 import type { AppContext, AppModule } from '@/app/app-context';
+import type { LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { CORRELATION_DOMAINS } from '@/types/correlation';
 import type { CorrelationPanel } from '@/components/CorrelationPanel';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
@@ -47,6 +48,7 @@ import {
 import { BETA_MODE } from '@/config/beta';
 import { NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, trackLayoutCustomized, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents, replayPendingMissionReturn } from '@/services/analytics';
 import { ProPreviewSection } from '@/components/ProPreviewSection';
@@ -274,6 +276,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
+  'fao-food-price-index': { rowSpan: 3 },
   'global-procurement': { rowSpan: 2 },
   'energy-complex': { rowSpan: 2 },
   'energy-crisis': { rowSpan: 2 },
@@ -421,7 +424,7 @@ export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
   openSearch: () => void;
-  loadAllData: (forceAll?: boolean) => Promise<void>;
+  loadAllData: (forceAll?: boolean, trigger?: LoadAllDataTrigger) => Promise<void>;
   primeVisiblePanelData: () => void;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
@@ -1264,7 +1267,7 @@ export class PanelLayoutManager implements AppModule {
         <div class="map-section${mapStartsCollapsed ? ' collapsed' : ''}" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
-              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
+              <span class="panel-title">${escapeHtml(getPanelDisplayName('map'))}</span>
             </div>
             <span class="header-clock" id="headerClock" translate="no"></span>
             <div class="map-header-actions">
@@ -2970,6 +2973,15 @@ export class PanelLayoutManager implements AppModule {
       return p;
     });
 
+    this.lazyImportedPanel('ukmto-incidents', () => import('@/components/UkmtoIncidentsPanel'), 'UkmtoIncidentsPanel', (UkmtoIncidentsPanel) => {
+      const panel = new UkmtoIncidentsPanel();
+      panel.setLocationClickHandler((lat: number, lon: number) => {
+        if (this.ctx.isMobile) this.revealMobileMap();
+        this.ctx.map?.setCenter(lat, lon, 6);
+      });
+      return panel;
+    });
+
     this.lazyImportedPanel('climate', () => import('@/components/ClimateAnomalyPanel'), 'ClimateAnomalyPanel', (ClimateAnomalyPanel) => {
       const p = new ClimateAnomalyPanel();
       p.setZoneClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
@@ -3557,7 +3569,7 @@ export class PanelLayoutManager implements AppModule {
 
   private scheduleLoadAllData(phase: HydrationSchedulePhase = 'near'): void {
     if (typeof window === 'undefined') {
-      void this.callbacks.loadAllData();
+      void this.callbacks.loadAllData(false, 'viewport');
       return;
     }
     const mark = (label: string) => {
@@ -3572,7 +3584,7 @@ export class PanelLayoutManager implements AppModule {
         this.scheduledLoadAllIdle = idle(() => {
           this.scheduledLoadAllIdle = null;
           mark('wm:hydration:near-trigger');
-          void this.callbacks.loadAllData();
+          void this.callbacks.loadAllData(false, 'viewport');
         }, { timeout: 300 });
         return;
       }
@@ -3586,7 +3598,7 @@ export class PanelLayoutManager implements AppModule {
     this.scheduledLoadAllRaf = window.requestAnimationFrame(() => {
       this.scheduledLoadAllRaf = null;
       mark(`wm:hydration:${phase}-trigger`);
-      void this.callbacks.loadAllData();
+      void this.callbacks.loadAllData(false, 'viewport');
     });
   }
 
@@ -4598,13 +4610,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   getLocalizedPanelName(panelKey: string, fallback: string): string {
-    if (panelKey === 'runtime-config') {
-      return t('modals.runtimeConfig.title');
-    }
-    const key = panelKey.replace(/-([a-z])/g, (_match, group: string) => group.toUpperCase());
-    const lookup = `panels.${key}`;
-    const localized = t(lookup);
-    return localized === lookup ? fallback : localized;
+    return getPanelDisplayName(panelKey, fallback);
   }
 
 }

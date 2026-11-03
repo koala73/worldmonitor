@@ -1204,8 +1204,8 @@ describe('durable last-good wiring (#7084)', () => {
     const currentRevocations = new Set(['https://a/old-1', 'https://a/old-2']);
     const current = measure(incumbent, currentRevocations);
     const next = measure(candidate, currentRevocations);
-    assert.deepEqual(current, { categoryCount: 1, itemCount: 1 });
-    assert.deepEqual(next, { categoryCount: 1, itemCount: 2 });
+    assert.deepEqual(current, { categoryCount: 1, itemCount: 1, totalCategoryCount: 1 });
+    assert.deepEqual(next, { categoryCount: 1, itemCount: 2, totalCategoryCount: 1 });
     assert.equal(
       shouldReplaceAccepted({ acceptedAt: Date.now(), ...current }, next, Date.now()).replace,
       true,
@@ -1282,7 +1282,9 @@ describe('durable last-good wiring (#7084)', () => {
     assert.equal(cmd[5], attemptMetaKey('full', 'en'));
     assert.equal(cmd[6], 'news:digest:v1:full:en');
     assert.ok(Number(cmd[7]) >= before && Number(cmd[7]) <= after);
-    assert.equal(cmd.at(-1), String(ATTEMPT_META_TTL_S));
+    // ARGV[10] is the attempt TTL; 11 and 12 carry the gate exemptions and
+    // the catalog fingerprint.
+    assert.equal(cmd.at(-3), String(ATTEMPT_META_TTL_S));
     const recovered = await mod.__testing__.recoverFailedAttempt('full', 'en', { at: '', reason: 'build-error' });
     assert.equal(recovered.reason, 'gate-held');
     assert.equal(recovered.at, new Date(Number(cmd[7])).toISOString());

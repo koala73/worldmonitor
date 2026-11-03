@@ -23,6 +23,14 @@ const generatedGetRoutes = walk(join(root, 'src/generated/server'))
 const premiumPaths = new Set([...read('src/shared/premium-paths.ts').matchAll(/'(\/api\/[^']+)'/g)].map(m => m[1]));
 
 describe('widget data request boundary', () => {
+  it('preserves repeated scorecard bloc members advertised to the agent', () => {
+    const bloc = RPCS.find(({ path }) => path === '/api/scorecard/v1/get-bloc-scorecard');
+    assert.match(bloc.params, /members=US&members=CA/);
+    assert.doesNotMatch(bloc.params, /comma-separated/);
+    const url = buildWidgetDataUrl(`${bloc.path}?members=US&members=CA`);
+    assert.deepEqual(url.searchParams.getAll('members'), ['US', 'CA']);
+  });
+
   for (const [endpoint, params] of [
     ['/api/bootstrap?keys=marketQuotes,cryptoQuotes', undefined],
     ['/api/bootstrap', { keys: 'weatherAlerts' }],

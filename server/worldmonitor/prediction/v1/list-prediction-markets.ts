@@ -30,6 +30,7 @@ interface BootstrapMarket {
   change24h?: number;
   change7d?: number;
   volume: number;
+  liquidity?: number;
   url: string;
   endDate?: string;
   source?: 'kalshi' | 'polymarket';
@@ -78,6 +79,10 @@ function dedupeBootstrapMarkets(markets: BootstrapMarket[]): BootstrapMarket[] {
   return [...best.values()];
 }
 
+function meetsMinLiquidity(market: PredictionMarket, minLiquidity: number): boolean {
+  return minLiquidity <= 0 || (market.liquidity !== undefined && market.liquidity >= minLiquidity);
+}
+
 function toProtoMarket(m: BootstrapMarket, category: string): PredictionMarket {
   return {
     id: m.url?.split('/').pop() || '',
@@ -86,6 +91,7 @@ function toProtoMarket(m: BootstrapMarket, category: string): PredictionMarket {
     ...(typeof m.change24h === 'number' && Number.isFinite(m.change24h) ? { yesPriceChange24h: m.change24h / 100 } : {}),
     ...(typeof m.change7d === 'number' && Number.isFinite(m.change7d) ? { yesPriceChange7d: m.change7d / 100 } : {}),
     volume: m.volume ?? 0,
+    ...(typeof m.liquidity === 'number' && Number.isFinite(m.liquidity) && m.liquidity >= 0 ? { liquidity: m.liquidity } : {}),
     url: (m.source === 'kalshi' ? m.displayUrl ?? m.url : m.url) ?? '',
     closesAt: m.endDate ? Date.parse(m.endDate) : 0,
     category,
@@ -101,6 +107,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
     const category = (req.category || '').slice(0, 50);
     const query = (req.query || '').slice(0, 100);
     const limit = resolvePageSize(req.pageSize, 50, 100);
+    const minLiquidity = Number.isFinite(req.minLiquidity) ? req.minLiquidity : 0;
     const isCountryCategory = category.startsWith(COUNTRY_CATEGORY_PREFIX);
     const countryCode = isCountryCategory
       ? category.slice(COUNTRY_CATEGORY_PREFIX.length).trim().toUpperCase()
@@ -115,7 +122,9 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
         const countryMarkets = Array.isArray(countryIndex.countries?.[countryCode])
           ? countryIndex.countries[countryCode]
           : [];
-        let markets = countryMarkets.map((market) => toProtoMarket(market, ''));
+        let markets = countryMarkets
+          .map((market) => toProtoMarket(market, ''))
+          .filter((market) => meetsMinLiquidity(market, minLiquidity));
         if (query) {
           const q = query.toLowerCase();
           markets = markets.filter((m) => m.title.toLowerCase().includes(q));
@@ -169,7 +178,9 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
 
     if (!variant || variant.length === 0) return { markets: [], pagination: undefined, fetchedAt, dataAvailable: false };
 
-    let markets = variant.map((m) => toProtoMarket(m, category));
+    let markets = variant
+      .map((m) => toProtoMarket(m, category))
+      .filter((market) => meetsMinLiquidity(market, minLiquidity));
 
     if (query) {
       const q = query.toLowerCase();

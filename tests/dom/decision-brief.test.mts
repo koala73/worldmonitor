@@ -80,8 +80,14 @@ describe('decision brief preview and exports', () => {
   for (const missing of [true, false]) it(`exports real oil handler state with missing imports=${missing}`, async () => {
     redis.clear();
     redis.set('energy:chokepoint-flows:v1', { hormuz_strait: { flowRatio: 1 } });
+    // `missing` = no JODI crude imports beside World-only Comtrade rows (no origin share).
+    // Otherwise a measured 40% Gulf share from the partner-level key drives the loss.
+    // Kuwait has no Hormuz bypass, so no rerouting reduces the loss.
     redis.set('energy:jodi-oil:v1:DE', { crude: { importsKbd: missing ? null : 100 }, diesel: { demandKbd: 80 } });
     redis.set('comtrade:flows:276:2709', [{ partnerCode: '000', tradeValueUsd: 100 }]);
+    if (!missing) {
+      redis.set('comtrade:bilateral-hs4-partners:DE:v1', { iso2: 'DE', products: [{ hs4: '2709', year: 2024, totalValue: 1000, partners: [{ partnerIso2: 'KW', partnerCode: 414, value: 400 }, { partnerIso2: 'US', partnerCode: 842, value: 600 }], omittedCount: 0, omittedShare: 0 }] });
+    }
     const oilSelection = { ...selection, fuelMode: 'oil' as const };
     const captures = await Promise.all([50, 100].map(async disruptionPct => ({
       retrievedAt: '2026-09-10T10:00:00Z',
@@ -89,8 +95,11 @@ describe('decision brief preview and exports', () => {
     }))) as [DecisionBriefCapture, DecisionBriefCapture];
     const data = buildDecisionBrief(oilSelection, captures);
     expect(data.results.map(r => r.loss)).toEqual(missing ? [null, null] : [20, 40]);
-    expect(data.evidence.find(e => e.id === 'baseline-route')!.value).toBeNull();
-    expect(data.unknowns.join(' ')).toContain('fixed proxy');
+    expect(data.evidence.find(e => e.id === 'baseline-route')!.value).toBe(missing ? null : 40);
+    const unavailableText = 'not modeled without a measured origin share';
+    if (missing) expect(data.unknowns.join(' ')).toContain(unavailableText);
+    else expect(data.unknowns.join(' ')).not.toContain('Comtrade route exposure is unavailable');
+    expect(data.unknowns.join(' ')).not.toContain('fixed proxy');
     expect(data.action.text).toContain(missing ? 'Recover the oil import' : "Compare Germany's");
     const blobs: Blob[] = [];
     vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => { blobs.push(blob as Blob); return 'blob:test'; });
@@ -101,7 +110,8 @@ describe('decision brief preview and exports', () => {
     fuel.value = 'oil'; fuel.dispatchEvent(new Event('change'));
     click(root, 'Capture / refresh both');
     await vi.waitFor(() => expect(root.querySelector('.cdp-decision-action')?.textContent).toBe(data.action.text));
-    expect(root.textContent).toContain('fixed proxy');
+    if (missing) expect(root.textContent).toContain(unavailableText);
+    expect(root.textContent).not.toContain('fixed proxy');
     click(root, 'Download decision HTML'); click(root, 'Download decision JSON');
     const exported = JSON.parse(await blobs[1]!.text());
     expect(exported.operationalWorksheet.baseline.firstGapDay).toBe(8);
@@ -333,7 +343,10 @@ it('service capture requests the selected heading and carries reader provenance 
   expect(snapshot.candidates[0]?.sharePct).toBe(39.2);
   expect(snapshot.candidates.find(c => c.origin === 'AU')).toMatchObject({sharePct:30,routeState:'unknown',routeIds:[],transitChokepoints:[]});
   expect(snapshot.candidates.find(c => c.origin === 'QA')).toMatchObject({sharePct:20,routeState:'exposed',affectedChokepoints:['hormuz_strait']});
-  expect(snapshot.coverage.join(' ')).toContain('Modeled routes: 1/3 listed origins');
+  // The legacy 842 row resolves to US, which has a modeled path to Japan
+  // through both coasts; Hormuz is not on it, Panama is.
+  expect(snapshot.candidates.find(c => c.origin === 'US')).toMatchObject({sharePct:39.2,routeState:'not_on_modeled_route',transitChokepoints:['panama']});
+  expect(snapshot.coverage.join(' ')).toContain('Modeled routes: 2/3 listed origins');
   expect(snapshot.capture.products.evidence?.state).toBe('partial');
   const article=renderCommodityBrief(snapshot);
   expect(article.querySelector('[data-origin="AU"]')?.textContent).toContain('Route unknown');
@@ -467,13 +480,13 @@ describe('commodity brief evidence depth', () => {
   });
 
   it('the hub preference never crosses route-state tiers', () => {
-    // NL avoids the blocked chokepoint on its modeled route; US has no modeled
+    // NL avoids the blocked chokepoint on its modeled route; CA has no modeled
     // route at all. That ordering is about the route, not the hub flag, so the
     // action still names NL and says the flag could not be avoided in its tier.
     const data = build({ hs4: '2804', description: '', totalValue: 1000, year: 2024, partnerBasis: 'share_threshold',
       omittedPartnerCount: 0, omittedPartnerShare: 0,
-      topExporters: [partner('US', 842, 0.392), partner('NL', 528, 0.1)] });
-    expect(data.candidates.map(c => c.origin)).toEqual(['NL', 'US']);
+      topExporters: [partner('CA', 124, 0.392), partner('NL', 528, 0.1)] });
+    expect(data.candidates.map(c => c.origin)).toEqual(['NL', 'CA']);
     expect(data.candidates[0]!.routeState).toBe('not_on_modeled_route');
     expect(data.candidates[1]!.routeState).toBe('unknown');
     expect(data.action.text).toContain("Validate NL's");
