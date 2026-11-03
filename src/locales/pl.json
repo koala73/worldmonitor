@@ -3380,7 +3380,7 @@
     },
     "outage": {
       "levels": {
-        "total": "CAŁKOWITE ZAciemnienie",
+        "total": "CAŁKOWITA AWARIA",
         "major": "GŁÓWNA AWARIA",
         "partial": "CZĘŚCIOWE ZAKŁÓCENIA",
         "disruption": "ZAKŁÓCENIE"

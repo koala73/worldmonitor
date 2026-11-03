@@ -2956,7 +2956,7 @@
     },
     "outage": {
       "levels": {
-        "total": "TOTALT STRÖMAVBROTT",
+        "total": "TOTALT INTERNETAVBROTT",
         "major": "STORT AVBROTT",
         "partial": "DELVIS STÖRNING",
         "disruption": "AVBROTT"

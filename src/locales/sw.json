@@ -298,7 +298,7 @@
       "tertiaryEnrollment": "Usajili wa elimu ya juu",
       "stemGraduates": "Waliochaguliwa katika sayansi, teknolohiya, uhandisi na hesabu",
       "researchers": "Watafiti",
-      "craftTrades": "Ujuzi wa ufundi na taaluma",
+      "craftTrades": "Mafundi na wafanyakazi wa ufundi",
       "plantOperators": "Waendeshaji wa mitambo na mashine",
       "trainedIndustrialWorkforce": "Jumla ya nguvu kazi ya viwanda",
       "manufacturingShare": "Ajira katika viwanda",
@@ -3417,8 +3417,8 @@
     },
     "outage": {
       "levels": {
-        "total": "KUFURU KABISA",
-        "major": "KUSHUKA KUBWA",
+        "total": "KUKATIKA KABISA",
+        "major": "KUKATIKA KUBWA",
         "partial": "KUVURUGWA SEHEMU",
         "disruption": "KUVURUGWA"
       },

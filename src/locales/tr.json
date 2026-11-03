@@ -3349,8 +3349,8 @@
     "outage": {
       "levels": {
         "total": "TAMAMEN KARANLIK",
-        "major": "BUYUK KESINTI",
-        "partial": "KISMI AKSAMA",
+        "major": "BÜYÜK KESİNTİ",
+        "partial": "KISMİ AKSAMA",
         "disruption": "AKSAMA"
       },
       "reported": "BILDIRILEN",

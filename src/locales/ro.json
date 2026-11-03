@@ -231,7 +231,7 @@
       "tertiaryEnrollment": "Înscrieri în învățământul terțiar",
       "stemGraduates": "Absolvenți în știință, tehnologie, inginerie și matematică",
       "researchers": "Cercetători",
-      "craftTrades": "Competențe meșteșugărești și profesionale",
+      "craftTrades": "Meșteșugari și muncitori calificați",
       "plantOperators": "Operatori de instalații și mașini",
       "trainedIndustrialWorkforce": "Forța de muncă industrială totală",
       "manufacturingShare": "Ocupare în industria prelucrătoare",
@@ -3026,7 +3026,7 @@
       "rosterLegend": "Nivelurile clasifică sursele; ele nu judecă această afirmație.",
       "tierDocsLink": "Cum sunt atribuite nivelurile",
       "tierChip": "T{{tier}}",
-      "tierChipUndeclared": "Flux",
+      "tierChipUndeclared": "T?",
       "tierTitle1": "Nivelul 1: Agenții de presă și organisme oficiale",
       "tierTitle2": "Nivelul 2: Publicații majore",
       "tierTitle3": "Nivelul 3: Surse specializate, regionale și think tank-uri",
@@ -3368,10 +3368,10 @@
     },
     "outage": {
       "levels": {
-        "total": "PUNEREA TOTALĂ",
-        "major": "PUNEREA MAJORĂ",
-        "partial": "PERRUPTARE PARȚIALĂ",
-        "disruption": "PERRUPTARE"
+        "total": "ÎNTRERUPERE TOTALĂ",
+        "major": "ÎNTRERUPERE MAJORĂ",
+        "partial": "PERTURBARE PARȚIALĂ",
+        "disruption": "PERTURBARE"
       },
       "reported": "RAPORTAT",
       "categories": "CATEGORII",
