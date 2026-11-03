@@ -10,7 +10,7 @@ import {
   aptSectorLabel, aptTacticLabel, countryLabel, isSameLocation, localizeRelativePlace,
   parseGdeltReportTitle, severityLabel, statusLabel, weatherEventLabel,
 } from '@/components/map-popup-i18n';
-import { PopupProseTranslator } from '@/components/map-popup-translate';
+import { PopupProseTranslator, renderTranslatableText } from '@/components/map-popup-translate';
 import de from '@/locales/de.json';
 import en from '@/locales/en.json';
 
@@ -78,6 +78,7 @@ describe('label helpers in German', () => {
     expect(aptSectorLabel('Oil & Gas')).toBe(de.popups.aptSectors.oilAndGas);
     expect(aptSectorLabel('SWIFT')).toBe('SWIFT');
     expect(aptSectorLabel('NATO')).toBe('NATO');
+    expect(aptSectorLabel('NGOs')).toBe(de.popups.aptSectors.ngo);
     expect(aptSectorLabel('Semiconductor')).toBe('Halbleiter');
   });
   it('translates weather event names across sources and falls back for unknown events', () => {
@@ -157,6 +158,15 @@ describe('MapPopup in German', () => {
 });
 
 describe('on-demand translation toggle', () => {
+  it('keeps the complete original reachable when the excerpt is truncated', () => {
+    const long = 'A'.repeat(320);
+    const host = document.createElement('div');
+    host.innerHTML = renderTranslatableText(long, { className: 'popup-description', maxLength: 300, official: true });
+    expect(host.querySelector('.popup-translatable-text')?.getAttribute('data-source')).toBe('A'.repeat(300));
+    const full = host.querySelector('.popup-full-original');
+    expect(full?.querySelector('summary')?.textContent).toBe(de.popups.mapPopup.translate.fullOriginal);
+    expect(full?.querySelector('p')?.textContent).toBe(long);
+  });
   it('translates on click, marks it automatic and not official, and restores the original', async () => {
     popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
     const btn = document.querySelector<HTMLButtonElement>('.popup-translate-btn')!;

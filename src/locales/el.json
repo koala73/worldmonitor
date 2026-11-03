@@ -3845,7 +3845,8 @@
         "translate": "Μετάφραση",
         "showOriginal": "Εμφάνιση πρωτοτύπου",
         "automatic": "Αυτόματη μετάφραση",
-        "notOfficial": "Δεν είναι επίσημη μετάφραση"
+        "notOfficial": "Δεν είναι επίσημη μετάφραση",
+        "fullOriginal": "Πλήρες αρχικό κείμενο"
       },
       "placeReports_one": "{{place}} ({{count}} αναφορά)",
       "placeReports_other": "{{place}} ({{count}} αναφορές)"

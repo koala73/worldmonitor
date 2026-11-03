@@ -400,7 +400,10 @@ export class MapPopup {
       const translateBtn = target.closest<HTMLButtonElement>('.popup-translate-btn');
       if (translateBtn) {
         e.stopPropagation();
-        void this.proseTranslator.toggle(translateBtn, () => this.popup === openedPopup && openedPopup.isConnected);
+        const isCurrent = () => this.popup === openedPopup && openedPopup.isConnected;
+        void this.proseTranslator.toggle(translateBtn, isCurrent).then(() => {
+          if (isCurrent()) this.clampPopupToViewport();
+        });
         return;
       }
       const toggle = target.closest('.cluster-toggle') as HTMLButtonElement | null;

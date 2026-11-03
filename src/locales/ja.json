@@ -3825,7 +3825,8 @@
         "translate": "翻訳",
         "showOriginal": "原文を表示",
         "automatic": "自動翻訳",
-        "notOfficial": "公式の翻訳ではありません"
+        "notOfficial": "公式の翻訳ではありません",
+        "fullOriginal": "原文全文"
       },
       "placeReports_other": "{{place}}（{{count}}件の報道）"
     },

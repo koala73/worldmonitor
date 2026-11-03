@@ -3960,7 +3960,8 @@
         "translate": "Translate",
         "showOriginal": "Show original",
         "automatic": "Automatic translation",
-        "notOfficial": "Not an official translation"
+        "notOfficial": "Not an official translation",
+        "fullOriginal": "Full original text"
       },
       "placeReports_one": "{{place}} ({{count}} report)",
       "placeReports_other": "{{place}} ({{count}} reports)"

@@ -3914,7 +3914,8 @@
         "translate": "Tafsiri",
         "showOriginal": "Onyesha asili",
         "automatic": "Tafsiri ya kiotomatiki",
-        "notOfficial": "Si tafsiri rasmi"
+        "notOfficial": "Si tafsiri rasmi",
+        "fullOriginal": "Maandishi kamili ya asili"
       },
       "placeReports_one": "{{place}} (ripoti {{count}})",
       "placeReports_other": "{{place}} (ripoti {{count}})"

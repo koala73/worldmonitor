@@ -3461,7 +3461,8 @@
         "translate": "Vertalen",
         "showOriginal": "Origineel tonen",
         "automatic": "Automatische vertaling",
-        "notOfficial": "Geen officiële vertaling"
+        "notOfficial": "Geen officiële vertaling",
+        "fullOriginal": "Volledige originele tekst"
       },
       "placeReports_one": "{{place}} ({{count}} melding)",
       "placeReports_other": "{{place}} ({{count}} meldingen)"

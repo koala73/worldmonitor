@@ -3479,7 +3479,8 @@
         "translate": "Traduzir",
         "showOriginal": "Mostrar original",
         "automatic": "Tradução automática",
-        "notOfficial": "Não é uma tradução oficial"
+        "notOfficial": "Não é uma tradução oficial",
+        "fullOriginal": "Texto original completo"
       },
       "placeReports_one": "{{place}} ({{count}} relato)",
       "placeReports_many": "{{place}} ({{count}} relatos)",
@@ -3500,7 +3501,7 @@
       "blowingDustAdvisory": "Aviso de poeira levantada pelo vento",
       "blowingDustWarning": "Alerta de poeira levantada pelo vento",
       "blueAlert": "Alerta azul (polícia)",
-      "briskWindAdvisory": "Aviso de vento forte moderado",
+      "briskWindAdvisory": "Aviso de vento moderado a forte",
       "childAbductionEmergency": "Emergência por rapto de criança",
       "civilDangerWarning": "Alerta de perigo civil",
       "civilEmergencyMessage": "Mensagem de emergência civil",

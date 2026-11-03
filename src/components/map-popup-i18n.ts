@@ -57,8 +57,11 @@ export function aptTacticLabel(raw: string): string {
 }
 
 /** APT target-sector controlled vocabulary. */
+const APT_SECTOR_ALIASES: Record<string, string> = { ngos: 'ngo' };
+
 export function aptSectorLabel(raw: string): string {
-  return lookupLabel('popups.aptSectors', raw) ?? raw;
+  const alias = APT_SECTOR_ALIASES[raw.trim().toLowerCase()];
+  return lookupLabel('popups.aptSectors', alias ?? raw) ?? raw;
 }
 
 // Recurring non-English / variant spellings seen in WMO SWIC feeds, mapped to

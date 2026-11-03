@@ -35,14 +35,19 @@ export function renderTranslatableText(text: string, opts: TranslatableTextOptio
   const excerpt = truncated ? text.slice(0, opts.maxLength) : text;
   const shown = `${escapeHtml(excerpt)}${truncated ? ELLIPSIS : ''}`;
   const lang = getCurrentLanguageTag();
+  // Truncated prose keeps the complete original one click away; only the excerpt is translated.
+  const fullOriginal = truncated
+    ? `<details class="popup-full-original"><summary>${escapeHtml(t('popups.mapPopup.translate.fullOriginal'))}</summary>`
+      + `<p class="${opts.className}">${escapeHtml(text)}</p></details>`
+    : '';
   if (lang === 'en' || !excerpt.trim()) {
-    return `<p class="${opts.className}">${shown}</p>`;
+    return `<p class="${opts.className}">${shown}</p>${fullOriginal}`;
   }
   const label = t('popups.mapPopup.translate.translate');
   return `<div class="popup-translatable" data-state="original"${truncated ? ' data-truncated="1"' : ''}${opts.official ? ' data-official="1"' : ''}>`
     + `<p class="${opts.className} popup-translatable-text" data-source="${escapeHtml(excerpt)}">${shown}</p>`
     + `<button type="button" class="popup-translate-btn" aria-pressed="false" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">文</button>`
-    + `</div>`;
+    + `</div>${fullOriginal}`;
 }
 
 export class PopupProseTranslator {

@@ -3825,7 +3825,8 @@
         "translate": "Dịch",
         "showOriginal": "Hiện bản gốc",
         "automatic": "Bản dịch tự động",
-        "notOfficial": "Không phải bản dịch chính thức"
+        "notOfficial": "Không phải bản dịch chính thức",
+        "fullOriginal": "Toàn văn bản gốc"
       },
       "placeReports_other": "{{place}} ({{count}} báo cáo)"
     },

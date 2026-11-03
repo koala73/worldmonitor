@@ -3825,7 +3825,8 @@
         "translate": "번역",
         "showOriginal": "원문 보기",
         "automatic": "자동 번역",
-        "notOfficial": "공식 번역이 아닙니다"
+        "notOfficial": "공식 번역이 아닙니다",
+        "fullOriginal": "원문 전체"
       },
       "placeReports_other": "{{place}} (보도 {{count}}건)"
     },

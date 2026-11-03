@@ -3190,6 +3190,7 @@
   "popups.mapPopup.radiation.sources": "Sources",
   "popups.mapPopup.targets": "Targets",
   "popups.mapPopup.translate.automatic": "Automatic translation",
+  "popups.mapPopup.translate.fullOriginal": "Full original text",
   "popups.mapPopup.translate.notOfficial": "Not an official translation",
   "popups.mapPopup.translate.showOriginal": "Show original",
   "popups.mapPopup.translate.translate": "Translate",

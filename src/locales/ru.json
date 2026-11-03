@@ -3885,7 +3885,8 @@
         "translate": "Перевести",
         "showOriginal": "Показать оригинал",
         "automatic": "Автоматический перевод",
-        "notOfficial": "Неофициальный перевод"
+        "notOfficial": "Неофициальный перевод",
+        "fullOriginal": "Полный исходный текст"
       },
       "placeReports_one": "{{place}} ({{count}} сообщение)",
       "placeReports_few": "{{place}} ({{count}} сообщения)",

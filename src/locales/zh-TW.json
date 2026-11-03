@@ -3825,7 +3825,8 @@
         "translate": "翻譯",
         "showOriginal": "顯示原文",
         "automatic": "自動翻譯",
-        "notOfficial": "非官方譯文"
+        "notOfficial": "非官方譯文",
+        "fullOriginal": "完整原文"
       },
       "placeReports_other": "{{place}}（{{count}} 篇報道）"
     },

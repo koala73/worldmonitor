@@ -3203,7 +3203,7 @@
         "moderate": "KÖZEPES",
         "minor": "KISEBB"
       },
-      "relativePlace": "{{distance}} km-re {{direction}} innen: {{place}}"
+      "relativePlace": "{{distance}} km-re {{direction}} ettől: {{place}}"
     },
     "base": {
       "types": {
@@ -3914,7 +3914,8 @@
         "translate": "Fordítás",
         "showOriginal": "Eredeti megjelenítése",
         "automatic": "Automatikus fordítás",
-        "notOfficial": "Nem hivatalos fordítás"
+        "notOfficial": "Nem hivatalos fordítás",
+        "fullOriginal": "Teljes eredeti szöveg"
       },
       "placeReports_one": "{{place}} ({{count}} jelentés)",
       "placeReports_other": "{{place}} ({{count}} jelentés)"

@@ -3954,7 +3954,8 @@
         "translate": "Перекласти",
         "showOriginal": "Показати оригінал",
         "automatic": "Автоматичний переклад",
-        "notOfficial": "Неофіційний переклад"
+        "notOfficial": "Неофіційний переклад",
+        "fullOriginal": "Повний оригінальний текст"
       },
       "placeReports_one": "{{place}} ({{count}} повідомлення)",
       "placeReports_few": "{{place}} ({{count}} повідомлення)",

@@ -3885,7 +3885,8 @@
         "translate": "Přeložit",
         "showOriginal": "Zobrazit originál",
         "automatic": "Automatický překlad",
-        "notOfficial": "Nejde o oficiální překlad"
+        "notOfficial": "Nejde o oficiální překlad",
+        "fullOriginal": "Úplný původní text"
       },
       "placeReports_one": "{{place}} ({{count}} zpráva)",
       "placeReports_few": "{{place}} ({{count}} zprávy)",

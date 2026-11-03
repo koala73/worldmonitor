@@ -3865,7 +3865,8 @@
         "translate": "Traduire",
         "showOriginal": "Afficher l’original",
         "automatic": "Traduction automatique",
-        "notOfficial": "Traduction non officielle"
+        "notOfficial": "Traduction non officielle",
+        "fullOriginal": "Texte original complet"
       },
       "placeReports_one": "{{place}} ({{count}} signalement)",
       "placeReports_many": "{{place}} ({{count}} signalements)",
