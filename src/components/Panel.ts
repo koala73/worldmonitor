@@ -27,6 +27,7 @@ import {
   clearColSpanClass,
   getColSpan,
   getDefaultColSpan,
+  getExplicitColSpanClass,
   getMaxColSpan,
   isPanelGridColumnCountReady,
   MAX_PANEL_COL_SPAN,
@@ -163,6 +164,8 @@ export class Panel {
   private isColResizing = false;
   private startX = 0;
   private startColSpan = 1;
+  /** The `col-span-N` class at drag start, which may ask for more than the grid shows. */
+  private startColSpanClass: number | undefined;
   private onColMouseMove: ((e: MouseEvent) => void) | null = null;
   private onColMouseUp: (() => void) | null = null;
   private onColWindowBlur: (() => void) | null = null;
@@ -694,6 +697,21 @@ export class Panel {
     }
   }
 
+  private finishColResize(): void {
+    const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
+    if (finalSpan !== this.startColSpan) {
+      persistPanelColSpan(this.panelId, this.element);
+      trackLayoutCustomized('panel-resize');
+    } else if (this.startColSpanClass === undefined) {
+      // The drag rewrote the class with the span the grid shows; put back the
+      // span the panel asked for, so it widens again when the grid has room.
+      clearColSpanClass(this.element);
+    } else {
+      setColSpanClass(this.element, this.startColSpanClass);
+    }
+    this.syncKeyboardColResizeAria();
+  }
+
   private setupColResizeHandlers(): void {
     if (!this.colResizeHandle) return;
 
@@ -720,12 +738,7 @@ export class Panel {
       if (this.onColWindowBlur) {
         window.removeEventListener('blur', this.onColWindowBlur);
       }
-      const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
-      if (finalSpan !== this.startColSpan) {
-        persistPanelColSpan(this.panelId, this.element);
-        trackLayoutCustomized('panel-resize');
-      }
-      this.syncKeyboardColResizeAria();
+      this.finishColResize();
     };
 
     this.onColWindowBlur = () => this.onColMouseUp?.();
@@ -736,6 +749,7 @@ export class Panel {
       this.isColResizing = true;
       this.startX = e.clientX;
       this.startColSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
+      this.startColSpanClass = getExplicitColSpanClass(this.element);
       this.element.dataset.resizing = 'true';
       this.element.classList.add('col-resizing');
       document.body.classList.add('panel-resize-active');
@@ -765,6 +779,7 @@ export class Panel {
       this.isColResizing = true;
       this.startX = touch.clientX;
       this.startColSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
+      this.startColSpanClass = getExplicitColSpanClass(this.element);
       this.element.dataset.resizing = 'true';
       this.element.classList.add('col-resizing');
       document.body.classList.add('panel-resize-active');
@@ -793,12 +808,7 @@ export class Panel {
       document.body.classList.remove('panel-resize-active');
       this.colResizeHandle?.classList.remove('active');
       this.removeColTouchDocumentListeners();
-      const finalSpan = clampColSpan(getColSpan(this.element), getMaxColSpan(this.element));
-      if (finalSpan !== this.startColSpan) {
-        persistPanelColSpan(this.panelId, this.element);
-        trackLayoutCustomized('panel-resize');
-      }
-      this.syncKeyboardColResizeAria();
+      this.finishColResize();
     };
     this.onColTouchCancel = this.onColTouchEnd;
   }
