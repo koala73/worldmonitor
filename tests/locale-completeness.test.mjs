@@ -142,6 +142,35 @@ describe('locale completeness', () => {
     });
   }
 
+  // The chokepoint strip shows these names on every dashboard. An English value
+  // left in a catalogue renders as English to that locale's readers. Latin-script
+  // locales may keep "Suez" or "Panama", but the descriptive names are English
+  // phrases, and a non-Latin-script locale has no reason to show Latin text here.
+  // flow.mbd is a unit and creditName names an EIA publication.
+  const NON_LATIN_SCRIPT = new Set([
+    'ar.json', 'bg.json', 'el.json', 'fa.json', 'hi.json', 'ja.json', 'ko.json',
+    'ru.json', 'th.json', 'uk.json', 'zh-TW.json', 'zh.json',
+  ]);
+  const enStrip = flatten(en.components.chokepointStrip);
+  for (const file of localeFiles) {
+    it(`${file} translates the chokepoint strip names instead of copying English`, () => {
+      const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
+      const strip = flatten(locale.components.chokepointStrip);
+      for (const key of ['shortName.bosphorus', 'shortName.doverStrait']) {
+        assert.notEqual(strip[key], enStrip[key], `${file} chokepointStrip.${key} is still English`);
+      }
+      if (!NON_LATIN_SCRIPT.has(file)) return;
+      const copied = Object.keys(enStrip).filter((key) =>
+        key !== 'flow.mbd' && key !== 'attribution.creditName' && strip[key] === enStrip[key]);
+      assert.deepEqual(copied, [], `${file} chokepointStrip keys still English: ${copied.join(', ')}`);
+      for (const [key, value] of Object.entries(strip)) {
+        if (key.startsWith('shortName.')) {
+          assert.doesNotMatch(value, /[A-Za-z]/, `${file} chokepointStrip.${key} shows Latin text: ${value}`);
+        }
+      }
+    });
+  }
+
   for (const file of ['en.json', ...localeFiles]) {
     it(`${file} discloses NWS, ECCC, and WMO SWIC coverage in the weather layer help, not the short label`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
@@ -179,8 +208,8 @@ describe('locale completeness', () => {
       ];
       for (const value of values) {
         assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|Canadian|Kanada|kanadisch/i, `${file} canadaRoads copy must identify Canadian scope`);
-        assert.doesNotMatch(value, /Ontario and Alberta/i, `${file} canadaRoads copy must not claim only two provinces`);
+        assert.match(value, /Canad|Kanad|Kanaď|Kanadá|كند|Канад|Καναδ|カナダ|캐나다|加拿大|कनाडा|แคนาดา|کانادا/i, `${file} canadaRoads copy must identify Canadian scope`);
+        assert.doesNotMatch(value, /(Ontario|Онтарио|Онтаріо|Οντάριο|オンタリオ|온타리오|安大略|ออนแทรีโอ|ओंटारियो|أونتاريو|انتاریو)[\s\S]*(Alberta|Албер|Альбер|Άλμπερτα|アルバータ|앨버타|艾伯塔|亞伯達|อัลเบอร์ตา|अल्बर्टा|ألبرتا|آلبرتا)/i, `${file} canadaRoads copy must not claim only two provinces`);
       }
     });
 
@@ -206,8 +235,8 @@ describe('locale completeness', () => {
       ];
       for (const value of values) {
         assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|Canadian|Kanada|kanadisch/i, `${file} canadaRoads copy must identify Canadian scope`);
-        assert.doesNotMatch(value, /Ontario and Alberta/i, `${file} canadaRoads copy must not claim only two provinces`);
+        assert.match(value, /Canad|Kanad|Kanaď|Kanadá|كند|Канад|Καναδ|カナダ|캐나다|加拿大|कनाडा|แคนาดา|کانادا/i, `${file} canadaRoads copy must identify Canadian scope`);
+        assert.doesNotMatch(value, /(Ontario|Онтарио|Онтаріо|Οντάριο|オンタリオ|온타리오|安大略|ออนแทรีโอ|ओंटारियो|أونتاريو|انتاریو)[\s\S]*(Alberta|Албер|Альбер|Άλμπερτα|アルバータ|앨버타|艾伯塔|亞伯達|อัลเบอร์ตา|अल्बर्टा|ألبرتا|آلبرتا)/i, `${file} canadaRoads copy must not claim only two provinces`);
       }
     });
 

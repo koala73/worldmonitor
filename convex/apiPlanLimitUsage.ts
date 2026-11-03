@@ -29,6 +29,7 @@ type ScannerUsageRow = {
   dimension: PlanLimitDimension;
   usage: number;
   minuteBuckets?: number[];
+  minuteStart?: number;
   source: string;
   sourceFreshAt?: number;
 };
@@ -163,61 +164,190 @@ function noticeForRow(
   return { state, ...dodoUpgradeNotice(planKey, row.dimension) };
 }
 
-// A recognized Axiom `?format=legacy` result envelope carries its rows under one
-// of these array fields — an EMPTY array is a valid "no rows" result. Keep the
-// branches in sync with normalizeAxiomRows.
-function isRecognizedAxiomResultShape(data: unknown): boolean {
-  const d = data as any;
-  return (
-    Array.isArray(d?.matches) ||
-    Array.isArray(d?.tables?.[0]?.rows) ||
-    Array.isArray(d?.rows)
-  );
+// Axiom may omit row arrays for a complete zero-match result. Accept that
+// form only when its metadata confirms a complete query against our dataset.
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-// Decide whether an HTTP-200 body that ISN'T a recognized result envelope should
-// BLOCK the dimension (a genuine Axiom error) or be read as an EMPTY result.
-// Block only when the body is a non-object or carries an explicit Axiom error
-// signature (error / message / code). An unrecognized-but-error-free object is
-// treated as empty (normalizeAxiomRows yields []): this is deliberately biased
-// toward "empty" so a drift in the shape of the EMPTY summarize response can't
-// classify every routine no-burst scan as axiom_unexpected_body and freeze every
-// open burst notice via the recovery sweep. A real Axiom failure still carries an
-// error field and blocks, and a genuine outage rejects the fetch (axiom_query_error).
-function isAxiomErrorBody(data: unknown): boolean {
-  if (data == null || typeof data !== "object") return true;
-  if (isRecognizedAxiomResultShape(data)) return false;
-  const d = data as any;
-  return typeof d.error !== "undefined" || typeof d.message === "string" || typeof d.code !== "undefined";
+function isNonnegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function normalizeAxiomRows(data: unknown, dimension: PlanLimitDimension): ScannerUsageRow[] {
-  const rawRows =
-    Array.isArray((data as any)?.matches)
-      ? (data as any).matches.map((match: any) => match.data ?? match)
-      : Array.isArray((data as any)?.tables?.[0]?.rows)
-        ? (data as any).tables[0].rows
-        : Array.isArray((data as any)?.rows)
-          ? (data as any).rows
-          : [];
+function isAxiomDateTime(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!parts || !Number.isFinite(Date.parse(value))) return false;
+  const year = Number(parts[1]);
+  const month = Number(parts[2]);
+  const day = Number(parts[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return daysInMonth !== undefined && day >= 1 && day <= daysInMonth;
+}
 
-  return rawRows.flatMap((row: any) => {
+type AxiomRowSet = { entries: unknown[]; fromMatches: boolean };
+
+type AxiomAggregateRow = { customer_id: string; minute?: string; usage: number };
+
+function parseAxiomCount(value: unknown): number | null {
+  if ((typeof value !== "number" && typeof value !== "string") ||
+    (typeof value === "string" && value.trim().length === 0)) return null;
+  const count = Number(value);
+  return isNonnegativeInteger(count) ? count : null;
+}
+
+function parseAxiomAggregateGroup(entry: unknown): AxiomAggregateRow | null {
+  if (!isRecord(entry) || !isRecord(entry.group) ||
+    !Array.isArray(entry.aggregations) || entry.aggregations.length !== 1) return null;
+  const aggregation = entry.aggregations[0];
+  const userId = entry.group.customer_id;
+  const minute = entry.group.minute;
+  if (!isRecord(aggregation) || (aggregation.op !== "count" && aggregation.op !== "usage") ||
+    typeof userId !== "string" || userId.trim().length === 0 ||
+    (minute !== undefined && !isAxiomDateTime(minute))) return null;
+  const usage = parseAxiomCount(aggregation.value);
+  if (usage === null) return null;
+  return { customer_id: userId, minute, usage };
+}
+
+function extractAxiomAggregateRows(buckets: Record<string, unknown>): unknown[] | null {
+  if ((buckets.series === undefined && buckets.totals === undefined) ||
+    (buckets.series !== undefined && !Array.isArray(buckets.series)) ||
+    (buckets.totals !== undefined && !Array.isArray(buckets.totals))) return null;
+  const totals: AxiomAggregateRow[] = [];
+  for (const entry of buckets.totals ?? []) {
+    const row = parseAxiomAggregateGroup(entry);
+    if (row === null) return null;
+    totals.push(row);
+  }
+  const rows: AxiomAggregateRow[] = [];
+  if (Array.isArray(buckets.series) && buckets.series.length > 0) {
+    for (const interval of buckets.series) {
+      if (!isRecord(interval) || !isAxiomDateTime(interval.startTime) ||
+        !isAxiomDateTime(interval.endTime) ||
+        Date.parse(interval.endTime) <= Date.parse(interval.startTime) ||
+        (interval.groups !== undefined && !Array.isArray(interval.groups))) return null;
+      for (const entry of interval.groups ?? []) {
+        const row = parseAxiomAggregateGroup(entry);
+        if (row === null) return null;
+        const minute = row.minute ?? (Date.parse(interval.endTime) - Date.parse(interval.startTime) === 60_000
+          ? interval.startTime : undefined);
+        if (minute === undefined) return null;
+        rows.push({ ...row, minute });
+      }
+    }
+    // Totals and series describe the same events. Check both, then emit only
+    // series so inconsistent/truncated data cannot clear a customer's notice.
+    if (buckets.totals !== undefined) {
+      const compareMinutes = totals.every((row) => row.minute !== undefined);
+      const keyFor = (row: AxiomAggregateRow) => JSON.stringify([
+        row.customer_id, compareMinutes && row.minute !== undefined ? Date.parse(row.minute) : null,
+      ]);
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        const key = keyFor(row);
+        counts.set(key, (counts.get(key) ?? 0) + row.usage);
+      }
+      const seenTotals = new Set<string>();
+      for (const row of totals) {
+        const key = keyFor(row);
+        if (seenTotals.has(key) || counts.get(key) !== row.usage) return null;
+        seenTotals.add(key);
+      }
+      if (counts.size !== seenTotals.size) return null;
+    }
+    return rows;
+  }
+  return totals.every((row) => row.minute !== undefined) ? totals : null;
+}
+
+function extractAxiomRowSets(data: unknown): AxiomRowSet[] | null {
+  if (!isRecord(data) || (data.status !== undefined && !isRecord(data.status))) return null;
+  const status = isRecord(data.status) ? data.status : null;
+  if (
+    data.error !== undefined ||
+    data.code !== undefined ||
+    data.message !== undefined ||
+    (status !== null && (status.isPartial !== false ||
+      (status.isEstimate !== undefined && status.isEstimate !== false) ||
+      (Array.isArray(status.messages) && status.messages.some((message) =>
+        isRecord(message) && (message.priority === "error" || message.priority === "fatal")))))
+  ) return null;
+  // Another result layout must not hide a malformed row container.
+  if ((data.matches !== undefined && !Array.isArray(data.matches)) ||
+    (data.rows !== undefined && !Array.isArray(data.rows)) ||
+    (data.tables !== undefined && (!Array.isArray(data.tables) ||
+      data.tables.some((table) => !isRecord(table) || !Array.isArray(table.rows))))) return null;
+  const rowSets: AxiomRowSet[] = [];
+  if (Array.isArray(data.matches)) rowSets.push({ entries: data.matches, fromMatches: true });
+  if (Array.isArray(data.tables)) {
+    rowSets.push(...data.tables.map((table) => ({ entries: table.rows, fromMatches: false })));
+  }
+  if (Array.isArray(data.rows)) rowSets.push({ entries: data.rows, fromMatches: false });
+  if (data.buckets !== undefined) {
+    if (!isRecord(data.buckets)) return null;
+    // Omitted aggregates need the complete zero-row metadata check below.
+    if (data.buckets.series !== undefined || data.buckets.totals !== undefined) {
+      if (status === null || !isNonnegativeInteger(status.rowsMatched) ||
+        !isNonnegativeInteger(status.numGroups)) return null;
+      const entries = extractAxiomAggregateRows(data.buckets);
+      if (entries === null) return null;
+      rowSets.push({ entries, fromMatches: false });
+    }
+  }
+  if (rowSets.length > 0) {
+    // An empty array cannot prove zero usage if the query reports groups.
+    if (rowSets.every((result) => result.entries.length === 0) && status !== null &&
+      ((status.numGroups !== undefined && status.numGroups !== 0) ||
+        (status.rowsMatched !== undefined && status.rowsMatched !== 0))) return null;
+    return rowSets;
+  }
+
+  if (
+    data.format === "legacy" &&
+    Array.isArray(data.datasetNames) &&
+    data.datasetNames.length === 1 && data.datasetNames[0] === "wm_api_usage" &&
+    status !== null && status.rowsMatched === 0 && status.numGroups === 0 &&
+    [status.blocksExamined, status.elapsedTime, status.rowsExamined].every(isNonnegativeInteger) &&
+    isNonnegativeInteger(status.cacheStatus) && status.cacheStatus <= 255 &&
+    isAxiomDateTime(status.maxBlockTime) && isAxiomDateTime(status.minBlockTime)
+  ) return [{ entries: [], fromMatches: false }];
+  return null;
+}
+
+function normalizeAxiomRows(result: AxiomRowSet, dimension: PlanLimitDimension): ScannerUsageRow[] | null {
+  const rows: ScannerUsageRow[] = [];
+  const seen = new Set<string>();
+  for (const entry of result.entries) {
+    const row = result.fromMatches && isRecord(entry) && entry.data !== undefined
+      ? entry.data
+      : entry;
+    if (!isRecord(row)) return null;
     const userId = row.customer_id ?? row.customerId ?? row.user_id ?? row.userId;
-    const usage = Number(row.usage ?? row.requests ?? row.count ?? 0);
-    if (typeof userId !== "string" || userId.length === 0 || !Number.isFinite(usage) || usage < 0) return [];
+    const usage = parseAxiomCount(row.usage ?? row.requests ?? row.count);
+    if (typeof userId !== "string" || userId.trim().length === 0 || usage === null ||
+      !isAxiomDateTime(row.minute)) return null;
+    const minuteStart = Date.parse(row.minute);
+    if (minuteStart % 60_000 !== 0) return null;
+    const key = JSON.stringify([userId, minuteStart]);
+    if (seen.has(key)) return null;
+    seen.add(key);
     const minuteBuckets = Array.isArray(row.minuteBuckets)
       ? row.minuteBuckets.map(Number).filter(Number.isFinite)
       : undefined;
-    return [{
+    rows.push({
       userId,
       planKey: typeof row.planKey === "string" ? row.planKey : undefined,
       dimension,
       usage,
       minuteBuckets,
+      minuteStart,
       source: "axiom:wm_api_usage",
       sourceFreshAt: Date.now(),
-    }];
-  });
+    });
+  }
+  return rows;
 }
 
 async function queryAxiom(apl: string, dimension: PlanLimitDimension): Promise<{
@@ -247,14 +377,35 @@ async function queryAxiom(apl: string, dimension: PlanLimitDimension): Promise<{
       return { rows: [], blockedReason: `axiom_query_http_${resp.status}` };
     }
     const json = await resp.json();
-    if (isAxiomErrorBody(json)) {
-      // HTTP 200 carrying an Axiom error signature (or a non-object body). Block
-      // the dimension instead of letting normalizeAxiomRows yield an empty [] that
-      // reads identically to a genuinely-empty result. A recognized-or-plausibly-
-      // empty body falls through and normalizes (to [] when it has no rows).
+    const rowSets = extractAxiomRowSets(json);
+    if (rowSets === null) {
+      // An unknown HTTP-200 body cannot prove zero usage. Keep live notices
+      // until a recognized result arrives.
       return { rows: [], blockedReason: "axiom_unexpected_body" };
     }
-    return { rows: normalizeAxiomRows(json, dimension) };
+    let rows: ScannerUsageRow[] = [];
+    for (const result of rowSets) {
+      const normalized = normalizeAxiomRows(result, dimension);
+      if (normalized === null) return { rows: [], blockedReason: "axiom_unexpected_body" };
+      // Empty arrays may be placeholders; populated representations must agree.
+      if (rows.length > 0 && normalized.length > 0) {
+        const keyFor = (row: ScannerUsageRow) => JSON.stringify([row.userId, row.minuteStart, row.usage]);
+        const keys = new Set(rows.map(keyFor));
+        if (normalized.length !== rows.length || normalized.some((row) => !keys.has(keyFor(row)))) {
+          return { rows: [], blockedReason: "axiom_unexpected_body" };
+        }
+      }
+      if (normalized.length > 0) rows = normalized;
+    }
+    // This count() query partitions all matching events by customer/minute.
+    // Missing groups must not look like zero usage for the omitted customers.
+    const matched = isRecord(json) && isRecord(json.status) ? json.status.rowsMatched : undefined;
+    const counted = rows.reduce((sum, row) => sum + row.usage, 0);
+    if (!isNonnegativeInteger(counted) || (matched !== undefined &&
+      (!isNonnegativeInteger(matched) || matched !== counted))) {
+      return { rows: [], blockedReason: "axiom_unexpected_body" };
+    }
+    return { rows };
   } catch {
     return { rows: [], blockedReason: "axiom_query_error" };
   }
@@ -375,10 +526,12 @@ async function buildProductionRows(
   if (burst.blockedReason) {
     blocked.push({ dimension: "api_minute_burst", reason: burst.blockedReason });
   } else {
+    const window = windowForDimension("api_minute_burst", now);
     const byUser = new Map<string, number[]>();
     for (const row of burst.rows) {
-      const buckets = byUser.get(row.userId) ?? [];
-      buckets.push(row.usage);
+      if (row.minuteStart === undefined || row.minuteStart < window.windowStart || row.minuteStart >= window.windowEnd) continue;
+      const buckets = byUser.get(row.userId) ?? [0, 0, 0, 0, 0];
+      buckets[(row.minuteStart - window.windowStart) / 60_000] = row.usage;
       byUser.set(row.userId, buckets);
     }
     for (const [userId, minuteBuckets] of byUser) {

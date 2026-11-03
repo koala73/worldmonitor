@@ -1,0 +1,174 @@
+name: 'Open Data: Chokepoint Status Snapshot'
+
+# Builds the public chokepoint status open dataset (public/data/v1/chokepoints/)
+# from the public GetChokepointStatus endpoint. The snapshot job saves the API
+# response and the built files as an artifact. The publish job rebuilds the
+# dataset from that saved response against a fresh checkout of main, so the
+# index and latest.* it commits always match the history it commits onto, and
+# opens one review PR per UTC day. A manual run is a dry run by default: it
+# uploads the artifact and opens nothing.
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+        description: 'Build the snapshot and upload it as an artifact without opening a PR'
+  pull_request:
+    paths:
+      - scripts/build-open-data-chokepoints.mjs
+      - tests/open-data-chokepoints.test.mjs
+      - .github/workflows/open-data-chokepoints.yml
+
+jobs:
+  snapshot:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      snapshot_date: ${{ steps.build.outputs.snapshot_date }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Build the chokepoint status snapshot
+        id: build
+        env:
+          API_BASE: https://www.worldmonitor.app
+        run: |
+          snapshot_date=$(date -u +%F)
+          echo "snapshot_date=${snapshot_date}" >> "$GITHUB_OUTPUT"
+          out="$RUNNER_TEMP/open-data/chokepoints"
+          mkdir -p "$out"
+          # index.json lists every dated file in the output directory, so the
+          # dry-run build starts from this checkout's committed history. The
+          # publish job rebuilds against main from the saved response instead
+          # of reusing these files.
+          if [ -d public/data/v1/chokepoints ]; then
+            cp -R public/data/v1/chokepoints/. "$out/"
+          fi
+          node scripts/build-open-data-chokepoints.mjs \
+            --out "$out" \
+            --date "$snapshot_date" \
+            --save-input "$RUNNER_TEMP/open-data/response.json"
+      - name: Verify the generator
+        run: node --test tests/open-data-chokepoints.test.mjs
+      - name: Show the snapshot
+        run: cat "$RUNNER_TEMP/open-data/chokepoints/latest.json"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: open-data-chokepoints
+          path: ${{ runner.temp }}/open-data
+          retention-days: 14
+          if-no-files-found: error
+
+  publish:
+    needs: snapshot
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      branch: ${{ steps.reconcile.outputs.branch }}
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: open-data-chokepoints
+      cancel-in-progress: false
+    env:
+      SNAPSHOT_DATE: ${{ needs.snapshot.outputs.snapshot_date }}
+      PR_TITLE: 'chore(open-data): refresh chokepoint status snapshot ${{ needs.snapshot.outputs.snapshot_date }}'
+      PR_BODY: 'Daily chokepoint status open-data snapshot for ${{ needs.snapshot.outputs.snapshot_date }}, built from the public GetChokepointStatus endpoint by the Open Data: Chokepoint Status Snapshot workflow and published under CC BY 4.0.'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          # A dispatch can target a feature branch; the dataset is always
+          # rebuilt on and published from main.
+          ref: refs/heads/main
+      - name: Reconcile the daily review branch
+        id: reconcile
+        env:
+          # A PR opened with github.token triggers no CI, which the required
+          # checks on main then block. REVIEW_PR_TOKEN is a user or app token;
+          # with it unset this falls back to github.token.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+        run: |
+          branch="automation/open-data-chokepoints-${SNAPSHOT_DATE}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
+          if [ -n "$existing_pr" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Snapshot PR #${existing_pr} already exists for ${SNAPSHOT_DATE}."
+            exit 0
+          fi
+          # A branch without a PR is a run whose `gh pr create` failed. Open
+          # the PR for it instead of leaving the snapshot stranded.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            gh pr create --base main --head "$branch" --title "$PR_TITLE" --body "$PR_BODY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.reconcile.outputs.skip != 'true'
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        if: steps.reconcile.outputs.skip != 'true'
+        run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: steps.reconcile.outputs.skip != 'true'
+        with:
+          name: open-data-chokepoints
+          path: ${{ runner.temp }}/open-data
+      - name: Rebuild the snapshot against main
+        id: rebuild
+        if: steps.reconcile.outputs.skip != 'true'
+        run: |
+          node scripts/build-open-data-chokepoints.mjs \
+            --input "$RUNNER_TEMP/open-data/response.json" \
+            --date "$SNAPSHOT_DATE"
+          if git diff --quiet -- public/data/v1/chokepoints; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "main already carries the ${SNAPSHOT_DATE} snapshot."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git status --short -- public/data/v1/chokepoints
+          fi
+      - name: Open the snapshot PR
+        if: steps.reconcile.outputs.skip != 'true' && steps.rebuild.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+        run: |
+          git switch -c "$BRANCH_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/v1/chokepoints
+          git commit -m "$PR_TITLE"
+          git push --set-upstream origin "$BRANCH_NAME"
+          gh pr create --base main --head "$BRANCH_NAME" --title "$PR_TITLE" --body "$PR_BODY"
+
+  # A PR opened with github.token fires no workflow_run event for its CI, so
+  # Deploy Gate would reach it only on its 30-minute sweep.
+  deploy-gate:
+    needs: publish
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/bot-pr-deploy-gate.yml
+    with:
+      branch: ${{ needs.publish.outputs.branch }}

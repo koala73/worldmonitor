@@ -826,7 +826,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetNo2Activity
-            description: Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters, year over year. Seed-backed.
+            description: GetNo2Activity returns Sentinel-5P NO2 year-over-year activity direction for 167 countries and 32 industrial clusters, filterable by country, region and kind.
             operationId: GetNo2Activity
             parameters:
                 - name: country_code
@@ -1221,7 +1221,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisExchangeRates
-            description: GetBisExchangeRates retrieves effective exchange rates from BIS.
+            description: GetBisExchangeRates retrieves the latest monthly real effective exchange rate from BIS WS_EER, with monthly change, for 12 economies including the euro area.
             operationId: GetBisExchangeRates
             parameters:
                 - name: jmespath
@@ -1334,7 +1334,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisCredit
-            description: GetBisCredit retrieves credit-to-GDP ratio data from BIS.
+            description: GetBisCredit retrieves the latest quarterly credit-to-GDP ratio and prior quarter from BIS WS_TC for 12 economies, including the US, euro area and China.
             operationId: GetBisCredit
             parameters:
                 - name: jmespath
@@ -1637,7 +1637,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListGroceryBasketPrices
-            description: ListGroceryBasketPrices retrieves grocery basket price comparison across 24 countries worldwide.
+            description: ListGroceryBasketPrices compares the weekly USD cost of a 10-item grocery basket (rice, eggs, milk, bread and more) across 24 countries, with weekly change.
             operationId: ListGroceryBasketPrices
             parameters:
                 - name: jmespath
@@ -1759,7 +1759,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListBigMacPrices
-            description: ListBigMacPrices retrieves Big Mac Index prices across Middle East countries.
+            description: ListBigMacPrices retrieves weekly Big Mac prices in local currency and USD for 49 countries via Exa web search, with cheapest, priciest and weekly change.
             operationId: ListBigMacPrices
             parameters:
                 - name: jmespath
@@ -1876,7 +1876,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetNationalDebt
-            description: GetNationalDebt retrieves national debt clock data for all countries.
+            description: GetNationalDebt estimates government debt in USD by country from IMF WEO debt-to-GDP and GDP with a deficit-based growth rate; US uses Treasury debt data.
             operationId: GetNationalDebt
             parameters:
                 - name: jmespath
@@ -1991,7 +1991,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListFuelPrices
-            description: ListFuelPrices retrieves retail gasoline and diesel prices across 30+ countries.
+            description: ListFuelPrices retrieves weekly retail gasoline and diesel prices in USD for 30+ countries from official sources such as the EU Oil Bulletin and US EIA.
             operationId: ListFuelPrices
             parameters:
                 - name: jmespath
@@ -2113,7 +2113,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBlsSeries
-            description: GetBlsSeries retrieves BLS-only series not available on FRED (CES, LAUMT, CIU).
+            description: GetBlsSeries returns a BLS labor series, private nonfarm payrolls (USPRIV) or the employment cost index (ECIALLCIV), mirrored from FRED with recent history.
             operationId: GetBlsSeries
             parameters:
                 - name: series_id
@@ -2247,7 +2247,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEconomicCalendar
-            description: GetEconomicCalendar retrieves upcoming major economic events (FOMC, CPI, NFP, etc).
+            description: GetEconomicCalendar returns scheduled FOMC and ECB rate decisions, US CPI, payrolls, GDP, PCE and retail sales, and Eurostat releases, filtered by date range.
             operationId: GetEconomicCalendar
             parameters:
                 - name: fromDate
@@ -2378,7 +2378,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetCrudeInventories
-            description: GetCrudeInventories retrieves the 8 most recent weeks of US crude oil stockpile data from EIA (WCRSTUS1).
+            description: GetCrudeInventories retrieves the 8 most recent weeks of US commercial crude oil inventories excluding the SPR (EIA series WCESTUS1) with the latest period.
             operationId: GetCrudeInventories
             parameters:
                 - name: jmespath
@@ -2717,7 +2717,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEurostatCountryData
-            description: GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
+            description: GetEurostatCountryData retrieves HICP inflation, unemployment and quarterly GDP growth from Eurostat for 10 EU member states, including Germany and France.
             operationId: GetEurostatCountryData
             parameters:
                 - name: jmespath
@@ -2846,7 +2846,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuGasStorage
-            description: GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
+            description: GetEuGasStorage returns EU gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
             operationId: GetEuGasStorage
             parameters:
                 - name: jmespath
@@ -2961,7 +2961,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuYieldCurve
-            description: GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
+            description: GetEuYieldCurve retrieves the latest ECB euro area AAA government bond yield curve (Svensson spot rates) at the 1Y, 2Y, 5Y, 10Y, 20Y and 30Y tenors.
             operationId: GetEuYieldCurve
             parameters:
                 - name: jmespath
@@ -3075,7 +3075,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuFsi
-            description: GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
+            description: 'GetEuFsi retrieves the ECB Composite Indicator of Systemic Stress (CISS) for the euro area: latest daily value, a year of daily history and a staleness flag.'
             operationId: GetEuFsi
             parameters:
                 - name: jmespath
@@ -3306,7 +3306,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFaoFoodPriceIndex
-            description: GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
+            description: GetFaoFoodPriceIndex retrieves 12 months of the FAO Food Price Index with meat, dairy, cereals, oils and sugar sub-indices, plus monthly and annual change.
             operationId: GetFaoFoodPriceIndex
             parameters:
                 - name: jmespath
@@ -3418,12 +3418,131 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-food-prices:
+        get:
+            tags:
+                - EconomicService
+            summary: GetFoodPrices
+            description: GetFoodPrices returns local-currency market prices with exact prior-week comparisons, plus dated GIEWS and Tunisia context. Missing comparisons are explicitly unavailable. Market, market type, product, origin, unit and currency must match; levels are not comparable across countries.
+            operationId: GetFoodPrices
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "sources":
+                                    - "attribution": "example"
+                                      "cadence": "example"
+                                      "contextOnly": true
+                                      "contexts":
+                                          - "country": "US"
+                                            "countryCode": "US"
+                                            "fetchedAt": "2026-01-15T12:00:00Z"
+                                            "referenceDate": "2026-01-15"
+                                            "status": "example"
+                                      "country": "US"
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetFoodPricesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/economic/v1/get-oil-stocks-analysis:
         get:
             tags:
                 - EconomicService
             summary: GetOilStocksAnalysis
-            description: GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
+            description: GetOilStocksAnalysis ranks IEA members by oil stock days of net-import cover against the 90-day obligation, with Europe, Asia-Pacific and North America data.
             operationId: GetOilStocksAnalysis
             parameters:
                 - name: jmespath
@@ -3696,7 +3815,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyCrisisPolicies
-            description: GetEnergyCrisisPolicies retrieves government policy responses to the 2026 energy crisis from the IEA tracker.
+            description: GetEnergyCrisisPolicies retrieves government responses to the 2026 energy crisis from the IEA policy tracker, filterable by country code and policy category.
             operationId: GetEnergyCrisisPolicies
             parameters:
                 - name: country_code
@@ -6790,6 +6909,108 @@ components:
                 sugar:
                     type: number
                     format: double
+        GetFoodPricesRequest:
+            type: object
+        GetFoodPricesResponse:
+            type: object
+            properties:
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodPriceSource'
+                unavailable:
+                    type: boolean
+                    description: True when all source caches are unavailable; missing prices are not zero.
+        FoodPriceSource:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                country:
+                    type: string
+                countryCode:
+                    type: string
+                url:
+                    type: string
+                cadence:
+                    type: string
+                contextOnly:
+                    type: boolean
+                fetchedAt:
+                    type: string
+                latestReportDate:
+                    type: string
+                status:
+                    type: string
+                    description: current, partial, stale, or unavailable. A successful fetch does not reset the report date.
+                prices:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodMarketPrice'
+                contexts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodSecurityContext'
+                attribution:
+                    type: string
+                    description: Citation the publisher asks for (for example a licence or required credit). Empty when none is stated.
+        FoodMarketPrice:
+            type: object
+            properties:
+                item:
+                    type: string
+                market:
+                    type: string
+                marketType:
+                    type: string
+                origin:
+                    type: string
+                unit:
+                    type: string
+                currency:
+                    type: string
+                date:
+                    type: string
+                price:
+                    type: number
+                    format: double
+                wowAvailable:
+                    type: boolean
+                    description: |-
+                        True only when the same series has a price exactly seven days before `date`.
+                         When false, there is no comparison: wow_pct, previous_date and previous_price
+                         are placeholders (0 or empty), not a 0% change.
+                wowPct:
+                    type: number
+                    format: double
+                    description: Week-over-week change in percent. Meaningful only when wow_available is true.
+                previousDate:
+                    type: string
+                    description: Date of the baseline price. Empty when wow_available is false.
+                previousPrice:
+                    type: number
+                    format: double
+                    description: Baseline price in the same unit and currency. 0 when wow_available is false.
+        FoodSecurityContext:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                country:
+                    type: string
+                referenceDate:
+                    type: string
+                title:
+                    type: string
+                url:
+                    type: string
+                fetchedAt:
+                    type: string
+                status:
+                    type: string
+                    description: current, stale, or unavailable, independently for each country brief.
         GetOilStocksAnalysisRequest:
             type: object
             description: GetOilStocksAnalysisRequest is empty — returns the latest global analysis snapshot.

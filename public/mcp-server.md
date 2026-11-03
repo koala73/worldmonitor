@@ -31,6 +31,8 @@ When a denial's `error.data` carries `checkoutTool: "start_upgrade"`, call `star
 
 Webcam discovery is available through `find_webcams` (bounded viewport metadata and clusters) followed by `get_webcam_media` (one camera's recent media). Capture timestamps, catalog freshness and URL resolution times are separate. Media is recent visual context without guaranteed live conditions. Preserve Windy's courtesy and link every displayed image to the returned Windy detail or player URL; see the [webcam tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference#get_webcam_media).
 
+To report a bug, a missing capability, wrong data or a security concern, call `report_issue({kind, summary})`. It needs no credentials and spends no allowance; pass a failed call's `error.data.requestId` as `requestId`. Vulnerability details belong in the private [advisory form](https://github.com/koala73/worldmonitor/security/advisories/new); see the [tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference#report_issue).
+
 ## MCP Apps
 
 World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, `get_forecast_predictions`, `open_news_dashboard`, and `open_country_brief`; their UI resources are:

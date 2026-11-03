@@ -35,6 +35,7 @@ import {
   readPasskeySessionFacts,
 } from '@/services/passkeys';
 import { isModalOpen } from '@/utils/open-modal';
+import { isAboutYouCardPresent } from '@/services/onboarding-prompt';
 import { recordPasskeyOfferReason } from '@/utils/passkey-offer-trace';
 
 /**
@@ -472,7 +473,9 @@ export class PasskeyOfferController implements AppModule {
 
   private blockedByOverlay(): boolean {
     if (typeof document === 'undefined') return false;
-    return isModalOpen(document);
+    // The About-you card is non-modal, so the modal predicate misses it, but it
+    // occupies the same bottom area on mobile. Wait for it to close.
+    return isModalOpen(document) || isAboutYouCardPresent(document);
   }
 
   /** Hide behind an overlay, restore when it closes. Never unmount — the offer is spent. */

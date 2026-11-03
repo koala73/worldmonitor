@@ -567,6 +567,13 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'style-src-elem', 'https://www.6ppn.com/ext/assets/style.CMoYtLrp.css?v=uTaroZOITRdUkyChp', '', false));
     });
 
+    it('suppresses dianxiaobao.net extension stylesheet injection (WORLDMONITOR-J0 round 6)', () => {
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://price.dianxiaobao.net/ext/assets/style.38kou0u3.css?v=uPUQeJ7KoxF0h0PLMCpD', '', false));
+      // Exact host: a sibling subdomain or plain http still surfaces.
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdn.dianxiaobao.net/ext/assets/style.abc.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://price.dianxiaobao.net/ext/assets/style.abc.css', '', false));
+    });
+
     it('suppresses literal [email] placeholder stylesheet URL from a broken extension template', () => {
       assert.ok(suppress('enforce', 'style-src-elem', 'https://[email]', '', false));
     });

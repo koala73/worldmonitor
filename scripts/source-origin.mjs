@@ -69,7 +69,31 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 const HOST_ORIGINS = Object.freeze({
   // #6153: Moscow Exchange ISS, the exchange's own market-data API.
   'iss.moex.com': 'RU',
+  'simaniger.net': 'NE',
+  'data.1212.mn': 'MN',
+  'www.ocpv-ci.com': 'CI',
+  'api.cammesa.com': 'AR',
+  'admin.gse.com.ge': 'GE',
+  'erp.powergrid.gov.bd': 'BD',
+  'petrobangla.org.bd': 'BD',
+  'niggrid.org': 'NG',
+  'eskom.co.za': 'ZA',
+  'dados.ons.org.br': 'BR',
   'www.datos.gov.co': 'CO',
+  'www.armeps.am': 'AM',
+  // Fuel-price regulators (#10051): a vanity .co TLD, the DOE's CloudFront
+  // media host and the Strapi CMS behind the SONABHY tariff page.
+  'www.qatarenergy.qa': 'QA',
+  'www.erb.org.zm': 'ZM',
+  'npa.gov.gh': 'GH',
+  'www.sonabhy.bf': 'BF',
+  'www.zera.co.zw': 'ZW',
+  'doe.gov.ph': 'PH',
+  'www.anp.tl': 'TL',
+  'creg.gov.co': 'CO',
+  'www.gub.uy': 'UY',
+  'd24qbtp4vooyzi.cloudfront.net': 'PH',
+  'king-prawn-app-6bsvl.ondigitalocean.app': 'BF',
   // Editorial hosts used by site-scoped news searches. These are catalogued
   // as publishers in their own right; the shared search endpoint is a
   // separate provider.
@@ -295,6 +319,7 @@ const HOST_ORIGINS = Object.freeze({
   'hacker-news.firebaseio.com': 'US',
   'health.aws.amazon.com': 'US',
   'hnrss.org': 'US',
+  'hub.arcgis.com': 'US',
   'humanprogress.org': 'US',
   'inc42.com': 'IN',
   'indianexpress.com': 'IN',

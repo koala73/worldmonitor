@@ -84,6 +84,7 @@ const HTTP_METHODS = new Set([
 // -----------------------------------------------------------------------------
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
+  ['GET /api/economic/v1/get-food-prices', 'deferred-to-future-tool: source-specific food prices and dated food-security context are served to the dashboard (#9841)'],
   ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
 
   // === mutating (20) ===
@@ -110,6 +111,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes to Convex (not server/_shared/redis) — lead registration write"],
   ["POST /api/leads/v1/submit-contact",
     "mutating: writes to Convex (not server/_shared/redis) — contact form write"],
+  ["POST /api/feedback/v1/submit-report",
+    "mutating: agent feedback written to Convex; MCP exposure is report_issue, which calls the shared admitFeedbackReport path rather than this route (#8721)"],
   ["POST /api/news/v1/submit-error-report",
     "mutating: reader error report written to the #9093 review queue via runRedisPipeline"],
   ["POST /api/news/v1/review-error-report",

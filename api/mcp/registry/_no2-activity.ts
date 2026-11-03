@@ -3,8 +3,7 @@
 // sees exactly what the route serves; this module maps arguments to the
 // route's query, compacts each record to the fields agents read, and attaches
 // the method constants the methodVersion pins.
-import { COUNTRY_ARG_HINT, echoCountryInput } from '../_country-args';
-import { resolveCountryCode } from '../../../shared/country-code-resolve';
+import { COUNTRY_ARG_HINT, echoCountryInput, resolveCountryArg } from '../_country-args';
 import { buildAuthHeaders } from '../auth';
 import { RpcValidationError } from '../billing-denial';
 import { assertMcpToolFetchOk, fetchMcpDownstream } from '../downstream';
@@ -109,7 +108,7 @@ function queryFor(params: Record<string, unknown>): URLSearchParams {
   const query = new URLSearchParams();
   const rawCountry = params.country_code;
   if (rawCountry !== undefined && rawCountry !== null && rawCountry !== '') {
-    const resolved = resolveCountryCode(rawCountry);
+    const resolved = resolveCountryArg(rawCountry);
     if (!resolved) {
       throw new RpcValidationError(OPERATION, [{
         field: 'country_code',

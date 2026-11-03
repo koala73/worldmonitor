@@ -12,6 +12,7 @@ import type { InternetOutage } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
+import { dataFreshness } from '@/services/data-freshness';
 import { InfrastructureServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Client + Circuit Breakers ----
@@ -93,9 +94,15 @@ export function isOutagesConfigured(): boolean | null {
   return outagesConfigured;
 }
 
+// A response can settle after the user turns the feature off; availability wins.
+function setOutagesConfigured(configured: boolean | null): void {
+  outagesConfigured = isFeatureAvailable('internetOutages') ? configured : false;
+  dataFreshness.setEnabled('outages', outagesConfigured !== false);
+}
+
 export async function fetchInternetOutages(): Promise<InternetOutage[]> {
   if (!isFeatureAvailable('internetOutages')) {
-    outagesConfigured = false;
+    setOutagesConfigured(false);
     return [];
   }
 
@@ -118,14 +125,14 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
 
   if (resp.outages.length > 0) {
     outagesSeen = true;
-    outagesConfigured = true;
+    setOutagesConfigured(true);
     return resp.outages.map(toOutage);
   }
 
   // Empty snapshots must not imply missing configuration. Keep unknown until
   // real observations arrive; once seen, retain/recover configured=true even
   // across feature disablement so healthy empty cache can re-enable the layer.
-  outagesConfigured = outagesSeen ? true : null;
+  setOutagesConfigured(outagesSeen ? true : null);
   return [];
 }
 

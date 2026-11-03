@@ -382,6 +382,13 @@ The stretch of time a derived statistic was *actually* computed over, as distinc
 
 ## Crawlable Country Pages & Brief Grounding
 
+### Country Brief
+
+The per-country intelligence panel a user opens from the map, search, or a shared link. It slides in beside the dashboard map, or covers it when maximized, and its link reopens exactly that country.
+*Avoid:* Country Deep Dive, country modal
+
+The panel is a side panel, not a modal. On its default width the map stays visible and interactive next to it, so nothing about opening a brief may freeze, pause, or hide map updates. Only the maximized state covers the map. The generated text summary shown inside the panel is the *brief text*, and it is what Brief Grounding governs. See also: Brief Grounding, Recent Developments.
+
 ### Recent Developments
 
 The per-country section of a prerendered country page that carries dated, sourced, country-specific items: matched headlines, a generated country brief with the sources it cites, and timeline events, all taken from one weekly frozen capture rather than fetched live. A page with no such item renders no section at all rather than a placeholder, so the section's absence is itself the record of the enrichment gap. See also: Country Mention, Brief Grounding, Enrichment Tail, Feed Digest.
@@ -489,6 +496,12 @@ Hosted connectors classify a server by how this first request is answered. One t
 ### MCP Proxy
 
 The edge relay through which a browser panel talks to a **caller-chosen** remote MCP server: the panel names the server URL and supplies any credential headers, and the proxy performs the MCP handshake and tool call on its behalf so the browser never contacts the remote directly. Because the remote is the caller's choice, its answers are the caller's outcome, not the proxy's: a credential refusal, a JSON-RPC error object answered on a successful HTTP status (how MCP servers express quota, unknown tool, or invalid params), and a remote timeout are all **upstream verdicts**. An upstream verdict is relayed to the caller and recorded in the proxy's audit log, but it is not a proxy defect and does not page. What does page is a failure the proxy itself produced — a transport fault, a malformed stream, an unclassified throw. Downstream reporters cannot tell a relayed verdict from an origin failure by status code alone, so a relayed timeout is marked on the response for them. See also: Discovery Read vs. Transport Operation, Error Telemetry & Suppression.
+
+### Spoken Mode
+
+An MCP tool answer shaped for a voice agent to read aloud. It is a short templated narration, two or three sentences long, built from the tool's own result without a model call. It comes with the citations and freshness verdict the narration relies on. A caller asks for it per call. Only tools that have a narrator offer it, and the narration can be requested in more than one language.
+
+The load-bearing rule: every language comes from the same narration logic, and only the wording differs. Two answers to one call give the same numbers, caveats, citations and freshness verdict, so a listener never hears a stale warning in one language that the other leaves out. Upstream text that is spoken as part of the answer, such as a headline, stays in its published language, but it is cleaned for speech by the rules of the answer's language. The arguments that choose spoken mode and its language shape the response only, and the tool itself never receives them. See also: MCP Server Card.
 
 ## Structured Data & Entity Graph
 
@@ -1177,5 +1190,6 @@ Before the anchor the clock counts up to the figure. A country in surplus is the
 - *"Release"* names two unrelated things. A desktop Release Line is a publication sequence addressable by update clients. An error-tracking release is an event grouping label, and the browser and server surfaces choose it differently, which is what decides whether a Resolve Pin is satisfiable. Never reason about one from the other.
 - *"Gate"* had been used for both the local pre-push Tiered Gate and the CI Deploy Gate — these are distinct. The Tiered Gate is a cacheable pre-flight that can be scoped or escalated on one machine; only the Deploy Gate decides mergeability, and only names on its required list count toward it.
 - *"Superseded"* qualifies two unrelated things. A Superseded Run is a change-proposal CI run replaced by a later push, and it is discarded on purpose. A Superseded Failure is a scheduled run's failure that a newer capture, by hand or by a later run, has since made moot, and it is an alarm that resolves itself. The first is about wasted capacity, the second about alert noise; never reason about one from the other.
+- *"Country brief"* had been used for both the per-country dashboard panel and the generated text summary inside it. These are distinct. The panel is the Country Brief. The generated summary is the brief text, which Brief Grounding governs. A third, unrelated "brief" is the daily AI digest of the Brief Loop.
 - *"Capability"* names two things. A Capability-Gated Deep Link is gated on an entitlement predicate the destination also renders on; a Brief URL is a bearer link where the token itself is the capability. Say "entitlement" for the first sense in prose and "Brief URL" for the second; avoid "capability URL".
 - *"Unknown"* as a vessel class names two different states — a contact that declared military activity but no hull class, and a contact with no class evidence at all. They are currently indistinguishable downstream and fold into the same non-combatant bucket. When it matters which one you mean, say "declared activity, class unestablished" for the first; never read the shared bucket as evidence of either.

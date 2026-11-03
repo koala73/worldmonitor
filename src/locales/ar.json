@@ -78,18 +78,18 @@
     },
     "militaryActivity": "النشاط العسكري",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "القاعدة الصناعية الدفاعية",
+      "expenditure": "الإنفاق العسكري",
+      "personnel": "الأفراد",
+      "armsImports": "واردات الأسلحة",
       "concentration": "مؤشر تركز الموردين",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "مورّدو الأسلحة ({{start}}–{{end}})",
       "source": "المصادر: البنك الدولي وقاعدة بيانات SIPRI لتحويلات الأسلحة. يقيس مؤشر حجم التحويلات التحويلات النسبية للأسلحة، وليس القيمة المالية.",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "المصدر: البنك الدولي.",
       "snapshotAssembled": "تم تجميع لقطة {{source}} في {{time}}",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "غير متاح",
+      "coverage": "التغطية المرسومة",
+      "supplierRetained": "تم الاحتفاظ ببيانات المورّدين من آخر تحديث ناجح للمستوردين."
     },
     "economicIndicators": "المؤشرات الاقتصادية",
     "ownFlights": "رحلات محلية",
@@ -202,47 +202,47 @@
       "activityNowcast": "التنبؤ الآني للنشاط",
       "decisionSignalsUnavailable": "لقطة إشارات قرار الصين غير متاحة حالياً."
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "المخزونات الغذائية",
     "foodStocksHelp": "مخزونات السلع الزراعية من الإنتاج والإمداد والتوزيع بناءً على الاستخدام حسب السنة التسويقية، مع نسبة عالمية للمقارنة. توازن الغذاء من FAOSTAT يوفر الإنتاج والإمدادات المحلية عند عدم توفر بيانات كاملة من الإنتاج والإمداد والتوزيع.",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "جارٍ تحميل المخزونات الغذائية…",
+    "foodStocksUnavailable": "المخزونات الغذائية غير متاحة.",
+    "foodStocksProLocked": "قم بالترقية إلى PRO لنسبة المخزون إلى الاستخدام للسلع",
+    "foodStocksCommodity": "السلعة",
+    "foodStocksMarketingYear": "سنة التسويق",
+    "foodStocksRatio": "المخزون إلى الاستخدام",
+    "foodStocksWorld": "العالم",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "القمح",
+      "corn": "الذرة",
+      "rice": "الأرز",
+      "soybeans": "فول الصويا",
+      "barley": "الشعير",
+      "palmOil": "زيت النخيل"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "السكان والقوى العاملة",
       "help": "هيكل العمر والأنابيب التعليمية وقدرات القوى العاملة الصناعية من توقعات الأمم المتحدة للسكان ومعهد اليونسكو للإحصاء ومؤشرات التنمية العالمية للبنك الدولي و ILOSTAT.",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "جارٍ تحميل بيانات السكان والقوى العاملة…",
+      "unavailable": "بيانات السكان والقوى العاملة غير متاحة.",
+      "proLocked": "قم بالترقية إلى PRO للوصول إلى بيانات السكان والقوى العاملة",
+      "notAvailable": "غير متاح",
+      "ageStructure": "الهيكل العمري",
+      "education": "مسار التعليم",
+      "industrialWorkforce": "القوى العاملة الصناعية",
+      "medianAge": "العمر الوسيط",
+      "oldAgeDependency": "إعالة كبار السن",
+      "totalDependency": "نسبة الإعالة الكلية",
+      "workingAgePopulation": "السكان في سن العمل",
+      "workingAgeProjection": "السكان في سن العمل (+10 سنوات)",
+      "tertiaryEnrollment": "الالتحاق بالتعليم العالي",
       "stemGraduates": "خريجو العلوم والتكنولوجيا والهندسة والرياضيات",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "الباحثون",
+      "craftTrades": "العاملون في الحِرف والمهن",
+      "plantOperators": "مشغّلو المصانع والآلات",
+      "trainedIndustrialWorkforce": "إجمالي القوى العاملة الصناعية",
+      "manufacturingShare": "العمالة في التصنيع",
+      "source": "المصادر: {{sources}}.",
+      "retained": "تم الاحتفاظ ببيانات {{stage}} من آخر تحديث ناجح.",
       "statusNotSupplied": "لم تُقدَّم حالة التقدير وتعويض القيم المفقودة"
     },
     "fiveFactorScorecard": {
@@ -395,7 +395,6 @@
     "liveNews": "أخبار مباشرة",
     "markets": "الأسواق",
     "map": "الوضع العالمي",
-    "techMap": "التقنية العالمية",
     "techHubs": "مراكز التقنية النشطة",
     "status": "حالة النظام",
     "insights": "رؤى الذكاء الاصطناعي",
@@ -458,17 +457,17 @@
     "gccInvestments": "استثمارات مجلس التعاون الخليجي",
     "geoHubs": "مراكز جيوسياسية",
     "securityAdvisories": "تنبيهات أمنية",
-    "orefSirens": "Israel Sirens",
+    "orefSirens": "صفارات الإنذار في إسرائيل",
     "telegramIntel": "استخبارات Telegram",
-    "xIntel": "X News Accounts",
+    "xIntel": "حسابات الأخبار على X",
     "giving": "العطاء العالمي",
     "supplyChain": "سلسلة الإمداد",
     "gulfEconomies": "اقتصادات الخليج",
     "gulfIndices": "مؤشرات الخليج",
     "gulfCurrencies": "عملات الخليج",
     "gulfOil": "نفط الخليج",
-    "bigmac": "Real Big Mac Index",
-    "fearGreed": "Fear & Greed",
+    "bigmac": "مؤشر بيغ ماك الحقيقي",
+    "fearGreed": "الخوف والطمع",
     "marketImplications": "تداعيات السوق الذكية",
     "energyComplex": "مركب الطاقة",
     "oilInventories": "مخزونات النفط",
@@ -488,7 +487,7 @@
     "bigmacDesc": "أسعار Big Mac عبر دول الشرق الأوسط (مؤشر Big Mac)",
     "bigmacWow": "أسبوع مقابل أسبوع",
     "bigmacCountry": "الدولة",
-    "faoFoodPriceIndex": "مؤشر أسعار الغذاء للفاو",
+    "faoFoodPriceIndex": "أسعار الغذاء",
     "fuelPrices": "أسعار الوقود",
     "fuelPricesDesc": "أسعار البنزين والديزل بالتجزئة عبر أكثر من 30 دولة حول العالم",
     "fuelPricesCountry": "الدولة",
@@ -582,8 +581,8 @@
         "climate": "تبديل الشذوذ المناخي",
         "outages": "تبديل انقطاعات الإنترنت",
         "tradeRoutes": "تبديل طرق التجارة",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "تبديل طبقة طرق كندا",
+        "canadaAlerts": "تبديل طبقة تنبيهات الطوارئ في المقاطعات الكندية"
       },
       "view": {
         "dark": "التبديل إلى الوضع الداكن",
@@ -651,7 +650,7 @@
       "flightMilitaryOnGround": "عسكرية · {{type}} · على الأرض",
       "flightSearchHint": "اضغط Enter أو انقر للبحث عن الموقع الحالي",
       "flightNotFound": "لم يتم العثور على موقع حالي لـ {{callsign}}",
-      "addPanel": "Add"
+      "addPanel": "إضافة"
     },
     "signal": {
       "title": "نتيجة استخباراتية",
@@ -753,8 +752,8 @@
         "ABUSEIPDB_API_KEY": "مصدر إثراء اختياري لسمعة عناوين IP الخبيثة.",
         "FINNHUB_API_KEY": "عروض أسعار أسهم مؤجلة أو محمّلة مسبقًا وبيانات السوق. وجود المفتاح لا يعني بثًا مباشرًا.",
         "NASA_FIRMS_API_KEY": "نظام معلومات الحرائق لإدارة الموارد.",
-        "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
-        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
+        "OLLAMA_API_URL": "مثال: http://127.0.0.1:11434 (Ollama) أو http://127.0.0.1:1234/v1 (LM Studio) — نقطة نهاية متوافقة مع OpenAI.",
+        "OLLAMA_MODEL": "مثال: llama3.1:8b — وسم النموذج المستخدم للتلخيص."
       },
       "proCloud": "المميزات التي لا تحتوي على مفتاح API محلي تستخدم بيانات World Monitor السحابية.",
       "skipSetupPro": "تخطَّ الإعداد: سجّل الدخول باستخدام World Monitor Pro لاستخدام البيانات السحابية بدلاً من مفاتيح API الخاصة بك.",
@@ -916,21 +915,26 @@
       "active": "فعّال",
       "proposed": "مقترح",
       "updated": "مُحدّث",
-      "dashboard": "AI Regulation Dashboard",
-      "actionsCount": "{{count}} actions",
-      "deadlinesCount": "{{count}} deadlines",
-      "days": "days",
-      "activeCount": "Active Regulations ({{count}})",
-      "proposedCount": "Proposed Regulations ({{count}})",
-      "moreProvisions": "+{{count}} more...",
-      "source": "Source",
+      "dashboard": "لوحة تنظيم الذكاء الاصطناعي",
+      "actionsCount": "{{count}} إجراءات",
+      "deadlinesCount": "{{count}} مواعيد نهائية",
+      "days": "أيام",
+      "activeCount": "اللوائح السارية ({{count}})",
+      "proposedCount": "اللوائح المقترحة ({{count}})",
+      "moreProvisions": "+{{count}} أخرى...",
+      "source": "المصدر",
       "stances": {
-        "strict": "Strict",
-        "moderate": "Moderate",
-        "permissive": "Permissive",
-        "undefined": "Undefined"
+        "strict": "صارم",
+        "moderate": "معتدل",
+        "permissive": "متساهل",
+        "undefined": "غير محدد"
       },
-      "infoTooltip": "<strong>التنظيم</strong> إجراءات تنظيمية وتغييرات سياسات وتحديثات إنفاذ من الهيئات التنظيمية العالمية: المالية والتقنية والطاقة والتجارة. مصدرها منشورات الحكومات والهيئات التنظيمية الرسمية."
+      "infoTooltip": "<strong>التنظيم</strong> إجراءات تنظيمية وتغييرات سياسات وتحديثات إنفاذ من الهيئات التنظيمية العالمية: المالية والتقنية والطاقة والتجارة. مصدرها منشورات الحكومات والهيئات التنظيمية الرسمية.",
+      "latestActions": "أحدث الإجراءات المسجلة",
+      "otherDeadlines": "مواعيد الامتثال الأخرى",
+      "daysAgo": "أيام مضت",
+      "revokedCount": "اللوائح الملغاة ({{count}})",
+      "lapsedCount": "المقترحات المنتهية الصلاحية ({{count}})"
     },
     "economic": {
       "indicators": "المؤشرات",
@@ -939,16 +943,16 @@
       "awards": "عقود",
       "noIndicatorData": "لا توجد بيانات مؤشرات حتى الآن - قد يكون نظام البيانات الاقتصادية الفيدرالي قيد التحميل",
       "in": "في",
-      "centralBanks": "Central Banks",
-      "laborMarket": "Labor Market",
-      "metroUnemployment": "Metro Unemployment",
+      "centralBanks": "البنوك المركزية",
+      "laborMarket": "سوق العمل",
+      "metroUnemployment": "البطالة في المدن الكبرى",
       "noBisData": "بيانات بنك التسويات الدولية غير متاحة مؤقتاً - سيتم إعادة المحاولة",
-      "policyRate": "Policy Rate",
+      "policyRate": "سعر الفائدة",
       "creditToGdp": "الائتمان نسبة إلى الناتج الاقتصادي",
       "realEer": "سعر الصرف الفعلي الحقيقي",
-      "cut": "cut",
-      "hike": "hike",
-      "hold": "hold",
+      "cut": "خفض",
+      "hike": "رفع",
+      "hold": "تثبيت",
       "fredKeyMissing": "مفتاح API بيانات الاقتصادية الفيدرالية مطلوب. أضفه في الإعدادات لتفعيل المؤشرات الاقتصادية.",
       "pressure": {
         "label": "الضغط الاقتصادي الكلي",
@@ -1026,9 +1030,9 @@
       "no": "لا",
       "vol": "الحجم",
       "closes": "يغلق",
-      "leanYes": "Lean Yes",
-      "leanNo": "Lean No",
-      "tossUp": "Toss-up"
+      "leanYes": "يميل إلى نعم",
+      "leanNo": "يميل إلى لا",
+      "tossUp": "متكافئ"
     },
     "stablecoins": {
       "pegHealth": "صحة الربط",
@@ -1037,7 +1041,7 @@
       "mcap": "القيمة السوقية",
       "vol24h": "حجم 24 ساعة",
       "chg24h": "تغيّر 24 ساعة",
-      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
+      "infoTooltip": "<strong>العملات المستقرة</strong> سلامة الربط والقيمة السوقية وحجم 24 ساعة لأبرز الرموز المربوطة بالدولار الأمريكي (USDT وUSDC وDAI وBUSD). فكّ الربط إشارة إلى مخاطر نظامية."
     },
     "status": {
       "updatedAt": "تم التحديث {{time}}"
@@ -1047,10 +1051,10 @@
       "live": "مباشر",
       "historicalPlayback": "تشغيل تاريخي",
       "close": "إغلاق",
-      "skipToStart": "Skip to start",
-      "previous": "Previous",
-      "next": "Next",
-      "skipToEnd": "Skip to end"
+      "skipToStart": "الانتقال إلى البداية",
+      "previous": "السابق",
+      "next": "التالي",
+      "skipToEnd": "الانتقال إلى النهاية"
     },
     "pizzint": {
       "indexSource": "المؤشر: World Monitor",
@@ -1142,7 +1146,7 @@
         "air": "جوي",
         "sea": "بحري"
       },
-      "strike": "STRIKE",
+      "strike": "ضربة",
       "staleWarning": "استخدام بيانات مخزنة مؤقتاً - البث المباشر غير متاح مؤقتاً",
       "updated": "آخر تحديث:",
       "theaters": {
@@ -1277,8 +1281,8 @@
         "renewableInstallations": "طاقة نظيفة",
         "radiationSpike": "ارتفاع حاد في الإشعاع",
         "radiationElevated": "إشعاع مرتفع",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "طرق كندا",
+        "canadaAlerts": "تنبيهات كندا",
         "notamAirspace": "قيود المجال الجوي NOTAM",
         "no2Activity": "النشاط الصناعي"
       },
@@ -1394,8 +1398,8 @@
           "techFires": "حرائق غابات نشطة بالقرب من البنية التحتية التقنية",
           "geoBoundaries": "مناطق منزوعة السلاح وخطوط الهدنة والحدود المتنازع عليها",
           "ciiChoropleth": "خريطة حرارية لمؤشر عدم الاستقرار القطري — تلون الدول حسب التقييم (أخضر=مستقرة، أحمر=حرجة)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "canadaRoads": "حوادث الطرق الرسمية والتنبيهات والأحوال والإغلاقات والإنشاءات والمخاطر في الولايات القضائية الكندية المدعومة",
+          "canadaAlerts": "تنبيهات السلامة العامة على مستوى المقاطعات من Alberta Emergency Alert وB.C. Evacuation Orders and Alerts وSaskAlert",
           "notamAirspace": "قيود الطيران المؤقتة والمجال الجوي المقيد والخطر والمحظور من إشعارات FAA NOTAM، سارية الآن أو تبدأ خلال 24 ساعة",
           "no2Activity": "اتجاه نشاط NO2 من Sentinel-5P لـ 167 دولة و32 تجمعًا صناعيًا: أحدث نافذة مدتها 56 يومًا مقارنة بالتواريخ نفسها في السنوات السابقة، بعد نطاق ميت بنسبة 10%. يحتوي على بيانات Copernicus Sentinel معدّلة."
         },
@@ -1409,8 +1413,8 @@
       "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "يتضمن خط الأساس حسب الدولة + مضاعف الحدث — انظر /docs/methodology/cii-risk-scores للجدول المنشور",
-      "sectionFollowing": "Following",
-      "sectionAll": "All",
+      "sectionFollowing": "المتابَعة",
+      "sectionAll": "الكل",
       "sourceStates": {
         "degraded": "متدهور",
         "stale": "قديم"
@@ -1419,14 +1423,14 @@
     "insights": {
       "noStories": "لا توجد قصص عاجلة أو متعددة المصادر بعد",
       "infoTooltip": "<strong>تحليل مدعوم بالذكاء الاصطناعي</strong><br>• <strong>موجز عالمي</strong>: ملخص AI (OpenRouter)<br>• <strong>المشاعر</strong>: تحليل نبرة الأخبار<br>• <strong>السرعة</strong>: قصص سريعة التطور<br>• <strong>النقاط المحورية</strong>: تربط كيانات الأخبار بإشارات الخريطة (عسكرية، احتجاجات، انقطاعات)<br><em>سطح المكتب فقط • مدعوم بـ Llama 3.3 + كشف النقاط المحورية</em>",
-      "step": "Step {{step}}/{{total}}",
-      "waitingForData": "Waiting for news data...",
-      "rankingStories": "Ranking important stories...",
-      "analyzingSentiment": "Analyzing sentiment...",
-      "generatingBrief": "Generating world brief...",
-      "mapFlashLabel": "Live Event Pulse",
-      "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
+      "step": "الخطوة {{step}}/{{total}}",
+      "waitingForData": "بانتظار بيانات الأخبار...",
+      "rankingStories": "جارٍ ترتيب الأخبار المهمة...",
+      "analyzingSentiment": "جارٍ تحليل المشاعر...",
+      "generatingBrief": "جارٍ إنشاء الموجز العالمي...",
+      "mapFlashLabel": "نبض الأحداث المباشرة",
+      "mapFlashDesc": "إبراز المواقع على الخريطة عند ورود أخبار عاجلة",
+      "aiFlowCloudLabel": "ذكاء اصطناعي سحابي (OpenRouter)",
       "aiFlowCloudDesc": "إرسال العناوين إلى السحابة لتلخيص الذكاء الاصطناعي (موصى به)",
       "aiFlowBrowserLabel": "نموذج محلي في المتصفح",
       "aiFlowBrowserDesc": "تشغيل الذكاء الاصطناعي محلياً في متصفحك",
@@ -1439,7 +1443,7 @@
       "aiFlowStatusBrowserOnly": "نموذج المتصفح فقط",
       "aiFlowStatusDisabled": "لا يوجد مزود ذكاء اصطناعي مفعّل",
       "insightsDisabledTitle": "تحليل الذكاء الاصطناعي معطّل",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "insightsDisabledHint": "فعّل المزوّدين من ترس الإعدادات في رأس الخريطة",
       "streamQualityDesc": "تعيين جودة البث لجميع القنوات المباشرة (الجودة المنخفضة توفر عرض النطاق)",
       "streamQualityLabel": "جودة الفيديو",
       "badgeAnimLabel": "حركة الشارات",
@@ -1548,51 +1552,51 @@
         "stable": "مستقر"
       },
       "infoTooltip": "<strong>المنهجية</strong> درجة مركّبة (0-100) تمزج:<ul><li>50% عدم استقرار الدول (أعلى 5 مرجّحة)</li><li>30% مناطق التقارب الجغرافي</li><li>20% حوادث البنية التحتية</li></ul>يُحدّث تلقائياً كل 5 دقائق.",
-      "insufficientData": "Insufficient Data",
-      "unableToAssess": "Unable to assess risk level.",
-      "enableDataSources": "Enable data sources to begin monitoring.",
-      "requiredDataSources": "Required Data Sources",
-      "optionalSources": "Optional Sources",
-      "enableCoreFeeds": "Enable Core Feeds",
-      "waitingForData": "Waiting for data...",
-      "refresh": "Refresh",
-      "learningMode": "Learning Mode - {{minutes}}m until reliable",
-      "noData": "no data",
-      "enable": "Enable",
-      "convergenceMetric": "Convergence",
+      "insufficientData": "بيانات غير كافية",
+      "unableToAssess": "تعذّر تقييم مستوى المخاطر.",
+      "enableDataSources": "فعّل مصادر البيانات لبدء الرصد.",
+      "requiredDataSources": "مصادر البيانات المطلوبة",
+      "optionalSources": "مصادر اختيارية",
+      "enableCoreFeeds": "تفعيل الخلاصات الأساسية",
+      "waitingForData": "بانتظار البيانات...",
+      "refresh": "تحديث",
+      "learningMode": "وضع التعلّم - {{minutes}} د حتى تصبح موثوقة",
+      "noData": "لا بيانات",
+      "enable": "تفعيل",
+      "convergenceMetric": "التقارب",
       "ciiDeviation": "الانحراف عن مؤشر عدم الاستقرار القطري",
-      "infraEvents": "Infra Events",
-      "highAlerts": "High Alerts",
-      "topRisks": "Top Risks",
-      "recentAlerts": "Recent Alerts ({{count}})",
-      "updated": "Updated: {{time}}",
+      "infraEvents": "أحداث البنية التحتية",
+      "highAlerts": "تنبيهات عالية",
+      "topRisks": "أبرز المخاطر",
+      "recentAlerts": "التنبيهات الأخيرة ({{count}})",
+      "updated": "حُدِّث: {{time}}",
       "time": {
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago"
+        "justNow": "الآن",
+        "minutesAgo": "منذ {{count}} د",
+        "hoursAgo": "منذ {{count}} س"
       },
       "cachedCiiStatus": "مؤشر عدم الاستقرار القطري المخزن مؤقتاً {{states}}",
       "sourceStates": {
         "degraded": "متدهور",
         "stale": "قديم"
       },
-      "dataFreshness": "Data Freshness",
-      "sourcesDetail": "{{active}}/{{total}} sources"
+      "dataFreshness": "حداثة البيانات",
+      "sourcesDetail": "{{active}}/{{total}} مصادر"
     },
     "techEvents": {
       "loading": "جارٍ تحميل الفعاليات التقنية...",
       "noEvents": "لا توجد فعاليات لعرضها",
       "showOnMap": "عرض على الخريطة",
       "moreInfo": "مزيد من المعلومات",
-      "upcoming": "Upcoming",
-      "conferences": "Conferences",
-      "earnings": "Earnings",
-      "all": "All",
-      "conferencesCount": "{{count}} conferences",
-      "onMap": "{{count}} on map",
-      "techmemeEvents": "Techmeme Events ↗",
-      "today": "TODAY",
-      "soon": "SOON",
+      "upcoming": "القادمة",
+      "conferences": "المؤتمرات",
+      "earnings": "الأرباح",
+      "all": "الكل",
+      "conferencesCount": "{{count}} مؤتمرات",
+      "onMap": "{{count}} على الخريطة",
+      "techmemeEvents": "فعاليات Techmeme ↗",
+      "today": "اليوم",
+      "soon": "قريبًا",
       "infoTooltip": "<strong>أحداث التقنية</strong> أحداث تقنية قادمة وحديثة: مؤتمرات، إطلاق منتجات، جلسات استماع تنظيمية، ومكالمات أرباح. مجمعة من تقويمات الأحداث الرسمية ومصادر الصناعة."
     },
     "techReadiness": {
@@ -1600,14 +1604,14 @@
       "mobileSubscriptions": "اشتراكات الهاتف المحمول",
       "rdSpending": "نفقات البحث والتطوير",
       "infoTooltip": "<strong>جاهزية التكنولوجيا</strong> درجة مركبة من البنك الدولي، 0–100. الأوزان هي البحث والتطوير 35%، والإنترنت 30%، والنطاق العريض 20%، والجوال 15%. مستخدمو الإنترنت هم نسبة من السكان؛ الاشتراكات المحمولة لكل 100 شخص؛ نفقات البحث هي حصة من الناتج الاقتصادي. تظهر القيم المفقودة شرطة. البيانات تغطي 2019–2024.",
-      "fetchingData": "Fetching World Bank Data",
-      "internetUsersIndicator": "Internet Users",
-      "mobileSubscriptionsIndicator": "Mobile Subscriptions",
-      "broadbandAccess": "Broadband Access",
+      "fetchingData": "جارٍ جلب بيانات البنك الدولي",
+      "internetUsersIndicator": "مستخدمو الإنترنت",
+      "mobileSubscriptionsIndicator": "اشتراكات الهاتف المحمول",
+      "broadbandAccess": "الوصول إلى النطاق العريض",
       "rdExpenditure": "مصروفات البحث والتطوير",
-      "analyzingCountries": "Analyzing 200+ countries...",
-      "source": "Source: World Bank",
-      "updated": "Updated: {{date}}",
+      "analyzingCountries": "جارٍ تحليل أكثر من 200 دولة...",
+      "source": "المصدر: البنك الدولي",
+      "updated": "حُدِّث: {{date}}",
       "dataPreparing": "جاري تحديث بيانات جاهزية التكنولوجيا — ستظهر قريبًا."
     },
     "populationExposure": {
@@ -1704,8 +1708,6 @@
       "relatedAssetsNear": "أصول ذات صلة بالقرب من {{location}}",
       "summaryError": "تعذّر إنشاء الملخص",
       "summaryFailed": "فشل التلخيص",
-      "sourceCoverage": "{{covered}}/{{total}} مصدر",
-      "sourceCoverageHint": "يعرض {{covered}} من أصل {{total}} مصدرًا مفعّلًا — تتناوب هذه اللوحة على مصادرها مع كل تحديث",
       "sortBy": "ترتيب حسب",
       "sortNewest": "الأحدث",
       "sortRelevance": "الصلة",
@@ -1781,54 +1783,54 @@
       "filterCyber": "إلكتروني"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "infoTooltip": "منشورات مختارة من حسابات إخبارية عامة على X. عبر الواجهة البرمجية الرسمية فقط.",
+      "loading": "جارٍ الاتصال بمرحّل حسابات الأخبار على X...",
+      "empty": "لا توجد منشورات",
+      "disabled": "مرحّل حسابات الأخبار على X غير نشط",
+      "filterAll": "الكل",
+      "filterBreaking": "عاجل",
+      "filterConflict": "النزاعات",
       "filterOsint": "استخبارات مفتوحة المصدر",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
-      "filterCyber": "Cyber"
+      "filterMiddleeast": "الشرق الأوسط",
+      "live": "مباشر",
+      "viewSource": "عرض المصدر",
+      "filterGeopolitics": "الجغرافيا السياسية",
+      "filterCyber": "سيبراني"
     },
     "investments": {
       "infoTooltip": "قاعدة بيانات الاستثمارات الأجنبية المباشرة للمملكة العربية السعودية والإمارات في البنية التحتية الحيوية العالمية. انقر على صف للانتقال إلى موقع الاستثمار على الخريطة.",
-      "searchPlaceholder": "Search assets, countries, entities…",
-      "allCountries": "All Countries",
-      "saudiArabia": "Saudi Arabia",
-      "uae": "UAE",
-      "allSectors": "All Sectors",
-      "allEntities": "All Entities",
-      "allStatuses": "All Statuses",
-      "operational": "Operational",
-      "underConstruction": "Under Construction",
-      "announced": "Announced",
-      "rumoured": "Rumoured",
-      "divested": "Divested",
-      "asset": "Asset",
-      "country": "Country",
-      "sector": "Sector",
-      "investment": "Investment",
-      "year": "Year",
-      "noMatch": "No investments match filters",
-      "undisclosed": "Undisclosed",
+      "searchPlaceholder": "ابحث في الأصول والدول والجهات…",
+      "allCountries": "كل الدول",
+      "saudiArabia": "السعودية",
+      "uae": "الإمارات",
+      "allSectors": "كل القطاعات",
+      "allEntities": "كل الجهات",
+      "allStatuses": "كل الحالات",
+      "operational": "قيد التشغيل",
+      "underConstruction": "قيد الإنشاء",
+      "announced": "مُعلن",
+      "rumoured": "شائعة",
+      "divested": "تم التخارج",
+      "asset": "الأصل",
+      "country": "الدولة",
+      "sector": "القطاع",
+      "investment": "الاستثمار",
+      "year": "السنة",
+      "noMatch": "لا توجد استثمارات مطابقة للمرشحات",
+      "undisclosed": "غير مُفصح عنه",
       "sectors": {
-        "ports": "Ports",
-        "pipelines": "Pipelines",
-        "energy": "Energy",
-        "datacenters": "Data Centers",
-        "airports": "Airports",
-        "railways": "Railways",
-        "telecoms": "Telecoms",
-        "water": "Water",
-        "logistics": "Logistics",
-        "mining": "Mining",
-        "realEstate": "Real Estate",
-        "manufacturing": "Manufacturing"
+        "ports": "الموانئ",
+        "pipelines": "خطوط الأنابيب",
+        "energy": "الطاقة",
+        "datacenters": "مراكز البيانات",
+        "airports": "المطارات",
+        "railways": "السكك الحديدية",
+        "telecoms": "الاتصالات",
+        "water": "المياه",
+        "logistics": "الخدمات اللوجستية",
+        "mining": "التعدين",
+        "realEstate": "العقارات",
+        "manufacturing": "التصنيع"
       }
     },
     "prediction": {
@@ -1865,16 +1867,16 @@
         "flow": "التدفق",
         "regime": "النظام",
         "btcTrend": "اتجاه BTC",
-        "hashRate": "Hash Rate",
+        "hashRate": "معدل التجزئة",
         "fearGreed": "الخوف &amp; الجشع",
-        "momentum": "Momentum"
+        "momentum": "الزخم"
       },
       "infoTooltip": "<strong>ظروف سوق البيتكوين</strong> لوحة معلومات الإشارات المركبة لتوضع البيتكوين وشهية المخاطر:<ul><li><strong>السيولة</strong>: وكيل السيولة الصافية للاحتياطي الفيدرالي</li><li><strong>التدفق</strong>: عودات البيتكوين مقابل QQQ لمدة 5 أيام</li><li><strong>النظام</strong>: دوران QQQ مقابل XLP (تشغيل/إيقاف المخاطر)</li><li><strong>اتجاه البيتكوين</strong>: السعر مقابل SMA50/200، مضاعف مايير</li><li><strong>معدل الهاش</strong>: تغيير هاش الشبكة لمدة 30 يوم</li><li><strong>الخوف والجشع</strong>: مؤشر معنويات السوق</li></ul>هذه اللوحة لنظام التوضع والتوضع، وليس بيانات الاقتصاد الكلي الواسعة."
     },
     "panel": {
-      "showMethodologyInfo": "Show methodology info",
-      "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings",
+      "showMethodologyInfo": "عرض معلومات المنهجية",
+      "dragToResize": "اسحب لتغيير الحجم (انقر مرتين لإعادة الضبط)",
+      "openSettings": "فتح الإعدادات",
       "closePanel": "إغلاق اللوحة",
       "collapsePanel": "طي اللوحة",
       "expandPanel": "توسيع اللوحة",
@@ -1884,50 +1886,50 @@
       "mapLabelsFallbackVi": "تسميات الخريطة تعود حاليًا إلى الإنجليزية للفيتنامية."
     },
     "serviceStatus": {
-      "checkingServices": "Checking services...",
-      "allOperational": "All services operational",
+      "checkingServices": "جارٍ فحص الخدمات...",
+      "allOperational": "جميع الخدمات تعمل",
       "ok": "OK",
-      "degraded": "Degraded",
-      "outage": "Outage",
+      "degraded": "متراجع",
+      "outage": "انقطاع",
       "categories": {
-        "all": "All",
-        "cloud": "Cloud",
-        "dev": "Dev Tools",
-        "comm": "Comms",
+        "all": "الكل",
+        "cloud": "السحابة",
+        "dev": "أدوات المطورين",
+        "comm": "الاتصالات",
         "ai": "AI",
         "saas": "SaaS"
       },
       "infoTooltip": "<strong>حالة الخدمات</strong> الحالة التشغيلية المباشرة لمنصات السحابة الكبرى والبنية التحتية المالية وخدمات الإنترنت الحيوية. مصدرها صفحات الحالة الرسمية (AWS وAzure وGCP وCloudflare والبورصات). قد تشير الحوادث إلى أحداث تعطل أوسع."
     },
     "verification": {
-      "title": "Information Verification Checklist",
-      "hint": "Based on Bellingcat's OSH Framework",
+      "title": "قائمة التحقق من المعلومات",
+      "hint": "استنادًا إلى إطار OSH من Bellingcat",
       "verdicts": {
-        "verified": "VERIFIED",
-        "likely": "LIKELY AUTHENTIC",
-        "uncertain": "UNCERTAIN",
-        "unreliable": "UNRELIABLE"
+        "verified": "موثَّق",
+        "likely": "موثوق على الأرجح",
+        "uncertain": "غير مؤكد",
+        "unreliable": "غير موثوق"
       },
-      "notesTitle": "Verification Notes",
-      "noNotes": "No notes added",
-      "addNotePlaceholder": "Add verification note...",
-      "add": "Add",
-      "resetChecklist": "Reset Checklist",
+      "notesTitle": "ملاحظات التحقق",
+      "noNotes": "لا توجد ملاحظات",
+      "addNotePlaceholder": "أضف ملاحظة تحقق...",
+      "add": "إضافة",
+      "resetChecklist": "إعادة ضبط القائمة",
       "checks": {
-        "recency": "Recent timestamp confirmed",
-        "geolocation": "Location verified",
-        "source": "Primary source identified",
-        "crossref": "Cross-referenced with other sources",
-        "noAi": "No AI generation artifacts",
-        "noRecrop": "Not recycled/old footage",
-        "metadata": "Metadata verified",
-        "context": "Context established"
+        "recency": "تم تأكيد حداثة الطابع الزمني",
+        "geolocation": "تم التحقق من الموقع",
+        "source": "تم تحديد المصدر الأساسي",
+        "crossref": "تمت المقارنة بمصادر أخرى",
+        "noAi": "لا آثار لتوليد بالذكاء الاصطناعي",
+        "noRecrop": "ليست لقطات قديمة أو معاد تدويرها",
+        "metadata": "تم التحقق من البيانات الوصفية",
+        "context": "تم تحديد السياق"
       }
     },
     "liveNews": {
       "audioUnavailable": "الصوت غير متاح",
-      "notLive": "{{name}} is not currently live",
-      "openOnYouTube": "Open on YouTube",
+      "notLive": "{{name}} غير مباشر حاليًا",
+      "openOnYouTube": "فتح على YouTube",
       "manage": "إدارة القنوات",
       "addChannel": "إضافة قناة",
       "remove": "إزالة",
@@ -1989,12 +1991,12 @@
       "infoTooltip": "<strong>تنبيهات أمنية</strong><br>تحذيرات السفر والتنبيهات الأمنية من الوكالات الحكومية."
     },
     "orefSirens": {
-      "checking": "Checking siren alerts...",
-      "noAlerts": "No active sirens — all clear",
-      "notConfigured": "Sirens service not configured",
-      "activeSirens": "{{count}} active siren(s)",
-      "justNow": "just now",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "checking": "جارٍ فحص تنبيهات صفارات الإنذار...",
+      "noAlerts": "لا صفارات إنذار نشطة — الوضع آمن",
+      "notConfigured": "خدمة صفارات الإنذار غير مهيأة",
+      "activeSirens": "{{count}} صفارة إنذار نشطة",
+      "justNow": "الآن",
+      "infoTooltip": "<strong>صفارات الإنذار في إسرائيل</strong><br>تنبيهات صفارات الإنذار من الصواريخ والقذائف في الوقت الفعلي من قيادة الجبهة الداخلية الإسرائيلية.<br><br>تُستطلع البيانات كل 10 ثوانٍ. المؤشر الأحمر النابض يعني أن صفارات الإنذار تدوي.",
       "historySummary": "{{count}} تنبيه خلال 24 ساعة — {{waves}} موجات",
       "loadingHistory": "جارٍ تحميل السجل..."
     },
@@ -2002,8 +2004,8 @@
       "critical": "حرج",
       "dismiss": "تجاهل",
       "high": "مرتفع",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "تنبيهات الأخبار العاجلة",
+      "viewPanel": "عرض اللوحة ذات الصلة"
     },
     "giving": {
       "activityIndex": "مؤشر النشاط",
@@ -2054,12 +2056,12 @@
     },
     "supplyChain": {
       "chokepoints": "نقاط الاختناق",
-      "disruption": "Disruption",
-      "vessels": "vessels",
-      "incidents7d": "incidents (7d)",
-      "corridorDisruption": "Corridor Disruption",
-      "corridor": "Corridor",
-      "loadingCorridors": "Loading corridor data...",
+      "disruption": "اضطراب",
+      "vessels": "سفن",
+      "incidents7d": "حوادث (7 أيام)",
+      "corridorDisruption": "اضطراب الممر",
+      "corridor": "الممر",
+      "loadingCorridors": "جارٍ تحميل بيانات الممرات...",
       "mineral": "المعدن",
       "minerals": "المعادن",
       "noChokepoints": "جارٍ تحميل بيانات نقاط الاختناق...",
@@ -2082,12 +2084,15 @@
       "historyUnavailable": "سجل العبور غير متاح",
       "transitDataUnavailable": "بيانات العبور غير متاحة (جزئية من المصدر)",
       "infoTooltip": "<strong>مراقب سلسلة التوريد</strong> تتبع اللوجستيات والموارد على الصعيد العالمي:<ul><li><strong>نقاط الاختناق</strong>: حالة النقل البحري وتقييمات الاضطراب وعدد السفن</li><li><strong>الشحن البحري</strong>: مؤشر بالتيك الجاف واتجاهات أسعار الشحن</li><li><strong>المعادن</strong>: مخاطر تركيز المعادن الحرجة (مؤشر تركيز المنتجين) والمنتجون الرئيسيون</li></ul>انقر على بطاقة نقطة اختناق لتوسيع مخطط سجل النقل.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "ترقّ إلى PRO للحصول على حصص الدول في المناجم والمصافي مع التركيز (مؤشر تركز الموردين) حسب المرحلة."
+      "mineStage": "التعدين",
+      "refineryStage": "التكرير",
+      "stageUnavailable": "لا توجد أرقام منشورة لهذه المرحلة",
+      "withheldNote": "W محجوب",
+      "productionCaption": "حصص الدول من الإنتاج الفعلي. تُظهر طبقة الرواسب على الخريطة مواقع الموارد؛ ويُظهر هذا الجدول من يستخرجها أو يكرّرها.",
+      "productionProLocked": "ترقّ إلى PRO للحصول على حصص الدول في المناجم والمصافي مع التركيز (مؤشر تركز الموردين) حسب المرحلة.",
+      "partialTransitCoverage": "بيانات النقل غير متاحة لـ {{names}}",
+      "oilPipelinesUnavailable": "بيانات خطوط أنابيب النفط غير متاحة",
+      "gasPipelinesUnavailable": "بيانات خطوط أنابيب الغاز غير متاحة"
     },
     "positiveNewsFeed": {
       "noStories": "لا توجد قصص في هذه الفئة بعد"
@@ -2116,7 +2121,7 @@
       "clearTrails": "مسح المسارات"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "infoTooltip": "<strong>انقطاعات الإنترنت</strong> انقطاعات الإنترنت وهجمات DDoS وحالات شذوذ حركة المرور في الوقت الفعلي من رصد الشبكات العالمي:<ul><li><strong>الانقطاعات</strong>: أعطال اتصال مرصودة عبر BGP حسب الدولة</li><li><strong>DDoS</strong>: تقارير الهجمات الحجمية حسب البروتوكول والناقل</li><li><strong>حالات الشذوذ</strong>: أنماط حركة غير معتادة من Cloudflare Radar</li></ul>",
       "noOutages": "لم يتم الكشف عن انقطاعات نشطة",
       "noDdos": "لا توجد بيانات DDoS متاحة",
       "noAnomalies": "لم يتم الكشف عن حالات شذوذ في حركة المرور",
@@ -2125,16 +2130,16 @@
       "topTargets": "الدول المستهدفة الأعلى"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "infoTooltip": "<strong>السلع</strong> شريط السلع القابلة للتداول من غير الطاقة مع التركيز على المعادن والمواد. أسعار الطاقة في «مجمّع الطاقة»، ومؤشرات الضغط الكلي في «الضغط الكلي».",
+      "commodities": "السلع",
+      "physicalPremiums": "العلاوة الفعلية",
+      "physical": "فعلي",
+      "paper": "ورقي",
+      "premium": "العلاوة",
+      "asOf": "حتى {{date}}",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "الذهب",
+        "silver": "الفضة"
       },
       "divergence": {
         "compositeValue": "مؤشر الإجهاد المادي: {{value}} / 100",
@@ -2154,7 +2159,7 @@
       }
     },
     "crypto": {
-      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+      "infoTooltip": "<strong>العملات المشفرة</strong> أسعار مباشرة وتغيرات 24 ساعة وحجم التداول لأبرز العملات المشفرة. البيانات من CoinGecko."
     },
     "gulfEconomies": {
       "infoTooltip": "<strong>اقتصادات الخليج</strong> مؤشرات أسهم الخليج والأسعار الصرفية وأسعار النفط لاقتصادات مجلس التعاون الخليجي (السعودية والإمارات والكويت وقطر والبحرين وعمان)."
@@ -2163,25 +2168,25 @@
       "infoTooltip": "<strong>مؤشر سلة المشتريات</strong> مقارنة أسعار سلة المشتريات العالمية عبر 24 دولة — يتتبع التضخم الفعلي للسلع الاستهلاكية خارج مؤشر أسعار المستهلك الكلي."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>مؤشر بيغ ماك الحقيقي</strong> يقيس مؤشر بيغ ماك من The Economist تعادل القوة الشرائية بمقارنة أسعار برغر ماكدونالدز بين الدول. يُحدَّث عند نشر بيانات جديدة (فصليًا/سنويًا)."
     },
     "defiTokens": {
-      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+      "infoTooltip": "<strong>رموز DeFi</strong> الأسعار والأداء خلال 24 ساعة/7 أيام لأبرز رموز بروتوكولات التمويل اللامركزي — منصات التداول اللامركزية والإقراض وبروتوكولات العائد."
     },
     "aiTokens": {
-      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+      "infoTooltip": "<strong>رموز الذكاء الاصطناعي</strong> الأسعار والأداء خلال 24 ساعة/7 أيام لرموز قطاع الذكاء الاصطناعي وتعلّم الآلة — شبكات الحوسبة والبنية التحتية اللامركزية للذكاء الاصطناعي وبروتوكولات البيانات."
     },
     "altTokens": {
-      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+      "infoTooltip": "<strong>العملات البديلة</strong> الأسعار والأداء خلال 24 ساعة/7 أيام لرموز العملات المشفرة البديلة والناشئة خارج فئات القيمة السوقية الكبرى."
     },
     "stockAnalysis": {
-      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+      "infoTooltip": "<strong>تحليل الأسهم المميز</strong> تحليل بالذكاء الاصطناعي للأسهم في قائمة المتابعة — إشارات شراء/احتفاظ/بيع وأسعار مستهدفة وأبرز المخاطر والمحفزات، تُحدَّث يوميًا."
     },
     "stockBacktest": {
-      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+      "infoTooltip": "<strong>الاختبار الرجعي المميز</strong> اختبارات رجعية للأداء التاريخي للأسهم في قائمة المتابعة — العوائد السابقة وأقصى تراجع ومقاييس التقلب."
     },
     "dailyMarketBrief": {
-      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+      "infoTooltip": "<strong>الموجز اليومي للأسواق</strong> ملخص يومي مُولَّد بالذكاء الاصطناعي لأوضاع الأسواق العالمية وأبرز الاتجاهات الكلية والإشارات القطاعية — يُحدَّث كل يوم تداول."
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>مراقبة البنوك المركزية</strong> آخر البيانات والقرارات والاتصالات من الاحتياطي الفيدرالي والبنك المركزي الأوروبي وبنك إنجلترا والبنوك المركزية الرئيسية الأخرى في العالم."
@@ -2319,8 +2324,8 @@
       "metrics": {
         "vix": "VIX",
         "hySpread": "انتشار العائد العالي",
-        "hygPrice": "HYG Price",
-        "tltPrice": "TLT Price"
+        "hygPrice": "سعر HYG",
+        "tltPrice": "سعر TLT"
       },
       "errors": {
         "unavailable": "بيانات مؤشر الإجهاد المالي غير متاحة",
@@ -2349,19 +2354,20 @@
       "proLocked": "قم بالترقية إلى PRO لعرض درجات الضعف في السلع الأساسية"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>متتبع التجارة في هرمز</strong> تتبع السفن مباشرة عبر مضيق هرمز، أحرج نقطة اختناق نفطية في العالم. يراقب عدد الناقلات والأحداث المزعجة والتغييرات في التدفق الأسبوعي. يمر حوالي 20% من إمدادات النفط العالمية يومياً هنا.",
+      "infoTooltip": "<strong>متتبع التجارة في هرمز</strong> مؤشرات الشحنات اليومية من WTO DataLab لمضيق هرمز: النفط الخام والغاز الطبيعي المسال والأسمدة التي تغادر الخليج والسلع الزراعية الواردة. حسب الحجم، متوسط يناير–مارس 2025 = 100، السفن المرئية عبر AIS فقط. الحالة والتاريخ مأخوذان من أحدث تحليل من WTO.",
       "title": "متتبع التجارة في هرمز",
       "noData": "لا توجد بيانات",
       "notAvailable": "غير متاح",
       "chartUnavailable": "بيانات الرسم البياني غير متاحة",
       "sourcePrefix": "المصدر:",
-      "units": {
-        "ktPerDay": "kt/day",
-        "generic": "وحدات"
-      },
       "errors": {
         "unavailable": "بيانات هرمز غير متاحة",
         "failedToLoad": "فشل التحميل"
+      },
+      "analysisDate": "تحليل منظمة التجارة العالمية {{date}}",
+      "indexNote": "مؤشر الشحنات حسب الحجم، متوسط يناير–مارس 2025 = 100",
+      "units": {
+        "index": "مؤشر"
       }
     },
     "liveWebcams": {
@@ -2410,30 +2416,30 @@
         "movers": "الحركات",
         "spread": "فرق تجزئة البيع",
         "health": "صحة البيانات",
-        "world": "World"
+        "world": "العالم"
       },
       "infoTooltip": "<strong>أسعار المستهلكين</strong> سلات البقالة المباشرة والتغييرات الأسبوعية واتجاهات الفئات والأسعار المتحركة والفروقات بين تجار التجزئة. يستخدم العرض العالمي معدل التضخم السنوي من صندوق النقد الدولي توقعات الاقتصاد العالمي.",
       "world": {
-        "country": "Country",
+        "country": "الدولة",
         "inflationYoY": "التضخم السنوي",
-        "endOfPeriod": "End-of-Period",
-        "year": "Year",
-        "filterPlaceholder": "Filter countries…",
-        "loading": "Loading global inflation…",
-        "empty": "Inflation data not yet available",
-        "noMatches": "No matching countries",
+        "endOfPeriod": "نهاية الفترة",
+        "year": "السنة",
+        "filterPlaceholder": "تصفية الدول…",
+        "loading": "جارٍ تحميل التضخم العالمي…",
+        "empty": "بيانات التضخم غير متاحة بعد",
+        "noMatches": "لا توجد دول مطابقة",
         "source": "المصدر: صندوق النقد الدولي توقعات الاقتصاد العالمي · معدل التضخم السنوي لمؤشر أسعار المستهلكين، جميع الاقتصادات المبلغة",
-        "countSingular": "country",
-        "countPlural": "countries"
+        "countSingular": "دولة",
+        "countPlural": "دول"
       }
     },
     "marketImplications": {
       "infoTooltip": "<strong>آثار السوق بالذكاء الاصطناعي</strong> إشارات تداول يولدها النموذج اللغوي الكبير مشتقة من الحالة الجيوسياسية والسلع والاقتصادية الحية بعد كل دورة توقع.<ul><li><strong>الاتجاه</strong>: شراء / بيع / تحوط</li><li><strong>الأفق الزمني</strong>: أسبوع أو أسبوعان أو شهر أو 3 أشهر</li><li><strong>المحرك</strong>: العامل الرئيسي وراء الإشارة</li><li><strong>المخاطرة</strong>: تحذير أو شرط إلغاء</li></ul><em>لأغراض إعلامية فقط. ليست نصيحة استثمارية.</em>",
       "title": "تداعيات سوق الذكاء الاصطناعي",
       "directions": {
-        "long": "LONG",
-        "short": "SHORT",
-        "hedge": "HEDGE"
+        "long": "شراء",
+        "short": "بيع على المكشوف",
+        "hedge": "تحوّط"
       },
       "rationale": "المنطق:",
       "driver": "المحرك:",
@@ -2539,14 +2545,14 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} و{{count}} أخرى — {{reason}}",
+        "notFound": "لا يوجد سعر متاح",
+        "providerError": "فشل جلب السعر، ستُعاد المحاولة قريبًا",
+        "rateLimited": "مزوّد الأسعار تجاوز حد الطلبات، ستُعاد المحاولة قريبًا",
+        "notConfigured": "مزوّد الأسعار غير مهيأ",
+        "requestLimit": "عدد الرموز المطلوبة كبير جدًا",
+        "budget": "لم يُحمَّل بعد، ستُعاد المحاولة قريبًا",
+        "seed": "بيانات السوق غير متاحة مؤقتًا"
       }
     },
     "heatmap": {
@@ -2681,6 +2687,15 @@
             "mcpClients": "إعداد MCP",
             "channels": "أعدّها في إعدادات الإشعارات"
           }
+        },
+        "about": {
+          "heading": "شيء أخير واحد: ماذا ستستخدم World Monitor من أجله؟",
+          "body": "ثلاث إجابات سريعة تساعدنا في بناء الأدوات المناسبة لك. يمكنك تخطي أي منها.",
+          "confirmCta": "حفظ إجاباتي",
+          "confirming": "جاري الحفظ…",
+          "doneNote": "شكراً، لقد تلقينا إجاباتك.",
+          "summaryLabel": "معلومات عنك",
+          "summaryVerified": "تم الحفظ. شكراً لك."
         }
       },
       "status": {
@@ -2914,7 +2929,7 @@
         "babElMandeb": "باب المندب",
         "bosphorus": "المضائق التركية",
         "panama": "بنما",
-        "danishStraits": "المضائق الدنماركية"
+        "doverStrait": "مضيق دوفر"
       },
       "flow": {
         "mbd": "{{value}} ألف برميل/يوم",
@@ -3083,6 +3098,95 @@
       "rosterPublishers_few": "{{count}} ناشرين",
       "rosterPublishers_many": "{{count}} ناشراً",
       "rosterPublishers_other": "{{count}} ناشر"
+    },
+    "foodPrices": {
+      "title": "أسعار الغذاء المحلية",
+      "method": "يقارن التغير الأسبوعي المنتج والسوق والمنشأ والوحدة نفسها بسعرها قبل سبعة أيام بالضبط. تستخدم البلدان سلالاً وعملات مختلفة.",
+      "loading": "جارٍ تحميل أسعار الغذاء…",
+      "unavailable": "غير متاح",
+      "retry": "إعادة المحاولة",
+      "country": "البلد",
+      "market": "السوق",
+      "retail": "التجزئة",
+      "wholesale": "الجملة",
+      "farmgate": "سعر المزرعة",
+      "export": "تصدير",
+      "prices": "أسعار الغذاء",
+      "product": "المنتج",
+      "price": "السعر / الوحدة",
+      "weekly": "التغير الأسبوعي",
+      "origin": "المنشأ",
+      "versus": "مقابل",
+      "noBaseline": "الأسبوع السابق غير متاح",
+      "context": "الأمن الغذائي والسياق الشهري",
+      "contextNote": "توفر هذه التقارير سياقاً مؤرخاً، ولا تقدم تغيرات أسبوعية للأسعار. قد تتأخر تقارير تونس عدة أشهر.",
+      "briefCountry": "موجز البلد",
+      "report": "تاريخ التقرير",
+      "checked": "آخر تحقق",
+      "current": "حالي",
+      "partial": "بعض التقارير غير متاحة أو قديمة",
+      "stale": "بيانات أقدم",
+      "global": "مؤشر الفاو العالمي الشهري"
+    },
+    "aboutYou": {
+      "title": "ساعدنا في بناء World Monitor من أجلك",
+      "ariaLabel": "عنك",
+      "progress": "{{current}} من {{total}}",
+      "skip": "تخطي",
+      "close": "إغلاق",
+      "done": "تم",
+      "saving": "جاري الحفظ…",
+      "saveFailed": "تعذر حفظ ذلك. حاول مجددًا.",
+      "retry": "إعادة محاولة",
+      "thanks": "شكرًا. يساعدنا هذا في تحديد ما سنبنيه بعد ذلك.",
+      "questions": {
+        "primaryUse": {
+          "label": "ما الاستخدام الرئيسي لـ World Monitor بالنسبة لك؟",
+          "options": {
+            "news": "الأخبار والأحداث العالمية",
+            "markets": "الأسواق والتداول",
+            "commodities": "السلع والسلسلة الإمدادية",
+            "travel": "السفر والرحلات الجوية",
+            "security": "الأمن والمعلومات الاستخباراتية",
+            "research": "البحث والصحافة",
+            "api-agent": "البناء باستخدام API أو وكيل ذكي",
+            "other": "شيء آخر"
+          }
+        },
+        "usageContext": {
+          "label": "هل تستخدمه للعمل أم للاستخدام الشخصي؟",
+          "options": {
+            "personal": "شخصي",
+            "work": "عمل"
+          }
+        },
+        "payer": {
+          "label": "من يدفع، أو قد يدفع، مقابل ذلك؟",
+          "options": {
+            "self": "أنا",
+            "employer": "صاحب عملي أو فريقي",
+            "not-paying": "لا أحد حتى الآن"
+          }
+        },
+        "role": {
+          "label": "أي من هذه يصف دورك بشكل أفضل؟",
+          "options": {
+            "analyst": "محلل أو باحث",
+            "trader": "متاجر أو مستثمر",
+            "journalist": "صحفي",
+            "security": "الأمن أو إدارة المخاطر",
+            "government": "حكومة أو سياسة",
+            "supply-chain": "السلسلة الإمدادية أو العمليات",
+            "developer": "مطور",
+            "student": "طالب",
+            "other": "أخرى"
+          }
+        },
+        "alternative": {
+          "label": "ماذا ستستخدم إذا لم يكن World Monitor موجودًا؟",
+          "placeholder": "اختياري"
+        }
+      }
     }
   },
   "popups": {
@@ -3133,7 +3237,7 @@
       "navPerformance": "الطائرات المتأثرة",
       "samples": "عدد الطائرات المتأثرة",
       "aircraft": "الطائرات المرصودة",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "خلية H3 سداسية"
     },
     "flight": {
       "groundStop": "توقف أرضي",
@@ -3149,7 +3253,7 @@
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
         "computed": "محسوب",
-        "aviationstack": "Flight Data",
+        "aviationstack": "بيانات الرحلات",
         "notam": "NOTAM"
       },
       "regions": {
@@ -3434,17 +3538,17 @@
       "speed": "السرعة",
       "heading": "الاتجاه",
       "mmsi": "هوية الخدمة المحمولة البحرية",
-      "region": "REGION",
-      "strikeGroup": "STRIKE GROUP",
+      "region": "المنطقة",
+      "strikeGroup": "مجموعة ضاربة",
       "usniIntel": "استخبارات معهد البحرية الأمريكية",
       "usniSource": "المصدر: متتبع أسطول أخبار معهد البحرية الأمريكية",
       "approximatePosition": "الموقع تقريبي — بناءً على التقرير الأسبوعي لمعهد البحرية الأمريكية، وليس تتبع السفن في الوقت الفعلي.",
       "darkDescription": "⚠ السفينة فقدت الإشارة - انقطع تتبع السفن. قد يشير إلى عمليات حساسة.",
-      "recentTracking": "Recent Tracking",
-      "lastReport": "LATEST",
-      "nearChokepoint": "NEAR CHOKEPOINT",
-      "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN",
+      "recentTracking": "التتبع الأخير",
+      "lastReport": "الأحدث",
+      "nearChokepoint": "قرب نقطة اختناق",
+      "nearBase": "قرب قاعدة",
+      "lastSeen": "آخر ظهور",
       "estPosition": "الموضع المتوقع",
       "aisLive": "تتبع السفن المباشر"
     },
@@ -3746,13 +3850,13 @@
     "unavailable": "غير متاح",
     "close": "إغلاق",
     "currentVariant": "(الحالي)",
-    "retry": "Retry",
-    "refresh": "Refresh",
+    "retry": "إعادة المحاولة",
+    "refresh": "تحديث",
     "all": "الكل",
     "loadingGiving": "جارٍ تحميل بيانات العطاء العالمي",
     "rateLimitedMarket": "بيانات السوق غير متاحة مؤقتاً (تقييد معدل الطلبات) — ستتم إعادة المحاولة قريباً",
     "cancel": "إلغاء",
-    "dismiss": "Dismiss"
+    "dismiss": "تجاهل"
   },
   "preferences": {
     "display": "العرض",
@@ -4258,5 +4362,29 @@
     "reportedClaims": "تقارير الناشر. قد تظل الادعاءات قيد التحقيق.",
     "occurred": "الحادث",
     "reported": "النشر"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "خريطة الأسواق العالمية",
+      "liveNews": "عناوين السوق",
+      "insights": "رؤى السوق بالذكاء الاصطناعي"
+    },
+    "tech": {
+      "map": "خريطة التكنولوجيا العالمية",
+      "liveNews": "عناوين التكنولوجيا"
+    },
+    "commodity": {
+      "map": "خريطة السلع الأساسية",
+      "liveNews": "عناوين السلع الأساسية",
+      "insights": "رؤى السلع الأساسية بالذكاء الاصطناعي"
+    },
+    "energy": {
+      "map": "خريطة الطاقة",
+      "liveNews": "عناوين الطاقة",
+      "insights": "رؤى الطاقة بالذكاء الاصطناعي"
+    },
+    "happy": {
+      "map": "خريطة الأخبار الإيجابية"
+    }
   }
 }

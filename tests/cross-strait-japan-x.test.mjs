@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import xPostBudget from '../scripts/lib/x-post-budget.cjs';
 import { parseJapanXPosts, fetchJapanXOutcome, JAPAN_X_ACCOUNT_ID, JAPAN_X_SLOT_MS } from '../scripts/cross-strait-activity/japan-x.mjs';
 import { fetchCrossStraitActivitySnapshot, buildCrossStraitActivitySnapshot, parseTaiwanMndDetail, validateCrossStraitActivitySnapshot } from '../scripts/cross-strait-activity/adapters.mjs';
-import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-activity-summary.ts';
+import { isCrossStraitActivitySnapshot, buildCrossStraitActivityPanelModel } from '../src/components/cross-strait-activity-summary.ts';
 import { projectCrossStraitActivityBootstrap } from '../scripts/seed-cross-strait-activity.mjs';
 
 const now = Date.parse('2026-10-24T12:00:00Z');
@@ -135,6 +135,47 @@ test('budget denial and failed settlement cannot publish success', async () => {
     evalCommand: async () => ++calls === 1 ? [1, 50, 50, 0, 0] : null }) });
   assert.equal(unsettled.ok, false);
   assert.deepEqual(unsettled.errorCodes, ['JMOD_X_BUDGET_UNSETTLED']);
+});
+
+test('budget denial retries after one hour in the same slot and preserves the genuine clock until success', async () => {
+  const previousSource = { candidates: parseJapanXPosts(payload()), lastSuccessAt: '2026-10-23T12:00:00.000Z' };
+  const deniedBudget = { withReturnedPosts: async () => ({ allowed: false }) };
+  const failed = await fetchOutcome({ previousSource, budget: deniedBudget });
+  const retained = { ...previousSource, xDiscovery: failed.xDiscovery };
+  const cached = await fetchOutcome({ previousSource: retained, now: now + 3600000 - 1,
+    fetchFn: () => assert.fail('cooldown must not fetch') });
+  assert.equal(cached.ok, false);
+  assert.equal(cached.acquiredAt, previousSource.lastSuccessAt);
+  assert.deepEqual(cached.xDiscovery, failed.xDiscovery);
+  const deniedAgain = await fetchOutcome({ previousSource: retained, now: now + 3600000, budget: deniedBudget });
+  assert.equal(deniedAgain.ok, false);
+  assert.equal(deniedAgain.acquiredAt, previousSource.lastSuccessAt);
+  assert.equal(deniedAgain.xDiscovery.checkedAt, new Date(now + 3600000).toISOString());
+  const recovered = await fetchOutcome({ previousSource: retained, now: now + 3600000 });
+  assert.equal(recovered.ok, true);
+  assert.equal(recovered.requestCount, 1);
+  assert.equal(recovered.acquiredAt, new Date(now + 3600000).toISOString());
+});
+
+test('public Japan coverage distinguishes discovery from reviewed reports without exposing candidates', async () => {
+  const snapshot = projectCrossStraitActivityBootstrap(publishableSnapshot(await fetchOutcome()));
+  const model = buildCrossStraitActivityPanelModel(snapshot);
+  assert.match(model.japanCoverageLabel, /X discovery: last success/);
+  const japanSource = snapshot.sources.find(row => row.id === 'japan-mod');
+  japanSource.lastSuccessAt = '2026-01-01T00:00:00.000Z';
+  const oldLabel = buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel;
+  assert.match(oldLabel, /last success 2026-01-01T00:00:00.000Z/);
+  assert.doesNotMatch(oldLabel, /current/);
+  japanSource.lastSuccessAt = null;
+  assert.match(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, /last success not recorded/);
+  assert.match(model.japanCoverageLabel, /2 reviewed reports/);
+  assert.match(model.japanCoverageLabel, /New posts require review/);
+  snapshot.observations = snapshot.observations.filter(row => row.sourceId !== 'japan-mod');
+  assert.match(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, /0 reviewed reports/);
+  snapshot.sources.find(row => row.id === 'japan-mod').transportStatus = 'error';
+  assert.match(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, /Latest check unavailable/);
+  snapshot.sources.find(row => row.id === 'japan-mod').transportPath = 'proxy';
+  assert.equal(buildCrossStraitActivityPanelModel(snapshot).japanCoverageLabel, null);
 });
 
 test('configured X source skips MOD indices and PDFs and admits no unreviewed observations', async () => {

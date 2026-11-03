@@ -7,11 +7,15 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 455814
+    "raw": 456750
   },
   "chunks": {
     "analytics": {
       "raw": 46173,
+      "files": 1
+    },
+    "auth-state": {
+      "raw": 936,
       "files": 1
     },
     "clerk": {
@@ -101,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1476120
+      "raw": 1480881
     },
     "chunks": {
       "App": {
-        "raw": 932119,
+        "raw": 935347,
         "files": 1
       },
       "ai-flow-settings": {
@@ -114,6 +118,10 @@
       },
       "analysis-framework-store": {
         "raw": 9718,
+        "files": 1
+      },
+      "audience-profile": {
+        "raw": 998,
         "files": 1
       },
       "base": {
@@ -174,6 +182,10 @@
       },
       "news-credibility": {
         "raw": 9373,
+        "files": 1
+      },
+      "panel-display-name": {
+        "raw": 535,
         "files": 1
       },
       "panel-gating": {

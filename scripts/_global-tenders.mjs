@@ -28,12 +28,25 @@ const OFFICIAL_SOURCE_HOSTS = {
   'latvia-iub': ['eis.gov.lv', 'pvs.iub.gov.lv'],
   'poland-bzp': ['ezamowienia.gov.pl'],
   'pakistan-ppra': ['epms.ppra.gov.pk'],
+  'pakistan-epads': ['epads.gov.pk'],
+  'georgia-spa': ['tenders.procurement.gov.ge'],
+  'armenia-armeps': ['www.armeps.am', 'armeps.am'],
+  // APP publishes no public per-procedure page; notices link to the official export.
+  'albania-app': ['www.app.gov.al'],
+  'dominican-republic-dgcp': ['comunidad.comprasdominicana.gob.do'],
+  'malaysia-myprocurement': ['myprocurement.treasury.gov.my'],
 };
+
+// A failed source keeps its last-good open tenders for a day: procurement
+// portals rate-limit, publish daily, and go quiet over weekends, and a
+// day-old open tender is still actionable until its own deadline.
+export const TENDER_SOURCE_RETENTION_MS = 24 * 60 * 60_000;
 
 export function tracksTenderFreshness(source) {
   return ['contracts-finder', 'world-bank', 'colombia-secop', 'kenya-ppip', 'south-africa-etenders',
     'chile-mercado-publico', 'brazil-pncp', 'ukraine-prozorro', 'bulgaria-eop', 'latvia-iub',
-    'poland-bzp', 'pakistan-ppra'].includes(source);
+    'poland-bzp', 'pakistan-ppra', 'pakistan-epads', 'georgia-spa', 'armenia-armeps',
+    'albania-app', 'dominican-republic-dgcp', 'malaysia-myprocurement'].includes(source);
 }
 
 function string(value) { return typeof value === 'string' ? value.trim() : ''; }
@@ -278,7 +291,7 @@ export function mergeTenderSourceResults({ settled, sourceNames, previousSnapsho
       const lastSuccessfulAt = firstString(priorStatus?.lastSuccessfulAt,
         priorStatus?.state === 'ok' ? priorStatus.fetchedAt : '');
       const successMs = Date.parse(lastSuccessfulAt);
-      const fresh = successMs > 0 && successMs <= attemptedAtMs && attemptedAtMs < successMs + 180 * 60_000;
+      const fresh = successMs > 0 && successMs <= attemptedAtMs && attemptedAtMs < successMs + TENDER_SOURCE_RETENTION_MS;
       const retained = fresh ? priorRecords.filter((tender) =>
         string(tender.id) && string(tender.title) && safeOfficialUrl(tender.officialUrl, source)
         && ['active', 'open'].includes(tender.status)

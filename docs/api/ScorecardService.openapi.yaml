@@ -13,7 +13,7 @@ paths:
             tags:
                 - ScorecardService
             summary: GetFiveFactorScorecard
-            description: GetFiveFactorScorecard returns the cached five-factor scorecard for one country.
+            description: GetFiveFactorScorecard returns one country's 1-5 scores for food, energy, demographics, technology and defense, with per-pillar input evidence and coverage.
             operationId: GetFiveFactorScorecard
             security: []
             parameters:
@@ -131,7 +131,7 @@ paths:
             tags:
                 - ScorecardService
             summary: ListFiveFactorScorecards
-            description: ListFiveFactorScorecards returns compact summaries of all cached five-factor country scorecards.
+            description: ListFiveFactorScorecards returns pillar scores, bands and input coverage for every country in the seeded five-factor snapshot, plus methodology version.
             operationId: ListFiveFactorScorecards
             security: []
             parameters:
@@ -212,7 +212,7 @@ paths:
             tags:
                 - ScorecardService
             summary: GetBlocScorecard
-            description: GetBlocScorecard returns the five-factor scorecard for a named bloc or a custom group of 2-30 countries.
+            description: GetBlocScorecard aggregates five-factor pillar scores for a preset bloc such as EU27, NATO or BRICS, or 2-30 custom countries, listing excluded members.
             operationId: GetBlocScorecard
             security: []
             parameters:

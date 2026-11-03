@@ -68,6 +68,7 @@ interface FeedsModule {
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
   FULL_FEEDS?: Record<string, FeedEntry[]>;
   FEEDS: Record<string, FeedEntry[]>;
+  CANONICAL_FEEDS: Record<string, FeedEntry[]>;
   getAllDefaultEnabledSources: () => Set<string>;
   getStrategicDefaultSources: () => Set<string>;
   getLocaleBoostedSources: (locale: string) => Set<string>;
@@ -406,12 +407,26 @@ describe('feed catalog drift', () => {
     );
   });
 
-  it('every default-enabled source is fetched by a served digest, or pending migration', () => {
+  it('every default-enabled source is fetched by a served digest', () => {
     const catalog = JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog.json'), 'utf8'));
-    const pending = new Set<string>(JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog-pending-migration.json'), 'utf8')).names);
     const served = servedLayout(catalog.layout.server, VALID_VARIANTS, INTEL_EDITION);
-    const gaps = uncoveredSources(feeds.getAllDefaultEnabledSources(), catalog.feeds, served, pending);
+    const gaps = uncoveredSources(feeds.getAllDefaultEnabledSources(), catalog.feeds, served);
     assert.deepEqual(gaps, [], `default-enabled sources no digest fetches: ${gaps.join(', ')}`);
+  });
+
+  // The desktop outage fallback (KTD9) fetches the feeds panels resolve from
+  // these maps, so every one must be a catalog entry, URL included.
+  it('every feed a panel can resolve is a catalog feed, so the outage fallback fetches only catalog URLs', () => {
+    const catalog = JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog.json'), 'utf8')) as {
+      feeds: Array<{ name: string; url: unknown; browser?: { url?: unknown } | null }>;
+    };
+    const declared = new Set(catalog.feeds.map((feed) => `${feed.name}|${JSON.stringify(feed.browser?.url ?? feed.url)}`));
+    const resolvable = [...Object.values(feeds.CANONICAL_FEEDS).flat(), ...feeds.INTEL_SOURCES];
+    assert.ok(resolvable.length > 500, `expected the whole browser catalog, got ${resolvable.length} feeds`);
+    const undeclared = resolvable
+      .map((feed) => `${feed.name}|${JSON.stringify(feed.url)}`)
+      .filter((key) => !declared.has(key));
+    assert.deepEqual([...new Set(undeclared)], []);
   });
 
   it('every default-enabled source resolves to a configured feed', () => {

@@ -39,6 +39,9 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   'tilecache.rainviewer.com',
   'api.rainviewer.com', // weather radar API used by MapContainer.fetchAndApplyRadar — WORLDMONITOR-QG
   'basemaps.cartocdn.com',
+  // CARTO style.json (basemaps.cartocdn.com) points its vector tiles at this
+  // subdomain; hosts match exactly, so it needs its own entry. WORLDMONITOR-1BF.
+  'tiles.basemaps.cartocdn.com',
   'tiles.openfreemap.org',
   'protomaps.github.io',
   // Clerk Frontend API (CNAME → Clerk's auth infra). The bundled Clerk SDK

@@ -135,6 +135,9 @@
           "path": "scripts/check-analytics-collector.mjs"
         },
         {
+          "path": "scripts/seo-umami-collect.mjs"
+        },
+        {
           "path": "src/services/analytics.ts"
         }
       ]
@@ -227,6 +230,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "admin.gse.com.ge",
+      "provider": "admin.gse.com.ge",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Georgian State Electrosystem and link to https://admin.gse.com.ge/api/en/menu/actual-balance-125.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -362,6 +379,20 @@
       "references": [
         {
           "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
+      "host": "ammancity.gov.jo",
+      "provider": "ammancity.gov.jo",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site footer: \"All rights reserved © 2001 - 2026 - Greater Amman Municipality\"; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit Greater Amman Municipality and link the Central Market price page.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/amman.mjs"
         }
       ]
     },
@@ -556,6 +587,9 @@
           "path": "scripts/seed-forecasts.mjs"
         },
         {
+          "path": "scripts/triage-agent-feedback.mjs"
+        },
+        {
           "path": "server/_shared/usage.ts"
         }
       ]
@@ -571,6 +605,23 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "api.cammesa.com",
+      "provider": "api.cammesa.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit CAMMESA SADI and link to https://api.cammesa.com/demanda-svc/swagger-ui.html.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_regional-energy-source.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -1178,6 +1229,20 @@
         },
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts"
+        }
+      ]
+    },
+    {
+      "host": "api.siat.stat.uz",
+      "provider": "stat.uz",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required",
+      "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statuz.mjs"
         }
       ]
     },
@@ -2065,15 +2130,10 @@
       "host": "bothsidesofthetable.com",
       "provider": "bothsidesofthetable.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit bothsidesofthetable.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "breakingdefense.com",
@@ -2346,7 +2406,7 @@
     {
       "host": "changelog.com",
       "provider": "changelog.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit changelog.com and link to the original feed publisher.",
@@ -2354,9 +2414,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -2568,7 +2625,7 @@
     {
       "host": "cointelegraph.com",
       "provider": "cointelegraph.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit cointelegraph.com and link to the original feed publisher.",
@@ -2576,9 +2633,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
         }
       ]
     },
@@ -2672,15 +2726,10 @@
       "host": "contxto.com",
       "provider": "contxto.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit contxto.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "correctiv.org",
@@ -2748,10 +2797,30 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/build-open-data-chokepoints.mjs"
+        },
+        {
           "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         },
         {
           "path": "src/components/UkmtoIncidentsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "creg.gov.co",
+      "provider": "creg.gov.co",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Comisión de Regulación de Energía y Gas and link to https://creg.gov.co/publicaciones/15565/precios-de-combustibles-liquidos/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -2832,6 +2901,34 @@
       ]
     },
     {
+      "host": "d24qbtp4vooyzi.cloudfront.net",
+      "provider": "doe.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain unless otherwise stated (site footer)",
+      "attribution": "Credit the Philippine Department of Energy and link to https://doe.gov.ph/data-and-prices/liquid-fuels/retail-pump-prices/ncr-pump-prices.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        }
+      ]
+    },
+    {
+      "host": "dados.ons.org.br",
+      "provider": "dados.ons.org.br",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC-BY",
+      "attribution": "Credit Brazil ONS and link to https://dados.ons.org.br/api/3/action/package_show?id=balanco-energia-subsistema.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "dai2.xumo.com",
       "provider": "dai2.xumo.com",
       "kind": "feed",
@@ -2888,6 +2985,20 @@
         },
         {
           "path": "scripts/seed-yield-curve-eu.mjs"
+        }
+      ]
+    },
+    {
+      "host": "data.1212.mn",
+      "provider": "data.1212.mn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Table metadata names the National Statistics Office of Mongolia as source; no reuse licence stated; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit the National Statistics Office of Mongolia (www.1212.mn) and link the weekly price table.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/nsomn.mjs"
         }
       ]
     },
@@ -3138,6 +3249,20 @@
       ]
     },
     {
+      "host": "datosabiertos.dgcp.gob.do",
+      "provider": "datosabiertos.dgcp.gob.do",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit datosabiertos.dgcp.gob.do and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "de.euronews.com",
       "provider": "de.euronews.com",
       "kind": "feed",
@@ -3205,16 +3330,13 @@
         },
         {
           "path": "server/worldmonitor/research/v1/list-tech-events.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "dev.to",
       "provider": "dev.to",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit dev.to and link to the original feed publisher.",
@@ -3222,16 +3344,13 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "devops.com",
       "provider": "devops.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit devops.com and link to the original feed publisher.",
@@ -3239,9 +3358,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -3334,15 +3450,10 @@
       "host": "disrupt-africa.com",
       "provider": "disrupt-africa.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit disrupt-africa.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "dlnews.com",
@@ -3369,6 +3480,20 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "doe.gov.ph",
+      "provider": "doe.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain unless otherwise stated (site footer)",
+      "attribution": "Credit the Philippine Department of Energy and link to https://doe.gov.ph/data-and-prices/liquid-fuels/retail-pump-prices/ncr-pump-prices.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -3879,6 +4004,20 @@
       ]
     },
     {
+      "host": "epads.gov.pk",
+      "provider": "epads.gov.pk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit epads.gov.pk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "epms.ppra.gov.pk",
       "provider": "epms.ppra.gov.pk",
       "kind": "structured",
@@ -3889,6 +4028,20 @@
       "references": [
         {
           "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
+      "host": "erp.powergrid.gov.bd",
+      "provider": "erp.powergrid.gov.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Bangladesh Power Grid and link to https://erp.powergrid.gov.bd/w/generations/view_generations.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -3995,6 +4148,20 @@
       ]
     },
     {
+      "host": "evn.com.vn",
+      "provider": "evn.com.vn",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit Vietnam Electricity (EVN) and link to https://evn.com.vn/vi-VN/news-l/Thong-tin-tom-tat-van-hanh-HTD-Quoc-gia-60-2015.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "example.com",
       "provider": "Example domain placeholder",
       "kind": "structured",
@@ -4031,9 +4198,6 @@
         },
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -4122,6 +4286,20 @@
       ]
     },
     {
+      "host": "fccc.gov.fj",
+      "provider": "fccc.gov.fj",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved; robots content-signal ai-train=no, use=reference",
+      "attribution": "Credit the Fijian Competition and Consumer Commission and link to https://fccc.gov.fj/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "feed.businesswire.com",
       "provider": "Business Wire",
       "kind": "feed",
@@ -4138,7 +4316,7 @@
     {
       "host": "feed.infoq.com",
       "provider": "feed.infoq.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feed.infoq.com and link to the original feed publisher.",
@@ -4146,9 +4324,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -4169,7 +4344,7 @@
     {
       "host": "feeds.arstechnica.com",
       "provider": "feeds.arstechnica.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feeds.arstechnica.com and link to the original feed publisher.",
@@ -4177,9 +4352,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -4228,7 +4400,7 @@
     {
       "host": "feeds.feedburner.com",
       "provider": "feeds.feedburner.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit feeds.feedburner.com and link to the original feed publisher.",
@@ -4236,9 +4408,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ],
       "role": "transport"
@@ -4398,7 +4567,7 @@
     {
       "host": "finance.yahoo.com",
       "provider": "finance.yahoo.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit finance.yahoo.com and link to the original feed publisher.",
@@ -4406,12 +4575,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -4787,6 +4950,9 @@
           "path": "scripts/seed-research.mjs"
         },
         {
+          "path": "server/_shared/agent-feedback.ts"
+        },
+        {
           "path": "src/app/desktop-updater.ts"
         },
         {
@@ -5101,7 +5267,7 @@
     {
       "host": "hnrss.org",
       "provider": "hnrss.org",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit hnrss.org and link to the original feed publisher.",
@@ -5109,9 +5275,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -5178,6 +5341,20 @@
       ]
     },
     {
+      "host": "hub.arcgis.com",
+      "provider": "hub.arcgis.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit hub.arcgis.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-portwatch.mjs"
+        }
+      ]
+    },
+    {
       "host": "humanprogress.org",
       "provider": "humanprogress.org",
       "kind": "feed",
@@ -5216,6 +5393,23 @@
       "references": [
         {
           "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
+      "host": "iccc.gov.pg",
+      "provider": "iccc.gov.pg",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit the PNG Independent Consumer and Competition Commission and link to https://iccc.gov.pg/category/fuel-prices/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -5278,7 +5472,7 @@
     {
       "host": "inc42.com",
       "provider": "inc42.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit inc42.com and link to the original feed publisher.",
@@ -5286,9 +5480,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -5389,15 +5580,10 @@
       "host": "internal.example.com",
       "provider": "Internal example placeholder",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: documentation/test placeholder",
       "attribution": "Excluded from the provider count: placeholder URL.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "api/notification-channels.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "investing.com",
@@ -5723,6 +5909,20 @@
       ]
     },
     {
+      "host": "king-prawn-app-6bsvl.ondigitalocean.app",
+      "provider": "www.sonabhy.bf",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit SONABHY and link to https://www.sonabhy.bf/tarif-hydrocarbures/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "kitco.com",
       "provider": "kitco.com",
       "kind": "feed",
@@ -5739,7 +5939,7 @@
     {
       "host": "kr-asia.com",
       "provider": "kr-asia.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit kr-asia.com and link to the original upstream API/dataset.",
@@ -5747,16 +5947,13 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "krebsonsecurity.com",
       "provider": "krebsonsecurity.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit krebsonsecurity.com and link to the original feed publisher.",
@@ -5764,9 +5961,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -5788,15 +5982,10 @@
       "host": "lavca.org",
       "provider": "lavca.org",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit lavca.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "lefaso.net",
@@ -6092,7 +6281,7 @@
     {
       "host": "lobste.rs",
       "provider": "lobste.rs",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit lobste.rs and link to the original feed publisher.",
@@ -6100,9 +6289,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -6182,6 +6368,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "madr.gov.dz",
+      "provider": "madr.gov.dz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site footer: \"حقوق الطبع والنشر, وزارة الفلاحة و التنمية الريفية 2021\" (copyright, Ministry of Agriculture and Rural Development); no reuse licence stated; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit the Algerian Ministry of Agriculture, Rural Development and Fisheries (MADR) and link the daily retail price list.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/madr.mjs"
         }
       ]
     },
@@ -6325,6 +6525,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "mem.gob.gt",
+      "provider": "mem.gob.gt",
+      "kind": "structured",
+      "observed": true,
+      "license": "Data licence unconfirmed; robots content-signal ai-train=no, use=reference",
+      "attribution": "Credit the Ministerio de Energía y Minas de Guatemala and link to https://mem.gob.gt/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -6537,6 +6751,20 @@
       ]
     },
     {
+      "host": "myprocurement.treasury.gov.my",
+      "provider": "myprocurement.treasury.gov.my",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit myprocurement.treasury.gov.my and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "n1ctsota.akamaized.net",
       "provider": "n1ctsota.akamaized.net",
       "kind": "feed",
@@ -6635,7 +6863,7 @@
     {
       "host": "news.crunchbase.com",
       "provider": "news.crunchbase.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.crunchbase.com and link to the original feed publisher.",
@@ -6643,9 +6871,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -6685,12 +6910,6 @@
           "path": "shared/news-catalog.json"
         },
         {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
-        },
-        {
           "path": "src/services/country-coverage.ts"
         }
       ],
@@ -6699,7 +6918,7 @@
     {
       "host": "news.mit.edu",
       "provider": "news.mit.edu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.mit.edu and link to the original feed publisher.",
@@ -6707,9 +6926,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -6789,7 +7005,7 @@
     {
       "host": "news.ycombinator.com",
       "provider": "news.ycombinator.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit news.ycombinator.com and link to the original feed publisher.",
@@ -6797,9 +7013,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -6924,6 +7137,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "npa.gov.gh",
+      "provider": "npa.gov.gh",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the National Petroleum Authority of Ghana and link to https://npa.gov.gh/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -7422,6 +7649,20 @@
       "status": "excluded"
     },
     {
+      "host": "petrobangla.org.bd",
+      "provider": "petrobangla.org.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit Petrobangla daily gas and link to https://petrobangla.org.bd/pages/reports.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "phys.org",
       "provider": "phys.org",
       "kind": "structured",
@@ -7438,7 +7679,7 @@
     {
       "host": "pitchbook.com",
       "provider": "pitchbook.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit pitchbook.com and link to the original upstream API/dataset.",
@@ -7446,9 +7687,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -7543,6 +7781,23 @@
       ]
     },
     {
+      "host": "portal.korem.kz",
+      "provider": "portal.korem.kz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit KOREM, the Kazakhstan electricity market operator and link to https://portal.korem.kz/?lang=ru.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "portfolio.hu",
       "provider": "portfolio.hu",
       "kind": "feed",
@@ -7584,6 +7839,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "precios.maga.gob.gt",
+      "provider": "precios.maga.gob.gt",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit precios.maga.gob.gt and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/maga.mjs"
         }
       ]
     },
@@ -8092,7 +8361,7 @@
     {
       "host": "review.firstround.com",
       "provider": "review.firstround.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit review.firstround.com and link to the original feed publisher.",
@@ -8100,9 +8369,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -8207,7 +8473,7 @@
     {
       "host": "rss.politico.com",
       "provider": "rss.politico.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit rss.politico.com and link to the original feed publisher.",
@@ -8215,9 +8481,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -8600,7 +8863,7 @@
     {
       "host": "seekingalpha.com",
       "provider": "seekingalpha.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit seekingalpha.com and link to the original feed publisher.",
@@ -8608,12 +8871,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -8764,7 +9021,7 @@
     {
       "host": "sifted.eu",
       "provider": "sifted.eu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit sifted.eu and link to the original feed publisher.",
@@ -8772,9 +9029,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
+        }
+      ]
+    },
+    {
+      "host": "simaniger.net",
+      "provider": "simaniger.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "SIMA Niger asks for the citation \"SIMA Niger\" and to be contacted before commercial use or mass extraction; polled one weekly bulletin per run",
+      "attribution": "Cite \"SIMA Niger\" and link the weekly cereal bulletin.",
+      "status": "terms-review",
+      "references": [
         {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/lib/food-prices-adapters/sima.mjs"
         }
       ]
     },
@@ -8882,6 +9150,62 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "ssl.bing.com",
+      "provider": "ssl.bing.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/seo-bing-collect.mjs"
+        }
+      ]
+    },
+    {
+      "host": "stat.gov.kg",
+      "provider": "stat.gov.kg",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit stat.gov.kg and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/nsckg.mjs"
+        }
+      ]
+    },
+    {
+      "host": "stat.gov.kz",
+      "provider": "stat.gov.kz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit stat.gov.kz and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statkz.mjs"
+        }
+      ]
+    },
+    {
+      "host": "stat.uz",
+      "provider": "stat.uz",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (stat.uz site footer and ODI open-data certificate); a link to www.stat.uz is required",
+      "attribution": "Source: National Statistics Committee of the Republic of Uzbekistan, www.stat.uz (CC BY 4.0). Link https://stat.uz.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statuz.mjs"
         }
       ]
     },
@@ -9144,7 +9468,7 @@
     {
       "host": "stratechery.com",
       "provider": "stratechery.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit stratechery.com and link to the original feed publisher.",
@@ -9152,9 +9476,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -9315,6 +9636,20 @@
       ]
     },
     {
+      "host": "tcb.gov.bd",
+      "provider": "tcb.gov.bd",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit tcb.gov.bd and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/tcb.mjs"
+        }
+      ]
+    },
+    {
       "host": "tchadinfos.com",
       "provider": "Tchadinfos",
       "kind": "feed",
@@ -9331,7 +9666,7 @@
     {
       "host": "tech.eu",
       "provider": "tech.eu",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit tech.eu and link to the original feed publisher.",
@@ -9339,9 +9674,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -9365,7 +9697,7 @@
     {
       "host": "techcabal.com",
       "provider": "techcabal.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit techcabal.com and link to the original feed publisher.",
@@ -9373,16 +9705,13 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "techcrunch.com",
       "provider": "techcrunch.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit techcrunch.com and link to the original feed publisher.",
@@ -9390,9 +9719,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -9445,6 +9771,20 @@
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit tenders.go.ke and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
+      "host": "tenders.procurement.gov.ge",
+      "provider": "tenders.procurement.gov.ge",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit tenders.procurement.gov.ge and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
         {
@@ -9668,7 +10008,7 @@
     {
       "host": "thenewstack.io",
       "provider": "thenewstack.io",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit thenewstack.io and link to the original feed publisher.",
@@ -9676,9 +10016,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -10046,6 +10383,20 @@
       ]
     },
     {
+      "host": "ugandacoffee.go.ug",
+      "provider": "ugandacoffee.go.ug",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ugandacoffee.go.ug and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/ucda.mjs"
+        }
+      ]
+    },
+    {
       "host": "uis.unesco.org",
       "provider": "uis.unesco.org",
       "kind": "structured",
@@ -10225,7 +10576,7 @@
     {
       "host": "venturebeat.com",
       "provider": "venturebeat.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit venturebeat.com and link to the original feed publisher.",
@@ -10233,9 +10584,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -10529,9 +10877,6 @@
           "path": "api/ask.ts"
         },
         {
-          "path": "api/fwdstart.js"
-        },
-        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
@@ -10638,6 +10983,9 @@
         },
         {
           "path": "scripts/seed-wb-indicators.mjs"
+        },
+        {
+          "path": "scripts/seo-bing-collect.mjs"
         },
         {
           "path": "scripts/shared/notify-fields.cjs"
@@ -10768,7 +11116,7 @@
     {
       "host": "www.a16z.news",
       "provider": "www.a16z.news",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.a16z.news and link to the original feed publisher.",
@@ -10776,9 +11124,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -10817,15 +11162,10 @@
       "host": "www.aaronsw.com",
       "provider": "www.aaronsw.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.aaronsw.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.abc.net.au",
@@ -10988,6 +11328,23 @@
       ]
     },
     {
+      "host": "www.anp.tl",
+      "provider": "www.anp.tl",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Autoridade Nacional do Petróleo of Timor-Leste and link to https://www.anp.tl/category/daily-fuel-price/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.ansa.it",
       "provider": "www.ansa.it",
       "kind": "feed",
@@ -11002,6 +11359,20 @@
       ]
     },
     {
+      "host": "www.app.gov.al",
+      "provider": "www.app.gov.al",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.app.gov.al and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.applytosupply.digitalmarketplace.service.gov.uk",
       "provider": "www.applytosupply.digitalmarketplace.service.gov.uk",
       "kind": "structured",
@@ -11012,6 +11383,20 @@
       "references": [
         {
           "path": "scripts/comparison-shortlist.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.armeps.am",
+      "provider": "www.armeps.am",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.armeps.am and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -11179,6 +11564,20 @@
       ]
     },
     {
+      "host": "www.bi.go.id",
+      "provider": "www.bi.go.id",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.bi.go.id and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.bild.de",
       "provider": "www.bild.de",
       "kind": "feed",
@@ -11288,7 +11687,7 @@
     {
       "host": "www.cbinsights.com",
       "provider": "www.cbinsights.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cbinsights.com and link to the original feed publisher.",
@@ -11296,9 +11695,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11330,6 +11726,20 @@
       "references": [
         {
           "path": "scripts/seed-cbr-rates.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.cbsl.gov.lk",
+      "provider": "www.cbsl.gov.lk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.cbsl.gov.lk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
         }
       ]
     },
@@ -11434,7 +11844,7 @@
     {
       "host": "www.cisa.gov",
       "provider": "www.cisa.gov",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cisa.gov and link to the original feed publisher.",
@@ -11442,9 +11852,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11493,7 +11900,7 @@
     {
       "host": "www.cnbc.com",
       "provider": "www.cnbc.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.cnbc.com and link to the original feed publisher.",
@@ -11501,12 +11908,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11520,9 +11921,26 @@
       "status": "excluded"
     },
     {
+      "host": "www.coes.org.pe",
+      "provider": "www.coes.org.pe",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit COES SINAC and link to https://www.coes.org.pe/Portal/portalinformacion/demanda.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-energy-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.coindesk.com",
       "provider": "www.coindesk.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.coindesk.com and link to the original feed publisher.",
@@ -11530,9 +11948,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
+        }
+      ]
+    },
+    {
+      "host": "www.comcom.govt.nz",
+      "provider": "www.comcom.govt.nz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Creative Commons Attribution 4.0 International (https://www.comcom.govt.nz/using-our-website/copyright/)",
+      "attribution": "Fuel price monitoring data, Commerce Commission New Zealand, licensed under CC BY 4.0. https://www.comcom.govt.nz/regulated-industries/fuel/quarterly-monitoring-reports/",
+      "status": "reviewed",
+      "references": [
         {
-          "path": "src/config/variants/finance.ts"
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },
@@ -11588,6 +12017,20 @@
       ]
     },
     {
+      "host": "www.da.gov.ph",
+      "provider": "www.da.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.da.gov.ph and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.dabangasudan.org",
       "provider": "www.dabangasudan.org",
       "kind": "feed",
@@ -11632,7 +12075,7 @@
     {
       "host": "www.darkreading.com",
       "provider": "www.darkreading.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.darkreading.com and link to the original feed publisher.",
@@ -11640,9 +12083,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11818,6 +12258,20 @@
       ]
     },
     {
+      "host": "www.economia-sniim.gob.mx",
+      "provider": "www.economia-sniim.gob.mx",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.economia-sniim.gob.mx and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.egyptindependent.com",
       "provider": "Egypt Independent",
       "kind": "feed",
@@ -11879,7 +12333,7 @@
     {
       "host": "www.engadget.com",
       "provider": "www.engadget.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.engadget.com and link to the original feed publisher.",
@@ -11887,9 +12341,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11904,6 +12355,37 @@
       "references": [
         {
           "path": "scripts/_epdk-crude-imports.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.erb.org.zm",
+      "provider": "www.erb.org.zm",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Energy Regulation Board of Zambia and link to https://www.erb.org.zm/category/price-build-up/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
+      "host": "www.eskom.co.za",
+      "provider": "www.eskom.co.za",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site terms apply; open data licence unconfirmed",
+      "attribution": "Credit Eskom data portal and link to https://www.eskom.co.za/dataportal/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -11924,7 +12406,7 @@
     {
       "host": "www.eu-startups.com",
       "provider": "www.eu-startups.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.eu-startups.com and link to the original feed publisher.",
@@ -11932,9 +12414,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -11993,6 +12472,12 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/lib/food-prices-fetch.mjs"
+        },
+        {
+          "path": "scripts/lib/food-prices.mjs"
+        },
+        {
           "path": "scripts/seed-fao-food-price-index.mjs"
         },
         {
@@ -12031,9 +12516,6 @@
         },
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
         }
       ]
     },
@@ -12126,15 +12608,10 @@
       "host": "www.fwdstart.me",
       "provider": "www.fwdstart.me",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.fwdstart.me and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "api/fwdstart.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.g4media.ro",
@@ -12316,6 +12793,9 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -12342,6 +12822,20 @@
         },
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.gub.uy",
+      "provider": "www.gub.uy",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit URSEA (Unidad Reguladora de Servicios de Energía y Agua) and link to https://www.gub.uy/unidad-reguladora-servicios-energia-agua/tematica/hidrocarburos.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -12693,7 +13187,7 @@
     {
       "host": "www.lennysnewsletter.com",
       "provider": "www.lennysnewsletter.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.lennysnewsletter.com and link to the original feed publisher.",
@@ -12701,9 +13195,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -12796,15 +13287,10 @@
       "host": "www.mbie.govt.nz",
       "provider": "www.mbie.govt.nz",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.mbie.govt.nz and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-fuel-prices.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.migracion.gob.pa",
@@ -12945,6 +13431,20 @@
       ]
     },
     {
+      "host": "www.nabc.go.th",
+      "provider": "www.nabc.go.th",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.nabc.go.th and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/nabc.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.naftemporiki.gr",
       "provider": "www.naftemporiki.gr",
       "kind": "feed",
@@ -13061,13 +13561,22 @@
       "host": "www.nfx.com",
       "provider": "www.nfx.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.nfx.com and link to the original upstream API/dataset.",
+      "status": "excluded"
+    },
+    {
+      "host": "www.niggrid.org",
+      "provider": "www.niggrid.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "All rights reserved",
+      "attribution": "Credit Nigeria NISO and link to https://www.niggrid.org/.",
       "status": "terms-review",
       "references": [
         {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -13142,6 +13651,20 @@
       ]
     },
     {
+      "host": "www.ocpv-ci.com",
+      "provider": "www.ocpv-ci.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.ocpv-ci.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/ocpv.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.omanobserver.om",
       "provider": "www.omanobserver.om",
       "kind": "feed",
@@ -13152,6 +13675,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.onagri.nat.tn",
+      "provider": "www.onagri.nat.tn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.onagri.nat.tn and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
         }
       ]
     },
@@ -13222,6 +13759,20 @@
       "references": [
         {
           "path": "scripts/china-macro/source-contracts.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.pbs.gov.pk",
+      "provider": "www.pbs.gov.pk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.pbs.gov.pk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices.mjs"
         }
       ]
     },
@@ -13315,7 +13866,7 @@
     {
       "host": "www.producthunt.com",
       "provider": "www.producthunt.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.producthunt.com and link to the original feed publisher.",
@@ -13323,9 +13874,23 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.qatarenergy.qa",
+      "provider": "www.qatarenergy.qa",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit QatarEnergy and link to https://www.qatarenergy.qa/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
         },
         {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -13518,7 +14083,7 @@
     {
       "host": "www.saastr.com",
       "provider": "www.saastr.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.saastr.com and link to the original feed publisher.",
@@ -13526,9 +14091,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13563,7 +14125,7 @@
     {
       "host": "www.schneier.com",
       "provider": "www.schneier.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.schneier.com and link to the original feed publisher.",
@@ -13571,9 +14133,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13645,16 +14204,13 @@
         },
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/finance.ts"
         }
       ]
     },
     {
       "host": "www.semianalysis.com",
       "provider": "www.semianalysis.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.semianalysis.com and link to the original feed publisher.",
@@ -13662,9 +14218,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13672,15 +14225,10 @@
       "host": "www.sequoiacap.com",
       "provider": "www.sequoiacap.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.sequoiacap.com and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.seznamzpravy.cz",
@@ -13735,6 +14283,20 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.sonabhy.bf",
+      "provider": "www.sonabhy.bf",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit SONABHY and link to https://www.sonabhy.bf/tarif-hydrocarbures/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -13946,7 +14508,7 @@
     {
       "host": "www.techinasia.com",
       "provider": "www.techinasia.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.techinasia.com and link to the original feed publisher.",
@@ -13954,9 +14516,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -13980,16 +14539,13 @@
         },
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
     {
       "host": "www.technologyreview.com",
       "provider": "www.technologyreview.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.technologyreview.com and link to the original feed publisher.",
@@ -13997,9 +14553,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14007,15 +14560,10 @@
       "host": "www.techstars.com",
       "provider": "www.techstars.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit www.techstars.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/variants/tech.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "www.telegraph.co.uk",
@@ -14149,7 +14697,7 @@
     {
       "host": "www.theverge.com",
       "provider": "www.theverge.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.theverge.com and link to the original feed publisher.",
@@ -14157,9 +14705,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14189,7 +14734,7 @@
     {
       "host": "www.tomshardware.com",
       "provider": "www.tomshardware.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.tomshardware.com and link to the original feed publisher.",
@@ -14197,9 +14742,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14358,6 +14900,20 @@
       ]
     },
     {
+      "host": "www.viwanda.go.tz",
+      "provider": "www.viwanda.go.tz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.viwanda.go.tz and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/mit.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.w3.org",
       "provider": "W3C schema reference",
       "kind": "structured",
@@ -14366,9 +14922,6 @@
       "attribution": "Excluded from the provider count: standards reference, not an ingested source.",
       "status": "excluded",
       "references": [
-        {
-          "path": "api/fwdstart.js"
-        },
         {
           "path": "src/embed/panels/fear-greed.ts"
         }
@@ -14561,6 +15114,9 @@
           "path": "scripts/build-crawlable-corpus.mjs"
         },
         {
+          "path": "scripts/build-open-data-chokepoints.mjs"
+        },
+        {
           "path": "scripts/build-openapi-json.mjs"
         },
         {
@@ -14682,7 +15238,7 @@
     {
       "host": "www.ycombinator.com",
       "provider": "www.ycombinator.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.ycombinator.com and link to the original feed publisher.",
@@ -14690,9 +15246,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },
@@ -14787,7 +15340,7 @@
     {
       "host": "www.zdnet.com",
       "provider": "www.zdnet.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.zdnet.com and link to the original feed publisher.",
@@ -14795,9 +15348,23 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.zera.co.zw",
+      "provider": "www.zera.co.zw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Zimbabwe Energy Regulatory Authority and link to https://www.zera.co.zw/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
         },
         {
-          "path": "src/config/variants/tech.ts"
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -14951,7 +15518,7 @@
     {
       "host": "yourstory.com",
       "provider": "yourstory.com",
-      "kind": "feed+structured",
+      "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit yourstory.com and link to the original feed publisher.",
@@ -14959,9 +15526,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/variants/tech.ts"
         }
       ]
     },

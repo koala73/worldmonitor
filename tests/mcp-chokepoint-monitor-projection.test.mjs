@@ -27,7 +27,7 @@ async function mount(wire, callback) {
     const send = value => win.dispatchEvent(new win.MessageEvent('message', { source: win.eval('window.parent'), data: { jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { result: value } } }));
     send(wire);
     await win.happyDOM.waitUntilComplete();
-    await callback(win.document, send);
+    await callback(win.document, send, messages);
     assert.equal(reads, 0);
     assert.equal(messages.filter(message => ['tools/call', 'ui/call-tool'].includes(message?.method)).length, 0);
   } finally { await win.happyDOM.close(); }
@@ -35,13 +35,127 @@ async function mount(wire, callback) {
 const rows = document => document.querySelectorAll('.crow');
 const footer = document => document.getElementById('foot').textContent;
 
+describe('Chokepoint Monitor local route details', () => {
+  const values = detail => Object.fromEntries(Array.from(detail.querySelectorAll('.cstat'), item => [item.querySelector('.k').textContent, item.querySelector('.v').textContent]));
+  const supplied = row({ todayCargo: 12, todayOther: 2, incidentCount7d: 7, disruptionPct: 12.5, anomaly: { signal: true } });
+
+  it('opens independently named native disclosures and reports host size without data calls', async () => {
+    const full = payload({ hormuz: supplied, suez: supplied });
+    for (const wire of [result(full), { content: result(full).content }, result(full, true), result(full.data, true)]) {
+      await mount(wire, async (document, send, messages) => {
+        const details = document.querySelectorAll('.crow details');
+        assert.equal(details.length, 2, 'Each supplied route needs a native disclosure');
+        assert.equal(details[0].open, false);
+        assert.equal(details[1].open, false);
+        const control = details[0].querySelector('summary');
+        assert.equal(control.getAttribute('aria-label'), 'Route details for Hormuz');
+        assert.equal(details[1].querySelector('summary').getAttribute('aria-label'), 'Route details for Suez Canal');
+        const before = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        control.click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        const afterOpen = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterOpen > before, 'Opening the first route must update host height');
+        assert.equal(details[0].open, true);
+        assert.equal(details[1].open, false);
+        assert.deepEqual(values(details[0]), {
+          'Cargo, last 24 hours': '12', 'Other, last 24 hours': '2',
+          'Reported incidents, 7 days': '7', 'Reported disruption': '12.5%', 'Reported anomaly signal': 'Yes',
+        });
+        assert.equal(details[0].querySelector('.csum').textContent, 'Summary fetched: 4 Oct 2026, 12:00 UTC');
+        control.click();
+        assert.equal(details[0].open, false);
+        await document.defaultView.happyDOM.waitUntilComplete();
+        const afterClose = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterClose > afterOpen, 'Closing the first route must update host height');
+        details[1].querySelector('summary').click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        assert.equal(details[1].open, true);
+        assert.equal(details[0].open, false);
+        const afterSecondOpen = messages.filter(message => message.method === 'ui/notifications/size-changed').length;
+        assert.ok(afterSecondOpen > afterClose, 'Opening the second route must update host height');
+        details[1].querySelector('summary').click();
+        await document.defaultView.happyDOM.waitUntilComplete();
+        assert.equal(details[1].open, false);
+        assert.equal(details[0].open, false);
+        assert.ok(messages.filter(message => message.method === 'ui/notifications/size-changed').length > afterSecondOpen, 'Closing the second route must update host height');
+      });
+    }
+  });
+
+  it('preserves measured zeros and separates unavailable daily counts from independent signals', async () => {
+    const zero = row({ todayCargo: 0, todayOther: 0, incidentCount7d: 0, disruptionPct: 0, anomaly: { signal: false }, dataAvailable: false });
+    await mount(result(payload({ zero, unavailable: { ...zero, todayCountsAvailable: false }, missing: row() })), document => {
+      const details = document.querySelectorAll('.crow details');
+      assert.equal(details.length, 3);
+      assert.deepEqual(values(details[0]), {
+        'Cargo, last 24 hours': '0', 'Other, last 24 hours': '0',
+        'Reported incidents, 7 days': '0', 'Reported disruption': '0%', 'Reported anomaly signal': 'No',
+      });
+      assert.deepEqual(values(details[1]), { ...values(details[0]), 'Cargo, last 24 hours': '—', 'Other, last 24 hours': '—' });
+      assert.deepEqual(values(details[2]), {
+        'Cargo, last 24 hours': '—', 'Other, last 24 hours': '—',
+        'Reported incidents, 7 days': '—', 'Reported disruption': '—', 'Reported anomaly signal': 'Unknown',
+      });
+      assert.match(rows(document)[0].textContent, /No weekly history, so the weekly change is unknown\./);
+    });
+  });
+
+  it('rejects malformed detail values rather than converting them to zero or a signal', async () => {
+    for (const invalid of [null, '4', -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Infinity, NaN]) {
+      const full = payload({ controlled: row({ todayCargo: invalid, todayOther: invalid, incidentCount7d: invalid, disruptionPct: 101, anomaly: { signal: invalid } }) });
+      full.data['transit-summaries'].fetchedAt = 'invalid';
+      await mount(result(full), document => {
+        const detail = document.querySelector('.crow details');
+        assert.ok(detail, 'Invalid details must not remove the route disclosure');
+        assert.deepEqual(values(detail), {
+          'Cargo, last 24 hours': '—', 'Other, last 24 hours': '—',
+          'Reported incidents, 7 days': '—', 'Reported disruption': '—', 'Reported anomaly signal': 'Unknown',
+        });
+        assert.equal(detail.querySelector('.csum').textContent, 'Summary fetched: Unknown');
+      });
+    }
+    for (const disruptionPct of [null, '0', -0.1, Infinity, NaN]) {
+      await mount(result(payload({ controlled: row({ disruptionPct, anomaly: [] }) })), document => {
+        const detail = document.querySelector('.crow details');
+        assert.ok(detail);
+        assert.equal(values(detail)['Reported disruption'], '—');
+        assert.equal(values(detail)['Reported anomaly signal'], 'Unknown');
+      });
+    }
+  });
+
+  it('clears expanded details on result replacement and preserves literal route names and the row bound', async () => {
+    await mount(result(payload({ old_route: supplied })), (document, send) => {
+      const old = document.querySelector('.crow details');
+      assert.ok(old);
+      old.querySelector('summary').click();
+      assert.equal(old.open, true);
+      const hostile = '<img src=x onerror=alert(1)>';
+      send(result(payload({ [hostile]: row({ todayCargo: 0 }) }), true));
+      const replacement = document.querySelector('.crow details');
+      assert.notEqual(replacement, old);
+      assert.equal(old.isConnected, false);
+      assert.equal(replacement.open, false);
+      assert.equal(replacement.querySelector('summary').getAttribute('aria-label'), 'Route details for <img Src=x Onerror=alert(1)>');
+      assert.equal(values(replacement)['Cargo, last 24 hours'], '0');
+      assert.equal(document.querySelectorAll('#rows img, #rows script, #rows a').length, 0);
+      send(result(payload(Object.fromEntries(Array.from({ length: 25 }, (_, index) => ['route_' + index, supplied]))), true));
+      assert.equal(document.querySelectorAll('.crow details').length, 20);
+      send(result(null, true));
+      assert.equal(document.querySelectorAll('.crow details').length, 0);
+      assert.equal(footer(document), '');
+    });
+  });
+});
+
 describe('Chokepoint Monitor supplied projections', () => {
   it('preserves full, text and direct-data controls', async () => {
     const full = payload();
     for (const [wire, snapshot] of [[result(full), true], [{ content: result(full).content }, true], [result(full.data), false]]) {
       await mount(wire, document => {
         assert.equal(rows(document).length, 2);
-        assert.equal(footer(document).includes('Snapshot: 2026-10-04T12:00:00.000Z (stale)'), snapshot);
+        assert.equal(footer(document).includes('Some of this data is out of date.'), snapshot);
+        assert.match(footer(document), /^Transit counts updated 4 Oct 2026, 12:00 UTC/);
       });
     }
   });
@@ -51,11 +165,12 @@ describe('Chokepoint Monitor supplied projections', () => {
       await mount(wire, document => {
         assert.equal(rows(document).length, 2, 'Supplied projected summaries must remain visible');
         const hormuz = rows(document)[0];
-        assert.match(hormuz.textContent, /PortWatch history unavailable/);
+        assert.match(hormuz.textContent, /No weekly history, so the weekly change is unknown\./);
         assert.doesNotMatch(hormuz.textContent, /-80/);
         assert.equal(hormuz.querySelector('.cstat .v').textContent, '—');
-        assert.match(rows(document)[1].textContent, /\+12\.50%/);
-        assert.equal(footer(document).includes('Snapshot: 2026-10-04T12:00:00.000Z (stale)'), snapshot);
+        assert.match(rows(document)[1].textContent, /Week over week\+12\.5%/);
+        assert.equal(footer(document).includes('Some of this data is out of date.'), snapshot);
+        assert.match(footer(document), /^Transit counts updated 4 Oct 2026, 12:00 UTC/);
       });
     }
   });
@@ -71,10 +186,9 @@ describe('Chokepoint Monitor supplied projections', () => {
     for (const wire of [result(summary, true), { content: result(summary).content }]) {
       await mount(wire, document => {
         assert.equal(rows(document).length, 0);
-        assert.match(document.getElementById('rows').textContent, /Summary reports 7 chokepoints/);
-        assert.match(document.getElementById('rows').textContent, /Transit records are not loaded/);
+        assert.equal(document.getElementById('rows').textContent, '7 chokepoints reported, but this response left out their transit figures.');
         assert.doesNotMatch(document.getElementById('rows').textContent, /No chokepoint transit data available/);
-        assert.match(footer(document), /Snapshot: .*\(stale\)/);
+        assert.match(footer(document), /Some of this data is out of date\./);
       });
     }
   });
@@ -85,7 +199,7 @@ describe('Chokepoint Monitor supplied projections', () => {
     for (const count of [null, '7', -1, 1.5, 1]) {
       await mount(result(payload({ count, sample_keys: ['hormuz', 'suez'] }), true), document => {
         assert.equal(rows(document).length, 0);
-        assert.match(document.getElementById('rows').textContent, /Summary count is unavailable/);
+        assert.equal(document.getElementById('rows').textContent, 'Chokepoints reported, but this response left out their transit figures.');
       });
     }
   });
@@ -160,15 +274,24 @@ describe('Chokepoint Monitor supplied display truth', () => {
     await mount(result(payload({ malacca: row({ riskLevel: '' }) })), document => {
       assert.equal(rows(document).length, 1, 'Supplied row must mount before semantic assertion');
       assert.match(rows(document)[0].textContent, /Malacca/);
-      assert.equal(rows(document)[0].querySelector('.risk').textContent, 'Unknown');
+      assert.equal(rows(document)[0].querySelector('.risk').textContent, 'Risk unknown');
     });
   });
   it('keeps missing and malformed risk neutral while preserving explicit risk values', async () => {
     for (const riskLevel of [undefined, null, false, 0, {}, [], '', '  ', 'unsupported', '<img src=x>']) {
       await mount(result(payload({ malacca: row({ riskLevel }) })), document => {
         const badge = rows(document)[0].querySelector('.risk');
-        assert.equal(badge.textContent, 'Unknown');
+        assert.equal(badge.textContent, 'Risk unknown');
         assert.equal(badge.style.color, document.defaultView.getComputedStyle(document.documentElement).getPropertyValue('--muted').trim());
+      });
+    }
+    await mount(result(payload({ hormuz_strait: row(), bab_el_mandeb: row(), unlisted_new_route: row() })), document => {
+      assert.deepEqual([...document.querySelectorAll('.cname')].map(node => node.textContent), ['Strait of Hormuz', 'Bab el-Mandeb', 'Unlisted New Route'],
+        'registry ids use their canonical names; unknown ids are title-cased');
+    });
+    for (const [wowChangePct, expected] of [[12.5, '+12.5%'], [-11.54, '-11.5%'], [0.04, '0.0%'], [-0.04, '0.0%'], [6, '+6.0%']]) {
+      await mount(result(payload({ controlled: row({ wowChangePct }) })), document => {
+        assert.equal(rows(document)[0].querySelectorAll('.cstat .v')[1].textContent, expected, String(wowChangePct));
       });
     }
     for (const riskLevel of ['normal', 'high', 'critical', 'severe', 'moderate', 'elevated', 'warning', 'low']) {
@@ -202,7 +325,7 @@ describe('Chokepoint Monitor supplied display truth', () => {
         const supplied = rows(document)[0];
         assert.equal(supplied.querySelector('.cstat .v').textContent, '42');
         assert.equal(supplied.querySelectorAll('.cstat .v')[1].textContent, '—');
-        assert.match(supplied.textContent, dataAvailable === false ? /PortWatch history unavailable/ : /PortWatch history unknown/);
+        assert.match(supplied.textContent, dataAvailable === false ? /No weekly history, so the weekly change is unknown\./ : /Weekly history status unknown\./);
       });
     }
     for (const wowChangePct of [null, false, '', '12.5']) {
@@ -222,16 +345,17 @@ describe('Chokepoint Monitor supplied display truth', () => {
     for (const [wire, hasEnvelope] of [[result(full), true], [{ content: result(full).content }, true], [result(full, true), true], [result(full.data, true), false]]) {
       await mount(wire, document => {
         assert.equal(rows(document).length, 2);
-        assert.match(document.getElementById('coverage').textContent, /^AIS coverage: 5\/13 · Missing: Suez, Malacca strait/);
-        assert.match(footer(document), /Summary fetched: 2026-10-06T19:47:53.219Z/);
-        assert.match(footer(document), /AIS fetched: 2026-10-06T19:48:45.447Z/);
-        assert.match(footer(document), /Baseline: EIA World Oil Transit Chokepoints · Reference year: 2023 · Updated: 2026-04-05T18:19:44.514Z/);
-        if (!hasEnvelope) assert.doesNotMatch(footer(document), /Snapshot:|Freshness:/);
+        assert.equal(document.getElementById('coverage').textContent, 'Live ship tracking covers 5 of 13 chokepoints. Not covered: '
+          + 'Suez Canal, Strait of Malacca, Bab el-Mandeb, Panama Canal, Cape of Good Hope, Korea Strait, Kerch Strait, Lombok Strait.');
+        const lines = footer(document).split('\n');
+        assert.deepEqual(lines.slice(0, 3), ['Transit counts updated 6 Oct 2026, 19:47 UTC', 'Ship tracking updated 6 Oct 2026, 19:48 UTC',
+          'Energy baseline: EIA World Oil Transit Chokepoints, 2023']);
+        assert.doesNotMatch(footer(document), /5 Apr 2026|2026-04-05/, 'the old baseline cache time is not shown as the panel time');
+        if (!hasEnvelope) assert.equal(lines.length, 3);
       });
     }
     await mount(result(full), document => {
-      assert.match(footer(document), /Snapshot: 2026-04-05T18:19:45.192Z \(stale\)/);
-      assert.match(footer(document), /Freshness: Unknown/);
+      assert.deepEqual(footer(document).split('\n').slice(3), ['Some of this data is out of date.', 'Freshness could not be checked.']);
     });
   });
   it('does not infer coverage from mounted routes and rejects invalid coverage bounds and clocks', async () => {
@@ -243,17 +367,15 @@ describe('Chokepoint Monitor supplied display truth', () => {
       full.data['chokepoint-baselines'] = { referenceYear: false, updatedAt: 'bad', source: '<img src=x>' };
       full.cached_at = 'bad';
       await mount(result(full), document => {
-        assert.match(document.getElementById('coverage').textContent, /^AIS coverage: Unknown/);
-        assert.match(footer(document), /Summary fetched: Unknown/);
-        assert.match(footer(document), /AIS fetched: Unknown/);
-        assert.match(footer(document), /Reference year: Unknown · Updated: Unknown/);
-        assert.match(footer(document), /Snapshot: Unknown/);
+        assert.match(document.getElementById('coverage').textContent, /^Live ship tracking coverage is unknown\./);
+        assert.deepEqual(footer(document).split('\n'), ['Transit count update time unknown', 'Ship tracking update time unknown',
+          'Energy baseline: <img src=x>, reference year unknown', 'Some of this data is out of date.']);
         assert.equal(document.querySelectorAll('#foot img').length, 0);
       });
     }
     const full = payload();
     full.data.chokepoint_transits = { transitCoverage: { covered: 0, total: 13, missing: [] } };
-    await mount(result(full), document => { assert.match(document.getElementById('coverage').textContent, /^AIS coverage: 0\/13/); });
+    await mount(result(full), document => { assert.equal(document.getElementById('coverage').textContent, 'Live ship tracking covers 0 of 13 chokepoints.'); });
   });
   it('accepts supplied ISO and epoch clocks while keeping invalid clock values unknown', async () => {
     for (const fetchedAt of [1791316125447, '1791316125447', '2026-10-06T19:48:45.447Z']) {
@@ -261,15 +383,23 @@ describe('Chokepoint Monitor supplied display truth', () => {
       full.data['transit-summaries'].fetchedAt = fetchedAt;
       full.data['chokepoint-baselines'] = { referenceYear: '2023' };
       await mount(result(full), document => {
-        assert.match(footer(document), /Summary fetched: 2026-10-06T19:48:45.447Z/);
-        assert.match(footer(document), /Reference year: 2023/);
+        assert.match(footer(document), /Transit counts updated 6 Oct 2026, 19:48 UTC/);
+        assert.match(footer(document), /Energy baseline: source unknown, 2023/);
       });
     }
     for (const fetchedAt of [undefined, false, true, null, '', '0', 0, -1, 'bad', {}, []]) {
       const full = payload();
       full.data['transit-summaries'].fetchedAt = fetchedAt;
-      await mount(result(full), document => { assert.match(footer(document), /Summary fetched: Unknown/); });
+      await mount(result(full), document => { assert.match(footer(document), /^Transit count update time unknown/); });
     }
+  });
+  it('keeps the cached update time when only the energy baseline is present', async () => {
+    const baselineOnly = { cached_at: '2026-10-04T12:00:00.000Z', stale: false,
+      data: { 'chokepoint-baselines': { referenceYear: 2023, source: 'EIA World Oil Transit Chokepoints' } } };
+    await mount(result(baselineOnly), document => {
+      assert.match(footer(document), /Energy baseline: EIA World Oil Transit Chokepoints, 2023/);
+      assert.match(footer(document), /Updated 4 Oct 2026, 12:00 UTC/, 'a baseline is not an update clock');
+    });
   });
   it('clears omitted coverage and clocks on replacement projections without acquiring data', async () => {
     const full = payload();
@@ -277,11 +407,11 @@ describe('Chokepoint Monitor supplied display truth', () => {
     full.data.chokepoint_transits = { fetchedAt: 1791316125447, transitCoverage: { covered: 5, total: 13, missing: ['suez'] } };
     full.data['chokepoint-baselines'] = { referenceYear: 2023, updatedAt: '2026-04-05T18:19:44.514Z' };
     await mount(result(full), async (document, send) => {
-      assert.match(document.getElementById('coverage').textContent, /5\/13/);
+      assert.match(document.getElementById('coverage').textContent, /5 of 13/);
       send(result({ 'transit-summaries': { summaries: { suez: row() } } }, true));
       assert.equal(rows(document).length, 1);
       assert.equal(document.getElementById('coverage').textContent, '');
-      assert.equal(footer(document), 'Summary fetched: Unknown');
+      assert.equal(footer(document), 'Transit count update time unknown');
       for (const replacement of [null, {}, 'no data', []]) {
         send(result(replacement, true));
         assert.equal(document.getElementById('coverage').textContent, '');

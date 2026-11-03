@@ -190,6 +190,75 @@ export function shortenGeneratedSuccessDescriptions(spec) {
   return stats;
 }
 
+const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
+
+// Generated summaries repeat operationId verbatim. Keep custom summaries and
+// the human-readable YAML; omit only this duplicate from the compact JSON.
+export function dropDuplicateOperationSummaries(spec) {
+  const stats = { dropped: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method)) continue;
+      if (typeof operation?.operationId !== 'string' || !operation.operationId) continue;
+      if (operation.summary === operation.operationId) {
+        delete operation.summary;
+        stats.dropped += 1;
+      }
+    }
+  }
+  return stats;
+}
+
+/**
+ * Proto RPC comments open with the RPC name ("ListX returns ..."), so nearly
+ * every generated description repeats its operationId: about 200 copies, 3.9 KB
+ * of the served artifact. The YAML keeps the name because Mintlify uses the
+ * description as the page's meta description, where the name reads as the
+ * subject. In the JSON the operationId sits on the same object, so the copy is
+ * dropped and the next word capitalized ("Returns ..."). JSON only.
+ *
+ * Mutates `spec` in place; returns { dropped }.
+ */
+export function dropOperationIdDescriptionPrefixes(spec) {
+  const stats = { dropped: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method)) continue;
+      const { operationId, description } = operation ?? {};
+      if (typeof operationId !== 'string' || !operationId || typeof description !== 'string') continue;
+      const rest = description.startsWith(`${operationId} `) ? description.slice(operationId.length + 1) : '';
+      if (!/^\S/.test(rest)) continue;
+      operation.description = rest[0].toUpperCase() + rest.slice(1);
+      stats.dropped += 1;
+    }
+  }
+  return stats;
+}
+
+/**
+ * openapi-inject-security.mjs appends "PRO-gated. Requires entitlement tier >= N."
+ * to every entitlement-gated operation, and the per-spec contract tests pin that
+ * wording in the YAML. The JSON states the same gate as "PRO tier N+."; the 403
+ * response still describes the refusal in full. JSON only.
+ *
+ * Mutates `spec` in place; returns { compacted }.
+ */
+const ENTITLEMENT_NOTE = /(?:PRO-gated\. )?Requires entitlement tier >= (\d+)\./g;
+
+export function compactEntitlementNotes(spec) {
+  const stats = { compacted: 0 };
+  for (const pathItem of Object.values(spec.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method) || typeof operation?.description !== 'string') continue;
+      operation.description = operation.description.replace(ENTITLEMENT_NOTE, (_, tier) => {
+        stats.compacted += 1;
+        return `PRO tier ${tier}+.`;
+      });
+    }
+  }
+  return stats;
+}
+
 /**
  * A 2xx response example illustrates the payload's shape; one item of each list
  * of objects shows that shape as well as nine. The two captured examples that
@@ -239,6 +308,7 @@ export function trimResponseExampleLists(spec) {
  * and still callable: only this one artifact omits it. Every entry names why.
  */
 export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
+  '/api/economic/v1/get-food-prices': 'Budget: the dashboard food-price card (#9841) puts the scanner bundle 2,983 bytes over its cap. The endpoint remains served and fully documented in the EconomicService spec and YAML bundle.',
   '/api/maritime/v1/list-ukmto-incidents': 'Budget: the optional UKMTO dashboard dataset puts the scanner bundle 2,045 bytes over its cap. The endpoint remains served and fully documented in the MaritimeService spec and YAML bundle; worker activation is tracked in #9831.',
   '/api/intelligence/v1/get-country-signal-observations': 'Internal country panel observation carrier; documented in the IntelligenceService spec and YAML bundle.',
   '/api/news/v1/list-label-changes': 'Label history read by the /trust page (#9093); documented in the NewsService spec.',
@@ -385,6 +455,9 @@ export function buildBundle({ spec: provided } = {}) {
   const softBreakStats = collapseSoftLineBreaks(spec);
   const defaultRequiredStats = dropDefaultParameterRequired(spec);
   const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
+  const duplicateSummaryStats = dropDuplicateOperationSummaries(spec);
+  const descriptionPrefixStats = dropOperationIdDescriptionPrefixes(spec);
+  const entitlementNoteStats = compactEntitlementNotes(spec);
   const exampleListStats = trimResponseExampleLists(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the
@@ -408,6 +481,9 @@ export function buildBundle({ spec: provided } = {}) {
     softBreakStats,
     defaultRequiredStats,
     successDescriptionStats,
+    duplicateSummaryStats,
+    descriptionPrefixStats,
+    entitlementNoteStats,
     exampleListStats,
     excludedStats,
   };

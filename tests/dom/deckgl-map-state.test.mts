@@ -23,6 +23,17 @@ vi.mock('@/services/generated-rpc-clients', async (importOriginal) => ({
   MilitaryServiceClient: class { listMilitaryBases = listMilitaryBases; },
 }));
 
+// Lane-color tests force premium; every other test keeps the real gate.
+const premium = vi.hoisted(() => ({ forced: undefined as boolean | undefined }));
+vi.mock('@/services/panel-gating', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/panel-gating')>();
+  return {
+    ...actual,
+    hasPremiumAccess: (...args: Parameters<typeof actual.hasPremiumAccess>) =>
+      premium.forced ?? actual.hasPremiumAccess(...args),
+  };
+});
+
 type Handler = (event?: unknown) => void;
 type FlyToCall = { options: { center?: [number, number]; zoom?: number }; eventData?: Record<string, unknown> };
 
@@ -643,5 +654,120 @@ describe('DeckGL renderer readiness and settlement', () => {
     if (!destroyed) expect(center).toHaveBeenCalledWith(26.5, 56.5, 5);
     expect(show).toHaveBeenCalledTimes(destroyed ? 0 : 1);
     if (!destroyed) expect(show).toHaveBeenCalledWith(expect.objectContaining({ type: 'waterway', x: 20, y: 30 }));
+  });
+});
+
+describe('DeckGLMap route explorer lane highlight', () => {
+  type Layer = { id: unknown; props: Record<string, unknown> };
+  type Segment = { routeId: string };
+  const layersOf = (map: DeckGLMap): Layer[] =>
+    ([(map as unknown as { buildLayers(): unknown }).buildLayers()].flat(Infinity) as (Layer | null | false)[])
+      .filter((layer): layer is Layer => Boolean(layer));
+  const layer = (map: DeckGLMap, id: string): Layer | undefined => layersOf(map).find((l) => l.id === id);
+  const tradeRoutesOn = () => initialState({ layers: { ...allLayersOff(), tradeRoutes: true } });
+  const gulfLane = {
+    routeId: 'gulf-asia-oil',
+    path: [[50.16, 26.64], [56.5, 26.5], [72.9, 18.9]] as [number, number][],
+    chokepointIds: ['hormuz_strait'],
+  };
+
+  it('draws only the lane, pulses only its chokepoints, dims every route and fits the view', async () => {
+    const { map, fake } = await mapWith(tradeRoutesOn());
+    const fit = vi.spyOn(fake, 'fitBounds');
+    map.highlightLane(gulfLane);
+
+    const legs = layer(map, 'highlighted-lane-layer')?.props.data as { source: [number, number]; target: [number, number] }[];
+    expect(legs).toHaveLength(2);
+    expect(legs[0]?.source).toEqual([50.16, 26.64]);
+    expect(legs[1]?.target).toEqual([72.9, 18.9]);
+
+    const markers = layer(map, 'highlighted-chokepoint-markers')?.props.data as { id: string }[];
+    expect(markers.map((m) => m.id)).toEqual(['hormuz_strait']);
+
+    // The full route stays dimmed and thin, so its Malacca leg does not read as part of the lane.
+    const routes = layer(map, 'trade-routes-layer');
+    const segment = (routes?.props.data as Segment[]).find((s) => s.routeId === 'gulf-asia-oil');
+    if (!segment) throw new Error('gulf-asia-oil has no segment');
+    expect((routes?.props.getSourceColor as (d: Segment) => number[])(segment)[3]).toBe(40);
+    expect((routes?.props.getWidth as (d: Segment) => number)(segment)).not.toBe(6);
+
+    expect(fit).toHaveBeenCalledWith([[50.16, 18.9], [72.9, 26.64]], expect.anything());
+  });
+
+  // renderWorldCopies is false, so bounds past 180° would be clamped to a view
+  // without the American end. Plain bounds keep both ends on screen.
+  it('fits a lane across the antimeridian inside the single rendered world', async () => {
+    const { map, fake } = await mapWith(tradeRoutesOn());
+    const fit = vi.spyOn(fake, 'fitBounds');
+    map.highlightLane({ routeId: 'us-west-northeast-asia', path: [[-118.2, 33.7], [129.04, 35.1]], chokepointIds: [] });
+    const [[minLng], [maxLng]] = (fit.mock.calls[0] as unknown[] | undefined)?.[0] as [[number, number], [number, number]];
+    expect(minLng).toBe(-118.2);
+    expect(maxLng).toBe(129.04);
+  });
+
+  it('colors the lane from live scores and scenarios on its own chokepoints only', async () => {
+    premium.forced = true;
+    try {
+      const { map } = await mapWith(tradeRoutesOn());
+      const state = map as unknown as {
+        storedChokepointData: { chokepoints: { id: string; disruptionScore: number }[] } | null;
+        tradeRoutePalette(): Record<'active' | 'disrupted' | 'highRisk' | 'scenario', number[]>;
+      };
+      const palette = state.tradeRoutePalette();
+      const laneColor = () => layer(map, 'highlighted-lane-layer')?.props.getSourceColor;
+      const scored = (scores: Record<string, number>) => {
+        state.storedChokepointData = { chokepoints: Object.entries(scores).map(([id, disruptionScore]) => ({ id, disruptionScore })) };
+      };
+
+      map.highlightLane(gulfLane);
+      expect(laneColor()).toEqual(palette.active);
+      scored({ hormuz_strait: 80 });
+      expect(laneColor()).toEqual(palette.disrupted);
+      scored({ hormuz_strait: 50 });
+      expect(laneColor()).toEqual(palette.highRisk);
+      // Malacca lies past India: its disruption does not color this lane.
+      scored({ malacca_strait: 95 });
+      expect(laneColor()).toEqual(palette.active);
+
+      map.setScenarioState({ disruptedChokepointIds: ['malacca_strait'], affectedIso2s: [] } as never);
+      expect(laneColor()).toEqual(palette.active);
+      map.setScenarioState({ disruptedChokepointIds: ['hormuz_strait'], affectedIso2s: [] } as never);
+      expect(laneColor()).toEqual(palette.scenario);
+    } finally {
+      premium.forced = undefined;
+    }
+  });
+
+  it('fits the lane beside a panel drawn over the map, not under it', async () => {
+    const { map, fake } = await mapWith(tradeRoutesOn());
+    const container = (map as unknown as { container: HTMLElement }).container;
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(
+      { left: 0, right: 1000, top: 0, bottom: 800, width: 1000, height: 800, x: 0, y: 0, toJSON: () => ({}) } as DOMRect,
+    );
+    const fit = vi.spyOn(fake, 'fitBounds');
+    const padding = () => ((fit.mock.lastCall as unknown[] | undefined)?.[1] as { padding: { left: number; right: number } }).padding;
+
+    map.highlightLane(gulfLane, { left: 0, right: 520 });
+    expect(padding()).toEqual({ top: 60, bottom: 60, right: 60, left: 580 });
+
+    // A panel that leaves no room for the lane, as on a phone, is ignored.
+    map.highlightLane(gulfLane, { left: 0, right: 900 });
+    expect(padding().left).toBe(60);
+    map.highlightLane(gulfLane);
+    expect(padding().left).toBe(60);
+  });
+
+  it('clearing, or highlighting a whole route, removes the lane', async () => {
+    const { map } = await mapWith(tradeRoutesOn());
+    map.highlightLane(gulfLane);
+    map.clearHighlightedRoute();
+    expect(layer(map, 'highlighted-lane-layer')).toBeUndefined();
+    expect(layer(map, 'highlighted-chokepoint-markers')).toBeUndefined();
+
+    map.highlightLane(gulfLane);
+    map.highlightRoute(['gulf-asia-oil']);
+    expect(layer(map, 'highlighted-lane-layer')).toBeUndefined();
+    const markers = layer(map, 'highlighted-chokepoint-markers')?.props.data as { id: string }[];
+    expect(markers.map((m) => m.id)).toContain('malacca_strait');
   });
 });

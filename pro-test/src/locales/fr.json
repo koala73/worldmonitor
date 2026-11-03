@@ -380,15 +380,16 @@
       "api": {
         "description": "Créez des outils internes sur des données de renseignement en direct",
         "features": [
+          "Dashboard Pro complet inclus (1 utilisateur nommé)",
           "API REST + SDK officiels (npm, PyPI, RubyGems, Go)",
           "Clé de licence / API incluse",
           "Flux de données en temps réel",
           "60 requêtes/minute",
           "1 000 requêtes/jour incluses (REST + MCP combinés ; un appel MCP en direct compte pour 2-3)",
-          "Notifications webhook"
+          "Notifications par webhook"
         ],
         "highlightFeatures": [
-          "Licence commerciale — pour votre organisation"
+          "Usage commercial — interne uniquement, pas accessible aux clients"
         ]
       },
       "enterprise": {
@@ -419,7 +420,7 @@
           "Support prioritaire"
         ],
         "highlightFeatures": [
-          "Licence commerciale — pour vos clients"
+          "Usage commercial — dans vos produits destinés aux clients"
         ]
       },
       "proBusiness": {
@@ -663,7 +664,8 @@
       "proF4": "MCP, API REST et SDKs officiels — outils en direct sous une seule clé",
       "proF5": "Constructeur de widgets personnalisés pour vos propres tableaux de bord",
       "cta": "Voir les forfaits et tarifs",
-      "note": "À partir de 39,99 $/mois · 3 mois gratuits lors de la facturation annuelle"
+      "note": "À partir de 39,99 $/mois · 3 mois gratuits lors de la facturation annuelle",
+      "disclaimer": "World Monitor est fourni à des fins d’information uniquement et ne constitue pas un conseil financier, en investissement, juridique, en sûreté ou en sécurité. Vérifiez ce que vous voyez et consultez un professionnel qualifié avant de prendre des décisions pour lesquelles une erreur pourrait entraîner une perte ou un préjudice."
     },
     "faq": {
       "eyebrow": "Aucun piège",
@@ -710,14 +712,14 @@
       "chokepointTitle": "Vérifier un point d'étranglement",
       "chokepointDesc": "Inspectez l'état des perturbations, les flux de navires et les risques dans {{chokepoints}} passages maritimes critiques.",
       "countryRiskTitle": "Expliquer un mouvement de risque-pays",
-      "countryRiskDesc": "Tracez les signaux politiques, sécuritaires, économiques et de résilience derrière l'évolution d'un pays, avec la résilience classée pour {{resilienceRanked}} pays.",
+      "countryRiskDesc": "Suivez les signaux politiques, sécuritaires, économiques et de résilience derrière l'évolution d'un pays. La résilience fait l'objet d'un classement pour {{resilienceRanked}} pays sur {{resilienceUniverse}}, soit environ {{resilienceRankedPct}} %, afin de pouvoir interpréter un mouvement au regard du socle structurel à long terme de ce pays, plutôt qu'à partir des seuls titres de l'actualité de cette semaine.",
       "open": "Ouvrir les preuves",
       "workflow": "Méthode pas à pas"
     },
     "voices": {
       "eyebrow": "Dans leurs mots",
       "title": "Ce que l’on dit de World Monitor",
-      "sub": "{{users}} personnes dans {{countries}} pays ont utilisé World Monitor. Voici ce qu’en ont dit la presse et certaines d’entre elles.",
+      "sub": "{{users}} personnes dans {{countries}} pays ont utilisé World Monitor. The Atlantic en a parlé le 14 mars 2026 et El País deux jours plus tard. WIRED, The Economic Times, Arabian Business et L'Orient Today l'ont également couvert. Voici ce qu'en ont dit la presse et certains utilisateurs.",
       "translatedJa": "Traduit du japonais",
       "prev": "Citations précédentes",
       "next": "Plus de citations"

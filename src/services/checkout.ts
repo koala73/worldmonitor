@@ -579,6 +579,7 @@ export async function startCheckout(
   }
 
   _checkoutInFlight = true;
+  let redirecting = false;
   // Fall back to the stored referral when the caller doesn't pass one.
   // A dashboard-origin upgrade click has no ref in hand — it arrives
   // from a locked-panel CTA or the Manage Billing surface — but the
@@ -843,6 +844,7 @@ export async function startCheckout(
         return true;
       }
       window.location.assign(hostedCheckoutUrl);
+      redirecting = true;
       return true;
     }
     // 200 OK but no usable checkout_url — missing, or an untrusted/unparseable
@@ -880,8 +882,30 @@ export async function startCheckout(
     renderCheckoutErrorSurface(error, fallbackToPricingPage, checkoutContext);
     return false;
   } finally {
-    _checkoutInFlight = false;
+    if (redirecting) holdCheckoutUntilNavigation();
+    else _checkoutInFlight = false;
   }
+}
+
+// `location.assign` only starts navigation: the dashboard stays clickable
+// until Dodo's page loads, often 1-3 s later. Releasing the guard on return
+// let a second click create a second Dodo session. Hold it until the page is
+// gone; release when the buyer comes back through the back-forward cache, or
+// when the navigation never happened (stopped, blocked) so upgrade CTAs
+// cannot stay dead.
+const REDIRECT_HOLD_MS = 15_000;
+
+function holdCheckoutUntilNavigation(): void {
+  const release = () => {
+    clearTimeout(timer);
+    window.removeEventListener('pageshow', onPageShow);
+    _checkoutInFlight = false;
+  };
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) release();
+  };
+  window.addEventListener('pageshow', onPageShow);
+  const timer = setTimeout(release, REDIRECT_HOLD_MS);
 }
 
 /**

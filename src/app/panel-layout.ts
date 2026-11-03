@@ -48,6 +48,7 @@ import {
 import { BETA_MODE } from '@/config/beta';
 import { NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, trackLayoutCustomized, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents, replayPendingMissionReturn } from '@/services/analytics';
 import { ProPreviewSection } from '@/components/ProPreviewSection';
@@ -275,6 +276,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
+  'fao-food-price-index': { rowSpan: 3 },
   'global-procurement': { rowSpan: 2 },
   'energy-complex': { rowSpan: 2 },
   'energy-crisis': { rowSpan: 2 },
@@ -1265,7 +1267,7 @@ export class PanelLayoutManager implements AppModule {
         <div class="map-section${mapStartsCollapsed ? ' collapsed' : ''}" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
-              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
+              <span class="panel-title">${escapeHtml(getPanelDisplayName('map'))}</span>
             </div>
             <span class="header-clock" id="headerClock" translate="no"></span>
             <div class="map-header-actions">
@@ -3140,12 +3142,9 @@ export class PanelLayoutManager implements AppModule {
 
     this.lazyImportedPanel('tech-readiness', () => import('@/components/TechReadinessPanel'), 'TechReadinessPanel', (TechReadinessPanel) => {
       const p = new TechReadinessPanel();
-      // Only auto-refresh on variants whose bootstrap seeds techReadiness
-      // (full + tech). On commodity/finance/energy the seed key is empty
-      // and the 5s fetch at services/economic/index.ts:694 just times out.
-      // The panel is still created so users who opt-in via settings can
-      // trigger a manual refresh from its UI.
-      if (isPanelInVariantDefaults('tech-readiness')) {
+      // Auto-refresh where the variant ships the panel (full + tech) or the
+      // user enabled it. The seed is global, so it loads on every edition.
+      if (isPanelInVariantDefaults('tech-readiness') || this.ctx.panelSettings['tech-readiness']?.enabled === true) {
         void p.refresh();
       }
       return p;
@@ -4608,13 +4607,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   getLocalizedPanelName(panelKey: string, fallback: string): string {
-    if (panelKey === 'runtime-config') {
-      return t('modals.runtimeConfig.title');
-    }
-    const key = panelKey.replace(/-([a-z])/g, (_match, group: string) => group.toUpperCase());
-    const lookup = `panels.${key}`;
-    const localized = t(lookup);
-    return localized === lookup ? fallback : localized;
+    return getPanelDisplayName(panelKey, fallback);
   }
 
 }

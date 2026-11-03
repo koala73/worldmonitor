@@ -39,7 +39,7 @@ function fixtures() {
 function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, corruptRaw?: string) {
   const code = `
     import { installRedis } from './tests/helpers/fake-upstash-redis.mts';
-    const now = ${now};
+    let now = ${now};
     const RealDate = Date;
     globalThis.Date = class extends RealDate {
       constructor(...args) { super(...(args.length ? args : [now])); }
@@ -68,11 +68,13 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
     const currentDate = mode === 'moving'
       ? new RealDate(now - 86400000).toISOString().slice(0, 10) : '2026-09-09';
     const requests = [];
+    const activityCountries = new Set();
     globalThis.fetch = async (url, init) => {
       const u = new URL(url);
       if (u.origin === 'https://redis.example') {
         if (mode.startsWith('cache-read-') && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'GET')) {
+          if (mode === 'cache-read-transport') throw new TypeError('fetch failed');
           const replies = JSON.parse(init.body).map(() => ({ result: null }));
           if (mode === 'cache-read-short') return Response.json(replies.slice(1));
           if (mode === 'cache-read-envelope') return Response.json({ result: replies });
@@ -83,6 +85,13 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
         if (mode === 'canonical-expired' && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
           state.redis.delete('${CANONICAL}');
+        }
+        if (mode === 'reference-page-country-unconfirmed' && u.pathname === '/pipeline'
+          && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
+          const response = await state.fetchImpl(url, init);
+          const results = await response.json();
+          results[results.length - 1] = {};
+          return Response.json(results);
         }
         if (mode === 'canonical-unconfirmed' && u.pathname === '/pipeline'
           && JSON.parse(init.body).some(([verb]) => verb === 'EXPIRE')) {
@@ -105,7 +114,7 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       if (!u.pathname.endsWith('/query')) return Response.json({ fields: [{ name: 'date', type: 'esriFieldTypeDateOnly' }] });
       const offset = Number(u.searchParams.get('resultOffset'));
       if (u.pathname.includes('PortWatch_ports_database')) {
-        if (offset > 0 && mode === 'reference-page') return Response.json({ exceededTransferLimit: true });
+        if (offset > 0 && mode.startsWith('reference-page')) return Response.json({ exceededTransferLimit: true });
         const page = countries.slice(offset, offset + 100);
         return Response.json({ features: page.map(([iso3, iso2]) => ({ attributes: { portid: iso2, ISO3: iso3, lat: 1, lon: 2 } })), exceededTransferLimit: offset + page.length < countries.length });
       }
@@ -113,6 +122,11 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       const iso3 = where.match(/ISO3='([^']+)'/)[1];
       const iso2 = countries.find(([code]) => code === iso3)[1];
       if (u.searchParams.has('outStatistics')) return Response.json({ features: [{ attributes: { max_date: mode === 'zero' ? null : currentDate } }] });
+      if (mode.startsWith('expiry-during-')) {
+        activityCountries.add(iso2);
+        if (activityCountries.size > (mode === 'expiry-during-first-batch' ? 0 : 6)) now = ${now} + 1000;
+        if (iso3 !== countries[1][0]) return Response.json({ error: { code: 400, message: 'Cannot perform query. Invalid query parameters.' } });
+      }
       // #8501: ArcGIS answers a throttled activity query with HTTP 200 and an
       // error body. Throttle 7 of every 8 countries so batch 1 clears the
       // circuit-breaker's trip rate while a minority still lands -- the shape
@@ -120,6 +134,11 @@ function runProducer(input: Record<string, any>, mode = 'complete', now = NOW, c
       if (mode === 'rate-limited'
         && countries.findIndex(([code]) => code === iso3) % 8 !== 0) {
         return Response.json({ error: { code: 429, message: 'Unable to perform query. Too many requests.' } });
+      }
+      // 2026-10-27..31: intermittent ArcGIS 400 on the same 7 of every 8 countries.
+      if (mode === 'invalid-query'
+        && countries.findIndex(([code]) => code === iso3) % 8 !== 0) {
+        return Response.json({ error: { code: 400, message: 'Cannot perform query. Invalid query parameters.' } });
       }
       if (mode === 'corrupt-failure' && iso3 === countries[0][0]) return Response.json({ features: [null] });
       if (mode === 'zero') return Response.json({ features: [], exceededTransferLimit: false });
@@ -160,11 +179,19 @@ function health(redis: Record<string, any>, now = NOW) {
   });
 }
 
+// Save the real globals once per test. A second read in the same test would
+// otherwise save the first read's fakes, and its cleanup (run after the first)
+// would reinstall them for every later test.
+const readerGlobalsSaved = new WeakSet<object>();
+
 async function readCountry(t: any, redis: Record<string, any>, code: string, now = NOW) {
-  const realFetch = globalThis.fetch;
-  const realNow = Date.now;
-  const env = { ...process.env };
-  t.after(() => { globalThis.fetch = realFetch; Date.now = realNow; process.env = env; });
+  if (!readerGlobalsSaved.has(t)) {
+    readerGlobalsSaved.add(t);
+    const realFetch = globalThis.fetch;
+    const realNow = Date.now;
+    const env = { ...process.env };
+    t.after(() => { globalThis.fetch = realFetch; Date.now = realNow; process.env = env; });
+  }
   installRedis(redis);
   Date.now = () => now;
   return getCountryPortActivity({} as never, { countryCode: code });
@@ -173,11 +200,15 @@ async function readCountry(t: any, redis: Record<string, any>, code: string, now
 test('natural 168-to-60 expiry cliff preserves publication and reports incomplete recovery', async (t) => {
   const input = fixtures();
   const result = runProducer(input);
-  assert.match(result.error, /Incomplete PortWatch coverage/);
-  assert.match(result.logs, /60\/174 usable countries/);
-  assert.doesNotMatch(result.logs, /Seeded 60 countries/);
+  // Countries fell out of coverage, but last-good is retained: publish-blocked
+  // (bundle exit 0) with /api/health owning the alarm, not a Railway crash.
+  assert.equal(result.error, null);
+  assert.equal(result.publishBlocked, true);
+  assert.match(result.logs, /COVERAGE SHORTFALL: usable coverage 90\/174/);
+  assert.match(result.logs, /90\/174 usable countries/);
+  assert.doesNotMatch(result.logs, /Seeded 90 countries/);
   assert.match(result.logs, /60 usable country payloads assembled.*persistence pending/);
-  assert.match(result.logs, /Recovery state saved; canonical list retained at 168 countries; usable coverage 60\/174; full publication blocked; 0 unresolved refresh failures/);
+  assert.match(result.logs, /Recovery state saved; canonical list retained at 168 countries; usable coverage 90\/174; full publication blocked; 0 unresolved refresh failures/);
   assert.match(result.logs, /TEST transaction confirmed/);
   assert.ok(result.logs.indexOf('TEST transaction confirmed') < result.logs.indexOf('Recovery state saved'));
   assert.doesNotMatch(result.logs, /countries published|unpublished countries|asof behind/);
@@ -185,7 +216,7 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
   assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
   assert.equal(result.redis[META].recordCount, 168);
   assert.deepEqual(result.redis[META].contentFreshness, input[META].contentFreshness);
-  assert.equal(result.redis[META].coverage.published, 60);
+  assert.equal(result.redis[META].coverage.published, 90);
   assert.equal(result.redis[META].coverage.refreshFailures.length, 0);
   assert.equal(result.redis[META].sourceState, 'error');
   assert.equal(result.redis[META].lastAttemptAt, NOW);
@@ -195,7 +226,18 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
   const retained = countries[150][1];
   const response = await readCountry(t, result.redis, retained);
   assert.equal(response.available, true);
+  assert.equal(response.stale, false);
   assert.equal(response.fetchedAt, input[`${PREFIX}${retained}`].fetchedAt);
+  // A country that crossed seven days is a coverage gap for health (above),
+  // but its last data is still under its key and the canonical list still
+  // names it, so the API serves it marked stale instead of a blank panel.
+  const expired = result.redis[CANONICAL].find((iso2: string) =>
+    result.redis[`${PREFIX}${iso2}`]?.cacheWrittenAt <= NOW - 7 * DAY);
+  assert.ok(expired, 'the run leaves expired countries in the held canonical list');
+  const expiredResponse = await readCountry(t, result.redis, expired);
+  assert.equal(expiredResponse.available, true);
+  assert.equal(expiredResponse.stale, true);
+  assert.equal(expiredResponse.ports.length, 1);
   process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
   const { handleSeedHealth } = await import('../api/seed-health.js');
   const seedHealthResponse = await handleSeedHealth(new Request('https://api.worldmonitor.app/api/seed-health', {
@@ -205,23 +247,45 @@ test('natural 168-to-60 expiry cliff preserves publication and reports incomplet
   assert.equal(entry.status, 'error');
   assert.equal(entry.recordCount, 168);
   Date.now = () => NOW + 7 * DAY;
+  const aged = await getCountryPortActivity({} as never, { countryCode: retained });
+  assert.equal(aged.available, true);
+  assert.equal(aged.stale, true);
+  Date.now = () => NOW + 30 * DAY;
   assert.equal((await getCountryPortActivity({} as never, { countryCode: retained })).available, false);
 });
 
 test('reference-page failure records diagnostics without replacing last-good keys', () => {
   const input = fixtures();
   const result = runProducer(input, 'reference-page');
-  assert.match(result.error, /incomplete page/);
+  assert.equal(result.error, null);
+  assert.equal(result.publishBlocked, true);
+  assert.match(result.logs, /UPSTREAM FAILURE: ArcGIS incomplete page/);
   assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
   assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
   assert.equal(result.redis[META].errorCode, 'PORTWATCH_INCOMPLETE_PAGE');
+  // No crash means health must carry the alarm.
+  assert.equal(health(result.redis).status, 'SEED_ERROR');
+  assert.equal(health(result.redis).errorCode, 'PORTWATCH_INCOMPLETE_PAGE');
   assert.equal(result.redis[META].coverage.completionRatio, null);
   for (const [, code] of countries) assert.deepEqual(result.redis[`${PREFIX}${code}`], input[`${PREFIX}${code}`]);
 });
 
+// The upstream path writes only seed-meta, so every prior country key survives
+// solely on its TTL extension. Redis failing to confirm one is our fault and
+// stays a crash (PR #9959 review). A key EXPIRE reports missing (0) is not a
+// write failure, and a crash would not bring it back.
+test('an upstream failure with an unconfirmed country TTL extension stays a crash', () => {
+  const input = fixtures();
+  const result = runProducer(input, 'reference-page-country-unconfirmed');
+  assert.match(result.error, /incomplete page/);
+  assert.equal(result.publishBlocked, false);
+  assert.match(result.logs, /TTL extension unconfirmed for 1 key/);
+});
+
 test('a failed first run does not invent a successful observation timestamp', () => {
   const result = runProducer({}, 'reference-page');
-  assert.match(result.error, /incomplete page/);
+  assert.equal(result.error, null);
+  assert.equal(result.publishBlocked, true);
   assert.equal(result.redis[CANONICAL], undefined);
   assert.equal(result.redis[META].fetchedAt, undefined);
   assert.equal(result.redis[META].recordCount, undefined);
@@ -230,8 +294,11 @@ test('a failed first run does not invent a successful observation timestamp', ()
 
 test('a bad second activity page retains the entire country payload and success clocks', async (t) => {
   const input = fixtures();
+  // Expired countries now outrank every published one for cold-fetch slots, so
+  // keep the whole fixture published; otherwise the 144 expired fixtures take
+  // all 30 slots and the country under test is never fetched.
+  for (const [, iso2] of countries) input[`${PREFIX}${iso2}`].cacheWrittenAt = NOW - DAY;
   const code = countries[0][1];
-  input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
   input[`${PREFIX}${code}`].refreshAttemptedAt = 1;
   const result = runProducer(input, 'activity-page');
   const retained = result.redis[`${PREFIX}${code}`];
@@ -244,11 +311,58 @@ test('a bad second activity page retains the entire country payload and success 
   assert.equal((await readCountry(t, result.redis, code)).ports[0].tankerCalls30d, 12);
 });
 
-for (const mode of ['cache-read-failure', 'cache-read-short', 'cache-read-envelope', 'cache-read-missing', 'cache-read-type']) {
+for (const mode of ['expiry-during-first-batch', 'expiry-during-later-batches']) {
+  test(`${mode} excludes expired coverage without rewriting last-good clocks`, () => {
+    const input = fixtures();
+    for (const [, code] of countries) {
+      input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+      input[`${PREFIX}${code}`].asof = '2026-09-08';
+      input[`${PREFIX}${code}`].refreshFailure = { code: 'invalid_query', consecutiveFailures: 4, lastAttemptAt: NOW - DAY / 2 };
+    }
+    const failed = countries[0][1];
+    const deferred = countries.at(-1)![1];
+    const expiring = [...countries.slice(0, 31).map(([, code]) => code), deferred];
+    for (const code of expiring) input[`${PREFIX}${code}`].cacheWrittenAt = NOW - 7 * DAY + 1000;
+    input[`${PREFIX}${failed}`].cacheWrittenAt--;
+    input[`${PREFIX}${failed}`].refreshAttemptedAt = 1;
+    input[`${PREFIX}${deferred}`].refreshAttemptedAt = NOW;
+
+    const result = runProducer(input, mode);
+    assert.equal(result.error, null);
+    assert.equal(result.publishBlocked, true);
+    const coverage = result.redis[META].coverage;
+    const expired = expiring.filter((code) => code !== countries[1][1]).sort();
+    assert.equal(coverage.published, 143, '31 countries reach the seven-day limit without a successful refresh');
+    assert.equal(coverage.complete, false);
+    assert.deepEqual(coverage.missingCountries, expired);
+    assert.equal(coverage.retainedCountryCount, 142);
+    assert.equal(coverage.currentCountryCount, 1);
+    assert.equal(coverage.oldestCountryCacheWrittenAt, NOW - DAY);
+    assert.match(result.logs, /142 stale-served, 31 expired, 0 missing/);
+    for (const code of [failed, deferred]) {
+      const retained = result.redis[`${PREFIX}${code}`];
+      for (const key of ['ports', 'cacheWrittenAt', 'fetchedAt', 'asof', 'contentAsOfChangedAt']) {
+        assert.deepEqual(retained[key], input[`${PREFIX}${code}`][key], `${code} preserves ${key}`);
+      }
+    }
+    assert.equal(result.redis[`${PREFIX}${failed}`].refreshAttemptedAt, NOW, 'the failed attempt started before expiry');
+    assert.equal(result.redis[`${PREFIX}${deferred}`].refreshAttemptedAt, NOW, 'deferral does not advance the attempt cursor');
+    assert.deepEqual(result.redis[`${PREFIX}${deferred}`].refreshFailure, input[`${PREFIX}${deferred}`].refreshFailure);
+    assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
+    assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
+  });
+}
+
+// cache-read-transport: the cache GET's fetch itself rejects with the same
+// `TypeError('fetch failed')` an ArcGIS transport failure throws. It is still
+// our Redis fault, so it must stay a crash rather than ride the upstream
+// publish-blocked path (PR #9959 review).
+for (const mode of ['cache-read-failure', 'cache-read-short', 'cache-read-envelope', 'cache-read-missing', 'cache-read-type', 'cache-read-transport']) {
   test(`${mode} cannot erase an unreadable last-good country`, () => {
     const input = fixtures();
     const result = runProducer(input, mode);
-    assert.match(result.error, /cache read/);
+    assert.match(result.error, /cache read|Redis pipeline/);
+    assert.equal(result.publishBlocked, false);
     for (const [, code] of countries) assert.deepEqual(result.redis[`${PREFIX}${code}`], input[`${PREFIX}${code}`]);
     assert.equal(result.redis[META].fetchedAt, input[META].fetchedAt);
     assert.equal(result.redis[META].sourceState, 'error');
@@ -260,7 +374,8 @@ for (const raw of ['{broken', 'null', '[]']) {
     const input = fixtures();
     const key = `${PREFIX}${countries[0][1]}`;
     const failed = runProducer(input, 'corrupt-failure', NOW, raw);
-    assert.match(failed.error, /Incomplete PortWatch coverage/);
+    assert.equal(failed.error, null);
+    assert.equal(failed.publishBlocked, true);
     assert.equal(failed.rawRedis[key], raw, 'failed repair must preserve original bytes');
     assert.equal(failed.redis[META].fetchedAt, input[META].fetchedAt);
     assert.ok(countries.some(([, code]) => code !== countries[0][1]
@@ -276,7 +391,7 @@ test('deferred corrupt countries retain their exact stored value', () => {
   for (const [, code] of countries) input[`${PREFIX}${code}`] = [];
   const result = runProducer(input);
   const deferred = countries.filter(([, code]) => Array.isArray(result.redis[`${PREFIX}${code}`]));
-  assert.equal(deferred.length, 144);
+  assert.equal(deferred.length, 114);
   for (const [, code] of deferred) assert.equal(result.rawRedis[`${PREFIX}${code}`], '[]');
 });
 
@@ -299,6 +414,46 @@ test('one persistently corrupt country cannot stop healthy country recovery', ()
   }
 });
 
+test('a queue below the cold-fetch cap still dispatches the expired country first', () => {
+  // The dispatch deadline can cut any queue short, so ordering cannot depend on
+  // the queue being long enough to truncate.
+  const input = fixtures();
+  const queued = countries.slice(0, 40);
+  for (const [index, [, iso2]] of countries.entries()) {
+    input[`${PREFIX}${iso2}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${iso2}`].asof = index < queued.length ? '2026-09-08' : '2026-09-09';
+  }
+  const [expiredIso3, expiredIso2] = queued[queued.length - 1];
+  input[`${PREFIX}${expiredIso2}`].cacheWrittenAt = NOW - 8 * DAY;
+  const result = runProducer(input);
+  const dispatched = [...new Set(result.requests.map((query: string) => new URLSearchParams(query))
+    .filter((query: URLSearchParams) => query.get('where')?.startsWith('ISO3=') && !query.has('outStatistics'))
+    .map((query: URLSearchParams) => query.get('where')!.match(/ISO3='([^']+)'/)![1]))];
+  assert.equal(dispatched.length, queued.length, 'every queued country is fetched');
+  assert.ok(dispatched.slice(0, 6).includes(expiredIso3),
+    `${expiredIso3} is out of coverage and must be in the first batch, got ${dispatched.slice(0, 6).join(',')}`);
+});
+
+test('a corrupt cached country outranks countries that are still published', () => {
+  // ports: [] without zeroActivity is unusable, so the country is out of
+  // coverage even though its cache timestamp is recent.
+  const input = fixtures();
+  const queued = countries.slice(0, 40);
+  for (const [index, [, iso2]] of countries.entries()) {
+    input[`${PREFIX}${iso2}`].cacheWrittenAt = NOW - 6.5 * DAY;
+    input[`${PREFIX}${iso2}`].asof = index < queued.length ? '2026-09-08' : '2026-09-09';
+  }
+  const [corruptIso3, corruptIso2] = queued[queued.length - 1];
+  input[`${PREFIX}${corruptIso2}`].cacheWrittenAt = NOW - DAY;
+  input[`${PREFIX}${corruptIso2}`].ports = [];
+  const result = runProducer(input);
+  const dispatched = [...new Set(result.requests.map((query: string) => new URLSearchParams(query))
+    .filter((query: URLSearchParams) => query.get('where')?.startsWith('ISO3=') && !query.has('outStatistics'))
+    .map((query: URLSearchParams) => query.get('where')!.match(/ISO3='([^']+)'/)![1]))];
+  assert.ok(dispatched.slice(0, 6).includes(corruptIso3),
+    `${corruptIso3} is out of coverage and must be in the first batch, got ${dispatched.slice(0, 6).join(',')}`);
+});
+
 test('12-hour rolling recovery stays complete across daily advances within the original traffic cap', () => {
   let state = fixtures();
   const cadenceMs = PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
@@ -313,9 +468,13 @@ test('12-hour rolling recovery stays complete across daily advances within the o
     const activityRequests = result.requests.map((query: string) => new URLSearchParams(query))
       .filter((query: URLSearchParams) => query.get('where')?.startsWith('ISO3=') && !query.has('outStatistics'));
     const refreshed = new Set(activityRequests.map((query: URLSearchParams) => query.get('where')!.match(/ISO3='([^']+)'/)![1]));
-    assert.ok(refreshed.size <= 30, 'do not increase countries attempted per run');
-    assert.ok(activityRequests.length <= 60, 'two one-page windows per country, no duplicate activity requests');
-    if (result.error) {
+    // Steady state keeps the original 30-country cap. Only a run that starts
+    // with countries out of coverage may queue the 60-country recovery depth.
+    const cap = recovered ? 30 : 60;
+    assert.ok(refreshed.size <= cap, `attempt at most ${cap} countries in this run`);
+    assert.ok(activityRequests.length <= cap * 2, 'two one-page windows per country, no duplicate activity requests');
+    assert.equal(result.error, null, 'an upstream shortfall is publish-blocked, never a crash');
+    if (result.publishBlocked) {
       assert.equal(recovered, false, 'daily updates must not invalidate recovered coverage');
       assert.deepEqual(result.redis[CANONICAL], state[CANONICAL]);
       assert.equal(result.redis[META].fetchedAt, state[META].fetchedAt);
@@ -352,12 +511,13 @@ test('the 120-of-174 crash backlog recovers through persisted bounded batches', 
     state[`${PREFIX}${code}`].cacheWrittenAt = NOW - (index < 84 ? 8 : 1) * DAY;
     state[`${PREFIX}${code}`].asof = index >= 84 && index < 148 ? '2026-09-09' : '2026-09-08';
   }
-  for (const [run, covered] of [120, 150, 174].entries()) {
+  for (const [run, covered] of [150, 174].entries()) {
     const now = NOW + run * PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
     const result = runProducer(state, 'complete', now);
     assert.equal(result.redis[META].coverage.published, covered);
     if (covered < 174) {
-      assert.match(result.error, /Incomplete PortWatch coverage/);
+      assert.equal(result.error, null);
+      assert.equal(result.publishBlocked, true);
       assert.deepEqual(result.redis[CANONICAL], state[CANONICAL]);
       assert.equal(result.redis[META].fetchedAt, state[META].fetchedAt);
     } else {
@@ -453,7 +613,8 @@ test('durable rotation replaces the snapshot only after complete validated recov
     const now = NOW + run * PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
     const result = runProducer(state, 'complete', now);
     state = result.redis;
-    if (result.error) {
+    assert.equal(result.error, null);
+    if (result.publishBlocked) {
       assert.deepEqual(state[CANONICAL], input[CANONICAL]);
       assert.equal(state[META].fetchedAt, input[META].fetchedAt);
       continue;
@@ -490,10 +651,11 @@ test('complete verified zero activity is a successful observation, not a source 
 for (const canonical of [null, []]) {
   test(`partial cold start reports ${canonical === null ? 'absent' : 'empty'} canonical list`, () => {
     const result = runProducer(canonical === null ? {} : { [CANONICAL]: canonical, [META]: { recordCount: 60 } });
-    assert.match(result.error, /Incomplete PortWatch coverage/);
+    assert.equal(result.error, null);
+    assert.equal(result.publishBlocked, true);
     assert.match(result.logs, canonical === null
-      ? /Recovery state saved; no prior canonical list; usable coverage 30\/174; full publication blocked/
-      : /Recovery state saved; canonical list retained at 0 countries; usable coverage 30\/174; full publication blocked/);
+      ? /Recovery state saved; no prior canonical list; usable coverage 60\/174; full publication blocked/
+      : /Recovery state saved; canonical list retained at 0 countries; usable coverage 60\/174; full publication blocked/);
   });
 }
 
@@ -520,7 +682,7 @@ for (const mode of ['canonical-expired', 'canonical-unconfirmed']) {
     assert.match(result.error, /Incomplete PortWatch coverage/);
     if (mode === 'canonical-expired') assert.equal(result.redis[CANONICAL], undefined);
     else assert.deepEqual(result.redis[CANONICAL], input[CANONICAL]);
-    assert.match(result.logs, /Recovery state saved; canonical retention unconfirmed \(168 countries at run start\); usable coverage 60\/174; full publication blocked/);
+    assert.match(result.logs, /Recovery state saved; canonical retention unconfirmed \(168 countries at run start\); usable coverage 90\/174; full publication blocked/);
     assert.doesNotMatch(result.logs, /canonical list retained at/);
   });
 }
@@ -553,4 +715,50 @@ test('a throttled upstream keeps its remaining cold-fetch slots and blocks publi
   assert.equal(result.redis[META].coverage.published, 174, 'every country stays usable');
   assert.ok(result.redis[META].coverage.refreshFailures.some((e: any) => e.code === 'rate_limited'));
   assert.equal(health(result.redis, NOW).status, 'SEED_ERROR', 'the freshness monitor owns the alarm');
+});
+
+// 2026-10-27..31: the oldest-cached countries kept failing with an intermittent
+// `Invalid query parameters` and kept heading the queue (a failed fetch never
+// advances cacheWrittenAt), so batch 1 aborted every run before the countries
+// behind it were tried. A batch whose invalid_query failures all repeat a known
+// failure must not abort; the run keeps every cold-fetch slot.
+test('repeat invalid_query failures from already-failing countries do not abandon the run', () => {
+  const input = fixtures();
+  for (const [, code] of countries) {
+    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${code}`].asof = '2026-09-08';
+    input[`${PREFIX}${code}`].refreshFailure = { code: 'invalid_query', consecutiveFailures: 4, lastAttemptAt: NOW - DAY / 2 };
+  }
+  const result = runProducer(input, 'invalid-query');
+
+  assert.doesNotMatch(result.logs, /CIRCUIT-BREAKER/);
+  assert.doesNotMatch(result.logs, /Skipping remaining \d+ batches/);
+  assert.match(result.logs, /batch 5\/5/);
+  const refreshed = countries.filter(([, code]) => result.redis[`${PREFIX}${code}`].cacheWrittenAt === NOW);
+  assert.ok(refreshed.length >= 2, `expected the countries upstream answered to land, got ${refreshed.length}`);
+
+  // The same upstream with no failure history is still a regression: abort.
+  const fresh = fixtures();
+  for (const [, code] of countries) {
+    fresh[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    fresh[`${PREFIX}${code}`].asof = '2026-09-08';
+  }
+  const regression = runProducer(fresh, 'invalid-query');
+  assert.match(regression.logs, /CIRCUIT-BREAKER: \d+% of batch 1 rejected as invalid_query/);
+  assert.match(regression.logs, /Skipping remaining \d+ batches/);
+});
+
+// One known member must not make the whole batch known: CN is decision-critical
+// and therefore always in batch 1. Giving only CN the history leaves the rest of
+// batch 1 fresh, and their 7-of-8 failures are still a regression signal.
+test('failure history exempts only the member that carries it, not its batch', () => {
+  const input = fixtures();
+  for (const [, code] of countries) {
+    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${code}`].asof = '2026-09-08';
+  }
+  input[`${PREFIX}CN`].refreshFailure = { code: 'invalid_query', consecutiveFailures: 4, lastAttemptAt: NOW - DAY / 2 };
+  const result = runProducer(input, 'invalid-query');
+  assert.match(result.logs, /CIRCUIT-BREAKER: \d+% of batch 1 rejected as invalid_query/);
+  assert.match(result.logs, /Skipping remaining \d+ batches/);
 });

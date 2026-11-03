@@ -1,0 +1,10 @@
+{
+  "recordedAt": "2026-11-02T06:00:00Z",
+  "recordedFrom": "Bing Webmaster API responses from 2026-11-02, trimmed to a fixed set of queries and pages per weekly bucket. The site URL and the API key appear nowhere.",
+  "methods": {
+    "GetRankAndTrafficStats": "rank-and-traffic.json",
+    "GetQueryStats": "query-stats.json",
+    "GetPageStats": "page-stats.json",
+    "GetCrawlStats": "crawl-stats.json"
+  }
+}
