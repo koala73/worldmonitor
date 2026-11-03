@@ -263,9 +263,8 @@ export default function middleware(request: Request) {
   // aware-canonical-redirects.md states: cacheable(response) implies Vary
   // covers every header the branch read.
   if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
-    const dashboardUrl = new URL(request.url);
-    dashboardUrl.pathname = '/dashboard';
-    return new Response(null, { status: 308, headers: uaConditionedRedirectHeaders(dashboardUrl) });
+    url.pathname = '/dashboard';
+    return new Response(null, { status: 308, headers: uaConditionedRedirectHeaders(url) });
   }
 
   const accept = request.headers.get('accept');
