@@ -186,6 +186,13 @@ describe('on-demand translation toggle', () => {
     expect(full?.querySelector('summary')?.textContent).toBe(de.popups.mapPopup.translate.fullOriginal);
     expect(full?.querySelector('p')?.textContent).toBe(long);
   });
+  it('caps uncapped prose at the translate endpoint limit and keeps the full original', () => {
+    const headline = 'H'.repeat(620);
+    const host = document.createElement('div');
+    host.innerHTML = renderTranslatableText(headline, { className: 'popup-headline', official: true });
+    expect(host.querySelector('.popup-translatable-text')?.getAttribute('data-source')).toHaveLength(500);
+    expect(host.querySelector('.popup-full-original p')?.textContent).toBe(headline);
+  });
   it('translates on click, marks it automatic and not official, and restores the original', async () => {
     popup.show({ type: 'weather', data: weather as never, x: 10, y: 10 });
     const btn = document.querySelector<HTMLButtonElement>('.popup-translate-btn')!;

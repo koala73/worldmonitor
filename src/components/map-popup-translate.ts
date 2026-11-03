@@ -23,6 +23,8 @@ export interface TranslatableTextOptions {
 }
 
 const ELLIPSIS = '...';
+/** Mirrors MAX_TRANSLATE_INPUT_LEN in server/worldmonitor/news/v1/summarize-article.ts. */
+export const MAX_TRANSLATE_CHARS = 500;
 
 const defaultTranslate: TranslateFn = async (text, targetLang) => {
   const { translateText } = await import('@/services/summarization');
@@ -31,8 +33,10 @@ const defaultTranslate: TranslateFn = async (text, targetLang) => {
 
 /** Render a prose block with an (inactive) translate button for non-English UIs. */
 export function renderTranslatableText(text: string, opts: TranslatableTextOptions): string {
-  const truncated = typeof opts.maxLength === 'number' && text.length > opts.maxLength;
-  const excerpt = truncated ? text.slice(0, opts.maxLength) : text;
+  // Never send more than the translate endpoint accepts; longer text keeps the full original below.
+  const limit = Math.min(opts.maxLength ?? MAX_TRANSLATE_CHARS, MAX_TRANSLATE_CHARS);
+  const truncated = text.length > limit;
+  const excerpt = truncated ? text.slice(0, limit) : text;
   const shown = `${escapeHtml(excerpt)}${truncated ? ELLIPSIS : ''}`;
   const lang = getCurrentLanguageTag();
   // Truncated prose keeps the complete original one click away; only the excerpt is translated.
