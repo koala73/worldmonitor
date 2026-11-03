@@ -601,6 +601,7 @@ export class UnifiedSettings {
     }
     this.render();
     this.overlay.classList.add('active');
+    this.revealActiveTab();
     this.focusTrap.activate();
     if (isMobileDevice()) {
       this.historyRegistered = true;
@@ -1000,6 +1001,7 @@ export class UnifiedSettings {
 
     this.attachApiKeysHandlers();
     this.attachEmbedKeysHandlers();
+    this.revealActiveTab();
     if (loadAccountData) {
       if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
         void this.loadPlanLimitNotices();
@@ -1039,6 +1041,10 @@ export class UnifiedSettings {
     });
   }
 
+  private revealActiveTab(): void {
+    this.overlay.querySelector('.unified-settings-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
   private switchTab(tab: TabId): void {
     this.activeTab = tab;
 
@@ -1047,6 +1053,7 @@ export class UnifiedSettings {
       this.overlay.querySelectorAll<HTMLElement>('.unified-settings-tab-panel'),
       tab,
     );
+    this.revealActiveTab();
 
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadPlanLimitNotices();

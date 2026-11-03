@@ -20688,6 +20688,7 @@ a.prediction-link:hover {
   margin-bottom: 12px;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
+  scroll-padding-inline: 24px;
   scrollbar-width: none;
 }
 
