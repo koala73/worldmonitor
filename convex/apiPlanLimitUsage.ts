@@ -270,7 +270,9 @@ function extractAxiomRowSets(data: unknown): AxiomRowSet[] | null {
     data.code !== undefined ||
     data.message !== undefined ||
     (status !== null && (status.isPartial !== false ||
-      (status.isEstimate !== undefined && status.isEstimate !== false)))
+      (status.isEstimate !== undefined && status.isEstimate !== false) ||
+      (Array.isArray(status.messages) && status.messages.some((message) =>
+        isRecord(message) && (message.priority === "error" || message.priority === "fatal")))))
   ) return null;
   // Another result layout must not hide a malformed row container.
   if ((data.matches !== undefined && !Array.isArray(data.matches)) ||
