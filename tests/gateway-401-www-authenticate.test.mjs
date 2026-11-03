@@ -79,7 +79,7 @@ describe('REST gateway 401 challenge (#4840)', () => {
       headers: { Authorization: 'Bearer definitely-not-a-session' },
     }));
     assert.equal(res.status, 401);
-    assert.equal(res.headers.get('www-authenticate'), APEX_CHALLENGE);
+    assert.equal(res.headers.get('www-authenticate'), APEX_CHALLENGE.replace(', resource_metadata=', ', error="invalid_token", resource_metadata='));
     assert.equal((await res.json()).error, 'Invalid or expired session');
   });
 

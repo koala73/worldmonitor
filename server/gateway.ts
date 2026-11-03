@@ -913,6 +913,7 @@ function createGatewayAuthErrorResponse(
   error: string | undefined,
   corsHeaders: Record<string, string>,
   request?: Request,
+  bearerError = '',
 ): Response {
   return new Response(JSON.stringify({ error: normalizeAuthError(error) }), {
     status,
@@ -924,7 +925,7 @@ function createGatewayAuthErrorResponse(
       // RFC 9728 §5.1 discovery pointer (#4840): an agent learns where the
       // auth requirements live from the 401 itself. 403s are authenticated
       // denials, so they carry no challenge.
-      ...(status === 401 && request ? { 'WWW-Authenticate': bearerChallenge(request) } : {}),
+      ...(status === 401 && request ? { 'WWW-Authenticate': bearerChallenge(request, bearerError) } : {}),
     },
   });
 }
@@ -1997,7 +1998,7 @@ export function createDomainGateway(
           const session = await validateBearerToken(authHeader.slice(7));
           if (!session.valid) {
             emitRequest(401, 'auth_401', null);
-            return createGatewayAuthErrorResponse(401, 'Invalid or expired session', corsHeaders, request);
+            return createGatewayAuthErrorResponse(401, 'Invalid or expired session', corsHeaders, request, 'invalid_token');
           }
           // Capture identity for telemetry — legacy bearer auth bypasses the
           // earlier resolveClerkSession() block (only runs for tier-gated routes),
