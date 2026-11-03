@@ -94,7 +94,7 @@ Native administration routes under `/api/local-` return `403` in Docker mode, in
 
 A worldmonitor.app account, including a paid Pro plan, does not unlock anything on a self-hosted instance. Pro entitlements live in the hosted Clerk and Convex services, which a self-hosted stack does not call.
 
-- Sign-in needs the frontend built with `VITE_CLERK_PUBLISHABLE_KEY`. Without it Clerk never loads, and the browser console logs `[clerk] VITE_CLERK_PUBLISHABLE_KEY not set, auth disabled`. Setting the key alone is not enough: entitlements also need a Convex deployment and its billing webhooks, which this guide does not cover.
+- Sign-in needs the frontend built with `VITE_CLERK_PUBLISHABLE_KEY`. The stock Docker image is built without it (the `Dockerfile` takes no Vite build argument, and `.dockerignore` excludes `.env*`), so sign-in stays disabled and the browser console logs `[clerk] VITE_CLERK_PUBLISHABLE_KEY not set, auth disabled`. Adding the key to `.env` does not change that. Enabling sign-in needs a separate frontend build with the key, plus a Convex deployment and its billing webhooks for entitlements; this guide does not cover either.
 - Pro panels therefore stay locked on a standard self-hosted install. Signing in with a worldmonitor.app Pro account does not change that.
 - Premium **API** routes and the MCP server are available on your own instance with an operator key from `WORLDMONITOR_VALID_KEYS` (see [Using the MCP server](#-using-the-mcp-server)).
 
