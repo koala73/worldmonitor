@@ -4,29 +4,40 @@ import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 
 // The energy registry tables gave their long name column most of the width, so
 // short values broke mid-value: "2025-11-" over "01", "Crude" over "hub",
-// "19.8" over "Mtpa". A value cell may wrap only between its parts, a name only
-// between words, and no table may scroll sideways out of its column.
+// "19.8" over "Mtpa". The disruptions log split its window into "2025-" over
+// "08-14 →" and "1.60" from "mb/d", and broke asset ids at every hyphen. A
+// value cell may wrap only between its parts, a name only between words, and
+// no table may scroll sideways out of its column.
 
 const FIXTURES = JSON.parse(readFileSync(new URL('./fixtures/energy-tables.json', import.meta.url), 'utf8')) as {
   pipelines: { pipelines: unknown[] };
   storage: { facilities: unknown[] };
   shortages: { shortages: unknown[] };
+  disruptions: { events: unknown[] };
 };
 
+// `words` holds the free text that may wrap only between words or at a
+// hyphen. `stackEm` is the wrap width, in em of its text, below which the rows
+// stack: five columns need more room than four.
 const PANELS = [
-  { key: 'fuel-shortages', rows: FIXTURES.shortages.shortages.length, valueColumns: [1] },
-  { key: 'pipeline-status', rows: FIXTURES.pipelines.pipelines.length, valueColumns: [1, 2] },
-  { key: 'storage-facility-map', rows: FIXTURES.storage.facilities.length, valueColumns: [1, 2] },
+  { key: 'fuel-shortages', rows: FIXTURES.shortages.shortages.length, valueColumns: [1], words: '.fs-name', stackEm: 31 },
+  { key: 'pipeline-status', rows: FIXTURES.pipelines.pipelines.length, valueColumns: [1, 2], words: '.pp-name', stackEm: 31 },
+  { key: 'storage-facility-map', rows: FIXTURES.storage.facilities.length, valueColumns: [1, 2], words: '.sf-name', stackEm: 31 },
+  { key: 'energy-disruptions', rows: FIXTURES.disruptions.events.length, valueColumns: [2, 3], words: '.ed-event, .ed-sub, .ed-asset-id', stackEm: 50 },
 ] as const;
 
 // Panel text scales with the font-size setting (90% to 200%), so the layout
 // must follow the text, not a fixed column width.
-const VIEWPORTS = [
+// A phone puts each panel at full width (about 377px at 393px), and a panel
+// widened to two sidebar columns keeps the five-column disruptions table.
+const VIEWPORTS: Array<{ width: number; height: number; fontScale: number; mobile?: boolean; colSpans?: Record<string, number> }> = [
   { width: 1920, height: 1200, fontScale: 1 },
   { width: 1845, height: 1100, fontScale: 1 },
   { width: 1366, height: 768, fontScale: 1 },
   { width: 1920, height: 1200, fontScale: 1.25 },
   { width: 1920, height: 1200, fontScale: 2 },
+  { width: 393, height: 852, fontScale: 1, mobile: true },
+  { width: 1920, height: 1200, fontScale: 1, colSpans: { 'energy-disruptions': 2 } },
 ];
 
 interface TableFit {
@@ -36,8 +47,8 @@ interface TableFit {
   shouldStack: boolean; stacked: boolean; narrowFirstCells: number; headerHeight: number;
 }
 
-function measure(page: Page, key: string, valueColumns: readonly number[]): Promise<TableFit> {
-  return page.evaluate(({ key, valueColumns }) => {
+function measure(page: Page, key: string, valueColumns: readonly number[], words: string, stackEm: number): Promise<TableFit> {
+  return page.evaluate(({ key, valueColumns, words, stackEm }) => {
     const panel = document.querySelector<HTMLElement>(`#panelsGrid .panel[data-panel="${key}"]`)!;
     const table = panel.querySelector<HTMLTableElement>('table')!;
     const split: string[] = [];
@@ -62,14 +73,15 @@ function measure(page: Page, key: string, valueColumns: readonly number[]): Prom
         }
       }
       // A name may wrap between words or at a hyphen, never inside a word.
-      const name = row.querySelector('[class$="-name"]');
-      for (const node of name?.childNodes ?? []) {
-        if (node.nodeType !== Node.TEXT_NODE) continue;
-        for (const match of node.textContent!.matchAll(/[^\s-]+/g)) {
-          const range = document.createRange();
-          range.setStart(node, match.index);
-          range.setEnd(node, match.index + match[0].length);
-          if (lineCount(range) > 1) brokenWords.push(match[0]);
+      for (const name of row.querySelectorAll(words)) {
+        for (const node of name.childNodes) {
+          if (node.nodeType !== Node.TEXT_NODE) continue;
+          for (const match of node.textContent!.matchAll(/[^\s-]+/g)) {
+            const range = document.createRange();
+            range.setStart(node, match.index);
+            range.setEnd(node, match.index + match[0].length);
+            if (lineCount(range) > 1) brokenWords.push(match[0]);
+          }
         }
       }
     }
@@ -96,7 +108,7 @@ function measure(page: Page, key: string, valueColumns: readonly number[]): Prom
       for (const cell of row.cells) expectRole(cell, cell.tagName === 'TH' ? 'columnheader' : 'cell', cell.tagName.toLowerCase());
     }
     return {
-      shouldStack: wrap.getBoundingClientRect().width <= 31 * parseFloat(wrapStyle.fontSize),
+      shouldStack: wrap.getBoundingClientRect().width <= stackEm * parseFloat(wrapStyle.fontSize),
       stacked: getComputedStyle(table).display === 'block',
       narrowFirstCells,
       headerHeight: table.tHead ? table.tHead.getBoundingClientRect().height : -1,
@@ -107,19 +119,24 @@ function measure(page: Page, key: string, valueColumns: readonly number[]): Prom
       brokenWords,
       missingRoles: [...new Set(missingRoles)],
     };
-  }, { key, valueColumns });
+  }, { key, valueColumns, words, stackEm });
 }
 
 test('energy table values and names stay whole inside their column', async ({ browser }, testInfo) => {
   test.setTimeout(240_000);
   let stackedNarrowPanels = 0;
+  let wideTables = 0;
   for (const viewport of VIEWPORTS) {
-    const { fontScale, ...size } = viewport;
-    const context = await browser.newContext({ viewport: size, colorScheme: 'dark' });
+    const { fontScale, mobile = false, colSpans, ...size } = viewport;
+    const context = await browser.newContext({ viewport: size, colorScheme: 'dark', isMobile: mobile, hasTouch: mobile });
     const page = await context.newPage();
     const settings = Object.fromEntries(PANELS.map(({ key }) => [key, { name: key, enabled: true, priority: 0 }]));
     await seedAnonymousDashboard(page, 'full', {
-      localStorage: { 'worldmonitor-panels': JSON.stringify(settings), 'wm-font-scale': String(fontScale) },
+      localStorage: {
+        'worldmonitor-panels': JSON.stringify(settings),
+        'wm-font-scale': String(fontScale),
+        ...(colSpans ? { 'worldmonitor-panel-col-spans': JSON.stringify(colSpans) } : {}),
+      },
     });
     await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => route.abort());
     await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
@@ -127,34 +144,39 @@ test('energy table values and names stay whole inside their column', async ({ br
     await page.route(/list-pipelines/, (route) => route.fulfill({ json: FIXTURES.pipelines }));
     await page.route(/list-storage-facilities/, (route) => route.fulfill({ json: FIXTURES.storage }));
     await page.route(/list-fuel-shortages/, (route) => route.fulfill({ json: FIXTURES.shortages }));
+    await page.route(/list-energy-disruptions/, (route) => route.fulfill({ json: FIXTURES.disruptions }));
 
     await page.goto('/dashboard');
-    for (const { key, rows, valueColumns } of PANELS) {
+    const variant = `${viewport.width}-${fontScale * 100}${mobile ? '-phone' : ''}${colSpans ? '-wide' : ''}`;
+    for (const { key, rows, valueColumns, words, stackEm } of PANELS) {
       const panel = page.locator(`#panelsGrid .panel[data-panel="${key}"]`);
       await expect
         .poll(async () => {
           await panel.scrollIntoViewIfNeeded().catch(() => {});
           return panel.locator('tbody tr').count();
-        }, { message: `${key} rows at ${viewport.width}px, ${fontScale * 100}% text`, timeout: 90_000 })
+        }, { message: `${key} rows at ${variant}`, timeout: 90_000 })
         .toBe(rows);
-      await panel.screenshot({ path: testInfo.outputPath(`${key}-${viewport.width}-${fontScale * 100}.png`) });
-      const fit = await measure(page, key, valueColumns);
-      const label = `${key} at ${viewport.width}px, ${fontScale * 100}% text (panel ${fit.panel}px)`;
+      await panel.screenshot({ path: testInfo.outputPath(`${key}-${variant}.png`) });
+      const fit = await measure(page, key, valueColumns, words, stackEm);
+      const label = `${key} at ${variant} (panel ${fit.panel}px)`;
       expect.soft(fit.split, `${label}: values broken across lines`).toEqual([]);
       expect.soft(fit.brokenWords, `${label}: name words broken mid-word`).toEqual([]);
       expect.soft(fit.missingRoles, `${label}: table semantics`).toEqual([]);
       expect.soft(fit.table, `${label}: table wider than its column`).toBeLessThanOrEqual(fit.host + 1);
-      expect.soft(fit.stacked, `${label}: rows stack only below 31em of text`).toBe(fit.shouldStack);
+      expect.soft(fit.stacked, `${label}: rows stack only below ${stackEm}em of text`).toBe(fit.shouldStack);
       if (fit.stacked) {
         expect.soft(fit.narrowFirstCells, `${label}: stacked name cells narrower than their row`).toBe(0);
         expect.soft(fit.headerHeight, `${label}: stacked header still occupies space`).toBeLessThanOrEqual(1);
         if (fit.panel <= 340 && fontScale === 1) stackedNarrowPanels += 1;
       } else {
         expect.soft(fit.headerHeight, `${label}: column headers hidden in the table layout`).toBeGreaterThan(1);
+        if (key === 'energy-disruptions') wideTables += 1;
       }
     }
     await context.close();
   }
   // The 1366px layout puts every panel in a column of 340px or less.
   expect(stackedNarrowPanels, 'no panel stacked in a column of 340px or less').toBe(PANELS.length);
+  // The widened panel must exercise the five-column disruptions table.
+  expect(wideTables, 'the disruptions log never rendered as a table').toBeGreaterThan(0);
 });
