@@ -52,6 +52,7 @@ export class StockBacktestPanel extends Panel {
 
     if (!this.tableView) {
       this.tableView = new WatchlistTableView<StockBacktestResult>({
+        labelledBy: `${this.panelId}Title`,
         intro: 'Historical replay of the technical signal model over recent daily bars. Point-in-time fundamentals are not included.',
         columns: [
           {

@@ -2673,15 +2673,16 @@
       "proLocked": "Upgrade to PRO for commodity vulnerability scoring"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live ship tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab daily shipment indexes for the Strait of Hormuz: crude oil, LNG and fertilizer leaving the Gulf, farm goods arriving. By volume, Jan–Mar 2025 average = 100, AIS-visible vessels only. Status and date come from WTO's latest analysis.",
       "title": "Hormuz Trade Tracker",
       "noData": "No data",
       "notAvailable": "N/A",
       "chartUnavailable": "Chart data unavailable",
       "sourcePrefix": "Source:",
+      "analysisDate": "WTO analysis {{date}}",
+      "indexNote": "Shipment index by volume, Jan–Mar 2025 average = 100",
       "units": {
-        "ktPerDay": "kt/day",
-        "generic": "units"
+        "index": "index"
       },
       "errors": {
         "unavailable": "Hormuz data unavailable",

@@ -68,18 +68,18 @@
     },
     "militaryActivity": "軍事活動",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "防衛産業基盤",
+      "expenditure": "軍事支出",
+      "personnel": "兵員",
+      "armsImports": "武器輸入",
       "concentration": "サプライヤー集中度指数",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "武器供給国（{{start}}–{{end}}）",
       "source": "出典：世界銀行およびSIPRI武器移転データベース。移転量指標は相対的な武器移転を示し、金銭的価値ではありません。",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "出典: 世界銀行。",
       "snapshotAssembled": "{{source}} のスナップショット作成日時：{{time}}",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "利用不可",
+      "coverage": "マッピング済み範囲",
+      "supplierRetained": "供給国データは前回の輸入国更新成功時のものを保持しています。"
     },
     "economicIndicators": "経済指標",
     "ownFlights": "自国フライト",
@@ -192,47 +192,47 @@
       "activityNowcast": "活動ナウキャスト",
       "decisionSignalsUnavailable": "中国の意思決定シグナルのスナップショットは現在利用できません。"
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "食料在庫",
     "foodStocksHelp": "USDA生産・供給・流通商品在庫対使用率（マーケティング年度別）、世界比率を参考情報として併記。生産・供給・流通データが完全な国別収支を持たない場合、FAOSTATの食料バランスで生産・国内供給を補完。",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "食料在庫を読み込み中…",
+    "foodStocksUnavailable": "食料在庫データは利用できません。",
+    "foodStocksProLocked": "品目別の在庫率は PRO にアップグレードしてご利用ください",
+    "foodStocksCommodity": "品目",
+    "foodStocksMarketingYear": "販売年度",
+    "foodStocksRatio": "在庫率",
+    "foodStocksWorld": "世界",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "小麦",
+      "corn": "トウモロコシ",
+      "rice": "米",
+      "soybeans": "大豆",
+      "barley": "大麦",
+      "palmOil": "パーム油"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "人口動態と労働力",
       "help": "国連世界人口推計、ユネスコ統計研究所、世界銀行世界開発指標、ILOSTATから得た年齢構成、教育パイプライン、産業労働力キャパシティ。",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "人口動態・労働力データを読み込み中…",
+      "unavailable": "人口動態・労働力データは利用できません。",
+      "proLocked": "人口動態・労働力データは PRO にアップグレードしてご利用ください",
+      "notAvailable": "利用不可",
+      "ageStructure": "年齢構成",
+      "education": "教育パイプライン",
+      "industrialWorkforce": "産業労働力",
+      "medianAge": "年齢中央値",
+      "oldAgeDependency": "老年人口依存率",
+      "totalDependency": "総従属人口指数",
+      "workingAgePopulation": "生産年齢人口",
+      "workingAgeProjection": "生産年齢人口（+10 年）",
+      "tertiaryEnrollment": "高等教育就学率",
       "stemGraduates": "科学、技術、工学、数学の卒業者",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "研究者",
+      "craftTrades": "技能・職人労働者",
+      "plantOperators": "設備・機械オペレーター",
+      "trainedIndustrialWorkforce": "産業労働力合計",
+      "manufacturingShare": "製造業雇用",
+      "source": "出典: {{sources}}。",
+      "retained": "{{stage}} のデータは前回の更新成功時のものを保持しています。",
       "statusNotSupplied": "推定・欠損値補完の状態は提供されていません"
     },
     "fiveFactorScorecard": {
@@ -267,7 +267,7 @@
         "pillar-unavailable": "ピラーが利用不可"
       },
       "inputs": {
-        "population": "Population",
+        "population": "人口",
         "food_productionBalance": "生産バランス",
         "food_stocksToUse": "使用可能な在庫",
         "food_waterSecurity": "水安全保障",
@@ -304,7 +304,7 @@
   "header": {
     "world": "世界",
     "tech": "テック",
-    "live": "LIVE",
+    "live": "ライブ",
     "search": "検索",
     "settings": "設定",
     "sources": "ソース",
@@ -428,9 +428,9 @@
     "climate": "気候異常",
     "populationExposure": "人口露出度",
     "securityAdvisories": "セキュリティアドバイザリー",
-    "orefSirens": "Israel Sirens",
+    "orefSirens": "イスラエルのサイレン",
     "telegramIntel": "Telegram インテリジェンス",
-    "xIntel": "X News Accounts",
+    "xIntel": "X ニュースアカウント",
     "startups": "スタートアップ・ベンチャーキャピタル",
     "vcblogs": "ベンチャーキャピタル見識・エッセイ",
     "regionalStartups": "グローバルスタートアップニュース",
@@ -456,7 +456,7 @@
     "gulfIndices": "湾岸指数",
     "gulfCurrencies": "湾岸通貨",
     "gulfOil": "湾岸石油",
-    "bigmac": "Real Big Mac Index",
+    "bigmac": "実質ビッグマック指数",
     "marketImplications": "AI 市場への影響",
     "energyComplex": "エネルギー複合体",
     "oilInventories": "石油在庫",
@@ -571,8 +571,8 @@
         "climate": "気候異常の切り替え",
         "outages": "インターネット障害の切り替え",
         "tradeRoutes": "貿易ルートの切り替え",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "カナダ道路オーバーレイを切り替え",
+        "canadaAlerts": "カナダ州緊急警報オーバーレイを切り替え"
       },
       "view": {
         "dark": "ダークモードに切り替え",
@@ -630,12 +630,12 @@
         "flight": "フライト"
       },
       "flightOnGround": "地上",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} ノット",
       "flightMilitary": "軍用機 · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "軍用機 · {{type}} · 地上",
       "flightSearchHint": "Enterキーを押すか、クリックしてライブ位置を検索",
       "flightNotFound": "{{callsign}} のライブ位置が見つかりません",
-      "addPanel": "Add"
+      "addPanel": "追加"
     },
     "signal": {
       "title": "インテリジェンス所見",
@@ -738,7 +738,7 @@
         "FINNHUB_API_KEY": "遅延またはシード済みの株価・市場データ。キーがあってもライブ配信ではありません。",
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
-        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
+        "OLLAMA_MODEL": "例: llama3.1:8b — 要約に使用するモデルタグ。"
       },
       "proCloud": "ローカル API キーがないフィーチャーは World Monitor クラウドデータを使用します。",
       "skipSetupPro": "セットアップをスキップ: World Monitor Pro でサインインして、独自の API キーの代わりにクラウドデータを使用します。",
@@ -898,7 +898,7 @@
       "matches": "件一致"
     },
     "regulation": {
-      "dashboard": "AI Regulation Dashboard",
+      "dashboard": "AI 規制ダッシュボード",
       "timeline": "タイムライン",
       "deadlines": "期限",
       "regulations": "規制",
@@ -913,18 +913,18 @@
       "active": "施行中",
       "proposed": "提案中",
       "updated": "更新済",
-      "actionsCount": "{{count}} actions",
-      "deadlinesCount": "{{count}} deadlines",
-      "days": "days",
-      "activeCount": "Active Regulations ({{count}})",
-      "proposedCount": "Proposed Regulations ({{count}})",
-      "moreProvisions": "+{{count}} more...",
-      "source": "Source",
+      "actionsCount": "{{count}} 件の措置",
+      "deadlinesCount": "{{count}} 件の期限",
+      "days": "日",
+      "activeCount": "施行中の規制（{{count}}）",
+      "proposedCount": "提案中の規制（{{count}}）",
+      "moreProvisions": "ほか {{count}} 件...",
+      "source": "出典",
       "stances": {
-        "strict": "Strict",
-        "moderate": "Moderate",
-        "permissive": "Permissive",
-        "undefined": "Undefined"
+        "strict": "厳格",
+        "moderate": "中程度",
+        "permissive": "寛容",
+        "undefined": "未定義"
       },
       "infoTooltip": "<strong>規制</strong> グローバル規制当局からの規制措置、政策変更、執行更新：金融、テクノロジー、エネルギー、貿易当局。ソース：政府および規制機関の公式出版物。",
       "latestActions": "最新の記録されたアクション",
@@ -941,16 +941,16 @@
       "noIndicatorData": "インジケーターデータがまだありません - 米国連邦準備制度経済データが読み込み中の可能性があります",
       "fredKeyMissing": "米国連邦準備制度経済データAPIキーが必要です。設定に追加して経済インジケーターを有効にしてください。",
       "in": "内",
-      "centralBanks": "Central Banks",
-      "laborMarket": "Labor Market",
-      "metroUnemployment": "Metro Unemployment",
+      "centralBanks": "中央銀行",
+      "laborMarket": "労働市場",
+      "metroUnemployment": "都市圏失業率",
       "noBisData": "国際決済銀行データが一時的に利用できません - 再試行します",
-      "policyRate": "Policy Rate",
+      "policyRate": "政策金利",
       "creditToGdp": "経済規模に対する信用",
       "realEer": "実質実効為替レート",
-      "cut": "cut",
-      "hike": "hike",
-      "hold": "hold",
+      "cut": "利下げ",
+      "hike": "利上げ",
+      "hold": "据え置き",
       "pressure": {
         "label": "マクロプレッシャー",
         "stress": "ストレス",
@@ -973,12 +973,12 @@
       "spikeAlert": "スパイク検出 — 料金が52週平均を大幅に上回っています（週次）",
       "warnings": "件の警告",
       "aisDisruptions": "船舶追跡の中断",
-      "disruption": "Disruption",
-      "vessels": "vessels",
-      "incidents7d": "incidents (7d)",
-      "corridorDisruption": "Corridor Disruption",
-      "corridor": "Corridor",
-      "loadingCorridors": "Loading corridor data...",
+      "disruption": "混乱",
+      "vessels": "隻",
+      "incidents7d": "件（7 日間）",
+      "corridorDisruption": "回廊の混乱",
+      "corridor": "回廊",
+      "loadingCorridors": "回廊データを読み込み中...",
       "mineral": "鉱物",
       "topProducers": "主要生産国",
       "risk": "リスク",
@@ -992,11 +992,11 @@
       "historyUnavailable": "通過履歴が利用できません",
       "transitDataUnavailable": "通過データが利用できません（上流データが部分的）",
       "infoTooltip": "<strong>Supply Chain Monitor</strong> グローバルロジスティクスおよびリソーストラッキング:<ul><li><strong>Chokepoints</strong>: 海上輸送の状態、混乱スコア、および船舶数</li><li><strong>Shipping</strong>: バルチック海運指数および運賃トレンド</li><li><strong>Minerals</strong>: 重要鉱物濃度リスク(生産者集中度指数)およびトップ生産国</li></ul>チョークポイントカードをクリックして輸送履歴チャートを展開します。",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "mineStage": "採掘",
+      "refineryStage": "精製",
+      "stageUnavailable": "この段階の公表データはありません",
+      "withheldNote": "W 非公表",
+      "productionCaption": "実際の生産量に占める各国のシェア。地図の鉱床レイヤーは資源の所在を、この表は誰が採掘・精製しているかを示します。",
       "productionProLocked": "PROにアップグレードして、鉱山・精製所の国別シェアおよび段階別の集中度（生産者集中度指数）を確認してください。",
       "partialTransitCoverage": "通過データが利用できません：{{names}}",
       "oilPipelinesUnavailable": "石油パイプラインデータが利用不可",
@@ -1034,7 +1034,7 @@
       "noRevenueData": "税関収入データが利用できません",
       "treasuryUnavailable": "財務省データは一時的に利用できません",
       "fytdLabel": "会計年度{{year}}年初来",
-      "vsPriorFy": "vs FY{{year}}",
+      "vsPriorFy": "FY{{year}} 比",
       "sourceWto": "世界貿易機関",
       "sourceTreasury": "米国財務省",
       "colDate": "日付",
@@ -1067,9 +1067,9 @@
       "no": "いいえ",
       "vol": "出来高",
       "closes": "締切",
-      "leanYes": "Lean Yes",
-      "leanNo": "Lean No",
-      "tossUp": "Toss-up"
+      "leanYes": "やや Yes",
+      "leanNo": "やや No",
+      "tossUp": "五分五分"
     },
     "stablecoins": {
       "pegHealth": "ペグ健全性",
@@ -1078,20 +1078,20 @@
       "mcap": "時価総額",
       "vol24h": "24h出来高",
       "chg24h": "24h変動",
-      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
+      "infoTooltip": "<strong>ステーブルコイン</strong> 主要な米ドル連動トークン（USDT、USDC、DAI、BUSD）のペッグの健全性、時価総額、24 時間出来高。ペッグ崩れはシステミックリスクの兆候です。"
     },
     "status": {
       "updatedAt": "{{time}}に更新"
     },
     "playback": {
       "toggleMode": "再生モード切替",
-      "live": "LIVE",
+      "live": "ライブ",
       "historicalPlayback": "ヒストリカル再生",
       "close": "閉じる",
-      "skipToStart": "Skip to start",
-      "previous": "Previous",
-      "next": "Next",
-      "skipToEnd": "Skip to end"
+      "skipToStart": "最初へ移動",
+      "previous": "前へ",
+      "next": "次へ",
+      "skipToEnd": "最後へ移動"
     },
     "pizzint": {
       "indexSource": "指数: World Monitor",
@@ -1183,7 +1183,7 @@
         "air": "空域",
         "sea": "海域"
       },
-      "strike": "STRIKE",
+      "strike": "攻撃",
       "staleWarning": "キャッシュデータを使用中 - ライブフィードが一時的に利用不可",
       "updated": "更新：",
       "theaters": {
@@ -1318,8 +1318,8 @@
         "renewableInstallations": "クリーンエネルギー",
         "radiationSpike": "放射線スパイク",
         "radiationElevated": "放射線上昇",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "カナダ道路情報",
+        "canadaAlerts": "カナダ警報",
         "notamAirspace": "NOTAM飛行制限空域",
         "no2Activity": "産業活動"
       },
@@ -1435,8 +1435,8 @@
           "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示",
           "geoBoundaries": "非武装地帯、停戦ライン、係争境界線",
           "ciiChoropleth": "Country Instability Index ヒートマップ — スコア別に国をカラーリング(緑=安定、赤=深刻)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "canadaRoads": "対応するカナダの管轄区域における公式の道路事故、警報、路面状況、通行止め、工事、危険情報",
+          "canadaAlerts": "Alberta Emergency Alert、B.C. Evacuation Orders and Alerts、SaskAlert による州の公共安全警報",
           "notamAirspace": "FAA NOTAMの一時的飛行制限および制限空域、危険空域、禁止空域。現在有効、または24時間以内に開始予定",
           "no2Activity": "Sentinel-5P の NO2 活動の方向（167 か国と 32 の工業クラスター）: 直近 56 日間のウィンドウを過去数年の同じ日付と比較し、10% のデッドバンドを適用。改変された Copernicus Sentinel データを含みます。"
         },
@@ -1450,8 +1450,8 @@
       "infoTooltip": "<strong>方法論</strong><ul><li><strong>U</strong>nrest: 市民の騒乱・抗議活動</li><li><strong>C</strong>onflict: 武力紛争の強度</li><li><strong>S</strong>ecurity: 領土上の軍事飛行/艦艇</li><li><strong>I</strong>nformation: ニュース速度と焦点相関</li><li>ホットスポット近接ブースト（戦略的拠点）</li></ul><em>U:C:S:I値はコンポーネントスコアを表示。</em> 焦点検出はニュースエンティティとマップシグナルを相関させ正確なスコアリングを実現。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "国別ベースライン + イベント乗数を含む — 公開表は /docs/methodology/cii-risk-scores を参照してください",
-      "sectionFollowing": "Following",
-      "sectionAll": "All",
+      "sectionFollowing": "フォロー中",
+      "sectionAll": "すべて",
       "sourceStates": {
         "degraded": "低下",
         "stale": "古い"
@@ -1459,11 +1459,11 @@
     },
     "insights": {
       "noStories": "速報またはマルチソースストーリーはまだなし",
-      "step": "Step {{step}}/{{total}}",
-      "waitingForData": "Waiting for news data...",
-      "rankingStories": "Ranking important stories...",
-      "analyzingSentiment": "Analyzing sentiment...",
-      "generatingBrief": "Generating world brief...",
+      "step": "ステップ {{step}}/{{total}}",
+      "waitingForData": "ニュースデータを待機中...",
+      "rankingStories": "重要なニュースを順位付け中...",
+      "analyzingSentiment": "センチメントを分析中...",
+      "generatingBrief": "世界ブリーフを生成中...",
       "infoTooltip": "<strong>AI分析</strong><br>• <strong>世界ブリーフ</strong>: AI要約（OpenRouter）<br>• <strong>センチメント</strong>: ニュースのトーン分析<br>• <strong>速度</strong>: 急速に広がるストーリー<br>• <strong>焦点</strong>: ニュースエンティティとマップシグナル（軍事、抗議、障害）を相関<br><em>デスクトップ版のみ・Llama 3.3 + 焦点検出搭載</em>",
       "streamQualityLabel": "動画画質",
       "streamQualityDesc": "すべてのライブストリームの画質を設定（低画質は帯域幅を節約）",
@@ -1474,8 +1474,8 @@
         "auto": "自動（デバイス依存）",
         "1_5": "シャープ (1.5x)"
       },
-      "mapFlashLabel": "Live Event Pulse",
-      "mapFlashDesc": "Flash locations on the map when breaking news arrives",
+      "mapFlashLabel": "ライブイベントパルス",
+      "mapFlashDesc": "速報が入ったときに地図上の場所を点滅させる",
       "aiFlowCloudLabel": "クラウドAI（OpenRouter）",
       "aiFlowCloudDesc": "見出しをクラウドに送信してAI要約（推奨）",
       "aiFlowBrowserLabel": "ブラウザローカルモデル",
@@ -1489,7 +1489,7 @@
       "aiFlowStatusBrowserOnly": "ブラウザモデルのみ",
       "aiFlowStatusDisabled": "AIプロバイダーが有効になっていません",
       "insightsDisabledTitle": "AI分析が無効です",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "insightsDisabledHint": "地図ヘッダーの設定ギアからプロバイダーを有効にしてください",
       "badgeAnimLabel": "バッジアニメーション",
       "badgeAnimDesc": "パネルヘッダーの更新バッジをアニメーション表示",
       "headlineMemoryLabel": "ヘッドラインメモリ",
@@ -1592,28 +1592,28 @@
         "deEscalating": "沈静化中",
         "stable": "安定"
       },
-      "insufficientData": "Insufficient Data",
-      "unableToAssess": "Unable to assess risk level.",
-      "enableDataSources": "Enable data sources to begin monitoring.",
-      "requiredDataSources": "Required Data Sources",
-      "optionalSources": "Optional Sources",
-      "enableCoreFeeds": "Enable Core Feeds",
-      "waitingForData": "Waiting for data...",
-      "refresh": "Refresh",
-      "learningMode": "Learning Mode - {{minutes}}m until reliable",
-      "noData": "no data",
-      "enable": "Enable",
-      "convergenceMetric": "Convergence",
+      "insufficientData": "データ不足",
+      "unableToAssess": "リスクレベルを評価できません。",
+      "enableDataSources": "監視を開始するにはデータソースを有効にしてください。",
+      "requiredDataSources": "必要なデータソース",
+      "optionalSources": "任意のソース",
+      "enableCoreFeeds": "主要フィードを有効にする",
+      "waitingForData": "データを待機中...",
+      "refresh": "更新",
+      "learningMode": "学習モード - 信頼性確保まであと {{minutes}} 分",
+      "noData": "データなし",
+      "enable": "有効にする",
+      "convergenceMetric": "収束",
       "ciiDeviation": "Country Instability Index 乖離",
-      "infraEvents": "Infra Events",
-      "highAlerts": "High Alerts",
-      "topRisks": "Top Risks",
-      "recentAlerts": "Recent Alerts ({{count}})",
-      "updated": "Updated: {{time}}",
+      "infraEvents": "インフラ関連イベント",
+      "highAlerts": "高レベル警報",
+      "topRisks": "主要リスク",
+      "recentAlerts": "最近の警報（{{count}}）",
+      "updated": "更新: {{time}}",
       "time": {
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago"
+        "justNow": "たった今",
+        "minutesAgo": "{{count}} 分前",
+        "hoursAgo": "{{count}} 時間前"
       },
       "infoTooltip": "<strong>方法論</strong> 複合スコア（0-100）の構成:<ul><li>50% 国家不安定性（上位5カ国加重）</li><li>30% 地理的収束地帯</li><li>20% インフラインシデント</li></ul>5分ごとに自動更新。",
       "cachedCiiStatus": "キャッシュされた Country Instability Index {{states}}",
@@ -1621,37 +1621,37 @@
         "degraded": "低下",
         "stale": "古い"
       },
-      "dataFreshness": "Data Freshness",
-      "sourcesDetail": "{{active}}/{{total}} sources"
+      "dataFreshness": "データの鮮度",
+      "sourcesDetail": "{{active}}/{{total}} ソース"
     },
     "techEvents": {
       "loading": "テックイベントを読み込み中...",
       "noEvents": "表示するイベントなし",
       "showOnMap": "マップで表示",
       "moreInfo": "詳細",
-      "upcoming": "Upcoming",
-      "conferences": "Conferences",
-      "earnings": "Earnings",
-      "all": "All",
-      "conferencesCount": "{{count}} conferences",
-      "onMap": "{{count}} on map",
-      "techmemeEvents": "Techmeme Events ↗",
-      "today": "TODAY",
-      "soon": "SOON",
+      "upcoming": "今後の予定",
+      "conferences": "カンファレンス",
+      "earnings": "決算",
+      "all": "すべて",
+      "conferencesCount": "{{count}} 件のカンファレンス",
+      "onMap": "地図上に {{count}} 件",
+      "techmemeEvents": "Techmeme イベント ↗",
+      "today": "今日",
+      "soon": "まもなく",
       "infoTooltip": "<strong>テックイベント</strong> 今後および最近のテクノロジーイベント：カンファレンス、製品ローンチ、規制公聴会、決算コール。公式イベントカレンダーおよび業界ソースから集約。"
     },
     "techReadiness": {
       "internetUsers": "インターネットユーザー",
       "mobileSubscriptions": "モバイル契約数",
       "rdSpending": "研究開発支出",
-      "fetchingData": "Fetching World Bank Data",
-      "internetUsersIndicator": "Internet Users",
-      "mobileSubscriptionsIndicator": "Mobile Subscriptions",
-      "broadbandAccess": "Broadband Access",
+      "fetchingData": "世界銀行のデータを取得中",
+      "internetUsersIndicator": "インターネット利用者",
+      "mobileSubscriptionsIndicator": "モバイル契約数",
+      "broadbandAccess": "ブロードバンド普及",
       "rdExpenditure": "研究開発費",
-      "analyzingCountries": "Analyzing 200+ countries...",
-      "source": "Source: World Bank",
-      "updated": "Updated: {{date}}",
+      "analyzingCountries": "200 以上の国を分析中...",
+      "source": "出典: 世界銀行",
+      "updated": "更新: {{date}}",
       "infoTooltip": "<strong>Technology readiness</strong> 世界銀行複合スコア、0~100。ウェイトは研究開発35%、インターネット30%、ブロードバンド20%、モバイル15%。インターネットユーザーは人口比率、モバイル加入は100人当たり、研究支出は経済産出に占める割合。欠落値はダッシュで表示。データ範囲は2019~2024年。",
       "dataPreparing": "技術準備状況データを更新中 — すぐに表示されます。"
     },
@@ -1666,7 +1666,7 @@
       "noMatching": "該当する情報なし",
       "critical": "重大",
       "health": "健康",
-      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
+      "sources": "米国務省、豪 DFAT、英 FCDO、CDC、ECDC、WHO、米国大使館",
       "refresh": "更新",
       "levels": {
         "doNotTravel": "渡航中止",
@@ -1684,14 +1684,14 @@
       "infoTooltip": "<strong>セキュリティアドバイザリー</strong><br>各国政府の渡航情報と安全警告。"
     },
     "orefSirens": {
-      "checking": "Checking siren alerts...",
-      "noAlerts": "No active sirens — all clear",
-      "notConfigured": "Sirens service not configured",
-      "activeSirens": "{{count}} active siren(s)",
-      "justNow": "just now",
+      "checking": "サイレン警報を確認中...",
+      "noAlerts": "発令中のサイレンはありません — 異常なし",
+      "notConfigured": "サイレンサービスが未設定です",
+      "activeSirens": "{{count}} 件のサイレン発令中",
+      "justNow": "たった今",
       "historySummary": "24時間で{{count}}件のアラート — {{waves}}回の波",
       "loadingHistory": "履歴を読み込み中...",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>イスラエルのサイレン</strong><br>イスラエル国防軍銃後司令部によるロケット・ミサイルのサイレン警報をリアルタイムで表示。<br><br>データは 10 秒ごとに取得されます。赤く点滅する表示はサイレンが鳴っていることを示します。"
     },
     "satelliteFires": {
       "region": "地域",
@@ -1837,8 +1837,8 @@
       "critical": "緊急",
       "high": "重要",
       "dismiss": "閉じる",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "速報アラート",
+      "viewPanel": "関連パネルを表示"
     },
     "intelligenceFindings": {
       "breakingAlerts": "速報アラート",
@@ -1910,54 +1910,54 @@
       "filterCyber": "サイバー"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "infoTooltip": "X の公開ニュースアカウントから厳選した投稿。公式 API のみ使用。",
+      "loading": "X ニュースアカウント中継に接続中...",
+      "empty": "投稿はありません",
+      "disabled": "X ニュースアカウント中継は無効です",
+      "filterAll": "すべて",
+      "filterBreaking": "速報",
+      "filterConflict": "紛争",
       "filterOsint": "オープンソースインテリジェンス",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
-      "filterCyber": "Cyber"
+      "filterMiddleeast": "中東",
+      "live": "ライブ",
+      "viewSource": "ソースを表示",
+      "filterGeopolitics": "地政学",
+      "filterCyber": "サイバー"
     },
     "investments": {
       "infoTooltip": "サウジアラビアとUAEによるグローバル重要インフラへの外国直接投資データベース。行をクリックするとマップ上の投資先にズーム。",
-      "searchPlaceholder": "Search assets, countries, entities…",
-      "allCountries": "All Countries",
-      "saudiArabia": "Saudi Arabia",
+      "searchPlaceholder": "資産、国、主体を検索…",
+      "allCountries": "すべての国",
+      "saudiArabia": "サウジアラビア",
       "uae": "UAE",
-      "allSectors": "All Sectors",
-      "allEntities": "All Entities",
-      "allStatuses": "All Statuses",
-      "operational": "Operational",
-      "underConstruction": "Under Construction",
-      "announced": "Announced",
-      "rumoured": "Rumoured",
-      "divested": "Divested",
-      "asset": "Asset",
-      "country": "Country",
-      "sector": "Sector",
-      "investment": "Investment",
-      "year": "Year",
-      "noMatch": "No investments match filters",
-      "undisclosed": "Undisclosed",
+      "allSectors": "すべてのセクター",
+      "allEntities": "すべての主体",
+      "allStatuses": "すべてのステータス",
+      "operational": "稼働中",
+      "underConstruction": "建設中",
+      "announced": "発表済み",
+      "rumoured": "噂",
+      "divested": "売却済み",
+      "asset": "資産",
+      "country": "国",
+      "sector": "セクター",
+      "investment": "投資",
+      "year": "年",
+      "noMatch": "フィルターに一致する投資はありません",
+      "undisclosed": "非公開",
       "sectors": {
-        "ports": "Ports",
-        "pipelines": "Pipelines",
-        "energy": "Energy",
-        "datacenters": "Data Centers",
-        "airports": "Airports",
-        "railways": "Railways",
-        "telecoms": "Telecoms",
-        "water": "Water",
-        "logistics": "Logistics",
-        "mining": "Mining",
-        "realEstate": "Real Estate",
-        "manufacturing": "Manufacturing"
+        "ports": "港湾",
+        "pipelines": "パイプライン",
+        "energy": "エネルギー",
+        "datacenters": "データセンター",
+        "airports": "空港",
+        "railways": "鉄道",
+        "telecoms": "通信",
+        "water": "水",
+        "logistics": "物流",
+        "mining": "鉱業",
+        "realEstate": "不動産",
+        "manufacturing": "製造"
       }
     },
     "prediction": {
@@ -1994,16 +1994,16 @@
         "flow": "フロー",
         "regime": "市場環境",
         "btcTrend": "BTCトレンド",
-        "hashRate": "Hash Rate",
-        "momentum": "Momentum",
+        "hashRate": "ハッシュレート",
+        "momentum": "モメンタム",
         "fearGreed": "恐怖 &amp; 貪欲"
       },
       "infoTooltip": "<strong>Bitcoin market conditions</strong> Bitcoinポジショニングおよびリスク選好度のための複合シグナルダッシュボード:<ul><li><strong>Liquidity</strong>: ネットFED流動性プロキシ</li><li><strong>Flow</strong>: BTC vs QQQ 5日間リターン</li><li><strong>Regime</strong>: QQQ vs XLPローテーション(リスクオン/オフ)</li><li><strong>BTC Trend</strong>: 価格 vs SMA50/200、Mayer Multiple</li><li><strong>Hash Rate</strong>: 30日間ネットワークハッシュ変化</li><li><strong>Fear & Greed</strong>: 市場センチメント指数</li></ul>このパネルはレジームおよびポジショニング用であり、ブロード マクロデータ用ではありません。"
     },
     "panel": {
-      "showMethodologyInfo": "Show methodology info",
-      "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings",
+      "showMethodologyInfo": "手法の説明を表示",
+      "dragToResize": "ドラッグでサイズ変更（ダブルクリックでリセット）",
+      "openSettings": "設定を開く",
       "closePanel": "パネルを閉じる",
       "collapsePanel": "パネルを折りたたむ",
       "expandPanel": "パネルを展開する",
@@ -2013,51 +2013,51 @@
       "mapLabelsFallbackVi": "ベトナム語の地図ラベルは現在英語にフォールバックされます。"
     },
     "serviceStatus": {
-      "checkingServices": "Checking services...",
-      "allOperational": "All services operational",
+      "checkingServices": "サービスを確認中...",
+      "allOperational": "すべてのサービスが正常に稼働中",
       "ok": "OK",
-      "degraded": "Degraded",
-      "outage": "Outage",
+      "degraded": "低下",
+      "outage": "障害",
       "categories": {
-        "all": "All",
-        "cloud": "Cloud",
-        "dev": "Dev Tools",
-        "comm": "Comms",
+        "all": "すべて",
+        "cloud": "クラウド",
+        "dev": "開発ツール",
+        "comm": "通信",
         "ai": "AI",
         "saas": "SaaS"
       },
       "infoTooltip": "<strong>サービスステータス</strong> 主要クラウドプラットフォーム、金融インフラ、重要インターネットサービスのリアルタイム稼働状況。ソース：公式ステータスページ（AWS、Azure、GCP、Cloudflare、取引所）。インシデントはより広範な障害イベントを示す可能性あり。"
     },
     "verification": {
-      "title": "Information Verification Checklist",
-      "hint": "Based on Bellingcat's OSH Framework",
+      "title": "情報検証チェックリスト",
+      "hint": "Bellingcat の OSH フレームワークに基づく",
       "verdicts": {
-        "verified": "VERIFIED",
-        "likely": "LIKELY AUTHENTIC",
-        "uncertain": "UNCERTAIN",
-        "unreliable": "UNRELIABLE"
+        "verified": "検証済み",
+        "likely": "信頼できる可能性が高い",
+        "uncertain": "不確実",
+        "unreliable": "信頼できない"
       },
-      "notesTitle": "Verification Notes",
-      "noNotes": "No notes added",
-      "addNotePlaceholder": "Add verification note...",
-      "add": "Add",
-      "resetChecklist": "Reset Checklist",
+      "notesTitle": "検証メモ",
+      "noNotes": "メモはありません",
+      "addNotePlaceholder": "検証メモを追加...",
+      "add": "追加",
+      "resetChecklist": "チェックリストをリセット",
       "checks": {
-        "recency": "Recent timestamp confirmed",
-        "geolocation": "Location verified",
-        "source": "Primary source identified",
-        "crossref": "Cross-referenced with other sources",
-        "noAi": "No AI generation artifacts",
-        "noRecrop": "Not recycled/old footage",
-        "metadata": "Metadata verified",
-        "context": "Context established"
+        "recency": "最新のタイムスタンプを確認済み",
+        "geolocation": "位置を検証済み",
+        "source": "一次情報源を特定済み",
+        "crossref": "他のソースと照合済み",
+        "noAi": "AI 生成の痕跡なし",
+        "noRecrop": "使い回し・古い映像ではない",
+        "metadata": "メタデータを検証済み",
+        "context": "文脈を確認済み"
       }
     },
     "liveNews": {
       "audioUnavailable": "音声を利用できません",
-      "notLive": "{{name}} is not currently live",
+      "notLive": "{{name}} は現在ライブ配信していません",
       "signInToYouTube": "YouTubeにサインイン",
-      "openOnYouTube": "Open on YouTube",
+      "openOnYouTube": "YouTube で開く",
       "manage": "チャンネル管理",
       "addChannel": "チャンネルを追加",
       "remove": "削除",
@@ -2101,7 +2101,7 @@
       "clearTrails": "トレイルをクリア"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "infoTooltip": "<strong>インターネット障害</strong> 世界のネットワーク監視によるリアルタイムのインターネット障害、DDoS 攻撃、トラフィック異常:<ul><li><strong>障害</strong>: BGP で検出された国別の接続障害</li><li><strong>DDoS</strong>: プロトコル・ベクトル別の大量攻撃レポート</li><li><strong>異常</strong>: Cloudflare Radar による異常なトラフィックパターン</li></ul>",
       "noOutages": "アクティブな障害は検出されていません",
       "noDdos": "DDoSデータは利用不可",
       "noAnomalies": "トラフィック異常は検出されていません",
@@ -2110,16 +2110,16 @@
       "topTargets": "トップターゲット国"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "infoTooltip": "<strong>コモディティ</strong> 金属・素材を中心としたエネルギー以外の取引可能なコモディティ相場。エネルギー価格は「エネルギー複合」、マクロストレス指標は「マクロストレス」にあります。",
+      "commodities": "コモディティ",
+      "physicalPremiums": "現物プレミアム",
+      "physical": "現物",
+      "paper": "ペーパー",
+      "premium": "プレミアム",
+      "asOf": "{{date}} 時点",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "金",
+        "silver": "銀"
       },
       "divergence": {
         "compositeValue": "物理的ストレス指数：{{value}} / 100",
@@ -2139,7 +2139,7 @@
       }
     },
     "crypto": {
-      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+      "infoTooltip": "<strong>暗号資産</strong> 主要暗号資産のリアルタイム価格、24 時間変動、出来高。データ提供: CoinGecko。"
     },
     "gulfEconomies": {
       "infoTooltip": "<strong>湾岸経済</strong> 湾岸協力会議加盟国（サウジアラビア、UAE、クウェート、カタール、バーレーン、オマーン）の株価指数、為替レート、石油価格。"
@@ -2148,25 +2148,25 @@
       "infoTooltip": "<strong>食料品指数</strong> 24カ国の食料品価格の世界的な比較 — 消費者物価指数を超える実際の消費者物価インフレを追跡。"
     },
     "bigmac": {
-      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>実質ビッグマック指数</strong> The Economist のビッグマック指数は、各国のマクドナルドのハンバーガー価格を比較して購買力平価を測定します。新しいデータの公表時（四半期/年次）に更新されます。"
     },
     "defiTokens": {
-      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+      "infoTooltip": "<strong>DeFi トークン</strong> 主要な分散型金融プロトコルトークンの価格と 24h/7d パフォーマンス — DEX、レンディング、イールドプロトコル。"
     },
     "aiTokens": {
-      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+      "infoTooltip": "<strong>AI トークン</strong> AI・機械学習分野のトークンの価格と 24h/7d パフォーマンス — 計算ネットワーク、分散型 AI インフラ、データプロトコル。"
     },
     "altTokens": {
-      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+      "infoTooltip": "<strong>アルトトークン</strong> 主要時価総額帯以外の代替・新興暗号資産トークンの価格と 24h/7d パフォーマンス。"
     },
     "stockAnalysis": {
-      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+      "infoTooltip": "<strong>プレミアム株式分析</strong> ウォッチリスト銘柄の AI 分析 — 買い/保有/売りシグナル、目標株価、主要リスク、カタリストを毎日更新。"
     },
     "stockBacktest": {
-      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+      "infoTooltip": "<strong>プレミアム・バックテスト</strong> ウォッチリスト銘柄の過去パフォーマンスのバックテスト — 過去リターン、最大ドローダウン、ボラティリティ指標。"
     },
     "dailyMarketBrief": {
-      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+      "infoTooltip": "<strong>デイリー市場ブリーフ</strong> 世界の市場環境、主要なマクロトレンド、セクター別シグナルを AI が毎日要約 — 取引日ごとに更新。"
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>中央銀行ウォッチ</strong> 連邦準備制度、欧州中央銀行、イングランド銀行、その他の主要中央銀行による最新の声明、金利決定、コミュニケーション。"
@@ -2309,20 +2309,21 @@
       "proLocked": "PRO にアップグレードして商品脆弱性スコアを表示"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>ホルムズ海峡トレーカー</strong> ホルムズ海峡を通過する船舶のライブ追跡。世界最重要の石油輸送ボトルネック。タンカー数、供給支障イベント、週単位の流量変化を監視。世界の石油供給の約20%が毎日ここを経由します。",
+      "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> WTO DataLabがホルムズ海峡の日次出荷指数を提供：湾岸を出港する原油、LNG、肥料、到着する農産物。数量ベース、2025年1～3月平均 = 100、AIS追跡可能な船舶のみ。ステータスと日付はWTOの最新分析に基づいています。",
       "title": "ホルムズ海峡貿易トラッカー",
       "noData": "データなし",
       "notAvailable": "利用不可",
       "chartUnavailable": "チャートデータは利用できません",
       "sourcePrefix": "出典:",
       "units": {
-        "ktPerDay": "kt/日",
-        "generic": "単位"
+        "index": "指数"
       },
       "errors": {
         "unavailable": "ホルムズデータは利用できません",
         "failedToLoad": "読み込みに失敗しました"
-      }
+      },
+      "analysisDate": "WTO分析 {{date}}",
+      "indexNote": "出荷量指数、2025年1～3月平均 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>ライブウェブカメラ</strong> 世界中の地政学的に重要な場所からのライブ映像：紛争地域、首都、国境検問所、戦略的チョークポイント。YouTubeおよび公共ネットワークからのストリーム。"
@@ -2370,21 +2371,21 @@
         "movers": "値動き",
         "spread": "小売業者のスプレッド",
         "health": "データヘルス",
-        "world": "World"
+        "world": "世界"
       },
       "infoTooltip": "<strong>Consumer prices</strong> ライブ食料品バスケット、週次変化、カテゴリートレンド、価格変動、小売業者間の差。世界ビューでは国際通貨基金世界経済見通しの年間インフレを使用しています。",
       "world": {
-        "country": "Country",
+        "country": "国",
         "inflationYoY": "年間インフレ率",
-        "endOfPeriod": "End-of-Period",
-        "year": "Year",
-        "filterPlaceholder": "Filter countries…",
-        "loading": "Loading global inflation…",
-        "empty": "Inflation data not yet available",
-        "noMatches": "No matching countries",
+        "endOfPeriod": "期末",
+        "year": "年",
+        "filterPlaceholder": "国を絞り込む…",
+        "loading": "世界のインフレを読み込み中…",
+        "empty": "インフレデータはまだありません",
+        "noMatches": "一致する国はありません",
         "source": "出典: 国際通貨基金 世界経済見通し · 年間消費者物価指数インフレ率、全報告経済",
-        "countSingular": "country",
-        "countPlural": "countries"
+        "countSingular": "か国",
+        "countPlural": "か国"
       }
     },
     "marketImplications": {
@@ -2494,14 +2495,14 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} ほか {{count}} 件 — {{reason}}",
+        "notFound": "相場がありません",
+        "providerError": "相場の取得に失敗しました。まもなく再試行します",
+        "rateLimited": "相場プロバイダーのレート制限中です。まもなく再試行します",
+        "notConfigured": "相場プロバイダーが未設定です",
+        "requestLimit": "要求されたシンボルが多すぎます",
+        "budget": "まだ読み込まれていません。まもなく再試行します",
+        "seed": "市場データは一時的に利用できません"
       }
     },
     "heatmap": {
@@ -2535,7 +2536,7 @@
       "cotSection": "石油 / 金 / 銀 + 指数ポジショニング（Commitments of Traders）",
       "stocksSection": "米国トップ株: 日次シフト",
       "longShort": "ロング {{long}} / ショート {{short}}",
-      "lev": "Lev",
+      "lev": "レバレッジ",
       "noCot": "Commitments of Tradersのデータはありません。",
       "noStocks": "トップ株相場は利用できません。",
       "reportDate": "Commitments of Tradersレポート日: {{date}}",
@@ -2814,8 +2815,8 @@
         "industrial": "産業",
         "strategic": "戦略的"
       },
-      "observations_other": "{{count}} obs",
-      "sources_other": "{{count}} src",
+      "observations_other": "{{count}} 件観測",
+      "sources_other": "{{count}} ソース",
       "age": {
         "minutesAgo_other": "{{count}}m前",
         "hoursAgo_other": "{{count}}h前",
@@ -2836,7 +2837,7 @@
         "doverStrait": "ドーバー海峡"
       },
       "flow": {
-        "mbd": "{{value}} mb/d",
+        "mbd": "{{value}} 百万バレル/日",
         "pctOfBaseline": "ベースライン比 {{pct}}%"
       },
       "errors": {
@@ -3116,7 +3117,7 @@
     },
     "base": {
       "types": {
-        "us-nato": "US/NATO",
+        "us-nato": "米国/NATO",
         "china": "中国",
         "russia": "ロシア"
       }
@@ -3136,7 +3137,7 @@
       "navPerformance": "影響を受けた航空機",
       "samples": "影響を受けた航空機数",
       "aircraft": "観測された航空機の総数",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "H3 ヘックス"
     },
     "flight": {
       "groundStop": "グラウンドストップ",
@@ -3152,7 +3153,7 @@
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
         "computed": "算出値",
-        "aviationstack": "Flight Data",
+        "aviationstack": "フライトデータ",
         "notam": "NOTAM"
       },
       "regions": {
@@ -3221,7 +3222,7 @@
     "cable": {
       "fault": "障害",
       "degraded": "劣化",
-      "active": "ACTIVE",
+      "active": "稼働中",
       "major": "主要",
       "cable": "ケーブル",
       "subtitle": "海底光ファイバーケーブル",
@@ -3445,17 +3446,17 @@
       "speed": "速度",
       "heading": "方位",
       "mmsi": "海上移動業務識別番号",
-      "region": "REGION",
-      "strikeGroup": "STRIKE GROUP",
+      "region": "地域",
+      "strikeGroup": "空母打撃群",
       "usniIntel": "米国海軍協会インテリジェンス",
       "usniSource": "出典：米国海軍協会ニュース艦隊トラッカー",
       "approximatePosition": "位置は概算値です。米国海軍協会の週間レポートに基づいており、リアルタイム船舶追跡ではありません。",
       "darkDescription": "⚠ 船舶がダーク状態です — 船舶追跡信号が失われました。機密作戦の可能性があります。",
-      "recentTracking": "Recent Tracking",
-      "lastReport": "LATEST",
-      "nearChokepoint": "NEAR CHOKEPOINT",
-      "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN",
+      "recentTracking": "最近の追跡",
+      "lastReport": "最新",
+      "nearChokepoint": "チョークポイント付近",
+      "nearBase": "基地付近",
+      "lastSeen": "最終確認",
       "estPosition": "推定位置",
       "aisLive": "ライブ船舶追跡"
     },
@@ -3487,7 +3488,7 @@
     },
     "naturalEvent": {
       "closed": "終了",
-      "active": "ACTIVE",
+      "active": "発生中",
       "reported": "報告済",
       "viewOnSource": "{{source}}で表示",
       "attribution": "データ: NASA EONET",
@@ -3511,7 +3512,7 @@
     },
     "spaceport": {
       "status": {
-        "active": "ACTIVE",
+        "active": "稼働中",
         "construction": "建設中",
         "inactive": "休止中"
       },
@@ -3745,17 +3746,17 @@
     "shareStory": "ストーリーを共有",
     "exportImage": "画像をエクスポート",
     "exportPdf": "PDFエクスポート",
-    "new": "NEW",
-    "live": "LIVE",
-    "cached": "CACHED",
-    "unavailable": "UNAVAILABLE",
+    "new": "新着",
+    "live": "ライブ",
+    "cached": "キャッシュ",
+    "unavailable": "利用不可",
     "close": "閉じる",
     "currentVariant": "（現在）",
-    "retry": "Retry",
-    "refresh": "Refresh",
+    "retry": "再試行",
+    "refresh": "更新",
     "all": "すべて",
     "cancel": "キャンセル",
-    "dismiss": "Dismiss"
+    "dismiss": "閉じる"
   },
   "preferences": {
     "display": "ディスプレイ",
@@ -3898,7 +3899,7 @@
     "selectTool": "ツールを選択",
     "toolArgs": "引数 (JSON)",
     "panelTitle": "パネルタイトル",
-    "panelTitlePlaceholder": "My MCP Panel",
+    "panelTitlePlaceholder": "マイ MCP パネル",
     "refreshEvery": "更新間隔",
     "seconds": "秒",
     "addPanel": "パネルを追加",

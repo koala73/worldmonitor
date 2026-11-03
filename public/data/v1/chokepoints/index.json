@@ -1,10 +1,11 @@
 {
   "schema_version": "1.0.0",
   "dataset": "worldmonitor-chokepoint-status",
-  "latest": "2026-11-02",
+  "latest": "2026-11-03",
   "dates": [
     "2026-09-10",
     "2026-10-14",
-    "2026-11-02"
+    "2026-11-02",
+    "2026-11-03"
   ]
 }

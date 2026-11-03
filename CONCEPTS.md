@@ -382,6 +382,13 @@ The stretch of time a derived statistic was *actually* computed over, as distinc
 
 ## Crawlable Country Pages & Brief Grounding
 
+### Country Brief
+
+The per-country intelligence panel a user opens from the map, search, or a shared link. It slides in beside the dashboard map, or covers it when maximized, and its link reopens exactly that country.
+*Avoid:* Country Deep Dive, country modal
+
+The panel is a side panel, not a modal. On its default width the map stays visible and interactive next to it, so nothing about opening a brief may freeze, pause, or hide map updates. Only the maximized state covers the map. The generated text summary shown inside the panel is the *brief text*, and it is what Brief Grounding governs. See also: Brief Grounding, Recent Developments.
+
 ### Recent Developments
 
 The per-country section of a prerendered country page that carries dated, sourced, country-specific items: matched headlines, a generated country brief with the sources it cites, and timeline events, all taken from one weekly frozen capture rather than fetched live. A page with no such item renders no section at all rather than a placeholder, so the section's absence is itself the record of the enrichment gap. See also: Country Mention, Brief Grounding, Enrichment Tail, Feed Digest.
@@ -1183,5 +1190,6 @@ Before the anchor the clock counts up to the figure. A country in surplus is the
 - *"Release"* names two unrelated things. A desktop Release Line is a publication sequence addressable by update clients. An error-tracking release is an event grouping label, and the browser and server surfaces choose it differently, which is what decides whether a Resolve Pin is satisfiable. Never reason about one from the other.
 - *"Gate"* had been used for both the local pre-push Tiered Gate and the CI Deploy Gate — these are distinct. The Tiered Gate is a cacheable pre-flight that can be scoped or escalated on one machine; only the Deploy Gate decides mergeability, and only names on its required list count toward it.
 - *"Superseded"* qualifies two unrelated things. A Superseded Run is a change-proposal CI run replaced by a later push, and it is discarded on purpose. A Superseded Failure is a scheduled run's failure that a newer capture, by hand or by a later run, has since made moot, and it is an alarm that resolves itself. The first is about wasted capacity, the second about alert noise; never reason about one from the other.
+- *"Country brief"* had been used for both the per-country dashboard panel and the generated text summary inside it. These are distinct. The panel is the Country Brief. The generated summary is the brief text, which Brief Grounding governs. A third, unrelated "brief" is the daily AI digest of the Brief Loop.
 - *"Capability"* names two things. A Capability-Gated Deep Link is gated on an entitlement predicate the destination also renders on; a Brief URL is a bearer link where the token itself is the capability. Say "entitlement" for the first sense in prose and "Brief URL" for the second; avoid "capability URL".
 - *"Unknown"* as a vessel class names two different states — a contact that declared military activity but no hull class, and a contact with no class evidence at all. They are currently indistinguishable downstream and fold into the same non-combatant bucket. When it matters which one you mean, say "declared activity, class unestablished" for the first; never read the shared bucket as evidence of either.

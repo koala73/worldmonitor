@@ -1624,7 +1624,6 @@ export class App {
         const name = CountryIntelManager.resolveCountryName(code);
         void this.countryIntel.openCountryBriefByCode(code, name).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
-          this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
         });
       },
@@ -1770,7 +1769,6 @@ export class App {
           return;
         }
         console.error('[CountryBrief] Failed to open country brief:', error);
-        this.state.map?.setRenderPaused(false);
         showToast('Country brief failed to open. Please try again.');
         resolve(false);
       };
@@ -2435,13 +2433,18 @@ export class App {
 
     window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
 
+    // IndexedDB and the locale bundles are independent (i18n reads only
+    // localStorage and the URL), so the locale loads while the database opens.
+    // A failed load is still thrown below, where it is awaited.
+    const i18nReady = initI18n();
+    i18nReady.catch(() => {});
     await initDB();
     startFlightHistoryCleanup();
     // Re-arm the lazy vessel runtime (a no-op on first boot; matters on a
     // same-document re-init after a prior App.destroy() disarmed it). The
     // history-cleanup interval itself still starts lazily on first vessel use.
     enableVesselRuntime();
-    await initI18n();
+    await i18nReady;
     markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
     // Localize the static index.html shell — <title>, meta description, and
@@ -3864,7 +3867,6 @@ export class App {
             maximize: true,
           }).catch((err) => {
             console.error('[CountryBrief] Failed to open country brief:', err);
-            this.state.map?.setRenderPaused(false);
             showToast('Country brief failed to open. Please try again.');
           });
           this.eventHandlers.syncUrlState();
@@ -3890,7 +3892,6 @@ export class App {
           maximize: deepLinkExpanded,
         }).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
-          this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
         }).finally(() => {
           // The open also resolves without a brief (a failed chunk import is

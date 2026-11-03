@@ -482,6 +482,7 @@ export class DataLoaderManager implements AppModule {
   // ctx.allNews. Fetches carry their own selection state until that commit, so
   // a late stale or obsolete-language response cannot re-mute newer fresh data.
   private newsLoadGeneration = 0;
+  private fullEditionIntel: { generation: number; selection: Promise<SelectedNewsDigest | null> } | null = null;
   private committedNewsGeneration = 0;
   private committedNewsServedStale = false;
   private readonly digestRequestTimeoutMs = 8000;
@@ -583,9 +584,14 @@ export class DataLoaderManager implements AppModule {
     this.boundMarketWatchlistHandler = () => {
       void this.loadMarkets().then(async () => {
         if (hasPremiumAccess()) {
-          await this.loadStockAnalysis();
-          await this.loadStockBacktest();
-          await this.loadDailyMarketBrief(true);
+          // All three loaders own a different panel and swallow their own
+          // failures, so serializing them only added latency to a watchlist
+          // edit. The boot path already fans them out the same way (#6770).
+          await Promise.all([
+            this.loadStockAnalysis(),
+            this.loadStockBacktest(),
+            this.loadDailyMarketBrief(true),
+          ]);
         }
       });
     };
@@ -1284,13 +1290,11 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'radiation', task: () => runGuarded('radiationWatch', () => this.loadRadiationWatch()) });
     }
 
-    // tech-readiness is only seeded on full + tech variants (api/bootstrap.js +
-    // scripts/seed-wb-indicators.mjs); on commodity/finance/energy the 5s fetch
-    // at services/economic/index.ts:694 just times out. shouldLoad() alone is
+    // tech-readiness ships in the full and tech defaults. shouldLoad() alone is
     // not enough — loadAllData(true) on boot (App.ts:1226) bypasses the viewport
-    // check via forceAll. Gate on variant defaults so this only fires where the
-    // seed actually exists.
-    if (isPanelInVariantDefaults('tech-readiness') && shouldLoad('tech-readiness')) {
+    // check via forceAll — so gate on the variant defaults, and also load a
+    // panel the user added on another edition: the seed is global.
+    if ((isPanelInVariantDefaults('tech-readiness') || this.ctx.panelSettings?.['tech-readiness']?.enabled === true) && shouldLoad('tech-readiness')) {
       tasks.push({ name: 'techReadiness', task: () => runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
@@ -1898,9 +1902,8 @@ export class DataLoaderManager implements AppModule {
     options: NewsIntelLoadOptions = { recordBaselineSample: true, digestPending: false },
     generation = this.newsLoadGeneration,
     recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
+    recordCrossEditionMiss: (missed: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
-    const digest = digestSelection?.digest;
-    const digestServedStale = digestSelection?.servedStale ?? true;
     const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
     const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
     const intelPanel = this.ctx.newsPanels['intel'];
@@ -1911,6 +1914,30 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
       return [];
     }
+
+    // The server builds intel into the full edition's digest only, so an Intel
+    // Feed added on another edition reads that one.
+    const readsFullEdition = SITE_VARIANT !== 'full' && !(digestSelection?.digest.categories && 'intel' in digestSelection.digest.categories);
+    let selection = digestSelection;
+    if (readsFullEdition) {
+      // A superseded load must not replace the newer load's fetch or
+      // re-render its live list as cached headlines.
+      if (!this.isCurrentNewsLoad(generation)) return [];
+      // One fetch per load: the pending pass starts it without holding the
+      // home-digest replay, and the final pass awaits the same request.
+      if (this.fullEditionIntel?.generation !== generation) {
+        this.fullEditionIntel = { generation, selection: this.selectEditionDigest('full', getCurrentLanguage()) };
+      }
+      if (!options.digestPending) {
+        selection = await this.fullEditionIntel.selection;
+        // A newer load (a source toggle, say) may have started during the fetch.
+        if (!this.isCurrentNewsLoad(generation)) return [];
+        // This edition's digest can land while the full one is down; the load must stay retryable.
+        recordCrossEditionMiss(!(selection?.digest.categories && 'intel' in selection.digest.categories));
+      }
+    }
+    const digest = selection?.digest;
+    const digestServedStale = selection?.servedStale ?? true;
 
     if (digest?.categories && 'intel' in digest.categories) {
       recordSelectedFreshness(digestServedStale);
@@ -1966,7 +1993,7 @@ export class DataLoaderManager implements AppModule {
     if (!this.isNewsOutageFallbackEnabled()) {
       recordSelectedFreshness(false);
       console.warn('[News] Intel digest missing, outage fallback off');
-      delete this.ctx.newsByCategory['intel'];
+      this.renderNewsForCategory('intel', []);
       this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
       return [];
     }
@@ -2178,6 +2205,7 @@ export class DataLoaderManager implements AppModule {
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
     const categoryServedStale = new Map<string, boolean>();
     let intelServedStale = false;
+    let intelCrossEditionMissed = false;
     const newsPass = await runNewsLoadPass(
       {
         categories,
@@ -2203,6 +2231,7 @@ export class DataLoaderManager implements AppModule {
               options,
               generation,
               servedStale => { intelServedStale = servedStale; },
+              missed => { intelCrossEditionMissed = missed; },
             )
           )
           : undefined,
@@ -2269,7 +2298,7 @@ export class DataLoaderManager implements AppModule {
     const digestCovered = categories.some(({ key, isCustom }) => !isCustom && key in digestCategories);
     const anyItemsCollected = collectedNews.length > 0;
     const noCategoriesToLoad = categories.length === 0;
-    const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
+    const landed = (digestCovered || anyItemsCollected || noCategoriesToLoad) && !intelCrossEditionMissed;
     if (landed) this.loadedNewsSignature = newsWorkListSignature(this.newsWorkList(categories, loadsIntel), disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
 

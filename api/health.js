@@ -2417,7 +2417,7 @@ const SEED_META = {
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-qatarenergy' } },
   regionalEnergyErb: { key: 'seed-meta:energy:regional-erb', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-erb',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-erb' } },
-  regionalEnergyNpa: { key: 'seed-meta:energy:regional-npa', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 20160, activationKey: 'seed-activated:energy:regional-npa',
+  regionalEnergyNpa: { key: 'seed-meta:energy:regional-npa', maxStaleMin: 2160, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 64800, activationKey: 'seed-activated:energy:regional-npa',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-npa' } },
   regionalEnergySonabhy: { key: 'seed-meta:energy:regional-sonabhy', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, maxContentAgeMin: 576000, activationKey: 'seed-activated:energy:regional-sonabhy',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10051, activationKey: 'seed-activated:energy:regional-sonabhy' } },

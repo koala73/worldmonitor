@@ -68,18 +68,18 @@
     },
     "militaryActivity": "Hoạt động quân sự",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "Nền tảng công nghiệp quốc phòng",
+      "expenditure": "Chi tiêu quân sự",
+      "personnel": "Quân số",
+      "armsImports": "Nhập khẩu vũ khí",
       "concentration": "Chỉ số tập trung nhà cung cấp",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "Nhà cung cấp vũ khí ({{start}}–{{end}})",
       "source": "Nguồn: World Bank và SIPRI Arms Transfers Database. Chỉ số khối lượng chuyển giao đo lường chuyển giao vũ khí tương đối, không phải giá trị tài chính.",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "Nguồn: Ngân hàng Thế giới.",
       "snapshotAssembled": "Ảnh chụp dữ liệu {{source}} được tổng hợp lúc {{time}}",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "Không có sẵn",
+      "coverage": "Phạm vi đã lập bản đồ",
+      "supplierRetained": "Dữ liệu nhà cung cấp được giữ lại từ lần làm mới nhà nhập khẩu thành công gần nhất."
     },
     "economicIndicators": "Chỉ số kinh tế",
     "ownFlights": "Chuyến bay nội địa",
@@ -192,47 +192,47 @@
       "activityNowcast": "Dự báo hoạt động hiện tại",
       "decisionSignalsUnavailable": "Ảnh chụp nhanh tín hiệu quyết định của Trung Quốc hiện không có sẵn."
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "Dự trữ lương thực",
     "foodStocksHelp": "Hàng tồn kho nông sản theo tỷ lệ sử dụng của USDA Production, Supply and Distribution theo năm tiếp thị, kèm tỷ lệ toàn cầu để tham khảo. FAOSTAT Food Balances cung cấp dữ liệu sản xuất và cung cấp trong nước khi Production, Supply and Distribution không có bảng cân đối hoàn chỉnh của quốc gia.",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "Đang tải dữ liệu dự trữ lương thực…",
+    "foodStocksUnavailable": "Dự trữ lương thực không khả dụng.",
+    "foodStocksProLocked": "Nâng cấp lên PRO để xem tỷ lệ tồn kho trên tiêu thụ hàng hóa",
+    "foodStocksCommodity": "Hàng hóa",
+    "foodStocksMarketingYear": "Niên vụ",
+    "foodStocksRatio": "Tồn kho/tiêu thụ",
+    "foodStocksWorld": "Thế giới",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "Lúa mì",
+      "corn": "Ngô",
+      "rice": "Gạo",
+      "soybeans": "Đậu tương",
+      "barley": "Lúa mạch",
+      "palmOil": "Dầu cọ"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "Nhân khẩu học & Lực lượng lao động",
       "help": "Cấu trúc tuổi, quy trình đào tạo, và khả năng lực lượng công nghiệp từ UN World Population Prospects, UNESCO Institute for Statistics và World Bank World Development Indicators, cùng ILOSTAT.",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "Đang tải dữ liệu nhân khẩu học và lực lượng lao động…",
+      "unavailable": "Dữ liệu nhân khẩu học và lực lượng lao động không khả dụng.",
+      "proLocked": "Nâng cấp lên PRO để xem dữ liệu nhân khẩu học và lực lượng lao động",
+      "notAvailable": "Không có sẵn",
+      "ageStructure": "Cơ cấu tuổi",
+      "education": "Nguồn nhân lực giáo dục",
+      "industrialWorkforce": "Lực lượng lao động công nghiệp",
+      "medianAge": "Tuổi trung vị",
+      "oldAgeDependency": "Tỷ lệ phụ thuộc người cao tuổi",
+      "totalDependency": "Tỷ lệ phụ thuộc chung",
+      "workingAgePopulation": "Dân số trong độ tuổi lao động",
+      "workingAgeProjection": "Dân số trong độ tuổi lao động (+10 năm)",
+      "tertiaryEnrollment": "Tỷ lệ nhập học đại học",
       "stemGraduates": "Sinh viên tốt nghiệp khoa học, công nghệ, kỹ thuật và toán học",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "Nhà nghiên cứu",
+      "craftTrades": "Lao động thủ công và nghề",
+      "plantOperators": "Công nhân vận hành nhà máy và máy móc",
+      "trainedIndustrialWorkforce": "Lực lượng lao động công nghiệp tổng hợp",
+      "manufacturingShare": "Việc làm trong ngành chế tạo",
+      "source": "Nguồn: {{sources}}.",
+      "retained": "Dữ liệu {{stage}} được giữ lại từ lần làm mới thành công gần nhất.",
       "statusNotSupplied": "Chưa cung cấp trạng thái ước tính và điền giá trị thiếu"
     },
     "fiveFactorScorecard": {
@@ -267,7 +267,7 @@
         "pillar-unavailable": "Cột trụ không khả dụng"
       },
       "inputs": {
-        "population": "Population",
+        "population": "Dân số",
         "food_productionBalance": "Cân bằng sản xuất",
         "food_stocksToUse": "Kho dự trữ sử dụng",
         "food_waterSecurity": "An ninh nguồn nước",
@@ -430,7 +430,7 @@
     "securityAdvisories": "Cảnh báo An ninh",
     "orefSirens": "Cảnh báo Israel",
     "telegramIntel": "Tình báo Telegram",
-    "xIntel": "X News Accounts",
+    "xIntel": "Tài khoản tin tức X",
     "startups": "Khởi nghiệp và vốn đầu tư mạo hiểm",
     "vcblogs": "Thông tin và bài luận về vốn đầu tư mạo hiểm",
     "regionalStartups": "Tin Khởi nghiệp Toàn cầu",
@@ -571,8 +571,8 @@
         "climate": "Bật/tắt bất thường khí hậu",
         "outages": "Bật/tắt gián đoạn internet",
         "tradeRoutes": "Bật/tắt tuyến thương mại",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "Bật/tắt lớp đường bộ Canada",
+        "canadaAlerts": "Bật/tắt lớp cảnh báo khẩn cấp cấp tỉnh của Canada"
       },
       "view": {
         "dark": "Chuyển sang chế độ tối",
@@ -630,7 +630,7 @@
         "flight": "Chuyến bay"
       },
       "flightOnGround": "Đang đỗ tại sân bay",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} hải lý/giờ",
       "flightMilitary": "Quân sự · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Quân sự · {{type}} · đang đỗ tại sân bay",
       "flightSearchHint": "Nhấn Enter hoặc nhấp để tra cứu vị trí trực tiếp",
@@ -992,11 +992,11 @@
       "historyUnavailable": "Lịch sử vận tải không có sẵn",
       "transitDataUnavailable": "Dữ liệu vận tải không có sẵn (phần trên không đầy đủ)",
       "infoTooltip": "<strong>Supply Chain Monitor</strong> Theo dõi logistics và nguồn tài nguyên toàn cầu:<ul><li><strong>Chokepoints</strong>: Trạng thái vận tải hàng hải, điểm số gián đoạn và số lượng tàu</li><li><strong>Shipping</strong>: Chỉ số Baltic Dry và xu hướng giá vận tải</li><li><strong>Minerals</strong>: Rủi ro tập trung khoáng sản quan trọng (chỉ số tập trung nhà sản xuất) và những nhà sản xuất hàng đầu</li></ul>Nhấp vào thẻ chokepoint để mở rộng biểu đồ lịch sử vận tải.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "mineStage": "Khai thác",
+      "refineryStage": "Tinh chế",
+      "stageUnavailable": "Không có số liệu công bố cho giai đoạn này",
+      "withheldNote": "W bị giữ kín",
+      "productionCaption": "Tỷ trọng sản lượng thực tế của các quốc gia. Lớp mỏ trên bản đồ cho thấy tài nguyên nằm ở đâu; bảng này cho thấy ai khai thác hoặc tinh chế chúng.",
       "productionProLocked": "Nâng cấp lên PRO để xem tỷ lệ mỏ và nhà máy lọc theo quốc gia với tập trung (chỉ số tập trung nhà sản xuất) theo giai đoạn.",
       "partialTransitCoverage": "Dữ liệu quá cảnh không khả dụng: {{names}}",
       "oilPipelinesUnavailable": "Dữ liệu đường ống dầu không có sẵn",
@@ -1318,8 +1318,8 @@
         "renewableInstallations": "Năng lượng sạch",
         "radiationSpike": "Đột tăng bức xạ",
         "radiationElevated": "Bức xạ tăng cao",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "Đường bộ Canada",
+        "canadaAlerts": "Cảnh báo Canada",
         "notamAirspace": "Hạn chế không phận NOTAM",
         "no2Activity": "Hoạt động công nghiệp"
       },
@@ -1435,8 +1435,8 @@
           "dayNight": "Đường phân chia mặt trời thời gian thực hiển thị vùng ngày và đêm",
           "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp",
           "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn định Đất nước — tô màu các quốc gia theo điểm số (xanh=ổn định, đỏ=tới hạn)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
+          "canadaRoads": "Sự cố giao thông chính thức, cảnh báo, tình trạng đường, đóng đường, thi công và mối nguy tại các khu vực tài phán Canada được hỗ trợ",
+          "canadaAlerts": "Cảnh báo an toàn công cộng cấp tỉnh từ Alberta Emergency Alert, B.C. Evacuation Orders and Alerts và SaskAlert",
           "notamAirspace": "Hạn chế bay tạm thời và không phận bị hạn chế, nguy hiểm và bị cấm từ NOTAM của FAA, có hiệu lực ngay bây giờ hoặc bắt đầu trong vòng 24 giờ",
           "no2Activity": "Hướng hoạt động NO2 từ Sentinel-5P cho 167 quốc gia và 32 cụm công nghiệp: cửa sổ 56 ngày gần nhất so với cùng các ngày trong những năm trước, sau dải chết 10%. Chứa dữ liệu Copernicus Sentinel đã sửa đổi."
         },
@@ -1837,8 +1837,8 @@
       "critical": "NGHIÊM TRỌNG",
       "high": "CAO",
       "dismiss": "Bỏ qua",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "Cảnh báo tin nóng",
+      "viewPanel": "Xem bảng liên quan"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Cảnh báo Khẩn cấp",
@@ -1910,19 +1910,19 @@
       "filterCyber": "Mạng"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "infoTooltip": "Bài đăng tuyển chọn từ các tài khoản tin tức công khai trên X. Chỉ dùng API chính thức.",
+      "loading": "Đang kết nối bộ chuyển tiếp tài khoản tin tức X...",
+      "empty": "Không có bài đăng",
+      "disabled": "Bộ chuyển tiếp tài khoản tin tức X chưa hoạt động",
+      "filterAll": "Tất cả",
+      "filterBreaking": "Tin nóng",
+      "filterConflict": "Xung đột",
       "filterOsint": "thông tin tình báo nguồn mở",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
-      "filterCyber": "Cyber"
+      "filterMiddleeast": "Trung Đông",
+      "live": "TRỰC TIẾP",
+      "viewSource": "Xem nguồn",
+      "filterGeopolitics": "Địa chính trị",
+      "filterCyber": "An ninh mạng"
     },
     "investments": {
       "infoTooltip": "Cơ sở dữ liệu đầu tư trực tiếp nước ngoài của Ả Rập Saudi và UAE vào hạ tầng quan trọng toàn cầu. Nhấp vào hàng để bay đến vị trí đầu tư trên bản đồ.",
@@ -2111,15 +2111,15 @@
     },
     "commodities": {
       "infoTooltip": "<strong>Hàng hóa</strong> Bảng giá hàng hóa phi năng lượng có thể giao dịch, tập trung vào kim loại và vật liệu. Giá năng lượng nằm ở Phức hợp Năng lượng; chỉ số áp lực vĩ mô nằm ở Áp lực Vĩ mô.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "commodities": "Hàng hóa",
+      "physicalPremiums": "Phụ phí vật chất",
+      "physical": "Vật chất",
+      "paper": "Giấy",
+      "premium": "Phụ phí",
+      "asOf": "Tính đến {{date}}",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "Vàng",
+        "silver": "Bạc"
       },
       "divergence": {
         "compositeValue": "Chỉ số áp lực vật lý: {{value}} / 100",
@@ -2309,20 +2309,21 @@
       "proLocked": "Nâng cấp lên PRO để xem điểm số lỗ hổng hàng hóa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Theo dõi thời gian thực của các tàu qua Eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",
+      "infoTooltip": "<strong>Theo dõi Thương mại Hormuz</strong> chỉ số lưu lượng hàng ngày từ WTO DataLab cho Eo biển Hormuz: dầu thô, LNG và phân bón rời khỏi Vịnh, hàng nông sản đến. Theo khối lượng, trung bình tháng 1–3 năm 2025 = 100, chỉ các tàu có tín hiệu AIS. Trạng thái và ngày tháng từ phân tích mới nhất của WTO.",
       "title": "Theo dõi Thương mại Hormuz",
       "noData": "Không có dữ liệu",
       "notAvailable": "N/A",
       "chartUnavailable": "Dữ liệu biểu đồ không khả dụng",
       "sourcePrefix": "Nguồn:",
       "units": {
-        "ktPerDay": "kt/ngày",
-        "generic": "đơn vị"
+        "index": "chỉ số"
       },
       "errors": {
         "unavailable": "Dữ liệu Hormuz không khả dụng",
         "failedToLoad": "Không tải được"
-      }
+      },
+      "analysisDate": "Phân tích WTO {{date}}",
+      "indexNote": "Chỉ số lượng hàng hóa, mức trung bình tháng 1–3 năm 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcam trực tiếp</strong> Luồng phát trực tiếp từ các địa điểm có ý nghĩa địa chính trị trên toàn thế giới: vùng xung đột, thủ đô, cửa khẩu biên giới và các điểm nghẽn chiến lược. Luồng từ YouTube và mạng công cộng."
@@ -2391,9 +2392,9 @@
       "infoTooltip": "<strong>Hàm ý thị trường AI</strong> Tín hiệu giao dịch được tạo bởi LLM từ tình trạng địa chính trị, hàng hóa và vĩ mô trực tiếp sau mỗi chu kỳ dự báo.<ul><li><strong>Hướng</strong>: LONG / SHORT / HEDGE</li><li><strong>Khung thời gian</strong>: Horizon 1W, 2W, 1M, hoặc 3M</li><li><strong>Yếu tố thúc đẩy</strong>: Xúc tác chính đằng sau tín hiệu</li><li><strong>Rủi ro</strong>: Cảnh báo hoặc điều kiện làm mất hiệu lực</li></ul><em>Chỉ cho mục đích thông tin. Không phải lời khuyên đầu tư.</em>",
       "title": "Ý Nghĩa Thị Trường AI",
       "directions": {
-        "long": "LONG",
-        "short": "SHORT",
-        "hedge": "HEDGE"
+        "long": "MUA",
+        "short": "BÁN KHỐNG",
+        "hedge": "PHÒNG HỘ"
       },
       "rationale": "Lý do:",
       "driver": "Động lực:",
@@ -2494,14 +2495,14 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} +{{count}} mã khác — {{reason}}",
+        "notFound": "không có báo giá",
+        "providerError": "tra cứu báo giá thất bại, sẽ thử lại sớm",
+        "rateLimited": "nhà cung cấp báo giá đang giới hạn tần suất, sẽ thử lại sớm",
+        "notConfigured": "chưa cấu hình nhà cung cấp báo giá",
+        "requestLimit": "yêu cầu quá nhiều mã",
+        "budget": "chưa tải xong, sẽ thử lại sớm",
+        "seed": "dữ liệu thị trường tạm thời không khả dụng"
       }
     },
     "heatmap": {
@@ -2827,12 +2828,12 @@
       "infoTooltip": "Trạng thái thời gian thực cho bảy điểm nghẽn vận chuyển dầu và khí đốt toàn cầu. Ước tính dòng chảy được hiệu chuẩn từ công suất tàu Portwatch + quan sát theo dõi tàu. Xem /docs/methodology/chokepoints để biết phương pháp.",
       "unknown": "không xác định",
       "shortName": {
-        "hormuzStrait": "Hormuz",
+        "hormuzStrait": "Eo Hormuz",
         "malaccaStrait": "Malacca",
-        "suez": "Suez",
-        "babElMandeb": "Bab el-Mandeb",
+        "suez": "Kênh Suez",
+        "babElMandeb": "Eo Bab el-Mandeb",
         "bosphorus": "Eo biển Thổ Nhĩ Kỳ",
-        "panama": "Panama",
+        "panama": "Kênh Panama",
         "doverStrait": "Eo biển Dover"
       },
       "flow": {
@@ -2908,7 +2909,7 @@
       "infoTooltip": "<strong>Currency rates</strong> Căng thẳng xếp hạng 45 tiền tệ theo mức giảm lớn nhất trong 24 tháng, với thay đổi 12 tháng. Tỷ giá ghi spot sử dụng cơ sở đô la Mỹ và euro riêng biệt. Tỷ giá ruble Nga là ruble trên một đơn vị. Các nguồn bao gồm Yahoo Finance, Ngân hàng Trung ương Châu Âu và Ngân hàng Nga.",
       "tabs": {
         "stress": "Căng thẳng tiền tệ",
-        "spot": "Spot",
+        "spot": "Giao ngay",
         "rub": "RUB"
       },
       "currency": "Đồng Tiền",
@@ -3136,7 +3137,7 @@
       "navPerformance": "Máy bay bị ảnh hưởng",
       "samples": "Số máy bay bị ảnh hưởng",
       "aircraft": "Tổng số máy bay quan sát được",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "Ô lục giác H3"
     },
     "flight": {
       "groundStop": "DỪNG MẶT ĐẤT",
@@ -3274,7 +3275,7 @@
       "baseline": "Cơ sở",
       "components": {
         "news": "Tin tức",
-        "cii": "Country Instability Index",
+        "cii": "Chỉ số Bất ổn Quốc gia",
         "geo": "Địa lý",
         "military": "Quân sự"
       },
@@ -3755,7 +3756,7 @@
     "refresh": "Làm mới",
     "all": "Tất cả",
     "cancel": "Hủy",
-    "dismiss": "Dismiss"
+    "dismiss": "Bỏ qua"
   },
   "preferences": {
     "display": "Hiển thị",

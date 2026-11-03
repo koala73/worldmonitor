@@ -183,7 +183,7 @@
     "sourceUrl": "https://npa.gov.gh/",
     "licence": "Unconfirmed",
     "intervalMin": 720,
-    "maxContentAgeMin": 20160,
+    "maxContentAgeMin": 64800,
     "script": "seed-regional-energy-npa.mjs"
   },
   {

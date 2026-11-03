@@ -17,7 +17,7 @@ afterEach(() => {
   }
 });
 
-const BACKUP_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
+const BACKUP_MODEL = 'nvidia/nemotron-3.5-super-vl:free';
 const CHAIN_MODELS = ['deepseek/deepseek-v4-flash', 'google/gemma-4-26b-a4b-it:free', BACKUP_MODEL];
 
 function okResponse(model, content) {

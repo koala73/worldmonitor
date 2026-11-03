@@ -155,6 +155,16 @@ describe('Zambia ERB pump price build-up', () => {
 });
 
 describe('Ghana NPA ex-pump prices and price indicators', () => {
+  it('tolerates the publication gaps NPA has actually shown', () => {
+    // From npa.gov.gh/wp-json/wp/v2/media, read 2026-11-03: the workbook
+    // as of 2026-08-12 was the newest until 2026-09-24, and the one as of
+    // 2026-10-16 was still the newest on 2026-11-03. A threshold that alarms
+    // inside those gaps reports NPA's cadence, not a broken seeder.
+    const longestObservedGapMin = (Date.parse('2026-09-24') - Date.parse('2026-08-12')) / 60_000;
+    assert.ok(feed('npa').maxContentAgeMin > longestObservedGapMin,
+      `maxContentAgeMin ${feed('npa').maxContentAgeMin} must exceed the observed ${longestObservedGapMin}-minute gap`);
+  });
+
   it('picks the newest "as of" workbook of each kind', () => {
     const listing = discoverNpaWorkbook(json('npa-media-expump.json'), 'expump');
     assert.equal(listing.day, '2026-10-16');

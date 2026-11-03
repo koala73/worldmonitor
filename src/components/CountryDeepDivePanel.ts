@@ -14,6 +14,8 @@ import {
   getSourceType,
 } from '@/config/feeds';
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
+import { getRpcBaseUrl } from '@/services/rpc-client';
+import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
 import { CountryHistory } from './CountryHistory';
@@ -1996,10 +1998,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private async loadDisruptionsForCountry(iso2: string, revision = this.atlasRevision): Promise<void> {
     const abortSignal = this.signal;
     try {
-      const { SupplyChainServiceClient } = await import(
-        '@/generated/client/worldmonitor/supply_chain/v1/service_client'
-      );
-      const { getRpcBaseUrl } = await import('@/services/rpc-client');
       // Thread the panel's `signal` into the fetch shim so a country
       // switch or panel close cancels the in-flight request, not just
       // discards the result via the `this.currentCode !== iso2` guard

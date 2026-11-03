@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, I18N_RESOURCES_LOADED_EVENT } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchHormuzTracker } from '@/services/hormuz-tracker';
 import type { HormuzTrackerData, HormuzChart, HormuzSeries } from '@/services/hormuz-tracker';
@@ -51,7 +51,8 @@ function renderChart(chart: HormuzChart, idx: number): string {
   const last = chart.series[chart.series.length - 1];
   const lastVal = last ? Number(last.value).toFixed(0) : t('components.hormuzTracker.notAvailable');
   const lastDate = last ? last.date.slice(5) : '';
-  const unit = chart.label.includes('crude_oil') ? t('components.hormuzTracker.units.ktPerDay') : t('components.hormuzTracker.units.generic');
+  // Every WTO series is a volume index (Jan–Mar 2025 average = 100), not tonnage.
+  const unit = t('components.hormuzTracker.units.index');
 
   return `
     <div class="hz-chart" style="margin-bottom:12px">
@@ -65,6 +66,8 @@ function renderChart(chart: HormuzChart, idx: number): string {
 
 export class HormuzPanel extends Panel {
   private data: HormuzTrackerData | null = null;
+  // False while a fetch is loading or after it failed, when `data` is an old snapshot.
+  private showingData = false;
   private dependencies: GetChokepointDependenciesResponse | null = null;
   private dependencyState: 'loading' | 'loaded' | 'unavailable' | 'pro-locked' = 'loading';
   private tooltipBound = false;
@@ -81,11 +84,21 @@ export class HormuzPanel extends Panel {
     this.lastHadPremium = hasPremiumAccess(getAuthState());
     this.authUnsubscribe = subscribeAuthState(() => this.handlePremiumAccessChange());
     this.entitlementUnsubscribe = onEntitlementChange(() => this.handlePremiumAccessChange());
+    window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleTranslationsLoaded);
   }
+
+  // The date label, unit and index note are not in the first-paint shell, and the
+  // raw-key healer cannot restore an interpolated date, so redraw with real copy.
+  // Skip it while loading or after a failed refresh: a redraw would show the old
+  // snapshot as current and drop the error's retry.
+  private readonly handleTranslationsLoaded = (): void => {
+    if (this.data && this.showingData) this.renderPanel();
+  };
 
   public async fetchData(): Promise<boolean> {
     const generation = ++this.fetchGeneration;
     this.invalidateDependencyRequest();
+    this.showingData = false;
     this.showLoading();
     // The Hormuz tape itself stays free; only the commodity-dependency fan-out
     // over it is Pro (#6449). Gate just that leg so a free viewer keeps the
@@ -101,6 +114,7 @@ export class HormuzPanel extends Panel {
         return false;
       }
       this.data = data;
+      this.showingData = true;
       this.dependencies = null;
       const currentIsPro = hasPremiumAccess(getAuthState());
       if (currentIsPro) {
@@ -136,6 +150,7 @@ export class HormuzPanel extends Panel {
   }
 
   public override destroy(): void {
+    window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleTranslationsLoaded);
     this.authUnsubscribe?.();
     this.authUnsubscribe = null;
     this.entitlementUnsubscribe?.();
@@ -246,7 +261,7 @@ export class HormuzPanel extends Panel {
       ? d.charts.map((c, i) => renderChart(c, i)).join('')
       : `<div style="color:var(--text-dim);font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:8px 0">${escapeHtml(t('components.hormuzTracker.chartUnavailable'))}</div>`;
 
-    const dateStr = d.updatedDate ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(d.updatedDate)}</span>` : '';
+    const dateStr = d.updatedDate ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.hormuzTracker.analysisDate', { date: d.updatedDate }))}</span>` : '';
     const dependencies = this.renderDependencies();
 
     const html = `
@@ -256,6 +271,7 @@ export class HormuzPanel extends Panel {
           <span style="background:${sColor};color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:0.08em">${d.status.toUpperCase()}</span>
           ${dateStr}
         </div>
+        <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:6px">${escapeHtml(t('components.hormuzTracker.indexNote'))}</div>
         <div>${charts}</div>
         ${dependencies}
         <div style="margin-top:4px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">

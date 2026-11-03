@@ -175,7 +175,7 @@
       "aviationSource": "Luftfahrtüberwachung",
       "hazardSource": "Länder-Aufklärungssignale",
       "marketSource": "Nationaler Marktindex",
-      "ccfiSource": "Shanghai Shipping Exchange",
+      "ccfiSource": "Shanghaier Schifffahrtsbörse",
       "comtradeSource": "UN Comtrade, Berichtsland 156",
       "sourceUnavailable": "Quelle nicht verfügbar",
       "policyUnavailable": "Nicht verfügbar",
@@ -305,7 +305,7 @@
   },
   "header": {
     "world": "WELT",
-    "tech": "TECH",
+    "tech": "TECHNIK",
     "live": "LIVE",
     "search": "Suche",
     "settings": "EINSTELLUNGEN",
@@ -432,7 +432,7 @@
     "vcblogs": "Venture-Capital-Insights & Essays",
     "regionalStartups": "Globale Startup-Nachrichten",
     "unicorns": "Einhorn-Tracker",
-    "accelerators": "Accelerators & Demo Days",
+    "accelerators": "Accelerators & Demo-Days",
     "security": "Cybersicherheit",
     "policy": "KI-Politik & Regulierung",
     "regulation": "KI-Regulierungs-Dashboard",
@@ -458,7 +458,7 @@
     "gulfIndices": "Golf-Indizes",
     "gulfCurrencies": "Golf-Währungen",
     "gulfOil": "Golf-Öl",
-    "bigmac": "Real Big Mac Index",
+    "bigmac": "Echter Big-Mac-Index",
     "marketImplications": "KI-Marktauswirkungen",
     "energyComplex": "Energiekomplex",
     "oilInventories": "Ölbestände",
@@ -633,7 +633,7 @@
       "seeAllCommands": "Alle Befehle anzeigen",
       "hideCommandList": "Zurück",
       "flightOnGround": "Am Boden",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} kn",
       "flightMilitary": "Militär · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militär · {{type}} · am Boden",
       "flightSearchHint": "Drücken Sie die Eingabetaste oder klicken Sie, um die aktuelle Position nachzuschlagen",
@@ -1152,8 +1152,8 @@
         "renewableInstallations": "Saubere Energie",
         "radiationSpike": "Strahlungsspitze",
         "radiationElevated": "Erhöhte Strahlung",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "Kanada-Straßen",
+        "canadaAlerts": "Kanada-Warnungen",
         "notamAirspace": "NOTAM-Luftraumbeschränkungen",
         "no2Activity": "Industrielle Aktivität"
       },
@@ -1289,7 +1289,7 @@
     "climate": {
       "noAnomalies": "Keine wesentlichen Anomalien festgestellt",
       "zone": "Zone",
-      "temp": "Temp",
+      "temp": "Temp.",
       "precip": "Niederschlag",
       "severityLabel": "Schweregrad",
       "severity": {
@@ -1444,7 +1444,7 @@
         "air": "LUFT",
         "sea": "SEE"
       },
-      "strike": "STRIKE",
+      "strike": "ANGRIFF",
       "staleWarning": "Zwischengespeicherte Daten verwendet — Live-Feed vorübergehend nicht verfügbar",
       "updated": "Aktualisiert:",
       "theaters": {
@@ -1473,7 +1473,7 @@
       "all": "Alle",
       "conferencesCount": "{{count}} Konferenzen",
       "onMap": "{{count}} auf der Karte",
-      "techmemeEvents": "Techmeme Events ↗",
+      "techmemeEvents": "Techmeme-Termine ↗",
       "today": "HEUTE",
       "soon": "BALD",
       "infoTooltip": "<strong>Tech-Veranstaltungen</strong> Bevorstehende und aktuelle Technologieveranstaltungen: Konferenzen, Produkteinführungen, regulatorische Anhörungen und Earnings Calls. Aggregiert aus offiziellen Veranstaltungskalendern und Branchenquellen."
@@ -1727,7 +1727,7 @@
       "empty": "Keine Beiträge verfügbar",
       "disabled": "X-Nachrichtenkonto-Relay nicht aktiv",
       "filterAll": "Alle",
-      "filterBreaking": "Breaking",
+      "filterBreaking": "Eilmeldungen",
       "filterConflict": "Konflikt",
       "filterOsint": "Open-Source-Geheimdienstarbeit",
       "filterMiddleeast": "Naher Osten",
@@ -1759,7 +1759,7 @@
       "undisclosed": "Nicht bekannt gegeben",
       "sectors": {
         "ports": "Häfen",
-        "pipelines": "Pipelines",
+        "pipelines": "Rohrleitungen",
         "energy": "Energie",
         "datacenters": "Rechenzentren",
         "airports": "Flughäfen",
@@ -1937,7 +1937,7 @@
       "overall": "Gesamt",
       "verdict": {
         "buy": "KAUFEN",
-        "cash": "CASH"
+        "cash": "BARGELD"
       },
       "bullish": "{{count}}/{{total}} bullisch",
       "signals": {
@@ -1945,7 +1945,7 @@
         "flow": "Mittelfluss",
         "regime": "Regime",
         "btcTrend": "BTC-Trend",
-        "hashRate": "Hash Rate",
+        "hashRate": "Hashrate",
         "fearGreed": "Angst & Gier",
         "momentum": "Momentum"
       },
@@ -2318,20 +2318,21 @@
       "proLocked": "Upgraden Sie auf PRO für Rohstoff-Anfälligkeitsbewertung"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> Live-Schiffsverfolgung durch die Straße von Hormuz, einem der weltweit kritischsten Ölengpässe. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Durchsatzveränderungen. Etwa 20% des globalen Ölvorrats durchlaufen täglich diesen Engpass.",
+      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Status und Datum stammen aus der neuesten Analyse der WTO.",
       "title": "Hormuz-Handels-Tracker",
       "noData": "Keine Daten",
       "notAvailable": "N/V",
       "chartUnavailable": "Chartdaten nicht verfügbar",
       "sourcePrefix": "Quelle:",
       "units": {
-        "ktPerDay": "kt/Tag",
-        "generic": "Einheiten"
+        "index": "Index"
       },
       "errors": {
         "unavailable": "Hormuz-Daten nicht verfügbar",
         "failedToLoad": "Fehler beim Laden"
-      }
+      },
+      "analysisDate": "WTO-Analyse {{date}}",
+      "indexNote": "Versandindex nach Volumen, Durchschnitt Januar–März 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live-Webcams</strong> Liveübertragungen von geopolitisch bedeutsamen Orten weltweit: Konfliktzonen, Hauptstädte, Grenzübergänge und strategische Engpässe. Streams von YouTube und öffentlichen Netzwerken."
@@ -2402,7 +2403,7 @@
       "directions": {
         "long": "LONG",
         "short": "SHORT",
-        "hedge": "HEDGE"
+        "hedge": "ABSICHERUNG"
       },
       "rationale": "Begründung:",
       "driver": "Treiber:",
@@ -2545,7 +2546,7 @@
       "cotSection": "Öl / Gold / Silber + Index-Positionierung (Commitments of Traders)",
       "stocksSection": "Top-US-Aktien: Tägliche Verschiebung",
       "longShort": "Long {{long}} / Short {{short}}",
-      "lev": "Lev",
+      "lev": "Hebel",
       "noCot": "Keine Commitments of Traders-Zeilen verfügbar.",
       "noStocks": "Keine Top-Aktienkurse verfügbar.",
       "reportDate": "Commitments of Traders-Report-Datum: {{date}}",
@@ -2690,7 +2691,7 @@
     "frameworkSelector": {
       "label": "Analyse-Framework",
       "defaultNeutral": "Standard (Neutral)",
-      "titlePrefix": "Framework: {{name}}",
+      "titlePrefix": "Analyserahmen: {{name}}",
       "titleNone": "Analyse-Framework"
     },
     "sanctionsPressure": {
@@ -2849,7 +2850,7 @@
         "hormuzStrait": "Hormus",
         "malaccaStrait": "Malakka",
         "suez": "Suez",
-        "babElMandeb": "Bab el-Mandeb",
+        "babElMandeb": "Bab al-Mandab",
         "bosphorus": "Türkische Meerengen",
         "panama": "Panama",
         "doverStrait": "Straße von Dover"
@@ -2902,8 +2903,8 @@
         "hoursAgo": "vor {{count}}h",
         "daysAgo": "vor {{count}}T",
         "compactNow": "jetzt",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactMinutes": "{{count}} Min.",
+        "compactHours": "{{count}} Std.",
         "compactDays": "{{count}}T"
       }
     },
@@ -2927,7 +2928,7 @@
       "infoTooltip": "<strong>Wechselkurse</strong> Stress stuft 45 Währungen nach ihrer größten Abnahme über 24 Monate ein, mit der 12-Monats-Veränderung. Spotquoten verwenden separate US-Dollar- und Euro-Basis. Russische Rubel-Quoten sind Rubel pro Einheit. Quellen umfassen Yahoo Finance, die Europäische Zentralbank und die Bank of Russia.",
       "tabs": {
         "stress": "Währungs-Stress",
-        "spot": "Spot",
+        "spot": "Kassa",
         "rub": "RUB"
       },
       "currency": "Währung",
@@ -3097,7 +3098,7 @@
             "government": "Regierung oder Politik",
             "supply-chain": "Lieferkette oder Betrieb",
             "developer": "Entwickler",
-            "student": "Student",
+            "student": "Studierende",
             "other": "Sonstiges"
           }
         },
@@ -3155,7 +3156,7 @@
       "navPerformance": "Betroffene Luftfahrzeuge",
       "samples": "Anzahl betroffener Luftfahrzeuge",
       "aircraft": "Gesichtete Luftfahrzeuge",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "H3-Hexagon"
     },
     "flight": {
       "groundStop": "STARTVERBOT",
@@ -3285,7 +3286,7 @@
       "baseline": "Basislinie",
       "components": {
         "news": "Nachrichten",
-        "cii": "Country Instability Index",
+        "cii": "Länderinstabilitätsindex",
         "geo": "Geo",
         "military": "Militär"
       },
@@ -3314,7 +3315,7 @@
     "chokepointCongestion": "ENGPASS-STAU",
     "darkening": "VERDUNKELUNG",
     "density": "DICHTE",
-    "darkShips": "DARK SHIPS",
+    "darkShips": "SCHIFFE OHNE AIS",
     "vesselCount": "SCHIFFSANZAHL",
     "window": "ZEITFENSTER",
     "region": "REGION",
@@ -3390,7 +3391,7 @@
         "faang": "BIG TECH",
         "unicorn": "EINHORN",
         "public": "BÖRSENNOTIERT",
-        "tech": "TECH"
+        "tech": "TECHNIK"
       },
       "marketCap": "MARKTKAP",
       "employees": "MITARBEITER"
@@ -3444,7 +3445,7 @@
       "speed": "GESCHW.",
       "heading": "KURS",
       "hexCode": "HEX-CODE",
-      "squawk": "SQUAWK",
+      "squawk": "TRANSPONDERCODE",
       "attribution": "Quelle: adsb.lol (ODbL) · OpenSky Network",
       "climbRate": "STEIGGESCHWINDIGKEIT",
       "manufacturer": "HERSTELLER",
@@ -3571,7 +3572,7 @@
       "mossad_idf": "Mossad/IDF",
       "nato_hq": "NATO-Hauptquartier",
       "pla_mss_activity": "PLA/MSS-Aktivität",
-      "pentagon_pizza_index": "Pentagon Pizza Index",
+      "pentagon_pizza_index": "Pentagon-Pizza-Index",
       "piracy_conflict": "Piraterie/Konflikt",
       "qatar_al_udeid": "Katar/Al Udeid",
       "saudi_gip_mbs": "Saudisches GIP/MBS",

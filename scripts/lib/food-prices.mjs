@@ -260,13 +260,14 @@ const REPORT_BASES = {
 export function discoverReports(html, source) {
   const base = REPORT_BASES[source];
   if (!base) throw new Error('unknown food report source');
+  const baseUrl = new URL(base);
   const reports = new Map();
   if (source === 'pbs') {
     for (const match of html.matchAll(/annexureExcel\s*:\s*["']([^"']+)["']/gi)) {
-      const url = new URL(decodeHtmlEntities(match[1]), new URL('/', base));
+      const url = new URL(decodeHtmlEntities(match[1]), `${baseUrl.origin}/`);
       const parts = /\/Annex_(\d{2})\.(\d{2})\.(\d{4})\.xlsx$/i.exec(url.pathname);
       const date = parts ? isoDate(parts[3], parts[2], parts[1]) : '';
-      if (date && url.hostname === new URL(base).hostname && url.protocol === 'https:') reports.set(date, { date, url: url.href });
+      if (date && url.hostname === baseUrl.hostname && url.protocol === 'https:') reports.set(date, { date, url: url.href });
     }
   }
   const hasAnnexReports = reports.size > 0;
@@ -276,7 +277,7 @@ export function discoverReports(html, source) {
     const match = [open, href, inner];
     let url;
     try { url = new URL(decodeHtmlEntities(match[1]), base); } catch { continue; }
-    if (url.hostname !== new URL(base).hostname || url.protocol !== 'https:') continue;
+    if (url.hostname !== baseUrl.hostname || url.protocol !== 'https:') continue;
     let date = '';
     if (source === 'da') {
       const parts = /^Price-Monitoring-([A-Za-z]+)-(\d{1,2})-(\d{4})\.pdf$/i.exec(url.pathname.split('/').at(-1));
