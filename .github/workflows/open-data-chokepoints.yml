@@ -76,6 +76,8 @@ jobs:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false))
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      branch: ${{ steps.reconcile.outputs.branch }}
     permissions:
       contents: write
       pull-requests: write
@@ -157,3 +159,16 @@ jobs:
           git commit -m "$PR_TITLE"
           git push --set-upstream origin "$BRANCH_NAME"
           gh pr create --base main --head "$BRANCH_NAME" --title "$PR_TITLE" --body "$PR_BODY"
+
+  # A PR opened with github.token fires no workflow_run event for its CI, so
+  # Deploy Gate would reach it only on its 30-minute sweep.
+  deploy-gate:
+    needs: publish
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/bot-pr-deploy-gate.yml
+    with:
+      branch: ${{ needs.publish.outputs.branch }}
