@@ -7,7 +7,8 @@ import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 // wide with a 13px title, and the same badges squeezed "Intel Feed" to 5px. The
 // title must stay readable and nothing in the header may overlap at any width.
 // A long title may take a second line but never a third. On a touch screen each
-// header control must take a tap anywhere in a 24x24 box (WCAG 2.5.8).
+// header control must take a tap anywhere in a 24x24 box (WCAG 2.5.8). Status
+// badges shrunk to dots must still tell their states apart without colour.
 
 const VIEWPORTS = [
   { width: 1920, height: 1200, mobile: false },
@@ -157,6 +158,71 @@ function addInfoButton(page: Page): Promise<void> {
   });
 }
 
+// Reads a collapsed dot's shape from its pixels, ignoring its colour: a ring or
+// an outline leaves the middle empty, and only a square inks its corners. Ink
+// is measured against the header behind the dot and scaled to the dot's
+// strongest pixel, so the colour of the state does not count. The page fades
+// colour changes over 200ms, so the capture skips to the end of the fade.
+async function dotShape(page: Page, selector: string): Promise<string> {
+  const dot = page.locator(selector);
+  await dot.scrollIntoViewIfNeeded();
+  const box = (await dot.boundingBox())!;
+  const pad = 3;
+  const clip = { x: Math.floor(box.x) - pad, y: Math.floor(box.y) - pad, width: Math.ceil(box.width) + 2 * pad + 1, height: Math.ceil(box.height) + 2 * pad + 1 };
+  const png = (await page.screenshot({ clip, animations: 'disabled' })).toString('base64');
+  return page.evaluate(async ({ png, clip, box }) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${png}`;
+    await img.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const scale = img.width / clip.width;
+    const pixel = (x: number, y: number) => ctx.getImageData(Math.floor((x - clip.x) * scale), Math.floor((y - clip.y) * scale), 1, 1).data;
+    const background = pixel(clip.x + 0.5, clip.y + 0.5);
+    const distance = (p: Uint8ClampedArray) => Math.max(...[0, 1, 2].map((i) => Math.abs(p[i]! - background[i]!)));
+    let strongest = 0;
+    for (let y = box.y; y < box.y + box.height; y += 0.5 / scale) {
+      for (let x = box.x; x < box.x + box.width; x += 0.5 / scale) strongest = Math.max(strongest, distance(pixel(x, y)));
+    }
+    if (strongest < 48) return 'invisible';
+    const ink = (dx: number, dy: number) => distance(pixel(box.x + dx, box.y + dy)) / strongest;
+    const mid = box.width / 2;
+    const middle = (ink(mid - 0.5, mid - 0.5) + ink(mid + 0.5, mid - 0.5) + ink(mid - 0.5, mid + 0.5) + ink(mid + 0.5, mid + 0.5)) / 4;
+    const corner = (ink(0.75, 0.75) + ink(box.width - 0.75, 0.75) + ink(0.75, box.height - 0.75) + ink(box.width - 0.75, box.height - 0.75)) / 4;
+    return `${middle > 0.5 ? 'filled' : 'hollow'} ${corner > 0.5 ? 'square' : 'circle'}`;
+  }, { png, clip, box });
+}
+
+// Sets a header badge to a state the way Panel.ts does and reads its dot.
+async function badgeShapes(page: Page, selector: string, states: Record<string, string>): Promise<Record<string, string>> {
+  const shapes: Record<string, string> = {};
+  for (const [state, className] of Object.entries(states)) {
+    await page.evaluate(({ selector, className, state }) => {
+      const badge = document.querySelector<HTMLElement>(selector)!;
+      badge.className = className;
+      badge.textContent = state.toUpperCase();
+      badge.title = state;
+    }, { selector, className, state });
+    shapes[state] = await dotShape(page, selector);
+  }
+  return shapes;
+}
+
+const DATA_BADGE = '#panelsGrid .panel[data-panel="politics"] .panel-header > .panel-data-badge';
+const DATA_STATES = { live: 'panel-data-badge live', cached: 'panel-data-badge cached', unavailable: 'panel-data-badge unavailable' };
+const FRESHNESS_BADGE = '#panelsGrid .panel[data-panel="politics"] [data-freshness-probe]';
+const FRESHNESS_STATES = {
+  fresh: 'panel-freshness-badge panel-freshness-fresh',
+  stale: 'panel-freshness-badge panel-freshness-stale',
+  very_stale: 'panel-freshness-badge panel-freshness-very_stale',
+  no_data: 'panel-freshness-badge panel-freshness-no_data',
+  disabled: 'panel-freshness-badge panel-freshness-disabled',
+  error: 'panel-freshness-badge panel-freshness-error',
+};
+
 interface TapTarget { control: string; box: string; misses: string[] }
 
 // Probes each header control at the corners, edge midpoints and center of a
@@ -265,16 +331,12 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
     const middle = (box: { y: number; height: number } | null) => (box ? box.y + box.height / 2 : NaN);
     expect.soft(Math.abs(middle(watchlist) - middle(close)), `${label}: watchlist button lines up with close beside a long title`).toBeLessThanOrEqual(1.5);
     expect.soft((await measure(page)).overlaps, `${label}: overlapping header items with a watchlist button`).toEqual([]);
-    // Forced colors strip the dot's background, so a collapsed dot must keep a
-    // border or it disappears.
+    // Forced colors strip the dot's background, so a collapsed dot must still
+    // draw something.
     await page.emulateMedia({ forcedColors: 'active' });
-    const borders = await page.evaluate(() => {
-      const header = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-header')!;
-      const width = (sel: string) => parseFloat(getComputedStyle(header.querySelector<HTMLElement>(sel)!).borderTopWidth);
-      return { freshness: width('[data-freshness-probe]'), live: width('.panel-data-badge.live') };
-    });
-    for (const [name, w] of Object.entries(borders)) {
-      if (m.panel <= collapseAt[name]!) expect.soft(w, `${label}: ${name} dot keeps a border in forced colors`).toBeGreaterThanOrEqual(1);
+    const dots = { freshness: FRESHNESS_BADGE, live: `${DATA_BADGE}.live` };
+    for (const [name, selector] of Object.entries(dots)) {
+      if (m.panel <= collapseAt[name]!) expect.soft(await dotShape(page, selector), `${label}: ${name} dot is visible in forced colors`).not.toBe('invisible');
     }
     // Below 300px a cached data badge becomes a dot like LIVE does.
     await page.emulateMedia({ forcedColors: 'none' });
@@ -293,6 +355,28 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
       expect.soft((await cachedBadge()).border, `${label}: cached dot keeps a border in forced colors`).toBeGreaterThanOrEqual(1);
     } else {
       expect.soft(cached.width, `${label}: cached badge keeps its text`).toBeGreaterThan(20);
+    }
+    // Below 300px the dots tell their states apart by shape, not by colour
+    // alone (WCAG 1.4.1), with and without forced colors. A freshness dot uses
+    // the same shapes: fresh reads like live, stale like cached, and missing
+    // or failed data like unavailable.
+    if (m.panel <= 300) {
+      for (const forcedColors of ['none', 'active'] as const) {
+        await page.emulateMedia({ forcedColors });
+        const where = `${label}${forcedColors === 'active' ? ' in forced colors' : ''}`;
+        const data = await badgeShapes(page, DATA_BADGE, DATA_STATES);
+        expect.soft(Object.values(data), `${where}: data badge dots are visible`).not.toContain('invisible');
+        expect.soft(new Set(Object.values(data)).size, `${where}: live, cached and unavailable dots differ in shape ${JSON.stringify(data)}`).toBe(3);
+        const freshness = await badgeShapes(page, FRESHNESS_BADGE, FRESHNESS_STATES);
+        expect.soft(freshness, `${where}: freshness dots use the data badge shapes`).toEqual({
+          fresh: data.live,
+          stale: data.cached,
+          very_stale: data.cached,
+          no_data: data.unavailable,
+          disabled: data.unavailable,
+          error: data.unavailable,
+        });
+      }
     }
     await context.close();
   }
