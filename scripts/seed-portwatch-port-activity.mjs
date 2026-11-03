@@ -1829,7 +1829,8 @@ export async function fetchAll(progress, {
   // over, no upstream contact this run.
   let freshFetchedCount = 0;
 
-  const coldFetchCap = needsFetch.some(({ prevPayload }) => classifyDeferredPayload(prevPayload, now).status !== 'stale')
+  const isOutOfCoverage = ({ prevPayload }) => classifyDeferredPayload(prevPayload, now).status !== 'stale';
+  const coldFetchCap = needsFetch.some(isOutOfCoverage)
     ? MAX_RECOVERY_COLD_FETCH_PER_RUN
     : MAX_COLD_FETCH_PER_RUN;
   // Oldest-attempt-first provides the durable rotation state that a random
@@ -1838,7 +1839,7 @@ export async function fetchAll(progress, {
   // naturally sort first, retaining #4293's no-cache recovery property. Order
   // every queue, not only a truncated one: the dispatch deadline can cut any
   // queue short, and the countries out of coverage must lead it.
-  const ordered = orderColdFetchQueue(needsFetch, undefined, { now });
+  const ordered = orderColdFetchQueue(needsFetch, undefined, { now, isOutOfCoverage });
   needsFetch = ordered;
   if (needsFetch.length > coldFetchCap) {
     const deferred = ordered.slice(coldFetchCap);

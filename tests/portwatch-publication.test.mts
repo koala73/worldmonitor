@@ -434,6 +434,26 @@ test('a queue below the cold-fetch cap still dispatches the expired country firs
     `${expiredIso3} is out of coverage and must be in the first batch, got ${dispatched.slice(0, 6).join(',')}`);
 });
 
+test('a corrupt cached country outranks countries that are still published', () => {
+  // ports: [] without zeroActivity is unusable, so the country is out of
+  // coverage even though its cache timestamp is recent.
+  const input = fixtures();
+  const queued = countries.slice(0, 40);
+  for (const [index, [, iso2]] of countries.entries()) {
+    input[`${PREFIX}${iso2}`].cacheWrittenAt = NOW - 6.5 * DAY;
+    input[`${PREFIX}${iso2}`].asof = index < queued.length ? '2026-09-08' : '2026-09-09';
+  }
+  const [corruptIso3, corruptIso2] = queued[queued.length - 1];
+  input[`${PREFIX}${corruptIso2}`].cacheWrittenAt = NOW - DAY;
+  input[`${PREFIX}${corruptIso2}`].ports = [];
+  const result = runProducer(input);
+  const dispatched = [...new Set(result.requests.map((query: string) => new URLSearchParams(query))
+    .filter((query: URLSearchParams) => query.get('where')?.startsWith('ISO3=') && !query.has('outStatistics'))
+    .map((query: URLSearchParams) => query.get('where')!.match(/ISO3='([^']+)'/)![1]))];
+  assert.ok(dispatched.slice(0, 6).includes(corruptIso3),
+    `${corruptIso3} is out of coverage and must be in the first batch, got ${dispatched.slice(0, 6).join(',')}`);
+});
+
 test('12-hour rolling recovery stays complete across daily advances within the original traffic cap', () => {
   let state = fixtures();
   const cadenceMs = PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
