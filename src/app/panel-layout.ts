@@ -3142,12 +3142,9 @@ export class PanelLayoutManager implements AppModule {
 
     this.lazyImportedPanel('tech-readiness', () => import('@/components/TechReadinessPanel'), 'TechReadinessPanel', (TechReadinessPanel) => {
       const p = new TechReadinessPanel();
-      // Only auto-refresh on variants whose bootstrap seeds techReadiness
-      // (full + tech). On commodity/finance/energy the seed key is empty
-      // and the 5s fetch at services/economic/index.ts:694 just times out.
-      // The panel is still created so users who opt-in via settings can
-      // trigger a manual refresh from its UI.
-      if (isPanelInVariantDefaults('tech-readiness')) {
+      // Auto-refresh where the variant ships the panel (full + tech) or the
+      // user enabled it. The seed is global, so it loads on every edition.
+      if (isPanelInVariantDefaults('tech-readiness') || this.ctx.panelSettings['tech-readiness']?.enabled === true) {
         void p.refresh();
       }
       return p;
