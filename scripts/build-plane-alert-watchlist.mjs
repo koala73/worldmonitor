@@ -28,6 +28,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { validatePlaneAlertWatchlist } from './_plane-alert-registry.mjs';
 
 export const PLANE_ALERT_SOURCE_URL = 'https://github.com/sdr-enthusiasts/plane-alert-db';
 export const PLANE_ALERT_CSV_URL = 'https://raw.githubusercontent.com/sdr-enthusiasts/plane-alert-db/main/plane-alert-db.csv';
@@ -183,7 +184,7 @@ export function diffWatchlist(committed, rebuilt) {
   const added = [...after.keys()].filter((hex) => !before.has(hex));
   const removed = [...before.keys()].filter((hex) => !after.has(hex));
   const changed = [...after.keys()].filter((hex) => before.has(hex) && before.get(hex) !== after.get(hex));
-  const metadata = ['schemaVersion', 'includedGroups', 'columns', 'license', 'sourceFileUrl']
+  const metadata = ['schemaVersion', 'includedGroups', 'columns', 'license', 'source', 'sourceUrl', 'sourceFileUrl', 'licenseUrl', 'attribution']
     .filter((field) => JSON.stringify(committed[field]) !== JSON.stringify(rebuilt[field]));
   return { added, removed, changed, metadata };
 }
@@ -206,6 +207,8 @@ async function main(argv) {
     retrievedAt: new Date().toISOString().slice(0, 10),
     sourceSha256: createHash('sha256').update(text).digest('hex'),
   });
+  const errors = validatePlaneAlertWatchlist(rebuilt);
+  if (errors.length) throw new Error(`refusing invalid plane-alert refresh: ${errors.slice(0, 3).join('; ')}`);
   const summary = `${rebuilt.rows} aircraft from ${rebuilt.upstreamRows} upstream rows (${rebuilt.excludedRows} outside ${INCLUDED_GROUPS.join('/')}, ${rebuilt.skippedRows} skipped)`;
   if (check) {
     const committed = JSON.parse(readFileSync(PLANE_ALERT_TARGET, 'utf8'));

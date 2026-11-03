@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { describe, it } from 'node:test';
 
 import {
@@ -174,4 +177,33 @@ describe('military flight seeder watchlist join', () => {
     assert.equal(audit.watchlistMatched, 1);
     assert.equal(audit.watchlistMatchRate, 0.5);
   });
+});
+
+
+it('detects changes to generated provenance fields', () => {
+  for (const field of ['source', 'sourceUrl', 'licenseUrl', 'attribution']) {
+    const changed = { ...committed, [field]: 'incorrect provenance' };
+    assert.ok(diffWatchlist(changed, committed).metadata.includes(field), field);
+  }
+});
+
+it('rejects an undersized refresh before overwriting the existing watchlist', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'plane-alert-refresh-'));
+  try {
+    mkdirSync(join(dir, 'data'));
+    for (const name of ['build-plane-alert-watchlist.mjs', '_plane-alert-registry.mjs']) {
+      copyFileSync(new URL(`../scripts/${name}`, import.meta.url), join(dir, name));
+    }
+    const target = join(dir, 'data/plane-alert-watchlist.json');
+    const original = 'preserve existing watchlist';
+    writeFileSync(target, original);
+    const input = join(dir, 'input.csv');
+    writeFileSync(input, fixtureCsv);
+    const result = spawnSync(process.execPath, [join(dir, 'build-plane-alert-watchlist.mjs'), '--input', input], { encoding: 'utf8' });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /at least 5000 aircraft/);
+    assert.equal(readFileSync(target, 'utf8'), original);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
