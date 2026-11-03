@@ -44,6 +44,8 @@ The repository contains the whole stack, not a demo build:
 
 **Native administration routes.** `/api/local-*` returns `403` in Docker mode. Operator settings are changed through Compose environment variables or Docker secrets, then a container recreate.
 
+**Native installs.** `LOCAL_API_MODE=docker` names the self-hosted mode; it does not require Docker. Outside containers, bind the Redis REST proxy and the relay to loopback with `SRH_BIND_HOST=127.0.0.1` and `RELAY_BIND_HOST=127.0.0.1`. `SELF_HOSTING.md` covers platforms where the `@bufbuild/buf` install script fails, such as FreeBSD.
+
 ## AGPL obligations, plainly
 
 AGPL-3.0-only permits commercial use, private use, modification and redistribution. What it asks in return depends on what you do:

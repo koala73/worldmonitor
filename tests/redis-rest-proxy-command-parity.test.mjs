@@ -35,6 +35,12 @@ import {
   STATUS_LUA,
 } from '../scripts/lib/x-post-budget.cjs';
 import { SOURCE_RETRY_CLAIM_SCRIPT } from '../scripts/_bundle-runner.mjs';
+import {
+  PUBLISH_ACTIVE_AND_META_SCRIPT,
+  ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
+  ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
+  BACKFILL_META_IF_ACTIVE_SCRIPT,
+} from '../scripts/seed-military-bases.mjs';
 import { CABLE_HEALTH_REPAIR_SCRIPT } from '../shared/cable-health-repair-script.mjs';
 import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.cjs';
 import { recordHistoryCost } from '../scripts/lib/intel-history-cost.mjs';
@@ -325,6 +331,23 @@ describe('redis-rest-proxy command gate', () => {
       false,
       'a one-character script variant must stay blocked',
     );
+  });
+
+  it('pins every military-bases version-switch script by exact bytes', () => {
+    // A self-hosted military-bases seed sends these four through the proxy;
+    // unpinned, its publish, sweep, staging-TTL and meta-backfill all 403.
+    const gate = buildGate();
+    for (const [name, script] of Object.entries({
+      PUBLISH_ACTIVE_AND_META_SCRIPT,
+      ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
+      ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
+      BACKFILL_META_IF_ACTIVE_SCRIPT,
+    })) {
+      assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true, `${name} must be pinned in the proxy`);
+      assert.equal(accepts(gate, ['EVAL', script, '2', 'a', 'b']), true, `${name} must pass the gate`);
+      assert.equal(accepts(gate, ['EVAL', `${script} `, '2', 'a', 'b']), false,
+        `a modified ${name} must be rejected`);
+    }
   });
 
   it('pins every X Post budget script by exact bytes', () => {
