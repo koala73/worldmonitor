@@ -1896,6 +1896,7 @@ export class DataLoaderManager implements AppModule {
     options: NewsIntelLoadOptions = { recordBaselineSample: true, digestPending: false },
     generation = this.newsLoadGeneration,
     recordSelectedFreshness: (servedStale: boolean) => void = () => undefined,
+    recordCrossEditionMiss: (missed: boolean) => void = () => undefined,
   ): Promise<NewsItem[]> {
     const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
     const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
@@ -1910,12 +1911,13 @@ export class DataLoaderManager implements AppModule {
 
     // The server builds intel into the full edition's digest only, so an Intel
     // Feed added on another edition reads that one.
-    const selection = SITE_VARIANT !== 'full' && !(digestSelection?.digest.categories && 'intel' in digestSelection.digest.categories)
-      ? await this.selectEditionDigest('full', getCurrentLanguage())
-      : digestSelection;
+    const readsFullEdition = SITE_VARIANT !== 'full' && !(digestSelection?.digest.categories && 'intel' in digestSelection.digest.categories);
+    const selection = readsFullEdition ? await this.selectEditionDigest('full', getCurrentLanguage()) : digestSelection;
     // A newer load (a source toggle, say) may have started during the fetch.
     if (!this.isCurrentNewsLoad(generation)) return [];
     const digest = selection?.digest;
+    // This edition's digest can land while the full one is down; the load must stay retryable.
+    if (readsFullEdition) recordCrossEditionMiss(!(digest?.categories && 'intel' in digest.categories));
     const digestServedStale = selection?.servedStale ?? true;
 
     if (digest?.categories && 'intel' in digest.categories) {
@@ -2184,6 +2186,7 @@ export class DataLoaderManager implements AppModule {
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
     const categoryServedStale = new Map<string, boolean>();
     let intelServedStale = false;
+    let intelCrossEditionMissed = false;
     const newsPass = await runNewsLoadPass(
       {
         categories,
@@ -2209,6 +2212,7 @@ export class DataLoaderManager implements AppModule {
               options,
               generation,
               servedStale => { intelServedStale = servedStale; },
+              missed => { intelCrossEditionMissed = missed; },
             )
           )
           : undefined,
@@ -2275,7 +2279,7 @@ export class DataLoaderManager implements AppModule {
     const digestCovered = categories.some(({ key, isCustom }) => !isCustom && key in digestCategories);
     const anyItemsCollected = collectedNews.length > 0;
     const noCategoriesToLoad = categories.length === 0;
-    const landed = digestCovered || anyItemsCollected || noCategoriesToLoad;
+    const landed = (digestCovered || anyItemsCollected || noCategoriesToLoad) && !intelCrossEditionMissed;
     if (landed) this.loadedNewsSignature = newsWorkListSignature(this.newsWorkList(categories, loadsIntel), disabledAtLoadStart);
     this.ctx.initialLoadComplete = true;
 
