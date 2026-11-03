@@ -3849,7 +3849,8 @@
         "fullOriginal": "Vollständiger Originaltext"
       },
       "placeReports_one": "{{place}} ({{count}} Meldung)",
-      "placeReports_other": "{{place}} ({{count}} Meldungen)"
+      "placeReports_other": "{{place}} ({{count}} Meldungen)",
+      "issuedBy": "Herausgegeben von"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Ausfall der Notrufnummer 911",

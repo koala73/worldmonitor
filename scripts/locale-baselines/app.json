@@ -3168,6 +3168,7 @@
   "popups.mapPopup.history.recordedFatalities": "Recorded fatalities",
   "popups.mapPopup.history.totalFatalities": "Total fatalities",
   "popups.mapPopup.history.treaties": "Treaties",
+  "popups.mapPopup.issuedBy": "Issued by",
   "popups.mapPopup.listSeparator": ", ",
   "popups.mapPopup.natural.agencyIdentifier": "Agency identifier",
   "popups.mapPopup.natural.agencyObservations": "Agency observations",

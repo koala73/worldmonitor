@@ -11,6 +11,7 @@ import {
   parseGdeltReportTitle, severityLabel, statusLabel, weatherEventLabel,
 } from '@/components/map-popup-i18n';
 import { PopupProseTranslator, renderTranslatableText } from '@/components/map-popup-translate';
+import { mapAlert } from '@/services/weather';
 import de from '@/locales/de.json';
 import en from '@/locales/en.json';
 
@@ -125,6 +126,24 @@ describe('MapPopup in German', () => {
     expect(document.body.textContent).toContain(weather.headline);
     expect(document.querySelectorAll('.popup-translate-btn').length).toBeGreaterThan(0);
     expect(calls).toEqual([]);
+  });
+  it('shows the issuing authority and an http(s)-only source link for weather alerts', () => {
+    popup.show({ type: 'weather', x: 10, y: 10, data: { ...weather, issuedBy: 'NWS Houston/Galveston TX', sourceUrl: 'https://api.weather.gov/alerts/w1' } as never });
+    expect(document.body.textContent).toContain(de.popups.mapPopup.issuedBy);
+    expect(document.body.textContent).toContain('NWS Houston/Galveston TX');
+    const link = document.querySelector<HTMLAnchorElement>('.popup-provenance a.popup-source-link');
+    expect(link?.getAttribute('href')).toBe('https://api.weather.gov/alerts/w1');
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(link?.getAttribute('target')).toBe('_blank');
+    popup.show({ type: 'weather', x: 10, y: 10, data: { ...weather, source: 'eccc', sourceUrl: 'javascript:alert(1)' } as never });
+    expect(document.body.textContent).toContain('Environment and Climate Change Canada');
+    expect(document.querySelector('.popup-provenance a')).toBeNull();
+  });
+  it('keeps provenance fields when mapping the bootstrap shape', () => {
+    const mapped = mapAlert({ ...weather, source: 'swic', authority: 'Météo-France', sourceUrl: 'https://severeweather.wmo.int/x' } as never);
+    expect(mapped.issuedBy).toBe('Météo-France');
+    expect(mapped.sourceUrl).toBe('https://severeweather.wmo.int/x');
+    expect(mapped.source).toBe('swic');
   });
   it('localizes APT tactics and the Targets label, keeping MITRE ids', () => {
     popup.show({ type: 'apt', data: apt as never, x: 10, y: 10 });

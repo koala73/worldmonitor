@@ -3828,7 +3828,8 @@
         "notOfficial": "공식 번역이 아닙니다",
         "fullOriginal": "원문 전체"
       },
-      "placeReports_other": "{{place}} (보도 {{count}}건)"
+      "placeReports_other": "{{place}} (보도 {{count}}건)",
+      "issuedBy": "발표 기관"
     },
     "weatherEvents": {
       "911TelephoneOutage": "911 긴급전화 장애",

@@ -3918,7 +3918,8 @@
         "fullOriginal": "Teljes eredeti szöveg"
       },
       "placeReports_one": "{{place}} ({{count}} jelentés)",
-      "placeReports_other": "{{place}} ({{count}} jelentés)"
+      "placeReports_other": "{{place}} ({{count}} jelentés)",
+      "issuedBy": "Kiadta"
     },
     "weatherEvents": {
       "911TelephoneOutage": "A 911-es segélyhívó kiesése",

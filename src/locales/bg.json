@@ -3849,7 +3849,8 @@
         "fullOriginal": "Пълен оригинален текст"
       },
       "placeReports_one": "{{place}} ({{count}} съобщение)",
-      "placeReports_other": "{{place}} ({{count}} съобщения)"
+      "placeReports_other": "{{place}} ({{count}} съобщения)",
+      "issuedBy": "Издадено от"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Прекъсване на спешния номер 911",

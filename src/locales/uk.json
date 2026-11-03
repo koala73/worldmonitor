@@ -3960,7 +3960,8 @@
       "placeReports_one": "{{place}} ({{count}} повідомлення)",
       "placeReports_few": "{{place}} ({{count}} повідомлення)",
       "placeReports_many": "{{place}} ({{count}} повідомлень)",
-      "placeReports_other": "{{place}} ({{count}} повідомлення)"
+      "placeReports_other": "{{place}} ({{count}} повідомлення)",
+      "issuedBy": "Видано"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Збій екстреного номера 911",

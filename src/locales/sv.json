@@ -3465,7 +3465,8 @@
         "fullOriginal": "Fullständig originaltext"
       },
       "placeReports_one": "{{place}} ({{count}} rapport)",
-      "placeReports_other": "{{place}} ({{count}} rapporter)"
+      "placeReports_other": "{{place}} ({{count}} rapporter)",
+      "issuedBy": "Utfärdat av"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Avbrott i nödnumret 911",

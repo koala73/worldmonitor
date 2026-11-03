@@ -3918,7 +3918,8 @@
         "fullOriginal": "पूरा मूल पाठ"
       },
       "placeReports_one": "{{place}} ({{count}} रिपोर्ट)",
-      "placeReports_other": "{{place}} ({{count}} रिपोर्ट)"
+      "placeReports_other": "{{place}} ({{count}} रिपोर्ट)",
+      "issuedBy": "जारीकर्ता"
     },
     "weatherEvents": {
       "911TelephoneOutage": "911 आपातकालीन नंबर बाधित",

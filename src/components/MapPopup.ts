@@ -247,6 +247,24 @@ interface PopupData {
   y: number;
 }
 
+// Agency names stay in English (they are proper names).
+const WEATHER_SOURCE_AUTHORITY: Record<string, string> = {
+  nws: 'US National Weather Service',
+  eccc: 'Environment and Climate Change Canada',
+  swic: 'WMO Severe Weather Information Centre',
+  imd: 'India Meteorological Department',
+};
+
+function weatherSourceUrl(raw: string | undefined): URL | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export class MapPopup {
   private container: HTMLElement;
   private popup: HTMLElement | null = null;
@@ -1509,8 +1527,23 @@ export class MapPopup {
           </div>
         </div>
         ${alert.description ? renderTranslatableText(alert.description, { className: 'popup-description', maxLength: 300, official: true }) : ''}
+        ${this.renderWeatherProvenance(alert)}
       </div>
     `;
+  }
+
+  /** Issuing authority and an http(s)-only source link for an official alert. */
+  private renderWeatherProvenance(alert: WeatherAlert): string {
+    const authority = alert.issuedBy?.trim() || (alert.source ? WEATHER_SOURCE_AUTHORITY[alert.source.toLowerCase()] : undefined);
+    const link = weatherSourceUrl(alert.sourceUrl) ?? weatherSourceUrl(alert.id);
+    if (!authority && !link) return '';
+    const authorityRow = authority
+      ? `<div class="popup-stat"><span class="stat-label">${t('popups.mapPopup.issuedBy')}</span><span class="stat-value" data-source="${escapeHtml(alert.source ?? '')}">${escapeHtml(authority)}</span></div>`
+      : '';
+    const linkRow = link
+      ? `<div class="popup-stat"><span class="stat-label">${t('popups.source')}</span><span class="stat-value"><a class="popup-source-link" href="${escapeHtml(link.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.host)}</a></span></div>`
+      : '';
+    return `<div class="popup-stats popup-provenance">${authorityRow}${linkRow}</div>`;
   }
 
   private getTimeUntil(date: Date | string): string {

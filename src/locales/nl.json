@@ -3465,7 +3465,8 @@
         "fullOriginal": "Volledige originele tekst"
       },
       "placeReports_one": "{{place}} ({{count}} melding)",
-      "placeReports_other": "{{place}} ({{count}} meldingen)"
+      "placeReports_other": "{{place}} ({{count}} meldingen)",
+      "issuedBy": "Uitgegeven door"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Storing alarmnummer 911",

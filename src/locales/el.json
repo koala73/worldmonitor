@@ -3849,7 +3849,8 @@
         "fullOriginal": "Πλήρες αρχικό κείμενο"
       },
       "placeReports_one": "{{place}} ({{count}} αναφορά)",
-      "placeReports_other": "{{place}} ({{count}} αναφορές)"
+      "placeReports_other": "{{place}} ({{count}} αναφορές)",
+      "issuedBy": "Εκδόθηκε από"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Διακοπή της γραμμής έκτακτης ανάγκης 911",

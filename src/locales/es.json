@@ -3870,7 +3870,8 @@
       },
       "placeReports_one": "{{place}} ({{count}} informe)",
       "placeReports_many": "{{place}} ({{count}} informes)",
-      "placeReports_other": "{{place}} ({{count}} informes)"
+      "placeReports_other": "{{place}} ({{count}} informes)",
+      "issuedBy": "Emitido por"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Caída del número de emergencias 911",

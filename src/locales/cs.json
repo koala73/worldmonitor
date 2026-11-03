@@ -3891,7 +3891,8 @@
       "placeReports_one": "{{place}} ({{count}} zpráva)",
       "placeReports_few": "{{place}} ({{count}} zprávy)",
       "placeReports_many": "{{place}} ({{count}} zprávy)",
-      "placeReports_other": "{{place}} ({{count}} zpráv)"
+      "placeReports_other": "{{place}} ({{count}} zpráv)",
+      "issuedBy": "Vydal"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Výpadek tísňové linky 911",

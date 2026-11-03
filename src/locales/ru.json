@@ -3891,7 +3891,8 @@
       "placeReports_one": "{{place}} ({{count}} сообщение)",
       "placeReports_few": "{{place}} ({{count}} сообщения)",
       "placeReports_many": "{{place}} ({{count}} сообщений)",
-      "placeReports_other": "{{place}} ({{count}} сообщения)"
+      "placeReports_other": "{{place}} ({{count}} сообщения)",
+      "issuedBy": "Выпущено"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Сбой экстренного номера 911",

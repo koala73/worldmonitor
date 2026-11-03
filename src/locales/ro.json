@@ -3870,7 +3870,8 @@
       },
       "placeReports_one": "{{place}} ({{count}} raport)",
       "placeReports_few": "{{place}} ({{count}} rapoarte)",
-      "placeReports_other": "{{place}} ({{count}} de rapoarte)"
+      "placeReports_other": "{{place}} ({{count}} de rapoarte)",
+      "issuedBy": "Emis de"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Întrerupere a numărului de urgență 911",

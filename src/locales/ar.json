@@ -3933,7 +3933,8 @@
       "placeReports_two": "{{place}} (تقريران)",
       "placeReports_few": "{{place}} ({{count}} تقارير)",
       "placeReports_many": "{{place}} ({{count}} تقريرًا)",
-      "placeReports_other": "{{place}} ({{count}} تقرير)"
+      "placeReports_other": "{{place}} ({{count}} تقرير)",
+      "issuedBy": "صادر عن"
     },
     "weatherEvents": {
       "911TelephoneOutage": "انقطاع رقم الطوارئ 911",

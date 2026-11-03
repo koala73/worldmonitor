@@ -3870,7 +3870,8 @@
       },
       "placeReports_one": "{{place}} ({{count}} segnalazione)",
       "placeReports_many": "{{place}} ({{count}} segnalazioni)",
-      "placeReports_other": "{{place}} ({{count}} segnalazioni)"
+      "placeReports_other": "{{place}} ({{count}} segnalazioni)",
+      "issuedBy": "Emesso da"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Guasto del numero di emergenza 911",

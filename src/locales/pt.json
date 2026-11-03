@@ -3484,7 +3484,8 @@
       },
       "placeReports_one": "{{place}} ({{count}} relato)",
       "placeReports_many": "{{place}} ({{count}} relatos)",
-      "placeReports_other": "{{place}} ({{count}} relatos)"
+      "placeReports_other": "{{place}} ({{count}} relatos)",
+      "issuedBy": "Emitido por"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Falha do número de emergência 911",

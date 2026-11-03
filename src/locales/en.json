@@ -3964,7 +3964,8 @@
         "fullOriginal": "Full original text"
       },
       "placeReports_one": "{{place}} ({{count}} report)",
-      "placeReports_other": "{{place}} ({{count}} reports)"
+      "placeReports_other": "{{place}} ({{count}} reports)",
+      "issuedBy": "Issued by"
     },
     "weatherEvents": {
       "911TelephoneOutage": "911 Telephone Outage",

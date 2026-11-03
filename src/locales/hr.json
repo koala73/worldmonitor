@@ -3950,7 +3950,8 @@
       },
       "placeReports_one": "{{place}} ({{count}} izvješće)",
       "placeReports_few": "{{place}} ({{count}} izvješća)",
-      "placeReports_other": "{{place}} ({{count}} izvješća)"
+      "placeReports_other": "{{place}} ({{count}} izvješća)",
+      "issuedBy": "Izdao"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Prekid hitnog broja 911",

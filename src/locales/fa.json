@@ -3918,7 +3918,8 @@
         "fullOriginal": "متن کامل اصلی"
       },
       "placeReports_one": "{{place}} ({{count}} گزارش)",
-      "placeReports_other": "{{place}} ({{count}} گزارش)"
+      "placeReports_other": "{{place}} ({{count}} گزارش)",
+      "issuedBy": "صادرشده توسط"
     },
     "weatherEvents": {
       "911TelephoneOutage": "قطعی شماره اضطراری ۹۱۱",

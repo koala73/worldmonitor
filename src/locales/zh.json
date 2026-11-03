@@ -3828,7 +3828,8 @@
         "notOfficial": "非官方译文",
         "fullOriginal": "完整原文"
       },
-      "placeReports_other": "{{place}}（{{count}} 篇报道）"
+      "placeReports_other": "{{place}}（{{count}} 篇报道）",
+      "issuedBy": "发布机构"
     },
     "weatherEvents": {
       "911TelephoneOutage": "911紧急电话中断",

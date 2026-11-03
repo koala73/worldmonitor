@@ -3891,7 +3891,8 @@
       "placeReports_one": "{{place}} ({{count}} doniesienie)",
       "placeReports_few": "{{place}} ({{count}} doniesienia)",
       "placeReports_many": "{{place}} ({{count}} doniesień)",
-      "placeReports_other": "{{place}} ({{count}} doniesienia)"
+      "placeReports_other": "{{place}} ({{count}} doniesienia)",
+      "issuedBy": "Wydane przez"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Awaria numeru alarmowego 911",

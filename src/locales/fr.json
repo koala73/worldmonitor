@@ -3870,7 +3870,8 @@
       },
       "placeReports_one": "{{place}} ({{count}} signalement)",
       "placeReports_many": "{{place}} ({{count}} signalements)",
-      "placeReports_other": "{{place}} ({{count}} signalements)"
+      "placeReports_other": "{{place}} ({{count}} signalements)",
+      "issuedBy": "Émis par"
     },
     "weatherEvents": {
       "911TelephoneOutage": "Panne du numéro d'urgence 911",
