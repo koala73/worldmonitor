@@ -391,6 +391,13 @@ export class MapPopup {
     // Close button handler via event delegation on the popup element.
     // This avoids re-querying and re-attaching listeners after innerHTML.
     const openedPopup = this.popup;
+    // <details> toggle does not bubble; capture it so opening the full original re-clamps.
+    this.popup.addEventListener('toggle', (e) => {
+      if ((e.target as HTMLElement | null)?.classList?.contains('popup-full-original')
+        && this.popup === openedPopup && openedPopup.isConnected) {
+        this.clampPopupToViewport();
+      }
+    }, true);
     this.popup.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('.popup-close') || target.closest('.map-popup-sheet-handle')) {
