@@ -714,6 +714,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_global_air_activity',
+    title: 'Global military air activity',
     _outputBudgetBytes: 32768,
     description:
       'Global military air activity: how many aircraft are aloft worldwide right now, by type and theater. ' +
