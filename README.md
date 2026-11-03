@@ -88,7 +88,6 @@ All site variants and desktop binaries are built from a single codebase and ship
 | Desktop binaries (Windows / macOS Apple Silicon / macOS Intel / Linux AppImage x64 and ARM64) | Stable | One Tauri binary for every variant — install World Monitor and switch to tech, finance, commodity, energy, or happy in-app. There is deliberately no per-variant download |
 | `worldmonitor` npm package (terminal dashboard and CLI) | Stable | Published from [`cli/`](cli/) on every `cli-v*` tag |
 
-
 Issues filed against any of the above are triaged from the same backlog — see the [issues board](https://github.com/koala73/worldmonitor/issues) for currently-open work.
 
 ---
