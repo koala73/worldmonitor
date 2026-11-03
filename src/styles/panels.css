@@ -84,6 +84,90 @@
 }
 
 /* ----------------------------------------------------------
+   Panel tables
+   A panel is narrow on a phone and in the desktop sidebar, whose
+   columns can be 214px wide, so table rules key on the panel's
+   width rather than the viewport's.
+   ---------------------------------------------------------- */
+.panel > .panel-content {
+  container: panel-body / inline-size;
+}
+
+@container panel-body (max-width: 480px) {
+  .panel-content table :is(th, td) {
+    padding-inline: 4px;
+  }
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* A table too wide for its panel scrolls sideways. Overlay scrollbars
+   (macOS, touch) hide that, so the edge with more content fades out,
+   matching the tab strip above. The fade follows the scroll position
+   and needs scroll-driven animations; elsewhere the table still scrolls. */
+@property --table-scroll-fade-start {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --table-scroll-fade-end {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes table-scroll-fade-start {
+  to { --table-scroll-fade-start: 24px; }
+}
+
+@keyframes table-scroll-fade-end {
+  from { --table-scroll-fade-end: 24px; }
+}
+
+/* Set from a keyframe so the mask exists only while the region can
+   scroll; an idle timeline applies nothing. */
+@keyframes table-scroll-fade-mask {
+  from, to {
+    mask-image: linear-gradient(to right, transparent, #000 var(--table-scroll-fade-start), #000 calc(100% - var(--table-scroll-fade-end)), transparent);
+  }
+}
+
+@keyframes table-scroll-fade-mask-rtl {
+  from, to {
+    mask-image: linear-gradient(to left, transparent, #000 var(--table-scroll-fade-start), #000 calc(100% - var(--table-scroll-fade-end)), transparent);
+  }
+}
+
+@supports (animation-timeline: scroll()) {
+  .panel > .panel-content:has(table),
+  .table-scroll {
+    animation: table-scroll-fade-start linear both, table-scroll-fade-end linear both, table-scroll-fade-mask linear both;
+    animation-timeline: scroll(self inline), scroll(self inline), scroll(self inline);
+    animation-range: 0 24px, calc(100% - 24px) 100%, normal;
+  }
+
+  /* A pinned first column already marks the leading edge; fading it
+     would wash out the row labels. */
+  .table-scroll-pinned-start {
+    animation: table-scroll-fade-end linear both, table-scroll-fade-mask linear both;
+    animation-timeline: scroll(self inline), scroll(self inline);
+    animation-range: calc(100% - 24px) 100%, normal;
+  }
+
+  [dir="rtl"] .panel > .panel-content:has(table),
+  [dir="rtl"] .table-scroll {
+    animation-name: table-scroll-fade-start, table-scroll-fade-end, table-scroll-fade-mask-rtl;
+  }
+
+  [dir="rtl"] .table-scroll-pinned-start {
+    animation-name: table-scroll-fade-end, table-scroll-fade-mask-rtl;
+  }
+}
+
+/* ----------------------------------------------------------
    China Intelligence Panels
    Keep the China surfaces on the same compact, source-led rhythm
    as the rest of the dashboard. The panels still expose their
@@ -833,14 +917,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 768px) {
-  .climate-table th,
-  .climate-table td {
-    padding-inline: 4px;
-  }
-
+@container panel-body (max-width: 480px) {
   .climate-zone {
     white-space: normal;
+  }
+}
+
+@media (max-width: 768px) {
+  .climate-zone {
     overflow-wrap: anywhere;
   }
 }
@@ -1153,21 +1237,11 @@
   white-space: nowrap;
 }
 
-@media (max-width: 768px) {
-  .ucdp-table th,
-  .ucdp-table td {
-    padding-inline: 4px;
-  }
-
+@container panel-body (max-width: 480px) {
   .ucdp-country,
   .ucdp-deaths,
   .ucdp-actors {
     white-space: normal;
-  }
-
-  .ucdp-country,
-  .ucdp-actors {
-    overflow-wrap: anywhere;
   }
 
   .ucdp-actors {
@@ -1176,6 +1250,13 @@
 
   .ucdp-range {
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .ucdp-country,
+  .ucdp-actors {
+    overflow-wrap: anywhere;
   }
 }
 
@@ -3278,7 +3359,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 .gb-scroll { overflow-x: auto; }
 .gb-table { border-collapse: collapse; width: 100%; font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1)); }
 .gb-table th, .gb-table td { padding: 4px 6px; border: 1px solid rgba(255,255,255,0.08); text-align: right; white-space: nowrap; }
-.gb-item-col, .gb-item-name { text-align: left; min-width: 110px; position: sticky; left: 0; z-index: 2; background: var(--panel-bg); }
+.gb-item-col, .gb-item-name { text-align: start; min-width: 110px; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
 .gb-country-header { text-align: center; font-weight: 600; min-width: 80px; }
 .gb-country-name { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.7; }
 .gb-cell { position: relative; }
@@ -3851,9 +3932,9 @@ a.hub-top-story {
 }
 .fx-table th.fx-ccy,
 .fx-table td.fx-ccy {
-  text-align: left;
+  text-align: start;
   position: sticky;
-  left: 0;
+  inset-inline-start: 0;
   z-index: 1;
   background: var(--panel-bg, var(--bg));
 }
