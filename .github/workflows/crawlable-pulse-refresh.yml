@@ -47,6 +47,8 @@ jobs:
     # can roughly double the attempts), and a timed-out job writes no
     # snapshot at all, so the budget is generous.
     timeout-minutes: 120
+    outputs:
+      branch: ${{ steps.reconcile.outputs.branch }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -222,3 +224,16 @@ jobs:
             --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
             --body "$body" \
             "${draft[@]}"
+
+  # A PR opened with github.token fires no workflow_run event for its CI, so
+  # Deploy Gate would reach it only on its 30-minute sweep.
+  deploy-gate:
+    needs: refresh
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/bot-pr-deploy-gate.yml
+    with:
+      branch: ${{ needs.refresh.outputs.branch }}
