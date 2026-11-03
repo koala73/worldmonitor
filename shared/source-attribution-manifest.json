@@ -4548,6 +4548,20 @@
       ]
     },
     {
+      "host": "files.ember-energy.org",
+      "provider": "Ember electricity data",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (Ember dataset)",
+      "attribution": "Ember; link to the Ember dataset and preserve its license notice.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-ember-electricity.mjs"
+        }
+      ]
+    },
+    {
       "host": "finance.worldmonitor.app",
       "provider": "finance.worldmonitor.app",
       "kind": "structured",
@@ -9433,21 +9447,18 @@
     },
     {
       "host": "storage.googleapis.com",
-      "provider": "Ember electricity data",
+      "provider": "api.gdeltproject.org",
       "kind": "structured",
       "observed": true,
-      "license": "CC BY 4.0 (Ember dataset)",
-      "attribution": "Ember; link to the Ember dataset and preserve its license notice.",
-      "status": "reviewed",
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.googleapis.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
       "references": [
         {
           "path": "scripts/_conflict-gdelt-bulk.mjs"
         },
         {
           "path": "scripts/_gdelt-bulk-materializer.mjs"
-        },
-        {
-          "path": "scripts/seed-ember-electricity.mjs"
         }
       ]
     },

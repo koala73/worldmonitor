@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **847 active source hosts** representing **829 active providers** (**363 structured/API**, **468 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **848 active source hosts** representing **829 active providers** (**364 structured/API**, **468 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -67,6 +67,7 @@ This generated inventory covers **847 active source hosts** representing **829 a
 | api.exa.ai (api.exa.ai) | structured — scripts/ais-relay.cjs, scripts/lib/company-monitoring-exa.mjs, scripts/seed-bigmac.mjs, scripts/seed-grocery-basket.mjs, +1 more |
 | api.fiscaldata.treasury.gov (api.fiscaldata.treasury.gov) | structured — scripts/seed-national-debt.mjs, scripts/seed-supply-chain-trade.mjs |
 | api.gdeltproject.org (api.gdeltproject.org) | structured — scripts/seed-gdelt-intel.mjs, scripts/seed-unrest-events.mjs |
+| api.gdeltproject.org (storage.googleapis.com) | structured — scripts/_conflict-gdelt-bulk.mjs, scripts/_gdelt-bulk-materializer.mjs |
 | api.github.com (api.github.com) | structured — api/_github-release.js, scripts/dispatch-stale-railway-reconcile.mjs, scripts/freeze-github-stars.mjs, scripts/resolve-railway-reconcile-control.mjs, +1 more |
 | api.groq.com (api.groq.com) | Excluded / candidate — No current fetch observed |
 | api.iea.org (api.iea.org) | structured — scripts/seed-iea-oil-stocks.mjs |
@@ -250,7 +251,7 @@ This generated inventory covers **847 active source hosts** representing **829 a
 | Egypt Independent (www.egyptindependent.com) | feed — shared/news-catalog.json |
 | eia.gov (eia.gov) | feed — shared/news-catalog.json |
 | Element84 Earth Search STAC (earth-search.aws.element84.com) | structured — server/worldmonitor/imagery/v1/search-imagery.ts |
-| Ember electricity data (storage.googleapis.com) | structured — scripts/_conflict-gdelt-bulk.mjs, scripts/_gdelt-bulk-materializer.mjs, scripts/seed-ember-electricity.mjs |
+| Ember electricity data (files.ember-energy.org) | structured — scripts/seed-ember-electricity.mjs |
 | en.irna.ir (en.irna.ir) | feed — shared/news-catalog.json |
 | en.mehrnews.com (en.mehrnews.com) | feed — shared/news-catalog.json |
 | en.sge.com.cn (en.sge.com.cn) | structured — scripts/seed-physical-premiums.mjs |
