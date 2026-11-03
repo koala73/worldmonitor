@@ -904,12 +904,12 @@ function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: numb
  *   `cachedFetchJson` and `cachedFetchJsonWithMeta`.
  */
 export interface CachedFetchOpts {
-  timeoutMs?: number;
-  cacheFetcherErrors?: boolean;
   /** When arming isolate-local unavailable backoff, store this tag beside the key. */
   unavailableBackoffReason?: (err: unknown) => string | undefined;
   /** Override default arming (skip for caller cancel). Default: skip CachedFetchCancelledError only. */
   shouldArmUnavailableBackoff?: (err: unknown) => boolean;
+  timeoutMs?: number;
+  cacheFetcherErrors?: boolean;
 }
 
 /**
@@ -934,10 +934,10 @@ export async function cachedFetchJson<T extends object>(
   const coreOpts = opts === undefined
     ? undefined
     : {
-        timeoutMs: opts.timeoutMs,
-        cacheFetcherErrors: opts.cacheFetcherErrors,
         unavailableBackoffReason: opts.unavailableBackoffReason,
         shouldArmUnavailableBackoff: opts.shouldArmUnavailableBackoff,
+        timeoutMs: opts.timeoutMs,
+        cacheFetcherErrors: opts.cacheFetcherErrors,
       };
   const result = await cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, coreOpts, 'cachedFetchJson');
   return result.data;
