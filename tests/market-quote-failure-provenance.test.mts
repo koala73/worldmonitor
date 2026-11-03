@@ -77,7 +77,7 @@ interface Harness {
 }
 
 /** Minimal copy of the seed-first harness: fake Upstash + fake Finnhub. */
-function installHarness(init: { provider?: Record<string, ProviderReply> } = {}): Harness {
+function installHarness(init: { provider?: Record<string, ProviderReply>; onProviderFetch?: () => void } = {}): Harness {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
   process.env.VERCEL_ENV = 'production';
@@ -118,6 +118,7 @@ function installHarness(init: { provider?: Record<string, ProviderReply> } = {})
     if (url.startsWith('https://finnhub.io/api/v1/quote')) {
       const symbol = decodeURIComponent(new URL(url).searchParams.get('symbol') ?? '');
       harness.finnhubCalls.push(symbol);
+      init.onProviderFetch?.();
       const reply = provider.get(symbol);
       if (!reply) return json({ c: 0, dp: 0, h: 0, l: 0 });
       if (reply.waitForAbort) {
@@ -187,6 +188,28 @@ describe('gap-fetch failure provenance (#6475)', () => {
       );
       assert.equal(resp.rateLimited, true, 'the response-level flag must rise for both callers');
     }
+  });
+
+  it('a joiner of a caller-cancelled lookup reports the leader cutoff with its own budget still available', async () => {
+    let onProviderFetch!: () => void;
+    const providerStarted = new Promise<void>((resolve) => { onProviderFetch = resolve; });
+    const harness = installHarness({ provider: { INTC: { waitForAbort: true } }, onProviderFetch });
+    __setUpstreamDeadlineForTests(80);
+    const leader = listMarketQuotes(CTX, { symbols: ['INTC'] });
+    // Join only after the leader enters the provider, without a clock-based sleep.
+    await Promise.race([
+      providerStarted,
+      leader.then(() => { throw new Error('leader returned before reaching the provider'); }),
+    ]);
+    assert.equal(harness.finnhubCalls.length, 1);
+    __setUpstreamDeadlineForTests(1_000);
+    const joiner = listMarketQuotes(CTX, { symbols: ['INTC'] });
+
+    for (const response of await Promise.all([leader, joiner])) {
+      assert.equal(reasonFor(response, 'INTC'), 'MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED');
+      assert.equal(response.rateLimited, false);
+    }
+    assert.equal(harness.finnhubCalls.length, 1, 'both callers shared the cancelled lookup');
   });
 
   it('a genuine provider failure still arms the backoff and reports PROVIDER_ERROR', async () => {
@@ -287,6 +310,27 @@ describe('provider adapters report caller cancellation as its own outcome (#6475
     };
 
     const cascade = new CascadeQuoteProvider([finnhub, second]);
+    assert.deepEqual(await cascade.fetchQuote('NVDA', controller.signal), { status: 'rate_limited' });
+  });
+
+  it('preserves an earlier 429 when the fallback is cancelled in flight', async () => {
+    const controller = new AbortController();
+    const cascade = new CascadeQuoteProvider([
+      {
+        name: 'rate-limited-primary',
+        canQuote: () => true,
+        fetchQuote: async () => ({ status: 'rate_limited' } as const),
+      },
+      {
+        name: 'cancelled-fallback',
+        canQuote: () => true,
+        fetchQuote: async () => {
+          controller.abort();
+          return { status: 'cancelled' } as const;
+        },
+      },
+    ]);
+
     assert.deepEqual(await cascade.fetchQuote('NVDA', controller.signal), { status: 'rate_limited' });
   });
 

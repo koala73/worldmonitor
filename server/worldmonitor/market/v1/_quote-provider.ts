@@ -298,7 +298,9 @@ export class CascadeQuoteProvider implements MarketQuoteProvider {
         return { status: 'cancelled' };
       }
       const outcome = await provider.fetchQuote(symbol, signal);
-      if (outcome.status === 'cancelled') return outcome;
+      if (outcome.status === 'cancelled') {
+        return sawRateLimited ? { status: 'rate_limited' } : outcome;
+      }
       if (outcome.status === 'ok') {
         // Observability without credentials: which authorized provider filled the gap.
         console.info(`[quote-provider] ${symbol} via ${provider.name}`);
