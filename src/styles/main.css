@@ -29037,6 +29037,22 @@ body.map-width-resizing {
   .panel-count {
     border: 1px solid CanvasText;
   }
+
+  /* The narrow-header dots are a filled background with border: 0 at higher
+     specificity, so forced colors would erase them. Same selectors, later in
+     the file, restore the border. */
+  @container (max-width: 420px) {
+    .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live {
+      border: 1px solid CanvasText;
+    }
+  }
+
+  @container (max-width: 300px) {
+    .panel-freshness-badge,
+    .panel-data-badge.live {
+      border: 1px solid CanvasText;
+    }
+  }
 }
 
 /* Keyboard-activatable drill-in rows (#7023): visible focus for the

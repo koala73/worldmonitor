@@ -153,6 +153,17 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
         expect.soft(b.width, `${label}: ${name} badge keeps its text`).toBeGreaterThan(20);
       }
     }
+    // Forced colors strip the dot's background, so a collapsed dot must keep a
+    // border or it disappears.
+    await page.emulateMedia({ forcedColors: 'active' });
+    const borders = await page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-header')!;
+      const width = (sel: string) => parseFloat(getComputedStyle(header.querySelector<HTMLElement>(sel)!).borderTopWidth);
+      return { freshness: width('[data-freshness-probe]'), live: width('.panel-data-badge.live') };
+    });
+    for (const [name, w] of Object.entries(borders)) {
+      if (m.panel <= collapseAt[name]!) expect.soft(w, `${label}: ${name} dot keeps a border in forced colors`).toBeGreaterThanOrEqual(1);
+    }
     await context.close();
   }
 });
