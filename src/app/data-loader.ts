@@ -1913,6 +1913,8 @@ export class DataLoaderManager implements AppModule {
     const selection = SITE_VARIANT !== 'full' && !(digestSelection?.digest.categories && 'intel' in digestSelection.digest.categories)
       ? await this.selectEditionDigest('full', getCurrentLanguage())
       : digestSelection;
+    // A newer load (a source toggle, say) may have started during the fetch.
+    if (!this.isCurrentNewsLoad(generation)) return [];
     const digest = selection?.digest;
     const digestServedStale = selection?.servedStale ?? true;
 
