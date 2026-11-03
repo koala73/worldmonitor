@@ -4,7 +4,8 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 // map: the map view's position, layers and imagery choices (views/map.mjs).
-export const DEFAULT_PREFS = { theme: 'neon', animations: true, view: 'overview', map: null };
+// phenomena: voice on/off and playback speed for the explainer stage (views/phenomena.mjs).
+export const DEFAULT_PREFS = { theme: 'neon', animations: true, view: 'overview', map: null, phenomena: null };
 
 export function prefsPath(env = process.env, home = homedir()) {
   const base = env.XDG_CONFIG_HOME || join(home, '.config');
