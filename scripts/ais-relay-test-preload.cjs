@@ -5,11 +5,18 @@
 // load it.
 const { EventEmitter } = require('node:events');
 const https = require('node:https');
+// Node 24 loads the shared TypeScript module directly (type stripping), so the
+// emergency codes have one source of truth across TS, ESM and CommonJS.
+const { EMERGENCY_CODES } = require('../shared/aircraft-emergencies.ts');
 
 const googleStatuses = (process.env.RELAY_TEST_GOOGLE_STATUS_SEQUENCE || '429')
   .split(',')
   .map((value) => Number(value.trim()))
   .filter(Number.isFinite);
+// Raw Google Flights results-page bodies consumed per response; exhausted -> ''.
+const googleBodies = process.env.RELAY_TEST_GOOGLE_BODY_SEQUENCE
+  ? JSON.parse(process.env.RELAY_TEST_GOOGLE_BODY_SEQUENCE)
+  : [];
 // OpenSky upstream statuses consumed per request; exhausted -> 429 (throttled,
 // the production condition under test). A 200 serves one military-callsign
 // state inside iran-theater bounds.
@@ -33,6 +40,7 @@ const adsbModes = (process.env.RELAY_TEST_ADSB_MODE_SEQUENCE || '')
   .filter(Boolean);
 // OpenSky /states/all row: [icao24, callsign, country, t_pos, t_contact, lon, lat, alt, onGround, velocity, heading]
 const OPENSKY_MIL_STATE = ['ae9999', 'RCH999  ', '', 0, 0, 45, 30, 10000, false, 400, 90];
+const emergencyCodes = process.env.RELAY_TEST_EMERGENCY_ROWS === '1' ? [...EMERGENCY_CODES] : [];
 const rssCalls = new Map();
 
 function nextValue(values, fallback) {
@@ -89,12 +97,13 @@ function request({ callback, statusCode, body = '', headers = {}, error = null, 
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options) => {
   const target = String(url);
-  if (target.includes('FlightsFrontendService')) {
+  if (target.includes('/travel/flights/search')) {
     const status = nextValue(googleStatuses, 200);
+    const body = nextValue(googleBodies, '');
     return {
       status,
       ok: status >= 200 && status < 300,
-      text: async () => '',
+      text: async () => body,
     };
   }
   if (target.includes('api.adsb.lol')) {
@@ -111,7 +120,8 @@ globalThis.fetch = async (url, options) => {
         ok: true,
         statusText: 'OK',
         text: async () => '',
-        json: async () => ({ ac: [{ hex: 'ae8888', flight: 'RCH888', lat: 30, lon: 45, alt_baro: 10000, track: 90, gs: 400 }] }),
+        json: async () => ({ ac: [{ hex: 'ae8888', flight: 'RCH888', lat: 30, lon: 45, alt_baro: 10000, track: 90, gs: 400 },
+          ...emergencyCodes.map((squawk, index) => ({ hex: `ae000${index}`, flight: `RCH${squawk}`, squawk, lat: 30, lon: 45, alt_baro: 10000 }))] }),
       };
     }
     // Theater-posture fallback chain: adsb.lol is down, forcing Wingbits.
@@ -154,7 +164,8 @@ globalThis.fetch = async (url, options) => {
       text: async () => '',
       json: async () => ([{
         alias: 'iran-theater',
-        data: [{ h: 'ae1234', f: 'RCH123', la: 30, lo: 45, ab: 30000, th: 90, gs: 400 }],
+        data: [{ h: 'ae1234', f: 'RCH123', la: 30, lo: 45, ab: 30000, th: 90, gs: 400 },
+          ...emergencyCodes.map((sq, index) => ({ h: `ae000${index}`, f: `RCH${sq}`, sq, la: 30, lo: 45, ab: 30000 }))],
       }]),
     };
   }
@@ -196,7 +207,13 @@ https.get = function patchedGet(...args) {
     return request({
       callback: cb,
       statusCode: status,
-      body: JSON.stringify({ states: status === 200 ? [OPENSKY_MIL_STATE] : [], time: Date.now() }),
+      body: JSON.stringify({ states: status === 200 ? [OPENSKY_MIL_STATE, ...emergencyCodes.map((squawk, index) => {
+        const row = Array.from({ length: 15 }, (_, i) => OPENSKY_MIL_STATE[i] ?? null);
+        row[0] = `ae000${index}`;
+        row[1] = `RCH${squawk}`;
+        row[14] = squawk;
+        return row;
+      })] : [], time: Date.now() }),
       headers,
       delayMs: openskyResponseDelayMs,
     });

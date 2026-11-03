@@ -15,6 +15,7 @@ import {
   createMarketChartFocusController,
   type MarketChartFocusController,
 } from './market-chart-interactions';
+import { declareOverlay } from '@/utils/open-modal';
 
 let modalEl: HTMLElement | null = null;
 let focusController: MarketChartFocusController | null = null;
@@ -54,6 +55,8 @@ export function openMarketChartModal(stock: MarketData): void {
   modalEl.className = 'market-chart-overlay';
   modalEl.setAttribute('role', 'dialog');
   modalEl.setAttribute('aria-modal', 'true');
+  // Generated SVG from data already on the page.
+  declareOverlay(modalEl, { reload: 'safe' });
   modalEl.setAttribute('aria-label', t('components.markets.chart.title', { symbol: stock.display }));
 
   const changeClass = getChangeClass(stock.change);
@@ -71,7 +74,7 @@ export function openMarketChartModal(stock: MarketData): void {
             <div class="market-chart-symbol">${escapeHtml(stock.display)}</div>
           </div>
           <div class="market-chart-quote">
-            <span class="market-chart-price">${formatPrice(stock.price)}</span>
+            <span class="market-chart-price">${escapeHtml(formatPrice(stock.price))}</span>
             <span class="market-change ${changeClass}">${formatChange(stock.change)}</span>
           </div>
         </div>

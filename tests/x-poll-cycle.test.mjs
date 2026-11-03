@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { createXPollCycle, xPollSlot } = require('../scripts/lib/x-poll-cycle.cjs');
+const { createPollGenerationGuard } = require('../scripts/lib/poll-generation-guard.cjs');
 const xNewsAccounts = require('../scripts/lib/x-news-accounts.cjs');
 const {
   createXPostBudget,
@@ -158,9 +159,12 @@ function createHarness(options = {}) {
       calls.publish.push(args);
       return typeof publishResult === 'function' ? publishResult(args) : publishResult;
     },
-    upstashReleaseLockIfOwner: async (key, owner) => { calls.release.push({ key, owner }); return true; },
-    getPollGeneration: () => generation,
-    scheduleRetry: (retry) => calls.retry.push(retry),
+    upstashReleaseLockIfOwner: async (key, owner) => {
+      calls.release.push({ key, owner });
+      return options.releaseLock ? options.releaseLock() : true;
+    },
+    getPollGeneration: options.getPollGeneration ?? (() => generation),
+    scheduleRetry: options.scheduleRetry ?? ((retry) => calls.retry.push(retry)),
     randomId: () => 'deadbeef',
     X_ENABLED: options.xEnabled ?? true,
     X_BEARER_TOKEN: 'test-bearer',
@@ -313,7 +317,7 @@ describe('X provider and publication clocks', () => {
     assert.equal(harness.state.lastError, 'rate limited during deletion lookup');
   });
 
-  it('persists private attempt diagnostics without refreshing public freshness or seed meta', async () => {
+  it('publishes failure metadata without inventing a first success', async () => {
     const harness = createHarness({
       pollXFeed: async () => pollResult({
         cycleComplete: false,
@@ -326,7 +330,9 @@ describe('X provider and publication clocks', () => {
     });
     await harness.cycle.pollOnce({ generation: 1 });
 
-    assert.equal(harness.calls.publish[0].meta, null);
+    assert.equal(harness.calls.publish[0].meta.sourceState, 'degraded');
+    assert.equal(harness.calls.publish[0].meta.fetchedAt, 0);
+    assert.equal(harness.calls.publish[0].meta.lastAttemptAt, NOW);
     assert.equal(harness.state.lastAttemptAt, NOW);
     assert.equal(harness.state.lastProviderSuccessAt, NOW);
     assert.equal(harness.state.lastAcceptedPublicationAt, 0);
@@ -362,6 +368,117 @@ describe('X provider and publication clocks', () => {
     assert.equal(harness.calls.setNx.length, 0);
     assert.equal(harness.calls.publish.length, 0);
   });
+});
+
+describe('X failure diagnostics and backoff recovery', () => {
+  it('retains last-good and its age through an outage, then clears the failure on recovery', async () => {
+    let clock = NOW;
+    let failed = true;
+    const lastSuccess = NOW - 3 * 60 * 60 * 1000;
+    const harness = createHarness({
+      now: () => clock,
+      state: makeState({ items: [post('7000000000000000010'), post('7000000000000000012')], lastPollAt: lastSuccess }),
+      pollXFeed: async () => pollResult(failed ? {
+        listAccepted: false, cycleComplete: false, providerSuccess: false,
+        lastError: 'X credits depleted', errorCode: 'X_CREDITS_EXHAUSTED',
+      } : { items: [post('7000000000000000011')] }),
+    });
+    await harness.cycle.pollOnce({ generation: 1 });
+    const meta = harness.calls.publish[0].meta;
+    assert.equal(meta.fetchedAt, lastSuccess);
+    assert.equal(meta.recordCount, 2);
+    assert.equal(meta.sourceState, 'degraded');
+    assert.equal(meta.errorCode, 'X_CREDITS_EXHAUSTED');
+    assert.equal(harness.state.items[0].postId, '7000000000000000010');
+    assert.ok(harness.calls.warn.some((line) => line.includes('X_CREDITS_EXHAUSTED')));
+    const { __testing__: health } = await import('../api/health.js');
+    const sourceMeta = health.readSeedMeta(health.SEED_META.xFeed,
+      new Map([[META_KEY, JSON.stringify(meta)]]), new Map(), clock);
+    assert.equal(sourceMeta.seedAge, 180);
+    assert.equal(sourceMeta.seedError, true);
+    assert.equal(sourceMeta.metaCount, 2);
+    const entry = health.classifyKey('xFeed', CACHE_KEY, { allowOnDemand: false }, {
+      now: clock,
+      keyStrens: new Map([[CACHE_KEY, 1024]]), keyErrors: new Map(),
+      keyMetaValues: new Map([[META_KEY, JSON.stringify(meta)]]), keyMetaErrors: new Map(),
+    });
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(entry.records, 2);
+    assert.equal(entry.seedAgeMin, 180);
+    assert.equal(entry.errorCode, 'X_CREDITS_EXHAUSTED');
+    const compact = health.healthResponseBody({ checks: { xFeed: entry } }, true);
+    assert.deepEqual(compact.problems.xFeed, entry);
+    failed = false;
+    clock += 15 * 60 * 1000;
+    await harness.cycle.pollOnce({ generation: 1 });
+    const recovered = harness.calls.publish[1].meta;
+    assert.equal(recovered.sourceState, 'ok');
+    assert.equal(recovered.errorCode, undefined);
+    assert.equal(recovered.fetchedAt, clock);
+  });
+
+  it('rechecks at a backoff deadline just after a UTC boundary without waiting another slot', async () => {
+    let clock = Date.parse('2026-09-03T12:30:00.000Z');
+    const harness = createHarness({
+      now: () => clock,
+      state: makeState({ rateLimitedUntil: clock + 127, backoffCause: 'credits' }),
+    });
+    await harness.cycle.pollOnce({ generation: 1 });
+    assert.equal(harness.calls.poll.length, 0);
+    assert.equal(harness.calls.timer.length, 1);
+    assert.equal(harness.calls.timer[0].ms, 127);
+    clock += 127;
+    harness.calls.timer[0].fn();
+    assert.deepEqual(harness.calls.retry, [false]);
+    await harness.cycle.pollOnce({ generation: 1 });
+    assert.equal(harness.calls.poll.length, 1);
+  });
+
+  for (const releaseOffset of [-50, 50]) {
+    it(`waits for lease release before arming a peer backoff wake (${releaseOffset}ms from deadline)`, async () => {
+      let clock = Date.parse('2026-09-03T12:30:00.000Z');
+      const deadline = clock + 127;
+      let generation = 0;
+      let release;
+      const releasePending = new Promise((resolve) => { release = resolve; });
+      const redis = new Map([[POLL_STATE_KEY, xNewsAccounts.buildXPollState(makeState({
+        rateLimitedUntil: deadline, backoffCause: 'credits',
+      }), { expectedAccounts: 1 })]]);
+      let guard;
+      const retryStarted = [];
+      const harness = createHarness({
+        redis, now: () => clock,
+        releaseLock: () => releasePending,
+        getPollGeneration: () => generation,
+        scheduleRetry: () => retryStarted.push(guard.run()),
+      });
+      guard = createPollGenerationGuard({
+        poll: (context) => harness.cycle.pollOnce(context),
+        getGeneration: () => generation,
+        setGeneration: (value) => { generation = value; },
+        now: () => clock,
+        stuckAfterMs: 60_000,
+      });
+
+      assert.equal(guard.run(), true);
+      await new Promise(setImmediate);
+      assert.equal(harness.calls.release.length, 1);
+      assert.equal(guard.isInFlight(), true);
+      assert.equal(harness.calls.timer.length, 0, 'do not wake while lease release still holds the poll guard');
+      clock = deadline + releaseOffset;
+      release(true);
+      await new Promise(setImmediate);
+      assert.equal(guard.isInFlight(), false);
+      assert.equal(harness.calls.timer.length, 1);
+      const timer = harness.calls.timer[0];
+      assert.equal(timer.ms, Math.max(1, -releaseOffset));
+      clock += timer.ms;
+      timer.fn();
+      await new Promise(setImmediate);
+      assert.deepEqual(retryStarted, [true]);
+      assert.equal(harness.calls.poll.length, 1, 'the real guard admits recovery in the same slot');
+    });
+  }
 });
 
 describe('receipt recovery and Redis safety', () => {
@@ -545,7 +662,8 @@ describe('receipt recovery and Redis safety', () => {
     assert.equal(harness.state.lastProviderSuccessAt, NOW);
     assert.equal(harness.state.lastAttemptSlot, '2026-09-03T12:15:00.000Z');
     assert.equal(harness.state.lastPublishedSlot, SLOT_ID);
-    assert.equal(harness.calls.publish[1].meta, null);
+    assert.equal(harness.calls.publish[1].meta.fetchedAt, NOW);
+    assert.equal(harness.calls.publish[1].meta.sourceState, 'degraded');
     assert.equal(ackAttempts, 2);
     assert.equal(receipt, null);
   });

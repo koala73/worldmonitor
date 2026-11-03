@@ -66,6 +66,15 @@ describe('NQ Catalysts filters', () => {
     assert.deepEqual(filtered.map((event) => event.event), ['CPI']);
   });
 
+  it('drops a macro row with a missing impact instead of throwing', () => {
+    const filtered = filterNqMacroEvents([
+      { event: 'CPI', country: 'US', date: '2026-09-02', impact: 'High' },
+      { event: 'Broken', country: 'US', date: '2026-09-02', impact: null },
+      { event: 'Missing', country: 'US', date: '2026-09-02' },
+    ], now);
+    assert.deepEqual(filtered.map((event) => event.event), ['CPI']);
+  });
+
   it('keeps catalyst windows to exactly 7 and 14 inclusive dates', () => {
     const macroLast = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS - 1));
     const macroNext = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS));

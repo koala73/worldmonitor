@@ -16,6 +16,7 @@ import {
   unverifiableEntitlementDenial,
   type EntitlementCheckOptions,
 } from './entitlement-check';
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
 
 type ProEntitlementDecision =
   | { allowed: true }
@@ -42,13 +43,13 @@ export async function checkTierProEntitlement(
   corsHeaders: Record<string, string>,
   loadEntitlements: EntitlementLoader = getEntitlements,
 ): Promise<ProEntitlementDecision> {
-  // Preserves the exact tier check these handlers already ran
-  // inline (tier >= 1, no validUntil check) — this intentionally does NOT
-  // match checkEntitlementDetailed, which additionally requires
-  // `validUntil >= Date.now()`. Unifying that gap is a separate concern from
-  // this PR's Clerk-role fix.
+  // Tier alone is not a grant. The entitlement cache serves a billing-marker
+  // row for its whole TTL without re-checking validUntil ("consumers must
+  // check expiry before granting access"), so a paid fallback that lapses
+  // inside that window would otherwise stay Pro here. Same coverage rule as
+  // resolvePremiumCallerIdentity and the gateway's legacy Pro bearer gate.
   const entitlements = await loadEntitlements(userId);
-  if (entitlements && entitlements.features.tier >= 1) {
+  if (hasCurrentEntitlementCoverage(entitlements) && entitlements.features.tier >= 1) {
     return { allowed: true };
   }
 
@@ -58,12 +59,11 @@ export async function checkTierProEntitlement(
   // paying customers included — and rendering that as `pro_required` sells the
   // plan they already own back to them because of OUR deploy defect (#5619).
   //
-  // The null deliberately stays a null upstream: server/gateway.ts detects this
-  // same state with isEntitlementBackendConfigured() and serves wm_-key traffic
-  // fail-open, because 503ing a missing env var turns a config regression into
-  // a fleet-wide API outage. That exception is for key-authenticated machine
-  // traffic; a browser gate has no such trade-off to make, so it answers the
-  // honest retryable contract instead.
+  // wm_ user-key gateway traffic now uses the same retryable
+  // entitlement_verification_unavailable 503 when getEntitlements returns null,
+  // including an unconfigured backend. These standalone tier-1 JSON handlers
+  // apply that same honest contract here instead of mislabeling a deploy defect
+  // as pro_required (#5619).
   if (!entitlements && !isEntitlementBackendConfigured()) {
     return {
       allowed: false,

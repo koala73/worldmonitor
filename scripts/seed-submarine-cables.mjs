@@ -5,8 +5,8 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 const BASE = 'https://www.submarinecablemap.com/api/v3';
-const CANONICAL_KEY = 'infrastructure:submarine-cables:v1';
-const CACHE_TTL = 7 * 24 * 3600; // 7 days — cable infra changes slowly
+export const CANONICAL_KEY = 'infrastructure:submarine-cables:v1';
+export const CACHE_TTL = 21 * 24 * 3600; // 21 days — keeps last-good data through the 17.5-day stale window
 
 // Strategic cable list — TeleGeography slugs organized by region.
 // Find slugs at: https://www.submarinecablemap.com/api/v3/cable/all.json
@@ -22,6 +22,7 @@ export const CABLE_REGIONS = [
       'marea', 'grace-hopper', 'havfrueaec-2', 'dunant', 'amitie',
       'atlantic-crossing-1-ac-1', 'apollo', 'nuvem', 'flag-atlantic-1-fa-1',
       'tata-tgn-atlantic-south', 'tata-tgn-western-europe',
+      'exa-north-and-south',
     ],
   },
   {
@@ -39,6 +40,7 @@ export const CABLE_REGIONS = [
       'seamewe-6', 'seamewe-4', 'seamewe-5', 'asia-africa-europe-1-aae-1',
       'imewe', 'europe-india-gateway-eig', 'peace-cable',
       'seacomtata-tgn-eurasia', 'te-northtgn-eurasiaseacomalexandrosmedex',
+      'fea', 'middle-east-north-africa-mena-cable-systemgulf-bridge-international',
     ],
   },
   {
@@ -56,6 +58,7 @@ export const CABLE_REGIONS = [
       'south-america-1-sam-1', 'ellalink', 'brusa', 'monet', 'seabras-1',
       'firmina', 'south-atlantic-cable-system-sacs', 'south-atlantic-inter-link-sail',
       'arcos', 'america-movil-submarine-cable-system-1-amx-1', 'globenet', 'malbec',
+      'south-american-crossing-sac', 'pan-american-crossing-pac',
     ],
   },
   {
@@ -66,6 +69,8 @@ export const CABLE_REGIONS = [
       'asia-direct-cable-adc', 'bifrost', 'apricot', 'apcn-2',
       'australia-japan-cable-ajc', 'australia-singapore-cable-asc',
       'japan-guam-australia-south-jga-s', 'sea-us', 'india-asia-xpress-iax', 'raman',
+      'eac-c2c', 'asia-submarine-cable-express-asecahaya-malaysia', 'mist',
+      'bay-of-bengal-gateway-bbg', 'oman-australia-cable-oac',
     ],
   },
   {
@@ -80,6 +85,7 @@ export const CABLE_REGIONS = [
     ids: [
       'falcon', 'tata-tgn-gulf', 'fiber-optic-gulf-fog', 'omranepeg',
       'gulf-bridge-international-cable-systemmiddle-east-north-africa-cable-system-gbicsmena',
+      'uae-iran', 'kuwait-iran',
     ],
   },
   {
@@ -91,7 +97,7 @@ export const CABLE_REGIONS = [
 const COUNTRY_CODES = {
   'Afghanistan': 'AF', 'Albania': 'AL', 'Algeria': 'DZ', 'Angola': 'AO', 'Argentina': 'AR',
   'Australia': 'AU', 'Austria': 'AT', 'Bahrain': 'BH', 'Bangladesh': 'BD', 'Belgium': 'BE',
-  'Belize': 'BZ', 'Benin': 'BJ', 'Bermuda': 'BM', 'Brazil': 'BR', 'Brunei': 'BN',
+  'Belize': 'BZ', 'British Indian Ocean Territory': 'IO', 'Cocos (Keeling) Islands': 'CC', 'Benin': 'BJ', 'Bermuda': 'BM', 'Brazil': 'BR', 'Brunei': 'BN',
   'Bulgaria': 'BG', 'Cameroon': 'CM', 'Canada': 'CA', 'Cayman Islands': 'KY',
   'Chile': 'CL', 'China': 'CN', 'Colombia': 'CO', 'Comoros': 'KM',
   'Costa Rica': 'CR', 'Croatia': 'HR', 'Cuba': 'CU', "Côte d'Ivoire": 'CI', 'Cyprus': 'CY',
@@ -337,15 +343,17 @@ export function declareRecords(data) {
   return data?.cables?.length ?? 0;
 }
 
+export const SUBMARINE_CABLES_SEED_OPTIONS = {
+  validateFn: validate,
+  ttlSeconds: CACHE_TTL,
+  sourceVersion: 'telegeography-v3',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 25200,
+};
+
 if (process.argv[1]?.endsWith('seed-submarine-cables.mjs')) {
-  runSeed('infrastructure', 'submarine-cables', CANONICAL_KEY, fetchSubmarineCables, {
-    validateFn: validate,
-    ttlSeconds: CACHE_TTL,
-    sourceVersion: 'telegeography-v3',
-    declareRecords,
-    schemaVersion: 1,
-    maxStaleMin: 25200,
-  }).catch((err) => {
+  runSeed('infrastructure', 'submarine-cables', CANONICAL_KEY, fetchSubmarineCables, SUBMARINE_CABLES_SEED_OPTIONS).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);
   });

@@ -7,7 +7,7 @@
     "closeBtn": "Fermer",
     "limitedCoverage": "Couverture limitée",
     "instabilityIndex": "Indice d'instabilité",
-    "notTracked": "Non suivi — {{country}} n'est pas dans la liste CII tier-1",
+    "notTracked": "Non suivi — {{country}} ne figure pas dans la liste de niveau 1 du Country Instability Index",
     "intelBrief": "Brief Renseignement",
     "generatingBrief": "Génération du brief...",
     "topNews": "Actualités principales",
@@ -16,7 +16,7 @@
     "predictionMarkets": "Marchés de prédiction",
     "loadingMarkets": "Chargement des marchés...",
     "infrastructure": "Exposition infrastructure",
-    "briefUnavailable": "Brief IA indisponible — configurez GROQ_API_KEY dans les paramètres.",
+    "briefUnavailable": "Brief IA indisponible — configurez OPENROUTER_API_KEY dans les paramètres.",
     "cached": "En cache",
     "fresh": "Frais",
     "noMarkets": "Aucun marché trouvé",
@@ -36,7 +36,7 @@
       "displaced": "déplacés",
       "climate": "Stress climatique",
       "conflictEvents": "conflits",
-      "gpsJammingZones": "GPS Jamming Zones",
+      "gpsJammingZones": "Zones de brouillage de navigation",
       "activeStrikes": "frappes actives",
       "aviationDisruptions": "perturbations aéroportuaires"
     },
@@ -78,17 +78,18 @@
     },
     "militaryActivity": "Activité militaire",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
-      "concentration": "Supplier HHI",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
-      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
-      "sourceWorldBank": "Source: World Bank.",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "title": "Base industrielle de défense",
+      "expenditure": "Dépenses militaires",
+      "personnel": "Effectifs",
+      "armsImports": "Importations d’armes",
+      "concentration": "Indice de concentration des fournisseurs",
+      "suppliers": "Fournisseurs d’armes ({{start}}–{{end}})",
+      "source": "Sources : Banque mondiale et SIPRI Arms Transfers Database. L'indicateur de volume de transfert mesure les transferts d'armes relatifs, non la valeur financière.",
+      "sourceWorldBank": "Source : Banque mondiale.",
+      "snapshotAssembled": "Instantané {{source}} assemblé le {{time}}",
+      "unavailable": "Non disponible",
+      "coverage": "Couverture cartographiée",
+      "supplierRetained": "Données fournisseurs conservées depuis la dernière actualisation réussie des importateurs."
     },
     "economicIndicators": "Indicateurs économiques",
     "ownFlights": "Vols nationaux",
@@ -106,14 +107,14 @@
     "nearbyPorts": "Ports à proximité",
     "detected": "Détecté",
     "notDetected": "Non",
-    "ciiUnavailable": "Score CII non disponible pour ce pays.",
+    "ciiUnavailable": "Le score du Country Instability Index n'est pas disponible pour ce pays.",
     "chips": {
       "criticalNews": "Actualités critiques",
       "protests": "Manifestations",
       "militaryAir": "Aviation militaire",
       "navalVessels": "Navires",
       "outages": "Pannes",
-      "aisDisruptions": "Perturbations AIS",
+      "aisDisruptions": "Perturbations du suivi des navires",
       "satelliteFires": "Incendies satellite",
       "temporalAnomalies": "Anomalies temporelles",
       "cyberThreats": "Menaces cyber",
@@ -125,11 +126,13 @@
       "doNotTravel": "Ne pas voyager",
       "reconsiderTravel": "Reconsidérer le voyage",
       "exerciseCaution": "Faire preuve de prudence",
+      "normalPrecautions": "Précautions habituelles",
       "advisory": "Avis",
       "activeSirens": "Sirènes actives",
       "sirens24h": "Sirènes / 24h",
       "aviationDisruptions": "Perturbations aériennes",
-      "gpsJammingZones": "Zones de brouillage GPS"
+      "gpsJammingZones": "Zones de brouillage de navigation",
+      "temporalUnavailable": "Observations temporelles indisponibles"
     },
     "countryFacts": "Fiche pays",
     "loadingFacts": "Chargement des données du pays...",
@@ -157,8 +160,8 @@
       "entities": "Entités :",
       "translation": "Traduction :",
       "source": "Source :",
-      "imfGrowth": "Prévision de croissance du FMI",
-      "creditGdp": "Crédit rapporté au PIB",
+      "imfGrowth": "Prévision de croissance du Fonds monétaire international",
+      "creditGdp": "Crédit par rapport à la production économique",
       "strategicTrade": "Exposition commerciale stratégique",
       "crudeImports": "Importations de pétrole brut",
       "gasDemand": "Demande de gaz",
@@ -193,47 +196,48 @@
       "activityNowcast": "Prévision d'activité",
       "decisionSignalsUnavailable": "L'instantané des signaux de décision de la Chine est actuellement indisponible."
     },
-    "foodStocks": "Food stocks",
-    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "foodStocks": "Stocks alimentaires",
+    "foodStocksHelp": "Stocks de produits de base de la USDA Production, Supply and Distribution rapportés à l'utilisation par année de commercialisation, avec le ratio mondial à titre informatif. Les Food Balances de la FAOSTAT fournissent les données de production et d'approvisionnement intérieur quand Production, Supply and Distribution ne propose pas de bilan national complet.",
+    "loadingFoodStocks": "Chargement des stocks alimentaires…",
+    "foodStocksUnavailable": "Stocks alimentaires indisponibles.",
+    "foodStocksProLocked": "Passez à PRO pour le ratio stocks/utilisation des matières premières",
+    "foodStocksCommodity": "Matière première",
+    "foodStocksMarketingYear": "Campagne de commercialisation",
+    "foodStocksRatio": "Stocks/utilisation",
+    "foodStocksWorld": "Monde",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "Blé",
+      "corn": "Maïs",
+      "rice": "Riz",
+      "soybeans": "Soja",
+      "barley": "Orge",
+      "palmOil": "Huile de palme"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
-      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
-      "stemGraduates": "STEM graduates",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh."
+      "title": "Démographie et main-d’œuvre",
+      "help": "Structure par âge, pipeline d'éducation et capacité de la main-d'œuvre industrielle provenant de World Population Prospects des Nations unies, de l'Institut de statistique de l'UNESCO et de World Development Indicators de la Banque mondiale, et d'ILOSTAT.",
+      "loading": "Chargement des données démographiques et de main-d’œuvre…",
+      "unavailable": "Données démographiques et de main-d’œuvre indisponibles.",
+      "proLocked": "Passez à PRO pour les données démographiques et de main-d’œuvre",
+      "notAvailable": "Non disponible",
+      "ageStructure": "Structure par âge",
+      "education": "Filière éducative",
+      "industrialWorkforce": "Main-d’œuvre industrielle",
+      "medianAge": "Âge médian",
+      "oldAgeDependency": "Dépendance des personnes âgées",
+      "totalDependency": "Dépendance totale",
+      "workingAgePopulation": "Population en âge de travailler",
+      "workingAgeProjection": "Population en âge de travailler (+10 ans)",
+      "tertiaryEnrollment": "Inscriptions dans le supérieur",
+      "stemGraduates": "Diplômés en sciences, technologie, ingénierie et mathématiques",
+      "researchers": "Chercheurs",
+      "craftTrades": "Artisans et ouvriers de métier",
+      "plantOperators": "Conducteurs d’installations et de machines",
+      "trainedIndustrialWorkforce": "Main-d’œuvre industrielle combinée",
+      "manufacturingShare": "Emploi manufacturier",
+      "source": "Sources : {{sources}}.",
+      "retained": "Données {{stage}} conservées depuis la dernière actualisation réussie.",
+      "statusNotSupplied": "Statut d’estimation et d’imputation non fourni"
     },
     "fiveFactorScorecard": {
       "title": "Tableau de bord de résilience à cinq facteurs",
@@ -280,7 +284,7 @@
         "demographics_workingAgeProjection": "Projection de la population active",
         "demographics_tertiaryEnrollment": "Inscription tertiaire",
         "demographics_researchersPerMillion": "Chercheurs par million",
-        "demographics_stemGraduateShare": "Part des diplômés STEM",
+        "demographics_stemGraduateShare": "Part des diplômés en sciences, technologie, ingénierie et mathématiques",
         "demographics_trainedIndustrialShare": "Part de la main-d'œuvre industrielle qualifiée",
         "demographics_manufacturingEmploymentShare": "Part de l'emploi manufacturier",
         "technology_internetUse": "Utilisation d'Internet",
@@ -288,7 +292,7 @@
         "technology_fixedBroadband": "Bande passante fixe",
         "technology_rdSpend": "Dépenses en recherche et développement",
         "technology_researchersPerMillion": "Chercheurs par million",
-        "technology_stemGraduateShare": "Part des diplômés STEM",
+        "technology_stemGraduateShare": "Part des diplômés en sciences, technologie, ingénierie et mathématiques",
         "technology_electricityAccess": "Accès à l'électricité",
         "defense_expenditureUsd": "Dépenses militaires",
         "defense_expenditurePctGdp": "Charge militaire",
@@ -303,7 +307,7 @@
   },
   "header": {
     "world": "MONDE",
-    "tech": "TECH",
+    "tech": "TECHNO",
     "live": "EN DIRECT",
     "search": "Recherche",
     "settings": "PARAMÈTRES",
@@ -331,21 +335,21 @@
     "sourceRegionTopical": "Thématique",
     "sourceRegionIntel": "Renseignement",
     "sourceRegionTechNews": "Actualités Tech",
-    "sourceRegionAiMl": "IA et ML",
-    "sourceRegionStartupsVc": "Startups et VC",
+    "sourceRegionAiMl": "IA & apprentissage automatique",
+    "sourceRegionStartupsVc": "Startups & capital-risque",
     "sourceRegionRegionalTech": "Écosystèmes Régionaux",
     "sourceRegionDeveloper": "Développeurs",
     "sourceRegionCybersecurity": "Cybersécurité",
     "sourceRegionTechPolicy": "Politique et Recherche",
     "sourceRegionTechMedia": "Médias et Podcasts",
     "sourceRegionMarkets": "Marchés et Analyse",
-    "sourceRegionFixedIncomeFx": "Taux et Devises",
+    "sourceRegionFixedIncomeFx": "Titres à revenu fixe & change",
     "sourceRegionCommodities": "Matières Premières",
     "sourceRegionCryptoDigital": "Crypto et Digital",
     "sourceRegionCentralBanks": "Banques Centrales et Économie",
     "sourceRegionDeals": "Opérations et Entreprises",
     "sourceRegionFinRegulation": "Régulation Financière",
-    "sourceRegionGulfMena": "Golfe et MENA",
+    "sourceRegionGulfMena": "Golfe & Moyen-Orient et Afrique du Nord",
     "filterPanels": "Filtrer les panneaux...",
     "resetLayout": "Réinitialiser la disposition",
     "resetLayoutTooltip": "Rétablir la disposition des panneaux par défaut",
@@ -357,15 +361,15 @@
     "panelCatTopical": "Thématiques",
     "panelCatDataTracking": "Données & Suivi",
     "panelCatTechAi": "Tech & IA",
-    "panelCatStartupsVc": "Startups & VC",
+    "panelCatStartupsVc": "Startups & capital-risque",
     "panelCatSecurityPolicy": "Sécurité & Politique",
     "panelCatMarkets": "Marchés",
-    "panelCatFixedIncomeFx": "Obligataire & Devises",
+    "panelCatFixedIncomeFx": "Titres à revenu fixe & change",
     "panelCatCommodities": "Matières Premières",
-    "panelCatCryptoDigital": "Crypto & Digital",
+    "panelCatCryptoDigital": "Crypto et numérique",
     "panelCatCentralBanks": "Banques Centrales & Économie",
     "panelCatDeals": "Transactions & Institutionnel",
-    "panelCatGulfMena": "Golfe & MENA",
+    "panelCatGulfMena": "Golfe & Moyen-Orient et Afrique du Nord",
     "downloadApp": "Télécharger l'appli",
     "selectRegion": "Sélectionner la région",
     "cached": "MISE EN CACHE",
@@ -385,7 +389,6 @@
     "liveNews": "Actualités en direct",
     "markets": "Marchés",
     "map": "Situation mondiale",
-    "techMap": "Tech mondiale",
     "status": "État du système",
     "insights": "Insights IA",
     "strategicPosture": "Posture stratégique IA",
@@ -404,6 +407,7 @@
     "energy": "Énergie & Ressources",
     "gov": "Gouvernement",
     "thinktanks": "Groupes de Réflexion",
+    "science": "Sciences",
     "polymarket": "Prédictions",
     "commodities": "Matières premières",
     "economic": "Indicateurs économiques",
@@ -412,20 +416,20 @@
     "tech": "Technologie",
     "crypto": "Crypto",
     "heatmap": "Carte thermique",
-    "ai": "IA/ML",
+    "ai": "IA et apprentissage automatique",
     "layoffs": "Suivi des licenciements",
     "monitors": "Mes moniteurs",
     "satelliteFires": "Incendies",
-    "macroSignals": "Radar de marché",
-    "etfFlows": "Suivi ETF BTC",
+    "macroSignals": "Conditions du marché Bitcoin",
+    "etfFlows": "Flux des fonds Bitcoin",
     "stablecoins": "Stablecoins",
     "deduction": "Déduire la situation",
     "ucdpEvents": "Conflits UCDP",
-    "displacement": "Déplacements HCR",
+    "displacement": "Réfugiés et déplacements",
     "climate": "Anomalies climatiques",
     "populationExposure": "Exposition de la population",
-    "startups": "Startups & Capital-risque",
-    "vcblogs": "Insights VC & Essais",
+    "startups": "Startups & capital-risque",
+    "vcblogs": "Perspectives et articles du capital-risque",
     "regionalStartups": "Actualités startups mondiales",
     "unicorns": "Suivi des licornes",
     "accelerators": "Accélérateurs & Demo Days",
@@ -437,32 +441,32 @@
     "cloud": "Cloud et infrastructure",
     "dev": "Communauté développeurs",
     "github": "Tendances GitHub",
-    "ipo": "IPO & SPAC",
-    "funding": "Financement & VC",
+    "ipo": "Introductions en bourse & fusions de sociétés-écrans",
+    "funding": "Financement & capital-risque",
     "producthunt": "Product Hunt",
     "events": "Événements Tech",
     "serviceStatus": "État des services",
     "techReadiness": "Indice de maturité technologique",
     "techHubs": "Pôles Technologiques",
-    "gccInvestments": "Investissements du CCG",
+    "gccInvestments": "Investissements du Conseil de coopération du Golfe",
     "geoHubs": "Centres géopolitiques",
     "securityAdvisories": "Avis de Sécurité",
-    "orefSirens": "Israel Sirens",
+    "orefSirens": "Sirènes en Israël",
     "telegramIntel": "Renseignement Telegram",
-    "xIntel": "X News Accounts",
+    "xIntel": "Comptes d’actualité X",
     "giving": "Dons mondiaux",
     "supplyChain": "Chaîne d'approvisionnement",
     "gulfEconomies": "Économies du Golfe",
     "gulfIndices": "Indices du Golfe",
     "gulfCurrencies": "Devises du Golfe",
     "gulfOil": "Pétrole du Golfe",
-    "bigmac": "Real Big Mac Index",
+    "bigmac": "Indice Big Mac réel",
     "marketImplications": "Implications de marché IA",
     "energyComplex": "Complexe énergétique",
     "oilInventories": "Inventaires pétroliers",
     "energyCrisis": "Suivi de la crise énergétique",
     "goldIntelligence": "Intelligence de l'or",
-    "wsbTickerScanner": "Scanneur de symboles WSB",
+    "wsbTickerScanner": "Analyseur de symboles WallStreetBets",
     "internetDisruptions": "Perturbations Internet",
     "internetDisruptionsTabs": {
       "outages": "Pannes",
@@ -474,14 +478,14 @@
     "groceryBasket": "Indice d'épicerie",
     "groceryItem": "Article",
     "bigmacDesc": "Prix du Big Mac dans les pays du Moyen-Orient (Indice Big Mac)",
-    "bigmacWow": "WoW",
+    "bigmacWow": "Variation sur une semaine",
     "bigmacCountry": "Pays",
-    "faoFoodPriceIndex": "Indice des prix alimentaires de la FAO",
+    "faoFoodPriceIndex": "Prix alimentaires",
     "fuelPrices": "Prix des carburants",
     "fuelPricesDesc": "Prix de l'essence et du diesel au détail dans plus de 30 pays à travers le monde",
     "fuelPricesCountry": "Pays",
     "fuelPricesGasoline": "Essence",
-    "fuelPricesDiesel": "Diesel",
+    "fuelPricesDiesel": "Gazole",
     "fuelPricesSource": "Source",
     "groceryBasketDesc": "Comparaison des prix du panier d'épicerie dans 24 pays à travers le monde",
     "airlineIntel": "✈️ Intelligence aérienne",
@@ -489,7 +493,8 @@
     "fearGreed": "Peur & Avidité",
     "marketBreadth": "Étendue du marché",
     "climateNews": "Actualités climatiques",
-    "fx": "Taux de Change"
+    "fx": "Taux de change",
+    "ukmtoIncidents": "Incidents UKMTO"
   },
   "commands": {
     "prefixes": {
@@ -534,7 +539,7 @@
     "keywords": {
       "military": "militaire",
       "finance": "finance",
-      "infrastructure": "infrastructure",
+      "infrastructure": "infrastructures",
       "intelligence": "renseignement",
       "news": "actualités",
       "dark": "sombre",
@@ -554,7 +559,7 @@
         "minimal": "Couches minimales (conflits + points chauds)"
       },
       "layer": {
-        "ais": "Basculer le suivi AIS des navires",
+        "ais": "Activer le suivi des navires",
         "flights": "Basculer les vols militaires",
         "conflicts": "Basculer les zones de conflit",
         "hotspots": "Basculer les points chauds",
@@ -570,8 +575,8 @@
         "climate": "Basculer les anomalies climatiques",
         "outages": "Basculer les pannes internet",
         "tradeRoutes": "Basculer les routes commerciales",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "Afficher/masquer la couche des routes du Canada",
+        "canadaAlerts": "Afficher/masquer la couche des alertes d’urgence provinciales du Canada"
       },
       "view": {
         "dark": "Passer en mode sombre",
@@ -618,7 +623,7 @@
         "irradiator": "Irradiateur",
         "techcompany": "Entreprise Tech",
         "ailab": "Labo IA",
-        "startup": "Startup",
+        "startup": "Start-up",
         "techevent": "Événement Tech",
         "techhq": "Siège Tech",
         "accelerator": "Accélérateur",
@@ -631,12 +636,12 @@
       "seeAllCommands": "Voir toutes les commandes",
       "hideCommandList": "Retour",
       "flightOnGround": "Au sol",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} nœuds",
       "flightMilitary": "Militaire · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militaire · {{type}} · au sol",
       "flightSearchHint": "Appuyez sur Entrée ou cliquez pour consulter la position en direct",
       "flightNotFound": "Aucune position en direct trouvée pour {{callsign}}",
-      "addPanel": "Add"
+      "addPanel": "Ajouter"
     },
     "signal": {
       "title": "DÉCOUVERTE RENSEIGNEMENT",
@@ -691,8 +696,8 @@
     },
     "mobileWarning": {
       "title": "Vue Mobile",
-      "description": "Vous consultez une version mobile simplifiée centrée sur la région MENA avec les couches essentielles activées.",
-      "tip": "Astuce : Utilisez les boutons de vue (GLOBAL/US/MENA) pour changer de région. Appuyez sur les marqueurs pour voir les détails.",
+      "description": "Vous consultez une version mobile simplifiée axée sur la région Moyen-Orient et Afrique du Nord avec les couches essentielles activées.",
+      "tip": "Conseil : utilisez les boutons d'affichage (GLOBAL/US/Moyen-Orient et Afrique du Nord) pour changer de région. Appuyez sur les marqueurs pour voir les détails.",
       "dontShowAgain": "Ne plus afficher",
       "gotIt": "Compris"
     },
@@ -710,7 +715,8 @@
       "alertTitle": {
         "configured": "Paramètres de bureau configurés",
         "needsKeys": "Configurez les clés API pour débloquer les fonctionnalités",
-        "some": "Certaines fonctionnalités nécessitent des clés API"
+        "some": "Certaines fonctionnalités nécessitent des clés API",
+        "pro": "World Monitor Pro est actif"
       },
       "summary": {
         "desktop": "Mode Bureau",
@@ -737,11 +743,12 @@
         "ABUSEIPDB_API_KEY": "Source d'enrichissement optionnelle pour la réputation IP malveillante.",
         "FINNHUB_API_KEY": "Cours des actions différés ou préchargés et données de marché. Une clé n'est pas un flux en direct.",
         "NASA_FIRMS_API_KEY": "Système d'information sur les incendies pour la gestion des ressources.",
-        "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
-        "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
+        "OLLAMA_API_URL": "ex. http://127.0.0.1:11434 (Ollama) ou http://127.0.0.1:1234/v1 (LM Studio) — point de terminaison compatible OpenAI.",
+        "OLLAMA_MODEL": "ex. llama3.1:8b — tag du modèle à utiliser pour la synthèse."
       },
-      "skipSetup": "Passez la configuration — une seule licence World Monitor débloque tout. Rejoignez la liste d'attente pour un accès anticipé.",
-      "reserveEarlyAccess": "Réservez votre accès anticipé"
+      "proCloud": "Les fonctionnalités sans clé API locale utilisent les données cloud de World Monitor.",
+      "skipSetupPro": "Ignorez la configuration : connectez-vous avec World Monitor Pro pour utiliser les données cloud au lieu de vos propres clés API.",
+      "getPro": "Obtenir World Monitor Pro"
     },
     "settingsWindow": {
       "validating": "Validation des clés API...",
@@ -766,15 +773,17 @@
       },
       "worldMonitor": {
         "apiKey": {
-          "title": "Clé de licence / API",
+          "title": "Clé de bureau",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Les abonnés API Starter et API Business créent cette clé dans le tableau de bord web via Settings → API Keys. Si la clé complète est perdue, révoquez-la et créez-en une nouvelle."
+          "description": "Pour les builds sans connexion. Pro : créez-en une dans Settings → API Keys sur le web ; les clés de forfait API fonctionnent aussi. Pour votre usage personnel ; les déploiements partagés ou publics nécessitent un forfait API. Aide : worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "OU",
         "register": {
-          "title": "Besoin d'une clé API ?",
-          "description": "Consultez worldmonitor.app/docs/api-keys pour obtenir des instructions détaillées. Les clés API manuelles nécessitent un forfait API Starter ou API Business.",
-          "submitBtn": "Voir les forfaits API"
+          "submitBtn": "Voir les forfaits"
+        },
+        "signIn": {
+          "title": "Connexion avec Pro",
+          "description": "Pro fonctionne ici une fois connecté depuis la fenêtre principale. Aucune clé requise."
         }
       },
       "shellTitle": "Paramètres de World Monitor",
@@ -800,7 +809,7 @@
       "fresh": "Frais",
       "noMarkets": "Aucun marché de prédiction trouvé",
       "predictionMarkets": "Marchés de Prédiction",
-      "unavailable": "Briefing IA indisponible — configurez GROQ_API_KEY dans les Paramètres."
+      "unavailable": "Briefing IA indisponible — configurez OPENROUTER_API_KEY dans les Paramètres."
     },
     "countryBrief": {
       "components": {
@@ -818,7 +827,7 @@
         "displaced": "déplacé",
         "climate": "Stress climatique",
         "conflictEvents": "événements de conflit",
-        "gpsJammingZones": "GPS Jamming Zones",
+        "gpsJammingZones": "Zones de brouillage de navigation",
         "activeStrikes": "frappes actives",
         "aviationDisruptions": "perturbations aéroportuaires"
       },
@@ -827,7 +836,7 @@
       "locating": "Localisation de la région...",
       "limitedCoverage": "Couverture limitée",
       "instabilityIndex": "Indice d'instabilité",
-      "notTracked": "Non suivi — {{country}} ne figure pas dans la liste CII de niveau 1",
+      "notTracked": "Non suivi — {{country}} ne figure pas dans la liste de niveau 1 du Country Instability Index",
       "intelBrief": "Mémoire de renseignement",
       "generatingBrief": "Génération d'un briefing de renseignement...",
       "topNews": "Meilleures nouvelles",
@@ -836,7 +845,7 @@
       "predictionMarkets": "Marchés de prédiction",
       "loadingMarkets": "Chargement des marchés de prédiction...",
       "infrastructure": "Exposition aux infrastructures",
-      "briefUnavailable": "Brief AI indisponible – configurez GROQ_API_KEY dans Paramètres.",
+      "briefUnavailable": "Brief AI indisponible – configurez OPENROUTER_API_KEY dans Paramètres.",
       "cached": "En cache",
       "fresh": "Récent",
       "noMarkets": "Aucun marché de prédiction trouvé",
@@ -875,9 +884,12 @@
         "space": "ESPACE"
       },
       "paused": "Webcams en pause",
-      "pausedIdle": "Webcams en pause — bougez la souris pour reprendre",
       "play": "Lire",
-      "previewStatus": "Aperçu en direct"
+      "previewStatus": "Prêt à lire",
+      "connecting": "Connexion…",
+      "unverified": "Impossible de confirmer que ce flux est en direct",
+      "offline": "{{city}} est actuellement hors ligne",
+      "noFeeds": "Aucune webcam en direct dans cette région pour le moment"
     },
     "regulation": {
       "timeline": "Chronologie",
@@ -895,7 +907,7 @@
       "proposed": "Proposée",
       "updated": "Mis à jour",
       "dashboard": "Tableau de bord de la régulation de l'IA",
-      "actionsCount": "{{count}} actions",
+      "actionsCount": "{{count}} mesures",
       "deadlinesCount": "{{count}} échéances",
       "days": "jours",
       "activeCount": "Régulations actives ({{count}})",
@@ -908,36 +920,41 @@
         "permissive": "Permissif",
         "undefined": "Indéfini"
       },
-      "infoTooltip": "<strong>Réglementation</strong> Actions réglementaires, changements de politique et mises à jour d'application des régulateurs mondiaux : autorités financières, technologiques, énergétiques et commerciales. Source : publications officielles gouvernementales et réglementaires."
+      "infoTooltip": "<strong>Réglementation</strong> Actions réglementaires, changements de politique et mises à jour d'application des régulateurs mondiaux : autorités financières, technologiques, énergétiques et commerciales. Source : publications officielles gouvernementales et réglementaires.",
+      "latestActions": "Dernières actions enregistrées",
+      "otherDeadlines": "Autres échéances de conformité",
+      "daysAgo": "jours écoulés",
+      "revokedCount": "Règlements révoqués ({{count}})",
+      "lapsedCount": "Propositions caduques ({{count}})"
     },
     "economic": {
       "indicators": "Indicateurs",
       "gov": "Gouv",
       "noSpending": "Aucun marché public récent",
       "awards": "marchés",
-      "noIndicatorData": "Aucune donnée d'indicateur pour l'instant - FRED est peut-être en cours de chargement",
+      "noIndicatorData": "Pas encore de données d'indicateurs - Federal Reserve Economic Data se charge peut-être",
       "in": "dans",
       "centralBanks": "Banques centrales",
-      "laborMarket": "Labor Market",
-      "metroUnemployment": "Metro Unemployment",
-      "noBisData": "Données BRI temporairement indisponibles - je vais réessayer",
+      "laborMarket": "Marché du travail",
+      "metroUnemployment": "Chômage métropolitain",
+      "noBisData": "Les données de la Banque des règlements internationaux sont temporairement indisponibles - nouvelle tentative en cours",
       "policyRate": "Taux directeur",
-      "creditToGdp": "Crédit / PIB",
-      "realEer": "REER (Taux de change effectif réel)",
+      "creditToGdp": "Crédit par rapport à la production économique",
+      "realEer": "Taux de change effectif réel",
       "cut": "baisse",
       "hike": "hausse",
       "hold": "maintien",
-      "fredKeyMissing": "Clé API FRED requise — ajoutez-la dans les Paramètres pour activer les indicateurs économiques",
+      "fredKeyMissing": "Clé API Federal Reserve Economic Data requise. Ajoutez-la dans les paramètres pour activer les indicateurs économiques.",
       "pressure": {
         "label": "Pression macroéconomique",
-        "stress": "Stress",
+        "stress": "Tension",
         "watch": "Surveillance",
         "steady": "Stable",
         "stressDetail": "La volatilité et la pression de la courbe sont élevées.",
         "watchDetail": "Les conditions transversales nécessitent une surveillance plus étroite.",
         "steadyDetail": "Les conditions macroéconomiques sont stables pour le moment."
       },
-      "infoTooltip": "<strong>Stress macroéconomique</strong> Indicateurs macroéconomiques, dépenses publiques et données des banques centrales :<ul><li><strong>Indicateurs</strong> : VIX, taux, courbe des rendements, emploi, inflation</li><li><strong>Gouvernement</strong> : Contrats fédéraux américains récents</li><li><strong>Banques centrales</strong> : Taux directeurs BRI et données de change</li></ul>"
+      "infoTooltip": "<strong>Stress macroéconomique</strong> Jauges macroéconomiques, dépenses gouvernementales et données des banques centrales :<ul><li><strong>Indicateurs</strong> : VIX, taux, courbe de rendement, emploi, inflation</li><li><strong>Gouvernement</strong> : Attributions récentes de contrats du gouvernement américain</li><li><strong>Banques centrales</strong> : Taux de politique et données de taux de change de la Banque des règlements internationaux</li></ul>"
     },
     "tradePolicy": {
       "tariffs": "Droits de douane",
@@ -946,37 +963,37 @@
       "noTariffData": "Aucune donnée tarifaire disponible",
       "noFlowData": "Aucune donnée de flux commercial disponible",
       "noBarriers": "Aucune barrière commerciale signalée",
-      "apiKeyMissing": "Clé API OMC requise — ajoutez-la dans les Paramètres",
-      "upstreamUnavailable": "Données OMC temporairement indisponibles — affichage des données en cache",
+      "apiKeyMissing": "Clé API de l'Organisation mondiale du commerce requise — ajoutez-la dans Paramètres",
+      "upstreamUnavailable": "Données de l'Organisation mondiale du commerce temporairement indisponibles — affichage des données en cache",
       "exports": "Exportations",
       "imports": "Importations",
-      "yoyChange": "Variation annuelle",
+      "yoyChange": "Évolution d'une année sur l'autre",
       "highTariff": "Élevé",
       "moderateTariff": "Modéré",
       "lowTariff": "Faible",
       "overview": "Aperçu",
       "noOverviewData": "Aucune donnée d'aperçu tarifaire disponible",
-      "mfnAppliedRate": "Tarif NPF appliqué",
-      "baselineMfnTariff": "Tarif NPF de référence",
+      "mfnAppliedRate": "Tarif général non préférentiel",
+      "baselineMfnTariff": "Tarif général de référence",
       "effectiveTariffRateLabel": "Tarif effectif",
       "gapLabel": "Écart",
-      "gapVsMfnLabel": "Écart par rapport au NPF",
+      "gapVsMfnLabel": "Écart par rapport au tarif général",
       "noEffectiveCoverageForCountry": "Couverture de taux effectif indisponible pour ce pays",
-      "effectiveMinusBaseline": "Tarif effectif moins le tarif NPF de référence de l'OMC",
-      "wtoBaselineMeta": "Tarif NPF appliqué par l'OMC | {{year}}",
-      "overviewNoteNoEffective": "Ces chiffres sont les tarifs de base NPF de l'OMC, pas la charge tarifaire actuelle des mesures tarifaires unilatérales.",
-      "usBaselineLabel": "Tarif NPF de référence américain de l'OMC",
-      "overviewNoteTail": "Ces cartes affichent les engagements de base de l'OMC, pas la charge tarifaire effective en direct.",
+      "effectiveMinusBaseline": "Tarif effectif moins tarif général de référence",
+      "wtoBaselineMeta": "Tarif général de l'Organisation mondiale du commerce | {{year}}",
+      "overviewNoteNoEffective": "Ces chiffres sont les tarifs de référence du traitement de la nation la plus favorisée de l'Organisation mondiale du commerce, et non la charge tarifaire actuelle résultant d'actions tarifaires unilatérales.",
+      "usBaselineLabel": "Tarif général de référence des États-Unis",
+      "overviewNoteTail": "Ces cartes affichent les taux tarifaires de base généraux, et non la charge tarifaire effective en temps réel.",
       "revenue": "Recettes américaines",
       "noRevenueData": "Aucune donnée de recettes douanières disponible",
       "treasuryUnavailable": "Données du Trésor temporairement indisponibles",
-      "fytdLabel": "EF{{year}} YTD",
+      "fytdLabel": "Année fiscale {{year}} à ce jour",
       "vsPriorFy": "vs EF{{year}}",
-      "sourceWto": "OMC",
+      "sourceWto": "Organisation mondiale du commerce",
       "sourceTreasury": "Trésor américain",
       "colDate": "Date",
       "colMonthly": "Mensuel",
-      "colFytd": "EF YTD",
+      "colFytd": "Année fiscale à ce jour",
       "strategicFlows": "Flux stratégiques",
       "noComtradeData": "Aucune donnée de flux stratégique disponible",
       "comtradeUnavailable": "Données UN Comtrade temporairement indisponibles",
@@ -986,7 +1003,7 @@
       "colReporter": "Pays",
       "colCommodity": "Marchandise",
       "colTradeValue": "Valeur commerciale",
-      "infoTooltip": "<strong>Politique commerciale</strong> Suivi des tarifs de base de l'OMC et de l'impact tarifaire :<ul><li><strong>Aperçu</strong> : tarifs de base NPF de l'OMC avec contexte de taux effectif américain si disponible</li><li><strong>Tarifs</strong> : tendances tarifaires NPF de l'OMC par rapport à l'estimation tarifaire effective américaine</li><li><strong>Flux commerciaux</strong> : volumes d'exportation/importation avec variations d'année en année</li><li><strong>Obstacles</strong> : obstacles techniques au commerce (notifications OTC/SPS)</li><li><strong>Recettes</strong> : recettes mensuelles des droits de douane américains (données MTS du Trésor américain)</li></ul>"
+      "infoTooltip": "<strong>Politique commerciale</strong> Tarifs généraux non préférentiels de référence de l'Organisation mondiale du commerce, avec tarifs effectifs américains si disponibles. Comprend les tendances tarifaires, les flux commerciaux, les barrières techniques et sanitaires, et les revenus douaniers mensuels américains."
     },
     "gdelt": {
       "empty": "Aucun article récent pour ce sujet"
@@ -1002,11 +1019,11 @@
     "predictions": {
       "yes": "Oui",
       "no": "Non",
-      "vol": "Vol",
+      "vol": "Vol.",
       "closes": "Ferme",
-      "leanYes": "Lean Yes",
-      "leanNo": "Lean No",
-      "tossUp": "Toss-up"
+      "leanYes": "Plutôt oui",
+      "leanNo": "Plutôt non",
+      "tossUp": "Indécis"
     },
     "stablecoins": {
       "pegHealth": "Santé de l'ancrage",
@@ -1015,7 +1032,7 @@
       "mcap": "Cap. march.",
       "vol24h": "Vol 24h",
       "chg24h": "Var 24h",
-      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
+      "infoTooltip": "<strong>Stablecoins</strong> Santé de l’ancrage, capitalisation et volume 24 h des principaux jetons indexés sur l’USD (USDT, USDC, DAI, BUSD). Un décrochage signale un risque systémique."
     },
     "status": {
       "updatedAt": "Mis à jour {{time}}"
@@ -1025,16 +1042,35 @@
       "live": "EN DIRECT",
       "historicalPlayback": "Lecture historique",
       "close": "Fermer",
-      "skipToStart": "Skip to start",
-      "previous": "Previous",
-      "next": "Next",
-      "skipToEnd": "Skip to end"
+      "skipToStart": "Aller au début",
+      "previous": "Précédent",
+      "next": "Suivant",
+      "skipToEnd": "Aller à la fin"
     },
     "pizzint": {
+      "indexSource": "Indice : World Monitor",
+      "venueSource": "données des lieux :",
+      "statusNormal": "NORMAL",
+      "statusNoData": "AUCUNE DONNÉE",
+      "statusNoBaseline": "SANS RÉFÉRENCE",
+      "vsUsual": "par rapport à la normale",
       "title": "Index des pizzas du Pentagone",
       "defcon": "DEFCON {{level}}",
       "updated": "{{timeAgo}} mis à jour",
       "tensionsTitle": "Tensions géopolitiques",
+      "tensionsSource": "Tensions : World Monitor à partir des événements GDELT",
+      "insufficientData": "Données insuffisantes",
+      "evidenceStrikes": "Frappes signalées en 3 jours ({{countries}}) : {{value}}",
+      "evidenceAirports": "Aéroports perturbés : {{value}}",
+      "evidenceAirportClosed": "Aéroport de {{name}} fermé",
+      "evidenceAirportHalted": "{{name}} : la plupart des vols annulés",
+      "evidenceAirportRestricted": "{{name}} : vols restreints",
+      "evidenceMilitaryAircraft": "Avions militaires ({{country}}) dans la région : {{value}}",
+      "evidencePlaAircraft": "Avions militaires chinois près de Taïwan : {{value}}",
+      "evidencePlaShips": "Navires de la marine chinoise près de Taïwan : {{value}}",
+      "evidenceSanctions": "Nouvelles sanctions américaines cette semaine ({{country}}) : {{value}}",
+      "evidenceUsual": "(habituel {{value}})",
+      "pizzaUnavailable": "Activité des pizzerias indisponible",
       "source": "Source:",
       "statusClosed": "FERMÉ",
       "statusSpike": "POINTE",
@@ -1046,11 +1082,11 @@
       "minutesAgo": "il y a {{m}} min",
       "hoursAgo": "il y a {{h}} h",
       "defconLabels": {
-        "1": "PISTOLET ARMÉ - PRÉPARATION MAXIMALE",
-        "2": "RYTHME RAPIDE - FORCES ARMÉES PRÊTES",
-        "3": "MAISON RONDE - AUGMENTER LA PRÉPARATION DE LA FORCE",
-        "4": "DOUBLE PRISE - VEILLE À INTELLIGENCE AUGMENTÉE",
-        "5": "FADE OUT - PRÉPARATION LA PLUS FAIBLE"
+        "1": "Activité Maximale",
+        "2": "Activité Élevée",
+        "3": "Activité Augmentée",
+        "4": "Au-dessus de la Normale",
+        "5": "Activité Normale"
       }
     },
     "strategicPosture": {
@@ -1061,7 +1097,7 @@
       "units": {
         "fighters": "Chasseurs",
         "tankers": "Ravitailleurs",
-        "awacs": "AWACS",
+        "awacs": "Alerte et contrôle aéroportés",
         "recon": "Reconnaissance",
         "transport": "Transport",
         "bombers": "Bombardiers",
@@ -1075,24 +1111,24 @@
         "auxiliary": "Auxiliaires",
         "navalVessels": "Navires de guerre"
       },
-      "infoTooltip": "<strong>Méthodologie</strong><p>Regroupe les avions militaires et les navires de guerre par théâtre.</p><ul><li><strong>Normal :</strong> Activité de base</li><li><strong>Élevé :</strong> Au-dessus du seuil (50+ avions)</li><li><strong>Critique :</strong> Forte concentration (plus de 100 avions)</li></ul><p><strong>Capable de frappe :</strong> Tankers + AWACS + Chasseurs présents en nombre suffisant pour des opérations soutenues.</p>",
+      "infoTooltip": "<strong>Méthodologie</strong><p>Agrège les aéronefs militaires et les navires navals par théâtre d'opérations.</p><ul><li><strong>Normal :</strong> Activité de référence</li><li><strong>Élevé :</strong> Au-dessus du seuil (50+ aéronefs)</li><li><strong>Critique :</strong> Concentration élevée (100+ aéronefs)</li></ul><p><strong>Capable de frappes :</strong> Ravitailleurs + Alerte et contrôle aéroportés + Chasseurs présents en nombre suffisant pour les opérations soutenues.</p>",
       "scanningTheaters": "Scan des théâtres",
       "positions": "Positions des aéronefs",
       "navalVesselsLoading": "Navires de guerre",
       "theaterAnalysis": "Analyse des théâtres",
-      "connectingStreams": "Connexion aux flux ADS-B & AIS en direct...",
+      "connectingStreams": "Connexion aux flux en direct de transpondeurs aéronefs et de suivi de navires...",
       "initialLoadNote": "Le chargement initial prend 30 à 60 secondes le temps que les données de suivi s'accumulent",
       "acquiringData": "Acquisition des données",
-      "acquiringDesc": "Connexion au réseau ADS-B pour les données de vols militaires. Cela peut prendre 30 à 60 secondes au premier chargement.",
-      "openSkyAdsb": "OpenSky ADS-B",
-      "aisVesselStream": "Flux AIS navires",
+      "acquiringDesc": "Connexion au réseau de transpondeurs aéronefs pour les données de vol militaire. Cela peut prendre 30-60 secondes au premier chargement.",
+      "openSkyAdsb": "Transpondeur aéronef OpenSky",
+      "aisVesselStream": "flux de suivi de navires",
       "retryNow": "Réessayer maintenant",
       "feedRateLimited": "Flux limité",
       "rateLimitedDesc": "L'API OpenSky a des limites de requêtes. Le panneau réessaiera automatiquement dans quelques minutes, ou vous pouvez réessayer maintenant.",
       "rateLimitedTip": "Astuce : les heures de pointe (UTC 12:00-20:00) ont souvent des limites plus élevées.",
       "tryAgain": "Réessayer",
       "badges": {
-        "critical": "CRIT",
+        "critical": "CRIT.",
         "elevated": "ÉLEV",
         "normal": "NORM"
       },
@@ -1132,11 +1168,8 @@
       "base": "Base",
       "nuclear": "Nucléaire"
     },
-    "community": {
-      "joinDiscussion": "Help Shape What's Next"
-    },
     "threatLabels": {
-      "critical": "CRIT",
+      "critical": "CRIT.",
       "high": "HAUT",
       "medium": "MOY",
       "low": "BAS",
@@ -1166,7 +1199,7 @@
         "aircraft": "Aéronefs",
         "miningSite": "Site minier",
         "commodityPort": "Port commercial",
-        "pipeline": "Pipeline",
+        "pipeline": "Oléoduc",
         "processingPlant": "Usine de traitement",
         "conflict": "Zone de conflit",
         "diseaseAlert": "Alerte maladie",
@@ -1184,7 +1217,7 @@
       "views": {
         "global": "Mondial",
         "americas": "Amériques",
-        "mena": "MENA",
+        "mena": "Moyen-Orient et Afrique du Nord",
         "europe": "Europe",
         "asia": "Asie",
         "latam": "Amérique latine",
@@ -1218,7 +1251,7 @@
         "ucdpEvents": "Événements UCDP",
         "displacementFlows": "Flux de déplacement",
         "climateAnomalies": "Anomalies climatiques",
-        "weatherAlerts": "Alertes de temps violent (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "Alertes météo",
         "strategicWaterways": "Voies navigables stratégiques",
         "economicCenters": "Centres économiques",
         "criticalMinerals": "Minéraux critiques",
@@ -1226,12 +1259,12 @@
         "financialCenters": "Centres financiers",
         "centralBanks": "Banques centrales",
         "commodityHubs": "Centres de matières premières",
-        "gulfInvestments": "Investissements du CCG",
+        "gulfInvestments": "Investissements du Conseil de coopération du Golfe",
         "tradeRoutes": "Routes Commerciales",
-        "gpsJamming": "GPS JAMMING",
+        "gpsJamming": "Perturbation de la navigation",
         "dayNight": "Jour/Nuit",
-        "iranAttacks": "Attaques iraniennes",
-        "ciiChoropleth": "Instabilité CII",
+        "iranAttacks": "Frappes au Moyen-Orient",
+        "ciiChoropleth": "Instabilité des pays",
         "positiveEvents": "Événements positifs",
         "kindness": "Actes de bonté",
         "happiness": "Bonheur mondial",
@@ -1239,8 +1272,10 @@
         "renewableInstallations": "Énergie propre",
         "radiationSpike": "Pic de radiation",
         "radiationElevated": "Radiation élevée",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaRoads": "Routes du Canada",
+        "canadaAlerts": "Alertes Canada",
+        "notamAirspace": "Restrictions d'espace aérien NOTAM",
+        "no2Activity": "Activité industrielle"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -1267,7 +1302,14 @@
         "medium": "moyen",
         "news": "Nouvelles",
         "undisclosed": "Non divulgué",
-        "stake": "miser"
+        "stake": "miser",
+        "internallyDisplaced": "déplacés internes",
+        "sourceIomDtm": "Source : IOM DTM",
+        "sinceDate": "depuis le {{date}}",
+        "lastMonth": "le mois dernier",
+        "sourceUnhcrOdp": "Source : Portail de données opérationnelles du HCR",
+        "displaced": "déplacés",
+        "sourceIdmc": "Source : IDMC"
       },
       "layerHelp": {
         "title": "Guide des couches de carte",
@@ -1280,7 +1322,7 @@
         },
         "sections": {
           "techEcosystem": "Écosystème technologique",
-          "infrastructure": "Infrastructure",
+          "infrastructure": "Infrastructures",
           "naturalEconomic": "Naturel & Économique",
           "financeCore": "Finances de base",
           "infrastructureRisk": "Infrastructures et risques",
@@ -1328,14 +1370,14 @@
           "infraCablesFull": "Principaux câbles à fibres optiques sous-marins (20 routes dorsales)",
           "infraPipelinesFull": "Oléoducs/gazoducs (Nord Stream, TAPI, etc.)",
           "infraDatacentersFull": "Clusters de calcul IA >=10 000 GPU uniquement",
-          "transportShipping": "Navires, points d'étranglement, 61 ports stratégiques",
+          "transportShipping": "Positions en direct des navires à partir de transpondeurs de navires",
           "transportDelays": "Retards à l'aéroport et arrêts au sol (FAA)",
           "naturalEventsFull": "Tremblements de terre (USGS) + tempêtes, incendies, volcans, inondations (NASA EONET)",
           "waterwaysLabels": "Étiquettes de points d'étranglement stratégiques",
           "tradeRoutes": "Principales routes maritimes mondiales reliant les ports via des points de passage stratégiques",
           "dayNight": "Terminateur solaire en temps réel montrant les zones de jour et de nuit",
           "climateAnomalies": "Anomalies de température et de précipitations",
-          "financeGulfInvestments": "Investissements des fonds souverains du CCG et IDE",
+          "financeGulfInvestments": "Investissements des fonds souverains du Conseil de coopération du Golfe et investissements directs étrangers",
           "firesFull": "Incendies actifs et périmètres de feux (NASA FIRMS)",
           "geoDisplacement": "Flux de réfugiés et schémas de déplacement",
           "geoUcdpEvents": "Événements de conflit armé du programme UCDP d'Uppsala",
@@ -1346,9 +1388,11 @@
           "techEvents": "Grandes conférences et événements technologiques",
           "techFires": "Incendies actifs à proximité d'infrastructures technologiques",
           "geoBoundaries": "Zones démilitarisées, lignes de cessez-le-feu et frontières contestées",
-          "ciiChoropleth": "Carte thermique de l'indice d'instabilité — colore les pays selon le score CII (vert=stable, rouge=critique)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "ciiChoropleth": "Carte thermique de l'Indice d'instabilité des pays — colore les pays selon leur score (vert=stable, rouge=critique)",
+          "canadaRoads": "Incidents routiers officiels, alertes, conditions, fermetures, travaux et dangers dans les juridictions canadiennes prises en charge",
+          "canadaAlerts": "Alertes provinciales de sécurité publique d’Alberta Emergency Alert, B.C. Evacuation Orders and Alerts et SaskAlert",
+          "notamAirspace": "Restrictions de vol temporaires et espaces aériens restreints, dangereux et interdits selon les NOTAMs de la FAA, en vigueur maintenant ou à partir des 24 prochaines heures",
+          "no2Activity": "Direction de l’activité NO2 de Sentinel-5P pour 167 pays et 32 pôles industriels : la dernière fenêtre de 56 jours comparée aux mêmes dates des années précédentes, après une bande morte de 10 %. Contient des données Copernicus Sentinel modifiées."
         },
         "notes": {
           "timeAffects": "Affecte : tremblements de terre, conditions météorologiques, manifestations, pannes"
@@ -1360,8 +1404,8 @@
       "infoTooltip": "<strong>Méthodologie</strong><ul><li><strong>U</strong>nrepos : troubles civils et manifestations</li><li><strong>C</strong>conflit : intensité du conflit armé</li><li><strong>S</strong>sécurité : vols/navires militaires au-dessus territoire</li><li><strong>I</strong>informations : vitesse des informations et corrélation des points focaux</li><li>Augmentation de la proximité des points d'accès (emplacements stratégiques)</li></ul><em>Les valeurs U:C:S:I affichent les scores des composants.</em> La détection du point focal corrèle les entités d'information avec les signaux cartographiques pour une notation précise.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Inclut la référence par pays + multiplicateur d'événement — voir /docs/methodology/cii-risk-scores pour le tableau publié",
-      "sectionFollowing": "Following",
-      "sectionAll": "All",
+      "sectionFollowing": "Suivis",
+      "sectionAll": "Tout",
       "sourceStates": {
         "degraded": "dégradé",
         "stale": "périmé"
@@ -1369,15 +1413,15 @@
     },
     "insights": {
       "noStories": "Aucune info de dernière minute pour l'instant",
-      "infoTooltip": "<strong>Analyse basée sur l'IA</strong><br>• <strong>World Brief</strong> : résumé de l'IA (Groq/OpenRouter)<br>• <strong>Sentiment</strong> : analyse du ton de l'actualité<br>• <strong>Velocity</strong> : histoires rapides<br>• <strong>Focal Points</strong> : corrèle les entités d'information avec les signaux cartographiques (militaires, manifestations, pannes)<br><em>ordinateur de bureau uniquement • Optimisé par Llama 3.3 + détection de point focal</em>",
-      "step": "Step {{step}}/{{total}}",
+      "infoTooltip": "<strong>Analyse basée sur l'IA</strong><br>• <strong>World Brief</strong> : résumé de l'IA (OpenRouter)<br>• <strong>Sentiment</strong> : analyse du ton de l'actualité<br>• <strong>Velocity</strong> : histoires rapides<br>• <strong>Focal Points</strong> : corrèle les entités d'information avec les signaux cartographiques (militaires, manifestations, pannes)<br><em>ordinateur de bureau uniquement • Optimisé par Llama 3.3 + détection de point focal</em>",
+      "step": "Étape {{step}}/{{total}}",
       "waitingForData": "Attente des données d'actualités...",
       "rankingStories": "Classement des histoires importantes...",
       "analyzingSentiment": "Analyse du sentiment...",
       "generatingBrief": "Génération du brief mondial...",
       "mapFlashLabel": "Pulse événement en direct",
       "mapFlashDesc": "Faire clignoter les lieux sur la carte lors d'une alerte info",
-      "aiFlowCloudLabel": "IA Cloud (Groq & OpenRouter)",
+      "aiFlowCloudLabel": "IA Cloud (OpenRouter)",
       "aiFlowCloudDesc": "Envoyer les titres au cloud pour le résumé IA (recommandé)",
       "aiFlowBrowserLabel": "Modèle local du navigateur",
       "aiFlowBrowserDesc": "Exécuter l'IA localement dans votre navigateur",
@@ -1421,7 +1465,7 @@
       "multiPerspectiveAnalysis": "Analyse multi-perspective...",
       "generatingBriefSub": "Génération du résumé : {{msg}}",
       "breakingConfirmed": "FLASH & CONFIRMÉ",
-      "multiSource": "Multi-source",
+      "multiSource": "Multisource",
       "fastMoving": "Évolution rapide",
       "clusters": "Groupes",
       "alertsLabel": "Alertes",
@@ -1432,7 +1476,7 @@
       "briefCommodity": "BRIEF MATIÈRES PREMIÈRES",
       "briefEnergy": "BRIEF ÉNERGIE",
       "briefWorld": "BRIEF MONDIAL",
-      "mlDetected": "ML DÉTECTÉ",
+      "mlDetected": "DÉTECTION par apprentissage automatique",
       "geographicConvergence": "CONVERGENCE GÉOGRAPHIQUE",
       "focalPoints": "POINTS CLÉS",
       "toneMixed": "Mitigé",
@@ -1445,7 +1489,10 @@
       "provenanceTitle": "Provenance de la couverture : nombre d'articles ingérés et de sources distinctes à partir desquels ce résumé a été sélectionné",
       "compiledFrom": "Compilé à partir de {{stories}} articles provenant de {{sources}} sources",
       "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Détails de l’article ({{count}})",
+      "streamIdleStopLabel": "Arrêter la vidéo en direct en cas d'inactivité",
+      "streamIdleStopDesc": "Arrête Live News et Live Webcams après cette durée sans activité et affiche une notification dans le panneau.",
+      "streamIdleStopNever": "Jamais"
     },
     "settings": {
       "exportSettings": "Exporter les paramètres",
@@ -1481,6 +1528,8 @@
       "capacityPercent": "Capacité {{percent}}%",
       "noCountryImpacts": "Aucun impact pays détecté",
       "alternativeRoutes": "Itinéraires alternatifs",
+      "sharesCutZone": "même détroit",
+      "estimateNote": "Estimation : la capacité et la redondance des câbles sont approximatives, non mesurées.",
       "countriesAffected": "Pays concernés ({{count}})",
       "links": "liens",
       "selectInfrastructureHint": "Sélectionnez l’infrastructure pour analyser l’impact en cascade",
@@ -1512,7 +1561,7 @@
       "noData": "pas de données",
       "enable": "Activer",
       "convergenceMetric": "Convergence",
-      "ciiDeviation": "Déviation CII",
+      "ciiDeviation": "Écart de l'Indice d'instabilité des pays",
       "infraEvents": "Événements Infra",
       "highAlerts": "Alertes élevées",
       "topRisks": "Risques principaux",
@@ -1523,12 +1572,12 @@
         "minutesAgo": "il y a {{count}}m",
         "hoursAgo": "il y a {{count}}h"
       },
-      "cachedCiiStatus": "CII en cache {{states}}",
+      "cachedCiiStatus": "Indice d'instabilité des pays en cache {{states}}",
       "sourceStates": {
         "degraded": "dégradé",
         "stale": "périmé"
       },
-      "dataFreshness": "Data Freshness",
+      "dataFreshness": "Fraîcheur des données",
       "sourcesDetail": "{{active}}/{{total}} sources"
     },
     "techEvents": {
@@ -1536,30 +1585,30 @@
       "noEvents": "Aucun événement à afficher",
       "showOnMap": "Voir sur la carte",
       "moreInfo": "Plus d'infos",
-      "upcoming": "Upcoming",
-      "conferences": "Conferences",
-      "earnings": "Earnings",
-      "all": "All",
-      "conferencesCount": "{{count}} conferences",
-      "onMap": "{{count}} on map",
-      "techmemeEvents": "Techmeme Events ↗",
-      "today": "TODAY",
-      "soon": "SOON",
+      "upcoming": "À venir",
+      "conferences": "Conférences",
+      "earnings": "Résultats financiers",
+      "all": "Tout",
+      "conferencesCount": "{{count}} conférences",
+      "onMap": "{{count}} sur la carte",
+      "techmemeEvents": "Événements Techmeme ↗",
+      "today": "AUJOURD’HUI",
+      "soon": "BIENTÔT",
       "infoTooltip": "<strong>Événements tech</strong> Événements technologiques à venir et récents : conférences, lancements de produits, auditions réglementaires et appels de résultats. Agrégés à partir de calendriers officiels et sources de l'industrie."
     },
     "techReadiness": {
       "internetUsers": "Utilisateurs Internet",
       "mobileSubscriptions": "Abonnements mobiles",
-      "rdSpending": "Dépenses R&D",
-      "infoTooltip": "<strong>Global Tech Readiness</strong><br>Score composite (0-100) basé sur les données de la Banque mondiale :<br><br><strong>Metrics affichés :</strong><br>🌐 Utilisateurs Internet (% de la population)<br>📱 Abonnements mobiles (pour 100 personnes)<br>🔬 R&D Dépenses (% du PIB)<br><br><strong>Poids :</strong> R&D (35 %), Internet (30 %), Haut débit (20 %), Mobile (15 %)<br><br><em>— = Aucune donnée récente disponible</em><br><em>Source : Données ouvertes de la Banque mondiale (2019-2024)</em>",
-      "fetchingData": "Fetching World Bank Data",
-      "internetUsersIndicator": "Internet Users",
-      "mobileSubscriptionsIndicator": "Mobile Subscriptions",
-      "broadbandAccess": "Broadband Access",
-      "rdExpenditure": "R&D Expenditure",
-      "analyzingCountries": "Analyzing 200+ countries...",
-      "source": "Source: World Bank",
-      "updated": "Updated: {{date}}",
+      "rdSpending": "Dépenses de recherche et développement",
+      "infoTooltip": "<strong>Préparation technologique</strong> Score composite de la Banque mondiale, 0–100. Les pondérations sont : recherche et développement 35 %, internet 30 %, haut débit 20 % et mobile 15 %. Les utilisateurs d'internet sont un pourcentage de la population ; les abonnements mobiles sont pour 100 personnes ; les dépenses de recherche représentent une part de la production économique. Les valeurs manquantes apparaissent sous la forme d'un tiret. Les données couvrent 2019–2024.",
+      "fetchingData": "Récupération des données de la Banque mondiale",
+      "internetUsersIndicator": "Internautes",
+      "mobileSubscriptionsIndicator": "Abonnements mobiles",
+      "broadbandAccess": "Accès haut débit",
+      "rdExpenditure": "Dépenses de recherche et développement",
+      "analyzingCountries": "Analyse de plus de 200 pays...",
+      "source": "Source : Banque mondiale",
+      "updated": "Mis à jour : {{date}}",
       "dataPreparing": "Actualisation des données de préparation tech — celles-ci apparaîtront bientôt."
     },
     "populationExposure": {
@@ -1581,7 +1630,7 @@
       },
       "infoTooltip": "Détections thermiques par satellite FIRMS VIIRS de la NASA dans les régions de conflit surveillées. Haute intensité = luminosité >360K et confiance >80 %.",
       "possibleExplosions": "{{count}} explosion(s) possible(s) détectée(s)",
-      "explosionTooltip": "Signature thermique compatible avec une explosion (FRP >80 MW, luminosité >380 K)"
+      "explosionTooltip": "Signature thermique compatible avec une explosion (puissance radiative du feu >80 MW, luminosité >380 K)"
     },
     "ucdpEvents": {
       "stateBased": "Étatique",
@@ -1602,6 +1651,7 @@
       "total": "Total",
       "origins": "Origines",
       "hosts": "Hôtes",
+      "internal": "Internes",
       "badges": {
         "crisis": "CRISE",
         "high": "HAUT",
@@ -1610,7 +1660,29 @@
       "country": "Pays",
       "status": "Statut",
       "count": "Compter",
-      "infoTooltip": "<strong>Données de déplacement du HCR</strong> Nombre mondial de réfugiés, de demandeurs d'asile et de personnes déplacées du HCR.<ul><li><strong>Origines</strong> : Pays où les gens fuient FROM</li><li><strong>Hôtes</strong> : Pays accueillant des réfugiés</li><li>Badges de crise : >1M | Élevé : > 500 000 déplacés</li></ul>Mises à jour des données chaque année. Licence CC BY 4.0."
+      "latestRound": "Dernier cycle",
+      "internalNote": "IOM DTM : personnes déplacées internes, dernier cycle d'enquête par opération. Les opérations d'un même pays peuvent se chevaucher ; elles ne sont donc pas additionnées.",
+      "infoTooltip": "<strong>Déplacement</strong> Réfugiés, demandeurs d'asile et personnes déplacées dans leur pays. Les vues d'origine et d'accueil montrent d'où fuient les gens et où ils se rendent. Les badges de crise marquent plus d'un million de déplacés ; les signes élevés marquent plus de 500 000. Données annuelles de l'Agence des Nations unies pour les réfugiés, licence CC BY 4.0.",
+      "crossBorder": "Transfrontalier",
+      "situation": "Situation",
+      "latestChange": "Dernière variation",
+      "accelerating": "En accélération",
+      "inDays": "en {{days}} jours",
+      "crossBorderNote": "Portail de données opérationnelles de l'Agence des Nations unies pour les réfugiés : personnes ayant franchi les frontières dans chaque crise, selon les derniers rapports des pays. Les situations se chevauchent, elles ne sont donc pas cumulées.",
+      "last7And30": "7 / 30 derniers jours",
+      "staleReport": "Rapport périmé",
+      "reported": "Nombre",
+      "period": "Période",
+      "movementNote": "Chaque ligne conserve sa source, la date du rapport et sa mesure. Les effectifs, les arrivées et les événements de contrôle frontalier sont des mesures distinctes. Les sources peuvent se recouper ; ne cumulez pas leurs chiffres. WorldMonitor établit cette vue à partir des sources liées ; cela ne suppose aucun soutien des fournisseurs.",
+      "recent": "Récent",
+      "last30Days": "Les 30 derniers jours",
+      "newThisWeek": "Nouveau cette semaine",
+      "conflict": "Conflit",
+      "disaster": "Catastrophe",
+      "surge": "Pic",
+      "recentNote": "IDMC : personnes déplacées dans leur pays au cours des 30 derniers jours. L'IDMC publie un chiffre en médiane trois semaines après le déplacement, de sorte que les semaines récentes se remplissent tardivement. « Nouveau cette semaine » compte les chiffres publiés au cours des 7 derniers jours. Pic : au moins 5 000 personnes et trois fois la moyenne mensuelle des cinq mois précédents.",
+      "recentAsOf": "Données au {{date}}.",
+      "recentMissing": "Aucune donnée cette fois de {{countries}} ; leurs fichiers n'ont pas pu être chargés, ce qui ne signifie pas un déplacement nul."
     },
     "climate": {
       "noAnomalies": "Aucune anomalie significative détectée",
@@ -1633,35 +1705,35 @@
       "relatedAssetsNear": "Actifs associés à proximité de {{location}}",
       "summaryError": "Impossible de générer le résumé",
       "summaryFailed": "Échec du résumé",
-      "sourceCoverage": "{{covered}}/{{total}} sources",
-      "sourceCoverageHint": "Affiche {{covered}} des {{total}} sources activées — ce panneau alterne entre ses sources à chaque actualisation",
       "sortBy": "Trier par",
       "sortNewest": "Plus récent",
-      "sortRelevance": "Pertinence"
+      "sortRelevance": "Pertinence",
+      "translationUnavailable": "Traduction indisponible. Vérifiez les paramètres de votre fournisseur d’IA et réessayez."
     },
     "etfFlows": {
-      "unavailable": "Données ETF temporairement indisponibles",
+      "unavailable": "données de fonds négociés en bourse temporairement indisponibles",
       "netFlow": "Flux net",
       "estFlow": "Flux est.",
       "totalVol": "Vol. total",
-      "etfs": "ETFs",
+      "etfs": "Fonds négociés en bourse",
       "netInflow": "FLUX NET ENTRANT",
       "netOutflow": "FLUX NET SORTANT",
+      "netNeutral": "FLUX NET NEUTRE",
       "table": {
-        "ticker": "Ticker",
+        "ticker": "Symbole",
         "issuer": "Émetteur",
         "estFlow": "Flux est.",
         "volume": "Volume",
         "change": "Variation"
       },
-      "rateLimited": "Données ETF temporairement indisponibles (limite de requêtes) — nouvelle tentative en cours",
-      "infoTooltip": "<strong>Suivi des ETF Bitcoin</strong> Suivi des flux de fonds estimés quotidiens pour les ETF Bitcoin au comptant aux États-Unis :<ul><li>Direction et magnitude des entrées/sorties</li><li>Volume et variation de prix par fonds</li><li>Flux agrégé net sur tous les ETF suivis</li></ul>"
+      "rateLimited": "données de fonds négociés en bourse temporairement indisponibles (limite de débit dépassée) — nouvelle tentative en cours",
+      "infoTooltip": "<strong>Flux de fonds Bitcoin</strong> Suit les flux de fonds estimés quotidiens pour les fonds négociés en bourse Bitcoin au comptant américains :<ul><li>Direction et ampleur des flux d'entrée/sortie</li><li>Volume et changement de prix par fonds</li><li>Flux net agrégé sur tous les fonds suivis</li></ul>"
     },
     "macroSignals": {
       "overall": "Global",
       "verdict": {
         "buy": "ACHAT",
-        "cash": "CASH"
+        "cash": "LIQUIDITÉS"
       },
       "bullish": "{{count}}/{{total}} haussier",
       "signals": {
@@ -1669,11 +1741,11 @@
         "flow": "Flux",
         "regime": "Régime",
         "btcTrend": "Tendance BTC",
-        "hashRate": "Hash Rate",
+        "hashRate": "Taux de hachage",
         "fearGreed": "Peur &amp; Avidité",
-        "momentum": "Momentum"
+        "momentum": "Dynamique"
       },
-      "infoTooltip": "<strong>Régime BTC</strong> Tableau de bord de signaux composites pour le positionnement Bitcoin et l'appétit pour le risque :<ul><li><strong>Liquidité</strong> : Proxy de liquidité nette de la Fed</li><li><strong>Flux</strong> : Rendements 5 jours BTC vs QQQ</li><li><strong>Régime</strong> : Rotation QQQ vs XLP (risk-on/off)</li><li><strong>Tendance BTC</strong> : Prix vs SMA50/200, Multiple de Mayer</li><li><strong>Hash Rate</strong> : Variation du hash réseau sur 30 jours</li><li><strong>Peur et Avidité</strong> : Indice de sentiment du marché</li></ul>Ce panneau concerne le régime et le positionnement, pas les données macro générales."
+      "infoTooltip": "<strong>Conditions du marché Bitcoin</strong> Tableau de bord de signaux composites pour le positionnement Bitcoin et l'appétit du risque :<ul><li><strong>Liquidité</strong> : Proxy de liquidité nette de la Réserve fédérale</li><li><strong>Flux</strong> : Rendements sur 5 jours BTC vs QQQ</li><li><strong>Régime</strong> : Rotation QQQ vs XLP (risk-on/off)</li><li><strong>Tendance BTC</strong> : Prix vs SMA50/200, Multiple Mayer</li><li><strong>Taux de hachage</strong> : Variation du hachage réseau sur 30 jours</li><li><strong>Peur et avidité</strong> : Indice du sentiment du marché</li></ul>Ce panneau concerne le régime et le positionnement, et non les données macro générales."
     },
     "intelligenceFindings": {
       "badgeTitle": "Résultats du renseignement",
@@ -1720,7 +1792,7 @@
       "infoTooltip": "<strong>News Intelligence</strong> Surveillance de l'actualité mondiale en temps réel :<ul><li>Catégories de sujets sélectionnés (conflits, cyber, etc.)</li><li>Articles traduits dans plus de 100 langues</li><li>Mises à jour toutes les 15 minutes</li><li>14-day media tone &amp; volume trend per topic</li></ul>Source : Projet GDELT (gdeltproject.org)"
     },
     "telegramIntel": {
-      "infoTooltip": "Signaux en temps réel provenant des canaux OSINT Telegram surveillés",
+      "infoTooltip": "Signaux en temps réel provenant de canaux de renseignement open-source Telegram surveillés",
       "loading": "Connexion au relais Telegram...",
       "empty": "Aucun message disponible",
       "disabled": "Relais Telegram inactif",
@@ -1737,7 +1809,7 @@
       "filterAll": "Tous",
       "filterBreaking": "Urgences",
       "filterConflict": "Conflits",
-      "filterOsint": "OSINT",
+      "filterOsint": "renseignement open-source",
       "filterMiddleeast": "Moyen-Orient",
       "live": "EN DIRECT",
       "viewSource": "Voir la source",
@@ -1745,63 +1817,63 @@
       "filterCyber": "Cyber"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
-      "filterOsint": "OSINT",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
+      "infoTooltip": "Publications sélectionnées de comptes d’actualité publics sur X. API officielle uniquement.",
+      "loading": "Connexion au relais des comptes d’actualité X...",
+      "empty": "Aucune publication disponible",
+      "disabled": "Relais des comptes d’actualité X inactif",
+      "filterAll": "Tout",
+      "filterBreaking": "Dernière minute",
+      "filterConflict": "Conflit",
+      "filterOsint": "renseignement open-source",
+      "filterMiddleeast": "Moyen-Orient",
+      "live": "EN DIRECT",
+      "viewSource": "Voir la source",
+      "filterGeopolitics": "Géopolitique",
       "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Base de données des investissements directs étrangers de l'Arabie saoudite et des Émirats arabes unis dans les infrastructures critiques mondiales. Cliquez sur une ligne pour accéder à l'investissement sur la carte.",
-      "searchPlaceholder": "Search assets, countries, entities…",
-      "allCountries": "All Countries",
-      "saudiArabia": "Saudi Arabia",
-      "uae": "UAE",
-      "allSectors": "All Sectors",
-      "allEntities": "All Entities",
-      "allStatuses": "All Statuses",
-      "operational": "Operational",
-      "underConstruction": "Under Construction",
-      "announced": "Announced",
-      "rumoured": "Rumoured",
-      "divested": "Divested",
-      "asset": "Asset",
-      "country": "Country",
-      "sector": "Sector",
-      "investment": "Investment",
-      "year": "Year",
-      "noMatch": "No investments match filters",
-      "undisclosed": "Undisclosed",
+      "searchPlaceholder": "Rechercher actifs, pays, entités…",
+      "allCountries": "Tous les pays",
+      "saudiArabia": "Arabie saoudite",
+      "uae": "EAU",
+      "allSectors": "Tous les secteurs",
+      "allEntities": "Toutes les entités",
+      "allStatuses": "Tous les statuts",
+      "operational": "Opérationnel",
+      "underConstruction": "En construction",
+      "announced": "Annoncé",
+      "rumoured": "Rumeur",
+      "divested": "Cédé",
+      "asset": "Actif",
+      "country": "Pays",
+      "sector": "Secteur",
+      "investment": "Investissement",
+      "year": "Année",
+      "noMatch": "Aucun investissement ne correspond aux filtres",
+      "undisclosed": "Non divulgué",
       "sectors": {
         "ports": "Ports",
-        "pipelines": "Pipelines",
-        "energy": "Energy",
-        "datacenters": "Data Centers",
-        "airports": "Airports",
-        "railways": "Railways",
-        "telecoms": "Telecoms",
-        "water": "Water",
-        "logistics": "Logistics",
-        "mining": "Mining",
-        "realEstate": "Real Estate",
-        "manufacturing": "Manufacturing"
+        "pipelines": "Oléoducs",
+        "energy": "Énergie",
+        "datacenters": "Centres de données",
+        "airports": "Aéroports",
+        "railways": "Chemins de fer",
+        "telecoms": "Télécoms",
+        "water": "Eau",
+        "logistics": "Logistique",
+        "mining": "Mines",
+        "realEstate": "Immobilier",
+        "manufacturing": "Industrie manufacturière"
       }
     },
     "prediction": {
       "infoTooltip": "<strong>Marchés de prévision</strong> Marchés de prévision en argent réel :<ul><li>Les prix reflètent les estimations de probabilité de foule</li><li>Volume plus élevé = signal plus fiable</li><li>Orientation géopolitique et événements actuels</li></ul>Source : Polymarket (polymarket.com)"
     },
     "panel": {
-      "showMethodologyInfo": "Show methodology info",
-      "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings",
+      "showMethodologyInfo": "Afficher la méthodologie",
+      "dragToResize": "Faire glisser pour redimensionner (double-clic pour réinitialiser)",
+      "openSettings": "Ouvrir les paramètres",
       "closePanel": "Fermer le panneau",
       "collapsePanel": "Réduire le panneau",
       "expandPanel": "Développer le panneau",
@@ -1811,16 +1883,16 @@
       "mapLabelsFallbackVi": "Les libellés de la carte sont actuellement en anglais pour le vietnamien."
     },
     "serviceStatus": {
-      "checkingServices": "Checking services...",
-      "allOperational": "All services operational",
+      "checkingServices": "Vérification des services...",
+      "allOperational": "Tous les services sont opérationnels",
       "ok": "OK",
-      "degraded": "Degraded",
-      "outage": "Outage",
+      "degraded": "Dégradé",
+      "outage": "Panne",
       "categories": {
-        "all": "All",
+        "all": "Tout",
         "cloud": "Cloud",
-        "dev": "Dev Tools",
-        "comm": "Comms",
+        "dev": "Outils de dev",
+        "comm": "Communications",
         "ai": "AI",
         "saas": "SaaS"
       },
@@ -1852,14 +1924,12 @@
       }
     },
     "liveNews": {
-      "notLive": "{{name}} is not currently live",
-      "cannotEmbed": "{{name}} ne peut pas être lu ici — peut être restreint dans votre région (erreur {{code}})",
-      "openOnYouTube": "Open on YouTube",
+      "audioUnavailable": "Audio indisponible",
+      "notLive": "{{name}} n’est pas en direct actuellement",
+      "openOnYouTube": "Ouvrir sur YouTube",
       "manage": "Gérer les chaînes",
       "addChannel": "Ajouter une chaîne",
       "remove": "Supprimer",
-      "youtubeHandle": "Handle YouTube (ex. @Channel)",
-      "youtubeHandleOrUrl": "Identifiant ou URL YouTube",
       "displayName": "Nom d'affichage (optionnel)",
       "channelSettings": "Paramètres de la chaîne",
       "save": "Enregistrer",
@@ -1874,22 +1944,33 @@
       "regionMiddleEast": "Moyen-Orient",
       "regionAfrica": "Afrique",
       "regionOceania": "Océanie",
-      "botCheck": "YouTube demande une connexion pour lire {{name}}",
-      "invalidHandle": "Entrez un identifiant YouTube valide (ex. @NomDeLaChaine)",
       "signInToYouTube": "Se connecter à YouTube",
       "verifying": "Vérification…",
       "noResults": "Aucune chaîne trouvée pour \"{{term}}\"",
       "hlsUrl": "URL du flux HLS (optionnel)",
       "invalidHlsUrl": "Entrez une URL de flux HLS valide (.m3u8)",
       "playLiveFeed": "Lire le flux en direct",
-      "readyStatus": "Prêt quand vous l’êtes"
+      "readyStatus": "Prêt quand vous l’êtes",
+      "embedBlocked": "YouTube ne lit pas {{name}} dans d'autres sites en ce moment",
+      "unavailable": "{{name}} ne peut pas être lu en ce moment",
+      "noStream": "Aucun flux en direct n'est configuré pour {{name}} pour l'instant",
+      "needsChannelUrl": "Ajoutez {{name}} à nouveau avec son URL de chaîne (youtube.com/channel/UC…) ou une URL de vidéo en direct",
+      "connecting": "Connexion à {{name}}…",
+      "recording": "Enregistrement",
+      "unverified": "Impossible de confirmer que ce flux est en direct",
+      "playNextChannel": "Lire la chaîne suivante",
+      "channelOrVideoUrl": "Chaîne YouTube ou URL de vidéo",
+      "channelUrlHint": "Collez une URL de chaîne (youtube.com/channel/UC…) ou une URL de vidéo en direct",
+      "youtubeChannel": "Chaîne YouTube",
+      "insecureStream": "{{name}} utilise un flux non sécurisé (http), que les navigateurs bloquent. Ajoutez-le à nouveau avec une URL de flux sécurisée (https)",
+      "httpsStreamHint": "Les navigateurs bloquent les flux non sécurisés (http). Collez une URL de flux sécurisée (https)"
     },
     "securityAdvisories": {
       "loading": "Chargement des avis de voyage...",
       "noMatching": "Aucun avis pour ce filtre",
       "critical": "Critique",
       "health": "Santé",
-      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
+      "sources": "Dép. d’État US, DFAT australien, FCDO britannique, CDC, ECDC, OMS, ambassades des États-Unis",
       "refresh": "Actualiser",
       "levels": {
         "doNotTravel": "Ne pas voyager",
@@ -1907,12 +1988,12 @@
       "infoTooltip": "<strong>Avis de Sécurité</strong><br>Avis aux voyageurs et alertes de sécurité des agences gouvernementales."
     },
     "orefSirens": {
-      "checking": "Checking siren alerts...",
-      "noAlerts": "No active sirens — all clear",
-      "notConfigured": "Sirens service not configured",
-      "activeSirens": "{{count}} active siren(s)",
-      "justNow": "just now",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding.",
+      "checking": "Vérification des alertes sirènes...",
+      "noAlerts": "Aucune sirène active — situation calme",
+      "notConfigured": "Service des sirènes non configuré",
+      "activeSirens": "{{count}} sirène(s) active(s)",
+      "justNow": "à l’instant",
+      "infoTooltip": "<strong>Sirènes en Israël</strong><br>Alertes sirènes roquettes et missiles en temps réel du Commandement du front intérieur israélien.<br><br>Données interrogées toutes les 10 secondes. Un indicateur rouge clignotant signale des sirènes actives.",
       "historySummary": "{{count}} alertes en 24h — {{waves}} vagues",
       "loadingHistory": "Chargement de l'historique..."
     },
@@ -1920,8 +2001,8 @@
       "critical": "CRITIQUE",
       "dismiss": "Fermer",
       "high": "URGENT",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "Alertes de dernière minute",
+      "viewPanel": "Voir le panneau associé"
     },
     "giving": {
       "activityIndex": "Indice d'activité",
@@ -1935,7 +2016,7 @@
       "estDailyFlow": "Flux quotidien est.",
       "freshness": "Données",
       "infoTooltip": "<strong>Indice d'activité des dons mondiaux</strong> Indice composite suivant les dons personnels via les plateformes de financement participatif et les portefeuilles crypto.<ul><li><strong>Plateformes</strong> : échantillonnage de campagnes GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong> : flux entrants des portefeuilles caritatifs on-chain (Endaoment, Giving Block)</li><li><strong>Institutionnel</strong> : APD de l'OCDE, indice mondial CAF des dons, subventions Candid</li></ul>L'indice est directionnel (pas des montants exacts). Combine l'échantillonnage en direct avec les rapports annuels publiés.",
-      "oecdOda": "APD OCDE",
+      "oecdOda": "Aide publique au développement de l'Organisation de coopération et de développement économiques",
       "ofTotal": "% du total",
       "platform": "Plateforme",
       "share": "Part",
@@ -1972,12 +2053,12 @@
     },
     "supplyChain": {
       "chokepoints": "Points d'étranglement",
-      "disruption": "Disruption",
-      "vessels": "vessels",
-      "incidents7d": "incidents (7d)",
-      "corridorDisruption": "Corridor Disruption",
-      "corridor": "Corridor",
-      "loadingCorridors": "Loading corridor data...",
+      "disruption": "Perturbation",
+      "vessels": "navires",
+      "incidents7d": "incidents (7 j)",
+      "corridorDisruption": "Perturbation du corridor",
+      "corridor": "Couloir",
+      "loadingCorridors": "Chargement des données de corridor...",
       "mineral": "Minéral",
       "minerals": "Minéraux",
       "noChokepoints": "Données des points d'étranglement en cours de chargement...",
@@ -1989,8 +2070,8 @@
       "topProducers": "Principaux producteurs",
       "upstreamUnavailable": "Données de chaîne d'approvisionnement temporairement indisponibles — affichage des données en cache",
       "warnings": "avertissement(s)",
-      "aisDisruptions": "Perturbation(s) AIS",
-      "wowChange": "variation semaine/semaine",
+      "aisDisruptions": "Perturbations du suivi des navires",
+      "wowChange": "Variation sur une semaine",
       "riskLevel": "Niveau de risque",
       "flowUnavailable": "Données de flux indisponibles",
       "containerRates": "Tarifs de conteneurs",
@@ -1999,13 +2080,16 @@
       "loadingHistory": "Chargement de l'historique des transits…",
       "historyUnavailable": "Historique des transits indisponible",
       "transitDataUnavailable": "Données de transit indisponibles (partiel en amont)",
-      "infoTooltip": "<strong>Moniteur de la chaîne d'approvisionnement</strong> Suivi mondial de la logistique et des ressources :<ul><li><strong>Points critiques</strong> : statut des transits maritimes, scores de perturbation et nombre de navires</li><li><strong>Transport maritime</strong> : indice Baltic Dry et tendances des tarifs de fret</li><li><strong>Minéraux</strong> : risque de concentration des minéraux critiques (HHI) et principaux producteurs</li></ul>Cliquez sur une carte de point critique pour développer le graphique d'historique des transits.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Passez à PRO pour les parts de pays de mines et de raffineries avec concentration (HHI) par étape"
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Suivi mondial de la logistique et des ressources :<ul><li><strong>Points critiques</strong> : Statut des transits maritimes, scores de perturbation et nombre de navires</li><li><strong>Transport maritime</strong> : Indice Baltic Dry et tendances des tarifs de fret</li><li><strong>Minéraux</strong> : Risque de concentration des minéraux critiques (indice de concentration des producteurs) et principaux producteurs</li></ul>Cliquez sur une carte de point critique pour développer le graphique d'historique des transits.",
+      "mineStage": "Extraction",
+      "refineryStage": "Raffinage",
+      "stageUnavailable": "Aucun chiffre publié pour cette étape",
+      "withheldNote": "W non divulgué",
+      "productionCaption": "Parts nationales de la production réelle. La couche des gisements de la carte montre où se trouvent les ressources ; ce tableau montre qui les extrait ou les raffine.",
+      "productionProLocked": "Passez à PRO pour les parts de pays des mines et raffineries avec concentration (indice de concentration des producteurs) par étape.",
+      "partialTransitCoverage": "Données de transit indisponibles : {{names}}",
+      "oilPipelinesUnavailable": "Données des oléoducs indisponibles",
+      "gasPipelinesUnavailable": "Données des gazoducs indisponibles"
     },
     "positiveNewsFeed": {
       "noStories": "Aucune histoire dans cette catégorie pour le moment"
@@ -2025,7 +2109,7 @@
       "clearTrails": "Effacer les traces"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "infoTooltip": "<strong>Perturbations Internet</strong> Pannes Internet, attaques DDoS et anomalies de trafic en temps réel issues de la surveillance mondiale des réseaux :<ul><li><strong>Pannes</strong> : défaillances de connectivité détectées via BGP, par pays</li><li><strong>DDoS</strong> : rapports d’attaques volumétriques par protocole et vecteur</li><li><strong>Anomalies</strong> : schémas de trafic inhabituels issus de Cloudflare Radar</li></ul>",
       "noOutages": "Aucune panne active détectée",
       "noDdos": "Aucune donnée DDoS disponible",
       "noAnomalies": "Aucune anomalie de trafic détectée",
@@ -2034,16 +2118,16 @@
       "topTargets": "Pays cibles principaux"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "infoTooltip": "<strong>Matières premières</strong> Fil des matières premières négociables hors énergie, centré sur les métaux et matériaux. Les prix de l’énergie figurent dans Complexe énergétique ; les indicateurs de stress macro dans Stress macro.",
+      "commodities": "Matières premières",
+      "physicalPremiums": "Prime physique",
+      "physical": "Physique",
+      "paper": "Papier",
+      "premium": "Prime",
+      "asOf": "Au {{date}}",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "Or",
+        "silver": "Argent"
       },
       "divergence": {
         "compositeValue": "Indice de stress physique : {{value}} / 100",
@@ -2063,37 +2147,37 @@
       }
     },
     "crypto": {
-      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+      "infoTooltip": "<strong>Crypto</strong> Prix en direct, variations sur 24 h et volume des principales cryptomonnaies. Données fournies par CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Indices boursiers du Golfe, taux de change et prix du pétrole pour les économies du Conseil de coopération du Golfe (Arabie Saoudite, Émirats arabes unis, Koweït, Qatar, Bahreïn, Oman)."
     },
     "groceryBasket": {
-      "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
+      "infoTooltip": "<strong>Grocery Index</strong> Comparaison mondiale des prix du panier d'épicerie dans 24 pays — suivre l'inflation réelle des biens de consommation au-delà de l'indice des prix à la consommation."
     },
     "bigmac": {
-      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>Indice Big Mac réel</strong> L’indice Big Mac de The Economist mesure la parité de pouvoir d’achat en comparant le prix des burgers McDonald’s entre pays. Mis à jour à la publication de nouvelles données (trimestrielle/annuelle)."
     },
     "defiTokens": {
-      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+      "infoTooltip": "<strong>Jetons DeFi</strong> Prix et performance 24 h/7 j des principaux jetons de protocoles de finance décentralisée — DEX, plateformes de prêt et protocoles de rendement."
     },
     "aiTokens": {
-      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+      "infoTooltip": "<strong>Jetons IA</strong> Prix et performance 24 h/7 j des jetons du secteur de l’IA et de l’apprentissage automatique — réseaux de calcul, infrastructure d’IA décentralisée et protocoles de données."
     },
     "altTokens": {
-      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+      "infoTooltip": "<strong>Altcoins</strong> Prix et performance 24 h/7 j des cryptomonnaies alternatives et émergentes hors des grandes capitalisations."
     },
     "stockAnalysis": {
-      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+      "infoTooltip": "<strong>Analyse boursière Premium</strong> Analyse par IA des actions de votre liste de suivi — signaux achat/conservation/vente, objectifs de cours, risques clés et catalyseurs mis à jour quotidiennement."
     },
     "stockBacktest": {
-      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+      "infoTooltip": "<strong>Backtesting Premium</strong> Backtests historiques des actions de votre liste de suivi — rendements passés, perte maximale et indicateurs de volatilité."
     },
     "dailyMarketBrief": {
-      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+      "infoTooltip": "<strong>Brief marchés quotidien</strong> Synthèse quotidienne générée par IA des conditions des marchés mondiaux, des grandes tendances macro et des signaux sectoriels — actualisée chaque jour de bourse."
     },
     "centralBankWatch": {
-      "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
+      "infoTooltip": "<strong>Central Bank Watch</strong> Derniers communiqués, décisions de taux et communications de la Réserve fédérale, de la Banque centrale européenne, de la Banque d'Angleterre et d'autres grandes banques centrales du monde."
     },
     "airlineIntel": {
       "infoTooltip": "<strong>Renseignement aérien</strong> Données opérationnelles des compagnies aériennes en temps réel : suspensions de routes, fermetures d'espace aérien, avis des transporteurs et déroutements d'urgence. Source : NOTAM des autorités aéronautiques et bulletins des transporteurs.",
@@ -2116,7 +2200,7 @@
       "infoTooltip": "<strong>Analyste WM</strong> Analyste IA avec contexte en direct dans les domaines géopolitique, marchés, militaire et économique. Alimenté par Claude avec des données en temps réel issues des flux actifs de WorldMonitor."
     },
     "cotPositioning": {
-      "infoTooltip": "<strong>Positionnement CFTC COT</strong> Rapport des engagements des opérateurs : positionnement net des commerciaux, grands spéculateurs et petits opérateurs sur les contrats à terme de matières premières et financiers. Publié chaque semaine (vendredi). Source : CFTC."
+      "infoTooltip": "<strong>Futures positioning</strong> Positions nettes hebdomadaires des négociants commerciaux, des grands spéculateurs et des petits négociants sur les contrats à terme sur matières premières et financiers. La source est le rapport Commitments of Traders de la Commission de la Commodity Futures Trading, publié le vendredi."
     },
     "counters": {
       "infoTooltip": "<strong>Compteurs en direct</strong> Compteurs extrapolés en temps réel pour des métriques mondiales : dépenses militaires, catastrophes naturelles, charge de morbidité et plus. Les chiffres sont des estimations statistiques basées sur les taux de données annuels."
@@ -2159,14 +2243,14 @@
       "methodologyNote": "Les niveaux Alerte / Avertissement / Surveillance proviennent d'un classificateur de mots clés éditoriaux — voir /docs/methodology/disease-alert-level pour le tableau des mots clés et les limitations."
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Calendrier des résultats</strong> Publications de résultats à venir et récentes des grandes entreprises cotées. Affiche les estimations de BPA vs réalisé, revenus et classification dépassement/manqué. Source : fournisseurs de données financières.",
+      "infoTooltip": "<strong>Earnings Calendar</strong> Publications de résultats à venir et récentes pour les grandes sociétés publiques. Affiche les estimations de bénéfice par action par rapport aux réalisations, le chiffre d'affaires et la classification des dépassements/manques. Source : fournisseurs de données financières.",
       "title": "Calendrier des résultats",
       "today": "AUJOURD'HUI · {{date}}",
       "tomorrow": "DEMAIN · {{date}}",
-      "epsActual": "EPS {{value}}",
-      "epsEstimate": "EPS est {{value}}",
-      "revenueActual": "{{value}} rev",
-      "revenueEstimate": "{{value}} est",
+      "epsActual": "bénéfice par action {{value}}",
+      "epsEstimate": "bénéfice par action estimé {{value}}",
+      "revenueActual": "CA {{value}}",
+      "revenueEstimate": "{{value}} est.",
       "surprise": {
         "beat": "DÉPASSEMENT",
         "miss": "MANQUEMENT",
@@ -2178,12 +2262,12 @@
       }
     },
     "economicCalendar": {
-      "infoTooltip": "<strong>Calendrier économique</strong> Publications macroéconomiques programmées : CPI, NFP, GDP, PMI et décisions des banques centrales. Affiche prévision vs réalisé vs précédent. Événements à fort impact mis en évidence. Source : fournisseurs de données économiques."
+      "infoTooltip": "<strong>Economic Calendar</strong> Publications macroéconomiques prévues : indice des prix à la consommation, emplois non agricoles, produit intérieur brut, indice des directeurs d'achat et décisions des banques centrales. Affiche la prévision par rapport au réalisé par rapport à la période précédente. Les événements à fort impact sont mis en évidence. Source : fournisseurs de données économiques."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicateur de stress financier</strong> Indice de stress financier de la Fed de Kansas City (KCFSI) : mesure le stress sur les marchés financiers américains à l'aide de 11 indicateurs incluant les écarts de rendement, la volatilité et les corrélations croisées. Les valeurs positives indiquent un stress supérieur à la moyenne. Source : Federal Reserve Bank of Kansas City.",
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> Ratio World Monitor du crédit haut rendement aux obligations du Trésor américain à long terme, ajusté pour la volatilité des actions et le spread haut rendement : (HYG / TLT) / (VIX × Spread haut rendement / 100). Ce n'est pas l'indice de stress financier de la Réserve fédérale de Kansas City. Une lecture de 1,5 ou plus indique un faible stress ; en dessous de 0,3 indique un stress élevé.",
       "title": "Indicateur de stress financier",
-      "usFsiValue": "VALEUR FSI US",
+      "usFsiValue": "Valeur de l'indicateur de stress financier américain",
       "cissTitle": "CISS UE (Stress systémique de la zone euro)",
       "notAvailable": "S.O.",
       "interpretation": {
@@ -2212,15 +2296,15 @@
       },
       "metrics": {
         "vix": "VIX",
-        "hySpread": "HY Spread",
-        "hygPrice": "HYG Price",
-        "tltPrice": "TLT Price"
+        "hySpread": "Spread haut rendement",
+        "hygPrice": "Cours HYG",
+        "tltPrice": "Cours TLT"
       },
       "errors": {
-        "unavailable": "Données FSI indisponibles",
+        "unavailable": "Les données de l'indicateur de stress financier ne sont pas disponibles",
         "failedToLoad": "Échec du chargement"
       },
-      "cissStale": "La BCE n'a pas publié de valeur plus récente — cette lecture peut être obsolète."
+      "cissStale": "La Banque centrale européenne n'a pas publié de valeur plus récente — cette lecture peut être obsolète."
     },
     "supplyVulnerability": {
       "title": "Vulnérabilité des matières premières",
@@ -2243,32 +2327,33 @@
       "proLocked": "Passez à PRO pour l'évaluation de vulnérabilité des matières premières"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Suivi commercial d'Ormuz</strong> Suivi AIS des navires en temps réel à travers le détroit d'Ormuz, le goulet d'étranglement pétrolier le plus critique au monde. Surveille le nombre de pétroliers, les événements de perturbation et les variations hebdomadaires des flux. Environ 20 % de l'approvisionnement mondial en pétrole y transite quotidiennement.",
+      "infoTooltip": "<strong>Suivi du commerce du Détroit d'Ormuz</strong> Indices de chargements quotidiens du WTO DataLab pour le détroit d'Ormuz : pétrole brut, GNL et engrais quittant le Golfe, produits agricoles arrivant. Par volume, moyenne janvier–mars 2025 = 100, navires visibles en AIS uniquement. Le statut et la date proviennent de la dernière analyse du WTO.",
       "title": "Suivi du commerce du Détroit d'Ormuz",
       "noData": "Aucune donnée",
       "notAvailable": "N/D",
       "chartUnavailable": "Données de graphique indisponibles",
       "sourcePrefix": "Source :",
       "units": {
-        "ktPerDay": "kt/jour",
-        "generic": "unités"
+        "index": "indice"
       },
       "errors": {
         "unavailable": "Données d'Ormuz indisponibles",
         "failedToLoad": "Échec du chargement"
-      }
+      },
+      "analysisDate": "Analyse OMC {{date}}",
+      "indexNote": "Indice d'expédition par volume, moyenne janvier–mars 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcams en direct</strong> Flux en direct depuis des lieux géopolitiquement significatifs dans le monde : zones de conflit, capitales, postes frontières et points de passage stratégiques. Flux provenant de YouTube et réseaux publics."
     },
     "macroTiles": {
-      "infoTooltip": "<strong>Indicateurs macro</strong> Indicateurs macroéconomiques clés pour les États-Unis et la zone euro : CPI, chômage, GDP et taux des banques centrales. Valeurs affichées avec delta par rapport à la période précédente. Source : FRED (Federal Reserve Economic Data)."
+      "infoTooltip": "<strong>Macro indicators</strong> Indicateurs américains, de la zone euro et de la Chine en matière de prix, d'activité, de politique et de change. La Chine nécessite une couverture actuelle. Chaque tuile affiche sa source et sa date d'observation."
     },
     "monitors": {
       "infoTooltip": "<strong>Moniteurs de mots-clés</strong> Ajoutez n'importe quel terme pour suivre les mentions dans les actualités en temps réel à travers toutes les sources WorldMonitor. Les résultats se mettent à jour en temps réel à mesure que les articles correspondants sont ingérés."
     },
     "renewable": {
-      "infoTooltip": "<strong>Énergie renouvelable</strong> Part des renouvelables dans la production d'électricité par région et année, plus la capacité installée aux États-Unis pour le solaire, l'éolien et le charbon (MW). Sources : Banque mondiale (EG.ELC.RNEW.ZS) et EIA."
+      "infoTooltip": "<strong>Renewable Energy</strong> Part de la génération d'électricité à partir d'énergies renouvelables par région et année, plus la capacité installée aux États-Unis pour le solaire, l'éolien et le charbon (MW). Sources : Banque mondiale (EG.ELC.RNEW.ZS) et Administration de l'information sur l'énergie des États-Unis."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Vélocité sociale</strong> Sujets tendance et contenus viraux à portée géopolitique. Mesure la vélocité des médias sociaux : la rapidité de propagation d'une histoire par rapport à la ligne de base. Aide à faire émerger des récits naissants avant qu'ils n'atteignent les médias traditionnels."
@@ -2280,7 +2365,7 @@
       "infoTooltip": "<strong>Horloge mondiale</strong> Heures locales en temps réel et statut des sessions de marché pour les principaux centres financiers mondiaux. Affiche le statut ouvert/fermé pour NYSE, LSE, TSE, SGX et d'autres bourses."
     },
     "yieldCurve": {
-      "infoTooltip": "<strong>Courbe des taux &amp; Rendements</strong> Courbe des rendements du Trésor américain (2Y, 5Y, 10Y, 30Y) et écarts de taux clés incluant l'indicateur d'inversion 10Y-2Y. Affiche également les taux de la zone euro (EURIBOR, ESTR). Une courbe inversée précède historiquement les récessions. Source : FRED."
+      "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> Courbe de rendement des bons du Trésor américains (2Y, 5Y, 10Y, 30Y) et spreads clés incluant l'indicateur d'inversion 10Y-2Y. Affiche également les taux de la zone euro (EURIBOR, ESTR). Historiquement, une courbe inversée précède les récessions. Source : Données économiques de la Réserve fédérale."
     },
     "pinnedWebcams": {
       "pinFromMap": "Épinglez une webcam depuis la carte"
@@ -2289,13 +2374,13 @@
       "noData": "Aucune percée scientifique pour le moment"
     },
     "oilInventories": {
-      "infoTooltip": "<strong>Stocks de pétrole</strong> Stocks de pétrole brut américain et réserves stratégiques (EIA hebdomadaire), stockage de gaz naturel, pourcentage de remplissage du gaz européen (GIE AGSI+) et jours de couverture des stocks pétroliers de l'OCDE (IEA mensuel)."
+      "infoTooltip": "<strong>Stocks de pétrole</strong> Stocks de brut commercial et réserves stratégiques américains, stocks de gaz naturel, stockage de gaz européen et couverture de stock pétrolier. Les sources incluent l'Administration américaine de l'information sur l'énergie et l'Agence internationale de l'énergie."
     },
     "energyComplex": {
       "noData": "Données énergétiques temporairement indisponibles - nouvelle tentative en cours",
       "liveTape": "Flux en direct",
       "liveTapeSource": "Cotations de marché",
-      "infoTooltip": "<strong>Complexe énergétique</strong> Signaux énergétiques physiques et négociables en un seul endroit :<ul><li><strong>Métriques EIA</strong> : WTI, Brent, production américaine et stocks</li><li><strong>Flux en direct</strong> : Prix énergétiques négociables comme le pétrole brut et le gaz naturel</li><li><strong>Objectif</strong> : Distinguer le stress énergétique physique des panneaux macroéconomiques et de matières premières plus larges</li></ul>"
+      "infoTooltip": "<strong>Complexe énergétique</strong> Signaux énergétiques physiques et négociables en un seul endroit :<ul><li><strong>Métriques de l'Administration américaine de l'information sur l'énergie</strong> : WTI, Brent, production américaine et stocks</li><li><strong>Transmission directe</strong> : Prix négociables de l'énergie comme le brut et le gaz naturel</li><li><strong>Objectif</strong> : Différencier le stress énergétique physique des panneaux macroéconomiques et de matières premières plus larges</li></ul>"
     },
     "consumerPrices": {
       "tabs": {
@@ -2304,29 +2389,29 @@
         "movers": "Mouvements",
         "spread": "Écart détaillant",
         "health": "Santé des données",
-        "world": "World"
+        "world": "Monde"
       },
-      "infoTooltip": "<strong>Prix à la consommation</strong> Suivi en temps réel des prix du panier :<ul><li><strong>Aperçu</strong> : Indice des produits essentiels, panier valeur et variation semaine sur semaine</li><li><strong>Catégories</strong> : Tendances de prix par catégorie avec plage de 30 jours</li><li><strong>Mouvements</strong> : Plus grands articles à la hausse et à la baisse cette semaine</li><li><strong>Écart</strong> : Variance des prix entre détaillants pour le même panier</li></ul>Données provenant du scraping en direct des prix des détaillants.",
+      "infoTooltip": "<strong>Prix à la consommation</strong> Paniers d'épicerie en direct, changements hebdomadaires, tendances par catégorie, mouvements de prix et différences entre détaillants. L'affichage mondial utilise l'inflation annuelle des Perspectives de l'économie mondiale du Fonds monétaire international.",
       "world": {
-        "country": "Country",
-        "inflationYoY": "Inflation YoY",
-        "endOfPeriod": "End-of-Period",
-        "year": "Year",
-        "filterPlaceholder": "Filter countries…",
-        "loading": "Loading global inflation…",
-        "empty": "Inflation data not yet available",
-        "noMatches": "No matching countries",
-        "source": "Source: IMF WEO · annual CPI inflation, all reporting economies",
-        "countSingular": "country",
-        "countPlural": "countries"
+        "country": "Pays",
+        "inflationYoY": "Inflation annuelle",
+        "endOfPeriod": "Fin de période",
+        "year": "Année",
+        "filterPlaceholder": "Filtrer les pays…",
+        "loading": "Chargement de l’inflation mondiale…",
+        "empty": "Données d’inflation pas encore disponibles",
+        "noMatches": "Aucun pays correspondant",
+        "source": "Source : Perspectives de l'économie mondiale du Fonds monétaire international · inflation annuelle de l'indice des prix à la consommation, toutes les économies rapportantes",
+        "countSingular": "pays",
+        "countPlural": "pays"
       }
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implications du marché IA</strong> Signaux commerciaux générés par LLM découlant de l'état géopolitique, des matières premières et des données macro en direct après chaque cycle de prévision.<ul><li><strong>Direction</strong> : LONG / SHORT / HEDGE avec notation de confiance</li><li><strong>Horizon temporel</strong> : 1S, 2S, 1M ou 3M</li><li><strong>Moteur</strong> : Catalyseur clé derrière le signal</li><li><strong>Risque</strong> : Réserve ou condition d'invalidation</li></ul><em>À titre informatif uniquement. Ne constitue pas un conseil en investissement.</em>",
+      "infoTooltip": "<strong>Implications du marché IA</strong> Signaux commerciaux générés par LLM découlant de l'état géopolitique, des matières premières et des données macro en direct après chaque cycle de prévision.<ul><li><strong>Direction</strong> : LONG / SHORT / HEDGE</li><li><strong>Horizon temporel</strong> : 1S, 2S, 1M ou 3M</li><li><strong>Moteur</strong> : Catalyseur clé derrière le signal</li><li><strong>Risque</strong> : Réserve ou condition d'invalidation</li></ul><em>À titre informatif uniquement. Ne constitue pas un conseil en investissement.</em>",
       "title": "Implications du marché IA",
       "directions": {
-        "long": "LONG",
-        "short": "SHORT",
+        "long": "ACHAT",
+        "short": "VENTE",
         "hedge": "COUVERTURE"
       },
       "rationale": "Justification :",
@@ -2336,10 +2421,79 @@
       "signals_other": "{{count}} signaux",
       "disclaimer": "Signaux de trading générés par l'IA à titre informatif uniquement. Ne constitue pas un conseil en investissement. Effectuez toujours vos propres recherches.",
       "unavailable": "Les implications du marché IA sont générées après chaque exécution de prévision. Veuillez revenir bientôt.",
-      "signals_many": "{{count}} signaux"
+      "signals_many": "{{count}} signaux",
+      "unscored": "Scénarios narratifs, non évalués pour leur exactitude."
     },
     "forecast": {
-      "infoTooltip": "<strong>Prévisions IA</strong> Estimations de probabilité générées par IA pour les événements géopolitiques et économiques :<ul><li>Couverture multi-domaines : conflits, marchés, chaîne d'approvisionnement, cyber, politique</li><li>Chaque prévision affiche la probabilité estimée, le niveau de confiance et l'horizon temporel</li><li>Étalonnée par rapport aux bases de référence des marchés prédictifs le cas échéant</li></ul>Les prévisions se mettent à jour à l'arrivée de nouveaux signaux d'intelligence. Filtrez par domaine à l'aide des onglets ci-dessus."
+      "infoTooltip": "<strong>Prévisions IA</strong> Estimations de probabilité générées par IA pour les événements géopolitiques et économiques :<ul><li>Couverture multi-domaines : conflits, marchés, chaîne d'approvisionnement, cyber, politique</li><li>Chaque prévision affiche la probabilité estimée, le niveau de confiance et l'horizon temporel</li></ul>Les prévisions se mettent à jour à l'arrivée de nouveaux signaux d'intelligence. Filtrez par domaine à l'aide des onglets ci-dessus.",
+      "record": {
+        "label": "Bilan",
+        "labelHint": "Comment les prévisions publiées ont été notées une fois résolues, sur les {{days}} derniers jours. Survolez un chiffre pour en connaître le sens.",
+        "unavailable": "Indisponible pour le moment",
+        "insufficient": "Trop peu de prévisions indépendantes pour le moment",
+        "brier": "Score de Brier {{score}} (n={{n}})",
+        "brierHint": "Score de Brier sur {{n}} prévisions notées : la moyenne du carré de l'écart entre la probabilité prévue et ce qui s'est produit. 0 est parfait, 0,25 équivaut à un pile ou face ; plus c'est bas, mieux c'est.",
+        "baseRate": "Taux réel {{score}} (n={{n}})",
+        "baseRateHint": "Ce qu'aurait obtenu le fait de toujours prévoir la fréquence réelle de réussite de ces {{n}} prévisions ({{pct}}% résolues oui). Ce taux n'est connu qu'après coup.",
+        "void": "Annulées {{pct}} % ({{count}} sur {{resolved}})",
+        "voidHint": "Prévisions résolues mais impossibles à noter, sur {{resolved}} résolues dans la période.",
+        "stale": "Obsolète",
+        "staleHint": "Dernière notation le {{date}}. Le noteur n'a pas tourné depuis, ces chiffres sont donc plus anciens qu'ils ne devraient l'être.",
+        "fullRecord": "Bilan complet",
+        "skill": "Compétence {{score}} vs taux réel",
+        "skillHint": "Compétence sur les mêmes {{n}} prévisions notées, par rapport à toujours prévoir la fréquence réelle de réussite sur la période : 0 signifie la même erreur que ce taux, 1 est parfait, et en dessous de 0 signifie une erreur plus grande. L'historique complet indique si la différence est manifeste."
+      },
+      "reliability": {
+        "measured": "{{domain}} n={{n}} · compétence {{skill}} vs taux réel",
+        "measuredHint": "Comment les prévisions publiées de {{domain}} ont performé sur {{n}} prévisions notées au cours des {{days}} derniers jours, par rapport à toujours prévoir la fréquence réelle de réussite des prévisions du domaine : 0 signifie la même erreur que ce taux, 1 est parfait, et en dessous de 0 signifie une erreur plus grande. Brier {{score}} par rapport à {{base}} pour ce taux, où plus bas est mieux. Un score de domaine n'a pas encore d'intervalle d'incertitude. Il s'agit de l'historique du domaine, non de cette prévision.",
+        "unmeasured": "Pas encore mesuré",
+        "unmeasuredHint": "Les prévisions de {{domain}} ont {{n}} résultats notés au cours des {{days}} derniers jours. La précision d'un domaine s'affiche une fois que ses résultats proviennent d'au moins {{min}} familles de prévisions, avec au moins {{outcomes}} qui se sont réalisées et autant qui ne se sont pas réalisées."
+      },
+      "resolution": {
+        "last": "Dernier : {{outcome}}",
+        "lastSr": "La fenêtre précédente de cette prévision a abouti à {{outcome}}.",
+        "history": "Fenêtres récentes, les plus récentes en premier : {{list}}",
+        "outcome": {
+          "yes": "OUI",
+          "no": "NON",
+          "void": "NUL"
+        },
+        "void": {
+          "no_establishable_metric": "Le flux n'avait pas de lecture pour cette question",
+          "value_source_never_settled": "Le flux n'a jamais publié de valeur définitive",
+          "count_source_window_not_retained": "Le flux ne conservait plus la fenêtre de la question",
+          "unsupported_window": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "unsupported_metric_key": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "not_hard_spec": "La question n'a pas pu être vérifiée par rapport à son flux",
+          "missing_threshold": "Il manquait un seuil à la question",
+          "missing_deadline": "Il manquait une date limite à la question",
+          "missing_generated_at": "Il manquait la date de début de la prévision",
+          "beyond_archive_horizon": "L'archive de nouvelles ne couvrait plus la fenêtre de la question",
+          "no_archive_evidence": "L'archive de nouvelles n'avait rien sur le sujet",
+          "all_judges_void": "Les deux arbitres ont jugé les preuves insuffisantes",
+          "judge_disagreement": "Les arbitres n'étaient pas d'accord",
+          "judge_retry_exhausted": "Les arbitres n'ont rendu aucun verdict",
+          "withheld_unpublished": "Ce type de prévision n'est plus publié",
+          "resolver_envelope_bug": "Évalué sur un flux de données que nous ne pouvions pas lire correctement",
+          "market_price_not_outcome": "Le flux indiquait le prix du marché, pas la manière dont le marché a été résolu",
+          "judged_evidence_unreliable": "Exclu de la notation le temps de corriger les éléments fournis aux juges",
+          "other": "N'a pas pu être résolu",
+          "judged_old_selection": "Jugé avec une méthode de preuve reconnue par la suite non fiable",
+          "late_read": "Le flux n'a pas été lu assez près de la date limite",
+          "feed_unavailable": "Le flux de données n'était pas disponible après la date limite",
+          "resolver_could_not_read_feed": "Notre système de résolution n'a pas pu lire correctement ce flux de données",
+          "base_rate_placeholder": "Ouvert sur une valeur provisoire de taux de base, et non sur une prévision du modèle"
+        }
+      },
+      "horizons": {
+        "label": "Également noté à : {{list}}",
+        "hint": "La probabilité du titre est notée à l'horizon propre de la prévision. La projection à chacun de ces horizons est également notée, par rapport à son feed source, en utilisant la valeur publiée en premier pour cette prévision. Les valeurs de projection ne sont pas affichées car la valeur actuelle peut différer de celle notée."
+      },
+      "audit": {
+        "label": "Précision en cours d'audit",
+        "hint": "En cours d'audit depuis le {{date}}. Un audit a révélé des erreurs dans la notation des prévisions. Les scores sont retirés pendant que les corrections sont apportées. Les prévisions continuent d'être publiées et enregistrées.",
+        "unverified": "Résultat enregistré, non vérifié tant que la précision est en cours d'audit."
+      }
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Moniteur d'escalade</strong> Détecte les signaux géopolitiques convergents :<ul><li>Corrélie les mouvements militaires, les événements conflictuels et les pics d'actualités</li><li>Note les zones de convergence par gravité (critique/haute/moyenne/basse)</li><li>Suit les tendances d'escalade ou de désescalade au fil du temps</li></ul>Cliquez sur une carte pour zoomer sur la région sur la carte."
@@ -2361,30 +2515,30 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} +{{count}} autres — {{reason}}",
+        "notFound": "aucune cotation disponible",
+        "providerError": "échec de la récupération de la cotation, nouvelle tentative sous peu",
+        "rateLimited": "limite de débit du fournisseur de cotations atteinte, nouvelle tentative sous peu",
+        "notConfigured": "fournisseur de cotations non configuré",
+        "requestLimit": "trop de symboles demandés",
+        "budget": "pas encore chargé, nouvelle tentative sous peu",
+        "seed": "données de marché temporairement indisponibles"
       }
     },
     "heatmap": {
       "infoTooltip": "<strong>Carte thermique des secteurs</strong> Performance des secteurs du S&P 500 en un coup d'œil. L'intensité de la couleur reflète l'ampleur de la variation quotidienne. Vert = gains, Rouge = pertes."
     },
     "fuelPrices": {
-      "infoTooltip": "<strong>Prix du carburant</strong> Prix de détail à la pompe pour l'essence et le diesel dans plus de 30 pays, normalisés en USD/litre pour la comparaison. Les prix proviennent de programmes de données ouvertes gouvernementales officiels et sont mis à jour hebdomadairement. Les pays les moins chers et les plus chers sont mis en évidence. La variation S/S est affichée quand les données de la semaine précédente sont disponibles.",
+      "infoTooltip": "<strong>Fuel Prices</strong> Prix de détail à la pompe pour l'essence et le diesel dans 30+ pays, normalisés en USD/litre pour la comparaison. Les prix proviennent de programmes officiels de données ouvertes gouvernementales et sont mis à jour hebdomadairement. Les pays les moins chers et les plus chers sont mis en évidence. La variation semaine après semaine s'affiche lorsque les données de la semaine précédente sont disponibles.",
       "countries": "pays"
     },
     "faoFoodPriceIndex": {
-      "infoTooltip": "<strong>Indice des prix alimentaires de la FAO</strong> L'indice IPPI de l'Organisation des Nations Unies pour l'alimentation et l'agriculture suit les prix à l'exportation internationaux d'un panier de produits alimentaires (Céréales, Produits laitiers, Viande, Huiles, Sucre), base 2014-2016=100. Mis à jour mensuellement le premier vendredi de chaque mois.",
-      "indexLabel": "IPPI (2014-16=100)",
-      "mom": "MoM",
-      "yoy": "YoY",
+      "infoTooltip": "<strong>FAO Food Price Index</strong> L'indice des prix alimentaires de l'Organisation des Nations unies pour l'alimentation et l'agriculture suit les prix d'exportation internationaux d'un panier de produits alimentaires (Céréales, Produits laitiers, Viande, Huiles, Sucre), base 2014-2016=100. Mise à jour mensuelle le premier vendredi de chaque mois.",
+      "indexLabel": "Prix alimentaires (2014–2016 = 100)",
+      "mom": "Variation d'un mois à l'autre",
+      "yoy": "Variation d'une année à l'autre",
       "asOf": "À partir du",
-      "baseNote": "Base : 2014-2016 = 100 | Source : FAO ONU",
+      "baseNote": "Base : 2014–2016 = 100 | Source : Organisation des Nations unies pour l'alimentation et l'agriculture",
       "ffpi": "Alimentation",
       "cereals": "Céréales",
       "meat": "Viande",
@@ -2398,14 +2552,14 @@
     },
     "liquidityShifts": {
       "title": "Mouvements de liquidité",
-      "infoTooltip": "<strong>Mouvements de liquidité</strong> Positionnement haute liquidité et moniteur des mouvements quotidiens pour le pétrole, l'or, l'argent, les contrats à terme sur indices d'actions et les principales actions américaines. Net des gestionnaires d'actifs COT et net des fonds à effet de levier vs variation de prix quotidienne.",
-      "cotSection": "Positionnement pétrole / or / argent + indices (COT)",
+      "infoTooltip": "<strong>Liquidity Shifts</strong> Surveillance du positionnement haute liquidité et des changements quotidiens pour le pétrole, l'or, l'argent, les contrats à terme sur indice boursier et les principales actions américaines. Nette des gestionnaires d'actifs des Commitments of Traders et nette des fonds à effet de levier par rapport à la variation quotidienne des prix.",
+      "cotSection": "Positionnement Pétrole / Or / Argent + Indice (Commitments of Traders)",
       "stocksSection": "Principales actions américaines : mouvement quotidien",
       "longShort": "Long {{long}} / Short {{short}}",
       "lev": "Levier",
-      "noCot": "Aucune ligne COT disponible.",
+      "noCot": "Aucune ligne Commitments of Traders disponible.",
       "noStocks": "Aucune cotation de titre principal disponible.",
-      "reportDate": "Date du rapport COT : {{date}}",
+      "reportDate": "Date du rapport Commitments of Traders : {{date}}",
       "unavailable": "Données de liquidité indisponibles",
       "failed": "Échec du chargement"
     },
@@ -2414,15 +2568,15 @@
       "infoTooltip": "<strong>Positionnement 24/7</strong> Stress de positionnement des contrats perpétuels depuis Hyperliquid. Échanges en continu, montrant ce qui se construit quand les marchés traditionnels sont fermés. Score composite (0-100) basé sur le taux de financement, le volume, l'intérêt ouvert et la base spot-perp. Vert = longs surpeuplés (tendance haussière), rouge = shorts surpeuplés (tendance baissière).",
       "commodities": "MATIÈRES PREMIÈRES",
       "crypto": "CRYPTOMONNAIES",
-      "fx": "DEVISES",
-      "warmup": "Initialisation des références. L'historique du volume et de l'OI se remplira au cours de la prochaine heure.",
+      "fx": "Change",
+      "warmup": "Construction des références. L'historique du volume et de l'intérêt ouvert se remplit au cours de l'heure suivante.",
       "footer": "5min · Contrats perpétuels Hyperliquid · 24/7"
     },
     "goldIntelligence": {
-      "infoTooltip": "<strong>Gold Intelligence</strong> Prix au comptant de l'or, ratio or/argent, prime or vs platine, prix XAU multi-devises (EUR, GBP, JPY, CNY, INR, CHF) et positionnement des gestionnaires de fonds de la CFTC. Sources : Yahoo Finance, CFTC COT."
+      "infoTooltip": "<strong>Gold intelligence</strong> Prix de l'or dans plusieurs devises, ratios or/argent et or/platine, et positions futures de fonds gérés. Les sources incluent Yahoo Finance et la Commission de la Commodity Futures Trading."
     },
     "wsbTickerScanner": {
-      "infoTooltip": "<strong>WSB Ticker Scanner</strong> Mentions de tickers en temps réel depuis r/wallstreetbets, r/stocks et r/investing. Classées par fréquence de mention et engagement. La vélocité mesure la rapidité avec laquelle un ticker gagne du momentum entre les publications."
+      "infoTooltip": "<strong>WallStreetBets Ticker Scanner</strong> Mentions de titres en temps réel de r/wallstreetbets, r/stocks et r/investing. Classées par fréquence de mention et engagement. La vélocité mesure la rapidité avec laquelle un titre gagne du dynamisme à travers les publications."
     },
     "proBanner": {
       "badge": "PRO",
@@ -2440,7 +2594,15 @@
       "renewalFailedDesc": "Impossible de vérifier le renouvellement de votre abonnement. Gérez votre facturation ou contactez l'assistance si le problème persiste.",
       "manageBilling": "Gérer la facturation",
       "lapsedDesc": "Votre abonnement Pro a pris fin. Réabonnez-vous pour retrouver l'accès premium.",
-      "resubscribe": "Se réabonner"
+      "resubscribe": "Se réabonner",
+      "billingEmailBouncedMessage": "Les e-mails de facturation envoyés à {{email}} sont renvoyés. Mettez à jour votre e-mail de facturation pour recevoir vos reçus et alertes de paiement.",
+      "fixBillingEmail": "Corriger l’e-mail de facturation",
+      "billingEmailLabel": "Nouvel e-mail de facturation",
+      "save": "Enregistrer",
+      "billingEmailUpdated": "E-mail de facturation remplacé par {{email}}. Les reçus et alertes de paiement y seront envoyés désormais.",
+      "billingEmailInvalid": "Saisissez une adresse e-mail valide.",
+      "billingEmailSuppressed": "Nous ne pouvons pas non plus livrer à cette adresse. Essayez-en une autre.",
+      "billingEmailUpdateFailed": "Impossible de mettre à jour votre e-mail de facturation. Réessayez ou contactez le support si le problème persiste."
     },
     "checkoutFailureBanner": {
       "message": "Le paiement n'a pas pu être complété. Aucun frais n'a été prélevé.",
@@ -2495,6 +2657,15 @@
             "mcpClients": "Configurer MCP",
             "channels": "Configurez-les dans les paramètres de notification"
           }
+        },
+        "about": {
+          "heading": "Dernière chose : à quoi utiliserez-vous World Monitor ?",
+          "body": "Trois questions rapides nous aident à développer les bons outils pour vous. Vous pouvez ignorer celles que vous souhaitez.",
+          "confirmCta": "Enregistrer mes réponses",
+          "confirming": "Enregistrement…",
+          "doneNote": "Merci, nous avons vos réponses.",
+          "summaryLabel": "À propos de vous",
+          "summaryVerified": "Enregistré. Merci."
         }
       },
       "status": {
@@ -2535,7 +2706,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanctions et désignations",
-      "infoTooltip": "Listes SDN et consolidées de l’OFAC plus les désignations SEMA/JVCFOA d’Affaires mondiales Canada. Affiche quels pays font face à la plus forte pression de désignation, quels programmes la pilotent et ce qui a été récemment ajouté depuis la dernière mise à jour.",
+      "infoTooltip": "Liste des ressortissants désignés spécialement et listes consolidées de l'Office of Foreign Assets Control plus les désignations SEMA/JVCFOA d'Affaires mondiales Canada. Affiche les pays qui font face à la plus forte pression de désignation, les programmes qui la conduisent et ce qui a été nouvellement ajouté depuis la dernière mise à jour.",
       "loading": "Chargement des données de sanctions...",
       "unavailable": "Données de sanctions indisponibles.",
       "summary": {
@@ -2557,7 +2728,7 @@
       "footer": {
         "updated": "Mise à jour {{time}}",
         "dataset": "ensemble de données {{date}}",
-        "source": "Source : OFAC · GAC SEMA"
+        "source": "Source : Office of Foreign Assets Control · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nouveau(x)",
@@ -2587,7 +2758,7 @@
       "headers": {
         "station": "Station",
         "reading": "Mesure",
-        "delta": "Delta",
+        "delta": "Écart",
         "status": "Statut",
         "observed": "Observé"
       },
@@ -2603,8 +2774,8 @@
         "updated": "Mis à jour {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}h ago",
-        "hoursAgo_other": "{{count}}h ago",
+        "hoursAgo_one": "il y a {{count}} h",
+        "hoursAgo_other": "il y a {{count}} h",
         "daysAgo_one": "{{count}}j ago",
         "daysAgo_other": "{{count}}j ago",
         "hoursAgo_many": "{{count}}h ago",
@@ -2617,9 +2788,9 @@
       }
     },
     "defensePatents": {
-      "title": "Signaux R&D",
+      "title": "Signaux de recherche et développement",
       "infoTooltip": "Dépôts hebdomadaires de brevets de défense et à double usage par Raytheon, Lockheed, Huawei, DARPA et autres organisations stratégiques. Catégories : H04B (communications), H01L (semi-conducteurs), F42B (munitions), G06N (IA), C12N (biotechnologie). Source : USPTO Open Data Portal.",
-      "loading": "Chargement des dépôts R&D…",
+      "loading": "Chargement des dépôts de recherche et développement…",
       "error": "Impossible de charger les données de brevets.",
       "empty": "Aucun dépôt dans cette catégorie.",
       "viewOnUspto": "Voir sur USPTO",
@@ -2641,7 +2812,14 @@
       "signals_other": "{{count}} signaux",
       "analyzing": "Analyse en cours…",
       "viewOnMap": "Voir sur la carte",
-      "signals_many": "{{count}} signaux"
+      "signals_many": "{{count}} signaux",
+      "waiting": "En attente de la prochaine mise à jour des données. Ce panneau se met à jour automatiquement.",
+      "offline": "En attente d’une connexion. Ce panneau se met à jour automatiquement dès votre retour en ligne.",
+      "updated": "Mis à jour {{time}}",
+      "saved": "Dernière mise à jour connue {{time}} · Recherche de mises à jour",
+      "savedOffline": "Dernière mise à jour connue {{time}} · Hors ligne",
+      "localSignals": "Selon les signaux chargés dans le tableau de bord",
+      "emptySaved": "Aucune convergence dans la dernière mise à jour connue."
     },
     "thermalEscalation": {
       "title": "Escalade thermique",
@@ -2665,15 +2843,15 @@
         "industrial": "industriel",
         "strategic": "stratégique"
       },
-      "observations_one": "{{count}} obs",
-      "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
-      "sources_other": "{{count}} src",
+      "observations_one": "{{count}} obs.",
+      "observations_other": "{{count}} obs.",
+      "sources_one": "{{count}} source",
+      "sources_other": "{{count}} sources",
       "age": {
-        "minutesAgo_one": "{{count}}m ago",
-        "minutesAgo_other": "{{count}}m ago",
-        "hoursAgo_one": "{{count}}h ago",
-        "hoursAgo_other": "{{count}}h ago",
+        "minutesAgo_one": "il y a {{count}} min",
+        "minutesAgo_other": "il y a {{count}} min",
+        "hoursAgo_one": "il y a {{count}} h",
+        "hoursAgo_other": "il y a {{count}} h",
         "daysAgo_one": "{{count}}j ago",
         "daysAgo_other": "{{count}}j ago",
         "minutesAgo_many": "{{count}}m ago",
@@ -2685,7 +2863,7 @@
     },
     "chokepointStrip": {
       "title": "Statut des points de contrôle",
-      "infoTooltip": "Statut en direct pour les sept points de contrôle mondiaux du transport de pétrole et gaz. Estimations de débit calibrées à partir de Portwatch DWT + observations AIS. Consulter /docs/methodology/chokepoints pour la méthodologie.",
+      "infoTooltip": "Statut actuel des sept points d'étranglement du transport pétrolier et gazier mondiaux. Les estimations de flux sont calibrées à partir de la capacité de charge des navires Portwatch + observations de suivi des navires. Voir /docs/methodology/chokepoints pour la méthodologie.",
       "unknown": "inconnu",
       "shortName": {
         "hormuzStrait": "Ormuz",
@@ -2694,7 +2872,7 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Détroits turcs",
         "panama": "Panama",
-        "danishStraits": "Détroits danois"
+        "doverStrait": "Pas de Calais"
       },
       "flow": {
         "mbd": "{{value}} mb/j",
@@ -2705,9 +2883,9 @@
         "noData": "Pas encore de données sur les points de contrôle"
       },
       "attribution": {
-        "method": "Étalonnage Portwatch DWT + AIS",
-        "sampleLabel": "Signaux de perturbation AIS",
-        "creditName": "Points de contrôle du transit pétrolier mondial de l'EIA"
+        "method": "Capacité de charge des navires Portwatch + calibrage du suivi des navires",
+        "sampleLabel": "signaux de perturbation du suivi des navires",
+        "creditName": "Points d'étranglement du transit pétrolier mondial de l'Administration de l'information sur l'énergie des États-Unis"
       }
     },
     "mobileNav": {
@@ -2744,8 +2922,8 @@
         "hoursAgo": "il y a {{count}}h",
         "daysAgo": "il y a {{count}}j",
         "compactNow": "maintenant",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactMinutes": "{{count}} min",
+        "compactHours": "{{count}} h",
         "compactDays": "{{count}}j"
       }
     },
@@ -2766,31 +2944,31 @@
       "unlockedAnnouncement": "Limite d'onglets du tableau de bord levée."
     },
     "fx": {
-      "infoTooltip": "<strong>Taux de Change</strong> Stress de devises et taux au comptant :<ul><li>FX Stress classe 45 devises selon leur pire baisse crête à creux sur les 24 derniers mois, avec le changement sur 12 mois</li><li>La couverture inclut l'ARS, TRY, EGP, NGN, PKR et UAH — des devises omises par les ensembles de référence de la BRI et de la BCE</li><li>Le comptant répertorie les taux par rapport au dollar américain et aux taux de référence de l'euro de la BCE séparément, car les deux sont cotés sur des bases différentes</li><li>RUB — taux de la Banque de Russie, roubles par unité</li></ul> Sources : Yahoo Finance, la Banque centrale européenne et la Banque de Russie.",
+      "infoTooltip": "<strong>Currency rates</strong> Stress classe 45 devises selon leur plus fort déclin sur 24 mois, avec le changement sur 12 mois. Les taux au comptant utilisent des bases distinctes en dollars américains et en euros. Les taux du rouble russe sont en roubles par unité. Les sources incluent Yahoo Finance, la Banque centrale européenne et la Banque de Russie.",
       "tabs": {
-        "stress": "FX Stress",
+        "stress": "Stress des devises",
         "spot": "Comptant",
         "rub": "RUB"
       },
       "currency": "Devise",
       "pair": "Paire",
       "rate": "Taux",
-      "yoy": "12m",
+      "yoy": "12 mois",
       "drawdown": "Baisse sur 24m",
       "peakToTrough": "Crête → Creux",
       "change1d": "1j",
       "perUsd": "Par 1 USD",
       "usdPerUnit": "USD par unité",
       "usdBase": "Contre le dollar américain",
-      "eurBase": "Taux de référence euro de la BCE",
+      "eurBase": "Taux de change euro de référence de la Banque centrale européenne",
       "stressedCount": "{{stressed}} sur {{total}} devises sous {{threshold}}",
       "sourceYahoo": "Source : Yahoo Finance",
-      "sourceEcb": "Source : BCE",
+      "sourceEcb": "Source : Banque centrale européenne",
       "degraded": "Indisponible pour le moment : {{sources}}. Nouvelle tentative en cours.",
       "source": {
-        "stress": "Stress FX",
+        "stress": "Stress des devises",
         "usd": "Taux du dollar américain",
-        "eur": "Taux de l'euro de la BCE",
+        "eur": "Taux euro de la Banque centrale européenne",
         "rub": "Taux de la Banque de Russie"
       },
       "rubBase": "Banque de Russie — roubles pour 1 unité",
@@ -2808,6 +2986,147 @@
       "succeeded": "Clé d'accès enregistrée. Vous pouvez l'utiliser la prochaine fois que vous vous connectez.",
       "retryable": "Cette opération ne s'est pas terminée. Vous pouvez réessayer.",
       "failed": "Nous n'avons pas pu enregistrer une clé d'accès sur cet appareil."
+    },
+    "decisionBrief": {
+      "commodityTitle": "Note de décision sur les matières premières",
+      "commodity": "Matière première / produit",
+      "blockedChokepoint": "Passage supposé bloqué",
+      "commodityCapture": "Capturer la comparaison des matières premières",
+      "title": "Note de décision",
+      "fuel": "Combustible",
+      "chokepoint": "Point de passage critique",
+      "baseline": "Perturbation de référence",
+      "comparison": "Perturbation comparée",
+      "capture": "Capturer / actualiser les deux",
+      "downloadHtml": "Télécharger la note en HTML",
+      "downloadJson": "Télécharger la note en JSON",
+      "back": "← Retour à la fiche pays",
+      "select": "Sélectionnez une perturbation énergétique, puis capturez les deux scénarios.",
+      "changed": "Sélection modifiée. Capturez les deux scénarios avant de les exporter.",
+      "loading": "Capture des deux scénarios…",
+      "captured": "Capture terminée. Vérifiez les dates des observations et les contraintes avant le téléchargement.",
+      "failed": "Impossible de capturer les scénarios. Vérifiez votre accès et réessayez. Aucun résultat à exporter.",
+      "locked": "La note de décision est disponible avec Pro."
+    },
+    "liveMedia": {
+      "idleStatus": "En pause pour inactivité",
+      "idleBody": "La vidéo en direct s’est arrêtée après {{duration}} sans activité de la souris, du clavier ou de l’écran tactile.",
+      "idleResume": "Reprendre",
+      "idleKeepPlaying": "Continuer la lecture en cas d'inactivité",
+      "idleSettingsHint": "Modifiez ce paramètre à tout moment dans Paramètres › Média.",
+      "idleKeepPlayingToast": "La vidéo en direct continuera de se lire en cas d'inactivité. Modifiez dans Paramètres › Média."
+    },
+    "corroboration": {
+      "singlePublisher": "Éditeur unique",
+      "singlePublisherHint": "Un seul éditeur rapporte cela pour l'instant. Cela décrit la couverture, pas l'exactitude.",
+      "tier4Only": "Sources de bas niveau uniquement",
+      "tier4OnlyHint": "Chaque média qui rapporte cela est une source de niveau 4 (agrégateurs et blogs). Cela décrit la couverture, pas l'exactitude.",
+      "rosterListed": "({{listed}} listés)",
+      "rosterFeeds": "Flux détectés : {{labels}}",
+      "rosterSameCopy": "Même texte, compté une fois",
+      "rosterLegend": "Les niveaux classent les sources ; ils ne jugent pas cette affirmation.",
+      "tierDocsLink": "Comment les niveaux sont attribués",
+      "tierChip": "N{{tier}}",
+      "tierChipUndeclared": "N?",
+      "tierTitle1": "Niveau 1 : Agences de presse et organismes officiels",
+      "tierTitle2": "Niveau 2 : Grands médias",
+      "tierTitle3": "Niveau 3 : Sources spécialisées, régionales et instituts de recherche",
+      "tierTitle4": "Niveau 4 : Agrégateurs et blogs",
+      "tierTitleUndeclared": "Niveau non déclaré : pas encore examiné",
+      "rosterSummary": "Signalé par {{publishers}}",
+      "rosterSummaryTier1": "Signalé par {{publishers}}, dont {{tier1}} de niveau 1",
+      "rosterPublishers_one": "{{count}} éditeur",
+      "rosterPublishers_many": "{{count}} éditeurs",
+      "rosterPublishers_other": "{{count}} éditeurs"
+    },
+    "foodPrices": {
+      "title": "Prix alimentaires locaux",
+      "method": "La variation hebdomadaire compare le même produit, marché, origine et unité au prix relevé exactement sept jours auparavant. Les pays utilisent des paniers et devises différents.",
+      "loading": "Chargement des prix alimentaires…",
+      "unavailable": "Indisponible",
+      "retry": "Réessayer",
+      "country": "Pays",
+      "market": "Marché",
+      "retail": "Détail",
+      "wholesale": "Gros",
+      "farmgate": "Prix à la ferme",
+      "export": "Exportation",
+      "prices": "Prix alimentaires",
+      "product": "Produit",
+      "price": "Prix / unité",
+      "weekly": "Variation hebdomadaire",
+      "origin": "Origine",
+      "versus": "par rapport à",
+      "noBaseline": "Semaine précédente indisponible",
+      "context": "Sécurité alimentaire et contexte mensuel",
+      "contextNote": "Ces rapports fournissent un contexte daté, pas des variations hebdomadaires des prix. Les rapports tunisiens peuvent avoir plusieurs mois de retard.",
+      "briefCountry": "Rapport national",
+      "report": "Date du rapport",
+      "checked": "Dernière vérification",
+      "current": "À jour",
+      "partial": "Certains rapports manquent ou sont anciens",
+      "stale": "Données anciennes",
+      "global": "Indice mensuel mondial de la FAO"
+    },
+    "aboutYou": {
+      "title": "Aidez-nous à construire World Monitor pour vous",
+      "ariaLabel": "À propos de vous",
+      "progress": "{{current}} sur {{total}}",
+      "skip": "Ignorer",
+      "close": "Fermer",
+      "done": "Terminé",
+      "saving": "Enregistrement…",
+      "saveFailed": "Impossible d'enregistrer. Réessayez.",
+      "retry": "Réessayer",
+      "thanks": "Merci. Cela nous aide à décider ce que nous allons construire ensuite.",
+      "questions": {
+        "primaryUse": {
+          "label": "À quoi utilisez-vous principalement World Monitor ?",
+          "options": {
+            "news": "Actualités et événements mondiaux",
+            "markets": "Marchés et trading",
+            "commodities": "Matières premières et chaîne d'approvisionnement",
+            "travel": "Voyage et vols",
+            "security": "Sécurité et OSINT",
+            "research": "Recherche et journalisme",
+            "api-agent": "Développement avec l'API ou un agent IA",
+            "other": "Autre"
+          }
+        },
+        "usageContext": {
+          "label": "L'utilisez-vous pour le travail ou un usage personnel ?",
+          "options": {
+            "personal": "Personnel",
+            "work": "Travail"
+          }
+        },
+        "payer": {
+          "label": "Qui paie ou paierait pour cela ?",
+          "options": {
+            "self": "Moi",
+            "employer": "Mon employeur ou mon équipe",
+            "not-paying": "Personne pour l'instant"
+          }
+        },
+        "role": {
+          "label": "Quel rôle vous décrit le mieux ?",
+          "options": {
+            "analyst": "Analyste ou chercheur",
+            "trader": "Trader ou investisseur",
+            "journalist": "Journaliste",
+            "security": "Sécurité ou gestion des risques",
+            "government": "Gouvernement ou politique",
+            "supply-chain": "Chaîne d'approvisionnement ou opérations",
+            "developer": "Développeur",
+            "student": "Étudiant",
+            "other": "Autre"
+          }
+        },
+        "alternative": {
+          "label": "Qu'utiliseriez-vous si World Monitor n'existait pas ?",
+          "placeholder": "Optionnel"
+        }
+      }
     }
   },
   "popups": {
@@ -2845,15 +3164,19 @@
     "protest": {
       "acledVerified": "ACLED (vérifié)",
       "gdelt": "GDELT",
+      "records": "entrées",
+      "mediaSignal": "Signal médiatique non vérifié",
+      "relatedArticle": "Article associé",
+      "mediaSignalDetail": "Ce lieu est mentionné dans des articles sur des troubles. Aucun événement local n’est vérifié.",
       "riots": "Émeutes",
       "highSeverity": "Sévérité Élevée"
     },
     "gpsJamming": {
-      "title": "Interférences GPS/GNSS",
+      "title": "Interférence de la navigation par satellite",
       "navPerformance": "Aéronefs affectés",
       "samples": "Nombre d’aéronefs affectés",
       "aircraft": "Nombre total d’aéronefs observés",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "Hexagone H3"
     },
     "flight": {
       "groundStop": "ARRÊT AU SOL",
@@ -2869,7 +3192,7 @@
         "faa": "FAA-ASWS",
         "eurocontrol": "Eurocontrôle",
         "computed": "Calculé",
-        "aviationstack": "Flight Data",
+        "aviationstack": "Données de vol",
         "notam": "NOTAM"
       },
       "regions": {
@@ -2880,7 +3203,9 @@
         "africa": "Afrique"
       },
       "scheduled": "Prév.",
-      "estimated": "Est."
+      "estimated": "Est.",
+      "normalOperations": "OPÉRATIONS NORMALES",
+      "open": "OUVERT"
     },
     "cyberThreat": {
       "title": "CYBER MENACE"
@@ -2970,7 +3295,7 @@
     "operator": "OPÉRATEUR",
     "countries": "PAYS",
     "waypoints": "POINTS DE PASSAGE",
-    "repairEta": "ETA RÉPARATION",
+    "repairEta": "Durée estimée de la réparation",
     "timeUnits": {
       "m": "m",
       "h": "h",
@@ -2981,7 +3306,7 @@
       "baseline": "Base",
       "components": {
         "news": "Actus",
-        "cii": "CII",
+        "cii": "Indice d’instabilité des pays",
         "geo": "Géo",
         "military": "Militaire"
       },
@@ -3006,7 +3331,7 @@
     "time": "Heure",
     "area": "Zone",
     "expires": "Expire",
-    "aisGapSpike": "PIC ÉCART AIS",
+    "aisGapSpike": "Pic de lacunes dans le suivi des navires",
     "chokepointCongestion": "CONGESTION GOULET",
     "darkening": "ASSOMBRISSEMENT",
     "density": "DENSITÉ",
@@ -3032,7 +3357,7 @@
     "cableAdvisory": {
       "reported": "RAPPORTÉ",
       "impact": "IMPACT",
-      "eta": "ETA"
+      "eta": "Heure d'arrivée estimée"
     },
     "outage": {
       "levels": {
@@ -3127,10 +3452,10 @@
         "bomber": "Bombardier",
         "transport": "Transport",
         "tanker": "Pétrolier",
-        "awacs": "AWACS/AEW",
+        "awacs": "Alerte aérienne avancée",
         "reconnaissance": "Reconnaissance",
         "helicopter": "Hélicoptère",
-        "drone": "Drone/Drone",
+        "drone": "Aéronef sans équipage / Drone",
         "patrol": "Patrouille",
         "specialOps": "Opérations spéciales",
         "vip": "Transports VIP"
@@ -3148,24 +3473,24 @@
       "builtYear": "ANNÉE DE FABRICATION"
     },
     "militaryVessel": {
-      "aisDark": "AIS FONCÉ",
+      "aisDark": "Suivi de navire perdu",
       "vessel": "Navire",
       "speed": "VITESSE",
       "heading": "TITRE",
-      "mmsi": "MMSI",
-      "region": "REGION",
-      "strikeGroup": "STRIKE GROUP",
-      "usniIntel": "USNI Intel",
-      "usniSource": "Source: USNI News Fleet Tracker",
-      "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
-      "darkDescription": "⚠ Le navire est devenu sombre - signal AIS perdu. Peut indiquer des opérations sensibles.",
-      "recentTracking": "Recent Tracking",
-      "lastReport": "LATEST",
-      "nearChokepoint": "NEAR CHOKEPOINT",
-      "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN",
+      "mmsi": "Identité de service mobile maritime",
+      "region": "RÉGION",
+      "strikeGroup": "GROUPE AÉRONAVAL",
+      "usniIntel": "Renseignement US Naval Institute",
+      "usniSource": "Source : US Naval Institute News Fleet Tracker",
+      "approximatePosition": "Position approximative — basée sur le rapport hebdomadaire de l'US Naval Institute, pas sur le suivi de navire en temps réel.",
+      "darkDescription": "⚠ Le navire est devenu indisponible — signal de suivi perdu. Peut indiquer des opérations sensibles.",
+      "recentTracking": "Suivi récent",
+      "lastReport": "DERNIER",
+      "nearChokepoint": "PRÈS D’UN POINT DE PASSAGE",
+      "nearBase": "PRÈS D’UNE BASE",
+      "lastSeen": "VU EN DERNIER",
       "estPosition": "POSITION EST.",
-      "aisLive": "AIS EN DIRECT"
+      "aisLive": "Suivi de navire en direct"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -3210,7 +3535,7 @@
       "types": {
         "container": "RÉCIPIENT",
         "oil": "TERMINAL PÉTROLIER",
-        "lng": "TERMINAL GNL",
+        "lng": "TERMINAL gaz naturel liquéfié",
         "naval": "PORT NAVAL",
         "mixed": "MIXTE",
         "bulk": "EN GROS"
@@ -3286,13 +3611,18 @@
       "position": "Position",
       "ground": "Au sol",
       "airborne": "En vol"
-    }
+    },
+    "upcomingForecast": "Prévision à venir",
+    "currentForecast": "Prévision en cours",
+    "expiredForecast": "Prévision expirée",
+    "validFrom": "Valable à partir du",
+    "validUntil": "Valable jusqu’au"
   },
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Les marchés prédictifs intègrent souvent l'information avant qu'elle ne devienne une actualité — les traders peuvent avoir un accès anticipé aux développements.",
-        "actionableInsight": "Surveiller les breaking news dans les 1 à 6 heures qui pourraient expliquer le mouvement de marché.",
+        "whyItMatters": "Un marché de prédiction a bougé alors que la couverture médiatique du sujet restait faible — le marché réagit peut-être à des informations qui n'ont pas encore été rapportées.",
+        "actionableInsight": "Surveillez les informations de dernière minute qui pourraient expliquer le mouvement du marché.",
         "confidenceNote": "Confiance plus élevée si plusieurs marchés prédictifs évoluent dans la même direction."
       },
       "news_leads_markets": {
@@ -3337,7 +3667,7 @@
       },
       "geo_convergence": {
         "whyItMatters": "Plusieurs événements d'actualité se concentrent autour d'un même lieu géographique — escalade potentielle ou activité coordonnée.",
-        "actionableInsight": "Augmenter la priorité de surveillance pour cette région ; corréler avec les données satellite/AIS si disponibles.",
+        "actionableInsight": "Augmenter la priorité de surveillance pour cette région ; corréler avec les données de suivi satellitaire/navire si disponibles.",
         "confidenceNote": "Confiance plus élevée si les événements couvrent plusieurs types de sources et périodes."
       },
       "explained_market_move": {
@@ -3422,13 +3752,13 @@
     "scanningThermalData": "Analyse des données thermiques",
     "calculatingExposure": "Calcul de l'exposition",
     "computingSignals": "Calcul des signaux...",
-    "loadingEtfData": "Chargement des données ETF...",
+    "loadingEtfData": "Chargement des données de fonds négociés en bourse...",
     "loadingDisplacement": "Chargement des données de déplacement",
     "loadingClimateData": "Chargement des données climatiques",
     "failedTechReadiness": "Échec du chargement des données tech readiness",
     "failedRiskOverview": "Échec du calcul du panorama des risques",
     "failedPredictions": "Échec du chargement des prédictions",
-    "failedCII": "Échec du calcul du CII",
+    "failedCII": "Les données de l'indice d'instabilité des pays sont temporairement indisponibles",
     "failedDependencyGraph": "Échec de la construction du graphe de dépendances",
     "failedIntelFeed": "Échec du chargement du flux de renseignement",
     "failedMarketData": "Échec du chargement des données de marché",
@@ -3460,17 +3790,17 @@
     "unavailable": "INDISPONIBLE",
     "close": "Fermer",
     "currentVariant": "(actuel)",
-    "retry": "Retry",
-    "refresh": "Refresh",
+    "retry": "Réessayer",
+    "refresh": "Actualiser",
     "all": "Tous",
     "loadingGiving": "Chargement des données de dons...",
     "rateLimitedMarket": "Données de marché temporairement limitées — nouvelle tentative automatique",
     "cancel": "Annuler",
-    "dismiss": "Dismiss"
+    "dismiss": "Ignorer"
   },
   "preferences": {
     "display": "Affichage",
-    "intelligence": "Intelligence",
+    "intelligence": "Renseignement",
     "media": "Médias",
     "panels": "Panneaux",
     "dataAndCommunity": "Données & Communauté",
@@ -3498,7 +3828,7 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Tableau de Bord de Renseignement Mondial en Temps Réel",
-    "metaDescription": "Plateforme de renseignement mondial en temps réel. Présenté dans WIRED. Utilisé par plus de 2 millions de personnes dans 190 pays. Conflits, marchés, militaire, OSINT en une seule vue.",
+    "metaDescription": "Plateforme mondiale d'intelligence en temps réel. En vedette dans WIRED. Utilisée par 2M+ de personnes dans 190 pays. Conflits, marchés, militaire, renseignements d'origine ouverte en un seul écran.",
     "offlineTitle": "Vous êtes hors ligne",
     "offlineMessage": "World Monitor nécessite une connexion Internet pour les données de renseignement en temps réel.",
     "offlineRetry": "Réessayer"
@@ -3580,7 +3910,7 @@
     "features": {
       "orefSirens1": "Alertes missiles et roquettes Israël en temps réel",
       "orefSirens2": "Cartographie des zones de sirène avec classification des menaces",
-      "telegramIntel1": "Canaux OSINT Telegram sélectionnés",
+      "telegramIntel1": "Canaux Telegram de renseignement libre d'accès sélectionnés",
       "telegramIntel2": "Mises à jour sur les conflits et la géopolitique en quasi-temps réel",
       "xIntel1": "Curated public news accounts on X",
       "xIntel2": "API-fresh posts with official permalinks"
@@ -3660,5 +3990,341 @@
       "description": "Activer les sources sur l'Iran, Israël, le Golfe et les régions kurdes"
     },
     "unavailable": "Le pack {{preset}} n'est pas disponible avec vos panneaux actuels"
+  },
+  "countryHistory": {
+    "title": "Historique quotidien du pays",
+    "loading": "Chargement de l’historique…",
+    "window": "Période",
+    "days": "{{days}} jours",
+    "observed": "{{count}} instantanés sur {{days}} jours",
+    "legend": "CII (ambre) : une valeur élevée indique plus d’instabilité. Résilience (vert) : une valeur élevée indique plus de capacité. Les points indiquent les jours avec des titres sélectionnés.",
+    "chart": "Scores quotidiens de CII et de résilience. Les lacunes et les changements de formule interrompent les lignes.",
+    "selectDate": "{{date}}, {{count}} titres sélectionnés",
+    "empty": "Aucun instantané quotidien sur cette période. L’historique s’accumule après l’activation.",
+    "unavailable": "L’historique est temporairement indisponible. Réessayez.",
+    "retry": "Réessayer",
+    "stale": "La dernière capture quotidienne réussie date de plus de 36 heures.",
+    "break": "Changement de formule ou lacune d’observation. Comparez uniquement les scores calculés avec la même formule.",
+    "partial": "La couverture des actualités était partielle au moment de la capture.",
+    "resilience": "Résilience",
+    "ciiMissing": "CII indisponible",
+    "resilienceMissing": "Résilience indisponible",
+    "noEvents": "Aucun titre sélectionné n’a été capturé à cette date. Cela ne prouve pas l’absence d’événements.",
+    "unlock90": "Débloquez 90 jours avec Pro",
+    "unlock365": "Débloquez 365 jours avec une offre API"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Source",
+      "freshness": "Actualité",
+      "confidence": "Confiance",
+      "limitations": "Limites",
+      "related": "Voir aussi",
+      "groundedIn": "Fondé sur",
+      "curated": "Sélection v1",
+      "fallback": "Repli",
+      "layerGuide": "Guide des calques"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Actualités / Points chauds",
+        "purpose": "Met en évidence les points chauds géopolitiques surveillés et relève leur niveau lorsque les actualités liées et les signaux d'escalade convergent.",
+        "source": "Registre des points chauds de WorldMonitor, renseignement d'actualité RSS/GDELT, score d'escalade des points chauds, activité militaire et contexte d'instabilité des pays.",
+        "freshness": "Les emplacements des points chauds sont sélectionnés et statiques. L'actualité des flux d'information est suivie à part. Les niveaux sont recalculés quand les flux d'actualités du tableau de bord se rafraîchissent, à environ 10 minutes d'intervalle, tandis que le renseignement GDELT a des budgets d'alimentation et de cache plus longs.",
+        "confidence": "Utile comme indice de tri, pas comme une affirmation que l'on peut citer sans ouvrir les actualités sous-jacentes et le contexte du pays.",
+        "limitations": {
+          "0": "Le volume d'actualités et le rapprochement par mots-clés peuvent surreprésenter les régions très couvertes.",
+          "1": "Les événements peu visibles peuvent manquer lorsque la couverture RSS/GDELT est mince ou tardive."
+        },
+        "related": {
+          "0": "panneau Actualités en direct",
+          "1": "panneau Vue d'ensemble des risques stratégiques",
+          "2": "Brief Renseignement",
+          "3": "Fenêtres des points chauds renseignement"
+        }
+      },
+      "no2Activity": {
+        "category": "Économie",
+        "purpose": "Colore les pays et les pôles industriels selon la direction de leur NO2 troposphérique Sentinel-5P, une trace de combustion, sur la dernière fenêtre de 56 jours comparée aux mêmes dates des années précédentes.",
+        "source": "NO2 Copernicus Sentinel-5P TROPOMI via la CDSE Sentinel Hub Statistical API, agrégé chaque jour par région par le service seed-no2-activity. Contient des données Copernicus Sentinel modifiées.",
+        "freshness": "Alimenté toutes les 24 heures ; la fenêtre se termine 3 jours avant l’exécution pour laisser arriver les granules tardifs, avec un budget de fraîcheur de 72 heures.",
+        "confidence": "Une région n’obtient une lecture qu’avec au moins 14 jours valides et 2 années de référence ; la nébulosité est le bruit dominant, donc une fenêtre pauvre refuse la lecture plutôt que de deviner.",
+        "limitations": {
+          "0": "« Référence en attente » est l’état attendu pendant des semaines après l’ajout d’une région, tant que les fenêtres des années précédentes sont encore récupérées.",
+          "1": "Le NO2 suit la combustion, donc une production plus propre ou des véhicules plus propres se lisent comme une activité en baisse."
+        },
+        "related": {
+          "0": "Nowcast d’activité de la Chine",
+          "1": "Fiche pays"
+        }
+      },
+      "conflicts": {
+        "category": "Conflit",
+        "purpose": "Affiche les zones de conflit sélectionnées et les superpositions de frontières géopolitiques, pour situer les signaux en direct par rapport aux théâtres connus.",
+        "source": "Registre des zones de conflit de WorldMonitor, contexte de conflit UCDP/ACLED et métadonnées de frontières documentées, comme la DMZ coréenne.",
+        "freshness": "Les zones de base sont sélectionnées et statiques. Les événements de conflit dynamiques sont suivis à part par les flux ACLED/UCDP et les signaux d'état.",
+        "confidence": "Bon pour l'orientation géographique. Ce n'est pas, à lui seul, une confirmation d'incident en temps réel.",
+        "limitations": {
+          "0": "Les zones statiques peuvent prendre du retard sur les changements tactiques rapides.",
+          "1": "Certaines preuves de conflit apparaissent dans les événements de conflit, l'instabilité des pays ou des panneaux liés, plutôt que comme un polygone de zone de conflit."
+        },
+        "related": {
+          "0": "Événements UCDP",
+          "1": "panneau Instabilité pays",
+          "2": "Vue d'ensemble des risques stratégiques",
+          "3": "Brief Renseignement"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Aviation",
+        "purpose": "Affiche les codes transpondeur signalés 7500, 7600 et 7700, indépendamment de la classification militaire.",
+        "source": "Requêtes exactes de code transpondeur sur adsb.lol. Les détails d'aéronef reprennent les champs du fournisseur. L'attribution est ODbL.",
+        "freshness": "Contrôle chaque minute tant que la couche est visible. Le dernier message doit dater d'au plus 120 secondes. Les positions sur la carte doivent dater d'au plus 90 secondes. Les signalements inconnus expirent au bout de 15 minutes.",
+        "confidence": "Un signal de transpondeur signalé ne confirme ni un incident, ni une cause, ni un atterrissage, ni une résolution.",
+        "limitations": {
+          "0": "La couverture des récepteurs est incomplète.",
+          "1": "L'heure du dernier message n'est pas l'heure à laquelle le code transpondeur a été choisi.",
+          "2": "Les aéronefs sans position récente n'apparaissent que dans la liste des détails.",
+          "3": "Les données contradictoires et la perte de réception passent à l'état inconnu."
+        },
+        "related": {
+          "0": "Détails de l'aéronef"
+        }
+      },
+      "ais": {
+        "category": "Maritime",
+        "purpose": "Affiche la densité des navires et les signaux de perturbation AIS autour des eaux stratégiques et des points d'étranglement.",
+        "source": "Instantanés du relais AISStream, service maritime de WorldMonitor et classificateurs de perturbation des points d'étranglement.",
+        "freshness": "Les instantanés du relais AIS sont reconstruits toutes les 5 secondes par défaut. Le serveur peut conserver en cache l'instantané de densité de base pendant 5 minutes, et la couche est désactivée ou périmée lorsque les identifiants ou la connectivité du relais sont indisponibles.",
+        "confidence": "Utile pour le repérage d'anomalies maritimes, mais l'AIS est déclaré par les navires eux-mêmes et ceux-ci peuvent s'éteindre.",
+        "limitations": {
+          "0": "La couverture AIS terrestre est inégale, avec une visibilité plus faible documentée au Moyen-Orient, en Asie et en haute mer.",
+          "1": "La navigation au noir est déduite des lacunes et des schémas de congestion, pas d'une preuve directe d'intention."
+        },
+        "related": {
+          "0": "panneau Chaîne d'approvisionnement",
+          "1": "Statut des points de contrôle",
+          "2": "Navires militaires",
+          "3": "Signaux AIS du Brief Renseignement"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Maritime",
+        "purpose": "Trace les grandes routes de conteneurs, d'énergie et de vrac qui passent par les points d'étranglement stratégiques, pour raisonner sur les chemins de perturbation.",
+        "source": "Registre des routes commerciales de WorldMonitor, plus l'état des points d'étranglement de la chaîne d'approvisionnement et les synthèses de transit.",
+        "freshness": "La géométrie des routes est statique. L'état des points d'étranglement est maintenu par un contrôle léger toutes les 6 minutes, et les synthèses de transit se rafraîchissent toutes les 10 minutes via les caches de la chaîne d'approvisionnement et les chemins du relais.",
+        "confidence": "Bon pour le contexte d'exposition au niveau d'une route. Ce n'est pas un flux de routage navire par navire.",
+        "limitations": {
+          "0": "Les routes sont des couloirs modélisés et peuvent ne pas correspondre à un plan de voyage précis.",
+          "1": "Les superpositions de perturbation dépendent de l'état actuel des points d'étranglement et de la santé AIS."
+        },
+        "related": {
+          "0": "panneau Chaîne d'approvisionnement",
+          "1": "Explorateur de routes (Route Explorer)",
+          "2": "Moteur de scénarios (Scenario Engine)",
+          "3": "Couche Voies navigables stratégiques"
+        }
+      },
+      "flights": {
+        "category": "Aviation",
+        "purpose": "Signale les perturbations aéroportuaires et les fermetures NOTAM, les NOTAM d'espace aérien en vigueur maintenant ou qui commencent sous 24 heures (restrictions temporaires de vol, zones réglementées, dangereuses et interdites, zones d'activité militaire, réservations et fermetures d'espace aérien), ainsi que les positions d'aéronefs en direct lorsque le suivi est disponible.",
+        "source": "FAA ASWS, AviationStack, FAA NOTAM Management Service (NMS-API) et NOTAM ICAO, adsb.lol (ODbL), Wingbits, reprise de l'ancien service OpenSky, complément facultatif non commercial airplanes.live/adsb.fi, et le service aviation. Les NOTAM d'espace aérien sont dessinés en polygones lorsque NMS les fournit, en cercles lorsque le NOTAM donne un rayon jusqu'à 250 NM, et en marqueurs sinon.",
+        "freshness": "Les alimentations de perturbation aéroportuaire tournent sur un rythme de 30 minutes. Les NOTAM d'espace aérien sont alimentés toutes les 5 minutes à partir des récupérations de changements NMS, avec une resynchronisation complète quotidienne, selon un budget d'actualité de 20 minutes. Le panneau aviation rafraîchit aussi les vues opérationnelles sur un cycle d'interrogation de 5 minutes.",
+        "confidence": "Idéal pour le tri des perturbations. La couverture de chaque aéronef en direct dépend de la disponibilité ADS-B et des fournisseurs configurés. Le texte NOTAM fait foi tel que la FAA le diffuse.",
+        "limitations": {
+          "0": "Des données de démonstration simulées, appuyées sur AviationStack, peuvent apparaître lorsqu'une clé API est absente.",
+          "1": "Les positions d'aéronefs en direct peuvent être retardées ou absentes là où la couverture ADS-B est faible ou bloquée.",
+          "2": "Les zones NOTAM d'espace aérien ne sont dessinées que sur la carte deck.gl. Les cartes SVG et globe montrent des marqueurs d'aéroports.",
+          "3": "La plupart des TFR des États-Unis ne décrivent leur forme que dans le texte. Elles apparaissent donc comme un marqueur à la position du NOTAM, et non comme la forme restreinte.",
+          "4": "Les horaires à l'intérieur de la fenêtre d'effet d'un NOTAM (par exemple des heures quotidiennes) figurent dans l'infobulle, mais ne sont pas appliqués à la visibilité."
+        },
+        "related": {
+          "0": "panneau Intelligence aérienne",
+          "1": "Barre de commande aviation",
+          "2": "Signaux aviation du Brief Renseignement",
+          "3": "Urgences aéronefs",
+          "4": "Perturbation de la navigation"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Conflit",
+        "purpose": "Place les enregistrements de conflit armé au niveau de l'événement, avec le pays, les acteurs, la date et les fourchettes de décès.",
+        "source": "API GED du Programme de données sur les conflits d'Uppsala, via le service de conflit et l'alimentation des événements UCDP.",
+        "freshness": "Les données sont alimentées toutes les 6 heures lorsque l'alimentation UCDP est saine.",
+        "confidence": "Cohérence éditoriale plus élevée que les flux bruts d'actualité immédiate, mais avec un retard voulu. Ce n'est pas un flux de champ de bataille en direct.",
+        "limitations": {
+          "0": "Le rythme de publication annuel, de qualité recherche, peut manquer les événements très récents.",
+          "1": "Les fourchettes de décès sont des estimations. Il faut les lire comme des fourchettes, pas comme des comptes exacts."
+        },
+        "related": {
+          "0": "panneau Conflits UCDP",
+          "1": "Composante conflit de l'Indice d'instabilité des pays",
+          "2": "Chronologie du pays"
+        }
+      },
+      "weather": {
+        "category": "Météo",
+        "purpose": "Affiche les alertes officielles de temps violent en cours, issues des services météorologiques nationaux et fusionnées dans un seul flux weather:alerts:v1.",
+        "source": "National Weather Service des États-Unis (NWS), Environnement et Changement climatique Canada (ECCC) et l'agrégation CAP du centre d'information de la WMO sur le temps violent (SWIC), alimentés par le relais WorldMonitor.",
+        "freshness": "Les alertes NWS, ECCC et SWIC sont alimentées toutes les 15 minutes par le relais et surveillées selon un budget d'actualité de 45 minutes.",
+        "confidence": "Elles font foi pour les alertes émises par les services nationaux contributeurs, sous réserve du délai de publication en amont. NWS et ECCC s'affichent en polygones. Les alertes SWIC géocodées s'affichent au centroïde du pays du service émetteur, avec un marqueur de précision explicite.",
+        "limitations": {
+          "0": "La plupart des membres du SWIC publient des géocodes, pas des polygones. Ces alertes apparaissent comme des points au niveau du pays, avec la description de zone reprise telle quelle, et non comme des superpositions de la zone alertée.",
+          "1": "La couverture SWIC dépend des membres de la WMO qui publient actuellement vers l'agrégateur. La densité varie selon les régions.",
+          "2": "Les lignes SWIC des États-Unis et du Canada sont ignorées, car NWS et ECCC fournissent déjà une couverture de niveau polygone pour ces pays."
+        },
+        "related": {
+          "0": "Couche Événements naturels",
+          "1": "Fenêtres d'alerte météo",
+          "2": "Statut Data Freshness"
+        }
+      },
+      "canadaRoads": {
+        "category": "Transport",
+        "purpose": "Affiche les incidents routiers officiels, les alertes, les conditions, les fermetures, les travaux et les dangers dans les territoires canadiens pris en charge.",
+        "source": "Flux provinciaux Ontario 511, Alberta 511 et Manitoba 511, City of Toronto Road Restrictions et DriveBC Open511, alimentés via WorldMonitor.",
+        "freshness": "Ontario 511, Alberta 511 et Manitoba 511 sont alimentés toutes les 15 minutes et surveillés selon un budget d'actualité de 45 minutes. Les restrictions de Toronto sont alimentées toutes les 2 heures, et DriveBC Open511 toutes les 30 minutes.",
+        "confidence": "Il fait foi pour les éditeurs provinciaux et municipaux pris en charge, sous réserve du délai de publication en amont et de la géométrie cartographiée.",
+        "limitations": {
+          "0": "Le flux Alberta 511 roadconditions n'est pas intégré (le point de terminaison du fournisseur renvoie 404). Le tracé en direct de l'Alberta ne couvre que les événements et les alertes.",
+          "1": "Les alertes provinciales sans coordonnées n'apparaissent pas comme des points sur la carte.",
+          "2": "Les polylignes de conditions routières peuvent simplifier la géométrie complexe des autoroutes."
+        },
+        "related": {
+          "0": "Alertes météo",
+          "1": "Statut Data Freshness"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Alertes d'urgence",
+        "purpose": "Affiche les avertissements de sécurité publique en cours pour l'Alberta, la Colombie-Britannique et la Saskatchewan, sous forme de points sur la carte, à côté de la météo NWS des États-Unis.",
+        "source": "Le flux Atom Alberta Emergency Alert, la couche GeoJSON OGL-BC Evacuation Orders and Alerts, et le flux JSON public SaskAlert ainsi que les détails CAP 1.2 du même hôte sont normalisés en une seule union canadaAlerts. Les polygones CAP/GeoRSS, les polygones d'évacuation de la C.-B. et les polygones CAP de SaskAlert deviennent des centroïdes. Les enregistrements sans géométrie utilisent le centroïde de la province source.",
+        "freshness": "Les sources provinciales sont alimentées toutes les 15 minutes et l'union est surveillée selon un budget d'actualité de 45 minutes. Un flux vide (aucune alerte en cours) est un succès valide sans enregistrement.",
+        "confidence": "Elles font foi pour les alertes publiées par Alberta Emergency Alert, B.C. Evacuation Orders and Alerts et SaskAlert, sous réserve du délai de publication en amont et de la géométrie d'alerte cartographiée.",
+        "limitations": {
+          "0": "La couverture se limite à l'Alberta, à la Colombie-Britannique et à la Saskatchewan. L'Ontario n'a pas de flux machine admissible opéré par la province, en dehors du NAAD exclu.",
+          "1": "Cette couche ne remplace pas les alertes météo NWS des États-Unis ni les couches routières de l'Ontario et de Toronto.",
+          "2": "Les entrées sans gravité cartographiable (sémantique CAP et de couleur de l'Alberta, statut d'évacuation de la C.-B., ou gravité CAP de SaskAlert) sont écartées plutôt qu'inventées. La couleur ou le niveau du résumé SaskAlert n'est pas traité comme une gravité CAP."
+        },
+        "related": {
+          "0": "Alertes météo",
+          "1": "Couche Événements naturels",
+          "2": "Statut Data Freshness"
+        }
+      },
+      "cyberThreats": {
+        "category": "Cybermenaces",
+        "purpose": "Cartographie les indicateurs de compromission enrichis géographiquement, comme les serveurs C2, les hôtes de logiciels malveillants, le hameçonnage, les URL malveillantes et l'infrastructure de rançongiciels.",
+        "source": "abuse.ch Feodo Tracker et URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, le flux RSS et d'actualités ransomware.live, et l'enrichissement par géolocalisation IP.",
+        "freshness": "Les alimentations de menaces cyber tournent toutes les 2 heures. Les IOC affichés utilisent une fenêtre glissante de 14 jours et sont plafonnés pour les performances de la carte.",
+        "confidence": "Bon pour la visibilité sur l'infrastructure, mais l'attribution et la géolocalisation IP peuvent être bruitées.",
+        "limitations": {
+          "0": "La géolocalisation IP peut pointer vers l'infrastructure d'hébergement plutôt que vers un opérateur ou une victime.",
+          "1": "La disponibilité des flux, les clés API et les signalements d'abus par flux peuvent biaiser la couverture."
+        },
+        "related": {
+          "0": "Fenêtres cartographiques Menaces cyber",
+          "1": "Contribution cyber à l'instabilité des pays",
+          "2": "Statut Data Freshness"
+        }
+      },
+      "natural": {
+        "category": "Catastrophes naturelles",
+        "purpose": "Affiche les séismes, les alertes de catastrophe grave et les événements actifs d'observation de la Terre, pour la conscience de situation.",
+        "source": "Séismes USGS, alertes GDACS et événements NASA EONET, fusionnés dans le service des événements naturels.",
+        "freshness": "Les événements naturels sont alimentés toutes les 3 heures. Le rythme source attendu pour les séismes USGS est documenté à environ 5 minutes.",
+        "confidence": "Solide pour les signaux publics de catastrophe qui ont été détectés. La confiance varie selon le type d'aléa et le délai de signalement en amont.",
+        "limitations": {
+          "0": "Les alertes GDACS de faible gravité sont filtrées pour garder la carte lisible.",
+          "1": "Les feux de forêt EONET sont filtrés selon l'actualité, donc d'anciens événements encore ouverts peuvent ne pas apparaître comme des points actifs sur la carte."
+        },
+        "related": {
+          "0": "Fenêtres de la couche Événements naturels",
+          "1": "Alertes météo",
+          "2": "Signaux naturels du Brief Renseignement"
+        }
+      },
+      "waterways": {
+        "category": "Maritime",
+        "purpose": "Marque les voies navigables et les points d'étranglement stratégiques, pour lire les signaux de perturbation sur une géographie maritime fixe.",
+        "source": "Registre des voies navigables stratégiques de WorldMonitor, avec des superpositions d'état des points d'étranglement de la chaîne d'approvisionnement issues de l'AIS, des avertissements NGA et des flux dérivés de PortWatch.",
+        "freshness": "Les emplacements des voies navigables sont statiques. L'état en direct des points d'étranglement est maintenu par un contrôle léger toutes les 6 minutes, et les synthèses de transit se rafraîchissent toutes les 10 minutes lorsque le chemin relais/PortWatch est sain.",
+        "confidence": "Élevée pour la géographie fixe. La confiance dans la perturbation en direct dépend des flux associés AIS, NGA et PortWatch.",
+        "limitations": {
+          "0": "Un marqueur de point d'étranglement visible ne signifie pas qu'une perturbation est en cours.",
+          "1": "Les géorepérages de zone et les routes modélisées peuvent simplifier des schémas de trafic complexes."
+        },
+        "related": {
+          "0": "panneau Chaîne d'approvisionnement",
+          "1": "Couche Routes Commerciales",
+          "2": "Explorateur de routes (Route Explorer)",
+          "3": "Moteur de scénarios (Scenario Engine)"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Risque pays",
+        "purpose": "Colore les pays selon le score actuel de l'Indice d'instabilité des pays, pour un tri large du risque stratégique.",
+        "source": "Service de score de l'Indice d'instabilité des pays de WorldMonitor, à partir des signaux de conflit, de troubles, d'avis, de cyber, de suivi des navires, d'aviation, d'événements naturels et d'actualités.",
+        "freshness": "Le cache des scores de risque est maintenu par un contrôle léger toutes les 8 minutes. seed-meta et health.riskScores exposent l'état en direct, périmé, partiel ou dégradé, selon un budget d'actualité de 30 minutes.",
+        "confidence": "Signal d'un modèle composite, pas une note officielle de pays ni une prévision de probabilité.",
+        "limitations": {
+          "0": "Des familles de sources clairsemées ou dégradées peuvent réduire la confiance même lorsqu'un pays a encore un score.",
+          "1": "La couleur au niveau du pays peut masquer des variations infranationales. Il faut la vérifier dans les panneaux avant de la citer."
+        },
+        "related": {
+          "0": "panneau Instabilité pays",
+          "1": "panneau Vue d'ensemble des risques stratégiques",
+          "2": "Statut Data Freshness",
+          "3": "Brief Renseignement"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Couche",
+      "purpose": "Cette couche peut être activée sur la carte, mais une fiche sélectionnée de source et de confiance n'a pas encore été ajoutée.",
+      "source": "Pas dans l'ensemble d'explicabilité des couches v1.",
+      "freshness": "Aucun contrat d'actualité au niveau de la couche n'est déclaré ici. Vérifiez les badges visibles des panneaux, les fenêtres contextuelles ou le statut Data Freshness, lorsqu'ils sont disponibles.",
+      "confidence": "Inconnue tant que des métadonnées propres à la source n'ont pas été ajoutées.",
+      "limitations": {
+        "0": "L'absence d'une fiche sélectionnée ne signifie pas que la couche est sans prise en charge.",
+        "1": "Utilisez les fenêtres de la couche et les panneaux liés pour le contexte propre à la source."
+      },
+      "related": {
+        "0": "Guide des calques"
+      }
+    }
+  },
+  "ukmto": {
+    "unavailable": "Données UKMTO indisponibles.",
+    "empty": "UKMTO n’a renvoyé aucun incident.",
+    "stale": "Données de source périmées. Dernière vérification",
+    "current": "Source vérifiée",
+    "reportedClaims": "Rapports de l’éditeur. Les affirmations peuvent encore faire l’objet d’une enquête.",
+    "occurred": "Incident",
+    "reported": "Publié"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Carte des marchés mondiaux",
+      "liveNews": "Titres des marchés",
+      "insights": "Insights IA sur les marchés"
+    },
+    "tech": {
+      "map": "Carte mondiale de la tech",
+      "liveNews": "Titres tech"
+    },
+    "commodity": {
+      "map": "Carte des matières premières",
+      "liveNews": "Titres des matières premières",
+      "insights": "Insights IA sur les matières premières"
+    },
+    "energy": {
+      "map": "Carte Atlas de l'énergie",
+      "liveNews": "Titres de l'énergie",
+      "insights": "Insights IA sur l'énergie"
+    },
+    "happy": {
+      "map": "Carte des bonnes nouvelles"
+    }
   }
 }

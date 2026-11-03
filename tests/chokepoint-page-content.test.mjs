@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import * as corpus from '../scripts/build-crawlable-corpus.mjs';
 
 import {
   CHOKEPOINTS,
@@ -30,6 +31,46 @@ const REGISTRY_IDS = [
 ];
 
 describe('chokepoint page content (#7461)', () => {
+  it('resolves authored country and crisis links by ID and derives inverse links once', () => {
+    const chokepoint = { id: 'hormuz_strait', slug: 'stable-route', displayName: 'Renamed waterway' };
+    const country = { code: 'IR', slug: 'stable-country', name: 'Renamed country' };
+    const crisis = { slug: 'gulf-context', title: 'Renamed crisis' };
+    const input = {
+      chokepoints: [chokepoint], countries: [country], crises: [crisis],
+      content: { hormuz_strait: { countryCodes: ['IR', 'IR'], crisisSlugs: ['gulf-context', 'gulf-context'] } },
+    };
+    const links = corpus.buildChokepointPageLinks(input);
+    assert.deepEqual(links.byChokepointId.get('hormuz_strait'), { countries: [country], crises: [crisis], editorial: [] });
+    assert.deepEqual(links.byCountryCode.get('IR'), [chokepoint]);
+    assert.deepEqual(links.byCrisisSlug.get('gulf-context'), [chokepoint]);
+    assert.equal(links.byCountryCode.has('OM'), false);
+    assert.deepEqual(corpus.buildChokepointPageLinks({ ...input, content: {} }).byCountryCode, new Map());
+    for (const [field, value] of [['countryCodes', ['XX']], ['crisisSlugs', ['unknown-crisis']], ['countryCodes', 'IR']]) {
+      assert.throws(() => corpus.buildChokepointPageLinks({
+        ...input, content: { hormuz_strait: { [field]: value } },
+      }), new RegExp(`hormuz_strait.*${field}`));
+    }
+  });
+  it('accepts canonical blog targets once and rejects missing or noncanonical editorial routes', () => {
+    const href = '/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/';
+    const link = { href, label: 'Energy shock monitoring' };
+    const input = {
+      chokepoints: [{ id: 'hormuz_strait', slug: 'strait-of-hormuz' }],
+      countries: [], crises: [], blogPostPaths: new Set([href]),
+      content: { hormuz_strait: { editorialLinks: [link, link] } },
+    };
+    assert.deepEqual(corpus.buildChokepointPageLinks(input).byChokepointId.get('hormuz_strait').editorial, [link]);
+    for (const invalid of [
+      { href: '/blog/posts/missing/', label: 'Missing article' },
+      { href: `${href}?ref=other`, label: 'Query URL' },
+      { href: `https://other.example${href}`, label: 'External URL' },
+      { href, label: '' },
+    ]) {
+      assert.throws(() => corpus.buildChokepointPageLinks({
+        ...input, content: { hormuz_strait: { editorialLinks: [invalid] } },
+      }), /hormuz_strait.*editorialLinks/);
+    }
+  });
   it('covers every canonical waterway with unique question-shaped copy', () => {
     assert.deepEqual(Object.keys(CHOKEPOINT_CONTENT).sort(), [...REGISTRY_IDS].sort());
     const headings = new Set();
@@ -102,5 +143,30 @@ describe('chokepoint page content (#7461)', () => {
     assert.match(TRADE_ROUTES_OBSERVED_AT, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal(CHOKEPOINT_REGISTRY_OBSERVED_AT, '2026-04-09');
     assert.equal(TRADE_ROUTES_OBSERVED_AT, '2026-03-14');
+  });
+
+  it('keeps SEO overrides inside title and description limits', () => {
+    const required = ['bab_el_mandeb', 'panama', 'korea_strait', 'lombok_strait', 'kerch_strait'];
+    const titles = new Set();
+    const descriptions = new Set();
+    for (const id of required) {
+      assert.equal(typeof CHOKEPOINT_CONTENT[id].metaTitle, 'string', `${id} must set metaTitle`);
+      assert.equal(typeof CHOKEPOINT_CONTENT[id].metaDescription, 'string', `${id} must set metaDescription`);
+    }
+    for (const [id, content] of Object.entries(CHOKEPOINT_CONTENT)) {
+      if (typeof content.metaTitle === 'string') {
+        assert.ok(content.metaTitle.length <= 60, `${id} metaTitle must be at most 60 characters`);
+        assert.ok(content.metaTitle.endsWith(' | World Monitor'), `${id} metaTitle must end with the site name`);
+        assert.equal(titles.has(content.metaTitle), false, `${id} metaTitle must be unique`);
+        titles.add(content.metaTitle);
+      }
+      if (typeof content.metaDescription === 'string') {
+        const length = content.metaDescription.length;
+        assert.ok(length >= 120 && length <= 160, `${id} metaDescription must be 120 to 160 characters`);
+        assert.equal(content.metaDescription.includes('\u2014'), false, `${id} metaDescription must not contain an em dash`);
+        assert.equal(descriptions.has(content.metaDescription), false, `${id} metaDescription must be unique`);
+        descriptions.add(content.metaDescription);
+      }
+    }
   });
 });

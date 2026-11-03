@@ -392,13 +392,27 @@ ref before evaluating ancestry. An `AHEAD` deployment is healthy only when its
 running commit is proven reachable from the authorized current `main` ref;
 otherwise it reports `AHEAD_LINEAGE_UNPROVEN`.
 
-### Still true, and unchanged
+### Runtime prerequisites and source health
 
 Routing variables that a source resolves as `SOURCE_SPECIFIC || PROXY_URL`
 are declared as a nested any-of group in `requiredEnv`, matching the shape
 `scripts/_bundle-runner.mjs` accepts. Declared flat, the gate demands *both* and
 reports drift for a service routing perfectly well on its source-specific exit —
 stricter than the runtime it guards.
+
+Registry sync separates these runtime prerequisites from deployment configuration.
+Removing an IMD API key can disable the source, but it must not prevent a watch-path
+or cron repair for another service. Apply mode lists missing variable names in its
+log and GitHub step summary, then applies and verifies configuration changes
+without treating those missing credentials as configuration drift. It never
+writes variables. A run with only missing credentials performs no apply.
+
+The standalone audit remains strict about required variables. Invalid service
+identity, missing services, unsafe root changes, failed Railway calls, and
+configuration that does not converge still fail registry sync. A successful sync
+proves configuration convergence only. The ingestion monitor retains source-health
+verdicts and suppresses duplicate incident transitions; a disabled source does not
+become healthy because registry sync passed.
 
 The separate `scripts/check-seed-freshness.mjs` probe accepts the healthy compact
 response shape where `problems` is absent and fails for every actionable
@@ -434,8 +448,14 @@ a path refusal.
 
 `Seed Freshness Monitor` keeps the gate-dependent ingestion acceptance. A
 missing, pending, failed, or errored head gate is not a green skip and is not
-an ingestion failure: the job monitors the newest gated ancestor in the
-window, and fails closed only when none exists. It deliberately does not run
+an ingestion failure: the job uses the newest gated ancestor in the bounded
+window for acceptance bookkeeping, and fails closed when none qualifies.
+The probe and transition publisher stay at the workflow's `github.sha` because
+production API changes can deploy before that revision passes its gate. Checking
+out the ancestor would restore an older classifier that can mistake a newly
+introduced pending kind for a blocking incident (#8285). This removes the gate
+fallback's version skew; it does not verify the live deployment SHA or prevent
+production from advancing while a run is queued. It deliberately does not run
 on an ingestion push because Railway may not have deployed or executed that
 revision yet.
 

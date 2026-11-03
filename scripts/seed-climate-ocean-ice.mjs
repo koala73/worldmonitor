@@ -6,9 +6,9 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
-// Cron: daily 08:00 UTC (0 8 * * *)
+// Bundle member cadence: daily. The parent climate bundle runs every three hours.
 export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
-export const CACHE_TTL = 86400; // 24h — daily satellite/climate indicator refresh
+export const CACHE_TTL = 3 * 24 * 3600; // 72h — keeps last-good data through the 48h stale window
 
 const NSIDC_DAILY_URL = 'https://noaadata.apps.nsidc.org/NOAA/G02135/north/daily/data/N_seaice_extent_daily_v4.0.csv';
 const NSIDC_CLIMATOLOGY_URL = 'https://noaadata.apps.nsidc.org/NOAA/G02135/north/daily/data/N_seaice_extent_climatology_1981-2010_v4.0.csv';
@@ -491,6 +491,9 @@ export async function fetchOceanIceData() {
   });
 
   const hadFailures = resolved.some((r) => r == null);
+  if (hadFailures && resolved.every((result) => result == null)) {
+    throw new Error('All ocean/ice upstreams failed');
+  }
   if (hadFailures && prior) {
     console.log('[OceanIce] Merging failed source groups with prior cache');
   }
@@ -520,17 +523,18 @@ export function declareRecords(data) {
   return typeof countIndicators === "function" ? countIndicators(data) : 0;
 }
 
+export const OCEAN_ICE_SEED_OPTIONS = {
+  validateFn: validate,
+  ttlSeconds: CACHE_TTL,
+  recordCount: countIndicators,
+  sourceVersion: 'nsidc-sea-ice_v4-climatology-noaa-ohc-nasa-gmsl-noaa-global-ocean-v6-v51-baseline-v3',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 2880,
+};
+
 if (isMain) {
-  runSeed('climate', 'ocean-ice', CLIMATE_OCEAN_ICE_KEY, fetchOceanIceData, {
-    validateFn: validate,
-    ttlSeconds: CACHE_TTL,
-    recordCount: countIndicators,
-    sourceVersion: 'nsidc-sea-ice_v4-climatology-noaa-ohc-nasa-gmsl-noaa-global-ocean-v6-v51-baseline-v3',
-  
-    declareRecords,
-    schemaVersion: 1,
-    maxStaleMin: 2880,
-  }).catch((err) => {
+  runSeed('climate', 'ocean-ice', CLIMATE_OCEAN_ICE_KEY, fetchOceanIceData, OCEAN_ICE_SEED_OPTIONS).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);
     process.exit(1);

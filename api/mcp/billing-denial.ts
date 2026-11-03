@@ -45,6 +45,14 @@ export class BillingDenialError extends Error {
   }
 }
 
+// Preserve transport backoff without exposing the downstream response body.
+export class ToolBackoffError extends Error {
+  constructor(readonly status: 429 | 503, readonly retryAfter: string | null, label: string) {
+    super(`${label} HTTP ${status}`);
+    this.name = 'ToolBackoffError';
+  }
+}
+
 // Structural subset of Response so test doubles that stub only {ok, status}
 // (several suites do) pass through the non-billing path instead of throwing
 // on a missing headers object. `body` / `text` are optional so those doubles
@@ -74,6 +82,21 @@ const MAX_VIOLATION_FIELD_LEN = 64;
 const MAX_VIOLATION_DESCRIPTION_LEN = 200;
 const SAFE_VIOLATION_FIELD = /^[A-Za-z_][A-Za-z0-9_.]{0,63}$/;
 const UNSAFE_VIOLATION_DESCRIPTION = /[<>]|authorization\s*:|bearer\s/i;
+
+/**
+ * A non-ok gateway response with no richer classification. The message keeps
+ * the `<label> HTTP <status>` shape that mcpErrorFingerprint groups on; the
+ * typed status lets dispatch tell an upstream outage from a server bug.
+ */
+export class UpstreamHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'UpstreamHttpError';
+    this.status = status;
+  }
+}
 
 export class RpcValidationError extends Error {
   readonly operation: string;
@@ -178,21 +201,43 @@ export async function extractSafeRpcViolations(
 /**
  * Standard non-ok handling for tool `_execute` gateway fetches: billing
  * denials become typed errors dispatch can re-emit faithfully; proto 400
- * bodies with safe field violations become RpcValidationError; everything
+ * bodies with safe field violations become RpcValidationError. With
+ * preserveBackoff, 429/503 retain transport backoff through ToolBackoffError; everything
  * else keeps the existing `<label> HTTP <status>` Error contract.
  *
+ * HTTP 401 bodies preserve only confirmed internal-signature rejection codes.
  * HTTP 400 response bodies are consumed only to classify violations. Callers
  * must await this helper — a forgotten await would let execution continue
  * and treat the 400 as success.
  */
-export async function assertToolFetchOk(response: ToolFetchResponse, label: string): Promise<void> {
+export async function assertToolFetchOk(
+  response: ToolFetchResponse,
+  label: string,
+  { preserveBackoff = false }: { preserveBackoff?: boolean } = {},
+): Promise<void> {
   if (response.ok) return;
   throwIfBillingDenial(response, label);
+  if (response.status === 401) {
+    const detail = await readBoundedResponseText(response, 4096);
+    let signatureRejected = false;
+    try {
+      const body = JSON.parse(detail) as { error?: unknown; code?: unknown } | null;
+      signatureRejected = (body?.code ?? body?.error) === 'invalid_internal_mcp_signature';
+    } catch {
+      // Unknown or malformed bodies retain the generic status-only error.
+    }
+    if (signatureRejected) {
+      throw new Error(`${label} HTTP 401: invalid_internal_mcp_signature`);
+    }
+  }
+  if (preserveBackoff && (response.status === 429 || response.status === 503)) {
+    throw new ToolBackoffError(response.status, response.headers?.get('Retry-After') ?? null, label);
+  }
   if (response.status === 400) {
     const violations = await extractSafeRpcViolations(response);
     if (violations.length > 0) {
       throw new RpcValidationError(label, violations);
     }
   }
-  throw new Error(`${label} HTTP ${response.status}`);
+  throw new UpstreamHttpError(`${label} HTTP ${response.status}`, response.status);
 }

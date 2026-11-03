@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 /**
- * IMD cyclone, port, coastal, and marine seeder (#7005).
+ * IMD marine bulletin seeder (#7005), parsed from IMD's public pages (#7730).
  *
- * Planned Railway service for cyclone/port/coastal/marine products only.
- * Does not write the NWS/ECCC/SWIC weather-alerts key. Live fetch requires IMD_API_KEY.
+ * Does not write the NWS/ECCC/SWIC weather-alerts key.
  */
 
 import { loadEnvFile, CHROME_UA, readCanonicalValue, runSeed } from './_seed-utils.mjs';
@@ -16,18 +15,21 @@ import {
   fetchImdCycloneMarine,
   imdAfterPublish,
   imdContentMeta,
+  shouldActivateImdSnapshot,
   validateImdEnvelope,
 } from './lib/imd-cyclone-marine.mjs';
 
+import { createImdFailureCapture } from './lib/imd-failure-evidence.mjs';
+
 loadEnvFile(import.meta.url);
 
-export const IMD_ACTIVATION_KEY = 'seed-activated:weather:imd-cyclone-marine';
+export const IMD_ACTIVATION_KEY = 'seed-activated:weather:imd-cyclone-marine:v2';
 
 const CACHE_TTL = 5400;
 
 async function markImdActivated(data) {
   const result = imdAfterPublish(data);
-  if (data?.coverageState === 'disabled') return result;
+  if (!shouldActivateImdSnapshot(data)) return result;
   try {
     const creds = getOptionalUpstashCreds();
     if (!creds) return result;
@@ -38,7 +40,7 @@ async function markImdActivated(data) {
   return result;
 }
 
-async function fetchSnapshot() {
+async function fetchSnapshot({ runStartedAtMs } = {}) {
   let previous = null;
   try {
     const existing = await readCanonicalValue(IMD_CANONICAL_KEY);
@@ -46,7 +48,13 @@ async function fetchSnapshot() {
   } catch (err) {
     console.warn(`imd-cyclone-marine: last-good read failed: ${err.message || err}`);
   }
-  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous });
+  let captureFailure;
+  try {
+    captureFailure = await createImdFailureCapture({ directory: process.env.IMD_FAILURE_EVIDENCE_DIR, runStartedAtMs });
+  } catch {
+    console.warn('imd-cyclone-marine: failure evidence unavailable');
+  }
+  return fetchImdCycloneMarine({ userAgent: CHROME_UA, previous, captureFailure });
 }
 
 runSeed('weather', 'imd-cyclone-marine', IMD_CANONICAL_KEY, fetchSnapshot, {

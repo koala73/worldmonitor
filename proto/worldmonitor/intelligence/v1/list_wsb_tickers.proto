@@ -1,0 +1,25 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+
+// Mentions by ticker.
+message WsbTicker {
+  // Market symbol.
+  string symbol = 1;
+  // Total mentions.
+  int32 mention_count = 2;
+  // Sum of source post scores.
+  int32 total_score = 4;
+  // Source subreddits.
+  repeated string subreddits = 7;
+  // Relative mention velocity score.
+  double velocity_score = 8;
+}
+
+// Current WSB snapshot.
+message ListWsbTickersRequest {}
+
+// Up to 50 ranked tickers.
+message ListWsbTickersResponse {
+  // Empty without seed.
+  repeated WsbTicker tickers = 1;
+}

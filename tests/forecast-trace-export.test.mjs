@@ -16,9 +16,11 @@ import {
   getMacroRegion,
   attachSituationContext,
   projectSituationClusters,
+  computeSituationSimilarity,
   refreshPublishedNarratives,
   selectPublishedForecastPool,
   deriveStateDrivenForecasts,
+  getStateDerivedAllowedBuckets,
   extractNewsClusterItems,
   selectUrgentCriticalNewsCandidates,
   validateCriticalSignalFrames,
@@ -98,6 +100,7 @@ import {
   runTheaterSimulation,
   __setForecastLlmCallOverrideForTests,
 } from '../scripts/seed-forecasts.mjs';
+import { buildResolutionSpec } from '../scripts/_forecast-resolution.mjs';
 
 import {
   resolveR2StorageConfig,
@@ -107,6 +110,7 @@ import {
 } from '../scripts/evaluate-forecast-run.mjs';
 import {
   diffForecastRuns,
+  CANDIDATE_BRIER_DELTA,
 } from '../scripts/diff-forecast-runs.mjs';
 
 describe('forecast trace storage config', () => {
@@ -1239,6 +1243,78 @@ describe('state-driven domain derivation', () => {
     assert.equal(redSeaCluster.forecastIds.includes(indiaFx.id), false);
     assert.deepEqual(indiaCluster.sourceStateIds, ['state-india-fx']);
     assert.deepEqual(redSeaCluster.sourceStateIds, ['state-red-sea-maritime']);
+  });
+
+  it('publishes a state-derived bucket only when its forecast carries a checkable spec (#5234)', () => {
+    const inputs = {
+      commodityQuotes: { quotes: [{ symbol: 'CL=F', name: 'WTI Crude', price: 80 }] },
+      chokepoints: { chokepoints: [{ name: 'Kerch Strait', region: 'Kerch Strait', riskScore: 70 }] },
+    };
+    for (const domain of ['market', 'supply_chain']) {
+      const allowed = getStateDerivedAllowedBuckets(domain);
+      assert.ok(allowed.length > 0, `${domain} keeps at least one state-derived bucket`);
+      for (const bucketId of allowed) {
+        const pred = makePrediction(domain, 'Black Sea', `${bucketId} from Black Sea maritime disruption state`, 0.5, 0.5, domain === 'market' ? '30d' : '7d', [
+          { type: 'market_transmission', value: 'x', weight: 0.24 },
+        ]);
+        pred.generationOrigin = 'state_derived';
+        pred.stateDerivation = { bucketId };
+        assert.equal(buildResolutionSpec(pred, inputs, Date.parse('2026-10-01T00:00:00Z')).kind, 'hard', `${domain}/${bucketId} resolves on a feed`);
+      }
+      for (const bucketId of ['sovereign_risk', 'rates_inflation', 'fx_stress']) {
+        assert.equal(allowed.includes(bucketId), false, `${domain}/${bucketId} has no checkable question and stays unpublished`);
+      }
+    }
+  });
+
+  it('emits no market forecast from a state whose only transmission reaches unverifiable buckets (#5234)', () => {
+    const stateUnit = {
+      id: 'state-andes-governance',
+      label: 'Andes governance pressure state',
+      stateKind: 'governance_pressure',
+      dominantRegion: 'Americas',
+      dominantDomain: 'political',
+      regions: ['Americas'],
+      domains: ['political', 'conflict'],
+      actors: ['Regional governments'],
+      branchKinds: ['base_case'],
+      signalTypes: ['sovereign_stress', 'fx_stress', 'risk_off_rotation'],
+      sourceSituationIds: ['sit-andes'],
+      situationIds: ['sit-andes'],
+      situationCount: 2,
+      forecastIds: ['fc-andes'],
+      forecastCount: 2,
+      avgProbability: 0.7,
+      avgConfidence: 0.65,
+      topSignals: [{ type: 'sovereign_stress', count: 3 }, { type: 'fx_stress', count: 2 }],
+      sampleTitles: ['Governance pressure: Andes'],
+    };
+    const signal = (id, type) => ({ id, type, sourceType: 'critical_news', region: 'Americas', macroRegion: 'Americas', strength: 0.8, confidence: 0.7, label: type });
+    const edge = (targetBucketId, targetLabel, channel) => ({
+      sourceSituationId: stateUnit.id, sourceLabel: stateUnit.label, targetBucketId, targetLabel, channel,
+      strength: 0.8, confidence: 0.7, supportingSignalIds: ['sig-sov', 'sig-fx', 'sig-risk'],
+    });
+    const derived = deriveStateDrivenForecasts({
+      existingPredictions: [],
+      stateUnits: [stateUnit],
+      worldSignals: { signals: [signal('sig-sov', 'sovereign_stress'), signal('sig-fx', 'fx_stress'), signal('sig-risk', 'risk_off_rotation')] },
+      marketTransmission: {
+        edges: [
+          edge('sovereign_risk', 'Sovereign Risk', 'sovereign_stress'),
+          edge('fx_stress', 'FX Stress', 'fx_stress'),
+          edge('rates_inflation', 'Rates & Inflation', 'policy_rate_pressure'),
+        ],
+      },
+      marketState: {
+        buckets: [
+          { id: 'sovereign_risk', label: 'Sovereign Risk', pressureScore: 0.8, confidence: 0.7, macroConfirmation: 0.3 },
+          { id: 'fx_stress', label: 'FX Stress', pressureScore: 0.8, confidence: 0.7, macroConfirmation: 0.3 },
+          { id: 'rates_inflation', label: 'Rates & Inflation', pressureScore: 0.8, confidence: 0.7, macroConfirmation: 0.3 },
+        ],
+      },
+      marketInputCoverage: { commodities: 16, gulfQuotes: 12, shippingRates: 4, fredSeries: 12, bisExchange: 12, bisPolicy: 12, correlationCards: 3 },
+    });
+    assert.deepEqual(derived, [], 'no forecast and no backfill fallback for buckets without a checkable question');
   });
 });
 
@@ -4843,6 +4919,72 @@ describe('forecast replay lifecycle helpers', () => {
     assert.ok(sortedByPriority[1].label.startsWith('Red Sea maritime disruption state'), 'disambiguated label keeps base');
   });
 
+  it('retains every situation member through context attachment and projection', () => {
+    const predictions = Array.from({ length: 20 }, (_, i) => makePrediction(
+      'cyber', 'United States', `Cyber threat concentration ${i}`, 0.5, 0.6, '7d',
+      [{ type: 'cyber', value: 'Concentrated cyber activity', weight: 0.4 }],
+    ));
+    const ids = predictions.map(pred => pred.id).sort();
+    for (const input of [predictions, [...predictions].reverse()]) {
+      const clusters = attachSituationContext(input);
+      assert.equal(clusters.length, 1);
+      assert.equal(clusters[0].forecastCount, 20);
+      assert.deepEqual([...clusters[0].forecastIds].sort(), ids);
+      assert.equal(input.filter(pred => pred.situationContext?.id === clusters[0].id).length, 20);
+      const projected = projectSituationClusters(clusters, input);
+      assert.deepEqual([...projected[0].forecastIds].sort(), ids);
+    }
+  });
+
+  it('retains complete state membership beyond the former 16-ID sample', () => {
+    const ids = Array.from({ length: 31 }, (_, i) => `fc-cyber-${String(i).padStart(3, '0')}`);
+    const cluster = {
+      id: 'sit-cyber-membership', label: 'United States cyber situation',
+      dominantRegion: 'United States', dominantDomain: 'cyber',
+      regions: ['United States'], domains: ['cyber'], actors: ['National CERT teams'],
+      branchKinds: ['base'], forecastIds: ids, forecastCount: ids.length,
+      avgProbability: 0.5, avgConfidence: 0.6,
+      topSignals: [{ type: 'cyber', count: ids.length }], sampleTitles: ['Cyber concentration'],
+    };
+    const units = buildCanonicalStateUnits([cluster], []);
+    assert.equal(units.length, 1);
+    assert.equal(units[0].forecastCount, 31);
+    assert.deepEqual(units[0].forecastIds, ids);
+  });
+
+  it('caps shared forecast-id similarity so complete membership cannot outweigh region and actor evidence', () => {
+    const ids = count => Array.from({ length: count }, (_, i) => `fc-cyber-${String(i).padStart(3, '0')}`);
+    const current = { regions: ['United States'], actors: ['National CERT teams'], domains: [], branchKinds: [], forecastIds: ids(31) };
+    const idsOnly = count => ({ regions: [], actors: [], domains: [], branchKinds: [], forecastIds: ids(count) });
+    assert.equal(computeSituationSimilarity(current, idsOnly(8)), 4, 'eight shared ids still clear the continuity threshold alone');
+    assert.equal(computeSituationSimilarity(current, idsOnly(31)), 4, 'ids beyond eight add nothing');
+    const regionAndActor = { regions: ['United States'], actors: ['National CERT teams'], domains: [], branchKinds: [], forecastIds: [] };
+    assert.ok(computeSituationSimilarity(current, regionAndActor) > computeSituationSimilarity(current, idsOnly(31)));
+  });
+
+  it('carries every forecast through actor and simulation membership to trace context', () => {
+    const predictions = Array.from({ length: 20 }, (_, index) => {
+      const pred = makePrediction('cyber', 'United States', `Cyber concentration ${index}`, 0.5, 0.6, '7d', [
+        { type: 'cyber', value: 'Concentrated cyber activity', weight: 0.4 },
+      ]);
+      buildForecastCase(pred);
+      return pred;
+    });
+    const ids = predictions.map(pred => pred.id).sort();
+    const artifacts = buildForecastTraceArtifacts({ predictions });
+    assert.ok(artifacts.worldState.actorRegistry.length > 0);
+    for (const actor of artifacts.worldState.actorRegistry) {
+      assert.deepEqual([...actor.forecastIds].sort(), ids);
+    }
+    assert.equal(artifacts.worldState.simulationState.situationSimulations.length, 1);
+    assert.deepEqual([...artifacts.worldState.simulationState.situationSimulations[0].forecastIds].sort(), ids);
+    assert.equal(artifacts.forecasts.length, 20);
+    for (const forecast of artifacts.forecasts) {
+      assert.equal(forecast.payload.caseFile.worldState.stateId, artifacts.worldState.stateUnits[0].id);
+      assert.ok(forecast.payload.caseFile.worldState.simulationSummary, forecast.payload.id);
+    }
+  });
+
   it('flags invalid deep snapshots with unresolved selected state ids and duplicate labels', () => {
     const validation = validateDeepForecastSnapshot({
       fullRunStateUnits: [
@@ -4985,6 +5127,21 @@ describe('forecast replay lifecycle helpers', () => {
     assert.equal(diff.publishedDomainDelta.supply_chain, 3);
     assert.ok(diff.addedTopForecastTitles.includes('Supply chain stress from Strait of Hormuz disruption state'));
     assert.ok(diff.removedTopForecastTitles.includes('FX stress from Germany cyber pressure state'));
+  });
+
+  // #7072: until a run archives the inputs it forecast from (#7073), no pair of
+  // runs shares a frozen emission snapshot, so even two identical runs get no
+  // candidate Brier.
+  it('refuses a candidate Brier delta without a shared frozen emission snapshot', () => {
+    const run = { summary: { runId: 'same', tracedForecastCount: 3, brier: 0.12 }, snapshot: { fullRunStateUnits: [] } };
+    const diff = diffForecastRuns(run, structuredClone(run));
+    assert.deepEqual(diff.candidateBrierDelta, {
+      status: 'unavailable',
+      reason: 'emission_snapshot_required',
+      detail: CANDIDATE_BRIER_DELTA.detail,
+    });
+    assert.equal(`${diff.candidateBrierDelta.status}: ${diff.candidateBrierDelta.reason}`, 'unavailable: emission_snapshot_required');
+    assert.doesNotMatch(JSON.stringify(diff), /brier"\s*:\s*-?\d/i, 'no Brier number appears anywhere in the diff');
   });
 });
 

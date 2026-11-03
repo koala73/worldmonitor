@@ -10,11 +10,13 @@ const require = createRequire(import.meta.url);
 const {
   buildClassifyCandidateMap,
   isStaleDigestReplay,
+  candidateLinkFor,
 } = require('../scripts/lib/digest-stale-gate.cjs');
 
 describe('relay digest stale gate (#7084)', () => {
   it('skips a server-marked stale replay', () => {
     assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'build-error' } }), true);
+    assert.equal(isStaleDigestReplay({ coverage: { servedStale: true, staleReason: 'gate-held' } }), true);
   });
 
   it('runs the pass for fresh, partial, and coverage-less digests', () => {
@@ -98,5 +100,81 @@ describe('relay digest stale gate (#7084)', () => {
     assert.match(src, /require\('\.\/lib\/digest-stale-gate\.cjs'\)/);
     assert.match(src, /isStaleDigestReplay\(digest\)/);
     assert.match(src, /buildClassifyCandidateMap\(digest, xCandidates/);
+  });
+});
+
+describe('relay rss_alert publisher-link gate (#8398)', () => {
+  const now = Date.parse('2026-08-26T07:00:00Z');
+  const recencyMs = 6 * 60 * 60 * 1000;
+  const digestFor = (items) => ({
+    coverage: { servedStale: false },
+    categories: { conflicts: { items } },
+  });
+
+  it('keeps a link on the publisher family domain in relay candidates', () => {
+    const candidates = buildClassifyCandidateMap(
+      digestFor([{
+        title: 'Reuters event',
+        source: 'Reuters World',
+        publishedAt: now - 60_000,
+        link: 'https://www.reuters.com/world/europe/x',
+      }]),
+      [],
+      'global',
+      now,
+      recencyMs,
+    );
+    assert.equal(candidates.get('Reuters event').link, 'https://www.reuters.com/world/europe/x');
+  });
+
+  it('blanks an off-publisher link while the title still classifies (#8398 acceptance)', () => {
+    // A feed item with an off-publisher link must not produce a
+    // notification carrying that link. The title stays a candidate (it
+    // still classifies and can alert); only the hostile link is removed.
+    const candidates = buildClassifyCandidateMap(
+      digestFor([{
+        title: 'Attacker event',
+        source: 'Reuters World',
+        publishedAt: now - 60_000,
+        link: 'https://evil.example/phish',
+      }]),
+      [],
+      'global',
+      now,
+      recencyMs,
+    );
+    assert.equal(candidates.get('Attacker event').link, '');
+    assert.equal(candidates.get('Attacker event').source, 'Reuters World');
+  });
+
+  it('blanks links for unlisted feed labels (fail-closed, no silent fold-in)', () => {
+    const candidates = buildClassifyCandidateMap(
+      digestFor([{
+        title: 'New outlet event',
+        source: 'Some Brand New Feed',
+        publishedAt: now - 60_000,
+        link: 'https://somebrandnewfeed.example/a',
+      }]),
+      [],
+      'global',
+      now,
+      recencyMs,
+    );
+    assert.equal(candidates.get('New outlet event').link, '');
+  });
+
+  it('candidateLinkFor passes a custom family resolver through', () => {
+    assert.equal(
+      candidateLinkFor(
+        { link: 'https://www.reuters.com/x', source: 'Reuters World' },
+        () => 'reuters',
+      ),
+      'https://www.reuters.com/x',
+    );
+    assert.equal(
+      candidateLinkFor({ link: 'https://evil.example/x', source: 'Reuters World' }, () => 'reuters'),
+      '',
+    );
+    assert.equal(candidateLinkFor({ link: '', source: 'Reuters World' }, () => 'reuters'), '');
   });
 });

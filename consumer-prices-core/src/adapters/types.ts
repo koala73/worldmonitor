@@ -1,10 +1,12 @@
 import type { RetailerConfig } from '../config/types.js';
+import type { ParsedSize } from '../normalizers/size.js';
 
 export interface ParsedProduct {
   sourceUrl: string;
   rawTitle: string;
   rawBrand: string | null;
   rawSizeText: string | null;
+  normalizedSize?: ParsedSize;
   imageUrl: string | null;
   categoryText: string | null;
   retailerSku: string | null;

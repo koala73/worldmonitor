@@ -5,8 +5,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import ts from 'typescript';
+import { runInNewContext } from 'node:vm';
 import { createCountryDeepDivePanelHarness } from './helpers/country-deep-dive-panel-harness.mjs';
 import { createBrowserEnvironment } from './helpers/runtime-config-panel-harness.mjs';
+import { countrySignalsFromMilitary } from '../src/services/country-signals';
 
 type ExportUtils = typeof import('../src/utils/export.ts');
 type GlobalSnapshot = { exists: boolean; value: unknown };
@@ -24,7 +27,17 @@ async function loadExportUtils(): Promise<ExportUtils> {
     `],
   ]);
 
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
   const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
     ['@/services/i18n', 'i18n-stub'],
     ['@/utils/dom-utils', 'dom-utils-stub'],
   ]);
@@ -137,7 +150,15 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
       export function escapeHtml(value) { return String(value ?? ''); }
       export function sanitizeUrl(value) { return value ?? ''; }
     `],
-    ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
+    ['intel-brief-stub', `
+      export function formatIntelBrief(value) { return value; }
+      // Echoes its input so a test can see which evidence and class the page passed.
+      export function renderBriefEvidenceFooter(evidence, options) {
+        if (!Array.isArray(evidence) || evidence.length === 0) return '';
+        const rows = evidence.map((item) => item.id + '=' + item.label + ': ' + item.value).join('|');
+        return '<details data-evidence-footer="' + (options?.className ?? '') + '">' + rows + '</details>';
+      }
+    `],
     ['i18n-stub', `
       export function t(key, params) {
         if (params && typeof params.count === 'number') return key + ':' + params.count;
@@ -160,6 +181,7 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
       export function exportCountryBriefJSON(data) { state.jsonExports.push(data); }
       export function exportCountryBriefCSV(data) { state.csvExports.push(data); }
       export function exportCountryEvidenceMarkdown(data) { state.evidenceExports.push(data); }
+      export function countryEvidenceMarkdownArtifact(data) { return { filename: 'fixture.md', mimeType: 'text/markdown;charset=utf-8', content: JSON.stringify(data) }; }
     `],
     ['country-geometry-stub', `export const ME_STRIKE_BOUNDS = {};`],
     ['country-flag-stub', `export function toFlagEmoji(code, fallback = ':world:') { return code ? ':' + code + ':' : fallback; }`],
@@ -190,6 +212,12 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
         }
         page.appendChild(trigger);
         page.appendChild(menu);
+        // updateBrief writes into this section, so give it a real node.
+        if (String(html).includes('class="cb-brief-content"')) {
+          const briefContent = document.createElement('div');
+          briefContent.className = 'cb-brief-content';
+          page.appendChild(briefContent);
+        }
         root.appendChild(page);
       }
 
@@ -229,7 +257,17 @@ async function loadCountryBriefPage(options: CountryBriefHarnessOptions = {}) {
     `],
   ]);
 
+  stubModules.set('atlas-detail-stub', `
+    export class PipelineStatusPanel {
+      constructor() { throw new Error('Hosted Atlas details require the compiled iframe fixture'); }
+    }
+    export { PipelineStatusPanel as StorageFacilityMapPanel, PipelineStatusPanel as FuelShortagePanel };
+  `);
+
   const aliasMap = new Map([
+    ['./PipelineStatusPanel', 'atlas-detail-stub'],
+    ['./StorageFacilityMapPanel', 'atlas-detail-stub'],
+    ['./FuelShortagePanel', 'atlas-detail-stub'],
     ['@/utils/sanitize', 'sanitize-stub'],
     ['@/utils/format-intel-brief', 'intel-brief-stub'],
     ['@/services/i18n', 'i18n-stub'],
@@ -376,6 +414,114 @@ function dispatchDelegatedClick(delegateRoot: HTMLElement, target: HTMLElement):
 }
 
 describe('country evidence bundle export', () => {
+  for (const [component, methodName] of [['CountryDeepDivePanel', 'exportEvidenceBundle'], ['CountryBriefPage', 'exportBrief']]) {
+    for (const state of [
+      { name: 'no loaded brief', brief: null, original: null, cached: null },
+      { name: 'loaded brief with absent original clock', brief: 'Controlled assessment', original: undefined, cached: true },
+      { name: 'known cached original clock', brief: 'Controlled retained assessment', original: '2026-10-05T09:00:00Z', cached: true },
+      { name: 'known fresh original clock', brief: 'Controlled fresh assessment', original: '2026-10-05T09:00:00Z', cached: false },
+    ]) {
+      it(`${component} preserves original clock semantics for ${state.name}`, async () => {
+        const exports = await loadExportUtils();
+        const exportClock = '2026-10-06T12:00:00.000Z';
+        const originalUrl = 'https://www.bbc.co.uk/news/articles/crly09gz7ew4o?at_medium=RSS&at_campaign=rss';
+        const source = readFileSync(resolve(process.cwd(), `src/components/${component}.ts`), 'utf8');
+        const ast = ts.createSourceFile(`${component}.ts`, source, ts.ScriptTarget.Latest, true);
+        let method: ts.MethodDeclaration | undefined;
+        const visit = (node: ts.Node): void => {
+          if (ts.isMethodDeclaration(node) && node.name.getText(ast) === methodName) method = node;
+          ts.forEachChild(node, visit);
+        };
+        visit(ast);
+        assert.ok(method);
+        class ExportDate extends Date {
+          constructor(value?: string | number) { super(value ?? exportClock); }
+        }
+        let legacyArtifact: ReturnType<ExportUtils['countryEvidenceMarkdownArtifact']> | undefined;
+        const compiled = ts.transpileModule(`class ActualExportCaller { ${method.getText(ast)} }; ActualExportCaller.prototype.${methodName};`, {
+          compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+        }).outputText;
+        const invoke = runInNewContext(compiled, {
+          Date: ExportDate,
+          countryEvidenceMarkdownArtifact: exports.countryEvidenceMarkdownArtifact,
+          exportCountryEvidenceMarkdown: (input: Parameters<ExportUtils['countryEvidenceMarkdownArtifact']>[0]) => {
+            legacyArtifact = exports.countryEvidenceMarkdownArtifact(input);
+          },
+        });
+        const snapshot = {
+          currentName: 'Canada', currentCode: 'CA', currentBrief: state.brief,
+          currentBriefGeneratedAt: state.original, currentBriefCached: state.cached,
+          currentHeadlines: [{ title: 'Controlled BBC source', source: 'BBC', link: originalUrl, pubDate: '2026-10-06T08:00:00Z' }],
+          signalCoverageNotes: [], canExportEvidenceBundle: () => true,
+          downloadText: async (artifact: ReturnType<ExportUtils['countryEvidenceMarkdownArtifact']>) => artifact,
+        };
+        const before = JSON.stringify(snapshot);
+        const returned = await invoke.call(snapshot, component === 'CountryBriefPage' ? 'evidence-md' : new AbortController().signal);
+        const artifact = component === 'CountryBriefPage' ? legacyArtifact : returned;
+        assert.ok(artifact);
+        assert.equal(JSON.stringify(snapshot), before);
+        assert.ok(artifact.content.includes(`Bundle generated at: ${exportClock}`));
+        assert.ok(artifact.content.includes(`Exported at: ${exportClock}`));
+        assert.ok(artifact.content.includes('Published at: 2026-10-06T08:00:00.000Z'));
+        assert.ok(artifact.content.includes('Freshness: 4h old at export.'));
+        assert.ok(artifact.content.includes(originalUrl));
+        assert.equal(artifact.mimeType, 'text/markdown;charset=utf-8');
+        assert.equal(artifact.filename, 'country-evidence-CA-2026-10-06T12-00-00-000Z.md');
+        if (state.original) {
+          assert.ok(artifact.content.includes(`Brief generated at: 2026-10-05T09:00:00.000Z (${state.cached ? 'cached' : 'fresh'})`));
+          assert.ok(!artifact.content.includes('Brief generation timestamp unavailable.'));
+        } else {
+          assert.doesNotMatch(artifact.content, /Brief generated at:/, 'Unknown original brief clock must not use the export clock');
+          assert.ok(artifact.content.includes('Brief generation timestamp unavailable.'));
+        }
+        assert.equal(artifact.content.includes('## Intelligence Brief'), Boolean(state.brief));
+        if (state.brief) assert.ok(artifact.content.includes(state.brief));
+      });
+    }
+  }
+
+  it('keeps absent, null, empty and invalid original factory clocks unavailable', async () => {
+    const exports = await loadExportUtils();
+    for (const original of [{}, { briefGeneratedAt: null }, { briefGeneratedAt: '' }, { briefGeneratedAt: 'invalid' }]) {
+      const input = { country: 'Canada', code: 'CA', generatedAt: '2026-10-06T12:00:00Z', exportedAt: '2026-10-06T12:00:00Z', ...original };
+      const before = JSON.stringify(input);
+      const bundle = Reflect.apply(exports.buildCountryEvidenceBundle, undefined, [input]);
+      assert.equal(bundle.briefGeneratedAt, undefined);
+      assert.equal(bundle.generatedAt, '2026-10-06T12:00:00.000Z');
+      assert.equal(bundle.exportedAt, '2026-10-06T12:00:00.000Z');
+      assert.ok(bundle.freshnessNotes.includes('Brief generation timestamp unavailable.'));
+      assert.equal(JSON.stringify(input), before);
+    }
+  });
+
+  it('keeps cyber unknown without an admitted source and separates retained generation from export time', async () => {
+    const signals = countrySignalsFromMilitary('FR');
+    assert.equal(signals.cyberThreats, null);
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    const originalClock = '2026-10-05T01:00:00.000Z';
+    const exportedAt = '2026-10-06T01:00:00.000Z';
+    const bundle = buildCountryEvidenceBundle({ country: 'France', code: 'FR',
+      signals: { cyberThreats: signals.cyberThreats }, generatedAt: originalClock,
+      briefGeneratedAt: originalClock, briefCached: true, exportedAt });
+    assert.deepEqual(bundle.signals, [{ label: 'Cyber threats', value: 'unavailable' }]);
+    assert.equal(bundle.generatedAt, originalClock);
+    assert.equal(bundle.briefGeneratedAt, originalClock);
+    assert.equal(bundle.exportedAt, exportedAt);
+    assert.equal(bundle.briefCacheStatus, 'cached');
+    assert.ok(renderCountryEvidenceMarkdown(bundle).includes('Cyber threats: unavailable'));
+  });
+
+  it('preserves unavailable cyber counts and explicit zero separately in portable evidence', async () => {
+    const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+    for (const [count, expected] of [[null, 'unavailable'], [0, '0'], [2, '2']] as const) {
+      const bundle = buildCountryEvidenceBundle({ country: 'France', code: 'FR',
+        signals: { cyberThreats: count }, exportedAt: '2026-10-06T01:00:00Z' });
+      assert.deepEqual(bundle.signals, [{ label: 'Cyber threats', value: expected }]);
+      assert.ok(renderCountryEvidenceMarkdown(bundle).includes(`Cyber threats: ${expected}`));
+    }
+    assert.deepEqual(buildCountryEvidenceBundle({ country: 'France', code: 'FR' }).signals, []);
+  });
+
   it('builds a portable bundle with active signals, sources, freshness, and disclaimer', async () => {
     const { buildCountryEvidenceBundle, COUNTRY_EVIDENCE_PROVENANCE_DISCLAIMER } = await loadExportUtils();
 
@@ -605,12 +751,12 @@ describe('country evidence bundle export', () => {
     assert.match(legacySource, /data-format="csv"/);
     assert.match(legacySource, /trackGateHit\('evidence-export'\)/);
 
-    assert.match(dossierSource, /exportCountryEvidenceMarkdown/);
+    assert.match(dossierSource, /countryEvidenceMarkdownArtifact/);
     assert.match(dossierSource, /cdp-evidence-export-btn/);
-    assert.match(dossierSource, /if \(!hasPremiumAccess\(getAuthState\(\)\)\)/);
+    assert.match(dossierSource, /if \(!this\.canRequestPremium\(\)\)/);
     assert.match(dossierSource, /trackGateHit\('evidence-export'\)/);
-    assert.match(dossierSource, /this\.exportEvidenceBundle\(\)/);
-    assert.match(dossierSource, /exportCountryEvidenceMarkdown\(data\)/);
+    assert.match(dossierSource, /this\.exportEvidenceBundle\(signal\)/);
+    assert.match(dossierSource, /this\.downloadText\(countryEvidenceMarkdownArtifact\(data\), signal\)/);
   });
 
   it('blocks country brief evidence export for free users', async () => {
@@ -629,6 +775,55 @@ describe('country evidence bundle export', () => {
       assert.equal(harness.getEvidenceExports().length, 0);
       assert.deepEqual(harness.getGateHits(), ['evidence-export']);
       assert.deepEqual(harness.getToasts(), ['Evidence export is available on Pro.']);
+    } finally {
+      harness.cleanup();
+    }
+  });
+
+  it('uses one Evidence snapshot, disables duplicate clicks and suppresses status after country close', async () => {
+    const harness = await createCountryDeepDivePanelHarness({ premiumAccess: true });
+    try {
+      let settle!: (value: { state: 'host-accepted' }) => void;
+      const delivered: Array<{ artifact: { content: string }; signal: AbortSignal }> = [];
+      const panel = harness.createPanel((artifact: { content: string }, signal: AbortSignal) => {
+        delivered.push({ artifact, signal });
+        return new Promise(resolve => { settle = resolve; });
+      });
+      panel.show('France', 'FR', null, zeroCountryBriefSignals());
+      for (let attempt = 0; attempt < 25 && !harness.getPanelRoot()?.querySelector('.cdp-evidence-export-btn'); attempt++) await new Promise(resolve => setTimeout(resolve, 0));
+      const button = harness.getPanelRoot()!.querySelector('.cdp-evidence-export-btn') as HTMLButtonElement;
+      button.dispatchEvent(new Event('click')); button.dispatchEvent(new Event('click'));
+      assert.equal(delivered.length, 1); assert.equal(button.disabled, true);
+      assert.equal(JSON.parse(delivered[0]!.artifact.content).code, 'FR');
+      panel.hide(); assert.equal(delivered[0]!.signal.aborted, true);
+      settle({ state: 'host-accepted' }); await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(harness.getToasts(), []);
+    } finally { harness.cleanup(); }
+  });
+
+  it('renders the World Monitor data footer from the brief evidence', async () => {
+    const harness = await createCountryBriefPageHarness({ premiumAccess: true });
+    try {
+      const page = harness.createPage();
+      page.show('France', 'FR', null, zeroCountryBriefSignals());
+      page.updateBrief({
+        code: 'FR',
+        brief: 'SITUATION NOW\nFiscal space scores 28 of 100. [E2]',
+        generatedAt: '2026-06-10T11:55:00.000Z',
+        evidence: [
+          { id: 'E2', kind: 'resilience', label: 'Fiscal space', value: '28/100', asOf: '2026-06-01', url: 'https://www.worldmonitor.app/country/FR' },
+        ],
+      });
+
+      const section = harness.getOverlay()?.querySelector('.cb-brief-content') as HTMLElement | null;
+      assert.ok(section, 'expected brief section');
+      const html = section.innerHTML;
+      assert.match(html, /data-evidence-footer="cb-brief-sources cb-brief-evidence"/);
+      assert.match(html, /E2=Fiscal space: 28\/100/);
+      assert.ok(
+        html.indexOf('data-evidence-footer') > html.indexOf('cb-brief-text'),
+        'evidence footer renders after the brief text',
+      );
     } finally {
       harness.cleanup();
     }
@@ -784,6 +979,8 @@ describe('country evidence bundle export', () => {
       assert.ok(button, 'expected evidence export button');
       button.dispatchEvent(new Event('click'));
 
+      await new Promise(resolve => setImmediate(resolve));
+
       const exports = harness.getEvidenceExports();
       assert.equal(exports.length, 1);
       assert.equal(exports[0].country, 'France');
@@ -851,4 +1048,100 @@ describe('country evidence bundle export', () => {
       harness.cleanup();
     }
   });
+});
+
+
+describe('CSV spreadsheet safety', () => {
+  it('neutralizes formula text in dashboard and country brief downloads', async () => {
+    const exports = await loadExportUtils();
+    const originalDocument = snapshotGlobal('document');
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    const blobs: Blob[] = [];
+    URL.createObjectURL = (blob: Blob) => { blobs.push(blob); return 'blob:test'; };
+    URL.revokeObjectURL = () => {};
+    defineGlobal('document', {
+      createElement: () => ({ click() {} }),
+      body: { appendChild() {}, removeChild() {} },
+    });
+    try {
+      const payloads = ['=1+1', '+SUM(1,2)', '-1+2', '@SUM(1)', '\t=1', '\r=1', '\n=1', '  =1'];
+      exports.exportToCSV({ timestamp: 0, markets: [{ symbol: 'TEST', name: '-2.5', price: 10, change: -2.5 }], news: payloads.map(title => ({
+        title, source: 'ordinary, "quoted"', link: 'https://example.com/?a=1&b=2',
+        pubDate: new Date(0), isAlert: false,
+      })) });
+      const dashboard = await blobs[0]!.text();
+      assert.ok(dashboard.includes("\"TEST\",\"'-2.5\",\"10\",\"-2.5\""), 'numeric change stays numeric while numeric-looking text is neutralized');
+      for (const value of payloads) assert.ok(dashboard.includes(`"'${value.replace(/"/g, '""')}"`));
+      assert.ok(dashboard.includes('"ordinary, ""quoted"""'));
+      assert.ok(dashboard.includes('"https://example.com/?a=1&b=2"'));
+      exports.exportCountryBriefCSV({ country: 'Test', code: 'TS', generatedAt: 'now', brief: '=1+1', signals: { change: -3, count: 0, missing: null } });
+      const brief = await blobs[1]!.text();
+      assert.ok(brief.includes('"\'=1+1"'));
+      assert.ok(brief.includes('"change","-3"'));
+      assert.ok(brief.includes('"count","0"'));
+      assert.ok(brief.includes('"missing","null"'));
+    } finally {
+      restoreGlobal('document', originalDocument);
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+});
+
+describe('CSV military vessel class', () => {
+  it('exports the AIS activity for a vessel whose only military evidence is ship type 35', async () => {
+    // #8611: AIS type 35 means "Military Ops" activity, not a hull class, so
+    // the vessel carries vesselType 'unknown'. The map shows the supported
+    // activity; the CSV a user keeps must not drop it back to a bare unknown.
+    const exports = await loadExportUtils();
+    const originalDocument = snapshotGlobal('document');
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    const blobs: Blob[] = [];
+    URL.createObjectURL = (blob: Blob) => { blobs.push(blob); return 'blob:test'; };
+    URL.revokeObjectURL = () => {};
+    defineGlobal('document', {
+      createElement: () => ({ click() {} }),
+      body: { appendChild() {}, removeChild() {} },
+    });
+    const vessel = (overrides: Record<string, unknown> = {}) => ({
+      id: 'ais-235123456', mmsi: '235123456', name: 'SEA FALCON',
+      vesselType: 'unknown', aisShipType: 'Military Ops',
+      operator: 'other', operatorCountry: 'Yemen',
+      lat: 12, lon: 44, heading: 0, speed: 4,
+      lastAisUpdate: new Date(0), confidence: 'low',
+      ...overrides,
+    });
+    try {
+      exports.exportToCSV({
+        timestamp: 0,
+        intelligence: { military: { vessels: [vessel()], flights: [] } },
+      } as never);
+      const csv = await blobs[0]!.text();
+      assert.ok(csv.includes('"SEA FALCON","235123456","Yemen","Military Ops"'), csv);
+
+      exports.exportToCSV({
+        timestamp: 0,
+        intelligence: { military: { vessels: [vessel({ name: 'USS ZUMWALT', vesselType: 'destroyer' })], flights: [] } },
+      } as never);
+      const known = await blobs[1]!.text();
+      assert.ok(known.includes('"USS ZUMWALT","235123456","Yemen","destroyer"'), known);
+    } finally {
+      restoreGlobal('document', originalDocument);
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
+});
+
+
+it('preserves bounded sanitized Signals coverage notes beside counts in the existing evidence export', async () => {
+  const { buildCountryEvidenceBundle, renderCountryEvidenceMarkdown } = await loadExportUtils();
+  const bundle = buildCountryEvidenceBundle({ country: 'United States', code: 'US', signals: { outages: 1 }, signalCoverageNotes: ['<script>bad()</script><SCRIPT>bad()</SCRIPT><ScRiPt>bad()</ScRiPt>Returned sample; snapshot unknown; these counts are not fresh.', ...Array.from({ length: 20 }, () => 'x'.repeat(2000))] });
+  assert.ok(bundle.freshnessNotes.some(note => note.includes('these counts are not fresh')));
+  assert.ok(bundle.freshnessNotes.every(note => note.length <= 1600));
+  assert.ok(bundle.freshnessNotes.length <= 15);
+  assert.match(renderCountryEvidenceMarkdown(bundle), /Returned sample/);
+  assert.doesNotMatch(renderCountryEvidenceMarkdown(bundle), /<script\b/i);
 });

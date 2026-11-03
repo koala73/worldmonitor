@@ -151,16 +151,17 @@ describe('China JODI content validation', () => {
 });
 
 // Issue #6395. On 2026-08-10 both JODI files still carried China, but every
-// China row was ASSESSMENT_CODE 3 ("null/uncertain"), which both parsers
-// correctly discard — so China resolved to `china-missing` and the China gate
-// discarded 51 oil and 63 gas country payloads that had parsed cleanly. One
-// country must never withhold the rest of the dataset.
+// China row was ASSESSMENT_CODE 3, which both parsers then discarded — so China
+// resolved to `china-missing` and the China gate discarded 51 oil and 63 gas
+// country payloads that had parsed cleanly. One country must never withhold the
+// rest of the dataset. Code 3 means "not assessed", not missing (#9393), so
+// these fixtures make China unusable with placeholder cells instead.
 describe('JODI publishes the rest of the world without China (#6395)', () => {
   const NOW = new Date('2026-08-10T00:00:00.000Z');
   const GAS_CSV_HEADER = 'REF_AREA,TIME_PERIOD,ENERGY_PRODUCT,FLOW_BREAKDOWN,UNIT_MEASURE,OBS_VALUE,ASSESSMENT_CODE';
 
-  /** A world file where China reports only unusable (code 3) rows. */
-  function gasCsvWithChinaCode3(countryCount) {
+  /** A world file where China files only placeholder cells. */
+  function gasCsvWithChinaUnreported(countryCount) {
     const lines = [GAS_CSV_HEADER];
     for (let index = 0; index < countryCount; index++) {
       const iso2 = `X${String(index).padStart(2, '0')}`;
@@ -168,12 +169,12 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
       lines.push(`${iso2},2026-05,NATGAS,TOTIMPSB,TJ,380000,1`);
     }
     for (const flow of ['IMPLNG', 'TOTIMPSB', 'TOTDEMO']) {
-      lines.push(`CN,2026-05,NATGAS,${flow},TJ,1200000,3`);
+      lines.push(`CN,2026-05,NATGAS,${flow},TJ,-,3`);
     }
     return lines.join('\n');
   }
 
-  function oilRowsWithChinaCode3(countryCount) {
+  function oilRowsWithChinaUnreported(countryCount) {
     const rows = [];
     for (let index = 0; index < countryCount; index++) {
       rows.push({
@@ -193,7 +194,9 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
         ENERGY_PRODUCT: product,
         FLOW_BREAKDOWN: 'TOTDEMO',
         UNIT_MEASURE: 'KBD',
-        OBS_VALUE: '3200',
+        // Unusable means a placeholder cell. Code 3 alone is "not assessed"
+        // and still carries a reported number.
+        OBS_VALUE: '-',
         ASSESSMENT_CODE: '3',
       });
     }
@@ -201,7 +204,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
   }
 
   it('gas: keeps every other country when China parses to nothing usable', () => {
-    const records = gasModule.buildGasRecordsFromCsv(gasCsvWithChinaCode3(63), NOW);
+    const records = gasModule.buildGasRecordsFromCsv(gasCsvWithChinaUnreported(63), NOW);
 
     assert.equal(records.length, 63, 'the 63 parsed countries must survive the run');
     assert.equal(records.some((record) => record.iso2 === 'CN'), false);
@@ -215,7 +218,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
 
   it('oil: publishes when China is unusable and refuses only below the country floor', () => {
     const publishable = oilModule.prepareOilPublish({
-      allRows: oilRowsWithChinaCode3(45),
+      allRows: oilRowsWithChinaUnreported(45),
       previousMeta: null,
       now: NOW,
     });
@@ -227,7 +230,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     assert.equal(publishable.metaPayload.chinaRow.ok, false);
 
     const refused = oilModule.prepareOilPublish({
-      allRows: oilRowsWithChinaCode3(39),
+      allRows: oilRowsWithChinaUnreported(39),
       previousMeta: null,
       now: NOW,
     });
@@ -238,7 +241,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
 
   it('oil: records the content-age trio the replacement staleness alarm reads', () => {
     const { metaPayload } = oilModule.prepareOilPublish({
-      allRows: oilRowsWithChinaCode3(45),
+      allRows: oilRowsWithChinaUnreported(45),
       previousMeta: null,
       now: NOW,
     });
@@ -248,11 +251,22 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     assert.equal(metaPayload.maxContentAgeMin, MAX_JODI_CONTENT_AGE_MIN);
   });
 
+  it('oil: stamps seed-meta with the source version the bundle gates on', () => {
+    const { metaPayload } = oilModule.prepareOilPublish({
+      allRows: oilRowsWithChinaUnreported(45),
+      previousMeta: null,
+      now: NOW,
+    });
+
+    assert.equal(metaPayload.sourceVersion, oilModule.JODI_OIL_SOURCE_VERSION);
+    assert.match(oilModule.JODI_OIL_SOURCE_VERSION, /^jodi-oil-v\d+$/);
+  });
+
   it('the country floor counts countries that carry a measurement, not rows that parsed', () => {
     // 45 countries reach the file, but only 39 report a usable value. Before
     // #6395 an unusable China row was the incidental canary for this; the floor
     // itself has to catch it now.
-    const rows = oilRowsWithChinaCode3(39);
+    const rows = oilRowsWithChinaUnreported(39);
     for (let index = 0; index < 6; index++) {
       rows.push({
         REF_AREA: `E${String(index).padStart(2, '0')}`,
@@ -266,7 +280,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     }
 
     const refused = oilModule.prepareOilPublish({ allRows: rows, previousMeta: null, now: NOW });
-    assert.equal(refused.parsedCount, 45, 'all 45 countries still parse');
+    assert.equal(refused.parsedCount, 39, 'placeholder-only countries carry no data month, so they never parse');
     assert.match(refused.refusalReason, /only 39 countries with usable measurements/);
     assert.equal(refused.countries.some((country) => country.iso2.startsWith('E')), false);
 
@@ -393,7 +407,7 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
   });
 
   it('gas reads its previous run to age the gap, and re-dates it when it cannot', async () => {
-    const records = gasModule.buildGasRecordsFromCsv(gasCsvWithChinaCode3(63), NOW);
+    const records = gasModule.buildGasRecordsFromCsv(gasCsvWithChinaUnreported(63), NOW);
     const firstSeen = Date.parse('2026-06-01T00:00:00.000Z');
 
     const carried = await gasModule.buildGasChinaRowDiagnostic(records, NOW, {

@@ -1,10 +1,14 @@
-import { beforeEach, afterEach, describe, it } from 'node:test';
+import { beforeEach, afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { Ratelimit } from '@upstash/ratelimit';
 
 import { listXFeed } from '../server/worldmonitor/intelligence/v1/list-x-feed.ts';
 import { issueSessionToken } from '../api/_session.js';
+import { __resetRateLimitForTest } from '../api/_rate-limit.js';
+import handler from '../api/x-feed.js';
 
 const originalFetch = globalThis.fetch;
+const originalSlidingWindow = Ratelimit.slidingWindow;
 const originalEnv = { ...process.env };
 
 function restoreEnv() {
@@ -15,6 +19,25 @@ function restoreEnv() {
 }
 
 const SESSION_SECRET = 'x'.repeat(48);
+
+function stubLimiter(limit) {
+  mock.method(Ratelimit, 'slidingWindow', () => () => ({ limit }));
+}
+
+beforeEach(() => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+  __resetRateLimitForTest();
+  stubLimiter(async () => ({ success: true, pending: Promise.resolve() }));
+});
+
+afterEach(() => {
+  mock.restoreAll();
+  Ratelimit.slidingWindow = originalSlidingWindow;
+  __resetRateLimitForTest();
+  globalThis.fetch = originalFetch;
+  restoreEnv();
+});
 
 /**
  * What a real first-party panel call looks like on the wire: an allowed Origin
@@ -41,6 +64,20 @@ describe('api/x-feed contract normalization', () => {
     globalThis.fetch = originalFetch;
     restoreEnv();
   });
+
+  for (const timedOut of [false, true]) {
+    it(`hides internal relay errors (timeout=${timedOut})`, async () => {
+      globalThis.fetch = async () => {
+        const error = new Error('https://internal.example/?key=synthetic-secret');
+        if (timedOut) error.name = 'AbortError';
+        throw error;
+      };
+      const handler = (await import(`../api/x-feed.js?error-test=${timedOut}`)).default;
+      const response = await handler(await makeRequest());
+      assert.equal(response.status, timedOut ? 504 : 502);
+      assert.deepEqual(await response.json(), { error: timedOut ? 'Relay timeout' : 'Relay request failed' });
+    });
+  }
 
   it('normalizes items[] into the first-party panel contract and ignores a stale count field', async () => {
     globalThis.fetch = async (url, options) => {
@@ -341,5 +378,124 @@ describe('server listXFeed relay normalization', () => {
     assert.equal(response.count, 1);
     assert.equal(response.posts[0].permalink, '');
     assert.doesNotMatch(JSON.stringify(response), /should not leak/);
+  });
+});
+
+describe('api/x-feed caller admission', () => {
+  let relayCalls;
+  let counters;
+
+  beforeEach(() => {
+    process.env.WM_SESSION_SECRET = SESSION_SECRET;
+    process.env.WS_RELAY_URL = 'https://relay.example.com';
+    process.env.RELAY_SHARED_SECRET = 'test-secret';
+    relayCalls = 0;
+    counters = new Map();
+    // Exercise the shared limiter's real fixed-window fallback and route policy.
+    stubLimiter(async () => {
+      throw new Error('Command not allowed: EVAL');
+    });
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.startsWith('https://fake.upstash.io/')) {
+        const commands = JSON.parse(init.body);
+        const key = commands[0][1];
+        assert.match(key, /^rl:x-feed:fw:/);
+        assert.deepEqual(commands, [
+          ['INCR', key], ['EXPIRE', key, '60', 'NX'], ['TTL', key],
+        ]);
+        const count = (counters.get(key) ?? 0) + 1;
+        counters.set(key, count);
+        return Response.json([{ result: count }, { result: 1 }, { result: 60 }]);
+      }
+      assert.match(url, /^https:\/\/relay\.example\.com\/x\/feed\?/);
+      relayCalls += 1;
+      return Response.json({ items: [{ id: '1', text: 'public feed post' }] });
+    };
+  });
+
+  async function request(ip = '203.0.113.1', options = {}) {
+    const { token } = await issueSessionToken();
+    return new Request('https://worldmonitor.app/api/x-feed?limit=50', {
+      method: options.method ?? 'GET',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': token,
+        'x-real-ip': ip,
+        ...options.headers,
+      },
+    });
+  }
+
+  it('uses the scoped 60/minute policy through the real Redis SDK', async () => {
+    mock.method(Ratelimit, 'slidingWindow', originalSlidingWindow);
+    const fixtureFetch = globalThis.fetch;
+    const redisBodies = [];
+    let remaining = 59;
+    globalThis.fetch = async (input, init) => {
+      if (String(input).startsWith('https://fake.upstash.io/')) {
+        redisBodies.push(String(init.body));
+        return Response.json([{ result: [remaining, 60] }]);
+      }
+      return fixtureFetch(input, init);
+    };
+    assert.equal((await handler(await request())).status, 200);
+    remaining = -1;
+    assert.equal((await handler(await request())).status, 429);
+    assert.equal(relayCalls, 1);
+    assert.ok(redisBodies.some((body) => body.includes('rl:x-feed:203.0.113.1') && body.includes('60000') && body.includes('60')));
+  });
+
+  it('bounds token reuse and rotation by IP, while allowing a different caller', async () => {
+    const reusedRequest = await request();
+    for (let i = 0; i < 60; i += 1) {
+      const response = await handler(i % 2 ? await request() : reusedRequest.clone());
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('cache-control'), 'private, max-age=30');
+      assert.equal(response.headers.get('vary'), 'Origin, Cookie, X-WorldMonitor-Key, X-Api-Key, Authorization');
+    }
+    const denied = await handler(await request());
+    assert.equal(denied.status, 429);
+    assert.equal(denied.headers.get('x-ratelimit-limit'), '60');
+    assert.equal(denied.headers.get('retry-after'), '60');
+    assert.equal(denied.headers.get('cache-control'), 'no-store');
+    assert.equal(denied.headers.get('access-control-allow-origin'), 'https://worldmonitor.app');
+    assert.equal(relayCalls, 60);
+    assert.equal((await handler(await request('203.0.113.2'))).status, 200);
+    assert.equal(relayCalls, 61);
+    assert.equal(counters.size, 2);
+  });
+
+  for (const failure of ['missing-config', 'redis-error', 'timeout']) {
+    it(`fails closed without relay I/O on ${failure}`, async () => {
+      if (failure === 'missing-config') delete process.env.UPSTASH_REDIS_REST_URL;
+      stubLimiter(async () => {
+        if (failure === 'timeout') return { success: true, reason: 'timeout', pending: Promise.resolve() };
+        throw new Error('Redis unavailable');
+      });
+      const response = await handler(await request());
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('x-ratelimit-mode'), 'degraded');
+      assert.equal(response.headers.get('retry-after'), '5');
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(relayCalls, 0);
+    });
+  }
+
+  it('preserves origin, preflight, method and auth precedence without limiter or relay I/O', async () => {
+    const limiter = mock.fn(async () => {
+      throw new Error('must not reach limiter');
+    });
+    stubLimiter(limiter);
+    for (const [options, status] of [
+      [{ method: 'OPTIONS', headers: { origin: 'https://attacker.example' } }, 403],
+      [{ method: 'OPTIONS', headers: { 'X-WorldMonitor-Key': '' } }, 204],
+      [{ method: 'POST', headers: { 'X-WorldMonitor-Key': '' } }, 405],
+      [{ headers: { 'X-WorldMonitor-Key': 'invalid' } }, 401],
+    ]) {
+      assert.equal((await handler(await request('203.0.113.1', options))).status, status);
+    }
+    assert.equal(limiter.mock.callCount(), 0);
+    assert.equal(relayCalls, 0);
   });
 });

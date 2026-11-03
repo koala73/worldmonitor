@@ -3,7 +3,7 @@
 // One-shot fetch helper for the per-user followed-countries watchlist.
 //
 // POSTs to the `/relay/followed-countries` HTTP action shipped in PR A
-// (convex/http.ts) with a Bearer of RELAY_SHARED_SECRET. The relay
+// (convex/http.ts) with a Bearer of CONVEX_NOTIFICATION_RELAY_SECRET. The relay
 // serializes Convex's typed `internalListFollowedForUser({userId})`
 // query result into `{ countries: string[] }` — no JSON-string-in-blob
 // ambiguity, no shape drift through legacy userPreferences.
@@ -27,7 +27,7 @@
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const RELAY_SECRET = process.env.CONVEX_NOTIFICATION_RELAY_SECRET ?? '';
 
 /**
  * Fetch the userId's followed countries via the Convex relay.
@@ -38,7 +38,7 @@ const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
  */
 async function fetchFollowedCountries(userId) {
   if (!CONVEX_SITE_URL || !RELAY_SECRET) {
-    console.warn('[followed-countries-fetch] CONVEX_SITE_URL or RELAY_SHARED_SECRET not set');
+    console.warn('[followed-countries-fetch] CONVEX_SITE_URL or CONVEX_NOTIFICATION_RELAY_SECRET not set');
     return [];
   }
   if (typeof userId !== 'string' || userId.length === 0) {

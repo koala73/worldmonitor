@@ -42,7 +42,9 @@ interface BootstrapAlert {
 
 const breaker = createCircuitBreaker<WeatherAlert[]>({ name: 'NWS + ECCC + WMO SWIC Weather', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
-function mapAlert(a: BootstrapAlert): WeatherAlert {
+/** Exported for the embed loader, which receives this wire shape from the
+ *  composed map-frame endpoint rather than from this module's own fetch. */
+export function mapAlert(a: BootstrapAlert): WeatherAlert {
   return {
     id: a.id,
     event: a.event,

@@ -43,7 +43,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 |-------|---------|
 | **AI Insights** | LLM-synthesized world brief with focal point detection |
 | **AI Strategic Posture** | Theater-level military force aggregation with strike capability assessment |
-| **Country Instability Index** | Real-time CII v8 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v14 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
@@ -191,7 +191,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 |-------|---------|
 | **AI Strategic Posture** | Theater-level military aggregation with strike capability analysis |
 | **Strategic Risk Overview** | Composite risk score combining all intelligence modules |
-| **Country Instability Index** | Real-time CII v8 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
+| **Country Instability Index** | Real-time CII v14 stability scores and signed 24-hour movement deltas for 31 Tier-1 countries |
 | **Infrastructure Cascade** | Dependency analysis for cables, pipelines, and chokepoints |
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
@@ -671,15 +671,15 @@ Every signal includes contextual information explaining its analytical significa
 
 | Field | Purpose | Example |
 |-------|---------|---------|
-| **Why It Matters** | Analytical significance | "Markets pricing in information before news" |
-| **Actionable Insight** | What to do next | "Monitor for breaking news in 1-6 hours" |
+| **Why It Matters** | Analytical significance | "Market moved while news coverage stayed low" |
+| **Actionable Insight** | What to do next | "Monitor for breaking news that could explain the move" |
 | **Confidence Note** | Signal reliability caveats | "Higher confidence if multiple markets align" |
 
 ### Signal-Specific Context
 
 | Signal | Why It Matters |
 |--------|---------------|
-| **Prediction Leading** | Prediction markets often price in information before it becomes news—traders may have early access to developments |
+| **Prediction Leading** | A prediction market moved while news coverage of the topic stayed low—the market may be reacting to information that has not been reported yet |
 | **Silent Divergence** | Market moving without identifiable catalyst—possible insider knowledge, algorithmic trading, or unreported development |
 | **Velocity Spike** | Story accelerating across multiple sources—indicates growing significance and potential for market/policy impact |
 | **Triangulation** | The "authority triangle" (wire + government + intel) aligned—gold standard for breaking news confirmation |
@@ -940,7 +940,7 @@ Pin state persists across sessions via localStorage.
 
 ## Country Instability Index (CII)
 
-The dashboard maintains a **real-time CII v8 instability score** for 31
+The dashboard maintains a **real-time CII v14 instability score** for 31
 Tier-1 countries. Rather than relying on static risk ratings, CII combines an
 editorial baseline with live unrest, conflict, security, and information
 signals.
@@ -969,10 +969,10 @@ combinedScore = baselineRisk * 0.40
 |-----------|-------:|-------------|
 | **Unrest** | 25% | ACLED protests/riots, protest fatalities, high-severity unrest, outages |
 | **Conflict** | 30% | ACLED battles/explosions/civilian violence, fatalities, Iran strikes, OREF alerts |
-| **Security** | 20% | Military flights, military vessels, aviation disruptions, GPS/GNSS jamming |
+| **Security** | 20% | Foreign military flights and vessels in the country, aviation disruptions, GPS/GNSS jamming |
 | **Information** | 25% | Classified news headlines and country-attributed threat summaries |
 
-Supplemental boosts include advisory, OREF, climate, cyber, fire,
+Supplemental boosts include advisory, OREF, climate, fire,
 displacement, news urgency, earthquake, sanctions, and AIS disruption signals.
 UCDP conflict and State Department advisory floors prevent active crises from
 appearing stable during data gaps.
@@ -3019,8 +3019,8 @@ Strategic risk and Country Instability Index (CII) scores are pre-computed serve
 The `GET /api/intelligence/v1/get-risk-scores` RPC handler:
 
 1. Fetches recent ACLED unrest/conflict events.
-2. Reads auxiliary Redis sources for conflict floors, advisories, outages, climate, cyber, fires, GPS jamming, OREF alerts, displacement, news threat summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
-3. Computes CII v8 scores for 31 Tier-1 countries.
+2. Reads auxiliary Redis sources for conflict floors, advisories, outages, climate, fires, GPS jamming, OREF alerts, displacement, news threat summaries, aviation alerts, earthquakes, sanctions, and military/AIS CII aggregates.
+3. Computes CII v14 scores for 31 Tier-1 countries.
 4. Derives Strategic Risk from the weighted top 5 CII scores.
 5. Caches results in Redis using versioned live and stale keys tied to the current CII formula version.
 

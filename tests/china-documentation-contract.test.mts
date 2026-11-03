@@ -195,6 +195,27 @@ describe('China documentation contract', () => {
       english.includes('not sequential URL failover'),
       'English disclosure transport documentation must distinguish precedence from failover',
     );
+    const szseContract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.szse;
+    assertIncludesEvery(
+      english,
+      [
+        'bounded two-page metadata collection',
+        `at most ${szseContract.maxDirectRequestsPerRun} direct attempts`,
+        `at most ${szseContract.maxProxyRequestsPerRun} proxy attempts`,
+        `total ceiling of ${szseContract.maxRequestsPerRun} requests`,
+      ],
+      'English SZSE collection documentation',
+    );
+    assertIncludesEvery(
+      chinese,
+      [
+        '有界两页元数据采集',
+        `最多使用 ${szseContract.maxDirectRequestsPerRun} 次直接尝试`,
+        `最多 ${szseContract.maxProxyRequestsPerRun} 次符合条件的不同 gateway 端口代理尝试`,
+        `共享总上限 ${szseContract.maxRequestsPerRun} 次请求`,
+      ],
+      'Chinese SZSE collection documentation',
+    );
   });
 
   it('documents every configured logistics corridor, signal family, and source family', () => {

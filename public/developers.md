@@ -1,3 +1,9 @@
+---
+title: "World Monitor developer portal"
+description: "Documentation and entry points for the REST API, MCP, CLI, and SDKs."
+canonical: "https://www.worldmonitor.app/developers.md"
+---
+
 # World Monitor Developer Portal
 
 Last updated: August 30, 2026

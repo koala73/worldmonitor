@@ -190,17 +190,17 @@ test('classifyKey returns STALE_CONTENT when content stale + no other failure mo
     keyMetaValues: new Map([['seed-meta:health:disease-outbreaks', metaValueOf({
       fetchedAt: NOW - 10 * ONE_MIN_MS,    // fresh seeder run (10 min)
       recordCount: 50,
-      newestItemAt: NOW - 11 * ONE_DAY_MS, // 11d old content
+      newestItemAt: NOW - 15 * ONE_DAY_MS,
       oldestItemAt: NOW - 60 * ONE_DAY_MS,
-      maxContentAgeMin: 12960,             // 9 days
+      maxContentAgeMin: 20160,
     })]]),
   });
 
   const entry = classifyKey('diseaseOutbreaks', 'health:disease-outbreaks:v1', { allowOnDemand: false }, ctx);
-  assert.equal(entry.status, 'STALE_CONTENT', 'fresh seeder run + 11d-old content + 9d budget → STALE_CONTENT');
+  assert.equal(entry.status, 'STALE_CONTENT', 'fresh seeder run with 15-day-old content exceeds the 14-day budget');
   assert.equal(entry.records, 50, 'records still surfaced from metaCount');
-  assert.equal(entry.contentAgeMin, 11 * 24 * 60, 'contentAgeMin in minutes');
-  assert.equal(entry.maxContentAgeMin, 12960);
+  assert.equal(entry.contentAgeMin, 15 * 24 * 60, 'contentAgeMin in minutes');
+  assert.equal(entry.maxContentAgeMin, 20160);
 });
 
 test('classifyKey: opted-in seeder with FRESH content returns OK', () => {
@@ -209,15 +209,19 @@ test('classifyKey: opted-in seeder with FRESH content returns OK', () => {
     keyMetaValues: new Map([['seed-meta:health:disease-outbreaks', metaValueOf({
       fetchedAt: NOW - 10 * ONE_MIN_MS,
       recordCount: 50,
-      newestItemAt: NOW - 1 * ONE_DAY_MS,   // 1 day, within 9-day budget
+      // 10 days of a 14-day budget (71%) — genuinely fresh, below the 80%
+      // pre-warning threshold. The old 12-day fixture sat at 86%, which the
+      // CONTENT_AGE_PREWARNING policy now correctly flags as aging.
+      newestItemAt: NOW - 10 * ONE_DAY_MS,
       oldestItemAt: NOW - 60 * ONE_DAY_MS,
-      maxContentAgeMin: 12960,
+      maxContentAgeMin: 20160,
     })]]),
   });
 
   const entry = classifyKey('diseaseOutbreaks', 'health:disease-outbreaks:v1', { allowOnDemand: false }, ctx);
   assert.equal(entry.status, 'OK', 'fresh content → OK, not STALE_CONTENT');
-  assert.equal(entry.contentAgeMin, 1 * 24 * 60);
+  assert.equal(entry.contentAgeMin, 10 * 24 * 60);
+  assert.equal(entry.maxContentAgeMin, 20160);
 });
 
 test('classifyKey: legacy seeder (no maxContentAgeMin) reaches OK without STALE_CONTENT', () => {
@@ -406,6 +410,7 @@ test('just-over-budget content stays diagnostically stale without making health 
   const counts = { ok: 1, warn: 0, onDemandWarn: 0, staleContent: 1, rolloutPending: 0, crit: 0 };
   assert.deepEqual(computeOverallStatus(counts, 1), {
     overall: 'HEALTHY',
+    diagnosticOverall: 'HEALTHY',
     realWarnCount: 0,
     critCount: 0,
   });
@@ -416,7 +421,18 @@ test('just-over-budget content stays diagnostically stale without making health 
     checkedAt: new Date(NOW).toISOString(),
     checks: { diseaseOutbreaks: entry },
   });
-  assert.deepEqual(compact.problems, { diseaseOutbreaks: entry }, 'grace must not hide the diagnostic');
+  assert.deepEqual(compact.pending, { diseaseOutbreaks: entry }, 'grace retains the diagnostic outside problems');
+  assert.equal(compact.problems, undefined);
+  assert.deepEqual(buildCompactVerdictSnapshot(compact), compact, 'compact projection is idempotent');
+  for (const deadline of [new Date(NOW).toISOString(), 'not-a-date', undefined]) {
+    const warning = { ...entry, staleContentGraceUntil: deadline };
+    const expired = buildCompactVerdictSnapshot({
+      ...compact,
+      checks: { diseaseOutbreaks: warning },
+    });
+    assert.deepEqual(expired.problems, { diseaseOutbreaks: warning });
+    assert.equal(expired.pending, undefined, 'unproved grace remains actionable');
+  }
 });
 
 test('null newestItemAt keeps the first Redis deadline when fresh seeder metadata arrives again', () => {
@@ -657,4 +673,81 @@ test('a source whose content is stale but classifies as something else never bur
     STALE_CONTENT_GRACE_STATE_KEY,
   );
   assert.equal(Number(nowStaleContent.claimCommands[0][3]), NOW + STALE_CONTENT_GRACE_MS);
+});
+
+// ── CONTENT_AGE_PREWARNING (pre-breach lead time) ─────────────────────────
+
+test('classifyKey: aging content (80%+ of budget, not stale) returns CONTENT_AGE_PREWARNING', () => {
+  const ctx = makeCtx({
+    keyStrens: new Map([['health:disease-outbreaks:v1', 100]]),
+    keyMetaValues: new Map([['seed-meta:health:disease-outbreaks', metaValueOf({
+      fetchedAt: NOW - 10 * ONE_MIN_MS,
+      recordCount: 50,
+      // 12 days of a 14-day budget = 85.7% — inside the pre-warning window.
+      newestItemAt: NOW - 12 * ONE_DAY_MS,
+      oldestItemAt: NOW - 60 * ONE_DAY_MS,
+      maxContentAgeMin: 20160,
+    })]]),
+  });
+  const entry = classifyKey('diseaseOutbreaks', 'health:disease-outbreaks:v1', { allowOnDemand: false }, ctx);
+  assert.equal(entry.status, 'CONTENT_AGE_PREWARNING');
+  assert.equal(entry.contentAgeMin, 12 * 24 * 60);
+  assert.equal(entry.maxContentAgeMin, 20160);
+  assert.equal(entry.warnAtContentAgeMin, Math.ceil(20160 * 0.8));
+  assert.equal(entry.contentAgeRemainingMin, 20160 - 12 * 24 * 60);
+  assert.equal(typeof entry.contentAgeBreachAt, 'string');
+});
+
+test('healthStatusBucket: CONTENT_AGE_PREWARNING buckets ok (non-blocking)', () => {
+  const entry = { status: 'CONTENT_AGE_PREWARNING', records: 50 };
+  assert.equal(healthStatusBucket(entry, NOW), 'ok');
+});
+
+test('STATUS_COUNTS registers CONTENT_AGE_PREWARNING (anti-fallback regression)', () => {
+  assert.equal(STATUS_COUNTS.CONTENT_AGE_PREWARNING, 'warn');
+});
+
+test('compact: CONTENT_AGE_PREWARNING appears in pending, not problems; aggregate stays healthy', () => {
+  // healthResponseBody IS exported from __testing__. Feed it a minimal full
+  // snapshot with one pre-warning check and pin the lane split.
+  const entry = {
+    status: 'CONTENT_AGE_PREWARNING',
+    records: 50,
+    contentAgeMin: 265000,
+    maxContentAgeMin: 331200,
+    warnAtContentAgeMin: 264960,
+    contentAgeRemainingMin: 66200,
+    contentAgeBreachAt: new Date(NOW + 46 * ONE_DAY_MS).toISOString(),
+  };
+  const { healthResponseBody } = __testing__;
+  const snapshot = {
+    status: 'HEALTHY',
+    checkedAt: new Date(NOW).toISOString(),
+    summary: { total: 1, ok: 1, warn: 0, crit: 0 },
+    checks: { diseaseOutbreaks: entry },
+  };
+  const compact = healthResponseBody(snapshot, true);
+  assert.ok(compact.pending?.diseaseOutbreaks, 'pre-warning rides the pending lane');
+  assert.equal(compact.problems?.diseaseOutbreaks, undefined, 'not in problems');
+  assert.equal(compact.status, 'HEALTHY', 'aggregate stays healthy');
+});
+
+test('pre-warning does not create stale-content grace state', () => {
+  const ctx = makeCtx({
+    keyStrens: new Map([['health:disease-outbreaks:v1', 100]]),
+    keyMetaValues: new Map([['seed-meta:health:disease-outbreaks', metaValueOf({
+      fetchedAt: NOW - 10 * ONE_MIN_MS,
+      recordCount: 50,
+      newestItemAt: NOW - 12 * ONE_DAY_MS,
+      oldestItemAt: NOW - 60 * ONE_DAY_MS,
+      maxContentAgeMin: 20160,
+    })]]),
+    staleContentStateGraceUntilMs: new Map(),
+  });
+  const entry = classifyKey('diseaseOutbreaks', 'health:disease-outbreaks:v1', { allowOnDemand: false }, ctx);
+  assert.equal(entry.status, 'CONTENT_AGE_PREWARNING');
+  assert.equal(entry.staleContentGraceUntil, undefined, 'pre-warning must not claim grace');
+  // The grace plan is driven by classifyKey results, not by the assessor.
+  // A pre-warning entry has no staleContentGraceUntil, so no grace claim
+  // command can reference it (pinned via the absence on the wire entry).
 });

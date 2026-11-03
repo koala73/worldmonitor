@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, writeExtraKeyWithMeta, writeSeedMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, writeExtraKeyWithMeta, writeSeedMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson, getRedisCredentials, redisCommand } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
+import { createRequire as _createRequire } from 'node:module';
+import {
+  buildUsDutyIndex,
+  makeCountryResolver,
+  US_HTS_ACTIVATION_KEY,
+  US_HTS_CATALOG_KEY,
+  usHtsCoverageKey,
+} from './shared/us-hts-chapter99.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -22,24 +30,22 @@ const KEYS = {
   customsRevenue: 'trade:customs-revenue:v1',
 };
 
-// NOTE (issue #4864): these TTLs are DELIBERATELY left at 8h. The data-loss fix
-// ("manual seed required" — canonical key lapsed and could not be recreated) is the
-// lockTtlMs bump in runSeed opts below, which lets slow-but-legit runs complete and
-// reach atomicPublish again — restoring republishing every 6h so the key stays alive
-// and, once lost, is RECOVERABLE on the next good run (before, it never republished).
-// Widening these TTLs for extra gap-buffer is a valid follow-up but NOT free: each is
-// co-pinned to a health-check maxStaleMin (see tests/trade-policy-tariffs.test.mjs —
-// data-key TTL must satisfy maxStaleMin ∈ [TTL_min, TTL_min+120] or it opens a silent
-// EMPTY / false-STALE window), so raising a TTL means moving its maxStaleMin in lockstep.
-const SHIPPING_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 1h = 5h expired gap)
+// #4864 restored republishing with the lockTtlMs bump below. #4873 widens
+// retention to 24h so keys survive three missed 6h ticks at 6h, 12h and 18h.
+// Trade and tariff health probes watch only their 7-day seed-meta records;
+// shipping also probes its data key. maxStaleMin is 1140: three 6h ticks plus
+// 1h grace, below the 1440min data TTL so health warns 5h before expiry.
+// Pinned by tests/trade-policy-tariffs.test.mjs, tests/trade-flows-health.test.mjs
+// and tests/tariff-trends-coverage.test.mts.
+export const SHIPPING_TTL = 86400; // 24h
 // Exported so tests/trade-flows-health.test.mjs can assert the tradeFlows
-// staleness budget against the REAL data TTL. A test that hardcoded 480 would
-// stay green if this constant moved, re-opening the silent window where the
-// flow keys have expired but health still reads OK.
-export const TRADE_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 6h = 0 buffer)
+// staleness budget against the REAL data TTL. A test that hardcoded the
+// minutes would stay green if this constant moved, re-opening the silent
+// window where the flow keys have expired but health still reads OK.
+export const TRADE_TTL = 86400; // 24h
 // Exported so tests can pin the tariffTrendsUs staleness budget against the
 // real data TTL the same way tradeFlows pins TRADE_TTL.
-export const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
+export const TARIFF_TTL = 86400; // 24h
 const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
 // Reporter list fetched dynamically from WTO API at startup.
@@ -390,11 +396,12 @@ export function accumulateHistory(newIndices, previousPayload) {
   const fallbackDate = new Date().toISOString().slice(0, 10);
   for (const idx of newIndices) {
     const prev = prevMap.get(idx.indexId);
+    const historyCap = idx.indexId === 'SCFI' || idx.indexId === 'CCFI' ? 56 : 24;
     const existingHistory = prev?.history ?? [];
     if (idx.history?.length > 0) { delete idx._observationDate; continue; }
     const hasObservationDate = Object.prototype.hasOwnProperty.call(idx, '_observationDate');
     if (hasObservationDate && typeof idx._observationDate !== 'string') {
-      idx.history = existingHistory.slice(-24);
+      idx.history = existingHistory.slice(-historyCap);
       delete idx._observationDate;
       continue;
     }
@@ -404,7 +411,7 @@ export function accumulateHistory(newIndices, previousPayload) {
     if (!last || last.date !== obsDate) {
       newHistory.push({ date: obsDate, value: idx.currentValue });
     }
-    idx.history = newHistory.slice(-24);
+    idx.history = newHistory.slice(-historyCap);
     delete idx._observationDate;
   }
   return newIndices;
@@ -941,6 +948,7 @@ export async function publishTradeFlows({ flows, manifest }) {
     // manifest comment in fetchTradeFlows). An envelope-less top-level field is
     // the one thing health can read and echo verbatim.
     dominantFailureMode: dominantFailureMode(manifest.stats ?? {}),
+    payloadTtlSeconds: TRADE_TTL,
   });
 }
 
@@ -1260,7 +1268,9 @@ export async function publishTariffTrends({ trends, manifest }) {
   // previous meta record then ages out on its own TTL instead of crashing the
   // seeder. Mirrors the isolation policy in _seed-utils.mjs.
   try {
-    await writeSeedMeta(TARIFF_KEY_PREFIX, written, TARIFF_META_KEY);
+    await writeSeedMeta(TARIFF_KEY_PREFIX, written, TARIFF_META_KEY, undefined, undefined, {
+      payloadTtlSeconds: TARIFF_TTL,
+    });
   } catch (err) {
     console.warn(`  Tariff trends: seed-meta write failed: ${err?.message || err}`);
   }
@@ -1337,6 +1347,75 @@ async function fetchCustomsRevenue() {
   throw new Error(`Treasury MTS exhausted 3 attempts: ${lastErr?.message || lastErr}`);
 }
 
+// ─── US HTS additional duties (USITC HTS REST) ───
+//
+// Section 301 and 232 coverage lives in the chapter 99 U.S. notes. The index
+// is rebuilt from the current HTS release every run (the notes are ~5 MB,
+// the heading rows ~3 MB) and published as one catalog plus one coverage
+// shard per HS chapter, versioned by release. See shared/us-hts-chapter99.mjs.
+// 24h, matching maxStaleMin 1440 on usHtsDuties in api/health.js. HTS
+// revisions land every two weeks or so; the 6h cron keeps the key alive.
+export const US_HTS_TTL = 86400;
+const HTS_REST = 'https://hts.usitc.gov/reststop';
+const _require = _createRequire(import.meta.url);
+
+async function htsFetch(path, timeoutMs) {
+  const resp = await fetch(`${HTS_REST}/${path}`, {
+    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json, text/html' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!resp.ok) throw new Error(`HTS ${path.split('?')[0]}: HTTP ${resp.status}`);
+  return resp;
+}
+
+/** Name and start date of the HTS release USITC marks current. */
+export function currentHtsRelease(releases) {
+  const current = (Array.isArray(releases) ? releases : []).find((r) => r?.status === 'current');
+  if (!current?.name) throw new Error('HTS releaseList has no current release');
+  return { name: String(current.name), startDate: String(current.releaseStartDate || '') };
+}
+
+export async function fetchUsHtsIndex() {
+  const release = currentHtsRelease(await (await htsFetch('releaseList', 20_000)).json());
+  const [notesHtml, headingRows] = await Promise.all([
+    htsFetch('getChapterNotes?doc=99', 90_000).then((r) => r.text()),
+    htsFetch('exportList?from=9903.01.00&to=9903.99.99&format=JSON&styles=false', 90_000).then((r) => r.json()),
+  ]);
+  const { countryNameToIso2 } = _require('./shared/country-name-to-iso2.cjs');
+  const index = buildUsDutyIndex({
+    notesHtml,
+    headingRows,
+    release,
+    resolveCountry: makeCountryResolver(countryNameToIso2, _un2iso2),
+  });
+  console.log(`  US HTS ${index.release}: ${Object.keys(index.measures).length} measures, ${index.provisions} provisions`);
+  return index;
+}
+
+/**
+ * Shards first, catalog last: the catalog names the release whose shards are
+ * complete, so a reader never follows it to a half-written set.
+ */
+export async function publishUsHtsIndex(index) {
+  const chapters = Object.keys(index.coverage).sort();
+  for (const ch of chapters) {
+    await writeExtraKey(usHtsCoverageKey(index.release, ch), index.coverage[ch], US_HTS_TTL);
+  }
+  const catalog = {
+    schema: index.schema,
+    release: index.release,
+    releaseStartDate: index.releaseStartDate,
+    fetchedAt: new Date().toISOString(),
+    chapters,
+    measures: index.measures,
+  };
+  await writeExtraKeyWithMeta(US_HTS_CATALOG_KEY, catalog, US_HTS_TTL, Object.keys(index.measures).length);
+  // No TTL: once a catalog has published, health treats a missing or stale
+  // one as a failure rather than as pending activation.
+  const { url, token } = getRedisCredentials();
+  await redisCommand(url, token, ['SET', US_HTS_ACTIVATION_KEY, '1']);
+}
+
 function parseCustomsRows(rows) {
 
   const months = rows
@@ -1364,7 +1443,7 @@ function parseCustomsRows(rows) {
 
 async function fetchAll() {
   await fetchWtoReporters();
-  const [shipping, scfi, ccfi, bdi, barriers, restrictions, flows, tariffs, customs] = await Promise.allSettled([
+  const [shipping, scfi, ccfi, bdi, barriers, restrictions, flows, tariffs, customs, usHts] = await Promise.allSettled([
     fetchShippingRates(),
     fetchSCFI(),
     fetchCCFI(),
@@ -1374,6 +1453,7 @@ async function fetchAll() {
     fetchTradeFlows(),
     fetchTariffTrends(),
     fetchCustomsRevenue(),
+    fetchUsHtsIndex(),
   ]);
 
   const sh = shipping.status === 'fulfilled' ? shipping.value : null;
@@ -1385,6 +1465,7 @@ async function fetchAll() {
   const fl = flows.status === 'fulfilled' ? flows.value : null;
   const ta = tariffs.status === 'fulfilled' ? tariffs.value : null;
   const cu = customs.status === 'fulfilled' ? customs.value : null;
+  const hts = usHts.status === 'fulfilled' ? usHts.value : null;
 
   if (shipping.status === 'rejected') console.warn(`  Shipping failed: ${shipping.reason?.message || shipping.reason}`);
   if (scfi.status === 'rejected') console.warn(`  SCFI failed: ${scfi.reason?.message || scfi.reason}`);
@@ -1395,6 +1476,7 @@ async function fetchAll() {
   if (flows.status === 'rejected') console.warn(`  Flows failed: ${flows.reason?.message || flows.reason}`);
   if (tariffs.status === 'rejected') console.warn(`  Tariffs failed: ${tariffs.reason?.message || tariffs.reason}`);
   if (customs.status === 'rejected') console.warn(`  Treasury customs failed: ${customs.reason?.message || customs.reason}`);
+  if (usHts.status === 'rejected') console.warn(`  US HTS duties failed: ${usHts.reason?.message || usHts.reason}`);
 
   const allIndices = [
     ...(sh?.indices || []),
@@ -1417,6 +1499,11 @@ async function fetchAll() {
   if (fl) await publishTradeFlows(fl);
   if (ta) await publishTariffTrends(ta);
   if (cu) await writeExtraKeyWithMeta(KEYS.customsRevenue, cu, CUSTOMS_TTL, cu.months?.length ?? 0);
+  // Isolated like the others: a failed US HTS publish leaves the previous
+  // release's catalog and shards to age out instead of failing the run.
+  if (hts) {
+    try { await publishUsHtsIndex(hts); } catch (err) { console.warn(`  US HTS publish failed: ${err?.message || err}`); }
+  }
 
   return mergedIndices.length > 0
     ? { indices: mergedIndices, fetchedAt: new Date().toISOString(), upstreamUnavailable: false }
@@ -1463,7 +1550,7 @@ if (process.argv[1]?.endsWith('seed-supply-chain-trade.mjs')) {
 
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 420,
+    maxStaleMin: 1140,
     contentMeta: supplyChainContentMeta,
     maxContentAgeMin: SUPPLY_CHAIN_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {

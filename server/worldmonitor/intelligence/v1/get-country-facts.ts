@@ -3,7 +3,9 @@ import type {
   GetCountryFactsRequest,
   GetCountryFactsResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { cachedFetchJson } from '../../../_shared/redis';
 import unToIso2Json from '../../../../shared/un-to-iso2.json';
 
@@ -38,26 +40,20 @@ interface WikipediaSummary {
   thumbnail?: { source?: string };
 }
 
-const EMPTY: GetCountryFactsResponse = {
-  headOfState: '',
-  headOfStateTitle: '',
-  wikipediaSummary: '',
-  wikipediaThumbnailUrl: '',
-  population: 0,
-  capital: '',
-  languages: [],
-  currencies: [],
-  areaSqKm: 0,
-  countryName: '',
-};
-
 export async function getCountryFacts(
   _ctx: ServerContext,
   req: GetCountryFactsRequest,
 ): Promise<GetCountryFactsResponse> {
-  if (!req.countryCode) return EMPTY;
-
-  const code = req.countryCode.toUpperCase();
+  const code = req.countryCode?.toUpperCase() ?? '';
+  // The proto checks shape only. Intl names an unassigned code such as ZZ
+  // "Unknown Region", which this handler would otherwise look up on Wikipedia
+  // and return as the country's facts.
+  if (!isAssignedCountryCode(code)) {
+    throw new ValidationError([{
+      field: 'country_code',
+      description: 'country_code must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".',
+    }]);
+  }
   const countryData = await fetchWikidata(code);
   const countryName = countryData?.countryName || displayCountryName(code);
 

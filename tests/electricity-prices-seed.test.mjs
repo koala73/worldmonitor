@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { __testing__ as health } from '../api/health.js';
 
 import {
   parseEntsoEPrice,
@@ -9,10 +11,13 @@ import {
   ELECTRICITY_KEY_PREFIX,
   ELECTRICITY_META_KEY,
   ELECTRICITY_TTL_SECONDS,
+  ENTSO_E_ATTEMPT_TIMEOUT_MS,
+  ENTSO_E_REGION_COUNT,
+  LOCK_TTL_MS,
+  failureExitCode,
   fetchEiaRegion,
   fetchEntsoERegion,
   main,
-  meetsEntsoPublicationFloor,
 } from '../scripts/seed-electricity-prices.mjs';
 
 // The transport-recovery cases drive withRetry to exhaustion. Cap the idle
@@ -59,9 +64,9 @@ describe('parseEntsoEPrice', () => {
     assert.equal(parseEntsoEPrice(xml), 87.3);
   });
 
-  it('ignores non-numeric price values', () => {
+  it('rejects a malformed price series', () => {
     const xml = '<price.amount>abc</price.amount><price.amount>50.00</price.amount>';
-    assert.equal(parseEntsoEPrice(xml), 50);
+    assert.equal(parseEntsoEPrice(xml), null);
   });
 
   it('handles negative prices (common in EU wholesale markets)', () => {
@@ -143,7 +148,8 @@ describe('fetchEntsoERegion transport recovery', () => {
     assert.equal(new URL(url).searchParams.get('securityToken'), 'test-token');
     assert.equal(auth, 'proxy-auth', 'proxy leg must use the resolved CONNECT auth string');
     assert.equal(opts.accept, 'application/xml');
-    assert.equal(opts.timeoutMs, 20_000);
+    assert.equal(opts.timeoutMs, ENTSO_E_ATTEMPT_TIMEOUT_MS);
+    assert.ok(opts.signal instanceof AbortSignal, 'one deadline covers CONNECT and response');
     assert.equal(result.priceMwhEur, 91.2);
   });
 
@@ -225,93 +231,106 @@ describe('fetchEntsoERegion transport recovery', () => {
   });
 });
 
-describe('ENTSO-E full-snapshot publication floor', () => {
-  it('requires at least seven ENTSO-E regions', () => {
-    assert.equal(meetsEntsoPublicationFloor(6), false);
-    assert.equal(meetsEntsoPublicationFloor(7), true);
+describe('classified electricity retries', () => {
+  it('recovers from one proxy CONNECT 522 after transient direct failures', async () => {
+    let direct = 0;
+    let proxy = 0;
+    const result = await fetchEntsoERegion(ENTSO_REGION, 'fake', ENTSO_TODAY, ENTSO_YESTERDAY, {
+      fetchFn: async () => { direct++; return new Response('', { status: 503 }); },
+      proxyAuth: 'fake',
+      proxyFetcher: async () => {
+        proxy++;
+        if (proxy === 1) throw new Error('Proxy CONNECT: HTTP/1.1 522 Server Error');
+        return { buffer: Buffer.from(entsoXml(85)) };
+      },
+    });
+    assert.equal(result?.priceMwhEur, 85);
+    assert.equal(direct, 3);
+    assert.equal(proxy, 2);
   });
 
-  it('preserves full-snapshot freshness and rejects a failed degraded EIA write', async () => {
-    const originalFetch = globalThis.fetch;
-    const originalEnv = {
-      ENTSO_E_TOKEN: process.env.ENTSO_E_TOKEN,
-      EIA_API_KEY: process.env.EIA_API_KEY,
-      UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
-      UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
-    };
-    const pipelines = [];
+  for (const [message, status, expectedCalls] of [
+    ['HTTP 400', 400, 1], ['HTTP 404', 404, 1],
+    ['HTTP 503', 503, 2], ['Proxy CONNECT: HTTP/1.1 522 Server Error', undefined, 2],
+  ]) it(`bounds persistent proxy failure: ${message}`, async () => {
+    let calls = 0;
+    const result = await fetchEntsoERegion(ENTSO_REGION, 'fake', ENTSO_TODAY, ENTSO_YESTERDAY, {
+      fetchFn: async () => new Response('', { status: 503 }), proxyAuth: 'fake',
+      proxyFetcher: async () => { calls++; throw Object.assign(new Error(message), { status }); },
+    });
+    assert.equal(result, null);
+    assert.equal(calls, expectedCalls);
+  });
 
-    delete process.env.ENTSO_E_TOKEN;
-    process.env.EIA_API_KEY = 'test-key';
-    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
-    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-    globalThis.fetch = async (url, init = {}) => {
-      const href = String(url);
-      if (href.startsWith('https://api.eia.gov/')) {
-        return new Response(JSON.stringify({ response: { data: [{ value: 10_000 }] } }), {
-          status: 200,
-        });
-      }
-
-      const command = JSON.parse(init.body);
-      if (href.endsWith('/pipeline')) {
-        pipelines.push(command);
-        if (command[0]?.[0] === 'SET') {
-          return new Response(JSON.stringify([
-            { error: 'ERR write failed' },
-            ...command.slice(1).map(() => ({ result: 'OK' })),
-          ]), { status: 200 });
-        }
-        return new Response(JSON.stringify(command.map(() => ({ result: 1 }))), { status: 200 });
-      }
-
-      return new Response(JSON.stringify({ result: command[0] === 'SET' ? 'OK' : 1 }), {
-        status: 200,
+  it('permanent ENTSO-E responses do not retry through either route', async () => {
+    for (const status of [400, 401, 403, 404]) {
+      let direct = 0;
+      let proxy = 0;
+      const result = await fetchEntsoERegion(ENTSO_REGION, 'fake', ENTSO_TODAY, ENTSO_YESTERDAY, {
+        fetchFn: async () => { direct++; return new Response('', { status }); }, proxyAuth: 'fake',
+        proxyFetcher: async () => { proxy++; return { buffer: Buffer.from(entsoXml(85)) }; },
       });
-    };
-
-    try {
-      await assert.rejects(main(), /Redis pipeline: 1\/7 commands failed/);
-    } finally {
-      globalThis.fetch = originalFetch;
-      for (const [key, value] of Object.entries(originalEnv)) {
-        if (value == null) delete process.env[key];
-        else process.env[key] = value;
-      }
+      assert.equal(result, null);
+      assert.equal(direct, 1);
+      assert.equal(proxy, 0);
     }
-
-    const setPipeline = pipelines.find((pipeline) => pipeline[0]?.[0] === 'SET');
-    assert.ok(setPipeline, 'expected a degraded EIA write');
-    const setKeys = setPipeline.map((command) => command[1]);
-    assert.equal(EIA_REGIONS.length, 7, 'fixture must represent the complete EIA cohort');
-    assert.deepEqual(
-      setKeys,
-      EIA_REGIONS.map((region) => `${ELECTRICITY_KEY_PREFIX}${region.region}`),
-    );
-    assert.equal(setKeys.includes(ELECTRICITY_INDEX_KEY), false);
-    assert.equal(setKeys.includes(ELECTRICITY_META_KEY), false);
-    assert.ok(
-      pipelines.some((pipeline) => {
-        const expireKeys = pipeline
-          .filter((command) => command[0] === 'EXPIRE')
-          .map((command) => command[1]);
-        return expireKeys.includes(ELECTRICITY_INDEX_KEY)
-          && expireKeys.includes(ELECTRICITY_META_KEY);
-      }),
-      'expected the prior full snapshot and freshness metadata to retain their TTL',
-    );
   });
 
+  for (const code of ['UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT']) {
+    it(`recovers both native fetch adapters from ${code}`, async () => {
+      const original = globalThis.fetch;
+      const socketError = () => new TypeError('fetch failed', { cause: Object.assign(new Error('transport closed'), { code }) });
+      try {
+        let entsoCalls = 0;
+        const entso = await fetchEntsoERegion(ENTSO_REGION, 'fake', ENTSO_TODAY, ENTSO_YESTERDAY, {
+          fetchFn: async () => {
+            if (++entsoCalls === 1) throw socketError();
+            return new Response(entsoXml(85));
+          }, proxyAuth: '',
+        });
+        assert.equal(entso?.priceMwhEur, 85);
+        assert.equal(entsoCalls, 2);
+        let eiaCalls = 0;
+        globalThis.fetch = async () => {
+          if (++eiaCalls === 1) throw socketError();
+          return new Response(JSON.stringify({ response: { data: [{ value: 10271, type: 'D' }] } }));
+        };
+        const eia = await fetchEiaRegion(EIA_REGIONS[0], 'fake', ENTSO_TODAY);
+        assert.equal(eia?.demandMwh, 10271);
+        assert.equal(eiaCalls, 2);
+      } finally { globalThis.fetch = original; }
+    });
+  }
+
+  for (const [code, expectedDirect, expectedProxy] of [
+    ['UND_ERR_SOCKET', 3, 1], ['UND_ERR_INVALID_ARG', 1, 0],
+  ]) it(`bounds repeated native errors and only falls back for transport failures: ${code}`, async () => {
+    let direct = 0;
+    let proxy = 0;
+    const result = await fetchEntsoERegion(ENTSO_REGION, 'fake', ENTSO_TODAY, ENTSO_YESTERDAY, {
+      fetchFn: async () => { direct++; throw new TypeError('fetch failed', { cause: { code } }); },
+      proxyAuth: 'fake',
+      proxyFetcher: async () => { proxy++; return { buffer: Buffer.from(entsoXml(85)) }; },
+    });
+    assert.equal(direct, expectedDirect);
+    assert.equal(proxy, expectedProxy);
+    assert.equal(result?.priceMwhEur ?? null, expectedProxy ? 85 : null);
+  });
+
+  it('does not retry permanent EIA failures or malformed JSON', async () => {
+    const original = globalThis.fetch;
+    try {
+      for (const response of [() => new Response('', { status: 400 }), () => new Response('{'), () => new Response('timeout')]) {
+        let calls = 0;
+        globalThis.fetch = async () => { calls++; return response(); };
+        assert.equal(await fetchEiaRegion(EIA_REGIONS[0], 'fake', ENTSO_TODAY), null);
+        assert.equal(calls, 1);
+      }
+    } finally { globalThis.fetch = original; }
+  });
 });
 
-// ── main() publication gate ───────────────────────────────────────────────────
-//
-// Drives the real main() with fetch mocked for Upstash, ENTSO-E and EIA-930
-// (same shape as tests/seed-comtrade-bilateral-main.test.mjs) and asserts the
-// commands that actually reach Redis. The degraded-write case above covers the
-// failure path; these pin the three success shapes of the publication gate so
-// a regression in how main() consumes the floor predicate (e.g. restoring the
-// old `entsoToken &&` conjunct) cannot ship green.
+// Exercise the real producer with mocked provider and Redis transports.
 
 describe('main() publication gate', () => {
   const REDIS_URL = 'https://fake-upstash.test';
@@ -323,6 +342,10 @@ describe('main() publication gate', () => {
   let errors;
   let entsoCalls;
   let entsoStatus;
+  let failedDomain;
+  let eiaBody;
+  let cache;
+  let publicationFailure;
 
   function respond(body) {
     return new Response(JSON.stringify(body), { status: 200 });
@@ -331,8 +354,15 @@ describe('main() publication gate', () => {
   function runCommand(cmd) {
     redisCommands.push(cmd);
     switch (cmd[0]) {
-      case 'SET': return { result: 'OK' };
-      case 'EXPIRE': return { result: 1 };
+      case 'SET':
+        if (cmd[1] === publicationFailure) return { error: 'ERR simulated write failure' };
+        cache.set(cmd[1], cmd[2]);
+        return { result: 'OK' };
+      case 'GET': return { result: cache.get(cmd[1]) ?? null };
+      // Redis EXISTS counts how many of the given keys exist.
+      case 'EXISTS': return { result: cmd.slice(1).filter((key) => cache.has(key)).length };
+      // Redis EXPIRE answers 0 for a key that does not exist.
+      case 'EXPIRE': return { result: cache.has(cmd[1]) ? 1 : 0 };
       case 'EVAL': return { result: 1 };
       default: return { result: null };
     }
@@ -348,9 +378,13 @@ describe('main() publication gate', () => {
 
   beforeEach(() => {
     redisCommands = [];
+    cache = new Map();
+    publicationFailure = null;
     errors = [];
     entsoCalls = 0;
     entsoStatus = 200;
+    failedDomain = null;
+    eiaBody = { response: { data: [{ value: 10271, type: 'D' }] } };
     for (const key of ENV_KEYS) ORIGINAL_ENV[key] = process.env[key];
     process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
@@ -368,10 +402,11 @@ describe('main() publication gate', () => {
         return respond(runCommand(body));
       }
       if (href.startsWith('https://api.eia.gov/')) {
-        return respond({ response: { data: [{ period: '2026-09-02T05', value: 10271, type: 'D' }] } });
+        return respond(eiaBody);
       }
       if (href.startsWith(ENTSO_API_PREFIX)) {
         entsoCalls += 1;
+        if (failedDomain === new URL(href).searchParams.get('in_Domain')) return new Response('', { status: 503 });
         if (entsoStatus !== 200) return new Response('', { status: entsoStatus });
         return new Response(entsoXml('80.00'), { status: 200 });
       }
@@ -388,12 +423,12 @@ describe('main() publication gate', () => {
     }
   });
 
-  it('EIA-only run (no ENTSO_E_TOKEN) writes US keys but withholds the index and fresh seed meta', async () => {
-    await main();
+  it('missing required credentials retains the whole snapshot and rejects', async () => {
+    await assert.rejects(main(), /ENTSO_E_TOKEN/);
 
     assert.equal(entsoCalls, 0);
     for (const { region } of EIA_REGIONS) {
-      assert.equal(setsFor(`${ELECTRICITY_KEY_PREFIX}${region}`).length, 1, `expected SET for ${region}`);
+      assert.equal(setsFor(`${ELECTRICITY_KEY_PREFIX}${region}`).length, 0, `no SET for ${region}`);
     }
     assert.equal(setsFor(ELECTRICITY_INDEX_KEY).length, 0, 'EIA-only run must not publish the EU index');
     assert.equal(setsFor(ELECTRICITY_META_KEY).length, 0, 'EIA-only run must not mark the seed fresh');
@@ -409,16 +444,78 @@ describe('main() publication gate', () => {
     process.env.ENTSO_E_TOKEN = 'entso-token';
     entsoStatus = 503;
 
-    await main();
+    await assert.rejects(main(), /ENTSO-E/);
 
     assert.equal(entsoCalls, 30, '10 regions x 3 direct attempts, no proxy leg');
     assert.equal(setsFor(ELECTRICITY_INDEX_KEY).length, 0);
     assert.equal(setsFor(ELECTRICITY_META_KEY).length, 0);
-    assert.equal(setsFor(`${ELECTRICITY_KEY_PREFIX}CISO`).length, 1, 'US keys still refresh below the floor');
+    assert.equal(setsFor(`${ELECTRICITY_KEY_PREFIX}CISO`).length, 0, 'retain US keys with the EU snapshot');
     assert.ok(
       errors.some((message) => message.includes('Only 0 ENTSO-E regions returned valid prices')),
       `preserve reason must report the ENTSO-E shortfall, got: ${errors.join('\n')}`,
     );
+  });
+
+  it('one exhausted region request retains the full snapshot despite meeting the old seven-region floor', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    failedDomain = ENTSO_REGION.eic;
+    await assert.rejects(main(), /ENTSO-E/);
+    assert.equal(setsFor(ELECTRICITY_INDEX_KEY).length, 0);
+    assert.equal(setsFor(ELECTRICITY_META_KEY).length, 0);
+    assert.equal(redisCommands.filter(c => c[0] === 'SET' && c[1].startsWith(ELECTRICITY_KEY_PREFIX)).length, 0);
+    assert.equal(expiredKeys().length, 19, 'retain all 17 regional keys plus index and metadata');
+  });
+
+  for (const [name, body] of [
+    ['valid empty', { response: { data: [] } }],
+    ['malformed envelope', {}],
+    ['malformed number', { response: { data: [{ value: '123junk' }] } }],
+  ]) it(`EIA ${name} cannot refresh the full snapshot`, async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    eiaBody = body;
+    await assert.rejects(main(), /EIA/);
+    assert.equal(setsFor(ELECTRICITY_INDEX_KEY).length, 0);
+    assert.equal(setsFor(ELECTRICITY_META_KEY).length, 0);
+  });
+
+  it('keeps retained bytes, reader dates and health freshness through failure, then recovers', async () => {
+    const { buildResponseFromSpine } = await import('../server/worldmonitor/intelligence/v1/get-country-energy-profile.ts');
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    assert.equal(await main(), true);
+    const snapshot = new Map(cache);
+    const oldMeta = JSON.parse(cache.get(ELECTRICITY_META_KEY));
+    oldMeta.fetchedAt -= 30 * 60 * 60 * 1000;
+    oldMeta.snapshotDate = new Date(oldMeta.fetchedAt).toISOString().slice(0, 10);
+    cache.set(ELECTRICITY_META_KEY, JSON.stringify(oldMeta));
+    snapshot.set(ELECTRICITY_META_KEY, JSON.stringify(oldMeta));
+    const classify = now => health.classifyKey('electricityPrices', ELECTRICITY_INDEX_KEY, { allowOnDemand: false }, {
+      now, keyStrens: new Map([[ELECTRICITY_INDEX_KEY, cache.get(ELECTRICITY_INDEX_KEY).length]]),
+      keyErrors: new Map(), keyMetaValues: new Map([[ELECTRICITY_META_KEY, cache.get(ELECTRICITY_META_KEY)]]), keyMetaErrors: new Map(),
+    });
+    failedDomain = ENTSO_REGION.eic;
+    await assert.rejects(main(), /ENTSO-E/);
+    for (const [key, value] of snapshot) {
+      if (!key.startsWith(ELECTRICITY_KEY_PREFIX) && key !== ELECTRICITY_META_KEY) continue;
+      assert.equal(cache.get(key), value, `last-good bytes retained for ${key}`);
+    }
+    const retained = JSON.parse(cache.get(`${ELECTRICITY_KEY_PREFIX}DE`));
+    const read = buildResponseFromSpine({}, null, retained, null, null);
+    assert.equal(read.electricityAvailable, true);
+    assert.equal(read.electricityPriceMwh, retained.priceMwhEur);
+    assert.equal(read.electricityDate, retained.date);
+    assert.equal(classify(Date.now()).status, 'OK');
+    assert.equal(classify(oldMeta.fetchedAt + 3001 * 60000).status, 'STALE_SEED');
+    failedDomain = null;
+    assert.equal(await main(), true);
+    assert.ok(JSON.parse(cache.get(ELECTRICITY_META_KEY)).fetchedAt > oldMeta.fetchedAt);
+    assert.equal(classify(Date.now()).status, 'OK');
+  });
+
+  it('a failed data write cannot publish a fresh success marker', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    publicationFailure = ELECTRICITY_INDEX_KEY;
+    await assert.rejects(main(), /publication not confirmed/);
+    assert.equal(setsFor(ELECTRICITY_META_KEY).length, 0);
   });
 
   it('publishes the index and fresh seed meta once the ENTSO-E floor is met', async () => {
@@ -433,6 +530,129 @@ describe('main() publication gate', () => {
     assert.equal(JSON.parse(meta[0][2]).recordCount, 17, '10 ENTSO-E + 7 EIA regions');
     assert.equal(expiredKeys().length, 0, 'a full publish does not fall back to TTL extension');
     assert.equal(errors.length, 0, `no preserve path expected, got: ${errors.join('\n')}`);
+  });
+
+  // The cron retries later the same UTC day, so a later tick must not refetch or
+  // republish once the day's snapshot is in.
+  function dataWrites() {
+    return redisCommands.filter((c) => c[0] === 'SET'
+      && (c[1].startsWith(ELECTRICITY_KEY_PREFIX) || c[1] === ELECTRICITY_META_KEY));
+  }
+
+  // Rewrites a field of the published seed meta, as a stored snapshot would carry it.
+  function patchMeta(patch) {
+    cache.set(ELECTRICITY_META_KEY, JSON.stringify({ ...JSON.parse(cache.get(ELECTRICITY_META_KEY)), ...patch }));
+  }
+
+  function previousUtcDate() {
+    return new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
+  it('skips a later tick once today\'s snapshot is published', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    assert.equal(await main(), true);
+    redisCommands = [];
+    entsoCalls = 0;
+
+    assert.equal(await main(), 'already-fresh');
+
+    assert.equal(entsoCalls, 0, 'no ENTSO-E request once today is published');
+    assert.equal(dataWrites().length, 0, 'nothing republished');
+    assert.equal(expiredKeys().length, 0, 'a skip is not a failure');
+  });
+
+  it('fetches again when the published snapshot is from an earlier UTC day', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    assert.equal(await main(), true);
+    patchMeta({ snapshotDate: previousUtcDate() });
+    entsoCalls = 0;
+
+    assert.equal(await main(), true);
+    assert.equal(entsoCalls, 10);
+  });
+
+  // A run near midnight can publish after 00:00 UTC; the snapshot's own date,
+  // not the publication time, decides whether today is covered.
+  it('skips on the snapshot date, not on when it was published', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    assert.equal(await main(), true);
+    patchMeta({ snapshotDate: previousUtcDate(), fetchedAt: Date.now() });
+    entsoCalls = 0;
+
+    assert.equal(await main(), true, 'a previous-day snapshot published today must not block today');
+    assert.equal(entsoCalls, 10);
+  });
+
+  it('fetches when today\'s metadata exists but part of the snapshot is gone', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    assert.equal(await main(), true);
+    cache.delete(`${ELECTRICITY_KEY_PREFIX}DE`);
+    entsoCalls = 0;
+
+    assert.equal(await main(), true);
+    assert.equal(entsoCalls, 10);
+  });
+
+  // Publish a full snapshot, then date it to an earlier UTC day so the next
+  // run fetches instead of skipping.
+  async function publishPreviousDaySnapshot() {
+    assert.equal(await main(), true);
+    const meta = JSON.parse(cache.get(ELECTRICITY_META_KEY));
+    patchMeta({ fetchedAt: meta.fetchedAt - 30 * 60 * 60 * 1000, snapshotDate: previousUtcDate() });
+  }
+
+  it('marks a failure as retained only when every last-good key was extended', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    await publishPreviousDaySnapshot();
+    failedDomain = ENTSO_REGION.eic;
+    await assert.rejects(main(), (err) => err.retained === true);
+
+    cache.clear(); // the previous snapshot has already expired
+    await assert.rejects(main(), (err) => err.retained === false);
+  });
+
+  // A write that lands before a later one fails leaves a mixed snapshot, so
+  // extending every TTL does not mean the previous snapshot survived.
+  it('does not treat a partly written publication as retained', async () => {
+    process.env.ENTSO_E_TOKEN = 'entso-token';
+    await publishPreviousDaySnapshot();
+    publicationFailure = ELECTRICITY_INDEX_KEY;
+
+    await assert.rejects(main(), (err) => /publication not confirmed/.test(err.message) && err.retained === false);
+  });
+});
+
+describe('electricity failure exit code', () => {
+  // Railway reports any non-zero exit as a crash, so an outage the run absorbed
+  // exits 0; only a run that lost the data exits 1.
+  it('exits 0 only when the previous snapshot was retained', () => {
+    assert.equal(failureExitCode(Object.assign(new Error('x'), { retained: true })), 0);
+    assert.equal(failureExitCode(Object.assign(new Error('x'), { retained: false })), 1);
+    assert.equal(failureExitCode(new Error('Redis down before any fetch')), 1);
+    assert.equal(failureExitCode(undefined), 1);
+  });
+
+  // The crash diagnostic needs a terminal line to vouch for an exit-0 run; the
+  // RETRY suffix is runSeed's marker for "kept the last-good data".
+  it('the entry point exits through failureExitCode and prints a terminal marker for each outcome', () => {
+    const src = readFileSync(new URL('../scripts/seed-electricity-prices.mjs', import.meta.url), 'utf8');
+    const entry = src.slice(src.indexOf("process.argv[1]?.endsWith('seed-electricity-prices.mjs')"));
+    assert.match(entry, /process\.exit\(failureExitCode\(err\)\)/);
+    assert.match(entry, /=== Done \([^\n]*, RETRY\) ===/);
+    assert.match(entry, /=== Done \([^\n]*already fresh\) ===/);
+  });
+});
+
+describe('ENTSO-E request budget', () => {
+  it('gives each attempt at least 30s, the latency ENTSO-E showed on 2026-09-29', () => {
+    assert.ok(ENTSO_E_ATTEMPT_TIMEOUT_MS >= 30_000);
+  });
+
+  it('holds the run lock past the worst case of every region exhausting both routes', () => {
+    // 3 direct + 2 proxy attempts per region, regions fetched three at a time.
+    const batches = Math.ceil(ENTSO_E_REGION_COUNT / 3);
+    const worstCaseMs = batches * (5 * ENTSO_E_ATTEMPT_TIMEOUT_MS + 5_000);
+    assert.ok(LOCK_TTL_MS > worstCaseMs, `lock ${LOCK_TTL_MS}ms must exceed ${worstCaseMs}ms`);
   });
 });
 
@@ -652,5 +872,24 @@ describe('fetchEiaRegion query construction', () => {
       restore();
     }
     assert.equal(result, null);
+  });
+});
+
+describe('electricity daily schedule margin', () => {
+  it('survives one missed daily run plus completion delay and then exposes persistent staleness', () => {
+    const fetchedAt = Date.parse('2026-09-07T14:01:00Z');
+    const cfg = health.SEED_META.electricityPrices;
+    const classify = ageMin => health.classifyKey('electricityPrices', ELECTRICITY_INDEX_KEY, { allowOnDemand: false }, {
+      now: fetchedAt + ageMin * 60000,
+      keyStrens: new Map([[ELECTRICITY_INDEX_KEY, 1024]]), keyErrors: new Map(),
+      keyMetaValues: new Map([[cfg.key, JSON.stringify({ fetchedAt, recordCount: 17 })]]),
+      keyMetaErrors: new Map(),
+    });
+    assert.equal(classify(2 * 1440 + 30).status, 'OK');
+    assert.equal(classify(cfg.maxStaleMin + 1).status, 'STALE_SEED');
+    assert.equal(classify(3614).status, 'STALE_SEED', 'observed outage stays visible');
+    assert.ok(ELECTRICITY_TTL_SECONDS > cfg.maxStaleMin * 60);
+    const mcp = readFileSync(new URL('../api/mcp/registry/cache-tools.ts', import.meta.url), 'utf8');
+    assert.match(mcp, new RegExp(`seed-meta:energy:electricity-prices'[^\\n]+maxStaleMin: ${cfg.maxStaleMin}`));
   });
 });

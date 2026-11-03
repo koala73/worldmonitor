@@ -29,7 +29,7 @@ export function updateMetaTagsForStory(meta: StoryMeta): void {
 
   setMetaTag('title', title);
   setMetaTag('description', description);
-  setCanonicalLink(storyUrl);
+  setCanonicalLink(CANONICAL_URL);
 
   setMetaTag('og:title', title);
   setMetaTag('og:description', description);

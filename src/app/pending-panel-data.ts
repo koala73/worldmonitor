@@ -2,7 +2,8 @@ import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
 const pendingCalls = new Map<string, Map<string, unknown[]>>();
 
-export type PanelCallFailureReporter = (key: string, method: string, error: unknown) => void;
+type PanelCallDispatch = 'direct' | 'queued';
+export type PanelCallFailureReporter = (key: string, method: string, error: unknown, dispatch: PanelCallDispatch) => void;
 
 /**
  * Default sink for a rejected panel update.
@@ -10,11 +11,11 @@ export type PanelCallFailureReporter = (key: string, method: string, error: unkn
  * Swallowing the rejection silently would trade an unhandled rejection for an
  * invisible failure, so the panel that failed and the error are reported.
  */
-export function reportPanelCallFailure(key: string, method: string, error: unknown): void {
+export function reportPanelCallFailure(key: string, method: string, error: unknown, dispatch: PanelCallDispatch): void {
   console.error(`[panel-call] ${key}.${method}() rejected:`, error);
   enqueueSentryCall((s) => {
     s.captureException(error instanceof Error ? error : new Error(String(error)), {
-      tags: { kind: 'panel_call_rejected', panel: key, method },
+      tags: { kind: 'panel_call_rejected', panel: key, method, dispatch },
     });
   });
 }
@@ -47,7 +48,7 @@ export function invokePanelMethod(
   if (result && typeof (result as { then?: unknown }).then === 'function') {
     void (result as Promise<unknown>).catch((error: unknown) => {
       // A throwing reporter must not re-reject and recreate the leak.
-      try { report(key, method, error); } catch { /* reporting is best-effort */ }
+      try { report(key, method, error, 'direct'); } catch { /* reporting is best-effort */ }
     });
   }
   return true;
@@ -62,18 +63,28 @@ export function enqueuePanelCall(key: string, method: string, args: unknown[]): 
   methods.set(method, args);
 }
 
-// Race-safe: panels[key] is set BEFORE replay starts (panel-layout.ts line 1147),
-// so any concurrent callPanel() during async replay takes the direct-call path
-// (not the queue). delete() before iteration prevents double-replay.
-export async function replayPendingCalls(key: string, panel: unknown): Promise<void> {
+// lazyPanel().load assigns panels[key] before replay, so concurrent callPanel()
+// calls dispatch directly. Deleting the queue first prevents double replay.
+// Catch both synchronous throws and async rejections per call: propagating to
+// loadRegisteredPanel()'s catch would skip the remaining updates and setup(panel).
+// Keep awaiting each call so setup runs only after replay finishes.
+export async function replayPendingCalls(
+  key: string,
+  panel: unknown,
+  report: PanelCallFailureReporter = reportPanelCallFailure,
+): Promise<void> {
   const methods = pendingCalls.get(key);
   if (!methods) return;
   pendingCalls.delete(key);
   for (const [method, args] of methods) {
     const fn = (panel as Record<string, unknown>)[method];
-    if (typeof fn === 'function') {
+    if (typeof fn !== 'function') continue;
+    try {
       const result = fn.apply(panel, args);
       if (result instanceof Promise) await result;
+    } catch (error) {
+      // A throwing reporter must not re-reject and recreate the leak.
+      try { report(key, method, error, 'queued'); } catch { /* reporting is best-effort */ }
     }
   }
 }

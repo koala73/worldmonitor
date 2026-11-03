@@ -1,6 +1,7 @@
-import type { PizzIntStatus, GdeltTensionPair } from '@/types';
-import { t } from '@/services/i18n';
+import type { PizzIntLocation, PizzIntStatus, GdeltTensionPair, TensionEvidence } from '@/types';
+import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { h, replaceChildren } from '@/utils/dom-utils';
+import tensionPairs from '../../shared/gdelt-tension-pairs.json';
 
 const DEFCON_COLORS: Record<number, string> = {
   1: '#ff0040',
@@ -8,6 +9,15 @@ const DEFCON_COLORS: Record<number, string> = {
   3: '#ffaa00',
   4: '#00aaff',
   5: '#2d8a6e',
+};
+
+const MAX_EVIDENCE = 3;
+// More airports than this read as a count.
+const MAX_NAMED_AIRPORTS = 2;
+const AIRPORT_STATUS_KEYS: Record<string, string> = {
+  closed: 'components.pizzint.evidenceAirportClosed',
+  halted: 'components.pizzint.evidenceAirportHalted',
+  restricted: 'components.pizzint.evidenceAirportRestricted',
 };
 
 export class PizzIntIndicator {
@@ -35,8 +45,11 @@ export class PizzIntIndicator {
       ),
       h('div', { className: 'pizzint-footer' },
         h('span', { className: 'pizzint-source' },
-          t('components.pizzint.source'), ' ',
-          h('a', { href: 'https://pizzint.watch', target: '_blank', rel: 'noopener' }, 'PizzINT'),
+          t('components.pizzint.indexSource'),
+          h('span', { className: 'pizzint-venue-source', hidden: true },
+            ' · ', t('components.pizzint.venueSource'), ' ',
+            h('a', { href: 'https://www.pizzint.watch', target: '_blank', rel: 'noopener' }, 'PizzINT'),
+          ),
         ),
         h('span', { className: 'pizzint-updated' }),
       ),
@@ -50,7 +63,6 @@ export class PizzIntIndicator {
       },
         h('span', { className: 'pizzint-icon' }, '🍕'),
         h('span', { className: 'pizzint-defcon' }, '--'),
-        h('span', { className: 'pizzint-score' }, '--%'),
       ),
       panel,
     );
@@ -71,10 +83,25 @@ export class PizzIntIndicator {
     if (!this.status) return;
 
     const defconEl = this.element.querySelector('.pizzint-defcon') as HTMLElement;
-    const scoreEl = this.element.querySelector('.pizzint-score') as HTMLElement;
     const labelEl = this.element.querySelector('.pizzint-defcon-label') as HTMLElement;
     const locationsEl = this.element.querySelector('.pizzint-locations') as HTMLElement;
     const updatedEl = this.element.querySelector('.pizzint-updated') as HTMLElement;
+    // PizzINT is credited for its venue data. The BestTime fallback is a
+    // paid API, not a source to name, so the footer reads only the index.
+    const venueEl = this.element.querySelector<HTMLElement>('.pizzint-venue-source');
+    if (venueEl) venueEl.hidden = this.status.locationsMonitored === 0
+      || this.status.locations.some(loc => loc.data_source === 'besttime');
+
+    if (this.status.locationsMonitored === 0) {
+      defconEl.textContent = '--';
+      defconEl.style.background = '';
+      defconEl.style.color = '';
+      labelEl.textContent = t('components.pizzint.pizzaUnavailable');
+      labelEl.style.color = '';
+      replaceChildren(locationsEl);
+      updatedEl.textContent = '';
+      return;
+    }
 
     const color = DEFCON_COLORS[this.status.defconLevel] || '#888';
     defconEl.textContent = t('components.pizzint.defcon', { level: String(this.status.defconLevel) });
@@ -83,7 +110,6 @@ export class PizzIntIndicator {
     // blue #00aaff→8.2:1); white failed on levels 4–5 (4.22:1 / 2.56:1).
     defconEl.style.color = '#000';
 
-    scoreEl.textContent = `${this.status.aggregateActivity}%`;
     labelEl.textContent = this.getDefconLabel(this.status.defconLevel);
     labelEl.style.color = color;
 
@@ -105,36 +131,82 @@ export class PizzIntIndicator {
     if (!listEl) return;
 
     replaceChildren(listEl,
-      ...this.tensions.map(tp => {
+      ...tensionPairs.flatMap(config => {
+        const tp = this.tensions.find(pair => pair.id === config.id);
+        if (!tp) return [h('div', { className: 'pizzint-tension-row' },
+          h('span', { className: 'pizzint-tension-label' }, config.label),
+          h('span', { className: 'pizzint-tension-score' }, t('components.pizzint.insufficientData')),
+        )];
         const trendIcon = tp.trend === 'rising' ? '↑' : tp.trend === 'falling' ? '↓' : '→';
         const changeText = tp.changePercent > 0 ? `+${tp.changePercent}%` : `${tp.changePercent}%`;
-        return h('div', { className: 'pizzint-tension-row' },
-          h('span', { className: 'pizzint-tension-label' }, tp.label),
-          h('span', { className: 'pizzint-tension-score' },
-            h('span', { className: 'pizzint-tension-value' }, tp.score.toFixed(1)),
-            h('span', { className: `pizzint-tension-trend ${tp.trend}` }, `${trendIcon} ${changeText}`),
+        const evidence = this.describeEvidence(tp.evidence ?? []);
+        return [
+          h('div', { className: 'pizzint-tension-row' },
+            h('span', { className: 'pizzint-tension-label' }, tp.label),
+            h('span', { className: 'pizzint-tension-score' },
+              h('span', { className: 'pizzint-tension-value' }, tp.score.toFixed(1)),
+              h('span', { className: `pizzint-tension-trend ${tp.trend}` }, `${trendIcon} ${changeText}`),
+            ),
           ),
-        );
+          ...(evidence ? [h('div', { className: 'pizzint-tension-evidence' }, evidence)] : []),
+        ];
       }),
     );
   }
 
-  private getStatusClass(loc: { is_closed_now: boolean; is_spike: boolean; current_popularity: number }): string {
-    if (loc.is_closed_now) return 'closed';
-    if (loc.is_spike) return 'spike';
-    if (loc.current_popularity >= 70) return 'high';
-    if (loc.current_popularity >= 40) return 'elevated';
-    if (loc.current_popularity >= 15) return 'nominal';
-    return 'quiet';
+  private describeEvidence(items: TensionEvidence[]): string {
+    if (items.length === 0) return '';
+    const lang = getCurrentLanguageTag();
+    const count = (n: number) => new Intl.NumberFormat(lang, { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n);
+    let regions: Intl.DisplayNames | null = null;
+    try { regions = new Intl.DisplayNames([lang], { type: 'region' }); } catch { /* runtime without region names */ }
+    const country = (code: string) => regions?.of(code) ?? code;
+    const countries = (codes: string[]) => codes.map(country).join(', ');
+    const usual = (item: TensionEvidence) => item.baseline == null
+      ? '' : ` ${t('components.pizzint.evidenceUsual', { value: count(item.baseline) })}`;
+    const describe = (item: TensionEvidence): string => {
+      const value = count(item.value);
+      switch (item.channel) {
+        case 'strikes':
+          return t('components.pizzint.evidenceStrikes', { countries: countries(item.countries), value }) + usual(item);
+        case 'airports':
+          if (item.baseline == null && item.airports.length > 0 && item.airports.length <= MAX_NAMED_AIRPORTS) {
+            return item.airports
+              .map(airport => AIRPORT_STATUS_KEYS[airport.status] ? t(AIRPORT_STATUS_KEYS[airport.status]!, { name: airport.name }) : '')
+              .filter(Boolean)
+              .join(', ');
+          }
+          return t('components.pizzint.evidenceAirports', { value }) + usual(item);
+        case 'military_aircraft':
+          return t('components.pizzint.evidenceMilitaryAircraft', { country: countries(item.countries), value }) + usual(item);
+        case 'pla_aircraft':
+          return t('components.pizzint.evidencePlaAircraft', { value }) + usual(item);
+        case 'pla_ships':
+          return t('components.pizzint.evidencePlaShips', { value }) + usual(item);
+        case 'sanctions':
+          return t('components.pizzint.evidenceSanctions', { country: countries(item.countries), value }) + usual(item);
+        default:
+          return '';
+      }
+    };
+    return items.map(describe).filter(Boolean).slice(0, MAX_EVIDENCE).join(' · ');
   }
 
-  private getStatusLabel(loc: { is_closed_now: boolean; is_spike: boolean; current_popularity: number }): string {
+  private getStatusClass(loc: PizzIntLocation): string {
+    if (loc.is_closed_now) return 'closed';
+    if (loc.no_live_signal) return 'closed';
+    if (loc.is_spike) return 'spike';
+    return 'nominal';
+  }
+
+  private getStatusLabel(loc: PizzIntLocation): string {
     if (loc.is_closed_now) return t('components.pizzint.statusClosed');
-    if (loc.is_spike) return `${t('components.pizzint.statusSpike')} ${loc.current_popularity}%`;
-    if (loc.current_popularity >= 70) return `${t('components.pizzint.statusHigh')} ${loc.current_popularity}%`;
-    if (loc.current_popularity >= 40) return `${t('components.pizzint.statusElevated')} ${loc.current_popularity}%`;
-    if (loc.current_popularity >= 15) return `${t('components.pizzint.statusNominal')} ${loc.current_popularity}%`;
-    return `${t('components.pizzint.statusQuiet')} ${loc.current_popularity}%`;
+    if (loc.no_live_signal) return t('components.pizzint.statusNoData');
+    if (loc.percentage_of_usual === null) return t('components.pizzint.statusNoBaseline');
+    const deviation = Math.round(loc.percentage_of_usual - 100);
+    if (loc.is_spike) return `${t('components.pizzint.statusSpike')} +${deviation}%`;
+    if (Math.abs(deviation) <= 10) return t('components.pizzint.statusNormal');
+    return `${deviation > 0 ? '+' : '−'}${Math.abs(deviation)}% ${t('components.pizzint.vsUsual')}`;
   }
 
   private formatTimeAgo(date: Date): string {

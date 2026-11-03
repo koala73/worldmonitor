@@ -19,7 +19,7 @@
  * itself imports @/services/i18n and cannot be.
  */
 
-export type AttemptedSummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser';
+export type AttemptedSummarizationProvider = 'ollama' | 'openrouter' | 'browser';
 
 export type SummarizationChainOutcome =
   /** Nothing was eligible: anon/free, feature disabled, or no local model. Expected. */

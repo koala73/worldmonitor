@@ -96,6 +96,9 @@ export function buildCheckoutReturnUrl(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
+    // Read below to re-stamp CHECKOUT_HANDOFF_PARAM, and passed by
+    // PricingSection; the declaration was the only piece missing.
+    desktopHandoff?: boolean;
   },
 ): string {
   const url = new URL(currentHref);

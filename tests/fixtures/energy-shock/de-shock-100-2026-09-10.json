@@ -1,0 +1,45 @@
+{
+  "retrievedAt": "2026-09-10T06:53:33.364Z",
+  "url": "https://www.worldmonitor.app/api/intelligence/v1/compute-energy-shock?country_code=DE&chokepoint_id=hormuz_strait&disruption_pct=100&fuel_mode=gas",
+  "status": 200,
+  "body": {
+    "countryCode": "DE",
+    "chokepointId": "hormuz_strait",
+    "disruptionPct": 100,
+    "gulfCrudeShare": 0,
+    "crudeLossKbd": 0,
+    "products": [],
+    "effectiveCoverDays": 0,
+    "assessment": "DE has 9677 days of gas storage buffer under 100% hormuz_strait LNG disruption.",
+    "dataAvailable": true,
+    "jodiOilCoverage": false,
+    "comtradeCoverage": false,
+    "ieaStocksCoverage": false,
+    "portwatchCoverage": true,
+    "coverageLevel": "full",
+    "limitations": [
+      "LNG chokepoint exposure estimates based on global trade route shares"
+    ],
+    "degraded": false,
+    "chokepointConfidence": "high",
+    "liveFlowRatio": 0.122,
+    "gasImpact": {
+      "lngShareOfImports": 0.12,
+      "lngImportsTj": 41318,
+      "lngDisruptionTj": 1512.2,
+      "totalDemandTj": 467224,
+      "deficitPct": 0.3,
+      "dataAvailable": true,
+      "assessment": "DE has 9677 days of gas storage buffer under 100% hormuz_strait LNG disruption.",
+      "storage": {
+        "fillPct": 54.75,
+        "gasTwh": 135.5,
+        "bufferDays": 9677,
+        "trend": "injecting",
+        "date": "2026-09-07",
+        "scope": "europe"
+      },
+      "dataSource": "gie_daily"
+    }
+  }
+}

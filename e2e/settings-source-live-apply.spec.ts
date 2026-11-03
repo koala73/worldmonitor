@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
 
 /**
  * Settings → SOURCES must reach the live dashboard when the modal closes (#6380).
@@ -76,8 +77,8 @@ async function installDigestAccounting(page: Page): Promise<DigestLog> {
   return log;
 }
 
-async function seedProFullVariant(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+async function seedProFullVariant(page: Page, returningProfile = false): Promise<void> {
+  await page.addInitScript((returning) => {
     // Seed once per tab: addInitScript re-runs on every navigation, and a
     // re-seed would wipe the source preferences this spec sets from the UI.
     if (sessionStorage.getItem('__settings_source_live_apply_seeded__')) return;
@@ -95,7 +96,11 @@ async function seedProFullVariant(page: Page): Promise<void> {
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-  });
+    if (returning) {
+      localStorage.setItem('worldmonitor-sources-reduction-v3', 'done');
+      localStorage.setItem('worldmonitor-disabled-feeds', '["user-choice"]');
+    }
+  }, returningProfile);
 }
 
 /**
@@ -109,13 +114,22 @@ async function seedProFullVariant(page: Page): Promise<void> {
 async function bootUntilNewsSettles(page: Page): Promise<DigestLog> {
   const log = await installDigestAccounting(page);
 
-  const firstDigest = page.waitForRequest(DIGEST_GLOB);
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(
-    () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+  // Capture terminal signals during boot; normal teardown must remain silent.
+  const lossWatch = attachBrowserLossDiagnostics(
+    pageBrowserLossEvents(page),
+    'settings-source-live-apply bootUntilNewsSettles',
   );
-  await firstDigest;
-  await page.waitForTimeout(SETTLE_MS);
+  try {
+    const firstDigest = page.waitForRequest(DIGEST_GLOB);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+      () => document.documentElement.dataset.wmEventHandlersReady === 'true',
+    );
+    await firstDigest;
+    await page.waitForTimeout(SETTLE_MS);
+  } finally {
+    lossWatch.dispose();
+  }
 
   expect(
     log.urls.length,
@@ -167,6 +181,31 @@ async function disableFirstSources(page: Page, count: number): Promise<string[]>
 }
 
 test.describe('settings source live apply (#6380)', () => {
+  test('new curated regional sources stay opt-in for a returning Pro profile and retain a later choice', async ({ page }, testInfo) => {
+    await seedProFullVariant(page, true);
+    await bootUntilNewsSettles(page);
+    await openSourcesTab(page);
+    for (const name of ['Guardian Africa', 'France 24 Africa', 'Guardian Caribbean', 'Guardian Pacific', 'France 24 Asia Pacific']) {
+      await expect(page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`)).not.toHaveClass(/\bactive\b/);
+    }
+    const pacific = page.locator('#usSourceToggles .source-toggle-item[data-source="Guardian Pacific"]');
+    await pacific.click();
+    await expect(pacific).toHaveClass(/\bactive\b/);
+    await page.locator('.unified-settings-close').click();
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+    await openSourcesTab(page);
+    await expect(pacific).toHaveClass(/\bactive\b/);
+    const disabled = await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-disabled-feeds') ?? '[]') as string[]);
+    expect(disabled).toContain('user-choice');
+    expect(disabled).not.toContain('Guardian Pacific');
+    expect(disabled).toContain('France 24 Asia Pacific');
+    await page.locator('.sources-search input').fill('Guardian');
+    const screenshotPath = testInfo.outputPath('regional-source-choice.png');
+    await page.screenshot({ path: screenshotPath });
+    await testInfo.attach('Regional source choice after reload', { path: screenshotPath, contentType: 'image/png' });
+  });
+
   test('toggling sources and closing Settings reloads news once, without a reload', async ({ page }) => {
     await seedProFullVariant(page);
     const log = await bootUntilNewsSettles(page);

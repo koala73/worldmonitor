@@ -62,6 +62,13 @@ describe('buildMoversSnapshot', () => {
     warn.mockRestore();
   });
 
+  it('uses the requested 90-day observation window and labels it correctly', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [row('riser', '12.5'), row('faller', '-10')] });
+    const snapshot = await buildMoversSnapshot('ae', 90);
+    expect(mockQuery.mock.calls[0][1]).toEqual(['ae', 90]);
+    expect(snapshot).toMatchObject({ range: '90d', risers: [{ productId: 'riser' }], fallers: [{ productId: 'faller' }] });
+  });
+
   it('ranks risers/fallers over the gated set, not the raw rows (#5445)', async () => {
     mockQuery.mockResolvedValueOnce({
       rows: [

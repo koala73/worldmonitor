@@ -1,3 +1,5 @@
+import type { ScenarioCoverage } from '../../../../src/generated/client/worldmonitor/scenario/v1/service_client';
+
 /**
  * Pre-built scenario templates for the supply chain scenario engine.
  *
@@ -135,19 +137,31 @@ export interface ScenarioVisualState {
  * Subset of the scenario worker result consumed by the map layer and panel UI.
  * Full result shape lives in the scenario worker (scenario-worker.mjs).
  *
- * Fields beyond the map-level minimum (template, currentDisruptionScores) are
- * optional to keep backward-compat with any consumer that only cares about
- * chokepoint IDs + country impacts.
+ * Fields beyond the map-level minimum (affectedChokepointIds, topImpactCountries)
+ * are optional to keep backward-compat with any consumer that only cares about
+ * chokepoint IDs + country impacts, and with results cached by an older worker.
  */
 export interface ScenarioResult {
+  scenarioId?: string;
+  scopedIso2?: string;
+  computedAt?: string;
+  coverage?: ScenarioCoverage;
   affectedChokepointIds: string[];
-  topImpactCountries: Array<{ iso2: string; totalImpact: number; impactPct: number }>;
+  topImpactCountries: Array<{
+    iso2: string;
+    totalImpact: number;
+    impactPct: number;
+    /** Records that produced totalImpact. Absent on results from an older worker. */
+    evaluatedRecords?: number;
+    /** Records requested for this country. Absent on results from an older worker. */
+    requestedRecords?: number;
+    /** True when totalImpact is a lower bound over partial evidence, not the impact. */
+    partialEvidence?: boolean;
+  }>;
   template?: {
     name: string;
     disruptionPct: number;
     durationDays: number;
     costShockMultiplier: number;
   };
-  /** Map of chokepointId → its pre-scenario disruptionScore (0–100). */
-  currentDisruptionScores?: Record<string, number | null>;
 }

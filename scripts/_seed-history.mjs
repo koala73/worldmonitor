@@ -34,10 +34,14 @@
 
 import { httpRetryError, resolveConvexSiteUrl } from './_seed-utils.mjs';
 import { embedBatch, normalizeForEmbedding } from './lib/brief-embedding.mjs';
+import { EMBED_MODEL } from './lib/brief-dedup-consts.mjs';
+import { HISTORY_COST_TIMEOUT_MS, recordHistoryCost } from './lib/intel-history-cost.mjs';
 
 // Per-run cap. A seed tick that suddenly emits thousands of "historic"
 // rows is a bug upstream, not a reason to spend the embedding budget —
-// keep the newest slice and drop the tail.
+// keep the newest slice and drop the tail. The Cross-Strait one-off
+// reuses this as a batch size so a full retained archive can still
+// postflight as lossless; it does not mean recovery may drop the tail.
 export const HISTORY_MAX_RECORDS_PER_RUN = 150;
 
 // Records per POST. Matches the batch sizes used by the other relay
@@ -400,6 +404,9 @@ export function makeSeedHistoryAfterPublish({ domain, resource, buildRecords }) 
 //       the freshness projection /api/health + /api/seed-health classify. Its
 //       `fetchedAt` is the last HEALTHY observation, never the last attempt, so
 //       "no successful append in N intervals" ages into STALE_SEED on its own.
+//   intel-history:ingest-health:<domain>:<resource>:v1:run:<runId>
+//       an opt-in, one-day receipt for a recovery command that must prove its
+//       own run after the shared latest record can safely advance.
 //
 // Both surfaces read `sourceState` for the three states the issue asks for:
 //   'unavailable' → NOT_CONFIGURED / not_configured (visible, never an alarm —
@@ -412,6 +419,11 @@ export const HISTORY_INGEST_SOURCE_VERSION = 'intel-history-ingest-v1';
 // Matches writeFreshnessMetadata's 7-day seed-meta floor so a record outlives
 // any single missed run of even the slowest history collector (6h cron).
 export const HISTORY_INGEST_TTL_SECONDS = 86_400 * 7;
+
+// One-off recovery reads this run-scoped receipt after the seeder releases its
+// normal lock. Keep it long enough for operator diagnosis, but bounded so the
+// exceptional proof keys do not become another durable health surface.
+export const HISTORY_INGEST_RUN_RECEIPT_TTL_SECONDS = 86_400;
 
 /**
  * Consecutive failed runs before `sourceState` escalates to 'degraded'.
@@ -434,6 +446,10 @@ const HISTORY_INGEST_CODE_MAX_CHARS = 64;
 
 export function historyIngestHealthKey(domain, resource) {
   return `intel-history:ingest-health:${domain}:${resource}:v1`;
+}
+
+export function historyIngestRunReceiptKey(domain, resource, runId) {
+  return `${historyIngestHealthKey(domain, resource)}:run:${runId}`;
 }
 
 export function historyIngestMetaKey(domain, resource) {
@@ -494,6 +510,9 @@ export function describeHistoryAppendOutcome(result, error) {
   const chunks = Number(result?.chunks) || 0;
   const abandoned = Number(result?.abandoned) || 0;
   const failedChunks = Number(result?.failedChunks) || 0;
+  const inputRecords = nonNegativeIntegerOrNull(result?.inputRecords);
+  const normalizedRecords = nonNegativeIntegerOrNull(result?.normalizedRecords);
+  const droppedRecords = nonNegativeIntegerOrNull(result?.droppedRecords);
 
   // `appendSeedHistory` RESOLVES rather than throws when its wall-clock budget
   // dies before a single chunk is POSTed — the embedding phase overran, or the
@@ -526,11 +545,18 @@ export function describeHistoryAppendOutcome(result, error) {
     chunks,
     abandoned,
     failedChunks,
+    inputRecords,
+    normalizedRecords,
+    droppedRecords,
   };
 }
 
 function finiteOr(value, fallback = null) {
   return Number.isFinite(value) ? value : fallback;
+}
+
+function nonNegativeIntegerOrNull(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 /**
@@ -593,6 +619,15 @@ export function projectHistoryIngestHealth(previous, { domain, resource, runId, 
     lastHealthyAt,
     lastSuccessAt,
     lastAcceptedRecords,
+    lastInputRecords: healthy
+      ? outcome.inputRecords
+      : finiteOr(prev?.lastInputRecords),
+    lastNormalizedRecords: healthy
+      ? outcome.normalizedRecords
+      : finiteOr(prev?.lastNormalizedRecords),
+    lastDroppedRecords: healthy
+      ? outcome.droppedRecords
+      : finiteOr(prev?.lastDroppedRecords),
     lastInserted: healthy ? outcome.inserted : finiteOr(prev?.lastInserted),
     lastDeduped: healthy ? outcome.deduped : finiteOr(prev?.lastDeduped),
     lastRetracted: healthy ? outcome.retracted : finiteOr(prev?.lastRetracted),
@@ -666,29 +701,63 @@ async function readHistoryIngestRecord({ fetchImpl, url, token, domain, resource
   }
 }
 
-async function writeHistoryIngestRecord({ fetchImpl, url, token, domain, resource, record, meta }) {
-  const resp = await fetchImpl(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify([
-      ['SET', historyIngestHealthKey(domain, resource), JSON.stringify(record), 'EX', HISTORY_INGEST_TTL_SECONDS],
-      ['SET', historyIngestMetaKey(domain, resource), JSON.stringify(meta), 'EX', HISTORY_INGEST_TTL_SECONDS],
-      // No TTL: "has ever reported" must outlive the 7-day record.
-      ['SET', historyIngestActivationKey(domain, resource), '1'],
-    ]),
-    signal: AbortSignal.timeout(HISTORY_INGEST_REDIS_TIMEOUT_MS),
-  });
-  if (!resp.ok) throw new Error(`ingest-health pipeline failed: HTTP ${resp.status}`);
-  const results = await resp.json();
-  const failed = Array.isArray(results) ? results.find((entry) => entry?.error) : null;
-  if (failed) throw new Error(`ingest-health pipeline command failed: ${failed.error}`);
-  // The pipeline is not transactional, so a per-command failure can land the
-  // record without the meta. That degrades the DIAGNOSTIC, never the alarm:
-  // a skipped meta write leaves the PREVIOUS meta in place, and `fetchedAt`
-  // there can only ever be an earlier healthy observation — nothing on this
-  // path can advance it. So the staleness backstop keeps counting on schedule
-  // and only the faster `degraded` signal waits for the next tick. Pinned by
-  // "a meta write that never lands cannot hide a stalled ingest".
+async function writeHistoryIngestRecord({
+  fetchImpl,
+  url,
+  token,
+  domain,
+  resource,
+  runId,
+  record,
+  meta,
+  writeRunReceipt,
+}) {
+  const commands = [
+    ['SET', historyIngestHealthKey(domain, resource), JSON.stringify(record), 'EX', HISTORY_INGEST_TTL_SECONDS],
+    ['SET', historyIngestMetaKey(domain, resource), JSON.stringify(meta), 'EX', HISTORY_INGEST_TTL_SECONDS],
+    // No TTL: "has ever reported" must outlive the 7-day record.
+    ['SET', historyIngestActivationKey(domain, resource), '1'],
+  ];
+
+  const writePipeline = async (pipelineCommands, label) => {
+    const resp = await fetchImpl(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(pipelineCommands),
+      signal: AbortSignal.timeout(HISTORY_INGEST_REDIS_TIMEOUT_MS),
+    });
+    if (!resp.ok) throw new Error(`${label} failed: HTTP ${resp.status}`);
+    const results = await resp.json();
+    if (!Array.isArray(results) || results.length !== pipelineCommands.length) {
+      throw new Error(`${label} returned incomplete results`);
+    }
+    const failed = results.find((entry) => entry?.error);
+    if (failed) throw new Error(`${label} command failed: ${failed.error}`);
+    if (results.some((entry) => entry?.result !== 'OK')) {
+      throw new Error(`${label} returned an unconfirmed result`);
+    }
+  };
+
+  await writePipeline(commands, 'ingest-health pipeline');
+
+  if (writeRunReceipt && runId) {
+    await writePipeline([[
+      'SET',
+      historyIngestRunReceiptKey(domain, resource, runId),
+      JSON.stringify(record),
+      'EX',
+      HISTORY_INGEST_RUN_RECEIPT_TTL_SECONDS,
+    ]], 'ingest-health receipt pipeline');
+  }
+
+  // The shared pipeline is not transactional, so a per-command failure can
+  // land the record without the meta. That degrades the DIAGNOSTIC, never the
+  // alarm: a skipped meta write leaves the PREVIOUS meta in place, and
+  // `fetchedAt` there can only ever be an earlier healthy observation — nothing
+  // on this path can advance it. So the staleness backstop keeps counting on
+  // schedule and only the faster `degraded` signal waits for the next tick.
+  // The one-off success receipt uses a separate request after this pipeline is
+  // confirmed, so a partial shared write cannot produce false acceptance.
 }
 
 /**
@@ -728,7 +797,17 @@ export async function recordHistoryIngestHealth({ domain, resource, runId, resul
       at,
       outcome,
     });
-    await writeHistoryIngestRecord({ fetchImpl, url, token, domain, resource, record, meta });
+    await writeHistoryIngestRecord({
+      fetchImpl,
+      url,
+      token,
+      domain,
+      resource,
+      runId,
+      record,
+      meta,
+      writeRunReceipt: env.WM_ONE_OFF_HISTORY_RECEIPT === '1',
+    });
     return record;
   } catch (err) {
     console.warn(
@@ -749,13 +828,15 @@ export async function recordHistoryIngestHealth({ domain, resource, runId, resul
  * @param {object} [deps]
  * @param {typeof fetch} [deps.fetchImpl]
  * @param {(texts: string[], budget: {deadline: number, now: () => number,
- *   wallClockMs: number}) => Promise<number[][]>} [deps.embed]
+ *   wallClockMs: number, onUsage: (usage: object) => void}) => Promise<number[][]>} [deps.embed]
  * @param {Record<string, string | undefined>} [deps.env]
  * @param {() => number} [deps.now]        clock seam for the budget
  * @param {(ms: number) => Promise<void>} [deps.sleep] retry-delay seam
  * @param {number} [deps.budgetMs]         aggregate wall-clock budget override
+ * @param {(observation: object, deps: object) => Promise<boolean>} [deps.recordCost]
  * @returns {Promise<{inserted: number, skipped: number, retracted: number,
- *   chunks: number, abandoned: number, failedChunks: number}
+ *   chunks: number, abandoned: number, failedChunks: number,
+ *   inputRecords: number, normalizedRecords: number, droppedRecords: number}
  *   | {skipped: 'unconfigured', missing: string[]}>}
  *
  * Throws SeedHistoryError on a hard runtime failure; propagates the
@@ -763,6 +844,35 @@ export async function recordHistoryIngestHealth({ domain, resource, runId, resul
  * throws for missing configuration.
  */
 export async function appendSeedHistory({ domain, resource, runId, records }, deps = {}) {
+  const at = Date.now();
+  const cost = {
+    domain, resource, model: EMBED_MODEL, at, runs: 1, failedRuns: 0,
+    inserted: 0, deduped: 0, retracted: 0, failedChunks: 0, abandoned: 0,
+    unknownEmbeddingRuns: 0,
+  };
+  const env = deps.env ?? process.env;
+  const configured = resolveRelayConfig(env).missing.length === 0;
+  try {
+    return await appendHistoryWithCost({ domain, resource, runId, records }, {
+      ...deps,
+      budgetMs: deps.budgetMs ?? (HISTORY_TOTAL_BUDGET_MS - HISTORY_COST_TIMEOUT_MS),
+    }, cost);
+  } catch (error) {
+    cost.failedRuns = 1;
+    throw error;
+  } finally {
+    if (configured && typeof domain === 'string' && domain.trim() && typeof resource === 'string' && resource.trim()) {
+      try {
+        const recorded = await (deps.recordCost ?? recordHistoryCost)(cost, { env, fetchImpl: deps.fetchImpl });
+        console.log(`[intel-history-cost] ${JSON.stringify({ ...cost, recorded: recorded === true })}`);
+      } catch {
+        console.warn(`[intel-history-cost] ${JSON.stringify({ ...cost, recorded: false })}`);
+      }
+    }
+  }
+}
+
+async function appendHistoryWithCost({ domain, resource, runId, records }, deps, cost) {
   const env = deps.env ?? process.env;
 
   const config = resolveRelayConfig(env);
@@ -783,8 +893,22 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
   }
 
   const sanitized = normalizeHistoryRecords(records);
+  const inputRecords = Array.isArray(records) ? records.length : 0;
+  const normalizedRecords = sanitized.length;
+  cost.unknownEmbeddingRuns = sanitized.length > 0 ? 1 : 0;
+  const droppedRecords = Math.max(0, inputRecords - normalizedRecords);
   if (sanitized.length === 0) {
-    return { inserted: 0, skipped: 0, retracted: 0, chunks: 0, abandoned: 0, failedChunks: 0 };
+    return {
+      inserted: 0,
+      skipped: 0,
+      retracted: 0,
+      chunks: 0,
+      abandoned: 0,
+      failedChunks: 0,
+      inputRecords,
+      normalizedRecords,
+      droppedRecords,
+    };
   }
 
   const now = deps.now ?? (() => Date.now());
@@ -800,12 +924,17 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
         _apiKey: config.openrouterKey,
         now,
         wallClockMs: options.wallClockMs,
+        onUsage: options.onUsage,
       }));
 
   const vectors = await embed(sanitized.map(buildHistoryEmbeddingText), {
     deadline,
     now,
     wallClockMs: Math.max(1, deadline - now()),
+    onUsage: usage => {
+      Object.assign(cost, usage);
+      cost.unknownEmbeddingRuns = 0;
+    },
   });
   if (!Array.isArray(vectors) || vectors.length !== sanitized.length) {
     throw new SeedHistoryError(
@@ -816,6 +945,7 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
   }
 
   if (now() >= deadline) {
+    cost.abandoned = sanitized.length;
     console.warn(
       `[seed-history] budget exhausted during embedding; abandoning ${sanitized.length} record(s)`,
     );
@@ -826,6 +956,9 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
       chunks: 0,
       abandoned: sanitized.length,
       failedChunks: 0,
+      inputRecords,
+      normalizedRecords,
+      droppedRecords,
     };
   }
 
@@ -837,6 +970,25 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
   let abandoned = 0;
   let failedChunks = 0;
   let lastError = null;
+
+  const validatedChunkCounts = (body, expectedRecords) => {
+    const count = (name, defaultValue) => {
+      const value = body?.[name] ?? defaultValue;
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new SeedHistoryError(`intel-history relay returned an invalid ${name} count`);
+      }
+      return value;
+    };
+    const counts = {
+      inserted: count('inserted'),
+      skipped: count('skipped'),
+      retracted: count('retracted', 0),
+    };
+    if (counts.inserted + counts.skipped + counts.retracted !== expectedRecords) {
+      throw new SeedHistoryError('intel-history relay counters did not account for the submitted chunk');
+    }
+    return counts;
+  };
 
   for (let start = 0; start < sanitized.length; start += HISTORY_CHUNK_SIZE) {
     const chunk = sanitized
@@ -866,9 +1018,10 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
         now,
         sleep: deps.sleep,
       });
-      inserted += Number(body?.inserted) || 0;
-      skipped += Number(body?.skipped) || 0;
-      retracted += Number(body?.retracted) || 0;
+      const counts = validatedChunkCounts(body, chunk.length);
+      inserted += counts.inserted;
+      skipped += counts.skipped;
+      retracted += counts.retracted;
       chunks += 1;
     } catch (err) {
       if (err?.budgetExhausted || now() >= deadline) {
@@ -884,7 +1037,18 @@ export async function appendSeedHistory({ domain, resource, runId, records }, de
     }
   }
 
+  Object.assign(cost, { inserted, deduped: skipped, retracted, abandoned, failedChunks });
   if (chunks === 0 && failedChunks > 0) throw lastError;
 
-  return { inserted, skipped, retracted, chunks, abandoned, failedChunks };
+  return {
+    inserted,
+    skipped,
+    retracted,
+    chunks,
+    abandoned,
+    failedChunks,
+    inputRecords,
+    normalizedRecords,
+    droppedRecords,
+  };
 }

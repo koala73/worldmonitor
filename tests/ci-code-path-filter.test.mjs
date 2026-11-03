@@ -31,7 +31,7 @@ function extractAwkProgram(marker) {
 
 /** Run the extracted program through bash the way the workflow step does. */
 function runFilter(program, paths) {
-  const script = `FILES=$(cat); printf '%s' "$(echo "$FILES" | awk '${program}')"`;
+  const script = `FILES=$(cat); printf '%s' "$(printf '%s\\n' "$FILES" | awk '${program}')"`;
   return execFileSync('bash', ['-c', script], { input: paths.join('\n'), encoding: 'utf8' });
 }
 
@@ -59,6 +59,16 @@ describe('#6038 CI code-path filter', () => {
     // ai-search.md publishes that snapshot's ranked count and captured date, so
     // a snapshot-only PR must not skip the test that checks the page matches it.
     assert.equal(runFilter(program, ['docs/snapshots/resilience-ranking-2026-10-01.json']), '1');
+  });
+
+  it('routes published blog Markdown to the unit job that guards it', () => {
+    assert.equal(runFilter(program, ['blog-site/src/content/blog/worldmonitor-vs-traditional-intelligence-tools.md']), '1');
+  });
+
+  it('routes the agent-mode homepage markdown to the unit job that guards it', () => {
+    // tests/seo-geo-residue asserts public/home.md links the comparison hub
+    // (#7746); a home.md-only PR must not skip the job that runs it.
+    assert.equal(runFilter(program, ['public/home.md']), '1');
   });
 
   it('still excludes ordinary markdown and docs', () => {

@@ -5,10 +5,11 @@
  * This is not Pelmorex LMD, NAAD, weather:alerts, or a roads feed.
  * The summary JSON carries lifecycle/level; CAP 1.2 JSON details carry
  * severity. Missing CAP severity fails closed at the record — colour/level
- * is not CAP. One bad enclosure degrades the tick; it does not abort SK.
+ * is not CAP. Incomplete verification preserves usable data without declaring success.
  */
 
-import { CHROME_UA, MAX_PAYLOAD_BYTES } from '../_seed-utils.mjs';
+import { CHROME_UA, MAX_PAYLOAD_BYTES, readSeedSnapshot, writeExtraKey, writeFreshnessMetadataSafely } from '../_seed-utils.mjs';
+import { CANADA_ALERT_SOURCES, rebuildCanadaAlertsUnion } from './canada-alerts-union.mjs';
 
 export const SASKALERT_HOST = 'emergencyalert.saskatchewan.ca';
 export const SASKALERT_FEED_URL = 'https://emergencyalert.saskatchewan.ca/sapublic/feed.json';
@@ -274,7 +275,9 @@ export async function fetchSaskAlerts(opts = {}) {
     throw new Error(`saskalert: active entry count exceeds ${MAX_CAP_FETCHES}`);
   }
 
-  const verification = { attempted: 0, failed: 0, skippedDeadline: 0 };
+  const verification = { attempted: 0, failed: 0, skippedDeadline: 0, reasons: {} };
+  const unverifiedIds = new Set();
+  const failedLinks = new Set();
   const alerts = [];
   const seen = new Set();
   const seenCapLinks = new Set();
@@ -284,13 +287,19 @@ export async function fetchSaskAlerts(opts = {}) {
   let nextIndex = 0;
 
   async function hydrateOne(entry) {
+    const rememberFailure = (reason) => {
+      unverifiedIds.add(`sk-saskalert-${String(entry.identifier || entry.id || '').trim()}`);
+      verification.reasons[reason] = (verification.reasons[reason] || 0) + 1;
+    };
     if ((opts.nowWallMs ?? Date.now()) - wallStart >= budgetMs) {
       verification.skippedDeadline += 1;
+      rememberFailure('deadline');
       return;
     }
     const capLink = String(entry?.cap_link || '').trim();
     if (!capLink) {
       verification.failed += 1;
+      rememberFailure('missing_link');
       return;
     }
     if (seenCapLinks.has(capLink)) return;
@@ -302,8 +311,10 @@ export async function fetchSaskAlerts(opts = {}) {
       if (!record || seen.has(record.id)) return;
       seen.add(record.id);
       alerts.push(record);
-    } catch {
+    } catch (error) {
       verification.failed += 1;
+      failedLinks.add(capLink);
+      rememberFailure(capFailureReason(error));
     }
   }
 
@@ -329,7 +340,58 @@ export async function fetchSaskAlerts(opts = {}) {
     (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9)
     || (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
   ));
-  return { alerts, _capVerification: verification };
+  for (const entry of active) {
+    if (failedLinks.has(String(entry.cap_link || '').trim())) {
+      unverifiedIds.add(`sk-saskalert-${String(entry.identifier || entry.id || '').trim()}`);
+    }
+  }
+  return { alerts, _capVerification: verification, _unverifiedIds: [...unverifiedIds] };
+}
+
+function capFailureReason(error) {
+  const codes = [error?.name, error?.code, error?.cause?.code];
+  if (codes.some(code => ['TimeoutError', 'AbortError', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(code))) return 'timeout';
+  if (/CAP HTTP \d{3}$/.test(error?.message || '')) return 'http';
+  if (/parseable JSON|CAP 1.2 JSON|CAP alert\/info/.test(error?.message || '')) return 'parsing';
+  if (/allowlist/.test(error?.message || '')) return 'invalid_link';
+  if (/CAP severity|missing identifier/.test(error?.message || '')) return 'validation';
+  return 'transport';
+}
+
+export async function saskAlertBeforePublish(data, { canonicalKey, ttlSeconds }) {
+  const diagnostics = saskAlertAfterPublish(data).freshnessMetaPatch;
+  if (diagnostics.sourceState === 'ok') return;
+  console.warn(`saskalert: CAP_VERIFICATION_FAILED failed=${diagnostics.capVerificationFailed} deadline=${diagnostics.capSkippedDeadline} reasons=${JSON.stringify(diagnostics.capFailureReasons)}`);
+
+  const nowMs = Date.now();
+  const source = CANADA_ALERT_SOURCES.find(entry => entry.province === 'SK');
+  const previous = await readSeedSnapshot(canonicalKey, { strict: true, includeEnvelopeMeta: true });
+  const previousMeta = previous?.meta;
+  const fetchedAt = Number.isFinite(previousMeta?.fetchedAt) ? previousMeta.fetchedAt : 0;
+  const usable = fetchedAt > 0 && nowMs - fetchedAt <= source.maxStaleMin * 60_000;
+  const unverified = new Set(data._unverifiedIds);
+  const retained = usable && Array.isArray(previous?.data?.alerts)
+    ? previous.data.alerts.filter(alert => unverified.has(alert.id)
+      && alert.province === 'SK'
+      && (!alert.expires || Date.parse(alert.expires) > nowMs)
+      && Number.isFinite(alert.updatedAt ?? alert.publishedAt)
+      && nowMs - (alert.updatedAt ?? alert.publishedAt) <= SASKALERT_MAX_CONTENT_AGE_MIN * 60_000)
+    : [];
+  const verifiedIds = new Set(data.alerts.map(alert => alert.id));
+  const snapshot = { alerts: [...data.alerts, ...retained.filter(alert => !verifiedIds.has(alert.id))] };
+  const contentAge = { ...saskAlertContentMeta(snapshot, nowMs), maxContentAgeMin: SASKALERT_MAX_CONTENT_AGE_MIN };
+  const metaPatch = { ...diagnostics, lastAttemptAt: nowMs, retainedRecords: retained.length };
+  // An incomplete attempt can remove ended records, but cannot advance the success clock.
+  await writeExtraKey(canonicalKey, snapshot, ttlSeconds, {
+    ...previousMeta, fetchedAt, recordCount: snapshot.alerts.length,
+    sourceVersion: 'saskalert-v1', schemaVersion: 1, state: 'ERROR',
+    errorReason: 'CAP_VERIFICATION_FAILED', ...contentAge,
+  });
+  const written = await writeFreshnessMetadataSafely('alerts', 'saskalert', snapshot.alerts.length,
+    'saskalert-v1', ttlSeconds, fetchedAt, contentAge, metaPatch);
+  if (!written) throw new Error('saskalert: failed to persist verification diagnostics');
+  await rebuildCanadaAlertsUnion({ currentSource: { province: 'SK', snapshot, metaPatch: { ...metaPatch, fetchedAt } } });
+  throw Object.assign(new Error('saskalert: incomplete CAP verification; success clock unchanged'), { code: 'CAP_VERIFICATION_FAILED' });
 }
 
 export function saskAlertPublishTransform(data) {
@@ -346,6 +408,7 @@ export function saskAlertAfterPublish(data) {
         errorCode: 'CAP_VERIFICATION_FAILED',
         capVerificationFailed: failed,
         capSkippedDeadline: skippedDeadline,
+        capFailureReasons: data._capVerification.reasons,
       },
     };
   }

@@ -14,13 +14,20 @@ import "worldmonitor/aviation/v1/search_flight_prices.proto";
 import "worldmonitor/aviation/v1/search_google_flights.proto";
 import "worldmonitor/aviation/v1/search_google_dates.proto";
 import "worldmonitor/aviation/v1/track_aircraft.proto";
+import "worldmonitor/aviation/v1/list_aircraft_emergencies.proto";
 
 // AviationService provides APIs for flight delays, airport operations,
 // flight status, aircraft tracking, price search, and aviation news.
 service AviationService {
   option (sebuf.http.service_config) = {base_path: "/api/aviation/v1"};
 
-  // ListAirportDelays retrieves current airport delay alerts.
+  // ListAircraftEmergencies returns reported 7500, 7600 and 7700 signals independently of military classification.
+  // The 200 schema describes the unprojected response. With jmespath, the result may instead be any JSON value, including an array, scalar, or null.
+  rpc ListAircraftEmergencies(ListAircraftEmergenciesRequest) returns (ListAircraftEmergenciesResponse) {
+    option (sebuf.http.config) = {path: "/list-aircraft-emergencies", method: HTTP_METHOD_GET};
+  }
+
+  // ListAirportDelays returns delay status for each monitored airport from seeded FAA and AviationStack data plus NOTAM closures, marking unreported hubs unknown.
   rpc ListAirportDelays(ListAirportDelaysRequest) returns (ListAirportDelaysResponse) {
     option (sebuf.http.config) = {
       path: "/list-airport-delays"
@@ -60,7 +67,7 @@ service AviationService {
     };
   }
 
-  // TrackAircraft retrieves live position stream for a specific aircraft hex.
+  // Track an aircraft by ICAO24 hex or callsign within map bounds, returning position observations, altitude, speed, source and update time for flight monitoring.
   rpc TrackAircraft(TrackAircraftRequest) returns (TrackAircraftResponse) {
     option (sebuf.http.config) = {
       path: "/track-aircraft"
@@ -68,7 +75,7 @@ service AviationService {
     };
   }
 
-  // GetYoutubeLiveStreamInfo retrieves information about a YouTube live stream (status, title, etc).
+  // GetYoutubeLiveStreamInfo names a YouTube video (title and channel name) through YouTube oEmbed. Channel live detection is retired: a channel-only query returns error "channel_live_detection_retired", and the channel, is_live and hls_url fields are deprecated.
   rpc GetYoutubeLiveStreamInfo(GetYoutubeLiveStreamInfoRequest) returns (GetYoutubeLiveStreamInfoResponse) {
     option (sebuf.http.config) = {
       path: "/get-youtube-live-stream-info"
@@ -76,7 +83,7 @@ service AviationService {
     };
   }
 
-  // SearchFlightPrices searches for flight price offers on a route.
+  // Search per-person flight price offers by route, dates and cabin, with indicative-price and provider status. PRO-gated. Requires an active Pro subscription.
   rpc SearchFlightPrices(SearchFlightPricesRequest) returns (SearchFlightPricesResponse) {
     option (sebuf.http.config) = {
       path: "/search-flight-prices"
@@ -84,7 +91,7 @@ service AviationService {
     };
   }
 
-  // ListAviationNews retrieves filtered aviation news articles.
+  // ListAviationNews returns articles from nine aviation RSS feeds such as FlightGlobal and Aviation Week, filtered by up to 10 entities over a 1-168 hour window.
   rpc ListAviationNews(ListAviationNewsRequest) returns (ListAviationNewsResponse) {
     option (sebuf.http.config) = {
       path: "/list-aviation-news"
@@ -92,12 +99,12 @@ service AviationService {
     };
   }
 
-  // SearchGoogleFlights searches Google Flights for available itineraries on a specific date.
+  // Search Google Flights itineraries by route and dates, with cabin, stops, airline and passenger filters, returning flight legs, duration and availability status.
   rpc SearchGoogleFlights(SearchGoogleFlightsRequest) returns (SearchGoogleFlightsResponse) {
     option (sebuf.http.config) = {path: "/search-google-flights", method: HTTP_METHOD_GET};
   }
 
-  // SearchGoogleDates finds the cheapest travel dates across a flexible date range via Google Flights.
+  // SearchGoogleDates returns the cheapest Google Flights fare per departure date over up to 31 days, one-way or round trip, with cabin and stop filters.
   rpc SearchGoogleDates(SearchGoogleDatesRequest) returns (SearchGoogleDatesResponse) {
     option (sebuf.http.config) = {path: "/search-google-dates", method: HTTP_METHOD_GET};
   }

@@ -42,14 +42,17 @@ async function feedAction(panel: unknown, action: unknown): Promise<HTMLElement>
     ) => Promise<string>;
   };
   const { bubble, body } = panelAny.appendStreamingBubble();
+  // Partial text renders on an animation frame, so read the streamed text from
+  // the token callback rather than the bubble body.
+  let streamed = '';
   const status = await panelAny.readStream(
     sseReader([{ action }, { delta: 'Answer continues.' }, { done: true }]),
     bubble,
     body,
-    () => {},
+    (text) => { streamed = text; },
   );
   assert.equal(status, 'done');
-  assert.ok(body.textContent?.includes('Answer continues.'), 'text stream should continue after action');
+  assert.equal(streamed, 'Answer continues.', 'text stream should continue after action');
   return bubble;
 }
 

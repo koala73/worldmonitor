@@ -38,14 +38,14 @@ afterEach(() => {
 
 // Each adapter resolves its proxy URL in a default parameter, parses it with
 // parseProxyConfig, and hands the result to the transport as
-// proxyRequestFn(url, {host, port, auth, tls}, opts). Recording that host is the
-// most direct observation of which environment variable won.
+// proxyRequestFn(url, {host, port, auth, tls}, opts). Record the destination too:
+// cross-strait collection can proxy MND and Japan requests in either order.
 function recordingProxyFetch() {
-  const hosts = [];
+  const routes = [];
   return {
-    hosts,
-    proxyRequestFn: (_url, proxyConfig) => {
-      hosts.push(proxyConfig?.host ?? null);
+    routes,
+    proxyRequestFn: (url, proxyConfig) => {
+      routes.push({ target: new URL(url).hostname, proxy: proxyConfig?.host ?? null });
       throw new Error('proxy transport short-circuited for test');
     },
   };
@@ -55,52 +55,60 @@ describe('source-specific proxy resolution', () => {
   describe('SZSE / china corporate disclosures', () => {
     it('prefers SZSE_PROXY_URL when both are set', async () => {
       setProxyEnv({ PROXY_URL: 'http://shared:1', SZSE_PROXY_URL: 'http://szse:2' });
-      const { hosts, proxyRequestFn } = recordingProxyFetch();
+      const { routes, proxyRequestFn } = recordingProxyFetch();
       await fetchChinaCorporateDisclosureSnapshot({
         fetchFn: async () => { throw new Error('direct blocked'); },
         proxyRequestFn,
         onDecision: () => {},
       }).catch(() => {});
-      assert.ok(hosts.length > 0, 'proxy transport must be reached');
-      assert.equal(hosts[0], 'szse');
+      assert.ok(routes.length > 0, 'proxy transport must be reached');
+      assert.equal(routes[0].proxy, 'szse');
     });
 
     it('falls back to PROXY_URL when the source-specific var is unset', async () => {
       setProxyEnv({ PROXY_URL: 'http://shared:1' });
-      const { hosts, proxyRequestFn } = recordingProxyFetch();
+      const { routes, proxyRequestFn } = recordingProxyFetch();
       await fetchChinaCorporateDisclosureSnapshot({
         fetchFn: async () => { throw new Error('direct blocked'); },
         proxyRequestFn,
         onDecision: () => {},
       }).catch(() => {});
-      assert.ok(hosts.length > 0, 'proxy transport must be reached');
-      assert.equal(hosts[0], 'shared');
+      assert.ok(routes.length > 0, 'proxy transport must be reached');
+      assert.equal(routes[0].proxy, 'shared');
     });
   });
 
   describe('Japan MOD / cross-strait activity', () => {
     it('prefers JAPAN_MOD_PROXY_URL when both are set', async () => {
       setProxyEnv({ PROXY_URL: 'http://shared:1', JAPAN_MOD_PROXY_URL: 'http://japan:2' });
-      const { hosts, proxyRequestFn } = recordingProxyFetch();
+      const { routes, proxyRequestFn } = recordingProxyFetch();
       await fetchCrossStraitActivitySnapshot({
         fetchFn: async () => { throw new Error('direct blocked'); },
         proxyRequestFn,
         sleepFn: async () => {},
       }).catch(() => {});
-      assert.ok(hosts.length > 0, 'proxy transport must be reached');
-      assert.equal(hosts[0], 'japan');
+      assert.deepEqual(routes.filter(route => route.target === 'www.mod.go.jp'), [
+        { target: 'www.mod.go.jp', proxy: 'japan' },
+      ]);
+      assert.deepEqual(routes.filter(route => route.target === 'www.mnd.gov.tw'), [
+        { target: 'www.mnd.gov.tw', proxy: 'shared' },
+      ]);
     });
 
     it('falls back to PROXY_URL when the source-specific var is unset', async () => {
       setProxyEnv({ PROXY_URL: 'http://shared:1' });
-      const { hosts, proxyRequestFn } = recordingProxyFetch();
+      const { routes, proxyRequestFn } = recordingProxyFetch();
       await fetchCrossStraitActivitySnapshot({
         fetchFn: async () => { throw new Error('direct blocked'); },
         proxyRequestFn,
         sleepFn: async () => {},
       }).catch(() => {});
-      assert.ok(hosts.length > 0, 'proxy transport must be reached');
-      assert.equal(hosts[0], 'shared');
+      assert.deepEqual(routes.filter(route => route.target === 'www.mod.go.jp'), [
+        { target: 'www.mod.go.jp', proxy: 'shared' },
+      ]);
+      assert.deepEqual(routes.filter(route => route.target === 'www.mnd.gov.tw'), [
+        { target: 'www.mnd.gov.tw', proxy: 'shared' },
+      ]);
     });
   });
 });

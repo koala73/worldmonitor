@@ -12,6 +12,7 @@
 // survives, so the snapshot states that unavailability explicitly rather than
 // labelling turnover as a flow.
 
+import { retainLastFailure } from '../_last-failure.mjs';
 import {
   assertMetadataResponse,
   errorCodeFor,
@@ -490,22 +491,23 @@ async function fetchThroughLadder(url, contract, {
     assertMetadataResponse(response, contract);
     return readBoundedJsonResponse(response, contract.maxResponseBytes);
   };
-  const remember = (path) => {
-    if (sticky) sticky.preferred = path;
+  const remember = (proxyAttempt) => {
+    if (sticky) sticky.proxyAttempt = proxyAttempt;
   };
+  const rememberedProxyAttempt = sticky?.proxyAttempt;
 
   // The remembered hop is tried first, but a failure here DEMOTES it and falls
-  // through to the full ladder rather than aborting: sticky is a latency
+  // through to the remaining ladder rather than aborting: sticky is a latency
   // optimisation, and letting one blip on the remembered hop kill the source
   // would turn it into a single point of failure while other transports work.
-  if (sticky?.preferred === 'proxy' && proxyFetchFn) {
+  if (Number.isInteger(rememberedProxyAttempt) && proxyFetchFn) {
     routing.transportPath = 'proxy';
     try {
       const payload = await attempt(
         (input, init) => proxyFetchFn(
           input,
           init,
-          0,
+          rememberedProxyAttempt,
           (port) => { routing.proxyExitPorts.push(port); },
         ),
         proxyTimeoutMs,
@@ -514,14 +516,14 @@ async function fetchThroughLadder(url, contract, {
     } catch (proxyError) {
       if (errorCodeFor(proxyError) === 'TRANSPORT_BUDGET_EXCEEDED') throw proxyError;
       routing.stickyFailureReason = transportFailureReason(proxyError);
-      sticky.preferred = null;
+      sticky.proxyAttempt = null;
       routing.transportPath = 'direct';
     }
   }
 
   try {
     const payload = await attempt(fetchFn, directTimeoutMs);
-    remember('direct');
+    remember(null);
     return { payload, routing };
   } catch (directError) {
     routing.fallbackReason = transportFailureReason(directError);
@@ -531,6 +533,7 @@ async function fetchThroughLadder(url, contract, {
     if (proxyFetchFn) {
       routing.transportPath = 'proxy';
       for (let index = 0; index < contract.maxProxyRequestsPerRun; index += 1) {
+        if (index === rememberedProxyAttempt) continue;
         try {
           const payload = await attempt(
             (input, init) => proxyFetchFn(
@@ -541,7 +544,7 @@ async function fetchThroughLadder(url, contract, {
             ),
             proxyTimeoutMs,
           );
-          remember('proxy');
+          remember(index);
           return { payload, routing };
         } catch (error) {
           proxyError = error;
@@ -622,25 +625,27 @@ function outcomeFrom(contract, { observations, routing, requestCount, probedDate
 
 async function fetchSseSource(contract, { fetchFn, proxyFetchFn, normalize }) {
   const budget = requestBudget(contract);
-  const { payload, routing } = await fetchThroughLadder(
-    sseRequestUrl(contract),
-    contract,
-    {
-      fetchFn,
-      proxyFetchFn,
-      headers: REQUEST_HEADERS.sse,
-      directTimeoutMs: SSE_DIRECT_TIMEOUT_MS,
-      proxyTimeoutMs: SSE_PROXY_TIMEOUT_MS,
-      proxyRetryDelayMs: SZSE_PROXY_RETRY_DELAY_MS,
-      budget,
-    },
-  );
-  const normalized = normalize(payload);
-  const observations = normalized === null
-    ? []
-    : Array.isArray(normalized) ? normalized : [normalized];
-  if (observations.length === 0) throw sourceError('EMPTY_RESULT');
-  return outcomeFrom(contract, { observations, routing, requestCount: budget.count });
+  return withSourceContext(async () => {
+    const { payload, routing } = await fetchThroughLadder(
+      sseRequestUrl(contract),
+      contract,
+      {
+        fetchFn,
+        proxyFetchFn,
+        headers: REQUEST_HEADERS.sse,
+        directTimeoutMs: SSE_DIRECT_TIMEOUT_MS,
+        proxyTimeoutMs: SSE_PROXY_TIMEOUT_MS,
+        proxyRetryDelayMs: SZSE_PROXY_RETRY_DELAY_MS,
+        budget,
+      },
+    );
+    const normalized = normalize(payload);
+    const observations = normalized === null
+      ? []
+      : Array.isArray(normalized) ? normalized : [normalized];
+    if (observations.length === 0) throw sourceError('EMPTY_RESULT');
+    return outcomeFrom(contract, { observations, routing, requestCount: budget.count });
+  }, budget, []);
 }
 
 async function withSourceContext(run, budget, probedDates) {
@@ -658,7 +663,7 @@ async function fetchSzseSource(contract, {
   proxyFetchFn,
   candidateDates,
   normalize,
-  sticky = { preferred: null },
+  sticky = { proxyAttempt: null },
   deadline = null,
 }) {
   const budget = requestBudget(contract, deadline);
@@ -870,6 +875,10 @@ function sourceState(contract, outcome, previousSource, generatedAt) {
     tradeDate: ok ? outcome.observations[0]?.tradeDate ?? null : null,
     checkedAt: generatedAt,
     lastSuccessAt,
+    lastFailure: retainLastFailure(previousSource?.lastFailure, ok ? null : {
+      ...outcome, checkedAt: generatedAt, lastSuccessAt,
+      errorCode: outcome?.errorCode ?? 'FETCH_FAILED',
+    }),
     ...(outcome?.probedDates?.length ? { probedDates: outcome.probedDates } : {}),
     ...(outcome?.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
     ...(outcome?.proxyFailureReason
@@ -879,6 +888,58 @@ function sourceState(contract, outcome, previousSource, generatedAt) {
       ? { proxyExitPorts: outcome.proxyExitPorts }
       : {}),
   };
+}
+
+const MARGIN_BALANCE_FIELDS = [
+  'totalBalanceCny', 'financingBalanceCny', 'securitiesLendingBalanceCny',
+];
+const MARGIN_RETENTION_MS = 3 * 60 * 60 * 1000;
+
+function isCompleteMarginPair(margin) {
+  const sse = margin?.exchanges?.sse;
+  const szse = margin?.exchanges?.szse;
+  return Boolean(margin?.tradeDate)
+    && isoDay(margin.tradeDate) === margin.tradeDate
+    && sse?.tradeDate === margin.tradeDate
+    && szse?.tradeDate === margin.tradeDate
+    && sse.totalBalanceCny === sse.financingBalanceCny + sse.securitiesLendingBalanceCny
+    // SZSE rounds each balance independently to 0.01 yi (CNY 1 million).
+    && Math.abs(szse.totalBalanceCny - szse.financingBalanceCny - szse.securitiesLendingBalanceCny) <= YI / 100
+    && MARGIN_BALANCE_FIELDS.every((field) =>
+      Number.isFinite(sse[field]) && sse[field] >= 0
+      && Number.isFinite(szse[field]) && szse[field] >= 0
+      && margin[field]?.status === 'known'
+      && Number.isFinite(margin[field].value)
+      && margin[field].value === sse[field] + szse[field]);
+}
+
+function selectMarginPair(current, marginOutcomes, previousSnapshot, generatedAt) {
+  if (isCompleteMarginPair(current)) {
+    return { ...current, verifiedAt: generatedAt, retained: false };
+  }
+  const unavailable = { ...current, verifiedAt: null, retained: false };
+  const failed = marginOutcomes.filter((outcome) => outcome?.ok === false);
+  if (
+    failed.length !== 1
+    || !marginOutcomes.some((outcome) => outcome?.ok === true)
+    || !(failed[0].errorCode === 'TRANSPORT_BUDGET_EXCEEDED'
+      || shouldRetryExchangeProxyFailure({ code: failed[0].errorCode }))
+    || !isCompleteMarginPair(previousSnapshot?.margin)
+  ) return unavailable;
+
+  const previous = previousSnapshot.margin;
+  let verifiedAt = previous.verifiedAt;
+  if (verifiedAt === undefined && previous.retained !== true) {
+    const sources = previousSnapshot.sources;
+    if (Array.isArray(sources) && ['sse-margin', 'szse-margin'].every((id) => sources.some((source) =>
+      source.id === id && source.transportStatus === 'ok'
+      && source.lastSuccessAt === previousSnapshot.generatedAt))) {
+      verifiedAt = previousSnapshot.generatedAt;
+    }
+  }
+  const ageMs = Date.parse(generatedAt) - (typeof verifiedAt === 'string' ? Date.parse(verifiedAt) : NaN);
+  if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= MARGIN_RETENTION_MS) return unavailable;
+  return { ...previous, verifiedAt, retained: true };
 }
 
 export function buildChinaStockConnectSnapshot({
@@ -940,7 +1001,7 @@ export function buildChinaStockConnectSnapshot({
     },
   };
 
-  const margin = {
+  const currentMargin = {
     tradeDate: marginTotal.tradeDate ?? null,
     totalBalanceCny: combinedValue(marginTotal),
     financingBalanceCny: combinedValue(marginFinancing),
@@ -957,6 +1018,12 @@ export function buildChinaStockConnectSnapshot({
       szse: exchangeBlock(szseMargin),
     },
   };
+  const margin = selectMarginPair(
+    currentMargin,
+    [outcomeMap.get('sse-margin'), outcomeMap.get('szse-margin')],
+    previousSnapshot,
+    generatedAt,
+  );
 
   const additions = [];
   if (northbound.tradeDate && northboundTurnover.value !== null) {
@@ -965,9 +1032,9 @@ export function buildChinaStockConnectSnapshot({
       northboundTurnoverCny: northboundTurnover.value,
     });
   }
-  if (margin.tradeDate && marginTotal.value !== null) {
+  if (currentMargin.tradeDate && marginTotal.value !== null) {
     additions.push({
-      day: margin.tradeDate,
+      day: currentMargin.tradeDate,
       marginTotalBalanceCny: marginTotal.value,
       ...(marginFinancing.value !== null
         ? { marginFinancingBalanceCny: marginFinancing.value }
@@ -1032,7 +1099,7 @@ export async function fetchChinaStockConnectSnapshot({
   // One sticky slot for every www.szse.cn request in the run -- calendar and
   // both report sources share a host, so whichever hop reaches it once reaches
   // it for the rest of the run.
-  const szseSticky = { preferred: null };
+  const szseSticky = { proxyAttempt: null };
   const szseCalendarDeadline = createRunDeadline(SZSE_CALENDAR_BUDGET_MS, clock);
 
   let calendarStatus = 'exchange';
@@ -1135,6 +1202,8 @@ export async function fetchChinaStockConnectSnapshot({
       ? { northboundTradeDate: snapshot.northbound.tradeDate }
       : {}),
     ...(snapshot.margin.tradeDate ? { marginTradeDate: snapshot.margin.tradeDate } : {}),
+    marginRetained: snapshot.margin.retained,
+    marginVerifiedAt: snapshot.margin.verifiedAt,
     historyDays: snapshot.history.length,
     generatedAt: snapshot.generatedAt,
   });

@@ -5,7 +5,7 @@
  * the external Umami service.
  *
  * Railway exposes the current volume size through `railway volume list`. The
- * scheduled workflow supplies that JSON and caches a bounded sample history so
+ * scheduled workflow supplies that JSON and carries a bounded sample history so
  * this check can alert on projected days-to-full as well as absolute usage.
  * It never connects to Postgres and never deletes data.
  */
@@ -27,12 +27,21 @@ const DAY_MS = 24 * HOUR_MS;
 
 export const UMAMI_STORAGE_POLICY = Object.freeze({
   serviceName: 'Postgres Umami',
-  historyDays: 30,
-  minimumProjectionWindowMs: DAY_MS,
+  // Railway refreshes currentSizeMB only every ~6 hours, so the samples form a
+  // staircase. Growth is a least-squares fit over this window (about 12
+  // refreshes) rather than a slope against one old sample: on 2026-09-13 a
+  // single +1,078 MB refresh against a 24-hour baseline projected 8 days of
+  // headroom while the multi-day trend gave 17.
+  trendWindowDays: 3,
+  minimumTrendSpanDays: 2,
   warningUsageRatio: 0.8,
   criticalUsageRatio: 0.9,
   warningHeadroomDays: 30,
   criticalHeadroomDays: 14,
+  // One Railway size refresh. When the volume read keeps timing out, the job
+  // stays green until the stored samples are this old, then fails: a Railway
+  // latency spike warns, an outage that blinds the monitor alarms.
+  maxSampleAgeHours: 6,
 });
 
 function finiteNonNegative(value) {
@@ -70,7 +79,7 @@ export function normalizeVolumeRows(payload) {
 
 function normalizeSamples(samples, nowMs) {
   if (!Array.isArray(samples)) return [];
-  const cutoff = nowMs - UMAMI_STORAGE_POLICY.historyDays * DAY_MS;
+  const cutoff = nowMs - UMAMI_STORAGE_POLICY.trendWindowDays * DAY_MS;
   return samples
     .map((sample) => {
       const sampledAtMs = timestampMs(sample?.sampledAt);
@@ -114,18 +123,25 @@ export function evaluateUmamiStorage({ volume, samples = [], now = Date.now() })
   if (volume.status !== 'Ready') throw new Error(`Umami volume is not ready: ${volume.status ?? 'unknown'}`);
 
   const usageRatio = currentSizeMB / capacityMB;
-  const history = normalizeSamples(samples, nowMs);
-  const baseline = history
-    .filter((sample) => nowMs - Date.parse(sample.sampledAt) >= UMAMI_STORAGE_POLICY.minimumProjectionWindowMs)
-    .at(-1);
+  const points = normalizeSamples(samples, nowMs)
+    .filter((sample) => Date.parse(sample.sampledAt) !== nowMs)
+    .map((sample) => ({ day: (Date.parse(sample.sampledAt) - nowMs) / DAY_MS, sizeMB: sample.currentSizeMB }));
+  points.push({ day: 0, sizeMB: currentSizeMB });
 
   let growthMBPerDay = null;
   let projectedHeadroomDays = null;
-  if (baseline) {
-    const elapsedDays = (nowMs - Date.parse(baseline.sampledAt)) / DAY_MS;
-    const growthMB = currentSizeMB - baseline.currentSizeMB;
-    if (elapsedDays > 0 && growthMB > 0) {
-      growthMBPerDay = growthMB / elapsedDays;
+  if (-points[0].day >= UMAMI_STORAGE_POLICY.minimumTrendSpanDays) {
+    const meanDay = points.reduce((sum, point) => sum + point.day, 0) / points.length;
+    const meanSizeMB = points.reduce((sum, point) => sum + point.sizeMB, 0) / points.length;
+    let covariance = 0;
+    let variance = 0;
+    for (const point of points) {
+      covariance += (point.day - meanDay) * (point.sizeMB - meanSizeMB);
+      variance += (point.day - meanDay) ** 2;
+    }
+    const slopeMBPerDay = covariance / variance;
+    if (slopeMBPerDay > 0) {
+      growthMBPerDay = slopeMBPerDay;
       const remainingMB = Math.max(0, capacityMB - currentSizeMB);
       projectedHeadroomDays = remainingMB / growthMBPerDay;
     } else {
@@ -149,6 +165,54 @@ export function evaluateUmamiStorage({ volume, samples = [], now = Date.now() })
     projectedHeadroomDays,
     status: critical ? 'critical' : warning ? 'warning' : 'healthy',
     alerting: warning,
+  };
+}
+
+export function evaluateSampleFreshness({ state, now = Date.now() }) {
+  const nowMs = timestampMs(now);
+  if (nowMs === null) throw new Error('Freshness evaluation time must be a valid timestamp');
+  const nextState = { version: 1, samples: [], ...state };
+  // Not normalizeSamples: its trend-window cutoff would drop a days-old last
+  // sample and turn a long-blind monitor back into "no history".
+  let lastSample = null;
+  let lastSampleMs = null;
+  for (const sample of Array.isArray(state?.samples) ? state.samples : []) {
+    const sampledAtMs = timestampMs(sample?.sampledAt);
+    if (sampledAtMs === null || sampledAtMs > nowMs || finiteNonNegative(sample?.currentSizeMB) === null) continue;
+    if (lastSampleMs === null || sampledAtMs > lastSampleMs) {
+      lastSample = sample;
+      lastSampleMs = sampledAtMs;
+    }
+  }
+
+  let lastStatus = null;
+  let sinceMs = lastSampleMs;
+  if (lastSample) {
+    // Re-judge the last measured size as of when it was taken, so a sample
+    // that failed its own run as critical keeps failing while Railway is
+    // unreadable instead of reading as merely recent.
+    const capacityMB = finiteNonNegative(state.capacityMB);
+    if (capacityMB !== null && capacityMB > 0) {
+      lastStatus = evaluateUmamiStorage({
+        volume: { sizeMB: capacityMB, currentSizeMB: finiteNonNegative(lastSample.currentSizeMB), status: 'Ready' },
+        samples: state.samples,
+        now: lastSampleMs,
+      }).status;
+    }
+  } else {
+    // No sample to age: start the clock at the first failed read and keep it
+    // in the persisted state, so a lost history plus an outage still fails.
+    const unreadSinceMs = timestampMs(state?.unreadSince);
+    sinceMs = unreadSinceMs !== null && unreadSinceMs <= nowMs ? unreadSinceMs : nowMs;
+    nextState.unreadSince = new Date(sinceMs).toISOString();
+  }
+
+  const ageHours = (nowMs - sinceMs) / HOUR_MS;
+  return {
+    status: ageHours > UMAMI_STORAGE_POLICY.maxSampleAgeHours ? 'stale' : 'fresh',
+    ageHours,
+    lastStatus,
+    state: nextState,
   };
 }
 
@@ -181,6 +245,7 @@ export function parseArguments(argv) {
     options: {
       input: { type: 'string' },
       state: { type: 'string' },
+      'freshness-only': { type: 'boolean' },
     },
     allowPositionals: false,
     strict: true,
@@ -200,6 +265,26 @@ async function main() {
   const args = parseArguments(process.argv.slice(2));
   const inputPath = args.input || process.env.UMAMI_STORAGE_INPUT;
   const statePath = args.state || process.env.UMAMI_STORAGE_STATE || '.cache/umami-storage-state.json';
+  if (args['freshness-only']) {
+    const freshness = evaluateSampleFreshness({ state: existsSync(statePath) ? readJson(statePath) : undefined });
+    writeState(statePath, freshness.state);
+    const age = freshness.ageHours.toFixed(1);
+    if (freshness.status === 'stale') {
+      console.error(
+        `::error::Railway volume reads keep failing: no Umami capacity sample for ${age} hours `
+          + `(limit ${UMAMI_STORAGE_POLICY.maxSampleAgeHours}).`,
+      );
+      process.exitCode = 1;
+    } else if (freshness.lastStatus === 'critical') {
+      console.error(`::error::Railway is unreachable, and the last measured Umami storage (${age} hours ago) was critical.`);
+      process.exitCode = 1;
+    } else {
+      const since = freshness.state.unreadSince ? 'reads started failing' : 'the last sample';
+      const last = freshness.lastStatus ? `; that sample was ${freshness.lastStatus}` : '';
+      console.error(`::warning::Umami capacity was not re-measured; ${since} ${age} hours ago${last}.`);
+    }
+    return;
+  }
   if (!inputPath) throw new Error('Provide Railway volume JSON with --input <path> or UMAMI_STORAGE_INPUT');
 
   const payload = readJson(inputPath);

@@ -22,6 +22,12 @@ const bundlePath = resolve(apiDir, 'worldmonitor.openapi.yaml');
 const protoWorldmonitorDir = resolve(root, 'proto/worldmonitor');
 const CHECK = process.argv.includes('--check');
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
+// sebuf v0.11.1 places repeated bounds on the item schema. Move the new
+// country-headline contract's bounds to its arrays until the generator fixes this.
+const COUNTRY_HEADLINE_ARRAY_FIELDS = [
+  ['ListCountryHeadlinesRequest', 'countryCodes'],
+  ['CountryHeadlineBucket', 'items'],
+];
 
 // Fields that are required in the public OpenAPI request contract but are not
 // safe to express as buf.validate.required because runtime code has a
@@ -62,6 +68,21 @@ const SCORECARD_REASON_PATTERN = '^(?:source-unavailable|country-unavailable|inv
 const ISO2_PATTERN = '^[A-Z]{2}$';
 const PHYSICAL_METAL_PATTERN = '^(?:gold|silver)$';
 const PHYSICAL_METALS_DESCRIPTION = 'Accepted values are "gold" and "silver". Empty returns both metals.';
+// protoc-gen-openapiv3 drops the items pattern and copies repeated rules onto
+// the item schema, so both metal-filtered market RPCs get their contract here.
+const PHYSICAL_METAL_RPCS = [
+  {
+    requestSchema: 'GetPhysicalDivergenceIndexRequest',
+    operationId: 'GetPhysicalDivergenceIndex',
+    path: '/api/market/v1/get-physical-divergence-index',
+  },
+  {
+    requestSchema: 'GetPhysicalPremiumsRequest',
+    operationId: 'GetPhysicalPremiums',
+    path: '/api/market/v1/get-physical-premiums',
+  },
+];
+const BASELINE_REGION_DESCRIPTION = 'Only the global baseline is defined. Omitted or empty defaults to global.';
 
 function scorecardResponseOneOf(unavailableReasons) {
   return [
@@ -156,9 +177,17 @@ function injectScorecardJsonContracts(spec) {
   return changed;
 }
 
-function injectPhysicalDivergenceJsonContracts(spec) {
+function injectPhysicalMetalJsonContracts(spec) {
+  let changed = false;
+  for (const rpc of PHYSICAL_METAL_RPCS) {
+    if (injectPhysicalMetalJsonContract(spec, rpc)) changed = true;
+  }
+  return changed;
+}
+
+function injectPhysicalMetalJsonContract(spec, { requestSchema, path }) {
   const schemas = spec.components?.schemas;
-  const request = schemas?.GetPhysicalDivergenceIndexRequest;
+  const request = schemas?.[requestSchema];
   if (!request?.properties?.metals) return false;
   let changed = false;
   const expected = {
@@ -172,7 +201,7 @@ function injectPhysicalDivergenceJsonContracts(spec) {
     request.properties.metals = expected;
     changed = true;
   }
-  const operation = spec.paths?.['/api/market/v1/get-physical-divergence-index']?.get;
+  const operation = spec.paths?.[path]?.get;
   const parameter = operation?.parameters?.find((candidate) => (
     candidate?.in === 'query' && candidate.name === 'metals'
   ));
@@ -333,8 +362,25 @@ function queryNamesForRequiredFields(schemaName, schema) {
 
 function injectJson(spec) {
   let changed = injectScorecardJsonContracts(spec);
-  if (injectPhysicalDivergenceJsonContracts(spec)) changed = true;
+  if (injectPhysicalMetalJsonContracts(spec)) changed = true;
   const schemas = spec.components?.schemas ?? {};
+  // The generator emits const but does not account for IGNORE_IF_ZERO_VALUE.
+  const baselineRegion = schemas.GetTemporalBaselineRequest?.properties?.region;
+  if (baselineRegion && (baselineRegion.const !== undefined || !eq(baselineRegion.enum, ['global', '']))) {
+    delete baselineRegion.const;
+    baselineRegion.enum = ['global', ''];
+    changed = true;
+  }
+
+  for (const [schemaName, field] of COUNTRY_HEADLINE_ARRAY_FIELDS) {
+    const property = schemas[schemaName]?.properties?.[field];
+    for (const bound of ['minItems', 'maxItems']) {
+      if (typeof property?.items?.[bound] !== 'number') continue;
+      property[bound] = property.items[bound];
+      delete property.items[bound];
+      changed = true;
+    }
+  }
 
   for (const [schemaName, schema] of Object.entries(schemas)) {
     if ((!schemaName.endsWith('Request') && !OPENAPI_REQUIRED_SCHEMA_FIELDS.has(schemaName)) || !schema || typeof schema !== 'object') continue;
@@ -741,11 +787,19 @@ function injectYamlScorecardContracts(lines) {
   return changed;
 }
 
-function injectYamlPhysicalDivergenceContracts(lines) {
-  if (yamlSchemaBlocks(lines, 'GetPhysicalDivergenceIndexRequest').length === 0) return false;
+function injectYamlPhysicalMetalContracts(lines) {
+  let changed = false;
+  for (const rpc of PHYSICAL_METAL_RPCS) {
+    if (injectYamlPhysicalMetalContract(lines, rpc)) changed = true;
+  }
+  return changed;
+}
+
+function injectYamlPhysicalMetalContract(lines, { requestSchema, operationId }) {
+  if (yamlSchemaBlocks(lines, requestSchema).length === 0) return false;
   let changed = replaceYamlSchemaProperty(
     lines,
-    'GetPhysicalDivergenceIndexRequest',
+    requestSchema,
     'metals',
     (pad) => [
       `${pad}metals:`,
@@ -758,7 +812,7 @@ function injectYamlPhysicalDivergenceContracts(lines) {
       `${pad}    description: ${PHYSICAL_METALS_DESCRIPTION}`,
     ],
   );
-  for (const block of [...yamlOperationBlocks(lines, 'GetPhysicalDivergenceIndex')].reverse()) {
+  for (const block of [...yamlOperationBlocks(lines, operationId)].reverse()) {
     for (let index = block.start + 1; index < block.end; index++) {
       if (lines[index].trim() !== '- name: metals') continue;
       const indent = leadingSpaces(lines[index]);
@@ -798,7 +852,39 @@ function injectYamlPhysicalDivergenceContracts(lines) {
 function injectYaml(text, contracts) {
   const lines = text.split('\n');
   let changed = injectYamlScorecardContracts(lines);
-  if (injectYamlPhysicalDivergenceContracts(lines)) changed = true;
+  if (injectYamlPhysicalMetalContracts(lines)) changed = true;
+  for (const [schemaName, field] of COUNTRY_HEADLINE_ARRAY_FIELDS) {
+    for (const block of [...yamlSchemaBlocks(lines, schemaName)].reverse()) {
+      const indent = leadingSpaces(lines[block.start]) + 8;
+      const start = lines.findIndex((line, i) => i > block.start && i < block.end
+        && leadingSpaces(line) === indent && line.trim() === `${field}:`);
+      if (start === -1) continue;
+      let end = start + 1;
+      while (end < block.end && (!lines[end].trim() || leadingSpaces(lines[end]) > indent)) end++;
+      const existing = new Set(lines.slice(start + 1, end)
+        .filter(line => leadingSpaces(line) === indent + 4)
+        .map(line => line.trim().split(':')[0]));
+      const bounds = [];
+      for (let i = end - 1; i > start; i--) {
+        if (leadingSpaces(lines[i]) !== indent + 8 || !/^(?:minItems|maxItems): \d+$/.test(lines[i].trim())) continue;
+        if (!existing.has(lines[i].trim().split(':')[0])) bounds.unshift(`${' '.repeat(indent + 4)}${lines[i].trim()}`);
+        lines.splice(i, 1);
+        changed = true;
+      }
+      if (bounds.length) {
+        lines.splice(start + 1, 0, ...bounds);
+        changed = true;
+      }
+    }
+  }
+  if (replaceYamlSchemaProperty(lines, 'GetTemporalBaselineRequest', 'region', (pad) => [
+    `${pad}region:`,
+    `${pad}    type: string`,
+    `${pad}    description: ${BASELINE_REGION_DESCRIPTION}`,
+    `${pad}    enum:`,
+    `${pad}        - 'global'`,
+    `${pad}        - ''`,
+  ])) changed = true;
   for (const { operationId, paramName } of contracts.params) {
     if (operationId && setYamlOperationParamRequired(lines, operationId, paramName)) changed = true;
   }

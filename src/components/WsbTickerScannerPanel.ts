@@ -1,18 +1,9 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
+import { fetchWsbTickers, type WsbTicker } from '@/services/wsb-tickers';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
-export interface WsbTicker {
-  symbol: string;
-  mentionCount: number;
-  uniquePosts: number;
-  totalScore: number;
-  avgUpvoteRatio: number;
-  topPost?: { title: string; url: string; score: number; subreddit: string };
-  subreddits: string[];
-  velocityScore: number;
-}
+export type { WsbTicker } from '@/services/wsb-tickers';
 
 type SortField = 'mentionCount' | 'totalScore' | 'velocityScore';
 
@@ -62,15 +53,12 @@ export class WsbTickerScannerPanel extends Panel {
   }
 
   public async fetchData(): Promise<boolean> {
-    const leftover = getHydratedData('wsbTickers') as { tickers?: WsbTicker[] } | undefined;
-    const hydrated = leftover?.tickers?.length
-      ? leftover
-      : await ensureHydrated('wsbTickers') as { tickers?: WsbTicker[] } | undefined;
-    if (hydrated?.tickers?.length) {
-      this.updateData(hydrated.tickers);
+    const tickers = await fetchWsbTickers();
+    if (tickers.length) {
+      this.updateData(tickers);
       return true;
     }
-    this.showError('No ticker data available yet', () => { void this.fetchData(); }, 60);
+    if (!this._hasData) this.showError('No ticker data available yet', () => { void this.fetchData(); }, 60);
     return false;
   }
 
@@ -135,7 +123,7 @@ export class WsbTickerScannerPanel extends Panel {
     }).join('');
 
     this.setSafeContent(unsafeRawHtml(`
-      <div style="overflow-x:auto;overflow-y:auto;max-height:480px">
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title" style="overflow-y:auto;max-height:480px">
         <table style="width:100%;border-collapse:collapse;border-spacing:0">
           <thead>
             <tr style="border-bottom:1px solid var(--border)">

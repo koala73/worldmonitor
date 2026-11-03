@@ -75,6 +75,10 @@ export function round(value: number, digits = 2): number {
   return Number(value.toFixed(safeDigits));
 }
 
+export function getResilienceStressFactor(stressScore: number): number {
+  return Math.max(0, Math.min(1 - stressScore / 100, 0.5));
+}
+
 export function minMaxNormalize(values: number[]): number[] {
   if (values.length === 0) return [];
 

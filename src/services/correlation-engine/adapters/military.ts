@@ -1,6 +1,7 @@
 // boundary-ignore: AppContext is an aggregate type that lives in app/ by design
 import type { AppContext } from '@/app/app-context';
 import type { DomainAdapter, SignalEvidence } from '../types';
+import { vesselTypeLabel } from '@/utils/vessel-type-label';
 
 // v1 weights: only military_flight, ais_gap, military_vessel collected.
 // gps_jamming and base_activity deferred — renormalized to sum to 1.0.
@@ -88,7 +89,7 @@ export const militaryAdapter: DomainAdapter = {
         lon: v.lon,
         country: v.operatorCountry,
         timestamp: v.lastAisUpdate?.getTime?.() ?? now,
-        label: `${v.operator} ${v.vesselType} ${v.name}`,
+        label: `${v.operator} ${vesselTypeLabel(v)} ${v.name}`,
         rawData: v,
       });
     }

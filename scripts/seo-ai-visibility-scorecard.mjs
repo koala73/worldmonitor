@@ -37,24 +37,65 @@ const domainLabels = (domain) => Object.freeze(Object.fromEntries(
   domain.map(({ id, label }) => [id, label]),
 ));
 
-const AI_PLATFORM_DOMAIN = defineDomain([
-  ['chatgpt_search', 'ChatGPT Search'],
-  ['perplexity', 'Perplexity'],
-  ['google_ai', 'Google AI Overview'],
-  ['copilot_search', 'Copilot Search'],
-]);
-const PAGE_FAMILY_DOMAIN = defineDomain([
-  ['homepage', 'Homepage'],
-  ['dashboard', 'Dashboard'],
-  ['blog', 'Blog'],
-  ['documentation', 'Documentation'],
-  ['country_pages', 'Country pages'],
-  ['chokepoints', 'Chokepoints'],
-  ['crises', 'Crises'],
-  ['tools', 'Tools'],
-  ['pricing', 'Pricing'],
-  ['developer_mcp', 'Developer / MCP'],
-]);
+const AI_PLATFORM_DOMAINS = Object.freeze({
+  1: defineDomain([
+    ['chatgpt_search', 'ChatGPT Search'],
+    ['perplexity', 'Perplexity'],
+    ['google_ai', 'Google AI Overview'],
+    ['copilot_search', 'Copilot Search'],
+  ]),
+  2: defineDomain([
+    ['chatgpt_search', 'ChatGPT Search'],
+    ['perplexity', 'Perplexity'],
+    ['google_ai_overview', 'Google AI Overview'],
+    ['google_ai_mode', 'Google AI Mode'],
+    ['copilot_search', 'Copilot Search'],
+  ]),
+});
+/**
+ * Page families by baseline schema version, the same shape as
+ * `AI_PLATFORM_DOMAINS` above and for the same reason: a reviewed baseline was
+ * collected against the taxonomy of its day, so widening the taxonomy must not
+ * retroactively invalidate it or silently rewrite the scorecard it renders.
+ *
+ * Version 2 adds the families the 2026-09-24 coverage export proved we cannot
+ * report without (#8606). Version 1 is unchanged.
+ */
+const PAGE_FAMILY_DOMAINS = Object.freeze({
+  1: defineDomain([
+    ['homepage', 'Homepage'],
+    ['dashboard', 'Dashboard'],
+    ['blog', 'Blog'],
+    ['documentation', 'Documentation'],
+    ['country_pages', 'Country pages'],
+    ['chokepoints', 'Chokepoints'],
+    ['crises', 'Crises'],
+    ['tools', 'Tools'],
+    ['pricing', 'Pricing'],
+    ['developer_mcp', 'Developer / MCP'],
+  ]),
+  2: defineDomain([
+    ['homepage', 'Homepage'],
+    ['dashboard', 'Dashboard'],
+    ['blog', 'Blog'],
+    ['documentation', 'Documentation'],
+    ['docs_zh', 'Documentation (zh)'],
+    ['country_pages', 'Country pages'],
+    ['chokepoints', 'Chokepoints'],
+    ['crises', 'Crises'],
+    ['tools', 'Tools'],
+    ['pricing', 'Pricing'],
+    ['developer_mcp', 'Developer / MCP'],
+    ['sources', 'Sources'],
+    ['compare', 'Compare'],
+    ['research', 'Research'],
+    ['use_cases', 'Use cases'],
+    ['markdown_twins', 'Markdown twins'],
+    ['story_shares', 'Story shares'],
+    ['site_infrastructure', 'Site infrastructure'],
+  ]),
+});
+const PAGE_FAMILY_DOMAIN = PAGE_FAMILY_DOMAINS[2];
 const INTENT_DOMAIN = defineDomain([
   ['category_definition', 'Category / definition'],
   ['use_case', 'Use case'],
@@ -63,7 +104,7 @@ const INTENT_DOMAIN = defineDomain([
   ['branded_entity', 'Branded / entity'],
 ]);
 
-export const AI_PLATFORMS = domainIds(AI_PLATFORM_DOMAIN);
+export const AI_PLATFORMS = domainIds(AI_PLATFORM_DOMAINS[1]);
 export const PAGE_FAMILIES = domainIds(PAGE_FAMILY_DOMAIN);
 const INTENTS = domainIds(INTENT_DOMAIN);
 
@@ -99,12 +140,41 @@ export const BING_AI_METRICS = Object.freeze([
   'averageCitedPages',
 ]);
 
-const PLATFORM_LABELS = domainLabels(AI_PLATFORM_DOMAIN);
+const PLATFORM_LABELS = domainLabels(Object.values(AI_PLATFORM_DOMAINS).flat());
 const PAGE_FAMILY_LABELS = domainLabels(PAGE_FAMILY_DOMAIN);
 const INTENT_LABELS = domainLabels(INTENT_DOMAIN);
 
 function invariant(condition, message) {
   if (!condition) throw new Error(`[seo-visibility] ${message}`);
+}
+
+export function aiPlatformsForSchemaVersion(schemaVersion) {
+  invariant(
+    schemaVersion === 1 || schemaVersion === 2,
+    'baseline schemaVersion must be 1 or 2',
+  );
+  const domain = AI_PLATFORM_DOMAINS[schemaVersion];
+  return domainIds(domain);
+}
+
+function pageFamilyDomainForSchemaVersion(schemaVersion) {
+  invariant(
+    schemaVersion === 1 || schemaVersion === 2,
+    'baseline schemaVersion must be 1 or 2',
+  );
+  return PAGE_FAMILY_DOMAINS[schemaVersion];
+}
+
+/**
+ * Page family ids a baseline or query set of `schemaVersion` must cover.
+ *
+ * `PAGE_FAMILIES` stays the union — the full taxonomy a URL may map to — so
+ * membership checks accept every id. Completeness checks use this instead, so
+ * a version 1 artifact is never asked for families that did not exist when it
+ * was reviewed.
+ */
+export function pageFamiliesForSchemaVersion(schemaVersion) {
+  return domainIds(pageFamilyDomainForSchemaVersion(schemaVersion));
 }
 
 export function isNonEmptyString(value) {
@@ -448,16 +518,16 @@ export function isWorldMonitorUrl(value) {
   }
 }
 
-function validateAiSurfaces(aiSurfaces) {
+function validateAiSurfaces(aiSurfaces, supportedPlatforms) {
   invariant(Array.isArray(aiSurfaces), 'aiSurfaces must be an array');
   invariant(
-    aiSurfaces.length === AI_PLATFORMS.length,
+    aiSurfaces.length === supportedPlatforms.length,
     'aiSurfaces must contain every supported platform exactly once',
   );
   const platforms = new Set();
   for (const [index, surface] of aiSurfaces.entries()) {
     const label = `aiSurfaces[${index}]`;
-    invariant(AI_PLATFORMS.includes(surface.platform), `${label}.platform is invalid`);
+    invariant(supportedPlatforms.includes(surface.platform), `${label}.platform is invalid`);
     invariant(!platforms.has(surface.platform), `duplicate AI surface ${surface.platform}`);
     platforms.add(surface.platform);
     invariant(
@@ -468,7 +538,7 @@ function validateAiSurfaces(aiSurfaces) {
       invariant(isNonEmptyString(surface.reason), `${label}.reason is required`);
     }
   }
-  for (const platform of AI_PLATFORMS) {
+  for (const platform of supportedPlatforms) {
     invariant(platforms.has(platform), `aiSurfaces is missing ${platform}`);
   }
   return new Map(aiSurfaces.map((surface) => [surface.platform, surface]));
@@ -530,7 +600,7 @@ export function validateQuerySet(querySet) {
   for (const intent of INTENTS) {
     invariant(intents.has(intent), `query set is missing intent ${intent}`);
   }
-  for (const family of PAGE_FAMILIES) {
+  for (const family of pageFamiliesForSchemaVersion(querySet.schemaVersion)) {
     invariant(pageFamilies.has(family), `query set is missing page family ${family}`);
   }
   return querySet;
@@ -538,7 +608,7 @@ export function validateQuerySet(querySet) {
 
 export function validateBaseline(baseline, querySet) {
   validateQuerySet(querySet);
-  invariant(baseline?.schemaVersion === 1, 'baseline schemaVersion must be 1');
+  const supportedPlatforms = aiPlatformsForSchemaVersion(baseline?.schemaVersion);
   invariant(isNonEmptyString(baseline.baselineId), 'baselineId is required');
   invariant(
     baseline.querySetId === querySet.querySetId,
@@ -579,7 +649,7 @@ export function validateBaseline(baseline, querySet) {
     'collectionContext.limitations must be an array',
   );
 
-  const aiSurfaces = validateAiSurfaces(baseline.aiSurfaces);
+  const aiSurfaces = validateAiSurfaces(baseline.aiSurfaces, supportedPlatforms);
   const queryIds = new Set(querySet.queries.map((query) => query.id));
   invariant(baseline.search && typeof baseline.search === 'object', 'search is required');
   validateSearchSource(
@@ -640,7 +710,7 @@ export function validateBaseline(baseline, querySet) {
   for (const [index, observation] of baseline.aiObservations.entries()) {
     const label = `aiObservations[${index}]`;
     invariant(queryIds.has(observation.queryId), `${label}.queryId is unknown`);
-    invariant(AI_PLATFORMS.includes(observation.platform), `${label}.platform is invalid`);
+    invariant(supportedPlatforms.includes(observation.platform), `${label}.platform is invalid`);
     invariant(
       aiSurfaces.get(observation.platform)?.status !== 'unavailable',
       `${label}.platform is unavailable`,
@@ -802,8 +872,8 @@ const INTENT_SLICE = Object.freeze({
   ),
   includeIndexedPages: false,
 });
-const PAGE_FAMILY_SLICE = Object.freeze({
-  domain: PAGE_FAMILY_DOMAIN,
+const pageFamilySlice = (schemaVersion) => Object.freeze({
+  domain: pageFamilyDomainForSchemaVersion(schemaVersion),
   matchesQuery: (query, group) => query.targetPage.family === group,
   searchRows: (source, group) => (
     source.pageFamilyRows.filter((row) => row.pageFamily === group)
@@ -868,13 +938,14 @@ function buildReferralSlices(referrals, domain, matchesSegment) {
 
 export function buildScorecard(querySet, baseline) {
   validateBaseline(baseline, querySet);
+  const supportedPlatforms = aiPlatformsForSchemaVersion(baseline.schemaVersion);
   const observations = structuredClone(baseline.aiObservations);
   const mentions = observations.filter((observation) => observation.brandMention).length;
   const citations = observations.filter((observation) => observation.directCitation).length;
   const eligiblePlatformCount = baseline.aiSurfaces.filter(
     ({ status }) => status !== 'unavailable',
   ).length;
-  const targetPossible = querySet.queries.length * AI_PLATFORMS.length;
+  const targetPossible = querySet.queries.length * supportedPlatforms.length;
   const possible = querySet.queries.length * eligiblePlatformCount;
   const byIntent = buildSlices(
     querySet,
@@ -888,7 +959,7 @@ export function buildScorecard(querySet, baseline) {
     observations,
     baseline.search,
     eligiblePlatformCount,
-    PAGE_FAMILY_SLICE,
+    pageFamilySlice(baseline.schemaVersion),
   );
   const referrals = structuredClone(baseline.referrals);
   referrals.byReferrerFamily = buildReferralSlices(
@@ -898,12 +969,12 @@ export function buildScorecard(querySet, baseline) {
   );
   referrals.byPageFamily = buildReferralSlices(
     baseline.referrals,
-    PAGE_FAMILY_DOMAIN,
+    pageFamilyDomainForSchemaVersion(baseline.schemaVersion),
     (segment, family) => segment.landingPageFamily === family,
   );
 
   return {
-    schemaVersion: 1,
+    schemaVersion: baseline.schemaVersion,
     baselineId: baseline.baselineId,
     querySetId: querySet.querySetId,
     querySetDigest: baseline.querySetDigest,
@@ -949,24 +1020,73 @@ export function buildScorecard(querySet, baseline) {
   };
 }
 
+function comparisonPlatform(platform) {
+  return platform === 'google_ai' ? 'google_ai_overview' : platform;
+}
+
 function observationKey(observation) {
   return JSON.stringify([
     observation.queryId,
-    observation.platform,
+    comparisonPlatform(observation.platform),
     observation.geography,
     observation.locale,
     observation.signedInState,
   ]);
 }
 
-function observationIndex(scorecard) {
+function observationIndex(scorecard, comparablePlatforms) {
   return new Map(
     scorecard.ai.observations
+      .filter((observation) => comparablePlatforms.has(
+        comparisonPlatform(observation.platform),
+      ))
       .map((observation) => [
         observationKey(observation),
         observation,
       ]),
   );
+}
+
+function platformCoverage(previous, current) {
+  const indexSurfaces = (scorecard) => new Map(scorecard.ai.surfaces.map((surface) => [
+    comparisonPlatform(surface.platform),
+    surface,
+  ]));
+  const previousSurfaces = indexSurfaces(previous);
+  const currentSurfaces = indexSurfaces(current);
+  const previousPlatforms = [...previousSurfaces.keys()];
+  const currentPlatforms = [...currentSurfaces.keys()];
+  const previousOnly = previousPlatforms.filter(
+    (platform) => !currentSurfaces.has(platform),
+  );
+  const currentOnly = currentPlatforms.filter(
+    (platform) => !previousSurfaces.has(platform),
+  );
+  const shared = previousPlatforms.filter((platform) => currentSurfaces.has(platform));
+  const comparable = shared.filter((platform) => (
+    previousSurfaces.get(platform).status !== 'unavailable'
+      && currentSurfaces.get(platform).status !== 'unavailable'
+  ));
+  const availabilityChanges = shared
+    .filter((platform) => (
+      previousSurfaces.get(platform).status !== currentSurfaces.get(platform).status
+    ))
+    .map((platform) => ({
+      platform,
+      previous: previousSurfaces.get(platform).status,
+      current: currentSurfaces.get(platform).status,
+    }));
+  return {
+    changed: previousOnly.length > 0
+      || currentOnly.length > 0
+      || availabilityChanges.length > 0,
+    previous: previousPlatforms,
+    current: currentPlatforms,
+    comparable,
+    previousOnly,
+    currentOnly,
+    availabilityChanges,
+  };
 }
 
 function assertComparableScorecards(previous, current) {
@@ -1092,8 +1212,10 @@ function compareWindowedSource(previous, current, metricNames, label) {
 
 export function compareScorecards(previous, current) {
   assertComparableScorecards(previous, current);
-  const previousObservations = observationIndex(previous);
-  const currentObservations = observationIndex(current);
+  const coverage = platformCoverage(previous, current);
+  const comparablePlatforms = new Set(coverage.comparable);
+  const previousObservations = observationIndex(previous, comparablePlatforms);
+  const currentObservations = observationIndex(current, comparablePlatforms);
   const newCitations = [];
   const lostCitations = [];
   const newlyObserved = [];
@@ -1117,6 +1239,20 @@ export function compareScorecards(previous, current) {
   const byObservationKey = (left, right) => (
     observationKey(left).localeCompare(observationKey(right))
   );
+  const notComparable = {
+    previous: previous.ai.observations
+      .filter((observation) => !comparablePlatforms.has(
+        comparisonPlatform(observation.platform),
+      ))
+      .map((observation) => structuredClone(observation))
+      .sort(byObservationKey),
+    current: current.ai.observations
+      .filter((observation) => !comparablePlatforms.has(
+        comparisonPlatform(observation.platform),
+      ))
+      .map((observation) => structuredClone(observation))
+      .sort(byObservationKey),
+  };
 
   return {
     previousBaselineId: previous.baselineId,
@@ -1125,6 +1261,8 @@ export function compareScorecards(previous, current) {
     lostCitations: lostCitations.sort(byObservationKey),
     newlyObserved: newlyObserved.sort(byObservationKey),
     noLongerObserved: noLongerObserved.sort(byObservationKey),
+    platformCoverage: coverage,
+    notComparable,
     search: {
       googleSearchConsole: compareWindowedSource(
         previous.search.googleSearchConsole,
@@ -1255,6 +1393,24 @@ function formatComparison(comparison) {
     `${observation.queryId} on ${PLATFORM_LABELS[observation.platform]}`
     + ` (${observation.geography}, ${observation.locale}, ${observation.signedInState})`
   );
+  const platformLabel = (platform) => `${PLATFORM_LABELS[platform]} (\`${platform}\`)`;
+  const platformList = (platforms) => (
+    platforms.length ? platforms.map(platformLabel).join(', ') : 'none'
+  );
+  const availabilityChanges = comparison.platformCoverage.availabilityChanges.map((change) => (
+    `${platformLabel(change.platform)} ${change.previous} → ${change.current}`
+  ));
+  const coverageSummary = comparison.platformCoverage.changed
+    ? `changed; comparable: ${platformList(comparison.platformCoverage.comparable)}; previous-only: ${platformList(comparison.platformCoverage.previousOnly)}; current-only: ${platformList(comparison.platformCoverage.currentOnly)}; availability changes: ${availabilityChanges.length ? availabilityChanges.join(', ') : 'none'}`
+    : `unchanged; comparable: ${platformList(comparison.platformCoverage.comparable)}`;
+  const notComparable = [
+    ...comparison.notComparable.previous.map(
+      (observation) => `previous ${citationLabel(observation)}`,
+    ),
+    ...comparison.notComparable.current.map(
+      (observation) => `current ${citationLabel(observation)}`,
+    ),
+  ];
   const meaningfulSearch = [];
   const indexingRegressions = [];
   const periodTransition = ({ previousPeriod, currentPeriod }) => (
@@ -1298,6 +1454,8 @@ function formatComparison(comparison) {
     '',
     `Compared \`${comparison.previousBaselineId}\` with \`${comparison.currentBaselineId}\`.`,
     '',
+    `- Platform coverage ${coverageSummary}`,
+    `- Not comparable because the surface was not measurable in both periods: ${notComparable.length ? notComparable.join('; ') : 'none'}`,
     `- Compared provider periods: ${comparedPeriods.length ? comparedPeriods.join('; ') : 'none available'}`,
     `- New citations: ${comparison.newCitations.length ? comparison.newCitations.map(citationLabel).join('; ') : 'none'}`,
     `- Lost citations: ${comparison.lostCitations.length ? comparison.lostCitations.map(citationLabel).join('; ') : 'none'}`,
@@ -1320,6 +1478,9 @@ export function formatScorecardMarkdown(scorecard) {
     `\`${scorecard.generatedAt}\`. Missing provider data is reported as unavailable,`,
     'never coerced to zero.',
     `Query contract: \`${scorecard.querySetId}\` / \`${scorecard.querySetDigest}\`.`,
+    ...(scorecard.schemaVersion === 2
+      ? [`Baseline contract: v${scorecard.schemaVersion}.`]
+      : []),
     '',
     '## Collection context',
     '',
@@ -1399,8 +1560,17 @@ export function formatScorecardMarkdown(scorecard) {
     '',
     '## AI-answer audit',
     '',
-    `Coverage: ${scorecard.ai.observed}/${scorecard.ai.possible} (${percent(scorecard.ai.coverageRate)}).`,
-    `Full target matrix: ${scorecard.ai.targetPossible} query/platform pairs.`,
+    ...(scorecard.schemaVersion === 2
+      ? [
+        `Actual observations: ${scorecard.ai.observed}.`,
+        `Available-surface target: ${scorecard.ai.possible} query/platform pairs.`,
+        `Available-surface coverage: ${scorecard.ai.observed}/${scorecard.ai.possible} (${percent(scorecard.ai.coverageRate)}).`,
+        `Full target matrix: ${scorecard.ai.targetPossible} query/platform pairs.`,
+      ]
+      : [
+        `Coverage: ${scorecard.ai.observed}/${scorecard.ai.possible} (${percent(scorecard.ai.coverageRate)}).`,
+        `Full target matrix: ${scorecard.ai.targetPossible} query/platform pairs.`,
+      ]),
     `Observed mention rate: ${percent(scorecard.ai.brandMentionRate)}.`,
     `Observed direct-citation rate: ${percent(scorecard.ai.directCitationRate)}.`,
     'These are descriptive observations, not causal or population-level estimates.',

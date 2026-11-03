@@ -1,10 +1,61 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { AppContext } from '@/app/app-context';
 import { CountryIntelManager } from '@/app/country-intel';
 import type { CountryCoverageEvent } from '@/services/country-coverage';
+import { CountryTimeline } from '@/components/CountryTimeline';
+import { initTestI18n } from './helpers/i18n.mts';
 
 describe('country timeline refresh', () => {
+  it.each(['resize', 'theme'] as const)('renders empty lanes after a hidden timeline becomes visible on %s', async (trigger) => {
+    await initTestI18n();
+    let notifyResize: ResizeObserverCallback = () => {};
+    const disconnect = vi.fn();
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { notifyResize = callback; }
+      observe() {}
+      disconnect() { disconnect(); }
+    });
+    const mount = document.createElement('div');
+    mount.hidden = true;
+    Object.defineProperty(mount, 'clientWidth', { get: () => mount.hidden ? 0 : 900 });
+    const provenance = document.createElement('p');
+    provenance.textContent = 'Controlled source state: unknown';
+    mount.append(provenance);
+    document.body.append(mount);
+    const timeline = new CountryTimeline(mount);
+    try {
+      mount.hidden = false;
+      notifyResize([], {} as ResizeObserver);
+      window.dispatchEvent(new Event('theme-changed'));
+      expect(mount.querySelector('svg')).toBeNull();
+      mount.hidden = true;
+      timeline.render([]);
+      expect(mount.querySelector('svg')).toBeNull();
+      mount.hidden = false;
+      if (trigger === 'resize') notifyResize([], {} as ResizeObserver);
+      else window.dispatchEvent(new Event('theme-changed'));
+      const labels = [...mount.querySelectorAll('svg text')].map(label => label.textContent);
+      expect(labels.filter(label => ['Protest', 'Conflict', 'Natural', 'Military'].includes(label ?? '')))
+        .toEqual(['Protest', 'Conflict', 'Natural', 'Military']);
+      expect(labels.filter(label => label === 'No events in 7 days')).toHaveLength(4);
+      expect(mount.querySelectorAll('circle')).toHaveLength(0);
+      expect(mount.querySelectorAll('svg')).toHaveLength(1);
+      expect(provenance.textContent).toBe('Controlled source state: unknown');
+      expect(mount.contains(provenance)).toBe(true);
+      timeline.destroy();
+      expect(disconnect).toHaveBeenCalledOnce();
+      notifyResize([], {} as ResizeObserver);
+      window.dispatchEvent(new Event('theme-changed'));
+      expect(mount.querySelector('svg')).toBeNull();
+      expect(mount.contains(provenance)).toBe(true);
+    } finally {
+      timeline.destroy();
+      mount.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders country events that arrive after the brief opens', () => {
     const mount = document.createElement('div');
     Object.defineProperty(mount, 'clientWidth', { value: 900 });

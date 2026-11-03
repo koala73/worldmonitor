@@ -37,16 +37,17 @@ Preconditions:
 
 ## Strict deterministic prediction-market flow
 
-Run from a preflight-ready worktree with Node 24, root dependencies, and Playwright
-Chromium installed. No credentials or env-file links are needed.
+Use the [contributor setup](../../../../CONTRIBUTING.md#development-setup) to prepare
+Node 24, dependencies, and Chromium. No credentials or env-file links are needed.
 
 ```bash
 npm run test:e2e:country-brief
 ```
 
 If Chromium is missing, run `npx playwright install chromium` and retry. The command
-uses the existing Playwright Vite server on port 4173. Stop its owner first if the
-port is occupied. This flow does not add concurrent worktree port allocation.
+uses the existing Playwright Vite server on port 4173. If the port is occupied,
+stop the server only when this run owns it. Otherwise wait for the owner to finish.
+This flow does not add concurrent worktree port allocation.
 
 `e2e/country-brief.spec.ts` also runs in `test:e2e:ci-smoke`. Each case starts with a
 fresh anonymous browser context. Bootstrap and prediction RPC responses are
@@ -77,6 +78,33 @@ This mode proves deterministic browser behavior. It leaves live providers, real
 handlers and cache behavior, deployment assets and middleware, auth/entitlements,
 production freshness, and GPU rendering unverified. It does not cover every
 country-brief section, mobile layout, search, or map entry points.
+
+### Trace the prediction data path
+
+The observable outcome is that a shared Ukraine link opens the correct country,
+shows the expected market records, and preserves both after reload. The route
+below explains where to investigate when that outcome fails.
+
+| Part | Existing implementation | Local proof |
+|---|---|---|
+| Interface and URL | [CountryIntelManager](../../../../src/app/country-intel.ts) opens the brief and calls `fetchCountryMarkets`. [CountryDeepDivePanel](../../../../src/components/CountryDeepDivePanel.ts) renders the cards. | The browser suite asserts country identity, exact titles, percentages, sources, links, and reload state. |
+| Client and hydration | [prediction service](../../../../src/services/prediction/index.ts) requests `country:UA` with page size 5. An available empty index suppresses fallback. Missing data can use hydrated bootstrap pools. | The browser suite controls RPC and bootstrap responses. `prediction-country-markets-pools.test.mts` exercises the service with controlled dependencies. |
+| Handler and persistence | [listPredictionMarkets](../../../../server/worldmonitor/prediction/v1/list-prediction-markets.ts) reads `prediction:markets-country-index:v1` through shared Redis helpers. Bootstrap hydration reads the separate markets-bootstrap key. | `prediction-market-rpc.test.mts` executes the handler with mocked Redis HTTP responses. This is not a live Redis check. |
+| Worker and providers | [seed-prediction-markets.mjs](../../../../scripts/seed-prediction-markets.mjs) fetches Polymarket and Kalshi, builds pools and the country index, and publishes cache and health metadata through `runSeed`. | Country-index and upstream tests use fixtures and controlled requests. They do not run the scheduled worker or publish data. |
+
+For changes to this data path, run the existing focused checks before the browser
+suite. Run these commands sequentially from the repo root.
+
+```bash
+node --import tsx --test tests/prediction-market-rpc.test.mts tests/prediction-country-markets-pools.test.mts tests/prediction-country-index.test.mjs tests/prediction-upstream.test.mjs
+npm run test:e2e:country-brief
+```
+
+The focused tests are included in `test:data`. The browser suite is included in
+`test:e2e:ci-smoke`. Both run through the existing [Test workflow](../../../../.github/workflows/test.yml)
+when its code-change filter selects them. A docs-only PR can skip those CI jobs,
+so record any local trial separately. Live provider acceptance needs authorized
+source-health and natural worker-run evidence. Do not invoke the seeder for this trial.
 
 ### Check that the assertions reject defects
 

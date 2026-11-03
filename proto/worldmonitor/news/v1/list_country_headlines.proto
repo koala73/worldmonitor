@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package worldmonitor.news.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// ListCountryHeadlinesRequest selects countries from the full English RSS pool.
+message ListCountryHeadlinesRequest {
+  // ISO 3166-1 alpha-2 codes. Repeated query parameter, at most 250 countries.
+  repeated string country_codes = 1 [
+    (sebuf.http.query) = { name: "country_codes", required: true },
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 250
+  ];
+}
+
+// CountryHeadline is a dated article from a configured RSS feed, before dashboard category caps.
+message CountryHeadline {
+  // Publisher name: trusted origin publisher or registered feed name.
+  string source = 1;
+  // Headline that names the requested country.
+  string title = 2;
+  // HTTPS article URL.
+  string link = 3;
+  // Publisher publication time in Unix epoch milliseconds.
+  int64 published_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// CountryHeadlineBucket contains at most five distinct article URLs.
+message CountryHeadlineBucket {
+  // Newest articles, with distinct publisher families selected first.
+  repeated CountryHeadline items = 1 [(buf.validate.field).repeated.max_items = 5];
+}
+
+// ListCountryHeadlinesResponse describes cache availability independently of country matches.
+message ListCountryHeadlinesResponse {
+  // Requested country codes with matching headlines; absent countries had no match.
+  map<string, CountryHeadlineBucket> countries = 1;
+  // complete | partial | unavailable. A failed revocation read is unavailable.
+  string state = 2;
+  // Configured full-variant feeds reachable from the English digest.
+  int32 feed_total = 3;
+  // Feeds whose parsed cache was available, including cached empty feeds.
+  int32 feed_cached = 4;
+  // Time the caches were read; article freshness is determined by published_at.
+  string read_at = 5;
+}

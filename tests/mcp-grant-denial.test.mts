@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   classifyGrantDenial,
+  grantClientDisplay,
   describeGrantDelay,
   grantErrorMessage,
   grantErrorTitle,
@@ -435,5 +436,32 @@ describe('inline-wait budget (#5622 review)', () => {
 
   it('the page routes the too-long case to the manual retry instead of sleeping', () => {
     assert.match(pageSource, /if \(!shouldWaitInline\(waitMs\)\)/);
+  });
+});
+
+// #9244 — a CIMD client's consent card adds the host that published its
+// metadata document and warns when the authorization goes to localhost. A DCR
+// context carries neither field and must render exactly as before.
+describe('grantClientDisplay', () => {
+  it('shows the client_id host and the localhost warning for a CIMD loopback flow', () => {
+    assert.deepEqual(
+      grantClientDisplay({ client_name: 'Claude Code', redirect_host: 'localhost', client_host: 'claude.ai', localhost_redirect: true }),
+      { clientIdHost: 'claude.ai', showLocalhostWarning: true },
+    );
+  });
+
+  it('shows the client_id host without a warning for a hosted CIMD callback', () => {
+    assert.deepEqual(
+      grantClientDisplay({ client_name: 'Linear', redirect_host: 'linear.app', client_host: 'linear.app', localhost_redirect: false }),
+      { clientIdHost: 'linear.app', showLocalhostWarning: false },
+    );
+  });
+
+  it('shows neither for a DCR context or malformed fields', () => {
+    assert.deepEqual(grantClientDisplay({ client_name: 'Claude', redirect_host: 'claude.ai' }), { clientIdHost: null, showLocalhostWarning: false });
+    assert.deepEqual(
+      grantClientDisplay({ client_name: 'x', redirect_host: 'y', client_host: '', localhost_redirect: 'true' as unknown as boolean }),
+      { clientIdHost: null, showLocalhostWarning: false },
+    );
   });
 });

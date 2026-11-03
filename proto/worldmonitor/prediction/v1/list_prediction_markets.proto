@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.prediction.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/prediction/v1/prediction_market.proto";
@@ -17,6 +18,13 @@ message ListPredictionMarketsRequest {
   string category = 3 [(sebuf.http.query) = { name: "category" }];
   // Optional search query for market titles.
   string query = 4 [(sebuf.http.query) = { name: "query" }];
+  // Optional minimum liquidity (resting order-book depth in USD). When above 0,
+  // only markets with liquidity at or above this value are returned; markets
+  // without a liquidity value are dropped. Applied before page_size.
+  double min_liquidity = 5 [
+    (sebuf.http.query) = { name: "min_liquidity" },
+    (buf.validate.field).double.gte = 0
+  ];
 }
 
 // ListPredictionMarketsResponse contains prediction markets matching the request.

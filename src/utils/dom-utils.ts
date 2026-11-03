@@ -100,19 +100,36 @@ export function ensureNoopenerRel(rel: string | null): string {
   return Array.from(tokens).join(' ');
 }
 
+// Resolve against a sentinel origin: a genuine path keeps it, anything the
+// parser reads as scheme-relative or host-bearing leaves it. Same test-only
+// origin as src/shared/public-rpc-cache.ts (source-attribution manifest).
+const SAME_ORIGIN_SENTINEL = 'https://worldmonitor.invalid';
+function isSameOriginPath(href: string): boolean {
+  if (!href.startsWith('/')) return false;
+  try {
+    return new URL(href, `${SAME_ORIGIN_SENTINEL}/`).origin === SAME_ORIGIN_SENTINEL;
+  } catch {
+    return false;
+  }
+}
+
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   const walk = (parent: Element | DocumentFragment) => {
-    const children = Array.from(parent.childNodes);
-    for (const node of children) {
+    let index = 0;
+    while (index < parent.childNodes.length) {
+      const node = parent.childNodes[index];
+      if (!node) break;
       if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as Element;
         if (!SAFE_TAGS.has(el.tagName.toLowerCase())) {
           // Unwrap: keep children, remove the element itself
           while (el.firstChild) parent.insertBefore(el.firstChild, el);
           parent.removeChild(el);
+          // Promoted children now occupy this index. Visit them before moving
+          // on so nested rejected wrappers cannot hide unsafe descendants.
           continue;
         }
         // Strip unsafe attributes
@@ -121,10 +138,12 @@ export function safeHtml(html: string): DocumentFragment {
             el.removeAttribute(attr.name);
           }
         }
-        // Sanitize href to prevent javascript: URIs
+        // Sanitize href to prevent javascript: URIs. A leading "/" is only a
+        // same-origin path if the URL parser agrees: "//host", "/\host" and
+        // "/\t/host" all resolve to another origin.
         if (el.hasAttribute('href')) {
           const href = el.getAttribute('href') || '';
-          if (!/^https?:\/\//i.test(href) && !href.startsWith('/') && !href.startsWith('#')) {
+          if (!/^https?:\/\//i.test(href) && !isSameOriginPath(href) && !href.startsWith('#')) {
             el.removeAttribute('href');
           }
         }
@@ -143,6 +162,7 @@ export function safeHtml(html: string): DocumentFragment {
         }
         walk(el);
       }
+      index += 1;
     }
   };
   walk(tpl.content);

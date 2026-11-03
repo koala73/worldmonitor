@@ -340,6 +340,50 @@ describe('Railway deploy drift classification', () => {
     assert.equal(result.verdict, 'BUILD_FAILED');
   });
 
+  it('ignores a failed build that a later build already superseded', () => {
+    const result = classify([
+      deployment('SUCCESS', { at: '2026-08-04T06:00:00Z', sha: HEAD }),
+      deployment('FAILED', { at: '2026-08-04T05:30:00Z', sha: NEWER }),
+      deployment('REMOVED', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
+    ]);
+    assert.equal(result.verdict, 'CURRENT');
+  });
+
+  it('names a crashed serving deployment behind a failed build as a stopped cron', () => {
+    const result = classify([
+      deployment('FAILED', { at: '2026-08-04T05:30:00Z', sha: HEAD }),
+      deployment('CRASHED', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
+    ], { cronSchedule: '0 * * * *' });
+    assert.equal(result.verdict, 'BUILD_FAILED');
+    assert.equal(result.runningStatus, 'CRASHED');
+    assert.match(result.detail, /cron will not tick again/);
+    assert.match(result.detail, /railway redeploy --service seed-example --from-source/);
+  });
+
+  it('reports a crashed always-on service behind a failed build without a cron claim', () => {
+    const result = classify([
+      deployment('FAILED', { at: '2026-08-04T05:30:00Z', sha: HEAD }),
+      deployment('CRASHED', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
+    ]);
+    assert.equal(result.verdict, 'BUILD_FAILED');
+    assert.match(result.detail, /has CRASHED/);
+    assert.doesNotMatch(result.detail, /cron/);
+  });
+
+  it('lets a build under way outrank an older failure', () => {
+    const history = [
+      deployment('BUILDING', { at: '2026-08-04T05:50:00Z', sha: HEAD }),
+      deployment('FAILED', { at: '2026-08-04T05:30:00Z', sha: NEWER }),
+      deployment('CRASHED', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
+    ];
+    const pending = classify(history, { now: Date.parse('2026-08-04T06:00:00Z'), cronSchedule: '0 * * * *' });
+    assert.equal(pending.verdict, 'PENDING_BUILD');
+
+    const stalled = classify(history, { now: Date.parse('2026-08-07T06:00:00Z'), cronSchedule: '0 * * * *' });
+    assert.equal(stalled.verdict, 'BUILD_STALLED');
+    assert.match(stalled.detail, /cron will not tick again/);
+  });
+
   it('reports a window whose only running record never built anything', () => {
     const result = classify([
       deployment('FAILED', { at: '2026-08-04T05:30:00Z', sha: PREVIOUS }),
@@ -439,6 +483,33 @@ describe('Railway deploy drift against the service closure', () => {
       ...overrides,
     });
   }
+
+  // seed-fred-rates, 2026-09-05: docs/solutions/integration-issues/railway-cron-crash-behind-failed-build-never-self-heals.md
+  it('reports a failed build newer than the serving source even when head was path-skipped since', () => {
+    const result = classifyWithClosure([
+      deployment('SKIPPED', { at: '2026-09-05T18:44:13Z', sha: HEAD, skippedReason: 'No changes to watched files' }),
+      deployment('FAILED', { at: '2026-09-05T15:28:14Z', sha: NEWER, buildOnly: true }),
+      deployment('CRASHED', { at: '2026-09-04T20:16:48Z', sha: PREVIOUS }),
+    ], { changedPaths: ['src/App.ts'], changedPathsIn: () => ['src/App.ts'], cronSchedule: '0 * * * *' });
+    assert.equal(result.verdict, 'BUILD_FAILED');
+    assert.equal(isProblemVerdict(result.verdict), true);
+    assert.equal(result.runningSha, PREVIOUS);
+    assert.equal(result.runningStatus, 'CRASHED');
+    assert.match(result.detail, /build for 4e89f7ea4 failed/);
+    assert.match(result.detail, /nothing has built since/);
+    assert.match(result.detail, /cron will not tick again/);
+  });
+
+  it('reports a failed build behind a healthy serving source without the stopped-cron claim', () => {
+    const result = classifyWithClosure([
+      deployment('SKIPPED', { at: '2026-09-05T18:44:13Z', sha: HEAD, skippedReason: 'No changes to watched files' }),
+      deployment('FAILED', { at: '2026-09-05T15:28:14Z', sha: NEWER, buildOnly: true }),
+      deployment('SUCCESS', { at: '2026-09-04T20:16:48Z', sha: PREVIOUS }),
+    ], { changedPaths: ['src/App.ts'], changedPathsIn: () => ['src/App.ts'] });
+    assert.equal(result.verdict, 'BUILD_FAILED');
+    assert.equal(result.runningStatus, 'SUCCESS');
+    assert.doesNotMatch(result.detail, /cron will not tick again/);
+  });
 
   it('accepts a service running everything that reaches it, head or not', () => {
     const result = classifyWithClosure(
@@ -763,6 +834,88 @@ describe('strict terminal reconciliation drift', () => {
     assert.equal(result.headSource, '--head');
     assert.equal(result.originMainRelation, 'behind');
     assert.equal(formatComparisonHead(result), 'source=--head vs-origin-main=behind');
+  });
+
+  it('refreshes main after deployment observation without moving the comparison head', () => {
+    let main = HEAD;
+    // One resolver for the whole test, answering the way git does — including
+    // `--is-ancestor X X`, which exits 0. A stub that only knows HEAD..NEWER
+    // silently answers 'no' to self-ancestry, and then the lineage check below
+    // passes only because it was hand-written to compare SHAs instead of asking
+    // about ancestry at all.
+    const ancestry = (a, b) => (a === b || (a === HEAD && b === NEWER) ? 'yes' : 'no');
+    const context = resolveComparisonHead(['--head', HEAD], {
+      refreshMain: true,
+      git: (args) => {
+        if (args[0] === 'fetch') { main = NEWER; return ''; }
+        return args.at(-1) === 'origin/main^{commit}' ? main : HEAD;
+      },
+      ancestry,
+    });
+    assert.equal(context.headSha, HEAD);
+    assert.equal(context.originMainSha, NEWER);
+    assert.equal(context.originMainRelation, 'behind');
+    const result = classify([deployment('SUCCESS', { sha: NEWER })], {
+      isAncestor: (a, b) => ancestry(a, b) === 'yes',
+    });
+    // Built exactly as main() builds it, so a wiring regression between the
+    // refreshed authorized main and the ancestry resolver reaches this assertion.
+    const authorizedMainSha = context.originMainSha;
+    assert.equal(summarizeDeployDrift([result], {
+      isOnAuthorizedMainLineage: (runningSha) => authorizedMainSha !== null
+        && ancestry(runningSha, authorizedMainSha) === 'yes',
+    }).ok, true);
+  });
+
+  it('blocks the fleet when the refreshed authorized main could not be resolved', () => {
+    // The null case main() can reach: a refresh whose fetch succeeded but whose
+    // rev-parse did not. Nothing had exercised the real closure's null guard.
+    const authorizedMainSha = null;
+    const ancestry = (a, b) => (a === b || (a === HEAD && b === NEWER) ? 'yes' : 'no');
+    const result = classify([deployment('SUCCESS', { sha: NEWER })], {
+      isAncestor: (a, b) => ancestry(a, b) === 'yes',
+    });
+    const summary = summarizeDeployDrift([result], {
+      isOnAuthorizedMainLineage: (runningSha) => authorizedMainSha !== null
+        && ancestry(runningSha, authorizedMainSha) === 'yes',
+    });
+    assert.equal(summary.ok, false);
+    assert.equal(summary.blocking[0].verdict, 'AHEAD_LINEAGE_UNPROVEN');
+  });
+
+  // The bug was never in resolveComparisonHead — it was WHERE main() calls it.
+  // main() is not exported, so the two unit tests around it stay green with the
+  // whole refresh block deleted or moved back above the fleet read, which is
+  // exactly the regression. Pin the ordering against the source until main()
+  // grows an injectable seam, using the same read-the-script idiom as
+  // tests/railway-deploy-convergence.test.mjs.
+  it('refreshes authorized main only after the fleet deployment read', () => {
+    const source = readFileSync(new URL('../scripts/check-railway-deploy-drift.mjs', import.meta.url), 'utf8');
+    const fleetRead = source.indexOf('await readDeploymentsForFleet(');
+    const refresh = source.indexOf('refreshMain: true');
+    // The call site, not the export a few hundred lines above it.
+    const classification = source.indexOf('const shallowResults = classifyFleetWithinDeadline(');
+    assert.ok(fleetRead > 0, 'the fleet deployment read must exist');
+    assert.ok(refresh > 0, 'the post-observation refresh must exist');
+    assert.ok(classification > 0, 'the fleet classification pass must exist');
+    assert.ok(
+      refresh > fleetRead,
+      'authorized main must be refreshed AFTER the Railway fleet observation, or a commit merged during that read is judged against a stale ref',
+    );
+    assert.ok(
+      refresh < classification,
+      'the refresh must precede classification, or the fetched lineage is not yet available when verdicts are decided',
+    );
+  });
+
+  it('fails closed when the post-observation main refresh fails with a pinned head', () => {
+    assert.throws(() => resolveComparisonHead(['--head', HEAD], {
+      refreshMain: true,
+      git: args => {
+        if (args[0] === 'fetch') throw new Error('main refresh failed');
+        return HEAD;
+      },
+    }), /main refresh failed/);
   });
 
   it('fails a manual comparison when main cannot be refreshed', () => {

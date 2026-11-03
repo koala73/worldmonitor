@@ -1,3 +1,9 @@
+---
+title: "World Monitor OpenAPI specification"
+description: "REST endpoint discovery, typed requests and responses, authentication, and errors."
+canonical: "https://www.worldmonitor.app/openapi.md"
+---
+
 # World Monitor OpenAPI Specification
 
 Last updated: July 7, 2026
@@ -5,6 +11,8 @@ Last updated: July 7, 2026
 The World Monitor OpenAPI Specification is the machine-readable contract for the World Monitor REST API — the HTTP surface that exposes the same real-time global-intelligence tools and data as the [MCP server](https://www.worldmonitor.app/mcp-server.md) via granular REST endpoints, returning source-attributed structured JSON. Point your OpenAPI client, code generator, or agent at the spec to discover every endpoint, parameter, and response shape.
 
 ## The spec
+
+World Monitor publishes a REST API and MCP tools. It does not provide a GraphQL endpoint or GraphQL introspection. Use the OpenAPI documents below for the complete REST contract.
 
 - **OpenAPI 3.1 (YAML):** https://www.worldmonitor.app/openapi.yaml
 - **OpenAPI 3.1 (JSON):** https://www.worldmonitor.app/openapi.json

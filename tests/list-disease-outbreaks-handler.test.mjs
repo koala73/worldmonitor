@@ -86,7 +86,7 @@ describe('proto + generated bindings declare alertLevelMethodologyVersion (#3793
 
 // Cannot replace ESM module exports at runtime, so stub the Upstash REST
 // boundary (globalThis.fetch). The handler reads:
-//   getCachedJson('health:disease-outbreaks:v1', true)  // raw=true ⇒ no prefix
+//   readCachedJson('health:disease-outbreaks:v1', true)  // raw=true ⇒ no prefix
 // and we set Upstash env vars so the helper actually issues a fetch.
 
 let listDiseaseOutbreaks;
@@ -170,16 +170,38 @@ describe('listDiseaseOutbreaks handler — alertLevelMethodologyVersion (#3793 r
     assert.equal(resp.fetchedAt, 1690000000000);
   });
 
-  it('returns empty defaults + "v1" methodology when cache is entirely empty (cold start)', async () => {
-    // No cacheStore.set → /get returns { result: null } → getCachedJson → null.
-    const resp = await listDiseaseOutbreaks({}, {});
+  it('returns 503 on a cold cache', async () => {
+    await assert.rejects(listDiseaseOutbreaks({}, {}), { statusCode: 503 });
+  });
 
-    assert.deepEqual(resp.outbreaks, [], 'empty outbreaks on cold start');
-    assert.equal(resp.fetchedAt, 0, 'fetchedAt=0 on cold start');
-    assert.equal(
-      resp.alertLevelMethodologyVersion,
-      'v1',
-      'methodology version field is always present (proto contract); fallback covers cold start',
-    );
+  it('maps unavailable data to HTTP 503 through the generated route and gateway mapper', async () => {
+    const { createHealthServiceRoutes } = await import('../src/generated/server/worldmonitor/health/v1/service_server.ts');
+    const { mapErrorToResponse } = await import('../server/error-mapper.ts');
+    const route = createHealthServiceRoutes({ listDiseaseOutbreaks }, { onError: mapErrorToResponse })
+      .find((route) => route.path.endsWith('/list-disease-outbreaks'));
+    assert.ok(route);
+    const response = await route.handler(new Request('https://test.invalid/api/health/v1/list-disease-outbreaks'));
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { message: 'Internal server error' });
+  });
+
+  it('preserves a confirmed empty observation and its source timestamp', async () => {
+    cacheStore.set(REDIS_KEY, { outbreaks: [], fetchedAt: 1700000000000 });
+    assert.deepEqual(await listDiseaseOutbreaks({}, {}), {
+      outbreaks: [], fetchedAt: 1700000000000, alertLevelMethodologyVersion: 'v1',
+    });
+  });
+
+  for (const value of [null, {}, { outbreaks: {} }, { outbreaks: [], fetchedAt: 0 }, { outbreaks: [], fetchedAt: 'now' }]) {
+    it(`rejects malformed cached envelope ${JSON.stringify(value)}`, async () => {
+      cacheStore.set(REDIS_KEY, value);
+      await assert.rejects(listDiseaseOutbreaks({}, {}), { statusCode: 503 });
+    });
+  }
+
+  it('returns 503 when Redis fails', async () => {
+    const stub = mock.method(globalThis, 'fetch', async () => { throw new Error('offline'); });
+    try { await assert.rejects(listDiseaseOutbreaks({}, {}), { statusCode: 503 }); }
+    finally { stub.mock.restore(); }
   });
 });

@@ -22,13 +22,28 @@ const CANONICAL_KEY = 'infra:toronto-roads:v1';
 // a quarter of every cycle. The cadence and this TTL have to move together.
 const CACHE_TTL = 21600;
 
-async function fetchTorontoRoads() {
-  return fetchTorontoRoadRestrictions({ userAgent: CHROME_UA });
+async function fetchTorontoRoads({ runStartedAtMs }) {
+  const startedAt = Date.now();
+  try {
+    const data = await fetchTorontoRoadRestrictions({ userAgent: CHROME_UA });
+    const finishedAt = Date.now();
+    // Compare elapsedMs with seed_complete.durationMs to isolate publication.
+    console.log(`  [toronto-roads] phase=fetch status=OK durationMs=${finishedAt - startedAt} elapsedMs=${finishedAt - runStartedAtMs}`);
+    return data;
+  } catch (err) {
+    console.warn(`  [toronto-roads] phase=fetch status=FAILED durationMs=${Date.now() - startedAt}`);
+    throw err;
+  }
 }
 
 runSeed('infra', 'toronto-roads', CANONICAL_KEY, fetchTorontoRoads, {
   validateFn: validateTorontoRoadEnvelope,
   ttlSeconds: CACHE_TTL,
+  // Four 30s requests plus 1s/2s/4s retry waits fit before this deadline.
+  // The bundle's 300s hard limit must leave publication and cleanup time.
+  fetchPhaseTimeoutMs: 135_000,
+  // Hold ownership through the hard limit plus the runner's 10s kill grace.
+  lockTtlMs: 330_000,
   sourceVersion: 'toronto-roads-v1',
   declareRecords: declareTorontoRoadRecords,
   zeroIsValid: true,

@@ -49,6 +49,69 @@ function getGeolocationPosition(timeout: number): Promise<GeolocationPosition> {
   });
 }
 
+/**
+ * Shared position-request budget for dashboard startup (#7778). Both the
+ * initial-region and precise-coordinate consumers race the same in-flight
+ * geolocation call against this budget (5,000 ms) so a granted lookup issues
+ * exactly one physical request instead of two overlapping ones. Kept in this
+ * module (not a startup framework) alongside the existing location utility.
+ */
+export const SHARED_POSITION_TIMEOUT_MS = 5000;
+
+/**
+ * Single in-flight position request shared by the region and precise-coordinate
+ * consumers. The entry is cleared on success AND failure so a later explicit
+ * attempt (e.g. a user-triggered recenter) can retry instead of reusing a
+ * settled rejection. Module state is keyed per page lifetime, which also
+ * bounds the "one automatic recenter per startup" rule in App startup flow.
+ */
+let _sharedPositionRequest: Promise<GeolocationPosition> | null = null;
+
+function sharedGeolocationRequest(): Promise<GeolocationPosition> | null {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
+  if (!_sharedPositionRequest) {
+    const request = getGeolocationPosition(SHARED_POSITION_TIMEOUT_MS);
+    _sharedPositionRequest = request;
+    // Clear on settle so a later explicit attempt can retry. Attach the
+    // clearing handler to a derived promise so the shared request itself
+    // keeps its original fulfillment value for every consumer.
+    void request.then(
+      () => { if (_sharedPositionRequest === request) _sharedPositionRequest = null; },
+      () => { if (_sharedPositionRequest === request) _sharedPositionRequest = null; },
+    );
+  }
+  return _sharedPositionRequest;
+}
+
+/** Test hook: drop the cached in-flight request between deterministic cases. */
+export function __resetSharedPositionRequestForTests(): void {
+  _sharedPositionRequest = null;
+}
+
+/**
+ * Synchronous initial-region guess that never touches permission or position
+ * APIs: usable cached region, else usable cached coordinates, else timezone,
+ * else global. Layout and map construction use this so readiness does not wait
+ * for the asynchronous position work. Desktop map startup stays global.
+ */
+export function initialRegionFromCache(isMobile: boolean): MapView {
+  if (!isMobile) return 'global';
+  const cached = getCachedRegion();
+  if (cached) return cached;
+  const cachedPos = getCachedCoords();
+  if (cachedPos) {
+    const region = coordsToRegion(cachedPos.lat, cachedPos.lon);
+    cacheRegion(region);
+    return region;
+  }
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return timezoneToRegion(tz) ?? 'global';
+  } catch {
+    return 'global';
+  }
+}
+
 const TIMEZONE_TO_COUNTRY: Record<string, string> = {
   'Europe/Berlin': 'DE', 'Europe/Vienna': 'AT', 'Europe/Zurich': 'CH',
   'Europe/London': 'GB', 'Europe/Paris': 'FR', 'Europe/Madrid': 'ES',
@@ -155,7 +218,16 @@ export async function resolvePreciseUserCoordinates(timeout = 5000): Promise<Pre
     return null; // permissions.query unsupported → stay silent, no prompt
   }
   try {
-    const pos = await getGeolocationPosition(timeout);
+    const request = sharedGeolocationRequest();
+    if (!request) return null;
+    const pos = timeout === SHARED_POSITION_TIMEOUT_MS
+      ? await request
+      : await Promise.race([
+        request,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('position-timeout')), timeout);
+        }),
+      ]);
     const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
     cacheCoords(coords);
     return coords;
@@ -189,7 +261,11 @@ export async function resolveUserRegion(): Promise<MapView> {
     if (typeof navigator === 'undefined' || !navigator.permissions) throw 0;
     const status = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
     if (status.state === 'granted') {
-      const pos = await getGeolocationPosition(3000);
+      // Share the single in-flight request with the precise-coordinate
+      // consumer (#7778) instead of issuing a second overlapping lookup.
+      const request = sharedGeolocationRequest();
+      if (!request) return tzRegion;
+      const pos = await request;
       const region = coordsToRegion(pos.coords.latitude, pos.coords.longitude);
       cacheRegion(region);
       return region;

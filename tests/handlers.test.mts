@@ -42,7 +42,7 @@ import type { USNIFleetReport } from '../src/generated/server/worldmonitor/milit
 // ---------------------------------------------------------------------------
 import { deduplicateHeadlines } from '../server/worldmonitor/news/v1/dedup.mjs';
 import { buildArticlePrompts, hashString, selectUniqueHeadlinePairs } from '../server/worldmonitor/news/v1/_shared.ts';
-import { MAX_BODY_LEN } from '../src/utils/summary-cache-key.ts';
+import { MAX_BODY_LEN, buildSummaryCacheKey } from '../src/utils/summary-cache-key.ts';
 
 // ---------------------------------------------------------------------------
 // Infrastructure / cable health helpers
@@ -412,6 +412,22 @@ describe('buildArticlePrompts', () => {
     assert.ok(result.userPrompt.includes('2. SpaceX launch delayed'));
   });
 
+  // GHSA-28jv-ccf2-w27h: the cache key folds variant case, so the prompt must
+  // too. Otherwise a 'TECH' request wrote a generic-prompt summary into the
+  // row every 'tech' caller reads.
+  it('selects one prompt for every variant spelling that shares a cache key', async () => {
+    for (const mode of ['brief', 'analysis', 'other']) {
+      const spellings = ['tech', 'TECH', 'Tech'];
+      const keys = await Promise.all(spellings.map((variant) =>
+        buildSummaryCacheKey(headlines, mode, '', variant, 'en', undefined, [])));
+      assert.equal(new Set(keys).size, 1, `${mode}: spellings should share a key`);
+      const prompts = spellings.map((variant) =>
+        JSON.stringify(buildArticlePrompts(headlines, unique, { ...baseOpts, mode, variant })));
+      assert.equal(new Set(prompts).size, 1, `${mode}: one key must mean one prompt`);
+      assert.match(prompts[0]!, /tech/i);
+    }
+  });
+
   it('brief tech variant focuses on technology', () => {
     const techOpts = { ...baseOpts, variant: 'tech' };
     const result = buildArticlePrompts(headlines, unique, techOpts);
@@ -428,7 +444,7 @@ describe('buildArticlePrompts', () => {
     const translateOpts = { mode: 'translate', geoContext: '', variant: 'Spanish', lang: 'es' };
     const result = buildArticlePrompts(headlines, unique, translateOpts);
     assert.ok(result.systemPrompt.includes('translator'));
-    assert.ok(result.userPrompt.includes('Translate to Spanish'));
+    assert.ok(result.userPrompt.includes('Output only its Spanish translation.'));
   });
 
   it('includes geo context when provided', () => {
@@ -679,9 +695,12 @@ describe('parseIssueDate', () => {
 // ========================================================================
 
 describe('processNgaSignals', () => {
+  // Fixture notices are dated March 2025; score them as of the next day so the stale-notice filter keeps them.
+  const NOW = Date.UTC(2025, 2, 16);
+
   it('returns empty signals for non-cable warnings', () => {
     const warnings = [{ text: 'MILITARY EXERCISE IN AREA', issueDate: '011200Z JAN 2025' }];
-    assert.deepEqual(processNgaSignals(warnings), []);
+    assert.deepEqual(processNgaSignals(warnings, NOW), []);
   });
 
   it('produces a signal for a cable-related warning with known cable name', () => {
@@ -689,7 +708,7 @@ describe('processNgaSignals', () => {
       text: 'CABLE OPERATIONS NEAR MAREA CABLE SYSTEM. VESSELS ADVISED TO KEEP CLEAR.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     assert.ok(signals.length >= 1);
     assert.equal(signals[0]!.cableId, 'marea');
   });
@@ -699,7 +718,7 @@ describe('processNgaSignals', () => {
       text: 'FAULT REPORTED ON SUBMARINE CABLE MAREA. REPAIR VESSEL EN ROUTE.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     const faultSignals = signals.filter((s) => s.kind === 'operator_fault');
     assert.ok(faultSignals.length >= 1);
     assert.equal(faultSignals[0]!.severity, 1.0);
@@ -710,7 +729,7 @@ describe('processNgaSignals', () => {
       text: 'CABLESHIP ILE DE BATZ CABLE OPERATIONS ON STATION NEAR MAREA CABLE SYSTEM.',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     const repairSignals = signals.filter((s) => s.kind === 'repair_activity');
     assert.ok(repairSignals.length >= 1);
   });
@@ -720,7 +739,7 @@ describe('processNgaSignals', () => {
       text: 'SUBMARINE CABLE OPERATIONS IN UNSPECIFIED AREA',
       issueDate: '151430Z MAR 2025',
     }];
-    const signals = processNgaSignals(warnings);
+    const signals = processNgaSignals(warnings, NOW);
     assert.equal(signals.length, 0);
   });
 });

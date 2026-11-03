@@ -64,7 +64,7 @@ const REAL_TOTAL: number = REAL_STATS.healthProbedKeys.total;
 /** A synthetic docs page carrying one /api/health summary example. */
 function docWithSummary(fields: Record<string, number>): string {
   const full = {
-    total: 0, ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, rolloutPending: 0, crit: 0, ...fields,
+    total: 0, ok: 0, warn: 0, containedWarn: 0, onDemandWarn: 0, staleContent: 0, rolloutPending: 0, crit: 0, ...fields,
   };
   const body = Object.entries(full).map(([k, v]) => `    "${k}": ${v}`).join(',\n');
   return `\n\`\`\`json\n{\n  "summary": {\n${body}\n  }\n}\n\`\`\`\n`;
@@ -208,6 +208,33 @@ describe('/api/health probed-key count doc gate (#6300)', () => {
       }),
     });
     assert.ok(failures.some((f) => /rolloutPending \(5\) is documented as a subset/.test(f)), failures.join(' | '));
+  });
+
+  it('keeps containedWarn inside warn', () => {
+    // containedWarn is deliberately absent from the ok+warn+onDemandWarn+crit
+    // partition (it is a subset of warn, not a bucket), so the partition check
+    // cannot catch an over-count. This bound is the only thing that can.
+    assert.deepEqual(
+      validateHealthSummaryDocs(REAL_STATS, {
+        'docs/health-endpoints.mdx': docWithSummary({
+          total: REAL_TOTAL,
+          ok: REAL_TOTAL - 2,
+          warn: 2,
+          containedWarn: 2,
+        }),
+      }),
+      [],
+    );
+
+    const failures = validateHealthSummaryDocs(REAL_STATS, {
+      'docs/health-endpoints.mdx': docWithSummary({
+        total: REAL_TOTAL,
+        ok: REAL_TOTAL - 2,
+        warn: 2,
+        containedWarn: 5,
+      }),
+    });
+    assert.ok(failures.some((f) => /containedWarn \(5\) is documented as a subset/.test(f)), failures.join(' | '));
   });
 
   it('still rejects a staleContent count larger than the buckets it can occupy', () => {

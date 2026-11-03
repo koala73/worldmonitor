@@ -100,6 +100,28 @@ describe('agent readiness: Agent Plugins manifest', () => {
     assert.equal(rootBytes.equals(publicPlugin), true, 'public/plugin.json must match plugin.json exactly');
   });
 
+  it('OpenAI listing metadata references packaged assets and respects submission text limits', () => {
+    const listing = plugin.extensions['com.openai'].interface;
+    assert.ok([
+      'Productivity', 'Creativity', 'Developer Tools', 'Business & Operations',
+      'Data & Analytics', 'Communication', 'Education & Research', 'Security',
+      'Finance', 'Healthcare', 'Travel', 'Entertainment', 'Other',
+    ].includes(listing.category), 'category must be supported by the ChatGPT directory');
+    for (const [field, limit] of Object.entries({ displayName: 30, shortDescription: 30, longDescription: 4000, developerName: 80 })) {
+      assert.ok(typeof listing[field] === 'string' && listing[field].length > 0 && listing[field].length <= limit, field);
+    }
+    for (const field of ['websiteURL', 'supportURL', 'privacyPolicyURL', 'termsOfServiceURL']) {
+      assert.equal(new URL(listing[field]).protocol, 'https:', field);
+    }
+    assert.ok(listing.defaultPrompt.length <= 3);
+    for (const prompt of listing.defaultPrompt) assert.ok(prompt.length <= 128);
+    for (const field of ['composerIcon', 'logo']) {
+      const path = listing[field];
+      assert.ok(path.startsWith('./') && !path.includes('..'), field);
+      assert.ok(existsSync(join(ROOT, path)), `${field} must exist inside the package source`);
+    }
+  });
+
   it('mcp.json is a closed Agent Plugins MCP config pointing at the live servers', () => {
     assert.equal(mcp.$schema, MCP_SCHEMA);
     for (const key of Object.keys(mcp)) {
@@ -120,6 +142,33 @@ describe('agent readiness: Agent Plugins manifest', () => {
       for (const field of Object.keys(entry)) {
         assert.ok(['type', 'url'].includes(field), `${name} has unknown field "${field}"`);
       }
+    }
+  });
+
+  it('Google client manifests name the same servers, transport keys and version', () => {
+    const expected = {
+      worldmonitor: serverCard.url ?? serverCard.serverUrl,
+      'worldmonitor-docs': docsServerCard.url ?? docsServerCard.serverUrl,
+    };
+    // Each client spells the Streamable HTTP URL key differently: Antigravity reads `url`
+    // (or `serverUrl`) in mcp_config.json; Gemini CLI reads `httpUrl`, where `url` means SSE.
+    const clients = [
+      ['mcp_config.json', 'url'],
+      ['gemini-extension.json', 'httpUrl'],
+    ];
+    for (const [file, urlKey] of clients) {
+      const config = JSON.parse(readFileSync(join(ROOT, file), 'utf-8'));
+      assert.deepEqual(Object.keys(config.mcpServers).sort(), Object.keys(expected).sort(), file);
+      for (const [name, entry] of Object.entries(config.mcpServers)) {
+        assert.deepEqual(Object.keys(entry), [urlKey], `${file} ${name} must only set ${urlKey}`);
+        assert.equal(entry[urlKey], expected[name], `${file} ${name} URL must match the published server card`);
+      }
+    }
+    const gemini = JSON.parse(readFileSync(join(ROOT, 'gemini-extension.json'), 'utf-8'));
+    const antigravity = JSON.parse(readFileSync(join(ROOT, '.antigravity-plugin/plugin.json'), 'utf-8'));
+    for (const [file, manifest] of [['gemini-extension.json', gemini], ['.antigravity-plugin/plugin.json', antigravity]]) {
+      assert.equal(manifest.name, plugin.name, `${file} name`);
+      assert.equal(manifest.version, pkg.version, `${file} version must match package.json`);
     }
   });
 

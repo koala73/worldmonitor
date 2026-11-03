@@ -60,7 +60,7 @@ const jsonLd = {
         "headline": post.data.title,
         "description": post.data.description,
         "datePublished": post.data.pubDate.toISOString(),
-        ...(post.data.modifiedDate ? { "dateModified": post.data.modifiedDate.toISOString() } : {}),
+        "dateModified": (post.data.modifiedDate ?? post.data.pubDate).toISOString(),
         "author": {
           "@type": "Person",
           "name": authorName,

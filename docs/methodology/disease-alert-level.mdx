@@ -3,9 +3,11 @@ title: "Disease Outbreak Alert Level"
 description: "How World Monitor derives ALERT, WARNING, and WATCH tiers for disease outbreaks using a keyword classifier over item titles and descriptions."
 ---
 
+_Methodology maintained by [Elie Habib](https://www.worldmonitor.app/blog/authors/elie-habib/), founder of World Monitor. Published revisions are recorded in the [corrections log](/corrections)._
+
 ## Start here
 
-The "Disease Outbreaks" panel tags each item **ALERT**, **WARNING**, or
+The "[Disease Outbreaks](/panels/disease-outbreaks)" panel tags each item **ALERT**, **WARNING**, or
 **WATCH**. Here is the honest version of what that tag is:
 
 **It reads the headline.** If the title or summary contains words like
@@ -55,7 +57,7 @@ The classifier sees the item's `title` and `desc` fields after they are
 normalized by the per-source parser:
 
 - WHO Disease Outbreak News (`whoNormalizeItem`)
-- CDC HAN and Outbreak News Today RSS (`rssNormalizeItem`)
+- CDC HAN, ECDC epidemiological update, and CIDRAP disease news RSS (`rssNormalizeItem`)
 - ThinkGlobalHealth disease tracker, backed by ProMED-sourced real-time alerts (`tghNormalizeItem`)
 
 There are no numeric scoring weights. The label is purely categorical and

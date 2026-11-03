@@ -31,17 +31,17 @@ export function renderVariantNoscriptMainHtml(variant: VariantSeoKey, meta: Vari
   return `<main id="dashboard-noscript" class="dashboard-noscript">
         <h2>${escHtml(meta.siteName)} requires JavaScript for the live map</h2>
         ${about}
-        <p>Visit the <a href="/">World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
+        <p>Visit the <a href="${CANONICAL_ORIGIN}">World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
         <nav aria-label="${escHtml(meta.siteName)} references">
           <ul>
-            <li><a href="/countries/">Country intelligence</a></li>
-            <li><a href="/chokepoints/">Maritime chokepoints</a></li>
-            <li><a href="/crises/">Crisis trackers</a></li>
-            <li><a href="/tools/">Live tools</a></li>
-            <li><a href="/research/">Research reports</a></li>
-            <li><a href="/blog/">Blog</a></li>
-            <li><a href="/docs">Documentation</a></li>
-            <li><a href="/pro#pricing">Pricing</a></li>
+            <li><a href="${CANONICAL_ORIGIN}countries/">Country intelligence</a></li>
+            <li><a href="${CANONICAL_ORIGIN}chokepoints/">Maritime chokepoints</a></li>
+            <li><a href="${CANONICAL_ORIGIN}crises/">Crisis trackers</a></li>
+            <li><a href="${CANONICAL_ORIGIN}tools/">Live tools</a></li>
+            <li><a href="${CANONICAL_ORIGIN}research/">Research reports</a></li>
+            <li><a href="${CANONICAL_ORIGIN}blog/">Blog</a></li>
+            <li><a href="${CANONICAL_ORIGIN}docs/documentation">Documentation</a></li>
+            <li><a href="${CANONICAL_ORIGIN}pro#pricing">Pricing</a></li>
             <li><a href="https://github.com/koala73/worldmonitor">GitHub</a></li>
           </ul>
         </nav>
@@ -230,8 +230,7 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
     'hreflang alternates',
   );
 
-  // Social card images (per-variant OG assets exist under public/favico/<variant>/,
-  // same files middleware.ts VARIANT_OG points at).
+  // Social card images use the per-variant assets under public/favico/<variant>/.
   html = replaceCounted(
     html,
     /(<meta (?:property="og:image"|name="twitter:image") content=")[^"]*(" \/>)/g,

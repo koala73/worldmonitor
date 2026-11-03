@@ -140,7 +140,10 @@ export class CascadePanel extends Panel {
   private renderCascadeResult(): string {
     if (!this.cascadeResult) return '';
 
-    const { source, countriesAffected, redundancies } = this.cascadeResult;
+    const { source, countriesAffected, redundancies, dataQuality } = this.cascadeResult;
+    const estimateHtml = dataQuality?.estimated
+      ? `<div class="cascade-estimate-note" role="note">${t('components.cascade.estimateNote')}</div>`
+      : '';
 
     const countriesHtml = countriesAffected.length > 0
       ? countriesAffected.map(c => `
@@ -160,6 +163,7 @@ export class CascadePanel extends Panel {
           ${redundancies.map(r => `
             <div class="cascade-redundancy">
               <span class="cascade-redundancy-name">${escapeHtml(r.name)}</span>
+              ${r.avoidsCutZone === false ? `<span class="cascade-redundancy-zone">${t('components.cascade.sharesCutZone')}</span>` : ''}
               <span class="cascade-redundancy-capacity">${Math.round(r.capacityShare * 100)}%</span>
             </div>
           `).join('')}
@@ -179,6 +183,7 @@ export class CascadePanel extends Panel {
           <div class="cascade-countries">${countriesHtml}</div>
         </div>
         ${redundanciesHtml}
+        ${estimateHtml}
       </div>
     `;
   }

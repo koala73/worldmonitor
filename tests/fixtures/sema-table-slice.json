@@ -1,0 +1,121 @@
+{
+  "data": [
+    {
+      "Regulation": "Belarus",
+      "Entity or Ship": "",
+      "Title or Ship type": "",
+      "Last Name": "Atabekov",
+      "Given Names": "Khazalbek Bakhtibekovich",
+      "Aliases": "",
+      "Ship IMO number": "",
+      "Date of Birth": "",
+      "Schedule": "1, Part 1",
+      "Item Number": "1",
+      "Date of Listing": "2020-09-28"
+    },
+    {
+      "Regulation": "Belarus",
+      "Entity or Ship": "Belaeronavigatsia Republican Unitary Air Navigation Services Enterprise",
+      "Title or Ship type": "",
+      "Last Name": "",
+      "Given Names": "",
+      "Aliases": "",
+      "Ship IMO number": "",
+      "Date of Birth": "",
+      "Schedule": "1, Part 2",
+      "Item Number": "1",
+      "Date of Listing": "2021-06-17"
+    },
+    {
+      "Regulation": "Russia",
+      "Entity or Ship": "Zeya",
+      "Title or Ship type": "Container Ship",
+      "Last Name": "",
+      "Given Names": "",
+      "Aliases": "",
+      "Ship IMO number": "9118355",
+      "Date of Birth": "1995",
+      "Schedule": "1.1",
+      "Item Number": "731",
+      "Date of Listing": "2026-06-12"
+    },
+    {
+      "Regulation": "Justice for Victims of Corrupt Foreign Officials Regulations (JVCFOR)",
+      "Entity or Ship": "",
+      "Title or Ship type": "",
+      "Last Name": "MADURO MOROS",
+      "Given Names": "Nicolás",
+      "Aliases": "",
+      "Ship IMO number": "",
+      "Date of Birth": "",
+      "Schedule": "",
+      "Item Number": "1",
+      "Date of Listing": "2017-11-03"
+    },
+    {
+      "Regulation": "Myanmar (Burma)",
+      "Entity or Ship": "",
+      "Title or Ship type": "",
+      "Last Name": " ",
+      "Given Names": "Toe Yi",
+      "Aliases": "Toe Ui",
+      "Ship IMO number": "",
+      "Date of Birth": "1966",
+      "Schedule": "Part 2",
+      "Item Number": "98",
+      "Date of Listing": "2023-10-27"
+    },
+    {
+      "Regulation": "Hamas Terrorist Attacks",
+      "Entity or Ship": "",
+      "Title or Ship type": "",
+      "Last Name": "Sinwar",
+      "Given Names": "Yahya",
+      "Aliases": "Yehya Sinwar, Abu Ibrahim,  يحيى السنوار ",
+      "Ship IMO number": "",
+      "Date of Birth": "1962-10-29",
+      "Schedule": "Part 1",
+      "Item Number": "1",
+      "Date of Listing": "2024-02-02"
+    },
+    {
+      "Regulation": "Extremist Settler Violence",
+      "Entity or Ship": "",
+      "Title or Ship type": "",
+      "Last Name": "Chasdai",
+      "Given Names": "David Chai",
+      "Aliases": "דוד חי חסדאי",
+      "Ship IMO number": "",
+      "Date of Birth": "1994-11-23",
+      "Schedule": "Part 1",
+      "Item Number": "1",
+      "Date of Listing": "2024-05-16"
+    },
+    {
+      "Regulation": "Extremist Settler Violence",
+      "Entity or Ship": "",
+      "Title or Ship type": "",
+      "Last Name": "Weiss",
+      "Given Names": "Daniella",
+      "Aliases": "דניאלה וייס",
+      "Ship IMO number": "",
+      "Date of Birth": "1945-08-30",
+      "Schedule": "Part 1",
+      "Item Number": 5,
+      "Date of Listing": "2024-06-26"
+    },
+    {
+      "Regulation": "Russia",
+      "Entity or Ship": "North Sky",
+      "Title or Ship type": "LNG Tanker",
+      "Last Name": "",
+      "Given Names": "",
+      "Aliases": "",
+      "Ship IMO number": 9953523,
+      "Date of Birth": "2024",
+      "Schedule": "1.1",
+      "Item Number": "309",
+      "Date of Listing": "2025-02-21"
+    }
+  ]
+}

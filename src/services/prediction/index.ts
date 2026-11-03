@@ -5,10 +5,12 @@ import { SITE_VARIANT } from '@/config';
 import { getHydratedData } from '@/services/bootstrap';
 
 export interface PredictionMarket {
+  id?: string;
   title: string;
   yesPrice: number;     // 0-100 scale (legacy compat)
   volume?: number;
   url?: string;
+  displayUrl?: string;
   endDate?: string;
   source?: 'polymarket' | 'kalshi';
   regions?: string[];
@@ -54,8 +56,33 @@ function tagRegions(title: string): string[] {
     .map(([region]) => region);
 }
 
-function protoToMarket(m: { title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string; source?: string }): PredictionMarket {
+/**
+ * Shared regional prioritization: stable sort that hoists markets tagged with
+ * `region` ahead of the rest while preserving the base relevance order inside
+ * each partition. Used by fetchPredictions for the network result and by
+ * reprioritizeMarketsForRegion for late-region updates without a refetch, so
+ * both paths apply identical match rules and ordering (#7778).
+ */
+export function reprioritizeMarketsForRegion<T extends { regions?: string[] }>(
+  markets: T[],
+  region: string | undefined,
+  limit = 15,
+): T[] {
+  if (!region || region === 'global' || markets.length === 0) return markets.slice(0, limit);
+  const ranked = markets
+    .map((market, index) => ({ market, index }))
+    .sort((a, b) => {
+      const aMatch = a.market.regions?.includes(region) ? 1 : 0;
+      const bMatch = b.market.regions?.includes(region) ? 1 : 0;
+      return bMatch - aMatch || a.index - b.index;
+    })
+    .map(({ market }) => market);
+  return ranked.slice(0, limit);
+}
+
+export function protoToMarket(m: { id?: string; title: string; yesPrice: number; volume: number; url: string; closesAt: number; category: string; source?: string }): PredictionMarket {
   return {
+    id: m.id,
     title: m.title,
     yesPrice: m.yesPrice * 100,
     volume: m.volume,
@@ -66,7 +93,10 @@ function protoToMarket(m: { title: string; yesPrice: number; volume: number; url
   };
 }
 
-export async function fetchPredictions(opts?: { region?: string }): Promise<PredictionMarket[]> {
+export async function fetchPredictionCandidates(opts?: { region?: string }): Promise<{
+  candidates: PredictionMarket[];
+  displayed: PredictionMarket[];
+}> {
   const markets = await breaker.execute(async () => {
     const hydrated = getHydratedData('predictions') as BootstrapPredictionData | undefined;
     if (hydrated?.fetchedAt && Date.now() - hydrated.fetchedAt < 40 * 60 * 1000) {
@@ -89,6 +119,7 @@ export async function fetchPredictions(opts?: { region?: string }): Promise<Pred
       query: '',
       pageSize: 50,
       cursor: '',
+      minLiquidity: 0,
     });
     if (rpcResults.markets && rpcResults.markets.length > 0) {
       return rpcResults.markets
@@ -107,15 +138,26 @@ export async function fetchPredictions(opts?: { region?: string }): Promise<Pred
   }, []);
 
   if (opts?.region && opts.region !== 'global' && markets.length > 0) {
-    const sorted = [...markets];
-    sorted.sort((a, b) => {
-      const aMatch = a.regions?.includes(opts.region!) ? 1 : 0;
-      const bMatch = b.regions?.includes(opts.region!) ? 1 : 0;
-      return bMatch - aMatch;
-    });
-    return sorted.slice(0, 15);
+    return {
+      candidates: predictionCandidatePool(markets),
+      displayed: reprioritizeMarketsForRegion(markets, opts.region, 15),
+    };
   }
-  return markets.slice(0, 15);
+  return { candidates: predictionCandidatePool(markets), displayed: markets.slice(0, 15) };
+}
+
+export async function fetchPredictions(opts?: { region?: string }): Promise<PredictionMarket[]> {
+  return (await fetchPredictionCandidates(opts)).displayed;
+}
+
+/**
+ * Full candidate pool for a late region arrival (#7778): the same 25-candidate
+ * relevance-ordered set fetchPredictions() ranks across, before the final
+ * 15-item display slice. Re-ranking this pool — not the truncated display
+ * slice — is what makes the late path identical to resolving first.
+ */
+export function predictionCandidatePool(markets: PredictionMarket[]): PredictionMarket[] {
+  return markets.slice(0, 25);
 }
 
 interface CountryMetadata {
@@ -313,7 +355,7 @@ function matchesCountryTerms(
   return associatedCountryCodes(title, matchers, shadows).has(countryCode);
 }
 
-export async function fetchCountryMarkets(country: string, countryCode: string): Promise<PredictionMarket[]> {
+export async function fetchCountryMarkets(country: string, countryCode: string, onMetadata?: (metadata: { fetchedAt?: number }) => void): Promise<PredictionMarket[]> {
   const normalizedCode = countryCode.trim().toUpperCase();
   if (/^[A-Z]{2}$/.test(normalizedCode)) {
     const response = await client.listPredictionMarkets({
@@ -321,11 +363,16 @@ export async function fetchCountryMarkets(country: string, countryCode: string):
       query: '',
       pageSize: 5,
       cursor: '',
+      minLiquidity: 0,
     }).catch(() => null);
     if (response?.markets?.length) {
+      if (response.dataAvailable === true) onMetadata?.({ fetchedAt: response.fetchedAt });
       return response.markets.map(protoToMarket).filter(m => !isExpired(m.endDate)).slice(0, 5);
     }
-    if (response?.dataAvailable) return [];
+    if (response?.dataAvailable) {
+      if (response.dataAvailable === true) onMetadata?.({ fetchedAt: response.fetchedAt });
+      return [];
+    }
   }
 
   // Fallback: search bootstrap data across all buckets. `tech` must be included

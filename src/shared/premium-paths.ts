@@ -7,6 +7,7 @@
 export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/market/v1/analyze-stock',
   '/api/market/v1/get-stock-analysis-history',
+  '/api/market/v1/get-insider-transactions',
   '/api/market/v1/backtest-stock',
   '/api/market/v1/list-stored-stock-backtests',
   // Physical-vs-paper metals: the SGE/COMEX premium series (#6436) and the
@@ -25,7 +26,21 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // Browser calls must attach Clerk auth and bypass wm-session recovery:
   // anonymous 401s here are expected Pro denials, not dead session cookies.
   '/api/intelligence/v1/get-country-intel-brief',
+  // Country coverage (#7526) is an agent surface, not a panel dependency — the
+  // browser builds its own timeline client-side and never calls this. Each call
+  // costs two live outbound feed fetches plus five upstream reads, so it is
+  // gated like get-country-intel-brief rather than like the cheap Redis read
+  // get-country-risk. This is what makes the Pro decision real on the REST
+  // path; the MCP `subscription` class only covers MCP callers.
+  //
+  // Keep every comment in this block free of single quotes. readPremiumRpcPaths
+  // (scripts/lib/openapi-codegen.mjs) recovers these paths with a bare
+  // quoted-string regex over the whole block, so one apostrophe in a comment
+  // pairs with the next opening quote and silently eats a path out of the
+  // published security contract.
+  '/api/intelligence/v1/get-country-coverage',
   '/api/intelligence/v1/list-market-implications',
+  '/api/intelligence/v1/list-wsb-tickers',
   '/api/intelligence/v1/get-regional-snapshot',
   '/api/intelligence/v1/get-regime-history',
   '/api/intelligence/v1/get-regional-brief',
@@ -40,9 +55,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/resilience/v1/get-resilience-ranking',
   '/api/resilience/v1/get-food-stocks',
   '/api/resilience/v1/get-demographics-capability',
-  '/api/scorecard/v1/get-five-factor-scorecard',
-  '/api/scorecard/v1/list-five-factor-scorecards',
-  '/api/scorecard/v1/get-bloc-scorecard',
+  // The five-factor scorecard went free (#9742); it is no longer in this set.
   '/api/supply-chain/v1/get-country-chokepoint-index',
   '/api/supply-chain/v1/get-bypass-options',
   '/api/supply-chain/v1/get-country-cost-shock',
@@ -59,14 +72,17 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/supply-chain/v1/get-country-vulnerabilities',
   '/api/supply-chain/v1/get-chokepoint-dependencies',
   '/api/supply-chain/v1/list-vulnerability-rankings',
-  '/api/economic/v1/get-national-debt',
   // Global procurement is a Pro product surface. Keep this in the shared
   // registry so premiumFetch attaches the Clerk bearer and the gateway enforces
   // the same route as the entitlement map.
   '/api/economic/v1/list-global-tenders',
-  '/api/sanctions/v1/list-sanctions-pressure',
+  // Outlet-perspective grouping is a Pro MCP tool; the REST route matches it.
+  '/api/news/v1/list-media-perspective',
+  '/api/news/v1/list-news-pool',
   '/api/trade/v1/list-comtrade-flows',
   '/api/trade/v1/get-tariff-trends',
+  '/api/trade/v1/get-bilateral-tariff',
+  '/api/trade/v1/get-us-import-duty',
   '/api/scenario/v1/run-scenario',
   '/api/scenario/v1/get-scenario-status',
   // #3734: PRO-gated mutation that enqueues a simulation task. Companion
@@ -89,7 +105,8 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/chat-analyst',
   // Single-aircraft Wingbits enrichment is a caller-controlled paid-provider
   // lookup. Keep the batch sibling outside this registry because the map uses
-  // that route as its existing anonymous, rate-limited enrichment path.
+  // that route as its existing anonymous, rate-limited enrichment path; it
+  // only spends the credential on aircraft in the published flight snapshot.
   '/api/military/v1/get-aircraft-details',
   // Arms-supplier dependency + World Bank military capacity (#6438). This one
   // also left PUBLIC_SHARED_RPC_PATHS: it had an anonymous `public=1` CDN

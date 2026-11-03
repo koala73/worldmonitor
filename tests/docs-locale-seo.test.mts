@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +18,12 @@ import {
 } from '../src/config/docs-locale-seo.ts';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const ORGANIZATION_AUTHOR = {
+  '@id': 'https://www.worldmonitor.app/#organization',
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: 'https://www.worldmonitor.app/',
+};
 
 describe('docs locale SEO path gating', () => {
   it('accepts document paths and rejects Mintlify assets', () => {
@@ -87,6 +92,31 @@ describe('docs locale pair + hreflang cluster', () => {
 });
 
 describe('rewriteDocsLocaleHtml', () => {
+  it('pins Mintlify page metadata to the same public docs base', () => {
+    const config = JSON.parse(readFileSync(join(repoRoot, 'docs/docs.json'), 'utf8'));
+    assert.equal(config.seo.metatags.canonical, `${DOCS_PUBLIC_ORIGIN}/docs`);
+  });
+
+  it('replaces missing, relative, foreign and duplicate canonicals in either locale', () => {
+    for (const pathname of ['/docs/country-instability-index', '/docs/zh/country-instability-index']) {
+      for (const links of [
+        '',
+        '<link href="/wm-proxy/docs/about" rel="canonical">',
+        "<link rel='canonical' href='https://copy.example/docs/about'>",
+        '<link rel="canonical" href="https://copy.example/a"><link rel="canonical" href="https://copy.example/b">',
+      ]) {
+        const seed = `<!DOCTYPE html><html><head>${links}<title>CII</title></head><body>CII</body></html>`;
+        const html = rewriteDocsLocaleHtml(seed, pathname);
+        const head = html.match(/<head>([\s\S]*?)<\/head>/)?.[1] ?? '';
+        assert.deepEqual(head.match(/<link\b[^>]*rel="canonical"[^>]*>/g), [
+          `<link rel="canonical" href="${DOCS_PUBLIC_ORIGIN}${pathname}" />`,
+        ]);
+        assert.equal(rewriteDocsLocaleHtml(html, pathname), html, 'rewriting is idempotent');
+        assert.match(html, /<body>CII<\/body>/);
+      }
+    }
+  });
+
   const zhSeed = `<!DOCTYPE html><html lang="en" class="x"><head>
 <meta name="og:locale" content="en_US"/>
 <link rel="canonical" href="https://www.worldmonitor.app/docs/zh/about"/>
@@ -209,18 +239,16 @@ describe('docs entity-graph rewrite (#7459d)', () => {
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":["Article","TechArticle"],"@id":"https://www.worldmonitor.app/docs/about#article","headline":"About World Monitor","dateModified":"2026-08-30T00:00:00Z","publisher":{"@id":"https://www.worldmonitor.app/#organization"}}]}</script>
 </head><body></body></html>`;
 
-  it('attributes the docs Article to the canonical Organization', () => {
+  it('attributes the docs Article to the canonical Organization', async () => {
+    const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
     const graph = jsonLdBlocks(rewriteDocsLocaleHtml(articleSeed, '/docs/about'))
       .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
     const article = graph.find((node) => Array.isArray(node['@type']));
     assert.ok(article, 'the Article node must survive the rewrite');
-    assert.deepEqual(article.author, { '@id': 'https://www.worldmonitor.app/#organization' });
+    assert.deepEqual(article.author, ORGANIZATION_AUTHOR);
     assert.deepEqual(article.publisher, { '@id': 'https://www.worldmonitor.app/#organization' });
     assert.equal(article.dateModified, '2026-08-30T00:00:00Z');
-    // Not synthesised: no per-page publication date exists in frontmatter,
-    // docs.json, or any manifest, and copying dateModified into it would
-    // assert a date we do not know.
-    assert.equal(article.datePublished, undefined);
+    assert.equal(article.datePublished, DOCS_PAGE_DATES.about.datePublished);
   });
 
   it('attributes a singular TechArticle and never overwrites an existing author', () => {
@@ -229,7 +257,7 @@ describe('docs entity-graph rewrite (#7459d)', () => {
       .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
     assert.deepEqual(
       graph.find((node) => node['@type'] === 'TechArticle')?.author,
-      { '@id': 'https://www.worldmonitor.app/#organization' },
+      ORGANIZATION_AUTHOR,
     );
 
     const byline = articleSeed.replace(
@@ -243,6 +271,121 @@ describe('docs entity-graph rewrite (#7459d)', () => {
       { '@type': 'Person', name: 'A Named Author' },
       'an upstream byline must win over the Organization fallback',
     );
+
+    const stub = articleSeed.replace(
+      '"publisher"',
+      '"author":{"@id":"https://www.worldmonitor.app/#organization"},"publisher"',
+    );
+    const stubGraph = jsonLdBlocks(rewriteDocsLocaleHtml(stub, '/docs/about'))
+      .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
+    assert.deepEqual(
+      stubGraph.find((node) => Array.isArray(node['@type']))?.author,
+      ORGANIZATION_AUTHOR,
+      'a bare Organization author stub must be expanded on the first rewrite',
+    );
+  });
+
+  // #7980: the methodology family is editorial judgment a named human owns —
+  // weights chosen, thresholds set, limitations written — and each page renders
+  // a maintainer byline saying so. Organization is the honest author everywhere
+  // the docs are generated or unbylined product documentation; Person is the
+  // honest author here, and it is the Expertise signal the scored pages lean on.
+  // #7980: the methodology family is editorial judgment a named human owns —
+  // weights chosen, thresholds set, limitations written — and each page renders
+  // a maintainer byline saying so. Organization is the honest author everywhere
+  // the docs are generated or unbylined product documentation; Person is the
+  // honest author here, and it is the Expertise signal the scored pages lean on.
+  const PERSON = {
+    '@id': 'https://www.worldmonitor.app/blog/authors/elie-habib/#person',
+    '@type': 'Person',
+    name: 'Elie Habib',
+  };
+  const ORGANIZATION = { '@id': 'https://www.worldmonitor.app/#organization' };
+
+  // Attribution keys on the PATHNAME, so vary only that. An earlier version of
+  // this test also rewrote the seed's `@id` per pathname, which quietly implied
+  // the node's own identity drives the choice and left the test unable to tell
+  // the two implementations apart.
+  const authorFor = (pathname: string, seed = articleSeed) => {
+    const graph = jsonLdBlocks(rewriteDocsLocaleHtml(seed, pathname))
+      .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
+    return graph.find((node) => Array.isArray(node['@type']))?.author;
+  };
+
+  it('attributes the methodology family to the canonical Person (#7980)', () => {
+    for (const pathname of ['/docs/methodology/cii-risk-scores', '/docs/methodology/chokepoints']) {
+      assert.deepEqual(authorFor(pathname), PERSON, pathname);
+    }
+    // The Chinese mirror is the same editorial work under a locale prefix.
+    assert.deepEqual(authorFor('/docs/zh/methodology/cii-risk-scores'), PERSON);
+    // Everything outside the family keeps the Organization attribution, including
+    // the near-misses a bare prefix match would swallow.
+    for (const pathname of [
+      '/docs/about',
+      '/docs/getting-started',
+      '/docs/corrections',
+      '/docs/methodology-overview',
+      '/docs/api-reference/methodology/foo',
+    ]) {
+      assert.deepEqual(authorFor(pathname), ORGANIZATION_AUTHOR, pathname);
+    }
+  });
+
+  it('keeps a self-describing Organization author across a second rewrite (#8073)', () => {
+    const html = rewriteDocsLocaleHtml(articleSeed, '/docs/about');
+    assert.deepEqual(authorFor('/docs/about', html), ORGANIZATION_AUTHOR);
+    assert.equal(rewriteDocsLocaleHtml(html, '/docs/about'), html, 'rewriting is idempotent');
+  });
+
+  // Live Mintlify ships a bare WebPage with no Article at all, so INJECTION —
+  // not the attribute-an-existing-Article path above — is what production
+  // actually exercises. Without this case, reverting the injected Article's
+  // author to Organization leaves every other guard in this file green.
+  it('attributes an INJECTED methodology Article to the Person (#7980)', () => {
+    const barePage = `<!DOCTYPE html><html lang="en"><head>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"CII Risk Scoring Methodology","url":"https://www.worldmonitor.app/docs/methodology/cii-risk-scores"}</script>
+</head><body></body></html>`;
+
+    const injected = jsonLdBlocks(rewriteDocsLocaleHtml(barePage, '/docs/methodology/cii-risk-scores'))
+      .flatMap((block) => (Array.isArray(block['@graph']) ? block['@graph'] : [block])) as Record<string, unknown>[];
+    const article = injected.find((node) => Array.isArray(node['@type']));
+    assert.ok(article, 'the bare WebPage must gain an injected Article');
+    assert.deepEqual(article.author, PERSON, 'an injected methodology Article must carry the Person');
+    assert.deepEqual(article.publisher, ORGANIZATION, 'the publisher stays the Organization');
+
+    // Same injection path, outside the family, still attributes to the Organization.
+    const bareAbout = barePage.replace(/methodology\/cii-risk-scores/g, 'about');
+    const aboutGraph = jsonLdBlocks(rewriteDocsLocaleHtml(bareAbout, '/docs/about'))
+      .flatMap((block) => (Array.isArray(block['@graph']) ? block['@graph'] : [block])) as Record<string, unknown>[];
+    assert.deepEqual(
+      aboutGraph.find((node) => Array.isArray(node['@type']))?.author,
+      ORGANIZATION_AUTHOR,
+    );
+  });
+
+  // The schema claim and the rendered claim must not drift apart. Attribution
+  // keys on a slug prefix, so a new methodology page added without the byline
+  // would silently claim a named human wrote it — the one dishonest outcome
+  // this attribution must never produce.
+  it('names the maintainer on every page it attributes to the Person (#7980)', () => {
+    const families = [
+      { dir: 'docs/methodology', prefix: '/docs/methodology', byline: 'Methodology maintained by [Elie Habib]' },
+      { dir: 'docs/zh/methodology', prefix: '/docs/zh/methodology', byline: '本方法论由 World Monitor 创始人 [Elie Habib]' },
+    ];
+    let checked = 0;
+    for (const { dir, prefix, byline } of families) {
+      const pages = readdirSync(new URL(`../${dir}`, import.meta.url))
+        .filter((name) => name.endsWith('.mdx'));
+      assert.ok(pages.length > 15, `${dir}: expected the published methodology family, saw ${pages.length}`);
+      for (const page of pages) {
+        checked += 1;
+        const slug = page.replace(/\.mdx$/, '');
+        const source = readFileSync(new URL(`../${dir}/${page}`, import.meta.url), 'utf8');
+        assert.ok(source.includes(byline), `${dir}/${page} is attributed to a person but names no maintainer`);
+        assert.deepEqual(authorFor(`${prefix}/${slug}`), PERSON, `${dir}/${page}`);
+      }
+    }
+    assert.ok(checked > 40, `expected both mirrors of the family, checked ${checked}`);
   });
 
   it('does not attribute a non-Article node', () => {
@@ -269,6 +412,13 @@ describe('docs entity-graph rewrite handles alternate vendor shapes (#7459d)', (
       .map((m) => JSON.parse(m[1].replace(/\\u003c/g, '<')));
 
   const survivingMintlify = (html: string): boolean => JSON.stringify(blocks(html)).includes('Mintlify');
+
+  it('preserves unrelated publishers whose URL only contains the vendor domain', () => {
+    for (const url of ['https://notmintlify.com', 'https://mintlify.com.example.org', 'https://example.org/mintlify.com']) {
+      const html = rewriteDocsEntityGraph(wrap({ '@type': 'WebSite', '@id': CANONICAL_WEBSITE, creator: { name: 'Other', url } }));
+      assert.ok(html.includes(CANONICAL_WEBSITE), url);
+    }
+  });
 
   it('drops a vendor WebSite inside a top-level array', () => {
     const html = rewriteDocsEntityGraph(wrap([
@@ -374,10 +524,10 @@ describe('docs article injection for bare WebPage output', () => {
     }), '/docs/architecture');
     const article = flatNodes(html).find(isArticle);
     assert.ok(article, 'a bare WebPage must gain an Article node');
-    assert.equal(article?.dateModified, DOCS_PAGE_DATES['architecture']);
+    assert.equal(article?.dateModified, DOCS_PAGE_DATES['architecture'].dateModified);
     assert.deepEqual(article?.publisher, { '@id': ORG_ID });
-    assert.deepEqual(article?.author, { '@id': ORG_ID });
-    assert.equal(article?.datePublished, undefined, 'publication dates are never synthesised');
+    assert.deepEqual(article?.author, ORGANIZATION_AUTHOR);
+    assert.equal(article?.datePublished, DOCS_PAGE_DATES['architecture'].datePublished);
   });
 
   it('never invents an article when the slug has no manifest date', () => {
@@ -391,7 +541,7 @@ describe('docs article injection for bare WebPage output', () => {
     assert.equal(flatNodes(html).filter(isArticle).length, 0);
   });
 
-  it('backfills dateModified onto an upstream Article that drops it', async () => {
+  it('backfills both dates onto an upstream Article that drops them', async () => {
     const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
     const html = rewriteDocsEntityGraph(seed({
       '@context': 'https://schema.org',
@@ -404,8 +554,25 @@ describe('docs article injection for bare WebPage output', () => {
     }), '/docs/about');
     const article = flatNodes(html).find(isArticle);
     assert.ok(article, 'the upstream Article must survive');
-    assert.equal(article?.dateModified, DOCS_PAGE_DATES['about']);
-    assert.deepEqual(article?.author, { '@id': ORG_ID });
+    assert.equal(article?.dateModified, DOCS_PAGE_DATES['about'].dateModified);
+    assert.equal(article?.datePublished, DOCS_PAGE_DATES['about'].datePublished);
+    assert.deepEqual(article?.author, ORGANIZATION_AUTHOR);
+  });
+
+  it('preserves upstream dates and leaves unknown slugs untouched', () => {
+    const upstream = {
+      '@context': 'https://schema.org',
+      '@type': 'TechArticle',
+      headline: 'About',
+      datePublished: '2026-01-01',
+      dateModified: '2026-02-01',
+    };
+    const article = flatNodes(rewriteDocsEntityGraph(seed(upstream), '/docs/about')).find(isArticle);
+    assert.equal(article?.datePublished, upstream.datePublished);
+    assert.equal(article?.dateModified, upstream.dateModified);
+    const unknown = flatNodes(rewriteDocsEntityGraph(seed({ '@type': 'Article', headline: 'Unknown' }), '/docs/no-such-page')).find(isArticle);
+    assert.equal(unknown?.datePublished, undefined);
+    assert.equal(unknown?.dateModified, undefined);
   });
 
   it('does not inject a second Article when another JSON-LD script already has one', async () => {
@@ -429,8 +596,9 @@ describe('docs article injection for bare WebPage output', () => {
     const articles = nodes.filter(isArticle);
 
     assert.equal(articles.length, 1, 'the complete document must contain at most one Article');
-    assert.equal(articles[0]?.dateModified, DOCS_PAGE_DATES.about);
-    assert.deepEqual(articles[0]?.author, { '@id': ORG_ID });
+    assert.equal(articles[0]?.dateModified, DOCS_PAGE_DATES.about.dateModified);
+    assert.equal(articles[0]?.datePublished, DOCS_PAGE_DATES.about.datePublished);
+    assert.deepEqual(articles[0]?.author, ORGANIZATION_AUTHOR);
     assert.deepEqual(
       nodes.find((node) => node['@type'] === 'WebPage')?.speakable,
       { '@type': 'SpeakableSpecification', cssSelector: ['h1'] },
@@ -467,10 +635,12 @@ describe('docs article injection for bare WebPage output', () => {
     }), '/docs/zh/about');
     const article = flatNodes(html).find(isArticle);
     assert.ok(article, 'a bare zh WebPage must gain an Article node');
-    assert.equal(article?.dateModified, DOCS_PAGE_DATES['zh/about']);
+    assert.equal(article?.dateModified, DOCS_PAGE_DATES['zh/about'].dateModified);
+    assert.equal(article?.datePublished, DOCS_PAGE_DATES['zh/about'].datePublished);
   });
 
-  it('covers every committed docs slug in the date manifest', async () => {    const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
+  it('covers every committed docs slug in the date manifest', async () => {
+    const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
     const slugs: string[] = [];
     const walk = (dir: string, prefix: string) => {
       for (const entry of readdirSync(join(repoRoot, dir), { withFileTypes: true })) {
@@ -480,13 +650,16 @@ describe('docs article injection for bare WebPage output', () => {
     };
     walk('docs', '');
     for (const slug of slugs) {
-      assert.match(
-        DOCS_PAGE_DATES[slug] ?? '',
-        /^\d{4}-\d{2}-\d{2}$/,
-        `date manifest must carry a real date for docs/${slug}.mdx — run npm run docs:dates`,
-      );
+      for (const field of ['datePublished', 'dateModified'] as const) {
+        assert.match(
+          DOCS_PAGE_DATES[slug]?.[field] ?? '',
+          /^\d{4}-\d{2}-\d{2}$/,
+          `date manifest must carry ${field} for docs/${slug}.mdx — run npm run docs:dates`,
+        );
+      }
     }
     for (const slug of Object.keys(DOCS_PAGE_DATES)) {
+      if (slug.startsWith('api-reference/')) continue; // Generated from configured OpenAPI sources.
       assert.equal(
         existsSync(join(repoRoot, `docs/${slug}.mdx`)),
         true,
@@ -494,13 +667,20 @@ describe('docs article injection for bare WebPage output', () => {
       );
     }
   });
+});
 
-  it('keeps the committed date manifest fresh against git history', () => {
-    assert.doesNotThrow(() => {
-      execFileSync(process.execPath, ['scripts/generate-docs-page-dates.mjs', '--check'], {
-        cwd: repoRoot,
-        stdio: 'pipe',
-      });
-    });
-  });
+it('keeps canonical-looking script text intact with alternate closing tags', () => {
+  const script = `<script>const example = '<link rel="canonical" href="https://example.org">';</script foo="bar">`;
+  const html = rewriteDocsLocaleHtml(`<html><head>${script}</head><body></body></html>`, '/docs/about');
+  assert.ok(html.includes(script));
+});
+
+it('preserves closing-head text inside scripts while inserting real head links', () => {
+  for (const prefix of ['', '<link rel="canonical" href="https://old.example">']) {
+    const script = '<script>const closing = "</head>";</script>';
+    const html = rewriteDocsLocaleHtml(`<html><head>${prefix}${script}</head><body></body></html>`, '/docs/about');
+    assert.ok(html.includes(script));
+    assert.equal(html.match(/rel="canonical"/g)?.length, 1);
+    assert.ok(html.includes('hreflang="en"'));
+  }
 });

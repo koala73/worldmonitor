@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -211,10 +212,63 @@ describe('infrastructure-error vs miss (both routes must not collapse)', () => {
     }
   });
 
-  it('api/latest-brief returns 503 when Upstash fails (not 200 "composing")', async () => {
-    // Skipped when Clerk is not mockable in unit tests. We exercise
-    // the infra-error branch at the helper level above; the route
-    // wiring is covered by the 403/404 smoke tests.
+  it('api/latest-brief returns 503 when Upstash fails (not 200 "composing")', async (t) => {
+    const saved = {
+      issuer: process.env.CLERK_JWT_ISSUER_DOMAIN,
+      secret: process.env.BRIEF_URL_SIGNING_SECRET,
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    };
+    const issuer = 'https://clerk.test';
+    const kid = 'latest-brief-test-key';
+    const { privateKey, publicKey } = await generateKeyPair('RS256');
+    const jwk = { ...(await exportJWK(publicKey)), alg: 'RS256', kid, use: 'sig' };
+    const jwt = await new SignJWT({ plan: 'pro' })
+      .setProtectedHeader({ alg: 'RS256', kid })
+      .setIssuer(issuer)
+      .setSubject('user_test')
+      .setAudience('convex')
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    process.env.CLERK_JWT_ISSUER_DOMAIN = issuer;
+    process.env.BRIEF_URL_SIGNING_SECRET = 'test-secret-infra-err-path';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';
+    t.mock.method(globalThis, 'fetch', async (input) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url === `${issuer}/.well-known/jwks.json`) {
+        return Response.json({ keys: [jwk] });
+      }
+      return new Response('oops', { status: 500 });
+    });
+
+    const { __resetJwksForTests } = await import('../server/auth-session.ts');
+    __resetJwksForTests();
+    try {
+      const { default: handler } = await import('../api/latest-brief.ts');
+      const req = new Request('https://worldmonitor.app/api/latest-brief', {
+        method: 'GET',
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          origin: 'https://worldmonitor.app',
+        },
+      });
+      const res = await handler(req);
+      assert.equal(res.status, 503, 'Upstash outage must surface as 503, not composing');
+      assert.deepEqual(await res.json(), { error: 'service_unavailable' });
+    } finally {
+      __resetJwksForTests();
+      for (const [key, value] of [
+        ['CLERK_JWT_ISSUER_DOMAIN', saved.issuer],
+        ['BRIEF_URL_SIGNING_SECRET', saved.secret],
+        ['UPSTASH_REDIS_REST_URL', saved.url],
+        ['UPSTASH_REDIS_REST_TOKEN', saved.token],
+      ]) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
   });
 });
 

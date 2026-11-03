@@ -12,6 +12,8 @@ import {
   TRADE_FLOW_MATRIX_SIZE,
   TRADE_FLOW_RATE_LIMIT_RETRY_BUDGET,
 } from '../scripts/seed-trade-flows.mjs';
+import { HS4_CODES as bilateralHs4Codes } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
+import strategicProducts from '../scripts/shared/comtrade-strategic-products.json' with { type: 'json' };
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 
 const requiredStrategicProducts = [
@@ -105,10 +107,13 @@ describe('shared China strategic-product metadata', () => {
 
     for (const [label, source] of [
       ['trade seeder', tradeSeeder],
-      ['bilateral seeder', bilateralSeeder],
       ['trade API handler', handler],
     ]) {
       assert.match(source, /comtrade-strategic-products\.json/, `${label} must consume the shared metadata`);
+    }
+
+    for (const product of strategicProducts.products) {
+      if (product.bilateralHs4Code) assert.ok(bilateralHs4Codes.includes(product.bilateralHs4Code), `bilateral catalogue must retain ${product.bilateralHs4Code}`);
     }
 
     assert.doesNotMatch(tradeSeeder, /const\s+COMMODITIES\s*=\s*\[/, 'trade seeder must not carry an inline commodity list');

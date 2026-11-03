@@ -15,6 +15,8 @@
 // aggregate; if ALL passes fail or the deadline expires before any pass runs,
 // the result is the caller-provided base rate — NEVER a hardcoded 0.5.
 
+import { createHash } from 'node:crypto';
+
 const DEFAULT_STAGE_BUDGET_MS = 35_000; // mirrors createLiveJudgeModels (#5087)
 const DEFAULT_MAX_TOKENS = 300;
 const MARKET_PRICE_BUCKET = 5; // cache stays warm across small market moves
@@ -88,6 +90,14 @@ const PASSES = [
     },
   },
 ];
+
+// Identifies the three pass prompts (system text and user template source).
+// Each bets input snapshot records it (#9058), so a replay can tell whether
+// the prompts that produced the recorded passes have since changed.
+export const ENSEMBLE_PROMPT_DIGEST = createHash('sha256')
+  .update(JSON.stringify(PASSES.map((pass) => [pass.name, pass.system, pass.user.toString()])))
+  .digest('hex')
+  .slice(0, 16);
 
 export function createEnsembleCache() {
   return new Map();

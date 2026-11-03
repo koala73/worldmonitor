@@ -36,6 +36,14 @@ export const CANADA_ALERT_SOURCES = Object.freeze([
 
 const SEVERITY_RANK = Object.freeze({ Extreme: 0, Severe: 1, Moderate: 2, Minor: 3 });
 
+function sortAndCapAlerts(alerts) {
+  alerts.sort((a, b) => (
+    (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9)
+    || (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
+  ));
+  if (alerts.length > CANADA_ALERTS_MAX_PUBLISHED) alerts.length = CANADA_ALERTS_MAX_PUBLISHED;
+}
+
 export function buildCanadaAlertsUnion(inputs, nowMs = Date.now()) {
   const alerts = [];
   const seen = new Set();
@@ -58,6 +66,7 @@ export function buildCanadaAlertsUnion(inputs, nowMs = Date.now()) {
     if (!validSnapshot) continue;
     for (const alert of snapshot.alerts) {
       if (!alert || alert.province !== source.province || !alert.id) continue;
+      if (alert.expires && !(Date.parse(alert.expires) > nowMs)) continue;
       const identity = `${source.province}:${alert.id}`;
       if (seen.has(identity)) continue;
       seen.add(identity);
@@ -65,13 +74,7 @@ export function buildCanadaAlertsUnion(inputs, nowMs = Date.now()) {
     }
   }
 
-  alerts.sort((a, b) => (
-    (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9)
-    || (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
-  ));
-  if (alerts.length > CANADA_ALERTS_MAX_PUBLISHED) {
-    alerts.length = CANADA_ALERTS_MAX_PUBLISHED;
-  }
+  sortAndCapAlerts(alerts);
   const degraded = missingSources.length > 0 || staleSources.length > 0 || degradedSources.length > 0;
   return {
     alerts,
@@ -125,10 +128,24 @@ export async function rebuildCanadaAlertsUnion({
       ? existing.alerts
       : [];
     if (existingAlerts.length > 0) {
-      const extended = await extendTtl([CANADA_ALERTS_KEY], CANADA_ALERTS_TTL_SECONDS);
+      const retainedAlerts = existingAlerts.filter(alert => (
+        (!alert.expires || Date.parse(alert.expires) > nowMs)
+        && alert.province !== currentSource?.province
+      ));
+      if (currentSource) {
+        retainedAlerts.push(...result.alerts.filter(alert => alert.province === currentSource.province));
+      }
+      sortAndCapAlerts(retainedAlerts);
+      const identities = new Map(retainedAlerts.map(alert => [`${alert.province}:${alert.id}`, JSON.stringify(alert)]));
+      const changed = retainedAlerts.length !== existingAlerts.length
+        || existingAlerts.some(alert => identities.get(`${alert.province}:${alert.id}`) !== JSON.stringify(alert));
+      const extended = !changed && await extendTtl([CANADA_ALERTS_KEY], CANADA_ALERTS_TTL_SECONDS);
       if (extended === true) {
         preserved = true;
         publishedCount = existingAlerts.length;
+      } else if (changed) {
+        result.alerts = retainedAlerts;
+        publishedCount = retainedAlerts.length;
       }
     }
   }
@@ -143,7 +160,7 @@ export async function rebuildCanadaAlertsUnion({
         recordCount: publishedCount,
         sourceVersion: CANADA_ALERTS_SOURCE_VERSION,
         schemaVersion: 1,
-        state: publishedCount > 0 ? 'OK' : 'OK_ZERO',
+        state: result.sourceState === 'degraded' ? 'ERROR' : publishedCount > 0 ? 'OK' : 'OK_ZERO',
       },
     );
   }

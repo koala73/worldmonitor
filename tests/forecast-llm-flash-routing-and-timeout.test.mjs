@@ -22,7 +22,7 @@
 //   one call                         : >120s, never returned
 //
 // The FASTEST of those 12 was 17.1s — above the 15s clamp. So the primary
-// provider could not succeed even once: 0/12 at 15s. The groq fallback was
+// provider could not succeed even once: 0/12 at 15s. The fallback provider was
 // simultaneously 429-ing (free-tier 100k tokens/day, exhausted), hence
 // llm_no_response every run.
 //
@@ -67,7 +67,6 @@ function coverage(timeoutMs) {
 // controlled here, or the reservation silently computes against an empty chain.
 const ENV_KEYS = [
   'OPENROUTER_API_KEY',
-  'GROQ_API_KEY',
   'FORECAST_LLM_PROVIDER_ORDER',
   'FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER',
 ];
@@ -76,9 +75,9 @@ let savedEnv = {};
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
-  process.env.GROQ_API_KEY = 'test-groq-key';
-  // Production sets this to `openrouter,groq`. market_implications must NOT
-  // inherit it — that is the precedence this fix deliberately breaks.
+  // Production sets this to `openrouter,groq`, which resolves to the full
+  // OpenRouter chain. market_implications must NOT inherit it — that is the
+  // precedence this fix deliberately breaks.
   process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter,groq';
   delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
 });
@@ -143,11 +142,9 @@ test('Flash is pinned to fast backends — the timeout policy assumes routing th
   assert.equal(openrouter.extraBody?.reasoning?.enabled, false);
 });
 
-test('market_implications does not depend on groq', () => {
-  // Groq free tier caps at 100k tokens/day; this stage alone needs ~114k/day
-  // (4,749 tokens x 24 hourly runs), so the fallback 429s for most of the day.
-  // It is not a dependable fallback and reserving budget for it only raises the
-  // admission bar (=> more starvation) for a provider that returns 429 in 86ms.
+test('market_implications does not inherit the global fallback chain', () => {
+  // Admission reserves every runnable rung's timeout, so each fallback inherited
+  // from the global order raises the admission bar (=> more starvation).
   const providers = resolveForecastLlmProviders(getForecastLlmCallOptions('market_implications'));
   assert.deepEqual(providers.map((p) => p.name), ['openrouter']);
 });
@@ -157,10 +154,10 @@ test('the market_implications admission reservation covers exactly its own chain
   // upstream stage, and afterPublish is INSIDE the seed lock — so the tail cannot
   // simply be handed its own budget without risking a lock overrun.
   //
-  // Dropping groq is what keeps this affordable: the reservation is the sum of the
-  // resolved chain's timeouts + guard. Keeping groq would reserve 40+20+5 = 65s of
-  // run budget for a provider that 429s in 86ms, raising the admission bar (=> MORE
-  // starvation) to buy nothing.
+  // A paid-only chain is what keeps this affordable: the reservation is the sum of
+  // the resolved chain's timeouts + guard. Inheriting the global order's two free
+  // rungs would reserve 40+25+25+5 = 95s, raising the admission bar (=> MORE
+  // starvation).
   const reservation = getMarketImplicationsMinRunBudgetMs(getForecastLlmCallOptions('market_implications'));
   assert.equal(reservation, DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS + 5_000, 'openrouter attempt + guard only');
 });

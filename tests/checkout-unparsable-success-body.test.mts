@@ -18,7 +18,17 @@
  */
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
+// A successful web redirect holds the checkout guard until the page leaves
+// or a 15 s timer fires. Return the buyer from the back-forward cache after
+// each test so that timer never outlives it.
+type PageShowListener = (event: { persisted: boolean }) => void;
+const pageShowListeners = new Set<PageShowListener>();
+afterEach(() => {
+  for (const fn of [...pageShowListeners]) fn({ persisted: true });
+  pageShowListeners.clear();
+});
+
 import { build, type Plugin } from 'esbuild';
 
 interface CapturedReport {
@@ -75,8 +85,12 @@ function installBrowserGlobals(): void {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
-      addEventListener: () => {},
-      removeEventListener: () => {},
+      addEventListener: (type: string, fn: PageShowListener) => {
+        if (type === 'pageshow') pageShowListeners.add(fn);
+      },
+      removeEventListener: (type: string, fn: PageShowListener) => {
+        if (type === 'pageshow') pageShowListeners.delete(fn);
+      },
       setInterval: () => 1,
       clearInterval: () => {},
       location: {
@@ -146,12 +160,6 @@ const stubSources: Record<string, string> = {
       });
     }
   `,
-  'dodopayments-checkout': `
-    export const DodoPayments = {
-      Initialize() {},
-      Checkout: { isOpen: () => false, close: () => {}, open: () => {} },
-    };
-  `,
   './billing': `
     export const openBillingPortal = async () => {};
     export const prereserveBillingPortalTab = () => null;
@@ -209,11 +217,6 @@ const stubSources: Record<string, string> = {
   `,
   './checkout-plan-names': `
     export const resolvePlanDisplayName = () => 'Pro';
-  `,
-  './entitlement-watchdog': `
-    export function createEntitlementWatchdog() {
-      return { start: () => {}, stop: () => {}, isActive: () => false };
-    }
   `,
 };
 
@@ -513,5 +516,58 @@ describe('create-checkout provider cooldown', () => {
     );
     assert.equal(globalThis.__xvHarness.fetchCalls, 1, 'cooldown click must stay local');
     assert.match(globalThis.__xvHarness.toastMessages.at(-1) ?? '', /wait 10 seconds/i);
+  });
+
+  it('honours the idempotency conflict cooldown without calling the buyer rate limited', async () => {
+    // The transport replays with the SAME Idempotency-Key, so a retry that
+    // races a still-running first attempt gets 409 `idempotency_conflict` with
+    // `Retry-After: 2`. That wait was previously discarded: the classifier
+    // populated retryAfterSeconds only for 429, so the caller had nothing to
+    // set a cooldown from and an immediate re-click went back into the same
+    // lock. The Cloudflare 52x widening makes the race reachable, since those
+    // statuses mean the origin DID receive the request.
+    resetHarness(
+      JSON.stringify({
+        error: 'idempotency_conflict',
+        message: 'A request with this Idempotency-Key is still being processed. Retry shortly.',
+      }),
+      { 'retry-after': '2' },
+      { id: 'user_1', email: 'pro@example.com' },
+      409,
+    );
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(
+      await checkout.startCheckout('prod_monthly', undefined, { fallbackToPricingPage: false }),
+      false,
+    );
+    assert.equal(globalThis.__xvHarness.fetchCalls, 1);
+
+    const report = soleReport();
+    assert.equal(report.tags?.code, 'service_unavailable');
+    assert.equal(report.extra?.retryAfterSeconds, 2, 'the wait must survive classification');
+
+    // Copy stays honest: a conflict is not a rate limit, and the buyer is not
+    // told the product is unavailable either.
+    const toast = globalThis.__xvHarness.toastMessages.at(-1) ?? '';
+    assert.doesNotMatch(toast, /rate limited/i);
+    assert.doesNotMatch(toast, /isn't available/i);
+
+    // The cooldown holds: a second click is absorbed locally rather than
+    // hitting the edge and drawing the same conflict again.
+    assert.equal(
+      await checkout.startCheckout('prod_monthly', undefined, { fallbackToPricingPage: false }),
+      false,
+    );
+    assert.equal(globalThis.__xvHarness.fetchCalls, 1, 'cooldown click must stay local');
+
+    // And the blocked click must not acquire rate-limit wording on the way out.
+    // The pre-flight gate replays a synthesized error to explain the wait, and
+    // it synthesized a 429 unconditionally — so honouring the conflict's
+    // Retry-After would have reintroduced the false message one click later,
+    // in the one place the first assertion above cannot see.
+    const blockedToast = globalThis.__xvHarness.toastMessages.at(-1) ?? '';
+    assert.doesNotMatch(blockedToast, /rate limited/i);
+    assert.match(blockedToast, /temporarily unavailable/i);
   });
 });

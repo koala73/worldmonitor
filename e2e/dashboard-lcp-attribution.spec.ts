@@ -249,6 +249,20 @@ test.describe('dashboard LCP attribution debug', () => {
     await installLcpDebug(page);
   });
 
+  test('reports fatal constructor failures to global error monitors', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('worldmonitor-variant', 'full');
+      localStorage.setItem('worldmonitor-panel-layout-variant', 'full');
+      // A malformed saved panel reproduces a failure before App.init() starts.
+      localStorage.setItem('worldmonitor-panels', JSON.stringify({ 'live-news': null }));
+    });
+    const failure = page.waitForEvent('pageerror', (error) => error.message.includes("reading 'enabled'"));
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+    expect((await failure).name).toBe('TypeError');
+    await expect(page.locator('.skeleton-shell')).toBeVisible();
+    await expect(page.locator('#panelsGrid .panel')).toHaveCount(0);
+  });
+
   test('captures final LCP candidate and boot marks on desktop', async ({ page }) => {
     await page.goto('/dashboard?wm_lcp_debug=1', { waitUntil: 'domcontentloaded' });
     const snapshot = await expectLcpDebug(page);

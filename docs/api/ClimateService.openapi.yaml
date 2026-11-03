@@ -13,7 +13,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListClimateAnomalies
-            description: ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
+            description: ListClimateAnomalies returns 7-day temperature and precipitation departures from 1991-2020 monthly normals per climate zone, using Open-Meteo ERA5 data.
             operationId: ListClimateAnomalies
             parameters:
                 - name: page_size
@@ -165,7 +165,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListClimateDisasters
-            description: ListClimateDisasters retrieves climate-relevant disaster events from seeded data.
+            description: ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, EONET and FIRMS, up to 100 per page.
             operationId: ListClimateDisasters
             parameters:
                 - name: page_size
@@ -296,7 +296,7 @@ paths:
             tags:
                 - ClimateService
             summary: GetCo2Monitoring
-            description: GetCo2Monitoring retrieves seeded NOAA greenhouse gas monitoring data.
+            description: GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, refreshed every 3 days.
             operationId: GetCo2Monitoring
             parameters:
                 - name: jmespath
@@ -409,7 +409,7 @@ paths:
             tags:
                 - ClimateService
             summary: GetOceanIceData
-            description: GetOceanIceData retrieves seeded Arctic sea ice, sea level, and ocean heat indicators.
+            description: GetOceanIceData returns NSIDC Arctic sea ice extent and anomaly with a 12-month trend, NASA sea level rise, NOAA 0-700m ocean heat content and SST anomaly.
             operationId: GetOceanIceData
             parameters:
                 - name: jmespath
@@ -525,7 +525,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListAirQualityData
-            description: ListAirQualityData retrieves recent PM2.5 station data from the shared air-quality seed.
+            description: ListAirQualityData returns PM2.5 station readings from the last two hours from OpenAQ, plus WAQI when configured, with a US EPA AQI and risk level each.
             operationId: ListAirQualityData
             parameters:
                 - name: jmespath
@@ -1036,7 +1036,7 @@ components:
                     description: Unique event identifier.
                 type:
                     type: string
-                    description: 'Disaster type: flood, cyclone, drought, heatwave, wildfire.'
+                    description: 'Disaster type: flood, cyclone, drought, heatwave, wildfire, volcano.'
                 name:
                     type: string
                     description: Human-readable event name.
@@ -1070,7 +1070,7 @@ components:
                     description: Affected population when available.
                 source:
                     type: string
-                    description: 'Source system: GDACS, ReliefWeb, NASA FIRMS.'
+                    description: 'Source system: GDACS, ReliefWeb, NASA FIRMS, EONET.'
                 sourceUrl:
                     type: string
                     description: Source URL for drill-down.

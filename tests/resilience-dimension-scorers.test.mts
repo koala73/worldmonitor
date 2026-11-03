@@ -242,6 +242,23 @@ describe('resilience dimension scorers', () => {
     assert.equal(score.imputedWeight, 0, 'NaN metrics must not be counted as imputed either');
   });
 
+  it('scoreMacroFiscal traces each IMF metric with its own year, not the inflation year', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:imf:macro:v2') {
+        return { countries: { EC: {
+          inflationPct: 2, govRevenuePct: 35, currentAccountPct: 1.5, year: 2026,
+          periods: { inflationPct: 2026, govRevenuePct: 2025, currentAccountPct: 2024 },
+        } } };
+      }
+      return null;
+    };
+    const trace = createIndicatorTraceCollector();
+    await scoreMacroFiscal('EC', reader, { trace });
+    const rows = trace.readDimension('macroFiscal')?.contributions ?? [];
+    assert.equal(rows.find((r) => r.indicatorId === 'govRevenuePct')?.sourceYear, 2025);
+    assert.equal(rows.find((r) => r.indicatorId === 'currentAccountPct')?.sourceYear, 2024);
+  });
+
   it('roundScore clamps finite scores and maps non-finite values to a safe numeric floor', () => {
     assert.equal(roundScore(12.6), 13, 'finite values still round normally');
     assert.equal(roundScore(-1), 0, 'finite low values clamp to 0');
@@ -1967,6 +1984,43 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       assert.equal(score.imputedWeight, 1);
       assert.equal(score.score, 50);
     });
+
+    for (const reason of ['missing WB imports', 'no fund AUM matched']) {
+      it(`Qatar remains imputed when an expected fund has ${reason}`, async () => {
+        const reader = async (_key: string) => ({
+          countries: {},
+          summary: { countryStatuses: [{ country: 'QA', status: 'missing', expected: 1, matched: 0, reason }] },
+        });
+        const score = await scoreSovereignFiscalBuffer('qa', reader);
+        assert.equal(score.score, IMPUTE.recoverySovereignFiscalBuffer.score);
+        assert.equal(score.coverage, IMPUTE.recoverySovereignFiscalBuffer.certaintyCoverage);
+        assert.equal(score.observedWeight, 0);
+        assert.equal(score.imputedWeight, 1);
+        assert.equal(score.imputationClass, 'unmonitored');
+        const outsideScope = await scoreSovereignFiscalBuffer('US', reader);
+        assert.equal(outsideScope.imputationClass, 'not-applicable');
+        assert.equal(outsideScope.imputedWeight, 0);
+      });
+    }
+
+    for (const { label, expected } of [
+      { label: 'fractional', expected: 0.5 },
+      { label: 'JSON overflow', expected: JSON.parse('1e400') },
+      { label: 'unsafe integer', expected: Number.MAX_SAFE_INTEGER + 1 },
+    ]) {
+      it(`invalid ${label} expected count retains the not-applicable fallback`, async () => {
+        const reader = async (_key: string) => ({
+          countries: {},
+          summary: { countryStatuses: [{ country: 'QA', expected }] },
+        });
+        const score = await scoreSovereignFiscalBuffer('QA', reader);
+        assert.equal(score.score, 0);
+        assert.equal(score.coverage, 0);
+        assert.equal(score.observedWeight, 0);
+        assert.equal(score.imputedWeight, 0);
+        assert.equal(score.imputationClass, 'not-applicable');
+      });
+    }
 
     it('path 3: country not in manifest → score=0, coverage=0 (dim-not-applicable, plan 2026-04-26-001 §U3)', async () => {
       // Plan 2026-04-26-001 §U3 reframed Path 3 from "substantive

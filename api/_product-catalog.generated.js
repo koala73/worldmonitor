@@ -41,7 +41,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 500,
-      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Personal license, 1 named user"
+      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Desktop key for the desktop app (2 keys), Personal license, 1 named user"
     },
     {
       "planKey": "pro_annual",
@@ -71,7 +71,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 2500,
-      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included, 1 named user — not a shared login"
+      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Desktop key for the desktop app (3 keys), Priority support, Commercial license included, 1 named user — not a shared login"
     },
     {
       "planKey": "pro_business_annual",
@@ -101,7 +101,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 1000,
-      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial license — for your organization"
+      "description": "Full Pro dashboard included (1 named user), REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial use — internal only, not customer-facing"
     },
     {
       "planKey": "api_starter_annual",
@@ -131,7 +131,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
+      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial use — in your customer-facing products"
     },
     {
       "planKey": "api_business_annual",
@@ -160,15 +160,36 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
-      "dashboardAiCallsPerDay": null,
+      "dashboardAiCallsPerDay": 25000,
       "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
   ],
   "heroProofStats": {
-    "mapLayers": 57,
-    "feeds": 461,
-    "providers": 747,
+    "mapLayers": 59,
+    "feeds": 468,
+    "providers": 829,
     "alertOrigins": 5
+  },
+  "depthProofStats": {
+    "mapLayers": 59,
+    "feeds": 468,
+    "providers": 829,
+    "alertOrigins": 5,
+    "chokepoints": 13,
+    "instabilityCountries": 31,
+    "resilienceRanked": 169,
+    "submarineCables": 98,
+    "pipelinesLng": 159,
+    "aiDatacenters": 313,
+    "hotspots": 29,
+    "stockExchanges": 29,
+    "mcpTools": 100,
+    "commands": 623,
+    "languages": 28
+  },
+  "resilienceCoverage": {
+    "ranked": 169,
+    "universe": 196
   }
 };
 
@@ -238,6 +259,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 0,
       "dashboardAiCallsPerDay": 0,
       "mcpBurstRequestsPerMinute": 0,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Get Started",
@@ -256,7 +279,8 @@ export const TIER_CONFIG = {
       "Physical metals divergence, minerals concentration & sovereign debt data",
       "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-      "Custom widgets & 10 dashboards (vs 3)"
+      "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)"
     ],
     "highlightFeatures": [
       "Personal license",
@@ -268,6 +292,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 50,
       "dashboardAiCallsPerDay": 500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": true
@@ -282,6 +308,7 @@ export const TIER_CONFIG = {
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
+      "Desktop key for the desktop app (3 keys)",
       "Priority support"
     ],
     "highlightFeatures": [
@@ -294,6 +321,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 250,
       "dashboardAiCallsPerDay": 2500,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 7500,
+      "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": false
@@ -303,6 +332,7 @@ export const TIER_CONFIG = {
     "localeKey": "api",
     "description": "Build internal tools on live intelligence data",
     "features": [
+      "Full Pro dashboard included (1 named user)",
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "License / API key included",
       "Real-time data streams",
@@ -311,7 +341,7 @@ export const TIER_CONFIG = {
       "Webhook notifications"
     ],
     "highlightFeatures": [
-      "Commercial license — for your organization"
+      "Commercial use — internal only, not customer-facing"
     ],
     "planLimits": {
       "apiRequestsPerDay": 1000,
@@ -319,6 +349,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 1000,
       "dashboardAiCallsPerDay": 1000,
       "mcpBurstRequestsPerMinute": 60,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
@@ -329,14 +361,14 @@ export const TIER_CONFIG = {
     "description": "Launch your own product on WorldMonitor data",
     "features": [
       "Everything in API Starter",
-      "Redistribution rights — embed our data in what you sell",
+      "R1–R3 redistribution rights for customer-facing products",
       "300 requests/minute",
       "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
       "Priority support"
     ],
     "highlightFeatures": [
-      "Commercial license — for your customers"
+      "Commercial use — in your customer-facing products"
     ],
     "planLimits": {
       "apiRequestsPerDay": 10000,
@@ -344,6 +376,8 @@ export const TIER_CONFIG = {
       "mcpCallsPerDay": 10000,
       "dashboardAiCallsPerDay": 10000,
       "mcpBurstRequestsPerMinute": 300,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
@@ -366,11 +400,13 @@ export const TIER_CONFIG = {
       "Fully white-labeled — with or without revenue sharing"
     ],
     "planLimits": {
-      "apiRequestsPerDay": null,
+      "apiRequestsPerDay": 100000,
       "apiBurstRequestsPerMinute": 1000,
-      "mcpCallsPerDay": null,
-      "dashboardAiCallsPerDay": null,
+      "mcpCallsPerDay": 25000,
+      "dashboardAiCallsPerDay": 25000,
       "mcpBurstRequestsPerMinute": 1000,
+      "desktopKeyRequestsPerDay": 0,
+      "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Contact Sales",

@@ -5,17 +5,37 @@
  * text/markdown (or a heading-led non-HTML body). Static files under public/
  * win. Everything else is generated from the sibling URL.
  *
+ * The sibling is asked for text/markdown first, so a prerendered page comes
+ * back as Vercel's own markdown conversion instead of a scrape of its HTML.
+ * Same-origin redirects are followed (every content URL here 308s /x to /x/)
+ * and the twin inherits the final target's status, so an invented path is a
+ * 404 rather than an indexable stub. The canonical names the final HTML page,
+ * never the .md twin and never an /api/ endpoint, and only a response that
+ * carries the real document is left indexable.
+ *
  * Loop-prevention: sibling fetches send x-wm-md-twin so a .md handler never
- * fetches another .md handler.
+ * fetches another .md handler, and a redirect onto a .md path is not followed.
+ *
+ * Caller identity: a sibling fetched over HTTP arrives from the platform's own
+ * egress address with no caller headers, so every per-IP limiter behind it
+ * charges one shared bucket instead of the caller. API twins therefore never
+ * take that hop: the domain gateway dispatches the sibling in-process (see
+ * server/gateway.ts), and the HTTP hop is kept for site pages, which must not
+ * resolve to an API function (isPageTwinSibling).
  */
 
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from './_cors.js';
 import { appendDeprecationPolicyLinkToRecord, DEPRECATION_POLICY_LINK } from '../server/_shared/deprecation-policy';
+import { declaredHtmlCanonical, pageCanonicalUrl } from '../shared/page-canonical.js';
 
 export const MD_TWIN_LOOP_HEADER = 'x-wm-md-twin';
-const MAX_TWIN_CHARS = 80_000;
-const MAX_TWIN_BYTES = 80_000;
+const MAX_TWIN_CHARS = 512_000;
+export const MAX_TWIN_BYTES = 512_000;
+const MAX_SIBLING_REDIRECTS = 3;
+// Every response that is not the sibling's own document carries these: a
+// stub must never be cached as if it were the page, nor indexed as one.
+const NOT_A_DOCUMENT = { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } as const;
 const SIBLING_FETCH_TIMEOUT_MS = 8_000;
 const SIBLING_USER_AGENT = 'WorldMonitor-MarkdownTwin/1.0';
 const FORWARDED_RESPONSE_HEADERS = [
@@ -28,9 +48,15 @@ const FORWARDED_RESPONSE_HEADERS = [
   'x-ratelimit-reset',
 ] as const;
 
+// Control characters and whitespace are rejected outright: the URL parser
+// strips tab/CR/LF, so a path like "/<TAB>/host/x" would otherwise resolve to
+// the protocol-relative "//host/x" and leave the origin.
+const UNSAFE_PATH_CHARS = /[\x00-\x20\x7f]/;
+
 export function isMarkdownTwinPath(pathname: string): boolean {
   return (
     pathname.startsWith('/') &&
+    !UNSAFE_PATH_CHARS.test(pathname) &&
     pathname.endsWith('.md') &&
     pathname.length > 4 &&
     !pathname.includes('..') &&
@@ -67,32 +93,134 @@ export function resolveMarkdownTwinPath(req: Request): string | null {
   return null;
 }
 
+/**
+ * Site paths that vercel.json rewrites onto an API function. A page twin
+ * fetches its sibling over HTTP, which would charge that function's per-IP
+ * limiter to the platform egress address instead of the caller. Pinned against
+ * vercel.json by tests/gateway-markdown-twin-routing.test.mts.
+ */
+const API_REWRITE_PAGE_PATHS = new Set([
+  '/docs/mcp',
+  '/mcp',
+  '/a2a',
+  '/ask',
+  '/agent/auth',
+  '/oauth/token',
+  '/oauth/register',
+  '/oauth/authorize',
+  '/oauth/authorize-pro',
+  '/.well-known/oauth-protected-resource',
+  '/.well-known/oauth-authorization-server',
+  '/.well-known/mcp',
+  '/.well-known/mcp.json',
+  '/.well-known/http-message-signatures-directory',
+]);
+const API_REWRITE_PAGE_PREFIXES = [
+  '/.well-known/oauth-protected-resource/',
+  '/.well-known/oauth-authorization-server/',
+] as const;
+
+function namesApiFunction(path: string): boolean {
+  if (path === '/api' || path.startsWith('/api/')) return true;
+  let end = path.length;
+  while (end > 1 && path.charCodeAt(end - 1) === 47) end -= 1;
+  if (API_REWRITE_PAGE_PATHS.has(path.slice(0, end))) return true;
+  return API_REWRITE_PAGE_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+const MAX_SIBLING_DECODE_LAYERS = 4;
+
+/**
+ * True when a page twin may fetch this sibling over HTTP: a site page, never an
+ * API function. Checked at every percent-decoding layer, each both as written
+ * and with dot segments resolved the way the URL parser resolves them, so
+ * neither `/%61pi/...` nor `/x/%2e%2e/api/...` (or a further-encoded form an
+ * upstream might decode once more) reaches a function this check let through.
+ * A path that is still changing after the layer budget is refused.
+ */
+export function isPageTwinSibling(pathname: string): boolean {
+  let layer = pathname.toLowerCase();
+  for (let depth = 0; depth < MAX_SIBLING_DECODE_LAYERS; depth += 1) {
+    let resolved: string;
+    let decoded: string;
+    try {
+      resolved = new URL(layer, 'https://worldmonitor.invalid').pathname.toLowerCase();
+      decoded = decodeURIComponent(layer);
+    } catch {
+      return false;
+    }
+    if (namesApiFunction(layer) || namesApiFunction(resolved)) return false;
+    if (decoded === layer) return true;
+    layer = decoded;
+  }
+  return false;
+}
+
+export interface MarkdownTwinOptions {
+  /**
+   * CORS headers for every response, replacing the public `*` default. API
+   * twins pass the caller's own gateway CORS so a twin is no more readable
+   * cross-origin than its direct route.
+   */
+  corsHeaders?: Record<string, string>;
+  /**
+   * Checked against the first sibling and every redirect target; a refused
+   * path answers 404 without being fetched.
+   */
+  isAllowedSibling?: (pathname: string) => boolean;
+  /**
+   * API twins: a successful twin carries the sibling's own Cache-Control, or
+   * `no-store` when the sibling forbids shared caching, instead of the page
+   * default. Page twins leave it off; site pages answer the platform's
+   * `private, no-cache` and their twins stay `public, max-age=3600`.
+   */
+  inheritSiblingCacheControl?: boolean;
+}
+
+const HTML_ENTITIES: Record<string, string> = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+};
+
 function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&#(\d+);/g, (_, code) => {
-      const n = Number(code);
-      return Number.isFinite(n) && n >= 32 ? String.fromCharCode(n) : '';
-    });
+  return value.replace(/&(nbsp|amp|lt|gt|quot|apos|#(x[\da-f]+|\d+));/gi, (_, entity: string, code: string | undefined) => {
+    if (code === undefined) return HTML_ENTITIES[entity.toLowerCase()]!;
+    // `fromCodePoint`, not `fromCharCode`: the latter coerces with ToUint16, so
+    // a code point above 0xFFFF wraps back under the `>= 32` guard after passing
+    // it — `&#65596;` yielded a literal `<` and `&#65536;` a NUL. It also
+    // truncates astral characters, decoding `&#128512;` to a private-use glyph
+    // instead of the emoji. Same reasoning as src/utils/html-entities.ts.
+    const n = /^x/i.test(code) ? Number.parseInt(code.slice(1), 16) : Number(code);
+    const decodable = Number.isInteger(n) && n >= 32 && n <= 0x10ffff
+      && !(n >= 0xd800 && n <= 0xdfff);
+    return decodable ? String.fromCodePoint(n) : '';
+  });
 }
 
 function stripTags(value: string): string {
-  return decodeHtmlEntities(value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function withoutTrackingParams(href: string): string {
+  const hashIndex = href.indexOf('#');
+  const pathAndQuery = hashIndex < 0 ? href : href.slice(0, hashIndex);
+  const hash = hashIndex < 0 ? '' : href.slice(hashIndex);
+  const queryIndex = pathAndQuery.indexOf('?');
+  if (queryIndex < 0) return href;
+  // Preserve functional parameters and their URL encoding.
+  const params = pathAndQuery.slice(queryIndex + 1).split('&')
+    .filter(param => !/^utm_/i.test(new URLSearchParams(param).keys().next().value ?? ''));
+  const query = params.join('&');
+  return `${pathAndQuery.slice(0, queryIndex)}${query ? `?${query}` : ''}${hash}`;
 }
 
 export function htmlToMarkdown(html: string, fallbackTitle: string): string {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const title = stripTags(titleMatch?.[1] ?? '') || fallbackTitle;
+  const title = decodeHtmlEntities(stripTags(titleMatch?.[1] ?? '')) || fallbackTitle;
 
   const body = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ');
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
+    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ');
 
   const main = body.match(/<main\b[\s\S]*?<\/main>/i)?.[0] ?? body;
 
@@ -107,9 +235,16 @@ export function htmlToMarkdown(html: string, fallbackTitle: string): string {
       /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
       (_m, href: string, inner: string) => {
         const label = stripTags(inner) || href;
-        return `[${label}](${href})`;
+        // Parse decoded separators, then protect the URL from tag stripping and
+        // the document's final entity pass so each reference is decoded once.
+        const target = withoutTrackingParams(decodeHtmlEntities(href))
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const link = `[${label}](${target})`;
+        return /<div\b/i.test(inner) ? `\n\n${link}\n\n` : link;
       },
     )
+    .replace(/<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi,
+      (_m, label: string, value: string) => `\n- ${stripTags(label)}: ${stripTags(value)}\n`)
     .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_m, inner: string) => `\n- ${stripTags(inner)}`)
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n\n')
@@ -132,28 +267,105 @@ export function htmlToMarkdown(html: string, fallbackTitle: string): string {
 function jsonToMarkdown(raw: string, heading: string): string {
   let pretty = raw.trim();
   try {
-    pretty = JSON.stringify(JSON.parse(raw) as unknown, null, 2);
+    const reserialised = JSON.stringify(JSON.parse(raw) as unknown, null, 2);
+    // Indenting can multiply a body that is already at the cap, so keep the
+    // expanded form only when it fits and otherwise fence the raw text.
+    if (reserialised.length <= MAX_TWIN_CHARS) pretty = reserialised;
   } catch {
     // Keep the original text when the body is not JSON.
   }
   return `# ${heading}\n\n\`\`\`json\n${pretty}\n\`\`\``.slice(0, MAX_TWIN_CHARS);
 }
 
-function markdownHeaders(req: Request, markdownPath: string, extra: Record<string, string> = {}): Record<string, string> {
-  const origin = new URL(req.url).origin;
+const FRONT_MATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/;
+const FRONT_MATTER_KEY = /^([A-Za-z0-9_.-]+):(?:\s|$)/;
+
+/**
+ * `---` opens a thematic break as well as a front-matter block, so a document
+ * that merely starts with a horizontal rule must not have its prose spliced
+ * into metadata. Require the captured block to read as a flat YAML mapping.
+ */
+function frontMatterOf(markdown: string): { block: string; lines: string[] } | null {
+  const match = markdown.match(FRONT_MATTER);
+  if (!match) return null;
+  const lines = (match[1] ?? '').split('\n');
+  const isMapping =
+    lines.some((line) => FRONT_MATTER_KEY.test(line)) &&
+    lines.every((line) => line.trim() === '' || line.startsWith(' ') || FRONT_MATTER_KEY.test(line));
+  return isMapping ? { block: match[0], lines } : null;
+}
+
+/**
+ * Re-emit `key: value` with the value quoted. Vercel's generated front-matter
+ * leaves values bare, and its descriptions routinely contain ": " (live
+ * 2026-09-08 on /dashboard and /chokepoints/strait-of-hormuz/), which a plain
+ * YAML scalar cannot hold — so copying the block through unchanged would ship
+ * a metadata block no consumer can parse, canonical included.
+ */
+function quoteFrontMatterValue(line: string): string {
+  const entry = line.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+  if (!entry) return line;
+  const [, key, value = ''] = entry;
+  if (value === '' || /^(["']).*\1$/.test(value)) return line;
+  return `${key}: ${JSON.stringify(value)}`;
+}
+
+function withHeading(markdown: string, heading: string): string {
+  if (/^# /m.test(markdown)) return markdown;
+  // Asking the sibling for markdown makes a front-matter-led body the common
+  // case, and a heading prepended above the opening `---` would swallow the
+  // whole block into the document text.
+  const block = frontMatterOf(markdown)?.block;
+  return block
+    ? `${block}\n# ${heading}\n\n${markdown.slice(block.length)}`
+    : `# ${heading}\n\n${markdown}`;
+}
+
+function withMarkdownMetadata(markdown: string, canonical: string | null, fallbackTitle: string): string {
+  const frontMatter = frontMatterOf(markdown);
+  if (frontMatter) {
+    if (!canonical) return markdown;
+    const lines = frontMatter.lines
+      .filter((line) => !line.startsWith('canonical:'))
+      .map(quoteFrontMatterValue);
+    lines.push(`canonical: ${JSON.stringify(canonical)}`);
+    return `---\n${lines.join('\n')}\n---\n${markdown.slice(frontMatter.block.length)}`;
+  }
+  const title = markdown.match(/^# (.+)$/m)?.[1] ?? fallbackTitle;
+  const canonicalLine = canonical ? `\ncanonical: ${JSON.stringify(canonical)}` : '';
+  return `---\ntitle: ${JSON.stringify(title)}${canonicalLine}\n---\n\n${markdown}`;
+}
+
+function markdownHeadersFor(
+  canonical: string | null,
+  extra: Record<string, string>,
+  corsHeaders: Record<string, string>,
+): Record<string, string> {
+  const { Vary: corsVary, ...cors } = corsHeaders;
   return {
     'Content-Type': 'text/markdown; charset=utf-8',
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'public, max-age=3600',
-    // The loop-guard header is the only request header that changes the twin
-    // response (loop requests get a 404 stub). CORS is `*` (no Origin echo),
-    // the outbound Accept is fixed, and auth/cookie/UA are never forwarded, so
-    // no other variance needs declaring.
-    Vary: MD_TWIN_LOOP_HEADER,
-    ...getPublicCorsHeaders('GET, HEAD, OPTIONS'),
-    Link: `<${origin}${markdownPath}>; rel="canonical", ${DEPRECATION_POLICY_LINK}`,
+    // The loop-guard header changes the twin response (loop requests get a
+    // 404 stub), and so does Origin when the caller's CORS is echoed. The
+    // outbound Accept is fixed and auth/cookie/UA are never forwarded, so no
+    // other variance needs declaring.
+    Vary: corsVary ? `${corsVary}, ${MD_TWIN_LOOP_HEADER}` : MD_TWIN_LOOP_HEADER,
+    ...cors,
+    Link: canonical ? `<${canonical}>; rel="canonical", ${DEPRECATION_POLICY_LINK}` : DEPRECATION_POLICY_LINK,
     ...extra,
   };
+}
+
+/**
+ * The Cache-Control an API twin inherits from a successful sibling: `no-store`
+ * when the sibling forbids shared caching, its own value otherwise (so a 60 s
+ * tier is not stretched to an hour), or nothing to keep the twin default.
+ */
+function inheritedCacheControl(response: Response): Record<string, string> {
+  const value = response.headers.get('cache-control');
+  if (!value) return {};
+  return { 'Cache-Control': /\b(?:no-store|private|no-cache)\b/i.test(value) ? 'no-store' : value };
 }
 
 function headingFromPath(pathname: string): string {
@@ -208,6 +420,33 @@ async function readSiblingBody(response: Response): Promise<string> {
   return new TextDecoder().decode(body);
 }
 
+/**
+ * The canonical the sibling HTML page declares for itself. The twin repeats it
+ * verbatim (via pageCanonicalUrl) instead of guessing from the fetched path:
+ * static directory pages answer 200 at both /x and /x/, so the path alone
+ * cannot say which one the page names. Best-effort: any failure falls back to
+ * the page's own URL.
+ */
+async function fetchDeclaredCanonical(
+  siblingUrl: URL,
+  outbound: Headers,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch,
+): Promise<string | null> {
+  try {
+    const headers = new Headers(outbound);
+    headers.set('accept', 'text/html');
+    const res = await fetchImpl(siblingUrl, { method: 'GET', headers, redirect: 'manual', signal });
+    if (!res.ok || !/html/i.test(res.headers.get('content-type') ?? '')) {
+      void res.body?.cancel().catch(() => {});
+      return null;
+    }
+    return declaredHtmlCanonical(await readSiblingBody(res));
+  } catch {
+    return null;
+  }
+}
+
 function forwardedResponseHeaders(response: Response): Record<string, string> {
   const headers: Record<string, string> = {};
   for (const name of FORWARDED_RESPONSE_HEADERS) {
@@ -221,8 +460,12 @@ export async function buildMarkdownTwinResponse(
   req: Request,
   markdownPath: string,
   fetchImpl: typeof fetch = globalThis.fetch,
+  options: MarkdownTwinOptions = {},
 ): Promise<Response> {
-  const corsHeaders = getPublicCorsHeaders('GET, HEAD, OPTIONS');
+  const corsHeaders = { ...(options.corsHeaders ?? getPublicCorsHeaders('GET, HEAD, OPTIONS')) };
+  const markdownHeaders = (canonical: string | null, extra: Record<string, string> = {}) =>
+    markdownHeadersFor(canonical, extra, corsHeaders);
+  const isAllowedSibling = options.isAllowedSibling ?? (() => true);
 
   if (req.method === 'OPTIONS') {
     appendDeprecationPolicyLinkToRecord(corsHeaders);
@@ -232,85 +475,155 @@ export async function buildMarkdownTwinResponse(
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     return new Response('# Method not allowed\n', {
       status: 405,
-      headers: markdownHeaders(req, markdownPath, { Allow: 'GET, HEAD, OPTIONS' }),
+      headers: markdownHeaders(null, { Allow: 'GET, HEAD, OPTIONS', 'X-Robots-Tag': 'noindex' }),
     });
   }
 
   if (req.headers.get(MD_TWIN_LOOP_HEADER) === '1') {
     return new Response('# Not found\n', {
       status: 404,
-      headers: markdownHeaders(req, markdownPath, { 'Cache-Control': 'no-store' }),
+      headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
     });
   }
 
   const sibling = siblingPathFromMarkdown(markdownPath);
-  if (!sibling) {
+  if (!sibling || !isAllowedSibling(sibling)) {
     return new Response('# Not found\n', {
       status: 404,
-      headers: markdownHeaders(req, markdownPath, { 'Cache-Control': 'no-store' }),
-    });
-  }
-
-  const siblingUrl = new URL(sibling, req.url);
-  siblingUrl.search = new URL(req.url).search;
-
-  const outbound = new Headers();
-  outbound.set('user-agent', SIBLING_USER_AGENT);
-  outbound.set(MD_TWIN_LOOP_HEADER, '1');
-  outbound.set('accept', 'text/html, application/json;q=0.9, text/plain;q=0.8, */*;q=0.1');
-
-  let siblingRes: Response;
-  try {
-    siblingRes = await fetchImpl(siblingUrl, {
-      method: req.method,
-      headers: outbound,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(SIBLING_FETCH_TIMEOUT_MS),
-    });
-  } catch {
-    return new Response(`# ${headingFromPath(sibling)}\n\nThe sibling page at \`${sibling}\` could not be fetched.\n`, {
-      status: 502,
-      headers: markdownHeaders(req, markdownPath, { 'Cache-Control': 'no-store' }),
-    });
-  }
-
-  const location = siblingRes.headers.get('location');
-  if (siblingRes.status >= 300 && siblingRes.status < 400 && location) {
-    const body = `# ${headingFromPath(sibling)}\n\nThis resource redirects to [${location}](${location}).\n`;
-    return new Response(req.method === 'HEAD' ? null : body, {
-      status: 200,
-      headers: markdownHeaders(req, markdownPath),
-    });
-  }
-
-  const isFailure = !siblingRes.ok;
-  const siblingStatus = isFailure ? siblingRes.status : 200;
-  const responseHeaders: Record<string, string> = {
-    ...(isFailure ? { 'Cache-Control': 'no-store' } : {}),
-    ...forwardedResponseHeaders(siblingRes),
-  };
-
-  if (req.method === 'HEAD') {
-    return new Response(null, {
-      status: siblingStatus,
-      headers: markdownHeaders(req, markdownPath, responseHeaders),
-    });
-  }
-
-  if (siblingStatus === 304) {
-    return new Response(null, {
-      status: siblingStatus,
-      headers: markdownHeaders(req, markdownPath, responseHeaders),
+      headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
     });
   }
 
   const heading = headingFromPath(sibling);
-  let markdown: string;
-  try {
-    const contentType = siblingRes.headers.get('content-type') ?? '';
-    const raw = await readSiblingBody(siblingRes);
+  const requestUrl = new URL(req.url);
+  let siblingUrl = new URL(sibling, requestUrl);
+  // The sibling is always a page on this site. Checked on the resolved URL,
+  // not the path string, so no parser quirk can turn it into another host.
+  if (siblingUrl.origin !== requestUrl.origin) {
+    return new Response('# Not found\n', {
+      status: 404,
+      headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
+    });
+  }
+  // Checked again on the parsed URL, which has resolved any dot segments
+  // (`%2e%2e` included) that the path string still carried.
+  if (!isAllowedSibling(siblingUrl.pathname)) {
+    return new Response('# Not found\n', {
+      status: 404,
+      headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
+    });
+  }
+  siblingUrl.search = requestUrl.search;
+  if (requestUrl.pathname === '/api/md-twin' || requestUrl.pathname === '/api/md-twin/') {
+    // `path`/`mdPath` belong to the afterFiles rewrite, not to the caller.
+    siblingUrl.searchParams.delete('path');
+    siblingUrl.searchParams.delete('mdPath');
+  }
 
-    if (/markdown|text\/plain/i.test(contentType) && /^# /m.test(raw)) {
+  const outbound = new Headers();
+  outbound.set('user-agent', SIBLING_USER_AGENT);
+  outbound.set(MD_TWIN_LOOP_HEADER, '1');
+  outbound.set('accept', 'text/markdown, text/html;q=0.9, application/json;q=0.8, text/plain;q=0.7, */*;q=0.1');
+
+  // One deadline for the whole chain, not one per hop: a fresh signal each hop
+  // would multiply the budget by the hop count and overrun the edge runtime's
+  // execution ceiling before any of this handler's own error branches ran.
+  const deadline = AbortSignal.timeout(SIBLING_FETCH_TIMEOUT_MS);
+
+  let siblingRes: Response;
+  for (let hops = 0; ; hops += 1) {
+    let redirectTarget: URL | null;
+    try {
+      siblingRes = await fetchImpl(siblingUrl, {
+        method: req.method,
+        headers: outbound,
+        redirect: 'manual',
+        signal: deadline,
+      });
+      const location = siblingRes.headers.get('location');
+      redirectTarget =
+        siblingRes.status >= 300 && siblingRes.status < 400 && location ? new URL(location, siblingUrl) : null;
+    } catch {
+      return new Response(`# ${heading}\n\nThe sibling page at \`${sibling}\` could not be fetched.\n`, {
+        status: 502,
+        headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
+      });
+    }
+    if (!redirectTarget) break;
+
+    if (redirectTarget.origin !== requestUrl.origin) {
+      const body = `# ${heading}\n\nThis resource redirects to [${redirectTarget.href}](${redirectTarget.href}).\n`;
+      return new Response(req.method === 'HEAD' ? null : withMarkdownMetadata(body, null, heading), {
+        status: 200,
+        headers: markdownHeaders(null, { 'X-Robots-Tag': 'noindex' }),
+      });
+    }
+
+    // A .md target would re-enter this handler; the hop budget bounds the
+    // chain even when every hop is a legitimate same-origin redirect.
+    if (
+      hops >= MAX_SIBLING_REDIRECTS ||
+      isMarkdownTwinPath(redirectTarget.pathname) ||
+      !isAllowedSibling(redirectTarget.pathname)
+    ) {
+      return new Response('# Not found\n', {
+        status: 404,
+        headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
+      });
+    }
+    siblingUrl = redirectTarget;
+  }
+
+  const isFailure = !siblingRes.ok;
+  const siblingStatus = isFailure ? siblingRes.status : 200;
+  // Query-less, matching what the sibling's own <link rel="canonical"> emits:
+  // /countries/iran/?foo=1 canonicalises to /countries/iran/. Carrying the
+  // query here would chain one canonical into another and let query params
+  // reopen the unbounded twin space this handler exists to close.
+  //
+  // An /api/ sibling gets none at all. Those endpoints are not canonical web
+  // pages, and many need their query to mean anything, so the query-less form
+  // would name a different, degenerate resource than the one served.
+  const servesCanonicalPage = !isFailure && !siblingUrl.pathname.startsWith('/api/');
+  const responseHeaders: Record<string, string> = {
+    ...(isFailure ? NOT_A_DOCUMENT : {}),
+    // An API twin is a rendering of the sibling, so it may be cached no more
+    // widely or longer than the sibling allows.
+    ...(!isFailure && options.inheritSiblingCacheControl ? inheritedCacheControl(siblingRes) : {}),
+    ...forwardedResponseHeaders(siblingRes),
+  };
+
+  const resolveCanonical = async (body: string | null, contentType: string): Promise<string | null> => {
+    if (!servesCanonicalPage) return null;
+    const declared = body !== null && /html/i.test(contentType)
+      ? declaredHtmlCanonical(body)
+      : await fetchDeclaredCanonical(siblingUrl, outbound, deadline, fetchImpl);
+    return pageCanonicalUrl(siblingUrl, declared);
+  };
+
+  if (req.method === 'HEAD') {
+    const canonical = await resolveCanonical(null, '');
+    return new Response(null, {
+      status: siblingStatus,
+      headers: markdownHeaders(canonical, responseHeaders),
+    });
+  }
+
+  if (siblingStatus === 304) {
+    const canonical = await resolveCanonical(null, '');
+    return new Response(null, {
+      status: siblingStatus,
+      headers: markdownHeaders(canonical, responseHeaders),
+    });
+  }
+
+  let markdown: string;
+  let raw: string;
+  const contentType = siblingRes.headers.get('content-type') ?? '';
+  try {
+    raw = await readSiblingBody(siblingRes);
+
+    if (/markdown|text\/plain/i.test(contentType) && (/^# /m.test(raw) || FRONT_MATTER.test(raw))) {
       markdown = raw.slice(0, MAX_TWIN_CHARS);
     } else if (/json/i.test(contentType) || raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
       markdown = jsonToMarkdown(raw, heading);
@@ -322,18 +635,17 @@ export async function buildMarkdownTwinResponse(
       markdown = /^# /m.test(raw) ? raw.slice(0, MAX_TWIN_CHARS) : `# ${heading}\n\n${raw}`.slice(0, MAX_TWIN_CHARS);
     }
 
-    if (!/^# /m.test(markdown)) {
-      markdown = `# ${heading}\n\n${markdown}`;
-    }
+    markdown = withHeading(markdown, heading);
   } catch {
     return new Response(`# ${heading}\n\nThe sibling page at \`${sibling}\` could not be read.\n`, {
       status: 502,
-      headers: markdownHeaders(req, markdownPath, { 'Cache-Control': 'no-store' }),
+      headers: markdownHeaders(null, { ...NOT_A_DOCUMENT }),
     });
   }
 
-  return new Response(markdown, {
+  const canonical = await resolveCanonical(raw, contentType);
+  return new Response(withMarkdownMetadata(markdown, canonical, heading), {
     status: siblingStatus,
-    headers: markdownHeaders(req, markdownPath, responseHeaders),
+    headers: markdownHeaders(canonical, responseHeaders),
   });
 }

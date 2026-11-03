@@ -1,6 +1,7 @@
 ---
 title: "i18n shell namespaces are a byte-budgeted first-paint surface — post-boot copy must live outside them"
 date: 2026-07-23
+last_updated: 2026-09-29
 category: conventions
 module: i18n
 problem_type: convention
@@ -15,7 +16,7 @@ tags: [i18n, en-shell, first-paint, byte-budget, locale-gates, premium-namespace
 
 ## Context
 
-While adding billing-state CTA copy for panel gating (PR #5494, issue #4771), the natural home for the new keys looked like the existing `premium.*` namespace — the panel CTA already used `premium.signInToUnlock`, `premium.upgradeToPro`, etc. But `tests/i18n-english-shell.test.mjs` failed: it statically scans the eager chrome files (`src/App.ts`, `src/app/panel-layout.ts`, `src/settings-main.ts`, `src/settings-window.ts`, and everything under `src/components/`) for `t('...')` calls whose keys fall under `SHELL_KEY_PREFIXES` (a list that includes `premium.`, `shell.`, `header.`, `panels.`, `common.`, and others — see the constant near the top of the test), and requires every such key to exist **byte-identical** in `src/locales/en.shell.json`. And `en.shell.json` is capped by `SHELL_BUDGET_BYTES` (50 KB) — at the time of PR #5494 it sat 69 bytes under the cap, so adding even one new mirrored key meant either raising a first-paint performance budget or finding another home.
+While adding billing-state CTA copy for panel gating (PR #5494, issue #4771), the natural home for the new keys looked like the existing `premium.*` namespace — the panel CTA already used `premium.signInToUnlock`, `premium.upgradeToPro`, etc. But `tests/i18n-english-shell.test.mjs` failed: it statically scans the eager chrome files (`src/App.ts`, `src/app/panel-layout.ts`, `src/settings-main.ts`, `src/settings-window.ts`, and everything under `src/components/`) for `t('...')` calls whose keys fall under `SHELL_KEY_PREFIXES` (a list that includes `premium.`, `shell.`, `header.`, `panels.`, `common.`, and others — see the constant near the top of the test), and requires every such key to exist **byte-identical** in `src/locales/en.shell.json`. And `en.shell.json` is capped by `SHELL_BUDGET_BYTES` (50 KB then; 52 KiB as of 2026-09-29) — at the time of PR #5494 it sat 69 bytes under the cap, so adding even one new mirrored key meant either raising a first-paint performance budget or finding another home.
 
 ## Guidance
 
@@ -24,6 +25,8 @@ The shell (`en.shell.json`) exists so first-paint chrome renders English text be
 - **Copy that can only render after boot-time data resolves does not belong in a shell namespace.** Billing-state CTAs render after Clerk auth plus a Convex entitlement round-trip — by then the full locale file has long since loaded. PR #5494 put them under `components.billingState.*` (mirroring the existing non-shell `components.checkoutFailureBanner.*` precedent) instead of `premium.*`.
 - **Check `SHELL_KEY_PREFIXES` in `tests/i18n-english-shell.test.mjs` before choosing a namespace** for any key referenced from an eager chrome file. A prefix hit means: mirrored entry in `en.shell.json` + budget pressure. `components.` is only shell-gated for the specific sub-prefixes listed there (`components.map.`, `components.panel.`, `components.proBanner.`, `components.settings.`, `components.deckgl.views.`); other `components.*` children are free.
 - **Do not silently bump `SHELL_BUDGET_BYTES`.** The cap is a first-paint payload budget; raising it is a performance decision, not a namespace convenience.
+- **`widgets.` is a shell prefix too, and the headroom is nearly gone.** On PR #8715 (2026-09-29) two short Widget Builder error strings referenced from `src/components/WidgetChatModal.ts` pushed `en.shell.json` from 53,235 to 53,451 bytes, over the 53,248-byte cap. Before minting copy, grep for an existing key that already ships in the shell and says the same thing. #8715 reused `connectivity.offlineUnavailable` and `widgets.preflightUnavailable`.
+- **A new key also needs a real translation pass.** `node scripts/sync-locale-keys.mjs` fills other locales with English placeholders, and `tests/app-locale-freshness.test.mjs` rejects those as drifted or stale. Run `scripts/translate-locales.mjs`, then `npm run locales:zh-tw`. See [key-existence checks cannot detect stale translations](../logic-errors/key-existence-checks-cannot-detect-stale-translations.md). Local pre-push ran neither gate on #8715, so both surfaced only in CI.
 - Remember the other two locale gates still apply wherever the key lives: the static key-existence scan (every literal `t('...')` key must exist in `en.json`) and locale completeness (every `en.json` key must exist in all ~25 locale files, `en.shell.json` exempt). Dynamic keys (`t(variable)`) bypass the static scan — when using them, add an explicit test asserting each possible key resolves in `en.json`, as `tests/billing-state-wiring.test.mts` does for the banner variant keys.
 
 ## Why This Matters
@@ -50,4 +53,5 @@ t('components.billingState.renewalPendingDesc')
 ## Related Issues
 
 - PR #5494 (issue #4771) — where the constraint was hit and the `components.billingState.*` home was chosen.
+- PR #8715 — `widgets.*` copy overflowed the 52 KiB cap; resolved by reusing shipped keys. See [the credential-less 403 doc](../logic-errors/credential-less-request-403-read-as-missing-subscription.md).
 - The three-gate interaction (static key existence, locale completeness, shell mirror + budget) makes a genuinely-new shell key a ~27-file change; a genuinely-new non-shell key is ~26 files (all full locales, no shell mirror).

@@ -1353,6 +1353,21 @@ describe("payments businessSeats revoke-on-lapse", () => {
     vi.useRealTimers();
   });
 
+  test.each([['subscription.updated', 'subscription.plan_changed'], ['subscription.plan_changed', 'subscription.updated']])(
+    'revokes Business seats when %s arrives before %s', async (first, second) => {
+      const t = convexTest(schema, modules);
+      const subId = 'sub_ordered_business_downgrade';
+      await seedProductPlan(t, PRODUCT_CATALOG.api_starter.dodoProductId!, 'api_starter', 'API Starter');
+      await seedBusinessSubscription(t, { dodoSubscriptionId: subId, status: 'active', currentPeriodEnd: NOW + 30 * DAY_MS });
+      await seedAcceptedGrantWithInvitee(t, { businessSubscriptionId: subId, inviteeUserId: 'user_ordered_seat', inviteeEmail: 'seat@acme.com', domain: 'acme.com' });
+      for (const eventType of [first, second, second]) {
+        await fireWebhook(t, { eventType, dodoSubscriptionId: subId, status: 'active',
+          eventTimestamp: NOW + 1000, productId: PRODUCT_CATALOG.api_starter.dodoProductId! });
+        const entitlement = await t.run(ctx => ctx.db.query('entitlements').withIndex('by_userId', q => q.eq('userId', 'user_ordered_seat')).first());
+        expect(entitlement?.planKey).toBe('free');
+      }
+    });
+
   test("owner downgrades off Business (plan_changed) → accepted grants revoked, invitees free", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);

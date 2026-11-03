@@ -55,6 +55,8 @@ describe("news digest story tracking Redis key prefix parity", () => {
         "lastSeen",
         "mentionCount",
         "sourceCount",
+        // #9093: the last recorded corroboration label, diffed for label history.
+        "corrState",
       ],
     ]]);
   });

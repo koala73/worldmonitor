@@ -13,8 +13,12 @@ message GetTemporalBaselineRequest {
     (buf.validate.field).string.min_len = 1,
     (sebuf.http.query) = { name: "type" }
   ];
-  // Geographic region key, defaults to "global".
-  string region = 2 [(sebuf.http.query) = { name: "region" }];
+  // Only the global baseline is defined. Omitted or empty defaults to global.
+  string region = 2 [
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
+    (buf.validate.field).string.const = "global",
+    (sebuf.http.query) = { name: "region" }
+  ];
   // Current observed count to compare against baseline.
   double count = 3 [(sebuf.http.query) = { name: "count" }];
 }

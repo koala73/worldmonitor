@@ -1,6 +1,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
+import { CII_RISK_SCORES_META_KEY, healthyCiiInputs } from './helpers/health-pipeline-fixture.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -21,10 +22,19 @@ const { default: handler } = await import('../api/seed-health.js');
 
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v12:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
+const CHINA_DECISION_META_KEY = 'seed-meta:intelligence:china-decision-signals';
+const CHINA_DECISION_GROUP_IDS = [
+  'macro',
+  'policy-enforcement',
+  'cross-strait-activity',
+  'corporate-disclosures',
+  'corridor-conditions',
+  'activity-nowcast',
+];
 
 function educationPayload() {
   return {
@@ -115,11 +125,29 @@ function installSeedHealthPipelineMock(poolCounts, { fetchedAt = Date.now() } = 
         // generic fresh-and-healthy default does not clear.
         return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 125_380 }) };
       }
+      if (key === CHINA_DECISION_META_KEY) {
+        return { result: JSON.stringify({
+          fetchedAt,
+          recordCount: CHINA_DECISION_GROUP_IDS.length,
+          groupStates: Object.fromEntries(CHINA_DECISION_GROUP_IDS.map((id) => [id, 'available'])),
+          groupCounts: {
+            populated: 6,
+            partial: 0,
+            stale: 0,
+            unavailable: 0,
+            healthyQuiet: 0,
+            operationallyCovered: 6,
+          },
+          unavailableCauses: {},
+          lastDecisionCoverageSuccessAt: fetchedAt,
+        }) };
+      }
       return { result: JSON.stringify({
         fetchedAt: Date.now(),
         recordCount: 10_000,
         rankableRecordCount: 10_000,
         redistributionPolicyVersion: 1,
+        ...(key === CII_RISK_SCORES_META_KEY ? { inputs: healthyCiiInputs() } : {}),
       }) };
     });
     return new Response(JSON.stringify(results), {

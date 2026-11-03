@@ -7,6 +7,8 @@ import {
 import {
   CANCELLATION_REQUIRED_WEBMCP_TOOLS,
   WEBMCP_TOOL_CANCELLATION_POLICY,
+  buildWebMcpTools,
+  createWebMcpBindingsGate,
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 import { waitForWebMcpUiReady } from '../src/app/webmcp-dashboard.ts';
@@ -23,8 +25,12 @@ const settlePromises = async () => {
 
 function deferred() {
   let resolve;
-  const promise = new Promise((onResolve) => { resolve = onResolve; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((onResolve, onReject) => {
+    resolve = onResolve;
+    reject = onReject;
+  });
+  return { promise, resolve, reject };
 }
 
 function createBindings(overrides = {}) {
@@ -308,6 +314,157 @@ async function executeRegistered(provider, name, inputJson = '{}', options = {})
 }
 
 describe('WebMCP registry behavioral contract', () => {
+  it('does not accumulate subscriptions to a stalled load after cancellation or timeout', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const pending = deferred();
+    const originalThen = pending.promise.then.bind(pending.promise);
+    let subscriptions = 0;
+    t.mock.method(pending.promise, 'then', (...args) => { subscriptions += 1; return originalThen(...args); });
+    let opened = 0;
+    const tool = buildWebMcpTools(pending.promise, () => {}).find(({ name }) => name === 'openSearch');
+    for (let i = 0; i < 20; i += 1) {
+      const controller = new AbortController();
+      const invocation = tool.execute({}, { signal: controller.signal });
+      const rejected = assert.rejects(invocation, i % 2 ? /World Monitor could not open search/ : { name: 'AbortError' });
+      if (i % 2) t.mock.timers.tick(30_000);
+      else controller.abort();
+      await rejected;
+    }
+    assert.equal(subscriptions, 1, 'Only the registry may subscribe to the unresolved load.');
+    pending.resolve(createBindings({ openSearch: () => { opened += 1; return true; } }));
+    await settlePromises();
+    assert.equal(opened, 0, 'Detached calls must not resume after the load resolves.');
+    assert.equal(await tool.execute({}, { signal: new AbortController().signal }), 'Opened search palette.');
+    assert.equal(opened, 1);
+  });
+
+  it('detaches each canceled or timed-out waiter and clears its timer while the load stalls', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const scheduled = t.mock.method(globalThis, 'setTimeout');
+    const cleared = t.mock.method(globalThis, 'clearTimeout');
+    const gate = createWebMcpBindingsGate(deferred().promise);
+    for (let i = 0; i < 20; i += 1) {
+      const caller = new AbortController();
+      const detached = assert.rejects(
+        gate.wait(caller.signal),
+        i % 2 ? /did not load/ : { name: 'AbortError' },
+      );
+      assert.equal(gate.pendingWaiters, 1);
+      if (i % 2) t.mock.timers.tick(30_000);
+      else caller.abort();
+      await detached;
+      assert.equal(gate.pendingWaiters, 0, 'A detached call must not stay subscribed to the stalled load.');
+    }
+    const timers = scheduled.mock.calls.map((call) => call.result);
+    assert.equal(timers.length, 20);
+    assert.deepEqual(
+      cleared.mock.calls.map((call) => call.arguments[0]),
+      timers,
+      'Every per-call timer must be cleared when its call detaches.',
+    );
+  });
+
+  it('publishes the complete inventory while App bindings are still loading', async () => {
+    const pending = deferred();
+    const provider = new FakeWebMcpModelContext({ supportsTargetExecutionSignal: true });
+    const harness = trackedRuntime(provider);
+    const controller = registerWebMcpTools(pending.promise, harness.runtime);
+    assert.equal(provider.registrationCalls.length, WEBMCP_SPA_TOOL_NAMES.length);
+    let opened = false;
+    const invocation = executeRegistered(provider, 'openSearch');
+    await settlePromises();
+    assert.equal(opened, false);
+    pending.resolve(createBindings({ openSearch: () => { opened = true; return true; } }));
+    assert.equal(await invocation, 'Opened search palette.');
+    assert.equal(opened, true);
+    controller.abort();
+  });
+
+  it('cancels pending binding waits on target cancellation and registration teardown', async () => {
+    for (const cancelRegistration of [false, true]) {
+      const pending = deferred();
+      let deliverTargetAbort;
+      const provider = new FakeWebMcpModelContext({
+        supportsTargetExecutionSignal: true,
+        scheduleTargetExecutionAbort: (deliver) => { deliverTargetAbort = deliver; },
+      });
+      const harness = trackedRuntime(provider);
+      const controller = registerWebMcpTools(pending.promise, harness.runtime);
+      const caller = new AbortController();
+      let opened = false;
+      const invocation = executeRegistered(provider, 'openSearch', '{}', { signal: caller.signal });
+      // Caller cancellation stays AbortError. Registration teardown means the
+      // App will not serve the call, which is reported as app_destroyed.
+      const rejected = assert.rejects(invocation, (error) => (
+        cancelRegistration
+          ? error.name === 'WebMcpToolError' && /Reason: app_destroyed\.$/.test(error.message)
+          : error.name === 'AbortError'
+      ));
+      await settlePromises();
+      (cancelRegistration ? controller : caller).abort();
+      await rejected;
+      deliverTargetAbort?.();
+      pending.resolve(createBindings({ openSearch: () => { opened = true; return true; } }));
+      await settlePromises();
+      assert.equal(opened, false);
+      controller.abort();
+      assert.deepEqual(await provider.getTools(), []);
+    }
+  });
+
+  it('keeps an App load failure within the safe tool error boundary', async () => {
+    const provider = new FakeWebMcpModelContext({ supportsTargetExecutionSignal: true });
+    const harness = trackedRuntime(provider);
+    const controller = registerWebMcpTools(Promise.reject(new Error('private startup detail')), harness.runtime);
+    await settlePromises();
+    await assert.rejects(executeRegistered(provider, 'openSearch'), {
+      name: 'WebMcpToolError',
+      message: 'Dashboard unavailable: Dashboard application did not load. Reason: app_destroyed.',
+    });
+    controller.abort();
+  });
+
+  it('reports an App load failure torn down with its registration as app_destroyed, not cancellation', async () => {
+    const pending = deferred();
+    const provider = new FakeWebMcpModelContext({ supportsTargetExecutionSignal: true });
+    const harness = trackedRuntime(provider);
+    const controller = registerWebMcpTools(pending.promise, harness.runtime);
+    const invocation = executeRegistered(provider, 'openSearch');
+    const rejected = assert.rejects(invocation, (error) => {
+      assert.equal(error.name, 'WebMcpToolError');
+      assert.match(error.message, /Reason: app_destroyed\.$/);
+      assert.doesNotMatch(error.message, /private startup detail/);
+      return true;
+    });
+    await settlePromises();
+    // src/main.ts rejects the load and tears down registration in the same tick.
+    pending.reject(new Error('private startup detail'));
+    controller.abort();
+    await rejected;
+    assert.deepEqual(
+      harness.events
+        .filter(({ event }) => event === 'webmcp-tool-invoked')
+        .map(({ data }) => data.reason),
+      ['unavailable'],
+    );
+  });
+
+  it('times out a stalled App without preventing a later invocation', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const pending = deferred();
+    const provider = new FakeWebMcpModelContext({ supportsTargetExecutionSignal: true });
+    const harness = trackedRuntime(provider);
+    const controller = registerWebMcpTools(pending.promise, harness.runtime);
+    const invocation = executeRegistered(provider, 'openSearch');
+    const rejected = assert.rejects(invocation, /World Monitor could not open search/);
+    await settlePromises();
+    t.mock.timers.tick(30_000);
+    await rejected;
+    pending.resolve(createBindings());
+    assert.equal(await executeRegistered(provider, 'openSearch'), 'Opened search palette.');
+    controller.abort();
+  });
+
   it('keeps unsupported and obsolete providers silent', async () => {
     for (const provider of [undefined, { provideContext() {} }]) {
       const harness = trackedRuntime(provider);

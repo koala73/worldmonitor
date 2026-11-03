@@ -5,6 +5,7 @@ import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 import {
   LAYER_REGISTRY,
   getAllowedLayerKeys,
+  sanitizeResilienceScoreForRenderer,
 } from '../src/config/map-layer-definitions';
 import {
   RESILIENCE_CHOROPLETH_COLORS,
@@ -155,28 +156,21 @@ describe('resilience choropleth thresholds', () => {
 });
 
 describe('resilience non-DeckGL sanitization', () => {
-  function simulateSanitize(layers: Record<string, boolean>, isDeckGLActive: boolean) {
-    if (layers.resilienceScore && !isDeckGLActive) {
-      return { ...layers, resilienceScore: false };
-    }
-    return { ...layers };
-  }
-
   it('strips resilienceScore from layer state when DeckGL is not active', () => {
     const layers = { ...baseLayers(), resilienceScore: true };
-    const result = simulateSanitize(layers, false);
+    const result = sanitizeResilienceScoreForRenderer(layers, false);
     assert.equal(result.resilienceScore, false);
   });
 
   it('preserves resilienceScore when DeckGL is active', () => {
     const layers = { ...baseLayers(), resilienceScore: true };
-    const result = simulateSanitize(layers, true);
+    const result = sanitizeResilienceScoreForRenderer(layers, true);
     assert.equal(result.resilienceScore, true);
   });
 
   it('does not affect other layers when stripping resilienceScore', () => {
     const layers = { ...baseLayers(), resilienceScore: true, ciiChoropleth: true, flights: true };
-    const result = simulateSanitize(layers, false);
+    const result = sanitizeResilienceScoreForRenderer(layers, false);
     assert.equal(result.resilienceScore, false);
     assert.equal(result.ciiChoropleth, true);
     assert.equal(result.flights, true);
@@ -185,13 +179,13 @@ describe('resilience non-DeckGL sanitization', () => {
   it('URL restore with resilienceScore=true on non-DeckGL produces false in sanitized state', () => {
     const urlLayers = { ...baseLayers(), resilienceScore: true };
     const normalized = normalizeExclusiveChoropleths(urlLayers, null);
-    const sanitized = simulateSanitize(normalized, false);
+    const sanitized = sanitizeResilienceScoreForRenderer(normalized, false);
     assert.equal(sanitized.resilienceScore, false);
   });
 
   it('mode switch from DeckGL to globe strips resilienceScore', () => {
     const deckGlState = { ...baseLayers(), resilienceScore: true };
-    const afterSwitch = simulateSanitize(deckGlState, false);
+    const afterSwitch = sanitizeResilienceScoreForRenderer(deckGlState, false);
     assert.equal(afterSwitch.resilienceScore, false);
   });
 

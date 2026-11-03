@@ -243,6 +243,29 @@ describe('renderBriefMagazine — chrome invariants', () => {
     });
   });
 
+  // Layout geometry is asserted in a browser by e2e/brief-magazine.spec.ts
+  // ("chrome stays clear of page content"). That spec is not in a CI
+  // shard, so this pins the CSS it depends on.
+  it('keeps the digest running head and text clear of the counter and pager', () => {
+    const html = renderBriefMagazine(envelope());
+    const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
+    // The running-head reservation assumes a 7-character "NN / NN" counter
+    // in the head's own mono face and size, at 0.2em tracking.
+    for (const m of html.matchAll(/<div class="page-number mono">([^<]*)<\/div>/g)) {
+      assert.equal(m[1].length, 7, `counter "${m[1]}" must stay 7 characters`);
+    }
+    assert.match(css, /\.page-number \{\s*position: absolute; top: 5vh; right: 4vw;[\s\S]*?letter-spacing: 0\.2em;/);
+    assert.match(
+      css,
+      /\.digest \.running-head \{[^}]*font-family: 'IBM Plex Mono', monospace; font-size: max\(11px, 0\.85vw\);[^}]*padding-right: calc\(7ch \+ 1\.4em - 2vw \+ 1em\);/,
+    );
+    // Digest copy stops above the fixed pager pill instead of scrolling under it.
+    assert.match(css, /\.digest \{[^}]*border-bottom: var\(--pager-band\) solid transparent;/);
+    assert.match(css, /\.nav-dots \{[^}]*bottom: var\(--pager-bottom\);[^}]*padding: var\(--pager-pad-y\) 1\.4vw;/);
+    // An empty pager (before or without NAV_SCRIPT) is not a bare grey bar.
+    assert.match(css, /\.nav-dots:empty \{ display: none; \}/);
+  });
+
   it('applies .crit highlight to critical and high threat levels only', () => {
     const env = envelope({
       stories: [
@@ -321,6 +344,78 @@ describe('renderBriefMagazine — envelope internals never leak into HTML', () =
     assert.ok(!html.includes('<script>alert(1)</script>'));
     assert.ok(!html.includes('<img src=x>'));
     assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+  });
+
+  // #8402: personalised /api/brief/{userId}/{issueDate} renders through the
+  // same renderBriefMagazine path. Minting an HMAC URL was out of reach for
+  // the pentest, so pin the escape invariant here without a signed URL —
+  // every string envelope field that is interpolated must survive as text.
+  it('HTML-escapes metacharacters in every interpolated envelope string field (#8402)', () => {
+    const payload = `"><img src=x onerror=alert(1)>'&<>`;
+    const escaped = '&quot;&gt;&lt;img src=x onerror=alert(1)&gt;&#39;&amp;&lt;&gt;';
+    const env = envelope({
+      user: { name: `Name ${payload}`, tz: `TZ${payload}` },
+      issue: `17.${payload}`,
+      dateLong: `17 April ${payload}`,
+      digest: {
+        greeting: `Good evening ${payload}.`,
+        lead: `Lead ${payload}`,
+        numbers: { clusters: 1, multiSource: 1, surfaced: 1 },
+        threads: [{ tag: `Tag ${payload}`, teaser: `Teaser ${payload}` }],
+        signals: [`Signal ${payload}`],
+      },
+      stories: [
+        story({
+          category: `Cat ${payload}`,
+          country: 'XX',
+          threatLevel: 'high',
+          headline: `Headline ${payload}`,
+          description: `Description ${payload}`,
+          source: `Source ${payload}`,
+          sourceUrl: 'https://example.com/ok',
+          clusterId: 'cluster-escape-test-001',
+          whyMatters: `Why ${payload}`,
+        }),
+      ],
+    });
+
+    const html = renderBriefMagazine(env);
+
+    // Raw hostile sequences must never appear as live markup. Substrings like
+    // `onerror=alert` still occur inside escaped text (&lt;img … onerror=…),
+    // which is correct — assert the attacker angle-bracket form is gone instead.
+    // Do not ban bare `<script>`: the magazine legitimately loads fonts/tracker
+    // scripts; ban only the payload's unescaped img form and live onerror attrs.
+    assert.equal(html.includes(payload), false, 'raw metacharacter payload must not appear');
+    assert.equal(html.includes('<img src=x'), false);
+    assert.ok(
+      !/<img\b[^>]*\bonerror\s*=/i.test(html),
+      'must not contain a live img-onerror attribute',
+    );
+
+    // Each interpolated field must appear in escaped form at least once.
+    // `user.name` is validated on the envelope but not currently rendered into
+    // the magazine HTML — still poison it so a future interpolation cannot
+    // land unescaped. `user.tz` and the rest are rendered.
+    assert.ok(html.includes(escaped), 'escaped payload must appear for interpolated fields');
+    assert.equal(html.includes(`Name ${payload}`), false);
+    for (const fragment of [
+      `TZ${escaped}`,
+      `17.${escaped}`,
+      `17 April ${escaped}`,
+      `Good evening ${escaped}`,
+      `Lead ${escaped}`,
+      `Tag ${escaped}`,
+      `Teaser ${escaped}`,
+      `Signal ${escaped}`,
+      `Cat ${escaped}`,
+      `Headline ${escaped}`,
+      `Description ${escaped}`,
+      `Source ${escaped}`,
+      `Why ${escaped}`,
+    ]) {
+      assert.ok(html.includes(fragment), `expected escaped fragment: ${fragment.slice(0, 40)}…`);
+    }
   });
 });
 

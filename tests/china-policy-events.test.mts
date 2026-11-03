@@ -106,6 +106,47 @@ describe('China official policy adapters (#5576)', () => {
     assert.equal(parsed.effectiveDate, '2026-08-01');
   });
 
+  it('reads NDRC publication dates from document metadata when the listing has no date column', async () => {
+    const listing = '<a href="iteminfo.jsp?id=20630">国家发展改革委等关于印发《核电厂退役准备管理暂行办法》的通知<small>(发改能源规〔2026〕582号 2026年4月23日印发)</small></a>';
+    const detail = '<meta name="PubDate" content="2026-04-24"><div class="article-content">现印发管理办法，请遵照执行。本办法自2026年7月1日起施行。</div>';
+    const requested: string[] = [];
+    const result = await fetchAgencyDocuments('NDRC', {
+      fetchImpl: async (input) => {
+        const url = String(input);
+        requested.push(url);
+        return officialResponse(url, url === CHINA_POLICY_SOURCES.NDRC.listUrl ? listing : detail);
+      },
+      sleep: async () => {},
+    });
+
+    assert.equal(result.status, 'ok');
+    assert.deepEqual(requested, [
+      CHINA_POLICY_SOURCES.NDRC.listUrl,
+      'https://zfxxgk.ndrc.gov.cn/web/iteminfo.jsp?id=20630',
+    ]);
+    assert.equal(result.documents[0].publicationDate, '2026-04-24');
+    assert.equal(result.documents[0].effectiveDate, '2026-07-01');
+    assert.match(result.documents[0].originalText, /请遵照执行/);
+  });
+
+  it('rejects an undated NDRC document and keeps other agencies dependent on dated listings', async () => {
+    const listing = '<a href="iteminfo.jsp?id=20630">国家发展改革委关于印发管理办法的通知</a>';
+    const result = await fetchAgencyDocuments('NDRC', {
+      fetchImpl: async (input) => officialResponse(String(input),
+        String(input) === CHINA_POLICY_SOURCES.NDRC.listUrl
+          ? listing
+          : '<div class="article-content">现印发管理办法，请遵照执行。</div>'),
+      sleep: async () => {},
+    });
+
+    assert.equal(result.status, 'error');
+    assert.equal(result.requestCount, 2);
+    assert.equal(result.documents.length, 0);
+    assert.equal(result.failures[0].reason, 'document body or date missing');
+    assert.deepEqual(parseAgencyListing('PBOC',
+      '<a href="/tiaofasi/144941/144957/123456/index.html">关于印发管理办法的通知</a>'), []);
+  });
+
   it('fetches the MIIT detail document instead of publishing its listing snippet', async () => {
     const listing = await fixture('miit.json');
     const detail = await fixture('detail.html');
@@ -184,7 +225,7 @@ describe('China official policy adapters (#5576)', () => {
   // quadratic toward the linear band (observed 9.5x wall-clock on a loaded
   // GitHub runner) even though the parser's own CPU still scales ~14x.
   // CPU time still counts this process's GC; it just stops charging the
-  // parser for a sibling worker's slice.
+  // parser for a sibling worker's slice (#7238).
   //
   // The size step is 4x, not 2x, on purpose. A 2x step puts linear (~2x) and
   // quadratic (~4x) close enough together that GC noise can straddle the
@@ -200,6 +241,10 @@ describe('China official policy adapters (#5576)', () => {
   // them is linear bookkeeping, not parser work, and re-allocating on each
   // attempt would add GC noise on top of the measurement — the exact
   // allocation-driven noise this guard is designed to filter out.
+  //
+  // Keep the ratio-of-mins guard, but time fixed batches and report per-scan
+  // CPU cost. Batching amortizes clock overhead and GC noise, and warms both
+  // input sizes before sampling without retrying until a desired result.
   const buildFixtures = (repeat: number) => {
     const openers = '<div class="content">'.repeat(repeat);
     const closers = '</div>'.repeat(repeat);
@@ -214,25 +259,67 @@ describe('China official policy adapters (#5576)', () => {
   type ScalingFixtures = ReturnType<typeof buildFixtures>;
 
   const SCALING_ATTEMPTS = 5;
+  const SCALING_SAMPLE_RUNS = 4;
+  const SCALING_CEILING_RATIO = 12;
+  const scalingCeilingMs = (base: number): number =>
+    base * SCALING_CEILING_RATIO + 2;
+  const rejectsScaling = ({ base, quadrupled }: { base: number; quadrupled: number }): boolean =>
+    quadrupled > scalingCeilingMs(base);
+  // The guard judges ratio-of-mins so a single stalled sample cannot falsely
+  // trip it (#6985 / #7102). The same min/min aggregation compresses a genuine
+  // quadratic when the quadrupled series draws one fast sample (11.9x on CI in
+  // September, 11.4x on PR #9633), so the positive control judges the median
+  // per-attempt ratio against the same 12x ceiling. #8019 had folded the
+  // control back onto min/min and the flake returned.
+  const controlTripsGate = ({ medianRatio }: { medianRatio: number }): boolean =>
+    medianRatio > SCALING_CEILING_RATIO;
+  const summarizeAttempts = (attempts: Array<[baseMs: number, quadrupledMs: number]>) => {
+    const base = Math.min(...attempts.map(([baseMs]) => baseMs));
+    const quadrupled = Math.min(...attempts.map(([, quadrupledMs]) => quadrupledMs));
+    const ratios = attempts.map(([baseMs, quadrupledMs]) => quadrupledMs / baseMs).sort((a, b) => a - b);
+    return {
+      base,
+      quadrupled,
+      ratio: quadrupled / base,
+      marginMs: quadrupled - scalingCeilingMs(base),
+      medianRatio: ratios[Math.floor(ratios.length / 2)]!,
+    };
+  };
 
-  // One definition of the ceiling, shared by the guard and by the control that
-  // proves the guard can still fail. A control carrying its own copy of the
-  // threshold stops tracking the guard the moment either one is retuned, which
-  // is exactly when a stale control is most reassuring and least true.
-  const scalingCeilingMs = (base: number): number => base * 12 + 2;
+  it('keeps the scaling predicate at 12x plus 2ms, including the control gap', () => {
+    assert.equal(rejectsScaling({ base: 10, quadrupled: 115 }), false);
+    assert.equal(rejectsScaling({ base: 1, quadrupled: 13 }), false);
+    assert.equal(rejectsScaling({ base: 10, quadrupled: 122 }), false);
+    assert.equal(rejectsScaling({ base: 10, quadrupled: 123 }), true);
+  });
+
+  it('judges the positive control on the median attempt, not ratio-of-mins', () => {
+    // Shaped like PR #9633's unit-shard (1) failure: 16.5ms -> 188.1ms is
+    // 11.4x min/min because one quadrupled sample ran fast, while every other
+    // attempt scaled ~14x. A quadratic must still trip the control.
+    const lucky = summarizeAttempts([
+      [16.5, 188.1], [17.0, 240.0], [17.2, 238.0], [17.1, 242.0], [16.9, 236.0],
+    ]);
+    assert.equal(rejectsScaling(lucky), false, 'min/min alone compresses this quadratic under the gate');
+    assert.equal(controlTripsGate(lucky), true);
+    // A linear scan with GC noise (~10x at worst under 16-way load) must not.
+    assert.equal(controlTripsGate(summarizeAttempts([
+      [10, 41], [10, 98], [10, 44], [10, 101], [10, 40],
+    ])), false);
+  });
 
   const measureScaling = (
     walk: (fixtures: ScalingFixtures) => void,
     baseRepeat: number,
-  ): { base: number; quadrupled: number; ratio: number; marginMs: number } => {
+  ): ReturnType<typeof summarizeAttempts> => {
     const baseFixtures = buildFixtures(baseRepeat);
     const quadrupledFixtures = buildFixtures(baseRepeat * 4);
 
     const timeOnce = (fixtures: ScalingFixtures): number => {
       const startedAt = process.cpuUsage();
-      walk(fixtures);
+      for (let run = 0; run < SCALING_SAMPLE_RUNS; run += 1) walk(fixtures);
       const used = process.cpuUsage(startedAt);
-      return (used.user + used.system) / 1000;
+      return (used.user + used.system) / (1000 * SCALING_SAMPLE_RUNS);
     };
 
     // Discarded warmup, one per size.
@@ -244,29 +331,24 @@ describe('China official policy adapters (#5576)', () => {
     // to be running, which can push the ratio over the gate on a loaded box
     // even though neither size is actually slow. Alternating means a stall
     // lands on both series' running minimum instead of just one (#6985).
-    let base = Number.POSITIVE_INFINITY;
-    let quadrupled = Number.POSITIVE_INFINITY;
+    const attempts: Array<[number, number]> = [];
     for (let attempt = 0; attempt < SCALING_ATTEMPTS; attempt += 1) {
-      base = Math.min(base, timeOnce(baseFixtures));
-      quadrupled = Math.min(quadrupled, timeOnce(quadrupledFixtures));
+      const baseMs = timeOnce(baseFixtures);
+      const quadrupledMs = timeOnce(quadrupledFixtures);
+      attempts.push([baseMs, quadrupledMs]);
     }
-
-    return {
-      base,
-      quadrupled,
-      ratio: quadrupled / base,
-      marginMs: quadrupled - scalingCeilingMs(base),
-    };
+    return summarizeAttempts(attempts);
   };
 
   const scalingDetail = (
     scaling: ReturnType<typeof measureScaling>,
   ): string =>
-    `${scaling.ratio.toFixed(1)}x — linear is ~4x, catastrophic backtracking ~16x ` +
+    `${scaling.ratio.toFixed(1)}x min/min, median attempt ${scaling.medianRatio.toFixed(1)}x ` +
+    `— linear is ~4x, catastrophic backtracking ~16x ` +
     `(${scaling.base.toFixed(1)}ms → ${scaling.quadrupled.toFixed(1)}ms, ` +
     `${scaling.marginMs.toFixed(1)}ms against the ceiling)`;
 
-  it('parses hostile markup without superlinear rescans', () => {
+  it('parses hostile markup without superlinear rescans', (t) => {
     const scaling = measureScaling((fixtures) => {
       __testing__.stripHtml(fixtures.script);
       parseAgencyListing('CAC', fixtures.anchors);
@@ -274,19 +356,20 @@ describe('China official policy adapters (#5576)', () => {
       parsePolicyDocumentHtml(fixtures.unbalanced);
     }, 4_000);
 
+    t.diagnostic(scalingDetail(scaling));
     assert.ok(
-      scaling.marginMs <= 0,
+      !rejectsScaling(scaling),
       `quadrupling the input scaled cost ${scalingDetail(scaling)}`,
     );
   });
 
-  it('keeps its teeth: a genuinely quadratic scan still trips the gate', () => {
+  it('keeps its teeth: a genuinely quadratic scan still trips the gate', (t) => {
     // Positive control for the guard above. Every change that has made that
     // guard quieter — the 4x step, the discarded warmup, the 12x ceiling, the
-    // interleaved best-of-5 (#6985) — traded sensitivity for stability, and
-    // nothing in the suite has ever checked how much sensitivity was left. A
-    // guard that can no longer fail passes for the same reason a deleted one
-    // does.
+    // interleaved best-of-5 (#6985), CPU-time (#7238) — traded sensitivity
+    // for stability, and nothing in the suite has ever checked how much
+    // sensitivity was left. A guard that can no longer fail passes for the
+    // same reason a deleted one does.
     //
     // The control walks hostile input with the unbounded prefix rescan that
     // parsePolicyHtmlFields' closing-tag unwind
@@ -306,8 +389,9 @@ describe('China official policy adapters (#5576)', () => {
       stackComparisons > 0,
       'the control must actually scan the parser closing-tag stack',
     );
+    t.diagnostic(scalingDetail(scaling));
     assert.ok(
-      scaling.marginMs > 0,
+      controlTripsGate(scaling),
       `the quadratic control must trip the gate, but scaled only ${scalingDetail(scaling)}`,
     );
   });

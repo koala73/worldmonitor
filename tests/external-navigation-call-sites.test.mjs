@@ -1,3 +1,6 @@
+// These source checks pin helper use and allowed window.open counts in the
+// migrated renderer files (#8690, section 2).
+// Runtime tests of openExternalUrl cannot prove that every listed caller uses it.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -11,6 +14,7 @@ const callSiteFiles = [
   'src/app/desktop-updater.ts',
   'src/settings-main.ts',
   'src/components/RuntimeConfigPanel.ts',
+  'src/App.ts', // followed-countries cap-drop toast upgrade action (#5911)
 ];
 
 describe('external navigation call-site contract (#6120)', () => {
@@ -56,6 +60,7 @@ describe('external navigation call-site contract (#6120)', () => {
       ['src/app/desktop-updater.ts', 1], //         non-desktop update link
       ['src/settings-main.ts', 0],
       ['src/components/RuntimeConfigPanel.ts', 0],
+      ['src/App.ts', 0],
     ]);
 
     const unaccounted = [];

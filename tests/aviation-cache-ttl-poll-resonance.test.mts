@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import { listAirportFlights } from '../server/worldmonitor/aviation/v1/list-airport-flights.ts';
+import { aviationStackBudgetCycle } from '../server/worldmonitor/aviation/v1/_avstack-budget.ts';
 import { getCarrierOps } from '../server/worldmonitor/aviation/v1/get-carrier-ops.ts';
 
 /**
@@ -153,6 +154,7 @@ describe('aviation cache TTL vs. client poll cadence', () => {
     });
 
     assert.equal(response.source, 'aviationstack', 'precondition: handler took the positive-cache path');
+    assert.ok(writes.some((w) => w.key === `aviation:carrier-ops:BBB,CCC:v2:${aviationStackBudgetCycle()}`));
     assertOutlastsPolling(
       writes.find((w) => w.key.startsWith('aviation:carrier-ops:')),
       'get-carrier-ops',

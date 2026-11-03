@@ -1,8 +1,10 @@
 import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAviationNews, fetchGoogleFlights } from '@/services/aviation';
+import { safeStorageSet } from '@/utils/safe-storage';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { MONITORED_AIRPORTS } from '@/config/airports';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 // ---- Intent types ----
@@ -131,9 +133,10 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
                 : s.severity === 'minor' ? '#f59e0b'
                 : '#ef4444';
             const sevLabel = s.severity === 'unknown' ? 'NO DATA' : s.severity.toUpperCase();
+            // A NOTAM-sourced row only knows the airport is open, not its delays.
             const suffix = s.severity === 'unknown'
                 ? ''
-                : `<span>${s.avgDelayMinutes > 0 ? `+${s.avgDelayMinutes}m delay` : 'Normal ops'}</span>`;
+                : `<span>${s.avgDelayMinutes > 0 ? `+${s.avgDelayMinutes}m delay` : s.source === 'notam' ? 'Open' : 'Normal ops'}</span>`;
             return `
       <div class="cmd-row">
         <strong>${escapeHtml(s.iata)}</strong>
@@ -319,6 +322,7 @@ export class AviationCommandBar {
         this.overlay.id = 'aviation-cmd-overlay';
         this.overlay.setAttribute('role', 'dialog');
         this.overlay.setAttribute('aria-modal', 'true');
+        declareOverlay(this.overlay, { reload: 'blocking' });
         this.overlay.setAttribute('aria-label', 'Aviation Command');
         setTrustedHtml(this.overlay, trustedHtml(`
       <div id="aviation-cmd-box">
@@ -401,7 +405,7 @@ export class AviationCommandBar {
     private addToHistory(cmd: string): void {
         const h = this.getHistory().filter(h => h !== cmd);
         h.unshift(cmd);
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, MAX_HISTORY)));
+        safeStorageSet(HISTORY_KEY, JSON.stringify(h.slice(0, MAX_HISTORY)));
         this.renderHistory();
     }
 

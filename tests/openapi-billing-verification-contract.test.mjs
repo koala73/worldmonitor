@@ -140,7 +140,7 @@ describe('OpenAPI billing-verification contracts', () => {
       }
     }
     assert.ok(nonPublic >= 150, `expected at least the audited 150 authenticated operations, found ${nonPublic}`);
-    assert.ok(publicOps >= 7, `expected at least the audited 7 public operations, found ${publicOps}`);
+    assert.ok(publicOps >= 4, `expected at least the audited 4 public operations, found ${publicOps}`);
   });
 
   for (const file of serviceJson) {

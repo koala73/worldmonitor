@@ -359,3 +359,31 @@ test('feature exposing only source_url (no url field) is still deduped across th
   assert.equal(events.length, 1);
   assert.match(events[0].title, /5 reports/, 'source_url-only features deduped across themes (NOT 15)');
 });
+
+test('fallback mention volume and location names cannot assert a riot or confidence', async () => {
+  const events = await fetchGdeltEvents({
+    _resolveProxyForConnect: () => PROXY_AUTH,
+    _proxyFetcher: async () => jsonBuffer({ features: Array.from({ length: 105 }, (_, i) => ({
+      properties: { name: 'Riot, France', url: `https://news.example/${i}` },
+      geometry: { type: 'Point', coordinates: [2.35, 48.85] },
+    })) }),
+    _sleep: noSleep, _jitter: noJitter,
+  });
+  assert.equal(events.length, 1);
+  assert.equal(events[0].eventType, 'UNREST_EVENT_TYPE_UNSPECIFIED');
+  assert.equal(events[0].severity, 'SEVERITY_LEVEL_UNSPECIFIED');
+  assert.equal(events[0].confidence, 'CONFIDENCE_LEVEL_LOW');
+  assert.match(events[0].summary, /not verified/i);
+});
+
+test('seed deduplication keeps ACLED evidence separate from media mentions', async () => {
+  const { deduplicateEvents } = await import('../scripts/seed-unrest-events.mjs');
+  const acled = { id: 'acled', sourceType: 'UNREST_SOURCE_TYPE_ACLED', sources: ['ACLED'], sourceUrls: ['https://acled.example/event'], occurredAt: 1, confidence: 'CONFIDENCE_LEVEL_HIGH' };
+  const media = { ...acled, id: 'gdelt', sourceType: 'UNREST_SOURCE_TYPE_GDELT', sources: ['GDELT'], sourceUrls: ['https://news.example/unrelated'], confidence: 'CONFIDENCE_LEVEL_LOW' };
+  for (const events of [[acled, media], [media, acled]]) {
+    const result = deduplicateEvents(events);
+    assert.equal(result.length, 2);
+    assert.deepEqual(result.find(e => e.id === 'acled').sourceUrls, ['https://acled.example/event']);
+    assert.equal(result.find(e => e.id === 'acled').confidence, 'CONFIDENCE_LEVEL_HIGH');
+  }
+});
