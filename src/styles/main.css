@@ -2768,6 +2768,21 @@ body.panel-resize-active iframe {
     display: none;
   }
 
+  /* A dot must not tell its states apart by colour alone (WCAG 1.4.1), so
+     each state has its own shape, and the freshness dot uses the same ones:
+     live or fresh data is a filled circle, cached or stale data a ring, and
+     unavailable, missing or failed data a hollow square. */
+  .panel-freshness-badge:not(.panel-freshness-fresh),
+  .panel > .panel-header > .panel-data-badge:is(.cached, .unavailable) {
+    border: 2px solid currentColor;
+    background: transparent;
+  }
+
+  .panel-freshness-badge:is(.panel-freshness-no_data, .panel-freshness-disabled, .panel-freshness-error),
+  .panel > .panel-header > .panel-data-badge.unavailable {
+    border-radius: 0;
+  }
+
   .panel-header .panel-new-badge,
   .panel-header .deviation-indicator,
   .panel-header .panel-count,
@@ -29111,19 +29126,22 @@ body.map-width-resizing {
     border: 1px solid CanvasText;
   }
 
-  /* The narrow-header dots are a filled background with border: 0 at higher
+  /* The filled narrow-header dots are a background with border: 0 at higher
      specificity, so forced colors would erase them. Same selectors, later in
-     the file, restore the border. */
+     the file, keep them filled in the system text color. The ring and square
+     dots are borders, which forced colors keep, so their shapes survive. */
   @container (max-width: 420px) {
     .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live {
-      border: 1px solid CanvasText;
+      forced-color-adjust: none;
+      background: CanvasText;
     }
   }
 
   @container (max-width: 300px) {
-    .panel-freshness-badge,
-    .panel > .panel-header > .panel-data-badge {
-      border: 1px solid CanvasText;
+    .panel-freshness-badge.panel-freshness-fresh,
+    .panel > .panel-header > .panel-data-badge.live {
+      forced-color-adjust: none;
+      background: CanvasText;
     }
   }
 }
