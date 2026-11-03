@@ -34,6 +34,7 @@ import type { AviationCommandBar } from '@/components/AviationCommandBar';
 import { MobilePanelNav } from '@/components/MobilePanelNav';
 import { debounce, loadFromStorage, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
+import { safeStorageGet } from '@/utils/safe-storage';
 import {
   CANONICAL_FEEDS,
   STORAGE_KEYS,
@@ -1061,13 +1062,9 @@ export class PanelLayoutManager implements AppModule {
     // after the first paint, and applying it there moved the map, the sidebar
     // and every panel span. It re-clamps against the measured width later.
     const mapColWidthStyle = (() => {
-      try {
-        const stored = Number.parseFloat(localStorage.getItem('map-col-width') ?? '');
-        if (!Number.isFinite(stored)) return '';
-        return ` style="--map-col-width: ${clampMapColWidthPercent(stored, window.innerWidth).toFixed(1)}%"`;
-      } catch {
-        return '';
-      }
+      const stored = Number.parseFloat(safeStorageGet('map-col-width') ?? '');
+      if (!Number.isFinite(stored)) return '';
+      return ` style="--map-col-width: ${clampMapColWidthPercent(stored, window.innerWidth).toFixed(1)}%"`;
     })();
     const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
     const referenceOrigin = this.ctx.isDesktopApp || window.location.hostname.endsWith('.worldmonitor.app')
