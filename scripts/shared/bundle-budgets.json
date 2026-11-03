@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1480881
+      "raw": 1490297
     },
     "chunks": {
       "App": {
-        "raw": 935347,
+        "raw": 922392,
         "files": 1
       },
       "ai-flow-settings": {
@@ -226,6 +226,10 @@
       },
       "string": {
         "raw": 20925,
+        "files": 1
+      },
+      "summarization": {
+        "raw": 22371,
         "files": 1
       },
       "user-location": {
