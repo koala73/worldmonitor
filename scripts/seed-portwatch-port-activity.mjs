@@ -252,19 +252,19 @@ export const MAX_CACHE_AGE_MS = PORTWATCH_MAX_CACHE_AGE_MS;
 // 570s bundle budget (observed 2026-05-13: preflight alone took 360s, batch 1
 // of 15 hit 12 errors in 45s before container died at the budget cap).
 //
-// With this cap, an "everything stale" run queues the 60 countries with the
-// oldest persisted attempt timestamps and serves the remainder from prior
+// With this cap, an "everything stale" run refreshes the 30 countries with
+// the oldest persisted attempt timestamps and serves the remainder from prior
 // cache (marked staleAsof=true so downstream can see they're a window behind).
-//
-// The cap sizes the queue; RUN_DISPATCH_DEADLINE_MS bounds the run. Batches
-// stop being admitted at the deadline, and unattempted countries keep their
-// queue position. At 2026-11-03 ArcGIS latency (~39s per batch of six) that
-// admits about 42 countries a run. 30 was too few: cohorts of 27-28 countries
-// reach the seven-day expiry every 12h, so after a few failed runs the
-// expired backlog stayed above 30 and full coverage never returned (six days
-// publish-blocked at 132/174). tests/portwatch-rate-limit-rotation.test.mjs
-// replays that cache state.
-export const MAX_COLD_FETCH_PER_RUN = 60;
+// It holds steady-state traffic, proxy fallback included, to 60 country
+// attempts a day (#4b9ca63018).
+export const MAX_COLD_FETCH_PER_RUN = 30;
+// Queue depth while any queued country is already out of coverage (expired or
+// never cached). Publication is blocked then, and 30 slots cannot clear the
+// backlog: cohorts of 27-28 countries reach the seven-day expiry every 12h, so
+// after a few failed runs the seeder stayed publish-blocked for six days at
+// 132/174 (2026-11-03). RUN_DISPATCH_DEADLINE_MS still bounds the run, and at
+// that day's ArcGIS latency it admits about 42 countries.
+export const MAX_RECOVERY_COLD_FETCH_PER_RUN = 60;
 // Concurrency for the cheap per-country maxDate preflight. These are tiny
 // outStatistics queries (returns 1 row), so we can push harder than the
 // expensive fetch concurrency without tripping ArcGIS 429s in practice.
@@ -1829,13 +1829,19 @@ export async function fetchAll(progress, {
   // over, no upstream contact this run.
   let freshFetchedCount = 0;
 
-  if (needsFetch.length > MAX_COLD_FETCH_PER_RUN) {
-    // Oldest-attempt-first provides the durable rotation state that a random
-    // shuffle cannot: successful and failed attempts both move behind work that
-    // has not received a slot in the current sweep. Never-attempted countries
-    // naturally sort first, retaining #4293's no-cache recovery property.
-    const ordered = orderColdFetchQueue(needsFetch, undefined, { now });
-    const deferred = ordered.slice(MAX_COLD_FETCH_PER_RUN);
+  const coldFetchCap = needsFetch.some(({ prevPayload }) => classifyDeferredPayload(prevPayload, now).status !== 'stale')
+    ? MAX_RECOVERY_COLD_FETCH_PER_RUN
+    : MAX_COLD_FETCH_PER_RUN;
+  // Oldest-attempt-first provides the durable rotation state that a random
+  // shuffle cannot: successful and failed attempts both move behind work that
+  // has not received a slot in the current sweep. Never-attempted countries
+  // naturally sort first, retaining #4293's no-cache recovery property. Order
+  // every queue, not only a truncated one: the dispatch deadline can cut any
+  // queue short, and the countries out of coverage must lead it.
+  const ordered = orderColdFetchQueue(needsFetch, undefined, { now });
+  needsFetch = ordered;
+  if (needsFetch.length > coldFetchCap) {
+    const deferred = ordered.slice(coldFetchCap);
     const countsBefore = {
       servedStale: servedStaleCount,
       droppedTooOld: droppedTooOldCount,
@@ -1847,17 +1853,13 @@ export async function fetchAll(progress, {
     const servedStale = servedStaleCount - countsBefore.servedStale;
     const droppedTooOld = droppedTooOldCount - countsBefore.droppedTooOld;
     const droppedNoCache = droppedNoCacheCount - countsBefore.droppedNoCache;
-    needsFetch = ordered.slice(0, MAX_COLD_FETCH_PER_RUN);
-    // Rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly rather than
-    // needsFetch.length — needsFetch was just reassigned to the cap-sized
-    // slice, so the two are numerically equal here, but using the constant
-    // keeps the intent unambiguous if this log block is ever reordered.
-    const originalMisses = MAX_COLD_FETCH_PER_RUN + servedStale + droppedTooOld + droppedNoCache;
+    needsFetch = ordered.slice(0, coldFetchCap);
+    const originalMisses = coldFetchCap + servedStale + droppedTooOld + droppedNoCache;
     console.warn(
-      `  [port-activity] Cold-fetch capped at ${MAX_COLD_FETCH_PER_RUN}/run — ` +
-      `refreshing ${MAX_COLD_FETCH_PER_RUN} now, retaining ${servedStale} usable cached payloads (refresh deferred), ` +
+      `  [port-activity] Cold-fetch capped at ${coldFetchCap}/run — ` +
+      `refreshing ${coldFetchCap} now, retaining ${servedStale} usable cached payloads (refresh deferred), ` +
       `${droppedTooOld} dropped (cache >= ${MAX_CACHE_AGE_MS / 86_400_000}d old), ${droppedNoCache} dropped (no prior payload). ` +
-      `Rotation: ~${Math.ceil(originalMisses / MAX_COLD_FETCH_PER_RUN)} runs to fully refresh.`,
+      `Rotation: ~${Math.ceil(originalMisses / coldFetchCap)} runs to fully refresh.`,
     );
   }
 

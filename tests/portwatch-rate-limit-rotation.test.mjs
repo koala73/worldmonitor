@@ -212,10 +212,9 @@ describe('recovery from an expired backlog (2026-11-03)', () => {
   const admittedBatches = Math.floor(
     (dispatchDeadlineMs - portwatchSeed.PER_COUNTRY_TIMEOUT_MS - observedStartMs) / observedBatchMs,
   ) + 1;
-  const slotsPerRun = Math.min(
-    portwatchSeed.MAX_COLD_FETCH_PER_RUN,
-    admittedBatches * portwatchSeed.CONCURRENCY,
-  );
+  const deadlineSlots = admittedBatches * portwatchSeed.CONCURRENCY;
+  const outOfCoverage = (prevPayload, now) => !Number.isFinite(prevPayload.cacheWrittenAt)
+    || now - prevPayload.cacheWrittenAt >= PORTWATCH_MAX_CACHE_AGE_MS;
   const cadenceMs = PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
 
   function runsUntilFullCoverage(runSucceeds) {
@@ -225,7 +224,10 @@ describe('recovery from an expired backlog (2026-11-03)', () => {
     const firstRunAt = Math.ceil(fixture.capturedAt / cadenceMs) * cadenceMs;
     for (let run = 0; run < 20; run++) {
       const now = firstRunAt + run * cadenceMs;
-      for (const entry of orderColdFetchQueue(state, undefined, { now }).slice(0, slotsPerRun)) {
+      const cap = state.some(({ prevPayload }) => outOfCoverage(prevPayload, now))
+        ? portwatchSeed.MAX_RECOVERY_COLD_FETCH_PER_RUN
+        : portwatchSeed.MAX_COLD_FETCH_PER_RUN;
+      for (const entry of orderColdFetchQueue(state, undefined, { now }).slice(0, Math.min(cap, deadlineSlots))) {
         entry.prevPayload = {
           ...entry.prevPayload,
           refreshAttemptedAt: now,
@@ -242,12 +244,12 @@ describe('recovery from an expired backlog (2026-11-03)', () => {
 
   it('publishes again within two healthy runs', () => {
     const runs = runsUntilFullCoverage(() => true);
-    assert.ok(runs <= 2, `${slotsPerRun} slots per run needed ${runs} healthy runs to reach full coverage`);
+    assert.ok(runs <= 2, `needed ${runs} healthy runs to reach full coverage`);
   });
 
   it('still recovers within two days when every third run fails outright', () => {
     const runs = runsUntilFullCoverage((run) => run % 3 !== 1);
-    assert.ok(runs <= 4, `${slotsPerRun} slots per run needed ${runs} runs to reach full coverage`);
+    assert.ok(runs <= 4, `needed ${runs} runs to reach full coverage`);
   });
 });
 
@@ -359,8 +361,8 @@ describe('cold-fetch priority for the expiring tail (#8501)', () => {
     // The tier only matters through the MAX_COLD_FETCH_PER_RUN slice, which
     // every other case in this suite is too small to reach.
     const cap = portwatchSeed.MAX_COLD_FETCH_PER_RUN;
-    const expiring = Array.from({ length: cap + 10 }, (_, i) => item(`E${String(i).padStart(2, '0')}`, {
-      // E00 is closest to the cliff.
+    const expiring = Array.from({ length: 40 }, (_, i) => item(`E${String(i).padStart(2, '0')}`, {
+      // E00 is closest to the cliff, E39 furthest.
       cacheWrittenAt: NOW - (PORTWATCH_MAX_CACHE_AGE_MS - 60_000 - i * 60_000),
       refreshAttemptedAt: NOW,
     }));
@@ -370,12 +372,12 @@ describe('cold-fetch priority for the expiring tail (#8501)', () => {
     }));
 
     const ordered = orderColdFetchQueue([...due, ...expiring], undefined, { now: NOW });
-    assert.equal(ordered.length, cap + 150, 'ordering is a permutation');
-    assert.equal(new Set(ordered.map((e) => e.iso2)).size, cap + 150, 'no country is duplicated');
+    assert.equal(ordered.length, 180, 'ordering is a permutation');
+    assert.equal(new Set(ordered.map((e) => e.iso2)).size, 180, 'no country is duplicated');
     assert.deepEqual(
       ordered.slice(0, cap).map((e) => e.iso2),
       expiring.slice(0, cap).map((e) => e.iso2),
-      `the capped run goes to the ${cap} closest to the cliff, in cliff order`,
+      'the capped run goes to the 30 closest to the cliff, in cliff order',
     );
   });
 
@@ -584,7 +586,7 @@ describe('rate-limit backoff (#8501)', () => {
       ).match(/RUN_DISPATCH_DEADLINE_MS = ([\d_]+)/)[1].replace(/_/g, ''),
     );
     const batches = Math.min(
-      Math.ceil(portwatchSeed.MAX_COLD_FETCH_PER_RUN / portwatchSeed.CONCURRENCY),
+      Math.ceil(portwatchSeed.MAX_RECOVERY_COLD_FETCH_PER_RUN / portwatchSeed.CONCURRENCY),
       Math.floor((dispatchDeadlineMs - portwatchSeed.PER_COUNTRY_TIMEOUT_MS)
         / (portwatchSeed.PER_COUNTRY_TIMEOUT_MS + 5_000)) + 1,
     );

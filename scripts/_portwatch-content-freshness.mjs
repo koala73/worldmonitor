@@ -27,14 +27,17 @@ export const PORTWATCH_MAX_REPORTED_STALE_COUNTRIES = 40;
 export const PORTWATCH_MAX_CACHE_AGE_MS = 7 * 86_400_000;
 // Tail of the cache lifetime in which a country outranks ordinary rotation.
 //
-// Bounded on both sides by tests/portwatch-rate-limit-rotation.test.mjs. It
-// must cover one nominal sweep of the rotation slots (MAX_COLD_FETCH_PER_RUN
-// minus the two reserved for CN/HK), or the window cannot promise every member
-// an attempt. It must stay at or under half the seven-day cache lifetime, or
-// most cached countries qualify and the tier stops prioritising anything.
-// 5040 minutes (3.5 days) is that upper bound. It was also the exact sweep at
-// the old 30-slot cap. It now leaves room for the deadline admitting fewer
-// countries than the 60-slot cap on a slow ArcGIS day.
+// Pinned to exactly one full nominal sweep, using the ROTATION slots the seeder
+// actually has: MAX_COLD_FETCH_PER_RUN (30) minus the two reserved for CN/HK =
+// 28, so ceil(174 / 28) = 7 runs at the 12h cadence = 3.5 days = 5040 minutes.
+//
+// The parity test in tests/portwatch-rate-limit-rotation.test.mjs bounds this
+// from BOTH sides and the two bounds happen to meet here: below one sweep the
+// window cannot promise every member an attempt, and above half the seven-day
+// cache lifetime most cached countries qualify and the tier stops prioritising
+// anything. There is deliberately no slack — changing the rotation math means
+// changing this constant, and the test makes that a conscious edit rather than
+// a silent drift.
 //
 // What that buys is one ATTEMPT per expiring country before its payload
 // expires, NOT a successful refresh. Under the 2026-09-22 throttle only 6 of 30
