@@ -320,17 +320,35 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
 });
 
 // React skips the image preload for an <img> inside <picture>, so without the
-// prerender's head tag the LCP hero waits for the body parser to reach it.
+// prerender's head tags the LCP hero waits for the body parser to reach it.
+// Since #9921 the screenshot sits in the first screen on phones too, so it is
+// the LCP there as well: phones get their own source and preload.
 test('built welcome head preloads the hero AVIF srcset the <picture> serves', { skip }, () => {
   const html = welcomeHtml();
   const head = html.slice(0, html.indexOf('</head>'));
-  // Desktop only: on phones the <h1> is the LCP and the screenshot is far below the fold.
   const preload = head.match(/<link rel="preload" as="image" type="image\/avif" media="\(min-width: 640px\)" imagesrcset="([^"]+)" imagesizes="([^"]+)" fetchpriority="high">/);
-  assert.ok(preload, 'welcome <head> should preload the hero AVIF');
-  const source = welcomeRoot().content.match(/<picture><source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
-  assert.ok(source, 'hero <picture> should carry an AVIF <source>');
+  assert.ok(preload, 'welcome <head> should preload the desktop hero AVIF');
+  const source = welcomeRoot().content.match(/<source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
+  assert.ok(source, 'hero <picture> should carry a desktop AVIF <source>');
   assert.equal(preload[1], source[1], 'preload imagesrcset must match the rendered <source>');
   assert.equal(preload[2], source[2], 'preload imagesizes must match the rendered <source>');
+});
+
+// On a phone the hero frame is under 640 CSS px wide, but sizes x DPR picked
+// the 960w or 1280w variant (35-54KB) and the LCP waited ~0.9s on its download.
+// The 640w AVIF is 18KB and still about 1.7x density at that width.
+test('phones get the 640w hero AVIF, preloaded', { skip }, () => {
+  const html = welcomeHtml();
+  const head = html.slice(0, html.indexOf('</head>'));
+  const picture = welcomeRoot().content.match(/<picture>([\s\S]*?)<\/picture>/);
+  assert.ok(picture, 'hero should render a <picture>');
+  const sources = [...picture[1].matchAll(/<source [^>]+\/>/g)].map(([tag]) => tag);
+  assert.match(sources[0], /^<source type="image\/avif" media="\(max-width: 639px\)" srcSet="\/pro\/assets\/worldmonitor-7-mar-2026-640-[^"]+\.avif"\/>$/);
+  assert.match(sources[1], /^<source type="image\/webp" media="\(max-width: 639px\)" srcSet="\/pro\/assets\/worldmonitor-7-mar-2026-640-[^"]+\.webp"\/>$/);
+  const mobileAvif = sources[0].match(/srcSet="([^"]+)"/)[1];
+  const preload = head.match(/<link rel="preload" as="image" type="image\/avif" media="\(max-width: 639px\)" href="([^"]+)" fetchpriority="high">/);
+  assert.ok(preload, 'welcome <head> should preload the phone hero AVIF');
+  assert.equal(preload[1], mobileAvif, 'phone preload must match the rendered phone <source>');
 });
 
 // Mobile audits fail any rendered text under 12px (0.75rem at the 16px root).

@@ -6594,10 +6594,12 @@ body.playback-mode .status-dot {
 
 .repair-ship-marker {
   --repair-ship-color: var(--semantic-low);
+  --repair-ship-text: var(--semantic-low-text, var(--semantic-low));
 }
 
 .repair-ship-marker.on-station {
   --repair-ship-color: var(--status-live);
+  --repair-ship-text: var(--status-live-text, var(--status-live));
 }
 
 .repair-ship-icon {
@@ -6607,7 +6609,7 @@ body.playback-mode .status-dot {
 
 .repair-ship-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--repair-ship-color, var(--semantic-low));
+  color: var(--repair-ship-text, var(--semantic-low-text, var(--semantic-low)));
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 2px;
@@ -6747,7 +6749,6 @@ body.playback-mode .status-dot {
 
 .datacenter-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--datacenter-color);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 2px;
@@ -7109,7 +7110,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.us-nato .base-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .base-marker.china .base-label {
@@ -7121,7 +7122,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.uk .base-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .base-marker.france .base-label {
@@ -7240,7 +7241,7 @@ body.playback-mode .status-dot {
 }
 
 .port-marker.port-naval .port-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .port-marker.port-mixed .port-label {
@@ -7369,7 +7370,7 @@ body.playback-mode .status-dot {
 
 /* Category-specific colors */
 .nat-event-marker.severeStorms .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.wildfires .nat-event-label {
@@ -7397,7 +7398,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.snow .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.tempExtremes .nat-event-label {
@@ -7405,7 +7406,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.seaLakeIce .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.waterColor .nat-event-label {
@@ -7430,7 +7431,7 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.nat-event.severeStorms .popup-title {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .popup-header.nat-event.wildfires {
@@ -10677,7 +10678,7 @@ a.prediction-link:hover {
 }
 
 .map-legend-icon.base {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .map-legend-icon.cable {
@@ -12080,6 +12081,55 @@ a.prediction-link:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* Energy Complex: IEA oil-stock badges and regional summary rows. */
+.energy-net-exporter-badge,
+.energy-below-obligation-badge {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.energy-net-exporter-badge {
+  margin-inline-start: 0;
+  background: var(--overlay-subtle);
+  color: var(--text-secondary);
+}
+
+.energy-below-obligation-badge {
+  background: color-mix(in srgb, var(--semantic-elevated) 14%, transparent);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+
+.oil-stocks-regional {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.oil-stocks-region-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.oil-stocks-region-row .energy-below-obligation-badge {
+  margin-inline-start: 0;
+}
+
+.oil-stocks-region-name {
+  min-width: 88px;
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .economic-indicator {
@@ -13862,35 +13912,43 @@ a.prediction-link:hover {
   cursor: pointer;
   z-index: 54;
   --vessel-color: var(--status-live);
+  --vessel-text: var(--status-live-text, var(--status-live));
 }
 
 .military-vessel-marker.usn {
   --vessel-color: var(--semantic-low);
+  --vessel-text: var(--semantic-low-text, var(--semantic-low));
 }
 
 .military-vessel-marker.rn {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .military-vessel-marker.plan {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .military-vessel-marker.vks {
   --vessel-color: var(--semantic-high);
+  --vessel-text: var(--semantic-high-text, var(--semantic-high));
 }
 
 .military-vessel-marker.carrier {
   --vessel-color: var(--semantic-elevated);
+  --vessel-text: var(--semantic-elevated-text, var(--semantic-elevated));
   z-index: 56;
 }
 
 .military-vessel-marker.submarine {
   --vessel-color: var(--semantic-info);
+  --vessel-text: var(--semantic-info);
 }
 
 .military-vessel-marker.dark-vessel {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   animation: dark-vessel-alert 0.8s ease-in-out infinite;
 }
 
@@ -13947,7 +14005,7 @@ a.prediction-link:hover {
 
 .military-vessel-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--vessel-color);
+  color: var(--vessel-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-top: 2px;
@@ -13992,11 +14050,13 @@ a.prediction-link:hover {
   100% {
     opacity: 1;
     --vessel-color: var(--semantic-critical);
+    --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   }
 
   50% {
     opacity: 0.7;
     --vessel-color: var(--semantic-high);
+    --vessel-text: var(--semantic-high-text, var(--semantic-high));
   }
 }
 
@@ -17060,7 +17120,7 @@ a.prediction-link:hover {
 }
 
 .risk-location-icon {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   margin-left: auto;
   opacity: 0.7;
@@ -17592,7 +17652,7 @@ a.prediction-link:hover {
   background: rgba(68, 136, 255, 0.15);
   border: 1px solid rgba(68, 136, 255, 0.4);
   border-radius: 4px;
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   padding: 4px 10px;
   font-family: var(--font-mono);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
@@ -17603,7 +17663,7 @@ a.prediction-link:hover {
 .location-link:hover {
   background: rgba(68, 136, 255, 0.3);
   border-color: var(--semantic-low);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 /* --- Signal Modal: Focal Points & News Correlation --- */
@@ -17632,7 +17692,7 @@ a.prediction-link:hover {
 }
 
 .news-correlation-header {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .focal-point-item {
@@ -17702,7 +17762,7 @@ a.prediction-link:hover {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   margin-bottom: 8px;
 }
 
@@ -17843,7 +17903,7 @@ a.prediction-link:hover {
 
 .intel-findings-badge.status-low .findings-count {
   background: rgba(74, 158, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .intel-findings-badge.status-high {
@@ -17966,7 +18026,7 @@ a.prediction-link:hover {
 
 .findings-badge.moderate {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .findings-badge.high {
@@ -18124,7 +18184,7 @@ a.prediction-link:hover {
 
 .finding-confidence.medium {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .finding-confidence.low {
@@ -18312,7 +18372,7 @@ a.prediction-link:hover {
 
 .findings-modal-item-priority.medium {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .findings-modal-item-desc {
@@ -20552,7 +20612,7 @@ a.prediction-link:hover {
 }
 
 .insights-missed .insights-section-title {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .insight-story.missed {
@@ -20569,7 +20629,7 @@ a.prediction-link:hover {
 
 .insight-badge.ml-detected {
   background: rgba(107, 138, 253, 0.15);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   border-color: rgba(107, 138, 253, 0.3);
 }
 
@@ -22490,7 +22550,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.military {
   border-color: rgba(100, 180, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .signal-chip.outage {
@@ -23541,7 +23601,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.displacement {
   border-color: rgba(100, 200, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .signal-chip.climate {
@@ -23570,7 +23630,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-citation {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: none;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
@@ -23580,7 +23640,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-citation:hover {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: underline;
 }
 
@@ -23697,7 +23757,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-market-link {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: none;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
@@ -25773,16 +25833,20 @@ body.map-width-resizing {
 
 .debt-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 6px 0 8px;
   flex-shrink: 0;
 }
 
+/* The tabs take the free space while the search fits beside them; in a
+   narrow column the search wraps to its own full-width row. */
 .debt-sort-tabs {
   display: flex;
   gap: 2px;
-  flex: 1;
+  flex: 999 1 180px;
+  min-width: 0;
 }
 
 .debt-tab {
@@ -25812,7 +25876,8 @@ body.map-width-resizing {
 }
 
 .debt-search {
-  width: 110px;
+  flex: 1 0 110px;
+  min-width: 0;
   padding: 4px 8px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   border: 1px solid var(--border);
@@ -25820,7 +25885,6 @@ body.map-width-resizing {
   background: var(--bg-input, var(--bg-secondary));
   color: var(--text);
   outline: none;
-  flex-shrink: 0;
 }
 
 .debt-search:focus {
