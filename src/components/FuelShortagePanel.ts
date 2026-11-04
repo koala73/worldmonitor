@@ -28,8 +28,8 @@ const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient
 }));
 
 const SEVERITY_COLOR: Record<string, string> = {
-  confirmed: '#e74c3c',
-  watch:     '#f39c12',
+  confirmed: '#c0392b',
+  watch:     '#af601a',
 };
 
 // Single unicode glyph per product. Used in the table row so readers can
@@ -48,7 +48,7 @@ const QUALITY_DOT: Record<EvidenceQuality, string> = {
 };
 
 function severityChip(severity: string): string {
-  const color = SEVERITY_COLOR[severity] ?? '#7f8c8d';
+  const color = SEVERITY_COLOR[severity] ?? '#5d6d7e';
   const label = severity.charAt(0).toUpperCase() + severity.slice(1);
   return `<span class="fs-badge" style="background:${color}">${escapeHtml(label)}</span>`;
 }

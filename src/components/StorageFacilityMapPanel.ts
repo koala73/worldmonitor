@@ -27,9 +27,9 @@ const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient
 }));
 
 const BADGE_COLOR: Record<string, string> = {
-  operational: '#2ecc71',
-  reduced:     '#f39c12',
-  offline:     '#e74c3c',
+  operational: '#1e8449',
+  reduced:     '#af601a',
+  offline:     '#c0392b',
   disputed:    '#9b59b6',
 };
 
@@ -57,7 +57,7 @@ function badgeLabel(badge: string): string {
 
 function badgeChip(badge: string | undefined): string {
   const safe = badge && BADGE_COLOR[badge] ? badge : 'disputed';
-  const color = BADGE_COLOR[safe] ?? '#7f8c8d';
+  const color = BADGE_COLOR[safe] ?? '#5d6d7e';
   return `<span class="sf-badge" style="background:${color}">${escapeHtml(badgeLabel(safe))}</span>`;
 }
 

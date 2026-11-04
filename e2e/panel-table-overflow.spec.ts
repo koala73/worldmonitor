@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 
@@ -962,16 +963,24 @@ test('Satellite Fires and every Displacement table fit the sidebar and phone wid
   }
 });
 
-// Price and stock tables colour their state cells: cheapest and priciest,
-// week-on-week moves, gains and losses, stale data, low confidence. Several
-// used fixed bright shades picked for the dark theme, which fall to 1.4-2.9:1
-// on the light theme's white panels, and dimmed small print with opacity on
+const ENERGY_TABLES = JSON.parse(readFileSync(new URL('./fixtures/energy-tables.json', import.meta.url), 'utf8')) as {
+  pipelines: { pipelines: Array<Record<string, unknown>> };
+  storage: { facilities: Array<Record<string, unknown>> };
+  shortages: { shortages: Array<Record<string, unknown>> };
+  disruptions: { events: Array<Record<string, unknown>> };
+};
+
+// Tables colour their state cells and badges: cheapest and priciest,
+// week-on-week moves, gains and losses, stale data, low confidence, asset
+// status, severity. Several used fixed bright shades picked for the dark
+// theme, which fall to 1.4-2.9:1 on the light theme's white panels, put white
+// text on light status fills (2.1:1), or dimmed small print with opacity on
 // top of an already muted colour. Every text node in these tables must clear
 // WCAG AA (4.5:1, 3:1 for large text) against the background it sits on, with
 // translucent tints and opacity composited, in both themes.
-test('price and stock table text is readable in both themes', async ({ page }) => {
+test('panel table text is readable in both themes', async ({ page }) => {
   await page.goto('/tests/runtime-harness.html');
-  const mountErrors = await page.evaluate(async () => {
+  const mountErrors = await page.evaluate(async (energy) => {
     await import('/src/styles/main.css');
     const { initI18n } = await import('/src/services/i18n.ts');
     await initI18n();
@@ -985,6 +994,12 @@ test('price and stock table text is readable in both themes', async ({ page }) =
     const { StockAnalysisPanel } = await import('/src/components/StockAnalysisPanel.ts');
     const { WsbTickerScannerPanel } = await import('/src/components/WsbTickerScannerPanel.ts');
     const { FxPanel } = await import('/src/components/FxPanel.ts');
+    const { PipelineStatusPanel } = await import('/src/components/PipelineStatusPanel.ts');
+    const { StorageFacilityMapPanel } = await import('/src/components/StorageFacilityMapPanel.ts');
+    const { FuelShortagePanel } = await import('/src/components/FuelShortagePanel.ts');
+    const { EnergyDisruptionsPanel } = await import('/src/components/EnergyDisruptionsPanel.ts');
+    const { ClimateAnomalyPanel } = await import('/src/components/ClimateAnomalyPanel.ts');
+    const { DisplacementPanel } = await import('/src/components/DisplacementPanel.ts');
 
     document.getElementById('runtime-harness')?.remove();
     const style = document.createElement('style');
@@ -1160,14 +1175,49 @@ test('price and stock table text is readable in both themes', async ({ page }) =
       return panel.getElement();
     });
 
+    // The registry fixture, with every status the badges can show.
+    const cycle = (rows: Array<Record<string, unknown>>, key: string, values: string[]) => rows.map((row, i) => ({ ...row, [key]: values[i % values.length] }));
+    const energyPanel = (name: string, panel: { getElement(): HTMLElement }, data: unknown) => mount(name, () => {
+      const internals = panel as unknown as { data: unknown; render(): void };
+      internals.data = data;
+      internals.render();
+      return panel.getElement();
+    });
+    energyPanel('pipeline-status', new PipelineStatusPanel(), { ...energy.pipelines, pipelines: cycle(energy.pipelines.pipelines, 'publicBadge', ['flowing', 'reduced', 'offline', 'disputed']) });
+    energyPanel('storage-facility-map', new StorageFacilityMapPanel(), { ...energy.storage, facilities: cycle(energy.storage.facilities, 'publicBadge', ['operational', 'reduced', 'offline', 'disputed']) });
+    energyPanel('fuel-shortages', new FuelShortagePanel(), energy.shortages);
+    energyPanel('energy-disruptions', new EnergyDisruptionsPanel(), { ...energy.disruptions, events: energy.disruptions.events.map((e, i) => (i === 0 ? { ...e, startAt: '' } : e)) });
+
+    mount('climate', () => {
+      const panel = new ClimateAnomalyPanel();
+      panel.setAnomalies([
+        { zone: 'Middle East', lat: 0, lon: 0, tempDelta: 7.8, precipDelta: 0.8, severity: 'extreme', type: 'warm', period: '2026-10' },
+        { zone: 'Southern Africa', lat: 0, lon: 0, tempDelta: 3.3, precipDelta: -2.4, severity: 'moderate', type: 'dry', period: '2026-10' },
+        { zone: 'Western Antarctic Ice Sheet', lat: 0, lon: 0, tempDelta: -1.2, precipDelta: 2.9, severity: 'normal', type: 'wet', period: '2026-10' },
+      ] as never);
+      return panel.getElement();
+    });
+
+    mount('displacement', () => {
+      const panel = new DisplacementPanel();
+      panel.setData({
+        year: 2025, globalTotals: { refugees: 1, asylumSeekers: 1, idps: 1, stateless: 1, total: 4 }, topFlows: [],
+        countries: ([['SDN', 'Sudan', 12_000_000], ['UKR', 'Ukraine', 3_700_000], ['COL', 'Colombia', 600_000], ['PER', 'Peru', 90_000]] as const).map(([code, name, total]) => ({
+          code, name, refugees: total / 2, asylumSeekers: 1000, idps: total / 2, stateless: 0, totalDisplaced: total, hostRefugees: 0, hostAsylumSeekers: 0, hostTotal: 0,
+        })),
+      } as never);
+      return panel.getElement();
+    });
+
     await new Promise((r) => setTimeout(r, 300));
     return failures;
-  });
+  }, ENERGY_TABLES);
   expect(mountErrors).toEqual([]);
 
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
-    const report = await page.evaluate(() => {
+    // A row selector measures only that row (used for hovered rows below).
+    const measure = (rowSelector: string | null) => page.evaluate((only) => {
       const parse = (c: string): number[] | null => {
         let m = c.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/);
         if (m) return [+m[1]!, +m[2]!, +m[3]!, m[4] === undefined ? 1 : +m[4]];
@@ -1190,7 +1240,9 @@ test('price and stock table text is readable in both themes', async ({ page }) =
       };
       const ratio = (a: number[], b: number[]) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi! + 0.05) / (lo! + 0.05); };
       const tables = [...document.querySelectorAll('.panels-grid .panel table')];
-      const scopes = [...tables, ...document.querySelectorAll('.panels-grid .panel[data-contrast-scope] .cp-body')];
+      const scopes = only
+        ? [...document.querySelectorAll(only)]
+        : [...tables, ...document.querySelectorAll('.panels-grid .panel[data-contrast-scope] .cp-body')];
       const low: string[] = [];
       let checked = 0;
       for (const scope of scopes) {
@@ -1215,9 +1267,18 @@ test('price and stock table text is readable in both themes', async ({ page }) =
         }
       }
       return { panels: new Set(tables.map((t) => t.closest<HTMLElement>('.panel')!.dataset.panel)).size, checked, low: [...new Set(low)] };
-    });
-    expect(report.panels, `${theme}: every mounted panel renders a table`).toBe(10);
+    }, rowSelector);
+    await page.mouse.move(0, 0);
+    const report = await measure(null);
+    expect(report.panels, `${theme}: every mounted panel renders a table`).toBe(16);
     expect(report.checked, `${theme}: text nodes measured`).toBeGreaterThan(200);
     expect.soft(report.low, `${theme}: table text below AA contrast`).toEqual([]);
+    // Severity badges sit on tinted rows, and hovering a row adds its own tint.
+    for (const row of ['tr.climate-extreme-row', 'tr.disp-row:has(.disp-crisis)']) {
+      await page.hover(`.panels-grid ${row}`);
+      const hovered = await measure(`.panels-grid ${row}:hover`);
+      expect(hovered.checked, `${theme}: hovered ${row} measured`).toBeGreaterThan(0);
+      expect.soft(hovered.low, `${theme}: hovered ${row} below AA contrast`).toEqual([]);
+    }
   }
 });
