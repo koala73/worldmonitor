@@ -582,6 +582,40 @@ describe('PortWatch last-good and gap reporting', () => {
     assert.equal(calls, 4);
   });
 
+  // A failed preflight forfeits the country's cache confirmation, so it spends
+  // one of the run's capped cold-fetch slots instead.
+  it('retries the max-date preflight through intermittent Invalid URL answers', async () => {
+    let calls = 0;
+    const sleepCalls = [];
+    const observation = await portwatchSeed.fetchMaxDate('SEN', {
+      dateField: 'date',
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+      fetchFn: async () => {
+        calls += 1;
+        return calls <= 2
+          ? Response.json({ error: { code: 400, message: 'Invalid URL', details: ['Invalid URL'] } })
+          : Response.json({ features: [{ attributes: { max_date: '2026-10-30' } }] });
+      },
+    });
+    assert.deepEqual(observation, { status: 'observed', maxDate: '2026-10-30' });
+    assert.equal(calls, 3);
+    assert.deepEqual(sleepCalls, [1_000, 1_000]);
+  });
+
+  it('reports the preflight failed after two Invalid URL retries', async () => {
+    let calls = 0;
+    const observation = await portwatchSeed.fetchMaxDate('SEN', {
+      dateField: 'date',
+      sleepFn: async () => {},
+      fetchFn: async () => {
+        calls += 1;
+        return Response.json({ error: { code: 400, message: 'Invalid URL' } });
+      },
+    });
+    assert.deepEqual(observation, { status: 'failed', maxDate: null });
+    assert.equal(calls, 3);
+  });
+
   it('persists an Invalid URL refresh failure as invalid_query', () => {
     const state = portwatchSeed.buildRefreshFailureState(
       { iso2: 'SN', prevPayload: { iso2: 'SN' } },
