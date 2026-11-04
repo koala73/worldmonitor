@@ -131,7 +131,7 @@ export class StockAnalysisPanel extends Panel {
           },
           {
             key: 'change', label: '1d %', align: 'right', sortable: true, sortOptionKey: 'change-desc',
-            cell: (i) => `<span style="color:${i.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)'}">${escapeHtml(formatChange(i.changePercent))}</span>`,
+            cell: (i) => `<span style="color:${i.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical-text, var(--semantic-critical))'}">${escapeHtml(formatChange(i.changePercent))}</span>`,
           },
         ],
         filters: [
@@ -268,7 +268,7 @@ export class StockAnalysisPanel extends Panel {
           </div>
           <div style="text-align:right;min-width:110px">
             <div style="font-size:calc(18px * var(--wm-panel-effective-scale, 1));font-weight:700">${escapeHtml(formatPrice(item.currentPrice, item.currency))}</div>
-            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:${item.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)'}">${escapeHtml(formatChange(item.changePercent))}</div>
+            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:${item.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical-text, var(--semantic-critical))'}">${escapeHtml(formatChange(item.changePercent))}</div>
             <div style="margin-top:6px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Score ${escapeHtml(String(getStockAnalysisRatingScore(item)))} · ${escapeHtml(getStockAnalysisRatingConfidence(item))}</div>
           </div>
           ${history.length >= 2 ? (() => {
@@ -421,7 +421,7 @@ export class StockAnalysisPanel extends Panel {
 
     if (currentPrice > 0) {
       const upsidePct = ((displayMedian - currentPrice) / currentPrice) * 100;
-      const upsideColor = upsidePct >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+      const upsideColor = upsidePct >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical-text, var(--semantic-critical))';
       const upsideStr = `${upsidePct >= 0 ? '+' : ''}${upsidePct.toFixed(1)}%`;
       cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">vs Current</div><div style="margin-top:2px;color:${upsideColor}">${escapeHtml(upsideStr)}</div></div>`);
     }
@@ -431,7 +431,7 @@ export class StockAnalysisPanel extends Panel {
 
   private renderRecentUpgrades(upgrades: UpgradeDowngrade[]): string {
     const rows = upgrades.slice(0, 3).map((u) => {
-      const actionColor = u.action === 'up' || u.action === 'init' ? 'var(--semantic-normal)' : u.action === 'down' ? 'var(--semantic-critical)' : 'var(--text-dim)';
+      const actionColor = u.action === 'up' || u.action === 'init' ? 'var(--semantic-normal)' : u.action === 'down' ? 'var(--semantic-critical-text, var(--semantic-critical))' : 'var(--text-dim)';
       const actionLabel = u.action === 'up' ? 'Upgrade' : u.action === 'down' ? 'Downgrade' : u.action === 'init' ? 'Initiated' : escapeHtml(u.action);
       const gradeChange = u.fromGrade ? `${escapeHtml(u.fromGrade)} → ${escapeHtml(u.toGrade)}` : escapeHtml(u.toGrade);
 
@@ -477,12 +477,12 @@ export class StockAnalysisPanel extends Panel {
     const buysStr = formatDollarCompact(data.totalBuys);
     const sellsStr = formatDollarCompact(data.totalSells);
     const netStr = `${data.netValue >= 0 ? '+' : ''}${formatDollarCompact(data.netValue)}`;
-    const netColor = data.netValue >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+    const netColor = data.netValue >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical-text, var(--semantic-critical))';
 
     const summary = `
       <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-family:var(--font-mono)">
         <span>Buys: <span style="color:var(--semantic-normal)">${escapeHtml(buysStr)}</span></span>
-        <span>Sells: <span style="color:var(--semantic-critical)">${escapeHtml(sellsStr)}</span></span>
+        <span>Sells: <span style="color:var(--semantic-critical-text, var(--semantic-critical))">${escapeHtml(sellsStr)}</span></span>
         <span>Net: <span style="color:${netColor};font-weight:600">${escapeHtml(netStr)}</span></span>
       </div>`;
 
@@ -502,7 +502,7 @@ export class StockAnalysisPanel extends Panel {
           ${rows.map(tx => {
             const isBuy = tx.transactionCode === 'P';
             const isSell = tx.transactionCode === 'S';
-            const typeColor = isBuy ? 'var(--semantic-normal)' : isSell ? 'var(--semantic-critical)' : 'var(--text-dim)';
+            const typeColor = isBuy ? 'var(--semantic-normal)' : isSell ? 'var(--semantic-critical-text, var(--semantic-critical))' : 'var(--text-dim)';
             // Non-market rows (M/A/D/F) carry value: 0 from the server because
             // their transactionPrice is not a market execution price (strike,
             // grant price, buyback redemption, or tax withholding). Render a

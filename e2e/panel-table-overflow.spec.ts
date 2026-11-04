@@ -961,3 +961,263 @@ test('Satellite Fires and every Displacement table fit the sidebar and phone wid
     expect.soft(r.cell, `${r.name}: shared cell style`).toBe('11px 5px 4px');
   }
 });
+
+// Price and stock tables colour their state cells: cheapest and priciest,
+// week-on-week moves, gains and losses, stale data, low confidence. Several
+// used fixed bright shades picked for the dark theme, which fall to 1.4-2.9:1
+// on the light theme's white panels, and dimmed small print with opacity on
+// top of an already muted colour. Every text node in these tables must clear
+// WCAG AA (4.5:1, 3:1 for large text) against the background it sits on, with
+// translucent tints and opacity composited, in both themes.
+test('price and stock table text is readable in both themes', async ({ page }) => {
+  await page.goto('/tests/runtime-harness.html');
+  const mountErrors = await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const { BigMacPanel } = await import('/src/components/BigMacPanel.ts');
+    const { FuelPricesPanel } = await import('/src/components/FuelPricesPanel.ts');
+    const { GroceryBasketPanel } = await import('/src/components/GroceryBasketPanel.ts');
+    const { ConsumerPricesPanel } = await import('/src/components/ConsumerPricesPanel.ts');
+    const { RadiationWatchPanel } = await import('/src/components/RadiationWatchPanel.ts');
+    const { SatelliteFiresPanel } = await import('/src/components/SatelliteFiresPanel.ts');
+    const { StockBacktestPanel } = await import('/src/components/StockBacktestPanel.ts');
+    const { StockAnalysisPanel } = await import('/src/components/StockAnalysisPanel.ts');
+    const { WsbTickerScannerPanel } = await import('/src/components/WsbTickerScannerPanel.ts');
+    const { FxPanel } = await import('/src/components/FxPanel.ts');
+
+    document.getElementById('runtime-harness')?.remove();
+    const style = document.createElement('style');
+    style.textContent = '*, *::before, *::after { transition: none !important; animation: none !important; }';
+    document.head.appendChild(style);
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    grid.style.cssText = 'height:auto;width:900px;grid-template-columns:900px';
+    document.body.appendChild(grid);
+    const failures: string[] = [];
+    const mount = (name: string, build: () => HTMLElement) => {
+      try { grid.appendChild(build()); } catch (err) { failures.push(`${name}: ${String(err)}`); }
+    };
+
+    mount('bigmac', () => {
+      const panel = new BigMacPanel();
+      (panel as unknown as { renderIndex(data: unknown): void }).renderIndex({
+        wowAvailable: true, wowAvgPct: 0.4, fetchedAt: '2026-11-03T00:00:00Z',
+        countries: [
+          { code: 'CH', name: 'Switzerland', flag: '🇨🇭', usdPrice: 8.17, wowPct: 0.6 },
+          { code: 'US', name: 'United States', flag: '🇺🇸', usdPrice: 5.69, wowPct: -0.2 },
+          { code: 'IN', name: 'India', flag: '🇮🇳', usdPrice: 2.54, wowPct: null },
+        ],
+      });
+      return panel.getElement();
+    });
+
+    mount('fuel-prices', () => {
+      const panel = new FuelPricesPanel();
+      (panel as unknown as { renderIndex(data: unknown): void }).renderIndex({
+        wowAvailable: true, fetchedAt: '2026-11-03T00:00:00Z', countryCount: 3,
+        cheapestGasoline: 'SA', mostExpensiveGasoline: 'NO', cheapestDiesel: 'US', mostExpensiveDiesel: 'NO',
+        countries: [
+          { code: 'NO', name: 'Norway', flag: '🇳🇴', gasoline: { usdPrice: 2.14, wowPct: 1.2 }, diesel: { usdPrice: 2.01, wowPct: -3.4 } },
+          { code: 'US', name: 'United States', flag: '🇺🇸', gasoline: { usdPrice: 0.92, wowPct: -0.8 }, diesel: { usdPrice: 1.01, wowPct: 0.3 } },
+          { code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦', gasoline: { usdPrice: 0.62, wowPct: -2.5 }, diesel: null },
+        ],
+      });
+      return panel.getElement();
+    });
+
+    mount('grocery-basket', () => {
+      const panel = new GroceryBasketPanel();
+      const countries = [['US', 'United States', 1], ['GB', 'United Kingdom', 1.4], ['IN', 'India', 0.5]] as const;
+      (panel as unknown as { renderBasket(data: unknown): void }).renderBasket({
+        fetchedAt: '2026-11-03T00:00:00Z', cheapestCountry: 'IN', mostExpensiveCountry: 'GB', upstreamUnavailable: false,
+        wowAvailable: true, wowAvgPct: -0.6, prevFetchedAt: '2026-10-27T00:00:00Z',
+        countries: countries.map(([code, name, scale], i) => ({
+          code, name, currency: code === 'US' ? 'USD' : code === 'GB' ? 'GBP' : 'INR', flag: code, fxRate: 1,
+          totalUsd: 20 * scale, wowPct: [0.2, 1.8, -10.6][i],
+          items: ['sugar', 'salt', 'rice'].map((itemId, j) => ({
+            itemId, itemName: itemId, unit: '1kg', available: !(code === 'IN' && itemId === 'salt'),
+            localPrice: (2 + j) * scale, usdPrice: (2 + j) * scale,
+          })),
+        })),
+      });
+      return panel.getElement();
+    });
+
+    mount('consumer-prices', () => {
+      const panel = new ConsumerPricesPanel();
+      const internals = panel as unknown as { allMarkets: unknown[]; globalInflation: unknown[]; overview: unknown; settings: { tab: string }; render(): void };
+      internals.allMarkets = [
+        { marketCode: 'ae', asOf: '1730592000000', upstreamUnavailable: false, essentialsIndex: 101.4, wowPct: 0.8, retailerSpreadPct: 12.3, freshnessLagMin: 90 },
+        { marketCode: 'us', asOf: '1730592000000', upstreamUnavailable: false, essentialsIndex: 98.2, wowPct: -0.3, retailerSpreadPct: 8.1, freshnessLagMin: 2000 },
+      ];
+      internals.globalInflation = [];
+      internals.overview = { upstreamUnavailable: false };
+      internals.render();
+      return panel.getElement();
+    });
+
+    // Consumer Prices state labels outside its tables: the week-over-week
+    // pressure badge (one per overview), mover percentages and retailer health.
+    // The measurement below covers each .cp-body marked data-contrast-scope.
+    const consumerPrices = (settings: Record<string, unknown>, data: Record<string, unknown>) => {
+      const panel = new ConsumerPricesPanel();
+      const internals = panel as unknown as Record<string, unknown> & { settings: Record<string, unknown>; render(): void };
+      Object.assign(internals, data);
+      internals.settings = { ...internals.settings, market: 'ae', categoryFilter: null, ...settings };
+      internals.render();
+      panel.getElement().dataset.contrastScope = '';
+      return panel.getElement();
+    };
+    for (const wowPct of [0.1, 1.2, 2.6, -1.4]) {
+      mount(`consumer-prices overview ${wowPct}`, () => consumerPrices({ tab: 'overview' }, {
+        overview: {
+          marketCode: 'ae', asOf: '1730592000000', upstreamUnavailable: false, essentialsIndex: 101.4, valueBasketIndex: 99.8,
+          wowPct, momPct: -0.7, retailerSpreadPct: 12.3, coveragePct: 84, freshnessLagMin: 90, topCategories: [],
+        },
+      }));
+    }
+    mount('consumer-prices movers', () => consumerPrices({ tab: 'movers' }, {
+      movers: {
+        risers: [{ productId: 'p1', title: 'Basmati rice 5kg', category: 'grains', retailerSlug: 'carrefour', changePct: 6.4, currentPrice: 42, currencyCode: 'AED' }],
+        fallers: [{ productId: 'p2', title: 'Whole milk 2L', category: 'dairy', retailerSlug: 'lulu', changePct: -3.1, currentPrice: 11, currencyCode: 'AED' }],
+      },
+    }));
+    mount('consumer-prices health', () => consumerPrices({ tab: 'health' }, {
+      freshness: {
+        marketCode: 'ae', asOf: '1730592000000', overallFreshnessMin: 300, stalledCount: 1, upstreamUnavailable: false,
+        retailers: ['ok', 'stale', 'missing'].map((status, i) => ({
+          slug: `r${i}`, name: ['Carrefour', 'Lulu', 'Spinneys'][i]!, lastRunAt: '2026-11-03T00:00:00Z', status, parseSuccessRate: 96 - i * 20, freshnessMin: [90, 2000, 5000][i]!,
+        })),
+      },
+    }));
+
+    mount('radiation-watch', () => {
+      const panel = new RadiationWatchPanel();
+      const observation = (id: string, location: string, confidence: string, severity: string) => ({
+        id, source: 'EPA RadNet', contributingSources: ['EPA RadNet'], location, country: 'US', lat: 42, lon: -73,
+        value: 56, unit: 'nSv/h', observedAt: new Date(Date.now() - 3_600_000), freshness: 'live',
+        baselineValue: 49.2, delta: 6.8, zScore: 2.6, severity, confidence,
+        corroborated: confidence === 'high', conflictingSources: false, convertedFromCpm: confidence === 'low', sourceCount: 1,
+      });
+      panel.setData({
+        fetchedAt: new Date(), coverage: { epa: 3, safecast: 0 },
+        summary: { anomalyCount: 2, elevatedCount: 2, spikeCount: 0, corroboratedCount: 1, lowConfidenceCount: 1, conflictingCount: 1, convertedFromCpmCount: 1 },
+        observations: [observation('r-1', 'Albany', 'medium', 'elevated'), observation('r-2', 'Boston', 'high', 'normal'), observation('r-3', 'Salt Lake City', 'low', 'normal'), { ...observation('r-4', 'Denver', 'medium', 'elevated'), conflictingSources: true }],
+      } as never);
+      return panel.getElement();
+    });
+
+    mount('satellite-fires', () => {
+      const panel = new SatelliteFiresPanel();
+      panel.update([
+        { region: 'Amazonas', fires: [], fireCount: 412, totalFrp: 9_876.5, highIntensityCount: 107, possibleExplosionCount: 0 },
+        { region: 'Sakha', fires: [], fireCount: 38, totalFrp: 412.2, highIntensityCount: 0, possibleExplosionCount: 0 },
+      ] as never, 450);
+      return panel.getElement();
+    });
+
+    mount('stock-backtest', () => {
+      const panel = new StockBacktestPanel();
+      const result = (symbol: string, avg: number, winRate: number) => ({
+        symbol, name: symbol, display: symbol, available: true, evaluationsRun: 30, actionableEvaluations: 24,
+        winRate, directionAccuracy: winRate, avgSimulatedReturnPct: avg, cumulativeSimulatedReturnPct: avg * 4,
+        latestSignal: 'Buy', latestSignalScore: 70, summary: '', generatedAt: '2026-11-03T00:00:00Z', evaluations: [],
+      });
+      panel.renderBacktests([result('FLNC', 6.7, 93.8), result('ENTG', -2.4, 48.3), result('LLY', 0, 32.1)] as never);
+      return panel.getElement();
+    });
+
+    mount('stock-analysis', () => {
+      const panel = new StockAnalysisPanel();
+      const item = (symbol: string, changePercent: number) => ({
+        available: true, symbol, name: symbol, display: symbol, currency: 'USD', currentPrice: 182.4, changePercent,
+        signal: changePercent > 0 ? 'Buy' : 'Sell', signalScore: 70, confidence: 'High', trendStatus: 'Bull', volumeStatus: 'Normal',
+        macdStatus: 'Bullish', rsiStatus: 'Neutral', summary: '', action: '', bullishFactors: [], riskFactors: [], headlines: [],
+        generatedAt: '2026-11-03T00:00:00Z', analysisAt: Date.now(), engineVersion: 'e2e', analystConsensus: null, priceTarget: null, recentUpgrades: [],
+      });
+      panel.renderAnalyses([item('AAPL', 1.2), item('INTC', -2.94)] as never);
+      return panel.getElement();
+    });
+
+    mount('wsb', () => {
+      const panel = new WsbTickerScannerPanel();
+      panel.updateData([84, 60, 31, 12].map((velocityScore, i) => ({
+        symbol: ['NVDA', 'GME', 'TSLA', 'AMD'][i]!, mentionCount: 400 - i * 90, totalScore: 18_400 - i * 4000, subreddits: ['wallstreetbets'], velocityScore,
+      })));
+      return panel.getElement();
+    });
+
+    mount('fx', () => {
+      const panel = new FxPanel();
+      (panel as unknown as { updateFx(data: unknown): void }).updateFx({
+        stress: [
+          { countryCode: 'AR', currency: 'ARS', yoyChange: -38.2, drawdown24m: -61.4, stressed: true, peakRate: 0.0029, peakDate: '2024-11-01', troughRate: 0.0011, troughDate: '2026-10-31', asOf: '2026-10-31' },
+          { countryCode: 'TR', currency: 'TRY', yoyChange: -12.1, drawdown24m: -30.2, stressed: true, peakRate: 0.041, peakDate: '2025-01-01', troughRate: 0.029, troughDate: '2026-09-30', asOf: '2026-10-31' },
+        ],
+        usd: [], eur: [], rub: [], degraded: [],
+      });
+      return panel.getElement();
+    });
+
+    await new Promise((r) => setTimeout(r, 300));
+    return failures;
+  });
+  expect(mountErrors).toEqual([]);
+
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
+    const report = await page.evaluate(() => {
+      const parse = (c: string): number[] | null => {
+        let m = c.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/);
+        if (m) return [+m[1]!, +m[2]!, +m[3]!, m[4] === undefined ? 1 : +m[4]];
+        m = c.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/);
+        if (m) return [+m[1]! * 255, +m[2]! * 255, +m[3]! * 255, m[4] === undefined ? 1 : +m[4]];
+        return null;
+      };
+      const over = (top: number[], bottom: number[]) => [0, 1, 2].map((i) => top[i]! * top[3]! + bottom[i]! * (1 - top[3]!)).concat(1);
+      const background = (el: Element) => {
+        const layers: number[][] = [];
+        for (let e: Element | null = el; e; e = e.parentElement) {
+          const c = parse(getComputedStyle(e).backgroundColor);
+          if (c && c[3]! > 0) { layers.push(c); if (c[3] === 1) break; }
+        }
+        return layers.reverse().reduce((acc, layer) => over(layer, acc), [255, 255, 255, 1]);
+      };
+      const luminance = (c: number[]) => {
+        const [r, g, b] = c.slice(0, 3).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; });
+        return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+      };
+      const ratio = (a: number[], b: number[]) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi! + 0.05) / (lo! + 0.05); };
+      const tables = [...document.querySelectorAll('.panels-grid .panel table')];
+      const scopes = [...tables, ...document.querySelectorAll('.panels-grid .panel[data-contrast-scope] .cp-body')];
+      const low: string[] = [];
+      let checked = 0;
+      for (const scope of scopes) {
+        const panel = scope.closest<HTMLElement>('.panel')!.dataset.panel;
+        for (const el of scope.querySelectorAll('*')) {
+          if (![...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim())) continue;
+          const s = getComputedStyle(el);
+          if (s.visibility === 'hidden' || el.getBoundingClientRect().width === 0) continue;
+          const text = parse(s.color);
+          if (!text) { low.push(`${panel} ${el.tagName.toLowerCase()} unparsed colour ${s.color}`); continue; }
+          let opacity = text[3]!;
+          for (let e: Element | null = el; e; e = e.parentElement) opacity *= Number(getComputedStyle(e).opacity);
+          const bg = background(el);
+          const contrast = ratio(over([text[0]!, text[1]!, text[2]!, opacity], bg), bg);
+          const size = Number.parseFloat(s.fontSize);
+          const large = size >= 24 || (size >= 18.66 && Number(s.fontWeight) >= 700);
+          checked++;
+          if (contrast < (large ? 3 : 4.5)) {
+            const label = el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).join('.')}` : el.tagName.toLowerCase();
+            low.push(`${panel} ${label} "${el.textContent!.trim().slice(0, 16)}" ${contrast.toFixed(2)}:1`);
+          }
+        }
+      }
+      return { panels: new Set(tables.map((t) => t.closest<HTMLElement>('.panel')!.dataset.panel)).size, checked, low: [...new Set(low)] };
+    });
+    expect(report.panels, `${theme}: every mounted panel renders a table`).toBe(10);
+    expect(report.checked, `${theme}: text nodes measured`).toBeGreaterThan(200);
+    expect.soft(report.low, `${theme}: table text below AA contrast`).toEqual([]);
+  }
+});
