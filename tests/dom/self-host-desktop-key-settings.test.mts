@@ -239,6 +239,26 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
     expect(section()!.open).toBe(false);
   });
 
+  it('a full re-render resets the section cache so the next refresh is not skipped', async () => {
+    await mount();
+    const internals = settings as unknown as { render(): void; selfHostKeyMessage: string; refreshSelfHostKeySection(): void };
+    await enterAndSave('   ');
+    const message = () => section()!.querySelector<HTMLElement>('[data-selfhost-key-message]')!;
+    expect(message().hidden).toBe(false);
+    const shown = internals.selfHostKeyMessage;
+
+    // A full render draws the section without the message; the refresh cache
+    // still holds the with-message markup.
+    internals.selfHostKeyMessage = '';
+    internals.render();
+    expect(message().hidden).toBe(true);
+
+    // State returns to the cached markup: the refresh must still redraw.
+    internals.selfHostKeyMessage = shown;
+    internals.refreshSelfHostKeySection();
+    expect(message().hidden).toBe(false);
+  });
+
   it('saving a key the server reports active shows the active state', async () => {
     await mount();
     await enterAndSave(`  ${KEY}  `);

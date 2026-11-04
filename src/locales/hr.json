@@ -4334,7 +4334,7 @@
       "remove": "Ukloni ključ",
       "removing": "Uklanjam…",
       "empty": "Unesite ključ za radnu površinu.",
-      "saveFailed": "Nije moguće spremi ključ. Pokušajte ponovno.",
+      "saveFailed": "Nije moguće spremiti ključ. Pokušajte ponovno.",
       "removeFailed": "Nije moguće ukloniti ključ. Pokušajte ponovno.",
       "rateLimited": "Previše pokušaja. Pokušajte ponovno za {{seconds}} sekundi.",
       "rateLimitedSoon": "Previše pokušaja. Pokušajte ponovno za minutu.",
@@ -4356,7 +4356,7 @@
       "detail": {
         "none": "Nema ključa spremljenog u ovom pregledniku.",
         "active": "Pro je otključan u ovom pregledniku.",
-        "invalid": "Ovaj ključ nije valjao ili je opozvana.",
+        "invalid": "Ovaj ključ nije valjan ili je opozvan.",
         "not_desktop_key": "Ovo je API ključ. Umjesto toga koristite ključ za radnu površinu.",
         "over_cap": "Račun ima više ključeva za radnu površinu nego što plan dozvoljava. Opozvite jedan na worldmonitor.app.",
         "lapsed": "Plan Pro za ovaj račun nije aktivan.",

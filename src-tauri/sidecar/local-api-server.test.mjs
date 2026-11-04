@@ -4828,7 +4828,7 @@ test('selfhost-key: local handlers and the youtube cloud route never see the des
     assert.equal(youtube.status, 200);
     const call = cloud.relayed.find((c) => c.path === '/api/youtube/live');
     assert.ok(call, 'youtube/live reached the fake cloud');
-    assert.equal(call.headers.cookie, undefined, 'proxyToCloud drops Cookie on every call');
+    assert.equal(call.headers.cookie, 'theme=dark', 'ordinary cloud fallback keeps other cookies (wm-session) but never the key');
     assert.notEqual(call.headers['x-worldmonitor-key'], SELFHOST_ACTIVE_KEY);
   });
 });
@@ -4916,6 +4916,7 @@ test('relay: a premium path with the cookie goes to the cloud with only the cook
     const response = await selfHostRequest(port, `${SELFHOST_PREMIUM_PATH}?symbol=AAPL`, {
       headers: {
         ...keyCookie(SELFHOST_ACTIVE_KEY),
+        Cookie: `wm-session=local-session; wm-desktop-key=${SELFHOST_ACTIVE_KEY}`,
         Origin: 'http://localhost',
         'User-Agent': 'Mozilla/5.0 (Browser)',
       },

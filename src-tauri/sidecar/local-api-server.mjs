@@ -827,9 +827,9 @@ async function proxyToCloud(requestUrl, req, context, { relayKey = null, signal 
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
   // Strip sidecar auth token — meaningless to cloud API.
   headers.delete('Authorization');
-  // Cookies belong to the origin the browser called, never to the cloud. This
-  // also keeps the self-host desktop-key cookie off every proxied call.
-  headers.delete('Cookie');
+  // dispatch() already removed the desktop-key cookie. Ordinary cloud fallback
+  // keeps the rest (the wm-session cookie); a relay sends the key and nothing else.
+  if (relayKey) headers.delete('Cookie');
   const userAuthorization = headers.get(CLOUD_USER_AUTHORIZATION_HEADER) ?? '';
   headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
   const userBearer = !relayKey && CLOUD_BEARER_SHAPE.test(userAuthorization) ? userAuthorization : '';

@@ -931,6 +931,9 @@ export class UnifiedSettings {
     this.activeTab = normalizeSettingsTab(this.activeTab, availableTabs);
     const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
     const applicablePresets = this.getApplicableTheaterPresets();
+    // The refresh cache must describe what this render draws.
+    const selfHostKeyHtml = this.renderSelfHostKeySection();
+    this.selfHostKeyRenderedHtml = selfHostKeyHtml;
 
     setTrustedHtml(this.overlay, trustedHtml(`
       <div class="modal unified-settings-modal">
@@ -949,7 +952,7 @@ export class UnifiedSettings {
           ${showMcpClientsTab ? `<button class="${tabClass('mcp-clients')}" tabindex="${this.activeTab === 'mcp-clients' ? 0 : -1}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
-          <div data-selfhost-key-host>${this.renderSelfHostKeySection()}</div>
+          <div data-selfhost-key-host>${selfHostKeyHtml}</div>
           ${prefs.html}
         </div>
         ${isSignedIn ? `
