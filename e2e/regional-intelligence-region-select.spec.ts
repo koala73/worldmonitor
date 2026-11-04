@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 
 // The Regional Intelligence region picker had a class no stylesheet styled, so
 // it rendered as the browser's white system dropdown in both themes and was 19px
@@ -29,6 +30,7 @@ for (const { name, viewport, theme, touch } of CASES) {
     }, theme);
     await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => route.abort());
     await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
 
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });

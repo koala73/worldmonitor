@@ -145,7 +145,7 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 5; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-const section = () => overlay.querySelector<HTMLElement>('[data-selfhost-key-section]');
+const section = () => overlay.querySelector<HTMLDetailsElement>('[data-selfhost-key-section]');
 const input = () => section()!.querySelector<HTMLInputElement>('[data-selfhost-key-input]');
 const saveButton = () => section()!.querySelector<HTMLButtonElement>('[data-selfhost-key-save]');
 const removeButton = () => section()!.querySelector<HTMLButtonElement>('[data-selfhost-key-remove]');

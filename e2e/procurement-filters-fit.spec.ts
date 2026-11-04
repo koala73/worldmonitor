@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 
 // The Global Procurement filter bar has eight controls. It must keep every
 // control inside the panel at the default 375px dashboard column, at the
@@ -60,6 +61,7 @@ test('procurement filters fit the panel at every column width', async ({ browser
     });
     await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => route.abort());
     await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
     await page.route('**/api/bootstrap*', (route) => route.fulfill({ json: { missing: [], data: {} } }));
     await page.route('**/api/economic/v1/list-global-tenders*', (route) => route.fulfill({ json: TENDERS }));
 
