@@ -10490,6 +10490,15 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
+button.popup-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: inherit;
+}
+
 .popup-provenance .popup-link {
   margin-top: 0;
   font-size: inherit;

@@ -492,6 +492,7 @@ export class PanelLayoutManager implements AppModule {
   private readonly proActivationController: ProActivationController;
   private readonly passkeyOfferController: PasskeyOfferBoot;
   private readonly checkoutReturnFocusController = new AbortController();
+  private storageAtlasRetry: ReturnType<typeof setTimeout> | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -825,7 +826,39 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  public focusStorageFacility(facilityId: string): void {
+    const key = 'storage-facility-map';
+    if (this.storageAtlasRetry !== null) {
+      clearTimeout(this.storageAtlasRetry);
+      this.storageAtlasRetry = null;
+    }
+    this.mountDeferredPanel(key);
+    const attempt = (left: number): void => {
+      this.storageAtlasRetry = null;
+      if (this.ctx.isDestroyed) return;
+      const el = this.ctx.panels[key]?.getElement();
+      if (el?.isConnected) {
+        window.dispatchEvent(new CustomEvent('energy:open-storage-facility-detail', {
+          cancelable: true,
+          detail: { facilityId },
+        }));
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      if (left <= 0) return;
+      if (left === 24) {
+        document.querySelector(`[data-panel="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      this.storageAtlasRetry = setTimeout(() => attempt(left - 1), 200);
+    };
+    attempt(24);
+  }
+
   destroy(): void {
+    if (this.storageAtlasRetry !== null) {
+      clearTimeout(this.storageAtlasRetry);
+      this.storageAtlasRetry = null;
+    }
     this.checkoutReturnFocusController.abort();
     clearAllPendingCalls();
     this.applyTimeRangeFilterDebounced.cancel();

@@ -111,7 +111,7 @@ function fmtDelayMin(min: number | undefined): string {
 /** A news marker's popup: its title and, when known, the cluster's corroboration (#9213). */
 type NewsPopupData = Pick<NewsLocationMarker, 'title' | 'corroboration'>;
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'storageFacility';
 
 interface TechEventPopupData {
   id: string;
@@ -238,9 +238,19 @@ interface DatacenterClusterData {
   sampled?: boolean;
 }
 
+interface StorageFacilityPopupData {
+  id: string;
+  name: string;
+  operator: string;
+  facilityType: string;
+  country: string;
+  capacityDisplay: string;
+  badge: string;
+}
+
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | CrossBorderPoint;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | CrossBorderPoint | StorageFacilityPopupData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -408,6 +418,14 @@ export class MapPopup {
     this.popup.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.closest('.popup-close') || target.closest('.map-popup-sheet-handle')) {
+        this.hide();
+        return;
+      }
+      const atlas = target.closest<HTMLElement>('[data-open-storage-atlas]');
+      if (atlas?.dataset.openStorageAtlas) {
+        window.dispatchEvent(new CustomEvent('wm:open-storage-atlas', {
+          detail: { facilityId: atlas.dataset.openStorageAtlas },
+        }));
         this.hide();
         return;
       }
@@ -789,6 +807,8 @@ export class MapPopup {
         return this.renderIrradiatorPopup(data.data as GammaIrradiator);
       case 'pipeline':
         return this.renderPipelinePopup(data.data as Pipeline);
+      case 'storageFacility':
+        return this.renderStorageFacilityPopup(data.data as StorageFacilityPopupData);
       case 'cable':
         return this.renderCablePopup(data.data as UnderseaCable);
       case 'cable-advisory':
@@ -2194,6 +2214,36 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     `;
   }
 
+
+  private renderStorageFacilityPopup(facility: StorageFacilityPopupData): string {
+    const typeLabel = {
+      ugs: 'UGS',
+      spr: 'SPR',
+      lng_export: 'LNG export',
+      lng_import: 'LNG import',
+      crude_tank_farm: 'Crude hub',
+    }[facility.facilityType] ?? escapeHtml(facility.facilityType);
+    const operator = facility.operator
+      ? `<div class="popup-stat"><span class="stat-label">${t('popups.operator')}</span><span class="stat-value">${escapeHtml(facility.operator)}</span></div>`
+      : '';
+    return `
+      <div class="popup-header">
+        <span class="popup-title">${escapeHtml(facility.name)}</span>
+        <button class="popup-close" aria-label="${t('common.close')}">×</button>
+      </div>
+      <div class="popup-body">
+        <div class="popup-subtitle">${typeLabel} · ${escapeHtml(facility.country)} · ${escapeHtml(facility.capacityDisplay || '—')}</div>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.status')}</span>
+            <span class="stat-value">${escapeHtml(facility.badge.toUpperCase())}</span>
+          </div>
+          ${operator}
+        </div>
+        <button type="button" class="popup-link" data-open-storage-atlas="${escapeHtml(facility.id)}">Open in Storage Atlas</button>
+      </div>
+    `;
+  }
 
   private renderPipelinePopup(pipeline: Pipeline): string {
     const typeLabels: Record<string, string> = {

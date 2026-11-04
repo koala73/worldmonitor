@@ -176,6 +176,7 @@ export class StorageFacilityMapPanel extends Panel {
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
     if (!id || !this.element?.isConnected) return;
+    ev.preventDefault();
     void this.loadDetail(id);
   };
 
@@ -190,9 +191,8 @@ export class StorageFacilityMapPanel extends Panel {
         'evidence (operator statements, sanction refs, commercial state, physical signals) — ' +
         'see /docs/methodology/storage for the classifier spec.',
     });
-    // Loose coupling with DeckGLMap: map clicks on a storage dot dispatch
-    // 'energy:open-storage-facility-detail' with the id, and this panel
-    // opens its drawer. No-op if the panel isn't mounted.
+    // Claims a map click only while this panel is connected. DeckGLMap
+    // opens a facility popup when nothing calls preventDefault.
     if (!this.detailSource && typeof window !== 'undefined') {
       window.addEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
     }
