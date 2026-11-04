@@ -200,7 +200,7 @@ export class WatchlistTableView<T> {
         ${intro}
         ${controls}
         <div class="watchlist-table-scroll table-scroll" data-watchlist-scroll="1" role="group" tabindex="0"${labelledBy}>
-          <table class="watchlist-table">
+          <table class="wm-table watchlist-table">
             <thead><tr>${headers}</tr></thead>
             <tbody>${tableBody}</tbody>
           </table>

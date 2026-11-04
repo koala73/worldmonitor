@@ -3740,11 +3740,6 @@ a.hub-top-story {
   border-radius: 3px;
 }
 
-.watchlist-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
 .watchlist-table-scroll {
   /* Keep the complete row box proportional to the effective text scale. The
      virtual scroller measures this value for its scroll-to-index mapping. */
@@ -3754,14 +3749,6 @@ a.hub-top-story {
   overscroll-behavior: contain;
 }
 .watchlist-table thead th {
-  text-align: left;
-  color: var(--text-dim);
-  font-weight: 500;
-  text-transform: uppercase;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 0.4px;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
   position: sticky;
   top: 0;
@@ -3798,9 +3785,6 @@ a.hub-top-story {
 .watchlist-table tbody tr.watchlist-row-expanded {
   background: var(--overlay-light);
 }
-.watchlist-table tbody td {
-  padding: 6px 4px;
-}
 .watchlist-table tbody td.watchlist-td-right {
   text-align: right;
 }
@@ -3828,9 +3812,6 @@ a.hub-top-story {
   max-height: 100%;
 }
 .fx-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
 }
 .fx-table thead th {
@@ -3838,21 +3819,12 @@ a.hub-top-story {
   top: 0;
   z-index: 1;
   background: var(--panel-bg, var(--bg));
-  padding: 4px 6px;
   text-align: right;
-  font-weight: 600;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 .fx-table td {
-  padding: 4px 6px;
   text-align: right;
   white-space: nowrap;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 .fx-table th.fx-ccy,
 .fx-table td.fx-ccy {
@@ -3886,7 +3858,8 @@ a.hub-top-story {
 .fx-flat {
   color: var(--text-dim);
 }
-.fx-window {
+/* Body cells only: the column headers keep the shared header style. */
+td.fx-window {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
@@ -3905,7 +3878,7 @@ a.hub-top-story {
   opacity: 0.7;
 }
 /* The raw seeded direction, shown beside the conventional quote. */
-.fx-inverse {
+td.fx-inverse {
   color: var(--text-dim);
 }
 .fx-section-title {

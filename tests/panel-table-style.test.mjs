@@ -10,9 +10,10 @@
  * Two checks:
  * - Every `<table>` a panel renders carries `wm-table`, except the count still
  *   listed in PENDING for its file. PENDING may only shrink.
- * - A migrated table's own `.<name> th` / `.<name> td` rules do not redeclare
- *   the shared typography, colour, padding or row border. Panel rules keep
- *   widths, alignment of specific columns, and state colours.
+ * - A migrated table's own `.<name> th` / `.<name> td` rules (also written
+ *   `thead th` / `tbody td`) do not redeclare the shared typography, colour,
+ *   padding or row border. Panel rules keep widths, column alignment, sticky
+ *   headers and state colours.
  */
 
 import { describe, it } from 'node:test';
@@ -35,29 +36,22 @@ const OUT_OF_SCOPE = new Set([
 const PENDING = {
   'src/components/BigMacPanel.ts': 1,
   'src/components/ConsumerPricesPanel.ts': 3,
-  'src/components/ETFFlowsPanel.ts': 1,
   'src/components/EconomicCalendarPanel.ts': 1,
   'src/components/EnergyComplexPanel.ts': 2,
-  'src/components/EnergyDisruptionsPanel.ts': 1,
   'src/components/FoodPricesCard.ts': 1,
   'src/components/FuelPricesPanel.ts': 1,
-  'src/components/FuelShortagePanel.ts': 1,
-  'src/components/FxPanel.ts': 4,
   'src/components/GroceryBasketPanel.ts': 1,
   'src/components/MarketPanel.ts': 1,
-  'src/components/PipelineStatusPanel.ts': 1,
   'src/components/RadiationWatchPanel.ts': 1,
   'src/components/StockAnalysisPanel.ts': 1,
-  'src/components/StorageFacilityMapPanel.ts': 1,
   'src/components/SupplyChainPanel.ts': 4,
   'src/components/TradePolicyPanel.ts': 3,
-  'src/components/WatchlistTableView.ts': 2,
   'src/components/WsbTickerScannerPanel.ts': 1,
   'src/components/YieldCurvePanel.ts': 1,
 };
 
 /** Properties `.wm-table` owns for every header and body cell. */
-const SHARED = ['font-size', 'font-weight', 'text-transform', 'letter-spacing', 'color', 'padding', 'border-bottom', 'text-align'];
+const SHARED = ['font-size', 'font-weight', 'text-transform', 'letter-spacing', 'color', 'padding', 'border-bottom'];
 /** Shorthands that also set a shared property (border-bottom, font-size, font-weight). */
 const SHORTHANDS = ['border', 'border-block', 'border-block-end', 'font'];
 
@@ -69,7 +63,9 @@ function componentFiles(dir = 'src/components/') {
 }
 
 /** Class lists of the tables a file renders: template `<table ...>` and h('table', { className }). */
-function tablesIn(code) {
+function tablesIn(source) {
+  // A `<table>` in a comment is not markup.
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const tables = [];
   for (const m of code.matchAll(/<table\b([^>]*)>/g)) {
     tables.push(m[1].match(/\bclass="([^"]*)"/)?.[1] ?? '');
@@ -83,13 +79,14 @@ function tablesIn(code) {
 const panelFiles = componentFiles().filter((path) => !OUT_OF_SCOPE.has(path));
 const tables = panelFiles.flatMap((path) => tablesIn(read(path)).map((cls) => ({ path, classes: cls.split(/\s+/).filter(Boolean) })));
 
-/** Rules whose selector list includes exactly `.<name> th` or `.<name> td`. */
+/** Rules whose selector list includes exactly `.<name> th` or `.<name> td`, optionally via thead/tbody. */
 function exactCellRules(css, name) {
   const rules = [];
   const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
   for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const selectors = m[1].split(',').map((s) => s.trim().replace(/\s+/g, ' '));
-    if (selectors.some((s) => s === `.${name} th` || s === `.${name} td`)) rules.push({ selector: m[1].trim(), body: m[2] });
+    const cells = [`.${name} th`, `.${name} td`, `.${name} thead th`, `.${name} tbody td`];
+    if (selectors.some((s) => cells.includes(s))) rules.push({ selector: m[1].trim(), body: m[2] });
   }
   return rules;
 }

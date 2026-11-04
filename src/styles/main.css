@@ -22890,27 +22890,6 @@ body.has-breaking-alert .panels-grid {
   overflow-x: auto;
 }
 
-.etf-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-}
-
-.etf-table th {
-  text-align: left;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-muted);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--overlay-medium);
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.etf-table td {
-  padding: 5px 6px;
-  border-bottom: 1px solid var(--overlay-light);
-}
-
 .etf-ticker {
   font-weight: 600;
   color: var(--accent);
