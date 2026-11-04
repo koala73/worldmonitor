@@ -213,6 +213,33 @@ function readScroll(page: Page, id: string): Promise<Scroll> {
   }, id);
 }
 
+interface CellStyle { fontSize: string; fontWeight: string; textTransform: string; letterSpacing: string; color: string; padding: string; borderBottom: string }
+
+// The first header and body cell of a panel's table, as rendered.
+function readCellStyle(page: Page, id: string): Promise<{ th: CellStyle; td: CellStyle }> {
+  return page.evaluate((panelId) => {
+    const table = document.querySelector(`#panelsGrid .panel[data-panel="${panelId}"] table`)!;
+    const pick = (cell: Element): CellStyle => {
+      const s = getComputedStyle(cell);
+      return {
+        fontSize: s.fontSize, fontWeight: s.fontWeight, textTransform: s.textTransform, letterSpacing: s.letterSpacing,
+        color: s.color, padding: s.padding, borderBottom: `${s.borderBottomWidth} ${s.borderBottomStyle} ${s.borderBottomColor}`,
+      };
+    };
+    return { th: pick(table.querySelector('thead th')!), td: pick(table.querySelector('tbody td')!) };
+  }, id);
+}
+
+// Tables on the shared `.wm-table` style (tests/panel-table-style.test.mjs),
+// with the header and cell it renders in a 1920px sidebar column. The column
+// is under 480px, so the panel-body container query narrows inline padding
+// to 4px.
+const WM_TABLE_PANELS = new Set(['ucdp-events', 'climate']);
+const WM_TABLE_STYLE = {
+  th: { fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.4px', padding: '4px' },
+  td: { fontSize: '11px', fontWeight: '400', textTransform: 'none', letterSpacing: 'normal', padding: '5px 4px' },
+};
+
 // Tables with a pinned label column fade only the trailing edge, so the
 // labels stay legible.
 const PINNED_LABELS = new Set(['grocery-basket']);
@@ -232,12 +259,15 @@ async function expectCue(page: Page, s: Scroll, id: string, label: string): Prom
   expect.soft(s.scroller.split(' '), `${label}: the table scrolls inside its own wrapper, not the panel body`).toContain('table-scroll');
   expect.soft(s.outsideTable, `${label}: the edge fade covers only the table`).toBe('');
   expect.soft(s.atStart.mask, `${label}: edge fade at the start`).not.toBe('none');
-  expect.soft(s.atStart, `${label}: at the start only the trailing edge fades`).toMatchObject({ start: '0px', end: '24px' });
+  // The fade grows over the last 24px of scroll, so a table that hides less
+  // than 24px fades by the distance it hides.
+  const fade = `${Math.min(24, s.overflow)}px`;
+  expect.soft(s.atStart, `${label}: at the start only the trailing edge fades`).toMatchObject({ start: '0px', end: fade });
   if (PINNED_LABELS.has(id)) {
     expect.soft(s.atEnd, `${label}: at the end the pinned labels do not fade`).toMatchObject({ start: '0px', end: '0px' });
     expect.soft(s.labelDrift, `${label}: the label column stays pinned`).toBeLessThanOrEqual(1);
   } else {
-    expect.soft(s.atEnd, `${label}: at the end only the leading edge fades`).toMatchObject({ start: '24px', end: '0px' });
+    expect.soft(s.atEnd, `${label}: at the end only the leading edge fades`).toMatchObject({ start: fade, end: '0px' });
   }
 }
 
@@ -255,6 +285,7 @@ const DESKTOP_PANELS = [...PANELS, 'grocery-basket'] as const;
 test('panel tables fit a narrow desktop column or scroll with a visible cue', async ({ browser }, testInfo) => {
   test.setTimeout(300_000);
   for (const { fit, ...viewport } of DESKTOP_VIEWPORTS) {
+    const styles = new Map<string, { th: CellStyle; td: CellStyle }>();
     const context = await browser.newContext({ viewport, colorScheme: 'dark' });
     const page = await context.newPage();
     const settings = Object.fromEntries(DESKTOP_PANELS.map((id) => [id, { name: id, enabled: true, priority: 0 }]));
@@ -276,6 +307,16 @@ test('panel tables fit a narrow desktop column or scroll with a visible cue', as
       if (fit.includes(id)) expect.soft(s.overflow, `${label}: sideways scroll`).toBeLessThanOrEqual(0);
       if (id === 'grocery-basket') expect.soft(s.overflow, `${label}: the country matrix scrolls`).toBeGreaterThan(0);
       if (s.overflow > 0 || s.cellsPastPanel > 0) await expectCue(page, s, id, label);
+      if (WM_TABLE_PANELS.has(id) && viewport.width === 1920) {
+        const style = await readCellStyle(page, id);
+        expect.soft(style.th, `${id}: header cell uses the shared table style`).toMatchObject(WM_TABLE_STYLE.th);
+        expect.soft(style.td, `${id}: body cell uses the shared table style`).toMatchObject(WM_TABLE_STYLE.td);
+        styles.set(id, style);
+      }
+    }
+    if (viewport.width === 1920) {
+      const [first, ...rest] = [...styles.values()];
+      for (const style of rest) expect.soft(style, 'shared-style tables render identical header and body cells').toEqual(first);
     }
     await context.close();
   }
