@@ -180,6 +180,8 @@ function runGate(conclusions, {
   sweepStatuses,
   drift,
   associatedPulls = [[]],
+  gatedRuns,
+  gatedRunsReadFails = false,
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -213,6 +215,8 @@ function runGate(conclusions, {
     writeFileSync(rejectedFile, '');
     writeFileSync(callsFile, '');
     writeFileSync(summaryFile, '');
+    const gatedRunsFile = join(tempDir, 'gated-runs.json');
+    writeFileSync(gatedRunsFile, JSON.stringify([{ workflow_runs: gatedRuns ?? [] }]));
     const drifting = {
       mergeBase: MAIN_TIP, mainTip: MAIN_TIP, headTip: HEAD_TIP,
       headFiles: [], mainFiles: [], fetchFails: false, mergeBaseFails: false,
@@ -445,6 +449,12 @@ function runGate(conclusions, {
         '    fi',
         '    exit 0',
         '    ;;',
+        '  *"actions/runs?head_sha="*)',
+        '    echo "head-runs-page" >> "$FAKE_CALLS"',
+        '    [ "$FAKE_GATED_RUNS_FAIL" = "1" ] && { echo "gh: forced runs read failure (HTTP 502)" >&2; exit 1; }',
+        '    cat "$FAKE_GATED_RUNS"',
+        '    exit 0',
+        '    ;;',
         '  *"actions/workflows/deploy-gate.yml/runs"*)',
         '    echo "rest-failed-runs-page" >> "$FAKE_CALLS"',
         '    printf \'[{"workflow_runs":[{"created_at":"%s","display_title":"Deploy Gate %s"}]}]\' "$FAKE_FAILED_RUN_CREATED_AT" "$FAKE_FAILED_RUN_SHA"',
@@ -608,6 +618,9 @@ function runGate(conclusions, {
           FAKE_STATUS_FAILURES: statusFailuresFile,
           FAKE_STATUS_FAILURES_PER_SHA: statusFailuresPerSha ? '1' : '0',
           FAKE_SWEEP_RESPONSES: sweepFile,
+          FAKE_GATED_RUNS: gatedRunsFile,
+          FAKE_GATED_RUNS_FAIL: gatedRunsReadFails ? '1' : '0',
+          GATED_WORKFLOWS: gatedRuns === undefined ? '' : 'Test,Lint Code',
           FAKE_SHA: SHA,
           GH_TOKEN: 'test-token',
           GITHUB_STEP_SUMMARY: summaryFile,
@@ -901,6 +914,44 @@ describe('deploy gate commit-status description', () => {
       'the pending path must use four check pages and one write, with one bounded wait',
     );
     assert.equal(result.statusReads, 1);
+  });
+
+  it('publishes pending without the wait while a gated workflow is still running', () => {
+    for (const status of ['queued', 'in_progress', 'waiting']) {
+      const result = runGate({}, { gatedRuns: [{ name: 'Lint Code', status: 'completed' }, { name: 'Test', status }] });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(
+        result.calls,
+        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'status:pending'],
+        `a ${status} Test run fires its own evaluation, so this one must not hold the runner`,
+      );
+      assert.equal(result.posted[0].state, 'pending');
+    }
+  });
+
+  it('keeps the stale-read wait when no gated workflow is left to fire', () => {
+    for (const [label, options] of [
+      ['all gated runs completed', { gatedRuns: [{ name: 'Test', status: 'completed' }, { name: 'Lint Code', status: 'completed' }] }],
+      ['only an ungated run in flight', { gatedRuns: [{ name: 'Deploy Gate', status: 'in_progress' }, { name: 'Test', status: 'completed' }] }],
+      ['the runs read failed', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], gatedRunsReadFails: true }],
+    ]) {
+      const result = runGate({}, options);
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(
+        result.calls,
+        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'sleep:60', 'graphql-check-page', 'graphql-check-page', 'status:pending'],
+        `${label}: this may be the head's last event, so it must re-poll once (#5479)`,
+      );
+    }
+  });
+
+  it('keeps the wait for a failed check even while a gated workflow is running', () => {
+    // A successful rerun can still read as failed, and the in-flight run
+    // says nothing about that check.
+    const result = runGate({ ...conclusionsFor('success'), unit: 'failure' }, { gatedRuns: [{ name: 'Test', status: 'in_progress' }] });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.calls.includes('head-runs-page'), false);
+    assert.equal(result.calls.filter((call) => call === 'sleep:60').length, 1);
   });
 
   it('blocks a failed Zapier check and accepts an unrelated skipped Zapier check', () => {

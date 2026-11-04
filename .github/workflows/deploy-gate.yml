@@ -44,6 +44,9 @@ permissions:
 env:
   GH_TOKEN: ${{ github.token }}
   REPO: ${{ github.repository }}
+  # The workflow_run list above, for the evaluation's in-flight check.
+  # tests/ci-workflow-coverage.test.mts keeps the two identical.
+  GATED_WORKFLOWS: Test,Typecheck,Lint Code,Security Audit,Stacked Merge Guard,Proto Generation Check
 
 jobs:
   evaluate-direct:

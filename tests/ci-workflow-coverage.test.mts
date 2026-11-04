@@ -1888,6 +1888,15 @@ describe('CI workflow coverage', () => {
     assert.notEqual(download?.with?.['merge-multiple'], true, 'per-SHA result files must not overwrite one another');
   });
 
+  it('names exactly the triggering workflows as the ones whose runs skip the stale-read wait', () => {
+    // An evaluation skips its 60s re-poll while a gated run for the head is
+    // unfinished, because that run's completion event evaluates again. A name
+    // missing here only keeps a wait; an extra name could skip the wait on the
+    // head's last event, which is #5479.
+    const workflow = YAML.parse(deployGateWorkflow);
+    assert.deepEqual(workflow.env.GATED_WORKFLOWS.split(','), workflow.on.workflow_run.workflows);
+  });
+
   it('treats sidecar changes as code for PR smoke gating', () => {
     assert.ok(
       testWorkflow.includes('^src-tauri\\/sidecar\\/'),

@@ -497,6 +497,23 @@ print(json.dumps({
   emit_output protocol_failed "$(printf '%s\n' "$plan" | jq -r .protocol_failed)"
 }
 
+# The 60s re-poll below exists for the LAST workflow_run event of a head
+# (#5479). While a gated workflow is still queued or running, its own
+# completion event is still to come and will read the checks afresh, so an
+# all-pending result can be published at once. 454 evaluations on 3-4 November
+# 2026 spent a median 62s in this step, nearly all of it that wait, while
+# holding a runner that PR jobs were queueing for. Any read failure answers
+# "no", which keeps the wait.
+gated_run_in_flight() {
+  local eval_sha="$1" pages
+  [ -n "${GATED_WORKFLOWS:-}" ] || return 1
+  pages=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/runs?head_sha=$eval_sha&per_page=100" --paginate --slurp) || return 1
+  printf '%s\n' "$pages" | jq -e --arg gated "$GATED_WORKFLOWS" '
+    ($gated | split(",")) as $names
+    | any(.[].workflow_runs[]?; .status != "completed" and (.name as $name | $names | index($name)))' >/dev/null
+}
+
 evaluate_sha() {
 echo "── evaluating $SHA"
 active_sha="$SHA"
@@ -554,6 +571,10 @@ print('failed=' + ','.join(name for name in required if latest[name] not in ('su
     break
   fi
   if [ "$attempt" -lt 2 ]; then
+    if [ "$failed" = "$pending" ] && gated_run_in_flight "$SHA"; then
+      echo "A gated workflow is still running for $SHA; its completion event re-evaluates, so skipping the stale-read wait"
+      break
+    fi
     sleep 60
   fi
 done
