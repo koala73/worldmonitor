@@ -191,8 +191,10 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
     </div>
   `;
 
+  // Each half needs its 110px label and 40px value tracks plus a visible
+  // bar, so the halves stack in a narrow sidebar column.
   const body = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px">
       <div>
         <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Pressures</div>
         ${pressures}
@@ -258,7 +260,7 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
       const color = laneColor[l.name] ?? 'var(--text-dim)';
       return `
         <div style="margin-bottom:3px">
-          <div style="display:flex;justify-content:space-between;font-size:calc(11px * var(--wm-panel-effective-scale, 1));text-transform:capitalize">
+          <div style="display:flex;justify-content:space-between;gap:6px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));text-transform:capitalize">
             <span>${escapeHtml(l.name)}</span>
             <span style="font-variant-numeric:tabular-nums">${pct}%</span>
           </div>
@@ -275,7 +277,9 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
       </div>
     `;
   }).join('');
-  const body = `<div style="display:grid;grid-template-columns:repeat(${sorted.length},1fr);gap:12px">${cols}</div>`;
+  // A horizon column must fit "fragmentation" and its percentage; narrower
+  // than that, the horizons wrap instead of running past the panel.
+  const body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,calc(120px * var(--wm-panel-effective-scale, 1))),1fr));gap:12px">${cols}</div>`;
   return section('Scenarios', body);
 }
 

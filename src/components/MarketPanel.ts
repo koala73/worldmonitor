@@ -225,7 +225,7 @@ export class HeatmapPanel extends Panel {
   private _buildTabBar(): string {
     const hasValuations = Object.keys(this._valuations).length > 0;
     if (!hasValuations) return '';
-    return `<div style="display:flex;gap:4px;margin-bottom:8px">
+    return `<div class="panel-tabs" style="margin-bottom:8px">
       <button class="panel-tab${this._tab === 'performance' ? ' active' : ''}" data-tab="performance" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">Performance</button>
       <button class="panel-tab${this._tab === 'valuations' ? ' active' : ''}" data-tab="valuations" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">Valuations</button>
     </div>`;
@@ -716,7 +716,7 @@ export class CommoditiesPanel extends Panel {
     if (hasPhysical) tabs.push(`<button class="panel-tab${this._tab === 'physical' ? ' active' : ''}" data-tab="physical" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">${t('components.commodities.physicalPremiums')}</button>`);
     if (hasFx) tabs.push(`<button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">EUR FX</button>`);
     if (hasXau) tabs.push(`<button class="panel-tab${this._tab === 'xau' ? ' active' : ''}" data-tab="xau" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">XAU/FX</button>`);
-    return tabs.length > 1 ? `<div style="display:flex;gap:4px;margin-bottom:8px">${tabs.join('')}</div>` : '';
+    return tabs.length > 1 ? `<div class="panel-tabs" style="margin-bottom:8px">${tabs.join('')}</div>` : '';
   }
 
   private _renderPhysicalPremiums(): string {
