@@ -94,9 +94,9 @@ function measureCounters(page: Page): Promise<CounterBox[]> {
   });
 }
 
-function measure(page: Page): Promise<HeaderFit> {
-  return page.evaluate(() => {
-    const panel = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"]')!;
+function measure(page: Page, key = 'politics'): Promise<HeaderFit> {
+  return page.evaluate((key) => {
+    const panel = document.querySelector<HTMLElement>(`#panelsGrid .panel[data-panel="${key}"]`)!;
     const header = panel.querySelector<HTMLElement>('.panel-header')!;
     const title = header.querySelector<HTMLElement>('.panel-title')!;
     const items = [...header.querySelectorAll<HTMLElement>('.panel-title, .panel-header-left > *, .panel-header > *:not(.panel-header-left)')]
@@ -133,7 +133,7 @@ function measure(page: Page): Promise<HeaderFit> {
       belowTitle: items.filter((item) => item.rect.width > 1 && item.rect.top >= titleBottom - 1).map((item) => item.name),
       overlaps,
     };
-  });
+  }, key);
 }
 
 function setTitle(page: Page, text: string): Promise<void> {
@@ -228,11 +228,11 @@ interface TapTarget { control: string; box: string; misses: string[] }
 // Probes each header control at the corners, edge midpoints and center of a
 // 24x24 box centered on it. A point that lands on anything else is a miss, so a
 // neighbor's tap area reaching into this box is a miss too.
-function measureTapTargets(page: Page): Promise<TapTarget[]> {
-  return page.evaluate(() => {
-    const header = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-header')!;
+function measureTapTargets(page: Page, key = 'politics', controls = ['panel-close-btn', 'panel-sort-btn', 'panel-summarize-btn', 'panel-info-btn']): Promise<TapTarget[]> {
+  return page.evaluate(({ key, controls }) => {
+    const header = document.querySelector<HTMLElement>(`#panelsGrid .panel[data-panel="${key}"] .panel-header`)!;
     header.scrollIntoView({ block: 'center' });
-    return ['panel-close-btn', 'panel-sort-btn', 'panel-summarize-btn', 'panel-info-btn'].map((control) => {
+    return controls.map((control) => {
       const el = header.querySelector<HTMLElement>(`.${control}`)!;
       const r = el.getBoundingClientRect();
       const cx = r.left + r.width / 2;
@@ -246,7 +246,7 @@ function measureTapTargets(page: Page): Promise<TapTarget[]> {
       }
       return { control, box: `${Math.round(r.width)}x${Math.round(r.height)}`, misses };
     });
-  });
+  }, { key, controls });
 }
 
 test('panel headers keep the title readable with nothing overlapping', async ({ browser }, testInfo) => {
@@ -319,13 +319,14 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
         expect.soft(target.misses, `${label}: ${target.control} (${target.box}) takes taps across a 24x24 box`).toEqual([]);
       }
     }
-    // Below 300px the watchlist button keeps only its icon and its name.
+    // A watchlist button crowds a header as much as a 250px column does, so up
+    // to 420px it keeps only its icon and its name.
     await page.evaluate(async () => {
       const { createWatchlistButton } = await import('/src/components/watchlist-modal.ts');
       document.querySelector('#panelsGrid .panel[data-panel="politics"] .panel-header')!.appendChild(createWatchlistButton('Edit Watchlist'));
     });
     const watchlist = await panel.getByRole('button', { name: 'Edit Watchlist' }).boundingBox();
-    if (m.panel <= 300) expect.soft(watchlist?.width, `${label}: watchlist button is an icon`).toBeLessThanOrEqual(26);
+    if (m.panel <= 420) expect.soft(watchlist?.width, `${label}: watchlist button is an icon`).toBeLessThanOrEqual(26);
     else expect.soft(watchlist?.width, `${label}: watchlist button keeps its text`).toBeGreaterThan(60);
     const close = await panel.locator('.panel-close-btn').boundingBox();
     const middle = (box: { y: number; height: number } | null) => (box ? box.y + box.height / 2 : NaN);
@@ -338,7 +339,7 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
     for (const [name, selector] of Object.entries(dots)) {
       if (m.panel <= collapseAt[name]!) expect.soft(await dotShape(page, selector), `${label}: ${name} dot is visible in forced colors`).not.toBe('invisible');
     }
-    // Below 300px a cached data badge becomes a dot like LIVE does.
+    // In the same header a cached data badge becomes a dot like LIVE does.
     await page.emulateMedia({ forcedColors: 'none' });
     const cachedBadge = () => page.evaluate(() => {
       const badge = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="politics"] .panel-header > .panel-data-badge')!;
@@ -349,7 +350,7 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
       return { width: Math.round(r.width), height: Math.round(r.height), fontSize: getComputedStyle(badge).fontSize, border: parseFloat(getComputedStyle(badge).borderTopWidth) };
     });
     const cached = await cachedBadge();
-    if (m.panel <= 300) {
+    if (m.panel <= 420) {
       expect.soft({ width: cached.width, height: cached.height, fontSize: cached.fontSize }, `${label}: cached badge is a dot`).toEqual({ width: 8, height: 8, fontSize: '0px' });
       await page.emulateMedia({ forcedColors: 'active' });
       expect.soft((await cachedBadge()).border, `${label}: cached dot keeps a border in forced colors`).toBeGreaterThanOrEqual(1);
@@ -377,6 +378,80 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
           error: data.unavailable,
         });
       }
+    }
+    await context.close();
+  }
+});
+
+// The real Markets header carries a methodology button, a data badge and the
+// watchlist button, as Premium Stock Analysis and Daily Market Brief do. On a
+// phone their CACHED pill and "Edit Watchlist" left the title 113px, and
+// "Premium Stock Analysis" lost its last word.
+const WATCHLIST_VIEWPORTS = [
+  { width: 1920, height: 1200, mobile: false },
+  { width: 393, height: 852, mobile: true },
+  { width: 360, height: 780, mobile: true },
+];
+const WATCHLIST_TITLE = 'Premium Stock Analysis';
+const MARKETS_BADGE = '#panelsGrid .panel[data-panel="markets"] .panel-header > .panel-data-badge';
+
+test('a header with a watchlist button keeps a long title readable beside a cached badge', async ({ browser }, testInfo) => {
+  test.setTimeout(180_000);
+  for (const { mobile, ...viewport } of WATCHLIST_VIEWPORTS) {
+    const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, colorScheme: 'dark' });
+    const page = await context.newPage();
+    const settings = { politics: { name: 'World News', enabled: true, priority: 0 }, markets: { name: 'Markets', enabled: true, priority: 0 } };
+    await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings) } });
+    await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => route.abort());
+    await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
+    await page.route('**/api/bootstrap*', (route) => route.fulfill({ json: { missing: [], data: {} } }));
+
+    await page.goto('/dashboard');
+    const panel = page.locator('#panelsGrid .panel[data-panel="markets"]');
+    const watchlist = panel.getByRole('button', { name: 'Edit Watchlist' });
+    await expect
+      .poll(async () => {
+        await panel.scrollIntoViewIfNeeded().catch(() => {});
+        return panel.locator('.panel-watchlist-btn').count();
+      }, { message: `markets watchlist button at ${viewport.width}px`, timeout: 90_000 })
+      .toBe(1);
+    await page.evaluate((title) => {
+      const header = document.querySelector<HTMLElement>('#panelsGrid .panel[data-panel="markets"] .panel-header')!;
+      header.querySelector('.panel-title')!.textContent = title;
+      const pro = document.createElement('span');
+      pro.className = 'panel-pro-badge';
+      pro.textContent = 'PRO';
+      header.querySelector('.panel-header-left')!.appendChild(pro);
+      header.querySelector('.panel-watchlist-label')!.textContent = 'Edit Watchlist';
+      const badge = header.querySelector<HTMLElement>(':scope > .panel-data-badge')!;
+      badge.className = 'panel-data-badge cached';
+      badge.textContent = 'CACHED · 12 symbols';
+      badge.title = 'Showing cached data for 12 symbols';
+      badge.style.display = 'inline-flex';
+    }, WATCHLIST_TITLE);
+    await panel.locator('.panel-header').screenshot({ path: testInfo.outputPath(`watchlist-header-${viewport.width}.png`) });
+    const m = await measure(page, 'markets');
+    const label = `markets header at ${viewport.width}px (panel ${m.panel}px)`;
+    expect(m.panel, `${label}: a phone panel or a 375px column`).toBeLessThanOrEqual(420);
+    expect.soft(m.titleClipped, `${label}: title "${WATCHLIST_TITLE}" is clipped`).toBe(false);
+    expect.soft(m.titleLines, `${label}: title "${WATCHLIST_TITLE}" takes at most two lines`).toBeLessThanOrEqual(2);
+    expect.soft(m.overlaps, `${label}: overlapping header items`).toEqual([]);
+    expect.soft((await watchlist.boundingBox())?.width, `${label}: watchlist button is an icon`).toBeLessThanOrEqual(26);
+    const badge = await page.locator(MARKETS_BADGE).boundingBox();
+    expect.soft({ width: badge?.width, height: badge?.height }, `${label}: cached badge is a dot`).toEqual({ width: 8, height: 8 });
+    if (mobile) {
+      for (const target of await measureTapTargets(page, 'markets', ['panel-close-btn', 'panel-info-btn', 'panel-watchlist-btn'])) {
+        expect.soft(target.misses, `${label}: ${target.control} (${target.box}) takes taps across a 24x24 box`).toEqual([]);
+      }
+    }
+    for (const forcedColors of ['none', 'active'] as const) {
+      await page.emulateMedia({ forcedColors });
+      const where = `${label}${forcedColors === 'active' ? ' in forced colors' : ''}`;
+      expect.soft(await badgeShapes(page, MARKETS_BADGE, DATA_STATES), `${where}: data badge dots differ in shape`).toEqual({
+        live: 'filled circle',
+        cached: 'hollow circle',
+        unavailable: 'hollow square',
+      });
     }
     await context.close();
   }
