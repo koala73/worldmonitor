@@ -61,12 +61,13 @@ describe('blog font subsets', () => {
     assert.deepEqual(added, [], `New lang attributes can need the fonts' locl feature. ${RERUN}`);
   });
 
-  it('declare a unicode-range that matches each file exactly', () => {
+  it('declare each manifest weight once, with a unicode-range that matches its file exactly', () => {
     for (const [family, entry] of Object.entries(manifest.families)) {
       for (const part of ['core', 'ext']) {
         const file = entry.files[part];
         const faces = [...generatedCss.matchAll(/@font-face \{([^}]*)\}/g)].map((m) => m[1]).filter((body) => body.includes(`'${family}'`) && body.includes(`/${file.file}'`));
-        assert.equal(faces.length, entry.faces.length, `${family} ${part}: one @font-face per weight`);
+        const weights = faces.map((body) => Number(body.match(/font-weight: (\d+);/)?.[1])).sort((a, b) => a - b);
+        assert.deepEqual(weights, entry.faces, `${family} ${part}: one @font-face per manifest weight`);
         for (const body of faces) assert.match(body, new RegExp(`unicode-range: ${file.unicode_range.replace(/[+]/g, '\\+')};`));
         assert.ok(fs.existsSync(path.join(blogRoot, 'src/fonts', file.file)), `${file.file} is committed`);
         assert.equal(fs.statSync(path.join(blogRoot, 'src/fonts', file.file)).size, file.bytes, `${file.file} matches the manifest`);
