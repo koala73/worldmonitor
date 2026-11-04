@@ -1,3 +1,4 @@
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import {
   establishWmKeySessionOutcome,
   fetchWmKeySessionStatus,
@@ -34,15 +35,15 @@ function changeKeySession(keys: { widgetKey?: string; proKey?: string }): Promis
 }
 
 function safeLocalStorageGet(name: string): string {
-  try { return localStorage.getItem(name) ?? ''; } catch { return ''; }
+  return safeStorageGet(name) ?? '';
 }
 
 function safeLocalStorageSet(name: string, value: string): void {
-  try { localStorage.setItem(name, value); } catch { /* ignore */ }
+  safeStorageSet(name, value);
 }
 
 function safeLocalStorageRemove(name: string): void {
-  try { localStorage.removeItem(name); } catch { /* ignore */ }
+  safeStorageRemove(name);
 }
 
 function safeReadableCookieGet(name: BrowserSessionKeyName): string {
