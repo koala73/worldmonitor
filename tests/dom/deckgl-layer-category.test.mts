@@ -3,7 +3,7 @@
  * the owning layer, the bottom legend lists only active status scales and hides
  * when none apply, and category glyph layers follow the built marker layers.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ScatterplotLayer } from '@deck.gl/layers';
 
 import { DeckGLMap } from '@/components/DeckGLMap';
@@ -13,6 +13,12 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 beforeAll(initTestI18n);
 // jsdom has no 2D canvas; the glyph atlas only needs one to draw into.
+const realGetContext = HTMLCanvasElement.prototype.getContext;
+const realToDataURL = HTMLCanvasElement.prototype.toDataURL;
+afterAll(() => {
+  HTMLCanvasElement.prototype.getContext = realGetContext;
+  HTMLCanvasElement.prototype.toDataURL = realToDataURL;
+});
 beforeAll(() => {
   const noop = () => {};
   const ctx = { beginPath: noop, arc: noop, fill: noop, stroke: noop, fillText: noop } as unknown as CanvasRenderingContext2D;
@@ -23,7 +29,8 @@ beforeAll(() => {
 type Host = {
   getCategorizedTooltip(info: unknown): { html: string } | null;
   updateLegend(): void;
-  createCategoryGlyphLayers(built: unknown[]): Array<{ id: string; props: Record<string, unknown> }>;
+  withCategoryGlyphs(built: unknown[]): Array<{ id: string; props: Record<string, unknown> }>;
+  getTooltip(info: unknown): { html: string } | null;
   container: HTMLElement;
   state: { layers: Partial<MapLayers> };
   maplibreMap: { getZoom(): number } | null;
@@ -54,6 +61,14 @@ describe('categorized tooltip', () => {
     expect(tip?.html).not.toContain('deckgl-tooltip-category');
   });
 
+  it('prepends the label when the body is not a deckgl-tooltip box', () => {
+    const map = host();
+    map.getTooltip = () => ({ html: '<span>bare</span>' });
+    const tip = map.getCategorizedTooltip({ layer: { id: 'fires-layer' }, object: {} });
+    expect(tip?.html.startsWith('<div class="deckgl-tooltip-category">')).toBe(true);
+    expect(tip?.html.endsWith('<span>bare</span>')).toBe(true);
+  });
+
   it('returns null when nothing is picked', () => {
     expect(host().getCategorizedTooltip({ layer: { id: 'fires-layer' }, object: null })).toBeNull();
   });
@@ -75,6 +90,14 @@ describe('legend', () => {
     expect(map.container.querySelector<HTMLElement>('.deckgl-legend')!.hidden).toBe(true);
   });
 
+  it('counts the instability and industrial-activity scales as entries', () => {
+    for (const key of ['ciiChoropleth', 'no2Activity'] as const) {
+      const map = legendHost({ hotspots: false, [key]: true });
+      map.updateLegend();
+      expect(map.container.querySelector<HTMLElement>('.deckgl-legend')!.hidden, key).toBe(false);
+    }
+  });
+
   it('shows when an active layer has an entry', () => {
     const map = legendHost({ hotspots: true });
     map.updateLegend();
@@ -90,25 +113,38 @@ describe('category glyph layers', () => {
     visible,
   });
 
-  const glyphs = (zoom: number, built: unknown[]) => {
+  const withGlyphs = (zoom: number, built: unknown[]) => {
     const map = host();
     map.maplibreMap = { getZoom: () => zoom };
-    return map.createCategoryGlyphLayers(built);
+    return map.withCategoryGlyphs(built);
   };
+  const glyphIds = (zoom: number, built: unknown[]) =>
+    withGlyphs(zoom, built).map((l) => l.id).filter((id) => id.endsWith('-category-glyph'));
 
-  it('adds one glyph layer per built point layer, sharing its data', () => {
+  it('puts each glyph layer right after its marker layer, sharing its data', () => {
     const fires = marker('fires-layer', 5);
-    const out = glyphs(4, [fires, marker('cables-layer', 5)]);
-    expect(out.map((l) => l.id)).toEqual(['fires-layer-category-glyph']);
-    expect(out[0]!.props.data).toBe(fires.props.data);
-    expect(out[0]!.props.pickable).toBe(false);
+    const out = withGlyphs(4, [fires, marker('cables-layer', 5), marker('outages-layer', 2)]);
+    expect(out.map((l) => l.id)).toEqual([
+      'fires-layer', 'fires-layer-category-glyph', 'cables-layer', 'outages-layer', 'outages-layer-category-glyph',
+    ]);
+    expect(out[1]!.props.data).toBe(fires.props.data);
+    expect(out[1]!.props.pickable).toBe(false);
+  });
+
+  it('places the glyph outside the marker radius', () => {
+    const big = new ScatterplotLayer<{ p: [number, number] }>({ id: 'hotspots-layer', data: [{ p: [0, 0] }], getPosition: (d) => d.p, radiusMaxPixels: 20 });
+    const small = new ScatterplotLayer<{ p: [number, number] }>({ id: 'fires-layer', data: [{ p: [0, 0] }], getPosition: (d) => d.p, radiusMaxPixels: 3 });
+    const offsetOf = (layer: unknown) => (withGlyphs(4, [layer])[1]!.props.getPixelOffset as [number, number])[0];
+    // 16px glyph at zoom 4: half-width 8, so it must start beyond the clamped radius.
+    expect(offsetOf(big)).toBe(12 + 8 + 1);
+    expect(offsetOf(small)).toBe(4 + 8 + 1);
   });
 
   it('draws nothing for hidden, empty or ghost layers', () => {
-    expect(glyphs(4, [marker('fires-layer', 5, false), marker('outages-layer', 0), marker('outages-layer-ghost', 3)])).toEqual([]);
+    expect(glyphIds(4, [marker('fires-layer', 5, false), marker('outages-layer', 0), marker('outages-layer-ghost', 3)])).toEqual([]);
   });
 
   it('drops dense layers at world zoom but keeps sparse ones', () => {
-    expect(glyphs(1.5, [marker('fires-layer', 5000), marker('bases-layer', 40)]).map((l) => l.id)).toEqual(['bases-layer-category-glyph']);
+    expect(glyphIds(1.5, [marker('fires-layer', 5000), marker('bases-layer', 40)])).toEqual(['bases-layer-category-glyph']);
   });
 });

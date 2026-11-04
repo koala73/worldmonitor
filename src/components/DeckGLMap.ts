@@ -47,7 +47,7 @@ import { fetchAircraftPositions } from '@/services/aviation';
 import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
 import { getMilitaryBaseColor } from '@/config/military-base-colors';
 import { DECK_POINT_LAYER_CATEGORY, categoryForDeckLayerId, categoryGlyphForLayer, categoryGlyphSizePx } from '@/config/map-layer-glyphs';
-import { getCategoryGlyphAtlas } from './map-category-glyph-atlas';
+import { getCategoryGlyphAtlas, type CategoryGlyphAtlas } from './map-category-glyph-atlas';
 import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
@@ -2534,8 +2534,7 @@ export class DeckGLMap {
       layers.push(...this.createNewsLocationsLayer());
     }
 
-    const result = layers.filter(Boolean) as LayersList;
-    result.push(...this.createCategoryGlyphLayers(result));
+    const result = this.withCategoryGlyphs(layers.filter(Boolean) as LayersList);
     const elapsed = performance.now() - startTime;
     if (import.meta.env.DEV && elapsed > 16) {
       console.warn(`[DeckGLMap] buildLayers took ${elapsed.toFixed(2)}ms (>16ms budget), ${result.length} layers`);
@@ -2546,39 +2545,51 @@ export class DeckGLMap {
   /**
    * Layers-menu category glyph beside each point marker (#10139), so markers
    * from different layers can be told apart without toggling. Derived from
-   * the layers already built, so a hidden layer leaves no glyph, and drawn
-   * beside the marker so its status colour stays visible. Not pickable:
-   * hover and click still hit the marker underneath.
+   * the layers already built, so a hidden layer leaves no glyph. Each glyph
+   * layer sits right after its marker layer, so later count badges and labels
+   * still draw on top, and it is not pickable: hover and click still hit the
+   * marker underneath.
    */
-  private createCategoryGlyphLayers(built: LayersList): Layer[] {
-    const zoom = this.maplibreMap?.getZoom() ?? 0;
+  private withCategoryGlyphs(built: LayersList): LayersList {
     const atlas = getCategoryGlyphAtlas();
-    if (!atlas) return [];
-    const glyphs: Layer[] = [];
+    if (!atlas) return built;
+    const zoom = this.maplibreMap?.getZoom() ?? 0;
+    const out: LayersList = [];
     for (const layer of built) {
+      out.push(layer);
       if (!layer || typeof layer !== 'object' || !('id' in layer)) continue;
-      const base = layer as Layer;
-      const category = DECK_POINT_LAYER_CATEGORY[base.id];
-      if (!category || base.props.visible === false) continue;
-      const { data, getPosition } = base.props as { data?: unknown; getPosition?: unknown };
-      if (!Array.isArray(data) || typeof getPosition !== 'function') continue;
-      const size = categoryGlyphSizePx(zoom, data.length);
-      if (size === 0) continue;
-      glyphs.push(new IconLayer({
-        id: `${base.id}-category-glyph`,
-        data,
-        getPosition: getPosition as (d: unknown) => [number, number],
-        getIcon: () => category,
-        iconAtlas: atlas.url,
-        iconMapping: atlas.mapping,
-        getSize: size,
-        sizeUnits: 'pixels',
-        getPixelOffset: [Math.round(size * 0.75) + 2, 0],
-        pickable: false,
-        updateTriggers: { getPosition: base.props.updateTriggers?.getPosition },
-      }));
+      const glyph = this.createCategoryGlyphLayer(layer as Layer, zoom, atlas);
+      if (glyph) out.push(glyph);
     }
-    return glyphs;
+    return out;
+  }
+
+  private createCategoryGlyphLayer(base: Layer, zoom: number, atlas: CategoryGlyphAtlas): Layer | null {
+    const category = DECK_POINT_LAYER_CATEGORY[base.id];
+    if (!category || base.props.visible === false) return null;
+    const props = base.props as { data?: unknown; getPosition?: unknown; radiusMaxPixels?: number; sizeMaxPixels?: number };
+    const { data, getPosition } = props;
+    if (!Array.isArray(data) || typeof getPosition !== 'function') return null;
+    const size = categoryGlyphSizePx(zoom, data.length);
+    if (size === 0) return null;
+    // Sit just outside the marker so its status colour stays visible. Markers
+    // grow with zoom up to their max radius; past 12px they are clusters,
+    // where touching the rim reads better than floating far away.
+    const markerRadius = props.radiusMaxPixels ?? (props.sizeMaxPixels ? props.sizeMaxPixels / 2 : 6);
+    const offsetX = Math.round(Math.min(12, Math.max(4, markerRadius)) + size / 2 + 1);
+    return new IconLayer({
+      id: `${base.id}-category-glyph`,
+      data,
+      getPosition: getPosition as (d: unknown) => [number, number],
+      getIcon: () => category,
+      iconAtlas: atlas.url,
+      iconMapping: atlas.mapping,
+      getSize: size,
+      sizeUnits: 'pixels',
+      getPixelOffset: [offsetX, 0],
+      pickable: false,
+      updateTriggers: { getPosition: base.props.updateTriggers?.getPosition },
+    });
   }
 
   // Layer creation methods
@@ -5204,7 +5215,8 @@ export class DeckGLMap {
     // Name the layer as well as the object, so overlapping markers from
     // different layers stay identifiable (#10139).
     const label = `<div class="deckgl-tooltip-category">${categoryGlyphForLayer(category)} ${escapeHtml(resolveLayerLabel(LAYER_REGISTRY[category], t))}</div>`;
-    const html = tooltip.html.replace(/^(\s*<div class="deckgl-tooltip[^"]*"[^>]*>)/, `$1${label}`);
+    // Replacer function: a `$` in a translated label must not act as a pattern.
+    const html = tooltip.html.replace(/^\s*<div class="deckgl-tooltip[^"]*"[^>]*>/, (open) => `${open}${label}`);
     return { html: html === tooltip.html ? `${label}${tooltip.html}` : html };
   }
 

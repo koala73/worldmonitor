@@ -8,6 +8,7 @@ import { test, describe } from 'node:test';
 import type { MapLayers } from '../src/types';
 import { LAYER_REGISTRY } from '../src/config/map-layer-definitions';
 import {
+  CATEGORY_GLYPH_EXCLUDED_POINT_LAYER_IDS,
   CATEGORY_GLYPH_MIN_ZOOM,
   CATEGORY_GLYPH_SPARSE_LIMIT,
   DECK_POINT_LAYER_CATEGORY,
@@ -19,24 +20,43 @@ import {
 
 const deckSource = readFileSync(new URL('../src/components/DeckGLMap.ts', import.meta.url), 'utf8');
 
+// Ids of the point-marker layers (ScatterplotLayer / IconLayer) DeckGLMap
+// builds, read from their declarations. `id: cacheKey` layers resolve through
+// the cacheKey constant declared in the same builder.
+function deckPointLayerIds(): Set<string> {
+  const ids = new Set<string>();
+  const decl = /new (?:ScatterplotLayer|IconLayer)(?:<[^>]*>)?\(\{\s*id: ([^,\n]+)/g;
+  for (const match of deckSource.matchAll(decl)) {
+    const expr = match[1]!;
+    if (expr.trim() === 'cacheKey') {
+      const before = deckSource.slice(0, match.index);
+      const key = [...before.matchAll(/const cacheKey = '([^']+)'/g)].pop();
+      if (key) ids.add(key[1]!);
+      continue;
+    }
+    for (const literal of expr.matchAll(/'([^']+)'/g)) ids.add(literal[1]!);
+  }
+  return ids;
+}
+
 describe('decodeLayerIcon', () => {
   test('decodes decimal and hex entities and requests emoji presentation', () => {
-    assert.equal(decodeLayerIcon('&#128293;'), '\u{1F525}️');
-    assert.equal(decodeLayerIcon('&#9992;'), '✈️');
-    assert.equal(decodeLayerIcon('&#x2708;'), '✈️');
+    assert.equal(decodeLayerIcon('&#128293;'), '\u{1F525}\uFE0F');
+    assert.equal(decodeLayerIcon('&#9992;'), '✈\uFE0F');
+    assert.equal(decodeLayerIcon('&#x2708;'), '✈\uFE0F');
   });
 
   test('does not double the variation selector', () => {
-    assert.equal(decodeLayerIcon('✈️'), '✈️');
+    assert.equal(decodeLayerIcon('✈\uFE0F'), '✈\uFE0F');
   });
 });
 
 describe('categoryGlyphForLayer', () => {
   test('uses the Layers-menu icon for the layer', () => {
-    assert.equal(categoryGlyphForLayer('fires'), '\u{1F525}️');
-    assert.equal(categoryGlyphForLayer('protests'), '\u{1F4E2}️');
-    assert.equal(categoryGlyphForLayer('military'), '✈️');
-    assert.equal(categoryGlyphForLayer('datacenters'), '\u{1F5A5}️');
+    assert.equal(categoryGlyphForLayer('fires'), '\u{1F525}\uFE0F');
+    assert.equal(categoryGlyphForLayer('protests'), '\u{1F4E2}\uFE0F');
+    assert.equal(categoryGlyphForLayer('military'), '✈\uFE0F');
+    assert.equal(categoryGlyphForLayer('datacenters'), '\u{1F5A5}\uFE0F');
   });
 });
 
@@ -53,9 +73,22 @@ describe('categoryForDeckLayerId', () => {
     }
   });
 
-  test('every mapped deck id is a layer id DeckGLMap builds', () => {
-    for (const id of Object.keys(DECK_POINT_LAYER_CATEGORY)) {
-      assert.ok(deckSource.includes(`'${id}'`), `DeckGLMap.ts has no layer id '${id}'`);
+  test('every mapped or excluded id is a point layer DeckGLMap builds', () => {
+    const built = deckPointLayerIds();
+    for (const id of [...Object.keys(DECK_POINT_LAYER_CATEGORY), ...Object.keys(CATEGORY_GLYPH_EXCLUDED_POINT_LAYER_IDS)]) {
+      assert.ok(built.has(id), `DeckGLMap.ts builds no point layer '${id}'`);
+    }
+  });
+
+  test('every point layer DeckGLMap builds is mapped or explicitly excluded', () => {
+    const unaccounted = [...deckPointLayerIds()].filter((id) =>
+      !(id in DECK_POINT_LAYER_CATEGORY) && !(id in CATEGORY_GLYPH_EXCLUDED_POINT_LAYER_IDS));
+    assert.deepEqual(unaccounted, [], 'map each new point layer to its Layers-menu key, or exclude it with a reason');
+  });
+
+  test('a layer is never both mapped and excluded', () => {
+    for (const id of Object.keys(CATEGORY_GLYPH_EXCLUDED_POINT_LAYER_IDS)) {
+      assert.ok(!(id in DECK_POINT_LAYER_CATEGORY), id);
     }
   });
 

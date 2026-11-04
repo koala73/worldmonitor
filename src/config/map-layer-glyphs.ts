@@ -8,10 +8,28 @@ import { LAYER_REGISTRY } from './map-layer-definitions';
  * the map can draw the same symbol the Layers menu shows next to that layer
  * (`LAYER_REGISTRY[key].icon`) and name the layer in hover tooltips. Line,
  * fill, arc and heatmap layers are deliberately absent: a point glyph does not
- * describe them.
+ * describe them, and so are pulse rings and other decorations; see
+ * CATEGORY_GLYPH_EXCLUDED_POINT_LAYER_IDS for the point layers left out on
+ * purpose.
  */
 export const DECK_POINT_LAYER_CATEGORY: Readonly<Record<string, keyof MapLayers>> = {
   'hotspots-layer': 'hotspots',
+  'notam-overlay-layer': 'flights',
+  'notam-airspace-markers': 'flights',
+  'ports-layer': 'ais',
+  'ukmto-incidents-layer': 'ais',
+  'ais-disruptions-layer': 'ais',
+  'cable-advisories-layer': 'cables',
+  'repair-ships-layer': 'cables',
+  'apt-groups-layer': 'cyberThreats',
+  'traffic-anomalies-layer': 'outages',
+  'ddos-locations-layer': 'outages',
+  'storm-centers-layer': 'natural',
+  'canada-roads-layer': 'canadaRoads',
+  'cross-border-points-layer': 'displacement',
+  'cross-border-deaths-layer': 'displacement',
+  'internal-displacement-regions-layer': 'displacement',
+  'trade-chokepoints-layer': 'tradeRoutes',
   'iran-events-layer': 'iranAttacks',
   'bases-layer': 'bases',
   'bases-cluster-layer': 'bases',
@@ -66,6 +84,24 @@ export const DECK_POINT_LAYER_CATEGORY: Readonly<Record<string, keyof MapLayers>
 };
 
 /**
+ * Point-marker layers DeckGLMap builds that deliberately get no glyph, with
+ * the reason. Every other point layer must be in DECK_POINT_LAYER_CATEGORY.
+ */
+export const CATEGORY_GLYPH_EXCLUDED_POINT_LAYER_IDS: Readonly<Record<string, string>> = {
+  'aircraft-positions-layer': 'already drawn as a plane silhouette',
+  'ais-density-layer': 'density cells, not individual objects',
+  'notam-airspace-circles': 'airspace areas, not points',
+  'trade-route-trips-layer': 'animated trip heads along route lines',
+  'highlighted-chokepoint-markers': 'selection highlight over chokepoint markers',
+  'news-locations-layer': 'news markers, not a picker layer',
+  'news-pulse-layer': 'pulse ring decoration',
+  'hotspots-pulse': 'pulse ring decoration',
+  'protest-clusters-pulse': 'pulse ring decoration',
+  'positive-events-pulse': 'pulse ring decoration',
+  'kindness-pulse': 'pulse ring decoration',
+};
+
+/**
  * From this zoom every point layer gets glyphs. Below it the world view is too
  * dense, so only sparse layers (at most CATEGORY_GLYPH_SPARSE_LIMIT markers)
  * keep a smaller glyph.
@@ -89,6 +125,9 @@ export function categoryForDeckLayerId(layerId: string): keyof MapLayers | undef
   return DECK_POINT_LAYER_CATEGORY[id];
 }
 
+/** U+FE0F VARIATION SELECTOR-16: ask for emoji (colour) presentation. */
+const EMOJI_PRESENTATION = '\uFE0F';
+
 /**
  * Decode a registry icon (HTML numeric entities such as `&#9992;`) into the
  * text drawn on canvas. A variation selector asks for emoji presentation so
@@ -99,7 +138,7 @@ export function decodeLayerIcon(icon: string): string {
     const value = code[0]!.toLowerCase() === 'x' ? parseInt(code.slice(1), 16) : parseInt(code, 10);
     return Number.isFinite(value) ? String.fromCodePoint(value) : '';
   });
-  return text.endsWith('️') ? text : `${text}️`;
+  return text.endsWith(EMOJI_PRESENTATION) ? text : `${text}${EMOJI_PRESENTATION}`;
 }
 
 /** Glyph text for a map layer, from the same registry the Layers menu uses. */
