@@ -232,9 +232,18 @@ const MAX_RATE_LIMIT_RETRIES = 1;
 // throws once the retries are spent, and still trips the batch circuit-breaker.
 // The reference fetch is 3 pages inside its own 120s slice, so it can afford
 // more attempts than a country, whose 90s wrap must also hold the proxy leg.
+// From 2026-11-03 about half of uncached activity queries got `Invalid URL` in
+// ~2s and the same query passed on the next try. A country's two windows fail
+// independently, so a country-level retry needs both to pass at once; each
+// activity page gets its own retries instead, inside the same 90s deadline.
 const INVALID_QUERY_RETRY_DELAY_MS = 5_000;
 const MAX_REFERENCE_INVALID_QUERY_RETRIES = 3;
+const MAX_ACTIVITY_PAGE_INVALID_QUERY_RETRIES = 3;
 const MAX_COUNTRY_INVALID_QUERY_RETRIES = 1;
+// The preflight runs 174 countries in waves of PREFLIGHT_CONCURRENCY, so its
+// pause is short: two failed retries take a wave from ~4.5s to ~9.5s.
+const PREFLIGHT_INVALID_QUERY_RETRY_DELAY_MS = 1_000;
+const MAX_PREFLIGHT_INVALID_QUERY_RETRIES = 2;
 // Hard publication expiry: reject cached payloads at seven days. Queue a full
 // refetch earlier so the bounded rotation can finish before this deadline,
 // even when upstream maxDate is unchanged. Protects against window-shift drift
@@ -707,6 +716,8 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, {
   forceProxy = false,
   fetchFn,
   proxyRetryFn,
+  sleepFn,
+  deadlineAt,
 } = {}) {
   // Defensive: callers should always thread dateField through, but if a
   // future caller forgets, fall back to the resolver (idempotent + cached).
@@ -747,12 +758,26 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, {
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithTimeout(`${EP3_BASE}?${params}`, {
-      signal,
-      forceProxy,
-      fetchFn,
-      proxyRetryFn,
-    });
+    const url = `${EP3_BASE}?${params}`;
+    body = await retryRateLimited(
+      (attemptSignal) => fetchWithTimeout(url, {
+        signal: attemptSignal,
+        forceProxy,
+        fetchFn,
+        proxyRetryFn,
+      }),
+      {
+        signal,
+        sleepFn,
+        deadlineAt,
+        label: `${_iso3} ${windowKind} offset ${offset}`,
+        // Rate limits stay with the country-level retry, which stops the
+        // sibling window before it backs off.
+        maxRetries: 0,
+        invalidQueryRetries: MAX_ACTIVITY_PAGE_INVALID_QUERY_RETRIES,
+        minAttemptMs: forceProxy ? PROXY_FETCH_TIMEOUT : FETCH_TIMEOUT,
+      },
+    );
     const features = validatedPage(body, `${_iso3} ${windowKind} offset ${offset}`, offset);
     for (const f of features) {
       const a = f?.attributes;
@@ -873,6 +898,8 @@ export async function fetchCountryAccum(iso3, {
   forceProxy = false,
   fetchFn,
   proxyRetryFn,
+  sleepFn,
+  deadlineAt,
 } = {}) {
   const anchor = anchorEpochMs ?? Date.now();
   const cutoff30 = anchor - 30 * 86400000;
@@ -891,14 +918,14 @@ export async function fetchCountryAccum(iso3, {
       iso3,
       `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff30)}`,
       'last30',
-      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn },
+      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn, sleepFn, deadlineAt },
     ),
     paginateWindowInto(
       portAccumMap,
       iso3,
       `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff60)} AND ${df} <= ${epochToTimestamp(cutoff30)}`,
       'prev30',
-      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn },
+      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn, sleepFn, deadlineAt },
     ),
   ]);
 
@@ -934,6 +961,8 @@ export async function fetchCountryActivityWithRecovery(iso3, {
       anchorEpochMs,
       dateField,
       forceProxy: false,
+      sleepFn,
+      deadlineAt,
     }),
     {
       signal,
@@ -964,6 +993,8 @@ export async function fetchCountryActivityWithRecovery(iso3, {
       anchorEpochMs,
       dateField,
       forceProxy: true,
+      sleepFn,
+      deadlineAt,
     }),
     {
       signal,
@@ -1015,7 +1046,7 @@ export function parseMaxDateObservation(body) {
     : { status: 'failed', maxDate: null };
 }
 
-async function fetchMaxDate(iso3, { signal, dateField } = {}) {
+export async function fetchMaxDate(iso3, { signal, dateField, fetchFn, sleepFn } = {}) {
   const df = dateField || (await resolveArcgisDateField({ signal }));
   const outStats = JSON.stringify([{
     statisticType: 'max',
@@ -1037,11 +1068,23 @@ async function fetchMaxDate(iso3, { signal, dateField } = {}) {
     // under ArcGIS degradation (Greptile PR #3711 P1). Failures fall
     // through to the expensive per-country activity path which has the
     // full direct+proxy budget. Preflight is best-effort cache invalidation.
-    const body = await fetchWithTimeout(`${EP3_BASE}?${params}`, {
-      signal,
-      timeoutMs: PREFLIGHT_FETCH_TIMEOUT,
-      noProxyFallback: true,
-    });
+    const url = `${EP3_BASE}?${params}`;
+    const body = await retryRateLimited(
+      (attemptSignal) => fetchWithTimeout(url, {
+        signal: attemptSignal,
+        timeoutMs: PREFLIGHT_FETCH_TIMEOUT,
+        noProxyFallback: true,
+        fetchFn,
+      }),
+      {
+        signal,
+        sleepFn,
+        label: `${iso3} preflight`,
+        maxRetries: 0,
+        invalidQueryRetries: MAX_PREFLIGHT_INVALID_QUERY_RETRIES,
+        invalidQueryDelayMs: PREFLIGHT_INVALID_QUERY_RETRY_DELAY_MS,
+      },
+    );
     return parseMaxDateObservation(body);
   } catch {
     return { status: 'failed', maxDate: null };
@@ -1368,7 +1411,7 @@ export function classifyDeferredPayload(
 // classifyBatchCircuitBreak (which classifies the rendered diagnostic strings).
 // One definition so a breaker arm can never drift from the failure code that
 // the same upstream response persists onto the country.
-const INVALID_QUERY_PATTERN = /invalid query parameters/i;
+const INVALID_QUERY_PATTERN = /invalid query parameters|invalid url/i;
 const RATE_LIMIT_PATTERN = /\b429\b|rate.?limit|too many requests/i;
 
 function refreshFailureCode(reason) {
