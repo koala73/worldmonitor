@@ -6594,10 +6594,12 @@ body.playback-mode .status-dot {
 
 .repair-ship-marker {
   --repair-ship-color: var(--semantic-low);
+  --repair-ship-text: var(--semantic-low-text, var(--semantic-low));
 }
 
 .repair-ship-marker.on-station {
   --repair-ship-color: var(--status-live);
+  --repair-ship-text: var(--status-live-text, var(--status-live));
 }
 
 .repair-ship-icon {
@@ -6607,7 +6609,7 @@ body.playback-mode .status-dot {
 
 .repair-ship-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--repair-ship-color, var(--semantic-low));
+  color: var(--repair-ship-text, var(--semantic-low-text, var(--semantic-low)));
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 2px;
@@ -6747,7 +6749,6 @@ body.playback-mode .status-dot {
 
 .datacenter-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--datacenter-color);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 2px;
@@ -13918,35 +13919,43 @@ a.prediction-link:hover {
   cursor: pointer;
   z-index: 54;
   --vessel-color: var(--status-live);
+  --vessel-text: var(--status-live-text, var(--status-live));
 }
 
 .military-vessel-marker.usn {
   --vessel-color: var(--semantic-low);
+  --vessel-text: var(--semantic-low-text, var(--semantic-low));
 }
 
 .military-vessel-marker.rn {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .military-vessel-marker.plan {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .military-vessel-marker.vks {
   --vessel-color: var(--semantic-high);
+  --vessel-text: var(--semantic-high-text, var(--semantic-high));
 }
 
 .military-vessel-marker.carrier {
   --vessel-color: var(--semantic-elevated);
+  --vessel-text: var(--semantic-elevated-text, var(--semantic-elevated));
   z-index: 56;
 }
 
 .military-vessel-marker.submarine {
   --vessel-color: var(--semantic-info);
+  --vessel-text: var(--semantic-info);
 }
 
 .military-vessel-marker.dark-vessel {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   animation: dark-vessel-alert 0.8s ease-in-out infinite;
 }
 
@@ -14003,7 +14012,7 @@ a.prediction-link:hover {
 
 .military-vessel-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--vessel-color);
+  color: var(--vessel-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-top: 2px;
@@ -14048,11 +14057,13 @@ a.prediction-link:hover {
   100% {
     opacity: 1;
     --vessel-color: var(--semantic-critical);
+    --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   }
 
   50% {
     opacity: 0.7;
     --vessel-color: var(--semantic-high);
+    --vessel-text: var(--semantic-high-text, var(--semantic-high));
   }
 }
 

@@ -84,6 +84,55 @@ describe('light-theme semantic text', () => {
     assert.deepEqual(failures, []);
   });
 
+  /**
+   * Map marker labels take their color through a per-state alias, such as
+   * `.repair-ship-marker { --repair-ship-color: var(--semantic-low) }` read by
+   * `.repair-ship-label { color: var(--repair-ship-color) }`. The bare-read scan
+   * above cannot see through the alias, so a text rule must not read a custom
+   * property that some rule sets to bare --semantic-low.
+   */
+  it('text never reads --semantic-low through an alias', () => {
+    const aliases = new Set();
+    for (const css of Object.values(sheets)) {
+      for (const m of css.matchAll(/(--[\w-]+)\s*:\s*var\(\s*--semantic-low\s*\)/g)) aliases.add(m[1]);
+    }
+    assert.ok(aliases.size > 0, 'no --semantic-low aliases found; the scan is broken');
+    const failures = [];
+    for (const [file, css] of Object.entries(sheets)) {
+      for (const { selector, body, at } of rules(css)) {
+        for (const decl of body.matchAll(/(?<![-\w])color\s*:\s*([^;]+)/g)) {
+          for (const read of decl[1].matchAll(/var\(\s*(--[\w-]+)/g)) {
+            if (aliases.has(read[1])) failures.push(`${file}:${css.slice(0, at).split('\n').length} ${selector} color reads ${read[1]}`);
+          }
+        }
+      }
+    }
+    assert.deepEqual(failures, []);
+  });
+
+  /**
+   * A marker that splits its color into `--X-color` (fills, borders, glows) and
+   * `--X-text` (its label) must set both in every state rule and keyframe.
+   * States combine (`usn carrier`): a rule that sets only `--X-color` leaves the
+   * label in another state's color.
+   */
+  it('every state that sets a marker --X-color also sets its --X-text', () => {
+    const all = Object.values(sheets).join('\n');
+    const paired = [...new Set([...all.matchAll(/(--[\w-]+)-text\s*:/g)].map((m) => m[1]))]
+      .filter((base) => new RegExp(`${base}-color\\s*:`).test(all));
+    assert.ok(paired.length >= 2, `only ${paired.length} split marker colors found; the scan is broken`);
+    const failures = [];
+    for (const [file, css] of Object.entries(sheets)) {
+      for (const { selector, body } of rules(css)) {
+        const set = tokens(body);
+        for (const base of paired) {
+          if (`${base}-color` in set && !(`${base}-text` in set)) failures.push(`${file} ${selector} sets ${base}-color without ${base}-text`);
+        }
+      }
+    }
+    assert.deepEqual(failures, []);
+  });
+
   for (const name of SEMANTIC) {
     it(`--${name}-text is light-only and meets 4.5:1 on the light surfaces`, () => {
       const value = light[`--${name}-text`];
