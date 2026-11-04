@@ -234,12 +234,12 @@ const MAX_RATE_LIMIT_RETRIES = 1;
 // more attempts than a country, whose 90s wrap must also hold the proxy leg.
 // From 2026-11-03 about half of uncached activity queries got `Invalid URL` in
 // ~2s and the same query passed on the next try. A country's two windows fail
-// independently, so a country-level retry needs both to pass at once; each
-// activity page gets its own retries instead, inside the same 90s deadline.
+// independently, so a country-level retry needs both to pass at once and would
+// refetch the window that succeeded. Each activity page retries instead, inside
+// the same 90s deadline.
 const INVALID_QUERY_RETRY_DELAY_MS = 5_000;
 const MAX_REFERENCE_INVALID_QUERY_RETRIES = 3;
 const MAX_ACTIVITY_PAGE_INVALID_QUERY_RETRIES = 3;
-const MAX_COUNTRY_INVALID_QUERY_RETRIES = 1;
 // The preflight runs 174 countries in waves of PREFLIGHT_CONCURRENCY, so its
 // pause is short: two failed retries take a wave from ~4.5s to ~9.5s.
 const PREFLIGHT_INVALID_QUERY_RETRY_DELAY_MS = 1_000;
@@ -969,7 +969,6 @@ export async function fetchCountryActivityWithRecovery(iso3, {
       sleepFn,
       label: iso3,
       deadlineAt,
-      invalidQueryRetries: MAX_COUNTRY_INVALID_QUERY_RETRIES,
     },
   );
   if (isUsableActivity(directResult)) {
@@ -1468,7 +1467,7 @@ export function classifyBatchCircuitBreak(
 
 // What a tripped breaker should DO — the two classes need opposite responses.
 //
-// `invalid_query` that survives its per-country retry from countries with no
+// `invalid_query` that survives its page retries from countries with no
 // invalid_query history is treated as unrecoverable within the run
 // (schema/policy regression): the remaining batches would fail identically,
 // so abort and keep last-good.
