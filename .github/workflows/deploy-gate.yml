@@ -74,6 +74,8 @@ jobs:
         env:
           SHA: ${{ matrix.sha }}
           CHECK_ATTEMPTS: 2
+          # This event's own run never counts as still in flight.
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
         run: bash -e .github/scripts/deploy-gate.sh evaluate
 
   discover:

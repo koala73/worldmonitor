@@ -1823,6 +1823,11 @@ describe('CI workflow coverage', () => {
     const evaluate = direct.steps.find((step: { run?: string }) => step.run === 'bash -e .github/scripts/deploy-gate.sh evaluate');
     assert.equal(evaluate.env.SHA, '${{ matrix.sha }}');
     assert.equal(evaluate.env.CHECK_ATTEMPTS, 2, 'retain the stale-read retry');
+    assert.equal(
+      evaluate.env.TRIGGER_RUN_ID,
+      '${{ github.event.workflow_run.id }}',
+      'a stale listing of the run that fired this event must not skip the last re-poll',
+    );
     // base_drift unshallows on demand, so both evaluators check out one commit
     // and only the script; a full-history checkout on every event cost a
     // median 11s (p90 62s) of runner time for a graph few evaluations read.

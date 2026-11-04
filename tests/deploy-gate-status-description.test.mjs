@@ -182,6 +182,7 @@ function runGate(conclusions, {
   associatedPulls = [[]],
   gatedRuns,
   gatedRunsReadFails = false,
+  triggerRunId = '',
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -216,7 +217,7 @@ function runGate(conclusions, {
     writeFileSync(callsFile, '');
     writeFileSync(summaryFile, '');
     const gatedRunsFile = join(tempDir, 'gated-runs.json');
-    writeFileSync(gatedRunsFile, JSON.stringify([{ workflow_runs: gatedRuns ?? [] }]));
+    writeFileSync(gatedRunsFile, JSON.stringify((gatedRuns ?? []).map((run, index) => ({ id: 100 + index, ...run }))));
     const drifting = {
       mergeBase: MAIN_TIP, mainTip: MAIN_TIP, headTip: HEAD_TIP,
       headFiles: [], mainFiles: [], fetchFails: false, mergeBaseFails: false,
@@ -452,7 +453,15 @@ function runGate(conclusions, {
         '  *"actions/runs?head_sha="*)',
         '    echo "head-runs-page" >> "$FAKE_CALLS"',
         '    [ "$FAKE_GATED_RUNS_FAIL" = "1" ] && { echo "gh: forced runs read failure (HTTP 502)" >&2; exit 1; }',
-        '    cat "$FAKE_GATED_RUNS"',
+        '    jq -c \'[{workflow_runs: [.[] | {id, name, status}]}]\' "$FAKE_GATED_RUNS"',
+        '    exit 0',
+        '    ;;',
+        '  *"/actions/runs/"[0-9]*)',
+        '    run_id=${2##*/}',
+        '    echo "run-read:$run_id" >> "$FAKE_CALLS"',
+        '    fresh=$(jq -r --argjson id "$run_id" \'.[] | select(.id == $id) | .fresh // .status\' "$FAKE_GATED_RUNS")',
+        '    [ "$fresh" = "error" ] && { echo "gh: forced run read failure (HTTP 502)" >&2; exit 1; }',
+        '    printf \'%s\\n\' "$fresh"',
         '    exit 0',
         '    ;;',
         '  *"actions/workflows/deploy-gate.yml/runs"*)',
@@ -621,6 +630,7 @@ function runGate(conclusions, {
           FAKE_GATED_RUNS: gatedRunsFile,
           FAKE_GATED_RUNS_FAIL: gatedRunsReadFails ? '1' : '0',
           GATED_WORKFLOWS: gatedRuns === undefined ? '' : 'Test,Lint Code',
+          TRIGGER_RUN_ID: triggerRunId,
           FAKE_SHA: SHA,
           GH_TOKEN: 'test-token',
           GITHUB_STEP_SUMMARY: summaryFile,
@@ -922,7 +932,7 @@ describe('deploy gate commit-status description', () => {
       assert.equal(result.status, 0, result.stderr);
       assert.deepEqual(
         result.calls,
-        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'status:pending'],
+        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending'],
         `a ${status} Test run fires its own evaluation, so this one must not hold the runner`,
       );
       assert.equal(result.posted[0].state, 'pending');
@@ -930,19 +940,33 @@ describe('deploy gate commit-status description', () => {
   });
 
   it('keeps the stale-read wait when no gated workflow is left to fire', () => {
-    for (const [label, options] of [
-      ['all gated runs completed', { gatedRuns: [{ name: 'Test', status: 'completed' }, { name: 'Lint Code', status: 'completed' }] }],
-      ['only an ungated run in flight', { gatedRuns: [{ name: 'Deploy Gate', status: 'in_progress' }, { name: 'Test', status: 'completed' }] }],
-      ['the runs read failed', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], gatedRunsReadFails: true }],
+    const waited = (reads) => [
+      'graphql-check-page', 'graphql-check-page', 'head-runs-page', ...reads,
+      'sleep:60', 'graphql-check-page', 'graphql-check-page', 'status:pending',
+    ];
+    for (const [label, options, reads] of [
+      ['all gated runs completed', { gatedRuns: [{ name: 'Test', status: 'completed' }, { name: 'Lint Code', status: 'completed' }] }, []],
+      ['only an ungated run in flight', { gatedRuns: [{ name: 'Deploy Gate', status: 'in_progress' }, { name: 'Test', status: 'completed' }] }, []],
+      ['the runs listing failed', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], gatedRunsReadFails: true }, []],
+      // A stale listing snapshot still shows a finished run as running.
+      ['the run record says completed', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'completed' }] }, ['run-read:100']],
+      ['the run record cannot be read', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'error' }] }, ['run-read:100']],
+      // On the head's last event, the listing can lag this event's own run.
+      ['only the triggering run reads as running', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], triggerRunId: '100' }, []],
     ]) {
       const result = runGate({}, options);
       assert.equal(result.status, 0, result.stderr);
-      assert.deepEqual(
-        result.calls,
-        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'sleep:60', 'graphql-check-page', 'graphql-check-page', 'status:pending'],
-        `${label}: this may be the head's last event, so it must re-poll once (#5479)`,
-      );
+      assert.deepEqual(result.calls, waited(reads), `${label}: this may be the head's last event, so it must re-poll once (#5479)`);
     }
+  });
+
+  it('skips the wait for another unfinished run beside the triggering one', () => {
+    const result = runGate({}, {
+      gatedRuns: [{ name: 'Lint Code', status: 'in_progress' }, { name: 'Test', status: 'in_progress' }],
+      triggerRunId: '100',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending']);
   });
 
   it('keeps the wait for a failed check even while a gated workflow is running', () => {

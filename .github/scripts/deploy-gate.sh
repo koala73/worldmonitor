@@ -511,14 +511,30 @@ print(json.dumps({
 # 2026 spent a median 62s in this step, nearly all of it that wait, while
 # holding a runner that PR jobs were queueing for. Any read failure answers
 # "no", which keeps the wait.
+#
+# The runs listing can serve a stale snapshot with HTTP 200 (see
+# docs/solutions/integration-issues/convex-deploy-monitor-outvotes-stale-github-run-listing-snapshot.md),
+# and a stale "in progress" on the head's last event would skip the only
+# re-poll. So the run whose completion fired this event never counts, and every
+# other candidate must still read as unfinished on its own run record.
 gated_run_in_flight() {
-  local eval_sha="$1" pages
+  local eval_sha="$1" pages candidates run_id run_status
   [ -n "${GATED_WORKFLOWS:-}" ] || return 1
   pages=$(gh_api_with_rate_limit_retry core \
     "repos/$REPO/actions/runs?head_sha=$eval_sha&per_page=100" --paginate --slurp) || return 1
-  printf '%s\n' "$pages" | jq -e --arg gated "$GATED_WORKFLOWS" '
+  candidates=$(printf '%s\n' "$pages" | jq -r --arg gated "$GATED_WORKFLOWS" --arg trigger "${TRIGGER_RUN_ID:-}" '
     ($gated | split(",")) as $names
-    | any(.[].workflow_runs[]?; .status != "completed" and (.name as $name | $names | index($name)))' >/dev/null
+    | .[].workflow_runs[]?
+    | select(.status != "completed" and (.id | tostring) != $trigger and (.name as $name | $names | index($name)))
+    | .id') || return 1
+  for run_id in $candidates; do
+    run_status=$(gh_api_with_rate_limit_retry core "repos/$REPO/actions/runs/$run_id" --jq .status) || continue
+    if [ -n "$run_status" ] && [ "$run_status" != "completed" ]; then
+      echo "Gated run $run_id is $run_status"
+      return 0
+    fi
+  done
+  return 1
 }
 
 evaluate_sha() {
