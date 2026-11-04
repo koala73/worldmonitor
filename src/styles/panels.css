@@ -117,7 +117,7 @@
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-align: left;
+  text-align: start;
   text-transform: uppercase;
 }
 

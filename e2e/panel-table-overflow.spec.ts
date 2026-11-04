@@ -372,3 +372,43 @@ test('the table scroll cue follows the reading direction in RTL', async ({ brows
   expect.soft(s.atStart.mask, `${label}: the fade runs from the inline end, which is the left edge`).toContain('to left');
   await context.close();
 });
+
+test('shared-style table headers line up with their cells in RTL', async ({ browser }) => {
+  test.setTimeout(180_000);
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark' });
+  const page = await context.newPage();
+  const ids = [...WM_TABLE_PANELS];
+  const settings = Object.fromEntries(ids.map((id) => [id, { name: id, enabled: true, priority: 0 }]));
+  await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings) } });
+  await routeFixtures(page);
+  await page.goto('/dashboard?lang=ar');
+  await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+  for (const id of ids) {
+    const panel = page.locator(`#panelsGrid .panel[data-panel="${id}"]`);
+    await expect
+      .poll(async () => {
+        await panel.scrollIntoViewIfNeeded().catch(() => {});
+        return panel.locator('tbody tr').count();
+      }, { message: `${id} rows`, timeout: 90_000 })
+      .toBeGreaterThanOrEqual(3);
+    const columns = await panel.evaluate((el) => {
+      const table = el.querySelector('table.wm-table')!;
+      // Resolve start/end against the cell's direction, so `left` and `start` compare by where text sits.
+      const side = (cell: Element) => {
+        const { textAlign, direction } = getComputedStyle(cell);
+        if (textAlign === 'start') return direction === 'rtl' ? 'right' : 'left';
+        if (textAlign === 'end') return direction === 'rtl' ? 'left' : 'right';
+        return textAlign;
+      };
+      const headers = [...table.querySelectorAll('thead th')];
+      const cells = [...table.querySelectorAll('tbody tr:first-child > *')];
+      return headers.map((th, i) => `${(th.textContent ?? '').trim()}: header ${side(th)}, cell ${cells[i] ? side(cells[i]) : 'none'}`);
+    });
+    expect(columns.length, `${id} has header cells`).toBeGreaterThan(0);
+    for (const column of columns) {
+      const [, header, cell] = column.match(/header (\w+), cell (\w+)/)!;
+      expect.soft(header, `${id} ${column}`).toBe(cell);
+    }
+  }
+  await context.close();
+});

@@ -58,6 +58,8 @@ const PENDING = {
 
 /** Properties `.wm-table` owns for every header and body cell. */
 const SHARED = ['font-size', 'font-weight', 'text-transform', 'letter-spacing', 'color', 'padding', 'border-bottom', 'text-align'];
+/** Shorthands that also set a shared property (border-bottom, font-size, font-weight). */
+const SHORTHANDS = ['border', 'border-block', 'border-block-end', 'font'];
 
 function componentFiles(dir = 'src/components/') {
   return readdirSync(new URL(dir, root), { withFileTypes: true }).flatMap((entry) => {
@@ -115,7 +117,7 @@ describe('panel table style', () => {
     const redeclared = [];
     for (const name of names) {
       for (const { selector, body } of exactCellRules(css, name)) {
-        const props = [...body.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]).filter((p) => SHARED.includes(p) || SHARED.some((s) => p.startsWith(`${s}-`) && s !== 'color'));
+        const props = [...body.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]).filter((p) => SHARED.includes(p) || SHORTHANDS.includes(p) || SHARED.some((s) => p.startsWith(`${s}-`) && s !== 'color'));
         if (props.length) redeclared.push(`${selector} { ${props.join(', ')} }`);
       }
     }
@@ -130,6 +132,13 @@ describe('panel table style', () => {
       assert.ok(css.includes(`${selector} {`), `${selector} is missing from panels.css`);
     }
     assert.doesNotMatch(css, /(^|[\s,}])\.wm-table (th|td)\b/, 'a .wm-table th/td rule outranks the state classes on cells');
+  });
+
+  // Body cells align to the inline start (right in Arabic). A physical
+  // `left` on the header would leave every header on the other side of its column.
+  it('.wm-table headers align to the inline start', () => {
+    const header = read('src/styles/panels.css').match(/:where\(\.wm-table\) th \{([^}]*)\}/)?.[1] ?? '';
+    assert.match(header, /text-align:\s*start;/);
   });
 
   it('a class on a migrated header cell does not restyle the shared header', () => {
