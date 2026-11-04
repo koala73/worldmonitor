@@ -647,8 +647,50 @@ test('harness-mounted price and stock tables use the shared table style', async 
       if (rowHeader) expect.soft(rowHeader, `${name}: a row header reads as a body cell`).toMatchObject({ fontSize: '11px', textTransform: 'none', letterSpacing: 'normal', color: td!.color, padding: '5px 8px' });
     }
     expect.soft(await readLostColours(page, root), `${name}: cells keep the colour their class sets`).toEqual([]);
+    if (cp?.tab === 'overview') {
+      const sizes = await page.evaluate((rootSelector) => {
+        const size = (selector: string) => Number.parseFloat(getComputedStyle(document.querySelector(`${rootSelector} ${selector}`)!).fontSize);
+        return { pending: size('td.cp-global-pending'), data: size('td.cp-global-index') };
+      }, root);
+      expect.soft(sizes.pending, `${name}: "Pending data" reads smaller than the data`).toBeLessThan(sizes.data);
+    }
   }
   expect.soft(headers.size, 'every table renders the same header cell').toBe(1);
+});
+
+// The total row's separator was a translucent white, invisible on the light
+// theme's white panel. It must use the theme's border colour.
+test('the grocery total row keeps a visible separator in both themes', async ({ browser }) => {
+  test.setTimeout(180_000);
+  for (const theme of ['light', 'dark'] as const) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: theme });
+    const page = await context.newPage();
+    const settings = { 'grocery-basket': { name: 'grocery-basket', enabled: true, priority: 0 } };
+    await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings), 'worldmonitor-theme': theme } });
+    await routeFixtures(page);
+    await page.goto('/dashboard');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const panel = page.locator('#panelsGrid .panel[data-panel="grocery-basket"]');
+    await expect
+      .poll(async () => {
+        await panel.scrollIntoViewIfNeeded().catch(() => {});
+        return panel.locator('tr.gb-total-row').count();
+      }, { timeout: 90_000 })
+      .toBe(1);
+    const separator = await panel.evaluate((el) => {
+      const cell = el.querySelector('tr.gb-total-row td')!;
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--border)';
+      cell.appendChild(probe);
+      const border = getComputedStyle(probe).color;
+      probe.remove();
+      const style = getComputedStyle(cell);
+      return { color: style.borderTopColor, width: style.borderTopWidth, border };
+    });
+    expect.soft(separator.color, `${theme}: the total row separator uses --border`).toBe(separator.border);
+    expect.soft(Number.parseFloat(separator.width), `${theme}: the total row separator has a width`).toBeGreaterThan(0);
+    await context.close();
+  }
 });
 
 // Satellite Fires and Displacement have no dashboard fixture, so the harness

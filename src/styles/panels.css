@@ -3302,7 +3302,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 .gb-na { opacity: 0.3; text-align: center; }
 .gb-cheapest { background: rgba(34,197,94,0.15); color: #4ade80; }
 .gb-priciest { background: rgba(239,68,68,0.1); color: #f87171; }
-.gb-total-row td { border-top: 2px solid rgba(255,255,255,0.2); }
+.gb-total-row td { border-top: 2px solid var(--border); }
 .gb-wow { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.85; margin-top: 1px; }
 .gb-updated { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.4; text-align: right; padding: 4px 6px; }
 

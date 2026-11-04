@@ -26311,7 +26311,7 @@ body.map-width-resizing {
 .cp-global-index { color: var(--text-primary, #e0e0e0); font-variant-numeric: tabular-nums; }
 .cp-global-wow { white-space: nowrap; }
 .cp-global-spread { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.cp-global-pending { color: var(--text-dim); font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1)); font-style: italic; }
+.cp-global-pending { color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-style: italic; }
 .cp-global-hint {
   font-size: calc(0.68rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
