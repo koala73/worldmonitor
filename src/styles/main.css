@@ -12083,6 +12083,55 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
+/* Energy Complex: IEA oil-stock badges and regional summary rows. */
+.energy-net-exporter-badge,
+.energy-below-obligation-badge {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.energy-net-exporter-badge {
+  margin-inline-start: 0;
+  background: var(--overlay-subtle);
+  color: var(--text-secondary);
+}
+
+.energy-below-obligation-badge {
+  background: color-mix(in srgb, var(--semantic-elevated) 14%, transparent);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+
+.oil-stocks-regional {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.oil-stocks-region-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.oil-stocks-region-row .energy-below-obligation-badge {
+  margin-inline-start: 0;
+}
+
+.oil-stocks-region-name {
+  min-width: 88px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .economic-indicator {
   background: var(--surface);
   padding: 8px 12px;
