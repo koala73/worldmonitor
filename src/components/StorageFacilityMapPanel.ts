@@ -400,7 +400,7 @@ export class StorageFacilityMapPanel extends Panel {
     const html = unsafeRawHtml(`
       <div class="sf-wrap">
         <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
-          <table class="sf-table" role="table">
+          <table class="wm-table sf-table" role="table">
             <thead role="rowgroup">
               <tr role="row">
                 <th scope="col" role="columnheader">Facility</th>
@@ -418,9 +418,6 @@ export class StorageFacilityMapPanel extends Panel {
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
         .sf-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: sf-wrap / inline-size; }
-        .sf-table { width: 100%; border-collapse: collapse; }
-        .sf-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-        .sf-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .sf-table tr.sf-row { cursor: pointer; }
         .sf-table tr.sf-row:hover td { background: rgba(255,255,255,0.03); }
         .sf-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
@@ -433,7 +430,7 @@ export class StorageFacilityMapPanel extends Panel {
         @container sf-wrap (max-width: 31em) {
           .sf-table, .sf-table tbody { display: block; }
           .sf-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-          .sf-table tr.sf-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .sf-table tr.sf-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid var(--border-subtle); }
           .sf-table tr.sf-row td { padding: 0; border: 0; }
           .sf-table tr.sf-row td:first-child { flex: 1 0 100%; }
           .sf-table tr.sf-row td:last-child { margin-left: auto; }

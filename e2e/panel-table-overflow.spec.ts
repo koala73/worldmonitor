@@ -413,6 +413,106 @@ test('shared-style table headers line up with their cells in RTL', async ({ brow
   await context.close();
 });
 
+// FX, ETF flows and the watchlist render outside the fixture dashboard, so
+// they mount in the runtime harness with injected data. Their cells carry
+// gain/loss classes, accent columns and dimmed reference values.
+test('harness-mounted shared-style tables keep the shared header and their cell colours', async ({ page }) => {
+  await page.goto('/tests/runtime-harness.html');
+  await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const { Panel } = await import('/src/components/Panel.ts');
+    const { FxPanel } = await import('/src/components/FxPanel.ts');
+    const { ETFFlowsPanel } = await import('/src/components/ETFFlowsPanel.ts');
+    const { WatchlistTableView } = await import('/src/components/WatchlistTableView.ts');
+
+    document.getElementById('runtime-harness')?.remove();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    grid.style.cssText = 'height:auto;width:900px;grid-template-columns:900px';
+    document.body.appendChild(grid);
+
+    const fx = new FxPanel();
+    (fx as unknown as { updateFx(data: unknown): void }).updateFx({
+      stress: [
+        { countryCode: 'AR', currency: 'ARS', yoyChange: -38.2, drawdown24m: -61.4, stressed: true, peakRate: 0.0029, peakDate: '2024-11', troughRate: 0.0011, troughDate: '2026-10', asOf: '2026-10-31' },
+        { countryCode: 'JP', currency: 'JPY', yoyChange: 2.1, drawdown24m: 0, stressed: false, peakRate: null, peakDate: null, troughRate: null, troughDate: null, asOf: '2026-10-31' },
+      ],
+      usd: [{ currency: 'EUR', usdPerUnit: 1.08, unitsPerUsd: 0.926 }, { currency: 'GBP', usdPerUnit: 1.27, unitsPerUsd: 0.787 }],
+      eur: [{ currency: 'USD', rate: 1.08, change1d: 0.004 }, { currency: 'JPY', rate: 162.4, change1d: -0.85 }],
+      rub: [{ currency: 'USD', rubPerUnit: 81.2, change1d: 0.4 }, { currency: 'CNY', rubPerUnit: 11.3, change1d: null }],
+      degraded: [],
+    });
+    grid.appendChild(fx.getElement());
+    (window as unknown as { fxProbe: unknown }).fxProbe = fx;
+
+    const etf = new ETFFlowsPanel();
+    const etfInternals = etf as unknown as { data: unknown; loading: boolean; renderPanel(): void };
+    etfInternals.loading = false;
+    etfInternals.data = {
+      timestamp: '2026-11-04T00:00:00Z', rateLimited: false,
+      summary: { etfCount: 2, totalVolume: 2.1e9, totalEstFlow: 3.4e8, netDirection: 'NET_INFLOW', inflowCount: 1, outflowCount: 1 },
+      etfs: [
+        { ticker: 'IBIT', issuer: 'BlackRock', price: 61.2, priceChange: 1.84, volume: 1.4e9, avgVolume: 1.1e9, volumeRatio: 1.3, direction: 'inflow', estFlow: 4.1e8 },
+        { ticker: 'GBTC', issuer: 'Grayscale', price: 78.5, priceChange: -0.92, volume: 7e8, avgVolume: 8e8, volumeRatio: 0.9, direction: 'outflow', estFlow: -7e7 },
+      ],
+    };
+    etfInternals.renderPanel();
+    grid.appendChild(etf.getElement());
+
+    const watch = new Panel({ id: 'probe-watchlist', title: 'Watchlist' });
+    const view = new WatchlistTableView<{ symbol: string; change: number }>({
+      columns: [
+        { key: 'symbol', label: 'Symbol', cell: (item) => item.symbol },
+        { key: 'change', label: 'Change', align: 'right', cell: (item) => `${item.change}%` },
+      ],
+      filters: [{ key: 'all', label: 'All', match: () => true }],
+      sortOptions: [{ key: 'symbol', label: 'Symbol', cmp: (a, b) => a.symbol.localeCompare(b.symbol) }],
+      defaultSort: 'symbol', defaultFilter: 'all',
+      getKey: (item) => item.symbol, getSearchText: (item) => item.symbol, renderDetail: () => '',
+    });
+    view.setItems([{ symbol: 'AAPL', change: 1.2 }, { symbol: 'MSFT', change: -0.4 }]);
+    watch.getElement().querySelector('.panel-content')!.innerHTML = view.render();
+    grid.appendChild(watch.getElement());
+    await new Promise((r) => setTimeout(r, 300));
+  });
+
+  const views: Array<{ name: string; root: string; tab?: string }> = [
+    { name: 'fx stress', root: '.panel[data-panel="fx"]', tab: 'stress' },
+    { name: 'fx spot', root: '.panel[data-panel="fx"]', tab: 'spot' },
+    { name: 'fx rub', root: '.panel[data-panel="fx"]', tab: 'rub' },
+    { name: 'etf-flows', root: '.panel[data-panel="etf-flows"]' },
+    { name: 'watchlist', root: '.panel[data-panel="probe-watchlist"]' },
+  ];
+  let headerColour = '';
+  for (const { name, root, tab } of views) {
+    if (tab) {
+      await page.evaluate(async (fxTab) => {
+        const fx = (window as unknown as { fxProbe: { tab: string; render(): void } }).fxProbe;
+        fx.tab = fxTab;
+        fx.render();
+        await new Promise((r) => setTimeout(r, 300));
+      }, tab);
+    }
+    const tables = await page.evaluate((rootSelector) => [...document.querySelectorAll(`${rootSelector} table.wm-table`)].map((table) => {
+      const pick = (el: Element) => {
+        const s = getComputedStyle(el);
+        return { fontSize: s.fontSize, fontWeight: s.fontWeight, textTransform: s.textTransform, letterSpacing: s.letterSpacing, color: s.color };
+      };
+      return { th: pick(table.querySelector('thead th')!), td: pick(table.querySelector('tbody td')!) };
+    }), root);
+    expect(tables.length, `${name}: shared-style tables`).toBeGreaterThan(0);
+    for (const { th, td } of tables) {
+      headerColour ||= th.color;
+      expect.soft(th, `${name}: header cell uses the shared table style`).toMatchObject({ fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.4px' });
+      expect.soft(td.fontSize, `${name}: body cell uses the shared size`).toBe('11px');
+      expect.soft(th.color, `${name}: header colour matches the other shared-style tables`).toBe(headerColour);
+    }
+    expect.soft(await readLostColours(page, root), `${name}: cells keep the colour their class sets`).toEqual([]);
+  }
+});
+
 // Satellite Fires and Displacement have no dashboard fixture, so the harness
 // mounts them directly. Displacement renders a different table per tab.
 test('Satellite Fires and every Displacement table fit the sidebar and phone widths', async ({ page }) => {
