@@ -20,7 +20,7 @@ tags: [css-specificity, where-selector, wm-table, panel-tables, state-colours, r
 
 ## Problem
 
-42 panel tables each carried their own copy of header and cell rules (15 distinct styles). Consolidating them onto one `.wm-table` base in `src/styles/panels.css` (PRs #10128, #10129, #10130, #10131, stacked and unmerged as of this writing) hit four cascade traps. None showed up in a source-level scan; each needed a rendered check.
+Panel tables (42 `<table>` templates in 26 component files) each carried their own header and cell rules; an audit of the 23 visible ones found 15 distinct styles. Consolidating them onto one `.wm-table` base in `src/styles/panels.css` (PRs #10128, #10129, #10130, #10131) hit four cascade traps. None showed up in a source-level scan; each needed a rendered check.
 
 ## Symptoms
 
@@ -37,13 +37,13 @@ tags: [css-specificity, where-selector, wm-table, panel-tables, state-colours, r
 
 ## Solution
 
-Base rules below class specificity, with row headers reset to body-cell style (`src/styles/panels.css:107-139` on the step 3b branch):
+Base rules below class specificity, with row headers reset to body-cell style (`src/styles/panels.css:107-139`):
 
 ```css
 .wm-table { width: 100%; border-collapse: collapse; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
 :where(.wm-table) th { padding: 4px 8px; border-bottom: 1px solid var(--border); color: var(--text-muted);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-weight: 600; letter-spacing: 0.04em;
-  text-align: left; text-transform: uppercase; }
+  text-align: start; text-transform: uppercase; }
 :where(.wm-table) td,
 :where(.wm-table) > tbody > tr > th { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
 /* A row header (<th scope="row">) is a body cell, not a column header. */
@@ -58,7 +58,8 @@ Each revived rule was decided one by one. Dead declarations were deleted (`.disp
 
 ## Prevention
 
-- `tests/panel-table-style.test.mjs` requires `wm-table` on every panel `<table>`. It also requires the `:where()` selectors, including `tbody th`, and rejects `.wm-table th/td` rules. It reads every `src/styles/*.css` (`STYLESHEETS`, line 38). It fails on inline `<tr|th|td style>` declarations of shared properties (`rows and cells carry no inline shared style`, line 95).
+- `tests/panel-table-style.test.mjs` requires `wm-table` on every panel `<table>`. It also requires the `:where()` selectors, including the row-header reset `:where(.wm-table) > tbody > tr > th`, and rejects `.wm-table th/td` rules. It reads every `src/styles/*.css` (`STYLESHEETS`, line 38). It fails on inline `<tr|th|td style>` declarations of shared properties, including styles interpolated from a same-file string constant (`rows and cells carry no inline shared style`, line 100).
 - `e2e/panel-table-overflow.spec.ts` mounts the tables, on the fixture dashboard and in the runtime harness, and asserts computed header and cell styles. `readLostColours` (line 236) renders a probe cell with the same classes in a plain table and fails when the real cell shows a different colour. That is what caught the 17 stripped cells.
 - When lowering a shared rule's specificity, diff the computed colour of every cell in every migrated table, not only the properties being consolidated.
+- Align shared header cells with `text-align: start`, not `left`. Body cells default to `start`, so a physical `left` on the headers puts them on the opposite side of their columns in right-to-left layouts.
 - A generic `th` rule needs a row-header counterpart whenever any table uses row headers. Scope it with child combinators (`> tbody > tr > th`), because tables nest inside expandable rows.

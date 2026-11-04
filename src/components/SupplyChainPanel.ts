@@ -935,7 +935,7 @@ export class SupplyChainPanel extends Panel {
         </div>
         <p class="sc-mineral-caption">${t('components.supplyChain.productionCaption')}${year ? ` (${escapeHtml(year)})` : ''}</p>
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="wm-table trade-table">
+          <table class="wm-table">
             <thead>
               <tr>
                 <th scope="col">${t('components.supplyChain.mineral')}</th>
@@ -980,7 +980,7 @@ export class SupplyChainPanel extends Panel {
 
     return `<div class="trade-tariffs-table">
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-        <table class="wm-table trade-table">
+        <table class="wm-table">
           <thead>
             <tr>
               <th scope="col">${t('components.supplyChain.mineral')}</th>

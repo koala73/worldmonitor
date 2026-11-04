@@ -94,16 +94,31 @@ describe('panel table style', () => {
     assert.deepEqual(unmigrated, {});
   });
 
+  // Panels also built the style in a constant (`const cellStyle = 'padding:…'`)
+  // and interpolated it (`style="${cellStyle};…"`). Same-file string constants
+  // are resolved before matching.
   it('rows and cells carry no inline shared style', () => {
     const inline = [];
-    const shared = /(?:^|;)\s*(font-size|font-weight|text-transform|letter-spacing|padding(?:-[\w-]+)?|border-bottom(?:-[\w-]+)?)\s*:/g;
+    const shared = /(?:^|;)\s*(font-size|font-weight|font|text-transform|letter-spacing|padding(?:-[\w-]+)?|border-bottom(?:-[\w-]+)?|border|border-block|border-block-end)\s*:/g;
     for (const path of panelFiles.filter((file) => tables.some((t) => t.path === file))) {
-      for (const m of read(path).matchAll(/<(tr|th|td)\b[^>]*?\bstyle="([^"]*)"/g)) {
-        const props = [...m[2].matchAll(shared)].map((d) => d[1]);
+      const code = read(path);
+      const constants = Object.fromEntries([...code.matchAll(/\bconst\s+(\w+)\s*=\s*(['"`])([^'"`$]*)\2/g)].map((c) => [c[1], c[3]]));
+      for (const m of code.matchAll(/<(tr|th|td)\b[^>]*?\bstyle="([^"]*)"/g)) {
+        const style = m[2].replace(/\$\{\s*(\w+)\s*\}/g, (ref, name) => constants[name] ?? ref);
+        const props = [...style.matchAll(shared)].map((d) => d[1]);
         if (props.length) inline.push(`${path}: <${m[1]} style> ${props.join(', ')}`);
       }
     }
     assert.deepEqual(inline, []);
+  });
+
+  // Virtual scrolling sizes the spacer rows as rows x --watchlist-row-height.
+  // Shared cell padding or a border on them would shift every row below.
+  it('watchlist spacer rows drop the shared cell padding and border', () => {
+    const css = read('src/styles/panels.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    const rule = css.match(/\.watchlist-table tbody tr\.watchlist-virtual-spacer > td\s*\{([^}]*)\}/)?.[1] ?? '';
+    assert.match(rule, /(?:^|;)\s*padding:\s*0;/, 'spacer cells keep padding: 0');
+    assert.match(rule, /(?:^|;)\s*border:\s*0;/, 'spacer cells keep border: 0');
   });
 
   it('migrated tables do not redeclare the shared header and cell style', () => {
