@@ -1514,7 +1514,7 @@ function resolveConfig(options = {}) {
     : [];
   const logger = options.logger ?? console;
   if (mode === 'docker' && requestedFallback) {
-    logger.warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
+    logger.warn("[local-api] Cloud fallback disabled in Docker mode (only requests carrying the browser user's own desktop key are relayed to api.worldmonitor.app)");
   }
   if (cloudFallback && !allowPrivateRemoteBase && remoteBaseLooksPrivate(remoteBase)) {
     logger.warn(

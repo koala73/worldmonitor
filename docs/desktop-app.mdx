@@ -223,7 +223,7 @@ A key is not required to run the app. There are three ways to get Pro cloud data
 - **Desktop key.** Pro includes 2 desktop keys and Pro Business 3. Paste one into **Settings → Overview → Desktop key**; it is stored in the OS keychain. It works in the official app and in self-built desktop copies, with no sign-in. It is for the subscriber only, it has a per-account daily and per-minute ceiling, and it does not reach `/api/v2/`, shipping webhooks, MCP via key, or OAuth key grants. See [Desktop keys](/api-keys#desktop-keys).
 - **API key.** API Starter and API Business keys also work in the desktop app.
 
-With none of these, the app uses an anonymous session and the local sidecar. Docker self-host copies run on their own data and never call the cloud.
+With none of these, the app uses an anonymous session and the local sidecar. Docker self-host copies run on their own data. They fetch Pro data from the cloud only for a browser user who enters their own desktop key; see [Desktop keys](/api-keys#desktop-keys).
 
 ## Observability
 
