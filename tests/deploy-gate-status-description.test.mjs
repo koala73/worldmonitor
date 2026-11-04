@@ -1621,6 +1621,12 @@ describe('deploy gate stale-base drift over a real repository', () => {
     const headSha = git(remote, 'rev-parse', 'HEAD').trim();
     git(remote, 'checkout', '-q', 'main');
     if ((shape.main ?? []).length > 0) commit(shape.main, 'main');
+    if (shape.shallow) {
+      // The workflow's depth-1 checkout. file:// because git ignores --depth
+      // on a plain local path.
+      git(root, 'clone', '-q', '--depth=1', `file://${remote}`, work);
+      return { remote, work, headSha };
+    }
     git(work, 'init', '-q');
     // A partial clone needs a NAMED promisor remote: git refuses to register
     // one whose name is a path, so the fixture wires `origin` the way a real
@@ -1657,6 +1663,19 @@ describe('deploy gate stale-base drift over a real repository', () => {
       base: ['api/widget-agent.ts', 'server/gateway.ts', 'docs/x.md'],
       head: ['api/widget-agent.ts', 'docs/x.md'],
       main: ['api/widget-agent.ts', 'server/gateway.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'api/widget-agent.ts');
+  });
+
+  it('finds the merge base below a depth-1 checkout', () => {
+    // The clone holds only main's tip, so its parent, the real merge base,
+    // sits behind the shallow boundary.
+    const result = drift({
+      base: ['api/widget-agent.ts', 'server/gateway.ts'],
+      head: ['api/widget-agent.ts'],
+      main: ['api/widget-agent.ts', 'server/gateway.ts'],
+      shallow: true,
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, 'api/widget-agent.ts');

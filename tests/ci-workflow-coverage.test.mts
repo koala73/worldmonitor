@@ -1823,9 +1823,16 @@ describe('CI workflow coverage', () => {
     const evaluate = direct.steps.find((step: { run?: string }) => step.run === 'bash -e .github/scripts/deploy-gate.sh evaluate');
     assert.equal(evaluate.env.SHA, '${{ matrix.sha }}');
     assert.equal(evaluate.env.CHECK_ATTEMPTS, 2, 'retain the stale-read retry');
-    const checkout = direct.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
-    assert.equal(checkout.with['fetch-depth'], 0, 'base drift requires the full commit graph');
-    assert.equal(checkout.with.filter, 'blob:none');
+    // base_drift unshallows on demand, so both evaluators check out one commit
+    // and only the script; a full-history checkout on every event cost a
+    // median 11s (p90 62s) of runner time for a graph few evaluations read.
+    for (const job of [direct, jobs.evaluate]) {
+      const checkout = job.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
+      assert.equal(checkout.with['fetch-depth'], undefined);
+      assert.equal(checkout.with.filter, 'blob:none');
+      assert.equal(checkout.with['sparse-checkout'], '.github/scripts');
+    }
+    assert.match(deployGateScript, /--is-shallow-repository\)" = "true" \]; then\n\s+deepen=\(--unshallow\)/);
 
     for (const event of ['workflow_run', 'schedule', 'workflow_dispatch']) {
       const completion = event === 'workflow_run';

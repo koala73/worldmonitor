@@ -191,11 +191,18 @@ drift_files=""
 base_drift() {
   local head="$1"
   local merge_base main_tip head_tip head_list main_list
+  local deepen=()
   drift_files=""
+  # The workflow checks out one commit, because only this phase needs history
+  # and most evaluations never reach it. A shallow repo keeps its boundary
+  # through a plain fetch, so merge-base would stop there; unshallow instead.
+  if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+    deepen=(--unshallow)
+  fi
   # Trees are needed, file contents never are, so filter the blobs out. The
   # fetch is unauthenticated (the checkout runs with persist-credentials:false)
   # which this public repo allows; a private fork would need a token here.
-  if ! git fetch --no-tags --quiet --filter=blob:none "$BASE_DRIFT_REMOTE" \
+  if ! git fetch --no-tags --quiet --filter=blob:none "${deepen[@]}" "$BASE_DRIFT_REMOTE" \
     "+refs/heads/main:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
     echo "::error::Could not fetch main and $head for the base-drift comparison" >&2
     return 1
