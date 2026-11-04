@@ -564,9 +564,10 @@ def build(crawl_path: Path, verify_google: bool):
         want = (used | LATIN1 | LATIN_EXT_A | ASCII | CORE_PUNCT) & cov & src_cmap
         # Google's latin file also maps the combining marks in its range (U+0304, U+0308, U+0329).
         # Letters no Google file has a glyph for (Ǖ = U + U+0308 + U+0304) sit in the core's range
-        # and are composed from those marks, so the core keeps them.
+        # and are composed from those marks, so the core keeps the ones such letters use.
+        parts = {ord(x) for c in g['in_no_file'] for x in unicodedata.normalize('NFD', chr(c))}
         latin_marks = {cp for cp in parse_unicode_range(g['subsets']['latin']['unicode_range'])
-                       if unicodedata.category(chr(cp)) == 'Mn'} & cov & src_cmap
+                       if unicodedata.category(chr(cp)) == 'Mn'} & parts & cov & src_cmap
         want |= latin_marks
         core = (ASCII | CORE_PUNCT | frequent | latin_marks) & want
         ext = want - core
