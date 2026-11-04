@@ -351,7 +351,11 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       // Catches a peer that accepts the connection and then goes silent
       // forever (no error, no close, no data) -- the only stall shape none
       // of the listeners above ever observe.
-      const idleTimeoutMs = isConfiguredOllamaOrigin(url) ? _ollamaIdleTimeoutMs : _upstreamIdleTimeoutMs;
+      // A streamed (relay) request carries its own time-to-headers deadline in
+      // init.signal, so the generic 12s idle limit must not cut it short.
+      const idleTimeoutMs = init?.[STREAM_RESPONSE_FETCH] === true
+        ? STREAM_BODY_IDLE_TIMEOUT_MS
+        : isConfiguredOllamaOrigin(url) ? _ollamaIdleTimeoutMs : _upstreamIdleTimeoutMs;
       req.setTimeout(idleTimeoutMs, () => {
         req.destroy();
         settle(reject, new Error('upstream request idle-timed out'));
@@ -934,6 +938,8 @@ const SELFHOST_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const SELFHOST_VERDICTS = new Set(['active', 'invalid', 'not_desktop_key', 'over_cap', 'lapsed']);
 // Verdicts whose key the browser keeps: the account exists and can recover.
 const SELFHOST_COOKIE_VERDICTS = new Set(['active', 'over_cap', 'lapsed']);
+// Verdicts that can never turn active again: the stored key is forgotten.
+const SELFHOST_FORGET_VERDICTS = new Set(['invalid', 'not_desktop_key']);
 const SELFHOST_VERDICT_CACHE_MAX = 1000;
 const SELFHOST_VERDICT_TIMEOUT_MS = 5000;
 const SELFHOST_POST_LIMIT = 10;
@@ -948,8 +954,11 @@ let selfHostVerdictTtlMs = DEFAULT_SELFHOST_VERDICT_TTL_MS;
 let selfHostRelayTimeoutMs = DEFAULT_SELFHOST_RELAY_TIMEOUT_MS;
 // Relayed responses bypass the buffering response writer (SSE must stream).
 const streamedResponses = new WeakSet();
-// The cloud's cookies are for its own origin, not the self-hosted one.
-const RELAY_DROPPED_RESPONSE_HEADERS = ['connection', 'keep-alive', 'transfer-encoding', 'set-cookie'];
+// The cloud's cookies and host-wide policies (HSTS, Alt-Svc) are for its own
+// origin, not the self-hosted one.
+const RELAY_DROPPED_RESPONSE_HEADERS = [
+  'connection', 'keep-alive', 'transfer-encoding', 'set-cookie', 'strict-transport-security', 'alt-svc',
+];
 
 function selfHostRelayUserAgent() {
   return `WorldMonitor-SelfHost/${process.env.LOCAL_API_APP_VERSION || 'unknown'} (relay)`;
@@ -959,8 +968,10 @@ function hashSelfHostKey(key) {
   return createHash('sha256').update(key).digest('hex');
 }
 
-// Removes every wm-desktop-key cookie from the incoming request and returns
-// the first value, so no handler or proxied call downstream can read it.
+// Removes every wm-desktop-key cookie from the incoming request, so no handler
+// or proxied call downstream can read it, and returns the value. Two different
+// values (a cookie tossed in from a sibling host beside ours) return '', which
+// is never relayed: the browser's own key cannot be told apart from the other.
 function takeSelfHostKeyCookie(req) {
   const raw = req.headers.cookie;
   if (typeof raw !== 'string' || !raw.includes(SELFHOST_KEY_COOKIE)) return null;
@@ -972,7 +983,8 @@ function takeSelfHostKeyCookie(req) {
     const eq = trimmed.indexOf('=');
     const name = eq === -1 ? trimmed : trimmed.slice(0, eq).trim();
     if (name === SELFHOST_KEY_COOKIE) {
-      key ??= eq === -1 ? '' : trimmed.slice(eq + 1).trim();
+      const value = eq === -1 ? '' : trimmed.slice(eq + 1).trim();
+      key = key === null || key === value ? value : '';
     } else {
       kept.push(trimmed);
     }
@@ -1015,7 +1027,7 @@ async function fetchDesktopKeyVerdict(key, context) {
 
 function freshSelfHostVerdict(context, hash) {
   const entry = context.selfHostVerdicts.get(hash);
-  return entry && Date.now() - entry.verifiedAt < selfHostVerdictTtlMs ? entry : null;
+  return entry && !entry.recheck && Date.now() - entry.verifiedAt < selfHostVerdictTtlMs ? entry : null;
 }
 
 // Cached for the TTL, including invalid verdicts. A failed check keeps the
@@ -1049,11 +1061,21 @@ async function resolveSelfHostVerdict(key, context) {
 }
 
 // Relay only while the key is not known to be inactive, so a locked browser
-// does not spray denials at the cloud (KTD6).
+// does not spray denials at the cloud (KTD6). The last verdict counts even when
+// stale: a lapsed key keeps getting free local data until a status check (the
+// browser polls) finds it active again.
 function shouldRelayForSelfHostKey(key, context) {
   if (!SELFHOST_KEY_SHAPE.test(key)) return false;
-  const fresh = freshSelfHostVerdict(context, hashSelfHostKey(key));
-  return !fresh || fresh.status === 'active';
+  const last = context.selfHostVerdicts.get(hashSelfHostKey(key));
+  return !last || last.status === 'active';
+}
+
+// SameSite=Strict still sends the cookie from a sibling host on the same site,
+// so a page there could spend the owner's allowance. Only this origin's own
+// pages (or a typed-in navigation) may relay.
+function selfHostRelayFetchSiteAllowed(req) {
+  const fetchSite = req.headers['sec-fetch-site'];
+  return fetchSite === undefined || fetchSite === 'same-origin' || fetchSite === 'none';
 }
 
 function selfHostKeyCookieHeader(req, context, value, maxAgeSeconds) {
@@ -1115,14 +1137,19 @@ async function handleSelfHostKey(req, context, cookieKey) {
   }
   if (req.method === 'GET') {
     if (cookieKey === null) return selfHostKeyJson(answer('none'));
-    if (!SELFHOST_KEY_SHAPE.test(cookieKey)) return selfHostKeyJson(answer('invalid'));
+    const clearStored = { 'Set-Cookie': selfHostKeyCookieHeader(req, context, '', 0) };
+    if (!SELFHOST_KEY_SHAPE.test(cookieKey)) return selfHostKeyJson(answer('invalid'), 200, clearStored);
     if (!freshSelfHostVerdict(context, hashSelfHostKey(cookieKey))) {
       const allowed = selfHostClientAllowed(req, context);
       if (!allowed.ok) {
         return selfHostKeyJson({ error: 'Too many key checks' }, 429, { 'Retry-After': String(allowed.retryAfterSeconds) });
       }
     }
-    return selfHostKeyJson({ enabled: true, ...(await resolveSelfHostVerdict(cookieKey, context)) });
+    const verdict = await resolveSelfHostVerdict(cookieKey, context);
+    // A key the cloud no longer knows will never unlock; forget it. A lapsed or
+    // over-cap key is kept so a renewal unlocks again without re-entry.
+    const forget = !verdict.stale && SELFHOST_FORGET_VERDICTS.has(verdict.status);
+    return selfHostKeyJson({ enabled: true, ...verdict }, 200, forget ? clearStored : {});
   }
   const allowed = selfHostClientAllowed(req, context);
   if (!allowed.ok) {
@@ -1143,14 +1170,16 @@ async function handleSelfHostKey(req, context, cookieKey) {
     return selfHostKeyJson(answer('invalid', { error: 'malformed_key' }), 400, clearStored);
   }
   const verdict = await resolveSelfHostVerdict(key, context);
+  // A stale verdict is an outage answer: storing or clearing on it would let
+  // the cookie and the browser's state disagree, so report it as unavailable.
+  if (verdict.stale) return selfHostKeyJson(answer('unavailable'));
   const body = { enabled: true, ...verdict };
-  if (verdict.stale) return selfHostKeyJson(body);
   if (SELFHOST_COOKIE_VERDICTS.has(verdict.status)) {
     return selfHostKeyJson(body, 200, {
       'Set-Cookie': selfHostKeyCookieHeader(req, context, key, SELFHOST_COOKIE_MAX_AGE_SECONDS),
     });
   }
-  if (verdict.status === 'invalid' || verdict.status === 'not_desktop_key') {
+  if (SELFHOST_FORGET_VERDICTS.has(verdict.status)) {
     return selfHostKeyJson(body, 200, clearStored);
   }
   return selfHostKeyJson(body);
@@ -1177,7 +1206,9 @@ async function relayToCloudWithSelfHostKey(requestUrl, req, context, key) {
     clearTimeout(timer);
   }
   if (response.status === 401 || response.status === 403) {
-    context.selfHostVerdicts.delete(hashSelfHostKey(key));
+    // The browser re-checks on a denial; make that check ask the cloud.
+    const entry = context.selfHostVerdicts.get(hashSelfHostKey(key));
+    if (entry) entry.recheck = true;
   }
   streamedResponses.add(response);
   return response;
@@ -2158,6 +2189,7 @@ async function dispatch(requestUrl, req, routes, context) {
     context.selfHostRelay
     && selfHostKey !== null
     && isSelfHostRelayPath(requestUrl.pathname)
+    && selfHostRelayFetchSiteAllowed(req)
     && shouldRelayForSelfHostKey(selfHostKey, context)
   ) {
     return relayToCloudWithSelfHostKey(requestUrl, req, context, selfHostKey);

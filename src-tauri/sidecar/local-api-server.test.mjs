@@ -5146,6 +5146,120 @@ for (const denial of [
   });
 }
 
+test('relay: cloud headers slower than the generic upstream idle timeout still arrive within the relay deadline', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setUpstreamIdleTimeoutMs(100);
+    __testing__.setSelfHostRelayTimeoutMs(2000);
+    try {
+      assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+      cloud.behavior.relay = async (_req, res, url) => {
+        await sleep(400);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ source: 'cloud', path: url.pathname }));
+      };
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+      assert.equal(response.status, 200);
+      assert.equal(response.json.source, 'cloud');
+    } finally {
+      __testing__.setUpstreamIdleTimeoutMs(12000);
+    }
+  });
+});
+
+test('relay: a known inactive key stays local after its verdict goes stale', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setSelfHostVerdictTtlMs(50);
+    assert.equal((await postSelfHostKey(port, SELFHOST_LAPSED_KEY)).json.status, 'lapsed');
+    await sleep(120);
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_LAPSED_KEY) });
+    assert.equal(response.json.source, 'local');
+    assert.equal(cloud.relayed.length, 0, 'a lapsed key is not relayed once its verdict is older than the TTL');
+  });
+});
+
+test('selfhost-key: a POST during a cloud outage answers unavailable and leaves the stored cookie alone', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setSelfHostVerdictTtlMs(50);
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    await sleep(120);
+    cloud.behavior.status = () => ({ destroy: true });
+    const response = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY);
+    assert.equal(response.status, 200);
+    assert.equal(response.json.status, 'unavailable');
+    assert.equal(response.json.stale, false);
+    assert.equal(response.headers['set-cookie'], undefined);
+  });
+});
+
+test('selfhost-key: a GET that finds the stored key invalid clears the cookie', async () => {
+  await withSelfHostSidecar(async ({ port }) => {
+    for (const key of [SELFHOST_INVALID_KEY, SELFHOST_API_KIND_KEY, 'wm_short']) {
+      const response = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(key) });
+      assert.equal(response.json.status, key === SELFHOST_API_KIND_KEY ? 'not_desktop_key' : 'invalid');
+      const cookie = parseSetCookie(response);
+      assert.ok(cookie, `cookie cleared for ${key.slice(0, 8)}`);
+      assert.match(cookie.raw, /Max-Age=0/);
+    }
+    const lapsed = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_LAPSED_KEY) });
+    assert.equal(lapsed.json.status, 'lapsed');
+    assert.equal(lapsed.headers['set-cookie'], undefined, 'a lapsed key is kept so a renewal unlocks again');
+  });
+});
+
+test('relay: two different desktop-key cookies are never relayed', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    const conflicting = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}; wm-desktop-key=${SELFHOST_OPERATOR_KEY}` },
+    });
+    assert.equal(conflicting.json.source, 'local');
+    assert.equal(conflicting.json.cookie, null);
+    assert.equal(cloud.relayed.length, 0);
+
+    const duplicate = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}; wm-desktop-key=${SELFHOST_ACTIVE_KEY}` },
+    });
+    assert.equal(duplicate.json.source, 'cloud', 'the same value twice is one key');
+  });
+});
+
+test('relay: a cross-site or same-site request is served locally even with the cookie', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    for (const site of ['cross-site', 'same-site']) {
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+        headers: { ...keyCookie(SELFHOST_ACTIVE_KEY), 'Sec-Fetch-Site': site },
+      });
+      assert.equal(response.json.source, 'local', site);
+    }
+    assert.equal(cloud.relayed.length, 0);
+    for (const site of ['same-origin', 'none']) {
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+        headers: { ...keyCookie(SELFHOST_ACTIVE_KEY), 'Sec-Fetch-Site': site },
+      });
+      assert.equal(response.json.source, 'cloud', site);
+    }
+  });
+});
+
+test('relay: the cloud cannot set host-wide policy headers on the self-hosted origin', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    cloud.behavior.relay = (_req, res) => {
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'strict-transport-security': 'max-age=63072000; includeSubDomains; preload',
+        'alt-svc': 'h3=":443"; ma=86400',
+      });
+      res.end('{"source":"cloud"}');
+    };
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(response.json.source, 'cloud');
+    assert.equal(response.headers['strict-transport-security'], undefined);
+    assert.equal(response.headers['alt-svc'], undefined);
+  });
+});
+
 test('relay: an upstream timeout is a relay error, distinct from a denial, and keeps the verdict', async () => {
   await withSelfHostSidecar(async ({ cloud, port }) => {
     __testing__.setSelfHostRelayTimeoutMs(150);
