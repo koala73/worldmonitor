@@ -3308,6 +3308,14 @@
       },
       "description": "بنية تحتية رئيسية لخط أنابيب {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "افتح في أطلس التخزين",
+      "types": {
+        "lngExport": "تصدير الغاز الطبيعي المسال",
+        "lngImport": "استيراد الغاز الطبيعي المسال",
+        "crudeTankFarm": "مركز نفط خام"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "يعمل حالياً وينقل الموارد.",
       "construction": "قيد الإنشاء حالياً."
@@ -3725,7 +3733,11 @@
       "c2Server": "خادم قيادة وتحكم",
       "malwareHost": "مضيف برمجيات خبيثة",
       "phishing": "تصيّد احتيالي",
-      "maliciousUrl": "رابط خبيث"
+      "maliciousUrl": "رابط خبيث",
+      "operational": "تشغيلي",
+      "reduced": "مخفّض",
+      "offline": "متوقف",
+      "disputed": "متنازع عليه"
     },
     "aptTactics": {
       "reconnaissance": "الاستطلاع",

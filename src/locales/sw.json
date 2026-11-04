@@ -3305,6 +3305,14 @@
       },
       "description": "Miundombinu kuu ya bomba la {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Fungua katika atlasi ya hifadhi",
+      "types": {
+        "lngExport": "Usafirishaji wa LNG",
+        "lngImport": "Uagizaji wa LNG",
+        "crudeTankFarm": "Kituo cha mafuta ghafi"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Kwa sasa rasilimali za uendeshaji na usafirishaji.",
       "construction": "Hivi sasa inajengwa."
@@ -3714,7 +3722,11 @@
       "c2Server": "Seva ya C2",
       "malwareHost": "Mwenyeji wa programu hasidi",
       "phishing": "Hadaa",
-      "maliciousUrl": "URL hasidi"
+      "maliciousUrl": "URL hasidi",
+      "operational": "Inafanya kazi",
+      "reduced": "Imepunguzwa",
+      "offline": "Haifanyi kazi",
+      "disputed": "Inabishaniwa"
     },
     "aptTactics": {
       "reconnaissance": "Upelelezi",

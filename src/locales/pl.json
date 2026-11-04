@@ -3267,6 +3267,14 @@
       },
       "description": "Ważna infrastruktura rurociągu {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Otwórz w atlasie magazynów",
+      "types": {
+        "lngExport": "Eksport LNG",
+        "lngImport": "Import LNG",
+        "crudeTankFarm": "Hub ropy naftowej"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Aktualnie w eksploatacji i transportujący zasoby.",
       "construction": "Aktualnie w budowie."
@@ -3685,7 +3693,11 @@
       "c2Server": "Serwer C2",
       "malwareHost": "Host złośliwego oprogramowania",
       "phishing": "Phishing",
-      "maliciousUrl": "Złośliwy URL"
+      "maliciousUrl": "Złośliwy URL",
+      "operational": "Działa",
+      "reduced": "Ograniczony",
+      "offline": "Nieczynny",
+      "disputed": "Sporny"
     },
     "aptTactics": {
       "reconnaissance": "Rozpoznanie",

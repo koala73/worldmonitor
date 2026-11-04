@@ -3216,6 +3216,14 @@
       },
       "description": "주요 {{type}} 파이프라인 인프라. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "저장 아틀라스에서 열기",
+      "types": {
+        "lngExport": "LNG 수출",
+        "lngImport": "LNG 수입",
+        "crudeTankFarm": "원유 허브"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "현재 운영 중이며 자원을 수송하고 있습니다.",
       "construction": "현재 건설 중입니다."
@@ -3625,7 +3633,11 @@
       "c2Server": "C2 서버",
       "malwareHost": "악성코드 호스트",
       "phishing": "피싱",
-      "maliciousUrl": "악성 URL"
+      "maliciousUrl": "악성 URL",
+      "operational": "가동 중",
+      "reduced": "축소",
+      "offline": "가동 중단",
+      "disputed": "분쟁 중"
     },
     "aptTactics": {
       "reconnaissance": "정찰",

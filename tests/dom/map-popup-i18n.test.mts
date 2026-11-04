@@ -166,3 +166,22 @@ describe('English baseline', () => {
     expect(document.querySelector('.popup-header .popup-badge')?.textContent).toBe('MODERATE');
   });
 });
+
+describe('storage facility popup in German', () => {
+  it('translates the facility type, badge and atlas action', async () => {
+    await useLanguage('de');
+    popup.show({
+      type: 'storageFacility', x: 10, y: 10,
+      data: {
+        id: 'okoli', name: 'Okoli UGS', operator: 'PSP d.o.o.', facilityType: 'lng_export',
+        country: 'HR', capacityDisplay: '5.8 TWh', badge: 'operational',
+      } as never,
+    });
+    const text = document.body.textContent ?? '';
+    expect(text).toContain(de.popups.storageFacility.types.lngExport);
+    expect(text).toContain(de.popups.statusValues.operational.toUpperCase());
+    expect(document.querySelector('[data-open-storage-atlas]')?.textContent).toBe(de.popups.storageFacility.openInAtlas);
+    expect(text).not.toContain('Open in Storage Atlas');
+    expect(text).not.toContain('LNG export');
+  });
+});

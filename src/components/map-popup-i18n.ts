@@ -106,6 +106,16 @@ export function datacenterSectorLabel(raw: string): string {
   return lookupLabel('popups.datacenter.sectors', raw) ?? raw;
 }
 
+// Storage facility types the registry emits. UGS and SPR are acronyms the
+// industry uses unchanged in every language, so they skip the catalogue.
+const STORAGE_FACILITY_TYPE_ACRONYMS: Record<string, string> = { ugs: 'UGS', spr: 'SPR' };
+
+/** Storage facility type (UGS, SPR, LNG export/import, crude hub) for the map dot tooltip and popup. */
+export function storageFacilityTypeLabel(raw: string | null | undefined): string {
+  if (!raw) return '';
+  return STORAGE_FACILITY_TYPE_ACRONYMS[raw] ?? lookupLabel('popups.storageFacility.types', raw) ?? raw;
+}
+
 // Names used by data sets that Intl.DisplayNames('en') does not emit verbatim.
 const COUNTRY_ALIASES: Record<string, string> = {
   'united states of america': 'US',

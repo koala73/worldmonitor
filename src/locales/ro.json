@@ -3256,6 +3256,14 @@
       },
       "description": "Infrastructură majoră de conducte {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Deschide în atlasul depozitelor",
+      "types": {
+        "lngExport": "Export GNL",
+        "lngImport": "Import GNL",
+        "crudeTankFarm": "Hub de țiței"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Momentan resurse operaționale și de transport.",
       "construction": "În prezent în construcție."
@@ -3665,7 +3673,11 @@
       "c2Server": "Server C2",
       "malwareHost": "Gazdă malware",
       "phishing": "Phishing",
-      "maliciousUrl": "URL rău intenționat"
+      "maliciousUrl": "URL rău intenționat",
+      "operational": "Operațional",
+      "reduced": "Redus",
+      "offline": "Scos din funcțiune",
+      "disputed": "Disputat"
     },
     "aptTactics": {
       "reconnaissance": "Recunoaștere",

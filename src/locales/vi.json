@@ -3216,6 +3216,14 @@
       },
       "description": "Hạ tầng đường ống {{type}} chính. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Mở trong bản đồ kho chứa",
+      "types": {
+        "lngExport": "Xuất khẩu LNG",
+        "lngImport": "Nhập khẩu LNG",
+        "crudeTankFarm": "Trung tâm dầu thô"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Hiện đang vận hành và vận chuyển tài nguyên.",
       "construction": "Hiện đang xây dựng."
@@ -3625,7 +3633,11 @@
       "c2Server": "Máy chủ C2",
       "malwareHost": "Máy chủ chứa mã độc",
       "phishing": "Lừa đảo trực tuyến",
-      "maliciousUrl": "URL độc hại"
+      "maliciousUrl": "URL độc hại",
+      "operational": "Đang hoạt động",
+      "reduced": "Giảm công suất",
+      "offline": "Ngừng hoạt động",
+      "disputed": "Đang tranh chấp"
     },
     "aptTactics": {
       "reconnaissance": "Trinh sát",

@@ -3771,5 +3771,13 @@
   "widgets.saveFailed": "Widget could not be saved. Please try again.",
   "widgets.send": "Send",
   "widgets.serverError": "Server error: {{status}}",
-  "widgets.unknownError": "Unknown error"
+  "widgets.unknownError": "Unknown error",
+  "popups.storageFacility.openInAtlas": "Open in Storage Atlas",
+  "popups.storageFacility.types.lngExport": "LNG export",
+  "popups.storageFacility.types.lngImport": "LNG import",
+  "popups.storageFacility.types.crudeTankFarm": "Crude hub",
+  "popups.statusValues.operational": "Operational",
+  "popups.statusValues.reduced": "Reduced",
+  "popups.statusValues.offline": "Offline",
+  "popups.statusValues.disputed": "Disputed"
 }

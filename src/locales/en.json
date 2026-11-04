@@ -3351,6 +3351,14 @@
       },
       "description": "Major {{type}} pipeline infrastructure. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Open in Storage Atlas",
+      "types": {
+        "lngExport": "LNG export",
+        "lngImport": "LNG import",
+        "crudeTankFarm": "Crude hub"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Currently operational and transporting resources.",
       "construction": "Currently under construction."
@@ -3760,7 +3768,11 @@
       "c2Server": "C2 server",
       "malwareHost": "Malware host",
       "phishing": "Phishing",
-      "maliciousUrl": "Malicious URL"
+      "maliciousUrl": "Malicious URL",
+      "operational": "Operational",
+      "reduced": "Reduced",
+      "offline": "Offline",
+      "disputed": "Disputed"
     },
     "aptTactics": {
       "reconnaissance": "Reconnaissance",

@@ -33,7 +33,7 @@ import { trackGateHit } from '@/services/analytics';
 import { renderPopupSourceLinks } from './map-popup-source-links';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { aptSectorLabel, aptTacticLabel, countryLabel, datacenterSectorLabel, isSameLocation, localizeRelativePlace, parseGdeltReportTitle, severityLabel, statusLabel, weatherEventLabel } from './map-popup-i18n';
+import { aptSectorLabel, aptTacticLabel, countryLabel, datacenterSectorLabel, isSameLocation, localizeRelativePlace, parseGdeltReportTitle, severityLabel, statusLabel, storageFacilityTypeLabel, weatherEventLabel } from './map-popup-i18n';
 
 
 // ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
@@ -2216,13 +2216,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
 
 
   private renderStorageFacilityPopup(facility: StorageFacilityPopupData): string {
-    const typeLabel = {
-      ugs: 'UGS',
-      spr: 'SPR',
-      lng_export: 'LNG export',
-      lng_import: 'LNG import',
-      crude_tank_farm: 'Crude hub',
-    }[facility.facilityType] ?? escapeHtml(facility.facilityType);
+    const typeLabel = escapeHtml(storageFacilityTypeLabel(facility.facilityType));
     const operator = facility.operator
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.operator')}</span><span class="stat-value">${escapeHtml(facility.operator)}</span></div>`
       : '';
@@ -2236,11 +2230,11 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.status')}</span>
-            <span class="stat-value">${escapeHtml(facility.badge.toUpperCase())}</span>
+            <span class="stat-value">${escapeHtml(statusLabel(facility.badge))}</span>
           </div>
           ${operator}
         </div>
-        <button type="button" class="popup-link" data-open-storage-atlas="${escapeHtml(facility.id)}">Open in Storage Atlas</button>
+        <button type="button" class="popup-link" data-open-storage-atlas="${escapeHtml(facility.id)}">${t('popups.storageFacility.openInAtlas')}</button>
       </div>
     `;
   }

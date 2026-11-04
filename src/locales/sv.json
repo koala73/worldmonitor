@@ -2843,6 +2843,14 @@
       },
       "description": "Viktig {{type}}-rörledningsinfrastruktur. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Öppna i lagringsatlasen",
+      "types": {
+        "lngExport": "LNG-export",
+        "lngImport": "LNG-import",
+        "crudeTankFarm": "Råoljehubb"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "I drift och transporterar resurser.",
       "construction": "Under konstruktion."
@@ -3261,7 +3269,11 @@
       "c2Server": "C2-server",
       "malwareHost": "Värd för skadlig kod",
       "phishing": "Nätfiske",
-      "maliciousUrl": "Skadlig URL"
+      "maliciousUrl": "Skadlig URL",
+      "operational": "I drift",
+      "reduced": "Reducerad",
+      "offline": "Ur drift",
+      "disputed": "Omtvistad"
     },
     "aptTactics": {
       "reconnaissance": "Rekognosering",

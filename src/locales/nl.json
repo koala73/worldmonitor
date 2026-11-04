@@ -2843,6 +2843,14 @@
       },
       "description": "Belangrijke {{type}}-pijpleidinginfrastructuur. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Openen in opslagatlas",
+      "types": {
+        "lngExport": "LNG-export",
+        "lngImport": "LNG-import",
+        "crudeTankFarm": "Ruwe-oliehub"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Momenteel operationeel en transporteert grondstoffen.",
       "construction": "Momenteel in aanbouw."
@@ -3261,7 +3269,11 @@
       "c2Server": "C2-server",
       "malwareHost": "Malwarehost",
       "phishing": "Phishing",
-      "maliciousUrl": "Kwaadaardige URL"
+      "maliciousUrl": "Kwaadaardige URL",
+      "operational": "Operationeel",
+      "reduced": "Verminderd",
+      "offline": "Buiten gebruik",
+      "disputed": "Betwist"
     },
     "aptTactics": {
       "reconnaissance": "Verkenning",

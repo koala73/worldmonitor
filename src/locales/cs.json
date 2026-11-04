@@ -3268,6 +3268,14 @@
       },
       "description": "Hlavní {{type}} potrubní infrastruktura. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Otevřít v atlasu zásobníků",
+      "types": {
+        "lngExport": "Export LNG",
+        "lngImport": "Import LNG",
+        "crudeTankFarm": "Uzel ropy"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "V současné době v provozu a přepravuje suroviny.",
       "construction": "V současné době ve výstavbě."
@@ -3685,7 +3693,11 @@
       "c2Server": "Server C2",
       "malwareHost": "Hostitel malwaru",
       "phishing": "Phishing",
-      "maliciousUrl": "Škodlivá URL"
+      "maliciousUrl": "Škodlivá URL",
+      "operational": "V provozu",
+      "reduced": "Omezený",
+      "offline": "Mimo provoz",
+      "disputed": "Sporný"
     },
     "aptTactics": {
       "reconnaissance": "Průzkum",

@@ -3216,6 +3216,14 @@
       },
       "description": "主要な{{type}}パイプラインインフラ。{{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "ストレージアトラスで開く",
+      "types": {
+        "lngExport": "LNG輸出",
+        "lngImport": "LNG輸入",
+        "crudeTankFarm": "原油ハブ"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "現在稼働中で資源を輸送。",
       "construction": "現在建設中。"
@@ -3625,7 +3633,11 @@
       "c2Server": "C2サーバー",
       "malwareHost": "マルウェアホスト",
       "phishing": "フィッシング",
-      "maliciousUrl": "悪意のあるURL"
+      "maliciousUrl": "悪意のあるURL",
+      "operational": "稼働中",
+      "reduced": "縮小",
+      "offline": "停止中",
+      "disputed": "係争中"
     },
     "aptTactics": {
       "reconnaissance": "偵察",

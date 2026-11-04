@@ -81,6 +81,7 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 // country-geometry helpers; don't re-import it here.
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { initI18n, t } from '@/services/i18n';
+import { statusLabel as popupStatusLabel, storageFacilityTypeLabel } from './map-popup-i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
@@ -5253,12 +5254,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel}</div>` };
       }
       case 'storage-facilities-layer': {
-        const typeLabel = {
-          ugs: 'UGS', spr: 'SPR',
-          lng_export: 'LNG export', lng_import: 'LNG import',
-          crude_tank_farm: 'Crude hub',
-        }[String(obj.facilityType)] ?? text(obj.facilityType);
-        const badge = String(obj.badge || 'disputed').toUpperCase();
+        const typeLabel = text(storageFacilityTypeLabel(String(obj.facilityType)));
+        const badge = popupStatusLabel(String(obj.badge || 'disputed'));
         const cap = text(obj.capacityDisplay || '—');
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${typeLabel} · ${text(obj.country)} · ${cap}<br/><strong>${text(badge)}</strong></div>` };
       }

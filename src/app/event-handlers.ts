@@ -338,6 +338,8 @@ export class EventHandlerManager implements AppModule {
   private boundIdleResetHandler: (() => void) | null = null;
   private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
   private boundOpenStorageAtlas: ((ev: Event) => void) | null = null;
+  /** Leaves map fullscreen when it is active; set by setupMapFullscreen. */
+  private exitMapFullscreen: (() => void) | null = null;
   private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundThemeChangedHandler: (() => void) | null = null;
   private boundDropdownClickHandler: ((e: MouseEvent) => void) | null = null;
@@ -573,6 +575,7 @@ export class EventHandlerManager implements AppModule {
       window.removeEventListener('wm:open-storage-atlas', this.boundOpenStorageAtlas);
       this.boundOpenStorageAtlas = null;
     }
+    this.exitMapFullscreen = null;
     if (this.boundTvKeydownHandler) {
       document.removeEventListener('keydown', this.boundTvKeydownHandler);
       this.boundTvKeydownHandler = null;
@@ -765,6 +768,8 @@ export class EventHandlerManager implements AppModule {
       const facilityId = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
       if (!facilityId) return;
       if (!this.enablePanelById('storage-facility-map')) return;
+      // The fullscreen map covers the panel grid; leave it so the atlas can show.
+      this.exitMapFullscreen?.();
       this.callbacks.focusStorageFacility?.(facilityId);
     };
     window.addEventListener('wm:open-storage-atlas', this.boundOpenStorageAtlas);
@@ -3075,6 +3080,9 @@ export class EventHandlerManager implements AppModule {
     };
 
     btn.addEventListener('click', toggle);
+    this.exitMapFullscreen = () => {
+      if (isFullscreen) toggle();
+    };
     this.boundMapFullscreenEscHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) toggle();
     };

@@ -173,9 +173,14 @@ export class StorageFacilityMapPanel extends Panel {
   private detailError: string | null = null;
   private detailEvents: EnergyDisruptionEntry[] | null | undefined = undefined;
   private usedHydrationPaint = false;
+  // Claim contract with DeckGLMap: preventDefault() on the cancelable
+  // 'energy:open-storage-facility-detail' event means "the atlas owns this
+  // click, skip the map popup". Claim only when the user can see the atlas;
+  // a closed, collapsed, filtered-out or fullscreen-covered panel leaves the
+  // event unclaimed so the map shows its own facility summary instead.
   private claimStorageClick = (ev: Event): void => {
     const id = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
-    if (!id || !this.element?.isConnected) return;
+    if (!id || !this.isVisibleToUser()) return;
     ev.preventDefault();
     void this.loadDetail(id);
   };

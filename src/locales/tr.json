@@ -3236,6 +3236,14 @@
       },
       "description": "Buyuk {{type}} boru hatti altyapisi. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Depolama atlasında aç",
+      "types": {
+        "lngExport": "LNG ihracatı",
+        "lngImport": "LNG ithalatı",
+        "crudeTankFarm": "Ham petrol merkezi"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Su anda faaldir ve kaynak tasimaktadir.",
       "construction": "Su anda insaat halindedir."
@@ -3645,7 +3653,11 @@
       "c2Server": "C2 sunucusu",
       "malwareHost": "Kötü amaçlı yazılım barındıran sunucu",
       "phishing": "Oltalama",
-      "maliciousUrl": "Kötü amaçlı URL"
+      "maliciousUrl": "Kötü amaçlı URL",
+      "operational": "Faal",
+      "reduced": "Azaltılmış",
+      "offline": "Devre dışı",
+      "disputed": "İhtilaflı"
     },
     "aptTactics": {
       "reconnaissance": "Keşif",

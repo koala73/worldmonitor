@@ -3216,6 +3216,14 @@
       },
       "description": "主要{{type}}管道基础设施。{{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "在储存图集中打开",
+      "types": {
+        "lngExport": "LNG出口",
+        "lngImport": "LNG进口",
+        "crudeTankFarm": "原油枢纽"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "目前正在运营并输送资源。",
       "construction": "目前正在建设中。"
@@ -3625,7 +3633,11 @@
       "c2Server": "C2 服务器",
       "malwareHost": "恶意软件主机",
       "phishing": "网络钓鱼",
-      "maliciousUrl": "恶意 URL"
+      "maliciousUrl": "恶意 URL",
+      "operational": "运行中",
+      "reduced": "减量运行",
+      "offline": "停运",
+      "disputed": "有争议"
     },
     "aptTactics": {
       "reconnaissance": "侦察",
