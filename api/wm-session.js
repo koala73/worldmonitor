@@ -1,3 +1,7 @@
+// GET /api/wm-session — reports, as booleans only, which HttpOnly tester-key
+// sessions this browser currently holds a valid key for. It lets a reloaded tab
+// restore Pro without the raw key ever becoming JS-readable again.
+//
 // POST /api/wm-session — issues short-lived HttpOnly session cookies for
 // browser access. Anonymous sessions get an HMAC-signed wms_ token cookie; if a
 // caller submits legacy tester keys during migration, those keys are moved into
@@ -19,6 +23,11 @@ const LEGACY_KEY_MAX_LEN = 512;
 const SESSION_RATE_LIMIT_SCOPE = 'wm-session';
 const SESSION_RATE_LIMIT_PER_MINUTE = 30;
 const SESSION_RATE_LIMIT_WINDOW = '60 s';
+// Separate budget so a status read on page load never spends the mint budget.
+const STATUS_RATE_LIMIT_SCOPE = 'wm-session-status';
+const STATUS_RATE_LIMIT_PER_MINUTE = 30;
+const STATUS_RATE_LIMIT_WINDOW = '60 s';
+const ALLOWED_METHODS = 'GET, POST, OPTIONS';
 
 function jsonResponse(body, status, headers) {
   const out = headers instanceof Headers ? headers : new Headers(headers);
@@ -173,19 +182,23 @@ export default async function handler(req, ctx) {
   // disallowed origins get refusal-specific headers that echo their Origin.
   if (req.method === 'OPTIONS') {
     const preflight = isDisallowedOrigin(req)
-      ? getOriginDeniedCorsHeaders(req, 'POST, OPTIONS')
-      : getCorsHeaders(req, 'POST, OPTIONS');
+      ? getOriginDeniedCorsHeaders(req, ALLOWED_METHODS)
+      : getCorsHeaders(req, ALLOWED_METHODS);
     return new Response(null, { status: 204, headers: preflight });
   }
 
   if (isDisallowedOrigin(req)) {
-    const deniedCors = getOriginDeniedCorsHeaders(req, 'POST, OPTIONS');
+    const deniedCors = getOriginDeniedCorsHeaders(req, ALLOWED_METHODS);
     const response = new Response('Forbidden', { status: 403, headers: deniedCors });
     emitWmSessionUsage(ctx, req, response, startedAt, 'origin_403');
     return response;
   }
 
-  const cors = getCorsHeaders(req, 'POST, OPTIONS');
+  const cors = getCorsHeaders(req, ALLOWED_METHODS);
+
+  if (req.method === 'GET') {
+    return handleStatus(req, ctx, cors, respond);
+  }
 
   if (req.method !== 'POST') {
     return respond({ error: 'Method not allowed' }, 405, cors, 'method_not_allowed');
@@ -274,4 +287,28 @@ export default async function handler(req, ctx) {
     hadSession,
     token: issued.token,
   }, 200, headers, 'ok');
+}
+
+/**
+ * Which tester-key sessions does this browser hold a currently valid key for?
+ *
+ * Booleans only: the key itself never leaves the HttpOnly cookie. Uses the same
+ * validators as the POST exchange, so a key revoked since it was exchanged
+ * reads false here even though its cookie has not expired yet.
+ */
+async function handleStatus(req, ctx, cors, respond) {
+  const limited = await checkRateLimit(req, cors, {
+    failClosed: true,
+    ctx,
+    scope: STATUS_RATE_LIMIT_SCOPE,
+    limit: STATUS_RATE_LIMIT_PER_MINUTE,
+    window: STATUS_RATE_LIMIT_WINDOW,
+  });
+  if (limited) return limited;
+
+  const widgetKey = normalizeLegacyKey(readCookie(req, WIDGET_KEY_COOKIE));
+  const proKey = normalizeLegacyKey(readCookie(req, PRO_KEY_COOKIE));
+  const widget = widgetKey ? await isValidWidgetKey(widgetKey) : false;
+  const pro = proKey ? await isValidProKey(proKey) : false;
+  return respond({ widget, pro }, 200, cors, 'status');
 }
