@@ -41,7 +41,7 @@ import { BRIEF_FONTS } from './brief-fonts.generated.js';
 const DEFAULT_FONT_PLATFORM = 'plain';
 
 function briefFonts(platform) {
-  const fonts = BRIEF_FONTS[platform] ?? BRIEF_FONTS[DEFAULT_FONT_PLATFORM];
+  const fonts = BRIEF_FONTS[Object.hasOwn(BRIEF_FONTS, platform) ? platform : DEFAULT_FONT_PLATFORM];
   return {
     preloads: fonts.preload.map((f) => `<link rel="preload" as="font" type="${f.type}" href="${f.href}" crossorigin>`).join(''),
     style: `<style>${fonts.css}</style>`,

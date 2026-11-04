@@ -117,7 +117,7 @@ describe('brief magazine fonts', () => {
         stories: [{ category: 'Energy', country: 'IR', threatLevel: 'high', headline: 'Headline.', description: 'Description.', source: 'Wire', sourceUrl: 'https://example.com/a', clusterId: 'c1', whyMatters: 'Why.' }],
       },
     };
-    for (const platform of [...PLATFORMS, undefined, 'unknown']) {
+    for (const platform of [...PLATFORMS, undefined, 'unknown', 'toString', '__proto__', 'constructor']) {
       const html = renderBriefMagazine(envelope, { fontPlatform: platform });
       const fonts = BRIEF_FONTS[PLATFORMS.includes(platform) ? platform : 'plain'];
       assert.doesNotMatch(html, /fonts\.(googleapis|gstatic)\.com/);
