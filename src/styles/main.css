@@ -25829,16 +25829,20 @@ body.map-width-resizing {
 
 .debt-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 6px 0 8px;
   flex-shrink: 0;
 }
 
+/* The tabs take the free space while the search fits beside them; in a
+   narrow column the search wraps to its own full-width row. */
 .debt-sort-tabs {
   display: flex;
   gap: 2px;
-  flex: 1;
+  flex: 999 1 180px;
+  min-width: 0;
 }
 
 .debt-tab {
@@ -25868,7 +25872,8 @@ body.map-width-resizing {
 }
 
 .debt-search {
-  width: 110px;
+  flex: 1 0 110px;
+  min-width: 0;
   padding: 4px 8px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   border: 1px solid var(--border);
@@ -25876,7 +25881,6 @@ body.map-width-resizing {
   background: var(--bg-input, var(--bg-secondary));
   color: var(--text);
   outline: none;
-  flex-shrink: 0;
 }
 
 .debt-search:focus {
