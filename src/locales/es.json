@@ -4238,7 +4238,7 @@
     "panelFontScale": "Tamaño de texto",
     "followGlobalFontScale": "Usar global",
     "selfHostKey": {
-      "title": "Clave de escritorio",
+      "heading": "Clave de escritorio",
       "description": "Desbloquea Pro en este dashboard con tu propia clave de escritorio. Crea una en worldmonitor.app en Configuración → API Keys → Crear clave de escritorio.",
       "relay": "La clave va al servidor de esta instalación, que reenvía tus solicitudes Pro a World Monitor. El uso cuenta hacia tu asignación de clave de escritorio, igual que en la aplicación de escritorio.",
       "trust": "Si otra persona ejecuta esta instalación, crea una clave de escritorio separada para ella. Puedes revocarla en worldmonitor.app en cualquier momento.",

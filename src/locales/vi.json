@@ -4196,7 +4196,7 @@
     "panelFontScale": "Kích thước chữ",
     "followGlobalFontScale": "Sử dụng cài đặt toàn cục",
     "selfHostKey": {
-      "title": "Khóa máy tính để bàn",
+      "heading": "Khóa máy tính để bàn",
       "description": "Mở khóa Pro trên dashboard này bằng khóa máy tính để bàn của riêng bạn. Tạo một khóa tại worldmonitor.app trong Cài đặt → Khóa API → Tạo khóa máy tính để bàn.",
       "relay": "Khóa được gửi đến máy chủ của cài đặt này, sau đó chuyển tiếp yêu cầu Pro của bạn đến World Monitor. Lượng sử dụng được tính vào hạn mức khóa máy tính để bàn của tài khoản bạn, giống như ứng dụng máy tính để bàn.",
       "trust": "Nếu người khác điều hành cài đặt này, hãy tạo một khóa máy tính để bàn riêng cho nó. Bạn có thể thu hồi nó tại worldmonitor.app bất kỳ lúc nào.",

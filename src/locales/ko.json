@@ -4196,7 +4196,7 @@
     "panelFontScale": "텍스트 크기",
     "followGlobalFontScale": "전역 설정 사용",
     "selfHostKey": {
-      "title": "데스크톱 키",
+      "heading": "데스크톱 키",
       "description": "worldmonitor.app의 설정 → API 키 → 데스크톱 키 생성에서 데스크톱 키를 만든 후, 이 대시보드에서 Pro를 잠금 해제하세요.",
       "relay": "키는 이 설치의 서버로 전송되며, 서버가 Pro 요청을 World Monitor로 전달합니다. 사용량은 데스크톱 앱과 동일하게 계정의 데스크톱 키 할당량에 포함됩니다.",
       "trust": "다른 사람이 이 설치를 실행하는 경우, 별도의 데스크톱 키를 만드세요. worldmonitor.app에서 언제든지 취소할 수 있습니다.",

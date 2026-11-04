@@ -54,6 +54,7 @@ import {
 } from '@/services';
 import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
 import { isProUser, isProTierResolved, loadWidgets, subscribeWidgetAccess } from '@/services/widget-store';
+import { startSelfHostKeyService } from '@/services/self-host-key';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
@@ -2431,6 +2432,10 @@ export class App {
     // src/main.ts registers WebMCP before loading App. Own its controller before
     // the first await so a failed init unregisters those tools through destroy().
     this.webMcpController = webMcpController;
+
+    // Self-hosted installs: ask the sidecar for the desktop-key verdict. Never
+    // awaited; a no-op on worldmonitor.app and in the desktop app.
+    startSelfHostKeyService();
 
     window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
 

@@ -14,8 +14,9 @@
  * fresh verdict the sidecar saw; past it an unlocked browser drops to unknown.
  * Only `unlocked` grants Pro.
  *
- * Nothing awaits this service on boot. The first read starts lazily the first
- * time anything asks about the state.
+ * App boot starts the service with `startSelfHostKeyService()` and never awaits
+ * it. Reading the state does not start it, so code that only asks (gating,
+ * Settings, tests) never sends a request on its own.
  */
 import { isDesktopRuntime } from '@/config/desktop-runtime';
 
@@ -55,6 +56,9 @@ export type SelfHostKeyWriteResult =
 
 export const SELF_HOST_KEY_ROUTE = '/api/selfhost-key';
 export const SELF_HOST_KEY_REFRESH_MS = 15 * 60 * 1000;
+// Longer than the sidecar's own cloud check, so a slow cloud answers
+// 'unavailable' before the browser gives up on the sidecar.
+export const SELF_HOST_KEY_READ_TIMEOUT_MS = 20_000;
 export const SELF_HOST_KEY_GRACE_MS = 24 * 60 * 60 * 1000;
 
 const STATUSES = new Set<SelfHostKeyStatus>([
@@ -209,15 +213,25 @@ function retryAfterSeconds(res: Response): number | null {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
 }
 
+function readTimeoutSignal(): AbortSignal | undefined {
+  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(SELF_HOST_KEY_READ_TIMEOUT_MS)
+    : undefined;
+}
+
 async function readStatus(): Promise<void> {
   const sentGeneration = generation;
   let res: Response;
   try {
+    // A hung sidecar must not pin `inflight` forever: every later refresh and
+    // denial re-check shares it.
+    const signal = readTimeoutSignal();
     res = await env.fetch(SELF_HOST_KEY_ROUTE, {
       method: 'GET',
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { Accept: 'application/json' },
+      ...(signal ? { signal } : {}),
     });
   } catch {
     if (sentGeneration === generation) applyCheckFailure();
@@ -279,12 +293,10 @@ export function startSelfHostKeyService(): void {
 }
 
 export function isSelfHostKeyUnlocked(): boolean {
-  ensureStarted();
   return unlock === 'unlocked' && withinGrace(lastActiveVerifiedAt);
 }
 
 export function getSelfHostKeySnapshot(): SelfHostKeySnapshot {
-  ensureStarted();
   return {
     selfHosted,
     verdict: verdict ? { ...verdict } : null,
@@ -302,6 +314,20 @@ export function subscribeSelfHostKey(listener: () => void): () => void {
 async function writeKey(method: 'POST' | 'DELETE', body?: string): Promise<SelfHostKeyWriteResult> {
   generation += 1;
   const sentGeneration = generation;
+  try {
+    return await sendKeyWrite(method, body, sentGeneration);
+  } finally {
+    // A status read that started while this write was in flight saw the old
+    // cookie; its answer must not overwrite the write's verdict.
+    if (sentGeneration === generation) generation += 1;
+  }
+}
+
+async function sendKeyWrite(
+  method: 'POST' | 'DELETE',
+  body: string | undefined,
+  sentGeneration: number,
+): Promise<SelfHostKeyWriteResult> {
   let res: Response;
   try {
     res = await env.fetch(SELF_HOST_KEY_ROUTE, {

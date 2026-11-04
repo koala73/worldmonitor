@@ -4196,7 +4196,7 @@
     "panelFontScale": "テキストサイズ",
     "followGlobalFontScale": "グローバル設定を使用",
     "selfHostKey": {
-      "title": "デスクトップキー",
+      "heading": "デスクトップキー",
       "description": "worldmonitor.app の設定 → API キー → デスクトップキーを作成から、自分のデスクトップキーを作成して、このダッシュボードで Pro をアンロックします。",
       "relay": "このインストール環境のサーバーにキーが送信され、そこから Pro リクエストが World Monitor に転送されます。使用量はデスクトップアプリと同じく、アカウントのデスクトップキー利用枠にカウントされます。",
       "trust": "別の人がこのインストール環境を運用する場合は、別のデスクトップキーを作成してください。worldmonitor.app でいつでも無効化できます。",

@@ -4196,7 +4196,7 @@
     "panelFontScale": "文字大小",
     "followGlobalFontScale": "使用全域性設定",
     "selfHostKey": {
-      "title": "桌面金鑰",
+      "heading": "桌面金鑰",
       "description": "使用您自己的桌面金鑰在此 dashboard 上解鎖 Pro。在 worldmonitor.app 的設定 → API 金鑰 → 建立桌面金鑰中建立一個。",
       "relay": "該金鑰傳送到此部署的伺服器，伺服器將您的 Pro 請求轉發到 World Monitor。使用情況計入您帳戶的桌面金鑰額度，與桌面應用相同。",
       "trust": "如果其他人執行此部署，請為其建立單獨的桌面金鑰。您可以隨時在 worldmonitor.app 撤銷它。",

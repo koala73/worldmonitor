@@ -4217,7 +4217,7 @@
     "panelFontScale": "Tekstgrootte",
     "followGlobalFontScale": "Algemene instelling gebruiken",
     "selfHostKey": {
-      "title": "Desktopsleutel",
+      "heading": "Desktopsleutel",
       "description": "Ontgrendel Pro op dit dashboard met je eigen desktopsleutel. Maak er een aan op worldmonitor.app onder Instellingen → API-sleutels → Desktopsleutel maken.",
       "relay": "De sleutel gaat naar de server van deze installatie, die je Pro-verzoeken naar World Monitor doorstuurt. Het gebruik telt mee naar de desktopsleutel-limiet van je account, net als in de desktop-app.",
       "trust": "Als iemand anders deze installatie beheert, maak een aparte desktopsleutel voor hem. Je kunt die op elk moment intrekken op worldmonitor.app.",

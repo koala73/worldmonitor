@@ -4363,7 +4363,7 @@
     "fontMono": "Monospace",
     "fontSystem": "System Default",
     "selfHostKey": {
-      "title": "Desktop key",
+      "heading": "Desktop key",
       "description": "Unlock Pro on this dashboard with your own desktop key. Create one on worldmonitor.app under Settings → API Keys → Create desktop key.",
       "relay": "The key goes to this install's server, which forwards your Pro requests to World Monitor. Usage counts toward your account's desktop key allowance, the same as the desktop app.",
       "trust": "If someone else runs this install, create a separate desktop key for it. You can revoke it on worldmonitor.app at any time.",

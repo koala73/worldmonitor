@@ -123,6 +123,8 @@ let settings: InstanceType<typeof UnifiedSettings>;
 let overlay: HTMLElement;
 
 async function mount(): Promise<void> {
+  // App.init starts the verdict service before Settings can be opened.
+  selfHostKey.startSelfHostKeyService();
   settings = new UnifiedSettings({
     getPanelSettings: () => ({}),
     savePanelSettings: () => {},
@@ -218,6 +220,23 @@ describe('Settings -> Desktop key on a self-hosted install', () => {
     release(verdict('active'));
     await settle();
     expect(status()!.dataset.state).toBe('active');
+  });
+
+  it('a poll keeps a collapsed section collapsed and leaves an unchanged section in place', async () => {
+    onGet = () => verdict('active');
+    await mount();
+    section()!.open = false;
+    const before = section();
+
+    await selfHostKey.refreshSelfHostKey();
+    await settle();
+    expect(section()).toBe(before);
+
+    onGet = () => verdict('lapsed');
+    await selfHostKey.refreshSelfHostKey();
+    await settle();
+    expect(status()!.dataset.state).toBe('lapsed');
+    expect(section()!.open).toBe(false);
   });
 
   it('saving a key the server reports active shows the active state', async () => {

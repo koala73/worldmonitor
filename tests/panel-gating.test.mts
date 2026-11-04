@@ -159,10 +159,10 @@ async function settle(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-/** Boot the service the way the dashboard does: the first isProUser() call. */
+/** Boot the service the way the dashboard does: App.init starts it. */
 async function boot(reply: Response | Error): Promise<void> {
   routeReplies.push(reply);
-  g.isProUser();
+  g.startSelfHostKeyService();
   await settle();
 }
 
@@ -208,7 +208,8 @@ afterEach(() => {
 describe('self-host desktop key grants Pro', () => {
   it('an active verdict grants self_host_key, makes isProUser true, lifts the 40-panel cap, and notifies once (AE1)', async () => {
     routeReplies.push(verdict('active'));
-    // The first isProUser() starts the read; the verdict has not arrived yet.
+    // App.init starts the read; the verdict has not arrived yet.
+    g.startSelfHostKeyService();
     const before = g.enforceFreePanelLimit(fullDefaults(), g.isProUser());
     assert.equal(g.countFreePanelCapUsage(before), g.FREE_MAX_PANELS, 'boots on the free cap');
     await settle();
@@ -270,6 +271,19 @@ describe('self-host desktop key grants Pro', () => {
     await Promise.all([1, 2, 3, 4].map(() => g.premiumFetch(PREMIUM_PATH)));
     await settle();
     assert.equal(routeCalls, 2);
+    assert.equal(g.readPremiumAccessGrant(), 'self_host_key');
+  });
+
+  it('only a premium-path 401/403 re-checks; other paths and other statuses do not', async () => {
+    await boot(verdict('active'));
+    premiumReplies.push(new Response('{}', { status: 401 }));
+    await g.premiumFetch('https://example.test/api/economic/v1/get-fred-series-batch');
+    for (const status of [200, 429, 500, 502]) {
+      premiumReplies.push(new Response('{}', { status }));
+      await g.premiumFetch(PREMIUM_PATH);
+    }
+    await settle();
+    assert.equal(routeCalls, 1);
     assert.equal(g.readPremiumAccessGrant(), 'self_host_key');
   });
 

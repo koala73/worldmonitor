@@ -4291,7 +4291,7 @@
     "panelFontScale": "Szövegméret",
     "followGlobalFontScale": "Globális beállítás használata",
     "selfHostKey": {
-      "title": "Asztal kulcs",
+      "heading": "Asztal kulcs",
       "description": "Oldja fel a Pro verzióját ezen az irányítópulton az Ön saját asztal kulcsával. Hozzon létre egyet a worldmonitor.app oldalon a Beállítások → API kulcsok → Asztal kulcs létrehozása menüpontban.",
       "relay": "A kulcs erre a telepítésre szállító szerverhez kerül, amely továbbítja a Pro kéréseket a World Monitornak. A használat az Ön fiókjának asztal kulcs kvótájára számít, ugyanúgy, mint az asztali alkalmazás esetén.",
       "trust": "Ha valaki más üzemelteti ezt a telepítést, hozzon létre ehhez egy külön asztal kulcsot. Azt bármikor visszavonhatja a worldmonitor.app oldalon.",

@@ -4217,7 +4217,7 @@
     "panelFontScale": "Metin boyutu",
     "followGlobalFontScale": "Genel ayarı kullan",
     "selfHostKey": {
-      "title": "Masaüstü anahtarı",
+      "heading": "Masaüstü anahtarı",
       "description": "Bu panelde Pro'yu kendi masaüstü anahtarınızla açın. worldmonitor.app'te Ayarlar → API Anahtarları → Masaüstü anahtarı oluştur kısmından bir tane oluşturun.",
       "relay": "Anahtar bu kurulumun sunucusuna gider ve sunucu Pro isteklerinizi World Monitor'a iletir. Kullanım, masaüstü uygulamasıyla aynı şekilde hesabınızın masaüstü anahtarı kotasına sayılır.",
       "trust": "Bu kurulumu başka biri çalıştırıyorsa, bunun için ayrı bir masaüstü anahtarı oluşturun. worldmonitor.app'te istediğiniz zaman iptal edebilirsiniz.",

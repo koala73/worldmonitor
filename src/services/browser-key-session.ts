@@ -38,14 +38,6 @@ function safeLocalStorageGet(name: string): string {
   return safeStorageGet(name) ?? '';
 }
 
-function safeLocalStorageSet(name: string, value: string): void {
-  safeStorageSet(name, value);
-}
-
-function safeLocalStorageRemove(name: string): void {
-  safeStorageRemove(name);
-}
-
 function safeReadableCookieGet(name: BrowserSessionKeyName): string {
   try {
     const prefix = `${name}=`;
@@ -70,7 +62,7 @@ export function readLegacySessionKey(name: BrowserSessionKeyName): string {
 }
 
 export function clearLegacyKeyStorage(name: BrowserSessionKeyName): void {
-  safeLocalStorageRemove(name);
+  safeStorageRemove(name);
   clearLegacyReadableCookie(name);
 }
 
@@ -96,7 +88,7 @@ export async function migrateLegacyKeysToHttpOnlySession(keys: {
     // credential behind forever. A transport or server failure keeps it for
     // the next attempt.
     if (outcome.ok || outcome.rejected) clearLegacyKeyStorage(name);
-    if (outcome.ok) safeLocalStorageSet(KEY_SESSION_MARKER, '1');
+    if (outcome.ok) safeStorageSet(KEY_SESSION_MARKER, '1');
     const verdict: KeyVerdict = outcome.ok ? 'accepted' : outcome.rejected ? 'rejected' : 'failed';
     if (name === 'wm-widget-key') result.widget = verdict;
     else result.pro = verdict;
@@ -118,7 +110,7 @@ export async function readBrowserKeySessionStatus(): Promise<WmKeySessionStatus 
     safeLocalStorageGet(KEY_SESSION_MARKER) ? fetchWmKeySessionStatus() : null);
   keySessionChange = next.catch(() => undefined);
   const status = await next;
-  if (status && !status.widget && !status.pro) safeLocalStorageRemove(KEY_SESSION_MARKER);
+  if (status && !status.widget && !status.pro) safeStorageRemove(KEY_SESSION_MARKER);
   return status;
 }
 

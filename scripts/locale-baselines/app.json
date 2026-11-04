@@ -3626,7 +3626,7 @@
   "preferences.selfHostKey.state.not_desktop_key": "Not a desktop key",
   "preferences.selfHostKey.state.over_cap": "Over the key limit",
   "preferences.selfHostKey.state.unavailable": "Could not verify",
-  "preferences.selfHostKey.title": "Desktop key",
+  "preferences.selfHostKey.heading": "Desktop key",
   "preferences.selfHostKey.trust": "If someone else runs this install, create a separate desktop key for it. You can revoke it on worldmonitor.app at any time.",
   "preferences.theme": "Theme",
   "preferences.themeAuto": "Auto (follow system)",

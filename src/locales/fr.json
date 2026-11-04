@@ -4238,7 +4238,7 @@
     "panelFontScale": "Taille du texte",
     "followGlobalFontScale": "Utiliser le paramètre global",
     "selfHostKey": {
-      "title": "Clé desktop",
+      "heading": "Clé desktop",
       "description": "Déverrouillez Pro sur ce dashboard avec votre propre clé desktop. Créez-en une sur worldmonitor.app dans Paramètres → Clés API → Créer clé desktop.",
       "relay": "La clé est envoyée au serveur de cette installation, qui transfère vos demandes Pro à World Monitor. L'utilisation compte pour votre quota de clés desktop, comme dans l'application desktop.",
       "trust": "Si quelqu'un d'autre exécute cette installation, créez une clé desktop distincte. Vous pouvez la révoquer sur worldmonitor.app à tout moment.",

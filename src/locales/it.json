@@ -4238,7 +4238,7 @@
     "panelFontScale": "Dimensione testo",
     "followGlobalFontScale": "Usa globale",
     "selfHostKey": {
-      "title": "Chiave Desktop",
+      "heading": "Chiave Desktop",
       "description": "Sblocca Pro su questo dashboard con la tua chiave desktop personale. Creane una su worldmonitor.app in Impostazioni → Chiavi API → Crea chiave desktop.",
       "relay": "La chiave viene inviata al server di questa installazione, che inoltrerà le tue richieste Pro a World Monitor. L'utilizzo conta verso il tuo limite di chiavi desktop, come nell'app desktop.",
       "trust": "Se qualcun altro esegue questa installazione, crea una chiave desktop separata per essa. Puoi revocarla su worldmonitor.app in qualsiasi momento.",

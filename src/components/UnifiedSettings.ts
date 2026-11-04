@@ -61,6 +61,7 @@ import {
   saveSelfHostKey,
   subscribeSelfHostKey,
   type SelfHostKeySnapshot,
+  type SelfHostKeyStatus,
   type SelfHostKeyWriteResult,
 } from '@/services/self-host-key';
 import { hasDesktopKeyAccess } from '../../shared/desktop-key-access.js';
@@ -120,10 +121,7 @@ export interface UnifiedSettingsConfig {
 type TabId = UnifiedSettingsTabId;
 
 /** What the self-host Desktop key section shows (plan 2026-11-04-001, U6). */
-type SelfHostKeyDisplayState =
-  | 'none' | 'active' | 'invalid' | 'not_desktop_key' | 'over_cap' | 'lapsed' | 'unavailable' | 'disabled';
-
-const SELF_HOST_KEY_TONE: Record<SelfHostKeyDisplayState, 'ok' | 'warn' | 'bad' | 'neutral'> = {
+const SELF_HOST_KEY_TONE: Record<SelfHostKeyStatus, 'ok' | 'warn' | 'bad' | 'neutral'> = {
   none: 'neutral',
   active: 'ok',
   invalid: 'bad',
@@ -139,7 +137,7 @@ const SELF_HOST_KEY_TONE: Record<SelfHostKeyDisplayState, 'ok' | 'warn' | 'bad' 
  * the client no longer trusts (past the 24-hour bound) reads as "could not
  * verify", because that is why Pro is off.
  */
-function selfHostKeyDisplay(snapshot: SelfHostKeySnapshot): { state: SelfHostKeyDisplayState; staleNote: boolean } | null {
+function selfHostKeyDisplay(snapshot: SelfHostKeySnapshot): { state: SelfHostKeyStatus; staleNote: boolean } | null {
   const verdict = snapshot.verdict;
   if (snapshot.selfHosted !== true || !verdict) return null;
   if (!verdict.enabled || verdict.status === 'disabled') return { state: 'disabled', staleNote: false };
@@ -225,6 +223,7 @@ export class UnifiedSettings {
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeSelfHostKey: (() => void) | null = null;
   private selfHostKeyBusy: 'save' | 'remove' | null = null;
+  private selfHostKeyRenderedHtml: string | null = null;
   private selfHostKeyMessage = '';
   private selfHostKeyRejected = false;
   private unsubscribeEntitlement: (() => void) | null = null;
@@ -2069,7 +2068,7 @@ export class UnifiedSettings {
     if (state === 'disabled') {
       return `
       <details class="wm-pref-group selfhost-key-section" open data-selfhost-key-section>
-        <summary>${escapeHtml(t('preferences.selfHostKey.title'))}</summary>
+        <summary>${escapeHtml(t('preferences.selfHostKey.heading'))}</summary>
         <div class="wm-pref-group-content">${status}</div>
       </details>`;
     }
@@ -2078,7 +2077,7 @@ export class UnifiedSettings {
     const message = this.selfHostKeyMessage;
     return `
       <details class="wm-pref-group selfhost-key-section" open data-selfhost-key-section>
-        <summary>${escapeHtml(t('preferences.selfHostKey.title'))}</summary>
+        <summary>${escapeHtml(t('preferences.selfHostKey.heading'))}</summary>
         <div class="wm-pref-group-content">
           ${intro}
           ${status}
@@ -2098,14 +2097,23 @@ export class UnifiedSettings {
       </details>`;
   }
 
-  /** Re-render the section in place, keeping a half-typed key and its focus. */
+  /**
+   * Re-render the section in place, keeping a half-typed key, its focus and
+   * whether the section was collapsed. A poll that changes nothing is a no-op.
+   */
   private refreshSelfHostKeySection(): void {
     const host = this.overlay.querySelector<HTMLElement>('[data-selfhost-key-host]');
     if (!host) return;
+    const html = this.renderSelfHostKeySection();
+    if (html === this.selfHostKeyRenderedHtml && host.firstElementChild) return;
     const previous = host.querySelector<HTMLInputElement>('[data-selfhost-key-input]');
     const value = previous?.value ?? '';
     const focused = previous !== null && document.activeElement === previous;
-    setTrustedHtml(host, trustedHtml(this.renderSelfHostKeySection(), 'self-host key section; every interpolated value escaped'));
+    const wasOpen = host.querySelector<HTMLDetailsElement>('[data-selfhost-key-section]')?.open;
+    setTrustedHtml(host, trustedHtml(html, 'self-host key section; every interpolated value escaped'));
+    this.selfHostKeyRenderedHtml = html;
+    const section = host.querySelector<HTMLDetailsElement>('[data-selfhost-key-section]');
+    if (section && wasOpen !== undefined) section.open = wasOpen;
     const next = host.querySelector<HTMLInputElement>('[data-selfhost-key-input]');
     if (next) {
       next.value = value;

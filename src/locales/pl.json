@@ -4259,7 +4259,7 @@
     "panelFontScale": "Rozmiar tekstu",
     "followGlobalFontScale": "Użyj ustawienia globalnego",
     "selfHostKey": {
-      "title": "Klucz desktopowy",
+      "heading": "Klucz desktopowy",
       "description": "Odblokuj Pro na tym dashboardzie za pomocą własnego klucza desktopowego. Utwórz go na worldmonitor.app w sekcji Ustawienia → Klucze API → Utwórz klucz desktopowy.",
       "relay": "Klucz trafia na serwer tej instalacji, która przekazuje Twoje żądania Pro do World Monitor. Użycie wlicza się do limitu klucza desktopowego przypisanego do Twojego konta, tak samo jak w aplikacji desktopowej.",
       "trust": "Jeśli tę instalację uruchamia ktoś inny, utwórz dla niej osobny klucz desktopowy. Możesz go cofnąć na worldmonitor.app w dowolnym momencie.",

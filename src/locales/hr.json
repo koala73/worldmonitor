@@ -4323,7 +4323,7 @@
     "panelFontScale": "Veličina teksta",
     "followGlobalFontScale": "Koristi globalnu postavku",
     "selfHostKey": {
-      "title": "Ključ za radnu površinu",
+      "heading": "Ključ za radnu površinu",
       "description": "Otključajte Pro na ovoj kontrolnoj ploči pomoću vlastitog ključa za radnu površinu. Kreirajte ga na worldmonitor.app u Settings → API Keys → Create desktop key.",
       "relay": "Ključ ide na server ove instalacije, koji prosljeđuje vaše Pro zahtjeve servisu World Monitor. Korištenje se broji prema dopuštenom opsegu ključa vaše radne površine, kao i u aplikaciji za radnu površinu.",
       "trust": "Ako neko drugo upravlja ovom instalacijom, kreirajte joj zaseban ključ za radnu površinu. Možete ga opozvati na worldmonitor.app u bilo kojem trenutku.",

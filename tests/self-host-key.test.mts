@@ -100,6 +100,7 @@ describe('self-host key boot read', () => {
   it('unlocks on an active verdict and notifies once (AE1)', async () => {
     const changes = countChanges();
     h.replies.push(verdict('active'));
+    startSelfHostKeyService();
     assert.equal(isSelfHostKeyUnlocked(), false, 'unknown before any answer');
     await settle();
 
@@ -154,6 +155,13 @@ describe('self-host key boot read', () => {
     }
   });
 
+  it('reading the state never starts the service; only boot does', async () => {
+    assert.equal(isSelfHostKeyUnlocked(), false);
+    assert.equal(getSelfHostKeySnapshot().selfHosted, null);
+    await settle();
+    assert.equal(h.calls.length, 0, 'gating and Settings reads send no request');
+  });
+
   it('does not start when the page cannot run it (desktop app, no window)', async () => {
     _resetSelfHostKeyForTests({
       fetch: (async () => { throw new Error('must not fetch'); }) as typeof fetch,
@@ -171,6 +179,7 @@ describe('self-host key boot read', () => {
     // A reload drops the module state; the HttpOnly cookie stays with the browser.
     h = install();
     h.replies.push(verdict('active'));
+    startSelfHostKeyService();
     assert.equal(getSelfHostKeySnapshot().unlock, 'unknown');
     await settle();
     assert.equal(isSelfHostKeyUnlocked(), true);
@@ -302,6 +311,32 @@ describe('self-host key save and remove', () => {
     assert.equal(new Headers(call.init?.headers).get('Content-Type'), 'application/json');
     assert.deepEqual(JSON.parse(String(call.init?.body)), { key: `wm_${'a'.repeat(40)}` });
     assert.equal(isSelfHostKeyUnlocked(), true);
+  });
+
+  it('a status read that started during a save cannot overwrite the save\'s verdict', async () => {
+    await bootWith(verdict('active'));
+    let answerPost!: (r: Response) => void;
+    let answerGet!: (r: Response) => void;
+    h.replies.push(() => new Promise<Response>((resolve) => { answerPost = resolve; }));
+    h.replies.push(() => new Promise<Response>((resolve) => { answerGet = resolve; }));
+    const saving = saveSelfHostKey(`wm_${'c'.repeat(40)}`);
+    await settle();
+    const reading = refreshSelfHostKey();
+    await settle();
+    assert.equal(h.calls.length, 3, 'boot GET, the POST, then the overlapping GET');
+
+    answerPost(verdict('invalid'));
+    await saving;
+    assert.equal(getSelfHostKeySnapshot().unlock, 'locked');
+    answerGet(verdict('active'));
+    await reading;
+    assert.equal(getSelfHostKeySnapshot().unlock, 'locked', 'the read saw the old cookie; its answer is dropped');
+    assert.equal(getSelfHostKeySnapshot().verdict?.status, 'invalid');
+  });
+
+  it('the status read carries a timeout so a hung sidecar cannot pin every later check', async () => {
+    await bootWith(verdict('active'));
+    assert.ok(h.calls[0]!.init?.signal instanceof AbortSignal);
   });
 
   it('a 400 malformed-key answer is an invalid verdict and stays locked', async () => {

@@ -4291,7 +4291,7 @@
     "panelFontScale": "Ukubwa wa maandishi",
     "followGlobalFontScale": "Tumia kiwango cha ulimwengu",
     "selfHostKey": {
-      "title": "Funguo ya Kompyuta",
+      "heading": "Funguo ya Kompyuta",
       "description": "Fungua Pro kwenye dashboard hii kwa kutumia funguo yako ya kompyuta. Tengeneza funguo moja kwenye worldmonitor.app chini ya Settings → API Keys → Create desktop key.",
       "relay": "Funguo inakwenda kwa seva ya uongozaji huu, ambayo inakamatia maombi yako ya Pro kwa World Monitor. Matumizi yanakokotwa kwa ujinga wa funguo ya kompyuta ya akaunti yako, sawa na programu ya kompyuta.",
       "trust": "Ikiwa mtu mwingine anatumia uongozaji huu, tengeneza funguo tofauti ya kompyuta kwake. Unaweza kuikataa kwenye worldmonitor.app wakati wowote.",

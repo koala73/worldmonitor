@@ -4238,7 +4238,7 @@
     "panelFontScale": "Dimensiune text",
     "followGlobalFontScale": "Utilizează setarea globală",
     "selfHostKey": {
-      "title": "Cheie desktop",
+      "heading": "Cheie desktop",
       "description": "Deblochează Pro pe acest dashboard cu cheia desktop proprie. Creează una pe worldmonitor.app în Settings → API Keys → Create desktop key.",
       "relay": "Cheia merge la serverul acestei instalări, care transmite cererile Pro către World Monitor. Utilizarea se numără în limita de cheie desktop a contului tău, la fel ca aplicația desktop.",
       "trust": "Dacă altcineva rulează această instalare, creează o cheie desktop separată pentru ea. O poți revocare pe worldmonitor.app oricând.",

@@ -4217,7 +4217,7 @@
     "panelFontScale": "Textstorlek",
     "followGlobalFontScale": "Använd global",
     "selfHostKey": {
-      "title": "Skrivbordsnyckel",
+      "heading": "Skrivbordsnyckel",
       "description": "Lås upp Pro på denna dashboard med din egen skrivbordsnyckel. Skapa en på worldmonitor.app under Inställningar → API-nycklar → Skapa skrivbordsnyckel.",
       "relay": "Nyckeln går till denna installations server, som vidarebefordrar dina Pro-förfrågningar till World Monitor. Användningen räknas mot ditt kontos skrivbordsnyckelgräns, precis som i skrivbordsappen.",
       "trust": "Om någon annan kör denna installation skapar du en separat skrivbordsnyckel för den. Du kan återkalla den på worldmonitor.app när som helst.",
