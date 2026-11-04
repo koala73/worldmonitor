@@ -7,13 +7,15 @@
  * not, and cell padding from 0 to 8px. Each panel had copied and edited the
  * table rules.
  *
- * Two checks:
- * - Every `<table>` a panel renders carries `wm-table`, except the count still
- *   listed in PENDING for its file. PENDING may only shrink.
- * - A migrated table's own `.<name> th` / `.<name> td` rules (also written
+ * Three checks:
+ * - Every `<table>` a panel renders carries `wm-table`.
+ * - A table's own `.<name> th` / `.<name> td` rules (also written
  *   `thead th` / `tbody td`) do not redeclare the shared typography, colour,
  *   padding or row border. Panel rules keep widths, column alignment, sticky
  *   headers and state colours.
+ * - Inline `style` attributes on rows and cells do not set the shared
+ *   typography, padding or row border either. An inline style outranks every
+ *   stylesheet rule. A computed state colour may stay inline.
  */
 
 import { describe, it } from 'node:test';
@@ -32,16 +34,8 @@ const OUT_OF_SCOPE = new Set([
   'src/components/RouteExplorer/tabs/CurrentRouteTab.ts',
 ]);
 
-/** Panel tables not yet on `.wm-table`, per file. Remove entries as they move. */
-const PENDING = {
-  'src/components/EconomicCalendarPanel.ts': 1,
-  'src/components/MarketPanel.ts': 1,
-  'src/components/StockAnalysisPanel.ts': 1,
-  'src/components/SupplyChainPanel.ts': 4,
-  'src/components/TradePolicyPanel.ts': 3,
-  'src/components/WsbTickerScannerPanel.ts': 1,
-  'src/components/YieldCurvePanel.ts': 1,
-};
+/** Every dashboard stylesheet a panel rule can live in. */
+const STYLESHEETS = readdirSync(new URL('src/styles/', root)).filter((name) => name.endsWith('.css')).map((name) => `src/styles/${name}`);
 
 /** Properties `.wm-table` owns for every header and body cell. */
 const SHARED = ['font-size', 'font-weight', 'text-transform', 'letter-spacing', 'color', 'padding', 'border-bottom'];
@@ -87,22 +81,33 @@ function exactCellRules(css, name) {
 describe('panel table style', () => {
   it('scans the panel tables', () => {
     assert.ok(tables.length >= 35, `only ${tables.length} panel tables found; the scan is broken`);
-    for (const path of [...OUT_OF_SCOPE, ...Object.keys(PENDING)]) {
+    for (const path of OUT_OF_SCOPE) {
       assert.ok(panelFiles.includes(path) || OUT_OF_SCOPE.has(path), `${path} is gone; update the list`);
     }
   });
 
-  it('every panel table uses .wm-table unless it is still pending', () => {
+  it('every panel table uses .wm-table', () => {
     const unmigrated = {};
     for (const { path, classes } of tables) {
       if (!classes.includes('wm-table')) unmigrated[path] = (unmigrated[path] ?? 0) + 1;
     }
-    assert.deepEqual(unmigrated, PENDING);
+    assert.deepEqual(unmigrated, {});
+  });
+
+  it('rows and cells carry no inline shared style', () => {
+    const inline = [];
+    const shared = /(?:^|;)\s*(font-size|font-weight|text-transform|letter-spacing|padding(?:-[\w-]+)?|border-bottom(?:-[\w-]+)?)\s*:/g;
+    for (const path of panelFiles.filter((file) => tables.some((t) => t.path === file))) {
+      for (const m of read(path).matchAll(/<(tr|th|td)\b[^>]*?\bstyle="([^"]*)"/g)) {
+        const props = [...m[2].matchAll(shared)].map((d) => d[1]);
+        if (props.length) inline.push(`${path}: <${m[1]} style> ${props.join(', ')}`);
+      }
+    }
+    assert.deepEqual(inline, []);
   });
 
   it('migrated tables do not redeclare the shared header and cell style', () => {
-    const css = ['src/styles/panels.css', 'src/styles/main.css'].map(read).join('\n')
-      + panelFiles.map(read).join('\n');
+    const css = STYLESHEETS.map(read).join('\n') + panelFiles.map(read).join('\n');
     const names = new Set(tables.filter((t) => t.classes.includes('wm-table')).flatMap((t) => t.classes.filter((c) => c !== 'wm-table')));
     const redeclared = [];
     for (const name of names) {
@@ -133,7 +138,7 @@ describe('panel table style', () => {
   });
 
   it('a class on a migrated header cell does not restyle the shared header', () => {
-    const css = ['src/styles/panels.css', 'src/styles/main.css'].map(read).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+    const css = STYLESHEETS.map(read).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
     const migrated = panelFiles.filter((path) => tables.some((t) => t.path === path && t.classes.includes('wm-table')));
     const headerClasses = new Set(migrated.flatMap((path) => [...read(path).matchAll(/<th\b[^>]*\bclass="([^"$]*)"/g)].flatMap((m) => m[1].split(/\s+/).filter(Boolean))));
     const typography = ['font-size', 'font-weight', 'text-transform', 'letter-spacing', 'color'];

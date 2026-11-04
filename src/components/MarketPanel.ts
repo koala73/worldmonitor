@@ -360,23 +360,23 @@ export class HeatmapPanel extends Panel {
           ? ` <span title="Last known value; not refreshed this cycle" style="color:var(--text-dim);font-size:calc(9px * var(--wm-panel-effective-scale, 1))">(stale)</span>`
           : '';
         return `<tr${isStale ? ' style="opacity:0.65"' : ''}>
-  <td style="padding:3px 6px;white-space:nowrap;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(name)}${staleMark}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${fmtBeta(e.beta)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${e.ytdReturn === null ? 'var(--text-dim)' : e.ytdReturn >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(e.ytdReturn)}</td>
+  <td style="white-space:nowrap">${escapeHtml(name)}${staleMark}</td>
+  <td style="text-align:right;color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
+  <td style="text-align:right;color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
+  <td style="text-align:right">${fmtBeta(e.beta)}</td>
+  <td style="text-align:right;color:${e.ytdReturn === null ? 'var(--text-dim)' : e.ytdReturn >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(e.ytdReturn)}</td>
 </tr>`;
       })
       .join('');
 
     const table = `<div style="overflow-x:auto">
-<table style="width:100%;border-collapse:collapse;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
-  <thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">
-    <th scope="col" style="padding:3px 6px;text-align:left;font-weight:500">Sector</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Trail P/E</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Fwd P/E</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Beta</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Year to date</th>
+<table class="wm-table">
+  <thead><tr>
+    <th scope="col">Sector</th>
+    <th scope="col" style="text-align:right">Trail P/E</th>
+    <th scope="col" style="text-align:right">Fwd P/E</th>
+    <th scope="col" style="text-align:right">Beta</th>
+    <th scope="col" style="text-align:right">Year to date</th>
   </tr></thead>
   <tbody>${tableRows}</tbody>
 </table></div>`;

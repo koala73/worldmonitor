@@ -12929,23 +12929,7 @@ a.prediction-link:hover {
 }
 
 .sc-disruption-table {
-  width: 100%;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  border-collapse: collapse;
   margin-bottom: 4px;
-}
-
-.sc-disruption-table th {
-  text-align: left;
-  font-weight: 600;
-  color: var(--text-dim);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.sc-disruption-table td {
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sc-disruption-table td:nth-child(n+2) {
@@ -13089,33 +13073,6 @@ a.prediction-link:hover {
 /* Trade Tariffs Table */
 .trade-tariffs-table {
   width: 100%;
-}
-
-.trade-tariffs-table table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
-
-.trade-tariffs-table thead th {
-  text-align: left;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 4px 8px 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.trade-tariffs-table tbody td {
-  padding: 5px 8px;
-  color: var(--text);
-  border-bottom: 1px solid var(--border);
-}
-
-.trade-tariffs-table tbody tr:last-child td {
-  border-bottom: none;
 }
 
 .trade-tariffs-table tbody tr:hover {

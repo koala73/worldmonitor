@@ -693,6 +693,173 @@ test('the grocery total row keeps a visible separator in both themes', async ({ 
   }
 });
 
+// Tables whose rows and cells used to carry inline styles. Most mount through
+// their panel with injected data. The Supply Chain bypass table needs a Pro
+// session and a live fetch, so a replica of its markup stands in.
+test('harness-mounted formerly inline-styled tables use the shared table style', async ({ page }) => {
+  await page.goto('/tests/runtime-harness.html');
+  const errors = await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const { HeatmapPanel } = await import('/src/components/MarketPanel.ts');
+    const { EconomicCalendarPanel } = await import('/src/components/EconomicCalendarPanel.ts');
+    const { YieldCurvePanel } = await import('/src/components/YieldCurvePanel.ts');
+    const { WsbTickerScannerPanel } = await import('/src/components/WsbTickerScannerPanel.ts');
+    const { StockAnalysisPanel } = await import('/src/components/StockAnalysisPanel.ts');
+    const { SupplyChainPanel } = await import('/src/components/SupplyChainPanel.ts');
+    const { TradePolicyPanel } = await import('/src/components/TradePolicyPanel.ts');
+
+    document.getElementById('runtime-harness')?.remove();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    grid.style.cssText = 'height:auto;width:900px;grid-template-columns:900px';
+    document.body.appendChild(grid);
+    const failures: string[] = [];
+    const mount = (name: string, build: () => HTMLElement) => {
+      try { grid.appendChild(build()); } catch (err) { failures.push(`${name}: ${String(err)}`); }
+    };
+    const fill = (el: HTMLElement, html: string) => {
+      el.querySelector('.panel-content')!.innerHTML = html;
+      return el;
+    };
+
+    mount('heatmap', () => {
+      const panel = new HeatmapPanel();
+      const internals = panel as unknown as { _valuations: unknown; _heatmapData: unknown[]; _renderValuations(): string };
+      internals._heatmapData = [{ symbol: 'XLK', name: 'Technology', change: 1.2 }, { symbol: 'XLE', name: 'Energy', change: -0.4 }];
+      internals._valuations = {
+        XLK: { trailingPE: 38.2, forwardPE: 29.1, beta: 1.21, ytdReturn: 0.184, threeYearReturn: null, fiveYearReturn: null },
+        XLE: { trailingPE: 13.4, forwardPE: 12.2, beta: 0.84, ytdReturn: -0.052, threeYearReturn: null, fiveYearReturn: null },
+      };
+      return fill(panel.getElement(), internals._renderValuations());
+    });
+
+    mount('economic-calendar', () => {
+      const panel = new EconomicCalendarPanel();
+      const internals = panel as unknown as { _events: unknown[]; _hasData: boolean; _render(): void };
+      const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+      internals._events = [
+        { event: 'Nonfarm Payrolls', country: 'US', date: day(1), impact: 'high', actual: '', estimate: '180', previous: '175', unit: 'K' },
+        { event: 'CPI YoY', country: 'DE', date: day(1), impact: 'medium', actual: '2.3', estimate: '2.2', previous: '2.1', unit: '%' },
+        { event: 'Retail Sales MoM', country: 'GB', date: day(2), impact: 'low', actual: '', estimate: '0.2', previous: '0.4', unit: '%' },
+      ];
+      internals._hasData = true;
+      internals._render();
+      return panel.getElement();
+    });
+
+    mount('yield-curve', () => {
+      const panel = new YieldCurvePanel();
+      const internals = panel as unknown as { _current: unknown[]; _prior: unknown[]; _hasData: boolean; _render(): void };
+      internals._current = [{ tenor: '3M', value: 4.31 }, { tenor: '2Y', value: 3.92 }, { tenor: '10Y', value: 4.18 }, { tenor: '30Y', value: null }];
+      internals._prior = [{ tenor: '3M', value: 4.4 }, { tenor: '2Y', value: 4.01 }, { tenor: '10Y', value: 4.22 }, { tenor: '30Y', value: 4.5 }];
+      internals._hasData = true;
+      internals._render();
+      return panel.getElement();
+    });
+
+    mount('wsb', () => {
+      const panel = new WsbTickerScannerPanel();
+      panel.updateData([
+        { symbol: 'NVDA', mentionCount: 412, totalScore: 18400, subreddits: ['wallstreetbets', 'stocks'], velocityScore: 84 },
+        { symbol: 'TSLA', mentionCount: 230, totalScore: 9100, subreddits: ['wallstreetbets'], velocityScore: 31 },
+      ]);
+      return panel.getElement();
+    });
+
+    mount('stock-analysis', () => {
+      const panel = new StockAnalysisPanel();
+      const internals = panel as unknown as { insiderBySymbol: Record<string, unknown>; renderInsiderSection(symbol: string): string };
+      internals.insiderBySymbol.AAPL = {
+        unavailable: false, totalBuys: 1_200_000, totalSells: 8_400_000, netValue: -7_200_000,
+        transactions: [
+          { name: 'Jane Doe', transactionCode: 'S', shares: 12000, value: 2_300_000, transactionDate: '2026-10-12' },
+          { name: 'John Roe', transactionCode: 'P', shares: 5000, value: 960_000, transactionDate: '2026-09-30' },
+        ],
+      };
+      return fill(panel.getElement(), internals.renderInsiderSection('AAPL'));
+    });
+
+    mount('supply-chain', () => {
+      const panel = new SupplyChainPanel();
+      const internals = panel as unknown as {
+        chokepointData: unknown; mineralProductionData: unknown; mineralsData: unknown; mineralsStage: string;
+        renderDisruptionSnapshot(): string; renderMinerals(): string;
+      };
+      internals.chokepointData = { chokepoints: [
+        { id: 'hormuz', name: 'Strait of Hormuz', status: 'red', disruptionScore: 72, transitSummary: { todayTotal: 41, wowChangePct: -12.5, disruptionPct: 18.2, riskLevel: 'critical' } },
+        { id: 'suez', name: 'Suez Canal', status: 'yellow', disruptionScore: 21, transitSummary: { todayTotal: 38, wowChangePct: 3.1, disruptionPct: 4.4, riskLevel: 'elevated' } },
+      ] };
+      internals.mineralsData = { minerals: [
+        { mineral: 'Cobalt', topProducers: [{ country: 'DR Congo', sharePct: 74 }], hhi: 5600, riskRating: 'critical' },
+        { mineral: 'Copper', topProducers: [{ country: 'Chile', sharePct: 24 }], hhi: 1100, riskRating: 'moderate' },
+      ] };
+      internals.mineralProductionData = null;
+      const deposits = internals.renderMinerals();
+      internals.mineralsStage = 'mine';
+      internals.mineralProductionData = { dataYear: 2025, commodities: [
+        { commodity: 'Lithium', mine: { year: 2025, hhi: 3300, countries: [{ country: 'Australia', share: 48 }, { country: 'Chile', share: 24 }] }, refinery: null },
+      ] };
+      const production = internals.renderMinerals();
+      const bypass = `<div class="table-scroll"><table class="wm-table sc-bypass-table">
+        <thead><tr><th scope="col">Corridor</th><th scope="col">+Days</th><th scope="col">+Cost</th><th scope="col">Risk</th></tr></thead>
+        <tbody><tr><td>Cape of Good Hope</td><td>+12d</td><td>+38%</td><td>Normal</td></tr></tbody></table></div>`;
+      return fill(panel.getElement(), internals.renderDisruptionSnapshot() + deposits + production + bypass);
+    });
+
+    mount('trade-policy', () => {
+      const panel = new TradePolicyPanel();
+      const internals = panel as unknown as {
+        tariffsData: unknown; revenueData: unknown; comtradeData: unknown;
+        renderTariffs(): string; renderRevenue(): string; renderComtradeFlows(): string;
+      };
+      internals.tariffsData = { datapoints: [{ year: 2025, tariffRate: 3.3, productSector: 'All products', reportingCountry: '840', partnerCountry: '000' }], effectiveTariffRate: null };
+      internals.revenueData = { months: [
+        { recordDate: '2025-09-30', fiscalYear: 2025, monthlyAmountBillions: 7.1, fytdAmountBillions: 77.0 },
+        { recordDate: '2026-10-31', fiscalYear: 2026, monthlyAmountBillions: 30.2, fytdAmountBillions: 30.2 },
+      ] };
+      internals.comtradeData = { flows: [
+        { reporterCode: '156', reporterName: 'China', partnerCode: '0', cmdCode: '8542', cmdDesc: 'Integrated circuits', year: 2025, tradeValueUsd: 4.1e11, yoyChange: 0.18, isAnomaly: true },
+        { reporterCode: '276', reporterName: 'Germany', partnerCode: '0', cmdCode: '8703', cmdDesc: 'Cars', year: 2025, tradeValueUsd: 1.6e11, yoyChange: -0.06, isAnomaly: false },
+      ] };
+      return fill(panel.getElement(), internals.renderTariffs() + internals.renderRevenue() + internals.renderComtradeFlows());
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    return failures;
+  });
+  expect(errors, 'every panel mounts').toEqual([]);
+
+  const expected: Record<string, number> = {
+    heatmap: 1, 'economic-calendar': 1, 'yield-curve': 1, 'wsb-ticker-scanner': 1, 'stock-analysis': 1, 'supply-chain': 4, 'trade-policy': 3,
+  };
+  const headers = new Set<string>();
+  for (const [id, count] of Object.entries(expected)) {
+    const root = `.panel[data-panel="${id}"]`;
+    const tables = await page.evaluate((rootSelector) => [...document.querySelectorAll(`${rootSelector} table`)].map((table) => {
+      const pick = (el: Element | null) => {
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return { fontSize: s.fontSize, fontWeight: s.fontWeight, textTransform: s.textTransform, letterSpacing: s.letterSpacing, color: s.color, padding: s.padding, borderBottom: `${s.borderBottomWidth} ${s.borderBottomStyle} ${s.borderBottomColor}` };
+      };
+      // A date-group row is a label row, not a data row.
+      return { shared: table.classList.contains('wm-table'), th: pick(table.querySelector('thead th')), td: pick(table.querySelector('tbody tr:not(.ec-date-row) td')) };
+    }), root);
+    expect.soft(tables.length, `${id}: tables`).toBe(count);
+    for (const { shared, th, td } of tables) {
+      expect.soft(shared, `${id}: the table uses .wm-table`).toBe(true);
+      const { borderBottom: headerBorder, ...header } = th!;
+      headers.add(JSON.stringify(header));
+      expect.soft(th, `${id}: header cell uses the shared table style`).toMatchObject({ fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.4px', padding: '4px 8px' });
+      expect.soft(headerBorder, `${id}: header row rule`).toMatch(/^1px solid /);
+      expect.soft(td, `${id}: body cell uses the shared table style`).toMatchObject({ fontSize: '11px', textTransform: 'none', letterSpacing: 'normal', padding: '5px 8px' });
+      expect.soft(td!.borderBottom, `${id}: body row rule`).toMatch(/^1px solid /);
+    }
+    expect.soft(await readLostColours(page, root), `${id}: cells keep the colour their class sets`).toEqual([]);
+  }
+  expect.soft(headers.size, 'every table renders the same header cell').toBe(1);
+});
+
 // Satellite Fires and Displacement have no dashboard fixture, so the harness
 // mounts them directly. Displacement renders a different table per tab.
 test('Satellite Fires and every Displacement table fit the sidebar and phone widths', async ({ page }) => {
