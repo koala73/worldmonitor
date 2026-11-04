@@ -99,6 +99,34 @@
   }
 }
 
+/* One header and cell style for every panel table. A panel's own table
+   rules keep only widths, column alignment and state colours
+   (tests/panel-table-style.test.mjs). The cell rules sit below class
+   specificity, so a class on a cell (.change-positive, a panel's accent
+   column) always wins. */
+.wm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+:where(.wm-table) th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: start;
+  text-transform: uppercase;
+}
+
+:where(.wm-table) td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
 .table-scroll {
   overflow-x: auto;
 }
@@ -696,27 +724,6 @@
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
-.fires-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.fires-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.fires-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-}
-
 .fire-row:hover {
   background: var(--surface-hover);
 }
@@ -862,30 +869,9 @@
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
-.climate-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.climate-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
 .climate-table th:nth-child(2),
 .climate-table th:nth-child(3) {
   text-align: right;
-}
-
-.climate-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
 }
 
 .climate-row {
@@ -934,11 +920,11 @@
 }
 
 .climate-cold {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .climate-wet {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .climate-dry {
@@ -1026,29 +1012,11 @@
 /* disp-tabs: now uses shared .panel-tabs / .panel-tab */
 
 .disp-table {
-  width: 100%;
-  border-collapse: collapse;
   table-layout: fixed;
-}
-
-.disp-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
 }
 
 .disp-table th:nth-child(3) {
   text-align: right;
-}
-
-.disp-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
 }
 
 .disp-row {
@@ -1108,9 +1076,7 @@
 .disp-round {
   width: 84px;
   min-width: 84px;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
 }
 
 .disp-source-note {
@@ -1156,29 +1122,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ucdp-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.ucdp-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
 .ucdp-table th:nth-child(2) {
   text-align: right;
-}
-
-.ucdp-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
 }
 
 .ucdp-row {
@@ -1190,7 +1135,6 @@
 }
 
 .ucdp-date {
-  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -1229,7 +1173,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-dim);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -1472,19 +1415,7 @@
 }
 
 .giving-table {
-  width: 100%;
-  border-collapse: collapse;
   table-layout: fixed;
-}
-
-.giving-table th {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  text-align: left;
-  text-transform: uppercase;
 }
 
 .giving-table th:first-child,
@@ -1494,9 +1425,6 @@
 
 .giving-table td {
   min-width: 0;
-  padding: 7px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
   vertical-align: top;
   overflow-wrap: anywhere;
 }
@@ -1578,11 +1506,6 @@
   .giving-table th:first-child,
   .giving-table td:first-child {
     width: 36%;
-  }
-
-  .giving-table th,
-  .giving-table td {
-    padding-inline: 5px;
   }
 }
 
