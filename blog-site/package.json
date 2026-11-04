@@ -14,6 +14,7 @@
     "generate:og": "node scripts/generate-og-images.mjs",
     "build": "npm run generate:og && astro build",
     "verify:guides": "node --test scripts/verify-buying-guides.test.mjs",
+    "fonts:subset": "node scripts/fonts/subset/run.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },

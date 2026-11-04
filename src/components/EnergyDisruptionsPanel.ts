@@ -34,9 +34,9 @@ const EVENT_GLYPH: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<DisruptionStatus, string> = {
-  ongoing:  '#e74c3c',
-  resolved: '#7f8c8d',
-  unknown:  '#95a5a6',
+  ongoing:  '#c0392b',
+  resolved: '#5d6d7e',
+  unknown:  '#6b7280',
 };
 
 const EVENT_TYPE_FILTERS: Array<{ key: string; label: string }> = [
@@ -258,7 +258,7 @@ export class EnergyDisruptionsPanel extends Panel {
         .ed-desc { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); text-transform: none; letter-spacing: normal; margin: 2px 0; }
         .ed-asset-id { overflow-wrap: break-word; }
         .ed-table .ed-val { white-space: nowrap; }
-        .ed-asset-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-dim, #aaa); margin-right: 4px; }
+        .ed-asset-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-secondary); margin-right: 4px; }
         .ed-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .ed-empty { text-align: center; color: var(--text-dim, #888); padding: 20px; font-style: italic; }
         .ed-offline { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }

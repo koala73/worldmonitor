@@ -898,7 +898,7 @@
 }
 
 .climate-extreme-row:hover {
-  background: color-mix(in srgb, var(--semantic-critical) 10%, transparent);
+  background: color-mix(in srgb, var(--semantic-critical) 8%, transparent);
 }
 
 .climate-zone {
@@ -951,7 +951,7 @@
 }
 
 .severity-extreme {
-  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
+  background: color-mix(in srgb, var(--semantic-critical) 8%, transparent);
   color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
@@ -962,7 +962,7 @@
 
 .severity-normal {
   background: var(--overlay-medium);
-  color: var(--text-dim);
+  color: var(--text-secondary);
 }
 
 /* ----------------------------------------------------------
@@ -1057,7 +1057,7 @@
 }
 
 .disp-crisis {
-  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
+  background: color-mix(in srgb, var(--semantic-critical) 8%, transparent);
   color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
