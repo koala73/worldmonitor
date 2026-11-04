@@ -33,10 +33,10 @@
  * reaches the cloud from that install's one server IP. A generous per-IP
  * ceiling (the gateway's own default) runs before the lookup so the route
  * cannot become a Convex amplifier beyond what the gateway already allows.
- * Limiter degradation fails open (Redis-degraded scoped limits intentionally
- * stay availability-first): a verdict endpoint must not lock anyone out over a
- * Redis blip, and the expensive lookups behind it carry their own negative
- * caches.
+ * A degraded per-IP ceiling fails closed with 503: it alone bounds the Convex
+ * lookup, and a self-host sidecar keeps serving its last known verdict through
+ * a 503. The buckets after the lookup (Redis-degraded scoped limits
+ * intentionally stay availability-first there) cannot amplify anything.
  *
  * Called server-to-server with no browser Origin; CORS follows
  * api/embed/entitlement.ts. Responses are `no-store` and carry no owner id,
@@ -144,6 +144,10 @@ export default async function handler(req: Request): Promise<Response> {
     ipKey,
   );
   if (!ceiling.allowed) return limited(ceiling, DESKTOP_KEY_STATUS_IP_CEILING.window);
+  // The ceiling is the only bound in front of the Convex key lookup, and
+  // rotating keys miss its per-hash negative cache. While the limiter cannot
+  // count, refuse as the gateway does; a sidecar keeps its last verdict.
+  if (ceiling.degraded) return unavailable();
 
   const invalid = async (): Promise<Response> => {
     const ip = await deps.checkScopedRateLimit(

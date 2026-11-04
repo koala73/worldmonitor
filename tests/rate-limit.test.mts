@@ -740,8 +740,8 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
     },
     {
       path: 'api/desktop-key/status.ts',
-      expected: /Redis-degraded scoped limits intentionally\s*\*?\s*stay availability-first/,
-      reason: 'the desktop-key verdict is free, never metered, and its key and entitlement lookups carry negative caches; a Redis blip must not lock paying self-host users out, so degradation stays availability-first',
+      expected: /A degraded per-IP ceiling fails closed with 503/,
+      reason: 'the per-IP ceiling in front of the Convex key lookup fails closed when degraded (rotating keys miss the negative cache); the owner and invalid-key buckets after the lookup stay availability-first, and a self-host sidecar keeps its last verdict through a 503',
     },
     {
       path: 'api/notify.ts',

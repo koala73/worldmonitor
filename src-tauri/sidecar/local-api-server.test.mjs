@@ -4583,6 +4583,17 @@ function parseSetCookie(response) {
   };
 }
 
+test('the nginx config the Docker image installs forwards the browser authority to /api/', () => {
+  const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+  const [, installed] = dockerfile.match(/^COPY (docker\/nginx[^\s]*\.conf[^\s]*) \/etc\/nginx\/nginx\.conf\.template$/m) ?? [];
+  assert.ok(installed, 'Dockerfile installs an nginx config');
+  const conf = readFileSync(new URL(`../../${installed}`, import.meta.url), 'utf8');
+  const apiBlock = conf.match(/location \/api\/ \{[\s\S]*?\n {4}\}/)?.[0] ?? '';
+  assert.ok(apiBlock, `${installed} has a location /api/ block`);
+  assert.match(apiBlock, /proxy_set_header X-Forwarded-Host \$http_host;/,
+    'the relay origin check needs the browser authority with its port');
+});
+
 test('ships the self-host relay path mirror with the sidecar', () => {
   const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
   const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
@@ -5268,6 +5279,10 @@ test('relay: without Fetch Metadata (plain HTTP) only a same-origin Referer rela
     await local({ Referer: 'http://192.168.1.20:3000/' }, 'a sibling app on another port');
     await local({ Referer: 'not a url' }, 'an unparseable Referer');
     await local({ 'X-Forwarded-Host': 'dash.example', Referer: 'http://other.example/' }, 'another host behind nginx');
+    // A proxy that sends only `Host $host` strips the port, so a page on the
+    // host's default port would look like this install: refuse instead.
+    await local({ Host: 'dash.example', 'X-Forwarded-For': '192.168.1.5', Referer: 'http://dash.example/' }, 'proxied without X-Forwarded-Host');
+    await local({ Host: 'dash.example', 'X-Real-IP': '192.168.1.5', Referer: 'http://dash.example/' }, 'X-Real-IP without X-Forwarded-Host');
     assert.equal(cloud.relayed.length, 0);
 
     const direct = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {

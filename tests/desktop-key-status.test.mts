@@ -426,6 +426,36 @@ describe('desktop-key status: per-IP guards run before any key work', () => {
     assert.equal(otherIp.status, 200, 'the ceiling is per IP');
   });
 
+  it('a degraded IP ceiling fails closed with 503 and no key lookup; later buckets stay availability-first', async () => {
+    setEntitlement('pro_owner', entitlement('pro_monthly'));
+    const key = mintKey({ userId: 'pro_owner', name: 'laptop', keyKind: 'desktop' });
+    const degradedScopes = new Set<string>();
+    __setDesktopKeyStatusDepsForTests({
+      checkScopedRateLimit: async (scope: string, limit: number, window: string, identifier: string) => {
+        const result = await countingLimiter(scope, limit, window, identifier);
+        return degradedScopes.has(scope) ? { ...result, allowed: true, degraded: true } : result;
+      },
+    });
+    await handler(req(key, '203.0.113.60'));
+    const [ceilingScope, ownerScope] = limiterCalls.map((c) => c.scope);
+    limiterCalls.length = 0;
+    convexCalls = 0;
+    __resetKeyPrefixCacheForTests();
+
+    degradedScopes.add(ceilingScope!);
+    const res = await handler(req(key, '203.0.113.60'));
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.ok(Number(res.headers.get('Retry-After')) >= 1);
+    assert.equal(convexCalls, 0, 'no Convex call while the ceiling cannot count');
+
+    degradedScopes.clear();
+    degradedScopes.add(ownerScope!);
+    const ownerDegraded = await handler(req(key, '203.0.113.60'));
+    assert.equal(ownerDegraded.status, 200, 'the owner bucket runs after the lookup and stays availability-first');
+    assert.equal(await verdictOf(ownerDegraded), 'active');
+  });
+
   it('an unproven Cloudflare client IP is refused before any limiter or key lookup', async () => {
     process.env.CF_EDGE_PROOF_SECRET = 'edge-proof-secret';
     const key = mintKey({ userId: 'pro_owner', name: 'laptop', keyKind: 'desktop' });

@@ -1095,7 +1095,11 @@ function shouldRelayForSelfHostKey(key, context) {
 function selfHostRelayFetchSiteAllowed(req) {
   const fetchSite = req.headers['sec-fetch-site'];
   if (fetchSite !== undefined) return fetchSite === 'same-origin' || fetchSite === 'none';
-  const publicHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+  // Behind a proxy only X-Forwarded-Host is trustworthy: a proxy's `Host $host`
+  // drops the port, so a page on the host's default port would match.
+  const proxied = req.headers['x-forwarded-for'] !== undefined || req.headers['x-real-ip'] !== undefined;
+  const authority = req.headers['x-forwarded-host'] || (proxied ? '' : req.headers.host);
+  const publicHost = String(authority || '').split(',')[0].trim().toLowerCase();
   if (!publicHost) return false;
   try {
     return new URL(String(req.headers.referer || '')).host.toLowerCase() === publicHost;
