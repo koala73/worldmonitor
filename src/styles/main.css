@@ -84,6 +84,7 @@
 :root {
   /* Severity levels */
   --semantic-critical: #ff4444;
+  --danger: var(--semantic-critical); /* alias; components read var(--danger) */
   --semantic-high: #ff8800;
   --semantic-elevated: #ffaa00;
   --semantic-normal: #44aa44;
