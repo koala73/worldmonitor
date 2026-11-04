@@ -1823,9 +1823,21 @@ describe('CI workflow coverage', () => {
     const evaluate = direct.steps.find((step: { run?: string }) => step.run === 'bash -e .github/scripts/deploy-gate.sh evaluate');
     assert.equal(evaluate.env.SHA, '${{ matrix.sha }}');
     assert.equal(evaluate.env.CHECK_ATTEMPTS, 2, 'retain the stale-read retry');
-    const checkout = direct.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
-    assert.equal(checkout.with['fetch-depth'], 0, 'base drift requires the full commit graph');
-    assert.equal(checkout.with.filter, 'blob:none');
+    assert.equal(
+      evaluate.env.TRIGGER_RUN_ID,
+      '${{ github.event.workflow_run.id }}',
+      'a stale listing of the run that fired this event must not skip the last re-poll',
+    );
+    // base_drift unshallows on demand, so both evaluators check out one commit
+    // and only the script; a full-history checkout on every event cost a
+    // median 11s (p90 62s) of runner time for a graph few evaluations read.
+    for (const job of [direct, jobs.evaluate]) {
+      const checkout = job.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
+      assert.equal(checkout.with['fetch-depth'], undefined);
+      assert.equal(checkout.with.filter, 'blob:none');
+      assert.equal(checkout.with['sparse-checkout'], '.github/scripts');
+    }
+    assert.match(deployGateScript, /--is-shallow-repository\)" = "true" \]; then\n\s+deepen=\(--unshallow\)/);
 
     for (const event of ['workflow_run', 'schedule', 'workflow_dispatch']) {
       const completion = event === 'workflow_run';
@@ -1886,6 +1898,15 @@ describe('CI workflow coverage', () => {
     const download = jobs.recover?.steps?.find((step) => step.uses?.startsWith('actions/download-artifact@'));
     assert.equal(download?.with?.pattern, 'deploy-gate-invalidate-${{ github.run_attempt }}-*');
     assert.notEqual(download?.with?.['merge-multiple'], true, 'per-SHA result files must not overwrite one another');
+  });
+
+  it('names exactly the triggering workflows as the ones whose runs skip the stale-read wait', () => {
+    // An evaluation skips its 60s re-poll while a gated run for the head is
+    // unfinished, because that run's completion event evaluates again. A name
+    // missing here only keeps a wait; an extra name could skip the wait on the
+    // head's last event, which is #5479.
+    const workflow = YAML.parse(deployGateWorkflow);
+    assert.deepEqual(workflow.env.GATED_WORKFLOWS.split(','), workflow.on.workflow_run.workflows);
   });
 
   it('treats sidecar changes as code for PR smoke gating', () => {
