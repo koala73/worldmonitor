@@ -4236,7 +4236,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Police système par défaut",
     "panelFontScale": "Taille du texte",
-    "followGlobalFontScale": "Utiliser le paramètre global"
+    "followGlobalFontScale": "Utiliser le paramètre global",
+    "selfHostKey": {
+      "heading": "Clé desktop",
+      "description": "Déverrouillez Pro sur ce dashboard avec votre propre clé desktop. Créez-en une sur worldmonitor.app dans Paramètres → Clés API → Créer clé desktop.",
+      "relay": "La clé est envoyée au serveur de cette installation, qui transfère vos demandes Pro à World Monitor. L'utilisation compte pour votre quota de clés desktop, comme dans l'application desktop.",
+      "trust": "Si quelqu'un d'autre exécute cette installation, créez une clé desktop distincte. Vous pouvez la révoquer sur worldmonitor.app à tout moment.",
+      "inputLabel": "Clé desktop",
+      "placeholder": "wm_…",
+      "save": "Enregistrer la clé",
+      "saving": "Vérification…",
+      "remove": "Supprimer la clé",
+      "removing": "Suppression…",
+      "empty": "Entrez une clé desktop.",
+      "saveFailed": "Impossible d'enregistrer la clé. Réessayez.",
+      "removeFailed": "Impossible de supprimer la clé. Réessayez.",
+      "rateLimited": "Trop de tentatives. Réessayez dans {{seconds}} secondes.",
+      "rateLimitedSoon": "Trop de tentatives. Réessayez dans une minute.",
+      "insecure": "Cette page n'utilise pas HTTPS, votre clé sera transmise en clair sur le réseau.",
+      "insecureConfirm": "Cette page n'utilise pas HTTPS, votre clé sera transmise en clair sur le réseau. Envoyez-la uniquement sur un réseau de confiance.",
+      "insecureConfirmButton": "Envoyer la clé",
+      "staleNote": "La dernière vérification n'a pas pu atteindre World Monitor.",
+      "disabled": "L'opérateur de cette installation a désactivé les clés desktop.",
+      "state": {
+        "none": "Aucune clé",
+        "active": "Actif",
+        "invalid": "Non valide",
+        "not_desktop_key": "Pas une clé desktop",
+        "over_cap": "Limite de clés dépassée",
+        "lapsed": "Plan inactif",
+        "unavailable": "Impossible de vérifier",
+        "disabled": "Désactivé"
+      },
+      "detail": {
+        "none": "Aucune clé enregistrée dans ce navigateur.",
+        "active": "Pro est déverrouillé dans ce navigateur.",
+        "invalid": "Cette clé n'est pas valide ou a été révoquée.",
+        "not_desktop_key": "Ceci est une clé API. Utilisez une clé desktop à la place.",
+        "over_cap": "Le compte a plus de clés desktop que son plan ne le permet. Révoquez-en une sur worldmonitor.app.",
+        "lapsed": "Le plan Pro du compte n'est pas actif.",
+        "unavailable": "Impossible d'atteindre World Monitor pour vérifier cette clé. Réessayez plus tard."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Ouvrir la fiche pays",

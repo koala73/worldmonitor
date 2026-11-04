@@ -4236,7 +4236,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Padrão do Sistema",
     "panelFontScale": "Tamanho do texto",
-    "followGlobalFontScale": "Usar global"
+    "followGlobalFontScale": "Usar global",
+    "selfHostKey": {
+      "heading": "Chave de desktop",
+      "description": "Desbloqueie Pro neste dashboard com sua própria chave de desktop. Crie uma em worldmonitor.app em Configurações → Chaves de API → Criar chave de desktop.",
+      "relay": "A chave vai para o servidor dessa instalação, que encaminha suas requisições Pro para o World Monitor. O uso é contabilizado na cota de chaves de desktop da sua conta, igual ao aplicativo de desktop.",
+      "trust": "Se outra pessoa executar essa instalação, crie uma chave de desktop separada para ela. Você pode revogá-la em worldmonitor.app a qualquer momento.",
+      "inputLabel": "Chave de desktop",
+      "placeholder": "wm_…",
+      "save": "Salvar chave",
+      "saving": "Verificando…",
+      "remove": "Remover chave",
+      "removing": "Removendo…",
+      "empty": "Digite uma chave de desktop.",
+      "saveFailed": "Não foi possível salvar a chave. Tente novamente.",
+      "removeFailed": "Não foi possível remover a chave. Tente novamente.",
+      "rateLimited": "Muitas tentativas. Tente novamente em {{seconds}} segundos.",
+      "rateLimitedSoon": "Muitas tentativas. Tente novamente em um minuto.",
+      "insecure": "Esta página não está usando HTTPS, portanto sua chave será transmitida pela rede sem criptografia.",
+      "insecureConfirm": "Esta página não está usando HTTPS, portanto sua chave será transmitida pela rede sem criptografia. Envie-a apenas em uma rede em que confia.",
+      "insecureConfirmButton": "Enviar chave",
+      "staleNote": "A última verificação não conseguiu alcançar o World Monitor.",
+      "disabled": "O operador dessa instalação desativou as chaves de desktop.",
+      "state": {
+        "none": "Sem chave",
+        "active": "Ativa",
+        "invalid": "Não é válida",
+        "not_desktop_key": "Não é uma chave de desktop",
+        "over_cap": "Acima do limite de chaves",
+        "lapsed": "Plano não ativo",
+        "unavailable": "Não foi possível verificar",
+        "disabled": "Desativada"
+      },
+      "detail": {
+        "none": "Nenhuma chave está salva neste navegador.",
+        "active": "Pro está desbloqueado neste navegador.",
+        "invalid": "Esta chave não é válida ou foi revogada.",
+        "not_desktop_key": "Esta é uma chave de API. Use uma chave de desktop.",
+        "over_cap": "A conta tem mais chaves de desktop do que seu plano permite. Revogue uma em worldmonitor.app.",
+        "lapsed": "O plano Pro da conta não está ativo.",
+        "unavailable": "Não foi possível alcançar o World Monitor para verificar esta chave. Tente novamente mais tarde."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Abrir resumo do país",

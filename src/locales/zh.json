@@ -4194,7 +4194,48 @@
     "fontMono": "等宽字体",
     "fontSystem": "系统默认",
     "panelFontScale": "文本大小",
-    "followGlobalFontScale": "使用全局设置"
+    "followGlobalFontScale": "使用全局设置",
+    "selfHostKey": {
+      "heading": "桌面密钥",
+      "description": "使用您自己的桌面密钥在此 dashboard 上解锁 Pro。在 worldmonitor.app 的设置 → API 密钥 → 创建桌面密钥中创建一个。",
+      "relay": "该密钥发送到此部署的服务器，服务器将您的 Pro 请求转发到 World Monitor。使用情况计入您账户的桌面密钥额度，与桌面应用相同。",
+      "trust": "如果其他人运行此部署，请为其创建单独的桌面密钥。您可以随时在 worldmonitor.app 撤销它。",
+      "inputLabel": "桌面密钥",
+      "placeholder": "wm_…",
+      "save": "保存密钥",
+      "saving": "检查中…",
+      "remove": "移除密钥",
+      "removing": "移除中…",
+      "empty": "请输入桌面密钥。",
+      "saveFailed": "无法保存密钥。请重试。",
+      "removeFailed": "无法移除密钥。请重试。",
+      "rateLimited": "尝试次数过多。{{seconds}} 秒后重试。",
+      "rateLimitedSoon": "尝试次数过多。1 分钟后重试。",
+      "insecure": "此页面未使用 HTTPS，您的密钥将以未加密方式通过网络传输。",
+      "insecureConfirm": "此页面未使用 HTTPS，您的密钥将以未加密方式通过网络传输。仅在您信任的网络上发送。",
+      "insecureConfirmButton": "发送密钥",
+      "staleNote": "最后一次检查无法连接到 World Monitor。",
+      "disabled": "此部署的运营者已禁用桌面密钥。",
+      "state": {
+        "none": "无密钥",
+        "active": "活跃",
+        "invalid": "无效",
+        "not_desktop_key": "非桌面密钥",
+        "over_cap": "超过密钥限制",
+        "lapsed": "计划未激活",
+        "unavailable": "无法验证",
+        "disabled": "已禁用"
+      },
+      "detail": {
+        "none": "此浏览器中未保存密钥。",
+        "active": "Pro 在此浏览器中已解锁。",
+        "invalid": "此密钥无效或已被撤销。",
+        "not_desktop_key": "这是 API 密钥。请改用桌面密钥。",
+        "over_cap": "账户的桌面密钥数量超过了其计划允许的数量。在 worldmonitor.app 上撤销一个。",
+        "lapsed": "账户的 Pro 计划未激活。",
+        "unavailable": "无法连接到 World Monitor 来检查此密钥。请稍后重试。"
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "打开国家简报",

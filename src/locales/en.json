@@ -4361,7 +4361,48 @@
     "fontFamily": "Font Family",
     "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
     "fontMono": "Monospace",
-    "fontSystem": "System Default"
+    "fontSystem": "System Default",
+    "selfHostKey": {
+      "heading": "Desktop key",
+      "description": "Unlock Pro on this dashboard with your own desktop key. Create one on worldmonitor.app under Settings → API Keys → Create desktop key.",
+      "relay": "The key goes to this install's server, which forwards your Pro requests to World Monitor. Usage counts toward your account's desktop key allowance, the same as the desktop app.",
+      "trust": "If someone else runs this install, create a separate desktop key for it. You can revoke it on worldmonitor.app at any time.",
+      "inputLabel": "Desktop key",
+      "placeholder": "wm_…",
+      "save": "Save key",
+      "saving": "Checking…",
+      "remove": "Remove key",
+      "removing": "Removing…",
+      "empty": "Enter a desktop key.",
+      "saveFailed": "Could not save the key. Try again.",
+      "removeFailed": "Could not remove the key. Try again.",
+      "rateLimited": "Too many attempts. Try again in {{seconds}} seconds.",
+      "rateLimitedSoon": "Too many attempts. Try again in a minute.",
+      "insecure": "This page is not using HTTPS, so your key will cross the network unencrypted.",
+      "insecureConfirm": "This page is not using HTTPS, so your key will cross the network unencrypted. Send it only on a network you trust.",
+      "insecureConfirmButton": "Send key",
+      "staleNote": "The last check could not reach World Monitor.",
+      "disabled": "The operator of this install has turned off desktop keys.",
+      "state": {
+        "none": "No key",
+        "active": "Active",
+        "invalid": "Not valid",
+        "not_desktop_key": "Not a desktop key",
+        "over_cap": "Over the key limit",
+        "lapsed": "Plan not active",
+        "unavailable": "Could not verify",
+        "disabled": "Turned off"
+      },
+      "detail": {
+        "none": "No key is saved in this browser.",
+        "active": "Pro is unlocked in this browser.",
+        "invalid": "This key is not valid or has been revoked.",
+        "not_desktop_key": "This is an API key. Use a desktop key instead.",
+        "over_cap": "The account has more desktop keys than its plan allows. Revoke one on worldmonitor.app.",
+        "lapsed": "The account's Pro plan is not active.",
+        "unavailable": "Could not reach World Monitor to check this key. Try again later."
+      }
+    }
   },
   "premium": {
     "pro": "PRO",

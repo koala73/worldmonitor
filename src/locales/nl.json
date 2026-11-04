@@ -4215,7 +4215,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Systeemstandaard",
     "panelFontScale": "Tekstgrootte",
-    "followGlobalFontScale": "Algemene instelling gebruiken"
+    "followGlobalFontScale": "Algemene instelling gebruiken",
+    "selfHostKey": {
+      "heading": "Desktopsleutel",
+      "description": "Ontgrendel Pro op dit dashboard met je eigen desktopsleutel. Maak er een aan op worldmonitor.app onder Instellingen → API-sleutels → Desktopsleutel maken.",
+      "relay": "De sleutel gaat naar de server van deze installatie, die je Pro-verzoeken naar World Monitor doorstuurt. Het gebruik telt mee naar de desktopsleutel-limiet van je account, net als in de desktop-app.",
+      "trust": "Als iemand anders deze installatie beheert, maak een aparte desktopsleutel voor hem. Je kunt die op elk moment intrekken op worldmonitor.app.",
+      "inputLabel": "Desktopsleutel",
+      "placeholder": "wm_…",
+      "save": "Sleutel opslaan",
+      "saving": "Controleren…",
+      "remove": "Sleutel verwijderen",
+      "removing": "Verwijderen…",
+      "empty": "Voer een desktopsleutel in.",
+      "saveFailed": "Kon de sleutel niet opslaan. Probeer het opnieuw.",
+      "removeFailed": "Kon de sleutel niet verwijderen. Probeer het opnieuw.",
+      "rateLimited": "Te veel pogingen. Probeer het over {{seconds}} seconden opnieuw.",
+      "rateLimitedSoon": "Te veel pogingen. Probeer het over een minuut opnieuw.",
+      "insecure": "Deze pagina gebruikt geen HTTPS, dus je sleutel gaat onversleuteld over het netwerk.",
+      "insecureConfirm": "Deze pagina gebruikt geen HTTPS, dus je sleutel gaat onversleuteld over het netwerk. Stuur het alleen op een netwerk dat je vertrouwt.",
+      "insecureConfirmButton": "Sleutel versturen",
+      "staleNote": "De laatste controle kon World Monitor niet bereiken.",
+      "disabled": "De beheerder van deze installatie heeft desktopsleutels uitgeschakeld.",
+      "state": {
+        "none": "Geen sleutel",
+        "active": "Actief",
+        "invalid": "Niet geldig",
+        "not_desktop_key": "Geen desktopsleutel",
+        "over_cap": "Limiet overschreden",
+        "lapsed": "Plan niet actief",
+        "unavailable": "Kon niet verifiëren",
+        "disabled": "Uitgeschakeld"
+      },
+      "detail": {
+        "none": "Geen sleutel is opgeslagen in deze browser.",
+        "active": "Pro is ontgrendeld in deze browser.",
+        "invalid": "Deze sleutel is niet geldig of is ingetrokken.",
+        "not_desktop_key": "Dit is een API-sleutel. Gebruik in plaats daarvan een desktopsleutel.",
+        "over_cap": "Het account heeft meer desktopsleutels dan het abonnement toestaat. Trek er een in op worldmonitor.app.",
+        "lapsed": "Het Pro-abonnement van het account is niet actief.",
+        "unavailable": "Kon World Monitor niet bereiken om deze sleutel te controleren. Probeer het later opnieuw."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",

@@ -4215,7 +4215,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Sistem Varsayılanı",
     "panelFontScale": "Metin boyutu",
-    "followGlobalFontScale": "Genel ayarı kullan"
+    "followGlobalFontScale": "Genel ayarı kullan",
+    "selfHostKey": {
+      "heading": "Masaüstü anahtarı",
+      "description": "Bu panelde Pro'yu kendi masaüstü anahtarınızla açın. worldmonitor.app'te Ayarlar → API Anahtarları → Masaüstü anahtarı oluştur kısmından bir tane oluşturun.",
+      "relay": "Anahtar bu kurulumun sunucusuna gider ve sunucu Pro isteklerinizi World Monitor'a iletir. Kullanım, masaüstü uygulamasıyla aynı şekilde hesabınızın masaüstü anahtarı kotasına sayılır.",
+      "trust": "Bu kurulumu başka biri çalıştırıyorsa, bunun için ayrı bir masaüstü anahtarı oluşturun. worldmonitor.app'te istediğiniz zaman iptal edebilirsiniz.",
+      "inputLabel": "Masaüstü anahtarı",
+      "placeholder": "wm_…",
+      "save": "Anahtarı kaydet",
+      "saving": "Kontrol ediliyor…",
+      "remove": "Anahtarı kaldır",
+      "removing": "Kaldırılıyor…",
+      "empty": "Masaüstü anahtarı girin.",
+      "saveFailed": "Anahtar kaydedilemedi. Yeniden deneyin.",
+      "removeFailed": "Anahtar kaldırılamadı. Yeniden deneyin.",
+      "rateLimited": "Çok fazla deneme. {{seconds}} saniye içinde yeniden deneyin.",
+      "rateLimitedSoon": "Çok fazla deneme. Bir dakika içinde yeniden deneyin.",
+      "insecure": "Bu sayfa HTTPS kullanmadığından anahtarınız ağ üzerinden şifrelenmemiş şekilde iletilecektir.",
+      "insecureConfirm": "Bu sayfa HTTPS kullanmadığından anahtarınız ağ üzerinden şifrelenmemiş şekilde iletilecektir. Bunu yalnızca güvendiğiniz bir ağda gönderin.",
+      "insecureConfirmButton": "Anahtarı gönder",
+      "staleNote": "Son kontrol World Monitor'a ulaşamadı.",
+      "disabled": "Bu kurulumun operatörü masaüstü anahtarlarını kapatmıştır.",
+      "state": {
+        "none": "Anahtar yok",
+        "active": "Etkin",
+        "invalid": "Geçersiz",
+        "not_desktop_key": "Masaüstü anahtarı değil",
+        "over_cap": "Anahtar limitini aştı",
+        "lapsed": "Plan etkin değil",
+        "unavailable": "Doğrulanmadı",
+        "disabled": "Kapalı"
+      },
+      "detail": {
+        "none": "Bu tarayıcıda kaydedilmiş anahtar yok.",
+        "active": "Pro bu tarayıcıda açılmıştır.",
+        "invalid": "Bu anahtar geçersiz veya iptal edilmiştir.",
+        "not_desktop_key": "Bu bir API anahtarıdır. Bunun yerine masaüstü anahtarı kullanın.",
+        "over_cap": "Hesap, planının izin verdiğinden daha fazla masaüstü anahtarına sahiptir. worldmonitor.app'te birini iptal edin.",
+        "lapsed": "Hesabın Pro planı etkin değildir.",
+        "unavailable": "Bu anahtarı kontrol etmek için World Monitor'a ulaşılamadı. Daha sonra yeniden deneyin."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",

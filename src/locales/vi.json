@@ -4194,7 +4194,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Phông chữ hệ thống",
     "panelFontScale": "Kích thước chữ",
-    "followGlobalFontScale": "Sử dụng cài đặt toàn cục"
+    "followGlobalFontScale": "Sử dụng cài đặt toàn cục",
+    "selfHostKey": {
+      "heading": "Khóa máy tính để bàn",
+      "description": "Mở khóa Pro trên dashboard này bằng khóa máy tính để bàn của riêng bạn. Tạo một khóa tại worldmonitor.app trong Cài đặt → Khóa API → Tạo khóa máy tính để bàn.",
+      "relay": "Khóa được gửi đến máy chủ của cài đặt này, sau đó chuyển tiếp yêu cầu Pro của bạn đến World Monitor. Lượng sử dụng được tính vào hạn mức khóa máy tính để bàn của tài khoản bạn, giống như ứng dụng máy tính để bàn.",
+      "trust": "Nếu người khác điều hành cài đặt này, hãy tạo một khóa máy tính để bàn riêng cho nó. Bạn có thể thu hồi nó tại worldmonitor.app bất kỳ lúc nào.",
+      "inputLabel": "Khóa máy tính để bàn",
+      "placeholder": "wm_…",
+      "save": "Lưu khóa",
+      "saving": "Đang kiểm tra…",
+      "remove": "Xóa khóa",
+      "removing": "Đang xóa…",
+      "empty": "Nhập khóa máy tính để bàn.",
+      "saveFailed": "Không thể lưu khóa. Vui lòng thử lại.",
+      "removeFailed": "Không thể xóa khóa. Vui lòng thử lại.",
+      "rateLimited": "Quá nhiều lần thử. Vui lòng thử lại sau {{seconds}} giây.",
+      "rateLimitedSoon": "Quá nhiều lần thử. Vui lòng thử lại sau một phút.",
+      "insecure": "Trang này không sử dụng HTTPS, vì vậy khóa của bạn sẽ được truyền qua mạng mà không mã hóa.",
+      "insecureConfirm": "Trang này không sử dụng HTTPS, vì vậy khóa của bạn sẽ được truyền qua mạng mà không mã hóa. Chỉ gửi nó trên mạng mà bạn tin tưởng.",
+      "insecureConfirmButton": "Gửi khóa",
+      "staleNote": "Lần kiểm tra cuối cùng không thể kết nối đến World Monitor.",
+      "disabled": "Người điều hành cài đặt này đã tắt khóa máy tính để bàn.",
+      "state": {
+        "none": "Không có khóa",
+        "active": "Hoạt động",
+        "invalid": "Không hợp lệ",
+        "not_desktop_key": "Không phải khóa máy tính để bàn",
+        "over_cap": "Vượt quá giới hạn khóa",
+        "lapsed": "Gói dịch vụ không hoạt động",
+        "unavailable": "Không thể xác minh",
+        "disabled": "Đã tắt"
+      },
+      "detail": {
+        "none": "Không có khóa nào được lưu trong trình duyệt này.",
+        "active": "Pro đã được mở khóa trong trình duyệt này.",
+        "invalid": "Khóa này không hợp lệ hoặc đã bị thu hồi.",
+        "not_desktop_key": "Đây là khóa API. Hãy sử dụng khóa máy tính để bàn thay thế.",
+        "over_cap": "Tài khoản có nhiều khóa máy tính để bàn hơn gói dịch vụ cho phép. Thu hồi một khóa tại worldmonitor.app.",
+        "lapsed": "Gói Pro của tài khoản không hoạt động.",
+        "unavailable": "Không thể kết nối đến World Monitor để kiểm tra khóa này. Vui lòng thử lại sau."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",

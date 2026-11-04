@@ -57,7 +57,7 @@ import { syncPanelPreview } from '@/services/mission-preview-registry';
 import { loadStoredMissionPreset } from '@/services/mission-presets';
 import { peekPendingMissionAttribution } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
-import { loadWidgets, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
+import { loadWidgets, saveWidget, isProUser, isProTierResolved, subscribeWidgetAccess } from '@/services/widget-store';
 import { sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import {
@@ -477,6 +477,7 @@ export class PanelLayoutManager implements AppModule {
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeRuntimeConfig: (() => void) | null = null;
   private unsubscribeAuth: (() => void) | null = null;
+  private unsubscribeWidgetAccess: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
@@ -731,6 +732,12 @@ export class PanelLayoutManager implements AppModule {
       this.updatePanelGating(getAuthState());
     });
 
+    // Tester keys and the self-host desktop-key verdict change isProUser()
+    // without an auth or entitlement event.
+    this.unsubscribeWidgetAccess = subscribeWidgetAccess(() => {
+      this.updatePanelGating(getAuthState());
+    });
+
     // Handle analyst action chip "Create chart widget →" click
     this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
       void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
@@ -826,6 +833,8 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribeRuntimeConfig = null;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
+    this.unsubscribeWidgetAccess?.();
+    this.unsubscribeWidgetAccess = null;
     this.proBlockUnsubscribe?.();
     this.proBlockUnsubscribe = null;
     this.proBlockEntitlementUnsubscribe?.();

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { attachBrowserLossDiagnostics, pageBrowserLossEvents } from './browser-loss-diagnostics';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 
 /**
  * Settings → SOURCES must reach the live dashboard when the modal closes (#6380).
@@ -101,6 +102,7 @@ async function seedProFullVariant(page: Page, returningProfile = false): Promise
       localStorage.setItem('worldmonitor-disabled-feeds', '["user-choice"]');
     }
   }, returningProfile);
+  await acceptTesterKeySession(page);
 }
 
 /**

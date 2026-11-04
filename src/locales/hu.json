@@ -4289,7 +4289,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Rendszer alapértelmezés",
     "panelFontScale": "Szövegméret",
-    "followGlobalFontScale": "Globális beállítás használata"
+    "followGlobalFontScale": "Globális beállítás használata",
+    "selfHostKey": {
+      "heading": "Asztal kulcs",
+      "description": "Oldja fel a Pro verzióját ezen az irányítópulton az Ön saját asztal kulcsával. Hozzon létre egyet a worldmonitor.app oldalon a Beállítások → API kulcsok → Asztal kulcs létrehozása menüpontban.",
+      "relay": "A kulcs erre a telepítésre szállító szerverhez kerül, amely továbbítja a Pro kéréseket a World Monitornak. A használat az Ön fiókjának asztal kulcs kvótájára számít, ugyanúgy, mint az asztali alkalmazás esetén.",
+      "trust": "Ha valaki más üzemelteti ezt a telepítést, hozzon létre ehhez egy külön asztal kulcsot. Azt bármikor visszavonhatja a worldmonitor.app oldalon.",
+      "inputLabel": "Asztal kulcs",
+      "placeholder": "wm_…",
+      "save": "Kulcs mentése",
+      "saving": "Ellenőrzés…",
+      "remove": "Kulcs eltávolítása",
+      "removing": "Eltávolítás…",
+      "empty": "Adjon meg egy asztal kulcsot.",
+      "saveFailed": "A kulcs nem menthető. Próbálja újra.",
+      "removeFailed": "A kulcs nem távolítható el. Próbálja újra.",
+      "rateLimited": "Túl sok kísérlet. Próbálja újra {{seconds}} másodperc múlva.",
+      "rateLimitedSoon": "Túl sok kísérlet. Próbálja újra egy perc múlva.",
+      "insecure": "Ez az oldal nem használ HTTPS-t, ezért a kulcs titkosítatlanul halad át a hálózaton.",
+      "insecureConfirm": "Ez az oldal nem használ HTTPS-t, ezért a kulcs titkosítatlanul halad át a hálózaton. Csak megbízható hálózaton küldje el.",
+      "insecureConfirmButton": "Kulcs küldése",
+      "staleNote": "Az utolsó ellenőrzés nem tudta elérni a World Monitort.",
+      "disabled": "A telepítés üzemeltetője letiltotta az asztal kulcsokat.",
+      "state": {
+        "none": "Nincs kulcs",
+        "active": "Aktív",
+        "invalid": "Nem érvényes",
+        "not_desktop_key": "Nem asztal kulcs",
+        "over_cap": "Meghaladta a kulcs korlátot",
+        "lapsed": "Csomag nem aktív",
+        "unavailable": "Nem lehetett ellenőrizni",
+        "disabled": "Letiltva"
+      },
+      "detail": {
+        "none": "Nincs kulcs mentve ebben a böngészőben.",
+        "active": "A Pro verzió feloldva van ebben a böngészőben.",
+        "invalid": "Ez a kulcs nem érvényes vagy visszavonásra került.",
+        "not_desktop_key": "Ez egy API kulcs. Helyette asztal kulcsot használjon.",
+        "over_cap": "A fiók több asztal kulccsal rendelkezik, mint amit a csomagja megenged. Vonjon vissza egyet a worldmonitor.app oldalon.",
+        "lapsed": "A fiók Pro csomagja nem aktív.",
+        "unavailable": "Nem lehetett elérni a World Monitort a kulcs ellenőrzéséhez. Próbálja újra később."
+      }
+    }
   },
   "premium": {
     "pro": "PRO",

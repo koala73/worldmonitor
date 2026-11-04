@@ -4321,7 +4321,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Zadana vrijednost sustava",
     "panelFontScale": "Veličina teksta",
-    "followGlobalFontScale": "Koristi globalnu postavku"
+    "followGlobalFontScale": "Koristi globalnu postavku",
+    "selfHostKey": {
+      "heading": "Ključ za radnu površinu",
+      "description": "Otključajte Pro na ovoj kontrolnoj ploči pomoću vlastitog ključa za radnu površinu. Kreirajte ga na worldmonitor.app u Settings → API Keys → Create desktop key.",
+      "relay": "Ključ ide na server ove instalacije, koji prosljeđuje vaše Pro zahtjeve servisu World Monitor. Korištenje se broji prema dopuštenom opsegu ključa vaše radne površine, kao i u aplikaciji za radnu površinu.",
+      "trust": "Ako neko drugo upravlja ovom instalacijom, kreirajte joj zaseban ključ za radnu površinu. Možete ga opozvati na worldmonitor.app u bilo kojem trenutku.",
+      "inputLabel": "Ključ za radnu površinu",
+      "placeholder": "wm_…",
+      "save": "Spremi ključ",
+      "saving": "Provjeravam…",
+      "remove": "Ukloni ključ",
+      "removing": "Uklanjam…",
+      "empty": "Unesite ključ za radnu površinu.",
+      "saveFailed": "Nije moguće spremiti ključ. Pokušajte ponovno.",
+      "removeFailed": "Nije moguće ukloniti ključ. Pokušajte ponovno.",
+      "rateLimited": "Previše pokušaja. Pokušajte ponovno za {{seconds}} sekundi.",
+      "rateLimitedSoon": "Previše pokušaja. Pokušajte ponovno za minutu.",
+      "insecure": "Ova stranica ne koristi HTTPS, pa će ključ putovati mrežom nešifriran.",
+      "insecureConfirm": "Ova stranica ne koristi HTTPS, pa će ključ putovati mrežom nešifriran. Pošaljite ga samo na mreži kojoj vjerujete.",
+      "insecureConfirmButton": "Pošalji ključ",
+      "staleNote": "Zadnja provjera nije mogla dosegnuti World Monitor.",
+      "disabled": "Operator ove instalacije je isključio ključeve za radnu površinu.",
+      "state": {
+        "none": "Nema ključa",
+        "active": "Aktivno",
+        "invalid": "Nije valjano",
+        "not_desktop_key": "Nije ključ za radnu površinu",
+        "over_cap": "Prekoračen je limit ključeva",
+        "lapsed": "Plan nije aktivan",
+        "unavailable": "Nije moguće provjeriti",
+        "disabled": "Isključeno"
+      },
+      "detail": {
+        "none": "Nema ključa spremljenog u ovom pregledniku.",
+        "active": "Pro je otključan u ovom pregledniku.",
+        "invalid": "Ovaj ključ nije valjan ili je opozvan.",
+        "not_desktop_key": "Ovo je API ključ. Umjesto toga koristite ključ za radnu površinu.",
+        "over_cap": "Račun ima više ključeva za radnu površinu nego što plan dozvoljava. Opozvite jedan na worldmonitor.app.",
+        "lapsed": "Plan Pro za ovaj račun nije aktivan.",
+        "unavailable": "Nije moguće dosegnuti World Monitor kako bi se provjerio ovaj ključ. Pokušajte ponovno kasnije."
+      }
+    }
   },
   "premium": {
     "pro": "PRO",

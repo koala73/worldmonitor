@@ -4236,7 +4236,48 @@
     "fontMono": "Monoespaciada",
     "fontSystem": "Sistema Predeterminado",
     "panelFontScale": "Tamaño de texto",
-    "followGlobalFontScale": "Usar global"
+    "followGlobalFontScale": "Usar global",
+    "selfHostKey": {
+      "heading": "Clave de escritorio",
+      "description": "Desbloquea Pro en este dashboard con tu propia clave de escritorio. Crea una en worldmonitor.app en Configuración → API Keys → Crear clave de escritorio.",
+      "relay": "La clave va al servidor de esta instalación, que reenvía tus solicitudes Pro a World Monitor. El uso cuenta hacia tu asignación de clave de escritorio, igual que en la aplicación de escritorio.",
+      "trust": "Si otra persona ejecuta esta instalación, crea una clave de escritorio separada para ella. Puedes revocarla en worldmonitor.app en cualquier momento.",
+      "inputLabel": "Clave de escritorio",
+      "placeholder": "wm_…",
+      "save": "Guardar clave",
+      "saving": "Verificando…",
+      "remove": "Eliminar clave",
+      "removing": "Eliminando…",
+      "empty": "Ingresa una clave de escritorio.",
+      "saveFailed": "No se pudo guardar la clave. Intenta de nuevo.",
+      "removeFailed": "No se pudo eliminar la clave. Intenta de nuevo.",
+      "rateLimited": "Demasiados intentos. Intenta de nuevo en {{seconds}} segundos.",
+      "rateLimitedSoon": "Demasiados intentos. Intenta de nuevo en un minuto.",
+      "insecure": "Esta página no usa HTTPS, por lo que tu clave viajará sin encriptar por la red.",
+      "insecureConfirm": "Esta página no usa HTTPS, por lo que tu clave viajará sin encriptar por la red. Envíala solo en una red en la que confíes.",
+      "insecureConfirmButton": "Enviar clave",
+      "staleNote": "La última verificación no pudo alcanzar a World Monitor.",
+      "disabled": "El operador de esta instalación ha desactivado las claves de escritorio.",
+      "state": {
+        "none": "Sin clave",
+        "active": "Activa",
+        "invalid": "No válida",
+        "not_desktop_key": "No es una clave de escritorio",
+        "over_cap": "Excede el límite de claves",
+        "lapsed": "Plan no activo",
+        "unavailable": "No se pudo verificar",
+        "disabled": "Desactivada"
+      },
+      "detail": {
+        "none": "Ninguna clave guardada en este navegador.",
+        "active": "Pro está desbloqueado en este navegador.",
+        "invalid": "Esta clave no es válida o ha sido revocada.",
+        "not_desktop_key": "Esta es una clave de API. Usa una clave de escritorio en su lugar.",
+        "over_cap": "La cuenta tiene más claves de escritorio de las que su plan permite. Revoca una en worldmonitor.app.",
+        "lapsed": "El plan Pro de la cuenta no está activo.",
+        "unavailable": "No se pudo alcanzar a World Monitor para verificar esta clave. Intenta más tarde."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Abrir resumen del país",

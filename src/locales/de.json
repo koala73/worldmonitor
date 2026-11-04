@@ -4215,7 +4215,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Systemstandard",
     "panelFontScale": "Textgröße",
-    "followGlobalFontScale": "Global verwenden"
+    "followGlobalFontScale": "Global verwenden",
+    "selfHostKey": {
+      "heading": "Desktop-Schlüssel",
+      "description": "Entsperren Sie Pro auf diesem Dashboard mit Ihrem eigenen Desktop-Schlüssel. Erstellen Sie einen auf worldmonitor.app unter Einstellungen → API-Schlüssel → Desktop-Schlüssel erstellen.",
+      "relay": "Der Schlüssel wird an den Server dieser Installation gesendet, die Ihre Pro-Anfragen an World Monitor weitergeleitet. Die Nutzung wird auf das Desktop-Schlüssel-Kontingent Ihres Kontos angerechnet, genauso wie in der Desktop-App.",
+      "trust": "Wenn jemand anderes diese Installation ausführt, erstellen Sie einen separaten Desktop-Schlüssel dafür. Sie können ihn jederzeit auf worldmonitor.app widerrufen.",
+      "inputLabel": "Desktop-Schlüssel",
+      "placeholder": "wm_…",
+      "save": "Schlüssel speichern",
+      "saving": "Überprüfung läuft…",
+      "remove": "Schlüssel entfernen",
+      "removing": "Entfernung läuft…",
+      "empty": "Geben Sie einen Desktop-Schlüssel ein.",
+      "saveFailed": "Schlüssel konnte nicht gespeichert werden. Versuchen Sie es erneut.",
+      "removeFailed": "Schlüssel konnte nicht entfernt werden. Versuchen Sie es erneut.",
+      "rateLimited": "Zu viele Versuche. Versuchen Sie es in {{seconds}} Sekunden erneut.",
+      "rateLimitedSoon": "Zu viele Versuche. Versuchen Sie es in einer Minute erneut.",
+      "insecure": "Diese Seite verwendet kein HTTPS, daher wird Ihr Schlüssel unverschlüsselt übertragen.",
+      "insecureConfirm": "Diese Seite verwendet kein HTTPS, daher wird Ihr Schlüssel unverschlüsselt übertragen. Senden Sie ihn nur über ein Netzwerk, dem Sie vertrauen.",
+      "insecureConfirmButton": "Schlüssel senden",
+      "staleNote": "Die letzte Überprüfung konnte World Monitor nicht erreichen.",
+      "disabled": "Der Betreiber dieser Installation hat Desktop-Schlüssel deaktiviert.",
+      "state": {
+        "none": "Kein Schlüssel",
+        "active": "Aktiv",
+        "invalid": "Ungültig",
+        "not_desktop_key": "Kein Desktop-Schlüssel",
+        "over_cap": "Schlüssellimit überschritten",
+        "lapsed": "Plan nicht aktiv",
+        "unavailable": "Konnte nicht überprüft werden",
+        "disabled": "Deaktiviert"
+      },
+      "detail": {
+        "none": "In diesem Browser ist kein Schlüssel gespeichert.",
+        "active": "Pro ist in diesem Browser entsperrt.",
+        "invalid": "Dieser Schlüssel ist ungültig oder wurde widerrufen.",
+        "not_desktop_key": "Dies ist ein API-Schlüssel. Verwenden Sie stattdessen einen Desktop-Schlüssel.",
+        "over_cap": "Das Konto hat mehr Desktop-Schlüssel als sein Plan zulässt. Widerrufen Sie einen auf worldmonitor.app.",
+        "lapsed": "Der Pro-Plan des Kontos ist nicht aktiv.",
+        "unavailable": "Konnte World Monitor nicht erreichen, um diesen Schlüssel zu überprüfen. Versuchen Sie es später erneut."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",

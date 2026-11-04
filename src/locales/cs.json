@@ -4257,7 +4257,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Systémové výchozí",
     "panelFontScale": "Velikost textu",
-    "followGlobalFontScale": "Použít globální"
+    "followGlobalFontScale": "Použít globální",
+    "selfHostKey": {
+      "heading": "Klíč pro desktop",
+      "description": "Odemkněte Pro na tomto dashboard vlastním klíčem pro desktop. Vytvořte jej na worldmonitor.app v sekci Nastavení → API klíče → Vytvořit klíč pro desktop.",
+      "relay": "Klíč jde na server této instalace, která předává vaše Pro požadavky do World Monitor. Používání se počítá do limitu vašeho účtu pro klíč pro desktop, stejně jako v desktopové aplikaci.",
+      "trust": "Pokud tuto instalaci spouští někdo jiný, vytvořte pro ni samostatný klíč pro desktop. Kdykoliv jej můžete zrušit na worldmonitor.app.",
+      "inputLabel": "Klíč pro desktop",
+      "placeholder": "wm_…",
+      "save": "Uložit klíč",
+      "saving": "Ověřování…",
+      "remove": "Odebrat klíč",
+      "removing": "Odebírání…",
+      "empty": "Zadejte klíč pro desktop.",
+      "saveFailed": "Nepodařilo se uložit klíč. Zkuste znovu.",
+      "removeFailed": "Nepodařilo se odebrat klíč. Zkuste znovu.",
+      "rateLimited": "Příliš mnoho pokusů. Zkuste znovu za {{seconds}} sekund.",
+      "rateLimitedSoon": "Příliš mnoho pokusů. Zkuste znovu za minutu.",
+      "insecure": "Tato stránka nepoužívá HTTPS, takže váš klíč bude v síti přenášen nešifrovaně.",
+      "insecureConfirm": "Tato stránka nepoužívá HTTPS, takže váš klíč bude v síti přenášen nešifrovaně. Pošlete jej pouze v síti, které důvěřujete.",
+      "insecureConfirmButton": "Poslat klíč",
+      "staleNote": "Poslední ověření se nemohlo připojit k World Monitor.",
+      "disabled": "Operátor této instalace vypnul klíče pro desktop.",
+      "state": {
+        "none": "Žádný klíč",
+        "active": "Aktivní",
+        "invalid": "Není platný",
+        "not_desktop_key": "Není klíč pro desktop",
+        "over_cap": "Překročen limit klíčů",
+        "lapsed": "Plán není aktivní",
+        "unavailable": "Nepodařilo se ověřit",
+        "disabled": "Vypnuto"
+      },
+      "detail": {
+        "none": "V tomto prohlížeči není uložen žádný klíč.",
+        "active": "Pro je v tomto prohlížeči odemčeno.",
+        "invalid": "Tento klíč není platný nebo byl zrušen.",
+        "not_desktop_key": "Toto je API klíč. Místo toho použijte klíč pro desktop.",
+        "over_cap": "Účet má více klíčů pro desktop, než jeho plán umožňuje. Zrušte jeden na worldmonitor.app.",
+        "lapsed": "Plán Pro pro tento účet není aktivní.",
+        "unavailable": "Nepodařilo se připojit k World Monitor pro ověření tohoto klíče. Zkuste později."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Otevřít přehled země",

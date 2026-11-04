@@ -4236,7 +4236,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Predefinito di Sistema",
     "panelFontScale": "Dimensione testo",
-    "followGlobalFontScale": "Usa globale"
+    "followGlobalFontScale": "Usa globale",
+    "selfHostKey": {
+      "heading": "Chiave Desktop",
+      "description": "Sblocca Pro su questo dashboard con la tua chiave desktop personale. Creane una su worldmonitor.app in Impostazioni → Chiavi API → Crea chiave desktop.",
+      "relay": "La chiave viene inviata al server di questa installazione, che inoltrerà le tue richieste Pro a World Monitor. L'utilizzo conta verso il tuo limite di chiavi desktop, come nell'app desktop.",
+      "trust": "Se qualcun altro esegue questa installazione, crea una chiave desktop separata per essa. Puoi revocarla su worldmonitor.app in qualsiasi momento.",
+      "inputLabel": "Chiave Desktop",
+      "placeholder": "wm_…",
+      "save": "Salva chiave",
+      "saving": "Verifica in corso…",
+      "remove": "Rimuovi chiave",
+      "removing": "Rimozione in corso…",
+      "empty": "Inserisci una chiave desktop.",
+      "saveFailed": "Impossibile salvare la chiave. Riprova.",
+      "removeFailed": "Impossibile rimuovere la chiave. Riprova.",
+      "rateLimited": "Troppi tentativi. Riprova tra {{seconds}} secondi.",
+      "rateLimitedSoon": "Troppi tentativi. Riprova tra un minuto.",
+      "insecure": "Questa pagina non usa HTTPS, quindi la tua chiave attraverserà la rete senza crittografia.",
+      "insecureConfirm": "Questa pagina non usa HTTPS, quindi la tua chiave attraverserà la rete senza crittografia. Inviarla solo su una rete di cui ti fidi.",
+      "insecureConfirmButton": "Invia chiave",
+      "staleNote": "L'ultimo controllo non ha potuto raggiungere World Monitor.",
+      "disabled": "L'operatore di questa installazione ha disabilitato le chiavi desktop.",
+      "state": {
+        "none": "Nessuna chiave",
+        "active": "Attiva",
+        "invalid": "Non valida",
+        "not_desktop_key": "Non è una chiave desktop",
+        "over_cap": "Limite di chiavi superato",
+        "lapsed": "Piano non attivo",
+        "unavailable": "Impossibile verificare",
+        "disabled": "Disabilitata"
+      },
+      "detail": {
+        "none": "Nessuna chiave salvata in questo browser.",
+        "active": "Pro è sbloccato in questo browser.",
+        "invalid": "Questa chiave non è valida o è stata revocata.",
+        "not_desktop_key": "Questa è una chiave API. Usa invece una chiave desktop.",
+        "over_cap": "L'account ha più chiavi desktop di quante ne consenta il piano. Revocane una su worldmonitor.app.",
+        "lapsed": "Il piano Pro dell'account non è attivo.",
+        "unavailable": "Impossibile raggiungere World Monitor per verificare questa chiave. Riprova più tardi."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Apri scheda paese",

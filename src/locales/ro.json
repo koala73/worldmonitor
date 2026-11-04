@@ -4236,7 +4236,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Font implicit",
     "panelFontScale": "Dimensiune text",
-    "followGlobalFontScale": "Utilizează setarea globală"
+    "followGlobalFontScale": "Utilizează setarea globală",
+    "selfHostKey": {
+      "heading": "Cheie desktop",
+      "description": "Deblochează Pro pe acest dashboard cu cheia desktop proprie. Creează una pe worldmonitor.app în Settings → API Keys → Create desktop key.",
+      "relay": "Cheia merge la serverul acestei instalări, care transmite cererile Pro către World Monitor. Utilizarea se numără în limita de cheie desktop a contului tău, la fel ca aplicația desktop.",
+      "trust": "Dacă altcineva rulează această instalare, creează o cheie desktop separată pentru ea. O poți revocare pe worldmonitor.app oricând.",
+      "inputLabel": "Cheie desktop",
+      "placeholder": "wm_…",
+      "save": "Salvează cheia",
+      "saving": "Se verifică…",
+      "remove": "Șterge cheia",
+      "removing": "Se șterge…",
+      "empty": "Introdu o cheie desktop.",
+      "saveFailed": "Nu s-a putut salva cheia. Încearcă din nou.",
+      "removeFailed": "Nu s-a putut șterge cheia. Încearcă din nou.",
+      "rateLimited": "Prea multe încercări. Încearcă din nou în {{seconds}} secunde.",
+      "rateLimitedSoon": "Prea multe încercări. Încearcă din nou într-un minut.",
+      "insecure": "Această pagină nu folosește HTTPS, deci cheia va fi transmisă neencriptată prin rețea.",
+      "insecureConfirm": "Această pagină nu folosește HTTPS, deci cheia va fi transmisă neencriptată prin rețea. Trimite-o doar într-o rețea în care ai încredere.",
+      "insecureConfirmButton": "Trimite cheia",
+      "staleNote": "Ultima verificare nu a putut atinge World Monitor.",
+      "disabled": "Operatorul acestei instalări a dezactivat cheile desktop.",
+      "state": {
+        "none": "Fără cheie",
+        "active": "Activ",
+        "invalid": "Nu este valid",
+        "not_desktop_key": "Nu este o cheie desktop",
+        "over_cap": "Depășit limita de chei",
+        "lapsed": "Plan inactiv",
+        "unavailable": "Nu s-a putut verifica",
+        "disabled": "Dezactivat"
+      },
+      "detail": {
+        "none": "Nicio cheie salvată în acest browser.",
+        "active": "Pro este deblocat în acest browser.",
+        "invalid": "Această cheie nu este validă sau a fost revocată.",
+        "not_desktop_key": "Aceasta este o cheie API. Folosește o cheie desktop în schimb.",
+        "over_cap": "Contul are mai multe chei desktop decât permite planul. Revocă una pe worldmonitor.app.",
+        "lapsed": "Planul Pro al contului nu este activ.",
+        "unavailable": "Nu s-a putut atinge World Monitor pentru a verifica această cheie. Încearcă mai târziu."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",

@@ -27374,6 +27374,70 @@ body.map-width-resizing {
   display: none;
 }
 
+/* Settings -> Desktop key on a self-hosted install. Reuses the API key form
+   and badge; only the status row and its tones are specific. */
+.selfhost-key-section .wm-pref-group-content {
+  padding-top: 12px;
+}
+
+.selfhost-key-section .api-keys-desc {
+  margin-bottom: 8px;
+}
+
+.selfhost-key-status {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 4px 0 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.selfhost-key-badge {
+  align-self: baseline;
+  flex: none;
+}
+
+.selfhost-key-detail {
+  flex: 1 1 14em;
+  min-width: 0;
+}
+
+.selfhost-key-badge[data-tone="ok"] {
+  color: var(--semantic-normal);
+  border-color: color-mix(in srgb, var(--semantic-normal) 45%, transparent);
+}
+
+.selfhost-key-badge[data-tone="warn"] {
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+  border-color: color-mix(in srgb, var(--semantic-elevated) 45%, transparent);
+}
+
+.selfhost-key-badge[data-tone="bad"] {
+  color: var(--semantic-critical-text, var(--semantic-critical));
+  border-color: color-mix(in srgb, var(--semantic-critical) 45%, transparent);
+}
+
+.selfhost-key-warn {
+  margin: 0 0 8px;
+}
+
+.selfhost-key-form {
+  flex-wrap: wrap;
+}
+
+.selfhost-key-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+}
+
+.selfhost-key-message[hidden] {
+  display: none;
+}
+
 .desktop-keys-count.at-limit {
   color: var(--text);
 }

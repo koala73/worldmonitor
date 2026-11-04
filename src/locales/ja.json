@@ -4194,7 +4194,48 @@
     "fontMono": "モノスペース",
     "fontSystem": "システムデフォルト",
     "panelFontScale": "テキストサイズ",
-    "followGlobalFontScale": "グローバル設定を使用"
+    "followGlobalFontScale": "グローバル設定を使用",
+    "selfHostKey": {
+      "heading": "デスクトップキー",
+      "description": "worldmonitor.app の設定 → API キー → デスクトップキーを作成から、自分のデスクトップキーを作成して、このダッシュボードで Pro をアンロックします。",
+      "relay": "このインストール環境のサーバーにキーが送信され、そこから Pro リクエストが World Monitor に転送されます。使用量はデスクトップアプリと同じく、アカウントのデスクトップキー利用枠にカウントされます。",
+      "trust": "別の人がこのインストール環境を運用する場合は、別のデスクトップキーを作成してください。worldmonitor.app でいつでも無効化できます。",
+      "inputLabel": "デスクトップキー",
+      "placeholder": "wm_…",
+      "save": "キーを保存",
+      "saving": "確認中…",
+      "remove": "キーを削除",
+      "removing": "削除中…",
+      "empty": "デスクトップキーを入力してください。",
+      "saveFailed": "キーを保存できませんでした。もう一度試してください。",
+      "removeFailed": "キーを削除できませんでした。もう一度試してください。",
+      "rateLimited": "試行回数が多すぎます。{{seconds}} 秒後にもう一度試してください。",
+      "rateLimitedSoon": "試行回数が多すぎます。1 分後にもう一度試してください。",
+      "insecure": "このページは HTTPS を使用していないため、キーが暗号化されずにネットワークを通過します。",
+      "insecureConfirm": "このページは HTTPS を使用していないため、キーが暗号化されずにネットワークを通過します。信頼できるネットワークでのみ送信してください。",
+      "insecureConfirmButton": "キーを送信",
+      "staleNote": "最後の確認時に World Monitor に接続できませんでした。",
+      "disabled": "このインストール環境の運用者がデスクトップキーを無効にしています。",
+      "state": {
+        "none": "キーなし",
+        "active": "有効",
+        "invalid": "無効",
+        "not_desktop_key": "デスクトップキーではありません",
+        "over_cap": "キー数が上限を超えています",
+        "lapsed": "プランが無効です",
+        "unavailable": "確認できませんでした",
+        "disabled": "無効にされています"
+      },
+      "detail": {
+        "none": "このブラウザに保存されたキーはありません。",
+        "active": "このブラウザで Pro がアンロックされています。",
+        "invalid": "このキーは無効であるか、無効化されています。",
+        "not_desktop_key": "これは API キーです。代わりにデスクトップキーを使用してください。",
+        "over_cap": "アカウントのデスクトップキー数がプランの上限を超えています。worldmonitor.app で 1 つ無効化してください。",
+        "lapsed": "アカウントの Pro プランが無効です。",
+        "unavailable": "World Monitor に接続してこのキーを確認できませんでした。後でもう一度試してください。"
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",

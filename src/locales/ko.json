@@ -4194,7 +4194,48 @@
     "fontMono": "모노스페이스",
     "fontSystem": "시스템 기본값",
     "panelFontScale": "텍스트 크기",
-    "followGlobalFontScale": "전역 설정 사용"
+    "followGlobalFontScale": "전역 설정 사용",
+    "selfHostKey": {
+      "heading": "데스크톱 키",
+      "description": "worldmonitor.app의 설정 → API 키 → 데스크톱 키 생성에서 데스크톱 키를 만든 후, 이 대시보드에서 Pro를 잠금 해제하세요.",
+      "relay": "키는 이 설치의 서버로 전송되며, 서버가 Pro 요청을 World Monitor로 전달합니다. 사용량은 데스크톱 앱과 동일하게 계정의 데스크톱 키 할당량에 포함됩니다.",
+      "trust": "다른 사람이 이 설치를 실행하는 경우, 별도의 데스크톱 키를 만드세요. worldmonitor.app에서 언제든지 취소할 수 있습니다.",
+      "inputLabel": "데스크톱 키",
+      "placeholder": "wm_…",
+      "save": "키 저장",
+      "saving": "확인 중…",
+      "remove": "키 제거",
+      "removing": "제거 중…",
+      "empty": "데스크톱 키를 입력하세요.",
+      "saveFailed": "키를 저장할 수 없습니다. 다시 시도하세요.",
+      "removeFailed": "키를 제거할 수 없습니다. 다시 시도하세요.",
+      "rateLimited": "시도 횟수가 너무 많습니다. {{seconds}}초 후에 다시 시도하세요.",
+      "rateLimitedSoon": "시도 횟수가 너무 많습니다. 1분 후에 다시 시도하세요.",
+      "insecure": "이 페이지는 HTTPS를 사용하지 않으므로 키가 암호화되지 않은 상태로 네트워크를 통해 전송됩니다.",
+      "insecureConfirm": "이 페이지는 HTTPS를 사용하지 않으므로 키가 암호화되지 않은 상태로 네트워크를 통해 전송됩니다. 신뢰하는 네트워크에서만 전송하세요.",
+      "insecureConfirmButton": "키 전송",
+      "staleNote": "마지막 확인에서 World Monitor에 도달할 수 없었습니다.",
+      "disabled": "이 설치의 운영자가 데스크톱 키를 비활성화했습니다.",
+      "state": {
+        "none": "키 없음",
+        "active": "활성",
+        "invalid": "유효하지 않음",
+        "not_desktop_key": "데스크톱 키가 아님",
+        "over_cap": "키 한도 초과",
+        "lapsed": "플랜 비활성",
+        "unavailable": "확인할 수 없음",
+        "disabled": "비활성화됨"
+      },
+      "detail": {
+        "none": "이 브라우저에 저장된 키가 없습니다.",
+        "active": "이 브라우저에서 Pro가 잠금 해제되었습니다.",
+        "invalid": "이 키가 유효하지 않거나 취소되었습니다.",
+        "not_desktop_key": "이것은 API 키입니다. 대신 데스크톱 키를 사용하세요.",
+        "over_cap": "계정에 플랜에서 허용하는 것보다 더 많은 데스크톱 키가 있습니다. worldmonitor.app에서 하나를 취소하세요.",
+        "lapsed": "계정의 Pro 플랜이 활성 상태가 아닙니다.",
+        "unavailable": "World Monitor에 도달하여 이 키를 확인할 수 없습니다. 나중에 다시 시도하세요."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",

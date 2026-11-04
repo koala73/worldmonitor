@@ -4289,7 +4289,48 @@
     "fontMono": "Nafasi moja",
     "fontSystem": "Chaguomsingi ya Mfumo",
     "panelFontScale": "Ukubwa wa maandishi",
-    "followGlobalFontScale": "Tumia kiwango cha ulimwengu"
+    "followGlobalFontScale": "Tumia kiwango cha ulimwengu",
+    "selfHostKey": {
+      "heading": "Funguo ya Kompyuta",
+      "description": "Fungua Pro kwenye dashboard hii kwa kutumia funguo yako ya kompyuta. Tengeneza funguo moja kwenye worldmonitor.app chini ya Settings → API Keys → Create desktop key.",
+      "relay": "Funguo inakwenda kwa seva ya uongozaji huu, ambayo inakamatia maombi yako ya Pro kwa World Monitor. Matumizi yanakokotwa kwa ujinga wa funguo ya kompyuta ya akaunti yako, sawa na programu ya kompyuta.",
+      "trust": "Ikiwa mtu mwingine anatumia uongozaji huu, tengeneza funguo tofauti ya kompyuta kwake. Unaweza kuikataa kwenye worldmonitor.app wakati wowote.",
+      "inputLabel": "Funguo ya Kompyuta",
+      "placeholder": "wm_…",
+      "save": "Hifadhi funguo",
+      "saving": "Inakagundua…",
+      "remove": "Ondoa funguo",
+      "removing": "Inaondoa…",
+      "empty": "Ingiza funguo ya kompyuta.",
+      "saveFailed": "Haiwezi kuhifadhi funguo. Jaribu tena.",
+      "removeFailed": "Haiwezi kuondoa funguo. Jaribu tena.",
+      "rateLimited": "Majaribio mengi sana. Jaribu tena kwa sekunde {{seconds}}.",
+      "rateLimitedSoon": "Majaribio mengi sana. Jaribu tena dakika moja.",
+      "insecure": "Ukurasa huu hautumii HTTPS, kwa hivyo funguo yako itakutembea mtandaoni bila simbuzishi.",
+      "insecureConfirm": "Ukurasa huu hautumii HTTPS, kwa hivyo funguo yako itakutembea mtandaoni bila simbuzishi. Itume tu kwenye mtandao unayoamini.",
+      "insecureConfirmButton": "Tuma funguo",
+      "staleNote": "Ukagundua uliotangulia hauwezi kufikia World Monitor.",
+      "disabled": "Mwendeshaji wa uongozaji huu amekamatia funguo za kompyuta.",
+      "state": {
+        "none": "Hakuna funguo",
+        "active": "Inafanya kazi",
+        "invalid": "Sio halali",
+        "not_desktop_key": "Sio funguo ya kompyuta",
+        "over_cap": "Zaidi ya kikomo cha funguo",
+        "lapsed": "Mpango si kamili",
+        "unavailable": "Haiwezi kuthibitisha",
+        "disabled": "Kamatia"
+      },
+      "detail": {
+        "none": "Hakuna funguo iliyohifadhiwa katika kivinjari hiki.",
+        "active": "Pro imefungulwa katika kivinjari hiki.",
+        "invalid": "Funguo hii sio halali au imefutwa.",
+        "not_desktop_key": "Hii ni funguo ya API. Tumia funguo ya kompyuta badala yake.",
+        "over_cap": "Akaunti ina funguo za kompyuta zaidi kuliko mpango wake unavyoruhusu. Kataa moja kwenye worldmonitor.app.",
+        "lapsed": "Mpango wa Pro wa akaunti sio kamili.",
+        "unavailable": "Haiwezi kufikia World Monitor ili kugundua funguo hii. Jaribu tena baadaye."
+      }
+    }
   },
   "premium": {
     "pro": "PRO",

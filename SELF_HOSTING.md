@@ -82,13 +82,13 @@ These must be set before `docker compose up -d`, or one of the containers will e
 
 Docker mode (`LOCAL_API_MODE=docker`) has no Clerk or Convex entitlement backend. The dashboard still mints an anonymous `wms_` session signed with `WM_SESSION_SECRET`.
 
-Docker self-host does not call the World Monitor cloud, so desktop keys do not apply there. Self-built desktop builds can use a [desktop key](https://www.worldmonitor.app/docs/api-keys#desktop-keys) from a Pro or Pro Business plan.
+A Pro or Pro Business subscriber can unlock Pro panels in their own browser with a desktop key. See [Pro panels with a desktop key](#pro-panels-with-a-desktop-key).
 
 Native administration routes under `/api/local-` return `403` in Docker mode, including configuration updates, secret validation, and local status/debug controls. The internal sidecar token does not grant administrator access through nginx. Change operator settings through Compose environment variables or Docker secrets, then recreate the app container. Desktop administration remains available through the native app.
 
 - Only `GET /api/intelligence/v1/get-country-intel-brief` accepts that session as the authentication boundary. The handler still returns the shared (non-premium) brief.
 - Direct-LLM spend on that route is capped at 50 calls per UTC day per client IP. nginx stamps `X-Real-IP` from `$remote_addr`, so a caller cannot rotate the header to reset the cap. Rotating the session token also does not reset spend.
-- Every other premium route still requires an API key or a Clerk entitlement. Cloud deployments do not set `LOCAL_API_MODE=docker` and keep key plus entitlement enforcement on this route too.
+- Every other premium route still requires an API key, a Clerk entitlement, or a relayed desktop key. Cloud deployments do not set `LOCAL_API_MODE=docker` and keep key plus entitlement enforcement on this route too.
 
 If another reverse proxy sits in front of the World Monitor container, set
 `WM_TRUSTED_PROXY_CIDRS` to that proxy's IP address or network. Separate multiple
@@ -100,6 +100,28 @@ never trust a network that can contain untrusted clients, because those clients
 could then supply a false forwarded address and evade the per-IP quota.
 
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
+
+## Pro panels with a desktop key
+
+A self-hosted install has no World Monitor accounts, so signing in with a worldmonitor.app account does not unlock anything. A subscriber unlocks Pro panels with a [desktop key](https://www.worldmonitor.app/docs/api-keys#desktop-keys) instead: a `wm_` key created at [worldmonitor.app](https://www.worldmonitor.app) under **Settings → API Keys** with **Create desktop key**. Pro includes 2 desktop keys and Pro Business includes 3.
+
+Sign-in stays off on the stock image. It needs the frontend built with `VITE_CLERK_PUBLISHABLE_KEY`; the `Dockerfile` takes no Vite build argument and `.dockerignore` excludes `.env*`, so the browser console logs `[clerk] VITE_CLERK_PUBLISHABLE_KEY not set, auth disabled`, and adding the key to `.env` does not change that. A custom build with the key would also need a Convex deployment and its billing webhooks before entitlements work; this guide covers neither. Premium **API** routes and the MCP server need no desktop key: they answer operator keys from `WORLDMONITOR_VALID_KEYS` (see [Using the MCP server](#-using-the-mcp-server)).
+
+- Each browser user enters their own key in the dashboard's Settings. The API sidecar checks it with `https://api.worldmonitor.app/api/desktop-key/status` and stores it in an HttpOnly `wm-desktop-key` cookie scoped to `/api/` for 30 days. Status checks do not extend that; after 30 days the user enters the key again.
+- Pro panels unlock in that browser only after World Monitor confirms the key. Only desktop keys work; an API Starter or API Business key is reported as not a desktop key.
+- The sidecar forwards that browser's Pro requests (the paths in `shared/selfhost-relay-paths.js`) to World Monitor with the user's key. Usage counts against the key owner's desktop allocation: 7,500 requests per UTC day and 120 per minute, shared with their desktop app. All other requests are served by your install as before.
+- A key World Monitor reports as revoked, lapsed or over its limit stops being forwarded; those requests are served by your install. The key stays saved in the browser until the user removes it or saves another, so a subscription renewed within those 30 days unlocks again without re-entry.
+- Only this install's own pages can use the key: requests from another site, another subdomain of your domain, or another port on the same host are never forwarded. Anything served from the dashboard's own origin (same scheme, host and port) is trusted and can use the key, so do not serve other apps under a path on that origin. Over plain HTTP the sidecar checks this with the request's `Referer` against the `X-Forwarded-Host` the bundled nginx sets. If you put your own proxy in front of the sidecar instead, pass the browser's `Host` as `X-Forwarded-Host`, or forwarding stops on HTTP. HTTPS needs nothing extra.
+- Requests from a browser with no key are never forwarded, and that browser stays on the free dashboard. `/api/v2/`, MCP and OAuth requests are never forwarded, and operator keys (`WORLDMONITOR_API_KEY`, `WORLDMONITOR_VALID_KEYS`) are never sent with forwarded requests.
+- On a shared install each user enters their own key. There is no operator key that unlocks Pro for every visitor. An API plan is for calling the World Monitor API directly; it does not unlock a shared dashboard.
+- Your server sees each user's key when it forwards requests. Users should create a separate desktop key for any install they do not run themselves, and revoke it at worldmonitor.app when they stop using or trusting that install.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WORLDMONITOR_SELFHOST_RELAY` | on | Set to `off` to disable forwarding and the desktop key setting. The setting then says the operator has disabled it. |
+| `WORLDMONITOR_PUBLIC_HTTPS` | unset | Set to `1` when users reach the install over HTTPS through an outer TLS proxy, so the cookie is marked `Secure`. Without it, the cookie is `Secure` only when nginx sees `X-Forwarded-Proto: https`. |
+
+Both variables are passed through `docker-compose.yml`. Native installs set them in the sidecar's environment.
 
 ## Native installs (without Docker)
 
