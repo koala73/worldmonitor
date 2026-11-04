@@ -2319,8 +2319,9 @@ body.panel-resize-active iframe {
 /* The title group fills the space the controls leave, and the title gets the
    first line of it. The fixed-size freshness and new-items badges wrap under
    the title instead of squeezing it: in a 375px column "Intel Feed" was 3px
-   wide, and 5px on a phone. A title wider than the whole group still ends in
-   an ellipsis. The controls keep one row. */
+   wide, and 5px on a phone. A title too long for one line takes a second line,
+   and only a title longer than two lines ends in an ellipsis. The controls
+   keep one row. */
 .panel > .panel-header > .panel-header-left {
   flex: 1 1 auto;
   flex-wrap: wrap;
@@ -2328,7 +2329,12 @@ body.panel-resize-active iframe {
 }
 
 .panel > .panel-header .panel-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   max-width: 100%;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 /* Badges and icon controls have fixed boxes. Keep their glyphs at the tested
@@ -2574,6 +2580,29 @@ body.panel-resize-active iframe {
   }
 }
 
+/* On a touch screen the header controls are small for a finger: close is
+   20x20, sort 26x18 and the methodology button 14x14. An invisible extension
+   makes each take taps across at least a 24x24 box (WCAG 2.5.8) and 5px above
+   and below it, without growing what it draws or taking room from the title.
+   A control 20px or wider gains only 2px on each side, so the 4px gap between
+   two controls in a narrow header never belongs to both. The 14px methodology
+   button gains 5px on each side, inside the 8px gaps between it and the title
+   and badges, which take no taps. */
+@media (pointer: coarse) {
+  .panel-header :is(.icon-btn, .panel-sort-btn, .panel-summarize-btn, .panel-info-btn, .live-news-settings-btn) {
+    position: relative;
+  }
+
+  .panel-header :is(.icon-btn, .panel-sort-btn, .panel-summarize-btn, .panel-info-btn, .live-news-settings-btn)::after {
+    content: '';
+    position: absolute;
+    top: min(-5px, calc(50% - 12px));
+    right: min(-2px, calc(50% - 12px));
+    bottom: min(-5px, calc(50% - 12px));
+    left: min(-2px, calc(50% - 12px));
+  }
+}
+
 /* ---- Add Panel (+) block ---- */
 .add-panel-block {
   display: flex;
@@ -2652,6 +2681,7 @@ body.panel-resize-active iframe {
    NEW badge still shows how many items are new). */
 @container (max-width: 420px) {
   .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live {
+    flex-shrink: 0;
     width: 8px;
     height: 8px;
     min-width: 0;
@@ -2682,15 +2712,47 @@ body.panel-resize-active iframe {
 
 /* A dashboard column is 248px on a 1366px laptop and 214px at 1280px. The
    header's fixed-size badges then spill under the controls and the title
-   collapses to nothing. Below 300px the title wins: status badges shrink to
-   dots and the counters leave the layout. The badge rules sit after the base
-   badge rules so they win at equal specificity. The counters' base rules come
-   later in the file, so their rule is scoped to the header. They keep their
-   display, which the JS toggles inline, and are hidden the .wm-visually-hidden
-   way so screen readers still read the values. */
+   collapses to nothing. Below 300px the title wins: status badges in every
+   data state shrink to dots, the counters leave the layout, the watchlist
+   button keeps only its icon, and the controls sit 4px apart. The dots then
+   sit beside a two-line title instead of on a row of their own, as long as
+   the title keeps 9em and its longest word; otherwise they move under it.
+   9em holds most titles in two lines. With less, "Strategic Risk Overview"
+   needed a third line in a 192px column and lost "Overview". The title and
+   freshness rules sit after their base rules so they win at equal
+   specificity. The other base rules come later in the file, so those rules
+   are scoped to the header. The counters keep their display, which the JS
+   toggles inline, and are hidden the .wm-visually-hidden way so screen
+   readers still read the values, as is the watchlist label. */
 @container (max-width: 300px) {
+  .panel > .panel-header {
+    gap: 4px;
+  }
+
+  .panel > .panel-header .panel-title {
+    flex: 1 1 min-content;
+    min-width: min(100%, 9em);
+    max-width: max-content;
+  }
+
+  .panel-header .panel-sort-btn,
+  .panel-header .panel-summarize-btn {
+    margin-right: 0;
+    padding: 2px 4px;
+  }
+
+  .panel-header > .panel-watchlist-btn {
+    width: 24px;
+    padding: 4px 0;
+  }
+
+  .panel-header .panel-watchlist-icon {
+    display: inline;
+  }
+
   .panel-freshness-badge,
-  .panel-data-badge.live {
+  .panel > .panel-header > .panel-data-badge {
+    flex-shrink: 0;
     width: 8px;
     height: 8px;
     min-width: 0;
@@ -2702,13 +2764,29 @@ body.panel-resize-active iframe {
     font-size: 0;
   }
 
-  .panel-data-badge.live::before {
+  .panel > .panel-header > .panel-data-badge::before {
     display: none;
+  }
+
+  /* A dot must not tell its states apart by colour alone (WCAG 1.4.1), so
+     each state has its own shape, and the freshness dot uses the same ones:
+     live or fresh data is a filled circle, cached or stale data a ring, and
+     unavailable, missing or failed data a hollow square. */
+  .panel-freshness-badge:not(.panel-freshness-fresh),
+  .panel > .panel-header > .panel-data-badge:is(.cached, .unavailable) {
+    border: 2px solid currentColor;
+    background: transparent;
+  }
+
+  .panel-freshness-badge:is(.panel-freshness-no_data, .panel-freshness-disabled, .panel-freshness-error),
+  .panel > .panel-header > .panel-data-badge.unavailable {
+    border-radius: 0;
   }
 
   .panel-header .panel-new-badge,
   .panel-header .deviation-indicator,
-  .panel-header .panel-count {
+  .panel-header .panel-count,
+  .panel-header .panel-watchlist-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -3118,6 +3196,16 @@ body.panel-resize-active iframe {
 .live-news-settings-btn:hover {
   border-color: var(--text-dim);
   color: var(--text);
+}
+
+.panel-header > .panel-watchlist-btn {
+  align-self: center;
+}
+
+.panel-watchlist-icon {
+  display: none;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  line-height: 1;
 }
 
 
@@ -29038,19 +29126,22 @@ body.map-width-resizing {
     border: 1px solid CanvasText;
   }
 
-  /* The narrow-header dots are a filled background with border: 0 at higher
+  /* The filled narrow-header dots are a background with border: 0 at higher
      specificity, so forced colors would erase them. Same selectors, later in
-     the file, restore the border. */
+     the file, keep them filled in the system text color. The ring and square
+     dots are borders, which forced colors keep, so their shapes survive. */
   @container (max-width: 420px) {
     .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live {
-      border: 1px solid CanvasText;
+      forced-color-adjust: none;
+      background: CanvasText;
     }
   }
 
   @container (max-width: 300px) {
-    .panel-freshness-badge,
-    .panel-data-badge.live {
-      border: 1px solid CanvasText;
+    .panel-freshness-badge.panel-freshness-fresh,
+    .panel > .panel-header > .panel-data-badge.live {
+      forced-color-adjust: none;
+      background: CanvasText;
     }
   }
 }
