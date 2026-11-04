@@ -33,11 +33,15 @@ describe('blog font subsets', () => {
     const missing = [];
     for (const [family, google] of Object.entries(snapshot.families)) {
       const googleDraws = new Set(Object.values(google.subsets).flatMap((s) => [...parseRanges(s.renders)]));
+      const googleRanges = new Set(Object.values(google.subsets).flatMap((s) => [...parseRanges(s.unicode_range)]));
       const files = manifest.families[family].files;
       const ours = new Set([...parseRanges(files.core.unicode_range), ...parseRanges(files.ext.unicode_range)]);
       for (const ch of current.chars) {
         const cp = ch.codePointAt(0);
-        if (!seen.has(cp) && googleDraws.has(cp) && !ours.has(cp)) missing.push(`${family}: ${ch} U+${cp.toString(16).toUpperCase()}`);
+        // A character in Google's ranges that Google has no glyph for is still drawn from the
+        // family, by decomposition (Ǖ = Ü + combining macron), so it needs a rerun too.
+        const needsRerun = googleDraws.has(cp) ? !ours.has(cp) : googleRanges.has(cp);
+        if (!seen.has(cp) && needsRerun) missing.push(`${family}: ${ch} U+${cp.toString(16).toUpperCase()}`);
       }
     }
     assert.deepEqual(missing, [], `New characters would fall back to a system font. ${RERUN}`);
