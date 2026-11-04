@@ -164,10 +164,10 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
     return section('Balance Vector', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Unavailable</div>');
   }
   const pressures = [
-    axisRow('Coercive', balance.coercivePressure, '--danger'),
-    axisRow('Fragility', balance.domesticFragility, '--danger'),
-    axisRow('Capital', balance.capitalStress, '--danger'),
-    axisRow('Energy Vuln', balance.energyVulnerability, '--danger'),
+    axisRow('Coercive', balance.coercivePressure, '--semantic-critical'),
+    axisRow('Fragility', balance.domesticFragility, '--semantic-critical'),
+    axisRow('Capital', balance.capitalStress, '--semantic-critical'),
+    axisRow('Energy Vuln', balance.energyVulnerability, '--semantic-critical'),
   ].join('');
   const buffers = [
     axisRow('Alliance', balance.allianceCohesion, '--accent'),
@@ -179,7 +179,7 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
   const netPct = Math.max(-1, Math.min(1, net));
   const netFill = Math.abs(netPct) * 50;
   const netSide = netPct >= 0 ? 'right' : 'left';
-  const netColor = netPct >= 0 ? 'var(--accent)' : 'var(--danger)';
+  const netColor = netPct >= 0 ? 'var(--accent)' : 'var(--semantic-critical)';
   const netBar = `
     <div style="display:grid;grid-template-columns:110px 40px 1fr;gap:8px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,0.1)">
       <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-weight:600">Net Balance</div>
@@ -218,7 +218,7 @@ export function buildActorsBlock(actors: ActorState[]): string {
   const sorted = [...actors].sort((a, b) => (b.leverageScore ?? 0) - (a.leverageScore ?? 0)).slice(0, 5);
   const rows = sorted.map((a) => {
     const deltaText = a.delta > 0 ? `+${a.delta.toFixed(2)}` : a.delta.toFixed(2);
-    const deltaColor = a.delta > 0 ? 'var(--danger)' : a.delta < 0 ? 'var(--accent)' : 'var(--text-dim)';
+    const deltaColor = a.delta > 0 ? 'var(--semantic-critical)' : a.delta < 0 ? 'var(--accent)' : 'var(--text-dim)';
     const domains = (a.leverageDomains ?? []).slice(0, 3).join(', ');
     return `
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
@@ -247,7 +247,7 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
   const sorted = [...scenarioSets].sort((a, b) => (order[a.horizon] ?? 99) - (order[b.horizon] ?? 99));
   const laneColor: Record<string, string> = {
     base: 'var(--text-dim)',
-    escalation: 'var(--danger)',
+    escalation: 'var(--semantic-critical)',
     containment: 'var(--accent)',
     fragmentation: 'var(--warning, #e0a020)',
   };
@@ -285,8 +285,8 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
 
 function severityColor(severity: string): string {
   switch ((severity ?? '').toLowerCase()) {
-    case 'critical': return 'var(--danger)';
-    case 'high': return 'var(--danger)';
+    case 'critical': return 'var(--semantic-critical)';
+    case 'high': return 'var(--semantic-critical)';
     case 'medium': return 'var(--warning, #e0a020)';
     case 'low': return 'var(--text-dim)';
     default: return 'var(--text-dim)';
@@ -325,7 +325,7 @@ export function buildTransmissionBlock(paths: TransmissionPath[]): string {
 export function buildWatchlistBlock(activeTriggers: Trigger[], watchItems: NarrativeSection[]): string {
   const triggerRows = (activeTriggers ?? []).map((t) => `
     <div style="padding:3px 0;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
-      <span style="color:var(--danger);font-weight:600">●</span>
+      <span style="color:var(--semantic-critical);font-weight:600">●</span>
       ${escapeHtml(t.id)}${t.description ? ` — <span style="color:var(--text-dim)">${escapeHtml(t.description)}</span>` : ''}
     </div>
   `).join('');

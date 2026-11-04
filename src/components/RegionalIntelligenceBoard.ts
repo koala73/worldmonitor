@@ -306,7 +306,7 @@ export class RegionalIntelligenceBoard extends Panel {
   }
 
   private renderError(message: string): void {
-    setTrustedHtml(this.body, trustedHtml(`<div class="rib-status rib-status-error" style="padding:16px;color:var(--danger);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">We couldn't load this region right now: ${escapeHtml(message)}</div>`, "legacy direct innerHTML migration"));
+    setTrustedHtml(this.body, trustedHtml(`<div class="rib-status rib-status-error" style="padding:16px;color:var(--semantic-critical);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">We couldn't load this region right now: ${escapeHtml(message)}</div>`, "legacy direct innerHTML migration"));
   }
 
   /** Render the full board HTML from a hydrated snapshot + optional Phase 3 data.
