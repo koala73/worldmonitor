@@ -10,12 +10,12 @@ import { hasPanelSettingEntry, newsPanelKeyForCategory, newsPanelKeyLookupsFor }
 import {
   createDeferredPanelShell,
   getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
-  reconcileDeferredPanelShellColSpan,
   shouldDeferInitialPanelMount,
   type DeferredPanelShellFootprint,
 } from '@/app/panel-mount-deferral';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
+  clampMapColWidthPercent,
   mapRightClassForVisualSide,
   type MapVisualSide,
 } from '@/app/split-layout';
@@ -34,6 +34,7 @@ import type { AviationCommandBar } from '@/components/AviationCommandBar';
 import { MobilePanelNav } from '@/components/MobilePanelNav';
 import { debounce, loadFromStorage, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
+import { safeStorageGet } from '@/utils/safe-storage';
 import {
   CANONICAL_FEEDS,
   STORAGE_KEYS,
@@ -129,6 +130,7 @@ import type { Panel } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
+import { observePanelGridColumns } from '@/utils/panel-grid';
 import { registerSettingsExportFlush } from '@/utils/settings-persistence';
 import { measure, mutate } from '@/utils/layout-batch';
 import { applyPanelFontScale } from '@/services/font-scale-settings';
@@ -1056,6 +1058,14 @@ export class PanelLayoutManager implements AppModule {
         return false;
       }
     })();
+    // Render the saved map width the same way: EventHandlerManager.init() runs
+    // after the first paint, and applying it there moved the map, the sidebar
+    // and every panel span. It re-clamps against the measured width later.
+    const mapColWidthStyle = (() => {
+      const stored = Number.parseFloat(safeStorageGet('map-col-width') ?? '');
+      if (!Number.isFinite(stored)) return '';
+      return ` style="--map-col-width: ${clampMapColWidthPercent(stored, window.innerWidth).toFixed(1)}%"`;
+    })();
     const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
     const referenceOrigin = this.ctx.isDesktopApp || window.location.hostname.endsWith('.worldmonitor.app')
       ? 'https://www.worldmonitor.app'
@@ -1263,7 +1273,7 @@ export class PanelLayoutManager implements AppModule {
       ).join('')}
       </div>
       <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
-      <main id="main" tabindex="-1" class="main-content${mapRightClassActive ? ' map-right' : ''}">
+      <main id="main" tabindex="-1" class="main-content${mapRightClassActive ? ' map-right' : ''}"${mapColWidthStyle}>
         <div class="map-section${mapStartsCollapsed ? ' collapsed' : ''}" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
@@ -1339,6 +1349,8 @@ export class PanelLayoutManager implements AppModule {
     // earlier than any LCP candidate in the new shell, making it useless for
     // ordering the LCP element against the shell swap (PR #4512 review).
     markLcpDebug('wm:layout:shell-replaced');
+    const panelsGrid = document.getElementById('panelsGrid');
+    if (panelsGrid) observePanelGridColumns(panelsGrid);
 
     // Skip link: explicitly move focus to <main> on activation. Native
     // fragment focus on a tabindex="-1" target is inconsistent across
@@ -2520,7 +2532,6 @@ export class PanelLayoutManager implements AppModule {
     if (placeholder && grid) {
       applyPanelFontScale(placeholder, this.ctx.panelSettings[key]?.fontScale);
       this.insertByOrder(grid, placeholder, key);
-      reconcileDeferredPanelShellColSpan(placeholder);
       this.mobilePanelNav?.applyToNewPanel(placeholder);
     }
     const existing = this.deferredPanelMounts.get(key);

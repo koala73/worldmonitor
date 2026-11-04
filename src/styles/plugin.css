@@ -24,7 +24,7 @@ body.plugin-body { overflow: auto; height: auto; min-height: 100vh; }
     #pluginRoot { display: flex; flex-direction: column; min-height: 0; }
     #pluginRoot #mapSection { height: auto !important; min-height: 0 !important; max-height: none !important; flex: none; }
     #pluginRoot #mapContainer { height: 360px; min-height: 360px; flex: none; }
-    #pluginRoot #panelsGrid { display: grid; grid-template-columns: 1fr; overflow: visible; height: auto; max-height: none; }
+    #pluginRoot #panelsGrid { --panels-grid-columns: 1; display: grid; grid-template-columns: 1fr; overflow: visible; height: auto; max-height: none; }
     #pluginRoot #panelsGrid .panel { min-height: 260px; }
   }
 }

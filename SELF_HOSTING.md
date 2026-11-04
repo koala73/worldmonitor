@@ -101,6 +101,20 @@ could then supply a false forwarded address and evade the per-IP quota.
 
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
 
+## Native installs (without Docker)
+
+Packagers who run the services directly (for example the FreeBSD `www/worldmonitor` port) lose the container network that keeps internal services private. Set these explicitly:
+
+| Variable | Service | Default | Native-install value |
+|---|---|---|---|
+| `SRH_BIND_HOST` | Redis REST proxy (`docker/redis-rest-proxy.mjs`) | `0.0.0.0` | `127.0.0.1` |
+| `RELAY_BIND_HOST` | AIS relay (`scripts/ais-relay.cjs`) | all interfaces | `127.0.0.1` |
+| `LOCAL_API_MODE` | API sidecar | — | `docker` (the self-hosted mode name; Docker is not required) |
+
+Inside Docker the defaults are correct: compose publishes the proxy only on `127.0.0.1:8079`, and Railway needs the relay on every interface.
+
+`@bufbuild/buf` ships no binary for some platforms, including FreeBSD, and its install script fails there with `Unsupported platform`. The runtime does not need buf: it is only used by the proto development targets (`make generate`, `make lint`, `make deps`, `make breaking`, `make check`), and the generated code is committed. Install with `npm ci --ignore-scripts` and then run `npm run postinstall`; anyone running those targets on such a platform needs a buf CLI built for it. `--ignore-scripts` also skips the `esbuild` and `sharp` install scripts; check that your platform's packages provide working binaries for both.
+
 ## 🤖 Using the MCP server
 
 The bundled MCP server is served at `/api/mcp` on your own stack. It authenticates
