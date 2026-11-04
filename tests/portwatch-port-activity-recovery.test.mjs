@@ -598,6 +598,25 @@ describe('PortWatch last-good and gap reporting', () => {
     assert.equal(calls, 3);
   });
 
+  // The run deadline counts from the start of the run, so preflight retries
+  // stop once the phase budget is spent instead of eating activity time.
+  it('stops retrying the preflight once the preflight phase budget is spent', async () => {
+    let calls = 0;
+    const sleepCalls = [];
+    const observation = await portwatchSeed.fetchMaxDate('SEN', {
+      dateField: 'date',
+      deadlineAt: Date.now() + 2_000,
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+      fetchFn: async () => {
+        calls += 1;
+        return Response.json({ error: { code: 400, message: 'Invalid URL' } });
+      },
+    });
+    assert.deepEqual(observation, { status: 'failed', maxDate: null });
+    assert.equal(calls, 1);
+    assert.deepEqual(sleepCalls, []);
+  });
+
   it('persists an Invalid URL refresh failure as invalid_query', () => {
     const state = portwatchSeed.buildRefreshFailureState(
       { iso2: 'SN', prevPayload: { iso2: 'SN' } },
