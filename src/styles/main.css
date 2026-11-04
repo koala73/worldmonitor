@@ -1676,7 +1676,7 @@ canvas,
 
 .panels-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
   grid-auto-flow: row dense;
   grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
   gap: var(--dashboard-grid-gap);
@@ -2054,6 +2054,17 @@ canvas,
 
 .panel.col-span-3 {
   grid-column: span 3 !important;
+}
+
+/* A span wider than the sidebar grid's real columns adds implicit columns and
+   squeezes every other panel below 270px. data-grid-cols is the real count,
+   kept current by observePanelGridColumns() in src/utils/panel-grid.ts. */
+.panels-grid[data-grid-cols="1"] > .panel {
+  grid-column: span 1 !important;
+}
+
+.panels-grid[data-grid-cols="2"] > .panel.col-span-3 {
+  grid-column: span 2 !important;
 }
 
 .panel-resize-handle {
@@ -2710,7 +2721,8 @@ body.panel-resize-active iframe {
   }
 }
 
-/* A dashboard column is 248px on a 1366px laptop and 214px at 1280px. The
+/* A dashboard column is 270-300px from about 1400px, where the sidebar first
+   holds two columns, and on any panel squeezed narrower. The
    header's fixed-size badges then spill under the controls and the title
    collapses to nothing. Below 300px the title wins: status badges in every
    data state shrink to dots, the counters leave the layout, the watchlist
@@ -24056,7 +24068,7 @@ body.map-width-resizing {
     grid-column: 3;
     grid-row: 1;
     min-height: 0;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
     grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
     align-content: start;
     overflow-y: auto;
