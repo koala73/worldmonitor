@@ -1216,7 +1216,8 @@ test('panel table text is readable in both themes', async ({ page }) => {
 
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate((t) => { document.documentElement.dataset.theme = t; }, theme);
-    const report = await page.evaluate(() => {
+    // A row selector measures only that row (used for hovered rows below).
+    const measure = (rowSelector: string | null) => page.evaluate((only) => {
       const parse = (c: string): number[] | null => {
         let m = c.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/);
         if (m) return [+m[1]!, +m[2]!, +m[3]!, m[4] === undefined ? 1 : +m[4]];
@@ -1239,7 +1240,9 @@ test('panel table text is readable in both themes', async ({ page }) => {
       };
       const ratio = (a: number[], b: number[]) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi! + 0.05) / (lo! + 0.05); };
       const tables = [...document.querySelectorAll('.panels-grid .panel table')];
-      const scopes = [...tables, ...document.querySelectorAll('.panels-grid .panel[data-contrast-scope] .cp-body')];
+      const scopes = only
+        ? [...document.querySelectorAll(only)]
+        : [...tables, ...document.querySelectorAll('.panels-grid .panel[data-contrast-scope] .cp-body')];
       const low: string[] = [];
       let checked = 0;
       for (const scope of scopes) {
@@ -1264,9 +1267,18 @@ test('panel table text is readable in both themes', async ({ page }) => {
         }
       }
       return { panels: new Set(tables.map((t) => t.closest<HTMLElement>('.panel')!.dataset.panel)).size, checked, low: [...new Set(low)] };
-    });
+    }, rowSelector);
+    await page.mouse.move(0, 0);
+    const report = await measure(null);
     expect(report.panels, `${theme}: every mounted panel renders a table`).toBe(16);
     expect(report.checked, `${theme}: text nodes measured`).toBeGreaterThan(200);
     expect.soft(report.low, `${theme}: table text below AA contrast`).toEqual([]);
+    // Severity badges sit on tinted rows, and hovering a row adds its own tint.
+    for (const row of ['tr.climate-extreme-row', 'tr.disp-row:has(.disp-crisis)']) {
+      await page.hover(`.panels-grid ${row}`);
+      const hovered = await measure(`.panels-grid ${row}:hover`);
+      expect(hovered.checked, `${theme}: hovered ${row} measured`).toBeGreaterThan(0);
+      expect.soft(hovered.low, `${theme}: hovered ${row} below AA contrast`).toEqual([]);
+    }
   }
 });
