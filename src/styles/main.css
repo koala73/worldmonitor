@@ -1022,6 +1022,21 @@ canvas,
   border-color: var(--green);
 }
 
+/* The Regional Intelligence panel reuses .region-select for its own region picker. */
+.rib-controls {
+  margin-bottom: 8px;
+}
+
+.rib-region-selector {
+  min-height: 32px;
+}
+
+@media (pointer: coarse) {
+  .rib-region-selector {
+    min-height: 44px;
+  }
+}
+
 .header-center {
   display: flex;
   gap: 8px;
