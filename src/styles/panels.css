@@ -101,14 +101,16 @@
 
 /* One header and cell style for every panel table. A panel's own table
    rules keep only widths, column alignment and state colours
-   (tests/panel-table-style.test.mjs). */
+   (tests/panel-table-style.test.mjs). The cell rules sit below class
+   specificity, so a class on a cell (.change-positive, a panel's accent
+   column) always wins. */
 .wm-table {
   width: 100%;
   border-collapse: collapse;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
-.wm-table th {
+:where(.wm-table) th {
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   color: var(--text-muted);
@@ -119,7 +121,7 @@
   text-transform: uppercase;
 }
 
-.wm-table td {
+:where(.wm-table) td {
   padding: 5px 8px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
@@ -1074,9 +1076,7 @@
 .disp-round {
   width: 84px;
   min-width: 84px;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
 }
 
 .disp-source-note {
@@ -1135,7 +1135,6 @@
 }
 
 .ucdp-date {
-  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -1174,7 +1173,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-dim);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 

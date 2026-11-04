@@ -122,10 +122,29 @@ describe('panel table style', () => {
     assert.deepEqual(redeclared, []);
   });
 
-  it('.wm-table defines the shared header and cell style', () => {
+  // Cells carry state classes such as .change-positive or .etf-ticker. The
+  // shared rules use :where() so that any class on a cell outranks them.
+  it('.wm-table defines the shared header and cell style below class specificity', () => {
     const css = read('src/styles/panels.css');
-    for (const selector of ['.wm-table th', '.wm-table td']) {
+    for (const selector of [':where(.wm-table) th', ':where(.wm-table) td']) {
       assert.ok(css.includes(`${selector} {`), `${selector} is missing from panels.css`);
     }
+    assert.doesNotMatch(css, /(^|[\s,}])\.wm-table (th|td)\b/, 'a .wm-table th/td rule outranks the state classes on cells');
+  });
+
+  it('a class on a migrated header cell does not restyle the shared header', () => {
+    const css = ['src/styles/panels.css', 'src/styles/main.css'].map(read).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+    const migrated = panelFiles.filter((path) => tables.some((t) => t.path === path && t.classes.includes('wm-table')));
+    const headerClasses = new Set(migrated.flatMap((path) => [...read(path).matchAll(/<th\b[^>]*\bclass="([^"$]*)"/g)].flatMap((m) => m[1].split(/\s+/).filter(Boolean))));
+    const typography = ['font-size', 'font-weight', 'text-transform', 'letter-spacing', 'color'];
+    const restyled = [];
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selectors = m[1].split(',').map((sel) => sel.trim());
+      const props = [...m[2].matchAll(/([\w-]+)\s*:/g)].map((d) => d[1]).filter((prop) => typography.includes(prop));
+      for (const name of headerClasses) {
+        if (props.length && selectors.includes(`.${name}`)) restyled.push(`.${name} { ${props.join(', ')} }`);
+      }
+    }
+    assert.deepEqual(restyled, []);
   });
 });
