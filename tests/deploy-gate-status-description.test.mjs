@@ -969,6 +969,19 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending']);
   });
 
+  it('skips the wait on one confirmed unfinished run even when another read failed', () => {
+    // The confirmed run's own completion event evaluates again, so the failed
+    // read cannot strand the head.
+    const result = runGate({}, {
+      gatedRuns: [{ name: 'Lint Code', status: 'in_progress', fresh: 'error' }, { name: 'Test', status: 'in_progress' }],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      result.calls,
+      ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:100', 'run-read:101', 'status:pending'],
+    );
+  });
+
   it('keeps the wait for a failed check even while a gated workflow is running', () => {
     // A successful rerun can still read as failed, and the in-flight run
     // says nothing about that check.

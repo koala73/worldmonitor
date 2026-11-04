@@ -509,8 +509,9 @@ print(json.dumps({
 # completion event is still to come and will read the checks afresh, so an
 # all-pending result can be published at once. 454 evaluations on 3-4 November
 # 2026 spent a median 62s in this step, nearly all of it that wait, while
-# holding a runner that PR jobs were queueing for. Any read failure answers
-# "no", which keeps the wait.
+# holding a runner that PR jobs were queueing for. One run confirmed unfinished
+# is enough, since its completion evaluates again; a failed read never counts
+# as unfinished, so with no confirmed run the wait stays.
 #
 # The runs listing can serve a stale snapshot with HTTP 200 (see
 # docs/solutions/integration-issues/convex-deploy-monitor-outvotes-stale-github-run-listing-snapshot.md),
