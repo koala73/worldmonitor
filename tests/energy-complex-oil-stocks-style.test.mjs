@@ -30,12 +30,16 @@ function declarations(name) {
 }
 
 describe('Energy Complex oil-stocks styles', () => {
-  for (const badge of ['energy-net-exporter-badge', 'energy-below-obligation-badge']) {
+  // "Below 90d" follows the days value on the same line; "Net exporter" stands
+  // in for the value, so it starts flush.
+  for (const [badge, spaced] of [['energy-net-exporter-badge', false], ['energy-below-obligation-badge', true]]) {
     it(`.${badge} renders as a separated badge`, () => {
       assert.match(panel, new RegExp(`class="${badge}"`), `${badge} is no longer rendered; update this test`);
       const props = declarations(badge);
       assert.equal(props.get('display'), 'inline-block', `.${badge} needs display: inline-block`);
-      assert.ok(props.has('margin-inline-start') || props.has('margin-left'), `.${badge} needs space before it`);
+      const margin = Number.parseFloat(props.get('margin-inline-start') ?? '0');
+      if (spaced) assert.ok(margin > 0, `.${badge} needs space between it and the value before it`);
+      else assert.equal(margin, 0, `.${badge} replaces the value, so it starts flush`);
       assert.ok(props.has('background'), `.${badge} needs a background`);
       assert.ok(props.has('color'), `.${badge} needs a text colour`);
     });
