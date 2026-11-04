@@ -122,7 +122,7 @@ export class RadiationWatchPanel extends Panel {
       <div class="radiation-panel-content">
         ${summary}
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="radiation-table">
+          <table class="wm-table radiation-table">
             <thead>
               <tr>
                 <th scope="col">${escapeHtml(t('components.radiationWatch.headers.station'))}</th>

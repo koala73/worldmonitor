@@ -34,15 +34,8 @@ const OUT_OF_SCOPE = new Set([
 
 /** Panel tables not yet on `.wm-table`, per file. Remove entries as they move. */
 const PENDING = {
-  'src/components/BigMacPanel.ts': 1,
-  'src/components/ConsumerPricesPanel.ts': 3,
   'src/components/EconomicCalendarPanel.ts': 1,
-  'src/components/EnergyComplexPanel.ts': 2,
-  'src/components/FoodPricesCard.ts': 1,
-  'src/components/FuelPricesPanel.ts': 1,
-  'src/components/GroceryBasketPanel.ts': 1,
   'src/components/MarketPanel.ts': 1,
-  'src/components/RadiationWatchPanel.ts': 1,
   'src/components/StockAnalysisPanel.ts': 1,
   'src/components/SupplyChainPanel.ts': 4,
   'src/components/TradePolicyPanel.ts': 3,
@@ -125,8 +118,9 @@ describe('panel table style', () => {
   // shared rules use :where() so that any class on a cell outranks them.
   it('.wm-table defines the shared header and cell style below class specificity', () => {
     const css = read('src/styles/panels.css');
-    for (const selector of [':where(.wm-table) th', ':where(.wm-table) td']) {
-      assert.ok(css.includes(`${selector} {`), `${selector} is missing from panels.css`);
+    const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',').map((s) => s.trim()));
+    for (const selector of [':where(.wm-table) th', ':where(.wm-table) td', ':where(.wm-table) > tbody > tr > th']) {
+      assert.ok(selectors.includes(selector), `${selector} is missing from panels.css`);
     }
     assert.doesNotMatch(css, /(^|[\s,}])\.wm-table (th|td)\b/, 'a .wm-table th/td rule outranks the state classes on cells');
   });
