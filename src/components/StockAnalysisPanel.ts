@@ -488,14 +488,14 @@ export class StockAnalysisPanel extends Panel {
 
     const rows = data.transactions.slice(0, 5);
     const table = rows.length > 0 ? `
-      <table style="width:100%;border-collapse:collapse;font-size:calc(11px * var(--wm-panel-effective-scale, 1));margin-top:6px">
+      <table class="wm-table" style="margin-top:6px">
         <thead>
-          <tr style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;text-align:left">
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border)">Name</th>
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border)">Type</th>
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right">Shares</th>
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right">Value</th>
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border)">Date</th>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Type</th>
+            <th scope="col" style="text-align:right">Shares</th>
+            <th scope="col" style="text-align:right">Value</th>
+            <th scope="col">Date</th>
           </tr>
         </thead>
         <tbody>
@@ -511,11 +511,11 @@ export class StockAnalysisPanel extends Panel {
             const valueCell = tx.value === 0 ? '—' : formatDollarCompact(tx.value);
             return `
               <tr>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:${typeColor}">${escapeHtml(txCodeLabel(tx.transactionCode))}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${Number.isFinite(tx.shares) ? tx.shares.toLocaleString() : '0'}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${valueCell}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:var(--text-dim)">${escapeHtml(tx.transactionDate)}</td>
+                <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>
+                <td style="color:${typeColor}">${escapeHtml(txCodeLabel(tx.transactionCode))}</td>
+                <td style="text-align:right;font-family:var(--font-mono)">${Number.isFinite(tx.shares) ? tx.shares.toLocaleString() : '0'}</td>
+                <td style="text-align:right;font-family:var(--font-mono)">${valueCell}</td>
+                <td style="color:var(--text-dim)">${escapeHtml(tx.transactionDate)}</td>
               </tr>`;
           }).join('')}
         </tbody>

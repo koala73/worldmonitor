@@ -3805,6 +3805,8 @@ a.hub-top-story {
   border-bottom: 1px solid var(--border);
 }
 .watchlist-table tbody tr.watchlist-virtual-spacer > td {
+  padding: 0;
+  border: 0;
   pointer-events: none;
 }
 .watchlist-empty {
@@ -3813,6 +3815,32 @@ a.hub-top-story {
   color: var(--text-dim);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
+
+/* Economic Calendar: events grouped under date rows. */
+.ec-table { table-layout: fixed; }
+.ec-date-row td {
+  padding-top: 10px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ec-event { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ec-impact { text-align: center; vertical-align: middle; }
+.ec-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ec-actual { color: var(--text); font-weight: 600; }
+.ec-countdown { color: var(--text-dim); font-style: italic; }
+.ec-empty { padding: 20px 0; text-align: center; color: var(--text-dim); }
+
+/* WSB Ticker Scanner */
+.wsb-table th { white-space: nowrap; }
+.wsb-table th[data-sort] { cursor: pointer; user-select: none; }
+.wsb-num { text-align: right; }
+.wsb-rank { min-width: 20px; color: var(--text-dim); text-align: right; }
+.wsb-ticker { color: var(--text); font-family: var(--font-mono); font-weight: 700; }
+.wsb-velocity { min-width: 80px; vertical-align: middle; }
+.wsb-empty { padding: 16px; text-align: center; color: var(--text-dim); }
 
 /* ----------------------------------------------------------
    FX panel (#6199) — stress table + the two spot-rate tables
