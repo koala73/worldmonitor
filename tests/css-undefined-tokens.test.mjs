@@ -19,6 +19,12 @@
  * the main dashboard, and its own uses are checked against the dashboard tokens
  * plus its own.
  *
+ * Components also write CSS in TypeScript: inline style="" strings and
+ * <style> blocks. Their bare var() uses are checked against the dashboard
+ * tokens, or a standalone page's sheets when the file imports one, plus any
+ * token the same file declares. Regional Intelligence read an undefined --danger this way, so its
+ * pressure bars rendered with no fill.
+ *
  * Limitation: a token declared under any selector counts as defined everywhere,
  * so a token scoped to one container is not caught when read outside it.
  */
@@ -44,12 +50,13 @@ const STANDALONE = {
 };
 const VARIANT_ONLY = new Set(['styles/happy-theme.css']);
 
-function cssFiles(dir) {
+function filesEndingWith(dir, ext) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    if (entry.isDirectory()) return entry.name === 'generated' ? [] : cssFiles(new URL(`${entry.name}/`, dir));
-    return entry.name.endsWith('.css') ? [new URL(entry.name, dir)] : [];
+    if (entry.isDirectory()) return entry.name === 'generated' ? [] : filesEndingWith(new URL(`${entry.name}/`, dir), ext);
+    return entry.name.endsWith(ext) && !entry.name.endsWith('.d.ts') ? [new URL(entry.name, dir)] : [];
   });
 }
+const cssFiles = (dir) => filesEndingWith(dir, '.css');
 
 const sheets = Object.fromEntries(cssFiles(srcDir).map((url) => [
   url.pathname.slice(srcDir.pathname.length),
@@ -88,6 +95,23 @@ function bareUses() {
   return uses;
 }
 
+/** Bare var() uses in TypeScript sources, checked against tokens that file declares too. */
+function tsBareUses() {
+  const uses = [];
+  for (const url of filesEndingWith(srcDir, '.ts')) {
+    const path = url.pathname.slice(srcDir.pathname.length);
+    const code = readFileSync(url, 'utf8');
+    const own = new Set([...code.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]));
+    // A standalone page's entry point reads the tokens of the sheets it imports.
+    const pages = [...code.matchAll(/import\s+['"]\.\/(styles\/[\w.-]+\.css)['"]/g)].map((m) => m[1]).filter((p) => p in STANDALONE);
+    const defined = pages.length ? new Set(pages.flatMap((p) => [...definedFor(p)])) : dashboardTokens;
+    for (const m of code.matchAll(/var\(\s*(--[\w-]+)\s*\)/g)) {
+      uses.push({ path, own, defined, name: m[1], where: `src/${path}:${code.slice(0, m.index).split('\n').length}` });
+    }
+  }
+  return uses;
+}
+
 describe('CSS custom properties', () => {
   it('scans the stylesheets', () => {
     assert.ok(dashboardSheets.length >= 10, `only ${dashboardSheets.length} dashboard stylesheets found`);
@@ -102,6 +126,15 @@ describe('CSS custom properties', () => {
       const source = readFileSync(new URL(file, srcDir), 'utf8');
       assert.ok(source.includes(`${name}:`), `${file} no longer sets ${name}; remove it from INLINE_TOKENS`);
     }
+  });
+
+  it('every var() without a fallback in TypeScript names a defined token', () => {
+    const uses = tsBareUses();
+    assert.ok(uses.length > 200, `only ${uses.length} var() uses found in TypeScript; the scan is broken`);
+    const missing = uses
+      .filter(({ own, defined, name }) => !defined.has(name) && !own.has(name) && !(name in INLINE_TOKENS))
+      .map(({ name, where }) => `${where} ${name}`);
+    assert.deepEqual(missing, []);
   });
 
   it('every var() without a fallback names a defined token', () => {
