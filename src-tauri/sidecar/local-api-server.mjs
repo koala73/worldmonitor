@@ -813,6 +813,17 @@ async function getCloudSessionToken(context) {
   return context.cloudSessionMint;
 }
 
+// Cookies api/wm-session.js issues and reads.
+const CLOUD_SESSION_COOKIES = new Set(['wm-session', '__Host-wm-widget-key', '__Host-wm-pro-key']);
+
+function pickCloudSessionCookies(raw) {
+  if (!raw) return '';
+  return raw.split(';').map((part) => part.trim()).filter((part) => {
+    const eq = part.indexOf('=');
+    return eq > 0 && CLOUD_SESSION_COOKIES.has(part.slice(0, eq).trim());
+  }).join('; ');
+}
+
 // `relayKey` (self-host relay, KTD7): send exactly this key and no other
 // credential. `signal` replaces the default 3s deadline; `streamResponse`
 // resolves at headers with a streaming body.
@@ -827,9 +838,12 @@ async function proxyToCloud(requestUrl, req, context, { relayKey = null, signal 
   headers.delete(LOCAL_API_TRANSPORT_HEADER);
   // Strip sidecar auth token — meaningless to cloud API.
   headers.delete('Authorization');
-  // dispatch() already removed the desktop-key cookie. Ordinary cloud fallback
-  // keeps the rest (the wm-session cookie); a relay sends the key and nothing else.
-  if (relayKey) headers.delete('Cookie');
+  // A relay sends the key and nothing else. Ordinary cloud fallback forwards
+  // only the cloud's own session cookies, never an operator's proxy cookies
+  // (dispatch() already removed the desktop-key cookie).
+  const cloudCookies = relayKey ? '' : pickCloudSessionCookies(headers.get('Cookie'));
+  if (cloudCookies) headers.set('Cookie', cloudCookies);
+  else headers.delete('Cookie');
   const userAuthorization = headers.get(CLOUD_USER_AUTHORIZATION_HEADER) ?? '';
   headers.delete(CLOUD_USER_AUTHORIZATION_HEADER);
   const userBearer = !relayKey && CLOUD_BEARER_SHAPE.test(userAuthorization) ? userAuthorization : '';
@@ -1091,8 +1105,14 @@ function selfHostRelayFetchSiteAllowed(req) {
 }
 
 function selfHostKeyCookieHeader(req, context, value, maxAgeSeconds) {
-  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
-  const secure = forwardedProto === 'https' || context.publicHttps;
+  // The bundled nginx stamps its own (http) scheme even behind an outer TLS
+  // proxy, so the browser's page origin also counts. Trusting it only ever
+  // adds Secure.
+  const forwardedHttps = String(req.headers['x-forwarded-proto'] || '')
+    .split(',').some((hop) => hop.trim().toLowerCase() === 'https');
+  const pageHttps = [req.headers.origin, req.headers.referer]
+    .some((value) => String(value || '').trim().toLowerCase().startsWith('https://'));
+  const secure = context.publicHttps || forwardedHttps || pageHttps;
   return `${SELFHOST_KEY_COOKIE}=${value}; Path=/api/; Max-Age=${maxAgeSeconds}; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`;
 }
 

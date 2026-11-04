@@ -4630,6 +4630,20 @@ test('selfhost-key: the cookie is Secure behind https or with WORLDMONITOR_PUBLI
     assert.ok(parseSetCookie(viaHttps).attributes.includes('secure'));
     const viaHttp = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, { 'X-Forwarded-Proto': 'http' });
     assert.ok(!parseSetCookie(viaHttp).attributes.includes('secure'));
+    // The bundled nginx stamps its own http scheme even behind an outer TLS
+    // proxy; the browser's https page origin still marks the cookie Secure.
+    const outerTlsOrigin = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, {
+      'X-Forwarded-Proto': 'http', Origin: 'https://dash.example',
+    });
+    assert.ok(parseSetCookie(outerTlsOrigin).attributes.includes('secure'));
+    const outerTlsReferer = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, {
+      'X-Forwarded-Proto': 'http', Referer: 'https://dash.example/settings',
+    });
+    assert.ok(parseSetCookie(outerTlsReferer).attributes.includes('secure'));
+    const plainOrigin = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, {
+      'X-Forwarded-Proto': 'http', Origin: 'http://dash.example',
+    });
+    assert.ok(!parseSetCookie(plainOrigin).attributes.includes('secure'));
   });
   await withSelfHostSidecar(async ({ port }) => {
     const declared = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, { 'X-Forwarded-Proto': 'http' });
@@ -4823,12 +4837,12 @@ test('selfhost-key: local handlers and the youtube cloud route never see the des
     assert.equal(onlyKey.json.cookie, null);
 
     const youtube = await selfHostRequest(port, '/api/youtube/live?channel=x', {
-      headers: { Cookie: `theme=dark; wm-desktop-key=${SELFHOST_ACTIVE_KEY}` },
+      headers: { Cookie: `theme=dark; wm-session=s1; proxy_session=op; __Host-wm-pro-key=p1; wm-desktop-key=${SELFHOST_ACTIVE_KEY}` },
     });
     assert.equal(youtube.status, 200);
     const call = cloud.relayed.find((c) => c.path === '/api/youtube/live');
     assert.ok(call, 'youtube/live reached the fake cloud');
-    assert.equal(call.headers.cookie, 'theme=dark', 'ordinary cloud fallback keeps other cookies (wm-session) but never the key');
+    assert.equal(call.headers.cookie, 'wm-session=s1; __Host-wm-pro-key=p1', 'ordinary cloud fallback forwards only the wm-session cookies, never the key or operator cookies');
     assert.notEqual(call.headers['x-worldmonitor-key'], SELFHOST_ACTIVE_KEY);
   });
 });
