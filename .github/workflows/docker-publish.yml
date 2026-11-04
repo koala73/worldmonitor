@@ -52,7 +52,7 @@ on:
     # Application changes do not trigger it. The builder stage runs `COPY . .`
     # and nearly every path reaches the image, so a wide filter rebuilt the
     # multi-arch image on almost every merge (#7808 chose that). Test's
-    # unit-built-output job already runs build:pro and the vite build before
+    # unit-built-output job already builds /pro and runs the vite build before
     # merge, so what an application merge can still break here is the
     # image-only part (build:crawlable-corpus, build:sitemap, the smoke test),
     # and the next daily run finds that. No consumer needs a
