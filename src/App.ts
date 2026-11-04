@@ -53,7 +53,7 @@ import {
   stopFlightHistoryCleanup,
 } from '@/services';
 import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
-import { isProUser, isProTierResolved, loadWidgets } from '@/services/widget-store';
+import { isProUser, isProTierResolved, loadWidgets, subscribeWidgetAccess } from '@/services/widget-store';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
@@ -350,6 +350,7 @@ export class App {
   private unsubAiFlow: (() => void) | null = null;
   private unsubFreeTier: (() => void) | null = null;
   private unsubEntitlementPremiumLoaders: (() => void) | null = null;
+  private unsubWidgetAccessPremiumLoaders: (() => void) | null = null;
   private unsubDesktopCloudAccess: (() => void) | null = null;
   /**
    * Boot epoch for optional local-AI continuations (#7779). destroy() bumps
@@ -2707,6 +2708,9 @@ export class App {
       _prevHadPremium = nowPremium;
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
+    // Tester keys and a self-hosted install's desktop-key verdict are Pro
+    // signals that settle after boot, so they re-run the same reconcile.
+    this.unsubWidgetAccessPremiumLoaders = subscribeWidgetAccess(() => firePremiumLoaders());
     if (isDesktopRuntime()) {
       // Desktop cloud data rides the Pro credential (#9396). Requests sent
       // before it existed got 401s and tripped panel breakers, so start clean.
@@ -3658,6 +3662,7 @@ export class App {
       this.unsubAiFlow?.();
       this.unsubFreeTier?.();
       this.unsubEntitlementPremiumLoaders?.();
+      this.unsubWidgetAccessPremiumLoaders?.();
       this.unsubDesktopCloudAccess?.();
       this.freeTierGate.cancelFallback();
       mlWorker.terminate();

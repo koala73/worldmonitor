@@ -9,6 +9,7 @@ import {
   readBrowserKeySessionStatus,
   readLegacySessionKey,
 } from '@/services/browser-key-session';
+import { isSelfHostKeyUnlocked, subscribeSelfHostKey } from '@/services/self-host-key';
 
 const STORAGE_KEY = 'wm-custom-widgets';
 const MAX_WIDGETS = 10;
@@ -168,7 +169,18 @@ function notifyAccessChanged(): void {
   for (const listener of accessListeners) listener();
 }
 
-/** Observe tab-local tester-key changes without exposing credential values. */
+// A self-hosted install's desktop-key verdict is a Pro signal too (KTD9), so
+// its unlock changes reach the same listeners. Other verdict changes (a status
+// message, a failed check) do not change access and are not forwarded.
+let selfHostUnlocked = false;
+subscribeSelfHostKey(() => {
+  const unlocked = isSelfHostKeyUnlocked();
+  if (unlocked === selfHostUnlocked) return;
+  selfHostUnlocked = unlocked;
+  notifyAccessChanged();
+});
+
+/** Observe tab-local tester-key and self-host key access changes without exposing credential values. */
 export function subscribeWidgetAccess(listener: () => void): () => void {
   accessListeners.add(listener);
   return () => accessListeners.delete(listener);
@@ -274,7 +286,8 @@ export function isProUser(): boolean {
     isWidgetFeatureEnabled() ||
     isProWidgetEnabled() ||
     getAuthState().user?.role === 'pro' ||
-    isEntitled()
+    isEntitled() ||
+    isSelfHostKeyUnlocked()
   );
 }
 
