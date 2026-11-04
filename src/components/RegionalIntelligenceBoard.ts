@@ -82,7 +82,7 @@ export class RegionalIntelligenceBoard extends Panel {
     });
 
     this.selector = h('select', {
-      className: 'rib-region-selector',
+      className: 'rib-region-selector region-select',
       'aria-label': 'Region',
     }) as HTMLSelectElement;
     for (const r of BOARD_REGIONS) {
