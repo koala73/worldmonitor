@@ -2090,9 +2090,10 @@
 
 .fdi-row-line2 {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   width: 100%;
-  gap: 6px;
+  gap: 2px 6px;
   padding-left: 22px;
   margin-top: 1px;
 }

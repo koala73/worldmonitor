@@ -161,7 +161,7 @@ describe('pro critical CSS source contract', () => {
     const prerender = src('pro-test/prerender.mjs');
     assert.doesNotMatch(prerender, /seo-prerender/);
     assert.match(prerender, /inlineCriticalCss\(indexHtml, 'index\.html'\)/);
-    assert.match(prerender, /inlineCriticalCss\(welcomeBase, 'welcome\.html', \[heroImagePreloadTag\(englishWelcome\.html\)\]\)/);
+    assert.match(prerender, /inlineCriticalCss\(welcomeBase, 'welcome\.html', heroImagePreloadTags\(englishWelcome\.html\)\)/);
     assert.match(prerender, /localizeWelcomeDocument\(injected, page\.locale, page\.copy\)/);
     assert.doesNotMatch(prerender, /file === 'welcome\.html'/);
   });
