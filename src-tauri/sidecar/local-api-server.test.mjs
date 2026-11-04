@@ -4637,13 +4637,18 @@ test('selfhost-key: the cookie is Secure behind https or with WORLDMONITOR_PUBLI
   }, { env: { WORLDMONITOR_PUBLIC_HTTPS: '1' } });
 });
 
-test('selfhost-key: invalid and not_desktop_key verdicts set no cookie; over_cap and lapsed keep the key', async () => {
+test('selfhost-key: invalid and not_desktop_key verdicts clear any stored key; over_cap and lapsed keep the key', async () => {
   await withSelfHostSidecar(async ({ port }) => {
     for (const [key, status] of [[SELFHOST_INVALID_KEY, 'invalid'], [SELFHOST_API_KIND_KEY, 'not_desktop_key']]) {
-      const response = await postSelfHostKey(port, key);
+      // A rejected replacement must not leave an older working key behind:
+      // the browser locks on the rejection, so a later GET must not unlock
+      // again from the previous cookie.
+      const response = await postSelfHostKey(port, key, keyCookie(SELFHOST_ACTIVE_KEY));
       assert.equal(response.status, 200);
       assert.equal(response.json.status, status);
-      assert.equal(response.headers['set-cookie'], undefined, `${status} must not set a cookie`);
+      const cookie = parseSetCookie(response);
+      assert.equal(cookie.value, '', `${status} must never store the rejected key`);
+      assert.ok(cookie.attributes.includes('max-age=0'), `${status} clears the stored key`);
     }
     for (const [key, status] of [[SELFHOST_OVER_CAP_KEY, 'over_cap'], [SELFHOST_LAPSED_KEY, 'lapsed']]) {
       const response = await postSelfHostKey(port, key);
@@ -4737,7 +4742,9 @@ test('selfhost-key: a malformed key is refused with no cloud call; a repeated in
       const response = await postSelfHostKey(port, key);
       assert.equal(response.status, 400, String(key));
       assert.equal(response.json.status, 'invalid');
-      assert.equal(response.headers['set-cookie'], undefined);
+      const cookie = parseSetCookie(response);
+      assert.equal(cookie.value, '');
+      assert.ok(cookie.attributes.includes('max-age=0'));
     }
     assert.equal(cloud.statusCalls.length, 0);
     const notJson = await selfHostRequest(port, '/api/selfhost-key', {

@@ -1136,15 +1136,22 @@ async function handleSelfHostKey(req, context, cookieKey) {
       if (typeof parsed?.key === 'string') key = parsed.key.trim();
     } catch { /* malformed JSON is a malformed key */ }
   }
+  // A rejected key also clears any key stored earlier. The browser locks on the
+  // rejection, so leaving the old cookie would let the next GET unlock again.
+  const clearStored = { 'Set-Cookie': selfHostKeyCookieHeader(req, context, '', 0) };
   if (!key || !SELFHOST_KEY_SHAPE.test(key)) {
-    return selfHostKeyJson(answer('invalid', { error: 'malformed_key' }), 400);
+    return selfHostKeyJson(answer('invalid', { error: 'malformed_key' }), 400, clearStored);
   }
   const verdict = await resolveSelfHostVerdict(key, context);
   const body = { enabled: true, ...verdict };
-  if (!verdict.stale && SELFHOST_COOKIE_VERDICTS.has(verdict.status)) {
+  if (verdict.stale) return selfHostKeyJson(body);
+  if (SELFHOST_COOKIE_VERDICTS.has(verdict.status)) {
     return selfHostKeyJson(body, 200, {
       'Set-Cookie': selfHostKeyCookieHeader(req, context, key, SELFHOST_COOKIE_MAX_AGE_SECONDS),
     });
+  }
+  if (verdict.status === 'invalid' || verdict.status === 'not_desktop_key') {
+    return selfHostKeyJson(body, 200, clearStored);
   }
   return selfHostKeyJson(body);
 }
