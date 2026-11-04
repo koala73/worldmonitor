@@ -399,9 +399,9 @@ export function buildRegimeHistoryBlock(transitions: RegimeTransition[]): string
     const driver = t.transitionDriver ? ` · ${escapeHtml(t.transitionDriver)}` : '';
     const date = formatDate(t.transitionedAt);
     return `
-      <div style="display:grid;grid-template-columns:130px 1fr;gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
-        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-variant-numeric:tabular-nums">${escapeHtml(date)}</div>
-        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span style="color:var(--text-dim)">${from}</span> → <span style="font-weight:500;text-transform:capitalize">${to}</span>${driver}</div>
+      <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-variant-numeric:tabular-nums;white-space:nowrap">${escapeHtml(date)}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));overflow-wrap:anywhere"><span style="color:var(--text-dim)">${from}</span> → <span style="font-weight:500;text-transform:capitalize">${to}</span>${driver}</div>
       </div>
     `;
   }).join('');

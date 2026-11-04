@@ -19,11 +19,10 @@ test('panels fit the narrowest sidebar column without scrolling sideways', async
     await import('/src/styles/main.css');
     const { initI18n } = await import('/src/services/i18n.ts');
     await initI18n();
-    const { Panel } = await import('/src/components/Panel.ts');
     const { NationalDebtPanel } = await import('/src/components/NationalDebtPanel.ts');
     const { InvestmentsPanel } = await import('/src/components/InvestmentsPanel.ts');
     const { CommoditiesPanel } = await import('/src/components/MarketPanel.ts');
-    const { buildBalanceBlock, buildScenariosBlock } = await import('/src/components/regional-intelligence-board-utils.ts');
+    const { RegionalIntelligenceBoard } = await import('/src/components/RegionalIntelligenceBoard.ts');
 
     document.getElementById('runtime-harness')?.remove();
     const grid = document.createElement('div');
@@ -32,15 +31,65 @@ test('panels fit the narrowest sidebar column without scrolling sideways', async
     grid.style.height = 'auto';
     document.body.appendChild(grid);
 
-    const regional = new Panel({ id: 'probe-regional', title: 'Regional Intelligence' });
-    const lane = (name: string, probability: number) => ({ name, probability });
-    regional.getElement().querySelector('.panel-content')!.innerHTML = buildBalanceBlock({
-      coercivePressure: 0.62, domesticFragility: 0.41, capitalStress: 0.33, energyVulnerability: 0.28,
-      allianceCohesion: 0.3, maritimeAccess: 0.73, energyLeverage: 1, netBalance: -0.12,
-    } as never) + buildScenariosBlock(['24h', '7d', '30d'].map((horizon) => ({
-      horizon,
-      lanes: [lane('base', 0.44), lane('containment', 0.33), lane('escalation', 0.12), lane('fragmentation', 0.11)],
-    })) as never);
+    // The real board, rendered from a full snapshot with the regime history,
+    // weekly brief and fallback notice it adds around the snapshot blocks.
+    const regional = new RegionalIntelligenceBoard();
+    grid.appendChild(regional.getElement());
+    // Drop the board's own snapshot requests (no API here) so they cannot replace the fixture.
+    (regional as unknown as { latestSequence: number }).latestSequence = Number.MAX_SAFE_INTEGER;
+    const lane = (name: string, probability: number) => ({ name, probability, triggerIds: [], consequences: [], transmissions: [] });
+    const path = (start: string, mechanism: string, end: string, severity: string, confidence: number) => ({
+      start, mechanism, end, severity, corridorId: start, confidence, latencyHours: 12, impactedAssetClass: 'commodity',
+      impactedRegions: ['mena'], magnitudeLow: 0, magnitudeHigh: 0, magnitudeUnit: 'pct', templateId: 't', templateVersion: '1.0.0',
+    });
+    const text = (t: string) => ({ text: t, evidenceIds: ['ev1', 'ev2'] });
+    regional.renderBoard({
+      regionId: 'mena',
+      generatedAt: Date.UTC(2026, 10, 1),
+      meta: {
+        snapshotId: 'snap-1', modelVersion: '0.1.0', scoringVersion: '1.0.0', geographyVersion: '1.0.0', snapshotConfidence: 0.92,
+        missingInputs: [], staleInputs: [], validUntil: 0, triggerReason: 'scheduled_6h', narrativeProvider: 'openrouter', narrativeModel: 'deepseek/deepseek-v4-flash',
+      },
+      regime: { label: 'coercive_stalemate', previousLabel: 'calm', transitionedAt: Date.UTC(2026, 9, 28), transitionDriver: 'cross_source_surge' },
+      balance: {
+        coercivePressure: 0.62, domesticFragility: 0.41, capitalStress: 0.33, energyVulnerability: 0.28,
+        allianceCohesion: 0.3, maritimeAccess: 0.73, energyLeverage: 1, netBalance: -0.12, pressures: [], buffers: [],
+      },
+      actors: [
+        { actorId: 'IR', name: 'Islamic Republic of Iran', role: 'aggressor', leverageDomains: ['military', 'energy'], leverageScore: 0.85, delta: 0.05, evidenceIds: [] },
+        { actorId: 'SA', name: 'Kingdom of Saudi Arabia', role: 'broker', leverageDomains: ['energy'], leverageScore: 0.65, delta: -0.02, evidenceIds: [] },
+      ],
+      leverageEdges: [],
+      scenarioSets: ['24h', '7d', '30d'].map((horizon) => ({
+        horizon,
+        lanes: [lane('base', 0.44), lane('containment', 0.33), lane('escalation', 0.12), lane('fragmentation', 0.11)],
+      })),
+      transmissionPaths: [
+        path('hormuz', 'naval_posture', 'crude_oil', 'high', 0.85),
+        path('babelm', 'shipping_disruption', 'container_freight', 'medium', 0.6),
+      ],
+      triggers: {
+        active: [{ id: 'mena_coercive_high', description: 'Coercive pressure crossed 0.7 for two consecutive snapshots', activated: true, activatedAt: 0, scenarioLane: 'escalation', evidenceIds: [] }],
+        watching: [], dormant: [],
+      },
+      evidence: [],
+      narrative: {
+        situation: text('Iran flexes naval posture near the Strait of Hormuz while Gulf states hedge.'),
+        balanceAssessment: text('Pressures edge ahead of buffers.'),
+        outlook24h: text('Base case dominates.'),
+        outlook7d: text('Escalation risk rises over the coming week.'),
+        outlook30d: text('Uncertainty widens.'),
+        watchItems: [text('Hormuz transit counts below seasonal norms.')],
+      },
+    } as never, [
+      { regionId: 'mena', label: 'coercive_stalemate', previousLabel: 'calm', transitionedAt: Date.UTC(2026, 9, 28), transitionDriver: 'cross_source_surge', snapshotId: 's2' },
+      { regionId: 'mena', label: 'calm', previousLabel: 'escalation_ladder', transitionedAt: Date.UTC(2026, 9, 2), transitionDriver: 'de_escalation_signal', snapshotId: 's1' },
+    ] as never, {
+      regionId: 'mena', generatedAt: Date.UTC(2026, 10, 1), periodStart: Date.UTC(2026, 9, 25), periodEnd: Date.UTC(2026, 10, 1),
+      situationRecap: 'Naval posture hardened through the week.', regimeTrajectory: 'calm → coercive_stalemate',
+      keyDevelopments: ['Two tanker seizures near Hormuz', 'Saudi–Iran channel reopened'], riskOutlook: 'Elevated into next week.',
+      provider: 'openrouter', model: 'deepseek/deepseek-v4-flash',
+    } as never, 'europe');
 
     const debt = new NationalDebtPanel();
     const debtInternals = debt as unknown as { entries: unknown[]; applyFilters(): void; render(): void };
@@ -64,7 +113,7 @@ test('panels fit the narrowest sidebar column without scrolling sideways', async
     ]);
 
     const panels = { regional, debt, investments, commodities };
-    for (const panel of Object.values(panels)) grid.appendChild(panel.getElement());
+    for (const panel of [debt, investments, commodities]) grid.appendChild(panel.getElement());
     // setSafeContent debounces panel content by 150ms.
     await new Promise((r) => setTimeout(r, 400));
 
