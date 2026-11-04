@@ -4529,8 +4529,9 @@ function postSelfHostKey(port, key, headers = {}) {
   });
 }
 
+// A request from the install's own page over HTTPS or localhost.
 function keyCookie(key) {
-  return { Cookie: `wm-desktop-key=${key}` };
+  return { Cookie: `wm-desktop-key=${key}`, 'Sec-Fetch-Site': 'same-origin' };
 }
 
 async function withSelfHostSidecar(run, { env = {}, mode = 'docker', files } = {}) {
@@ -4796,7 +4797,7 @@ test('selfhost-key: a cross-site or non-JSON POST is refused and sets no cookie'
     assert.equal(textPlain.status, 415);
     const crossSiteDelete = await selfHostRequest(port, '/api/selfhost-key', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'cross-site', ...keyCookie(SELFHOST_ACTIVE_KEY) },
+      headers: { 'Content-Type': 'application/json', ...keyCookie(SELFHOST_ACTIVE_KEY), 'Sec-Fetch-Site': 'cross-site' },
     });
     assert.equal(crossSiteDelete.status, 403);
     assert.equal(crossSiteDelete.headers['set-cookie'], undefined);
@@ -5191,18 +5192,19 @@ test('selfhost-key: a POST during a cloud outage answers unavailable and leaves 
   });
 });
 
-test('selfhost-key: a GET that finds the stored key invalid clears the cookie', async () => {
-  await withSelfHostSidecar(async ({ port }) => {
-    for (const key of [SELFHOST_INVALID_KEY, SELFHOST_API_KIND_KEY, 'wm_short']) {
+test('selfhost-key: a GET reports a dead key but never sets or clears the cookie', async () => {
+  // A slow GET for an old key can land after a POST stored a new one; a
+  // clearing Set-Cookie on it would delete the new key. The relay already
+  // stops on the last inactive verdict, so GET only reports.
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    for (const key of [SELFHOST_INVALID_KEY, SELFHOST_API_KIND_KEY, 'wm_short', SELFHOST_LAPSED_KEY]) {
       const response = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(key) });
-      assert.equal(response.json.status, key === SELFHOST_API_KIND_KEY ? 'not_desktop_key' : 'invalid');
-      const cookie = parseSetCookie(response);
-      assert.ok(cookie, `cookie cleared for ${key.slice(0, 8)}`);
-      assert.match(cookie.raw, /Max-Age=0/);
+      assert.notEqual(response.json.status, 'active');
+      assert.equal(response.headers['set-cookie'], undefined, key.slice(0, 8));
     }
-    const lapsed = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_LAPSED_KEY) });
-    assert.equal(lapsed.json.status, 'lapsed');
-    assert.equal(lapsed.headers['set-cookie'], undefined, 'a lapsed key is kept so a renewal unlocks again');
+    const relayed = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_INVALID_KEY) });
+    assert.equal(relayed.json.source, 'local', 'a key known to be invalid is never relayed');
+    assert.equal(cloud.relayed.length, 0);
   });
 });
 
@@ -5210,14 +5212,14 @@ test('relay: two different desktop-key cookies are never relayed', async () => {
   await withSelfHostSidecar(async ({ cloud, port }) => {
     assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
     const conflicting = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
-      headers: { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}; wm-desktop-key=${SELFHOST_OPERATOR_KEY}` },
+      headers: { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}; wm-desktop-key=${SELFHOST_OPERATOR_KEY}`, 'Sec-Fetch-Site': 'same-origin' },
     });
     assert.equal(conflicting.json.source, 'local');
     assert.equal(conflicting.json.cookie, null);
     assert.equal(cloud.relayed.length, 0);
 
     const duplicate = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
-      headers: { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}; wm-desktop-key=${SELFHOST_ACTIVE_KEY}` },
+      headers: { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}; wm-desktop-key=${SELFHOST_ACTIVE_KEY}`, 'Sec-Fetch-Site': 'same-origin' },
     });
     assert.equal(duplicate.json.source, 'cloud', 'the same value twice is one key');
   });
@@ -5226,19 +5228,41 @@ test('relay: two different desktop-key cookies are never relayed', async () => {
 test('relay: a cross-site or same-site request is served locally even with the cookie', async () => {
   await withSelfHostSidecar(async ({ cloud, port }) => {
     assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    const cookie = { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}` };
     for (const site of ['cross-site', 'same-site']) {
-      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
-        headers: { ...keyCookie(SELFHOST_ACTIVE_KEY), 'Sec-Fetch-Site': site },
-      });
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: { ...cookie, 'Sec-Fetch-Site': site } });
       assert.equal(response.json.source, 'local', site);
     }
     assert.equal(cloud.relayed.length, 0);
     for (const site of ['same-origin', 'none']) {
-      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
-        headers: { ...keyCookie(SELFHOST_ACTIVE_KEY), 'Sec-Fetch-Site': site },
-      });
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: { ...cookie, 'Sec-Fetch-Site': site } });
       assert.equal(response.json.source, 'cloud', site);
     }
+  });
+});
+
+test('relay: without Fetch Metadata (plain HTTP) only a same-origin Referer relays', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    const cookie = { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}` };
+    const local = async (headers, label) => {
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: { ...cookie, ...headers } });
+      assert.equal(response.json.source, 'local', label);
+    };
+    await local({}, 'no Referer');
+    await local({ Referer: 'http://192.168.1.20:3000/' }, 'a sibling app on another port');
+    await local({ Referer: 'not a url' }, 'an unparseable Referer');
+    await local({ 'X-Forwarded-Host': 'dash.example', Referer: 'http://other.example/' }, 'another host behind nginx');
+    assert.equal(cloud.relayed.length, 0);
+
+    const direct = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { ...cookie, Referer: `http://127.0.0.1:${port}/dashboard` },
+    });
+    assert.equal(direct.json.source, 'cloud', 'the sidecar reached directly: Host names the page origin');
+    const proxied = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { ...cookie, 'X-Forwarded-Host': '192.168.1.20:8080', Referer: 'http://192.168.1.20:8080/dashboard?country=US' },
+    });
+    assert.equal(proxied.json.source, 'cloud', 'behind nginx: X-Forwarded-Host names the page origin');
   });
 });
 

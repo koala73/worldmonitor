@@ -339,6 +339,25 @@ describe('self-host key save and remove', () => {
     assert.ok(h.calls[0]!.init?.signal instanceof AbortSignal);
   });
 
+  it('a save or remove the server never answers times out as failed, so Settings can retry', async () => {
+    for (const write of [() => saveSelfHostKey(`wm_${'d'.repeat(40)}`), () => removeSelfHostKey()]) {
+      const deadline = new AbortController();
+      _resetSelfHostKeyForTests({
+        fetch: ((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('timed out', 'TimeoutError')));
+        })) as typeof fetch,
+        now: () => NOW,
+        setInterval: () => 1,
+        clearInterval: () => {},
+        canRun: () => true,
+        timeoutSignal: () => deadline.signal,
+      });
+      const pending = write();
+      deadline.abort();
+      assert.deepEqual(await pending, { kind: 'failed' });
+    }
+  });
+
   it('a 400 malformed-key answer is an invalid verdict and stays locked', async () => {
     await bootWith(verdict('none'));
     h.replies.push(verdict('invalid', { verifiedAt: null, error: 'malformed_key' }, 400));

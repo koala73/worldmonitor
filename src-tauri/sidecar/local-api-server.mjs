@@ -1070,12 +1070,24 @@ function shouldRelayForSelfHostKey(key, context) {
   return !last || last.status === 'active';
 }
 
-// SameSite=Strict still sends the cookie from a sibling host on the same site,
-// so a page there could spend the owner's allowance. Only this origin's own
-// pages (or a typed-in navigation) may relay.
+// SameSite=Strict still sends the cookie from a sibling host or another port on
+// the same site, so a page there could spend the owner's allowance. Only this
+// origin's own pages (or a typed-in navigation) may relay.
+//
+// Browsers send Fetch Metadata only to HTTPS and localhost. Over plain HTTP
+// the request must instead carry a Referer from this install's own origin: a
+// sibling page can suppress its Referer but cannot forge ours. nginx passes
+// the browser's Host as X-Forwarded-Host; reached directly, Host is the origin.
 function selfHostRelayFetchSiteAllowed(req) {
   const fetchSite = req.headers['sec-fetch-site'];
-  return fetchSite === undefined || fetchSite === 'same-origin' || fetchSite === 'none';
+  if (fetchSite !== undefined) return fetchSite === 'same-origin' || fetchSite === 'none';
+  const publicHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+  if (!publicHost) return false;
+  try {
+    return new URL(String(req.headers.referer || '')).host.toLowerCase() === publicHost;
+  } catch {
+    return false;
+  }
 }
 
 function selfHostKeyCookieHeader(req, context, value, maxAgeSeconds) {
@@ -1137,19 +1149,18 @@ async function handleSelfHostKey(req, context, cookieKey) {
   }
   if (req.method === 'GET') {
     if (cookieKey === null) return selfHostKeyJson(answer('none'));
-    const clearStored = { 'Set-Cookie': selfHostKeyCookieHeader(req, context, '', 0) };
-    if (!SELFHOST_KEY_SHAPE.test(cookieKey)) return selfHostKeyJson(answer('invalid'), 200, clearStored);
+    if (!SELFHOST_KEY_SHAPE.test(cookieKey)) return selfHostKeyJson(answer('invalid'));
     if (!freshSelfHostVerdict(context, hashSelfHostKey(cookieKey))) {
       const allowed = selfHostClientAllowed(req, context);
       if (!allowed.ok) {
         return selfHostKeyJson({ error: 'Too many key checks' }, 429, { 'Retry-After': String(allowed.retryAfterSeconds) });
       }
     }
-    const verdict = await resolveSelfHostVerdict(cookieKey, context);
-    // A key the cloud no longer knows will never unlock; forget it. A lapsed or
-    // over-cap key is kept so a renewal unlocks again without re-entry.
-    const forget = !verdict.stale && SELFHOST_FORGET_VERDICTS.has(verdict.status);
-    return selfHostKeyJson({ enabled: true, ...verdict }, 200, forget ? clearStored : {});
+    // GET only reports, and never sets or clears the cookie: a slow check for an
+    // old key can finish after a POST stored a new one, and a clearing
+    // Set-Cookie on it would delete the new key. A dead key is not relayed
+    // anyway (shouldRelayForSelfHostKey uses the last verdict).
+    return selfHostKeyJson({ enabled: true, ...(await resolveSelfHostVerdict(cookieKey, context)) });
   }
   const allowed = selfHostClientAllowed(req, context);
   if (!allowed.ok) {

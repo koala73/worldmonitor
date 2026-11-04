@@ -57,8 +57,9 @@ export type SelfHostKeyWriteResult =
 export const SELF_HOST_KEY_ROUTE = '/api/selfhost-key';
 export const SELF_HOST_KEY_REFRESH_MS = 15 * 60 * 1000;
 // Longer than the sidecar's own cloud check, so a slow cloud answers
-// 'unavailable' before the browser gives up on the sidecar.
-export const SELF_HOST_KEY_READ_TIMEOUT_MS = 20_000;
+// 'unavailable' before the browser gives up on the sidecar. Bounds reads and
+// writes: a hung install must not pin the shared check or the Settings buttons.
+export const SELF_HOST_KEY_REQUEST_TIMEOUT_MS = 20_000;
 export const SELF_HOST_KEY_GRACE_MS = 24 * 60 * 60 * 1000;
 
 const STATUSES = new Set<SelfHostKeyStatus>([
@@ -72,6 +73,8 @@ interface Environment {
   clearInterval: (handle: unknown) => void;
   /** Whether this page may talk to the route at all. */
   canRun: () => boolean;
+  /** Deadline for one request to the route. */
+  timeoutSignal: () => AbortSignal | undefined;
 }
 
 function defaultEnvironment(): Environment {
@@ -85,6 +88,9 @@ function defaultEnvironment(): Environment {
       return handle;
     },
     clearInterval: (handle) => globalThis.clearInterval(handle as ReturnType<typeof setInterval>),
+    timeoutSignal: () => (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+      ? AbortSignal.timeout(SELF_HOST_KEY_REQUEST_TIMEOUT_MS)
+      : undefined),
     // The desktop app keeps its key in the native vault and never serves this
     // route, and the hosted site answers it with a 404, so both skip the
     // request entirely.
@@ -213,19 +219,13 @@ function retryAfterSeconds(res: Response): number | null {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
 }
 
-function readTimeoutSignal(): AbortSignal | undefined {
-  return typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
-    ? AbortSignal.timeout(SELF_HOST_KEY_READ_TIMEOUT_MS)
-    : undefined;
-}
-
 async function readStatus(): Promise<void> {
   const sentGeneration = generation;
   let res: Response;
   try {
     // A hung sidecar must not pin `inflight` forever: every later refresh and
     // denial re-check shares it.
-    const signal = readTimeoutSignal();
+    const signal = env.timeoutSignal();
     res = await env.fetch(SELF_HOST_KEY_ROUTE, {
       method: 'GET',
       credentials: 'same-origin',
@@ -330,12 +330,14 @@ async function sendKeyWrite(
 ): Promise<SelfHostKeyWriteResult> {
   let res: Response;
   try {
+    const signal = env.timeoutSignal();
     res = await env.fetch(SELF_HOST_KEY_ROUTE, {
       method,
       credentials: 'same-origin',
       cache: 'no-store',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       ...(body === undefined ? {} : { body }),
+      ...(signal ? { signal } : {}),
     });
   } catch {
     return { kind: 'failed' };
