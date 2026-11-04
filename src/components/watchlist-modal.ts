@@ -234,8 +234,8 @@ export function openWatchlistModal(): void {
 /**
  * Build a header button wired to {@link openWatchlistModal}. Reuses the
  * existing `live-news-settings-btn` styling so it matches the other panel
- * header affordances. In a column under 300px the stylesheet shows the star
- * instead of the label, which stays the button's accessible name.
+ * header affordances. In a panel up to 420px wide the stylesheet shows the
+ * star instead of the label, which stays the button's accessible name.
  */
 export function createWatchlistButton(label = 'Watchlist'): HTMLButtonElement {
   const btn = document.createElement('button');
