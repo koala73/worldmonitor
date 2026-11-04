@@ -121,10 +121,19 @@
   text-transform: uppercase;
 }
 
-:where(.wm-table) td {
+:where(.wm-table) td,
+:where(.wm-table) tbody th {
   padding: 5px 8px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+}
+
+/* A row header (<th scope="row">) is a body cell, not a column header. */
+:where(.wm-table) tbody th {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .table-scroll {
@@ -3280,10 +3289,10 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 /* Grocery Basket Panel */
 .gb-wrapper { overflow: hidden; }
 .gb-scroll { overflow-x: auto; }
-.gb-table { border-collapse: collapse; width: 100%; font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1)); }
-.gb-table th, .gb-table td { padding: 4px 6px; border: 1px solid rgba(255,255,255,0.08); text-align: right; white-space: nowrap; }
+/* Column rules on top of the shared row rules: the basket is a country-by-item matrix. */
+.gb-table th, .gb-table td { border-inline: 1px solid var(--border-subtle); text-align: right; vertical-align: top; white-space: nowrap; }
 .gb-item-col, .gb-item-name { text-align: start; min-width: 110px; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
-.gb-country-header { text-align: center; font-weight: 600; min-width: 80px; }
+.gb-country-header { text-align: center; min-width: 80px; }
 .gb-country-name { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.7; }
 .gb-cell { position: relative; }
 .gb-local { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.6; }

@@ -101,7 +101,7 @@ export class EnergyComplexPanel extends Panel {
       <div class="energy-tape-section" style="margin-top:8px">
         <div class="energy-section-title">IEA Oil Stocks — Days of Cover</div>
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="oil-stocks-table">
+          <table class="wm-table oil-stocks-table">
             <thead><tr><th scope="col">#</th><th scope="col">Ctry</th><th scope="col">Days</th><th scope="col">vs 90d</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
@@ -129,7 +129,7 @@ export class EnergyComplexPanel extends Panel {
       <div class="energy-tape-section" style="margin-top:8px">
         <div class="energy-section-title">LNG Vulnerability</div>
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="oil-stocks-table">
+          <table class="wm-table oil-stocks-table">
             <thead><tr><th scope="col">Country</th><th scope="col">LNG Share</th><th scope="col">LNG Imports</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>

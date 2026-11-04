@@ -259,7 +259,7 @@ function readLostColours(page: Page, root: string): Promise<string[]> {
 // with the header and cell it renders in a 1920px sidebar column. The column
 // is under 480px, so the panel-body container query narrows inline padding
 // to 4px.
-const WM_TABLE_PANELS = new Set(['ucdp-events', 'climate']);
+const WM_TABLE_PANELS = new Set(['ucdp-events', 'climate', 'radiation-watch', 'grocery-basket']);
 const WM_TABLE_STYLE = {
   th: { fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.4px', padding: '4px' },
   td: { fontSize: '11px', fontWeight: '400', textTransform: 'none', letterSpacing: 'normal', padding: '5px 4px' },
@@ -511,6 +511,144 @@ test('harness-mounted shared-style tables keep the shared header and their cell 
     }
     expect.soft(await readLostColours(page, root), `${name}: cells keep the colour their class sets`).toEqual([]);
   }
+});
+
+// Price and stock tables that need a feed the fixture dashboard does not
+// serve. Row-header cells (`<th scope="row">`) are body cells and must not take
+// the uppercase column-header style.
+test('harness-mounted price and stock tables use the shared table style', async ({ page }) => {
+  await page.goto('/tests/runtime-harness.html');
+  await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const { Panel } = await import('/src/components/Panel.ts');
+    const { BigMacPanel } = await import('/src/components/BigMacPanel.ts');
+    const { FuelPricesPanel } = await import('/src/components/FuelPricesPanel.ts');
+    const { ConsumerPricesPanel } = await import('/src/components/ConsumerPricesPanel.ts');
+    const { EnergyComplexPanel } = await import('/src/components/EnergyComplexPanel.ts');
+    const { FoodPricesCard } = await import('/src/components/FoodPricesCard.ts');
+
+    document.getElementById('runtime-harness')?.remove();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    grid.style.cssText = 'height:auto;width:900px;grid-template-columns:900px';
+    document.body.appendChild(grid);
+
+    const bigmac = new BigMacPanel();
+    (bigmac as unknown as { renderIndex(data: unknown): void }).renderIndex({
+      wowAvailable: true, wowAvgPct: 0.4, fetchedAt: '2026-11-03T00:00:00Z',
+      countries: [
+        { code: 'CH', name: 'Switzerland', flag: '🇨🇭', usdPrice: 8.17, wowPct: 0.6 },
+        { code: 'US', name: 'United States', flag: '🇺🇸', usdPrice: 5.69, wowPct: -0.2 },
+        { code: 'IN', name: 'India', flag: '🇮🇳', usdPrice: 2.54, wowPct: null },
+      ],
+    });
+    grid.appendChild(bigmac.getElement());
+
+    const fuel = new FuelPricesPanel();
+    (fuel as unknown as { renderIndex(data: unknown): void }).renderIndex({
+      wowAvailable: true, fetchedAt: '2026-11-03T00:00:00Z', countryCount: 3,
+      cheapestGasoline: 'SA', mostExpensiveGasoline: 'NO', cheapestDiesel: 'SA', mostExpensiveDiesel: 'NO',
+      countries: [
+        { code: 'NO', name: 'Norway', flag: '🇳🇴', gasoline: { usdPrice: 2.14, wowPct: 1.2 }, diesel: { usdPrice: 2.01, wowPct: 0 } },
+        { code: 'US', name: 'United States', flag: '🇺🇸', gasoline: { usdPrice: 0.92, wowPct: -0.8 }, diesel: { usdPrice: 1.01, wowPct: 0.3 } },
+        { code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦', gasoline: { usdPrice: 0.62, wowPct: 0 }, diesel: null },
+      ],
+    });
+    grid.appendChild(fuel.getElement());
+
+    const cp = new ConsumerPricesPanel();
+    const cpInternals = cp as unknown as { allMarkets: unknown[]; globalInflation: unknown[]; categories: unknown; overview: unknown; settings: { market: string; tab: string }; render(): void };
+    cpInternals.allMarkets = [
+      { marketCode: 'ae', asOf: '1730592000000', upstreamUnavailable: false, essentialsIndex: 101.4, wowPct: 0.8, retailerSpreadPct: 12.3, freshnessLagMin: 90 },
+      { marketCode: 'us', asOf: '1730592000000', upstreamUnavailable: false, essentialsIndex: 98.2, wowPct: -0.3, retailerSpreadPct: 8.1, freshnessLagMin: 2000 },
+    ];
+    cpInternals.globalInflation = [
+      { name: 'Argentina', iso2: 'AR', inflationPct: 41.3, cpiEopPct: 31.8, year: 2026 },
+      { name: 'Japan', iso2: 'JP', inflationPct: 2.1, cpiEopPct: 1.9, year: 2026 },
+      { name: 'China', iso2: 'CN', inflationPct: -0.4, cpiEopPct: -0.2, year: 2026 },
+    ];
+    cpInternals.overview = { upstreamUnavailable: false };
+    cpInternals.categories = { categories: [
+      { slug: 'dairy', name: 'Dairy', wowPct: 1.4, momPct: 2.2, sparkline: [1, 2, 3], coveragePct: 92 },
+      { slug: 'bread', name: 'Bread', wowPct: -0.6, momPct: -1.1, sparkline: [], coveragePct: 0 },
+    ] };
+    grid.appendChild(cp.getElement());
+    (window as unknown as { cpProbe: unknown }).cpProbe = cp;
+
+    const energy = new EnergyComplexPanel();
+    energy.setOilStocksAnalysis({
+      dataMonth: '2026-08',
+      ieaMembers: [
+        { rank: 1, iso2: 'JP', daysOfCover: 212, netExporter: false, belowObligation: false, vsObligation: 122 },
+        { rank: 2, iso2: 'NO', daysOfCover: null, netExporter: true, belowObligation: false, vsObligation: null },
+        { rank: 3, iso2: 'GR', daysOfCover: 81, netExporter: false, belowObligation: true, vsObligation: -9 },
+      ],
+      regionalSummary: { europe: { avgDays: 118, minDays: 81, countBelowObligation: 1 } },
+    } as never);
+    energy.updateLngVulnerability({
+      dataMonth: '2026-07',
+      top20LngDependent: [
+        { iso2: 'JP', lngShareOfImports: 0.97, lngImportsTj: 3120000 },
+        { iso2: 'KR', lngShareOfImports: 0.94, lngImportsTj: 2210000 },
+      ],
+    } as never);
+    grid.appendChild(energy.getElement());
+
+    const fao = new Panel({ id: 'probe-food-prices', title: 'Food prices' });
+    const host = document.createElement('div');
+    fao.getElement().querySelector('.panel-content')!.replaceChildren(host);
+    const price = (item: string, value: number, wowPct: number) => ({
+      item, market: 'Nairobi', marketType: 'retail', origin: item === 'Maize' ? 'Kenya' : '', unit: 'kg', currency: 'KES',
+      date: '2026-10-31', price: value, wowAvailable: true, wowPct, previousDate: '2026-10-24', previousPrice: value,
+    });
+    new FoodPricesCard(host).update([{
+      id: 'kamis', name: 'KAMIS', country: 'Kenya', countryCode: 'KE', url: 'https://kamis.kilimo.go.ke/', cadence: 'weekly',
+      contextOnly: false, fetchedAt: '2026-11-03T00:00:00Z', latestReportDate: '2026-10-31', status: 'fresh',
+      prices: [price('Maize', 54.2, 1.6), price('Beans', 131, -2.4)], contexts: [], attribution: 'KAMIS',
+    }] as never);
+    grid.appendChild(fao.getElement());
+    await new Promise((r) => setTimeout(r, 300));
+  });
+
+  const views: Array<{ name: string; root: string; cp?: { market: string; tab: string } }> = [
+    { name: 'bigmac', root: '.panel[data-panel="bigmac"]' },
+    { name: 'fuel-prices', root: '.panel[data-panel="fuel-prices"]' },
+    { name: 'consumer-prices markets', root: '.panel[data-panel="consumer-prices"]', cp: { market: 'all', tab: 'overview' } },
+    { name: 'consumer-prices world', root: '.panel[data-panel="consumer-prices"]', cp: { market: 'all', tab: 'world' } },
+    { name: 'consumer-prices categories', root: '.panel[data-panel="consumer-prices"]', cp: { market: 'ae', tab: 'categories' } },
+    { name: 'energy-complex', root: '.panel[data-panel="energy-complex"]' },
+    { name: 'food prices', root: '.panel[data-panel="probe-food-prices"]' },
+  ];
+  const headers = new Set<string>();
+  for (const { name, root, cp } of views) {
+    if (cp) {
+      await page.evaluate(async (settings) => {
+        const panel = (window as unknown as { cpProbe: { settings: Record<string, string>; render(): void } }).cpProbe;
+        Object.assign(panel.settings, settings);
+        panel.render();
+        await new Promise((r) => setTimeout(r, 300));
+      }, cp);
+    }
+    const tables = await page.evaluate((rootSelector) => [...document.querySelectorAll(`${rootSelector} table.wm-table`)].map((table) => {
+      const pick = (el: Element | null) => {
+        if (!el) return null;
+        const s = getComputedStyle(el);
+        return { fontSize: s.fontSize, fontWeight: s.fontWeight, textTransform: s.textTransform, letterSpacing: s.letterSpacing, color: s.color, padding: s.padding };
+      };
+      return { th: pick(table.querySelector('thead th')), td: pick(table.querySelector('tbody td')), rowHeader: pick(table.querySelector('tbody th')) };
+    }), root);
+    expect(tables.length, `${name}: shared-style tables`).toBeGreaterThan(0);
+    for (const { th, td, rowHeader } of tables) {
+      headers.add(JSON.stringify(th));
+      expect.soft(th, `${name}: header cell uses the shared table style`).toMatchObject({ fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.4px', padding: '4px 8px' });
+      expect.soft(td, `${name}: body cell uses the shared table style`).toMatchObject({ fontSize: '11px', fontWeight: '400', textTransform: 'none', letterSpacing: 'normal', padding: '5px 8px' });
+      if (rowHeader) expect.soft(rowHeader, `${name}: a row header reads as a body cell`).toMatchObject({ fontSize: '11px', textTransform: 'none', letterSpacing: 'normal', color: td!.color, padding: '5px 8px' });
+    }
+    expect.soft(await readLostColours(page, root), `${name}: cells keep the colour their class sets`).toEqual([]);
+  }
+  expect.soft(headers.size, 'every table renders the same header cell').toBe(1);
 });
 
 // Satellite Fires and Displacement have no dashboard fixture, so the harness

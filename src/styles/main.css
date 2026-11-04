@@ -12290,19 +12290,6 @@ a.prediction-link:hover {
   color: var(--text-secondary);
 }
 
-.radiation-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
-
-.radiation-table th,
-.radiation-table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
 .radiation-row {
   cursor: pointer;
 }
@@ -26182,18 +26169,6 @@ body.map-width-resizing {
 .cp-pressure--stress  { background: rgba(239,68,68,0.15);   color: #f87171; }
 .cp-pressure--green   { background: rgba(34,197,94,0.15);   color: #4ade80; }
 
-.cp-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
-}
-
-.cp-table th, .cp-table td {
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
 .cp-col-header { cursor: pointer; }
 .cp-col-header--up::after   { content: ' ↑'; }
 .cp-col-header--down::after { content: ' ↓'; }
@@ -26326,31 +26301,16 @@ body.map-width-resizing {
   border-color: var(--text-dim);
 }
 
-.cp-global-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(0.78rem * var(--wm-panel-effective-scale, 1));
-}
-.cp-global-table th {
-  text-align: left;
-  font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-}
 .cp-global-row {
   cursor: pointer;
   border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.05));
 }
 .cp-global-row:hover { background: var(--overlay-subtle); }
-.cp-global-row td { padding: 6px 6px; vertical-align: middle; }
-.cp-global-flag { font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
+.cp-global-row td { vertical-align: middle; }
+.cp-global-flag { white-space: nowrap; }
 .cp-global-index { color: var(--text-primary, #e0e0e0); font-variant-numeric: tabular-nums; }
 .cp-global-wow { white-space: nowrap; }
 .cp-global-spread { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.cp-global-fresh { font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1)); }
 .cp-global-pending { color: var(--text-dim); font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1)); font-style: italic; }
 .cp-global-hint {
   font-size: calc(0.68rem * var(--wm-panel-effective-scale, 1));
@@ -26431,23 +26391,10 @@ body.map-width-resizing {
   overflow: auto;
 }
 
-.gb-table {
-  border-collapse: collapse;
-  font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1));
-  white-space: nowrap;
-}
-
-.gb-table th, .gb-table td {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  vertical-align: top;
-}
-
 .gb-table .gb-item-col { min-width: 110px; text-align: start; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
 
 .gb-country-header {
   text-align: center;
-  font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   min-width: 80px;
   background: var(--overlay-subtle);
 }
@@ -26455,7 +26402,6 @@ body.map-width-resizing {
 .gb-country-name { font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); display: block; }
 
 .gb-table .gb-item-name {
-  font-weight: 500;
   min-width: 110px;
   position: sticky;
   inset-inline-start: 0;
@@ -29430,10 +29376,8 @@ body.map-width-resizing {
 .food-prices-filter { display: flex; flex: 1 1 140px; min-width: 0; flex-direction: column; gap: 4px; font-size: .85em; }
 .food-prices-filter select { width: 100%; min-width: 0; padding: 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 .food-prices-table-wrap { overflow-x: auto; max-width: 100%; }
-.food-prices-table { width: 100%; border-collapse: collapse; font-size: .85em; }
-.food-prices-table th, .food-prices-table td { padding: 8px 4px; border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; overflow-wrap: anywhere; }
-.food-prices-table th:first-child { width: 42%; font-weight: 500; }
-.food-prices-table thead th { font-weight: 600; color: var(--text-dim); }
+.food-prices-table th, .food-prices-table td { vertical-align: top; overflow-wrap: anywhere; }
+.food-prices-table th:first-child { width: 42%; }
 .food-prices-card small { display: block; margin-top: 3px; color: var(--text-dim); font-size: .9em; }
 .food-prices-context { margin-top: 14px; }
 .food-prices-context summary { cursor: pointer; font-size: .9em; }
