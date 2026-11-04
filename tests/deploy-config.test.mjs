@@ -3654,6 +3654,14 @@ describe('brief magazine CSP override', () => {
     );
   });
 
+  it('loads fonts only from the site itself (self-hosted brief fonts, no Google Fonts)', () => {
+    const csp = getBriefCspValue();
+    const styleSrc = csp.match(/style-src\s+([^;]+)/)?.[1] ?? '';
+    const fontSrc = csp.match(/font-src\s+([^;]+)/)?.[1] ?? '';
+    assert.equal(fontSrc.trim(), "'self' data:");
+    assert.doesNotMatch(styleSrc, /googleapis|gstatic/);
+  });
+
   it('keeps tight defaults for non-script directives', () => {
     const csp = getBriefCspValue();
     for (const directive of [

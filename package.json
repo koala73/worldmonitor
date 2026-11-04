@@ -68,6 +68,7 @@
     "bundle:check:embed": "node scripts/bundle-budgets.mjs --check --surface embed",
     "sandbox:fixtures": "node scripts/generate-sandbox-fixtures.mjs",
     "sandbox:fixtures:check": "node scripts/generate-sandbox-fixtures.mjs --check",
+    "brief-fonts:subset": "node scripts/brief-fonts/run.mjs",
     "generate": "node scripts/generate-derived.mjs",
     "generate:check": "node scripts/generate-derived.mjs --check",
     "product:facts": "node --import tsx scripts/generate-product-config.mjs && node --import tsx scripts/generate-public-product-facts.mjs && npm run inventory:facts && npm run build:ai-search",
