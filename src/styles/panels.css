@@ -744,7 +744,7 @@
 }
 
 .fire-row.fires-high .fire-hi {
-  color: var(--threat-critical);
+  color: var(--semantic-critical-text, var(--threat-critical));
   font-weight: 600;
 }
 
@@ -3296,13 +3296,13 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 .gb-table th, .gb-table td { border-inline: 1px solid var(--border-subtle); text-align: right; vertical-align: top; white-space: nowrap; }
 .gb-item-col, .gb-item-name { text-align: start; min-width: 110px; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
 .gb-country-header { text-align: center; min-width: 80px; }
-.gb-country-name { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.7; }
+.gb-country-name { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); }
 .gb-cell { position: relative; }
-.gb-local { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.6; }
-.gb-unit { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.5; }
-.gb-na { opacity: 0.3; text-align: center; }
-.gb-cheapest { background: rgba(34,197,94,0.15); color: #4ade80; }
-.gb-priciest { background: rgba(239,68,68,0.1); color: #f87171; }
+.gb-local { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); }
+.gb-unit { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); }
+.gb-na { text-align: center; }
+.gb-cheapest { background: rgba(34,197,94,0.15); color: var(--green-text, #4ade80); }
+.gb-priciest { background: rgba(239,68,68,0.1); color: var(--red-text, #f87171); }
 .gb-total-row td { border-top: 2px solid var(--border); }
 .gb-wow { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.85; margin-top: 1px; }
 .gb-updated { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.4; text-align: right; padding: 4px 6px; }
@@ -3914,7 +3914,7 @@ td.fx-window {
   font-variant-numeric: tabular-nums;
 }
 .fx-window-dates {
-  opacity: 0.7;
+  color: var(--text-dim);
 }
 /* The raw seeded direction, shown beside the conventional quote. */
 td.fx-inverse {

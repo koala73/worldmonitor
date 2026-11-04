@@ -13,6 +13,14 @@ function formatCompact(n: number): string {
   return String(n);
 }
 
+/** The velocity number's colour: the bar's hue, with the light theme's darker text shade. */
+function velocityTextColor(score: number): string {
+  if (score >= 80) return 'var(--red-text, #e74c3c)';
+  if (score >= 50) return 'var(--semantic-high-text, #e67e22)';
+  if (score >= 25) return 'var(--yellow-text, #f1c40f)';
+  return 'var(--green-text, #27ae60)';
+}
+
 function velocityColor(score: number): string {
   if (score >= 80) return '#e74c3c';
   if (score >= 50) return '#e67e22';
@@ -100,7 +108,7 @@ export class WsbTickerScannerPanel extends Panel {
       const vColor = velocityColor(tk.velocityScore);
       const barPct = Math.max(4, Math.round((tk.velocityScore / maxVelocity) * 100));
       const subs = tk.subreddits.map(s =>
-        `<span style="font-size:calc(8px * var(--wm-panel-effective-scale, 1));padding:1px 4px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim);margin-right:2px">r/${escapeHtml(s)}</span>`
+        `<span style="font-size:calc(8px * var(--wm-panel-effective-scale, 1));padding:1px 4px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-secondary);margin-right:2px">r/${escapeHtml(s)}</span>`
       ).join('');
 
       return `<tr>
@@ -110,7 +118,7 @@ export class WsbTickerScannerPanel extends Panel {
         <td class="wsb-num">${formatCompact(tk.totalScore)}</td>
         <td class="wsb-velocity">
           <div style="display:flex;align-items:center;gap:4px">
-            <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${vColor};min-width:24px;text-align:right">${Math.round(tk.velocityScore)}</span>
+            <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${velocityTextColor(tk.velocityScore)};min-width:24px;text-align:right">${Math.round(tk.velocityScore)}</span>
             <div style="flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,0.08)">
               <div style="height:100%;width:${barPct}%;border-radius:2px;background:${vColor}"></div>
             </div>

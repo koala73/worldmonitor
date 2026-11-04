@@ -12450,7 +12450,7 @@ a.prediction-link:hover {
 }
 
 .radiation-confidence-low {
-  color: #7dd3fc;
+  color: var(--semantic-low-text, #7dd3fc);
   border-color: rgba(125, 211, 252, 0.35);
   background: rgba(125, 211, 252, 0.08);
 }
@@ -22787,11 +22787,11 @@ body.has-breaking-alert .panels-grid {
 
 .badge-bullish {
   background: rgba(76, 175, 80, 0.2);
-  color: var(--semantic-normal);
+  color: var(--green-text, var(--semantic-normal));
 }
 
 .badge-bearish {
-  background: rgba(244, 67, 54, 0.2);
+  background: rgba(244, 67, 54, 0.12);
   color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
@@ -26175,8 +26175,8 @@ body.map-width-resizing {
   border-radius: 3px;
   font-variant-numeric: tabular-nums;
 }
-.cp-badge--green { background: rgba(34,197,94,0.15); color: #4ade80; }
-.cp-badge--red   { background: rgba(239,68,68,0.15);  color: #f87171; }
+.cp-badge--green { background: rgba(34,197,94,0.15); color: var(--green-text, #4ade80); }
+.cp-badge--red   { background: rgba(239,68,68,0.15);  color: var(--red-text, #f87171); }
 .cp-badge--neutral { background: var(--overlay-subtle); color: var(--text-dim); }
 
 .cp-pressure {
@@ -26394,9 +26394,9 @@ body.map-width-resizing {
   border-bottom: 1px solid var(--border);
 }
 
-.cp-fresh--ok      { color: #4ade80; }
-.cp-fresh--warn    { color: #fbbf24; }
-.cp-fresh--stale   { color: #f87171; }
+.cp-fresh--ok      { color: var(--green-text, #4ade80); }
+.cp-fresh--warn    { color: var(--yellow-text, #fbbf24); }
+.cp-fresh--stale   { color: var(--red-text, #f87171); }
 .cp-fresh--unknown { color: var(--text-muted); }
 
 /* ── Grocery Basket Panel ──────────────────────────────────────────────── */
@@ -26448,8 +26448,10 @@ body.map-width-resizing {
 
 .gb-na { text-align: center; color: var(--text-dim); }
 
-.gb-cheapest { background: rgba(34,197,94,0.12); color: #4ade80; }
-.gb-priciest { background: rgba(239,68,68,0.12);  color: #f87171; }
+.gb-cheapest { background: rgba(34,197,94,0.12); color: var(--green-text, #4ade80); }
+.gb-priciest { background: rgba(239,68,68,0.12);  color: var(--red-text, #f87171); }
+/* Muted grey drops below 4.5:1 on the green tint in dark; the local price takes the cell's colour. */
+.gb-cheapest .gb-local, .gb-priciest .gb-local { color: inherit; }
 
 .gb-total-row td { font-weight: 600; background: var(--overlay-subtle); }
 .gb-total { font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1)); }
@@ -26462,8 +26464,8 @@ body.map-width-resizing {
   flex-shrink: 0;
 }
 
-.bm-wow-up   { color: #f87171; } /* red = more expensive */
-.bm-wow-down { color: #4ade80; } /* green = cheaper */
+.bm-wow-up   { color: var(--red-text, #f87171); } /* red = more expensive */
+.bm-wow-down { color: var(--green-text, #4ade80); } /* green = cheaper */
 .bm-wow-summary {
   font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted, #888);
