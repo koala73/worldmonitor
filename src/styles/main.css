@@ -19873,6 +19873,10 @@ button.popup-link {
   padding: 5px 12px;
 }
 
+.deckgl-legend[hidden] {
+  display: none;
+}
+
 .deckgl-legend .legend-label-title {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
@@ -19934,6 +19938,15 @@ button.popup-link {
 .deckgl-tooltip strong {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* Owning layer, so markers from overlapping layers stay identifiable (#10139) */
+.deckgl-tooltip-category {
+  margin-bottom: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 /* MapLibre GL overrides for dark theme */
