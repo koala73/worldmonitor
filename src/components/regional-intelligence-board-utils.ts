@@ -218,7 +218,7 @@ export function buildActorsBlock(actors: ActorState[]): string {
   const sorted = [...actors].sort((a, b) => (b.leverageScore ?? 0) - (a.leverageScore ?? 0)).slice(0, 5);
   const rows = sorted.map((a) => {
     const deltaText = a.delta > 0 ? `+${a.delta.toFixed(2)}` : a.delta.toFixed(2);
-    const deltaColor = a.delta > 0 ? 'var(--semantic-critical)' : a.delta < 0 ? 'var(--accent)' : 'var(--text-dim)';
+    const deltaColor = a.delta > 0 ? 'var(--semantic-critical-text, var(--semantic-critical))' : a.delta < 0 ? 'var(--accent)' : 'var(--text-dim)';
     const domains = (a.leverageDomains ?? []).slice(0, 3).join(', ');
     return `
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
@@ -283,10 +283,11 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
 // Transmission paths
 // ────────────────────────────────────────────────────────────────────────────
 
+// Text colour for the severity label.
 function severityColor(severity: string): string {
   switch ((severity ?? '').toLowerCase()) {
-    case 'critical': return 'var(--semantic-critical)';
-    case 'high': return 'var(--semantic-critical)';
+    case 'critical': return 'var(--semantic-critical-text, var(--semantic-critical))';
+    case 'high': return 'var(--semantic-critical-text, var(--semantic-critical))';
     case 'medium': return 'var(--warning, #e0a020)';
     case 'low': return 'var(--text-dim)';
     default: return 'var(--text-dim)';
@@ -325,7 +326,7 @@ export function buildTransmissionBlock(paths: TransmissionPath[]): string {
 export function buildWatchlistBlock(activeTriggers: Trigger[], watchItems: NarrativeSection[]): string {
   const triggerRows = (activeTriggers ?? []).map((t) => `
     <div style="padding:3px 0;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
-      <span style="color:var(--semantic-critical);font-weight:600">●</span>
+      <span style="color:var(--semantic-critical-text, var(--semantic-critical));font-weight:600">●</span>
       ${escapeHtml(t.id)}${t.description ? ` — <span style="color:var(--text-dim)">${escapeHtml(t.description)}</span>` : ''}
     </div>
   `).join('');

@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import {
   BOARD_REGIONS,
@@ -253,6 +254,8 @@ describe('buildActorsBlock', () => {
     // Positive delta uses danger color; negative uses accent.
     assert.match(html, /\+0\.10/);
     assert.match(html, /-0\.10/);
+    // The delta is 10px text: the light theme darkens the text token to pass 4.5:1.
+    assert.match(html, /color:var\(--semantic-critical-text, var\(--semantic-critical\)\);[^>]*>\+0\.10/);
   });
 
   it('shows empty-state when no actors', () => {
@@ -306,6 +309,14 @@ describe('buildTransmissionBlock', () => {
     assert.match(html, /naval_posture/);
     assert.match(html, /hormuz/);
     assert.match(html, /high/i);
+  });
+
+  it('writes critical and high severity labels in the critical text colour', () => {
+    const base = { start: 'a', end: 'x', corridorId: '', confidence: 0.5, latencyHours: 0, impactedAssetClass: '', impactedRegions: [], magnitudeLow: 0, magnitudeHigh: 0, magnitudeUnit: '', templateId: '', templateVersion: '' };
+    for (const severity of ['critical', 'high']) {
+      const html = buildTransmissionBlock([{ ...base, mechanism: 'm', severity }]);
+      assert.match(html, new RegExp(`color:var\\(--semantic-critical-text, var\\(--semantic-critical\\)\\);[^>]*>${severity}`), severity);
+    }
   });
 
   it('sorts transmissions by confidence descending', () => {
@@ -826,5 +837,17 @@ describe('buildWeeklyBriefBlock', () => {
     const html = buildWeeklyBriefBlock(malicious);
     assert.doesNotMatch(html, /<img onerror/);
     assert.match(html, /&lt;img/);
+  });
+});
+
+describe('critical red text', () => {
+  // --semantic-critical is #ff4444 in both themes, about 3.4:1 on the light
+  // theme's white panel. Text reads the text token, which the light theme
+  // darkens; bars and fills keep the base token.
+  it('reads the text token wherever a colour property uses the critical red', () => {
+    for (const path of ['src/components/RegionalIntelligenceBoard.ts', 'src/components/regional-intelligence-board-utils.ts']) {
+      const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+      assert.deepEqual(source.match(/(?<![-\w])color:\s*var\(--semantic-critical\)/g) ?? [], [], path);
+    }
   });
 });
