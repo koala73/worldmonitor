@@ -197,6 +197,13 @@ describe('buildBalanceBlock', () => {
     assert.match(html, /Energy Lev/);
   });
 
+  it('fills pressure bars in the critical colour and buffer bars in the accent', () => {
+    const html = buildBalanceBlock(balanceFixture());
+    const fills = (token: string) => html.match(new RegExp(`height:100%;width:[\\d.]+%;background:var\\(${token}\\)`, 'g'))?.length ?? 0;
+    assert.equal(fills('--semantic-critical'), 4);
+    assert.equal(fills('--accent'), 3);
+  });
+
   it('renders the net_balance bar', () => {
     const html = buildBalanceBlock(balanceFixture({ netBalance: -0.25 }));
     assert.match(html, /Net Balance/);
