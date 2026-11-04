@@ -562,11 +562,13 @@ def build(crawl_path: Path, verify_google: bool):
         family_pages = set().union(*u['pages'].values()) if u['pages'] else set()
         frequent = {cp for cp in used - ASCII if len(u['pages'][cp]) >= CORE_PAGE_SHARE * max(1, len(family_pages))}
         want = (used | LATIN1 | LATIN_EXT_A | ASCII | CORE_PUNCT) & cov & src_cmap
-        # A used character Google's files have no glyph for (Ǖ U+01D5 in Inter) is drawn by
-        # HarfBuzz from its decomposition (Ü + combining macron), so the files need those parts.
-        for cp in used & g['in_no_file']:
-            want |= {ord(c) for c in unicodedata.normalize('NFD', chr(cp))} & cov & src_cmap
-        core = (ASCII | CORE_PUNCT | frequent) & want
+        # Google's latin file also maps the combining marks in its range (U+0304, U+0308, U+0329).
+        # Letters no Google file has a glyph for (Ǖ = U + U+0308 + U+0304) sit in the core's range
+        # and are composed from those marks, so the core keeps them.
+        latin_marks = {cp for cp in parse_unicode_range(g['subsets']['latin']['unicode_range'])
+                       if unicodedata.category(chr(cp)) == 'Mn'} & cov & src_cmap
+        want |= latin_marks
+        core = (ASCII | CORE_PUNCT | frequent | latin_marks) & want
         ext = want - core
 
         # --- shaping check: move characters into the core until splitting changes nothing
