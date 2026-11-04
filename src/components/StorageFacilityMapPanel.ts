@@ -173,7 +173,7 @@ export class StorageFacilityMapPanel extends Panel {
   private detailError: string | null = null;
   private detailEvents: EnergyDisruptionEntry[] | null | undefined = undefined;
   private usedHydrationPaint = false;
-  private openDetailHandler = (ev: Event): void => {
+  private claimStorageClick = (ev: Event): void => {
     const id = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
     if (!id || !this.element?.isConnected) return;
     ev.preventDefault();
@@ -191,10 +191,8 @@ export class StorageFacilityMapPanel extends Panel {
         'evidence (operator statements, sanction refs, commercial state, physical signals) — ' +
         'see /docs/methodology/storage for the classifier spec.',
     });
-    // Claims a map click only while this panel is connected. DeckGLMap
-    // opens a facility popup when nothing calls preventDefault.
     if (!this.detailSource && typeof window !== 'undefined') {
-      window.addEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
+      window.addEventListener('energy:open-storage-facility-detail', this.claimStorageClick);
     }
     this.content.addEventListener('click', this.handleContentClick);
     bindActivationKeys(this.content, '.sf-row');
@@ -215,7 +213,7 @@ export class StorageFacilityMapPanel extends Panel {
 
   public destroy(): void {
     if (!this.detailSource && typeof window !== 'undefined') {
-      window.removeEventListener('energy:open-storage-facility-detail', this.openDetailHandler);
+      window.removeEventListener('energy:open-storage-facility-detail', this.claimStorageClick);
     }
     super.destroy?.();
   }

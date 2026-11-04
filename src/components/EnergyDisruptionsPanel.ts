@@ -290,7 +290,7 @@ export class EnergyDisruptionsPanel extends Panel {
   private dispatchOpenAsset(_eventId: string, assetId: string, assetType: string): void {
     // Dispatch only the {pipelineId, facilityId} field the receiving
     // drawers actually consume today (see PipelineStatusPanel and
-    // StorageFacilityMapPanel `openDetailHandler`). The row click
+    // StorageFacilityMapPanel `claimStorageClick`). The row click
     // jumps the user to the asset — they see the full disruption
     // timeline for that asset and can locate the specific event
     // visually. A future PR can add a `highlightEventId` contract
