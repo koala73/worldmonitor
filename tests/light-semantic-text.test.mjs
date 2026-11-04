@@ -29,7 +29,7 @@ const main = sheets['styles/main.css'];
 const happy = read(new URL('happy-theme.css', stylesDir));
 
 const SEMANTIC = ['red', 'green', 'yellow', 'semantic-critical', 'semantic-high', 'semantic-elevated',
-  'semantic-positive', 'status-live', 'status-cached', 'status-unavailable'];
+  'semantic-positive', 'semantic-low', 'status-live', 'status-cached', 'status-unavailable'];
 
 /** Surfaces with a hard-coded dark background in both themes. */
 const ALWAYS_DARK = ['.update-toast', '.passkey-offer-prompt', '.re-modal'];

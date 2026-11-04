@@ -7109,7 +7109,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.us-nato .base-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .base-marker.china .base-label {
@@ -7121,7 +7121,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.uk .base-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .base-marker.france .base-label {
@@ -7240,7 +7240,7 @@ body.playback-mode .status-dot {
 }
 
 .port-marker.port-naval .port-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .port-marker.port-mixed .port-label {
@@ -7369,7 +7369,7 @@ body.playback-mode .status-dot {
 
 /* Category-specific colors */
 .nat-event-marker.severeStorms .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.wildfires .nat-event-label {
@@ -7397,7 +7397,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.snow .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.tempExtremes .nat-event-label {
@@ -7405,7 +7405,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.seaLakeIce .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.waterColor .nat-event-label {
@@ -7430,7 +7430,7 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.nat-event.severeStorms .popup-title {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .popup-header.nat-event.wildfires {
@@ -10677,7 +10677,7 @@ a.prediction-link:hover {
 }
 
 .map-legend-icon.base {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .map-legend-icon.cable {
@@ -17116,7 +17116,7 @@ a.prediction-link:hover {
 }
 
 .risk-location-icon {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   margin-left: auto;
   opacity: 0.7;
@@ -17648,7 +17648,7 @@ a.prediction-link:hover {
   background: rgba(68, 136, 255, 0.15);
   border: 1px solid rgba(68, 136, 255, 0.4);
   border-radius: 4px;
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   padding: 4px 10px;
   font-family: var(--font-mono);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
@@ -17659,7 +17659,7 @@ a.prediction-link:hover {
 .location-link:hover {
   background: rgba(68, 136, 255, 0.3);
   border-color: var(--semantic-low);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 /* --- Signal Modal: Focal Points & News Correlation --- */
@@ -17688,7 +17688,7 @@ a.prediction-link:hover {
 }
 
 .news-correlation-header {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .focal-point-item {
@@ -17758,7 +17758,7 @@ a.prediction-link:hover {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   margin-bottom: 8px;
 }
 
@@ -17899,7 +17899,7 @@ a.prediction-link:hover {
 
 .intel-findings-badge.status-low .findings-count {
   background: rgba(74, 158, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .intel-findings-badge.status-high {
@@ -18022,7 +18022,7 @@ a.prediction-link:hover {
 
 .findings-badge.moderate {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .findings-badge.high {
@@ -18180,7 +18180,7 @@ a.prediction-link:hover {
 
 .finding-confidence.medium {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .finding-confidence.low {
@@ -18368,7 +18368,7 @@ a.prediction-link:hover {
 
 .findings-modal-item-priority.medium {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .findings-modal-item-desc {
@@ -20608,7 +20608,7 @@ a.prediction-link:hover {
 }
 
 .insights-missed .insights-section-title {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .insight-story.missed {
@@ -20625,7 +20625,7 @@ a.prediction-link:hover {
 
 .insight-badge.ml-detected {
   background: rgba(107, 138, 253, 0.15);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   border-color: rgba(107, 138, 253, 0.3);
 }
 
@@ -22546,7 +22546,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.military {
   border-color: rgba(100, 180, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .signal-chip.outage {
@@ -23618,7 +23618,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.displacement {
   border-color: rgba(100, 200, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .signal-chip.climate {
@@ -23647,7 +23647,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-citation {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: none;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
@@ -23657,7 +23657,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-citation:hover {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: underline;
 }
 
@@ -23774,7 +23774,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-market-link {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: none;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
