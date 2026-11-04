@@ -33,9 +33,10 @@
  * reaches the cloud from that install's one server IP. A generous per-IP
  * ceiling (the gateway's own default) runs before the lookup so the route
  * cannot become a Convex amplifier beyond what the gateway already allows.
- * Limiter degradation fails open: a verdict endpoint must not lock anyone out
- * over a Redis blip, and the expensive lookups behind it carry their own
- * negative caches.
+ * Limiter degradation fails open (Redis-degraded scoped limits intentionally
+ * stay availability-first): a verdict endpoint must not lock anyone out over a
+ * Redis blip, and the expensive lookups behind it carry their own negative
+ * caches.
  *
  * Called server-to-server with no browser Origin; CORS follows
  * api/embed/entitlement.ts. Responses are `no-store` and carry no owner id,

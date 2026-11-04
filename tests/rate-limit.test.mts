@@ -739,6 +739,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',
     },
     {
+      path: 'api/desktop-key/status.ts',
+      expected: /Redis-degraded scoped limits intentionally\s*\*?\s*stay availability-first/,
+      reason: 'the desktop-key verdict is free, never metered, and its key and entitlement lookups carry negative caches; a Redis blip must not lock paying self-host users out, so degradation stays availability-first',
+    },
+    {
       path: 'api/notify.ts',
       expected: /limiter outage here should NOT fail open/,
       reason: 'notify publishes create relay-side delivery obligations on the shared event queue, so Redis degradation fails closed instead of allowing unbounded fan-out',
