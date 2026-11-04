@@ -241,9 +241,12 @@ const INVALID_QUERY_RETRY_DELAY_MS = 5_000;
 const MAX_REFERENCE_INVALID_QUERY_RETRIES = 3;
 const MAX_ACTIVITY_PAGE_INVALID_QUERY_RETRIES = 3;
 // The preflight runs 174 countries in waves of PREFLIGHT_CONCURRENCY, so its
-// pause is short: two failed retries take a wave from ~4.5s to ~9.5s.
+// pause is short: two failed retries take a wave from ~4.5s to ~9.5s. The run
+// deadline counts from run start, so retries stop once the phase has spent
+// PREFLIGHT_RETRY_BUDGET_MS and the remaining waves fall back to one attempt.
 const PREFLIGHT_INVALID_QUERY_RETRY_DELAY_MS = 1_000;
 const MAX_PREFLIGHT_INVALID_QUERY_RETRIES = 2;
+const PREFLIGHT_RETRY_BUDGET_MS = 60_000;
 // Hard publication expiry: reject cached payloads at seven days. Queue a full
 // refetch earlier so the bounded rotation can finish before this deadline,
 // even when upstream maxDate is unchanged. Protects against window-shift drift
@@ -1045,7 +1048,7 @@ export function parseMaxDateObservation(body) {
     : { status: 'failed', maxDate: null };
 }
 
-export async function fetchMaxDate(iso3, { signal, dateField, fetchFn, sleepFn } = {}) {
+export async function fetchMaxDate(iso3, { signal, dateField, fetchFn, sleepFn, deadlineAt } = {}) {
   const df = dateField || (await resolveArcgisDateField({ signal }));
   const outStats = JSON.stringify([{
     statisticType: 'max',
@@ -1079,6 +1082,8 @@ export async function fetchMaxDate(iso3, { signal, dateField, fetchFn, sleepFn }
         signal,
         sleepFn,
         label: `${iso3} preflight`,
+        deadlineAt,
+        minAttemptMs: PREFLIGHT_FETCH_TIMEOUT,
         maxRetries: 0,
         invalidQueryRetries: MAX_PREFLIGHT_INVALID_QUERY_RETRIES,
         invalidQueryDelayMs: PREFLIGHT_INVALID_QUERY_RETRY_DELAY_MS,
@@ -1735,11 +1740,12 @@ export async function fetchAll(progress, {
   if (progress) progress.stage = 'preflight';
   const preflightT0 = Date.now();
   const preflightObservations = new Array(eligibleIso3.length).fill(null);
+  const preflightRetryDeadlineAt = preflightT0 + PREFLIGHT_RETRY_BUDGET_MS;
   for (let i = 0; i < eligibleIso3.length; i += PREFLIGHT_CONCURRENCY) {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const slice = eligibleIso3.slice(i, i + PREFLIGHT_CONCURRENCY);
     const settled = await Promise.allSettled(
-      slice.map((iso3) => fetchMaxDate(iso3, { signal, dateField })),
+      slice.map((iso3) => fetchMaxDate(iso3, { signal, dateField, deadlineAt: preflightRetryDeadlineAt })),
     );
     for (let j = 0; j < slice.length; j++) {
       const r = settled[j];
