@@ -191,6 +191,7 @@
   --green-text: #166534;
   --semantic-positive-text: #166534;
   --status-live-text: #166534;
+  --semantic-low-text: #1e40af;
 
   /* Backgrounds */
   --bg: #f8f9fa;
@@ -732,6 +733,7 @@ canvas,
   --semantic-high-text: initial;
   --semantic-elevated-text: initial;
   --semantic-positive-text: initial;
+  --semantic-low-text: initial;
   --status-live-text: initial;
   --status-cached-text: initial;
   --status-unavailable-text: initial;

@@ -235,3 +235,49 @@ describe('billing tone contrast', () => {
     });
   }
 });
+
+/**
+ * Climate Anomalies colours each temperature and precipitation delta by class.
+ * The values are 11px text, so each class must clear 4.5:1 on the panel
+ * backgrounds in both themes. A class reads `var(--x-text, var(--x))`; the
+ * light theme defines the darker `-text` shade, the dark theme falls back.
+ */
+describe('Climate Anomalies delta colours', () => {
+  const mainCss = readFile('src/styles/main.css');
+  const panelsCss = readFile('src/styles/panels.css');
+  // main.css opens several top-level blocks with the same selector.
+  const blocks = (marker: string): string => {
+    let out = '';
+    for (let at = mainCss.indexOf(`\n${marker}`); at >= 0; at = mainCss.indexOf(`\n${marker}`, at + 1)) {
+      out += extractBlock(mainCss.slice(at + 1), marker);
+    }
+    return out;
+  };
+  // The first var() with a value in the theme wins, then the dark defaults.
+  const resolve = (expr: string, block: string): string => {
+    const names = [...expr.matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]!);
+    for (const name of names) {
+      for (const scope of [block, ':root {']) {
+        const m = blocks(scope).match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{3,8})`));
+        if (m) return m[1]!;
+      }
+    }
+    assert.fail(`no theme value for ${expr} in ${block}`);
+  };
+
+  for (const theme of [{ name: 'dark', block: ':root {' }, { name: 'light', block: '[data-theme="light"] {' }]) {
+    it(`${theme.name}: every delta class clears 4.5:1 on --bg and --surface`, () => {
+      const bg = token(mainCss, theme.block, '--bg');
+      const surface = token(mainCss, theme.block, '--surface');
+      for (const cls of ['climate-warm', 'climate-cold', 'climate-wet', 'climate-dry']) {
+        const rule = panelsCss.match(new RegExp(`\\.${cls}\\s*\\{[^}]*?color:\\s*([^;]+);`));
+        assert.ok(rule, `.${cls} has no colour rule`);
+        const color = resolve(rule[1]!, theme.block);
+        for (const base of [bg, surface]) {
+          const ratio = contrastRatio(color, base);
+          assert.ok(ratio >= 4.5, `${theme.name} .${cls} (${color}) on ${base} is ${ratio.toFixed(2)}:1, needs >= 4.5:1`);
+        }
+      }
+    });
+  }
+});

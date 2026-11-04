@@ -920,11 +920,11 @@
 }
 
 .climate-cold {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .climate-wet {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .climate-dry {

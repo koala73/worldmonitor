@@ -230,6 +230,31 @@ function readCellStyle(page: Page, id: string): Promise<{ th: CellStyle; td: Cel
   }, id);
 }
 
+// Cells whose own class sets a colour that the rendered cell does not show.
+// A probe cell with the same classes in a plain table gives the colour the
+// classes set; a class that sets none matches the plain probe and is skipped.
+function readLostColours(page: Page, root: string): Promise<string[]> {
+  return page.evaluate((rootSelector) => {
+    const lost: string[] = [];
+    for (const table of document.querySelectorAll(`${rootSelector} table.wm-table`)) {
+      const probeTable = document.createElement('table');
+      table.parentElement!.appendChild(probeTable);
+      const probe = (className: string) => {
+        probeTable.innerHTML = `<tbody><tr><td class="${className}">x</td></tr></tbody>`;
+        return getComputedStyle(probeTable.querySelector('td')!).color;
+      };
+      const plain = probe('');
+      for (const td of table.querySelectorAll<HTMLElement>('tbody td[class]')) {
+        const own = probe(td.className);
+        const shown = getComputedStyle(td).color;
+        if (own !== plain && shown !== own) lost.push(`td.${td.className.trim().replace(/\s+/g, '.')}: ${shown}, class sets ${own}`);
+      }
+      probeTable.remove();
+    }
+    return lost;
+  }, root);
+}
+
 // Tables on the shared `.wm-table` style (tests/panel-table-style.test.mjs),
 // with the header and cell it renders in a 1920px sidebar column. The column
 // is under 480px, so the panel-body container query narrows inline padding
@@ -312,6 +337,7 @@ test('panel tables fit a narrow desktop column or scroll with a visible cue', as
         expect.soft(style.th, `${id}: header cell uses the shared table style`).toMatchObject(WM_TABLE_STYLE.th);
         expect.soft(style.td, `${id}: body cell uses the shared table style`).toMatchObject(WM_TABLE_STYLE.td);
         styles.set(id, style);
+        expect.soft(await readLostColours(page, `#panelsGrid .panel[data-panel="${id}"]`), `${id}: cells keep the colour their class sets`).toEqual([]);
       }
     }
     if (viewport.width === 1920) {
