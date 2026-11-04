@@ -44,8 +44,16 @@ describe('blog font subsets', () => {
   });
 
   it('were cut for the current font CSS', () => {
+    // Each entry is "file | selector or tag | declaration", so moving, changing or removing a
+    // declaration all count: any of them can change which weights and faces are needed.
     const added = current.declarations.filter((d) => !manifest.inputs.declarations.includes(d));
-    assert.deepEqual(added, [], `Font-related CSS changed since the subsets were generated (weights, features and faces may differ). ${RERUN}`);
+    const removed = manifest.inputs.declarations.filter((d) => !current.declarations.includes(d));
+    assert.deepEqual({ added, removed }, { added: [], removed: [] }, `Font-related CSS changed since the subsets were generated (weights, features and faces may differ). ${RERUN}`);
+  });
+
+  it('were checked against the Google-served files', () => {
+    const unchecked = Object.entries(manifest.families).filter(([, f]) => f.google_parity_checked !== true).map(([name]) => name);
+    assert.deepEqual(unchecked, [], `Generated with --skip-google-parity. ${RERUN}`);
   });
 
   it('were cut for the current page languages', () => {

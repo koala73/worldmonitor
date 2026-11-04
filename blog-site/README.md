@@ -51,9 +51,11 @@ Characters Google Fonts never drew in these families (arrows such as ←, CJK, A
 ### Regenerating
 
 ```sh
-npm ci                  # once, in the repository root (Playwright and Chromium)
+npm ci                          # once, in the repository root (Playwright)
+npx playwright install chromium # once, the browser the crawl uses
 cd blog-site
-npm run fonts:subset    # builds, crawls every page in Chromium, rewrites the files above
+npm ci                          # once, the blog's build dependencies
+npm run fonts:subset            # builds, crawls every page in Chromium, rewrites the files above
 ```
 
 The script also needs [uv](https://docs.astral.sh/uv/), which installs its pinned Python dependencies. It downloads the pinned source fonts from google/fonts and checks them against SHA-256 hashes. Output is deterministic: rerunning with unchanged content reproduces the same bytes. Flags:
@@ -69,8 +71,9 @@ The script refuses to write files when a glyph outline or the shaping of any tex
 `tests/blog-font-subsets-fresh.test.mjs` fails, and names the cause, when:
 
 - content adds a character one of these fonts would draw but no subset contains (for example a Vietnamese or Polish letter outside Latin Extended-A);
-- a font-related CSS declaration is added or changed (`font-weight`, `font-family`, `font-variant-*`, `font-feature-settings`, `font-variation-settings`, `text-transform`, `hyphens`, and similar), including inline `style` attributes;
-- a page uses a new `lang`.
+- a font-related CSS declaration is added, removed, changed or moved to another rule (`font-weight`, `font-family`, `font-variant-*`, `font-feature-settings`, `font-variation-settings`, `text-transform`, `hyphens`, the `--font-*` stacks, and similar), including inline `style` attributes;
+- a page uses a new `lang`;
+- the committed files were generated with `--skip-google-parity`.
 
 Also rerun after changing the font stack or the Google Fonts families in `subset_fonts.py`.
 
