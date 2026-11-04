@@ -2702,30 +2702,63 @@ body.panel-resize-active iframe {
   will-change: opacity, transform;
 }
 
-/* A news panel header carries a LIVE pill, sort, summarize, count and close
-   controls. In a phone panel or a 375px desktop column they leave the title
-   group about 170px. There the LIVE pill becomes the dot used below 300px and
-   the item count leaves the layout (it stays in the accessibility tree; the
-   NEW badge still shows how many items are new). */
+/* A status badge collapsed to a dot must not tell its states apart by colour
+   alone (WCAG 1.4.1), so each state has its own shape, and the freshness dot
+   uses the same ones: live or fresh data is a filled circle, cached or stale
+   data a ring, and unavailable, missing or failed data a hollow square. The
+   dot rules below read these; a full pill ignores them. */
+.panel-data-badge:is(.cached, .unavailable),
+.panel-freshness-badge:not(.panel-freshness-fresh) {
+  --wm-dot-border: 2px solid currentColor;
+  --wm-dot-fill: transparent;
+}
+
+.panel-data-badge.unavailable,
+.panel-freshness-badge:is(.panel-freshness-no_data, .panel-freshness-disabled, .panel-freshness-error) {
+  --wm-dot-radius: 0;
+}
+
+/* Two kinds of header crowd the title in a phone panel or a 375px desktop
+   column. A news header carries a LIVE pill, sort, summarize, count and close
+   controls, and leaves the title group about 170px. A market header carries a
+   data pill such as "CACHED · 12 symbols" and an "Edit Watchlist" button, and
+   left "Premium Stock Analysis" 113px, too narrow for two lines. Up to 420px
+   these headers use the collapse from below 300px: the news LIVE pill and any
+   market data pill become dots, the watchlist button keeps only its icon, and
+   the news item count leaves the layout. The count and the watchlist label
+   stay in the accessibility tree; the NEW badge still shows how many items
+   are new. */
 @container (max-width: 420px) {
-  .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live {
+  .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live,
+  .panel-header:has(> .panel-watchlist-btn) > .panel-data-badge {
     flex-shrink: 0;
     width: 8px;
     height: 8px;
     min-width: 0;
     min-height: 0;
     padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: currentColor;
+    border: var(--wm-dot-border, 0);
+    border-radius: var(--wm-dot-radius, 50%);
+    background: var(--wm-dot-fill, currentColor);
     font-size: 0;
   }
 
-  .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live::before {
+  .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live::before,
+  .panel-header:has(> .panel-watchlist-btn) > .panel-data-badge::before {
     display: none;
   }
 
-  .panel-header:has(> .panel-summarize-btn) > .panel-count {
+  .panel-header > .panel-watchlist-btn {
+    width: 24px;
+    padding: 4px 0;
+  }
+
+  .panel-header .panel-watchlist-icon {
+    display: inline;
+  }
+
+  .panel-header:has(> .panel-summarize-btn) > .panel-count,
+  .panel-header .panel-watchlist-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -2742,17 +2775,17 @@ body.panel-resize-active iframe {
    holds two columns, and on any panel squeezed narrower. The
    header's fixed-size badges then spill under the controls and the title
    collapses to nothing. Below 300px the title wins: status badges in every
-   data state shrink to dots, the counters leave the layout, the watchlist
-   button keeps only its icon, and the controls sit 4px apart. The dots then
-   sit beside a two-line title instead of on a row of their own, as long as
-   the title keeps 9em and its longest word; otherwise they move under it.
+   data state shrink to dots, the counters leave the layout, and the controls
+   sit 4px apart. The dots then sit beside a two-line title instead of on a
+   row of their own, as long as the title keeps 9em and its longest word;
+   otherwise they move under it.
    9em holds most titles in two lines. With less, "Strategic Risk Overview"
    needed a third line in a 192px column and lost "Overview". The title and
    freshness rules sit after their base rules so they win at equal
    specificity. The other base rules come later in the file, so those rules
    are scoped to the header. The counters keep their display, which the JS
    toggles inline, and are hidden the .wm-visually-hidden way so screen
-   readers still read the values, as is the watchlist label. */
+   readers still read the values. */
 @container (max-width: 300px) {
   .panel > .panel-header {
     gap: 4px;
@@ -2770,15 +2803,6 @@ body.panel-resize-active iframe {
     padding: 2px 4px;
   }
 
-  .panel-header > .panel-watchlist-btn {
-    width: 24px;
-    padding: 4px 0;
-  }
-
-  .panel-header .panel-watchlist-icon {
-    display: inline;
-  }
-
   .panel-freshness-badge,
   .panel > .panel-header > .panel-data-badge {
     flex-shrink: 0;
@@ -2787,9 +2811,9 @@ body.panel-resize-active iframe {
     min-width: 0;
     min-height: 0;
     padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: currentColor;
+    border: var(--wm-dot-border, 0);
+    border-radius: var(--wm-dot-radius, 50%);
+    background: var(--wm-dot-fill, currentColor);
     font-size: 0;
   }
 
@@ -2797,25 +2821,9 @@ body.panel-resize-active iframe {
     display: none;
   }
 
-  /* A dot must not tell its states apart by colour alone (WCAG 1.4.1), so
-     each state has its own shape, and the freshness dot uses the same ones:
-     live or fresh data is a filled circle, cached or stale data a ring, and
-     unavailable, missing or failed data a hollow square. */
-  .panel-freshness-badge:not(.panel-freshness-fresh),
-  .panel > .panel-header > .panel-data-badge:is(.cached, .unavailable) {
-    border: 2px solid currentColor;
-    background: transparent;
-  }
-
-  .panel-freshness-badge:is(.panel-freshness-no_data, .panel-freshness-disabled, .panel-freshness-error),
-  .panel > .panel-header > .panel-data-badge.unavailable {
-    border-radius: 0;
-  }
-
   .panel-header .panel-new-badge,
   .panel-header .deviation-indicator,
-  .panel-header .panel-count,
-  .panel-header .panel-watchlist-label {
+  .panel-header .panel-count {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -29181,7 +29189,8 @@ body.map-width-resizing {
      the file, keep them filled in the system text color. The ring and square
      dots are borders, which forced colors keep, so their shapes survive. */
   @container (max-width: 420px) {
-    .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live {
+    .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live,
+    .panel-header:has(> .panel-watchlist-btn) > .panel-data-badge.live {
       forced-color-adjust: none;
       background: CanvasText;
     }
