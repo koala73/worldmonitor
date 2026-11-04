@@ -115,11 +115,12 @@ def log(*a):
     print('[fonts]', *a, file=sys.stderr)
 
 
-def fetch(url: str, sha256: str | None = None, headers: dict | None = None) -> bytes:
+def fetch(url: str, sha256: str | None = None, headers: dict | None = None, fresh: bool = False) -> bytes:
+    """Download url through the local cache. fresh=True ignores the cache (snapshot refreshes)."""
     key = hashlib.sha256(url.encode()).hexdigest()[:24]
     cached = CACHE / key
     ok = lambda d: not sha256 or hashlib.sha256(d).hexdigest() == sha256
-    if cached.exists():
+    if cached.exists() and not fresh:
         data = cached.read_bytes()
         if ok(data):
             return data
@@ -192,7 +193,7 @@ def match_face(desired: int, faces: list[int]) -> int:
 # ---------------------------------------------------------------- Google snapshot
 
 def refresh_google_snapshot():
-    css = fetch(GOOGLE_CSS + '#ua', headers={'User-Agent': DESKTOP_UA}).decode()
+    css = fetch(GOOGLE_CSS + '#ua', headers={'User-Agent': DESKTOP_UA}, fresh=True).decode()
     snap = {'css_url': GOOGLE_CSS, 'user_agent': DESKTOP_UA, 'families': {}}
     for m in re.finditer(r"/\* ([\w-]+) \*/\s*@font-face \{(.*?)\}", css, re.S):
         subset_name, body = m.groups()
@@ -200,7 +201,7 @@ def refresh_google_snapshot():
         weight = int(re.search(r'font-weight: (\d+)', body).group(1))
         url = re.search(r'url\(([^)]+)\)', body).group(1)
         rng = parse_unicode_range(re.search(r'unicode-range: ([^;]+);', body).group(1))
-        served = TTFont(io.BytesIO(fetch(url)))
+        served = TTFont(io.BytesIO(fetch(url, fresh=True)))
         cmap = set(served.getBestCmap())
         f = snap['families'].setdefault(fam, {'faces': [], 'subsets': {}, 'display': re.search(r'font-display: (\w+)', body).group(1)})
         if weight not in f['faces']:
