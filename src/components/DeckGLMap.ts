@@ -46,6 +46,8 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
 import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
 import { getMilitaryBaseColor } from '@/config/military-base-colors';
+import { DECK_POINT_LAYER_CATEGORY, categoryForDeckLayerId, categoryGlyphForLayer, categoryGlyphSizePx } from '@/config/map-layer-glyphs';
+import { getCategoryGlyphAtlas } from './map-category-glyph-atlas';
 import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
@@ -130,6 +132,7 @@ import {
   isLayerEntitled,
   isLayerToggleAllowed,
   sanitizeLockedLayers,
+  LAYER_REGISTRY,
   type MapVariant,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
@@ -1439,7 +1442,7 @@ export class DeckGLMap {
       // Forwarded by Deck.setProps to luma.gl's AnimationLoop.setProps.
       animationFrameProvider: this.deckFrameProvider,
       layers: this.buildLayers(true),
-      getTooltip: (info: PickingInfo) => this.getTooltip(info),
+      getTooltip: (info: PickingInfo) => this.getCategorizedTooltip(info),
       onClick: (info: PickingInfo) => this.handleClick(info),
       pickingRadius: 10,
       useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
@@ -2532,11 +2535,50 @@ export class DeckGLMap {
     }
 
     const result = layers.filter(Boolean) as LayersList;
+    result.push(...this.createCategoryGlyphLayers(result));
     const elapsed = performance.now() - startTime;
     if (import.meta.env.DEV && elapsed > 16) {
       console.warn(`[DeckGLMap] buildLayers took ${elapsed.toFixed(2)}ms (>16ms budget), ${result.length} layers`);
     }
     return result;
+  }
+
+  /**
+   * Layers-menu category glyph beside each point marker (#10139), so markers
+   * from different layers can be told apart without toggling. Derived from
+   * the layers already built, so a hidden layer leaves no glyph, and drawn
+   * beside the marker so its status colour stays visible. Not pickable:
+   * hover and click still hit the marker underneath.
+   */
+  private createCategoryGlyphLayers(built: LayersList): Layer[] {
+    const zoom = this.maplibreMap?.getZoom() ?? 0;
+    const atlas = getCategoryGlyphAtlas();
+    if (!atlas) return [];
+    const glyphs: Layer[] = [];
+    for (const layer of built) {
+      if (!layer || typeof layer !== 'object' || !('id' in layer)) continue;
+      const base = layer as Layer;
+      const category = DECK_POINT_LAYER_CATEGORY[base.id];
+      if (!category || base.props.visible === false) continue;
+      const { data, getPosition } = base.props as { data?: unknown; getPosition?: unknown };
+      if (!Array.isArray(data) || typeof getPosition !== 'function') continue;
+      const size = categoryGlyphSizePx(zoom, data.length);
+      if (size === 0) continue;
+      glyphs.push(new IconLayer({
+        id: `${base.id}-category-glyph`,
+        data,
+        getPosition: getPosition as (d: unknown) => [number, number],
+        getIcon: () => category,
+        iconAtlas: atlas.url,
+        iconMapping: atlas.mapping,
+        getSize: size,
+        sizeUnits: 'pixels',
+        getPixelOffset: [Math.round(size * 0.75) + 2, 0],
+        pickable: false,
+        updateTriggers: { getPosition: base.props.updateTriggers?.getPosition },
+      }));
+    }
+    return glyphs;
   }
 
   // Layer creation methods
@@ -5155,6 +5197,17 @@ export class DeckGLMap {
     } catch { /* viewport fetch failed silently */ }
   }
 
+  private getCategorizedTooltip(info: PickingInfo): { html: string } | null {
+    const tooltip = this.getTooltip(info);
+    const category = categoryForDeckLayerId(info.layer?.id || '');
+    if (!tooltip || !category) return tooltip;
+    // Name the layer as well as the object, so overlapping markers from
+    // different layers stay identifiable (#10139).
+    const label = `<div class="deckgl-tooltip-category">${categoryGlyphForLayer(category)} ${escapeHtml(resolveLayerLabel(LAYER_REGISTRY[category], t))}</div>`;
+    const html = tooltip.html.replace(/^(\s*<div class="deckgl-tooltip[^"]*"[^>]*>)/, `$1${label}`);
+    return { html: html === tooltip.html ? `${label}${tooltip.html}` : html };
+  }
+
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
@@ -6421,6 +6474,11 @@ export class DeckGLMap {
     const legend = document.createElement('div');
     legend.className = 'map-legend deckgl-legend';
 
+    // Point markers carry their Layers-menu glyph on the map (#10139), so this
+    // legend only explains colour scales and status levels the glyph cannot:
+    // hotspot alert levels, disease alert levels, resilience bands, zone fills
+    // and line colours. It shows only entries for active layers and hides
+    // itself when none apply.
     // SVG shapes for different marker types
     const shapes = {
       circle: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="${color}"/></svg>`,
@@ -6439,11 +6497,6 @@ export class DeckGLMap {
     ];
     const legendItems: { shape: string; label: string; layerKey: keyof MapLayers }[] = SITE_VARIANT === 'tech'
       ? [
-        { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub'), layerKey: 'startupHubs' },
-        { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ'), layerKey: 'techHQs' },
-        { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.accelerator'), layerKey: 'accelerators' },
-        { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion'), layerKey: 'cloudRegions' },
-        { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layerKey: 'datacenters' },
         { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
         { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
         { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6451,11 +6504,6 @@ export class DeckGLMap {
       ]
       : SITE_VARIANT === 'finance'
         ? [
-          { shape: shapes.circle('rgb(255, 215, 80)'), label: t('components.deckgl.legend.stockExchange'), layerKey: 'stockExchanges' },
-          { shape: shapes.circle('rgb(0, 220, 150)'), label: t('components.deckgl.legend.financialCenter'), layerKey: 'financialCenters' },
-          { shape: shapes.hexagon('rgb(255, 210, 80)'), label: t('components.deckgl.legend.centralBank'), layerKey: 'centralBanks' },
-          { shape: shapes.square('rgb(255, 150, 80)'), label: t('components.deckgl.legend.commodityHub'), layerKey: 'commodityHubs' },
-          { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway'), layerKey: 'waterways' },
           { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
           { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
           { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6465,12 +6513,7 @@ export class DeckGLMap {
           ? [
             { shape: shapes.circle('rgb(34, 197, 94)'), label: 'Positive Event', layerKey: 'positiveEvents' },
             { shape: shapes.circle('rgb(234, 179, 8)'), label: 'Breakthrough', layerKey: 'positiveEvents' },
-            { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Act of Kindness', layerKey: 'kindness' },
-            { shape: shapes.circle('rgb(255, 100, 50)'), label: 'Natural Event', layerKey: 'natural' },
             { shape: shapes.square('rgb(34, 180, 100)'), label: 'Happy Country', layerKey: 'happiness' },
-            { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Species Recovery Zone', layerKey: 'speciesRecovery' },
-            { shape: shapes.circle('rgb(255, 200, 50)'), label: 'Renewable Installation', layerKey: 'renewableInstallations' },
-            { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
             { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
             { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
             { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6478,12 +6521,7 @@ export class DeckGLMap {
           ]
           : SITE_VARIANT === 'commodity'
             ? [
-              { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.commodityHub'), layerKey: 'commodityHubs' },
-              { shape: shapes.circle('rgb(180, 80, 80)'), label: t('components.deckgl.legend.miningSite'), layerKey: 'miningSites' },
-              { shape: shapes.square('rgb(80, 160, 220)'), label: t('components.deckgl.legend.commodityPort'), layerKey: 'commodityPorts' },
               { shape: shapes.circle('rgb(255, 150, 50)'), label: t('components.deckgl.legend.pipeline'), layerKey: 'pipelines' },
-              { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway'), layerKey: 'waterways' },
-              { shape: shapes.circle('rgb(200, 100, 255)'), label: t('components.deckgl.legend.processingPlant'), layerKey: 'processingPlants' },
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6494,10 +6532,6 @@ export class DeckGLMap {
               { shape: shapes.circle('rgb(255, 165, 0)'), label: t('components.deckgl.legend.elevated'), layerKey: 'hotspots' },
               { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: t('components.deckgl.legend.monitoring'), layerKey: 'hotspots' },
               { shape: shapes.circle('rgb(255, 100, 100)'), label: t('components.deckgl.legend.conflict'), layerKey: 'conflicts' },
-              { shape: shapes.triangle('rgb(68, 136, 255)'), label: t('components.deckgl.legend.base'), layerKey: 'bases' },
-              { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: t('components.deckgl.legend.nuclear'), layerKey: 'nuclear' },
-              { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layerKey: 'datacenters' },
-              { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6544,10 +6578,13 @@ export class DeckGLMap {
   }
 
   private updateLegend(): void {
+    let visibleEntries = 0;
     this.container.querySelectorAll<HTMLElement>('.legend-item[data-layer]').forEach(item => {
       const layerKey = item.dataset.layer;
       if (!layerKey || !(layerKey in this.state.layers)) return;
-      item.style.display = this.state.layers[layerKey as keyof MapLayers] ? '' : 'none';
+      const active = Boolean(this.state.layers[layerKey as keyof MapLayers]);
+      item.style.display = active ? '' : 'none';
+      if (active) visibleEntries++;
     });
     const ciiLegend = this.container.querySelector<HTMLElement>('#ciiChoroplethLegend');
     if (ciiLegend) {
@@ -6559,6 +6596,11 @@ export class DeckGLMap {
       const credit = no2Legend.querySelector<HTMLElement>('.no2-activity-credit');
       if (credit && this.no2Activity?.attribution) credit.textContent = this.no2Activity.attribution;
     }
+    if (this.state.layers.ciiChoropleth) visibleEntries++;
+    if (this.state.layers.no2Activity) visibleEntries++;
+    // A bare "Legend" title over nothing reads as a broken, partial list.
+    const legend = this.container.querySelector<HTMLElement>('.deckgl-legend');
+    if (legend) legend.hidden = visibleEntries === 0;
   }
 
   // Public API methods (matching MapComponent interface)
