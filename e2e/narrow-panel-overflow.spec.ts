@@ -98,3 +98,52 @@ test('panels fit the narrowest sidebar column without scrolling sideways', async
     }
   }
 });
+
+// The Commodities tab row scrolls sideways at 271px. Selecting a tab
+// rebuilds the panel body, and a rebuilt bar starts scrolled to the left, so
+// the tab the user just picked must be scrolled back into view.
+test('a selected Commodities tab stays visible in the narrow tab bar', async ({ page }) => {
+  await page.goto('/tests/runtime-harness.html');
+
+  const result = await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const { CommoditiesPanel } = await import('/src/components/MarketPanel.ts');
+
+    document.getElementById('runtime-harness')?.remove();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    grid.style.cssText = 'box-sizing:content-box;height:auto;width:271px;grid-template-columns:271px';
+    document.body.appendChild(grid);
+
+    const panel = new CommoditiesPanel();
+    (panel as unknown as { _physicalPremiums: unknown[] })._physicalPremiums = [{}];
+    panel.updateFxRates([{ currency: 'USD', rate: 1.08, change1d: 0.1 }] as never);
+    panel.renderCommodities([{ symbol: 'GC=F', display: 'Gold', price: 3948, change: 0.2, sparkline: [1, 2, 3] }]);
+    grid.appendChild(panel.getElement());
+    const settle = () => new Promise((r) => setTimeout(r, 400));
+    await settle();
+
+    const bar = () => panel.getElement().querySelector<HTMLElement>('.panel-content > .panel-tabs')!;
+    const fx = bar().querySelector<HTMLElement>('[data-tab="fx"]')!;
+    const overflows = bar().scrollWidth > bar().clientWidth;
+    bar().scrollLeft = bar().scrollWidth;
+    fx.click();
+    await settle();
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const b = bar().getBoundingClientRect();
+    const active = bar().querySelector<HTMLElement>('.panel-tab.active')!;
+    const a = active.getBoundingClientRect();
+    const atEnd = bar().scrollLeft >= bar().scrollWidth - bar().clientWidth - 1;
+    return { overflows, active: active.dataset.tab, left: a.left - b.left, right: b.right - a.right, atEnd };
+  });
+
+  expect(result.overflows, 'the tab row is wider than the bar at 271px').toBe(true);
+  expect(result.active).toBe('fx');
+  expect(result.left, 'the selected tab starts inside the bar').toBeGreaterThanOrEqual(0);
+  expect(result.right, 'the selected tab ends inside the bar').toBeGreaterThanOrEqual(0);
+  // The bar fades its last 24px; only the end of the row may sit under it.
+  expect(result.atEnd || result.right >= 24, 'the selected tab ends clear of the edge fade').toBe(true);
+});

@@ -708,6 +708,21 @@ export class CommoditiesPanel extends Panel {
     this._render();
   }
 
+  /**
+   * Rendering rebuilds the tab bar, and a rebuilt bar starts scrolled to the
+   * left. Scroll the selected tab back into view, clear of the bar's 24px
+   * edge fade.
+   */
+  private readonly revealActiveTab = (): void => {
+    const bar = this.content.querySelector<HTMLElement>(':scope > .panel-tabs');
+    const active = bar?.querySelector<HTMLElement>('.panel-tab.active');
+    if (!bar || !active || bar.scrollWidth <= bar.clientWidth) return;
+    const barBox = bar.getBoundingClientRect();
+    const tabBox = active.getBoundingClientRect();
+    if (tabBox.left < barBox.left) bar.scrollLeft += tabBox.left - barBox.left;
+    else if (tabBox.right > barBox.right - 24) bar.scrollLeft += tabBox.right - (barBox.right - 24);
+  };
+
   private _buildTabBar(hasPhysical: boolean, hasFx: boolean, hasXau: boolean): string {
     const firstTabLabel = t('components.commodities.commodities');
     const tabs: string[] = [
@@ -851,7 +866,7 @@ export class CommoditiesPanel extends Panel {
     const tabBar = this._buildTabBar(hasPhysical, hasFx, hasXau);
 
     if (this._tab === 'physical' && hasPhysical) {
-      this.setSafeContent(unsafeRawHtml(tabBar + this._renderPhysicalPremiums(), 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + this._renderPhysicalPremiums(), 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
@@ -871,12 +886,12 @@ export class CommoditiesPanel extends Panel {
           ${changeStr ? `<div class="commodity-change ${escapeHtml(changeClass)}">${escapeHtml(changeStr)}</div>` : ''}
         </div>`;
       }).join('');
-      this.setSafeContent(unsafeRawHtml(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Source: ECB</div>`, 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Source: ECB</div>`, 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
     if (this._tab === 'xau' && hasXau) {
-      this.setSafeContent(unsafeRawHtml(tabBar + this._renderXau(), 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + this._renderXau(), 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
@@ -893,7 +908,7 @@ export class CommoditiesPanel extends Panel {
         this.showRetrying(t('common.failedCommodities'));
         return;
       }
-      this.setSafeContent(unsafeRawHtml(tabBar + `<div style="padding:8px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('common.failedCommodities')}</div>`, 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + `<div style="padding:8px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('common.failedCommodities')}</div>`, 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
@@ -907,7 +922,7 @@ export class CommoditiesPanel extends Panel {
         </div>
       `).join('') + '</div>';
 
-    this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'));
+    this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'), this.revealActiveTab);
   }
 }
 
