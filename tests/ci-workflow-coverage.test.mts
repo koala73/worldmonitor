@@ -424,6 +424,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/energy-table-values-whole.spec.ts',
   'e2e/panel-text-unclipped.spec.ts',
   'e2e/regional-intelligence-region-select.spec.ts',
+  'e2e/settings-tabs-all-visible.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
