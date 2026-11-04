@@ -37,6 +37,7 @@ const ENV_KEYS = [
   'UPSTASH_REDIS_REST_TOKEN',
   'VERCEL_ENV',
   'WORLDMONITOR_VALID_KEYS',
+  'CF_EDGE_PROOF_SECRET',
 ] as const;
 const ORIGINAL_ENV = new Map<string, string | undefined>();
 const URL_PATH = 'https://api.worldmonitor.app/api/desktop-key/status';
@@ -399,5 +400,43 @@ describe('desktop-key status: rate limits and metering', () => {
   it('the route never imports the desktop-key meter', () => {
     const src = readFileSync(new URL('../api/desktop-key/status.ts', import.meta.url), 'utf8');
     assert.doesNotMatch(src, /desktop-key-meter|reserveDesktopKeyBudget|_desktop-key-meter/);
+  });
+});
+
+describe('desktop-key status: per-IP guards run before any key work', () => {
+  it('an IP over the ceiling gets a no-store 429 with Retry-After and no key lookup', async () => {
+    setEntitlement('pro_owner', entitlement('pro_monthly'));
+    const key = mintKey({ userId: 'pro_owner', name: 'laptop', keyKind: 'desktop' });
+    const first = await handler(req(key, '203.0.113.50'));
+    assert.equal(first.status, 200);
+    // The ceiling is the first bucket consulted; fill it to its limit.
+    const ceiling = limiterCalls[0]!;
+    limiterCounts.set(`${ceiling.scope}:${ceiling.identifier}`, DESKTOP_KEY_STATUS_IP_CEILING.limit);
+    limiterCalls.length = 0;
+    convexCalls = 0;
+    const res = await handler(req(key, '203.0.113.50'));
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.ok(Number(res.headers.get('Retry-After')) >= 1);
+    assert.deepEqual(await res.json(), { error: 'rate_limited' });
+    assert.equal(convexCalls, 0, 'no Convex call past the ceiling');
+    assert.equal(limiterCalls.length, 1, 'only the ceiling bucket is consulted');
+
+    const otherIp = await handler(req(key, '203.0.113.51'));
+    assert.equal(otherIp.status, 200, 'the ceiling is per IP');
+  });
+
+  it('an unproven Cloudflare client IP is refused before any limiter or key lookup', async () => {
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-proof-secret';
+    const key = mintKey({ userId: 'pro_owner', name: 'laptop', keyKind: 'desktop' });
+    const request = new Request(URL_PATH, {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': key, 'cf-connecting-ip': '198.51.100.9', 'x-real-ip': '203.0.113.7' },
+    });
+    const res = await handler(request);
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(limiterCalls.length, 0);
+    assert.equal(convexCalls, 0);
   });
 });
