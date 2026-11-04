@@ -709,6 +709,7 @@ test('harness-mounted formerly inline-styled tables use the shared table style',
     const { StockAnalysisPanel } = await import('/src/components/StockAnalysisPanel.ts');
     const { SupplyChainPanel } = await import('/src/components/SupplyChainPanel.ts');
     const { TradePolicyPanel } = await import('/src/components/TradePolicyPanel.ts');
+    const { Panel } = await import('/src/components/Panel.ts');
 
     document.getElementById('runtime-harness')?.remove();
     const grid = document.createElement('div');
@@ -778,7 +779,14 @@ test('harness-mounted formerly inline-styled tables use the shared table style',
           { name: 'John Roe', transactionCode: 'P', shares: 5000, value: 960_000, transactionDate: '2026-09-30' },
         ],
       };
-      return fill(panel.getElement(), internals.renderInsiderSection('AAPL'));
+      const insider = internals.renderInsiderSection('AAPL');
+      // An expanded watchlist row nests the insider table inside the outer
+      // table's tbody (WatchlistTableView detail row).
+      const expanded = new Panel({ id: 'probe-stock-expanded', title: 'Stock Analysis expanded' });
+      fill(expanded.getElement(), `<table class="wm-table watchlist-table"><thead><tr><th scope="col">Symbol</th><th scope="col">Signal</th></tr></thead>
+        <tbody><tr><td>AAPL</td><td>Buy</td></tr><tr class="watchlist-detail-row"><td colspan="2">${insider}</td></tr></tbody></table>`);
+      grid.appendChild(expanded.getElement());
+      return fill(panel.getElement(), insider);
     });
 
     mount('supply-chain', () => {
@@ -831,7 +839,7 @@ test('harness-mounted formerly inline-styled tables use the shared table style',
   expect(errors, 'every panel mounts').toEqual([]);
 
   const expected: Record<string, number> = {
-    heatmap: 1, 'economic-calendar': 1, 'yield-curve': 1, 'wsb-ticker-scanner': 1, 'stock-analysis': 1, 'supply-chain': 4, 'trade-policy': 3,
+    heatmap: 1, 'economic-calendar': 1, 'yield-curve': 1, 'wsb-ticker-scanner': 1, 'stock-analysis': 1, 'probe-stock-expanded': 2, 'supply-chain': 4, 'trade-policy': 3,
   };
   const headers = new Set<string>();
   for (const [id, count] of Object.entries(expected)) {
