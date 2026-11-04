@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import {
   BOARD_REGIONS,
@@ -319,6 +319,12 @@ describe('buildTransmissionBlock', () => {
     }
   });
 
+  it('writes medium severity labels in the elevated text colour', () => {
+    const base = { start: 'a', end: 'b', corridorId: '', confidence: 0.5, latencyHours: 0, impactedAssetClass: '', impactedRegions: [], magnitudeLow: 0, magnitudeHigh: 0, magnitudeUnit: '', templateId: '', templateVersion: '' };
+    const html = buildTransmissionBlock([{ ...base, mechanism: 'm', severity: 'medium' }]);
+    assert.match(html, /color:var\(--semantic-elevated-text, var\(--semantic-elevated\)\);[^>]*>medium/);
+  });
+
   it('sorts transmissions by confidence descending', () => {
     const paths: TransmissionPath[] = [
       { start: 'a', mechanism: 'low_conf', end: 'x', severity: 'low', corridorId: '', confidence: 0.2, latencyHours: 0, impactedAssetClass: '', impactedRegions: [], magnitudeLow: 0, magnitudeHigh: 0, magnitudeUnit: '', templateId: '', templateVersion: '' },
@@ -483,6 +489,20 @@ describe('buildBoardHtml', () => {
     assert.match(html, /Watchlist/);
     assert.match(html, /generated/);
     assert.match(html, /confidence/);
+  });
+
+  it('reads only colour tokens the dashboard stylesheets define', () => {
+    // An undefined token renders nothing: the Pressures bars once read --danger and had no fill.
+    // A fallback hides the gap instead: --warning, #e0a020 was a hard-coded colour in both themes.
+    const stylesDir = new URL('../src/styles/', import.meta.url);
+    const standalone = new Set(['plugin-market.css', 'plugin.css', 'plugin-country.css', 'embed.css', 'happy-theme.css']);
+    const defined = new Set(readdirSync(stylesDir)
+      .filter((f) => f.endsWith('.css') && !standalone.has(f))
+      .flatMap((f) => [...readFileSync(new URL(f, stylesDir), 'utf8').matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1])));
+    const html = buildBoardHtml(snapshotFixture());
+    const used = new Set([...html.matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]));
+    assert.ok(used.has('--semantic-critical'), 'the fixture renders the Pressures bars');
+    assert.deepEqual([...used].filter((t) => !defined.has(t)), []);
   });
 
   it('escapes user-provided strings to prevent HTML injection', () => {

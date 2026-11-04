@@ -146,14 +146,14 @@ export function buildRegimeBlock(snapshot: RegionalSnapshot): string {
  * Values are already in [0, 1] for axes; net_balance is in [-1, 1] and
  * is rendered separately with a centered zero point.
  */
-function axisRow(label: string, value: number, colorClass: string): string {
+function axisRow(label: string, value: number, color: string): string {
   const pct = Math.max(0, Math.min(1, value)) * 100;
   return `
     <div style="display:grid;grid-template-columns:110px 40px 1fr;gap:8px;align-items:center;margin-bottom:4px">
       <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(label)}</div>
       <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-variant-numeric:tabular-nums">${value.toFixed(2)}</div>
       <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">
-        <div style="height:100%;width:${pct.toFixed(1)}%;background:var(${colorClass})"></div>
+        <div style="height:100%;width:${pct.toFixed(1)}%;background:${color}"></div>
       </div>
     </div>
   `;
@@ -164,15 +164,15 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
     return section('Balance Vector', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Unavailable</div>');
   }
   const pressures = [
-    axisRow('Coercive', balance.coercivePressure, '--semantic-critical'),
-    axisRow('Fragility', balance.domesticFragility, '--semantic-critical'),
-    axisRow('Capital', balance.capitalStress, '--semantic-critical'),
-    axisRow('Energy Vuln', balance.energyVulnerability, '--semantic-critical'),
+    axisRow('Coercive', balance.coercivePressure, 'var(--semantic-critical)'),
+    axisRow('Fragility', balance.domesticFragility, 'var(--semantic-critical)'),
+    axisRow('Capital', balance.capitalStress, 'var(--semantic-critical)'),
+    axisRow('Energy Vuln', balance.energyVulnerability, 'var(--semantic-critical)'),
   ].join('');
   const buffers = [
-    axisRow('Alliance', balance.allianceCohesion, '--accent'),
-    axisRow('Maritime', balance.maritimeAccess, '--accent'),
-    axisRow('Energy Lev', balance.energyLeverage, '--accent'),
+    axisRow('Alliance', balance.allianceCohesion, 'var(--accent)'),
+    axisRow('Maritime', balance.maritimeAccess, 'var(--accent)'),
+    axisRow('Energy Lev', balance.energyLeverage, 'var(--accent)'),
   ].join('');
 
   const net = balance.netBalance;
@@ -249,7 +249,7 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
     base: 'var(--text-dim)',
     escalation: 'var(--semantic-critical)',
     containment: 'var(--accent)',
-    fragmentation: 'var(--warning, #e0a020)',
+    fragmentation: 'var(--semantic-elevated)',
   };
   const cols = sorted.map((set) => {
     const lanes = [...(set.lanes ?? [])].sort((a, b) => b.probability - a.probability);
@@ -288,7 +288,7 @@ function severityColor(severity: string): string {
   switch ((severity ?? '').toLowerCase()) {
     case 'critical': return 'var(--semantic-critical-text, var(--semantic-critical))';
     case 'high': return 'var(--semantic-critical-text, var(--semantic-critical))';
-    case 'medium': return 'var(--warning, #e0a020)';
+    case 'medium': return 'var(--semantic-elevated-text, var(--semantic-elevated))';
     case 'low': return 'var(--text-dim)';
     default: return 'var(--text-dim)';
   }
