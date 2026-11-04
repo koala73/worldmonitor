@@ -412,3 +412,97 @@ test('shared-style table headers line up with their cells in RTL', async ({ brow
   }
   await context.close();
 });
+
+// Satellite Fires and Displacement have no dashboard fixture, so the harness
+// mounts them directly. Displacement renders a different table per tab.
+test('Satellite Fires and every Displacement table fit the sidebar and phone widths', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/tests/runtime-harness.html');
+
+  const results = await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const { SatelliteFiresPanel } = await import('/src/components/SatelliteFiresPanel.ts');
+    const { DisplacementPanel } = await import('/src/components/DisplacementPanel.ts');
+
+    document.getElementById('runtime-harness')?.remove();
+    const grid = document.createElement('div');
+    grid.className = 'panels-grid';
+    document.body.appendChild(grid);
+
+    // Long names and large figures, the widest values each table shows.
+    const names = ['Democratic Republic of the Congo', 'Syrian Arab Republic', 'Venezuela (Bolivarian Republic of)'];
+    const codes = ['CD', 'SY', 'VE'];
+    const fires = new SatelliteFiresPanel();
+    fires.update(names.map((region, i) => ({ region, fires: [], fireCount: 12_345 - i, totalFrp: 98_765.4 / (i + 1), highIntensityCount: 4321, possibleExplosionCount: i === 1 ? 2 : 0 })), 37_000);
+    const disp = new DisplacementPanel();
+    disp.setData({
+      year: 2025, globalTotals: { refugees: 1, asylumSeekers: 1, idps: 1, stateless: 1, total: 4 }, topFlows: [],
+      countries: names.map((name, i) => ({ code: ['COD', 'SYR', 'VEN'][i]!, name, refugees: 6_543_210 - i, asylumSeekers: 123_456, idps: 1, stateless: 0, totalDisplaced: 7_000_000 - i * 3_000_000, hostRefugees: 3_000_000, hostAsylumSeekers: 1, hostTotal: 3_456_789 - i * 1_500_000 })),
+    } as never);
+    disp.setEventsData({ countries: names.map((countryName, i) => ({ countryCode: codes[i]!, countryName, displaced30d: 1_234_567, conflict30d: 1_000_000, disaster30d: 234_567, newlyReported7d: i ? 45_678 : 0, surge: i === 0 })), points: [], missingCountries: ['Sudan', 'Myanmar'], asOf: '2026-10-31' } as never);
+    disp.setInternalData({ operations: names.map((countryName, i) => ({ countryCode: codes[i]!, countryName, operation: 'North Kivu and Ituri displacement tracking, round 14', reportingDate: '2026-09-30', totalIdps: 2_345_678, topReason: 'conflict' })), regions: [], routes: [] } as never);
+    disp.setCrossBorderData({
+      points: [], sources: [{ name: 'UNHCR', status: 'ok' }],
+      situations: ['Sudan situation: refugee outflows to neighbouring countries', 'Ukraine refugee situation', 'Rohingya'].map((name, i) => ({
+        id: `s${i}`, name, sourceUrl: 'https://data.unhcr.org/en/situations/sudan', asOf: '2026-10-31', accelerating: i === 0, outflow: 1, total: 3_456_789,
+        lastMonth: i === 0 ? { month: '2026-09', individuals: 45_678 } : null, latestChange: i === 1 ? { delta: -12_345, days: 30 } : null,
+        topCountries: ['Chad', 'South Sudan', 'Egypt'], countryCodes: ['TD'], kind: 'refugees', measure: 'stock',
+        last7Days: i === 2 ? 1234 : undefined, last30Days: i === 2 ? 5678 : undefined, changePct: i === 2 ? 12.3 : undefined,
+      })),
+    } as never);
+    grid.append(fires.getElement(), disp.getElement());
+    const settle = () => new Promise((r) => setTimeout(r, 400));
+
+    const out = [];
+    for (const width of [271, 360, 375]) {
+      grid.style.cssText = `box-sizing:content-box;height:auto;width:${width}px;grid-template-columns:${width}px`;
+      for (const view of ['fires', 'origins', 'hosts', 'recent', 'internal', 'crossBorder']) {
+        if (view !== 'fires') disp.getElement().querySelector<HTMLElement>(`.panel-tab[data-tab="${view}"]`)!.click();
+        await settle();
+        const content = (view === 'fires' ? fires : disp).getElement().querySelector<HTMLElement>('.panel-content')!;
+        const table = content.querySelector('table')!;
+        const cells = [...table.querySelectorAll<HTMLElement>('th, td')];
+        const right = content.getBoundingClientRect().right;
+        const label = (cell: Element) => (cell.textContent ?? '').trim().slice(0, 24);
+        // A figure that wraps onto a second line reads as two numbers.
+        const wrapped = [...table.querySelectorAll<HTMLElement>('td.disp-count, td.fire-count, td.fire-hi, td.fire-frp')]
+          .filter((cell) => cell.getClientRects().length > 0 && cell.querySelector('*') === null)
+          .filter((cell) => { const r = document.createRange(); r.selectNodeContents(cell); return r.getClientRects().length > 1; })
+          .map(label);
+        const th = getComputedStyle(table.querySelector('thead th')!);
+        const td = getComputedStyle(table.querySelector('tbody td')!);
+        out.push({
+          name: `${view} at ${width}px`,
+          rows: table.querySelectorAll('tbody tr').length,
+          sideways: content.scrollWidth - content.clientWidth,
+          pastPanel: cells.filter((cell) => cell.getBoundingClientRect().right > right + 0.5).map(label),
+          clipped: cells.filter((cell) => cell.scrollWidth > cell.clientWidth + 1).map(label),
+          // The tab bar scrolls by design; a table may scroll only in its own cued scroller.
+          scrollers: [...content.querySelectorAll<HTMLElement>('*')]
+            .filter((el) => /(auto|scroll)/.test(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1)
+            .map((el) => el.className)
+            .filter((name) => !/\b(panel-tabs|table-scroll)\b/.test(name)),
+          wrapped,
+          header: `${th.fontSize} ${th.fontWeight} ${th.textTransform} ${th.letterSpacing} ${th.padding}`,
+          cell: `${td.fontSize} ${td.padding}`,
+        });
+      }
+    }
+    return out;
+  });
+
+  expect(results).toHaveLength(18);
+  for (const r of results) {
+    expect.soft(r.rows, `${r.name}: rows`).toBe(3);
+    expect.soft(r.sideways, `${r.name}: sideways scroll`).toBeLessThanOrEqual(0);
+    expect.soft(r.pastPanel, `${r.name}: cells past the panel edge`).toEqual([]);
+    expect.soft(r.clipped, `${r.name}: cells wider than their content box`).toEqual([]);
+    expect.soft(r.scrollers, `${r.name}: other sideways scrollers`).toEqual([]);
+    expect.soft(r.wrapped, `${r.name}: figures split across lines`).toEqual([]);
+    // Panel bodies up to 480px wide narrow the shared inline padding to 4px.
+    expect.soft(r.header, `${r.name}: shared header style`).toBe('10px 600 uppercase 0.4px 4px');
+    expect.soft(r.cell, `${r.name}: shared cell style`).toBe('11px 5px 4px');
+  }
+});
