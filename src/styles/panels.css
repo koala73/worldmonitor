@@ -122,14 +122,16 @@
 }
 
 :where(.wm-table) td,
-:where(.wm-table) tbody th {
+:where(.wm-table) > tbody > tr > th {
   padding: 5px 8px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
 }
 
-/* A row header (<th scope="row">) is a body cell, not a column header. */
-:where(.wm-table) tbody th {
+/* A row header (<th scope="row">) is a body cell, not a column header. The
+   child combinators keep it to the table's own rows: an expanded watchlist row
+   nests a table, with its own column headers, inside the outer tbody. */
+:where(.wm-table) > tbody > tr > th {
   font-size: inherit;
   font-weight: inherit;
   letter-spacing: normal;

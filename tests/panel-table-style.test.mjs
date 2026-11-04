@@ -119,7 +119,7 @@ describe('panel table style', () => {
   it('.wm-table defines the shared header and cell style below class specificity', () => {
     const css = read('src/styles/panels.css');
     const selectors = [...css.matchAll(/([^{}]+)\{/g)].flatMap((m) => m[1].split(',').map((s) => s.trim()));
-    for (const selector of [':where(.wm-table) th', ':where(.wm-table) td', ':where(.wm-table) tbody th']) {
+    for (const selector of [':where(.wm-table) th', ':where(.wm-table) td', ':where(.wm-table) > tbody > tr > th']) {
       assert.ok(selectors.includes(selector), `${selector} is missing from panels.css`);
     }
     assert.doesNotMatch(css, /(^|[\s,}])\.wm-table (th|td)\b/, 'a .wm-table th/td rule outranks the state classes on cells');
