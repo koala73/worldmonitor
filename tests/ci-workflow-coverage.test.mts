@@ -166,11 +166,13 @@ describe('root dependency cache (#8710)', () => {
   // and use the action's miss-only fallback. Jobs with another npm install
   // (blog-site, pro-test, including through build:pro) keep setup-node's
   // cache for it and turn the action's off, so a miss restores it once.
-  // unit-shards restores its nested installed trees instead (see the
-  // 'unit-shard nested dependency cache' block), so it is in the first group.
+  // unit-shards and unit-built-output restore their nested installed trees
+  // instead (see the 'unit-shard nested dependency cache' and
+  // 'unit-built-output nested dependency cache' blocks), so they are in the
+  // first group.
   for (const [workflowText, jobIds, setupCache] of [
-    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards'], undefined],
-    [testWorkflow, ['unit-built-output', 'variant-smoke-pro-webmcp'], 'npm'],
+    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output'], undefined],
+    [testWorkflow, ['variant-smoke-pro-webmcp'], 'npm'],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
@@ -257,6 +259,76 @@ describe('unit-shard nested dependency cache', () => {
       'ci:blog-site changed: bump nested-deps-vN in the unit-shards cache key, then update this string',
     );
     assert.match(restore.with.key, /^nested-deps-v1-/);
+  });
+});
+
+describe('unit-built-output nested dependency cache', () => {
+  // setup-node restored the npm download cache for three lockfiles (6-9s,
+  // mostly the root's), then blog-site and pro-test installed from it (3s and
+  // 12s). The installed trees are restored instead and installed only on a
+  // miss, like the unit shards' nested-deps cache.
+  const steps = YAML.parse(testWorkflow).jobs['unit-built-output'].steps
+    .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step]);
+  const restore = steps.find((step) => step.id === 'built-output-deps');
+  const blogInstall = steps.find((step) => step.run === 'npm run ci:blog-site');
+  const proInstall = steps.find((step) => step.run === 'npm --prefix pro-test ci --prefer-offline');
+  const save = steps.find((step) => step.uses?.startsWith('actions/cache/save@') && step.with?.key === '${{ steps.built-output-deps.outputs.cache-primary-key }}');
+  const blogBuild = steps.find((step) => step.run?.includes('npm --prefix blog-site run build'));
+  const proBuild = steps.find((step) => step.run === 'npm --prefix pro-test run build');
+  const miss = "steps.built-output-deps.outputs.cache-hit != 'true'";
+
+  it('restores both installed trees before the builds that read them', () => {
+    assert.ok(restore?.uses?.startsWith('actions/cache/restore@'));
+    assert.deepEqual(restore.with.path.trim().split('\n'), ['blog-site/node_modules', 'pro-test/node_modules']);
+    assert.ok(blogBuild && proBuild, 'the blog-site and /pro builds must exist');
+    assert.ok(steps.indexOf(save) < steps.indexOf(blogBuild));
+    assert.ok(steps.indexOf(save) < steps.indexOf(proBuild));
+  });
+
+  it('keys the trees on every install input', () => {
+    const key = restore.with.key;
+    assert.match(key, /^built-output-deps-v1-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-node24-/);
+    for (const input of [
+      'blog-site/package.json',
+      'blog-site/package-lock.json',
+      'blog-site/.npmrc',
+      'pro-test/package.json',
+      'pro-test/package-lock.json',
+      'pro-test/.npmrc',
+      '.npmrc',
+      'vendor/**',
+    ]) {
+      assert.ok(key.includes(`'${input}'`), `built-output-deps key must hash ${input}`);
+    }
+  });
+
+  it('installs and saves only on a miss, after the restore and before the save', () => {
+    for (const step of [blogInstall, proInstall, save]) {
+      assert.ok(step, 'nested install and save steps must exist');
+      assert.equal(step.if, miss);
+      assert.ok(steps.indexOf(restore) < steps.indexOf(step));
+    }
+    assert.ok(steps.indexOf(blogInstall) < steps.indexOf(save));
+    assert.ok(steps.indexOf(proInstall) < steps.indexOf(save));
+    assert.equal(save.with.path, restore.with.path);
+    // A hit must skip every nested install, or the restore buys nothing.
+    assert.equal(steps.some((step) => /ci:blog-site|pro-test ci/.test(step.run ?? '') && step.if !== miss), false,
+      'no unconditional nested install may remain');
+  });
+
+  it('runs the same install and build build:pro runs, with install scripts off', () => {
+    const scripts = JSON.parse(read(resolve(root, 'package.json'))).scripts;
+    assert.equal(
+      scripts['build:pro'],
+      'cross-env npm_config_allow_scripts= npm --prefix pro-test ci --prefer-offline && npm --prefix pro-test run build',
+      'build:pro changed: mirror it in unit-built-output\'s /pro install and build steps, bump built-output-deps-vN, then update this string',
+    );
+    assert.equal(proInstall.env?.npm_config_allow_scripts, '');
+    assert.equal(
+      scripts['ci:blog-site'],
+      'cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline',
+      'ci:blog-site changed: bump built-output-deps-vN in the unit-built-output cache key, then update this string',
+    );
   });
 });
 
