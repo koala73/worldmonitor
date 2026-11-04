@@ -226,7 +226,7 @@ export class EnergyDisruptionsPanel extends Panel {
         <div class="ed-summary">${escapeHtml(summary)}</div>
         <div class="ed-filters">${typeButtons}${ongoingBtn}</div>
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="ed-table" role="table">
+          <table class="wm-table ed-table" role="table">
             <thead role="rowgroup">
               <tr role="row">
                 <th scope="col" role="columnheader">Event</th>
@@ -250,9 +250,7 @@ export class EnergyDisruptionsPanel extends Panel {
         .ed-chip:hover { background: rgba(255,255,255,0.08); color: var(--text, #eee); }
         .ed-chip-active { background: #2980b9; border-color: #2980b9; color: #fff; }
         .ed-chip-active:hover { background: #2471a3; }
-        .ed-table { width: 100%; border-collapse: collapse; }
-        .ed-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-        .ed-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
+        .ed-table td { vertical-align: top; }
         .ed-row { cursor: pointer; }
         .ed-row:hover td { background: rgba(255,255,255,0.03); }
         .ed-event { font-weight: 600; color: var(--text, #eee); }
@@ -264,9 +262,6 @@ export class EnergyDisruptionsPanel extends Panel {
         .ed-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .ed-empty { text-align: center; color: var(--text-dim, #888); padding: 20px; font-style: italic; }
         .ed-offline { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
-        @container panel-body (max-width: 480px) {
-          .ed-table th, .ed-table td { padding-inline: 4px; }
-        }
         /* Five columns cannot fit a narrow column without splitting values, so
            each row stacks: the event and the asset take the full width, and the
            window, offline capacity and status share a line below. The
@@ -275,7 +270,7 @@ export class EnergyDisruptionsPanel extends Panel {
         @container ed-wrap (max-width: 50em) {
           .ed-table, .ed-table tbody { display: block; }
           .ed-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-          .ed-table tr.ed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .ed-table tr.ed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid var(--border-subtle); }
           .ed-table tr.ed-row td { padding: 0; border: 0; }
           .ed-table tr.ed-row td:first-child, .ed-table tr.ed-row td.ed-asset { flex: 1 0 100%; }
           .ed-table tr.ed-row td:last-child { margin-inline-start: auto; }

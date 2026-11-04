@@ -121,10 +121,21 @@
   text-transform: uppercase;
 }
 
-:where(.wm-table) td {
+:where(.wm-table) td,
+:where(.wm-table) > tbody > tr > th {
   padding: 5px 8px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+}
+
+/* A row header (<th scope="row">) is a body cell, not a column header. The
+   child combinators keep it to the table's own rows: an expanded watchlist row
+   nests a table, with its own column headers, inside the outer tbody. */
+:where(.wm-table) > tbody > tr > th {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .table-scroll {
@@ -3281,10 +3292,10 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 /* Grocery Basket Panel */
 .gb-wrapper { overflow: hidden; }
 .gb-scroll { overflow-x: auto; }
-.gb-table { border-collapse: collapse; width: 100%; font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1)); }
-.gb-table th, .gb-table td { padding: 4px 6px; border: 1px solid rgba(255,255,255,0.08); text-align: right; white-space: nowrap; }
+/* Column rules on top of the shared row rules: the basket is a country-by-item matrix. */
+.gb-table th, .gb-table td { border-inline: 1px solid var(--border-subtle); text-align: right; vertical-align: top; white-space: nowrap; }
 .gb-item-col, .gb-item-name { text-align: start; min-width: 110px; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
-.gb-country-header { text-align: center; font-weight: 600; min-width: 80px; }
+.gb-country-header { text-align: center; min-width: 80px; }
 .gb-country-name { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.7; }
 .gb-cell { position: relative; }
 .gb-local { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.6; }
@@ -3292,7 +3303,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 .gb-na { opacity: 0.3; text-align: center; }
 .gb-cheapest { background: rgba(34,197,94,0.15); color: #4ade80; }
 .gb-priciest { background: rgba(239,68,68,0.1); color: #f87171; }
-.gb-total-row td { border-top: 2px solid rgba(255,255,255,0.2); }
+.gb-total-row td { border-top: 2px solid var(--border); }
 .gb-wow { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.85; margin-top: 1px; }
 .gb-updated { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.4; text-align: right; padding: 4px 6px; }
 
@@ -3740,11 +3751,6 @@ a.hub-top-story {
   border-radius: 3px;
 }
 
-.watchlist-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
 .watchlist-table-scroll {
   /* Keep the complete row box proportional to the effective text scale. The
      virtual scroller measures this value for its scroll-to-index mapping. */
@@ -3754,14 +3760,6 @@ a.hub-top-story {
   overscroll-behavior: contain;
 }
 .watchlist-table thead th {
-  text-align: left;
-  color: var(--text-dim);
-  font-weight: 500;
-  text-transform: uppercase;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 0.4px;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
   position: sticky;
   top: 0;
@@ -3798,9 +3796,6 @@ a.hub-top-story {
 .watchlist-table tbody tr.watchlist-row-expanded {
   background: var(--overlay-light);
 }
-.watchlist-table tbody td {
-  padding: 6px 4px;
-}
 .watchlist-table tbody td.watchlist-td-right {
   text-align: right;
 }
@@ -3810,6 +3805,8 @@ a.hub-top-story {
   border-bottom: 1px solid var(--border);
 }
 .watchlist-table tbody tr.watchlist-virtual-spacer > td {
+  padding: 0;
+  border: 0;
   pointer-events: none;
 }
 .watchlist-empty {
@@ -3818,6 +3815,32 @@ a.hub-top-story {
   color: var(--text-dim);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
+
+/* Economic Calendar: events grouped under date rows. */
+.ec-table { table-layout: fixed; }
+.ec-date-row td {
+  padding-top: 10px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ec-event { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ec-impact { text-align: center; vertical-align: middle; }
+.ec-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ec-actual { color: var(--text); font-weight: 600; }
+.ec-countdown { color: var(--text-dim); font-style: italic; }
+.ec-empty { padding: 20px 0; text-align: center; color: var(--text-dim); }
+
+/* WSB Ticker Scanner */
+.wsb-table th { white-space: nowrap; }
+.wsb-table th[data-sort] { cursor: pointer; user-select: none; }
+.wsb-num { text-align: right; }
+.wsb-rank { min-width: 20px; color: var(--text-dim); text-align: right; }
+.wsb-ticker { color: var(--text); font-family: var(--font-mono); font-weight: 700; }
+.wsb-velocity { min-width: 80px; vertical-align: middle; }
+.wsb-empty { padding: 16px; text-align: center; color: var(--text-dim); }
 
 /* ----------------------------------------------------------
    FX panel (#6199) — stress table + the two spot-rate tables
@@ -3828,9 +3851,6 @@ a.hub-top-story {
   max-height: 100%;
 }
 .fx-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
 }
 .fx-table thead th {
@@ -3838,21 +3858,12 @@ a.hub-top-story {
   top: 0;
   z-index: 1;
   background: var(--panel-bg, var(--bg));
-  padding: 4px 6px;
   text-align: right;
-  font-weight: 600;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 .fx-table td {
-  padding: 4px 6px;
   text-align: right;
   white-space: nowrap;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 .fx-table th.fx-ccy,
 .fx-table td.fx-ccy {
@@ -3886,7 +3897,8 @@ a.hub-top-story {
 .fx-flat {
   color: var(--text-dim);
 }
-.fx-window {
+/* Body cells only: the column headers keep the shared header style. */
+td.fx-window {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
@@ -3905,7 +3917,7 @@ a.hub-top-story {
   opacity: 0.7;
 }
 /* The raw seeded direction, shown beside the conventional quote. */
-.fx-inverse {
+td.fx-inverse {
   color: var(--text-dim);
 }
 .fx-section-title {

@@ -6594,10 +6594,12 @@ body.playback-mode .status-dot {
 
 .repair-ship-marker {
   --repair-ship-color: var(--semantic-low);
+  --repair-ship-text: var(--semantic-low-text, var(--semantic-low));
 }
 
 .repair-ship-marker.on-station {
   --repair-ship-color: var(--status-live);
+  --repair-ship-text: var(--status-live-text, var(--status-live));
 }
 
 .repair-ship-icon {
@@ -6607,7 +6609,7 @@ body.playback-mode .status-dot {
 
 .repair-ship-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--repair-ship-color, var(--semantic-low));
+  color: var(--repair-ship-text, var(--semantic-low-text, var(--semantic-low)));
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 2px;
@@ -6747,7 +6749,6 @@ body.playback-mode .status-dot {
 
 .datacenter-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--datacenter-color);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 2px;
@@ -7109,7 +7110,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.us-nato .base-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .base-marker.china .base-label {
@@ -7121,7 +7122,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.uk .base-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .base-marker.france .base-label {
@@ -7240,7 +7241,7 @@ body.playback-mode .status-dot {
 }
 
 .port-marker.port-naval .port-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .port-marker.port-mixed .port-label {
@@ -7369,7 +7370,7 @@ body.playback-mode .status-dot {
 
 /* Category-specific colors */
 .nat-event-marker.severeStorms .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.wildfires .nat-event-label {
@@ -7397,7 +7398,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.snow .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.tempExtremes .nat-event-label {
@@ -7405,7 +7406,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.seaLakeIce .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.waterColor .nat-event-label {
@@ -7430,7 +7431,7 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.nat-event.severeStorms .popup-title {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .popup-header.nat-event.wildfires {
@@ -10677,7 +10678,7 @@ a.prediction-link:hover {
 }
 
 .map-legend-icon.base {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .map-legend-icon.cable {
@@ -12082,6 +12083,55 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
+/* Energy Complex: IEA oil-stock badges and regional summary rows. */
+.energy-net-exporter-badge,
+.energy-below-obligation-badge {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.energy-net-exporter-badge {
+  margin-inline-start: 0;
+  background: var(--overlay-subtle);
+  color: var(--text-secondary);
+}
+
+.energy-below-obligation-badge {
+  background: color-mix(in srgb, var(--semantic-elevated) 14%, transparent);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+
+.oil-stocks-regional {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.oil-stocks-region-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.oil-stocks-region-row .energy-below-obligation-badge {
+  margin-inline-start: 0;
+}
+
+.oil-stocks-region-name {
+  min-width: 88px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .economic-indicator {
   background: var(--surface);
   padding: 8px 12px;
@@ -12288,19 +12338,6 @@ a.prediction-link:hover {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text-secondary);
-}
-
-.radiation-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
-
-.radiation-table th,
-.radiation-table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
 }
 
 .radiation-row {
@@ -12942,23 +12979,7 @@ a.prediction-link:hover {
 }
 
 .sc-disruption-table {
-  width: 100%;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  border-collapse: collapse;
   margin-bottom: 4px;
-}
-
-.sc-disruption-table th {
-  text-align: left;
-  font-weight: 600;
-  color: var(--text-dim);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.sc-disruption-table td {
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sc-disruption-table td:nth-child(n+2) {
@@ -13102,33 +13123,6 @@ a.prediction-link:hover {
 /* Trade Tariffs Table */
 .trade-tariffs-table {
   width: 100%;
-}
-
-.trade-tariffs-table table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
-
-.trade-tariffs-table thead th {
-  text-align: left;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 4px 8px 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.trade-tariffs-table tbody td {
-  padding: 5px 8px;
-  color: var(--text);
-  border-bottom: 1px solid var(--border);
-}
-
-.trade-tariffs-table tbody tr:last-child td {
-  border-bottom: none;
 }
 
 .trade-tariffs-table tbody tr:hover {
@@ -13918,35 +13912,43 @@ a.prediction-link:hover {
   cursor: pointer;
   z-index: 54;
   --vessel-color: var(--status-live);
+  --vessel-text: var(--status-live-text, var(--status-live));
 }
 
 .military-vessel-marker.usn {
   --vessel-color: var(--semantic-low);
+  --vessel-text: var(--semantic-low-text, var(--semantic-low));
 }
 
 .military-vessel-marker.rn {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .military-vessel-marker.plan {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .military-vessel-marker.vks {
   --vessel-color: var(--semantic-high);
+  --vessel-text: var(--semantic-high-text, var(--semantic-high));
 }
 
 .military-vessel-marker.carrier {
   --vessel-color: var(--semantic-elevated);
+  --vessel-text: var(--semantic-elevated-text, var(--semantic-elevated));
   z-index: 56;
 }
 
 .military-vessel-marker.submarine {
   --vessel-color: var(--semantic-info);
+  --vessel-text: var(--semantic-info);
 }
 
 .military-vessel-marker.dark-vessel {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   animation: dark-vessel-alert 0.8s ease-in-out infinite;
 }
 
@@ -14003,7 +14005,7 @@ a.prediction-link:hover {
 
 .military-vessel-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--vessel-color);
+  color: var(--vessel-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-top: 2px;
@@ -14048,11 +14050,13 @@ a.prediction-link:hover {
   100% {
     opacity: 1;
     --vessel-color: var(--semantic-critical);
+    --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   }
 
   50% {
     opacity: 0.7;
     --vessel-color: var(--semantic-high);
+    --vessel-text: var(--semantic-high-text, var(--semantic-high));
   }
 }
 
@@ -17116,7 +17120,7 @@ a.prediction-link:hover {
 }
 
 .risk-location-icon {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   margin-left: auto;
   opacity: 0.7;
@@ -17648,7 +17652,7 @@ a.prediction-link:hover {
   background: rgba(68, 136, 255, 0.15);
   border: 1px solid rgba(68, 136, 255, 0.4);
   border-radius: 4px;
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   padding: 4px 10px;
   font-family: var(--font-mono);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
@@ -17659,7 +17663,7 @@ a.prediction-link:hover {
 .location-link:hover {
   background: rgba(68, 136, 255, 0.3);
   border-color: var(--semantic-low);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 /* --- Signal Modal: Focal Points & News Correlation --- */
@@ -17688,7 +17692,7 @@ a.prediction-link:hover {
 }
 
 .news-correlation-header {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .focal-point-item {
@@ -17758,7 +17762,7 @@ a.prediction-link:hover {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   margin-bottom: 8px;
 }
 
@@ -17899,7 +17903,7 @@ a.prediction-link:hover {
 
 .intel-findings-badge.status-low .findings-count {
   background: rgba(74, 158, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .intel-findings-badge.status-high {
@@ -18022,7 +18026,7 @@ a.prediction-link:hover {
 
 .findings-badge.moderate {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .findings-badge.high {
@@ -18180,7 +18184,7 @@ a.prediction-link:hover {
 
 .finding-confidence.medium {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .finding-confidence.low {
@@ -18368,7 +18372,7 @@ a.prediction-link:hover {
 
 .findings-modal-item-priority.medium {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .findings-modal-item-desc {
@@ -20608,7 +20612,7 @@ a.prediction-link:hover {
 }
 
 .insights-missed .insights-section-title {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .insight-story.missed {
@@ -20625,7 +20629,7 @@ a.prediction-link:hover {
 
 .insight-badge.ml-detected {
   background: rgba(107, 138, 253, 0.15);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   border-color: rgba(107, 138, 253, 0.3);
 }
 
@@ -22546,7 +22550,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.military {
   border-color: rgba(100, 180, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .signal-chip.outage {
@@ -22888,27 +22892,6 @@ body.has-breaking-alert .panels-grid {
 
 .etf-table-wrap {
   overflow-x: auto;
-}
-
-.etf-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-}
-
-.etf-table th {
-  text-align: left;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  color: var(--text-muted);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--overlay-medium);
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.etf-table td {
-  padding: 5px 6px;
-  border-bottom: 1px solid var(--overlay-light);
 }
 
 .etf-ticker {
@@ -23618,7 +23601,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.displacement {
   border-color: rgba(100, 200, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .signal-chip.climate {
@@ -23647,7 +23630,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-citation {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: none;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
@@ -23657,7 +23640,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-citation:hover {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: underline;
 }
 
@@ -23774,7 +23757,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-market-link {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: none;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
@@ -26207,18 +26190,6 @@ body.map-width-resizing {
 .cp-pressure--stress  { background: rgba(239,68,68,0.15);   color: #f87171; }
 .cp-pressure--green   { background: rgba(34,197,94,0.15);   color: #4ade80; }
 
-.cp-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
-}
-
-.cp-table th, .cp-table td {
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
 .cp-col-header { cursor: pointer; }
 .cp-col-header--up::after   { content: ' ↑'; }
 .cp-col-header--down::after { content: ' ↓'; }
@@ -26351,32 +26322,17 @@ body.map-width-resizing {
   border-color: var(--text-dim);
 }
 
-.cp-global-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(0.78rem * var(--wm-panel-effective-scale, 1));
-}
-.cp-global-table th {
-  text-align: left;
-  font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-}
 .cp-global-row {
   cursor: pointer;
   border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.05));
 }
 .cp-global-row:hover { background: var(--overlay-subtle); }
-.cp-global-row td { padding: 6px 6px; vertical-align: middle; }
-.cp-global-flag { font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
+.cp-global-row td { vertical-align: middle; }
+.cp-global-flag { white-space: nowrap; }
 .cp-global-index { color: var(--text-primary, #e0e0e0); font-variant-numeric: tabular-nums; }
 .cp-global-wow { white-space: nowrap; }
 .cp-global-spread { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.cp-global-fresh { font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1)); }
-.cp-global-pending { color: var(--text-dim); font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1)); font-style: italic; }
+.cp-global-pending { color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-style: italic; }
 .cp-global-hint {
   font-size: calc(0.68rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -26456,23 +26412,10 @@ body.map-width-resizing {
   overflow: auto;
 }
 
-.gb-table {
-  border-collapse: collapse;
-  font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1));
-  white-space: nowrap;
-}
-
-.gb-table th, .gb-table td {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  vertical-align: top;
-}
-
 .gb-table .gb-item-col { min-width: 110px; text-align: start; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
 
 .gb-country-header {
   text-align: center;
-  font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   min-width: 80px;
   background: var(--overlay-subtle);
 }
@@ -26480,7 +26423,6 @@ body.map-width-resizing {
 .gb-country-name { font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); display: block; }
 
 .gb-table .gb-item-name {
-  font-weight: 500;
   min-width: 110px;
   position: sticky;
   inset-inline-start: 0;
@@ -29519,10 +29461,8 @@ body.map-width-resizing {
 .food-prices-filter { display: flex; flex: 1 1 140px; min-width: 0; flex-direction: column; gap: 4px; font-size: .85em; }
 .food-prices-filter select { width: 100%; min-width: 0; padding: 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 .food-prices-table-wrap { overflow-x: auto; max-width: 100%; }
-.food-prices-table { width: 100%; border-collapse: collapse; font-size: .85em; }
-.food-prices-table th, .food-prices-table td { padding: 8px 4px; border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; overflow-wrap: anywhere; }
-.food-prices-table th:first-child { width: 42%; font-weight: 500; }
-.food-prices-table thead th { font-weight: 600; color: var(--text-dim); }
+.food-prices-table th, .food-prices-table td { vertical-align: top; overflow-wrap: anywhere; }
+.food-prices-table th:first-child { width: 42%; }
 .food-prices-card small { display: block; margin-top: 3px; color: var(--text-dim); font-size: .9em; }
 .food-prices-context { margin-top: 14px; }
 .food-prices-context summary { cursor: pointer; font-size: .9em; }

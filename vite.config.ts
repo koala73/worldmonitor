@@ -1183,6 +1183,11 @@ export default defineConfig(({ mode }) => {
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
       // chunk so unrelated regressions between 1200 and 2000 kB remain visible.
       chunkSizeWarningLimit: 2000,
+      // The gzip column in Vite's build report cost 15s per build on CI (about
+      // 400 files) and nothing reads it: the bundle budgets gate raw bytes and
+      // compute their own sizes, and the brotli plugin writes the shipped .br
+      // files separately.
+      reportCompressedSize: false,
       // Vite 6 hoists every dynamic chunk's STATIC deps into the entry HTML's
       // modulepreload list to avoid latency on the first dynamic import. For the
       // map stack that defeats the whole point of dynamic-importing MapContainer:
