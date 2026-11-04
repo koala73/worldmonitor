@@ -1057,6 +1057,41 @@ test('price and stock table text is readable in both themes', async ({ page }) =
       return panel.getElement();
     });
 
+    // Consumer Prices state labels outside its tables: the week-over-week
+    // pressure badge (one per overview), mover percentages and retailer health.
+    // The measurement below covers each .cp-body marked data-contrast-scope.
+    const consumerPrices = (settings: Record<string, unknown>, data: Record<string, unknown>) => {
+      const panel = new ConsumerPricesPanel();
+      const internals = panel as unknown as Record<string, unknown> & { settings: Record<string, unknown>; render(): void };
+      Object.assign(internals, data);
+      internals.settings = { ...internals.settings, market: 'ae', categoryFilter: null, ...settings };
+      internals.render();
+      panel.getElement().dataset.contrastScope = '';
+      return panel.getElement();
+    };
+    for (const wowPct of [0.1, 1.2, 2.6, -1.4]) {
+      mount(`consumer-prices overview ${wowPct}`, () => consumerPrices({ tab: 'overview' }, {
+        overview: {
+          marketCode: 'ae', asOf: '1730592000000', upstreamUnavailable: false, essentialsIndex: 101.4, valueBasketIndex: 99.8,
+          wowPct, momPct: -0.7, retailerSpreadPct: 12.3, coveragePct: 84, freshnessLagMin: 90, topCategories: [],
+        },
+      }));
+    }
+    mount('consumer-prices movers', () => consumerPrices({ tab: 'movers' }, {
+      movers: {
+        risers: [{ productId: 'p1', title: 'Basmati rice 5kg', category: 'grains', retailerSlug: 'carrefour', changePct: 6.4, currentPrice: 42, currencyCode: 'AED' }],
+        fallers: [{ productId: 'p2', title: 'Whole milk 2L', category: 'dairy', retailerSlug: 'lulu', changePct: -3.1, currentPrice: 11, currencyCode: 'AED' }],
+      },
+    }));
+    mount('consumer-prices health', () => consumerPrices({ tab: 'health' }, {
+      freshness: {
+        marketCode: 'ae', asOf: '1730592000000', overallFreshnessMin: 300, stalledCount: 1, upstreamUnavailable: false,
+        retailers: ['ok', 'stale', 'missing'].map((status, i) => ({
+          slug: `r${i}`, name: ['Carrefour', 'Lulu', 'Spinneys'][i]!, lastRunAt: '2026-11-03T00:00:00Z', status, parseSuccessRate: 96 - i * 20, freshnessMin: [90, 2000, 5000][i]!,
+        })),
+      },
+    }));
+
     mount('radiation-watch', () => {
       const panel = new RadiationWatchPanel();
       const observation = (id: string, location: string, confidence: string, severity: string) => ({
@@ -1067,8 +1102,8 @@ test('price and stock table text is readable in both themes', async ({ page }) =
       });
       panel.setData({
         fetchedAt: new Date(), coverage: { epa: 3, safecast: 0 },
-        summary: { anomalyCount: 1, elevatedCount: 1, spikeCount: 0, corroboratedCount: 1, lowConfidenceCount: 1, conflictingCount: 0, convertedFromCpmCount: 1 },
-        observations: [observation('r-1', 'Albany', 'medium', 'elevated'), observation('r-2', 'Boston', 'high', 'normal'), observation('r-3', 'Salt Lake City', 'low', 'normal')],
+        summary: { anomalyCount: 2, elevatedCount: 2, spikeCount: 0, corroboratedCount: 1, lowConfidenceCount: 1, conflictingCount: 1, convertedFromCpmCount: 1 },
+        observations: [observation('r-1', 'Albany', 'medium', 'elevated'), observation('r-2', 'Boston', 'high', 'normal'), observation('r-3', 'Salt Lake City', 'low', 'normal'), { ...observation('r-4', 'Denver', 'medium', 'elevated'), conflictingSources: true }],
       } as never);
       return panel.getElement();
     });
@@ -1155,17 +1190,19 @@ test('price and stock table text is readable in both themes', async ({ page }) =
       };
       const ratio = (a: number[], b: number[]) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi! + 0.05) / (lo! + 0.05); };
       const tables = [...document.querySelectorAll('.panels-grid .panel table')];
+      const scopes = [...tables, ...document.querySelectorAll('.panels-grid .panel[data-contrast-scope] .cp-body')];
       const low: string[] = [];
       let checked = 0;
-      for (const table of tables) {
-        const panel = table.closest<HTMLElement>('.panel')!.dataset.panel;
-        for (const el of table.querySelectorAll('*')) {
+      for (const scope of scopes) {
+        const panel = scope.closest<HTMLElement>('.panel')!.dataset.panel;
+        for (const el of scope.querySelectorAll('*')) {
           if (![...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim())) continue;
           const s = getComputedStyle(el);
+          if (s.visibility === 'hidden' || el.getBoundingClientRect().width === 0) continue;
           const text = parse(s.color);
-          if (!text || s.visibility === 'hidden' || el.getBoundingClientRect().width === 0) continue;
+          if (!text) { low.push(`${panel} ${el.tagName.toLowerCase()} unparsed colour ${s.color}`); continue; }
           let opacity = text[3]!;
-          for (let e: Element | null = el; e && e !== table; e = e.parentElement) opacity *= Number(getComputedStyle(e).opacity);
+          for (let e: Element | null = el; e; e = e.parentElement) opacity *= Number(getComputedStyle(e).opacity);
           const bg = background(el);
           const contrast = ratio(over([text[0]!, text[1]!, text[2]!, opacity], bg), bg);
           const size = Number.parseFloat(s.fontSize);
@@ -1180,7 +1217,7 @@ test('price and stock table text is readable in both themes', async ({ page }) =
       return { panels: new Set(tables.map((t) => t.closest<HTMLElement>('.panel')!.dataset.panel)).size, checked, low: [...new Set(low)] };
     });
     expect(report.panels, `${theme}: every mounted panel renders a table`).toBe(10);
-    expect(report.checked, `${theme}: text nodes measured`).toBeGreaterThan(150);
+    expect(report.checked, `${theme}: text nodes measured`).toBeGreaterThan(200);
     expect.soft(report.low, `${theme}: table text below AA contrast`).toEqual([]);
   }
 });
