@@ -4,7 +4,7 @@
  * when none apply, and category glyph layers follow the built marker layers.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ScatterplotLayer } from '@deck.gl/layers';
+import { IconLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import { DeckGLMap } from '@/components/DeckGLMap';
 import type { MapLayers } from '@/types';
@@ -131,13 +131,43 @@ describe('category glyph layers', () => {
     expect(out[1]!.props.pickable).toBe(false);
   });
 
-  it('places the glyph outside the marker radius', () => {
-    const big = new ScatterplotLayer<{ p: [number, number] }>({ id: 'hotspots-layer', data: [{ p: [0, 0] }], getPosition: (d) => d.p, radiusMaxPixels: 20 });
-    const small = new ScatterplotLayer<{ p: [number, number] }>({ id: 'fires-layer', data: [{ p: [0, 0] }], getPosition: (d) => d.p, radiusMaxPixels: 3 });
-    const offsetOf = (layer: unknown) => (withGlyphs(4, [layer])[1]!.props.getPixelOffset as [number, number])[0];
-    // 16px glyph at zoom 4: half-width 8, so it must start beyond the clamped radius.
-    expect(offsetOf(big)).toBe(12 + 8 + 1);
-    expect(offsetOf(small)).toBe(4 + 8 + 1);
+  // Badge centre for one datum: deck calls getPixelOffset(datum, objectInfo).
+  const offsetFor = (zoom: number, layer: unknown, index = 0) => {
+    const glyph = withGlyphs(zoom, [layer])[1]!;
+    const datum = (glyph.props.data as unknown[])[index];
+    const accessor = glyph.props.getPixelOffset as (d: unknown, info: unknown) => [number, number];
+    return accessor(datum, { index, data: glyph.props.data, target: [] })[0];
+  };
+
+  it('clears each marker by its own rendered pixel radius', () => {
+    // 16px badge at zoom 4: half-width 8, plus a 2px gap.
+    const varied = new ScatterplotLayer<{ p: [number, number]; r: number }>({
+      id: 'earthquakes-layer', data: [{ p: [0, 0], r: 30 }, { p: [0, 0], r: 4 }],
+      getPosition: (d) => d.p, getRadius: (d) => d.r, radiusUnits: 'pixels',
+    });
+    expect(offsetFor(4, varied, 0)).toBe(30 + 8 + 2);
+    expect(offsetFor(4, varied, 1)).toBe(4 + 8 + 2);
+  });
+
+  it('applies the layer pixel clamp to meter radii', () => {
+    const clamped = new ScatterplotLayer<{ p: [number, number] }>({
+      id: 'bases-cluster-layer', data: [{ p: [0, 0] }],
+      getPosition: (d) => d.p, getRadius: 1_000_000, radiusMinPixels: 10, radiusMaxPixels: 40,
+    });
+    expect(offsetFor(4, clamped)).toBe(40 + 8 + 2);
+    const tiny = new ScatterplotLayer<{ p: [number, number] }>({
+      id: 'bases-cluster-layer', data: [{ p: [0, 0] }],
+      getPosition: (d) => d.p, getRadius: 1, radiusMinPixels: 10, radiusMaxPixels: 40,
+    });
+    expect(offsetFor(4, tiny)).toBe(10 + 8 + 2);
+  });
+
+  it('uses half the icon size for icon markers', () => {
+    const icons = new IconLayer<{ p: [number, number] }>({
+      id: 'bases-layer', data: [{ p: [0, 0] }], getPosition: (d) => d.p,
+      getIcon: () => 'x', getSize: 16, sizeMaxPixels: 16,
+    });
+    expect(offsetFor(4, icons)).toBe(8 + 8 + 2);
   });
 
   it('draws nothing for hidden, empty or ghost layers', () => {

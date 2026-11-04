@@ -14,7 +14,6 @@ import { LAYER_REGISTRY } from './map-layer-definitions';
  */
 export const DECK_POINT_LAYER_CATEGORY: Readonly<Record<string, keyof MapLayers>> = {
   'hotspots-layer': 'hotspots',
-  'notam-overlay-layer': 'flights',
   'notam-airspace-markers': 'flights',
   'ports-layer': 'ais',
   'ukmto-incidents-layer': 'ais',
@@ -50,7 +49,6 @@ export const DECK_POINT_LAYER_CATEGORY: Readonly<Record<string, keyof MapLayers>
   'protest-clusters-layer': 'protests',
   'ucdp-events-layer': 'ucdpEvents',
   'displacement-events-layer': 'displacement',
-  'climate-heatmap-layer': 'climate',
   'weather-layer': 'weather',
   'canada-alerts-layer': 'canadaAlerts',
   'outages-layer': 'outages',
@@ -91,6 +89,8 @@ export const CATEGORY_GLYPH_EXCLUDED_POINT_LAYER_IDS: Readonly<Record<string, st
   'aircraft-positions-layer': 'already drawn as a plane silhouette',
   'ais-density-layer': 'density cells, not individual objects',
   'notam-airspace-circles': 'airspace areas, not points',
+  'notam-overlay-layer': 'closure rings around airports the flight-delay markers already badge',
+  'climate-heatmap-layer': 'translucent anomaly areas, not point markers',
   'trade-route-trips-layer': 'animated trip heads along route lines',
   'highlighted-chokepoint-markers': 'selection highlight over chokepoint markers',
   'news-locations-layer': 'news markers, not a picker layer',
@@ -117,6 +117,36 @@ export function categoryGlyphSizePx(zoom: number, markerCount: number): number {
   if (!Number.isFinite(zoom) || markerCount <= 0) return 0;
   if (zoom < CATEGORY_GLYPH_MIN_ZOOM) return markerCount <= CATEGORY_GLYPH_SPARSE_LIMIT ? 12 : 0;
   return Math.min(20, Math.round(14 + (zoom - CATEGORY_GLYPH_MIN_ZOOM) * 2));
+}
+
+const EARTH_CIRCUMFERENCE_M = 40_075_016.686;
+const TILE_SIZE_PX = 512;
+
+export interface MarkerRadiusSpec {
+  /** deck.gl unit of `value`: 'meters' (ScatterplotLayer default), 'pixels' or 'common'. */
+  units?: string;
+  value: number;
+  scale?: number;
+  minPx?: number;
+  maxPx?: number;
+  lat: number;
+  zoom: number;
+}
+
+/**
+ * On-screen radius in CSS pixels of a deck.gl marker, mirroring how
+ * ScatterplotLayer/IconLayer turn radius or size props into pixels at a zoom:
+ * unit conversion, then the min/max pixel clamp. A badge placed at this
+ * distance plus its own half-width clears the marker and its status colour.
+ */
+export function markerPixelRadius(spec: MarkerRadiusSpec): number {
+  const raw = (Number.isFinite(spec.value) ? spec.value : 0) * (spec.scale ?? 1);
+  const worldPx = TILE_SIZE_PX * 2 ** spec.zoom;
+  let px: number;
+  if (spec.units === 'pixels') px = raw;
+  else if (spec.units === 'common') px = raw * 2 ** spec.zoom;
+  else px = raw * worldPx / (EARTH_CIRCUMFERENCE_M * Math.max(0.01, Math.cos(spec.lat * Math.PI / 180)));
+  return Math.min(spec.maxPx ?? Number.MAX_SAFE_INTEGER, Math.max(spec.minPx ?? 0, px));
 }
 
 /** Map-layer key that owns a deck layer id, ignoring the `-ghost` pick twin. */

@@ -46,7 +46,7 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
 import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
 import { getMilitaryBaseColor } from '@/config/military-base-colors';
-import { DECK_POINT_LAYER_CATEGORY, categoryForDeckLayerId, categoryGlyphForLayer, categoryGlyphSizePx } from '@/config/map-layer-glyphs';
+import { DECK_POINT_LAYER_CATEGORY, categoryForDeckLayerId, categoryGlyphForLayer, categoryGlyphSizePx, markerPixelRadius } from '@/config/map-layer-glyphs';
 import { getCategoryGlyphAtlas, type CategoryGlyphAtlas } from './map-category-glyph-atlas';
 import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
@@ -215,6 +215,8 @@ import {
   type CountryClickGestureTracker,
 } from './map-interaction-guard';
 
+/** deck.gl accessor shape: (datum, objectInfo) => value. */
+type GlyphAccessor<T> = (d: unknown, info: unknown) => T;
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -2567,16 +2569,16 @@ export class DeckGLMap {
   private createCategoryGlyphLayer(base: Layer, zoom: number, atlas: CategoryGlyphAtlas): Layer | null {
     const category = DECK_POINT_LAYER_CATEGORY[base.id];
     if (!category || base.props.visible === false) return null;
-    const props = base.props as { data?: unknown; getPosition?: unknown; radiusMaxPixels?: number; sizeMaxPixels?: number };
-    const { data, getPosition } = props;
+    const { data, getPosition } = base.props as { data?: unknown; getPosition?: unknown };
     if (!Array.isArray(data) || typeof getPosition !== 'function') return null;
     const size = categoryGlyphSizePx(zoom, data.length);
     if (size === 0) return null;
-    // Sit just outside the marker so its status colour stays visible. Markers
-    // grow with zoom up to their max radius; past 12px they are clusters,
-    // where touching the rim reads better than floating far away.
-    const markerRadius = props.radiusMaxPixels ?? (props.sizeMaxPixels ? props.sizeMaxPixels / 2 : 6);
-    const offsetX = Math.round(Math.min(12, Math.max(4, markerRadius)) + size / 2 + 1);
+    const radiusOf = this.markerRadiusAccessor(base, zoom, getPosition as GlyphAccessor<[number, number]>);
+    if (!radiusOf) return null;
+    // Badge sits just outside each marker's rendered radius, so the marker's
+    // status colour stays visible at every zoom and marker size.
+    const gap = Math.round(size / 2) + 2;
+    const triggers = base.props.updateTriggers ?? {};
     return new IconLayer({
       id: `${base.id}-category-glyph`,
       data,
@@ -2586,10 +2588,52 @@ export class DeckGLMap {
       iconMapping: atlas.mapping,
       getSize: size,
       sizeUnits: 'pixels',
-      getPixelOffset: [offsetX, 0],
+      getPixelOffset: (d: unknown, info: unknown) => [Math.round(radiusOf(d, info) + gap), 0],
       pickable: false,
-      updateTriggers: { getPosition: base.props.updateTriggers?.getPosition },
+      updateTriggers: {
+        getPosition: triggers.getPosition,
+        getPixelOffset: [Math.round(zoom * 10), size, triggers.getRadius ?? triggers.getSize ?? null],
+      },
     });
+  }
+
+  /**
+   * Per-datum rendered radius in pixels of a ScatterplotLayer or IconLayer
+   * marker, from the layer's own radius/size accessor, units and pixel clamp.
+   * Null for other layer types: without a known radius the badge could land
+   * on the marker, so it is left off.
+   */
+  private markerRadiusAccessor(base: Layer, zoom: number, getPosition: GlyphAccessor<[number, number]>): GlyphAccessor<number> | null {
+    const props = base.props as Record<string, unknown>;
+    const read = (accessor: unknown, fallback: number): GlyphAccessor<number> =>
+      typeof accessor === 'function'
+        ? (d, info) => Number((accessor as GlyphAccessor<number>)(d, info))
+        : () => (typeof accessor === 'number' ? accessor : fallback);
+    if (base instanceof ScatterplotLayer) {
+      const radius = read(props.getRadius, 1);
+      return (d, info) => markerPixelRadius({
+        units: props.radiusUnits as string | undefined,
+        value: radius(d, info),
+        scale: props.radiusScale as number | undefined,
+        minPx: props.radiusMinPixels as number | undefined,
+        maxPx: props.radiusMaxPixels as number | undefined,
+        lat: getPosition(d, info)[1],
+        zoom,
+      });
+    }
+    if (base instanceof IconLayer) {
+      const sizeOf = read(props.getSize, 1);
+      return (d, info) => markerPixelRadius({
+        units: (props.sizeUnits as string | undefined) ?? 'pixels',
+        value: sizeOf(d, info),
+        scale: props.sizeScale as number | undefined,
+        minPx: props.sizeMinPixels as number | undefined,
+        maxPx: props.sizeMaxPixels as number | undefined,
+        lat: getPosition(d, info)[1],
+        zoom,
+      }) / 2;
+    }
+    return null;
   }
 
   // Layer creation methods

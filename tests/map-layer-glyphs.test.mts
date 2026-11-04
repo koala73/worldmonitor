@@ -16,6 +16,7 @@ import {
   categoryGlyphForLayer,
   categoryGlyphSizePx,
   decodeLayerIcon,
+  markerPixelRadius,
 } from '../src/config/map-layer-glyphs';
 
 const deckSource = readFileSync(new URL('../src/components/DeckGLMap.ts', import.meta.url), 'utf8');
@@ -114,5 +115,25 @@ describe('categoryGlyphSizePx', () => {
     assert.equal(categoryGlyphSizePx(CATEGORY_GLYPH_MIN_ZOOM, 5000), 14);
     assert.ok(categoryGlyphSizePx(CATEGORY_GLYPH_MIN_ZOOM + 2, 5000) > 14);
     assert.equal(categoryGlyphSizePx(18, 5000), 20);
+  });
+});
+
+describe('markerPixelRadius', () => {
+  test('passes pixel radii through the scale and clamp', () => {
+    assert.equal(markerPixelRadius({ units: 'pixels', value: 7, lat: 0, zoom: 4 }), 7);
+    assert.equal(markerPixelRadius({ units: 'pixels', value: 7, scale: 2, maxPx: 10, lat: 0, zoom: 4 }), 10);
+    assert.equal(markerPixelRadius({ units: 'pixels', value: 1, minPx: 6, lat: 0, zoom: 4 }), 6);
+  });
+
+  test('converts meters with zoom and latitude like web mercator', () => {
+    // 512 * 2^0 px span the equator's 40,075 km at zoom 0.
+    const equator = markerPixelRadius({ value: 40_075_016.686, lat: 0, zoom: 0 });
+    assert.ok(Math.abs(equator - 512) < 1e-6);
+    assert.ok(Math.abs(markerPixelRadius({ value: 1000, lat: 0, zoom: 5 }) * 2 - markerPixelRadius({ value: 1000, lat: 0, zoom: 6 })) < 1e-9);
+    assert.ok(markerPixelRadius({ value: 1000, lat: 60, zoom: 5 }) > markerPixelRadius({ value: 1000, lat: 0, zoom: 5 }) * 1.99);
+  });
+
+  test('defaults to meters, the ScatterplotLayer default', () => {
+    assert.equal(markerPixelRadius({ value: 1000, lat: 0, zoom: 5 }), markerPixelRadius({ units: 'meters', value: 1000, lat: 0, zoom: 5 }));
   });
 });
