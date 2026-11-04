@@ -499,7 +499,9 @@ describe('buildBoardHtml', () => {
     const defined = new Set(readdirSync(stylesDir)
       .filter((f) => f.endsWith('.css') && !standalone.has(f))
       .flatMap((f) => [...readFileSync(new URL(f, stylesDir), 'utf8').matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1])));
-    const html = buildBoardHtml(snapshotFixture());
+    // The rendered board, plus the component's own markup (status and fallback notices).
+    const html = buildBoardHtml(snapshotFixture())
+      + readFileSync(new URL('../src/components/RegionalIntelligenceBoard.ts', import.meta.url), 'utf8');
     const used = new Set([...html.matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]));
     assert.ok(used.has('--semantic-critical'), 'the fixture renders the Pressures bars');
     assert.deepEqual([...used].filter((t) => !defined.has(t)), []);
