@@ -150,6 +150,7 @@ function returnChip(label: string, pct: number): string {
 
 export class GoldIntelligencePanel extends Panel {
   private _hasData = false;
+  private _lastData: GoldIntelligenceData | null = null;
 
   constructor() {
     super({ id: 'gold-intelligence', title: t('panels.goldIntelligence'), infoTooltip: t('components.goldIntelligence.infoTooltip') });
@@ -165,18 +166,26 @@ export class GoldIntelligencePanel extends Panel {
 
       if (data.unavailable) {
         if (!this._hasData) this.showError('Gold data unavailable', () => void this.fetchData());
+        else this.retainLastData();
         return false;
       }
 
       if (!this.element?.isConnected) return false;
       this._hasData = true;
+      this._lastData = data;
       this.render(data);
       return true;
     } catch (e) {
       if (!this.element?.isConnected) return false;
       if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      else this.retainLastData();
       return false;
     }
+  }
+
+  /** Keep the last price visible but re-render so its freshness label shows its real age. */
+  private retainLastData(): void {
+    if (this._lastData && this.element?.isConnected) this.render(this._lastData);
   }
 
   private renderHeader(d: GoldIntelligenceData): string {

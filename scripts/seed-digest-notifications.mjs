@@ -11,6 +11,7 @@
  *   6. Formats and dispatches to each configured channel
  *   7. Updates digest:last-sent:v1:${userId}:${variant}
  */
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   markdownToTelegramHtml,
@@ -1377,7 +1378,12 @@ async function sendEmail(email, subject, text, html, channel = null) {
     html: injectUnsubscribeFooterHtml(html, unsubscribeUrl, label),
     headers: listUnsubscribeHeaders(unsubscribeUrl),
   };
-  const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]' });
+  // sendResendEmail bounds the call at 10s. A send Resend accepted but answered
+  // late reads as a failure, so last-sent stays unwritten and the next tick
+  // re-sends; keying the exact payload lets Resend drop an identical replay
+  // while a re-rendered digest (new content) still goes out under a new key.
+  const idempotencyKey = `digest-${createHash('sha256').update(JSON.stringify([payload.to, payload.subject, payload.text, payload.html])).digest('hex')}`;
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]', idempotencyKey });
   if (result.ok) console.log(`[digest] Email delivered to ${email}`);
   return result.ok;
 }

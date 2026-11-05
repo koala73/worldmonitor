@@ -164,6 +164,22 @@ describe('Widget chat preflight without a network', () => {
   });
 });
 
+it('does not report ready when the health body stalls past the deadline', async () => {
+  setOnline(true);
+  // Headers arrive with 200, then the body read hits the deadline.
+  const stalled = {
+    ok: true,
+    status: 200,
+    json: () => Promise.reject(new DOMException('deadline', 'TimeoutError')),
+  } as unknown as Response;
+  vi.stubGlobal('fetch', vi.fn(async () => stalled));
+
+  open();
+
+  await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightUnavailable')));
+  expect(document.querySelector<HTMLButtonElement>('.widget-chat-send')!.disabled).toBe(true);
+});
+
 it('recovers a timed-out health check with a bounded retry', async () => {
   setOnline(true);
   vi.spyOn(Math, 'random').mockReturnValue(0);

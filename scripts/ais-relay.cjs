@@ -14871,7 +14871,9 @@ async function handleWidgetAgentRequest(req, res) {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     // The widget deadline and cancellation own recovery; SDK retries would
     // replay billed turns and can sleep beyond the remaining request budget.
-    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY, timeout: 60_000, maxRetries: 0 });
+    // Turns are non-streaming, so headers arrive only after generation: the
+    // client timeout must cover the whole request budget, not a fixed minute.
+    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY, timeout: timeoutMs, maxRetries: 0 });
 
     const messages = [
       ...conversationHistory

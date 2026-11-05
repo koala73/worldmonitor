@@ -62,6 +62,15 @@ export function parseRetryAfterMs(value) {
   return null;
 }
 
+/** True when a `Retry-After` hint asks for longer than `MAX_RETRY_AFTER_MS`. */
+export function retryAfterExceedsCap(value) {
+  if (!value) return false;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return seconds * 1000 > MAX_RETRY_AFTER_MS;
+  const retryAt = Date.parse(value);
+  return Number.isFinite(retryAt) && retryAt - Date.now() > MAX_RETRY_AFTER_MS;
+}
+
 /**
  * Fetch JSON from a Yahoo Finance endpoint with retry + proxy fallback.
  *
@@ -131,7 +140,15 @@ export async function fetchYahooJson(url, opts = {}) {
     lastDirectError = new Error(`HTTP ${resp.status}`);
 
     if (RETRYABLE_STATUSES.has(resp.status) && attempt < maxRetries) {
-      const retryAfter = parseRetryAfterMs(resp.headers.get('retry-after'));
+      const retryAfterHeader = resp.headers.get('retry-after');
+      if (retryAfterExceedsCap(retryAfterHeader)) {
+        // A direct retry inside the capped wait would land before the
+        // provider's cooldown ends; go straight to the proxy egress instead.
+        await resp.body?.cancel().catch(() => {});
+        console.warn(`  [YAHOO] ${label} ${resp.status} — Retry-After ${retryAfterHeader} exceeds ${MAX_RETRY_AFTER_MS / 1000}s; skipping direct retries`);
+        break;
+      }
+      const retryAfter = parseRetryAfterMs(retryAfterHeader);
       const retryMs = Math.max(retryAfter ?? 0, retryDelay(attempt));
       await resp.body?.cancel().catch(() => {});
       console.warn(`  [YAHOO] ${label} ${resp.status} — waiting ${Math.round(retryMs / 1000)}s (${attempt + 1}/${maxRetries})`);

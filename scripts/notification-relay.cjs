@@ -493,8 +493,12 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
         linkTitle: 'Open dashboard',
       }));
       else if (ch.channelType === 'email' && ch.email) {
-        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, items])).digest('hex');
-        ok = await sendEmail(ch.email, subject, text, unsubscribeUrlFor(ch, 'alerts'), `quiet-held-${batchKey}`);
+        // Key the exact email Resend receives: a drain that filters out a
+        // newly blocked link changes `text`, and reusing the key with a
+        // different payload would be rejected as an idempotency conflict.
+        const unsubscribeUrl = unsubscribeUrlFor(ch, 'alerts');
+        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, subject, text, unsubscribeUrl])).digest('hex');
+        ok = await sendEmail(ch.email, subject, text, unsubscribeUrl, `quiet-held-${batchKey}`);
       }
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
         eventType: 'quiet_hours_batch',

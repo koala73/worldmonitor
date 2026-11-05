@@ -6,8 +6,10 @@ import { readFileSync, existsSync } from 'node:fs';
 import ts from 'typescript';
 
 const excluded = /(?:^|\/)(?:node_modules|vendor|generated|tests?|e2e|demos)(?:\/|$)|\.(?:test|spec)\.|-test-preload\./;
-const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' })
-  .trim().split('\n').filter(file => !excluded.test(file));
+// -z: NUL-separated raw paths. Newline output C-quotes non-ASCII names
+// (e.g. "r\303\251sum\303\251.md"), which readFileSync cannot open.
+const files = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' })
+  .split('\0').filter(file => file && !excluded.test(file));
 const records = [];
 
 for (const file of files) {

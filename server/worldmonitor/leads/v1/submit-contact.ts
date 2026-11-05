@@ -67,6 +67,7 @@ async function sendNotificationEmail(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-leads/1.0',
         'Authorization': `Bearer ${resendKey}`,
       },
       body: JSON.stringify({
