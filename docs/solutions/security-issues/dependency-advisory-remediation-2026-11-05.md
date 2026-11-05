@@ -34,6 +34,9 @@ projects already do.
 - The new stream-json, deepmerge, and uuid regressions fail against the previous
   installation and pass after remediation.
 - Clean installs with lifecycle scripts disabled pass for all four affected graphs.
+- The four changed Docker dependency-install stages build. The digest image's
+  install now disables lifecycle scripts, matching the other Alpine images;
+  otherwise its bufferutil install attempts compilation without Python.
 - The dependency security and backport suites exercise installed code and exclude
   the affected glob, minimatch, and uuid ranges in all four lockfiles.
 - Root/API type checks, import boundaries, and Pro TypeScript checks pass.
