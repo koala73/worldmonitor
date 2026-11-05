@@ -51,6 +51,7 @@ services:
       # Data source API keys (optional — features degrade gracefully)
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
       FINNHUB_API_KEY: "${FINNHUB_API_KEY:-}"
+      ALPHA_VANTAGE_API_KEY: "${ALPHA_VANTAGE_API_KEY:-}"
       EIA_API_KEY: "${EIA_API_KEY:-}"
       FRED_API_KEY: "${FRED_API_KEY:-}"
       ACLED_EMAIL: "${ACLED_EMAIL:-}"
