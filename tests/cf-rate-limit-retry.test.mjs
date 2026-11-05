@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -72,6 +72,38 @@ describe('cf-rate-limit-retry', () => {
     const r = run(dir, [{ code: 1, stdout: RATE_LIMITED }, { code: 0 }]);
     assert.equal(r.status, 0);
     assert.equal(r.calls.length, 2);
+  });
+
+  it('actually waits the configured delay before retrying', () => {
+    const dir = createTempDir('cf-retry-');
+    const started = Date.now();
+    const r = run(dir, [{ code: 1, stderr: RATE_LIMITED }, { code: 0 }], '400');
+    const elapsed = Date.now() - started;
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.calls.length, 2);
+    assert.ok(elapsed >= 400, `retried after ${elapsed} ms, expected at least 400 ms`);
+  });
+
+  it('defaults to a 15 s first backoff and keeps waiting rather than retrying at once', async () => {
+    const dir = createTempDir('cf-retry-');
+    const script = fakeCommand(dir, [{ code: 1, stderr: RATE_LIMITED }, { code: 0 }]);
+    const env = { ...process.env };
+    delete env.CF_RATE_LIMIT_RETRY_DELAYS_MS;
+    const child = spawn(process.execPath, [retryScript, process.execPath, script, 'deploy'], { env });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const exited = new Promise((resolve) => child.on('close', resolve));
+    const deadline = Date.now() + 10_000;
+    while (!stderr.includes('retrying in') && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    // Still inside the 15 s wait one second later: only the first attempt ran.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const calls = readFileSync(join(dir, 'calls.log'), 'utf8').split('\n').filter(Boolean);
+    child.kill();
+    await exited;
+    assert.match(stderr, /retrying in 15s \(attempt 2 of 4\)/);
+    assert.equal(calls.length, 1);
   });
 
   it('fails fast on a non-rate-limit error', () => {
