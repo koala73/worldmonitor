@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { appChunkRuntimeCache, createDashboardPrecache } from '../shared/pwa-precache.ts';
+import { runInNewContext } from 'node:vm';
+import { generateSW } from 'workbox-build';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import ts from 'typescript';
+import { moduleRegexBindings } from './helpers/module-regex-declarations.mjs';
 
 function chunk(fileName, { name = fileName, imports = [], dynamicImports = [], css = [], isEntry = false } = {}) {
   return { type: 'chunk', fileName, name, isEntry, imports, dynamicImports, viteMetadata: { importedCss: new Set(css) } };
@@ -58,6 +65,42 @@ describe('dashboard PWA precache', () => {
 });
 
 describe('optional app chunk runtime cache', () => {
+  it('emits standalone runtime matchers that work without build-module bindings', async (t) => {
+    const source = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
+    const file = ts.createSourceFile('vite.config.ts', source, ts.ScriptTarget.Latest, true);
+    let runtimeCaching;
+    function visit(node) {
+      if (ts.isPropertyAssignment(node) && node.name.getText(file) === 'runtimeCaching') runtimeCaching = node.initializer;
+      ts.forEachChild(node, visit);
+    }
+    visit(file);
+    assert.ok(runtimeCaching);
+    const routes = runInNewContext(ts.transpile(`const routes = ${runtimeCaching.getText(file)}; routes;`),
+      { ...moduleRegexBindings(source), appChunkRuntimeCache });
+    const root = mkdtempSync(join(tmpdir(), 'workbox-matchers-'));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    await generateSW({ globDirectory: root, globPatterns: [], swDest: join(root, 'sw.js'),
+      mode: 'development', runtimeCaching: routes });
+    const emitted = [];
+    runInNewContext(readFileSync(join(root, 'sw.js'), 'utf8'), {
+      self: { define: true, addEventListener() {} },
+      importScripts() {},
+      define(_deps, factory) {
+        function Strategy() {}
+        factory(new Proxy({}, { get: (_target, key) => key === 'registerRoute'
+          ? matcher => { if (typeof matcher === 'function') emitted.push(matcher); }
+          : Strategy }));
+      },
+    });
+    assert.equal(emitted.length, 5);
+    for (const path of ['/api/example', '/rss/example', '/assets/App.js', '/assets/App.css', '/dashboard']) {
+      const url = new URL(path, 'https://www.worldmonitor.app');
+      const expected = Array.from(routes.filter(route => typeof route.urlPattern === 'function'),
+        route => route.urlPattern({ url, sameOrigin: true }));
+      assert.deepEqual(emitted.map(matcher => matcher({ url, sameOrigin: true })), expected);
+      assert.deepEqual(emitted.map(matcher => matcher({ url, sameOrigin: false })), expected.map(() => false));
+    }
+  });
   it('matches only same-origin JS and CSS assets', () => {
     for (const path of ['/assets/panels-risk-abc.js', '/assets/maplibre-abc.js?v=1', '/assets/App-abc.css']) {
       assert.equal(appChunkRuntimeCache.urlPattern({ url: new URL(path, 'https://www.worldmonitor.app'), sameOrigin: true }), true);

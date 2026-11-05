@@ -5,12 +5,12 @@
   "description": "Real-time global intelligence on conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.48.0",
+  "version": "1.50.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.48.0",
+    "version": "1.50.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -497,6 +497,14 @@
       }
     },
     {
+      "name": "get_fred_series",
+      "description": "Cached allowlisted FRED macro series via get-fred-series-batch; no request-time external fetch. Up to 20 series; observations are newest-last. Missing results mean an unlisted or unseeded id; compare fetched with requested. Defaults to 24 observations per series, with a 1000 maximum.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "markets-economy"
+      }
+    },
+    {
       "name": "get_airspace",
       "description": "Live ADS-B aircraft over a country. Returns Wingbits-backed civilian flights and identified military aircraft from redistributable providers, with callsigns, positions, altitudes, and headings. Answers questions like \"how many planes are over the UAE right now?\" or \"are there military aircraft over Taiwan?\"",
       "_meta": {
@@ -595,6 +603,14 @@
     {
       "name": "simulate_infrastructure_cascade",
       "description": "Infrastructure cascade simulation and subsea cable exposure: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. Builds the dependency graph from the seeded TeleGeography submarine-cable table plus curated pipeline, port, and chokepoint registries, then propagates the failure breadth-first. Results list affected nodes, per-country impact levels, alternative cables (ranked by whether they avoid the chokepoints the cut cables cross), and graph stats. Call with no arguments for the catalog of node ids. source_ids or cut_cables_through (a chokepoint id) model a simultaneous multi-cable cut, e.g. every cable through Hormuz. countries (up to 10) compares per-country cable exposure: cable count, landing stations, chokepoints crossed, and cables the cable-health monitor flags as faulted. disruption_level ranges 0.1 to 1 (default 1). Cable results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "geopolitical-security"
+      }
+    },
+    {
+      "name": "get_global_air_activity",
+      "description": "Military snapshot counts only: observed aircraft by type, overlapping theater, and outside all theaters. Uses redistribution-cleared tracks; confirmed grounded tracks are excluded, unknown ground status included. Regional/unknown coverage is partial, never a world total; even global scope omits unobserved aircraft.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"

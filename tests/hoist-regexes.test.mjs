@@ -35,13 +35,21 @@ function fixed(text) { return new RegExp('^a', 'i').test(text); }
 function invalid(text) { try { return new RegExp('[').test(text); } catch { return false; } }
 const prefix = '^a';
 function dependent(text) { return new RegExp(prefix, 'i').test(text); }
+function shadowed(prefix, text) { return new RegExp(prefix).test(text); }
+function localBinding(text) { const prefix = '^b'; return new RegExp(prefix).test(text); }
+const workbox = { urlPattern: ({ url }) => /worker/.test(url.pathname) };
+function namedMatcher({ url }) { return /named/.test(url.pathname); }
+const namedWorkbox = { urlPattern: namedMatcher };
+const flags = 'i';
+function shadowFlags(flags, text) { return new RegExp('^a', flags).test(text); }
+function shadowConstructor(RegExp) { return new RegExp('a').test('b'); }
 const page = { evaluate(fn) { return fn(); } };
 function browserCallback() { return /browser/.test('browser'); }
 page.evaluate(browserCallback);
 page.evaluate(() => /inline/.test('inline'));
 function run() {
   return ['a aa', ' other ', '', 'a aa'].map(text => [
-    normalize(text), matches(text), tokens(text), scan(text), sticky(text), stickyReplace(text), dynamic('a', text), fixed(text), dependent(text), invalid(text),
+    normalize(text), matches(text), tokens(text), scan(text), sticky(text), stickyReplace(text), dynamic('a', text), fixed(text), dependent(text), invalid(text), shadowed('^b', text), localBinding(text), shadowFlags('', text), shadowConstructor(class { test() { return true; } }),
   ]);
 }
 JSON.stringify(run());
@@ -53,7 +61,7 @@ JSON.stringify(run());
   const before = runInNewContext(source);
   const report = JSON.parse(run([]));
   assert.equal(report.hoist, 6);
-  assert.equal(report.skipped, 7);
+  assert.equal(report.skipped, 13);
   run(['--write']);
   const after = readFileSync(join(root, 'fixture.js'), 'utf8');
   assert.notEqual(after, source);
@@ -62,6 +70,10 @@ JSON.stringify(run());
   assert.match(after, /const local = \/a\/g/);
   assert.match(after, /return \/a\/y\.test/);
   assert.match(after, /replace\(\/a\/y/);
+  const matcher = runInNewContext(`${after}\nworkbox.urlPattern.toString()`);
+  assert.equal(runInNewContext(`(${matcher})({url: {pathname: 'worker'}})`), true);
+  const named = runInNewContext(`${after}\nnamedWorkbox.urlPattern.toString()`);
+  assert.equal(runInNewContext(`(${named})({url: {pathname: 'named'}})`), true);
   assert.equal(JSON.parse(run([])).hoist, 0);
   run(['--write']);
   assert.equal(readFileSync(join(root, 'fixture.js'), 'utf8'), after);

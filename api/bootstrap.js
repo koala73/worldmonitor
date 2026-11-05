@@ -22,6 +22,7 @@ import { jsonResponse } from './_json-response.js';
 import { checkRateLimit } from './_rate-limit.js';
 import {
   checkBootstrapDesktopKeyBudget,
+  checkBootstrapDesktopKeyClient,
   checkBootstrapUserApiKeyRateLimit,
   isCanonicalUserApiKey,
   resolveBootstrapUserKeyAccess,
@@ -440,6 +441,10 @@ async function validateBootstrapAuth(req, cors) {
     }
 
     if (entitlementResult.scope === 'desktop') {
+      const client = checkBootstrapDesktopKeyClient(req);
+      if (!client.ok) {
+        return { ok: false, response: authFailure({ error: client.error }, client.status, cors) };
+      }
       const budget = await checkBootstrapDesktopKeyBudget(userKeyResult.userId, entitlementResult.entitlement);
       if (!budget.ok) {
         return {

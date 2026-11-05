@@ -44,6 +44,7 @@ const originalEnv = { ...process.env };
 // before reaching dispatch. Values are deliberately benign and aligned with
 // each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
 const REQUIRED_ARGS = {
+  get_fred_series: { series_ids: ['UNRATE'] },
   find_webcams: { bound_w: 4, bound_s: 51, bound_e: 5, bound_n: 52, zoom: 9 },
   get_webcam_media: { webcam_id: '123456789' },
   get_country_history: { country_code: 'US' },

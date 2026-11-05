@@ -4973,6 +4973,9 @@
           "path": "scripts/build-crawlable-corpus.mjs"
         },
         {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
+        },
+        {
           "path": "scripts/generate-airline-codes.mjs"
         },
         {
@@ -5695,6 +5698,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "iss.moex.com",
+      "provider": "iss.moex.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit iss.moex.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_country-stock-index-moex.mjs"
         }
       ]
     },
@@ -7198,6 +7215,20 @@
       ]
     },
     {
+      "host": "nvd.nist.gov",
+      "provider": "NVD (NIST)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain (US Federal Government work)",
+      "attribution": "This product uses the NVD API but is not endorsed or certified by the NVD.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cve-reference.mjs"
+        }
+      ]
+    },
+    {
       "host": "nytimes.com",
       "provider": "The New York Times",
       "kind": "feed",
@@ -8238,6 +8269,9 @@
           "path": "scripts/ais-relay.cjs"
         },
         {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
+        },
+        {
           "path": "scripts/fetch-country-boundary-overrides.mjs"
         },
         {
@@ -8948,6 +8982,20 @@
         },
         {
           "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
+      "host": "services.nvd.nist.gov",
+      "provider": "NVD (NIST)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain (US Federal Government work)",
+      "attribution": "This product uses the NVD API but is not endorsed or certified by the NVD.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cve-reference.mjs"
         }
       ]
     },
@@ -10923,6 +10971,9 @@
         },
         {
           "path": "api/telegram-feed.js"
+        },
+        {
+          "path": "scripts/_country-stock-index-moex.mjs"
         },
         {
           "path": "scripts/_upstash-rest.mjs"

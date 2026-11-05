@@ -74,7 +74,19 @@ for (const path of paths) {
   const skipped = [];
   const identifiers = new Set();
   const isolatedFunctions = new Set();
+  let checker;
+  function symbolAt(node) {
+    if (!checker) {
+      const options = { allowJs: true, noResolve: true, noLib: true };
+      const host = ts.createCompilerHost(options);
+      host.getSourceFile = name => name === path ? file : undefined;
+      checker = ts.createProgram([path], options, host).getTypeChecker();
+    }
+    return checker.getSymbolAtLocation(node);
+  }
   function findIsolatedCallbacks(node) {
+    if (ts.isPropertyAssignment(node) && node.name.getText(file) === 'urlPattern'
+      && ts.isIdentifier(node.initializer)) isolatedFunctions.add(node.initializer.text);
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
       && ISOLATED_CALLBACK_METHODS.has(node.expression.name.text)) {
       for (const argument of node.arguments) if (ts.isIdentifier(argument)) isolatedFunctions.add(argument.text);
@@ -85,6 +97,8 @@ for (const path of paths) {
   function isolated(node) {
     for (let parent = node.parent; parent; parent = parent.parent) {
       if (!ts.isFunctionLike(parent)) continue;
+      if (ts.isPropertyAssignment(parent.parent) && parent.parent.name.getText(file) === 'urlPattern') return true;
+      if (ts.isMethodDeclaration(parent) && parent.name.getText(file) === 'urlPattern') return true;
       if (parent.name && ts.isIdentifier(parent.name) && isolatedFunctions.has(parent.name.text)) return true;
       if (ts.isVariableDeclaration(parent.parent) && ts.isIdentifier(parent.parent.name)
         && isolatedFunctions.has(parent.parent.name.text)) return true;
@@ -106,6 +120,7 @@ for (const path of paths) {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return { value: node.text, after: 0 };
     if (ts.isIdentifier(node) && constants.has(node.text) && !seen.has(node.text)) {
       const { declaration, statement } = constants.get(node.text);
+      if (!symbolAt(node)?.declarations?.includes(declaration)) return;
       const resolved = staticValue(declaration.initializer, new Set([...seen, node.text]));
       if (resolved) return { value: resolved.value, after: Math.max(resolved.after, statement.end) };
     }
@@ -151,7 +166,7 @@ for (const path of paths) {
         let flags = literal ? pattern.slice(pattern.lastIndexOf('/') + 1) : '';
         let after = 0;
         let resolved = literal;
-        if (isRegExpConstructor && node.arguments?.length && node.arguments.length <= 2) {
+        if (isRegExpConstructor && !symbolAt(node.expression) && node.arguments?.length && node.arguments.length <= 2) {
           const expression = staticValue(node.arguments[0]);
           const options = node.arguments[1] ? staticValue(node.arguments[1]) : { value: '', after: 0 };
           if (expression && typeof expression.value === 'string' && options && typeof options.value === 'string') {

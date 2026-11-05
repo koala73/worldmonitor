@@ -466,6 +466,7 @@ Macro, markets, and money — official statistics from central banks and statist
 | Global procurement opportunities | US SAM.gov, EU TED, UK Contracts Finder, CanadaBuys, New Zealand GETS, and World Bank procurement notices | [Coverage and freshness](/global-procurement-intelligence) |
 | UN Comtrade | Global merchandise trade flows | [comtradeapi.un.org](https://comtradeapi.un.org) |
 | CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
+| Moscow Exchange ISS | IMOEX closes for the Russian country stock index, keyless and 15-minute delayed; Yahoo stopped serving MOEX data after 2022 | [iss.moex.com](https://iss.moex.com) |
 
 China-specific official financial and statistical sources (NBS, SAFE, PBoC, SSE/SZSE, and more) are listed under [China Coverage](#china-coverage).
 
@@ -556,6 +557,7 @@ The physical and digital backbone: cables, pipelines, ports, datacenters, intern
 | Cloudflare Radar | Internet outages and traffic anomalies | [radar.cloudflare.com](https://radar.cloudflare.com) |
 | Submarine Cable Map | Global submarine cable infrastructure | [submarinecablemap.com](https://www.submarinecablemap.com) |
 | AbuseIPDB | Crowd-sourced malicious IP reports | [abuseipdb.com](https://www.abuseipdb.com) |
+| NVD (NIST) | CVE reference store for the CISA KEV subset: CVSS, CWE, affected products, KEV due dates (public domain) | [nvd.nist.gov](https://nvd.nist.gov/developers/vulnerabilities) |
 
 Deep dives: [Infrastructure cascade](/infrastructure-cascade) · [Supply chain panel](/panels/supply-chain)
 
@@ -573,6 +575,8 @@ Six threat intelligence feeds provide indicators of compromise (IOCs) for active
 | **Ransomware.live**          | Ransomware    | Active ransomware group feeds   |
 
 Each IP-based IOC is geo-enriched using ipinfo.io with freeipapi.com as fallback. Geolocation results are Redis-cached for 24 hours. Enrichment runs concurrently — 16 parallel lookups with a 12-second timeout, processing up to 250 IPs per collection run.
+
+The standalone CVE seeder can maintain a reference store for the CISA Known Exploited Vulnerabilities subset of the NVD corpus (`cyber:cve-reference:v1`): per CVE ID, the primary CVSS score and vector, CWE IDs, affected `vendor:product` pairs, the KEV added and due dates, and the SSVC exploitation verdict. Scheduling and reader integration remain pending. Sync is incremental on NVD's last-modified window and keyless by default; a free `NVD_API_KEY` raises the request ceiling. This product uses the NVD API but is not endorsed or certified by the NVD.
 
 IOCs are classified into four types (`c2_server`, `malware_host`, `phishing`, `malicious_url`) with four severity levels, rendered as color-coded scatter dots on the globe. The layer uses a 10-minute cache, a 14-day rolling window, and caps display at 500 IOCs to maintain rendering performance.
 
@@ -667,6 +671,7 @@ Airport operations, airspace closures, live flight tracking, and airline intelli
 | airplanes.live | Optional non-commercial ADS-B point queries (gap-fill) | [airplanes.live](https://airplanes.live/api-guide/) |
 | adsb.fi | Optional personal/non-commercial ADS-B point queries (gap-fill) | [adsb.fi](https://github.com/adsbfi/opendata) |
 | Wingbits | Live ADS-B flight data (keyed) | [wingbits.com](https://wingbits.com) |
+| plane-alert-db | Vendored ICAO-hex watchlist of military and government aircraft (ODbL, refreshed by script) | [sdr-enthusiasts/plane-alert-db](https://github.com/sdr-enthusiasts/plane-alert-db) |
 | OpenSky Network | Legacy per-request recovery (disabled in the military seeder) | [opensky-network.org](https://opensky-network.org) |
 | FAA ASWS | US airport delay and ground stop data | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
 | ICAO | NOTAM airspace closure data | [icao.int](https://www.icao.int) |

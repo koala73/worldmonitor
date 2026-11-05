@@ -4,6 +4,7 @@ import { isAssignedCountryCode } from '../../../shared/country-code-resolve';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { CII_MOVERS_OUTPUT_SCHEMA, ciiHistoryDays, readCiiMovers } from '../_cii-history';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
+import { asArray, asRecord } from '../../../shared/analysis-adapter-guards';
 import { buildAlertDigest, buildWeeklyTrends } from '../../../shared/analysis-alert-digest';
 import {
   anomaliesToDigestInput,
@@ -710,6 +711,112 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       return { ...freshness, data: { catalog: null, cascade, stats, ...exposureData } };
     },
     _coverageKeys: ['infrastructure:submarine-cables:v1', 'cable-health-v1'],
+    _apiPaths: [],
+  },
+  {
+    name: 'get_global_air_activity',
+    title: 'Global military air activity',
+    _outputBudgetBytes: 32768,
+    description:
+      'Military snapshot counts only: observed aircraft by type, overlapping theater, and outside all theaters. ' +
+      'Uses redistribution-cleared tracks; confirmed grounded tracks are excluded, unknown ground status included. ' +
+      'Regional/unknown coverage is partial, never a world total; even global scope omits unobserved aircraft.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        cached_at: { type: ['string', 'null'], description: 'Fetch time of the flight snapshot.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
+        ...ANALYSIS_CACHE_STATUS_PROPERTIES,
+        data: {
+          type: 'object',
+          properties: {
+            coverage: {
+              type: 'string', enum: ['global', 'regional', 'unknown'],
+              description: 'Provider-reported geographic scope of the source snapshot; missing or unrecognized values are unknown.',
+            },
+            partial: { type: 'boolean', description: 'True for regional or unknown coverage: counts are an observed subset, not a worldwide total. Independent of stale.' },
+            total_military_aircraft: { type: 'number', description: 'Observed tracks excluding confirmed on-ground aircraft; unknown ground status remains included. Limited to the reported coverage, not a complete world inventory.' },
+            by_aircraft_type: { type: 'object', additionalProperties: { type: 'number' } },
+            theaters: { type: 'array', description: 'Overlapping geographic counts; includes untyped aircraft in totals.', items: { type: 'object', properties: {
+              theater_id: { type: 'string' }, theater_name: { type: 'string' }, short_name: { type: 'string' },
+              total_aircraft: { type: 'number' },
+              fighters: { type: 'number' }, tankers: { type: 'number' }, awacs: { type: 'number' },
+              reconnaissance: { type: 'number' }, transport: { type: 'number' },
+              bombers: { type: 'number' }, drones: { type: 'number' },
+            } } },
+            outside_theater_count: { type: 'number', description: 'Aircraft aloft outside every declared posture theater.' },
+          },
+          required: ['coverage', 'partial', 'total_military_aircraft', 'by_aircraft_type', 'theaters', 'outside_theater_count'],
+        },
+      },
+      required: ['cached_at', 'stale', 'data'],
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async () => {
+      const {
+        payloads: [flightsPayload],
+        freshness,
+      } = await readCachesWithFreshness(
+        ['military:flights:v1'],
+        [{ key: 'seed-meta:military:flights', maxStaleMin: 30 }],
+      );
+      requireAnyInput([flightsPayload], freshness, 'The military flight snapshot is unavailable');
+
+      // Same adapter as get_military_surge: redistribution gating and shape
+      // tolerance live in one place. Geographic membership below uses the
+      // shared posture theater bounds, including their overlaps.
+      const snapshot = asRecord(flightsPayload);
+      const coverage = snapshot?.coverage === 'global' || snapshot?.coverage === 'regional'
+        ? snapshot.coverage : 'unknown';
+      // Ground filtering belongs only to this activity tool. The shared
+      // surge adapter intentionally retains positioned ground tracks.
+      const flights = militaryFlightsToSurgeInputs({
+        ...snapshot,
+        flights: asArray(snapshot?.flights).filter((raw) => asRecord(raw)?.onGround !== true),
+      });
+      const byType = new Map<string, number>();
+      for (const flight of flights) {
+        byType.set(flight.aircraftType, (byType.get(flight.aircraftType) ?? 0) + 1);
+      }
+      // Count geographic membership separately from posture scoring: the
+      // engine's total only includes recognized aircraft types, and theaters
+      // overlap. A union is required for the outside-theater remainder.
+      const inTheaters = new Set<(typeof flights)[number]>();
+      const theaters = POSTURE_THEATERS.map((theater) => {
+        const members = flights.filter((flight) =>
+          flight.lat >= theater.bounds.south && flight.lat <= theater.bounds.north
+          && flight.lon >= theater.bounds.west && flight.lon <= theater.bounds.east);
+        for (const flight of members) inTheaters.add(flight);
+        const count = (type: string) => members.filter((flight) => flight.aircraftType === type).length;
+        return {
+          theater_id: theater.id,
+          theater_name: theater.name,
+          short_name: theater.shortName,
+          total_aircraft: members.length,
+          fighters: count('fighter'),
+          tankers: count('tanker'),
+          awacs: count('awacs'),
+          reconnaissance: count('reconnaissance'),
+          transport: count('transport'),
+          bombers: count('bomber'),
+          drones: count('drone'),
+        };
+      }).filter((theater) => theater.total_aircraft > 0);
+
+      return {
+        ...freshness,
+        data: {
+          coverage,
+          partial: coverage !== 'global',
+          total_military_aircraft: flights.length,
+          by_aircraft_type: Object.fromEntries(byType),
+          theaters,
+          outside_theater_count: flights.length - inTheaters.size,
+        },
+      };
+    },
+    _coverageKeys: ['military:flights:v1'],
     _apiPaths: [],
   },
   {

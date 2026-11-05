@@ -69,8 +69,6 @@ const TAG_RE = /[^a-z0-9-]/gi;
 const CONFIGURE_SERVER_RE = /^\/api\/(?:[a-z][a-z0-9-]*\/v\d+|v\d+\/[a-z][a-z0-9-]*)\//;
 const PATHNAME_RE = /[?#]/;
 const TRAILING_SLASH_RE = /\/$/;
-const MODULE_RE = /^\/api\//;
-const MODULE_RE_2 = /^\/rss\//;
 const MODULE_RE_3 = /^https:\/\/protomaps\.github\.io\//;
 const MODULE_RE_4 = /\/assets\/locale-.*\.js$/i;
 const MODULE_RE_5 = /\.(?:png|jpg|jpeg|svg|gif|webp)$/i;
@@ -1235,19 +1233,19 @@ export default defineConfig(({ mode }) => {
           runtimeCaching: [
             {
               urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-                sameOrigin && MODULE_RE.test(url.pathname),
+                sameOrigin && /^\/api\//.test(url.pathname),
               handler: 'NetworkOnly',
               method: 'GET',
             },
             {
               urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-                sameOrigin && MODULE_RE.test(url.pathname),
+                sameOrigin && /^\/api\//.test(url.pathname),
               handler: 'NetworkOnly',
               method: 'POST',
             },
             {
               urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-                sameOrigin && MODULE_RE_2.test(url.pathname),
+                sameOrigin && /^\/rss\//.test(url.pathname),
               handler: 'NetworkOnly',
               method: 'GET',
             },

@@ -8086,6 +8086,32 @@
       ]
     }
   },
+  "activeWars": {
+    "source": "UCDP Georeferenced Event Dataset (candidate release)",
+    "referenceMonth": "2025-12",
+    "latestEventDate": "2025-12-31",
+    "threshold": 25,
+    "countryCount": 2,
+    "belowThresholdCount": 3,
+    "conflicts": [
+      {
+        "name": "Ukraine",
+        "code": "UA",
+        "deaths": 1200,
+        "events": 310,
+        "sideA": "Government of Russia",
+        "sideB": "Government of Ukraine"
+      },
+      {
+        "name": "Sudan",
+        "code": "SD",
+        "deaths": 140,
+        "events": 22,
+        "sideA": "Government of Sudan",
+        "sideB": "RSF"
+      }
+    ]
+  },
   "headlines": [
     {
       "title": "Outside forces fuel Sudan war, new report finds",
