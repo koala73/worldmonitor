@@ -280,7 +280,9 @@ describe('crawlable live intelligence view models', () => {
     assert.equal('todayTransits' in pulse, false);
     assert.equal('todayCountsAvailable' in pulse, false);
 
-    const expectedPassage = 'As of Jul 24, 2026, 11:59 AM UTC, IMF PortWatch counted 4 transits through the Strait of Hormuz'
+    const expectedPassage = 'Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published'
+      + ' days to Oct 18, 2026 (IMF PortWatch).'
+      + ' As of Jul 24, 2026, 11:59 AM UTC, IMF PortWatch counted 4 transits through the Strait of Hormuz'
       + ' on Oct 18, 2026 (latest published day). The 7-day average is 3.7 a day, 4% of the 87.4-a-day average'
       + ' for Oct 2024–Oct 2025. The Red disruption score is a risk signal; it does not verify unrestricted'
       + ' passage or operational closure.';
@@ -1040,7 +1042,8 @@ describe('crawlable live intelligence view models', () => {
       baselineTo: '2025-09-02',
     });
     assert.deepEqual(narrative, {
-      passage: 'As of Sep 3, 2026, 6:25 AM UTC, IMF PortWatch counted 1 transit through the Suez Canal on Aug 30, 2026 (latest published day).'
+      passage: 'Steady: traffic through the Suez Canal was 98% of its year-earlier level in the seven published days to Aug 30, 2026 (IMF PortWatch).'
+        + ' As of Sep 3, 2026, 6:25 AM UTC, IMF PortWatch counted 1 transit through the Suez Canal on Aug 30, 2026 (latest published day).'
         + ' The 7-day average is 36.9 a day, 98% of the 37.5-a-day average for Sep 2024–Sep 2025.'
         + ' The Yellow disruption score is a risk signal; it does not verify unrestricted passage or operational closure.',
       scoreDriver: 'The score of 35 (Yellow) has this evidence basis.'
@@ -1049,6 +1052,77 @@ describe('crawlable live intelligence view models', () => {
         + ' Context only (not score inputs): AIS event count (7 AIS disruptions); IMF PortWatch latest daily count (1 on Aug 30, 2026).',
     });
     assert.doesNotMatch(narrative.scoreDriver, /Observed score inputs:[^.]*7 AIS disruptions/);
+  });
+
+  it('leads the passage with a traffic status measured against the PortWatch baseline', () => {
+    // 2026-11-05 AI visibility audit: 0 of 10 Hormuz answers named World
+    // Monitor while straits.live ranked #1 for ChatGPT's own fan-out query
+    // with the same PortWatch figure plus a status. The status describes
+    // traffic against normal, never an open or closed declaration.
+    const hormuz = {
+      displayName: 'Strait of Hormuz',
+      score: 70,
+      bandLabel: 'Red',
+      description: 'Active conflict',
+      asOfText: 'Nov 5, 2026, 3:07 AM UTC',
+      partial: true,
+      warningsLabel: null,
+      congestionLabel: 'Normal',
+      aisEventCountLabel: '0 AIS disruptions',
+      officialLatestDate: '2026-10-25',
+      officialLatestTotal: 2,
+      officialAvg7d: 3.3,
+      baselineAvgDaily: 87.9,
+      baselineFrom: '2024-11-01',
+      baselineTo: '2025-11-01',
+    };
+    const partial = chokepointEvidenceNarrative(hormuz).passage;
+    assert.equal(
+      partial,
+      'Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 (IMF PortWatch).'
+        + ' As of Nov 5, 2026, 3:07 AM UTC, source coverage for the Strait of Hormuz is partial.'
+        + ' IMF PortWatch counted 2 transits on Oct 25, 2026 (latest published day).'
+        + ' The 7-day average is 3.3 a day, 4% of the 87.9-a-day average for Nov 2024–Nov 2025.'
+        + ' The status compares traffic with its year-earlier level; it is not an official open or closed declaration.',
+    );
+    assert.doesNotMatch(partial, /cannot verify operational passage status/);
+    assert.doesNotMatch(partial, /\b(?:is|remains|was)\s+(?:open|closed|reopened)\b/i);
+
+    const full = chokepointEvidenceNarrative({ ...hormuz, partial: false }).passage;
+    assert.match(full, /^Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 \(IMF PortWatch\)\. As of Nov 5, 2026, 3:07 AM UTC, IMF PortWatch counted 2 transits through/);
+    assert.match(full, /The Red disruption score is a risk signal; it does not verify unrestricted passage or operational closure\.$/);
+
+    // The band is read from the share the sentence prints, so rounding can
+    // never put "10%" next to "Severely restricted".
+    const statusAt = (officialAvg7d) => {
+      const match = chokepointEvidenceNarrative({ ...hormuz, officialAvg7d, baselineAvgDaily: 100 })
+        .passage.match(/^([^:]+): traffic through the Strait of Hormuz was ([\d.,]+%) of/);
+      return `${match[1]} ${match[2]}`;
+    };
+    assert.equal(statusAt(0), 'Severely restricted 0%');
+    assert.equal(statusAt(0.4), 'Severely restricted 0.4%');
+    assert.equal(statusAt(9.4), 'Severely restricted 9%');
+    assert.equal(statusAt(9.6), 'Restricted 10%');
+    assert.equal(statusAt(9.9), 'Restricted 10%');
+    assert.equal(statusAt(10), 'Restricted 10%');
+    assert.equal(statusAt(49.4), 'Restricted 49%');
+    assert.equal(statusAt(49.9), 'Reduced 50%');
+    assert.equal(statusAt(50), 'Reduced 50%');
+    assert.equal(statusAt(79.4), 'Reduced 79%');
+    assert.equal(statusAt(79.9), 'Steady 80%');
+    assert.equal(statusAt(80), 'Steady 80%');
+    assert.equal(statusAt(130), 'Steady 130%');
+
+    // No baseline, no seven-day average, or no published day: no status.
+    for (const withheld of [
+      { baselineAvgDaily: null, baselineFrom: null, baselineTo: null },
+      { officialAvg7d: null },
+      { officialLatestDate: null, officialLatestTotal: null },
+    ]) {
+      const passage = chokepointEvidenceNarrative({ ...hormuz, ...withheld }).passage;
+      assert.match(passage, /^As of /, JSON.stringify(withheld));
+      assert.match(passage, /cannot verify operational passage status/);
+    }
   });
 
   it('withholds definitive passage status for partial coverage and names one missing score source', () => {
