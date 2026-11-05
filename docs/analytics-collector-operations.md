@@ -59,6 +59,12 @@ as isolated. A later clean run proves recovery for that sample; it does not
 identify the cause of an earlier connection failure. Any failed write still
 fails the monitor, including failures followed by successful bursts.
 
+Every probe sends `Connection: close`. Before #10079, writes in bursts 2 and 3
+reused idle keep-alive sockets. The edge occasionally reset one, and the
+monitor reported an `ECONNRESET` within about 100 ms even though the collector
+was healthy. See
+[the keep-alive reset write-up](solutions/integration-issues/analytics-monitor-econnreset-was-keep-alive-socket-reuse.md).
+
 ### Raced-timeout retry / replay (#6968)
 
 A `raced` failure means the transport ignored our abort and the request may
