@@ -2,6 +2,8 @@ import '../styles/main.css';
 import { MapPopup } from '../components/MapPopup';
 import type { Hotspot } from '../types';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { initI18n } from '../services/i18n';
+import { calculateDynamicScore } from '../services/hotspot-escalation';
 
 
 type MobileMapHarness = {
@@ -46,8 +48,17 @@ const overlays = document.createElement('div');
 overlays.id = 'mapOverlays';
 app.appendChild(overlays);
 
+const breakdown = new URLSearchParams(window.location.search).has('breakdown');
+await initI18n({ waitForFullTranslation: true });
+if (breakdown) {
+  calculateDynamicScore('tehran', {
+    newsMatches: 12, hasBreaking: true, newsVelocity: 3, ciiScore: 60,
+    geoAlertScore: 40, geoAlertTypes: 2, flightsNearby: 3, vesselsNearby: 1,
+  });
+}
+
 const sampleHotspot: Hotspot = {
-  id: 'e2e-hotspot',
+  id: breakdown ? 'tehran' : 'e2e-hotspot',
   name: 'E2E Hotspot',
   lat: 33.0,
   lon: 36.0,
