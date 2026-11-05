@@ -263,6 +263,7 @@
     "ajv": "^8.20.0",
     "convex-test": "^0.0.43",
     "cross-env": "^10.1.0",
+    "deepmerge": "file:vendor/deepmerge",
     "esbuild": "0.28.1",
     "exceljs": "^4.4.0",
     "fengari": "^0.1.5",
@@ -335,6 +336,11 @@
     "zod": "^4.6.6"
   },
   "overrides": {
+    "glob@11": "14.0.2",
+    "glob@13": "14.0.2",
+    "uuid@8": "11.1.1",
+    "uuid@11": "11.1.1",
+    "deepmerge": "$deepmerge",
     "braces": "$braces",
     "convex": {
       "esbuild": "0.28.1"

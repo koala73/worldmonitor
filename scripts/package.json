@@ -15,6 +15,7 @@
     "@e965/xlsx": "0.20.3",
     "@noble/hashes": "1.4.0",
     "convex": "^1",
+    "deepmerge": "file:../vendor/deepmerge",
     "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.8.0",
     "fflate": "0.8.3",
@@ -33,6 +34,8 @@
     "yaml": "^2.8.3"
   },
   "overrides": {
+    "deepmerge": "$deepmerge",
+    "uuid@8": "11.1.1",
     "esbuild": "0.28.1",
     "undici": "$undici",
     "ws": "$ws",

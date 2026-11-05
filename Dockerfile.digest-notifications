@@ -32,6 +32,7 @@
 FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # The repo-root package.json has "type":"module" which tells Node to
 # parse .js files under shared/, server/_shared/, api/ as ESM. Inside
@@ -44,6 +45,7 @@ RUN printf '{"type":"module","private":true}\n' > /app/package.json
 
 # Install scripts/ runtime dependencies (resend, convex, etc.).
 COPY scripts/package.json scripts/package-lock.json ./scripts/
+COPY vendor/deepmerge/ ./vendor/deepmerge/
 RUN npm ci --prefix scripts --omit=dev
 
 # Digest cron + shared script helpers it imports via createRequire.
