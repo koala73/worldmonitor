@@ -622,7 +622,15 @@ describe('approved NRCan transport', () => {
     assert.equal(lockedOut.retryAfterMs, 30_000);
 
     const refused = await proxied(403);
-    assert.equal(refused.nonRetryable, true, 'all three exits refused; an immediate retry restarts at exit 0');
+    assert.equal(refused.nonRetryable, true, 'a fixed proxy endpoint has no other exit to retry');
+
+    const refusedSticky = await fetchApprovedAtom(NRCAN_ATOM_URL, {
+      fetchFn: forbidden,
+      proxyAuth: 'user:pass@gate.decodo.com:10001',
+      proxyFetchFn: async () => ({ ok: false, status: 403, headers: {}, buffer: Buffer.alloc(0), contentType: '' }),
+    }).catch(err => err);
+    assert.equal(refusedSticky.status, 403);
+    assert.notEqual(refusedSticky.nonRetryable, true, 'a retry draws a fresh set of sticky exits');
 
     const dropped = await fetchApprovedAtom(NRCAN_ATOM_URL, {
       fetchFn: forbidden,
