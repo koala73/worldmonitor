@@ -972,6 +972,7 @@
     "service": "seed-bundle-macro",
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
+      "scripts/_bundle-turn.mjs",
       "scripts/_capital-flow-episodes.mjs",
       "scripts/_china-macro-contract.mjs",
       "scripts/_content-age-helpers.mjs",

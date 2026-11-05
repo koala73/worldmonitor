@@ -37,8 +37,13 @@ content-age checks and reader statuses apply. A regressing CPI report now retain
 the previous snapshot just as regressing price reports do. Multi-country context
 collections retain a regressed country's last-good brief and mark its fetch as
 failed while allowing other countries to advance. New registrations are
-in the existing macro service, with no additional Railway service. Source terms
-remain marked for review in the public source catalog; this change does not
+in the existing macro service, with no additional Railway service. The 09:00 UTC
+retry rotates its first macro member using the existing leased Redis cursor;
+completed failed ticks advance the cursor too. The 08:00 tick retains Physical's
+priority and Sunday's Education priority. This prevents never-seeded food
+sources from permanently losing admission to earlier due sections.
+Source terms remain marked `terms-review` in the committed
+`shared/source-attribution-manifest.json`; this change does not
 assert new redistribution permissions.
 
 Verification on 2026-11-05 included a successful read-only public collection for

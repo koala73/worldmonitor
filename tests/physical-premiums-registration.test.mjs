@@ -56,6 +56,7 @@ describe('physical premium production registration', () => {
     assert.deepEqual(orderAt('2026-09-06T08:00:00Z'), ['Education', 'Physical', 'BIS', 'China']);
     assert.deepEqual(orderAt('2026-09-06T09:00:00Z'), ['Physical', 'BIS', 'China', 'Education']);
     assert.deepEqual(orderAt('2026-09-07T08:00:00Z'), ['Physical', 'BIS', 'China', 'Education']);
+    assert.deepEqual(orderMacroSections(new Date('2026-09-06T09:00:00Z'), 'Education', 'Physical', ['BIS', 'China'], 1), ['China', 'Physical', 'BIS', 'Education']);
   });
 
   it('aligns paper freshness with the daily publisher and health alarm', () => {

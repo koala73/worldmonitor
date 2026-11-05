@@ -2,6 +2,7 @@
 import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 import { CHINA_MACRO_CACHE_KEY } from './_china-macro-contract.mjs';
 import { orderMacroSections } from './_macro-bundle-order.mjs';
+import { claimBundleTurn, acknowledgeBundleTurn } from './_bundle-turn.mjs';
 import { EDUCATION_SECTION_TIMEOUT_MS } from './seed-education-attainment.mjs';
 import { PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS } from './seed-physical-premiums.mjs';
 
@@ -120,15 +121,24 @@ const MACRO_SECTIONS = [
 
 ];
 
-// Education is normally last so a persistent failure in the new flag-dark
-// producer cannot starve established production members every day. Give it
-// first priority on the 08:00 Sunday tick. The 09:00 retry always restores
-// Physical to the first slot, even if Education failed and remains due.
+// Education is normally last; give it first priority on the 08:00 Sunday tick.
+// Physical leads the other 08:00 ticks. The 09:00 retry gives a different macro
+// member the first slot on each completed run, followed by Physical. Reuse the
+// leased Redis cursor so failures, restarts and fresh sections cannot keep new
+// food sources permanently behind the same expensive due sections.
+const runAt = new Date();
+const rotates = runAt.getUTCHours() === 9;
+const claim = rotates ? await claimBundleTurn('macro') : null;
+if (rotates && !claim) {
+  console.log('[Bundle:macro] scheduler lease held or Redis unavailable; deferring this tick.');
+  process.exit(0);
+}
 const sections = orderMacroSections(
-  new Date(),
+  runAt,
   EDUCATION_SECTION,
   PHYSICAL_PREMIUM_SECTION,
   MACRO_SECTIONS,
+  claim?.turn ?? null,
 );
 
 await runBundle('macro', sections, {
@@ -136,4 +146,7 @@ await runBundle('macro', sections, {
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
   // and the terminal reason in logs.
   maxBundleMs: 570_000,
+  onTerminalComplete: claim ? async () => {
+    if (!await acknowledgeBundleTurn('macro', claim)) throw new Error(`could not acknowledge scheduler turn ${claim.turn}`);
+  } : undefined,
 });
