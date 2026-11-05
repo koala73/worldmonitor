@@ -1939,6 +1939,8 @@
       "infoTooltip": "<strong>Predikční trhy</strong> Trhy s reálnými penězi pro prognózy:<ul><li>Ceny odrážejí odhady pravděpodobnosti davu</li><li>Vyšší objem = spolehlivější signál</li><li>Zaměření na geopolitiku a aktuální dění</li></ul>Zdroj: Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "Předchozí sloupce",
+      "moreColumns": "Další sloupce",
       "unavailable": "data fondů obchodovaných na burze dočasně nedostupná",
       "rateLimited": "data fondů obchodovaných na burze dočasně nedostupná (omezení rychlosti) — opakuji za chvíli",
       "netFlow": "Čistý tok",
