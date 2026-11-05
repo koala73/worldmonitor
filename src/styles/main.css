@@ -17508,14 +17508,19 @@ button.popup-link {
 .component-label {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
-  width: 45px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 45px;
+  max-width: calc(100% - 84px);
+  line-height: 1.25;
+  overflow-wrap: break-word;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .component-bar-bg {
   flex: 1;
+  min-width: 48px;
   height: 6px;
   background: var(--overlay-medium);
   border-radius: 3px;
