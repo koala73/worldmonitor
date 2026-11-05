@@ -104,6 +104,7 @@ jobs:
       - run: npm run sync:tui-catalog:check
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
+      - run: npm run lint:outbound-deadlines
       - run: npm run lint:safe-local-storage
       - run: npm run lint:overlay-reload-policy
       - run: npm run security:vite-env-secrets

@@ -68,6 +68,20 @@ for (const file of files) {
 
 const counts = {};
 for (const record of records) counts[record.kind] = (counts[record.kind] ?? 0) + 1;
+
+// --check is the CI gate: a fetch() with no options object and no signal has
+// no deadline at all. Every other kind is a review prompt, not a failure.
+if (process.argv.includes('--check')) {
+  const missing = records.filter(record => record.kind === 'fetch-missing-signal');
+  if (missing.length > 0) {
+    for (const record of missing) process.stderr.write(`${record.file}:${record.line} fetch(${record.target ?? ''}) has no signal\n`);
+    process.stderr.write(`\n${missing.length} fetch call(s) without a signal. Pass a deadline, e.g. { signal: AbortSignal.timeout(ms) }.\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`audit-outbound-calls: no fetch without a signal (${counts['fetch-with-signal-review-deadline'] ?? 0} with a signal)\n`);
+  process.exit(0);
+}
+
 process.stdout.write(`${JSON.stringify({
   scope: 'Tracked and unignored application, worker, CLI and SDK source; excludes generated, vendor, tests and demos',
   limits: 'Static candidates only. Review signal ownership, body consumption, SDK internals, replay safety, caller budgets and deployment concurrency.',
