@@ -16,8 +16,6 @@ const script = resolve(root, '.github/scripts/dispatch-bot-pr-gate.sh');
 const SHA = 'a0fcb9a78c4c6881840cc685bb46460b99746659';
 const BOT = { is_bot: true, login: 'app/github-actions' };
 
-// Fake gh: `pr list` prints pr.json, each `api` call prints the next runs
-// fixture (the last one repeats), `workflow run` records its arguments.
 const FAKE_GH = `#!/usr/bin/env bash
 set -euo pipefail
 dir="$FAKE_GH_DIR"
@@ -37,7 +35,7 @@ case "$1 $2" in
         pick=$(cat "$dir/listing-pick")
         record=$(jq -c --argjson id "$id" '.workflow_runs[] | select(.id == $id) | .status = (.fresh // .status)' "$dir/runs-$pick.json")
         if [ "$(jq -r '.status' <<<"$record")" = "error" ]; then exit 1; fi
-        jq -c "$jq_expr" <<<"$record"
+        jq -cr "$jq_expr" <<<"$record"
         exit 0
       fi
       n=$(cat "$dir/api-count" 2>/dev/null || echo 0)
@@ -90,8 +88,8 @@ describe('dispatch-bot-pr-gate.sh', () => {
   it('dispatches Deploy Gate for the head once its CI completed', () => {
     const result = run({ prs: botPr, runs: [['completed', 'completed']] });
     assert.equal(result.status, 0, result.stderr);
-    assert.ok(result.apiCalls.includes('repos/koala73/worldmonitor/actions/runs/100'));
-    assert.ok(result.apiCalls.includes('repos/koala73/worldmonitor/actions/runs/101'));
+    assert.match(result.stdout, /All 2 pull_request runs/);
+    assert.doesNotMatch(result.stdout, /::warning::/);
     assert.deepEqual(result.dispatches, [dispatchFor(SHA)]);
   });
 
