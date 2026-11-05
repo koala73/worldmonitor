@@ -2035,18 +2035,20 @@ canvas,
   }
 }
 
-/* #8276: A collapsed natural video panel is only its header, so reserve one
-   grid row instead of the two-row .panel-wide footprint. The channel and
-   region bars control hidden video; with many channels the wrapped bar would
-   outgrow the row and overlap the next panel, so collapse hides them too. */
+/* #8276, #10185: A collapsed video panel is only its header, so it reserves
+   one grid row, even after a user resize. The !important beats the
+   .panel.span-N rows; the span classes stay so expanding restores the saved
+   size. The channel and region bars control hidden video; with many channels
+   the wrapped bar would outgrow the row and overlap the next panel, so
+   collapse hides them too. */
 @media (min-width: 769px) {
-  #panelsGrid > .panel[data-panel="live-news"].panel-wide.panel-collapsed:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
-  #panelsGrid > .panel[data-panel="live-webcams"].panel-wide.panel-collapsed:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
-    grid-row: span 1;
+  .panel[data-panel="live-news"].panel-collapsed,
+  .panel[data-panel="live-webcams"].panel-collapsed {
+    grid-row: span 1 !important;
   }
 
-  #panelsGrid > .panel[data-panel="live-news"].panel-collapsed .live-news-toolbar,
-  #panelsGrid > .panel[data-panel="live-webcams"].panel-collapsed .webcam-toolbar {
+  .panel[data-panel="live-news"].panel-collapsed .live-news-toolbar,
+  .panel[data-panel="live-webcams"].panel-collapsed .webcam-toolbar {
     display: none;
   }
 }
@@ -2596,6 +2598,12 @@ body.panel-resize-active iframe {
   align-self: start;
   height: auto !important;
   min-height: 0 !important;
+}
+
+/* #10185: Row height has no effect on a collapsed panel; hiding the
+   separator stops drags and keys from changing the saved span unseen. */
+.panel.panel-collapsed > .panel-resize-handle {
+  display: none;
 }
 
 .panel-collapsed .panel-collapse-btn {
