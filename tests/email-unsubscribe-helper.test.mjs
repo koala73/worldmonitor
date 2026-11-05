@@ -76,8 +76,9 @@ describe('workers wire the unsubscribe URL into recurring mail', () => {
 
   it('relay alert emails (real-time and held batches) pass the alerts URL', () => {
     const src = readFileSync(join(root, 'scripts/notification-relay.cjs'), 'utf8');
-    const calls = src.match(/sendEmail\(ch\.email, subject, (?:text|deliveryText), unsubscribeUrlFor\(ch, 'alerts'\)\)/g) ?? [];
+    const calls = src.match(/sendEmail\(ch\.email, subject, (?:text|deliveryText), unsubscribeUrlFor\(ch, 'alerts'\)(?:, `quiet-held-\$\{batchKey\}`)?\)/g) ?? [];
     assert.equal(calls.length, 2);
+    assert.ok(calls.some(call => call.includes('quiet-held-${batchKey}')), 'held batches keep their idempotency key');
     assert.match(src, /payload\.headers = listUnsubscribeHeaders\(unsubscribeUrl\)/);
   });
 });
