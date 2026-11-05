@@ -69,6 +69,8 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 const HOST_ORIGINS = Object.freeze({
   'fdw.fews.net': 'US',
   'lindas.cz-aws.net': 'CH',
+  // #6153: Moscow Exchange ISS, the exchange's own market-data API.
+  'iss.moex.com': 'RU',
   'simaniger.net': 'NE',
   'data.1212.mn': 'MN',
   'www.ocpv-ci.com': 'CI',
