@@ -595,6 +595,9 @@
           "path": "api/_usage-telemetry.js"
         },
         {
+          "path": "scripts/deploy-error-canary.mjs"
+        },
+        {
           "path": "scripts/lib/llm-telemetry.cjs"
         },
         {
@@ -15302,6 +15305,9 @@
         },
         {
           "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
+          "path": "scripts/deploy-error-canary.mjs"
         },
         {
           "path": "scripts/discover-content-corpus-pages.mjs"
