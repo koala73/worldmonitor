@@ -1689,6 +1689,15 @@ function editorialText(value, where) {
   return text;
 }
 
+// Search demand for a conflict is phrased as a question ("what is happening in
+// Sudan" ~8,100/mo US) far more than as "<conflict> tracker" (~200). The year
+// comes from the review date, so a title never claims a year the copy was not
+// checked in. Past ~70 characters Google cuts the brand, not the question.
+const CRISIS_TITLE_MAX = 72;
+export function crisisPageTitle(question, lastReviewed) {
+  return `${question} ${lastReviewed.slice(0, 4)} tracker | World Monitor`;
+}
+
 // Sourced, dated editorial copy for each crisis tracker (#8605). Build-only, so
 // it lives in scripts/data rather than the shared registry the seeders read.
 // Every factual item carries the URL it was checked against; a missing,
@@ -1703,6 +1712,12 @@ export function normalizeCrisisEditorial(entries, crises) {
     const lastReviewed = String(entry.lastReviewed || '');
     if (!isCanonicalCalendarDate(lastReviewed)) {
       throw new Error(`${where} needs an ISO lastReviewed date`);
+    }
+    const question = editorialText(entry.question, `${where} question`);
+    if (!question.endsWith('?')) throw new Error(`${where} question must end with a question mark`);
+    const pageTitle = crisisPageTitle(question, lastReviewed);
+    if ([...pageTitle].length > CRISIS_TITLE_MAX) {
+      throw new Error(`${where} title "${pageTitle}" exceeds ${CRISIS_TITLE_MAX} characters`);
     }
     const background = (entry.background || []).map((paragraph, index) => ({
       text: editorialText(paragraph?.text, `${where} background ${index + 1}`),
@@ -1747,7 +1762,7 @@ export function normalizeCrisisEditorial(entries, crises) {
       };
     });
     if (whatToWatch.length < 3 || whatToWatch.length > 5) throw new Error(`${where} needs 3-5 watch items`);
-    bySlug.set(slug, { lastReviewed, background, keyActors, timeline, whatToWatch });
+    bySlug.set(slug, { question, pageTitle, lastReviewed, background, keyActors, timeline, whatToWatch });
   }
   const missing = crises.filter((crisis) => !bySlug.has(crisis.slug)).map((crisis) => crisis.slug);
   if (missing.length) throw new Error(`Crisis editorial missing for ${missing.join(', ')}`);
@@ -5136,6 +5151,39 @@ ${watch}
       <p class="source" data-crisis-reviewed>Background, actors, timeline and watch list last reviewed <time datetime="${escapeHtml(editorial.lastReviewed)}">${escapeHtml(prettyDate(editorial.lastReviewed))}</time> against the linked sources. They are context for the monthly figures above, not part of the HAPI/HDX dataset.</p>`;
 }
 
+// Every answer is copy already on the page: the latest sourced background
+// paragraph, the published HAPI totals, and the registry coverage. Nothing here
+// is written for the FAQ alone, so it cannot drift from the sourced text.
+export function crisisFaqs({ crisis, pulse = null, publishedTotals = {}, publishedDate = null }) {
+  const { editorial } = crisis;
+  const current = editorial.background.at(-1);
+  const faqs = [{
+    question: editorial.question,
+    answer: `${current.text} Last reviewed ${prettyDate(editorial.lastReviewed)} against the linked sources.`,
+  }];
+  // The page's metric tiles refresh in the browser; this answer is frozen at
+  // build time, so it names the published snapshot rather than claiming to be
+  // the latest reading. Totals sum only the countries that reported, so the
+  // scope comes from pulse.rows and any missing country is named as excluded.
+  if (pulse && publishedDate && publishedTotals.eventsTotal != null && publishedTotals.fatalities != null) {
+    const count = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+    const summed = listPhrase(pulse.rows.map((row) => row.name));
+    const missing = pulse.missingCountries || [];
+    const exclusion = missing.length
+      ? ` ${listPhrase(missing)} ${missing.length === 1 ? 'has' : 'have'} no summary for that period and ${missing.length === 1 ? 'is' : 'are'} not included.`
+      : '';
+    faqs.push({
+      question: `What did the last published monthly figures show for the ${crisis.shortTitle}?`,
+      answer: `In World Monitor's weekly snapshot published ${prettyDate(publishedDate)}, HAPI/HDX humanitarian conflict summaries record ${count.format(publishedTotals.eventsTotal)} conflict events and ${count.format(publishedTotals.fatalities)} fatalities across ${summed} for the reference period starting ${prettyDate(pulse.referencePeriod)}.${exclusion} These are monthly country-level summaries, not a complete casualty or incident ledger; the figures above may refresh to a newer month.`,
+    });
+  }
+  faqs.push({
+    question: `Which countries does the ${crisis.shortTitle} tracker cover?`,
+    answer: `${listPhrase(crisis.coverage.map((country) => country.name))}. Events outside ${crisis.coverage.length === 1 ? 'this country' : 'these countries'} are not included in the totals on this page.`,
+  });
+  return faqs;
+}
+
 export function renderCrisisCountryReadings({ crisis, countryByCode, ciiByCode, rankedCount }) {
   const rows = crisis.coverage.map((covered) => {
     const country = countryByCode.get(covered.code);
@@ -5248,8 +5296,9 @@ function renderCrisisPage({
       <p>This page records the committed ${escapeHtml(pulse.referencePeriod)} HAPI/HDX country summaries published ${escapeHtml(prettyDate(livePulse.capturedAt))}. JavaScript can refresh newer values; the numbers above remain available without it.</p>
       <p class="snapshot-note" data-snapshot-source="${escapeHtml(livePulseSnapshotPath || 'docs/snapshots/crawlable-live-pulse-*.json')}">Source: World Monitor weekly pulse snapshot, ${escapeHtml(prettyDate(livePulse.capturedAt))}. Combined totals are withheld when covered countries report different reference months.</p>`
     : '';
-  const body = `      <p class="eyebrow">Bounded crisis tracker</p>
-      <h1>${escapeHtml(crisis.title)}</h1>
+  const faqs = crisisFaqs({ crisis, pulse: hasPulse ? pulse : null, publishedTotals, publishedDate });
+  const body = `      <p class="eyebrow">${escapeHtml(crisis.title)}</p>
+      <h1>${escapeHtml(crisis.editorial.question)}</h1>
       <p class="lede">${escapeHtml(crisis.description)}</p>
       <p>${escapeHtml(crisis.overview)}</p>
 ${renderChokepointStatusLinks(relatedChokepoints)}
@@ -5287,6 +5336,8 @@ ${renderLiveDataLinks(crisisLiveLinks({ touchesOilChokepoint: relatedChokepoints
 ${renderRelatedReading(relatedReading, escapeHtml)}
       <h2>How to read this tracker</h2>
       <p>Use these monthly country summaries as a bounded pulse, then inspect the dashboard for event-level context, map layers, and other independent signals. The figures are not forecasts and should not be interpreted as a complete casualty or incident ledger. World Monitor's forecasts are graded separately, and that record is published on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>
+      <h2>Questions about the ${escapeHtml(crisis.shortTitle)}</h2>
+${faqs.map((faq) => `      <details data-crisis-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))}">${CRISIS_DATASET_DOWNLOAD}</a>. Scope source: <a href="${CRISIS_REGISTRY_URL}" data-snapshot-source="${CRISIS_REGISTRY_PATH}">World Monitor crisis registry</a>. Maintained metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>.</p>`;
   const coveragePlaces = crisis.coverage.map((country) => ({
     '@type': 'Country',
@@ -5336,7 +5387,7 @@ ${renderRelatedReading(relatedReading, escapeHtml)}
   return pageDocument({
     baseUrl,
     path,
-    title: `${crisis.title} | World Monitor`,
+    title: crisis.editorial.pageTitle,
     description: crisis.description,
     lastmod,
     jsonLd: [
@@ -5367,6 +5418,7 @@ ${renderRelatedReading(relatedReading, escapeHtml)}
         },
       },
       dataCatalogLd(baseUrl),
+      faqPageLd(faqs),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },

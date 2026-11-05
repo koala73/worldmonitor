@@ -1,6 +1,7 @@
 [
   {
     "slug": "iran-israel-escalation",
+    "question": "What is happening with Iran and Israel?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -127,6 +128,7 @@
   },
   {
     "slug": "ukraine-war",
+    "question": "What is happening in the Ukraine war?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -253,6 +255,7 @@
   },
   {
     "slug": "red-sea-security",
+    "question": "What is happening in the Red Sea?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -376,6 +379,7 @@
   },
   {
     "slug": "sudan-conflict",
+    "question": "What is happening in Sudan?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -518,6 +522,7 @@
   },
   {
     "slug": "lebanon-israel-escalation",
+    "question": "What is happening in Lebanon?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -637,6 +642,7 @@
   },
   {
     "slug": "hormuz-gulf-security",
+    "question": "What is happening in the Strait of Hormuz?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -764,6 +770,7 @@
   },
   {
     "slug": "sahel-insurgency",
+    "question": "What is happening in the Sahel?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -909,6 +916,7 @@
   },
   {
     "slug": "horn-of-africa",
+    "question": "What is happening in the Horn of Africa?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1050,6 +1058,7 @@
   },
   {
     "slug": "myanmar-civil-war",
+    "question": "What is happening in Myanmar?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1181,6 +1190,7 @@
   },
   {
     "slug": "haiti-gang-crisis",
+    "question": "What is happening in Haiti?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1309,6 +1319,7 @@
   },
   {
     "slug": "drc-eastern-conflict",
+    "question": "What is happening in eastern Congo?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1441,6 +1452,7 @@
   },
   {
     "slug": "nigeria-security-crisis",
+    "question": "What is happening in Nigeria?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1580,6 +1592,7 @@
   },
   {
     "slug": "afghanistan-crisis",
+    "question": "What is happening in Afghanistan?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1702,6 +1715,7 @@
   },
   {
     "slug": "palestine-gaza-crisis",
+    "question": "What is happening in Gaza?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
