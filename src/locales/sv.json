@@ -1421,6 +1421,8 @@
       "lapsedCount": "Förfallna förslag ({{count}})"
     },
     "etfFlows": {
+      "previousColumns": "Föregående kolumner",
+      "moreColumns": "Fler kolumner",
       "unavailable": "data för börshandlade fonder är tillfälligt otillgängligt",
       "netFlow": "Nettoflöde",
       "estFlow": "Ber. flöde",

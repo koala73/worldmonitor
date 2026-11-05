@@ -2105,6 +2105,8 @@
       "infoTooltip": "<strong>Tržišta predviđanja</strong> Tržišta za predviđanja s pravim novcem:<ul><li>Cijene odražavaju procjene vjerojatnosti publike</li><li>Veći volumen = pouzdaniji signal</li><li>Fokus na geopolitičke i trenutne događaje</li></ul>Izvori: Polymarket, Kalshi"
     },
     "etfFlows": {
+      "previousColumns": "Prethodni stupci",
+      "moreColumns": "Više stupaca",
       "unavailable": "podaci o fondovima namijenjenim razmjeni privremeno недostupни",
       "rateLimited": "podaci o fondovima namijenjenim razmjeni privremeno недostupni (ograničena brzina) — ponovni pokušaj uskoro",
       "netFlow": "Neto tok",

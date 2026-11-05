@@ -1948,6 +1948,8 @@
       "infoTooltip": "<strong>예측 시장</strong> 실제 자금 기반 예측 시장:<ul><li>가격은 군중의 확률 추정치를 반영</li><li>거래량이 높을수록 신뢰도가 높은 신호</li><li>지정학 및 시사 이벤트 중심</li></ul>출처: Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "이전 열",
+      "moreColumns": "추가 열",
       "unavailable": "상장지수펀드 데이터 일시 이용 불가",
       "rateLimited": "상장지수펀드 데이터 일시 이용 불가(속도 제한) — 잠시 후 재시도 중",
       "netFlow": "순흐름",

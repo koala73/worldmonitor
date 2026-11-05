@@ -49,6 +49,11 @@ robots restrictions. It does not stop people from reading the docs. Static
 exports and proxies that bypass this middleware must set their own indexing
 headers; they retain the canonical metadata only if they preserve it.
 
+The Docker images' nginx configurations send `X-Robots-Tag: noindex, follow` on
+every route. Their pages keep `https://www.worldmonitor.app` canonicals, so a
+self-hosted copy stays out of search results instead of competing with the
+official pages. Visitors and the dashboard are unaffected.
+
 Inspect canonical URLs before publishing a static export. The pinned Mintlify
 CLI currently includes `/src/_props` in local preview and export canonicals;
 that local output does not establish the hosted provider's URL behavior.

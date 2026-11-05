@@ -1948,6 +1948,8 @@
       "infoTooltip": "<strong>預測市場</strong>真金白銀的預測市場：<ul><li>價格反映群體機率估計</li><li>交易量越高 = 訊號越可靠</li><li>聚焦地緣政治和時事</li></ul>來源：Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "前面的欄",
+      "moreColumns": "更多欄",
       "unavailable": "交易所交易基金資料暫時不可用",
       "rateLimited": "交易所交易基金資料暫時不可用（受速率限制）— 正在重試",
       "netFlow": "淨流量",

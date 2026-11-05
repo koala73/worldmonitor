@@ -1423,6 +1423,8 @@
       "lapsedCount": "Propostas arquivadas ({{count}})"
     },
     "etfFlows": {
+      "previousColumns": "Colunas anteriores",
+      "moreColumns": "Mais colunas",
       "unavailable": "dados de fundos negociados em bolsa temporariamente indisponíveis",
       "netFlow": "Fluxo líquido",
       "estFlow": "Fluxo est.",
