@@ -193,6 +193,11 @@ function getTelegramBotUsername(): string {
   }
 }
 
+/**
+ * Settings → Notifications: channel and alert-rule controls for signed-in Pro
+ * users, otherwise an "Upgrade to Pro" prompt that opens the /pro plan picker.
+ * `attach` wires the rendered markup and returns its cleanup function.
+ */
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
   const isPro = !!host.isSignedIn && hasTier(1);
   const preselectCountry = normalizePreselectCountry(host.preselectCountry);
