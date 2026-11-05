@@ -26,7 +26,7 @@ const ORIGIN = 'https://worldmonitor.app';
 /** @type {Array<{ name: string, path: string, handler: (req: Request, ctx?: unknown) => Promise<Response>, allow: string, refused: string }>} */
 const CASES = [
   { name: 'oauth/register', path: '/oauth/register', handler: oauthRegister, allow: 'POST, OPTIONS', refused: 'PUT' },
-  { name: 'wm-session', path: '/api/wm-session', handler: wmSession, allow: 'POST, OPTIONS', refused: 'GET' },
+  { name: 'wm-session', path: '/api/wm-session', handler: wmSession, allow: 'GET, POST, OPTIONS', refused: 'PATCH' },
   { name: 'analytics-health', path: '/api/analytics-health', handler: analyticsHealth, allow: 'POST, OPTIONS', refused: 'GET' },
   { name: 'relay handler', path: '/api/relay-test', handler: createRelayHandler({ relayPath: '/relay-test' }), allow: 'GET, OPTIONS', refused: 'POST' },
   { name: 'user-prefs', path: '/api/user-prefs', handler: userPrefs, allow: 'GET, POST, OPTIONS', refused: 'DELETE' },
