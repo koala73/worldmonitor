@@ -139,8 +139,8 @@ for (const path of paths) {
   function visit(node) {
     if (ts.isIdentifier(node)) identifiers.add(node.text);
     const literal = ts.isRegularExpressionLiteral(node);
-    const constructor = ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'RegExp';
-    if (literal || constructor) {
+    const isRegExpConstructor = ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'RegExp';
+    if (literal || isRegExpConstructor) {
       let scope = node.parent;
       while (scope && !ts.isFunctionLike(scope) && !ts.isClassLike(scope)
         && !ts.isForStatement(scope) && !ts.isForOfStatement(scope)
@@ -151,7 +151,7 @@ for (const path of paths) {
         let flags = literal ? pattern.slice(pattern.lastIndexOf('/') + 1) : '';
         let after = 0;
         let resolved = literal;
-        if (constructor && node.arguments?.length && node.arguments.length <= 2) {
+        if (isRegExpConstructor && node.arguments?.length && node.arguments.length <= 2) {
           const expression = staticValue(node.arguments[0]);
           const options = node.arguments[1] ? staticValue(node.arguments[1]) : { value: '', after: 0 };
           if (expression && typeof expression.value === 'string' && options && typeof options.value === 'string') {
