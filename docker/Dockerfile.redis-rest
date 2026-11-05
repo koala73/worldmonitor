@@ -1,4 +1,4 @@
-FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
 WORKDIR /app
 RUN npm init -y && npm install redis@4
 COPY redis-rest-proxy.mjs .
