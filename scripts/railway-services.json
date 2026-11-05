@@ -380,6 +380,7 @@
       "scripts/shared/notify-fields.cjs",
       "scripts/shared/publisher-families.js",
       "scripts/shared/stocks.json",
+      "server/_shared/brief-fonts.generated.js",
       "server/_shared/brief-render.d.ts",
       "server/_shared/brief-render.js",
       "server/_shared/feelgood-classifier.d.ts",
