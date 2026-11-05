@@ -16,6 +16,7 @@ ENV npm_config_install_links=true
 # Install root dependencies (layer-cached until package.json changes)
 COPY package.json package-lock.json ./
 COPY vendor/braces/ ./vendor/braces/
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
 COPY vendor/stream-json/ ./vendor/stream-json/
 COPY vendor/vercel-og/ ./vendor/vercel-og/
 RUN npm ci --ignore-scripts

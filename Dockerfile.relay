@@ -23,6 +23,7 @@ FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab
 RUN apk add --no-cache curl
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # Install scripts/ runtime dependencies (telegram, ws, fast-xml-parser, etc.)
 # --ignore-scripts is the critical part: native helper packages such as
@@ -32,6 +33,7 @@ WORKDIR /app
 # tree. ws/telegram fall back to pure JS when native helpers are unavailable.
 # Mirrors the main Dockerfile's stage-2 pattern.
 COPY scripts/package.json scripts/package-lock.json ./scripts/
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
 RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
 # Relay script and shared helpers
