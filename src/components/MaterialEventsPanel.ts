@@ -148,7 +148,7 @@ export class MaterialEventsPanel extends Panel {
     const now = Date.now();
     const locale = getLocale();
     const html = `
-      <div style="padding:0 14px 12px;max-height:480px;overflow-y:auto">
+      <div style="padding:0 14px 12px;">
         ${events.map((event) => renderMaterialEvent(event, now, locale)).join('')}
       </div>`;
     this.setSafeContent(unsafeRawHtml(html, 'material-events controlled panel markup — every dynamic field passes escapeHtml'));
