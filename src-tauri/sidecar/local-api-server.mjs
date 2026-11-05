@@ -2781,11 +2781,11 @@ export async function createLocalApiServer(options = {}) {
       context.port = boundPort;
       const extraAllowedPrivateOrigins = [];
       if (context.mode === 'docker') {
-        const addConfiguredPrivateOrigin = (envKey, blockedService) => {
+        const addConfiguredPrivateOrigin = (envKey, blockedService, toFetchUrl = (url) => url) => {
           const rawUrl = process.env[envKey];
           if (!rawUrl) return;
           try {
-            extraAllowedPrivateOrigins.push(new URL(rawUrl).origin);
+            extraAllowedPrivateOrigins.push(new URL(toFetchUrl(rawUrl)).origin);
           } catch (err) {
             context.logger.warn(
               `[local-api] ${envKey} is not a valid URL; not added to the private-fetch allowlist (${blockedService}): ${err.message}`,
@@ -2805,7 +2805,10 @@ export async function createLocalApiServer(options = {}) {
         // (http://ais-relay:3004). Without trusting it, every relay-backed route
         // (x-feed, telegram-feed, rss-proxy) is SSRF-blocked and answers 502
         // "Hostname resolves to a private/reserved IP address".
-        addConfiguredPrivateOrigin('WS_RELAY_URL', 'relay calls will be SSRF-blocked');
+        // Relay handlers fetch ws(s):// values over http(s):// (getRelayBaseUrl
+        // in api/_relay.js), so trust the origin they actually fetch.
+        addConfiguredPrivateOrigin('WS_RELAY_URL', 'relay calls will be SSRF-blocked',
+          (url) => url.replace(/^ws(s?):\/\//i, 'http$1://'));
 
         // SELF_HOSTING.md documents LLM_API_URL for compose-network or LAN
         // endpoints; OLLAMA_API_URL is the supported desktop runtime setting.

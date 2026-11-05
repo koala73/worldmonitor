@@ -1871,7 +1871,7 @@ for (const inputKind of ['string', 'URL', 'Request']) test(`blocks handler ${inp
   }
 });
 
-test('allows only Docker mode to fetch configured private WS_RELAY_URL origin', async () => {
+for (const relayScheme of ['http', 'ws']) test(`allows only Docker mode to fetch configured private ${relayScheme}:// WS_RELAY_URL origin`, async () => {
   const originalRelayUrl = process.env.WS_RELAY_URL;
   let upstreamHits = 0;
 
@@ -1881,12 +1881,15 @@ test('allows only Docker mode to fetch configured private WS_RELAY_URL origin', 
     res.end(JSON.stringify({ ok: true }));
   });
   const upstreamPort = await listen(upstream);
-  const relayOrigin = `http://127.0.0.1:${upstreamPort}`;
+  const relayOrigin = `${relayScheme}://127.0.0.1:${upstreamPort}`;
 
+  // Mirrors getRelayBaseUrl() in api/_relay.js: relay handlers fetch ws(s)://
+  // values over http(s)://, so the allowlist must trust the fetched origin.
   const localApi = await setupApiDir({
     'relay-probe.js': `
       export default async function handler() {
-        const upstream = await fetch(process.env.WS_RELAY_URL + '/telegram/feed');
+        const base = process.env.WS_RELAY_URL.replace('wss://', 'https://').replace('ws://', 'http://');
+        const upstream = await fetch(base + '/telegram/feed');
         const payload = await upstream.text();
         return new Response(payload, {
           status: upstream.status,
