@@ -1870,8 +1870,6 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  max-height: 320px;
-  overflow-y: auto;
 }
 
 .oref-wave-row {
@@ -2920,7 +2918,7 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 /* ── DeductionPanel ─────────────────────────────────────── */
 .deduction-panel-content {
   display: flex; flex-direction: column; gap: 10px;
-  padding: 10px 12px; height: 100%; overflow-y: auto;
+  padding: 10px 12px;
   font-family: var(--font-body-base, system-ui, sans-serif);
 }
 
@@ -3454,8 +3452,6 @@ a.hub-top-story {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  max-height: 380px;
-  overflow-y: auto;
 }
 
 .climate-news-card {

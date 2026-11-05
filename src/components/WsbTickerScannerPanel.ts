@@ -129,7 +129,7 @@ export class WsbTickerScannerPanel extends Panel {
     }).join('');
 
     this.setSafeContent(unsafeRawHtml(`
-      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title" style="overflow-y:auto;max-height:480px">
+      <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
         <table class="wm-table wsb-table">
           <thead>
             <tr>
