@@ -13,8 +13,8 @@ export function orderMacroSections(
     if (!macroSections.length) return [physicalPremiumSection, educationSection];
     const offset = turn % macroSections.length;
     const rotated = [...macroSections.slice(offset), ...macroSections.slice(0, offset)];
-    // The 09:00 retry gives one member an unconditional lead slot. Physical
-    // keeps the next slot and the protected 08:00 run; failed upstream jobs
+    // The 10:00 rotation gives one member an unconditional lead slot. Physical
+    // keeps the next slot and the protected 08:00/09:00 runs; failed upstream jobs
     // cannot permanently block a never-seeded member at the tail.
     return [rotated[0], physicalPremiumSection, ...rotated.slice(1), educationSection];
   }

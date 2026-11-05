@@ -1110,7 +1110,7 @@
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json"
     ],
-    "cronSchedule": "0 8,9 * * *",
+    "cronSchedule": "0 8,9,10 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-8-seed-bundle-macro"
   },
   {

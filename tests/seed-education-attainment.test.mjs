@@ -200,7 +200,7 @@ describe('fetch and Railway bundle budgets', () => {
       new URL('../scripts/seed-bundle-macro.mjs', import.meta.url),
       'utf8',
     );
-    assert.match(bundleSource, /maxBundleMs:\s*570_000/);
+    assert.match(bundleSource, /maxBundleMs:\s*550_000/);
     assert.match(
       bundleSource,
       /Education-Attainment[^\n]+timeoutMs:\s*EDUCATION_SECTION_TIMEOUT_MS/,

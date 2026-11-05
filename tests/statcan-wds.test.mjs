@@ -389,7 +389,7 @@ test('StatCan and BoC keep independent issue ownership and a documented tick', (
 
   // The 13:00 anchor was never a real cron. Keep it out of every surface.
   assert.doesNotMatch(healthSrc, /2026-08-16T13:00/);
-  assert.match(runbook, /0 8,9 \* \* \*[^\n]*daily 08:00 and 09:00 UTC/);
+  assert.match(runbook, /0 8,9,10 \* \* \*[^\n]*daily 08:00, 09:00 and 10:00 UTC/);
 });
 
 test('STATCAN_MAX_CONTENT_AGE_MIN clears retained healthy cycles, catches a missed release, and is wired into the seeder', () => {

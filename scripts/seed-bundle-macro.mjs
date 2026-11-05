@@ -122,12 +122,12 @@ const MACRO_SECTIONS = [
 ];
 
 // Education is normally last; give it first priority on the 08:00 Sunday tick.
-// Physical leads the other 08:00 ticks. The 09:00 retry gives a different macro
+// Physical leads the other 08:00 ticks and every 09:00 retry. The 10:00 tick gives a different macro
 // member the first slot on each completed run, followed by Physical. Reuse the
 // leased Redis cursor so failures, restarts and fresh sections cannot keep new
 // food sources permanently behind the same expensive due sections.
 const runAt = new Date();
-const rotates = runAt.getUTCHours() === 9;
+const rotates = runAt.getUTCHours() === 10;
 const claim = rotates ? await claimBundleTurn('macro') : null;
 if (rotates && !claim) {
   console.log('[Bundle:macro] scheduler lease held or Redis unavailable; deferring this tick.');
@@ -144,8 +144,12 @@ const sections = orderMacroSections(
 await runBundle('macro', sections, {
   // Railway kills cron containers at 10 minutes. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
-  // and the terminal reason in logs.
-  maxBundleMs: 570_000,
+  // and the terminal reason in logs. Bounded parallel freshness reads prevent
+  // late per-member Redis reads from consuming the cursor's acknowledgement
+  // window. The 550s budget leaves 50s before Railway's kill, covering the
+  // <=5s lease claim, <=5s acknowledgement and process/module cleanup.
+  maxBundleMs: 550_000,
+  prefetchFreshness: true,
   onTerminalComplete: claim ? async () => {
     if (!await acknowledgeBundleTurn('macro', claim)) throw new Error(`could not acknowledge scheduler turn ${claim.turn}`);
   } : undefined,
