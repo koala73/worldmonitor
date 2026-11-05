@@ -176,3 +176,79 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
     await expect.poll(() => footprint(panel)).toEqual({ span: 'span 3', height: 608 });
   }
 });
+
+test('collapsing a user-resized video panel releases its grid rows (#10185)', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  await page.addInitScript(() => {
+    localStorage.setItem('worldmonitor-variant', 'full');
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
+    localStorage.setItem('wm-layer-warning-dismissed', 'true');
+    localStorage.setItem(
+      'wm-pro-banner-launched-dismissed',
+      String(Date.now()),
+    );
+  });
+
+  await page.setViewportSize({ width: 1600, height: 866 });
+  await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+  const footprint = (id: string) => page.evaluate((panelId) => {
+    const panel = document.querySelector<HTMLElement>(
+      `#panelsGrid > .panel[data-panel="${panelId}"]`,
+    );
+    if (!panel) return null;
+    const rect = panel.getBoundingClientRect();
+    const below = Array.from(
+      document.querySelectorAll<HTMLElement>('#panelsGrid > .panel'),
+    )
+      .filter(other => other !== panel && getComputedStyle(other).display !== 'none')
+      .map(other => other.getBoundingClientRect())
+      .filter(other =>
+        Math.min(rect.right, other.right) - Math.max(rect.left, other.left) > 20 &&
+        other.top > rect.top + 5)
+      .sort((a, b) => a.top - b.top)[0];
+    return {
+      span: getComputedStyle(panel).gridRowStart,
+      height: Math.round(rect.height),
+      gapBelow: below ? Math.round(below.top - rect.bottom) : null,
+    };
+  }, id);
+
+  for (const id of ['live-news', 'live-webcams']) {
+    const panel = page.locator(`#panelsGrid > .panel[data-panel="${id}"]`);
+    const toggle = panel.locator('.panel-collapse-btn');
+    const handle = panel.locator(':scope > .panel-resize-handle');
+
+    await expect(handle).toHaveCount(1, { timeout: 60_000 });
+    await handle.focus();
+    await handle.press('End');
+    await expect(panel).toHaveClass(/\bresized\b/);
+    await expect.poll(() => footprint(id)).toMatchObject({ span: 'span 4', height: 812 });
+
+    await toggle.click();
+    await expect(panel).toHaveClass(/panel-collapsed/);
+    await expect.poll(() => footprint(id), {
+      message: `collapsed resized ${id} reserves one grid row`,
+    }).toMatchObject({ span: 'span 1' });
+    const collapsed = await footprint(id);
+    expect(collapsed!.height + collapsed!.gapBelow!, `${id} collapsed slot`).toBeLessThanOrEqual(204);
+    await expect(handle, `${id} row resize is unavailable while collapsed`).toBeHidden();
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(panel).toHaveClass(/panel-collapsed/, { timeout: 60_000 });
+    await expect.poll(() => footprint(id)).toMatchObject({ span: 'span 1' });
+
+    await toggle.click();
+    await expect(panel).not.toHaveClass(/panel-collapsed/);
+    await expect(handle).toBeVisible();
+    await expect.poll(() => footprint(id), {
+      message: `expanded ${id} restores the saved span`,
+    }).toMatchObject({ span: 'span 4', height: 812 });
+  }
+
+  expect(await page.evaluate(() => localStorage.getItem('worldmonitor-panel-spans')))
+    .toBe(JSON.stringify({ 'live-news': 4, 'live-webcams': 4 }));
+});
