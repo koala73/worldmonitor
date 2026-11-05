@@ -1369,7 +1369,7 @@ async function sendTeams(userId, webhookEnvelope, payload) {
   return true;
 }
 
-async function sendEmail(email, subject, text, html, channel = null) {
+async function sendEmail(email, subject, text, html, channel = null, occurrence = '') {
   const unsubscribeUrl = unsubscribeUrlFor(channel, 'brief');
   const label = 'Unsubscribe from the daily brief';
   const payload = {
@@ -1382,7 +1382,9 @@ async function sendEmail(email, subject, text, html, channel = null) {
   // late reads as a failure, so last-sent stays unwritten and the next tick
   // re-sends; keying the exact payload lets Resend drop an identical replay
   // while a re-rendered digest (new content) still goes out under a new key.
-  const idempotencyKey = `digest-${createHash('sha256').update(JSON.stringify([payload.to, payload.subject, payload.text, payload.html])).digest('hex')}`;
+  // The body carries only the date, so `occurrence` (the scheduled local hour)
+  // keeps a twice_daily evening send from colliding with an identical morning one.
+  const idempotencyKey = `digest-${createHash('sha256').update(JSON.stringify([occurrence, payload.to, payload.subject, payload.text, payload.html])).digest('hex')}`;
   const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]', idempotencyKey });
   if (result.ok) console.log(`[digest] Email delivered to ${email}`);
   return result.ok;
@@ -2710,7 +2712,9 @@ async function main() {
             briefUrl: magazineUrl,
           }));
         } else if (ch.channelType === 'email' && ch.email) {
-          ok = await sendEmail(ch.email, subject, text, html, ch);
+          // cooldownSlot is YYYY-MM-DD-HHMM; the hour prefix stays fixed across
+          // retries within one scheduled hour.
+          ok = await sendEmail(ch.email, subject, text, html, ch, cooldownSlot.slice(0, 13));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
           // Webhook payload's `summary` field reads the canonical
           // briefLead — same string the email exec block + magazine
