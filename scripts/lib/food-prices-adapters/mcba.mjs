@@ -56,7 +56,9 @@ export async function collect(ctx) {
   for (const [offset, month] of dates.entries()) {
     for (const kind of ['FRUT', 'HORTALIZ']) {
       const archive = links.find(link => {
-        const path = decodeURIComponent(new URL(link.url).pathname).toUpperCase();
+        let path;
+        try { path = decodeURIComponent(new URL(link.url).pathname).toUpperCase(); }
+        catch { return false; } // An unrelated malformed publisher link must not block valid archives.
         const year = month.getUTCFullYear();
         return path.endsWith('.ZIP') && path.includes(kind) && path.includes(MONTHS[month.getUTCMonth()]) && new RegExp(`(?:${year}|${String(year).slice(-2)})(?:_\\d+)?\\.ZIP$`).test(path);
       });

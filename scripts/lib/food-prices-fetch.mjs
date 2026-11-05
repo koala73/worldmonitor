@@ -267,6 +267,7 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
       if (!latest) throw new Error('ONAGRI monthly report link missing');
       reportUrl = latest.url;
       observations = parseOnagri(await get(latest.url), latest.date);
+      if (!observations.length) throw new Error('ONAGRI report has no food prices');
       contexts = [{ countryCode: 'TN', country: 'Tunisia', referenceDate: latest.date, title: 'Bir El Kassaa monthly wholesale report', url: latest.url }];
     }
     if (!observations.length && !(source.contextOnly && contexts.some(context => context.referenceDate && !context.fetchFailed))) throw new Error(`${id} has no dated records`);

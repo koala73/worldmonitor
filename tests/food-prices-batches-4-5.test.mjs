@@ -164,7 +164,7 @@ test('Argentina falls back to the previous archive when current-month archives a
     const calls = [];
     const result = await collectMercado({ now: new Date('2026-12-02T12:00:00Z'), warn: () => {},
       dated: (date, offset) => new Date(+date + offset * 86400000).toISOString().slice(0, 10),
-      links: () => ['NOVIEMBRE', ...(currentLinked ? ['DICIEMBRE'] : [])].flatMap(month => ['FRUT', 'HORTALIZ'].map(kind => ({ url: `https://mercadocentral.gob.ar/${kind}_${month}_2026.ZIP` }))),
+      links: () => [{ url: 'https://mercadocentral.gob.ar/unrelated%zz' }, ...['NOVIEMBRE', ...(currentLinked ? ['DICIEMBRE'] : [])].flatMap(month => ['FRUT', 'HORTALIZ'].map(kind => ({ url: `https://mercadocentral.gob.ar/${kind}_${month}_2026.ZIP` })))],
       get: async url => {
         calls.push(url);
         if (!url.endsWith('.ZIP')) return '';

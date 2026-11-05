@@ -10,6 +10,9 @@ import { isMainModule } from './main-module.mjs';
 export const FOOD_FETCH_MARGIN_MS = 15_000;
 
 export function mergeFoodSnapshot(previous, incoming) {
+  if (!incoming.observations.length && previous?.observations?.length) {
+    throw new Error('food observations missing; retain last-good prices');
+  }
   const latestDate = rows => (rows ?? []).map(row => row.date).sort().at(-1) ?? '';
   if (incoming.observations.length && latestDate(previous?.observations) > latestDate(incoming.observations)) {
     throw new Error('food report regressed; retain last-good prices');

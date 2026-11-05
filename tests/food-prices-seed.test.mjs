@@ -30,6 +30,21 @@ test('a report rollback cannot replace a newer successful price snapshot', () =>
   assert.throws(() => mergeFoodSnapshot({ observations: [row] }, { observations: [{ ...row, date: '2026-10-22' }], contexts: [] }), /regressed/);
 });
 
+test('dated context cannot erase retained prices when a publisher table becomes empty', () => {
+  assert.throws(() => mergeFoodSnapshot({ observations: [{ date: '2026-10-01', price: 50 }] }, {
+    observations: [], contexts: [{ countryCode: 'TN', referenceDate: '2026-11-01' }],
+  }), /observations missing/);
+});
+
+test('an ONAGRI report with dated headers but an unparseable table fails before its first publish', async () => {
+  await assert.rejects(collectFoodSource('onagri', {
+    now: new Date('2026-11-05T12:00:00Z'), pause: async () => {},
+    fetchFn: async url => new Response(url.includes('/fr/62')
+      ? '<a href="/uploads/novembre-2026.html">Mercuriale Bir El Kassaa novembre 2026</a>'
+      : '2026 2025 مليم/كلغ <table><tr><td>Changed table</td></tr></table>'),
+  }), /ONAGRI report has no food prices/);
+});
+
 test('a missing prior-week annex does not suppress current prices', async () => {
   const { readFileSync } = await import('node:fs');
   const { default: ExcelJS } = await import('exceljs');
