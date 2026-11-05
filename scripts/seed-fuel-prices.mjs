@@ -131,6 +131,7 @@ const EU_COUNTRY_INFO = {
   SE: { name: 'Sweden',       currency: 'SEK', flag: '🇸🇪' },
 };
 
+/** Convert local currency per litre with shared FX, or return null when no rate exists. */
 export function toUsdPerLiter(localPrice, currency, fxRates) {
   if (currency === 'USD') return localPrice;
   const rate = fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? null;
@@ -793,7 +794,7 @@ export const FUEL_FX_CURRENCIES = (() => {
   return [...all.filter(c => SHARED_FX_FALLBACKS[c] == null), ...all.filter(c => SHARED_FX_FALLBACKS[c] != null)];
 })();
 
-// Reject missing, invalid and future dates instead of dating old prices at fetch time.
+/** Accept a real observation day within its source's age limit, never a future day. */
 function fuelDateIsFresh(date, maxAgeDays, nowMs) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) return false;
   const ms = Date.parse(`${date}T00:00:00Z`);
@@ -801,6 +802,7 @@ function fuelDateIsFresh(date, maxAgeDays, nowMs) {
     && ms <= nowMs && nowMs - ms <= maxAgeDays * 86400000;
 }
 
+/** Read the newest SSB month in NOK/l, retaining its month start and publication lag. */
 export function parseNorwayFuel(data, nowMs = Date.now()) {
   // PxWeb JSON keys follow the declared dimension order; never assume row order.
   const dimensions = data?.columns?.filter(c => c.type !== 'c').map(c => c.code);
@@ -826,6 +828,7 @@ export function parseNorwayFuel(data, nowMs = Date.now()) {
   return gasoline || diesel ? { code: 'NO', name: 'Norway', currency: 'NOK', flag: '🇳🇴', gasoline, diesel } : null;
 }
 
+/** Query SSB table 09654 for the latest three petrol/diesel months without credentials. */
 export async function fetchNorway() {
   const response = await globalThis.fetch('https://data.ssb.no/api/v0/en/table/09654', {
     method: 'POST', headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' },
@@ -841,6 +844,7 @@ export async function fetchNorway() {
   return entry ? [entry] : [];
 }
 
+/** Average ordinary ISK/l station prices using the pinned file revision as the data date. */
 export function parseIcelandFuel(data, revisionDate, nowMs = Date.now()) {
   const observedAt = revisionDate?.slice(0, 10);
   if (!fuelDateIsFresh(observedAt, 14, nowMs) || !Array.isArray(data?.stations)) return null;
@@ -854,6 +858,7 @@ export function parseIcelandFuel(data, revisionDate, nowMs = Date.now()) {
   return gasoline || diesel ? { code: 'IS', name: 'Iceland', currency: 'ISK', flag: '🇮🇸', gasoline, diesel } : null;
 }
 
+/** Fetch Gasvaktin at a dated Git revision, omitting it when ISK conversion is unavailable. */
 export async function fetchIceland(fxRates) {
   // ISK has no static shared fallback. Do not count a source as successful when
   // neither price can be converted; the cold-cache FX budget requests ISK first.
@@ -869,6 +874,7 @@ export async function fetchIceland(fxRates) {
   return entry ? [entry] : [];
 }
 
+/** Derive a weekly TWD/l mean weighted by group report counts; reject unusable surveys. */
 export function parseTaiwanFuel(payload, oil, nowMs = Date.now()) {
   const data = payload?.data;
   if (payload?.res !== '01' || !Array.isArray(data?.gasoline)
@@ -893,18 +899,22 @@ export function parseTaiwanFuel(payload, oil, nowMs = Date.now()) {
     source: 'Taiwan MOEA Energy Administration oil111', observedAt } : null;
 }
 
-export async function fetchTaiwan() {
-  const fuels = [];
-  for (const oil of ['01', '04']) {
+/** Retry each oil111 grade independently so one outage cannot discard the other grade. */
+export async function fetchTaiwan({ baseDelayMs } = {}) {
+  const results = await Promise.allSettled(['01', '04'].map(oil => withFuelRetry(`TW-${oil}`, async () => {
     const body = new FormData();
     body.set('unit', 'week'); body.set('oil', oil); body.set('start', 'lastone');
     const response = await globalThis.fetch('https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg/load', {
       method: 'POST', body, headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000),
     });
     if (!response.ok) throw new Error(`Taiwan oil111 HTTP ${response.status}`);
-    fuels.push(parseTaiwanFuel(await response.json(), oil));
-  }
-  const [gasoline, diesel] = fuels;
+    return parseTaiwanFuel(await response.json(), oil);
+  }, { baseDelayMs })));
+  const [gasoline, diesel] = results.map((result, i) => {
+    if (result.status === 'fulfilled') return result.value;
+    console.warn(`  [TW-${['01', '04'][i]}] request failed: ${result.reason?.message ?? result.reason}`);
+    return null;
+  });
   return gasoline || diesel ? [{ code: 'TW', name: 'Taiwan', currency: 'TWD', flag: '🇹🇼', gasoline, diesel }] : [];
 }
 
@@ -1000,6 +1010,38 @@ export function validateFuel(d) {
   return total >= 30 && criticalPresent && untoleratedFailures.length === 0;
 }
 
+/** Merge usable prices by source priority; return whether this entry has any valid USD price. */
+export function mergeFuelCountry(countryMap, entry, fxRates) {
+  const { code, name, currency, flag, gasoline: gas, diesel: dsl } = entry;
+  const existing = countryMap.get(code) ?? { code, name, currency, flag, gasoline: null, diesel: null, fxRate: 0 };
+  const fxRate = currency === 'USD' ? 1 : (fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? 0);
+  let validEntry = false;
+
+  if (gas != null) {
+    const usdPrice = gas.usdPrice ?? toUsdPerLiter(gas.localPrice, currency, fxRates);
+    if (isSaneUsd(usdPrice)) {
+      validEntry = true;
+      if (existing.gasoline == null) existing.gasoline = { ...gas, usdPrice };
+    } else if (usdPrice != null) {
+      console.warn(`  [SANITY] ${code} gasoline USD/L=${usdPrice} out of range — dropping`);
+    }
+  }
+  if (dsl != null) {
+    const usdPrice = dsl.usdPrice ?? toUsdPerLiter(dsl.localPrice, currency, fxRates);
+    if (isSaneUsd(usdPrice)) {
+      validEntry = true;
+      if (existing.diesel == null) existing.diesel = { ...dsl, usdPrice };
+    } else if (usdPrice != null) {
+      console.warn(`  [SANITY] ${code} diesel USD/L=${usdPrice} out of range — dropping`);
+    }
+  }
+  if (validEntry) {
+    existing.fxRate = fxRate;
+    countryMap.set(code, existing);
+  }
+  return validEntry;
+}
+
 async function main() {
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
 
@@ -1022,7 +1064,7 @@ const fetchResults = await Promise.allSettled([
   fetchRegionalFuel(fxRates),
   withFuelRetry('NO', fetchNorway),
   withFuelRetry('IS', () => fetchIceland(fxRates)),
-  withFuelRetry('TW', fetchTaiwan),
+  fetchTaiwan(),
 ]);
 
 const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA'];
@@ -1031,42 +1073,14 @@ const failedSources = [];
 
 const countryMap = new Map();
 
-function mergeCountry(entry, fxRates) {
-  const { code, name, currency, flag, gasoline: gas, diesel: dsl } = entry;
-  if (!countryMap.has(code)) {
-    countryMap.set(code, { code, name, currency, flag, gasoline: null, diesel: null, fxRate: 0 });
-  }
-  const existing = countryMap.get(code);
-  const fxRate = currency === 'USD' ? 1 : (fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? 0);
-  existing.fxRate = fxRate;
-
-  if (gas != null && existing.gasoline == null) {
-    const usdPrice = gas.usdPrice ?? toUsdPerLiter(gas.localPrice, currency, fxRates);
-    if (isSaneUsd(usdPrice)) {
-      existing.gasoline = { ...gas, usdPrice };
-    } else if (usdPrice != null) {
-      console.warn(`  [SANITY] ${code} gasoline USD/L=${usdPrice} out of range — dropping`);
-    }
-  }
-  if (dsl != null && existing.diesel == null) {
-    const usdPrice = dsl.usdPrice ?? toUsdPerLiter(dsl.localPrice, currency, fxRates);
-    if (isSaneUsd(usdPrice)) {
-      existing.diesel = { ...dsl, usdPrice };
-    } else if (usdPrice != null) {
-      console.warn(`  [SANITY] ${code} diesel USD/L=${usdPrice} out of range — dropping`);
-    }
-  }
-}
-
 for (let i = 0; i < fetchResults.length; i++) {
   const result = fetchResults[i];
   const name = sourceNames[i];
-  if (result.status === 'fulfilled' && result.value.length > 0) {
+  const accepted = result.status === 'fulfilled'
+    ? result.value.filter(entry => mergeFuelCountry(countryMap, entry, fxRates)) : [];
+  if (accepted.length > 0) {
     successfulSources++;
-    for (const entry of result.value) {
-      mergeCountry(entry, fxRates);
-    }
-    console.log(`  [SOURCE] ${name}: ${result.value.length} countries`);
+    console.log(`  [SOURCE] ${name}: ${accepted.length} countries`);
   } else {
     failedSources.push(name);
     if (result.status === 'rejected') {

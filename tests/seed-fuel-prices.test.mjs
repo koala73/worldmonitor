@@ -5,7 +5,7 @@ import { zipSync, strToU8 } from 'fflate';
 import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA, regionalFuelEntries, FUEL_FX_CURRENCIES, latestComComFuelDataUrl, readXlsxFirstSheet, parseNzComComFuel } from '../scripts/seed-fuel-prices.mjs';
 import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
 import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
-import { parseNorwayFuel, parseIcelandFuel, parseTaiwanFuel, fetchNorway, fetchIceland, fetchTaiwan, toUsdPerLiter } from '../scripts/seed-fuel-prices.mjs';
+import { parseNorwayFuel, parseIcelandFuel, parseTaiwanFuel, fetchNorway, fetchIceland, fetchTaiwan, toUsdPerLiter, mergeFuelCountry } from '../scripts/seed-fuel-prices.mjs';
 
 const fuelFixture = name => JSON.parse(readFileSync(new URL(`./fixtures/fuel-prices/${name}.json`, import.meta.url), 'utf8'));
 const FUEL_NOW = Date.parse('2026-11-05T00:00:00Z');
@@ -120,7 +120,77 @@ test('new fetchers use real source request contracts and fixtures without runnin
   t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 503 }));
   await assert.rejects(fetchNorway(), /503/);
   await assert.rejects(fetchIceland({ ISK: 0.007 }), /503/);
-  await assert.rejects(fetchTaiwan(), /503/);
+  assert.deepEqual(await fetchTaiwan({ baseDelayMs: 0 }), []);
+});
+
+for (const failedOil of ['01', '04']) {
+  test(`Taiwan preserves the other grade when ${failedOil} exhausts its request retries`, async t => {
+    t.mock.timers.enable({ apis: ['Date'], now: FUEL_NOW });
+    const calls = { '01': 0, '04': 0 };
+    t.mock.method(globalThis, 'fetch', async (_url, { body }) => {
+      const oil = body.get('oil');
+      calls[oil]++;
+      if (oil === failedOil) return new Response('', { status: 503 });
+      return Response.json(fuelFixture(oil === '01' ? 'taiwan-oil111-92' : 'taiwan-oil111-diesel'));
+    });
+    const rows = await fetchTaiwan({ baseDelayMs: 0 });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].code, 'TW');
+    const missing = failedOil === '01' ? 'gasoline' : 'diesel';
+    const present = failedOil === '01' ? 'diesel' : 'gasoline';
+    assert.equal(rows[0][missing], null);
+    assert.ok(rows[0][present].localPrice > 0);
+    assert.equal(rows[0][present].observedAt, '2026-10-31');
+    assert.deepEqual(calls, { [failedOil]: 3, [failedOil === '01' ? '04' : '01']: 1 });
+  });
+}
+
+test('Taiwan retries only the transiently failing grade and returns both prices after recovery', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: FUEL_NOW });
+  const calls = { '01': 0, '04': 0 };
+  t.mock.method(globalThis, 'fetch', async (_url, { body }) => {
+    const oil = body.get('oil');
+    calls[oil]++;
+    if (oil === '04' && calls[oil] === 1) throw new Error('network failure');
+    return Response.json(fuelFixture(oil === '01' ? 'taiwan-oil111-92' : 'taiwan-oil111-diesel'));
+  });
+  const [row] = await fetchTaiwan({ baseDelayMs: 0 });
+  assert.ok(row.gasoline && row.diesel);
+  assert.deepEqual(calls, { '01': 1, '04': 2 });
+});
+
+test('country merge rejects empty USD coverage after conversion instead of counting it toward publish', () => {
+  const countryMap = new Map();
+  const norway = parseNorwayFuel(fuelFixture('ssb-09654'), FUEL_NOW);
+  for (const fuel of [norway.gasoline, norway.diesel]) fuel.localPrice = 60;
+  assert.equal(mergeFuelCountry(countryMap, norway, { NOK: 0.1 }), false);
+  assert.equal(countryMap.size, 0, 'locally plausible prices outside USD bounds add no country');
+  const iceland = parseIcelandFuel(fuelFixture('gasvaktin-stations'), '2026-11-04', FUEL_NOW);
+  assert.equal(mergeFuelCountry(countryMap, iceland, {}), false);
+  assert.equal(countryMap.size, 0, 'missing FX also adds no country');
+  const countries = [{ code: 'US' }, { code: 'GB' }, { code: 'MY' },
+    ...Array.from({ length: 26 }, (_, i) => ({ code: `EU${i}` })), ...countryMap.values()];
+  assert.equal(validateFuel({ countries, failedSources: [] }), false, 'an empty NO row must not be country 30');
+});
+
+test('country merge retains a valid grade and preserves existing source priority when filling gaps', () => {
+  const countryMap = new Map();
+  const norway = parseNorwayFuel(fuelFixture('ssb-09654'), FUEL_NOW);
+  norway.diesel.localPrice = 60;
+  assert.equal(mergeFuelCountry(countryMap, norway, { NOK: 0.1 }), true);
+  assert.equal(countryMap.size, 1);
+  const row = countryMap.get('NO');
+  assert.equal(row.gasoline.usdPrice, 2.618);
+  assert.equal(row.diesel, null);
+  const firstGasoline = row.gasoline;
+  const backup = parseNorwayFuel(fuelFixture('ssb-09654'), FUEL_NOW);
+  backup.gasoline.localPrice = 20;
+  assert.equal(mergeFuelCountry(countryMap, backup, { NOK: 0.1 }), true);
+  assert.equal(countryMap.get('NO').gasoline, firstGasoline);
+  assert.equal(countryMap.get('NO').diesel.usdPrice, 2.752);
+  const before = structuredClone(row);
+  assert.equal(mergeFuelCountry(countryMap, { ...norway, gasoline: null }, { NOK: 0.2 }), false);
+  assert.deepEqual(row, before, 'an unusable source cannot mutate a valid existing row');
 });
 
 test('new optional sources preserve core publish gates and missing-FX currencies fit the recovery budget', () => {
