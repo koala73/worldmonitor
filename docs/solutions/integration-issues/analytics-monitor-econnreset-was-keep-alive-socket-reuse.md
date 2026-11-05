@@ -21,14 +21,14 @@ tags: [umami, analytics, monitor, undici, keep-alive, econnreset, cloudflare, no
 
 ## Problem
 
-The scheduled Analytics Collector Monitor (`.github/workflows/analytics-collector-monitor.yml`) failed about once every one to two days with a single lost write canary. The collector was healthy. Node's fetch had sent the write on an idle keep-alive socket that the Cloudflare edge reset, and Node fetch does not resend a request lost that way. Fixed in #10079.
+The scheduled Analytics Collector Monitor (`.github/workflows/analytics-collector-monitor.yml`) failed about once every one to two days with a single failed write canary. The collector was healthy. Node's fetch had sent the write on an idle keep-alive socket that the Cloudflare edge reset, and Node fetch does not resend a request lost that way. Fixed in #10079.
 
 ## Symptoms
 
 - Monitor output: `1/12 attempts failed` with `ECONNRESET (phase=request)`.
 - 10 such failures between 2026-10-21 and 2026-11-03, in 1,842 monitor runs.
 - Every one was in write burst 2 or 3. Burst 1 never failed this way.
-- Elapsed time at failure: 13-113 ms, which is too fast for the collector to have processed the request.
+- Elapsed time at failure: 13-113 ms, before any response headers arrived. The timing points to the socket-reuse pattern, but it does not show whether the collector received or committed the write.
 
 ## What Didn't Work
 
