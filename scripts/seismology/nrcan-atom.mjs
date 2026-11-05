@@ -232,10 +232,10 @@ function defaultNrcanProxyFetch(url, { exit, proxyAuth, maxBytes }) {
 // credentials, quota, policy) and any other proxied status are final.
 // A sticky port keeps its exit IP for minutes, so each run starts at a random
 // port: fixed ports retried the same challenged IPs on every 5-minute run.
-async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, maxBytes }) {
+async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, firstProxyExitFn, maxBytes }) {
   let last;
   let everyExitRefused = true;
-  const firstExit = randomInt(1_000_000);
+  const firstExit = firstProxyExitFn();
   for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
     let result;
     try {
@@ -285,6 +285,7 @@ export async function fetchApprovedAtom(url, {
   fetchFn = globalThis.fetch,
   proxyAuth = '',
   proxyFetchFn = defaultNrcanProxyFetch,
+  firstProxyExitFn = () => randomInt(1_000_000),
   cache,
 } = {}) {
   const parsed = new URL(url);
@@ -309,7 +310,7 @@ export async function fetchApprovedAtom(url, {
   });
   if (response.status === 403 && proxyAuth) {
     await response.body?.cancel?.();
-    const xml = await fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, maxBytes });
+    const xml = await fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, firstProxyExitFn, maxBytes });
     cache?.set(cacheKey, xml);
     return xml;
   }

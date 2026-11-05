@@ -26,6 +26,9 @@ import {
   parseNrcanAtom,
   parseUsgsGeojson,
 } from '../scripts/seismology/nrcan-atom.mjs';
+import { createRequire } from 'node:module';
+
+const { parseProxyConfigForAttempt } = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureXml = readFileSync(resolve(here, 'fixtures/seismology/nrcan-canada-en.atom'), 'utf8');
@@ -502,23 +505,23 @@ describe('approved NRCan transport', () => {
 
   // A Decodo sticky port keeps its exit IP for minutes, so fixed exits 0..2 meant
   // every 5-minute run retried the same three challenged IPs (WORLDMONITOR-1AM).
-  it('draws a fresh set of proxy exits on each run', async () => {
-    const runExits = [];
-    for (let run = 0; run < 2; run++) {
-      const exits = [];
+  it('starts each run at its own drawn sticky port', async () => {
+    const proxyAuth = 'user:pass@gate.decodo.com:10001';
+    const runPorts = [];
+    for (const firstExit of [0, 5_000]) {
+      const ports = [];
       await assert.rejects(fetchApprovedAtom(NRCAN_ATOM_URL, {
         fetchFn: forbidden,
-        proxyAuth: 'user:pass@gate.example:7000',
+        proxyAuth,
+        firstProxyExitFn: () => firstExit,
         proxyFetchFn: async (_url, { exit }) => {
-          exits.push(exit);
+          ports.push(Number(parseProxyConfigForAttempt(proxyAuth, exit).port));
           return { ok: false, status: 403, buffer: Buffer.alloc(0), contentType: 'text/html' };
         },
       }), /direct HTTP 403; proxy HTTP 403/);
-      assert.equal(exits.length, 3);
-      assert.equal(new Set(exits).size, 3);
-      runExits.push(exits);
+      runPorts.push(ports);
     }
-    assert.ok(runExits[0].every(exit => !runExits[1].includes(exit)), `runs reused exits: ${JSON.stringify(runExits)}`);
+    assert.deepEqual(runPorts, [[10_001, 10_002, 10_003], [15_001, 15_002, 15_003]]);
   });
 
   it('keeps the direct 403 when no proxy is configured or every exit fails', async () => {
