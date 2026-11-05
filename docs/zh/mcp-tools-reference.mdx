@@ -291,6 +291,24 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+
+### `get_fred_series`
+
+**Access:** `subscription`.
+
+通过规范的 `POST /api/economic/v1/get-fred-series-batch` RPC 查询仪表盘共用的预写入宏观序列缓存和允许列表，不会在请求时调用 FRED。`series_ids` 的实时说明列出所有支持的 ID，包括 `UNRATE`、`CPIAUCSL` 和 `FEDFUNDS`。
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `series_ids` | `array<string>` | 必填，FRED 序列 ID，统一为大写，最多转发 20 个；规范读取器忽略允许列表外的 ID。 |
+| `limit` | integer | 每个序列的观测数，最新值在末尾。默认 24，有效范围 1–1000。 |
+
+返回以序列 ID 为键的 `results`，含标题、单位、频率与观测值。`requested` 是实际查询的唯一允许 ID 数，`fetched` 是缓存中存在的序列数；缓存缺失时不会触发刷新。大响应可能受 MCP 输出预算压缩。
+
+示例：`get_fred_series({"series_ids":["UNRATE","CPIAUCSL"],"limit":24})`。
+
 ### `get_procurement_opportunities`
 
 通过规范的、仅限 Pro 的招标 API 搜索活跃的全球公共采购机会。此工具绝不直接读取 Upstash。它返回规范记录的紧凑投影：官方公告 URL、来源、标题、买方、时间、金额、分类、领域、`participationMode` 与精简的 `automationFit`；有意省略描述、资格要求和提交 URL。
