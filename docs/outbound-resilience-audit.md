@@ -43,7 +43,8 @@ WebSocket sends, and other non-request methods.
 - Shared seeder and Yahoo retries use capped exponential delays with jitter.
   Seeder delays cap at 60 seconds and retry counts at ten. Provider Retry-After
   floors are preserved, including longer provider cooldowns. Callers with
-  phase budgets reject hints that cannot fit before another attempt. R2 uses one SDK attempt inside its three-attempt outer retry loop,
+  phase budgets reject hints that cannot fit before another attempt. Redis
+  helpers stop without retry when an uncapped provider cooldown exceeds 60s. R2 uses one SDK attempt inside its three-attempt outer retry loop,
   avoiding compounded SDK retries.
 - Immediate network retry loops for proxy rotation, Wikidata reads, shipping
   compare-and-set/lease contention, and deployment status reads now pause with

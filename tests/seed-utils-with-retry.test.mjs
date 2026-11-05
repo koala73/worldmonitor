@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   withRetry,
+  parseRedisCommandResponse,
   parseRetryAfterMs,
   PERMANENT_4XX_STATUSES,
   getResponseHeader,
@@ -678,4 +679,15 @@ describe('createLlmBudgetError / isLlmBudgetError', () => {
     assert.equal(isLlmBudgetError(new Error('boom')), false);
     assert.equal(isLlmBudgetError(null), false);
   });
+});
+
+it('does not shorten a Redis provider cooldown beyond the operation wait budget', async () => {
+  for (const hint of ['120', new Date(Date.now() + 120_000).toUTCString()]) {
+    let calls = 0;
+    await assert.rejects(withRetry(async () => {
+      calls++;
+      return parseRedisCommandResponse(new Response('', { status: 429, headers: { 'Retry-After': hint } }));
+    }), error => error.nonRetryable && error.retryAfterMs > 60_000);
+    assert.equal(calls, 1, 'must not issue an early retry');
+  }
 });

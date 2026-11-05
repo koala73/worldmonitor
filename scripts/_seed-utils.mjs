@@ -336,8 +336,12 @@ export async function parseRedisCommandResponse(resp, label = 'Redis command') {
     if (PERMANENT_4XX_STATUSES.has(resp.status)) {
       err.nonRetryable = true;
     } else if (resp.status === 429) {
-      const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
-      if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+      const retryAfterMs = parseRetryAfterUncappedMs(getResponseHeader(resp.headers, 'Retry-After'));
+      if (retryAfterMs != null) {
+        err.retryAfterMs = retryAfterMs;
+        // A bounded Redis operation cannot wait out a longer cooldown.
+        if (retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
+      }
     }
     err.httpStatus = resp.status;
     throw err;
@@ -397,8 +401,12 @@ async function redisGet(url, token, key, options = {}) {
         if (PERMANENT_4XX_STATUSES.has(resp.status)) {
           err.nonRetryable = true;
         } else if (resp.status === 429) {
-          const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
-          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+          const retryAfterMs = parseRetryAfterUncappedMs(getResponseHeader(resp.headers, 'Retry-After'));
+          if (retryAfterMs != null) {
+            err.retryAfterMs = retryAfterMs;
+            // A bounded Redis operation cannot wait out a longer cooldown.
+            if (retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
+          }
         }
         err.httpStatus = resp.status;
         throw err;
@@ -739,8 +747,12 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
         if (PERMANENT_4XX_STATUSES.has(resp.status)) {
           err.nonRetryable = true;
         } else if (resp.status === 429) {
-          const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
-          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+          const retryAfterMs = parseRetryAfterUncappedMs(getResponseHeader(resp.headers, 'Retry-After'));
+          if (retryAfterMs != null) {
+            err.retryAfterMs = retryAfterMs;
+            // A bounded Redis operation cannot wait out a longer cooldown.
+            if (retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
+          }
         }
         throw err;
       }
@@ -1326,8 +1338,12 @@ export async function extendExistingTtlDetailed(keys, ttlSeconds = 600, options 
         if (PERMANENT_4XX_STATUSES.has(r.status)) {
           err.nonRetryable = true;
         } else if (r.status === 429) {
-          const retryAfterMs = parseRetryAfterMs(getResponseHeader(r.headers, 'Retry-After'));
-          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+          const retryAfterMs = parseRetryAfterUncappedMs(getResponseHeader(r.headers, 'Retry-After'));
+          if (retryAfterMs != null) {
+            err.retryAfterMs = retryAfterMs;
+            // A bounded Redis operation cannot wait out a longer cooldown.
+            if (retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
+          }
         }
         throw err;
       }
