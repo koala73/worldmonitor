@@ -2229,6 +2229,11 @@ export class UnifiedSettings {
         <div class="api-keys-list" id="usApiKeysList">
           <div class="api-keys-loading">Loading...</div>
         </div>
+        <div class="api-starter-offer" data-api-starter-offer>
+          <p class="api-keys-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to your dashboard. Customer-facing products need API Business.</p>
+          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
+          <button class="btn btn-secondary api-keys-gate-btn">Upgrade to API Starter</button>
+        </div>
       </div>`;
   }
 
