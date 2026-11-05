@@ -569,6 +569,11 @@ def build(crawl_path: Path, verify_google: bool):
         latin_marks = {cp for cp in parse_unicode_range(g['subsets']['latin']['unicode_range'])
                        if unicodedata.category(chr(cp)) == 'Mn'} & parts & cov & src_cmap
         want |= latin_marks
+        # HarfBuzz builds fractions around FRACTION SLASH (U+2044) without being asked. The features
+        # pull in numerator and denominator digits (about 0.5-3 KB per core), so keep them only when
+        # the subset has a slash that can trigger them.
+        if want & {0x2044, 0x2215}:
+            features |= {'frac', 'numr', 'dnom'} & font_features
         core = (ASCII | CORE_PUNCT | frequent | latin_marks) & want
         ext = want - core
 
