@@ -371,6 +371,22 @@ test.describe('dashboard layout stability', () => {
   });
 });
 
+test.describe('dashboard layout stability with a saved map width', () => {
+  test.beforeEach(async ({ page }) => {
+    await installDashboardClsObserver(page);
+    // At 1280px the default 60% map leaves the sidebar one column; a saved 45%
+    // gives it two. Applied after first paint, the map, the sidebar and every
+    // panel span would move.
+    await page.addInitScript(() => localStorage.setItem('map-col-width', '45%'));
+  });
+
+  test('renders the saved map width from the first frame', async ({ page }) => {
+    await exerciseDashboardBoot(page);
+    const sidebar = await page.locator('#panelsGrid').evaluate((grid) => grid.getBoundingClientRect().width);
+    expect(sidebar, 'the saved width is applied').toBeGreaterThan(640);
+  });
+});
+
 test.describe('dashboard layout stability on mobile', () => {
   test.use({
     ...mobileDevice,

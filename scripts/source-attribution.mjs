@@ -213,6 +213,20 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  // Fuel-price additions (#10147, #10113). Source-level details for Gasvaktin
+  // are documented separately: raw.githubusercontent.com also hosts other data.
+  'data.ssb.no': {
+    provider: 'data.ssb.no',
+    license: 'CC BY 4.0 (SSB Public APIs and Licence pages)',
+    attribution: 'Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.',
+    status: 'reviewed',
+  },
+  'www2.moeaea.gov.tw': {
+    provider: 'www2.moeaea.gov.tw',
+    license: 'Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed',
+    attribution: 'Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.',
+    status: 'terms-review',
+  },
   // Food-price publishers (#9892) whose own terms we recorded at onboarding.
   'stat.uz': {
     provider: 'stat.uz',
@@ -1053,7 +1067,10 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'a75c2807424e13ddf226a46333eeb961a5fbb834091e69725f6e3249f0a45303',
+  sha256: '70482112641a67ef45c4189f62eb645bb1fb5501f191ec99eb16571d7fd6e2ce',
+  // 2026-11-05 (#10147, #10113): add Statistics Norway and Taiwan oil111
+  // as distinct public fuel-price publishers; SSB is CC BY 4.0 and oil111
+  // remains in terms review.
   // 2026-11-02 (#10051): group the Philippine DOE with the CloudFront media
   // host that serves its weekly PDFs, and SONABHY with the Strapi CMS its
   // tariff page reads from.

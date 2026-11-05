@@ -24,3 +24,7 @@ src/generated/**/*.ts whitespace=-blank-at-eof
 
 # Preserve the byte-identical upstream Umami patch, including its indented blank lines.
 docker/umami/session-data-upsert.patch -whitespace
+
+# Font licenses copied byte-for-byte from google/fonts (scripts/brief-fonts checks their sha256),
+# CRLF endings and trailing spaces included.
+public/assets/brief-fonts/*-OFL.txt -text -whitespace

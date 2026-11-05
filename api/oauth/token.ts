@@ -961,7 +961,7 @@ export async function tokenHandler(req: Request, deps: TokenHandlerDeps): Promis
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'POST') {
-    return jsonResp({ error: 'method_not_allowed' }, 405);
+    return jsonResponse({ error: 'method_not_allowed' }, 405, { ...corsHeaders, ...NO_STORE, Allow: 'POST, OPTIONS' });
   }
 
   const startedAt = Date.now();

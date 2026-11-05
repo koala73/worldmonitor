@@ -1463,6 +1463,14 @@ ${chokepoints.map((chokepoint) => `        <li><a href="/chokepoints/${escapeHtm
       </ul>`;
 }
 
+// Near the top of a crisis page, so the open/closed question a reader brings
+// to a shipping crisis links straight to the waterway's live reading. It
+// replaces the crisis page's bottom tracker list: each waterway is linked once.
+export function renderChokepointStatusLinks(chokepoints) {
+  if (!chokepoints.length) return '';
+  return `      <p data-crisis-chokepoint-status>Shipping status: ${chokepoints.map((chokepoint) => `<a href="/chokepoints/${escapeHtml(chokepoint.slug)}/">is the ${escapeHtml(chokepoint.displayName)} open?</a>`).join(' · ')} Live disruption score and IMF PortWatch daily transits.</p>`;
+}
+
 function normalizeCountry(item, sourceStatus, seen, reverseNames) {
   const code = String(item.countryCode || '').toUpperCase();
   const identity = item.identity || {};
@@ -4718,7 +4726,7 @@ function renderChokepointPage({
   });
 
   const body = `      <p class="eyebrow">Chokepoint</p>
-      <h1>${escapeHtml(chokepoint.displayName)}</h1>
+      <h1>${escapeHtml(content.heading ?? chokepoint.displayName)}</h1>
       <p class="lede">${escapeHtml(blurb)}</p>
 ${liveSection}
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(chokepoint.displayName)} on the live map →</a>
@@ -5104,6 +5112,7 @@ function renderCrisisPage({
       <h1>${escapeHtml(crisis.title)}</h1>
       <p class="lede">${escapeHtml(crisis.description)}</p>
       <p>${escapeHtml(crisis.overview)}</p>
+${renderChokepointStatusLinks(relatedChokepoints)}
       <section class="live-tool" data-live-crisis data-state="${escapeHtml(liveState)}"${hasPulse ? ' data-published-pulse' : ''}>
         <div class="tool-head">
           <div>
@@ -5134,7 +5143,6 @@ ${renderCrisisEditorial(crisis)}
 ${renderCrisisCountryReadings({ crisis, countryByCode, ciiByCode, rankedCount })}
       <h2>Coverage boundary</h2>
       <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
-${renderRelatedChokepoints(relatedChokepoints)}
 ${renderLiveDataLinks(crisisLiveLinks({ touchesOilChokepoint: relatedChokepoints.some((chokepoint) => EIA_OIL_TRANSIT_BASELINES.byRegistryId[chokepoint.id]) }), escapeHtml)}
 ${renderRelatedReading(relatedReading, escapeHtml)}
       <h2>How to read this tracker</h2>
