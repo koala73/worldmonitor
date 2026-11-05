@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { openExternalUrl, startCheckout } = vi.hoisted(() => ({
-  openExternalUrl: vi.fn(async () => 'opened'),
+  openExternalUrl: vi.fn(async (_url: string) => 'opened'),
   startCheckout: vi.fn(async () => true),
 }));
 let desktop = false;
@@ -35,7 +35,7 @@ describe('openUpgradePlans', () => {
 
   it('carries mission attribution to /pro, which passes it into its checkout', async () => {
     await openUpgradePlans({ missionId: 'crisis-desk', panelKey: 'cii' });
-    const url = new URL(openExternalUrl.mock.calls[0]![0] as string);
+    const url = new URL(openExternalUrl.mock.calls[0]![0]);
     expect(url.pathname).toBe('/pro');
     expect(url.hash).toBe('#pricing');
     expect(url.searchParams.get('wm_checkout_mission')).toBe('crisis-desk');
