@@ -12,6 +12,8 @@ applies_when:
   - "Pixel-diffing font changes in Chromium on macOS"
 tags:
   - web-fonts
+  - unicode-range
+  - harfbuzz
   - fonttools
   - variable-fonts
   - coretext
@@ -37,6 +39,13 @@ When cutting a font that must render like a reference file (`blog-site/scripts/f
 6. **`prep`, `STAT` and `HVAR` don't affect macOS rendering.** Google still serves Windows and Linux a 7-byte `prep` for dropout control, so keep it if it exists.
 
 Also make output deterministic: `recalcTimestamp = False`, otherwise `head.modified` changes every run.
+
+Follow-ups #10151 (brief magazine) and #10152 (blog) found four more traps. None show up on a page that uses only common characters:
+
+7. **Keep Google's `unicode-range` for characters no file draws.** Google's ranges contain characters that none of its files has a glyph for. Chrome treats such a character differently while it is inside a face's range than once it is outside every range. U+2011 takes the face's hyphen only while in range, Inter draws its NO GLYPH box, and a letter with no precomposed glyph (Ǖ) is composed from the base letter and the combining marks in the same file. So a file's range is the characters it draws plus Google's range minus everything Google draws. Keep `.notdef`'s outline (`notdef_outline = True`), and keep the combining marks Google's latin file maps (U+0304, U+0308, U+0329) when those letters decompose into them. Google's own split is imperfect here: where its latin-ext file has the accents but not the base letter, Chrome takes the two from different files and leaves the accents unattached. #10152 records 17 such letters as a known difference.
+8. **Google serves different files per User-Agent.** Chrome 102 or later on macOS (not Edge or Opera) gets WOFF2 that keeps overlap flags. Other macOS browsers get WOFF. Windows, Linux and ChromeOS get hinted files. Android, iOS and unknown agents get plain files. A server-rendered page can match all of them by picking the set from the UA and sending `Vary: User-Agent` (`briefFontPlatform` in #10151). A static site cannot, so it matches one set.
+9. **HarfBuzz cannot read WOFF or WOFF2.** `hb.Face(woff2_bytes)` loads without error and maps every character to glyph 0, so a parity check fed compressed files passes vacuously. Decompress to sfnt first (`tt.flavor = None`, save), and assert that a known character maps to a nonzero glyph.
+10. **Keep `frac`, `numr` and `dnom` in a file that has U+2044 FRACTION SLASH, even if the CSS never asks for them.** HarfBuzz applies them automatically around U+2044 (not around U+2215 DIVISION SLASH). In a file without U+2044 they cannot trigger, and keeping them costs the blog's files 0.5–3 KB each in numerator and denominator digits.
 
 ## Why This Matters
 
