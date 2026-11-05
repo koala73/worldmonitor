@@ -1510,23 +1510,23 @@ describe('crawlable corpus generator', () => {
   });
 
   it('publishes the war list only while its month is current, and rejects a malformed one', async () => {
-    const data = await corpusDataForRendering();
-    const record = data.livePulse.activeWars;
-    const { capturedAt } = data.livePulse;
+    // The fixed fixture reading, so this holds whatever the weekly freeze committed.
+    const record = JSON.parse(readFileSync(join(repoRoot, 'tests/fixtures/crawlable-live-pulse-fixture.json'), 'utf8')).activeWars;
     const monthEnd = new Date(`${record.referenceMonth}-01T00:00:00Z`);
     monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
     const daysAfterMonthEnd = (days) => new Date(monthEnd.getTime() + days * 86_400_000).toISOString().slice(0, 10);
+    const capturedAt = daysAfterMonthEnd(14);
     assert.equal(normalizeActiveWars(undefined, capturedAt), null, 'older snapshots build without it');
     assert.match(normalizeActiveWars(record, capturedAt).monthLabel, /^[A-Z][a-z]+ \d{4}$/);
     assert.ok(normalizeActiveWars(record, daysAfterMonthEnd(75)), 'a carried reading is current for 75 days');
     assert.equal(normalizeActiveWars(record, daysAfterMonthEnd(76)), null, 'and then ages out');
     const unsorted = { ...record, conflicts: [...record.conflicts].reverse() };
-    assert.throws(() => normalizeActiveWars(unsorted, data.livePulse.capturedAt), /malformed/);
+    assert.throws(() => normalizeActiveWars(unsorted, capturedAt), /malformed/);
     const belowThreshold = {
       ...record,
       conflicts: record.conflicts.map((row, index) => (index === 0 ? { ...row, deaths: 3 } : row)),
     };
-    assert.throws(() => normalizeActiveWars(belowThreshold, data.livePulse.capturedAt), /malformed/);
+    assert.throws(() => normalizeActiveWars(belowThreshold, capturedAt), /malformed/);
   });
 
   it('rejects a chokepoint pulse key that is not in the registry', async () => {
@@ -5064,34 +5064,40 @@ describe('crawlable corpus generator', () => {
       // published all 13, #9693); the fixture build below always covers both.
 
       const crisesIndex = read(outDir, 'crises/index.html');
-      // The committed pulse carries a UCDP war list, so the hub answers the
-      // question first and keeps the trackers below it.
+      // With a current UCDP war list the hub answers the question first and
+      // keeps the trackers below it. Without one (a month aged out, nothing
+      // to carry) it falls back to the tracker layout, and a weekly refresh
+      // in that state must still verify.
       const wars = clock.activeWars;
-      assert.ok(wars, 'the committed pulse must carry a current war list');
-      assert.match(crisesIndex, /<h1>Wars happening right now<\/h1>/);
-      assert.match(crisesIndex, new RegExp(`<title>Wars Happening Right Now: ${wars.countryCount} Active Conflicts \\| World Monitor</title>`));
-      assert.match(crisesIndex, /<h2>Current crisis trackers<\/h2>/);
-      const warRows = [...crisesIndex.matchAll(/<tr data-active-war="([^"]+)"><td>(\d+)<\/td>(.*?)<\/tr>/g)];
-      assert.deepEqual(warRows.map(([, key]) => key), wars.conflicts.map((row) => row.code ?? row.name));
-      assert.deepEqual(warRows.map(([, , rank]) => Number(rank)), wars.conflicts.map((_, index) => index + 1));
-      // A row links a tracker only when exactly one tracker covers its country;
-      // UCDP files Gaza under Israel, which three trackers cover.
-      const registry = JSON.parse(read(repoRoot, 'shared/crawlable-crises.json'));
-      for (const [[, code, , cells], row] of warRows.map((match, index) => [match, wars.conflicts[index]])) {
-        const trackers = registry.filter((crisis) => crisis.coverage.some((country) => country.code === code));
-        const tracker = cells.match(/<a href="\/crises\/([^/]+)\/">/)?.[1] ?? null;
-        assert.equal(tracker, trackers.length === 1 ? trackers[0].slug : null, `${row.name} tracker link`);
-        const countryPage = clock.countries.find((country) => country.code === row.code);
-        assert.ok(
-          cells.startsWith(countryPage ? `<td><a href="/countries/${countryPage.slug}/">${row.name}</a></td>` : `<td>${row.name}</td>`),
-          `${row.name} links its country page when one exists`,
-        );
+      if (!wars) {
+        assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
+        assert.doesNotMatch(crisesIndex, /data-active-war/);
+      } else {
+        assert.match(crisesIndex, /<h1>Wars happening right now<\/h1>/);
+        assert.match(crisesIndex, new RegExp(`<title>Wars Happening Right Now: ${wars.countryCount} Active Conflicts \\| World Monitor</title>`));
+        assert.match(crisesIndex, /<h2>Current crisis trackers<\/h2>/);
+        const warRows = [...crisesIndex.matchAll(/<tr data-active-war="([^"]+)"><td>(\d+)<\/td>(.*?)<\/tr>/g)];
+        assert.deepEqual(warRows.map(([, key]) => key), wars.conflicts.map((row) => row.code ?? row.name));
+        assert.deepEqual(warRows.map(([, , rank]) => Number(rank)), wars.conflicts.map((_, index) => index + 1));
+        // A row links a tracker only when exactly one tracker covers its country;
+        // UCDP files Gaza under Israel, which three trackers cover.
+        const registry = JSON.parse(read(repoRoot, 'shared/crawlable-crises.json'));
+        for (const [[, code, , cells], row] of warRows.map((match, index) => [match, wars.conflicts[index]])) {
+          const trackers = registry.filter((crisis) => crisis.coverage.some((country) => country.code === code));
+          const tracker = cells.match(/<a href="\/crises\/([^/]+)\/">/)?.[1] ?? null;
+          assert.equal(tracker, trackers.length === 1 ? trackers[0].slug : null, `${row.name} tracker link`);
+          const countryPage = clock.countries.find((country) => country.code === row.code);
+          assert.ok(
+            cells.startsWith(countryPage ? `<td><a href="/countries/${countryPage.slug}/">${row.name}</a></td>` : `<td>${row.name}</td>`),
+            `${row.name} links its country page when one exists`,
+          );
+        }
+        const crisesLd = jsonLdObjects(crisesIndex);
+        const warsFaq = crisesLd.find((entry) => entry['@type'] === 'FAQPage');
+        assert.equal(warsFaq.mainEntity[0].name, 'What wars are happening right now?');
+        assert.match(warsFaq.mainEntity[0].acceptedAnswer.text, new RegExp(`^In ${wars.monthLabel}, .* ${wars.countryCount} countries recorded at least 25 deaths`));
+        assert.equal(crisesLd.find((entry) => entry['@type'] === 'ItemList').itemListElement.length, wars.countryCount);
       }
-      const crisesLd = jsonLdObjects(crisesIndex);
-      const warsFaq = crisesLd.find((entry) => entry['@type'] === 'FAQPage');
-      assert.equal(warsFaq.mainEntity[0].name, 'What wars are happening right now?');
-      assert.match(warsFaq.mainEntity[0].acceptedAnswer.text, new RegExp(`^In ${wars.monthLabel}, .* ${wars.countryCount} countries recorded at least 25 deaths`));
-      assert.equal(crisesLd.find((entry) => entry['@type'] === 'ItemList').itemListElement.length, wars.countryCount);
       assert.match(crisesIndex, /href="\/crises\/red-sea-security\/"/);
       assertDataCatalogPresent(crisesIndex, '/crises/');
       assertDefaultSpeakable(

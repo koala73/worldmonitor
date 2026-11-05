@@ -1024,7 +1024,17 @@ export async function freezeCrawlableLivePulse({
   const activeWarErrors = [];
   try {
     const payload = await authedGet('/api/conflict/v1/list-ucdp-events', token, base, authOpts);
-    activeWars = activeWarsReading(payload?.events, freezeStartedAt, { inPalestine: palestineLocator(REPO_ROOT) });
+    // The seeder publishes the surviving pages of a release whose candidate
+    // pages partly failed, tagged "+partial". Counting those would drop or
+    // shrink countries, so only a complete monthly release is read.
+    const candidateVersion = String(payload?.candidateVersion ?? '');
+    if (!candidateVersion || candidateVersion.endsWith('+partial')) {
+      throw new Error(`UCDP candidate release ${candidateVersion || 'absent'} is not complete`);
+    }
+    activeWars = {
+      ...activeWarsReading(payload.events, freezeStartedAt, { inPalestine: palestineLocator(REPO_ROOT) }),
+      candidateVersion,
+    };
   } catch (error) {
     activeWarErrors.push({ message: error instanceof Error ? error.message : String(error) });
     activeWars = await retainedActiveWars(rootDir);
