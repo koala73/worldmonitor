@@ -120,7 +120,7 @@ export type { ConflictIntensity, UcdpConflictStatus } from './ucdp-classify';
 // ---- Empty fallbacks ----
 
 const emptyAcledFallback: ListAcledEventsResponse = { events: [], pagination: undefined };
-const emptyUcdpFallback: ListUcdpEventsResponse = { events: [], pagination: undefined };
+const emptyUcdpFallback: ListUcdpEventsResponse = { events: [], pagination: undefined, candidateVersion: '' };
 
 // ---- Exported Functions ----
 

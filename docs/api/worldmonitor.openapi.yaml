@@ -4643,6 +4643,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "candidateVersion": "2026-01-15"
                                 "events":
                                     - "country": "US"
                                       "dateEnd": 1717200000000
@@ -43003,6 +43004,9 @@ components:
                         $ref: '#/components/schemas/worldmonitor_conflict_v1_UcdpViolenceEvent'
                 pagination:
                     $ref: '#/components/schemas/worldmonitor_core_v1_PaginationResponse'
+                candidateVersion:
+                    type: string
+                    description: Monthly candidate release merged in; "+partial" when incomplete, empty when none.
             description: ListUcdpEventsResponse contains UCDP violence events matching the request.
         worldmonitor_conflict_v1_UcdpViolenceEvent:
             type: object
