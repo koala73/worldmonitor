@@ -105,6 +105,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The Philippine Department of Energy price pages link each weekly monitoring PDF on the site\'s CloudFront media host.',
     reviewReference: 'Issue #10051 fuel-price batch 3',
   }),
+  gdelt: Object.freeze({
+    provider: 'api.gdeltproject.org',
+    memberHosts: Object.freeze(['api.gdeltproject.org', 'storage.googleapis.com']),
+    reason: 'GDELT serves its bulk event exports from the data.gdeltproject.org bucket on storage.googleapis.com; every reference to that host reads the GDELT bucket.',
+    reviewReference: 'PR #10100, the 2026-11-03 Ember host move that left storage.googleapis.com serving only GDELT bulk files',
+  }),
   sonabhy: Object.freeze({
     provider: 'www.sonabhy.bf',
     memberHosts: Object.freeze(['www.sonabhy.bf', 'king-prawn-app-6bsvl.ondigitalocean.app']),
@@ -207,6 +213,20 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  // Fuel-price additions (#10147, #10113). Source-level details for Gasvaktin
+  // are documented separately: raw.githubusercontent.com also hosts other data.
+  'data.ssb.no': {
+    provider: 'data.ssb.no',
+    license: 'CC BY 4.0 (SSB Public APIs and Licence pages)',
+    attribution: 'Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.',
+    status: 'reviewed',
+  },
+  'www2.moeaea.gov.tw': {
+    provider: 'www2.moeaea.gov.tw',
+    license: 'Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed',
+    attribution: 'Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.',
+    status: 'terms-review',
+  },
   // Food-price publishers (#9892) whose own terms we recorded at onboarding.
   'stat.uz': {
     provider: 'stat.uz',
@@ -251,6 +271,8 @@ const PROVIDER_OVERRIDES = {
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'doe.gov.ph': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
   'd24qbtp4vooyzi.cloudfront.net': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
+  'api.gdeltproject.org': { provider: 'api.gdeltproject.org', identityGroup: 'gdelt' },
+  'storage.googleapis.com': { provider: 'api.gdeltproject.org', identityGroup: 'gdelt' },
   'www.sonabhy.bf': { provider: 'www.sonabhy.bf', identityGroup: 'sonabhy' },
   'king-prawn-app-6bsvl.ondigitalocean.app': { provider: 'www.sonabhy.bf', identityGroup: 'sonabhy' },
   'api.adsb.lol': { provider: 'adsb.lol' },
@@ -641,7 +663,7 @@ const PROVIDER_OVERRIDES = {
     attribution: 'ENTSO-E Transparency Platform; link to the returned dataset.',
     status: 'terms-review',
   },
-  'storage.googleapis.com': {
+  'files.ember-energy.org': {
     provider: 'Ember electricity data',
     license: 'CC BY 4.0 (Ember dataset)',
     attribution: 'Ember; link to the Ember dataset and preserve its license notice.',
@@ -1045,7 +1067,10 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '785cc581308feaa92a67acce84b9624478306596051cda0006b5d9bf3f3aa401',
+  sha256: '70482112641a67ef45c4189f62eb645bb1fb5501f191ec99eb16571d7fd6e2ce',
+  // 2026-11-05 (#10147, #10113): add Statistics Norway and Taiwan oil111
+  // as distinct public fuel-price publishers; SSB is CC BY 4.0 and oil111
+  // remains in terms review.
   // 2026-11-02 (#10051): group the Philippine DOE with the CloudFront media
   // host that serves its weekly PDFs, and SONABHY with the Strapi CMS its
   // tariff page reads from.
@@ -1055,7 +1080,7 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051).',
+  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe

@@ -86,6 +86,7 @@ COPY --from=builder /app/src-tauri/sidecar/local-api-server.mjs ./local-api-serv
 COPY --from=builder /app/src-tauri/sidecar/package.json ./package.json
 COPY --from=builder /app/shared/llm-health-providers.js ./shared/llm-health-providers.js
 COPY --from=builder /app/shared/desktop-key-access.js ./shared/desktop-key-access.js
+COPY --from=builder /app/shared/selfhost-relay-paths.js ./shared/selfhost-relay-paths.js
 ENV LOCAL_API_RESOURCE_DIR=/app
 
 # Minimal runtime node_modules — required by raw .js handlers that aren't

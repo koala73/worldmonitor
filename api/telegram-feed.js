@@ -238,7 +238,7 @@ export default async function handler(req) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'GET') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'GET, OPTIONS' });
   }
 
   // Same hole #6654 closed on api/x-feed.js: isDisallowedOrigin returns false

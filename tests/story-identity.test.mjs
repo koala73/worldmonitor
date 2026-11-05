@@ -16,9 +16,16 @@ import {
   isSameStory,
   clusterTexts,
   setStoryVectorProvider,
+  setFeatureHashSalt,
+  activeFeatureHashSalt,
+  deriveFeatureHashSalt,
+  CANDIDATE_STOPWORDS,
 } from '../shared/story-identity.js';
 
-afterEach(() => setStoryVectorProvider(null));
+afterEach(() => {
+  setStoryVectorProvider(null);
+  setFeatureHashSalt(null);
+});
 
 // ── Labeled pairs (tuning ground truth) ────────────────────────────────────
 //
@@ -135,6 +142,17 @@ describe('storyVector / cosineSimilarity', () => {
 });
 
 describe('clusterTexts', () => {
+  it('still merges the labeled positives after stopwords leave the candidate index', () => {
+    const texts = POSITIVE_PAIRS.flat();
+    const clusters = clusterTexts(texts);
+    for (let i = 0; i < POSITIVE_PAIRS.length; i++) {
+      const a = i * 2;
+      const cluster = clusters.find((members) => members.includes(a));
+      assert.ok(cluster?.includes(a + 1), `positive pair ${i} must share a cluster: ${POSITIVE_PAIRS[i][0]}`);
+    }
+  });
+
+
   it('groups edit variants and keeps distinct events apart', () => {
     const texts = [
       'Iran threatens to close Strait of Hormuz if US blockade continues',
@@ -167,6 +185,55 @@ describe('clusterTexts', () => {
   });
 });
 
+describe('feature-hash salt (#4925 item 2)', () => {
+  const TITLE = 'Iran threatens to close Strait of Hormuz';
+
+  it('is unsalted by default and derives a stable non-zero seed from a salt string', () => {
+    assert.equal(activeFeatureHashSalt(), 0);
+    assert.equal(deriveFeatureHashSalt(undefined), 0);
+    assert.equal(deriveFeatureHashSalt(''), 0);
+    assert.equal(deriveFeatureHashSalt('   '), 0);
+    const seed = deriveFeatureHashSalt('deploy-secret');
+    assert.notEqual(seed, 0);
+    assert.equal(seed, deriveFeatureHashSalt('deploy-secret'));
+    assert.equal(seed, deriveFeatureHashSalt('  deploy-secret  '), 'surrounding whitespace is not part of the salt');
+    assert.notEqual(seed, deriveFeatureHashSalt('deploy-secret-2'));
+    assert.equal(setFeatureHashSalt('deploy-secret'), seed);
+    assert.equal(activeFeatureHashSalt(), seed);
+  });
+
+  it('moves every feature to a different projection, so an offline collision search is deploy-specific', () => {
+    const unsalted = storyVector(TITLE);
+    setFeatureHashSalt('deploy-secret');
+    const salted = storyVector(TITLE);
+    assert.ok(unsalted && salted);
+    const differing = Array.from(unsalted.u).filter((v, i) => Math.abs(v - salted.u[i]) > 1e-12).length;
+    assert.ok(differing > 0, 'a salt must change the projection');
+    assert.ok(Math.abs(cosineSimilarity(unsalted, salted) - 1) < 1e-9, 'lexical identity is independent of projection salt');
+    setFeatureHashSalt('deploy-secret');
+    assert.deepEqual(Array.from(storyVector(TITLE).u), Array.from(salted.u), 'same salt, same projection');
+  });
+
+  it('keeps the labeled ground truth separating under a salt', () => {
+    setFeatureHashSalt('deploy-secret');
+    for (const [a, b] of POSITIVE_PAIRS) {
+      assert.ok(isSameStory(a, b), `salted positive must merge: ${a} | ${b}`);
+    }
+    for (const [a, b] of NEGATIVE_PAIRS) {
+      assert.ok(!isSameStory(a, b), `salted negative must stay apart: ${a} | ${b}`);
+    }
+    assert.ok(Math.abs(storySimilarity(TITLE, TITLE) - 1) < 1e-9);
+  });
+
+  it('restores the unsalted hashes when cleared', () => {
+    const before = Array.from(storyVector(TITLE).u);
+    setFeatureHashSalt('deploy-secret');
+    setFeatureHashSalt(null);
+    assert.equal(activeFeatureHashSalt(), 0);
+    assert.deepEqual(Array.from(storyVector(TITLE).u), before);
+  });
+});
+
 describe('candidateTokens / normalizeStoryText', () => {
   it('drops short ASCII tokens and keeps non-ASCII with bigrams', () => {
     const toks = candidateTokens('US to cut rates 日本');
@@ -178,6 +245,34 @@ describe('candidateTokens / normalizeStoryText', () => {
 
   it('normalizeStoryText strips punctuation and collapses whitespace', () => {
     assert.equal(normalizeStoryText('  Fed — holds,  rates!  '), 'fed holds rates');
+  });
+
+  it('drops connector stopwords from the index keys but not from the vector (#4925 item 4)', () => {
+    const toks = candidateTokens('Iran says it will close the Strait of Hormuz after new sanctions');
+    for (const word of ['says', 'will', 'the', 'after', 'new']) {
+      assert.ok(CANDIDATE_STOPWORDS.has(word), `${word} is a listed stopword`);
+      assert.ok(!toks.has(word), `${word} must not become an index key`);
+    }
+    for (const word of ['iran', 'close', 'strait', 'hormuz', 'sanctions']) {
+      assert.ok(toks.has(word), `${word} must stay an index key`);
+    }
+    // Removing connector words changes the vector, even though the index drops them.
+    const a = storyVector('Iran says it will close the Strait of Hormuz');
+    const b = storyVector('Iran close Strait Hormuz');
+    assert.ok(a && b && cosineSimilarity(a, b) < 0.99);
+  });
+
+  it('two headlines that share only connector words produce no shared index key', () => {
+    const a = candidateTokens('The Fed says it will hold rates after the meeting');
+    const b = candidateTokens('The Senate says it will vote after the recess');
+    const shared = [...a].filter((t) => b.has(t));
+    assert.deepEqual(shared, []);
+  });
+
+  it('every stopword is ASCII, lowercase, at least three characters and unique', () => {
+    for (const word of CANDIDATE_STOPWORDS) {
+      assert.match(word, /^[a-z]{3,}$/, `${word} must be a lowercase ASCII token of 3+ chars (shorter ones are already dropped)`);
+    }
   });
 });
 
@@ -763,4 +858,67 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
       'a track outside the digest freshness floor must not be adopted — it is ageing out and the story would re-fork',
     );
   });
+});
+
+
+it('keeps every labeled decision stable across deployment salts', () => {
+  for (const salt of ['deploy-3', 'deploy-30', 'secret-92', 'secret-120', ...Array.from({ length: 16 }, (_, i) => `regression-deploy-${i}`)]) {
+    setFeatureHashSalt(salt);
+    for (const [a, b] of POSITIVE_PAIRS) assert.ok(isSameStory(a, b), `positive split under ${salt}: ${a}`);
+    for (const [a, b] of NEGATIVE_PAIRS) assert.ok(!isSameStory(a, b), `negative merged under ${salt}: ${a}`);
+  }
+});
+
+it('does not alias salts whose old FNV seeds shared nine low bits', () => {
+  setFeatureHashSalt('secret-92');
+  const first = storyVector('Apple unveils new AI features at WWDC keynote');
+  setFeatureHashSalt('secret-120');
+  const second = storyVector('Apple unveils new AI features at WWDC keynote');
+  assert.notDeepEqual(Array.from(first.u), Array.from(second.u));
+});
+
+it('loads the environment salt after import and freezes it on first use', async () => {
+  const previous = process.env.STORY_FEATURE_HASH_SALT;
+  delete process.env.STORY_FEATURE_HASH_SALT;
+  try {
+    const fresh = await import(`../shared/story-identity.js?lazy-env=${Date.now()}`);
+    process.env.STORY_FEATURE_HASH_SALT = 'loaded-by-loadEnvFile';
+    fresh.storyVector('A headline after environment loading');
+    assert.equal(fresh.activeFeatureHashSalt(), fresh.deriveFeatureHashSalt('loaded-by-loadEnvFile'));
+    process.env.STORY_FEATURE_HASH_SALT = 'later-edit';
+    assert.equal(fresh.activeFeatureHashSalt(), fresh.deriveFeatureHashSalt('loaded-by-loadEnvFile'));
+  } finally {
+    if (previous === undefined) delete process.env.STORY_FEATURE_HASH_SALT;
+    else process.env.STORY_FEATURE_HASH_SALT = previous;
+  }
+});
+
+it('clusters connector-only headline edits through bounded fallback keys', () => {
+  const titles = ['WHO says US must do more', 'WHO says US must do more now'];
+  assert.ok(storySimilarity(...titles) >= STORY_SIMILARITY_THRESHOLD);
+  assert.ok(candidateTokens(titles[0]).size > 0);
+  assert.deepEqual(clusterTexts(titles), [[0, 1]]);
+});
+
+
+it('clusters fallback and keyful headline edits in either input order', () => {
+  const titles = ['WHO says US must do more', 'WHO says US must do more on mpox'];
+  assert.ok(storySimilarity(...titles) >= STORY_SIMILARITY_THRESHOLD);
+  assert.deepEqual(clusterTexts(titles), [[0, 1]]);
+  assert.deepEqual(clusterTexts([...titles].reverse()), [[0, 1]]);
+});
+
+it('caps secondary candidate buckets for hot connector-only headlines', () => {
+  const titles = ['WHO says US must do more', ...Array.from({ length: 251 }, (_, i) => `WHO says US must do more on topic${i}`)];
+  assert.equal(clusterTexts(titles).length, titles.length);
+});
+
+it('clusters inflected content words when all shared words are connectors', () => {
+  const titles = [
+    'WHO says there are more reports about a new vaccination now',
+    'WHO says there are more reports about a new vaccinations now',
+  ];
+  assert.ok(storySimilarity(...titles) >= STORY_SIMILARITY_THRESHOLD);
+  assert.deepEqual(clusterTexts(titles), [[0, 1]]);
+  assert.deepEqual(clusterTexts([...titles].reverse()), [[0, 1]]);
 });

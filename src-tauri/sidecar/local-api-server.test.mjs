@@ -4405,3 +4405,938 @@ test('abort-signal path: an already-aborted signal rejects immediately without d
     });
   }
 });
+
+// ── Self-host desktop-key relay (plan 2026-11-04-001, U3 + U4) ─────────────
+// A self-hosted (docker mode) browser stores its own desktop key in an
+// HttpOnly cookie through /api/selfhost-key; the sidecar asks the cloud's
+// verdict endpoint and relays premium paths to the cloud with that key.
+
+const SELFHOST_ACTIVE_KEY = `wm_${'a'.repeat(40)}`;
+const SELFHOST_LAPSED_KEY = `wm_${'b'.repeat(40)}`;
+const SELFHOST_INVALID_KEY = `wm_${'c'.repeat(40)}`;
+const SELFHOST_OVER_CAP_KEY = `wm_${'d'.repeat(40)}`;
+const SELFHOST_API_KIND_KEY = `wm_${'e'.repeat(40)}`;
+const SELFHOST_OPERATOR_KEY = `wm_${'f'.repeat(40)}`;
+const SELFHOST_PREMIUM_PATH = '/api/market/v1/analyze-stock';
+const SELFHOST_FREE_PATH = '/api/market/v1/list-market-quotes';
+const SELFHOST_ENV_KEYS = [
+  'WORLDMONITOR_SELFHOST_RELAY',
+  'WORLDMONITOR_PUBLIC_HTTPS',
+  'WORLDMONITOR_API_KEY',
+  'WORLDMONITOR_VALID_KEYS',
+  'LOCAL_API_APP_VERSION',
+  'CONVEX_URL',
+];
+const LOCAL_ECHO_HANDLER = `export default (req) => Response.json({
+  source: 'local',
+  cookie: req.headers.get('cookie'),
+  key: req.headers.get('x-worldmonitor-key'),
+});`;
+
+async function readStream(stream) {
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+async function setupSelfHostCloud() {
+  const statusCalls = [];
+  const relayed = [];
+  const mints = [];
+  const verdicts = new Map([
+    [SELFHOST_ACTIVE_KEY, 'active'],
+    [SELFHOST_LAPSED_KEY, 'lapsed'],
+    [SELFHOST_INVALID_KEY, 'invalid'],
+    [SELFHOST_OVER_CAP_KEY, 'over_cap'],
+    [SELFHOST_API_KIND_KEY, 'not_desktop_key'],
+  ]);
+  const behavior = {
+    verdicts,
+    status: (key) => ({ code: 200, body: { verdict: verdicts.get(key) ?? 'invalid', planFamily: 'pro' } }),
+    relay: (_req, res, url) => {
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'private, max-age=60' });
+      res.end(JSON.stringify({ source: 'cloud', path: url.pathname }));
+    },
+  };
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1');
+    if (url.pathname === '/api/wm-session') mints.push(req.headers);
+    if (answerSessionMint(req, res)) return;
+    if (url.pathname === '/api/desktop-key/status') {
+      statusCalls.push({ method: req.method, headers: req.headers });
+      const answer = await behavior.status(req.headers['x-worldmonitor-key']);
+      if (answer.destroy) {
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(answer.code, { 'content-type': 'application/json', ...(answer.headers || {}) });
+      res.end(typeof answer.body === 'string' ? answer.body : JSON.stringify(answer.body));
+      return;
+    }
+    const body = await readStream(req);
+    relayed.push({ path: url.pathname, search: url.search, method: req.method, headers: req.headers, body });
+    await behavior.relay(req, res, url);
+  });
+  const port = await listen(server);
+  return {
+    statusCalls,
+    relayed,
+    mints,
+    behavior,
+    remoteBase: `http://127.0.0.1:${port}`,
+    close: () => new Promise((resolve) => {
+      server.closeAllConnections?.();
+      server.close(resolve);
+    }),
+  };
+}
+
+// Requests reach the docker sidecar through nginx, which adds the transport token.
+function selfHostRequest(port, pathname, { method = 'GET', headers = {}, body, transport = true } = {}) {
+  return new Promise((resolve, reject) => {
+    const payload = body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body));
+    const req = httpRequest({
+      hostname: '127.0.0.1',
+      port,
+      path: pathname,
+      method,
+      headers: {
+        ...(transport ? { 'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN } : {}),
+        ...(payload !== undefined ? { 'Content-Length': String(Buffer.byteLength(payload)) } : {}),
+        ...headers,
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let json = null;
+        try { json = JSON.parse(text); } catch { /* not json */ }
+        resolve({ status: res.statusCode || 0, headers: res.headers, text, json });
+      });
+    });
+    req.on('error', reject);
+    if (payload !== undefined) req.write(payload);
+    req.end();
+  });
+}
+
+function postSelfHostKey(port, key, headers = {}) {
+  return selfHostRequest(port, '/api/selfhost-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin', ...headers },
+    body: { key },
+  });
+}
+
+// A request from the install's own page over HTTPS or localhost.
+function keyCookie(key) {
+  return { Cookie: `wm-desktop-key=${key}`, 'Sec-Fetch-Site': 'same-origin' };
+}
+
+async function withSelfHostSidecar(run, { env = {}, mode = 'docker', files } = {}) {
+  const cloud = await setupSelfHostCloud();
+  const localApi = await setupApiDir(files ?? {
+    'market/v1/analyze-stock.js': LOCAL_ECHO_HANDLER,
+    'market/v1/list-market-quotes.js': LOCAL_ECHO_HANDLER,
+  });
+  const savedEnv = Object.fromEntries(SELFHOST_ENV_KEYS.map((k) => [k, process.env[k]]));
+  for (const k of SELFHOST_ENV_KEYS) delete process.env[k];
+  process.env.LOCAL_API_APP_VERSION = '9.8.7';
+  Object.assign(process.env, env);
+  const logs = [];
+  const capture = (...args) => logs.push(args.map((a) => (a instanceof Error ? `${a.message} ${a.stack}` : String(a))).join(' '));
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: cloud.remoteBase,
+    allowPrivateRemoteBase: true,
+    mode,
+    logger: { log: capture, warn: capture, error: capture },
+  });
+  const { port } = await app.start();
+  try {
+    await run({ cloud, port, logs });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await cloud.close();
+    __testing__.resetSelfHostTimings();
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+function parseSetCookie(response) {
+  const raw = response.headers['set-cookie'];
+  if (!raw) return null;
+  const [cookie] = Array.isArray(raw) ? raw : [raw];
+  const [pair, ...attributes] = cookie.split(';').map((part) => part.trim());
+  const [name, value] = pair.split('=');
+  return {
+    raw: cookie,
+    name,
+    value,
+    attributes: attributes.map((a) => a.toLowerCase()),
+  };
+}
+
+test('the nginx config the Docker image installs forwards the browser authority to /api/', () => {
+  const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+  const [, installed] = dockerfile.match(/^COPY (docker\/nginx[^\s]*\.conf[^\s]*) \/etc\/nginx\/nginx\.conf\.template$/m) ?? [];
+  assert.ok(installed, 'Dockerfile installs an nginx config');
+  const conf = readFileSync(new URL(`../../${installed}`, import.meta.url), 'utf8');
+  const apiBlock = conf.match(/location \/api\/ \{[\s\S]*?\n {4}\}/)?.[0] ?? '';
+  assert.ok(apiBlock, `${installed} has a location /api/ block`);
+  assert.match(apiBlock, /proxy_set_header X-Forwarded-Host \$http_host;/,
+    'the relay origin check needs the browser authority with its port');
+});
+
+test('ships the self-host relay path mirror with the sidecar', () => {
+  const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
+  const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+  assert.ok(config.bundle.resources.includes('../shared/selfhost-relay-paths.js'));
+  assert.match(
+    dockerfile,
+    /COPY --from=builder \/app\/shared\/selfhost-relay-paths\.js \.\/shared\/selfhost-relay-paths\.js/,
+  );
+});
+
+test('selfhost-key: POST with an active key sets an HttpOnly SameSite=Strict cookie on /api/', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const before = Date.now();
+    const response = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY);
+    assert.equal(response.status, 200);
+    assert.equal(response.json.enabled, true);
+    assert.equal(response.json.status, 'active');
+    assert.equal(response.json.stale, false);
+    assert.ok(response.json.verifiedAt >= before && response.json.verifiedAt <= Date.now());
+    assert.equal(response.headers['cache-control'], 'no-store');
+    const cookie = parseSetCookie(response);
+    assert.equal(cookie.name, 'wm-desktop-key');
+    assert.equal(cookie.value, SELFHOST_ACTIVE_KEY);
+    assert.ok(cookie.attributes.includes('httponly'));
+    assert.ok(cookie.attributes.includes('samesite=strict'));
+    assert.ok(cookie.attributes.includes('path=/api/'));
+    assert.ok(cookie.attributes.includes(`max-age=${30 * 24 * 60 * 60}`));
+    assert.ok(!cookie.attributes.includes('secure'), 'plain http without the operator flag is not Secure');
+
+    assert.equal(cloud.statusCalls.length, 1);
+    const call = cloud.statusCalls[0];
+    assert.equal(call.method, 'GET');
+    assert.equal(call.headers['x-worldmonitor-key'], SELFHOST_ACTIVE_KEY);
+    assert.equal(call.headers.origin, 'https://worldmonitor.app');
+    assert.equal(call.headers['user-agent'], 'WorldMonitor-SelfHost/9.8.7 (relay)');
+    assert.equal(call.headers.cookie, undefined);
+    assert.equal(call.headers['x-worldmonitor-local-token'], undefined);
+    assert.equal(cloud.mints.length, 0, 'the verdict call carries the key, never a minted session');
+  });
+});
+
+test('selfhost-key: the cookie is Secure behind https or with WORLDMONITOR_PUBLIC_HTTPS=1', async () => {
+  await withSelfHostSidecar(async ({ port }) => {
+    const viaHttps = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, { 'X-Forwarded-Proto': 'https' });
+    assert.ok(parseSetCookie(viaHttps).attributes.includes('secure'));
+    const viaHttp = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, { 'X-Forwarded-Proto': 'http' });
+    assert.ok(!parseSetCookie(viaHttp).attributes.includes('secure'));
+    // The bundled nginx stamps its own http scheme even behind an outer TLS
+    // proxy; the browser's https page origin still marks the cookie Secure.
+    const outerTlsOrigin = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, {
+      'X-Forwarded-Proto': 'http', Origin: 'https://dash.example',
+    });
+    assert.ok(parseSetCookie(outerTlsOrigin).attributes.includes('secure'));
+    const outerTlsReferer = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, {
+      'X-Forwarded-Proto': 'http', Referer: 'https://dash.example/settings',
+    });
+    assert.ok(parseSetCookie(outerTlsReferer).attributes.includes('secure'));
+    const plainOrigin = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, {
+      'X-Forwarded-Proto': 'http', Origin: 'http://dash.example',
+    });
+    assert.ok(!parseSetCookie(plainOrigin).attributes.includes('secure'));
+  });
+  await withSelfHostSidecar(async ({ port }) => {
+    const declared = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, { 'X-Forwarded-Proto': 'http' });
+    assert.ok(parseSetCookie(declared).attributes.includes('secure'));
+    assert.ok(parseSetCookie(declared).attributes.includes(`max-age=${30 * 24 * 60 * 60}`));
+  }, { env: { WORLDMONITOR_PUBLIC_HTTPS: '1' } });
+});
+
+test('selfhost-key: invalid and not_desktop_key verdicts clear any stored key; over_cap and lapsed keep the key', async () => {
+  await withSelfHostSidecar(async ({ port }) => {
+    for (const [key, status] of [[SELFHOST_INVALID_KEY, 'invalid'], [SELFHOST_API_KIND_KEY, 'not_desktop_key']]) {
+      // A rejected replacement must not leave an older working key behind:
+      // the browser locks on the rejection, so a later GET must not unlock
+      // again from the previous cookie.
+      const response = await postSelfHostKey(port, key, keyCookie(SELFHOST_ACTIVE_KEY));
+      assert.equal(response.status, 200);
+      assert.equal(response.json.status, status);
+      const cookie = parseSetCookie(response);
+      assert.equal(cookie.value, '', `${status} must never store the rejected key`);
+      assert.ok(cookie.attributes.includes('max-age=0'), `${status} clears the stored key`);
+    }
+    for (const [key, status] of [[SELFHOST_OVER_CAP_KEY, 'over_cap'], [SELFHOST_LAPSED_KEY, 'lapsed']]) {
+      const response = await postSelfHostKey(port, key);
+      assert.equal(response.json.status, status);
+      assert.equal(parseSetCookie(response).value, key);
+    }
+  });
+});
+
+test('selfhost-key: GET reuses a cached verdict for its TTL and asks again after it expires', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setSelfHostVerdictTtlMs(150);
+    const first = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    const second = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(first.json.status, 'active');
+    assert.equal(second.json.status, 'active');
+    assert.equal(second.json.verifiedAt, first.json.verifiedAt);
+    assert.equal(cloud.statusCalls.length, 1);
+    await sleep(200);
+    const third = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(third.json.status, 'active');
+    assert.equal(cloud.statusCalls.length, 2);
+    assert.ok(third.json.verifiedAt > first.json.verifiedAt);
+  });
+});
+
+test('selfhost-key: GET without a cookie reports none and calls nothing', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const response = await selfHostRequest(port, '/api/selfhost-key');
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.json, { enabled: true, status: 'none', stale: false, verifiedAt: null });
+    assert.equal(cloud.statusCalls.length, 0);
+  });
+});
+
+for (const outage of ['network', '503']) {
+  test(`selfhost-key: a ${outage} outage serves the cached verdict as stale with its original time`, async () => {
+    await withSelfHostSidecar(async ({ cloud, port }) => {
+      __testing__.setSelfHostVerdictTtlMs(100);
+      const posted = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY);
+      assert.equal(posted.json.status, 'active');
+      await sleep(150);
+      cloud.behavior.status = () => (outage === 'network'
+        ? { destroy: true }
+        : { code: 503, headers: { 'Retry-After': '30' }, body: { error: 'unavailable' } });
+      const stale = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+      assert.equal(stale.status, 200);
+      assert.deepEqual(stale.json, { enabled: true, status: 'active', stale: true, verifiedAt: posted.json.verifiedAt });
+
+      const unknown = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_LAPSED_KEY) });
+      assert.equal(unknown.status, 200);
+      assert.deepEqual(unknown.json, { enabled: true, status: 'unavailable', stale: false, verifiedAt: null });
+    });
+  });
+}
+
+test('selfhost-key: a cloud without the verdict route (404) reads as unavailable, never as the route 404', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    cloud.behavior.status = () => ({ code: 404, body: { error: 'Not found' } });
+    const posted = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY);
+    assert.equal(posted.status, 200);
+    assert.deepEqual(posted.json, { enabled: true, status: 'unavailable', stale: false, verifiedAt: null });
+    assert.equal(posted.headers['set-cookie'], undefined);
+    const got = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(got.status, 200);
+    assert.equal(got.json.status, 'unavailable');
+  });
+});
+
+test('selfhost-key: non-verdict cloud answers are unavailable', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const answers = [
+      { code: 200, body: 'not json' },
+      { code: 200, body: { verdict: 'granted' } },
+      { code: 200, body: { status: 'active' } },
+      { code: 403, body: { verdict: 'active' } },
+      { code: 429, headers: { 'Retry-After': '10' }, body: { error: 'rate limited' } },
+      { code: 500, body: { verdict: 'active' } },
+    ];
+    for (const answer of answers) {
+      cloud.behavior.status = () => answer;
+      const response = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY);
+      assert.equal(response.json.status, 'unavailable', JSON.stringify(answer));
+    }
+  });
+});
+
+test('selfhost-key: a malformed key is refused with no cloud call; a repeated invalid key is answered from cache', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    for (const key of ['wm_short', `wm_${'A'.repeat(40)}`, `x${SELFHOST_ACTIVE_KEY}`, '', 42]) {
+      const response = await postSelfHostKey(port, key);
+      assert.equal(response.status, 400, String(key));
+      assert.equal(response.json.status, 'invalid');
+      const cookie = parseSetCookie(response);
+      assert.equal(cookie.value, '');
+      assert.ok(cookie.attributes.includes('max-age=0'));
+    }
+    assert.equal(cloud.statusCalls.length, 0);
+    const notJson = await selfHostRequest(port, '/api/selfhost-key', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{nope',
+    });
+    assert.equal(notJson.status, 400);
+    assert.equal(cloud.statusCalls.length, 0);
+
+    assert.equal((await postSelfHostKey(port, SELFHOST_INVALID_KEY)).json.status, 'invalid');
+    assert.equal((await postSelfHostKey(port, SELFHOST_INVALID_KEY)).json.status, 'invalid');
+    assert.equal(cloud.statusCalls.length, 1);
+  });
+});
+
+test('selfhost-key: POSTs past the per-client limit get 429', async () => {
+  await withSelfHostSidecar(async ({ port }) => {
+    const client = { 'X-Real-IP': '203.0.113.7' };
+    for (let i = 0; i < 10; i++) {
+      assert.equal((await postSelfHostKey(port, 'wm_short', client)).status, 400);
+    }
+    const limited = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, client);
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers['retry-after']) > 0);
+    assert.equal(limited.headers['set-cookie'], undefined);
+    const otherClient = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, { 'X-Real-IP': '203.0.113.8' });
+    assert.equal(otherClient.status, 200);
+  });
+});
+
+test('selfhost-key: a cross-site or non-JSON POST is refused and sets no cookie', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const crossSite = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, { 'Sec-Fetch-Site': 'cross-site' });
+    assert.equal(crossSite.status, 403);
+    assert.equal(crossSite.headers['set-cookie'], undefined);
+    const sameSite = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY, { 'Sec-Fetch-Site': 'same-site' });
+    assert.equal(sameSite.status, 403);
+    const form = await selfHostRequest(port, '/api/selfhost-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `key=${SELFHOST_ACTIVE_KEY}`,
+    });
+    assert.equal(form.status, 415);
+    assert.equal(form.headers['set-cookie'], undefined);
+    const textPlain = await selfHostRequest(port, '/api/selfhost-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: { key: SELFHOST_ACTIVE_KEY },
+    });
+    assert.equal(textPlain.status, 415);
+    const crossSiteDelete = await selfHostRequest(port, '/api/selfhost-key', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...keyCookie(SELFHOST_ACTIVE_KEY), 'Sec-Fetch-Site': 'cross-site' },
+    });
+    assert.equal(crossSiteDelete.status, 403);
+    assert.equal(crossSiteDelete.headers['set-cookie'], undefined);
+    assert.equal(cloud.statusCalls.length, 0);
+
+    const noFetchMetadata = await selfHostRequest(port, '/api/selfhost-key', {
+      method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: { key: SELFHOST_ACTIVE_KEY },
+    });
+    assert.equal(noFetchMetadata.status, 200, 'a client without Sec-Fetch-Site is not refused');
+  });
+});
+
+test('selfhost-key: local handlers and the youtube cloud route never see the desktop-key cookie', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const local = await selfHostRequest(port, SELFHOST_FREE_PATH, {
+      headers: { Cookie: `theme=dark; wm-desktop-key=${SELFHOST_ACTIVE_KEY}; lang=en` },
+    });
+    assert.equal(local.json.source, 'local');
+    assert.equal(local.json.cookie, 'theme=dark; lang=en');
+    assert.equal(local.json.key, null);
+
+    const onlyKey = await selfHostRequest(port, SELFHOST_FREE_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(onlyKey.json.cookie, null);
+
+    const youtube = await selfHostRequest(port, '/api/youtube/live?channel=x', {
+      headers: { Cookie: `theme=dark; wm-session=s1; proxy_session=op; __Host-wm-pro-key=p1; wm-desktop-key=${SELFHOST_ACTIVE_KEY}` },
+    });
+    assert.equal(youtube.status, 200);
+    const call = cloud.relayed.find((c) => c.path === '/api/youtube/live');
+    assert.ok(call, 'youtube/live reached the fake cloud');
+    assert.equal(call.headers.cookie, 'wm-session=s1; __Host-wm-pro-key=p1', 'ordinary cloud fallback forwards only the wm-session cookies, never the key or operator cookies');
+    assert.notEqual(call.headers['x-worldmonitor-key'], SELFHOST_ACTIVE_KEY);
+  });
+});
+
+test('selfhost-key: DELETE clears the cookie', async () => {
+  await withSelfHostSidecar(async ({ port }) => {
+    const response = await selfHostRequest(port, '/api/selfhost-key', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Sec-Fetch-Site': 'same-origin', ...keyCookie(SELFHOST_ACTIVE_KEY) },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.json, { enabled: true, status: 'none', stale: false, verifiedAt: null });
+    const cookie = parseSetCookie(response);
+    assert.equal(cookie.name, 'wm-desktop-key');
+    assert.equal(cookie.value, '');
+    assert.ok(cookie.attributes.includes('max-age=0'));
+    assert.ok(cookie.attributes.includes('path=/api/'));
+    assert.ok(cookie.attributes.includes('httponly'));
+  });
+});
+
+test('selfhost-key: the route is absent outside docker mode', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const get = await authFetch(`http://127.0.0.1:${port}/api/selfhost-key`, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(get.status, 404);
+    const post = await authFetch(`http://127.0.0.1:${port}/api/selfhost-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: SELFHOST_ACTIVE_KEY }),
+    });
+    assert.equal(post.status, 404);
+    assert.equal(post.headers.get('set-cookie'), null);
+    const premium = await authFetch(`http://127.0.0.1:${port}${SELFHOST_PREMIUM_PATH}`, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal((await premium.json()).source, 'local');
+    assert.equal(cloud.statusCalls.length, 0);
+    assert.equal(cloud.relayed.length, 0);
+  }, { mode: 'desktop-sidecar' });
+});
+
+test('selfhost-key: the operator off switch disables the setting and the relay with no cloud call', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const disabled = { enabled: false, status: 'disabled', stale: false, verifiedAt: null };
+    const get = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(get.status, 200);
+    assert.deepEqual(get.json, disabled);
+    const post = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY);
+    assert.equal(post.status, 200);
+    assert.deepEqual(post.json, disabled);
+    assert.equal(post.headers['set-cookie'], undefined);
+    const premium = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(premium.json.source, 'local');
+    assert.equal(premium.json.cookie, null, 'the cookie is still stripped from local handlers');
+    assert.equal(cloud.statusCalls.length, 0);
+    assert.equal(cloud.relayed.length, 0);
+    assert.equal(cloud.mints.length, 0);
+  }, { env: { WORLDMONITOR_SELFHOST_RELAY: 'off' } });
+});
+
+test('selfhost-key: the raw key never reaches the log', async () => {
+  await withSelfHostSidecar(async ({ cloud, port, logs }) => {
+    __testing__.setSelfHostVerdictTtlMs(50);
+    await postSelfHostKey(port, SELFHOST_ACTIVE_KEY);
+    await postSelfHostKey(port, SELFHOST_INVALID_KEY);
+    await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    cloud.behavior.relay = (_req, res) => {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Desktop key limit reached for this account' }));
+    };
+    await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    cloud.behavior.relay = (req) => req.socket.destroy();
+    await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    await sleep(80);
+    cloud.behavior.status = () => ({ destroy: true });
+    await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.ok(logs.length > 0, 'the sequence logs something, so the check is not vacuous');
+    const all = logs.join('\n');
+    for (const key of [SELFHOST_ACTIVE_KEY, SELFHOST_INVALID_KEY]) {
+      assert.ok(!all.includes(key.slice(3)), 'a raw key appeared in the log');
+    }
+  });
+});
+
+test('relay: a premium path with the cookie goes to the cloud with only the cookie key', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const response = await selfHostRequest(port, `${SELFHOST_PREMIUM_PATH}?symbol=AAPL`, {
+      headers: {
+        ...keyCookie(SELFHOST_ACTIVE_KEY),
+        Cookie: `wm-session=local-session; wm-desktop-key=${SELFHOST_ACTIVE_KEY}`,
+        Origin: 'http://localhost',
+        'User-Agent': 'Mozilla/5.0 (Browser)',
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.json, { source: 'cloud', path: SELFHOST_PREMIUM_PATH });
+    assert.equal(cloud.relayed.length, 1);
+    const call = cloud.relayed[0];
+    assert.equal(call.path, SELFHOST_PREMIUM_PATH);
+    assert.equal(call.search, '?symbol=AAPL');
+    assert.equal(call.headers['x-worldmonitor-key'], SELFHOST_ACTIVE_KEY);
+    assert.equal(call.headers.cookie, undefined);
+    assert.equal(call.headers.origin, 'https://worldmonitor.app');
+    assert.equal(call.headers['user-agent'], 'WorldMonitor-SelfHost/9.8.7 (relay)');
+    assert.equal(call.headers['x-worldmonitor-local-token'], undefined);
+    assert.equal(call.headers.authorization, undefined);
+    assert.equal(cloud.mints.length, 0, 'a relayed call carries the key, never a minted session');
+  });
+});
+
+test('relay: browser-supplied credentials never ride along with the cookie key', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: {
+        ...keyCookie(SELFHOST_ACTIVE_KEY),
+        'X-WorldMonitor-Key': SELFHOST_LAPSED_KEY,
+        'X-Api-Key': SELFHOST_OVER_CAP_KEY,
+        Authorization: 'Bearer user.jwt.token',
+        'X-WorldMonitor-User-Authorization': 'Bearer clerk.jwt.token',
+      },
+    });
+    assert.equal(cloud.relayed.length, 1);
+    const { headers } = cloud.relayed[0];
+    assert.equal(headers['x-worldmonitor-key'], SELFHOST_ACTIVE_KEY);
+    assert.equal(headers['x-api-key'], undefined);
+    assert.equal(headers.authorization, undefined);
+    assert.equal(headers['x-worldmonitor-user-authorization'], undefined);
+  });
+});
+
+test('relay: a key with a cached inactive verdict is served locally', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_LAPSED_KEY)).json.status, 'lapsed');
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_LAPSED_KEY) });
+    assert.equal(response.json.source, 'local');
+    assert.equal(response.json.cookie, null);
+    assert.equal(cloud.relayed.length, 0);
+  });
+});
+
+test('relay: SSE streams incrementally and outlives the relay deadline', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setSelfHostRelayTimeoutMs(200);
+    let releaseSecond;
+    const secondReleased = new Promise((resolve) => { releaseSecond = resolve; });
+    cloud.behavior.relay = async (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'x-accel-buffering': 'no' });
+      res.write('data: one\n\n');
+      await secondReleased;
+      await sleep(350);
+      res.write('data: two\n\n');
+      res.end();
+    };
+    const result = await new Promise((resolve, reject) => {
+      const payload = JSON.stringify({ query: 'hi' });
+      const req = httpRequest({
+        hostname: '127.0.0.1',
+        port,
+        path: '/api/chat-analyst',
+        method: 'POST',
+        headers: {
+          'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN,
+          'Content-Type': 'application/json',
+          'Content-Length': String(Buffer.byteLength(payload)),
+          ...keyCookie(SELFHOST_ACTIVE_KEY),
+        },
+      }, (res) => {
+        let text = '';
+        let sawFirstBeforeRelease = false;
+        const guard = setTimeout(() => reject(new Error('first SSE event never arrived before the stream ended')), 3000);
+        res.on('data', (chunk) => {
+          text += chunk.toString('utf8');
+          if (text.includes('data: one') && !text.includes('data: two') && !sawFirstBeforeRelease) {
+            sawFirstBeforeRelease = true;
+            clearTimeout(guard);
+            releaseSecond();
+          }
+        });
+        res.on('end', () => { clearTimeout(guard); resolve({ status: res.statusCode, headers: res.headers, text, sawFirstBeforeRelease }); });
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.sawFirstBeforeRelease, true, 'the first event reached the client before the second was written');
+    assert.equal(result.text, 'data: one\n\ndata: two\n\n');
+    assert.equal(result.headers['content-type'], 'text/event-stream');
+    assert.equal(result.headers['x-accel-buffering'], 'no');
+    assert.equal(cloud.relayed[0].method, 'POST');
+    assert.equal(cloud.relayed[0].body, JSON.stringify({ query: 'hi' }));
+  });
+});
+
+test('relay: upstream Cache-Control passes through unchanged', async () => {
+  await withSelfHostSidecar(async ({ port }) => {
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(response.headers['cache-control'], 'private, max-age=60');
+    assert.doesNotMatch(response.headers['cache-control'], /public|s-maxage/);
+  });
+});
+
+test('relay: the cloud cannot set cookies on the self-hosted origin', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    cloud.behavior.relay = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': 'wm-session=cloud; Path=/' });
+      res.end('{}');
+    };
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers['set-cookie'], undefined);
+  });
+});
+
+test('relay: the same path without the cookie is served locally exactly as today', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: { Cookie: 'theme=dark' } });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.json, { source: 'local', cookie: 'theme=dark', key: null });
+    assert.equal(cloud.relayed.length, 0);
+    assert.equal(cloud.statusCalls.length, 0);
+  });
+});
+
+test('relay: a non-premium path with the cookie is served locally', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    const response = await selfHostRequest(port, SELFHOST_FREE_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(response.json.source, 'local');
+    assert.equal(cloud.relayed.length, 0);
+  });
+});
+
+test('relay: REST v2, MCP and OAuth paths are never relayed', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    for (const pathname of [
+      '/api/v2/shipping/route-intelligence',
+      '/api/v2/shipping/webhooks',
+      '/api/mcp',
+      '/mcp',
+      '/api/oauth/token',
+      '/api/oauth/authorize',
+    ]) {
+      await selfHostRequest(port, pathname, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    }
+    assert.deepEqual(cloud.relayed, []);
+    assert.equal(cloud.statusCalls.length, 0);
+  });
+});
+
+test('relay: operator-configured keys never appear on a relayed request', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { ...keyCookie(SELFHOST_ACTIVE_KEY), 'X-WorldMonitor-Key': 'operator-valid-key-1' },
+    });
+    assert.equal(cloud.relayed.length, 2);
+    for (const call of cloud.relayed) {
+      const serialized = JSON.stringify(call);
+      assert.ok(!serialized.includes(SELFHOST_OPERATOR_KEY), 'WORLDMONITOR_API_KEY leaked');
+      assert.ok(!serialized.includes('operator-valid-key-1'), 'a WORLDMONITOR_VALID_KEYS value leaked');
+      assert.ok(!serialized.includes('operator-valid-key-2'), 'a WORLDMONITOR_VALID_KEYS value leaked');
+      assert.equal(call.headers['x-worldmonitor-key'], SELFHOST_ACTIVE_KEY);
+    }
+  }, {
+    env: {
+      WORLDMONITOR_API_KEY: SELFHOST_OPERATOR_KEY,
+      WORLDMONITOR_VALID_KEYS: 'operator-valid-key-1,operator-valid-key-2',
+    },
+  });
+});
+
+test('relay: an upstream 429 reaches the browser unchanged', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    cloud.behavior.relay = (_req, res) => {
+      res.writeHead(429, {
+        'content-type': 'application/json',
+        'retry-after': '17',
+        'x-ratelimit-limit': '120',
+        'x-ratelimit-remaining': '0',
+      });
+      res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+    };
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(response.status, 429);
+    assert.equal(response.headers['retry-after'], '17');
+    assert.equal(response.headers['x-ratelimit-limit'], '120');
+    assert.equal(response.headers['x-ratelimit-remaining'], '0');
+    assert.deepEqual(response.json, { error: 'Rate limit exceeded' });
+  });
+});
+
+for (const denial of [
+  { status: 403, body: { error: 'Desktop key limit reached for this account' } },
+  { status: 401, body: { error: 'Invalid API key' } },
+]) {
+  test(`relay: an upstream ${denial.status} passes through and invalidates the cached verdict`, async () => {
+    await withSelfHostSidecar(async ({ cloud, port }) => {
+      assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+      assert.equal(cloud.statusCalls.length, 1);
+      cloud.behavior.relay = (_req, res) => {
+        res.writeHead(denial.status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(denial.body));
+      };
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+      assert.equal(response.status, denial.status);
+      assert.deepEqual(response.json, denial.body);
+
+      cloud.behavior.verdicts.set(SELFHOST_ACTIVE_KEY, denial.status === 403 ? 'over_cap' : 'invalid');
+      const refreshed = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+      assert.equal(cloud.statusCalls.length, 2, 'the denial dropped the cached active verdict');
+      assert.equal(refreshed.json.status, denial.status === 403 ? 'over_cap' : 'invalid');
+      assert.equal(refreshed.json.stale, false);
+
+      const local = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+      assert.equal(local.json.source, 'local', 'the new inactive verdict stops the relay');
+      assert.equal(cloud.relayed.length, 1);
+    });
+  });
+}
+
+test('relay: cloud headers slower than the generic upstream idle timeout still arrive within the relay deadline', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setUpstreamIdleTimeoutMs(100);
+    __testing__.setSelfHostRelayTimeoutMs(2000);
+    try {
+      assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+      cloud.behavior.relay = async (_req, res, url) => {
+        await sleep(400);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ source: 'cloud', path: url.pathname }));
+      };
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+      assert.equal(response.status, 200);
+      assert.equal(response.json.source, 'cloud');
+    } finally {
+      __testing__.setUpstreamIdleTimeoutMs(12000);
+    }
+  });
+});
+
+test('relay: a known inactive key stays local after its verdict goes stale', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setSelfHostVerdictTtlMs(50);
+    assert.equal((await postSelfHostKey(port, SELFHOST_LAPSED_KEY)).json.status, 'lapsed');
+    await sleep(120);
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_LAPSED_KEY) });
+    assert.equal(response.json.source, 'local');
+    assert.equal(cloud.relayed.length, 0, 'a lapsed key is not relayed once its verdict is older than the TTL');
+  });
+});
+
+test('selfhost-key: a POST during a cloud outage answers unavailable and leaves the stored cookie alone', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setSelfHostVerdictTtlMs(50);
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    await sleep(120);
+    cloud.behavior.status = () => ({ destroy: true });
+    const response = await postSelfHostKey(port, SELFHOST_ACTIVE_KEY);
+    assert.equal(response.status, 200);
+    assert.equal(response.json.status, 'unavailable');
+    assert.equal(response.json.stale, false);
+    assert.equal(response.headers['set-cookie'], undefined);
+  });
+});
+
+test('selfhost-key: a GET reports a dead key but never sets or clears the cookie', async () => {
+  // A slow GET for an old key can land after a POST stored a new one; a
+  // clearing Set-Cookie on it would delete the new key. The relay already
+  // stops on the last inactive verdict, so GET only reports.
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    for (const key of [SELFHOST_INVALID_KEY, SELFHOST_API_KIND_KEY, 'wm_short', SELFHOST_LAPSED_KEY]) {
+      const response = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(key) });
+      assert.notEqual(response.json.status, 'active');
+      assert.equal(response.headers['set-cookie'], undefined, key.slice(0, 8));
+    }
+    const relayed = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_INVALID_KEY) });
+    assert.equal(relayed.json.source, 'local', 'a key known to be invalid is never relayed');
+    assert.equal(cloud.relayed.length, 0);
+  });
+});
+
+test('relay: two different desktop-key cookies are never relayed', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    const conflicting = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}; wm-desktop-key=${SELFHOST_OPERATOR_KEY}`, 'Sec-Fetch-Site': 'same-origin' },
+    });
+    assert.equal(conflicting.json.source, 'local');
+    assert.equal(conflicting.json.cookie, null);
+    assert.equal(cloud.relayed.length, 0);
+
+    const duplicate = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}; wm-desktop-key=${SELFHOST_ACTIVE_KEY}`, 'Sec-Fetch-Site': 'same-origin' },
+    });
+    assert.equal(duplicate.json.source, 'cloud', 'the same value twice is one key');
+  });
+});
+
+test('relay: a cross-site or same-site request is served locally even with the cookie', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    const cookie = { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}` };
+    for (const site of ['cross-site', 'same-site']) {
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: { ...cookie, 'Sec-Fetch-Site': site } });
+      assert.equal(response.json.source, 'local', site);
+    }
+    assert.equal(cloud.relayed.length, 0);
+    for (const site of ['same-origin', 'none']) {
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: { ...cookie, 'Sec-Fetch-Site': site } });
+      assert.equal(response.json.source, 'cloud', site);
+    }
+  });
+});
+
+test('relay: without Fetch Metadata (plain HTTP) only a same-origin Referer relays', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    const cookie = { Cookie: `wm-desktop-key=${SELFHOST_ACTIVE_KEY}` };
+    const local = async (headers, label) => {
+      const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: { ...cookie, ...headers } });
+      assert.equal(response.json.source, 'local', label);
+    };
+    await local({}, 'no Referer');
+    await local({ Referer: 'http://192.168.1.20:3000/' }, 'a sibling app on another port');
+    await local({ Referer: 'not a url' }, 'an unparseable Referer');
+    await local({ 'X-Forwarded-Host': 'dash.example', Referer: 'http://other.example/' }, 'another host behind nginx');
+    // A proxy that sends only `Host $host` strips the port, so a page on the
+    // host's default port would look like this install: refuse instead.
+    await local({ Host: 'dash.example', 'X-Forwarded-For': '192.168.1.5', Referer: 'http://dash.example/' }, 'proxied without X-Forwarded-Host');
+    await local({ Host: 'dash.example', 'X-Real-IP': '192.168.1.5', Referer: 'http://dash.example/' }, 'X-Real-IP without X-Forwarded-Host');
+    assert.equal(cloud.relayed.length, 0);
+
+    const direct = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { ...cookie, Referer: `http://127.0.0.1:${port}/dashboard` },
+    });
+    assert.equal(direct.json.source, 'cloud', 'the sidecar reached directly: Host names the page origin');
+    const proxied = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, {
+      headers: { ...cookie, 'X-Forwarded-Host': '192.168.1.20:8080', Referer: 'http://192.168.1.20:8080/dashboard?country=US' },
+    });
+    assert.equal(proxied.json.source, 'cloud', 'behind nginx: X-Forwarded-Host names the page origin');
+  });
+});
+
+test('relay: the cloud cannot set host-wide policy headers on the self-hosted origin', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    cloud.behavior.relay = (_req, res) => {
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'strict-transport-security': 'max-age=63072000; includeSubDomains; preload',
+        'alt-svc': 'h3=":443"; ma=86400',
+      });
+      res.end('{"source":"cloud"}');
+    };
+    const response = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(response.json.source, 'cloud');
+    assert.equal(response.headers['strict-transport-security'], undefined);
+    assert.equal(response.headers['alt-svc'], undefined);
+  });
+});
+
+test('relay: an upstream timeout is a relay error, distinct from a denial, and keeps the verdict', async () => {
+  await withSelfHostSidecar(async ({ cloud, port }) => {
+    __testing__.setSelfHostRelayTimeoutMs(150);
+    assert.equal((await postSelfHostKey(port, SELFHOST_ACTIVE_KEY)).json.status, 'active');
+    cloud.behavior.relay = async (_req, res) => {
+      await sleep(600);
+      if (!res.destroyed) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{}');
+      }
+    };
+    const timedOut = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(timedOut.status, 504);
+    assert.equal(timedOut.headers['x-wm-relay-error'], 'timeout');
+    assert.equal(timedOut.json.error, 'relay_timeout');
+
+    cloud.behavior.relay = (req) => req.socket.destroy();
+    const unreachable = await selfHostRequest(port, SELFHOST_PREMIUM_PATH, { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(unreachable.status, 502);
+    assert.equal(unreachable.headers['x-wm-relay-error'], 'unreachable');
+
+    const verdict = await selfHostRequest(port, '/api/selfhost-key', { headers: keyCookie(SELFHOST_ACTIVE_KEY) });
+    assert.equal(verdict.json.status, 'active');
+    assert.equal(cloud.statusCalls.length, 1, 'a transport failure does not invalidate the verdict');
+  });
+});

@@ -91,7 +91,7 @@ export function renderMaterialEvent(event: ProjectedMaterialEvent, nowMs: number
         ${primary ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.08);color:var(--text-dim)">${escapeHtml(primary.code)}${escapeHtml(extraItems)}</span>` : ''}
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${companyHtml}</div>
+        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);overflow-wrap:break-word">${companyHtml}</div>
         ${primary ? `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(primary.description)}</div>` : ''}
       </div>
       ${timeLabel ? `<div style="flex-shrink:0;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);padding-top:1px">${escapeHtml(timeLabel)}</div>` : ''}
@@ -148,7 +148,7 @@ export class MaterialEventsPanel extends Panel {
     const now = Date.now();
     const locale = getLocale();
     const html = `
-      <div style="padding:0 14px 12px;max-height:480px;overflow-y:auto">
+      <div style="padding:0 14px 12px;">
         ${events.map((event) => renderMaterialEvent(event, now, locale)).join('')}
       </div>`;
     this.setSafeContent(unsafeRawHtml(html, 'material-events controlled panel markup — every dynamic field passes escapeHtml'));
