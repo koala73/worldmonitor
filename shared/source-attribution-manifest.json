@@ -926,6 +926,9 @@
           "path": "scripts/resolve-railway-reconcile-control.mjs"
         },
         {
+          "path": "scripts/seed-fuel-prices.mjs"
+        },
+        {
           "path": "scripts/seed-research.mjs"
         }
       ]
@@ -3106,6 +3109,20 @@
       "references": [
         {
           "path": "scripts/seed-yield-curve-ch.mjs"
+        }
+      ]
+    },
+    {
+      "host": "data.ssb.no",
+      "provider": "data.ssb.no",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (SSB Public APIs and Licence pages)",
+      "attribution": "Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },
@@ -8231,6 +8248,9 @@
         },
         {
           "path": "scripts/seed-disease-outbreaks.mjs"
+        },
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },
@@ -15388,6 +15408,20 @@
         },
         {
           "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
+        }
+      ]
+    },
+    {
+      "host": "www2.moeaea.gov.tw",
+      "provider": "www2.moeaea.gov.tw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed",
+      "attribution": "Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },
