@@ -57,7 +57,7 @@ function getRatelimit(): Ratelimit | null {
   if (!url || !token) return null;
 
   ratelimit = new Ratelimit({
-    redis: new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000),  url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000), url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW),
     prefix: 'rl',
     analytics: false,
@@ -1259,7 +1259,7 @@ function getScopedRatelimit(scope: string, limit: number, window: Duration): Rat
   if (!url || !token) return null;
 
   const rl = new Ratelimit({
-    redis: new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000),  url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000), url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(limit, window),
     prefix: 'rl:scope',
     analytics: false,

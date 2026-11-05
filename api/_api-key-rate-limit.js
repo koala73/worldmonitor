@@ -44,8 +44,8 @@ async function getRedis() {
   // `retry: false` must stay a literal (not a spread) or it widens to
   // `boolean` and fails tsconfig.api.json's RetryConfig type.
   redisSingleton = process.env.NODE_TEST_CONTEXT
-    ? new Redis({ signal: () => AbortSignal.timeout(3_000),  url, token, retry: false })
-    : new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000),  url, token });
+    ? new Redis({ signal: () => AbortSignal.timeout(3_000), url, token, retry: false })
+    : new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000), url, token });
   return redisSingleton;
 }
 /**

@@ -77,8 +77,7 @@ function getMcpRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpRatelimit = new Ratelimit({
-    redis: new Redis({
-      signal: () => AbortSignal.timeout(3_000),  url, token, retry: false }),
+    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp',
     analytics: false,
@@ -125,8 +124,7 @@ function getMcpProMinRatelimit(perMinute: number): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   const limiter = new Ratelimit({
-    redis: new Redis({
-      signal: () => AbortSignal.timeout(3_000),  url, token, retry: false }),
+    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
     limiter: Ratelimit.slidingWindow(perMinute, '60 s'),
     prefix: 'rl:mcp:pro-min',
     analytics: false,
@@ -141,8 +139,7 @@ function getMcpAnonRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpAnonRatelimit = new Ratelimit({
-    redis: new Redis({
-      signal: () => AbortSignal.timeout(3_000),  url, token, retry: false }),
+    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp:anon',
     analytics: false,
@@ -1024,8 +1021,7 @@ function getMcpFreeTierRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpFreeTierRatelimit = new Ratelimit({
-    redis: new Redis({
-      signal: () => AbortSignal.timeout(3_000),  url, token, retry: false }),
+    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
     limiter: Ratelimit.slidingWindow(FREE_TIER_LIMIT_PER_MINUTE, '60 s'),
     prefix: 'rl:mcp:free',
     analytics: false,
