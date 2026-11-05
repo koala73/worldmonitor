@@ -274,7 +274,10 @@ jobs:
             echo "❌ No screenshot captured — cannot verify rendered content"
             exit 1
           fi
-          COLORS=$(identify -verbose screenshot.png 2>/dev/null | grep "Colors:" | awk '{print $2}')
+          # %k always counts unique colors. `identify -verbose` prints "Colors:"
+          # only for images with <=1024 colors, so a richer render made the
+          # grep miss and pipefail killed the step before this gate ran.
+          COLORS=$(identify -format '%k' screenshot.png 2>/dev/null || echo 0)
           echo "Screenshot unique colors: ${COLORS:-unknown}"
           if [ "${COLORS:-0}" -le 5 ]; then
             echo "❌ Screenshot appears blank (only ${COLORS:-0} colors). App did not render."

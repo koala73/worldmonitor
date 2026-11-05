@@ -2,13 +2,22 @@
 // Weekly CI health scan: four deterministic detectors over the workflows that
 // gate merges, each finding kept as one rolling GitHub issue.
 //
-//   flaky     a job failed, then passed when the same run was re-run
+//   flaky     a job failed, then passed when the same run was re-run. Pull
+//             request runs count: a re-run tests the same commit, so a flip is
+//             a flake whatever the branch. The failed attempt's log names the
+//             failing tests, and a flake whose named test files have all
+//             changed on main since it failed is not reported, unless the log
+//             came from a fork, which writes its own (#10013, #10016
+//             were filed days after their fixes merged). A recurrence after
+//             that change is newer than it, so it is reported.
 //   timeout   a job on a push to main was cancelled after running 10+ minutes
 //             (push runs on main are not superseded, so this is a job timeout;
 //             unit-shard (5) hung silently for 14 minutes on 2098d920ae)
 //   failing   a workflow's two newest decided runs on main both failed
 //   slower    a job's median time on successful main runs rose 20% and 30s+
-//             week over week. Samples come from 15 runs per week, so a
+//             week over week. Samples are 15 runs spread across each week: the
+//             15 newest are one busy day, and runner speed alone moves a job
+//             between ~125s and ~175s from one day to the next (#10018). A
 //             path-filtered job that ran in fewer than 5 of them is not judged;
 //             covering those would mean reading every main run's jobs.
 //
@@ -42,6 +51,60 @@ const MAIN_LISTING_SIZE = 30;
 // never excused this way, however fast they fail.
 const DEPENDENT_FAILURE_SECONDS = 15;
 export const SLOWDOWN = { ratio: 1.2, minSeconds: 30, minSamples: 5, samplesPerWindow: 15 };
+// Failed-attempt logs read per scan, newest flakes first. Each is one API call
+// plus one lookup per named test file.
+const FLAKE_LOGS_PER_SCAN = 40;
+const TESTS_PER_EVIDENCE = 5;
+const FILES_PER_ATTRIBUTION = 20;
+const ASSOCIATION_LOOKUPS = 3;
+// A test path from a fork-controlled log is copied into an issue body, which
+// GitHub rejects above 65,536 characters. Real paths here stay under 120.
+const MAX_TEST_PATH = 200;
+
+// `count` runs spread evenly over `runs` ordered by creation time, oldest
+// first, always keeping the oldest and the newest.
+export function spreadSample(runs, count) {
+  const ordered = [...runs].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  if (ordered.length <= count) return ordered;
+  if (count === 1) return [ordered.at(-1)];
+  return Array.from({ length: count }, (_, index) => ordered[Math.round(index * (ordered.length - 1) / (count - 1))]);
+}
+
+// A repo-relative test path and line, or nothing. Logs are fork-controlled on
+// pull_request runs, so only this exact shape ever reaches an issue: a plain
+// top-level directory (tests are spread over a dozen, src-tauri/ and
+// consumer-prices-core/ among them), no scheme, no `..`, no markup.
+const TEST_PATH = /^[a-z][\w-]*\/(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.(?:test|spec)\.[cm]?[jt]sx?(?::\d+(?::\d+)?)?$/;
+const FAILING_TEST_PATTERNS = [
+  // node:test, in its "failing tests:" summary
+  /^test at (\S+)$/,
+  // scripts/run-data-tests.mjs watchdog
+  /^Data test file still running after --file-timeout=\d+ms \(a test hung or a handle was left open\): (\S+)$/,
+  // Playwright list reporter: "  1) [chromium] › e2e/x.spec.ts:474:3 › title"
+  /^\d+\) \[[\w-]+\] › (\S+) ›/,
+  // vitest: " FAIL  tests/dom/x.test.mts > suite > test"
+  /^FAIL\s+(\S+)(?:\s|$)/,
+];
+
+export function parseFailingTests(log) {
+  const found = new Set();
+  for (const raw of String(log).split('\n')) {
+    // Strip the runner's timestamp prefix and colour codes.
+    const line = raw.replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/, '').replace(/\x1b\[[\d;]*m/g, '').trim();
+    for (const pattern of FAILING_TEST_PATTERNS) {
+      const path = pattern.exec(line)?.[1]?.replace(/^\.\//, '');
+      if (path && path.length <= MAX_TEST_PATH && TEST_PATH.test(path)) found.add(path);
+    }
+  }
+  // Prefer file:line entries; drop a bare file when a line entry names it.
+  return [...found].filter((path) => path.includes(':') || ![...found].some((other) => other.startsWith(`${path}:`)));
+}
+
+function runOrigin(run) {
+  if (run.event === 'push' && run.head_branch === 'main') return 'main';
+  if (run.event === 'pull_request') return 'pull request';
+  return safeLabel(run.event ?? 'unknown');
+}
 
 export function median(values) {
   if (!values.length) return null;
@@ -89,20 +152,97 @@ export function findFlakyJobs(reruns) {
     const final = attempts.at(-1) ?? [];
     for (const job of final) {
       if (job.conclusion !== 'success') continue;
-      const failedAt = attempts.slice(0, -1).findIndex((jobs) => jobs.some((earlier) => (
-        earlier.name === job.name && earlier.conclusion === 'failure' && !inheritedFailure(earlier, jobs)
-      )));
+      const isOwnFailure = (earlier, jobs) => earlier.name === job.name && earlier.conclusion === 'failure' && !inheritedFailure(earlier, jobs);
+      const failedAt = attempts.slice(0, -1).findIndex((jobs) => jobs.some((earlier) => isOwnFailure(earlier, jobs)));
       if (failedAt === -1) continue;
+      // Every failed attempt of this job: each can fail in a different test.
+      const failedJobIds = attempts.slice(0, -1)
+        .flatMap((jobs) => jobs.filter((earlier) => isOwnFailure(earlier, jobs)))
+        .map((earlier) => earlier.id)
+        .filter(Boolean);
       const workflow = safeLabel(run.name);
       const name = safeLabel(job.name);
       addFinding(findings, {
         kind: 'flaky',
         title: `CI health (flaky): ${workflow} / ${name}`,
         summary: `\`${name}\` in **${workflow}** failed, then passed when the same commit was re-run.`,
-      }, evidence(run, `failed on attempt ${failedAt + 1}, passed on attempt ${attempts.length}`));
+      }, {
+        ...evidence(run, `${runOrigin(run)}: failed on attempt ${failedAt + 1}, passed on attempt ${attempts.length}`),
+        failedJobIds,
+        pullRequests: (run.pull_requests ?? []).map((pull) => pull.number).filter(Number.isSafeInteger),
+        // A fork's job log is the contributor's own text: it may name tests in
+        // the issue but never decides that a flake was fixed. Unknown
+        // provenance counts as a fork.
+        trustedLog: Boolean(run.repository?.full_name) && run.head_repository?.full_name === run.repository.full_name,
+      });
     }
   }
   return [...findings.values()];
+}
+
+// Name each flake's failing tests from its failed attempt's log, and drop a
+// flake whose named test files have all changed on main since it failed.
+//   readLog(jobId) -> log text (throws when unreadable)
+//   changeSince(file, iso, pullRequests) -> short sha of the first main commit
+//     touching `file` at or after `iso`, ignoring the merge of the flaking pull
+//     request itself, or null
+// A row whose log or history is unreadable, or whose log names no test, is
+// kept: without a name there is nothing to prove the flake was addressed. So is
+// a row from a fork, whose log the contributor writes and could fill with any
+// recently changed test.
+export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_LOGS_PER_SCAN }) {
+  const rows = findings.filter((finding) => finding.kind === 'flaky')
+    .flatMap((finding) => finding.evidence)
+    .filter((row) => row.failedJobIds?.length)
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    .slice(0, limit);
+  const warnings = [];
+  for (const row of rows) {
+    // Every failed attempt must name its tests before any can be called fixed.
+    const tests = new Set();
+    let attributed = true;
+    for (const jobId of row.failedJobIds) {
+      let named;
+      try {
+        named = parseFailingTests(readLog(jobId));
+      } catch (error) {
+        warnings.push(`log for job ${jobId} unreadable: ${safeLabel(error.message)}`);
+        attributed = false;
+        continue;
+      }
+      if (!named.length) attributed = false;
+      named.forEach((test) => tests.add(test));
+    }
+    if (!tests.size) continue;
+    const shown = [...tests].slice(0, TESTS_PER_EVIDENCE);
+    const more = tests.size - shown.length;
+    row.detail += ` · failing: ${shown.map((test) => `\`${test}\``).join(', ')}${more ? ` and ${more} more` : ''}`;
+    if (!attributed || !row.trustedLog) continue;
+    // The display is capped; the decision reads every named file.
+    const files = [...new Set([...tests].map((test) => test.replace(/:\d+(?::\d+)?$/, '')))];
+    // A mass failure is a broken run, not one flake: keep it rather than spend
+    // a history lookup per file.
+    if (files.length > FILES_PER_ATTRIBUTION) continue;
+    const changes = files.map((file) => {
+      try {
+        return changeSince(file, row.at, row.pullRequests ?? []);
+      } catch (error) {
+        warnings.push(`history of ${file} unreadable: ${safeLabel(error.message)}`);
+        return null;
+      }
+    });
+    if (changes.every(Boolean)) {
+      row.changedSince = [...new Set(changes)];
+      row.detail += ` · changed on main since: ${row.changedSince.map((sha) => `\`${sha}\``).join(', ')}`;
+    }
+  }
+  const kept = [];
+  const skipped = [];
+  for (const finding of findings) {
+    if (finding.kind === 'flaky' && finding.evidence.every((row) => row.changedSince)) skipped.push(finding.title);
+    else kept.push(finding);
+  }
+  return { findings: kept, skipped, warnings };
 }
 
 // mainAttempts: [{ run, attempt, jobs }] for push runs on main
@@ -189,13 +329,18 @@ export function syncIssues({ findings, issues, generatedAt }) {
   const actions = [];
   for (const finding of findings) {
     const body = formatIssueBody(finding, generatedAt);
-    const open = issues.search(finding.title);
-    if (open) {
-      issues.update(open.number, body);
-      actions.push({ action: 'updated', number: open.number, title: finding.title });
-    } else {
-      const created = issues.create(finding.title, body);
-      actions.push({ action: 'created', number: created.number, title: finding.title });
+    // One rejected write must not drop every finding after it.
+    try {
+      const open = issues.search(finding.title);
+      if (open) {
+        issues.update(open.number, body);
+        actions.push({ action: 'updated', number: open.number, title: finding.title });
+      } else {
+        const created = issues.create(finding.title, body);
+        actions.push({ action: 'created', number: created.number, title: finding.title });
+      }
+    } catch (error) {
+      actions.push({ action: 'failed', number: null, title: finding.title, error: safeLabel(error.message) });
     }
   }
   return actions;
@@ -308,7 +453,8 @@ export function collect({ gh, repository, now }) {
       ['current', main.filter((item) => Date.parse(item.created_at) >= currentStart)],
       ['previous', main.filter((item) => Date.parse(item.created_at) < currentStart)],
     ]) {
-      for (const run of runs.slice(0, SLOWDOWN.samplesPerWindow)) {
+      // Newest first: a finding links the first sample it saw.
+      for (const run of spreadSample(runs, SLOWDOWN.samplesPerWindow).reverse()) {
         for (const job of attemptJobs(run, 1)) {
           const seconds = jobSeconds(job);
           if (job.conclusion !== 'success' || seconds === null) continue;
@@ -317,14 +463,34 @@ export function collect({ gh, repository, now }) {
       }
     }
   }
-  return [...failing, ...findTimeouts(mainAttempts), ...findFlakyJobs(reruns), ...findSlowdowns(samples)];
+  const all = [...failing, ...findTimeouts(mainAttempts), ...findFlakyJobs(reruns), ...findSlowdowns(samples)];
+  return attributeFlakes(all, {
+    // The log endpoint answers raw text that may carry colour codes, which gh
+    // refuses to print unless told to.
+    readLog: (jobId) => gh(['api', '--allow-escape-sequences', `repos/${repository}/actions/jobs/${jobId}/logs`]),
+    changeSince: (file, iso, pullRequests) => {
+      const commits = api(gh, `repos/${repository}/commits?sha=main&path=${encodeURIComponent(file)}&since=${encodeURIComponent(iso)}&per_page=20`);
+      const ownSubject = (message) => pullRequests.some((number) => String(message ?? '').split('\n')[0].includes(`(#${number})`));
+      // Oldest first: the first change after the flake that is not the flaking
+      // pull request's own merge. A merge subject may lack `(#N)`, so ask
+      // GitHub which pull requests each candidate belongs to, a few at most;
+      // an unresolved candidate keeps the flake reported.
+      const candidates = commits.filter((commit) => !ownSubject(commit.commit?.message)).reverse();
+      if (!pullRequests.length) return candidates[0]?.sha.slice(0, 10) ?? null;
+      for (const commit of candidates.slice(0, ASSOCIATION_LOOKUPS)) {
+        const pulls = api(gh, `repos/${repository}/commits/${commit.sha}/pulls`);
+        if (!pulls.some((pull) => pullRequests.includes(pull.number))) return commit.sha.slice(0, 10);
+      }
+      return null;
+    },
+  });
 }
 
 export function checkCiHealth({ gh = defaultGh, repository, now = Date.now(), dryRun = false, issues } = {}) {
-  const findings = collect({ gh, repository, now });
+  const { findings, skipped, warnings } = collect({ gh, repository, now });
   const generatedAt = new Date(now).toISOString();
   const actions = dryRun ? [] : syncIssues({ findings, issues: issues ?? githubIssues(gh, repository), generatedAt });
-  return { findings, actions };
+  return { findings, actions, skipped, warnings };
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {
@@ -336,12 +502,19 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     },
   });
   try {
-    const { findings, actions } = checkCiHealth({ repository: values.repo, dryRun: values['dry-run'] });
+    const { findings, actions, skipped, warnings } = checkCiHealth({ repository: values.repo, dryRun: values['dry-run'] });
     if (values.output) writeFileSync(values.output, `${JSON.stringify(findings, null, 2)}\n`);
     const lines = findings.length
       ? findings.map((finding) => `- ${finding.title} (${finding.evidence.length} occurrence${finding.evidence.length === 1 ? '' : 's'})`)
       : ['- No findings.'];
-    for (const action of actions) lines.push(`- ${action.action} #${action.number}: ${action.title}`);
+    for (const title of skipped) lines.push(`- not reported, its failing tests changed on main since: ${title}`);
+    for (const warning of warnings) lines.push(`- warning: ${warning}`);
+    for (const action of actions) {
+      lines.push(action.action === 'failed'
+        ? `- failed to sync: ${action.title} (${action.error})`
+        : `- ${action.action} #${action.number}: ${action.title}`);
+    }
+    if (actions.some((action) => action.action === 'failed')) process.exitCode = 1;
     console.log(lines.join('\n'));
     if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## CI health\n\n${lines.join('\n')}\n`);
   } catch (error) {

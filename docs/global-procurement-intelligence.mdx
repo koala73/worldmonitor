@@ -34,8 +34,11 @@ The adapters read official public procurement sources:
 | Pakistan EPADS (`pakistan-epads`) | Pakistan | Up to 20 federal procurement notices. Exact local timestamps come from the list; countdown rows use the official detail page’s Unix deadline. |
 | Georgia SPA (`georgia-spa`) | Georgia | First public announced-tenders page, up to 20 detail reads. Only announced or bidding-commenced notices with an exact closing time are accepted. |
 | Armenia ARMEPS (`armenia-armeps`) | Armenia | Up to 10 details from the tender-submission search. Awarded notices are excluded; missing estimated values stay absent. |
+| Albania APP (`albania-app`) | Albania | The current year's official published-procedures CSV export, regenerated daily (the previous year is also read from January through March, while its late-year procedures can still be open). Cancelled, suspended and awarded procedures and rows without a closing date are excluded. APP has no public per-procedure page, so notices link to the official export page. |
+| Dominican Republic DGCP (`dominican-republic-dgcp`) | Dominican Republic | Up to two pages of 200 processes from the open-data API, newest first. Only `Proceso publicado` processes with a closing timestamp and an official `comprasdominicana.gob.do` link are accepted. |
+| Malaysia MyProcurement (`malaysia-myprocurement`) | Malaysia | One JSON page of up to 100 current federal tender adverts. Each card needs an official detail link, agency, invitation date and closing date; `Tiada Maklumat` prices stay absent. |
 
-These are samples of upstream catalogues, not exhaustive national coverage. Each added source has a 75-second request budget, no in-run retries and at most four concurrent detail reads. Most requests have a 15-second timeout; PNCP has 30 seconds and the ARMEPS search has up to 50 seconds within the shared budget. The hourly Railway schedule limits Kenya to one request per run. Bulgaria and Latvia use the previous day's archive to allow publication time. Local closing times are converted using the publisher's time zone. Missing closing dates or times are not inferred. Raw staff, contact-point, supplier and bidder objects are never stored in the canonical snapshot.
+These are samples of upstream catalogues, not exhaustive national coverage. Each added source has a 75-second request budget, no in-run retries and at most four concurrent detail reads. Most requests have a 15-second timeout; PNCP has 30 seconds, the ARMEPS search has up to 50 seconds and the Albania CSV export (about 7.6 MB by November, served at roughly 160 KB/s; two concurrent year exports measured 60 seconds) has up to 70 seconds within the shared budget. The hourly Railway schedule limits Kenya to one request per run. Bulgaria and Latvia use the previous day's archive to allow publication time. Local closing times are converted using the publisher's time zone. Missing closing dates or times are not inferred. Albania and Malaysia publish closing dates without a time; as with TED's date-only deadlines, those notices are kept at the start of the closing day in the publisher's time zone and leave the open feed at local midnight before their real closing hour, never after it. Dominican Republic timestamps are used as the API publishes them, with a UTC suffix. Raw staff, contact-point, supplier and bidder objects are never stored in the canonical snapshot.
 
 The added sources use the same source, country, buyer, category, value, date and technology-relevance filters in the panel, RPC and MCP tool. No new credentials are required.
 
@@ -57,7 +60,7 @@ Per-source state, record counts, retrieval-attempt time, last-success time, and 
 
 World Bank requests cover a sample of up to 100 notices, not the full upstream catalogue. Each request can make three attempts, including response-body reading, with a 20-second attempt timeout and 5- and 10-second retry delays. All attempts and `Retry-After` waits share a 75-second budget. A failed body read can retry; missing or malformed notices and incomplete declared result windows cannot become an empty success.
 
-World Bank, Contracts Finder and the thirteen added sources retain usable open notices only within 24 hours of the source's last success. Failed attempts and successful aggregate publications do not renew that source clock. A valid empty response clears prior records; a failed request remains a source error, including when the last successful result was empty. If the seeder cannot read the previous canonical snapshot, it preserves the existing publication instead of treating the read failure as missing data. Aggregate completion is not proof that every source succeeded; failed sources remain visible in health and are attempted on the normal hourly cadence.
+World Bank, Contracts Finder and the sixteen added sources retain usable open notices only within 24 hours of the source's last success. Failed attempts and successful aggregate publications do not renew that source clock. A valid empty response clears prior records; a failed request remains a source error, including when the last successful result was empty. If the seeder cannot read the previous canonical snapshot, it preserves the existing publication instead of treating the read failure as missing data. Aggregate completion is not proof that every source succeeded; failed sources remain visible in health and are attempted on the normal hourly cadence.
 
 ### Remaining sources from issue #9840
 
@@ -78,6 +81,12 @@ The [source proposal](https://github.com/koala73/worldmonitor/issues/9840) inclu
 | Bahrain Tender Board | Public HTML was reachable, but its signed list/detail requests and exact closing-time response remain unverified. |
 | Kuwait CAPT | The linked endpoint returned HTTP 403. |
 | Jordan JONEPS | Public list rows were reachable, but the detail route returned an empty form. Its form-submission contract and exact closing time remain unverified. |
+
+### Not implemented from issue #10052
+
+| Source | Current limit |
+| --- | --- |
+| Vietnam e-GP muasamcong | The contractor-selection search (`services/smart/search`) is called with a reCAPTCHA v3 token minted in the browser. A keyless seeder would have to bypass that bot check, so the portal is not read. Checked 2026-11-02. |
 | Mexico Postor / ComprasMX | The third-party index exposes NDJSON bulk lots. A bounded current-opportunity import with official notice provenance is still required. |
 | Nigeria NOCOPO via OCP | Third-party annual/all-time JSONL archives need a bounded import and official notice-link verification. |
 | Bangkok BMA via OCP | Third-party annual/all-time JSONL archives need a bounded import and official notice-link verification. |

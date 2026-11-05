@@ -28,3 +28,19 @@ from every page of the FCCC release PDFs.
 User-Agent. It holds the worksheet's cell values: the title and header rows,
 the newest 40 dated rows and the source and note rows. Dates are stored as
 `{ "date": ISO }`; the tests rebuild a workbook from these rows.
+
+Batch 3 fixtures (#10051) were captured on 2026-11-02 with the WorldMonitor
+User-Agent. `qatarenergy-items.json`, `erb-items-2026-11.json`,
+`anptl-items-2026-10-20.json` and `doe-ncr-items-2026-10-27.json` hold the text
+items extracted from every page of the provider PDFs. `erb-posts.json`,
+`anptl-posts.json`, `anptl-post-12450.json`, `npa-media-*.json` and
+`sonabhy-tarifs.json` are unmodified REST responses. `npa-expump-2026-10-16.json`
+holds the newest sheet of the ex-pump workbook and
+`npa-indicators-2026-10-20.json` the indicator sheet, as cell values with dates
+stored as `{ "date": ISO }`; the tests rebuild workbooks from these rows.
+`sonabhy-page.html` keeps only the page's Nuxt state script tag and
+`sonabhy-state.js` is that state. `zera-home.html` is trimmed to the price
+widget, `creg-page.html` to the three newest price tables, `doe-ncr-page.html`
+to the payload fragments that link each weekly PDF, and the three `ursea-*.html`
+pages to their `<main>` element. Each HTML fixture starts with a comment naming
+its source URL.

@@ -175,7 +175,7 @@
       "aviationSource": "Luftfahrtüberwachung",
       "hazardSource": "Länder-Aufklärungssignale",
       "marketSource": "Nationaler Marktindex",
-      "ccfiSource": "Shanghai Shipping Exchange",
+      "ccfiSource": "Shanghaier Schifffahrtsbörse",
       "comtradeSource": "UN Comtrade, Berichtsland 156",
       "sourceUnavailable": "Quelle nicht verfügbar",
       "policyUnavailable": "Nicht verfügbar",
@@ -305,7 +305,7 @@
   },
   "header": {
     "world": "WELT",
-    "tech": "TECH",
+    "tech": "TECHNIK",
     "live": "LIVE",
     "search": "Suche",
     "settings": "EINSTELLUNGEN",
@@ -387,7 +387,6 @@
     "liveNews": "Live-Nachrichten",
     "markets": "Märkte",
     "map": "Globale Lage",
-    "techMap": "Globale Tech",
     "status": "Systemstatus",
     "insights": "KI-Insights",
     "strategicPosture": "KI-Strategische Haltung",
@@ -433,7 +432,7 @@
     "vcblogs": "Venture-Capital-Insights & Essays",
     "regionalStartups": "Globale Startup-Nachrichten",
     "unicorns": "Einhorn-Tracker",
-    "accelerators": "Accelerators & Demo Days",
+    "accelerators": "Accelerators & Demo-Days",
     "security": "Cybersicherheit",
     "policy": "KI-Politik & Regulierung",
     "regulation": "KI-Regulierungs-Dashboard",
@@ -459,7 +458,7 @@
     "gulfIndices": "Golf-Indizes",
     "gulfCurrencies": "Golf-Währungen",
     "gulfOil": "Golf-Öl",
-    "bigmac": "Real Big Mac Index",
+    "bigmac": "Echter Big-Mac-Index",
     "marketImplications": "KI-Marktauswirkungen",
     "energyComplex": "Energiekomplex",
     "oilInventories": "Ölbestände",
@@ -634,7 +633,7 @@
       "seeAllCommands": "Alle Befehle anzeigen",
       "hideCommandList": "Zurück",
       "flightOnGround": "Am Boden",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} kn",
       "flightMilitary": "Militär · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Militär · {{type}} · am Boden",
       "flightSearchHint": "Drücken Sie die Eingabetaste oder klicken Sie, um die aktuelle Position nachzuschlagen",
@@ -918,7 +917,12 @@
         "permissive": "Permissiv",
         "undefined": "Undefiniert"
       },
-      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen."
+      "infoTooltip": "<strong>Regulierung</strong> Regulierungsmaßnahmen, Politikänderungen und Durchsetzungsaktualisierungen von globalen Regulierungsbehörden: Finanz-, Technologie-, Energie- und Handelsbehörden. Quelle: offizielle Regierungs- und Regulierungspublikationen.",
+      "latestActions": "Zuletzt aufgezeichnete Maßnahmen",
+      "otherDeadlines": "Weitere Compliance-Fristen",
+      "daysAgo": "Tage her",
+      "revokedCount": "Widerrufene Vorschriften ({{count}})",
+      "lapsedCount": "Hinfällige Vorschläge ({{count}})"
     },
     "economic": {
       "indicators": "Indikatoren",
@@ -984,7 +988,10 @@
       "stageUnavailable": "Keine veröffentlichten Zahlen für diese Stufe",
       "withheldNote": "W = einbehalten",
       "productionCaption": "Länderanteile der tatsächlichen Produktion. Die Karte zeigt in der Depositen-Ebene, wo sich Rohstoffe befinden; diese Tabelle zeigt, wer sie abbaut oder verarbeitet.",
-      "productionProLocked": "Upgrade auf PRO für Bergbau- und Raffinerie-Länderanteile mit Konzentration (Produzentenkonzentrationsindex) nach Stufe."
+      "productionProLocked": "Upgrade auf PRO für Bergbau- und Raffinerie-Länderanteile mit Konzentration (Produzentenkonzentrationsindex) nach Stufe.",
+      "partialTransitCoverage": "Transitdaten nicht verfügbar: {{names}}",
+      "oilPipelinesUnavailable": "Ölpipeline-Daten nicht verfügbar",
+      "gasPipelinesUnavailable": "Gaspipeline-Daten nicht verfügbar"
     },
     "tradePolicy": {
       "tariffs": "Zölle",
@@ -1071,26 +1078,10 @@
       "resetView": "Ansicht zurücksetzen",
       "legend": {
         "title": "LEGENDE",
-        "startupHub": "Startup-Hub",
-        "techHQ": "Tech-Zentrale",
-        "accelerator": "Accelerator",
-        "cloudRegion": "Cloud-Region",
-        "datacenter": "Rechenzentrum",
-        "stockExchange": "Börse",
-        "financialCenter": "Finanzzentrum",
-        "centralBank": "Zentralbank",
-        "commodityHub": "Rohstoffzentrum",
-        "waterway": "Wasserstraße",
         "highAlert": "Hohe Warnstufe",
         "elevated": "Erhöht",
         "monitoring": "Überwachung",
-        "base": "Basis",
-        "nuclear": "Nuklear",
-        "aircraft": "Flugzeuge",
-        "miningSite": "Bergbaustandort",
-        "commodityPort": "Rohstoffhafen",
         "pipeline": "Pipeline",
-        "processingPlant": "Verarbeitungsanlage",
         "conflict": "Konfliktzone",
         "diseaseAlert": "Krankheitsalarm",
         "diseaseWarning": "Krankheitswarnung",
@@ -1145,8 +1136,8 @@
         "renewableInstallations": "Saubere Energie",
         "radiationSpike": "Strahlungsspitze",
         "radiationElevated": "Erhöhte Strahlung",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts",
+        "canadaRoads": "Kanada-Straßen",
+        "canadaAlerts": "Kanada-Warnungen",
         "notamAirspace": "NOTAM-Luftraumbeschränkungen",
         "no2Activity": "Industrielle Aktivität"
       },
@@ -1282,7 +1273,7 @@
     "climate": {
       "noAnomalies": "Keine wesentlichen Anomalien festgestellt",
       "zone": "Zone",
-      "temp": "Temp",
+      "temp": "Temp.",
       "precip": "Niederschlag",
       "severityLabel": "Schweregrad",
       "severity": {
@@ -1437,7 +1428,7 @@
         "air": "LUFT",
         "sea": "SEE"
       },
-      "strike": "STRIKE",
+      "strike": "ANGRIFF",
       "staleWarning": "Zwischengespeicherte Daten verwendet — Live-Feed vorübergehend nicht verfügbar",
       "updated": "Aktualisiert:",
       "theaters": {
@@ -1466,7 +1457,7 @@
       "all": "Alle",
       "conferencesCount": "{{count}} Konferenzen",
       "onMap": "{{count}} auf der Karte",
-      "techmemeEvents": "Techmeme Events ↗",
+      "techmemeEvents": "Techmeme-Termine ↗",
       "today": "HEUTE",
       "soon": "BALD",
       "infoTooltip": "<strong>Tech-Veranstaltungen</strong> Bevorstehende und aktuelle Technologieveranstaltungen: Konferenzen, Produkteinführungen, regulatorische Anhörungen und Earnings Calls. Aggregiert aus offiziellen Veranstaltungskalendern und Branchenquellen."
@@ -1720,7 +1711,7 @@
       "empty": "Keine Beiträge verfügbar",
       "disabled": "X-Nachrichtenkonto-Relay nicht aktiv",
       "filterAll": "Alle",
-      "filterBreaking": "Breaking",
+      "filterBreaking": "Eilmeldungen",
       "filterConflict": "Konflikt",
       "filterOsint": "Open-Source-Geheimdienstarbeit",
       "filterMiddleeast": "Naher Osten",
@@ -1752,7 +1743,7 @@
       "undisclosed": "Nicht bekannt gegeben",
       "sectors": {
         "ports": "Häfen",
-        "pipelines": "Pipelines",
+        "pipelines": "Rohrleitungen",
         "energy": "Energie",
         "datacenters": "Rechenzentren",
         "airports": "Flughäfen",
@@ -1930,7 +1921,7 @@
       "overall": "Gesamt",
       "verdict": {
         "buy": "KAUFEN",
-        "cash": "CASH"
+        "cash": "BARGELD"
       },
       "bullish": "{{count}}/{{total}} bullisch",
       "signals": {
@@ -1938,7 +1929,7 @@
         "flow": "Mittelfluss",
         "regime": "Regime",
         "btcTrend": "BTC-Trend",
-        "hashRate": "Hash Rate",
+        "hashRate": "Hashrate",
         "fearGreed": "Angst & Gier",
         "momentum": "Momentum"
       },
@@ -2311,20 +2302,21 @@
       "proLocked": "Upgraden Sie auf PRO für Rohstoff-Anfälligkeitsbewertung"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> Live-Schiffsverfolgung durch die Straße von Hormuz, einem der weltweit kritischsten Ölengpässe. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Durchsatzveränderungen. Etwa 20% des globalen Ölvorrats durchlaufen täglich diesen Engpass.",
+      "infoTooltip": "<strong>Hormuz-Handels-Tracker</strong> – tägliche Versandindizes der WTO DataLab für die Straße von Hormuz: Rohöl, LNG und Düngemittel, das den Golf verlässt, sowie landwirtschaftliche Waren, die ankommen. Nach Volumen, Durchschnitt Januar–März 2025 = 100, nur AIS-sichtbare Schiffe. Status und Datum stammen aus der neuesten Analyse der WTO.",
       "title": "Hormuz-Handels-Tracker",
       "noData": "Keine Daten",
       "notAvailable": "N/V",
       "chartUnavailable": "Chartdaten nicht verfügbar",
       "sourcePrefix": "Quelle:",
       "units": {
-        "ktPerDay": "kt/Tag",
-        "generic": "Einheiten"
+        "index": "Index"
       },
       "errors": {
         "unavailable": "Hormuz-Daten nicht verfügbar",
         "failedToLoad": "Fehler beim Laden"
-      }
+      },
+      "analysisDate": "WTO-Analyse {{date}}",
+      "indexNote": "Versandindex nach Volumen, Durchschnitt Januar–März 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live-Webcams</strong> Liveübertragungen von geopolitisch bedeutsamen Orten weltweit: Konfliktzonen, Hauptstädte, Grenzübergänge und strategische Engpässe. Streams von YouTube und öffentlichen Netzwerken."
@@ -2395,7 +2387,7 @@
       "directions": {
         "long": "LONG",
         "short": "SHORT",
-        "hedge": "HEDGE"
+        "hedge": "ABSICHERUNG"
       },
       "rationale": "Begründung:",
       "driver": "Treiber:",
@@ -2538,7 +2530,7 @@
       "cotSection": "Öl / Gold / Silber + Index-Positionierung (Commitments of Traders)",
       "stocksSection": "Top-US-Aktien: Tägliche Verschiebung",
       "longShort": "Long {{long}} / Short {{short}}",
-      "lev": "Lev",
+      "lev": "Hebel",
       "noCot": "Keine Commitments of Traders-Zeilen verfügbar.",
       "noStocks": "Keine Top-Aktienkurse verfügbar.",
       "reportDate": "Commitments of Traders-Report-Datum: {{date}}",
@@ -2639,6 +2631,15 @@
             "mcpClients": "MCP einrichten",
             "channels": "In den Benachrichtigungseinstellungen einrichten"
           }
+        },
+        "about": {
+          "heading": "Eine letzte Sache: Wofür wirst du World Monitor nutzen?",
+          "body": "Drei kurze Antworten helfen uns, die richtigen Tools für dich zu entwickeln. Du kannst gerne überspringen, was du möchtest.",
+          "confirmCta": "Antworten speichern",
+          "confirming": "Speichern…",
+          "doneNote": "Danke, wir haben deine Antworten.",
+          "summaryLabel": "Über dich",
+          "summaryVerified": "Gespeichert. Danke."
         }
       },
       "status": {
@@ -2674,7 +2675,7 @@
     "frameworkSelector": {
       "label": "Analyse-Framework",
       "defaultNeutral": "Standard (Neutral)",
-      "titlePrefix": "Framework: {{name}}",
+      "titlePrefix": "Analyserahmen: {{name}}",
       "titleNone": "Analyse-Framework"
     },
     "sanctionsPressure": {
@@ -2833,10 +2834,10 @@
         "hormuzStrait": "Hormus",
         "malaccaStrait": "Malakka",
         "suez": "Suez",
-        "babElMandeb": "Bab el-Mandeb",
+        "babElMandeb": "Bab al-Mandab",
         "bosphorus": "Türkische Meerengen",
         "panama": "Panama",
-        "danishStraits": "Dänische Meerengen"
+        "doverStrait": "Straße von Dover"
       },
       "flow": {
         "mbd": "{{value}} Mio. Fass/Tag",
@@ -2886,8 +2887,8 @@
         "hoursAgo": "vor {{count}}h",
         "daysAgo": "vor {{count}}T",
         "compactNow": "jetzt",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactMinutes": "{{count}} Min.",
+        "compactHours": "{{count}} Std.",
         "compactDays": "{{count}}T"
       }
     },
@@ -2911,7 +2912,7 @@
       "infoTooltip": "<strong>Wechselkurse</strong> Stress stuft 45 Währungen nach ihrer größten Abnahme über 24 Monate ein, mit der 12-Monats-Veränderung. Spotquoten verwenden separate US-Dollar- und Euro-Basis. Russische Rubel-Quoten sind Rubel pro Einheit. Quellen umfassen Yahoo Finance, die Europäische Zentralbank und die Bank of Russia.",
       "tabs": {
         "stress": "Währungs-Stress",
-        "spot": "Spot",
+        "spot": "Kassa",
         "rub": "RUB"
       },
       "currency": "Währung",
@@ -3030,6 +3031,66 @@
       "partial": "Einige Berichte fehlen oder sind veraltet",
       "stale": "Ältere Daten",
       "global": "Globaler monatlicher FAO-Index"
+    },
+    "aboutYou": {
+      "title": "Hilf uns, World Monitor für dich zu entwickeln",
+      "ariaLabel": "Über dich",
+      "progress": "{{current}} von {{total}}",
+      "skip": "Überspringen",
+      "close": "Schließen",
+      "done": "Fertig",
+      "saving": "Wird gespeichert…",
+      "saveFailed": "Das konnte nicht gespeichert werden. Versuche es nochmal.",
+      "retry": "Erneut versuchen",
+      "thanks": "Danke. Das hilft uns zu entscheiden, was wir als Nächstes entwickeln.",
+      "questions": {
+        "primaryUse": {
+          "label": "Wofür nutzt du World Monitor hauptsächlich?",
+          "options": {
+            "news": "Nachrichten und Weltereignisse",
+            "markets": "Märkte und Trading",
+            "commodities": "Rohstoffe und Lieferkette",
+            "travel": "Reisen und Flüge",
+            "security": "Sicherheit und OSINT",
+            "research": "Forschung und Journalismus",
+            "api-agent": "Entwicklung mit der API oder einem KI-Agent",
+            "other": "Etwas anderes"
+          }
+        },
+        "usageContext": {
+          "label": "Nutzt du es beruflich oder privat?",
+          "options": {
+            "personal": "Privat",
+            "work": "Beruflich"
+          }
+        },
+        "payer": {
+          "label": "Wer bezahlt oder würde dafür bezahlen?",
+          "options": {
+            "self": "Ich selbst",
+            "employer": "Mein Arbeitgeber oder Team",
+            "not-paying": "Noch niemand"
+          }
+        },
+        "role": {
+          "label": "Welche Beschreibung passt am besten zu deiner Rolle?",
+          "options": {
+            "analyst": "Analyst oder Forscher",
+            "trader": "Trader oder Investor",
+            "journalist": "Journalist",
+            "security": "Sicherheit oder Risikomanagement",
+            "government": "Regierung oder Politik",
+            "supply-chain": "Lieferkette oder Betrieb",
+            "developer": "Entwickler",
+            "student": "Studierende",
+            "other": "Sonstiges"
+          }
+        },
+        "alternative": {
+          "label": "Was würdest du nutzen, wenn es World Monitor nicht gäbe?",
+          "placeholder": "Freiwillige Angabe"
+        }
+      }
     }
   },
   "popups": {
@@ -3055,7 +3116,8 @@
         "major": "SCHWER",
         "moderate": "MITTEL",
         "minor": "LEICHT"
-      }
+      },
+      "relativePlace": "{{distance}} km {{direction}} von {{place}}"
     },
     "base": {
       "types": {
@@ -3079,7 +3141,7 @@
       "navPerformance": "Betroffene Luftfahrzeuge",
       "samples": "Anzahl betroffener Luftfahrzeuge",
       "aircraft": "Gesichtete Luftfahrzeuge",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "H3-Hexagon"
     },
     "flight": {
       "groundStop": "STARTVERBOT",
@@ -3149,6 +3211,14 @@
       },
       "description": "Große {{type}}-Pipeline-Infrastruktur. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Im Speicheratlas öffnen",
+      "types": {
+        "lngExport": "LNG-Export",
+        "lngImport": "LNG-Import",
+        "crudeTankFarm": "Rohöl-Hub"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Derzeit in Betrieb und transportiert Ressourcen.",
       "construction": "Derzeit im Bau."
@@ -3209,7 +3279,7 @@
       "baseline": "Basislinie",
       "components": {
         "news": "Nachrichten",
-        "cii": "Country Instability Index",
+        "cii": "Länderinstabilitätsindex",
         "geo": "Geo",
         "military": "Militär"
       },
@@ -3238,7 +3308,7 @@
     "chokepointCongestion": "ENGPASS-STAU",
     "darkening": "VERDUNKELUNG",
     "density": "DICHTE",
-    "darkShips": "DARK SHIPS",
+    "darkShips": "SCHIFFE OHNE AIS",
     "vesselCount": "SCHIFFSANZAHL",
     "window": "ZEITFENSTER",
     "region": "REGION",
@@ -3294,6 +3364,11 @@
         "planned": "GEPLANT",
         "moreDataCenters": "+ {{count}} weitere Rechenzentren",
         "sampledSites": "Stichprobenartige Anzeige von {{count}} Standorten."
+      },
+      "sectors": {
+        "private": "Privat",
+        "public": "Öffentlich",
+        "publicPrivate": "Öffentlich/Privat"
       }
     },
     "startupHub": {
@@ -3314,7 +3389,7 @@
         "faang": "BIG TECH",
         "unicorn": "EINHORN",
         "public": "BÖRSENNOTIERT",
-        "tech": "TECH"
+        "tech": "TECHNIK"
       },
       "marketCap": "MARKTKAP",
       "employees": "MITARBEITER"
@@ -3368,7 +3443,7 @@
       "speed": "GESCHW.",
       "heading": "KURS",
       "hexCode": "HEX-CODE",
-      "squawk": "SQUAWK",
+      "squawk": "TRANSPONDERCODE",
       "attribution": "Quelle: adsb.lol (ODbL) · OpenSky Network",
       "climbRate": "STEIGGESCHWINDIGKEIT",
       "manufacturer": "HERSTELLER",
@@ -3495,7 +3570,7 @@
       "mossad_idf": "Mossad/IDF",
       "nato_hq": "NATO-Hauptquartier",
       "pla_mss_activity": "PLA/MSS-Aktivität",
-      "pentagon_pizza_index": "Pentagon Pizza Index",
+      "pentagon_pizza_index": "Pentagon-Pizza-Index",
       "piracy_conflict": "Piraterie/Konflikt",
       "qatar_al_udeid": "Katar/Al Udeid",
       "saudi_gip_mbs": "Saudisches GIP/MBS",
@@ -3519,7 +3594,420 @@
     "currentForecast": "Aktuelle Vorhersage",
     "expiredForecast": "Abgelaufene Vorhersage",
     "validFrom": "Gültig ab",
-    "validUntil": "Gültig bis"
+    "validUntil": "Gültig bis",
+    "levels": {
+      "extreme": "Extrem",
+      "severe": "Schwer",
+      "moderate": "Mäßig",
+      "minor": "Gering",
+      "unknown": "Unbekannt",
+      "critical": "Kritisch",
+      "high": "Hoch",
+      "medium": "Mittel",
+      "low": "Niedrig",
+      "elevated": "Erhöht",
+      "normal": "Normal",
+      "spike": "Spitze",
+      "watch": "Beobachtung",
+      "stable": "Stabil"
+    },
+    "statusValues": {
+      "active": "Aktiv",
+      "inactive": "Inaktiv",
+      "contested": "Umstritten",
+      "decommissioned": "Stillgelegt",
+      "construction": "Im Bau",
+      "operating": "In Betrieb",
+      "planned": "Geplant",
+      "producing": "Fördernd",
+      "development": "Erschließung",
+      "exploration": "Exploration",
+      "unknown": "Unbekannt",
+      "deployed": "Im Einsatz",
+      "underway": "Unterwegs",
+      "inPort": "Im Hafen",
+      "oil": "Öl",
+      "gas": "Gas",
+      "products": "Produkte",
+      "protest": "Protest",
+      "riot": "Ausschreitungen",
+      "strike": "Streik",
+      "demonstration": "Demonstration",
+      "civilUnrest": "Unruhen",
+      "c2Server": "C2-Server",
+      "malwareHost": "Malware-Host",
+      "phishing": "Phishing",
+      "maliciousUrl": "Schädliche URL",
+      "operational": "In Betrieb",
+      "reduced": "Reduziert",
+      "offline": "Außer Betrieb",
+      "disputed": "Umstritten"
+    },
+    "aptTactics": {
+      "reconnaissance": "Aufklärung",
+      "resourceDevelopment": "Ressourcenentwicklung",
+      "initialAccess": "Erstzugriff",
+      "execution": "Ausführung",
+      "persistence": "Persistenz",
+      "privilegeEscalation": "Rechteausweitung",
+      "defenseEvasion": "Umgehung der Abwehr",
+      "credentialAccess": "Zugriff auf Anmeldedaten",
+      "discovery": "Erkundung",
+      "lateralMovement": "Laterale Bewegung",
+      "collection": "Sammlung",
+      "commandAndControl": "Steuerung und Kontrolle (C2)",
+      "exfiltration": "Exfiltration",
+      "impact": "Auswirkung"
+    },
+    "aptSectors": {
+      "government": "Regierung",
+      "finance": "Finanzwesen",
+      "defense": "Verteidigung",
+      "healthcare": "Gesundheitswesen",
+      "military": "Militär",
+      "technology": "Technologie",
+      "manufacturing": "Fertigung",
+      "energy": "Energie",
+      "telecommunications": "Telekommunikation",
+      "media": "Medien",
+      "ngo": "NGOs",
+      "diplomatic": "Diplomatie",
+      "criticalInfrastructure": "Kritische Infrastruktur",
+      "research": "Forschung",
+      "banking": "Bankwesen",
+      "aerospace": "Luft- und Raumfahrt",
+      "civilSociety": "Zivilgesellschaft",
+      "aviation": "Luftfahrt",
+      "hospitality": "Gastgewerbe",
+      "cryptocurrency": "Kryptowährung",
+      "retail": "Einzelhandel",
+      "thinkTanks": "Thinktanks",
+      "education": "Bildung",
+      "telecoms": "Telekommunikation",
+      "oilAndGas": "Öl und Gas",
+      "academia": "Wissenschaft",
+      "transportation": "Verkehr",
+      "humanRights": "Menschenrechte",
+      "pharmaceutical": "Pharmaindustrie",
+      "dissidents": "Dissidenten",
+      "journalists": "Journalisten",
+      "business": "Wirtschaft",
+      "engineering": "Ingenieurwesen",
+      "utilities": "Versorgungsunternehmen",
+      "gaming": "Gaming",
+      "embassies": "Botschaften",
+      "legal": "Rechtswesen",
+      "construction": "Bauwesen",
+      "mining": "Bergbau",
+      "petroleum": "Erdöl",
+      "insurance": "Versicherungen",
+      "travel": "Reisebranche",
+      "maritime": "Seefahrt",
+      "chemical": "Chemie",
+      "financial": "Finanzsektor",
+      "lawEnforcement": "Strafverfolgung",
+      "electricUtilities": "Stromversorger",
+      "managedServiceProviders": "Managed-Service-Provider",
+      "satellite": "Satelliten",
+      "lawFirms": "Anwaltskanzleien",
+      "navalDefense": "Marineverteidigung",
+      "defenseContractors": "Rüstungsunternehmen",
+      "water": "Wasserversorgung",
+      "religious": "Religiöse Gruppen",
+      "unBodies": "UN-Organisationen",
+      "supplyChain": "Lieferketten",
+      "itServices": "IT-Dienstleistungen",
+      "electronics": "Elektronik",
+      "biotechnology": "Biotechnologie",
+      "industrialChemistry": "Industriechemie",
+      "digitalCertificates": "Digitale Zertifikate",
+      "semiconductor": "Halbleiter",
+      "airline": "Fluggesellschaft",
+      "gambling": "Glücksspiel",
+      "tradePolicy": "Handelspolitik",
+      "foreignAffairs": "Außenpolitik",
+      "automobile": "Automobilbau",
+      "politicalOrganizations": "Politische Organisationen",
+      "cloud": "Cloud",
+      "general": "Allgemein",
+      "minorityGroups": "Minderheiten",
+      "nuclearResearch": "Kernforschung",
+      "defectors": "Überläufer",
+      "financialInstitutions": "Finanzinstitute",
+      "swiftNetwork": "SWIFT-Netzwerk",
+      "petrochemical": "Petrochemie",
+      "airlines": "Fluggesellschaften",
+      "politicalOpposition": "Politische Opposition",
+      "activists": "Aktivisten",
+      "police": "Polizei",
+      "intelligence": "Nachrichtendienste",
+      "businessExecutives": "Führungskräfte",
+      "automotive": "Automobilindustrie",
+      "restaurant": "Gastronomie",
+      "paymentSystems": "Zahlungssysteme",
+      "cardProcessing": "Kartenabwicklung",
+      "remoteBanking": "Online-Banking",
+      "naturalResources": "Natürliche Ressourcen",
+      "industrial": "Industrie",
+      "cybersecurity": "Cybersicherheit",
+      "fintech": "Fintech",
+      "investment": "Investitionen",
+      "containerInfrastructure": "Container-Infrastruktur"
+    },
+    "compass": {
+      "n": "nördlich",
+      "ne": "nordöstlich",
+      "e": "östlich",
+      "se": "südöstlich",
+      "s": "südlich",
+      "sw": "südwestlich",
+      "w": "westlich",
+      "nw": "nordwestlich",
+      "nne": "nordnordöstlich",
+      "ene": "ostnordöstlich",
+      "ese": "ostsüdöstlich",
+      "sse": "südsüdöstlich",
+      "ssw": "südsüdwestlich",
+      "wsw": "westsüdwestlich",
+      "wnw": "westnordwestlich",
+      "nnw": "nordnordwestlich"
+    },
+    "mapPopup": {
+      "noSectorData": "Keine Sektordaten",
+      "disruption": "Störung",
+      "warRisk": "Kriegsrisiko",
+      "warZone": "Kriegsgebiet",
+      "historicalProfile": "Historisches Profil",
+      "noData": "Keine Daten",
+      "coverageUnavailable": "Keine Abdeckung verfügbar",
+      "targets": "Ziele",
+      "listSeparator": ", ",
+      "radiation": {
+        "confirmed": "Bestätigt",
+        "conflictingSources": "Widersprüchliche Quellen",
+        "cpmDerived": "Aus CPM abgeleiteter Anteil",
+        "reading": "Messwert",
+        "baseline": "Basiswert",
+        "delta": "Abweichung",
+        "confidence": "Konfidenz",
+        "sources": "Quellen",
+        "sourceCount": "Anzahl Quellen"
+      },
+      "history": {
+        "conflictSince": "Konflikt seit",
+        "peaceAgreements": "Friedensabkommen",
+        "recordedFatalities": "Erfasste Todesopfer",
+        "totalFatalities": "Todesopfer insgesamt",
+        "operationalSince": "In Betrieb seit",
+        "treaties": "Verträge",
+        "iaeaStatus": "IAEO-Status",
+        "keyEvents": "Wichtige Ereignisse"
+      },
+      "flight": {
+        "departure": "Ab",
+        "arrival": "An",
+        "bookRoute": "Diese Route buchen",
+        "registration": "Kennz.",
+        "model": "Modell",
+        "operator": "Betreiber",
+        "climb": "Steigrate",
+        "liveData": "Live-Daten",
+        "loadingWingbits": "Wingbits-Live-Daten werden geladen…"
+      },
+      "base": {
+        "airForce": "Luftwaffe",
+        "naval": "Marine",
+        "nuclear": "Nuklear",
+        "space": "Weltraum",
+        "training": "Ausbildung",
+        "branch": "Teilstreitkraft",
+        "categories": "Kategorien"
+      },
+      "waterway": {
+        "tradeSectorMix": "Handelssektor-Mix",
+        "sectorExposure": "Sektor-Exposition",
+        "transitHistory": "Transitverlauf",
+        "sectorBreakdown": "Sektoraufschlüsselung"
+      },
+      "natural": {
+        "minuteMean": "{{count}}-Minuten-Mittel",
+        "windNotReported": "Wind nicht gemeldet",
+        "windAverage": "Windmittelung",
+        "canonicalMatch": "Kanonische Zuordnung",
+        "agencyIdentifier": "Behördenkennung",
+        "agencyObservations": "Behördenbeobachtungen"
+      },
+      "placeReports_one": "{{place}} ({{count}} Meldung)",
+      "placeReports_other": "{{place}} ({{count}} Meldungen)",
+      "issuedBy": "Herausgegeben von"
+    },
+    "weatherEvents": {
+      "911TelephoneOutage": "Ausfall der Notrufnummer 911",
+      "administrativeMessage": "Verwaltungsmitteilung",
+      "airQualityAlert": "Luftqualitätswarnung",
+      "airStagnationAdvisory": "Hinweis auf Luftstagnation",
+      "ashfallAdvisory": "Hinweis auf Ascheregen",
+      "ashfallWarning": "Warnung vor Ascheregen",
+      "avalancheAdvisory": "Lawinenhinweis",
+      "avalancheWarning": "Lawinenwarnung",
+      "avalancheWatch": "Lawinenvorwarnung",
+      "beachHazardsStatement": "Hinweis auf Strandgefahren",
+      "blizzardWarning": "Blizzardwarnung",
+      "blowingDustAdvisory": "Hinweis auf Staubverwehungen",
+      "blowingDustWarning": "Warnung vor Staubverwehungen",
+      "blueAlert": "Blue Alert (Polizeifahndung)",
+      "briskWindAdvisory": "Hinweis auf frischen Wind",
+      "childAbductionEmergency": "Notfall: Kindesentführung",
+      "civilDangerWarning": "Warnung vor ziviler Gefahr",
+      "civilEmergencyMessage": "Zivile Notfallmeldung",
+      "coastalFloodAdvisory": "Hinweis auf Küstenhochwasser",
+      "coastalFloodStatement": "Mitteilung zu Küstenhochwasser",
+      "coastalFloodWarning": "Warnung vor Küstenhochwasser",
+      "coastalFloodWatch": "Vorwarnung vor Küstenhochwasser",
+      "coldWeatherAdvisory": "Kältehinweis",
+      "denseFogAdvisory": "Hinweis auf dichten Nebel",
+      "denseSmokeAdvisory": "Hinweis auf dichten Rauch",
+      "dustAdvisory": "Staubhinweis",
+      "dustStormWarning": "Staubsturmwarnung",
+      "earthquakeWarning": "Erdbebenwarnung",
+      "evacuationImmediate": "Sofortige Evakuierung",
+      "extremeHeatWarning": "Warnung vor extremer Hitze",
+      "extremeHeatWatch": "Vorwarnung vor extremer Hitze",
+      "extremeColdWarning": "Warnung vor extremer Kälte",
+      "extremeColdWatch": "Vorwarnung vor extremer Kälte",
+      "extremeFireDanger": "Extreme Brandgefahr",
+      "extremeWindWarning": "Warnung vor extremem Wind",
+      "fireWarning": "Brandwarnung",
+      "fireWeatherWatch": "Vorwarnung vor Brandwetter",
+      "flashFloodStatement": "Mitteilung zu Sturzfluten",
+      "flashFloodWarning": "Sturzflutwarnung",
+      "flashFloodWatch": "Sturzflut-Vorwarnung",
+      "floodAdvisory": "Hochwasserhinweis",
+      "floodStatement": "Hochwassermitteilung",
+      "floodWarning": "Hochwasserwarnung",
+      "floodWatch": "Hochwasser-Vorwarnung",
+      "freezeWarning": "Frostwarnung",
+      "freezeWatch": "Frost-Vorwarnung",
+      "freezingFogAdvisory": "Hinweis auf gefrierenden Nebel",
+      "freezingSprayAdvisory": "Hinweis auf Vereisung durch Gischt",
+      "frostAdvisory": "Hinweis auf Bodenfrost",
+      "galeWarning": "Sturmwarnung",
+      "galeWatch": "Sturm-Vorwarnung",
+      "hazardousMaterialsWarning": "Gefahrstoffwarnung",
+      "hazardousSeasWarning": "Warnung vor gefährlichem Seegang",
+      "hazardousSeasWatch": "Vorwarnung vor gefährlichem Seegang",
+      "hazardousWeatherOutlook": "Ausblick auf gefährliches Wetter",
+      "heatAdvisory": "Hitzehinweis",
+      "heavyFreezingSprayWarning": "Warnung vor starker Vereisung durch Gischt",
+      "heavyFreezingSprayWatch": "Vorwarnung vor starker Vereisung durch Gischt",
+      "highSurfAdvisory": "Hinweis auf hohe Brandung",
+      "highSurfWarning": "Warnung vor hoher Brandung",
+      "highWindWarning": "Warnung vor starkem Wind",
+      "highWindWatch": "Vorwarnung vor starkem Wind",
+      "hurricaneForceWindWarning": "Warnung vor Orkanböen",
+      "hurricaneForceWindWatch": "Vorwarnung vor Orkanböen",
+      "hurricaneWarning": "Hurrikanwarnung",
+      "hurricaneWatch": "Hurrikan-Vorwarnung",
+      "hydrologicOutlook": "Hydrologischer Ausblick",
+      "iceStormWarning": "Eissturmwarnung",
+      "lakeEffectSnowWarning": "Warnung vor Seeeffekt-Schnee",
+      "lakeWindAdvisory": "Hinweis auf Wind über Seen",
+      "lakeshoreFloodAdvisory": "Hinweis auf Seeuferhochwasser",
+      "lakeshoreFloodStatement": "Mitteilung zu Seeuferhochwasser",
+      "lakeshoreFloodWarning": "Warnung vor Seeuferhochwasser",
+      "lakeshoreFloodWatch": "Vorwarnung vor Seeuferhochwasser",
+      "lawEnforcementWarning": "Polizeiwarnung",
+      "localAreaEmergency": "Örtlicher Notfall",
+      "lowWaterAdvisory": "Niedrigwasserhinweis",
+      "marineWeatherStatement": "Seewettermitteilung",
+      "nuclearPowerPlantWarning": "Kernkraftwerkswarnung",
+      "radiologicalHazardWarning": "Warnung vor radiologischer Gefahr",
+      "redFlagWarning": "Warnung vor hoher Waldbrandgefahr",
+      "ripCurrentStatement": "Hinweis auf Brandungsrückströmung",
+      "severeThunderstormWarning": "Warnung vor schwerem Gewitter",
+      "severeThunderstormWatch": "Vorwarnung vor schwerem Gewitter",
+      "severeWeatherStatement": "Unwettermitteilung",
+      "shelterInPlaceWarning": "Warnung: Schutz in Gebäuden suchen",
+      "shortTermForecast": "Kurzfristvorhersage",
+      "smallCraftAdvisory": "Hinweis für Kleinfahrzeuge",
+      "snowSquallWarning": "Warnung vor Schneeböen",
+      "specialMarineWarning": "Besondere Seewetterwarnung",
+      "specialWeatherStatement": "Besondere Wettermitteilung",
+      "stormSurgeWarning": "Sturmflutwarnung",
+      "stormSurgeWatch": "Sturmflut-Vorwarnung",
+      "stormWarning": "Schwere Sturmwarnung",
+      "stormWatch": "Vorwarnung vor schwerem Sturm",
+      "test": "Test",
+      "tornadoWarning": "Tornadowarnung",
+      "tornadoWatch": "Tornado-Vorwarnung",
+      "tropicalCycloneLocalStatement": "Lokale Mitteilung zum Tropensturm",
+      "tropicalStormWarning": "Tropensturmwarnung",
+      "tropicalStormWatch": "Tropensturm-Vorwarnung",
+      "tsunamiAdvisory": "Tsunamihinweis",
+      "tsunamiWarning": "Tsunamiwarnung",
+      "tsunamiWatch": "Tsunami-Vorwarnung",
+      "typhoonWarning": "Taifunwarnung",
+      "typhoonWatch": "Taifun-Vorwarnung",
+      "volcanoWarning": "Vulkanwarnung",
+      "windAdvisory": "Windhinweis",
+      "winterStormWarning": "Wintersturmwarnung",
+      "winterStormWatch": "Wintersturm-Vorwarnung",
+      "winterWeatherAdvisory": "Hinweis auf Winterwetter",
+      "arcticOutflowWarning": "Warnung vor arktischem Kaltluftausbruch",
+      "blowingSnowAdvisory": "Hinweis auf Schneetreiben",
+      "flashFreezeWarning": "Warnung vor Blitzeis",
+      "fogAdvisory": "Nebelhinweis",
+      "freezingDrizzleAdvisory": "Hinweis auf gefrierenden Nieselregen",
+      "freezingRainWarning": "Warnung vor gefrierendem Regen",
+      "heatWarning": "Hitzewarnung",
+      "airQualityWarning": "Luftqualitätswarnung",
+      "airQualityAdvisory": "Luftqualitätshinweis",
+      "specialAirQualityStatement": "Besondere Mitteilung zur Luftqualität",
+      "rainfallWarning": "Starkregenwarnung",
+      "snowfallWarning": "Schneefallwarnung",
+      "snowSquallWatch": "Vorwarnung vor Schneeböen",
+      "squallWarning": "Böenwarnung",
+      "weatherAdvisory": "Wetterhinweis",
+      "weatherWarning": "Wetterwarnung",
+      "windWarning": "Windwarnung",
+      "imdCoastalBulletin": "IMD-Küstenbulletin",
+      "imdSeaAreaBulletin": "IMD-Seegebietsbulletin",
+      "forestFire": "Waldbrand",
+      "forestFireWarning": "Waldbrandwarnung",
+      "gale": "Sturm",
+      "wind": "Wind",
+      "fog": "Nebel",
+      "denseFog": "Dichter Nebel",
+      "roadIceAndSnow": "Glätte durch Eis und Schnee",
+      "riverineFlood": "Flusshochwasser",
+      "thunderstorm": "Gewitter",
+      "severeThunderstorms": "Schwere Gewitter",
+      "otherDangers": "Sonstige Gefahren",
+      "freezingRainIcing": "Gefrierender Regen, Vereisung",
+      "freezingRain": "Gefrierender Regen",
+      "landslideWarning": "Erdrutschwarnung",
+      "rain": "Regen",
+      "lightRain": "Leichter Regen",
+      "heavyRain": "Starkregen",
+      "moderateRainWarning": "Warnung vor mäßigem Regen",
+      "severeRainWarning": "Warnung vor starkem Regen",
+      "moderateThunderstormWarning": "Warnung vor mäßigem Gewitter",
+      "yellowWindWarning": "Gelbe Windwarnung",
+      "orangeWindWarning": "Orange Windwarnung",
+      "yellowThunderstormWarning": "Gelbe Gewitterwarnung",
+      "yellowRainWarning": "Gelbe Regenwarnung",
+      "orangeRainWarning": "Orange Regenwarnung",
+      "extremeHeat": "Extreme Hitze",
+      "icyRoad": "Straßenglätte",
+      "drought": "Dürre",
+      "snow": "Schnee",
+      "haze": "Dunst",
+      "rainstorm": "Regensturm",
+      "severeWeatherWarning": "Unwetterwarnung",
+      "yellowWarning": "Gelbe Warnung",
+      "orangeWarning": "Orange Warnung",
+      "redWarning": "Rote Warnung"
+    }
   },
   "signals": {
     "context": {
@@ -3723,7 +4211,48 @@
     "fontMono": "Monospace",
     "fontSystem": "Systemstandard",
     "panelFontScale": "Textgröße",
-    "followGlobalFontScale": "Global verwenden"
+    "followGlobalFontScale": "Global verwenden",
+    "selfHostKey": {
+      "heading": "Desktop-Schlüssel",
+      "description": "Entsperren Sie Pro auf diesem Dashboard mit Ihrem eigenen Desktop-Schlüssel. Erstellen Sie einen auf worldmonitor.app unter Einstellungen → API-Schlüssel → Desktop-Schlüssel erstellen.",
+      "relay": "Der Schlüssel wird an den Server dieser Installation gesendet, die Ihre Pro-Anfragen an World Monitor weitergeleitet. Die Nutzung wird auf das Desktop-Schlüssel-Kontingent Ihres Kontos angerechnet, genauso wie in der Desktop-App.",
+      "trust": "Wenn jemand anderes diese Installation ausführt, erstellen Sie einen separaten Desktop-Schlüssel dafür. Sie können ihn jederzeit auf worldmonitor.app widerrufen.",
+      "inputLabel": "Desktop-Schlüssel",
+      "placeholder": "wm_…",
+      "save": "Schlüssel speichern",
+      "saving": "Überprüfung läuft…",
+      "remove": "Schlüssel entfernen",
+      "removing": "Entfernung läuft…",
+      "empty": "Geben Sie einen Desktop-Schlüssel ein.",
+      "saveFailed": "Schlüssel konnte nicht gespeichert werden. Versuchen Sie es erneut.",
+      "removeFailed": "Schlüssel konnte nicht entfernt werden. Versuchen Sie es erneut.",
+      "rateLimited": "Zu viele Versuche. Versuchen Sie es in {{seconds}} Sekunden erneut.",
+      "rateLimitedSoon": "Zu viele Versuche. Versuchen Sie es in einer Minute erneut.",
+      "insecure": "Diese Seite verwendet kein HTTPS, daher wird Ihr Schlüssel unverschlüsselt übertragen.",
+      "insecureConfirm": "Diese Seite verwendet kein HTTPS, daher wird Ihr Schlüssel unverschlüsselt übertragen. Senden Sie ihn nur über ein Netzwerk, dem Sie vertrauen.",
+      "insecureConfirmButton": "Schlüssel senden",
+      "staleNote": "Die letzte Überprüfung konnte World Monitor nicht erreichen.",
+      "disabled": "Der Betreiber dieser Installation hat Desktop-Schlüssel deaktiviert.",
+      "state": {
+        "none": "Kein Schlüssel",
+        "active": "Aktiv",
+        "invalid": "Ungültig",
+        "not_desktop_key": "Kein Desktop-Schlüssel",
+        "over_cap": "Schlüssellimit überschritten",
+        "lapsed": "Plan nicht aktiv",
+        "unavailable": "Konnte nicht überprüft werden",
+        "disabled": "Deaktiviert"
+      },
+      "detail": {
+        "none": "In diesem Browser ist kein Schlüssel gespeichert.",
+        "active": "Pro ist in diesem Browser entsperrt.",
+        "invalid": "Dieser Schlüssel ist ungültig oder wurde widerrufen.",
+        "not_desktop_key": "Dies ist ein API-Schlüssel. Verwenden Sie stattdessen einen Desktop-Schlüssel.",
+        "over_cap": "Das Konto hat mehr Desktop-Schlüssel als sein Plan zulässt. Widerrufen Sie einen auf worldmonitor.app.",
+        "lapsed": "Der Pro-Plan des Kontos ist nicht aktiv.",
+        "unavailable": "Konnte World Monitor nicht erreichen, um diesen Schlüssel zu überprüfen. Versuchen Sie es später erneut."
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "Länderübersicht öffnen",
@@ -4205,5 +4734,29 @@
     "reportedClaims": "Meldungen des Herausgebers. Angaben werden möglicherweise noch untersucht.",
     "occurred": "Vorfall",
     "reported": "Veröffentlicht"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Weltkarte der Märkte",
+      "liveNews": "Markt-Schlagzeilen",
+      "insights": "KI-Markteinblicke"
+    },
+    "tech": {
+      "map": "Weltkarte der Technologie",
+      "liveNews": "Tech-Schlagzeilen"
+    },
+    "commodity": {
+      "map": "Rohstoffkarte",
+      "liveNews": "Rohstoff-Schlagzeilen",
+      "insights": "KI-Rohstoffeinblicke"
+    },
+    "energy": {
+      "map": "Energieatlas-Karte",
+      "liveNews": "Energie-Schlagzeilen",
+      "insights": "KI-Energieeinblicke"
+    },
+    "happy": {
+      "map": "Karte der guten Nachrichten"
+    }
   }
 }

@@ -166,11 +166,13 @@ describe('root dependency cache (#8710)', () => {
   // and use the action's miss-only fallback. Jobs with another npm install
   // (blog-site, pro-test, including through build:pro) keep setup-node's
   // cache for it and turn the action's off, so a miss restores it once.
-  // unit-shards restores its nested installed trees instead (see the
-  // 'unit-shard nested dependency cache' block), so it is in the first group.
+  // unit-shards and unit-built-output restore their nested installed trees
+  // instead (see the 'unit-shard nested dependency cache' and
+  // 'unit-built-output nested dependency cache' blocks), so they are in the
+  // first group.
   for (const [workflowText, jobIds, setupCache] of [
-    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards'], undefined],
-    [testWorkflow, ['unit-built-output', 'variant-smoke-pro-webmcp'], 'npm'],
+    [testWorkflow, ['docs-stats', 'sidecar', 'convex-tests', 'dom-tests', 'variant-smoke-shards', 'resilience-validation-smoke', 'unit-shards', 'unit-built-output'], undefined],
+    [testWorkflow, ['variant-smoke-pro-webmcp'], 'npm'],
     [read(resolve(workflowsDir, 'perf-style-layout-budget.yml')), ['measure'], undefined],
     [lintCodeWorkflow, ['biome', 'markdown'], undefined],
     [read(resolve(workflowsDir, 'typecheck.yml')), ['typecheck'], 'npm'],
@@ -257,6 +259,76 @@ describe('unit-shard nested dependency cache', () => {
       'ci:blog-site changed: bump nested-deps-vN in the unit-shards cache key, then update this string',
     );
     assert.match(restore.with.key, /^nested-deps-v1-/);
+  });
+});
+
+describe('unit-built-output nested dependency cache', () => {
+  // setup-node restored the npm download cache for three lockfiles (6-9s,
+  // mostly the root's), then blog-site and pro-test installed from it (3s and
+  // 12s). The installed trees are restored instead and installed only on a
+  // miss, like the unit shards' nested-deps cache.
+  const steps = YAML.parse(testWorkflow).jobs['unit-built-output'].steps
+    .flatMap((step: { parallel?: unknown[] }) => step.parallel ?? [step]);
+  const restore = steps.find((step) => step.id === 'built-output-deps');
+  const blogInstall = steps.find((step) => step.run === 'npm run ci:blog-site');
+  const proInstall = steps.find((step) => step.run === 'npm --prefix pro-test ci --prefer-offline');
+  const save = steps.find((step) => step.uses?.startsWith('actions/cache/save@') && step.with?.key === '${{ steps.built-output-deps.outputs.cache-primary-key }}');
+  const blogBuild = steps.find((step) => step.run?.includes('npm --prefix blog-site run build'));
+  const proBuild = steps.find((step) => step.run === 'npm --prefix pro-test run build');
+  const miss = "steps.built-output-deps.outputs.cache-hit != 'true'";
+
+  it('restores both installed trees before the builds that read them', () => {
+    assert.ok(restore?.uses?.startsWith('actions/cache/restore@'));
+    assert.deepEqual(restore.with.path.trim().split('\n'), ['blog-site/node_modules', 'pro-test/node_modules']);
+    assert.ok(blogBuild && proBuild, 'the blog-site and /pro builds must exist');
+    assert.ok(steps.indexOf(save) < steps.indexOf(blogBuild));
+    assert.ok(steps.indexOf(save) < steps.indexOf(proBuild));
+  });
+
+  it('keys the trees on every install input', () => {
+    const key = restore.with.key;
+    assert.match(key, /^built-output-deps-v1-\$\{\{ runner\.os \}\}-\$\{\{ runner\.arch \}\}-node24-/);
+    for (const input of [
+      'blog-site/package.json',
+      'blog-site/package-lock.json',
+      'blog-site/.npmrc',
+      'pro-test/package.json',
+      'pro-test/package-lock.json',
+      'pro-test/.npmrc',
+      '.npmrc',
+      'vendor/**',
+    ]) {
+      assert.ok(key.includes(`'${input}'`), `built-output-deps key must hash ${input}`);
+    }
+  });
+
+  it('installs and saves only on a miss, after the restore and before the save', () => {
+    for (const step of [blogInstall, proInstall, save]) {
+      assert.ok(step, 'nested install and save steps must exist');
+      assert.equal(step.if, miss);
+      assert.ok(steps.indexOf(restore) < steps.indexOf(step));
+    }
+    assert.ok(steps.indexOf(blogInstall) < steps.indexOf(save));
+    assert.ok(steps.indexOf(proInstall) < steps.indexOf(save));
+    assert.equal(save.with.path, restore.with.path);
+    // A hit must skip every nested install, or the restore buys nothing.
+    assert.equal(steps.some((step) => /ci:blog-site|pro-test ci/.test(step.run ?? '') && step.if !== miss), false,
+      'no unconditional nested install may remain');
+  });
+
+  it('runs the same install and build build:pro runs, with install scripts off', () => {
+    const scripts = JSON.parse(read(resolve(root, 'package.json'))).scripts;
+    assert.equal(
+      scripts['build:pro'],
+      'cross-env npm_config_allow_scripts= npm --prefix pro-test ci --prefer-offline && npm --prefix pro-test run build',
+      'build:pro changed: mirror it in unit-built-output\'s /pro install and build steps, bump built-output-deps-vN, then update this string',
+    );
+    assert.equal(proInstall.env?.npm_config_allow_scripts, '');
+    assert.equal(
+      scripts['ci:blog-site'],
+      'cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline',
+      'ci:blog-site changed: bump built-output-deps-vN in the unit-built-output cache key, then update this string',
+    );
   });
 });
 
@@ -414,6 +486,20 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/a11y-axe-scan.spec.ts',
   'e2e/map-overlay-marker-budget.spec.ts',
   'e2e/mcp-market-built.spec.ts',
+  'e2e/live-panel-layout-8276.spec.ts',
+  'e2e/panel-grid-no-overlap.spec.ts',
+  'e2e/panel-table-overflow.spec.ts',
+  'e2e/panel-header-fits.spec.ts',
+  'e2e/procurement-filters-fit.spec.ts',
+  'e2e/news-source-row-fits.spec.ts',
+  'e2e/progress-chart-fits.spec.ts',
+  'e2e/energy-table-values-whole.spec.ts',
+  'e2e/panel-text-unclipped.spec.ts',
+  'e2e/regional-intelligence-region-select.spec.ts',
+  'e2e/settings-tabs-all-visible.spec.ts',
+  'e2e/panel-grid-column-clamp.spec.ts',
+  'e2e/narrow-panel-overflow.spec.ts',
+  'e2e/hormuz-chart-width.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -1737,9 +1823,21 @@ describe('CI workflow coverage', () => {
     const evaluate = direct.steps.find((step: { run?: string }) => step.run === 'bash -e .github/scripts/deploy-gate.sh evaluate');
     assert.equal(evaluate.env.SHA, '${{ matrix.sha }}');
     assert.equal(evaluate.env.CHECK_ATTEMPTS, 2, 'retain the stale-read retry');
-    const checkout = direct.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
-    assert.equal(checkout.with['fetch-depth'], 0, 'base drift requires the full commit graph');
-    assert.equal(checkout.with.filter, 'blob:none');
+    assert.equal(
+      evaluate.env.TRIGGER_RUN_ID,
+      '${{ github.event.workflow_run.id }}',
+      'a stale listing of the run that fired this event must not skip the last re-poll',
+    );
+    // base_drift unshallows on demand, so both evaluators check out one commit
+    // and only the script; a full-history checkout on every event cost a
+    // median 11s (p90 62s) of runner time for a graph few evaluations read.
+    for (const job of [direct, jobs.evaluate]) {
+      const checkout = job.steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
+      assert.equal(checkout.with['fetch-depth'], undefined);
+      assert.equal(checkout.with.filter, 'blob:none');
+      assert.equal(checkout.with['sparse-checkout'], '.github/scripts');
+    }
+    assert.match(deployGateScript, /--is-shallow-repository\)" = "true" \]; then\n\s+deepen=\(--unshallow\)/);
 
     for (const event of ['workflow_run', 'schedule', 'workflow_dispatch']) {
       const completion = event === 'workflow_run';
@@ -1800,6 +1898,15 @@ describe('CI workflow coverage', () => {
     const download = jobs.recover?.steps?.find((step) => step.uses?.startsWith('actions/download-artifact@'));
     assert.equal(download?.with?.pattern, 'deploy-gate-invalidate-${{ github.run_attempt }}-*');
     assert.notEqual(download?.with?.['merge-multiple'], true, 'per-SHA result files must not overwrite one another');
+  });
+
+  it('names exactly the triggering workflows as the ones whose runs skip the stale-read wait', () => {
+    // An evaluation skips its 60s re-poll while a gated run for the head is
+    // unfinished, because that run's completion event evaluates again. A name
+    // missing here only keeps a wait; an extra name could skip the wait on the
+    // head's last event, which is #5479.
+    const workflow = YAML.parse(deployGateWorkflow);
+    assert.deepEqual(workflow.env.GATED_WORKFLOWS.split(','), workflow.on.workflow_run.workflows);
   });
 
   it('treats sidecar changes as code for PR smoke gating', () => {

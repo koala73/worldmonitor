@@ -111,6 +111,8 @@ const SOURCE_DOMAIN_MATCHERS = [
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['ammancity.gov.jo', 'finance'],
+  ['data.1212.mn', 'finance'],
+  ['madr.gov.dz', 'finance'],
   ['api.siat.stat.uz', 'finance'],
   ['precios.maga.gob.gt', 'finance'],
   ['simaniger.net', 'finance'],
@@ -398,6 +400,8 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['wabi-europe-north-b-api.analysis.windows.net', 'Microsoft Power BI'],
   ['web.archive.org', 'Internet Archive'],
   ['ammancity.gov.jo', 'Greater Amman Municipality Central Market'],
+  ['data.1212.mn', 'National Statistics Office of Mongolia'],
+  ['madr.gov.dz', 'Algeria Ministry of Agriculture (MADR)'],
   ['api.siat.stat.uz', 'Uzbekistan Statistics Agency'],
   ['precios.maga.gob.gt', 'Guatemala Ministry of Agriculture (MAGA)'],
   ['simaniger.net', 'SIMA Niger'],

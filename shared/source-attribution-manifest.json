@@ -135,6 +135,9 @@
           "path": "scripts/check-analytics-collector.mjs"
         },
         {
+          "path": "scripts/seo-umami-collect.mjs"
+        },
+        {
           "path": "src/services/analytics.ts"
         }
       ]
@@ -2794,10 +2797,30 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/build-open-data-chokepoints.mjs"
+        },
+        {
           "path": "server/worldmonitor/displacement/v1/cross-border-data.ts"
         },
         {
           "path": "src/components/UkmtoIncidentsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "creg.gov.co",
+      "provider": "creg.gov.co",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Comisión de Regulación de Energía y Gas and link to https://creg.gov.co/publicaciones/15565/precios-de-combustibles-liquidos/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -2878,6 +2901,20 @@
       ]
     },
     {
+      "host": "d24qbtp4vooyzi.cloudfront.net",
+      "provider": "doe.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain unless otherwise stated (site footer)",
+      "attribution": "Credit the Philippine Department of Energy and link to https://doe.gov.ph/data-and-prices/liquid-fuels/retail-pump-prices/ncr-pump-prices.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "dados.ons.org.br",
       "provider": "dados.ons.org.br",
       "kind": "structured",
@@ -2948,6 +2985,20 @@
         },
         {
           "path": "scripts/seed-yield-curve-eu.mjs"
+        }
+      ]
+    },
+    {
+      "host": "data.1212.mn",
+      "provider": "data.1212.mn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Table metadata names the National Statistics Office of Mongolia as source; no reuse licence stated; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit the National Statistics Office of Mongolia (www.1212.mn) and link the weekly price table.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/nsomn.mjs"
         }
       ]
     },
@@ -3198,6 +3249,20 @@
       ]
     },
     {
+      "host": "datosabiertos.dgcp.gob.do",
+      "provider": "datosabiertos.dgcp.gob.do",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit datosabiertos.dgcp.gob.do and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "de.euronews.com",
       "provider": "de.euronews.com",
       "kind": "feed",
@@ -3415,6 +3480,20 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "doe.gov.ph",
+      "provider": "doe.gov.ph",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain unless otherwise stated (site footer)",
+      "attribution": "Credit the Philippine Department of Energy and link to https://doe.gov.ph/data-and-prices/liquid-fuels/retail-pump-prices/ncr-pump-prices.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -4469,6 +4548,20 @@
       ]
     },
     {
+      "host": "files.ember-energy.org",
+      "provider": "Ember electricity data",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (Ember dataset)",
+      "attribution": "Ember; link to the Ember dataset and preserve its license notice.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-ember-electricity.mjs"
+        }
+      ]
+    },
+    {
       "host": "finance.worldmonitor.app",
       "provider": "finance.worldmonitor.app",
       "kind": "structured",
@@ -4589,15 +4682,10 @@
       "host": "fonts.googleapis.com",
       "provider": "fonts.googleapis.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "server/_shared/brief-render.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "foreignpolicy.com",
@@ -5816,6 +5904,20 @@
       ]
     },
     {
+      "host": "king-prawn-app-6bsvl.ondigitalocean.app",
+      "provider": "www.sonabhy.bf",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit SONABHY and link to https://www.sonabhy.bf/tarif-hydrocarbures/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        }
+      ]
+    },
+    {
       "host": "kitco.com",
       "provider": "kitco.com",
       "kind": "feed",
@@ -6265,6 +6367,20 @@
       ]
     },
     {
+      "host": "madr.gov.dz",
+      "provider": "madr.gov.dz",
+      "kind": "structured",
+      "observed": true,
+      "license": "Site footer: \"حقوق الطبع والنشر, وزارة الفلاحة و التنمية الريفية 2021\" (copyright, Ministry of Agriculture and Rural Development); no reuse licence stated; displayed with attribution under the free-dashboard posture",
+      "attribution": "Credit the Algerian Ministry of Agriculture, Rural Development and Fisheries (MADR) and link the daily retail price list.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/madr.mjs"
+        }
+      ]
+    },
+    {
       "host": "maps.worldmonitor.app",
       "provider": "maps.worldmonitor.app",
       "kind": "structured",
@@ -6626,6 +6742,20 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "myprocurement.treasury.gov.my",
+      "provider": "myprocurement.treasury.gov.my",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit myprocurement.treasury.gov.my and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -7002,6 +7132,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "npa.gov.gh",
+      "provider": "npa.gov.gh",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the National Petroleum Authority of Ghana and link to https://npa.gov.gh/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -9005,6 +9149,20 @@
       ]
     },
     {
+      "host": "ssl.bing.com",
+      "provider": "ssl.bing.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/seo-bing-collect.mjs"
+        }
+      ]
+    },
+    {
       "host": "stat.gov.kg",
       "provider": "stat.gov.kg",
       "kind": "structured",
@@ -9284,21 +9442,18 @@
     },
     {
       "host": "storage.googleapis.com",
-      "provider": "Ember electricity data",
+      "provider": "api.gdeltproject.org",
       "kind": "structured",
       "observed": true,
-      "license": "CC BY 4.0 (Ember dataset)",
-      "attribution": "Ember; link to the Ember dataset and preserve its license notice.",
-      "status": "reviewed",
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.googleapis.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
       "references": [
         {
           "path": "scripts/_conflict-gdelt-bulk.mjs"
         },
         {
           "path": "scripts/_gdelt-bulk-materializer.mjs"
-        },
-        {
-          "path": "scripts/seed-ember-electricity.mjs"
         }
       ]
     },
@@ -10819,6 +10974,9 @@
           "path": "scripts/seed-wb-indicators.mjs"
         },
         {
+          "path": "scripts/seo-bing-collect.mjs"
+        },
+        {
           "path": "scripts/shared/notify-fields.cjs"
         },
         {
@@ -11159,6 +11317,23 @@
       ]
     },
     {
+      "host": "www.anp.tl",
+      "provider": "www.anp.tl",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Autoridade Nacional do Petróleo of Timor-Leste and link to https://www.anp.tl/category/daily-fuel-price/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.ansa.it",
       "provider": "www.ansa.it",
       "kind": "feed",
@@ -11169,6 +11344,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.app.gov.al",
+      "provider": "www.app.gov.al",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.app.gov.al and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_global-tender-feeds.mjs"
         }
       ]
     },
@@ -12159,6 +12348,23 @@
       ]
     },
     {
+      "host": "www.erb.org.zm",
+      "provider": "www.erb.org.zm",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Energy Regulation Board of Zambia and link to https://www.erb.org.zm/category/price-build-up/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.eskom.co.za",
       "provider": "www.eskom.co.za",
       "kind": "structured",
@@ -12605,6 +12811,20 @@
         },
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.gub.uy",
+      "provider": "www.gub.uy",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit URSEA (Unidad Reguladora de Servicios de Energía y Agua) and link to https://www.gub.uy/unidad-reguladora-servicios-energia-agua/tematica/hidrocarburos.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -13647,6 +13867,23 @@
       ]
     },
     {
+      "host": "www.qatarenergy.qa",
+      "provider": "www.qatarenergy.qa",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit QatarEnergy and link to https://www.qatarenergy.qa/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
       "host": "www.radiondekeluka.org",
       "provider": "Radio Ndeke Luka",
       "kind": "feed",
@@ -14035,6 +14272,20 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.sonabhy.bf",
+      "provider": "www.sonabhy.bf",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit SONABHY and link to https://www.sonabhy.bf/tarif-hydrocarbures/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },
@@ -14852,6 +15103,9 @@
           "path": "scripts/build-crawlable-corpus.mjs"
         },
         {
+          "path": "scripts/build-open-data-chokepoints.mjs"
+        },
+        {
           "path": "scripts/build-openapi-json.mjs"
         },
         {
@@ -15083,6 +15337,23 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.zera.co.zw",
+      "provider": "www.zera.co.zw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Unconfirmed",
+      "attribution": "Credit the Zimbabwe Energy Regulatory Authority and link to https://www.zera.co.zw/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/regional-fuel-feeds.mjs"
+        },
+        {
+          "path": "scripts/shared/regional-energy-feeds.json"
         }
       ]
     },

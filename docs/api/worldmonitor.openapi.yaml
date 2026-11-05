@@ -150,7 +150,7 @@ paths:
             tags:
                 - AviationService
             summary: ListAirportDelays
-            description: ListAirportDelays retrieves current airport delay alerts.
+            description: ListAirportDelays returns delay status for each monitored airport from seeded FAA and AviationStack data plus NOTAM closures, marking unreported hubs unknown.
             operationId: ListAirportDelays
             parameters:
                 - name: page_size
@@ -1360,7 +1360,7 @@ paths:
             tags:
                 - AviationService
             summary: ListAviationNews
-            description: ListAviationNews retrieves filtered aviation news articles.
+            description: ListAviationNews returns articles from nine aviation RSS feeds such as FlightGlobal and Aviation Week, filtered by up to 10 entities over a 1-168 hour window.
             operationId: ListAviationNews
             parameters:
                 - name: entities
@@ -1699,7 +1699,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchGoogleDates
-            description: SearchGoogleDates finds the cheapest travel dates across a flexible date range via Google Flights.
+            description: SearchGoogleDates returns the cheapest Google Flights fare per departure date over up to 31 days, one-way or round trip, with cabin and stop filters.
             operationId: SearchGoogleDates
             parameters:
                 - name: origin
@@ -2090,7 +2090,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListClimateAnomalies
-            description: ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
+            description: ListClimateAnomalies returns 7-day temperature and precipitation departures from 1991-2020 monthly normals per climate zone, using Open-Meteo ERA5 data.
             operationId: ListClimateAnomalies
             parameters:
                 - name: page_size
@@ -2242,7 +2242,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListClimateDisasters
-            description: ListClimateDisasters retrieves climate-relevant disaster events from seeded data.
+            description: ListClimateDisasters returns recent floods, cyclones, droughts, heatwaves, wildfires and volcanoes from ReliefWeb, GDACS, EONET and FIRMS, up to 100 per page.
             operationId: ListClimateDisasters
             parameters:
                 - name: page_size
@@ -2373,7 +2373,7 @@ paths:
             tags:
                 - ClimateService
             summary: GetCo2Monitoring
-            description: GetCo2Monitoring retrieves seeded NOAA greenhouse gas monitoring data.
+            description: GetCo2Monitoring returns NOAA GML Mauna Loa CO2 readings (current, year-ago, 12-month trend) with global methane and nitrous oxide levels, refreshed every 3 days.
             operationId: GetCo2Monitoring
             parameters:
                 - name: jmespath
@@ -2486,7 +2486,7 @@ paths:
             tags:
                 - ClimateService
             summary: GetOceanIceData
-            description: GetOceanIceData retrieves seeded Arctic sea ice, sea level, and ocean heat indicators.
+            description: GetOceanIceData returns NSIDC Arctic sea ice extent and anomaly with a 12-month trend, NASA sea level rise, NOAA 0-700m ocean heat content and SST anomaly.
             operationId: GetOceanIceData
             parameters:
                 - name: jmespath
@@ -2602,7 +2602,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListAirQualityData
-            description: ListAirQualityData retrieves recent PM2.5 station data from the shared air-quality seed.
+            description: ListAirQualityData returns PM2.5 station readings from the last two hours from OpenAQ, plus WAQI when configured, with a US EPA AQI and risk level each.
             operationId: ListAirQualityData
             parameters:
                 - name: jmespath
@@ -5404,7 +5404,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: GetConsumerPriceOverview
-            description: GetConsumerPriceOverview retrieves headline basket indices and coverage metrics.
+            description: GetConsumerPriceOverview returns essentials and value basket indices, week and month changes, retailer spread and coverage for one of 10 scraped markets.
             operationId: GetConsumerPriceOverview
             parameters:
                 - name: market_code
@@ -5667,7 +5667,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListConsumerPriceCategories
-            description: ListConsumerPriceCategories retrieves category summaries with sparklines.
+            description: ListConsumerPriceCategories returns per-category price indices with week and month changes, sparklines and coverage for a market over a 7d, 30d or 90d range.
             operationId: ListConsumerPriceCategories
             parameters:
                 - name: market_code
@@ -5805,7 +5805,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListConsumerPriceMovers
-            description: ListConsumerPriceMovers retrieves the largest upward and downward item price moves.
+            description: ListConsumerPriceMovers returns up to 10 risers and 10 fallers, the products with the largest price changes in a market over 7d, 30d or 90d, by category.
             operationId: ListConsumerPriceMovers
             parameters:
                 - name: market_code
@@ -5956,7 +5956,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: ListRetailerPriceSpreads
-            description: ListRetailerPriceSpreads retrieves cheapest-basket comparisons across retailers.
+            description: ListRetailerPriceSpreads compares essentials basket totals across retailers in a market, with each store's gap to the cheapest and the overall spread.
             operationId: ListRetailerPriceSpreads
             parameters:
                 - name: market_code
@@ -6087,7 +6087,7 @@ paths:
             tags:
                 - ConsumerPricesService
             summary: GetConsumerPriceFreshness
-            description: GetConsumerPriceFreshness retrieves feed freshness and coverage health per retailer.
+            description: GetConsumerPriceFreshness returns scrape freshness per retailer in a market, with last run time, status, parse success rate and the count of stalled feeds.
             operationId: GetConsumerPriceFreshness
             parameters:
                 - name: market_code
@@ -6571,7 +6571,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetInternalDisplacement
-            description: IDPs by region from IOM DTM, latest survey round per operation.
+            description: GetInternalDisplacement returns IOM DTM internally displaced persons by admin-1 region from each operation's latest survey round, filterable by ISO3 country.
             operationId: GetInternalDisplacement
             parameters:
                 - name: country_code
@@ -6853,7 +6853,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: Country population or estimated population within a radius.
+            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point from the nearest one's average density.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode
@@ -7815,7 +7815,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetNo2Activity
-            description: Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters, year over year. Seed-backed.
+            description: GetNo2Activity returns Sentinel-5P NO2 year-over-year activity direction for 167 countries and 32 industrial clusters, filterable by country, region and kind.
             operationId: GetNo2Activity
             parameters:
                 - name: country_code
@@ -8210,7 +8210,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisExchangeRates
-            description: GetBisExchangeRates retrieves effective exchange rates from BIS.
+            description: GetBisExchangeRates retrieves the latest monthly real effective exchange rate from BIS WS_EER, with monthly change, for 12 economies including the euro area.
             operationId: GetBisExchangeRates
             parameters:
                 - name: jmespath
@@ -8323,7 +8323,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBisCredit
-            description: GetBisCredit retrieves credit-to-GDP ratio data from BIS.
+            description: GetBisCredit retrieves the latest quarterly credit-to-GDP ratio and prior quarter from BIS WS_TC for 12 economies, including the US, euro area and China.
             operationId: GetBisCredit
             parameters:
                 - name: jmespath
@@ -8626,7 +8626,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListGroceryBasketPrices
-            description: ListGroceryBasketPrices retrieves grocery basket price comparison across 24 countries worldwide.
+            description: ListGroceryBasketPrices compares the weekly USD cost of a 10-item grocery basket (rice, eggs, milk, bread and more) across 24 countries, with weekly change.
             operationId: ListGroceryBasketPrices
             parameters:
                 - name: jmespath
@@ -8748,7 +8748,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListBigMacPrices
-            description: ListBigMacPrices retrieves Big Mac Index prices across Middle East countries.
+            description: ListBigMacPrices retrieves weekly Big Mac prices in local currency and USD for 49 countries via Exa web search, with cheapest, priciest and weekly change.
             operationId: ListBigMacPrices
             parameters:
                 - name: jmespath
@@ -8865,7 +8865,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetNationalDebt
-            description: GetNationalDebt retrieves national debt clock data for all countries.
+            description: GetNationalDebt estimates government debt in USD by country from IMF WEO debt-to-GDP and GDP with a deficit-based growth rate; US uses Treasury debt data.
             operationId: GetNationalDebt
             parameters:
                 - name: jmespath
@@ -8980,7 +8980,7 @@ paths:
             tags:
                 - EconomicService
             summary: ListFuelPrices
-            description: ListFuelPrices retrieves retail gasoline and diesel prices across 30+ countries.
+            description: ListFuelPrices retrieves weekly retail gasoline and diesel prices in USD for 30+ countries from official sources such as the EU Oil Bulletin and US EIA.
             operationId: ListFuelPrices
             parameters:
                 - name: jmespath
@@ -9102,7 +9102,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetBlsSeries
-            description: GetBlsSeries retrieves BLS-only series not available on FRED (CES, LAUMT, CIU).
+            description: GetBlsSeries returns a BLS labor series, private nonfarm payrolls (USPRIV) or the employment cost index (ECIALLCIV), mirrored from FRED with recent history.
             operationId: GetBlsSeries
             parameters:
                 - name: series_id
@@ -9236,7 +9236,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEconomicCalendar
-            description: GetEconomicCalendar retrieves upcoming major economic events (FOMC, CPI, NFP, etc).
+            description: GetEconomicCalendar returns scheduled FOMC and ECB rate decisions, US CPI, payrolls, GDP, PCE and retail sales, and Eurostat releases, filtered by date range.
             operationId: GetEconomicCalendar
             parameters:
                 - name: fromDate
@@ -9367,7 +9367,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetCrudeInventories
-            description: GetCrudeInventories retrieves the 8 most recent weeks of US crude oil stockpile data from EIA (WCRSTUS1).
+            description: GetCrudeInventories retrieves the 8 most recent weeks of US commercial crude oil inventories excluding the SPR (EIA series WCESTUS1) with the latest period.
             operationId: GetCrudeInventories
             parameters:
                 - name: jmespath
@@ -9706,7 +9706,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEurostatCountryData
-            description: GetEurostatCountryData retrieves per-country CPI, unemployment, and GDP growth for 10 EU member states.
+            description: GetEurostatCountryData retrieves HICP inflation, unemployment and quarterly GDP growth from Eurostat for 10 EU member states, including Germany and France.
             operationId: GetEurostatCountryData
             parameters:
                 - name: jmespath
@@ -9835,7 +9835,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuGasStorage
-            description: GetEuGasStorage retrieves EU aggregate natural gas storage fill % from GIE AGSI+.
+            description: GetEuGasStorage returns EU gas storage fill % from GIE AGSI+, with day-over-day change, injection or withdrawal trend, and up to five days of history.
             operationId: GetEuGasStorage
             parameters:
                 - name: jmespath
@@ -9950,7 +9950,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuYieldCurve
-            description: GetEuYieldCurve retrieves the ECB Euro Area AAA sovereign yield curve (Svensson model spot rates).
+            description: GetEuYieldCurve retrieves the latest ECB euro area AAA government bond yield curve (Svensson spot rates) at the 1Y, 2Y, 5Y, 10Y, 20Y and 30Y tenors.
             operationId: GetEuYieldCurve
             parameters:
                 - name: jmespath
@@ -10064,7 +10064,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEuFsi
-            description: GetEuFsi retrieves the ECB CISS (Composite Indicator of Systemic Stress) for the Euro area.
+            description: 'GetEuFsi retrieves the ECB Composite Indicator of Systemic Stress (CISS) for the euro area: latest daily value, a year of daily history and a staleness flag.'
             operationId: GetEuFsi
             parameters:
                 - name: jmespath
@@ -10295,7 +10295,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetFaoFoodPriceIndex
-            description: GetFaoFoodPriceIndex retrieves the FAO Food Price Index for the past 12 months.
+            description: GetFaoFoodPriceIndex retrieves 12 months of the FAO Food Price Index with meat, dairy, cereals, oils and sugar sub-indices, plus monthly and annual change.
             operationId: GetFaoFoodPriceIndex
             parameters:
                 - name: jmespath
@@ -10531,7 +10531,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetOilStocksAnalysis
-            description: GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
+            description: GetOilStocksAnalysis ranks IEA members by oil stock days of net-import cover against the 90-day obligation, with Europe, Asia-Pacific and North America data.
             operationId: GetOilStocksAnalysis
             parameters:
                 - name: jmespath
@@ -10804,7 +10804,7 @@ paths:
             tags:
                 - EconomicService
             summary: GetEnergyCrisisPolicies
-            description: GetEnergyCrisisPolicies retrieves government policy responses to the 2026 energy crisis from the IEA tracker.
+            description: GetEnergyCrisisPolicies retrieves government responses to the 2026 energy crisis from the IEA policy tracker, filterable by country code and policy category.
             operationId: GetEnergyCrisisPolicies
             parameters:
                 - name: country_code
@@ -13463,7 +13463,7 @@ paths:
             tags:
                 - HealthService
             summary: ListDiseaseOutbreaks
-            description: ListDiseaseOutbreaks returns recent WHO/ProMED disease outbreak alerts.
+            description: ListDiseaseOutbreaks returns recent outbreak alerts from WHO Disease Outbreak News, CDC, ECDC, CIDRAP and ProMED-sourced ThinkGlobalHealth, with alert levels.
             operationId: ListDiseaseOutbreaks
             parameters:
                 - name: jmespath
@@ -13578,7 +13578,7 @@ paths:
             tags:
                 - HealthService
             summary: ListAirQualityAlerts
-            description: ListAirQualityAlerts returns recent PM2.5 stations with AQI-derived health risk.
+            description: ListAirQualityAlerts returns PM2.5 stations reporting in the last 2 hours from OpenAQ, supplemented by WAQI, with AQI and a derived health risk level.
             operationId: ListAirQualityAlerts
             parameters:
                 - name: jmespath
@@ -13836,7 +13836,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetOutages
-            description: ListInternetOutages retrieves detected internet outages from Cloudflare Radar.
+            description: ListInternetOutages returns Cloudflare Radar outage annotations from the last 28 days, filterable by country and detection time, with severity and cause.
             operationId: ListInternetOutages
             parameters:
                 - name: start
@@ -13997,7 +13997,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListServiceStatuses
-            description: ListServiceStatuses retrieves operational status of monitored external services.
+            description: ListServiceStatuses checks the public status pages of 30 cloud, developer, communication, AI and SaaS services, sorted worst first and filterable by status.
             operationId: ListServiceStatuses
             parameters:
                 - name: status
@@ -14123,7 +14123,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetTemporalBaseline
-            description: GetTemporalBaseline retrieves historical baseline data for a specific signal.
+            description: GetTemporalBaseline compares a count for signals like military flights, vessels or protests to its weekday and month baseline and flags z-score anomalies.
             operationId: GetTemporalBaseline
             parameters:
                 - name: type
@@ -14273,7 +14273,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetIpGeo
-            description: GetIpGeo retrieves geographic information based on the caller's IP address.
+            description: GetIpGeo returns the caller's ISO country code, region and city from Cloudflare and Vercel edge headers, with XX when unknown. Responses are never cached.
             operationId: GetIpGeo
             parameters:
                 - name: jmespath
@@ -14383,7 +14383,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ReverseGeocode
-            description: ReverseGeocode resolves geographic coordinates to a postal address/country.
+            description: ReverseGeocode resolves latitude and longitude to a country name, ISO code and display name via OpenStreetMap Nominatim, with results cached for 7 days.
             operationId: ReverseGeocode
             parameters:
                 - name: lat
@@ -14510,7 +14510,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetBootstrapData
-            description: GetBootstrapData fetches multiple data points from the system cache in a single call.
+            description: GetBootstrapData returns cached dashboard datasets as JSON strings in one call, for a fast or slow tier or named keys, and lists any keys missing from cache.
             operationId: GetBootstrapData
             parameters:
                 - name: tier
@@ -14657,7 +14657,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: RecordBaselineSnapshot
-            description: RecordBaselineSnapshot is deprecated and DISABLED. Client-supplied shared baseline writes are rejected.
+            description: RecordBaselineSnapshot is deprecated and DISABLED. Every call is rejected with HTTP 403 because client-supplied counts cannot safely update shared baselines.
             operationId: RecordBaselineSnapshot
             requestBody:
                 content:
@@ -14828,7 +14828,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetCableHealth
-            description: GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
+            description: GetCableHealth rates submarine cables as ok, degraded or fault by matching fault and repair-ship keywords in NGA navigational warnings, refreshed each 30 min.
             operationId: GetCableHealth
             parameters:
                 - name: jmespath
@@ -15062,7 +15062,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetDdosAttacks
-            description: ListInternetDdosAttacks retrieves L3/L4 DDoS attack summaries from Cloudflare Radar.
+            description: ListInternetDdosAttacks returns Cloudflare Radar layer 3 DDoS summaries for the last 7 days by protocol and attack vector, with the top target locations.
             operationId: ListInternetDdosAttacks
             parameters:
                 - name: jmespath
@@ -15183,7 +15183,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetTrafficAnomalies
-            description: ListInternetTrafficAnomalies retrieves traffic anomaly events from Cloudflare Radar.
+            description: ListInternetTrafficAnomalies returns up to 100 Cloudflare Radar traffic anomalies from the last 7 days with ASN and location, filterable by country code.
             operationId: ListInternetTrafficAnomalies
             parameters:
                 - name: country
@@ -15590,7 +15590,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetPizzintStatus
-            description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension data.
+            description: GetPizzintStatus returns the Pentagon Pizza Index from pizzint.watch and, on request, GDELT country-pair tension scores with supporting evidence.
             operationId: GetPizzintStatus
             parameters:
                 - name: include_gdelt
@@ -15725,7 +15725,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ClassifyEvent
-            description: ClassifyEvent analyzes a news event using AI models. PRO-gated. Requires entitlement tier >= 1.
+            description: ClassifyEvent has an LLM assign a news headline a threat level and one of 14 event categories, cached for 24 hours. PRO-gated. Requires entitlement tier >= 1.
             operationId: ClassifyEvent
             security:
                 - WorldMonitorKey: []
@@ -15871,7 +15871,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryHistory
-            description: Daily country snapshots with source versions, gaps and tier-limited depth.
+            description: GetCountryHistory returns daily snapshots of a country's CII and resilience scores, top events, and key signals, with depth set by the caller's plan.
             operationId: GetCountryHistory
             security:
                 - {}
@@ -16015,7 +16015,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryRisk
-            description: GetCountryRisk retrieves composite risk intelligence for a specific country.
+            description: GetCountryRisk returns a country's Country Instability Index score, its travel advisory level, and the number of sanctions entries tied to it.
             operationId: GetCountryRisk
             parameters:
                 - name: country_code
@@ -16432,7 +16432,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchGdeltDocuments
-            description: SearchGdeltDocuments searches the GDELT GKG API for relevant documentation.
+            description: SearchGdeltDocuments returns up to 20 articles from the first seeded GDELT topic that matches a query, or recent articles for a country:XX query.
             operationId: SearchGdeltDocuments
             parameters:
                 - name: query
@@ -16604,7 +16604,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: DeductSituation
-            description: DeductSituation performs broad situational analysis using LLMs. PRO-gated. Requires entitlement tier >= 1.
+            description: DeductSituation runs LLM reasoning over a user query and geographic context, with matching prediction market odds. PRO-gated. Requires entitlement tier >= 1.
             operationId: DeductSituation
             security:
                 - WorldMonitorKey: []
@@ -16779,7 +16779,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSatellites
-            description: ListSatellites retrieves current orbital positions and metadata.
+            description: ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side propagation, refreshed every 2h and filterable by country.
             operationId: ListSatellites
             parameters:
                 - name: country
@@ -16900,7 +16900,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListGpsInterference
-            description: ListGpsInterference retrieves detected GPS/GNSS interference data (jamming).
+            description: ListGpsInterference returns daily gpsjam.org H3 hexes rated low, medium, or high by the share of aircraft reporting GPS/GNSS problems, filterable by region.
             operationId: ListGpsInterference
             parameters:
                 - name: region
@@ -17027,7 +17027,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListOrefAlerts
-            description: ListOrefAlerts retrieves Israeli Home Front Command alerts (Red Alerts).
+            description: ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
             operationId: ListOrefAlerts
             parameters:
                 - name: mode
@@ -17162,7 +17162,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListTelegramFeed
-            description: ListTelegramFeed retrieves real-time OSINT messages from monitored Telegram channels.
+            description: ListTelegramFeed returns recent OSINT messages from monitored Telegram channels via the relay, filterable by topic or channel, up to 200 per request.
             operationId: ListTelegramFeed
             parameters:
                 - name: limit
@@ -18060,7 +18060,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryFacts
-            description: GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
+            description: GetCountryFacts returns a country's head of state, population, area, capital, languages, and currencies from Wikidata plus its Wikipedia summary.
             operationId: GetCountryFacts
             parameters:
                 - name: country_code
@@ -18181,7 +18181,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSecurityAdvisories
-            description: ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
+            description: ListSecurityAdvisories returns travel and health advisories from the US State Department, UK FCDO, Smartraveller, CDC, ECDC, and WHO with per-country levels.
             operationId: ListSecurityAdvisories
             parameters:
                 - name: jmespath
@@ -18296,7 +18296,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetGdeltTopicTimeline
-            description: GetGdeltTopicTimeline retrieves tone and volume timelines for a GDELT intel topic.
+            description: 'GetGdeltTopicTimeline returns 14-day GDELT tone and volume timelines for one topic: military, cyber, nuclear, sanctions, intelligence, or maritime.'
             operationId: GetGdeltTopicTimeline
             parameters:
                 - name: topic
@@ -18419,7 +18419,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListCrossSourceSignals
-            description: ListCrossSourceSignals returns cross-domain signals ranked by severity with composite escalation detection.
+            description: ListCrossSourceSignals returns signals from GPS jamming, unrest, OREF, market, cyber, and other feeds, ranked by severity, with composite escalation zones.
             operationId: ListCrossSourceSignals
             parameters:
                 - name: jmespath
@@ -18662,7 +18662,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListWsbTickers
-            description: Premium Reddit ticker feed. PRO-gated. Requires an active Pro subscription.
+            description: ListWsbTickers ranks the top 50 tickers mentioned on r/wallstreetbets, r/stocks, and r/investing by velocity. PRO-gated. Requires an active Pro subscription.
             operationId: ListWsbTickers
             security:
                 - WorldMonitorKey: []
@@ -18780,7 +18780,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetSocialVelocity
-            description: GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.
+            description: GetSocialVelocity returns hot posts from r/worldnews and r/geopolitics ranked by a velocity score of upvotes, ratio, and recency, refreshed every 3 hours.
             operationId: GetSocialVelocity
             parameters:
                 - name: jmespath
@@ -18894,7 +18894,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryEnergyProfile
-            description: GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+            description: GetCountryEnergyProfile returns a country's power mix, JODI oil and gas balances, IEA stock cover, Ember electricity, gas storage, prices, and SPR policy.
             operationId: GetCountryEnergyProfile
             parameters:
                 - name: country_code
@@ -19013,7 +19013,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ComputeEnergyShockScenario
-            description: ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+            description: ComputeEnergyShockScenario models the oil, gas, or combined supply deficit a country faces when 10 to 100 percent of a chokepoint's flow is disrupted.
             operationId: ComputeEnergyShockScenario
             parameters:
                 - name: country_code
@@ -19163,7 +19163,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryPortActivity
-            description: GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+            description: GetCountryPortActivity returns up to 25 IMF PortWatch ports for a country with 30-day tanker calls, trend versus the prior 30 days, and tanker DWT.
             operationId: GetCountryPortActivity
             parameters:
                 - name: country_code
@@ -20663,7 +20663,7 @@ paths:
             tags:
                 - MaritimeService
             summary: ListUkmtoIncidents
-            description: ListUkmtoIncidents returns UKMTO maritime incident reports and source freshness.
+            description: ListUkmtoIncidents returns UKMTO maritime security reports with type, place and coordinates from a public republication, plus fetch time and a stale flag.
             operationId: ListUkmtoIncidents
             parameters:
                 - name: jmespath
@@ -21248,7 +21248,7 @@ paths:
             tags:
                 - MarketService
             summary: ListCryptoQuotes
-            description: ListCryptoQuotes retrieves cryptocurrency quotes from CoinGecko.
+            description: ListCryptoQuotes returns price and 24h change for major coins or up to 25 CoinGecko ids from CoinPaprika or CoinGecko; 7d change and sparkline need CoinGecko.
             operationId: ListCryptoQuotes
             parameters:
                 - name: ids
@@ -21809,7 +21809,7 @@ paths:
             tags:
                 - MarketService
             summary: GetSectorSummary
-            description: GetSectorSummary retrieves market sector performance data from Finnhub.
+            description: GetSectorSummary returns daily percent change for 12 US sector ETFs (XLK, XLF, XLE and peers, plus SMH) from Finnhub quotes with a Yahoo Finance fallback.
             operationId: GetSectorSummary
             parameters:
                 - name: period
@@ -21929,7 +21929,7 @@ paths:
             tags:
                 - MarketService
             summary: ListStablecoinMarkets
-            description: ListStablecoinMarkets retrieves stablecoin peg health and market data from CoinGecko.
+            description: ListStablecoinMarkets returns price, peg deviation and status, market cap and volume for USDT, USDC, DAI, FDUSD and USDe, or up to 25 CoinGecko ids.
             operationId: ListStablecoinMarkets
             parameters:
                 - name: coins
@@ -22078,7 +22078,7 @@ paths:
             tags:
                 - MarketService
             summary: ListEtfFlows
-            description: ListEtfFlows retrieves BTC spot ETF flow estimates from Yahoo Finance.
+            description: ListEtfFlows returns price, volume and a volume-based flow estimate for 10 US spot bitcoin ETFs such as IBIT, FBTC and GBTC, via Alpha Vantage or Yahoo.
             operationId: ListEtfFlows
             parameters:
                 - name: jmespath
@@ -22200,7 +22200,7 @@ paths:
             tags:
                 - MarketService
             summary: GetCountryStockIndex
-            description: GetCountryStockIndex retrieves the primary stock index for a country from Yahoo Finance.
+            description: GetCountryStockIndex returns a country's main stock index by ISO 3166-1 alpha-2 code, with last close, weekly percent change and currency from Yahoo Finance.
             operationId: GetCountryStockIndex
             parameters:
                 - name: country_code
@@ -22365,7 +22365,7 @@ paths:
             tags:
                 - MarketService
             summary: GetPriceHistory
-            description: GetPriceHistory retrieves dated daily closes for up to four tracked symbols from Yahoo Finance.
+            description: GetPriceHistory returns daily Yahoo Finance closes over 1mo, 3mo, 6mo or 1y for up to four symbols from the commodity, market and Gulf quote sets.
             operationId: GetPriceHistory
             parameters:
                 - name: symbols
@@ -22518,7 +22518,7 @@ paths:
             tags:
                 - MarketService
             summary: ListGulfQuotes
-            description: ListGulfQuotes retrieves Gulf region market quotes (indices, currencies, oil).
+            description: ListGulfQuotes returns prices, percent change and sparklines for Gulf stock indices and ETFs, six GCC currencies, and WTI and Brent crude oil.
             operationId: ListGulfQuotes
             parameters:
                 - name: jmespath
@@ -23200,7 +23200,7 @@ paths:
             tags:
                 - MarketService
             summary: ListCryptoSectors
-            description: ListCryptoSectors retrieves crypto sector performance averages.
+            description: ListCryptoSectors returns the average 24h price change of the tokens with data in eight crypto sectors, such as Layer 1, DeFi, AI and Memes, from CoinGecko.
             operationId: ListCryptoSectors
             parameters:
                 - name: jmespath
@@ -23311,7 +23311,7 @@ paths:
             tags:
                 - MarketService
             summary: ListDefiTokens
-            description: ListDefiTokens retrieves DeFi token prices and changes.
+            description: ListDefiTokens returns USD price with 24h and 7d change for DeFi tokens such as Aave, Uniswap, Pendle and Lido, from CoinGecko with CoinPaprika fallback.
             operationId: ListDefiTokens
             parameters:
                 - name: jmespath
@@ -23426,7 +23426,7 @@ paths:
             tags:
                 - MarketService
             summary: ListAiTokens
-            description: ListAiTokens retrieves AI-focused crypto token prices and changes.
+            description: ListAiTokens returns USD price with 24h and 7d change for AI crypto tokens such as Bittensor, Render and Fetch.ai, from CoinGecko with CoinPaprika fallback.
             operationId: ListAiTokens
             parameters:
                 - name: jmespath
@@ -23541,7 +23541,7 @@ paths:
             tags:
                 - MarketService
             summary: ListOtherTokens
-            description: ListOtherTokens retrieves other/trending crypto token prices and changes.
+            description: ListOtherTokens returns USD price with 24h and 7d change for trending tokens such as Aptos, Sui, Celestia and Ondo, from CoinGecko with CoinPaprika fallback.
             operationId: ListOtherTokens
             parameters:
                 - name: jmespath
@@ -23773,7 +23773,7 @@ paths:
             tags:
                 - MarketService
             summary: ListEarningsCalendar
-            description: ListEarningsCalendar retrieves upcoming and recent earnings releases.
+            description: ListEarningsCalendar returns Finnhub earnings releases from the past week to 14 days ahead, with EPS and revenue estimates, actuals and beat or miss.
             operationId: ListEarningsCalendar
             parameters:
                 - name: fromDate
@@ -23904,7 +23904,7 @@ paths:
             tags:
                 - MarketService
             summary: GetCotPositioning
-            description: GetCotPositioning retrieves CFTC COT institutional positioning data.
+            description: GetCotPositioning returns weekly CFTC Commitments of Traders data by trader group for S&P 500, Nasdaq 100, Treasury, EUR, JPY, gold, silver and WTI futures.
             operationId: GetCotPositioning
             parameters:
                 - name: jmespath
@@ -24258,7 +24258,7 @@ paths:
             tags:
                 - MarketService
             summary: GetGoldIntelligence
-            description: GetGoldIntelligence retrieves gold pricing, cross-currency XAU, ratios, and CFTC positioning.
+            description: GetGoldIntelligence returns gold and other precious metal prices, XAU in six currencies, gold/silver ratio, CFTC positioning, GLD holdings and IMF reserves.
             operationId: GetGoldIntelligence
             parameters:
                 - name: jmespath
@@ -24392,7 +24392,7 @@ paths:
             tags:
                 - MarketService
             summary: GetHyperliquidFlow
-            description: GetHyperliquidFlow retrieves Hyperliquid perp positioning flow (funding/OI/basis composite scores).
+            description: GetHyperliquidFlow returns funding, open interest, 24h volume, basis and flow scores for Hyperliquid perps on crypto, metals, oil, gas and FX, every 5 min.
             operationId: GetHyperliquidFlow
             parameters:
                 - name: jmespath
@@ -25618,7 +25618,7 @@ paths:
             tags:
                 - MilitaryService
             summary: GetWingbitsLiveFlight
-            description: GetWingbitsLiveFlight retrieves real-time position data from the Wingbits ECS network for a single aircraft.
+            description: GetWingbitsLiveFlight returns one aircraft's live Wingbits ECS position by ICAO24 hex, with its schedule, delays and a Planespotters photo, cached 30 seconds.
             operationId: GetWingbitsLiveFlight
             parameters:
                 - name: icao24
@@ -25738,7 +25738,7 @@ paths:
             tags:
                 - MilitaryService
             summary: ListDefensePatents
-            description: ListDefensePatents retrieves recent defense/dual-use patent filings from the USPTO Open Data Portal.
+            description: ListDefensePatents returns weekly-seeded USPTO filings by key defense and dual-use assignees, filterable by CPC class and assignee, up to 100 rows.
             operationId: ListDefensePatents
             parameters:
                 - name: cpc_code
@@ -26335,7 +26335,7 @@ paths:
             tags:
                 - NewsService
             summary: GetSummarizeArticleCache
-            description: GetSummarizeArticleCache looks up a cached summary by deterministic key (CDN-cacheable GET).
+            description: GetSummarizeArticleCache returns an AI summary already stored by SummarizeArticle for a deterministic cache key. Hits are CDN-cacheable; misses are not.
             operationId: GetSummarizeArticleCache
             parameters:
                 - name: cache_key
@@ -26455,7 +26455,7 @@ paths:
             tags:
                 - NewsService
             summary: ListFeedDigest
-            description: ListFeedDigest returns a pre-aggregated digest of all RSS feeds for a site variant.
+            description: ListFeedDigest returns RSS headlines grouped by category for a site variant (full, tech, finance, happy, commodity, energy) and language, with coverage state.
             operationId: ListFeedDigest
             parameters:
                 - name: variant
@@ -27852,7 +27852,7 @@ paths:
             tags:
                 - PositiveEventsService
             summary: ListPositiveGeoEvents
-            description: ListPositiveGeoEvents retrieves geocoded positive news events from GDELT GEO API.
+            description: ListPositiveGeoEvents returns places named in positive-tone GDELT GKG articles, grouped by location with at least 3 reports and tagged by category.
             operationId: ListPositiveGeoEvents
             parameters:
                 - name: jmespath
@@ -28267,7 +28267,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListArxivPapers
-            description: ListArxivPapers retrieves recent papers from arXiv.
+            description: ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per request.
             operationId: ListArxivPapers
             parameters:
                 - name: page_size
@@ -28420,7 +28420,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListTrendingRepos
-            description: ListTrendingRepos retrieves trending repositories from GitHub.
+            description: ListTrendingRepos returns daily trending GitHub repositories for Python, JavaScript or TypeScript from OSSInsight, with GitHub search as a fallback.
             operationId: ListTrendingRepos
             parameters:
                 - name: page_size
@@ -28566,7 +28566,7 @@ paths:
             tags:
                 - ResearchService
             summary: ListHackernewsItems
-            description: ListHackernewsItems retrieves top stories from Hacker News.
+            description: ListHackernewsItems returns up to 30 Hacker News stories from the top, new, best, ask, show or job feed, read from the official Hacker News Firebase API.
             operationId: ListHackernewsItems
             parameters:
                 - name: page_size
@@ -28874,7 +28874,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceScore
-            description: PRO-gated. Requires an active Pro subscription.
+            description: GetResilienceScore returns a country's resilience score with domain and pillar scores, trend and confidence. PRO-gated. Requires an active Pro subscription.
             operationId: GetResilienceScore
             security:
                 - WorldMonitorKey: []
@@ -29139,7 +29139,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetFoodStocks
-            description: Returns seeded PSD cereal balances with FAOSTAT gap fill. PRO-gated. Requires entitlement tier >= 1.
+            description: GetFoodStocks returns USDA PSD grain and oilseed stocks-to-use by country or WORLD; FAOSTAT fills supply gaps without stock ratios (see hasStocksToUse). PRO-gated. Requires entitlement tier >= 1.
             operationId: GetFoodStocks
             security:
                 - WorldMonitorKey: []
@@ -29808,7 +29808,7 @@ paths:
             tags:
                 - SanctionsService
             summary: ListSanctionsPressure
-            description: ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions.
+            description: ListSanctionsPressure returns OFAC SDN and Consolidated designations plus Canada SEMA entries, with country and program pressure and new additions.
             operationId: ListSanctionsPressure
             parameters:
                 - name: max_items
@@ -30526,7 +30526,7 @@ paths:
             tags:
                 - ScorecardService
             summary: GetFiveFactorScorecard
-            description: GetFiveFactorScorecard returns the cached five-factor scorecard for one country.
+            description: GetFiveFactorScorecard returns one country's 1-5 scores for food, energy, demographics, technology and defense, with per-pillar input evidence and coverage.
             operationId: GetFiveFactorScorecard
             security: []
             parameters:
@@ -30644,7 +30644,7 @@ paths:
             tags:
                 - ScorecardService
             summary: ListFiveFactorScorecards
-            description: ListFiveFactorScorecards returns compact summaries of all cached five-factor country scorecards.
+            description: ListFiveFactorScorecards returns pillar scores, bands and input coverage for every country in the seeded five-factor snapshot, plus methodology version.
             operationId: ListFiveFactorScorecards
             security: []
             parameters:
@@ -30725,7 +30725,7 @@ paths:
             tags:
                 - ScorecardService
             summary: GetBlocScorecard
-            description: GetBlocScorecard returns the five-factor scorecard for a named bloc or a custom group of 2-30 countries.
+            description: GetBlocScorecard aggregates five-factor pillar scores for a preset bloc such as EU27, NATO or BRICS, or 2-30 custom countries, listing excluded members.
             operationId: GetBlocScorecard
             security: []
             parameters:
@@ -30870,7 +30870,7 @@ paths:
             tags:
                 - SeismologyService
             summary: ListEarthquakes
-            description: ListEarthquakes retrieves recent earthquakes from USGS and Earthquakes Canada (NRCan).
+            description: ListEarthquakes returns M4.5+ earthquakes from the past 7 days from USGS and Earthquakes Canada (NRCan), flagging quakes within 100 km of nuclear test sites.
             operationId: ListEarthquakes
             parameters:
                 - name: start
@@ -32185,7 +32185,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetShippingStress
-            description: GetShippingStress returns carrier market data and a composite stress index.
+            description: GetShippingStress returns Yahoo Finance quotes for the BDRY dry bulk ETF and four shipping carriers, plus a 0-100 stress score from their average daily move.
             operationId: GetShippingStress
             parameters:
                 - name: jmespath
@@ -32439,7 +32439,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetBypassOptions
-            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated. Requires entitlement tier >= 1.
+            description: GetBypassOptions ranks a chokepoint's bypass corridors for a cargo type and closure share by cost and waypoint risk. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetBypassOptions
             security:
                 - WorldMonitorKey: []
@@ -35114,7 +35114,7 @@ paths:
             tags:
                 - TradeService
             summary: GetTradeRestrictions
-            description: Get quantitative restrictions and export controls.
+            description: GetTradeRestrictions returns each WTO reporter's latest MFN applied tariff average from the WTO Timeseries API, highest first, up to 100 economies.
             operationId: GetTradeRestrictions
             parameters:
                 - name: countries
@@ -35603,7 +35603,7 @@ paths:
             tags:
                 - TradeService
             summary: GetUsImportDuty
-            description: Current US duty on one product from one country (USITC HTS). PRO-gated. Requires entitlement tier >= 1.
+            description: GetUsImportDuty returns the USITC HTS base rate and Section 301 and 232 duties on one HS code from one country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetUsImportDuty
             security:
                 - WorldMonitorKey: []
@@ -35772,7 +35772,7 @@ paths:
             tags:
                 - TradeService
             summary: GetTradeFlows
-            description: Get bilateral merchandise trade flows.
+            description: GetTradeFlows returns a reporter's annual merchandise exports and imports with the World from seeded WTO data, up to 30 years, with a reason when uncovered.
             operationId: GetTradeFlows
             parameters:
                 - name: reporting_country
@@ -35925,7 +35925,7 @@ paths:
             tags:
                 - TradeService
             summary: GetTradeBarriers
-            description: Get SPS/TBT barrier notifications.
+            description: GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap, largest first, up to 100 economies; a missing series counts as 0%.
             operationId: GetTradeBarriers
             parameters:
                 - name: countries
@@ -36071,7 +36071,7 @@ paths:
             tags:
                 - TradeService
             summary: GetCustomsRevenue
-            description: Get US customs duties revenue (Treasury MTS data, seeded by Railway).
+            description: GetCustomsRevenue returns monthly and fiscal-year-to-date US customs duty receipts in billions from the Monthly Treasury Statement, up to 50 recent months.
             operationId: GetCustomsRevenue
             parameters:
                 - name: jmespath
@@ -36186,7 +36186,7 @@ paths:
             tags:
                 - TradeService
             summary: ListComtradeFlows
-            description: List UN Comtrade strategic commodity flows with anomaly detection. PRO-gated. Requires entitlement tier >= 1.
+            description: ListComtradeFlows returns UN Comtrade strategic-commodity flows by reporter and HS code, flagging 30% yearly swings. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListComtradeFlows
             security:
                 - WorldMonitorKey: []
@@ -36327,7 +36327,7 @@ paths:
             tags:
                 - UnrestService
             summary: ListUnrestEvents
-            description: ListUnrestEvents retrieves protest, riot, and civil unrest events.
+            description: ListUnrestEvents returns protest events seeded from ACLED, plus GDELT location mentions marked as unverified, filterable by country and time range.
             operationId: ListUnrestEvents
             parameters:
                 - name: start
@@ -36553,7 +36553,7 @@ paths:
             tags:
                 - WebcamService
             summary: ListWebcams
-            description: ListWebcams lists webcams in view, grouped into map clusters, with a total-in-view count.
+            description: ListWebcams returns Windy webcams in a bounding box rounded out to whole degrees, from a seeded geo index capped at 2,000 per search, clustered below zoom 9.
             operationId: ListWebcams
             parameters:
                 - name: zoom
@@ -36713,7 +36713,7 @@ paths:
             tags:
                 - WebcamService
             summary: GetWebcamImage
-            description: GetWebcamImage resolves a webcam id into its thumbnail and player URLs, title, and last-updated timestamp.
+            description: GetWebcamImage resolves one Windy webcam id into thumbnail, player and Windy page URLs, title, media type and last image update, cached for five minutes.
             operationId: GetWebcamImage
             parameters:
                 - name: webcam_id
@@ -41879,7 +41879,7 @@ components:
                     description: Unique event identifier.
                 type:
                     type: string
-                    description: 'Disaster type: flood, cyclone, drought, heatwave, wildfire.'
+                    description: 'Disaster type: flood, cyclone, drought, heatwave, wildfire, volcano.'
                 name:
                     type: string
                     description: Human-readable event name.
@@ -41913,7 +41913,7 @@ components:
                     description: Affected population when available.
                 source:
                     type: string
-                    description: 'Source system: GDACS, ReliefWeb, NASA FIRMS.'
+                    description: 'Source system: GDACS, ReliefWeb, NASA FIRMS, EONET.'
                 sourceUrl:
                     type: string
                     description: Source URL for drill-down.
@@ -58681,7 +58681,7 @@ components:
                     type: number
                     format: double
                     description: |-
-                        Ending stocks divided by total use (0.18 = 18%). Read has_stocks_to_use
+                        Ending stocks divided by total use (0.18 = 18%). Read hasStocksToUse
                          BEFORE this value: proto3 has no presence for a bare double, so an unknown
                          ratio and a genuine 0% are the same wire value. USDA/PSD estimates ending
                          stocks only for selected countries, so a minor producer routinely reports

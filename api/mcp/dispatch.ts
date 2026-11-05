@@ -36,6 +36,7 @@ import { chokepointPanelViewSchema, conflictPanelViewSchema, disasterPanelViewSc
 import { isSharedRestCounter, readDailyAllowance, reserveQuota, resolveDailyLimit, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
+import { CHATGPT_HIDDEN_TOOLS, isChatGptHost } from './host-policy';
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
 import {
   checkoutProductIdForPlan,
@@ -548,7 +549,12 @@ export async function dispatchToolsCall(
   if (!p || typeof p.name !== 'string') {
     return rpcError(id, -32602, 'Invalid params: missing tool name', corsHeaders);
   }
-  const resolved = TOOL_ALIASES.resolve(p.name, p.arguments);
+  // ChatGPT is not offered the checkout tool (host-policy.ts), so a call to it
+  // resolves exactly like a name that was never registered.
+  const chatGptHost = isChatGptHost(req);
+  const resolved = chatGptHost && CHATGPT_HIDDEN_TOOLS.has(p.name)
+    ? { kind: 'unknown' as const }
+    : TOOL_ALIASES.resolve(p.name, p.arguments);
   if (resolved.kind === 'unknown') {
     if (deferredBurst) {
       const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
@@ -1071,6 +1077,10 @@ export async function dispatchToolsCall(
         };
       }
       if (startUpgradeResult) execution.startUpgradeResult = startUpgradeResult;
+      if (chatGptHost) {
+        execution.hiddenTools = CHATGPT_HIDDEN_TOOLS;
+        execution.informOnly = true;
+      }
       if (panelRead?.panel === 'forecasts') execution.panelScope = 'forecasts';
       if (perToolForecastRead) execution.perToolForecastRead = true;
       if (tool.name === REPORT_ISSUE_TOOL) {

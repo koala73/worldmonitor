@@ -45,8 +45,8 @@ The top-level `status` describes user-visible platform availability, not perfect
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 384,
-    "ok": 383,
+    "total": 398,
+    "ok": 397,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -522,6 +522,23 @@ narrow the alarm scope or widen its threshold silently: dropping `CN` from the
 seeder's list, or publishing a 30-day budget, would otherwise report `OK` with
 China days stale — the exact failure this check exists to catch. A producer set
 that covers the pinned countries and adds more is accepted.
+
+The one permitted narrowing is a pinned country the producer lists in
+`criticalSourceAbsentCountries`. The seeder lists a country there only after an
+indexed count proves that none of its reference ports has any row in PortWatch's
+`Daily_Ports_Data`. It never lists more than 35 such countries, and only in a run
+where another country returned a real max date. Such a country has no content to
+judge, so it is reported by name instead of as stale or missing. A country listed
+both as critical and as source-absent reads as
+`source_absent_overlaps_critical`. If every pinned country is absent, nothing
+remains to judge and the block does not report stale content. Any non-empty
+`coverage.sourceAbsentCountries` keeps the check at `COVERAGE_PARTIAL`, even when
+the published count still clears `minRecordCount`. A content-freshness verdict
+(`COVERAGE_DEGRADED` for an unusable block, `STALE_CONTENT` for stale critical
+content) takes precedence, so a long-lived absence never hides it. The seeder also deletes each
+absent country's per-country key in the same transaction that advances
+publication, so readers of those keys never see its last-good payload as
+current.
 
 The producer's counts are a measurement taken at seeder-run time, and seed
 metadata is only rewritten on a canonical-advancing 12-hour run. Health

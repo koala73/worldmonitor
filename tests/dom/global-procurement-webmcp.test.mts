@@ -209,6 +209,9 @@ describe('GlobalProcurementPanel declarative WebMCP tool', () => {
       ['pakistan-epads', 'Pakistan EPADS'],
       ['georgia-spa', 'Georgia SPA'],
       ['armenia-armeps', 'Armenia ARMEPS'],
+      ['albania-app', 'Albania APP'],
+      ['dominican-republic-dgcp', 'Dominican Republic DGCP'],
+      ['malaysia-myprocurement', 'Malaysia MyProcurement'],
     ]);
     const sort = tools[0]?.elements.namedItem('sort') as HTMLSelectElement;
     expect([...sort.options].map((option) => option.value)).toEqual([

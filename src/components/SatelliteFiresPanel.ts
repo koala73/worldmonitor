@@ -62,25 +62,27 @@ export class SatelliteFiresPanel extends Panel {
 
     this.setSafeContent(unsafeRawHtml(`
       <div class="fires-panel-content">
-        <table class="fires-table">
-          <thead>
-            <tr>
-              <th scope="col">${t('components.satelliteFires.region')}</th>
-              <th scope="col">${t('components.satelliteFires.fires')}</th>
-              <th scope="col">${t('components.satelliteFires.high')}</th>
-              <th scope="col" title="Fire radiative power measures heat released by the fire, in megawatts.">Fire heat (MW)</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-          <tfoot>
-            <tr class="fire-totals">
-              <td>${t('components.satelliteFires.total')}</td>
-              <td>${this.totalCount}</td>
-              <td>${totalHigh}</td>
-              <td>${totalFrp >= 1000 ? `${(totalFrp / 1000).toFixed(1)}k` : Math.round(totalFrp).toLocaleString()}</td>
-            </tr>
-          </tfoot>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table fires-table">
+            <thead>
+              <tr>
+                <th scope="col">${t('components.satelliteFires.region')}</th>
+                <th scope="col">${t('components.satelliteFires.fires')}</th>
+                <th scope="col">${t('components.satelliteFires.high')}</th>
+                <th scope="col" title="Fire radiative power measures heat released by the fire, in megawatts.">Fire heat (MW)</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+            <tfoot>
+              <tr class="fire-totals">
+                <td>${t('components.satelliteFires.total')}</td>
+                <td>${this.totalCount}</td>
+                <td>${totalHigh}</td>
+                <td>${totalFrp >= 1000 ? `${(totalFrp / 1000).toFixed(1)}k` : Math.round(totalFrp).toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
         ${totalExplosions > 0 ? `<div class="fires-explosion-alert">${t('components.satelliteFires.possibleExplosions', { count: String(totalExplosions) })}</div>` : ''}
         <div class="fires-footer">
           <span class="fires-source">NASA FIRMS (VIIRS SNPP)</span>

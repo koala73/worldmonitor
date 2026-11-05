@@ -46,6 +46,8 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import { fetchAircraftPositions } from '@/services/aviation';
 import { type IranEvent, getIranEventColor, getIranEventRadius } from '@/services/conflict';
 import { getMilitaryBaseColor } from '@/config/military-base-colors';
+import { DECK_POINT_LAYER_CATEGORY, categoryForDeckLayerId, categoryGlyphForLayer, categoryGlyphSizePx, markerPixelRadius } from '@/config/map-layer-glyphs';
+import { getCategoryGlyphAtlas, type CategoryGlyphAtlas } from './map-category-glyph-atlas';
 import { getMineralColor } from '@/config/mineral-colors';
 import { getWindColor } from '@/config/wind-colors';
 import { CII_LEVEL_COLORS, type CiiLevel } from '@/config/cii-colors';
@@ -81,6 +83,7 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 // country-geometry helpers; don't re-import it here.
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { initI18n, t } from '@/services/i18n';
+import { statusLabel as popupStatusLabel, storageFacilityTypeLabel } from './map-popup-i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
@@ -130,6 +133,7 @@ import {
   isLayerEntitled,
   isLayerToggleAllowed,
   sanitizeLockedLayers,
+  LAYER_REGISTRY,
   type MapVariant,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
@@ -212,6 +216,8 @@ import {
   type CountryClickGestureTracker,
 } from './map-interaction-guard';
 
+/** deck.gl accessor shape: (datum, objectInfo) => value. */
+type GlyphAccessor<T> = (d: unknown, info: unknown) => T;
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -1439,7 +1445,7 @@ export class DeckGLMap {
       // Forwarded by Deck.setProps to luma.gl's AnimationLoop.setProps.
       animationFrameProvider: this.deckFrameProvider,
       layers: this.buildLayers(true),
-      getTooltip: (info: PickingInfo) => this.getTooltip(info),
+      getTooltip: (info: PickingInfo) => this.getCategorizedTooltip(info),
       onClick: (info: PickingInfo) => this.handleClick(info),
       pickingRadius: 10,
       useDevicePixels: window.devicePixelRatio > 2 ? 2 : true,
@@ -2079,18 +2085,6 @@ export class DeckGLMap {
       this.layerCache.delete('pipelines-layer');
     }
 
-    // Storage facilities layer. Registry is seeded weekly by
-    // scripts/seed-storage-facilities.mjs; colors by derived publicBadge
-    // identical to the panel's evidence deriver so first-paint map dots match
-    // panel status exactly. Available on any variant with
-    // `mapLayers.storageFacilities: true` (plan §R/#3 decision B).
-    if (mapLayers.storageFacilities) {
-      const storageLayer = this.createEnergyStorageLayer();
-      if (storageLayer) layers.push(storageLayer);
-    } else {
-      this.layerCache.delete('storage-facilities-layer');
-    }
-
     // Fuel shortage pins. One pin per active shortage placed at the country
     // centroid. Color by severity; click opens the FuelShortagePanel drawer
     // via event. Available on any variant with `mapLayers.fuelShortages: true`
@@ -2531,12 +2525,113 @@ export class DeckGLMap {
       layers.push(...this.createNewsLocationsLayer());
     }
 
-    const result = layers.filter(Boolean) as LayersList;
+    // Last on purpose. Deck.gl picks the topmost layer, and pickingRadius
+    // lets a marker drawn above this dot take the hover and the click.
+    if (mapLayers.storageFacilities) {
+      const storageLayer = this.createEnergyStorageLayer();
+      if (storageLayer) layers.push(storageLayer);
+    } else {
+      this.layerCache.delete('storage-facilities-layer');
+    }
+
+    const result = this.withCategoryGlyphs(layers.filter(Boolean) as LayersList);
     const elapsed = performance.now() - startTime;
     if (import.meta.env.DEV && elapsed > 16) {
       console.warn(`[DeckGLMap] buildLayers took ${elapsed.toFixed(2)}ms (>16ms budget), ${result.length} layers`);
     }
     return result;
+  }
+
+  /**
+   * Layers-menu category glyph beside each point marker (#10139), so markers
+   * from different layers can be told apart without toggling. Derived from
+   * the layers already built, so a hidden layer leaves no glyph. Each glyph
+   * layer sits right after its marker layer, so later count badges and labels
+   * still draw on top, and it is not pickable: hover and click still hit the
+   * marker underneath.
+   */
+  private withCategoryGlyphs(built: LayersList): LayersList {
+    const atlas = getCategoryGlyphAtlas();
+    if (!atlas) return built;
+    const zoom = this.maplibreMap?.getZoom() ?? 0;
+    const out: LayersList = [];
+    for (const layer of built) {
+      out.push(layer);
+      if (!layer || typeof layer !== 'object' || !('id' in layer)) continue;
+      const glyph = this.createCategoryGlyphLayer(layer as Layer, zoom, atlas);
+      if (glyph) out.push(glyph);
+    }
+    return out;
+  }
+
+  private createCategoryGlyphLayer(base: Layer, zoom: number, atlas: CategoryGlyphAtlas): Layer | null {
+    const category = DECK_POINT_LAYER_CATEGORY[base.id];
+    if (!category || base.props.visible === false) return null;
+    const { data, getPosition } = base.props as { data?: unknown; getPosition?: unknown };
+    if (!Array.isArray(data) || typeof getPosition !== 'function') return null;
+    const size = categoryGlyphSizePx(zoom, data.length);
+    if (size === 0) return null;
+    const radiusOf = this.markerRadiusAccessor(base, zoom, getPosition as GlyphAccessor<[number, number]>);
+    if (!radiusOf) return null;
+    // Badge sits just outside each marker's rendered radius, so the marker's
+    // status colour stays visible at every zoom and marker size.
+    const gap = Math.round(size / 2) + 2;
+    const triggers = base.props.updateTriggers ?? {};
+    return new IconLayer({
+      id: `${base.id}-category-glyph`,
+      data,
+      getPosition: getPosition as (d: unknown) => [number, number],
+      getIcon: () => category,
+      iconAtlas: atlas.url,
+      iconMapping: atlas.mapping,
+      getSize: size,
+      sizeUnits: 'pixels',
+      getPixelOffset: (d: unknown, info: unknown) => [Math.round(radiusOf(d, info) + gap), 0],
+      pickable: false,
+      updateTriggers: {
+        getPosition: triggers.getPosition,
+        getPixelOffset: [Math.round(zoom * 10), size, triggers.getRadius ?? triggers.getSize ?? null],
+      },
+    });
+  }
+
+  /**
+   * Per-datum rendered radius in pixels of a ScatterplotLayer or IconLayer
+   * marker, from the layer's own radius/size accessor, units and pixel clamp.
+   * Null for other layer types: without a known radius the badge could land
+   * on the marker, so it is left off.
+   */
+  private markerRadiusAccessor(base: Layer, zoom: number, getPosition: GlyphAccessor<[number, number]>): GlyphAccessor<number> | null {
+    const props = base.props as Record<string, unknown>;
+    const read = (accessor: unknown, fallback: number): GlyphAccessor<number> =>
+      typeof accessor === 'function'
+        ? (d, info) => Number((accessor as GlyphAccessor<number>)(d, info))
+        : () => (typeof accessor === 'number' ? accessor : fallback);
+    if (base instanceof ScatterplotLayer) {
+      const radius = read(props.getRadius, 1);
+      return (d, info) => markerPixelRadius({
+        units: props.radiusUnits as string | undefined,
+        value: radius(d, info),
+        scale: props.radiusScale as number | undefined,
+        minPx: props.radiusMinPixels as number | undefined,
+        maxPx: props.radiusMaxPixels as number | undefined,
+        lat: getPosition(d, info)[1],
+        zoom,
+      });
+    }
+    if (base instanceof IconLayer) {
+      const sizeOf = read(props.getSize, 1);
+      return (d, info) => markerPixelRadius({
+        units: (props.sizeUnits as string | undefined) ?? 'pixels',
+        value: sizeOf(d, info),
+        scale: props.sizeScale as number | undefined,
+        minPx: props.sizeMinPixels as number | undefined,
+        maxPx: props.sizeMaxPixels as number | undefined,
+        lat: getPosition(d, info)[1],
+        zoom,
+      }) / 2;
+    }
+    return null;
   }
 
   // Layer creation methods
@@ -2843,14 +2938,32 @@ export class DeckGLMap {
       onClick: info => {
         const obj = info?.object as EnergyStorageDot | undefined;
         if (!obj?.id) return false;
-        // Dispatch to StorageFacilityMapPanel — same loose-coupling
-        // pattern as the pipelines layer.
+        let claimed = false;
         try {
-          window.dispatchEvent(new CustomEvent('energy:open-storage-facility-detail', {
+          const event = new CustomEvent('energy:open-storage-facility-detail', {
+            cancelable: true,
             detail: { facilityId: obj.id },
-          }));
+          });
+          window.dispatchEvent(event);
+          claimed = event.defaultPrevented;
         } catch {
-          // Silent no-op on non-browser runtimes.
+          claimed = false;
+        }
+        if (!claimed) {
+          this.popup.show({
+            type: 'storageFacility',
+            data: {
+              id: obj.id,
+              name: obj.name,
+              operator: obj.operator,
+              facilityType: obj.facilityType,
+              country: obj.country,
+              capacityDisplay: obj.capacityDisplay,
+              badge: obj.badge,
+            },
+            x: info.x ?? 0,
+            y: info.y ?? 0,
+          });
         }
         return true;
       },
@@ -5155,6 +5268,18 @@ export class DeckGLMap {
     } catch { /* viewport fetch failed silently */ }
   }
 
+  private getCategorizedTooltip(info: PickingInfo): { html: string } | null {
+    const tooltip = this.getTooltip(info);
+    const category = categoryForDeckLayerId(info.layer?.id || '');
+    if (!tooltip || !category) return tooltip;
+    // Name the layer as well as the object, so overlapping markers from
+    // different layers stay identifiable (#10139).
+    const label = `<div class="deckgl-tooltip-category">${categoryGlyphForLayer(category)} ${escapeHtml(resolveLayerLabel(LAYER_REGISTRY[category], t))}</div>`;
+    // Replacer function: a `$` in a translated label must not act as a pattern.
+    const html = tooltip.html.replace(/^\s*<div class="deckgl-tooltip[^"]*"[^>]*>/, (open) => `${open}${label}`);
+    return { html: html === tooltip.html ? `${label}${tooltip.html}` : html };
+  }
+
   private getTooltip(info: PickingInfo): { html: string } | null {
     if (!info.object) return null;
 
@@ -5238,12 +5363,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel}</div>` };
       }
       case 'storage-facilities-layer': {
-        const typeLabel = {
-          ugs: 'UGS', spr: 'SPR',
-          lng_export: 'LNG export', lng_import: 'LNG import',
-          crude_tank_farm: 'Crude hub',
-        }[String(obj.facilityType)] ?? text(obj.facilityType);
-        const badge = String(obj.badge || 'disputed').toUpperCase();
+        const typeLabel = text(storageFacilityTypeLabel(String(obj.facilityType)));
+        const badge = popupStatusLabel(String(obj.badge || 'disputed'));
         const cap = text(obj.capacityDisplay || '—');
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${typeLabel} · ${text(obj.country)} · ${cap}<br/><strong>${text(badge)}</strong></div>` };
       }
@@ -6421,6 +6542,11 @@ export class DeckGLMap {
     const legend = document.createElement('div');
     legend.className = 'map-legend deckgl-legend';
 
+    // Point markers carry their Layers-menu glyph on the map (#10139), so this
+    // legend only explains colour scales and status levels the glyph cannot:
+    // hotspot alert levels, disease alert levels, resilience bands, zone fills
+    // and line colours. It shows only entries for active layers and hides
+    // itself when none apply.
     // SVG shapes for different marker types
     const shapes = {
       circle: (color: string) => `<svg width="12" height="12" viewBox="0 0 12 12"><circle cx="6" cy="6" r="5" fill="${color}"/></svg>`,
@@ -6439,11 +6565,6 @@ export class DeckGLMap {
     ];
     const legendItems: { shape: string; label: string; layerKey: keyof MapLayers }[] = SITE_VARIANT === 'tech'
       ? [
-        { shape: shapes.circle(isLight ? 'rgb(22, 163, 74)' : 'rgb(0, 255, 150)'), label: t('components.deckgl.legend.startupHub'), layerKey: 'startupHubs' },
-        { shape: shapes.circle('rgb(100, 200, 255)'), label: t('components.deckgl.legend.techHQ'), layerKey: 'techHQs' },
-        { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.accelerator'), layerKey: 'accelerators' },
-        { shape: shapes.circle('rgb(150, 100, 255)'), label: t('components.deckgl.legend.cloudRegion'), layerKey: 'cloudRegions' },
-        { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layerKey: 'datacenters' },
         { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
         { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
         { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6451,11 +6572,6 @@ export class DeckGLMap {
       ]
       : SITE_VARIANT === 'finance'
         ? [
-          { shape: shapes.circle('rgb(255, 215, 80)'), label: t('components.deckgl.legend.stockExchange'), layerKey: 'stockExchanges' },
-          { shape: shapes.circle('rgb(0, 220, 150)'), label: t('components.deckgl.legend.financialCenter'), layerKey: 'financialCenters' },
-          { shape: shapes.hexagon('rgb(255, 210, 80)'), label: t('components.deckgl.legend.centralBank'), layerKey: 'centralBanks' },
-          { shape: shapes.square('rgb(255, 150, 80)'), label: t('components.deckgl.legend.commodityHub'), layerKey: 'commodityHubs' },
-          { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway'), layerKey: 'waterways' },
           { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
           { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
           { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6465,12 +6581,7 @@ export class DeckGLMap {
           ? [
             { shape: shapes.circle('rgb(34, 197, 94)'), label: 'Positive Event', layerKey: 'positiveEvents' },
             { shape: shapes.circle('rgb(234, 179, 8)'), label: 'Breakthrough', layerKey: 'positiveEvents' },
-            { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Act of Kindness', layerKey: 'kindness' },
-            { shape: shapes.circle('rgb(255, 100, 50)'), label: 'Natural Event', layerKey: 'natural' },
             { shape: shapes.square('rgb(34, 180, 100)'), label: 'Happy Country', layerKey: 'happiness' },
-            { shape: shapes.circle('rgb(74, 222, 128)'), label: 'Species Recovery Zone', layerKey: 'speciesRecovery' },
-            { shape: shapes.circle('rgb(255, 200, 50)'), label: 'Renewable Installation', layerKey: 'renewableInstallations' },
-            { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
             { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
             { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
             { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6478,12 +6589,7 @@ export class DeckGLMap {
           ]
           : SITE_VARIANT === 'commodity'
             ? [
-              { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 200, 0)'), label: t('components.deckgl.legend.commodityHub'), layerKey: 'commodityHubs' },
-              { shape: shapes.circle('rgb(180, 80, 80)'), label: t('components.deckgl.legend.miningSite'), layerKey: 'miningSites' },
-              { shape: shapes.square('rgb(80, 160, 220)'), label: t('components.deckgl.legend.commodityPort'), layerKey: 'commodityPorts' },
               { shape: shapes.circle('rgb(255, 150, 50)'), label: t('components.deckgl.legend.pipeline'), layerKey: 'pipelines' },
-              { shape: shapes.triangle('rgb(80, 170, 255)'), label: t('components.deckgl.legend.waterway'), layerKey: 'waterways' },
-              { shape: shapes.circle('rgb(200, 100, 255)'), label: t('components.deckgl.legend.processingPlant'), layerKey: 'processingPlants' },
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6494,10 +6600,6 @@ export class DeckGLMap {
               { shape: shapes.circle('rgb(255, 165, 0)'), label: t('components.deckgl.legend.elevated'), layerKey: 'hotspots' },
               { shape: shapes.circle(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 255, 0)'), label: t('components.deckgl.legend.monitoring'), layerKey: 'hotspots' },
               { shape: shapes.circle('rgb(255, 100, 100)'), label: t('components.deckgl.legend.conflict'), layerKey: 'conflicts' },
-              { shape: shapes.triangle('rgb(68, 136, 255)'), label: t('components.deckgl.legend.base'), layerKey: 'bases' },
-              { shape: shapes.hexagon(isLight ? 'rgb(180, 120, 0)' : 'rgb(255, 220, 0)'), label: t('components.deckgl.legend.nuclear'), layerKey: 'nuclear' },
-              { shape: shapes.square('rgb(136, 68, 255)'), label: t('components.deckgl.legend.datacenter'), layerKey: 'datacenters' },
-              { shape: shapes.circle('rgb(160, 100, 255)'), label: t('components.deckgl.legend.aircraft'), layerKey: 'flights' },
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
@@ -6544,10 +6646,13 @@ export class DeckGLMap {
   }
 
   private updateLegend(): void {
+    let visibleEntries = 0;
     this.container.querySelectorAll<HTMLElement>('.legend-item[data-layer]').forEach(item => {
       const layerKey = item.dataset.layer;
       if (!layerKey || !(layerKey in this.state.layers)) return;
-      item.style.display = this.state.layers[layerKey as keyof MapLayers] ? '' : 'none';
+      const active = Boolean(this.state.layers[layerKey as keyof MapLayers]);
+      item.style.display = active ? '' : 'none';
+      if (active) visibleEntries++;
     });
     const ciiLegend = this.container.querySelector<HTMLElement>('#ciiChoroplethLegend');
     if (ciiLegend) {
@@ -6559,6 +6664,11 @@ export class DeckGLMap {
       const credit = no2Legend.querySelector<HTMLElement>('.no2-activity-credit');
       if (credit && this.no2Activity?.attribution) credit.textContent = this.no2Activity.attribution;
     }
+    if (this.state.layers.ciiChoropleth) visibleEntries++;
+    if (this.state.layers.no2Activity) visibleEntries++;
+    // A bare "Legend" title over nothing reads as a broken, partial list.
+    const legend = this.container.querySelector<HTMLElement>('.deckgl-legend');
+    if (legend) legend.hidden = visibleEntries === 0;
   }
 
   // Public API methods (matching MapComponent interface)

@@ -39,8 +39,8 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "summary": {
-    "total": 384,
-    "ok": 383,
+    "total": 398,
+    "ok": 397,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -169,6 +169,18 @@ PortWatch 缓存条目，但规范国家列表和健康的 seed-meta
 `CN`，否则就会在中国数据已过时数天的情况下报告 `OK`，而这正是本检查要捕获的故障。
 生产者声明的集合只要覆盖固定集合，额外多出的国家会被接受。144 小时预算同样由健康
 检查固定，生产者无法通过发布更宽的预算来把过期观测认证为新鲜。
+
+唯一允许的收窄情形是：生产者把某个固定国家列入 `criticalSourceAbsentCountries`。
+seeder 仅在按索引计数证明该国所有参考港口在 PortWatch 的 `Daily_Ports_Data` 中均无
+任何记录时才会将其列入，最多 35 个国家，且同一轮运行中必须有其他国家返回真实的最大
+日期。此类国家没有可判定的内容，因此按名称报告，而不计为过期或缺失。若某国同时被列为
+关键国家和来源缺失，则报告为 `source_absent_overlaps_critical`。若所有固定国家均缺失，
+则没有可判定的内容，该块不报告内容过期。只要 `coverage.sourceAbsentCountries` 非空，
+即使发布数量仍达到 `minRecordCount`，该检查也保持 `COVERAGE_PARTIAL`。内容新鲜度判定
+（块不可用时为 `COVERAGE_DEGRADED`，关键内容过期时为 `STALE_CONTENT`）优先，因此长期
+存在的缺失不会掩盖这些判定。seeder 还会在推进
+发布的同一事务中删除每个缺失国家的单国键，因此读取这些键的调用方不会把其最后一次有效
+载荷当作当前数据。
 
 生产者的计数是 seeder 运行时刻的一次测量，而 seed 元数据仅在推进规范快照的 12 小时
 运行中才会重写。因此健康检查会将最旧的决策关键观测**按当前时间重新计龄**，而不是信任

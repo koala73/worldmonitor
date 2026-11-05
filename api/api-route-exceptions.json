@@ -318,6 +318,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/host-policy.ts",
+      "category": "external-protocol",
+      "reason": "Per-host commerce policy for the MCP surface: ChatGPT requests get no start_upgrade tool and inform-only denial copy, per ChatGPT's app submission guidelines. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/upgrade-constants.ts",
       "category": "external-protocol",
       "reason": "MCP free-account allowance numeric constants (#6716). Supporting module for the MCP transport; listed so the sebuf contract script accepts the api/mcp/ tree.",
@@ -867,6 +874,13 @@
       "path": "api/embed/entitlement.ts",
       "category": "internal-helper",
       "reason": "Auth bootstrap for the partner /embed iframe (#6599). Returns whether an embedding account's API key (X-WorldMonitor-Key) may render an allowlisted panel. Not a product data API: panel payloads stay on existing sebuf RPCs. Cookie and viewer session tokens are stripped/rejected so entitlement is keyed to the partner account, not the page visitor. Shape is unversioned by design — allowed boolean plus panel id.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
+      "path": "api/desktop-key/status.ts",
+      "category": "internal-helper",
+      "reason": "Desktop-key verdict for self-hosted installs (plan 2026-11-04-001 U2). A self-hosted sidecar sends a browser's desktop key in X-WorldMonitor-Key and gets back whether it currently grants desktop scope (active, invalid, not_desktop_key, over_cap, lapsed) or a retryable 503. Not a product data API and not premium-gated: the key being checked may be lapsed or revoked, and it must not spend the owner's desktop-key daily meter the way probing a premium RPC would. Body carries only the verdict and a coarse plan family, no owner identity; always no-store.",
       "owner": "@koala73",
       "removal_issue": null
     },

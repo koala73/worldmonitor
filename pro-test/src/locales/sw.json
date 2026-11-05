@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API & SDKs rasmi — zana za moja kwa moja chini ya ufunguo mmoja",
       "proF5": "Mjenzi wa widget unaobadilika kwa paneli zako",
       "cta": "Angalia mipango & bei",
-      "note": "Kutoka $39.99/mwezi · miezi 3 bure inapolipwa kila mwaka"
+      "note": "Kutoka $39.99/mwezi · miezi 3 bure inapolipwa kila mwaka",
+      "disclaimer": "World Monitor ni kwa madhumuni ya kutoa taarifa pekee na si ushauri wa kifedha, uwekezaji, kisheria au usalama. Thibitisha kile unachokiona, na uombe ushauri kwa mtaalamu mwenye sifa zinazofaa kabla ya kufanya maamuzi ambayo kosa linaweza kusababisha hasara au madhara."
     },
     "faq": {
       "eyebrow": "Hakuna utamu",
@@ -711,14 +712,14 @@
       "chokepointTitle": "Angalia mahali pa kuzuia",
       "chokepointDesc": "Chunguza hali ya usumbufu, mtiririko wa vyombo, na hatari katika {{chokepoints}} njia muhimu za bahari.",
       "countryRiskTitle": "Eleza harakati ya hatari ya nchi",
-      "countryRiskDesc": "Fuata alama za kisiasa, usalama, uchumi, na ustahimilivu zilizo nyuma ya mabadiliko ya nchi, huku ustahimilivu ukiwa umeorodheshwa kwa nchi {{resilienceRanked}}.",
+      "countryRiskDesc": "Fuatilia ishara za kisiasa, kiusalama, kiuchumi na za ustahimilivu zilizo nyuma ya mabadiliko katika nchi. Ustahimilivu umepangwa kwa daraja kwa nchi {{resilienceRanked}} kati ya {{resilienceUniverse}}, takribani {{resilienceRankedPct}}%, ili mabadiliko yaweze kufasiriwa kwa kuzingatia msingi wa kimuundo wa muda mrefu wa nchi hiyo badala ya kutegemea vichwa vya habari vya wiki hii pekee.",
       "open": "Fungua ushahidi",
       "workflow": "Mtiririko wa kazi hatua kwa hatua"
     },
     "voices": {
       "eyebrow": "Kwa maneno yao",
       "title": "Watu wanasema nini kuhusu World Monitor",
-      "sub": "Watu {{users}} katika nchi {{countries}} wametumia World Monitor. Haya ndiyo yaliyosemwa na vyombo vya habari na baadhi yao.",
+      "sub": "Watu {{users}} katika nchi {{countries}} wametumia World Monitor. The Atlantic iliandika kuihusu tarehe 14 Machi 2026 na El País siku mbili baadaye, na WIRED, The Economic Times, Arabian Business na L'Orient Today pia zimeripoti kuihusu. Haya ndiyo yaliyosemwa na vyombo vya habari na baadhi ya watumiaji.",
       "translatedJa": "Imetafsiriwa kutoka Kijapani",
       "prev": "Nukuu zilizotangulia",
       "next": "Nukuu zaidi"

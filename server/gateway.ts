@@ -1115,7 +1115,7 @@ export function createDomainGateway(
     }
 
     let request = stripClientTrustedHeaders(originalRequest);
-    const rawPathname = new URL(request.url).pathname;
+    const rawPathname = originalPathname;
     const pathname = stripTrailingSlashes(rawPathname);
     const t0 = Date.now();
 
@@ -1573,8 +1573,13 @@ export function createDomainGateway(
         isSidecarOllamaTranslation = body.provider === 'ollama' && body.mode === 'translate';
       } catch { /* malformed requests retain the normal authentication path */ }
     }
-    const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
-    const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
+    // Both are route-scoped credential checks that read only the request, and
+    // either can short-circuit to `false` without touching the other. This is
+    // the per-request dispatch path, so resolve them together.
+    const [seedRefreshVerified, relayWarmPingVerified] = await Promise.all([
+      isResilienceRankingSeedRefreshRequest(request, pathname),
+      isRelayWarmPingRequest(request, pathname),
+    ]);
     // Resolve the quota policy against the route POST compatibility will use.
     // Keep body validation after auth and abuse limiting; invalid bodies still
     // return before reservation or dispatch.
@@ -2190,7 +2195,7 @@ export function createDomainGateway(
       }
     }
     if (!matchedHandler) {
-      const allowed = router.allowedMethods(new URL(request.url).pathname);
+      const allowed = router.allowedMethods(rawPathname);
       if (allowed.length > 0) {
         emitRequest(405, 'method_not_allowed', null);
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -2806,7 +2811,8 @@ export function createDomainGateway(
         // re-invoking the function, so a disallowed origin could read a cached ACAO: * response.
       }
       mergedHeaders.delete('X-No-Cache');
-      if (!new URL(request.url).searchParams.has('_debug')) {
+      const responseSearchParams = new URL(request.url).searchParams;
+      if (!responseSearchParams.has('_debug')) {
         mergedHeaders.delete('X-Cache-Tier');
       }
 
@@ -2818,7 +2824,7 @@ export function createDomainGateway(
       // via their requestBody and their responses are not cached/ETagged here.
       // See server/_shared/response-projection.ts + /docs/mcp-jmespath.
       let responseView = new Uint8Array(bodyBytes);
-      const jmespathExpr = new URL(request.url).searchParams.get('jmespath');
+      const jmespathExpr = responseSearchParams.get('jmespath');
       if (jmespathExpr && (mergedHeaders.get('Content-Type') ?? '').includes('application/json')) {
         let projection = projectJsonResponse(bodyStr, jmespathExpr);
         if (projection.ok) {

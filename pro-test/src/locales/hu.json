@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API & hivatalos SDK-k — élő eszközök egy kulcs alatt",
       "proF5": "Egyéni widgetépítő saját panelek készítéséhez",
       "cta": "Tekintsd meg a csomagokat és árakat",
-      "note": "Már $39,99/hó · 3 hónap ingyenes éves számlázás esetén"
+      "note": "Már $39,99/hó · 3 hónap ingyenes éves számlázás esetén",
+      "disclaimer": "A World Monitor kizárólag tájékoztatási célokat szolgál, és nem minősül pénzügyi, befektetési, jogi vagy biztonsági tanácsadásnak. Ellenőrizze a látottakat, és kérje megfelelő képesítéssel rendelkező szakember tanácsát, mielőtt olyan döntést hoz, amelynél egy hiba veszteséget vagy kárt okozhat."
     },
     "faq": {
       "eyebrow": "Nincs másodszándék",
@@ -711,14 +712,14 @@
       "chokepointTitle": "Szoros pont ellenőrzése",
       "chokepointDesc": "Ellenőrizze a zavarok állapotát, a hajóáramlásokat és a kockázatokat {{chokepoints}} kritikus tengeri passzuson.",
       "countryRiskTitle": "Országkockázati lépés magyarázata",
-      "countryRiskDesc": "Nyomon követheti az országok politikai, biztonsági, gazdasági és rugalmassági jeleit, {{resilienceRanked}} ország rugalmassági besorolásával.",
+      "countryRiskDesc": "Kövesse nyomon az adott ország változása mögött álló politikai, biztonsági, gazdasági és rugalmassági jelzéseket. A rugalmassági rangsor {{resilienceUniverse}} országból {{resilienceRanked}} országot, vagyis mintegy {{resilienceRankedPct}}%-ot fed le, így egy elmozdulás az adott ország hosszú távú strukturális alapjaihoz viszonyítva értelmezhető, nem csupán az e heti hírek szalagcímei alapján.",
       "open": "Bizonyítékok megnyitása",
       "workflow": "Lépésről lépésre munkafolyamat"
     },
     "voices": {
       "eyebrow": "Az ő szavaikkal",
       "title": "Mit mondanak az emberek a World Monitorról",
-      "sub": "{{users}} ember {{countries}} országban használta a World Monitort. Ezt mondta róla a sajtó és néhányuk.",
+      "sub": "{{users}} ember {{countries}} országban használta a World Monitor szolgáltatást. A The Atlantic 2026. március 14-én írt róla, az El País pedig két nappal később. A WIRED, a The Economic Times, az Arabian Business és a L'Orient Today is beszámolt róla. Íme, mit mondott a sajtó és néhány felhasználó.",
       "translatedJa": "Japánból fordítva",
       "prev": "Előző idézetek",
       "next": "További idézetek"

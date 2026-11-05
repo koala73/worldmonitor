@@ -1,5 +1,6 @@
 import { loadToolAliases } from '../alias';
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
+import { CHATGPT_HIDDEN_TOOLS } from '../host-policy';
 import { JMESPATH_SCHEMA } from '../jmespath';
 import { RESPONSE_MODE_SCHEMA, SPOKEN_LANGUAGE_SCHEMA } from '../spoken';
 import { advertisedOutputSchema } from '../structured-content';
@@ -218,6 +219,45 @@ export function buildPublicTool(
 }
 
 export const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));
+
+// What a ChatGPT request lists (see ../host-policy.ts): every tool except the
+// checkout tool, with output-schema copy that describes the plans page instead
+// of telling the agent to upgrade. Only get_market_data carries `locked`.
+const INFORM_ONLY_SCHEMA_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  locked: 'Present only for a signed-in free account: subscription datasets withheld from `data`. Their absence means locked, not empty; they are not included in the current plan.',
+  upgradeUrl: 'Present with `locked`: a page describing the plans that include the locked datasets.',
+};
+
+// Walks every `properties` map, so a field nested under anyOf/oneOf branches
+// is rewritten too.
+function rewriteSchemaDescriptions(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const item of node) rewriteSchemaDescriptions(item);
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+  const record = node as Record<string, unknown>;
+  const properties = record.properties as Record<string, { description?: unknown }> | undefined;
+  if (properties && typeof properties === 'object') {
+    for (const [field, description] of Object.entries(INFORM_ONLY_SCHEMA_DESCRIPTIONS)) {
+      const property = properties[field];
+      if (property && typeof property === 'object' && typeof property.description === 'string') property.description = description;
+    }
+  }
+  for (const value of Object.values(record)) rewriteSchemaDescriptions(value);
+}
+
+export function informOnlyPublicTool(tool: PublicToolShape): PublicToolShape {
+  if (tool.outputSchema === undefined) return tool;
+  const copy = structuredClone(tool);
+  rewriteSchemaDescriptions(copy.outputSchema);
+  return copy;
+}
+
+export const CHATGPT_TOOL_LIST_RESPONSE = TOOL_LIST_RESPONSE
+  .filter((tool) => !CHATGPT_HIDDEN_TOOLS.has(tool.name))
+  .map(informOnlyPublicTool);
+
 // Tools-list payload is static at module load — precompute its wire size so
 // the per-session `mcp.tools_list_emitted` telemetry line doesn't re-stringify
 // ~5 KB on every initialize.

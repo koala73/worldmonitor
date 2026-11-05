@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API & oficiální SDK — živé nástroje pod jedním klíčem",
       "proF5": "Vlastní konstruktor widgetů pro vaše vlastní panely",
       "cta": "Zobrazit plány a ceny",
-      "note": "Od $39,99/měs · 3 měsíce zdarma při roční fakturaci"
+      "note": "Od $39,99/měs · 3 měsíce zdarma při roční fakturaci",
+      "disclaimer": "World Monitor slouží pouze k informačním účelům a nepředstavuje finanční, investiční ani právní poradenství ani poradenství v oblasti zabezpečení nebo bezpečnosti. Ověřujte si to, co vidíte, a před rozhodnutími, při nichž by chyba mohla způsobit ztrátu nebo újmu, se poraďte s kvalifikovaným odborníkem."
     },
     "faq": {
       "eyebrow": "Bez háčku",
@@ -711,14 +712,14 @@
       "chokepointTitle": "Zkontrolovat kritické místo",
       "chokepointDesc": "Prověřte stav poruch, toky lodí a rizika v {{chokepoints}} kritických námořních průsmycích.",
       "countryRiskTitle": "Vysvětlit posun v riziku země",
-      "countryRiskDesc": "Sledujte politické, bezpečnostní, ekonomické a odolnostní signály za změnami v jednotlivých zemích, s odolností hodnocenou pro {{resilienceRanked}} zemí.",
+      "countryRiskDesc": "Sledujte politické, bezpečnostní a ekonomické signály i signály odolnosti, které stojí za změnou v dané zemi. Žebříček odolnosti řadí {{resilienceRanked}} z {{resilienceUniverse}} zemí, tedy přibližně {{resilienceRankedPct}} %, takže lze posun interpretovat ve vztahu k dlouhodobému strukturálnímu základu dané země, místo aby se vycházelo pouze ze zpravodajských titulků tohoto týdne.",
       "open": "Otevřít důkazy",
       "workflow": "Postup krok za krokem"
     },
     "voices": {
       "eyebrow": "Jejich slovy",
       "title": "Co lidé říkají o World Monitor",
-      "sub": "{{users}} lidí ve {{countries}} zemích používalo World Monitor. Tohle o něm řekl tisk a někteří z nich.",
+      "sub": "{{users}} lidí ve {{countries}} zemích použilo World Monitor. The Atlantic o něm psal 14. března 2026 a El País o dva dny později. Věnovaly se mu také WIRED, The Economic Times, Arabian Business a L'Orient Today. Zde je to, co řekl tisk a někteří uživatelé.",
       "translatedJa": "Přeloženo z japonštiny",
       "prev": "Předchozí citace",
       "next": "Další citace"

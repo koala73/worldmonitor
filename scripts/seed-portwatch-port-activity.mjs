@@ -151,14 +151,12 @@ export const PER_COUNTRY_TIMEOUT_MS = 90_000;
 // 2026-05-14 to ease pressure on both ArcGIS direct AND Decodo proxy paths,
 // which were each hitting their own rate-limits in the post-3676/3681 runs
 // (24/30 successes on run #1, 5/30 on run #2 as Decodo throttled us).
-// Math at concurrency 6 + cold-fetch cap 30:
-//   5 batches × ~60s realistic (90s worst-case per country) + 4×5s backoff
-//   ≈ 320s realistic, 470s worst case — fits the 570s bundle budget.
+// RUN_DISPATCH_DEADLINE_MS, not the cold-fetch cap, bounds how many batches
+// of six start in a run.
 export const CONCURRENCY = 6;
 // Cooldown between activity-fetch batches. Spaces out per-batch bursts so
 // neither ArcGIS-direct nor Decodo-proxy hits its rate-limit window from
-// our run alone. 5s × 4 inter-batch gaps = 20s total added to a 30-country
-// run — negligible against the 570s bundle budget.
+// our run alone.
 const BATCH_BACKOFF_MS = 5_000;
 // Ceiling for a single rate-limit-escalated inter-batch gap.
 const MAX_RATE_LIMITED_BATCH_BACKOFF_MS = 40_000;
@@ -234,9 +232,21 @@ const MAX_RATE_LIMIT_RETRIES = 1;
 // throws once the retries are spent, and still trips the batch circuit-breaker.
 // The reference fetch is 3 pages inside its own 120s slice, so it can afford
 // more attempts than a country, whose 90s wrap must also hold the proxy leg.
+// From 2026-11-03 about half of uncached activity queries got `Invalid URL` in
+// ~2s and the same query passed on the next try. A country's two windows fail
+// independently, so a country-level retry needs both to pass at once and would
+// refetch the window that succeeded. Each activity page retries instead, inside
+// the same 90s deadline.
 const INVALID_QUERY_RETRY_DELAY_MS = 5_000;
 const MAX_REFERENCE_INVALID_QUERY_RETRIES = 3;
-const MAX_COUNTRY_INVALID_QUERY_RETRIES = 1;
+const MAX_ACTIVITY_PAGE_INVALID_QUERY_RETRIES = 3;
+// The preflight runs 174 countries in waves of PREFLIGHT_CONCURRENCY, so its
+// pause is short: two failed retries take a wave from ~4.5s to ~9.5s. The run
+// deadline counts from run start, so retries stop once the phase has spent
+// PREFLIGHT_RETRY_BUDGET_MS and the remaining waves fall back to one attempt.
+const PREFLIGHT_INVALID_QUERY_RETRY_DELAY_MS = 1_000;
+const MAX_PREFLIGHT_INVALID_QUERY_RETRIES = 2;
+const PREFLIGHT_RETRY_BUDGET_MS = 60_000;
 // Hard publication expiry: reject cached payloads at seven days. Queue a full
 // refetch earlier so the bounded rotation can finish before this deadline,
 // even when upstream maxDate is unchanged. Protects against window-shift drift
@@ -257,13 +267,16 @@ export const MAX_CACHE_AGE_MS = PORTWATCH_MAX_CACHE_AGE_MS;
 // With this cap, an "everything stale" run refreshes the 30 countries with
 // the oldest persisted attempt timestamps and serves the remainder from prior
 // cache (marked staleAsof=true so downstream can see they're a window behind).
-// A full attempt sweep completes in 6 runs = 3 days at the 12h cron cadence,
-// well within the 7-day MAX_CACHE_AGE_MS.
-//
-// 30 is sized so the cold-fetch path (30 × ~3-5s/country with concurrency
-// 6 ≈ 15-25s, plus 20s of backoff) easily fits the 570s budget even when
-// ArcGIS is slow.
+// It holds steady-state traffic, proxy fallback included, to 60 country
+// attempts a day (#4b9ca63018).
 export const MAX_COLD_FETCH_PER_RUN = 30;
+// Queue depth while any queued country is already out of coverage (expired or
+// never cached). Publication is blocked then, and 30 slots cannot clear the
+// backlog: cohorts of 27-28 countries reach the seven-day expiry every 12h, so
+// after a few failed runs the seeder stayed publish-blocked for six days at
+// 132/174 (2026-11-03). RUN_DISPATCH_DEADLINE_MS still bounds the run, and at
+// that day's ArcGIS latency it admits about 42 countries.
+export const MAX_RECOVERY_COLD_FETCH_PER_RUN = 60;
 // Concurrency for the cheap per-country maxDate preflight. These are tiny
 // outStatistics queries (returns 1 row), so we can push harder than the
 // expensive fetch concurrency without tripping ArcGIS 429s in practice.
@@ -706,6 +719,8 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, {
   forceProxy = false,
   fetchFn,
   proxyRetryFn,
+  sleepFn,
+  deadlineAt,
 } = {}) {
   // Defensive: callers should always thread dateField through, but if a
   // future caller forgets, fall back to the resolver (idempotent + cached).
@@ -746,12 +761,26 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, {
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithTimeout(`${EP3_BASE}?${params}`, {
-      signal,
-      forceProxy,
-      fetchFn,
-      proxyRetryFn,
-    });
+    const url = `${EP3_BASE}?${params}`;
+    body = await retryRateLimited(
+      (attemptSignal) => fetchWithTimeout(url, {
+        signal: attemptSignal,
+        forceProxy,
+        fetchFn,
+        proxyRetryFn,
+      }),
+      {
+        signal,
+        sleepFn,
+        deadlineAt,
+        label: `${_iso3} ${windowKind} offset ${offset}`,
+        // Rate limits stay with the country-level retry, which stops the
+        // sibling window before it backs off.
+        maxRetries: 0,
+        invalidQueryRetries: MAX_ACTIVITY_PAGE_INVALID_QUERY_RETRIES,
+        minAttemptMs: forceProxy ? PROXY_FETCH_TIMEOUT : FETCH_TIMEOUT,
+      },
+    );
     const features = validatedPage(body, `${_iso3} ${windowKind} offset ${offset}`, offset);
     for (const f of features) {
       const a = f?.attributes;
@@ -872,6 +901,8 @@ export async function fetchCountryAccum(iso3, {
   forceProxy = false,
   fetchFn,
   proxyRetryFn,
+  sleepFn,
+  deadlineAt,
 } = {}) {
   const anchor = anchorEpochMs ?? Date.now();
   const cutoff30 = anchor - 30 * 86400000;
@@ -890,14 +921,14 @@ export async function fetchCountryAccum(iso3, {
       iso3,
       `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff30)}`,
       'last30',
-      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn },
+      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn, sleepFn, deadlineAt },
     ),
     paginateWindowInto(
       portAccumMap,
       iso3,
       `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff60)} AND ${df} <= ${epochToTimestamp(cutoff30)}`,
       'prev30',
-      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn },
+      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn, sleepFn, deadlineAt },
     ),
   ]);
 
@@ -933,13 +964,14 @@ export async function fetchCountryActivityWithRecovery(iso3, {
       anchorEpochMs,
       dateField,
       forceProxy: false,
+      sleepFn,
+      deadlineAt,
     }),
     {
       signal,
       sleepFn,
       label: iso3,
       deadlineAt,
-      invalidQueryRetries: MAX_COUNTRY_INVALID_QUERY_RETRIES,
     },
   );
   if (isUsableActivity(directResult)) {
@@ -963,6 +995,8 @@ export async function fetchCountryActivityWithRecovery(iso3, {
       anchorEpochMs,
       dateField,
       forceProxy: true,
+      sleepFn,
+      deadlineAt,
     }),
     {
       signal,
@@ -1014,7 +1048,7 @@ export function parseMaxDateObservation(body) {
     : { status: 'failed', maxDate: null };
 }
 
-async function fetchMaxDate(iso3, { signal, dateField } = {}) {
+export async function fetchMaxDate(iso3, { signal, dateField, fetchFn, sleepFn, deadlineAt } = {}) {
   const df = dateField || (await resolveArcgisDateField({ signal }));
   const outStats = JSON.stringify([{
     statisticType: 'max',
@@ -1036,15 +1070,116 @@ async function fetchMaxDate(iso3, { signal, dateField } = {}) {
     // under ArcGIS degradation (Greptile PR #3711 P1). Failures fall
     // through to the expensive per-country activity path which has the
     // full direct+proxy budget. Preflight is best-effort cache invalidation.
-    const body = await fetchWithTimeout(`${EP3_BASE}?${params}`, {
-      signal,
-      timeoutMs: PREFLIGHT_FETCH_TIMEOUT,
-      noProxyFallback: true,
-    });
+    const url = `${EP3_BASE}?${params}`;
+    const body = await retryRateLimited(
+      (attemptSignal) => fetchWithTimeout(url, {
+        signal: attemptSignal,
+        timeoutMs: PREFLIGHT_FETCH_TIMEOUT,
+        noProxyFallback: true,
+        fetchFn,
+      }),
+      {
+        signal,
+        sleepFn,
+        label: `${iso3} preflight`,
+        deadlineAt,
+        minAttemptMs: PREFLIGHT_FETCH_TIMEOUT,
+        maxRetries: 0,
+        invalidQueryRetries: MAX_PREFLIGHT_INVALID_QUERY_RETRIES,
+        invalidQueryDelayMs: PREFLIGHT_INVALID_QUERY_RETRY_DELAY_MS,
+      },
+    );
     return parseMaxDateObservation(body);
   } catch {
     return { status: 'failed', maxDate: null };
   }
+}
+
+// A country is ABSENT from the source when none of its reference ports has a
+// single Daily_Ports_Data row, which is not the same thing as a refresh
+// failure. IMF republished the layer on 2026-10-28 without ~26 countries
+// (BEL, HKG, QAT, ...) and with only the ObjectId and portid columns indexed.
+// Every ISO3-filtered query for those countries then failed with ArcGIS's
+// generic "Invalid query parameters" 400, the 174-country gate refused to
+// publish, and the whole dataset aged past its health budget
+// (WORLDMONITOR-1AF). The probe counts rows by the indexed portid column, so
+// it still answers on that layer. Only an explicit `count: 0` proves absence.
+// Errors, timeouts and malformed bodies stay `unknown`, which keeps the
+// existing refresh-failure path.
+const SOURCE_ABSENCE_FETCH_TIMEOUT = 10_000;
+const SAFE_PORT_ID = /^[A-Za-z0-9_-]{1,32}$/;
+
+// Above this many absent countries the run trusts none of them: a mass "zero
+// rows" answer looks more like a broken layer than a smaller source, and
+// shrinking the dataset by a fifth on that evidence would be the silent
+// failure the coverage gate exists to prevent.
+export const MAX_SOURCE_ABSENT_COUNTRIES = 35;
+
+export async function probeCountrySourceAbsence(iso3, refMap, { signal, fetchFn } = {}) {
+  const portIds = refMap instanceof Map ? [...refMap.keys()] : [];
+  if (portIds.length === 0 || !portIds.every((id) => SAFE_PORT_ID.test(id))) return 'unknown';
+  const params = new URLSearchParams({
+    where: `portid IN (${portIds.map((id) => `'${id}'`).join(',')})`,
+    returnCountOnly: 'true',
+    f: 'json',
+  });
+  try {
+    const body = await fetchWithTimeout(`${EP3_BASE}?${params}`, {
+      signal,
+      timeoutMs: SOURCE_ABSENCE_FETCH_TIMEOUT,
+      noProxyFallback: true,
+      ...(fetchFn ? { fetchFn } : {}),
+    });
+    if (body?.count === 0) return 'absent';
+    if (Number.isInteger(body?.count) && body.count > 0) return 'present';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+// Probes candidates in waves and skips work whose result the selector would
+// discard: nothing when the table is unobserved, and no further wave once the
+// absent count has passed the cap. Returns a Map keyed by candidate.
+export async function probeSourceAbsences({
+  candidates,
+  tablePopulated,
+  probeFn,
+  signal,
+  concurrency = PREFLIGHT_CONCURRENCY,
+  max = MAX_SOURCE_ABSENT_COUNTRIES,
+}) {
+  const probes = new Map();
+  if (!tablePopulated) return probes;
+  let absentCount = 0;
+  for (let i = 0; i < candidates.length && absentCount <= max; i += concurrency) {
+    if (signal?.aborted) throw signal.reason ?? new Error('aborted');
+    const slice = candidates.slice(i, i + concurrency);
+    const results = await Promise.all(slice.map((candidate) => probeFn(candidate)));
+    slice.forEach((candidate, j) => {
+      probes.set(candidate, results[j]);
+      if (results[j] === 'absent') absentCount++;
+    });
+  }
+  return probes;
+}
+
+// `probes` maps iso2 to a probe result. `tablePopulated` is true when at least
+// one country observed a real max date this run, proving the layer answers
+// with data at all.
+export function selectSourceAbsentCountries({
+  probes,
+  tablePopulated,
+  max = MAX_SOURCE_ABSENT_COUNTRIES,
+}) {
+  const absent = [...probes]
+    .filter(([, result]) => result === 'absent')
+    .map(([iso2]) => iso2)
+    .sort();
+  if (absent.length === 0) return { absent, suppressed: null };
+  if (!tablePopulated) return { absent: [], suppressed: 'table_unobserved' };
+  if (absent.length > max) return { absent: [], suppressed: 'over_cap' };
+  return { absent, suppressed: null };
 }
 
 export function finalisePortsForCountry(portAccumMap, refMap) {
@@ -1137,6 +1272,7 @@ export async function publishPortActivitySnapshot(
     countries,
     metaPayload,
     canonicalAdvances,
+    sourceAbsentCountries = [],
   },
   {
     fetchFn = fetch,
@@ -1161,6 +1297,14 @@ export async function publishPortActivitySnapshot(
     ]);
   if (canonicalAdvances) {
     commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
+    // Readers such as the China corridor towers and get-country-port-activity
+    // read per-country keys directly, so a source-absent country's last-good
+    // payload must go in the same transaction that stops naming it. Queued
+    // after the per-country SETs so the delete wins over any stale state for
+    // the same country. A blocked run deletes nothing.
+    for (const iso2 of sourceAbsentCountries) {
+      commands.push(['DEL', `${KEY_PREFIX}${iso2}`]);
+    }
   }
   if (metaPayload) commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
   if (canonicalAdvances) {
@@ -1271,7 +1415,7 @@ export function classifyDeferredPayload(
 // classifyBatchCircuitBreak (which classifies the rendered diagnostic strings).
 // One definition so a breaker arm can never drift from the failure code that
 // the same upstream response persists onto the country.
-const INVALID_QUERY_PATTERN = /invalid query parameters/i;
+const INVALID_QUERY_PATTERN = /invalid query parameters|invalid url/i;
 const RATE_LIMIT_PATTERN = /\b429\b|rate.?limit|too many requests/i;
 
 function refreshFailureCode(reason) {
@@ -1328,7 +1472,7 @@ export function classifyBatchCircuitBreak(
 
 // What a tripped breaker should DO — the two classes need opposite responses.
 //
-// `invalid_query` that survives its per-country retry from countries with no
+// `invalid_query` that survives its page retries from countries with no
 // invalid_query history is treated as unrecoverable within the run
 // (schema/policy regression): the remaining batches would fail identically,
 // so abort and keep last-good.
@@ -1493,10 +1637,15 @@ export function buildCoverageReport({
   countryData,
   retryState = new Map(),
   refreshFailures = [],
+  sourceAbsentCountries = [],
 }) {
-  const eligible = [...new Set(eligibleCountries)].sort();
-  const expected = [...new Set([...expectedCountries, ...eligible])].sort();
-  const target = Math.max(PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES, expected.length);
+  const absent = [...new Set(sourceAbsentCountries)].sort();
+  const isPresent = (iso2) => !absent.includes(iso2);
+  const eligible = [...new Set(eligibleCountries)].filter(isPresent).sort();
+  const expected = [...new Set([...expectedCountries, ...eligible])].filter(isPresent).sort();
+  // A proven source absence lowers the floor by exactly that many countries;
+  // any other shrinkage still reads as a shortfall.
+  const target = Math.max(PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES - absent.length, expected.length);
   const missingCountries = expected.filter((iso2) => !countryData.has(iso2));
   const unidentifiedMissingCount = Math.max(0, target - expected.length);
   const failureByCountry = new Map();
@@ -1527,6 +1676,7 @@ export function buildCoverageReport({
     missingCountries,
     unidentifiedMissingCount,
     refreshFailures: failures,
+    sourceAbsentCountries: absent,
   };
 }
 
@@ -1590,11 +1740,12 @@ export async function fetchAll(progress, {
   if (progress) progress.stage = 'preflight';
   const preflightT0 = Date.now();
   const preflightObservations = new Array(eligibleIso3.length).fill(null);
+  const preflightRetryDeadlineAt = preflightT0 + PREFLIGHT_RETRY_BUDGET_MS;
   for (let i = 0; i < eligibleIso3.length; i += PREFLIGHT_CONCURRENCY) {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const slice = eligibleIso3.slice(i, i + PREFLIGHT_CONCURRENCY);
     const settled = await Promise.allSettled(
-      slice.map((iso3) => fetchMaxDate(iso3, { signal, dateField })),
+      slice.map((iso3) => fetchMaxDate(iso3, { signal, dateField, deadlineAt: preflightRetryDeadlineAt })),
     );
     for (let j = 0; j < slice.length; j++) {
       const r = settled[j];
@@ -1604,6 +1755,32 @@ export async function fetchAll(progress, {
     }
   }
   console.log(`  [port-activity] Preflight maxDate for ${eligibleIso3.length} countries (${((Date.now() - preflightT0) / 1000).toFixed(1)}s)`);
+
+  // Source-absence probe for every country whose preflight produced no max
+  // date. See probeCountrySourceAbsence for why a failed ISO3 preflight is not
+  // evidence either way.
+  const hasMaxDate = (o) => o?.status === 'observed' && o.maxDate !== null;
+  const tablePopulated = preflightObservations.some(hasMaxDate);
+  const absenceCandidates = eligibleIso3.filter((_, i) => !hasMaxDate(preflightObservations[i]));
+  const probesByIso3 = await probeSourceAbsences({
+    candidates: absenceCandidates,
+    tablePopulated,
+    signal,
+    probeFn: (iso3) => probeCountrySourceAbsence(iso3, refsByIso3.get(iso3), { signal }),
+  });
+  const absenceProbes = new Map([...probesByIso3].map(([iso3, result]) => [iso3ToIso2.get(iso3), result]));
+  const { absent: sourceAbsentCountries, suppressed: absenceSuppressed } = selectSourceAbsentCountries({
+    probes: absenceProbes,
+    tablePopulated,
+  });
+  const sourceAbsent = new Set(sourceAbsentCountries);
+  if (!tablePopulated && absenceCandidates.length > 0) {
+    console.warn('  [port-activity] No preflight observed a max date; source-absence probes skipped.');
+  } else if (absenceSuppressed) {
+    console.warn(`  [port-activity] Source-absence evidence ignored (${absenceSuppressed}); those countries stay refresh failures.`);
+  } else if (sourceAbsent.size > 0) {
+    console.warn(`  [port-activity] ${sourceAbsent.size} countries have no rows in Daily_Ports_Data and are excluded as source-absent: ${sourceAbsentCountries.join(', ')}`);
+  }
 
   // See deriveRunAnchorMs for why Date.now() is not the fallback.
   const maxDates = preflightObservations.map((observation) =>
@@ -1633,6 +1810,7 @@ export async function fetchAll(progress, {
   for (let i = 0; i < eligibleIso3.length; i++) {
     const iso3 = eligibleIso3[i];
     const iso2 = iso3ToIso2.get(iso3);
+    if (sourceAbsent.has(iso2)) continue;
     const preflightObservation = preflightObservations[i];
     const upstreamMaxDate = preflightObservation?.status === 'observed'
       ? preflightObservation.maxDate
@@ -1671,9 +1849,8 @@ export async function fetchAll(progress, {
   // per-run cap, refresh the oldest-attempt subset and serve the rest from
   // prior cache marked staleAsof=true. Prevents the catastrophic "everything
   // stale → 174 cold-fetches → bundle SIGTERM" failure mode that produced
-  // 37h of stale data after a single upstream-advance event. A nominal attempt
-  // sweep takes ceil(174/30) = 6 runs (3d); allow a seventh run when
-  // critical countries reserve repeat slots.
+  // 37h of stale data after a single upstream-advance event. The dispatch
+  // deadline, not the cap, limits how many of the queued countries start.
   let servedStaleCount = 0;
   let droppedTooOldCount = 0;
   let droppedNoCacheCount = 0;
@@ -1700,13 +1877,20 @@ export async function fetchAll(progress, {
   // over, no upstream contact this run.
   let freshFetchedCount = 0;
 
-  if (needsFetch.length > MAX_COLD_FETCH_PER_RUN) {
-    // Oldest-attempt-first provides the durable rotation state that a random
-    // shuffle cannot: successful and failed attempts both move behind work that
-    // has not received a slot in the current sweep. Never-attempted countries
-    // naturally sort first, retaining #4293's no-cache recovery property.
-    const ordered = orderColdFetchQueue(needsFetch, undefined, { now });
-    const deferred = ordered.slice(MAX_COLD_FETCH_PER_RUN);
+  const isOutOfCoverage = ({ prevPayload }) => classifyDeferredPayload(prevPayload, now).status !== 'stale';
+  const coldFetchCap = needsFetch.some(isOutOfCoverage)
+    ? MAX_RECOVERY_COLD_FETCH_PER_RUN
+    : MAX_COLD_FETCH_PER_RUN;
+  // Oldest-attempt-first provides the durable rotation state that a random
+  // shuffle cannot: successful and failed attempts both move behind work that
+  // has not received a slot in the current sweep. Never-attempted countries
+  // naturally sort first, retaining #4293's no-cache recovery property. Order
+  // every queue, not only a truncated one: the dispatch deadline can cut any
+  // queue short, and the countries out of coverage must lead it.
+  const ordered = orderColdFetchQueue(needsFetch, undefined, { now, isOutOfCoverage });
+  needsFetch = ordered;
+  if (needsFetch.length > coldFetchCap) {
+    const deferred = ordered.slice(coldFetchCap);
     const countsBefore = {
       servedStale: servedStaleCount,
       droppedTooOld: droppedTooOldCount,
@@ -1718,17 +1902,13 @@ export async function fetchAll(progress, {
     const servedStale = servedStaleCount - countsBefore.servedStale;
     const droppedTooOld = droppedTooOldCount - countsBefore.droppedTooOld;
     const droppedNoCache = droppedNoCacheCount - countsBefore.droppedNoCache;
-    needsFetch = ordered.slice(0, MAX_COLD_FETCH_PER_RUN);
-    // Rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly rather than
-    // needsFetch.length — needsFetch was just reassigned to the cap-sized
-    // slice, so the two are numerically equal here, but using the constant
-    // keeps the intent unambiguous if this log block is ever reordered.
-    const originalMisses = MAX_COLD_FETCH_PER_RUN + servedStale + droppedTooOld + droppedNoCache;
+    needsFetch = ordered.slice(0, coldFetchCap);
+    const originalMisses = coldFetchCap + servedStale + droppedTooOld + droppedNoCache;
     console.warn(
-      `  [port-activity] Cold-fetch capped at ${MAX_COLD_FETCH_PER_RUN}/run — ` +
-      `refreshing ${MAX_COLD_FETCH_PER_RUN} now, retaining ${servedStale} usable cached payloads (refresh deferred), ` +
+      `  [port-activity] Cold-fetch capped at ${coldFetchCap}/run — ` +
+      `refreshing ${coldFetchCap} now, retaining ${servedStale} usable cached payloads (refresh deferred), ` +
       `${droppedTooOld} dropped (cache >= ${MAX_CACHE_AGE_MS / 86_400_000}d old), ${droppedNoCache} dropped (no prior payload). ` +
-      `Rotation: ~${Math.ceil(originalMisses / MAX_COLD_FETCH_PER_RUN)} runs to fully refresh.`,
+      `Rotation: ~${Math.ceil(originalMisses / coldFetchCap)} runs to fully refresh.`,
     );
   }
 
@@ -2007,6 +2187,7 @@ export async function fetchAll(progress, {
     countryData,
     retryState,
     refreshFailures,
+    sourceAbsentCountries,
   });
   if (!coverage.complete) {
     const failureCodes = coverage.refreshFailures.length > 0
@@ -2039,7 +2220,10 @@ export function shouldAdvanceCanonicalForRun({
   upstreamContactCount,
   coverage,
 }) {
-  return referenceCountryCount >= PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES
+  const sourceAbsentCount = Array.isArray(coverage?.sourceAbsentCountries)
+    ? coverage.sourceAbsentCountries.length
+    : 0;
+  return referenceCountryCount + sourceAbsentCount >= PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES
     && coverage?.complete === true
     && coverage.refreshFailures.length === 0
     && countryCount === coverage.target
@@ -2283,6 +2467,7 @@ export async function main() {
       countries,
       metaPayload,
       canonicalAdvances,
+      sourceAbsentCountries: coverage.sourceAbsentCountries,
     });
     failureRecorded = !canonicalAdvances;
     let canonicalState = 'no prior canonical list';

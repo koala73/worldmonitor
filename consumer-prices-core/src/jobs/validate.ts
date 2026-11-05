@@ -13,8 +13,7 @@
  */
 import { query, closePool } from '../db/client.js';
 import { loadAllBasketConfigs } from '../config/loader.js';
-import { classifyMatchAdmission } from './scrape-coverage.js';
-import type { ValidatorResult } from '../adapters/validator.js';
+import { AUTO_MATCH_THRESHOLD } from '../adapters/validator.js';
 import { MAX_OBSERVATION_AGE_DAYS } from '../observation-freshness.js';
 
 const logger = {
@@ -57,12 +56,12 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     currency_code: string | null;
     reviewed_by: string | null;
     observation_id: string;
-    validator: ValidatorResult | null;
+    admitted: boolean;
   }>(
     `SELECT pm.id AS match_id, pm.basket_item_id, pm.match_status,
             r.slug AS retailer_slug, cp.canonical_name, po.price, r.currency_code,
             pm.reviewed_by, po.id AS observation_id,
-            po.raw_payload_json->'validator' AS validator
+            (po.validator_ok AND po.validator_score >= $4) IS TRUE AS admitted
      FROM product_matches pm
      JOIN retailer_products rp ON rp.id = pm.retailer_product_id AND rp.active = true
      JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $2 AND r.active = true
@@ -70,14 +69,14 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
      JOIN baskets b ON b.id = bi.basket_id AND b.slug = $1
      JOIN canonical_products cp ON cp.id = pm.canonical_product_id
      JOIN LATERAL (
-       SELECT id, price, in_stock, raw_payload_json FROM price_observations
+       SELECT id, price, in_stock, validator_ok, validator_score FROM price_observations
        WHERE retailer_product_id = rp.id
        ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON po.in_stock = true
        AND rp.last_seen_at >= NOW() - make_interval(days => $3)
      WHERE pm.match_status IN ('auto', 'approved', 'review')
        AND pm.pin_disabled_at IS NULL`,
-    [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS],
+    [basketSlug, marketCode, MAX_OBSERVATION_AGE_DAYS, AUTO_MATCH_THRESHOLD],
   );
 
   const rows: MatchRow[] = result.rows.map((r) => ({
@@ -90,7 +89,7 @@ async function validateBasket(basketSlug: string, marketCode: string): Promise<v
     currencyCode: typeof r.currency_code === 'string' ? r.currency_code : undefined,
     reviewedBy: r.reviewed_by,
     observationId: r.observation_id,
-    admitted: classifyMatchAdmission(r.validator ?? undefined).status === 'auto',
+    admitted: r.admitted,
   }));
 
   // Group by basket item

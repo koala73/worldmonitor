@@ -59,7 +59,7 @@ service SupplyChainService {
     option (sebuf.http.config) = {path: "/get-mineral-production", method: HTTP_METHOD_GET};
   }
 
-  // GetShippingStress returns carrier market data and a composite stress index.
+  // GetShippingStress returns Yahoo Finance quotes for the BDRY dry bulk ETF and four shipping carriers, plus a 0-100 stress score from their average daily move.
   rpc GetShippingStress(GetShippingStressRequest) returns (GetShippingStressResponse) {
     option (sebuf.http.config) = {path: "/get-shipping-stress", method: HTTP_METHOD_GET};
   }
@@ -69,7 +69,7 @@ service SupplyChainService {
     option (sebuf.http.config) = {path: "/get-country-chokepoint-index", method: HTTP_METHOD_GET};
   }
 
-  // GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated.
+  // GetBypassOptions ranks a chokepoint's bypass corridors for a cargo type and closure share by cost and waypoint risk. PRO-gated.
   rpc GetBypassOptions(GetBypassOptionsRequest) returns (GetBypassOptionsResponse) {
     option (sebuf.http.config) = {path: "/get-bypass-options", method: HTTP_METHOD_GET};
   }

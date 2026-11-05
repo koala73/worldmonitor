@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API și SDK-uri oficiale — instrumente live sub o singură cheie",
       "proF5": "Constructor de widget-uri personalizat pentru panourile tale",
       "cta": "Vezi planuri și prețuri",
-      "note": "De la $39,99/lună · 3 luni gratuite la plată anuală"
+      "note": "De la $39,99/lună · 3 luni gratuite la plată anuală",
+      "disclaimer": "World Monitor are exclusiv scop informativ și nu constituie consultanță financiară, de investiții, juridică, de securitate sau de siguranță. Verificați ceea ce vedeți și consultați un profesionist calificat înainte de a lua decizii în care o eroare ar putea cauza pierderi sau prejudicii."
     },
     "faq": {
       "eyebrow": "Fără surprize",
@@ -711,14 +712,14 @@
       "chokepointTitle": "Verificați un punct de strangulare",
       "chokepointDesc": "Inspectează starea perturbării, fluxurile de nave și riscul pe {{chokepoints}} pasaje maritime critice.",
       "countryRiskTitle": "Explicați o mișcare de risc-țară",
-      "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării unei țări, cu reziliență clasificată pentru {{resilienceRanked}} de țări.",
+      "countryRiskDesc": "Urmărește semnalele politice, de securitate, economice și de reziliență din spatele schimbării dintr-o țară. Reziliența este clasificată pentru {{resilienceRanked}} din {{resilienceUniverse}} de țări, adică aproximativ {{resilienceRankedPct}}%, astfel încât o evoluție să poată fi interpretată în raport cu baza structurală pe termen lung a acelei țări, în loc să fie interpretată doar prin prisma titlurilor știrilor din această săptămână.",
       "open": "Deschideți dovezi",
       "workflow": "Flux de lucru pas cu pas"
     },
     "voices": {
       "eyebrow": "În cuvintele lor",
       "title": "Ce spun oamenii despre World Monitor",
-      "sub": "{{users}} de oameni din {{countries}} de țări au folosit World Monitor. Iată ce au spus presa și unii dintre ei.",
+      "sub": "{{users}} de oameni din {{countries}} de țări au folosit World Monitor. The Atlantic a scris despre el pe 14 martie 2026, iar El País două zile mai târziu. WIRED, The Economic Times, Arabian Business și L'Orient Today au relatat, de asemenea, despre el. Iată ce au spus presa și unii utilizatori.",
       "translatedJa": "Tradus din japoneză",
       "prev": "Citatele anterioare",
       "next": "Mai multe citate"

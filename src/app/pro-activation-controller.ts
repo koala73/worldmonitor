@@ -2,6 +2,7 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import type { ProActivationFlowOptions } from '@/components/ProActivationInterstitial';
 import { trackProActivation } from '@/services/analytics';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { reportActivationPromptDecision } from '@/services/onboarding-prompt';
 import {
   getSubscription,
   onSubscriptionChange,
@@ -264,6 +265,11 @@ export class ProActivationController implements AppModule {
       currentAccountKey,
       now,
     });
+
+    // Tell the About-you card whether the interstitial owns this load (KTD6).
+    // 'keep' is still undecided, so it reports nothing.
+    if (decision.action === 'mount') reportActivationPromptDecision('will-open');
+    else if (decision.action !== 'keep') reportActivationPromptDecision('not-due');
 
     switch (decision.action) {
       case 'mount':

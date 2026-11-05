@@ -26,6 +26,7 @@ import { readRawJsonFromUpstash } from '../../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
 import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
+import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
 import {
   BRIEF_PUBLIC_POINTER_PREFIX,
   decodePublicPointer,
@@ -205,7 +206,7 @@ export default async function handler(
   try {
     html = renderBriefMagazine(
       envelope as Parameters<typeof renderBriefMagazine>[0],
-      { publicMode: true, refCode },
+      { publicMode: true, refCode, fontPlatform: briefFontPlatform(req.headers.get('user-agent') ?? '') },
     );
   } catch (err) {
     console.error('[api/brief/public] malformed envelope:', (err as Error).message);
@@ -213,5 +214,6 @@ export default async function handler(
     return htmlResponse(req, 404, NOT_FOUND_PAGE);
   }
 
-  return htmlResponse(req, 200, html);
+  // The page links a different font file set per platform (brief-font-platform.js).
+  return htmlResponse(req, 200, html, { Vary: 'User-Agent' });
 }

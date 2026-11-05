@@ -31,6 +31,25 @@
       .placeholder{color:#333}
       .spinner{display:inline-block;width:.8em;height:.8em;border:2px solid #2a2a2a;border-top-color:#2d8a6e;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-.05em;margin-right:.5em}
       @keyframes spin{to{transform:rotate(360deg)}}
+      .about-you{margin-top:1.25rem;border-top:1px solid #1e1e1e;padding-top:1rem}
+      .about-you summary{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.75rem;color:#888;cursor:pointer;list-style:none}
+      .about-you summary::-webkit-details-marker{display:none}
+      .about-you summary::after{content:'+';color:#555;font-size:.9rem;line-height:1}
+      .about-you[open] summary::after{content:'\2212'}
+      .about-you summary:hover{color:#e8e8e8}
+      .about-you summary:focus-visible{outline:2px solid #2d8a6e;outline-offset:4px}
+      .about-you-label{font-size:.75rem;color:#e8e8e8;margin:16px 0 8px}
+      .about-you-options{display:flex;flex-wrap:wrap;gap:8px}
+      .about-you-options[data-layout=grid]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+      .about-you-options[data-layout=grid] .about-you-option{padding-block:6px;text-align:left;line-height:1.35}
+      .about-you .about-you-option,.about-you .about-you-not-now{display:inline-flex;align-items:center;gap:8px;width:auto;margin:0;padding:0 12px;min-height:32px;font-size:.72rem;font-weight:400;letter-spacing:0;background:#151515;color:#999;border:1px solid #242424;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease}
+      .about-you .about-you-option:hover{background:#1b1b1b;border-color:#333;color:#e8e8e8}
+      .about-you .about-you-option[aria-pressed=true]{border-color:#2d8a6e;color:#e8e8e8;background:#13201c}
+      .about-you .about-you-option[aria-pressed=true]::before{content:'';width:8px;height:4px;margin-top:-2px;border-left:1.5px solid #3fb894;border-bottom:1.5px solid #3fb894;transform:rotate(-45deg)}
+      .about-you .about-you-option:focus-visible,.about-you .about-you-not-now:focus-visible{outline:2px solid #2d8a6e;outline-offset:2px}
+      .about-you .about-you-not-now{margin-top:16px;padding:0;min-height:24px;border-color:transparent;background:transparent;color:#666}
+      .about-you .about-you-not-now:hover{background:transparent;color:#e8e8e8}
+      @media (pointer:coarse){.about-you .about-you-option{min-height:44px}}
     </style>
     <!-- No inline scripts — global CSP at vercel.json:92 is hash-based and we
          don't allowlist this page's hashes individually. The bundled module
@@ -55,7 +74,7 @@
         <hr>
         <p class="scope-label">Read-only access to</p>
         <ul class="scope-list">
-          <li>Real-time news &amp; events from 815 attributed providers</li>
+          <li>Real-time news &amp; events from 829 attributed providers</li>
           <li>Live flight tracking &amp; AIS vessel positions</li>
           <li>Weather alerts, earthquakes &amp; natural disasters</li>
           <li>Geopolitical risk indicators &amp; conflict data</li>
@@ -63,6 +82,7 @@
         </ul>
         <hr>
         <p style="font-size:.72rem;color:#444;line-height:1.5">Signed in as <span id="userEmail" style="color:#666"></span>. <a href="/settings" style="color:#2d8a6e;text-decoration:none">Manage connected MCP clients →</a></p>
+        <div id="aboutYouMount"></div>
         <button type="button" id="authorizeBtn">Authorize</button>
         <p class="error" id="mintError" role="alert" hidden></p>
       </div>

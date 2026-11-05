@@ -314,7 +314,7 @@ User requests summary
 |----------|----------|-------|----------|
 | 1 | Ollama | 已配置的本地模型 | 设置 `OLLAMA_API_URL` 时的自托管推理 |
 | 2 | OpenRouter | `deepseek/deepseek-v4-flash` | 主云端提供商 |
-| 3 | OpenRouter（免费） | `google/gemma-4-26b-a4b-it:free`，然后 `nvidia/nemotron-3-super-120b-a12b:free` | 付费模型失败时的回退 |
+| 3 | OpenRouter（免费） | `google/gemma-4-26b-a4b-it:free`，然后 `nvidia/nemotron-3.5-super-vl:free` | 付费模型失败时的回退 |
 | 4 | Browser | T5 (ONNX) | 离线回退（本地 ML） |
 
 **缓存策略**：Redis 服务端缓存防止冗余 API 调用。当相同标题集近期已被摘要时，缓存结果会立即返回。

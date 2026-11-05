@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API & 공식 SDK — 하나의 키로 라이브 도구 사용",
       "proF5": "자신만의 패널을 위한 커스텀 위젯 빌더",
       "cta": "요금제 및 가격 확인",
-      "note": "$39.99/월부터 · 연간 결제 시 3개월 무료"
+      "note": "$39.99/월부터 · 연간 결제 시 3개월 무료",
+      "disclaimer": "World Monitor는 정보 제공만을 목적으로 하며 금융, 투자, 법률, 보안 또는 안전에 관한 조언에 해당하지 않습니다. 보시는 내용을 검증하시고, 오류로 인해 손실이나 피해가 발생할 수 있는 결정을 내리기 전에 자격을 갖춘 전문가와 상담하시기 바랍니다."
     },
     "faq": {
       "eyebrow": "숨은 비용 없음",
@@ -711,14 +712,14 @@
       "chokepointTitle": "병목 지점 확인",
       "chokepointDesc": "{{chokepoints}}개 주요 해상 교통로의 해운 차질 상황, 선박 흐름, 위험도를 점검합니다.",
       "countryRiskTitle": "국가 위험 변화 설명",
-      "countryRiskDesc": "국가의 변화를 주도하는 정치, 보안, 경제, 회복력 신호를 추적합니다. {{resilienceRanked}}개국의 회복력 순위가 산출됩니다.",
+      "countryRiskDesc": "국가의 변화 뒤에 있는 정치, 안보, 경제, 회복력 신호를 추적합니다. {{resilienceUniverse}}개국 중 {{resilienceRanked}}개국, 약 {{resilienceRankedPct}}%에 대해 회복력 순위가 산출되므로, 이번 주 뉴스 헤드라인만으로 변화를 판단하는 대신 해당 국가의 장기적인 구조적 기준에 비추어 해석할 수 있습니다.",
       "open": "증거 보기",
       "workflow": "단계별 워크플로"
     },
     "voices": {
       "eyebrow": "그들의 말",
       "title": "사람들이 말하는 World Monitor",
-      "sub": "{{countries}}개국 {{users}}명이 World Monitor를 사용했습니다. 언론과 일부 사용자의 이야기를 소개합니다.",
+      "sub": "{{countries}}개국 {{users}}명이 World Monitor를 사용했습니다. The Atlantic은 2026년 3월 14일에, El País는 이틀 후에 이를 다뤘으며 WIRED, The Economic Times, Arabian Business, L'Orient Today도 보도했습니다. 언론과 일부 사용자의 이야기를 소개합니다.",
       "translatedJa": "일본어에서 번역",
       "prev": "이전 인용문",
       "next": "더 많은 인용문"

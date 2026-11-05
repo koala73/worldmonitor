@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API & SDKs chính thức — các công cụ trực tiếp dưới một khóa",
       "proF5": "Trình xây dựng tiện ích tùy chỉnh cho bảng điều khiển của bạn",
       "cta": "Xem các gói & giá cả",
-      "note": "Từ $39.99/tháng · Miễn phí 3 tháng khi thanh toán hàng năm"
+      "note": "Từ $39.99/tháng · Miễn phí 3 tháng khi thanh toán hàng năm",
+      "disclaimer": "World Monitor chỉ phục vụ mục đích cung cấp thông tin và không phải là tư vấn về tài chính, đầu tư, pháp lý, an ninh hoặc an toàn. Vui lòng xác minh những gì quý vị thấy và tham khảo ý kiến của chuyên gia có đủ trình độ trước khi đưa ra các quyết định mà sai sót có thể gây tổn thất hoặc tổn hại."
     },
     "faq": {
       "eyebrow": "Không có điều kiện kèm theo",
@@ -711,14 +712,14 @@
       "chokepointTitle": "Kiểm tra một điểm nghẽn",
       "chokepointDesc": "Kiểm tra trạng thái gián đoạn, dòng chảy tàu và rủi ro trên {{chokepoints}} tuyến đường hàng hải quan trọng.",
       "countryRiskTitle": "Giải thích một bước ngoặt rủi ro quốc gia",
-      "countryRiskDesc": "Theo dõi các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau thay đổi của một quốc gia, với khả năng phục hồi được xếp hạng cho {{resilienceRanked}} quốc gia.",
+      "countryRiskDesc": "Theo dõi các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau sự thay đổi của một quốc gia. Khả năng phục hồi được xếp hạng cho {{resilienceRanked}} trong số {{resilienceUniverse}} quốc gia, tức khoảng {{resilienceRankedPct}}%, giúp diễn giải một biến động dựa trên nền tảng cấu trúc dài hạn của quốc gia đó thay vì chỉ dựa vào các tiêu đề tin tức trong tuần này.",
       "open": "Mở chứng cứ",
       "workflow": "Quy trình từng bước"
     },
     "voices": {
       "eyebrow": "Bằng lời của họ",
       "title": "Mọi người nói gì về World Monitor",
-      "sub": "{{users}} người tại {{countries}} quốc gia đã dùng World Monitor. Đây là những gì báo chí và một số người dùng đã nói.",
+      "sub": "{{users}} người tại {{countries}} quốc gia đã dùng World Monitor. The Atlantic đã viết về World Monitor vào ngày 14 tháng 3 năm 2026 và El País viết về nó hai ngày sau đó. WIRED, The Economic Times, Arabian Business và L'Orient Today cũng đã đưa tin về World Monitor. Đây là những gì báo chí và một số người dùng đã nói.",
       "translatedJa": "Dịch từ tiếng Nhật",
       "prev": "Trích dẫn trước",
       "next": "Thêm trích dẫn"

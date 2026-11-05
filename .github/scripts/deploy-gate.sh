@@ -191,11 +191,18 @@ drift_files=""
 base_drift() {
   local head="$1"
   local merge_base main_tip head_tip head_list main_list
+  local deepen=()
   drift_files=""
+  # The workflow checks out one commit, because only this phase needs history
+  # and most evaluations never reach it. A shallow repo keeps its boundary
+  # through a plain fetch, so merge-base would stop there; unshallow instead.
+  if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+    deepen=(--unshallow)
+  fi
   # Trees are needed, file contents never are, so filter the blobs out. The
   # fetch is unauthenticated (the checkout runs with persist-credentials:false)
   # which this public repo allows; a private fork would need a token here.
-  if ! git fetch --no-tags --quiet --filter=blob:none "$BASE_DRIFT_REMOTE" \
+  if ! git fetch --no-tags --quiet --filter=blob:none "${deepen[@]}" "$BASE_DRIFT_REMOTE" \
     "+refs/heads/main:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
     echo "::error::Could not fetch main and $head for the base-drift comparison" >&2
     return 1
@@ -312,6 +319,7 @@ discover() {
           pullRequests(first: 100, states: [OPEN], after: $endCursor) {
             nodes {
               headRefOid
+              author { login }
               commits(last: 1) {
                 nodes {
                   commit {
@@ -354,13 +362,24 @@ discover() {
       select(.commits.nodes[0].commit.status.context == null) |
       .headRefOid
     ')
+    # GitHub never fires workflow_run for a run whose actor is the Actions
+    # token, so a PR a scheduled workflow opens with github.token gets no
+    # event-driven gate at all and stays blocked until a human pushes (#10007).
+    # The sweep is the only writer such a head has: evaluate it directly. Its
+    # first status (usually pending) then moves it onto the 24-hour retry path.
+    unchained_shas=$(printf '%s\n' "$pr_gate_states" | jq -r '
+      .[].data.repository.pullRequests.nodes[] |
+      select(.commits.nodes[0].commit.status.context == null and .author.login == "github-actions") |
+      .headRefOid
+    ')
 
-    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg retry "$retry_shas" --arg missing "$missing_shas" --arg deferred "$deferred_shas" '
+    discovery=$(jq -nc --arg stale "$stale_terminal_shas" --arg retry "$retry_shas" --arg missing "$missing_shas" --arg unchained "$unchained_shas" --arg deferred "$deferred_shas" '
       def shas: split("\n") | map(select(length > 0)) | reduce .[] as $sha ([]; if index($sha) then . else . + [$sha] end);
-      {kind:"sweep", stale:($stale|shas), retry:($retry|shas), missing:($missing|shas), deferred:($deferred|shas)}')
+      ($unchained|shas) as $unchained_list |
+      {kind:"sweep", stale:($stale|shas), retry:($retry|shas), missing:($missing|shas | map(select(. as $sha | $unchained_list | index($sha) | not))), unchained:$unchained_list, deferred:($deferred|shas)}')
   fi
   printf '%s\n' "$discovery" | jq -e '
-    [.stale[], .retry[], .missing[], .deferred[]?] as $shas |
+    [.stale[], .retry[], .missing[], .unchained[]?, .deferred[]?] as $shas |
     all($shas[]; test("^[0-9a-f]{40}$")) and ($shas|length) == ($shas|unique|length)
   ' >/dev/null
   matrix=$(printf '%s\n' "$discovery" | jq -c '{include:[.stale[]|{sha:.}]}')
@@ -477,11 +496,46 @@ print(json.dumps({
       then [{sha:$discovery.sha,check_attempts:2}]
       else ([$plan.stale[]|{sha:.,check_attempts:1}] +
         [$discovery.retry[]|{sha:.,check_attempts:2}] +
+        [$discovery.unchained[]?|{sha:.,check_attempts:2}] +
         [$recovered|split("\n")[]|select(length>0)|{sha:.,check_attempts:2}])
       end | reduce .[] as $row ([]; if any(.[]; .sha == $row.sha) then . else . + [$row] end))}')
   emit_matrix "$matrix"
   emit_output invalidation_failed "$(printf '%s\n' "$plan" | jq -r .invalidation_failed)"
   emit_output protocol_failed "$(printf '%s\n' "$plan" | jq -r .protocol_failed)"
+}
+
+# The 60s re-poll below exists for the LAST workflow_run event of a head
+# (#5479). While a gated workflow is still queued or running, its own
+# completion event is still to come and will read the checks afresh, so an
+# all-pending result can be published at once. 454 evaluations on 3-4 November
+# 2026 spent a median 62s in this step, nearly all of it that wait, while
+# holding a runner that PR jobs were queueing for. One run confirmed unfinished
+# is enough, since its completion evaluates again; a failed read never counts
+# as unfinished, so with no confirmed run the wait stays.
+#
+# The runs listing can serve a stale snapshot with HTTP 200 (see
+# docs/solutions/integration-issues/convex-deploy-monitor-outvotes-stale-github-run-listing-snapshot.md),
+# and a stale "in progress" on the head's last event would skip the only
+# re-poll. So the run whose completion fired this event never counts, and every
+# other candidate must still read as unfinished on its own run record.
+gated_run_in_flight() {
+  local eval_sha="$1" pages candidates run_id run_status
+  [ -n "${GATED_WORKFLOWS:-}" ] || return 1
+  pages=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/runs?head_sha=$eval_sha&per_page=100" --paginate --slurp) || return 1
+  candidates=$(printf '%s\n' "$pages" | jq -r --arg gated "$GATED_WORKFLOWS" --arg trigger "${TRIGGER_RUN_ID:-}" '
+    ($gated | split(",")) as $names
+    | .[].workflow_runs[]?
+    | select(.status != "completed" and (.id | tostring) != $trigger and (.name as $name | $names | index($name)))
+    | .id') || return 1
+  for run_id in $candidates; do
+    run_status=$(gh_api_with_rate_limit_retry core "repos/$REPO/actions/runs/$run_id" --jq .status) || continue
+    if [ -n "$run_status" ] && [ "$run_status" != "completed" ]; then
+      echo "Gated run $run_id is $run_status"
+      return 0
+    fi
+  done
+  return 1
 }
 
 evaluate_sha() {
@@ -541,6 +595,10 @@ print('failed=' + ','.join(name for name in required if latest[name] not in ('su
     break
   fi
   if [ "$attempt" -lt 2 ]; then
+    if [ "$failed" = "$pending" ] && gated_run_in_flight "$SHA"; then
+      echo "A gated workflow is still running for $SHA; its completion event re-evaluates, so skipping the stale-read wait"
+      break
+    fi
     sleep 60
   fi
 done

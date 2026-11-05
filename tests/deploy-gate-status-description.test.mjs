@@ -180,6 +180,9 @@ function runGate(conclusions, {
   sweepStatuses,
   drift,
   associatedPulls = [[]],
+  gatedRuns,
+  gatedRunsReadFails = false,
+  triggerRunId = '',
 } = {}) {
   const tempDir = mkdtempSync(join(repoRoot, '.tmp-deploy-gate-'));
   const fakeBin = join(tempDir, 'bin');
@@ -213,6 +216,8 @@ function runGate(conclusions, {
     writeFileSync(rejectedFile, '');
     writeFileSync(callsFile, '');
     writeFileSync(summaryFile, '');
+    const gatedRunsFile = join(tempDir, 'gated-runs.json');
+    writeFileSync(gatedRunsFile, JSON.stringify((gatedRuns ?? []).map((run, index) => ({ id: 100 + index, ...run }))));
     const drifting = {
       mergeBase: MAIN_TIP, mainTip: MAIN_TIP, headTip: HEAD_TIP,
       headFiles: [], mainFiles: [], fetchFails: false, mergeBaseFails: false,
@@ -300,8 +305,9 @@ function runGate(conclusions, {
         check_runs: [...filler.map(toRestRun), ...requiredRuns.map(toRestRun)],
       }]),
     );
-    const sweepNode = (sha, status) => ({
+    const sweepNode = (sha, status, author = 'koala73') => ({
       headRefOid: sha,
+      author: author === null ? null : { login: author },
       commits: {
         nodes: [{
           commit: {
@@ -333,7 +339,7 @@ function runGate(conclusions, {
         data: {
           repository: {
             pullRequests: {
-              nodes: sweepStatuses?.map(({ sha, status }) => sweepNode(sha, status))
+              nodes: sweepStatuses?.map(({ sha, status, author }) => sweepNode(sha, status, author))
                 ?? [sweepNode(SHA, sweepStatus ?? null)],
               pageInfo: { hasNextPage: false, endCursor: 'done' },
             },
@@ -442,6 +448,20 @@ function runGate(conclusions, {
         '    else',
         '      jq -c \'[.[0]]\' "$FAKE_REST_CHECK_RUNS"',
         '    fi',
+        '    exit 0',
+        '    ;;',
+        '  *"actions/runs?head_sha="*)',
+        '    echo "head-runs-page" >> "$FAKE_CALLS"',
+        '    [ "$FAKE_GATED_RUNS_FAIL" = "1" ] && { echo "gh: forced runs read failure (HTTP 502)" >&2; exit 1; }',
+        '    jq -c \'[{workflow_runs: [.[] | {id, name, status}]}]\' "$FAKE_GATED_RUNS"',
+        '    exit 0',
+        '    ;;',
+        '  *"/actions/runs/"[0-9]*)',
+        '    run_id=${2##*/}',
+        '    echo "run-read:$run_id" >> "$FAKE_CALLS"',
+        '    fresh=$(jq -r --argjson id "$run_id" \'.[] | select(.id == $id) | .fresh // .status\' "$FAKE_GATED_RUNS")',
+        '    [ "$fresh" = "error" ] && { echo "gh: forced run read failure (HTTP 502)" >&2; exit 1; }',
+        '    printf \'%s\\n\' "$fresh"',
         '    exit 0',
         '    ;;',
         '  *"actions/workflows/deploy-gate.yml/runs"*)',
@@ -607,6 +627,10 @@ function runGate(conclusions, {
           FAKE_STATUS_FAILURES: statusFailuresFile,
           FAKE_STATUS_FAILURES_PER_SHA: statusFailuresPerSha ? '1' : '0',
           FAKE_SWEEP_RESPONSES: sweepFile,
+          FAKE_GATED_RUNS: gatedRunsFile,
+          FAKE_GATED_RUNS_FAIL: gatedRunsReadFails ? '1' : '0',
+          GATED_WORKFLOWS: gatedRuns === undefined ? '' : 'Test,Lint Code',
+          TRIGGER_RUN_ID: triggerRunId,
           FAKE_SHA: SHA,
           GH_TOKEN: 'test-token',
           GITHUB_STEP_SUMMARY: summaryFile,
@@ -900,6 +924,71 @@ describe('deploy gate commit-status description', () => {
       'the pending path must use four check pages and one write, with one bounded wait',
     );
     assert.equal(result.statusReads, 1);
+  });
+
+  it('publishes pending without the wait while a gated workflow is still running', () => {
+    for (const status of ['queued', 'in_progress', 'waiting']) {
+      const result = runGate({}, { gatedRuns: [{ name: 'Lint Code', status: 'completed' }, { name: 'Test', status }] });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(
+        result.calls,
+        ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending'],
+        `a ${status} Test run fires its own evaluation, so this one must not hold the runner`,
+      );
+      assert.equal(result.posted[0].state, 'pending');
+    }
+  });
+
+  it('keeps the stale-read wait when no gated workflow is left to fire', () => {
+    const waited = (reads) => [
+      'graphql-check-page', 'graphql-check-page', 'head-runs-page', ...reads,
+      'sleep:60', 'graphql-check-page', 'graphql-check-page', 'status:pending',
+    ];
+    for (const [label, options, reads] of [
+      ['all gated runs completed', { gatedRuns: [{ name: 'Test', status: 'completed' }, { name: 'Lint Code', status: 'completed' }] }, []],
+      ['only an ungated run in flight', { gatedRuns: [{ name: 'Deploy Gate', status: 'in_progress' }, { name: 'Test', status: 'completed' }] }, []],
+      ['the runs listing failed', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], gatedRunsReadFails: true }, []],
+      // A stale listing snapshot still shows a finished run as running.
+      ['the run record says completed', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'completed' }] }, ['run-read:100']],
+      ['the run record cannot be read', { gatedRuns: [{ name: 'Test', status: 'in_progress', fresh: 'error' }] }, ['run-read:100']],
+      // On the head's last event, the listing can lag this event's own run.
+      ['only the triggering run reads as running', { gatedRuns: [{ name: 'Test', status: 'in_progress' }], triggerRunId: '100' }, []],
+    ]) {
+      const result = runGate({}, options);
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(result.calls, waited(reads), `${label}: this may be the head's last event, so it must re-poll once (#5479)`);
+    }
+  });
+
+  it('skips the wait for another unfinished run beside the triggering one', () => {
+    const result = runGate({}, {
+      gatedRuns: [{ name: 'Lint Code', status: 'in_progress' }, { name: 'Test', status: 'in_progress' }],
+      triggerRunId: '100',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:101', 'status:pending']);
+  });
+
+  it('skips the wait on one confirmed unfinished run even when another read failed', () => {
+    // The confirmed run's own completion event evaluates again, so the failed
+    // read cannot strand the head.
+    const result = runGate({}, {
+      gatedRuns: [{ name: 'Lint Code', status: 'in_progress', fresh: 'error' }, { name: 'Test', status: 'in_progress' }],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      result.calls,
+      ['graphql-check-page', 'graphql-check-page', 'head-runs-page', 'run-read:100', 'run-read:101', 'status:pending'],
+    );
+  });
+
+  it('keeps the wait for a failed check even while a gated workflow is running', () => {
+    // A successful rerun can still read as failed, and the in-flight run
+    // says nothing about that check.
+    const result = runGate({ ...conclusionsFor('success'), unit: 'failure' }, { gatedRuns: [{ name: 'Test', status: 'in_progress' }] });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.calls.includes('head-runs-page'), false);
+    assert.equal(result.calls.filter((call) => call === 'sleep:60').length, 1);
   });
 
   it('blocks a failed Zapier check and accepts an unrelated skipped Zapier check', () => {
@@ -1315,6 +1404,45 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.posted, []);
   });
 
+  // GitHub does not fire workflow_run for a run whose actor is the Actions
+  // token, so a PR a scheduled workflow opens with github.token never gets an
+  // event-driven gate (#10007). The sweep is its only writer.
+  it('evaluates a missing gate on a PR opened with the Actions token', () => {
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: 'github-actions' }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls.slice(0, 2), ['graphql-sweep-page', 'graphql-sweep-page']);
+    assert.ok(!result.calls.includes('rest-failed-runs-page'), 'token-authored heads need no failed-run lookup');
+    assert.deepEqual(result.postTargets.at(-1), SHA);
+    assert.deepEqual(result.posted.at(-1), {
+      state: 'success',
+      description: stamped('All required PR gates passed'),
+    });
+  });
+
+  it('posts pending for an Actions-token PR whose checks are still running', () => {
+    const result = runGate({}, {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: 'github-actions' }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.posted.at(-1)?.state, 'pending');
+  });
+
+  it('still skips a missing gate on a PR with no author', () => {
+    const result = runGate(conclusionsFor('success'), {
+      failedRunSha: '0123456789abcdef0123456789abcdef01234567',
+      sweepStatuses: [{ sha: SHA, status: null, author: null }],
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, []);
+  });
+
   it('does not recover a missing gate from a stale failed run', () => {
     const result = runGate(conclusionsFor('success'), {
       failedRunCreatedAt: '2026-08-10T12:15:00Z',
@@ -1530,6 +1658,12 @@ describe('deploy gate stale-base drift over a real repository', () => {
     const headSha = git(remote, 'rev-parse', 'HEAD').trim();
     git(remote, 'checkout', '-q', 'main');
     if ((shape.main ?? []).length > 0) commit(shape.main, 'main');
+    if (shape.shallow) {
+      // The workflow's depth-1 checkout. file:// because git ignores --depth
+      // on a plain local path.
+      git(root, 'clone', '-q', '--depth=1', `file://${remote}`, work);
+      return { remote, work, headSha };
+    }
     git(work, 'init', '-q');
     // A partial clone needs a NAMED promisor remote: git refuses to register
     // one whose name is a path, so the fixture wires `origin` the way a real
@@ -1566,6 +1700,19 @@ describe('deploy gate stale-base drift over a real repository', () => {
       base: ['api/widget-agent.ts', 'server/gateway.ts', 'docs/x.md'],
       head: ['api/widget-agent.ts', 'docs/x.md'],
       main: ['api/widget-agent.ts', 'server/gateway.ts'],
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'api/widget-agent.ts');
+  });
+
+  it('finds the merge base below a depth-1 checkout', () => {
+    // The clone holds only main's tip, so its parent, the real merge base,
+    // sits behind the shallow boundary.
+    const result = drift({
+      base: ['api/widget-agent.ts', 'server/gateway.ts'],
+      head: ['api/widget-agent.ts'],
+      main: ['api/widget-agent.ts', 'server/gateway.ts'],
+      shallow: true,
     });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, 'api/widget-agent.ts');

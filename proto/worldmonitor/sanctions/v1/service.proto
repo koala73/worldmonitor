@@ -10,7 +10,7 @@ import "worldmonitor/sanctions/v1/lookup_entity.proto";
 service SanctionsService {
   option (sebuf.http.service_config) = {base_path: "/api/sanctions/v1"};
 
-  // ListSanctionsPressure retrieves normalized OFAC designation summaries and recent additions.
+  // ListSanctionsPressure returns OFAC SDN and Consolidated designations plus Canada SEMA entries, with country and program pressure and new additions.
   rpc ListSanctionsPressure(ListSanctionsPressureRequest) returns (ListSanctionsPressureResponse) {
     option (sebuf.http.config) = {path: "/list-sanctions-pressure", method: HTTP_METHOD_GET};
   }

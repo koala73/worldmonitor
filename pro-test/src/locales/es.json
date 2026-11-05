@@ -664,7 +664,8 @@
       "proF4": "MCP, API REST y SDKs oficiales — herramientas activas bajo una clave",
       "proF5": "Constructor de widgets personalizados para tus propios paneles",
       "cta": "Ver planes y precios",
-      "note": "Desde $39.99/mes · 3 meses gratis al facturar anualmente"
+      "note": "Desde $39.99/mes · 3 meses gratis al facturar anualmente",
+      "disclaimer": "World Monitor tiene fines exclusivamente informativos y no constituye asesoramiento financiero, de inversión, jurídico ni de seguridad. Verifique lo que ve y consulte a un profesional cualificado antes de tomar decisiones en las que un error pudiera causar pérdidas o daños."
     },
     "faq": {
       "eyebrow": "Sin trampa",
@@ -711,14 +712,14 @@
       "chokepointTitle": "Inspeccionar un punto crítico",
       "chokepointDesc": "Inspecciona el estado de las disrupciones, flujos de embarcaciones y riesgo a través de {{chokepoints}} pasos marítimos críticos.",
       "countryRiskTitle": "Explicar un movimiento de riesgo país",
-      "countryRiskDesc": "Rastrea las señales políticas, de seguridad, económicas y de resiliencia detrás del cambio de un país, con resiliencia clasificada para {{resilienceRanked}} países.",
+      "countryRiskDesc": "Rastrea las señales políticas, de seguridad, económicas y de resiliencia detrás del cambio de un país. La resiliencia se clasifica para {{resilienceRanked}} de {{resilienceUniverse}} países, aproximadamente el {{resilienceRankedPct}} %, lo que permite interpretar un movimiento en relación con la base estructural a largo plazo de ese país, en lugar de hacerlo solo a partir de los titulares de noticias de esta semana.",
       "open": "Abrir evidencia",
       "workflow": "Flujo de trabajo paso a paso"
     },
     "voices": {
       "eyebrow": "En sus palabras",
       "title": "Lo que dice la gente sobre World Monitor",
-      "sub": "{{users}} personas en {{countries}} países han usado World Monitor. Esto es lo que dijeron la prensa y algunas de ellas.",
+      "sub": "{{users}} personas en {{countries}} países han usado World Monitor. The Atlantic escribió sobre él el 14 de marzo de 2026 y El País dos días después, y también lo han cubierto WIRED, The Economic Times, Arabian Business y L'Orient Today. Esto es lo que dijeron la prensa y algunos usuarios.",
       "translatedJa": "Traducido del japonés",
       "prev": "Citas anteriores",
       "next": "Más citas"

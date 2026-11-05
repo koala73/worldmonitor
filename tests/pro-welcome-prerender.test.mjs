@@ -168,6 +168,43 @@ test('sections state a price or percentage the audit credits', { skip }, () => {
   const gps = passageAfter('GPS jamming zones');
   assert.match(gps, /at least 2% of aircraft/);
   assert.ok(gps.split(/\s+/).length >= 40, `GPS card is under 40 words: ${gps}`);
+  const depth = JSON.parse(readFileSync(new URL('../pro-test/src/generated/depth-stats.json', import.meta.url), 'utf8'));
+  const risk = passageAfter('Explain a country-risk move');
+  assert.ok(risk.includes(`ranked for ${depth.resilienceRanked} of ${copy.resilienceUniverse} countries, about ${copy.resilienceRankedPct}%,`), risk);
+  assert.equal(copy.resilienceRankedPct, Math.round((depth.resilienceRanked / copy.resilienceUniverse) * 100));
+  assert.ok(risk.split(/\s+/).length >= 40, `country-risk card is under 40 words: ${risk}`);
+});
+
+// The dates in the Voices subtitle are the publication dates in the cited URLs.
+test('Voices subtitle dates the press it names', { skip }, async () => {
+  const { THE_ATLANTIC_URL, EL_PAIS_URL } = await import('../shared/press.ts');
+  assert.match(THE_ATLANTIC_URL, /\/2026\/03\//);
+  assert.match(EL_PAIS_URL, /\/2026-03-16\//);
+  const { content } = welcomeRoot();
+  const at = content.indexOf('>What people say about World Monitor</h2>');
+  assert.ok(at >= 0, 'missing Voices heading');
+  const sub = tagsToText(content.slice(at).match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '', '');
+  assert.match(sub, /The Atlantic wrote about it on 14 March 2026 and El País two days later/);
+  assert.ok(sub.split(/\s+/).length >= 40, `Voices subtitle is under 40 words: ${sub}`);
+});
+
+// geo.new's YMYL disclaimer check (EAT-18) reads only the main text, and only
+// about the first 2,500 words of the page (its word count stayed at ~2,506 while
+// the page grew to ~3,100). Under the FAQ the line sat near word 2,930 and was
+// never seen, so it lives under the pricing teaser, once, and not in the footer.
+test('the not-advice line sits early in <main>, under the pricing teaser, once', { skip }, () => {
+  const html = welcomeHtml();
+  const line = /World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice\./g;
+  assert.equal(tagsToText(html, ' ').replace(/\s+/g, ' ').match(line)?.length, 1);
+  const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+  const pricing = main.slice(main.indexOf('id="pricing"'), main.indexOf('id="faq"'));
+  assert.match(tagsToText(pricing, ' ').replace(/\s+/g, ' '), line);
+  assert.match(tagsToText(pricing, ' ').replace(/\s+/g, ' '), /consult a qualified professional/);
+  const body = html.slice(html.indexOf('<body')).replace(/<(script|style|noscript)[\s\S]*?<\/\1>/g, ' ');
+  const words = tagsToText(body, ' ').split(/\s+/).filter(Boolean);
+  const at = words.join(' ').indexOf('World Monitor is for informational purposes only');
+  const position = words.join(' ').slice(0, at).split(' ').length;
+  assert.ok(position < 2400, `the not-advice line starts at word ${position}, past the ~2,500 words geo.new reads`);
 });
 
 // The FAQ figures live inside <details> answers, which geo.new did not credit
@@ -283,17 +320,35 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
 });
 
 // React skips the image preload for an <img> inside <picture>, so without the
-// prerender's head tag the LCP hero waits for the body parser to reach it.
+// prerender's head tags the LCP hero waits for the body parser to reach it.
+// Since #9921 the screenshot sits in the first screen on phones too, so it is
+// the LCP there as well: phones get their own source and preload.
 test('built welcome head preloads the hero AVIF srcset the <picture> serves', { skip }, () => {
   const html = welcomeHtml();
   const head = html.slice(0, html.indexOf('</head>'));
-  // Desktop only: on phones the <h1> is the LCP and the screenshot is far below the fold.
   const preload = head.match(/<link rel="preload" as="image" type="image\/avif" media="\(min-width: 640px\)" imagesrcset="([^"]+)" imagesizes="([^"]+)" fetchpriority="high">/);
-  assert.ok(preload, 'welcome <head> should preload the hero AVIF');
-  const source = welcomeRoot().content.match(/<picture><source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
-  assert.ok(source, 'hero <picture> should carry an AVIF <source>');
+  assert.ok(preload, 'welcome <head> should preload the desktop hero AVIF');
+  const source = welcomeRoot().content.match(/<source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
+  assert.ok(source, 'hero <picture> should carry a desktop AVIF <source>');
   assert.equal(preload[1], source[1], 'preload imagesrcset must match the rendered <source>');
   assert.equal(preload[2], source[2], 'preload imagesizes must match the rendered <source>');
+});
+
+// On a phone the hero frame is under 640 CSS px wide, but sizes x DPR picked
+// the 960w or 1280w variant (35-54KB) and the LCP waited ~0.9s on its download.
+// The 640w AVIF is 18KB and still about 1.7x density at that width.
+test('phones get the 640w hero AVIF, preloaded', { skip }, () => {
+  const html = welcomeHtml();
+  const head = html.slice(0, html.indexOf('</head>'));
+  const picture = welcomeRoot().content.match(/<picture>([\s\S]*?)<\/picture>/);
+  assert.ok(picture, 'hero should render a <picture>');
+  const sources = [...picture[1].matchAll(/<source [^>]+\/>/g)].map(([tag]) => tag);
+  assert.match(sources[0], /^<source type="image\/avif" media="\(max-width: 639px\)" srcSet="\/pro\/assets\/worldmonitor-7-mar-2026-640-[^"]+\.avif"\/>$/);
+  assert.match(sources[1], /^<source type="image\/webp" media="\(max-width: 639px\)" srcSet="\/pro\/assets\/worldmonitor-7-mar-2026-640-[^"]+\.webp"\/>$/);
+  const mobileAvif = sources[0].match(/srcSet="([^"]+)"/)[1];
+  const preload = head.match(/<link rel="preload" as="image" type="image\/avif" media="\(max-width: 639px\)" href="([^"]+)" fetchpriority="high">/);
+  assert.ok(preload, 'welcome <head> should preload the phone hero AVIF');
+  assert.equal(preload[1], mobileAvif, 'phone preload must match the rendered phone <source>');
 });
 
 // Mobile audits fail any rendered text under 12px (0.75rem at the 16px root).

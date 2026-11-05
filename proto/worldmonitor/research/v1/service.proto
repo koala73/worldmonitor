@@ -12,17 +12,17 @@ import "worldmonitor/research/v1/list_tech_events.proto";
 service ResearchService {
   option (sebuf.http.service_config) = {base_path: "/api/research/v1"};
 
-  // ListArxivPapers retrieves recent papers from arXiv.
+  // ListArxivPapers returns the newest arXiv papers in cs.AI, cs.CL and cs.CR, optionally filtered to one category, sorted by date, up to 100 per request.
   rpc ListArxivPapers(ListArxivPapersRequest) returns (ListArxivPapersResponse) {
     option (sebuf.http.config) = {path: "/list-arxiv-papers", method: HTTP_METHOD_GET};
   }
 
-  // ListTrendingRepos retrieves trending repositories from GitHub.
+  // ListTrendingRepos returns daily trending GitHub repositories for Python, JavaScript or TypeScript from OSSInsight, with GitHub search as a fallback.
   rpc ListTrendingRepos(ListTrendingReposRequest) returns (ListTrendingReposResponse) {
     option (sebuf.http.config) = {path: "/list-trending-repos", method: HTTP_METHOD_GET};
   }
 
-  // ListHackernewsItems retrieves top stories from Hacker News.
+  // ListHackernewsItems returns up to 30 Hacker News stories from the top, new, best, ask, show or job feed, read from the official Hacker News Firebase API.
   rpc ListHackernewsItems(ListHackernewsItemsRequest) returns (ListHackernewsItemsResponse) {
     option (sebuf.http.config) = {path: "/list-hackernews-items", method: HTTP_METHOD_GET};
   }

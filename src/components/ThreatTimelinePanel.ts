@@ -276,7 +276,7 @@ export class ThreatTimelinePanel extends Panel {
         .threat-timeline-stat, .threat-timeline-trend { border: 1px solid var(--border-color); background: var(--bg-secondary); border-radius: 8px; padding: 8px; min-width: 0; }
         .threat-timeline-stat-value { display: block; font-size: calc(20px * var(--wm-panel-effective-scale, 1)); line-height: 1; font-weight: 700; color: var(--text-primary); }
         .threat-timeline-stat-label, .threat-timeline-trend-copy, .threat-timeline-footer, .threat-timeline-note { display: block; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary); margin-top: 4px; }
-        .threat-timeline-trend { border-left: 3px solid var(--accent-color); }
+        .threat-timeline-trend { border-left: 3px solid var(--accent); }
         .threat-timeline-trend.worsening { border-left-color: #ef4444; }
         .threat-timeline-trend.easing { border-left-color: #38bdf8; }
         .threat-timeline-trend-label { display: block; color: var(--text-primary); font-size: calc(13px * var(--wm-panel-effective-scale, 1)); font-weight: 700; }
@@ -296,7 +296,7 @@ export class ThreatTimelinePanel extends Panel {
         .threat-timeline-item { padding: 8px 9px; display: grid; gap: 4px; }
         .threat-timeline-item + .threat-timeline-item { border-top: 1px solid var(--border-color); }
         .threat-timeline-item-title { color: var(--text-primary); font-size: calc(12px * var(--wm-panel-effective-scale, 1)); line-height: 1.35; text-decoration: none; }
-        a.threat-timeline-item-title:hover { color: var(--accent-color); }
+        a.threat-timeline-item-title:hover { color: var(--accent); }
         .threat-timeline-item-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--text-secondary); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
         .threat-timeline-source, .threat-timeline-source-count { border: 1px solid var(--border-color); border-radius: 999px; padding: 1px 6px; color: var(--text-secondary); }
         .threat-critical .threat-timeline-group-header { border-left: 3px solid #ef4444; }

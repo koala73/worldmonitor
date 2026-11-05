@@ -8,14 +8,17 @@ import YAML from 'yaml';
 import {
   MONITORED_WORKFLOWS,
   SLOWDOWN,
+  attributeFlakes,
   checkCiHealth,
   findFailingMain,
   findFlakyJobs,
   findSlowdowns,
   findTimeouts,
   median,
+  parseFailingTests,
   pickOwnedIssue,
   safeLabel,
+  spreadSample,
   syncIssues,
 } from '../scripts/check-ci-health.mjs';
 
@@ -31,13 +34,16 @@ function run(overrides = {}) {
     status: 'completed',
     conclusion: 'success',
     run_attempt: 1,
+    repository: { full_name: 'o/r' },
+    head_repository: { full_name: 'o/r' },
     ...overrides,
   };
 }
 
-function job(name, conclusion, seconds = 120, startOffset = 0, steps = []) {
+function job(name, conclusion, seconds = 120, startOffset = 0, steps = [], id = undefined) {
   const started = Date.parse('2026-10-31T04:10:00Z') + startOffset * 1000;
   return {
+    id,
     name,
     conclusion,
     steps: steps.map((step) => ({ name: step })),
@@ -62,6 +68,21 @@ describe('flaky detector', () => {
     }]);
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (flaky): Test / sidecar']);
     assert.match(findings[0].evidence[0].detail, /failed on attempt 1, passed on attempt 2/);
+  });
+
+  it('says whether the flake came from main or a pull request, and keeps the failed job to read its log', () => {
+    const [fromPr] = findFlakyJobs([{
+      run: run({ run_attempt: 2, event: 'pull_request', pull_requests: [{ number: 9732 }] }),
+      attempts: [[job('variant-smoke (2)', 'failure', 40, 0, [], 501)], [job('variant-smoke (2)', 'success', 120, 0, [], 502)]],
+    }]);
+    assert.equal(fromPr.evidence[0].detail, 'pull request: failed on attempt 1, passed on attempt 2');
+    assert.deepEqual(fromPr.evidence[0].failedJobIds, [501]);
+    assert.deepEqual(fromPr.evidence[0].pullRequests, [9732]);
+    const [fromMain] = findFlakyJobs([{
+      run: run({ run_attempt: 2, event: 'push', head_branch: 'main' }),
+      attempts: [[job('sidecar', 'failure', 40)], [job('sidecar', 'success')]],
+    }]);
+    assert.match(fromMain.evidence[0].detail, /^main: /);
   });
 
   it('does not blame an aggregate job that only failed because a dependency did', () => {
@@ -191,6 +212,181 @@ describe('slowdown detector', () => {
   });
 });
 
+describe('slowdown sampling', () => {
+  const at = (index) => run({ id: index, created_at: new Date(Date.parse('2026-10-26T00:00:00Z') + index * 3_600_000).toISOString() });
+
+  it('spreads samples over the whole week instead of its newest day', () => {
+    // 150 runs, one an hour; the newest 15 would all be from the last 15 hours.
+    const runs = Array.from({ length: 150 }, (_, index) => at(index)).reverse();
+    const picked = spreadSample(runs, 15).map((item) => item.id);
+    assert.equal(picked.length, 15);
+    assert.equal(picked[0], 0);
+    assert.equal(picked.at(-1), 149);
+    assert.ok(picked.every((id, index) => index === 0 || id - picked[index - 1] >= 10), picked.join(','));
+  });
+
+  it('keeps every run when there are no more than the sample size', () => {
+    assert.deepEqual(spreadSample([at(3), at(1), at(2)], 15).map((item) => item.id), [1, 2, 3]);
+    assert.deepEqual(spreadSample([at(1), at(2)], 1).map((item) => item.id), [2]);
+    assert.deepEqual(spreadSample([], 15), []);
+  });
+});
+
+describe('failing test names', () => {
+  it('reads node:test, the file watchdog, Playwright and vitest failures from a job log', () => {
+    // Lines as GitHub serves them in job logs (runs 40940954687, 41383834994).
+    const log = [
+      '2026-10-29T19:35:26.0058765Z ✖ failing tests:',
+      '2026-10-29T19:35:26.0059019Z ',
+      '2026-10-29T19:35:26.0059362Z test at tests/mcp-modern-era.test.mjs:965:5',
+      '2026-10-29T19:35:26.0060605Z ✖ remaps a daily-quota -32029 to -31029 with the same 429, Retry-After and data (26.281888ms)',
+      '2026-11-02T03:42:22.8530647Z Data test file still running after --file-timeout=300000ms (a test hung or a handle was left open): tests/runtime-config-panel-visibility.test.mjs',
+      '2026-11-02T03:42:22.9073114Z test at tests/runtime-config-panel-visibility.test.mjs:1:1',
+      '2026-11-02T03:37:55.6670668Z   1) [chromium] › e2e/dashboard-news-request-budget.spec.ts:474:3 › dashboard news request budget (#5376) › a degraded 200 digest',
+      '2026-11-02T03:37:55.6670668Z  \u001b[31mFAIL\u001b[39m  tests/dom/panel-keyboard-resize-a11y.test.mts > keyboard resize',
+      '2026-11-02T03:37:55.6670668Z   ✓  24 [chromium] › e2e/variant-live-smoke.spec.ts:83:3 › passes',
+    ].join('\n');
+    assert.deepEqual(parseFailingTests(log), [
+      'tests/mcp-modern-era.test.mjs:965:5',
+      'tests/runtime-config-panel-visibility.test.mjs:1:1',
+      'e2e/dashboard-news-request-budget.spec.ts:474:3',
+      'tests/dom/panel-keyboard-resize-a11y.test.mts',
+    ]);
+  });
+
+  it('drops a test path long enough to push an issue body past GitHub\'s limit', () => {
+    const long = `tests/${'a'.repeat(60_000)}.test.mjs:1:1`;
+    assert.deepEqual(parseFailingTests(`test at ${long}\ntest at tests/ok.test.mjs:2:1`), ['tests/ok.test.mjs:2:1']);
+  });
+
+  it('accepts a test under any top-level directory of the repo', () => {
+    const log = [
+      'test at src-tauri/sidecar/local-api-server.test.mjs:12:3',
+      'test at workers/relay/relay.test.mjs:4:1',
+      ' FAIL  consumer-prices-core/src/parse.test.ts > sizes',
+    ].join('\n');
+    assert.deepEqual(parseFailingTests(log), [
+      'src-tauri/sidecar/local-api-server.test.mjs:12:3',
+      'workers/relay/relay.test.mjs:4:1',
+      'consumer-prices-core/src/parse.test.ts',
+    ]);
+  });
+
+  it('lets nothing but a plain repo test path out of a fork-controlled log', () => {
+    const log = [
+      'test at tests/../../etc/x.test.mjs:1:1',
+      'test at .github/x.test.mjs',
+      'test at /home/runner/tests/x.test.mjs',
+      'test at tests/x.test.mjs:1:1|[evil](https://evil.example)',
+      'test at ../../etc/passwd',
+      'test at tests/@koala73.test.mjs',
+      'test at https://evil.example/tests/a.test.mjs',
+      'test at tests/not-a-test.mjs',
+    ].join('\n');
+    assert.deepEqual(parseFailingTests(log), []);
+  });
+});
+
+describe('flake attribution', () => {
+  const flake = (at, failedJobIds, title = 'CI health (flaky): Test / unit-shard (3)') => ({
+    kind: 'flaky', title, summary: 's',
+    evidence: [{ url: 'u', sha: 's', at, detail: 'pull request: failed on attempt 1, passed on attempt 2', failedJobIds: [failedJobIds].flat(), pullRequests: [9750], trustedLog: true }],
+  });
+  const logs = {
+    1: 'test at tests/mcp-modern-era.test.mjs:965:5',
+    2: '1) [chromium] › e2e/a.spec.ts:10:3 › t\ntest at tests/b.test.mjs:4:1',
+    3: 'no failing test named here',
+  };
+  const readLog = (id) => {
+    if (!(id in logs)) throw new Error('HTTP 410: logs expired');
+    return logs[id];
+  };
+
+  it('names the failing tests and drops a flake whose test changed on main since it failed', () => {
+    // #10016: the Retry-After flake on Oct 29; #9863 froze the clock on Oct 30.
+    const calls = [];
+    const changeSince = (file, iso, pullRequests) => {
+      calls.push([file, iso, pullRequests]);
+      return file === 'tests/mcp-modern-era.test.mjs' ? '083a1800f0' : null;
+    };
+    const { findings, skipped } = attributeFlakes([flake('2026-10-29T19:32:00Z', 1)], { readLog, changeSince });
+    assert.deepEqual(findings, []);
+    assert.deepEqual(skipped, ['CI health (flaky): Test / unit-shard (3)']);
+    assert.deepEqual(calls, [['tests/mcp-modern-era.test.mjs', '2026-10-29T19:32:00Z', [9750]]]);
+  });
+
+  it('keeps a flake until every test it named has changed, and shows which did', () => {
+    const changeSince = (file) => (file === 'e2e/a.spec.ts' ? 'abc1234567' : null);
+    const { findings, skipped } = attributeFlakes([flake('2026-10-30T00:00:00Z', 2)], { readLog, changeSince });
+    assert.deepEqual(skipped, []);
+    assert.equal(findings[0].evidence[0].detail,
+      'pull request: failed on attempt 1, passed on attempt 2 · failing: `e2e/a.spec.ts:10:3`, `tests/b.test.mjs:4:1`');
+  });
+
+  it('keeps a flake when any occurrence is not shown to be addressed', () => {
+    const finding = flake('2026-10-29T19:32:00Z', 1);
+    finding.evidence.push({ ...finding.evidence[0], at: '2026-11-01T00:00:00Z', failedJobIds: [3] });
+    const { findings, warnings } = attributeFlakes([finding, flake('2026-10-31T00:00:00Z', 99, 'CI health (flaky): Test / sidecar')], {
+      readLog, changeSince: () => '083a1800f0',
+    });
+    assert.deepEqual(findings.map((item) => item.title), ['CI health (flaky): Test / unit-shard (3)', 'CI health (flaky): Test / sidecar']);
+    assert.match(findings[0].evidence[0].detail, /changed on main since: `083a1800f0`/);
+    assert.doesNotMatch(findings[0].evidence[1].detail, /failing:/);
+    assert.deepEqual(warnings, ['log for job 99 unreadable: HTTP 410_ logs expired']);
+  });
+
+  it('keeps a flake and warns, instead of failing the scan, when file history is unreadable', () => {
+    const { findings, warnings } = attributeFlakes([flake('2026-10-29T19:32:00Z', 1)], {
+      readLog, changeSince: () => { throw new Error('HTTP 502'); },
+    });
+    assert.equal(findings.length, 1);
+    assert.deepEqual(warnings, ['history of tests/mcp-modern-era.test.mjs unreadable: HTTP 502']);
+  });
+
+  it('reads at most the newest flakes per scan and leaves other kinds alone', () => {
+    const read = [];
+    const timeout = { kind: 'timeout', title: 't', summary: 's', evidence: [{ at: '2026-10-31T00:00:00Z', failedJobIds: [1] }] };
+    const flakes = [flake('2026-10-28T00:00:00Z', 1, 'a'), flake('2026-10-30T00:00:00Z', 1, 'b'), flake('2026-10-29T00:00:00Z', 1, 'c')];
+    const { findings } = attributeFlakes([timeout, ...flakes], {
+      readLog: (id) => { read.push(id); return logs[id]; }, changeSince: () => 'x', limit: 2,
+    });
+    assert.equal(read.length, 2);
+    assert.deepEqual(findings.map((item) => item.title), ['t', 'a']);
+  });
+
+  it('decides on every failing file, not only the five it shows', () => {
+    const many = Array.from({ length: 6 }, (_, index) => `test at tests/f${index}.test.mjs:1:1`).join('\n');
+    const { findings, skipped } = attributeFlakes([flake('2026-10-29T00:00:00Z', 7)], {
+      readLog: () => many, changeSince: (file) => (file === 'tests/f5.test.mjs' ? null : 'abc'),
+    });
+    assert.deepEqual(skipped, []);
+    assert.match(findings[0].evidence[0].detail, /`tests\/f4\.test\.mjs:1:1` and 1 more$/);
+  });
+
+  it('keeps a flake when a later failed attempt names a test that has not changed', () => {
+    // Failed on attempts 1 and 2 in different tests, passed on attempt 3.
+    const [finding] = findFlakyJobs([{
+      run: run({ run_attempt: 3, event: 'pull_request' }),
+      attempts: [
+        [job('unit-shard (1)', 'failure', 150, 0, [], 1)],
+        [job('unit-shard (1)', 'failure', 150, 0, [], 2)],
+        [job('unit-shard (1)', 'success', 150, 0, [], 3)],
+      ],
+    }]);
+    assert.deepEqual(finding.evidence[0].failedJobIds, [1, 2]);
+    const { findings, skipped } = attributeFlakes([finding], {
+      readLog, changeSince: (file) => (file === 'tests/mcp-modern-era.test.mjs' ? 'fixed' : null),
+    });
+    assert.deepEqual(skipped, []);
+    assert.match(findings[0].evidence[0].detail, /`tests\/mcp-modern-era\.test\.mjs:965:5`, `e2e\/a\.spec\.ts:10:3`, `tests\/b\.test\.mjs:4:1`/);
+  });
+
+  it('keeps a flake when any failed attempt names no test', () => {
+    const { skipped } = attributeFlakes([flake('2026-10-29T00:00:00Z', [1, 3])], { readLog, changeSince: () => 'fixed' });
+    assert.deepEqual(skipped, []);
+  });
+});
+
 describe('issue sync', () => {
   const finding = { kind: 'flaky', title: 'CI health (flaky): Test / sidecar', summary: 'summary text', evidence: [{
     url: 'https://github.com/o/r/actions/runs/7', sha: '2fd501e11e', at: '2026-10-28T10:02:00Z', detail: 'failed on attempt 1, passed on attempt 2',
@@ -223,6 +419,16 @@ describe('issue sync', () => {
     ]);
   });
 
+  it('keeps syncing the remaining findings when GitHub rejects one write', () => {
+    const issues = fakeIssues([{ number: 12, title: finding.title }]);
+    issues.update = () => { throw new Error('HTTP 422: body is too long'); };
+    const second = { ...finding, title: 'CI health (slower): Test / sidecar' };
+    assert.deepEqual(syncIssues({ findings: [finding, second], issues, generatedAt: '2026-11-02T06:30:00Z' }), [
+      { action: 'failed', number: null, title: finding.title, error: 'HTTP 422_ body is too long' },
+      { action: 'created', number: 99, title: second.title },
+    ]);
+  });
+
   it('only ever rewrites an issue the scan itself opened', () => {
     const title = finding.title;
     const human = { number: 3, title, user: { login: 'someone' } };
@@ -236,13 +442,22 @@ describe('issue sync', () => {
 
 describe('collection against a fake GitHub API', () => {
   // NOW is Saturday 12:00 UTC. The event window reaches back 7 days and 6 hours.
-  function fakeGh({ daily = {}, attempts = {}, newestMain = [], staleMain = null, successMain = [] }) {
+  function fakeGh({ daily = {}, attempts = {}, newestMain = [], staleMain = null, successMain = [], logs = {}, commits = {}, pulls = {} }) {
     const paths = [];
     let mainReads = 0;
     const gh = (args) => {
       assert.equal(args[0], 'api', 'a dry run must only read');
-      const path = args[1];
+      const path = args.at(-1);
       paths.push(path);
+      const log = /^repos\/o\/r\/actions\/jobs\/(\d+)\/logs$/.exec(path);
+      if (log) {
+        assert.ok(args.includes('--allow-escape-sequences'), 'gh refuses a log with colour codes without the flag');
+        return logs[log[1]];
+      }
+      const history = /^repos\/o\/r\/commits\?sha=main&path=([^&]+)&since=([^&]+)&per_page=20$/.exec(path);
+      if (history) return JSON.stringify(commits[decodeURIComponent(history[1])] ?? []);
+      const association = /^repos\/o\/r\/commits\/(\w+)\/pulls$/.exec(path);
+      if (association) return JSON.stringify((pulls[association[1]] ?? []).map((number) => ({ number })));
       const workflow = /workflows\/([^/]+)\/runs/.exec(path)?.[1];
       const date = /runs\?created=(\d{4}-\d{2}-\d{2})&/.exec(path)?.[1];
       if (date) return JSON.stringify({ workflow_runs: workflow === 'test.yml' ? (daily[date] ?? []) : [] });
@@ -259,6 +474,31 @@ describe('collection against a fake GitHub API', () => {
     };
     return { gh, paths };
   }
+
+  it('never lets a fork\'s own job log decide that its flake was fixed', () => {
+    const file = 'tests/mcp-modern-era.test.mjs';
+    const scan = (overrides) => {
+      const rerun = run({ id: 7, run_attempt: 2, event: 'pull_request', created_at: '2026-10-29T19:32:00Z', ...overrides });
+      const { gh } = fakeGh({
+        daily: { '2026-10-29': [rerun] },
+        attempts: { '7/1': [job('unit-shard (3)', 'failure', 150, 0, [], 41)], '7/2': [job('unit-shard (3)', 'success', 150, 0, [], 42)] },
+        // The fork prints a recently changed test it never ran.
+        logs: { 41: `test at ${file}:1:1\n` },
+        commits: { [file]: [{ sha: '083a1800f0ffffff', commit: { message: 'test(mcp): freeze the clock (#9863)' } }] },
+      });
+      return checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+    };
+    for (const provenance of [
+      { head_repository: { full_name: 'contributor/r' } },
+      { head_repository: null },
+      { repository: undefined },
+    ]) {
+      const result = scan(provenance);
+      assert.deepEqual(result.skipped, [], JSON.stringify(provenance));
+      assert.match(result.findings[0].evidence[0].detail, /failing: `tests\/mcp-modern-era\.test\.mjs:1:1`$/);
+    }
+    assert.deepEqual(scan({}).skipped, ['CI health (flaky): Test / unit-shard (3)']);
+  });
 
   it('reads every calendar day the overlapping window touches, so nothing falls between weekly scans', () => {
     const { gh, paths } = fakeGh({});
@@ -281,6 +521,75 @@ describe('collection against a fake GitHub API', () => {
     const { findings, actions } = checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
     assert.deepEqual(findings.map((finding) => finding.title), ['CI health (flaky): Test / sidecar']);
     assert.deepEqual(actions, []);
+  });
+
+  it('reads the failed attempt log and does not count the flaking PR\'s own merge as a fix', () => {
+    const rerun = run({ id: 7, run_attempt: 2, event: 'pull_request', pull_requests: [{ number: 9750 }], created_at: '2026-10-29T19:32:00Z' });
+    const file = 'tests/mcp-modern-era.test.mjs';
+    const merge = { sha: 'aaaaaaaaaaaaaaaa', commit: { message: 'feat(ukmto): hormuz source (#9750)\n\nbody' } };
+    const fix = { sha: '083a1800f0ffffff', commit: { message: 'test(mcp): freeze the clock (#9863)' } };
+    const setup = (history) => fakeGh({
+      daily: { '2026-10-29': [rerun] },
+      attempts: { '7/1': [job('unit-shard (3)', 'failure', 150, 0, [], 41)], '7/2': [job('unit-shard (3)', 'success', 150, 0, [], 42)] },
+      logs: { 41: '2026-10-29T19:35:26.0059362Z test at tests/mcp-modern-era.test.mjs:965:5\n' },
+      commits: { [file]: history },
+    });
+
+    const { gh: onlyOwnMerge } = setup([merge]);
+    const kept = checkCiHealth({ gh: onlyOwnMerge, repository: 'o/r', now: NOW, dryRun: true });
+    assert.deepEqual(kept.findings.map((finding) => finding.title), ['CI health (flaky): Test / unit-shard (3)']);
+    assert.match(kept.findings[0].evidence[0].detail, /failing: `tests\/mcp-modern-era\.test\.mjs:965:5`$/);
+
+    // The API lists newest first; the first change after the flake is the oldest.
+    const { gh: fixed, paths } = setup([fix, merge]);
+    const result = checkCiHealth({ gh: fixed, repository: 'o/r', now: NOW, dryRun: true });
+    assert.deepEqual(result.findings, []);
+    assert.deepEqual(result.skipped, ['CI health (flaky): Test / unit-shard (3)']);
+    assert.ok(paths.includes('repos/o/r/commits?sha=main&path=tests%2Fmcp-modern-era.test.mjs&since=2026-10-29T19%3A32%3A00Z&per_page=20'));
+  });
+
+  it('asks GitHub which pull request a later commit belongs to, since a merge subject may lack (#N)', () => {
+    const rerun = run({ id: 7, run_attempt: 2, event: 'pull_request', pull_requests: [{ number: 9750 }], created_at: '2026-10-29T19:32:00Z' });
+    const file = 'tests/mcp-modern-era.test.mjs';
+    const merge = { sha: 'aaaaaaaaaaaaaaaa', commit: { message: 'Merge branch feat/ukmto-hormuz-source' } };
+    const fix = { sha: 'bbbbbbbbbbbbbbbb', commit: { message: 'test(mcp): freeze the clock' } };
+    const setup = (history, pulls) => fakeGh({
+      daily: { '2026-10-29': [rerun] },
+      attempts: { '7/1': [job('unit-shard (3)', 'failure', 150, 0, [], 41)], '7/2': [job('unit-shard (3)', 'success', 150, 0, [], 42)] },
+      logs: { 41: 'test at tests/mcp-modern-era.test.mjs:965:5\n' },
+      commits: { [file]: history },
+      pulls,
+    });
+    const scan = (gh) => checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+
+    // Only the flaking PR's own merge changed the file: still reported.
+    assert.equal(scan(setup([merge], { aaaaaaaaaaaaaaaa: [9750] }).gh).findings.length, 1);
+    // A later fix from another PR: skipped, and the fix is the one cited.
+    const fixed = scan(setup([fix, merge], { aaaaaaaaaaaaaaaa: [9750], bbbbbbbbbbbbbbbb: [9863] }).gh);
+    assert.deepEqual(fixed.skipped, ['CI health (flaky): Test / unit-shard (3)']);
+    // More own-PR commits than the lookup budget: unresolved, so still reported.
+    const own = Array.from({ length: 4 }, (_, index) => ({ sha: `c${index}`.padEnd(16, '0'), commit: { message: 'wip' } }));
+    const busy = scan(setup([fix, ...own], Object.fromEntries(own.map((commit) => [commit.sha, [9750]]))).gh);
+    assert.equal(busy.findings.length, 1);
+  });
+
+  it('samples slowdown runs across each whole week, not its newest day', () => {
+    // 40 successful main runs a week, newest first as the API lists them.
+    const successMain = Array.from({ length: 80 }, (_, index) => run({
+      id: 5000 + index, created_at: new Date(NOW - (index + 0.5) * 4.2 * 3_600_000).toISOString(),
+    }));
+    const { gh, paths } = fakeGh({ successMain });
+    checkCiHealth({ gh, repository: 'o/r', now: NOW, dryRun: true });
+    // A finding links the first sample read, which must be the newest run.
+    assert.equal(paths.find((path) => path.includes('/attempts/1/jobs')), 'repos/o/r/actions/runs/5000/attempts/1/jobs?per_page=100');
+    const read = paths.map((path) => /runs\/(\d+)\/attempts\/1\/jobs/.exec(path)?.[1]).filter(Boolean).map(Number);
+    const ages = read.map((id) => (NOW - Date.parse(successMain[id - 5000].created_at)) / 86_400_000);
+    const current = ages.filter((age) => age < 7);
+    const previous = ages.filter((age) => age >= 7);
+    assert.equal(current.length, SLOWDOWN.samplesPerWindow);
+    assert.equal(previous.length, SLOWDOWN.samplesPerWindow);
+    assert.ok(Math.min(...current) < 1 && Math.max(...current) > 6, `current week spans ${current.join(',')}`);
+    assert.ok(Math.min(...previous) < 8 && Math.max(...previous) > 13, `previous week spans ${previous.join(',')}`);
   });
 
   it('keeps the newest re-runs when the per-workflow cap applies', () => {

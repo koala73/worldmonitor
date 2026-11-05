@@ -66,9 +66,10 @@ export default defineConfig({
   // two-spec subset, 1.64x rather than 2x because the settle windows above
   // are wall-clock, not CPU.
   //
-  // REVERT THIS if the crash rate does not fall. The annotations from #8449
-  // measure it on every merge; the baseline is 50 crashes across 76
-  // shard-runs, 47% of runs affected.
+  // The crash rate fell, so 2 stays. The baseline was 50 crashes across 76
+  // shard-runs (47% of runs affected). The #8449 annotations then counted 0
+  // crashes across 91 main shard-runs on 3-4 November 2026. Going back to 4
+  // also bought only ~15% (see the variant-smoke-shards comment in test.yml).
   workers: process.env.CI ? 2 : 1,
   fullyParallel: true,
   timeout: 90000,

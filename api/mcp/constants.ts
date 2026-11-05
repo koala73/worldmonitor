@@ -466,9 +466,18 @@ const JMESPATH_SPEC_URL = 'https://jmespath.org/specification.html';
 // agent branches on, and the 2026-07-28 era moves two of them out of the
 // reserved range (-32029 → -31029, -32002 → -31002), so `server/discover`
 // renders the modern pair while `initialize` keeps the legacy text unchanged.
-type InstructionDenialCodes = { allowanceExhausted: number; entitlement: number };
+//
+// `offersCheckout: false` renders the text for hosts whose app rules forbid
+// promoting an upgrade (ChatGPT, see host-policy.ts): no start_upgrade, no
+// checkout hint, and the plans page named as a description, not a call to buy.
+type InstructionDenialCodes = { allowanceExhausted: number; entitlement: number; offersCheckout: boolean };
 
-function buildServerInstructions({ allowanceExhausted, entitlement }: InstructionDenialCodes): string {
+function buildServerInstructions({ allowanceExhausted, entitlement, offersCheckout }: InstructionDenialCodes): string {
+  const checkoutFlow = offersCheckout
+    ? ' allowance-exhausted, upgrade-required and quota-exceeded also carry recommendedPlan when a self-serve plan is one step up, and a free account\'s denial adds checkoutTool="start_upgrade": call start_upgrade({plan: recommendedPlan}) for a personal checkout link the user opens to pay, then poll get_mcp_allowance.'
+    : '';
+  const exemptAccountTools = offersCheckout ? 'describe_tool, get_mcp_allowance and start_upgrade do not' : 'describe_tool and get_mcp_allowance do not';
+  const plansLink = offersCheckout ? `Upgrade: ${MCP_UPGRADE_URL}.` : `Plans: ${MCP_UPGRADE_URL}.`;
   return [
     'For webcam visual context, discover a viewport with find_webcams, then resolve one returned ID with get_webcam_media. Results are recent visual context, not confirmation of live conditions. Check lastUpdated separately from catalog freshness and URL resolvedAt. Keep Windy courtesy and link displayed images to windyUrl or playerUrl.',
     '',
@@ -482,7 +491,7 @@ function buildServerInstructions({ allowanceExhausted, entitlement }: Instructio
     '',
     'report_issue is credential-free and spends no daily allowance. Call it when a tool or REST call fails unexpectedly (pass the error\'s data.requestId as requestId), when a tool you need does not exist, or when data looks wrong. Do not put secrets, personal data, or vulnerability details in it.',
     '',
-    `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools stay Pro-only. Structured account-access denials carry \`error.data\` = {reason, nextStep, upgradeUrl}: -32001/401 reason=no-account, ${allowanceExhausted}/429 reason=allowance-exhausted, and ${entitlement}/403 reason=upgrade-required or lapsed-subscription. allowance-exhausted, upgrade-required and quota-exceeded also carry recommendedPlan when a self-serve plan is one step up, and a free account's denial adds checkoutTool="start_upgrade": call start_upgrade({plan: recommendedPlan}) for a personal checkout link the user opens to pay, then poll get_mcp_allowance. Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; describe_tool, get_mcp_allowance and start_upgrade do not), and \`subscription\` requires Pro. Each tool also carries \`_meta["worldmonitor/weight"]\`: what one call COSTS, in REST-request units. It is charged only on an API plan, whose MCP calls and REST requests draw one daily budget (1 for a cache-backed read, 2 for a live downstream fetch, 3 for the two that fetch twice); Pro and Pro Business meter one unit per standalone data call. Opening any embedded panel costs one request including its rendered details. Country briefs include bounded section reads; news dashboards include bounded hazard map loads. Repeated same-country or news-dashboard opens reuse the admission for at least five minutes, local topic/filter/layer navigation reuses loaded data, and explicit refresh costs one new request. News summaries and translations are separate user requests. Budget before you call: get_mcp_allowance or the allowance resource reports \`sharedWithRestApi\` so you can tell whether \`used\` also counts REST traffic. Upgrade: ${MCP_UPGRADE_URL}.`,
+    `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools stay Pro-only. Structured account-access denials carry \`error.data\` = {reason, nextStep, upgradeUrl}: -32001/401 reason=no-account, ${allowanceExhausted}/429 reason=allowance-exhausted, and ${entitlement}/403 reason=upgrade-required or lapsed-subscription.${checkoutFlow} Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; ${exemptAccountTools}), and \`subscription\` requires Pro. Each tool also carries \`_meta["worldmonitor/weight"]\`: what one call COSTS, in REST-request units. It is charged only on an API plan, whose MCP calls and REST requests draw one daily budget (1 for a cache-backed read, 2 for a live downstream fetch, 3 for the two that fetch twice); Pro and Pro Business meter one unit per standalone data call. Opening any embedded panel costs one request including its rendered details. Country briefs include bounded section reads; news dashboards include bounded hazard map loads. Repeated same-country or news-dashboard opens reuse the admission for at least five minutes, local topic/filter/layer navigation reuses loaded data, and explicit refresh costs one new request. News summaries and translations are separate user requests. Budget before you call: get_mcp_allowance or the allowance resource reports \`sharedWithRestApi\` so you can tell whether \`used\` also counts REST traffic. ${plansLink}`,
     '',
     'Issue prompts/list to discover pre-built workflow templates (country-view, country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit, trade-exposure-check). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
     '',
@@ -506,8 +515,10 @@ function buildServerInstructions({ allowanceExhausted, entitlement }: Instructio
   ].join('\n');
 }
 
-export const SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -32029, entitlement: -32002 });
-export const MODERN_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -31029, entitlement: -31002 });
+export const SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -32029, entitlement: -32002, offersCheckout: true });
+export const MODERN_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -31029, entitlement: -31002, offersCheckout: true });
+export const CHATGPT_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -32029, entitlement: -32002, offersCheckout: false });
+export const CHATGPT_MODERN_SERVER_INSTRUCTIONS = buildServerInstructions({ allowanceExhausted: -31029, entitlement: -31002, offersCheckout: false });
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
 // currently only produces data for AE (UAE); future markets will be added

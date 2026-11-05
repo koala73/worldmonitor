@@ -39,7 +39,7 @@ import { isMainModule } from './lib/main-module.mjs';
 const UTC_DAY_MS = 86_400_000;
 const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
 const AVAILABILITY_STATES = new Set(['available', 'partial', 'unavailable']);
-const REFERRER_FAMILIES = new Set([
+export const REFERRER_FAMILIES = new Set([
   'chatgpt',
   'perplexity',
   'google_search_ai',
@@ -272,11 +272,20 @@ function aggregateSearchRows(rows, includeIndexedPages) {
   };
 }
 
-function mergeMetrics(explicit, aggregate) {
+const SEARCH_METRIC_ALIASES = Object.freeze({ averagePosition: ['position'] });
+
+/**
+ * A metric the window omits falls back to the query-row aggregate. One the
+ * window states, even as `null`, is kept: reviewed query rows cover a handful
+ * of queries, so their sum is never a site total the provider declined to give.
+ */
+function mergeMetrics(explicit, aggregate, rawWindow) {
   return Object.fromEntries(
     SEARCH_METRICS.map((metric) => [
       metric,
-      explicit[metric] ?? aggregate[metric],
+      sourceValue(rawWindow, metric, SEARCH_METRIC_ALIASES[metric]) === undefined
+        ? explicit[metric] ?? aggregate[metric]
+        : explicit[metric],
     ]),
   );
 }
@@ -502,7 +511,7 @@ export function normalizeSearchExport(
     }));
     const explicitMetrics = normalizeSearchMetrics(rawWindow, { includeIndexedPages: true });
     const aggregate = aggregateSearchRows(normalizedQueryRows, false);
-    const metrics = mergeMetrics(explicitMetrics, aggregate);
+    const metrics = mergeMetrics(explicitMetrics, aggregate, rawWindow);
     queryRows.push(...normalizedQueryRows);
     pageFamilyRows.push(...normalizedPageRows);
     normalizedWindows.push({

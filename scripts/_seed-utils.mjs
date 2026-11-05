@@ -260,6 +260,8 @@ export const SHARED_FX_FALLBACKS = {
   HUF: 0.0028, RON: 0.2200, PHP: 0.0173, VND: 0.000040, MYR: 0.2250,
   PKR: 0.0036, ILS: 0.2750, ARS: 0.00084, COP: 0.000240, CLP: 0.00108,
   UAH: 0.0240, NGN: 0.00062, KES: 0.0077,
+  // Fuel-price countries (#10051); XOF is pegged at 655.957 per EUR.
+  ZMW: 0.0495, GHS: 0.0860, XOF: 0.00165, UYU: 0.0249,
   AED: 0.2723, SAR: 0.2666, QAR: 0.2747, KWD: 3.2520,
   BHD: 2.6525, OMR: 2.5974, JOD: 1.4104, EGP: 0.0192, LBP: 0.0000112,
 };
@@ -2292,7 +2294,12 @@ export function finiteObservation(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-export function parseYahooChart(data, symbol) {
+/**
+ * `previousClose` replaces the chart's own. fetchYahooQuoteChart passes the
+ * last completed session's when Yahoo has rolled the chart to a session that
+ * has not traded, where the chart's own equals the price.
+ */
+export function parseYahooChart(data, symbol, { previousClose = null } = {}) {
   const result = data?.chart?.result?.[0];
   const meta = result?.meta;
   if (!meta) return null;
@@ -2303,7 +2310,7 @@ export function parseYahooChart(data, symbol) {
   if (price == null) return null;
   // A zero previous close makes the percentage change infinite, so it is
   // treated as unusable here exactly as the previous `||` chain did.
-  const prevClose = [meta.chartPreviousClose, meta.previousClose]
+  const prevClose = [previousClose, meta.chartPreviousClose, meta.previousClose]
     .map(finiteObservation)
     .find(value => value != null && value !== 0) ?? price;
   const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;

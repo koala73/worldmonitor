@@ -664,7 +664,8 @@
       "proF4": "MCP、REST API & 公式 SDK — ひとつのキー配下のライブツール",
       "proF5": "独自のパネル用カスタムウィジェットビルダー",
       "cta": "プランと価格を見る",
-      "note": "$39.99/月から · 年間課金時は3ヶ月無料"
+      "note": "$39.99/月から · 年間課金時は3ヶ月無料",
+      "disclaimer": "World Monitorは情報提供のみを目的としており、金融、投資、法律、セキュリティまたは安全に関する助言を提供するものではありません。表示される内容を検証し、誤りによって損失または被害が生じるおそれのある意思決定を行う前に、適切な資格を有する専門家にご相談ください。"
     },
     "faq": {
       "eyebrow": "落とし穴なし",
@@ -711,14 +712,14 @@
       "chokepointTitle": "チョークポイントを確認",
       "chokepointDesc": "{{chokepoints}} の重要海峡の混乱状況、船舶フロー、リスクを検査します。",
       "countryRiskTitle": "国別リスク変動の背景を説明",
-      "countryRiskDesc": "国の変化の背景にある政治、セキュリティ、経済、レジリエンス信号をトレース。{{resilienceRanked}} 国についてレジリエンスランク付け。",
+      "countryRiskDesc": "国の変化の背景にある政治、安全保障、経済、レジリエンスのシグナルを追跡します。レジリエンスは{{resilienceUniverse}}か国のうち{{resilienceRanked}}か国、約{{resilienceRankedPct}}%で順位付けされているため、今週のニュースの見出しだけで判断するのではなく、その国の長期的な構造上の基準に照らして変動を読み解けます。",
       "open": "証拠を開く",
       "workflow": "ステップごとのワークフロー"
     },
     "voices": {
       "eyebrow": "ユーザーの声",
       "title": "World Monitor についての声",
-      "sub": "{{countries}}か国の{{users}}人が World Monitor を利用しています。報道機関と利用者の声を紹介します。",
+      "sub": "{{countries}}か国の{{users}}人が World Monitor を利用したことがあります。The Atlantic は2026年3月14日に、El País はその2日後に取り上げ、WIRED、The Economic Times、Arabian Business、L'Orient Today も報じています。報道機関と一部の利用者の声を紹介します。",
       "translatedJa": "日本語からの翻訳",
       "prev": "前の引用",
       "next": "さらに引用を見る"

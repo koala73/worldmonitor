@@ -581,7 +581,7 @@
   "welcome.pricing.title2": "Pro is the operations room.",
   "welcome.tasks.chokepointDesc": "Inspect disruption status, vessel flows, and risk across {{chokepoints}} critical maritime passages.",
   "welcome.tasks.chokepointTitle": "Check a chokepoint",
-  "welcome.tasks.countryRiskDesc": "Trace the political, security, economic, and resilience signals behind a country's change, with resilience ranked for {{resilienceRanked}} countries.",
+  "welcome.tasks.countryRiskDesc": "Trace the political, security, economic and resilience signals behind a country's change. Resilience is ranked for {{resilienceRanked}} of {{resilienceUniverse}} countries, about {{resilienceRankedPct}}%, so a move can be read against that country's long-run structural baseline instead of reading it from this week's headlines alone.",
   "welcome.tasks.countryRiskTitle": "Explain a country-risk move",
   "welcome.tasks.eyebrow": "Start with the question",
   "welcome.tasks.open": "Open evidence",
@@ -593,7 +593,7 @@
   "welcome.voices.eyebrow": "In their words",
   "welcome.voices.next": "More quotes",
   "welcome.voices.prev": "Previous quotes",
-  "welcome.voices.sub": "{{users}} people in {{countries}} countries have used World Monitor. Here is what the press and some of them said.",
+  "welcome.voices.sub": "{{users}} people in {{countries}} countries have used World Monitor. The Atlantic wrote about it on 14 March 2026 and El País two days later, and WIRED, The Economic Times, Arabian Business and L'Orient Today have covered it too. Here is what the press and some users said.",
   "welcome.voices.title": "What people say about World Monitor",
   "welcome.voices.translatedJa": "Translated from Japanese",
   "whatsNew.eyebrow": "Shipping log",
@@ -617,5 +617,6 @@
   "whyUpgrade.noiseDesc": "AIS anomaly → Brent spike → your Slack in under a minute. Signal, not headlines.",
   "whyUpgrade.noiseTitle": "Know first",
   "whyUpgrade.title": "Why upgrade to World Monitor Pro?",
-  "wired.asFeaturedIn": "As featured in"
+  "wired.asFeaturedIn": "As featured in",
+  "welcome.pricing.disclaimer": "World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice. Verify what you see, and consult a qualified professional before decisions where an error could cause loss or harm."
 }

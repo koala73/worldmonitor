@@ -26,7 +26,9 @@ import {
   buildBundle,
   collapseSoftLineBreaks,
   dropDefaultParameterRequired,
+  compactEntitlementNotes,
   dropDuplicateOperationSummaries,
+  dropOperationIdDescriptionPrefixes,
   dropUnreferencedSecuritySchemes,
   shortenGeneratedSuccessDescriptions,
   trimResponseExampleLists,
@@ -1378,8 +1380,51 @@ describe('JSON-only description and parameter compaction', () => {
     assert.equal(stats.trimmed, 2);
   });
 
-  it('all four passes engage on the real bundle', () => {
-    const { json, softBreakStats, defaultRequiredStats, successDescriptionStats, exampleListStats } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+  it('drops only a leading operationId copy from operation descriptions', () => {
+    const spec = {
+      paths: {
+        '/a': {
+          get: { operationId: 'ListThings', description: 'ListThings returns things.' },
+          post: { operationId: 'PostThing', description: 'Posts a thing. PostThing is idempotent.' },
+          put: { operationId: 'PutThing', description: 'PutThingAlias writes.' },
+          'x-meta': { operationId: 'Meta', description: 'Meta returns metadata.' },
+        },
+      },
+      components: { schemas: { S: { description: 'ListThings returns things.' } } },
+    };
+    assert.deepEqual(dropOperationIdDescriptionPrefixes(spec), { dropped: 1 });
+    assert.equal(spec.paths['/a'].get.description, 'Returns things.');
+    assert.equal(spec.paths['/a'].post.description, 'Posts a thing. PostThing is idempotent.');
+    assert.equal(spec.paths['/a'].put.description, 'PutThingAlias writes.');
+    assert.equal(spec.paths['/a']['x-meta'].description, 'Meta returns metadata.');
+    assert.equal(spec.components.schemas.S.description, 'ListThings returns things.');
+    assert.deepEqual(dropOperationIdDescriptionPrefixes(spec), { dropped: 0 });
+  });
+
+  it('compacts the injected entitlement note and keeps the tier', () => {
+    const spec = {
+      paths: {
+        '/a': {
+          get: { description: 'Returns data. PRO-gated. Requires entitlement tier >= 2.' },
+          post: { description: 'Pro-gated feed. Requires entitlement tier >= 1.' },
+          put: { description: 'Free data.' },
+        },
+      },
+    };
+    assert.deepEqual(compactEntitlementNotes(spec), { compacted: 2 });
+    assert.equal(spec.paths['/a'].get.description, 'Returns data. PRO tier 2+.');
+    assert.equal(spec.paths['/a'].post.description, 'Pro-gated feed. PRO tier 1+.');
+    assert.equal(spec.paths['/a'].put.description, 'Free data.');
+  });
+
+  it('every emit-time pass engages on the real bundle', () => {
+    const {
+      json, softBreakStats, defaultRequiredStats, successDescriptionStats, exampleListStats,
+      descriptionPrefixStats, entitlementNoteStats,
+    } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
+    assert.ok(descriptionPrefixStats.dropped >= 180, `operationId prefixes dropped: ${descriptionPrefixStats.dropped}`);
+    assert.ok(entitlementNoteStats.compacted >= 30, `entitlement notes compacted: ${entitlementNoteStats.compacted}`);
+    assert.equal(json.includes('Requires entitlement tier'), false, 'no long entitlement note survives');
     assert.ok(softBreakStats.collapsed >= 500, `soft breaks collapsed: ${softBreakStats.collapsed}`);
     assert.ok(defaultRequiredStats.dropped >= 200, `default required dropped: ${defaultRequiredStats.dropped}`);
     assert.ok(successDescriptionStats.shortened >= 200, `success descriptions shortened: ${successDescriptionStats.shortened}`);

@@ -6,7 +6,7 @@ description: "Where to create the wm_ key requested by the desktop app or API, w
 World Monitor calls this value a **license key** in some desktop screens and an **API key** elsewhere. They refer to the same user-created value, which starts with `wm_`.
 
 <Info>
-Checkout does not create a reusable key for you. **API Starter and API Business** subscribers create their own keys after signing in. **Dashboard Pro and Pro Business do not include API keys**; they include [desktop keys](#desktop-keys) instead, which work in the desktop app but not on the API. Pro subscribers can also use the signed-in web dashboard and connect supported MCP clients with OAuth.
+Checkout does not create a reusable key for you. **API Starter and API Business** subscribers create their own keys after signing in. **Dashboard Pro and Pro Business do not include API keys**; they include [desktop keys](#desktop-keys) instead, which work in the desktop app and on self-hosted dashboards but not on the API. Pro subscribers can also use the signed-in web dashboard and connect supported MCP clients with OAuth.
 </Info>
 
 ## Create a key
@@ -39,11 +39,13 @@ A key from either API plan can call the Pro-gated REST routes, such as `list-com
 
 ## Desktop keys
 
-A desktop key is a `wm_` key for the desktop app. It unlocks the same Pro data as signing in to the dashboard, so a self-built desktop copy can load Pro cloud data without a browser sign-in. It uses the same `wm_` format as an API key; the server records that it is a desktop key when you create it.
+A desktop key is a `wm_` key for the desktop app and for self-hosted dashboards. It unlocks the same Pro data as signing in to the dashboard, so a self-built desktop copy or a self-hosted web install can load Pro cloud data without a browser sign-in. It uses the same `wm_` format as an API key; the server records that it is a desktop key when you create it.
 
-**Who gets one.** Pro includes 2 desktop keys and Pro Business includes 3. Free accounts cannot create them. The key is for the subscriber only: one named user, on that person's own desktop copies. Shared or public deployments need an [API plan](/pricing).
+**Who gets one.** Pro includes 2 desktop keys and Pro Business includes 3. Free accounts cannot create them. The key is for the subscriber only: one named user, on that person's own desktop copies and in that person's own browser on a self-hosted dashboard. On a shared self-hosted dashboard, each user enters their own key; an operator cannot buy one key that unlocks Pro for every visitor. An [API plan](/pricing) is for calling the API directly, not for unlocking a shared dashboard.
 
-**Where it works.** The official desktop app and desktop builds you compile yourself. The key lives in the desktop app's OS keychain. Docker self-host copies run on their own data and never call the World Monitor cloud, so a desktop key does nothing there. API Starter and API Business keys also work in the desktop app.
+**Where it works.** The official desktop app, desktop builds you compile yourself, and self-hosted web installs (Docker or native) built from a release that includes the desktop-key relay. In the desktop app, the key lives in the OS keychain. API Starter and API Business keys also work in the desktop app, but not on a self-hosted dashboard: it accepts desktop keys only and reports an API key as not a desktop key.
+
+**On a self-hosted dashboard.** Each browser user enters their own key in the dashboard's Settings. The install's server checks it with World Monitor and keeps it in an HttpOnly cookie in that browser for 30 days, after which you enter it again. Pro panels unlock only after World Monitor confirms the key. The server then forwards that browser's Pro requests to World Monitor with the key, and they count against the same daily and per-minute ceiling as the owner's desktop app. Other requests stay on the install, and a browser with no key stays on the free dashboard. The operator can turn the relay off; the setting then says so. The install's server sees your key when it forwards requests, so create a separate desktop key for any install you do not run yourself, and revoke it on [worldmonitor.app](https://www.worldmonitor.app) when you stop using or trusting that install.
 
 **Limits.** Each account has a ceiling of 7,500 desktop-key requests per day and 120 per minute, shared across all of its desktop keys. Past the ceiling, requests return a rate-limit response until the next UTC day. Revoking and recreating a key does not reset the count.
 
@@ -51,11 +53,11 @@ A desktop key is a `wm_` key for the desktop app. It unlocks the same Pro data a
 
 **Create one.** Sign in at [worldmonitor.app](https://www.worldmonitor.app), open **Settings → API Keys**, enter a name such as `desktop`, and select **Create desktop key**. Copy the full value at once; it is shown only one time. Creating a key past your plan's limit shows a message with the cap.
 
-**Use it.** In the desktop app, open **Settings → Overview**, paste the key into **Desktop key**, then select **Save & Close**. You do not need to sign in to the dashboard.
+**Use it.** In the desktop app, open **Settings → Overview**, paste the key into **Desktop key**, then select **Save & Close**. On a self-hosted dashboard, open Settings and enter the key in the desktop key section. You do not need to sign in to the dashboard.
 
 **If your subscription lapses.** Desktop keys are denied while the subscription is not active, the same way a lapsed API key is. Nothing is revoked: when you renew, the same keys work again.
 
-**Revoke.** Revoke a key from the same tab. Revocation is permanent, and the desktop app using it stops loading Pro data.
+**Revoke.** Revoke a key from the same tab. Revocation is permanent. The desktop app using it stops loading Pro data, and a self-hosted dashboard using it locks its Pro panels.
 
 ## If the API Keys tab asks you to upgrade
 

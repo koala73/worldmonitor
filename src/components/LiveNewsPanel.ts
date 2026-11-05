@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { isDesktopRuntime } from '@/services/runtime';
 import { t } from '../services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { createFocusTrap } from '@/utils/focus-trap';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { STORAGE_KEYS } from '@/config';
@@ -156,7 +157,7 @@ export class LiveNewsPanel extends Panel {
   };
 
   constructor() {
-    super({ id: 'live-news', title: t('panels.liveNews'), className: 'panel-wide', closable: true, collapsible: true });
+    super({ id: 'live-news', title: getPanelDisplayName('live-news'), className: 'panel-wide', closable: true, collapsible: true });
     this.insertLiveCountBadge(OPTIONAL_LIVE_CHANNELS.filter(hasBuiltinStreams).length);
     this.channels = loadChannelsFromStorage();
     if (this.channels.length === 0) this.channels = getDefaultLiveChannels();

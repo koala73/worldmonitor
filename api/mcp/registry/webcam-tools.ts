@@ -76,13 +76,14 @@ export const WEBCAM_TOOLS: ToolDef[] = [
       for (const field of ['bound_w', 'bound_s', 'bound_e', 'bound_n', 'zoom']) query.set(field, String(params[field]));
       const url = `${base}/api/webcam/v1/list-webcams?${query}`;
       const headers = await buildAuthHeaders(context, 'GET', url, null);
-      const meta = await readJsonFromUpstash(CATALOG_CHECKS[0]!.key, 3000, true).catch(() => null);
-      const catalog = evaluateFreshness(CATALOG_CHECKS, [meta]);
-      const unavailable = () => ({ state: 'unavailable', reason: 'catalog_unavailable', webcams: [], clusters: [], totalInView: 0, truncated: false, catalog: { ...catalog, stale: true }, source: SOURCE });
-      let response: Response;
+      const metaRead = readJsonFromUpstash(CATALOG_CHECKS[0]!.key, 3000, true).catch(() => null);
+      let response: Response | null = null;
       try {
         response = await fetchMcpDownstream(url, { headers: { ...headers, 'User-Agent': 'worldmonitor-mcp-edge/1.0' }, signal: AbortSignal.timeout(10_000) }, execution);
-      } catch { return unavailable(); }
+      } catch { /* answered below as unavailable, with the catalog freshness */ }
+      const catalog = evaluateFreshness(CATALOG_CHECKS, [await metaRead]);
+      const unavailable = () => ({ state: 'unavailable', reason: 'catalog_unavailable', webcams: [], clusters: [], totalInView: 0, truncated: false, catalog: { ...catalog, stale: true }, source: SOURCE });
+      if (!response) return unavailable();
       try {
         await assertMcpToolFetchOk(response, { operation: 'list-webcams', tool: 'find_webcams', auth: context, execution });
       } catch (error) {

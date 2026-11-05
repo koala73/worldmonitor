@@ -7,15 +7,23 @@ vi.mock('../config/loader.js', () => ({ loadAllBasketConfigs: () => [{ slug: 'te
 const { validateAll } = await import('./validate.js');
 const { aggregateBasket } = await import('./aggregate.js');
 const { MAX_OBSERVATION_AGE_DAYS } = await import('../observation-freshness.js');
+const { AUTO_MATCH_THRESHOLD } = await import('../adapters/validator.js');
 function row(id: string, price: number, status = 'auto', owner: string | null = null, admitted: boolean | null = true) {
   return { match_id: id, basket_item_id: 'item', match_status: status, retailer_slug: id,
     canonical_name: 'Milk', price: String(price), currency_code: 'AED', reviewed_by: owner,
-    observation_id: `observation-${id}`, admitted,
-    validator: admitted === null ? null : { ok: admitted, score: admitted ? 0.9 : 0.7, reasons: [], signals: {} } };
+    observation_id: `observation-${id}`, admitted: admitted ?? true };
 }
 beforeEach(() => {
   query.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
   tx.mockReset().mockResolvedValue({ rows: [], rowCount: 1 });
+});
+it('reads scalar validator columns with the current admission threshold', async () => {
+  await validateAll();
+  const [sql, args] = query.mock.calls[0];
+  expect(sql).toContain('(po.validator_ok AND po.validator_score >= $4) IS TRUE AS admitted');
+  expect(sql).toContain('SELECT id, price, in_stock, validator_ok, validator_score FROM price_observations');
+  expect(sql).not.toContain('raw_payload_json');
+  expect(args).toEqual(['test', 'AE', MAX_OBSERVATION_AGE_DAYS, AUTO_MATCH_THRESHOLD]);
 });
 it('holds both sides of a two-retailer disagreement', async () => {
   query.mockResolvedValueOnce({ rows: [row('honest', 10), row('attacker', 100)] });

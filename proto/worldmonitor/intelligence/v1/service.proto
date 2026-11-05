@@ -56,7 +56,7 @@ service IntelligenceService {
     };
   }
 
-  // GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension data.
+  // GetPizzintStatus returns the Pentagon Pizza Index from pizzint.watch and, on request, GDELT country-pair tension scores with supporting evidence.
   rpc GetPizzintStatus(GetPizzintStatusRequest) returns (GetPizzintStatusResponse) {
     option (sebuf.http.config) = {
       path: "/get-pizzint-status"
@@ -64,12 +64,12 @@ service IntelligenceService {
     };
   }
 
-  // ClassifyEvent analyzes a news event using AI models.
+  // ClassifyEvent has an LLM assign a news headline a threat level and one of 14 event categories, cached for 24 hours.
   rpc ClassifyEvent(ClassifyEventRequest) returns (ClassifyEventResponse) {
     option (sebuf.http.config) = {path: "/classify-event", method: HTTP_METHOD_GET};
   }
 
-  // Daily country snapshots with source versions, gaps and tier-limited depth.
+  // GetCountryHistory returns daily snapshots of a country's CII and resilience scores, top events, and key signals, with depth set by the caller's plan.
   rpc GetCountryHistory(GetCountryHistoryRequest) returns (GetCountryHistoryResponse) {
     option (sebuf.http.config) = {
       path: "/get-country-history"
@@ -77,7 +77,7 @@ service IntelligenceService {
     };
   }
 
-  // GetCountryRisk retrieves composite risk intelligence for a specific country.
+  // GetCountryRisk returns a country's Country Instability Index score, its travel advisory level, and the number of sanctions entries tied to it.
   rpc GetCountryRisk(GetCountryRiskRequest) returns (GetCountryRiskResponse) {
     option (sebuf.http.config) = {
       path: "/get-country-risk"
@@ -103,7 +103,7 @@ service IntelligenceService {
     };
   }
 
-  // SearchGdeltDocuments searches the GDELT GKG API for relevant documentation.
+  // SearchGdeltDocuments returns up to 20 articles from the first seeded GDELT topic that matches a query, or recent articles for a country:XX query.
   rpc SearchGdeltDocuments(SearchGdeltDocumentsRequest) returns (SearchGdeltDocumentsResponse) {
     option (sebuf.http.config) = {
       path: "/search-gdelt-documents"
@@ -111,12 +111,12 @@ service IntelligenceService {
     };
   }
 
-  // DeductSituation performs broad situational analysis using LLMs.
+  // DeductSituation runs LLM reasoning over a user query and geographic context, with matching prediction market odds.
   rpc DeductSituation(DeductSituationRequest) returns (DeductSituationResponse) {
     option (sebuf.http.config) = {path: "/deduct-situation"};
   }
 
-  // ListSatellites retrieves current orbital positions and metadata.
+  // ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side propagation, refreshed every 2h and filterable by country.
   rpc ListSatellites(ListSatellitesRequest) returns (ListSatellitesResponse) {
     option (sebuf.http.config) = {
       path: "/list-satellites"
@@ -124,7 +124,7 @@ service IntelligenceService {
     };
   }
 
-  // ListGpsInterference retrieves detected GPS/GNSS interference data (jamming).
+  // ListGpsInterference returns daily gpsjam.org H3 hexes rated low, medium, or high by the share of aircraft reporting GPS/GNSS problems, filterable by region.
   rpc ListGpsInterference(ListGpsInterferenceRequest) returns (ListGpsInterferenceResponse) {
     option (sebuf.http.config) = {
       path: "/list-gps-interference"
@@ -132,7 +132,7 @@ service IntelligenceService {
     };
   }
 
-  // ListOrefAlerts retrieves Israeli Home Front Command alerts (Red Alerts).
+  // ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
   rpc ListOrefAlerts(ListOrefAlertsRequest) returns (ListOrefAlertsResponse) {
     option (sebuf.http.config) = {
       path: "/list-oref-alerts"
@@ -140,7 +140,7 @@ service IntelligenceService {
     };
   }
 
-  // ListTelegramFeed retrieves real-time OSINT messages from monitored Telegram channels.
+  // ListTelegramFeed returns recent OSINT messages from monitored Telegram channels via the relay, filterable by topic or channel, up to 200 per request.
   rpc ListTelegramFeed(ListTelegramFeedRequest) returns (ListTelegramFeedResponse) {
     option (sebuf.http.config) = {
       path: "/list-telegram-feed"
@@ -195,22 +195,22 @@ service IntelligenceService {
     };
   }
 
-  // GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
+  // GetCountryFacts returns a country's head of state, population, area, capital, languages, and currencies from Wikidata plus its Wikipedia summary.
   rpc GetCountryFacts(GetCountryFactsRequest) returns (GetCountryFactsResponse) {
     option (sebuf.http.config) = {path: "/get-country-facts", method: HTTP_METHOD_GET};
   }
 
-  // ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
+  // ListSecurityAdvisories returns travel and health advisories from the US State Department, UK FCDO, Smartraveller, CDC, ECDC, and WHO with per-country levels.
   rpc ListSecurityAdvisories(ListSecurityAdvisoriesRequest) returns (ListSecurityAdvisoriesResponse) {
     option (sebuf.http.config) = {path: "/list-security-advisories", method: HTTP_METHOD_GET};
   }
 
-  // GetGdeltTopicTimeline retrieves tone and volume timelines for a GDELT intel topic.
+  // GetGdeltTopicTimeline returns 14-day GDELT tone and volume timelines for one topic: military, cyber, nuclear, sanctions, intelligence, or maritime.
   rpc GetGdeltTopicTimeline(GetGdeltTopicTimelineRequest) returns (GetGdeltTopicTimelineResponse) {
     option (sebuf.http.config) = {path: "/get-gdelt-topic-timeline", method: HTTP_METHOD_GET};
   }
 
-  // ListCrossSourceSignals returns cross-domain signals ranked by severity with composite escalation detection.
+  // ListCrossSourceSignals returns signals from GPS jamming, unrest, OREF, market, cyber, and other feeds, ranked by severity, with composite escalation zones.
   rpc ListCrossSourceSignals(ListCrossSourceSignalsRequest) returns (ListCrossSourceSignalsResponse) {
     option (sebuf.http.config) = {path: "/list-cross-source-signals", method: HTTP_METHOD_GET};
   }
@@ -220,27 +220,27 @@ service IntelligenceService {
     option (sebuf.http.config) = {path: "/list-market-implications", method: HTTP_METHOD_GET};
   }
 
-  // Premium Reddit ticker feed.
+  // ListWsbTickers ranks the top 50 tickers mentioned on r/wallstreetbets, r/stocks, and r/investing by velocity.
   rpc ListWsbTickers(ListWsbTickersRequest) returns (ListWsbTickersResponse) {
     option (sebuf.http.config) = {path: "/list-wsb-tickers", method: HTTP_METHOD_GET};
   }
 
-  // GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.
+  // GetSocialVelocity returns hot posts from r/worldnews and r/geopolitics ranked by a velocity score of upvotes, ratio, and recency, refreshed every 3 hours.
   rpc GetSocialVelocity(GetSocialVelocityRequest) returns (GetSocialVelocityResponse) {
     option (sebuf.http.config) = {path: "/get-social-velocity", method: HTTP_METHOD_GET};
   }
 
-  // GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+  // GetCountryEnergyProfile returns a country's power mix, JODI oil and gas balances, IEA stock cover, Ember electricity, gas storage, prices, and SPR policy.
   rpc GetCountryEnergyProfile(GetCountryEnergyProfileRequest) returns (GetCountryEnergyProfileResponse) {
     option (sebuf.http.config) = {path: "/get-country-energy-profile", method: HTTP_METHOD_GET};
   }
 
-  // ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+  // ComputeEnergyShockScenario models the oil, gas, or combined supply deficit a country faces when 10 to 100 percent of a chokepoint's flow is disrupted.
   rpc ComputeEnergyShockScenario(ComputeEnergyShockScenarioRequest) returns (ComputeEnergyShockScenarioResponse) {
     option (sebuf.http.config) = {path: "/compute-energy-shock", method: HTTP_METHOD_GET};
   }
 
-  // GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+  // GetCountryPortActivity returns up to 25 IMF PortWatch ports for a country with 30-day tanker calls, trend versus the prior 30 days, and tanker DWT.
   rpc GetCountryPortActivity(GetCountryPortActivityRequest) returns (CountryPortActivityResponse) {
     option (sebuf.http.config) = {path: "/get-country-port-activity", method: HTTP_METHOD_GET};
   }

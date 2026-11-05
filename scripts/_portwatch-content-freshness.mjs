@@ -120,6 +120,9 @@ export function orderColdFetchQueue(
     now = Date.now(),
     maxCacheAgeMs = PORTWATCH_MAX_CACHE_AGE_MS,
     expiryPriorityLeadMinutes = PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES,
+    // The seeder passes its own usability check, so a payload it cannot
+    // publish (corrupt ports, a future timestamp) ranks with expired ones.
+    isOutOfCoverage = null,
   } = {},
 ) {
   const critical = new Set(criticalCountries ?? PORTWATCH_DECISION_CRITICAL_COUNTRIES);
@@ -150,7 +153,7 @@ export function orderColdFetchQueue(
   };
   const priority = (item) => {
     if (critical.has(item?.iso2)) return 0;
-    if (cachedAt(item) === null || isExpired(item)) return 1;
+    if (cachedAt(item) === null || isExpired(item) || isOutOfCoverage?.(item)) return 1;
     return isExpiring(item) ? 2 : 3;
   };
   return [...needsFetch].sort((a, b) => {
@@ -171,8 +174,16 @@ export function buildContentFreshnessReport({
   now = Date.now(),
   budgetMinutes = PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
   maxStaleCountries = PORTWATCH_MAX_REPORTED_STALE_COUNTRIES,
-  criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  criticalCountries: declaredCriticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
+  // Countries the seeder proved have no rows in the source at all. A critical
+  // one is named in `criticalSourceAbsentCountries` instead of being judged:
+  // there is no content to be fresh or stale, and health accepts the narrowed
+  // scope only for a country listed there.
+  sourceAbsentCountries = [],
 }) {
+  const absent = new Set(sourceAbsentCountries);
+  const criticalCountries = declaredCriticalCountries.filter((iso2) => !absent.has(iso2));
+  const criticalSourceAbsentCountries = declaredCriticalCountries.filter((iso2) => absent.has(iso2)).sort();
   const budgetMs = budgetMinutes * 60_000;
   const entries = countryData instanceof Map ? [...countryData.entries()] : [];
   const critical = new Set(criticalCountries);
@@ -245,6 +256,7 @@ export function buildContentFreshnessReport({
       ? null
       : Math.round((now - oldestObservedAt) / 60_000),
     criticalCountries: [...criticalCountries].sort(),
+    criticalSourceAbsentCountries,
     criticalFreshCount,
     criticalStaleCountries,
     criticalMissingCountries: criticalCountries.length - criticalSeen,
@@ -261,7 +273,11 @@ export function buildPortActivityMetaPayload({ countryData, coverage, now = Date
     fetchedAt: now,
     recordCount: countryData instanceof Map ? countryData.size : 0,
     coverage,
-    contentFreshness: buildContentFreshnessReport({ countryData, now }),
+    contentFreshness: buildContentFreshnessReport({
+      countryData,
+      now,
+      sourceAbsentCountries: Array.isArray(coverage?.sourceAbsentCountries) ? coverage.sourceAbsentCountries : [],
+    }),
   };
 }
 

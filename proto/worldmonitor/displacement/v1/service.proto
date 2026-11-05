@@ -19,7 +19,7 @@ service DisplacementService {
     option (sebuf.http.config) = {path: "/get-displacement-summary", method: HTTP_METHOD_GET};
   }
 
-  // IDPs by region from IOM DTM, latest survey round per operation.
+  // GetInternalDisplacement returns IOM DTM internally displaced persons by admin-1 region from each operation's latest survey round, filterable by ISO3 country.
   rpc GetInternalDisplacement(GetInternalDisplacementRequest) returns (GetInternalDisplacementResponse) {
     option (sebuf.http.config) = {path: "/get-internal-displacement", method: HTTP_METHOD_GET};
   }
@@ -29,7 +29,7 @@ service DisplacementService {
     option (sebuf.http.config) = {path: "/get-cross-border-movements", method: HTTP_METHOD_GET};
   }
 
-  // Country population or estimated population within a radius.
+  // GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point from the nearest one's average density.
   rpc GetPopulationExposure(GetPopulationExposureRequest) returns (GetPopulationExposureResponse) {
     option (sebuf.http.config) = {path: "/get-population-exposure", method: HTTP_METHOD_GET};
   }

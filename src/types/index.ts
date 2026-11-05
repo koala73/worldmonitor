@@ -1337,7 +1337,7 @@ export interface Port {
 
 // AI Regulation Types
 export type RegulationType = 'comprehensive' | 'sectoral' | 'voluntary' | 'proposed';
-export type ComplianceStatus = 'active' | 'proposed' | 'draft' | 'superseded';
+export type ComplianceStatus = 'active' | 'proposed' | 'draft' | 'superseded' | 'revoked' | 'lapsed';
 export type RegulationStance = 'strict' | 'moderate' | 'permissive' | 'undefined';
 
 export interface AIRegulation {
@@ -1350,12 +1350,23 @@ export interface AIRegulation {
   status: ComplianceStatus;
   announcedDate: string;
   effectiveDate?: string;
-  complianceDeadline?: string;
+  deadlines?: ComplianceDeadline[];
   scope: string[];
   keyProvisions: string[];
   penalties?: string;
   link?: string;
   description?: string;
+}
+
+export interface ComplianceDeadline {
+  date: string;
+  label: string;
+  source: string;
+}
+
+export interface RegulationDeadline {
+  regulation: AIRegulation;
+  deadline: ComplianceDeadline;
 }
 
 export interface RegulatoryAction {
@@ -1368,6 +1379,7 @@ export interface RegulatoryAction {
   description: string;
   impact: 'high' | 'medium' | 'low';
   source?: string;
+  sourceUrl: string;
 }
 
 export interface CountryRegulationProfile {

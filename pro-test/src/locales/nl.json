@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API & officïele SDK's — live tools onder één sleutel",
       "proF5": "Custom widget builder voor je eigen panelen",
       "cta": "Zie plannen & prijzen",
-      "note": "Vanaf $39,99/mnd · 3 maanden gratis bij jaarlijkse betaling"
+      "note": "Vanaf $39,99/mnd · 3 maanden gratis bij jaarlijkse betaling",
+      "disclaimer": "World Monitor is uitsluitend bedoeld voor informatieve doeleinden en vormt geen financieel advies, beleggingsadvies, juridisch advies, beveiligingsadvies of veiligheidsadvies. Verifieer wat u ziet en raadpleeg een gekwalificeerde professional voordat u beslissingen neemt waarbij een fout tot verlies of schade zou kunnen leiden."
     },
     "faq": {
       "eyebrow": "Geen addertje onder het gras",
@@ -711,14 +712,14 @@
       "chokepointTitle": "Controleer een kritiek passage",
       "chokepointDesc": "Controleer verstoringstatus, scheepsstromen en risico's over {{chokepoints}} kritieke zeepassages.",
       "countryRiskTitle": "Leg een landenrisico-beweging uit",
-      "countryRiskDesc": "Volg de politieke, veiligheids-, economische en veerkrachtsignalen achter veranderingen in een land; veerkracht gerangschikt voor {{resilienceRanked}} landen.",
+      "countryRiskDesc": "Volg de politieke, veiligheids-, economische en veerkrachtsignalen achter de verandering in een land. Voor {{resilienceRanked}} van de {{resilienceUniverse}} landen, ongeveer {{resilienceRankedPct}}%, is de veerkracht gerangschikt. Zo kan een verschuiving worden geïnterpreteerd tegen de structurele basis van dat land op lange termijn, in plaats van alleen op basis van de nieuwskoppen van deze week.",
       "open": "Open bewijs",
       "workflow": "Stapsgewijze werkwijze"
     },
     "voices": {
       "eyebrow": "In hun woorden",
       "title": "Wat mensen zeggen over World Monitor",
-      "sub": "{{users}} mensen in {{countries}} landen hebben World Monitor gebruikt. Dit zeiden de pers en sommigen van hen.",
+      "sub": "{{users}} mensen in {{countries}} landen hebben World Monitor gebruikt. The Atlantic schreef erover op 14 maart 2026 en El País twee dagen later. Ook WIRED, The Economic Times, Arabian Business en L'Orient Today hebben erover bericht. Dit zeiden de pers en enkele gebruikers.",
       "translatedJa": "Vertaald uit het Japans",
       "prev": "Vorige citaten",
       "next": "Meer citaten"

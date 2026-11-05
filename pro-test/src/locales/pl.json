@@ -664,7 +664,8 @@
       "proF4": "MCP, REST API i oficjalne SDK — live narzędzia pod jednym kluczem",
       "proF5": "Konstruktor niestandardowych widżetów dla Twoich paneli",
       "cta": "Zobacz plany i ceny",
-      "note": "Od $39,99/mies. · 3 miesiące za darmo przy rocznej opłacie"
+      "note": "Od $39,99/mies. · 3 miesiące za darmo przy rocznej opłacie",
+      "disclaimer": "World Monitor służy wyłącznie celom informacyjnym i nie stanowi porady finansowej, inwestycyjnej, prawnej ani dotyczącej bezpieczeństwa. Weryfikuj prezentowane informacje i skonsultuj się z wykwalifikowanym specjalistą przed podjęciem decyzji, w przypadku których błąd mógłby spowodować stratę lub szkodę."
     },
     "faq": {
       "eyebrow": "Bez zasadzki",
@@ -711,14 +712,14 @@
       "chokepointTitle": "Sprawdź wąskie gardło",
       "chokepointDesc": "Sprawdź status zaburzeń, przepływy statków i ryzyko na {{chokepoints}} krytycznych przejściach morskich.",
       "countryRiskTitle": "Wyjaśnij ruch na rynku ryzyka kraju",
-      "countryRiskDesc": "Prześledzaj sygnały polityczne, bezpieczeństwa, gospodarcze i odporności za zmianami w kraju — odporność rankingowana dla {{resilienceRanked}} krajów.",
+      "countryRiskDesc": "Śledź sygnały polityczne, gospodarcze oraz te dotyczące bezpieczeństwa i odporności, które stoją za zmianą w danym kraju. Ranking odporności obejmuje {{resilienceRanked}} z {{resilienceUniverse}} krajów, czyli około {{resilienceRankedPct}}%, dzięki czemu zmianę można interpretować w odniesieniu do długoterminowej bazy strukturalnej danego kraju, zamiast opierać się wyłącznie na nagłówkach wiadomości z tego tygodnia.",
       "open": "Otwórz dowody",
       "workflow": "Procedura krok po kroku"
     },
     "voices": {
       "eyebrow": "Ich słowami",
       "title": "Co ludzie mówią o World Monitor",
-      "sub": "{{users}} osób w {{countries}} krajach korzystało z World Monitor. Oto co powiedziały media i niektórzy z nich.",
+      "sub": "{{users}} osób w {{countries}} krajach korzystało z World Monitor. The Atlantic napisał o nim 14 marca 2026 r., a El País dwa dni później. Pisały o nim także WIRED, The Economic Times, Arabian Business i L'Orient Today. Oto co powiedziały media i niektórzy użytkownicy.",
       "translatedJa": "Przetłumaczono z japońskiego",
       "prev": "Poprzednie cytaty",
       "next": "Więcej cytatów"

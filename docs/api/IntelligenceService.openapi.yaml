@@ -299,7 +299,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetPizzintStatus
-            description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension data.
+            description: GetPizzintStatus returns the Pentagon Pizza Index from pizzint.watch and, on request, GDELT country-pair tension scores with supporting evidence.
             operationId: GetPizzintStatus
             parameters:
                 - name: include_gdelt
@@ -434,7 +434,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ClassifyEvent
-            description: ClassifyEvent analyzes a news event using AI models. PRO-gated. Requires entitlement tier >= 1.
+            description: ClassifyEvent has an LLM assign a news headline a threat level and one of 14 event categories, cached for 24 hours. PRO-gated. Requires entitlement tier >= 1.
             operationId: ClassifyEvent
             security:
                 - WorldMonitorKey: []
@@ -580,7 +580,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryHistory
-            description: Daily country snapshots with source versions, gaps and tier-limited depth.
+            description: GetCountryHistory returns daily snapshots of a country's CII and resilience scores, top events, and key signals, with depth set by the caller's plan.
             operationId: GetCountryHistory
             security:
                 - {}
@@ -724,7 +724,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryRisk
-            description: GetCountryRisk retrieves composite risk intelligence for a specific country.
+            description: GetCountryRisk returns a country's Country Instability Index score, its travel advisory level, and the number of sanctions entries tied to it.
             operationId: GetCountryRisk
             parameters:
                 - name: country_code
@@ -1141,7 +1141,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchGdeltDocuments
-            description: SearchGdeltDocuments searches the GDELT GKG API for relevant documentation.
+            description: SearchGdeltDocuments returns up to 20 articles from the first seeded GDELT topic that matches a query, or recent articles for a country:XX query.
             operationId: SearchGdeltDocuments
             parameters:
                 - name: query
@@ -1313,7 +1313,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: DeductSituation
-            description: DeductSituation performs broad situational analysis using LLMs. PRO-gated. Requires entitlement tier >= 1.
+            description: DeductSituation runs LLM reasoning over a user query and geographic context, with matching prediction market odds. PRO-gated. Requires entitlement tier >= 1.
             operationId: DeductSituation
             security:
                 - WorldMonitorKey: []
@@ -1488,7 +1488,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSatellites
-            description: ListSatellites retrieves current orbital positions and metadata.
+            description: ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side propagation, refreshed every 2h and filterable by country.
             operationId: ListSatellites
             parameters:
                 - name: country
@@ -1609,7 +1609,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListGpsInterference
-            description: ListGpsInterference retrieves detected GPS/GNSS interference data (jamming).
+            description: ListGpsInterference returns daily gpsjam.org H3 hexes rated low, medium, or high by the share of aircraft reporting GPS/GNSS problems, filterable by region.
             operationId: ListGpsInterference
             parameters:
                 - name: region
@@ -1736,7 +1736,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListOrefAlerts
-            description: ListOrefAlerts retrieves Israeli Home Front Command alerts (Red Alerts).
+            description: ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
             operationId: ListOrefAlerts
             parameters:
                 - name: mode
@@ -1871,7 +1871,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListTelegramFeed
-            description: ListTelegramFeed retrieves real-time OSINT messages from monitored Telegram channels.
+            description: ListTelegramFeed returns recent OSINT messages from monitored Telegram channels via the relay, filterable by topic or channel, up to 200 per request.
             operationId: ListTelegramFeed
             parameters:
                 - name: limit
@@ -2769,7 +2769,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryFacts
-            description: GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
+            description: GetCountryFacts returns a country's head of state, population, area, capital, languages, and currencies from Wikidata plus its Wikipedia summary.
             operationId: GetCountryFacts
             parameters:
                 - name: country_code
@@ -2890,7 +2890,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSecurityAdvisories
-            description: ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
+            description: ListSecurityAdvisories returns travel and health advisories from the US State Department, UK FCDO, Smartraveller, CDC, ECDC, and WHO with per-country levels.
             operationId: ListSecurityAdvisories
             parameters:
                 - name: jmespath
@@ -3005,7 +3005,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetGdeltTopicTimeline
-            description: GetGdeltTopicTimeline retrieves tone and volume timelines for a GDELT intel topic.
+            description: 'GetGdeltTopicTimeline returns 14-day GDELT tone and volume timelines for one topic: military, cyber, nuclear, sanctions, intelligence, or maritime.'
             operationId: GetGdeltTopicTimeline
             parameters:
                 - name: topic
@@ -3128,7 +3128,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListCrossSourceSignals
-            description: ListCrossSourceSignals returns cross-domain signals ranked by severity with composite escalation detection.
+            description: ListCrossSourceSignals returns signals from GPS jamming, unrest, OREF, market, cyber, and other feeds, ranked by severity, with composite escalation zones.
             operationId: ListCrossSourceSignals
             parameters:
                 - name: jmespath
@@ -3371,7 +3371,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListWsbTickers
-            description: Premium Reddit ticker feed. PRO-gated. Requires an active Pro subscription.
+            description: ListWsbTickers ranks the top 50 tickers mentioned on r/wallstreetbets, r/stocks, and r/investing by velocity. PRO-gated. Requires an active Pro subscription.
             operationId: ListWsbTickers
             security:
                 - WorldMonitorKey: []
@@ -3489,7 +3489,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetSocialVelocity
-            description: GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.
+            description: GetSocialVelocity returns hot posts from r/worldnews and r/geopolitics ranked by a velocity score of upvotes, ratio, and recency, refreshed every 3 hours.
             operationId: GetSocialVelocity
             parameters:
                 - name: jmespath
@@ -3603,7 +3603,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryEnergyProfile
-            description: GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+            description: GetCountryEnergyProfile returns a country's power mix, JODI oil and gas balances, IEA stock cover, Ember electricity, gas storage, prices, and SPR policy.
             operationId: GetCountryEnergyProfile
             parameters:
                 - name: country_code
@@ -3722,7 +3722,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ComputeEnergyShockScenario
-            description: ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+            description: ComputeEnergyShockScenario models the oil, gas, or combined supply deficit a country faces when 10 to 100 percent of a chokepoint's flow is disrupted.
             operationId: ComputeEnergyShockScenario
             parameters:
                 - name: country_code
@@ -3872,7 +3872,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryPortActivity
-            description: GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+            description: GetCountryPortActivity returns up to 25 IMF PortWatch ports for a country with 30-day tanker calls, trend versus the prior 30 days, and tanker DWT.
             operationId: GetCountryPortActivity
             parameters:
                 - name: country_code
