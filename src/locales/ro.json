@@ -1956,6 +1956,8 @@
       "infoTooltip": "<strong>Piețe de predicție</strong> Piețe de prognoză în bani reali:<ul><li>Prețurile reflectă estimările probabilității aglomerației</li><li>Volum mai mare = semnal mai fiabil</li><li>Concentrare geopolitică și evenimente curente</li></ul>Sursa: Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "Coloanele anterioare",
+      "moreColumns": "Mai multe coloane",
       "unavailable": "datele fondurilor tranzacționate la bursă sunt temporar indisponibile",
       "rateLimited": "datele fondurilor tranzacționate la bursă sunt temporar indisponibile (limita de rată) — se reîncearcă în curând",
       "netFlow": "Flux net",

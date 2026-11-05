@@ -65,8 +65,8 @@
       "files": {
         "core": {
           "file": "inter-core.woff2",
-          "bytes": 20140,
-          "unicode_range": "U+20-7E, U+B0-B1, U+D7, U+2013-2014, U+2018-2019, U+201C-201D, U+2022, U+2026",
+          "bytes": 20428,
+          "unicode_range": "U+1-9F, U+AD, U+B0-B1, U+D7, U+149, U+1C4, U+255, U+27C-27D, U+285, U+291, U+2A5, U+329, U+370-373, U+377, U+3D8-3DB, U+3DE-3EF, U+3F7-3F8, U+3FB, U+47A-47F, U+49E-49F, U+500-52E, U+1C80-1C8A, U+1D01-1D0C, U+1D0E-1D1A, U+1D1C-1D42, U+1D44-1D46, U+1D4A-1D4C, U+1D4E, U+1D51, U+1D53-1D55, U+1D59-1D5A, U+1D5C-1D61, U+1D66-1D9B, U+1D9D-1D9F, U+1DA1-1DBA, U+1DBC-1DBE, U+1E9C, U+1F16-1F17, U+1F1E-1F1F, U+1F46-1F47, U+1F4E-1F4F, U+1F58, U+1F5A, U+1F5C, U+1F5E, U+1F7E-1F7F, U+1FB5, U+1FC5, U+1FD4-1FD5, U+1FDC, U+1FF0-1FF1, U+1FF5, U+1FFF-2001, U+2003-2008, U+200A, U+200C-2019, U+201B-201D, U+201F, U+2021-2031, U+2034-2038, U+203B-2043, U+2045-206F, U+20B0, U+20B6-20B7, U+20BB, U+20C0-20C4, U+2215, U+2C60-2C7B, U+2C7D-2C7E, U+2DE0-2DFE, U+A640-A69E, U+A720-A7FE, U+FE2E-FE2F, U+FFFD",
           "glyphs": 203,
           "axes": {
             "wght": [
@@ -191,14 +191,15 @@
       },
       "moved_to_core_for_shaping": {},
       "head_bbox_differs_from_google_for": {
+        "U+304, U+308": "Google drew these from vietnamese (head.yMax 1020); this file uses latin's 994",
         "U+102-103, U+110-111, U+128-129, U+168-169": "Google drew these from vietnamese (head.yMax 1020); this file uses latin's 994"
       },
       "files": {
         "core": {
           "file": "jetbrains-mono-core.woff2",
-          "bytes": 24820,
-          "unicode_range": "U+20-7E, U+A9, U+B7, U+2013-2014, U+2018-2019, U+201C-201D, U+2026",
-          "glyphs": 251,
+          "bytes": 25188,
+          "unicode_range": "U+0-C, U+E-9F, U+A9, U+B7, U+132-133, U+180-18E, U+190-191, U+193-19F, U+1A2-1AE, U+1B1-1CC, U+1CF-1E5, U+1E8-1E9, U+1EC-1F3, U+1F6-1FB, U+200-217, U+21C-231, U+234-236, U+238-258, U+25A-2B8, U+2BB, U+2BD-2C5, U+2C8, U+2CA-2CC, U+2CE-2D7, U+2DE-2F2, U+2F4-2F6, U+2F8-2FF, U+304, U+308, U+329, U+370-373, U+376-377, U+37A-37D, U+37F, U+3D0-3D6, U+3D8-400, U+40D, U+450, U+45D, U+460-48F, U+492-4AD, U+4B0-4E7, U+4EA-52F, U+1C80-1C8A, U+1D00-1DBF, U+1E00-1E7F, U+1E86-1E9D, U+1E9F, U+1EFA-1EFF, U+2000-2019, U+201B-201D, U+201F, U+2021, U+2023-2031, U+2034-2038, U+203B-2043, U+2045-206F, U+20A0-20AA, U+20AD, U+20AF-20BC, U+20BE, U+20C0-20C4, U+2C60-2C7F, U+2DE0-2DFF, U+A640-A69F, U+A720-A7FF, U+FE2E-FE2F, U+FFFD",
+          "glyphs": 255,
           "axes": {
             "wght": [
               400,
@@ -208,7 +209,8 @@
           },
           "features": [
             "calt",
-            "ccmp"
+            "ccmp",
+            "mark"
           ],
           "tables": [
             "GDEF",
@@ -299,7 +301,7 @@
             "wght": 700
           },
           "bytes": {
-            "core": 6336,
+            "core": 6892,
             "ext": 8868
           },
           "glyphs_differing_from_google": "U+21, U+2E, U+3A-3B, U+6A, U+A1, U+AE, U+B0, U+B7, U+C5, U+E5, U+133, U+135, U+16E-16F, U+2026"
@@ -323,9 +325,9 @@
       "files": {
         "core": {
           "file": "space-grotesk-core.woff2",
-          "bytes": 11504,
-          "unicode_range": "U+20-7E, U+2013-2014, U+2018-2019, U+201C-201D, U+2026",
-          "glyphs": 115,
+          "bytes": 12416,
+          "unicode_range": "U+0-C, U+E-9F, U+181-18E, U+190-191, U+193-19F, U+1A2-1AE, U+1B1-1C3, U+1DD-1E5, U+1E8-1E9, U+1EC-1F9, U+21C-229, U+22E-22F, U+234-236, U+238-242, U+244-250, U+252-258, U+25A-2B8, U+2BD, U+2C0-2C5, U+2CE-2D7, U+2DE-2FF, U+304, U+308, U+329, U+1D00-1DBF, U+1E00-1E07, U+1E0A-1E0B, U+1E10-1E13, U+1E18-1E1B, U+1E1E-1E1F, U+1E22-1E23, U+1E26-1E29, U+1E2C-1E2D, U+1E30-1E35, U+1E3C-1E41, U+1E4A-1E4B, U+1E54-1E59, U+1E6A-1E6B, U+1E70-1E77, U+1E7C-1E7F, U+1E86-1E8D, U+1E90-1E91, U+1E94-1E96, U+1E98-1E9D, U+1E9F, U+1EFA-1EFF, U+2000-2008, U+200A, U+200C-2019, U+201B-201D, U+201F, U+2021, U+2023-2031, U+2034-2038, U+203B-2043, U+2045-206F, U+20A0, U+20A2, U+20A5, U+20A8, U+20AA, U+20AE-20B0, U+20B3-20B4, U+20B6-20B8, U+20BB, U+20BE, U+20C0-20C4, U+2C60-2C7F, U+A720-A7FF, U+FEFF, U+FFFD",
+          "glyphs": 119,
           "axes": {
             "wght": [
               300,
@@ -334,8 +336,11 @@
             ]
           },
           "features": [
+            "ccmp",
             "kern",
-            "liga"
+            "liga",
+            "mark",
+            "mkmk"
           ],
           "tables": [
             "GDEF",
