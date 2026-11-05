@@ -40,10 +40,19 @@ fi
 
 waited=0
 while :; do
-  statuses=$(gh api "repos/${REPO}/actions/runs?head_sha=${sha}&event=pull_request&per_page=100" \
-    --jq '[.workflow_runs[].status]')
-  total=$(jq 'length' <<<"$statuses")
-  open=$(jq '[.[] | select(. != "completed")] | length' <<<"$statuses")
+  runs=$(gh api "repos/${REPO}/actions/runs?head_sha=${sha}&event=pull_request&per_page=100" \
+    --jq "[.workflow_runs[] | select(.head_sha == \"$sha\" and .event == \"pull_request\")]")
+  total=$(jq 'length' <<<"$runs")
+  open=$(jq '[.[] | select(.status != "completed")] | length' <<<"$runs")
+  if [ "$total" -gt 0 ] && [ "$open" -eq 0 ]; then
+    # The runs listing can report completion before CI finishes (#10176).
+    for run_id in $(jq -r '.[].id' <<<"$runs"); do
+      run_status=$(gh api "repos/${REPO}/actions/runs/${run_id}" --jq '.status') || run_status=unknown
+      if [ "$run_status" != "completed" ]; then
+        open=$((open + 1))
+      fi
+    done
+  fi
   if [ "$total" -gt 0 ] && [ "$open" -eq 0 ]; then
     echo "All ${total} pull_request runs on ${sha} completed."
     break
