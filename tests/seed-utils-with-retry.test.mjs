@@ -71,6 +71,34 @@ describe('parseRetryAfterMs', () => {
 });
 
 describe('withRetry', () => {
+  it('caps exponential waits with jitter and refuses Retry-After beyond the cap', async t => {
+    const sleeps = [];
+    t.mock.method(globalThis, 'setTimeout', (callback, ms) => {
+      sleeps.push(ms);
+      queueMicrotask(callback);
+      return 0;
+    });
+    t.mock.method(Math, 'random', () => 0);
+    await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
+    assert.deepEqual(sleeps, [40_000, 48_000, 48_000]);
+    sleeps.length = 0;
+    t.mock.method(Math, 'random', () => 1);
+    await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
+    assert.deepEqual(sleeps, [50_000, 60_000, 60_000]);
+    let calls = 0;
+    await assert.rejects(withRetry(async () => {
+      calls++;
+      throw Object.assign(new Error('quota'), { retryAfterMs: 120_000 });
+    }), /quota/);
+    assert.equal(calls, 1);
+    assert.equal(sleeps.length, 3, 'a long hint must not schedule an early retry');
+  });
+
+  it('rejects unbounded retry configurations before calling the operation', async () => {
+    for (const retries of [Infinity, -1, 11, 1.5]) {
+      await assert.rejects(withRetry(() => assert.fail('must not dispatch'), retries), RangeError);
+    }
+  });
   it('short-circuits on err.nonRetryable instead of burning the retry budget', async () => {
     let attempts = 0;
     const t0 = Date.now();

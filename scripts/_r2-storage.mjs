@@ -121,7 +121,6 @@ function isRetryableR2Error(err) {
 
 async function withR2Retry(operation, context = {}) {
   const maxAttempts = 3;
-  const delays = [0, 500, 1500];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -132,7 +131,8 @@ async function withR2Retry(operation, context = {}) {
       if (!retryable || lastAttempt) throw err;
 
       console.warn(`  [R2] Retry ${attempt}/${maxAttempts - 1} for ${context.op || 'operation'} key=${context.key || ''}: ${summarizeError(err)}`);
-      await sleep(delays[attempt] || 1500);
+      const ceiling = Math.min(5_000, 500 * 2 ** (attempt - 1));
+      await sleep(Math.round(ceiling * (0.5 + Math.random() * 0.5)));
     }
   }
 }
@@ -209,6 +209,8 @@ async function getR2StorageClient(config) {
       region: config.region,
       credentials: config.credentials,
       forcePathStyle: config.forcePathStyle,
+      // withR2Retry owns the three-attempt budget; do not nest SDK retries.
+      maxAttempts: 1,
       // Bound connection + socket-inactivity so a stalled R2 socket fails
       // fast (→ withR2Retry → caller fallback) rather than hanging the run.
       requestHandler: { requestTimeout: R2_S3_TIMEOUT_MS, connectionTimeout: 10_000 },

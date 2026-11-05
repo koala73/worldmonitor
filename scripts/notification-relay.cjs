@@ -103,10 +103,9 @@ async function upstashRest(...args) {
   return upstashRequest(args);
 }
 
-// `signal` bounds one request (the re-queue write uses it so a stalled
-// Upstash call cannot hold the poll loop); the other callers keep the
-// unbounded legacy behaviour.
-async function upstashRequest(args, { signal } = {}) {
+// Queue reads/writes get one bounded attempt. A timed-out pop/push may have
+// committed; replaying it blindly can lose or duplicate a notification.
+async function upstashRequest(args, { signal = AbortSignal.timeout(10_000) } = {}) {
   const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
@@ -1626,6 +1625,7 @@ async function shadowLogScore(event) {
   // and bounds growth even if writes stop and the rolling prune stalls.
   try {
     const res = await fetch(`${UPSTASH_URL}/pipeline`, {
+      signal: AbortSignal.timeout(30_000),
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_TOKEN}`,
@@ -1753,7 +1753,8 @@ async function requeueAfterRulesFailure(event, err) {
   try {
     requeued = await upstashRequest(
       ['LPUSH', EVENT_QUEUE_KEY, JSON.stringify({ ...event, rulesFetchAttempts: attempts })],
-      { signal: AbortSignal.timeout(REQUEUE_UPSTASH_TIMEOUT_MS) },
+      {
+        signal: AbortSignal.timeout(REQUEUE_UPSTASH_TIMEOUT_MS) },
     );
   } catch (requeueErr) {
     console.error(`[relay] Failed to fetch alert rules and the re-queue of ${event.eventType} failed (${requeueErr.message}) — dropped:`, err.message);

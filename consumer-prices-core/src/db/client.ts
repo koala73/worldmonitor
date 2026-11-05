@@ -42,6 +42,11 @@ export function getPool(): pg.Pool {
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
+      // Ten slots cover the five retailer workers plus API/aggregation reads.
+      // Cancel on the server before the client abandons the query.
+      statement_timeout: 30_000,
+      query_timeout: 35_000,
+      idle_in_transaction_session_timeout: 30_000,
       ssl: local ? false : { rejectUnauthorized: true, ...(ca ? { ca } : {}) },
     });
 

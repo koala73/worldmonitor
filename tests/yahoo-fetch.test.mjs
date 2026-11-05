@@ -146,7 +146,8 @@ test('Retry-After absent: falls back to linear backoff retryBaseMs * (attempt+1)
     _curlProxyResolver: () => null,
     _sleep: async (ms) => { sleepDurations.push(ms); },
   });
-  assert.deepEqual(sleepDurations, [10], 'no Retry-After → retryBaseMs * 1 = 10ms');
+  assert.equal(sleepDurations.length, 1);
+  assert.ok(sleepDurations[0] >= 10 && sleepDurations[0] <= 13, 'jittered first backoff stays within 10–13ms');
 });
 
 // ─── Curl proxy fallback path ───────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
@@ -158,7 +159,7 @@ export class GoldIntelligencePanel extends Panel {
     this.showLoading();
     try {
       const url = toApiUrl('/api/market/v1/get-gold-intelligence');
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: createTimeoutSignal(15_000) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data: GoldIntelligenceData = await resp.json();
 

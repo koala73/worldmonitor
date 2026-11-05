@@ -1,4 +1,10 @@
 // Runs only on the sources directory. Provider details stay on static pages.
+function sourceSearchDeadline() {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 30_000);
+  return controller.signal;
+}
+
 function initSourcesSearch() {
   const search = document.getElementById('source-search');
   const fields = ['domain', 'kind', 'country', 'coverage'].map((name) => document.getElementById('source-' + name));
@@ -11,7 +17,7 @@ function initSourcesSearch() {
   let revision = 0;
   let offset = 0;
   const loadIndex = () => {
-    if (!indexPromise) indexPromise = fetch('/sources/search-index.json')
+    if (!indexPromise) indexPromise = fetch('/sources/search-index.json', { signal: sourceSearchDeadline() })
       .then((response) => {
         if (!response.ok) throw new Error('Search unavailable');
         return response.json();
@@ -78,7 +84,7 @@ function initSourceBookmark() {
     if (!fragment.startsWith('#provider-') || document.getElementById(fragment.slice(1))) return;
     const results = document.getElementById('source-results');
     try {
-      const response = await fetch('/sources/search-index.json');
+      const response = await fetch('/sources/search-index.json', { signal: sourceSearchDeadline() });
       if (!response.ok) throw new Error('Catalog unavailable');
       const index = await response.json();
       if (location.hash !== fragment) return;
@@ -93,5 +99,6 @@ function initSourceBookmark() {
   followBookmark();
 }
 
-export const sourcesBookmarkScript = `(${initSourceBookmark.toString()})();`;
-export const sourcesSearchScript = `(${initSourcesSearch.toString()})();${sourcesBookmarkScript}`;
+const deadlineScript = sourceSearchDeadline.toString();
+export const sourcesBookmarkScript = `${deadlineScript};(${initSourceBookmark.toString()})();`;
+export const sourcesSearchScript = `${deadlineScript};(${initSourcesSearch.toString()})();(${initSourceBookmark.toString()})();`;

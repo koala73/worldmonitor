@@ -130,6 +130,7 @@ export default async function handler(req: Request): Promise<Response> {
     // worker rewrites the record after each delivery; a rewrite between the
     // read and the delete is retried against the new bytes.
     for (let attempt = 0; attempt < DELETE_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, Math.min(500, 50 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5)));
       const [read] = await runRedisPipeline([['GET', webhookKey(subscriberId)]]).catch(() => [null]);
       if (!read || read.error) return json(503, { error: 'Service temporarily unavailable' });
       if (typeof read.result !== 'string') return json(404, { error: 'Webhook not found' });

@@ -865,6 +865,10 @@ function parseRetryAfterUncappedMs(value) {
 }
 
 export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
+  if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 10
+      || !Number.isFinite(delayMs) || delayMs < 0) {
+    throw new RangeError('withRetry requires 0-10 retries and a finite non-negative delay');
+  }
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -880,8 +884,15 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
         // (typically 429 / 503). Take whichever is longer — the upstream
         // hint OR the exponential backoff — so a generous server hint
         // isn't undercut, and a missing/short hint still gets back-off.
-        const baseWait = delayMs * 2 ** attempt;
-        const wait = err?.retryAfterMs ? Math.max(baseWait, err.retryAfterMs) : baseWait;
+        const capMs = 60_000;
+        const ceiling = Math.min(capMs, delayMs * 2 ** attempt * 1.25);
+        // Keep the existing minimum delay below the cap, then spread workers
+        // across the upper 20% of the capped exponential window.
+        const baseWait = Math.round(ceiling * (0.8 + Math.random() * 0.2));
+        const retryAfterMs = Number(err?.retryAfterMs);
+        // Do not undercut a provider hint that cannot fit our bounded wait.
+        if (retryAfterMs > capMs) throw err;
+        const wait = Number.isFinite(retryAfterMs) ? Math.max(baseWait, retryAfterMs) : baseWait;
         const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
         console.warn(`  Retry ${attempt + 1}/${maxRetries} in ${wait}ms: ${err.message || err}${cause}`);
         // Test-only cap on the idle wait between attempts (WM_SEED_RETRY_DELAY_MS):

@@ -110,6 +110,7 @@ export default async function handler(req: Request): Promise<Response> {
   let ownerHash: string | null = null;
   let newSecret: string | null = null;
   for (let attempt = 0; attempt < PERSIST_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, Math.min(500, 50 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5)));
     const read = await readRecord(subscriberId);
     if (read === 'unavailable') return json(503, { error: 'Service temporarily unavailable' });
     if (!read) return json(404, { error: 'Webhook not found' });

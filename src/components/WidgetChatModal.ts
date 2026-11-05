@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { getBrowserTesterKey, getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
 import { getClerkToken } from '@/services/clerk';
@@ -245,7 +246,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
       const requestAuthState = getAuthState();
       const requestUserId = requestAuthState.user?.id ?? null;
       const requestBelief = readClientEntitlementBelief(requestAuthState);
-      const res = await fetch(widgetAgentHealthUrl(), { headers: auth.headers });
+      const res = await fetch(widgetAgentHealthUrl(), { signal: createTimeoutSignal(15_000), headers: auth.headers });
       let payload: WidgetAgentHealth | null = null;
       try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
       if (isStale()) return;

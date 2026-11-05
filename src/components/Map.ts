@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import * as d3 from 'd3';
 import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import * as topojson from 'topojson-client';
@@ -1283,7 +1284,7 @@ export class MapComponent {
 
   private async loadMapData(): Promise<void> {
     try {
-      const worldResponse = await fetch(worldTopologyUrl(this.isMobile));
+      const worldResponse = await fetch(worldTopologyUrl(this.isMobile), { signal: createTimeoutSignal(15_000) });
       this.worldData = await worldResponse.json();
       if (this.worldData) {
         const countries = topojson.feature(

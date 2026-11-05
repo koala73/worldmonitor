@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import type { MilitaryFlight, MilitaryFlightCluster, MilitaryAircraftType, MilitaryOperator } from '@/types';
 import { createCircuitBreaker, toUniqueSortedLowercase } from '@/utils';
 import {
@@ -341,7 +342,7 @@ async function fetchQueryRegion(region: QueryRegion): Promise<RegionResult> {
   if (isLocalhostRuntime && DIRECT_OPENSKY_BASE_URL) urls.push(`${DIRECT_OPENSKY_BASE_URL}?${query}`);
   try {
     for (const url of urls) {
-      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const response = await fetch(url, { signal: createTimeoutSignal(15_000), headers: { 'Accept': 'application/json' } });
       if (!response.ok) continue;
       const data: OpenSkyResponse = await response.json();
       return { name: region.name, flights: parseOpenSkyResponse(data), ok: true };

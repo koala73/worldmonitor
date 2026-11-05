@@ -97,10 +97,8 @@ function withRateLimitDegradedHeader(response: Response): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-// @upstash/redis defaults to 5 retries (~4.3s) before surfacing an unreachable
-// Redis error. Under the node test runner skip retries so fail-open tests that
-// point UPSTASH_REDIS_REST_URL at a fake host degrade immediately. Production
-// (env unset) keeps the resilient default. Mirrors api/_rate-limit.js.
+// Production uses two retries with capped jitter and a three-second operation
+// deadline. Skip SDK retries in fake-host fail-open / fail-closed tests.
 const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 
 // Tight rate limiter for credential endpoint
@@ -117,7 +115,7 @@ function getRatelimit(): TokenRateLimiter | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   _rl = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000),  url, token, ...REDIS_TEST_RETRY_OPTS }),
     limiter: Ratelimit.slidingWindow(10, '60 s'),
     prefix: 'rl:oauth-token',
     analytics: false,

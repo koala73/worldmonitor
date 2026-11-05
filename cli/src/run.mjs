@@ -136,8 +136,10 @@ export async function run(argv, io = {}) {
       const headers = { 'user-agent': USER_AGENT, accept: 'application/json' };
       const apiKey = options.apiKey || config.apiKey;
       if (apiKey) headers[API_KEY_HEADER] = apiKey;
-      const res = await withTimeout(options.timeout, (signal) => fetchSpec(fetchImpl, specUrl, headers, signal));
-      const spec = parseBody(await res.text(), res.headers);
+      const { res, spec } = await withTimeout(options.timeout, async (signal) => {
+        const res = await fetchSpec(fetchImpl, specUrl, headers, signal);
+        return { res, spec: parseBody(await res.text(), res.headers) };
+      });
       if (!res.ok) {
         stderr(`${formatOutput(spec, options)}\n`);
         if (res.status === 401) stderr(`${AUTH_HINT}\n`);
@@ -147,12 +149,12 @@ export async function run(argv, io = {}) {
       return 0;
     }
 
-    const res = await withTimeout(options.timeout, (signal) =>
+    const { res, value } = await withTimeout(options.timeout, async (signal) => {
       // redirect: 'manual' — fetch forwards X-WorldMonitor-Key to a redirect
       // target on any host. The 3xx is reported as a failed request instead.
-      fetchImpl(plan.url, { method: plan.method, headers: plan.headers, body: plan.body, redirect: 'manual', signal }),
-    );
-    const value = parseBody(await res.text(), res.headers);
+      const res = await fetchImpl(plan.url, { method: plan.method, headers: plan.headers, body: plan.body, redirect: 'manual', signal });
+      return { res, value: parseBody(await res.text(), res.headers) };
+    });
 
     if (plan.kind === 'mcp') {
       if (value && typeof value === 'object' && value.error && typeof value.error === 'object') {

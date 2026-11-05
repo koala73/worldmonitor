@@ -54,7 +54,7 @@ async function getRatelimit() {
   if (!url || !token) return null;
   const { Ratelimit, Redis } = await loadUpstashRatelimit();
   _rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000),  url, token }),
     limiter: Ratelimit.slidingWindow(10, '60 s'),
     prefix: 'rl:oauth-authorize',
     analytics: false,
