@@ -506,7 +506,8 @@
       "marketWeakest": "Najsłabsze",
       "trendRising": "rosnący",
       "trendFalling": "spadający",
-      "trendStable": "stabilny"
+      "trendStable": "stabilny",
+      "situationLink": "Monitoruj sytuację: kryzysy, wiadomości, wąskie gardła i awarie na jednym pulpicie"
     },
     "moments": {
       "eyebrow": "Silnik korelacji",

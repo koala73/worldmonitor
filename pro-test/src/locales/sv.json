@@ -506,7 +506,8 @@
       "marketWeakest": "Svagast",
       "trendRising": "stigande",
       "trendFalling": "fallande",
-      "trendStable": "stabil"
+      "trendStable": "stabil",
+      "situationLink": "Övervaka situationen: kriser, nyheter, flaskhalsar och driftstörningar på en instrumentpanel"
     },
     "moments": {
       "eyebrow": "Korrelationsmotor",

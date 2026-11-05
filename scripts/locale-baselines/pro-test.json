@@ -486,6 +486,7 @@
   "welcome.live.marketWeakest": "Weakest",
   "welcome.live.pulseBadge": "Published pulse {{date}}",
   "welcome.live.refreshNote": "Enable JavaScript to refresh — the published pulse above remains available without it.",
+  "welcome.live.situationLink": "Monitor the situation: crises, headlines, chokepoints and outages on one board",
   "welcome.live.subtitle": "Four of the hundred-plus signals World Monitor watches around the clock.",
   "welcome.live.title": "What live data is this page showing right now?",
   "welcome.live.trendFalling": "falling",
@@ -561,6 +562,7 @@
   "welcome.nav.skipToContent": "Skip to content",
   "welcome.nav.useCases": "Use cases",
   "welcome.pricing.cta": "See plans & pricing",
+  "welcome.pricing.disclaimer": "World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice. Verify what you see, and consult a qualified professional before decisions where an error could cause loss or harm.",
   "welcome.pricing.eyebrow": "Access",
   "welcome.pricing.freeDesc": "The free tier is a full product, not a trial. Every map layer except Resilience, all six monitors — no signup, no trial clock.",
   "welcome.pricing.freeF1": "All map layers except Resilience & curated feeds",
@@ -617,6 +619,5 @@
   "whyUpgrade.noiseDesc": "AIS anomaly → Brent spike → your Slack in under a minute. Signal, not headlines.",
   "whyUpgrade.noiseTitle": "Know first",
   "whyUpgrade.title": "Why upgrade to World Monitor Pro?",
-  "wired.asFeaturedIn": "As featured in",
-  "welcome.pricing.disclaimer": "World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice. Verify what you see, and consult a qualified professional before decisions where an error could cause loss or harm."
+  "wired.asFeaturedIn": "As featured in"
 }
