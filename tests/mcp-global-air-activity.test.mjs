@@ -88,6 +88,21 @@ describe('get_global_air_activity (#5707)', () => {
     assert.equal(typeof result.stale, 'boolean');
   });
 
+  it('counts aircraft types that match inherited object property names', async () => {
+    const types = ['__proto__', 'constructor', 'toString'];
+    install({ coverage: 'global', flights: types.map((type, index) =>
+      flight(`type-${index}`, IN_THEATER, type)), fetchedAt: Date.now() });
+
+    const result = await findTool('get_global_air_activity')._execute({}, '', {}, {});
+
+    assert.equal(result.data.total_military_aircraft, types.length);
+    for (const type of types) {
+      assert.equal(Object.hasOwn(result.data.by_aircraft_type, type), true);
+      assert.equal(result.data.by_aircraft_type[type], 1);
+    }
+    assert.equal(Object.values(result.data.by_aircraft_type).reduce((sum, count) => sum + count, 0), types.length);
+  });
+
   it('counts the outside remainder once even when theater bounds overlap', async () => {
     install({ flights: [
       flight('overlap', { lat: 35, lon: 34 }, 'fighter'),

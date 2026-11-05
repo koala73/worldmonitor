@@ -775,9 +775,9 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         ...snapshot,
         flights: asArray(snapshot?.flights).filter((raw) => asRecord(raw)?.onGround !== true),
       });
-      const byType: Record<string, number> = {};
+      const byType = new Map<string, number>();
       for (const flight of flights) {
-        byType[flight.aircraftType] = (byType[flight.aircraftType] ?? 0) + 1;
+        byType.set(flight.aircraftType, (byType.get(flight.aircraftType) ?? 0) + 1);
       }
       // Count geographic membership separately from posture scoring: the
       // engine's total only includes recognized aircraft types, and theaters
@@ -810,7 +810,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           coverage,
           partial: coverage !== 'global',
           total_military_aircraft: flights.length,
-          by_aircraft_type: byType,
+          by_aircraft_type: Object.fromEntries(byType),
           theaters,
           outside_theater_count: flights.length - inTheaters.size,
         },
