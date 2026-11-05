@@ -56,10 +56,10 @@ Regression test: `e2e/live-panel-layout-8276.spec.ts:180`. It resizes each video
 
 ## Why This Works
 
-`src/styles/base-layer.css:8` imports all of main.css (and header.css, country-deep-dive.css, and the others listed there) with `layer(base)`. For `!important` declarations, the cascade-layer order is reversed: an `!important` in a layer beats an unlayered `!important`, whatever their specificity. So:
+`src/styles/base-layer.css:8` imports all of main.css (and header.css, country-deep-dive.css, and the others listed there) with `layer(base)`. For author-origin `!important` declarations, the cascade-layer order is reversed: an `!important` in a layer beats an unlayered `!important`, whatever their specificity. User-origin `!important` and running transitions sit above both. So:
 
 - Inside main.css, the fix is a normal specificity contest. The ID-based collapse rule with `!important` beats `.panel.span-N !important`.
-- Outside the layer (a DevTools or Playwright injection, or any stylesheet not imported through `base-layer.css`), no `!important` override can beat a layered `!important` rule. To test a patch on the live page, wrap it in `@layer base { … }`. That reproduced the fix: `span 1`, a 165px gap, and `span 4` again after expanding.
+- Outside the layer (a page-injected style from DevTools or Playwright, or any author stylesheet not imported through `base-layer.css`), an unlayered author `!important` rule cannot beat a layered author `!important` rule. To test a patch on the live page, wrap it in `@layer base { … }`. That reproduced the fix: `span 1`, a 165px gap, and `span 4` again after expanding.
 
 ## Prevention
 
