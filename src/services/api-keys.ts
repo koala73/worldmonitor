@@ -75,7 +75,7 @@ export async function createApiKey(name: string, keyKind: ApiKeyKind = 'api'): P
   if (!token) throw new Error(`Account changed while creating the ${noun}. Try again.`);
   assertAccountStillCurrent(userId, `creating the ${noun}`);
   const response = await settleAccountOperation(userId, `creating the ${noun}`, () => fetch('/api/user-api-keys', {
-    signal: createTimeoutSignal(15_000),
+    signal: createTimeoutSignal(60_000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(keyKind === 'desktop'

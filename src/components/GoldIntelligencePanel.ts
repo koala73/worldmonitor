@@ -156,7 +156,7 @@ export class GoldIntelligencePanel extends Panel {
   }
 
   public async fetchData(): Promise<boolean> {
-    this.showLoading();
+    if (!this._hasData) this.showLoading();
     try {
       const url = toApiUrl('/api/market/v1/get-gold-intelligence');
       const resp = await fetch(url, { signal: createTimeoutSignal(15_000) });
@@ -173,7 +173,6 @@ export class GoldIntelligencePanel extends Panel {
       this.render(data);
       return true;
     } catch (e) {
-      if (this.isAbortError(e)) return false;
       if (!this.element?.isConnected) return false;
       if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
       return false;

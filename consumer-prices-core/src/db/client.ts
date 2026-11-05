@@ -68,6 +68,7 @@ export async function query<T extends pg.QueryResultRow = Record<string, unknown
 export async function withTransaction<T>(work: (execute: QueryExecutor) => Promise<T>): Promise<T> {
   const client = await getPool().connect();
   const execute: QueryExecutor = (sql, params) => client.query(sql, params);
+  let discard = false;
   try {
     await client.query('BEGIN');
     const result = await work(execute);
@@ -77,11 +78,12 @@ export async function withTransaction<T>(work: (execute: QueryExecutor) => Promi
     try {
       await client.query('ROLLBACK');
     } catch (rollbackErr) {
+      discard = true;
       console.error('[db] rollback error:', rollbackErr);
     }
     throw err;
   } finally {
-    client.release();
+    client.release(discard);
   }
 }
 

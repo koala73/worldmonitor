@@ -27,6 +27,7 @@ WebSocket sends, and other non-request methods.
 - Previously unbounded browser requests use 15-second deadlines; public RPC and
   proxy requests use 30 seconds. The shared generated RPC and desktop bridge
   ceiling is 120 seconds to accommodate existing 90-second LLM operations.
+  Key creation and contact submissions allow 60s for the server workflow.
   Caller cancellation and shorter deadlines survive composition, including
   cancellation carried by a Request.
 - Missing server, CLI utility, Redis REST, email, and worker deadlines are
@@ -67,7 +68,7 @@ WebSocket sends, and other non-request methods.
 
 | Consumer | Checked-in limit | Assessment |
 | --- | --- | --- |
-| Consumer prices PostgreSQL | Pool 10; retailer concurrency 5 | Covers the five awaiting retailer workers with headroom for API/aggregation reads in one process. Acquire 5s, server statement 30s, client query 35s, idle transaction 30s. |
+| Consumer prices PostgreSQL | Pool 10; retailer concurrency 5 | Covers the five awaiting retailer workers with headroom for API/aggregation reads in one process. Acquire 5s, server statement 30s, client query 35s, idle transaction 30s. Failed rollbacks discard the connection. |
 | Relay OpenSky HTTPS | Agent maxSockets 6 | OpenSky requests use a serialized queue; no demonstrated socket shortage. |
 | Desktop sidecar | Six concurrent upstream operations | Existing semaphore remains held through body completion and released on failure. |
 | Shipping webhook delivery | Four concurrent deliveries | HTTP transport; no dedicated database pool to resize. |
@@ -92,14 +93,17 @@ Focused checks passed for the following changed behavior:
 - Proxy rotation, shipping webhook leases/CAS, country-facts fallback,
   reconciliation reads, and merge-guard polling.
 - MCP consent deadline/mint recovery in Chromium; widget preflight recovery.
+- Gold panel refresh timeout retains the last successful data in Chromium, with desktop and mobile screenshots.
 - Generated RPC, premium fetch, timeout compatibility, proxy response caching,
   and server sub-request dispatch.
 - Worker CORS/cache behavior, queue requeue behavior, sidecar timeout and
   truncated-body handling, crawlable source pagination, and trust-page DOM.
-- Consumer prices: 35 tests plus TypeScript build; Ruby SDK: 19 tests.
+- Consumer prices: 545 tests plus TypeScript build; Ruby SDK: 19 tests.
 - Root and API typechecks, import boundaries, frontend production build, Rust
   offline compile check, derived-file generation, and whitespace validation.
 
 Tests use fixtures and loopback faults. They do not establish live provider
 latency, production pool saturation, or deployed acceptance. No production
 configuration, merge, or deployment is part of this change.
+
+The edge Worker opts into [incoming request cancellation](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#enable-requestsignal-for-incoming-requests) for its pinned compatibility date.

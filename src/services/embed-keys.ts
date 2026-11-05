@@ -92,7 +92,7 @@ export async function createEmbedKey(name: string): Promise<CreateEmbedKeyResult
   if (!token) throw new Error('Account changed while creating the embed key. Try again.');
   assertAccountStillCurrent(userId, 'creating the embed key');
   const response = await settleAccountOperation(userId, 'creating the embed key', () => fetch('/api/user-embed-keys', {
-    signal: createTimeoutSignal(15_000),
+    signal: createTimeoutSignal(60_000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ name: name.trim(), keyPrefix, keyHash }),

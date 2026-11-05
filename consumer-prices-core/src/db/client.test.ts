@@ -141,4 +141,14 @@ describe('withTransaction', () => {
     ]);
     expect(mocks.release).toHaveBeenCalledOnce();
   });
+  it('discards a connection when rollback cannot complete', async () => {
+    const error = new Error('query timed out');
+    mocks.clientQuery.mockImplementation(async (sql: string) => {
+      if (sql !== 'BEGIN') throw error;
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(withTransaction(execute => execute('UPDATE fixture'))).rejects.toBe(error);
+    expect(mocks.release).toHaveBeenCalledWith(true);
+  });
+
 });

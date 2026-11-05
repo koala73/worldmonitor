@@ -79,11 +79,11 @@ describe('withRetry', () => {
       queueMicrotask(callback);
       return 0;
     });
-    t.mock.method(Math, 'random', () => 0);
+    const random = t.mock.method(Math, 'random', () => 0);
     await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
     assert.deepEqual(sleeps, [40_000, 48_000, 48_000]);
     sleeps.length = 0;
-    t.mock.method(Math, 'random', () => 1);
+    random.mock.mockImplementation(() => 1);
     await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
     assert.deepEqual(sleeps, [50_000, 60_000, 60_000]);
     sleeps.length = 0;
