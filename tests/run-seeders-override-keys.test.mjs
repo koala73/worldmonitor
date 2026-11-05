@@ -91,6 +91,21 @@ test('an empty override value does not clobber a key set in .env', () => {
   assert.equal(env.OPENROUTER_API_KEY, 'from-dotenv');
 });
 
+test('quoted values keep a " #" and shell metacharacters verbatim', () => {
+  const env = probeEnv(`services:
+  worldmonitor:
+    environment:
+      ACLED_PASSWORD: "abc #def"      # a password containing space-hash
+      ACLED_EMAIL: 'ops@example.org' # single-quoted
+      FRED_API_KEY: "it's \$HOME"     # apostrophe and a dollar sign
+      EIA_API_KEY: plain-value       # unquoted, trailing comment
+`, 'ACLED_PASSWORD=from-dotenv\n');
+  assert.equal(env.ACLED_PASSWORD, 'abc #def');
+  assert.equal(env.ACLED_EMAIL, 'ops@example.org');
+  assert.equal(env.FRED_API_KEY, "it's $HOME");
+  assert.equal(env.EIA_API_KEY, 'plain-value');
+});
+
 test('ignores comment-only lines and keys outside the allowlist', () => {
   const env = probeEnv(`services:
   worldmonitor:
