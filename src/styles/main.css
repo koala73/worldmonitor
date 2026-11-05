@@ -27406,6 +27406,12 @@ body.map-width-resizing {
   display: none;
 }
 
+.api-starter-offer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
 /* Settings -> Desktop key on a self-hosted install. Reuses the API key form
    and badge; only the status row and its tones are specific. */
 .selfhost-key-section .wm-pref-group-content {
