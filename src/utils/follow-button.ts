@@ -89,14 +89,14 @@ export interface FollowButtonHandle {
 // ---------------------------------------------------------------------------
 //
 // In production, the `FREE_CAP` branch dynamically imports clerk and
-// opens sign-in or the /pro plan picker. Tests inject a synchronous fake here so
+// opens sign-in or the /pro plan picker (`openUpgradePlans`). Tests inject a synchronous fake here so
 // they can assert the trigger was called without spinning up the real
 // import graph.
 
 type UpgradeTrigger = (source: string) => void;
 
 /**
- * The upgrade destination: the /pro plan picker. Absolute, and routed
+ * Fallback upgrade destination: the /pro plan picker. Absolute, and routed
  * through `openExternalUrl`: the bare relative `/pro#pricing` this replaced
  * resolved against `tauri://localhost` in the desktop WebView, where no such
  * route exists (#5911). Never throws.
@@ -120,8 +120,11 @@ let _upgradeTrigger: UpgradeTrigger = (source) => {
           return;
         }
       }
-      // Signed-in OR no openSignIn helper: the plan picker on /pro.
-      openProPricingPage();
+      // Signed-in OR no openSignIn helper: the plan picker on /pro, through
+      // the shared helper so a desktop purchase keeps its handoff marker.
+      void import('@/services/upgrade-flow')
+        .then((flow) => flow.openUpgradePlans())
+        .catch(() => openProPricingPage());
     }).catch(() => {
       openProPricingPage();
     });
