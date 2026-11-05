@@ -4581,7 +4581,8 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(sourcesPage, /utm_source=/, 'source-catalog links must not carry utm_source; middleware 308s it away');
 
       const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
-      assert.match(hormuz, /<h1>Strait of Hormuz<\/h1>/);
+      assert.match(hormuz, /<h1>Is the Strait of Hormuz open\?<\/h1>/);
+      assert.match(hormuz, /<title>Is the Strait of Hormuz Open\? Live Status \| World Monitor<\/title>/);
       assert.match(hormuz, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/chokepoints\/strait-of-hormuz\/">/);
       assert.match(hormuz, /about 20% of the world.s seaborne crude oil/);
       assert.doesNotMatch(hormuz, /a very large share of the world.s seaborne crude oil/);
@@ -4602,7 +4603,7 @@ describe('crawlable corpus generator', () => {
       // count to a full one, and the pinned sentences failed the refresh
       // (#9115). The exact narrative of every chokepoint page is checked
       // against chokepointEvidenceNarrative further down.
-      assert.match(hormuz, /<h2>Is Strait of Hormuz open right now\?<\/h2>/);
+      assert.match(hormuz, /<h2>Is the Strait of Hormuz open right now\?<\/h2>/);
       const hormuzPulse = clock.livePulse.chokepoints.hormuz_strait;
       const hormuzPassage = hormuz.match(/data-chokepoint-open-status>([^<]*)</)?.[1] ?? '';
       assert.match(
@@ -4910,7 +4911,7 @@ describe('crawlable corpus generator', () => {
         // coverage instead of turning the risk band into a closure verdict.
         assert.match(
           page,
-          new RegExp(`<h2>Is ${meta.name} open right now\\?</h2>`),
+          new RegExp(`<h2>Is the ${meta.name} open right now\\?</h2>`),
           `${meta.name} must carry the open/closed query heading`,
         );
         const document = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
@@ -5055,6 +5056,13 @@ describe('crawlable corpus generator', () => {
       assert.match(redSea, /data-country-code="YE" data-country-name="Yemen"/);
       assert.match(redSea, /Missing countries are unavailable, not zero/);
       assert.match(redSea, /HAPI\/HDX humanitarian conflict summaries/);
+      // The open/closed question links to each related waterway's live page
+      // above the fold, not only from the related-trackers list at the bottom.
+      const redSeaStatus = redSea.match(/<p data-crisis-chokepoint-status>(.*?)<\/p>/)?.[1] ?? '';
+      assert.match(redSeaStatus, /<a href="\/chokepoints\/bab-el-mandeb\/">is the Bab el-Mandeb open\?<\/a>/);
+      assert.ok(redSea.indexOf('data-crisis-chokepoint-status') < redSea.indexOf('data-live-crisis'), 'status links sit above the crisis pulse');
+      const hormuzCrisis = read(outDir, 'crises/hormuz-gulf-security/index.html');
+      assert.match(hormuzCrisis, /data-crisis-chokepoint-status>[^\n]*<a href="\/chokepoints\/strait-of-hormuz\/">is the Strait of Hormuz open\?<\/a>/);
       assert.ok(redSea.includes(liveScriptTag), 'crisis live script must match the production CSP nonce');
       assert.doesNotMatch(redSea, /id="app"/);
       assert.doesNotMatch(redSea, /Connecting…/);

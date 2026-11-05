@@ -197,7 +197,7 @@ export class EconomicCalendarPanel extends Panel {
       ? `<tr><td colspan="3" class="ec-empty">${escapeHtml(emptyMsgText)}</td></tr>`
       : '';
 
-    const html = `${this._renderRegionTabs()}<div style="padding:0 14px 12px;max-height:440px;overflow-y:auto">
+    const html = `${this._renderRegionTabs()}<div style="padding:0 14px 12px;">
       <table class="wm-table ec-table">
         <colgroup>
           <col style="width:auto">

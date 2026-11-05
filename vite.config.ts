@@ -9,6 +9,7 @@ import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { removeSourceMaps, shouldEmitPublicSourceMaps, viteSourcemapSetting } from './shared/source-map-policy';
 import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
@@ -224,6 +225,30 @@ function brotliPrecompressPlugin(): Plugin {
         await mkdir(dirname(compressedPath), { recursive: true });
         await writeFile(compressedPath, compressedBuffer);
       }));
+    },
+  };
+}
+
+// Fail-safe for builds whose maps must not be served: after every other plugin
+// (including the Sentry upload and its own deletion) has finished, delete any
+// source map left anywhere in the output, including copied public/ trees.
+function stripPrivateSourceMapsPlugin(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'wm-strip-private-source-maps',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      async handler() {
+        const removed = await removeSourceMaps(outDir);
+        if (removed.length > 0) {
+          console.warn(`[wm-strip-private-source-maps] removed ${removed.length} source map(s) from ${outDir}`);
+        }
+      },
     },
   };
 }
@@ -957,8 +982,8 @@ export default defineConfig(({ mode }) => {
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
-  const emitPublicSourceMaps = process.env.WM_EMIT_SOURCEMAPS === '1'
-    || process.env.VERCEL_ENV === 'preview';
+  // Production deploys never publish maps; see shared/source-map-policy.ts.
+  const emitPublicSourceMaps = shouldEmitPublicSourceMaps(process.env);
   // Sentry source-map upload. Gated on the token so a build without it (local,
   // fork, CI) behaves exactly as before rather than failing. Matching is by
   // debug ID — the plugin stamps the same id into the bundle and its map.
@@ -1042,6 +1067,7 @@ export default defineConfig(({ mode }) => {
       gpsjamDevPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),
+      ...(emitPublicSourceMaps ? [] : [stripPrivateSourceMapsPlugin()]),
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: false,
@@ -1076,6 +1102,10 @@ export default defineConfig(({ mode }) => {
         },
 
         workbox: {
+          // The service worker is generated after the Sentry upload has run,
+          // so its map is never uploaded; outside previews it is just a
+          // public file. Production served /sw.js.map until this was set.
+          sourcemap: emitPublicSourceMaps,
           globPatterns: ['assets/**/*.{js,css}'],
           manifestTransforms: [dashboardPrecache.manifestTransform],
           navigateFallback: null,
@@ -1176,9 +1206,10 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       // Uploading requires the maps to exist. When they are not also being
-      // published deliberately, the Sentry plugin deletes them after upload so
-      // production keeps shipping no public maps.
-      sourcemap: emitPublicSourceMaps || uploadSourceMapsToSentry,
+      // published deliberately they are 'hidden' (no sourceMappingURL), the
+      // Sentry plugin deletes them after upload, and
+      // stripPrivateSourceMapsPlugin removes anything left.
+      sourcemap: viteSourcemapSetting(process.env),
       // Vite's global threshold accommodates the known lazy GlobeMap bundle.
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
       // chunk so unrelated regressions between 1200 and 2000 kB remain visible.

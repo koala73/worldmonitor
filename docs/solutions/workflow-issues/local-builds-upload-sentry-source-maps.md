@@ -28,8 +28,8 @@ The release it uploaded to is not the one production uses. `shared/sentry-build-
 ## Guidance
 
 1. **Build locally with the token removed:** `env -u SENTRY_AUTH_TOKEN npm --prefix pro-test run build`. That stops the upload for every Vite build in the repo.
-   - For `pro-test` it also stops `.map` output, because `pro-test/vite.config.ts:75` emits source maps only when uploading.
-   - The dashboard build still emits maps when `WM_EMIT_SOURCEMAPS=1` or `VERCEL_ENV=preview` (`vite.config.ts:894`).
+   - For `pro-test` it also stops `.map` output, because `pro-test/vite.config.ts` emits (hidden) source maps only when uploading.
+   - The dashboard build still emits public maps when `WM_EMIT_SOURCEMAPS=1` or `VERCEL_ENV=preview`, except on a production deploy, which never does (`shared/source-map-policy.ts`).
    - For bundle-budget reseeds, the token must be unset for the **build** that produces `dist/`, not only for `npm run bundle:budgets`. `scripts/bundle-budgets.mjs` reads an existing `dist/` and never builds. The plugin's debug-ID snippet is already in that output.
 2. **Before deleting an artifact bundle, check that every debug ID in it has another holder.** Debug IDs come from file content, so identical JavaScript built locally and in production carries the same ID, and production's own SHA-tagged bundle holds its copy. The test:
    - List the candidate bundle's debug IDs: `projects/<org>/<project>/artifact-bundles/<bundleId>/files/`.
