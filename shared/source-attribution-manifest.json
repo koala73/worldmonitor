@@ -581,6 +581,9 @@
           "path": "api/_usage-telemetry.js"
         },
         {
+          "path": "scripts/deploy-error-canary.mjs"
+        },
+        {
           "path": "scripts/lib/llm-telemetry.cjs"
         },
         {
@@ -4970,6 +4973,9 @@
           "path": "scripts/build-crawlable-corpus.mjs"
         },
         {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
+        },
+        {
           "path": "scripts/generate-airline-codes.mjs"
         },
         {
@@ -5692,6 +5698,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "iss.moex.com",
+      "provider": "iss.moex.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit iss.moex.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_country-stock-index-moex.mjs"
         }
       ]
     },
@@ -8233,6 +8253,9 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs"
+        },
+        {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
         },
         {
           "path": "scripts/fetch-country-boundary-overrides.mjs"
@@ -10920,6 +10943,9 @@
         },
         {
           "path": "api/telegram-feed.js"
+        },
+        {
+          "path": "scripts/_country-stock-index-moex.mjs"
         },
         {
           "path": "scripts/_upstash-rest.mjs"
@@ -15148,6 +15174,9 @@
         },
         {
           "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
+          "path": "scripts/deploy-error-canary.mjs"
         },
         {
           "path": "scripts/discover-content-corpus-pages.mjs"

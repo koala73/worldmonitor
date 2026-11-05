@@ -21,3 +21,20 @@ test('UCDP ISO2 filters resolve seeded names and historical aliases', async (t) 
     assert.deepEqual((await response.json()).events.map(e => e.id), ids, country);
   }
 });
+
+test('UCDP events carry the merged candidate release, partial or absent', async (t) => {
+  const env = { ...process.env };
+  t.after(() => { process.env = env; });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.fixture';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  process.env.VERCEL_ENV = 'production';
+  const route = createConflictServiceRoutes({ listUcdpEvents }).find(r => r.path.endsWith('/list-ucdp-events'));
+  for (const [stored, served] of [['26.0.9', '26.0.9'], ['26.0.9+partial', '26.0.9+partial'], [null, '']]) {
+    const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json({
+      result: JSON.stringify({ events: [{ id: '0', country: 'Ukraine' }], candidateVersion: stored }),
+    }));
+    const response = await route.handler(new Request(`https://app.fixture${route.path}`));
+    assert.equal((await response.json()).candidateVersion, served, String(stored));
+    fetchMock.mock.restore();
+  }
+});

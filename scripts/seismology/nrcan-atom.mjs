@@ -3,6 +3,7 @@
 
 import { withSourceRequestDiagnostics } from '../lib/source-request-diagnostics.mjs';
 import { createRequire } from 'node:module';
+import { randomInt } from 'node:crypto';
 import {
   CHROME_UA, httpRetryError, redactProxyCredentials, roundGeoCoordinate, withRetry,
 } from '../_seed-utils.mjs';
@@ -212,8 +213,8 @@ const NRCAN_ACCEPT = 'application/atom+xml, application/xml, text/xml, */*';
 const NRCAN_PROXY_EXITS = 3;
 const NRCAN_PROXY_TIMEOUT_MS = 12_000;
 
-function defaultNrcanProxyFetch(url, { attempt, proxyAuth, maxBytes }) {
-  const proxyConfig = parseProxyConfigForAttempt(proxyAuth, attempt);
+function defaultNrcanProxyFetch(url, { exit, proxyAuth, maxBytes }) {
+  const proxyConfig = parseProxyConfigForAttempt(proxyAuth, exit);
   if (!proxyConfig) throw Object.assign(new Error('Invalid proxy auth string'), { nonRetryable: true });
   // proxyFetch never follows redirects, so a 3xx surfaces as !ok below.
   return proxyFetch(url, proxyConfig, {
@@ -229,14 +230,17 @@ function defaultNrcanProxyFetch(url, { attempt, proxyAuth, maxBytes }) {
 // every exit would answer a 5xx or 404 the same way. A refused, dropped, or
 // temporarily down exit rotates to the next sticky port. A gateway 4xx (rejected
 // credentials, quota, policy) and any other proxied status are final.
-async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, maxBytes }) {
+// A sticky port keeps its exit IP for minutes, so each run starts at a random
+// port: fixed ports retried the same challenged IPs on every 5-minute run.
+async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, firstProxyExitFn, maxBytes }) {
   let last;
   let everyExitRefused = true;
+  const firstExit = firstProxyExitFn();
   for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
     let result;
     try {
       result = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'proxy', attempt }, async observe => {
-        const response = await proxyFetchFn(url, { attempt, proxyAuth, maxBytes });
+        const response = await proxyFetchFn(url, { attempt, exit: firstExit + attempt, proxyAuth, maxBytes });
         observe(response);
         return response;
       });
@@ -267,11 +271,13 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, m
       throw error;
     }
   }
-  // Only when every exit refused is the failure permanent: an immediate retry restarts
-  // at exit 0 and meets the same refusals. Any dropped tunnel may recover, so stays retryable.
+  // Every exit refusing is permanent only for a fixed proxy endpoint, where a retry
+  // meets the same exit. A sticky-port route retries on fresh exits, and a dropped
+  // tunnel may recover, so both stay retryable.
+  const exitsRotate = parseProxyConfigForAttempt(proxyAuth, 0)?.port !== parseProxyConfigForAttempt(proxyAuth, 1)?.port;
   throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), {
     status: directStatus,
-    nonRetryable: everyExitRefused,
+    nonRetryable: everyExitRefused && !exitsRotate,
   });
 }
 
@@ -281,6 +287,7 @@ export async function fetchApprovedAtom(url, {
   fetchFn = globalThis.fetch,
   proxyAuth = '',
   proxyFetchFn = defaultNrcanProxyFetch,
+  firstProxyExitFn = () => randomInt(1_000_000),
   cache,
 } = {}) {
   const parsed = new URL(url);
@@ -305,7 +312,7 @@ export async function fetchApprovedAtom(url, {
   });
   if (response.status === 403 && proxyAuth) {
     await response.body?.cancel?.();
-    const xml = await fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, maxBytes });
+    const xml = await fetchAtomViaProxy(parsed.toString(), response.status, { proxyAuth, proxyFetchFn, firstProxyExitFn, maxBytes });
     cache?.set(cacheKey, xml);
     return xml;
   }

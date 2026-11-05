@@ -5,6 +5,7 @@ import { Agent, Dispatcher1Wrapper } from 'undici';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check.js';
+import { DESKTOP_KEY_CLIENT_ERROR } from '../server/_shared/desktop-key-principal.js';
 import { chargeDesktopKeyBudget, desktopKeyBudgetResponse } from '../server/_shared/desktop-key-meter.js';
 import { runRedisPipeline } from '../server/_shared/redis.js';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification.js';
@@ -1017,6 +1018,11 @@ export async function handler(req, ctx) {
   // for Pro users; /api/mcp-proxy is now in PREMIUM_RPC_PATHS for that
   // path-gated injection.
   const callerIdentity = await resolvePremiumCallerIdentity(req);
+  if (!callerIdentity.isPremium && callerIdentity.desktopClientDenied) {
+    // The owner has Pro; a script reusing their desktop key needs an API plan.
+    emitProxyUsage(req, 403, Date.now() - startedAt, ctx);
+    return jsonResponse({ error: DESKTOP_KEY_CLIENT_ERROR }, 403, cors);
+  }
   if (!callerIdentity.isPremium) {
     emitProxyUsage(req, 401, Date.now() - startedAt, ctx);
     return jsonResponse({ error: 'Pro authentication required' }, 401, cors);
@@ -1096,7 +1102,7 @@ export async function handler(req, ctx) {
     } else if (req.method === 'POST') {
       response = await handleCallTool(req, cors, meta);
     } else {
-      response = jsonResponse({ error: 'Method not allowed' }, 405, cors);
+      response = jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'GET, POST, OPTIONS' });
     }
   } catch (err) {
     const msg = err instanceof McpProxyUpstreamError
