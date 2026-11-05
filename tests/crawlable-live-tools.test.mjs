@@ -1092,16 +1092,26 @@ describe('crawlable live intelligence view models', () => {
     assert.match(full, /^Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 \(IMF PortWatch\)\. As of Nov 5, 2026, 3:07 AM UTC, IMF PortWatch counted 2 transits through/);
     assert.match(full, /The Red disruption score is a risk signal; it does not verify unrestricted passage or operational closure\.$/);
 
-    const statusAt = (officialAvg7d) => chokepointEvidenceNarrative({ ...hormuz, officialAvg7d, baselineAvgDaily: 100 })
-      .passage.split(':')[0];
-    assert.equal(statusAt(0), 'Severely restricted');
-    assert.equal(statusAt(9.9), 'Severely restricted');
-    assert.equal(statusAt(10), 'Restricted');
-    assert.equal(statusAt(49.9), 'Restricted');
-    assert.equal(statusAt(50), 'Reduced');
-    assert.equal(statusAt(79.9), 'Reduced');
-    assert.equal(statusAt(80), 'Steady');
-    assert.equal(statusAt(130), 'Steady');
+    // The band is read from the share the sentence prints, so rounding can
+    // never put "10%" next to "Severely restricted".
+    const statusAt = (officialAvg7d) => {
+      const match = chokepointEvidenceNarrative({ ...hormuz, officialAvg7d, baselineAvgDaily: 100 })
+        .passage.match(/^([^:]+): traffic through the Strait of Hormuz was ([\d.,]+%) of/);
+      return `${match[1]} ${match[2]}`;
+    };
+    assert.equal(statusAt(0), 'Severely restricted 0%');
+    assert.equal(statusAt(0.4), 'Severely restricted 0.4%');
+    assert.equal(statusAt(9.4), 'Severely restricted 9%');
+    assert.equal(statusAt(9.6), 'Restricted 10%');
+    assert.equal(statusAt(9.9), 'Restricted 10%');
+    assert.equal(statusAt(10), 'Restricted 10%');
+    assert.equal(statusAt(49.4), 'Restricted 49%');
+    assert.equal(statusAt(49.9), 'Reduced 50%');
+    assert.equal(statusAt(50), 'Reduced 50%');
+    assert.equal(statusAt(79.4), 'Reduced 79%');
+    assert.equal(statusAt(79.9), 'Steady 80%');
+    assert.equal(statusAt(80), 'Steady 80%');
+    assert.equal(statusAt(130), 'Steady 130%');
 
     // No baseline, no seven-day average, or no published day: no status.
     for (const withheld of [

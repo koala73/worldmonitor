@@ -252,9 +252,12 @@ const TRAFFIC_STATUS_BANDS = [
   { below: Infinity, label: 'Steady' },
 ];
 
-function trafficStatusSentence(official, name, { officialAvg7d, baselineAvgDaily }) {
+// The band is read from the printed share, not the unrounded ratio, so the
+// label and the figure beside it always agree (9.9% prints "10%" and reads
+// Restricted, not Severely restricted).
+function trafficStatusSentence(official, name) {
   if (official.baselineShare === null || official.latestDate === null) return null;
-  const pct = (Number(officialAvg7d) / Number(baselineAvgDaily)) * 100;
+  const pct = Number(official.baselineShare.replace(/[,%]/g, ''));
   if (!Number.isFinite(pct)) return null;
   const { label } = TRAFFIC_STATUS_BANDS.find((band) => pct < band.below);
   return `${label}: traffic through ${name} was ${official.baselineShare} of its year-earlier level in the seven published days to ${official.latestDate} (IMF PortWatch).`;
@@ -295,7 +298,7 @@ export function chokepointEvidenceNarrative({
   const dated = String(asOfText || '').trim();
   const snapshotLead = dated ? `As of ${dated}` : 'In the latest published snapshot';
 
-  const trafficStatus = trafficStatusSentence(official, name, { officialAvg7d, baselineAvgDaily });
+  const trafficStatus = trafficStatusSentence(official, name);
   let passage;
   if (partial === true) {
     const officialClause = officialCountSentences(official, name, { through: false })
