@@ -4629,12 +4629,12 @@ describe('crawlable corpus generator', () => {
       const hormuzPassage = hormuz.match(/data-chokepoint-open-status>([^<]*)</)?.[1] ?? '';
       assert.match(
         hormuzPassage,
-        /^As of .+ (?:World Monitor cannot verify operational passage status from this snapshot|The (?:Green|Yellow|Red) disruption score is a risk signal; it does not verify unrestricted passage or operational closure)\.$/,
+        /^(?:(?:Severely restricted|Restricted|Reduced|Steady): traffic through the Strait of Hormuz was [\d.]+% of its year-earlier level in the seven published days to .+ \(IMF PortWatch\)\. )?As of .+ (?:World Monitor cannot verify operational passage status from this snapshot|The status compares traffic with its year-earlier level; it is not an official open or closed declaration|The (?:Green|Yellow|Red) disruption score is a risk signal; it does not verify unrestricted passage or operational closure)\.$/,
         'the passage answers from source coverage',
       );
       assert.doesNotMatch(
         hormuzPassage,
-        /\b(?:is|remains)\s+(?:open|closed|reopened)\b/i,
+        /\b(?:is|remains|was)\s+(?:open|closed|reopened)\b/i,
         'the passage must never state a closure verdict',
       );
       const hormuzDriver = hormuz.match(/data-chokepoint-score-driver>([^<]*)</)?.[1] ?? '';
@@ -4937,7 +4937,7 @@ describe('crawlable corpus generator', () => {
         );
         const document = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
         const passageText = document.querySelector('[data-chokepoint-open-status]')?.textContent ?? '';
-        const asOfText = passageText.match(/^As of (.*), (?:source coverage|IMF PortWatch counted|no IMF PortWatch daily transit count)/)?.[1];
+        const asOfText = passageText.match(/(?:^|\(IMF PortWatch\)\. )As of (.*), (?:source coverage|IMF PortWatch counted|no IMF PortWatch daily transit count)/)?.[1];
         assert.ok(asOfText, `${meta.name} passage evidence must carry an as-of timestamp`);
         const official = chokepointOfficialMetrics(pulse);
         const expectedNarrative = chokepointEvidenceNarrative({
@@ -4968,8 +4968,19 @@ describe('crawlable corpus generator', () => {
           expectedNarrative.scoreDriver,
           `${meta.name} must use the shared score-driver policy`,
         );
+        // A status leads the passage exactly when the baseline share exists.
+        assert.equal(
+          /^(?:Severely restricted|Restricted|Reduced|Steady): traffic through /.test(passageText),
+          official.baselineShare !== null,
+          `${meta.name} must lead with a traffic status exactly when a baseline share is published`,
+        );
         if (expectedNarrative.passage.includes('source coverage')) {
-          assert.match(passageText, /cannot verify operational passage status/);
+          assert.match(
+            passageText,
+            official.baselineShare !== null
+              ? /The status compares traffic with its year-earlier level; it is not an official open or closed declaration\./
+              : /cannot verify operational passage status/,
+          );
         } else {
           assert.match(passageText, /IMF PortWatch counted \d/);
           assert.match(passageText, /does not verify unrestricted passage or operational closure/);
