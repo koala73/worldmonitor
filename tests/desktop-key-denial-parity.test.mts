@@ -207,8 +207,7 @@ describe('desktop-key denials are identical on the gateway and bootstrap', () =>
       const g = await viaGateway(key, userAgent);
       assert.equal(g.status, 200, await g.clone().text());
       const b = await viaBootstrap(key, userAgent);
-      assert.notEqual(b.status, 403, await b.clone().text());
-      assert.notEqual(b.status, 401, await b.clone().text());
+      assert.equal(b.status, 200, await b.clone().text());
     });
   }
 
@@ -219,10 +218,29 @@ describe('desktop-key denials are identical on the gateway and bootstrap', () =>
     const ask = (userAgent: string) => resolvePremiumCallerIdentity(
       new Request(`https://www.worldmonitor.app${REGULAR}`, { headers: { 'X-WorldMonitor-Key': key, 'User-Agent': userAgent } }),
     );
-    assert.equal((await ask('curl/8.7.1')).isPremium, false);
+    const script = await ask('curl/8.7.1');
+    assert.equal(script.isPremium, false);
+    assert.equal(!script.isPremium && script.desktopClientDenied, true);
     const desktop = await ask('WorldMonitor-Desktop/2.12.0 (sidecar)');
     assert.equal(desktop.isPremium, true);
     assert.equal(desktop.kind, 'desktop-key');
+  });
+
+  it('client check enforced: chat-analyst and mcp-proxy answer a script with the API-plan 403', async () => {
+    process.env.DESKTOP_KEY_CLIENT_CHECK = 'enforce';
+    const key = mintDesktopKey(0);
+    const headers = { 'X-WorldMonitor-Key': key, 'User-Agent': 'python-requests/2.32.3', 'Content-Type': 'application/json' };
+    const chatAnalyst = (await import('../api/chat-analyst.ts')).default as (req: Request) => Promise<Response>;
+    const chat = await chatAnalyst(new Request('https://api.worldmonitor.app/api/chat-analyst', {
+      method: 'POST', headers, body: JSON.stringify({ query: 'hello' }),
+    }));
+    assert.equal(chat.status, 403, await chat.clone().text());
+    assert.deepEqual(await chat.json(), { error: DESKTOP_KEY_CLIENT_ERROR });
+
+    const { handler: mcpProxy } = await import('../api/mcp-proxy.js') as { handler: (req: Request, ctx: unknown) => Promise<Response> };
+    const mcp = await mcpProxy(new Request('https://api.worldmonitor.app/api/mcp-proxy?action=list-tools&serverUrl=https%3A%2F%2Fmcp.example.com', { headers }), { waitUntil: () => {} });
+    assert.equal(mcp.status, 403, await mcp.clone().text());
+    assert.deepEqual(await mcp.json(), { error: DESKTOP_KEY_CLIENT_ERROR });
   });
 
   it('client check off by default: a script is still served', async () => {
@@ -230,6 +248,6 @@ describe('desktop-key denials are identical on the gateway and bootstrap', () =>
     const g = await viaGateway(key, 'python-requests/2.32.3');
     assert.equal(g.status, 200, await g.clone().text());
     const b = await viaBootstrap(key, 'python-requests/2.32.3');
-    assert.notEqual(b.status, 403, await b.clone().text());
+    assert.equal(b.status, 200, await b.clone().text());
   });
 });
