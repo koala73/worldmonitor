@@ -1,43 +1,26 @@
 import type { CheckoutAttribution } from './analytics';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { buildAttributedProUrl } from '../../shared/checkout-attribution';
 
 /**
- * The one upgrade path every locked/preview CTA routes through. Desktop
- * WebViews never open in-app checkout (the /pro page handles it, #5911);
- * web starts the Dodo checkout with optional mission attribution; every
- * failure falls back to the public /pro page. Extracted because three
- * surfaces (Panel locked state, ResilienceWidget, ProPreviewSection) had
- * grown near-identical copies.
+ * The one upgrade path every "Upgrade to Pro" CTA routes through: the /pro
+ * pricing section, where the user picks monthly or annual Pro, Pro Business or
+ * an API plan, and where the Terms sit above every plan button. It used to
+ * start a Pro Monthly checkout directly; started that way from the dashboard,
+ * 4% of checkouts were paid, against 21% of those started on /pro
+ * (Umami, 30 days to 2026-11-05). The panel gate overlays already went to /pro.
+ *
+ * Mission attribution rides on the URL, and /pro carries it into its own
+ * checkout. Desktop WebViews hand the URL to the OS browser (#5911).
  */
-export async function openUpgradeCheckout(attribution?: CheckoutAttribution): Promise<void> {
-  const [{ DEFAULT_UPGRADE_PRODUCT }, { isDesktopRuntime }] = await Promise.all([
-    import('@/config/products'),
+export async function openUpgradePlans(attribution?: CheckoutAttribution): Promise<void> {
+  const [{ isDesktopRuntime }, { openExternalUrl }] = await Promise.all([
     import('@/services/runtime'),
+    import('@/services/external-navigation'),
   ]);
-
-  if (isDesktopRuntime()) {
-    const { openExternalUrl } = await import('@/services/external-navigation');
-    await openExternalUrl(buildAttributedProUrl(
-      'https://worldmonitor.app/pro',
-      attribution,
-      { desktopHandoff: true },
-    ));
-    return;
-  }
-
-  await import('@/services/checkout')
-    .then((module) => module.startCheckout(
-      DEFAULT_UPGRADE_PRODUCT,
-      undefined,
-      attribution
-        ? { analyticsSurface: 'mission-preview', analyticsAttribution: attribution }
-        : undefined,
-    ))
-    .catch(() => {
-      window.open(
-        buildAttributedProUrl('https://worldmonitor.app/pro', attribution),
-        '_blank',
-        'noopener,noreferrer',
-      );
-    });
+  await openExternalUrl(buildAttributedProUrl(
+    `${WEB_APP_ORIGIN}/pro#pricing`,
+    attribution,
+    isDesktopRuntime() ? { desktopHandoff: true } : undefined,
+  ));
 }
