@@ -506,7 +506,8 @@
       "marketWeakest": "ضعیف‌ترین",
       "trendRising": "افزایش‌یافته",
       "trendFalling": "کاهش‌یافته",
-      "trendStable": "پایدار"
+      "trendStable": "پایدار",
+      "situationLink": "نظارت بر وضعیت: تمام ردیابهای زنده در یک صفحه"
     },
     "moments": {
       "eyebrow": "موتور همبستگی",

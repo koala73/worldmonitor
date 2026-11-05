@@ -506,7 +506,8 @@
       "marketWeakest": "Zwakste",
       "trendRising": "stijgend",
       "trendFalling": "dalend",
-      "trendStable": "stabiel"
+      "trendStable": "stabiel",
+      "situationLink": "Volg de situatie: alle live trackers op één dashboard"
     },
     "moments": {
       "eyebrow": "Correlatie-engine",

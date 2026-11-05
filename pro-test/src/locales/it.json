@@ -506,7 +506,8 @@
       "marketWeakest": "Più deboli",
       "trendRising": "in rialzo",
       "trendFalling": "in calo",
-      "trendStable": "stabile"
+      "trendStable": "stabile",
+      "situationLink": "Monitora la situazione: ogni tracker live su una sola dashboard"
     },
     "moments": {
       "eyebrow": "Motore di correlazione",

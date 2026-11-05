@@ -506,7 +506,8 @@
       "marketWeakest": "Най-слаби",
       "trendRising": "восходящ",
       "trendFalling": "низходящ",
-      "trendStable": "стабилен"
+      "trendStable": "стабилен",
+      "situationLink": "Следете ситуацията: всички проследявания на живо на едно табло"
     },
     "moments": {
       "eyebrow": "Двигател на корелация",

@@ -506,7 +506,8 @@
       "marketWeakest": "Yếu nhất",
       "trendRising": "tăng",
       "trendFalling": "giảm",
-      "trendStable": "ổn định"
+      "trendStable": "ổn định",
+      "situationLink": "Theo dõi tình hình: tất cả các trình theo dõi trực tiếp trên một bảng điều khiển"
     },
     "moments": {
       "eyebrow": "Công cụ tương quan",

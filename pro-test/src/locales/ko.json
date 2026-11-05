@@ -506,7 +506,8 @@
       "marketWeakest": "최약",
       "trendRising": "상승 중",
       "trendFalling": "하락 중",
-      "trendStable": "안정적"
+      "trendStable": "안정적",
+      "situationLink": "상황을 모니터링하세요: 모든 실시간 추적기를 한 보드에서 확인"
     },
     "moments": {
       "eyebrow": "상관관계 엔진",

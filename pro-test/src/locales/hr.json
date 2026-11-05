@@ -506,7 +506,8 @@
       "marketWeakest": "Najslabije",
       "trendRising": "rastući",
       "trendFalling": "padajući",
-      "trendStable": "stabilan"
+      "trendStable": "stabilan",
+      "situationLink": "Pratite situaciju: sva praćenja uživo na jednoj ploči"
     },
     "moments": {
       "eyebrow": "Mehanizam za korelaciju",

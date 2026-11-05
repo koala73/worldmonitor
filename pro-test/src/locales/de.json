@@ -506,7 +506,8 @@
       "marketWeakest": "Schwächste",
       "trendRising": "steigend",
       "trendFalling": "fallend",
-      "trendStable": "stabil"
+      "trendStable": "stabil",
+      "situationLink": "Überwachen Sie die Situation: alle Live-Tracker auf einem Board"
     },
     "moments": {
       "eyebrow": "Korrelations-Engine",

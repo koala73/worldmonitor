@@ -506,7 +506,8 @@
       "marketWeakest": "Leggyengébb",
       "trendRising": "emelkedő",
       "trendFalling": "csökkenő",
-      "trendStable": "stabil"
+      "trendStable": "stabil",
+      "situationLink": "Kövesse a helyzetet: minden élő követés egy felületen"
     },
     "moments": {
       "eyebrow": "Korrelációs motor",

@@ -978,6 +978,16 @@ export function pizzIntViewModel(payload, now = Date.now()) {
   };
 }
 
+/**
+ * The dated sentence above the level, or null when no level is current. The
+ * routing middleware renders it into the HTML a crawler reads
+ * (scripts/live-pages/pentagon-pizza-index.mjs); the page keeps it in step.
+ */
+export function pizzIntAnswerText(view) {
+  if (!view?.available || view.updatedAt === null) return null;
+  return `As of ${formatDateTime(view.updatedAt)}, the Pentagon Pizza Index is at level ${view.level}, ${view.label}.`;
+}
+
 async function fetchWithTimeout(
   url,
   options = {},
@@ -1573,6 +1583,12 @@ function setPizzIntLevel(tool, level, label) {
 
 function renderPizzIntView(tool, view, checkedAt) {
   setPizzIntLevel(tool, view.level, view.label);
+  const answer = tool.querySelector('[data-live-answer]');
+  if (answer) {
+    const text = pizzIntAnswerText(view);
+    answer.textContent = text ?? '';
+    answer.hidden = text === null;
+  }
   renderList(
     tool,
     '[data-pizzint-venues]',
@@ -1644,6 +1660,8 @@ export async function loadPizzInt(tool) {
     );
   } catch {
     setPizzIntLevel(tool, '—', 'Unavailable');
+    const answer = tool.querySelector('[data-live-answer]');
+    if (answer) answer.hidden = true;
     tool.querySelector('[data-pizzint-venues]')?.replaceChildren();
     setTime(tool, '[data-live-updated]', null, 'Updated');
     setText(tool, '[data-live-updated]', '');
