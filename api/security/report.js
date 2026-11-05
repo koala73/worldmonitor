@@ -10,6 +10,7 @@ const RESPONSE_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Expose-Headers': 'Allow',
   'Cache-Control': 'no-store',
 };
 
@@ -102,7 +103,7 @@ export default async function handler(req) {
   }
 
   if (req.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, RESPONSE_HEADERS);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...RESPONSE_HEADERS, Allow: 'POST, OPTIONS' });
   }
 
   const limited = await checkRateLimit(req, RESPONSE_HEADERS);
