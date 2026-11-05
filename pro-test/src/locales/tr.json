@@ -506,7 +506,8 @@
       "marketWeakest": "En zayıf",
       "trendRising": "yükselen",
       "trendFalling": "düşen",
-      "trendStable": "istikrarlı"
+      "trendStable": "istikrarlı",
+      "situationLink": "Durumu izleyin: krizler, başlıklar, dar geçitler ve kesintiler tek bir panelde"
     },
     "moments": {
       "eyebrow": "Korelasyon motoru",

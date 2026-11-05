@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { Newspaper, ShieldAlert, Anchor, LineChart } from 'lucide-react';
 import { t } from '../i18n';
+import { CardLinkArrow, cardLinkFocusRing } from './CardLink';
 import {
   fetchLiveTeasers, formatSnapshotDate, getFallbackTeasers,
   type TeaserState, type TeaserQuote,
@@ -291,6 +292,19 @@ export const LiveStrip = () => {
             <MarketTape quotes={teasers.quotes.items} />
           </Card>
         </div>
+        {/* The same readings, and every crisis tracker, on one crawlable page.
+            Search shows this homepage for "monitor the situation"; the link is
+            how a crawler and a reader reach the board built for that search. */}
+        <a
+          href="/monitor-the-situation/"
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-live-situation"
+          className={`group mt-6 inline-block font-mono text-xs text-wm-green hover:text-wm-text transition-colors ${cardLinkFocusRing}`}
+        >
+          {t('welcome.live.situationLink')}
+          {/* Inline, not flex: a wrapped label keeps the arrow after its last word. */}
+          <CardLinkArrow className="ms-1.5 inline-block align-[-2px]" />
+        </a>
         {!allLive && (
           <p className="mt-6 font-mono text-xs text-wm-muted">{t('welcome.live.refreshNote')}</p>
         )}

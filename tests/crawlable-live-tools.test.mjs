@@ -18,6 +18,7 @@ import {
   cancelPizzIntRefresh,
   loadPizzInt,
   militaryFlightsViewModel,
+  pizzIntAnswerText,
   pizzIntRefreshDelay,
   pizzIntViewModel,
   resumePizzIntRefresh,
@@ -31,6 +32,7 @@ import {
   formatPortwatchRange,
 } from '../scripts/crawlable-live-tools.mjs';
 import { chokepointPulseRecord, renderChokepointLiveSection } from '../scripts/crawlable-chokepoint-live.mjs';
+import { pizzaIndexReading, renderPizzaIndexSection } from '../scripts/live-pages/pentagon-pizza-index.mjs';
 
 const NOW = Date.UTC(2026, 6, 24, 12);
 
@@ -2618,5 +2620,64 @@ describe('Pentagon Pizza Index live reading', () => {
     assert.equal(tool.querySelector('[data-pizzint-level]').hidden, true);
     assert.equal(tool.querySelector('[data-pizzint-label]').textContent, 'Unavailable');
     assert.equal(tool.querySelector('[data-pizzint-venues]').children.length, 0);
+  });
+
+  it('states the dated level in one sentence, and nothing without a current level', () => {
+    assert.equal(
+      pizzIntAnswerText({ available: true, level: '4', label: 'Above Normal', updatedAt: Date.UTC(2026, 10, 5, 14, 30) }),
+      'As of Nov 5, 2026, 2:30 PM UTC, the Pentagon Pizza Index is at level 4, Above Normal.',
+    );
+    assert.equal(pizzIntAnswerText(pizzIntViewModel({ tensionPairs: [] }, NOW)), null);
+    assert.equal(pizzIntAnswerText(null), null);
+  });
+
+  function renderedPizzaTool(html) {
+    const window = new Window({ url: 'https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/' });
+    window.document.body.innerHTML = html;
+    return window.document.querySelector('[data-live-pizzint]');
+  }
+
+  it('keeps a server-rendered level visible while it refreshes, then updates the sentence', async () => {
+    const served = pizzaIndexReading(payload(), NOW);
+    const tool = renderedPizzaTool(renderPizzaIndexSection(served));
+    assert.match(tool.querySelector('[data-live-answer]').textContent, /is at level 4, Above Normal\.$/);
+
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const later = payload({ defconLevel: 2, updatedAt: Date.now() - 60_000 });
+    await withFetch(async (url) => {
+      if (!String(url).includes('get-pizzint-status')) return anonymousSessionResponse();
+      await gate;
+      return { ok: true, status: 200, json: async () => later };
+    }, async () => {
+      const loading = loadPizzInt(tool);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // A crawler-visible reading must not blank while the browser reloads it.
+      assert.equal(tool.dataset.state, 'loading');
+      assert.equal(tool.querySelector('[data-live-grid]').hidden, false);
+      assert.equal(tool.querySelector('[data-live-fallback]').hidden, true);
+      assert.equal(tool.querySelector('[data-pizzint-level]').textContent, '4');
+      release();
+      await loading;
+    });
+
+    assert.equal(tool.dataset.state, 'ready');
+    assert.equal(tool.querySelector('[data-pizzint-level]').textContent, '2');
+    const answer = tool.querySelector('[data-live-answer]');
+    assert.equal(answer.hidden, false);
+    assert.match(answer.textContent, /is at level 2, High Activity\.$/);
+  });
+
+  it('hides the sentence once the feed has no current level', async () => {
+    const tool = renderedPizzaTool(renderPizzaIndexSection(pizzaIndexReading(payload(), NOW)));
+    await withFetch(async (url) => (String(url).includes('get-pizzint-status')
+      ? { ok: true, status: 200, json: async () => ({ tensionPairs: [] }) }
+      : anonymousSessionResponse()), () => loadPizzInt(tool));
+    assert.equal(tool.dataset.state, 'empty');
+    assert.equal(tool.querySelector('[data-live-answer]').hidden, true);
+
+    const failing = renderedPizzaTool(renderPizzaIndexSection(pizzaIndexReading(payload(), NOW)));
+    await withFetch(async () => { throw new Error('offline'); }, () => loadPizzInt(failing));
+    assert.equal(failing.querySelector('[data-live-answer]').hidden, true);
   });
 });

@@ -506,7 +506,8 @@
       "marketWeakest": "Pior desempenho",
       "trendRising": "em alta",
       "trendFalling": "em queda",
-      "trendStable": "estável"
+      "trendStable": "estável",
+      "situationLink": "Monitore a situação: crises, manchetes, pontos críticos e interrupções em um único painel"
     },
     "moments": {
       "eyebrow": "Mecanismo de correlação",
