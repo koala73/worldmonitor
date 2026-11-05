@@ -15,13 +15,14 @@ export function mergeFoodSnapshot(previous, incoming) {
     throw new Error('food report regressed; retain last-good prices');
   }
   const oldContexts = new Map((previous?.contexts ?? []).map(context => [context.countryCode, context]));
-  if (incoming.contexts.some(context => !context.fetchFailed && context.referenceDate && oldContexts.get(context.countryCode)?.referenceDate > context.referenceDate)) {
+  const regressed = new Set(incoming.contexts.filter(context => !context.fetchFailed && context.referenceDate && oldContexts.get(context.countryCode)?.referenceDate > context.referenceDate).map(context => context.countryCode));
+  if (regressed.size && regressed.size === incoming.contexts.length && !incoming.observations.length) {
     throw new Error('food context regressed; retain last-good report');
   }
   return {
     ...incoming,
     observations: incoming.observations.length ? mergeHistory(previous?.observations ?? [], incoming.observations, incoming.refreshedReports) : [],
-    contexts: incoming.contexts.map(context => context.fetchFailed && oldContexts.get(context.countryCode)?.referenceDate
+    contexts: incoming.contexts.map(context => (context.fetchFailed || regressed.has(context.countryCode)) && oldContexts.get(context.countryCode)?.referenceDate
       ? { ...oldContexts.get(context.countryCode), fetchFailed: true } : context),
   };
 }

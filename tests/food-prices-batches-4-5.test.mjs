@@ -10,7 +10,7 @@ import { parseLatvia } from '../scripts/lib/food-prices-adapters/csblv.mjs';
 import { parseMakstat } from '../scripts/lib/food-prices-adapters/makstat.mjs';
 import { parseFoag, FOAG_CUBES, observationQuery } from '../scripts/lib/food-prices-adapters/foag.mjs';
 import { aggregatePrices, readPricecatcher, collect as collectPricecatcher } from '../scripts/lib/food-prices-adapters/pricecatcher.mjs';
-import { parseMercado, readMercadoArchive } from '../scripts/lib/food-prices-adapters/mcba.mjs';
+import { parseMercado, readMercadoArchive, collect as collectMercado } from '../scripts/lib/food-prices-adapters/mcba.mjs';
 import { cubeCells, csvRows } from '../scripts/lib/food-prices-adapters/monthly.mjs';
 import { collectFoodSource } from '../scripts/lib/food-prices-fetch.mjs';
 import { mergeFoodSnapshot } from '../scripts/lib/food-prices-seed.mjs';
@@ -157,6 +157,32 @@ test('Argentina decodes real legacy XLS, uses modal per-kg prices and omits conf
   const conflict = [...row]; conflict[12] = 9.5;
   assert.deepEqual(parseMercado([header, row, conflict, other]).map(row => row.item), ['TOMATE · NEGRA · BO 20 kg · 1A']);
   assert.equal(parseMercado([header, row])[0].price, 9);
+});
+
+test('Argentina falls back to the previous archive when current-month archives are unpublished', async () => {
+  for (const currentLinked of [false, true]) {
+    const calls = [];
+    const result = await collectMercado({ now: new Date('2026-12-02T12:00:00Z'), warn: () => {},
+      dated: (date, offset) => new Date(+date + offset * 86400000).toISOString().slice(0, 10),
+      links: () => ['NOVIEMBRE', ...(currentLinked ? ['DICIEMBRE'] : [])].flatMap(month => ['FRUT', 'HORTALIZ'].map(kind => ({ url: `https://mercadocentral.gob.ar/${kind}_${month}_2026.ZIP` }))),
+      get: async url => {
+        calls.push(url);
+        if (!url.endsWith('.ZIP')) return '';
+        if (url.includes('DICIEMBRE')) throw new Error('mcba HTTP 404');
+        return file(url.includes('HORTALIZ') ? 'mcba-vegetables.zip' : 'mcba-fruit.zip');
+      },
+    });
+    assert.ok(result.observations.length);
+    assert.ok(result.observations.every(row => row.date === '2026-11-04'));
+    assert.ok(calls.some(url => url.includes('NOVIEMBRE')));
+  }
+});
+
+test('a regressed country brief retains its last-good context while other countries advance', () => {
+  const old = { countryCode: 'AFG', referenceDate: '2026-10-01', title: 'Last good' };
+  const fresh = { countryCode: 'SDN', referenceDate: '2026-11-01', title: 'New brief' };
+  const result = mergeFoodSnapshot({ contexts: [old] }, { observations: [], contexts: [{ ...old, referenceDate: '2026-09-01', title: 'Older' }, fresh] });
+  assert.deepEqual(result.contexts, [{ ...old, fetchFailed: true }, fresh]);
 });
 
 test('CPI-only sources traverse the real collector; empty, changed and future reports fail closed', async () => {

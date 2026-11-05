@@ -28,11 +28,15 @@ CPI summaries carry no currency price. Monthly market selectors keep markets and
 retail/wholesale types separate. Daily comparisons still require the exact same
 series seven days earlier. Current-month and previous-month archives support
 baselines across month boundaries; missing older archives leave current quotes
-available without fabricating a baseline.
+available without fabricating a baseline. During the first fourteen days of a
+month, unpublished Argentina archives can fall back to the previous month's
+dated reports; malformed current archives still fail closed.
 
 The existing source-specific activation markers, seed metadata, retention,
 content-age checks and reader statuses apply. A regressing CPI report now retains
-the previous snapshot just as regressing price reports do. New registrations are
+the previous snapshot just as regressing price reports do. Multi-country context
+collections retain a regressed country's last-good brief and mark its fetch as
+failed while allowing other countries to advance. New registrations are
 in the existing macro service, with no additional Railway service. Source terms
 remain marked for review in the public source catalog; this change does not
 assert new redistribution permissions.

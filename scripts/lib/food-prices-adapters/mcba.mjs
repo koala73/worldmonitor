@@ -60,11 +60,11 @@ export async function collect(ctx) {
         const year = month.getUTCFullYear();
         return path.endsWith('.ZIP') && path.includes(kind) && path.includes(MONTHS[month.getUTCMonth()]) && new RegExp(`(?:${year}|${String(year).slice(-2)})(?:_\\d+)?\\.ZIP$`).test(path);
       });
-      if (!archive) { if (offset) continue; throw new Error(`Mercado Central current ${kind} archive missing`); }
+      if (!archive) { ctx.warn(`Mercado Central ${offset ? 'prior' : 'current'} ${kind} archive missing`); continue; }
       try {
         const reports = readMercadoArchive(await ctx.get(archive.url, { binary: true }));
         observations.push(...reports.flat().filter(row => row.date.slice(0, 7) === month.toISOString().slice(0, 7) && row.date <= ctx.dated(ctx.now, 0)));
-      } catch (error) { if (!offset) throw error; ctx.warn(`prior-month ${kind} unavailable: ${error.message}`); }
+      } catch (error) { if (!offset && !/HTTP 404\b/.test(error.message)) throw error; ctx.warn(`${offset ? 'prior' : 'current'}-month ${kind} unavailable: ${error.message}`); }
     }
   }
   const latest = observations.map(row => row.date).sort().at(-1);
