@@ -1,9 +1,5 @@
 /**
- * #10179 — hotspot breakdown labels must not paint over the bars.
- *
- * happy-dom has no layout, so this locks the sizing contract a browser
- * measurement proved: short labels keep a 45px floor, longer locale strings
- * grow up to the space left for the bar, the value, and the row gaps, then wrap.
+ * happy-dom has no layout.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -25,11 +21,19 @@ function declarations(selector: string): Record<string, string> {
 describe('hotspot escalation breakdown labels', () => {
   it('lets the label column grow with the text and wrap before it meets the bar', () => {
     const label = declarations('.component-label');
+    const row = declarations('.breakdown-components');
+    expect(row['--breakdown-gap']).toBe('8px');
+    expect(row['--breakdown-bar-min']).toBe('48px');
+    expect(row['--breakdown-value-width']).toBe('20px');
+    expect(declarations('.breakdown-row').gap).toBe('var(--breakdown-gap)');
     expect(label.width).toBe('max-content');
     expect(label['min-width']).toBe('45px');
-    expect(label['max-width']).toBe('calc(100% - 84px)');
+    expect(label['max-width']).toBe(
+      'calc(100% - (var(--breakdown-bar-min) + var(--breakdown-value-width) + 2 * var(--breakdown-gap)))',
+    );
     expect(label['overflow-wrap']).toBe('break-word');
     expect(label.flex).toBe('0 0 auto');
-    expect(declarations('.component-bar-bg')['min-width']).toBe('48px');
+    expect(declarations('.component-bar-bg')['min-width']).toBe('var(--breakdown-bar-min)');
+    expect(declarations('.component-value').width).toBe('var(--breakdown-value-width)');
   });
 });

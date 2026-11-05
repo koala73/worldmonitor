@@ -17497,12 +17497,15 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  --breakdown-gap: 8px;
+  --breakdown-bar-min: 48px;
+  --breakdown-value-width: 20px;
 }
 
 .breakdown-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--breakdown-gap);
 }
 
 .component-label {
@@ -17511,7 +17514,7 @@ button.popup-link {
   flex: 0 0 auto;
   width: max-content;
   min-width: 45px;
-  max-width: calc(100% - 84px);
+  max-width: calc(100% - (var(--breakdown-bar-min) + var(--breakdown-value-width) + 2 * var(--breakdown-gap)));
   line-height: 1.25;
   overflow-wrap: break-word;
   text-transform: uppercase;
@@ -17520,7 +17523,7 @@ button.popup-link {
 
 .component-bar-bg {
   flex: 1;
-  min-width: 48px;
+  min-width: var(--breakdown-bar-min);
   height: 6px;
   background: var(--overlay-medium);
   border-radius: 3px;
@@ -17552,7 +17555,7 @@ button.popup-link {
 .component-value {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
-  width: 20px;
+  width: var(--breakdown-value-width);
   text-align: right;
   flex-shrink: 0;
 }
