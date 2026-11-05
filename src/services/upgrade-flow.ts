@@ -1,6 +1,18 @@
 import type { CheckoutAttribution } from './analytics';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { showCheckoutErrorToast } from '@/services/checkout-error-toast';
 import { buildAttributedProUrl } from '../../shared/checkout-attribution';
+
+// Reported here, never thrown: the CTAs' catch fallbacks window.open a raw
+// /pro, which drops attribution and inside the desktop WebView opens a second
+// window. A toast that cannot render must not turn into that either.
+function reportPlanOpenFailure(): void {
+  try {
+    showCheckoutErrorToast('The plans page did not open. Please try again.');
+  } catch {
+    // Nothing to render into; the CTA stays clickable for a retry.
+  }
+}
 
 /**
  * The one upgrade path every "Upgrade to Pro" CTA routes through: the /pro
@@ -16,25 +28,25 @@ import { buildAttributedProUrl } from '../../shared/checkout-attribution';
  * where a checkout started from /pro could not run 3DS.
  */
 export async function openUpgradePlans(attribution?: CheckoutAttribution): Promise<void> {
-  const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }] = await Promise.all([
-    import('@/services/runtime'),
-    import('@/services/external-navigation'),
-    import('@/services/referral-capture'),
-  ]);
-  const url = new URL(buildAttributedProUrl(
-    `${WEB_APP_ORIGIN}/pro#pricing`,
-    attribution,
-    isDesktopRuntime() ? { desktopHandoff: true } : undefined,
-  ));
-  const referral = loadActiveReferral();
-  if (referral) url.searchParams.set('ref', referral);
-  const outcome = await openExternalUrl(url.toString(), null, { desktopPopupFallback: false });
-  // `openExternalUrl` already reported the failure. Tell the user instead of
-  // throwing: callers' catch fallbacks use window.open, which inside the
-  // desktop WebView opens a second window, and after a native timeout the OS
-  // browser may still open the page.
-  if (outcome === 'failed') {
-    const { showCheckoutErrorToast } = await import('@/services/checkout-error-toast');
-    showCheckoutErrorToast('The plans page did not open. Please try again.');
+  try {
+    const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }] = await Promise.all([
+      import('@/services/runtime'),
+      import('@/services/external-navigation'),
+      import('@/services/referral-capture'),
+    ]);
+    const url = new URL(buildAttributedProUrl(
+      `${WEB_APP_ORIGIN}/pro#pricing`,
+      attribution,
+      isDesktopRuntime() ? { desktopHandoff: true } : undefined,
+    ));
+    const referral = loadActiveReferral();
+    if (referral) url.searchParams.set('ref', referral);
+    const outcome = await openExternalUrl(url.toString(), null, { desktopPopupFallback: false });
+    // `openExternalUrl` already reported a 'failed' outcome, and after a
+    // native timeout the OS browser may still open the page.
+    if (outcome === 'failed') reportPlanOpenFailure();
+  } catch {
+    // A rejected lazy import or a throwing opener: same user-facing result.
+    reportPlanOpenFailure();
   }
 }

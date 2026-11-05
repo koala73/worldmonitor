@@ -49,6 +49,21 @@ describe('openUpgradePlans', () => {
     expect(showCheckoutErrorToast).toHaveBeenCalledWith('The plans page did not open. Please try again.');
   });
 
+  it('tells the user when the navigation itself throws, without rejecting into the callers', async () => {
+    // A rejected lazy import or a throwing opener used to reject out of the
+    // helper, where the CTAs' catch fallbacks window.open a raw /pro: no
+    // attribution, and inside the desktop WebView a second window.
+    openExternalUrl.mockRejectedValueOnce(new Error('chunk load failed'));
+    await expect(openUpgradePlans()).resolves.toBeUndefined();
+    expect(showCheckoutErrorToast).toHaveBeenCalledWith('The plans page did not open. Please try again.');
+  });
+
+  it('still resolves when the toast cannot render', async () => {
+    openExternalUrl.mockResolvedValueOnce('failed');
+    showCheckoutErrorToast.mockImplementationOnce(() => { throw new Error('no document'); });
+    await expect(openUpgradePlans()).resolves.toBeUndefined();
+  });
+
   it('carries mission attribution to /pro, which passes it into its checkout', async () => {
     await openUpgradePlans({ missionId: 'crisis-desk', panelKey: 'cii' });
     const url = new URL(openExternalUrl.mock.calls[0]![0]);
