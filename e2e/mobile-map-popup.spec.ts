@@ -49,6 +49,54 @@ const MOBILE_DEVICE_MATRIX = [
   { label: 'Galaxy S9+', use: devices['Galaxy S9+'] },
 ] as const;
 
+for (const width of [320, 1280]) {
+  test.describe(`Hotspot breakdown labels (${width}px)`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    for (const language of ['de', 'en', 'ar']) {
+      test(`keeps ${language} text clear of bars and values at 1.5x scale`, async ({ page }, testInfo) => {
+        await page.goto(`/tests/mobile-map-harness.html?breakdown=1&lang=${language}`);
+        await page.waitForFunction(() => (window as HarnessWindow).__mobileMapHarness?.ready);
+        await expect(page.locator('html')).toHaveAttribute('lang', language);
+        await expect(page.locator('html')).toHaveCSS('direction', language === 'ar' ? 'rtl' : 'ltr');
+        await page.locator('#mapOverlays .hotspot').click();
+        const popup = page.locator('.map-popup');
+        await expect(popup).toBeVisible();
+        await popup.evaluate((element) => element.style.setProperty('--wm-panel-effective-scale', '1.5'));
+        const rows = popup.locator('.breakdown-row');
+        await expect(rows).toHaveCount(4);
+        if (language === 'de') await expect(rows).toContainText(['Nachrichten', 'Länderinstabilitätsindex']);
+        for (const row of await rows.all()) {
+          const geometry = await row.evaluate((element) => {
+            const label = element.querySelector<HTMLElement>('.component-label')!;
+            const bar = element.querySelector<HTMLElement>('.component-bar-bg')!;
+            const value = element.querySelector<HTMLElement>('.component-value')!;
+            const range = document.createRange();
+            range.selectNodeContents(label);
+            const rect = label.getBoundingClientRect();
+            const barRect = bar.getBoundingClientRect();
+            const valueRect = value.getBoundingClientRect();
+            const rtl = getComputedStyle(label).direction === 'rtl';
+            return {
+              overflow: label.scrollWidth - label.clientWidth,
+              clear: [...range.getClientRects()].every((text) => rtl
+                ? text.left >= barRect.right && text.left >= valueRect.right
+                : text.right <= barRect.left && text.right <= valueRect.left),
+              inside: rect.left >= 0 && valueRect.left >= 0 && valueRect.right <= innerWidth,
+            };
+          });
+          expect(geometry.overflow).toBeLessThanOrEqual(1);
+          expect(geometry.clear).toBe(true);
+          expect(geometry.inside).toBe(true);
+          await expect(row.locator('.component-value')).toBeVisible();
+          await expect(row.locator('.component-value')).toHaveText(/^\d+$/);
+        }
+        await popup.screenshot({ path: testInfo.outputPath(`breakdown-${language}-${width}.png`) });
+      });
+    }
+  });
+}
+
 for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
   test.describe(`Hotspot popup header (${viewport.width}px)`, () => {
     test.use({ viewport, deviceScaleFactor: 1.25 });

@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+/** Reads the first exact selector block because happy-dom cannot measure layout. */
 function declarations(selector: string): Record<string, string> {
   const css = readFileSync('src/styles/main.css', 'utf8');
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
