@@ -23,8 +23,16 @@ on:
       # would silently never be re-checked.
       - 'tests/cors-preflight-live.test.mjs'
       - 'tests/helpers/public-bootstrap-contract.mjs'
+      - 'scripts/cf-rate-limit-retry.mjs'
       - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
+
+# Deploy in push order. The rate-limit retry below can hold a deploy for up to
+# ~2 minutes; without this, a newer run could deploy first and the delayed retry
+# would then overwrite it with older code.
+concurrency:
+  group: deploy-api-cors-preflight-worker
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -89,7 +97,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler deploy
+        # Retries only Cloudflare API rate limits ([code: 10429]) with 15/30/60 s
+        # backoff; any other failure fails the step at once. A single 10429 on
+        # 2026-11-05 (run 41960944579) left #9881 undeployed until a manual re-run.
+        run: node ../../scripts/cf-rate-limit-retry.mjs npx wrangler deploy
 
   live-smoke:
     name: Live preflight smoke test
