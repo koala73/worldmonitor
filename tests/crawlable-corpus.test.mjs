@@ -19,6 +19,7 @@ import {
 import {
   buildCiiRankingEntries,
   buildChokepointHubRows,
+  normalizeActiveWars,
   buildCorpus,
   buildMicrostateCoverageStory,
   assertCountryBriefPresentation,
@@ -1506,6 +1507,26 @@ describe('crawlable corpus generator', () => {
       () => buildCiiRankingEntries(data.countries, livePulse),
       new RegExp(`CII pulse timestamp is invalid for ${countryCode}`),
     );
+  });
+
+  it('publishes the war list only while its month is current, and rejects a malformed one', async () => {
+    // The fixed fixture reading, so this holds whatever the weekly freeze committed.
+    const record = JSON.parse(readFileSync(join(repoRoot, 'tests/fixtures/crawlable-live-pulse-fixture.json'), 'utf8')).activeWars;
+    const monthEnd = new Date(`${record.referenceMonth}-01T00:00:00Z`);
+    monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
+    const daysAfterMonthEnd = (days) => new Date(monthEnd.getTime() + days * 86_400_000).toISOString().slice(0, 10);
+    const capturedAt = daysAfterMonthEnd(14);
+    assert.equal(normalizeActiveWars(undefined, capturedAt), null, 'older snapshots build without it');
+    assert.match(normalizeActiveWars(record, capturedAt).monthLabel, /^[A-Z][a-z]+ \d{4}$/);
+    assert.ok(normalizeActiveWars(record, daysAfterMonthEnd(75)), 'a carried reading is current for 75 days');
+    assert.equal(normalizeActiveWars(record, daysAfterMonthEnd(76)), null, 'and then ages out');
+    const unsorted = { ...record, conflicts: [...record.conflicts].reverse() };
+    assert.throws(() => normalizeActiveWars(unsorted, capturedAt), /malformed/);
+    const belowThreshold = {
+      ...record,
+      conflicts: record.conflicts.map((row, index) => (index === 0 ? { ...row, deaths: 3 } : row)),
+    };
+    assert.throws(() => normalizeActiveWars(belowThreshold, capturedAt), /malformed/);
   });
 
   it('rejects a chokepoint pulse key that is not in the registry', async () => {
@@ -4581,7 +4602,8 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(sourcesPage, /utm_source=/, 'source-catalog links must not carry utm_source; middleware 308s it away');
 
       const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
-      assert.match(hormuz, /<h1>Strait of Hormuz<\/h1>/);
+      assert.match(hormuz, /<h1>Is the Strait of Hormuz open\?<\/h1>/);
+      assert.match(hormuz, /<title>Is the Strait of Hormuz Open\? Live Status \| World Monitor<\/title>/);
       assert.match(hormuz, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/chokepoints\/strait-of-hormuz\/">/);
       assert.match(hormuz, /about 20% of the world.s seaborne crude oil/);
       assert.doesNotMatch(hormuz, /a very large share of the world.s seaborne crude oil/);
@@ -4602,17 +4624,17 @@ describe('crawlable corpus generator', () => {
       // count to a full one, and the pinned sentences failed the refresh
       // (#9115). The exact narrative of every chokepoint page is checked
       // against chokepointEvidenceNarrative further down.
-      assert.match(hormuz, /<h2>Is Strait of Hormuz open right now\?<\/h2>/);
+      assert.match(hormuz, /<h2>Is the Strait of Hormuz open right now\?<\/h2>/);
       const hormuzPulse = clock.livePulse.chokepoints.hormuz_strait;
       const hormuzPassage = hormuz.match(/data-chokepoint-open-status>([^<]*)</)?.[1] ?? '';
       assert.match(
         hormuzPassage,
-        /^As of .+ (?:World Monitor cannot verify operational passage status from this snapshot|The (?:Green|Yellow|Red) disruption score is a risk signal; it does not verify unrestricted passage or operational closure)\.$/,
+        /^(?:(?:Severely restricted|Restricted|Reduced|Steady): traffic through the Strait of Hormuz was [\d.]+% of its year-earlier level in the seven published days to .+ \(IMF PortWatch\)\. )?As of .+ (?:World Monitor cannot verify operational passage status from this snapshot|The status compares traffic with its year-earlier level; it is not an official open or closed declaration|The (?:Green|Yellow|Red) disruption score is a risk signal; it does not verify unrestricted passage or operational closure)\.$/,
         'the passage answers from source coverage',
       );
       assert.doesNotMatch(
         hormuzPassage,
-        /\b(?:is|remains)\s+(?:open|closed|reopened)\b/i,
+        /\b(?:is|remains|was)\s+(?:open|closed|reopened)\b/i,
         'the passage must never state a closure verdict',
       );
       const hormuzDriver = hormuz.match(/data-chokepoint-score-driver>([^<]*)</)?.[1] ?? '';
@@ -4910,12 +4932,12 @@ describe('crawlable corpus generator', () => {
         // coverage instead of turning the risk band into a closure verdict.
         assert.match(
           page,
-          new RegExp(`<h2>Is ${meta.name} open right now\\?</h2>`),
+          new RegExp(`<h2>Is the ${meta.name} open right now\\?</h2>`),
           `${meta.name} must carry the open/closed query heading`,
         );
         const document = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
         const passageText = document.querySelector('[data-chokepoint-open-status]')?.textContent ?? '';
-        const asOfText = passageText.match(/^As of (.*), (?:source coverage|IMF PortWatch counted|no IMF PortWatch daily transit count)/)?.[1];
+        const asOfText = passageText.match(/(?:^|\(IMF PortWatch\)\. )As of (.*), (?:source coverage|IMF PortWatch counted|no IMF PortWatch daily transit count)/)?.[1];
         assert.ok(asOfText, `${meta.name} passage evidence must carry an as-of timestamp`);
         const official = chokepointOfficialMetrics(pulse);
         const expectedNarrative = chokepointEvidenceNarrative({
@@ -4946,8 +4968,19 @@ describe('crawlable corpus generator', () => {
           expectedNarrative.scoreDriver,
           `${meta.name} must use the shared score-driver policy`,
         );
+        // A status leads the passage exactly when the baseline share exists.
+        assert.equal(
+          /^(?:Severely restricted|Restricted|Reduced|Steady): traffic through /.test(passageText),
+          official.baselineShare !== null,
+          `${meta.name} must lead with a traffic status exactly when a baseline share is published`,
+        );
         if (expectedNarrative.passage.includes('source coverage')) {
-          assert.match(passageText, /cannot verify operational passage status/);
+          assert.match(
+            passageText,
+            official.baselineShare !== null
+              ? /The status compares traffic with its year-earlier level; it is not an official open or closed declaration\./
+              : /cannot verify operational passage status/,
+          );
         } else {
           assert.match(passageText, /IMF PortWatch counted \d/);
           assert.match(passageText, /does not verify unrestricted passage or operational closure/);
@@ -5042,7 +5075,40 @@ describe('crawlable corpus generator', () => {
       // published all 13, #9693); the fixture build below always covers both.
 
       const crisesIndex = read(outDir, 'crises/index.html');
-      assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
+      // With a current UCDP war list the hub answers the question first and
+      // keeps the trackers below it. Without one (a month aged out, nothing
+      // to carry) it falls back to the tracker layout, and a weekly refresh
+      // in that state must still verify.
+      const wars = clock.activeWars;
+      if (!wars) {
+        assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
+        assert.doesNotMatch(crisesIndex, /data-active-war/);
+      } else {
+        assert.match(crisesIndex, /<h1>Wars happening right now<\/h1>/);
+        assert.match(crisesIndex, new RegExp(`<title>Wars Happening Right Now: ${wars.countryCount} Active Conflicts \\| World Monitor</title>`));
+        assert.match(crisesIndex, /<h2>Current crisis trackers<\/h2>/);
+        const warRows = [...crisesIndex.matchAll(/<tr data-active-war="([^"]+)"><td>(\d+)<\/td>(.*?)<\/tr>/g)];
+        assert.deepEqual(warRows.map(([, key]) => key), wars.conflicts.map((row) => row.code ?? row.name));
+        assert.deepEqual(warRows.map(([, , rank]) => Number(rank)), wars.conflicts.map((_, index) => index + 1));
+        // A row links a tracker only when exactly one tracker covers its country;
+        // UCDP files Gaza under Israel, which three trackers cover.
+        const registry = JSON.parse(read(repoRoot, 'shared/crawlable-crises.json'));
+        for (const [[, code, , cells], row] of warRows.map((match, index) => [match, wars.conflicts[index]])) {
+          const trackers = registry.filter((crisis) => crisis.coverage.some((country) => country.code === code));
+          const tracker = cells.match(/<a href="\/crises\/([^/]+)\/">/)?.[1] ?? null;
+          assert.equal(tracker, trackers.length === 1 ? trackers[0].slug : null, `${row.name} tracker link`);
+          const countryPage = clock.countries.find((country) => country.code === row.code);
+          assert.ok(
+            cells.startsWith(countryPage ? `<td><a href="/countries/${countryPage.slug}/">${row.name}</a></td>` : `<td>${row.name}</td>`),
+            `${row.name} links its country page when one exists`,
+          );
+        }
+        const crisesLd = jsonLdObjects(crisesIndex);
+        const warsFaq = crisesLd.find((entry) => entry['@type'] === 'FAQPage');
+        assert.equal(warsFaq.mainEntity[0].name, 'What wars are happening right now?');
+        assert.match(warsFaq.mainEntity[0].acceptedAnswer.text, new RegExp(`^In ${wars.monthLabel}, .* ${wars.countryCount} countries recorded at least 25 deaths`));
+        assert.equal(crisesLd.find((entry) => entry['@type'] === 'ItemList').itemListElement.length, wars.countryCount);
+      }
       assert.match(crisesIndex, /href="\/crises\/red-sea-security\/"/);
       assertDataCatalogPresent(crisesIndex, '/crises/');
       assertDefaultSpeakable(
@@ -5055,6 +5121,13 @@ describe('crawlable corpus generator', () => {
       assert.match(redSea, /data-country-code="YE" data-country-name="Yemen"/);
       assert.match(redSea, /Missing countries are unavailable, not zero/);
       assert.match(redSea, /HAPI\/HDX humanitarian conflict summaries/);
+      // The open/closed question links to each related waterway's live page
+      // above the fold, not only from the related-trackers list at the bottom.
+      const redSeaStatus = redSea.match(/<p data-crisis-chokepoint-status>(.*?)<\/p>/)?.[1] ?? '';
+      assert.match(redSeaStatus, /<a href="\/chokepoints\/bab-el-mandeb\/">is the Bab el-Mandeb open\?<\/a>/);
+      assert.ok(redSea.indexOf('data-crisis-chokepoint-status') < redSea.indexOf('data-live-crisis'), 'status links sit above the crisis pulse');
+      const hormuzCrisis = read(outDir, 'crises/hormuz-gulf-security/index.html');
+      assert.match(hormuzCrisis, /data-crisis-chokepoint-status>[^\n]*<a href="\/chokepoints\/strait-of-hormuz\/">is the Strait of Hormuz open\?<\/a>/);
       assert.ok(redSea.includes(liveScriptTag), 'crisis live script must match the production CSP nonce');
       assert.doesNotMatch(redSea, /id="app"/);
       assert.doesNotMatch(redSea, /Connecting…/);

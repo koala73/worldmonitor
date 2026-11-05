@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 
 type MockWidgetResponse = {
   delayMs?: number;
@@ -206,6 +207,7 @@ test.describe('AI widget builder', () => {
         localStorage.setItem('wm-widget-key', key);
       }
     }, widgetKey);
+    await acceptTesterKeySession(page, { widget: true, pro: false });
   });
 
   test('keeps save disabled after an invalid completion error', async ({ page }) => {
@@ -476,6 +478,7 @@ test.describe('AI widget builder — PRO tier', () => {
       },
       { wKey: widgetKey, pKey: proWidgetKey },
     );
+    await acceptTesterKeySession(page);
   });
 
   test('creates a PRO widget: iframe renders with allow-scripts sandbox and PRO badge visible', async ({

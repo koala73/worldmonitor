@@ -236,6 +236,33 @@ function officialCountSentences(official, name, { through }) {
   return `${counted} The 7-day average is ${official.averageLabel}${comparison}.`;
 }
 
+// The traffic status that leads the passage: the PortWatch seven-day average
+// against the year-earlier baseline. It describes measured traffic, never an
+// official open or closed declaration, and is withheld whenever the share is
+// (no published day, no seven-day average, or no baseline). The baseline is
+// the year-earlier level, not a pre-crisis normal (Bab el-Mandeb's was
+// already depressed), so the top band reads "Steady", not "Normal". Answer engines
+// cite the trackers that lead with a status; the 2026-11-05 AI visibility
+// audit found 0 of 10 Hormuz answers naming World Monitor while straits.live
+// ranked #1 with the same PortWatch figure and a verdict.
+const TRAFFIC_STATUS_BANDS = [
+  { below: 10, label: 'Severely restricted' },
+  { below: 50, label: 'Restricted' },
+  { below: 80, label: 'Reduced' },
+  { below: Infinity, label: 'Steady' },
+];
+
+// The band is read from the printed share, not the unrounded ratio, so the
+// label and the figure beside it always agree (9.9% prints "10%" and reads
+// Restricted, not Severely restricted).
+function trafficStatusSentence(official, name) {
+  if (official.baselineShare === null || official.latestDate === null) return null;
+  const pct = Number(official.baselineShare.replace(/[,%]/g, ''));
+  if (!Number.isFinite(pct)) return null;
+  const { label } = TRAFFIC_STATUS_BANDS.find((band) => pct < band.below);
+  return `${label}: traffic through ${name} was ${official.baselineShare} of its year-earlier level in the seven published days to ${official.latestDate} (IMF PortWatch).`;
+}
+
 // Shared evidence policy for both static HTML and live hydration. The badge is
 // a disruption-risk signal, not evidence that operators have opened or closed
 // a waterway. AIS severity contributes to the score; the number of AIS events
@@ -271,16 +298,21 @@ export function chokepointEvidenceNarrative({
   const dated = String(asOfText || '').trim();
   const snapshotLead = dated ? `As of ${dated}` : 'In the latest published snapshot';
 
+  const trafficStatus = trafficStatusSentence(official, name);
   let passage;
   if (partial === true) {
     const officialClause = officialCountSentences(official, name, { through: false })
       ?? 'No IMF PortWatch daily transit count is published for this snapshot.';
-    passage = `${snapshotLead}, source coverage for ${name} is partial. ${officialClause} World Monitor cannot verify operational passage status from this snapshot.`;
+    const caveat = trafficStatus === null
+      ? 'World Monitor cannot verify operational passage status from this snapshot.'
+      : 'The status compares traffic with its year-earlier level; it is not an official open or closed declaration.';
+    passage = `${snapshotLead}, source coverage for ${name} is partial. ${officialClause} ${caveat}`;
   } else {
     const officialClause = officialCountSentences(official, name, { through: true })
       ?? `no IMF PortWatch daily transit count is published for ${name}.`;
     passage = `${snapshotLead}, ${officialClause} The ${band} disruption score is a risk signal; it does not verify unrestricted passage or operational closure.`;
   }
+  if (trafficStatus !== null) passage = `${trafficStatus} ${passage}`;
 
   const { threat, anomaly } = splitScoreDescription(description);
   const baseline = threat
@@ -978,6 +1010,16 @@ export function pizzIntViewModel(payload, now = Date.now()) {
   };
 }
 
+/**
+ * The dated sentence above the level, or null when no level is current. The
+ * routing middleware renders it into the HTML a crawler reads
+ * (scripts/live-pages/pentagon-pizza-index.mjs); the page keeps it in step.
+ */
+export function pizzIntAnswerText(view) {
+  if (!view?.available || view.updatedAt === null) return null;
+  return `As of ${formatDateTime(view.updatedAt)}, the Pentagon Pizza Index is at level ${view.level}, ${view.label}.`;
+}
+
 async function fetchWithTimeout(
   url,
   options = {},
@@ -1573,6 +1615,12 @@ function setPizzIntLevel(tool, level, label) {
 
 function renderPizzIntView(tool, view, checkedAt) {
   setPizzIntLevel(tool, view.level, view.label);
+  const answer = tool.querySelector('[data-live-answer]');
+  if (answer) {
+    const text = pizzIntAnswerText(view);
+    answer.textContent = text ?? '';
+    answer.hidden = text === null;
+  }
   renderList(
     tool,
     '[data-pizzint-venues]',
@@ -1644,6 +1692,8 @@ export async function loadPizzInt(tool) {
     );
   } catch {
     setPizzIntLevel(tool, '—', 'Unavailable');
+    const answer = tool.querySelector('[data-live-answer]');
+    if (answer) answer.hidden = true;
     tool.querySelector('[data-pizzint-venues]')?.replaceChildren();
     setTime(tool, '[data-live-updated]', null, 'Updated');
     setText(tool, '[data-live-updated]', '');

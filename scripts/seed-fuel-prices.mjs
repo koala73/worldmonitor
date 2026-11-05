@@ -131,7 +131,8 @@ const EU_COUNTRY_INFO = {
   SE: { name: 'Sweden',       currency: 'SEK', flag: '🇸🇪' },
 };
 
-function toUsdPerLiter(localPrice, currency, fxRates) {
+/** Convert local currency per litre with shared FX, or return null when no rate exists. */
+export function toUsdPerLiter(localPrice, currency, fxRates) {
   if (currency === 'USD') return localPrice;
   const rate = fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? null;
   if (!rate) return null;
@@ -789,9 +790,133 @@ export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s 
 // first so their countries are not dropped for want of a rate, then EUR, which prices
 // every EU row. (EU rows are all published as EUR, so no BGN quote is needed.)
 export const FUEL_FX_CURRENCIES = (() => {
-  const all = [...new Set(['EUR', 'MYR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BRL', 'NZD', 'GBP', ...REGIONAL_FUEL_CURRENCIES])];
+  const all = [...new Set(['EUR', 'MYR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BRL', 'NZD', 'GBP', 'NOK', 'ISK', 'TWD', ...REGIONAL_FUEL_CURRENCIES])];
   return [...all.filter(c => SHARED_FX_FALLBACKS[c] == null), ...all.filter(c => SHARED_FX_FALLBACKS[c] != null)];
 })();
+
+/** Accept a real observation day within its source's age limit, never a future day. */
+function fuelDateIsFresh(date, maxAgeDays, nowMs) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) return false;
+  const ms = Date.parse(`${date}T00:00:00Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === date
+    && ms <= nowMs && nowMs - ms <= maxAgeDays * 86400000;
+}
+
+/** Read the newest SSB month in NOK/l, retaining its month start and publication lag. */
+export function parseNorwayFuel(data, nowMs = Date.now()) {
+  // PxWeb JSON keys follow the declared dimension order; never assume row order.
+  const dimensions = data?.columns?.filter(c => c.type !== 'c').map(c => c.code);
+  if (dimensions?.length !== 2 || !dimensions.includes('PetroleumProd') || !dimensions.includes('Tid')
+    || data.columns.find(c => c.type === 'c')?.code !== 'Priser' || !Array.isArray(data.data)) return null;
+  const productIndex = dimensions.indexOf('PetroleumProd'), monthIndex = dimensions.indexOf('Tid');
+  const rows = data.data.filter(r => /^\d{4}M(0[1-9]|1[0-2])$/.test(r.key?.[monthIndex] ?? ''));
+  // Keep the actual month start as observedAt. Age from month end accommodates
+  // SSB's monthly cadence and roughly three-week publication lag.
+  const latest = rows.map(r => r.key[monthIndex]).sort().at(-1);
+  if (!latest) return null;
+  const [year, month] = latest.split('M').map(Number);
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  if (!fuelDateIsFresh(monthEnd, 65, nowMs)) return null;
+  const observedAt = `${year}-${String(month).padStart(2, '0')}-01`;
+  const pick = (product, grade) => {
+    const raw = rows.find(r => r.key[productIndex] === product && r.key[monthIndex] === latest)?.values?.[0];
+    const price = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+    return Number.isFinite(price) && price >= 5 && price <= 60
+      ? { localPrice: price, grade, source: 'Statistics Norway (SSB), table 09654', observedAt } : null;
+  };
+  const gasoline = pick('031', 'RON95 (monthly mean)'), diesel = pick('035', 'Diesel (monthly mean)');
+  return gasoline || diesel ? { code: 'NO', name: 'Norway', currency: 'NOK', flag: '🇳🇴', gasoline, diesel } : null;
+}
+
+/** Query SSB table 09654 for the latest three petrol/diesel months without credentials. */
+export async function fetchNorway() {
+  const response = await globalThis.fetch('https://data.ssb.no/api/v0/en/table/09654', {
+    method: 'POST', headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(20000),
+    body: JSON.stringify({ query: [
+      { code: 'PetroleumProd', selection: { filter: 'item', values: ['031', '035'] } },
+      { code: 'ContentsCode', selection: { filter: 'item', values: ['Priser'] } },
+      { code: 'Tid', selection: { filter: 'top', values: ['3'] } },
+    ], response: { format: 'json' } }),
+  });
+  if (!response.ok) throw new Error(`SSB HTTP ${response.status}`);
+  const entry = parseNorwayFuel(await response.json());
+  return entry ? [entry] : [];
+}
+
+/** Average ordinary ISK/l station prices using the pinned file revision as the data date. */
+export function parseIcelandFuel(data, revisionDate, nowMs = Date.now()) {
+  const observedAt = revisionDate?.slice(0, 10);
+  if (!fuelDateIsFresh(observedAt, 14, nowMs) || !Array.isArray(data?.stations)) return null;
+  // Ordinary pump prices only; discount/key-card prices are not generally available.
+  const mean = (field, grade) => {
+    const prices = data.stations.map(s => s[field]).filter(v => Number.isFinite(v) && v >= 50 && v <= 600);
+    return prices.length ? { localPrice: +(prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(4),
+      grade, source: 'Gasvaktin (community; station mean)', observedAt } : null;
+  };
+  const gasoline = mean('bensin95', 'RON95'), diesel = mean('diesel', 'Diesel');
+  return gasoline || diesel ? { code: 'IS', name: 'Iceland', currency: 'ISK', flag: '🇮🇸', gasoline, diesel } : null;
+}
+
+/** Fetch Gasvaktin at a dated Git revision, omitting it when ISK conversion is unavailable. */
+export async function fetchIceland(fxRates) {
+  // ISK has no static shared fallback. Do not count a source as successful when
+  // neither price can be converted; the cold-cache FX budget requests ISK first.
+  if (!(fxRates.ISK > 0)) return [];
+  const commits = await fetchDirect('https://api.github.com/repos/gasvaktin/gasvaktin/commits?path=vaktin/gas.min.json&per_page=1',
+    { timeoutMs: 20000, accept: 'application/vnd.github+json' });
+  const revision = (await commits.json())?.[0];
+  if (!/^[a-f0-9]{40}$/.test(revision?.sha ?? '')) throw new Error('Gasvaktin revision missing');
+  // Pin content to its date: fetching master after commit discovery could race an update.
+  const response = await fetchDirect(`https://raw.githubusercontent.com/gasvaktin/gasvaktin/${revision.sha}/vaktin/gas.min.json`,
+    { timeoutMs: 20000, accept: 'application/json' });
+  const entry = parseIcelandFuel(await response.json(), revision.commit?.committer?.date);
+  return entry ? [entry] : [];
+}
+
+/** Derive a weekly TWD/l mean weighted by group report counts; reject unusable surveys. */
+export function parseTaiwanFuel(payload, oil, nowMs = Date.now()) {
+  const data = payload?.data;
+  if (payload?.res !== '01' || !Array.isArray(data?.gasoline)
+    || !data.title?.includes(oil === '01' ? '92無鉛汽油' : '柴油')) return null;
+  const period = /^(\d{4})\/(\d{2})\/(\d{2}) ~ (\d{4})\/(\d{2})\/(\d{2})$/.exec(data.start ?? '');
+  if (!period) return null;
+  const start = period.slice(1, 4).join('-'), observedAt = period.slice(4, 7).join('-');
+  if (!fuelDateIsFresh(start, 28, nowMs) || !fuelDateIsFresh(observedAt, 21, nowMs)
+    || Date.parse(observedAt) - Date.parse(start) !== 6 * 86400000) return null;
+  // Weight all surveyed groups by reports, rather than averaging county means
+  // or treating the mainland-only Aavg as a national price. B/C can be absent.
+  let total = 0, count = 0;
+  for (const group of ['A', 'B', 'C']) {
+    const n = data[`${group}num`], price = data[`${group}avg`];
+    if (!Number.isInteger(n) || n < 0) return null;
+    if (n === 0) continue;
+    if (!Number.isFinite(price) || price < 5 || price > 100) return null;
+    total += price * n;
+    count += n;
+  }
+  return count ? { localPrice: +(total / count).toFixed(4), grade: oil === '01' ? 'RON92 (survey mean)' : 'Diesel (survey mean)',
+    source: 'Taiwan MOEA Energy Administration oil111', observedAt } : null;
+}
+
+/** Retry each oil111 grade independently so one outage cannot discard the other grade. */
+export async function fetchTaiwan({ baseDelayMs } = {}) {
+  const results = await Promise.allSettled(['01', '04'].map(oil => withFuelRetry(`TW-${oil}`, async () => {
+    const body = new FormData();
+    body.set('unit', 'week'); body.set('oil', oil); body.set('start', 'lastone');
+    const response = await globalThis.fetch('https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg/load', {
+      method: 'POST', body, headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000),
+    });
+    if (!response.ok) throw new Error(`Taiwan oil111 HTTP ${response.status}`);
+    return parseTaiwanFuel(await response.json(), oil);
+  }, { baseDelayMs })));
+  const [gasoline, diesel] = results.map((result, i) => {
+    if (result.status === 'fulfilled') return result.value;
+    console.warn(`  [TW-${['01', '04'][i]}] request failed: ${result.reason?.message ?? result.reason}`);
+    return null;
+  });
+  return gasoline || diesel ? [{ code: 'TW', name: 'Taiwan', currency: 'TWD', flag: '🇹🇼', gasoline, diesel }] : [];
+}
 
 // snapshots maps a feed id to its cached record (or null). Returns fuel-panel
 // entries with each fuel's newest retail price, or none when it is stale, its
@@ -856,7 +981,9 @@ export function parseCREStationPrices(xml) {
 // Regional feeds (FJ, PG, GT and the ANP backup for BR) come from other
 // seeders' Redis keys. A missing or stale feed drops those rows but must not
 // block the multi-country snapshot.
-const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand', 'Regional feeds']);
+// These additions are optional coverage: outages/stale data omit their rows and
+// remain visible in failedSources/allSourcesFresh without blocking core coverage.
+const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA']);
 
 // Publish gate. Exported so tests can lock in the contract.
 //
@@ -883,6 +1010,38 @@ export function validateFuel(d) {
   return total >= 30 && criticalPresent && untoleratedFailures.length === 0;
 }
 
+/** Merge usable prices by source priority; return whether this entry has any valid USD price. */
+export function mergeFuelCountry(countryMap, entry, fxRates) {
+  const { code, name, currency, flag, gasoline: gas, diesel: dsl } = entry;
+  const existing = countryMap.get(code) ?? { code, name, currency, flag, gasoline: null, diesel: null, fxRate: 0 };
+  const fxRate = currency === 'USD' ? 1 : (fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? 0);
+  let validEntry = false;
+
+  if (gas != null) {
+    const usdPrice = gas.usdPrice ?? toUsdPerLiter(gas.localPrice, currency, fxRates);
+    if (isSaneUsd(usdPrice)) {
+      validEntry = true;
+      if (existing.gasoline == null) existing.gasoline = { ...gas, usdPrice };
+    } else if (usdPrice != null) {
+      console.warn(`  [SANITY] ${code} gasoline USD/L=${usdPrice} out of range — dropping`);
+    }
+  }
+  if (dsl != null) {
+    const usdPrice = dsl.usdPrice ?? toUsdPerLiter(dsl.localPrice, currency, fxRates);
+    if (isSaneUsd(usdPrice)) {
+      validEntry = true;
+      if (existing.diesel == null) existing.diesel = { ...dsl, usdPrice };
+    } else if (usdPrice != null) {
+      console.warn(`  [SANITY] ${code} diesel USD/L=${usdPrice} out of range — dropping`);
+    }
+  }
+  if (validEntry) {
+    existing.fxRate = fxRate;
+    countryMap.set(code, existing);
+  }
+  return validEntry;
+}
+
 async function main() {
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
 
@@ -903,50 +1062,25 @@ const fetchResults = await Promise.allSettled([
   fetchNewZealand(),
   fetchUK_DESNZ(),
   fetchRegionalFuel(fxRates),
+  withFuelRetry('NO', fetchNorway),
+  withFuelRetry('IS', () => fetchIceland(fxRates)),
+  fetchTaiwan(),
 ]);
 
-const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA'];
 let successfulSources = 0;
 const failedSources = [];
 
 const countryMap = new Map();
 
-function mergeCountry(entry, fxRates) {
-  const { code, name, currency, flag, gasoline: gas, diesel: dsl } = entry;
-  if (!countryMap.has(code)) {
-    countryMap.set(code, { code, name, currency, flag, gasoline: null, diesel: null, fxRate: 0 });
-  }
-  const existing = countryMap.get(code);
-  const fxRate = currency === 'USD' ? 1 : (fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? 0);
-  existing.fxRate = fxRate;
-
-  if (gas != null && existing.gasoline == null) {
-    const usdPrice = gas.usdPrice ?? toUsdPerLiter(gas.localPrice, currency, fxRates);
-    if (isSaneUsd(usdPrice)) {
-      existing.gasoline = { ...gas, usdPrice };
-    } else if (usdPrice != null) {
-      console.warn(`  [SANITY] ${code} gasoline USD/L=${usdPrice} out of range — dropping`);
-    }
-  }
-  if (dsl != null && existing.diesel == null) {
-    const usdPrice = dsl.usdPrice ?? toUsdPerLiter(dsl.localPrice, currency, fxRates);
-    if (isSaneUsd(usdPrice)) {
-      existing.diesel = { ...dsl, usdPrice };
-    } else if (usdPrice != null) {
-      console.warn(`  [SANITY] ${code} diesel USD/L=${usdPrice} out of range — dropping`);
-    }
-  }
-}
-
 for (let i = 0; i < fetchResults.length; i++) {
   const result = fetchResults[i];
   const name = sourceNames[i];
-  if (result.status === 'fulfilled' && result.value.length > 0) {
+  const accepted = result.status === 'fulfilled'
+    ? result.value.filter(entry => mergeFuelCountry(countryMap, entry, fxRates)) : [];
+  if (accepted.length > 0) {
     successfulSources++;
-    for (const entry of result.value) {
-      mergeCountry(entry, fxRates);
-    }
-    console.log(`  [SOURCE] ${name}: ${result.value.length} countries`);
+    console.log(`  [SOURCE] ${name}: ${accepted.length} countries`);
   } else {
     failedSources.push(name);
     if (result.status === 'rejected') {

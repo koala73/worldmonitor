@@ -117,6 +117,8 @@ http {
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
+      # The browser's own host:port; the sidecar's plain-HTTP relay origin check.
+      proxy_set_header X-Forwarded-Host $http_host;
       add_header Access-Control-Allow-Origin "*" always;
       add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
       add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
@@ -138,6 +140,8 @@ http {
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
+      # The browser's own host:port; the sidecar's plain-HTTP relay origin check.
+      proxy_set_header X-Forwarded-Host $http_host;
       add_header Access-Control-Allow-Origin "*" always;
       add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
       add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
@@ -158,6 +162,8 @@ http {
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
+      # The browser's own host:port; the sidecar's plain-HTTP relay origin check.
+      proxy_set_header X-Forwarded-Host $http_host;
       add_header Access-Control-Allow-Origin "*" always;
       add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
       add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;

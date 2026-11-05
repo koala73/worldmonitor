@@ -506,7 +506,8 @@
       "marketWeakest": "Schwächste",
       "trendRising": "steigend",
       "trendFalling": "fallend",
-      "trendStable": "stabil"
+      "trendStable": "stabil",
+      "situationLink": "Situation überwachen: Krisen, Schlagzeilen, Engpässe und Ausfälle auf einem Dashboard"
     },
     "moments": {
       "eyebrow": "Korrelations-Engine",

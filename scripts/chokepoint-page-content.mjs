@@ -150,6 +150,12 @@ export const CHOKEPOINT_CONTENT = {
     ],
     region: 'Persian Gulf ↔ Gulf of Oman',
     glossarySlug: 'strait-of-hormuz',
+    // Answer engines rank this page on "is the Strait of Hormuz open", so the
+    // title and H1 carry that question instead of the generic status label.
+    metaTitle: 'Is the Strait of Hormuz Open? Live Status | World Monitor',
+    metaDescription:
+      'Is the Strait of Hormuz open? Live disruption score, IMF PortWatch daily transits against the year-earlier normal, and navigational warnings for the strait.',
+    heading: 'Is the Strait of Hormuz open?',
     whyHeading: 'Why is the Strait of Hormuz the most watched energy chokepoint?',
     blurb:
       'The Strait of Hormuz is the narrow waterway connecting the Persian Gulf to the Gulf of Oman and the open ocean. It is the single most closely watched energy chokepoint on Earth: about 20% of the world’s seaborne crude oil — and a large share of LNG — has no alternative route out of the Gulf.',

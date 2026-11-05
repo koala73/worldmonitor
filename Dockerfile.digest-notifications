@@ -105,7 +105,7 @@ COPY scripts/shared/notify-fields.cjs ./scripts/shared/
 COPY shared/publisher-families.js shared/publisher-families.d.ts ./shared/
 COPY scripts/shared/publisher-families.js ./scripts/shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
-COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
+COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts server/_shared/brief-fonts.generated.js ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback
 # path (legacy whyMatters generator) to strip prompt-injection patterns
 # from story fields before they reach the LLM. Without this COPY, the

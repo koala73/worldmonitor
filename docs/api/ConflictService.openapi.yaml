@@ -236,6 +236,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "candidateVersion": "2026-01-15"
                                 "events":
                                     - "country": "US"
                                       "dateEnd": 1717200000000
@@ -1275,6 +1276,9 @@ components:
                         $ref: '#/components/schemas/UcdpViolenceEvent'
                 pagination:
                     $ref: '#/components/schemas/PaginationResponse'
+                candidateVersion:
+                    type: string
+                    description: Monthly candidate release merged in; "+partial" when incomplete, empty when none.
             description: ListUcdpEventsResponse contains UCDP violence events matching the request.
         UcdpViolenceEvent:
             type: object

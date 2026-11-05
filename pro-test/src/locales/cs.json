@@ -506,7 +506,8 @@
       "marketWeakest": "Nejslabší",
       "trendRising": "rostoucí",
       "trendFalling": "klesající",
-      "trendStable": "stabilní"
+      "trendStable": "stabilní",
+      "situationLink": "Sledujte situaci: krize, titulky, kritická místa a výpadky na jednom panelu"
     },
     "moments": {
       "eyebrow": "Korelační engine",

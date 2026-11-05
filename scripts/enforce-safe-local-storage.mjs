@@ -212,9 +212,8 @@ function isStoragePrototypeCall(node) {
  * which is the point.
  *
  * Nothing else is exempt. The remaining "safe storage" implementations
- * (`loadFromStorage`/`saveToStorage` in `src/utils/index.ts`, the file-private
- * helpers in `browser-key-session.ts`, and `safeLocalStorage()` in
- * `passkey-offer-state.ts`) are counted in the inventory below rather than
+ * (`loadFromStorage`/`saveToStorage` in `src/utils/index.ts` and
+ * `safeLocalStorage()` in `passkey-offer-state.ts`) are counted in the inventory below rather than
  * waved through, so the duplication stays visible and a further implementation
  * cannot land quietly. #7833 review caught this file's own author adding one:
  * cloud-prefs-sync grew a private rawGet/rawSet/rawRemove trio justified by a
@@ -295,7 +294,6 @@ export const LEGACY_RAW_LOCAL_STORAGE = [
   'src/services/anonymous-identity-storage.ts :: localStorage.<member> x5',
   'src/services/aviation/watchlist.ts :: localStorage.<member> x2',
   'src/services/breaking-news-alerts.ts :: localStorage.<member> x4',
-  'src/services/browser-key-session.ts :: localStorage.<member> x2',
   'src/services/cached-risk-scores.ts :: localStorage.<member> x5',
   'src/services/cached-theater-posture.ts :: localStorage.<member> x4',
   'src/services/followed-countries.ts :: localStorage.<member> x3',

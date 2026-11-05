@@ -16,6 +16,7 @@ export const Footer = ({ disclaimer = true }: { disclaimer?: boolean }) => (
         <a href="/countries/" className="hover:text-wm-text transition-colors">Countries</a>
         <a href="/chokepoints/" className="hover:text-wm-text transition-colors">Chokepoints</a>
         <a href="/crises/" className="hover:text-wm-text transition-colors">Crises</a>
+        <a href="/monitor-the-situation/" className="hover:text-wm-text transition-colors">Situation</a>
         <a href="/tools/" className="hover:text-wm-text transition-colors">Tools</a>
         <a href="/blog/" className="hover:text-wm-text transition-colors">Blog</a>
         <a href="/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>

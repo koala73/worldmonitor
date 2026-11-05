@@ -72,7 +72,7 @@ export function createRelayHandler(cfg) {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
     if (req.method !== 'GET') {
-      return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
+      return jsonResponse({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'GET, OPTIONS' });
     }
 
     if (cfg.requireApiKey) {

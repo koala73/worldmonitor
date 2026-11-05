@@ -739,6 +739,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',
     },
     {
+      path: 'api/desktop-key/status.ts',
+      expected: /A degraded per-IP ceiling fails closed with 503/,
+      reason: 'the per-IP ceiling in front of the Convex key lookup fails closed when degraded (rotating keys miss the negative cache); the owner and invalid-key buckets after the lookup stay availability-first, and a self-host sidecar keeps its last verdict through a 503',
+    },
+    {
       path: 'api/notify.ts',
       expected: /limiter outage here should NOT fail open/,
       reason: 'notify publishes create relay-side delivery obligations on the shared event queue, so Redis degradation fails closed instead of allowing unbounded fan-out',

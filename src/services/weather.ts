@@ -38,6 +38,10 @@ interface BootstrapAlert {
   countryCode?: string;
   source?: string;
   geometryPrecision?: 'polygon' | 'point' | 'country';
+  issuedBy?: string;
+  /** WMO SWIC member authority (seeded as `authority`). */
+  authority?: string;
+  sourceUrl?: string;
 }
 
 const breaker = createCircuitBreaker<WeatherAlert[]>({ name: 'NWS + ECCC + WMO SWIC Weather', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
@@ -59,6 +63,8 @@ export function mapAlert(a: BootstrapAlert): WeatherAlert {
     countryCode: a.countryCode,
     source: a.source,
     geometryPrecision: a.geometryPrecision,
+    issuedBy: a.issuedBy || a.authority || undefined,
+    sourceUrl: a.sourceUrl || undefined,
   };
 }
 

@@ -506,7 +506,8 @@
       "marketWeakest": "Cele mai slabe",
       "trendRising": "în creștere",
       "trendFalling": "în scădere",
-      "trendStable": "stabil"
+      "trendStable": "stabil",
+      "situationLink": "Monitorizează situația: crize, titluri de știri, puncte critice și întreruperi pe un singur panou"
     },
     "moments": {
       "eyebrow": "Motor de corelație",
