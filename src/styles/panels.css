@@ -974,12 +974,13 @@
 
 .disp-stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin-bottom: 8px;
 }
 
 .disp-stat-box {
+  min-width: 0;
   background: var(--overlay-subtle);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -1002,6 +1003,45 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+@container panel-body (max-width: 480px) {
+  .disp-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Keep the item count visible even below the shared header's 300px cutoff.
+   The followed-country control gives up its visual label instead. */
+.panel[data-panel="displacement"] > .panel-header > .panel-count {
+  position: relative;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 2px 6px;
+  clip-path: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+@container (max-width: 480px) {
+  .panel[data-panel="displacement"] .wm-followed-only-chip {
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  .panel[data-panel="displacement"] .wm-followed-only-chip-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 .disp-stat-refugees .disp-stat-value {
