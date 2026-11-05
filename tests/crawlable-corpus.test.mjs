@@ -58,6 +58,7 @@ import {
   laterDate,
   loadCorpusData,
   normalizeCrisisEditorial,
+  crisisPageTitle,
   renderCrisisCountryReadings,
   MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
   MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS,
@@ -8417,6 +8418,72 @@ describe('crisis tracker editorial (#8605)', () => {
     });
     assert.match(html, /Only Yemen, of the 3 covered countries, has a Country Instability Index reading: 81 \(Critical\)\./);
     assert.doesNotMatch(html, /1 of the 3 covered countries have|The highest is/);
+  });
+
+  it('requires a question that fits the page title', () => {
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.question = 'What is happening';
+        return entry;
+      }), crises),
+      /question must end with a question mark/,
+    );
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        entry.question = `What is happening in ${'a very long place name '.repeat(3)}?`;
+        return entry;
+      }), crises),
+      /title ".+" exceeds 72 characters/,
+    );
+    assert.throws(
+      () => normalizeCrisisEditorial(withEntry(first, (entry) => {
+        delete entry.question;
+        return entry;
+      }), crises),
+      /question/,
+    );
+  });
+
+  it('titles each page with its question and answers it in matching FAQ markup', async () => {
+    const { outDir } = await defaultCorpusBuild();
+    const titles = new Set();
+    for (const entry of editorial) {
+      const crisis = registry.find((item) => item.slug === entry.slug);
+      const window = new Window();
+      try {
+        window.document.write(read(outDir, `crises/${entry.slug}/index.html`));
+        const doc = window.document;
+        const title = doc.querySelector('title').textContent;
+        assert.equal(title, crisisPageTitle(entry.question, entry.lastReviewed));
+        assert.ok(title.startsWith(`${entry.question} ${entry.lastReviewed.slice(0, 4)} tracker`), title);
+        assert.ok(!titles.has(title), `${entry.slug} repeats a crisis title`);
+        titles.add(title);
+        assert.equal(doc.querySelector('meta[property="og:title"]').getAttribute('content'), title);
+        assert.equal(doc.querySelector('main h1').textContent, entry.question);
+        assert.equal(doc.querySelector('main .eyebrow').textContent, crisis.title);
+
+        const visible = [...doc.querySelectorAll('main [data-crisis-faq]')].map((item) => ({
+          question: item.querySelector('summary').textContent,
+          answer: item.querySelector('p').textContent,
+        }));
+        assert.equal(visible[0].question, entry.question);
+        assert.ok(visible[0].answer.startsWith(entry.background.at(-1).text), `${entry.slug} answers from the latest sourced paragraph`);
+        assert.ok(visible.at(-1).answer.startsWith(crisis.coverage[0].name), `${entry.slug} lists its coverage`);
+
+        const faqLd = [...doc.querySelectorAll('script[type="application/ld+json"]')]
+          .flatMap((script) => [JSON.parse(script.textContent)].flat())
+          .flatMap((node) => node['@graph'] || [node])
+          .find((node) => node['@type'] === 'FAQPage');
+        assert.ok(faqLd, `${entry.slug} publishes FAQPage`);
+        assert.deepEqual(
+          faqLd.mainEntity.map((q) => ({ question: q.name, answer: q.acceptedAnswer.text })),
+          visible,
+          `${entry.slug} FAQPage matches the visible questions`,
+        );
+      } finally {
+        window.close();
+      }
+    }
   });
 
   it('cites each milestone and the review date on the rendered page', async () => {
