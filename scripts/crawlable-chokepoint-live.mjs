@@ -206,7 +206,7 @@ export function renderChokepointLiveSection({ chokepoint, pulse, live = false })
   const openStatusHtml = narrative !== null
     ? escapeHtml(narrative.passage)
     : `World Monitor has not published current passage evidence for ${escapeHtml(chokepoint.displayName)} yet.`;
-  const openStatusSection = `        <h2>Is ${escapeHtml(chokepoint.displayName)} open right now?</h2>
+  const openStatusSection = `        <h2>Is the ${escapeHtml(chokepoint.displayName)} open right now?</h2>
         <p data-chokepoint-open-status>${openStatusHtml}</p>
 ${narrative !== null
     ? `        <p data-chokepoint-score-driver>${escapeHtml(narrative.scoreDriver)}</p>`

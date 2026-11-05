@@ -51,13 +51,13 @@ const ALLOWED_HEADERS = [
 ].join(', ');
 
 const EXPOSED_HEADERS = [
+  'Allow',
   'Mcp-Session-Id',
   'WWW-Authenticate',
   'Retry-After',
   'Idempotency-Key',
   'Idempotent-Replayed',
   'Location',
-  'Allow',
   // See api/_cors.js — the gateway emits this on every billing-verification
   // denial and cross-origin clients could not read it (#5622).
   'X-Billing-Verification',

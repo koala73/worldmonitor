@@ -1434,12 +1434,10 @@ describe('deploy/cache configuration guardrails', () => {
     assert.match(viteConfigSource, /manifestTransforms:\s*\[dashboardPrecache\.manifestTransform\]/);
   });
 
-  it('emits public sourcemaps for preview attribution while production stays opt-in (#7382)', () => {
-    assert.match(
-      viteConfigSource,
-      /const emitPublicSourceMaps = process\.env\.WM_EMIT_SOURCEMAPS === '1'[\s\S]*\|\| process\.env\.VERCEL_ENV === 'preview'/,
-    );
-    assert.match(viteConfigSource, /sourcemap:\s*emitPublicSourceMaps/);
+  it('routes sourcemap output through the policy that keeps production maps Sentry-only (#7382)', () => {
+    assert.match(viteConfigSource, /const emitPublicSourceMaps = shouldEmitPublicSourceMaps\(process\.env\)/);
+    assert.match(viteConfigSource, /sourcemap:\s*viteSourcemapSetting\(process\.env\)/);
+    assert.match(viteConfigSource, /emitPublicSourceMaps \? \[\] : \[stripPrivateSourceMapsPlugin\(\)\]/);
   });
 
 
@@ -2782,6 +2780,37 @@ describe('security header guardrails', () => {
         /include \/etc\/nginx\/(?:embed_|oauth_authorize_|youtube_embed_)?security_headers\.conf;/,
         `docker/nginx.conf.template ${location} must include an origin-keying header set`,
       );
+    }
+  });
+
+  it('keeps every self-hosted image route out of search indexes', () => {
+    // Self-hosted pages keep www.worldmonitor.app canonicals, so an indexed copy can
+    // only compete with the official page (wm.tanukihitokiri.ru, 2026-11).
+    const noindex = /add_header X-Robots-Tag "noindex, follow" always;/;
+
+    const sidecarLocationBlocks = [...dockerNginxSource.matchAll(/^ {4}location [^{]+\{\n([\s\S]*?)^ {4}\}/gm)];
+    assert.ok(sidecarLocationBlocks.length > 0, 'docker/nginx.conf must define route locations');
+    for (const [locationBlock] of sidecarLocationBlocks) {
+      const location = locationBlock.match(/^ {4}location ([^{]+)\{/)?.[1].trim() ?? '<unknown>';
+      assert.match(locationBlock, noindex, `docker/nginx.conf ${location} must send X-Robots-Tag noindex`);
+    }
+
+    const includedHeaderFiles = {
+      'security_headers.conf': 'docker/nginx-security-headers.conf',
+      'embed_security_headers.conf': 'docker/nginx-embed-security-headers.conf',
+      'oauth_authorize_security_headers.conf': 'docker/nginx-oauth-authorize-security-headers.conf',
+      'youtube_embed_security_headers.conf': 'docker/nginx-youtube-embed-security-headers.conf',
+    };
+    const nginxTemplate = readFileSync(resolve(__dirname, '../docker/nginx.conf.template'), 'utf-8');
+    const frontendLocationBlocks = [...nginxTemplate.matchAll(/^ {4}location [^{]+\{\n([\s\S]*?)^ {4}\}/gm)];
+    assert.ok(frontendLocationBlocks.length > 0, 'docker/nginx.conf.template must define route locations');
+    for (const [locationBlock] of frontendLocationBlocks) {
+      const location = locationBlock.match(/^ {4}location ([^{]+)\{/)?.[1].trim() ?? '<unknown>';
+      const included = locationBlock.match(/include \/etc\/nginx\/(\S+\.conf);/)?.[1];
+      const source = included
+        ? readFileSync(resolve(__dirname, `../${includedHeaderFiles[included]}`), 'utf-8')
+        : locationBlock;
+      assert.match(source, noindex, `docker/nginx.conf.template ${location} must send X-Robots-Tag noindex`);
     }
   });
 

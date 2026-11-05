@@ -1952,6 +1952,8 @@
       "infoTooltip": "<strong>Tahmin Piyasalari</strong> Gercek parali tahmin piyasalari:<ul><li>Fiyatlar kalabalik olasilik tahminlerini yansitir</li><li>Yuksek hacim = daha guvenilir sinyal</li><li>Jeopolitik ve guncel olaylara odakli</li></ul>Kaynak: Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "Önceki sütunlar",
+      "moreColumns": "Diğer sütunlar",
       "unavailable": "borsada işlem gören fon verileri geçici olarak kullanılamıyor",
       "rateLimited": "borsada işlem gören fon verileri geçici olarak kullanılamıyor (oran sınırlı) — kısa süre içinde yeniden deneniyor",
       "netFlow": "Net Akis",

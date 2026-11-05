@@ -1948,6 +1948,8 @@
       "infoTooltip": "<strong>予測市場</strong> リアルマネー予測市場:<ul><li>価格は群衆の確率推定を反映</li><li>取引量が多いほど信頼性の高いシグナル</li><li>地政学・時事問題に焦点</li></ul>ソース: Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "前の列",
+      "moreColumns": "他の列",
       "unavailable": "上場投資信託データは一時的に利用できません",
       "rateLimited": "上場投資信託データは一時的に利用できません(レート制限) — 間もなく再試行します",
       "netFlow": "純フロー",

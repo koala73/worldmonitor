@@ -17,6 +17,8 @@ Rendering contract: the blog used to load these families from Google Fonts. Ever
 below exists to render exactly what that produced:
   * Characters Google did not serve for a family (arrows, CJK, Arabic...) stay with the
     system fallback, so the coverage snapshot in google-fonts-snapshot.json caps every file.
+  * Characters inside Google's unicode-ranges that none of its files draw stay inside the
+    core file's range: Chrome renders some of them (U+2011) differently outside every range.
   * @font-face weights mirror Google's per-weight faces, so CSS weight matching (and
     synthetic italics/bold) is unchanged.
   * Axes keep a side of their range unless no rendered weight needs it; trimming the far
@@ -36,6 +38,7 @@ import io
 import json
 import re
 import sys
+import unicodedata
 import urllib.request
 from pathlib import Path
 
@@ -224,6 +227,10 @@ def load_snapshot():
             for cp in parse_unicode_range(s['renders']):
                 f['partition'].setdefault(cp, name)
         f['coverage'] = set(f['partition'])
+        # In one of Google's unicode-ranges but drawn by none of its files. Chrome renders these
+        # differently once they leave every range (U+2011 takes the face's hyphen only while in
+        # range), so the core file's range keeps them.
+        f['in_no_file'] = set().union(*(parse_unicode_range(s['unicode_range']) for s in f['subsets'].values())) - f['coverage']
     return snap
 
 
@@ -537,6 +544,10 @@ def build(crawl_path: Path, verify_google: bool):
             raise SystemExit(f"{fam}: font-variation-settings in use {dict(u['variation_settings'])}: handle axes for it")
         font_features = {fr.FeatureTag for t in ('GSUB', 'GPOS') if t in base for fr in base[t].table.FeatureList.FeatureRecord}
         features &= font_features
+        # HarfBuzz builds fractions around U+2044 FRACTION SLASH without being asked (not around
+        # U+2215). The features pull in numerator and denominator digits (0.5-3 KB per file), so
+        # only a file that has U+2044 keeps them.
+        fraction_features = {'frac', 'numr', 'dnom'} & font_features
 
         def features_for(style):
             """HarfBuzz features and language for one run, as Chromium would shape it."""
@@ -555,7 +566,14 @@ def build(crawl_path: Path, verify_google: bool):
         family_pages = set().union(*u['pages'].values()) if u['pages'] else set()
         frequent = {cp for cp in used - ASCII if len(u['pages'][cp]) >= CORE_PAGE_SHARE * max(1, len(family_pages))}
         want = (used | LATIN1 | LATIN_EXT_A | ASCII | CORE_PUNCT) & cov & src_cmap
-        core = (ASCII | CORE_PUNCT | frequent) & want
+        # Google's latin file also maps the combining marks in its range (U+0304, U+0308, U+0329).
+        # Letters no Google file has a glyph for (Ǖ = U + U+0308 + U+0304) sit in the core's range
+        # and are composed from those marks, so the core keeps the ones such letters use.
+        parts = {ord(x) for c in g['in_no_file'] for x in unicodedata.normalize('NFD', chr(c))}
+        latin_marks = {cp for cp in parse_unicode_range(g['subsets']['latin']['unicode_range'])
+                       if unicodedata.category(chr(cp)) == 'Mn'} & parts & cov & src_cmap
+        want |= latin_marks
+        core = (ASCII | CORE_PUNCT | frequent | latin_marks) & want
         ext = want - core
 
         # --- shaping check: move characters into the core until splitting changes nothing
@@ -578,7 +596,7 @@ def build(crawl_path: Path, verify_google: bool):
         log(f'{fam}: core {len(core)} chars, ext {len(ext)} chars, moved to core for shaping: {list(moved)}')
 
         # --- subset
-        def make(cps, plan):
+        def make(cps, plan, part):
             f = TTFont(io.BytesIO(font_bytes(base)))
             if plan and 'fvar' in f:
                 # optimize=True re-runs IUP delta optimization, which is what Google's own serving
@@ -588,14 +606,16 @@ def build(crawl_path: Path, verify_google: bool):
                 # subsetter cannot index (KeyError on e.g. 'braceright.case.tf'). Reload from bytes.
                 f = TTFont(io.BytesIO(font_bytes(f)))
             opts = ftsubset.Options()
-            opts.layout_features = sorted(features)
+            opts.layout_features = sorted(features | (fraction_features if 0x2044 in cps else set()))
             opts.layout_scripts = ['*']
             # The sources carry no glyph instructions, fpgm or cvt; their only hinting is a 7-byte
             # prep that sets dropout control. Google serves it to Windows and Linux, so it stays.
             opts.hinting = True
             opts.name_IDs = [0, 1, 2, 3, 4, 5, 6, 14]
             opts.name_languages = [0x409]
-            opts.notdef_outline = False
+            # Characters in Google's ranges that no file draws sit in the core's range, so Chrome
+            # draws the core's .notdef for them, as it drew Google's (Inter's is a NO GLYPH box).
+            opts.notdef_outline = part == 'core'
             # fontTools drops glyph names by default (post format 3). macOS CoreText then rasterizes
             # 11-14px text differently from Google's files, which keep them (format 2).
             opts.glyph_names = True
@@ -645,7 +665,7 @@ def build(crawl_path: Path, verify_google: bool):
                 continue  # pinning rounds outlines; only take it when parity can be proven
             built = {}
             for part, cps in (('core', core), ('ext', ext)):
-                font = make(cps, plan)
+                font = make(cps, plan, part)
                 cmap = set(font.getBestCmap())
                 if cps - cmap:
                     failures.append(f'{fam} {part}: subset lost {format_unicode_range(cps - cmap)}')
@@ -676,7 +696,8 @@ def build(crawl_path: Path, verify_google: bool):
         for part, (font, data, cmap) in built.items():
             name = f"{cfg['slug']}-{part}.woff2"
             staged[FONT_DIR / name] = data
-            files[part] = {'file': name, 'bytes': len(data), 'unicode_range': format_unicode_range(cmap),
+            files[part] = {'file': name, 'bytes': len(data),
+                           'unicode_range': format_unicode_range(cmap | g['in_no_file'] if part == 'core' else cmap),
                            'glyphs': font['maxp'].numGlyphs,
                            'axes': {a.axisTag: [a.minValue, a.defaultValue, a.maxValue] for a in font['fvar'].axes} if 'fvar' in font else {},
                            'features': sorted({fr.FeatureTag for t in ('GSUB', 'GPOS') if t in font for fr in font[t].table.FeatureList.FeatureRecord}),
