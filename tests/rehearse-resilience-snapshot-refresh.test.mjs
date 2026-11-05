@@ -150,6 +150,21 @@ describe('resilience snapshot refresh rehearsal', () => {
     assert.ok(step.env.SNAPSHOT_CONSUMERS, 'the step carries the pattern that selects its verify suites');
   });
 
+  it('regenerates what npm run test:data generates before running the data tests', () => {
+    // The step calls run-data-tests.mjs directly, which skips npm's pretest:data
+    // hook, so a selected suite read the stale committed docs date manifest.
+    const step = readRehearsedStep(readFileSync(resolve(repoRoot, REFRESH_WORKFLOW_PATH), 'utf8'));
+    const packageScripts = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8')).scripts;
+    const testsAt = step.run.indexOf('node scripts/run-data-tests.mjs');
+    assert.notEqual(testsAt, -1, 'the step runs the data tests');
+    const beforeTests = refreshScripts(step.run.slice(0, testsAt), packageScripts);
+    const pretest = refreshScripts(packageScripts['pretest:data'] ?? '', packageScripts);
+    assert.ok(pretest.length > 0, 'pretest:data runs a generator');
+    for (const script of pretest) {
+      assert.ok(beforeTests.includes(script), `the refresh step must run ${script} (pretest:data) before its data tests`);
+    }
+  });
+
   it('rehearses a change to a verify suite, a refresh script, a corpus module or the snapshot, and nothing else', () => {
     const consumers = 'resilienceSnapshot|crawlable-corpus';
     const sources = {

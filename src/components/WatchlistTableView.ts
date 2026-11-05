@@ -200,7 +200,7 @@ export class WatchlistTableView<T> {
         ${intro}
         ${controls}
         <div class="watchlist-table-scroll table-scroll" data-watchlist-scroll="1" role="group" tabindex="0"${labelledBy}>
-          <table class="watchlist-table">
+          <table class="wm-table watchlist-table">
             <thead><tr>${headers}</tr></thead>
             <tbody>${tableBody}</tbody>
           </table>
@@ -237,7 +237,7 @@ export class WatchlistTableView<T> {
     if (baseHeight + extraHeight <= 0) return '';
     const extra = extraHeight > 0 ? ` + ${extraHeight}px` : '';
     const height = `calc(${baseHeight}px * var(--wm-panel-effective-scale, 1)${extra})`;
-    return `<tr class="watchlist-virtual-spacer watchlist-virtual-spacer-${position}" aria-hidden="true"><td colspan="${this.config.columns.length}" style="height:${height};padding:0;border:0"></td></tr>`;
+    return `<tr class="watchlist-virtual-spacer watchlist-virtual-spacer-${position}" aria-hidden="true"><td colspan="${this.config.columns.length}" style="height:${height}"></td></tr>`;
   }
 
   private shouldVirtualize(list: T[]): boolean {

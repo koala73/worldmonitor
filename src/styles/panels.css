@@ -99,6 +99,45 @@
   }
 }
 
+/* One header and cell style for every panel table. A panel's own table
+   rules keep only widths, column alignment and state colours
+   (tests/panel-table-style.test.mjs). The cell rules sit below class
+   specificity, so a class on a cell (.change-positive, a panel's accent
+   column) always wins. */
+.wm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+:where(.wm-table) th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: start;
+  text-transform: uppercase;
+}
+
+:where(.wm-table) td,
+:where(.wm-table) > tbody > tr > th {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+/* A row header (<th scope="row">) is a body cell, not a column header. The
+   child combinators keep it to the table's own rows: an expanded watchlist row
+   nests a table, with its own column headers, inside the outer tbody. */
+:where(.wm-table) > tbody > tr > th {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .table-scroll {
   overflow-x: auto;
 }
@@ -696,27 +735,6 @@
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
-.fires-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.fires-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.fires-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
-}
-
 .fire-row:hover {
   background: var(--surface-hover);
 }
@@ -726,7 +744,7 @@
 }
 
 .fire-row.fires-high .fire-hi {
-  color: var(--threat-critical);
+  color: var(--semantic-critical-text, var(--threat-critical));
   font-weight: 600;
 }
 
@@ -862,30 +880,9 @@
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
-.climate-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.climate-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
 .climate-table th:nth-child(2),
 .climate-table th:nth-child(3) {
   text-align: right;
-}
-
-.climate-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
 }
 
 .climate-row {
@@ -901,7 +898,7 @@
 }
 
 .climate-extreme-row:hover {
-  background: color-mix(in srgb, var(--semantic-critical) 10%, transparent);
+  background: color-mix(in srgb, var(--semantic-critical) 8%, transparent);
 }
 
 .climate-zone {
@@ -934,11 +931,11 @@
 }
 
 .climate-cold {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .climate-wet {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .climate-dry {
@@ -954,7 +951,7 @@
 }
 
 .severity-extreme {
-  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
+  background: color-mix(in srgb, var(--semantic-critical) 8%, transparent);
   color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
@@ -965,7 +962,7 @@
 
 .severity-normal {
   background: var(--overlay-medium);
-  color: var(--text-dim);
+  color: var(--text-secondary);
 }
 
 /* ----------------------------------------------------------
@@ -1026,29 +1023,11 @@
 /* disp-tabs: now uses shared .panel-tabs / .panel-tab */
 
 .disp-table {
-  width: 100%;
-  border-collapse: collapse;
   table-layout: fixed;
-}
-
-.disp-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
 }
 
 .disp-table th:nth-child(3) {
   text-align: right;
-}
-
-.disp-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
 }
 
 .disp-row {
@@ -1078,7 +1057,7 @@
 }
 
 .disp-crisis {
-  background: color-mix(in srgb, var(--semantic-critical) 20%, transparent);
+  background: color-mix(in srgb, var(--semantic-critical) 8%, transparent);
   color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
@@ -1108,9 +1087,7 @@
 .disp-round {
   width: 84px;
   min-width: 84px;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
 }
 
 .disp-source-note {
@@ -1156,29 +1133,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-.ucdp-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.ucdp-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-}
-
 .ucdp-table th:nth-child(2) {
   text-align: right;
-}
-
-.ucdp-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
 }
 
 .ucdp-row {
@@ -1190,7 +1146,6 @@
 }
 
 .ucdp-date {
-  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -1229,7 +1184,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-dim);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
 
@@ -1472,19 +1426,7 @@
 }
 
 .giving-table {
-  width: 100%;
-  border-collapse: collapse;
   table-layout: fixed;
-}
-
-.giving-table th {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  text-align: left;
-  text-transform: uppercase;
 }
 
 .giving-table th:first-child,
@@ -1494,9 +1436,6 @@
 
 .giving-table td {
   min-width: 0;
-  padding: 7px 8px;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
   vertical-align: top;
   overflow-wrap: anywhere;
 }
@@ -1578,11 +1517,6 @@
   .giving-table th:first-child,
   .giving-table td:first-child {
     width: 36%;
-  }
-
-  .giving-table th,
-  .giving-table td {
-    padding-inline: 5px;
   }
 }
 
@@ -2156,9 +2090,10 @@
 
 .fdi-row-line2 {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   width: 100%;
-  gap: 6px;
+  gap: 2px 6px;
   padding-left: 22px;
   margin-top: 1px;
 }
@@ -3357,18 +3292,18 @@ body.panel-drag-active .map-bottom-grid:empty::after {
 /* Grocery Basket Panel */
 .gb-wrapper { overflow: hidden; }
 .gb-scroll { overflow-x: auto; }
-.gb-table { border-collapse: collapse; width: 100%; font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1)); }
-.gb-table th, .gb-table td { padding: 4px 6px; border: 1px solid rgba(255,255,255,0.08); text-align: right; white-space: nowrap; }
+/* Column rules on top of the shared row rules: the basket is a country-by-item matrix. */
+.gb-table th, .gb-table td { border-inline: 1px solid var(--border-subtle); text-align: right; vertical-align: top; white-space: nowrap; }
 .gb-item-col, .gb-item-name { text-align: start; min-width: 110px; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
-.gb-country-header { text-align: center; font-weight: 600; min-width: 80px; }
-.gb-country-name { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.7; }
+.gb-country-header { text-align: center; min-width: 80px; }
+.gb-country-name { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); }
 .gb-cell { position: relative; }
-.gb-local { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.6; }
-.gb-unit { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.5; }
-.gb-na { opacity: 0.3; text-align: center; }
-.gb-cheapest { background: rgba(34,197,94,0.15); color: #4ade80; }
-.gb-priciest { background: rgba(239,68,68,0.1); color: #f87171; }
-.gb-total-row td { border-top: 2px solid rgba(255,255,255,0.2); }
+.gb-local { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); }
+.gb-unit { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); }
+.gb-na { text-align: center; }
+.gb-cheapest { background: rgba(34,197,94,0.15); color: var(--green-text, #4ade80); }
+.gb-priciest { background: rgba(239,68,68,0.1); color: var(--red-text, #f87171); }
+.gb-total-row td { border-top: 2px solid var(--border); }
 .gb-wow { display: block; font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); opacity: 0.85; margin-top: 1px; }
 .gb-updated { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); opacity: 0.4; text-align: right; padding: 4px 6px; }
 
@@ -3816,11 +3751,6 @@ a.hub-top-story {
   border-radius: 3px;
 }
 
-.watchlist-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
 .watchlist-table-scroll {
   /* Keep the complete row box proportional to the effective text scale. The
      virtual scroller measures this value for its scroll-to-index mapping. */
@@ -3830,14 +3760,6 @@ a.hub-top-story {
   overscroll-behavior: contain;
 }
 .watchlist-table thead th {
-  text-align: left;
-  color: var(--text-dim);
-  font-weight: 500;
-  text-transform: uppercase;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 0.4px;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
   position: sticky;
   top: 0;
@@ -3874,9 +3796,6 @@ a.hub-top-story {
 .watchlist-table tbody tr.watchlist-row-expanded {
   background: var(--overlay-light);
 }
-.watchlist-table tbody td {
-  padding: 6px 4px;
-}
 .watchlist-table tbody td.watchlist-td-right {
   text-align: right;
 }
@@ -3886,6 +3805,8 @@ a.hub-top-story {
   border-bottom: 1px solid var(--border);
 }
 .watchlist-table tbody tr.watchlist-virtual-spacer > td {
+  padding: 0;
+  border: 0;
   pointer-events: none;
 }
 .watchlist-empty {
@@ -3894,6 +3815,32 @@ a.hub-top-story {
   color: var(--text-dim);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
+
+/* Economic Calendar: events grouped under date rows. */
+.ec-table { table-layout: fixed; }
+.ec-date-row td {
+  padding-top: 10px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ec-event { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ec-impact { text-align: center; vertical-align: middle; }
+.ec-value { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ec-actual { color: var(--text); font-weight: 600; }
+.ec-countdown { color: var(--text-dim); font-style: italic; }
+.ec-empty { padding: 20px 0; text-align: center; color: var(--text-dim); }
+
+/* WSB Ticker Scanner */
+.wsb-table th { white-space: nowrap; }
+.wsb-table th[data-sort] { cursor: pointer; user-select: none; }
+.wsb-num { text-align: right; }
+.wsb-rank { min-width: 20px; color: var(--text-dim); text-align: right; }
+.wsb-ticker { color: var(--text); font-family: var(--font-mono); font-weight: 700; }
+.wsb-velocity { min-width: 80px; vertical-align: middle; }
+.wsb-empty { padding: 16px; text-align: center; color: var(--text-dim); }
 
 /* ----------------------------------------------------------
    FX panel (#6199) — stress table + the two spot-rate tables
@@ -3904,9 +3851,6 @@ a.hub-top-story {
   max-height: 100%;
 }
 .fx-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-variant-numeric: tabular-nums;
 }
 .fx-table thead th {
@@ -3914,21 +3858,12 @@ a.hub-top-story {
   top: 0;
   z-index: 1;
   background: var(--panel-bg, var(--bg));
-  padding: 4px 6px;
   text-align: right;
-  font-weight: 600;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 .fx-table td {
-  padding: 4px 6px;
   text-align: right;
   white-space: nowrap;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 .fx-table th.fx-ccy,
 .fx-table td.fx-ccy {
@@ -3962,7 +3897,8 @@ a.hub-top-story {
 .fx-flat {
   color: var(--text-dim);
 }
-.fx-window {
+/* Body cells only: the column headers keep the shared header style. */
+td.fx-window {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
@@ -3978,10 +3914,10 @@ a.hub-top-story {
   font-variant-numeric: tabular-nums;
 }
 .fx-window-dates {
-  opacity: 0.7;
+  color: var(--text-dim);
 }
 /* The raw seeded direction, shown beside the conventional quote. */
-.fx-inverse {
+td.fx-inverse {
   color: var(--text-dim);
 }
 .fx-section-title {

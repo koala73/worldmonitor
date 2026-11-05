@@ -542,15 +542,39 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            pro-test/package-lock.json
-            blog-site/package-lock.json
       - uses: ./.github/actions/install-root-deps
+      # Like the unit shards' nested-deps cache: the two nested trees are
+      # restored whole. Before, setup-node restored the npm download cache for
+      # all three lockfiles (6-9s, most of it the root's), and the two installs
+      # still took 3s (blog-site) and 12s (pro-test). The key hashes every
+      # file that decides their contents (both trees link packages from
+      # vendor/); bump the version when an install command below, ci:blog-site,
+      # or the install half of build:pro in package.json changes.
+      - name: Restore blog-site and pro-test dependencies
+        id: built-output-deps
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: built-output-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'blog-site/.npmrc', 'pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**') }}
+      - name: Install blog-site deps
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        run: npm run ci:blog-site
+      - name: Install /pro deps
+        # The install half of build:pro; the build step below runs the other.
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        env:
+          npm_config_allow_scripts: ''
+        run: npm --prefix pro-test ci --prefer-offline
+      - name: Save blog-site and pro-test dependencies
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: ${{ steps.built-output-deps.outputs.cache-primary-key }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -634,15 +658,15 @@ jobs:
           retention-days: 14
       - name: Build and verify buying guides
         run: |
-          npm run ci:blog-site
           npm --prefix blog-site run build
           npm --prefix blog-site run verify:guides
       - name: Build /pro artifacts for built-output tests
         # public/pro/ stopped being committed in #6898, so the suites that read
         # it need the same treatment dist/ already gets. Ordered before the
         # dashboard build to mirror production: root `vite build` copies
-        # public/ into dist/, so /pro must exist by then.
-        run: npm run build:pro
+        # public/ into dist/, so /pro must exist by then. This is the build
+        # half of build:pro; its install half is the cached step above.
+        run: npm --prefix pro-test run build
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - name: Client bundle size budget (#7111, #7119)

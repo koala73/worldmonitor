@@ -878,6 +878,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/desktop-key/status.ts",
+      "category": "internal-helper",
+      "reason": "Desktop-key verdict for self-hosted installs (plan 2026-11-04-001 U2). A self-hosted sidecar sends a browser's desktop key in X-WorldMonitor-Key and gets back whether it currently grants desktop scope (active, invalid, not_desktop_key, over_cap, lapsed) or a retryable 503. Not a product data API and not premium-gated: the key being checked may be lapsed or revoked, and it must not spend the owner's desktop-key daily meter the way probing a premium RPC would. Body carries only the verdict and a coarse plan family, no owner identity; always no-store.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/embed/map-frame.ts",
       "category": "internal-helper",
       "reason": "The single composed read the partner /embed map frame polls, replacing four separate anonymous RPC calls. Not a product data API: it accepts one parameter (`layers`) and returns the verbatim payloads of handlers already published as sebuf RPCs — no bbox, page size, or time window, because every knob is a knob a stolen embed credential could turn. Deliberately NOT a sebuf RPC of its own: the free and keyed tiers need different Cache-Control on one path, and CACHE_TIER_BY_PATH in the domain gateway is per-path, so routing it there would let a keyless response be cached and served to a keyed caller. Shareability is decided from the URL alone, before any credential is read (a CDN hit answers before the origin sees a header — #5386): only the exact raw query `layers=<canonical free subset>&public=1` is shared-cacheable, bounding the CDN key space to the free tier's seven non-empty subsets. Every other shape, credentialed or not, is served `private, no-store`, so a near-miss degrades to correct-but-uncached rather than to a shared entry that could answer the wrong caller. Builder and validator are one module (shared/embed-map-frame.ts) so an emitted URL and a cacheable URL cannot drift.",

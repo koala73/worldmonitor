@@ -94,6 +94,9 @@ jobs:
           # llms-full corpus does. Omitting it here would leave the committed
           # figures a month stale and turn the drift test red on main.
           npm run build:ai-search
+          # run-data-tests.mjs skips npm's pretest:data hook, which regenerates
+          # the docs date manifest; docs-locale-seo fails on the stale copy.
+          npm run docs:dates
           mapfile -t suites < <(grep -lE "$SNAPSHOT_CONSUMERS" tests/*.test.mjs tests/*.test.mts)
           # No built-output filter: it drops whole suites such as
           # public-product-facts, which skip only their build-only cases here.

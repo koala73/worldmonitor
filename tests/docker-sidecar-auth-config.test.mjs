@@ -315,6 +315,20 @@ test('Docker compose forwards optional trusted proxy CIDRs to the API container'
   assert.match(compose, /WM_TRUSTED_PROXY_CIDRS: "\$\{WM_TRUSTED_PROXY_CIDRS:-\}"/);
 });
 
+// Plan 2026-11-04-001 (U3): the desktop-key relay's off switch and the Secure
+// cookie flag reach the sidecar only if compose forwards them, and the cookie's
+// Secure flag and the per-client POST limit read headers nginx sets on /api/.
+test('Docker forwards the desktop-key relay settings and the headers the relay reads', () => {
+  const compose = readProjectFile('docker-compose.yml');
+  const nginx = readProjectFile('docker/nginx.conf');
+  const apiBlock = nginx.match(/location \/api\/ \{[\s\S]*?\n {4}\}/)?.[0] ?? '';
+
+  assert.match(compose, /WORLDMONITOR_SELFHOST_RELAY: "\$\{WORLDMONITOR_SELFHOST_RELAY:-\}"/);
+  assert.match(compose, /WORLDMONITOR_PUBLIC_HTTPS: "\$\{WORLDMONITOR_PUBLIC_HTTPS:-\}"/);
+  assert.match(apiBlock, /proxy_set_header X-Forwarded-Proto \$scheme;/);
+  assert.match(apiBlock, /proxy_set_header X-Real-IP \$remote_addr;/);
+});
+
 test('Docker healthcheck uses the dedicated sidecar liveness route', () => {
   const dockerfile = readProjectFile('Dockerfile');
 

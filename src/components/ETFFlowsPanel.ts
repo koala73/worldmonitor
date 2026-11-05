@@ -139,7 +139,7 @@ export class ETFFlowsPanel extends Panel {
           </div>
         </div>
         <div class="etf-table-wrap table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="etf-table">
+          <table class="wm-table etf-table">
             <thead>
               <tr>
                 <th scope="col">${t('components.etfFlows.table.ticker')}</th>

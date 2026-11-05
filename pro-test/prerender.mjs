@@ -210,25 +210,34 @@ function tagAttribute(tag, name) {
   return valueEnd === -1 ? '' : tag.slice(valueStart, valueEnd);
 }
 
-// On tall desktop screens the hero screenshot is the welcome page's LCP
-// element, but React only emits an image preload for a bare <img> -- it skips
-// one inside <picture> because it cannot know which <source> the browser will
-// pick. Mirror the AVIF <source> (every browser that preloads also decodes AVIF
-// or ignores the hint by type) into a head preload so the fetch starts before
-// the body is parsed. Read from the rendered markup so the srcset and sizes can
-// never drift from Hero.tsx.
+// The hero screenshot is the welcome page's LCP element, but React only emits
+// an image preload for a bare <img> -- it skips one inside <picture> because it
+// cannot know which <source> the browser will pick. Mirror the AVIF <source>s
+// (every browser that preloads also decodes AVIF or ignores the hint by type)
+// into head preloads so the fetch starts before the body is parsed. Read from
+// the rendered markup so the srcset, sizes and media can never drift from
+// Hero.tsx.
 //
-// Desktop only: below 640px the screenshot sits about two screens under the
-// fold (the <h1> is the LCP), and at 3x DPR the preload would pull the 1280w
-// AVIF at high priority ahead of the deferred stylesheet and entry script.
-const HERO_IMAGE_PRELOAD_MEDIA = '(min-width: 640px)';
-function heroImagePreloadTag(markup) {
-  const source = markup.match(/<picture><source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
-  if (!source) {
-    console.error('[prerender] ERROR: Could not find the hero AVIF <source> in welcome markup to preload.');
+// Phones get their own preload for the fixed 640w source: since #9921 the
+// screenshot sits in the first screen there too, and a srcset preload at 3x DPR
+// would pull the 1280w AVIF ahead of the deferred stylesheet and entry script.
+const HERO_IMAGE_PHONE_MEDIA = '(max-width: 639px)';
+const HERO_IMAGE_DESKTOP_MEDIA = '(min-width: 640px)';
+function heroImagePreloadTags(markup) {
+  const phone = markup.match(/<picture><source type="image\/avif" media="([^"]+)" srcSet="([^"\s,]+)"\/>/);
+  const desktop = markup.match(/<source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
+  if (!phone || !desktop) {
+    console.error('[prerender] ERROR: Could not find the hero phone and desktop AVIF <source>s in welcome markup to preload.');
     process.exit(1);
   }
-  return '    <link rel="preload" as="image" type="image/avif" media="' + HERO_IMAGE_PRELOAD_MEDIA + '" imagesrcset="' + source[1] + '" imagesizes="' + source[2] + '" fetchpriority="high">';
+  if (phone[1] !== HERO_IMAGE_PHONE_MEDIA) {
+    console.error('[prerender] ERROR: Hero phone <source> media "' + phone[1] + '" does not match ' + HERO_IMAGE_PHONE_MEDIA + '.');
+    process.exit(1);
+  }
+  return [
+    '    <link rel="preload" as="image" type="image/avif" media="' + HERO_IMAGE_PHONE_MEDIA + '" href="' + phone[2] + '" fetchpriority="high">',
+    '    <link rel="preload" as="image" type="image/avif" media="' + HERO_IMAGE_DESKTOP_MEDIA + '" imagesrcset="' + desktop[1] + '" imagesizes="' + desktop[2] + '" fetchpriority="high">',
+  ];
 }
 
 function inlineCriticalCss(html, file, headTags = []) {
@@ -444,7 +453,7 @@ console.log('[prerender] Injected critical CSS and visible content into public/p
 
 const welcomePath = resolve(__dirname, '../public/pro', 'welcome.html');
 let welcomeBase = readFileSync(welcomePath, 'utf-8');
-welcomeBase = inlineCriticalCss(welcomeBase, 'welcome.html', [heroImagePreloadTag(englishWelcome.html)]);
+welcomeBase = inlineCriticalCss(welcomeBase, 'welcome.html', heroImagePreloadTags(englishWelcome.html));
 welcomeBase = injectGithubStars(welcomeBase, 'welcome.html');
 welcomeBase = fillProofFacts(welcomeBase, 'welcome.html');
 

@@ -9,13 +9,21 @@ import {
   DASHBOARD_SCREENSHOT_HEIGHT,
   DASHBOARD_SCREENSHOT_AVIF_SRCSET,
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
+  DASHBOARD_SCREENSHOT_AVIF_640,
+  DASHBOARD_SCREENSHOT_WEBP_640,
 } from '../assets/dashboard-screenshot';
 import { SILICON_CANALS_2M_URL } from '../../../shared/press';
 import heroProofStats from '../generated/hero-stats.json';
 import depthProofStats from '../generated/depth-stats.json';
 import { PUBLISHED_PULSE_DATE, formatLocalizedDate } from '../services/teasers';
 
-const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
+// The screenshot is the LCP element on phones as well as desktop. On a phone
+// the frame is under 640 CSS px wide, but sizes x DPR would pick the 960w or
+// 1280w variant (35-54KB), so phones get a fixed 640w source (18KB AVIF).
+// prerender.mjs mirrors both AVIF sources into head preloads; keep the
+// breakpoint in step with HERO_IMAGE_PHONE_MEDIA there.
+const HERO_IMAGE_PHONE_MEDIA = '(max-width: 639px)';
+const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, calc(100vw - 3rem)';
 
 // Homepage proof numerals are measured at build time (see heroProofStats in
 // scripts/generate-public-product-facts.mjs), never hardcoded adjectives.
@@ -85,6 +93,8 @@ const ConsoleFrame = () => (
         </span>
       </div>
       <picture>
+        <source type="image/avif" media={HERO_IMAGE_PHONE_MEDIA} srcSet={DASHBOARD_SCREENSHOT_AVIF_640} />
+        <source type="image/webp" media={HERO_IMAGE_PHONE_MEDIA} srcSet={DASHBOARD_SCREENSHOT_WEBP_640} />
         <source type="image/avif" srcSet={DASHBOARD_SCREENSHOT_AVIF_SRCSET} sizes={HERO_IMAGE_SIZES} />
         <source type="image/webp" srcSet={DASHBOARD_SCREENSHOT_WEBP_SRCSET} sizes={HERO_IMAGE_SIZES} />
         <img

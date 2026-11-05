@@ -1,11 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 const fixture = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/card.json', import.meta.url), 'utf8'));
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
   test(`food prices: source selection and dated context at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
     await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: fixture }));
     await page.addInitScript(() => {
       localStorage.setItem('wm-layer-warning-dismissed', 'true');
@@ -40,6 +42,7 @@ for (const failure of ['http', 'empty']) {
   test(`food prices: monthly ${failure} recovery keeps local prices`, async ({ page }) => {
     let failed = true;
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
     await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: fixture }));
     await page.route('**/api/economic/v1/get-fao-food-price-index*', route => failed
       ? route.fulfill({ status: failure === 'http' ? 503 : 200, json: {} })
@@ -70,6 +73,7 @@ for (const degraded of [{ sources: [] }, { unavailable: true, sources: fixture.s
   test(`food prices: local ${degraded.unavailable ? 'unavailable' : 'empty'} response offers recovery`, async ({ page }) => {
     let failed = true;
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
+    await acceptTesterKeySession(page);
     await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: failed ? degraded : fixture }));
     await page.addInitScript(() => {
       localStorage.setItem('wm-layer-warning-dismissed', 'true');
