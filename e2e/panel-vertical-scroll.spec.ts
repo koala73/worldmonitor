@@ -52,13 +52,13 @@ for (const width of [1440, 390]) {
       const economic = new EconomicCalendarPanel();
       const material = new MaterialEventsPanel();
       const wsb = new WsbTickerScannerPanel();
-      const panels = [climate, social, disease, internet, earnings, economic, material, wsb];
+      const panels: InstanceType<typeof Panel>[] = [climate, social, disease, internet, earnings, economic, material, wsb];
       for (const panel of panels) grid.append(panel.getElement());
       const now = Date.now();
       const rows = Array.from({ length: 40 }, (_, i) => i);
       social.updateData(rows.map(i => ({ id: `${i}`, title: `Social headline ${i}`, subreddit: 'worldnews', url: `https://example.test/${i}`, score: 100, upvoteRatio: 0.9, numComments: 20, velocityScore: 90 - i, createdAt: now })));
       disease.updateData(rows.map(i => ({ id: `${i}`, disease: `Outbreak ${i}`, location: 'Test location', countryCode: 'US', alertLevel: 'high', summary: 'Fixture outbreak summary.', sourceUrl: 'https://example.test', publishedAt: now, sourceName: 'Test source', lat: 0, lng: 0, cases: 1 })));
-      internet.setOutages(rows.map(i => ({ id: `${i}`, country: 'United States', title: `Outage ${i}`, severity: 'major', pubDate: new Date(now), link: 'https://example.test', outageDate: new Date(now), categories: [], cause: '' })));
+      internet.setOutages(rows.map(i => ({ id: `${i}`, country: 'United States', title: `Outage ${i}`, description: 'Fixture outage', lat: 0, lon: 0, severity: 'major', pubDate: new Date(now), link: 'https://example.test', outageDate: new Date(now), categories: [], cause: '' })));
       wsb.updateData(rows.map(i => ({ symbol: `SYM${i}`, mentionCount: 100 - i, totalScore: 100, subreddits: ['wallstreetbets'], velocityScore: 90 - i })));
       await Promise.all([climate.fetchData(), earnings.fetchData(), economic.fetchData(), material.fetchData()]);
       // CSS-only list fixtures cover secondary sections whose provider/model
@@ -74,6 +74,15 @@ for (const width of [1440, 390]) {
           list.append(row);
         }
         panel.getElement().querySelector('.panel-content')!.replaceChildren(list);
+        if (className === 'economic-content') {
+          const tabs = document.createElement('div');
+          tabs.className = 'panel-tabs';
+          const tab = document.createElement('button');
+          tab.className = 'panel-tab active';
+          tab.textContent = 'Economic indicators';
+          tabs.append(tab);
+          list.before(tabs);
+        }
         grid.append(panel.getElement());
         panels.push(panel);
       }
@@ -96,6 +105,11 @@ for (const width of [1440, 390]) {
         }));
         expect.soft(metrics.nested, `${id} ${height}px nested scrollers`).toEqual([]);
         expect.soft(metrics.height, `${id} ${height}px populated content`).toBeGreaterThan(0);
+        if (id === 'scroll-economic-content') {
+          const tabs = content.locator('.panel-tabs');
+          expect(await tabs.evaluate(el => el.clientHeight)).toBeGreaterThan(20);
+          expect(await tabs.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+        }
         await content.focus();
         await expect.poll(() => content.evaluate(el => { el.scrollTo({ top: 0, behavior: 'instant' }); return el.scrollTop; }), { message: `${id} scroll reset` }).toBe(0);
         await content.press('PageDown');

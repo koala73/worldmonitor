@@ -29,7 +29,7 @@ height limits belong to the panel/grid. Horizontal table wrappers retain
 | WSB Ticker Scanner | Remove the 480px vertical cap; retain the focusable horizontal table wrapper. |
 | Internet Disruptions | Remove the 320px caps on outage/anomaly lists and DDoS content. |
 | Oref Sirens history, Cascade countries, Strategic Risk alerts, Pinned Webcams overflow list | Remove secondary list caps; the shared panel body reaches these sections. |
-| Economic indicators, Trade Policy, Supply Chain | Stop `.economic-content` shrinking into an independent scrollport. |
+| Economic indicators, Trade Policy, Supply Chain | Let tabs, `.economic-content`, and footers flow normally through the shared scrollport, without shrinking the tabs. |
 | Deduct Situation | Remove the inner full-height scrollport so the form and result flow through the panel body. |
 
 No changed list renderer consumes its own `scrollTop` or registers scroll-driven

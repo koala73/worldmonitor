@@ -12524,14 +12524,8 @@ button.popup-link {
 
 /* economic-tabs: now uses shared .panel-tabs / .panel-tab */
 
-.panel-content:has(.economic-content) {
-  display: flex;
-  flex-direction: column;
-}
-
 .economic-content {
   padding: 8px;
-  flex: 0 0 auto;
 }
 
 .economic-content-macro {
