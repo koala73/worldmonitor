@@ -890,8 +890,8 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
         // across the upper 20% of the capped exponential window.
         const baseWait = Math.round(ceiling * (0.8 + Math.random() * 0.2));
         const retryAfterMs = Number(err?.retryAfterMs);
-        // Do not undercut a provider hint that cannot fit our bounded wait.
-        if (retryAfterMs > capMs) throw err;
+        // Provider cooldowns can exceed the backoff cap; callers with phase
+        // budgets reject hints that cannot fit before starting another attempt.
         const wait = Number.isFinite(retryAfterMs) ? Math.max(baseWait, retryAfterMs) : baseWait;
         const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
         console.warn(`  Retry ${attempt + 1}/${maxRetries} in ${wait}ms: ${err.message || err}${cause}`);

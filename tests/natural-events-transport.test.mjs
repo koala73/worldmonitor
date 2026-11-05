@@ -584,6 +584,7 @@ test('throwing diagnostic getters preserve bounded failures and the retry limit'
 
 test('failure timing separates each request duration from total elapsed time', async t => {
   useRealRetryDelay(t);
+  t.mock.method(Math, 'random', () => 0);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);
@@ -607,6 +608,7 @@ test('failure timing separates each request duration from total elapsed time', a
 
 test('failure phase timings distinguish late headers from a stalled body and reset on retry', async t => {
   useRealRetryDelay(t);
+  t.mock.method(Math, 'random', () => 0);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);

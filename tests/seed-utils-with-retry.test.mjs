@@ -71,7 +71,7 @@ describe('parseRetryAfterMs', () => {
 });
 
 describe('withRetry', () => {
-  it('caps exponential waits with jitter and refuses Retry-After beyond the cap', async t => {
+  it('caps exponential waits with jitter and preserves longer provider cooldowns', async t => {
     const sleeps = [];
     t.mock.method(globalThis, 'setTimeout', (callback, ms) => {
       sleeps.push(ms);
@@ -85,13 +85,11 @@ describe('withRetry', () => {
     t.mock.method(Math, 'random', () => 1);
     await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
     assert.deepEqual(sleeps, [50_000, 60_000, 60_000]);
-    let calls = 0;
+    sleeps.length = 0;
     await assert.rejects(withRetry(async () => {
-      calls++;
       throw Object.assign(new Error('quota'), { retryAfterMs: 120_000 });
-    }), /quota/);
-    assert.equal(calls, 1);
-    assert.equal(sleeps.length, 3, 'a long hint must not schedule an early retry');
+    }, 1), /quota/);
+    assert.deepEqual(sleeps, [120_000], 'provider cooldowns must not be undercut');
   });
 
   it('rejects unbounded retry configurations before calling the operation', async () => {
