@@ -1,14 +1,15 @@
 ---
-title: "10 Best Global Conflict Trackers in 2026: Choose by Use Case"
-description: "Compare ten conflict monitoring tools for live maps, policy briefings, event data, and humanitarian analysis, with primary sources and clear limits."
-metaTitle: "10 Best Global Conflict Trackers in 2026 | World Monitor"
+title: "14 Best Global Conflict Trackers in 2026: Choose by Use Case"
+description: "Compare 14 conflict trackers for live war maps, active-war lists, policy briefings, event data, and humanitarian analysis, with sources and clear limits."
+metaTitle: "14 Best Global Conflict Trackers in 2026 | World Monitor"
 keywords: "global conflict tracker, conflict monitoring tools, live conflict map, geopolitical risk dashboard, OSINT tools 2026"
 audience: "Analysts, researchers, journalists, and policy teams"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-09-20"
+modifiedDate: "2026-11-05"
 ---
 
-The best global conflict tracker depends on the question. Use **World Monitor** to view conflict reports alongside aviation, shipping, and market signals; **CFR** for policy context; **ACLED** for structured political violence and protest data; and **UCDP** for conflict research. A live map and a research dataset serve different needs.
+The best global conflict tracker depends on the question. Use **World Monitor** to view conflict reports alongside aviation, shipping, and market signals; **CFR** for policy context; **ACLED** for structured political violence and protest data; and **UCDP** for conflict research. A live map and a research dataset serve different needs. For a quick list of wars happening now, independent trackers such as **Armed Conflicts**, **WarMonit**, and **War Radar** publish dated lists, but each defines an active war differently.
 
 This guide compares monitoring resources, including specialist sources that complement a tracker. It is published by World Monitor, which is included in the comparison. The order groups use cases; it is not an independent performance ranking or a measured speed benchmark.
 
@@ -36,6 +37,10 @@ On narrow screens, scroll the table horizontally to read all four columns.
 | UCDP | Historical conflict research | Documented datasets and candidate releases | Coding rules and release lag affect comparisons |
 | ACAPS | Humanitarian crisis analysis | Severity measures and analytical reports | Humanitarian severity differs from military activity |
 | Bellingcat | Verifying specific incidents | Investigations and research resources | Not a continuous global event tracker |
+| Armed Conflicts | A dated list of active conflicts | Conflict map with UCDP death figures and headlines | Secondary aggregation; status labels are its own |
+| WarMonit | A daily conflict summary | Live map, daily brief, and threat level | AI-written brief; the level is descriptive, not predictive |
+| War Radar | Spotting rising risk by country | Daily 90-day risk estimate | Self-described rough estimate; datasets not named |
+| DEFCON Level | A single headline alert indicator | Unofficial DEFCON estimate | The real DEFCON level is classified |
 
 </div>
 
@@ -103,9 +108,33 @@ The [Uppsala Conflict Data Program's download center](https://ucdp.uu.se/downloa
 
 **Strength:** investigation methods and detailed case work. **Limit:** it is not a continuous global conflict tracker. Its coverage reflects selected investigations, not a complete event inventory.
 
+## 11. Armed Conflicts: a dated list built on UCDP, ACLED, and CFR
+
+[Armed Conflicts](https://armedconflicts.org/) is a world conflict map that follows a list of active conflict theaters, each with a 12-month death figure, a status label, and recent headlines. Its [methodology](https://armedconflicts.org/methodology.html) describes the site as a secondary aggregation of ACLED, UCDP, the CFR tracker, and Google News, and takes its death counts from the UCDP candidate events dataset.
+
+**Strength:** one page that lists current conflicts and names the sources behind each figure. **Limit:** the site says its status and intensity labels are its own display classifications and that UCDP figures run about a month behind. The pages we checked do not name the operator.
+
+## 12. WarMonit: a daily brief and a threat level
+
+[WarMonit](https://warmonit.com/), formerly War Monitor, combines a live war map, a daily brief, and a global threat level. Its [methodology](https://warmonit.com/methodology) names ACLED, UCDP, GDELT, official reporting, and tracking data such as vessel traffic and military flights, and says a language model writes the brief from a structured feed. The [about page](https://warmonit.com/about) names its founder and editor and describes its free and paid tiers. WarMonit is a separate service, not affiliated with World Monitor.
+
+**Strength:** a short daily summary on top of a map. **Limit:** the site says its threat level is descriptive, not predictive, and that AI-generated summaries can contain errors. Open the linked reports before quoting a development from the brief.
+
+## 13. War Radar: a 90-day risk estimate
+
+[War Radar](https://warradar.org/en/) colors countries by its estimated risk of a new armed crisis or coup within 90 days and marks wars already under way. Its [methodology](https://warradar.org/en/methodology.html) says the estimate is recalculated daily from open signals such as the level and trend of violence, government travel warnings, diplomatic evacuations, and news tone.
+
+**Strength:** a forward-looking view across every country. **Limit:** the site calls its output a rough automated estimate, not a forecast or travel advice, and says fighting data arrive about two months late. The pages we checked do not name its datasets or operator.
+
+## 14. DEFCON Level: an unofficial alert-level estimate
+
+[DEFCON Level](https://defconlevel.com/) publishes an open-source estimate of the U.S. DEFCON level, with regional alerts and nuclear risk indicators. Its [about page](https://defconlevel.com/about) says the site is privately operated and not affiliated with the U.S. government.
+
+**Strength:** a single indicator that answers a common search. **Limit:** the real DEFCON level is classified, and the site labels its figure as an estimate rather than an official status. Treat it as one outlet's judgment, not a government signal.
+
 ## Which combination should you use?
 
-For a daily briefing, start with a broad dashboard, open the original reports, and use a policy or campaign assessment for context. For statistical research, begin with ACLED or UCDP definitions and versions. For humanitarian analysis, add ACAPS. For an uncertain image or incident claim, use a [verification workflow](/blog/posts/verify-breaking-news-osint-workflow-journalists/) before repeating it.
+For a daily briefing, start with a broad dashboard, open the original reports, and use a policy or campaign assessment for context. For statistical research, begin with ACLED or UCDP definitions and versions. For humanitarian analysis, add ACAPS. To count active wars, compare definitions before comparing numbers: one tracker counts conflict theaters, another counts countries above a death threshold, and a risk map marks wars alongside estimates. For an uncertain image or incident claim, use a [verification workflow](/blog/posts/verify-breaking-news-osint-workflow-journalists/) before repeating it.
 
 If your question involves trade routes, the [maritime monitoring guide](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/) explains the adjacent workflow. Keep observations, source limitations, and your interpretation separate in the resulting brief.
 
@@ -126,6 +155,14 @@ World Monitor combines aircraft observations with conflict and other geographic 
 **Can conflict trackers help with market analysis?**
 
 They can help organize geopolitical reports alongside shipping and market observations. World Monitor supports that combined view. A simultaneous price move and conflict report do not prove causation or predict returns; verify the underlying evidence before using either in an analysis.
+
+**How many wars are happening right now?**
+
+It depends on the definition. World Monitor's [crisis hub](https://www.worldmonitor.app/crises/) lists the countries with at least 25 deaths in state-based fighting in UCDP's latest monthly release and shows which month that is. Armed Conflicts and WarMonit publish their own dated lists with different inclusion rules, so their counts differ. Quote the definition and the date with any number.
+
+**Is DEFCON Level the official US alert level?**
+
+No. The official DEFCON level is classified. DEFCON Level labels its figure as an open-source estimate and says it is not affiliated with the U.S. government.
 
 **Is Bellingcat a replacement for a live conflict map?**
 
