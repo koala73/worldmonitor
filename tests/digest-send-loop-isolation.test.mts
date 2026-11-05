@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
@@ -42,7 +43,7 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     link: 'https://example.com/1', sources: ['Synthetic wire'],
   }];
   const run = runInNewContext(`${sendEmailSource}\n${mainSource}\nmain`, {
-    Date, Map, Set, AbortSignal, Buffer,
+    Date, Map, Set, AbortSignal, Buffer, createHash,
     process: { env: {}, exit: (code: number) => {
       exits.push(code);
       lifecycle.push('exit');
