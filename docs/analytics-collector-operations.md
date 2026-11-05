@@ -232,6 +232,97 @@ path can still race; starting the old image is emergency containment, not
 remediation. Restoring deleted duplicate rows or recovering from uncertain
 schema state requires the recorded database backup.
 
+## Postgres tuning
+
+`Postgres Umami` runs Railway's `postgres-ssl:16` template in a container
+with 8 CPUs and 12 GB of memory. The template ships stock Postgres defaults,
+and the repository does not build this service. Its tuning lives only in
+`postgresql.auto.conf` on the data volume. That file survives redeploys and is
+written with `ALTER SYSTEM`.
+
+### Why it is tuned
+
+On 2026-11-05 the collector returned HTTP 500 after exactly 10 s on 0.04% of
+`/api/send` requests (1,978 of 4.87M in 7 days). The failures came in bursts
+of 10–60 s, several times a day. The collector log reads `timeout exceeded when
+trying to connect`: all 20 pool connections were busy, and new requests gave up
+at `DATABASE_CONNECT_TIMEOUT_MS`. The monitor's "4/12 HTTP 500 at ~10.2 s"
+failures and the multi-hour storms on 2026-10-05 and 2026-10-20 were this
+class. `/api/heartbeat` stayed at 2–5 ms during the bursts, so the application
+was healthy and only database work was stalled.
+
+`pg_stat_statements` (reset 2026-10-20) showed that single-row inserts, which
+average about 1 ms, sometimes took 73–89 s: `website_event` 77.7 s, `session`
+73.5 s, `session_data` 88.7 s. Under the defaults:
+
+- `shared_buffers` was 128 MB for a 33 GB database. `website_event` alone has
+  19 GB of indexes, and each insert updates at least 15 of them.
+- The cache hit rate was 79.8%. Client backends had read 139M blocks, evicted
+  139M, and written 14.4M dirty buffers themselves.
+- The container sat at its memory limit (11.25 GB average, 12 GB peak), mostly
+  page cache.
+- Report queries spilled to disk with `work_mem` at 4 MB: 29 GB of temp files,
+  and up to 273 s for one channel report.
+- Parallel queries failed with `could not resize shared memory segment ... No
+  space left on device`, because the container's `/dev/shm` is small.
+
+### Applied settings
+
+| Setting | Default | Tuned | Needs restart |
+|---|---|---|---|
+| `shared_buffers` | 128MB | 3GB | yes |
+| `dynamic_shared_memory_type` | posix | mmap | yes |
+| `effective_cache_size` | 4GB | 8GB | no |
+| `work_mem` | 4MB | 32MB | no |
+| `maintenance_work_mem` | 64MB | 512MB | no |
+| `effective_io_concurrency` | 1 | 200 | no |
+| `random_page_cost` | 4 | 1.1 | no |
+| `max_wal_size` | 1GB | 4GB | no |
+| `checkpoint_timeout` | 5min | 15min | no |
+| `wal_compression` | off | on | no |
+| `track_io_timing` | off | on | no |
+| `log_min_duration_statement` | -1 | 2000 | no |
+| `log_lock_waits` | off | on | no |
+| `log_autovacuum_min_duration` | 10min | 10s | no |
+
+`max_connections` stays at 500. It was already set in `postgresql.auto.conf`.
+
+The settings that need no restart were applied with `ALTER SYSTEM` and
+`pg_reload_conf()` on 2026-11-05. Check what is active, and anything still
+waiting for a restart:
+
+```sql
+SELECT name, setting, unit, pending_restart FROM pg_settings
+WHERE name IN ('shared_buffers', 'dynamic_shared_memory_type', 'work_mem');
+SELECT name, setting, error FROM pg_file_settings
+WHERE sourcefile LIKE '%auto.conf';
+```
+
+Before `pg_reload_conf()`, `pg_file_settings` reports a restart-only change as
+`setting could not be applied`. After the reload, `pending_restart` is `true`
+until Postgres restarts. Restart `Postgres Umami` between the retention
+cron's ticks at :07, :22, :37 and :52. The collector returns 500 for the few
+seconds the database is down. Revert any setting with `ALTER SYSTEM RESET
+<name>` followed by a reload or restart.
+
+### Judging the result
+
+After the restart, reset `pg_stat_statements` and the database statistics.
+Then compare over a week:
+
+- the collector's `/api/send` 5xx count in Railway HTTP metrics (the baseline
+  was 1,978 in 7 days)
+- the maximum insert `max_exec_time` in `pg_stat_statements` (baseline 73–89 s)
+- the cache hit rate in `pg_stat_database` (baseline 79.8%)
+- the Postgres log, which now records every statement over 2 s and every lock
+  wait, so the next stall names its statement
+
+The `website_event` indexes are a further lever. Eight of them, totaling
+12.7 GB, had zero scans between 2026-10-20 and 2026-11-05, including
+`website_event_website_id_created_at_url_query_idx` at 4.1 GB. They come from
+upstream Umami migrations, so dropping them is a schema decision to make with
+the next image change, not a tuning step.
+
 ## Retention contract
 
 **The horizon is 30 days.** It is declared once, at the top of
