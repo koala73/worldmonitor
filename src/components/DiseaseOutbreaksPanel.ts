@@ -209,7 +209,7 @@ export class DiseaseOutbreaksPanel extends Panel {
 
     this.setSafeContent(unsafeRawHtml(`
       ${filterBar}
-      <div style="overflow-y:auto;max-height:420px">
+      <div>
         ${rows || empty}
       </div>
       <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.diseaseOutbreaks.attribution'))}</div>

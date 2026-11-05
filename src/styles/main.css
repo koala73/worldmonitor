@@ -4698,8 +4698,6 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 /* Pinned list below grid */
 .pinned-webcams-list {
   margin-top: 8px;
-  max-height: 120px;
-  overflow-y: auto;
 }
 
 .pinned-webcams-list-header {
@@ -12526,16 +12524,8 @@ button.popup-link {
 
 /* economic-tabs: now uses shared .panel-tabs / .panel-tab */
 
-.panel-content:has(.economic-content) {
-  display: flex;
-  flex-direction: column;
-}
-
 .economic-content {
   padding: 8px;
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .economic-content-macro {
@@ -16793,8 +16783,6 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 .cascade-country {
@@ -17071,8 +17059,6 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 150px;
-  overflow-y: auto;
 }
 
 .risk-alert {
@@ -18752,8 +18738,6 @@ button.popup-link {
   flex-direction: column;
   gap: 2px;
   padding: 6px 8px;
-  overflow-y: auto;
-  max-height: 320px;
 }
 .id-row {
   background: rgba(255,255,255,.04);
@@ -18819,8 +18803,6 @@ button.popup-link {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
-  max-height: 320px;
 }
 .id-date-range {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
