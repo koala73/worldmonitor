@@ -282,40 +282,73 @@ average about 1 ms, sometimes took 73–89 s: `website_event` 77.7 s, `session`
 | `wal_compression` | off | on | no |
 | `track_io_timing` | off | on | no |
 | `log_min_duration_statement` | -1 | 2000 | no |
+| `log_parameter_max_length` | -1 | 0 | no |
 | `log_lock_waits` | off | on | no |
 | `log_autovacuum_min_duration` | 10min | 10s | no |
 
 `max_connections` stays at 500. It was already set in `postgresql.auto.conf`.
 
+`log_parameter_max_length = 0` must stay set while slow-statement logging is
+on. Umami binds user identifiers and subscription details as parameters of its
+`session_data` inserts. At the default of -1, every slow statement would copy
+those values into the Railway log.
+
+**Memory budget for `work_mem`.** The limit applies to each sort or hash node in
+each process, and hash nodes may use `hash_mem_multiplier` (2.0) times that. The
+collector's 20 pool connections run single-row inserts with no sort or hash
+nodes. The large consumers are report queries: a leader plus 2 parallel workers
+with about 4 sort or hash nodes uses at most 3 × 4 × 64 MB ≈ 768 MB. Two
+concurrent reports stay under 1.6 GB, inside the 12 GB container alongside 3 GB
+of `shared_buffers`. Revisit the budget before raising `work_mem`,
+`max_parallel_workers_per_gather`, or the number of concurrent report
+consumers.
+
 The settings that need no restart were applied with `ALTER SYSTEM` and
-`pg_reload_conf()` on 2026-11-05. Check what is active, and anything still
+`pg_reload_conf()` on 2026-11-05. Check every tuned setting, and anything still
 waiting for a restart:
 
 ```sql
 SELECT name, setting, unit, pending_restart FROM pg_settings
-WHERE name IN ('shared_buffers', 'dynamic_shared_memory_type', 'work_mem');
-SELECT name, setting, error FROM pg_file_settings
-WHERE sourcefile LIKE '%auto.conf';
+WHERE name IN ('shared_buffers', 'dynamic_shared_memory_type',
+  'effective_cache_size', 'work_mem', 'maintenance_work_mem',
+  'effective_io_concurrency', 'random_page_cost', 'max_wal_size',
+  'checkpoint_timeout', 'wal_compression', 'track_io_timing',
+  'log_min_duration_statement', 'log_parameter_max_length', 'log_lock_waits',
+  'log_autovacuum_min_duration', 'max_connections')
+ORDER BY name;
+SELECT name, setting, applied, error FROM pg_file_settings
+WHERE sourcefile LIKE '%auto.conf' ORDER BY name;
 ```
 
-Before `pg_reload_conf()`, `pg_file_settings` reports a restart-only change as
-`setting could not be applied`. After the reload, `pending_restart` is `true`
-until Postgres restarts. Restart `Postgres Umami` between the retention
-cron's ticks at :07, :22, :37 and :52. The collector returns 500 for the few
-seconds the database is down. Revert any setting with `ALTER SYSTEM RESET
-<name>` followed by a reload or restart.
+Until Postgres restarts, `pg_file_settings` shows the restart-only entries with
+`applied = false` and the error `setting could not be applied`, and
+`pg_settings.pending_restart` is `true` for them. Every other entry should show
+`applied = true` and the tuned value in `pg_settings`. Restart `Postgres Umami`
+between the retention cron's ticks at :07, :22, :37 and :52. The collector
+returns 500 for the few seconds the database is down.
+
+To revert a setting, run `ALTER SYSTEM RESET <name>`. Then run
+`pg_reload_conf()` for a setting marked "no" under "Needs restart". A setting
+marked "yes" (`shared_buffers`, `dynamic_shared_memory_type`) keeps its current
+value until Postgres restarts.
 
 ### Judging the result
 
-After the restart, reset `pg_stat_statements` and the database statistics.
-Then compare over a week:
+Do not run `pg_stat_reset()`. It clears the per-table counters that schedule
+autovacuum and autoanalyze, which delays cleanup on these large, busy tables.
+Instead, record a before snapshot of the cumulative counters right after the
+restart (`blks_hit` and `blks_read` from `pg_stat_database`, and
+`pg_stat_bgwriter`), and compare against an after snapshot. Only
+`pg_stat_statements` may be reset (`SELECT pg_stat_statements_reset()`), so
+that its maximums describe the tuned server alone. Compare over a week:
 
 - the collector's `/api/send` 5xx count in Railway HTTP metrics (the baseline
   was 1,978 in 7 days)
 - the maximum insert `max_exec_time` in `pg_stat_statements` (baseline 73–89 s)
-- the cache hit rate in `pg_stat_database` (baseline 79.8%)
-- the Postgres log, which now records every statement over 2 s and every lock
-  wait, so the next stall names its statement
+- the cache hit rate between the two snapshots (baseline 79.8%)
+- the Postgres log, which now records every statement over 2 s, without its
+  parameter values, and every lock wait longer than `deadlock_timeout` (1 s).
+  The next stall will name its statement.
 
 The `website_event` indexes are a further lever. Eight of them, totaling
 12.7 GB, had zero scans between 2026-10-20 and 2026-11-05, including
