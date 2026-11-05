@@ -10,6 +10,14 @@ Run the full World Monitor stack locally with Docker/Podman.
 
 ## 🚀 Quick Start
 
+Prefer a single command? This does steps 1–4 below (clone, secrets, start, seed) and is safe to re-run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/install.sh | bash
+```
+
+Options: `--dir`, `--port`, `--no-seed`, `--no-build` (run with `--help` for details). Or follow the manual steps:
+
 ```bash
 # 1. Clone and enter the repo
 git clone https://github.com/koala73/worldmonitor.git
