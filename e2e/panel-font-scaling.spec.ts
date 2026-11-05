@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { FONT_SCALE_STORAGE_KEY } from '../src/services/font-scale-settings';
+import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 
 const STEPS = ['0.9', '1', '1.1', '1.25', '1.5', '2'] as const;
 const GLOBAL_STORAGE_KEY = FONT_SCALE_STORAGE_KEY;
@@ -18,6 +19,7 @@ async function seedDashboard(page: Page): Promise<void> {
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
   });
+  await acceptTesterKeySession(page);
 
   await page.route('**/api/market/v1/get-fear-greed-index', route => route.fulfill({
     status: 200,

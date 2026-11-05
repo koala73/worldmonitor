@@ -35,6 +35,7 @@ import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '@/shared/pro-fresh-rpc';
 import { withPremiumIntent } from './premium-intent';
+import { noteSelfHostPremiumDenial } from './self-host-key';
 import { isDesktopRuntime } from './runtime';
 
 /**
@@ -164,6 +165,12 @@ async function fetchReportingServerErrors(
 ): Promise<Response> {
   const res = await globalThis.fetch(input, init);
   reportServerError(res, input, undefined, init?.signal);
+  // On a self-hosted install a premium denial can mean the desktop key was
+  // revoked or lapsed; the verdict service re-checks (no-op elsewhere). Relay
+  // timeouts and unreachable answers are 504/502, not denials.
+  if ((res.status === 401 || res.status === 403) && isPremiumRpcTarget(input)) {
+    noteSelfHostPremiumDenial();
+  }
   return res;
 }
 

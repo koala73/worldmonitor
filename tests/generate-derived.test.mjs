@@ -11,6 +11,7 @@ const NOT_DERIVED = new Map([
   ['scripts/generate-derived.mjs', 'the runner itself'],
   ['scripts/check-build-prereqs.mjs', 'validator'],
   ['scripts/bundle-budgets.mjs', 'validator over build output'],
+  ['scripts/check-no-public-source-maps.mjs', 'deploy gate over build output'],
   ['scripts/docs-stats.mjs', 'validator'],
   ['scripts/generate-inventory-facts.mjs', 'gitignored build input; the runner refreshes it before the checks'],
   ['scripts/generate-third-party-notices.mjs', 'gitignored desktop build output'],

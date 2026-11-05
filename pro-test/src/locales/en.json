@@ -508,6 +508,7 @@
       "liveBadge": "Live",
       "pulseBadge": "Published pulse {{date}}",
       "refreshNote": "Enable JavaScript to refresh — the published pulse above remains available without it.",
+      "situationLink": "Monitor the situation: crises, headlines, chokepoints and outages on one board",
       "cardHeadlines": "Top signals",
       "cardCii": "Instability index",
       "ciiNote": "12 fused signals per country",

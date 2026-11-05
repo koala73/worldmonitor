@@ -18,6 +18,7 @@ import {
   cancelPizzIntRefresh,
   loadPizzInt,
   militaryFlightsViewModel,
+  pizzIntAnswerText,
   pizzIntRefreshDelay,
   pizzIntViewModel,
   resumePizzIntRefresh,
@@ -31,6 +32,7 @@ import {
   formatPortwatchRange,
 } from '../scripts/crawlable-live-tools.mjs';
 import { chokepointPulseRecord, renderChokepointLiveSection } from '../scripts/crawlable-chokepoint-live.mjs';
+import { pizzaIndexReading, renderPizzaIndexSection } from '../scripts/live-pages/pentagon-pizza-index.mjs';
 
 const NOW = Date.UTC(2026, 6, 24, 12);
 
@@ -280,7 +282,9 @@ describe('crawlable live intelligence view models', () => {
     assert.equal('todayTransits' in pulse, false);
     assert.equal('todayCountsAvailable' in pulse, false);
 
-    const expectedPassage = 'As of Jul 24, 2026, 11:59 AM UTC, IMF PortWatch counted 4 transits through the Strait of Hormuz'
+    const expectedPassage = 'Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published'
+      + ' days to Oct 18, 2026 (IMF PortWatch).'
+      + ' As of Jul 24, 2026, 11:59 AM UTC, IMF PortWatch counted 4 transits through the Strait of Hormuz'
       + ' on Oct 18, 2026 (latest published day). The 7-day average is 3.7 a day, 4% of the 87.4-a-day average'
       + ' for Oct 2024–Oct 2025. The Red disruption score is a risk signal; it does not verify unrestricted'
       + ' passage or operational closure.';
@@ -769,7 +773,7 @@ describe('crawlable live intelligence view models', () => {
     const { document } = window;
     document.body.innerHTML = `
       <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-chokepoint-name="Strait of Hormuz" data-state="ready">
-        <h2>Is Strait of Hormuz open right now?</h2>
+        <h2>Is the Strait of Hormuz open right now?</h2>
         <p data-chokepoint-open-status>Old passage evidence.</p>
         <p data-chokepoint-score-driver>Old score inputs.</p>
         <span class="live-status" data-live-status>Published pulse</span>
@@ -1040,7 +1044,8 @@ describe('crawlable live intelligence view models', () => {
       baselineTo: '2025-09-02',
     });
     assert.deepEqual(narrative, {
-      passage: 'As of Sep 3, 2026, 6:25 AM UTC, IMF PortWatch counted 1 transit through the Suez Canal on Aug 30, 2026 (latest published day).'
+      passage: 'Steady: traffic through the Suez Canal was 98% of its year-earlier level in the seven published days to Aug 30, 2026 (IMF PortWatch).'
+        + ' As of Sep 3, 2026, 6:25 AM UTC, IMF PortWatch counted 1 transit through the Suez Canal on Aug 30, 2026 (latest published day).'
         + ' The 7-day average is 36.9 a day, 98% of the 37.5-a-day average for Sep 2024–Sep 2025.'
         + ' The Yellow disruption score is a risk signal; it does not verify unrestricted passage or operational closure.',
       scoreDriver: 'The score of 35 (Yellow) has this evidence basis.'
@@ -1049,6 +1054,77 @@ describe('crawlable live intelligence view models', () => {
         + ' Context only (not score inputs): AIS event count (7 AIS disruptions); IMF PortWatch latest daily count (1 on Aug 30, 2026).',
     });
     assert.doesNotMatch(narrative.scoreDriver, /Observed score inputs:[^.]*7 AIS disruptions/);
+  });
+
+  it('leads the passage with a traffic status measured against the PortWatch baseline', () => {
+    // 2026-11-05 AI visibility audit: 0 of 10 Hormuz answers named World
+    // Monitor while straits.live ranked #1 for ChatGPT's own fan-out query
+    // with the same PortWatch figure plus a status. The status describes
+    // traffic against normal, never an open or closed declaration.
+    const hormuz = {
+      displayName: 'Strait of Hormuz',
+      score: 70,
+      bandLabel: 'Red',
+      description: 'Active conflict',
+      asOfText: 'Nov 5, 2026, 3:07 AM UTC',
+      partial: true,
+      warningsLabel: null,
+      congestionLabel: 'Normal',
+      aisEventCountLabel: '0 AIS disruptions',
+      officialLatestDate: '2026-10-25',
+      officialLatestTotal: 2,
+      officialAvg7d: 3.3,
+      baselineAvgDaily: 87.9,
+      baselineFrom: '2024-11-01',
+      baselineTo: '2025-11-01',
+    };
+    const partial = chokepointEvidenceNarrative(hormuz).passage;
+    assert.equal(
+      partial,
+      'Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 (IMF PortWatch).'
+        + ' As of Nov 5, 2026, 3:07 AM UTC, source coverage for the Strait of Hormuz is partial.'
+        + ' IMF PortWatch counted 2 transits on Oct 25, 2026 (latest published day).'
+        + ' The 7-day average is 3.3 a day, 4% of the 87.9-a-day average for Nov 2024–Nov 2025.'
+        + ' The status compares traffic with its year-earlier level; it is not an official open or closed declaration.',
+    );
+    assert.doesNotMatch(partial, /cannot verify operational passage status/);
+    assert.doesNotMatch(partial, /\b(?:is|remains|was)\s+(?:open|closed|reopened)\b/i);
+
+    const full = chokepointEvidenceNarrative({ ...hormuz, partial: false }).passage;
+    assert.match(full, /^Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 \(IMF PortWatch\)\. As of Nov 5, 2026, 3:07 AM UTC, IMF PortWatch counted 2 transits through/);
+    assert.match(full, /The Red disruption score is a risk signal; it does not verify unrestricted passage or operational closure\.$/);
+
+    // The band is read from the share the sentence prints, so rounding can
+    // never put "10%" next to "Severely restricted".
+    const statusAt = (officialAvg7d) => {
+      const match = chokepointEvidenceNarrative({ ...hormuz, officialAvg7d, baselineAvgDaily: 100 })
+        .passage.match(/^([^:]+): traffic through the Strait of Hormuz was ([\d.,]+%) of/);
+      return `${match[1]} ${match[2]}`;
+    };
+    assert.equal(statusAt(0), 'Severely restricted 0%');
+    assert.equal(statusAt(0.4), 'Severely restricted 0.4%');
+    assert.equal(statusAt(9.4), 'Severely restricted 9%');
+    assert.equal(statusAt(9.6), 'Restricted 10%');
+    assert.equal(statusAt(9.9), 'Restricted 10%');
+    assert.equal(statusAt(10), 'Restricted 10%');
+    assert.equal(statusAt(49.4), 'Restricted 49%');
+    assert.equal(statusAt(49.9), 'Reduced 50%');
+    assert.equal(statusAt(50), 'Reduced 50%');
+    assert.equal(statusAt(79.4), 'Reduced 79%');
+    assert.equal(statusAt(79.9), 'Steady 80%');
+    assert.equal(statusAt(80), 'Steady 80%');
+    assert.equal(statusAt(130), 'Steady 130%');
+
+    // No baseline, no seven-day average, or no published day: no status.
+    for (const withheld of [
+      { baselineAvgDaily: null, baselineFrom: null, baselineTo: null },
+      { officialAvg7d: null },
+      { officialLatestDate: null, officialLatestTotal: null },
+    ]) {
+      const passage = chokepointEvidenceNarrative({ ...hormuz, ...withheld }).passage;
+      assert.match(passage, /^As of /, JSON.stringify(withheld));
+      assert.match(passage, /cannot verify operational passage status/);
+    }
   });
 
   it('withholds definitive passage status for partial coverage and names one missing score source', () => {
@@ -1804,7 +1880,7 @@ describe('crawlable live intelligence view models', () => {
         <button type="button" data-live-refresh>Refresh</button>
       </section>
       <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-state="ready">
-        <h2>Is Strait of Hormuz open right now?</h2>
+        <h2>Is the Strait of Hormuz open right now?</h2>
         <p data-chokepoint-open-status>Published passage evidence.</p>
         <p data-chokepoint-score-driver>Published score inputs.</p>
         <span class="live-status" data-live-status>Published pulse</span>
@@ -2544,5 +2620,64 @@ describe('Pentagon Pizza Index live reading', () => {
     assert.equal(tool.querySelector('[data-pizzint-level]').hidden, true);
     assert.equal(tool.querySelector('[data-pizzint-label]').textContent, 'Unavailable');
     assert.equal(tool.querySelector('[data-pizzint-venues]').children.length, 0);
+  });
+
+  it('states the dated level in one sentence, and nothing without a current level', () => {
+    assert.equal(
+      pizzIntAnswerText({ available: true, level: '4', label: 'Above Normal', updatedAt: Date.UTC(2026, 10, 5, 14, 30) }),
+      'As of Nov 5, 2026, 2:30 PM UTC, the Pentagon Pizza Index is at level 4, Above Normal.',
+    );
+    assert.equal(pizzIntAnswerText(pizzIntViewModel({ tensionPairs: [] }, NOW)), null);
+    assert.equal(pizzIntAnswerText(null), null);
+  });
+
+  function renderedPizzaTool(html) {
+    const window = new Window({ url: 'https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/' });
+    window.document.body.innerHTML = html;
+    return window.document.querySelector('[data-live-pizzint]');
+  }
+
+  it('keeps a server-rendered level visible while it refreshes, then updates the sentence', async () => {
+    const served = pizzaIndexReading(payload(), NOW);
+    const tool = renderedPizzaTool(renderPizzaIndexSection(served));
+    assert.match(tool.querySelector('[data-live-answer]').textContent, /is at level 4, Above Normal\.$/);
+
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const later = payload({ defconLevel: 2, updatedAt: Date.now() - 60_000 });
+    await withFetch(async (url) => {
+      if (!String(url).includes('get-pizzint-status')) return anonymousSessionResponse();
+      await gate;
+      return { ok: true, status: 200, json: async () => later };
+    }, async () => {
+      const loading = loadPizzInt(tool);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // A crawler-visible reading must not blank while the browser reloads it.
+      assert.equal(tool.dataset.state, 'loading');
+      assert.equal(tool.querySelector('[data-live-grid]').hidden, false);
+      assert.equal(tool.querySelector('[data-live-fallback]').hidden, true);
+      assert.equal(tool.querySelector('[data-pizzint-level]').textContent, '4');
+      release();
+      await loading;
+    });
+
+    assert.equal(tool.dataset.state, 'ready');
+    assert.equal(tool.querySelector('[data-pizzint-level]').textContent, '2');
+    const answer = tool.querySelector('[data-live-answer]');
+    assert.equal(answer.hidden, false);
+    assert.match(answer.textContent, /is at level 2, High Activity\.$/);
+  });
+
+  it('hides the sentence once the feed has no current level', async () => {
+    const tool = renderedPizzaTool(renderPizzaIndexSection(pizzaIndexReading(payload(), NOW)));
+    await withFetch(async (url) => (String(url).includes('get-pizzint-status')
+      ? { ok: true, status: 200, json: async () => ({ tensionPairs: [] }) }
+      : anonymousSessionResponse()), () => loadPizzInt(tool));
+    assert.equal(tool.dataset.state, 'empty');
+    assert.equal(tool.querySelector('[data-live-answer]').hidden, true);
+
+    const failing = renderedPizzaTool(renderPizzaIndexSection(pizzaIndexReading(payload(), NOW)));
+    await withFetch(async () => { throw new Error('offline'); }, () => loadPizzInt(failing));
+    assert.equal(failing.querySelector('[data-live-answer]').hidden, true);
   });
 });

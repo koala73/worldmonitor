@@ -67,6 +67,8 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 // Host → ISO 3166-1 alpha-2, 'EU', or null (international).
 // Only hosts that cannot be inferred from a real ccTLD or government suffix.
 const HOST_ORIGINS = Object.freeze({
+  // #6153: Moscow Exchange ISS, the exchange's own market-data API.
+  'iss.moex.com': 'RU',
   'simaniger.net': 'NE',
   'data.1212.mn': 'MN',
   'www.ocpv-ci.com': 'CI',

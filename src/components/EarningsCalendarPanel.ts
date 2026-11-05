@@ -170,7 +170,7 @@ export class EarningsCalendarPanel extends Panel {
     const sortedDates = [...grouped.keys()].sort();
 
     const html = `
-      <div style="padding:0 14px 12px;max-height:480px;overflow-y:auto">
+      <div style="padding:0 14px 12px;">
         ${sortedDates.map((d, i) => renderGroup(d, grouped.get(d)!, i === 0)).join('')}
       </div>`;
 

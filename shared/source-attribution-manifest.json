@@ -581,6 +581,9 @@
           "path": "api/_usage-telemetry.js"
         },
         {
+          "path": "scripts/deploy-error-canary.mjs"
+        },
+        {
           "path": "scripts/lib/llm-telemetry.cjs"
         },
         {
@@ -924,6 +927,9 @@
         },
         {
           "path": "scripts/resolve-railway-reconcile-control.mjs"
+        },
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         },
         {
           "path": "scripts/seed-research.mjs"
@@ -3110,6 +3116,20 @@
       ]
     },
     {
+      "host": "data.ssb.no",
+      "provider": "data.ssb.no",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (SSB Public APIs and Licence pages)",
+      "attribution": "Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.stats.gov.cn",
       "provider": "data.stats.gov.cn",
       "kind": "structured",
@@ -4682,15 +4702,10 @@
       "host": "fonts.googleapis.com",
       "provider": "fonts.googleapis.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "server/_shared/brief-render.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "foreignpolicy.com",
@@ -4956,6 +4971,9 @@
         },
         {
           "path": "scripts/build-crawlable-corpus.mjs"
+        },
+        {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
         },
         {
           "path": "scripts/generate-airline-codes.mjs"
@@ -5680,6 +5698,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "iss.moex.com",
+      "provider": "iss.moex.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit iss.moex.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_country-stock-index-moex.mjs"
         }
       ]
     },
@@ -8223,6 +8255,9 @@
           "path": "scripts/ais-relay.cjs"
         },
         {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
+        },
+        {
           "path": "scripts/fetch-country-boundary-overrides.mjs"
         },
         {
@@ -8236,6 +8271,9 @@
         },
         {
           "path": "scripts/seed-disease-outbreaks.mjs"
+        },
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },
@@ -10905,6 +10943,9 @@
         },
         {
           "path": "api/telegram-feed.js"
+        },
+        {
+          "path": "scripts/_country-stock-index-moex.mjs"
         },
         {
           "path": "scripts/_upstash-rest.mjs"
@@ -15135,6 +15176,9 @@
           "path": "scripts/comparison-shortlist.mjs"
         },
         {
+          "path": "scripts/deploy-error-canary.mjs"
+        },
+        {
           "path": "scripts/discover-content-corpus-pages.mjs"
         },
         {
@@ -15393,6 +15437,20 @@
         },
         {
           "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
+        }
+      ]
+    },
+    {
+      "host": "www2.moeaea.gov.tw",
+      "provider": "www2.moeaea.gov.tw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed",
+      "attribution": "Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },

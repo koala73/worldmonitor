@@ -1976,7 +1976,7 @@ const SEED_META = {
   },
   foodPricesNabc: {
     key: 'seed-meta:economic:food-prices-nabc',
-    maxStaleMin: 14400,
+    maxStaleMin: 4320,
     activationKey: 'seed-activated:economic:food-prices-nabc',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 9892, activationKey: 'seed-activated:economic:food-prices-nabc' },
   },

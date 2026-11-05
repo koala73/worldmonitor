@@ -45,7 +45,7 @@ export class FoodPricesCard {
   private table(prices: FoodMarketPrice[], contextOnly: boolean, sourceId: string): HTMLElement {
     const format = new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 });
     return h('div', { className: 'food-prices-table-wrap', tabIndex: 0, role: 'region', 'aria-label': label('prices'), 'data-price-table': contextOnly ? `context:${sourceId}` : 'weekly' },
-      h('table', { className: 'food-prices-table' },
+      h('table', { className: 'wm-table food-prices-table' },
         h('thead', {}, h('tr', {}, ...[label('product'), label('price'), ...(contextOnly ? [] : [label('weekly')])].map(text => h('th', { scope: 'col' }, text)))),
         h('tbody', {}, ...prices.map(price => h('tr', {},
           h('th', { scope: 'row' }, price.item, price.origin ? h('small', {}, `${label('origin')}: ${price.origin}`) : null),
