@@ -201,7 +201,7 @@ export default async function handler(req, ctx) {
   }
 
   if (req.method !== 'POST') {
-    return respond({ error: 'Method not allowed' }, 405, cors, 'method_not_allowed');
+    return respond({ error: 'Method not allowed' }, 405, { ...cors, Allow: ALLOWED_METHODS }, 'method_not_allowed');
   }
 
   // Rate-limit per IP. Without this, an attacker can farm tokens cheaply.
