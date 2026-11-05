@@ -16,7 +16,7 @@ RPC clients receive their deadline from the shared client constructor.
 
 After repair, the inventory contains 722 fetch calls with a signal, 120 spread
 forwarders, 15 options forwarders, 35 client configurations, 71 retry-loop
-candidates, 26 native-language candidates, and 815 transport/SDK call candidates.
+candidates, 31 native-language candidates, and 815 transport/SDK call candidates.
 There are zero direct fetch candidates without a signal. These are static review
 counts, not proof that every signal is a timer or that every SDK operation is
 bounded. The transport candidate set also contains local database connections,
@@ -36,6 +36,8 @@ WebSocket sends, and other non-request methods.
 - Relay, economic fetch helper, CLI, and sidecar deadlines cover response body
   consumption. Native relay requests have an absolute deadline in addition to
   socket inactivity timeouts.
+- The MCP consent context transport allows 35 seconds so its existing 30s
+  recovery state wins first; mint requests retain the 120s RPC ceiling.
 - Docs MCP SSE and transparent edge proxy traffic retain a five-minute budget
   rather than using the short JSON request budget. WebSocket connections use
   their existing connect, heartbeat, and reconnect lifecycle; they are not
@@ -55,6 +57,11 @@ WebSocket sends, and other non-request methods.
   Resend sends have an explicit deadline. Ruby disables Net::HTTP's implicit
   immediate retry. Queue mutation, email, and database transaction writes do
   not gain automatic replay: a timeout can occur after a successful write.
+  Quiet-hours email batches use a stable provider idempotency key across drains.
+  Publish timeouts return an explicit unknown outcome and retain the processing
+  marker. The existing RPOP consumer remains at-most-once: transport failure
+  after a committed pop can lose that event. Durable queue acknowledgements
+  require a separate delivery protocol and are not supplied by request retries.
 
 ## Pools and concurrency
 
@@ -83,6 +90,7 @@ Focused checks passed for the following changed behavior:
 - Redis rate-limit fail-open/fail-closed and OAuth/MCP contracts.
 - Proxy rotation, shipping webhook leases/CAS, country-facts fallback,
   reconciliation reads, and merge-guard polling.
+- MCP consent deadline/mint recovery in Chromium; widget preflight recovery.
 - Generated RPC, premium fetch, timeout compatibility, proxy response caching,
   and server sub-request dispatch.
 - Worker CORS/cache behavior, queue requeue behavior, sidecar timeout and

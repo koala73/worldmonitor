@@ -492,7 +492,10 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
         link: NOTIFY_DASHBOARD_URL,
         linkTitle: 'Open dashboard',
       }));
-      else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text, unsubscribeUrlFor(ch, 'alerts'));
+      else if (ch.channelType === 'email' && ch.email) {
+        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, items])).digest('hex');
+        ok = await sendEmail(ch.email, subject, text, unsubscribeUrlFor(ch, 'alerts'), `quiet-held-${batchKey}`);
+      }
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
         eventType: 'quiet_hours_batch',
         severity: 'info',
@@ -827,13 +830,13 @@ function buildTeamsAlertForEvent(event, impact) {
 
 // ── Delivery: Email ───────────────────────────────────────────────────────────
 
-async function sendEmail(email, subject, text, unsubscribeUrl) {
+async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey) {
   const payload = { from: RESEND_FROM, to: email, subject, text };
   if (unsubscribeUrl !== undefined) {
     payload.text = appendUnsubscribeText(text, unsubscribeUrl, 'Unsubscribe from alert emails');
     payload.headers = listUnsubscribeHeaders(unsubscribeUrl);
   }
-  const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]' });
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]', idempotencyKey });
   return result.ok;
 }
 

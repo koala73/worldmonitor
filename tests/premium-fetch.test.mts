@@ -151,6 +151,13 @@ describe('premiumFetch', () => {
     assert.equal(fetchMock.mock.calls.length, 1, 'Should not retry on 403');
   });
 
+  it('Clerk transport deadlines propagate without an unauthenticated replay', async () => {
+    const error = new DOMException('deadline', 'TimeoutError');
+    setup({ clerkToken: 'fixture-jwt', fetchImpl: async () => { throw error; } });
+    await assert.rejects(premiumFetch(TARGET, { method: 'POST', forcePremium: true }), error);
+    assert.equal(fetchMock.mock.calls.length, 1);
+  });
+
   it('tester key: AbortError propagates to caller (not swallowed)', async () => {
     const abortErr = new DOMException('The operation was aborted.', 'AbortError');
     setup({

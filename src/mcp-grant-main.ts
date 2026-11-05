@@ -236,7 +236,7 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   const token = await getClerkSessionToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetch(`${API_BASE}${path}`, { ...init, signal: createRequestTimeoutSignal(`${API_BASE}${path}`, init, 15_000), headers });
+  return fetch(`${API_BASE}${path}`, { ...init, signal: createRequestTimeoutSignal(`${API_BASE}${path}`, init, path.startsWith('/api/internal/mcp-grant-context') ? 35_000 : 120_000), headers });
 }
 
 /**

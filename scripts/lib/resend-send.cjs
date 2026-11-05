@@ -37,7 +37,7 @@ function buildResendEmailPayload(input) {
 /**
  * @param {{ emails: { send: (payload: object, options?: object) => Promise<any> } } | null} client
  * @param {Parameters<typeof buildResendEmailPayload>[0]} input
- * @param {{ logPrefix?: string }} [options]
+ * @param {{ logPrefix?: string, idempotencyKey?: string }} [options]
  * @returns {Promise<{ ok: true, id: string | null } | { ok: false, reason: string }>}
  */
 async function sendResendEmail(client, input, options = {}) {
@@ -51,6 +51,7 @@ async function sendResendEmail(client, input, options = {}) {
     // reading and never automatically replay a possibly accepted email.
     const result = await client.emails.send(buildResendEmailPayload(input), {
       signal: AbortSignal.timeout(10_000),
+      ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
     });
     if (result && result.error) {
       const name = result.error.name ? `${result.error.name}: ` : '';

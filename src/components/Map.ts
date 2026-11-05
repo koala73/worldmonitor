@@ -1282,7 +1282,8 @@ export class MapComponent {
     this.container.style.cursor = 'grab';
   }
 
-  private async loadMapData(): Promise<void> {
+  private async loadMapData(attempt = 0): Promise<void> {
+    if (this.destroyed) return;
     try {
       const worldResponse = await fetch(worldTopologyUrl(this.isMobile), { signal: createTimeoutSignal(15_000) });
       this.worldData = await worldResponse.json();
@@ -1298,6 +1299,10 @@ export class MapComponent {
       // Re-render after layout stabilizes to catch full container width.
       this.scheduleRender();
     } catch (e) {
+      if (attempt < 2) {
+        await new Promise(resolve => setTimeout(resolve, Math.round(500 * 2 ** attempt * (0.5 + Math.random() * 0.5))));
+        return this.loadMapData(attempt + 1);
+      }
       console.error('Failed to load map data:', e);
     }
   }

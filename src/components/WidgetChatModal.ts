@@ -176,6 +176,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   let currentSessionHtml: string | null = options.existingSpec?.html ?? null;
   let requestInFlight = false;
   let preflightReady = false;
+  let preflightFailures = 0;
   let preflightGen = 0;
   let pendingSaveSpec: CustomWidgetSpec | null = null;
 
@@ -267,6 +268,7 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
         return showPreflightError(t('widgets.preflightProUnavailable'));
       }
 
+      preflightFailures = 0;
       preflightReady = true;
       setReadinessState(readinessEl, 'ready', t('widgets.preflightConnected'));
       if (!currentSessionHtml) renderPreviewState(previewEl, 'ready_to_prompt');
@@ -275,6 +277,10 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     } catch {
       if (isStale()) return;
       showPreflightError(connectivityProblem() ?? t('widgets.preflightUnavailable'));
+      if (navigator.onLine && preflightFailures < 2) {
+        const wait = Math.round(1000 * 2 ** preflightFailures++ * (0.5 + Math.random() * 0.5));
+        preflightRetry = setTimeout(() => void runPreflight(), wait);
+      }
     }
   }
 

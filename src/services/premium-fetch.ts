@@ -33,7 +33,7 @@
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
-import { createRequestTimeoutSignal } from './timeout-signal';
+import { createRequestTimeoutSignal, isTimeoutOrAbortError } from './timeout-signal';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '@/shared/pro-fresh-rpc';
 import { withPremiumIntent } from './premium-intent';
 import { noteSelfHostPremiumDenial } from './self-host-key';
@@ -340,7 +340,10 @@ export async function premiumFetch(
           { ...withCredentials(requestInit), headers: existing },
         );
       }
-    } catch { /* not available — fall through */ }
+    } catch (error) {
+      if (isTimeoutOrAbortError(error)) throw error;
+      /* credentials not available — fall through */
+    }
   }
 
   // 2. Legacy in-memory test seam. In production, tester/widget keys are
@@ -388,7 +391,10 @@ export async function premiumFetch(
           { ...withCredentials(requestInit), headers: existing },
         );
       }
-    } catch { /* not signed in — fall through */ }
+    } catch (error) {
+      if (isTimeoutOrAbortError(error)) throw error;
+      /* not signed in — fall through */
+    }
   }
 
   // 4. No auth — let the request through.

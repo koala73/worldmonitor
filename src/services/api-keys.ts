@@ -145,7 +145,7 @@ export async function revokeApiKey(keyId: string): Promise<void> {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ keyHash: result.keyHash }),
-        }),
+        }).catch(() => new Response(null, { status: 503 })),
       );
       assertAccountStillCurrent(userId, 'invalidating the API key cache');
       if (!resp.ok) {

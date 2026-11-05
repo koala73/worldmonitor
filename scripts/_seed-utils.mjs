@@ -1794,7 +1794,8 @@ export async function imfSdmxFetchIndicatorWithRelease(indicator, { database = '
       // 429 (rate limit) and 503 (overloaded) typically carry Retry-After;
       // attach so withRetry can honor the upstream hint.
       if (r.status === 429 || r.status === 503) {
-        err.retryAfterMs = parseRetryAfterMs(r.headers.get('retry-after'));
+        err.retryAfterMs = parseRetryAfterUncappedMs(r.headers.get('retry-after'));
+        if (err.retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
       }
       throw err;
     }

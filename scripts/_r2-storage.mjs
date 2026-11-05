@@ -96,7 +96,9 @@ function isRetryableApiStatus(status) {
   return status === 408 || status === 409 || status === 429 || status >= 500;
 }
 
-function isRetryableR2Error(err) {
+function isRetryableR2Error(err, depth = 0) {
+  if (depth > 4) return false;
+  if (['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'ENETUNREACH', 'EAI_AGAIN'].includes(err?.code)) return true;
   const status = err?.status;
   if (typeof status === 'number') return isRetryableApiStatus(status);
 
@@ -116,7 +118,7 @@ function isRetryableR2Error(err) {
 
   const httpStatus = err?.$metadata?.httpStatusCode;
   if (typeof httpStatus === 'number') return isRetryableApiStatus(httpStatus);
-  return false;
+  return err?.cause ? isRetryableR2Error(err.cause, depth + 1) : false;
 }
 
 async function withR2Retry(operation, context = {}) {

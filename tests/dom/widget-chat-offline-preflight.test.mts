@@ -163,3 +163,15 @@ describe('Widget chat preflight without a network', () => {
     await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightProSubscriptionRequired')));
   });
 });
+
+it('recovers a timed-out health check with a bounded retry', async () => {
+  setOnline(true);
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  const fetchMock = vi.fn()
+    .mockRejectedValueOnce(new DOMException('deadline', 'TimeoutError'))
+    .mockResolvedValue(Response.json({ ok: true, proKeyConfigured: true }));
+  vi.stubGlobal('fetch', fetchMock);
+  open();
+  await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightConnected')), { timeout: 2000 });
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});

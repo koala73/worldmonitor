@@ -139,3 +139,15 @@ describe('/api/notify write rate limit', () => {
     assert.deepEqual(rateLimitCalls, []);
   });
 });
+
+it('returns a defined unknown publish outcome without replaying a timed-out write', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  installDeps({ allowed: true, limit: NOTIFY_WRITE_RATE_LIMIT, reset: 0, degraded: false });
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new DOMException('deadline', 'TimeoutError'); };
+  const response = await handler(makePost());
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('Retry-After'), '180');
+  assert.equal(calls, 1);
+});

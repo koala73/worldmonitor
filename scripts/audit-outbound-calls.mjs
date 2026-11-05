@@ -2,7 +2,7 @@
 // Review inventory, not a proof of bounded execution: a signal can be plain
 // cancellation, and an SDK can hide retries or stop its timer at headers.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import ts from 'typescript';
 
 const excluded = /(?:^|\/)(?:node_modules|vendor|generated|tests?|e2e|demos)(?:\/|$)|\.(?:test|spec)\.|-test-preload\./;
@@ -11,12 +11,13 @@ const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclud
 const records = [];
 
 for (const file of files) {
+  if (!/\.(?:[cm]?js|[cm]?ts|tsx|rs|py|rb|go|sh)$/.test(file) || !existsSync(file)) continue;
   const code = readFileSync(file, 'utf8');
   if (!/\.(?:[cm]?js|[cm]?ts|tsx)$/.test(file)) {
     // Keep non-JS network boundaries visible for manual review as well.
     if (/\.(?:rs|py|rb|go|sh)$/.test(file)) {
       code.split('\n').forEach((line, index) => {
-        if (/\b(?:curl|urlopen|opener\.open|http\.Do|http\.Client|http_transport|reqwest::Client|\.send\(\))\b/.test(line)) {
+        if (/\b(?:curl|urlopen|opener\.open|http\.Do|http\.Client|http_transport|reqwest::Client)\b|\.send\(\)/.test(line)) {
           records.push({ file, line: index + 1, kind: 'native-language-review', expression: line.trim() });
         }
       });
