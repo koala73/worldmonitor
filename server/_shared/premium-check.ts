@@ -19,7 +19,7 @@ import {
 } from './mcp-internal-hmac.js';
 import { validateUserApiKeyPrincipal } from './user-api-key.js';
 import { isApiOnlyPath } from './api-only-paths.js';
-import { resolveUserKeyEntitlement, resolveUserKeyScope } from './desktop-key-principal.js';
+import { admitsDesktopKeyClientRequest, resolveUserKeyEntitlement, resolveUserKeyScope } from './desktop-key-principal.js';
 import type { DesktopKeyMeterEntitlement } from './desktop-key-meter.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
@@ -374,6 +374,8 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
           // KTD7: the API-only set is closed to desktop principals. This is a
           // scope verdict, not a billing one, so it carries no retry/upsell tag.
           if (isApiOnlyPath(new URL(request.url).pathname)) return DENIED;
+          // Scripts reusing a desktop key need an API plan (DESKTOP_KEY_CLIENT_CHECK).
+          if (!admitsDesktopKeyClientRequest(request)) return DENIED;
           return {
             isPremium: true,
             userId: userKey.userId,
