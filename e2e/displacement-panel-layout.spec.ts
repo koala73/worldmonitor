@@ -42,7 +42,7 @@ test('German displacement fits individual narrow panels and keeps tab scrolling 
 
   // Resize the individual panel while keeping a desktop viewport. This also
   // exercises the existing panel-body container, rather than a phone breakpoint.
-  for (const [width, scale] of [[375, 1], [300, 1], [400, 1], [700, 1], [300, 1.25], [700, 1.25], [375, 1]]) {
+  for (const [width, scale] of [[375, 1], [300, 1], [400, 1], [700, 1], [300, 1.25], [700, 1.25], [375, 1]] as const) {
     await panel.evaluate((el, { width, scale }) => {
       el.style.width = `${width}px`;
       el.style.maxWidth = 'none';
