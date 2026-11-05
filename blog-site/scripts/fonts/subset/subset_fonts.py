@@ -219,6 +219,8 @@ def refresh_google_snapshot():
             f['faces'].append(weight)
         f['subsets'][subset_name] = {'url': url, 'sha256': hashlib.sha256(fetch(url)).hexdigest(),
                                      'unicode_range': format_unicode_range(rng),
+                                     # Composition can use glyphs outside the declared CSS range.
+                                     'cmap': format_unicode_range(cmap),
                                      'renders': format_unicode_range(rng & cmap),
                                      # CoreText rasterizes small sizes differently when head.yMax changes,
                                      # so outputs reuse the served file's font bounding box.
@@ -596,7 +598,7 @@ def build(crawl_path: Path, verify_google: bool):
                         if unicodedata.category(c) == 'Mn'} & src_cmap
         if split_letters:
             google_ext = g['subsets']['latin-ext']
-            google_ext_cmap = set(TTFont(io.BytesIO(fetch(google_ext['url'], google_ext['sha256']))).getBestCmap())
+            google_ext_cmap = parse_unicode_range(google_ext['cmap'])
             # Don't add marks Google never mapped (notably U+0328). Ǭ/ǭ first
             # compose to Ǫ/ǫ, so those intermediate letters stay with the marks.
             accent_chars &= google_ext_cmap

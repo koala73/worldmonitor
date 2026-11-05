@@ -68,6 +68,8 @@ The script also needs [uv](https://docs.astral.sh/uv/), which installs its pinne
 
 The script refuses to write files when a glyph outline or the shaping of any text run differs from Google's files at the weights the blog renders.
 
+The snapshot records the raw latin-ext character maps needed for composition, including marks outside the CSS range. With `--skip-google-parity`, only the pinned source fonts and licenses need to be cached; generating the composition files does not download Google-served references.
+
 `fonts:compare` checks every assigned, non-control character in Google's ranges that none of its files maps (3,111 cells with the current snapshot), plus all 17 regression letters at every weight the blog serves for their family (28 larger cells). It downloads the hash-verified snapshot files, serves both sets locally, requires successful web-font loads, and compares every pixel in each cell. A mismatch exits nonzero and records the characters, weights, pixel counts and screenshots. This manual check needs network access and Playwright Chromium; it is not part of the offline unit suite. The reference remains Chrome on macOS, as before; parity with other browsers/platforms is not established.
 
 ### When to rerun

@@ -164,7 +164,8 @@
             -250,
             630,
             994
-          ]
+          ],
+          "cmap": "U+D, U+20, U+41, U+A0, U+C1, U+100-130, U+134-151, U+154-17F, U+18F, U+192, U+1A0-1A1, U+1AF-1B0, U+1CD-1CE, U+1E6-1E7, U+1EA-1EB, U+1F4-1F5, U+1FC-1FF, U+218-21B, U+232-233, U+237, U+259, U+2B9-2BA, U+2BC, U+2C7, U+2C9, U+2DD, U+2F3, U+2F7, U+300-301, U+303-304, U+308-309, U+323, U+1E80-1E85, U+1E9E, U+1EF2-1EF9, U+2020, U+20AB, U+20AE, U+20BD, U+20BF, U+2113"
         },
         "latin": {
           "url": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2",
@@ -209,7 +210,8 @@
             -274,
             1203,
             1081
-          ]
+          ],
+          "cmap": "U+D, U+20, U+A0, U+100-130, U+132-151, U+154-180, U+18F, U+192, U+1A0-1A1, U+1AF-1B0, U+1C4-1DC, U+1E6-1E7, U+1EA-1EB, U+1FA-21B, U+22A-22D, U+230-233, U+237, U+243, U+251, U+259, U+2B9-2BA, U+2BC, U+2BE-2BF, U+2C7-2CC, U+2DD, U+300-301, U+303-304, U+308-309, U+323, U+1E08-1E09, U+1E0C-1E0F, U+1E14-1E17, U+1E1C-1E1D, U+1E20-1E21, U+1E24-1E25, U+1E2A-1E2B, U+1E2E-1E2F, U+1E36-1E3B, U+1E42-1E49, U+1E4C-1E53, U+1E5A-1E69, U+1E6C-1E6F, U+1E78-1E7B, U+1E80-1E85, U+1E8E-1E8F, U+1E92-1E93, U+1E97, U+1E9E, U+1EF2-1EF9, U+2020, U+20A1, U+20A3-20A4, U+20A6-20A7, U+20A9, U+20AB, U+20AD, U+20B1-20B2, U+20B5, U+20B9-20BA, U+20BC-20BD, U+20BF, U+2113"
         },
         "latin": {
           "url": "https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPbF4C_k3HqU.woff2",
