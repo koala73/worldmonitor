@@ -122,7 +122,11 @@ for (const path of paths) {
       const { declaration, statement } = constants.get(node.text);
       if (!symbolAt(node)?.declarations?.includes(declaration)) return;
       const resolved = staticValue(declaration.initializer, new Set([...seen, node.text]));
-      if (resolved) return { value: resolved.value, after: Math.max(resolved.after, statement.end) };
+      // A const binding does not make its array immutable; aliases can mutate it.
+      // Only inline array literals are safe to resolve for constructor arguments.
+      if (resolved && !Array.isArray(resolved.value)) {
+        return { value: resolved.value, after: Math.max(resolved.after, statement.end) };
+      }
     }
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       const left = staticValue(node.left, seen);

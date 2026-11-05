@@ -78,3 +78,35 @@ JSON.stringify(run());
   run(['--write']);
   assert.equal(readFileSync(join(root, 'fixture.js'), 'utf8'), after);
 });
+
+test('hoisting preserves mutations to array pattern and flag dependencies', t => {
+  const root = mkdtempSync(join(tmpdir(), 'hoist-regex-array-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const source = `const words = ['alpha'];
+const alias = words;
+alias.push('beta');
+const flags = ['i'];
+flags[0] = '';
+function matches(text) { return new RegExp(words.join('|')).test(text); }
+function aliasMatches(text) { return new RegExp(alias.join('|')).test(text); }
+function flagMatches(text) { return new RegExp('alpha', flags.join('')).test(text); }
+function fixed(text) { return new RegExp(['alpha', 'beta'].join('|')).test(text); }
+const beforeMutation = [matches('beta'), aliasMatches('beta'), flagMatches('ALPHA'), fixed('beta')];
+words.push('gamma');
+flags[0] = 'i';
+JSON.stringify([beforeMutation, [matches('gamma'), aliasMatches('gamma'), flagMatches('ALPHA'), fixed('beta')]]);
+`;
+  writeFileSync(join(root, 'fixture.js'), source);
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  execFileSync('git', ['add', 'fixture.js'], { cwd: root });
+  const run = args => execFileSync(process.execPath, [script, ...args], { cwd: root, encoding: 'utf8' });
+  const before = runInNewContext(source);
+  assert.equal(before, '[[true,true,false,true],[true,true,true,true]]');
+  run(['--write']);
+  const after = readFileSync(join(root, 'fixture.js'), 'utf8');
+  assert.notEqual(after, source, 'the literal-array pattern should still be hoisted');
+  assert.equal(runInNewContext(after), before);
+  assert.equal(JSON.parse(run([])).hoist, 0);
+  run(['--write']);
+  assert.equal(readFileSync(join(root, 'fixture.js'), 'utf8'), after);
+});
