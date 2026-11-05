@@ -22935,6 +22935,7 @@ body.has-breaking-alert .panels-grid {
 
 .etf-table-nav button {
   min-width: 0;
+  overflow-wrap: anywhere;
   min-height: 32px;
   padding: 4px 8px;
   border: 1px solid var(--border);

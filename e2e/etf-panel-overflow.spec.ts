@@ -98,6 +98,17 @@ for (const language of ['en', 'de']) {
     });
     expect(geometry).toEqual({ overflow: 0, clipped: false });
     await panel.screenshot({ path: testInfo.outputPath(`etf-${language}-scaled.png`) });
+    // A long translated word must also stay inside a scaled, narrow button.
+    await page.locator('.panels-grid').evaluate(el => { el.style.width = '250px'; el.style.gridTemplateColumns = '250px'; });
+    const labels = await nav.locator('button').evaluateAll(buttons => {
+      const labels = buttons.map(button => button.textContent);
+      buttons[0]!.textContent = 'Safu wima zilizotangulia';
+      buttons[1]!.textContent = 'Safu wima zaidi';
+      return labels;
+    });
+    expect(await nav.locator('button').evaluateAll(buttons => buttons.map(button => button.scrollWidth - button.clientWidth))).toEqual([0, 0]);
+    await nav.locator('button').evaluateAll((buttons, labels) => buttons.forEach((button, i) => { button.textContent = labels[i]!; }), labels);
+    await page.locator('.panels-grid').evaluate(el => { el.style.width = '350px'; el.style.gridTemplateColumns = '350px'; });
     await page.setViewportSize({ width: 390, height: 844 });
     await panel.evaluate(el => el.style.setProperty('--wm-panel-effective-scale', '1'));
     await expect.poll(columns).toBe(2);
