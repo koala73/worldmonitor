@@ -110,8 +110,11 @@ for (const width of [1440, 390]) {
           expect(await tabs.evaluate(el => el.clientHeight)).toBeGreaterThan(20);
           expect(await tabs.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
         }
+        // Reset focus together with scroll position between resized states.
+        await content.evaluate(el => { el.blur(); el.scrollTo({ top: 0, behavior: 'instant' }); });
+        await expect.poll(() => content.evaluate(el => el.scrollTop), { message: `${id} scroll reset` }).toBe(0);
         await content.focus();
-        await expect.poll(() => content.evaluate(el => { el.scrollTo({ top: 0, behavior: 'instant' }); return el.scrollTop; }), { message: `${id} scroll reset` }).toBe(0);
+        await expect(content).toBeFocused();
         await content.press('PageDown');
         await expect.poll(() => content.evaluate(el => el.scrollTop), { message: `${id} keyboard scroll` }).toBeGreaterThan(0);
         await expect.poll(() => content.evaluate(el => {
