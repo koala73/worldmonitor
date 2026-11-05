@@ -136,7 +136,7 @@ export class UcdpEventsPanel extends Panel {
 
       bodyHtml = `
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="ucdp-table">
+          <table class="wm-table ucdp-table">
             <thead>
               <tr>
                 <th scope="col">${t('components.ucdpEvents.country')}</th>

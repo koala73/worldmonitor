@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 
 /**
- * Seed military and maritime data via warm-ping pattern.
+ * Seed maritime data via warm-ping pattern.
  *
- * These handlers have complex parsers (USNI HTML parsing with vessel/CSG extraction,
- * NGA warning parsing with coordinate extraction) that are impractical to replicate
- * in a standalone script without risking data shape mismatches. Instead, we call the
- * Vercel RPC endpoints from Railway to warm-populate the Redis cache.
+ * listNavigationalWarnings has a complex parser (NGA broadcast API + date and
+ * coordinate parsing) that is impractical to replicate in a standalone script
+ * without risking data shape mismatches. Instead, we call the Vercel RPC
+ * endpoint from Railway to warm-populate the Redis cache.
  *
  * Seeded via warm-ping:
- * - getUSNIFleetReport: USNI WordPress scrape + complex HTML parsing
  * - listNavigationalWarnings: NGA broadcast API + date/coordinate parsing
+ *
+ * NOT warm-pinged:
+ * - getUSNIFleetReport: Redis-read-only since the AIS relay took over the
+ *   USNI seed (usni-fleet:sebuf:v1, scripts/ais-relay.cjs). A POST here read
+ *   the cache the relay had already written and returned it — no fetch, no
+ *   parse, nothing warmed — while logging "OK (N items)" as if it had.
  *
  * NOT seeded (inherently on-demand):
  * - getAircraftDetails / batch: per-icao24 Wingbits lookup
@@ -56,7 +61,7 @@ async function warmPing(name, path, body = {}) {
       return false;
     }
     const data = await resp.json();
-    const count = data.report?.vessels?.length ?? data.warnings?.length ?? 0;
+    const count = data.warnings?.length ?? 0;
     console.log(`  ${name}: OK (${count} items)`);
     return true;
   } catch (e) {
@@ -66,11 +71,10 @@ async function warmPing(name, path, body = {}) {
 }
 
 async function main() {
-  console.log('=== Military/Maritime Warm-Ping Seed ===');
+  console.log('=== Maritime Warm-Ping Seed ===');
   const start = Date.now();
 
   const results = await Promise.allSettled([
-    warmPing('USNI Fleet Report', '/api/military/v1/get-usni-fleet-report'),
     warmPing('Nav Warnings', '/api/maritime/v1/list-navigational-warnings'),
   ]);
 

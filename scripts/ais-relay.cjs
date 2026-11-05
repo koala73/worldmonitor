@@ -181,6 +181,14 @@ const AISSTREAM_URL = RELAY_TEST_MODE && process.env.AISSTREAM_URL
   : 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
+// Unset = every interface, which Railway and the Docker network need. A native
+// install with no container boundary sets RELAY_BIND_HOST=127.0.0.1.
+const RELAY_BIND_HOST = (process.env.RELAY_BIND_HOST || '').trim() || undefined;
+// Self-requests must reach the bound address; `localhost` may resolve to the
+// other address family than a specific RELAY_BIND_HOST.
+const RELAY_SELF_HOST = !RELAY_BIND_HOST || RELAY_BIND_HOST === '0.0.0.0' || RELAY_BIND_HOST === '::'
+  ? 'localhost'
+  : (RELAY_BIND_HOST.includes(':') ? `[${RELAY_BIND_HOST}]` : RELAY_BIND_HOST);
 // Actual bound port, resolved at listen time. Self-requests must use this:
 // with PORT=0 (ephemeral bind, used by tests) the env value is not the port
 // the server listens on, and `http://localhost:0` fails outright.
@@ -6205,7 +6213,7 @@ async function handleWingbitsTrackRequest(req, res) {
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
-  const resp = await fetch(`http://localhost:${relayBoundPort}/opensky`, {
+  const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
     headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),
   });
@@ -8735,7 +8743,10 @@ async function pollPizzintBestTimeVenue(apiKey, venue) {
     });
     if (!resp.ok) {
       try { await resp.body?.cancel(); } catch { /* Keep the HTTP outcome if cleanup fails. */ }
-      return { outcome: 'http' };
+      // The status is the only diagnostic worth keeping: a 400/401 means the
+      // key is wrong, a 429 means the plan budget is spent, a 5xx is BestTime
+      // itself. The body is dropped unread (it can echo the key).
+      return { outcome: 'http', status: resp.status };
     }
     let reply;
     try {
@@ -8778,12 +8789,14 @@ function pizzintBestTimePlaceholder(venue, reply) {
 async function fetchPizzintBestTimeLocations(apiKey) {
   const polls = await Promise.all(PIZZINT_BESTTIME_VENUES.map(venue => pollPizzintBestTimeVenue(apiKey, venue)));
   const counts = { accepted: 0, unavailable: 0, invalid: 0, http: 0, timeout: 0, transport: 0, json: 0 };
+  const httpStatuses = new Map();
   const locations = [];
   const published = [];
   const historyLocations = [];
   PIZZINT_BESTTIME_VENUES.forEach((venue, i) => {
-    const { outcome, location, reply } = polls[i];
+    const { outcome, location, reply, status } = polls[i];
     counts[outcome]++;
+    if (outcome === 'http') httpStatuses.set(status, (httpStatuses.get(status) || 0) + 1);
     if (location) {
       locations.push(location);
       published.push(location);
@@ -8803,7 +8816,13 @@ async function fetchPizzintBestTimeLocations(apiKey) {
       noLiveSignal: true,
     });
   });
-  const summary = Object.entries(counts).map(([category, count]) => `${category}=${count}`).join(' ');
+  // http=3 alone cannot tell a bad key (400/401) from a spent plan budget
+  // (429) or a BestTime outage (5xx); the status histogram can.
+  const summary = Object.entries(counts).map(([category, count]) => (
+    category === 'http' && count > 0
+      ? `http=${count}(${[...httpStatuses].sort(([a], [b]) => a - b).map(([code, n]) => `${code}x${n}`).join(',')})`
+      : `${category}=${count}`
+  )).join(' ');
   // Every venue answered cleanly; with no accepted reading, all reported unavailable.
   const answered = counts.accepted + counts.unavailable === PIZZINT_BESTTIME_VENUES.length;
   if (locations.length === 0) {
@@ -15620,10 +15639,10 @@ function connectUpstream() {
 
 const wss = new WebSocketServer({ server });
 
-server.listen(PORT, () => {
+server.listen(PORT, RELAY_BIND_HOST, () => {
   const listeningPort = server.address()?.port || PORT;
   relayBoundPort = listeningPort;
-  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
+  console.log(`[Relay] WebSocket relay on port ${listeningPort}, host ${server.address()?.address} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
   if (RELAY_TEST_MODE) {
     if (process.env.RELAY_TEST_THEATER_VESSEL === '1') {
       candidateReports.set('test-military-vessel', {

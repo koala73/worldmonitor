@@ -2,7 +2,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.11.7 · Last updated: 2026-11-01
+> Version: 2.11.8 · Last updated: 2026-11-04
 
 World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people live in 190+ countries, with structural resilience ranked for 169 of 196 countries, with press references in the [product identity document](https://www.worldmonitor.app/world-monitor.md). It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
@@ -14,6 +14,10 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 
 - [Product identity and press references](https://www.worldmonitor.app/world-monitor.md): Official name, canonical domain, contact details, and the press list — WIRED, The Atlantic, El País, The Economic Times, Arabian Business, Entrepreneur Middle East, Silicon Canals and L'Orient Today — each linked to its article.
 - [Human about page](https://www.worldmonitor.app/docs/about)
+
+## Official profiles
+
+- [YouTube channel](https://www.youtube.com/channel/UCqMywHwOgtoP2y0kNPesyNQ): World Monitor's official channel (channel ID UCqMywHwOgtoP2y0kNPesyNQ); the same identity the Organization `sameAs` list declares.
 
 ## When to Use World Monitor (Agent Guidance)
 

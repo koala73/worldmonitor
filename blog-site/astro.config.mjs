@@ -21,6 +21,13 @@ export default defineConfig({
       },
     }),
   ],
+  vite: {
+    build: {
+      // Never inline font files as data: URIs. An inlined extended subset would ship inside the
+      // stylesheet on every page and defeat its unicode-range.
+      assetsInlineLimit: (filePath) => (filePath.endsWith('.woff2') ? false : undefined),
+    },
+  },
   markdown: {
     shikiConfig: {
       theme: 'github-dark',

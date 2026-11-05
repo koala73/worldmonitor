@@ -122,12 +122,13 @@ export class AirlineIntelPanel extends Panel {
         refreshBtn.addEventListener('click', () => this.refresh());
         this.header.appendChild(refreshBtn);
 
-        // Add LIVE indicator badge to the title
+        // Add LIVE indicator badge beside the title. Inside the title it would
+        // break onto the title's second line or be cut off with it.
         this.liveIndicator = document.createElement('span');
         this.liveIndicator.className = 'live-badge';
         this.liveIndicator.textContent = '\u25CF LIVE';
-        this.liveIndicator.style.cssText = 'display:none;color:#22c55e;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;margin-left:8px;letter-spacing:0.5px;';
-        this.header.querySelector('.panel-title')?.appendChild(this.liveIndicator);
+        this.liveIndicator.style.cssText = 'display:none;color:#22c55e;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;letter-spacing:0.5px;white-space:nowrap;';
+        this.header.querySelector('.panel-title')?.after(this.liveIndicator);
 
         // Insert tab bar between header and content
         this.tabBar = document.createElement('div');

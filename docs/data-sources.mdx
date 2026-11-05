@@ -466,6 +466,7 @@ Macro, markets, and money — official statistics from central banks and statist
 | Global procurement opportunities | US SAM.gov, EU TED, UK Contracts Finder, CanadaBuys, New Zealand GETS, and World Bank procurement notices | [Coverage and freshness](/global-procurement-intelligence) |
 | UN Comtrade | Global merchandise trade flows | [comtradeapi.un.org](https://comtradeapi.un.org) |
 | CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
+| Moscow Exchange ISS | IMOEX closes for the Russian country stock index, keyless and 15-minute delayed; Yahoo stopped serving MOEX data after 2022 | [iss.moex.com](https://iss.moex.com) |
 
 China-specific official financial and statistical sources (NBS, SAFE, PBoC, SSE/SZSE, and more) are listed under [China Coverage](#china-coverage).
 
@@ -494,11 +495,34 @@ Physical-economy fundamentals for the Energy and Commodity variants: storage, in
 |----------|------|------|
 | GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
 | U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
+| Statistics Norway (SSB) | Monthly national petrol 95 and dutiable diesel averages, NOK/l | [SSB table 09654](https://data.ssb.no/api/v0/en/table/09654) |
+| Gasvaktin (community project) | Unweighted mean of ordinary station petrol 95 and diesel prices, ISK/l | [Gasvaktin data and attribution](https://github.com/gasvaktin/gasvaktin) |
+| Taiwan MOEA Energy Administration | Weekly 92 unleaded and diesel pump surveys, TWD/l | [oil111 county survey](https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg) |
 | USGS Mineral Commodity Summaries | Annual mine and refinery production by country (public domain) | [sciencebase.gov MCS 2026](https://doi.org/10.5066/P1WKQ63T) |
 | BGS World Mineral Production | Cross-check / fill where USGS lacks a world table (attribution required) | [bgs.ac.uk world mineral statistics](https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/) |
 | Shanghai Gold Exchange | SHAU gold and SHAG silver daily AM/PM benchmarks | [official benchmark data](https://en.sge.com.cn/data_BenchmarkPrice) |
 
 Licensing: USGS MCS data is U.S. public domain. BGS World Mineral Production requires attribution to the British Geological Survey; IEA critical-minerals datasets are not ingested because redistribution terms are stricter than USGS/BGS, so USGS-unpublished REE refining shares are omitted.
+
+The fuel-price seed preserves local prices and source observation dates, then
+uses shared FX rates to produce USD/l for the existing table. Norway's date is
+the first day of the observed month; its monthly data has roughly three weeks
+of publication lag and expires 65 days after month end. Gasvaktin is an MIT-licensed
+community project scraping company websites, not an official national average.
+Its ordinary pump prices exclude discounts; the observation date is the last
+Git revision changing the station file (content is fetched at that exact revision),
+with a 14-day freshness limit. This date records a file change, not verification
+of every station. Credit: Gasvaktin and its contributors.
+
+Taiwan's derived national survey mean weights the published, rounded mainland,
+offshore and mountain group averages by their report counts. Missing groups with zero reports
+are excluded. The observation date is the survey week end, with a 21-day
+freshness limit. The oil111 reuse licence remains unconfirmed. SSB data is
+[CC BY 4.0](https://www.ssb.no/en/diverse/lisens); USD prices are derived by FX
+conversion from SSB's published NOK prices. These three optional sources are
+omitted on failure or expiry and recorded in the snapshot's source health
+metadata; old country rows are never carried forward. County ranges and LPG
+cylinder prices are outside the current petrol/diesel schema.
 
 The physical precious-metals comparison uses the latest valid SGE PM print and
 retains its own trade date through weekends and exchange holidays. SHAU is CNY
@@ -647,6 +671,7 @@ Airport operations, airspace closures, live flight tracking, and airline intelli
 | airplanes.live | Optional non-commercial ADS-B point queries (gap-fill) | [airplanes.live](https://airplanes.live/api-guide/) |
 | adsb.fi | Optional personal/non-commercial ADS-B point queries (gap-fill) | [adsb.fi](https://github.com/adsbfi/opendata) |
 | Wingbits | Live ADS-B flight data (keyed) | [wingbits.com](https://wingbits.com) |
+| plane-alert-db | Vendored ICAO-hex watchlist of military and government aircraft (ODbL, refreshed by script) | [sdr-enthusiasts/plane-alert-db](https://github.com/sdr-enthusiasts/plane-alert-db) |
 | OpenSky Network | Legacy per-request recovery (disabled in the military seeder) | [opensky-network.org](https://opensky-network.org) |
 | FAA ASWS | US airport delay and ground stop data | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
 | ICAO | NOTAM airspace closure data | [icao.int](https://www.icao.int) |

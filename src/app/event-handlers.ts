@@ -324,6 +324,7 @@ export interface EventHandlerCallbacks {
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
   isFreeTierFallbackActive?: () => boolean;
+  focusStorageFacility?: (facilityId: string) => void;
 }
 
 export class EventHandlerManager implements AppModule {
@@ -336,6 +337,9 @@ export class EventHandlerManager implements AppModule {
   private boundDesktopExternalLinkHandler: ((e: MouseEvent) => void) | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
   private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
+  private boundOpenStorageAtlas: ((ev: Event) => void) | null = null;
+  /** Leaves map fullscreen when it is active; set by setupMapFullscreen. */
+  private exitMapFullscreen: (() => void) | null = null;
   private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundThemeChangedHandler: (() => void) | null = null;
   private boundDropdownClickHandler: ((e: MouseEvent) => void) | null = null;
@@ -567,6 +571,11 @@ export class EventHandlerManager implements AppModule {
       window.removeEventListener('storage', this.boundStorageHandler);
       this.boundStorageHandler = null;
     }
+    if (this.boundOpenStorageAtlas) {
+      window.removeEventListener('wm:open-storage-atlas', this.boundOpenStorageAtlas);
+      this.boundOpenStorageAtlas = null;
+    }
+    this.exitMapFullscreen = null;
     if (this.boundTvKeydownHandler) {
       document.removeEventListener('keydown', this.boundTvKeydownHandler);
       this.boundTvKeydownHandler = null;
@@ -754,6 +763,16 @@ export class EventHandlerManager implements AppModule {
       }
     };
     window.addEventListener('storage', this.boundStorageHandler);
+
+    this.boundOpenStorageAtlas = (ev: Event) => {
+      const facilityId = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
+      if (!facilityId) return;
+      if (!this.enablePanelById('storage-facility-map')) return;
+      // The fullscreen map covers the panel grid; leave it so the atlas can show.
+      this.exitMapFullscreen?.();
+      this.callbacks.focusStorageFacility?.(facilityId);
+    };
+    window.addEventListener('wm:open-storage-atlas', this.boundOpenStorageAtlas);
 
     // Handle panel close (X) button clicks
     this.boundPanelCloseHandler = ((e: CustomEvent<{ panelId: string }>) => {
@@ -3061,6 +3080,9 @@ export class EventHandlerManager implements AppModule {
     };
 
     btn.addEventListener('click', toggle);
+    this.exitMapFullscreen = () => {
+      if (isFullscreen) toggle();
+    };
     this.boundMapFullscreenEscHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) toggle();
     };

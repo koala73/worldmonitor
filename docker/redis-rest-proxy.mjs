@@ -23,6 +23,10 @@ import { createClient } from 'redis';
 const REDIS_URL = process.env.SRH_CONNECTION_STRING || process.env.REDIS_URL || 'redis://redis:6379';
 const TOKEN = process.env.SRH_TOKEN || '';
 const PORT = parseInt(process.env.PORT || '80', 10);
+// All interfaces by default: inside Docker the container network is the
+// boundary and compose publishes only 127.0.0.1:8079. A native install has no
+// such boundary, so it sets SRH_BIND_HOST=127.0.0.1.
+const BIND_HOST = (process.env.SRH_BIND_HOST || '').trim() || '0.0.0.0';
 
 // Reject unusable HTTP credentials before creating a Redis client or listener.
 if (!/^[\x21-\x7e]+$/.test(TOKEN)) {
@@ -802,6 +806,53 @@ const TENDER_RECEIPT_UPSERT_SCRIPT = [
   "",
 ].join('\n');
 
+// PINNED COPIES of scripts/seed-military-bases.mjs version-switch scripts.
+// The seeder publishes a new bases version, sweeps leaked version keys, arms
+// staging TTLs and backfills seed-meta with these; command-parity tests check
+// exact bytes.
+const MILITARY_BASES_PUBLISH_ACTIVE_AND_META_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  "if (current or '') ~= ARGV[3] then",
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PERSIST', KEYS[3])",
+  "redis.call('PERSIST', KEYS[4])",
+  'if current and current ~= ARGV[1] then',
+  "  redis.call('EXPIRE', KEYS[5], ARGV[4])",
+  "  redis.call('EXPIRE', KEYS[6], ARGV[4])",
+  'end',
+  "redis.call('SET', KEYS[1], ARGV[1])",
+  "redis.call('SET', KEYS[2], ARGV[2])",
+  "return {1, ARGV[1], current or ''}",
+].join('\n');
+const MILITARY_BASES_ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT = [
+  "local active = redis.call('GET', KEYS[1])",
+  'if active == ARGV[1] then',
+  "  return {0, 'active', active}",
+  'end',
+  "local ttl = redis.call('TTL', KEYS[2])",
+  'if ttl ~= -1 then',
+  "  return {0, 'ttl', tostring(ttl)}",
+  'end',
+  "local armed = redis.call('EXPIRE', KEYS[2], ARGV[2])",
+  "return {armed, 'armed', active or ''}",
+].join('\n');
+const MILITARY_BASES_ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT = [
+  "local active = redis.call('GET', KEYS[1])",
+  'if active == ARGV[1] then',
+  '  return 0',
+  'end',
+  "return redis.call('EXPIRE', KEYS[2], ARGV[2])",
+].join('\n');
+const MILITARY_BASES_BACKFILL_META_IF_ACTIVE_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('SET', KEYS[2], ARGV[2])",
+  'return {1, current}',
+].join('\n');
+
 const ALLOWED_EVAL_SCRIPTS = new Set([
   TENDER_RECEIPT_UPSERT_SCRIPT,
   HISTORY_COST_UPDATE_SCRIPT,
@@ -828,6 +879,10 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
   PHYSICAL_PREMIUM_PUBLISH_SCRIPT,
   PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
+  MILITARY_BASES_PUBLISH_ACTIVE_AND_META_SCRIPT,
+  MILITARY_BASES_ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
+  MILITARY_BASES_ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
+  MILITARY_BASES_BACKFILL_META_IF_ACTIVE_SCRIPT,
 ]);
 const LEGACY_EVAL_REPLACEMENTS = new Map([
   [LEGACY_COMPARE_AND_DELETE_SCRIPT, COMPARE_AND_DELETE_SCRIPT],
@@ -1243,6 +1298,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Redis REST proxy listening on 0.0.0.0:${PORT}`);
+server.listen(PORT, BIND_HOST, () => {
+  console.log(`Redis REST proxy listening on ${BIND_HOST}:${PORT}`);
 });
