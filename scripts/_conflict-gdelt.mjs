@@ -26,6 +26,7 @@ export const GDELT_COUNTRY_NAMES = {
   SA: 'Saudi Arabia', IR: 'Iran', IL: 'Israel', LB: 'Lebanon', QA: 'Qatar',
   AE: 'United Arab Emirates', KW: 'Kuwait', BH: 'Bahrain', OM: 'Oman',
   RU: 'Russia', DJ: 'Djibouti', ER: 'Eritrea',
+  VE: 'Venezuela', PK: 'Pakistan', IN: 'India', TW: 'Taiwan',
 };
 
 export const GDELT_CONFLICT_TERMS = '(clashes OR airstrike OR shelling OR militants OR offensive OR killed)';
