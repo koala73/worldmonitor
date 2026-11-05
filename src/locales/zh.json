@@ -1948,6 +1948,8 @@
       "infoTooltip": "<strong>预测市场</strong>真金白银的预测市场：<ul><li>价格反映群体概率估计</li><li>交易量越高 = 信号越可靠</li><li>聚焦地缘政治和时事</li></ul>来源：Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "前面的栏",
+      "moreColumns": "更多栏",
       "unavailable": "交易所交易基金数据暂时不可用",
       "rateLimited": "交易所交易基金数据暂时不可用（受速率限制）— 正在重试",
       "netFlow": "净流量",

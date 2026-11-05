@@ -98,7 +98,7 @@ test('Docker nginx applies an inert response policy to the RSS proxy route', () 
 
 test('Docker nginx denies the native administration namespace before the data proxy', () => {
   const nginx = readProjectFile('docker/nginx.conf');
-  assert.match(nginx, /location \^~ \/api\/local- \{\s*add_header Origin-Agent-Cluster "\?1" always;\s*return 403;/);
+  assert.match(nginx, /location \^~ \/api\/local- \{\s*add_header Origin-Agent-Cluster "\?1" always;\s*add_header X-Robots-Tag "noindex, follow" always;\s*return 403;/);
   const staticNginx = readProjectFile('docker/nginx.conf.template');
   assert.doesNotMatch(staticNginx, /LOCAL_API_TOKEN|X-WorldMonitor-Local-Token/);
   assert.match(staticNginx, /proxy_pass \$\{API_UPSTREAM\}/);
