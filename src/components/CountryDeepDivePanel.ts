@@ -2035,8 +2035,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
             ? 'energy:open-storage-facility-detail'
             : 'energy:open-pipeline-detail',
           // Emit ONLY the {pipelineId, facilityId} the drawers consume today
-          // (see PipelineStatusPanel + StorageFacilityMapPanel
-          // openDetailHandler). Previously this detail included a
+          // (see PipelineStatusPanel.openDetailHandler and
+          // StorageFacilityMapPanel.claimStorageClick). Previously this detail included a
           // `highlightEventId` that no receiver read — Codex P2 flagged the
           // misleading API surface. Clicking a row jumps to the asset
           // drawer; the user sees the full per-asset timeline and locates

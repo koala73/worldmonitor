@@ -255,7 +255,7 @@ export class TradePolicyPanel extends Panel {
     return `${summaryHtml}
     <div class="trade-tariffs-table">
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-        <table>
+        <table class="wm-table">
           <thead>
             <tr>
               <th scope="col">Year</th>
@@ -466,7 +466,7 @@ export class TradePolicyPanel extends Panel {
     ${chartHtml}
     <div class="trade-tariffs-table">
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-        <table>
+        <table class="wm-table">
           <thead>
             <tr>
               <th scope="col">${t('components.tradePolicy.colDate')}</th>
@@ -533,7 +533,7 @@ export class TradePolicyPanel extends Panel {
 
     return `${scope}<div class="trade-tariffs-table">
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-        <table>
+        <table class="wm-table">
           <thead><tr>
             <th scope="col">${t('components.tradePolicy.colReporter')}</th>
             <th scope="col">${t('components.tradePolicy.colCommodity')}</th>

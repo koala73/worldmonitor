@@ -113,3 +113,39 @@ describe('desktop path decision per server/worldmonitor route family (#5907)', (
     assert.match(buildScript, /const VERSION_DIR = \/\^v\\d\+\$\//);
   });
 });
+
+/**
+ * Plan 2026-11-04-001 (KTD6): in docker mode a premium path carrying the
+ * browser's desktop-key cookie is relayed to the cloud. The relay set is its
+ * own decision, not cloudFallback, and it must never cover a family the
+ * desktop key is denied (REST v2 is cloud-only AND API-only).
+ */
+describe('self-host relay path decision', async () => {
+  const { SELFHOST_RELAY_PATHS } = await import('../shared/selfhost-relay-paths.js');
+  const dispatchBody = sidecar.slice(sidecar.indexOf('async function dispatch('));
+
+  it('relays no path of a cloud-only route family', () => {
+    for (const p of SELFHOST_RELAY_PATHS) {
+      for (const prefix of sidecarCloudOnlyPrefixes) {
+        assert.ok(!p.startsWith(prefix), `${p} is relayed but belongs to cloud-only family ${prefix}`);
+      }
+    }
+  });
+
+  it('decides the relay ahead of local handler dispatch, gated on the operator switch', () => {
+    const relayAt = dispatchBody.indexOf('isSelfHostRelayPath(requestUrl.pathname)');
+    const localAt = dispatchBody.indexOf('const modulePath = pickModule(');
+    assert.ok(relayAt > 0, 'dispatch consults the relay set');
+    assert.ok(relayAt < localAt, 'the relay decision precedes local handlers');
+    assert.match(dispatchBody.slice(0, relayAt), /context\.selfHostRelay\s*&&\s*selfHostKey !== null\s*&&\s*$/);
+  });
+
+  it('removes the desktop-key cookie before anything else in dispatch reads the request', () => {
+    const firstStatement = dispatchBody.slice(dispatchBody.indexOf('{') + 1).trim();
+    assert.match(firstStatement, /^\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*const selfHostKey = takeSelfHostKeyCookie\(req\);/);
+  });
+
+  it('keeps cloudFallback forced off in docker mode', () => {
+    assert.match(sidecar, /const cloudFallback = mode === 'docker' \? false : requestedFallback;/);
+  });
+});

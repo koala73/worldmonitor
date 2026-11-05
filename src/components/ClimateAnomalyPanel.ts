@@ -76,7 +76,7 @@ export class ClimateAnomalyPanel extends Panel {
     this.setSafeContent(safeHtml`
       <div class="climate-panel-content">
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="climate-table">
+          <table class="wm-table climate-table">
             <thead>
               <tr>
                 <th scope="col">${t('components.climate.zone')}</th>

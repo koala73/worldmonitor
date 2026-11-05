@@ -97,12 +97,6 @@ function envelope(): BriefEnvelope {
 
 async function loadMagazine(page: Page, viewport: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(viewport);
-  await page.route('https://fonts.googleapis.com/**', async (route) => {
-    await route.fulfill({ status: 200, contentType: 'text/css', body: '' });
-  });
-  await page.route('https://fonts.gstatic.com/**', async (route) => {
-    await route.abort();
-  });
   await page.setContent(renderBriefMagazine(envelope()), { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#deck .page')).toHaveCount(EXPECTED_PAGE_COUNT);
   await expect(page.locator('#navDots button')).toHaveCount(EXPECTED_PAGE_COUNT);
@@ -283,10 +277,6 @@ test.describe('brief magazine chrome stays clear of page content', () => {
   ]) {
     test(`digest pages at ${viewport.width}x${viewport.height}`, async ({ page }) => {
       await page.setViewportSize(viewport);
-      await page.route('https://fonts.googleapis.com/**', (route) =>
-        route.fulfill({ status: 200, contentType: 'text/css', body: '' }),
-      );
-      await page.route('https://fonts.gstatic.com/**', (route) => route.abort());
       await page.setContent(renderBriefMagazine(chromeEnvelope()), { waitUntil: 'domcontentloaded' });
 
       const digestIndexes = await page.locator('#deck .page').evaluateAll((pages) =>

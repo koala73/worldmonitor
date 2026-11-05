@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1500881
+      "raw": 1500275
     },
     "chunks": {
       "App": {
-        "raw": 950934,
+        "raw": 945694,
         "files": 1
       },
       "ai-flow-settings": {
@@ -165,11 +165,11 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 123679,
+        "raw": 123733,
         "files": 1
       },
       "index": {
-        "raw": 39130,
+        "raw": 39201,
         "files": 2
       },
       "layout-batch": {
@@ -189,7 +189,7 @@
         "files": 1
       },
       "panel-gating": {
-        "raw": 4192,
+        "raw": 4219,
         "files": 1
       },
       "panel-storage": {
@@ -233,7 +233,7 @@
         "files": 1
       },
       "widget-store": {
-        "raw": 23322,
+        "raw": 27804,
         "files": 1
       }
     }

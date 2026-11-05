@@ -43,7 +43,10 @@ function barChart(series: HormuzSeries[], color: string, unit: string, width = 2
     return hit;
   });
 
-  return `<svg class="hz-svg" width="${width}" height="${height}" style="display:block;overflow:visible">${rects.join('')}${hits.join('')}</svg>`;
+  // Bars are laid out in a width-unit coordinate space and stretched to the
+  // panel body, so the chart never runs past a narrow column or stops short
+  // of a wide one. Height stays fixed.
+  return `<svg class="hz-svg" viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none" style="display:block;overflow:visible">${rects.join('')}${hits.join('')}</svg>`;
 }
 
 function renderChart(chart: HormuzChart, idx: number): string {
@@ -56,12 +59,36 @@ function renderChart(chart: HormuzChart, idx: number): string {
 
   return `
     <div class="hz-chart" style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px">
         <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(chart.title)}</span>
         <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color}">${escapeHtml(lastVal)} <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${unit} · ${escapeHtml(lastDate)}</span></span>
       </div>
       <div style="position:relative">${barChart(chart.series, color, unit)}</div>
     </div>`;
+}
+
+/**
+ * The part of `el` that is on screen: its box cut by every scrolling or
+ * clipping ancestor (the sidebar grid scrolls panels partly out of view) and
+ * by the viewport.
+ */
+function visibleBounds(el: HTMLElement): { left: number; top: number; right: number; bottom: number } {
+  const r = el.getBoundingClientRect();
+  const box = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+    const clip = node.getBoundingClientRect();
+    box.left = Math.max(box.left, clip.left);
+    box.top = Math.max(box.top, clip.top);
+    box.right = Math.min(box.right, clip.right);
+    box.bottom = Math.min(box.bottom, clip.bottom);
+  }
+  box.left = Math.max(box.left, 0);
+  box.top = Math.max(box.top, 0);
+  box.right = Math.min(box.right, window.innerWidth);
+  box.bottom = Math.min(box.bottom, window.innerHeight);
+  return box;
 }
 
 export class HormuzPanel extends Panel {
@@ -239,11 +266,24 @@ export class HormuzPanel extends Panel {
       const tip = this.element?.querySelector<HTMLElement>('.hz-tip');
       if (!tip) return;
       const barRect = (target as SVGRectElement).getBoundingClientRect();
-      tip.style.left = `${barRect.left + barRect.width / 2}px`;
-      tip.style.top = `${Math.max(8, barRect.top - 28)}px`;
-      tip.style.transform = 'translateX(-50%)';
-      tip.style.opacity = '1';
       tip.textContent = `${date}  ${val} ${unit}`;
+      // The scrolling panel body's layout containment makes it the containing
+      // block for this fixed tooltip, and its overflow clips it. Viewport
+      // coordinates would land offset by the body's position, so measure
+      // where (0, 0) lands and place from there, centred on the bar, inside
+      // the visible body, and below the bar when there is no room above it.
+      tip.style.transform = 'none';
+      tip.style.left = '0px';
+      tip.style.top = '0px';
+      const origin = tip.getBoundingClientRect();
+      const body = visibleBounds(tip.closest<HTMLElement>('.panel-content') ?? this.element as HTMLElement);
+      const half = origin.width / 2;
+      const centre = Math.min(Math.max(barRect.left + barRect.width / 2, body.left + half + 4), body.right - half - 4);
+      const above = barRect.top - origin.height - 6;
+      const top = above >= body.top + 4 ? above : Math.min(barRect.bottom + 6, body.bottom - origin.height - 4);
+      tip.style.left = `${centre - half - origin.left}px`;
+      tip.style.top = `${top - origin.top}px`;
+      tip.style.opacity = '1';
     });
 
     this.element.addEventListener('mouseleave', () => {

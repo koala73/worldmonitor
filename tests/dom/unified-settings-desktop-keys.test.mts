@@ -255,8 +255,10 @@ describe('Settings -> API Keys: which section each plan sees', () => {
 
     const text = panel().textContent ?? '';
     expect(text).toContain('Desktop keys');
-    expect(text).toContain('for your own desktop app');
-    expect(text).toContain('Shared or public deployments need an API plan');
+    expect(text).toContain('in your desktop app and on self-hosted dashboards');
+    expect(text).toContain('On a shared install, each person enters their own key');
+    expect(text).toContain('An API plan is for calling the API directly');
+    expect(text).not.toContain('Shared or public deployments need an API plan');
     expect(text).not.toContain('Create API keys to access WorldMonitor data programmatically');
     expect(text).not.toContain('Upgrade to API Starter');
     expect(createButton()?.textContent).toContain('Create desktop key');

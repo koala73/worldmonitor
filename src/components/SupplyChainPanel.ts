@@ -438,7 +438,7 @@ export class SupplyChainPanel extends Panel {
         const risk = riskTierMap[opt.bypassWarRiskTier] ?? opt.bypassWarRiskTier;
         return `<tr><td>${escapeHtml(opt.name)}</td><td>${days}</td><td>${cost}</td><td>${escapeHtml(risk)}</td></tr>`;
       }).join('');
-      return `<div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title"><table class="sc-bypass-table">
+      return `<div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title"><table class="wm-table sc-bypass-table">
         <thead><tr><th scope="col">Corridor</th><th scope="col">+Days</th><th scope="col">+Cost</th><th scope="col">Risk</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>`;
@@ -730,7 +730,7 @@ export class SupplyChainPanel extends Panel {
     return `<div style="margin-bottom:8px">
       <div class="trade-sector" style="font-weight:600;margin-bottom:4px">${t('components.supplyChain.corridorDisruption')}</div>
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-        <table class="sc-disruption-table">
+        <table class="wm-table sc-disruption-table">
           <thead><tr>
             <th scope="col">${t('components.supplyChain.corridor')}</th>
             <th scope="col">${t('components.supplyChain.vessels')}</th>
@@ -935,7 +935,7 @@ export class SupplyChainPanel extends Panel {
         </div>
         <p class="sc-mineral-caption">${t('components.supplyChain.productionCaption')}${year ? ` (${escapeHtml(year)})` : ''}</p>
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table>
+          <table class="wm-table">
             <thead>
               <tr>
                 <th scope="col">${t('components.supplyChain.mineral')}</th>
@@ -980,7 +980,7 @@ export class SupplyChainPanel extends Panel {
 
     return `<div class="trade-tariffs-table">
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-        <table>
+        <table class="wm-table">
           <thead>
             <tr>
               <th scope="col">${t('components.supplyChain.mineral')}</th>
