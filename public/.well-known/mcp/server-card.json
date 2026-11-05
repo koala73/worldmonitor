@@ -498,7 +498,7 @@
     },
     {
       "name": "get_fred_series",
-      "description": "On-demand FRED macro series from the seeded cache: rates, yields, inflation, labor, money supply, and stress indices. Answers through the canonical get-fred-series-batch RPC — the same bounded allowlist and Railway-seeded data the dashboard reads, so no external FRED call ever happens at request time and unlisted series cannot be pulled. Up to 20 series per call; observations return newest-last. A requested id missing from `results` is either outside the allowlist or not yet seeded — compare `fetched` with `requested`.",
+      "description": "Cached allowlisted FRED macro series via get-fred-series-batch; no request-time external fetch. Up to 20 series; observations are newest-last. Missing results mean an unlisted or unseeded id; compare fetched with requested. Defaults to 24 observations per series, with a 1000 maximum.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
@@ -610,7 +610,7 @@
     },
     {
       "name": "get_global_air_activity",
-      "description": "Observed military aircraft by type and overlapping geographic theater, plus a count outside all theaters. Counts seeded tracks from redistribution-cleared providers, excluding confirmed on-ground aircraft; unknown ground status remains included. Quiet theaters are omitted. coverage is global, regional or unknown; regional or unknown sets partial=true and is never a worldwide total. Global coverage still omits unobserved aircraft. Geographic coverage is independent of freshness. Military snapshot counts only, without posture interpretation.",
+      "description": "Military snapshot counts only: observed aircraft by type, overlapping theater, and outside all theaters. Uses redistribution-cleared tracks; confirmed grounded tracks are excluded, unknown ground status included. Regional/unknown coverage is partial, never a world total; even global scope omits unobserved aircraft.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"

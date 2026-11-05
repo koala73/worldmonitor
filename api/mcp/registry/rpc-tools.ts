@@ -2707,11 +2707,9 @@ export const RPC_TOOLS: ToolDef[] = [
     title: 'Cached macroeconomic series',
     _outputBudgetBytes: 131072,
     description:
-      'On-demand FRED macro series from the seeded cache: rates, yields, inflation, labor, money supply, and stress indices. ' +
-      'Answers through the canonical get-fred-series-batch RPC — the same bounded allowlist and Railway-seeded data the ' +
-      'dashboard reads, so no external FRED call ever happens at request time and unlisted series cannot be pulled. Up to 20 ' +
-      'series per call; observations return newest-last. A requested id missing from `results` is either outside the ' +
-      'allowlist or not yet seeded — compare `fetched` with `requested`.',
+      'Cached allowlisted FRED macro series via get-fred-series-batch; no request-time external fetch. ' +
+      'Up to 20 series; observations are newest-last. Missing results mean an unlisted or unseeded id; compare fetched ' +
+      'with requested. Defaults to 24 observations per series, with a 1000 maximum.',
     inputSchema: {
       type: 'object',
       properties: {
