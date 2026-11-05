@@ -9,6 +9,7 @@ import { isMainModule } from './main-module.mjs';
 // Fetch-phase time beyond the collection budget, for the last-good snapshot read and the merge.
 export const FOOD_FETCH_MARGIN_MS = 15_000;
 
+/** Merge validated reports without erasing last-good prices or regressing country context dates. */
 export function mergeFoodSnapshot(previous, incoming) {
   if (!incoming.observations.length && previous?.observations?.length) {
     throw new Error('food observations missing; retain last-good prices');
@@ -30,6 +31,7 @@ export function mergeFoodSnapshot(previous, incoming) {
   };
 }
 
+/** Run a registered food seeder with retention, first-failure health receipts and success activation. */
 export function runFoodPriceSource(id, moduleUrl) {
   if (!isMainModule(moduleUrl, process.argv[1])) return;
   loadEnvFile(moduleUrl);
@@ -45,6 +47,7 @@ export function runFoodPriceSource(id, moduleUrl) {
     return mergeFoodSnapshot(previous, await collectFoodSource(id, { budgetMs: source.fetchBudgetMs }));
   }, {
     validateFn: data => count(data) > 0,
+    recordInitialFetchFailure: true,
     recordCount: count, declareRecords: count,
     ttlSeconds: Math.max(45, source.maxContentAgeDays + 14) * 86400,
     // Cover retried staging/canonical/cleanup and freshness writes after the fetch deadline.

@@ -1,6 +1,7 @@
 export const EDUCATION_PRIORITY_UTC_DAY = 0;
 export const EDUCATION_PRIORITY_UTC_HOUR = 8;
 
+/** Preserve protected priority slots, or rotate the leased admission leader for the recovery tick. */
 export function orderMacroSections(
   runAt,
   educationSection,

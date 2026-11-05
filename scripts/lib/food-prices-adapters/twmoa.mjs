@@ -2,6 +2,7 @@ import { isoDate } from '../food-prices.mjs';
 import { positive, priceReport } from './monthly.mjs';
 
 export const DATA_URL = 'https://data.moa.gov.tw/Service/OpenData/FromM/FarmTransData.aspx?IsTransData=1&UnitId=037';
+/** Convert ROC transaction dates and retain traded staple crop quotes in TWD per kg. */
 export function parseTaiwan(payload) {
   if (!Array.isArray(payload) || payload.length > 25_000) throw new Error('Taiwan transaction format changed');
   return payload.flatMap(row => {
@@ -14,6 +15,7 @@ export function parseTaiwan(payload) {
       unit: 'kg', currency: 'TWD', date, price: Number(row['平均價']), origin: '' }];
   });
 }
+/** Collect current Taiwan crop transactions and validate their report dates. */
 export async function collect(ctx) {
   return priceReport(parseTaiwan(JSON.parse(await ctx.get(DATA_URL))), DATA_URL, ctx.now);
 }

@@ -32,6 +32,9 @@ available without fabricating a baseline. During the first fourteen days of a
 month, unpublished Argentina archives can fall back to the previous month's
 dated reports; malformed current archives still fail closed.
 
+Initial fetch failures write an NX error receipt without a success timestamp or
+activation marker, so health reports `SEED_ERROR` before the first publish while
+preserving any existing success metadata.
 The existing source-specific activation markers, seed metadata, retention,
 content-age checks and reader statuses apply. A regressing CPI report now retains
 the previous snapshot just as regressing price reports do. Multi-country context

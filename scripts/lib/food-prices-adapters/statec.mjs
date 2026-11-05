@@ -3,6 +3,7 @@ import { isoDate } from '../food-prices.mjs';
 
 export const DATA_URL = 'https://lustat.statec.lu/rest/data/LU1,DSD_PRIX_PRODUIT@DF_E5300,1.0/all?startPeriod=2024';
 const FOOD = new Set(['EGGS', 'POT', 'PORC', 'BAN', 'FAR', 'COF', 'WAT', 'BUTT', 'CROI', 'SUG', 'PAIN', 'MILK', 'APP']);
+/** Decode the latest annual June food benchmark while retaining published product units. */
 export function parseStatec(payload) {
   const dimensions = payload?.structure?.dimensions;
   const series = dimensions?.series;
@@ -27,6 +28,7 @@ export function parseStatec(payload) {
   const latest = results.map(row => row.date).sort().at(-1);
   return results.filter(row => row.date === latest);
 }
+/** Request the Luxembourg benchmark with the publisher-required English language header. */
 export async function collect(ctx) {
   // Node fetch sends Accept-Language: * by default; this publisher returns HTTP 500 (languageTag1) for it.
   return priceReport(parseStatec(JSON.parse(await ctx.get(DATA_URL, { headers: { Accept: 'application/json', 'Accept-Language': 'en' } }))), DATA_URL, ctx.now);

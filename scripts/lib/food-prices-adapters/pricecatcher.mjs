@@ -6,6 +6,7 @@ const BASE = 'https://storage.data.gov.my/pricecatcher/';
 const ITEMS = { '1': ['Chicken (standard, cleaned)', '1kg'], '114': ['Tomatoes', '1kg'], '1109': ['Eggs (grade A)', '30 biji'] };
 const EXPECTED_NAMES = { '1': /^AYAM BERSIH - STANDARD$/, '114': /^TOMATO$/, '1109': /^TELUR AYAM GRED A$/ };
 
+/** Compute staple medians for complete dates with at least ten distinct premises per item. */
 export function aggregatePrices(rows, lookup, { before, since }) {
   const groups = new Map();
   for (const row of rows) {
@@ -34,6 +35,7 @@ export function aggregatePrices(rows, lookup, { before, since }) {
   });
 }
 
+/** Decode selected Parquet columns with row, expansion and Brotli output limits. */
 export async function readPricecatcher(bytes) {
   const file = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
   const meta = parquetMetadata(file);
@@ -52,6 +54,7 @@ export async function readPricecatcher(bytes) {
   return rows;
 }
 
+/** Select the latest completed Malaysian day with all staples and its exact-week baseline. */
 export async function collect(ctx) {
   const lookup = new Map(csvRows(await ctx.get(`${BASE}lookup_item.csv`), ['item_code', 'item', 'unit']).map(row => [row.item_code, row]));
   // Today's collection can be partial. Report the latest completed local calendar day available.

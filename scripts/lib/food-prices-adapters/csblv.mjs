@@ -1,6 +1,7 @@
 import { cubeCells, monthDate, positive, priceReport } from './monthly.mjs';
 
 export const DATA_URL = 'https://data.stat.gov.lv/api/v1/en/OSP_PUB/VEK/PC/PCC/PCC010m';
+/** Decode food and beverage retail prices, rejecting changed measures, units or dates. */
 export function parseLatvia(payload) {
   return cubeCells(payload, ['GOODS_SERVICES', 'ContentsCode', 'TIME']).flatMap(cell => {
     if (!/^01\.[12]\./.test(cell.GOODS_SERVICES.code) || !positive(cell.value)) return [];
@@ -12,6 +13,7 @@ export function parseLatvia(payload) {
     return [{ item: match[1], market: 'National average', marketType: 'retail', unit: match[2], currency: 'EUR', date, price: Number(cell.value), origin: '' }];
   });
 }
+/** Query the latest Latvian food-price month using publisher dimension metadata. */
 export async function collect(ctx) {
   const meta = JSON.parse(await ctx.get(DATA_URL));
   if (!/euro per 1 kg/i.test(meta.title)) throw new Error('Latvia price table units changed');

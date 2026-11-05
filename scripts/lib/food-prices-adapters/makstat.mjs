@@ -1,6 +1,7 @@
 import { cubeCells, monthDate, positive } from './monthly.mjs';
 
 export const DATA_URL = 'https://makstat.stat.gov.mk/PXWeb/api/v1/en/MakStat/Ceni/IndeksTrosZivot/TrosociZivot/131_CeniTr_Mk_DetalnoTroZi_ecoicop_ml.px';
+/** Describe the latest food CPI monthly and annual changes as context rather than prices. */
 export function parseMakstat(payload) {
   const cells = cubeCells(payload, ['Година', 'Продукти', 'Индекс']).filter(cell => cell['Продукти'].code === '0002' && positive(cell.value));
   const latest = cells.map(cell => monthDate(cell['Година'].code)).sort().at(-1);
@@ -12,6 +13,7 @@ export function parseMakstat(payload) {
   return { country: 'North Macedonia', countryCode: 'MK', referenceDate: latest, url: DATA_URL,
     title: `Food and non-alcoholic beverages CPI: ${(Number(mom.value) - 100).toFixed(1)}% month-on-month; ${(Number(yoy.value) - 100).toFixed(1)}% year-on-year (indices, not prices)` };
 }
+/** Select the latest valid metadata month and request both CPI comparison indices. */
 export async function collect(ctx) {
   const metadata = JSON.parse(await ctx.get(DATA_URL));
   const months = metadata.variables?.find(variable => variable.code === 'Година')?.values;

@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
 import { isoDate } from '../food-prices.mjs';
 
+/** Parse a bounded CSV with the required publisher columns; reject schema changes. */
 export function csvRows(text, columns) {
   const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
   if (parsed.errors.length || !columns.every(column => parsed.meta.fields?.includes(column)) || parsed.data.length > 100_000) {
@@ -9,19 +10,23 @@ export function csvRows(text, columns) {
   return parsed.data;
 }
 
+/** Return the first day of a valid publisher month, or an empty string. */
 export const monthDate = value => {
   const match = /^(\d{4})[-M]?(\d{2})$/.exec(String(value));
   return match ? isoDate(match[1], match[2], 1) : '';
 };
+/** Accept finite positive publisher values while excluding missing cells. */
 export const positive = value => value !== null && value !== '' && Number.isFinite(Number(value)) && Number(value) > 0;
 
 // A whole refreshed report replaces withdrawn quotes, while unrequested dates remain in history.
+/** Build a replacement report for observed dates; reject empty or future reports. */
 export function priceReport(observations, reportUrl, now) {
   if (!observations.length || observations.some(row => !row.date || row.date > now.toISOString().slice(0, 10))) throw new Error('food report has no prices or a future date');
   return { observations, contexts: [], reportUrl, refreshedReports: [...new Set(observations.map(row => row.date))].map(date => ({ date })) };
 }
 
 // PxWeb json-stat2 cells follow category.index, which can differ from the metadata order.
+/** Decode bounded json-stat2 cells using category indices, rejecting dimension drift. */
 export function cubeCells(table, expectedIds) {
   if (!Array.isArray(table?.id) || table.id.length !== expectedIds.length || !expectedIds.every(id => table.id.includes(id))
     || !Array.isArray(table.size) || table.size.length !== table.id.length) throw new Error('food cube dimensions changed');

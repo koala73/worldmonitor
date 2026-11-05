@@ -5,6 +5,7 @@ const BASE = 'https://agriculture.ld.admin.ch/foag/';
 const DIMENSIONS = ['date', 'product', 'unit', 'currency', 'production-system', 'product-origin', 'sales-region', 'data-method', 'product-properties', 'value-chain-detail', 'data-source', 'key-indicator-type', 'usage', 'cost-component', 'foreign-trade'];
 export const FOAG_CUBES = { foagfruit: 'FruitsVegetablesPotatoes', foagegg: 'Eggs', foagmilk: 'MilkDairyProducts' };
 
+/** Build a bounded consumer-price query for a known cube and validated starting month. */
 export function observationQuery(cube, since) {
   if (!Object.values(FOAG_CUBES).includes(cube) || !/^\d{4}-\d{2}$/.test(since)) throw new Error('unknown FOAG cube or month');
   return `PREFIX d: <${BASE}dimension/> SELECT ?price ${DIMENSIONS.map((_, i) => `?v${i}`).join(' ')} WHERE {
@@ -14,6 +15,7 @@ export function observationQuery(cube, since) {
   } LIMIT 5001`;
 }
 
+/** Normalize latest Swiss consumer prices, preserving all series dimensions and converting centimes. */
 export function parseFoag(bindings, labels) {
   if (!Array.isArray(bindings) || bindings.length > 5000) throw new Error('FOAG observation limit exceeded');
   const text = uri => { const label = labels.get(uri); if (!label) throw new Error(`FOAG dimension label missing: ${uri}`); return label; };
@@ -43,6 +45,7 @@ const query = async (ctx, sparql) => JSON.parse(await ctx.get(ENDPOINT, { method
   headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/sparql-results+json' },
   body: new URLSearchParams({ query: sparql, format: 'json' }).toString() }));
 
+/** Collect one consumer-price cube and resolve validated vocabulary labels in bounded batches. */
 export const foagAdapter = cube => ({ collect: async ctx => {
   const since = new Date(Date.UTC(ctx.now.getUTCFullYear(), ctx.now.getUTCMonth() - 3, 1)).toISOString().slice(0, 7);
   const payload = await query(ctx, observationQuery(cube, since));

@@ -8,6 +8,7 @@ XLSX.set_cptable(cptable);
 export const PAGE_URL = 'https://mercadocentral.gob.ar/informaci%C3%B3n/precios-mayoristas';
 const MONTHS = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
 
+/** Read modal wholesale prices per kg, excluding ambiguous or unweighted quotes. */
 export function parseMercado(rows) {
   const header = rows[0];
   const match = /^MO(\d{2})(\d{2})(\d{2})$/.exec(header?.[9]);
@@ -32,6 +33,7 @@ export function parseMercado(rows) {
   return [...quotes.values()];
 }
 
+/** Decode bounded legacy XLS archives and reject oversized or unexpected workbooks. */
 export function readMercadoArchive(bytes) {
   let expanded = 0;
   let count = 0;
@@ -48,6 +50,7 @@ export function readMercadoArchive(bytes) {
   });
 }
 
+/** Discover fruit and vegetable archives, allowing prior-month fallback during early rollover. */
 export async function collect(ctx) {
   const links = ctx.links(await ctx.get(PAGE_URL), PAGE_URL);
   const observations = [];
