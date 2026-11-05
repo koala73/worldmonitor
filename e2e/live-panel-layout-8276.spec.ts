@@ -234,6 +234,9 @@ test('collapsing a user-resized video panel releases its grid rows (#10185)', as
       message: `collapsed resized ${id} reserves one grid row`,
     }).toMatchObject({ span: 'span 1' });
     const collapsed = await footprint(id);
+    expect(collapsed!.height, `${id} collapsed height`).toBeLessThanOrEqual(200);
+    expect(collapsed!.gapBelow, `${id} has a panel below`).not.toBeNull();
+    expect(collapsed!.gapBelow!, `${id} does not overlap the next panel`).toBeGreaterThanOrEqual(0);
     expect(collapsed!.height + collapsed!.gapBelow!, `${id} collapsed slot`).toBeLessThanOrEqual(204);
     await expect(handle, `${id} row resize is unavailable while collapsed`).toBeHidden();
 
