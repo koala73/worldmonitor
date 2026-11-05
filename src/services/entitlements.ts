@@ -157,6 +157,11 @@ export async function initEntitlementSubscription(
   if (currentState === null) beginEntitlementVerification();
 
   try {
+    // Start the API chunk now so it loads alongside the client chunk instead
+    // of after it: this subscription gates Pro panels on every signed-in boot.
+    // A failed load is reported below, where it is awaited.
+    const apiLoad = getConvexApi();
+    apiLoad.catch(() => {});
     const client = await getConvexClient();
     if (!client) {
       console.log('[entitlements] No VITE_CONVEX_URL — skipping Convex subscription');
@@ -164,7 +169,7 @@ export async function initEntitlementSubscription(
       return;
     }
 
-    const api = await getConvexApi();
+    const api = await apiLoad;
     if (!api) {
       console.log('[entitlements] Could not load Convex API — skipping subscription');
       if (isExpectedAccount()) markEntitlementVerificationUnavailable();

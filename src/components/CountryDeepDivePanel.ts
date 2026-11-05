@@ -14,6 +14,8 @@ import {
   getSourceType,
 } from '@/config/feeds';
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
+import { getRpcBaseUrl } from '@/services/rpc-client';
+import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
 import { CountryHistory } from './CountryHistory';
@@ -2009,10 +2011,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private async loadDisruptionsForCountry(iso2: string, revision = this.atlasRevision): Promise<void> {
     const abortSignal = this.signal;
     try {
-      const { SupplyChainServiceClient } = await import(
-        '@/generated/client/worldmonitor/supply_chain/v1/service_client'
-      );
-      const { getRpcBaseUrl } = await import('@/services/rpc-client');
       // Thread the panel's `signal` into the fetch shim so a country
       // switch or panel close cancels the in-flight request, not just
       // discards the result via the `this.currentCode !== iso2` guard
@@ -2050,8 +2048,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
             ? 'energy:open-storage-facility-detail'
             : 'energy:open-pipeline-detail',
           // Emit ONLY the {pipelineId, facilityId} the drawers consume today
-          // (see PipelineStatusPanel + StorageFacilityMapPanel
-          // openDetailHandler). Previously this detail included a
+          // (see PipelineStatusPanel.openDetailHandler and
+          // StorageFacilityMapPanel.claimStorageClick). Previously this detail included a
           // `highlightEventId` that no receiver read — Codex P2 flagged the
           // misleading API surface. Clicking a row jumps to the asset
           // drawer; the user sees the full per-asset timeline and locates

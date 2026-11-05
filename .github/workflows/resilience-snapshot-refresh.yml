@@ -18,6 +18,8 @@ jobs:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      branch: ${{ steps.reconcile.outputs.branch }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -92,6 +94,9 @@ jobs:
           # llms-full corpus does. Omitting it here would leave the committed
           # figures a month stale and turn the drift test red on main.
           npm run build:ai-search
+          # run-data-tests.mjs skips npm's pretest:data hook, which regenerates
+          # the docs date manifest; docs-locale-seo fails on the stale copy.
+          npm run docs:dates
           mapfile -t suites < <(grep -lE "$SNAPSHOT_CONSUMERS" tests/*.test.mjs tests/*.test.mts)
           # No built-output filter: it drops whole suites such as
           # public-product-facts, which skip only their build-only cases here.
@@ -163,3 +168,16 @@ jobs:
           path: ${{ runner.temp }}/resilience-snapshot.patch
           retention-days: 30
           if-no-files-found: error
+
+  # A PR opened with github.token fires no workflow_run event for its CI, so
+  # Deploy Gate would reach it only on its 30-minute sweep.
+  deploy-gate:
+    needs: refresh
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/bot-pr-deploy-gate.yml
+    with:
+      branch: ${{ needs.refresh.outputs.branch }}

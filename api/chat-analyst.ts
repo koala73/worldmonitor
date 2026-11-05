@@ -164,7 +164,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405, corsHeaders);
+    return json({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'POST, OPTIONS' });
   }
 
   // Top-level error boundary. An edge function must never let an exception
@@ -297,14 +297,18 @@ export default async function handler(req: Request): Promise<Response> {
     const prevUserTurn = history.filter((m) => m.role === 'user').slice(-1)[0]?.content ?? '';
     const retrievalQuery = prevUserTurn ? `${query} ${prevUserTurn}` : query;
 
-    const context = await assembleAnalystContext(geoContext, domainFocus, retrievalQuery);
+    // Chat turns are the caller's own text: a restricted account streams only
+    // from its allowed providers (ai-routing-policy.ts). The routing lookup
+    // reads only the caller, so it runs alongside the context reads instead of
+    // adding its round trip before the first streamed token.
+    const [context, routingDecision] = await Promise.all([
+      assembleAnalystContext(geoContext, domainFocus, retrievalQuery),
+      getAiRoutingDecisionForUser(premiumIdentity.userId),
+    ]);
     // Instructions in the system prompt, feed-derived context in the final user
     // turn next to the question: untrusted text never shares the system role.
     const messages = buildAnalystMessages({ context, domainFocus, history, query });
-
-    // Chat turns are the caller's own text: a restricted account streams only
-    // from its allowed providers (ai-routing-policy.ts).
-    const routingPolicy = toLlmRoutingPolicy(await getAiRoutingDecisionForUser(premiumIdentity.userId));
+    const routingPolicy = toLlmRoutingPolicy(routingDecision);
     const llmStream = callLlmReasoningStream({
       messages,
       routingPolicy,

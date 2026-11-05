@@ -85,7 +85,7 @@ export default async function handler(req) {
     return jsonResponse(
       { error: 'Method not allowed' },
       405,
-      { ...NO_STORE_HEADERS, ...cors },
+      { ...NO_STORE_HEADERS, ...cors, Allow: 'GET, OPTIONS' },
     );
   }
 

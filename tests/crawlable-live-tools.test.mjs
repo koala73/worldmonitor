@@ -769,7 +769,7 @@ describe('crawlable live intelligence view models', () => {
     const { document } = window;
     document.body.innerHTML = `
       <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-chokepoint-name="Strait of Hormuz" data-state="ready">
-        <h2>Is Strait of Hormuz open right now?</h2>
+        <h2>Is the Strait of Hormuz open right now?</h2>
         <p data-chokepoint-open-status>Old passage evidence.</p>
         <p data-chokepoint-score-driver>Old score inputs.</p>
         <span class="live-status" data-live-status>Published pulse</span>
@@ -1804,7 +1804,7 @@ describe('crawlable live intelligence view models', () => {
         <button type="button" data-live-refresh>Refresh</button>
       </section>
       <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-state="ready">
-        <h2>Is Strait of Hormuz open right now?</h2>
+        <h2>Is the Strait of Hormuz open right now?</h2>
         <p data-chokepoint-open-status>Published passage evidence.</p>
         <p data-chokepoint-score-driver>Published score inputs.</p>
         <span class="live-status" data-live-status>Published pulse</span>

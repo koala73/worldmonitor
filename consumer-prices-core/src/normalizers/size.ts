@@ -3,7 +3,11 @@
  * Handles patterns like: 2x200g, 6x1L, 500ml, 24 rolls, 3 ct, 1kg, 12 pods
  */
 
-const U_RE = /\.$/;
+
+
+const NORMALIZE_DECIMAL_SEPARATORS_RE = /(?<!\d)0,(\d+)/g;
+const NORMALIZE_DECIMAL_SEPARATORS_RE_2 = /(\d),(\d{3})(?!\d)/g;
+const NORMALIZE_DECIMAL_SEPARATORS_RE_3 = /(\d),(\d{1,2})(?!\d)/g;const U_RE = /\.$/;
 const CONTEXTUAL_UNIT_RE = /^(\d+)\s*(pack)$/;
 const CONTEXTUAL_UNIT_RE_2 = /^(\d+(?:\.\d+)?)\s*(pints?)$/;
 
@@ -44,6 +48,9 @@ const UNIT_MAP = new Map<string, { base: string; factor: number }>([
   ['ltr', { base: 'ml', factor: 1000 }],
   ['litre', { base: 'ml', factor: 1000 }],
   ['liter', { base: 'ml', factor: 1000 }],
+  // BR/PT storefronts write "1,5 Litros"; `litros` resolves through the
+  // plural strip in normalizeUnit (#5445).
+  ['litro', { base: 'ml', factor: 1000 }],
   ['ml', { base: 'ml', factor: 1 }],
   ['millilitre', { base: 'ml', factor: 1 }],
   ['milliliter', { base: 'ml', factor: 1 }],
@@ -127,10 +134,18 @@ function matchPack(text: string): { count: string; rest: string } | null {
   return null;
 }
 
+/** Normalize numeric separators before either size or title matching. */
+export function normalizeDecimalSeparators(text: string): string {
+  return text
+    .replace(NORMALIZE_DECIMAL_SEPARATORS_RE, '0.$1')
+    .replace(NORMALIZE_DECIMAL_SEPARATORS_RE_2, '$1$2')
+    .replace(NORMALIZE_DECIMAL_SEPARATORS_RE_3, '$1.$2');
+}
+
 export function parseSize(raw: string | null | undefined, context?: SizeContext): ParsedSize | null {
   if (!raw) return null;
 
-  const text = raw.trim().toLowerCase();
+  const text = normalizeDecimalSeparators(raw.trim().toLowerCase());
 
   const contextualUnit = context?.baseUnit === 'ct'
     ? { pattern: CONTEXTUAL_UNIT_RE, base: 'ct', factor: 1 }

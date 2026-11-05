@@ -7,23 +7,23 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 456750
+    "raw": 457175
   },
   "chunks": {
     "analytics": {
-      "raw": 46173,
+      "raw": 46611,
       "files": 1
     },
     "auth-state": {
-      "raw": 936,
+      "raw": 542,
       "files": 1
     },
     "clerk": {
-      "raw": 21632,
+      "raw": 21861,
       "files": 1
     },
     "convex-client": {
-      "raw": 5338,
+      "raw": 4937,
       "files": 1
     },
     "debugbear-rum": {
@@ -35,7 +35,7 @@
       "files": 1
     },
     "entitlements": {
-      "raw": 2618,
+      "raw": 2639,
       "files": 1
     },
     "font-settings": {
@@ -59,19 +59,19 @@
       "files": 1
     },
     "main": {
-      "raw": 134528,
+      "raw": 134769,
       "files": 1
     },
     "map-layer-definitions": {
-      "raw": 14650,
+      "raw": 14566,
       "files": 1
     },
     "panels": {
-      "raw": 37687,
+      "raw": 37755,
       "files": 1
     },
     "runtime-config": {
-      "raw": 10324,
+      "raw": 10340,
       "files": 1
     },
     "safe-storage": {
@@ -91,7 +91,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71262,
+      "raw": 71553,
       "files": 1
     },
     "theme-manager": {
@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1480881
+      "raw": 1500275
     },
     "chunks": {
       "App": {
-        "raw": 935347,
+        "raw": 945694,
         "files": 1
       },
       "ai-flow-settings": {
@@ -117,15 +117,15 @@
         "files": 1
       },
       "analysis-framework-store": {
-        "raw": 9718,
+        "raw": 9751,
         "files": 1
       },
       "audience-profile": {
-        "raw": 998,
+        "raw": 598,
         "files": 1
       },
       "base": {
-        "raw": 2457,
+        "raw": 2406,
         "files": 1
       },
       "cached-risk-scores": {
@@ -133,11 +133,11 @@
         "files": 1
       },
       "checkout": {
-        "raw": 14582,
+        "raw": 14910,
         "files": 1
       },
       "cloud-prefs-sync": {
-        "raw": 6955,
+        "raw": 6960,
         "files": 1
       },
       "continuous": {
@@ -145,7 +145,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 13002,
+        "raw": 14245,
         "files": 1
       },
       "cross-domain-storage": {
@@ -157,19 +157,19 @@
         "files": 1
       },
       "desktop-cloud-auth": {
-        "raw": 1501,
+        "raw": 1534,
         "files": 1
       },
       "feeds": {
-        "raw": 101736,
+        "raw": 100354,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 121934,
+        "raw": 123733,
         "files": 1
       },
       "index": {
-        "raw": 39307,
+        "raw": 39201,
         "files": 2
       },
       "layout-batch": {
@@ -181,15 +181,15 @@
         "files": 1
       },
       "news-credibility": {
-        "raw": 9373,
+        "raw": 9393,
         "files": 1
       },
       "panel-display-name": {
-        "raw": 535,
+        "raw": 533,
         "files": 1
       },
       "panel-gating": {
-        "raw": 3475,
+        "raw": 4219,
         "files": 1
       },
       "panel-storage": {
@@ -209,15 +209,15 @@
         "files": 1
       },
       "settings-persistence": {
-        "raw": 7870,
+        "raw": 7911,
         "files": 1
       },
       "source-provenance": {
-        "raw": 88764,
+        "raw": 90335,
         "files": 1
       },
       "storage-facility-registry-store": {
-        "raw": 14773,
+        "raw": 15403,
         "files": 1
       },
       "storage-quota": {
@@ -233,7 +233,7 @@
         "files": 1
       },
       "widget-store": {
-        "raw": 23263,
+        "raw": 27804,
         "files": 1
       }
     }

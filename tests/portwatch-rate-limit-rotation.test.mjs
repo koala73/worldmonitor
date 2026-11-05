@@ -191,6 +191,68 @@ describe('publication block classification (#8501)', () => {
   });
 });
 
+// ── 1b. an expired backlog clears once upstream recovers ─────────────────────
+describe('recovery from an expired backlog (2026-11-03)', () => {
+  // The seeder stayed publish-blocked for six days at 132/174: 42 payloads had
+  // passed the seven-day expiry, and cohorts of 27-28 countries cached together
+  // reach it every 12h. The fixture is the real per-country cache state.
+  const fixture = JSON.parse(readFileSync(
+    fileURLToPath(new URL('./fixtures/portwatch/port-activity-cache-2026-11-03.json', import.meta.url)),
+    'utf-8',
+  ));
+  const src = readFileSync(
+    fileURLToPath(new URL('../scripts/seed-portwatch-port-activity.mjs', import.meta.url)),
+    'utf-8',
+  );
+  const dispatchDeadlineMs = Number(src.match(/RUN_DISPATCH_DEADLINE_MS = ([\d_]+)/)[1].replace(/_/g, ''));
+  // The 2026-11-03T00:05Z run: activity began ~5s in, then five batches of six
+  // took 39.2s each on average, plus the 5s inter-batch gap.
+  const observedStartMs = 5_000;
+  const observedBatchMs = 39_200 + 5_000;
+  const admittedBatches = Math.floor(
+    (dispatchDeadlineMs - portwatchSeed.PER_COUNTRY_TIMEOUT_MS - observedStartMs) / observedBatchMs,
+  ) + 1;
+  const deadlineSlots = admittedBatches * portwatchSeed.CONCURRENCY;
+  const outOfCoverage = (prevPayload, now) => !Number.isFinite(prevPayload.cacheWrittenAt)
+    || now - prevPayload.cacheWrittenAt >= PORTWATCH_MAX_CACHE_AGE_MS;
+  const cadenceMs = PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES * 60_000;
+
+  function runsUntilFullCoverage(runSucceeds) {
+    const state = fixture.countries.map(({ iso2, cacheWrittenAt, refreshAttemptedAt }) => ({
+      iso2, iso3: `${iso2}X`, prevPayload: { iso2, cacheWrittenAt, refreshAttemptedAt },
+    }));
+    const firstRunAt = Math.ceil(fixture.capturedAt / cadenceMs) * cadenceMs;
+    for (let run = 0; run < 20; run++) {
+      const now = firstRunAt + run * cadenceMs;
+      const cap = state.some(({ prevPayload }) => outOfCoverage(prevPayload, now))
+        ? portwatchSeed.MAX_RECOVERY_COLD_FETCH_PER_RUN
+        : portwatchSeed.MAX_COLD_FETCH_PER_RUN;
+      for (const entry of orderColdFetchQueue(state, undefined, { now }).slice(0, Math.min(cap, deadlineSlots))) {
+        entry.prevPayload = {
+          ...entry.prevPayload,
+          refreshAttemptedAt: now,
+          ...(runSucceeds(run) ? { cacheWrittenAt: now } : {}),
+        };
+      }
+      const completedAt = now + dispatchDeadlineMs;
+      if (state.every(({ prevPayload }) => completedAt - prevPayload.cacheWrittenAt < PORTWATCH_MAX_CACHE_AGE_MS)) {
+        return run + 1;
+      }
+    }
+    return Infinity;
+  }
+
+  it('publishes again within two healthy runs', () => {
+    const runs = runsUntilFullCoverage(() => true);
+    assert.ok(runs <= 2, `needed ${runs} healthy runs to reach full coverage`);
+  });
+
+  it('still recovers within two days when every third run fails outright', () => {
+    const runs = runsUntilFullCoverage((run) => run % 3 !== 1);
+    assert.ok(runs <= 4, `needed ${runs} runs to reach full coverage`);
+  });
+});
+
 // ── 2. the expiring tail outranks ordinary rotation ──────────────────────────
 describe('cold-fetch priority for the expiring tail (#8501)', () => {
   const lead = PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES * 60_000;
@@ -514,7 +576,20 @@ describe('rate-limit backoff (#8501)', () => {
     assert.ok(Number.isFinite(sectionTimeoutMs) && sectionTimeoutMs > 0,
       'the bundle section timeout must be readable, or this assertion proves nothing');
 
-    const batches = Math.ceil(portwatchSeed.MAX_COLD_FETCH_PER_RUN / portwatchSeed.CONCURRENCY);
+    // The cap sizes the queue; the dispatch deadline decides how many batches
+    // start. A batch is admitted only while now + PER_COUNTRY_TIMEOUT_MS is
+    // inside the deadline, so at worst every admitted batch runs its full wrap.
+    const dispatchDeadlineMs = Number(
+      readFileSync(
+        fileURLToPath(new URL('../scripts/seed-portwatch-port-activity.mjs', import.meta.url)),
+        'utf-8',
+      ).match(/RUN_DISPATCH_DEADLINE_MS = ([\d_]+)/)[1].replace(/_/g, ''),
+    );
+    const batches = Math.min(
+      Math.ceil(portwatchSeed.MAX_RECOVERY_COLD_FETCH_PER_RUN / portwatchSeed.CONCURRENCY),
+      Math.floor((dispatchDeadlineMs - portwatchSeed.PER_COUNTRY_TIMEOUT_MS)
+        / (portwatchSeed.PER_COUNTRY_TIMEOUT_MS + 5_000)) + 1,
+    );
     const activityWorstCaseMs = batches * portwatchSeed.PER_COUNTRY_TIMEOUT_MS
       + (batches - 1) * 5_000;
 

@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **847 active source hosts** representing **829 active providers** (**363 structured/API**, **468 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **850 active source hosts** representing **831 active providers** (**366 structured/API**, **468 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -67,7 +67,8 @@ This generated inventory covers **847 active source hosts** representing **829 a
 | api.exa.ai (api.exa.ai) | structured — scripts/ais-relay.cjs, scripts/lib/company-monitoring-exa.mjs, scripts/seed-bigmac.mjs, scripts/seed-grocery-basket.mjs, +1 more |
 | api.fiscaldata.treasury.gov (api.fiscaldata.treasury.gov) | structured — scripts/seed-national-debt.mjs, scripts/seed-supply-chain-trade.mjs |
 | api.gdeltproject.org (api.gdeltproject.org) | structured — scripts/seed-gdelt-intel.mjs, scripts/seed-unrest-events.mjs |
-| api.github.com (api.github.com) | structured — api/_github-release.js, scripts/dispatch-stale-railway-reconcile.mjs, scripts/freeze-github-stars.mjs, scripts/resolve-railway-reconcile-control.mjs, +1 more |
+| api.gdeltproject.org (storage.googleapis.com) | structured — scripts/_conflict-gdelt-bulk.mjs, scripts/_gdelt-bulk-materializer.mjs |
+| api.github.com (api.github.com) | structured — api/_github-release.js, scripts/dispatch-stale-railway-reconcile.mjs, scripts/freeze-github-stars.mjs, scripts/resolve-railway-reconcile-control.mjs, +2 more |
 | api.groq.com (api.groq.com) | Excluded / candidate — No current fetch observed |
 | api.iea.org (api.iea.org) | structured — scripts/seed-iea-oil-stocks.mjs |
 | api.imf.org (api.imf.org) | structured — scripts/_seed-utils.mjs, scripts/backtest-capital-flow-episodes.mjs, scripts/seed-capital-flows.mjs, scripts/seed-gold-cb-reserves.mjs, +1 more |
@@ -208,6 +209,7 @@ This generated inventory covers **847 active source hosts** representing **829 a
 | data.humdata.org (data.humdata.org) | structured — scripts/_conflict-hapi.mjs, scripts/benchmark-resilience-external.mjs, scripts/seed-idmc-idu-displacement.mjs, scripts/seed-resilience-static.mjs |
 | data.norges-bank.no (data.norges-bank.no) | structured — scripts/seed-yield-curve-no.mjs |
 | data.snb.ch (data.snb.ch) | structured — scripts/seed-yield-curve-ch.mjs |
+| data.ssb.no (data.ssb.no) | structured — scripts/seed-fuel-prices.mjs |
 | data.stats.gov.cn (data.stats.gov.cn) | structured — scripts/china-macro/extract-nbs-national-data.mjs |
 | data.unhcr.org (data.unhcr.org) | structured — scripts/seed-cross-border-arrivals.mjs, server/worldmonitor/displacement/v1/cross-border-data.ts |
 | data.weather.gov.hk (data.weather.gov.hk) | structured — scripts/natural/western-pacific-cyclones.mjs |
@@ -250,7 +252,7 @@ This generated inventory covers **847 active source hosts** representing **829 a
 | Egypt Independent (www.egyptindependent.com) | feed — shared/news-catalog.json |
 | eia.gov (eia.gov) | feed — shared/news-catalog.json |
 | Element84 Earth Search STAC (earth-search.aws.element84.com) | structured — server/worldmonitor/imagery/v1/search-imagery.ts |
-| Ember electricity data (storage.googleapis.com) | structured — scripts/_conflict-gdelt-bulk.mjs, scripts/_gdelt-bulk-materializer.mjs, scripts/seed-ember-electricity.mjs |
+| Ember electricity data (files.ember-energy.org) | structured — scripts/seed-ember-electricity.mjs |
 | en.irna.ir (en.irna.ir) | feed — shared/news-catalog.json |
 | en.mehrnews.com (en.mehrnews.com) | feed — shared/news-catalog.json |
 | en.sge.com.cn (en.sge.com.cn) | structured — scripts/seed-physical-premiums.mjs |
@@ -315,7 +317,7 @@ This generated inventory covers **847 active source hosts** representing **829 a
 | Fintraffic Digitraffic (not-currently-wired) | Excluded / candidate — No current fetch observed |
 | Firecrawl (api.firecrawl.dev) | structured — scripts/ais-relay.cjs, scripts/seed-grocery-basket.mjs |
 | focustaiwan.tw (focustaiwan.tw) | feed — shared/news-catalog.json |
-| fonts.googleapis.com (fonts.googleapis.com) | structured — server/_shared/brief-render.js |
+| fonts.googleapis.com (fonts.googleapis.com) | Excluded / candidate — No current fetch observed |
 | foreignpolicy.com (foreignpolicy.com) | feed — shared/news-catalog.json |
 | Fox Business (moxie.foxbusiness.com) | feed — shared/news-catalog.json |
 | fpri.org (fpri.org) | feed — shared/news-catalog.json |
@@ -568,7 +570,7 @@ This generated inventory covers **847 active source hosts** representing **829 a
 | railway.instatus.com (railway.instatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | rakuten-guardian-1-ie.samsung.wurl.tv (rakuten-guardian-1-ie.samsung.wurl.tv) | Excluded / candidate — No current fetch observed |
 | ransomware.live (ransomware.live) | feed — shared/news-catalog.json |
-| raw.githubusercontent.com (raw.githubusercontent.com) | structured — scripts/ais-relay.cjs, scripts/fetch-country-boundary-overrides.mjs, scripts/generate-airline-codes.mjs, scripts/generate-oref-locations.mjs, +2 more |
+| raw.githubusercontent.com (raw.githubusercontent.com) | structured — scripts/ais-relay.cjs, scripts/fetch-country-boundary-overrides.mjs, scripts/generate-airline-codes.mjs, scripts/generate-oref-locations.mjs, +3 more |
 | reasonstobecheerful.world (reasonstobecheerful.world) | feed — shared/news-catalog.json |
 | reddit.com (reddit.com) | structured — scripts/ais-relay.cjs, src/services/story-share.ts |
 | registry.modelcontextprotocol.io (registry.modelcontextprotocol.io) | structured — scripts/publish-mcp-registry.mjs |
@@ -1043,6 +1045,7 @@ This generated inventory covers **847 active source hosts** representing **829 a
 | www.zdnet.com (www.zdnet.com) | feed — shared/news-catalog.json |
 | www.zera.co.zw (www.zera.co.zw) | structured — scripts/lib/regional-fuel-feeds.mjs, scripts/shared/regional-energy-feeds.json |
 | www.zoomstatus.com (www.zoomstatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www2.moeaea.gov.tw (www2.moeaea.gov.tw) | structured — scripts/seed-fuel-prices.mjs |
 | wwwnc.cdc.gov (wwwnc.cdc.gov) | structured — scripts/seed-security-advisories.mjs |
 | X API (api.x.com) | structured — scripts/cross-strait-activity/japan-x.mjs, scripts/lib/company-monitoring-x-provider.mjs, scripts/lib/x-news-accounts.cjs, scripts/lib/x-post-budget.cjs, +1 more |
 | x.com (x.com) | structured — scripts/comparison-shortlist.mjs, scripts/cross-strait-activity/japan-x.mjs, server/worldmonitor/leads/v1/register-interest.ts |

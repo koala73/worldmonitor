@@ -1,0 +1,1717 @@
+{
+  "css_url": "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap",
+  "platforms": {
+    "apple-woff2": {
+      "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+      "faces": [
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iIq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "c6f09ee0e0a24b7c85ecb2a601eb99332f65b1f6b37c31e0bbe73fb307625eca",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1isq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "7b59d6bf7f8b8408ac28f27d01dca9a890abeae77045d343b1d8ccb089a92e54",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iAq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "0a8b854cc18641bd1b8222afa7ec82a75e59bc6501f777744ec87db1b6cd7a2c",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iEq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "f1050dc5317b43434c0aeda599d4624c774ffc162e87a8cf204b949b6a85816d",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1i8q131nj-o.woff2",
+              "format": "woff2",
+              "sha256": "c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 500,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl1FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "311098be73eac339128f0b5a6e33d72645b6f87488541fdf467c402152d297fd",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlRFgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "d524dc8ff6dbf7ed69772f3b2ff4affaf5a89b5762b270e36c3f21da0d4e39f5",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl9FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "b2529fba93fd07a50ffb8fc3d103eb04b0c298d4f6564d2833c44fde286de7e4",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl5FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "77f03e26f981c582bdba3a7abed4baa2d3149211c01366bb3ab3ba7622ec4ae5",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlBFgsAXHNk.woff2",
+              "format": "woff2",
+              "sha256": "a76f53ca6612e7b3828eec2311098675b7f9849ae4169a8bcef6302aec02a6c0",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 600,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl1FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "f746246b6b0b641f99d9e26e0bf4e42197bde692126857857f0195a94362d52a",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlRFgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "b814a03d7e57b0626a906f76911b9361d173a1aabc5544c40f72d6a35a1e4940",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl9FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "69744cabbccc9faf77516ce9b744361e1e6be7f8081400006035a153797d2965",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl5FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "1b6b18fd0fd240bc6d5850f4df621484722d4b5d3650ebdd1e3a8bbd81c75854",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlBFgsAXHNk.woff2",
+              "format": "woff2",
+              "sha256": "ad4580d8cb4b5f627c2d18457656732f7f7b070f7837fbc380e08054157e6f6c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "italic",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtXA-X-uE0qEE5Do.woff2",
+              "format": "woff2",
+              "sha256": "ff04f888476de897ff83642b4afd7edf76aed79a4e9f0620e63f79ecb43d6549",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt7A-X-uE0qEE5Do.woff2",
+              "format": "woff2",
+              "sha256": "07ebc0237b61aec224bfcf2ceaba3affcba6a76529a2ba7609c52b31d6f8de63",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt_A-X-uE0qEE5Do.woff2",
+              "format": "woff2",
+              "sha256": "ac9c3bcc1848b07cf06fb1e1ff6159bb81404f9e0ed265ec0b7f1431cb3805f1",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtHA-X-uE0qEEw.woff2",
+              "format": "woff2",
+              "sha256": "ce3932af6f6a6c7321b6f27462213c432f0be6ef2e242d0adf7f8981562a961f",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 700,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 900,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "italic",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tAcQCjDDUXmAzy80.woff2",
+              "format": "woff2",
+              "sha256": "5c8e9874d36a070e204baa7f86e1b3a97cd842dc1112ce3a42a7b475bd61d6ad",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tCMQCjDDUXmAzy80.woff2",
+              "format": "woff2",
+              "sha256": "f29509fb59f85c388ae404f9a1901d0e68274c395fc78fff90842f658a1cd68b",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tD8QCjDDUXmAzy80.woff2",
+              "format": "woff2",
+              "sha256": "94eb22c1045a13acb48256345be3a4423b778ba30c940d03dc07c129a3c58423",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tA8QCjDDUXmAzy80.woff2",
+              "format": "woff2",
+              "sha256": "8c7df694d78e4327e0f9d9bc5609cefb1a1ea8fbcc8111fd9f2d7b7675ce1d0f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tAsQCjDDUXmAzy80.woff2",
+              "format": "woff2",
+              "sha256": "9a36f388eb7c54f6807567ffc3d6646d32ece6b9f995ac9b366e8f17a8f6cb5f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tDMQCjDDUXmAz.woff2",
+              "format": "woff2",
+              "sha256": "bdd0e2a056f9d959782ca58fe25611076c77680cba409708f2d700876eedb81d",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAHr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "4d72739b0e43d64e6b2a086a66f62df1ef90f34d6f109b279c557a64eae5d23d",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kCXr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "7683b72ed39c9fc64c626ae0ed611e7dc0121af71cde73fd060bd7a4a83c0d7c",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "303d60869ffd404c141fa90d87ba574cd26ade348dd4659ea4b9caeadf72c183",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "752875b4c33f07a3dda7c8f0be846fef059cb0f4e85211b855aa93dd85d45a22",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kA3r4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "231f594ad829d45f905a8a6cdce704f659615e00f1a9db2699320e6e315c1d1f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDXr4Y3qwzQ.woff2",
+              "format": "woff2",
+              "sha256": "8e38e3fbd74dea20aabe0831ffef04c9f30bf6fc5b99b7a2649be0dd8c6d859c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "normal",
+          "weight": 600,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAHr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "4d72739b0e43d64e6b2a086a66f62df1ef90f34d6f109b279c557a64eae5d23d",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kCXr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "7683b72ed39c9fc64c626ae0ed611e7dc0121af71cde73fd060bd7a4a83c0d7c",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "303d60869ffd404c141fa90d87ba574cd26ade348dd4659ea4b9caeadf72c183",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "752875b4c33f07a3dda7c8f0be846fef059cb0f4e85211b855aa93dd85d45a22",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kA3r4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "231f594ad829d45f905a8a6cdce704f659615e00f1a9db2699320e6e315c1d1f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDXr4Y3qwzQ.woff2",
+              "format": "woff2",
+              "sha256": "8e38e3fbd74dea20aabe0831ffef04c9f30bf6fc5b99b7a2649be0dd8c6d859c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        }
+      ]
+    },
+    "apple-woff": {
+      "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+      "faces": [
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iIq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "c6f09ee0e0a24b7c85ecb2a601eb99332f65b1f6b37c31e0bbe73fb307625eca",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1isq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "7b59d6bf7f8b8408ac28f27d01dca9a890abeae77045d343b1d8ccb089a92e54",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iAq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "0a8b854cc18641bd1b8222afa7ec82a75e59bc6501f777744ec87db1b6cd7a2c",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iEq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "f1050dc5317b43434c0aeda599d4624c774ffc162e87a8cf204b949b6a85816d",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1i8q131nj-o.woff2",
+              "format": "woff2",
+              "sha256": "c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 500,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl1FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "311098be73eac339128f0b5a6e33d72645b6f87488541fdf467c402152d297fd",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlRFgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "d524dc8ff6dbf7ed69772f3b2ff4affaf5a89b5762b270e36c3f21da0d4e39f5",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl9FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "b2529fba93fd07a50ffb8fc3d103eb04b0c298d4f6564d2833c44fde286de7e4",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl5FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "77f03e26f981c582bdba3a7abed4baa2d3149211c01366bb3ab3ba7622ec4ae5",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlBFgsAXHNk.woff2",
+              "format": "woff2",
+              "sha256": "a76f53ca6612e7b3828eec2311098675b7f9849ae4169a8bcef6302aec02a6c0",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 600,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl1FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "f746246b6b0b641f99d9e26e0bf4e42197bde692126857857f0195a94362d52a",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlRFgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "b814a03d7e57b0626a906f76911b9361d173a1aabc5544c40f72d6a35a1e4940",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl9FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "69744cabbccc9faf77516ce9b744361e1e6be7f8081400006035a153797d2965",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl5FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "1b6b18fd0fd240bc6d5850f4df621484722d4b5d3650ebdd1e3a8bbd81c75854",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlBFgsAXHNk.woff2",
+              "format": "woff2",
+              "sha256": "ad4580d8cb4b5f627c2d18457656732f7f7b070f7837fbc380e08054157e6f6c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "italic",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtXA_3-uE0qEE5Do.woff",
+              "format": "woff",
+              "sha256": "b4389917c20a1673d2a8e492f273507780b8b1b68bbe39c92653452d0e63a00a",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt7A_3-uE0qEE5Do.woff",
+              "format": "woff",
+              "sha256": "202f257bea394edf18fc8d5bac5a37de35a5b5d23b08482472e656f47038b378",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt_A_3-uE0qEE5Do.woff",
+              "format": "woff",
+              "sha256": "eef827aa8b89a3ce0208d2742a471ef27f0dfcfe91d5ccc8683efc2fcd0da041",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtHA_3-uE0qEEw.woff",
+              "format": "woff",
+              "sha256": "b35bdb401c53addac8626a125d75b05e374420a5fa9317bcdaf1bb42e13b4e07",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 700,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 900,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "italic",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tAcQEjDDUXmAzy80.woff",
+              "format": "woff",
+              "sha256": "2eb0b080f193b07aef883b199c5485369e74d1015b62e8aaa57b3efc8973157d",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tCMQEjDDUXmAzy80.woff",
+              "format": "woff",
+              "sha256": "45f25c4ed0026078b21ebd94552b4c9c582f2dc55e17b13540b82f498dca743b",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tD8QEjDDUXmAzy80.woff",
+              "format": "woff",
+              "sha256": "23238af34ce6f4193a671907cefa7cf2d70dd8917630b71e63b3f98d4268050d",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tA8QEjDDUXmAzy80.woff",
+              "format": "woff",
+              "sha256": "6f08b9c30922f41b0d2009f4127e2fc5929d88291ebf991abc175b247524dcb3",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tAsQEjDDUXmAzy80.woff",
+              "format": "woff",
+              "sha256": "85695500924d80ab4ede768f479eb8e2574af87aa1be8e249e8631008c7dace0",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tDMQEjDDUXmAz.woff",
+              "format": "woff",
+              "sha256": "8a4fe53c5a47945ce77483211e5b5cb3b699ccf7ab510095def93f6f7a5a228e",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAHr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "4d72739b0e43d64e6b2a086a66f62df1ef90f34d6f109b279c557a64eae5d23d",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kCXr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "7683b72ed39c9fc64c626ae0ed611e7dc0121af71cde73fd060bd7a4a83c0d7c",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "303d60869ffd404c141fa90d87ba574cd26ade348dd4659ea4b9caeadf72c183",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "752875b4c33f07a3dda7c8f0be846fef059cb0f4e85211b855aa93dd85d45a22",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kA3r4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "231f594ad829d45f905a8a6cdce704f659615e00f1a9db2699320e6e315c1d1f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDXr4Y3qwzQ.woff2",
+              "format": "woff2",
+              "sha256": "8e38e3fbd74dea20aabe0831ffef04c9f30bf6fc5b99b7a2649be0dd8c6d859c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "normal",
+          "weight": 600,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAHr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "4d72739b0e43d64e6b2a086a66f62df1ef90f34d6f109b279c557a64eae5d23d",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kCXr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "7683b72ed39c9fc64c626ae0ed611e7dc0121af71cde73fd060bd7a4a83c0d7c",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "303d60869ffd404c141fa90d87ba574cd26ade348dd4659ea4b9caeadf72c183",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "752875b4c33f07a3dda7c8f0be846fef059cb0f4e85211b855aa93dd85d45a22",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kA3r4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "231f594ad829d45f905a8a6cdce704f659615e00f1a9db2699320e6e315c1d1f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDXr4Y3qwzQ.woff2",
+              "format": "woff2",
+              "sha256": "8e38e3fbd74dea20aabe0831ffef04c9f30bf6fc5b99b7a2649be0dd8c6d859c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        }
+      ]
+    },
+    "hinted": {
+      "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+      "faces": [
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iIq129k.woff2",
+              "format": "woff2",
+              "sha256": "f8c22ec1804bd6966b70f43ac7c327025645b4c09597117fca2a5a6c750106fe",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1isq129k.woff2",
+              "format": "woff2",
+              "sha256": "7635422bd10ddbbcb0e0caa1154b928298f5c8319b8c00b30978d4395f4783ce",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iAq129k.woff2",
+              "format": "woff2",
+              "sha256": "62632b6375305e70ddcafdd895218e6ae41a184fcd280a69c739460604ca00a9",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iEq129k.woff2",
+              "format": "woff2",
+              "sha256": "6bc0f226a5b7884a8170e3f62c63d7675609d4631bdc5931b5cdab81821f00eb",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1i8q1w.woff2",
+              "format": "woff2",
+              "sha256": "08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 500,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl1FgtIU.woff2",
+              "format": "woff2",
+              "sha256": "3febe5c7f22e4b07b4552738673c3dbe8bced2dc5f48b866edf7ccd9552d109a",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlRFgtIU.woff2",
+              "format": "woff2",
+              "sha256": "1d89462e86cb8e87e7e9d6f6635605bd7c3081baca6caaecee84916bf7b60edc",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl9FgtIU.woff2",
+              "format": "woff2",
+              "sha256": "781633d95de88040fb77141d1e65d928c87c0144691fbc74da5a64d137a7e910",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl5FgtIU.woff2",
+              "format": "woff2",
+              "sha256": "6bb06407c97584b0867a959e05e8874693bfeb8c317de190811c51598f2d99ea",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlBFgg.woff2",
+              "format": "woff2",
+              "sha256": "01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 600,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl1FgtIU.woff2",
+              "format": "woff2",
+              "sha256": "83109cdd4f8665b475dfc11d61bd44da328bf7e6eab3d3953d39c49b1b9f6015",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlRFgtIU.woff2",
+              "format": "woff2",
+              "sha256": "2b05a8695c7f9f4abd7178b279646a3b005a8ce57546bef6fd145f25d131e0aa",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl9FgtIU.woff2",
+              "format": "woff2",
+              "sha256": "51b74d53e106ba8a26dd33464b231a562069be2a234b923c115beb622e6f6bc6",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl5FgtIU.woff2",
+              "format": "woff2",
+              "sha256": "32057cf50dd14bdb21a2c93766c4a2c43e4abe688ea3922df3203cac7751a98b",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlBFgg.woff2",
+              "format": "woff2",
+              "sha256": "0d1f0b8d0722224e32e9f28261bdc86c79115be73444ae5eceb73976a1bcdf83",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "italic",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtXA-W2r.woff2",
+              "format": "woff2",
+              "sha256": "2b016e18145f89b6b998a13152ff85a5815e94751210d85d9808549f712c62e1",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt7A-W2r.woff2",
+              "format": "woff2",
+              "sha256": "9a08f3c0730f6311b18adadf42797a91900c4bbc32602785ec1e329db5354685",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt_A-W2r.woff2",
+              "format": "woff2",
+              "sha256": "b02fdf18a2d7b09f409b01a1ab4afe7b5f7d08926b3c867187398765ea0fb3f1",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtHA-Q.woff2",
+              "format": "woff2",
+              "sha256": "eabce94d4a69e439cd050755c31f9894ac8a78f93e58b063c6c01f370474e1de",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "c108681cba6a9820bff52f4a1a4a1d9edf356b347bd79b7c61e916028e8a8b54",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "ef6446229b59773e671021650ef3882cf35806dae723ce047de87c0a6633039a",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "42898ad49a6b23f32b109243e1df596edf831015ed685f429e4dafbb181d599d",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2",
+              "format": "woff2",
+              "sha256": "e0c764a8e9e1cce92163c55bac4b2ad6cd4cf8c696ce2289ab5c41565e65b7e2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 700,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "c108681cba6a9820bff52f4a1a4a1d9edf356b347bd79b7c61e916028e8a8b54",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "ef6446229b59773e671021650ef3882cf35806dae723ce047de87c0a6633039a",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "42898ad49a6b23f32b109243e1df596edf831015ed685f429e4dafbb181d599d",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2",
+              "format": "woff2",
+              "sha256": "e0c764a8e9e1cce92163c55bac4b2ad6cd4cf8c696ce2289ab5c41565e65b7e2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 900,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "c108681cba6a9820bff52f4a1a4a1d9edf356b347bd79b7c61e916028e8a8b54",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "ef6446229b59773e671021650ef3882cf35806dae723ce047de87c0a6633039a",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgFE_.woff2",
+              "format": "woff2",
+              "sha256": "42898ad49a6b23f32b109243e1df596edf831015ed685f429e4dafbb181d599d",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2",
+              "format": "woff2",
+              "sha256": "e0c764a8e9e1cce92163c55bac4b2ad6cd4cf8c696ce2289ab5c41565e65b7e2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "italic",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tAcQCnjU.woff2",
+              "format": "woff2",
+              "sha256": "bc17398c9c8b2c1e63a7c79335e55897ec322987f153e5c057c11844864e96ef",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tCMQCnjU.woff2",
+              "format": "woff2",
+              "sha256": "18148c0920aa7272b106614f585dfa46d08d01aca5734e5c990f02e649c33aeb",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tD8QCnjU.woff2",
+              "format": "woff2",
+              "sha256": "a97b9b209417c81ad387aba4265d579bac2e9c6ef5ef38008e46d1ec656aa2a0",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tA8QCnjU.woff2",
+              "format": "woff2",
+              "sha256": "f8adbfc6f7d1dd3828426793e09fadcb4920ee4c7f3ccbfe918090a9a77d93f7",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tAsQCnjU.woff2",
+              "format": "woff2",
+              "sha256": "d06253118f11f443e5799217c5ecaf55f68a1681115fa3a1d947e8ca288e7b8c",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tDMQC.woff2",
+              "format": "woff2",
+              "sha256": "882b7c150c29f29d4f8daae6b8dcae8662aac7f28ca34b34615305154136ecfd",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAHr4cXk.woff2",
+              "format": "woff2",
+              "sha256": "da49e14ae1d459f3d04cf4555fb954f6e54b247b708f8cfe2d8e7e4ee3c6829b",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kCXr4cXk.woff2",
+              "format": "woff2",
+              "sha256": "a81082707b85203d7f2ae33833f7ae0bf832db167c8710f92f805a9808fb051a",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDnr4cXk.woff2",
+              "format": "woff2",
+              "sha256": "54c4728aa0fd97d59b89b6d89b230065794b4c088c55efe71abc9ce882cfa853",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAnr4cXk.woff2",
+              "format": "woff2",
+              "sha256": "c3de01b5144e1a2d7e70eeaf66ab92afdedcc4424ed1d7ffc1993a657d1c762a",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kA3r4cXk.woff2",
+              "format": "woff2",
+              "sha256": "d10ccbbd0dc4ebae2938958dc1f622a53460fe297e9c958564742dd684309c3f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDXr4.woff2",
+              "format": "woff2",
+              "sha256": "382475f38242c52d42a3e5ff8dc69b5d73f10d0d21e4550b5fe232984688779a",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "normal",
+          "weight": 600,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAHr4cXk.woff2",
+              "format": "woff2",
+              "sha256": "da49e14ae1d459f3d04cf4555fb954f6e54b247b708f8cfe2d8e7e4ee3c6829b",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kCXr4cXk.woff2",
+              "format": "woff2",
+              "sha256": "a81082707b85203d7f2ae33833f7ae0bf832db167c8710f92f805a9808fb051a",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDnr4cXk.woff2",
+              "format": "woff2",
+              "sha256": "54c4728aa0fd97d59b89b6d89b230065794b4c088c55efe71abc9ce882cfa853",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAnr4cXk.woff2",
+              "format": "woff2",
+              "sha256": "c3de01b5144e1a2d7e70eeaf66ab92afdedcc4424ed1d7ffc1993a657d1c762a",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kA3r4cXk.woff2",
+              "format": "woff2",
+              "sha256": "d10ccbbd0dc4ebae2938958dc1f622a53460fe297e9c958564742dd684309c3f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDXr4.woff2",
+              "format": "woff2",
+              "sha256": "382475f38242c52d42a3e5ff8dc69b5d73f10d0d21e4550b5fe232984688779a",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        }
+      ]
+    },
+    "plain": {
+      "user_agent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
+      "faces": [
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iIq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "c6f09ee0e0a24b7c85ecb2a601eb99332f65b1f6b37c31e0bbe73fb307625eca",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1isq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "7b59d6bf7f8b8408ac28f27d01dca9a890abeae77045d343b1d8ccb089a92e54",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iAq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "0a8b854cc18641bd1b8222afa7ec82a75e59bc6501f777744ec87db1b6cd7a2c",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1iEq131nj-otFQ.woff2",
+              "format": "woff2",
+              "sha256": "f1050dc5317b43434c0aeda599d4624c774ffc162e87a8cf204b949b6a85816d",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F63fjptAgt5VM-kVkqdyU8n1i8q131nj-o.woff2",
+              "format": "woff2",
+              "sha256": "c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 500,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl1FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "311098be73eac339128f0b5a6e33d72645b6f87488541fdf467c402152d297fd",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlRFgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "d524dc8ff6dbf7ed69772f3b2ff4affaf5a89b5762b270e36c3f21da0d4e39f5",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl9FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "b2529fba93fd07a50ffb8fc3d103eb04b0c298d4f6564d2833c44fde286de7e4",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwl5FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "77f03e26f981c582bdba3a7abed4baa2d3149211c01366bb3ab3ba7622ec4ae5",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3twJwlBFgsAXHNk.woff2",
+              "format": "woff2",
+              "sha256": "a76f53ca6612e7b3828eec2311098675b7f9849ae4169a8bcef6302aec02a6c0",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "IBM Plex Mono",
+          "style": "normal",
+          "weight": 600,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl1FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "f746246b6b0b641f99d9e26e0bf4e42197bde692126857857f0195a94362d52a",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlRFgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "b814a03d7e57b0626a906f76911b9361d173a1aabc5544c40f72d6a35a1e4940",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl9FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "69744cabbccc9faf77516ce9b744361e1e6be7f8081400006035a153797d2965",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwl5FgsAXHNlYzg.woff2",
+              "format": "woff2",
+              "sha256": "1b6b18fd0fd240bc6d5850f4df621484722d4b5d3650ebdd1e3a8bbd81c75854",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/ibmplexmono/v20/-F6qfjptAgt5VM-kVkqdyU8n3vAOwlBFgsAXHNk.woff2",
+              "format": "woff2",
+              "sha256": "ad4580d8cb4b5f627c2d18457656732f7f7b070f7837fbc380e08054157e6f6c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "italic",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtXA-X-oE0qsEw.woff2",
+              "format": "woff2",
+              "sha256": "c57ac9c313c73cfe1583fcb0eae0b89355b717506506a46ab339c746d2712060",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt7A-X-oE0qsEw.woff2",
+              "format": "woff2",
+              "sha256": "7021a485c452b090f71d7b9eee8abb0be8bf9550d591cea314918fa686ddc198",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXt_A-X-oE0qsEw.woff2",
+              "format": "woff2",
+              "sha256": "064ef1030882c2cd79557b75e219cef349d823070f37fab98607fbf819acdcea",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFRD-vYSZviVYUb_rj3ij__anPXDTnCjmHKM4nYO7KN_qiTXtHA-X-oE0o.woff2",
+              "format": "woff2",
+              "sha256": "479e8c39c5d99abf49d2db9662738f675ab47bb1d95575edc7c922223f787c54",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 700,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Playfair Display",
+          "style": "normal",
+          "weight": 900,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "d7f9db9b1034978ebebdf7312aa4aee55dff3ef6039e7ff71413780bd4a05558",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "8fa67d5f0ab2a1d0b924729a0411a069b384d7a236edd96a6767ef342a6d048f",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+              "format": "woff2",
+              "sha256": "5628567856d60d714e7a35bcac9e3de08b336d63b12138f61b970990a1ee9547",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2",
+              "format": "woff2",
+              "sha256": "5d91eb5d522a03081946c44c8ca17c902230dfed5f0f9b5014262135d47b15b2",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "italic",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tAcQCjDbUXkgz.woff2",
+              "format": "woff2",
+              "sha256": "80621f781c1269c5ae3f0b9847cbe1482da756cda0f8795b1a46832954f41f0a",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tCMQCjDbUXkgz.woff2",
+              "format": "woff2",
+              "sha256": "55bb401bdc91ec8daa36503bf59a0cdace6be7299d282b1cb11d6ceb1d018731",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tD8QCjDbUXkgz.woff2",
+              "format": "woff2",
+              "sha256": "c64e7b6c5b8a89dc6a9a69a5314ef55ebd11cb86bb01334cadc3bb8f855f2a48",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tA8QCjDbUXkgz.woff2",
+              "format": "woff2",
+              "sha256": "2e435d15edb08a02e5725be94a1d6c408723ba32e7e0de56c75e64292032c591",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tAsQCjDbUXkgz.woff2",
+              "format": "woff2",
+              "sha256": "ee71f4568061da3b7cc6f06c9e3ac690fe66e404bbd4b59417fa39345c51f889",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEF02_tTDB4M7-auWDN0ahZJW1ge6NmXpVAHV83Bfb_US2D2QYxoUKIkn98pRl9tDMQCjDbUXg.woff2",
+              "format": "woff2",
+              "sha256": "3af5b23836d8fd3ecb960525dd728b26397f7ac36b6932b4e578b37263f0e2b5",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "normal",
+          "weight": 400,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAHr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "4d72739b0e43d64e6b2a086a66f62df1ef90f34d6f109b279c557a64eae5d23d",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kCXr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "7683b72ed39c9fc64c626ae0ed611e7dc0121af71cde73fd060bd7a4a83c0d7c",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "303d60869ffd404c141fa90d87ba574cd26ade348dd4659ea4b9caeadf72c183",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "752875b4c33f07a3dda7c8f0be846fef059cb0f4e85211b855aa93dd85d45a22",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kA3r4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "231f594ad829d45f905a8a6cdce704f659615e00f1a9db2699320e6e315c1d1f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDXr4Y3qwzQ.woff2",
+              "format": "woff2",
+              "sha256": "8e38e3fbd74dea20aabe0831ffef04c9f30bf6fc5b99b7a2649be0dd8c6d859c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        },
+        {
+          "family": "Source Serif 4",
+          "style": "normal",
+          "weight": 600,
+          "display": "swap",
+          "subsets": [
+            {
+              "name": "cyrillic-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAHr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "4d72739b0e43d64e6b2a086a66f62df1ef90f34d6f109b279c557a64eae5d23d",
+              "unicode_range": "U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F"
+            },
+            {
+              "name": "cyrillic",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kCXr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "7683b72ed39c9fc64c626ae0ed611e7dc0121af71cde73fd060bd7a4a83c0d7c",
+              "unicode_range": "U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116"
+            },
+            {
+              "name": "greek",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "303d60869ffd404c141fa90d87ba574cd26ade348dd4659ea4b9caeadf72c183",
+              "unicode_range": "U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF"
+            },
+            {
+              "name": "vietnamese",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kAnr4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "752875b4c33f07a3dda7c8f0be846fef059cb0f4e85211b855aa93dd85d45a22",
+              "unicode_range": "U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB"
+            },
+            {
+              "name": "latin-ext",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kA3r4Y3qwzSEi.woff2",
+              "format": "woff2",
+              "sha256": "231f594ad829d45f905a8a6cdce704f659615e00f1a9db2699320e6e315c1d1f",
+              "unicode_range": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF"
+            },
+            {
+              "name": "latin",
+              "url": "https://fonts.gstatic.com/s/sourceserif4/v15/vEFF2_tTDB4M7-auWDN0ahZJW3IX2ih5nk3AucvUHf6kDXr4Y3qwzQ.woff2",
+              "format": "woff2",
+              "sha256": "8e38e3fbd74dea20aabe0831ffef04c9f30bf6fc5b99b7a2649be0dd8c6d859c",
+              "unicode_range": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

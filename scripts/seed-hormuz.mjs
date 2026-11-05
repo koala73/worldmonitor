@@ -18,12 +18,13 @@ import { decodeHtmlEntities } from './_html-entities.mjs';
 const STRIP_TAGS_RE = /<[^>]+>/g;
 const WHITESPACE_RE = /\s+/g;
 const DERIVE_STATUS_RE = /\bclosed\b|\bclosure\b/;
-const DERIVE_STATUS_RE_2 = /disrupted|disruption|halt|standstill/;
-const DERIVE_STATUS_RE_3 = /restricted|congested|tension|heightened/;
-const DATE_M_RE = /<time[^>]*>(.*?)<\/time>/;
+const DERIVE_STATUS_RE_2 = /disrupted|disruption|halt|standstill|suspended|suspension|severely constrained/;
+const DERIVE_STATUS_RE_3 = /restricted|constrained|congested|tension|heightened/;
+const DATE_M_RE = /<time([^>]*)>(.*?)<\/time>/;
+const ISO_M_RE = /datetime="(\d{4}-\d{2}-\d{2})/;
 const LI_M_RE = /Latest insights([\s\S]*?)See key insights/;
-const TITLE_M_RE = /<strong[^>]*>(Strategic Trade Insight:[\s\S]*?)<\/strong>/;
-
+const TITLE_M_RE = /<strong[^>]*>(Strategic trade insights?:[\s\S]*?)<\/strong>/i;
+const PARSE_WTO_PAGE_RE = /^\*\s*AIS\b|based on vessels visible through AIS/i;
 
 loadEnvFile(import.meta.url);
 
@@ -225,7 +226,7 @@ export function stripTags(s) {
   return decodeHtmlEntities(s.replace(STRIP_TAGS_RE, '')).replace(WHITESPACE_RE, ' ').trim();
 }
 
-function deriveStatus(text) {
+export function deriveStatus(text) {
   const lc = text.toLowerCase();
   if (DERIVE_STATUS_RE.test(lc)) return 'closed';
   if (DERIVE_STATUS_RE_2.test(lc)) return 'disrupted';
@@ -246,11 +247,25 @@ async function scrapeWtoPage() {
   });
 
   if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching WTO Hormuz page`);
-  const html = await resp.text();
+  const page = parseWtoPage(await resp.text());
 
+  if (!page.updatedDate && !page.summary && !page.title) {
+    throw new Error('No content parsed from WTO Hormuz page — possible structure change');
+  }
+
+  console.log(`  Date: ${page.updatedDate}`);
+  console.log(`  Status: ${page.status}`);
+  console.log(`  Title: ${page.title?.slice(0, 80)}...`);
+
+  return page;
+}
+
+export function parseWtoPage(html) {
   // --- Date of latest insights ---
+  // Prefer the machine-readable datetime: the visible text is dd.mm.yyyy.
   const dateM = html.match(DATE_M_RE);
-  const updatedDate = dateM ? stripTags(dateM[1]) : null;
+  const isoM = dateM?.[1].match(ISO_M_RE);
+  const updatedDate = isoM ? isoM[1] : dateM ? stripTags(dateM[2]) : null;
 
   // --- "Latest insights" summary blurb (above "See key insights" link) ---
   const liM = html.match(LI_M_RE);
@@ -263,19 +278,20 @@ async function scrapeWtoPage() {
   }
 
   // --- Title of latest strategic insight (bold text) ---
+  // WTO has written both "Strategic Trade Insight:" and "Strategic trade insights:".
   const titleM = html.match(TITLE_M_RE);
   const title = titleM ? stripTags(titleM[1]) : null;
 
   // --- Full body paragraphs of the insight ---
   const paragraphs = [];
-  if (title) {
-    const startIdx = html.indexOf('Strategic Trade Insight:');
-    const chunk = html.slice(startIdx);
+  if (titleM) {
+    const chunk = html.slice(titleM.index);
     const paraRe = /<p\b[^>]*>([\s\S]*?)<\/p>/g;
     let m;
     while ((m = paraRe.exec(chunk)) !== null && paragraphs.length < 5) {
       const text = stripTags(m[1]);
-      if (text.length > 30 && !text.startsWith('* AIS')) {
+      // The AIS coverage note is methodology, not insight text.
+      if (text.length > 30 && !PARSE_WTO_PAGE_RE.test(text)) {
         paragraphs.push(text);
       }
     }
@@ -283,14 +299,6 @@ async function scrapeWtoPage() {
 
   const combined = [title, summary, ...paragraphs].filter(Boolean).join(' ');
   const status = deriveStatus(combined);
-
-  if (!updatedDate && !summary && !title) {
-    throw new Error('No content parsed from WTO Hormuz page — possible structure change');
-  }
-
-  console.log(`  Date: ${updatedDate}`);
-  console.log(`  Status: ${status}`);
-  console.log(`  Title: ${title?.slice(0, 80)}...`);
 
   return { updatedDate, title, summary, paragraphs, status };
 }

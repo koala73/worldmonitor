@@ -20,7 +20,11 @@ import { loadAllBasketConfigs } from '../../src/config/loader.js';
 import { AUTO_MATCH_THRESHOLD, validateSearchHit } from '../../src/adapters/validator.js';
 import { parseSize } from '../../src/normalizers/size.js';
 
-/** Leading unit tokens the #6868 corpus ranked as unmatched (parse → null). */
+/**
+ * Leading unit tokens the #6868 corpus ranked as unmatched (parse → null).
+ * `litro`/`litros` left this list when #5445 mapped the unit; they now reach
+ * the quantity window (see src/normalizers/size.test.ts).
+ */
 const UNPARSEABLE_SIZE_TEXTS = [
   '24 pack',
   '12 unidades',
@@ -28,8 +32,6 @@ const UNPARSEABLE_SIZE_TEXTS = [
   '12 eggs',
   '2 pint',
   '6 pk',
-  '1 litros',
-  '1 litro',
 ] as const;
 
 describe('#6868 unverified-size score impact', () => {

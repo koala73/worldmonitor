@@ -1,0 +1,621 @@
+{
+ "pipelines": {
+  "fetchedAt": "2026-11-01T07:31:13.665Z",
+  "classifierVersion": "v1",
+  "upstreamUnavailable": false,
+  "pipelines": [
+   {
+    "id": "western-corridor-oil-pipeline-system-glacier-pipeline-bearto-us",
+    "name": "Western Corridor Oil Pipeline System - Glacier Pipeline, Beartooth Pipeline, Big Horn Pipeline",
+    "operator": "Plains GP Holdings LP [100.00%]",
+    "commodityType": "oil",
+    "fromCountry": "US",
+    "toCountry": "US",
+    "transitCountries": [],
+    "capacityBcmYr": 0,
+    "capacityMbd": 0.025,
+    "lengthKm": 1628.66,
+    "inService": 1944,
+    "startPoint": {
+     "lat": 48.987044,
+     "lon": -113.306837
+    },
+    "endPoint": {
+     "lat": 42.224765,
+     "lon": -104.732592
+    },
+    "evidence": {
+     "physicalState": "flowing",
+     "physicalStateSource": "gem",
+     "commercialState": "unknown",
+     "sanctionRefs": [],
+     "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
+     "classifierVersion": "gem-import-v1",
+     "classifierConfidence": 0.4
+    },
+    "publicBadge": "flowing"
+   },
+   {
+    "id": "turkmenistan-afghanistan-pakistan-india-gas-pipeline-tm",
+    "name": "Turkmenistan-Afghanistan-Pakistan-India Gas Pipeline",
+    "operator": "Turkmengaz [85.00%]; Afghan Gas Enterprise [5.00%]; Interstate Gas Systems [5.00%]; GAIL (India) Ltd [5.00%]",
+    "commodityType": "gas",
+    "fromCountry": "TM",
+    "toCountry": "IN",
+    "transitCountries": [
+     "AF",
+     "PK"
+    ],
+    "capacityBcmYr": 33,
+    "capacityMbd": 0,
+    "lengthKm": 1814,
+    "inService": 0,
+    "startPoint": {
+     "lat": 37.320475,
+     "lon": 62.326071
+    },
+    "endPoint": {
+     "lat": 31.716949,
+     "lon": 65.715115
+    },
+    "evidence": {
+     "physicalState": "unknown",
+     "physicalStateSource": "gem",
+     "commercialState": "unknown",
+     "sanctionRefs": [],
+     "lastEvidenceUpdate": "2026-04-25T00:00:00Z",
+     "classifierVersion": "gem-import-v1",
+     "classifierConfidence": 0.4
+    },
+    "publicBadge": "disputed"
+   },
+   {
+    "id": "druzhba-north",
+    "name": "Druzhba Pipeline (Northern Branch)",
+    "operator": "Transneft / PERN / MERO",
+    "commodityType": "oil",
+    "fromCountry": "RU",
+    "toCountry": "DE",
+    "transitCountries": [
+     "BY",
+     "PL"
+    ],
+    "capacityBcmYr": 0,
+    "capacityMbd": 1,
+    "lengthKm": 4000,
+    "inService": 1964,
+    "startPoint": {
+     "lat": 52.6,
+     "lon": 49.4
+    },
+    "endPoint": {
+     "lat": 52.32,
+     "lon": 14.06
+    },
+    "evidence": {
+     "physicalState": "offline",
+     "physicalStateSource": "operator",
+     "operatorStatement": {
+      "text": "Germany ended Druzhba imports Jan 2023; PCK Schwedt now sourced via Rostock/Gdansk.",
+      "url": "https://www.bundesregierung.de/breg-en/news",
+      "date": "2023-01-01"
+     },
+     "commercialState": "suspended",
+     "sanctionRefs": [
+      {
+       "authority": "EU",
+       "listId": "Regulation 2022/879 (Russian crude embargo)",
+       "date": "2022-06-03",
+       "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R0879"
+      }
+     ],
+     "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.92
+    },
+    "publicBadge": "disputed"
+   },
+   {
+    "id": "nord-stream-1",
+    "name": "Nord Stream 1",
+    "operator": "Nord Stream AG",
+    "commodityType": "gas",
+    "fromCountry": "RU",
+    "toCountry": "DE",
+    "transitCountries": [],
+    "capacityBcmYr": 55,
+    "capacityMbd": 0,
+    "lengthKm": 1224,
+    "inService": 2011,
+    "startPoint": {
+     "lat": 60.08,
+     "lon": 29.05
+    },
+    "endPoint": {
+     "lat": 54.14,
+     "lon": 13.66
+    },
+    "evidence": {
+     "physicalState": "offline",
+     "physicalStateSource": "operator",
+     "operatorStatement": {
+      "text": "Pipelines damaged by underwater explosions in Swedish/Danish EEZ (Sep 2022); operator filed for insolvency.",
+      "url": "https://www.nordstream.com/press-info/",
+      "date": "2022-09-26"
+     },
+     "commercialState": "suspended",
+     "sanctionRefs": [
+      {
+       "authority": "EU",
+       "listId": "2022/1269 (energy sanctions package 8)",
+       "date": "2022-10-06",
+       "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX%3A32022R1269"
+      }
+     ],
+     "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.98
+    },
+    "publicBadge": "disputed"
+   }
+  ]
+ },
+ "storage": {
+  "fetchedAt": "2026-11-01T07:31:16.936Z",
+  "classifierVersion": "v1",
+  "upstreamUnavailable": false,
+  "facilities": [
+   {
+    "id": "singapore-jurong",
+    "name": "Jurong Island Petroleum Storage (Singapore)",
+    "operator": "Vopak / Oiltanking / Horizon Terminals / multi-operator",
+    "facilityType": "crude_tank_farm",
+    "country": "SG",
+    "location": {
+     "lat": 1.28,
+     "lon": 103.7
+    },
+    "capacityTwh": 0,
+    "capacityMb": 120,
+    "capacityMtpa": 0,
+    "workingCapacityUnit": "Mb",
+    "inService": 2000,
+    "evidence": {
+     "physicalState": "operational",
+     "physicalStateSource": "press",
+     "commercialState": "under_contract",
+     "sanctionRefs": [],
+     "fillDisclosed": false,
+     "fillSource": "",
+     "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.82
+    },
+    "publicBadge": "operational"
+   },
+   {
+    "id": "gladstone-lng",
+    "name": "Gladstone LNG (Curtis Island)",
+    "operator": "Santos / Shell / Origin (combined GLNG + QCLNG + APLNG)",
+    "facilityType": "lng_export",
+    "country": "AU",
+    "location": {
+     "lat": -23.77,
+     "lon": 151.22
+    },
+    "capacityTwh": 0,
+    "capacityMb": 0,
+    "capacityMtpa": 25.3,
+    "workingCapacityUnit": "Mtpa",
+    "inService": 2015,
+    "evidence": {
+     "physicalState": "operational",
+     "physicalStateSource": "operator",
+     "commercialState": "under_contract",
+     "sanctionRefs": [],
+     "fillDisclosed": false,
+     "fillSource": "",
+     "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.9
+    },
+    "publicBadge": "operational"
+   },
+   {
+    "id": "swinoujscie-lng",
+    "name": "Świnoujście LNG Terminal (President Lech Kaczyński)",
+    "operator": "Gaz-System (Polskie LNG SA)",
+    "facilityType": "lng_import",
+    "country": "PL",
+    "location": {
+     "lat": 53.92,
+     "lon": 14.25
+    },
+    "capacityTwh": 0,
+    "capacityMb": 0,
+    "capacityMtpa": 6.2,
+    "workingCapacityUnit": "Mtpa",
+    "inService": 2015,
+    "evidence": {
+     "physicalState": "operational",
+     "physicalStateSource": "operator",
+     "commercialState": "under_contract",
+     "sanctionRefs": [],
+     "fillDisclosed": true,
+     "fillSource": "GIE ALSI",
+     "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.9
+    },
+    "publicBadge": "operational"
+   },
+   {
+    "id": "epe-salt-cavern",
+    "name": "Epe Gas Storage (multi-operator salt-cavern complex)",
+    "operator": "Uniper / Nuon / Salzgitter (Epe Kavernengesellschaft)",
+    "facilityType": "ugs",
+    "country": "DE",
+    "location": {
+     "lat": 52.18,
+     "lon": 7.02
+    },
+    "capacityTwh": 22.5,
+    "capacityMb": 0,
+    "capacityMtpa": 0,
+    "workingCapacityUnit": "TWh",
+    "inService": 1971,
+    "evidence": {
+     "physicalState": "operational",
+     "physicalStateSource": "operator",
+     "commercialState": "under_contract",
+     "sanctionRefs": [],
+     "fillDisclosed": true,
+     "fillSource": "GIE AGSI+",
+     "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.92
+    },
+    "publicBadge": "operational"
+   },
+   {
+    "id": "vizag-spr",
+    "name": "Visakhapatnam Strategic Petroleum Reserve",
+    "operator": "Indian Strategic Petroleum Reserves Ltd (ISPRL)",
+    "facilityType": "spr",
+    "country": "IN",
+    "location": {
+     "lat": 17.68,
+     "lon": 83.23
+    },
+    "capacityTwh": 0,
+    "capacityMb": 9.8,
+    "capacityMtpa": 0,
+    "workingCapacityUnit": "Mb",
+    "inService": 2015,
+    "evidence": {
+     "physicalState": "operational",
+     "physicalStateSource": "regulator",
+     "commercialState": "under_contract",
+     "sanctionRefs": [],
+     "fillDisclosed": true,
+     "fillSource": "ISPRL annual report",
+     "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.9
+    },
+    "publicBadge": "operational"
+   }
+  ]
+ },
+ "shortages": {
+  "fetchedAt": "2026-11-02T07:32:05.015Z",
+  "classifierVersion": "v1",
+  "upstreamUnavailable": false,
+  "shortages": [
+   {
+    "id": "pk-petrol-2026-q1",
+    "country": "PK",
+    "product": "petrol",
+    "severity": "confirmed",
+    "firstSeen": "2026-01-12T00:00:00Z",
+    "lastConfirmed": "2026-04-15T00:00:00Z",
+    "resolvedAt": "",
+    "impactTypes": [
+     "stations_closed",
+     "rationing"
+    ],
+    "causeChain": [
+     "policy",
+     "logistics"
+    ],
+    "shortDescription": "Retail petrol shortages across Punjab and Sindh from LC-approval delays for imports.",
+    "evidence": {
+     "evidenceSources": [
+      {
+       "authority": "OGRA",
+       "title": "Retail supply advisory",
+       "url": "https://www.ogra.org.pk/",
+       "date": "2026-03-28",
+       "sourceType": "regulator"
+      }
+     ],
+     "firstRegulatorConfirmation": "2026-03-28",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.88,
+     "lastEvidenceUpdate": "2026-04-15T00:00:00Z"
+    }
+   },
+   {
+    "id": "lk-petrol-2026-q1",
+    "country": "LK",
+    "product": "petrol",
+    "severity": "watch",
+    "firstSeen": "2026-02-20T00:00:00Z",
+    "lastConfirmed": "2026-04-10T00:00:00Z",
+    "resolvedAt": "",
+    "impactTypes": [
+     "rationing"
+    ],
+    "causeChain": [
+     "logistics"
+    ],
+    "shortDescription": "CPC ration quotas reduced across several districts; queues reported in Colombo suburbs.",
+    "evidence": {
+     "evidenceSources": [
+      {
+       "authority": "Ceylon Petroleum Corporation",
+       "title": "Quota revision notice",
+       "url": "https://ceypetco.gov.lk/",
+       "date": "2026-04-05",
+       "sourceType": "operator"
+      }
+     ],
+     "firstRegulatorConfirmation": "",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.72,
+     "lastEvidenceUpdate": "2026-04-10T00:00:00Z"
+    }
+   },
+   {
+    "id": "ng-petrol-2026-q1",
+    "country": "NG",
+    "product": "petrol",
+    "severity": "confirmed",
+    "firstSeen": "2026-01-05T00:00:00Z",
+    "lastConfirmed": "2026-04-18T00:00:00Z",
+    "resolvedAt": "",
+    "impactTypes": [
+     "stations_closed",
+     "rationing"
+    ],
+    "causeChain": [
+     "upstream_refinery",
+     "logistics"
+    ],
+    "shortDescription": "NNPC supply gaps; PMS (petrol) queues in Abuja, Lagos, Port Harcourt.",
+    "evidence": {
+     "evidenceSources": [
+      {
+       "authority": "NMDPRA",
+       "title": "PMS supply monitoring bulletin",
+       "url": "https://nmdpra.gov.ng/",
+       "date": "2026-04-10",
+       "sourceType": "regulator"
+      }
+     ],
+     "firstRegulatorConfirmation": "2026-04-10",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.9,
+     "lastEvidenceUpdate": "2026-04-18T00:00:00Z"
+    }
+   },
+   {
+    "id": "cu-diesel-2026-q1",
+    "country": "CU",
+    "product": "diesel",
+    "severity": "confirmed",
+    "firstSeen": "2025-11-01T00:00:00Z",
+    "lastConfirmed": "2026-04-20T00:00:00Z",
+    "resolvedAt": "",
+    "impactTypes": [
+     "rationing",
+     "import_cut"
+    ],
+    "causeChain": [
+     "import_cut",
+     "policy"
+    ],
+    "shortDescription": "Severe country-wide diesel shortfalls tied to reduced Venezuelan crude deliveries.",
+    "evidence": {
+     "evidenceSources": [
+      {
+       "authority": "MINCEX",
+       "title": "Fuel import deliveries",
+       "url": "https://www.mincex.gob.cu/",
+       "date": "2026-04-01",
+       "sourceType": "regulator"
+      }
+     ],
+     "firstRegulatorConfirmation": "2026-04-01",
+     "classifierVersion": "v1",
+     "classifierConfidence": 0.92,
+     "lastEvidenceUpdate": "2026-04-20T00:00:00Z"
+    }
+   }
+  ]
+ },
+ "disruptions": {
+  "fetchedAt": "2026-11-01T07:31:13.665Z",
+  "classifierVersion": "v1",
+  "upstreamUnavailable": false,
+  "events": [
+   {
+    "id": "ukraine-transit-end-2025",
+    "assetId": "progress-urengoy-uzhhorod",
+    "assetType": "pipeline",
+    "eventType": "commercial",
+    "startAt": "2025-01-01T00:00:00Z",
+    "endAt": "",
+    "capacityOfflineBcmYr": 15,
+    "capacityOfflineMbd": 0,
+    "causeChain": [
+     "policy",
+     "war"
+    ],
+    "shortDescription": "Ukraine allowed the 2019 transit agreement with Gazprom to expire; Russian gas transit via Sudzha halted 1 Jan 2025 ending a ~50-year era of Russian gas transit through Ukraine.",
+    "sources": [
+     {
+      "authority": "Naftogaz",
+      "title": "Transit agreement expiry statement",
+      "url": "https://naftogaz.com/",
+      "date": "2025-01-01",
+      "sourceType": "operator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.97,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "russia-price-cap-implementation-2022",
+    "assetId": "primorsk-crude-terminal",
+    "assetType": "storage",
+    "eventType": "sanction",
+    "startAt": "2022-12-05T00:00:00Z",
+    "endAt": "",
+    "capacityOfflineBcmYr": 0,
+    "capacityOfflineMbd": 0,
+    "causeChain": [
+     "sanction",
+     "policy"
+    ],
+    "shortDescription": "G7+EU $60/bbl price cap took effect on Russian seaborne crude; targeted tanker shipments from Baltic/Black Sea/Arctic export terminals (Primorsk, Ust-Luga, Novorossiysk); reshaped routing, shadow-fleet usage expanded. Linked to Primorsk (largest Baltic crude export terminal); ESPO pipeline leg to China was out of scope.",
+    "sources": [
+     {
+      "authority": "US Treasury OFAC",
+      "title": "Russian crude price cap guidance",
+      "url": "https://home.treasury.gov/news/press-releases/jy1161",
+      "date": "2022-12-05",
+      "sourceType": "regulator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.95,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "nord-stream-1-sabotage-2022",
+    "assetId": "nord-stream-1",
+    "assetType": "pipeline",
+    "eventType": "sabotage",
+    "startAt": "2022-09-26T00:00:00Z",
+    "endAt": "",
+    "capacityOfflineBcmYr": 55,
+    "capacityOfflineMbd": 0,
+    "causeChain": [
+     "sabotage",
+     "war"
+    ],
+    "shortDescription": "Submarine explosions rupture both Nord Stream 1 and 2 pipelines in Baltic Sea; operator declares force majeure.",
+    "sources": [
+     {
+      "authority": "Nord Stream AG",
+      "title": "Operator statement on incidents",
+      "url": "https://www.nord-stream.com/press-info/",
+      "date": "2022-09-27",
+      "sourceType": "operator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.98,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "rehden-gas-sanction-2022",
+    "assetId": "rehden",
+    "assetType": "storage",
+    "eventType": "sanction",
+    "startAt": "2022-04-01T00:00:00Z",
+    "endAt": "2022-06-14T00:00:00Z",
+    "capacityOfflineBcmYr": 0,
+    "capacityOfflineMbd": 0,
+    "causeChain": [
+     "sanction",
+     "policy"
+    ],
+    "shortDescription": "Germany placed Gazprom Germania (operator of Rehden) under BNetzA trusteeship; operator sanctioned, facility regained access under new operator.",
+    "sources": [
+     {
+      "authority": "BNetzA",
+      "title": "Trusteeship decision",
+      "url": "https://www.bundesnetzagentur.de/",
+      "date": "2022-04-04",
+      "sourceType": "regulator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.93,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "cpc-force-majeure-2022",
+    "assetId": "cpc",
+    "assetType": "pipeline",
+    "eventType": "mechanical",
+    "startAt": "2022-03-22T00:00:00Z",
+    "endAt": "2022-04-22T00:00:00Z",
+    "capacityOfflineBcmYr": 0,
+    "capacityOfflineMbd": 0.8,
+    "causeChain": [
+     "logistics",
+     "war"
+    ],
+    "shortDescription": "CPC's Novorossiysk loading buoys damaged in storm + war tensions; operator declares one-month force majeure.",
+    "sources": [
+     {
+      "authority": "Caspian Pipeline Consortium",
+      "title": "Buoy damage notice",
+      "url": "https://www.cpc.ru/",
+      "date": "2022-03-23",
+      "sourceType": "operator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.92,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "pdvsa-designation-2019",
+    "assetId": "venezuela-anzoategui-puerto-la-cruz",
+    "assetType": "pipeline",
+    "eventType": "sanction",
+    "startAt": "2019-01-28T00:00:00Z",
+    "endAt": "",
+    "capacityOfflineBcmYr": 0,
+    "capacityOfflineMbd": 0.5,
+    "causeChain": [
+     "sanction"
+    ],
+    "shortDescription": "OFAC designated PDVSA; US refiners cut Venezuelan heavy crude intake, reshaping Latam flows.",
+    "sources": [
+     {
+      "authority": "US Treasury OFAC",
+      "title": "PDVSA designation",
+      "url": "https://home.treasury.gov/news/press-releases/sm594",
+      "date": "2019-01-28",
+      "sourceType": "regulator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.95,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   }
+  ]
+ }
+}

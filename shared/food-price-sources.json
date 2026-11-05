@@ -101,16 +101,16 @@
   },
   {
     "id": "nabc",
-    "name": "Thailand NABC (OAE farm-gate)",
+    "name": "Thailand NABC (OAE daily farm-gate)",
     "country": "Thailand",
     "countryCode": "TH",
-    "url": "https://www.nabc.go.th/commodity",
-    "cadence": "weekly",
+    "url": "https://www.nabc.go.th/dashboard/farm-prices",
+    "cadence": "daily",
     "contextOnly": false,
-    "maxFetchAgeDays": 10,
-    "maxContentAgeDays": 21,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 7,
     "fetchBudgetMs": 60000,
-    "attribution": "National Agricultural Big Data Center (NABC), Ministry of Agriculture and Cooperatives; weekly farm-gate prices from the Office of Agricultural Economics"
+    "attribution": "National Agricultural Big Data Center (NABC), Ministry of Agriculture and Cooperatives; daily median of the prices major buying markets paid farmers, from the Office of Agricultural Economics"
   },
   {
     "id": "nsckg",

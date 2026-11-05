@@ -9,7 +9,6 @@ const PARSE_STATKZ_RE = /^in tenge per kg$/i;
 const PARSE_STATKZ_RE_2 = /^(.*?)(?:, (liter|dozen))?$/i;
 const COLLECT_RE = /^\d+$/;
 
-
 const INDEX = 'https://stat.gov.kz/en/industries/economy/prices/spreadsheets/';
 const SERIES = 'price index and average prices for socially important food products in the republic of kazakhstan';
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -59,7 +58,9 @@ export function discoverStatkz(html, links) {
   return links(html, INDEX).flatMap(link => {
     const match = link.text.toLowerCase().startsWith(`${SERIES} (`) ? DISCOVER_STATKZ_RE.exec(link.text) : null;
     const date = match ? isoDate(match[3], MONTHS.indexOf(match[2].toLowerCase()) + 1, match[1]) : '';
-    return date && DISCOVER_STATKZ_RE_2.test(new URL(link.url).pathname) && new URL(link.url).hostname === 'stat.gov.kz' ? [{ date, url: link.url }] : [];
+    if (!date) return [];
+    const url = new URL(link.url);
+    return DISCOVER_STATKZ_RE_2.test(url.pathname) && url.hostname === 'stat.gov.kz' ? [{ date, url: link.url }] : [];
   }).filter(report => !seen.has(report.url) && seen.add(report.url)).sort((a, b) => b.date.localeCompare(a.date));
 }
 

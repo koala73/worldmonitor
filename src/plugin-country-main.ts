@@ -35,7 +35,6 @@ const DENIED_RE = /subscription|billing|entitlement|scope|unauthoriz|forbidden/i
 const MOUNT_PLUGIN_RE = /^[a-zA-Z0-9_-]{1,100}$/;
 const MOUNT_PLUGIN_RE_2 = /^https?:$/;
 
-
 const CHINA_MODEL_CONTEXT_BYTES = 32768;
 const chinaContextTitles = ['Macro Signals', 'Policy & Enforcement', 'Cross-Strait Activity', 'Corporate Disclosures', 'Corridor Conditions', 'Activity Nowcast'];
 const contextBytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -843,8 +842,9 @@ async function mountPlugin(): Promise<void> {
   document.addEventListener('click', event => {
     const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
     if (!link) return;
-    const href = new URL(link.getAttribute('href')!, 'https://www.worldmonitor.app').href;
-    if (!MOUNT_PLUGIN_RE_2.test(new URL(href).protocol)) return;
+    const url = new URL(link.getAttribute('href')!, 'https://www.worldmonitor.app');
+    if (!MOUNT_PLUGIN_RE_2.test(url.protocol)) return;
+    const href = url.href;
     event.preventDefault();
     if (linksAvailable) void request('ui/open-link', { url: href }).catch(() => { status.textContent = 'The host could not open this source link.'; });
     else status.textContent = 'Opening source links is unavailable in this host.';

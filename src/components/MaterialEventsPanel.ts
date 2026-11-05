@@ -1,9 +1,10 @@
 import type {
-  IntelligenceServiceClient,
   MaterialEvent,
   MaterialEventItem,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { Panel } from './Panel';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 import { getLocale } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
@@ -16,15 +17,7 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
  * variant, like earnings-calendar — enabling it is a product decision.
  */
 
-let _client: IntelligenceServiceClient | null = null;
-async function getIntelligenceClient(): Promise<IntelligenceServiceClient> {
-  if (!_client) {
-    const { IntelligenceServiceClient } = await import('@/generated/client/worldmonitor/intelligence/v1/service_client');
-    const { getRpcBaseUrl } = await import('@/services/rpc-client');
-    _client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
-  }
-  return _client;
-}
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 const EVENT_LIMIT = 30;
 
@@ -98,7 +91,7 @@ export function renderMaterialEvent(event: ProjectedMaterialEvent, nowMs: number
         ${primary ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.08);color:var(--text-dim)">${escapeHtml(primary.code)}${escapeHtml(extraItems)}</span>` : ''}
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${companyHtml}</div>
+        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);overflow-wrap:break-word">${companyHtml}</div>
         ${primary ? `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(primary.description)}</div>` : ''}
       </div>
       ${timeLabel ? `<div style="flex-shrink:0;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);padding-top:1px">${escapeHtml(timeLabel)}</div>` : ''}
@@ -131,7 +124,7 @@ export class MaterialEventsPanel extends Panel {
     // the last good list — a failed one would leave the panel on the spinner.
     if (!this._hasData) this.showLoading();
     try {
-      const client = await getIntelligenceClient();
+      const client = getIntelligenceClient();
       const resp = await client.listMaterialEvents({ itemCode: '', limit: EVENT_LIMIT });
 
       const events = projectMaterialEvents(resp.events ?? []);
@@ -155,7 +148,7 @@ export class MaterialEventsPanel extends Panel {
     const now = Date.now();
     const locale = getLocale();
     const html = `
-      <div style="padding:0 14px 12px;max-height:480px;overflow-y:auto">
+      <div style="padding:0 14px 12px;">
         ${events.map((event) => renderMaterialEvent(event, now, locale)).join('')}
       </div>`;
     this.setSafeContent(unsafeRawHtml(html, 'material-events controlled panel markup — every dynamic field passes escapeHtml'));

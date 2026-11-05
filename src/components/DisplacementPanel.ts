@@ -240,7 +240,7 @@ export class DisplacementPanel extends Panel {
       }).join('');
 
       tableHtml = `
-        <table class="disp-table">
+        <table class="wm-table disp-table">
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.country')}</th>
@@ -296,7 +296,7 @@ export class DisplacementPanel extends Panel {
     const statuses = this.crossBorderData?.sources?.map(source => `${source.name}: ${source.status}`).join(' · ');
     return `
         ${statuses ? `<div class="disp-source-note">${escapeHtml(statuses)}</div>` : ''}
-        <table class="disp-table disp-movements-table">
+        <table class="wm-table disp-table disp-movements-table">
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.situation')}</th>
@@ -338,7 +338,7 @@ export class DisplacementPanel extends Panel {
         </tr>`;
     }).join('');
     return `
-        <table class="disp-table">
+        <table class="wm-table disp-table">
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.country')}</th>
@@ -382,7 +382,7 @@ export class DisplacementPanel extends Panel {
           <td class="disp-count">${formatPopulation(op.totalIdps)}</td>
         </tr>`).join('');
     return `
-        <table class="disp-table">
+        <table class="wm-table disp-table">
           <thead>
             <tr>
               <th scope="col">${t('components.displacement.country')}</th>

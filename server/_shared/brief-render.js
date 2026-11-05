@@ -22,6 +22,7 @@
 //   - Plan: docs/plans/2026-04-17-003-feat-worldmonitor-brief-magazine-plan.md
 
 import { BRIEF_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
+import { BRIEF_FONTS } from './brief-fonts.generated.js';
 
 const COVER_GREETING_RE = /\.+$/;
 const EXTRACT_ISO2_TOKENS_RE = /[\s/]+/;
@@ -38,8 +39,19 @@ const EXTRACT_ISO2_TOKENS_RE_2 = /^[a-zA-Z]{2}$/;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const FONTS_HREF =
-  'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap';
+// Self-hosted subsets of Google's Playfair Display, Source Serif 4 and IBM Plex Mono, one set per
+// rendering platform because Google serves different files to Windows/Linux, macOS and mobile.
+// The route picks the set with briefFontPlatform(user-agent). Regenerate with
+// `npm run brief-fonts:subset` after changing font CSS here; see scripts/brief-fonts/README.md.
+const DEFAULT_FONT_PLATFORM = 'plain';
+
+function briefFonts(platform) {
+  const fonts = BRIEF_FONTS[Object.hasOwn(BRIEF_FONTS, platform) ? platform : DEFAULT_FONT_PLATFORM];
+  return {
+    preloads: fonts.preload.map((f) => `<link rel="preload" as="font" type="${f.type}" href="${f.href}" crossorigin>`).join(''),
+    style: `<style>${fonts.css}</style>`,
+  };
+}
 
 const MAX_THREADS_PER_PAGE = 6;
 
@@ -1492,7 +1504,7 @@ function derivePublicThreadsStub(stories) {
 
 /**
  * @param {BriefEnvelope} envelope
- * @param {{ publicMode?: boolean; refCode?: string; shareUrl?: string }} [options]
+ * @param {import('./brief-render.d.ts').RenderBriefMagazineOptions} [options]
  * @returns {string}
  */
 export function renderBriefMagazine(envelope, options = {}) {
@@ -1678,6 +1690,7 @@ export function renderBriefMagazine(envelope, options = {}) {
     ? '<meta name="robots" content="noindex,nofollow">'
     : '';
 
+  const fonts = briefFonts(options.fontPlatform);
   return (
     '<!DOCTYPE html>' +
     '<html lang="en">' +
@@ -1686,11 +1699,10 @@ export function renderBriefMagazine(envelope, options = {}) {
     '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
     headMeta +
     `<title>${title}</title>` +
-    '<link rel="preconnect" href="https://fonts.googleapis.com">' +
-    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
-    `<link href="${FONTS_HREF}" rel="stylesheet">` +
+    fonts.preloads +
     UMAMI_LOADER +
     STYLE_BLOCK +
+    fonts.style +
     '</head>' +
     '<body>' +
     LOGO_SYMBOL +

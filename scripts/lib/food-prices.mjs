@@ -30,7 +30,6 @@ const PARTS_RE_4 = /weekly-sensitive-price-indicator.*?(\d{2})-(\d{2})-(\d{4})\/
 const PARTS_RE_5 = /Mercuriale Bir El Kassaa\s+([^\s]+)\s+(\d{4})/i;
 const DISCOVER_REPORTS_RE_2 = /\/uploads\/[^/]+\.html$/;
 
-
 // Drops closed <script>/<style> blocks. Once a tag has no closing element left, later openers of it are
 // kept for the tag pass, so publisher pages cannot force a rescan per opener (CWE-1333).
 function dropBlocks(text) {
@@ -291,13 +290,14 @@ const REPORT_BASES = {
 export function discoverReports(html, source) {
   const base = REPORT_BASES[source];
   if (!base) throw new Error('unknown food report source');
+  const baseUrl = new URL(base);
   const reports = new Map();
   if (source === 'pbs') {
     for (const match of html.matchAll(DISCOVER_REPORTS_RE)) {
-      const url = new URL(decodeHtmlEntities(match[1]), new URL('/', base));
+      const url = new URL(decodeHtmlEntities(match[1]), `${baseUrl.origin}/`);
       const parts = PARTS_RE.exec(url.pathname);
       const date = parts ? isoDate(parts[3], parts[2], parts[1]) : '';
-      if (date && url.hostname === new URL(base).hostname && url.protocol === 'https:') reports.set(date, { date, url: url.href });
+      if (date && url.hostname === baseUrl.hostname && url.protocol === 'https:') reports.set(date, { date, url: url.href });
     }
   }
   const hasAnnexReports = reports.size > 0;
@@ -307,7 +307,7 @@ export function discoverReports(html, source) {
     const match = [open, href, inner];
     let url;
     try { url = new URL(decodeHtmlEntities(match[1]), base); } catch { continue; }
-    if (url.hostname !== new URL(base).hostname || url.protocol !== 'https:') continue;
+    if (url.hostname !== baseUrl.hostname || url.protocol !== 'https:') continue;
     let date = '';
     if (source === 'da') {
       const parts = PARTS_RE_2.exec(url.pathname.split('/').at(-1));

@@ -926,6 +926,9 @@
           "path": "scripts/resolve-railway-reconcile-control.mjs"
         },
         {
+          "path": "scripts/seed-fuel-prices.mjs"
+        },
+        {
           "path": "scripts/seed-research.mjs"
         }
       ]
@@ -3110,6 +3113,20 @@
       ]
     },
     {
+      "host": "data.ssb.no",
+      "provider": "data.ssb.no",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (SSB Public APIs and Licence pages)",
+      "attribution": "Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.stats.gov.cn",
       "provider": "data.stats.gov.cn",
       "kind": "structured",
@@ -4548,6 +4565,20 @@
       ]
     },
     {
+      "host": "files.ember-energy.org",
+      "provider": "Ember electricity data",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (Ember dataset)",
+      "attribution": "Ember; link to the Ember dataset and preserve its license notice.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-ember-electricity.mjs"
+        }
+      ]
+    },
+    {
       "host": "finance.worldmonitor.app",
       "provider": "finance.worldmonitor.app",
       "kind": "structured",
@@ -4668,15 +4699,10 @@
       "host": "fonts.googleapis.com",
       "provider": "fonts.googleapis.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "server/_shared/brief-render.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "foreignpolicy.com",
@@ -8222,6 +8248,9 @@
         },
         {
           "path": "scripts/seed-disease-outbreaks.mjs"
+        },
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },
@@ -9433,21 +9462,18 @@
     },
     {
       "host": "storage.googleapis.com",
-      "provider": "Ember electricity data",
+      "provider": "api.gdeltproject.org",
       "kind": "structured",
       "observed": true,
-      "license": "CC BY 4.0 (Ember dataset)",
-      "attribution": "Ember; link to the Ember dataset and preserve its license notice.",
-      "status": "reviewed",
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.googleapis.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
       "references": [
         {
           "path": "scripts/_conflict-gdelt-bulk.mjs"
         },
         {
           "path": "scripts/_gdelt-bulk-materializer.mjs"
-        },
-        {
-          "path": "scripts/seed-ember-electricity.mjs"
         }
       ]
     },
@@ -15388,6 +15414,20 @@
         },
         {
           "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
+        }
+      ]
+    },
+    {
+      "host": "www2.moeaea.gov.tw",
+      "provider": "www2.moeaea.gov.tw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed",
+      "attribution": "Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },

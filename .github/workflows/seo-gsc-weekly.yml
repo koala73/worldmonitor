@@ -58,6 +58,8 @@ jobs:
     if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      branch: ${{ steps.reconcile.outputs.branch }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -216,3 +218,16 @@ jobs:
               "$umami_note" \
               "$baseline_note" \
               "Collected in ${RUN_URL}. Review and merge by hand; this workflow never merges.")"
+
+  # A PR opened with github.token fires no workflow_run event for its CI, so
+  # Deploy Gate would reach it only on its 30-minute sweep.
+  deploy-gate:
+    needs: collect
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/bot-pr-deploy-gate.yml
+    with:
+      branch: ${{ needs.collect.outputs.branch }}

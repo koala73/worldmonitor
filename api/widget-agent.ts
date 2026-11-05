@@ -422,13 +422,17 @@ async function proxyWidgetAgent(
       // Legacy tester key path (wm-widget-key / wm-pro-key)
       const widgetKey = req.headers.get('X-Widget-Key') || (explicitWorldMonitorKey ? '' : widgetCookie);
       const proKey = req.headers.get('X-Pro-Key') || (explicitWorldMonitorKey ? '' : proCookie);
-      const hasWidgetKey = await timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY);
-      const hasProKey = await timingSafeEqualSecret(proKey, PRO_WIDGET_KEY);
-      if (!hasWidgetKey && !hasProKey) {
+      // Both comparisons are independent fixed-cost digests; run them together
+      // rather than serializing two awaits on the legacy-key auth path.
+      const [widgetKeyOk, proKeyOk] = await Promise.all([
+        timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY),
+        timingSafeEqualSecret(proKey, PRO_WIDGET_KEY),
+      ]);
+      if (!widgetKeyOk && !proKeyOk) {
         return json({ error: 'Forbidden' }, 403, corsHeaders);
       }
-      isPro = hasProKey;
-      spendId = hasProKey ? 'legacy-pro-key' : 'legacy-widget-key';
+      isPro = proKeyOk;
+      spendId = proKeyOk ? 'legacy-pro-key' : 'legacy-widget-key';
       quotaUserId = spendId;
       directLlmDailyLimit = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
     }
@@ -466,7 +470,7 @@ async function proxyWidgetAgent(
   }
 
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405, corsHeaders);
+    return json({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'GET, POST, OPTIONS' });
   }
 
   if (!spendId || !quotaUserId) {

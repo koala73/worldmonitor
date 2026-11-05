@@ -314,7 +314,7 @@ Every 2 minutes (with rate limiting), the system generates a concise situation b
 |----------|----------|-------|----------|
 | 1 | Ollama | Configured local model | Self-hosted inference when `OLLAMA_API_URL` is set |
 | 2 | OpenRouter | `deepseek/deepseek-v4-flash` | Primary cloud provider |
-| 3 | OpenRouter (free) | `google/gemma-4-26b-a4b-it:free`, then `nvidia/nemotron-3-super-120b-a12b:free` | Fallback when the paid model fails |
+| 3 | OpenRouter (free) | `google/gemma-4-26b-a4b-it:free`, then `nvidia/nemotron-3.5-super-vl:free` | Fallback when the paid model fails |
 | 4 | Browser | T5 (ONNX) | Offline fallback (local ML) |
 
 **Caching Strategy**: Redis server-side caching prevents redundant API calls. When the same headline set has been summarized recently, the cached result is returned immediately.

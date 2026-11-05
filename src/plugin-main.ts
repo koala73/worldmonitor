@@ -24,7 +24,6 @@ import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/pan
 
 const START_RE = /^https?:$/;
 
-
 function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
   if (keys.includes(requested)) return { category: requested };
   const normalized = requested.trim().toLowerCase();
@@ -569,7 +568,7 @@ function mountPlugin(): void {
         status.textContent = 'This article source link is unavailable.';
         return;
       }
-      if (!START_RE.test(new URL(link.href).protocol)) return;
+      if (!START_RE.test(link.protocol)) return;
       event.preventDefault();
       if (openLinks) void request('ui/open-link', { url: link.href }).catch(() => { status.textContent = 'The host could not open this link.'; });
       else status.textContent = 'Opening links is unavailable in this host.';

@@ -651,7 +651,7 @@
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live ship tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> WTO DataLab daily shipment indexes for the Strait of Hormuz: crude oil, LNG and fertilizer leaving the Gulf, farm goods arriving. By volume, Jan–Mar 2025 average = 100, AIS-visible vessels only. Status and date come from WTO's latest analysis.",
       "title": "Hormuz Trade Tracker"
     },
     "insights": {

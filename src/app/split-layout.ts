@@ -39,7 +39,7 @@ export const MAP_COL_MAX_PERCENT = 75;
  * actions (2D/3D toggle, fullscreen, pin) and the zoom controls collide. */
 export const MAP_COL_MIN_PX = 220;
 
-/** Pixel floor reserved for the panels column so one `minmax(280px, 1fr)`
+/** Pixel floor reserved for the panels column so one `minmax(270px, 1fr)`
  * grid track plus its scrollbar always fits beside the map. */
 export const PANELS_COL_MIN_PX = 300;
 
