@@ -6,16 +6,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { openExternalUrl, startCheckout, showCheckoutErrorToast } = vi.hoisted(() => ({
-  openExternalUrl: vi.fn(async (_url: string): Promise<string> => 'popup'),
+  openExternalUrl: vi.fn(async (_url: string, _preopened?: unknown, _options?: unknown): Promise<string> => 'popup'),
   startCheckout: vi.fn(async () => true),
   showCheckoutErrorToast: vi.fn((_message: string) => {}),
 }));
 let desktop = false;
+let referral: string | null = null;
 
 vi.mock('@/services/external-navigation', () => ({ openExternalUrl }));
 vi.mock('@/services/checkout', () => ({ startCheckout }));
 vi.mock('@/services/runtime', () => ({ isDesktopRuntime: () => desktop }));
 vi.mock('@/services/checkout-error-toast', () => ({ showCheckoutErrorToast }));
+vi.mock('@/services/referral-capture', () => ({ loadActiveReferral: () => referral }));
+
+// The desktop branch must never fall back to a WebView popup.
+const NO_POPUP = { desktopPopupFallback: false };
 
 const { openUpgradePlans } = await import('@/services/upgrade-flow');
 
@@ -27,12 +32,13 @@ beforeEach(() => {
 
 afterEach(() => {
   desktop = false;
+  referral = null;
 });
 
 describe('openUpgradePlans', () => {
   it('opens the pricing section on the web and starts no checkout', async () => {
     await openUpgradePlans();
-    expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro#pricing');
+    expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro#pricing', null, NO_POPUP);
     expect(startCheckout).not.toHaveBeenCalled();
     expect(showCheckoutErrorToast).not.toHaveBeenCalled();
   });
@@ -55,6 +61,14 @@ describe('openUpgradePlans', () => {
   it('marks the desktop handoff so /pro returns the purchase to the app', async () => {
     desktop = true;
     await openUpgradePlans();
-    expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing');
+    expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing', null, NO_POPUP);
+  });
+
+  it('carries the captured affiliate referral to /pro as ?ref=', async () => {
+    referral = 'partner42';
+    await openUpgradePlans();
+    const url = new URL(openExternalUrl.mock.calls[0]![0]);
+    expect(url.searchParams.get('ref')).toBe('partner42');
+    expect(url.hash).toBe('#pricing');
   });
 });
