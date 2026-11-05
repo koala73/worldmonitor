@@ -1270,7 +1270,6 @@ export class UnifiedSettings {
       <div class="upgrade-pro-section" data-billing-state="free">
         <div class="upgrade-pro-title">WorldMonitor Free</div>
         <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
-        ${checkoutConsentHtml(WEB_APP_ORIGIN)}
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
@@ -1450,14 +1449,7 @@ export class UnifiedSettings {
       return;
     }
     this.close();
-    if (this.config.isDesktopApp) {
-      // Desktop deliberately skips in-app checkout and sends the user to the
-      // pricing page — but a bare window.open only opens another WebView
-      // window. `openExternalUrl` hands it to the OS browser (#5911).
-      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
-      return;
-    }
-    import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+    import('@/services/upgrade-flow').then(m => m.openUpgradePlans()).catch(() => {
       void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
     });
   }
@@ -2289,9 +2281,9 @@ export class UnifiedSettings {
         <div class="panel-locked-state">
           <div class="panel-locked-icon">${upgradeIcon}</div>
           <div class="panel-locked-desc">Desktop keys come with Pro. Use one to get your Pro data in your own desktop app.</div>
-          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta upgrade-pro-cta">Upgrade to Pro</button>
           <div class="panel-locked-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to the full Pro dashboard. Customer-facing products need API Business.</div>
+          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }
