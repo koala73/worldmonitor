@@ -230,8 +230,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/scenario/v1/list-scenario-templates",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
-  ["POST /api/economic/v1/get-fred-series-batch",
-    "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
   // === deferred-to-future-tool (55) ===
   ["GET /api/aviation/v1/list-aircraft-emergencies",

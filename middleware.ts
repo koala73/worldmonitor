@@ -20,6 +20,13 @@ import {
 import { liveTopicPageForPath, liveTopicReading } from './scripts/live-pages/index.mjs';
 import { replaceLiveSection } from './scripts/live-pages/common.mjs';
 import {
+  PIZZA_INDEX_PAGE_PATH,
+  PIZZA_INDEX_SLUG,
+  PIZZA_INDEX_STATUS_PATH,
+  pizzaIndexReading,
+  renderPizzaIndexSection,
+} from './scripts/live-pages/pentagon-pizza-index.mjs';
+import {
   SITUATION_PAGE_PATH,
   situationMarker,
   situationReading,
@@ -318,6 +325,7 @@ export default function middleware(request: Request) {
     if (isLiveHtmlRequest(request, url)) {
       if (CHOKEPOINT_PAGE_PATH.test(url.pathname)) return liveChokepointPage(url);
       if (url.pathname === SITUATION_PAGE_PATH) return liveSituationPage(url);
+      if (url.pathname === PIZZA_INDEX_PAGE_PATH) return livePizzaIndexPage(url);
       const topic = liveTopicPageForPath(url.pathname);
       if (topic) return liveTopicPage(url, topic);
     }
@@ -535,6 +543,20 @@ function liveTopicPage(url: URL, topic: LiveTopicPage): Promise<Response> {
     // An unpublishable reading (stale, empty) keeps the built page's dated one.
     if (record === null) return null;
     return replaceLiveSection(html, topic.slug, topic.renderSection(record, { live: true }));
+  });
+}
+
+/**
+ * The glossary page's "Current level" section. The blog build ships it in its
+ * browser-loading state; this swaps in the current level so the HTML a crawler
+ * reads states it. No current level (expired seed, closed-only poll) keeps the
+ * built section, which the page's script still fills for visitors.
+ */
+function livePizzaIndexPage(url: URL): Promise<Response> {
+  return liveHtmlPage(url, PIZZA_INDEX_SLUG, async (html) => {
+    const view = pizzaIndexReading(await fetchPublicReading(url, PIZZA_INDEX_STATUS_PATH));
+    if (view === null) return null;
+    return replaceLiveSection(html, PIZZA_INDEX_SLUG, renderPizzaIndexSection(view));
   });
 }
 

@@ -47,6 +47,7 @@ export interface ListUcdpEventsRequest {
 export interface ListUcdpEventsResponse {
   events: UcdpViolenceEvent[];
   pagination?: PaginationResponse;
+  candidateVersion: string;
 }
 
 export interface UcdpViolenceEvent {

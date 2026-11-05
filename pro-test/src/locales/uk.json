@@ -506,7 +506,8 @@
       "marketWeakest": "Найслабший",
       "trendRising": "зростає",
       "trendFalling": "падає",
-      "trendStable": "стабільний"
+      "trendStable": "стабільний",
+      "situationLink": "Моніторте ситуацію: кризи, заголовки, вузькі місця та збої на одній панелі"
     },
     "moments": {
       "eyebrow": "Механізм кореляції",

@@ -18831,6 +18831,160 @@
       ]
     }
   },
+  "activeWars": {
+    "source": "UCDP Georeferenced Event Dataset (candidate release)",
+    "referenceMonth": "2026-09",
+    "latestEventDate": "2026-09-30",
+    "threshold": 25,
+    "countryCount": 18,
+    "belowThresholdCount": 20,
+    "conflicts": [
+      {
+        "name": "Ukraine",
+        "code": "UA",
+        "deaths": 6202,
+        "events": 246,
+        "sideA": "Government of Russia",
+        "sideB": "Government of Ukraine"
+      },
+      {
+        "name": "Yemen",
+        "code": "YE",
+        "deaths": 2892,
+        "events": 217,
+        "sideA": "Government of Yemen",
+        "sideB": "Forces of the Presidential Leadership Council"
+      },
+      {
+        "name": "Pakistan",
+        "code": "PK",
+        "deaths": 646,
+        "events": 131,
+        "sideA": "Government of Pakistan",
+        "sideB": "TTP"
+      },
+      {
+        "name": "Ethiopia",
+        "code": "ET",
+        "deaths": 563,
+        "events": 108,
+        "sideA": "Government of Ethiopia",
+        "sideB": "EPFAS"
+      },
+      {
+        "name": "Somalia",
+        "code": "SO",
+        "deaths": 191,
+        "events": 23,
+        "sideA": "Government of Somalia",
+        "sideB": "Forces of Laftagareen"
+      },
+      {
+        "name": "Mali",
+        "code": "ML",
+        "deaths": 178,
+        "events": 67,
+        "sideA": "Government of Mali",
+        "sideB": "JNIM"
+      },
+      {
+        "name": "Myanmar",
+        "code": "MM",
+        "deaths": 168,
+        "events": 49,
+        "sideA": "Government of Myanmar",
+        "sideB": "SCEF"
+      },
+      {
+        "name": "Nigeria",
+        "code": "NG",
+        "deaths": 153,
+        "events": 43,
+        "sideA": "",
+        "sideB": ""
+      },
+      {
+        "name": "Afghanistan",
+        "code": "AF",
+        "deaths": 132,
+        "events": 14,
+        "sideA": "Government of Afghanistan",
+        "sideB": "AFF"
+      },
+      {
+        "name": "Palestine",
+        "code": "PS",
+        "deaths": 130,
+        "events": 94,
+        "sideA": "Government of Israel",
+        "sideB": "Hamas"
+      },
+      {
+        "name": "Sudan",
+        "code": "SD",
+        "deaths": 128,
+        "events": 26,
+        "sideA": "Government of Sudan",
+        "sideB": "SFA"
+      },
+      {
+        "name": "Niger",
+        "code": "NE",
+        "deaths": 61,
+        "events": 4,
+        "sideA": "Government of Niger",
+        "sideB": "IS"
+      },
+      {
+        "name": "DR Congo",
+        "code": "CD",
+        "deaths": 59,
+        "events": 23,
+        "sideA": "Government of DR Congo",
+        "sideB": "AFC"
+      },
+      {
+        "name": "Iran",
+        "code": "IR",
+        "deaths": 46,
+        "events": 16,
+        "sideA": "Government of Iran",
+        "sideB": "Jaish al-Adl"
+      },
+      {
+        "name": "Lebanon",
+        "code": "LB",
+        "deaths": 40,
+        "events": 16,
+        "sideA": "Government of Israel",
+        "sideB": "Hezbollah"
+      },
+      {
+        "name": "Syria",
+        "code": "SY",
+        "deaths": 32,
+        "events": 4,
+        "sideA": "",
+        "sideB": ""
+      },
+      {
+        "name": "Russia",
+        "code": "RU",
+        "deaths": 30,
+        "events": 11,
+        "sideA": "Government of Russia",
+        "sideB": "Government of Ukraine"
+      },
+      {
+        "name": "Saudi Arabia",
+        "code": "SA",
+        "deaths": 25,
+        "events": 2,
+        "sideA": "Government of Yemen",
+        "sideB": "Forces of the Presidential Leadership Council"
+      }
+    ]
+  },
   "headlines": [
     {
       "title": "Gulf region on edge as Qatar leads talks with Iran to stave off new U.S. attacks",

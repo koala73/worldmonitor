@@ -506,7 +506,8 @@
       "marketWeakest": "सबसे कमजोर",
       "trendRising": "बढ़ रहा है",
       "trendFalling": "गिर रहा है",
-      "trendStable": "स्थिर"
+      "trendStable": "स्थिर",
+      "situationLink": "स्थिति पर नज़र रखें: संकट, सुर्खियाँ, चोकपॉइंट और आउटेज एक ही बोर्ड पर"
     },
     "moments": {
       "eyebrow": "सहसंबंध इंजन",

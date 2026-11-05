@@ -57,12 +57,12 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 
 Coverage reconciled: 2026-11-05. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
 
-- 843 active data providers across 862 observed source hosts (378 structured/API, 468 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
+- 844 active data providers across 864 observed source hosts (380 structured/API, 468 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
 - 704 feed definitions in the shared feed registry — distinct from the 468 feed-publishing hosts above, since one host can back several feed definitions
 - 40 named live data streams whose staleness is tracked and surfaced individually — a different axis from the 10 signal domains above, which group the source catalog by subject
 - 60 map layer types in the shared registry, 59 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
 - 115 concrete panel implementations across 6 product variants
-- 100 MCP tools; use `tools/list` for the live inventory
+- 102 MCP tools; use `tools/list` for the live inventory
 - 28 supported interface languages
 - 31 countries scored by the Country Instability Index (CII v14)
 - 196-country rankable universe for the Country Resilience Index, of which 169 are ranked in the published snapshot captured 2026-11-01

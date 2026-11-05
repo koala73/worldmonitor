@@ -506,7 +506,8 @@
       "marketWeakest": "最弱",
       "trendRising": "上升",
       "trendFalling": "下降",
-      "trendStable": "稳定"
+      "trendStable": "稳定",
+      "situationLink": "监控局势：在一个看板上汇总危机、头条、卡点和中断事件"
     },
     "moments": {
       "eyebrow": "关联引擎",

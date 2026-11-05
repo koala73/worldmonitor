@@ -42,6 +42,8 @@
   "get_forecast_predictions",
   "get_forecast_scorecard",
   "get_forecast_theaters",
+  "get_fred_series",
+  "get_global_air_activity",
   "get_gold_intelligence",
   "get_health_signals",
   "get_hotspot_escalation",

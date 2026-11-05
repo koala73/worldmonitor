@@ -7327,6 +7327,20 @@
       ]
     },
     {
+      "host": "nvd.nist.gov",
+      "provider": "NVD (NIST)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain (US Federal Government work)",
+      "attribution": "This product uses the NVD API but is not endorsed or certified by the NVD.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cve-reference.mjs"
+        }
+      ]
+    },
+    {
       "host": "nytimes.com",
       "provider": "The New York Times",
       "kind": "feed",
@@ -9080,6 +9094,20 @@
         },
         {
           "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
+      "host": "services.nvd.nist.gov",
+      "provider": "NVD (NIST)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain (US Federal Government work)",
+      "attribution": "This product uses the NVD API but is not endorsed or certified by the NVD.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cve-reference.mjs"
         }
       ]
     },
