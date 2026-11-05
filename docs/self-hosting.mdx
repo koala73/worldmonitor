@@ -27,7 +27,7 @@ The repository contains the whole stack, not a demo build:
 - the dashboard and every variant (`full`, `tech`, `finance`, `commodity`, `happy`, `energy`);
 - the Sebuf RPC handlers under `server/` and the edge gateway under `api/`;
 - the AIS relay and the Node.js sidecar;
-- the seed scripts under `scripts/` that fetch upstream data into Redis: 176 standalone `seed-*.mjs` scripts and 19 `seed-bundle-*.mjs` bundles at the time of writing;
+- the seed scripts under `scripts/` that fetch upstream data into Redis: the standalone `seed-*.mjs` scripts and the `seed-bundle-*.mjs` bundles;
 - the desktop app source under `src-tauri/`;
 - a `docker-compose.yml` that runs dashboard, relay, Redis and the Redis REST proxy together.
 
@@ -35,9 +35,9 @@ The repository contains the whole stack, not a demo build:
 
 ## What self-hosting does not give you
 
-**World Monitor's hosted data pipeline.** In production the seeders run as scheduled Railway services (52 are declared in `scripts/railway-services.json`) writing into World Monitor's Redis. A self-hosted instance starts with an empty cache. You fill it by running `./scripts/run-seeders.sh` on a schedule you own, against a Redis you own.
+**World Monitor's hosted data pipeline.** In production the seeders run as scheduled Railway services (declared in `scripts/railway-services.json`) writing into World Monitor's Redis. A self-hosted instance starts with an empty cache. You fill it by running `./scripts/run-seeders.sh` on a schedule you own, against a Redis you own.
 
-**World Monitor's provider keys and paid tiers.** The keys for Finnhub, FRED, EIA, ACLED, NASA FIRMS, AISstream, AviationStack, Cloudflare Radar and the LLM providers are World Monitor's. You bring your own. Free tiers cover most sources; Cloudflare Radar is paid, and LLM usage is metered by whichever provider you point `LLM_API_URL` at, including a local Ollama or LM Studio endpoint.
+**World Monitor's provider keys and paid tiers.** The keys for Finnhub, FRED, EIA, ACLED, NASA FIRMS, AISstream, AviationStack, Cloudflare Radar and the LLM providers are World Monitor's. You bring your own. Free tiers cover most sources, Cloudflare Radar included; LLM usage is billed by whichever provider you point `LLM_API_URL` at; a local Ollama or LM Studio endpoint costs nothing.
 
 **The hosted API and MCP server.** Calling `worldmonitor.app` endpoints, the hosted MCP server, or the SDKs against the hosted base URL is use of the hosted Service, governed by the [EULA](/eula) and a plan. Self-hosting the code needs no plan; calling World Monitor's servers does. The SDKs and CLI accept a self-hosted base URL, so your own instance can answer the same API surface.
 

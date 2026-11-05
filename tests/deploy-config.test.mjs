@@ -1434,12 +1434,10 @@ describe('deploy/cache configuration guardrails', () => {
     assert.match(viteConfigSource, /manifestTransforms:\s*\[dashboardPrecache\.manifestTransform\]/);
   });
 
-  it('emits public sourcemaps for preview attribution while production stays opt-in (#7382)', () => {
-    assert.match(
-      viteConfigSource,
-      /const emitPublicSourceMaps = process\.env\.WM_EMIT_SOURCEMAPS === '1'[\s\S]*\|\| process\.env\.VERCEL_ENV === 'preview'/,
-    );
-    assert.match(viteConfigSource, /sourcemap:\s*emitPublicSourceMaps/);
+  it('routes sourcemap output through the policy that keeps production maps Sentry-only (#7382)', () => {
+    assert.match(viteConfigSource, /const emitPublicSourceMaps = shouldEmitPublicSourceMaps\(process\.env\)/);
+    assert.match(viteConfigSource, /sourcemap:\s*viteSourcemapSetting\(process\.env\)/);
+    assert.match(viteConfigSource, /emitPublicSourceMaps \? \[\] : \[stripPrivateSourceMapsPlugin\(\)\]/);
   });
 
 
