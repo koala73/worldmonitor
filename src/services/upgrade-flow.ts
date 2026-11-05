@@ -18,9 +18,17 @@ export async function openUpgradePlans(attribution?: CheckoutAttribution): Promi
     import('@/services/runtime'),
     import('@/services/external-navigation'),
   ]);
-  await openExternalUrl(buildAttributedProUrl(
+  const outcome = await openExternalUrl(buildAttributedProUrl(
     `${WEB_APP_ORIGIN}/pro#pricing`,
     attribution,
     isDesktopRuntime() ? { desktopHandoff: true } : undefined,
   ));
+  // `openExternalUrl` already reported the failure. Tell the user instead of
+  // throwing: callers' catch fallbacks use window.open, which inside the
+  // desktop WebView opens a second window, and after a native timeout the OS
+  // browser may still open the page.
+  if (outcome === 'failed') {
+    const { showCheckoutErrorToast } = await import('@/services/checkout-error-toast');
+    showCheckoutErrorToast('The plans page did not open. Please try again.');
+  }
 }

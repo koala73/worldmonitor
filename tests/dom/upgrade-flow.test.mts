@@ -5,21 +5,24 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { openExternalUrl, startCheckout } = vi.hoisted(() => ({
-  openExternalUrl: vi.fn(async (_url: string) => 'opened'),
+const { openExternalUrl, startCheckout, showCheckoutErrorToast } = vi.hoisted(() => ({
+  openExternalUrl: vi.fn(async (_url: string): Promise<string> => 'popup'),
   startCheckout: vi.fn(async () => true),
+  showCheckoutErrorToast: vi.fn((_message: string) => {}),
 }));
 let desktop = false;
 
 vi.mock('@/services/external-navigation', () => ({ openExternalUrl }));
 vi.mock('@/services/checkout', () => ({ startCheckout }));
 vi.mock('@/services/runtime', () => ({ isDesktopRuntime: () => desktop }));
+vi.mock('@/services/checkout-error-toast', () => ({ showCheckoutErrorToast }));
 
 const { openUpgradePlans } = await import('@/services/upgrade-flow');
 
 beforeEach(() => {
   openExternalUrl.mockClear();
   startCheckout.mockClear();
+  showCheckoutErrorToast.mockClear();
 });
 
 afterEach(() => {
@@ -31,6 +34,13 @@ describe('openUpgradePlans', () => {
     await openUpgradePlans();
     expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro#pricing');
     expect(startCheckout).not.toHaveBeenCalled();
+    expect(showCheckoutErrorToast).not.toHaveBeenCalled();
+  });
+
+  it('tells the user when the page could not open, without throwing', async () => {
+    openExternalUrl.mockResolvedValueOnce('failed');
+    await expect(openUpgradePlans()).resolves.toBeUndefined();
+    expect(showCheckoutErrorToast).toHaveBeenCalledWith('The plans page did not open. Please try again.');
   });
 
   it('carries mission attribution to /pro, which passes it into its checkout', async () => {
