@@ -95,7 +95,9 @@ import {
 import { isApiOnlyPath } from './_shared/api-only-paths';
 import {
   DESKTOP_KEY_API_ONLY_ERROR,
+  DESKTOP_KEY_CLIENT_ERROR,
   DESKTOP_KEY_LIMIT_ERROR,
+  admitsDesktopKeyClientRequest,
   resolveUserKeyEntitlement,
   resolveUserKeyScope,
 } from './_shared/desktop-key-principal';
@@ -1945,6 +1947,10 @@ export function createDomainGateway(
         if (isApiOnlyPath(pathname)) {
           emitRequest(403, 'tier_403', null);
           return createGatewayAuthErrorResponse(403, DESKTOP_KEY_API_ONLY_ERROR, corsHeaders);
+        }
+        if (!admitsDesktopKeyClientRequest(request)) {
+          emitRequest(403, 'tier_403', null);
+          return createGatewayAuthErrorResponse(403, DESKTOP_KEY_CLIENT_ERROR, corsHeaders);
         }
         // Pro-session treatment from here on, attributed to the owner.
         isDesktopPrincipal = true;
