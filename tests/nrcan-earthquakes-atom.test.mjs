@@ -500,6 +500,27 @@ describe('approved NRCan transport', () => {
     assert.deepEqual(attempts, [0, 1, 2]);
   });
 
+  // A Decodo sticky port keeps its exit IP for minutes, so fixed exits 0..2 meant
+  // every 5-minute run retried the same three challenged IPs (WORLDMONITOR-1AM).
+  it('draws a fresh set of proxy exits on each run', async () => {
+    const runExits = [];
+    for (let run = 0; run < 2; run++) {
+      const exits = [];
+      await assert.rejects(fetchApprovedAtom(NRCAN_ATOM_URL, {
+        fetchFn: forbidden,
+        proxyAuth: 'user:pass@gate.example:7000',
+        proxyFetchFn: async (_url, { exit }) => {
+          exits.push(exit);
+          return { ok: false, status: 403, buffer: Buffer.alloc(0), contentType: 'text/html' };
+        },
+      }), /direct HTTP 403; proxy HTTP 403/);
+      assert.equal(exits.length, 3);
+      assert.equal(new Set(exits).size, 3);
+      runExits.push(exits);
+    }
+    assert.ok(runExits[0].every(exit => !runExits[1].includes(exit)), `runs reused exits: ${JSON.stringify(runExits)}`);
+  });
+
   it('keeps the direct 403 when no proxy is configured or every exit fails', async () => {
     await assert.rejects(fetchApprovedAtom(NRCAN_ATOM_URL, { fetchFn: forbidden }), (err) => err.status === 403);
     let calls = 0;
