@@ -544,6 +544,10 @@ def build(crawl_path: Path, verify_google: bool):
             raise SystemExit(f"{fam}: font-variation-settings in use {dict(u['variation_settings'])}: handle axes for it")
         font_features = {fr.FeatureTag for t in ('GSUB', 'GPOS') if t in base for fr in base[t].table.FeatureList.FeatureRecord}
         features &= font_features
+        # HarfBuzz builds fractions around U+2044 FRACTION SLASH without being asked (not around
+        # U+2215). The features pull in numerator and denominator digits (0.5-3 KB per file), so
+        # only a file that has U+2044 keeps them.
+        fraction_features = {'frac', 'numr', 'dnom'} & font_features
 
         def features_for(style):
             """HarfBuzz features and language for one run, as Chromium would shape it."""
@@ -569,11 +573,6 @@ def build(crawl_path: Path, verify_google: bool):
         latin_marks = {cp for cp in parse_unicode_range(g['subsets']['latin']['unicode_range'])
                        if unicodedata.category(chr(cp)) == 'Mn'} & parts & cov & src_cmap
         want |= latin_marks
-        # HarfBuzz builds fractions around FRACTION SLASH (U+2044) without being asked. The features
-        # pull in numerator and denominator digits (about 0.5-3 KB per core), so keep them only when
-        # the subset has a slash that can trigger them.
-        if want & {0x2044, 0x2215}:
-            features |= {'frac', 'numr', 'dnom'} & font_features
         core = (ASCII | CORE_PUNCT | frequent | latin_marks) & want
         ext = want - core
 
@@ -607,7 +606,7 @@ def build(crawl_path: Path, verify_google: bool):
                 # subsetter cannot index (KeyError on e.g. 'braceright.case.tf'). Reload from bytes.
                 f = TTFont(io.BytesIO(font_bytes(f)))
             opts = ftsubset.Options()
-            opts.layout_features = sorted(features)
+            opts.layout_features = sorted(features | (fraction_features if 0x2044 in cps else set()))
             opts.layout_scripts = ['*']
             # The sources carry no glyph instructions, fpgm or cvt; their only hinting is a 7-byte
             # prep that sets dropout control. Google serves it to Windows and Linux, so it stays.
