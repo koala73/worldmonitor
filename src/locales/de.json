@@ -1899,6 +1899,8 @@
       "streamIdleStopNever": "Nie"
     },
     "etfFlows": {
+      "previousColumns": "Vorherige Spalten",
+      "moreColumns": "Weitere Spalten",
       "unavailable": "Daten zu börsengehandelten Fonds vorübergehend nicht verfügbar",
       "rateLimited": "Daten zu börsengehandelten Fonds vorübergehend nicht verfügbar (Rate begrenzt) – Wiederversuch in Kürze",
       "netFlow": "Netto-Mittelfluss",

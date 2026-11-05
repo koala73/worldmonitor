@@ -2165,6 +2165,8 @@
       "infoTooltip": "<strong>Prediction Markets</strong> Real-money forecasting markets:<ul><li>Prices reflect crowd probability estimates</li><li>Higher volume = more reliable signal</li><li>Geopolitical and current events focus</li></ul>Sources: Polymarket, Kalshi"
     },
     "etfFlows": {
+      "previousColumns": "Previous columns",
+      "moreColumns": "More columns",
       "unavailable": "exchange-traded fund data temporarily unavailable",
       "rateLimited": "exchange-traded fund data temporarily unavailable (rate limited) — retrying shortly",
       "netFlow": "Net Flow",

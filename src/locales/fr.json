@@ -1695,6 +1695,8 @@
       "translationUnavailable": "Traduction indisponible. Vérifiez les paramètres de votre fournisseur d’IA et réessayez."
     },
     "etfFlows": {
+      "previousColumns": "Colonnes précédentes",
+      "moreColumns": "Plus de colonnes",
       "unavailable": "données de fonds négociés en bourse temporairement indisponibles",
       "netFlow": "Flux net",
       "estFlow": "Flux est.",

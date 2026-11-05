@@ -1813,6 +1813,8 @@
       "streamIdleStopNever": "Nigdy"
     },
     "etfFlows": {
+      "previousColumns": "Poprzednie kolumny",
+      "moreColumns": "Więcej kolumn",
       "unavailable": "dane funduszy notowanych na giełdzie czasowo niedostępne",
       "netFlow": "Przepływ netto",
       "estFlow": "Szac. przepływ",

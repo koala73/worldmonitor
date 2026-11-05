@@ -22868,7 +22868,7 @@ body.has-breaking-alert .panels-grid {
 
 .etf-summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
   gap: 6px;
   padding: 8px;
   margin-bottom: 8px;
@@ -22877,6 +22877,8 @@ body.has-breaking-alert .panels-grid {
 }
 
 .etf-summary-item {
+  min-width: 0;
+  overflow-wrap: anywhere;
   text-align: center;
 }
 
@@ -22904,6 +22906,37 @@ body.has-breaking-alert .panels-grid {
 
 .etf-table-wrap {
   overflow-x: auto;
+}
+
+.etf-table-nav:not([hidden]) {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.etf-table-nav button {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--overlay-light);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+}
+
+.etf-table-nav button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.etf-table-nav button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }
 
 .etf-ticker {

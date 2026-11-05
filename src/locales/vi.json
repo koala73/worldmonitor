@@ -1948,6 +1948,8 @@
       "infoTooltip": "<strong>Thị trường Dự đoán</strong> Thị trường dự báo bằng tiền thật:<ul><li>Giá phản ánh ước tính xác suất của đám đông</li><li>Khối lượng cao hơn = tín hiệu đáng tin cậy hơn</li><li>Tập trung vào địa chính trị và sự kiện thời sự</li></ul>Nguồn: Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "Các cột trước",
+      "moreColumns": "Thêm cột",
       "unavailable": "dữ liệu quỹ giao dịch trao đổi tạm thời không khả dụng",
       "rateLimited": "dữ liệu quỹ giao dịch trao đổi tạm thời không khả dụng (giới hạn tốc độ) — thử lại trong giây lát",
       "netFlow": "Dòng tiền Ròng",
