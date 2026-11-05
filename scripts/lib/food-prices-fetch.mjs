@@ -144,7 +144,7 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
       const response = await fetchFn(target.href, {
         method, body,
         headers: { 'User-Agent': CHROME_UA, Accept: '*/*', ...(jar ? { Cookie: jar } : {}), ...headers },
-        dispatcher, redirect: 'manual', signal: AbortSignal.timeout(Math.min(20_000, remaining)),
+        dispatcher, redirect: 'manual', signal: AbortSignal.timeout(Math.min(id === 'twmoa' ? 60_000 : 20_000, remaining)),
       });
       for (const cookie of response.headers.getSetCookie?.() ?? []) {
         const [pair] = cookie.split(';');
@@ -269,8 +269,9 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
       observations = parseOnagri(await get(latest.url), latest.date);
       contexts = [{ countryCode: 'TN', country: 'Tunisia', referenceDate: latest.date, title: 'Bir El Kassaa monthly wholesale report', url: latest.url }];
     }
-    if (id === 'giews' ? !contexts.some(context => context.referenceDate) : !observations.length) throw new Error(`${id} has no dated records`);
+    if (!observations.length && !(source.contextOnly && contexts.some(context => context.referenceDate && !context.fetchFailed))) throw new Error(`${id} has no dated records`);
     if (observations.some(row => !isoDate(...row.date.split('-')) || row.date > dated(now, 0))) throw new Error('invalid or future food observation');
+    if (contexts.some(context => context.referenceDate && (!isoDate(...context.referenceDate.split('-')) || context.referenceDate > dated(now, 0)))) throw new Error('invalid or future food context');
     return { observations, contexts, reportUrl, fetchedAt: now.toISOString(), ...(refreshedReports.length ? { refreshedReports } : {}) };
   } finally { await agent.close(); }
 }

@@ -15,6 +15,9 @@ export function mergeFoodSnapshot(previous, incoming) {
     throw new Error('food report regressed; retain last-good prices');
   }
   const oldContexts = new Map((previous?.contexts ?? []).map(context => [context.countryCode, context]));
+  if (incoming.contexts.some(context => !context.fetchFailed && context.referenceDate && oldContexts.get(context.countryCode)?.referenceDate > context.referenceDate)) {
+    throw new Error('food context regressed; retain last-good report');
+  }
   return {
     ...incoming,
     observations: incoming.observations.length ? mergeHistory(previous?.observations ?? [], incoming.observations, incoming.refreshedReports) : [],

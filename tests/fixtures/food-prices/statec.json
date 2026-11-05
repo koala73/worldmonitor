@@ -1,0 +1,901 @@
+{
+  "header": {
+    "id": "IREF027868",
+    "prepared": "2026-11-05T01:59:07Z",
+    "test": true,
+    "sender": {
+      "id": "STATEC_prd_release_-_DotStat__js__causality____dotnet__icecream_",
+      "name": "unknown"
+    }
+  },
+  "dataSets": [
+    {
+      "action": "Information",
+      "attributes": [
+        0,
+        null
+      ],
+      "series": {
+        "0:0:0:0:0:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              3.51,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              4.18,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              4.45,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:1:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              4.76495863,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              4.67,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              4.64,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:2:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              9.495039354,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              11.02,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              10.87,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:3:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              "",
+              0,
+              0,
+              null
+            ],
+            "1": [
+              "",
+              0,
+              0,
+              null
+            ],
+            "2": [
+              "",
+              0,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:4:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              15.66001667,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              13.61,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              15.74,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:5:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              2.076053565,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              2.12,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              1.97,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:6:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              57,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              56,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              57.4,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:7:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              1.759717316,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              1.45,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              1.48,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:8:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              4.477626778,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              5.05,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              5.09,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:9:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              1.469,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              1.39,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              1.73,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:10:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              0.945976352,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              0.8,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              0.7,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:11:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              3.253080519,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              3.71,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              3.67,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:12:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              0.785,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              0.84,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              1.16,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:13:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              1.502001536,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              1.53,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              1.56,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:14:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              62.1,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              61,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              62.6,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:15:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              2.02220488,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              2.16,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              2.06,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:16:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              3.392669925,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              3.4,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              3.43,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:17:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              1.564,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              1.46,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              1.7,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:18:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              1.571871077,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              1.7,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              1.79,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:19:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              12.3,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              12.89,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              13.3,
+              null,
+              0,
+              null
+            ]
+          }
+        },
+        "0:0:0:0:20:0:0:0:0:0:0:0:0": {
+          "attributes": [
+            null
+          ],
+          "annotations": [],
+          "observations": {
+            "0": [
+              3.316788811,
+              null,
+              0,
+              null
+            ],
+            "1": [
+              3.17,
+              null,
+              0,
+              null
+            ],
+            "2": [
+              2.97,
+              null,
+              0,
+              null
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "structure": {
+    "name": "Average prices of certain products in June",
+    "description": "Publication date:  25/07/2026 - Periodicity: yearly - Author: STATEC - Category: Economy and finance - Consumer prices - Keywords: Consumer prices, average price<br><b>*** Replaces table DF_E5300***</b>",
+    "dimensions": {
+      "dataset": [],
+      "series": [
+        {
+          "id": "MEASURE",
+          "name": "Measure",
+          "keyPosition": 0,
+          "role": "MEASURE",
+          "values": [
+            {
+              "id": "PRIX_P",
+              "name": "Product prices"
+            }
+          ]
+        },
+        {
+          "id": "UNIT_MEASURE",
+          "name": "Unit of measure",
+          "keyPosition": 1,
+          "role": "UNIT_MEASURE",
+          "values": [
+            {
+              "id": "EUR",
+              "name": "Euro"
+            }
+          ]
+        },
+        {
+          "id": "FREQ",
+          "name": "Frequency",
+          "keyPosition": 2,
+          "role": "FREQ",
+          "values": [
+            {
+              "id": "A",
+              "name": "Annual"
+            }
+          ]
+        },
+        {
+          "id": "MOTOR_ENERGY",
+          "name": "Motor Energy",
+          "keyPosition": 3,
+          "role": "MOTOR_ENERGY",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not applicable"
+            }
+          ]
+        },
+        {
+          "id": "COMMON_PRODUCT",
+          "name": "Common products",
+          "keyPosition": 4,
+          "role": "COMMON_PRODUCT",
+          "values": [
+            {
+              "id": "NEWS",
+              "name": "Daily newspaper (1 unit)"
+            },
+            {
+              "id": "EGGS",
+              "name": "Eggs (a dozen)"
+            },
+            {
+              "id": "POT",
+              "name": "Potatoes (5 kg)"
+            },
+            {
+              "id": "TICKET",
+              "name": "Public transport (single ticket)"
+            },
+            {
+              "id": "PORC",
+              "name": "Porc chop (1 kg)"
+            },
+            {
+              "id": "BAN",
+              "name": "Fresh bananas (1 kg)"
+            },
+            {
+              "id": "MED2",
+              "name": "Medical consultation, specialist (internal medecine)"
+            },
+            {
+              "id": "FAR",
+              "name": "Wheat flour (1 kg)"
+            },
+            {
+              "id": "COF",
+              "name": "Coffee (250 g)"
+            },
+            {
+              "id": "FUEL_ROAD",
+              "name": "Diesel (1 l)"
+            },
+            {
+              "id": "WAT",
+              "name": "Mineral water without fizz (1,5 l)"
+            },
+            {
+              "id": "BUTT",
+              "name": "Butter (250 g)"
+            },
+            {
+              "id": "FUEL_OIL",
+              "name": "Fuel oil (1 l)"
+            },
+            {
+              "id": "CROI",
+              "name": "Croissant (1 piece)"
+            },
+            {
+              "id": "MED",
+              "name": "Medical consultation, general practicioner"
+            },
+            {
+              "id": "SUG",
+              "name": "White sugar (1 kg)"
+            },
+            {
+              "id": "PAIN",
+              "name": "Bread (500 g sliced)"
+            },
+            {
+              "id": "SP95",
+              "name": "Petrol 95 octane (1 l)"
+            },
+            {
+              "id": "MILK",
+              "name": "Fresh milk (1 l)"
+            },
+            {
+              "id": "MOVIE",
+              "name": "Movie ticket"
+            },
+            {
+              "id": "APP",
+              "name": "Apples (1 kg)"
+            }
+          ]
+        },
+        {
+          "id": "BASE_PERIOD",
+          "name": "Base period",
+          "keyPosition": 5,
+          "role": "BASE_PERIOD",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not Applicable"
+            }
+          ]
+        },
+        {
+          "id": "CONSTR_TRADE",
+          "name": "Construction trades",
+          "keyPosition": 6,
+          "role": "CONSTR_TRADE",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not Applicable"
+            }
+          ]
+        },
+        {
+          "id": "ACTIVITY",
+          "name": "Economic activity (NACE Rev.2)",
+          "keyPosition": 7,
+          "role": "ACTIVITY",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not applicable"
+            }
+          ]
+        },
+        {
+          "id": "BUILDING_TYPE",
+          "name": "Building type",
+          "keyPosition": 8,
+          "role": "BUILDING_TYPE",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not applicable"
+            }
+          ]
+        },
+        {
+          "id": "MARKET",
+          "name": "Market",
+          "keyPosition": 9,
+          "role": "MARKET",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not applicable"
+            }
+          ]
+        },
+        {
+          "id": "PRODUCT_CPA_2_2",
+          "name": "Products (CPA 2.2)",
+          "keyPosition": 10,
+          "role": "PRODUCT_CPA_2_2",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not applicable"
+            }
+          ]
+        },
+        {
+          "id": "TIME_TRANS",
+          "name": "Time transformation",
+          "keyPosition": 11,
+          "role": "TIME_TRANS",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not aplicable"
+            }
+          ]
+        },
+        {
+          "id": "NRG_SRC",
+          "name": "Energy source",
+          "keyPosition": 12,
+          "role": "NRG_SRC",
+          "values": [
+            {
+              "id": "_Z",
+              "name": "Not applicable"
+            }
+          ]
+        }
+      ],
+      "observation": [
+        {
+          "id": "TIME_PERIOD",
+          "name": "Time period",
+          "keyPosition": 13,
+          "role": "TIME_PERIOD",
+          "values": [
+            {
+              "start": "2024-01-01T00:00:00",
+              "end": "2024-12-31T23:59:59",
+              "id": "2024",
+              "name": "2024"
+            },
+            {
+              "start": "2025-01-01T00:00:00",
+              "end": "2025-12-31T23:59:59",
+              "id": "2025",
+              "name": "2025"
+            },
+            {
+              "start": "2026-01-01T00:00:00",
+              "end": "2026-12-31T23:59:59",
+              "id": "2026",
+              "name": "2026"
+            }
+          ]
+        }
+      ]
+    },
+    "attributes": {
+      "dataSet": [
+        {
+          "id": "UNIT_MULT",
+          "name": "Unit multiplier",
+          "role": "UNIT_MULT",
+          "values": [
+            {
+              "id": "0",
+              "name": "Units"
+            }
+          ]
+        },
+        {
+          "id": "COMMENT_DSET",
+          "name": "Comments on the dataset levels",
+          "role": "COMMENT_DSET",
+          "values": []
+        }
+      ],
+      "series": [
+        {
+          "id": "COMMENT_TS_CONSTR_TRADE",
+          "name": "Detailed description of the group of series",
+          "role": "COMMENT_TS_CONSTR_TRADE",
+          "values": []
+        }
+      ],
+      "observation": [
+        {
+          "id": "OBS_STATUS",
+          "name": "Observation status",
+          "role": "OBS_STATUS",
+          "values": [
+            {
+              "id": "n",
+              "name": "Less than half the used unit"
+            }
+          ]
+        },
+        {
+          "id": "DECIMALS",
+          "name": "Decimals",
+          "role": "DECIMALS",
+          "values": [
+            {
+              "id": "1",
+              "name": "One"
+            }
+          ]
+        },
+        {
+          "id": "COMMENT_OBS",
+          "name": "Comments to the observation value",
+          "role": "COMMENT_OBS",
+          "values": []
+        }
+      ]
+    },
+    "annotations": []
+  }
+}
