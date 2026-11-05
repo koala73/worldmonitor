@@ -179,7 +179,7 @@ Output (key<TAB>${langName}):`;
     model: MODEL,
     max_tokens: 8192,
     messages: [{ role: 'user', content: prompt }],
-  });
+  }, { signal: AbortSignal.timeout(60_000) });
   // A batch of 50 long strings (the welcome FAQ answers run 300+ chars each) can
   // exceed max_tokens, and the reply is then cut mid-stream: the tail keys are
   // simply absent from the tab-separated output and look indistinguishable from

@@ -84,7 +84,8 @@ queried. The source check cannot establish a deployment-wide connection budget.
 Focused checks passed for the following changed behavior:
 
 - Real loopback fault injection: headers followed by a never-ending body abort
-  in the relay and both CLI response paths; caller cancellation survives.
+  in the relay, Anthropic SDK, and both CLI response paths; caller cancellation
+  survives.
 - Seeder retry cap/jitter boundaries, invalid retry counts, provider retry
   hints, Yahoo retries, R2 transport, and Resend send options.
 - Redis rate-limit fail-open/fail-closed and OAuth/MCP contracts.
