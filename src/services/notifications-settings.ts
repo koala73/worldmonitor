@@ -1,7 +1,6 @@
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
-import { checkoutConsentHtml } from '@/utils/legal-links';
 import { renderSVG } from 'uqr';
 import {
   getChannelsData,
@@ -194,6 +193,11 @@ function getTelegramBotUsername(): string {
   }
 }
 
+/**
+ * Settings → Notifications: channel and alert-rule controls for signed-in Pro
+ * users, otherwise an "Upgrade to Pro" prompt that opens the /pro plan picker.
+ * `attach` wires the rendered markup and returns its cleanup function.
+ */
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
   const isPro = !!host.isSignedIn && hasTier(1);
   const preselectCountry = normalizePreselectCountry(host.preselectCountry);
@@ -207,9 +211,6 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
   } else {
     html += `<div class="wm-pref-group-content wm-notif-tab-content">`;
     html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
-    // Assent above the CTA (#6976) — this button starts checkout for a signed-in
-    // free user, so the Terms are presented before the jump to Dodo.
-    html += checkoutConsentHtml(WEB_APP_ORIGIN);
     html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
     html += `</div>`;
   }
@@ -230,7 +231,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               });
               return;
             }
-            import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+            import('@/services/upgrade-flow').then(m => m.openUpgradePlans()).catch(() => {
               void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
             });
           }, { signal });

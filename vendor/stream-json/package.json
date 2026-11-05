@@ -1,6 +1,6 @@
 {
   "name": "stream-json",
-  "version": "1.9.2-worldmonitor.1",
+  "version": "1.9.2-worldmonitor.2",
   "description": "stream-json is the micro-library of Node.js stream components for creating custom JSON processing pipelines with a minimal memory footprint. It can parse JSON files far exceeding available memory streaming individual primitives using a SAX-inspired API. Includes utilities to stream JSON database dumps.",
   "homepage": "http://github.com/uhop/stream-json",
   "bugs": "http://github.com/uhop/stream-json/issues",
