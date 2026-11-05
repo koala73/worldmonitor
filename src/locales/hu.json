@@ -2094,6 +2094,8 @@
       "infoTooltip": "<strong>Előrejelzési piacok</strong> Valódi pénzű előrejelzési piacok:<ul><li>Az árak a tömeg valószínűségi becsléseit tükrözik</li><li>Magasabb volumen = megbízhatóbb jel</li><li>Geopolitikai és aktuális események fókusza</li></ul>Források: Polymarket, Kalshi"
     },
     "etfFlows": {
+      "previousColumns": "Előző oszlopok",
+      "moreColumns": "További oszlopok",
       "unavailable": "Tőzsdén kereskedett alap adatai ideiglenesen nem érhetőek el",
       "rateLimited": "Tőzsdén kereskedett alap adatai ideiglenesen nem érhetőek el (sebességkorlátozva) — hamarosan újrapróbálkozás",
       "netFlow": "Nettó áramlás",
