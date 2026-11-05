@@ -271,11 +271,13 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, f
       throw error;
     }
   }
-  // Only when every exit refused is the failure permanent: an immediate retry restarts
-  // at exit 0 and meets the same refusals. Any dropped tunnel may recover, so stays retryable.
+  // Every exit refusing is permanent only for a fixed proxy endpoint, where a retry
+  // meets the same exit. A sticky-port route retries on fresh exits, and a dropped
+  // tunnel may recover, so both stay retryable.
+  const exitsRotate = parseProxyConfigForAttempt(proxyAuth, 0)?.port !== parseProxyConfigForAttempt(proxyAuth, 1)?.port;
   throw Object.assign(new Error(`direct HTTP ${directStatus}; proxy ${last}`), {
     status: directStatus,
-    nonRetryable: everyExitRefused,
+    nonRetryable: everyExitRefused && !exitsRotate,
   });
 }
 
