@@ -254,5 +254,215 @@
     "maxContentAgeDays": 21,
     "fetchBudgetMs": 30000,
     "attribution": "National Statistics Office of Mongolia, www.1212.mn"
+  },
+  {
+    "id": "fewssd",
+    "name": "FEWS NET monthly market prices",
+    "country": "Sudan",
+    "countryCode": "SD",
+    "url": "https://fdw.fews.net/api/marketpricefacts/",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 60000,
+    "attribution": "FEWS NET Data Warehouse; public monthly market observations. Prices normalised to the published common unit in local currency. Market names include the collecting organisation."
+  },
+  {
+    "id": "fewsss",
+    "name": "FEWS NET monthly market prices",
+    "country": "South Sudan",
+    "countryCode": "SS",
+    "url": "https://fdw.fews.net/api/marketpricefacts/",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 60000,
+    "attribution": "FEWS NET Data Warehouse; public monthly market observations. Prices normalised to the published common unit in local currency. Market names include the collecting organisation."
+  },
+  {
+    "id": "fewsye",
+    "name": "FEWS NET monthly market prices",
+    "country": "Yemen",
+    "countryCode": "YE",
+    "url": "https://fdw.fews.net/api/marketpricefacts/",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 60000,
+    "attribution": "FEWS NET Data Warehouse; public monthly market observations. Prices normalised to the published common unit in local currency. Market names include the collecting organisation."
+  },
+  {
+    "id": "fewsht",
+    "name": "FEWS NET monthly market prices",
+    "country": "Haiti",
+    "countryCode": "HT",
+    "url": "https://fdw.fews.net/api/marketpricefacts/",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 60000,
+    "attribution": "FEWS NET Data Warehouse; public monthly market observations. Prices normalised to the published common unit in local currency. Market names include the collecting organisation."
+  },
+  {
+    "id": "twmoa",
+    "name": "Taiwan MOA wholesale transactions",
+    "country": "Taiwan",
+    "countryCode": "TW",
+    "url": "https://data.moa.gov.tw/Service/OpenData/FromM/FarmTransData.aspx?IsTransData=1&UnitId=037",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 10,
+    "fetchBudgetMs": 60000,
+    "attribution": "Taiwan Ministry of Agriculture, daily fruit and vegetable wholesale transaction average prices, TWD/kg. ROC dates converted to Gregorian dates."
+  },
+  {
+    "id": "geostat",
+    "name": "Georgia Geostat food CPI",
+    "country": "Georgia",
+    "countryCode": "GE",
+    "url": "https://www.geostat.ge/en/modules/categories/26/cpi-inflation",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 60000,
+    "attribution": "National Statistics Office of Georgia (Geostat), food and non-alcoholic beverages CPI. Monthly index, not a market price.",
+    "hosts": [
+      "geostat.ge"
+    ]
+  },
+  {
+    "id": "pricecatcher",
+    "name": "Malaysia KPDN PriceCatcher",
+    "country": "Malaysia",
+    "countryCode": "MY",
+    "url": "https://data.gov.my/data-catalogue/pricecatcher",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 10,
+    "fetchBudgetMs": 120000,
+    "attribution": "KPDN / data.gov.my, CC BY 4.0. Median across reporting premises for each selected item; at least 10 premises. Latest completed collection day; premises and sample composition may vary. Eggs are per 30 pieces, chicken and tomatoes per kg.",
+    "hosts": [
+      "storage.data.gov.my"
+    ]
+  },
+  {
+    "id": "mcba",
+    "name": "Mercado Central de Buenos Aires",
+    "country": "Argentina",
+    "countryCode": "AR",
+    "url": "https://mercadocentral.gob.ar/informaci%C3%B3n/precios-mayoristas",
+    "cadence": "daily",
+    "contextOnly": false,
+    "maxFetchAgeDays": 3,
+    "maxContentAgeDays": 10,
+    "fetchBudgetMs": 120000,
+    "attribution": "Corporación del Mercado Central de Buenos Aires, modal wholesale fruit and vegetable prices per kg. Variety, packaging, grade, size and origin remain separate series."
+  },
+  {
+    "id": "cso",
+    "name": "Ireland CSO average retail prices",
+    "country": "Ireland",
+    "countryCode": "IE",
+    "url": "https://ws.cso.ie/public/api.restful/PxStat.Data.Cube_API.ReadDataset/CPM12/CSV/1.0/en",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 60000,
+    "attribution": "Central Statistics Office, Ireland, PxStat CPM12, National Average Price. Published item pack sizes retained."
+  },
+  {
+    "id": "statec",
+    "name": "Luxembourg STATEC June price survey",
+    "country": "Luxembourg",
+    "countryCode": "LU",
+    "url": "https://lustat.statec.lu/rest/data/LU1,DSD_PRIX_PRODUIT@DF_E5300,1.0/all?startPeriod=2024",
+    "cadence": "annual",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 430,
+    "fetchBudgetMs": 60000,
+    "attribution": "STATEC Luxembourg, LUSTAT DF_E5300, average prices of selected food products in June. Annual benchmark; published pack sizes retained."
+  },
+  {
+    "id": "foagfruit",
+    "name": "Swiss FOAG fruit, vegetables and potatoes",
+    "country": "Switzerland",
+    "countryCode": "CH",
+    "url": "https://www.agrarmarktdaten.ch",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 120000,
+    "attribution": "Swiss Federal Office for Agriculture (FOAG), LINDAS monthly consumer prices. Source attribution required (Provide-the-Source). Production system, origin, region and collection method remain separate; centimes converted to CHF.",
+    "hosts": [
+      "lindas.cz-aws.net"
+    ]
+  },
+  {
+    "id": "foagegg",
+    "name": "Swiss FOAG eggs",
+    "country": "Switzerland",
+    "countryCode": "CH",
+    "url": "https://www.agrarmarktdaten.ch",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 120000,
+    "attribution": "Swiss Federal Office for Agriculture (FOAG), LINDAS monthly consumer prices. Source attribution required (Provide-the-Source). Production system, origin, region and collection method remain separate; centimes converted to CHF.",
+    "hosts": [
+      "lindas.cz-aws.net"
+    ]
+  },
+  {
+    "id": "foagmilk",
+    "name": "Swiss FOAG milk and dairy",
+    "country": "Switzerland",
+    "countryCode": "CH",
+    "url": "https://www.agrarmarktdaten.ch",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 120000,
+    "attribution": "Swiss Federal Office for Agriculture (FOAG), LINDAS monthly consumer prices. Source attribution required (Provide-the-Source). Production system, origin, region and collection method remain separate; centimes converted to CHF.",
+    "hosts": [
+      "lindas.cz-aws.net"
+    ]
+  },
+  {
+    "id": "csblv",
+    "name": "Latvia CSB average retail prices",
+    "country": "Latvia",
+    "countryCode": "LV",
+    "url": "https://data.stat.gov.lv/api/v1/en/OSP_PUB/VEK/PC/PCC/PCC010m",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 60000,
+    "attribution": "Central Statistical Bureau of Latvia, PCC010m, average retail food and non-alcoholic beverage prices in EUR; published units retained."
+  },
+  {
+    "id": "makstat",
+    "name": "North Macedonia MakStat food CPI",
+    "country": "North Macedonia",
+    "countryCode": "MK",
+    "url": "https://makstat.stat.gov.mk/PXWeb/api/v1/en/MakStat/Ceni/IndeksTrosZivot/TrosociZivot/131_CeniTr_Mk_DetalnoTroZi_ecoicop_ml.px",
+    "cadence": "monthly",
+    "contextOnly": true,
+    "maxFetchAgeDays": 45,
+    "maxContentAgeDays": 100,
+    "fetchBudgetMs": 60000,
+    "attribution": "State Statistical Office of North Macedonia, detailed ECOICOP CPI, food and non-alcoholic beverages. Monthly and annual index changes, not market prices."
   }
 ]

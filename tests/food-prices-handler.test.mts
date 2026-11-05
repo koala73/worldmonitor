@@ -51,6 +51,25 @@ test('context-only Tunisia prices never receive weekly changes', () => {
   assert.equal(data.prices[0].wowAvailable, false);
 });
 
+test('monthly and annual additions keep dated context and never invent weekly comparisons', () => {
+  for (const id of ['fewssd', 'fewsss', 'fewsye', 'fewsht', 'cso', 'statec', 'foagfruit', 'foagegg', 'foagmilk', 'csblv']) {
+    const definition = sources.find(source => source.id === id)!;
+    const data = buildFoodPriceSource(definition, snapshot([row, { ...row, date: '2026-10-22', price: 50 }]), now);
+    assert.equal(data.prices[0].wowAvailable, false, id);
+  }
+  const benchmark = sources.find(source => source.id === 'statec')!;
+  const data = buildFoodPriceSource(benchmark, snapshot([{ ...row, date: '2026-06-01' }]), now);
+  assert.equal(data.cadence, 'annual');
+  assert.equal(data.latestReportDate, '2026-06-01');
+  assert.equal(data.status, 'current', 'fresh annual benchmark is current for its declared cadence');
+  const cpi = sources.find(source => source.id === 'makstat')!;
+  const context = { countryCode: 'MK', country: 'North Macedonia', referenceDate: '2026-09-01', title: 'Food CPI: 1.2% m/m (index)', url: cpi.url };
+  const result = buildFoodPriceSource(cpi, { ...snapshot([]), contexts: [context] }, now);
+  assert.equal(result.prices.length, 0);
+  assert.equal(result.contexts[0].title, context.title);
+  assert.equal(result.status, 'current');
+});
+
 test('the registry attribution reaches the response, empty when the publisher states none', () => {
   const uz = sources.find(source => source.id === 'statuz')!;
   assert.match(buildFoodPriceSource(uz, snapshot(), now).attribution, /CC BY 4\.0/);

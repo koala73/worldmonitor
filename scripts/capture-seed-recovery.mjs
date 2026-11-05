@@ -155,6 +155,7 @@ function scheduledStart(timestamp, cron) {
   if (cron === '*/10 * * * *') return minute % 10 < 5;
   if (cron === '*/5 * * * *') return minute % 5 < 2;
   if (cron === '0 8,9 * * *') return [8, 9].includes(date.getUTCHours()) && minute < 5;
+  if (cron === '0 8,9,10 * * *') return [8, 9, 10].includes(date.getUTCHours()) && minute < 5;
   if (cron === '0 10 * * *') return date.getUTCHours() === 10 && minute < 5;
   return false;
 }
