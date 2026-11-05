@@ -113,6 +113,13 @@ for (const width of [1440, 390]) {
         // Reset focus together with scroll position between resized states.
         await content.evaluate(el => { el.blur(); el.scrollTo({ top: 0, behavior: 'instant' }); });
         await expect.poll(() => content.evaluate(el => el.scrollTop), { message: `${id} scroll reset` }).toBe(0);
+        if (id === 'economic-calendar') {
+          const regionTabs = content.locator('button[data-region]');
+          await expect(regionTabs).toHaveCount(3);
+          for (const tab of await regionTabs.all()) {
+            await expect(tab).toBeInViewport({ ratio: 1 });
+          }
+        }
         await content.focus();
         await expect(content).toBeFocused();
         await content.press('PageDown');
