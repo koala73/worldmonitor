@@ -2,13 +2,14 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 const fixture = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/card.json', import.meta.url), 'utf8'));
+const additions = JSON.parse(readFileSync(new URL('../tests/fixtures/food-prices/batches-4-5-card.json', import.meta.url), 'utf8'));
 
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
-  test(`food prices: source selection and dated context at ${viewport.width}px`, async ({ page }) => {
+  test(`food prices: source selection and dated context at ${viewport.width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     await acceptTesterKeySession(page);
-    await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: fixture }));
+    await page.route('**/api/economic/v1/get-food-prices*', route => route.fulfill({ json: { sources: [...fixture.sources, ...additions.sources] } }));
     await page.addInitScript(() => {
       localStorage.setItem('wm-layer-warning-dismissed', 'true');
       localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
@@ -30,6 +31,26 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
     await expect(panel.locator('details')).toContainText('Unavailable');
     await expect(panel.locator('details')).toContainText('2026-07-01');
     await expect(panel.locator('details')).not.toContainText('Week over week');
+    for (const [id, currency] of [['twmoa', 'TWD'], ['mcba', 'ARS'], ['pricecatcher', 'MYR']]) {
+      await panel.getByLabel('Country', { exact: true }).selectOption(id!);
+      await expect(panel.locator('.food-prices-table').first()).toContainText(currency!);
+    }
+    await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-daily.png`) });
+    const contextMarket = panel.getByLabel('Sudan · FEWS NET monthly market prices · Market', { exact: true });
+    const markets = await contextMarket.locator('option').evaluateAll(options => options.map(option => (option as HTMLOptionElement).value));
+    await contextMarket.selectOption(markets[1]!);
+    await expect(contextMarket).toHaveValue(markets[1]!);
+    await expect(panel.locator('[data-price-table="context:fewssd"]')).toContainText('SDG');
+    await expect(panel.locator('[data-price-table="context:fewssd"]')).not.toContainText('Week over week');
+    await contextMarket.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-monthly.png`) });
+    await expect(panel.locator('details')).toContainText('2026-06-01');
+    await expect(panel.locator('details')).toContainText('CPI: 0.0% month-on-month');
+    await expect(panel.locator('details')).toContainText('indices, not prices');
+    await expect(panel.locator('[data-price-table="context:makstat"]')).toHaveCount(0);
+    await panel.getByRole('heading', { name: 'North Macedonia · North Macedonia MakStat food CPI', exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`food-prices-${viewport.width}-indices.png`) });
     await panel.getByLabel('Country', { exact: true }).selectOption('da');
     await panel.locator('.food-prices-card h3').scrollIntoViewIfNeeded();
     await expect(panel.getByLabel('Country', { exact: true })).toBeVisible();

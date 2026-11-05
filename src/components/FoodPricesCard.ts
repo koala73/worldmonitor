@@ -15,6 +15,7 @@ export class FoodPricesCard {
   private selected = '';
   private market = '';
   private country = '';
+  private contextMarkets = new Map<string, string>();
 
   constructor(private readonly host: HTMLElement) {
     host.classList.add('food-prices-card');
@@ -98,7 +99,20 @@ export class FoodPricesCard {
     }
     for (const source of monthly) {
       context.append(h('h4', {}, `${source.country} · ${source.name}`), this.sourceNote(source));
-      context.append(source.prices.length ? this.table(source.prices, true, source.id) : h('p', {}, label('unavailable')));
+      const markets = [...new Set(source.prices.map(price => JSON.stringify([price.market, price.marketType])))];
+      let selected = this.contextMarkets.get(source.id) ?? '';
+      if (!markets.includes(selected)) selected = markets[0] ?? '';
+      this.contextMarkets.set(source.id, selected);
+      if (markets.length > 1) context.append(this.selector(`${source.country} · ${source.name} · ${label('market')}`,
+        markets.map(value => {
+          const [market, kind] = JSON.parse(value) as string[];
+          return { value, text: `${market} · ${label(kind!)}` };
+        }), selected, value => { this.contextMarkets.set(source.id, value); this.render(); }));
+      const prices = source.prices.filter(price => JSON.stringify([price.market, price.marketType]) === selected);
+      if (prices.length) context.append(this.table(prices, true, source.id));
+      for (const brief of source.contexts) context.append(h('p', {}, sourceLink(brief.url, brief.title),
+        h('small', {}, `${label(brief.status)} · ${label('report')}: ${brief.referenceDate || label('unavailable')}`)));
+      if (!prices.length && !source.contexts.length) context.append(h('p', {}, label('unavailable')));
     }
     sections.push(context);
     this.host.replaceChildren(...sections);

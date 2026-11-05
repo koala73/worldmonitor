@@ -293,6 +293,20 @@
       ]
     },
     {
+      "host": "agriculture.ld.admin.ch",
+      "provider": "agriculture.ld.admin.ch",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit agriculture.ld.admin.ch and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/foag.mjs"
+        }
+      ]
+    },
+    {
       "host": "agsi.gie.eu",
       "provider": "agsi.gie.eu",
       "kind": "structured",
@@ -3074,6 +3088,20 @@
       ]
     },
     {
+      "host": "data.moa.gov.tw",
+      "provider": "data.moa.gov.tw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit data.moa.gov.tw and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/twmoa.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.norges-bank.no",
       "provider": "data.norges-bank.no",
       "kind": "structured",
@@ -3126,6 +3154,20 @@
       "references": [
         {
           "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
+      "host": "data.stat.gov.lv",
+      "provider": "data.stat.gov.lv",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit data.stat.gov.lv and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/csblv.mjs"
         }
       ]
     },
@@ -4316,6 +4358,20 @@
       "references": [
         {
           "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
+      "host": "fdw.fews.net",
+      "provider": "fdw.fews.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit fdw.fews.net and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/fews.mjs"
         }
       ]
     },
@@ -6076,6 +6132,20 @@
       ]
     },
     {
+      "host": "lindas.cz-aws.net",
+      "provider": "lindas.cz-aws.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit lindas.cz-aws.net and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/foag.mjs"
+        }
+      ]
+    },
+    {
       "host": "linear901-oo-hls0-prd-gtm.delivery.skycdp.com",
       "provider": "linear901-oo-hls0-prd-gtm.delivery.skycdp.com",
       "kind": "feed",
@@ -6376,6 +6446,20 @@
       ]
     },
     {
+      "host": "lustat.statec.lu",
+      "provider": "lustat.statec.lu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit lustat.statec.lu and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statec.mjs"
+        }
+      ]
+    },
+    {
       "host": "macleans.ca",
       "provider": "macleans.ca",
       "kind": "feed",
@@ -6414,6 +6498,20 @@
       "references": [
         {
           "path": "scripts/lib/food-prices-adapters/madr.mjs"
+        }
+      ]
+    },
+    {
+      "host": "makstat.stat.gov.mk",
+      "provider": "makstat.stat.gov.mk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit makstat.stat.gov.mk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/makstat.mjs"
         }
       ]
     },
@@ -6585,6 +6683,20 @@
       "references": [
         {
           "path": "scripts/seed-economy.mjs"
+        }
+      ]
+    },
+    {
+      "host": "mercadocentral.gob.ar",
+      "provider": "mercadocentral.gob.ar",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit mercadocentral.gob.ar and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/mcba.mjs"
         }
       ]
     },
@@ -9498,6 +9610,20 @@
       ]
     },
     {
+      "host": "storage.data.gov.my",
+      "provider": "storage.data.gov.my",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.data.gov.my and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/pricecatcher.mjs"
+        }
+      ]
+    },
+    {
       "host": "storage.eop.bg",
       "provider": "storage.eop.bg",
       "kind": "structured",
@@ -11135,6 +11261,20 @@
       ]
     },
     {
+      "host": "ws.cso.ie",
+      "provider": "ws.cso.ie",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ws.cso.ie and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/cso.mjs"
+        }
+      ]
+    },
+    {
       "host": "wublockchain.com",
       "provider": "wublockchain.com",
       "kind": "feed",
@@ -12701,6 +12841,20 @@
       "references": [
         {
           "path": "scripts/seed-natural-events.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.geostat.ge",
+      "provider": "www.geostat.ge",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.geostat.ge and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/geostat.mjs"
         }
       ]
     },

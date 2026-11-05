@@ -1359,12 +1359,12 @@ last-good observations with an unavailable source status.
 |---|---|
 | **Service name** | `seed-bundle-macro` |
 | **Start command** | `node scripts/seed-bundle-macro.mjs` |
-| **Cron schedule** | `0 8,9 * * *` (daily 08:00 and 09:00 UTC) |
+| **Cron schedule** | `0 8,9,10 * * *` (daily 08:00, 09:00 and 10:00 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
 | **Members** | BIS Data (12h), CBR Rates (daily), BoC Valet (daily), StatCan WDS (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d), World CPI IMF (daily), World CPI Eurostat (daily), World CPI JP e-Stat (daily), World CPI AU ABS (daily) |
-| **Wall budget** | 570 seconds. The runner defers a section when its timeout plus 10-second kill grace cannot fit before Railway's 10-minute limit. Physical Premiums runs first with 80 seconds of admission headroom. Education gets first priority at 08:00 each Sunday UTC, with Physical second. The 09:00 retry always puts Physical first, so a deferred run has another full admission window even when Education fails. Completed members skip through their interval gates. |
+| **Wall budget** | 550 seconds, with bounded parallel freshness prefetch. The runner defers a section when its timeout plus 10-second kill grace cannot fit, leaving time for the scheduler's bounded acknowledgement before Railway's 600-second limit. Physical Premiums leads 08:00 and 09:00; Education leads Sunday 08:00 with Physical second. At 10:00, one macro member leads according to the persistent `bundle:turn:macro` cursor, followed by Physical and the remaining rotated members. The existing scheduler lease prevents overlapping rotation turns; completed failed runs advance the cursor too. Every macro member, including never-seeded food feeds, therefore receives a first admission slot within one rotation, even if earlier members repeatedly time out. Completed members skip through their interval gates. Apply the updated source-controlled cron only during an approved Railway rollout. |
 
 ### Bundle 9: seed-bundle-health
 

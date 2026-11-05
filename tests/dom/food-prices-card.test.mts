@@ -117,3 +117,24 @@ it('restores focus to the Uzbekistan table, not the first monthly table, after r
   card.update(sources);
   expect(document.activeElement).toBe(host.querySelectorAll('details [role="region"]')[1]);
 });
+
+it('selects monthly markets independently and displays CPI summaries without currency prices', () => {
+  const card = new FoodPricesCard(host);
+  const sources = [source(), source({ id: 'fewssd', name: 'FEWS NET', country: 'Sudan', contextOnly: true,
+    prices: [{ ...row, item: 'Sorghum', market: 'Khartoum', currency: 'SDG', price: 1000 },
+      { ...row, item: 'Wheat', market: 'Port Sudan', currency: 'SDG', price: 2000 }] }),
+    source({ id: 'makstat', name: 'MakStat', country: 'North Macedonia', contextOnly: true, prices: [],
+      contexts: [{ country: 'North Macedonia', countryCode: 'MK', referenceDate: '2026-09-01', fetchedAt: '', status: 'current', title: 'Food CPI: 3.1% year-on-year (index, not price)', url: 'https://makstat.stat.gov.mk/' }] })];
+  card.update(sources);
+  host.querySelector('details')!.open = true;
+  const select = host.querySelector<HTMLSelectElement>('details select')!;
+  expect(select.getAttribute('aria-label')).toBe('Sudan · FEWS NET · Market');
+  expect(host.querySelector('[data-price-table="context:fewssd"]')!.textContent).toContain('Sorghum');
+  expect(host.querySelector('[data-price-table="context:fewssd"]')!.textContent).not.toContain('Wheat');
+  select.value = JSON.stringify(['Port Sudan', 'retail']); select.dispatchEvent(new Event('change'));
+  card.update(sources);
+  expect(host.querySelector('[data-price-table="context:fewssd"]')!.textContent).toContain('Wheat');
+  expect(host.querySelector('[data-price-table="context:fewssd"]')!.textContent).not.toContain('Sorghum');
+  expect(host.querySelector('details')!.textContent).toContain('Food CPI: 3.1% year-on-year (index, not price)');
+  expect(host.querySelector('details')!.textContent).not.toContain('Week over week');
+});
