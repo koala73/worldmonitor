@@ -5154,19 +5154,27 @@ ${watch}
 // Every answer is copy already on the page: the latest sourced background
 // paragraph, the published HAPI totals, and the registry coverage. Nothing here
 // is written for the FAQ alone, so it cannot drift from the sourced text.
-export function crisisFaqs({ crisis, pulse = null, publishedTotals = {} }) {
+export function crisisFaqs({ crisis, pulse = null, publishedTotals = {}, publishedDate = null }) {
   const { editorial } = crisis;
   const current = editorial.background.at(-1);
   const faqs = [{
     question: editorial.question,
     answer: `${current.text} Last reviewed ${prettyDate(editorial.lastReviewed)} against the linked sources.`,
   }];
-  if (pulse && publishedTotals.eventsTotal != null && publishedTotals.fatalities != null) {
+  // The page's metric tiles refresh in the browser; this answer is frozen at
+  // build time, so it names the published snapshot rather than claiming to be
+  // the latest reading. Totals sum only the countries that reported, so the
+  // scope comes from pulse.rows and any missing country is named as excluded.
+  if (pulse && publishedDate && publishedTotals.eventsTotal != null && publishedTotals.fatalities != null) {
     const count = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
-    const countries = crisis.coverage.length === 1 ? crisis.coverage[0].name : `the ${crisis.coverage.length} covered countries`;
+    const summed = listPhrase(pulse.rows.map((row) => row.name));
+    const missing = pulse.missingCountries || [];
+    const exclusion = missing.length
+      ? ` ${listPhrase(missing)} ${missing.length === 1 ? 'has' : 'have'} no summary for that period and ${missing.length === 1 ? 'is' : 'are'} not included.`
+      : '';
     faqs.push({
-      question: `What do the latest monthly figures show for the ${crisis.shortTitle}?`,
-      answer: `HAPI/HDX humanitarian conflict summaries record ${count.format(publishedTotals.eventsTotal)} conflict events and ${count.format(publishedTotals.fatalities)} fatalities across ${countries} for the reference period starting ${prettyDate(pulse.referencePeriod)}. These are monthly country-level summaries, not a complete casualty or incident ledger.`,
+      question: `What did the last published monthly figures show for the ${crisis.shortTitle}?`,
+      answer: `In World Monitor's weekly snapshot published ${prettyDate(publishedDate)}, HAPI/HDX humanitarian conflict summaries record ${count.format(publishedTotals.eventsTotal)} conflict events and ${count.format(publishedTotals.fatalities)} fatalities across ${summed} for the reference period starting ${prettyDate(pulse.referencePeriod)}.${exclusion} These are monthly country-level summaries, not a complete casualty or incident ledger; the figures above may refresh to a newer month.`,
     });
   }
   faqs.push({
@@ -5288,7 +5296,7 @@ function renderCrisisPage({
       <p>This page records the committed ${escapeHtml(pulse.referencePeriod)} HAPI/HDX country summaries published ${escapeHtml(prettyDate(livePulse.capturedAt))}. JavaScript can refresh newer values; the numbers above remain available without it.</p>
       <p class="snapshot-note" data-snapshot-source="${escapeHtml(livePulseSnapshotPath || 'docs/snapshots/crawlable-live-pulse-*.json')}">Source: World Monitor weekly pulse snapshot, ${escapeHtml(prettyDate(livePulse.capturedAt))}. Combined totals are withheld when covered countries report different reference months.</p>`
     : '';
-  const faqs = crisisFaqs({ crisis, pulse: hasPulse ? pulse : null, publishedTotals });
+  const faqs = crisisFaqs({ crisis, pulse: hasPulse ? pulse : null, publishedTotals, publishedDate });
   const body = `      <p class="eyebrow">${escapeHtml(crisis.title)}</p>
       <h1>${escapeHtml(crisis.editorial.question)}</h1>
       <p class="lede">${escapeHtml(crisis.description)}</p>

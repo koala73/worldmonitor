@@ -59,6 +59,7 @@ import {
   loadCorpusData,
   normalizeCrisisEditorial,
   crisisPageTitle,
+  crisisFaqs,
   renderCrisisCountryReadings,
   MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
   MAX_TWENTY_FOUR_HOUR_MOVEMENT_CLAIM_AGE_DAYS,
@@ -6429,6 +6430,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
   // #7533-allowlist: 2026-09-01 x4 — CORPUS_GENERATOR_CONTENT_VERSION and synthetic development fixtures
   // #7533-allowlist: 2026-09-02 x21 — synthetic developments timestamps (incl. the nofollow index-row render fixture, #7748, and the evidence-grounded brief fixtures)
   // #7533-allowlist: 2026-09-03 x14. Static DataCatalog and ItemList render fixtures, datasetObservationCoverage fixtures.
+  // #7533-allowlist: 2026-10-01 x1 2026-10-24 x1 2026-11-02 x2 — crisisFaqs pure-function fixtures (partial-coverage figures answer)
   it('rejects undocumented calendar-date literals in this file', () => {
     const source = readFileSync(fileURLToPath(import.meta.url), 'utf8');
     assert.ok(calendarDateAllowances(source).size >= 20, 'the #7533-allowlist comment must stay populated');
@@ -8418,6 +8420,40 @@ describe('crisis tracker editorial (#8605)', () => {
     });
     assert.match(html, /Only Yemen, of the 3 covered countries, has a Country Instability Index reading: 81 \(Critical\)\./);
     assert.doesNotMatch(html, /1 of the 3 covered countries have|The highest is/);
+  });
+
+  it('scopes the figures answer to the countries summed and dates it as the published snapshot', () => {
+    const crisis = {
+      shortTitle: 'Horn of Africa',
+      coverage: [{ code: 'ET', name: 'Ethiopia' }, { code: 'SO', name: 'Somalia' }, { code: 'ER', name: 'Eritrea' }],
+      editorial: { question: 'What is happening in the Horn of Africa?', lastReviewed: '2026-10-24', background: [{ text: 'Current state.' }] },
+    };
+    const pulse = {
+      referencePeriod: '2026-10-01',
+      missingCountries: ['Eritrea'],
+      rows: [{ code: 'ET', name: 'Ethiopia' }, { code: 'SO', name: 'Somalia' }],
+    };
+    const figures = crisisFaqs({
+      crisis,
+      pulse,
+      publishedTotals: { eventsTotal: 120, fatalities: 300 },
+      publishedDate: '2026-11-02',
+    })[1];
+    assert.match(figures.question, /published/i);
+    assert.doesNotMatch(figures.question, /latest/i);
+    assert.match(figures.answer, /published November 2, 2026/);
+    assert.match(figures.answer, /across Ethiopia and Somalia for/);
+    assert.doesNotMatch(figures.answer, /3 covered countries/);
+    assert.match(figures.answer, /Eritrea has no summary for that period and is not included/);
+
+    const complete = crisisFaqs({
+      crisis,
+      pulse: { ...pulse, missingCountries: [], rows: [...pulse.rows, { code: 'ER', name: 'Eritrea' }] },
+      publishedTotals: { eventsTotal: 130, fatalities: 310 },
+      publishedDate: '2026-11-02',
+    })[1];
+    assert.match(complete.answer, /across Ethiopia, Somalia and Eritrea for/);
+    assert.doesNotMatch(complete.answer, /not included/);
   });
 
   it('requires a question that fits the page title', () => {
