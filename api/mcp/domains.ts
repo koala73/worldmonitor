@@ -101,6 +101,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_focal_points: 'geopolitical-security',
   simulate_infrastructure_cascade: 'geopolitical-security',
   get_military_surge: 'geopolitical-security',
+  get_global_air_activity: 'geopolitical-security',
   get_population_exposure: 'geopolitical-security',
   get_alert_digest: 'geopolitical-security',
   get_hotspot_escalation: 'geopolitical-security',
