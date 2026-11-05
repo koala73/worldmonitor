@@ -323,6 +323,24 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+
+### `get_fred_series`
+
+**Access:** `subscription`.
+
+Read up to 20 macroeconomic series from the same seeded cache and allowlist used by the dashboard. Calls the canonical `POST /api/economic/v1/get-fred-series-batch` RPC; it never calls FRED at request time. The live `series_ids` description lists all supported IDs, including `UNRATE`, `CPIAUCSL`, and `FEDFUNDS`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `series_ids` | `array<string>` | Required FRED IDs, normalized to uppercase. Up to 20 are forwarded. Unlisted IDs are ignored by the canonical reader. |
+| `limit` | integer | Observations per series, newest-last. Default 24; valid range 1–1000. |
+
+Returns `results` keyed by series ID, with title, units, frequency and observations. `requested` counts the unique allowlisted IDs looked up; `fetched` counts the ones present in cache. Missing seeded data remains missing; this call does not trigger a refresh. Large responses may be compacted by the MCP output budget.
+
+Example: `get_fred_series({"series_ids":["UNRATE","CPIAUCSL"],"limit":24})`.
+
 ### `get_procurement_opportunities`
 
 Search active global public-procurement opportunities through the canonical Pro-gated tender API. The tool never reads Upstash directly. It returns a compact projection of the canonical records: official notice URL, source, title, buyer, timing, money, categories, sectors, `participationMode`, and compact `automationFit`; it deliberately omits descriptions, eligibility requirements, and submission URLs.
