@@ -2845,6 +2845,14 @@
       },
       "description": "Importante infraestrutura de {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Abrir no atlas de armazenamento",
+      "types": {
+        "lngExport": "Exportação de GNL",
+        "lngImport": "Importação de GNL",
+        "crudeTankFarm": "Hub de petróleo bruto"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Atualmente operacional e transportando recursos.",
       "construction": "Atualmente em construção."
@@ -3263,7 +3271,11 @@
       "c2Server": "Servidor C2",
       "malwareHost": "Host de malware",
       "phishing": "Phishing",
-      "maliciousUrl": "URL maliciosa"
+      "maliciousUrl": "URL maliciosa",
+      "operational": "Operacional",
+      "reduced": "Reduzido",
+      "offline": "Fora de serviço",
+      "disputed": "Contestado"
     },
     "aptTactics": {
       "reconnaissance": "Reconhecimento",

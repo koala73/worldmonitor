@@ -3200,6 +3200,14 @@
       },
       "description": "Major {{type}} pipeline infrastructure. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "เปิดในแผนที่คลังเก็บ",
+      "types": {
+        "lngExport": "ส่งออก LNG",
+        "lngImport": "นำเข้า LNG",
+        "crudeTankFarm": "ศูนย์กลางน้ำมันดิบ"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "ดำเนินการอยู่และขนส่งทรัพยากร",
       "construction": "อยู่ระหว่างก่อสร้าง"
@@ -3609,7 +3617,11 @@
       "c2Server": "เซิร์ฟเวอร์ C2",
       "malwareHost": "โฮสต์มัลแวร์",
       "phishing": "ฟิชชิง",
-      "maliciousUrl": "URL อันตราย"
+      "maliciousUrl": "URL อันตราย",
+      "operational": "ใช้งานอยู่",
+      "reduced": "ลดลง",
+      "offline": "หยุดทำงาน",
+      "disputed": "มีข้อพิพาท"
     },
     "aptTactics": {
       "reconnaissance": "การลาดตระเวน",

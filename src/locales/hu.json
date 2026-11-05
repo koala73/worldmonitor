@@ -3289,6 +3289,14 @@
       },
       "description": "Nagyobb {{type}} vezeték infrastruktúra. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Megnyitás a tárolóatlaszban",
+      "types": {
+        "lngExport": "LNG-export",
+        "lngImport": "LNG-import",
+        "crudeTankFarm": "Kőolaj-csomópont"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Jelenleg működik és erőforrásokat szállít.",
       "construction": "Jelenleg építés alatt áll."
@@ -3698,7 +3706,11 @@
       "c2Server": "C2-szerver",
       "malwareHost": "Kártevőt tároló gép",
       "phishing": "Adathalászat",
-      "maliciousUrl": "Kártékony URL"
+      "maliciousUrl": "Kártékony URL",
+      "operational": "Üzemel",
+      "reduced": "Csökkentett",
+      "offline": "Üzemen kívül",
+      "disputed": "Vitatott"
     },
     "aptTactics": {
       "reconnaissance": "Felderítés",

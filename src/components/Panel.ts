@@ -969,6 +969,19 @@ export class Panel {
       && !this._collapsed;
   }
 
+  /**
+   * True when the user can see this panel right now: attached, enabled, expanded, not
+   * filtered out by the mobile category nav (`.mobile-cat-hidden`), and not covered by the
+   * fullscreen map (`body.live-news-fullscreen-active` hides the panel grid). Handlers that
+   * claim a map interaction gate on this so a panel the user cannot see never swallows a
+   * click it has no way to answer.
+   */
+  public isVisibleToUser(): boolean {
+    return this.canHostLiveMedia()
+      && !this.element.classList.contains('mobile-cat-hidden')
+      && !document.body.classList.contains('live-news-fullscreen-active');
+  }
+
   protected runWhenConnected(callback: () => void): boolean {
     if (this.destroyed) return false;
     if (this.element.isConnected) {

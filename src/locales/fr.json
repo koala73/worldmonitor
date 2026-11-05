@@ -3231,6 +3231,14 @@
       },
       "description": "Infrastructure majeure de transport de {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Ouvrir dans l'atlas du stockage",
+      "types": {
+        "lngExport": "Export GNL",
+        "lngImport": "Import GNL",
+        "crudeTankFarm": "Hub de brut"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Actuellement opérationnel et transporte des ressources.",
       "construction": "Actuellement en construction."
@@ -3649,7 +3657,11 @@
       "c2Server": "Serveur C2",
       "malwareHost": "Hôte de malware",
       "phishing": "Hameçonnage",
-      "maliciousUrl": "URL malveillante"
+      "maliciousUrl": "URL malveillante",
+      "operational": "Opérationnel",
+      "reduced": "Réduit",
+      "offline": "Hors service",
+      "disputed": "Contesté"
     },
     "aptTactics": {
       "reconnaissance": "Reconnaissance",

@@ -3220,6 +3220,14 @@
       },
       "description": "Σημαντική υποδομή αγωγού {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Άνοιγμα στον άτλαντα αποθήκευσης",
+      "types": {
+        "lngExport": "Εξαγωγή LNG",
+        "lngImport": "Εισαγωγή LNG",
+        "crudeTankFarm": "Κόμβος αργού"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Σε λειτουργία και μεταφορά πόρων αυτή τη στιγμή.",
       "construction": "Υπό κατασκευή αυτή τη στιγμή."
@@ -3629,7 +3637,11 @@
       "c2Server": "Διακομιστής C2",
       "malwareHost": "Κεντρικός υπολογιστής κακόβουλου λογισμικού",
       "phishing": "Ηλεκτρονικό ψάρεμα",
-      "maliciousUrl": "Κακόβουλο URL"
+      "maliciousUrl": "Κακόβουλο URL",
+      "operational": "Σε λειτουργία",
+      "reduced": "Μειωμένη",
+      "offline": "Εκτός λειτουργίας",
+      "disputed": "Αμφισβητούμενη"
     },
     "aptTactics": {
       "reconnaissance": "Αναγνώριση",

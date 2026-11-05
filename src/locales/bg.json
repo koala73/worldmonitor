@@ -3220,6 +3220,14 @@
       },
       "description": "Основна {{type}} тръбопровод инфраструктура. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Отвори в атласа на хранилищата",
+      "types": {
+        "lngExport": "Износ на втечнен газ",
+        "lngImport": "Внос на втечнен газ",
+        "crudeTankFarm": "Хъб за суров петрол"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "В момента оперативна и транспортиране на ресурси.",
       "construction": "В момента в строителството."
@@ -3629,7 +3637,11 @@
       "c2Server": "C2 сървър",
       "malwareHost": "Хост на зловреден софтуер",
       "phishing": "Фишинг",
-      "maliciousUrl": "Злонамерен URL"
+      "maliciousUrl": "Злонамерен URL",
+      "operational": "Работещ",
+      "reduced": "Намален",
+      "offline": "Извън експлоатация",
+      "disputed": "Спорен"
     },
     "aptTactics": {
       "reconnaissance": "Разузнаване",

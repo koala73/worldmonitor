@@ -3260,6 +3260,14 @@
       },
       "description": "Крупный {{type}} трубопроводной инфраструктуры. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Открыть в атласе хранилищ",
+      "types": {
+        "lngExport": "Экспорт СПГ",
+        "lngImport": "Импорт СПГ",
+        "crudeTankFarm": "Нефтяной хаб"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "В настоящее время действует и осуществляет транспортировку ресурсов.",
       "construction": "В настоящее время строится."
@@ -3669,7 +3677,11 @@
       "c2Server": "C2-сервер",
       "malwareHost": "Хост вредоносного ПО",
       "phishing": "Фишинг",
-      "maliciousUrl": "Вредоносный URL"
+      "maliciousUrl": "Вредоносный URL",
+      "operational": "Работает",
+      "reduced": "Снижена",
+      "offline": "Не работает",
+      "disputed": "Спорный"
     },
     "aptTactics": {
       "reconnaissance": "Разведка",

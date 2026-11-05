@@ -233,6 +233,7 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
  */
 const LATE_REGISTERED_PANEL_KEYS = new Set(['live-news']);
 const CW_PRO_GATE_TAB_RECOVERY_KEY = 'worldmonitor-cw-pro-gate-tab-recovery-v1';
+const STORAGE_ATLAS_PANEL_KEY = 'storage-facility-map';
 
 const DASHBOARD_REFERENCE_LINKS = [
   { label: 'Countries', path: '/countries/' },
@@ -492,6 +493,7 @@ export class PanelLayoutManager implements AppModule {
   private readonly proActivationController: ProActivationController;
   private readonly passkeyOfferController: PasskeyOfferBoot;
   private readonly checkoutReturnFocusController = new AbortController();
+  private pendingStorageFacilityId: string | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -825,7 +827,45 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  /**
+   * Open one facility in the Strategic Storage Atlas ("Open in Storage Atlas"
+   * from the map popup). The atlas is a deferred panel, so its element may not
+   * exist yet: the request is parked in `pendingStorageFacilityId` and
+   * delivered by `afterPanelMounted` once the chunk mounts, however long that
+   * takes. A newer request replaces an older one; destroy() drops it.
+   */
+  public focusStorageFacility(facilityId: string): void {
+    const key = STORAGE_ATLAS_PANEL_KEY;
+    this.pendingStorageFacilityId = facilityId;
+    this.mountDeferredPanel(key);
+    const panel = this.ctx.panels[key];
+    if (panel?.getElement().isConnected) {
+      this.deliverPendingStorageFacility(panel);
+      return;
+    }
+    // Still loading: bring the deferred shell into view so the user sees the
+    // atlas arrive where the drawer will open.
+    document.querySelector(`[data-panel="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  private deliverPendingStorageFacility(panel: Panel): void {
+    const facilityId = this.pendingStorageFacilityId;
+    if (!facilityId || this.ctx.isDestroyed) return;
+    this.pendingStorageFacilityId = null;
+    // The atlas claims the detail event only while the user can see it
+    // (Panel.isVisibleToUser), so make it visible first: expand a collapsed
+    // panel and lift a mobile category filter that excludes it.
+    panel.setCollapsed(false);
+    window.dispatchEvent(new CustomEvent('wm:reveal-panel', { detail: { panelId: STORAGE_ATLAS_PANEL_KEY } }));
+    window.dispatchEvent(new CustomEvent('energy:open-storage-facility-detail', {
+      cancelable: true,
+      detail: { facilityId },
+    }));
+    panel.getElement().scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   destroy(): void {
+    this.pendingStorageFacilityId = null;
     this.checkoutReturnFocusController.abort();
     clearAllPendingCalls();
     this.applyTimeRangeFilterDebounced.cancel();
@@ -2715,6 +2755,7 @@ export class PanelLayoutManager implements AppModule {
     }
     const config = this.ctx.panelSettings[key];
     if (config) panel.toggle(config.enabled);
+    if (key === STORAGE_ATLAS_PANEL_KEY) this.deliverPendingStorageFacility(panel);
     this.observePanelForHydration(panel);
     if (config?.enabled) {
       this.scheduleHydrationForPanelElement(panel.getElement(), 'near');

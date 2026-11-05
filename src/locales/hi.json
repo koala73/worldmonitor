@@ -3289,6 +3289,14 @@
       },
       "description": "प्रमुख {{type}} पाइपलाइन इंफ्रास्ट्रक्चर। {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "स्टोरेज एटलस में खोलें",
+      "types": {
+        "lngExport": "LNG निर्यात",
+        "lngImport": "LNG आयात",
+        "crudeTankFarm": "कच्चा तेल हब"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "वर्तमान में चालू और संसाधन ले जा रहा है।",
       "construction": "वर्तमान में निर्माणाधीन।"
@@ -3698,7 +3706,11 @@
       "c2Server": "C2 सर्वर",
       "malwareHost": "मैलवेयर होस्ट",
       "phishing": "फ़िशिंग",
-      "maliciousUrl": "दुर्भावनापूर्ण URL"
+      "maliciousUrl": "दुर्भावनापूर्ण URL",
+      "operational": "चालू",
+      "reduced": "घटा हुआ",
+      "offline": "बंद",
+      "disputed": "विवादित"
     },
     "aptTactics": {
       "reconnaissance": "टोही",

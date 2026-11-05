@@ -72,10 +72,11 @@ function statusChip(status: DisruptionStatus): string {
  * each render an *asset-scoped* slice of the same events in their drawer,
  * but neither lists the global log.
  *
- * Click-through dispatches the same events those panels already listen
- * for (`energy:open-pipeline-detail` / `energy:open-storage-facility-detail`),
- * so the event-routing contract stays the same as CountryDeepDivePanel's
- * disruption row — no new panel-open protocol introduced.
+ * Click-through dispatches `energy:open-pipeline-detail` for pipelines
+ * (PipelineStatusPanel listens) and `wm:open-storage-atlas` for storage,
+ * which opens the Strategic Storage Atlas on that facility even when the
+ * panel is closed or not yet mounted (see EventHandlerManager and
+ * PanelLayoutManager.focusStorageFacility).
  */
 export class EnergyDisruptionsPanel extends Panel {
   private data: ListEnergyDisruptionsResponse | null = null;
@@ -289,21 +290,23 @@ export class EnergyDisruptionsPanel extends Panel {
 
   private dispatchOpenAsset(_eventId: string, assetId: string, assetType: string): void {
     // Dispatch only the {pipelineId, facilityId} field the receiving
-    // drawers actually consume today (see PipelineStatusPanel and
-    // StorageFacilityMapPanel `openDetailHandler`). The row click
-    // jumps the user to the asset — they see the full disruption
-    // timeline for that asset and can locate the specific event
-    // visually. A future PR can add a `highlightEventId` contract
-    // with matching drawer-side rendering (scroll-into-view + visual
-    // emphasis); until then, emitting an unread field was a misleading
-    // API surface (Codex P2).
-    const detail = assetType === 'storage'
-      ? { facilityId: assetId }
-      : { pipelineId: assetId };
-    const eventName = assetType === 'storage'
-      ? 'energy:open-storage-facility-detail'
-      : 'energy:open-pipeline-detail';
-    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+    // drawers actually consume today. The row click jumps the user to the
+    // asset — they see the full disruption timeline for that asset and can
+    // locate the specific event visually. A future PR can add a
+    // `highlightEventId` contract with matching drawer-side rendering
+    // (scroll-into-view + visual emphasis); until then, emitting an unread
+    // field was a misleading API surface (Codex P2).
+    //
+    // Storage goes through 'wm:open-storage-atlas' (the same route as the
+    // map popup's "Open in Storage Atlas"): the atlas only claims a direct
+    // 'energy:open-storage-facility-detail' while the user can see it, so a
+    // closed, collapsed or deferred atlas would otherwise drop this click.
+    // The open-atlas route enables, mounts, reveals and then delivers it.
+    if (assetType === 'storage') {
+      window.dispatchEvent(new CustomEvent('wm:open-storage-atlas', { detail: { facilityId: assetId } }));
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('energy:open-pipeline-detail', { detail: { pipelineId: assetId } }));
   }
 
   private renderRow(e: EnergyDisruptionEntry): string {

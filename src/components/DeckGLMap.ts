@@ -83,6 +83,7 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 // country-geometry helpers; don't re-import it here.
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { initI18n, t } from '@/services/i18n';
+import { statusLabel as popupStatusLabel, storageFacilityTypeLabel } from './map-popup-i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
 import { isInputPending, scheduleYield } from '@/utils/after-paint';
@@ -2084,18 +2085,6 @@ export class DeckGLMap {
       this.layerCache.delete('pipelines-layer');
     }
 
-    // Storage facilities layer. Registry is seeded weekly by
-    // scripts/seed-storage-facilities.mjs; colors by derived publicBadge
-    // identical to the panel's evidence deriver so first-paint map dots match
-    // panel status exactly. Available on any variant with
-    // `mapLayers.storageFacilities: true` (plan §R/#3 decision B).
-    if (mapLayers.storageFacilities) {
-      const storageLayer = this.createEnergyStorageLayer();
-      if (storageLayer) layers.push(storageLayer);
-    } else {
-      this.layerCache.delete('storage-facilities-layer');
-    }
-
     // Fuel shortage pins. One pin per active shortage placed at the country
     // centroid. Color by severity; click opens the FuelShortagePanel drawer
     // via event. Available on any variant with `mapLayers.fuelShortages: true`
@@ -2536,6 +2525,15 @@ export class DeckGLMap {
       layers.push(...this.createNewsLocationsLayer());
     }
 
+    // Last on purpose. Deck.gl picks the topmost layer, and pickingRadius
+    // lets a marker drawn above this dot take the hover and the click.
+    if (mapLayers.storageFacilities) {
+      const storageLayer = this.createEnergyStorageLayer();
+      if (storageLayer) layers.push(storageLayer);
+    } else {
+      this.layerCache.delete('storage-facilities-layer');
+    }
+
     const result = this.withCategoryGlyphs(layers.filter(Boolean) as LayersList);
     const elapsed = performance.now() - startTime;
     if (import.meta.env.DEV && elapsed > 16) {
@@ -2940,14 +2938,32 @@ export class DeckGLMap {
       onClick: info => {
         const obj = info?.object as EnergyStorageDot | undefined;
         if (!obj?.id) return false;
-        // Dispatch to StorageFacilityMapPanel — same loose-coupling
-        // pattern as the pipelines layer.
+        let claimed = false;
         try {
-          window.dispatchEvent(new CustomEvent('energy:open-storage-facility-detail', {
+          const event = new CustomEvent('energy:open-storage-facility-detail', {
+            cancelable: true,
             detail: { facilityId: obj.id },
-          }));
+          });
+          window.dispatchEvent(event);
+          claimed = event.defaultPrevented;
         } catch {
-          // Silent no-op on non-browser runtimes.
+          claimed = false;
+        }
+        if (!claimed) {
+          this.popup.show({
+            type: 'storageFacility',
+            data: {
+              id: obj.id,
+              name: obj.name,
+              operator: obj.operator,
+              facilityType: obj.facilityType,
+              country: obj.country,
+              capacityDisplay: obj.capacityDisplay,
+              badge: obj.badge,
+            },
+            x: info.x ?? 0,
+            y: info.y ?? 0,
+          });
         }
         return true;
       },
@@ -5347,12 +5363,8 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel}</div>` };
       }
       case 'storage-facilities-layer': {
-        const typeLabel = {
-          ugs: 'UGS', spr: 'SPR',
-          lng_export: 'LNG export', lng_import: 'LNG import',
-          crude_tank_farm: 'Crude hub',
-        }[String(obj.facilityType)] ?? text(obj.facilityType);
-        const badge = String(obj.badge || 'disputed').toUpperCase();
+        const typeLabel = text(storageFacilityTypeLabel(String(obj.facilityType)));
+        const badge = popupStatusLabel(String(obj.badge || 'disputed'));
         const cap = text(obj.capacityDisplay || '—');
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${typeLabel} · ${text(obj.country)} · ${cap}<br/><strong>${text(badge)}</strong></div>` };
       }

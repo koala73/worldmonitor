@@ -3289,6 +3289,14 @@
       },
       "description": "زیرساخت خط لوله اصلی {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "باز کردن در اطلس ذخیره‌سازی",
+      "types": {
+        "lngExport": "صادرات LNG",
+        "lngImport": "واردات LNG",
+        "crudeTankFarm": "هاب نفت خام"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "در حال حاضر فعال است و منابع را انتقال می‌دهد.",
       "construction": "در حال حاضر در دست ساخت است."
@@ -3698,7 +3706,11 @@
       "c2Server": "سرور فرماندهی و کنترل",
       "malwareHost": "میزبان بدافزار",
       "phishing": "فیشینگ",
-      "maliciousUrl": "نشانی اینترنتی مخرب"
+      "maliciousUrl": "نشانی اینترنتی مخرب",
+      "operational": "عملیاتی",
+      "reduced": "کاهش‌یافته",
+      "offline": "غیرفعال",
+      "disputed": "مورد اختلاف"
     },
     "aptTactics": {
       "reconnaissance": "شناسایی",

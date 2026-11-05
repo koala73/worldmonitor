@@ -3319,6 +3319,14 @@
       },
       "description": "Glavna {{type}} infrastruktura cjevovoda. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Otvori u atlasu skladišta",
+      "types": {
+        "lngExport": "Izvoz LNG-a",
+        "lngImport": "Uvoz LNG-a",
+        "crudeTankFarm": "Čvorište sirove nafte"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Trenutno operativan i transportira resurse.",
       "construction": "Trenutno u gradnji."
@@ -3729,7 +3737,11 @@
       "c2Server": "C2 poslužitelj",
       "malwareHost": "Domaćin zlonamjernog softvera",
       "phishing": "Krađa identiteta",
-      "maliciousUrl": "Zlonamjerni URL"
+      "maliciousUrl": "Zlonamjerni URL",
+      "operational": "U pogonu",
+      "reduced": "Smanjen",
+      "offline": "Izvan pogona",
+      "disputed": "Sporan"
     },
     "aptTactics": {
       "reconnaissance": "Izviđanje",

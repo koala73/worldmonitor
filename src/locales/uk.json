@@ -3329,6 +3329,14 @@
       },
       "description": "Основна інфраструктура трубопроводу {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Відкрити в атласі сховищ",
+      "types": {
+        "lngExport": "Експорт ЗПГ",
+        "lngImport": "Імпорт ЗПГ",
+        "crudeTankFarm": "Нафтовий хаб"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Наразі працює та транспортує ресурси.",
       "construction": "Наразі будується."
@@ -3738,7 +3746,11 @@
       "c2Server": "C2-сервер",
       "malwareHost": "Хост шкідливого ПЗ",
       "phishing": "Фішинг",
-      "maliciousUrl": "Шкідлива URL-адреса"
+      "maliciousUrl": "Шкідлива URL-адреса",
+      "operational": "Працює",
+      "reduced": "Знижена",
+      "offline": "Не працює",
+      "disputed": "Спірний"
     },
     "aptTactics": {
       "reconnaissance": "Розвідка",

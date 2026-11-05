@@ -3211,6 +3211,14 @@
       },
       "description": "Große {{type}}-Pipeline-Infrastruktur. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Im Speicheratlas öffnen",
+      "types": {
+        "lngExport": "LNG-Export",
+        "lngImport": "LNG-Import",
+        "crudeTankFarm": "Rohöl-Hub"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Derzeit in Betrieb und transportiert Ressourcen.",
       "construction": "Derzeit im Bau."
@@ -3629,7 +3637,11 @@
       "c2Server": "C2-Server",
       "malwareHost": "Malware-Host",
       "phishing": "Phishing",
-      "maliciousUrl": "Schädliche URL"
+      "maliciousUrl": "Schädliche URL",
+      "operational": "In Betrieb",
+      "reduced": "Reduziert",
+      "offline": "Außer Betrieb",
+      "disputed": "Umstritten"
     },
     "aptTactics": {
       "reconnaissance": "Aufklärung",
