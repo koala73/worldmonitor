@@ -16,7 +16,8 @@ import { pathToFileURL } from 'node:url';
 import { shouldEmitPublicSourceMaps } from '../shared/source-map-policy.ts';
 
 const SOURCE_MAP_FILE = /\.map(\.br|\.gz)?$/i;
-const TEXT_ASSET = /\.(c|m)?js$|\.css$/i;
+// HTML too: an inline <script> or <style> can carry an inline data: map.
+const TEXT_ASSET = /\.(c|m)?js$|\.css$|\.html?$/i;
 // Matches the trailing //# or /*# pragma, including inline data: maps.
 const SOURCE_MAPPING_URL = /[/][/*][#@]\s*sourceMappingURL=/;
 

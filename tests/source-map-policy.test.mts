@@ -95,10 +95,12 @@ describe('check-no-public-source-maps deploy gate', () => {
       'blog/_astro/d.js.map.br': 'x',
       'assets/clean.js': 'const sourceMappingURL = "not a pragma";',
       'index.html': '<p>sourceMappingURL</p>',
+      'blog/post/index.html': '<script>x()\n//# sourceMappingURL=data:application/json;base64,e30=\n</script>',
+      'pro/index.html': '<style>a{}\n/*# sourceMappingURL=data:application/json;base64,e30= */</style>',
     });
     assert.deepEqual(await findPublicSourceMapLeaks(dir), {
       mapFiles: ['blog/_astro/d.js.map.br', 'sw.js.map'],
-      referencingFiles: ['assets/a.js', 'assets/b.css', 'pro/assets/c.js'],
+      referencingFiles: ['assets/a.js', 'assets/b.css', 'blog/post/index.html', 'pro/assets/c.js', 'pro/index.html'],
     });
   });
 
