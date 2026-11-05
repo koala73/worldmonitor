@@ -2042,13 +2042,13 @@ canvas,
    the wrapped bar would outgrow the row and overlap the next panel, so
    collapse hides them too. */
 @media (min-width: 769px) {
-  #panelsGrid > .panel[data-panel="live-news"].panel-collapsed,
-  #panelsGrid > .panel[data-panel="live-webcams"].panel-collapsed {
+  .panel[data-panel="live-news"].panel-collapsed,
+  .panel[data-panel="live-webcams"].panel-collapsed {
     grid-row: span 1 !important;
   }
 
-  #panelsGrid > .panel[data-panel="live-news"].panel-collapsed .live-news-toolbar,
-  #panelsGrid > .panel[data-panel="live-webcams"].panel-collapsed .webcam-toolbar {
+  .panel[data-panel="live-news"].panel-collapsed .live-news-toolbar,
+  .panel[data-panel="live-webcams"].panel-collapsed .webcam-toolbar {
     display: none;
   }
 }
