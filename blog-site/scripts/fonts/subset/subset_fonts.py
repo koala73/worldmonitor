@@ -98,6 +98,14 @@ CORE_PUNCT = {0x2018, 0x2019, 0x201C, 0x201D, 0x2013, 0x2014, 0x2026}
 # A non-ASCII character used on at least this share of a family's pages also goes in its core.
 CORE_PAGE_SHARE = 0.5
 
+# These glyphless letters need Google's latin composition bases and latin-ext
+# accents/intermediate letters. The browser comparison covers all glyphless
+# characters, including this independently recorded fixture.
+SPLIT_COMPOSED = {
+    'JetBrains Mono': 'ǖǟǢǣǬǭȫȬȭṎṏ',
+    'Space Grotesk': 'ǞǟǢǣǬǭ',
+}
+
 # Features Chromium applies to horizontal Latin text without being asked.
 DEFAULT_FEATURES = {'ccmp', 'locl', 'rlig', 'rvrn', 'mark', 'mkmk', 'kern', 'calt', 'clig', 'liga', 'rclt', 'curs', 'dist', 'abvm', 'blwm'}
 # CSS font-variant values -> OpenType features they turn on.
@@ -575,13 +583,34 @@ def build(crawl_path: Path, verify_google: bool):
         want |= latin_marks
         core = (ASCII | CORE_PUNCT | frequent | latin_marks) & want
         ext = want - core
+        split_letters = {ord(c) for c in SPLIT_COMPOSED.get(fam, '')}
+        decomposed = [unicodedata.normalize('NFD', chr(cp)) for cp in split_letters]
+        # HarfBuzz tries partially composed prefixes (e.g. ü + macron), not just
+        # the fully decomposed u + diaeresis + macron. Mirror Google's partition.
+        prefixes = {ord(c) for text in decomposed for i in range(1, len(text))
+                    for c in unicodedata.normalize('NFC', text[:i])}
+        latin_bases = prefixes & parse_unicode_range(g['subsets']['latin']['renders']) & src_cmap
+        core |= latin_bases
+        ext -= latin_bases
+        accent_chars = {ord(c) for text in decomposed for c in text
+                        if unicodedata.category(c) == 'Mn'} & src_cmap
+        if split_letters:
+            google_ext = g['subsets']['latin-ext']
+            google_ext_cmap = set(TTFont(io.BytesIO(fetch(google_ext['url'], google_ext['sha256']))).getBestCmap())
+            # Don't add marks Google never mapped (notably U+0328). Ǭ/ǭ first
+            # compose to Ǫ/ǫ, so those intermediate letters stay with the marks.
+            accent_chars &= google_ext_cmap
+            accent_chars |= {cp for cp in prefixes & google_ext_cmap & src_cmap
+                             if g['partition'].get(cp) == 'latin-ext'}
+        ext -= accent_chars
 
         # --- shaping check: move characters into the core until splitting changes nothing
         shape = shaper(font_bytes(base), {})
         old_part = lambda cp, _g=g: _g['partition'].get(cp)
         moved = {}
         while True:
-            new_part = lambda cp, _c=frozenset(core), _e=frozenset(ext): 'core' if cp in _c else ('ext' if cp in _e else None)
+            new_part = lambda cp, _c=frozenset(core), _e=frozenset(ext), _a=frozenset(accent_chars): (
+                'core' if cp in _c else 'ext' if cp in _e else 'composition' if cp in _a else None)
             diffs = shaping_differences(shape, u['runs'], rendered_weight, old_part, new_part, features_for)
             if not diffs:
                 break
@@ -624,16 +653,16 @@ def build(crawl_path: Path, verify_google: bool):
             sub = ftsubset.Subsetter(opts)
             sub.populate(unicodes=sorted(cps))
             sub.subset(f)
-            set_google_bbox(f, cps, plan)
+            set_google_bbox(f, cps, plan, 'latin-ext' if part == 'composition' else None)
             return f
 
         bbox_notes = {}
 
-        def set_google_bbox(f, cps, plan):
+        def set_google_bbox(f, cps, plan, donor=None):
             """Give the file the head bbox of the Google subset that drew most of its used characters."""
             used_here = {cp for cp in cps if u['chars'][chr(cp)]}
             votes = collections.Counter(g['partition'][cp] for cp in (used_here or cps))
-            donor = votes.most_common(1)[0][0]
+            donor = donor or votes.most_common(1)[0][0]
             box = g['subsets'][donor]['head_bbox']
             others = {g['partition'][cp] for cp in cps} - {donor}
             differing = [n for n in others if g['subsets'][n]['head_bbox'][3] != box[3]]
@@ -645,13 +674,13 @@ def build(crawl_path: Path, verify_google: bool):
                     f"Google drew these from {', '.join(sorted(differing))} (head.yMax "
                     f"{', '.join(str(g['subsets'][n]['head_bbox'][3]) for n in sorted(differing))}); this file uses {donor}'s {box[3]}")
 
-        def google_mismatches(data, cmap):
+        def google_mismatches(data, cmap, donor=None):
             bad = set()
             for w in rendered:
                 mine = outlines(at_weight(data_to_ttf(data), w), sorted(cmap))
                 by_subset = collections.defaultdict(list)
                 for cp in cmap:
-                    by_subset[g['partition'][cp]].append(cp)
+                    by_subset[donor or g['partition'][cp]].append(cp)
                 for sname, cps_ in by_subset.items():
                     gsub = g['subsets'][sname]
                     theirs = outlines(at_weight(data_to_ttf(fetch(gsub['url'], gsub['sha256'])), w), cps_)
@@ -664,13 +693,14 @@ def build(crawl_path: Path, verify_google: bool):
             if not verify_google and plan_name == 'pinned':
                 continue  # pinning rounds outlines; only take it when parity can be proven
             built = {}
-            for part, cps in (('core', core), ('ext', ext)):
+            for part, cps in [('core', core), ('ext', ext)] + ([('composition', accent_chars)] if split_letters else []):
                 font = make(cps, plan, part)
                 cmap = set(font.getBestCmap())
                 if cps - cmap:
                     failures.append(f'{fam} {part}: subset lost {format_unicode_range(cps - cmap)}')
                 built[part] = (font, font_bytes(font, 'woff2'), cmap)
-            bad = set().union(*(google_mismatches(d, c) for _, d, c in built.values())) if verify_google else set()
+            bad = set().union(*(google_mismatches(d, c, 'latin-ext' if p == 'composition' else None)
+                                for p, (_, d, c) in built.items())) if verify_google else set()
             if bad:
                 rejected[plan_name] = {'plan': {k: list(v) if isinstance(v, tuple) else v for k, v in plan.items()},
                                        'bytes': {p: len(d) for p, (_, d, _) in built.items()},
@@ -686,7 +716,8 @@ def build(crawl_path: Path, verify_google: bool):
         if verify_google:
             old_files = {name: (lambda u=sub['url'], h=sub['sha256']: data_to_ttf(fetch(u, h))) for name, sub in g['subsets'].items()}
             new_files = {part: (lambda d=d: data_to_ttf(d)) for part, (_, d, _) in built.items()}
-            new_part = lambda cp, _c=frozenset(core), _e=frozenset(ext): 'core' if cp in _c else ('ext' if cp in _e else None)
+            new_part = lambda cp, _c=frozenset(core), _e=frozenset(ext), _a=frozenset(accent_chars): (
+                'core' if cp in _c else 'ext' if cp in _e else 'composition' if cp in _a else None)
             bad = shaping_parity(u['runs'], rendered_weight, features_for, old_files, old_part, new_files, new_part)
             if bad:
                 failures.append(f'{fam}: {len(bad)} text runs shape differently from Google, e.g. {bad[:3]}')
@@ -696,8 +727,10 @@ def build(crawl_path: Path, verify_google: bool):
         for part, (font, data, cmap) in built.items():
             name = f"{cfg['slug']}-{part}.woff2"
             staged[FONT_DIR / name] = data
+            css_range = (cmap | g['in_no_file'] if part == 'core'
+                         else split_letters | cmap if part == 'composition' else cmap)
             files[part] = {'file': name, 'bytes': len(data),
-                           'unicode_range': format_unicode_range(cmap | g['in_no_file'] if part == 'core' else cmap),
+                           'unicode_range': format_unicode_range(css_range),
                            'glyphs': font['maxp'].numGlyphs,
                            'axes': {a.axisTag: [a.minValue, a.defaultValue, a.maxValue] for a in font['fvar'].axes} if 'fvar' in font else {},
                            'features': sorted({fr.FeatureTag for t in ('GSUB', 'GPOS') if t in font for fr in font[t].table.FeatureList.FeatureRecord}),
@@ -705,7 +738,8 @@ def build(crawl_path: Path, verify_google: bool):
 
         faces = sorted(set(matched))
         for weight in faces:
-            for part in ('ext', 'core'):
+            # As in Google's CSS, latin comes last and wins overlapping marks.
+            for part in (['composition'] if split_letters else []) + ['ext', 'core']:
                 css.append('@font-face {\n'
                            f"  font-family: '{fam}';\n  font-style: normal;\n  font-weight: {weight};\n"
                            f"  font-display: {g['display']};\n"

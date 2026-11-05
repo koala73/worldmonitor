@@ -34,7 +34,7 @@ describe('blog font subsets', () => {
     for (const [family, google] of Object.entries(snapshot.families)) {
       const googleDraws = new Set(Object.values(google.subsets).flatMap((s) => [...parseRanges(s.renders)]));
       const files = manifest.families[family].files;
-      const ours = new Set([...parseRanges(files.core.unicode_range), ...parseRanges(files.ext.unicode_range)]);
+      const ours = new Set(Object.values(files).flatMap((file) => [...parseRanges(file.unicode_range)]));
       for (const ch of current.chars) {
         const cp = ch.codePointAt(0);
         if (!seen.has(cp) && googleDraws.has(cp) && !ours.has(cp)) missing.push(`${family}: ${ch} U+${cp.toString(16).toUpperCase()}`);
@@ -63,8 +63,7 @@ describe('blog font subsets', () => {
 
   it('declare each manifest weight once, with a unicode-range that matches its file exactly', () => {
     for (const [family, entry] of Object.entries(manifest.families)) {
-      for (const part of ['core', 'ext']) {
-        const file = entry.files[part];
+      for (const [part, file] of Object.entries(entry.files)) {
         const faces = [...generatedCss.matchAll(/@font-face \{([^}]*)\}/g)].map((m) => m[1]).filter((body) => body.includes(`'${family}'`) && body.includes(`/${file.file}'`));
         const weights = faces.map((body) => Number(body.match(/font-weight: (\d+);/)?.[1])).sort((a, b) => a - b);
         assert.deepEqual(weights, entry.faces, `${family} ${part}: one @font-face per manifest weight`);
@@ -73,6 +72,31 @@ describe('blog font subsets', () => {
         assert.equal(fs.statSync(path.join(blogRoot, 'src/fonts', file.file)).size, file.bytes, `${file.file} matches the manifest`);
       }
     }
+  });
+
+  it('keep the 17 composition regressions in range and partition their intermediate letters like Google', () => {
+    for (const [family, letters] of Object.entries({ 'JetBrains Mono': 'ǖǟǢǣǬǭȫȬȭṎṏ', 'Space Grotesk': 'ǞǟǢǣǬǭ' })) {
+      const files = manifest.families[family].files;
+      assert.deepEqual(Object.keys(files).sort(), ['composition', 'core', 'ext'], `${family}: on-demand composition file`);
+      const core = parseRanges(files.core.unicode_range);
+      const ext = parseRanges(files.ext.unicode_range);
+      const composition = parseRanges(files.composition.unicode_range);
+      for (const ch of letters) {
+        assert.ok(core.has(ch.codePointAt(0)), `${family}: core retains Google's glyphless range for ${ch}`);
+        assert.ok(composition.has(ch.codePointAt(0)), `${family}: composition face covers ${ch}`);
+      }
+      for (const cp of [0x1EA, 0x1EB]) {
+        assert.ok(composition.has(cp), `${family}: intermediate ogonek letter U+${cp.toString(16)}`);
+        assert.ok(!core.has(cp), `${family}: intermediate letter stays separate from the latin core`);
+        assert.ok(!ext.has(cp), `${family}: extended file must not override composition face`);
+      }
+      const bases = family === 'JetBrains Mono' ? 'üäÆæöÕõ' : 'ÄäÆæ';
+      for (const ch of bases) {
+        assert.ok(core.has(ch.codePointAt(0)), `${family}: latin base ${ch} stays in core`);
+        assert.ok(!ext.has(ch.codePointAt(0)), `${family}: latin base ${ch} is not split from core marks`);
+      }
+    }
+    assert.ok(!manifest.families.Inter.files.composition, 'Inter needs no composition file');
   });
 
   it('ship no Google Fonts request and preload only the core files', () => {

@@ -15,6 +15,7 @@
     "build": "npm run generate:og && astro build",
     "verify:guides": "node --test scripts/verify-buying-guides.test.mjs",
     "fonts:subset": "node scripts/fonts/subset/run.mjs",
+    "fonts:compare": "node scripts/fonts/subset/compare-characters.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },
