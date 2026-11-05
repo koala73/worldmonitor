@@ -33,7 +33,7 @@ ENV npm_config_install_links=true
 # tree. ws/telegram fall back to pure JS when native helpers are unavailable.
 # Mirrors the main Dockerfile's stage-2 pattern.
 COPY scripts/package.json scripts/package-lock.json ./scripts/
-COPY vendor/deepmerge/ ./vendor/deepmerge/
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
 RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
 # Relay script and shared helpers

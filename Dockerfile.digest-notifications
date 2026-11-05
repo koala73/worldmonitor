@@ -45,7 +45,7 @@ RUN printf '{"type":"module","private":true}\n' > /app/package.json
 
 # Install scripts/ runtime dependencies (resend, convex, etc.).
 COPY scripts/package.json scripts/package-lock.json ./scripts/
-COPY vendor/deepmerge/ ./vendor/deepmerge/
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
 # Match the other Alpine images: ws can use pure JS without compiling bufferutil.
 RUN npm ci --prefix scripts --omit=dev --ignore-scripts
 

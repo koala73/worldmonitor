@@ -11,7 +11,7 @@ WORKDIR /app
 ENV npm_config_install_links=true
 
 COPY scripts/package.json scripts/package-lock.json ./scripts/
-COPY vendor/deepmerge/ ./vendor/deepmerge/
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
 RUN npm ci --prefix scripts --omit=dev --ignore-scripts
 
 COPY scripts/ ./scripts/

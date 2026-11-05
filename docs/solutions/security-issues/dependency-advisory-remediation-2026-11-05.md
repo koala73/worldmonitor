@@ -26,14 +26,18 @@ Zapier npm lockfiles where the reported packages occur.
 
 The existing dependency backport documentation records provenance, licenses, and
 removal conditions. Docker install stages copy the deepmerge source before npm
-installation. Railway scripts use copied local packages, as the root and Pro
-projects already do.
+installation. The shared backport lives under `scripts/vendor/deepmerge` so it is
+also available to Railway services whose build root is `scripts/`. Railway scripts
+use copied local packages, as the root and Pro projects already do.
 
 ## Verification
 
 - The new stream-json, deepmerge, and uuid regressions fail against the previous
   installation and pass after remediation.
 - Clean installs with lifecycle scripts disabled pass for all four affected graphs.
+- An isolated `scripts/` build-root install and its html-to-text/deepmerge consumers
+  pass without access to repository-root packages. The audit sparse checkout
+  preserves the new scripts npm configuration; all 112 workflow coverage checks pass.
 - The four changed Docker dependency-install stages build. The digest image's
   install now disables lifecycle scripts, matching the other Alpine images;
   otherwise its bufferutil install attempts compilation without Python.

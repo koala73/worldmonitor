@@ -263,7 +263,7 @@
     "ajv": "^8.20.0",
     "convex-test": "^0.0.43",
     "cross-env": "^10.1.0",
-    "deepmerge": "file:vendor/deepmerge",
+    "deepmerge": "file:scripts/vendor/deepmerge",
     "esbuild": "0.28.1",
     "exceljs": "^4.4.0",
     "fengari": "^0.1.5",
