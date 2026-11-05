@@ -1421,6 +1421,8 @@
       "lapsedCount": "Vervallen voorstellen ({{count}})"
     },
     "etfFlows": {
+      "previousColumns": "Vorige kolommen",
+      "moreColumns": "Meer kolommen",
       "unavailable": "exchangegenoteerde fondsengegevens tijdelijk niet beschikbaar",
       "netFlow": "Netto stroom",
       "estFlow": "Gesch. stroom",

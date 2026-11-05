@@ -47,6 +47,7 @@ export class ETFFlowsPanel extends Panel {
   private data: ETFFlowsResult | null = null;
   private loading = true;
   private error: string | null = null;
+  private tableNavigationCleanup: (() => void) | null = null;
   constructor() {
     super({ id: 'etf-flows', title: t('panels.etfFlows'), showCount: false, infoTooltip: t('components.etfFlows.infoTooltip') });
   }
@@ -88,6 +89,10 @@ export class ETFFlowsPanel extends Panel {
   }
 
   private renderPanel(): void {
+    // Locked panels restore their original nodes, including these listeners.
+    if (this.isLocked) return;
+    this.tableNavigationCleanup?.();
+    this.tableNavigationCleanup = null;
     if (this.loading) {
       this.showLoading(t('common.loadingEtfData'));
       return;
@@ -138,7 +143,11 @@ export class ETFFlowsPanel extends Panel {
             <span class="etf-summary-value">${s.inflowCount}↑ ${s.outflowCount}↓</span>
           </div>
         </div>
-        <div class="etf-table-wrap table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        <div class="etf-table-nav" hidden>
+          <button type="button" data-scroll="previous" aria-controls="${this.panelId}-table">${t('components.etfFlows.previousColumns')}</button>
+          <button type="button" data-scroll="next" aria-controls="${this.panelId}-table">${t('components.etfFlows.moreColumns')}</button>
+        </div>
+        <div id="${this.panelId}-table" class="etf-table-wrap table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
           <table class="wm-table etf-table">
             <thead>
               <tr>
@@ -155,6 +164,54 @@ export class ETFFlowsPanel extends Panel {
       </div>
     `;
 
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'), () => this.bindTableNavigation());
+  }
+
+  private bindTableNavigation(): void {
+    this.tableNavigationCleanup?.();
+    this.tableNavigationCleanup = null;
+    const wrap = this.content.querySelector<HTMLElement>('.etf-table-wrap');
+    const table = wrap?.querySelector('table');
+    const nav = this.content.querySelector<HTMLElement>('.etf-table-nav');
+    const previous = nav?.querySelector<HTMLButtonElement>('[data-scroll="previous"]');
+    const next = nav?.querySelector<HTMLButtonElement>('[data-scroll="next"]');
+    if (!wrap || !table || !nav || !previous || !next) return;
+
+    const controller = new AbortController();
+    const update = () => {
+      const overflow = wrap.scrollWidth - wrap.clientWidth;
+      const position = Math.abs(wrap.scrollLeft);
+      nav.hidden = overflow <= 1;
+      previous.disabled = position <= 1;
+      next.disabled = position >= overflow - 1;
+    };
+    const scroll = (direction: number) => {
+      const sign = getComputedStyle(wrap).direction === 'rtl' ? -1 : 1;
+      wrap.scrollBy({ left: sign * direction * wrap.clientWidth * 0.8 });
+    };
+    previous.addEventListener('click', () => scroll(-1), { signal: controller.signal });
+    next.addEventListener('click', () => scroll(1), { signal: controller.signal });
+    wrap.addEventListener('scroll', update, { passive: true, signal: controller.signal });
+    const observer = new ResizeObserver(update);
+    observer.observe(wrap);
+    observer.observe(table);
+    update();
+    this.tableNavigationCleanup = () => {
+      controller.abort();
+      observer.disconnect();
+    };
+  }
+
+  public override destroy(): void {
+    this.tableNavigationCleanup?.();
+    this.tableNavigationCleanup = null;
+    super.destroy();
+  }
+
+  public override unlockPanel(): void {
+    if (!this.isLocked) return;
+    super.unlockPanel();
+    // Restoring detached nodes can reset scrollLeft without a scroll event.
+    this.bindTableNavigation();
   }
 }

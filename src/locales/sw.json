@@ -2097,6 +2097,8 @@
       "infoTooltip": "<strong>Masoko ya Utabiri</strong> Masoko ya utabiri wa pesa halisi:<ul><li>Bei zinaonyesha makadirio ya uwezekano wa umati</li><li>Kiasi cha juu = ishara ya kuaminika zaidi</li><li>Lengo la matukio ya jiografia na ya sasa</li></ul>Vyanzo: Polymarket, Kalshi"
     },
     "etfFlows": {
+      "previousColumns": "Safu wima zilizotangulia",
+      "moreColumns": "Safu wima zaidi",
       "unavailable": "Data ya mifuko inayouzwa kwenye soko la hisa haipatikani kwa sasa",
       "rateLimited": "Data ya mifuko inayouzwa kwenye soko la hisa haipatikani kwa sasa (kikomo cha maombi) — tutajaribu tena hivi karibuni",
       "netFlow": "Mtiririko wa Wavu",
