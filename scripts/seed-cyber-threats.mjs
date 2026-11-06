@@ -545,7 +545,7 @@ async function fetchUrlhaus(cutoffMs) {
         lat: toNum(r?.latitude ?? r?.lat), lon: toNum(r?.longitude ?? r?.lon),
         country: normCountry(r?.country || r?.country_code), severity: sev,
         // URLhaus's threat field is a classification, not a malware family.
-        malwareFamily: '', tags: normTags([...tags, threat]), firstSeen, lastSeen,
+        malwareFamily: '', tags: normTags([threat, ...tags]), firstSeen, lastSeen,
       });
       if (t) threats.push(t);
       if (threats.length >= MAX_LIMIT) break;
