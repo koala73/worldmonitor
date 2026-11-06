@@ -2779,6 +2779,9 @@ export function createDomainGateway(
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    // A server error is never billed: give the daily-meter charge back so it
+    // neither consumes the allowance nor counts as contract overage.
+    if (response.status >= 500) await releaseDailyMeter();
 
     // Merge CORS + handler side-channel headers into response.
     // Every side channel below is keyed by the Request object the handler

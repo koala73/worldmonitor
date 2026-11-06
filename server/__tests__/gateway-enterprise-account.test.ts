@@ -329,6 +329,39 @@ describe("enterprise contract account — pooled REST metering", () => {
     expect(events.find((e) => e.event_type === "request")).toMatchObject({ account_id: "acct_hexion", overage: null });
   });
 
+  test("a handler-returned 5xx is not billed: counts released, no overage", async () => {
+    store.set(POOL_KEY, 10_500);
+    store.set(ALICE_KEY, 7);
+    const gateway = createDomainGateway([
+      {
+        method: "GET",
+        path: "/api/news/v1/list-feed-digest",
+        handler: async () => new Response(JSON.stringify({ error: "upstream" }), { status: 502 }),
+      },
+    ]);
+    const res = await gateway(keyRequest("wm_key_alice"), ctx);
+    expect(res.status).toBe(502);
+    expect(res.headers.get("X-WorldMonitor-Overage")).toBeNull();
+    expect(store.get(POOL_KEY)).toBe(10_500);
+    expect(store.get(ALICE_KEY)).toBe(7);
+    await settle();
+    expect(events.find((e) => e.event_type === "request")).toMatchObject({ account_id: "acct_hexion", overage: null });
+  });
+
+  test("a 4xx from the handler still counts (control)", async () => {
+    store.set(POOL_KEY, 10_500);
+    const gateway = createDomainGateway([
+      {
+        method: "GET",
+        path: "/api/news/v1/list-feed-digest",
+        handler: async () => new Response(JSON.stringify({ error: "bad input" }), { status: 400 }),
+      },
+    ]);
+    const res = await gateway(keyRequest("wm_key_alice"), ctx);
+    expect(res.status).toBe(400);
+    expect(store.get(POOL_KEY)).toBe(10_501);
+  });
+
   test("burst limiter unavailable and fallback admits: served as overage with allowance headers", async () => {
     checkBurst.mockResolvedValue({ ok: null, reason: "timeout" });
     store.set(POOL_KEY, 10_500);
