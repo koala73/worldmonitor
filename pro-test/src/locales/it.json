@@ -476,7 +476,6 @@
       "sub": "Quando diventa notizia, tu lo sai già.",
       "ctaPrimary": "Avvia il dashboard",
       "ctaFree": "Gratuito · Nessuna registrazione · Si carica in secondi",
-      "ctaSecondary": "Scopri come lo usano ↓",
       "trustUsers": "2M+ utenti",
       "trustOpenSource": "Codice aperto · AGPL-3.0",
       "screenshotAlt": "Dashboard di intelligence live World Monitor — mappa globale con layer di conflitto, spedizioni e mercati",
@@ -486,7 +485,8 @@
       "asOf": "A partire dal {{date}}",
       "whatIsTitle": "Cos'è World Monitor?",
       "whatIsBody": "World Monitor è una dashboard gratuita ($0), open-source (AGPL-3.0) utilizzata da 2M+ persone. Trasmette {{feeds}} feed di notizie e OSINT da {{providers}} provider attribuiti su un'unica mappa mondiale live con {{mapLayers}} tipi di layer cartografico, coprendo geopolitica, mercati, trasporto marittimo, aviazione e cyber. Li correla in modo che gli eventi convergenti emergano prima dei titoli. Ogni dato è documentato e ogni metodo è tracciato.",
-      "whatIsBestFor": "Ideale per analisti, giornalisti, trader e sviluppatori che hanno bisogno di segnali geopolitici in tempo reale."
+      "whatIsBestFor": "Ideale per analisti, giornalisti, trader e sviluppatori che hanno bisogno di segnali geopolitici in tempo reale.",
+      "ctaPro": "Pro da {{price}}/mese"
     },
     "live": {
       "eyebrow": "Live in questo momento",

@@ -459,7 +459,7 @@
   "welcome.hero.asOf": "As of {{date}}",
   "welcome.hero.ctaFree": "Free · No signup · Loads in seconds",
   "welcome.hero.ctaPrimary": "Launch the dashboard",
-  "welcome.hero.ctaSecondary": "See how people use it ↓",
+  "welcome.hero.ctaPro": "Pro from {{price}}/month",
   "welcome.hero.eyebrow": "Free global intelligence dashboard · live now",
   "welcome.hero.headline1": "Real-time geopolitical",
   "welcome.hero.headline2": "intelligence dashboard",
