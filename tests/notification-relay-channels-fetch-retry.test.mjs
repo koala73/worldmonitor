@@ -254,6 +254,8 @@ describe('relay releases the dedup claim when the channel read fails (SM-115)', 
     await h.deliver(rssEvent());
     assert.deepEqual(h.sent, []);
     assert.equal(h.evals.length, 1, 'the Redis key is compare-and-deleted in case the SET committed');
+    assert.match(h.evals[0][2], /^wm:notif:dedup:user-1:[0-9a-f]{64}$/, 'release targets the user dedup key');
+    assert.notEqual(h.evals[0][3], '1', 'release compares against the per-claim token');
     assert.deepEqual(h.dedupKeys(), [], 'no Redis claim was written');
     assert.equal(h.queue.length, 1);
 
