@@ -124,11 +124,6 @@ export const Hero = () => (
         <p className="mx-auto mt-6 max-w-2xl text-base md:text-lg text-wm-muted">
           {t('welcome.hero.sub')}
         </p>
-        <p className="mt-2 font-mono text-xs text-wm-muted">
-          <time dateTime={PUBLISHED_PULSE_DATE}>
-            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
-          </time>
-        </p>
       </motion.div>
 
       <div className="mt-8 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-4">
@@ -156,6 +151,13 @@ export const Hero = () => (
 
     <div className="max-w-5xl mx-auto text-center">
       <HeroProofRail />
+      {/* The weekly pulse date dates these figures. Under the tagline it read as
+          "this site is days old" next to a live dashboard (#7485 freshness stamp). */}
+      <p className="mt-3 font-mono text-xs text-wm-muted">
+        <time dateTime={PUBLISHED_PULSE_DATE}>
+          {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
+        </time>
+      </p>
 
       <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-mono text-wm-muted">
         <WiredBadge />

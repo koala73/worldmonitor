@@ -217,8 +217,11 @@ async function fetchCii(): Promise<{ items: TeaserCiiScore[]; live: boolean } | 
 
 interface ChokepointStatusResponse {
   chokepoints?: Array<{ name?: string; status?: string; disruptionScore?: number }>;
-  upstreamUnavailable?: boolean;
+  fetchedAt?: string;
 }
+
+// get-chokepoint-status caches for five minutes and health allows 60.
+const CHOKEPOINT_FRESH_MS = 60 * 60 * 1000;
 
 async function fetchChokepoints(): Promise<{ items: TeaserChokepoint[]; total: number; disrupted: number; live: boolean } | null> {
   const resp = await fetchJson<ChokepointStatusResponse>('/api/supply-chain/v1/get-chokepoint-status');
@@ -228,8 +231,13 @@ async function fetchChokepoints(): Promise<{ items: TeaserChokepoint[]; total: n
     .map(c => ({ name: c.name as string, status: c.status as string, disruptionScore: c.disruptionScore ?? 0 }));
   if (!all.length) return null;
   const items = [...all].sort((a, b) => b.disruptionScore - a.disruptionScore).slice(0, 5);
+  // upstreamUnavailable flags partial source coverage (any one source short for
+  // any one row) on rows computed in the last five minutes; the dashboard shows
+  // the same rows as current. Only an old capture keeps the published snapshot.
+  const fetchedAt = Date.parse(resp.fetchedAt ?? '');
+  const live = Number.isNaN(fetchedAt) || Date.now() - fetchedAt < CHOKEPOINT_FRESH_MS;
   // "N of M disrupted" must count across ALL chokepoints, not the top-5 slice.
-  return { items, total: all.length, disrupted: all.filter(isDisrupted).length, live: !resp.upstreamUnavailable };
+  return { items, total: all.length, disrupted: all.filter(isDisrupted).length, live };
 }
 
 interface MarketQuotesResponse {
@@ -245,8 +253,10 @@ interface CryptoQuotesResponse {
   quotes?: Array<{ symbol?: string; name?: string; price?: number; change?: number; sparkline?: number[] }>;
 }
 
-const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
-const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+// ^VIX is a commodities.json symbol: list-commodity-quotes serves it and
+// list-market-quotes answers NOT_FOUND, which kept the market card off LIVE.
+export const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC'];
+export const COMMODITY_QUOTE_SYMBOLS = ['^VIX', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
 // Exported so tests/welcome-teasers.test.mjs can pin these against the
 // duplicated copies in scripts/freeze-crawlable-live-pulse.mjs (pro-test is an
