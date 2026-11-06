@@ -282,18 +282,25 @@ export async function verifyAnonClaimToken(
  * (`business-invite:` prefix so it cannot be replayed as an anon-claim token or
  * `wm_user_id_sig`), embedding the token version and expiry. The token binds to
  * the `businessProGrants` document id — the signature does not verify for any
- * other grantId — and expires after the 14-day pending-invite window.
+ * other grantId — and expires after the 14-day pending-invite window, or at
+ * `expiresAt` when given (an extended invite must expire with its grant row).
  *
- * @throws If grantId is empty or contains a `.` (the token delimiter).
+ * @throws If grantId is empty or contains a `.` (the token delimiter), or if
+ *   `expiresAt` is not a future safe integer.
  */
-export async function signBusinessInviteToken(grantId: string): Promise<string> {
+export async function signBusinessInviteToken(
+  grantId: string,
+  expiresAt: number = Date.now() + BUSINESS_INVITE_TOKEN_TTL_MS,
+): Promise<string> {
   if (!grantId || grantId.length === 0) {
     throw new Error("[identity-signing] business invite token requires a non-empty grantId");
   }
   if (grantId.includes(".")) {
     throw new Error('[identity-signing] business invite grantId must not contain "."');
   }
-  const expiresAt = Date.now() + BUSINESS_INVITE_TOKEN_TTL_MS;
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) {
+    throw new Error("[identity-signing] business invite token expiry must be a future integer timestamp");
+  }
   const signature = await signPayload(
     `business-invite:${BUSINESS_INVITE_TOKEN_VERSION}:${grantId}:${expiresAt}`,
   );
