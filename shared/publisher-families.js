@@ -94,6 +94,7 @@ const PUBLISHER_FAMILY_DATA = {
   'cnbc': { publisher: "CNBC", labels: ["CNBC", "CNBC Commodities", "CNBC Markets", "CNBC Tech"] },
   'csis': { publisher: "CSIS", labels: ["CSIS", "CSIS Tech"] },
   'die-zeit': { publisher: "Die Zeit", labels: [] },
+  'deutschlandradio': { publisher: "Deutschlandradio", labels: ["Deutschlandfunk"] },
   'dw': { publisher: "Deutsche Welle", labels: ["DW News", "DW Turkish"] },
   'eia': { publisher: "US Energy Information Administration", labels: ["EIA Press Room", "EIA Reports"] },
   'el-mundo': { publisher: "El Mundo", labels: [] },
@@ -223,6 +224,7 @@ const PUBLISHER_FAMILY_DATA = {
   'folha': { publisher: "Folha de S.Paulo", labels: [] },
   'y-combinator': { publisher: "Y Combinator", labels: ["YC Launches", "Y Combinator Blog"] },
   'yahoo-finance': { publisher: "Yahoo Finance", labels: ["Yahoo Finance", "Yahoo Finance Commodities"] },
+  'zdf': { publisher: "ZDF", labels: ["ZDFheute"] },
 };
 
 export const PUBLISHER_FAMILIES = Object.freeze(PUBLISHER_FAMILY_DATA);
@@ -256,6 +258,8 @@ const PUBLISHER_FAMILY_DOMAINS = Object.freeze({
   'cnbc': ['cnbc.com'],
   'csis': ['csis.org'],
   'die-zeit': ['zeit.de'],
+  'deutschlandradio': ['deutschlandfunk.de'],
+  'zdf': ['zdfheute.de', 'zdf.de'],
   'dw': ['dw.com'],
   'eia': ['eia.gov'],
   'el-mundo': ['elmundo.es'],

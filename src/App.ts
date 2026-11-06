@@ -128,6 +128,7 @@ import {
   CANADA_DEPTH_OPT_IN_SOURCES,
   CRISIS_FLOOR_OPT_IN_SOURCES,
   CURATED_REGIONAL_OPT_IN_SOURCES,
+  GERMAN_RSS_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -235,6 +236,7 @@ import {
   migrateCanadaDepthOptInsV7,
   migrateCrisisDeskOptInsV8,
   migrateCuratedRegionalOptInsV9,
+  migrateGermanRssSourcesV10,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1521,6 +1523,18 @@ export class App {
           }
         }
         if (persisted) safeStorageSet(curatedRegionalOptInKey, 'done');
+      }
+      const germanRssKey = 'worldmonitor-german-rss-sources-v1';
+      if (!safeStorageGet(germanRssKey)) {
+        // Missing preferences need persisted defaults; a saved [] is an explicit enable-all choice.
+        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateGermanRssSourcesV10(blob, GERMAN_RSS_SOURCES, userLang);
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
+        );
+        if (persisted) safeStorageSet(germanRssKey, 'done');
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →

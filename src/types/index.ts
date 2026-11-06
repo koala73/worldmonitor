@@ -79,6 +79,7 @@ export interface Feed {
   propagandaRisk?: PropagandaRisk;
   stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
   lang?: string;             // ISO 2-letter code for filtering (locale boost)
+  fetchInAllLanguages?: boolean; // keep language metadata/locale defaults, allow selection in any UI language
   strategicDefault?: boolean; // always default-on regardless of UI language
   digestLang?: string;        // only this digest language carries it (server is stricter than the browser)
 }
