@@ -20,7 +20,8 @@ Ordinary MCP data calls use the plan burst shared by an account's OAuth tokens a
 | Scope | Limit | Window |
 |-------|-------|--------|
 | Pro, Pro Business, API Starter (per user) | **60 requests** | 60 s |
-| API Business, Enterprise (per user) | **300 requests** | 60 s |
+| API Business, Enterprise without a contract account (per user) | **300 requests** | 60 s |
+| Enterprise contract account data calls (per account, shared with REST) | **Set by contract** | 60 s |
 | Data-free protocol (per user) | **192 requests** | 60 s |
 | Validated paid MCP panel uncached reads (per admission) | **64 requests** | 60 s |
 | Validated paid MCP panel cached replays (per admission) | **64 requests** | 60 s |
@@ -38,10 +39,10 @@ Authenticated REST API keys (`wm_…`) are limited **per account**, not per IP �
 |------|--------------------|----------------|----------------------------|
 | **API Starter** | **60** / 60 s | **1,000** / UTC day | **429** — the sold allowance is the hard limit |
 | **API Business** | **300** / 60 s | **10,000** / UTC day | **429** — the sold allowance is the hard limit |
-| **Enterprise** | **300** / 60 s | **10,000** / UTC day (contract default) | **429** — larger allowances are set by contract |
+| **Enterprise** | **300** / 60 s | **10,000** / UTC day (contract default) | Contract accounts: served and billed as overage up to the daily safety limit, then **429**. Without a contract account: **429** |
 
 - **Per-minute** is a hard burst limit — exceeding it returns 429 immediately.
-- **Daily included** is your plan's allowance; it resets at **00:00 UTC**. Requests beyond it are rejected with **429** — the sold plan limit is authoritative, with no overage headroom. Usage is metered against the same counter that enforces, so the Settings notice and the 429 agree.
+- **Daily included** is your plan's allowance; it resets at **00:00 UTC**. Requests beyond it are rejected with **429** — the sold plan limit is authoritative, with no overage headroom. The exception is an Enterprise contract account, which is billed overage past its allowance and gets **429** only at its daily safety limit; see [Enterprise contract accounts](#enterprise-contract-accounts). Usage is metered against the same counter that enforces, so the Settings notice and the 429 agree.
 - **MCP calls draw on this same daily allowance.** An API or Enterprise plan has one budget covering both REST requests and MCP tool calls; there is no separate MCP allowance to track. An MCP call that answers from cache costs the same as one REST request, one that fetches live data downstream costs two, `get_country_brief` costs three, and `get_airspace` costs five. See [MCP calls against an API plan](#mcp-calls-against-an-api-plan).
 - The per-minute burst and daily allowance are both **per account** (shared across all of an account's `wm_…` keys), so issuing more keys does not raise your limit. (Operator-issued Enterprise keys are the exception — each is rate-limited independently, with its own daily ceilings of **100,000** REST requests, **10,000** MCP units and **5,000** direct-AI requests.)
 - Need a higher limit? **Contact support** to raise your plan's allowance.
@@ -65,7 +66,7 @@ A weighted call is all-or-nothing. With 999 of 1,000 units spent, a 2-unit call 
 
 You do not have to read this table to know what a call costs. Every `tools/list` and `describe_tool` entry carries its own price at `_meta["worldmonitor/weight"]`, so a client can budget before it calls. The number is what the tool costs; whether it is charged is `_meta["worldmonitor/access"]`'s question, and only an API plan pays the weight — Pro and Pro Business pay one unit per standalone call or panel request.
 
-Today the REST and MCP halves reserve against separate counters that each hold the plan's full number, so an MCP-only workload and a REST-only workload both get the whole 1,000 or 10,000. They become one physical counter when REST enforcement turns on. Plan against the combined figure, because that is the allowance the plan sells and the merge will not raise it.
+Without an Enterprise contract account, the REST and MCP halves today reserve against separate counters that each hold the plan's full number, so an MCP-only workload and a REST-only workload both get the whole 1,000 or 10,000. They become one physical counter when REST enforcement turns on. Plan against the combined figure, because that is the allowance the plan sells and the merge will not raise it. Members of a contract account already share one counter for REST and MCP, whatever the REST enforcement setting.
 
 `get_mcp_allowance({})` reads the current verified account counters without spending daily allowance, even at the daily cap. It uses the shared 192/minute protocol bucket and requires user-bound OAuth or `wm_…` credentials. The same snapshot is available at `worldmonitor://account/mcp-allowance`. Account selectors and `panel_request` are rejected. Unreadable counters return an error, never a zero snapshot. `sharedWithRestApi` states whether `used` also includes REST traffic; account totals do not identify individual callers.
 

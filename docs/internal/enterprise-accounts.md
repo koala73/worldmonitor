@@ -43,7 +43,10 @@ Code: `convex/enterpriseAccounts.ts` (operator functions),
   flag still governs self-serve plans.
 - MCP calls charge the pool at their per-tool weight. `get_mcp_allowance`
   shows the contract allowance as `limit` and the pooled count as `used`.
-- If Redis is unavailable, requests are served unmetered (fail open).
+- If Redis is unavailable, REST requests are served unmetered (fail open).
+  MCP data calls are refused with `-32603` and HTTP 503 (`Retry-After: 5`)
+  because MCP never dispatches a call it could not reserve. The shared burst
+  bucket fails open on both paths.
 
 ## Operator commands
 

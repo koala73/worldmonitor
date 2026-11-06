@@ -86,8 +86,12 @@ npx convex run --prod entitlements:clearAiRoutingPolicy '{"userId":"user_XXXX"}'
 
 Valid provider names: `anthropic`, `openrouter`, `openrouter-free`,
 `openrouter-free-backup`, `ollama`, `generic`. Unknown names, an empty list and
-an empty reason are rejected. The policy is per user: set it for every user id
-the customer signs in or holds keys with, and for any seat added later.
+an empty reason are rejected. The policy is per user: for a customer without an
+Enterprise account, set it for every user id the customer signs in or holds
+keys with, and for any seat added later. Do not write a per-user row for an
+Enterprise account member unless that member must have fewer providers than
+the account; the row stops them inheriting providers added to the account
+later.
 
 ### Enterprise accounts
 

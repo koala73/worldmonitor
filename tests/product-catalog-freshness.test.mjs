@@ -202,7 +202,7 @@ describe('Product catalog freshness', () => {
     assert.match(generatedProductsSrc, /export const PLAN_LIMITS = \{/, 'Missing PLAN_LIMITS export');
     assert.match(generatedProductsSrc, /"api_starter": \{"apiRequestsPerDay":1000,/, 'API Starter daily limit missing');
     assert.match(generatedProductsSrc, /"api_business": \{"apiRequestsPerDay":10000,/, 'API Business daily limit missing');
-    assert.match(generatedProductsSrc, /"enterprise": \{"apiRequestsPerDay":10000,/, 'Enterprise daily limit missing');
+    assert.match(generatedProductsSrc, /"enterprise":\s*\{[^}]*"apiRequestsPerDay":10000(?:,|\})/, 'Enterprise daily limit missing');
   });
 
   it('generated tiers expose plan limits for public plans', () => {
