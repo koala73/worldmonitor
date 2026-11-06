@@ -87,6 +87,7 @@ async function fetchPage(pageIndex) {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const res = await fetch(url, {
+        signal: AbortSignal.timeout(30_000),
         headers: {
           apikey: SUPABASE_ANON_KEY,
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,

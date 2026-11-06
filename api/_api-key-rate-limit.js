@@ -40,12 +40,12 @@ async function getRedis() {
   const { Redis } = await loadUpstashRatelimit();
   // Skip the @upstash/redis retry backoff under the node test runner so
   // fail-open tests pointed at a fake host degrade immediately; production
-  // (env unset) keeps the resilient default. Mirrors api/_rate-limit.js.
+  // uses two capped, jittered retries and a three-second deadline. Mirrors api/_rate-limit.js.
   // `retry: false` must stay a literal (not a spread) or it widens to
   // `boolean` and fails tsconfig.api.json's RetryConfig type.
   redisSingleton = process.env.NODE_TEST_CONTEXT
-    ? new Redis({ url, token, retry: false })
-    : new Redis({ url, token });
+    ? new Redis({ signal: () => AbortSignal.timeout(3_000), url, token, retry: false })
+    : new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000), url, token });
   return redisSingleton;
 }
 /**

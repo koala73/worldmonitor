@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 /**
  * Frontend service for managing user API keys.
  *
@@ -74,6 +75,7 @@ export async function createApiKey(name: string, keyKind: ApiKeyKind = 'api'): P
   if (!token) throw new Error(`Account changed while creating the ${noun}. Try again.`);
   assertAccountStillCurrent(userId, `creating the ${noun}`);
   const response = await settleAccountOperation(userId, `creating the ${noun}`, () => fetch('/api/user-api-keys', {
+    signal: createTimeoutSignal(60_000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(keyKind === 'desktop'
@@ -139,10 +141,11 @@ export async function revokeApiKey(keyId: string): Promise<void> {
         userId,
         'invalidating the API key cache',
         () => fetch('/api/invalidate-user-api-key-cache', {
+          signal: createTimeoutSignal(15_000),
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ keyHash: result.keyHash }),
-        }),
+        }).catch(() => new Response(null, { status: 503 })),
       );
       assertAccountStillCurrent(userId, 'invalidating the API key cache');
       if (!resp.ok) {

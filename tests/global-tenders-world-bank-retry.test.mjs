@@ -9,6 +9,7 @@ const PAYLOAD = { procnotices: [{
 }] };
 
 function provider(t, respond) {
+  t.mock.method(Math, 'random', () => 0);
   const calls = [];
   const waits = [];
   const timeouts = [];

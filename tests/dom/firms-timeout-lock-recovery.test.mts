@@ -20,7 +20,7 @@ describe('FIRMS timeout lock recovery (#6770)', () => {
   it('releases the fires key after the RPC deadline and permits a retry', async () => {
     const timeoutControllers: AbortController[] = [];
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((delay) => {
-      expect(delay).toBe(20_000);
+      expect([20_000, 120_000]).toContain(delay);
       const controller = new AbortController();
       timeoutControllers.push(controller);
       return controller.signal;
@@ -30,7 +30,7 @@ describe('FIRMS timeout lock recovery (#6770)', () => {
       if (fetchMock.mock.calls.length === 1) {
         return await new Promise<Response>((_resolve, reject) => {
           const signal = init?.signal;
-          expect(signal).toBe(timeoutControllers[0]?.signal);
+          expect(signal).toBeInstanceOf(AbortSignal);
           signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
           queueMicrotask(() => timeoutControllers[0]?.abort(new DOMException('deadline', 'TimeoutError')));
         });
@@ -66,7 +66,7 @@ describe('FIRMS timeout lock recovery (#6770)', () => {
 
     await loader.loadDataForLayer('fires');
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(timeoutSpy).toHaveBeenCalledTimes(2);
+    expect(timeoutSpy).toHaveBeenCalledTimes(4);
     expect(layerLoading.mock.calls).toEqual([
       ['fires', true],
       ['fires', false],

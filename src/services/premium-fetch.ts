@@ -33,6 +33,7 @@
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
+import { createRequestTimeoutSignal, isTimeoutOrAbortError } from './timeout-signal';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '@/shared/pro-fresh-rpc';
 import { withPremiumIntent } from './premium-intent';
 import { noteSelfHostPremiumDenial } from './self-host-key';
@@ -163,7 +164,7 @@ async function fetchReportingServerErrors(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  const res = await globalThis.fetch(input, init);
+  const res = await globalThis.fetch(input, { ...init, signal: createRequestTimeoutSignal(input, init, 120_000) });
   reportServerError(res, input, undefined, init?.signal);
   // On a self-hosted install a premium denial can mean the desktop key was
   // revoked or lapsed; the verdict service re-checks (no-op elsewhere). Relay
@@ -237,7 +238,7 @@ export function proFreshRpcFetch(
     return premiumFetch(input, init);
   }
   if (!isOptionalAuthRpcTarget(input)) {
-    return globalThis.fetch(input, init);
+    return globalThis.fetch(input, { ...init, signal: createRequestTimeoutSignal(input, init, 120_000) });
   }
   return premiumFetch(input, { ...init, forcePremium: true });
 }
@@ -339,7 +340,10 @@ export async function premiumFetch(
           { ...withCredentials(requestInit), headers: existing },
         );
       }
-    } catch { /* not available — fall through */ }
+    } catch (error) {
+      if (isTimeoutOrAbortError(error)) throw error;
+      /* credentials not available — fall through */
+    }
   }
 
   // 2. Legacy in-memory test seam. In production, tester/widget keys are
@@ -387,7 +391,10 @@ export async function premiumFetch(
           { ...withCredentials(requestInit), headers: existing },
         );
       }
-    } catch { /* not signed in — fall through */ }
+    } catch (error) {
+      if (isTimeoutOrAbortError(error)) throw error;
+      /* not signed in — fall through */
+    }
   }
 
   // 4. No auth — let the request through.

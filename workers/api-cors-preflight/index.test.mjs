@@ -269,22 +269,22 @@ test('GET response preserves origin cache variance when the Worker adds Origin v
     const storyResp = await worker.fetch(storyReq);
     assert.equal(storyResp.status, 200);
     assert.equal(storyResp.headers.get('vary'), 'User-Agent, Origin');
-    assert.deepEqual(calls[0].options, {
-      cf: {
+    assert.ok(calls[0].options.signal instanceof AbortSignal);
+    assert.deepEqual(calls[0].options.cf, {
         vary: {
           default: { action: 'bypass' },
           headers: {
             'user-agent': { action: 'passthrough' },
           },
         },
-      },
     });
 
     const healthReq = makeRequest('GET', 'https://api.worldmonitor.app/api/health', {
       Origin: KNOWN_GOOD,
     });
     await worker.fetch(healthReq);
-    assert.equal(calls[1].options, undefined, 'other API routes must keep the default fetch policy');
+    assert.ok(calls[1].options.signal instanceof AbortSignal);
+    assert.equal(calls[1].options.cf, undefined, 'other API routes must keep the default cache policy');
   } finally {
     globalThis.fetch = original;
   }

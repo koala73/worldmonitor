@@ -55,3 +55,6 @@ tradingview-screener-integration.md
 user-requests.md
 zh/.glossary.md
 zh/.translation-spec.md
+
+# Engineering audit receipt; not product documentation.
+outbound-resilience-audit.md

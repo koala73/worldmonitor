@@ -25,13 +25,10 @@ export function getRelayHeaders(baseHeaders = {}) {
 }
 
 export async function fetchWithTimeout(url, options, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
+  // Keep the deadline alive through body consumption after headers arrive.
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const signal = options?.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
+  return fetch(url, { ...options, signal });
 }
 
 /** Build the final relay response — wraps non-JSON errors in a JSON envelope
@@ -119,7 +116,7 @@ export function createRelayHandler(cfg) {
       return buildRelayResponse(response, body, { ...cacheHeaders, ...extraHeaders, ...responseCors });
     } catch (error) {
       if (cfg.fallback) return cfg.fallback(req, corsHeaders);
-      const isTimeout = error?.name === 'AbortError';
+      const isTimeout = error?.name === 'AbortError' || error?.name === 'TimeoutError';
       // No `details` in the body: the message can carry relay transport detail
       // (undici cause chains, the internal WS_RELAY_URL) and the client has no
       // use for it. Record it server-side instead — the same posture, and the

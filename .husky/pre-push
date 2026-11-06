@@ -689,6 +689,11 @@ if changed '^(src/|api/|scripts/enforce-premium-fetch\.mjs$)'; then
   npm run lint:premium-fetch || exit 1
 fi
 
+if changed '^(src/|api/|server/|scripts/|convex/|middleware\.ts$)'; then
+  echo "Running outbound-deadline check (fetch without a signal)..."
+  npm run lint:outbound-deadlines || exit 1
+fi
+
 if changed '^(api/|server/|src/generated/|scripts/check-edge-function-bundles\.mjs$)'; then
   # Edge RPC entries under api/ bundle-import server/gateway, domain handlers,
   # and generated stubs — a server-only Node-ism breaks the Vercel bundle with

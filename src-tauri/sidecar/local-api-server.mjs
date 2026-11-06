@@ -1697,6 +1697,8 @@ function makeCorsHeaders(req) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
   // Use node:https with IPv4 by default — Node.js built-in fetch (undici) tries
   // IPv6 first and some servers (EIA, NASA FIRMS) have broken IPv6. Callers
   // with a validated address can instead pin its detected family below.
@@ -1718,6 +1720,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   if (u.protocol === 'https:') {
     return new Promise((resolve, reject) => {
       const reqOpts = {
+        signal,
         hostname: u.hostname,
         port: u.port || 443,
         path: u.pathname + u.search,
@@ -1732,6 +1735,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
+        res.on('error', reject);
         res.on('data', (c) => chunks.push(c));
         res.on('end', () => {
           const body = Buffer.concat(chunks);
@@ -1766,15 +1770,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
     pinned.hostname = resolvedFamily === 6 ? `[${resolvedAddress}]` : resolvedAddress;
     fetchUrl = pinned.toString();
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const requestOptions = { ...fetchOptions, headers: fetchHeaders, signal: controller.signal };
-    if (allowPrivateNetwork) requestOptions[ALLOW_PRIVATE_NETWORK_FETCH] = true;
-    return await fetch(fetchUrl, requestOptions);
-  } finally {
-    clearTimeout(timer);
-  }
+  const requestOptions = { ...fetchOptions, headers: fetchHeaders, signal };
+  if (allowPrivateNetwork) requestOptions[ALLOW_PRIVATE_NETWORK_FETCH] = true;
+  return fetch(fetchUrl, requestOptions);
 }
 
 function relayToHttpUrl(rawUrl) {

@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 /**
  * DeckGLMap - WebGL-accelerated map visualization for desktop
  * Uses deck.gl for high-performance rendering of large datasets
@@ -1060,7 +1061,7 @@ export class DeckGLMap {
   }
 
   private fetchAndApplyRadar(): void {
-    fetch('https://api.rainviewer.com/public/weather-maps.json')
+    fetch('https://api.rainviewer.com/public/weather-maps.json', { signal: createTimeoutSignal(15_000) })
       .then(r => r.json())
       .then((data: { host: string; radar: { past: Array<{ path: string }> } }) => {
         const past = data.radar?.past;

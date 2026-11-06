@@ -88,6 +88,8 @@ impl Default for LocalApiState {
             http_client: reqwest::Client::builder()
                 .use_native_tls()
                 .pool_max_idle_per_host(2)
+                .connect_timeout(std::time::Duration::from_secs(5))
+                .timeout(std::time::Duration::from_secs(120))
                 .build()
                 .unwrap_or_default(),
         }

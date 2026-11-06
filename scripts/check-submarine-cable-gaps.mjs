@@ -14,7 +14,7 @@ if (!Number.isInteger(minCountries) || minCountries < 1) throw new Error('--min-
 const UA = { 'User-Agent': 'Mozilla/5.0 (worldmonitor cable gap check)' };
 
 const curated = new Set(CABLE_REGIONS.flatMap((r) => r.ids));
-const catalogResponse = await fetch(`${BASE}/cable/all.json`, { headers: UA });
+const catalogResponse = await fetch(`${BASE}/cable/all.json`, { signal: AbortSignal.timeout(30_000), headers: UA });
 if (!catalogResponse.ok) throw new Error(`Cable catalog HTTP ${catalogResponse.status}`);
 const all = await catalogResponse.json();
 if (!Array.isArray(all) || all.some((c) => typeof c?.id !== 'string' || !c.id.trim())) {
@@ -29,7 +29,7 @@ async function worker() {
   while (queue.length) {
     const c = queue.shift();
     try {
-      const res = await fetch(`${BASE}/cable/${c.id}.json`, { headers: UA });
+      const res = await fetch(`${BASE}/cable/${c.id}.json`, { signal: AbortSignal.timeout(30_000), headers: UA });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json();
       if (!d || typeof d.name !== 'string' || !Array.isArray(d.landing_points)

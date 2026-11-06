@@ -90,7 +90,7 @@ async function main() {
   const saved = args.find(arg => !arg.startsWith('--'));
   const html = saved
     ? readFileSync(saved, 'utf8')
-    : await (await fetch(SOURCE_URL, { headers: { 'User-Agent': 'worldmonitor-build/1.0 (+https://www.worldmonitor.app)' } })).text();
+    : await (await fetch(SOURCE_URL, { signal: AbortSignal.timeout(30_000), headers: { 'User-Agent': 'worldmonitor-build/1.0 (+https://www.worldmonitor.app)' } })).text();
   const output = `${JSON.stringify({
     source: SOURCE_URL,
     note: 'UN M49 geoscheme; supplements cover areas M49 does not list.',
