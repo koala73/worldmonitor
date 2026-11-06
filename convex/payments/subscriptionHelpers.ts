@@ -747,7 +747,10 @@ async function syncCoverageRecheck(
   const storedId = row.coverageRecheckJobId;
   const job = storedId ? await ctx.db.system.get(storedId) : null;
   const pending = job?.state.kind === "pending" ? job : null;
-  if (runAt !== null && pending?.scheduledTime === runAt) return;
+  // A claim moves an anonymous buyer's row to the real user with its job ID,
+  // so a pending job can target the old ID. Reuse it only for this user.
+  const pendingUserId = (pending?.args[0] as { userId?: unknown } | undefined)?.userId;
+  if (runAt !== null && pending?.scheduledTime === runAt && pendingUserId === userId) return;
   if (pending) await ctx.scheduler.cancel(pending._id);
   const nextId = runAt === null
     ? undefined

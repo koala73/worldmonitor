@@ -6,7 +6,9 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
-import { internal } from "../_generated/api";
+import { api, internal } from "../_generated/api";
+import { PRODUCT_CATALOG } from "../config/productCatalog";
+import { signAnonClaimToken } from "../lib/identitySigning";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -85,14 +87,18 @@ async function entitlementRow(t: T) {
     .withIndex("by_userId", (q) => q.eq("userId", USER)).unique());
 }
 
-async function pendingRechecks(t: T) {
+async function pendingRechecks(t: T, userId = USER) {
   const jobs = await t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect());
   return jobs.filter((job) => job.name.includes("recomputeEntitlementForUser")
     && job.state.kind === "pending"
-    && (job.args[0] as { userId?: string }).userId === USER);
+    && (job.args[0] as { userId?: string }).userId === userId);
 }
 
-/** Lets the scheduler reach every pending job, advancing the fake clock to each. */
+/**
+ * Lets the scheduler reach every pending job, advancing the fake clock to each.
+ * Keep job delays under 2^31-1 ms (~24.8 days): fake timers, like Node, clamp
+ * a longer delay to 1 ms, so the job would run before its boundary.
+ */
 async function runScheduled(t: T) {
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 }
@@ -103,6 +109,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("SM-097: coverage falls back to a subscription that still covers", () => {
@@ -178,5 +185,40 @@ describe("SM-097: coverage falls back to a subscription that still covers", () =
 
     expect(await pendingRechecks(t)).toHaveLength(0);
     expect(await entitlementRow(t)).toMatchObject({ planKey: "api_starter", validUntil: at("2026-05-01T00:00:00Z") });
+  });
+
+  test("a claim that moves the entitlement row re-targets its pending recheck to the claiming user", async () => {
+    vi.stubEnv("DODO_IDENTITY_SIGNING_SECRET", "synthetic-sm097-claim-secret");
+    const DAY = 86_400_000;
+    const now = at("2026-03-10T00:00:00Z");
+    vi.setSystemTime(now);
+    const t = convexTest(schema, modules);
+    const anonId = "22222222-2222-4222-8222-222222222222";
+    // Anonymous buyer: API Starter paid 10 days plus a 90-day Pro comp, so a
+    // recheck at API Starter's period end is scheduled for the anon ID.
+    await t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
+      userId: anonId, planKey: "pro_monthly", days: 90,
+    });
+    await t.run((ctx) => ctx.db.insert("subscriptions", {
+      userId: anonId, dodoSubscriptionId: "sub_sm097_anon_api",
+      dodoProductId: PRODUCT_CATALOG.api_starter.dodoProductId!, planKey: "api_starter",
+      status: "active", currentPeriodStart: now - DAY, currentPeriodEnd: now + 10 * DAY,
+      rawPayload: {}, updatedAt: now - DAY,
+    }));
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, { userId: anonId });
+    expect(await pendingRechecks(t, anonId)).toHaveLength(1);
+
+    // The claim moves the anon entitlement row to USER, who has none.
+    await t.withIdentity({ subject: USER }).mutation(api.payments.billing.claimSubscription, {
+      anonId, claimToken: await signAnonClaimToken(anonId),
+    });
+
+    expect(await pendingRechecks(t, anonId)).toHaveLength(0);
+    const pending = await pendingRechecks(t);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.scheduledTime).toBe(now + 10 * DAY);
+
+    await runScheduled(t);
+    expect(await entitlementRow(t)).toMatchObject({ planKey: "pro_monthly", validUntil: now + 90 * DAY });
   });
 });
