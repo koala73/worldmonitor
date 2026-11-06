@@ -124,6 +124,24 @@ describe('Live News autoplay and a collapsed panel', () => {
     expect(isPlaying()).toBe(true);
   });
 
+  it('waits for the panel to return when the viewer scrolls it away before the start', () => {
+    mount();
+    const observerAtScrollIn = FakeIntersectionObserver.latest;
+    observerAtScrollIn?.intersect();
+    const offscreen = { x: 0, y: 2000, top: 2000, left: 0, width: 640, height: 40, right: 640, bottom: 2040, toJSON: () => ({}) };
+    internals().element.getBoundingClientRect = () => offscreen as DOMRect;
+    vi.advanceTimersByTime(1100);
+    expect(isPlaying()).toBe(false);
+
+    const rearmed = FakeIntersectionObserver.latest;
+    expect(rearmed).not.toBe(observerAtScrollIn);
+    const onscreen = { x: 0, y: 0, top: 0, left: 0, width: 640, height: 40, right: 640, bottom: 40, toJSON: () => ({}) };
+    internals().element.getBoundingClientRect = () => onscreen as DOMRect;
+    rearmed?.intersect();
+    vi.advanceTimersByTime(1100);
+    expect(isPlaying()).toBe(true);
+  });
+
   it('does not autoplay a collapsed panel when the tab becomes visible again', () => {
     setCollapsedPreference(true);
     mount();

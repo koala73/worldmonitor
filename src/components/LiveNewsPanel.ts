@@ -247,6 +247,17 @@ export class LiveNewsPanel extends Panel {
   }
 
   private setupLazyInit(): void {
+    // Re-checked when it runs: during the wait the viewer may collapse the panel, scroll it
+    // away or switch tabs. Off screen, observe again so the start waits for the panel's return.
+    const startWhenVisible = () => {
+      this.idleCallbackId = null;
+      if (!this.alwaysOn || this.idleStoppedAfterMs !== null || !this.canHostLiveMedia()) return;
+      if (document.hidden || !this.isPanelVisible()) {
+        if (!this.lazyObserver) this.setupLazyInit();
+        return;
+      }
+      this.triggerInit();
+    };
     this.lazyObserver = new IntersectionObserver(
       (entries) => {
         if (entries.some(e => e.isIntersecting)) {
@@ -257,12 +268,11 @@ export class LiveNewsPanel extends Panel {
           if (!this.alwaysOn || this.idleStoppedAfterMs !== null || !this.canHostLiveMedia()) return;
           if ('requestIdleCallback' in window) {
             this.idleCallbackId = (window as any).requestIdleCallback(
-              () => { this.idleCallbackId = null; if (this.canHostLiveMedia()) this.triggerInit(); },
+              startWhenVisible,
               { timeout: 1000 },
             );
           } else {
-            // Re-checked when it runs: the viewer may collapse the panel while the start waits.
-            this.idleCallbackId = setTimeout(() => { this.idleCallbackId = null; if (this.canHostLiveMedia()) this.triggerInit(); }, 1000);
+            this.idleCallbackId = setTimeout(startWhenVisible, 1000);
           }
         }
       },
