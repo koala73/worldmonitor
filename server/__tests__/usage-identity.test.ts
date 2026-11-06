@@ -47,6 +47,31 @@ describe('buildUsageIdentity — plan_key attribution (#4572)', () => {
   });
 });
 
+describe('buildUsageIdentity — Enterprise contract account attribution', () => {
+  test('a pooled user API key carries account_id and overage', () => {
+    const ident = buildUsageIdentity(baseInput({
+      isUserApiKey: true,
+      sessionUserId: 'u',
+      planKey: 'enterprise',
+      accountId: 'acct_1',
+      overage: true,
+    }));
+    expect(ident).toMatchObject({ auth_kind: 'user_api_key', account_id: 'acct_1', overage: true });
+  });
+
+  test('every other identity reports null, even with stale account input', () => {
+    for (const input of [
+      baseInput({ sessionUserId: 'u', accountId: 'acct_1', overage: false }),
+      baseInput({ enterpriseApiKey: 'wm_ent_x', accountId: 'acct_1', overage: true }),
+      baseInput({ accountId: 'acct_1' }),
+      baseInput({ isUserApiKey: true, sessionUserId: 'u' }),
+    ]) {
+      const ident = buildUsageIdentity(input);
+      expect([ident.account_id, ident.overage]).toEqual([null, null]);
+    }
+  });
+});
+
 describe('buildUsageIdentity — auth_kind branches', () => {
   test('user_api_key takes precedence over every other signal', () => {
     const ident = buildUsageIdentity(baseInput({

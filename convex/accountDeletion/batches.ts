@@ -45,6 +45,9 @@ export const PERSONAL_DELETE_TABLES = [
   "checkoutSessionEvents",
   "followedCountriesUserMeta",
   "agentFeedback",
+  // Appended next to the end: in-flight deletions store a table index, and an
+  // insert earlier in the list would make them skip a table.
+  "enterpriseMembers",
   "users",
 ] as const;
 
@@ -165,6 +168,11 @@ async function takePersonalRows(
       return ctx.db
         .query("followedCountriesUserMeta")
         .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "enterpriseMembers":
+      return ctx.db
+        .query("enterpriseMembers")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
         .take(limit);
     case "users":
       return ctx.db
