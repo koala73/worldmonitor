@@ -113,6 +113,7 @@ function serverPlacedFeeds(edition: string, category: string): CatalogFeed[] {
   return placementIndex.get(`${edition}|${category}`) ?? [];
 }
 
+/** Project server fetch metadata, preserving language and cross-language eligibility separately. */
 function toServerFeed(feed: CatalogFeed): ServerCatalogFeed {
   if (typeof feed.url !== 'string') {
     throw new Error(`news catalog: server-placed feed "${feed.name}" needs a single URL`);

@@ -55,7 +55,8 @@ async function installDigestAccounting(page: Page): Promise<DigestLog> {
 
   // Catch-all first: later-registered routes win in Playwright, so the digest
   // handler below still sees its own traffic.
-  await page.route(/^https?:\/\/(?!(127\.0\.0\.1:4173|localhost:4173)(?:\/|$)).*/i, (route) => {
+  const localOrigin = new URL(test.info().project.use.baseURL as string).origin;
+  await page.route((url) => /^https?:$/.test(url.protocol) && url.origin !== localOrigin, (route) => {
     return route.abort('blockedbyclient');
   });
 
@@ -78,6 +79,7 @@ async function installDigestAccounting(page: Page): Promise<DigestLog> {
   return log;
 }
 
+/** Seed a Full Pro profile once, so reload checks retain the source choices made by the test. */
 async function seedProFullVariant(page: Page, returningProfile = false, locale = 'en'): Promise<void> {
   await page.addInitScript(({ returning, language }) => {
     // Seed once per tab: addInitScript re-runs on every navigation, and a
@@ -184,6 +186,55 @@ async function disableFirstSources(page: Page, count: number): Promise<string[]>
 }
 
 test.describe('settings source live apply (#6380)', () => {
+  for (const preference of ['missing', 'empty', 'write-failure'] as const) {
+    test(`German RSS startup handles ${preference} preferences without losing opt-in rules`, async ({ page }) => {
+      await seedProFullVariant(page, true);
+      await page.addInitScript((mode) => {
+        if (!sessionStorage.getItem('__german_rss_missing_seeded__')) {
+          localStorage.removeItem('worldmonitor-disabled-feeds');
+          if (mode === 'empty') localStorage.setItem('worldmonitor-disabled-feeds', '[]');
+          for (const key of [
+            'worldmonitor-frontline-europe-enable-v1',
+            'worldmonitor-strategic-defaults-enable-v1',
+            'worldmonitor-regional-feed-rollout-reconcile-v1',
+            'worldmonitor-canada-arctic-optin-v1',
+            'worldmonitor-canada-depth-optin-v1',
+            'worldmonitor-crisis-desk-optin-v1',
+            'worldmonitor-curated-regional-optin-v1',
+          ]) localStorage.setItem(key, 'done');
+          sessionStorage.setItem('__german_rss_missing_seeded__', '1');
+        }
+        if (mode === 'write-failure' && !sessionStorage.getItem('__german_rss_allow_writes__')) {
+          const original = Storage.prototype.setItem;
+          Storage.prototype.setItem = function (key: string, value: string) {
+            if (this === localStorage && key === 'worldmonitor-disabled-feeds') {
+              throw new DOMException('Test preference quota', 'QuotaExceededError');
+            }
+            original.call(this, key, value);
+          };
+        }
+      }, preference);
+      await bootUntilNewsSettles(page);
+      if (preference === 'write-failure') {
+        expect(await page.evaluate(() => localStorage.getItem('worldmonitor-german-rss-sources-v1'))).toBeNull();
+        await page.evaluate(() => sessionStorage.setItem('__german_rss_allow_writes__', '1'));
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
+      }
+      expect(await page.evaluate(() => localStorage.getItem('worldmonitor-german-rss-sources-v1'))).toBe('done');
+      const disabled = await page.evaluate(() => JSON.parse(localStorage.getItem('worldmonitor-disabled-feeds') ?? 'null') as string[] | null);
+      expect(disabled).not.toBeNull();
+      if (preference === 'empty') expect(disabled).toEqual([]);
+      else for (const name of ['Deutschlandfunk', 'ZDFheute']) expect(disabled).toContain(name);
+      await openSourcesTab(page);
+      for (const name of ['Deutschlandfunk', 'ZDFheute']) {
+        await page.locator('.sources-search input').fill(name);
+        const toggle = page.locator(`#usSourceToggles .source-toggle-item[data-source="${name}"]`);
+        if (preference === 'empty') await expect(toggle).toHaveClass(/\bactive\b/);
+        else await expect(toggle).not.toHaveClass(/\bactive\b/);
+      }
+    });
+  }
   for (const locale of ['en', 'de']) {
     test(`German RSS sources default correctly in ${locale} and retain explicit choices`, async ({ page }, testInfo) => {
       await seedProFullVariant(page, true, locale);

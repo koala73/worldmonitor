@@ -34,6 +34,7 @@ export interface ServerFeed {
   linkHosts?: string[];
 }
 
+/** Match the digest language unless the catalog explicitly permits cross-language fetching. */
 export function isServerFeedReachableForLanguage(
   feed: Pick<ServerFeed, 'lang' | 'strategicDefault' | 'fetchInAllLanguages'>,
   language: string,

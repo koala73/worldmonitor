@@ -153,6 +153,7 @@ function getRegionalRolloutTargets(): ReturnType<typeof buildRegionalFeedRollout
   return _regionalRolloutTargets;
 }
 
+/** Cache migration configuration while keeping the German-default locale lookup dynamic. */
 function getMigrations(): ReturnType<typeof buildMigrations> {
   if (_migrations) return _migrations;
   const legacyPreStrategicDefaultDisabled = new Set(
@@ -653,6 +654,7 @@ interface AppliedMigrations {
   dataChanged: boolean;
 }
 
+/** Apply pending schemas, skipping only a German RSS default already applied to this local profile. */
 function applyMigrationsWithSchemaVersion(
   data: Record<string, unknown>,
   fromVersion: number,

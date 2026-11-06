@@ -1245,8 +1245,9 @@ describe('cloud prefs account switch without an observed sign-out (SM-015)', () 
 
   it("keeps account B's row intact when A's failed sign-in left B's marker over A's version", async () => {
     const result = await runHarness(async (cloudPrefs, controls) => {
-      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
-      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 3, 9);
+      // Current schemas isolate account ownership from an intentional migration upload.
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 10);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 3, 10);
       controls.setToken('b-token');
       await cloudPrefs.onSignIn('user-b', 'full');
       cloudPrefs.onSignOut();

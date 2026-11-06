@@ -1526,10 +1526,11 @@ export class App {
       }
       const germanRssKey = 'worldmonitor-german-rss-sources-v1';
       if (!safeStorageGet(germanRssKey)) {
-        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
-        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current) };
+        // Missing preferences need persisted defaults; a saved [] is an explicit enable-all choice.
+        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
         const migrated = migrateGermanRssSourcesV10(blob, GERMAN_RSS_SOURCES, userLang);
-        const persisted = migrated === blob || saveToStorage(
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
           STORAGE_KEYS.disabledFeeds,
           JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
         );

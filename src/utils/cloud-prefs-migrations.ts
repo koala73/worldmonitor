@@ -244,6 +244,7 @@ export interface CloudPrefsMigrationOptions {
   };
 }
 
+/** Build the numbered preference migrations; locale providers are read when a migration runs. */
 export function buildMigrations(
   feedsByCategory: FeedsByCategory,
   options: CloudPrefsMigrationOptions = {},
