@@ -5257,5 +5257,17 @@
     "language": "en",
     "ownershipClass": "nonprofit",
     "note": "Owned by MIT."
+  },
+  "Deutschlandfunk": {
+    "country": "DE",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "public-service"
+  },
+  "ZDFheute": {
+    "country": "DE",
+    "audience": "domestic",
+    "language": "de",
+    "ownershipClass": "public-service"
   }
 }

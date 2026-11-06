@@ -5,6 +5,7 @@ export interface ServerFeed {
   name: string;
   url: string;
   lang?: string;
+  fetchInAllLanguages?: boolean;
   strategicDefault?: boolean;
   /**
    * Positive values start earlier in a cold digest build. This is a fetch
@@ -34,10 +35,10 @@ export interface ServerFeed {
 }
 
 export function isServerFeedReachableForLanguage(
-  feed: Pick<ServerFeed, 'lang' | 'strategicDefault'>,
+  feed: Pick<ServerFeed, 'lang' | 'strategicDefault' | 'fetchInAllLanguages'>,
   language: string,
 ): boolean {
-  return !feed.lang || feed.lang === language || !!feed.strategicDefault;
+  return !feed.lang || feed.lang === language || !!feed.strategicDefault || !!feed.fetchInAllLanguages;
 }
 
 export function orderServerFeedEntries<T extends {

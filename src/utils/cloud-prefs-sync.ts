@@ -28,12 +28,14 @@ import {
   CANADA_DEPTH_OPT_IN_SOURCES,
   CRISIS_FLOOR_OPT_IN_SOURCES,
   CURATED_REGIONAL_OPT_IN_SOURCES,
+  GERMAN_RSS_SOURCES,
   FEEDS,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getStrategicDefaultSources,
   INTEL_SOURCES,
 } from '@/config/feeds';
 import { FREE_MAX_SOURCES } from '@/config/panels';
+import { getCurrentLanguage } from '@/services/i18n';
 import { computeCapDisabledSources } from '@/services/source-cap';
 import {
   buildPreStrategicDefaultDisabledStates,
@@ -106,7 +108,7 @@ const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys';
 // the new schema version. Defaults to 1 when missing (assumes oldest).
 const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 9;
+const CURRENT_PREFS_SCHEMA_VERSION = 10;
 const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 
 // Migrations live in cloud-prefs-migrations.ts to keep them testable —
@@ -142,6 +144,7 @@ const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 // Schema 6 already ran; a new App.ts key alone is not enough.
 // Schema 8 (#6813-#6830): add the validated crisis-desk opt-in companions.
 // Schema 9 (#7748): keep the new curated regional desks opt-in for returners.
+// Schema 10 (#10102/#10103): German RSS defaults only for German UI language.
 let _migrations: ReturnType<typeof buildMigrations> | null = null;
 let _regionalRolloutTargets: ReturnType<typeof buildRegionalFeedRolloutMigrationTargets> | null = null;
 
@@ -185,6 +188,10 @@ function getMigrations(): ReturnType<typeof buildMigrations> {
     },
     curatedRegional: {
       optInSources: CURATED_REGIONAL_OPT_IN_SOURCES,
+    },
+    germanRss: {
+      sources: GERMAN_RSS_SOURCES,
+      locale: getCurrentLanguage,
     },
   });
   return _migrations;
