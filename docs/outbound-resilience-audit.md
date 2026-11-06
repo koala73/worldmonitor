@@ -63,6 +63,14 @@ WebSocket sends, and other non-request methods.
   marker. The existing RPOP consumer remains at-most-once: transport failure
   after a committed pop can lose that event. Durable queue acknowledgements
   require a separate delivery protocol and are not supplied by request retries.
+- The notification relay claims each user's real-time dedup key before it
+  reads that user's channels. A failed send keeps the claim, so the same alert
+  is not retried for the 30-minute dedup window (at-most-once). A failed
+  channel read is a pre-send failure: the relay deletes its own claim
+  (compare-and-delete on the token it wrote) and re-queues the event with a
+  capped attempt counter, the same path as a failed alert-rules read. Users
+  who were sent the alert on that pass keep their claims and are skipped by
+  the retry.
 
 ## Pools and concurrency
 
