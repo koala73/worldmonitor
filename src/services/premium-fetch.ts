@@ -421,14 +421,22 @@ export async function premiumFetch(
         }
         // The refresh is shared with sibling requests, so a caller that gives up
         // stops waiting on it without cancelling it.
-        const fresh = await untilAborted(refreshClerkTokenAfterRejection(token), requestInit?.signal);
-        if (!fresh) return res;
-        const replayHeaders = new Headers(existing);
-        replayHeaders.set('Authorization', `Bearer ${fresh}`);
-        return await fetchReportingServerErrors(
-          input,
-          { ...withCredentials(requestInit), headers: replayHeaders },
-        );
+        // A failed refresh or replay answers with the edge's 401. Letting it reach
+        // the catch below would send a third, anonymous request and replace a
+        // signed-in answer with an anonymous one. Cancellation still propagates.
+        try {
+          const fresh = await untilAborted(refreshClerkTokenAfterRejection(token), requestInit?.signal);
+          if (!fresh) return res;
+          const replayHeaders = new Headers(existing);
+          replayHeaders.set('Authorization', `Bearer ${fresh}`);
+          return await fetchReportingServerErrors(
+            input,
+            { ...withCredentials(requestInit), headers: replayHeaders },
+          );
+        } catch (replayError) {
+          if (isTimeoutOrAbortError(replayError)) throw replayError;
+          return res;
+        }
       }
     } catch (error) {
       if (isTimeoutOrAbortError(error)) throw error;

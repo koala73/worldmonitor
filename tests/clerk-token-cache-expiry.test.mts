@@ -804,4 +804,36 @@ describe('refreshClerkTokenAfterRejection', () => {
     await older;
     assert.equal(await getClerkToken(), fresh, 'the older call did not overwrite the cache or clock');
   });
+
+  it('does not let an older failed calibration clear the replacement', async () => {
+    const now = Date.now();
+    const refused = tokenWithClaims({ iat: now - 30_000, exp: now + 30_000 });
+    const fresh = tokenWithClaims({ iat: now, exp: now + 60_000 });
+    let releaseOld!: (token: string | null) => void;
+    let skipCacheCalls = 0;
+    const session = {
+      getToken(options: { skipCache?: boolean } = {}): Promise<string | null> {
+        if (!options.skipCache) return Promise.resolve(refused);
+        skipCacheCalls++;
+        // 1: the older call's forced fetch, held open. 2: the post-rejection
+        // refresh. Later: Clerk unavailable, so the older call's template
+        // fallback fails too and its calibration genuinely fails.
+        if (skipCacheCalls === 1) return new Promise((resolve) => { releaseOld = resolve; });
+        return Promise.resolve(skipCacheCalls === 2 ? fresh : null);
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    const older = getClerkToken();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await refreshClerkTokenAfterRejection(refused), fresh);
+
+    // The older call's forced fetch fails: on its own epoch that would set the
+    // retry-after backoff and clear the cache.
+    releaseOld(null);
+    await older;
+    const callsBefore = skipCacheCalls;
+    assert.equal(await getClerkToken(), fresh, 'the replacement stays cached');
+    assert.equal(skipCacheCalls, callsBefore, 'served from cache, no new Clerk fetch');
+  });
 });

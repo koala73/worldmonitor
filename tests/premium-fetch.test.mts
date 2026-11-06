@@ -556,6 +556,39 @@ describe('premiumFetch', () => {
     assert.equal(fetchMock.mock.calls.length, 1, 'no replay after the caller gave up');
   });
 
+  it('premium path: a refresh that throws returns the 401, never an anonymous third request', async () => {
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => { throw new Error('clerk down'); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 401);
+    assert.equal(fetchMock.mock.calls.length, 1, 'no replay and no anonymous fallback');
+  });
+
+  it('premium path: a replay that fails on the network returns the 401, never an anonymous third request', async () => {
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => 'fresh-jwt',
+    });
+    let n = 0;
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => (n++ === 0
+      ? Promise.resolve(fakeRes(401))
+      : Promise.reject(new TypeError('Failed to fetch'))));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 401);
+    assert.equal(fetchMock.mock.calls.length, 2, 'the original and the failed replay only');
+  });
+
   it('premium path: a 403 is an entitlement answer, not a stale token — no refresh', async () => {
     let refreshes = 0;
     _setTestProviders({
