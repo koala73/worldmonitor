@@ -29706,3 +29706,40 @@ body.map-width-resizing {
 .food-prices-context { margin-top: 14px; }
 .food-prices-context summary { cursor: pointer; font-size: .9em; }
 .fao-monthly-context { border-top: 1px solid var(--border); }
+
+/* Passive network context stays within the existing popup scroll surface. */
+.cyber-network-info {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cyber-network-info summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  margin-bottom: 10px;
+}
+
+.cyber-network-info .popup-stats {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cyber-copy {
+  margin-inline-start: 8px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cyber-copy-status {
+  display: block;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}

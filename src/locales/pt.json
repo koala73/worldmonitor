@@ -2825,7 +2825,44 @@
       "open": "ABERTO"
     },
     "cyberThreat": {
-      "title": "CIBERAMEAÇA"
+      "title": "CIBERAMEAÇA",
+      "evidence": "Evidência de threat-feed",
+      "firstSeen": "Primeira detecção",
+      "explanations": {
+        "c2_server": "O feed relata um servidor de comando e controle usado para enviar instruções a malware.",
+        "malware_host": "O feed relata um endereço usado para hospedar malware.",
+        "phishing": "O feed relata um indicador associado a phishing.",
+        "malicious_url": "O feed relata uma URL associada a atividade maliciosa."
+      },
+      "downloadTag": "malware_download: a fonte relata um local de download de malware.",
+      "familyNote": "O rótulo de família de malware vem do threat-feed. Ele não identifica uma pessoa ou organização.",
+      "approximateLocation": "A localização mapeada é contexto aproximado derivado de IP, não uma localização física verificada do host.",
+      "network": {
+        "title": "Informações de rede",
+        "privacy": "Expanda para solicitar dados de rede passiva do RIPEstat. O IP do indicador é compartilhado com esse provedor.",
+        "disclaimer": "Registro de rede e roteamento não identificam o atacante nem responsabilizam o provedor pela atividade.",
+        "loading": "Carregando informações de rede…",
+        "unknown": "Não disponível",
+        "disabled": "A consulta de rede não está habilitada.",
+        "invalid": "A consulta de rede requer um endereço IP público.",
+        "unavailable": "A consulta de rede falhou. Feche e reabra o popup para tentar novamente mais tarde.",
+        "rateLimited": "A consulta de rede está temporariamente limitada. Tente novamente mais tarde.",
+        "noData": "O provedor não retornou informações de rede para este IP.",
+        "partial": "Algumas informações de rede não puderam ser recuperadas.",
+        "ip": "IP",
+        "asn": "ASN de origem",
+        "operator": "Titular do ASN / operador de rede informado",
+        "prefix": "Prefixo de roteamento informado",
+        "hostname": "Nome de host DNS reverso (rDNS)",
+        "lookupAt": "Horário da consulta de rede",
+        "routingAt": "Horário dos dados de roteamento",
+        "broaderPrefix": "O provedor correspondeu a um prefixo de roteamento mais amplo. Este não é um registro exato de alocação de IP.",
+        "rdnsNote": "rDNS é um rótulo DNS, não prova de propriedade. Organização registrada e localização precisa não são fornecidas por esta consulta.",
+        "copy": "Copiar",
+        "copied": "Copiado.",
+        "copyFailed": "Falha ao copiar. Selecione o texto para copiá-lo."
+      },
+      "firstSeenNote": "Esta é a data de indicador mais antiga disponível entre feeds ou observações do World Monitor; pode diferir da data listada da fonte."
     },
     "nuclear": {
       "types": {

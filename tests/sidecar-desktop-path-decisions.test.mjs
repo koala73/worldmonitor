@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -20,6 +21,16 @@ const root = resolve(__dirname, '..');
 
 const buildScript = readFileSync(resolve(root, 'scripts/build-sidecar-handlers.mjs'), 'utf-8');
 const sidecar = readFileSync(resolve(root, 'src-tauri/sidecar/local-api-server.mjs'), 'utf-8');
+
+it('cloud-prefers cyber feed and authorized enrichment with or without a relay', () => {
+  const declarations = sidecar.slice(sidecar.indexOf('const cloudPreferred ='), sidecar.indexOf('async function isLocalOnlyRequest'));
+  for (const relay of ['', 'https://relay.test']) {
+    const preferred = vm.runInNewContext(`${declarations}\nisCloudPreferred`, { process: { env: { WS_RELAY_URL: relay } } });
+    assert.equal(preferred('/api/cyber/v1/list-cyber-threats'), true);
+    assert.equal(preferred('/api/cyber/v1/get-network-info'), true);
+    assert.equal(preferred('/api/cyber/v1/unregistered-live-route'), false);
+  }
+});
 
 function listFromSource(source, name) {
   const match = source.match(new RegExp(`const ${name} = (?:new Set\\()?\\[([\\s\\S]*?)\\]`));

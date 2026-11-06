@@ -2807,7 +2807,44 @@
       "open": "OPEN"
     },
     "cyberThreat": {
-      "title": "CYBERDREIGING"
+      "title": "CYBERDREIGING",
+      "evidence": "Bewijsmateriaal uit dreigingsfeed",
+      "firstSeen": "Eerst waargenomen",
+      "explanations": {
+        "c2_server": "De feed rapporteert een command-and-control-server die wordt gebruikt om instructies naar malware te sturen.",
+        "malware_host": "De feed rapporteert een adres dat wordt gebruikt om malware te hosten.",
+        "phishing": "De feed rapporteert een indicator die is gekoppeld aan phishing.",
+        "malicious_url": "De feed rapporteert een URL die is gekoppeld aan schadelijke activiteit."
+      },
+      "downloadTag": "malware_download: de bron rapporteert een downloadlocatie voor malware.",
+      "familyNote": "Het label voor de malwarefamilie komt uit de dreigingsfeed. Het identificeert geen persoon of organisatie.",
+      "approximateLocation": "De weergegeven locatie is geschatte IP-afgeleid contextgegevens, geen geverifieerde fysieke hostlocatie.",
+      "network": {
+        "title": "Netwerkgegevens",
+        "privacy": "Vouw uit om passieve netwerkgegevens van RIPEstat op te vragen. Het indicator-IP wordt met die provider gedeeld.",
+        "disclaimer": "Netwerkregistratie en routering identificeren de aanvaller niet en maken de provider niet verantwoordelijk voor de activiteit.",
+        "loading": "Netwerkgegevens laden…",
+        "unknown": "Niet beschikbaar",
+        "disabled": "Netwerkopzoeking is niet ingeschakeld.",
+        "invalid": "Netwerkopzoeking vereist een openbaar IP-adres.",
+        "unavailable": "Netwerkopzoeking mislukt. Sluit het popup en open het later opnieuw om het opnieuw te proberen.",
+        "rateLimited": "Netwerkopzoeking is tijdelijk beperkt. Probeer het later opnieuw.",
+        "noData": "De provider heeft geen netwerkgegevens voor dit IP geretourneerd.",
+        "partial": "Enkele netwerkgegevens konden niet worden opgehaald.",
+        "ip": "IP",
+        "asn": "Herkomst-ASN",
+        "operator": "Gerapporteerde ASN-houder / netwerkoperator",
+        "prefix": "Gerapporteerd routeringsprefix",
+        "hostname": "Reverse-DNS-hostnaam (rDNS)",
+        "lookupAt": "Opzoektijd netwerk",
+        "routingAt": "Routeringsgegevenstijd",
+        "broaderPrefix": "De provider kwam overeen met een breder routeringsprefix. Dit is geen exact IP-toewijzingsrecord.",
+        "rdnsNote": "rDNS is een DNS-label, geen bewijs van eigendom. Geregistreerde organisatie en precieze locatie worden niet verstrekt door deze opzoeking.",
+        "copy": "Kopiëren",
+        "copied": "Gekopieerd.",
+        "copyFailed": "Kopiëren mislukt. Selecteer de tekst om deze te kopiëren."
+      },
+      "firstSeenNote": "Dit is de vroegst beschikbare indicatordatum uit feeds of World Monitor-waarnemingen; deze kan afwijken van de datum van de vermelde bron."
     },
     "nuclear": {
       "types": {

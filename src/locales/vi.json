@@ -3180,7 +3180,44 @@
       "airborne": "Đang bay"
     },
     "cyberThreat": {
-      "title": "MỐI ĐE DỌA MẠNG"
+      "title": "MỐI ĐE DỌA MẠNG",
+      "evidence": "Bằng chứng từ nguồn cảnh báo",
+      "firstSeen": "Lần đầu tiên phát hiện",
+      "explanations": {
+        "c2_server": "Nguồn cảnh báo báo cáo máy chủ điều khiển và chỉ huy được sử dụng để gửi lệnh tới phần mềm độc hại.",
+        "malware_host": "Nguồn cảnh báo báo cáo địa chỉ được sử dụng để lưu trữ phần mềm độc hại.",
+        "phishing": "Nguồn cảnh báo báo cáo chỉ số liên quan đến lừa đảo qua email.",
+        "malicious_url": "Nguồn cảnh báo báo cáo URL liên quan đến hoạt động độc hại."
+      },
+      "downloadTag": "malware_download: nguồn báo cáo vị trí tải xuống phần mềm độc hại.",
+      "familyNote": "Nhãn họ phần mềm độc hại đến từ nguồn cảnh báo. Nó không xác định một người hoặc tổ chức cụ thể.",
+      "approximateLocation": "Vị trí được ánh xạ là ngữ cảnh gần đúng được lấy từ IP, không phải vị trí máy chủ vật lý được xác minh.",
+      "network": {
+        "title": "Thông tin mạng",
+        "privacy": "Mở rộng để yêu cầu dữ liệu mạng bị động từ RIPEstat. IP chỉ số được chia sẻ với nhà cung cấp đó.",
+        "disclaimer": "Đăng ký mạng và định tuyến không xác định được kẻ tấn công hoặc gây trách nhiệm cho nhà cung cấp về hoạt động đó.",
+        "loading": "Đang tải thông tin mạng…",
+        "unknown": "Không có sẵn",
+        "disabled": "Tra cứu mạng không được bật.",
+        "invalid": "Tra cứu mạng yêu cầu địa chỉ IP công cộng.",
+        "unavailable": "Tra cứu mạng không thành công. Đóng và mở lại cửa sổ bật lên để thử lại sau.",
+        "rateLimited": "Tra cứu mạng bị giới hạn tạm thời. Hãy thử lại sau.",
+        "noData": "Nhà cung cấp không trả về thông tin mạng nào cho IP này.",
+        "partial": "Không thể truy xuất một số thông tin mạng.",
+        "ip": "IP",
+        "asn": "ASN gốc",
+        "operator": "Chủ sở hữu ASN được báo cáo / nhà điều hành mạng",
+        "prefix": "Tiền tố định tuyến được báo cáo",
+        "hostname": "Tên máy chủ DNS nghịch đảo (rDNS)",
+        "lookupAt": "Thời gian tra cứu mạng",
+        "routingAt": "Thời gian dữ liệu định tuyến",
+        "broaderPrefix": "Nhà cung cấp đã khớp với tiền tố định tuyến rộng hơn. Đây không phải là bản ghi phân bổ IP chính xác.",
+        "rdnsNote": "rDNS là nhãn DNS, không phải bằng chứng quyền sở hữu. Tổ chức đã đăng ký và vị trí chính xác không được cung cấp bởi tra cứu này.",
+        "copy": "Sao chép",
+        "copied": "Đã sao chép.",
+        "copyFailed": "Sao chép không thành công. Chọn văn bản để sao chép nó."
+      },
+      "firstSeenNote": "Đây là ngày chỉ báo sớm nhất có sẵn trên các feed hoặc quan sát World Monitor; nó có thể khác với ngày của nguồn được liệt kê."
     },
     "nuclear": {
       "types": {

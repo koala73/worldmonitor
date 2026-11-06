@@ -3269,7 +3269,44 @@
       "airborne": "Levegőben"
     },
     "cyberThreat": {
-      "title": "KIBERFENYEGETÉS"
+      "title": "KIBERFENYEGETÉS",
+      "evidence": "Fenyegetésforrás adatai",
+      "firstSeen": "Első észlelés",
+      "explanations": {
+        "c2_server": "A forrás egy parancsot-és-vezérlést szerver jelentett, amely a kártékony kódra vonatkozó utasítások küldésére használatos.",
+        "malware_host": "A forrás egy kártékony kódot futtató címet jelentett.",
+        "phishing": "A forrás adathalászathoz kapcsolódó indikátort jelentett.",
+        "malicious_url": "A forrás egy rosszindulatú tevékenységgel kapcsolatos URL-t jelentett."
+      },
+      "downloadTag": "malware_download: a forrás egy kártékony kód letöltésének helyét jelenti.",
+      "familyNote": "A kártékony kód családára vonatkozó címke a fenyegetésforrástól származik. Ez nem személyt vagy szervezetet azonosít.",
+      "approximateLocation": "A leképezett hely egy hozzávetőleges IP-alapú kontextus, nem pedig egy ellenőrzött fizikai hoszthelyek.",
+      "network": {
+        "title": "Hálózati adatok",
+        "privacy": "Bontsa ki a passzív hálózati adatok RIPEstat-tól történő kéréséhez. Az indikátor IP-cím megosztásra kerül az adatszolgáltatóval.",
+        "disclaimer": "A hálózati regisztráció és útválasztás nem azonosítja a támadót, és nem teszi az szolgáltatót felelőssé a tevékenységért.",
+        "loading": "Hálózati adatok betöltése…",
+        "unknown": "Nem érhető el",
+        "disabled": "A hálózati keresés nincs engedélyezve.",
+        "invalid": "A hálózati kereséshez nyilvános IP-cím szükséges.",
+        "unavailable": "A hálózati keresés sikertelen volt. Zárja be és nyissa meg újra az előugró ablakot, hogy később próbálkozzon újra.",
+        "rateLimited": "A hálózati keresés ideiglenesen korlátozott. Próbálja újra később.",
+        "noData": "Az adatszolgáltató nem adott vissza hálózati adatokat erre az IP-címre.",
+        "partial": "Néhány hálózati adat nem volt letölthető.",
+        "ip": "IP",
+        "asn": "Forrás ASN",
+        "operator": "Bejelentett ASN-tartó / hálózatkezelő",
+        "prefix": "Bejelentett útválasztási előtag",
+        "hostname": "Fordított DNS-gazdanév (rDNS)",
+        "lookupAt": "Hálózati keresés időpontja",
+        "routingAt": "Útválasztási adatok időpontja",
+        "broaderPrefix": "Az adatszolgáltató egy tágabb útválasztási előtagot talált. Ez nem egy pontos IP-foglalási rekord.",
+        "rdnsNote": "Az rDNS egy DNS-címke, nem pedig a tulajdonjog bizonyítéka. A regisztrált szervezet és a pontos hely nem tartozik ehhez a kereséshez.",
+        "copy": "Másolás",
+        "copied": "Másolva.",
+        "copyFailed": "A másolás sikertelen volt. Jelölje ki a szöveget a másoláshoz."
+      },
+      "firstSeenNote": "Ez a legkorábbi elérhető indikátor dátum a feedek vagy World Monitor megfigyelések között; eltérhet a felsorolt forrás dátumától."
     },
     "nuclear": {
       "types": {

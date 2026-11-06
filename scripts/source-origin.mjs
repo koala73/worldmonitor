@@ -67,6 +67,8 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 // Host → ISO 3166-1 alpha-2, 'EU', or null (international).
 // Only hosts that cannot be inferred from a real ccTLD or government suffix.
 const HOST_ORIGINS = Object.freeze({
+  // RIPE NCC's publishing organization is based in Amsterdam.
+  'stat.ripe.net': 'NL',
   'fdw.fews.net': 'US',
   'lindas.cz-aws.net': 'CH',
   // #6153: Moscow Exchange ISS, the exchange's own market-data API.

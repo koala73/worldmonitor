@@ -3180,7 +3180,44 @@
       "airborne": "空中"
     },
     "cyberThreat": {
-      "title": "网络威胁"
+      "title": "网络威胁",
+      "evidence": "威胁数据源证据",
+      "firstSeen": "首次发现",
+      "explanations": {
+        "c2_server": "数据源报告了用于向恶意软件发送指令的命令控制服务器。",
+        "malware_host": "数据源报告了用于托管恶意软件的地址。",
+        "phishing": "数据源报告了与钓鱼攻击相关的指标。",
+        "malicious_url": "数据源报告了与恶意活动相关的URL。"
+      },
+      "downloadTag": "malware_download：来源报告的恶意软件下载位置。",
+      "familyNote": "恶意软件家族标签来自威胁数据源。它不用于标识个人或组织。",
+      "approximateLocation": "映射的位置是根据IP推导的近似上下文，而非已验证的物理主机位置。",
+      "network": {
+        "title": "网络信息",
+        "privacy": "展开以从RIPEstat请求被动网络数据。指标IP将与该提供商共享。",
+        "disclaimer": "网络注册和路由信息不能用于识别攻击者或确定提供商对该活动的责任。",
+        "loading": "正在加载网络信息…",
+        "unknown": "不可用",
+        "disabled": "网络查询未启用。",
+        "invalid": "网络查询需要公网IP地址。",
+        "unavailable": "网络查询失败。关闭并重新打开弹窗稍后重试。",
+        "rateLimited": "网络查询暂时受限。请稍后重试。",
+        "noData": "提供商未返回此IP的网络信息。",
+        "partial": "部分网络信息无法检索。",
+        "ip": "IP",
+        "asn": "源ASN",
+        "operator": "报告的ASN持有人/网络运营商",
+        "prefix": "报告的路由前缀",
+        "hostname": "反向DNS主机名（rDNS）",
+        "lookupAt": "网络查询时间",
+        "routingAt": "路由数据时间",
+        "broaderPrefix": "提供商匹配了更广泛的路由前缀。这不是精确的IP分配记录。",
+        "rdnsNote": "rDNS是DNS标签，不是所有权证明。此查询不提供注册组织和精确位置。",
+        "copy": "复制",
+        "copied": "已复制。",
+        "copyFailed": "复制失败。请选中文本后复制。"
+      },
+      "firstSeenNote": "这是跨源和 World Monitor 观察中最早可用的指标日期；可能与列出的源的日期不同。"
     },
     "nuclear": {
       "types": {

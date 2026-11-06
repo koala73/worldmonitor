@@ -1,7 +1,7 @@
 import '../styles/main.css';
 import { AI_DATA_CENTERS } from '../config/ai-datacenters';
 import { MapPopup } from '../components/MapPopup';
-import type { Hotspot } from '../types';
+import type { CyberThreat, Hotspot } from '../types';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { initI18n } from '../services/i18n';
 import { calculateDynamicScore } from '../services/hotspot-escalation';
@@ -49,6 +49,7 @@ const overlays = document.createElement('div');
 overlays.id = 'mapOverlays';
 app.appendChild(overlays);
 
+const cyber = new URLSearchParams(window.location.search).has('cyber');
 const breakdown = new URLSearchParams(window.location.search).has('breakdown');
 await initI18n({ waitForFullTranslation: true });
 if (breakdown) {
@@ -73,6 +74,13 @@ const sampleHotspot: Hotspot = {
   status: 'monitoring',
 };
 
+const sampleCyber: CyberThreat = {
+  id: 'cyber-network-fixture', indicator: '2.249.90.120', indicatorType: 'ip',
+  type: 'malware_host', source: 'urlhaus', severity: 'high', country: 'SE',
+  lat: 59.3, lon: 18, tags: ['malware_download', 'MOZI'], malwareFamily: 'MOZI',
+  firstSeen: '2026-11-01T12:00:00Z', lastSeen: '2026-11-05T12:00:00Z',
+};
+
 const popup = new MapPopup(app);
 
 const hotspot = document.createElement('div');
@@ -89,8 +97,8 @@ hotspot.addEventListener('click', (e) => {
     return;
   }
   popup.show({
-    type: 'hotspot',
-    data: sampleHotspot,
+    type: cyber ? 'cyberThreat' : 'hotspot',
+    data: cyber ? sampleCyber : sampleHotspot,
     relatedNews: [],
     x: e.clientX - rect.left,
     y: e.clientY - rect.top,
