@@ -301,6 +301,20 @@ async function refreshClerkTokenAfterRejection(rejected: string): Promise<string
  * Whether the request can be sent a second time unchanged. A stream body is
  * consumed by the first send, and a `Request` input carries its own body.
  */
+/** `work`, or a rejection with the signal's reason as soon as it aborts. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
+  if (!signal) return work;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
+      (error: unknown) => { signal.removeEventListener('abort', onAbort); reject(error); },
+    );
+  });
+}
+
 function isReplayableRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
   if (typeof Request !== 'undefined' && input instanceof Request && input.body !== null) return false;
   const body = init?.body;
@@ -405,7 +419,9 @@ export async function premiumFetch(
         if (res.status !== 401 || requestInit?.signal?.aborted || !isReplayableRequest(input, requestInit)) {
           return res;
         }
-        const fresh = await refreshClerkTokenAfterRejection(token);
+        // The refresh is shared with sibling requests, so a caller that gives up
+        // stops waiting on it without cancelling it.
+        const fresh = await untilAborted(refreshClerkTokenAfterRejection(token), requestInit?.signal);
         if (!fresh) return res;
         const replayHeaders = new Headers(existing);
         replayHeaders.set('Authorization', `Bearer ${fresh}`);

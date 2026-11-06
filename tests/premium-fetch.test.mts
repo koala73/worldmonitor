@@ -535,6 +535,27 @@ describe('premiumFetch', () => {
     assert.equal(fetchMock.mock.calls.length, 2, 'one original request and one replay, never a loop');
   });
 
+  it('premium path: aborting while the token refresh is pending rejects at once, with no replay', async () => {
+    let refreshStarted!: () => void;
+    const started = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      // Clerk never answers: the caller's own signal is the only way out.
+      refreshClerkTokenAfterRejection: () => { refreshStarted(); return new Promise<string | null>(() => {}); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+    const controller = new AbortController();
+
+    const pending = premiumFetch(TARGET, { signal: controller.signal });
+    await started;
+    controller.abort();
+
+    await assert.rejects(pending, (err: unknown) => (err as Error).name === 'AbortError');
+    assert.equal(fetchMock.mock.calls.length, 1, 'no replay after the caller gave up');
+  });
+
   it('premium path: a 403 is an entitlement answer, not a stale token — no refresh', async () => {
     let refreshes = 0;
     _setTestProviders({

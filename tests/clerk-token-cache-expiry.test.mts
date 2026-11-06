@@ -55,9 +55,9 @@ function tokenExpiringAt(expMs: number): string {
   return tokenWithClaims({ exp: expMs });
 }
 
-function tokenWithClaims(claims: { exp: number; iat?: number }): string {
+function tokenWithClaims(claims: { exp: number; iat?: number; sub?: string }): string {
   const payload = Buffer.from(JSON.stringify({
-    sub: 'user_1',
+    sub: claims.sub ?? 'user_1',
     exp: Math.floor(claims.exp / 1_000),
     ...(claims.iat === undefined ? {} : { iat: Math.floor(claims.iat / 1_000) }),
   }))
@@ -757,5 +757,46 @@ describe('refreshClerkTokenAfterRejection', () => {
   it('returns null when nobody is signed in', async () => {
     __setClerkInstanceForTests(null);
     assert.equal(await refreshClerkTokenAfterRejection('anything'), null);
+  });
+
+  it('never hands back another account\'s token for a request the first account sent', async () => {
+    // A signs out and B signs in while A's request is on the wire; its 401
+    // arrives afterwards. Replaying A's request as B would act for B.
+    const now = Date.now();
+    const tokenA = tokenWithClaims({ iat: now - 30_000, exp: now + 30_000, sub: 'user_a' });
+    const tokenB = tokenWithClaims({ iat: now, exp: now + 60_000, sub: 'user_b' });
+    __setClerkInstanceForTests({ session: { getToken: async () => tokenB } } as never);
+
+    assert.equal(await refreshClerkTokenAfterRejection(tokenA), null);
+  });
+
+  it('does not join a fetch that started before the rejection, nor let it re-cache the refused token', async () => {
+    const now = Date.now();
+    const refused = tokenWithClaims({ iat: now - 30_000, exp: now + 30_000 });
+    const fresh = tokenWithClaims({ iat: now, exp: now + 60_000 });
+    let releaseOld!: (token: string) => void;
+    let skipCacheCalls = 0;
+    const session = {
+      getToken(options: { skipCache?: boolean } = {}): Promise<string> {
+        if (!options.skipCache) return Promise.resolve(refused);
+        skipCacheCalls++;
+        // The first forced fetch belongs to the call already in flight and is
+        // held open; every later one is the post-rejection refresh.
+        if (skipCacheCalls === 1) return new Promise((resolve) => { releaseOld = resolve; });
+        return Promise.resolve(fresh);
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    const older = getClerkToken();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(skipCacheCalls, 1, 'the older call is parked on its forced fetch');
+
+    const replacement = refreshClerkTokenAfterRejection(refused);
+    assert.equal(await replacement, fresh, 'the refresh fetched on its own');
+
+    releaseOld(refused);
+    await older;
+    assert.equal(await getClerkToken(), fresh, 'the older call did not overwrite the cache or clock');
   });
 });
