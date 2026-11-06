@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Šum",
     "signalWord": "Signal",
-    "valueProps": "Geopolitički AI sloj za obavještajne uvide — pitajte ga, pretplatite se, gradite na njemu.",
+    "valueProps": "Pitajte AI analitičara, postavite pravila upozorenja, dobijte izvještaje i koristite ga u Claudeu.",
     "launchingDate": "Dostupno sada",
     "tryFreeDashboard": "Isprobajte besplatnu nadzornu ploču",
     "choosePlan": "Odaberite plan",
-    "signIn": "Prijava",
     "goToDashboard": "Idi na nadzornu ploču"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Osobno",
     "axisPersonalNote": "individualna upotreba",
     "axisCommercial": "Komercijalno",
-    "axisCommercialNote": "rad, klijenti i proizvodi"
+    "axisCommercialNote": "rad, klijenti i proizvodi",
+    "cancelAnytime": "Otkaži bilo kada iz svog računa. Zadržavate pristup do kraja razdoblja za koje ste platili."
   },
   "welcome": {
     "meta": {

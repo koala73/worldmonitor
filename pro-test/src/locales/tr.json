@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Gürültü",
     "signalWord": "Sinyal",
-    "valueProps": "Jeopolitik yapay zekâ katmanı — ona sorun, abone olun, üzerine inşa edin.",
+    "valueProps": "Bir AI analistine sor, uyarı kuralları belirle, durum raporları al ve Claude'da kullan.",
     "launchingDate": "Şimdi mevcut",
     "tryFreeDashboard": "Ücretsiz kontrol panelini deneyin",
     "choosePlan": "Planınızı seçin",
-    "signIn": "Giriş yap",
     "goToDashboard": "Panoya Git"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Kişisel",
     "axisPersonalNote": "bireysel kullanım",
     "axisCommercial": "Ticari",
-    "axisCommercialNote": "iş, müşteriler ve ürünler"
+    "axisCommercialNote": "iş, müşteriler ve ürünler",
+    "cancelAnytime": "Hesabınızdan istediğiniz zaman iptal edebilirsiniz. Ödediğiniz dönemin sonuna kadar erişiminiz devam eder."
   },
   "welcome": {
     "meta": {

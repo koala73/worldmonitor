@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "ضوضاء",
     "signalWord": "إشارة",
-    "valueProps": "طبقة الذكاء الاصطناعي الجيوسياسية — اسألها، اشترك بها، ابنِ فوقها.",
+    "valueProps": "اسأل محلل ذكاء اصطناعي، وعيّن قواعد التنبيهات، واحصل على تقارير موجزة، واستخدمه في Claude.",
     "launchingDate": "متاح الآن",
     "tryFreeDashboard": "جرّب لوحة التحكم المجانية",
     "choosePlan": "اختر خطتك",
-    "signIn": "تسجيل الدخول",
     "goToDashboard": "انتقل إلى لوحة التحكم"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "شخصي",
     "axisPersonalNote": "للاستخدام الفردي",
     "axisCommercial": "تجاري",
-    "axisCommercialNote": "العمل والعملاء والمنتجات"
+    "axisCommercialNote": "العمل والعملاء والمنتجات",
+    "cancelAnytime": "يمكنك الإلغاء في أي وقت من حسابك. ستحتفظ بإمكانية الوصول حتى نهاية الفترة التي دفعت مقابلها."
   },
   "welcome": {
     "meta": {

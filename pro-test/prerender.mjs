@@ -183,8 +183,19 @@ const WELCOME_HERO_CRITICAL_CSS = [
   '@media (min-width:768px){main>section[data-wm-hero] h1{font-size:4.5rem}}',
 ].join('');
 
+// /pro: the curated crawler section sits right after the hero until React's
+// createRoot replaces it with the real page. On a phone it starts inside the
+// first viewport, so a visitor saw unstyled crawler text under the hero and
+// its visible slice outweighed the h1 as the LCP element. Hide it from
+// script-running visitors only: React replaces it, while no-JS readers and
+// HTML-parsing crawlers keep it. visibility (not display) keeps its layout.
+// If the bundle or a locale chunk fails, nothing replaces it, so a CSS-only
+// delayed animation reveals it again: it needs no script, and a normal mount
+// removes the node long before it fires.
+const PRO_OVERVIEW_PREMOUNT_CSS = '@keyframes wm-overview-reveal{to{visibility:visible}}@media (scripting:enabled){#pro-overview{visibility:hidden;animation:wm-overview-reveal 0s 5s forwards}}';
+
 const PAGE_CRITICAL_CSS = {
-  'index.html': CRITICAL_CSS + PRO_HERO_CRITICAL_CSS + PRO_CRITICAL_CSS,
+  'index.html': CRITICAL_CSS + PRO_HERO_CRITICAL_CSS + PRO_CRITICAL_CSS + PRO_OVERVIEW_PREMOUNT_CSS,
   'welcome.html': CRITICAL_CSS + WELCOME_HERO_CRITICAL_CSS,
 };
 
