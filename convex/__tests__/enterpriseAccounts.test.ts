@@ -4,6 +4,7 @@ import schema from "../schema";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
+import { getFeaturesForPlan } from "../lib/entitlements";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -43,9 +44,23 @@ async function entitlementRow(t: T, userId: string) {
 }
 
 async function scheduledFor(t: T, name: string) {
-  const jobs = await t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect());
-  return jobs.filter((job) => job.name === name).map((job) => (job.args[0] as { userId?: string }).userId);
+  return (await scheduledJobsFor(t, name)).map((job) => job.userId);
 }
+
+/** Each scheduled call of `name` with its delay from when it was scheduled. */
+async function scheduledJobsFor(t: T, name: string) {
+  const jobs = await t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect());
+  return jobs
+    .filter((job) => job.name === name)
+    .map((job) => ({
+      userId: (job.args[0] as { userId?: string }).userId,
+      delayMs: Math.round(job.scheduledTime - job._creationTime),
+    }));
+}
+
+// The delayed routing-cache delete must land after any edge lookup that read
+// Convex before the change committed (the entitlement resync's delay).
+const ROUTING_RESYNC_DELAY_MS = 15_000;
 
 beforeEach(() => {
   // Cache actions no-op without Upstash credentials.
@@ -169,6 +184,68 @@ describe("membership as an entitlement source", () => {
     const row = await entitlementRow(t, ALICE);
     expect(row?.planKey).toBe("enterprise");
     expect(row?.validUntil).toBe(start + 365 * DAY_MS);
+  });
+
+  test("at contract end a member with a longer api_starter subscription falls back to it", async () => {
+    const t = convexTest(schema, modules);
+    const subEnd = CONTRACT_END + 30 * DAY_MS;
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: ALICE,
+        dodoSubscriptionId: "sub_alice_starter_long",
+        dodoProductId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+        planKey: "api_starter",
+        status: "active",
+        currentPeriodStart: NOW - 10 * DAY_MS,
+        currentPeriodEnd: subEnd,
+        rawPayload: {},
+        updatedAt: NOW - 10 * DAY_MS,
+      });
+    });
+    const accountId = await createAccount(t);
+    await t.mutation(fns.addMemberByUserId, { accountId, userId: ALICE });
+    expect((await entitlementRow(t, ALICE))?.planKey).toBe("enterprise");
+    expect(await t.query(fns.getLiveAccountBlockByUserId, { userId: ALICE })).not.toBeNull();
+
+    // No mutation runs here: the scheduled jobs due at the contract end (the
+    // account's end job and the member's coverage recheck) recompute it.
+    vi.setSystemTime(CONTRACT_END + 1);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const row = await entitlementRow(t, ALICE);
+    expect(row?.planKey).toBe("api_starter");
+    expect(row?.validUntil).toBe(subEnd);
+    expect(await t.query(fns.getLiveAccountBlockByUserId, { userId: ALICE })).toBeNull();
+    const ent = await t.query(internal.entitlements.getEntitlementsByUserId, { userId: ALICE });
+    expect(ent.planKey).toBe("api_starter");
+    expect("account" in ent).toBe(false);
+  });
+
+  test("moving contractEnd earlier cancels the old end job and schedules one at the new end", async () => {
+    const t = convexTest(schema, modules);
+    const accountId = await createAccount(t);
+    const before = await t.run((ctx) => ctx.db.get(accountId));
+    const oldJobId = before!.contractEndJobId!;
+    const oldJob = await t.run((ctx) => ctx.db.system.get(oldJobId));
+    expect(oldJob).toMatchObject({ scheduledTime: CONTRACT_END, state: { kind: "pending" } });
+
+    const newEnd = NOW + 30 * DAY_MS;
+    await t.mutation(fns.updateAccount, { accountId, contractEnd: newEnd });
+
+    const after = await t.run((ctx) => ctx.db.get(accountId));
+    expect(after!.contractEndJobId).toBeDefined();
+    expect(after!.contractEndJobId).not.toBe(oldJobId);
+    expect((await t.run((ctx) => ctx.db.system.get(oldJobId)))?.state.kind).toBe("canceled");
+    const newJob = await t.run((ctx) => ctx.db.system.get(after!.contractEndJobId!));
+    expect(newJob).toMatchObject({
+      name: "enterpriseAccounts:recomputeAccountMembers",
+      scheduledTime: newEnd,
+      state: { kind: "pending" },
+      args: [{ accountId }],
+    });
+    const pendingEndJobs = (await t.run((ctx) => ctx.db.system.query("_scheduled_functions").collect()))
+      .filter((job) => job.name === "enterpriseAccounts:recomputeAccountMembers" && job.state.kind === "pending");
+    expect(pendingEndJobs.map((job) => job.scheduledTime)).toEqual([newEnd]);
   });
 
   test("a user cannot be an active member of two accounts", async () => {
@@ -344,9 +421,12 @@ describe("AI routing inherited from the account", () => {
 
     await t.mutation(fns.updateAccount, { accountId, allowedProviders: ["anthropic", "openrouter"] });
 
-    const routing = (await scheduledFor(t, "payments/cacheActions:deleteAiRoutingPolicyCache")).slice(routingBefore);
+    const routing = (await scheduledJobsFor(t, "payments/cacheActions:deleteAiRoutingPolicyCache")).slice(routingBefore);
     const ents = (await scheduledFor(t, "payments/cacheActions:deleteEntitlementCache")).slice(entBefore);
-    expect(routing.sort()).toEqual([ALICE, BOB]);
+    // Immediately, and again after the resync delay for a stale re-cache.
+    expect(routing.filter((job) => job.delayMs < 1_000).map((job) => job.userId).sort()).toEqual([ALICE, BOB]);
+    expect(routing.filter((job) => job.delayMs === ROUTING_RESYNC_DELAY_MS).map((job) => job.userId).sort()).toEqual([ALICE, BOB]);
+    expect(routing).toHaveLength(4);
     expect(ents.sort()).toEqual([ALICE, BOB]);
     expect(await t.query(internal.entitlements.getAiRoutingPolicyByUserId, { userId: BOB }))
       .toMatchObject({ allowedProviders: ["anthropic", "openrouter"] });
@@ -357,7 +437,14 @@ describe("AI routing inherited from the account", () => {
     const accountId = await createAccount(t);
     await t.mutation(fns.addMemberByUserId, { accountId, userId: ALICE });
     await t.mutation(fns.removeMember, { accountId, userId: ALICE });
-    expect(await scheduledFor(t, "payments/cacheActions:deleteAiRoutingPolicyCache")).toEqual([ALICE, ALICE]);
+    // Per change: one immediate delete, and one after the resync delay so an
+    // edge lookup that read Convex before the commit cannot re-cache the old
+    // decision for the 60 s routing TTL.
+    const routing = await scheduledJobsFor(t, "payments/cacheActions:deleteAiRoutingPolicyCache");
+    expect(routing.map((job) => job.userId)).toEqual([ALICE, ALICE, ALICE, ALICE]);
+    expect(routing.map((job) => job.delayMs).sort((a, b) => a - b))
+      .toEqual([expect.any(Number), expect.any(Number), ROUTING_RESYNC_DELAY_MS, ROUTING_RESYNC_DELAY_MS]);
+    expect(routing.filter((job) => job.delayMs < 1_000)).toHaveLength(2);
     expect(await scheduledFor(t, "payments/cacheActions:deleteEntitlementCache")).toEqual([ALICE, ALICE]);
   });
 });
@@ -462,6 +549,65 @@ describe("account block on the edge entitlement (U2)", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { planKey: string; account?: unknown };
     expect(body.planKey).toBe("enterprise");
+    expect(body.account).toEqual(EXPECTED_BLOCK(accountId));
+  });
+
+  test("the internal-entitlements fallback swap keeps the block", async () => {
+    // A member whose stored row still points at a stronger subscription whose
+    // period elapsed (tier 0 once read) while a current Pro subscription
+    // exists: the HTTP action swaps in the Pro fallback, and the account
+    // block, which follows membership rather than the winning plan, must
+    // ride along.
+    vi.stubEnv("CONVEX_SERVER_SHARED_SECRET", "test-secret-enterprise-ent-88cc");
+    const t = convexTest(schema, modules);
+    const accountId = await createAccount(t);
+    await t.run(async (ctx) => {
+      // Inserted directly so no recompute rewrites the stale row.
+      await ctx.db.insert("enterpriseMembers", {
+        accountId, userId: ALICE, status: "active", role: "member", joinedAt: NOW, updatedAt: NOW,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: ALICE,
+        dodoSubscriptionId: "sub_alice_business_stale",
+        dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!,
+        planKey: "api_business",
+        status: "active",
+        currentPeriodStart: NOW - 31 * DAY_MS,
+        currentPeriodEnd: NOW - DAY_MS,
+        renewalVerificationState: "pending",
+        renewalVerificationAttemptAt: NOW,
+        rawPayload: {},
+        updatedAt: NOW - DAY_MS,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: ALICE,
+        dodoSubscriptionId: "sub_alice_pro_current",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        rawPayload: {},
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: ALICE,
+        planKey: "api_business",
+        features: getFeaturesForPlan("api_business"),
+        validUntil: NOW - DAY_MS,
+        updatedAt: NOW - DAY_MS,
+      });
+    });
+    const res = await t.fetch("/api/internal-entitlements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-convex-shared-secret": "test-secret-enterprise-ent-88cc" },
+      body: JSON.stringify({ userId: ALICE }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { planKey: string; validUntil: number; billingStatus?: string; account?: unknown };
+    expect(body.planKey).toBe("pro_monthly");
+    expect(body.validUntil).toBe(NOW + 30 * DAY_MS);
+    expect(body.billingStatus).toBe("renewal_verification_pending");
     expect(body.account).toEqual(EXPECTED_BLOCK(accountId));
   });
 

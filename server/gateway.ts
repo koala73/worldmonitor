@@ -93,8 +93,9 @@ import {
   ENTERPRISE_API_RATE_LIMIT,
 } from './_shared/api-key-rate-limit';
 import {
-  ACCOUNT_OVERAGE_HEADER,
   accountRateLimitPlan,
+  accountSafetyLimitResponse,
+  accountServedHeaders,
   type AccountRateLimitPlan,
 } from './_shared/account-rate-limit';
 import { isApiOnlyPath } from './_shared/api-only-paths';
@@ -2508,51 +2509,14 @@ export function createDomainGateway(
               });
             }
             if (meter.overLimit && account) {
-              // The breaker, not the allowance: the headers keep quoting the
-              // contract allowance the customer bought, and the body says
-              // which limit tripped and where it sits.
+              // The breaker, not the allowance (account-rate-limit.ts).
               await meter.rollback();
               emitRequest(429, 'rl_ceiling_429', null);
-              const resetMs = Date.now() + meter.retryAfterSec * 1000;
-              return new Response(JSON.stringify({
-                error: 'Daily safety limit reached',
-                message: "This account's daily safety limit was reached. Requests resume at the next UTC day.",
-                plan: planKey || undefined,
-                limit: allowance,
-                allowance: account.dailyAllowance,
-                limit_type: 'daily',
-                reset: new Date(resetMs).toISOString(),
-              }), {
-                status: 429,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Cache-Control': 'no-store',
-                  ...rateLimitHeaders({
-                    limit: account.dailyAllowance,
-                    remaining: 0,
-                    resetMs,
-                    retryAfterSec: meter.retryAfterSec,
-                    windowSec: 86_400,
-                  }),
-                  ...corsHeaders,
-                },
-              });
+              return accountSafetyLimitResponse(account, meter, corsHeaders, planKey);
             }
             if (meter.metered && account) {
-              const overage = meter.count > account.dailyAllowance;
-              usage.overage = overage;
-              // Served account responses advertise the contract allowance;
-              // no Retry-After, since nothing here asks the caller to wait.
-              const { 'Retry-After': _retryAfter, ...allowanceHeaders } = rateLimitHeaders({
-                limit: account.dailyAllowance,
-                remaining: account.dailyAllowance - meter.count,
-                resetMs: Date.now() + meter.retryAfterSec * 1000,
-                retryAfterSec: meter.retryAfterSec,
-                windowSec: 86_400,
-              });
-              accountResponseHeaders = overage
-                ? { ...allowanceHeaders, [ACCOUNT_OVERAGE_HEADER]: 'true' }
-                : allowanceHeaders;
+              usage.overage = meter.count > account.dailyAllowance;
+              accountResponseHeaders = accountServedHeaders(account, meter);
             }
             if (meter.overLimit) {
               if (enforce) {

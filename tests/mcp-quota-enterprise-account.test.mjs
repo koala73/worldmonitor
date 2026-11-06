@@ -231,6 +231,53 @@ describe('a member through mcpHandler', () => {
     assert.equal(redis.store.get(POOL), 50_000);
   });
 
+  it('the safety-limit denial quotes the contract allowance and offers no upgrade', async () => {
+    // Mirrors the REST "Daily safety limit reached" 429: `limit` is the
+    // safety limit that tripped, `allowance` the contract allowance, and a
+    // contract member has no self-serve plan to buy. A member whose winning
+    // plan has a step up (api_starter -> api_business) still gets no hint.
+    for (const planKey of ['enterprise', 'api_starter']) {
+      const { deps } = makeProDeps({ getEntitlements: async () => ({ ...enterpriseEntitlement(ACCOUNT), planKey }) });
+      deps.redisPipeline = keyedPipeline({ [POOL]: 50_000 }).pipeline;
+      const { response, body } = await call(deps, 'get_market_data');
+      assert.equal(response.status, 429, planKey);
+      assert.ok(Number(response.headers.get('Retry-After')) > 0, planKey);
+      const { data, message } = body.error;
+      assert.equal(data.reason, 'quota-exceeded', planKey);
+      assert.equal(data.limit, 50_000, planKey);
+      assert.equal(data.allowance, 10_000, planKey);
+      assert.equal(data.sharedWithRestApi, true, planKey);
+      assert.match(message, /account's daily safety limit was reached/, planKey);
+      assert.match(message, /UTC midnight/, planKey);
+      assert.doesNotMatch(data.nextStep, /upgrade/i, planKey);
+      assert.equal('recommendedPlan' in data, false, planKey);
+      assert.equal('checkoutTool' in data, false, planKey);
+    }
+  });
+
+  it('on ChatGPT the safety-limit denial keeps the account nextStep and allowance', async () => {
+    const { deps } = memberDeps({ [POOL]: 50_000 });
+    const response = await mcpHandler(proReq('POST', callBody('get_market_data'), { 'User-Agent': 'openai-mcp/1.0.0' }), deps);
+    const { data } = (await response.json()).error;
+    assert.equal(data.allowance, 10_000);
+    assert.equal(data.limit, 50_000);
+    assert.match(data.nextStep, /safety limit set by the contract/);
+    assert.doesNotMatch(data.nextStep, /upgrade|plans/i);
+  });
+
+  it('a non-member at its daily cap keeps the plan denial with its upgrade hint (control)', async () => {
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({ ...enterpriseEntitlement(undefined), planKey: 'api_starter' }),
+      pipelineOpts: { initialCount: 10_000 },
+    });
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    const { body } = await call(deps, 'get_market_data');
+    assert.equal(body.error?.data?.reason, 'quota-exceeded');
+    assert.equal('allowance' in body.error.data, false);
+    assert.equal(body.error.data.recommendedPlan, 'api_business');
+    assert.match(body.error.message, /^Daily MCP quota exceeded/);
+  });
+
   it('serves past the contract allowance (overage) up to the safety limit', async () => {
     const { deps, redis } = memberDeps({ [POOL]: 10_000 });
     const { body } = await call(deps, 'get_market_data');
@@ -315,6 +362,91 @@ describe('AE3: one per-minute bucket across REST and MCP', () => {
     const { deps } = makeProDeps({ getEntitlements: async () => enterpriseEntitlement(undefined) });
     await call(deps, 'get_market_data');
     assert.deepEqual(windowCalls.map((c) => c.key), [`rl:mcp:pro-min:pro-user:${PRO_USER_ID}`]);
+  });
+});
+
+describe('member protocol traffic never spends the account burst', () => {
+  const ACCOUNT_KEYS = (calls) => calls.filter((c) => c.key === BURST_BUCKET);
+  const rpc = (method, params, id = 1) => ({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) });
+
+  it('initialize, tools/list, ping, resources/list and prompts/list stay off acct:<id>', async () => {
+    for (const [method, params] of [
+      ['initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } }],
+      ['tools/list', undefined],
+      ['ping', undefined],
+      ['resources/list', undefined],
+      ['prompts/list', undefined],
+    ]) {
+      windowCalls = [];
+      const { deps } = memberDeps({});
+      const response = await mcpHandler(proReq('POST', rpc(method, params)), deps);
+      assert.ok(response.status < 400, `${method} -> ${response.status}`);
+      assert.deepEqual(ACCOUNT_KEYS(windowCalls), [], method);
+    }
+  });
+
+  it('account status reads, describe_tool and SSE replay GET use the per-user limiter, not acct:<id>', async () => {
+    const cases = [
+      ['resources/read account status', () => proReq('POST', rpc('resources/read', { uri: 'worldmonitor://account/mcp-allowance' }))],
+      ['describe_tool', () => proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' }))],
+      ['SSE replay GET', () => proReq('GET', null, { Accept: 'text/event-stream', 'Last-Event-ID': 'stream-x:1', 'Mcp-Session-Id': 'sess-x' })],
+    ];
+    for (const [label, req] of cases) {
+      windowCalls = [];
+      const { deps } = memberDeps({});
+      await mcpHandler(req(), deps);
+      assert.deepEqual(ACCOUNT_KEYS(windowCalls), [], label);
+      assert.ok(windowCalls.some((c) => c.key.startsWith('rl:mcp:pro-min:pro-')), `${label} still meets a per-user limiter`);
+    }
+  });
+
+  it('a data tools/call and a data resources/read do spend acct:<id>', async () => {
+    for (const [label, body] of [
+      ['tools/call', callBody('get_market_data')],
+      ['resources/read data template', rpc('resources/read', { uri: 'worldmonitor://countries/de/risk' })],
+    ]) {
+      windowCalls = [];
+      const { deps } = memberDeps({});
+      await mcpHandler(proReq('POST', body), deps);
+      assert.equal(ACCOUNT_KEYS(windowCalls).length, 1, label);
+      assert.equal(ACCOUNT_KEYS(windowCalls)[0].tokens, 300, label);
+    }
+  });
+});
+
+describe('usage events attribute pooled MCP calls', () => {
+  async function usageOf(deps) {
+    const events = [];
+    const pending = [];
+    const stub = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).includes('axiom.co')) {
+        for (const ev of JSON.parse(init.body)) events.push(ev);
+        return new Response('{}', { status: 200 });
+      }
+      return stub(url, init);
+    };
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'stub-token';
+    try {
+      const response = await mcpHandler(proReq('POST', callBody('get_market_data')), deps, { waitUntil: (p) => pending.push(p) });
+      await Promise.allSettled(pending);
+      assert.ok(response.status < 400, `status ${response.status}`);
+    } finally {
+      globalThis.fetch = stub;
+      delete process.env.USAGE_TELEMETRY;
+      delete process.env.AXIOM_API_TOKEN;
+    }
+    const calls = events.filter((ev) => ev.tool_name === 'get_market_data');
+    assert.equal(calls.length, 1);
+    return [calls[0].account_id, calls[0].overage];
+  }
+
+  it('[id,false] at the allowance, [id,true] one past it, [null,null] for a non-member', async () => {
+    assert.deepEqual(await usageOf(memberDeps({ [POOL]: 9_999 }).deps), ['acct_hexion', false]);
+    assert.deepEqual(await usageOf(memberDeps({ [POOL]: 10_000 }).deps), ['acct_hexion', true]);
+    const { deps } = makeProDeps({ getEntitlements: async () => enterpriseEntitlement(undefined) });
+    assert.deepEqual(await usageOf(deps), [null, null]);
   });
 });
 

@@ -41,12 +41,15 @@ function enterpriseEntitlement(account?: CachedEntitlements["account"]): CachedE
       mcpAccess: true,
       embedAccess: true,
       dataExport: true,
+      // The catalog's Enterprise shape: MCP spends the shared API budget. A
+      // numeric mcpCallsPerDay beside apiAccess is a pre-marker cache entry,
+      // which the cache read treats as stale.
       planLimits: {
-        apiRequestsPerDay: null,
-        apiBurstRequestsPerMinute: 600,
-        mcpCallsPerDay: 50_000,
+        apiRequestsPerDay: 10_000,
+        apiBurstRequestsPerMinute: 300,
+        mcpCallsPerDay: "shared-api-budget",
         dashboardAiCallsPerDay: 10_000,
-        mcpBurstRequestsPerMinute: 600,
+        mcpBurstRequestsPerMinute: 300,
       },
     },
     validUntil: FUTURE,

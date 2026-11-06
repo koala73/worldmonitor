@@ -409,7 +409,7 @@ function webhookAmount(data: Pick<DodoPaymentData, "total_amount" | "amount">): 
 // happens entirely inside the entitlement check (3s Convex fetch budget + 5s
 // Redis write timeout, ~8s worst case). Tool-level fetch timeouts (up to 25s)
 // do NOT extend that span — the marker write is not deferred to request end.
-const ENTITLEMENT_CACHE_RESYNC_DELAY_MS = 15_000;
+export const ENTITLEMENT_CACHE_RESYNC_DELAY_MS = 15_000;
 
 /**
  * Creates or updates the entitlements record for a given user.

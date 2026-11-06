@@ -662,12 +662,12 @@ async function _getEntitlementsImpl(
       // `{allowance: 'mcp'}` — same counter and same ceiling as the correct
       // `{allowance: 'api', counter: 'mcp'}`, but one unit per call instead of
       // the per-tool weight, so those callers under-pay until the entry ages
-      // out. Below Enterprise, no plan pairs `apiAccess` with a NUMERIC
-      // mcpCallsPerDay (the API tiers carry the marker), so that pairing
-      // identifies a pre-marker entry exactly. Enterprise (tier 3) carries a
-      // numeric fair-use ceiling and must stay cacheable.
+      // out. No current plan pairs `apiAccess` with a NUMERIC mcpCallsPerDay
+      // (every apiAccess plan, Enterprise included, carries the marker), so
+      // that pairing identifies a pre-marker entry exactly. That includes an
+      // Enterprise entry cached before Enterprise moved onto the marker
+      // (100k REST, a dedicated 25k MCP ceiling).
       const legacySharedBudgetShape = ent.features.apiAccess === true
-        && ent.features.tier < 3
         && typeof ent.features.planLimits?.mcpCallsPerDay === 'number';
       // Fourth instance, opt-in (plan 2026-10-25-001): a Pro entry written
       // before `desktopKeyAccess` existed satisfies every check above, and the

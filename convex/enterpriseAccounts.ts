@@ -24,7 +24,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { assertAccountWritable } from "./accountDeletion/guard";
 import { validateAllowedProviders } from "./entitlements";
-import { recomputeEntitlementFromAllSubs } from "./payments/subscriptionHelpers";
+import { ENTITLEMENT_CACHE_RESYNC_DELAY_MS, recomputeEntitlementFromAllSubs } from "./payments/subscriptionHelpers";
 import { isContractLive, liveAccountBlockForUser } from "./lib/enterpriseAccounts";
 
 const DEFAULT_BREAKER_MULTIPLE = 5;
@@ -129,11 +129,23 @@ function holdsSeat(member: Doc<"enterpriseMembers">) {
  * Recompute a member's entitlement and drop both edge cache entries so the
  * change applies on the next request rather than after the cache TTL. The
  * cache actions no-op when Upstash is not configured.
+ *
+ * The routing-policy cache is dropped twice. An edge lookup that read Convex
+ * before this mutation committed can write its old decision back after the
+ * immediate delete, and the edge then serves it for the routing cache's 60 s
+ * TTL (server/_shared/ai-routing-policy.ts). The second delete runs after the
+ * same delay as the entitlement cache's race-covering resync, which outlasts
+ * an edge request's Convex-read to Redis-write span.
  */
 async function applyMemberChange(ctx: MutationCtx, userId: string, now: number) {
   await recomputeEntitlementFromAllSubs(ctx, userId, now);
   await ctx.scheduler.runAfter(0, internal.payments.cacheActions.deleteEntitlementCache, { userId });
   await ctx.scheduler.runAfter(0, internal.payments.cacheActions.deleteAiRoutingPolicyCache, { userId });
+  await ctx.scheduler.runAfter(
+    ENTITLEMENT_CACHE_RESYNC_DELAY_MS,
+    internal.payments.cacheActions.deleteAiRoutingPolicyCache,
+    { userId },
+  );
 }
 
 async function applyToActiveMembers(ctx: MutationCtx, accountId: Id<"enterpriseAccounts">, now: number) {
