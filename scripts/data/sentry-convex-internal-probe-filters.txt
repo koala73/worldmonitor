@@ -246,6 +246,7 @@
 *Could not find public function for 'payments/billing:reconcileStuckPendingPayments'*
 *Could not find public function for 'payments/billing:repairCustomerFromSubscriptionPayload'*
 *Could not find public function for 'payments/billing:reportPaymentReconciliationFailure'*
+*Could not find public function for 'payments/billing:revokeComplimentaryEntitlement'*
 *Could not find public function for 'payments/billing:verifyRecentlyStaleSubscriptionOnDemand'*
 *Could not find public function for 'payments/businessSeats:extendBusinessInvite'*
 *Could not find public function for 'payments/businessSeats:sendBusinessInviteEmail'*
