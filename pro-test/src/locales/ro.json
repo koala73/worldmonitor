@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Zgomot",
     "signalWord": "Semnal",
-    "valueProps": "Pro adaugă un analist AI, reguli de alertă și un briefing programat la dashboard-ul live, și conectează datele acestuia la Claude și alte instrumente AI.",
+    "valueProps": "Întrebați un analist AI, stabiliți reguli de alertă, obțineți rapoarte de situație și folosiți-o în Claude.",
     "launchingDate": "Disponibil acum",
     "tryFreeDashboard": "Încearcă panoul gratuit",
     "choosePlan": "Alege planul",

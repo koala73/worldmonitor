@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Nhiễu",
     "signalWord": "Tín hiệu",
-    "valueProps": "Pro thêm một nhà phân tích AI, quy tắc cảnh báo và một bản briefing theo lịch trình vào dashboard trực tiếp, và kết nối dữ liệu của nó với Claude và các công cụ AI khác.",
+    "valueProps": "Hỏi một nhà phân tích AI, đặt quy tắc cảnh báo, nhận báo cáo tình hình, và sử dụng trong Claude.",
     "launchingDate": "Hiện có sẵn",
     "tryFreeDashboard": "Dùng thử bảng điều khiển miễn phí",
     "choosePlan": "Chọn gói",

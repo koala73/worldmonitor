@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "ノイズ",
     "signalWord": "シグナル",
-    "valueProps": "Proは、ライブダッシュボードにAIアナリスト、アラートルール、スケジュール済みブリーフィングを追加し、そのデータをClaudeおよび他のAIツールに接続します。",
+    "valueProps": "AIアナリストに質問し、アラートルールを設定し、ブリーフィングを取得し、Claudeで使用できます。",
     "launchingDate": "現在ご利用可能",
     "tryFreeDashboard": "無料ダッシュボードを試す",
     "choosePlan": "プランを選ぶ",

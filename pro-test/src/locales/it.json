@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Rumore",
     "signalWord": "Segnale",
-    "valueProps": "Pro aggiunge un analista AI, regole di alert e un briefing programmato al dashboard live, e connette i suoi dati a Claude e altri strumenti AI.",
+    "valueProps": "Chiedi a un analista AI, imposta regole di avviso, ricevi briefing e usalo in Claude.",
     "launchingDate": "Disponibile ora",
     "tryFreeDashboard": "Prova la dashboard gratuita",
     "choosePlan": "Scegli il piano",

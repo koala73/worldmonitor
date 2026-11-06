@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Šum",
     "signalWord": "Signál",
-    "valueProps": "Pro přidává AI analytika, pravidla upozornění a naplánovaný briefing na živý dashboard a připojuje jeho data do Claude a dalších AI nástrojů.",
+    "valueProps": "Ptejte se AI analytika, nastavte pravidla upozornění, získávejte zprávy a používejte to v Claude.",
     "launchingDate": "Dostupné nyní",
     "tryFreeDashboard": "Vyzkoušejte dashboard zdarma",
     "choosePlan": "Vyberte plán",

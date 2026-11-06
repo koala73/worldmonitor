@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Szum",
     "signalWord": "Sygnał",
-    "valueProps": "Pro dodaje analityka AI, reguły alertów i zaplanowany briefing do dashboardu na żywo, a także łączy jego dane z Claude'em i innymi narzędziami AI.",
+    "valueProps": "Pytaj AI analityka, ustaw reguły alertów, otrzymuj briefingi i używaj w Claude.",
     "launchingDate": "Dostępne teraz",
     "tryFreeDashboard": "Wypróbuj darmowy panel",
     "choosePlan": "Wybierz plan",

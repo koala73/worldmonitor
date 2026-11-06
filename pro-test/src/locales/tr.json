@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Gürültü",
     "signalWord": "Sinyal",
-    "valueProps": "Pro, canlı dashboard'a bir yapay zeka analisti, uyarı kuralları ve zamanlanmış briefing ekler ve verilerini Claude ve diğer yapay zeka araçlarına bağlar.",
+    "valueProps": "Bir AI analistine sor, uyarı kuralları belirle, durum raporları al ve Claude'da kullan.",
     "launchingDate": "Şimdi mevcut",
     "tryFreeDashboard": "Ücretsiz kontrol panelini deneyin",
     "choosePlan": "Planınızı seçin",

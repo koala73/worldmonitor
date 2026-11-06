@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "噪音",
     "signalWord": "訊號",
-    "valueProps": "Pro 增加了 AI 分析師、告警規則和定時情報簡報到即時儀表板，並將其資料連線到 Claude 和其他 AI 工具。",
+    "valueProps": "詢問 AI 分析師、設定告警規則、獲取簡報，並在 Claude 中使用。",
     "launchingDate": "現已上線",
     "tryFreeDashboard": "試用免費儀表板",
     "choosePlan": "選擇方案",

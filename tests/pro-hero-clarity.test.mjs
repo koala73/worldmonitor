@@ -26,6 +26,11 @@ describe('/pro first screen and pricing', () => {
   it('says what Pro adds, with claims the Pro tier backs', () => {
     const line = en.hero.valueProps;
     assert.doesNotMatch(line, /intelligence geopolitical/i);
+    // e2e/pro-hero-lcp.spec.ts pins the h1 as the LCP element. At 360px a
+    // line past two rows (~75 characters) outweighs "Noise -> Signal" and
+    // takes LCP: the first rewrite (135 characters) painted 31,104 px²
+    // against the h1's 15,840.
+    assert.ok(line.length <= 75, `hero.valueProps is ${line.length} characters; keep it to two lines at 360px`);
     const proFeatures = JSON.parse(read('pro-test/src/generated/tiers.json'))
       .find((tier) => tier.localeKey === 'pro').features.join(' | ');
     for (const [claim, feature] of [

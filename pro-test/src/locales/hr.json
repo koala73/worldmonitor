@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Šum",
     "signalWord": "Signal",
-    "valueProps": "Pro dodaje AI analitičara, pravila upozorenja i zakazani sažetak nadzornoj ploči uživo te povezuje njezine podatke s Claudeom i drugim AI alatima.",
+    "valueProps": "Pitajte AI analitičara, postavite pravila upozorenja, dobijte izvještaje i koristite ga u Claudeu.",
     "launchingDate": "Dostupno sada",
     "tryFreeDashboard": "Isprobajte besplatnu nadzornu ploču",
     "choosePlan": "Odaberite plan",

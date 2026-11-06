@@ -132,7 +132,7 @@
   "hero.noiseWord": "Noise",
   "hero.signalWord": "Signal",
   "hero.tryFreeDashboard": "Try the free dashboard",
-  "hero.valueProps": "Pro adds an AI analyst, alert rules and a scheduled briefing to the live dashboard, and connects its data to Claude and other AI tools.",
+  "hero.valueProps": "Ask an AI analyst, set alert rules, get briefings, and use it in Claude.",
   "livePreview.description": "3D WebGL globe · interactive map layers · real-time market, macro, geopolitical, energy, and infrastructure data",
   "livePreview.iframeTitle": "World Monitor — Live Intelligence Dashboard",
   "livePreview.openFullScreen": "Open full screen",

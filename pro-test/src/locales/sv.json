@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Brus",
     "signalWord": "Signal",
-    "valueProps": "Pro lägger till en AI-analytiker, aviseringsregler och en schemalagd briefing på live-instrumentpanelen, och kopplar dess data till Claude och andra AI-verktyg.",
+    "valueProps": "Fråga en AI-analytiker, ställ in varningsregler, få situationsrapporter och använd det i Claude.",
     "launchingDate": "Tillgänglig nu",
     "tryFreeDashboard": "Prova den kostnadsfria dashboarden",
     "choosePlan": "Välj din plan",

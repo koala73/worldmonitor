@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "Zaj",
     "signalWord": "Jel",
-    "valueProps": "A Pro egy AI-elemzőt, riasztási szabályokat és egy ütemezett briefinget ad az élő dashboardhoz, és összekapcsolja annak adatait a Claude-dal és más AI-eszközökkel.",
+    "valueProps": "Kérdezz meg egy AI-elemzőt, állíts be riasztási szabályokat, kapj briefingeket, és használd a Claude-ban.",
     "launchingDate": "Már elérhető",
     "tryFreeDashboard": "Próbálja ki az ingyenes irányítópultot",
     "choosePlan": "Válasszon csomagot",

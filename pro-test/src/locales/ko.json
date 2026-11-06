@@ -11,7 +11,7 @@
   "hero": {
     "noiseWord": "노이즈",
     "signalWord": "시그널",
-    "valueProps": "Pro는 실시간 대시보드에 AI 분석가, 알림 규칙, 예약된 브리핑을 추가하고, 데이터를 Claude 및 기타 AI 도구와 연결합니다.",
+    "valueProps": "AI 분석가에게 질문하고, 알림 규칙을 설정하며, 브리핑을 받고, Claude에서 사용하세요.",
     "launchingDate": "지금 이용 가능",
     "tryFreeDashboard": "무료 대시보드 체험",
     "choosePlan": "플랜 선택",
