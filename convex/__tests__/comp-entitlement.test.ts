@@ -886,6 +886,15 @@ describe("multi-active-sub guard", () => {
 // ---------------------------------------------------------------------------
 
 describe("revokeComplimentaryEntitlement", () => {
+  // Recompute schedules cache-sync jobs. On real timers they fire after the
+  // test's convexTest instance is gone ("Write outside of transaction").
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test("ends a comp-only entitlement now (falls back to free)", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.payments.billing.grantComplimentaryEntitlement, {
