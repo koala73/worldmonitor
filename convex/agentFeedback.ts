@@ -66,7 +66,6 @@ export const FEEDBACK_DIGEST_BATCH = 500;
 // the digest.
 const DIGEST_RPC_PATH_RE = /^\/api\/[a-z0-9-]+\/v\d+\/[a-z0-9-]+$/;
 const DIGEST_TOOL_NAME_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
-const PUBLIC_FEEDBACK_KINDS = ["bug", "missing_capability", "data_quality"] as const;
 
 // Decision 10: retention from `receivedAt` for every status.
 export const FEEDBACK_RETENTION_MS: Record<Doc<"agentFeedback">["status"], number> = {
@@ -485,36 +484,31 @@ type DigestRow = {
 };
 
 /**
- * `received` rows of the public kinds nobody has announced yet. Triage stamps
- * `notifiedAt`, so the unannounced range holds only rows still waiting; the
- * status check skips any row that predates that rule.
+ * `received` rows nobody has announced yet, oldest first across every kind,
+ * so a flood of one kind delays newer reports of the others instead of
+ * hiding older ones. Security rows go straight to `private` and never appear
+ * here. Triage stamps `notifiedAt`, and the index range is bounded by status,
+ * so the scan reads at most one row past the batch.
  */
 export const listUnannouncedFeedback = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const pending: DigestRow[] = [];
-    let more = false;
-    for (const kind of PUBLIC_FEEDBACK_KINDS) {
-      for await (const row of ctx.db
-        .query("agentFeedback")
-        .withIndex("by_kind_notified_received", (q) =>
-          q.eq("kind", kind).eq("notifiedAt", undefined),
-        )) {
-        if (row.status !== "received") continue;
-        if (pending.length === FEEDBACK_DIGEST_BATCH) {
-          more = true;
-          break;
-        }
-        pending.push({
-          reportId: row._id,
-          kind: row.kind,
-          surfaceType: row.surfaceType,
-          surfaceName: row.surfaceName,
-        });
-      }
-      if (more) break;
-    }
-    return { pending, more };
+    const rows = await ctx.db
+      .query("agentFeedback")
+      .withIndex("by_status_notified_received", (q) =>
+        q.eq("status", "received").eq("notifiedAt", undefined),
+      )
+      .take(FEEDBACK_DIGEST_BATCH + 1);
+    const pending: DigestRow[] = rows
+      .slice(0, FEEDBACK_DIGEST_BATCH)
+      .filter((row) => row.kind !== "security")
+      .map((row) => ({
+        reportId: row._id,
+        kind: row.kind,
+        surfaceType: row.surfaceType,
+        surfaceName: row.surfaceName,
+      }));
+    return { pending, more: rows.length > FEEDBACK_DIGEST_BATCH };
   },
 });
 

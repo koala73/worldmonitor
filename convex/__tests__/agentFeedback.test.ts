@@ -394,6 +394,38 @@ describe("feedback digest", () => {
     expect(row.notifiedAt).toBeUndefined();
   });
 
+  test("a flood of one kind cannot starve an older report of another kind", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW };
+      await ctx.db.insert("agentFeedback", {
+        ...base, kind: "missing_capability", surfaceType: "other", surfaceName: "x", receivedAt: NOW - 2 * DAY,
+      });
+      for (let i = 0; i < FEEDBACK_DIGEST_BATCH + 10; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - DAY + i });
+      }
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_BATCH });
+    expect(html(bodies[0])).toContain("<td>missing_capability</td><td>1</td>");
+  });
+
+  test("terminal rows never enter the scan", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    const late = await t.run(async (ctx) => {
+      const base = { ...report(), updatedAt: NOW };
+      // Rows dismissed before triage stamped notifiedAt.
+      for (let i = 0; i < 300; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, status: "dismissed", receivedAt: NOW - 5 * DAY + i });
+      }
+      return ctx.db.insert("agentFeedback", { ...base, status: "received", receivedAt: NOW - 1000 });
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 1 });
+    expect(html(bodies[0])).toContain("<td>bug</td><td>1</td>");
+    expect(late).toBeTruthy();
+  });
+
   test("a backlog past one batch is capped and drains on the next run", async () => {
     const bodies = captureResend();
     const t = convexTest(schema, modules);

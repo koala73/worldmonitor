@@ -675,7 +675,10 @@ export default defineSchema({
     .index("by_retryKey_received", ["retryKey", "receivedAt"])
     .index("by_reporter_received", ["reporterKey", "receivedAt"])
     .index("by_principal", ["principalId"])
-    .index("by_kind_notified_received", ["kind", "notifiedAt", "receivedAt"]),
+    .index("by_kind_notified_received", ["kind", "notifiedAt", "receivedAt"])
+    // Daily feedback digest: unannounced `received` rows, oldest first across
+    // every kind, so no terminal row enters the scan and no kind starves.
+    .index("by_status_notified_received", ["status", "notifiedAt", "receivedAt"]),
 
   // --- Payment tables (Dodo Payments integration) ---
 

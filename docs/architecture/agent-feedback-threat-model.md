@@ -294,7 +294,7 @@ send sets `notifiedAt` on the rows it lists only after Resend accepts it.
 
 A second daily cron sends the feedback digest for `bug`, `missing_capability`,
 and `data_quality` rows that are still `received` with `notifiedAt` unset. It
-lists at most 500 rows, says when more are waiting, and sends nothing on a day
+lists at most 500 rows, oldest first across all three kinds, says when more are waiting, and sends nothing on a day
 with no new rows. It sets `notifiedAt` on the listed rows after Resend accepts
 it. Any triage transition out of `received` also sets `notifiedAt`, so rows the
 owner has already seen leave the digest index instead of accumulating there.
