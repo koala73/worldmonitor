@@ -26,7 +26,7 @@
     "proF1": "WM Analyst chat — élő szolgáltatások lekérdezése természetes nyelvon",
     "proF2": "AI digest — naponta, naponta kétszer vagy hetente — Slackre, Discordra, Telegramra, e-mailre vagy webhookra",
     "proF3": "Custom Widget Builder — HTML/CSS/JS AI-asszisztált módosítással",
-    "proF4": "MCP-csatlakozók — kösse a WorldMonitort Claude-hoz, GPT-hez vagy saját LLM-ekhez",
+    "proF4": "MCP-csatlakozók — kösse a World Monitort Claude-hoz, GPT-hez vagy saját LLM-ekhez",
     "proF5": "Részvénykutatás, részvényelemzés és backtesting",
     "proF6": "Repülőjárat-keresés és ár-összehasonlítás",
     "proF7": "Riasztási szabálymotor — egyéni triggerek, csendes órák, AES-256-tal titkosított csatornák",
@@ -303,11 +303,11 @@
     "q7": "Továbbra is használhatom a saját API-kulcsaimat?",
     "a7": "Igen. A saját kulcsok behozatala mindig működik. A Pro egyszerűen azt jelenti, hogy nem kell külön szolgáltatásokra regisztrálnod.",
     "q8": "Mi az MCP?",
-    "a8": "Az MCP lehetővé teszi a mesterséges intelligencia ügynököknek — Claude, GPT, egyéni LLM-ek — hogy a WorldMonitor-t eszközként használják, regisztrált szolgáltatások lekérdezésével. A Pro-ban szerepel. Az Enterprise magánMCP-szervereket és egyéni telepítéseket ad hozzá.",
+    "a8": "Az MCP lehetővé teszi a mesterséges intelligencia ügynököknek — Claude, GPT, egyéni LLM-ek — hogy a World Monitor-t eszközként használják, regisztrált szolgáltatások lekérdezésével. A Pro-ban szerepel. Az Enterprise magánMCP-szervereket és egyéni telepítéseket ad hozzá.",
     "q9": "Építhetek saját paneleket?",
     "a9": "Igen. A Pro tartalmazza a Custom Widget Buildert — építsen paneleket HTML-ből, CSS-ből és JavaScriptből, AI-asszisztált módosítással.",
-    "q10": "Csatlakoztathatom Claude-ot vagy GPT-t a WorldMonitorhoz?",
-    "a10": "Igen. Az MCP benne van a Pro csomagban — kösse a WorldMonitort Claude-hoz, GPT-hez vagy bármely MCP-kompatibilis LLM-hez élő eszközként.",
+    "q10": "Csatlakoztathatom Claude-ot vagy GPT-t a World Monitorhoz?",
+    "a10": "Igen. Az MCP benne van a Pro csomagban — kösse a World Monitort Claude-hoz, GPT-hez vagy bármely MCP-kompatibilis LLM-hez élő eszközként.",
     "q11": "Mennyire személyre szabott a digest?",
     "a11": "Válaszd meg az ütemezésedet — napi, napanta kétszer vagy hetente. Minden nyomon követett történetet újrapontozunk a riasztási szabályaid és figyelőlistád szerint, forrásokon közösen eltávolítjuk, és legfeljebb 30 rangsorolt elemet küldünk AI Assessment és Signals to watch írásommal a kontextusodba. Valós idejű riasztások is elérhetők kritikus eseményekhez.",
     "q12": "Milyen gyakori a frissítés?",
@@ -409,7 +409,7 @@
         "cta": "Kapcsolat az értékesítéssel"
       },
       "apiBusiness": {
-        "description": "Saját termék indítása WorldMonitor adatokkal",
+        "description": "Saját termék indítása World Monitor adatokkal",
         "features": [
           "Minden az API Starter csomagból",
           "R1–R3 újraterjesztési jogok ügyfélre nézve nyitott termékekhez",
@@ -481,7 +481,7 @@
       "screenshotAlt": "World Monitor élő hírszerzési irányítópult — globális térkép konfliktus, szállítás és piaci rétegekkel",
       "plateNote": "Az élő térképről rögzítve — kattints a megnyitásához",
       "trustBuild": "Építs rá:",
-      "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir",
+      "positioningLink": "A World Monitor nem nyílt forráskódú Palantir",
       "asOf": "Állapot: {{date}}",
       "whatIsTitle": "Mi az a World Monitor?",
       "whatIsBody": "A World Monitor egy ingyenes ($0), nyílt forráskódú (AGPL-3.0) műszerfal, amelyet 2M+ ember használ. {{feeds}} hír- és OSINT-forrást közvetít {{providers}} attribútummal ellátott szolgáltatótól egyetlen élő világtérképre {{mapLayers}} térképréteg-típussal, amely geopolitikát, piacokat, hajózást, repülést és kiberterületet fed le. Korrelálja őket, így az összefutó események a hírcímek előtt kerülnek felszínre. Minden adat forrásolt és minden módszer dokumentált.",
@@ -728,7 +728,7 @@
   },
   "whatsNew": {
     "eyebrow": "Szállítási napló",
-    "title": "Újdonságok a WorldMonitorban",
+    "title": "Újdonságok a World Monitorban",
     "subtitle": "Az elmúlt 30 nap új funkciói — hibajavítások és mérnöki munkák nélkül.",
     "proTag": "PRO",
     "m1": "Médiaperspektíva — hogyan tudósítanak az egyes országok médiumai bármely országról, AI-ügynököknek és az API-hoz",
@@ -739,5 +739,8 @@
     "m6": "Ipari aktivitás térképe a Sentinel-5P műhold NO2-adataiból",
     "m7": "Tőkeáramlások 230 gazdaságra és bármely országpárra, AI-ügynököknek és az API-hoz",
     "m8": "Terminálos irányítópult és nagyítható CLI-térkép — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Figyelt források"
   }
 }

@@ -37,7 +37,7 @@ const HERO_PROOF_STATS = [
     labelKey: 'welcome.depth.s3l',
     href: '/sources/',
   },
-  { value: String(heroProofStats.alertOrigins), labelKey: 'welcome.depth.s15l' },
+  { value: String(depthProofStats.mcpTools), labelKey: 'welcome.depth.s12l' },
 ] as const;
 
 const HeroProofRail = () => (

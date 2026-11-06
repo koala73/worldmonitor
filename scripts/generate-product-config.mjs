@@ -243,7 +243,7 @@ function getDescription(tierGroup) {
     pro: 'Full intelligence dashboard',
     pro_business: 'The Pro dashboard, licensed for work',
     api_starter: 'Build internal tools on live intelligence data',
-    api_business: 'Launch your own product on WorldMonitor data',
+    api_business: 'Launch your own product on World Monitor data',
     enterprise: 'Custom solutions for organizations',
   };
   return descriptions[tierGroup] || '';

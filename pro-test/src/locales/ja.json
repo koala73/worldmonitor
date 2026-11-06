@@ -26,7 +26,7 @@
     "proF1": "WM Analyst chat — ライブサービスを会話形式でクエリ可能",
     "proF2": "AI ダイジェスト — 日次、1日2回、または週次 — Slack、Discord、Telegram、メール、Webhook へ",
     "proF3": "カスタムウィジェットビルダー — HTML/CSS/JS を AI 支援で編集",
-    "proF4": "MCP コネクタ — WorldMonitor を Claude、GPT、独自 LLM に接続",
+    "proF4": "MCP コネクタ — World Monitor を Claude、GPT、独自 LLM に接続",
     "proF5": "エクイティリサーチ、株式分析、バックテスト",
     "proF6": "フライト検索と価格比較",
     "proF7": "アラートルールエンジン — カスタムトリガー、サイレント時間、AES-256 暗号化チャネル",
@@ -303,11 +303,11 @@
     "q7": "自分の API キーをまだ使えますか?",
     "a7": "はい。Bring-your-own-keys は常に機能します。Pro は単に個別のサービスに登録する必要がなくなるだけです。",
     "q8": "MCP とは?",
-    "a8": "MCP により AI エージェント — Claude、GPT、カスタム LLM — が WorldMonitor をツールとして使用し、登録済みサービスをクエリできます。Pro に含まれます。Enterprise は プライベート MCP サーバーとカスタムデプロイメントを追加します。",
+    "a8": "MCP により AI エージェント — Claude、GPT、カスタム LLM — が World Monitor をツールとして使用し、登録済みサービスをクエリできます。Pro に含まれます。Enterprise は プライベート MCP サーバーとカスタムデプロイメントを追加します。",
     "q9": "独自のパネルを作れますか?",
     "a9": "はい。Pro はカスタムウィジェットビルダーを含みます — HTML、CSS、JavaScript からパネルを構築し、AI 支援で変更できます。",
-    "q10": "Claude または GPT を WorldMonitor に接続できますか?",
-    "a10": "はい。MCP は Pro に含まれます — WorldMonitor をライブツールとして Claude、GPT、または MCP 互換の任意の LLM に接続します。",
+    "q10": "Claude または GPT を World Monitor に接続できますか?",
+    "a10": "はい。MCP は Pro に含まれます — World Monitor をライブツールとして Claude、GPT、または MCP 互換の任意の LLM に接続します。",
     "q11": "ダイジェストはどれほどパーソナライズされていますか?",
     "a11": "配信頻度を選択 — 日次、2日次、または週次。当社は監視対象の全ストーリーをアラートルールとウォッチリストに対して再スコアリング、ソース間での重複排除を行い、最大30件のランク付きアイテムを AI Assessment と注視すべき Signals とともにあなたのコンテキストに送信します。重大イベントの場合はリアルタイムアラートも利用可能です。",
     "q12": "更新頻度は?",
@@ -409,7 +409,7 @@
         "cta": "営業に連絡"
       },
       "apiBusiness": {
-        "description": "WorldMonitorデータを基盤とした独自プロダクト立ち上げ",
+        "description": "World Monitorデータを基盤とした独自プロダクト立ち上げ",
         "features": [
           "API Starter 内のすべて",
           "顧客向け製品のためのR1–R3再配布権",
@@ -481,7 +481,7 @@
       "screenshotAlt": "World Monitor ライブ インテリジェンス ダッシュボード — 紛争、海運、市場レイヤー付きグローバルマップ",
       "plateNote": "ライブマップからキャプチャ — クリックして開く",
       "trustBuild": "構築:",
-      "positioningLink": "WorldMonitor はオープンソース版 Palantir ではありません",
+      "positioningLink": "World Monitor はオープンソース版 Palantir ではありません",
       "asOf": "{{date}}時点",
       "whatIsTitle": "World Monitor とは何ですか？",
       "whatIsBody": "World Monitor は無料（$0）のオープンソース（AGPL-3.0）ダッシュボードで、200万人以上が利用しています。{{feeds}}個のニュースおよびOSINT フィードを{{providers}}個の提供元から集約し、1つのライブ世界地図上にストリーミング配信します。{{mapLayers}}種類のマップレイヤーで地政学、市場、海運、航空、サイバーに対応し、収束するイベントがヘッドラインになる前に表示されます。すべての数値は出典付きで、すべての手法は文書化されています。",
@@ -739,5 +739,8 @@
     "m6": "Sentinel-5P衛星のNO2データによる産業活動マップ",
     "m7": "230の経済圏と任意の国の組み合わせの資本フロー（AIエージェントとAPI向け）",
     "m8": "ターミナルダッシュボードとズーム可能なCLIマップ — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "監視中のソース"
   }
 }

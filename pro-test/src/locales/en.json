@@ -84,7 +84,7 @@
         ]
       },
       "apiBusiness": {
-        "description": "Launch your own product on WorldMonitor data",
+        "description": "Launch your own product on World Monitor data",
         "features": [
           "Everything in API Starter",
           "R1–R3 redistribution rights for customer-facing products",
@@ -149,7 +149,7 @@
     "proF1": "WM Analyst chat — query live services conversationally",
     "proF2": "AI digest — daily, twice-daily, or weekly — to Slack, Discord, Telegram, Email, or webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS with AI-assisted modification",
-    "proF4": "MCP connectors — plug WorldMonitor into Claude, GPT, custom LLMs",
+    "proF4": "MCP connectors — plug World Monitor into Claude, GPT, custom LLMs",
     "proF5": "Equity research, stock analysis & backtesting",
     "proF6": "Flight search & price comparison",
     "proF7": "Alert rules engine — custom triggers, quiet hours, AES-256 encrypted channels",
@@ -426,11 +426,11 @@
     "q7": "Can I still use my own API keys?",
     "a7": "Yes. Bring-your-own-keys always works. Pro simply means you don't have to register for separate services.",
     "q8": "What's MCP?",
-    "a8": "MCP lets AI agents — Claude, GPT, custom LLMs — use WorldMonitor as a tool, querying registered services. Included in Pro. Enterprise adds private MCP servers and custom deployments.",
+    "a8": "MCP lets AI agents — Claude, GPT, custom LLMs — use World Monitor as a tool, querying registered services. Included in Pro. Enterprise adds private MCP servers and custom deployments.",
     "q9": "Can I build my own panels?",
     "a9": "Yes. Pro includes the Custom Widget Builder — build panels from HTML, CSS, and JavaScript, with AI-assisted modification.",
-    "q10": "Can I connect Claude or GPT to WorldMonitor?",
-    "a10": "Yes. MCP is included in Pro — plug WorldMonitor into Claude, GPT, or any MCP-compatible LLM as a live tool.",
+    "q10": "Can I connect Claude or GPT to World Monitor?",
+    "a10": "Yes. MCP is included in Pro — plug World Monitor into Claude, GPT, or any MCP-compatible LLM as a live tool.",
     "q11": "How personalized is the digest?",
     "a11": "Pick your cadence — daily, twice-daily, or weekly. We re-score every tracked story against your alert rules and watchlist, dedupe across sources, and send up to 30 ranked items with an AI Assessment and Signals to watch written to your context. Real-time alerts are also available for critical events.",
     "q12": "What's the refresh rate?",
@@ -483,7 +483,7 @@
       "screenshotAlt": "World Monitor live intelligence dashboard — global map with conflict, shipping and market layers",
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
-      "positioningLink": "WorldMonitor is not an open-source Palantir",
+      "positioningLink": "World Monitor is not an open-source Palantir",
       "whatIsTitle": "What is World Monitor?",
       "whatIsBody": "World Monitor is a free ($0), open-source (AGPL-3.0) dashboard used by 2M+ people. It streams {{feeds}} news and OSINT feeds from {{providers}} attributed providers onto one live world map with {{mapLayers}} map layer types, spanning geopolitics, markets, shipping, aviation and cyber. It correlates them so converging events surface before the headlines do. Every figure is sourced and every method documented.",
       "whatIsBestFor": "Best for analysts, journalists, traders and builders who need live geopolitical signals."
@@ -728,7 +728,7 @@
   },
   "whatsNew": {
     "eyebrow": "Shipping log",
-    "title": "What's new in WorldMonitor",
+    "title": "What's new in World Monitor",
     "subtitle": "New features from the last 30 days — fixes and plumbing not included.",
     "proTag": "PRO",
     "m1": "Media perspective — how outlets from each country cover any country, for AI agents and the API",
@@ -739,5 +739,8 @@
     "m6": "Industrial activity map from Sentinel-5P satellite NO2",
     "m7": "Capital flows for 230 economies and any country pair, for AI agents and the API",
     "m8": "Terminal dashboard and zoomable CLI map — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Sources we monitor"
   }
 }

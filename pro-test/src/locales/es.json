@@ -26,7 +26,7 @@
     "proF1": "Chat WM Analyst — consulta servicios activos conversacionalmente",
     "proF2": "Resumen de IA — diario, dos veces al día o semanal — a Slack, Discord, Telegram, Email o webhook",
     "proF3": "Constructor de widgets personalizados — HTML/CSS/JS con modificación asistida por IA",
-    "proF4": "Conectores MCP — conecta WorldMonitor a Claude, GPT o LLMs personalizados",
+    "proF4": "Conectores MCP — conecta World Monitor a Claude, GPT o LLMs personalizados",
     "proF5": "Análisis de acciones, investigación bursátil y backtesting",
     "proF6": "Búsqueda y comparación de precios de vuelos",
     "proF7": "Motor de reglas de alerta — activadores personalizados, horas de silencio, canales cifrados AES-256",
@@ -303,11 +303,11 @@
     "q7": "¿Puedo seguir usando mis propias claves API?",
     "a7": "Sí. Las claves propias siempre funcionan. Pro simplemente significa que no tienes que registrarte en servicios separados.",
     "q8": "¿Qué es MCP?",
-    "a8": "MCP permite que agentes IA — Claude, GPT, LLMs personalizados — usen WorldMonitor como herramienta, consultando servicios registrados. Incluido en Pro. Enterprise añade servidores MCP privados e implementaciones personalizadas.",
+    "a8": "MCP permite que agentes IA — Claude, GPT, LLMs personalizados — usen World Monitor como herramienta, consultando servicios registrados. Incluido en Pro. Enterprise añade servidores MCP privados e implementaciones personalizadas.",
     "q9": "¿Puedo construir mis propios paneles?",
     "a9": "Sí. Pro incluye el Constructor de widgets personalizados — construye paneles desde HTML, CSS y JavaScript, con modificación asistida por IA.",
-    "q10": "¿Puedo conectar Claude o GPT a WorldMonitor?",
-    "a10": "Sí. MCP está incluido en Pro — conecta WorldMonitor a Claude, GPT o cualquier LLM compatible con MCP como herramienta en vivo.",
+    "q10": "¿Puedo conectar Claude o GPT a World Monitor?",
+    "a10": "Sí. MCP está incluido en Pro — conecta World Monitor a Claude, GPT o cualquier LLM compatible con MCP como herramienta en vivo.",
     "q11": "¿Cómo de personalizado es el resumen?",
     "a11": "Elige tu cadencia — diaria, dos veces al día o semanal. Re-puntuamos cada noticia monitorizada contra tus reglas de alerta y lista de monitoreo, deduplicamos entre fuentes, y enviamos hasta 30 elementos clasificados con una Evaluación IA y Señales a monitorear escritas en tu contexto. También hay alertas en tiempo real disponibles para eventos críticos.",
     "q12": "¿Cuál es la tasa de actualización?",
@@ -409,7 +409,7 @@
         "cta": "Contactar Ventas"
       },
       "apiBusiness": {
-        "description": "Lanza tu propio producto con datos de WorldMonitor",
+        "description": "Lanza tu propio producto con datos de World Monitor",
         "features": [
           "Todo en API Starter",
           "Derechos de redistribución R1–R3 para productos orientados al cliente",
@@ -481,7 +481,7 @@
       "screenshotAlt": "Panel de inteligencia en vivo de World Monitor — mapa global con capas de conflicto, envío y mercado",
       "plateNote": "Capturado del mapa en vivo — haz clic para abrirlo",
       "trustBuild": "Construye sobre él:",
-      "positioningLink": "WorldMonitor no es un Palantir de código abierto",
+      "positioningLink": "World Monitor no es un Palantir de código abierto",
       "asOf": "A partir del {{date}}",
       "whatIsTitle": "¿Qué es World Monitor?",
       "whatIsBody": "World Monitor es un panel de control gratuito ($0) y de código abierto (AGPL-3.0) utilizado por más de 2M de personas. Transmite {{feeds}} fuentes de noticias y OSINT de {{providers}} proveedores atribuidos en un único mapa mundial en directo con {{mapLayers}} tipos de capas de mapa, que abarcan geopolítica, mercados, transporte marítimo, aviación y ciberseguridad. Las correlaciona para que los eventos convergentes salgan a la luz antes de los titulares. Cada dato está documentado en su fuente y cada método está documentado.",
@@ -728,7 +728,7 @@
   },
   "whatsNew": {
     "eyebrow": "Registro de envíos",
-    "title": "Novedades en WorldMonitor",
+    "title": "Novedades en World Monitor",
     "subtitle": "Nuevas funciones de los últimos 30 días — correcciones e infraestructura no incluidas.",
     "proTag": "PRO",
     "m1": "Perspectiva mediática — cómo los medios de cada país cubren a cualquier país, para agentes de IA y la API",
@@ -739,5 +739,8 @@
     "m6": "Mapa de actividad industrial con datos satelitales de NO2 de Sentinel-5P",
     "m7": "Flujos de capital de 230 economías y de cualquier par de países, para agentes de IA y la API",
     "m8": "Panel en la terminal y mapa CLI con zoom — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Fuentes que monitoreamos"
   }
 }
