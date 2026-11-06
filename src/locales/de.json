@@ -3362,6 +3362,28 @@
       "readReport": "Vollständigen Bericht lesen"
     },
     "datacenter": {
+      "details": {
+        "more": "Weitere Informationen",
+        "owner": "Cluster-Eigentümer / Anbieter (Datensatz)",
+        "power": "Leistungsangabe im Datensatz",
+        "powerCaveat": "Die Leistungskapazität kann gemeldet oder geschätzt sein. Sie ist keine Messung des aktuellen Stromverbrauchs.",
+        "powerBasis": "Grundlage der Leistungsangabe",
+        "reported": "Gemeldet",
+        "estimated": "Geschätzt",
+        "notAvailable": "Nicht verfügbar",
+        "location": "Standortgenauigkeit",
+        "locationUnknown": "Unbestätigter Kartenpunkt; nicht als genaue Anlagenadresse verwenden.",
+        "site": "Anlage (durch Quelle bestätigt)",
+        "city": "Nur Stadt",
+        "region": "Nur Region",
+        "country": "Nur Land",
+        "dataset": "Epoch AI GPU-Cluster-Datensatz",
+        "evidence": "Belegquelle",
+        "sourceDate": "Veröffentlichungsdatum der Quelle",
+        "metadataReviewedAt": "Metadaten geprüft",
+        "firstOperationalDate": "Erstinbetriebnahme (Datensatz)",
+        "freshness": "Gespeicherter Datensatzstand. Aktueller Status und technische Daten können abweichen."
+      },
       "status": {
         "existing": "BETRIEBSFÄHIG",
         "planned": "GEPLANT",

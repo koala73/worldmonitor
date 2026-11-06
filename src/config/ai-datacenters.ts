@@ -1025,6 +1025,13 @@ export const AI_DATA_CENTERS: AIDataCenter[] = [
     chipCount: 16384,
     powerMW: 23.4,
     sector: 'Private',
+    // Optional metadata checked against Epoch AI's public CSV on 2026-11-06.
+    // Stored coordinates predate that check and are not verified site coordinates.
+    description: 'Epoch AI lists this as a cloud GPU cluster with Likely certainty and notes uncertainty about whether all GPUs are at one site.',
+    powerBasis: 'estimated',
+    firstOperationalDate: '2024-04-19',
+    metadataReviewedAt: '2026-11-06',
+    sourceUrl: 'https://web.archive.org/web/20240911111117/https://www.datacenterdynamics.com/en/news/nexgen-cloud-to-host-ai-supercloud-in-norwegian-data-center/',
   },
   {
     id: 'dc-56',

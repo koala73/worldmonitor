@@ -18,7 +18,7 @@ import { TransitChart } from '@/utils/transit-chart';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguageTag } from '@/services/i18n';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -348,6 +348,12 @@ export class MapPopup {
           if (this.popup !== openedPopup || groupView) return;
           this.refreshHeightCache(popupType, data, containerRect, positionedWith);
         }, 0);
+      });
+    }
+
+    if (data.type === 'datacenter') {
+      this.popup.querySelector('.datacenter-details')?.addEventListener('toggle', () => {
+        this.clampPopupToViewport();
       });
     }
 
@@ -2613,7 +2619,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             <span class="stat-label">${t('popups.datacenter.chipType')}</span>
             <span class="stat-value">${escapeHtml(dc.chipType || t('popups.unknown'))}</span>
           </div>
-          ${dc.powerMW ? `
+          ${dc.powerMW != null ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.datacenter.power')}</span>
             <span class="stat-value">${dc.powerMW.toFixed(0)} MW</span>
@@ -2627,8 +2633,39 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
           ` : ''}
         </div>
         ${dc.note ? `<p class="popup-description">${escapeHtml(dc.note)}</p>` : ''}
+        ${this.renderDatacenterDetails(dc)}
         <div class="popup-attribution">${t('popups.datacenter.attribution')}</div>
       </div>
+    `;
+  }
+
+  private renderDatacenterDetails(dc: AIDataCenter): string {
+    const label = (key: string) => t(`popups.datacenter.details.${key}`);
+    const unknown = label('notAvailable');
+    const number = (value: number) => value.toLocaleString(getCurrentLanguageTag(), { maximumFractionDigits: 20 });
+    const row = (name: string, value: string) => `<div><dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+    const sourceUrl = dc.sourceUrl ? sanitizeUrl(dc.sourceUrl) : '';
+    return `
+      <details class="datacenter-details">
+        <summary>${label('more')}</summary>
+        <h3>${escapeHtml(dc.name)}</h3>
+        ${dc.description ? `<p>${escapeHtml(dc.description)}</p>` : ''}
+        <dl>
+          ${row(label('owner'), dc.owner)}
+          ${row(t('popups.datacenter.gpuChipCount'), number(dc.chipCount))}
+          ${row(t('popups.datacenter.chipType'), dc.chipType || unknown)}
+          ${row(label('power'), dc.powerMW != null ? `${number(dc.powerMW)} MW` : unknown)}
+          ${row(label('powerBasis'), dc.powerBasis ? label(dc.powerBasis) : unknown)}
+          ${row(label('location'), dc.locationPrecision ? label(dc.locationPrecision) : label('locationUnknown'))}
+          ${row(label('firstOperationalDate'), dc.firstOperationalDate || unknown)}
+          ${row(label('sourceDate'), dc.sourceDate || unknown)}
+          ${row(label('metadataReviewedAt'), dc.metadataReviewedAt || unknown)}
+        </dl>
+        <p>${label('powerCaveat')}</p>
+        <p>${label('freshness')}</p>
+        <a href="https://epoch.ai/data/gpu-clusters" target="_blank" rel="noopener noreferrer">${label('dataset')} ↗</a>
+        ${sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noopener noreferrer">${label('evidence')} ↗</a>` : ''}
+      </details>
     `;
   }
 

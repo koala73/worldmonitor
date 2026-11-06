@@ -1,4 +1,5 @@
 import '../styles/main.css';
+import { AI_DATA_CENTERS } from '../config/ai-datacenters';
 import { MapPopup } from '../components/MapPopup';
 import type { Hotspot } from '../types';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -82,6 +83,11 @@ setTrustedHtml(hotspot, trustedHtml('<div class="hotspot-marker high"></div>', "
 hotspot.addEventListener('click', (e) => {
   e.stopPropagation();
   const rect = app.getBoundingClientRect();
+  if (new URLSearchParams(window.location.search).has('datacenter')) {
+    popup.show({ type: 'datacenter', data: AI_DATA_CENTERS.find(dc => dc.id === 'dc-55')!,
+      x: e.clientX - rect.left, y: e.clientY - rect.top });
+    return;
+  }
   popup.show({
     type: 'hotspot',
     data: sampleHotspot,

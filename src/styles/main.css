@@ -10082,6 +10082,56 @@ a.prediction-link:hover {
   margin-bottom: 10px;
 }
 
+.datacenter-details {
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+  padding-top: 8px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.datacenter-details summary {
+  cursor: pointer;
+  color: var(--green-text, var(--green));
+  padding: 6px 0;
+}
+
+.datacenter-details summary:focus-visible {
+  outline: 2px solid var(--green-text, var(--green));
+  outline-offset: 2px;
+}
+
+.datacenter-details h3 {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  margin: 10px 0;
+}
+
+.datacenter-details dl > div {
+  margin-bottom: 8px;
+}
+
+.datacenter-details dt {
+  color: var(--text-muted);
+}
+
+.datacenter-details dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.datacenter-details p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+
+.datacenter-details a {
+  display: block;
+  margin: 8px 0;
+  color: var(--green-text, var(--green));
+}
+
 .popup-location {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text);
