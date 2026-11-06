@@ -449,10 +449,8 @@ const SignalBars = () => {
 const Hero = ({ srLead }: { srLead?: string }) => {
   const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
-  // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
-  // Hide it once auth state confirms; falls back to just the "Choose Plan"
-  // CTA which is the relevant action for returning users anyway.
-  const showSignIn = isLoaded && !signedIn;
+  // Sign-in lives in the nav. Repeating it here made two sign-in controls
+  // on the first screen, beside the plan CTA it competed with.
   // Swap "Choose Plan" for "Go to Dashboard" once we confirm the visitor
   // is already Pro — same reasoning as the nav swap, and also removes
   // the #pricing anchor jump which is actively misleading for a paying
@@ -495,11 +493,6 @@ const Hero = ({ srLead }: { srLead?: string }) => {
               <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
-            )}
-            {showSignIn && (
-              <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
-                {t('hero.signIn')}
-              </button>
             )}
           </div>
 
@@ -1450,6 +1443,20 @@ export default function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, [page]);
+
+  // Deep links into the home page (/pro#pricing from every dashboard
+  // "Upgrade to Pro" CTA) target React-only sections that are absent from the
+  // prerendered HTML, so the browser's native fragment scroll runs before the
+  // target exists and leaves the buyer at the top of the page. Scroll once
+  // the section has mounted. The rAF lets layout settle first.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.length < 2 || hash.startsWith('#enterprise')) return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(hash.slice(1))?.scrollIntoView();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     if (page === 'enterprise' && window.location.hash === '#enterprise-contact') {

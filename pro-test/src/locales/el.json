@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Θόρυβος",
     "signalWord": "Σήμα",
-    "valueProps": "Το γεωπολιτικό στρώμα AI — ρωτήστε το, εγγραφείτε, χτίστε πάνω του.",
+    "valueProps": "Ρωτήστε έναν αναλυτή AI, ορίστε κανόνες ειδοποίησης, λάβετε briefings και χρησιμοποιήστε το στο Claude.",
     "launchingDate": "Διαθέσιμο τώρα",
     "tryFreeDashboard": "Δοκιμάστε τον δωρεάν πίνακα",
     "choosePlan": "Επιλέξτε πλάνο",
-    "signIn": "Σύνδεση",
     "goToDashboard": "Μεταβείτε στο Dashboard"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Προσωπικό",
     "axisPersonalNote": "ατομική χρήση",
     "axisCommercial": "Εμπορική",
-    "axisCommercialNote": "εργασία, πελάτες & προϊόντα"
+    "axisCommercialNote": "εργασία, πελάτες & προϊόντα",
+    "cancelAnytime": "Ακυρώστε ανά πάσα στιγμή από τον λογαριασμό σας. Διατηρείτε την πρόσβαση έως το τέλος της περιόδου που πληρώσατε."
   },
   "welcome": {
     "meta": {

@@ -1427,6 +1427,20 @@
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"
         }
+      },
+      "measure": {
+        "title": "วัดระยะห่าง",
+        "units": "หน่วยระยะทาง",
+        "pointA": "เลือกจุด A คลิกบนแผนที่หรือกด Enter ที่จุดศูนย์กลางของแผนที่",
+        "pointB": "เลือกจุด B เลื่อนแผนที่และกด Enter เพื่อใช้จุดศูนย์กลางของแผนที่",
+        "geodesic": "ระยะทางจีโอเดซิก",
+        "note": "ระหว่างพิกัดที่คลิก ไม่ใช่เส้นทางหรือการแยกสินทรัพย์ที่ตรวจสอบแล้ว กด Escape เพื่อออก",
+        "cancel": "ยกเลิกการเลือก",
+        "cancelShort": "ยกเลิก",
+        "resetShort": "รีเซ็ต",
+        "exitShort": "ออก",
+        "reset": "รีเซ็ตการวัด",
+        "exit": "ออกจากการวัด"
       }
     },
     "cii": {
@@ -1478,8 +1492,8 @@
       "badgeAnimDesc": "แสดงแอนิเมชันป้ายอัปเดตบนส่วนหัวของแผง",
       "headlineMemoryLabel": "หน่วยความจำพาดหัว",
       "headlineMemoryDesc": "จดจำพาดหัวที่เคยดูเพื่อเน้นข่าวใหม่",
-      "streamAlwaysOnLabel": "เล่นสตรีมสดบนแดชบอร์ดโดยอัตโนมัติ",
-      "streamAlwaysOnDesc": "เริ่ม Live News และ Live Webcams โดยอัตโนมัติเมื่อมองเห็น ปิดไว้เพื่อโหลดวิดีโอหลังจากคุณคลิกเล่นเท่านั้น",
+      "streamAlwaysOnLabel": "เล่นเว็บแคมสดโดยอัตโนมัติ",
+      "streamAlwaysOnDesc": "เริ่มเล่นวิดีโอเว็บแคมสดโดยอัตโนมัติ ทันทีที่ปรากฏบนหน้าจอ ปิดตัวเลือกนี้เพื่อโหลดเฉพาะเมื่อคุณเล่นด้วยตัวเอง",
       "analysisFrameworksLabel": "กรอบการวิเคราะห์",
       "analysisFrameworksActivePerPanel": "ใช้งานต่อแผง",
       "analysisFrameworksSkillLibrary": "ไลบรารีทักษะ",
@@ -1520,7 +1534,9 @@
       "briefStoryDetails": "รายละเอียดข่าว ({{count}})",
       "streamIdleStopLabel": "หยุดวิดีโอสดเมื่อไม่มีกิจกรรม",
       "streamIdleStopDesc": "หยุด Live News และ Live Webcams หลังจากที่ไม่มีกิจกรรมนาน ๆ และแสดงประกาศในแผง",
-      "streamIdleStopNever": "ไม่เลย"
+      "streamIdleStopNever": "ไม่เลย",
+      "liveNewsAutoplayLabel": "เล่นข่าวสดโดยอัตโนมัติ",
+      "liveNewsAutoplayDesc": "เริ่มเล่นวิดีโอข่าวสดโดยปิดเสียง ทันทีที่ปรากฏบนหน้าจอ ปิดตัวเลือกนี้เพื่อโหลดวิดีโอเฉพาะเมื่อคุณเล่นด้วยตัวเอง"
     },
     "settings": {
       "exportSettings": "ส่งออกการตั้งค่า",
@@ -3484,7 +3500,8 @@
       "vesselsCount": "เรือ {{count}} ลำ",
       "vessels": "เรือ",
       "trackedVessels": "เรือที่ติดตาม",
-      "showLess": "แสดงน้อยลง"
+      "showLess": "แสดงน้อยลง",
+      "backToGroup": "กลับไปที่กลุ่ม"
     },
     "naturalEvent": {
       "closed": "ปิด",

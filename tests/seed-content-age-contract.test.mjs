@@ -24,6 +24,7 @@ import {
   contentMeta as gdeltContentMeta,
   fetchAllTopics,
 } from '../scripts/seed-gdelt-intel.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -39,14 +40,14 @@ beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
   recordedCalls = [];
 
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
     if (Array.isArray(body) && Array.isArray(body[0])) {
       return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   // runSeed exits via process.exit(0|1|143). Convert to a throw so tests can
   // inspect recorded calls and exit codes after the seed "finishes".

@@ -10,6 +10,7 @@ import { projectCountrySanctions } from '../shared/country-sanctions-signals.mjs
 import { __testing__ as health } from '../api/health.js';
 import { readSeedSnapshot, verifySeedKey, runSeed, writeExtraKeyWithMeta } from '../scripts/_seed-utils.mjs';
 import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const source = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
 const pure = source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);/, '').split('async function fetchSource')[0];
@@ -488,13 +489,13 @@ async function withLocalRedis(run) {
     if (op === 'EXPIRE' || op === 'EVAL') return 1;
     throw new Error(`unexpected fixture command ${op}`);
   }
-  globalThis.fetch = async (url, init = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
     assert.equal(new URL(url).hostname, 'sanctions-redis.test', 'no real network allowed');
     const match = String(url).match(/\/get\/([^/?#]+)$/);
     if (match) return Response.json({ result: store.get(decodeURIComponent(match[1])) ?? null });
     const body = JSON.parse(init.body);
     return Response.json(Array.isArray(body[0]) ? body.map(c => ({ result: command(c) })) : { result: command(body) });
-  };
+  });
   try { return await run({ store, logs }); }
   finally {
     globalThis.fetch = original.fetch;
@@ -673,13 +674,13 @@ it('keeps old canonical metadata and state when the canonical SET fails after so
     const oldState = store.get('sanctions:pressure:state:v1');
     const next = await publish({ clock: now + 6 * 3600000, io: { verifySeedKey, writeExtraKeyWithMeta } });
     const fixtureFetch = globalThis.fetch;
-    globalThis.fetch = async (url, init = {}) => {
+    globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
       const command = init.body ? JSON.parse(init.body) : null;
       if (command?.[0] === 'SET' && command[1] === 'sanctions:pressure:v1') {
         return new Response('fixture canonical write failure', { status: 400 });
       }
       return fixtureFetch(url, init);
-    };
+    });
     await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => next.data, next.options),
       /HTTP 400/);
     assert.equal(store.get('sanctions:pressure:v1'), oldCanonical);

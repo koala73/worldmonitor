@@ -1271,6 +1271,20 @@
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"
         }
+      },
+      "measure": {
+        "title": "Misura distanza",
+        "units": "Unità di distanza",
+        "pointA": "Seleziona punto A. Clicca sulla mappa o premi Invio al centro della mappa.",
+        "pointB": "Seleziona punto B. Sposta la mappa e premi Invio per usare il suo centro.",
+        "geodesic": "Distanza geodetica",
+        "note": "Tra le coordinate cliccate; non è un percorso né una separazione di asset verificata. Premi Esc per uscire.",
+        "cancel": "Annulla selezione",
+        "cancelShort": "Annulla",
+        "resetShort": "Ripristina",
+        "exitShort": "Esci",
+        "reset": "Ripristina misurazione",
+        "exit": "Esci dalla misurazione"
       }
     },
     "climate": {
@@ -1849,8 +1863,8 @@
       "badgeAnimDesc": "Animare i badge di aggiornamento nelle intestazioni dei pannelli",
       "headlineMemoryLabel": "Memoria titoli",
       "headlineMemoryDesc": "Ricordare i titoli visti per evidenziare quelli nuovi",
-      "streamAlwaysOnLabel": "Riproduci automaticamente gli streaming live nella dashboard",
-      "streamAlwaysOnDesc": "Avvia automaticamente Live News e Live Webcams quando sono visibili. Lascia disattivato per caricare il video solo dopo aver fatto clic su Riproduci.",
+      "streamAlwaysOnLabel": "Riproduzione automatica webcam live",
+      "streamAlwaysOnDesc": "Avvia i video webcam in diretta non appena sono visibili. Mantieni disattivato per caricarli solo quando li avvii manualmente.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1900,7 +1914,9 @@
       "briefStoryDetails": "Dettagli della notizia ({{count}})",
       "streamIdleStopLabel": "Arresta il video in diretta durante l'inattività",
       "streamIdleStopDesc": "Interrompe Live News e Live Webcams dopo questo periodo di inattività e mostra un avviso nel pannello.",
-      "streamIdleStopNever": "Mai"
+      "streamIdleStopNever": "Mai",
+      "liveNewsAutoplayLabel": "Riproduzione automatica notizie in diretta",
+      "liveNewsAutoplayDesc": "Avvia il video delle notizie in diretta, senza audio, non appena è visibile. Disattiva per caricare il video solo quando lo avvii manualmente."
     },
     "etfFlows": {
       "previousColumns": "Colonne precedenti",
@@ -3516,7 +3532,8 @@
       "vesselsCount": "{{count}} VASI",
       "vessels": "VASI",
       "trackedVessels": "NAVI CINGOLATE",
-      "showLess": "Mostra meno"
+      "showLess": "Mostra meno",
+      "backToGroup": "Torna al gruppo"
     },
     "naturalEvent": {
       "closed": "CHIUSO",

@@ -26,6 +26,7 @@ import assert from 'node:assert/strict';
 
 import { runSeed, redactProxyCredentials, curlFetch } from '../scripts/_seed-utils.mjs';
 import { fetchAll, fetchGdeltConflictEvents, CONFLICT_COUNTRIES } from '../scripts/seed-conflict-intel.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -51,14 +52,14 @@ beforeEach(() => {
   recordedCalls = [];
   expireResult = 0; // every key already expired — the prod state that triggered exit 1
 
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
     if (Array.isArray(body) && Array.isArray(body[0])) {
       return new Response(JSON.stringify(body.map(() => ({ result: expireResult }))), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   process.exit = (code) => {
     const e = new Error(`__test_exit__:${code}`);

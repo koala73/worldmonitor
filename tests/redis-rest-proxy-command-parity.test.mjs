@@ -43,6 +43,7 @@ import {
 } from '../scripts/seed-military-bases.mjs';
 import { CABLE_HEALTH_REPAIR_SCRIPT } from '../shared/cable-health-repair-script.mjs';
 import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.cjs';
+import { SEED_LOCK_RENEW_SCRIPT, SEED_LOCK_FENCED_SET_SCRIPT } from '../scripts/_seed-utils.mjs';
 import { recordHistoryCost } from '../scripts/lib/intel-history-cost.mjs';
 import { createTenderReceipt, writeTenderReceipt } from '../scripts/_global-tender-receipts.mjs';
 
@@ -346,6 +347,18 @@ describe('redis-rest-proxy command gate', () => {
       assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true, `${name} must be pinned in the proxy`);
       assert.equal(accepts(gate, ['EVAL', script, '2', 'a', 'b']), true, `${name} must pass the gate`);
       assert.equal(accepts(gate, ['EVAL', `${script} `, '2', 'a', 'b']), false,
+        `a modified ${name} must be rejected`);
+    }
+  });
+
+  it('pins the runSeed lock renew and fenced-publish scripts by exact bytes', () => {
+    // Every runSeed publish sends these through a self-hosted proxy (SM-122);
+    // unpinned, the canonical and seed-meta writes of every seeder 403.
+    const gate = buildGate();
+    for (const [name, script] of Object.entries({ SEED_LOCK_RENEW_SCRIPT, SEED_LOCK_FENCED_SET_SCRIPT })) {
+      assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true, `${name} must be pinned in the proxy`);
+      assert.equal(accepts(gate, ['EVAL', script, '2', 'seed-lock:a:b', 'a:b:v1']), true, `${name} must pass the gate`);
+      assert.equal(accepts(gate, ['EVAL', `${script} `, '2', 'seed-lock:a:b', 'a:b:v1']), false,
         `a modified ${name} must be rejected`);
     }
   });

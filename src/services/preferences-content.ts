@@ -4,10 +4,12 @@ import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, MAP_THEME_OPTIONS
 import {
   formatIdleStopMinutes,
   getLiveMediaIdleStop,
+  getLiveNewsAutoplay,
   getLiveStreamsAlwaysOn,
   LIVE_MEDIA_IDLE_STOP_OPTIONS,
   parseLiveMediaIdleStop,
   setLiveMediaIdleStop,
+  setLiveNewsAutoplay,
   setLiveStreamsAlwaysOn,
 } from '@/services/live-stream-settings';
 import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
@@ -165,6 +167,9 @@ function handlePreferenceChange(
     case 'us-map-theme':
       setMapTheme(getMapProvider(), target.value);
       window.dispatchEvent(new CustomEvent('map-theme-changed'));
+      return true;
+    case 'us-live-news-autoplay':
+      setLiveNewsAutoplay(target.checked);
       return true;
     case 'us-live-streams-always-on':
       setLiveStreamsAlwaysOn(target.checked);
@@ -463,6 +468,13 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
   }
   html += `</select>`;
+
+  html += toggleRowHtml(
+    'us-live-news-autoplay',
+    t('components.insights.liveNewsAutoplayLabel'),
+    t('components.insights.liveNewsAutoplayDesc'),
+    getLiveNewsAutoplay(),
+  );
 
   html += toggleRowHtml(
     'us-live-streams-always-on',

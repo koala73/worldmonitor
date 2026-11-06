@@ -1076,10 +1076,11 @@ export class PanelLayoutManager implements AppModule {
   /** #5159/#5205/#5201: storage access can throw (blocked cookies, sandboxed
    *  iframe) and this runs BEFORE the shell installs — an uncaught throw would
    *  strand users on the boot skeleton. loadFromStorage is try/catch-guarded;
-   *  first-time mobile visitors default to the collapsed, feed-first Today
-   *  state. Wire format stays 'true'/'false' (JSON booleans). */
+   *  first-time mobile visitors see the map; it stays collapsed only for a
+   *  viewer who collapsed it (the control or the Today tab saves 'true').
+   *  Wire format stays 'true'/'false' (JSON booleans). */
   private static isMobileMapCollapsedPreferred(): boolean {
-    return loadFromStorage<boolean>('mobile-map-collapsed', true) === true;
+    return loadFromStorage<boolean>('mobile-map-collapsed', false) === true;
   }
 
   async renderLayout(): Promise<void> {
