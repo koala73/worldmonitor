@@ -60,7 +60,7 @@ Once the canonical form sorts values, a proxy that reorders them produces the sa
 Production behaviour was tested with a signed-probe oracle, because the edge's rewrite cannot be seen from the repo:
 
 1. Pull the production signing secret into the scratchpad (`vercel link` + `vercel env pull --environment=production`). Never print it, and delete it afterwards.
-2. Sign requests for a fake userId, each with a fresh nonce, and send each within the 30-second timestamp window. `insufficient_entitlement` means the signature verified and only the entitlement check refused. `invalid_internal_mcp_signature` alone does not prove a mismatch, because an expired timestamp, a malformed header and a reused nonce return the same body. With fresh nonces and timestamps it isolates the mismatch; confirm with the `internal_mcp_sig_mismatch` reason in usage telemetry when in doubt.
+2. Sign requests for a fake userId, each with a fresh nonce, and send each within the 30-second timestamp window. `insufficient_entitlement` means the signature verified and only the entitlement check refused. `invalid_internal_mcp_signature` alone does not prove a mismatch, because an expired timestamp, a malformed header and a reused nonce return the same body. Fresh nonces and timestamps do not rule out a malformed header. For each failed probe, either confirm `internal_mcp_sig_mismatch` in usage telemetry, or run a control with the same signer and header format that verifies. Here, sorted symbols and the `www.` host were that control.
 3. Vary one dimension at a time:
    - 1–3 alphabetical symbols verified.
    - 4 or more unsorted symbols failed through `api.`.
