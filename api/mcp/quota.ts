@@ -74,13 +74,13 @@ export function isRestEnforcementEnabled(): boolean {
  * in. The three states below are the only ones representable:
  *
  *   - `{allowance: 'mcp'}` — Pro 50, Pro Business 250, the free-account
- *     ceiling, Enterprise 25,000. All but Enterprise are `apiAccess: false`
- *     with a zero REST budget; every one keeps `mcp:pro-usage:…` at one unit
- *     per standalone call or bounded panel admission.
- *   - `{allowance: 'api', counter: 'mcp'}` — API tiers while
+ *     ceiling. All are `apiAccess: false` with a zero REST budget; every one
+ *     keeps `mcp:pro-usage:…` at one unit per standalone call or bounded
+ *     panel admission.
+ *   - `{allowance: 'api', counter: 'mcp'}` — API tiers and Enterprise while
  *     `API_RATE_LIMIT_ENFORCE` is off: the sold REST number, weighted, on the
  *     dedicated counter.
- *   - `{allowance: 'api', counter: 'api'}` — API tiers once the flag flips:
+ *   - `{allowance: 'api', counter: 'api'}` — the same plans once the flag flips:
  *     the same number on `rl:apikey:day:…`, shared with REST.
  *
  * This replaces the KTD6 plan-key exception list, which existed only because
@@ -94,8 +94,8 @@ export type McpBudget = (
   | { allowance: 'mcp'; limit: number | null }
   | { allowance: 'api'; counter: 'mcp' | 'api'; limit: number | null }
 ) & {
-  /** A catalog Enterprise (tier 3) budget: its limit is a circuit breaker
-   *  that pages before it trips (server/_shared/high-usage-alarm.ts). */
+  /** A catalog Enterprise (tier 3) budget: the high-usage alarm pages before
+   *  its limit trips (server/_shared/high-usage-alarm.ts). */
   enterprisePlan?: true;
 };
 
