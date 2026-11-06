@@ -752,6 +752,11 @@ describe('refreshClerkTokenAfterRejection', () => {
     assert.deepEqual(burst, Array(8).fill(fresh), 'every sibling gets the replacement');
     assert.equal(skipCacheCalls, 1, 'one uncached Clerk fetch for the whole burst');
     assert.equal(await getClerkToken(), fresh, 'the replacement is what the cache now serves');
+
+    // A straggler 401 on the same refused token after the refresh settled
+    // gets the cached replacement, not another Clerk round trip.
+    assert.equal(await refreshClerkTokenAfterRejection(stale), fresh);
+    assert.equal(skipCacheCalls, 1, 'still one uncached Clerk fetch');
   });
 
   it('returns null when nobody is signed in', async () => {
