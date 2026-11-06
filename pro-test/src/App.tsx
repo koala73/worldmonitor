@@ -1451,6 +1451,20 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, [page]);
 
+  // Deep links into the home page (/pro#pricing from every dashboard
+  // "Upgrade to Pro" CTA) target React-only sections that are absent from the
+  // prerendered HTML, so the browser's native fragment scroll runs before the
+  // target exists and leaves the buyer at the top of the page. Scroll once
+  // the section has mounted. The rAF lets layout settle first.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.length < 2 || hash.startsWith('#enterprise')) return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(hash.slice(1))?.scrollIntoView();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   useEffect(() => {
     if (page === 'enterprise' && window.location.hash === '#enterprise-contact') {
       setTimeout(() => {
