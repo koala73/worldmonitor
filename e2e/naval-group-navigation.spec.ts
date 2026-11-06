@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 type HarnessWindow = Window & {
-  __mobileMapIntegrationHarness: {
+  __mobileMapIntegrationHarness?: {
     ready: boolean;
     seedNavalGroup: () => void;
     getWrapperTransform: () => string;
@@ -16,12 +16,12 @@ for (const width of [1280, 390]) {
     test('opens details without map movement and returns to expanded group', async ({ page }, testInfo) => {
       await page.goto('/tests/mobile-map-integration-harness.html?lang=en');
       await page.waitForFunction(() => (window as HarnessWindow).__mobileMapIntegrationHarness?.ready);
-      await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness.seedNavalGroup());
+      await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness!.seedNavalGroup());
       const marker = page.locator('.vessel-cluster');
       await expect(marker).toBeVisible();
       const mapState = () => page.evaluate(() => ({
-        transform: (window as HarnessWindow).__mobileMapIntegrationHarness.getWrapperTransform(),
-        marker: (window as HarnessWindow).__mobileMapIntegrationHarness.getOverlayPositionSignature('.vessel-cluster'),
+        transform: (window as HarnessWindow).__mobileMapIntegrationHarness!.getWrapperTransform(),
+        marker: (window as HarnessWindow).__mobileMapIntegrationHarness!.getOverlayPositionSignature('.vessel-cluster'),
       }));
       const before = await mapState();
       await marker.click();
