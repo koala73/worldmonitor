@@ -1413,6 +1413,20 @@
       "info": "INFO"
     },
     "deckgl": {
+      "measure": {
+        "title": "Measure distance",
+        "units": "Distance units",
+        "pointA": "Select point A. Click the map or press Enter at the map center.",
+        "pointB": "Select point B. Pan the map and press Enter to use its center.",
+        "geodesic": "Geodesic distance",
+        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
+        "cancel": "Cancel selection",
+        "cancelShort": "Cancel",
+        "resetShort": "Reset",
+        "exitShort": "Exit",
+        "reset": "Reset measurement",
+        "exit": "Exit measurement"
+      },
       "zoomIn": "Zoom In",
       "zoomOut": "Zoom Out",
       "resetView": "Reset View",
@@ -1678,8 +1692,10 @@
       "analysisFrameworksFromAgentskills": "From agentskills.io",
       "analysisFrameworksPasteJson": "Paste JSON",
       "analysisFrameworksSaveToLibrary": "Save to Library",
-      "streamAlwaysOnLabel": "Auto-play live streams on dashboard",
-      "streamAlwaysOnDesc": "Starts Live News and Live Webcams automatically when visible. Leave off to load video only after you click Play.",
+      "liveNewsAutoplayLabel": "Auto-play live news",
+      "liveNewsAutoplayDesc": "Starts the live news video, muted, as soon as it is on screen. Turn this off to load the video only when you start it yourself.",
+      "streamAlwaysOnLabel": "Auto-play live webcams",
+      "streamAlwaysOnDesc": "Starts the live webcam videos as soon as they are on screen. Leave this off to load them only when you start them yourself.",
       "streamIdleStopLabel": "Stop live video when idle",
       "streamIdleStopDesc": "Stops Live News and Live Webcams after this long without activity and shows a notice in the panel.",
       "streamIdleStopNever": "Never",
@@ -3614,6 +3630,7 @@
       "primary": "PRIMARY",
       "trackedAircraft": "TRACKED AIRCRAFT",
       "showLess": "Show less",
+      "backToGroup": "Back to group",
       "vesselActivity": {
         "exercise": "Naval Exercise",
         "deployment": "Naval Deployment",

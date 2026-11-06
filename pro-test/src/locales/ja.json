@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "ノイズ",
     "signalWord": "シグナル",
-    "valueProps": "地政学 AI レイヤー — 尋ね、購読し、その上に構築する。",
+    "valueProps": "AIアナリストに質問し、アラートルールを設定し、ブリーフィングを取得し、Claudeで使用できます。",
     "launchingDate": "現在ご利用可能",
     "tryFreeDashboard": "無料ダッシュボードを試す",
     "choosePlan": "プランを選ぶ",
-    "signIn": "サインイン",
     "goToDashboard": "ダッシュボードに移動"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "個人用",
     "axisPersonalNote": "個人で使用",
     "axisCommercial": "商用",
-    "axisCommercialNote": "仕事、クライアント、製品"
+    "axisCommercialNote": "仕事、クライアント、製品",
+    "cancelAnytime": "いつでもアカウントからキャンセルできます。お支払いいただいた期間の終了まで、アクセスは継続します。"
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "ニュースになる頃には、既に知っている。",
       "ctaPrimary": "ダッシュボードを起動",
       "ctaFree": "無料 · 登録不要 · 数秒で読み込み",
-      "ctaSecondary": "使用方法を見る ↓",
       "trustUsers": "200 万+ ユーザー",
       "trustOpenSource": "オープンソース · AGPL-3.0",
       "screenshotAlt": "World Monitor ライブ インテリジェンス ダッシュボード — 紛争、海運、市場レイヤー付きグローバルマップ",
@@ -486,7 +485,8 @@
       "asOf": "{{date}}時点",
       "whatIsTitle": "World Monitor とは何ですか？",
       "whatIsBody": "World Monitor は無料（$0）のオープンソース（AGPL-3.0）ダッシュボードで、200万人以上が利用しています。{{feeds}}個のニュースおよびOSINT フィードを{{providers}}個の提供元から集約し、1つのライブ世界地図上にストリーミング配信します。{{mapLayers}}種類のマップレイヤーで地政学、市場、海運、航空、サイバーに対応し、収束するイベントがヘッドラインになる前に表示されます。すべての数値は出典付きで、すべての手法は文書化されています。",
-      "whatIsBestFor": "リアルタイムの地政学シグナルを必要とするアナリスト、ジャーナリスト、トレーダー、開発者に最適です。"
+      "whatIsBestFor": "リアルタイムの地政学シグナルを必要とするアナリスト、ジャーナリスト、トレーダー、開発者に最適です。",
+      "ctaPro": "Pro は{{price}}/月から"
     },
     "live": {
       "eyebrow": "現在ライブ配信中",

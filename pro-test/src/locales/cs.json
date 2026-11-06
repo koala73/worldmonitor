@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Šum",
     "signalWord": "Signál",
-    "valueProps": "Geopolitická AI vrstva — ptejte se jí, odebírejte ji, stavte na ní.",
+    "valueProps": "Ptejte se AI analytika, nastavte pravidla upozornění, získávejte zprávy a používejte to v Claude.",
     "launchingDate": "Dostupné nyní",
     "tryFreeDashboard": "Vyzkoušejte dashboard zdarma",
     "choosePlan": "Vyberte plán",
-    "signIn": "Přihlásit se",
     "goToDashboard": "Přejít na Ovládací panel"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Osobní",
     "axisPersonalNote": "individuální použití",
     "axisCommercial": "Komerční",
-    "axisCommercialNote": "práce, klienti a produkty"
+    "axisCommercialNote": "práce, klienti a produkty",
+    "cancelAnytime": "Zrušit kdykoli ze svého účtu. Máte přístup až do konce období, které jste zaplatili."
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "Když se to stane zprávou, už jste to věděli.",
       "ctaPrimary": "Otevřít dashboard",
       "ctaFree": "Zdarma · Bez registrace · Načte se během sekund",
-      "ctaSecondary": "Podívejte se, jak to lidé používají ↓",
       "trustUsers": "2M+ uživatelů",
       "trustOpenSource": "Otevřený kód · AGPL-3.0",
       "screenshotAlt": "World Monitor live zpravodajský dashboard — globální mapa s vrstvami konfliktů, lodní dopravy a trhů",
@@ -486,7 +485,8 @@
       "asOf": "K {{date}}",
       "whatIsTitle": "Co je World Monitor?",
       "whatIsBody": "World Monitor je bezplatný ($0), open-source (AGPL-3.0) dashboard, který používá 2M+ lidí. Streamuje {{feeds}} zpravodajských a OSINT zdrojů z {{providers}} atribuovaných poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy mapových vrstev, která pokrývá geopolitiku, trhy, námořní dopravu, letectví a kybernetiku. Koreluje je tak, aby se sbíhající se události objevily dříve než se dostanou na titulky. Každá údaj má uvedený zdroj a každá metoda je zdokumentovaná.",
-      "whatIsBestFor": "Nejlépe se hodí pro analytiky, novináře, tradery a vývojáře, kteří potřebují živé geopolitické signály."
+      "whatIsBestFor": "Nejlépe se hodí pro analytiky, novináře, tradery a vývojáře, kteří potřebují živé geopolitické signály.",
+      "ctaPro": "Pro od {{price}}/měsíc"
     },
     "live": {
       "eyebrow": "Live právě teď",

@@ -94,6 +94,8 @@ test.describe('Dashboard displacement data path', () => {
   test('loads IDMC bootstrap and DTM/UNHCR RPC data into the SVG map from a shared layer URL', async ({ page }, testInfo) => {
     const { seedAnonymousDashboard } = await import('./bootstrap-request-budget-fixtures');
     await seedAnonymousDashboard(page, 'full', { localStorage: {
+      // Keep coverage of shared links for viewers who saved a collapsed map.
+      'mobile-map-collapsed': 'true',
       'worldmonitor-panels': JSON.stringify({ displacement: { name: 'Displacement', enabled: true, priority: 0 } }),
     } });
     await page.route(/^https?:\/\/(?!(127\.0\.0\.1:\d+|localhost:\d+)(?:\/|$)).*/i, route => route.abort());

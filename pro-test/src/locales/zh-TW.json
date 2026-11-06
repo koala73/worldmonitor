@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "噪音",
     "signalWord": "訊號",
-    "valueProps": "地緣政治 AI 層 — 向它提問、訂閱它、在其之上構建。",
+    "valueProps": "詢問 AI 分析師、設定告警規則、獲取簡報，並在 Claude 中使用。",
     "launchingDate": "現已上線",
     "tryFreeDashboard": "試用免費儀表板",
     "choosePlan": "選擇方案",
-    "signIn": "登入",
     "goToDashboard": "轉到儀表板"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "個人\t",
     "axisPersonalNote": "個人使用\t",
     "axisCommercial": "商業\t",
-    "axisCommercialNote": "工作、客戶與產品"
+    "axisCommercialNote": "工作、客戶與產品",
+    "cancelAnytime": "隨時從您的帳戶取消。您可以繼續使用至所付費期間的結束。"
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "新聞報道之前，您已經瞭解。",
       "ctaPrimary": "啟動儀表板\t",
       "ctaFree": "免費 · 無需註冊 · 秒速載入\t",
-      "ctaSecondary": "檢視人們如何使用它 ↓\t",
       "trustUsers": "200 萬+ 使用者\t",
       "trustOpenSource": "開源 · AGPL-3.0\t",
       "screenshotAlt": "World Monitor 即時情報儀表板 — 包含衝突、海運和市場圖層的全球地圖\t",
@@ -486,7 +485,8 @@
       "asOf": "截至{{date}}",
       "whatIsTitle": "World Monitor 是什麼？",
       "whatIsBody": "World Monitor 是一款免費（$0）、開源（AGPL-3.0）的儀表板，供 200 多萬人使用。它將來自 {{providers}} 個歸屬提供商的 {{feeds}} 條新聞和 OSINT 源流式傳輸到一張即時世界地圖上，包括 {{mapLayers}} 種地圖圖層型別，涵蓋地緣政治、市場、海運、航空和網路安全。它關聯這些資料，使匯聚事件在登上新聞頭條前就浮現出來。每個資料都有溯源，每種方法都有文件記錄。",
-      "whatIsBestFor": "最適合需要即時地緣政治訊號的分析師、記者、交易員和開發者。"
+      "whatIsBestFor": "最適合需要即時地緣政治訊號的分析師、記者、交易員和開發者。",
+      "ctaPro": "Pro 版本起價 {{price}}/月"
     },
     "live": {
       "eyebrow": "即時線上\t",

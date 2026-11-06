@@ -124,4 +124,26 @@ test.describe('/pro hero is the LCP element before React mounts', () => {
         .toEqual({ tag: 'H1', inHero: true });
     });
   }
+
+  // prerender.mjs hides the crawler section #pro-overview before mount so it
+  // cannot win LCP under the hero on a phone. If the bundle never runs, that
+  // section is the page's only body copy, so a CSS-only delayed reveal must
+  // bring it back without any script.
+  test('the crawler section reappears when the bundle never mounts', async ({ page }) => {
+    const indexPath = resolve(repoRoot, PRO_INDEX);
+    expect(existsSync(indexPath), `${PRO_INDEX} is missing. Run \`npm run build:pro\` first.`).toBe(true);
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.route('**/*', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.origin !== ORIGIN || url.pathname.endsWith('.js')) return route.abort();
+      const pathname = url.pathname === '/pro' ? '/pro/index.html' : url.pathname;
+      const path = resolve(repoRoot, 'public', pathname.replace(/^\//, ''));
+      if (!existsSync(path)) return route.abort();
+      return route.fulfill({ path });
+    });
+    await page.goto(`${ORIGIN}/pro`);
+    const overview = page.locator('#pro-overview');
+    await expect(overview).toBeHidden();
+    await expect(overview).toBeVisible({ timeout: 8_000 });
+  });
 });

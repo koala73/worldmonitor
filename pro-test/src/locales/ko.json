@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "노이즈",
     "signalWord": "시그널",
-    "valueProps": "지정학 AI 레이어 — 질문하고, 구독하고, 그 위에 쌓으세요.",
+    "valueProps": "AI 분석가에게 질문하고, 알림 규칙을 설정하며, 브리핑을 받고, Claude에서 사용하세요.",
     "launchingDate": "지금 이용 가능",
     "tryFreeDashboard": "무료 대시보드 체험",
     "choosePlan": "플랜 선택",
-    "signIn": "로그인",
     "goToDashboard": "대시보드로 이동"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "개인용",
     "axisPersonalNote": "개인 사용",
     "axisCommercial": "상용",
-    "axisCommercialNote": "업무, 클라이언트 및 제품"
+    "axisCommercialNote": "업무, 클라이언트 및 제품",
+    "cancelAnytime": "언제든지 계정에서 취소할 수 있습니다. 결제한 기간이 끝날 때까지 접근 권한이 유지됩니다."
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "뉴스가 되기 전에, 이미 알고 있을 겁니다.",
       "ctaPrimary": "대시보드 열기",
       "ctaFree": "무료 · 가입 불필요 · 초 단위로 로드됨",
-      "ctaSecondary": "사용 방법 보기 ↓",
       "trustUsers": "200만+ 사용자",
       "trustOpenSource": "오픈소스 · AGPL-3.0",
       "screenshotAlt": "World Monitor 실시간 인텔리전스 대시보드 — 분쟁, 해운 및 시장 레이어가 포함된 글로벌 지도",
@@ -486,7 +485,8 @@
       "asOf": "{{date}} 기준",
       "whatIsTitle": "World Monitor란 무엇인가요?",
       "whatIsBody": "World Monitor는 2백만 명 이상이 사용하는 무료($0), 오픈소스(AGPL-3.0) 대시보드입니다. {{feeds}}개의 뉴스와 OSINT 피드를 {{providers}}개 출처에서 가져와 {{mapLayers}}가지 지도 레이어 유형으로 하나의 실시간 세계 지도에 스트리밍합니다. 지정학, 시장, 해상 운송, 항공, 사이버 분야를 아우르며, 수렴하는 사건들이 헤드라인보다 먼저 드러나도록 상관관계를 분석합니다. 모든 수치는 출처가 명시되고 모든 방법론은 문서화되어 있습니다.",
-      "whatIsBestFor": "실시간 지정학 신호가 필요한 애널리스트, 기자, 트레이더, 개발자에게 가장 적합합니다."
+      "whatIsBestFor": "실시간 지정학 신호가 필요한 애널리스트, 기자, 트레이더, 개발자에게 가장 적합합니다.",
+      "ctaPro": "Pro {{price}}/월부터"
     },
     "live": {
       "eyebrow": "지금 실시간",

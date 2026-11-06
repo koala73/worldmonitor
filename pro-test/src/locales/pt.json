@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Ruído",
     "signalWord": "Sinal",
-    "valueProps": "A camada de IA geopolítica — pergunte-lhe, assine, construa sobre ela.",
+    "valueProps": "Consulte um analista de IA, configure regras de alertas, receba briefings e use no Claude.",
     "launchingDate": "Disponível agora",
     "tryFreeDashboard": "Experimente o painel gratuito",
     "choosePlan": "Escolha o seu plano",
-    "signIn": "Entrar",
     "goToDashboard": "Ir para o Painel"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Pessoal",
     "axisPersonalNote": "uso individual",
     "axisCommercial": "Comercial",
-    "axisCommercialNote": "trabalho, clientes e produtos"
+    "axisCommercialNote": "trabalho, clientes e produtos",
+    "cancelAnytime": "Cancele quando quiser pela sua conta. Você mantém acesso até o fim do período que pagou."
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "Quando vira notícia, você já sabia.",
       "ctaPrimary": "Abrir o painel",
       "ctaFree": "Grátis · Sem cadastro · Carrega em segundos",
-      "ctaSecondary": "Veja como as pessoas usam ↓",
       "trustUsers": "2M+ usuários",
       "trustOpenSource": "Código aberto · AGPL-3.0",
       "screenshotAlt": "Painel de inteligência ao vivo do World Monitor — mapa global com camadas de conflitos, navegação e mercados",
@@ -486,7 +485,8 @@
       "asOf": "Em {{date}}",
       "whatIsTitle": "O que é World Monitor?",
       "whatIsBody": "World Monitor é um dashboard gratuito ($0), open-source (AGPL-3.0) usado por 2M+ pessoas. Ele transmite {{feeds}} feeds de notícias e OSINT de {{providers}} provedores atribuídos em um único mapa-múndi ao vivo com {{mapLayers}} tipos de camada de mapa, abrangendo geopolítica, mercados, navegação marítima, aviação e cibersegurança. Ele correlaciona-os para que eventos convergentes apareçam antes dos destaques. Cada dado é rastreado e cada método documentado.",
-      "whatIsBestFor": "Ideal para analistas, jornalistas, traders e desenvolvedores que precisam de sinais geopolíticos ao vivo."
+      "whatIsBestFor": "Ideal para analistas, jornalistas, traders e desenvolvedores que precisam de sinais geopolíticos ao vivo.",
+      "ctaPro": "Pro a partir de {{price}}/mês"
     },
     "live": {
       "eyebrow": "Ao vivo agora",

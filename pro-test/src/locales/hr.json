@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Šum",
     "signalWord": "Signal",
-    "valueProps": "Geopolitički AI sloj za obavještajne uvide — pitajte ga, pretplatite se, gradite na njemu.",
+    "valueProps": "Pitajte AI analitičara, postavite pravila upozorenja, dobijte izvještaje i koristite ga u Claudeu.",
     "launchingDate": "Dostupno sada",
     "tryFreeDashboard": "Isprobajte besplatnu nadzornu ploču",
     "choosePlan": "Odaberite plan",
-    "signIn": "Prijava",
     "goToDashboard": "Idi na nadzornu ploču"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Osobno",
     "axisPersonalNote": "individualna upotreba",
     "axisCommercial": "Komercijalno",
-    "axisCommercialNote": "rad, klijenti i proizvodi"
+    "axisCommercialNote": "rad, klijenti i proizvodi",
+    "cancelAnytime": "Otkaži bilo kada iz svog računa. Zadržavate pristup do kraja razdoblja za koje ste platili."
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "Dok postane vijest, već si znao.",
       "ctaPrimary": "Pokreni nadzornu ploču",
       "ctaFree": "Besplatno · Bez prijave · Učitava se u sekundama",
-      "ctaSecondary": "Vidi kako ga koriste ↓",
       "trustUsers": "2M+ korisnika",
       "trustOpenSource": "Otvoreni kod · AGPL-3.0",
       "screenshotAlt": "World Monitor živa obavještajna nadzorna ploča — globalna karta sa slojevima sukoba, transporta i tržišta",
@@ -486,7 +485,8 @@
       "asOf": "Stanje od {{date}}",
       "whatIsTitle": "Što je World Monitor?",
       "whatIsBody": "World Monitor je besplatna ($0), open-source (AGPL-3.0) kontrolna ploča koju koristi 2M+ osoba. Streamira {{feeds}} vijesti i OSINT izvore od {{providers}} atribuiranih pružatelja na jednu živu svjetsku kartu s {{mapLayers}} vrsta slojeva karte, pokrivajući geopolitiku, tržišta, brodarstvo, zrakoplovstvo i cyber sigurnost. Usklađuje ih tako da se konvergentni eventi pojave prije naslova. Svaki podatak je dokumentiran i svaka metoda izvora je navedena.",
-      "whatIsBestFor": "Najbolje za analitičare, novinare, tradere i developere kojima trebaju geopolitički signali uživo."
+      "whatIsBestFor": "Najbolje za analitičare, novinare, tradere i developere kojima trebaju geopolitički signali uživo.",
+      "ctaPro": "Pro od {{price}}/mjesec"
     },
     "live": {
       "eyebrow": "Uživo sada",

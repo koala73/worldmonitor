@@ -492,28 +492,88 @@ function dispatchCloudPrefsSignInTerminal(
   ));
 }
 
+/** The `sub` claim of a Clerk JWT, or null when the token cannot be read. */
+function tokenSubject(token: string): string | null {
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+  try {
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(
+      atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)),
+    ) as { sub?: unknown };
+    return typeof claims.sub === 'string' && claims.sub ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `token` belongs to the account the local sync state is positioned
+ * in, so that a write signed with it lands in that account's row.
+ *
+ * Clerk can make another account active (multi-session setActive) before the
+ * app observes the switch and calls onSignIn. A write that fetches its token in
+ * that gap gets the NEW account's token while carrying the previous account's
+ * preferences and sync version; when the versions match, the server accepts it
+ * and the new account's row is overwritten (SM-015). The auth generation cannot
+ * catch this, because nothing has bumped it yet.
+ *
+ * The owner is the account this page signed in, else the account that last
+ * started a sign-in here. With neither, the write is safe only while the
+ * local sync version is zero, i.e. not positioned in anyone's row: an upload
+ * with no account signed in advances the version without recording an owner,
+ * so a nonzero version with no recorded owner may be another account's.
+ */
+function tokenOwnsSyncState(token: string, accountId?: string): boolean {
+  let owner: string | null = accountId ?? _dirtyKeysUserId;
+  if (owner === null) {
+    const read = safeStorageGetChecked(KEY_LAST_SIGNED_IN_AS);
+    // Ownership is undeterminable, so the write cannot be shown to be safe.
+    if (!read.ok) return false;
+    owner = read.value;
+  }
+  if (owner === null) return getSyncVersionChecked() === 0;
+  return tokenSubject(token) === owner;
+}
+
 /**
  * Returns false when prior-account ownership could not be DETERMINED.
  *
- * Absent legitimately means "no prior account, nothing to clear". A failed read
- * degrading to null is indistinguishable from that, and skipping the cleanup on
+ * Absent means "no recorded prior account": ownership sidecars stay, but the
+ * sync version is still cleared (see below). A failed read degrading to null is
+ * indistinguishable from that, and skipping the cleanup on
  * an account transition leaves account A's ownership sidecars in place for B —
  * so tier reconciliation attributes A's gate decisions to B (#7833 review).
  * Provenance is exactly the kind of question to fail closed on.
  */
-function clearForeignOwnershipSidecars(userId: string): boolean {
+function clearForeignAccountState(userId: string): boolean {
   const read = safeStorageGetChecked(KEY_LAST_SIGNED_IN_AS);
   if (!read.ok) return false;
   const lastSignedInAs = read.value;
-  if (lastSignedInAs === null || lastSignedInAs === userId) return true;
+  if (lastSignedInAs === userId) return true;
 
   // Preferences intentionally survive sign-out, but ownership sidecars are
   // account provenance. If the next account has a legacy row that omits them,
   // keeping the prior account's local values attributes A's gate decisions to
   // B. B's explicit cloud values will still be applied later in this attempt.
-  for (const key of ACCOUNT_PROVENANCE_SYNC_KEYS) {
-    if (!safeStorageRemoveChecked(key)) return false;
+  if (lastSignedInAs !== null) {
+    for (const key of ACCOUNT_PROVENANCE_SYNC_KEYS) {
+      if (!safeStorageRemoveChecked(key)) return false;
+    }
   }
+  // The sync version is A's position in A's row. onSignOut removes it, but a
+  // page can boot straight into B without having observed A's sign-out (A
+  // signed out where cloud sync does not run, or the session lapsed while the
+  // tab was closed). Left in place, B's sign-in compares B's row against A's
+  // version: equal versions take the local-upload branch and post A's
+  // preferences into B's row with B's token (SM-015).
+  //
+  // An absent marker does not prove the version is this account's: profiles
+  // older than the marker, or older than recording it at sign-in entry, can
+  // hold a version with no marker. Cost of clearing for the same account: one
+  // cloud-first reconcile, with its dirty keys merged over the cloud row.
+  if (!safeStorageRemoveChecked(KEY_SYNC_VERSION)) return false;
+  safeStorageRemove(KEY_LAST_SYNC_AT);
   return true;
 }
 
@@ -956,6 +1016,14 @@ function runSignInAttempt(attempt: SignInAttempt): Promise<void> {
         completeSignInAttempt(attempt, 'error');
         return;
       }
+      // Clerk already made another account active. Reading that account's row
+      // into this one's local state, or posting to it, would cross accounts;
+      // the sign-in for the account Clerk switched to supersedes this one.
+      if (!tokenOwnsSyncState(token, userId)) {
+        setState('error');
+        completeSignInAttempt(attempt, 'error');
+        return;
+      }
       _cachedToken = token;
 
       const cloud = await fetchCloudPrefs(token, variant);
@@ -1133,6 +1201,14 @@ export function onSignIn(
     return Promise.resolve();
   }
 
+  // Clerk can switch the active account from A to B directly (multi-session
+  // setActive), so the caller never reports a signed-out state between them.
+  // Run A's sign-out first: it flushes A's pending upload with A's cached
+  // token, retires A's timers and generation, drops A's dirty-key ownership,
+  // and clears A's sync version — the state B's reconciliation must not
+  // inherit (SM-015). _dirtyKeysUserId is the account this page last signed in.
+  if (_dirtyKeysUserId !== null && _dirtyKeysUserId !== userId) onSignOut();
+
   // New onSignIn entry invalidates both upload and sign-in retry closures.
   // Recursive sign-in retries use runSignInAttempt directly, preserving this
   // generation until they reach a real terminal outcome.
@@ -1142,9 +1218,17 @@ export function onSignIn(
   const myGeneration = _authGeneration;
 
   // Ownership sidecars describe which changes a particular account's gate
-  // produced. Preserve them for a same-account legacy cloud row, but never
-  // carry them across an observed account transition.
-  if (!clearForeignOwnershipSidecars(userId)) {
+  // produced, and the sync version is a position in one account's row.
+  // Preserve them for the same account, but never carry them across an
+  // account transition recorded in storage.
+  //
+  // The marker is recorded here, not only when this sign-in completes: from
+  // this point the sync version can only advance for this account (older
+  // writers stop on the generation bump above), and the uploads that advance
+  // it do not touch the marker. Recording it only on completion let a failed
+  // sign-in for A leave B's marker over A's version, and B's next sign-in then
+  // kept that version and posted A's preferences into B's row (SM-015).
+  if (!clearForeignAccountState(userId) || !safeStorageSetChecked(KEY_LAST_SIGNED_IN_AS, userId)) {
     // Provenance is undeterminable, so proceeding could attribute the previous
     // account's gate decisions to this one. Report a terminal error rather than
     // reconcile on a guess.
@@ -1184,8 +1268,9 @@ export function onSignOut(): void {
     _debounceTimer = null;
     // Never launch a second stale-version writer while sign-in reconciliation
     // or a normal upload is already running. Dirty keys remain persisted and
-    // the active operation / next sign-in remains the recovery path.
-    if (!_syncOperations.busy) {
+    // the active operation / next sign-in remains the recovery path. The
+    // cached token must also belong to the account whose version this posts.
+    if (!_syncOperations.busy && tokenOwnsSyncState(_cachedToken)) {
       const prepared = migrateLocalBlobIfNeeded();
       // Best-effort flush, but "best effort" must not mean "post a blob that
       // deletes an unreadable preference from the cloud". Skip the FLUSH only —
@@ -1248,6 +1333,14 @@ async function performUploadNow(variant: string): Promise<'completed' | 'retry-d
     const token = await getCloudPrefsToken();
     if (_authGeneration !== myGeneration) return 'stopped';
     if (!token) return 'stopped';
+    if (!tokenOwnsSyncState(token)) {
+      // Clerk switched accounts before this page observed it. Write nothing
+      // and keep the edit pending for its own account: the switch's sign-out
+      // flushes it with that account's cached token. This token is never
+      // cached, so no later flush can sign with it either.
+      schedulePrefUpload(variant);
+      return 'stopped';
+    }
     _cachedToken = token;
 
     setState('syncing');
@@ -1487,7 +1580,12 @@ export function install(variant: string): void {
   // Tab close: flush pending debounce via fetch with keepalive
   // (sendBeacon cannot send Authorization headers)
   const flushOnUnload = (): void => {
-    if (_debounceTimer === null || !_cachedToken) return;
+    const token = _cachedToken;
+    if (_debounceTimer === null || !token) return;
+    // Same account binding as the queued writers: only the token of the
+    // account whose sync version this posts may carry the snapshot. On a
+    // mismatch the debounce stays armed for the switch's sign-out to flush.
+    if (!tokenOwnsSyncState(token)) return;
     clearTimeout(_debounceTimer);
     _debounceTimer = null;
 
@@ -1513,7 +1611,7 @@ export function install(variant: string): void {
         keepalive: true,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${_cachedToken}`,
+          Authorization: `Bearer ${token}`,
         },
         body: payload,
         signal: AbortSignal.timeout(CLOUD_PREFS_REQUEST_TIMEOUT_MS),

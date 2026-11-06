@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Gürültü",
     "signalWord": "Sinyal",
-    "valueProps": "Jeopolitik yapay zekâ katmanı — ona sorun, abone olun, üzerine inşa edin.",
+    "valueProps": "Bir AI analistine sor, uyarı kuralları belirle, durum raporları al ve Claude'da kullan.",
     "launchingDate": "Şimdi mevcut",
     "tryFreeDashboard": "Ücretsiz kontrol panelini deneyin",
     "choosePlan": "Planınızı seçin",
-    "signIn": "Giriş yap",
     "goToDashboard": "Panoya Git"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Kişisel",
     "axisPersonalNote": "bireysel kullanım",
     "axisCommercial": "Ticari",
-    "axisCommercialNote": "iş, müşteriler ve ürünler"
+    "axisCommercialNote": "iş, müşteriler ve ürünler",
+    "cancelAnytime": "Hesabınızdan istediğiniz zaman iptal edebilirsiniz. Ödediğiniz dönemin sonuna kadar erişiminiz devam eder."
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "Haber olduğunda, zaten biliyordun.",
       "ctaPrimary": "Panoyu başlat",
       "ctaFree": "Ücretsiz · Kayıt yok · Saniyeler içinde yüklenir",
-      "ctaSecondary": "İnsanlar bunu nasıl kullanıyor ↓",
       "trustUsers": "2M+ kullanıcı",
       "trustOpenSource": "Açık kaynak · AGPL-3.0",
       "screenshotAlt": "World Monitor canlı istihbarat panosu — çatışma, nakliye ve pazar katmanları olan global harita",
@@ -486,7 +485,8 @@
       "asOf": "{{date}} itibarıyla",
       "whatIsTitle": "World Monitor Nedir?",
       "whatIsBody": "World Monitor, 2M+ kişi tarafından kullanılan ücretsiz ($0), açık kaynaklı (AGPL-3.0) bir paneldir. {{feeds}} haber ve OSINT akışını {{providers}} atfedilen sağlayıcıdan {{mapLayers}} harita katmanı türüyle tek bir canlı dünya haritasına aktarır; jeopolitik, piyasalar, denizcilik, havacılık ve siber alanları kapsar. Bunları ilişkilendirerek yakınsayan olayları başlıklardan önce ortaya çıkarır. Her rakam kaynaklıdır ve her yöntem belgelenmiştir.",
-      "whatIsBestFor": "Canlı jeopolitik sinyallere ihtiyaç duyan analistler, gazeteciler, trader'lar ve geliştiriciler için ideal."
+      "whatIsBestFor": "Canlı jeopolitik sinyallere ihtiyaç duyan analistler, gazeteciler, trader'lar ve geliştiriciler için ideal.",
+      "ctaPro": "Pro {{price}}/ay'dan"
     },
     "live": {
       "eyebrow": "Şu anda canlı",

@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Zgomot",
     "signalWord": "Semnal",
-    "valueProps": "Stratul de IA geopolitică — întreabă-l, abonează-te, construiește deasupra.",
+    "valueProps": "Întrebați un analist AI, stabiliți reguli de alertă, obțineți rapoarte de situație și folosiți-o în Claude.",
     "launchingDate": "Disponibil acum",
     "tryFreeDashboard": "Încearcă panoul gratuit",
     "choosePlan": "Alege planul",
-    "signIn": "Autentificare",
     "goToDashboard": "Accesați tabloul de bord"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Uz personal",
     "axisPersonalNote": "utilizare individuală",
     "axisCommercial": "Comercial",
-    "axisCommercialNote": "muncă, clienți și produse"
+    "axisCommercialNote": "muncă, clienți și produse",
+    "cancelAnytime": "Anulați oricând din cont. Veți păstra accesul până la sfârșitul perioadei pentru care ați plătit."
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "Până când devine știre, deja știai.",
       "ctaPrimary": "Lansați tabloul de bord",
       "ctaFree": "Gratuit · Fără înregistrare · Se încarcă în secunde",
-      "ctaSecondary": "Vedeți cum îl folosesc oamenii ↓",
       "trustUsers": "2M+ utilizatori",
       "trustOpenSource": "Sursă deschisă · AGPL-3.0",
       "screenshotAlt": "Tabloul de bord de inteligență live World Monitor — hartă globală cu straturi de conflict, transport și piață",
@@ -486,7 +485,8 @@
       "asOf": "Din {{date}}",
       "whatIsTitle": "Ce este World Monitor?",
       "whatIsBody": "World Monitor este un dashboard gratuit ($0), open-source (AGPL-3.0) folosit de 2M+ persoane. Transmite {{feeds}} fluxuri de știri și OSINT de la {{providers}} furnizori atribuiți pe o hartă mondială live unificată cu {{mapLayers}} tipuri de straturi de hartă, acoperind geopolitică, piețe, transport maritim, aviație și cyber. Le corelează pentru ca evenimentele convergente să apară înaintea știrilor. Fiecare cifră este sursa și fiecare metodă documentată.",
-      "whatIsBestFor": "Ideal pentru analiști, jurnaliști, traderi și dezvoltatori care au nevoie de semnale geopolitice în timp real."
+      "whatIsBestFor": "Ideal pentru analiști, jurnaliști, traderi și dezvoltatori care au nevoie de semnale geopolitice în timp real.",
+      "ctaPro": "Pro de la {{price}}/lună"
     },
     "live": {
       "eyebrow": "Live chiar acum",

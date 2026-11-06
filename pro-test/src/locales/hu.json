@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Zaj",
     "signalWord": "Jel",
-    "valueProps": "A geopolitikai hírszerzési AI-réteg — kérdezze, iratkozzon fel rá, építsen rá.",
+    "valueProps": "Kérdezz meg egy AI-elemzőt, állíts be riasztási szabályokat, kapj briefingeket, és használd a Claude-ban.",
     "launchingDate": "Már elérhető",
     "tryFreeDashboard": "Próbálja ki az ingyenes irányítópultot",
     "choosePlan": "Válasszon csomagot",
-    "signIn": "Bejelentkezés",
     "goToDashboard": "Ugrás az irányítópultra"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Személyes",
     "axisPersonalNote": "egyéni használat",
     "axisCommercial": "Kereskedelmi",
-    "axisCommercialNote": "munka, ügyfelek és termékek"
+    "axisCommercialNote": "munka, ügyfelek és termékek",
+    "cancelAnytime": "Bármikor lemondhatja fiókjából. A hozzáférés a kifizetett időszak végéig megmarad."
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "Amíg hír lesz, már tudtad.",
       "ctaPrimary": "Irányítópult indítása",
       "ctaFree": "Ingyenes · Nincs regisztráció · Másodpercek alatt betölt",
-      "ctaSecondary": "Nézd meg, hogyan használják az emberek ↓",
       "trustUsers": "2M+ felhasználó",
       "trustOpenSource": "Nyílt forrás · AGPL-3.0",
       "screenshotAlt": "World Monitor élő hírszerzési irányítópult — globális térkép konfliktus, szállítás és piaci rétegekkel",
@@ -486,7 +485,8 @@
       "asOf": "Állapot: {{date}}",
       "whatIsTitle": "Mi az a World Monitor?",
       "whatIsBody": "A World Monitor egy ingyenes ($0), nyílt forráskódú (AGPL-3.0) műszerfal, amelyet 2M+ ember használ. {{feeds}} hír- és OSINT-forrást közvetít {{providers}} attribútummal ellátott szolgáltatótól egyetlen élő világtérképre {{mapLayers}} térképréteg-típussal, amely geopolitikát, piacokat, hajózást, repülést és kiberterületet fed le. Korrelálja őket, így az összefutó események a hírcímek előtt kerülnek felszínre. Minden adat forrásolt és minden módszer dokumentált.",
-      "whatIsBestFor": "Elemzőknek, újságíróknak, kereskedőknek és fejlesztőknek ideális, akiknek élő geopolitikai jelzésekre van szükségük."
+      "whatIsBestFor": "Elemzőknek, újságíróknak, kereskedőknek és fejlesztőknek ideális, akiknek élő geopolitikai jelzésekre van szükségük.",
+      "ctaPro": "Pro {{price}}/hónaptól"
     },
     "live": {
       "eyebrow": "Most élő",

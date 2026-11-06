@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Ruis",
     "signalWord": "Signaal",
-    "valueProps": "De geopolitieke AI-laag — vraag het, abonneer je, bouw erop voort.",
+    "valueProps": "Stel vragen aan een AI-analist, stel waarschuwingsregels in, ontvang briefings en gebruik het in Claude.",
     "launchingDate": "Nu beschikbaar",
     "tryFreeDashboard": "Probeer het gratis dashboard",
     "choosePlan": "Kies je plan",
-    "signIn": "Inloggen",
     "goToDashboard": "Naar Dashboard"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Persoonlijk",
     "axisPersonalNote": "individueel gebruik",
     "axisCommercial": "Commercieel",
-    "axisCommercialNote": "werk, klanten & producten"
+    "axisCommercialNote": "werk, klanten & producten",
+    "cancelAnytime": "Annuleer op elk moment vanuit je account. Je behoudt toegang tot het einde van de periode waarvoor je hebt betaald."
   },
   "welcome": {
     "meta": {
@@ -476,7 +476,6 @@
       "sub": "Tegen de tijd dat het nieuws is, wist je het al.",
       "ctaPrimary": "Dashboard starten",
       "ctaFree": "Gratis · Geen registratie · Laadt in seconden",
-      "ctaSecondary": "Zie hoe mensen het gebruiken ↓",
       "trustUsers": "2M+ gebruikers",
       "trustOpenSource": "Open broncode · AGPL-3.0",
       "screenshotAlt": "World Monitor live inlichtingendashboard — wereldkaart met conflicten, scheepvaart- en marktlagen",
@@ -486,7 +485,8 @@
       "asOf": "Per {{date}}",
       "whatIsTitle": "Wat is World Monitor?",
       "whatIsBody": "World Monitor is een gratis ($0), open-source (AGPL-3.0) dashboard dat door 2M+ mensen wordt gebruikt. Het streamt {{feeds}} nieuws- en OSINT-feeds van {{providers}} geattribueerde providers op één live wereldkaart met {{mapLayers}} kaartlaagtypen, omvattend geopolitiek, markten, scheepvaart, luchtvaart en cyber. Het correleert ze zodat convergende gebeurtenissen eerder aan het licht komen dan in de koppen. Elke cijfer is bronvermeld en elke methode gedocumenteerd.",
-      "whatIsBestFor": "Ideaal voor analisten, journalisten, traders en ontwikkelaars die live geopolitieke signalen nodig hebben."
+      "whatIsBestFor": "Ideaal voor analisten, journalisten, traders en ontwikkelaars die live geopolitieke signalen nodig hebben.",
+      "ctaPro": "Pro vanaf {{price}}/maand"
     },
     "live": {
       "eyebrow": "Nu live",

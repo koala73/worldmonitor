@@ -14,6 +14,7 @@ import {
   markPreservableFetchFailure,
   runSeed,
 } from '../scripts/_seed-utils.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -48,7 +49,7 @@ beforeEach(() => {
   expirePipelineStatus = 200;
   seedMetaGetResult = undefined;
 
-  globalThis.fetch = async (url, opts = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
     // Lock acquire: SET NX returns OK. Pipeline (EXPIRE) returns array. Default: OK.
@@ -59,7 +60,7 @@ beforeEach(() => {
       return new Response(JSON.stringify({ result: seedMetaGetResult }), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 
   // runSeed's skipped path calls process.exit(0). Convert to a throw so the
   // test can proceed after the seed "finishes" and inspect recorded calls.
@@ -557,7 +558,7 @@ function withCanonicalEnvelope({
     _seed: seed,
     data: { items: Array.from({ length: recordCount }, (_, i) => ({ id: i })) },
   };
-  return async (url, opts = {}) => {
+  return withSeedLockFence(async (url, opts = {}) => {
     const u = String(url);
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: u, method: opts?.method || 'GET', body });
@@ -574,7 +575,7 @@ function withCanonicalEnvelope({
       return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
+  });
 }
 
 function lastMetaSetBody(resourceSuffix) {
