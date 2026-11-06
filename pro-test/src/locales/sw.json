@@ -113,7 +113,8 @@
         ],
         "cta": "Wasiliana na Bora"
       }
-    }
+    },
+    "cancelAnytime": "Ghairi wakati wowote kutoka kwa akaunti yako. Utabaki na upatikanaji hadi mwisho wa kipindi ulicholipa."
   },
   "meta": {
     "title": "World Monitor Pro | Uchambuzi AI & MCP",
@@ -133,12 +134,11 @@
   "hero": {
     "noiseWord": "Kelele",
     "signalWord": "Ishara",
-    "valueProps": "Safu ya uchambuzi wa kisiasa-dunia — uliza, jisajiri, jenga juu yake.",
+    "valueProps": "Uliza mchanganaji AI, weka sheria za onyo, pata ripoti fupi, na uitumie katika Claude.",
     "launchingDate": "Halisi sasa",
     "tryFreeDashboard": "Jaribu dashboard bure",
     "choosePlan": "Chagua Mpango Wako",
-    "goToDashboard": "Nenda kwa Dashboard",
-    "signIn": "Ingia"
+    "goToDashboard": "Nenda kwa Dashboard"
   },
   "wired": {
     "asFeaturedIn": "Ilivyoonekana katika"

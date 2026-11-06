@@ -1580,6 +1580,20 @@
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
         }
+      },
+      "measure": {
+        "title": "Izmjeri udaljenost",
+        "units": "Jedinice udaljenosti",
+        "pointA": "Odaberi točku A. Klikni na kartu ili pritisni Enter na sredini karte.",
+        "pointB": "Odaberi točku B. Pomakni kartu i pritisni Enter za njenu sredinu.",
+        "geodesic": "Geodetska udaljenost",
+        "note": "Između kliknutih koordinata; nije ruta niti provjeren razmak imovine. Escape izlazi.",
+        "cancel": "Otkaži odabir",
+        "cancelShort": "Otkaži",
+        "resetShort": "Resetiraj",
+        "exitShort": "Izlaz",
+        "reset": "Resetiraj mjerenje",
+        "exit": "Izlaz iz mjerenja"
       }
     },
     "cii": {
@@ -1640,8 +1654,8 @@
       "analysisFrameworksFromAgentskills": "Iz agentskills.io",
       "analysisFrameworksPasteJson": "Zalijepi JSON",
       "analysisFrameworksSaveToLibrary": "Spremi u knjižnicu",
-      "streamAlwaysOnLabel": "Automatski pokreni prijenose uživo na nadzornoj ploči",
-      "streamAlwaysOnDesc": "Automatski pokreće Live News i Live Webcams kada su vidljivi. Ostavite isključeno kako bi se video učitao tek nakon klika na Pokreni.",
+      "streamAlwaysOnLabel": "Automatska reprodukcija živih web-kamera",
+      "streamAlwaysOnDesc": "Pokreće video uživo web-kamera čim se pojave na zaslonu. Ostavite isključeno da se učitavaju samo kada ih sami pokrenete.",
       "frameworkNote": "Primjenjuje se samo na analizu generirane od strane klijenta",
       "loadingServerInsights": "Učitavanje server uvida...",
       "usingCachedBrief": "Korištenje keširanih sažetaka...",
@@ -1675,7 +1689,9 @@
       "briefStoryDetails": "Detalji priče ({{count}})",
       "streamIdleStopLabel": "Zaustavi live video kada je korisnik neaktivan",
       "streamIdleStopDesc": "Zaustavlja Live News i Live Webcams nakon ovog vremena bez aktivnosti i prikazuje obavijest u panelu.",
-      "streamIdleStopNever": "Nikada"
+      "streamIdleStopNever": "Nikada",
+      "liveNewsAutoplayLabel": "Automatska reprodukcija uživo vijesti",
+      "liveNewsAutoplayDesc": "Pokreće video uživo vijesti, utišan, čim se pojavi na zaslonu. Isključite ovo da se video učita samo kada ga sami pokrenete."
     },
     "settings": {
       "exportSettings": "Izvezi postavke",
@@ -3604,7 +3620,8 @@
       "vesselsCount": "{{count}} BRODOVA",
       "vessels": "BRODOVI",
       "trackedVessels": "PRAĆENI BRODOVI",
-      "showLess": "Prikaži manje"
+      "showLess": "Prikaži manje",
+      "backToGroup": "Natrag na skupinu"
     },
     "naturalEvent": {
       "closed": "ZATVORENO",

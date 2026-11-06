@@ -1430,6 +1430,20 @@
         "notes": {
           "timeAffects": "Επηρεάζει: Σεισμούς, Καιρό, Διαμαρτυρίες, Διακοπές"
         }
+      },
+      "measure": {
+        "title": "Μέτρηση απόστασης",
+        "units": "Μονάδες απόστασης",
+        "pointA": "Επιλέξτε σημείο A. Κάντε κλικ στο χάρτη ή πατήστε Enter στο κέντρο του χάρτη.",
+        "pointB": "Επιλέξτε σημείο B. Μετακινήστε το χάρτη και πατήστε Enter για να χρησιμοποιήσετε το κέντρο του.",
+        "geodesic": "Γεωδαιτική απόσταση",
+        "note": "Μεταξύ των συντεταγμένων που κάνατε κλικ· όχι διαδρομή ή επαληθευμένος διαχωρισμός περιουσιακών στοιχείων. Το Escape κλείνει.",
+        "cancel": "Ακύρωση επιλογής",
+        "cancelShort": "Ακύρωση",
+        "resetShort": "Επαναφορά",
+        "exitShort": "Έξοδος",
+        "reset": "Επαναφορά μέτρησης",
+        "exit": "Έξοδος από μέτρηση"
       }
     },
     "cii": {
@@ -1481,8 +1495,8 @@
       "badgeAnimDesc": "Κίνηση σημάτων ενημέρωσης στις κεφαλίδες πάνελ",
       "headlineMemoryLabel": "Μνήμη τίτλων",
       "headlineMemoryDesc": "Αποθήκευση τίτλων που είδατε για επισήμανση νέων",
-      "streamAlwaysOnLabel": "Αυτόματη αναπαραγωγή ζωντανών ροών στον πίνακα ελέγχου",
-      "streamAlwaysOnDesc": "Ξεκινά αυτόματα το Live News και το Live Webcams όταν είναι ορατά. Αφήστε το απενεργοποιημένο για φόρτωση βίντεο μόνο αφού κάνετε κλικ στην Αναπαραγωγή.",
+      "streamAlwaysOnLabel": "Αυτόματη αναπαραγωγή live webcam",
+      "streamAlwaysOnDesc": "Ξεκινά τα live webcam videos μόλις εμφανιστούν στην οθόνη. Αφήστε το απενεργοποιημένο για να τα φορτώσετε μόνο όταν τα ξεκινήσετε εσείς.",
       "analysisFrameworksLabel": "Πλαίσια Ανάλυσης",
       "analysisFrameworksActivePerPanel": "Ενεργό ανά πίνακα",
       "analysisFrameworksSkillLibrary": "Βιβλιοθήκη Δεξιοτήτων",
@@ -1524,7 +1538,9 @@
       "briefStoryDetails": "Λεπτομέρειες είδησης ({{count}})",
       "streamIdleStopLabel": "Διακοπή ζωντανού βίντεο όταν είναι αδρανές",
       "streamIdleStopDesc": "Διακόπτει τα Live News και τις Live Webcams μετά από αυτή τη διάρκεια χωρίς δραστηριότητα και εμφανίζει ένα σημείωμα στο panel.",
-      "streamIdleStopNever": "Ποτέ"
+      "streamIdleStopNever": "Ποτέ",
+      "liveNewsAutoplayLabel": "Αυτόματη αναπαραγωγή live news",
+      "liveNewsAutoplayDesc": "Ξεκινά το video live news, σε σίγαση, μόλις εμφανιστεί στην οθόνη. Απενεργοποιήστε για να φορτωθεί το video μόνο όταν το ξεκινήσετε εσείς."
     },
     "settings": {
       "exportSettings": "Εξαγωγή ρυθμίσεων",
@@ -3504,7 +3520,8 @@
       "vesselsCount": "{{count}} ΠΛΟΙΑ",
       "vessels": "ΠΛΟΙΑ",
       "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ",
-      "showLess": "Εμφάνιση λιγότερων"
+      "showLess": "Εμφάνιση λιγότερων",
+      "backToGroup": "Επιστροφή στην ομάδα"
     },
     "naturalEvent": {
       "closed": "ΚΛΕΙΣΤΟ",

@@ -124,11 +124,6 @@ export const Hero = () => (
         <p className="mx-auto mt-6 max-w-2xl text-base md:text-lg text-wm-muted">
           {t('welcome.hero.sub')}
         </p>
-        <p className="mt-2 font-mono text-xs text-wm-muted">
-          <time dateTime={PUBLISHED_PULSE_DATE}>
-            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
-          </time>
-        </p>
       </motion.div>
 
       <div className="mt-8 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-4">
@@ -195,6 +190,14 @@ export const Hero = () => (
         >
           {t('welcome.hero.positioningLink')} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
         </a>
+        {/* The page's published-data date, equal to lastmod and dateModified (#8701).
+            Under the tagline it read as "this site is days old" above a live dashboard,
+            and beside the figures rail it would date figures generated separately. */}
+        <p className="mt-4 font-mono text-xs text-wm-muted">
+          <time dateTime={PUBLISHED_PULSE_DATE}>
+            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
+          </time>
+        </p>
       </div>
     </div>
   </section>

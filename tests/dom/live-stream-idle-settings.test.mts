@@ -56,19 +56,19 @@ describe('live stream settings storage', () => {
     expect(localStorage.getItem(LIVE_MEDIA_IDLE_STOP_STORAGE_KEY)).toBe('never');
     setLiveMediaIdleStop(240);
     expect(localStorage.getItem(LIVE_MEDIA_IDLE_STOP_STORAGE_KEY)).toBe('240');
-    expect(getLiveStreamSettings()).toEqual({ alwaysOn: false, idleStop: 240 });
+    expect(getLiveStreamSettings()).toEqual({ newsAutoplay: true, alwaysOn: false, idleStop: 240 });
   });
 
   it('pins the effective idle value before turning autoplay on, so the idle select does not flip', () => {
     setLiveStreamsAlwaysOn(true);
     expect(localStorage.getItem(LIVE_MEDIA_IDLE_STOP_STORAGE_KEY)).toBe('60');
-    expect(getLiveStreamSettings()).toEqual({ alwaysOn: true, idleStop: 60 });
+    expect(getLiveStreamSettings()).toEqual({ newsAutoplay: true, alwaysOn: true, idleStop: 60 });
   });
 
   it('pins a legacy always-on user at never before turning autoplay off', () => {
     localStorage.setItem(ALWAYS_ON_KEY, 'true');
     setLiveStreamsAlwaysOn(false);
-    expect(getLiveStreamSettings()).toEqual({ alwaysOn: false, idleStop: 'never' });
+    expect(getLiveStreamSettings()).toEqual({ newsAutoplay: true, alwaysOn: false, idleStop: 'never' });
   });
 
   it('never overwrites an idle value the user already chose', () => {
@@ -99,8 +99,8 @@ describe('live stream settings subscription', () => {
     setLiveMediaIdleStop(15);
     setLiveStreamsAlwaysOn(true);
     expect(seen).toEqual([
-      { alwaysOn: false, idleStop: 15 },
-      { alwaysOn: true, idleStop: 15 },
+      { newsAutoplay: true, alwaysOn: false, idleStop: 15 },
+      { newsAutoplay: true, alwaysOn: true, idleStop: 15 },
     ]);
   });
 
@@ -110,14 +110,14 @@ describe('live stream settings subscription', () => {
     localStorage.setItem(ALWAYS_ON_KEY, 'true');
     dispatchStorage(ALWAYS_ON_KEY);
     expect(seen).toEqual([
-      { alwaysOn: false, idleStop: 'never' },
-      { alwaysOn: true, idleStop: 'never' },
+      { newsAutoplay: true, alwaysOn: false, idleStop: 'never' },
+      { newsAutoplay: true, alwaysOn: true, idleStop: 'never' },
     ]);
   });
 
   it('fires when another tab clears storage', () => {
     dispatchStorage(null);
-    expect(seen).toEqual([{ alwaysOn: false, idleStop: 60 }]);
+    expect(seen).toEqual([{ newsAutoplay: true, alwaysOn: false, idleStop: 60 }]);
   });
 
   it('ignores storage events for unrelated keys', () => {
@@ -135,8 +135,8 @@ describe('live stream settings subscription', () => {
     dispatchCloudApplied(['worldmonitor-theme', LIVE_MEDIA_IDLE_STOP_STORAGE_KEY]);
     dispatchCloudApplied([ALWAYS_ON_KEY]);
     expect(seen).toEqual([
-      { alwaysOn: false, idleStop: 120 },
-      { alwaysOn: false, idleStop: 120 },
+      { newsAutoplay: true, alwaysOn: false, idleStop: 120 },
+      { newsAutoplay: true, alwaysOn: false, idleStop: 120 },
     ]);
   });
 

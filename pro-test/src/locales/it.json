@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Rumore",
     "signalWord": "Segnale",
-    "valueProps": "Il layer di IA geopolitica — chiedile, iscriviti, costruisci sopra.",
+    "valueProps": "Chiedi a un analista AI, imposta regole di avviso, ricevi briefing e usalo in Claude.",
     "launchingDate": "Disponibile ora",
     "tryFreeDashboard": "Prova la dashboard gratuita",
     "choosePlan": "Scegli il piano",
-    "signIn": "Accedi",
     "goToDashboard": "Vai alla Dashboard"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Personale",
     "axisPersonalNote": "uso individuale",
     "axisCommercial": "Commerciale",
-    "axisCommercialNote": "lavoro, clienti e prodotti"
+    "axisCommercialNote": "lavoro, clienti e prodotti",
+    "cancelAnytime": "Annulla quando vuoi dal tuo account. Mantieni l'accesso fino alla fine del periodo per cui hai pagato."
   },
   "welcome": {
     "meta": {

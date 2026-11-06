@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Nhiễu",
     "signalWord": "Tín hiệu",
-    "valueProps": "Lớp AI địa chính trị — hãy hỏi nó, đăng ký, xây dựng trên đó.",
+    "valueProps": "Hỏi một nhà phân tích AI, đặt quy tắc cảnh báo, nhận báo cáo tình hình, và sử dụng trong Claude.",
     "launchingDate": "Hiện có sẵn",
     "tryFreeDashboard": "Dùng thử bảng điều khiển miễn phí",
     "choosePlan": "Chọn gói",
-    "signIn": "Đăng nhập",
     "goToDashboard": "Đi tới Bảng điều khiển"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Cá nhân",
     "axisPersonalNote": "sử dụng cá nhân",
     "axisCommercial": "Thương mại",
-    "axisCommercialNote": "công việc, khách hàng & sản phẩm"
+    "axisCommercialNote": "công việc, khách hàng & sản phẩm",
+    "cancelAnytime": "Hủy bất cứ lúc nào từ tài khoản của bạn. Bạn vẫn có quyền truy cập cho đến hết kỳ thanh toán của mình."
   },
   "welcome": {
     "meta": {

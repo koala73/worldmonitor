@@ -648,6 +648,31 @@ const COMPARE_AND_DELETE_SCRIPT = [
 const LEGACY_COMPARE_AND_DELETE_SCRIPT = [
   'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end',
 ].join('\n');
+// PINNED COPIES of SEED_LOCK_RENEW_SCRIPT and SEED_LOCK_FENCED_SET_SCRIPT in
+// scripts/_seed-utils.mjs. runSeed renews its seed lock and fences the
+// canonical and seed-meta writes on lock ownership with these (SM-122);
+// unpinned, every self-hosted runSeed publish would 403.
+const SEED_LOCK_RENEW_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PEXPIRE', KEYS[1], ARGV[2])",
+  "return {1, ''}",
+].join('\n');
+const SEED_LOCK_FENCED_SET_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PEXPIRE', KEYS[1], ARGV[2])",
+  "if ARGV[4] == '' then",
+  "  redis.call('SET', KEYS[2], ARGV[3])",
+  'else',
+  "  redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[4])",
+  'end',
+  "return {1, ''}",
+].join('\n');
 // PINNED COPY of WRITE_LUA in scripts/shared/pizzint-history.cjs. Kept inline:
 // this file connects to Redis at import time, and the command-gate tests eval
 // the source instead of importing it. The EVAL gate matches script text exactly,
@@ -862,6 +887,8 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PIZZINT_HISTORY_WRITE_SCRIPT,
   COMPARE_AND_DELETE_SCRIPT,
   LEGACY_COMPARE_AND_DELETE_SCRIPT,
+  SEED_LOCK_RENEW_SCRIPT,
+  SEED_LOCK_FENCED_SET_SCRIPT,
   CABLE_HEALTH_REPAIR_SCRIPT,
   WEBHOOK_OWNER_INDEX_REMOVE_EXPIRED_SCRIPT,
   SOURCE_RETRY_CLAIM_SCRIPT,
