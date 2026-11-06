@@ -199,7 +199,8 @@ only current bootstrap generation commits; slow-tier reservation must settle on 
 
 | From | Event / guard | To / effect |
 |---|---|---|
-| Reserved fast tier | Adopt prefetch / boot fetch | Fetching within existing budget |
+| Reserved fast tier | Adopt pending prefetch / boot fetch | Fetching within remaining request budget |
+| Primed fast response headers received before App | Adopt response | Read body within a fresh tier budget |
 | Fetching | Valid live response | Set live keys; fill missing keys from eligible cache |
 | Fetching | Failure/deadline | Cached or none; preserve source attribution |
 | Reserved slow tier | Post-paint start | Fetching |
@@ -207,6 +208,14 @@ only current bootstrap generation commits; slow-tier reservation must settle on 
 | Key available | `getHydratedData` | Consumed; delete from bootstrap map |
 | Handoff empty / expired | `getOrLoad` | Shared loading; validated success retained, failure returns fallback |
 | Retained | TTL exceeded | Empty; next caller may refresh |
+
+Verification follow-up: CI run `42278927402` exposed a test fixture race, not a
+production timeout defect. Its fast tier returned HTTP 200 after 2.73 seconds before
+App adopted the primed response, so fallback requests correctly stayed at zero. A cold
+App import reproduces the old assertion failure locally. The browser abort fixture now
+withholds headers until it observes the application's actual `net::ERR_ABORTED`, including
+with that cold import, before asserting fallback and independent slow-tier hydration.
+Production timeout values remain unchanged and are pinned by the existing budget suite.
 
 ### 8. Circuit breaker and cache (explicit data mode, implicit control state)
 
