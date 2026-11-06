@@ -51,7 +51,7 @@
     "proF10": "Memoria intelligence — ricerca storica, timeline ed eventi simili"
   },
   "whyUpgrade": {
-    "title": "Perché passare a World Monitor Pro?",
+    "title": "Scoprilo prima dei titoli dei giornali",
     "noiseTitle": "Sappilo per primo",
     "noiseDesc": "Anomalia AIS → picco del Brent → il tuo Slack in meno di un minuto. Segnale, non titoli.",
     "fasterTitle": "Chiedi qualsiasi cosa",
@@ -142,7 +142,7 @@
   },
   "proShowcase": {
     "proTier": "LIVELLO PRO",
-    "title": "Cosa fa l'AI analyst di World Monitor?",
+    "title": "Un analista AI per azioni, macro e geopolitica",
     "subtitle": "La dashboard gratuita ti mostra il mondo. Pro ti dà un analista a cui chiedere, un digest a cui iscriverti e primitive su cui costruire. Azioni, macro, rischio geopolitico — e le connessioni tra loro.",
     "equityResearch": "Ricerca equity",
     "equityResearchDesc": "Analisi azionaria globale con visualizzazione dei dati finanziari, target di prezzo degli analisti e metriche di valutazione. Segui cosa muove i mercati.",

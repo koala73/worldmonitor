@@ -51,7 +51,7 @@
     "proF10": "Intel-minne — historisk sökning, tidslinjer och sökning efter liknande händelser"
   },
   "whyUpgrade": {
-    "title": "Varför uppgradera till World Monitor Pro?",
+    "title": "Få veta det före rubrikerna",
     "noiseTitle": "Vet först",
     "noiseDesc": "AIS-anomali → Brent-spik → din Slack på mindre än en minut. Signal, inte rubriker.",
     "fasterTitle": "Fråga vad som helst",
@@ -142,7 +142,7 @@
   },
   "proShowcase": {
     "proTier": "PRO-NIVÅ",
-    "title": "Vad gör World Monitor AI-analytikern?",
+    "title": "En AI-analytiker för aktier, makroekonomi och geopolitik",
     "subtitle": "Den kostnadsfria dashboarden visar dig världen. Pro ger dig en analytiker att fråga, en digest att prenumerera på och primitiver att bygga på. Aktier, makro, geopolitisk risk — och kopplingarna mellan dem.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Global aktieanalys med visualisering av finansiella data, analytikermål och värderingsmått. Följ vad som rör marknader.",

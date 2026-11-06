@@ -51,7 +51,7 @@
     "proF10": "インテル メモリ — 過去の検索、タイムライン & 類似イベント検索"
   },
   "whyUpgrade": {
-    "title": "World Monitor Pro にアップグレードする理由は?",
+    "title": "ニュースより先に情報をキャッチ",
     "noiseTitle": "一番に知る",
     "noiseDesc": "AIS 異常 → Brent の急騰 → あなたの Slack へ 1 分以内。見出しではなく、シグナル。",
     "fasterTitle": "何でも尋ねる",
@@ -142,7 +142,7 @@
   },
   "proShowcase": {
     "proTier": "PRO ティア",
-    "title": "World Monitor AI アナリストは何をしますか?",
+    "title": "株式、マクロ経済、地政学向けのAIアナリスト",
     "subtitle": "無料のダッシュボードは世界を見せる。Pro は、尋ねるためのアナリスト、購読するダイジェスト、そして構築のためのプリミティブを提供する。株式、マクロ、地政学リスク — そしてそれらの関係。",
     "equityResearch": "エクイティリサーチ",
     "equityResearchDesc": "財務可視化、アナリスト目標株価、評価指標を備えたグローバル株式分析。市場を動かすものを追跡。",

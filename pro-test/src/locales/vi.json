@@ -51,7 +51,7 @@
     "proF10": "Bộ nhớ Intel — tìm kiếm lịch sử, dòng thời gian & tra cứu sự kiện tương tự"
   },
   "whyUpgrade": {
-    "title": "Tại sao nâng cấp lên World Monitor Pro?",
+    "title": "Biết trước khi tin tức đưa tin",
     "noiseTitle": "Biết đầu tiên",
     "noiseDesc": "Bất thường AIS → Brent tăng đột biến → Slack của bạn dưới một phút. Tín hiệu, không phải tiêu đề.",
     "fasterTitle": "Hỏi bất cứ điều gì",
@@ -142,7 +142,7 @@
   },
   "proShowcase": {
     "proTier": "CẤP ĐỘ PRO",
-    "title": "Trí tuệ nhân tạo phân tích của World Monitor hoạt động như thế nào?",
+    "title": "Nhà phân tích AI cho cổ phiếu, vĩ mô và địa chính trị",
     "subtitle": "Bảng điều khiển miễn phí cho bạn thấy thế giới. Pro cho bạn một nhà phân tích để hỏi, một digest để đăng ký và các nguyên thủy để xây dựng. Cổ phiếu, vĩ mô, rủi ro địa chính trị — và các kết nối giữa chúng.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Phân tích cổ phiếu toàn cầu với trực quan hóa tài chính, mục tiêu giá của nhà phân tích và chỉ số định giá. Theo dõi những gì di chuyển thị trường.",

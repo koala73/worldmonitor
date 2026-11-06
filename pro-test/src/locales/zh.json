@@ -51,7 +51,7 @@
     "proF10": "Intel 记忆库 — 历史搜索、时间线和相似事件查询"
   },
   "whyUpgrade": {
-    "title": "为什么升级到 World Monitor Pro？",
+    "title": "在头条新闻前了解最新动态",
     "noiseTitle": "抢先知晓",
     "noiseDesc": "AIS 异常 → Brent 跳升 → 不到一分钟就到您的 Slack。信号,而非标题。",
     "fasterTitle": "问什么都行",
@@ -142,7 +142,7 @@
   },
   "proShowcase": {
     "proTier": "PRO 等级",
-    "title": "World Monitor AI 分析师做什么？",
+    "title": "股票、宏观经济和地缘政治的 AI 分析师",
     "subtitle": "免费仪表板向您展示世界。Pro 则给您一位可问询的分析师、可订阅的摘要和可构建其上的原语。股票、宏观、地缘政治风险 — 以及它们之间的关联。",
     "equityResearch": "股票研究",
     "equityResearchDesc": "具财务可视化、分析师目标价与估值指标的全球股票分析。追踪市场动力所在。",

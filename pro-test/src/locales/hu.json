@@ -51,7 +51,7 @@
     "proF10": "Intel memória — historikus keresés, idősorok és hasonló események keresése"
   },
   "whyUpgrade": {
-    "title": "Miért érdemes frissíteni a World Monitor Pro-ra?",
+    "title": "Értesülj róla a hírek előtt",
     "noiseTitle": "Tudja meg elsőként",
     "noiseDesc": "AIS-anomália → Brent-ugrás → Slack-értesítés egy percen belül. Jel, nem címlapzaj.",
     "fasterTitle": "Kérdezzen bármit",
@@ -142,7 +142,7 @@
   },
   "proShowcase": {
     "proTier": "PRO SZINT",
-    "title": "Mit csinál a World Monitor AI elemző?",
+    "title": "AI elemző részvényekhez, makrogazdasághoz és geopolitikához",
     "subtitle": "Az ingyenes irányítópult megmutatja a világot. A Pro elemzőt ad, akit kérdezhet, digestet, amelyre feliratkozhat, és építőkockákat, amelyekre építhet. Részvények, makró, geopolitikai kockázat — és a köztük lévő kapcsolatok.",
     "equityResearch": "Részvénykutatás",
     "equityResearchDesc": "Globális részvényelemzés pénzügyi vizualizációval, elemzői célárakkal és értékelési mutatókkal. Kövesse, mi mozgatja a piacokat.",
