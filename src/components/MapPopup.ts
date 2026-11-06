@@ -2103,7 +2103,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
           ${tags.map((tag) => `<span class="popup-tag">${escapeHtml(tag)}</span>`).join('')}
         </div>` : ''}
         ${threat.firstSeen ? `<p class="popup-description">${t('popups.cyberThreat.firstSeenNote')}</p>` : ''}
-        ${tags.includes('malware_download') ? `<p class="popup-description">${t('popups.cyberThreat.downloadTag')}</p>` : ''}
+        ${(threat.tags || []).includes('malware_download') ? `<p class="popup-description">${t('popups.cyberThreat.downloadTag')}</p>` : ''}
         ${threat.malwareFamily ? `<p class="popup-description">${t('popups.cyberThreat.familyNote')}</p>` : ''}
         <p class="popup-description">${t('popups.cyberThreat.approximateLocation')}</p>
         ${threat.indicatorType === 'ip' ? renderCyberNetworkSection() : ''}

@@ -16,7 +16,10 @@ test('URLhaus preserves download classification without inventing a malware fami
   assert.equal(result.threats[0].malwareFamily, '');
   assert.ok(result.threats[0].tags.includes('malware_download'));
   assert.ok(result.threats[0].tags.includes('elf'));
-  assert.equal(result.threats[0].tags.length, 8);
+  assert.equal(result.threats[0].tags.length, 9);
+  assert.ok(result.threats[0].tags.includes('tag8'));
+  const [deduped] = h.seed.dedupeThreats([...result.threats, ...result.threats]);
+  assert.deepEqual(h.seed.toProto(deduped).tags, result.threats[0].tags);
 });
 async function producerHarness(context, options = {}) {
   const text = readFileSync(new URL('../scripts/seed-cyber-threats.mjs', import.meta.url), 'utf8');

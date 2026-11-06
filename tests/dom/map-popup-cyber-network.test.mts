@@ -23,6 +23,13 @@ it('qualifies the first-seen date and omits family explanations without a family
   expect(body.textContent).not.toContain('family label');
   popup.hide();
 });
+it('uses all classification tags for explanations while limiting visible chips to six', () => {
+  const popup = open({ ...threat, malwareFamily: undefined,
+    tags: ['tag1', 'tag2', 'tag3', 'tag4', 'tag5', 'tag6', 'malware_download'] });
+  expect(document.querySelectorAll('.popup-tag')).toHaveLength(6);
+  expect(document.querySelector('.popup-body')!.textContent).toContain('the source reports a malware download location');
+  popup.hide();
+});
 it('loads network information only on expansion and escapes provider fields', async () => {
   const fetcher = vi.fn(async () => Response.json({ status: 'available', ip: threat.indicator,
     asns: [{ asn: 3301, holder: '<img src=x onerror=alert(1)>' }], hostnames: ['example.telia.com'],

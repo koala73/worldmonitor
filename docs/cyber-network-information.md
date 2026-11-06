@@ -13,7 +13,7 @@ Attribution in the popup names RIPEstat / RIPE NCC and RIS / WHOIS, with a link 
 ## Limits and fallback
 
 - Gateway: 20 requests/minute per caller under the existing endpoint policy, fail closed.
-- Provider work: four lookups/minute and 450/day across the deployment, each with at most two provider calls. Both shared budgets fail closed when Redis is missing or degraded. Cache hits do not consume provider budgets.
+- Provider work: six cache-miss lookups/hour per caller, then four lookups/minute and 450/day across the deployment, each with at most two provider calls. Caller identity uses the gateway's trusted client-IP key. All budgets fail closed when Redis is missing or degraded. Cache hits do not consume provider budgets. Caller refusals do not cache a failure for other callers sharing the same IP indicator.
 - Shared cache: 24 hours per canonical public IP, with in-flight deduplication. Provider failures receive the shared helper's short negative-cache cooldown rather than a day-long success entry.
 - Both provider calls share a five-second timeout. Reverse-DNS failure preserves available routing data. The browser request has a 15-second timeout.
 - Gateway responses are `no-store`, so disabling the provider is not delayed by a browser/CDN cache. Successful server cache entries retain their original lookup time.

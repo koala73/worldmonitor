@@ -545,7 +545,7 @@ async function fetchUrlhaus(cutoffMs) {
         lat: toNum(r?.latitude ?? r?.lat), lon: toNum(r?.longitude ?? r?.lon),
         country: normCountry(r?.country || r?.country_code), severity: sev,
         // URLhaus's threat field is a classification, not a malware family.
-        malwareFamily: '', tags: normTags([threat, ...tags]), firstSeen, lastSeen,
+        malwareFamily: '', tags: normTags([threat, ...tags], 9), firstSeen, lastSeen,
       });
       if (t) threats.push(t);
       if (threats.length >= MAX_LIMIT) break;
@@ -723,7 +723,7 @@ export function dedupeThreats(threats) {
     const eSeen = existing.lastSeen || existing.firstSeen;
     const cSeen = t.lastSeen || t.firstSeen;
     if (cSeen >= eSeen) {
-      map.set(key, { ...existing, ...t, tags: normTags([...existing.tags, ...t.tags]) });
+      map.set(key, { ...existing, ...t, tags: normTags([...existing.tags, ...t.tags], t.source === 'urlhaus' ? 9 : 8) });
     }
   }
   return Array.from(map.values());
