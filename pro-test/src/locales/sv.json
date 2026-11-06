@@ -476,7 +476,6 @@
       "sub": "Innan det blir nyheter, visste du redan.",
       "ctaPrimary": "Starta instrumentpanelen",
       "ctaFree": "Gratis · Ingen registrering · Läses in på sekunder",
-      "ctaSecondary": "Se hur människor använder det ↓",
       "trustUsers": "2M+ användare",
       "trustOpenSource": "Öppen källkod · AGPL-3.0",
       "screenshotAlt": "World Monitor live underrättelseinstrumentpanel — global karta med konflikt-, sjöfarts- och marknadslager",
@@ -486,7 +485,8 @@
       "asOf": "Per {{date}}",
       "whatIsTitle": "Vad är World Monitor?",
       "whatIsBody": "World Monitor är en kostnadsfri ($0), öppen källkod (AGPL-3.0) dashboard som används av 2M+ personer. Den strömmar {{feeds}} nyhets- och OSINT-flöden från {{providers}} attribuerade leverantörer till en live-världskarta med {{mapLayers}} kartlagertyper, som omfattar geopolitik, marknader, sjöfart, luftfart och cyber. Den korrelerar dem så att konvergerande händelser dyker upp innan rubrikerna gör det. Varje siffra är källa och varje metod dokumenterad.",
-      "whatIsBestFor": "Bäst för analytiker, journalister, traders och utvecklare som behöver geopolitiska signaler i realtid."
+      "whatIsBestFor": "Bäst för analytiker, journalister, traders och utvecklare som behöver geopolitiska signaler i realtid.",
+      "ctaPro": "Pro från {{price}}/månad"
     },
     "live": {
       "eyebrow": "Live just nu",
