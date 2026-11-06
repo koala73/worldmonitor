@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+
+import { FETCH_PHASE_PUBLISH_RESERVE_MS } from '../scripts/_seed-utils.mjs';
+import { GTFS_RT_TIMEOUT_MS } from '../scripts/lib/gtfsrt.mjs';
 
 import {
   TTC_GTFS_RT_ALERTS_URL,
@@ -39,7 +43,9 @@ const strField = (field, text) => lenField(field, new TextEncoder().encode(text)
 const intField = (field, value) => concat(tag(field, 0), varint(value));
 
 function encodeFeed(alerts, timestamp = 1_762_500_000) {
-  const header = lenField(1, concat(strField(1, '2.0'), intField(3, timestamp)));
+  const headerFields = [strField(1, '2.0')];
+  if (timestamp != null) headerFields.push(intField(3, timestamp));
+  const header = lenField(1, concat(...headerFields));
   const entities = alerts.map(({ id, text }) => {
     const headerText = lenField(10, lenField(1, concat(strField(1, text), strField(2, 'en'))));
     return lenField(2, concat(strField(1, id), lenField(5, headerText)));
@@ -137,5 +143,34 @@ describe('TTC alerts per-mode fallback', () => {
       assert.equal(error.message, 'HTTP 500');
       return true;
     });
+  });
+
+  it('leaves the merged content clock unknown when a merged feed has no timestamp', async () => {
+    const { fetch } = fixtureFetch({
+      [TTC_GTFS_RT_ALERTS_URL]: 500,
+      [MODE.subway]: encodeFeed([{ id: 's1', text: 'Line 1 delay' }], 1_762_500_100),
+      [MODE.bus]: encodeFeed([{ id: 'b1', text: '29 Dufferin detour' }], null),
+      [MODE.streetcar]: 500,
+      [MODE.accessibility]: 500,
+      [MODE.stops]: 500,
+    });
+
+    const feed = await fetchTtcAlertsFeed({ fetch });
+    assert.deepEqual(feed.alerts.map((alert) => alert.id).sort(), ['b1', 's1']);
+    assert.equal(feed.header.timestamp, null);
+    assert.equal(buildTtcAlertsSnapshot(feed).header.timestamp, null);
+  });
+
+  it('gives the bundle section enough fetch time for the combined request plus the fallback', () => {
+    // runSeed caps the fetch phase at the section timeout minus its publish
+    // reserve. A combined request and the parallel per-mode round can each
+    // run to the adapter timeout, so both must fit.
+    const bundle = readFileSync(new URL('../scripts/seed-bundle-canada.mjs', import.meta.url), 'utf8');
+    const line = bundle.split('\n').find((l) => l.includes("label: 'TTC-Alerts'"));
+    const timeoutMs = Number(/timeoutMs: ([\d_]+)/.exec(line)[1].replaceAll('_', ''));
+    assert.ok(
+      timeoutMs - FETCH_PHASE_PUBLISH_RESERVE_MS >= 2 * GTFS_RT_TIMEOUT_MS,
+      `TTC-Alerts timeout ${timeoutMs}ms leaves ${timeoutMs - FETCH_PHASE_PUBLISH_RESERVE_MS}ms to fetch; needs ${2 * GTFS_RT_TIMEOUT_MS}ms`,
+    );
   });
 });

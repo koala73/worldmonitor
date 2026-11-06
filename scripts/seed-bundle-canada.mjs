@@ -68,7 +68,10 @@ const CANADA_SECTIONS = [
   // (domain, resource) = ('transit', 'ttc-alerts'). It is NOT the canonical key
   // with :v1 stripped. afterPublish records the per-mode fallback in seed-meta,
   // so the completion marker attests the run finished that write (#6960).
-  { label: 'TTC-Alerts', script: 'seed-ttc-alerts.mjs', seedMetaKey: 'seed-meta:transit:ttc-alerts', canonicalKey: 'transit:ttc:alerts:v1', completionMetaKey: 'seed-completion:transit:ttc-alerts', intervalMs: 5 * MIN, timeoutMs: 60_000 },
+  // 75s: runSeed keeps 40s for publish, leaving 35s to fetch, enough for the
+  // combined request and the parallel per-mode fallback to each hit the 15s
+  // GTFS-RT timeout.
+  { label: 'TTC-Alerts', script: 'seed-ttc-alerts.mjs', seedMetaKey: 'seed-meta:transit:ttc-alerts', canonicalKey: 'transit:ttc:alerts:v1', completionMetaKey: 'seed-completion:transit:ttc-alerts', intervalMs: 5 * MIN, timeoutMs: 75_000 },
   // Official TFS live CAD XML. Own key; 5min matches the source update cycle
   // and a durable activation marker makes the first-deploy health bridge strict
   // after the first successful canonical publish.

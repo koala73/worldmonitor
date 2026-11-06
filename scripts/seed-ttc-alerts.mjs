@@ -108,7 +108,9 @@ export function declareRecords(snapshot) {
 // Merge per-mode feeds into one combined-shaped feed. An alert that touches
 // two modes appears in both feeds under the same entity id; keep the first.
 // The header carries the OLDEST producer timestamp so the content clock can
-// only read staler, never fresher, than the feeds actually merged.
+// only read staler, never fresher, than the feeds actually merged. If any
+// merged feed has no usable stamp the merged stamp is unknown (null), which
+// the content clock reads as stale, same as a stampless combined feed.
 export function mergeTtcModeFeeds(feeds) {
   const seen = new Set();
   const alerts = [];
@@ -129,7 +131,7 @@ export function mergeTtcModeFeeds(feeds) {
     header: {
       gtfsRealtimeVersion: headers.find((header) => header.gtfsRealtimeVersion)?.gtfsRealtimeVersion ?? null,
       incrementality: headers[0]?.incrementality ?? null,
-      timestamp: timestamps.length > 0 ? Math.min(...timestamps) : null,
+      timestamp: timestamps.length > 0 && timestamps.length === feeds.length ? Math.min(...timestamps) : null,
     },
     alerts,
   };
