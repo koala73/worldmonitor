@@ -55,7 +55,7 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 // eslint-disable-next-line no-new-func
 const rawBeforeSend = new Function(
   'event', 'isDebugBearRumScriptFrame', 'isIosLikeUserAgent', 'navigator',
-  'isolateNonProductionSentryEvent', 'environment', 'scrubSentryCredentials',
+  'isolateNonProductionSentryEvent', 'environment', 'scrubSentryCredentials', 'isPageUnloading',
   `${tpMatch[0]}\n${fnBody}`,
 );
 
@@ -81,8 +81,8 @@ const IOS_NAVIGATOR = { userAgent: IOS_GOOGLE_APP_UA, maxTouchPoints: 5 };
 /** iPadOS 13+ desktop mode: Macintosh UA, but touch-capable. */
 const IPADOS_NAVIGATOR = { userAgent: MAC_DESKTOP_UA, maxTouchPoints: 5 };
 
-function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR, environment = 'production') {
-  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, scrubSentryCredentials);
+function beforeSend(event, navigatorStub = DESKTOP_NAVIGATOR, environment = 'production', unloading = false) {
+  return rawBeforeSend(event, isDebugBearRumScriptFrame, isIosLikeUserAgent, navigatorStub, isolateNonProductionSentryEvent, environment, scrubSentryCredentials, () => unloading);
 }
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
@@ -246,7 +246,7 @@ describe('first-party file detection', () => {
     const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
       const filter = ${rawBeforeSend.toString()};
       const run = event => filter(event, () => false, () => false,
-        ${JSON.stringify(DESKTOP_NAVIGATOR)}, event => event, 'production', event => event);
+        ${JSON.stringify(DESKTOP_NAVIGATOR)}, event => event, 'production', event => event, () => false);
       process.stdout.write(JSON.stringify({
         malformed: run(${JSON.stringify(malformed)}),
         wellFormed: run(${JSON.stringify(wellFormed)}),
@@ -3013,6 +3013,50 @@ describe('beforeSend — ReferenceError with only <anonymous> frames (WORLDMONIT
 
   it('keeps an anonymous-only Error that is not a ReferenceError', () => {
     assert.ok(beforeSend(makeEvent('Clerk failed to load', 'Error', [anon()])));
+  });
+});
+
+describe('fetch failures while the page unloads (WORLDMONITOR-1AY)', () => {
+  // Production shape: a first-party claimed capture from
+  // CountryDeepDivePanel, frames inside fetch-failure-attribution, fired in
+  // the same millisecond the update toast reloaded the page.
+  function claimedLoadFailure(value = 'Load failed (api.worldmonitor.app)', type = 'TypeError') {
+    return {
+      ...makeEvent(value, type, [
+        firstPartyFrame('../../src/services/fetch-failure-attribution.ts', 'annotateFetchFailure'),
+        firstPartyFrame('../../src/services/fetch-failure-attribution.ts', 'wrapped'),
+      ]),
+      tags: { kind: 'country_deep_dive_load_failed', surface: 'country-deep-dive', widget: 'five-factor-scorecard' },
+    };
+  }
+
+  it('drops a claimed WebKit fetch failure while the page unloads', () => {
+    assert.equal(beforeSend(claimedLoadFailure(), DESKTOP_NAVIGATOR, 'production', true), null);
+  });
+
+  it('drops the Chromium and Firefox spellings while the page unloads', () => {
+    for (const value of [
+      'Failed to fetch (api.worldmonitor.app)',
+      'Failed to fetch',
+      'NetworkError when attempting to fetch resource.',
+    ]) {
+      assert.equal(beforeSend(claimedLoadFailure(value), DESKTOP_NAVIGATOR, 'production', true), null, value);
+    }
+  });
+
+  it('keeps the same claimed failure when the page is not unloading', () => {
+    // Preservation control: the claim exists so a real outage on this widget
+    // reaches Sentry (WORLDMONITOR-Q4). Outside the unload window it must.
+    assert.ok(beforeSend(claimedLoadFailure(), DESKTOP_NAVIGATOR, 'production', false));
+  });
+
+  it('keeps a first-party TypeError that is not a fetch failure, even while unloading', () => {
+    const event = claimedLoadFailure("Cannot read properties of undefined (reading 'pillars')");
+    assert.ok(beforeSend(event, DESKTOP_NAVIGATOR, 'production', true));
+  });
+
+  it('keeps a non-TypeError carrying fetch-failure wording while unloading', () => {
+    assert.ok(beforeSend(claimedLoadFailure('Load failed (api.worldmonitor.app)', 'Error'), DESKTOP_NAVIGATOR, 'production', true));
   });
 });
 
