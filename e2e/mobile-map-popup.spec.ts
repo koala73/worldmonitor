@@ -114,21 +114,16 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       const header = popup.locator('.popup-header');
       const close = header.getByRole('button', { name: 'Close', exact: true });
       const expectHeaderInside = async () => {
-        await expect.poll(async () => {
-          const parent = await popup.boundingBox();
-          const child = await header.boundingBox();
-          return child!.x - parent!.x;
-        }, { message: 'The header must stay inside the popup left edge', timeout: 3000 }).toBeGreaterThanOrEqual(0);
-        const parent = (await popup.boundingBox())!;
-        const child = (await header.boundingBox())!;
-        const button = (await close.boundingBox())!;
-        expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
-        expect(child.y).toBeGreaterThanOrEqual(parent.y);
-        expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
-        expect(button.x).toBeGreaterThanOrEqual(parent.x);
-        expect(button.x + button.width).toBeLessThanOrEqual(parent.x + parent.width);
-        expect(button.y).toBeGreaterThanOrEqual(parent.y);
-        expect(button.y + button.height).toBeLessThanOrEqual(parent.y + parent.height);
+        // Read all bounds in one frame while the mobile sheet animates.
+        await expect.poll(() => popup.evaluate((element) => {
+          const parent = element.getBoundingClientRect();
+          const child = element.querySelector('.popup-header')!.getBoundingClientRect();
+          const button = element.querySelector('.popup-close')!.getBoundingClientRect();
+          return child.left >= parent.left && child.right <= parent.right
+            && child.top >= parent.top && child.bottom <= parent.bottom
+            && button.left >= parent.left && button.right <= parent.right
+            && button.top >= parent.top && button.bottom <= parent.bottom;
+        }), { message: 'The header and close button must stay inside the popup', timeout: 3000 }).toBe(true);
       };
 
       for (let opening = 0; opening < 2; opening++) {
@@ -138,9 +133,10 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
         await popup.evaluate((element) => { element.scrollTop = 120; });
         await expect.poll(() => popup.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
         await expectHeaderInside();
-        const scrolledPopup = (await popup.boundingBox())!;
-        const stickyHeader = (await header.boundingBox())!;
-        expect(stickyHeader.y - scrolledPopup.y).toBeCloseTo(1, 0);
+        await expect.poll(() => popup.evaluate((element) =>
+          element.querySelector('.popup-header')!.getBoundingClientRect().top
+            - element.getBoundingClientRect().top,
+        )).toBeCloseTo(1, 0);
         if (opening === 0) {
           await page.screenshot({ path: testInfo.outputPath('hotspot-header-scrolled.png') });
         }
