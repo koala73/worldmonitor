@@ -3604,7 +3604,8 @@
       "vesselsCount": "{{count}} BRODOVA",
       "vessels": "BRODOVI",
       "trackedVessels": "PRAĆENI BRODOVI",
-      "showLess": "Prikaži manje"
+      "showLess": "Prikaži manje",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "ZATVORENO",

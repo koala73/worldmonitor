@@ -3576,7 +3576,8 @@
       "vesselsCount": "{{count}} سفينة",
       "vessels": "سفن",
       "trackedVessels": "سفن مُتتبَّعة",
-      "showLess": "عرض أقل"
+      "showLess": "عرض أقل",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "مغلق",

@@ -3573,7 +3573,8 @@
       "vesselsCount": "{{count}} जहाज",
       "vessels": "जहाज",
       "trackedVessels": "ट्रैक किए गए जहाज",
-      "showLess": "कम दिखाएँ"
+      "showLess": "कम दिखाएँ",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "बंद",

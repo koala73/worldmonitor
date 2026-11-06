@@ -3516,7 +3516,8 @@
       "vesselsCount": "{{count}} NAVIRES",
       "vessels": "NAVIRES",
       "trackedVessels": "NAVIRES SUIVANTS",
-      "showLess": "Afficher moins"
+      "showLess": "Afficher moins",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "FERMÉ",

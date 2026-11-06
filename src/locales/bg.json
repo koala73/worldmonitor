@@ -3504,7 +3504,8 @@
       "vesselsCount": "{{count}} КОРАБИ",
       "vessels": "КОРАБИ",
       "trackedVessels": "ПРОСЛЕДЕНИ КОРАБИ",
-      "showLess": "Покажи по-малко"
+      "showLess": "Покажи по-малко",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "ЗАТВОРЕНА",

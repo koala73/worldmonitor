@@ -3573,7 +3573,8 @@
       "vesselsCount": "{{count}} VYOMBO",
       "vessels": "VYOMBO",
       "trackedVessels": "VYOMBO VILIVYOFUATILIWA",
-      "showLess": "Onyesha kidogo"
+      "showLess": "Onyesha kidogo",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "IMEFUNGWA",

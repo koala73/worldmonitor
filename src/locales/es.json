@@ -3516,7 +3516,8 @@
       "vesselsCount": "{{count}} BUQUES",
       "vessels": "BUQUES",
       "trackedVessels": "BUQUES CON ORUGAS",
-      "showLess": "Mostrar menos"
+      "showLess": "Mostrar menos",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "CERRADO",

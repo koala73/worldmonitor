@@ -3573,7 +3573,8 @@
       "vesselsCount": "{{count}} شناور",
       "vessels": "شناورها",
       "trackedVessels": "شناورهای ردیابی‌شده",
-      "showLess": "نمایش کمتر"
+      "showLess": "نمایش کمتر",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "بسته",

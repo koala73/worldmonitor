@@ -3484,7 +3484,8 @@
       "vesselsCount": "{{count}} TÀU",
       "vessels": "TÀU",
       "trackedVessels": "TÀU ĐƯỢC THEO DÕI",
-      "showLess": "Hiển thị ít hơn"
+      "showLess": "Hiển thị ít hơn",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "ĐÃ KẾT THÚC",

@@ -3484,7 +3484,8 @@
       "vesselsCount": "เรือ {{count}} ลำ",
       "vessels": "เรือ",
       "trackedVessels": "เรือที่ติดตาม",
-      "showLess": "แสดงน้อยลง"
+      "showLess": "แสดงน้อยลง",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "ปิด",

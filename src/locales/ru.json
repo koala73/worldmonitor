@@ -3544,7 +3544,8 @@
       "vesselsCount": "{{count}} КОРАБЛЕЙ",
       "vessels": "КОРАБЛИ",
       "trackedVessels": "ОТСЛЕЖИВАЕМЫЕ КОРАБЛИ",
-      "showLess": "Показать меньше"
+      "showLess": "Показать меньше",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "ЗАВЕРШЕНО",

@@ -3504,7 +3504,8 @@
       "vesselsCount": "{{count}} GEMI",
       "vessels": "GEMI",
       "trackedVessels": "TAKIP EDILEN GEMI",
-      "showLess": "Daha azını göster"
+      "showLess": "Daha azını göster",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "KAPANDI",

@@ -3524,7 +3524,8 @@
       "vesselsCount": "{{count}} NAVE",
       "vessels": "NAVE",
       "trackedVessels": "NAVE ȘENILE",
-      "showLess": "Afișează mai puțin"
+      "showLess": "Afișează mai puțin",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "ÎNCHIS",

@@ -3112,7 +3112,8 @@
       "vesselsCount": "{{count}} VAARTUIGEN",
       "vessels": "VAARTUIGEN",
       "trackedVessels": "BIJGEVOERDE VAARTUIGEN",
-      "showLess": "Minder weergeven"
+      "showLess": "Minder weergeven",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "GESLOTEN",

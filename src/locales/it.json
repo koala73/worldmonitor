@@ -3516,7 +3516,8 @@
       "vesselsCount": "{{count}} VASI",
       "vessels": "VASI",
       "trackedVessels": "NAVI CINGOLATE",
-      "showLess": "Mostra meno"
+      "showLess": "Mostra meno",
+      "backToGroup": "Back to group"
     },
     "naturalEvent": {
       "closed": "CHIUSO",
