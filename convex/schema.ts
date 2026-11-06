@@ -898,6 +898,10 @@ export default defineSchema({
     // Independent goodwill source; never derive this from a paid effective plan.
     // Legacy rows without it require an audited source before migration.
     compPlanKey: v.optional(v.string()),
+    // Pending recompute at `validUntil` when another source outlives the
+    // winning one. Stored so repeat recomputes reuse one job instead of
+    // scheduling a duplicate per webhook.
+    coverageRecheckJobId: v.optional(v.id("_scheduled_functions")),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])

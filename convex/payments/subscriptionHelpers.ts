@@ -653,8 +653,15 @@ async function pickBestAcceptedBusinessGrant(
  *      `api_business` subscription; it confers Pro-tier features without
  *      creating a fake subscription row.
  *   4. Include the recorded comp source. Prefer live coverage, then compare
- *      tier > PLAN_PRECEDENCE > currentPeriodEnd. Recheck at its expiry while
- *      comp is active; otherwise downgrade to free when no sources remain.
+ *      tier > PLAN_PRECEDENCE > currentPeriodEnd. When another source
+ *      outlives the winner, recheck at the winner's expiry; otherwise
+ *      downgrade to free when no sources remain.
+ *
+ * Coverage is evaluated at max(observedAt, now). The entitlement row is
+ * present-tense state: a delayed or redelivered webhook stamped before a
+ * higher-tier subscription's paid-through date must not re-elect that
+ * subscription after the date has passed (SM-097). A future-stamped event
+ * keeps its own timestamp, as before.
  *
  * Note: callers MUST persist their own subscription row patch BEFORE calling
  * this helper so the recompute sees the post-event state.
@@ -665,11 +672,12 @@ export async function recomputeEntitlementFromAllSubs(
   observedAt: number,
 ): Promise<void> {
   if (await billingDeletionForUser(ctx, userId)) return;
+  const at = Math.max(observedAt, Date.now());
   const entitlement = await ctx.db
     .query("entitlements")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .first();
-  if (entitlement?.compUntil && entitlement.compUntil > observedAt && !entitlement.compPlanKey) {
+  if (entitlement?.compUntil && entitlement.compUntil > at && !entitlement.compPlanKey) {
     console.log(
       `[subscriptionHelpers] recompute for ${userId} — legacy comp source unknown; preserving entitlement pending audit`,
     );
@@ -678,19 +686,19 @@ export async function recomputeEntitlementFromAllSubs(
 
   const subscriptions = await ctx.db.query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId)).collect();
-  const candidates = subscriptions.filter((sub) => isCoveringAt(sub, observedAt))
+  const candidates = subscriptions.filter((sub) => isCoveringAt(sub, at))
     .map(({ planKey, currentPeriodEnd }) => ({ planKey, currentPeriodEnd }));
-  const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, observedAt);
+  const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, at);
   if (bestGrant) candidates.push(bestGrant);
 
-  const comp = entitlement?.compPlanKey && entitlement.compUntil && entitlement.compUntil > observedAt
+  const comp = entitlement?.compPlanKey && entitlement.compUntil && entitlement.compUntil > at
     ? { planKey: entitlement.compPlanKey, currentPeriodEnd: entitlement.compUntil }
     : null;
   if (comp) candidates.push(comp);
 
   // A stale active row remains a renewal-reconciliation candidate, but must
   // not hide another source that still supplies access right now.
-  const liveCandidates = candidates.filter((candidate) => candidate.currentPeriodEnd > observedAt);
+  const liveCandidates = candidates.filter((candidate) => candidate.currentPeriodEnd > at);
   const eligible = liveCandidates.length > 0 ? liveCandidates : candidates;
   let best: { planKey: string; currentPeriodEnd: number } | null = null;
   for (const candidate of eligible) {
@@ -699,16 +707,17 @@ export async function recomputeEntitlementFromAllSubs(
 
   if (best) {
     await upsertEntitlements(ctx, userId, best.planKey, best.currentPeriodEnd, observedAt);
+    // The winner's paid-through date is the row's validUntil. When a paid,
+    // granted, or comp source outlives it, nothing else is guaranteed to
+    // recompute at that boundary: a cancelled or on_hold row gets no further
+    // webhook, and a lost one leaves the row lapsed to free while another
+    // subscription still covers. Re-read current records then; never replay
+    // this snapshot. The `> at` guard keeps a stale winner from scheduling an
+    // immediate rerun that would pick it again.
     const nextExpiry = best.currentPeriodEnd;
-    if (comp && candidates.some((candidate) => candidate.currentPeriodEnd > nextExpiry)) {
-      // The winning tier may end before another paid or comp source. Re-read
-      // current records at that boundary; never replay this entitlement snapshot.
-      await ctx.scheduler.runAt(
-        nextExpiry,
-        internal.payments.subscriptionHelpers.recomputeEntitlementForUser,
-        { userId },
-      );
-    }
+    const outlived = nextExpiry > at
+      && candidates.some((candidate) => candidate.currentPeriodEnd > nextExpiry);
+    await syncCoverageRecheck(ctx, userId, outlived ? nextExpiry : null);
     return;
   }
 
@@ -716,6 +725,41 @@ export async function recomputeEntitlementFromAllSubs(
   // immediate-revoke point; entitlement queries fall back to free-tier defaults
   // when validUntil is in the past.
   await upsertEntitlements(ctx, userId, "free", observedAt, observedAt);
+  await syncCoverageRecheck(ctx, userId, null);
+}
+
+/**
+ * Keeps at most one pending coverage recheck per user, scheduled at `runAt`
+ * (or none when `runAt` is null). Every subscription webhook recomputes, so
+ * scheduling unconditionally would queue one job per event. The recompute is
+ * idempotent, so a job that already fired or was dropped is simply replaced.
+ */
+async function syncCoverageRecheck(
+  ctx: MutationCtx,
+  userId: string,
+  runAt: number | null,
+): Promise<void> {
+  const row = await ctx.db
+    .query("entitlements")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+  if (!row) return;
+  const storedId = row.coverageRecheckJobId;
+  const job = storedId ? await ctx.db.system.get(storedId) : null;
+  const pending = job?.state.kind === "pending" ? job : null;
+  // A claim moves an anonymous buyer's row to the real user with its job ID,
+  // so a pending job can target the old ID. Reuse it only for this user.
+  const pendingUserId = (pending?.args[0] as { userId?: unknown } | undefined)?.userId;
+  if (runAt !== null && pending?.scheduledTime === runAt && pendingUserId === userId) return;
+  if (pending) await ctx.scheduler.cancel(pending._id);
+  const nextId = runAt === null
+    ? undefined
+    : await ctx.scheduler.runAt(
+      runAt,
+      internal.payments.subscriptionHelpers.recomputeEntitlementForUser,
+      { userId },
+    );
+  if (nextId !== storedId) await ctx.db.patch(row._id, { coverageRecheckJobId: nextId });
 }
 
 /**
@@ -1952,7 +1996,11 @@ export async function handleSubscriptionCancelled(
     }
   }
 
-  // Do NOT revoke entitlements immediately -- valid until currentPeriodEnd
+  // No immediate revocation: a paid-through cancelled row still covers until
+  // currentPeriodEnd. Recomputing lets a cancellation that lands at or after
+  // that date hand the row to another subscription that still covers the user
+  // (SM-097) instead of leaving it to lapse to free.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
 }
 
 /**
