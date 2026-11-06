@@ -3211,11 +3211,11 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.speed')}</span>
-            <span class="stat-value">${vessel.speed} kts</span>
+            <span class="stat-value">${vessel.usniSource ? t('popups.unknown') : `${vessel.speed} kts`}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.heading')}</span>
-            <span class="stat-value">${Math.round(vessel.heading)}°</span>
+            <span class="stat-value">${vessel.usniSource ? t('popups.unknown') : `${Math.round(vessel.heading)}°`}</span>
           </div>
           ${vessel.mmsi ? `
           <div class="popup-stat">

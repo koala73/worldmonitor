@@ -46,6 +46,12 @@ describe('naval group member navigation', () => {
     expect(original.scrollTop).toBe(0);
     expect(document.body.textContent).toContain('Indian Ocean');
     expect(document.body.textContent).toContain('Position approximate');
+    const stats = new Map([...document.querySelectorAll('.popup-stat')].map(stat => [
+      stat.querySelector('.stat-label')?.textContent?.trim(),
+      stat.querySelector('.stat-value')?.textContent?.trim(),
+    ]));
+    expect(stats.get('SPEED')).toBe('Unknown');
+    expect(stats.get('HEADING')).toBe('Unknown');
     expect(document.querySelector('.popup-back')).toBe(document.activeElement);
     click('.popup-back');
     expect(document.querySelector('.popup-title')?.textContent).toBe(cluster.name);
@@ -61,6 +67,8 @@ describe('naval group member navigation', () => {
     click('[data-vessel-index="1"]');
     expect(document.querySelector('.popup-title')?.textContent).toBe('Ship 1');
     expect(document.body.textContent).toContain('Live ship tracking');
+    expect(document.body.textContent).toContain('0 kts');
+    expect(document.body.textContent).toContain('0°');
     click('.popup-back');
     const unsafeName = { ...vessel(0), name: '<img src=x onerror=alert(1)>' };
     const unsafeCluster = { ...cluster, vessels: [unsafeName, ...cluster.vessels.slice(1)] };

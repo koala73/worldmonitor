@@ -60,6 +60,8 @@ for (const width of [1280, 390]) {
       await page.keyboard.press('Enter');
       await expect(popup.locator('.popup-title')).toHaveText('USS Test');
       await expect(popup).toContainText('Position approximate');
+      await expect(popup).not.toContainText('0 kts');
+      await expect(popup.locator('.popup-stat').filter({ hasText: 'HEADING' })).toContainText('Unknown');
       await expect(popup.locator('.popup-back')).toBeFocused();
       await popup.screenshot({ path: testInfo.outputPath(`details-${width}.png`) });
       await page.keyboard.press('Space');
@@ -69,6 +71,7 @@ for (const width of [1280, 390]) {
       await popup.locator('[data-vessel-index="0"]').click();
       await expect(popup.locator('.popup-title')).toHaveText('USS Boxer');
       await expect(popup).toContainText('Live ship tracking');
+      await expect(popup).toContainText('0 kts');
       await expect(popup).not.toContainText('Position approximate');
       await popup.locator('.popup-back').click();
       await popup.locator('[data-vessel-index="6"]').click();
