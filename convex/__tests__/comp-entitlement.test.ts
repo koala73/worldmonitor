@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { expect, test, describe } from "vitest";
+import { afterEach, beforeEach, expect, test, describe, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
@@ -293,6 +293,16 @@ describe("handleSubscriptionExpired comp guard", () => {
 // ---------------------------------------------------------------------------
 
 describe("multi-active-sub guard", () => {
+  // A recompute schedules a recheck when one subscription outlives the
+  // winning one. Fake timers keep that 30-day job from firing after the test:
+  // Node clamps a real setTimeout delay above 2^31-1 ms to 1 ms.
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   async function seedTwoActiveSubs(
     t: ReturnType<typeof convexTest>,
     opts: {
