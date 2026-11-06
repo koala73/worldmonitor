@@ -12,11 +12,26 @@ import { describe, it } from 'node:test';
 const read = (path: string) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 describe('App.ts accept-business-invite URL flow wiring', () => {
-  it('reads both URL params and only proceeds when both are present', async () => {
+  it('captures the invite at the start of init(), before the auth subscription and the map URL sync', async () => {
+    // The map URL sync rewrites the query string from map state shortly after
+    // boot. Reading the params at sign-in time lost every invite whose
+    // recipient signed up after landing (no new account had ever accepted one).
     const src = await read('src/App.ts');
-    assert.match(src, /new URLSearchParams\(window\.location\.search\)\.get\('accept-business-invite'\)/);
-    assert.match(src, /new URLSearchParams\(window\.location\.search\)\.get\('token'\)/);
-    assert.match(src, /if \(businessInviteGrantId && businessInviteToken\) \{/);
+    const initAt = src.indexOf('public async init(');
+    const captureAt = src.indexOf('captureBusinessInviteFromUrl();', initAt);
+    const subscribeAt = src.indexOf('this.unsubFreeTier = subscribeAuthState(', initAt);
+    const urlSyncAt = src.indexOf('this.eventHandlers.setupUrlStateSync();', initAt);
+    assert.ok(initAt >= 0 && captureAt > initAt, 'init() must capture the invite');
+    assert.ok(subscribeAt > captureAt, 'capture must run before the auth subscription can fire');
+    assert.ok(urlSyncAt > captureAt, 'capture must run before the map URL sync rewrites the query string');
+    const beforeCapture = src.slice(initAt, captureAt).replace(/^\s*\/\/.*$/gm, '');
+    assert.doesNotMatch(beforeCapture, /\bawait\b/, 'no await may run between init() start and the capture');
+  });
+
+  it('accepts the captured invite rather than re-reading the URL at sign-in', async () => {
+    const src = await read('src/App.ts');
+    assert.doesNotMatch(src, /\.get\('accept-business-invite'\)/, 'App.ts must not read the invite params from the live URL');
+    assert.match(src, /const pendingBusinessInvite = loadPendingBusinessInvite\(\);\s*\n\s*if \(pendingBusinessInvite\) \{/);
   });
 
   it('waits for Convex auth before calling acceptBusinessInvite, and bails without side effects if it times out', async () => {
@@ -83,18 +98,25 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     assert.match(src, /showToast\('Pro seat activated'\)/);
   });
 
-  it('always clears the invite URL params in a finally block once the try/catch runs, so a page refresh does not retry', async () => {
+  it('forgets the invite in a finally block so a refresh does not retry, except after a wrong-account rejection', async () => {
     const src = await read('src/App.ts');
     assert.match(
       src,
-      /\} finally \{\s*\n\s*\/\/ Clear the invite params from the URL so a refresh does not retry\.\s*\n\s*const url = new URL\(window\.location\.href\);\s*\n\s*url\.searchParams\.delete\('accept-business-invite'\);\s*\n\s*url\.searchParams\.delete\('token'\);\s*\n\s*window\.history\.replaceState\(\{\}, '', url\.toString\(\)\);\s*\n\s*\}/,
-      'URL param cleanup must run in a finally block around the accept mutation, covering both success and failure',
+      /\} finally \{\s*\n\s*\/\/ Forget the invite once the server has answered so a refresh does not retry\.\s*\n\s*if \(!keepInviteForAnotherAccount\) clearPendingBusinessInvite\(pendingBusinessInvite\);\s*\n\s*\}/,
+      'cleanup must run in a finally block around the accept mutation, covering both success and failure',
     );
+    assert.match(
+      src,
+      /if \(msg\.includes\('INVITE_EMAIL_MISMATCH'\)\) \{\s*\n\s*keepInviteForAnotherAccount = true;/,
+      'a wrong-account rejection must keep the invite for the invited account to accept in the same tab',
+    );
+    const mismatchFlags = src.match(/keepInviteForAnotherAccount = true/g) ?? [];
+    assert.equal(mismatchFlags.length, 1, 'only the email-mismatch branch may keep the invite');
   });
 
   it('grantId is typed at the Convex-client boundary rather than cast through `api as any`', async () => {
     const src = await read('src/App.ts');
-    assert.match(src, /grantId: businessInviteGrantId as Id<'businessProGrants'>/);
+    assert.match(src, /grantId: pendingBusinessInvite\.grantId as Id<'businessProGrants'>/);
     assert.doesNotMatch(
       src,
       /\(api as any\)\.payments\.businessSeats/,

@@ -287,6 +287,11 @@ import {
   getStoredAnonId,
 } from '@/services/anonymous-identity-storage';
 import { captureReferralFromUrl } from '@/services/referral-capture';
+import {
+  captureBusinessInviteFromUrl,
+  clearPendingBusinessInvite,
+  loadPendingBusinessInvite,
+} from '@/services/business-invite-capture';
 import { nextPrimeRetryDelayMs } from '@/utils/prime-retry';
 
 /** Look-ahead margin for viewport-gated panel priming and refresh scheduling. */
@@ -2434,6 +2439,11 @@ export class App {
     // the first await so a failed init unregisters those tools through destroy().
     this.webMcpController = webMcpController;
 
+    // Take a Business seat invite out of the URL before the map URL sync
+    // rewrites the query string. The accept hook in the auth subscription
+    // reads it from here, including after a sign-up that happens later.
+    captureBusinessInviteFromUrl();
+
     // Self-hosted installs: ask the sidecar for the desktop-key verdict. Never
     // awaited; a no-op on worldmonitor.app and in the desktop app.
     startSelfHostKeyService();
@@ -2827,13 +2837,14 @@ export class App {
           });
         }
 
-        // Accept a Business Pro seat invite carried in the URL (mirror of the
-        // anon-claim hook). The invite link is /dashboard?accept-business-invite=<id>&token=<t>;
+        // Accept a Business Pro seat invite (mirror of the anon-claim hook).
+        // The invite link is /dashboard?accept-business-invite=<id>&token=<t>;
         // older emails used /settings, which vercel.json redirects here.
+        // init() captured it before the map URL sync rewrote the query string,
+        // so an invitee who signs up after landing still accepts it here.
         // Runs after sign-in so the invitee's Clerk email is available server-side.
-        const businessInviteGrantId = new URLSearchParams(window.location.search).get('accept-business-invite');
-        const businessInviteToken = new URLSearchParams(window.location.search).get('token');
-        if (businessInviteGrantId && businessInviteToken) {
+        const pendingBusinessInvite = loadPendingBusinessInvite();
+        if (pendingBusinessInvite) {
           void (async () => {
             const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
             if (!client || !api) return;
@@ -2842,13 +2853,16 @@ export class App {
               console.warn('[business-seats] acceptBusinessInvite skipped — Convex auth not ready');
               return;
             }
+            // A wrong account keeps the invite so signing in as the invited
+            // address in this tab still accepts it.
+            let keepInviteForAnotherAccount = false;
             try {
               await settleAccountOperation(
                 userId,
                 'accepting the Business Pro seat invite',
                 () => client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
-                  grantId: businessInviteGrantId as Id<'businessProGrants'>,
-                  token: businessInviteToken,
+                  grantId: pendingBusinessInvite.grantId as Id<'businessProGrants'>,
+                  token: pendingBusinessInvite.token,
                 }),
               );
               assertAccountStillCurrent(userId, 'accepting the Business Pro seat invite');
@@ -2857,6 +2871,7 @@ export class App {
               if (!isAccountStillCurrent(userId)) return;
               const msg = err instanceof Error ? err.message : 'Failed to accept invite';
               if (msg.includes('INVITE_EMAIL_MISMATCH')) {
+                keepInviteForAnotherAccount = true;
                 showToast('This invite is for a different email address');
               } else if (msg.includes('INVITE_EXPIRED')) {
                 showToast('This invite has expired');
@@ -2869,11 +2884,8 @@ export class App {
               }
               console.warn('[business-seats] acceptBusinessInvite failed:', err);
             } finally {
-              // Clear the invite params from the URL so a refresh does not retry.
-              const url = new URL(window.location.href);
-              url.searchParams.delete('accept-business-invite');
-              url.searchParams.delete('token');
-              window.history.replaceState({}, '', url.toString());
+              // Forget the invite once the server has answered so a refresh does not retry.
+              if (!keepInviteForAnotherAccount) clearPendingBusinessInvite(pendingBusinessInvite);
             }
           })();
         }
