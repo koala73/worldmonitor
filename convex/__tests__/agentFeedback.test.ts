@@ -420,8 +420,10 @@ describe("feedback digest", () => {
     const t = convexTest(schema, modules);
     const late = await t.run(async (ctx) => {
       const base = { ...report(), updatedAt: NOW };
-      // Rows dismissed before triage stamped notifiedAt.
-      for (let i = 0; i < 300; i++) {
+      // Rows dismissed before triage stamped notifiedAt: more than one full
+      // run can read, so filtering by status after the read would hide the
+      // received row.
+      for (let i = 0; i < FEEDBACK_DIGEST_MAX_ROWS + 1; i++) {
         await ctx.db.insert("agentFeedback", { ...base, status: "dismissed", receivedAt: NOW - 5 * DAY + i });
       }
       return ctx.db.insert("agentFeedback", { ...base, status: "received", receivedAt: NOW - 1000 });
