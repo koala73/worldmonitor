@@ -2658,8 +2658,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro je lansiran",
-      "tagline": "Više signala, manje šuma. Više AI sažetaka. Geopolitički i equity istraživač samo za vas.",
+      "headline": "Dnevni AI-briefinzi putem e-maila ili Slacka",
+      "tagline": "plus WM Analyst, pravila upozorenja i MCP za Claude",
       "cta": "Nadogradi na Pro →",
       "dismiss": "Odbaci"
     },

@@ -2196,8 +2196,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro foi lançado",
-      "tagline": "Mais Sinal, Menos Ruído. Mais Briefings de IA. Um Pesquisador de Geopolítica e Ações exclusivamente para você.",
+      "headline": "Briefings diários com IA por email ou Slack",
+      "tagline": "mais WM Analyst, regras de alerta e MCP para Claude",
       "cta": "Fazer upgrade para Pro →",
       "dismiss": "Descartar"
     },
