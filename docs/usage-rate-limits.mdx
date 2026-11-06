@@ -71,6 +71,17 @@ Today the REST and MCP halves reserve against separate counters that each hold t
 
 `start_upgrade({plan})` returns a personal checkout link for the signed-in account and also spends no daily allowance, so an agent can still call it after an `allowance-exhausted` or `quota-exceeded` denial. Those denials, and `upgrade-required`, name the plan to pass in `error.data.recommendedPlan` when a self-serve plan sits one step up. The user pays in a browser; afterwards `get_mcp_allowance` reports the paid limit without re-authorization.
 
+## Enterprise contract accounts
+
+An Enterprise contract gives the customer's team a shared account. Every member's `wm_…` keys and MCP connections draw on that account's limits rather than on per-user ones; dashboard sessions are not pooled.
+
+- **Pooled daily allowance.** REST requests and MCP tool calls from all members count against the contract's daily allowance, which resets at **00:00 UTC**. MCP calls are charged at their [per-tool weight](#mcp-calls-against-an-api-plan).
+- **Shared burst.** The contract's per-minute burst is one bucket for the whole account, REST and MCP together.
+- **Overage, not rejection.** Requests past the daily allowance are still served and are billed as overage under the contract. Each such REST response carries `X-WorldMonitor-Overage: true`.
+- **Daily safety limit.** At a fixed multiple of the allowance, set in the contract, further requests are rejected with **429** until the next UTC day. It protects the account from a leaked key, not from normal growth. The 429 body has `limit_type: "daily"`, `limit` (the safety limit) and `allowance` (the contract allowance).
+
+These account limits apply from the moment the contract is live. Successful REST responses for a member carry `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Policy` for the **contract allowance** with a daily window; `RateLimit-Remaining` stays at `0` during overage. `get_mcp_allowance` and the account settings report the contract allowance as `limit`, the account-wide count as `used` (which can exceed `limit` during overage) and `sharedWithRestApi: true`.
+
 ## Paid embedded-panel requests
 
 Pro includes **50 requests per UTC day**. Pro Business includes **250**. Both use a dedicated MCP counter.

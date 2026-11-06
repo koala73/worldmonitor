@@ -92,6 +92,11 @@ import {
   rateLimitHeaders,
   ENTERPRISE_API_RATE_LIMIT,
 } from './_shared/api-key-rate-limit';
+import {
+  ACCOUNT_OVERAGE_HEADER,
+  accountRateLimitPlan,
+  type AccountRateLimitPlan,
+} from './_shared/account-rate-limit';
 import { isApiOnlyPath } from './_shared/api-only-paths';
 import {
   DESKTOP_KEY_API_ONLY_ERROR,
@@ -1228,6 +1233,8 @@ export function createDomainGateway(
             host: deriveHost(originalRequest),
             sentryTraceId: deriveSentryTraceId(originalRequest),
             reason: effectiveReason,
+            accountId: identity.account_id,
+            overage: identity.overage,
           }),
         ]);
       })());
@@ -2305,6 +2312,11 @@ export function createDomainGateway(
       }
     }
 
+    // Rate-limit headers (+ the overage marker) a pooled Enterprise account
+    // request carries on its served response; set by the per-account block
+    // below once the request is counted on the account's day key.
+    let accountResponseHeaders: Record<string, string> | null = null;
+
     // Internal-MCP verified requests skip the remaining gateway layer: the MCP edge
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
     // limiter here would create misleading double-counting and could 429
@@ -2375,11 +2387,18 @@ export function createDomainGateway(
       }
 
       if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth) && !isDesktopPrincipal) {
-        const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
+        const flagEnforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
         let perMinute = 0;
         let allowance = -1;
         let identity = '';
         let planKey = ''; // #4635 — hoisted for the informative 429 (ent is block-scoped below)
+        // Enterprise contract member: the key owner's requests draw on the
+        // account's pooled day key and burst bucket (`acct:<id>`), shared with
+        // every other member and with their MCP calls. `allowance` below is
+        // then the SAFETY LIMIT (contract allowance × breaker multiple), not
+        // the contract allowance: requests between the two are served and
+        // billed as overage.
+        let account: AccountRateLimitPlan | null = null;
         if (isEnterpriseAuth) {
           perMinute = ENTERPRISE_API_RATE_LIMIT; // hardcoded — no entitlement row
           // A circuit-breaker ceiling, not a plan limit (high-usage-alarm.ts).
@@ -2409,7 +2428,14 @@ export function createDomainGateway(
             // audit can compare each request to the customer's actual cap.
             recordUsageEntitlement(ent);
           }
-          if (ent && ent.features.apiAccess && ent.features.apiRateLimit > 0) {
+          account = ent && !ent.verificationUnavailable ? accountRateLimitPlan(ent.account) : null;
+          if (ent && account) {
+            perMinute = account.perMinuteBurst;
+            allowance = account.breakerCeiling;
+            planKey = ent.planKey;
+            identity = account.identity;
+            usage.accountId = account.id;
+          } else if (ent && ent.features.apiAccess && ent.features.apiRateLimit > 0) {
             perMinute = ent.features.apiRateLimit;
             // undefined ⇒ fail-open (no daily limit); -1 ⇒ unlimited.
             allowance =
@@ -2423,6 +2449,10 @@ export function createDomainGateway(
           // falls through to the per-IP path — never a slidingWindow(0).
         }
 
+        // Account limits are contract terms, not the self-serve rollout, so
+        // they are enforced whatever API_RATE_LIMIT_ENFORCE says. Everyone
+        // else stays governed by the flag exactly as before.
+        const enforce = flagEnforce || account !== null;
         if (perMinute > 0 && identity) {
           // #4635 — informative 429 upgrade link; omitted for enterprise/top tier.
           const upgradeUrl =
@@ -2458,10 +2488,16 @@ export function createDomainGateway(
               userId: identity,
               allowance,
               pipeline: (cmds) => runRedisPipeline(cmds),
+              // Pooled meters also count the member, for the per-member
+              // breakdown of the account's day.
+              ...(account && sessionUserId ? { memberUserId: sessionUserId } : {}),
             });
             if (meter.metered) rollbackDailyMeter = meter.rollback;
             // Tier-3 ceilings are circuit breakers; page well before one trips.
-            if (meter.metered && planKey === 'enterprise') {
+            // A contract account has its own breaker (the safety limit below)
+            // and expected overage, so the self-serve Enterprise page is not
+            // for it.
+            if (meter.metered && planKey === 'enterprise' && !account) {
               reportHighUsageIfCrossed({
                 meter: 'rest',
                 credential: isEnterpriseAuth ? 'operator-key' : 'enterprise-plan',
@@ -2470,6 +2506,53 @@ export function createDomainGateway(
                 ceiling: allowance,
                 ctx,
               });
+            }
+            if (meter.overLimit && account) {
+              // The breaker, not the allowance: the headers keep quoting the
+              // contract allowance the customer bought, and the body says
+              // which limit tripped and where it sits.
+              await meter.rollback();
+              emitRequest(429, 'rl_ceiling_429', null);
+              const resetMs = Date.now() + meter.retryAfterSec * 1000;
+              return new Response(JSON.stringify({
+                error: 'Daily safety limit reached',
+                message: "This account's daily safety limit was reached. Requests resume at the next UTC day.",
+                plan: planKey || undefined,
+                limit: allowance,
+                allowance: account.dailyAllowance,
+                limit_type: 'daily',
+                reset: new Date(resetMs).toISOString(),
+              }), {
+                status: 429,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Cache-Control': 'no-store',
+                  ...rateLimitHeaders({
+                    limit: account.dailyAllowance,
+                    remaining: 0,
+                    resetMs,
+                    retryAfterSec: meter.retryAfterSec,
+                    windowSec: 86_400,
+                  }),
+                  ...corsHeaders,
+                },
+              });
+            }
+            if (meter.metered && account) {
+              const overage = meter.count > account.dailyAllowance;
+              usage.overage = overage;
+              // Served account responses advertise the contract allowance;
+              // no Retry-After, since nothing here asks the caller to wait.
+              const { 'Retry-After': _retryAfter, ...allowanceHeaders } = rateLimitHeaders({
+                limit: account.dailyAllowance,
+                remaining: account.dailyAllowance - meter.count,
+                resetMs: Date.now() + meter.retryAfterSec * 1000,
+                retryAfterSec: meter.retryAfterSec,
+                windowSec: 86_400,
+              });
+              accountResponseHeaders = overage
+                ? { ...allowanceHeaders, [ACCOUNT_OVERAGE_HEADER]: 'true' }
+                : allowanceHeaders;
             }
             if (meter.overLimit) {
               if (enforce) {
@@ -2524,6 +2607,10 @@ export function createDomainGateway(
           : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
           await rollbackDailyMeter?.();
+          // The pooled count was released, so this request is neither
+          // overage nor carries the account's allowance headers.
+          usage.overage = null;
+          accountResponseHeaders = null;
           const reason = getRateLimitTelemetryReason(
             rateLimitResponse,
             'rate_limit_429_global',
@@ -2728,6 +2815,11 @@ export function createDomainGateway(
       }
     }
     appendDeprecationPolicyLink(mergedHeaders);
+    if (accountResponseHeaders) {
+      for (const [key, value] of Object.entries(accountResponseHeaders)) {
+        mergedHeaders.set(key, value);
+      }
+    }
     const retryableResponse = drainRetryableResponse(requestForHandler);
 
     // Release the direct-LLM reservation when the request was not served: the

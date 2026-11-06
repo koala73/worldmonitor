@@ -675,7 +675,7 @@ async function handleAuthenticatedSseReplay(
   // No `id` argument on purpose (#7818): the SSE replay channel is a GET with
   // no JSON-RPC body, so there is no request id to echo and the denial keeps
   // the spec's null. Every POST caller below passes the parsed `body.id`.
-  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute);
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute, null, undefined, getPreCheck.budget?.account);
   if (getLimited) {
     usage.phase = 'limit';
     return getLimited;
@@ -1334,7 +1334,7 @@ async function mcpHandlerInner(
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
     planKey = preCheck.planKey;
-    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
+    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id, undefined, budget?.account);
     if (limited) {
       usage.phase = 'limit';
       return limited;

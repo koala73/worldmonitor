@@ -543,7 +543,7 @@ export async function dispatchToolsCall(
   const deferredBurst = toolBurstPerMinute !== undefined && dedicatedPanel && typeof p?.name === 'string' && p.arguments?.panel_request !== undefined
     && p.name !== 'open_country_brief' && p.name !== 'open_news_dashboard' && p.name !== 'get_mcp_allowance';
   if (toolBurstPerMinute !== undefined && !deferredBurst) {
-    const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id, p?.name === 'get_mcp_allowance' ? { kind: 'protocol' } : undefined);
+    const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id, p?.name === 'get_mcp_allowance' ? { kind: 'protocol' } : undefined, budget?.account);
     if (limited) return limited;
   }
   if (!p || typeof p.name !== 'string') {
@@ -976,6 +976,12 @@ export async function dispatchToolsCall(
         }
         // Hard-cap correctness: NEVER dispatch on reservation failure.
         return quotaBackendUnavailableResponse(id, corsHeaders);
+      }
+      if (budget?.account && usage) {
+        // Attribute the pooled charge for billing: past the contract
+        // allowance the call is served and counted as overage.
+        usage.accountId = budget.account.id;
+        usage.overage = budget.displayAllowance !== undefined && reservation.newCount > budget.displayAllowance;
       }
       if (budget?.enterprisePlan) {
         reportHighUsageIfCrossed({

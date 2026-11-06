@@ -122,6 +122,22 @@ export function apiKeyDailyKey(userId, date) {
   const dd = String(d.getUTCDate()).padStart(2, '0');
   return `rl:apikey:day:${userId}:${yyyy}-${mm}-${dd}`;
 }
+/** Per-member day counter that sits beside a pooled account meter: one key
+ *  per member per UTC day, e.g.
+ *  `rl:apikey:day:acct:<accountId>:member:<userId>:YYYY-MM-DD`. It is written in
+ *  the same pipeline as the pooled INCR and released with it, so the members'
+ *  keys always sum to the pool's served count. Logical key — the caller's
+ *  pipeline applies the deployment prefix, exactly as for `apiKeyDailyKey`.
+ *  @param {string} identity pooled meter identity (`acct:<accountId>`)
+ *  @param {string} memberUserId
+ *  @param {Date} [date]
+ */
+export function apiKeyMemberDailyKey(identity, memberUserId, date) {
+  if (!identity || !memberUserId)
+    return '';
+  const day = apiKeyDailyKey(identity, date).slice(`rl:apikey:day:${identity}:`.length);
+  return `rl:apikey:day:${identity}:member:${memberUserId}:${day}`;
+}
 /** 48h TTL: covers UTC-midnight rollover + an inspection window. Mirrors
  *  PRO_DAILY_QUOTA_TTL_SECONDS. */
 export const API_DAILY_TTL_SECONDS = 172_800;
@@ -134,9 +150,14 @@ export const API_DAILY_TTL_SECONDS = 172_800;
  * - Redis unavailable / pipeline failure → `metered:false`, `overLimit:false`
  *   (fail-open: the gateway serves uncounted).
  */
-/** @param {{userId: string, allowance: number, pipeline: (commands: Array<Array<string | number>>) => Promise<Array<{result?: unknown}> | null>, date?: Date}} opts */
+/**
+ * `memberUserId` (pooled account meters only): also count this request on the
+ * member's own day key (`apiKeyMemberDailyKey(userId, memberUserId)`), in the
+ * same pipeline, and release it with the pooled count on rollback.
+ * @param {{userId: string, allowance: number, pipeline: (commands: Array<Array<string | number>>) => Promise<Array<{result?: unknown}> | null>, date?: Date, memberUserId?: string}} opts
+ */
 export async function reserveDailyMeter(opts) {
-  const { userId, allowance, pipeline, date } = opts;
+  const { userId, allowance, pipeline, date, memberUserId } = opts;
   const noop = async () => { };
   const retryAfterSec = secondsUntilUtcMidnight(date);
   // No daily limit: `-1` is unlimited (enterprise); `0` is a misconfiguration
@@ -151,12 +172,18 @@ export async function reserveDailyMeter(opts) {
   if (!key) {
     return { count: 0, overLimit: false, metered: false, retryAfterSec, rollback: noop };
   }
+  const memberKey = memberUserId ? apiKeyMemberDailyKey(userId, memberUserId, date) : '';
+  /** @type {Array<Array<string | number>>} */
+  const commands = [
+    ['INCR', key],
+    ['EXPIRE', key, API_DAILY_TTL_SECONDS],
+  ];
+  if (memberKey) {
+    commands.push(['INCR', memberKey], ['EXPIRE', memberKey, API_DAILY_TTL_SECONDS]);
+  }
   let pipeResult;
   try {
-    pipeResult = await pipeline([
-      ['INCR', key],
-      ['EXPIRE', key, API_DAILY_TTL_SECONDS],
-    ]);
+    pipeResult = await pipeline(commands);
   }
   catch {
     pipeResult = null;
@@ -177,7 +204,7 @@ export async function reserveDailyMeter(opts) {
       return;
     rolledBack = true;
     try {
-      await pipeline([['DECR', key]]);
+      await pipeline(memberKey ? [['DECR', key], ['DECR', memberKey]] : [['DECR', key]]);
     }
     catch {
       // Best-effort: a failed DECR overshoots the meter by 1, the

@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 
 import {
   apiKeyDailyKey,
+  apiKeyMemberDailyKey,
   reserveDailyMeter,
   rateLimitHeaders,
   checkBurst,
@@ -130,6 +131,38 @@ describe('#3199 U3 — reserveDailyMeter', () => {
     const date = new Date(Date.UTC(2026, 5, 30, 23, 0, 0)); // 1h before midnight
     const r = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: makePipeline(0).pipeline, date });
     assert.equal(r.retryAfterSec, 3600);
+  });
+
+  it('a pooled meter counts the member beside the pool in one pipeline, and releases both', async () => {
+    const mock = makePipeline(0);
+    const date = D(2026, 10, 6);
+    const r = await reserveDailyMeter({
+      userId: 'acct:acct_1', allowance: 50_000, pipeline: mock.pipeline, date, memberUserId: 'user_a',
+    });
+    const member = apiKeyMemberDailyKey('acct:acct_1', 'user_a', date);
+    assert.equal(member, 'rl:apikey:day:acct:acct_1:member:user_a:2026-11-06');
+    assert.deepEqual(mock.commands[0], [
+      ['INCR', 'rl:apikey:day:acct:acct_1:2026-11-06'],
+      ['EXPIRE', 'rl:apikey:day:acct:acct_1:2026-11-06', 172_800],
+      ['INCR', member],
+      ['EXPIRE', member, 172_800],
+    ]);
+    // The pooled count is the first INCR's answer, never the member's.
+    assert.equal(r.count, 1);
+    await r.rollback();
+    await r.rollback();
+    assert.deepEqual(mock.commands.slice(1), [[
+      ['DECR', 'rl:apikey:day:acct:acct_1:2026-11-06'],
+      ['DECR', member],
+    ]]);
+  });
+
+  it('a per-user meter writes no member key', async () => {
+    const mock = makePipeline(0);
+    await reserveDailyMeter({ userId: 'user_a', allowance: STARTER_ALLOWANCE, pipeline: mock.pipeline });
+    assert.equal(mock.commands[0].length, 2);
+    assert.equal(apiKeyMemberDailyKey('', 'user_a'), '');
+    assert.equal(apiKeyMemberDailyKey('acct:x', ''), '');
   });
 });
 

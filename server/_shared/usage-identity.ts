@@ -25,6 +25,12 @@ export interface UsageIdentity {
   customer_id: string | null;
   tier: number;
   plan_key: string | null;
+  // Enterprise contract account the request was pooled on (null otherwise).
+  account_id: string | null;
+  // Pooled account requests only: whether this served request fell past the
+  // contract's daily allowance and bills as overage. Null when the request
+  // was not counted on an account pool (non-members, unmetered requests).
+  overage: boolean | null;
 }
 
 export interface UsageIdentityInput {
@@ -38,6 +44,9 @@ export interface UsageIdentityInput {
   // #4572 — entitlement planKey (api_starter / api_business / …) when the
   // gateway resolved one; null otherwise. 'enterprise' for env keys.
   planKey: string | null;
+  // Set by the gateway's pooled account meter (Enterprise contract members).
+  accountId?: string | null;
+  overage?: boolean | null;
 }
 
 // Static enterprise-key → customer map. Explicit so attribution is reviewable in code,
@@ -48,6 +57,18 @@ const ENTERPRISE_KEY_TO_CUSTOMER: Record<string, string> = {
 };
 
 export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
+  const identity = resolveIdentity(input);
+  // Only a user API key can be pooled on an account; every other identity
+  // reports null even if a stale input field were set.
+  const pooled = identity.auth_kind === 'user_api_key' && Boolean(input.accountId);
+  return {
+    ...identity,
+    account_id: pooled ? input.accountId ?? null : null,
+    overage: pooled ? input.overage ?? null : null,
+  };
+}
+
+function resolveIdentity(input: UsageIdentityInput): Omit<UsageIdentity, 'account_id' | 'overage'> {
   const tier = input.tier ?? 0;
 
   if (input.isUserApiKey) {

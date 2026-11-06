@@ -122,6 +122,10 @@ export interface McpUsage {
   protocolVersion: string | null;
   /** 'modern' once a request takes the 2026-07-28 per-request path (api/mcp/modern.ts). */
   era: McpEra;
+  /** Enterprise contract account a tools/call charged; set by dispatch. */
+  accountId?: string | null;
+  /** That charge fell past the contract allowance (overage); set by dispatch. */
+  overage?: boolean | null;
 }
 
 /** Protocol era of a request: initialize-based legacy, or 2026-07-28 modern. */
@@ -354,6 +358,8 @@ export function emitMcpRequestEvent(
       toolJmespath: usage.toolOutcome?.jmespathUsed ?? null,
       mcpProtocolVersion: usage.protocolVersion,
       mcpEra: usage.era,
+      accountId: usage.accountId ?? null,
+      overage: usage.overage ?? null,
     });
     emitUsageEvents(ctx, [event]);
   } catch {
