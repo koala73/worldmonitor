@@ -3227,7 +3227,8 @@
         "copy": "Kopieren",
         "copied": "Kopiert.",
         "copyFailed": "Kopieren fehlgeschlagen. Markieren Sie den Text zum Kopieren."
-      }
+      },
+      "firstSeenNote": "Dies ist das früheste verfügbare Indikatordatum aus Feeds oder World Monitor Beobachtungen; es kann vom Datum der aufgeführten Quelle abweichen."
     },
     "nuclear": {
       "types": {

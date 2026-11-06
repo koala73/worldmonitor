@@ -3305,7 +3305,8 @@
         "copy": "Másolás",
         "copied": "Másolva.",
         "copyFailed": "A másolás sikertelen volt. Jelölje ki a szöveget a másoláshoz."
-      }
+      },
+      "firstSeenNote": "Ez a legkorábbi elérhető indikátor dátum a feedek vagy World Monitor megfigyelések között; eltérhet a felsorolt forrás dátumától."
     },
     "nuclear": {
       "types": {

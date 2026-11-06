@@ -33,11 +33,11 @@ async function ripe(endpoint: string, ip: string, signal: AbortSignal): Promise<
     redirect: 'error', signal,
   });
   if (!response.ok) throw new Error('RIPEstat unavailable');
-  const body = await response.json();
+  const body: { status?: unknown; data?: unknown } = await response.json();
   if (body.status !== 'ok' || !body.data || typeof body.data !== 'object' || Array.isArray(body.data)) {
     throw new Error('RIPEstat invalid response');
   }
-  return body.data;
+  return body.data as Record<string, unknown>;
 }
 
 export async function getNetworkInfo(_ctx: ServerContext, req: GetNetworkInfoRequest): Promise<GetNetworkInfoResponse> {

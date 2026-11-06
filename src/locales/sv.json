@@ -2843,7 +2843,8 @@
         "copy": "Kopiera",
         "copied": "Kopierad.",
         "copyFailed": "Kopiering misslyckades. Markera texten för att kopiera den."
-      }
+      },
+      "firstSeenNote": "Detta är det tidigaste tillgängliga indikatordatumet från feeds eller World Monitor observationer; det kan skilja sig från det angivna källdatumet."
     },
     "nuclear": {
       "types": {

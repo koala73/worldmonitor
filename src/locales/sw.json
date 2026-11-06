@@ -3305,7 +3305,8 @@
         "copy": "Nakili",
         "copied": "Ilinakiliwa.",
         "copyFailed": "Kunakili kumefeli. Chagua maandishi ili kuynakili."
-      }
+      },
+      "firstSeenNote": "Hii ni tarehe ya mapema zaidi inayopatikana ya kiashiria kutoka kwa milisho au uchunguzi wa World Monitor; inaweza kutofautiana na tarehe ya chanzo kilichoorodheshwa."
     },
     "nuclear": {
       "types": {

@@ -3216,7 +3216,8 @@
         "copy": "복사",
         "copied": "복사되었습니다.",
         "copyFailed": "복사 실패. 텍스트를 선택하여 복사하세요."
-      }
+      },
+      "firstSeenNote": "피드 또는 World Monitor 관찰 자료 전체에서 사용 가능한 가장 이른 지표 날짜입니다. 나열된 출처의 날짜와 다를 수 있습니다."
     },
     "nuclear": {
       "types": {

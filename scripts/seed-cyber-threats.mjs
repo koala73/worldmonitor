@@ -544,7 +544,8 @@ async function fetchUrlhaus(cutoffMs) {
         id: `urlhaus:${indType}:${indicator}`, type, source: 'urlhaus', indicator, indicatorType: indType,
         lat: toNum(r?.latitude ?? r?.lat), lon: toNum(r?.longitude ?? r?.lon),
         country: normCountry(r?.country || r?.country_code), severity: sev,
-        malwareFamily: clean(r?.threat, 80), tags, firstSeen, lastSeen,
+        // URLhaus's threat field is a classification, not a malware family.
+        malwareFamily: '', tags: normTags([...tags, threat]), firstSeen, lastSeen,
       });
       if (t) threats.push(t);
       if (threats.length >= MAX_LIMIT) break;

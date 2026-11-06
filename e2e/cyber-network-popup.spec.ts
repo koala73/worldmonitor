@@ -48,6 +48,22 @@ for (const language of ['en', 'de']) {
         await popup.screenshot({ path: testInfo.outputPath(`cyber-network-${language}-${width}.png`) });
         await details.locator('.popup-link').scrollIntoViewIfNeeded();
         await popup.screenshot({ path: testInfo.outputPath(`cyber-network-details-${language}-${width}.png`) });
+        if (width === 390) {
+          expect(await popup.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+          const scrollGesture = await details.evaluate(target => {
+            const popup = target.closest('.map-popup') as HTMLElement;
+            const touch = (y: number) => new Touch({ identifier: 1, target, clientX: 100, clientY: y });
+            const start = touch(300);
+            target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [start] }));
+            const move = new TouchEvent('touchmove', { bubbles: true, cancelable: true, touches: [touch(500)] });
+            target.dispatchEvent(move);
+            const result = { prevented: move.defaultPrevented, dragging: popup.classList.contains('dragging') };
+            target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] }));
+            return result;
+          });
+          expect(scrollGesture).toEqual({ prevented: false, dragging: false });
+          await expect(popup).toBeVisible();
+        }
       });
     });
   }

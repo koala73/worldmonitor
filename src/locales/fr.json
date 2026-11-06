@@ -3247,7 +3247,8 @@
         "copy": "Copier",
         "copied": "Copié.",
         "copyFailed": "Échec de la copie. Sélectionnez le texte pour le copier."
-      }
+      },
+      "firstSeenNote": "Il s'agit de la date d'indicateur la plus ancienne disponible parmi les flux ou les observations de World Monitor ; elle peut différer de la date de la source listée."
     },
     "nuclear": {
       "types": {

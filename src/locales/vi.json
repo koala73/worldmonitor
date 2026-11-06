@@ -3216,7 +3216,8 @@
         "copy": "Sao chép",
         "copied": "Đã sao chép.",
         "copyFailed": "Sao chép không thành công. Chọn văn bản để sao chép nó."
-      }
+      },
+      "firstSeenNote": "Đây là ngày chỉ báo sớm nhất có sẵn trên các feed hoặc quan sát World Monitor; nó có thể khác với ngày của nguồn được liệt kê."
     },
     "nuclear": {
       "types": {

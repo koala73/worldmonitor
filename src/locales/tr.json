@@ -3236,7 +3236,8 @@
         "copy": "Kopyala",
         "copied": "Kopyalandı.",
         "copyFailed": "Kopyalama başarısız oldu. Kopyalamak için metni seçin."
-      }
+      },
+      "firstSeenNote": "Bu, akışlar veya World Monitor gözlemleri arasında kullanılabilir en erken gösterge tarihi olup; listelenmiş kaynağın tarihinden farklı olabilir."
     },
     "nuclear": {
       "types": {

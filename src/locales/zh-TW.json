@@ -3216,7 +3216,8 @@
         "copy": "複製",
         "copied": "已複製。",
         "copyFailed": "複製失敗。請選中文字後複製。"
-      }
+      },
+      "firstSeenNote": "這是跨源和 World Monitor 觀察中最早可用的指標日期；可能與列出的源的日期不同。"
     },
     "nuclear": {
       "types": {

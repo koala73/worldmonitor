@@ -2843,7 +2843,8 @@
         "copy": "Kopiëren",
         "copied": "Gekopieerd.",
         "copyFailed": "Kopiëren mislukt. Selecteer de tekst om deze te kopiëren."
-      }
+      },
+      "firstSeenNote": "Dit is de vroegst beschikbare indicatordatum uit feeds of World Monitor-waarnemingen; deze kan afwijken van de datum van de vermelde bron."
     },
     "nuclear": {
       "types": {

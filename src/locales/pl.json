@@ -3267,7 +3267,8 @@
         "copy": "Kopiuj",
         "copied": "Skopiowano.",
         "copyFailed": "Kopiowanie nie powiodło się. Zaznacz tekst, aby go skopiować."
-      }
+      },
+      "firstSeenNote": "Jest to najwcześniejsza dostępna data wskaźnika z feedów lub obserwacji World Monitor; może różnić się od daty podanego źródła."
     },
     "nuclear": {
       "types": {

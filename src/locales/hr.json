@@ -3335,7 +3335,8 @@
         "copy": "Kopiraj",
         "copied": "Kopirano.",
         "copyFailed": "Kopiranje neuspješno. Odaberi tekst da ga kopiraš."
-      }
+      },
+      "firstSeenNote": "Ovo je najraniji dostupan datum indikatora dostupan kroz feedove ili World Monitor promatranja; može se razlikovati od datuma navedenog izvora."
     },
     "nuclear": {
       "types": {

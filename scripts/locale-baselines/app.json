@@ -3012,6 +3012,7 @@
   "popups.cyberThreat.explanations.phishing": "The feed reports an indicator associated with phishing.",
   "popups.cyberThreat.familyNote": "The malware-family label comes from the threat feed. It does not identify a person or organization.",
   "popups.cyberThreat.firstSeen": "First seen",
+  "popups.cyberThreat.firstSeenNote": "This is the earliest available indicator date across feeds or World Monitor observations; it may differ from the listed source's date.",
   "popups.cyberThreat.network.asn": "Origin ASN",
   "popups.cyberThreat.network.broaderPrefix": "The provider matched a broader routing prefix. This is not an exact IP allocation record.",
   "popups.cyberThreat.network.copied": "Copied.",

@@ -15,6 +15,14 @@ function open(value = threat) {
   popup.show({ type: 'cyberThreat', data: value, x: 100, y: 100 });
   return popup;
 }
+it('qualifies the first-seen date and omits family explanations without a family', () => {
+  const popup = open({ ...threat, malwareFamily: undefined, firstSeen: '2026-11-01T12:00:00Z' });
+  const body = document.querySelector('.popup-body')!;
+  expect(body.textContent).toContain('earliest available indicator date across feeds or World Monitor observations');
+  expect(body.textContent).toContain('download');
+  expect(body.textContent).not.toContain('family label');
+  popup.hide();
+});
 it('loads network information only on expansion and escapes provider fields', async () => {
   const fetcher = vi.fn(async () => Response.json({ status: 'available', ip: threat.indicator,
     asns: [{ asn: 3301, holder: '<img src=x onerror=alert(1)>' }], hostnames: ['example.telia.com'],

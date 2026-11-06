@@ -3351,7 +3351,8 @@
         "copy": "Copy",
         "copied": "Copied.",
         "copyFailed": "Copy failed. Select the text to copy it."
-      }
+      },
+      "firstSeenNote": "This is the earliest available indicator date across feeds or World Monitor observations; it may differ from the listed source's date."
     },
     "nuclear": {
       "types": {

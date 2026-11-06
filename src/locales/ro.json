@@ -3256,7 +3256,8 @@
         "copy": "Copiați",
         "copied": "Copiat.",
         "copyFailed": "Copierea a eșuat. Selectați textul pentru a-l copia."
-      }
+      },
+      "firstSeenNote": "Aceasta este cea mai veche dată indicator disponibilă din feed-uri sau observații World Monitor; poate diferi de data sursei listate."
     },
     "nuclear": {
       "types": {

@@ -3268,7 +3268,8 @@
         "copy": "Kopírovat",
         "copied": "Zkopírováno.",
         "copyFailed": "Kopírování se nezdařilo. Vyberte text, abyste ho mohli zkopírovat."
-      }
+      },
+      "firstSeenNote": "Toto je nejstarší dostupné datum indikátoru napříč zprávami nebo pozorováními World Monitor; může se lišit od data uvedeného zdroje."
     },
     "nuclear": {
       "types": {

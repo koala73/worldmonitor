@@ -740,8 +740,7 @@ export class MapPopup {
     if (!this.popup || !this.isMobileSheet || e.touches.length !== 1) return;
 
     const target = e.target as HTMLElement | null;
-    const popupBody = this.popup.querySelector('.popup-body');
-    if (target?.closest('.popup-body') && popupBody && popupBody.scrollTop > 0) {
+    if (target?.closest('.popup-body') && this.popup.scrollTop > 0) {
       this.sheetTouchStartY = null;
       return;
     }
@@ -2103,6 +2102,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         <div class="popup-tags">
           ${tags.map((tag) => `<span class="popup-tag">${escapeHtml(tag)}</span>`).join('')}
         </div>` : ''}
+        ${threat.firstSeen ? `<p class="popup-description">${t('popups.cyberThreat.firstSeenNote')}</p>` : ''}
         ${tags.includes('malware_download') ? `<p class="popup-description">${t('popups.cyberThreat.downloadTag')}</p>` : ''}
         ${threat.malwareFamily ? `<p class="popup-description">${t('popups.cyberThreat.familyNote')}</p>` : ''}
         <p class="popup-description">${t('popups.cyberThreat.approximateLocation')}</p>
