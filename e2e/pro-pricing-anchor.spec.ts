@@ -90,6 +90,18 @@ test.describe('/pro#pricing lands on the pricing section', () => {
     await expectPricingInView(page);
   });
 
+  // From the Enterprise view the home page, and its price cards, render only
+  // after the hash change, so the scroll has to wait for that render.
+  for (const hash of ['#tiers', '#pricing']) {
+    test(`${hash} from the Enterprise view lands on the pricing section`, async ({ page }) => {
+      await serveBuiltPro(page);
+      await page.goto(`${ORIGIN}/pro#enterprise`, { waitUntil: 'load' });
+      await expect(page.locator('section#pricing')).toHaveCount(0);
+      await page.evaluate((next) => { window.location.hash = next; }, hash);
+      await expectPricingInView(page);
+    });
+  }
+
   // Pricing now appears once, so this section must keep every plan: the five
   // self-serve cards, then the Enterprise band. External requests are
   // aborted, so it renders the committed catalog.

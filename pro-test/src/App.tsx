@@ -1367,6 +1367,9 @@ export const ProHomeShell = ({ heroSrLead, footer, children }: {
 
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
+  // Section to scroll to once the home view has rendered after leaving the
+  // Enterprise view; its sections do not exist until then.
+  const pendingHomeTarget = useRef<string | null>(null);
 
   // Resume a checkout the buyer started before signing in.
   //
@@ -1394,7 +1397,9 @@ export default function App() {
       if (next === 'enterprise' && !wasEnterprise) window.scrollTo(0, 0);
       // The removed #tiers section has no element for native fragment
       // navigation; send history or same-page jumps to the price cards.
-      if (hash === '#tiers') document.getElementById('pricing')?.scrollIntoView();
+      const homeTarget = hash === '#tiers' ? 'pricing' : hash.slice(1);
+      if (next === 'home' && wasEnterprise && homeTarget) pendingHomeTarget.current = homeTarget;
+      else if (hash === '#tiers') document.getElementById('pricing')?.scrollIntoView();
       if (hash === '#enterprise-contact') {
         setTimeout(() => {
           document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
@@ -1403,6 +1408,14 @@ export default function App() {
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
+  }, [page]);
+
+  useEffect(() => {
+    const target = pendingHomeTarget.current;
+    if (page !== 'home' || !target) return;
+    pendingHomeTarget.current = null;
+    const frame = requestAnimationFrame(() => { document.getElementById(target)?.scrollIntoView(); });
+    return () => cancelAnimationFrame(frame);
   }, [page]);
 
   // Deep links into the home page (/pro#pricing from every dashboard
