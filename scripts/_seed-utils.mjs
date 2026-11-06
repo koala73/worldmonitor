@@ -24,6 +24,7 @@ export { isTestRuntime, loadEnvFile };
 // nothing is pending). Used by every runSeed exit reachable after fetchFn,
 // where seeder LLM calls may have emitted events (#4954 review).
 async function exitAfterTelemetryFlush(code) {
+  activeLockHeartbeat?.stop();
   try { await flushPendingLlmEvents(); } catch { /* never block exit */ }
   process.exit(code);
 }
@@ -487,6 +488,137 @@ export async function releaseLock(domain, runId) {
   }
 }
 
+// ─── Seed lock fencing (SM-122) ───
+// runSeed's fetch may run past lockTtlMs, so ownership is re-checked inside
+// Redis at every publish point. Both scripts return {1, ''} when KEYS[1] still
+// holds ARGV[1] (and renew it for ARGV[2] ms), or {0, <current holder or ''>}
+// when the lock is gone, so the caller can tell a takeover from an expiry.
+// The redis-rest proxy pins both texts byte for byte
+// (docker/redis-rest-proxy.mjs, tests/redis-rest-proxy-command-parity.test.mjs).
+export const SEED_LOCK_RENEW_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PEXPIRE', KEYS[1], ARGV[2])",
+  "return {1, ''}",
+].join('\n');
+
+// Fenced SET: writes KEYS[2] = ARGV[3] (with EX ARGV[4] unless it is '') only
+// while KEYS[1] still holds ARGV[1].
+export const SEED_LOCK_FENCED_SET_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PEXPIRE', KEYS[1], ARGV[2])",
+  "if ARGV[4] == '' then",
+  "  redis.call('SET', KEYS[2], ARGV[3])",
+  'else',
+  "  redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[4])",
+  'end',
+  "return {1, ''}",
+].join('\n');
+
+export class SeedLockLostError extends Error {
+  constructor(lockKey, holder) {
+    super(holder
+      ? `seed lock ${lockKey} is now held by run ${holder}`
+      : `seed lock ${lockKey} expired and is held by no run`);
+    this.name = 'SeedLockLostError';
+    this.lockKey = lockKey;
+    this.holder = holder || null;
+    // A lost lock never comes back by retrying the same write.
+    this.nonRetryable = true;
+  }
+}
+
+export function isSeedLockLostError(err) {
+  return err instanceof SeedLockLostError;
+}
+
+/**
+ * Throw SeedLockLostError unless an EVAL reply from one of the fence scripts
+ * says the lock is still ours. Any other reply shape is a protocol error.
+ */
+function assertFenceReply(reply, lockKey) {
+  const result = reply?.result;
+  if (!Array.isArray(result) || (result[0] !== 1 && result[0] !== 0)) {
+    throw new Error(`Seed lock fence for ${lockKey} returned an unexpected reply: ${JSON.stringify(result)}`);
+  }
+  if (result[0] === 0) throw new SeedLockLostError(lockKey, typeof result[1] === 'string' ? result[1] : '');
+}
+
+/**
+ * Renew `seed-lock:<domain>` for ttlMs if runId still holds it. Throws
+ * SeedLockLostError when it does not; Redis failures propagate after retries.
+ */
+export async function renewLockIfHeld(domain, runId, ttlMs) {
+  const { url, token } = getRedisCredentials();
+  const lockKey = `seed-lock:${domain}`;
+  const reply = await withRetry(
+    () => redisCommand(url, token, ['EVAL', SEED_LOCK_RENEW_SCRIPT, 1, lockKey, runId, ttlMs], {
+      label: `Seed lock renew ${lockKey}`,
+    }),
+    SEED_REDIS_RETRY_ATTEMPTS - 1,
+    SEED_REDIS_RETRY_BASE_MS,
+  );
+  assertFenceReply(reply, lockKey);
+}
+
+function fencedSetCommand(lockFence, key, payload, ttlSeconds) {
+  return [
+    'EVAL', SEED_LOCK_FENCED_SET_SCRIPT, 2, lockFence.lockKey, key,
+    lockFence.runId, lockFence.ttlMs, payload, ttlSeconds ? ttlSeconds : '',
+  ];
+}
+
+// The heartbeat of the lock runSeed currently holds. exitAfterTelemetryFlush
+// stops it so a test harness that traps process.exit leaves no live timer.
+let activeLockHeartbeat = null;
+
+/**
+ * Keep renewing a held seed lock every ttlMs/3 so a legitimately long fetch
+ * does not lose it. Stops for good once Redis reports the lock gone; a
+ * transient Redis error is logged and the next tick tries again.
+ */
+function startLockHeartbeat(domain, runId, ttlMs) {
+  const state = { lost: null, timer: null, inFlight: false };
+  const intervalMs = Math.max(250, Math.floor(ttlMs / 3));
+  const stop = () => {
+    if (state.timer) clearInterval(state.timer);
+    state.timer = null;
+    if (activeLockHeartbeat === heartbeat) activeLockHeartbeat = null;
+  };
+  const tick = async () => {
+    if (state.inFlight || state.lost) return;
+    state.inFlight = true;
+    try {
+      const { url, token } = getRedisCredentials();
+      const lockKey = `seed-lock:${domain}`;
+      const reply = await redisCommand(url, token, ['EVAL', SEED_LOCK_RENEW_SCRIPT, 1, lockKey, runId, ttlMs], {
+        label: `Seed lock renew ${lockKey}`,
+      });
+      assertFenceReply(reply, lockKey);
+    } catch (err) {
+      if (isSeedLockLostError(err)) {
+        state.lost = err;
+        stop();
+        console.warn(`  [${domain}] ${err.message} — this run will not publish`);
+      } else {
+        console.warn(`  [${domain}] seed lock renewal failed (will retry): ${err?.message || err}`);
+      }
+    } finally {
+      state.inFlight = false;
+    }
+  };
+  state.timer = setInterval(tick, intervalMs);
+  state.timer.unref?.();
+  const heartbeat = { state, stop };
+  activeLockHeartbeat = heartbeat;
+  return heartbeat;
+}
+
 export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, options = {}) {
   const { url, token } = getRedisCredentials();
 
@@ -544,6 +676,9 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   return await withRetry(
     async () => {
       if (options.publishAtomically) {
+        // A custom atomic publisher owns its Redis writes, so the fence can
+        // only be checked (and the lease renewed) just before it runs.
+        if (options.lockFence) await options.lockFence.renew();
         await options.publishAtomically({
           canonicalKey,
           payload,
@@ -555,9 +690,13 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
 
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const stagingKey = `${canonicalKey}:staging:${runId}`;
-      const canonicalCommand = ttlSeconds
-        ? ['SET', canonicalKey, payload, 'EX', ttlSeconds]
-        : ['SET', canonicalKey, payload];
+      // With a lock fence, the canonical SET runs inside Redis only while this
+      // run still holds the seed lock (SM-122).
+      const canonicalCommand = options.lockFence
+        ? fencedSetCommand(options.lockFence, canonicalKey, payload, ttlSeconds)
+        : ttlSeconds
+          ? ['SET', canonicalKey, payload, 'EX', ttlSeconds]
+          : ['SET', canonicalKey, payload];
       if (maxPayloadBytes > MAX_PAYLOAD_BYTES) {
         const requestBytes = Math.max(
           Buffer.byteLength(JSON.stringify(canonicalCommand), 'utf8'),
@@ -574,7 +713,15 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
       await redisCommand(url, token, ['SET', stagingKey, payload, 'EX', 300]); // 5 min staging TTL
 
       // Overwrite canonical key
-      await redisCommand(url, token, canonicalCommand);
+      const canonicalReply = await redisCommand(url, token, canonicalCommand);
+      if (options.lockFence) {
+        try {
+          assertFenceReply(canonicalReply, options.lockFence.lockKey);
+        } catch (err) {
+          await redisDel(url, token, stagingKey).catch(() => {});
+          throw err;
+        }
+      }
 
       // Cleanup staging
       await redisDel(url, token, stagingKey).catch(() => {});
@@ -644,6 +791,7 @@ export async function writeFreshnessMetadata(
   fetchedAtOverride,
   contentAge,
   metaPatch,
+  options = {},
 ) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
@@ -681,8 +829,23 @@ export async function writeFreshnessMetadata(
   // seeder's top-level catch as `FATAL: The operation was aborted due to
   // timeout` → exit 1 (seed-gdelt-intel, issue #5437). redisCommand tags
   // permanent 4xx nonRetryable and 429 with Retry-After; withRetry honors both.
+  //
+  // options.lockFence (runSeed only) makes the SET conditional on the run
+  // still holding its seed lock, so a run that lost the lock cannot stamp
+  // fetchedAt=now over the newer owner's seed-meta (SM-122).
+  const lockFence = options?.lockFence;
   await withRetry(
-    () => redisSet(url, token, metaKey, meta, metaTtl),
+    async () => {
+      if (!lockFence) return redisSet(url, token, metaKey, meta, metaTtl);
+      const reply = await redisCommand(
+        url,
+        token,
+        fencedSetCommand(lockFence, metaKey, JSON.stringify(meta), metaTtl),
+        { label: `seed-meta ${metaKey}` },
+      );
+      assertFenceReply(reply, lockFence.lockKey);
+      return reply;
+    },
     SEED_REDIS_RETRY_ATTEMPTS - 1,
     SEED_REDIS_RETRY_BASE_MS,
   );
@@ -708,6 +871,8 @@ export async function writeFreshnessMetadataSafely(domain, resource, ...rest) {
   try {
     return await writeFreshnessMetadata(domain, resource, ...rest);
   } catch (err) {
+    // Losing the seed lock is an ownership decision, not a bookkeeping blip.
+    if (isSeedLockLostError(err)) throw err;
     console.warn(
       `  WARNING: seed-meta write for ${domain}:${resource} failed after retries (${err?.message || err}) — `
       + `continuing; seed-meta will age and /api/health STALE_SEED is the alarm if this persists`,
@@ -2732,6 +2897,27 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     process.exit(0);
   }
 
+  // SM-122: the fetch deadline is lockTtlMs + 120s, so a run can outlive its
+  // lock, and another run can then take it and publish newer data. Renew the
+  // lock while this run works, and fence every publish point on ownership:
+  // the canonical SET and seed-meta SET run inside Redis only while this run
+  // still holds the lock (SEED_LOCK_FENCED_SET_SCRIPT), and the publish phase
+  // re-checks ownership before its first write. A run that lost the lock
+  // exits without publishing and without touching seed-meta.
+  const lockDomain = `${domain}:${resource}`;
+  const lockHeartbeat = startLockHeartbeat(lockDomain, runId, lockTtlMs);
+  const lockFence = {
+    lockKey: `seed-lock:${lockDomain}`,
+    runId,
+    ttlMs: lockTtlMs,
+    renew: () => renewLockIfHeld(lockDomain, runId, lockTtlMs),
+  };
+  // Cheap local check between Redis-fenced writes: the heartbeat already
+  // learned the lock is gone, so stop before the next write group.
+  const assertLockStillHeld = () => {
+    if (lockHeartbeat.state.lost) throw lockHeartbeat.state.lost;
+  };
+
   // SIGTERM handler — installed BEFORE fetch and KEPT installed through
   // publish. _bundle-runner.mjs sends SIGTERM when a section's timeout
   // fires, then SIGKILL after KILL_GRACE_MS (5s). Without a publish-phase
@@ -2756,6 +2942,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   let currentPhase = 'fetch';
   const sigTermHandler = async () => {
     console.error(`  [${domain}:${resource}] SIGTERM received during ${currentPhase} phase — releasing lock runId=${runId}`);
+    lockHeartbeat.stop();
     try {
       if (currentPhase === 'fetch') {
         await Promise.allSettled([
@@ -2873,6 +3060,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
   // Phase 2: Publish to Redis (rethrow on failure — data was fetched but not stored)
   try {
+    // Ownership gate before any publish-phase write (canonical, extra keys,
+    // hooks, seed-meta, TTL preservation). Renews the lease on success.
+    await lockFence.renew();
+
     // Content-age contract: invoke contentMeta on RAW fetcher output BEFORE
     // publishTransform runs. This lets seeders carry pre-publish helper fields
     // (e.g. _publishedAtIsSynthetic) on items that contentMeta reads, then
@@ -3008,6 +3199,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           ? (publishContext) => publishAtomically(data, { ...publishContext, runId })
           : undefined,
         compressPayload,
+        lockFence,
       });
     } catch (error) {
       // An atomic publisher either switches its complete key cohort or leaves
@@ -3017,6 +3209,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       // A thrown `beforePublish` is the same shape: it runs ahead of every
       // canonical/extra write, so the prior cohort is likewise untouched and the
       // deep coverage rejections that live there must not cost last-good TTLs.
+      // A lost seed lock goes straight to the lock-lost exit below: the keys
+      // now belong to the run that holds the lock.
+      if (isSeedLockLostError(error)) throw error;
       if (publishAtomically || beforePublish) {
         const preserved = await preserveExistingKeys().catch(() => false);
         if (!preserved) {
@@ -3048,6 +3243,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       if (!strictFailure && afterValidationSkip) {
         validationSkipExistingMeta = await readExistingSeedMeta(domain, resource);
         validationSkipMetaRead = true;
+        assertLockStillHeld();
         validationSkipResult = await afterValidationSkip(data, {
           ...validationSkipContext,
           existingSeedMeta: validationSkipExistingMeta,
@@ -3110,6 +3306,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             canonicalMeta.fetchedAt,
             canonicalMeta.contentAge,
             Object.keys(preservedDiagnostics).length > 0 ? preservedDiagnostics : null,
+            { lockFence },
           );
           console.log(
             `  SKIPPED: validation failed (empty/partial fetch) — seed-meta mirrors canonical ` +
@@ -3126,6 +3323,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             domain, resource, 0, opts.sourceVersion, ttlSeconds,
             undefined, undefined,
             Object.keys(currentSkipDiagnostics).length > 0 ? currentSkipDiagnostics : null,
+            { lockFence },
           );
           console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
         }
@@ -3155,6 +3353,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // Write extra keys (e.g., bootstrap hydration keys). In contract mode each
     // extra key gets its own envelope; declareRecords may be per-key or reuse
     // the canonical one.
+    assertLockStillHeld();
     if (extraKeys) {
       for (const ek of extraKeys) {
         // skipWhenEmpty needs a resolved recordCount, which only exists in
@@ -3269,6 +3468,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       }
     }
 
+    assertLockStillHeld();
     const afterPublishResult = afterPublish
       ? await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId })
       : null;
@@ -3297,6 +3497,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       undefined,            // fetchedAtOverride — success path uses now
       successContentAge,
       afterPublishResult?.freshnessMetaPatch,
+      { lockFence },
     );
     if (afterFreshness) {
       if (meta == null) {
@@ -3374,6 +3575,29 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     await releaseLock(`${domain}:${resource}`, runId);
     await exitAfterTelemetryFlush(0);
   } catch (err) {
+    lockHeartbeat.stop();
+    if (isSeedLockLostError(err)) {
+      const durationMs = Date.now() - startMs;
+      if (err.holder) {
+        // Same outcome as the acquire-time lock-contention skip: the run that
+        // now holds the lock publishes this tick and owns its seed-meta.
+        console.warn(
+          `  SKIPPED: seed lock ${err.lockKey} was taken over by run ${err.holder} before this run (${runId}) `
+          + 'finished publishing — remaining writes and seed-meta left to that run',
+        );
+        console.log(`\n=== Done (${Math.round(durationMs)}ms, LOCK LOST) ===`);
+        await exitAfterTelemetryFlush(0);
+      }
+      // No run owns the tick: keep last-good alive and report a graceful
+      // failure so the next tick retries. seed-meta is not touched.
+      console.warn(
+        `  SKIPPED: seed lock ${err.lockKey} expired before this run (${runId}) finished publishing `
+        + '— remaining writes and seed-meta skipped',
+      );
+      await preserveExistingKeys().catch(() => false);
+      console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms, lock expired) ===`);
+      await exitAfterTelemetryFlush(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+    }
     await releaseLock(`${domain}:${resource}`, runId);
     throw err;
   }
