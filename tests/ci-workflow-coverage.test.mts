@@ -861,7 +861,7 @@ function collectActionFiles(repoRoot: string): string[] {
 }
 
 function unpinnedActionUses(source: string): string[] {
-  type Step = { uses?: unknown; steps?: Step[] };
+  type Step = { uses?: unknown; steps?: Step[]; parallel?: Step[] };
   const document = YAML.parse(source) as {
     jobs?: Record<string, Step>;
     runs?: { steps?: Step[] };
@@ -870,7 +870,8 @@ function unpinnedActionUses(source: string): string[] {
     ...Object.values(document?.jobs ?? {}).flatMap((job) => [job, ...(job.steps ?? [])]),
     ...(document?.runs?.steps ?? []),
   ];
-  return steps.flatMap(({ uses }) => {
+  const expandGroups = (entries: Step[]): Step[] => entries.flatMap((step) => [step, ...expandGroups(step.parallel ?? [])]);
+  return expandGroups(steps).flatMap(({ uses }) => {
     if (uses === undefined) return [];
     if (typeof uses !== 'string') return [String(uses)];
     if (uses.startsWith('./')) return [];
@@ -900,6 +901,16 @@ describe('GitHub Actions pinning guard', () => {
   it('checks reusable workflow jobs and composite action steps', () => {
     assert.equal(unpinnedActionUses('jobs:\n  call:\n    uses: example/repo/.github/workflows/check.yml@main\n').length, 1);
     assert.equal(unpinnedActionUses('runs:\n  using: composite\n  steps:\n    - uses: example/action@v1\n').length, 1);
+  });
+
+  it('checks actions inside parallel groups in workflows and composites', () => {
+    const steps = [{ parallel: [
+      { name: 'Mutable action', uses: 'example/action@v1' },
+      { parallel: [{ uses: 'example/action@main' }, { uses: `example/action@${sha}` }] },
+    ] }];
+    for (const document of [{ jobs: { check: { steps } } }, { runs: { using: 'composite', steps } }]) {
+      assert.deepEqual(unpinnedActionUses(YAML.stringify(document)), ['example/action@v1', 'example/action@main']);
+    }
   });
 
   it('allows full commit SHAs, local actions and immutable Docker actions', () => {
