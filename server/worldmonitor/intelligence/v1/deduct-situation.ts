@@ -23,6 +23,9 @@ import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-pr
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { markUnservedLlmResponse } from '../../../_shared/response-headers';
 
+const WORDS_RE = /\W+/;
+
+
 const PREDICTION_BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 const MAX_PREDICTION_MARKETS = 7;
 
@@ -57,7 +60,7 @@ export function buildPredictionContext(query: string, bootstrap: PredictionBoots
 
   const words = query
     .toLowerCase()
-    .split(/\W+/)
+    .split(WORDS_RE)
     .filter((w) => w.length > 1);
 
   const scored = allMarkets.map((m) => ({

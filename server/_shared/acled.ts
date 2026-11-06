@@ -11,6 +11,9 @@ import { getAcledAccessToken } from './acled-auth';
 import { normalizeCountryToIso2 } from './country-normalize';
 import UN_TO_ISO2 from '../../shared/un-to-iso2.json';
 
+const DATE_MS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const ACLED_CACHE_TTL = 900; // 15 min — matches ACLED rate-limit window
 const ACLED_TIMEOUT_MS = 15_000;
@@ -48,7 +51,7 @@ interface FetchAcledOptions {
 function normalizeAcledQuery(opts: FetchAcledOptions) {
   const invalid = (field: string): never => { throw new Error(`Invalid ACLED query: ${field}`); };
   const dateMs = (value: string) => {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return invalid('date');
+    if (typeof value !== 'string' || !DATE_MS_RE.test(value)) return invalid('date');
     const ms = Date.parse(`${value}T00:00:00Z`);
     if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== value) return invalid('date');
     return ms;

@@ -37,6 +37,10 @@ import {
   X_SHARED_COVERAGE_MODEL,
 } from './lib/x-post-budget.cjs';
 
+const URL_RE = /\/+$/;
+const EXECUTE_CLAIM_RE = /[\n,]+/;
+
+
 export const COMPANY_MONITORING_WORKER_HEALTH_KEY = 'company-monitoring:worker-health:v1';
 export const COMPANY_MONITORING_WORKER_META_KEY = 'seed-meta:company-monitoring:worker';
 export const COMPANY_MONITORING_WORKER_ACTIVATION_KEY = 'seed-activated:company-monitoring:worker';
@@ -219,7 +223,7 @@ export function createRedisHealthPublisher(options = {}) {
   const logger = options.logger ?? console;
 
   return async (input) => {
-    const url = env.UPSTASH_REDIS_REST_URL?.replace(/\/+$/, '');
+    const url = env.UPSTASH_REDIS_REST_URL?.replace(URL_RE, '');
     const token = env.UPSTASH_REDIS_REST_TOKEN;
     if (!url || !token) return false;
 
@@ -754,7 +758,7 @@ async function main() {
   });
   const executeClaim = createCompanyMonitoringExecutor({
     exaExecutor: createExaCohortExecutor({
-      apiKeys: (process.env.EXA_API_KEYS ?? '').split(/[\n,]+/),
+      apiKeys: (process.env.EXA_API_KEYS ?? '').split(EXECUTE_CLAIM_RE),
       runtimeApproved: COMPANY_MONITORING_EXA_CONTRACT.paidRuntimeApproved,
     }),
     xExecutor: createXRecentSearchExecutor({

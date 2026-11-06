@@ -8,6 +8,12 @@ import { num } from './_helpers.mjs';
 // rootDirectory=scripts so ../../shared/ escapes the deploy root.
 import { REGIONS } from '../shared/geography.js';
 
+const BUILD_LANE_RE = /fragment|collapse|breakdown/;
+const MATCHES_HORIZON_RE = /h24|24h|day|24h/;
+const MATCHES_HORIZON_RE_2 = /d7|7d|week|d7/;
+const MATCHES_HORIZON_RE_3 = /d30|30d|month|d30/;
+
+
 /** @type {import('../../shared/regions.types.js').ScenarioHorizon[]} */
 const HORIZONS = ['24h', '7d', '30d'];
 /** @type {import('../../shared/regions.types.js').ScenarioName[]} */
@@ -53,7 +59,7 @@ function buildLane(name, horizon, forecasts, triggers) {
     if (name === 'base' && trend === 'stable') rawScore += prob * 0.3;
     if (name === 'fragmentation') {
       const cf = JSON.stringify(f?.caseFile ?? {}).toLowerCase();
-      if (/fragment|collapse|breakdown/.test(cf)) rawScore += prob * 0.4;
+      if (BUILD_LANE_RE.test(cf)) rawScore += prob * 0.4;
     }
   }
 
@@ -76,9 +82,9 @@ function buildLane(name, horizon, forecasts, triggers) {
 
 function matchesHorizon(forecastHorizon, targetHorizon) {
   if (!forecastHorizon) return targetHorizon === '7d';
-  if (targetHorizon === '24h') return /h24|24h|day|24h/.test(forecastHorizon);
-  if (targetHorizon === '7d') return /d7|7d|week|d7/.test(forecastHorizon);
-  if (targetHorizon === '30d') return /d30|30d|month|d30/.test(forecastHorizon);
+  if (targetHorizon === '24h') return MATCHES_HORIZON_RE.test(forecastHorizon);
+  if (targetHorizon === '7d') return MATCHES_HORIZON_RE_2.test(forecastHorizon);
+  if (targetHorizon === '30d') return MATCHES_HORIZON_RE_3.test(forecastHorizon);
   return false;
 }
 

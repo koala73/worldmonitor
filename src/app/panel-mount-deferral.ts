@@ -3,6 +3,9 @@ import {
   MAX_PANEL_ROW_SPAN,
 } from '@/utils/panel-grid';
 
+const WHITESPACE_RE = /\s+/;
+
+
 export const INITIAL_PANEL_MOUNT_BUDGET_DESKTOP = 8;
 // Mobile mounts fewer panels eagerly; the rest get IntersectionObserver shells (700px
 // lookahead) and mount before they scroll into view. Lowered 4->3 to trim boot DOM /
@@ -57,13 +60,13 @@ function clampSpan(value: number | undefined, max: number): number | undefined {
 
 function addClassTokens(element: HTMLElement, className: string | undefined): void {
   if (!className) return;
-  for (const token of className.split(/\s+/)) {
+  for (const token of className.split(WHITESPACE_RE)) {
     if (token) element.classList.add(token);
   }
 }
 
 function hasClassToken(className: string | undefined, token: string): boolean {
-  return className?.split(/\s+/).includes(token) === true;
+  return className?.split(WHITESPACE_RE).includes(token) === true;
 }
 
 function getNaturalFootprint({

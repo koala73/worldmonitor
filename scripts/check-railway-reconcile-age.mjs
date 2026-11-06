@@ -37,6 +37,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { REPOSITORY, readArgument } from './railway-cli.mjs';
 import { corroborateRunListings, reduceRunListings } from './lib/gh-run-listing.mjs';
 
+const TO_CREATED_FILTER_RE = /\.\d{3}Z$/;
+
+
 // The step whose conclusion IS the signal. A run reconciled iff this step ran
 // and succeeded; `skipped` is the #6203 transcript verbatim.
 //
@@ -178,7 +181,7 @@ function runGh(args) {
 
 /** ISO-8601 to the second, which is the granularity the `created` filter takes. */
 export function toCreatedFilter(instantMs) {
-  return `${new Date(instantMs).toISOString().replace(/\.\d{3}Z$/, 'Z')}`;
+  return `${new Date(instantMs).toISOString().replace(TO_CREATED_FILTER_RE, 'Z')}`;
 }
 
 /**

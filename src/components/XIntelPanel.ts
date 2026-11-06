@@ -9,6 +9,9 @@ import {
   type XFeedResponse,
 } from '@/services/x-intel';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 const LIVE_THRESHOLD_MS = 600_000;
 
 export class XIntelPanel extends Panel {
@@ -108,7 +111,7 @@ export class XIntelPanel extends Panel {
     const timeAgo = formatXTime(item.ts);
     const itemDate = new Date(item.ts).getTime();
     const isLive = !Number.isNaN(itemDate) && (Date.now() - itemDate) < LIVE_THRESHOLD_MS;
-    const text = (item.text || '').replace(/\s+/g, ' ').trim();
+    const text = (item.text || '').replace(WHITESPACE_RE, ' ').trim();
 
     return h('div', { className: `x-intel-item ${isLive ? 'is-live' : ''}` },
       h('div', { className: 'x-intel-item-header' },

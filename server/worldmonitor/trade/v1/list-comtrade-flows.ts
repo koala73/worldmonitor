@@ -9,6 +9,9 @@ import strategicProductMetadata from '../../../../scripts/shared/comtrade-strate
 import { getCachedJsonBatch } from '../../../_shared/redis';
 import { isCallerPremium } from '../../../_shared/premium-check';
 
+const IS_VALID_CODE_RE = /^\d{1,10}$/;
+
+
 const KEY_PREFIX = 'comtrade:flows';
 
 // Strategic reporters are stable API defaults; commodities come from the same
@@ -20,7 +23,7 @@ const CMD_CODES = strategicProductMetadata.products
 const CMD_CODE_RE = new RegExp(filterParamContracts.tradeComtradeCmdCodePattern);
 
 function isValidCode(c: string): boolean {
-  return /^\d{1,10}$/.test(c);
+  return IS_VALID_CODE_RE.test(c);
 }
 
 export async function listComtradeFlows(

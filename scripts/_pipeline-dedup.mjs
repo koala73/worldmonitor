@@ -17,6 +17,10 @@
 // Determinism: zero Date.now() / Math.random() / Set ordering reliance. Two
 // invocations on identical inputs produce identical outputs.
 
+const TOKENIZE_RE = /[̀-ͯ]/g;
+const TOKENIZE_RE_2 = /[^a-z0-9 ]+/g;
+const WHITESPACE_RE = /\s+/;
+
 const STOPWORDS = new Set([
   'pipeline', 'pipelines', 'system', 'systems', 'line', 'lines', 'network',
   'route', 'project', 'the', 'and', 'of', 'a', 'an',
@@ -93,9 +97,9 @@ function tokenize(name) {
     .normalize('NFKD')
     // Strip combining marks (diacritics) so "Limón" → "limon", not "limo'n".
     // Range ̀-ͯ covers Combining Diacritical Marks per Unicode.
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9 ]+/g, ' ')
-    .split(/\s+/)
+    .replace(TOKENIZE_RE, '')
+    .replace(TOKENIZE_RE_2, ' ')
+    .split(WHITESPACE_RE)
     .filter((t) => t.length > 0 && !STOPWORDS.has(t));
 }
 

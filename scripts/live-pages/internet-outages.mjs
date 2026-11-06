@@ -8,6 +8,9 @@ import {
   UnpublishableReading,
 } from './common.mjs';
 
+const OUTAGES_RE = /^https:\/\//;
+
+
 const LISTED_OUTAGES = 15;
 // The seed runs every 30 minutes and health flags it after 30 (api/health.js
 // outages). Retention can keep a list alive after Radar fails; past this age
@@ -61,7 +64,7 @@ export function internetOutagesRecord(payload, now = Date.now()) {
         detectedAt: new Date(detectedAt).toISOString(),
         ongoing: !endedAt || endedAt > now,
         description: String(outage.description || '').trim(),
-        link: /^https:\/\//.test(outage.link || '') ? outage.link : null,
+        link: OUTAGES_RE.test(outage.link || '') ? outage.link : null,
       };
     })
     .filter(Boolean)

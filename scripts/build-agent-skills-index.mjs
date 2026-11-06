@@ -28,6 +28,10 @@ import { basename, resolve, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 
+const REWRITE_WELL_KNOWN_SKILL_FOR_PLUGIN_RE = /https:\/\/([A-Za-z0-9.-]+)(\/api\/)/g;
+const LF_MD_RE = /\r\n/g;
+
+
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
 const SKILLS_DIR = resolve(ROOT, 'public/.well-known/agent-skills');
@@ -132,7 +136,7 @@ export function buildResourceContent(content, mimeType) {
 // `curl -s` (no -L) against it returns an empty body. www is the only host
 // here that serves the path it names.
 export function rewriteWellKnownSkillForPlugin(md) {
-  return md.replace(/https:\/\/([A-Za-z0-9.-]+)(\/api\/)/g, (full, host, suffix) => {
+  return md.replace(REWRITE_WELL_KNOWN_SKILL_FOR_PLUGIN_RE, (full, host, suffix) => {
     const normalized = host.toLowerCase();
     if (normalized === 'www.worldmonitor.app') {
       return full;
@@ -294,7 +298,7 @@ export function collectSkills() {
     }
     const bytes = readFileSync(skillPath);
     const md = bytes.toString('utf-8');
-    const lfMd = md.replace(/\r\n/g, '\n');
+    const lfMd = md.replace(LF_MD_RE, '\n');
     const fm = parseFrontmatter(lfMd);
     if (!fm.description) {
       throw new Error(`${skillPath} missing "description" in frontmatter`);
@@ -368,8 +372,8 @@ function main() {
   const { index, mcpModule } = build();
   const check = process.argv.includes('--check');
   if (check) {
-    const current = readFileSync(INDEX_PATH, 'utf-8').replace(/\r\n/g, '\n');
-    const currentMcpModule = readFileSync(MCP_SKILLS_PATH, 'utf-8').replace(/\r\n/g, '\n');
+    const current = readFileSync(INDEX_PATH, 'utf-8').replace(LF_MD_RE, '\n');
+    const currentMcpModule = readFileSync(MCP_SKILLS_PATH, 'utf-8').replace(LF_MD_RE, '\n');
     if (current !== index || currentMcpModule !== mcpModule) {
       process.stderr.write(
         'agent-skills index.json is out of date. Run `npm run build:agent-skills`.\n',

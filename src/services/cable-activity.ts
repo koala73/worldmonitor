@@ -4,6 +4,14 @@ import type { NavigationalWarning } from '@/generated/client/worldmonitor/mariti
 import { MaritimeServiceClient } from '@/services/generated-rpc-clients';
 import { extractCableShipName, isCableRelatedNotice, isFreshNotice } from '../../shared/nga-cable-notices';
 
+const PARSE_ISSUE_DATE_RE = /(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i;
+const FAULT_KEYWORDS_RE = /FAULT|BREAK|CUT|DAMAGE|SEVERED|RUPTURE|OUTAGE|FAILURE/i;
+const ON_STATION_KEYWORDS_RE = /ON STATION|OPERATIONS IN PROGRESS|LAYING|REPAIRING|WORKING|COMMENCED/i;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUGIFY_RE = /(^-|-$)+/g;
+const IS_OPERATION_RE = /OPERATIONS|LAYING|REPAIR|SURVEY/i;
+
+
 // UNDERSEA_CABLES (~130KB) lives in the lazy geo-map chunk; cable-activity is
 // reached eagerly via data-loader, so it loads the table on demand inside the
 // async fetch path rather than statically importing it onto the eager graph.
@@ -121,7 +129,7 @@ function findNearestCable(lat: number, lon: number): UnderseaCable | null {
 
 function parseIssueDate(dateStr: string): Date | null {
   // Format: "081653Z MAY 2024" or "101200Z JAN 2025"
-  const match = dateStr.match(/(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i);
+  const match = dateStr.match(PARSE_ISSUE_DATE_RE);
   if (match?.[1] && match[2] && match[3] && match[4]) {
     const day = parseInt(match[1], 10);
     const time = match[2];
@@ -144,20 +152,20 @@ function parseIssueDate(dateStr: string): Date | null {
 }
 
 function determineSeverity(text: string): 'fault' | 'degraded' {
-  const faultKeywords = /FAULT|BREAK|CUT|DAMAGE|SEVERED|RUPTURE|OUTAGE|FAILURE/i;
+  const faultKeywords = FAULT_KEYWORDS_RE;
   return faultKeywords.test(text) ? 'fault' : 'degraded';
 }
 
 function determineShipStatus(text: string): 'enroute' | 'on-station' {
-  const onStationKeywords = /ON STATION|OPERATIONS IN PROGRESS|LAYING|REPAIRING|WORKING|COMMENCED/i;
+  const onStationKeywords = ON_STATION_KEYWORDS_RE;
   return onStationKeywords.test(text) ? 'on-station' : 'enroute';
 }
 
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)+/g, '')
+    .replace(NON_ALPHANUMERIC_RE, '-')
+    .replace(SLUGIFY_RE, '')
     .slice(0, 40);
 }
 
@@ -216,7 +224,7 @@ function processWarnings(warnings: NgaWarning[], nowMs: number = Date.now()): Ca
     if (!seenIds.has(advisoryId)) {
       seenIds.add(advisoryId);
 
-      const isOperation = /OPERATIONS|LAYING|REPAIR|SURVEY/i.test(warning.text);
+      const isOperation = IS_OPERATION_RE.test(warning.text);
       const title = shipName
         ? `${isOperation ? 'Cable Operations' : 'Cable Activity'}: ${shipName}`
         : `NAVAREA ${warning.navArea} Cable Warning`;

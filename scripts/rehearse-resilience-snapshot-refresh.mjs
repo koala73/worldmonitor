@@ -31,6 +31,12 @@ import { parse as parseYaml } from 'yaml';
 
 import { MICROSTATE_COVERAGE_STORY_CODES } from './microstate-coverage-stories.mjs';
 
+const ENV_RE = /^\$\{\{.*\}\}$/s;
+const WALK_RE = /\b(scripts\/[\w./-]+\.m[jt]s)\b/g;
+const WALK_RE_2 = /\bnpm run (?:--silent )?([\w:-]+)/g;
+const NEEDS_REHEARSAL_RE = /^tests\/[^/]+\.test\.m[jt]s$/;
+
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SNAPSHOT_DIR = 'docs/snapshots';
 const SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
@@ -162,7 +168,7 @@ export function readRehearsedStep(workflowText) {
   const step = steps.find((candidate) => candidate.name === REHEARSED_STEP);
   if (!step?.run) throw new Error(`${REFRESH_WORKFLOW_PATH} has no "${REHEARSED_STEP}" step with a run script`);
   const env = Object.fromEntries(Object.entries(step.env ?? {}).map(([key, value]) => (
-    [key, /^\$\{\{.*\}\}$/s.test(String(value).trim()) ? '' : String(value)]
+    [key, ENV_RE.test(String(value).trim()) ? '' : String(value)]
   )));
   return { name: step.name, run: step.run, env };
 }
@@ -175,8 +181,8 @@ export function refreshScripts(run, packageScripts) {
   const found = new Set();
   const visited = new Set();
   const walk = (text) => {
-    for (const [, file] of text.matchAll(/\b(scripts\/[\w./-]+\.m[jt]s)\b/g)) found.add(file);
-    for (const [, name] of text.matchAll(/\bnpm run (?:--silent )?([\w:-]+)/g)) {
+    for (const [, file] of text.matchAll(WALK_RE)) found.add(file);
+    for (const [, name] of text.matchAll(WALK_RE_2)) {
       if (visited.has(name)) continue;
       visited.add(name);
       walk(packageScripts[name] ?? '');
@@ -195,7 +201,7 @@ export function needsRehearsal(changedFiles, { consumers, readSource, entryScrip
   return changedFiles.some((file) => {
     if (entryScripts.includes(file)) return true;
     if (REHEARSAL_TRIGGERS.some((trigger) => trigger.test(file))) return true;
-    if (!/^tests\/[^/]+\.test\.m[jt]s$/.test(file)) return false;
+    if (!NEEDS_REHEARSAL_RE.test(file)) return false;
     const source = readSource(file);
     return source != null && pattern.test(source);
   });

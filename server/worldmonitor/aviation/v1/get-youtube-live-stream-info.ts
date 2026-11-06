@@ -8,6 +8,9 @@ import { ValidationError } from '../../../../src/generated/server/worldmonitor/a
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
+const RAW_HANDLE_RE = /^@/;
+
+
 const POSITIVE_TTL = 60;
 const NEGATIVE_TTL = 30;
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
@@ -67,7 +70,7 @@ export const getYoutubeLiveStreamInfo: AviationServiceHandler['getYoutubeLiveStr
   req: GetYoutubeLiveStreamInfoRequest,
 ): Promise<GetYoutubeLiveStreamInfoResponse> => {
   const { videoId } = req;
-  const rawHandle = req.channel.replace(/^@/, '').normalize('NFC');
+  const rawHandle = req.channel.replace(RAW_HANDLE_RE, '').normalize('NFC');
   if (videoId && !VIDEO_ID_RE.test(videoId)) {
     throw new ValidationError([{ field: 'video_id', description: 'Invalid YouTube video ID' }]);
   }

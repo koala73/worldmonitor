@@ -1,3 +1,8 @@
+
+
+const B64_RE = /-/g;
+const B64_RE_2 = /_/g;
+const HAS_LIVE_SESSION_JWT_RE = /(?:^|;\s*)__session=([^;]+)/;
 function safeDecodeCookieValue(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -10,7 +15,7 @@ function decodeJwtExp(token: string): number | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const b64 = parts[1].replace(B64_RE, '+').replace(B64_RE_2, '/');
     const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
     const payload = JSON.parse(atob(padded)) as { exp?: unknown };
     return typeof payload.exp === 'number' ? payload.exp : null;
@@ -37,7 +42,7 @@ export function hasLiveSessionJwt(cookieHeader: string): boolean {
   // Sentry WORLDMONITOR-17E: TypeError reading 'match' of undefined on the
   // welcome redirect probe.
   if (typeof cookieHeader !== 'string') return false;
-  const match = cookieHeader.match(/(?:^|;\s*)__session=([^;]+)/);
+  const match = cookieHeader.match(HAS_LIVE_SESSION_JWT_RE);
   if (!match) return false;
   const exp = decodeJwtExp(safeDecodeCookieValue(match[1]).trim());
   return exp !== null && exp * 1000 > Date.now();

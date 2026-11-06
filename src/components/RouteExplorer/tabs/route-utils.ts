@@ -10,6 +10,9 @@ import type {
   CorridorStatus,
 } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 
+const ESCAPE_HTML_RE = /[&<>"']/g;
+
+
 export function formatTransitRange(range: NumberRange | undefined): string {
   if (!range) return '\u2014';
   if (range.min === range.max) return `${range.min}d`;
@@ -81,7 +84,7 @@ export function disruptionScoreClass(score: number): string {
 }
 
 export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
+  return s.replace(ESCAPE_HTML_RE, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   );
 }

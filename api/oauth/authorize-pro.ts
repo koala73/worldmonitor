@@ -71,6 +71,12 @@
  * security check tripped.
  */
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+const ESCAPE_HTML_RE_5 = /'/g;
+
 export const config = { runtime: 'edge' };
 
 import { verifyGrant, GrantConfigError } from '../_mcp-grant-hmac';
@@ -106,11 +112,11 @@ const GLOBE_SVG =
 
 function escapeHtml(str: string): string {
   return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
+    .replace(ESCAPE_HTML_RE, '&amp;')
+    .replace(ESCAPE_HTML_RE_2, '&lt;')
+    .replace(ESCAPE_HTML_RE_3, '&gt;')
+    .replace(ESCAPE_HTML_RE_4, '&quot;')
+    .replace(ESCAPE_HTML_RE_5, '&#x27;');
 }
 
 /**

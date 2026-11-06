@@ -2,6 +2,17 @@ import type {
   AircraftDetails,
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
+const IS_MILITARY_HEX_RE = /^~/;
+const IS_MILITARY_CALLSIGN_RE = /\d/;
+const IS_MILITARY_CALLSIGN_RE_2 = /^[A-Z]{3}\d{1,2}$/;
+const DETECT_AIRCRAFT_TYPE_RE = /^(SHELL|TEXACO|ARCO|ESSO|PETRO|KC|STRAT)/;
+const DETECT_AIRCRAFT_TYPE_RE_2 = /^(SENTRY|AWACS|MAGIC|DISCO|DARKSTAR|E3|E8|E6)/;
+const DETECT_AIRCRAFT_TYPE_RE_3 = /^(RCH|REACH|MOOSE|EVAC|DUSTOFF|C17|C5|C130|C40)/;
+const DETECT_AIRCRAFT_TYPE_RE_4 = /^(HOMER|OLIVE|JAKE|PSEUDO|GORDO|RC|U2|SR)/;
+const DETECT_AIRCRAFT_TYPE_RE_5 = /^(RQ|MQ|REAPER|PREDATOR|GLOBAL)/;
+const DETECT_AIRCRAFT_TYPE_RE_6 = /^(DEATH|BONE|DOOM|B52|B1|B2)/;
+
+
 // ========================================================================
 // Military identification
 // ========================================================================
@@ -13,7 +24,7 @@ export const MILITARY_HEX_SET = new Set(
 
 export function isMilitaryHex(hexId: string | null | undefined): boolean {
   if (!hexId) return false;
-  return MILITARY_HEX_SET.has(String(hexId).replace(/^~/, '').toLowerCase());
+  return MILITARY_HEX_SET.has(String(hexId).replace(IS_MILITARY_HEX_RE, '').toLowerCase());
 }
 
 export const MILITARY_PREFIXES = [
@@ -58,9 +69,9 @@ export function isMilitaryCallsign(callsign: string | null | undefined): boolean
     if (cs.startsWith(prefix)) return true;
   }
   for (const prefix of SHORT_MILITARY_PREFIXES) {
-    if (cs.startsWith(prefix) && cs.length > prefix.length && /\d/.test(cs.charAt(prefix.length))) return true;
+    if (cs.startsWith(prefix) && cs.length > prefix.length && IS_MILITARY_CALLSIGN_RE.test(cs.charAt(prefix.length))) return true;
   }
-  if (/^[A-Z]{3}\d{1,2}$/.test(cs)) {
+  if (IS_MILITARY_CALLSIGN_RE_2.test(cs)) {
     const prefix = cs.slice(0, 3);
     if (!AIRLINE_CODES.has(prefix)) return true;
   }
@@ -70,12 +81,12 @@ export function isMilitaryCallsign(callsign: string | null | undefined): boolean
 export function detectAircraftType(callsign: string | null | undefined): string {
   if (!callsign) return 'unknown';
   const cs = callsign.toUpperCase().trim();
-  if (/^(SHELL|TEXACO|ARCO|ESSO|PETRO|KC|STRAT)/.test(cs)) return 'tanker';
-  if (/^(SENTRY|AWACS|MAGIC|DISCO|DARKSTAR|E3|E8|E6)/.test(cs)) return 'awacs';
-  if (/^(RCH|REACH|MOOSE|EVAC|DUSTOFF|C17|C5|C130|C40)/.test(cs)) return 'transport';
-  if (/^(HOMER|OLIVE|JAKE|PSEUDO|GORDO|RC|U2|SR)/.test(cs)) return 'reconnaissance';
-  if (/^(RQ|MQ|REAPER|PREDATOR|GLOBAL)/.test(cs)) return 'drone';
-  if (/^(DEATH|BONE|DOOM|B52|B1|B2)/.test(cs)) return 'bomber';
+  if (DETECT_AIRCRAFT_TYPE_RE.test(cs)) return 'tanker';
+  if (DETECT_AIRCRAFT_TYPE_RE_2.test(cs)) return 'awacs';
+  if (DETECT_AIRCRAFT_TYPE_RE_3.test(cs)) return 'transport';
+  if (DETECT_AIRCRAFT_TYPE_RE_4.test(cs)) return 'reconnaissance';
+  if (DETECT_AIRCRAFT_TYPE_RE_5.test(cs)) return 'drone';
+  if (DETECT_AIRCRAFT_TYPE_RE_6.test(cs)) return 'bomber';
   return 'unknown';
 }
 

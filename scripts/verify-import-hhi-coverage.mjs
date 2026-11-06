@@ -2,6 +2,9 @@
 
 import { getRedisCredentials, loadEnvFile, readSeedSnapshot } from './_seed-utils.mjs';
 
+const TRAILING_SLASH_RE = /\/$/;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'resilience:recovery:import-hhi:v1';
@@ -34,7 +37,7 @@ async function fetchLiveScore(countryCode) {
     Accept: 'application/json',
   };
   if (WM_KEY) headers['X-WorldMonitor-Key'] = WM_KEY;
-  const url = `${API_BASE.replace(/\/$/, '')}/api/resilience/v1/get-resilience-score?countryCode=${encodeURIComponent(countryCode)}`;
+  const url = `${API_BASE.replace(TRAILING_SLASH_RE, '')}/api/resilience/v1/get-resilience-score?countryCode=${encodeURIComponent(countryCode)}`;
   const resp = await fetch(url, { headers, signal: AbortSignal.timeout(30_000) });
   const text = await resp.text();
   if (!resp.ok) {

@@ -69,6 +69,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const LOAD_COUNTRY_NAME_MAP_RE = /\b([a-z])/g;
+const BUILD_REPORT_RE = /\\/g;
+const BUILD_REPORT_RE_2 = /\|/g;
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -160,9 +166,9 @@ async function loadCountryNameMap() {
   const reverse = {};
   for (const [name, iso2] of Object.entries(forward)) {
     const code = String(iso2 || '').toUpperCase();
-    if (!/^[A-Z]{2}$/.test(code)) continue;
+    if (!COUNTRY_CODE_RE.test(code)) continue;
     if (reverse[code]) continue;
-    reverse[code] = name.replace(/\b([a-z])/g, (_, c) => c.toUpperCase());
+    reverse[code] = name.replace(LOAD_COUNTRY_NAME_MAP_RE, (_, c) => c.toUpperCase());
   }
   return reverse;
 }
@@ -541,7 +547,7 @@ function buildReport({ ranking, scoreMap, nameMap, movers, capturedAt, sha, fail
     if (failureList.length) {
       failBody += `| CC | Country | Error |\n|---|---|---|\n`;
       for (const [cc, msg] of failureList) {
-        failBody += `| ${cc} | ${nameMap[cc] ?? cc} | ${String(msg).slice(0, 200).replace(/\\/g, '\\\\').replace(/\|/g, '\\|')} |\n`;
+        failBody += `| ${cc} | ${nameMap[cc] ?? cc} | ${String(msg).slice(0, 200).replace(BUILD_REPORT_RE, '\\\\').replace(BUILD_REPORT_RE_2, '\\|')} |\n`;
       }
     }
     if (missingCohortMembers.length) {

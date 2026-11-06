@@ -15,6 +15,14 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
+const NORMALIZE_RE = /\p{Diacritic}/gu;
+const NORMALIZE_RE_2 = /&/g;
+const NORMALIZE_RE_3 = /[''‘’`.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const TOKEN_RE = / region$/;
+const CODE_RE = /\s+region$/i;
+
+
 const require = createRequire(import.meta.url);
 const { countryNameToIso2 } = require('../shared/country-name-to-iso2.cjs');
 
@@ -68,11 +76,11 @@ export function pointToIso2(lat, lon) {
 function normalize(raw) {
   return String(raw || '')
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_RE, '')
     .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[''‘’`.(),/-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_RE_2, ' and ')
+    .replace(NORMALIZE_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -143,11 +151,11 @@ export function textToIso2(text, { lat = Number.NaN, lon = Number.NaN } = {}) {
   if (last) {
     if (last === 'CA') return 'US';
     if (CANADA_PROVINCE_CODES.has(last)) return 'CA';
-    const token = normalize(last).replace(/ region$/, '');
+    const token = normalize(last).replace(TOKEN_RE, '');
     if (token === 'georgia') return georgia(lat, lon);
     if (US_STATES.has(token)) return 'US';
     if (CANADA_PROVINCES.has(token)) return 'CA';
-    const code = countryNameToIso2(last.replace(/\s+region$/i, ''));
+    const code = countryNameToIso2(last.replace(CODE_RE, ''));
     if (code && KNOWN_CODES.has(code)) return code;
   }
   return scanForCountry(normalize(text), lat, lon);

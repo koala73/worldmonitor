@@ -53,6 +53,21 @@ import {
   physicalPremiumHistoryPoint,
 } from './lib/physical-divergence.mjs';
 
+const STATUS_RE = /Upstash HTTP (\d{3})/;
+const STRIP_CELL_MARKUP_RE = /<[^>]*>/g;
+const STRIP_CELL_MARKUP_RE_2 = /&nbsp;/gi;
+const STRIP_CELL_MARKUP_RE_3 = /&lt;/gi;
+const STRIP_CELL_MARKUP_RE_4 = /&gt;/gi;
+const STRIP_CELL_MARKUP_RE_5 = /&#39;/gi;
+const STRIP_CELL_MARKUP_RE_6 = /&quot;/gi;
+const STRIP_CELL_MARKUP_RE_7 = /&amp;/gi;
+const WHITESPACE_RE = /\s+/g;
+const SGE_DATE_TO_ISO_RE = /^(\d{4})(\d{2})(\d{2})$/;
+const WITHOUT_COMMENTS_RE = /<!--[\s\S]*?-->/g;
+const ROWS_RE = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+const PARSE_SEED_TARGET_ARGS_RE = /^[A-Za-z0-9._-]+$/;
+
+
 export const PHYSICAL_PREMIUM_KEY = 'market:physical-premium:v1';
 export const PHYSICAL_PREMIUM_HISTORY_KEY_PREFIX = 'market:physical-premium-history:v1';
 export const PHYSICAL_DIVERGENCE_KEY = 'market:physical-divergence:v1';
@@ -323,7 +338,7 @@ async function readTransitionCooldown(creds, key, commandFn) {
 }
 
 function isTransientDerivedRedisError(error) {
-  const status = Number(error?.status ?? String(error?.message ?? '').match(/Upstash HTTP (\d{3})/)?.[1]);
+  const status = Number(error?.status ?? String(error?.message ?? '').match(STATUS_RE)?.[1]);
   if (status === 408 || status === 429 || status >= 500) return true;
   return error?.name === 'AbortError'
     || error?.name === 'TimeoutError'
@@ -562,14 +577,14 @@ function parseFinitePositive(value) {
 
 function stripCellMarkup(value) {
   return value
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&#39;/gi, "'")
-    .replace(/&quot;/gi, '"')
-    .replace(/&amp;/gi, '&')
-    .replace(/\s+/g, ' ')
+    .replace(STRIP_CELL_MARKUP_RE, ' ')
+    .replace(STRIP_CELL_MARKUP_RE_2, ' ')
+    .replace(STRIP_CELL_MARKUP_RE_3, '<')
+    .replace(STRIP_CELL_MARKUP_RE_4, '>')
+    .replace(STRIP_CELL_MARKUP_RE_5, "'")
+    .replace(STRIP_CELL_MARKUP_RE_6, '"')
+    .replace(STRIP_CELL_MARKUP_RE_7, '&')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -579,7 +594,7 @@ function cellsFromRow(rowHtml, tagName) {
 }
 
 function sgeDateToIso(value) {
-  const match = /^(\d{4})(\d{2})(\d{2})$/.exec(value);
+  const match = SGE_DATE_TO_ISO_RE.exec(value);
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -598,8 +613,8 @@ export function parseSgeBenchmarkHtml(html, { contract, unit }) {
     throw nonRetryableError(`No valid ${contract} benchmark rows in SGE response`);
   }
 
-  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
-  const rows = [...withoutComments.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
+  const withoutComments = html.replace(WITHOUT_COMMENTS_RE, '');
+  const rows = [...withoutComments.matchAll(ROWS_RE)];
   const expectedHeader = ['Trade Date', 'Contract', 'Benchmark Price AM', 'Benchmark Price PM'];
   const header = rows.map((match) => cellsFromRow(match[1], 'th')).find((cells) => cells.length > 0);
   if (!header || expectedHeader.some((cell, index) => header[index] !== cell)) {
@@ -787,7 +802,7 @@ export function parseSeedTargetArgs(args = process.argv.slice(2)) {
     throw nonRetryableError(`Invalid --env: ${env}`);
   }
   if (env !== 'production' && !sha) sha = 'dev';
-  if (sha && !/^[A-Za-z0-9._-]+$/.test(sha)) throw nonRetryableError('Invalid --sha value');
+  if (sha && !PARSE_SEED_TARGET_ARGS_RE.test(sha)) throw nonRetryableError('Invalid --sha value');
   return { env, sha };
 }
 

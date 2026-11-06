@@ -9,6 +9,11 @@ import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { cachedFetchJson } from '../../../_shared/redis';
 import unToIso2Json from '../../../../shared/un-to-iso2.json';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const ID_RE = /\/entity\/(Q\d+)$/;
+const CLEAN_LABEL_RE = /^Q\d+$/;
+
+
 const FACTS_TTL = 86400;
 const NEGATIVE_TTL = 120;
 const UPSTREAM_TIMEOUT = 10_000;
@@ -85,7 +90,7 @@ interface WikiResult {
 }
 
 async function fetchWikidata(code: string): Promise<WikiResult | null> {
-  if (!/^[A-Z]{2}$/.test(code)) return null;
+  if (!COUNTRY_CODE_RE.test(code)) return null;
   if (!ISO2_TO_M49[code]) return null;
   try {
     return await cachedFetchJson<WikiResult>(
@@ -121,7 +126,7 @@ export function selectWikidataEntityId(code: string, bindings: WikidataBinding[]
 
   const candidates = new Map<string, Set<string>>();
   for (const binding of bindings) {
-    const id = binding.country?.value?.match(/\/entity\/(Q\d+)$/)?.[1];
+    const id = binding.country?.value?.match(ID_RE)?.[1];
     if (!id) continue;
     const codes = candidates.get(id) ?? new Set<string>();
     const m49 = binding.m49?.value;
@@ -206,7 +211,7 @@ function parseWikidataFacts(bindings: WikidataBinding[]): WikiResult | null {
 
 function cleanLabel(value: string | undefined): string {
   const label = value?.trim() ?? '';
-  return /^Q\d+$/.test(label) ? '' : label;
+  return CLEAN_LABEL_RE.test(label) ? '' : label;
 }
 
 function uniqueLabels(values: Array<string | undefined>): string[] {

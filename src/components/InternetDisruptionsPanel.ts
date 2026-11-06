@@ -7,6 +7,10 @@ import type {
   TrafficAnomaly,
 } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 
+const BUILD_OUTAGE_ROW_RE = /_/g;
+const TYPE_LABEL_RE = /^ANOMALY_/;
+
+
 type Tab = 'outages' | 'ddos' | 'anomalies';
 
 export class InternetDisruptionsPanel extends Panel {
@@ -124,7 +128,7 @@ export class InternetDisruptionsPanel extends Panel {
         ongoing ? h('span', { className: 'id-badge ongoing' }, '⚡ LIVE') : false,
       ),
       h('div', { className: 'id-row-sub' }, o.title),
-      o.cause ? h('div', { className: 'id-row-meta' }, o.cause.replace(/_/g, ' ')) : false,
+      o.cause ? h('div', { className: 'id-row-meta' }, o.cause.replace(BUILD_OUTAGE_ROW_RE, ' ')) : false,
     );
   }
 
@@ -195,7 +199,7 @@ export class InternetDisruptionsPanel extends Panel {
 
   private buildAnomalyRow(a: TrafficAnomaly): HTMLElement {
     const ongoing = a.status === 'ONGOING';
-    const typeLabel = a.type.replace(/^ANOMALY_/, '');
+    const typeLabel = a.type.replace(TYPE_LABEL_RE, '');
     const location = a.locationName || a.locationCode || '';
     const asn = a.asnName ? `AS${a.asn} ${a.asnName}` : '';
     return h('div', { className: 'id-row' },

@@ -18,6 +18,9 @@ import { join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
+const REL_RE = /\\/g;
+
+
 const args = new Set(process.argv.slice(2));
 const stagedOnly = args.has('--staged');
 
@@ -136,7 +139,7 @@ function walkDir(rootDir, out) {
   }
   for (const entry of entries) {
     const abs = join(rootDir, entry.name);
-    const rel = relative(ROOT, abs).replace(/\\/g, '/');
+    const rel = relative(ROOT, abs).replace(REL_RE, '/');
     if (EXCLUDED_PREFIXES.some(prefix => rel.startsWith(prefix))) continue;
     if (entry.isDirectory()) {
       // Prune here as well as in shouldScanFile: without it the walk descends
@@ -178,7 +181,7 @@ function getStagedFiles() {
   }
   return out
     .split('\n')
-    .map(s => s.trim().replace(/\\/g, '/'))
+    .map(s => s.trim().replace(REL_RE, '/'))
     .filter(Boolean)
     .filter(shouldScanFile);
 }

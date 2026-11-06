@@ -25,6 +25,10 @@ import {
 } from './spoken';
 import { resolveCountryArg } from './_country-args';
 
+const ADVISORY_PHRASE_RE = /[-_]+/g;
+const FORECAST_PHRASES_RE = /[_-]+/g;
+
+
 // Per-tool narrators for `response_mode: "spoken"` (api/mcp/spoken.ts). Each
 // reads the tool's documented payload shape and returns 2-3 sentences plus
 // citations. Every number spoken is read from the payload; nothing is
@@ -167,7 +171,7 @@ export const spokenCountryRisk: SpokenNarrator = (result, args, now, lang = 'en'
   const stale = fetchedMs === null || now - fetchedMs > COUNTRY_RISK_STALE_MS;
   const asOf = fetchedMs === null ? null : toIso(fetchedMs);
   const advisory = text(result.advisoryLevel);
-  const advisoryPhrase = advisory ? (ADVISORY_WORDS[lang][advisory] ?? advisory.replace(/[-_]+/g, ' ')) : '';
+  const advisoryPhrase = advisory ? (ADVISORY_WORDS[lang][advisory] ?? advisory.replace(ADVISORY_PHRASE_RE, ' ')) : '';
   const sanctionsCount = finite(result.sanctionsCount) ?? 0;
   const sanctionsPhrase = result.sanctionsActive === true && sanctionsCount > 0
     ? say.sanctions(sanctionsCount)
@@ -592,7 +596,7 @@ const FORECAST_DOMAINS_AR: Record<string, string> = {
 const FORECAST_PHRASES = {
   en: {
     probability: (probability: number | null) => (probability === null ? 'an unknown probability' : spokenPercent(Math.round(probability * 100))),
-    domain: (raw: string) => raw.replace(/[_-]+/g, ' '),
+    domain: (raw: string) => raw.replace(FORECAST_PHRASES_RE, ' '),
     clause: (probability: string, title: string) => `${probability} for ${title}`,
     kind: (domain: string, region: string) => `, a${domain ? ` ${domain}` : ''} forecast${region ? ` for ${region}` : ''}`,
     change: (points: string) => `, ${points} in the past day`,
@@ -605,7 +609,7 @@ const FORECAST_PHRASES = {
   },
   ar: {
     probability: (probability: number | null) => (probability === null ? 'احتمال غير معروف' : spokenPercent(Math.round(probability * 100), 'ar')),
-    domain: (raw: string) => FORECAST_DOMAINS_AR[raw] ?? raw.replace(/[_-]+/g, ' '),
+    domain: (raw: string) => FORECAST_DOMAINS_AR[raw] ?? raw.replace(FORECAST_PHRASES_RE, ' '),
     clause: (probability: string, title: string) => `${probability} بشأن: ${title}`,
     kind: (domain: string, region: string) => `، وهو توقع${domain ? ` في مجال ${domain}` : ''}${region ? ` بشأن ${region}` : ''}`,
     change: (points: string) => `، ${points} خلال اليوم الماضي`,

@@ -24,6 +24,11 @@
  * any non-OK response as "no information" and navigates).
  */
 
+const HOST_RE = /\.+$/;
+const NORMALIZE_HOST_RE = /[^\x00-\x7f]/;
+const NORMALIZE_HOST_RE_2 = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
+const ERROR_NAME_RE = /[^A-Za-z0-9_.-]/g;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -65,7 +70,7 @@ function normalizeUrl(raw) {
   }
   const protocol = parsed.protocol.toLowerCase();
   if (protocol !== 'http:' && protocol !== 'https:') return null;
-  let host = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+  let host = parsed.hostname.toLowerCase().replace(HOST_RE, '');
   if (host.length === 0) return null;
   const isDefaultPort =
     (protocol === 'http:' && parsed.port === '80') ||
@@ -82,19 +87,19 @@ function normalizeUrl(raw) {
 
 function normalizeHost(raw) {
   if (typeof raw !== 'string') return null;
-  let host = raw.trim().toLowerCase().replace(/\.+$/, '');
+  let host = raw.trim().toLowerCase().replace(HOST_RE, '');
   if (host.length === 0 || host.length > 253) return null;
   if (host.includes('/') || host.includes(':') || host.includes('?') || host.includes('#') || host.includes('@') || host.includes('\\')) return null;
   // An IDN entry must be published as the punycode host a URL parses to,
   // which is what the service worker compares against.
-  if (/[^\x00-\x7f]/.test(host)) {
+  if (NORMALIZE_HOST_RE.test(host)) {
     try {
-      host = new URL(`http://${host}`).hostname.replace(/\.+$/, '');
+      host = new URL(`http://${host}`).hostname.replace(HOST_RE, '');
     } catch {
       return null;
     }
   }
-  if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(host)) return null;
+  if (!NORMALIZE_HOST_RE_2.test(host)) return null;
   return host;
 }
 
@@ -155,7 +160,7 @@ export async function readSuppressionSnapshot(fetchImpl = (...args) => globalThi
     return { readable: true, entries };
   } catch (error) {
     const errorName = error instanceof Error && error.name
-      ? error.name.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 64)
+      ? error.name.replace(ERROR_NAME_RE, '').slice(0, 64)
       : 'UnknownError';
     warnUnavailable('redis-request-error', `source=upstash-smembers error=${errorName || 'UnknownError'}`);
     return { readable: false, entries: null };
@@ -213,7 +218,7 @@ export default async function handler(req, ctx) {
     split = await splitEntries(snapshot.entries);
   } catch (error) {
     const errorName = error instanceof Error && error.name
-      ? error.name.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 64)
+      ? error.name.replace(ERROR_NAME_RE, '').slice(0, 64)
       : 'UnknownError';
     warnUnavailable('url-digest-error', `source=handler error=${errorName || 'UnknownError'}`);
     return jsonResponse({ suppressed: [], hosts: [], updatedAt: null, unavailable: true }, 200, {

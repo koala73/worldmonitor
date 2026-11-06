@@ -10,6 +10,10 @@ import {
 } from './_seed-utils.mjs';
 import { COUNTRY_COORDS, mapTrafficAnomaly, toEpochMs } from './lib/radar-country-coords.mjs';
 
+const FETCH_OUTAGES_RE = /_/g;
+const COMPANION_META_KEY_RE = /:v\d+$/;
+
+
 loadEnvFile(import.meta.url);
 
 const CF_RADAR_URL = 'https://api.cloudflare.com/client/v4/radar/annotations/outages';
@@ -116,7 +120,7 @@ async function fetchOutages() {
     const countryName = raw.locationsDetails?.[0]?.name ?? countryCode;
 
     const categories = ['Cloudflare Radar'];
-    if (raw.outage?.outageCause) categories.push(raw.outage.outageCause.replace(/_/g, ' '));
+    if (raw.outage?.outageCause) categories.push(raw.outage.outageCause.replace(FETCH_OUTAGES_RE, ' '));
     if (raw.outage?.outageType) categories.push(raw.outage.outageType);
     for (const asn of raw.asnsDetails?.slice(0, 2) || []) {
       if (asn.name) categories.push(asn.name);
@@ -275,7 +279,7 @@ const COMPANIONS = [
 
 /** The seed-meta key writeExtraKeyWithMeta derives for a companion. */
 function companionMetaKey(companion) {
-  return `seed-meta:${companion.key.replace(/:v\d+$/, '')}`;
+  return `seed-meta:${companion.key.replace(COMPANION_META_KEY_RE, '')}`;
 }
 
 /**

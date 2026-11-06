@@ -14,11 +14,14 @@ import {
   type SourceProvenanceState,
 } from '../../shared/source-provenance';
 
+const PROXY_CATALOG_URL_RE = /^https?:\/\//;
+
+
 // Feeds are declared once in shared/news-catalog.json; these maps are its
 // browser view, built from the generated browser slice so the bundle carries
 // no server-only fields. Absolute URLs go through the RSS proxy; same-origin
 // API routes (e.g. /api/miit-news) are fetched as-is.
-const proxyCatalogUrl = (url: string): string => (/^https?:\/\//.test(url) ? rssProxyUrl(url) : url);
+const proxyCatalogUrl = (url: string): string => (PROXY_CATALOG_URL_RE.test(url) ? rssProxyUrl(url) : url);
 
 function proxied(feed: BrowserCatalogFeed): Feed {
   const url = typeof feed.url === 'string'

@@ -15,6 +15,8 @@ import {
   type ApiPlanLimitNoticeState,
 } from "./apiPlanLimitNotices";
 
+const PARTS_RE = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
 type ActiveEntitlement = {
   userId: string;
   planKey: string;
@@ -176,7 +178,7 @@ function isNonnegativeInteger(value: unknown): value is number {
 
 function isAxiomDateTime(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  const parts = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  const parts = PARTS_RE.exec(value);
   if (!parts || !Number.isFinite(Date.parse(value))) return false;
   const year = Number(parts[1]);
   const month = Number(parts[2]);

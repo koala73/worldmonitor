@@ -27,6 +27,13 @@
  * runs unchanged in Vercel Edge, Node 18+, and Tauri.
  */
 
+const BASE64URL_RE = /\+/g;
+const BASE64URL_RE_2 = /\//g;
+const BASE64URL_RE_3 = /=+$/;
+const B64_RE = /-/g;
+const B64_RE_2 = /_/g;
+const TRIMMED_BASE_RE = /\/+$/;
+
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 // YYYY-MM-DD-HHMM issue slot — hour+minute of the compose run in the
 // user's tz. The token binds userId + slot so each digest dispatch
@@ -56,7 +63,7 @@ function assertShape(userId: string, issueDate: string): void {
 function base64url(bytes: Uint8Array): string {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(bin).replace(BASE64URL_RE, '-').replace(BASE64URL_RE_2, '_').replace(BASE64URL_RE_3, '');
 }
 
 async function hmacSha256(secret: string, message: string): Promise<Uint8Array> {
@@ -142,7 +149,7 @@ export async function verifyBriefToken(
 
 function base64urlDecode(token: string): Uint8Array | null {
   try {
-    const b64 = token.replace(/-/g, '+').replace(/_/g, '/');
+    const b64 = token.replace(B64_RE, '+').replace(B64_RE_2, '/');
     const padded = b64 + '==='.slice((b64.length + 3) % 4);
     const bin = atob(padded);
     const out = new Uint8Array(bin.length);
@@ -182,6 +189,6 @@ export async function signBriefUrl({
   const token = await signBriefToken(userId, issueDate, secret);
   const encodedUser = encodeURIComponent(userId);
   const encodedDate = encodeURIComponent(issueDate);
-  const trimmedBase = baseUrl.replace(/\/+$/, '');
+  const trimmedBase = baseUrl.replace(TRIMMED_BASE_RE, '');
   return `${trimmedBase}/api/brief/${encodedUser}/${encodedDate}?t=${token}`;
 }

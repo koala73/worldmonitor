@@ -28,6 +28,10 @@ import { fileURLToPath } from 'node:url';
 import { loadCountryCorpusIdentities } from './build-crawlable-corpus.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const RENDER_COUNTRY_CORPUS_MODULE_RE = /^[a-z0-9-]+$/;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT_PATH = 'api/_country-corpus-slugs.generated.js';
 const CHECK = process.argv.includes('--check');
@@ -36,8 +40,8 @@ export function renderCountryCorpusModule(countries) {
   const sorted = [...countries].sort((a, b) => a.code.localeCompare(b.code));
   const seenSlugs = new Set();
   for (const { code, name, slug } of sorted) {
-    if (!/^[A-Z]{2}$/.test(code)) throw new Error(`Corpus country code ${code} is not ISO 3166-1 alpha-2`);
-    if (!/^[a-z0-9-]+$/.test(slug)) throw new Error(`${code}: corpus slug ${JSON.stringify(slug)} is not URL-safe`);
+    if (!COUNTRY_CODE_RE.test(code)) throw new Error(`Corpus country code ${code} is not ISO 3166-1 alpha-2`);
+    if (!RENDER_COUNTRY_CORPUS_MODULE_RE.test(slug)) throw new Error(`${code}: corpus slug ${JSON.stringify(slug)} is not URL-safe`);
     if (seenSlugs.has(slug)) throw new Error(`${code}: corpus slug ${slug} is not unique`);
     if (!name) throw new Error(`${code}: corpus country has no display name`);
     seenSlugs.add(slug);

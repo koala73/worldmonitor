@@ -11,6 +11,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]/g;
+
+
 export type JsonObject = Record<string, unknown>;
 
 export type CalibrationExample = {
@@ -232,7 +235,7 @@ export const RAW_EVIDENCE_KEYS = new Set([
 ]);
 
 export function normalizeKey(key: string): string {
-  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return key.toLowerCase().replace(NON_ALPHANUMERIC_RE, '');
 }
 
 export function compareCodePoints(left: string, right: string): number {

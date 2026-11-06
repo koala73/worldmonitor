@@ -4,6 +4,9 @@ import { getClerkToken } from '@/services/clerk';
 import { sleepBeforeRetry, withBillingVerificationRetry } from '@/services/billing-retry';
 import { hasExplicitDesktopSignals, isDesktopRuntime } from './desktop-runtime';
 
+const TRAILING_SLASH_RE = /\/$/;
+
+
 // The detector lives in a dependency-free leaf (#5911) so consumers that need
 // only the boolean do not pull this module's variant/Clerk graph. Re-exported
 // here because every existing caller imports it from `@/services/runtime`.
@@ -64,7 +67,7 @@ export function getLocalApiPort(): number {
 }
 
 function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/$/, '');
+  return baseUrl.replace(TRAILING_SLASH_RE, '');
 }
 
 /**

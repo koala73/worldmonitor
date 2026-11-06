@@ -1,5 +1,17 @@
 import { htmlElements, isoDate, plainText } from '../food-prices.mjs';
 
+const ASCII_RE = /[০-৯]/g;
+const WHITESPACE_RE = /\s+/g;
+const DMY_RE = /(\d{2})-(\d{2})-(\d{4})/;
+const CELL_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+const NUMBER_RE = /^\d+(?:\.\d+)?$/;
+const UNIT_OF_RE = /^(\d+)(লিটার|কেজি|গ্রাম)$/;
+const PARSE_TCB_INDEX_RE = /<tr\b/i;
+const URL_RE = /href=["'](https:\/\/objectstorage\.[^"']+\.xlsx)["']/i;
+const PARSE_TCB_INDEX_RE_2 = /দৈনিক খুচরা বাজার দর/;
+const MEMO_RE = /তারিখঃ/;
+
+
 const INDEX = 'https://tcb.gov.bd/pages/daily-rmps';
 // tcb.gov.bd sends its leaf certificate without the intermediate. Pinning the public
 // Sectigo DV R36 intermediate (chains to Sectigo Root R46, valid to 2036-03-21) lets
@@ -108,36 +120,36 @@ const ITEMS = {
 };
 const UNITS = { 'প্রতিকেজি': 'kg', 'প্রতিকেজিপ্যাঃ': 'kg packet', 'প্রতিলিটার': 'litre', 'প্রতিহালি': 'hali (4 pieces)' };
 
-const ascii = value => value.replace(/[০-৯]/g, digit => String(digit.charCodeAt(0) - 0x09e6));
+const ascii = value => value.replace(ASCII_RE, digit => String(digit.charCodeAt(0) - 0x09e6));
 const text = value => value?.richText ? value.richText.map(part => part.text).join('') : value instanceof Date ? value.toISOString() : String(value ?? '');
-const key = value => text(value).replace(/\s+/g, '').normalize('NFC');
+const key = value => text(value).replace(WHITESPACE_RE, '').normalize('NFC');
 const starts = (value, prefix) => key(value).startsWith(prefix.normalize('NFC'));
 const ITEM_NAMES = new Map(Object.entries(ITEMS).map(([name, item]) => [name.normalize('NFC'), item]));
 const UNIT_NAMES = new Map(Object.entries(UNITS).map(([name, unit]) => [name.normalize('NFC'), unit]));
 const dmy = value => {
-  const match = /(\d{2})-(\d{2})-(\d{4})/.exec(ascii(value));
+  const match = DMY_RE.exec(ascii(value));
   return match ? isoDate(match[3], match[2], match[1]) : '';
 };
-const cellDate = value => value instanceof Date ? value.toISOString().slice(0, 10) : /^\d{4}-\d{2}-\d{2}/.test(text(value)) ? text(value).slice(0, 10) : '';
+const cellDate = value => value instanceof Date ? value.toISOString().slice(0, 10) : CELL_DATE_RE.test(text(value)) ? text(value).slice(0, 10) : '';
 const amount = value => {
-  const number = typeof value === 'number' ? value : /^\d+(?:\.\d+)?$/.test(text(value).trim()) ? Number(text(value).trim()) : NaN;
+  const number = typeof value === 'number' ? value : NUMBER_RE.test(text(value).trim()) ? Number(text(value).trim()) : NaN;
   return Number.isFinite(number) && number > 0 ? number : null;
 };
 const unitOf = value => {
   const unit = ascii(key(value));
   if (UNIT_NAMES.has(unit)) return UNIT_NAMES.get(unit);
-  const match = /^(\d+)(লিটার|কেজি|গ্রাম)$/.exec(unit);
+  const match = UNIT_OF_RE.exec(unit);
   return match ? `${match[1]} ${{ 'লিটার': 'litre', 'কেজি': 'kg', 'গ্রাম': 'g' }[match[2]]}` : '';
 };
 
 export function parseTcbIndex(html) {
-  return html.split(/<tr\b/i).flatMap(row => {
-    const url = /href=["'](https:\/\/objectstorage\.[^"']+\.xlsx)["']/i.exec(row)?.[1];
+  return html.split(PARSE_TCB_INDEX_RE).flatMap(row => {
+    const url = URL_RE.exec(row)?.[1];
     const cells = htmlElements(row, ['td']);
     const cell = column => cells.find(([open]) => new RegExp(`data-column=["']${column}["']`, 'i').test(open))?.[1] ?? '';
     const date = dmy(cell('publish_date'));
     const title = plainText(cell('title'));
-    return url && date && /দৈনিক খুচরা বাজার দর/.test(title) ? [{ url, date }] : [];
+    return url && date && PARSE_TCB_INDEX_RE_2.test(title) ? [{ url, date }] : [];
   });
 }
 
@@ -147,7 +159,7 @@ export function parseTcb(sheets, onUnknown = () => {}) {
   const end = rows.findIndex(row => starts(row[0], 'যেসকলবাজারহতে'));
   const headers = rows.slice(0, Math.max(end, 0)).flatMap((row, i) => starts(row[0], 'পণ্যেরনাম') && starts(row[2], 'অদ্যকারমূল্য') ? [i] : []);
   if (!headers.length || end < 0) throw new Error('tcb workbook format changed: header or market line missing');
-  const memo = rows.slice(0, headers[0]).map(row => dmy(text(row.find(cell => /তারিখঃ/.test(text(cell)))))).find(Boolean) ?? '';
+  const memo = rows.slice(0, headers[0]).map(row => dmy(text(row.find(cell => MEMO_RE.test(text(cell)))))).find(Boolean) ?? '';
   const dates = headers.map(i => cellDate(rows[i + 1]?.[2]));
   for (const i of headers) {
     if (!starts(rows[i + 2]?.[2], 'সর্বনিম্ন') || !starts(rows[i + 2]?.[3], 'সর্ব্বোচ্চ')) throw new Error('tcb workbook format changed: low/high columns moved');

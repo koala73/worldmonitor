@@ -1,5 +1,13 @@
 import { htmlElements, isoDate, plainText } from '../food-prices.mjs';
 
+const OPEN_RE = /<div\b[^<>]*\bid=["']precios_diarios["'][^<>]*>/i;
+const PARSE_MAGA_RE = /al mayorista en quetzales/i;
+const DAY_RE = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+const ROWS_RE = /<tr\b[^<>]*>([\s\S]*?)(?=<tr\b|<\/tbody>|<\/thead>|$)/gi;
+const TEXT_RE = /,/g;
+const PARSE_MAGA_RE_2 = /^\d+(?:\.\d+)?$/;
+
+
 export const MAGA_URL = 'https://precios.maga.gob.gt/diarios/diarios.html';
 const MARKET = 'La Terminal';
 
@@ -132,22 +140,22 @@ export const magaItem = name => ITEMS[name] ?? name;
 
 export function parseMaga(html) {
   // Bounded openers and one indexOf for the table end keep hostile markup linear (CWE-1333).
-  const open = /<div\b[^<>]*\bid=["']precios_diarios["'][^<>]*>/i.exec(html);
+  const open = OPEN_RE.exec(html);
   const end = open ? html.toLowerCase().indexOf('</table>', open.index + open[0].length) : -1;
   const block = end === -1 ? '' : html.slice(open.index + open[0].length, end);
-  if (!/al mayorista en quetzales/i.test(plainText(htmlElements(block, ['h4'])[0]?.[1] ?? ''))) throw new Error('maga daily wholesale table format changed');
-  const day = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(plainText(htmlElements(block, ['h5'])[0]?.[1] ?? ''));
+  if (!PARSE_MAGA_RE.test(plainText(htmlElements(block, ['h4'])[0]?.[1] ?? ''))) throw new Error('maga daily wholesale table format changed');
+  const day = DAY_RE.exec(plainText(htmlElements(block, ['h5'])[0]?.[1] ?? ''));
   const date = day ? isoDate(day[3], day[2], day[1]) : '';
   if (!date) throw new Error('maga report date format changed');
-  const rows = [...block.matchAll(/<tr\b[^<>]*>([\s\S]*?)(?=<tr\b|<\/tbody>|<\/thead>|$)/gi)].map(match =>
+  const rows = [...block.matchAll(ROWS_RE)].map(match =>
     htmlElements(match[1], ['td', 'th']).map(([, cell]) => plainText(cell)));
   if (rows[0]?.join('|') !== 'Producto|Mercado|Medida|Precio') throw new Error('maga table header format changed');
   const seen = new Map();
   for (const [name, market, unit, value, ...rest] of rows.slice(1)) {
     if (rest.length || unit === undefined) throw new Error('maga table row format changed');
     if (market !== MARKET || !name || !unit) continue;
-    const text = String(value).replace(/,/g, '');
-    if (!/^\d+(?:\.\d+)?$/.test(text) || Number(text) <= 0) continue;
+    const text = String(value).replace(TEXT_RE, '');
+    if (!PARSE_MAGA_RE_2.test(text) || Number(text) <= 0) continue;
     const row = { item: magaItem(name), market: MARKET, marketType: 'wholesale', unit, currency: 'GTQ', date, price: Number(text), origin: '' };
     const key = `${row.item}|${unit}`;
     seen.set(key, seen.has(key) && seen.get(key)?.price !== row.price ? null : row);

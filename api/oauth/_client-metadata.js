@@ -15,6 +15,15 @@
 
 import { CLIENT_METADATA_SNAPSHOTS } from './_client-metadata-snapshots.js';
 
+const IS_CLIENT_METADATA_DOCUMENT_ID_RE = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+const IS_IP_LITERAL_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const IS_IP_LITERAL_RE_2 = /^\d+$/;
+const CHECK_CLIENT_ID_URL_RE = /\/\.\.?(?:\/|$)/;
+const N_RE = /^"(.*)"$/;
+const WHITESPACE_RE = /\s+/g;
+const FETCH_DOCUMENT_RE = /^application\/(?:[\w.+-]+\+)?json\b/i;
+
+
 // Exact client_id URLs, as each vendor publishes them.
 const TRUSTED_CLIENT_METADATA_URLS = new Set([
   // Claude, Claude Code
@@ -74,7 +83,7 @@ export const CLIENT_METADATA_CACHE_PREFIX = 'oauth:cimd:';
 
 // Dispatch by shape (decision 2 in #9244): a scheme means CIMD.
 export function isClientMetadataDocumentId(clientId) {
-  return typeof clientId === 'string' && /^[A-Za-z][A-Za-z0-9+.-]*:/.test(clientId);
+  return typeof clientId === 'string' && IS_CLIENT_METADATA_DOCUMENT_ID_RE.test(clientId);
 }
 
 class ClientMetadataError extends Error {
@@ -87,7 +96,7 @@ class ClientMetadataError extends Error {
 }
 
 function isIpLiteral(hostname) {
-  return hostname.startsWith('[') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || /^\d+$/.test(hostname);
+  return hostname.startsWith('[') || IS_IP_LITERAL_RE.test(hostname) || IS_IP_LITERAL_RE_2.test(hostname);
 }
 
 // The client_id URL rules from the CIMD draft, plus public-host-only. Every
@@ -98,7 +107,7 @@ function checkClientIdUrl(clientId) {
   if (u.protocol !== 'https:') return 'client_id_not_https';
   if (u.href !== clientId) return 'client_id_not_canonical';
   if (u.username || u.password || u.hash || u.search || u.port) return 'client_id_not_canonical';
-  if (u.pathname === '/' || /\/\.\.?(?:\/|$)/.test(u.pathname)) return 'client_id_not_canonical';
+  if (u.pathname === '/' || CHECK_CLIENT_ID_URL_RE.test(u.pathname)) return 'client_id_not_canonical';
   const host = u.hostname;
   if (isIpLiteral(host) || host === 'localhost' || host.endsWith('.localhost')
     || host.endsWith('.local') || host.endsWith('.internal') || !host.includes('.')) {
@@ -127,7 +136,7 @@ export function clientMetadataCacheTtl(cacheControl) {
     const d = directives.find((x) => x.startsWith(`${name}=`));
     if (!d) return null;
     // RFC 9111 allows the quoted form, e.g. max-age="300".
-    const n = Number.parseInt(d.slice(name.length + 1).replace(/^"(.*)"$/, '$1'), 10);
+    const n = Number.parseInt(d.slice(name.length + 1).replace(N_RE, '$1'), 10);
     return Number.isFinite(n) && n >= 0 ? n : 0;
   };
   const ttl = read('s-maxage') ?? read('max-age') ?? DEFAULT_CACHE_TTL_SECONDS;
@@ -170,7 +179,7 @@ async function readCappedBody(resp, signal) {
 // tells a WAF block page from an outage.
 async function withBodySnippet(err, resp, signal) {
   try {
-    err.snippet = (await readCappedBody(resp, signal)).replace(/\s+/g, ' ').slice(0, 200);
+    err.snippet = (await readCappedBody(resp, signal)).replace(WHITESPACE_RE, ' ').slice(0, 200);
   } catch { /* the log goes without it */ }
   return err;
 }
@@ -206,7 +215,7 @@ async function fetchDocument(clientId, fetchImpl) {
       // a refresh with invalid_client and sign every user of that client out.
       if (resp.status === 404 || resp.status === 410) throw new ClientMetadataError('document_not_found');
       if (resp.status !== 200) throw await withBodySnippet(new ClientMetadataError('document_fetch_failed', true), resp, controller.signal);
-      if (!/^application\/(?:[\w.+-]+\+)?json\b/i.test(resp.headers.get('content-type') ?? '')) {
+      if (!FETCH_DOCUMENT_RE.test(resp.headers.get('content-type') ?? '')) {
         throw await withBodySnippet(new ClientMetadataError('document_not_json', true), resp, controller.signal);
       }
       const text = await readCappedBody(resp, controller.signal);

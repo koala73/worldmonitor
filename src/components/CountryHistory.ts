@@ -2,6 +2,9 @@ import { t } from '@/services/i18n';
 import { fetchCountryHistory, type GetCountryHistoryResponse, type CountryHistoryPoint } from '@/services/country-history';
 import { onEntitlementChange } from '@/services/entitlements';
 
+const RENDER_DETAIL_RE = /^https?:\/\//i;
+
+
 export class CountryHistory {
   private days = 7;
   private request = new AbortController();
@@ -109,7 +112,7 @@ export class CountryHistory {
     for (const event of point.topEvents) {
       const item = this.element('li');
       const link = this.element('a', event.title);
-      if (!/^https?:\/\//i.test(event.link)) continue;
+      if (!RENDER_DETAIL_RE.test(event.link)) continue;
       link.href = event.link;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';

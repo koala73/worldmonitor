@@ -4,6 +4,11 @@
 // set of labels against blind-judged levels.
 import { createHash } from 'node:crypto';
 
+const ENTRIES_RE = /(?=\{\s*\n\s*name: ')/;
+const ENTRIES_RE_2 = /^\{\s*\n\s*name: 'openrouter',/;
+const CODE_RE = /\/\/[^\n]*/g;
+
+
 export const ALERT_LEVELS = ['critical', 'high'];
 export const isAlertLevel = (level) => ALERT_LEVELS.includes(level);
 
@@ -30,9 +35,9 @@ export function extractRelayPrompt(relaySrc) {
 // is what `--capture` sends and records, so a wrong read would pin itself.
 export function extractRelayOpenRouterModel(relaySrc) {
   const list = mustMatch(relaySrc, /const CLASSIFY_LLM_PROVIDERS = \[([\s\S]*?)\n\];/, 'CLASSIFY_LLM_PROVIDERS');
-  const entries = list.split(/(?=\{\s*\n\s*name: ')/).filter((e) => /^\{\s*\n\s*name: 'openrouter',/.test(e));
+  const entries = list.split(ENTRIES_RE).filter((e) => ENTRIES_RE_2.test(e));
   if (entries.length !== 1) throw new Error(`classify-eval: expected one openrouter classify provider, found ${entries.length}`);
-  const code = entries[0].replace(/\/\/[^\n]*/g, '');
+  const code = entries[0].replace(CODE_RE, '');
   return mustMatch(code, /\n\s*model: '([^']+)',/, "a quoted model on the relay's openrouter classify provider");
 }
 

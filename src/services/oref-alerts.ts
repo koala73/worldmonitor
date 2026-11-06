@@ -1,6 +1,11 @@
 import { startSmartPollLoop, toApiUrl, type SmartPollLoopHandle } from '@/services/runtime';
 import { translateText } from '@/services/summarization';
 
+const SANITIZE_HEBREW_RE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+const SANITIZE_HEBREW_RE_2 = /[\u2010-\u2015\u2212]/g;
+const WHITESPACE_RE = /\s+/g;
+
+
 export interface OrefAlert {
   id: string;
   cat: string;
@@ -57,10 +62,10 @@ let translationPromise: Promise<boolean> | null = null;
 function sanitizeHebrew(text: string): string {
   return text
     .normalize('NFKC')
-    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '')
-    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(SANITIZE_HEBREW_RE, '')
+    .replace(SANITIZE_HEBREW_RE_2, '-')
     .trim()
-    .replace(/\s+/g, ' ');
+    .replace(WHITESPACE_RE, ' ');
 }
 
 const HEBREW_RE = /[\u0590-\u05FF]/;

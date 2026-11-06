@@ -14,6 +14,9 @@
  * must remain stable when checkout/token signing keys rotate.
  */
 
+const VERIFY_ANON_CLAIM_TOKEN_RE = /^\d+$/;
+const VERIFY_DUNNING_PORTAL_TOKEN_RE = /^[1-9]\d*$/;
+
 export const ANON_ID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ANON_CLAIM_TOKEN_VERSION = "v2";
 const DEFAULT_ANON_CLAIM_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -265,7 +268,7 @@ export async function verifyAnonClaimToken(
   const [version, expiresAtRaw, signature, ...extra] = claimToken.split(".");
   if (version !== ANON_CLAIM_TOKEN_VERSION || extra.length > 0) return false;
   if (typeof expiresAtRaw !== "string" || typeof signature !== "string") return false;
-  if (!/^\d+$/.test(expiresAtRaw) || !signature) return false;
+  if (!VERIFY_ANON_CLAIM_TOKEN_RE.test(expiresAtRaw) || !signature) return false;
   const expiresAt = Number(expiresAtRaw);
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) return false;
   try {
@@ -312,7 +315,7 @@ export async function verifyBusinessInviteToken(
   const [version, expiresAtRaw, signature, ...extra] = token.split(".");
   if (version !== BUSINESS_INVITE_TOKEN_VERSION || extra.length > 0) return false;
   if (typeof expiresAtRaw !== "string" || typeof signature !== "string") return false;
-  if (!/^\d+$/.test(expiresAtRaw) || !signature) return false;
+  if (!VERIFY_ANON_CLAIM_TOKEN_RE.test(expiresAtRaw) || !signature) return false;
   const expiresAt = Number(expiresAtRaw);
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) return false;
   try {
@@ -414,7 +417,7 @@ export function parseCheckoutLoginEmailToken(
   const [version, issuedAtRaw, signature, ...extra] = token.split(".");
   if (version !== CHECKOUT_LOGIN_EMAIL_TOKEN_VERSION || extra.length > 0) return null;
   if (typeof issuedAtRaw !== "string" || typeof signature !== "string") return null;
-  if (!/^\d+$/.test(issuedAtRaw) || !signature) return null;
+  if (!VERIFY_ANON_CLAIM_TOKEN_RE.test(issuedAtRaw) || !signature) return null;
   const issuedAt = Number(issuedAtRaw);
   if (!Number.isSafeInteger(issuedAt)) return null;
   return { issuedAt, signature };
@@ -499,7 +502,7 @@ export async function verifyDunningPortalToken(
   if (typeof expiresAtRaw !== "string" || typeof signature !== "string") return null;
   // Canonical digits only: a leading-zero variant would re-verify the same
   // signature under a different string, i.e. a fresh edge rate-limit bucket.
-  if (!/^[1-9]\d*$/.test(expiresAtRaw) || !signature) return null;
+  if (!VERIFY_DUNNING_PORTAL_TOKEN_RE.test(expiresAtRaw) || !signature) return null;
   const expiresAt = Number(expiresAtRaw);
   if (!Number.isSafeInteger(expiresAt)) return null;
   try {

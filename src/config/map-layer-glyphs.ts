@@ -1,6 +1,8 @@
 import type { MapLayers } from '@/types';
 import { LAYER_REGISTRY } from './map-layer-definitions';
 
+const TEXT_RE = /&#(x[0-9a-f]+|\d+);/gi;
+
 /**
  * Category identity for DeckGL map markers (#10139).
  *
@@ -164,7 +166,7 @@ const EMOJI_PRESENTATION = '\uFE0F';
  * symbols like ✈ and ⚔ match the colour glyphs the Layers menu shows.
  */
 export function decodeLayerIcon(icon: string): string {
-  const text = icon.replace(/&#(x[0-9a-f]+|\d+);/gi, (_, code: string) => {
+  const text = icon.replace(TEXT_RE, (_, code: string) => {
     const value = code[0]!.toLowerCase() === 'x' ? parseInt(code.slice(1), 16) : parseInt(code, 10);
     return Number.isFinite(value) ? String.fromCodePoint(value) : '';
   });

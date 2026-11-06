@@ -28,6 +28,9 @@ import {
 } from '../../../shared/brief-llm-core.js';
 import { briefGroundingGap, briefGroundingPublisherCount } from '../../../scripts/crawlable-developments.mjs';
 
+const GROUND_FIGURES_RE = /^[a-z]+:/;
+
+
 export { MIN_CORROBORATING_PUBLISHERS, TIER_MEANING, briefGroundingGap, briefGroundingPublisherCount };
 
 const EN = JSON.parse(readFileSync(new URL('../../../src/locales/en.json', import.meta.url), 'utf8'));
@@ -123,7 +126,7 @@ export function groundFigures(headline, groundText, bySource = []) {
     gate: gate.ok ? 'grounded' : 'ungrounded',
     facts: claimed.map((fact) => ({
       fact,
-      label: fact.replace(/^[a-z]+:/, ''),
+      label: fact.replace(GROUND_FIGURES_RE, ''),
       grounded: ground.has(fact),
       statedBy: bySource.length ? [...new Set(bySource.filter((s) => extractNumericFacts(s.text).has(fact)).map((s) => s.publisher))] : null,
     })),

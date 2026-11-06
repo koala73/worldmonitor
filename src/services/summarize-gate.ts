@@ -35,6 +35,8 @@
  * classification, and vice versa.
  */
 
+const PARSE_SUMMARIZE_RETRY_AFTER_MS_RE = /^\d+$/;
+
 export const SUMMARIZE_SUPPRESS_MS = 15 * 60 * 1000;
 export const SUMMARIZE_RETRY_AFTER_MIN_MS = 1_000;
 export const SUMMARIZE_RETRY_AFTER_MAX_MS = 24 * 60 * 60 * 1000;
@@ -90,7 +92,7 @@ export function parseSummarizeRetryAfterMs(
   if (!trimmed) return null;
 
   let delayMs: number;
-  if (/^\d+$/.test(trimmed)) {
+  if (PARSE_SUMMARIZE_RETRY_AFTER_MS_RE.test(trimmed)) {
     delayMs = Number(trimmed) * 1_000;
   } else {
     const retryAt = Date.parse(trimmed);

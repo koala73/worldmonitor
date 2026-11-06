@@ -16,6 +16,9 @@
 import { pathToFileURL } from 'node:url';
 import { getRedisCredentials, loadEnvFile, withRetry } from './_seed-utils.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const QUEUE_KEY = 'scenario-queue:pending';
@@ -229,7 +232,7 @@ export async function computeScenario(scenarioId, iso2, disruptionPct) {
   const template = SCENARIO_TEMPLATES.find(t => t.id === scenarioId);
   if (!template) throw new Error(`Unknown scenario: ${scenarioId}`);
   const isTariffShock = template.affectedChokepointIds.length === 0;
-  if (iso2 !== null && (typeof iso2 !== 'string' || !/^[A-Z]{2}$/.test(iso2))) {
+  if (iso2 !== null && (typeof iso2 !== 'string' || !COUNTRY_CODE_RE.test(iso2))) {
     throw new Error('Invalid country');
   }
   if (disruptionPct !== undefined && (isTariffShock || !Number.isInteger(disruptionPct) || disruptionPct < 0 || disruptionPct > 100)) {
@@ -445,7 +448,7 @@ async function runWorker() {
     if (
       !resultKey ||
       typeof scenarioId !== 'string' ||
-      (iso2 !== null && (typeof iso2 !== 'string' || !/^[A-Z]{2}$/.test(iso2)))
+      (iso2 !== null && (typeof iso2 !== 'string' || !COUNTRY_CODE_RE.test(iso2)))
     ) {
       console.error('[scenario-worker] Job failed field validation, discarding:', String(raw).slice(0, 100));
       await redisLrem(PROCESSING_KEY, String(raw)).catch(() => null);

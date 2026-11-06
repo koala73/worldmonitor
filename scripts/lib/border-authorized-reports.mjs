@@ -1,13 +1,24 @@
 import { unzipSync } from 'fflate';
 import { monthlyRoute } from './border-route-arrivals.mjs';
 
+const NORMALIZE_RE = /[\u0300-\u036f]/g;
+const TEXT_RE = /,/g;
+const OBSERVATION_RE = /^\d+$/;
+const COLUMNS_RE = /^([A-Z]{3})(20\d{2})$/;
+const PARSE_FRONTEX_RE = /^(?:grand )?total$/i;
+const PARSE_PANAMA_TEXT_RE = /transito irregular de extranjeros por la frontera con colombia/;
+const CUTOFF_RE = /actualizacion al (\d{1,2}) de ([a-z]+) de (20\d{2})/;
+const TABLE_RE = /region\s+total\s+ene\.\s+feb\.\s+mar\.\s+abr\.\s+may\.\s+jun\.\s+jul\.\s+ago\.\s+sep\.\s+oct\.\s+nov\.\s+dic\.\s*\n\s*total\s+([^\n]+)/;
+const WHITESPACE_RE = /\s+/;
+
+
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const SPANISH_MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const endOfMonth = (year, month) => new Date(Date.UTC(year, month + 1, 0)).toISOString().slice(0, 10);
-const normalize = text => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const normalize = text => text.normalize('NFD').replace(NORMALIZE_RE, '').toLowerCase();
 const observation = value => {
-  const text = String(value ?? '').trim().replace(/,/g, '');
-  if (!/^\d+$/.test(text) || !Number.isSafeInteger(Number(text))) throw new Error('invalid report count');
+  const text = String(value ?? '').trim().replace(TEXT_RE, '');
+  if (!OBSERVATION_RE.test(text) || !Number.isSafeInteger(Number(text))) throw new Error('invalid report count');
   return Number(text);
 };
 
@@ -37,7 +48,7 @@ export async function parseFrontex(bytes) {
   const headers = sheet?.getRow(2).values;
   if (!headers || headers[1] !== 'Route' || headers[2] !== 'Border type or inland' || headers[3] !== 'Nationality') throw new Error('invalid Frontex headers');
   const columns = Array.from(headers.slice(4), (value, i) => {
-    const match = String(value).match(/^([A-Z]{3})(20\d{2})$/);
+    const match = String(value).match(COLUMNS_RE);
     const month = MONTHS.indexOf(match?.[1]);
     if (!match || month < 0) throw new Error('invalid Frontex month');
     return { column: i + 4, date: endOfMonth(Number(match[2]), month) };
@@ -48,7 +59,7 @@ export async function parseFrontex(bytes) {
   sheet.eachRow((row, i) => {
     if (i <= 2) return;
     const [route, border, nationality] = [1, 2, 3].map(c => row.getCell(c).text.trim());
-    if (!Object.hasOwn(FRONTEX_ROUTES, route) || !['Sea', 'Land', 'Inland'].includes(border) || !nationality || /^(?:grand )?total$/i.test(nationality)) throw new Error('invalid Frontex route row');
+    if (!Object.hasOwn(FRONTEX_ROUTES, route) || !['Sea', 'Land', 'Inland'].includes(border) || !nationality || PARSE_FRONTEX_RE.test(nationality)) throw new Error('invalid Frontex route row');
     const key = `${route}|${border}|${nationality}`;
     if (seen.has(key)) throw new Error('duplicate Frontex nationality row');
     seen.add(key);
@@ -65,15 +76,15 @@ export async function parseFrontex(bytes) {
 
 export function parsePanamaText(text) {
   const normalized = normalize(text);
-  if (!/transito irregular de extranjeros por la frontera con colombia/.test(normalized)) throw new Error('invalid Panama report title');
-  const cutoff = normalized.match(/actualizacion al (\d{1,2}) de ([a-z]+) de (20\d{2})/);
+  if (!PARSE_PANAMA_TEXT_RE.test(normalized)) throw new Error('invalid Panama report title');
+  const cutoff = normalized.match(CUTOFF_RE);
   const month = SPANISH_MONTHS.indexOf(cutoff?.[2]);
   if (!cutoff || month < 0) throw new Error('missing Panama report date');
   const year = Number(cutoff[3]);
   const date = `${year}-${String(month + 1).padStart(2, '0')}-${cutoff[1].padStart(2, '0')}`;
   if (!Number.isFinite(Date.parse(date)) || new Date(Date.parse(date)).toISOString().slice(0, 10) !== date) throw new Error('invalid Panama report date');
-  const table = normalized.match(/region\s+total\s+ene\.\s+feb\.\s+mar\.\s+abr\.\s+may\.\s+jun\.\s+jul\.\s+ago\.\s+sep\.\s+oct\.\s+nov\.\s+dic\.\s*\n\s*total\s+([^\n]+)/);
-  const cells = table?.[1].trim().split(/\s+/);
+  const table = normalized.match(TABLE_RE);
+  const cells = table?.[1].trim().split(WHITESPACE_RE);
   if (!cells || cells.length !== 13) throw new Error('missing Panama monthly totals');
   const published = cells.slice(1, month + 2).map(observation);
   if (cells.slice(month + 2).some(c => c !== '-') || published.reduce((a, b) => a + b, 0) !== observation(cells[0])) throw new Error('inconsistent Panama yearly total');

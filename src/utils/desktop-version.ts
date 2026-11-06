@@ -17,16 +17,20 @@
  * order it. Returns `null` — never a partially-`NaN` array — when the numeric
  * core is absent or non-numeric, so callers are forced to handle the case.
  */
+const CORE_RE = /^v/;
+const CORE_RE_2 = /[-+]/;
+const PARSE_DESKTOP_VERSION_RE = /^\d+$/;
+
 export function parseDesktopVersion(version: string): number[] | null {
   if (typeof version !== 'string') return null;
 
-  const core = version.trim().replace(/^v/, '').split(/[-+]/)[0];
+  const core = version.trim().replace(CORE_RE, '').split(CORE_RE_2)[0];
   if (!core) return null;
 
   const segments = core.split('.');
   const parsed: number[] = [];
   for (const segment of segments) {
-    if (!/^\d+$/.test(segment)) return null;
+    if (!PARSE_DESKTOP_VERSION_RE.test(segment)) return null;
     parsed.push(Number(segment));
   }
   return parsed;

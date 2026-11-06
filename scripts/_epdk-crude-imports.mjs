@@ -13,6 +13,37 @@ import { createRequire } from 'node:module';
 import JSZip from 'jszip';
 import { assertZipExpansionWithin } from './_zip-expansion.mjs';
 
+const DECODE_ENTITIES_RE = /&#(\d+);/g;
+const DECODE_ENTITIES_RE_2 = /&#x([0-9a-f]+);/gi;
+const DECODE_ENTITIES_RE_3 = /&nbsp;/g;
+const DECODE_ENTITIES_RE_4 = /&quot;/g;
+const DECODE_ENTITIES_RE_5 = /&lt;/g;
+const DECODE_ENTITIES_RE_6 = /&gt;/g;
+const DECODE_ENTITIES_RE_7 = /&amp;/g;
+const PLAIN_TEXT_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const TEXT_RE = /[_-]/g;
+const YEAR_RE = /\b(20\d{2})\b/;
+const ITEMS_RE = /<li\b[^>]*class="accordion-pop"[^>]*>/;
+const LABEL_MATCH_RE = /<a\b[^>]*data-toggle="collapse"[^>]*>([\s\S]*?)<\/a>/;
+const OWN_RE = /<li\b/;
+const PARSE_EPDK_LISTING_RE = /<a\b[^>]*href="([^"]*DownloadDocument\?id=[^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+const ICON_RE = /\/(word|excel|pdf)\.png/;
+const XML_ELEMENTS_RE = /[\w:-]/;
+const RUN_TEXT_RE = /<rPh\b[\s\S]*?<\/rPh>/g;
+const RUN_TEXT_RE_2 = /<t(?:\s[^>]*)?>([^<]*)<\/t>/g;
+const CELL_REF_RE = /^([A-Z]+)(\d+)$/;
+const CELL_VALUE_RE = /<is>([\s\S]*?)<\/is>/;
+const V_RE = /<v>([^<]*)<\/v>/;
+const WORD_TEXT_RE = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:tab\/>|<w:br\/>/g;
+const PARSE_TONNES_RE = /^-?[\d.]+(,\d+)?$/;
+const N_RE = /\./g;
+const CRUDE_IMPORTS_FROM_TABLE_RE = /Ülkelere Göre/;
+const CRUDE_IMPORTS_FROM_TABLE_RE_2 = /İthalat/;
+const SINGLE_RE_2 = /kümülatif/;
+const NORMALIZE_NAME_RE = /[.()]/g;
+
+
 export { assertZipExpansionWithin };
 
 export const EPDK_LISTING_URL = 'https://www.epdk.gov.tr/Detay/Icerik/3-0-104/aylik-sektor-raporu';
@@ -21,27 +52,33 @@ const EPDK_ORIGIN = 'https://www.epdk.gov.tr';
 const TR_MONTHS = ['ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran', 'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık'];
 const MONTH_WORD = TR_MONTHS.join('|');
 
+const MONTH_RE = new RegExp(`(?:^|[^\\p{L}])(${MONTH_WORD})(?=$|[^\\p{L}])`, 'u');
+const RANGE_RE = new RegExp(`ocak\\s*-\\s*(${MONTH_WORD})\\s+(20\\d{2})`, 'u');
+const SINGLE_RE = new RegExp(`(${MONTH_WORD})\\s+(20\\d{2})\\s+dönemi`, 'u');
+const SINGLE_RE_3 = new RegExp(`\\((${MONTH_WORD})\\s+(20\\d{2})\\)`, 'u');
+
+
 const lowerTr = (s) => String(s ?? '').toLocaleLowerCase('tr');
 const pad2 = (n) => String(n).padStart(2, '0');
 
 function decodeEntities(s) {
   return String(s)
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
+    .replace(DECODE_ENTITIES_RE, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(DECODE_ENTITIES_RE_2, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(DECODE_ENTITIES_RE_3, ' ')
+    .replace(DECODE_ENTITIES_RE_4, '"')
+    .replace(DECODE_ENTITIES_RE_5, '<')
+    .replace(DECODE_ENTITIES_RE_6, '>')
+    .replace(DECODE_ENTITIES_RE_7, '&');
 }
 
-const plainText = (html) => decodeEntities(String(html).replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+const plainText = (html) => decodeEntities(String(html).replace(PLAIN_TEXT_RE, ' ')).replace(WHITESPACE_RE, ' ').trim();
 
 /** "2026 Yılı Petrol Piyasası Ağustos Ayı Sektör Raporu" -> "2026-08"; null without one year and one month name. */
 export function monthFromLabel(label) {
-  const text = lowerTr(label).replace(/[_-]/g, ' ');
-  const year = text.match(/\b(20\d{2})\b/);
-  const month = text.match(new RegExp(`(?:^|[^\\p{L}])(${MONTH_WORD})(?=$|[^\\p{L}])`, 'u'));
+  const text = lowerTr(label).replace(TEXT_RE, ' ');
+  const year = text.match(YEAR_RE);
+  const month = text.match(MONTH_RE);
   if (!year || !month) return null;
   return `${year[1]}-${pad2(TR_MONTHS.indexOf(month[1]) + 1)}`;
 }
@@ -63,18 +100,18 @@ export function isEpdkUrl(url) {
  */
 export function parseEpdkListing(html) {
   const reports = [];
-  const items = String(html).split(/<li\b[^>]*class="accordion-pop"[^>]*>/).slice(1);
+  const items = String(html).split(ITEMS_RE).slice(1);
   for (const item of items) {
-    const labelMatch = item.match(/<a\b[^>]*data-toggle="collapse"[^>]*>([\s\S]*?)<\/a>/);
+    const labelMatch = item.match(LABEL_MATCH_RE);
     if (!labelMatch) continue;
     const label = plainText(labelMatch[1]);
     const month = monthFromLabel(label);
     if (!month) continue;
     // Downloads sit between this label and the next nested item.
-    const own = item.slice(labelMatch.index + labelMatch[0].length).split(/<li\b/)[0];
+    const own = item.slice(labelMatch.index + labelMatch[0].length).split(OWN_RE)[0];
     const documents = [];
-    for (const a of own.matchAll(/<a\b[^>]*href="([^"]*DownloadDocument\?id=[^"]*)"[^>]*>([\s\S]*?)<\/a>/g)) {
-      const icon = a[2].match(/\/(word|excel|pdf)\.png/);
+    for (const a of own.matchAll(PARSE_EPDK_LISTING_RE)) {
+      const icon = a[2].match(ICON_RE);
       let url;
       try {
         url = new URL(decodeEntities(a[1]), EPDK_ORIGIN).href;
@@ -102,7 +139,7 @@ function* xmlElements(xml, name) {
   for (;;) {
     const start = xml.indexOf(open, at);
     if (start < 0) return;
-    if (/[\w:-]/.test(xml[start + open.length] ?? '')) {
+    if (XML_ELEMENTS_RE.test(xml[start + open.length] ?? '')) {
       at = start + open.length;
       continue;
     }
@@ -125,12 +162,12 @@ const xmlAttr = (attrs, name) => attrs.match(new RegExp(`(?:^|\\s)${name}="([^"]
 
 // Text of an <si> or <is>: its <t> runs joined, phonetic (<rPh>) runs dropped.
 const runText = (xml) => decodeEntities(
-  [...String(xml).replace(/<rPh\b[\s\S]*?<\/rPh>/g, '').matchAll(/<t(?:\s[^>]*)?>([^<]*)<\/t>/g)].map((m) => m[1]).join(''),
+  [...String(xml).replace(RUN_TEXT_RE, '').matchAll(RUN_TEXT_RE_2)].map((m) => m[1]).join(''),
 );
 
 // "AB12" -> { col: 28, row: 12 }
 function cellRef(ref) {
-  const m = /^([A-Z]+)(\d+)$/.exec(ref ?? '');
+  const m = CELL_REF_RE.exec(ref ?? '');
   if (!m) return null;
   let col = 0;
   for (const ch of m[1]) col = col * 26 + ch.charCodeAt(0) - 64;
@@ -140,8 +177,8 @@ function cellRef(ref) {
 function cellValue(attrs, body, sharedStrings) {
   if (body === null) return undefined;
   const type = xmlAttr(attrs, 't');
-  if (type === 'inlineStr') return runText(body.match(/<is>([\s\S]*?)<\/is>/)?.[1] ?? '');
-  const v = body.match(/<v>([^<]*)<\/v>/)?.[1];
+  if (type === 'inlineStr') return runText(body.match(CELL_VALUE_RE)?.[1] ?? '');
+  const v = body.match(V_RE)?.[1];
   if (v === undefined) return undefined;
   if (type === 's') return sharedStrings[Number(v)] ?? '';
   if (type === 'str') return decodeEntities(v);
@@ -220,8 +257,8 @@ export async function tablesFromXlsx(buffer) {
 // Word splits one word across runs ("202" + "5"), so text is the runs joined
 // as written, never tags replaced by spaces.
 const wordText = (xml) => decodeEntities(
-  [...String(xml).matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:tab\/>|<w:br\/>/g)].map((m) => m[1] ?? ' ').join(''),
-).replace(/\s+/g, ' ').trim();
+  [...String(xml).matchAll(WORD_TEXT_RE)].map((m) => m[1] ?? ' ').join(''),
+).replace(WHITESPACE_RE, ' ').trim();
 
 // Element spans found with indexOf, never a lazy `[\s\S]*?` regex: that
 // rescans the rest of the document for every unclosed tag. `open` is the tag
@@ -233,7 +270,7 @@ function elementSpans(xml, open, close) {
   for (;;) {
     const start = xml.indexOf(open, at);
     if (start < 0) return spans;
-    if (/[\w:-]/.test(xml[start + open.length] ?? '')) {
+    if (XML_ELEMENTS_RE.test(xml[start + open.length] ?? '')) {
       at = start + open.length;
       continue;
     }
@@ -275,8 +312,8 @@ export function parseTonnes(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   const s = String(v ?? '').trim();
   if (s === '' || s === '-') return 0;
-  if (!/^-?[\d.]+(,\d+)?$/.test(s)) return null;
-  const n = Number(s.replace(/\./g, '').replace(',', '.'));
+  if (!PARSE_TONNES_RE.test(s)) return null;
+  const n = Number(s.replace(N_RE, '').replace(',', '.'));
   return Number.isFinite(n) ? n : null;
 }
 
@@ -287,15 +324,15 @@ export function parseTonnes(v) {
  */
 export function crudeImportsFromTable(table) {
   const title = String(table?.title ?? '');
-  if (!/Ülkelere Göre/.test(title) || !/İthalat/.test(title)) return null;
+  if (!CRUDE_IMPORTS_FROM_TABLE_RE.test(title) || !CRUDE_IMPORTS_FROM_TABLE_RE_2.test(title)) return null;
   const t = lowerTr(title);
-  const range = t.match(new RegExp(`ocak\\s*-\\s*(${MONTH_WORD})\\s+(20\\d{2})`, 'u'));
-  const single = t.match(new RegExp(`(${MONTH_WORD})\\s+(20\\d{2})\\s+dönemi`, 'u'))
-    ?? (/kümülatif/.test(t) ? t.match(new RegExp(`\\((${MONTH_WORD})\\s+(20\\d{2})\\)`, 'u')) : null);
+  const range = t.match(RANGE_RE);
+  const single = t.match(SINGLE_RE)
+    ?? (SINGLE_RE_2.test(t) ? t.match(SINGLE_RE_3) : null);
   const hit = range ?? single;
   if (!hit) return null;
   const month = `${hit[2]}-${pad2(TR_MONTHS.indexOf(hit[1]) + 1)}`;
-  const cumulative = Boolean(range) || /kümülatif/.test(t);
+  const cumulative = Boolean(range) || SINGLE_RE_2.test(t);
   const rows = table.rows ?? [];
   const headerAt = rows.findIndex((r) => r.includes('Ülke') && r.includes('Ham Petrol'));
   if (headerAt < 0) return null;
@@ -337,7 +374,7 @@ const ALIASES = {
   'ekvatoral gine': 'GQ',
 };
 
-const normalizeName = (name) => lowerTr(name).replace(/[.()]/g, '').replace(/\s+/g, ' ').trim();
+const normalizeName = (name) => lowerTr(name).replace(NORMALIZE_NAME_RE, '').replace(WHITESPACE_RE, ' ').trim();
 
 let nameIndex = null;
 function countryNameIndex() {

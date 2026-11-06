@@ -126,6 +126,9 @@ import {
   PANEL_LAYOUT_REGIONS,
 } from './panel-layout-actions';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export interface WebMcpAppBindings {
   openCountryBriefByCode(
     code: string,
@@ -1353,7 +1356,7 @@ const FOLLOWED_COUNTRY_MUTATION_REASON_SET = new Set(FOLLOWED_COUNTRY_MUTATION_R
 
 function boundFollowedCountryList(result: FollowedCountryListResult): FollowedCountryListResult {
   const countries = normalizeIdentifiers(result.countries, 2)
-    .filter((country) => /^[A-Z]{2}$/.test(country))
+    .filter((country) => COUNTRY_CODE_RE.test(country))
     .slice(0, 249);
   const access = result.access === 'pro' || result.access === 'loading'
     ? result.access
@@ -1385,7 +1388,7 @@ function boundFollowedCountryMutation(
   return {
     ok,
     status: ok ? status : status === 'invalid' ? 'invalid' : 'denied',
-    ...(typeof result.iso2 === 'string' && /^[A-Z]{2}$/.test(result.iso2)
+    ...(typeof result.iso2 === 'string' && COUNTRY_CODE_RE.test(result.iso2)
       ? { iso2: result.iso2 }
       : {}),
     ...(typeof result.followed === 'boolean' ? { followed: result.followed } : {}),

@@ -17,6 +17,9 @@ import {
 } from './news/source-provenance';
 import { describePublisherRoster, renderPublisherRosterHtml } from './news/publisher-roster';
 
+const HTML_RE = /\s+\S*$/;
+
+
 
 type SortMode = 'relevance' | 'newest';
 type NewsIdentity = Pick<NewsItem, 'link' | 'title' | 'source'>;
@@ -564,7 +567,7 @@ export class NewsPanel extends Panel {
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
         ${titleLink ? `<a class="item-title" href="${titleLink}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>` : `<span class="item-title">${escapeHtml(item.title)}</span>`}
-        ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
+        ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(HTML_RE, '') + '…' : item.snippet)}</div>` : ''}
         <div class="item-time">
           ${formatTime(item.pubDate)}
           ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}

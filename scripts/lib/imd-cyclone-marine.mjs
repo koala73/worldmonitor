@@ -12,6 +12,40 @@
 
 import { CHROME_UA } from '../_seed-utils.mjs';
 
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZE_LABEL_RE = /[\s.]+$/;
+const SLUG_RE = /[̀-ͯ]/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUG_RE_2 = /^-+|-+$/g;
+const DECODE_ENTITIES_RE = /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi;
+const HTML_TEXT_RE = /<br\s*\/?>/gi;
+const HTML_TEXT_RE_2 = /<[^>]*>/g;
+const ASCII_LOWER_RE = /[A-Z]/g;
+const NEXT_BLOCK_OPEN_RE = /\w/;
+const UTC_HOUR_OF_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const PARSE_VALIDITY_RE = /Valid\s+for\s+(\d{1,2})\s*hrs?\s+from\s+(\d{1,2})\s*UTC\s+of\s+(\d{4}-\d{2}-\d{2})\s+to\s+(\d{1,2})\s*UTC\s+of\s+(\d{4}-\d{2}-\d{2})/i;
+const PARSE_ISSUE_TIME_RE = /^(\d{1,2}):(\d{2})\s*IST\s+of\s+(\d{4})-(\d{2})-(\d{2})$/i;
+const TABLE_ROWS_RE = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+const CELLS_RE = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
+const FIRST_TABLE_RE = /<table\b/i;
+const OFFICE_RE = /\b(A?CWC(?:\s+[A-Z]+)+)\s*\//;
+const PARSE_IMD_BULLETIN_HTML_RE = /<table\b[^>]*>([\s\S]*?)<\/table>/gi;
+const CAPTION_RE = /<caption\b[^>]*>([\s\S]*?)<\/caption>/i;
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const LINE_BREAK_RE = /\r?\n/;
+const PARSE_IMD_KERALA_PDF_TEXT_RE = /\bCWC THIRUVANANTHAPURAM\s*\//;
+const SYNOPTIC_RE = /\bSynoptic Situation\s*(.*)$/i;
+const ISSUE_INDEX_RE = /^Time of Issue\b/i;
+const ISSUE_RE = /^Time of Issue\s*/i;
+const PARSE_IMD_KERALA_PDF_TEXT_RE_2 = /^[A-Za-z -]+(?: coast| area)$/i;
+const FIELD_RE = /^(Storm Surge\/Tidal Warning|Sea Condition|Port Signal|Visibility|Weather|Wind)(?:\s+|$)(.*)$/i;
+const NON_DIGIT_RE = /\D/g;
+const PAGE_FAILURE_REASON_RE = /^HTTP \d{3}$/;
+const ACQUIRE_RE = /^application\/pdf(?:;|$)/i;
+
+
 export const IMD_BULLETIN_HOST = 'mausam.imd.gov.in';
 export const IMD_FORECAST_BASE = `https://${IMD_BULLETIN_HOST}/Forecast`;
 export const IMD_API_REFERENCE_URL = 'https://api.imd.gov.in/public/api_reference.html';
@@ -164,7 +198,7 @@ const NIL_PHRASES = new Set([
 ]);
 
 function normalizeLabel(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[\s.]+$/, '');
+  return String(value || '').trim().toLowerCase().replace(WHITESPACE_RE, ' ').replace(NORMALIZE_LABEL_RE, '');
 }
 
 export function isNilText(value) {
@@ -191,16 +225,16 @@ export function isAllowedImdUrl(url) {
 function slug(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(SLUG_RE, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'unknown';
+    .replace(NON_ALPHANUMERIC_RE, '-')
+    .replace(SLUG_RE_2, '') || 'unknown';
 }
 
 const NAMED_ENTITIES = Object.freeze({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' });
 
 function decodeEntities(text) {
-  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity) => {
+  return text.replace(DECODE_ENTITIES_RE, (match, entity) => {
     if (entity[0] === '#') {
       const code = entity[1] === 'x' || entity[1] === 'X'
         ? Number.parseInt(entity.slice(2), 16)
@@ -212,8 +246,8 @@ function decodeEntities(text) {
 }
 
 function htmlText(html) {
-  return decodeEntities(String(html).replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, ' '))
-    .replace(/\s+/g, ' ')
+  return decodeEntities(String(html).replace(HTML_TEXT_RE, ' ').replace(HTML_TEXT_RE_2, ' '))
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -230,12 +264,12 @@ const LONGEST_BLOCK_OPEN = Math.max(...NON_CONTENT_BLOCKS.map((block) => block.o
 
 // ASCII-only lowercasing keeps every index aligned with the original string.
 function asciiLower(text) {
-  return text.replace(/[A-Z]/g, (char) => char.toLowerCase());
+  return text.replace(ASCII_LOWER_RE, (char) => char.toLowerCase());
 }
 
 function nextBlockOpen(lower, block, from) {
   let at = lower.indexOf(block.open, from);
-  while (at !== -1 && block.tag && /\w/.test(lower[at + block.open.length] ?? '')) {
+  while (at !== -1 && block.tag && NEXT_BLOCK_OPEN_RE.test(lower[at + block.open.length] ?? '')) {
     at = lower.indexOf(block.open, at + 1);
   }
   return at;
@@ -306,7 +340,7 @@ function boundedText(value) {
 }
 
 function utcHourOf(date, hour) {
-  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const match = date.match(UTC_HOUR_OF_RE);
   const h = Number(hour);
   if (!match || !Number.isInteger(h) || h < 0 || h > 23) return null;
   const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
@@ -317,7 +351,7 @@ function utcHourOf(date, hour) {
 
 function parseValidity(headerText) {
   const match = headerText.match(
-    /Valid\s+for\s+(\d{1,2})\s*hrs?\s+from\s+(\d{1,2})\s*UTC\s+of\s+(\d{4}-\d{2}-\d{2})\s+to\s+(\d{1,2})\s*UTC\s+of\s+(\d{4}-\d{2}-\d{2})/i,
+    PARSE_VALIDITY_RE,
   );
   if (!match) fail('BULLETIN_VALIDITY_MISSING');
   const validityHours = Number(match[1]);
@@ -331,7 +365,7 @@ function parseValidity(headerText) {
 }
 
 function parseIssueTime(value) {
-  const match = value.match(/^(\d{1,2}):(\d{2})\s*IST\s+of\s+(\d{4})-(\d{2})-(\d{2})$/i);
+  const match = value.match(PARSE_ISSUE_TIME_RE);
   if (!match) fail('BULLETIN_ISSUE_TIME_MISSING');
   const ms = Date.parse(`${match[3]}-${match[4]}-${match[5]}T${match[1].padStart(2, '0')}:${match[2]}:00+05:30`);
   if (!Number.isFinite(ms)) fail('BULLETIN_ISSUE_TIME_MISSING');
@@ -355,8 +389,8 @@ const AREA_LABELS = Object.freeze({
 
 function tableRows(tableHtml) {
   const rows = [];
-  for (const row of tableHtml.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
-    const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => htmlText(cell[1]));
+  for (const row of tableHtml.matchAll(TABLE_ROWS_RE)) {
+    const cells = [...row[1].matchAll(CELLS_RE)].map((cell) => htmlText(cell[1]));
     if (cells.length >= 2) rows.push([normalizeLabel(cells[0]), boundedText(cells[1])]);
   }
   return rows;
@@ -371,18 +405,18 @@ export function parseImdBulletinHtml(html, productId) {
   const spec = IMD_PRODUCTS[productId];
   if (!spec?.pages) throw new Error(`UNKNOWN_IMD_BULLETIN_PRODUCT:${productId}`);
   const body = stripNonContentBlocks(html);
-  const firstTable = body.search(/<table\b/i);
+  const firstTable = body.search(FIRST_TABLE_RE);
   if (firstTable === -1) fail('BULLETIN_AREAS_MISSING');
   const headerText = htmlText(body.slice(0, firstTable));
   if (!headerText.toLowerCase().includes(spec.title.toLowerCase())) fail('BULLETIN_TITLE_MISSING');
   const validity = parseValidity(headerText);
-  const office = headerText.match(/\b(A?CWC(?:\s+[A-Z]+)+)\s*\//);
+  const office = headerText.match(OFFICE_RE);
 
   const bulletin = {};
   const areas = [];
-  for (const table of body.slice(firstTable).matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)) {
-    if (/<table\b/i.test(table[1])) fail('BULLETIN_NESTED_TABLE');
-    const caption = table[1].match(/<caption\b[^>]*>([\s\S]*?)<\/caption>/i);
+  for (const table of body.slice(firstTable).matchAll(PARSE_IMD_BULLETIN_HTML_RE)) {
+    if (FIRST_TABLE_RE.test(table[1])) fail('BULLETIN_NESTED_TABLE');
+    const caption = table[1].match(CAPTION_RE);
     const rows = tableRows(table[1]);
     if (caption) {
       const area = { name: boundedText(htmlText(caption[1])) };
@@ -421,20 +455,20 @@ const KERALA_COASTAL_AREAS = Object.freeze([
 ]);
 
 function escapeHtml(value) {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return value.replace(ESCAPE_HTML_RE, '&amp;').replace(ESCAPE_HTML_RE_2, '&lt;').replace(ESCAPE_HTML_RE_3, '&gt;');
 }
 
 export function parseImdKeralaPdfText(text) {
   if (text.length > 64_000) fail('BULLETIN_RESPONSE_TOO_LARGE');
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const lines = text.split(LINE_BREAK_RE).map((line) => line.trim()).filter(Boolean);
   const firstArea = lines.indexOf(KERALA_COASTAL_AREAS[0]);
   if (firstArea < 0) fail('BULLETIN_AREAS_MISSING');
   const header = lines.slice(0, firstArea).join(' ');
-  if (!/\bCWC THIRUVANANTHAPURAM\s*\//.test(header)) fail('BULLETIN_OFFICE_MISSING');
-  const synoptic = header.match(/\bSynoptic Situation\s*(.*)$/i)?.[1] || '';
-  const issueIndex = lines.findIndex((line, index) => index > firstArea && /^Time of Issue\b/i.test(line));
+  if (!PARSE_IMD_KERALA_PDF_TEXT_RE.test(header)) fail('BULLETIN_OFFICE_MISSING');
+  const synoptic = header.match(SYNOPTIC_RE)?.[1] || '';
+  const issueIndex = lines.findIndex((line, index) => index > firstArea && ISSUE_INDEX_RE.test(line));
   if (issueIndex < 0) fail('BULLETIN_ISSUE_TIME_MISSING');
-  const issue = lines.slice(issueIndex).join(' ').replace(/^Time of Issue\s*/i, '');
+  const issue = lines.slice(issueIndex).join(' ').replace(ISSUE_RE, '');
   const tables = [];
   let cursor = firstArea;
   for (const area of KERALA_COASTAL_AREAS) {
@@ -444,8 +478,8 @@ export function parseImdKeralaPdfText(text) {
     let label;
     while (cursor < issueIndex && !KERALA_COASTAL_AREAS.includes(lines[cursor])) {
       const line = lines[cursor++];
-      if (/^[A-Za-z -]+(?: coast| area)$/i.test(line)) fail('BULLETIN_AREAS_MISSING');
-      const field = line.match(/^(Storm Surge\/Tidal Warning|Sea Condition|Port Signal|Visibility|Weather|Wind)(?:\s+|$)(.*)$/i);
+      if (PARSE_IMD_KERALA_PDF_TEXT_RE_2.test(line)) fail('BULLETIN_AREAS_MISSING');
+      const field = line.match(FIELD_RE);
       if (field) {
         label = normalizeLabel(field[1]);
         if (fields.has(label)) fail('BULLETIN_AREA_INCOMPLETE');
@@ -482,7 +516,7 @@ async function parseImdKeralaPdf(bytes, evidence) {
 }
 
 function compactUtcHour(ms) {
-  return new Date(ms).toISOString().slice(0, 13).replace(/\D/g, '');
+  return new Date(ms).toISOString().slice(0, 13).replace(NON_DIGIT_RE, '');
 }
 
 export function bulletinRecords(bulletin, productId, page) {
@@ -696,7 +730,7 @@ async function readBoundedBytes(response, maxBytes) {
 function pageFailureReason(err) {
   if (err instanceof ImdBulletinParseError) return err.code;
   if (err?.name === 'AbortError' || err?.name === 'TimeoutError') return 'IMD_FETCH_TIMEOUT';
-  if (/^HTTP \d{3}$/.test(String(err?.message || ''))) return err.message;
+  if (PAGE_FAILURE_REASON_RE.test(String(err?.message || ''))) return err.message;
   return 'IMD_FETCH_FAILED';
 }
 
@@ -722,7 +756,7 @@ export async function fetchImdBulletinPage(productId, page, {
       attempt.status = response.status;
       attempt.contentType = (response.headers?.get?.('content-type') || '').slice(0, 256);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      if (accept === 'application/pdf' && !/^application\/pdf(?:;|$)/i.test(attempt.contentType)) fail('BULLETIN_PDF_INVALID');
+      if (accept === 'application/pdf' && !ACQUIRE_RE.test(attempt.contentType)) fail('BULLETIN_PDF_INVALID');
       const bytes = await readBoundedBytes(response, maxBytes);
       if (evidence) attempt.bodyBase64 = bytes.toString('base64');
       return { bytes, attempt };

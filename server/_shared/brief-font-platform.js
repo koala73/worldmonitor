@@ -11,13 +11,19 @@
 // many User-Agents; scripts/brief-fonts/subset_brief_fonts.py cuts one file set per class.
 
 /** @param {string} userAgent @returns {'plain' | 'apple-woff2' | 'apple-woff' | 'hinted'} */
-export function briefFontPlatform(userAgent) {
+
+
+const BRIEF_FONT_PLATFORM_RE = /Android|iPhone|iPad|iPod/;
+const BRIEF_FONT_PLATFORM_RE_2 = /Macintosh|Mac OS X/;
+const CHROME_RE = /Chrome\/(\d+)/;
+const BRIEF_FONT_PLATFORM_RE_3 = /\b(Edg|OPR)\//;
+const BRIEF_FONT_PLATFORM_RE_4 = /Windows|X11|Linux|CrOS/;export function briefFontPlatform(userAgent) {
   const ua = typeof userAgent === 'string' ? userAgent : '';
-  if (/Android|iPhone|iPad|iPod/.test(ua)) return 'plain';
-  if (/Macintosh|Mac OS X/.test(ua)) {
-    const chrome = /Chrome\/(\d+)/.exec(ua);
-    return chrome && Number(chrome[1]) >= 102 && !/\b(Edg|OPR)\//.test(ua) ? 'apple-woff2' : 'apple-woff';
+  if (BRIEF_FONT_PLATFORM_RE.test(ua)) return 'plain';
+  if (BRIEF_FONT_PLATFORM_RE_2.test(ua)) {
+    const chrome = CHROME_RE.exec(ua);
+    return chrome && Number(chrome[1]) >= 102 && !BRIEF_FONT_PLATFORM_RE_3.test(ua) ? 'apple-woff2' : 'apple-woff';
   }
-  if (/Windows|X11|Linux|CrOS/.test(ua)) return 'hinted';
+  if (BRIEF_FONT_PLATFORM_RE_4.test(ua)) return 'hinted';
   return 'plain';
 }

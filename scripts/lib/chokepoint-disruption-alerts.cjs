@@ -1,5 +1,8 @@
 'use strict';
 
+const STORED_RE = /JSON result parse failed/;
+
+
 /**
  * @notification-source: domain
  *   payload.title is built from structured chokepoint status fields (name,
@@ -132,7 +135,7 @@ async function publishChokepointDisruptionAlerts(status, { now, readState, write
     // lapses. A malformed Upstash response body ("JSON response parse
     // failed") is a transport error: starting fresh then would overwrite the
     // saved fired state and re-alert every red chokepoint.
-    if (/JSON result parse failed/.test(String(reason))) log(`[Chokepoints] Disruption alert state unparseable (${reason}); starting fresh`);
+    if (STORED_RE.test(String(reason))) log(`[Chokepoints] Disruption alert state unparseable (${reason}); starting fresh`);
     else readFailed = true;
   });
   if (readFailed) return null;

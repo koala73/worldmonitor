@@ -17,6 +17,9 @@ import { haversineKm } from './geo-distance';
 import type { PipelineRecord } from './pipelines-data';
 import type { PortRecord } from './ports-data';
 
+const STATUS_RE = /^CABLE_HEALTH_STATUS_/;
+
+
 export type InfrastructureNodeType = 'cable' | 'pipeline' | 'port' | 'chokepoint' | 'country' | 'route';
 
 export interface InfrastructureNode {
@@ -761,7 +764,7 @@ const MAX_EVIDENCE_SUMMARY_CHARS = 240;
 
 function toIncident(raw: CableHealthInput | undefined): CableIncident | null {
   if (!raw || typeof raw !== 'object') return null;
-  const status = typeof raw.status === 'string' ? raw.status.replace(/^CABLE_HEALTH_STATUS_/, '') : '';
+  const status = typeof raw.status === 'string' ? raw.status.replace(STATUS_RE, '') : '';
   if (status !== 'FAULT' && status !== 'DEGRADED') return null;
   const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
   const evidence = (Array.isArray(raw.evidence) ? raw.evidence : [])

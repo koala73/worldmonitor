@@ -11,6 +11,10 @@
 
 import { eq } from './lib/openapi-codegen.mjs';
 
+const COLLECT_REFS_RE = /^#\//;
+const STEM_RE = /[^A-Za-z0-9]+/;
+
+
 const CORRIDOR_SCHEMA_SUFFIX = 'ChinaCorridorProvenance';
 const DECISION_CLAIMS_SCHEMA_SUFFIX = 'ChinaDecisionSignalProvenanceClaims';
 const INT64_SCHEMA = {
@@ -245,7 +249,7 @@ function refPointerPathNodes(spec) {
     for (const child of Object.values(value)) collectRefs(child);
     if (typeof value.$ref === 'string') {
       let node = spec;
-      for (const raw of value.$ref.replace(/^#\//, '').split('/')) {
+      for (const raw of value.$ref.replace(COLLECT_REFS_RE, '').split('/')) {
         const segment = raw.replaceAll('~1', '/').replaceAll('~0', '~');
         if (node == null || typeof node !== 'object') return;
         node = Array.isArray(node) ? node[Number(segment)] : node[segment];
@@ -456,7 +460,7 @@ function availableComponentName(bucket, preferred, value) {
 
 function headerComponentName(headerName) {
   const stem = headerName
-    .split(/[^A-Za-z0-9]+/)
+    .split(STEM_RE)
     .filter(Boolean)
     .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
     .join('');

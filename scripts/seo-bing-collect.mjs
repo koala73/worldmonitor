@@ -58,6 +58,13 @@ import {
   weeklyTotals,
 } from './seo-gsc-collect.mjs';
 
+const STRIP_SCHEME_RE = /https?:\/\//gi;
+const PARSE_BING_DATE_RE = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/;
+const FETCH_ROWS_RE = /^\[seo-bing\] /;
+const BUILD_PAGES_RE = /^\[seo-url-taxonomy\] /;
+const PARSE_ARGS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const BING_ENDPOINT = 'https://ssl.bing.com/webmaster/api.svc/json';
@@ -121,7 +128,7 @@ const ratio = (numerator, denominator) => (
 );
 const isoDate = (ms) => new Date(ms).toISOString().slice(0, 10);
 const shiftDate = (date, days) => isoDate(Date.parse(date) + days * DAY_MS);
-const stripScheme = (text) => String(text).replace(/https?:\/\//gi, '');
+const stripScheme = (text) => String(text).replace(STRIP_SCHEME_RE, '');
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -129,7 +136,7 @@ const stripScheme = (text) => String(text).replace(/https?:\/\//gi, '');
 
 /** `/Date(1772755200000)/`, optionally with a `-0800` offset, to `YYYY-MM-DD`. */
 export function parseBingDate(value) {
-  const match = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/.exec(String(value));
+  const match = PARSE_BING_DATE_RE.exec(String(value));
   invariant(match, 'a row carries a date Bing does not normally send');
   return isoDate(Number(match[1]));
 }
@@ -255,7 +262,7 @@ async function fetchRows(transport, section) {
     invariant(Array.isArray(payload?.d), `${method} returned no row list`);
     return { rows: PICKERS[section](payload.d), reason: null };
   } catch (error) {
-    return { rows: null, reason: error.message.replace(/^\[seo-bing\] /, '') };
+    return { rows: null, reason: error.message.replace(FETCH_ROWS_RE, '') };
   }
 }
 
@@ -453,7 +460,7 @@ function buildPages({ rows, reason }, windows) {
       try {
         family = classifyUrl(row.key).family;
       } catch (error) {
-        unmapped.push({ ...row, reason: error.message.replace(/^\[seo-url-taxonomy\] /, '') });
+        unmapped.push({ ...row, reason: error.message.replace(BUILD_PAGES_RE, '') });
         continue;
       }
       if (!families.has(family)) families.set(family, []);
@@ -840,7 +847,7 @@ export function parseArgs(argv) {
     '--fixtures and --live are mutually exclusive',
   );
   invariant(
-    options.date === null || /^\d{4}-\d{2}-\d{2}$/.test(options.date),
+    options.date === null || PARSE_ARGS_RE.test(options.date),
     '--date must be YYYY-MM-DD',
   );
   return options;

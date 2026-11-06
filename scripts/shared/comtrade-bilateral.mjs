@@ -1,5 +1,9 @@
 import { recentPeriod } from './comtrade-period.mjs';
 
+const PARSE_RECORDS_RE = /^\d{4}$/;
+const PARSE_RECORDS_RE_2 = /^\d{1,3}$/;
+
+
 /** Row cap of the public preview route. A response this large may be truncated. */
 export const PREVIEW_MAX_RECORDS = 500;
 
@@ -163,7 +167,7 @@ export function createComtradeBilateralCatalogue(strategic, commodities, normali
       const partnerCode = String(r?.partnerCode ?? '');
       const cmdCode = String(r?.cmdCode ?? '');
       if (!r || r.primaryValue == null || !Number.isFinite(value) || value < 0
-        || !/^\d{4}$/.test(cmdCode) || !/^\d{1,3}$/.test(partnerCode)
+        || !PARSE_RECORDS_RE.test(cmdCode) || !PARSE_RECORDS_RE_2.test(partnerCode)
         || !Number.isInteger(year) || year < 1900 || year > 2100) {
         throw new ComtradeResponseError('malformed', 'Malformed Comtrade trade row');
       }

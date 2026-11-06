@@ -14,6 +14,10 @@ import {
   type OfflineRetainedProviderResponse,
 } from './company-monitoring-offline-prediction-contracts.ts';
 
+const TEXT_RE = /[\u0000-\u001f\u007f]/u;
+const DECODE_OFFLINE_CHECKPOINT_AUTHENTICATION_KEY_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+
 const ATTEMPT_ID = /^cm_attempt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const CHECKPOINT_KEYS = new Set([
   'schemaVersion', 'protocolSha256', 'approvedThresholdDigest', 'corpusSha256',
@@ -48,7 +52,7 @@ function exact(value: unknown, keys: Set<string>, code: string): Record<string, 
 function text(value: unknown, code: string, maximum = 2_048): string {
   if (
     typeof value !== 'string' || value.length === 0 || value !== value.trim() ||
-    value.length > maximum || /[\u0000-\u001f\u007f]/u.test(value)
+    value.length > maximum || TEXT_RE.test(value)
   ) fail(code);
   return value;
 }
@@ -60,7 +64,7 @@ function finiteNonNegative(value: unknown, code: string): number {
 
 export function decodeOfflineCheckpointAuthenticationKey(value: unknown): Buffer {
   const encoded = text(value, 'offline_checkpoint_authentication_missing', 1_024);
-  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 !== 0) {
+  if (!DECODE_OFFLINE_CHECKPOINT_AUTHENTICATION_KEY_RE.test(encoded) || encoded.length % 4 !== 0) {
     fail('offline_checkpoint_authentication_invalid');
   }
   const key = Buffer.from(encoded, 'base64');

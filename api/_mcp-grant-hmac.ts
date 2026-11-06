@@ -35,6 +35,13 @@
  * Edge-runtime safe: uses Web Crypto API only. No node:crypto imports.
  */
 
+const BASE64_URL_ENCODE_RE = /\+/g;
+const BASE64_URL_ENCODE_RE_2 = /\//g;
+const BASE64_URL_ENCODE_RE_3 = /=+$/;
+const B64_RE = /-/g;
+const B64_RE_2 = /_/g;
+const VERIFY_GRANT_RE = /^[A-Za-z0-9_-]+$/;
+
 const ENC = new TextEncoder();
 const DEC = new TextDecoder();
 
@@ -55,12 +62,12 @@ export class GrantConfigError extends Error {
 function base64UrlEncode(bytes: Uint8Array): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(bin).replace(BASE64_URL_ENCODE_RE, '-').replace(BASE64_URL_ENCODE_RE_2, '_').replace(BASE64_URL_ENCODE_RE_3, '');
 }
 
 function base64UrlDecode(s: string): Uint8Array {
   const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
-  const b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const b64 = (s + pad).replace(B64_RE, '+').replace(B64_RE_2, '/');
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
@@ -128,7 +135,7 @@ export async function verifyGrant(token: string, secret?: string, now: number = 
   const sigB64 = token.slice(dot + 1);
   // Stricter than RFC 7515: we only emit base64url-no-pad, so anything
   // outside [A-Za-z0-9_-] is malformed.
-  if (!/^[A-Za-z0-9_-]+$/.test(payloadB64) || !/^[A-Za-z0-9_-]+$/.test(sigB64)) {
+  if (!VERIFY_GRANT_RE.test(payloadB64) || !VERIFY_GRANT_RE.test(sigB64)) {
     return { ok: false, reason: 'malformed' };
   }
 

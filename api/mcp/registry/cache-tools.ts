@@ -95,9 +95,15 @@ import {
   PREDICTION_MARKETS_UI_URI,
 } from '../ui/registry';
 
+const SANCTIONS_CHANGES_CURSOR_RE = /^([1-9]\d{0,15}):(0|[1-9]\d{0,4})$/;
+const CONTINUATION_RE = /^(\d+):(\d+)$/;
+const STORIES_CURSOR_RE = /^([1-9]\d{0,15}):(0|[1-9]\d{0,5})$/;
+const CACHE_TOOLS_RE = /:v1$/;
+
+
 function sanctionsChangesCursor(value: unknown): { fetchedAt?: number; offset: number } {
   if (value === undefined) return { offset: 0 };
-  const match = typeof value === 'string' && value.length <= 64 && /^([1-9]\d{0,15}):(0|[1-9]\d{0,4})$/.exec(value);
+  const match = typeof value === 'string' && value.length <= 64 && SANCTIONS_CHANGES_CURSOR_RE.exec(value);
   if (!match || !Number.isSafeInteger(Number(match[1])) || Number(match[2]) > 10000) {
     throw new RpcValidationError('get_sanctions_data', [{ field: 'changes_cursor', description: 'Use nextCursor from the previous history page.' }]);
   }
@@ -805,7 +811,7 @@ function projectForecastArchive(value: unknown, metaValue: unknown) {
 
 function forecastArchiveArguments(params: Record<string, unknown>) {
   const limit = params.limit ?? 25;
-  const continuation = typeof params.before === 'string' ? /^(\d+):(\d+)$/.exec(params.before) : null;
+  const continuation = typeof params.before === 'string' ? CONTINUATION_RE.exec(params.before) : null;
   const before = continuation ? Number(continuation[1]) : params.before;
   const offset = continuation ? Number(continuation[2]) : 0;
   if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 50
@@ -883,7 +889,7 @@ function invalidStoriesCursor(description: string): RpcValidationError {
 }
 function storiesCursor(value: unknown): { generatedAt?: number; offset: number } {
   if (value === undefined) return { offset: 0 };
-  const match = typeof value === 'string' && value.length <= 64 && /^([1-9]\d{0,15}):(0|[1-9]\d{0,5})$/.exec(value);
+  const match = typeof value === 'string' && value.length <= 64 && STORIES_CURSOR_RE.exec(value);
   if (!match || !Number.isSafeInteger(Number(match[1]))) throw invalidStoriesCursor('Use insights.storyScope.nextCursor from the previous page.');
   return { generatedAt: Number(match[1]), offset: Number(match[2]) };
 }
@@ -2900,7 +2906,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // The events and regions budgets match SEED_META.idmcIduDisplacement and
     // SEED_META.dtmDisplacement in api/health.js; the DTM seed-meta also
     // carries the 90-day round-age budget.
-    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, { key: 'seed-meta:displacement:idmc-idu', maxStaleMin: 2880, minRecordCount: 500 }, { key: 'seed-meta:displacement:dtm', maxStaleMin: 2880, minRecordCount: 15, honorContentAge: true }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(/:v1$/, '')}`, maxStaleMin: 2880, honorContentAge: true, ...(source.id === 'odp' ? {} : { contentFreshnessActivationKey: `seed-activated:displacement:border-${source.id}` }) }))],
+    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }, { key: 'seed-meta:displacement:idmc-idu', maxStaleMin: 2880, minRecordCount: 500 }, { key: 'seed-meta:displacement:dtm', maxStaleMin: 2880, minRecordCount: 15, honorContentAge: true }, ...CROSS_BORDER_SOURCES.map(source => ({ key: `seed-meta:${source.key.replace(CACHE_TOOLS_RE, '')}`, maxStaleMin: 2880, honorContentAge: true, ...(source.id === 'odp' ? {} : { contentFreshnessActivationKey: `seed-activated:displacement:border-${source.id}` }) }))],
     // Audit miss: handler uses cachedFetchJson with a year-suffixed key the
     // audit's regex couldn't statically resolve. The op IS covered by this
     // tool — same underlying displacement:summary:v1:<year> cache.

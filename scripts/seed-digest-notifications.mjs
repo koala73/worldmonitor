@@ -22,6 +22,21 @@ import {
 } from './_digest-markdown.mjs';
 import { loadEnvFile } from './_env-file.mjs';
 
+const WHITESPACE_RE = /\s+/g;
+const DIGEST_SIGNAL_TEXT_RE = /[^a-z0-9\s]/g;
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+const FINAL_LOG_RE = /clusters=(\d+) /;
+const TRIMMED_RE = /\s+\S*$/;
+const OUT_RE = /<[^>]*$/;
+const LINK_OPENS_RE = /<a\s/g;
+const LINK_CLOSES_RE = /<\/a>/g;
+const TELEGRAM_SAFE_URL_RE = /&/g;
+const TELEGRAM_SAFE_URL_RE_2 = /</g;
+const TELEGRAM_SAFE_URL_RE_3 = />/g;
+const TELEGRAM_SAFE_URL_RE_4 = /"/g;
+const SLACK_SAFE_URL_RE = /[<>|]/g;
+
+
 loadEnvFile(import.meta.url);
 
 const require = createRequire(import.meta.url);
@@ -146,7 +161,7 @@ const EPHEMERAL_LIVE_LOG_TITLE_SAMPLE_LIMIT = 5;
 const EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS = 160;
 
 function compactDroppedEphemeralLiveTitle(title) {
-  const compact = String(title ?? '').replace(/\s+/g, ' ').trim();
+  const compact = String(title ?? '').replace(WHITESPACE_RE, ' ').trim();
   if (!compact) return '<missing title>';
   return compact.length > EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS
     ? `${compact.slice(0, EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS - 3)}...`
@@ -278,7 +293,7 @@ const BRIEF_WHY_MATTERS_ENDPOINT_URL =
  * would be a cleaner home if more surfaces adopt this check.
  */
 function normalizeForDescriptionEquality(s) {
-  return String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return String(s ?? '').toLowerCase().replace(WHITESPACE_RE, ' ').trim();
 }
 
 /**
@@ -446,7 +461,7 @@ async function upstashPipeline(commands) {
 }
 
 function compactDigestLastRunReason(reason) {
-  return String(reason ?? 'unknown').replace(/\s+/g, ' ').trim().slice(0, 240);
+  return String(reason ?? 'unknown').replace(WHITESPACE_RE, ' ').trim().slice(0, 240);
 }
 
 async function writeDigestLastRunMeta({
@@ -651,7 +666,7 @@ const DIGEST_FLASHPOINT_KEYWORDS = DIGEST_DIPLOMACY_DATA.flashpointKeywords;
 const DIGEST_DIPLOMACY_FLASHPOINT_PAIRS = DIGEST_DIPLOMACY_DATA.diplomacyFlashpointPairs;
 
 function digestSignalText(text) {
-  return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(text || '').toLowerCase().replace(DIGEST_SIGNAL_TEXT_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 // Word-start containment in digest-normalized text. Mirrors
@@ -660,7 +675,7 @@ function digestSignalText(text) {
 // 'iranian' (demonym preserved). PR #3909 review (P2).
 function digestContainsKeywordToken(text, kw) {
   if (!kw) return false;
-  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = kw.replace(ESCAPED_RE, '\\$&');
   return new RegExp(`(^|\\s)${escaped}`).test(text);
 }
 
@@ -1050,7 +1065,7 @@ async function buildDigest(rule, windowStartMs) {
     const finalLog =
       shouldGroupTopics && !topicErr
         ? logSummary.replace(
-            /clusters=(\d+) /,
+            FINAL_LOG_RE,
             `clusters=$1 topics=${topicCount} `,
           )
         : logSummary;
@@ -1108,7 +1123,7 @@ function formatDigest(stories, nowMs, target = 'plain') {
       // the plain-text email terse. Empty \u2192 no context line (R6).
       if (typeof item.description === 'string' && item.description.length > 0) {
         const trimmed = item.description.length > 200
-          ? item.description.slice(0, 200).replace(/\s+\S*$/, '') + '\u2026'
+          ? item.description.slice(0, 200).replace(TRIMMED_RE, '') + '\u2026'
           : item.description;
         lines.push(`    ${esc(trimmed)}`);
       }
@@ -1166,15 +1181,15 @@ async function deactivateChannel(userId, channelType) {
 const TELEGRAM_MAX_LEN = 4096;
 
 function sanitizeTelegramHtml(html) {
-  let out = html.replace(/<[^>]*$/, '');
+  let out = html.replace(OUT_RE, '');
   for (const tag of ['b', 'i', 'u', 's', 'code', 'pre']) {
     const opens = (out.match(new RegExp(`<${tag}>`, 'g')) || []).length;
     const closes = (out.match(new RegExp(`</${tag}>`, 'g')) || []).length;
     for (let i = closes; i < opens; i++) out += `</${tag}>`;
   }
   // Digest titles are <a href> links (#9214); a cut inside one must close it.
-  const linkOpens = (out.match(/<a\s/g) || []).length;
-  const linkCloses = (out.match(/<\/a>/g) || []).length;
+  const linkOpens = (out.match(LINK_OPENS_RE) || []).length;
+  const linkCloses = (out.match(LINK_CLOSES_RE) || []).length;
   for (let i = linkCloses; i < linkOpens; i++) out += '</a>';
   return out;
 }
@@ -1498,13 +1513,13 @@ function buildChannelBodies(storyLists, aiSummary, magazineUrl) {
   // the email button. Each target has different metacharacter rules.
   const telegramSafeUrl = magazineUrl
     ? String(magazineUrl)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
+        .replace(TELEGRAM_SAFE_URL_RE, '&amp;')
+        .replace(TELEGRAM_SAFE_URL_RE_2, '&lt;')
+        .replace(TELEGRAM_SAFE_URL_RE_3, '&gt;')
+        .replace(TELEGRAM_SAFE_URL_RE_4, '&quot;')
     : '';
   const slackSafeUrl = magazineUrl
-    ? String(magazineUrl).replace(/[<>|]/g, '')
+    ? String(magazineUrl).replace(SLACK_SAFE_URL_RE, '')
     : '';
   const briefFooterPlain = magazineUrl
     ? `\n\n${DIVIDER}\n\n📖 Open your WorldMonitor Brief magazine:\n${magazineUrl}`

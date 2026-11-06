@@ -1,5 +1,8 @@
 import { RpcValidationError } from './billing-denial';
 
+const MS_RE = /^\d+$/;
+
+
 export type GeoArea =
   | { kind: 'bbox'; swLat: number; swLon: number; neLat: number; neLon: number }
   | { kind: 'radius'; lat: number; lon: number; radiusKm: number };
@@ -68,7 +71,7 @@ export function locationPoint(row: Row): Point | null {
 // so a non-positive instant is unknown time, not 1970.
 export function epochMs(value: unknown): number | null {
   const ms = typeof value === 'number' ? value
-    : typeof value === 'string' ? (/^\d+$/.test(value.trim()) ? Number(value) : Date.parse(value)) : Number.NaN;
+    : typeof value === 'string' ? (MS_RE.test(value.trim()) ? Number(value) : Date.parse(value)) : Number.NaN;
   return Number.isFinite(ms) && ms > 0 ? ms : null;
 }
 

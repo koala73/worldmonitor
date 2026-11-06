@@ -25,6 +25,9 @@ import {
   latestCpiWindow,
 } from './_world-cpi-shared.mjs';
 
+const ESTAT_CPI_PERIOD_RE = /^(\d{4})00(\d{2})\d{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const ESTAT_CPI_KEY = 'economic:world-cpi:estat:v1';
@@ -45,7 +48,7 @@ const FETCH_TIMEOUT_MS = 90_000;
  *   '2025100000' -> undefined   (fiscal year, month `00`)
  */
 export function estatCpiPeriod(code) {
-  const match = /^(\d{4})00(\d{2})\d{2}$/.exec(String(code ?? ''));
+  const match = ESTAT_CPI_PERIOD_RE.exec(String(code ?? ''));
   if (!match) return undefined;
   const month = Number(match[2]);
   if (month < 1 || month > 12) return undefined;

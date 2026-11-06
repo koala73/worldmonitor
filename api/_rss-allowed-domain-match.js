@@ -21,6 +21,9 @@
 
 import RSS_ALLOWED_DOMAINS from './_rss-allowed-domains.js';
 
+const BARE_RE = /^www\./;
+
+
 // The www-tolerant candidate forms for a hostname: exact, bare (leading www.
 // stripped), and www-prefixed. Any host-set membership test that must treat the
 // apex and www. forms as equivalent should test all three. Shared so the RSS
@@ -30,7 +33,7 @@ import RSS_ALLOWED_DOMAINS from './_rss-allowed-domains.js';
 // Vercel edge IP the relay routing exists specifically to avoid.
 export function hostMatchForms(hostname) {
   if (typeof hostname !== 'string' || hostname.length === 0) return [];
-  const bare = hostname.replace(/^www\./, '');
+  const bare = hostname.replace(BARE_RE, '');
   const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
   return [...new Set([hostname, bare, withWww])];
 }

@@ -5,6 +5,11 @@ import type { SummarizationResult } from './summarization';
 import { effectivePubDateMs } from './feed-date';
 import { withTimeout } from '@/utils/with-timeout';
 
+const SANITIZE_CACHE_KEY_PART_RE = /[^a-z0-9/_-]+/gi;
+const RAW_RE = /[^a-z0-9]+/gi;
+const MATCHES_MARKET_HEADLINE_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 /**
  * Upper bound on the LLM summarization step. The full chain
  * (newsClient.summarizeArticle → Vercel function → OpenRouter) has
@@ -198,7 +203,7 @@ function formatTitleDate(date: Date, timezone: string): string {
 }
 
 function sanitizeCacheKeyPart(value: string): string {
-  return value.replace(/[^a-z0-9/_-]+/gi, '-').toLowerCase();
+  return value.replace(SANITIZE_CACHE_KEY_PART_RE, '-').toLowerCase();
 }
 
 function getCacheKey(timezone: string): string {
@@ -213,7 +218,7 @@ function getSymbolTokens(item: Pick<MarketData, 'symbol' | 'display' | 'name'>):
   const raw = [
     item.symbol,
     item.display,
-    ...item.name.toLowerCase().split(/[^a-z0-9]+/gi),
+    ...item.name.toLowerCase().split(RAW_RE),
   ];
   const out: string[] = [];
   const seen = new Set<string>();
@@ -230,7 +235,7 @@ function matchesMarketHeadline(market: Pick<MarketData, 'symbol' | 'display' | '
   const normalizedTitle = title.toLowerCase();
   return getSymbolTokens(market).some((token) => {
     if (token.length <= 4) {
-      return new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(normalizedTitle);
+      return new RegExp(`\\b${token.replace(MATCHES_MARKET_HEADLINE_RE, '\\$&')}\\b`).test(normalizedTitle);
     }
     return normalizedTitle.includes(token);
   });

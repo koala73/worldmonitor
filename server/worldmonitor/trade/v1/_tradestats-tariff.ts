@@ -19,6 +19,17 @@ import { CHROME_UA } from '../../../_shared/constants';
 import UN_TO_ISO2 from '../../../../shared/un-to-iso2.json';
 import ISO2_TO_ISO3 from '../../../../shared/iso2-to-iso3.json';
 
+const PARSE_TRADESTATS_TARIFF_RE = /<Series\b([^>]*)>([\s\S]*?)<\/Series>/g;
+const INDICATOR_RE = /\bINDICATOR="([^"]*)"/;
+const PARSE_TRADESTATS_TARIFF_RE_2 = /<Obs\b([^>]*?)\/?>/g;
+const YEAR_RE = /\bTIME_PERIOD="(\d{4})"/;
+const VALUE_RE = /\bOBS_VALUE="([^"]*)"/;
+const FETCH_SERIES_RE = /NoRecordsFound/i;
+const FETCH_SERIES_RE_2 = /WITSAPIError/i;
+const FETCH_SERIES_RE_3 = /<message:StructureSpecificData\b/;
+const FETCH_SERIES_RE_4 = /<\/message:StructureSpecificData>\s*$/;
+
+
 export const TRADESTATS_TARIFF_BASE = 'https://wits.worldbank.org/API/V1/SDMX/V21/datasource/tradestats-tariff';
 export const TRADESTATS_SOURCE = 'UNCTAD TRAINS via World Bank WITS';
 export const TRADESTATS_KEY_PREFIX = 'trade:wits:tradestats-tariff:v1';
@@ -113,13 +124,13 @@ export interface TradestatsSeries {
  */
 export function parseTradestatsTariff(xml: string): TradestatsPoint[] {
   const byYear = new Map<number, { simple?: number; weighted?: number }>();
-  for (const series of xml.matchAll(/<Series\b([^>]*)>([\s\S]*?)<\/Series>/g)) {
-    const indicator = /\bINDICATOR="([^"]*)"/.exec(series[1]!)?.[1];
+  for (const series of xml.matchAll(PARSE_TRADESTATS_TARIFF_RE)) {
+    const indicator = INDICATOR_RE.exec(series[1]!)?.[1];
     const field = indicator === SIMPLE_INDICATOR ? 'simple' : indicator === WEIGHTED_INDICATOR ? 'weighted' : null;
     if (!field) continue;
-    for (const obs of series[2]!.matchAll(/<Obs\b([^>]*?)\/?>/g)) {
-      const year = Number.parseInt(/\bTIME_PERIOD="(\d{4})"/.exec(obs[1]!)?.[1] ?? '', 10);
-      const value = Number.parseFloat(/\bOBS_VALUE="([^"]*)"/.exec(obs[1]!)?.[1] ?? '');
+    for (const obs of series[2]!.matchAll(PARSE_TRADESTATS_TARIFF_RE_2)) {
+      const year = Number.parseInt(YEAR_RE.exec(obs[1]!)?.[1] ?? '', 10);
+      const value = Number.parseFloat(VALUE_RE.exec(obs[1]!)?.[1] ?? '');
       if (!Number.isFinite(year) || !Number.isFinite(value)) continue;
       const entry = byYear.get(year) ?? {};
       entry[field] = value;
@@ -160,8 +171,8 @@ async function fetchSeries(reporter: string, partner: string, group: string): Pr
     });
     const body = await res.text();
     const fetchedAt = new Date().toISOString();
-    if (res.status === 404 && /NoRecordsFound/i.test(body)) return { points: [], fetchedAt };
-    if (res.status >= 300 && res.status < 400 && /WITSAPIError/i.test(res.headers.get('location') ?? body)) {
+    if (res.status === 404 && FETCH_SERIES_RE.test(body)) return { points: [], fetchedAt };
+    if (res.status >= 300 && res.status < 400 && FETCH_SERIES_RE_2.test(res.headers.get('location') ?? body)) {
       return { points: [], fetchedAt };
     }
     if (!res.ok) {
@@ -171,7 +182,7 @@ async function fetchSeries(reporter: string, partner: string, group: string): Pr
     // A body cut short would parse into a partial series (missing years, or
     // weighted rates read as 0) and be cached for a week; require the whole
     // document.
-    if (!/<message:StructureSpecificData\b/.test(body) || !/<\/message:StructureSpecificData>\s*$/.test(body)) {
+    if (!FETCH_SERIES_RE_3.test(body) || !FETCH_SERIES_RE_4.test(body)) {
       console.warn(`[wits] tradestats-tariff unexpected or truncated body ${reporter}/${partner}/${group}`);
       return null;
     }

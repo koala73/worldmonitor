@@ -7,6 +7,12 @@ import { CHROME_UA } from '../../../../_shared/constants';
 import { normalizeCountryToIso2 } from '../../../../_shared/country-normalize';
 import { IATA_RE } from '../_shared';
 
+const VALID_DATE_RE = /^\d{4}-\d{2}(?:-\d{2})?$/;
+const INVALID_FIELD_RE = /^[a-z]{2}$/;
+const IS_DAY_PRECISION_RE = /^\d{4}-\d{2}-\d{2}$/;
+const IS_MONTH_PRECISION_RE = /^\d{4}-\d{2}$/;
+
+
 const BASE_V2 = 'https://api.travelpayouts.com/v2/prices';
 const BASE_V3 = 'https://api.travelpayouts.com/v3';
 
@@ -30,7 +36,7 @@ const CURRENCIES = new Set(Intl.supportedValuesOf('currency').map(code => code.t
 
 function validDate(value: string): boolean {
     if (value === '') return true;
-    if (!/^\d{4}-\d{2}(?:-\d{2})?$/.test(value)) return false;
+    if (!VALID_DATE_RE.test(value)) return false;
     const date = value.length === 7 ? `${value}-01` : value;
     const parsed = new Date(`${date}T00:00:00Z`);
     return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
@@ -235,14 +241,14 @@ export async function searchPricesTravelpayouts(opts: {
         ['return_date', validDate(returnDate), 'Expected a YYYY-MM-DD date'],
         ['cabin', Object.prototype.hasOwnProperty.call(CABIN_CLASS_MAP, cabin), 'Unsupported cabin class'],
         ['currency', CURRENCIES.has(currency_), 'Unsupported currency'],
-        ['market', /^[a-z]{2}$/.test(market_) && Boolean(normalizeCountryToIso2(market_)), 'Expected a two-letter market country code'],
+        ['market', INVALID_FIELD_RE.test(market_) && Boolean(normalizeCountryToIso2(market_)), 'Expected a two-letter market country code'],
     ].find(([, valid]) => !valid) as [string, boolean, string] | undefined;
     if (invalidField) throw new ValidationError([{ field: invalidField[0], description: invalidField[2] }]);
     const now = Date.now();
     const tripClass = CABIN_CLASS_MAP[cabin]!;
 
-    const isDayPrecision = /^\d{4}-\d{2}-\d{2}$/.test(departureDate);
-    const isMonthPrecision = /^\d{4}-\d{2}$/.test(departureDate);
+    const isDayPrecision = IS_DAY_PRECISION_RE.test(departureDate);
+    const isMonthPrecision = IS_MONTH_PRECISION_RE.test(departureDate);
 
     let quotes: PriceQuote[] = [];
     let upstreamFailed = false;

@@ -40,6 +40,10 @@ import {
   computeStats,
 } from './docs-stats.mjs';
 
+const IS_TRUSTWORTHY_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const EXISTING_RE = /\d{4}-\d{2}-\d{2}/;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const AI_SEARCH_PATH = 'public/ai-search.md';
@@ -182,7 +186,7 @@ function withoutDates(text) {
  * claim a reconciliation that never happened.
  */
 export function isTrustworthyDate(value, today) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (!IS_TRUSTWORTHY_DATE_RE.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) return false;
   // Round-trip rejects overflow dates like 2026-02-31, which Date rolls over.
@@ -191,7 +195,7 @@ export function isTrustworthyDate(value, today) {
 }
 
 export function resolveReconciledAt({ current, candidate, today }) {
-  const existing = current.match(RECONCILED_RE)?.[0].match(/\d{4}-\d{2}-\d{2}/)?.[0];
+  const existing = current.match(RECONCILED_RE)?.[0].match(EXISTING_RE)?.[0];
   if (!existing || !isTrustworthyDate(existing, today)) return today;
   return withoutDates(candidate) === withoutDates(current) ? existing : today;
 }
@@ -226,7 +230,7 @@ export function buildAiSearchText({ rootDir = ROOT, today = todayUtc() } = {}) {
     if (!FACTS_RECONCILED_RE.test(withBlock)) {
       throw new Error(`${AI_SEARCH_PATH} must carry a "Facts reconciled: YYYY-MM-DD" line`);
     }
-    return withBlock.replace(FACTS_RECONCILED_RE, (line) => line.replace(/\d{4}-\d{2}-\d{2}/, reconciledAt));
+    return withBlock.replace(FACTS_RECONCILED_RE, (line) => line.replace(EXISTING_RE, reconciledAt));
   };
 
   return render(resolveReconciledAt({ current, candidate: render(today), today }));

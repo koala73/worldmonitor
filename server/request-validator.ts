@@ -9,6 +9,10 @@ import {
   GENERATED_REQUEST_TYPES,
 } from '../src/generated/server/request_validation';
 
+const DEFAULT_SCALAR_VALUE_RE = /^(?:s?fixed|s?int|uint)/;
+const VALIDATE_STRING_ENCODED_INT64_RE = /^-?\d+$/;
+
+
 export interface RequestFieldViolation {
   field: string;
   description: string;
@@ -93,7 +97,7 @@ function defaultScalarValue(rule: FieldRule): unknown {
   if (rule.kind === 'string') return '';
   if (rule.kind === 'double' || rule.kind === 'float') return 0;
   if (rule.kind === 'enum') return rule.enumValues?.[0];
-  if (/^(?:s?fixed|s?int|uint)/.test(rule.kind)) {
+  if (DEFAULT_SCALAR_VALUE_RE.test(rule.kind)) {
     return rule.kind === 'int64' && rule.int64Encoding !== 'number' ? '0' : 0;
   }
   return undefined;
@@ -248,7 +252,7 @@ function validateStringEncodedInt64(
   path: string,
   violations: RequestFieldViolation[],
 ): void {
-  if (typeof value !== 'string' || !/^-?\d+$/.test(value)) {
+  if (typeof value !== 'string' || !VALIDATE_STRING_ENCODED_INT64_RE.test(value)) {
     addViolation(violations, path, 'value must be a base-10 integer string');
     return;
   }

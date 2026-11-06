@@ -17,6 +17,11 @@ import filterParamContracts from '../../../../shared/openapi-filter-param-contra
 import { resolvePageSize } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
 
+const PATH_RE = /[?#]/;
+const SLUG_RE = /\/+$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const BOOTSTRAP_KEY = 'prediction:markets-bootstrap:v1';
 const COUNTRY_INDEX_KEY = 'prediction:markets-country-index:v1';
 const COUNTRY_CATEGORY_PREFIX = 'country:';
@@ -54,8 +59,8 @@ const DEGENERATE_MARKET_SLUGS = new Set(['undefined', 'null', 'nan', '']);
 function bootstrapMarketIdentity(market: BootstrapMarket): string {
   const url = String(market?.url ?? '').trim();
   if (url) {
-    const path = url.split(/[?#]/)[0] ?? '';
-    const slug = path.replace(/\/+$/, '').split('/').pop() ?? '';
+    const path = url.split(PATH_RE)[0] ?? '';
+    const slug = path.replace(SLUG_RE, '').split('/').pop() ?? '';
     if (!DEGENERATE_MARKET_SLUGS.has(slug.toLowerCase())) return `url:${url}`;
   }
   return `title:${String(market?.title ?? '').trim().toLowerCase()}`;
@@ -114,7 +119,7 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
       : '';
 
     if (isCountryCategory) {
-      if (!/^[A-Z]{2}$/.test(countryCode)) {
+      if (!COUNTRY_CODE_RE.test(countryCode)) {
         return { markets: [], pagination: undefined, fetchedAt: 0, dataAvailable: false };
       }
       const countryIndex = await getCachedJson(COUNTRY_INDEX_KEY, true) as CountryIndexData | null;

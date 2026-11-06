@@ -14,6 +14,33 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serialize } from './lib/openapi-codegen.mjs';
 
+const LOWER_CAMEL_RE = /_([a-z0-9])/g;
+const JOIN_OPEN_API_PATH_RE = /\/+$/;
+const JOIN_OPEN_API_PATH_RE_2 = /^\/+/;
+const MESSAGES_RE = /^message\s+(\w+)\s*\{(?:\s*\}|([\s\S]*?)^\})/gm;
+const DECLARED_RE = /^message\s+\w+/gm;
+const READ_PROTO_DEPRECATIONS_RE = /^[ \t]+message\s+\w+\s*\{/m;
+const READ_PROTO_DEPRECATIONS_RE_2 = /^\s*(?:repeated\s+)?(?:map<[^>]+>|[\w.]+)\s+(\w+)\s*=\s*\d+\s*\[([^\]]*\bdeprecated\s*=\s*true[^\]]*)\]\s*;/gm;
+const QUERY_NAME_RE = /\(sebuf\.http\.query\)\s*=\s*\{\s*name:\s*"([^"]+)"/;
+const SERVICE_CONFIG_RE = /\(sebuf\.http\.service_config\)\s*=\s*\{([\s\S]*?)\}/;
+const BASE_PATH_RE = /\bbase_path:\s*"([^"]+)"/;
+const READ_PROTO_DEPRECATIONS_RE_3 = /\brpc\s+(\w+)\s*\(\s*([\w.]+)\s*\)\s*returns\s*\([^)]*\)\s*\{([\s\S]*?)\n\s{2}\}/g;
+const READ_PROTO_DEPRECATIONS_RE_4 = /option\s+deprecated\s*=\s*true\s*;/;
+const PATH_RE = /path:\s*"([^"]+)"/;
+const ENSURE_YAML_FLAG_RE = /\S/;
+const PATH_MATCH_RE = /^ {4}(\/\S+):\s*$/;
+const INJECT_YAML_RE = /^\S/;
+const METHOD_MATCH_RE = /^ {8}([a-z]+):\s*$/;
+const OPERATION_MATCH_RE = /^ {12}operationId:\s*"?([^"]+)"?\s*$/;
+const PARAMETER_MATCH_RE = /^ {16}- name:\s*"?([^"]+)"?\s*$/;
+const SCHEMA_MATCH_RE = /^ {8}(\w+):\s*$/;
+const PROPERTY_MATCH_RE = /^ {16}(\w+):\s*$/;
+const INTERFACE_MATCH_RE = /^export interface (\w+) \{$/;
+const FIELD_MATCH_RE = /^ {2}(\w+)\??:/;
+const JSON_FILES_RE = /Service\.openapi\.json$/;
+const YAML_FILES_RE = /Service\.openapi\.yaml$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const protoDir = resolve(root, 'proto/worldmonitor');
@@ -31,13 +58,13 @@ function walkFiles(dir, predicate) {
 }
 
 function lowerCamel(name) {
-  return name.replace(/_([a-z0-9])/g, (_match, char) => char.toUpperCase());
+  return name.replace(LOWER_CAMEL_RE, (_match, char) => char.toUpperCase());
 }
 
 function joinOpenApiPath(basePath, rpcPath) {
   if (!basePath) return rpcPath;
   if (rpcPath === basePath || rpcPath.startsWith(basePath + '/')) return rpcPath;
-  return basePath.replace(/\/+$/, '') + '/' + rpcPath.replace(/^\/+/, '');
+  return basePath.replace(JOIN_OPEN_API_PATH_RE, '') + '/' + rpcPath.replace(JOIN_OPEN_API_PATH_RE_2, '');
 }
 
 function readProtoDeprecations() {
@@ -51,39 +78,39 @@ function readProtoDeprecations() {
     // Top-level message bodies end at a column-zero brace in this corpus. An
     // empty `message X {}` closes on its own line; without that branch its body
     // ran to the next message's brace and took that message's fields.
-    const messages = [...src.matchAll(/^message\s+(\w+)\s*\{(?:\s*\}|([\s\S]*?)^\})/gm)];
+    const messages = [...src.matchAll(MESSAGES_RE)];
     // A message shape this parser does not know (a one-line message with
     // fields, a nested message) would move a deprecation onto the wrong
     // schema silently, so a count mismatch stops the generator instead.
-    const declared = (src.match(/^message\s+\w+/gm) ?? []).length;
-    if (messages.length !== declared || /^[ \t]+message\s+\w+\s*\{/m.test(src)) {
+    const declared = (src.match(DECLARED_RE) ?? []).length;
+    if (messages.length !== declared || READ_PROTO_DEPRECATIONS_RE.test(src)) {
       throw new Error(`openapi-inject-deprecated: ${file} has a message shape this parser cannot attribute fields in (parsed ${messages.length} of ${declared} top-level messages, or a nested message); teach readProtoDeprecations that shape`);
     }
     for (const message of messages) {
       const [, messageName, body = ''] = message;
       const fields = new Map();
       for (const field of body.matchAll(
-        /^\s*(?:repeated\s+)?(?:map<[^>]+>|[\w.]+)\s+(\w+)\s*=\s*\d+\s*\[([^\]]*\bdeprecated\s*=\s*true[^\]]*)\]\s*;/gm,
+        READ_PROTO_DEPRECATIONS_RE_2,
       )) {
         const [, protoName, options] = field;
         const jsonName = lowerCamel(protoName);
-        const queryName = options.match(/\(sebuf\.http\.query\)\s*=\s*\{\s*name:\s*"([^"]+)"/)?.[1] ?? jsonName;
+        const queryName = options.match(QUERY_NAME_RE)?.[1] ?? jsonName;
         fields.set(jsonName, { queryName });
       }
       if (fields.size > 0) deprecatedFields.set(messageName, fields);
     }
 
     if (!file.endsWith('/service.proto')) continue;
-    const serviceConfig = src.match(/\(sebuf\.http\.service_config\)\s*=\s*\{([\s\S]*?)\}/)?.[1] ?? '';
-    const basePath = serviceConfig.match(/\bbase_path:\s*"([^"]+)"/)?.[1] ?? '';
+    const serviceConfig = src.match(SERVICE_CONFIG_RE)?.[1] ?? '';
+    const basePath = serviceConfig.match(BASE_PATH_RE)?.[1] ?? '';
     for (const rpc of src.matchAll(
-      /\brpc\s+(\w+)\s*\(\s*([\w.]+)\s*\)\s*returns\s*\([^)]*\)\s*\{([\s\S]*?)\n\s{2}\}/g,
+      READ_PROTO_DEPRECATIONS_RE_3,
     )) {
       const [, operationId, requestTypeRaw, body] = rpc;
       const requestType = requestTypeRaw.split('.').pop();
       requestByOperationId.set(operationId, requestType);
-      if (!/option\s+deprecated\s*=\s*true\s*;/.test(body)) continue;
-      const path = body.match(/path:\s*"([^"]+)"/)?.[1];
+      if (!READ_PROTO_DEPRECATIONS_RE_4.test(body)) continue;
+      const path = body.match(PATH_RE)?.[1];
       if (path) deprecatedPaths.add(joinOpenApiPath(basePath, path));
     }
   }
@@ -154,7 +181,7 @@ function injectJson(spec) {
 function ensureYamlFlag(lines, index, indent) {
   const flag = `${' '.repeat(indent)}deprecated: true`;
   for (let cursor = index + 1; cursor < lines.length; cursor++) {
-    if (lines[cursor].trim() && lines[cursor].search(/\S/) <= indent - 2) break;
+    if (lines[cursor].trim() && lines[cursor].search(ENSURE_YAML_FLAG_RE) <= indent - 2) break;
     if (lines[cursor].trim().startsWith('deprecated:')) {
       if (lines[cursor] === flag) return false;
       lines[cursor] = flag;
@@ -174,18 +201,18 @@ function injectYaml(text) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const pathMatch = line.match(/^ {4}(\/\S+):\s*$/);
+    const pathMatch = line.match(PATH_MATCH_RE);
     if (pathMatch) {
       currentPath = pathMatch[1];
       currentOperationId = '';
       continue;
     }
-    if (/^\S/.test(line)) {
+    if (INJECT_YAML_RE.test(line)) {
       currentPath = null;
       currentOperationId = '';
     }
 
-    const methodMatch = line.match(/^ {8}([a-z]+):\s*$/);
+    const methodMatch = line.match(METHOD_MATCH_RE);
     if (methodMatch && currentPath && HTTP_METHODS.has(methodMatch[1])) {
       if (DEPRECATED_PATHS.has(currentPath)) {
         changed = ensureYamlFlag(lines, i, 12) || changed;
@@ -194,24 +221,24 @@ function injectYaml(text) {
       continue;
     }
 
-    const operationMatch = line.match(/^ {12}operationId:\s*"?([^"]+)"?\s*$/);
+    const operationMatch = line.match(OPERATION_MATCH_RE);
     if (operationMatch) {
       currentOperationId = operationMatch[1];
       continue;
     }
-    const parameterMatch = line.match(/^ {16}- name:\s*"?([^"]+)"?\s*$/);
+    const parameterMatch = line.match(PARAMETER_MATCH_RE);
     if (parameterMatch && deprecatedQueryNames(currentOperationId).has(parameterMatch[1])) {
       changed = ensureYamlFlag(lines, i, 18) || changed;
       if (lines[i + 1]?.trim() === 'deprecated: true') i++;
       continue;
     }
 
-    const schemaMatch = line.match(/^ {8}(\w+):\s*$/);
+    const schemaMatch = line.match(SCHEMA_MATCH_RE);
     if (schemaMatch) {
       currentSchema = schemaMatch[1];
       continue;
     }
-    const propertyMatch = line.match(/^ {16}(\w+):\s*$/);
+    const propertyMatch = line.match(PROPERTY_MATCH_RE);
     if (propertyMatch && deprecatedFieldsForSchema(currentSchema)?.has(propertyMatch[1])) {
       changed = ensureYamlFlag(lines, i, 20) || changed;
       if (lines[i + 1]?.trim() === 'deprecated: true') i++;
@@ -225,7 +252,7 @@ function injectTypeScript(text) {
   let changed = false;
   let currentInterface = '';
   for (let i = 0; i < lines.length; i++) {
-    const interfaceMatch = lines[i].match(/^export interface (\w+) \{$/);
+    const interfaceMatch = lines[i].match(INTERFACE_MATCH_RE);
     if (interfaceMatch) {
       currentInterface = interfaceMatch[1];
       continue;
@@ -234,7 +261,7 @@ function injectTypeScript(text) {
       currentInterface = '';
       continue;
     }
-    const fieldMatch = lines[i].match(/^ {2}(\w+)\??:/);
+    const fieldMatch = lines[i].match(FIELD_MATCH_RE);
     if (!fieldMatch || !DEPRECATED_FIELDS.get(currentInterface)?.has(fieldMatch[1])) continue;
     if (lines[i - 1] !== '  /** @deprecated */') {
       lines.splice(i, 0, '  /** @deprecated */');
@@ -245,9 +272,9 @@ function injectTypeScript(text) {
   return { text: lines.join('\n'), changed };
 }
 
-const jsonFiles = readdirSync(apiDir).filter(file => /Service\.openapi\.json$/.test(file)).sort();
+const jsonFiles = readdirSync(apiDir).filter(file => JSON_FILES_RE.test(file)).sort();
 const yamlFiles = readdirSync(apiDir)
-  .filter(file => /Service\.openapi\.yaml$/.test(file) || file === 'worldmonitor.openapi.yaml')
+  .filter(file => YAML_FILES_RE.test(file) || file === 'worldmonitor.openapi.yaml')
   .sort();
 const tsFiles = [
   ...walkFiles(resolve(root, 'src/generated/client'), name => name.endsWith('.ts')),

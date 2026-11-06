@@ -8,6 +8,11 @@
 // are decoded to their embedded IPv4 and run through the IPv4 blocklist so a
 // private/reserved v4 cannot be smuggled through an IPv6 wrapper.
 
+const DOT_MATCH_RE = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/;
+const PARSE_GROUPS_RE = /^[0-9a-f]{1,4}$/;
+const NORMALIZED_RE = /^\[|\]$/g;
+const IS_BLOCKED_RESOLVED_ADDRESS_RE = /^\d+\.\d+\.\d+\.\d+$/;
+
 function isBlockedIpv4(a: number, b: number, c: number): boolean {
   if (a === 0) return true; // 0.0.0.0/8
   if (a === 10) return true; // 10.0.0.0/8
@@ -51,7 +56,7 @@ function expandIpv6(input: string): number[] | null {
   if (!s.includes(':')) return null;
 
   // Convert a trailing dotted-quad IPv4 suffix into two hextets.
-  const dotMatch = s.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  const dotMatch = s.match(DOT_MATCH_RE);
   if (dotMatch) {
     const dotted = dotMatch[1];
     if (dotted === undefined) return null; // unreachable (capture group), satisfies TS
@@ -72,7 +77,7 @@ function expandIpv6(input: string): number[] | null {
     if (part === '') return [];
     const out: number[] = [];
     for (const g of part.split(':')) {
-      if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
+      if (!PARSE_GROUPS_RE.test(g)) return null;
       out.push(parseInt(g, 16));
     }
     return out;
@@ -93,10 +98,10 @@ function expandIpv6(input: string): number[] | null {
 }
 
 export function isBlockedResolvedAddress(address: string): boolean {
-  const normalized = address.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const normalized = address.trim().toLowerCase().replace(NORMALIZED_RE, '');
 
   // Literal dotted IPv4.
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
+  if (IS_BLOCKED_RESOLVED_ADDRESS_RE.test(normalized)) {
     return isBlockedDottedIpv4(normalized);
   }
 

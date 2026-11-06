@@ -16,6 +16,9 @@ import {
   type ScorecardSourceState,
 } from './_types';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const FIVE_FACTOR_SCORECARD_KEY = 'scorecard:five-factor:v1';
 export const FIVE_FACTOR_SCORECARD_READ_MODEL_KEY = 'scorecard:five-factor:v1:read-model';
 export const FIVE_FACTOR_SCORECARD_READ_MODEL_METADATA_FIELD = 'metadata';
@@ -66,7 +69,7 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
 }
 
 function isIso2(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Z]{2}$/.test(value);
+  return typeof value === 'string' && COUNTRY_CODE_RE.test(value);
 }
 
 function isFiniteInRange(value: unknown, minimum: number, maximum: number): value is number {

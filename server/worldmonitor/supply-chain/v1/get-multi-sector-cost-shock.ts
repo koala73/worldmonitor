@@ -21,6 +21,9 @@ import {
   type SeededProduct,
 } from './_multi-sector-shock';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 interface CountryProductsCache {
   iso2: string;
   products?: SeededProduct[];
@@ -76,7 +79,7 @@ export async function getMultiSectorCostShock(
   // PRO-gate deny path (intentional contract shift), not for caller bugs
   // (malformed or missing fields). Distinguishing the two matters for external
   // API consumers, tests, and silent-failure detection in logs.
-  if (!/^[A-Z]{2}$/.test(iso2)) {
+  if (!COUNTRY_CODE_RE.test(iso2)) {
     throw new ValidationError([{ field: 'iso2', description: 'iso2 must be a 2-letter uppercase ISO country code' }]);
   }
   if (!chokepointId) {

@@ -1,11 +1,16 @@
 import type { CanadaRoadRecord } from './canada-roads-core';
 
+const NO_REPORT_RE = /^no[\s-]+(?:data|reports?)[.!]?$/i;
+const NO_VALUE_RE = /^(?:no[\s-]+(?:data|reports?)|none|unknown|n\/a)?[.!]?$/i;
+const GENERIC_TYPE_RE = /^(?:event|alert|condition|road[\s_-]*conditions?)$/i;
+
+
 export function isReportableCanadaRoad(record: CanadaRoadRecord): boolean {
   if (record.isFullClosure) return true;
 
-  const noReport = /^no[\s-]+(?:data|reports?)[.!]?$/i;
-  const noValue = /^(?:no[\s-]+(?:data|reports?)|none|unknown|n\/a)?[.!]?$/i;
-  const genericType = /^(?:event|alert|condition|road[\s_-]*conditions?)$/i;
+  const noReport = NO_REPORT_RE;
+  const noValue = NO_VALUE_RE;
+  const genericType = GENERIC_TYPE_RE;
   const text = (value?: string | null) => (value || '').trim();
   const headline = text(record.headline).toLowerCase() === text(record.roadwayName).toLowerCase()
     ? '' : record.headline;

@@ -68,6 +68,10 @@ import { CURRENT_FLOWS_WINDOW, PRE_CRISIS_WINDOW } from '../../../../shared/horm
 import { HORMUZ_BYPASS_AS_OF, HORMUZ_BYPASS_BY_EXPORTER, lostShareAfterBypass } from './_hormuz-bypass';
 import type { BypassScenario } from './_hormuz-bypass';
 
+const IEA_MONTH_RE = /^\d{4}-\d{2}$/;
+const COMPUTE_ENERGY_SHOCK_SCENARIO_RE = /^Monthly .+ crude origin data is carried forward/;
+
+
 const BYPASS_EXPORTER_NAMES: Record<string, string> = { SA: 'Saudi Arabia', AE: 'UAE', IQ: 'Iraq' };
 // Round to the reported 0.1 kbd first so prose and fields agree (2209.47 -> 2209.5 -> 2,210).
 const fmtKbd = (v: number): string => Math.round(Math.round(v * 10) / 10).toLocaleString('en-US');
@@ -671,7 +675,7 @@ export async function computeEnergyShockScenario(
   // exporter (Korea); they stand in only when JODI has no eligible value for
   // that year (9+ complete months, net importing). The year is the one before
   // IEA's own data month, which can lag or lead JODI's.
-  const ieaMonth = typeof ieaStocks?.dataMonth === 'string' && /^\d{4}-\d{2}$/.test(ieaStocks.dataMonth) ? ieaStocks.dataMonth : null;
+  const ieaMonth = typeof ieaStocks?.dataMonth === 'string' && IEA_MONTH_RE.test(ieaStocks.dataMonth) ? ieaStocks.dataMonth : null;
   const ieaBasisYear = ieaMonth ? Number(ieaMonth.slice(0, 4)) - 1 : null;
   const netOilImports = parseNetOilImports(jodiOil?.netOilImports, ieaBasisYear);
   const ieaBasisKbd = netOilImports?.kbd ?? crudeImportsKbd;
@@ -875,7 +879,7 @@ export async function computeEnergyShockScenario(
       !l.startsWith('Hormuz bypass') &&
       !l.startsWith('Oil stocks reported to JODI') &&
       !l.startsWith('Oil stock cover not modeled') &&
-      !/^Monthly .+ crude origin data is carried forward/.test(l) &&
+      !COMPUTE_ENERGY_SHOCK_SCENARIO_RE.test(l) &&
       !l.includes('IEA strategic stock') &&
       !l.includes('PortWatch flow data unavailable, using historical baseline multipliers')
     );

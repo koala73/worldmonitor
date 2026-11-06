@@ -17,6 +17,17 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+const NORMALIZED_RE = /\.git$/;
+const PARSE_GIT_HUB_REMOTE_RE = /^(?:https?:\/\/(?:[^/@]+@)?github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/]+)\/([^/]+)$/;
+const REDACT_SECRETS_RE = /(https?:\/\/)[^/@\s]+@/gi;
+const PARSE_PR_NUMBER_RE = /^\d+$/;
+const PARSE_PR_NUMBER_RE_2 = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/;
+const RESOLVE_PR_FROM_HEAD_RE = /No commit found for SHA|HTTP 422/i;
+const WHITESPACE_RE = /\s+/;
+const REPO_KEY_RE = /[^A-Za-z0-9_.-]/g;
+const READ_CACHED_SNAPSHOT_RE = /^[0-9a-f]{40}$/;
+
+
 const SCHEMA = 'worldmonitor-agent-pr-snapshot/v1';
 const REFRESH_PHASES = new Set(['task-start', 'pre-push', 'final']);
 const COMMAND_TIMEOUT_MS = 30_000;
@@ -235,9 +246,9 @@ function probed(runner, file, args, options = {}) {
 }
 
 export function parseGitHubRemote(remoteUrl) {
-  const normalized = remoteUrl.trim().replace(/\.git$/, '');
+  const normalized = remoteUrl.trim().replace(NORMALIZED_RE, '');
   const match = normalized.match(
-    /^(?:https?:\/\/(?:[^/@]+@)?github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/]+)\/([^/]+)$/,
+    PARSE_GIT_HUB_REMOTE_RE,
   );
   if (!match) throw new Error('origin is not a supported GitHub repository');
   return {
@@ -249,13 +260,13 @@ export function parseGitHubRemote(remoteUrl) {
 }
 
 function redactSecrets(value) {
-  return value.replace(/(https?:\/\/)[^/@\s]+@/gi, '$1[redacted]@');
+  return value.replace(REDACT_SECRETS_RE, '$1[redacted]@');
 }
 
 export function parsePrNumber(value, expectedRepo = '') {
   const input = String(value).trim();
-  if (/^\d+$/.test(input)) return Number.parseInt(input, 10);
-  const match = input.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/);
+  if (PARSE_PR_NUMBER_RE.test(input)) return Number.parseInt(input, 10);
+  const match = input.match(PARSE_PR_NUMBER_RE_2);
   if (match) {
     const referencedRepo = `${match[1]}/${match[2]}`;
     if (expectedRepo && referencedRepo.toLowerCase() !== expectedRepo.toLowerCase()) {
@@ -290,7 +301,7 @@ function resolvePrFromHead({ ghBin, repo, rootDir, runner }) {
   );
   if (result.status !== 0) {
     const detail = redactSecrets(String(result.stderr || result.stdout || '').trim());
-    if (/No commit found for SHA|HTTP 422/i.test(detail)) return null;
+    if (RESOLVE_PR_FROM_HEAD_RE.test(detail)) return null;
     throw new Error(`${ghBin} commit PR lookup failed${detail ? `: ${detail}` : ''}`);
   }
   let pulls;
@@ -436,7 +447,7 @@ function remoteState({ pr, repo, rootDir, runner }) {
         { cwd: rootDir, timeout: FETCH_TIMEOUT_MS },
       )
     : { error: null, value: '' };
-  const remoteHeadOid = remoteHead.value.split(/\s+/)[0] || null;
+  const remoteHeadOid = remoteHead.value.split(WHITESPACE_RE)[0] || null;
   const localBranch = optional(runner, 'git', ['branch', '--show-current'], { cwd: rootDir }) || null;
   const upstream = optional(
     runner,
@@ -485,7 +496,7 @@ function baseState({ pr, rootDir, runner }) {
 }
 
 function snapshotPaths(cacheDir, repoName, prNumber, headOid = '') {
-  const repoKey = repoName.replace(/[^A-Za-z0-9_.-]/g, '_');
+  const repoKey = repoName.replace(REPO_KEY_RE, '_');
   const prDir = resolve(cacheDir, repoKey, `pr-${prNumber}`);
   return {
     headPath: headOid ? join(prDir, 'heads', `${headOid}.json`) : '',
@@ -661,7 +672,7 @@ export function readCachedSnapshot({
   const paths = snapshotPaths(cacheDir, repoName, prNumber);
   const latest = readJson(cacheDir, paths.latestPath);
   if (!latest) return null;
-  if (!/^[0-9a-f]{40}$/.test(latest.headOid || '')) {
+  if (!READ_CACHED_SNAPSHOT_RE.test(latest.headOid || '')) {
     throw new Error(`Invalid cached head OID in ${paths.latestPath}`);
   }
   const headPath = snapshotPaths(cacheDir, repoName, prNumber, latest.headOid).headPath;

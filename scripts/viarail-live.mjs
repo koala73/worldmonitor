@@ -8,6 +8,9 @@
  */
 import { CHROME_UA } from './_seed-utils.mjs';
 
+const FETCH_VIA_RAIL_LIVE_RE = /redirect/i;
+
+
 export const VIA_RAIL_LIVE_URL = 'https://tsimobile.viarail.ca/data/allData.json';
 export const VIA_RAIL_LIVE_HOST = 'tsimobile.viarail.ca';
 export const VIA_RAIL_LIVE_ALLOWED_HOSTS = Object.freeze([VIA_RAIL_LIVE_HOST]);
@@ -266,7 +269,7 @@ export async function fetchViaRailLive({
     });
   } catch (err) {
     const message = `${err?.message || err}`;
-    if (/redirect/i.test(message) || err?.cause?.code === 'UNDICI_REDIRECT') {
+    if (FETCH_VIA_RAIL_LIVE_RE.test(message) || err?.cause?.code === 'UNDICI_REDIRECT') {
       return { ok: false, sourceState: 'stale', reason: 'redirect_rejected' };
     }
     return {

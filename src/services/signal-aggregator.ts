@@ -16,6 +16,9 @@ import type { RadiationObservation } from './radiation';
 import { getCountryAtCoordinates, getCountryNameByCode, nameToCountryCode, ME_STRIKE_BOUNDS, resolveCountryFromBounds } from './country-geometry';
 import countryNames from '../../shared/country-names.json';
 
+const NORMALIZE_COUNTRY_CODE_RE = /^[a-z]{2}$/i;
+
+
 export const SIGNAL_AGGREGATOR_MAX_SIGNALS = 1000;
 
 export type SignalType =
@@ -105,7 +108,7 @@ function normalizeCountryCode(country: string): string {
   if (!trimmed) return '';
   const fromCatalog = nameToCountryCode(trimmed) ?? fallbackCountryCodes.get(trimmed.toLowerCase());
   if (fromCatalog) return fromCatalog;
-  if (/^[a-z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
+  if (NORMALIZE_COUNTRY_CODE_RE.test(trimmed)) return trimmed.toUpperCase();
   return '';
 }
 

@@ -12,6 +12,9 @@ import { readCachedJson } from '../../../_shared/redis';
 import type { CacheReadResult } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const INDUSTRIAL_BASE_KEY = 'military:industrial-base:v1';
 const ARMS_SUPPLIERS_KEY = 'military:arms-suppliers:v1';
 type CacheReader = (key: string, raw?: boolean) => Promise<CacheReadResult>;
@@ -22,7 +25,7 @@ export async function getDefenseIndustrialBaseWithReader(
   reader: CacheReader,
 ): Promise<GetDefenseIndustrialBaseResponse> {
   const countryCode = String(req.countryCode || '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(countryCode)) {
+  if (!COUNTRY_CODE_RE.test(countryCode)) {
     return markNoStoreFallbackResponse(ctx.request, buildDefenseIndustrialResponse(countryCode, null, null));
   }
   try {

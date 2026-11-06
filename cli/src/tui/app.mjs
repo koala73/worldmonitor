@@ -11,6 +11,9 @@ import { tickerSegments } from './data/select.mjs';
 import { drawDetail } from './ui/detail.mjs';
 import { openExternal } from './video.mjs';
 
+const HANDLE_EVENT_RE = /^[0-9]$/;
+
+
 const HELP_LINES = [
   'Tab / Shift+Tab   next / previous view        1..9, 0   jump to a view (Alt+1.. after the tenth)',
   '← →  or  h l      move between panes          ↑ ↓ j k   move in a list',
@@ -258,7 +261,7 @@ export class App {
       default:
         break;
     }
-    if (/^[0-9]$/.test(ev.name) && ev.ch) {
+    if (HANDLE_EVENT_RE.test(ev.name) && ev.ch) {
       // 1..9, 0 reach the first ten views; Alt+1..9 the ones after.
       const n = Number(ev.name);
       const idx = ev.alt ? (n ? 9 + n : -1) : n === 0 ? 9 : n - 1;

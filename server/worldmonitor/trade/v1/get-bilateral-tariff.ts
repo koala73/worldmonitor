@@ -43,6 +43,25 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import { isCallerPremium } from '../../../_shared/premium-check';
 
+const DECODE_XML_RE = /&lt;/g;
+const DECODE_XML_RE_2 = /&gt;/g;
+const DECODE_XML_RE_3 = /&quot;/g;
+const DECODE_XML_RE_4 = /&apos;/g;
+const DECODE_XML_RE_5 = /&#(\d+);/g;
+const DECODE_XML_RE_6 = /&amp;/g;
+const READ_ATTRIBUTES_RE = /([A-Za-z_][\w.:-]*)="([^"]*)"/g;
+const PARSE_TRAINS_SERIES_RE = /<Series\b([^>]*)>([\s\S]*?)<\/Series>/g;
+const PARSE_TRAINS_SERIES_RE_2 = /<Obs\b([^>]*?)\/?>/g;
+const PARSE_TRAINS_AVAILABILITY_RE = /<wits:reporter\b[^>]*>([\s\S]*?)<\/wits:reporter>/g;
+const YEAR_RE = /<wits:year>\s*(\d{4})\s*<\/wits:year>/;
+const NOMENCLATURE_RE = /reporternernomenclaturecode="([^"]*)"/;
+const PARTNERS_RE = /<wits:partnerlist>([^<]*)<\/wits:partnerlist>/;
+const PARSE_TRAINS_GROUP_NAMES_RE = /<wits:country\b([^>]*)>([\s\S]*?)<\/wits:country>/g;
+const NAME_RE = /<wits:name>([^<]*)<\/wits:name>/;
+const IS_WITS_NO_DATA_RE = /NoRecordsFound/i;
+const IS_WITS_NO_DATA_RE_2 = /<wits:error\b/;
+
+
 export const WITS_SDMX_BASE = 'https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN';
 export const WITS_META_BASE = 'https://wits.worldbank.org/API/V1/wits/datasource/trn';
 export const BILATERAL_TARIFF_SOURCE = 'UNCTAD TRAINS via World Bank WITS';
@@ -129,17 +148,17 @@ const GROUP_CODE = /^[A-Z][A-Z0-9]{2}$/;
 
 function decodeXml(text: string): string {
   return text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)))
-    .replace(/&amp;/g, '&');
+    .replace(DECODE_XML_RE, '<')
+    .replace(DECODE_XML_RE_2, '>')
+    .replace(DECODE_XML_RE_3, '"')
+    .replace(DECODE_XML_RE_4, "'")
+    .replace(DECODE_XML_RE_5, (_, n: string) => String.fromCharCode(Number(n)))
+    .replace(DECODE_XML_RE_6, '&');
 }
 
 function readAttributes(fragment: string): Record<string, string> {
   const attrs: Record<string, string> = {};
-  for (const m of fragment.matchAll(/([A-Za-z_][\w.:-]*)="([^"]*)"/g)) {
+  for (const m of fragment.matchAll(READ_ATTRIBUTES_RE)) {
     attrs[m[1]!] = decodeXml(m[2]!);
   }
   return attrs;
@@ -161,11 +180,11 @@ function toCount(value: string | undefined): number {
  */
 export function parseTrainsSeries(xml: string): TrainsRow[] {
   const rows: TrainsRow[] = [];
-  for (const series of xml.matchAll(/<Series\b([^>]*)>([\s\S]*?)<\/Series>/g)) {
+  for (const series of xml.matchAll(PARSE_TRAINS_SERIES_RE)) {
     const seriesAttrs = readAttributes(series[1]!);
     const partner = seriesAttrs.PARTNER ?? '';
     if (!partner) continue;
-    for (const obs of series[2]!.matchAll(/<Obs\b([^>]*?)\/?>/g)) {
+    for (const obs of series[2]!.matchAll(PARSE_TRAINS_SERIES_RE_2)) {
       const o = readAttributes(obs[1]!);
       const year = Number.parseInt(o.TIME_PERIOD ?? '', 10);
       const rate = toNumber(o.OBS_VALUE);
@@ -191,12 +210,12 @@ export function parseTrainsSeries(xml: string): TrainsRow[] {
 /** Parse the WITS per-reporter data-availability list. */
 export function parseTrainsAvailability(xml: string): TrainsAvailabilityYear[] {
   const years: TrainsAvailabilityYear[] = [];
-  for (const block of xml.matchAll(/<wits:reporter\b[^>]*>([\s\S]*?)<\/wits:reporter>/g)) {
+  for (const block of xml.matchAll(PARSE_TRAINS_AVAILABILITY_RE)) {
     const body = block[1]!;
-    const year = Number.parseInt(/<wits:year>\s*(\d{4})\s*<\/wits:year>/.exec(body)?.[1] ?? '', 10);
+    const year = Number.parseInt(YEAR_RE.exec(body)?.[1] ?? '', 10);
     if (!Number.isFinite(year)) continue;
-    const nomenclature = /reporternernomenclaturecode="([^"]*)"/.exec(body)?.[1] ?? '';
-    const partners = (/<wits:partnerlist>([^<]*)<\/wits:partnerlist>/.exec(body)?.[1] ?? '')
+    const nomenclature = NOMENCLATURE_RE.exec(body)?.[1] ?? '';
+    const partners = (PARTNERS_RE.exec(body)?.[1] ?? '')
       .split(';')
       .map((code) => code.trim())
       .filter(Boolean);
@@ -208,10 +227,10 @@ export function parseTrainsAvailability(xml: string): TrainsAvailabilityYear[] {
 /** Parse WITS partner-group names out of the TRAINS country list. */
 export function parseTrainsGroupNames(xml: string): Record<string, string> {
   const names: Record<string, string> = {};
-  for (const block of xml.matchAll(/<wits:country\b([^>]*)>([\s\S]*?)<\/wits:country>/g)) {
+  for (const block of xml.matchAll(PARSE_TRAINS_GROUP_NAMES_RE)) {
     const attrs = readAttributes(block[1]!);
     if (attrs.isgroup !== 'Yes' || !attrs.countrycode) continue;
-    const name = /<wits:name>([^<]*)<\/wits:name>/.exec(block[2]!)?.[1];
+    const name = NAME_RE.exec(block[2]!)?.[1];
     if (name) names[attrs.countrycode] = decodeXml(name.trim());
   }
   return names;
@@ -256,8 +275,8 @@ async function witsGet(url: string, timeoutMs: number): Promise<Response> {
  * answers, not faults.
  */
 function isWitsNoData(status: number, body: string): boolean {
-  if (status === 404 && /NoRecordsFound/i.test(body)) return true;
-  return status === 200 && /<wits:error\b/.test(body);
+  if (status === 404 && IS_WITS_NO_DATA_RE.test(body)) return true;
+  return status === 200 && IS_WITS_NO_DATA_RE_2.test(body);
 }
 
 async function fetchTrainsRows(

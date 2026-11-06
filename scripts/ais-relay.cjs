@@ -15,6 +15,130 @@
  *   payload.description. Enforced by tests/notification-relay-payload-audit.test.mjs.
  */
 
+const PARSE_RETRY_AFTER_HEADER_MS_RE = /^\d+$/;
+const PARTS_RE = /[;,]/g;
+const PARTS_RE_2 = /^[A-Z]{3}$/;
+const LOAD_TELEGRAM_CHANNELS_RE = /^@/;
+const VALUE_RE = /^https?:\/\/t\.me\//i;
+const VALUE_RE_2 = /^@+/;
+const VALUE_RE_3 = /[?#].*$/;
+const VALUE_RE_4 = /\/+$/;
+const GET_TELEGRAM_ERROR_STATUS_RE = /^TIMEOUT after \d+ms:/;
+const GET_TELEGRAM_ERROR_STATUS_RE_2 = /invalid telegram username/i;
+const GET_TELEGRAM_ERROR_STATUS_RE_3 = /USERNAME_NOT_OCCUPIED|No user has|No channel has|Cannot find any entity/i;
+const GET_TELEGRAM_ERROR_STATUS_RE_4 = /not active|not installed|invalidated/i;
+const PARSE_TELEGRAM_FLOOD_WAIT_MS_RE = /^FLOOD_WAIT_(\d+)$/;
+const CONNECT_TELEGRAM_CLIENT_RE = /Cannot find package|Directory import/;
+const CONNECT_TELEGRAM_CLIENT_RE_2 = /AUTH_KEY_DUPLICATED/;
+const POLL_TELEGRAM_ONCE_RE = /FLOOD_WAIT/;
+const WAIT_RE = /(\d+)/;
+const RAW_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+const REDACT_OREF_ERROR_RE = /\/\/[^\s/]*@/g;
+const OREF_BOOTSTRAP_HISTORY_FROM_UPSTREAM_RE = /[^0-9]/g;
+const SAT_CLASSIFY_RE = /COSMO-SKYMED|TERRASAR|PAZ|SAR-LUPE|YAOGAN/i;
+const SAT_CLASSIFY_RE_2 = /WORLDVIEW|SKYSAT|PLEIADES|KOMPSAT|GAOFEN|JILIN|CARTOSAT|ZIYUAN/i;
+const SAT_CLASSIFY_RE_3 = /SAPPHIRE|PRAETORIAN|USA|GOKTURK/i;
+const SAT_CLASSIFY_RE_4 = /^YAOGAN|^GAOFEN|^JILIN|^ZIYUAN/i;
+const SAT_CLASSIFY_RE_5 = /^COSMOS/i;
+const SAT_CLASSIFY_RE_6 = /^WORLDVIEW|^SAPPHIRE|^PRAETORIAN|^USA|^SKYSAT/i;
+const SAT_CLASSIFY_RE_7 = /^SENTINEL|^COSMO-SKYMED|^TERRASAR|^SAR-LUPE|^PAZ|^PLEIADES/i;
+const SAT_CLASSIFY_RE_8 = /^KOMPSAT/i;
+const SAT_CLASSIFY_RE_9 = /^CARTOSAT/i;
+const SAT_CLASSIFY_RE_10 = /^GOKTURK|^RASAT/i;
+const WHITESPACE_RE = /\s+/g;
+const CYBER_IS_IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
+const CYBER_IS_IPV6_RE = /^[0-9a-f:]+$/i;
+const CYBER_NORM_COUNTRY_RE = /^[a-z]{2}$/i;
+const TAGS_RE = /[;,|]/g;
+const SEV_RE = /emotet|qakbot|trickbot|dridex|ransom/i;
+const MALWARE_FAMILY_RE = /^Possible\s+/i;
+const MALWARE_FAMILY_RE_2 = /\s+C2\s+IP$/i;
+const T_RE = /cobaltstrike|cobalt.strike|brute.?ratel/i;
+const T_RE_2 = /c2|botnet/;
+const T_RE_3 = /ransomware|apt|c2|botnet/;
+const TYPE_LABEL_RE = /_/g;
+const RELAY_NORMALIZE_SCORING_TEXT_RE = /[^a-z0-9\s]/g;
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+const MATCH_COUNTRY_NAMES_IN_TEXT_RE = /\W/;
+const TOKENS_RE = /[a-z]+/g;
+const LOWER_RE = /\bU\.S\.(?:A\.)?/g;
+const LOWER_RE_2 = /\bU\.K\./g;
+const LOWER_RE_3 = /\bUS\b/g;
+const LOWER_RE_4 = /\bUK\b/g;
+const LOWER_RE_5 = /\p{Diacritic}/gu;
+const CREDIT_RE = /\s[-–—|]\s+([^-–—|]+)$/;
+const WHITESPACE_RE_2 = /\s+/;
+const SANITIZED_RE = /[\n\r]/g;
+const SANITIZED_RE_2 = /\|/g;
+const REQ_RE = /\[[\s\S]*\]/;
+const THEATER_IS_MIL_CALLSIGN_RE = /\d/;
+const THEATER_IS_MIL_CALLSIGN_RE_2 = /^[A-Z]{3}\d{1,2}$/;
+const THEATER_DETECT_AIRCRAFT_TYPE_RE = /^(SHELL|TEXACO|ARCO|ESSO|PETRO|KC|STRAT)/;
+const THEATER_DETECT_AIRCRAFT_TYPE_RE_2 = /^(SENTRY|AWACS|MAGIC|DISCO|DARKSTAR|E3|E8|E6)/;
+const THEATER_DETECT_AIRCRAFT_TYPE_RE_3 = /^(RCH|REACH|MOOSE|EVAC|DUSTOFF|C17|C5|C130|C40)/;
+const THEATER_DETECT_AIRCRAFT_TYPE_RE_4 = /^(HOMER|OLIVE|JAKE|PSEUDO|GORDO|RC|U2|SR)/;
+const THEATER_DETECT_AIRCRAFT_TYPE_RE_5 = /^(RQ|MQ|REAPER|PREDATOR|GLOBAL)/;
+const THEATER_DETECT_AIRCRAFT_TYPE_RE_6 = /^(DEATH|BONE|DOOM|B52|B1|B2)/;
+const THEATER_DETECT_AIRCRAFT_TYPE_RE_7 = /^(BOLT|VIPER|RAPTOR|BRONCO|EAGLE|HORNET|FALCON|STRIKE|TANGO|FURY)/;
+const ICAO24_RE = /~/g;
+const SUMMARY_MATCH_RE = /SUMMARY:(.+)/;
+const LOCATION_MATCH_RE = /LOCATION:(.+)/;
+const DTSTART_MATCH_RE = /DTSTART;VALUE=DATE:(\d+)/;
+const DTEND_MATCH_RE = /DTEND;VALUE=DATE:(\d+)/;
+const URL_MATCH_RE = /URL:(.+)/;
+const UID_MATCH_RE = /UID:(.+)/;
+const ITEM_MATCHES_RE = /<item>([\s\S]*?)<\/item>/g;
+const TITLE_MATCH_RE = /<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/;
+const LINK_MATCH_RE = /<link>(.*?)<\/link>/;
+const DESC_MATCH_RE = /<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s;
+const GUID_MATCH_RE = /<guid[^>]*>(.*?)<\/guid>/;
+const DATE_MATCH_RE = /on\s+(\w+\s+\d{1,2},?\s+\d{4})/i;
+const LOC_MATCH_RE = /(?:in|at)\s+([A-Za-z\s]+,\s*[A-Za-z\s]+)(?:\.|$)/i;
+const LOC_MATCH_RE_2 = /Location:\s*([^<\n]+)/i;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]/g;
+const LABEL_RE = /\b\w/g;
+const _DECODE_REDDIT_ENTITIES_RE = /&lt;/g;
+const _DECODE_REDDIT_ENTITIES_RE_2 = /&gt;/g;
+const _DECODE_REDDIT_ENTITIES_RE_3 = /&quot;/g;
+const _DECODE_REDDIT_ENTITIES_RE_4 = /&#39;/g;
+const _DECODE_REDDIT_ENTITIES_RE_5 = /&amp;/g;
+const SEED_SOCIAL_VELOCITY_RE = /^\/r\/[A-Za-z0-9_]+\/comments\/[A-Za-z0-9]+(?:\/|$)/;
+const NORMALIZE_TICKER_RE = /\./g;
+const ROWS_RE = /^\/API\/V1\/SDMX\/V21\/datasource\/TRN\/reporter\/\d{3}\/partner\/(all|000)\/product\/\d{6}\/year\/(\d{1,4})\/datatype\/(reported|aveestimated)$/;
+const VALID_METADATA_RE = /^\/API\/V1\/wits\/datasource\/trn\/(dataavailability\/country\/\d{3}\/year\/all|country\/all)$/;
+const HANDLE_WORLD_BANK_REQUEST_RE = /^[A-Z0-9]{2,10}(\.[A-Z0-9]{2,10}){1,5}$/;
+const TAG_RE = /[^a-z0-9-]/gi;
+const API_REQ_RE = /"states":\s*\[/;
+const ROUND_TRIP_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MARKER_RE = /AF_initDataCallback\(\{key: 'ds:1',(?: hash: '[^']*',)?\s*data:/;
+const READ_GF_PAYLOAD_RE = /,\s*errorHasStatus:\s*true/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE = /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|rules?|prompts?|constraints?)/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_2 = /disregard\s+(all\s+)?(previous|prior|above)\s+(instructions?|rules?)/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_3 = /forget\s+(all\s+)?(previous|prior|above)\s+(instructions?|rules?)/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_4 = /you\s+are\s+now\s+(a|an)\s+(?!worldmonitor)/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_5 = /act\s+as\s+(a|an)\s+(?!worldmonitor)/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_6 = /pretend\s+(you\s+are|to\s+be)\s+/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_7 = /your\s+new\s+(role|persona|identity|name)\s+is/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_8 = /repeat\s+(your\s+)?(system\s+)?prompt/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_9 = /show\s+(me\s+)?(your\s+)?(system\s+)?instructions/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_10 = /reveal\s+(your\s+)?(system\s+)?prompt/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_11 = /what\s+(are|were)\s+your\s+instructions/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_12 = /\[\s*system\s*\]/i;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_13 = /#{3,}\s*(system|instruction|override)/i;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_14 = /<\s*system\s*>/i;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_15 = /\bdan\b.*\bmode\b/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_16 = /jailbreak/;
+const IS_WIDGET_INJECTION_ATTEMPT_RE_17 = /developer\s+mode/;
+const FILTER_WIDGET_TOOL_INJECTION_RE = /ignore\s+(all\s+)?(previous|prior)\s+instructions?/gi;
+const FILTER_WIDGET_TOOL_INJECTION_RE_2 = /\[\s*system\s*\]/gi;
+const FILTER_WIDGET_TOOL_INJECTION_RE_3 = /<\s*system\s*>/gi;
+const TEXT_RE = /!\[[^\]]*\]\([^)]*\)/g;
+const TEXT_RE_2 = /\[([^\]]*)\]\([^)]*\)/g;
+const RATE_BUCKET_RE = /^[A-Za-z0-9:_-]{8,128}$/;
+const SCRUB_RE = /sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g;
+const CLASSIFY_WIDGET_AGENT_ERROR_RE = /model.*not.*found|not_found_error/i;
+const CLASSIFY_WIDGET_AGENT_ERROR_RE_2 = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND/i;
+
 const http = require('http');
 const https = require('https');
 const zlib = require('zlib');
@@ -231,7 +355,7 @@ function parseRetryAfterHeaderMs(raw) {
   if (raw == null) return null;
   const text = String(raw).trim();
   const DAY_MS = 24 * 60 * 60 * 1000;
-  if (/^\d+$/.test(text)) {
+  if (PARSE_RETRY_AFTER_HEADER_MS_RE.test(text)) {
     const seconds = Number(text);
     return seconds > 0 ? Math.min(seconds * 1000, DAY_MS) : null;
   }
@@ -1142,9 +1266,9 @@ const WORLD_BANK_COUNTRY_ALLOWLIST = new Set([
 
 function normalizeWorldBankCountryCodes(rawValue) {
   const parts = String(rawValue || '')
-    .split(/[;,]/g)
+    .split(PARTS_RE)
     .map((part) => part.trim().toUpperCase())
-    .filter((part) => /^[A-Z]{3}$/.test(part) && WORLD_BANK_COUNTRY_ALLOWLIST.has(part));
+    .filter((part) => PARTS_RE_2.test(part) && WORLD_BANK_COUNTRY_ALLOWLIST.has(part));
   return parts.length > 0 ? parts.join(';') : null;
 }
 
@@ -1331,7 +1455,7 @@ function loadTelegramChannels() {
     telegramState.channels = channels
       .filter(c => c && typeof c.handle === 'string' && c.handle.length > 1)
       .map(c => ({
-        handle: String(c.handle).replace(/^@/, ''),
+        handle: String(c.handle).replace(LOAD_TELEGRAM_CHANNELS_RE, ''),
         label: c.label ? String(c.label) : undefined,
         topic: c.topic ? String(c.topic) : undefined,
         region: c.region ? String(c.region) : undefined,
@@ -1388,10 +1512,10 @@ function normalizeTelegramMessage(msg, channel) {
 function sanitizeTelegramUsername(raw) {
   const value = String(raw || '')
     .trim()
-    .replace(/^https?:\/\/t\.me\//i, '')
-    .replace(/^@+/, '')
-    .replace(/[?#].*$/, '')
-    .replace(/\/+$/, '')
+    .replace(VALUE_RE, '')
+    .replace(VALUE_RE_2, '')
+    .replace(VALUE_RE_3, '')
+    .replace(VALUE_RE_4, '')
     .trim();
 
   if (!TELEGRAM_USERNAME_RE.test(value)) {
@@ -1431,10 +1555,10 @@ function getTelegramErrorStatus(error) {
   // it must never be what promotes an error to 429 — see parseTelegramFloodWaitMs.
   if (parseTelegramFloodWaitMs(error) > 0) return 429;
   const message = String(error?.message || error || '');
-  if (/^TIMEOUT after \d+ms:/.test(message)) return 504;
-  if (/invalid telegram username/i.test(message)) return 400;
-  if (/USERNAME_NOT_OCCUPIED|No user has|No channel has|Cannot find any entity/i.test(message)) return 404;
-  if (/not active|not installed|invalidated/i.test(message)) return 503;
+  if (GET_TELEGRAM_ERROR_STATUS_RE.test(message)) return 504;
+  if (GET_TELEGRAM_ERROR_STATUS_RE_2.test(message)) return 400;
+  if (GET_TELEGRAM_ERROR_STATUS_RE_3.test(message)) return 404;
+  if (GET_TELEGRAM_ERROR_STATUS_RE_4.test(message)) return 503;
   return 502;
 }
 
@@ -1521,7 +1645,7 @@ function parseTelegramFloodWaitMs(error) {
 
   if (waitMs <= 0) {
     const code = typeof error?.errorMessage === 'string' ? error.errorMessage : '';
-    const match = code.match(/^FLOOD_WAIT_(\d+)$/);
+    const match = code.match(PARSE_TELEGRAM_FLOOD_WAIT_MS_RE);
     if (match) {
       const parsed = Number(match[1]);
       if (Number.isFinite(parsed) && parsed > 0) waitMs = parsed * 1000;
@@ -2070,7 +2194,7 @@ async function connectTelegramClient() {
     return { client, Api };
   } catch (e) {
     const em = e?.message || String(e);
-    if (e?.code === 'ERR_MODULE_NOT_FOUND' || /Cannot find package|Directory import/.test(em)) {
+    if (e?.code === 'ERR_MODULE_NOT_FOUND' || CONNECT_TELEGRAM_CLIENT_RE.test(em)) {
       telegramPermanentlyDisabled = true;
       telegramState.lastError = 'telegram package not installed';
       console.warn('[Relay] Telegram package not installed — disabling permanently for this session');
@@ -2083,7 +2207,7 @@ async function connectTelegramClient() {
       telegramState.client = client;
       destroyTelegramClient();
     }
-    if (/AUTH_KEY_DUPLICATED/.test(em)) {
+    if (CONNECT_TELEGRAM_CLIENT_RE_2.test(em)) {
       telegramPermanentlyDisabled = true;
       telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
       console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
@@ -2184,15 +2308,15 @@ async function pollTelegramOnce() {
       channelsFailed++;
       telegramState.lastError = `poll ${handle} failed: ${em}`;
       console.warn('[Relay] Telegram poll error:', telegramState.lastError);
-      if (/AUTH_KEY_DUPLICATED/.test(em)) {
+      if (CONNECT_TELEGRAM_CLIENT_RE_2.test(em)) {
         telegramPermanentlyDisabled = true;
         telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
         console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
         destroyTelegramClient();
         break;
       }
-      if (/FLOOD_WAIT/.test(em)) {
-        const wait = parseInt(em.match(/(\d+)/)?.[1] || '60', 10);
+      if (POLL_TELEGRAM_ONCE_RE.test(em)) {
+        const wait = parseInt(em.match(WAIT_RE)?.[1] || '60', 10);
         console.warn(`[Relay] Telegram FLOOD_WAIT ${wait}s — stopping poll cycle early`);
         break;
       }
@@ -2506,7 +2630,7 @@ function stripBom(text) {
 // The configured `user:pass` of the OREF proxy, so log lines can drop the
 // exact secret rather than guess its shape with a pattern.
 const OREF_PROXY_CREDENTIAL = (() => {
-  const raw = OREF_PROXY_AUTH.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const raw = OREF_PROXY_AUTH.replace(RAW_RE, '');
   const at = raw.lastIndexOf('@');
   return at > 0 ? raw.slice(0, at) : '';
 })();
@@ -2518,7 +2642,7 @@ const OREF_PROXY_CREDENTIAL = (() => {
 function redactOrefError(msg, credential) {
   let text = String(msg || '');
   if (credential) text = text.split(credential).join('<redacted>');
-  return text.replace(/\/\/[^\s/]*@/g, '//<redacted>@');
+  return text.replace(REDACT_OREF_ERROR_RE, '//<redacted>@');
 }
 
 // What `/oref/alerts` may say about a failed poll. The curl failure text is
@@ -2785,7 +2909,7 @@ async function orefBootstrapHistoryFromUpstream() {
       const k = `${r.category}|${r.title}`;
       if (!byType.has(k)) {
         byType.set(k, {
-          id: `${r.category}-${typeIdx++}-${dateStr.replace(/[^0-9]/g, '')}`,
+          id: `${r.category}-${typeIdx++}-${dateStr.replace(OREF_BOOTSTRAP_HISTORY_FROM_UPSTREAM_RE, '')}`,
           cat: String(r.category),
           title: r.title,
           data: [],
@@ -3296,18 +3420,18 @@ const SAT_NAME_FILTERS = [
 function satClassify(name) {
   const n = name.toUpperCase();
   let type = 'military';
-  if (/COSMO-SKYMED|TERRASAR|PAZ|SAR-LUPE|YAOGAN/i.test(n)) type = 'sar';
-  else if (/WORLDVIEW|SKYSAT|PLEIADES|KOMPSAT|GAOFEN|JILIN|CARTOSAT|ZIYUAN/i.test(n)) type = 'optical';
-  else if (/SAPPHIRE|PRAETORIAN|USA|GOKTURK/i.test(n)) type = 'military';
+  if (SAT_CLASSIFY_RE.test(n)) type = 'sar';
+  else if (SAT_CLASSIFY_RE_2.test(n)) type = 'optical';
+  else if (SAT_CLASSIFY_RE_3.test(n)) type = 'military';
 
   let country = 'OTHER';
-  if (/^YAOGAN|^GAOFEN|^JILIN|^ZIYUAN/i.test(n)) country = 'CN';
-  else if (/^COSMOS/i.test(n)) country = 'RU';
-  else if (/^WORLDVIEW|^SAPPHIRE|^PRAETORIAN|^USA|^SKYSAT/i.test(n)) country = 'US';
-  else if (/^SENTINEL|^COSMO-SKYMED|^TERRASAR|^SAR-LUPE|^PAZ|^PLEIADES/i.test(n)) country = 'EU';
-  else if (/^KOMPSAT/i.test(n)) country = 'KR';
-  else if (/^CARTOSAT/i.test(n)) country = 'IN';
-  else if (/^GOKTURK|^RASAT/i.test(n)) country = 'TR';
+  if (SAT_CLASSIFY_RE_4.test(n)) country = 'CN';
+  else if (SAT_CLASSIFY_RE_5.test(n)) country = 'RU';
+  else if (SAT_CLASSIFY_RE_6.test(n)) country = 'US';
+  else if (SAT_CLASSIFY_RE_7.test(n)) country = 'EU';
+  else if (SAT_CLASSIFY_RE_8.test(n)) country = 'KR';
+  else if (SAT_CLASSIFY_RE_9.test(n)) country = 'IN';
+  else if (SAT_CLASSIFY_RE_10.test(n)) country = 'TR';
 
   return { type, country };
 }
@@ -4457,13 +4581,13 @@ const CYBER_INDICATOR_MAP = { ip:'CYBER_THREAT_INDICATOR_TYPE_IP', domain:'CYBER
 const CYBER_SEVERITY_MAP = { low:'CRITICALITY_LEVEL_LOW', medium:'CRITICALITY_LEVEL_MEDIUM', high:'CRITICALITY_LEVEL_HIGH', critical:'CRITICALITY_LEVEL_CRITICAL' };
 const CYBER_SEVERITY_RANK = { CRITICALITY_LEVEL_CRITICAL:4, CRITICALITY_LEVEL_HIGH:3, CRITICALITY_LEVEL_MEDIUM:2, CRITICALITY_LEVEL_LOW:1, CRITICALITY_LEVEL_UNSPECIFIED:0 };
 
-function cyberClean(v, max) { if (typeof v !== 'string') return ''; return v.trim().replace(/\s+/g, ' ').slice(0, max || 120); }
+function cyberClean(v, max) { if (typeof v !== 'string') return ''; return v.trim().replace(WHITESPACE_RE, ' ').slice(0, max || 120); }
 function cyberToNum(v) { const n = typeof v === 'number' ? v : parseFloat(String(v ?? '')); return Number.isFinite(n) ? n : null; }
 function cyberValidCoords(lat, lon) { return lat !== null && lon !== null && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180; }
-function cyberIsIPv4(v) { if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(v)) return false; return v.split('.').map(Number).every((n) => Number.isInteger(n) && n >= 0 && n <= 255); }
-function cyberIsIPv6(v) { return /^[0-9a-f:]+$/i.test(v) && v.includes(':'); }
+function cyberIsIPv4(v) { if (!CYBER_IS_IPV4_RE.test(v)) return false; return v.split('.').map(Number).every((n) => Number.isInteger(n) && n >= 0 && n <= 255); }
+function cyberIsIPv6(v) { return CYBER_IS_IPV6_RE.test(v) && v.includes(':'); }
 function cyberIsIp(v) { return cyberIsIPv4(v) || cyberIsIPv6(v); }
-function cyberNormCountry(v) { const r = cyberClean(String(v ?? ''), 64); if (!r) return ''; if (/^[a-z]{2}$/i.test(r)) return r.toUpperCase(); return r; }
+function cyberNormCountry(v) { const r = cyberClean(String(v ?? ''), 64); if (!r) return ''; if (CYBER_NORM_COUNTRY_RE.test(r)) return r.toUpperCase(); return r; }
 function cyberToMs(v) {
   if (!v) return 0;
   const raw = cyberClean(String(v), 80); if (!raw) return 0;
@@ -4472,7 +4596,7 @@ function cyberToMs(v) {
   return Number.isNaN(d2.getTime()) ? 0 : d2.getTime();
 }
 function cyberNormTags(input, max) {
-  const tags = Array.isArray(input) ? input : typeof input === 'string' ? input.split(/[;,|]/g) : [];
+  const tags = Array.isArray(input) ? input : typeof input === 'string' ? input.split(TAGS_RE) : [];
   const out = []; const seen = new Set();
   for (const t of tags) { const c = cyberClean(String(t ?? ''), 40).toLowerCase(); if (!c || seen.has(c)) continue; seen.add(c); out.push(c); if (out.length >= (max || 8)) break; }
   return out;
@@ -4599,7 +4723,7 @@ async function cyberFetchFeodo(limit, cutoffMs) {
       const lastSeen = cyberToMs(r?.last_online || r?.last_seen || r?.last_seen_utc || r?.first_seen || r?.first_seen_utc);
       if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) continue;
       const malwareFamily = cyberClean(r?.malware || r?.malware_family || r?.family, 80);
-      const sev = status === 'online' ? (/emotet|qakbot|trickbot|dridex|ransom/i.test(malwareFamily) ? 'critical' : 'high') : 'medium';
+      const sev = status === 'online' ? (SEV_RE.test(malwareFamily) ? 'critical' : 'high') : 'medium';
       const t = cyberSanitize({ id: `feodo:${ip}`, type: 'c2_server', source: 'feodo', indicator: ip, indicatorType: 'ip', lat: cyberToNum(r?.latitude ?? r?.lat), lon: cyberToNum(r?.longitude ?? r?.lon), country: cyberNormCountry(r?.country || r?.country_code), severity: sev, malwareFamily, tags: cyberNormTags(['botnet', 'c2', ...(r?.tags||[])]), firstSeen, lastSeen });
       if (t) { out.push(t); if (out.length >= limit) break; }
     }
@@ -4646,13 +4770,13 @@ async function cyberFetchC2Intel(limit) {
       const ci = line.indexOf(','); if (ci < 0) continue;
       const ip = cyberClean(line.slice(0, ci), 80).toLowerCase(); if (!cyberIsIp(ip)) continue;
       const desc = cyberClean(line.slice(ci + 1), 200);
-      const malwareFamily = desc.replace(/^Possible\s+/i, '').replace(/\s+C2\s+IP$/i, '').trim() || 'Unknown';
+      const malwareFamily = desc.replace(MALWARE_FAMILY_RE, '').replace(MALWARE_FAMILY_RE_2, '').trim() || 'Unknown';
       const tags = ['c2']; const descLow = desc.toLowerCase();
       if (descLow.includes('cobaltstrike') || descLow.includes('cobalt strike')) tags.push('cobaltstrike');
       if (descLow.includes('metasploit')) tags.push('metasploit');
       if (descLow.includes('sliver')) tags.push('sliver');
       if (descLow.includes('brute ratel') || descLow.includes('bruteratel')) tags.push('bruteratel');
-      const t = cyberSanitize({ id: `c2intel:${ip}`, type: 'c2_server', source: 'c2intel', indicator: ip, indicatorType: 'ip', lat: null, lon: null, country: '', severity: /cobaltstrike|cobalt.strike|brute.?ratel/i.test(desc) ? 'high' : 'medium', malwareFamily, tags: cyberNormTags(tags), firstSeen: 0, lastSeen: 0 });
+      const t = cyberSanitize({ id: `c2intel:${ip}`, type: 'c2_server', source: 'c2intel', indicator: ip, indicatorType: 'ip', lat: null, lon: null, country: '', severity: T_RE.test(desc) ? 'high' : 'medium', malwareFamily, tags: cyberNormTags(tags), firstSeen: 0, lastSeen: 0 });
       if (t) { out.push(t); if (out.length >= limit) break; }
     }
     return out;
@@ -4669,7 +4793,7 @@ async function cyberFetchOtx(limit, days) {
     for (const r of results) {
       const ip = cyberClean(r?.indicator || r?.ip || '', 80).toLowerCase(); if (!cyberIsIp(ip)) continue;
       const tags = cyberNormTags(r?.tags || []);
-      const t = cyberSanitize({ id: `otx:${ip}`, type: tags.some((tt) => /c2|botnet/.test(tt)) ? 'c2_server' : 'malware_host', source: 'otx', indicator: ip, indicatorType: 'ip', lat: null, lon: null, country: '', severity: tags.some((tt) => /ransomware|apt|c2|botnet/.test(tt)) ? 'high' : 'medium', malwareFamily: cyberClean(r?.title || r?.description || '', 200), tags, firstSeen: cyberToMs(r?.created), lastSeen: cyberToMs(r?.modified || r?.created) });
+      const t = cyberSanitize({ id: `otx:${ip}`, type: tags.some((tt) => T_RE_2.test(tt)) ? 'c2_server' : 'malware_host', source: 'otx', indicator: ip, indicatorType: 'ip', lat: null, lon: null, country: '', severity: tags.some((tt) => T_RE_3.test(tt)) ? 'high' : 'medium', malwareFamily: cyberClean(r?.title || r?.description || '', 200), tags, firstSeen: cyberToMs(r?.created), lastSeen: cyberToMs(r?.modified || r?.created) });
       if (t) { out.push(t); if (out.length >= limit) break; }
     }
     return out;
@@ -4752,7 +4876,7 @@ async function seedCyberThreats() {
     );
     for (const t of newCyber.slice(0, 2)) {
       cyberPrevAlertedIds.add(t.indicator);
-      const typeLabel = (t.type || 'threat').replace(/_/g, ' ');
+      const typeLabel = (t.type || 'threat').replace(TYPE_LABEL_RE, ' ');
       const familyTag = t.malwareFamily ? ` (${t.malwareFamily.slice(0, 30)})` : '';
       const countryCode = normalizeNotificationCountryCode(t.country);
       publishNotificationEvent({
@@ -4880,7 +5004,7 @@ const RELAY_DIPLOMACY_FLASHPOINT_BOOST = 18;
 const RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE = 4;
 
 function relayNormalizeScoringText(text) {
-  return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(text || '').toLowerCase().replace(RELAY_NORMALIZE_SCORING_TEXT_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 // Word-start containment in normalized text. Mirrors
@@ -4890,7 +5014,7 @@ function relayNormalizeScoringText(text) {
 // relay aligned with digest under tests/importance-score-parity.test.mjs.
 function relayContainsKeywordToken(text, kw) {
   if (!kw) return false;
-  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = kw.replace(ESCAPED_RE, '\\$&');
   return new RegExp(`(^|\\s)${escaped}`).test(text);
 }
 
@@ -5051,7 +5175,7 @@ const THREAT_COUNTRY_NAME_TO_ISO2 = {
 const THREAT_COUNTRY_NAME_ENTRIES = Object.entries(THREAT_COUNTRY_NAME_TO_ISO2)
   .filter(([name, iso2]) => name.length >= 3 && iso2.length === 2)
   .sort((a, b) => b[0].length - a[0].length)
-  .map(([name, iso2]) => ({ name, iso2, regex: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }));
+  .map(([name, iso2]) => ({ name, iso2, regex: new RegExp(`\\b${name.replace(ESCAPED_RE, '\\$&')}\\b`, 'i') }));
 
 // Returns the single primary affected country — the country appearing immediately after a
 // locative preposition or attack verb, which marks the grammatical object/affected entity.
@@ -5068,7 +5192,7 @@ function matchCountryNamesInText(text) {
   while ((match = AFFECTED_PREFIX_RE.exec(lower)) !== null) {
     const afterPfx = lower.slice(match.index + match[0].length);
     for (const { name, iso2 } of THREAT_COUNTRY_NAME_ENTRIES) {
-      if (afterPfx.startsWith(name) && (afterPfx.length === name.length || /\W/.test(afterPfx[name.length]))) {
+      if (afterPfx.startsWith(name) && (afterPfx.length === name.length || MATCH_COUNTRY_NAMES_IN_TEXT_RE.test(afterPfx[name.length]))) {
         return [iso2];
       }
     }
@@ -5086,7 +5210,7 @@ const THREAT_CREDIT_TAIL_CHARS = 120;
 // blanked, so "new mexico" is US, not MX; country names are then blanked as they match, so
 // "sudan" cannot also fire inside "south sudan".
 function countriesNamedInText(lower) {
-  const tokens = [...lower.matchAll(/[a-z]+/g)];
+  const tokens = [...lower.matchAll(TOKENS_RE)];
   const found = [];
   let rest = lower;
   for (let i = 0; i < tokens.length; i++) {
@@ -5116,15 +5240,15 @@ function threatSummaryCountries(text) {
   const affected = matchCountryNamesInText(text);
   if (affected.length > 0) return affected;
   // Uppercase US/UK are the countries; lowercase "us" stays the pronoun.
-  let lower = text.replace(/\bU\.S\.(?:A\.)?/g, 'United States ').replace(/\bU\.K\./g, 'United Kingdom ')
-    .replace(/\bUS\b/g, 'United States').replace(/\bUK\b/g, 'United Kingdom')
-    .normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  let lower = text.replace(LOWER_RE, 'United States ').replace(LOWER_RE_2, 'United Kingdom ')
+    .replace(LOWER_RE_3, 'United States').replace(LOWER_RE_4, 'United Kingdom')
+    .normalize('NFKD').replace(LOWER_RE_5, '').toLowerCase();
   // Drop a trailing " - The Washington Post" credit so the outlet's country is not counted.
   const tailStart = Math.max(0, lower.length - THREAT_CREDIT_TAIL_CHARS);
-  const credit = /\s[-–—|]\s+([^-–—|]+)$/.exec(lower.slice(tailStart));
+  const credit = CREDIT_RE.exec(lower.slice(tailStart));
   if (credit) {
     const tail = credit[1].trim();
-    const isCredit = tail.split(/\s+/).length <= 6
+    const isCredit = tail.split(WHITESPACE_RE_2).length <= 6
       && (THREAT_PUBLISHER_CREDIT_WORDS.test(tail) || countriesNamedInText(tail).length === 0);
     if (isCredit) lower = lower.slice(0, tailStart + credit.index);
   }
@@ -5207,7 +5331,7 @@ const CLASSIFY_LLM_PROVIDERS = [
 // classifier (the Middle East strike extractor) reuse this provider chain.
 function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBody, timeout, maxTextChars = 200, options = {}) {
   return new Promise((resolve) => {
-    const sanitized = titles.map((t) => t.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, maxTextChars).trim());
+    const sanitized = titles.map((t) => t.replace(SANITIZED_RE, ' ').replace(SANITIZED_RE_2, '/').slice(0, maxTextChars).trim());
     const prompt = sanitized.map((t, i) => `${i}|${t}`).join('\n');
     const bodyStr = JSON.stringify({
       model,
@@ -5238,7 +5362,7 @@ function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBo
           const json = JSON.parse(data);
           const raw = json?.choices?.[0]?.message?.content?.trim();
           if (!raw) return resolve(null);
-          const match = raw.match(/\[[\s\S]*\]/);
+          const match = raw.match(REQ_RE);
           if (!match) return resolve(null);
           resolve(JSON.parse(match[0]));
         } catch { resolve(null); }
@@ -5911,9 +6035,9 @@ function theaterIsMilCallsign(callsign) {
     if (cs.startsWith(prefix)) return true;
   }
   for (const prefix of THEATER_MIL_SHORT_PREFIXES) {
-    if (cs.startsWith(prefix) && cs.length > prefix.length && /\d/.test(cs.charAt(prefix.length))) return true;
+    if (cs.startsWith(prefix) && cs.length > prefix.length && THEATER_IS_MIL_CALLSIGN_RE.test(cs.charAt(prefix.length))) return true;
   }
-  if (/^[A-Z]{3}\d{1,2}$/.test(cs)) {
+  if (THEATER_IS_MIL_CALLSIGN_RE_2.test(cs)) {
     const prefix = cs.slice(0, 3);
     if (!THEATER_AIRLINE_CODES.has(prefix)) return true;
   }
@@ -5923,13 +6047,13 @@ function theaterIsMilCallsign(callsign) {
 function theaterDetectAircraftType(callsign) {
   if (!callsign) return 'unknown';
   const cs = callsign.toUpperCase().trim();
-  if (/^(SHELL|TEXACO|ARCO|ESSO|PETRO|KC|STRAT)/.test(cs)) return 'tanker';
-  if (/^(SENTRY|AWACS|MAGIC|DISCO|DARKSTAR|E3|E8|E6)/.test(cs)) return 'awacs';
-  if (/^(RCH|REACH|MOOSE|EVAC|DUSTOFF|C17|C5|C130|C40)/.test(cs)) return 'transport';
-  if (/^(HOMER|OLIVE|JAKE|PSEUDO|GORDO|RC|U2|SR)/.test(cs)) return 'reconnaissance';
-  if (/^(RQ|MQ|REAPER|PREDATOR|GLOBAL)/.test(cs)) return 'drone';
-  if (/^(DEATH|BONE|DOOM|B52|B1|B2)/.test(cs)) return 'bomber';
-  if (/^(BOLT|VIPER|RAPTOR|BRONCO|EAGLE|HORNET|FALCON|STRIKE|TANGO|FURY)/.test(cs)) return 'fighter';
+  if (THEATER_DETECT_AIRCRAFT_TYPE_RE.test(cs)) return 'tanker';
+  if (THEATER_DETECT_AIRCRAFT_TYPE_RE_2.test(cs)) return 'awacs';
+  if (THEATER_DETECT_AIRCRAFT_TYPE_RE_3.test(cs)) return 'transport';
+  if (THEATER_DETECT_AIRCRAFT_TYPE_RE_4.test(cs)) return 'reconnaissance';
+  if (THEATER_DETECT_AIRCRAFT_TYPE_RE_5.test(cs)) return 'drone';
+  if (THEATER_DETECT_AIRCRAFT_TYPE_RE_6.test(cs)) return 'bomber';
+  if (THEATER_DETECT_AIRCRAFT_TYPE_RE_7.test(cs)) return 'fighter';
   return 'unknown';
 }
 
@@ -6272,7 +6396,7 @@ async function fetchTheaterFlightsFromAdsbLol() {
       const lat = a.lat; const lon = a.lon;
       if (lat == null || lon == null) continue;
       if (a.alt_baro === 'ground') continue;
-      const icao24 = (a.hex || '').trim().replace(/~/g, '');
+      const icao24 = (a.hex || '').trim().replace(ICAO24_RE, '');
       if (!icao24 || seenIds.has(icao24)) continue;
       const inTheater = POSTURE_THEATERS.some((t) =>
         lat >= t.bounds.south && lat <= t.bounds.north &&
@@ -7182,12 +7306,12 @@ function techEventsParseICS(icsText) {
   const events = [];
   const blocks = icsText.split('BEGIN:VEVENT').slice(1);
   for (const block of blocks) {
-    const summaryMatch = block.match(/SUMMARY:(.+)/);
-    const locationMatch = block.match(/LOCATION:(.+)/);
-    const dtstartMatch = block.match(/DTSTART;VALUE=DATE:(\d+)/);
-    const dtendMatch = block.match(/DTEND;VALUE=DATE:(\d+)/);
-    const urlMatch = block.match(/URL:(.+)/);
-    const uidMatch = block.match(/UID:(.+)/);
+    const summaryMatch = block.match(SUMMARY_MATCH_RE);
+    const locationMatch = block.match(LOCATION_MATCH_RE);
+    const dtstartMatch = block.match(DTSTART_MATCH_RE);
+    const dtendMatch = block.match(DTEND_MATCH_RE);
+    const urlMatch = block.match(URL_MATCH_RE);
+    const uidMatch = block.match(UID_MATCH_RE);
     if (!summaryMatch || !dtstartMatch) continue;
     const summary = summaryMatch[1].trim();
     const location = locationMatch ? locationMatch[1].trim() : '';
@@ -7214,19 +7338,19 @@ function techEventsParseICS(icsText) {
 
 function techEventsParseRSS(rssText) {
   const events = [];
-  const itemMatches = rssText.matchAll(/<item>([\s\S]*?)<\/item>/g);
+  const itemMatches = rssText.matchAll(ITEM_MATCHES_RE);
   for (const match of itemMatches) {
     const item = match[1];
-    const titleMatch = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/);
-    const linkMatch = item.match(/<link>(.*?)<\/link>/);
-    const descMatch = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>|<description>(.*?)<\/description>/s);
-    const guidMatch = item.match(/<guid[^>]*>(.*?)<\/guid>/);
+    const titleMatch = item.match(TITLE_MATCH_RE);
+    const linkMatch = item.match(LINK_MATCH_RE);
+    const descMatch = item.match(DESC_MATCH_RE);
+    const guidMatch = item.match(GUID_MATCH_RE);
     const title = titleMatch ? (titleMatch[1] ?? titleMatch[2]) : null;
     if (!title) continue;
     const link = linkMatch ? linkMatch[1] || '' : '';
     const description = descMatch ? (descMatch[1] ?? descMatch[2] ?? '') : '';
     const guid = guidMatch ? guidMatch[1] || '' : '';
-    const dateMatch = description.match(/on\s+(\w+\s+\d{1,2},?\s+\d{4})/i);
+    const dateMatch = description.match(DATE_MATCH_RE);
     let startDate = null;
     if (dateMatch) {
       const parsed = new Date(dateMatch[1]);
@@ -7235,8 +7359,8 @@ function techEventsParseRSS(rssText) {
     if (!startDate) continue;
     if (new Date(startDate) < new Date(new Date().toISOString().split('T')[0])) continue;
     let location = null;
-    const locMatch = description.match(/(?:in|at)\s+([A-Za-z\s]+,\s*[A-Za-z\s]+)(?:\.|$)/i) ||
-                     description.match(/Location:\s*([^<\n]+)/i);
+    const locMatch = description.match(LOC_MATCH_RE) ||
+                     description.match(LOC_MATCH_RE_2);
     if (locMatch) location = locMatch[1].trim();
     if (description.toLowerCase().includes('online')) location = 'Online';
     events.push({
@@ -7313,7 +7437,7 @@ async function seedTechEvents() {
     const seen = new Set();
     events = events.filter((e) => {
       const year = e.startDate.slice(0, 4);
-      const key = e.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 30) + year;
+      const key = e.title.toLowerCase().replace(NON_ALPHANUMERIC_RE, '').slice(0, 30) + year;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -7691,7 +7815,7 @@ async function seedCorridorRisk() {
     seedTransitSummaries().catch(e => console.warn('[TransitSummary] Post-CorridorRisk seed error:', e?.message || e));
     for (const [corridorId, c] of Object.entries(result)) {
       if (c.riskScore < 50) continue;
-      const label = corridorId.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+      const label = corridorId.replace(TYPE_LABEL_RE, ' ').replace(LABEL_RE, ch => ch.toUpperCase());
       publishNotificationEvent({
         eventType: 'corridor_risk',
         payload: { title: `${label}: risk score ${c.riskScore}`, source: 'Corridor Risk' },
@@ -8000,8 +8124,8 @@ function _redditEpochSeconds(v) {
 // re-form an entity, so amp-last decodes exactly one level (&amp;lt; stays &lt;).
 function _decodeRedditEntities(s) {
   if (typeof s !== 'string') return s;
-  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  return s.replace(_DECODE_REDDIT_ENTITIES_RE, '<').replace(_DECODE_REDDIT_ENTITIES_RE_2, '>')
+    .replace(_DECODE_REDDIT_ENTITIES_RE_3, '"').replace(_DECODE_REDDIT_ENTITIES_RE_4, "'").replace(_DECODE_REDDIT_ENTITIES_RE_5, '&');
 }
 
 // Normalize a ScrapeCreators post so its shape matches the OAuth/public paths
@@ -8115,7 +8239,7 @@ let socialVelocityRetryTimer = null;
 const SOCIAL_VELOCITY_RETRY_MS = 20 * 60 * 1000;
 
 function socialVelocityMetaErrorReason(reason) {
-  return String(reason || 'unknown').replace(/\s+/g, ' ').slice(0, 240);
+  return String(reason || 'unknown').replace(WHITESPACE_RE, ' ').slice(0, 240);
 }
 
 async function writeSocialVelocityFailureMeta(reason) {
@@ -8180,7 +8304,7 @@ async function seedSocialVelocity() {
         try {
           postUrl = new URL(p.permalink, 'https://reddit.com');
           if (postUrl.origin !== 'https://reddit.com'
-            || !/^\/r\/[A-Za-z0-9_]+\/comments\/[A-Za-z0-9]+(?:\/|$)/.test(postUrl.pathname)
+            || !SEED_SOCIAL_VELOCITY_RE.test(postUrl.pathname)
             || postUrl.href.length > 2048) continue;
         } catch { continue; }
         // Deduplicate cross-subreddit reposts of the same article URL.
@@ -8298,7 +8422,7 @@ async function fetchWsbRedditHot(subreddit) {
 
 function normalizeTicker(raw) {
   // BRK.B → BRK-B (Yahoo Finance uses dash, Reddit uses dot)
-  return raw.toUpperCase().replace(/\./g, '-');
+  return raw.toUpperCase().replace(NORMALIZE_TICKER_RE, '-');
 }
 
 function extractTickers(text, knownTickers) {
@@ -10340,7 +10464,7 @@ function detectDisruptions() {
           : 'low';
 
       disruptions.push({
-        id: `chokepoint-${chokepoint.name.toLowerCase().replace(/\s+/g, '-')}`,
+        id: `chokepoint-${chokepoint.name.toLowerCase().replace(WHITESPACE_RE, '-')}`,
         name: chokepoint.name,
         type: 'chokepoint_congestion',
         lat: chokepoint.lat,
@@ -11756,10 +11880,10 @@ async function handleWitsRequest(req, res) {
 
   const params = new URL(req.url, 'http://localhost').searchParams;
   const upstreamPath = params.get('path') || '';
-  const rows = /^\/API\/V1\/SDMX\/V21\/datasource\/TRN\/reporter\/\d{3}\/partner\/(all|000)\/product\/\d{6}\/year\/(\d{1,4})\/datatype\/(reported|aveestimated)$/.exec(upstreamPath);
+  const rows = ROWS_RE.exec(upstreamPath);
   const validRows = rows && Number(rows[2]) >= 1 && Number(rows[2]) <= 2100
     && (rows[3] === 'reported' ? rows[1] === 'all' : rows[1] === '000');
-  const validMetadata = /^\/API\/V1\/wits\/datasource\/trn\/(dataavailability\/country\/\d{3}\/year\/all|country\/all)$/.test(upstreamPath);
+  const validMetadata = VALID_METADATA_RE.test(upstreamPath);
   if (params.size !== 1 || (!validRows && !validMetadata)) {
     return safeEnd(res, 400, responseHeaders, JSON.stringify({ error: 'Invalid WITS path' }));
   }
@@ -11887,7 +12011,7 @@ function handleWorldBankRequest(req, res) {
   // Validate World Bank indicator code format (e.g. IT.NET.USER.ZS, NY.GDP.MKTP.CD).
   // Accept any code with 2-6 dot-separated alphanumeric segments; this allows callers
   // to request indicators beyond the TECH_INDICATORS display-name map.
-  if (!indicator || !/^[A-Z0-9]{2,10}(\.[A-Z0-9]{2,10}){1,5}$/.test(indicator)) {
+  if (!indicator || !HANDLE_WORLD_BANK_REQUEST_RE.test(indicator)) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ error: 'Invalid indicator parameter' }));
   }
@@ -12161,7 +12285,7 @@ function handlePolymarketRequest(req, res) {
   params.set('order', ['volume', 'liquidity', 'startDate', 'endDate', 'spread'].includes(order) ? order : 'volume');
   params.set('ascending', url.searchParams.get('ascending') === 'true' ? 'true' : 'false');
   params.set('limit', String(upstreamLimit));
-  const tag = (url.searchParams.get('tag') || url.searchParams.get('tag_slug') || '').replace(/[^a-z0-9-]/gi, '').slice(0, 100);
+  const tag = (url.searchParams.get('tag') || url.searchParams.get('tag_slug') || '').replace(TAG_RE, '').slice(0, 100);
   if (tag && endpoint === 'events') params.set('tag_slug', tag);
 
   const cacheKey = endpoint + ':' + params.toString();
@@ -13101,7 +13225,7 @@ async function handleRelayRequest(req, res) {
             status: apiRes.statusCode,
             latencyMs: Date.now() - start,
             bodyLength: data.length,
-            statesCount: (data.match(/"states":\s*\[/) ? 'present' : 'missing'),
+            statesCount: (data.match(API_REQ_RE) ? 'present' : 'missing'),
           }));
         });
         apiReq.on('error', (err) => resolve({ error: err.message, code: err.code, latencyMs: Date.now() - start }));
@@ -13781,7 +13905,7 @@ const gfString = (field, s) => gfBytes(field, [...Buffer.from(s, 'utf8')]);
  */
 function buildGfSearchUrl(params) {
   const { origin, destination, departureDate, returnDate, cabinClass, maxStops, airlines, passengers } = params;
-  const roundTrip = /^\d{4}-\d{2}-\d{2}$/.test(returnDate || '');
+  const roundTrip = ROUND_TRIP_RE.test(returnDate || '');
   const adults = Math.max(1, Math.min(parseInt(passengers, 10) || 1, 9));
   const stops = gfMaxStops(maxStops);
   const codes = Array.isArray(airlines) ? airlines.slice().sort() : [];
@@ -13804,14 +13928,14 @@ function buildGfSearchUrl(params) {
  * a challenge or an unrecognized page, never an empty result.
  */
 function readGfPayload(html) {
-  const marker = /AF_initDataCallback\(\{key: 'ds:1',(?: hash: '[^']*',)?\s*data:/.exec(html);
+  const marker = MARKER_RE.exec(html);
   if (!marker) throw new Error('Google Flights returned a page without flight results');
   const start = marker.index + marker[0].length;
   const close = html.indexOf('</script>', start);
   const block = html.slice(start, close < 0 ? undefined : close);
   // A rejected search (a past date, an unknown airport) carries an ErrorResponse
   // in place of the payload: `data:[…], errorHasStatus: true,});`.
-  if (/,\s*errorHasStatus:\s*true/.test(block)) throw new Error('Google Flights rejected the search');
+  if (READ_GF_PAYLOAD_RE.test(block)) throw new Error('Google Flights rejected the search');
   const end = block.lastIndexOf(', sideChannel:');
   let data;
   try {
@@ -14104,27 +14228,27 @@ function isWidgetInjectionAttempt(text) {
   const t = text.toLowerCase();
   return (
     // Classic instruction override patterns
-    /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|rules?|prompts?|constraints?)/.test(t) ||
-    /disregard\s+(all\s+)?(previous|prior|above)\s+(instructions?|rules?)/.test(t) ||
-    /forget\s+(all\s+)?(previous|prior|above)\s+(instructions?|rules?)/.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_2.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_3.test(t) ||
     // Role hijacking
-    /you\s+are\s+now\s+(a|an)\s+(?!worldmonitor)/.test(t) ||
-    /act\s+as\s+(a|an)\s+(?!worldmonitor)/.test(t) ||
-    /pretend\s+(you\s+are|to\s+be)\s+/.test(t) ||
-    /your\s+new\s+(role|persona|identity|name)\s+is/.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_4.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_5.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_6.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_7.test(t) ||
     // Prompt exfiltration
-    /repeat\s+(your\s+)?(system\s+)?prompt/.test(t) ||
-    /show\s+(me\s+)?(your\s+)?(system\s+)?instructions/.test(t) ||
-    /reveal\s+(your\s+)?(system\s+)?prompt/.test(t) ||
-    /what\s+(are|were)\s+your\s+instructions/.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_8.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_9.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_10.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_11.test(t) ||
     // Structural injection markers
-    /\[\s*system\s*\]/i.test(text) ||
-    /#{3,}\s*(system|instruction|override)/i.test(text) ||
-    /<\s*system\s*>/i.test(text) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_12.test(text) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_13.test(text) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_14.test(text) ||
     // DAN / jailbreak vocabulary
-    /\bdan\b.*\bmode\b/.test(t) ||
-    /jailbreak/.test(t) ||
-    /developer\s+mode/.test(t)
+    IS_WIDGET_INJECTION_ATTEMPT_RE_15.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_16.test(t) ||
+    IS_WIDGET_INJECTION_ATTEMPT_RE_17.test(t)
   );
 }
 
@@ -14134,9 +14258,9 @@ function isWidgetInjectionAttempt(text) {
  */
 function filterWidgetToolInjection(content) {
   return content
-    .replace(/ignore\s+(all\s+)?(previous|prior)\s+instructions?/gi, '[filtered]')
-    .replace(/\[\s*system\s*\]/gi, '[filtered]')
-    .replace(/<\s*system\s*>/gi, '[filtered]');
+    .replace(FILTER_WIDGET_TOOL_INJECTION_RE, '[filtered]')
+    .replace(FILTER_WIDGET_TOOL_INJECTION_RE_2, '[filtered]')
+    .replace(FILTER_WIDGET_TOOL_INJECTION_RE_3, '[filtered]');
 }
 
 function sanitizeToolContent(content) {
@@ -14528,8 +14652,8 @@ async function performWidgetPageRead(url, { signal } = {}) {
       if (res.ok) {
         const payload = await res.json();
         const text = String(payload.data?.markdown || '')
-          .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-          .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+          .replace(TEXT_RE, '')
+          .replace(TEXT_RE_2, '$1')
           .trim();
         if (text) return { source: 'firecrawl', text: text.slice(0, limit) };
       }
@@ -14764,7 +14888,7 @@ async function handleWidgetAgentRequest(req, res) {
   // Widget keys also belong to legacy callers. Only the separate server relay
   // credential can attest to an identity that passed the edge spend checks.
   // Others bucket on their key: IP headers are caller-set (GHSA-rcgv).
-  const rateBucket = /^[A-Za-z0-9:_-]{8,128}$/.test(spendId)
+  const rateBucket = RATE_BUCKET_RE.test(spendId)
     && RELAY_SHARED_SECRET && isAuthorizedRequest(req) ? `id:${spendId}` : `key:${status.admittedAs}`;
 
   // Rate limiting (separate buckets)
@@ -15166,7 +15290,7 @@ function classifyWidgetAgentError(err, model) {
   // to the client. Today the SDK does not bubble keys into thrown messages,
   // but we apply this on every branch that interpolates rawMsg (400 +
   // fallback) so a future SDK change can't leak the key in a single round.
-  const scrub = (s) => String(s || '').replace(/sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g, '[REDACTED]');
+  const scrub = (s) => String(s || '').replace(SCRUB_RE, '[REDACTED]');
   if (status === 401 || type === 'authentication_error') {
     // Operator hint without revealing which env var or its value.
     return 'AI backend rejected the API key. Operator: check ANTHROPIC_API_KEY on the relay.';
@@ -15177,7 +15301,7 @@ function classifyWidgetAgentError(err, model) {
   if (status === 429 || type === 'rate_limit_error') {
     return 'AI backend rate limit reached. Try again in a moment.';
   }
-  if (status === 404 || type === 'not_found_error' || /model.*not.*found|not_found_error/i.test(rawMsg)) {
+  if (status === 404 || type === 'not_found_error' || CLASSIFY_WIDGET_AGENT_ERROR_RE.test(rawMsg)) {
     return `AI model "${model}" unavailable on this account. Operator: verify model availability.`;
   }
   // Anthropic SDK APITimeoutError carries status 408. We catch it BEFORE the
@@ -15201,7 +15325,7 @@ function classifyWidgetAgentError(err, model) {
   if ((status !== null && status >= 500) || type === 'api_error' || type === 'overloaded_error') {
     return 'AI backend temporarily unavailable. Try again in a moment.';
   }
-  if (/ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND/i.test(rawMsg)) {
+  if (CLASSIFY_WIDGET_AGENT_ERROR_RE_2.test(rawMsg)) {
     return 'Network error reaching AI backend. Try again in a moment.';
   }
   // Last-resort fallback for anything we did not classify above.

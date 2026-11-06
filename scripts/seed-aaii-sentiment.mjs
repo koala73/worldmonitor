@@ -2,6 +2,14 @@
 
 import { loadEnvFile, CHROME_UA, runSeed, readCanonicalValue, httpRetryError } from './_seed-utils.mjs';
 import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
+
+const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const MDY_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+const REPORTED_DATE_FROM_WEEK_ENDING_RE = /Week ending\s+([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/i;
+const PARSE_HTML_SENTIMENT_RE = /class="ssv2-snum\s+(bull|neut|bear)"[^<>]{0,64}>\s*([\d.]+)%/g;
+const PCTS_RE = /<td[^<>]*class="tableTxt"[^<>]*>([\d.]+)%/g;
+const IS_VALID_WEEK_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 loadEnvFile(import.meta.url);
 
 const AAII_KEY = 'market:aaii-sentiment:v1';
@@ -285,8 +293,8 @@ export function extractSentimentData(rows) {
       // Strict formats only: footer rows like "Max '01" or "Count '25" parse as dates in V8.
       // Build the date in UTC; new Date('1/2/2026') is local midnight and shifts east of UTC.
       const t = rawDate.trim();
-      const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      const mdy = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      const iso = t.match(ISO_RE);
+      const mdy = t.match(MDY_RE);
       const [y, m, d] = iso ? [+iso[1], +iso[2], +iso[3]] : mdy ? [+mdy[3], +mdy[1], +mdy[2]] : [];
       if (y) {
         const parsed = new Date(Date.UTC(y, m - 1, d));
@@ -327,7 +335,7 @@ function mostRecentThursdayUTC(now = new Date()) {
 // AAII reports each week on the Thursday after the survey week closes, which is
 // the date the XLS uses; map "Week ending October 21, 2026" to that Thursday.
 function reportedDateFromWeekEnding(html) {
-  const m = html.match(/Week ending\s+([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/i);
+  const m = html.match(REPORTED_DATE_FROM_WEEK_ENDING_RE);
   if (!m) return null;
   const month = MONTHS.indexOf(m[1].toLowerCase());
   if (month < 0) return null;
@@ -344,7 +352,7 @@ export function parseHtmlSentiment(html) {
 
   // Current page: <div class="ssv2-snum bull">36.9%</div>, one per bull/neut/bear.
   const byClass = {};
-  for (const m of html.matchAll(/class="ssv2-snum\s+(bull|neut|bear)"[^<>]{0,64}>\s*([\d.]+)%/g)) {
+  for (const m of html.matchAll(PARSE_HTML_SENTIMENT_RE)) {
     byClass[m[1]] ??= parseFloat(m[2]);
   }
   if (byClass.bull != null && byClass.neut != null && byClass.bear != null) {
@@ -359,7 +367,7 @@ export function parseHtmlSentiment(html) {
   }
 
   // Pre-2026-10 page: tableTxt cells in Bullish, Neutral, Bearish order.
-  const pcts = [...html.matchAll(/<td[^<>]*class="tableTxt"[^<>]*>([\d.]+)%/g)]
+  const pcts = [...html.matchAll(PCTS_RE)]
     .map(m => parseFloat(m[1]));
 
   if (pcts.length >= 3) {
@@ -467,7 +475,7 @@ async function fetchAaiiSentiment({ fetchDeadlineAtMs }) {
 }
 
 function isValidWeek(week) {
-  if (!week || typeof week.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(week.date)) return false;
+  if (!week || typeof week.date !== 'string' || !IS_VALID_WEEK_RE.test(week.date)) return false;
   const timestamp = Date.parse(week.date);
   if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== week.date) return false;
   if (![week.bullish, week.neutral, week.bearish].every(n => Number.isFinite(n) && n >= 0 && n <= 100)) return false;

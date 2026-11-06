@@ -24,6 +24,9 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const INVENTORY_RE = /^### (.+)$/gm;
+
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 // Written into src-tauri/notices/, which is a committed directory with
 // gitignored contents (like src-tauri/sidecar/node). tauri-build resolves
@@ -170,7 +173,7 @@ if (CHECK) {
   }
   // Compare the package inventory, not the whole file: licence texts are read
   // from node_modules, which a --omit=optional install can legitimately thin out.
-  const inventory = (text) => [...text.matchAll(/^### (.+)$/gm)].map((match) => match[1]).sort();
+  const inventory = (text) => [...text.matchAll(INVENTORY_RE)].map((match) => match[1]).sort();
   const before = inventory(existing);
   const after = inventory(content);
   const missing = after.filter((entry) => !before.includes(entry));

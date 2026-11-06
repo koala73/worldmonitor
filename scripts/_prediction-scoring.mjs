@@ -1,5 +1,8 @@
 import predictionTags from './data/prediction-tags.json' with { type: 'json' };
 
+const KALSHI_MARKET_URL_RE = /^[A-Za-z0-9_-]+$/;
+
+
 export const EXCLUDE_KEYWORDS = predictionTags.excludeKeywords;
 
 export const MEME_PATTERNS = [
@@ -81,7 +84,7 @@ export function parsePolymarketLiquidity(source) {
 
 export function kalshiMarketUrl(seriesTicker) {
   const ticker = String(seriesTicker ?? '').trim();
-  return /^[A-Za-z0-9_-]+$/.test(ticker)
+  return KALSHI_MARKET_URL_RE.test(ticker)
     ? `https://kalshi.com/markets/${ticker.toLowerCase()}`
     : '';
 }

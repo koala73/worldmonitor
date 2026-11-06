@@ -10,6 +10,10 @@ import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { cachedFetchJsonWithMeta, setCachedJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 
+const CHECK_SERVICE_STATUS_RE = /All Systems Operational|fully operational|no issues/i;
+const CHECK_SERVICE_STATUS_RE_2 = /degraded|partial outage|experiencing issues/i;
+
+
 // ========================================================================
 // Service status page definitions and parsers
 // ========================================================================
@@ -221,10 +225,10 @@ async function checkServiceStatus(service: ServiceDef): Promise<ServiceStatus> {
     if (service.customParser === 'incidentio') {
       const text = await response.text();
       if (text.startsWith('<!') || text.startsWith('<html')) {
-        if (/All Systems Operational|fully operational|no issues/i.test(text)) {
+        if (CHECK_SERVICE_STATUS_RE.test(text)) {
           return withStatus('SERVICE_OPERATIONAL_STATUS_OPERATIONAL', 'All systems operational', latencyMs);
         }
-        if (/degraded|partial outage|experiencing issues/i.test(text)) {
+        if (CHECK_SERVICE_STATUS_RE_2.test(text)) {
           return withStatus('SERVICE_OPERATIONAL_STATUS_DEGRADED', 'Some issues reported', latencyMs);
         }
         return unknown('Could not parse status');

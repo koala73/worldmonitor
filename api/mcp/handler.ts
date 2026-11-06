@@ -80,6 +80,9 @@ import {
 import type { McpAuthContext, McpHandlerDeps } from './types';
 import type { McpBudget } from './quota';
 
+const LINE_BREAK_RE = /\r?\n/;
+
+
 // MCP methods servable WITHOUT authentication — on the machine-discovery
 // aliases only (WELL_KNOWN_MCP_PATHS). The transport paths (`/mcp`, `/api/mcp`)
 // challenge every unauthenticated request before this set is consulted; see
@@ -318,7 +321,7 @@ function formatSseEvent(event: StoredSseEvent): string {
   if (event.data === '') {
     lines.push('data:');
   } else {
-    for (const line of event.data.split(/\r?\n/)) lines.push(`data: ${line}`);
+    for (const line of event.data.split(LINE_BREAK_RE)) lines.push(`data: ${line}`);
   }
   return `${lines.join('\n')}\n\n`;
 }

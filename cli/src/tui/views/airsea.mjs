@@ -7,6 +7,10 @@ import { severityColor } from '../ui/theme.mjs';
 import { ageOf, enumLabel, flightBlips, fmtInt, fmtPct } from '../data/select.mjs';
 import { PaneView } from './base.mjs';
 
+const OP_RE = /^other$/;
+const TYPE_RE = /^unknown$/;
+
+
 export class AirSeaView extends PaneView {
   constructor(app) {
     super(app, { id: 'airsea', label: 'Air & Sea', paneIds: ['flights', 'delays', 'choke'], sources: ['flights', 'vessels', 'flightDelays', 'fast', 'slow'] });
@@ -65,8 +69,8 @@ export class AirSeaView extends PaneView {
       inner,
       flights,
       (f, _i, { width }) => {
-        const op = enumLabel(f.operator).replace(/^other$/, '') || f.operatorCountry || '';
-        const type = enumLabel(f.aircraftType).replace(/^unknown$/, '') || f.aircraftModel || '';
+        const op = enumLabel(f.operator).replace(OP_RE, '') || f.operatorCountry || '';
+        const type = enumLabel(f.aircraftType).replace(TYPE_RE, '') || f.aircraftModel || '';
         return [
           { text: `${String(f.callsign || f.hexCode || '').padEnd(8)} `, fg: t.accent, attr: ATTR.BOLD },
           { text: `${String(op).slice(0, 10).padEnd(10)} `, fg: t.text },

@@ -13,6 +13,9 @@
 import { loadEnvFile, runSeed, sleep, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
+const MM_RE = /^M(\d{2})$/;
+
+
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -143,7 +146,7 @@ export function blsContentMeta(data) {
   const tokens = [];
   for (const s of Array.isArray(data?.series) ? data.series : []) {
     for (const o of Array.isArray(s?.observations) ? s.observations : []) {
-      const mm = /^M(\d{2})$/.exec(o?.period ?? '');
+      const mm = MM_RE.exec(o?.period ?? '');
       if (mm && o?.year) tokens.push(`${o.year}-${mm[1]}`);
     }
   }

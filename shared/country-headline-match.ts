@@ -24,6 +24,10 @@
  * that stand in for the state in a headline. A country absent from this map
  * falls back to its display name (see `getCountrySearchTerms`).
  */
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const CASE_SENSITIVE_RE = /^[A-Z]{2,3}$/;
+const GET_COUNTRY_SEARCH_TERMS_RE = /^[A-Z]{2}$/i;
+
 export const COUNTRY_ALIASES: Record<string, string[]> = {
   IL: ['israel', 'israeli', 'gaza', 'hamas', 'hezbollah', 'netanyahu', 'idf', 'west bank', 'tel aviv', 'jerusalem'],
   IR: ['iran', 'iranian', 'tehran', 'persian', 'irgc', 'khamenei'],
@@ -53,7 +57,7 @@ export const COUNTRY_ALIASES: Record<string, string[]> = {
 const otherCountryTermsCache = new Map<string, string[]>();
 
 export function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 /**
@@ -66,7 +70,7 @@ export function escapeRegExp(value: string): string {
 export function countryTermIndex(text: string, term: string): number {
   const trimmedTerm = term.trim();
   if (!trimmedTerm) return -1;
-  const caseSensitive = /^[A-Z]{2,3}$/.test(trimmedTerm);
+  const caseSensitive = CASE_SENSITIVE_RE.test(trimmedTerm);
   const matchText = caseSensitive ? text : text.toLowerCase();
   const matchTerm = caseSensitive ? trimmedTerm : trimmedTerm.toLowerCase();
   const match = new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(matchTerm)}(?=$|[^A-Za-z0-9])`).exec(matchText);
@@ -112,7 +116,7 @@ export function getOtherCountryTerms(code: string): string[] {
 export function getCountrySearchTerms(country: string, code: string): string[] {
   const aliases = COUNTRY_ALIASES[code.toUpperCase()];
   if (aliases) return aliases;
-  if (/^[A-Z]{2}$/i.test(country.trim())) return [];
+  if (GET_COUNTRY_SEARCH_TERMS_RE.test(country.trim())) return [];
   return [country];
 }
 

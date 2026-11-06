@@ -27,6 +27,10 @@ import { extractMetricObservation, parseMetricKey, selectResolutionFeed, shapeRe
 import { isPublishedOriginEntry } from './_forecast-scorecard.mjs';
 import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from './_gps-maritime-regions.mjs';
 
+const FIRST_FINITE_SIGNAL_COUNT_RE = /(-?\d+(?:\.\d+)?)/;
+const PCT_RE = /(\d+(?:\.\d+)?)\s*%/;
+
+
 // ── Horizon -> deadline math (R5) ───────────────────────────────────────
 //
 // Production detectors and the state-derived path emit only '24h'/'7d'/'30d'
@@ -415,7 +419,7 @@ function findPredictionMarketEndDate(pred, inputs) {
 function firstFiniteSignalCount(pred, matchTypes) {
   for (const signal of pred.signals || []) {
     if (!matchTypes.has(signal.type)) continue;
-    const match = /(-?\d+(?:\.\d+)?)/.exec(String(signal.value ?? ''));
+    const match = FIRST_FINITE_SIGNAL_COUNT_RE.exec(String(signal.value ?? ''));
     if (match) {
       const n = Number(match[1]);
       if (Number.isFinite(n)) return n;
@@ -432,12 +436,12 @@ function firstPercentSignalValue(pred, matchTypes) {
   for (const signal of pred.signals || []) {
     if (!matchTypes.has(signal.type)) continue;
     const str = String(signal.value ?? '');
-    const pct = /(\d+(?:\.\d+)?)\s*%/.exec(str);
+    const pct = PCT_RE.exec(str);
     if (pct) {
       const n = Number(pct[1]);
       if (Number.isFinite(n)) return n;
     }
-    const generic = /(-?\d+(?:\.\d+)?)/.exec(str);
+    const generic = FIRST_FINITE_SIGNAL_COUNT_RE.exec(str);
     if (generic) {
       const n = Number(generic[1]);
       if (Number.isFinite(n)) return n;

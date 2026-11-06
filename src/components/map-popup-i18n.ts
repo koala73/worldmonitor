@@ -9,14 +9,22 @@
 import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { nameToCountryCode } from '@/services/country-geometry';
 
+const WORDS_RE = /&/g;
+const WORDS_RE_2 = /[^A-Za-z0-9]+/g;
+const WHITESPACE_RE = /\s+/;
+const NORMALIZE_EVENT_NAME_RE = /[\u0300-\u036f]/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const COUNTRY_CODE_FOR_NAME_RE = /^[a-z]{2}$/;
+const WHITESPACE_RE_2 = /\s+/g;
+
 function toKeySlug(raw: string): string {
   const words = raw
     .trim()
-    .replace(/&/g, ' and ')
-    .replace(/[^A-Za-z0-9]+/g, ' ')
+    .replace(WORDS_RE, ' and ')
+    .replace(WORDS_RE_2, ' ')
     .trim()
     .toLowerCase()
-    .split(/\s+/)
+    .split(WHITESPACE_RE)
     .filter(Boolean);
   return words.map((w, i) => (i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1))).join('');
 }
@@ -83,9 +91,9 @@ const WEATHER_EVENT_ALIASES: Record<string, string> = {
 function normalizeEventName(raw: string): string {
   return raw
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(NORMALIZE_EVENT_NAME_RE, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(NON_ALPHANUMERIC_RE, ' ')
     .trim();
 }
 
@@ -167,7 +175,7 @@ function buildEnglishRegionIndex(): Map<string, string> {
 export function countryCodeForName(name: string): string | null {
   const normalized = name.trim().toLowerCase();
   if (!normalized) return null;
-  if (/^[a-z]{2}$/.test(normalized)) return normalized.toUpperCase();
+  if (COUNTRY_CODE_FOR_NAME_RE.test(normalized)) return normalized.toUpperCase();
   const alias = COUNTRY_ALIASES[normalized];
   if (alias) return alias;
   englishRegionIndex ??= buildEnglishRegionIndex();
@@ -192,7 +200,7 @@ export function countryLabel(raw: string | null | undefined): string {
 /** True when a city field only repeats the country (e.g. GDELT country-level hits). */
 export function isSameLocation(city: string | null | undefined, country: string | null | undefined): boolean {
   if (!city || !country) return false;
-  const norm = (s: string) => s.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+  const norm = (s: string) => s.normalize('NFKC').trim().toLowerCase().replace(WHITESPACE_RE_2, ' ');
   if (norm(city) === norm(country)) return true;
   const a = countryCodeForName(city);
   return a !== null && a === countryCodeForName(country);

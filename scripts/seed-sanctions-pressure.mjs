@@ -15,6 +15,14 @@ import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS, ingestCslEntries } from './_cs
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, SEMA_TIMEOUT_MS, ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
 
+const VALID_PRESSURE_CLOCK_RE = /^[1-9]\d{0,15}$/;
+const VALID_SOURCE_ID_RE = /^sema-ca:(?!unspecified:|xx:)[^:]+:[^:]+:[1-9]\d*$/;
+const VALID_SOURCE_RECORDS_RE = /^\d+$/;
+const WHITESPACE_RE = /\s+/g;
+const FINALIZE_PARTY_RE = /birth|citizenship|nationality/i;
+const FINALIZE_PARTY_RE_2 = /location/i;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'sanctions:pressure:v1';
@@ -58,7 +66,7 @@ const DEFAULT_RECENT_LIMIT = 60;
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
 
 function validPressureClock(value) {
-  return typeof value === 'string' && /^[1-9]\d{0,15}$/.test(value)
+  return typeof value === 'string' && VALID_PRESSURE_CLOCK_RE.test(value)
     && Number.isSafeInteger(Number(value)) && Number(value) <= 8640000000000000;
 }
 
@@ -73,7 +81,7 @@ const PRESSURE_SOURCES = [...OFAC_SOURCES.map(({ label }) => label), SEMA_SOURCE
 
 function validSourceId(source, id) {
   if (typeof id !== 'string') return false;
-  if (source === SEMA_SOURCE) return /^sema-ca:(?!unspecified:|xx:)[^:]+:[^:]+:[1-9]\d*$/.test(id);
+  if (source === SEMA_SOURCE) return VALID_SOURCE_ID_RE.test(id);
   if (CSL_SOURCES.includes(source)) return id.startsWith(`${source}:`) && CSL_ROW_ID.test(id.slice(source.length + 1));
   return new RegExp(`^${source}:\\d+$`).test(id);
 }
@@ -89,7 +97,7 @@ function validSourceRecords(source, records) {
       || !['countryCodes', 'countryNames', 'programs'].every(field => Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string'))
       || !['_aliases', '_identifiers'].every(field => entry[field] === undefined || (Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string')))
       || !['_notice', '_url'].every(field => entry[field] === undefined || typeof entry[field] === 'string')
-      || typeof entry.effectiveAt !== 'string' || !/^\d+$/.test(entry.effectiveAt)) return false;
+      || typeof entry.effectiveAt !== 'string' || !VALID_SOURCE_RECORDS_RE.test(entry.effectiveAt)) return false;
     ids.add(entry.id);
     return true;
   });
@@ -159,7 +167,7 @@ function uniqueSorted(values) {
 }
 
 function compactNote(value) {
-  const note = String(value || '').replace(/\s+/g, ' ').trim();
+  const note = String(value || '').replace(WHITESPACE_RE, ' ').trim();
   if (!note) return '';
   return note.length > 240 ? `${note.slice(0, 237)}...` : note;
 }
@@ -327,13 +335,13 @@ async function fetchSource(source, { deadlineAt } = {}) {
       let entityType = 'SANCTIONS_ENTITY_TYPE_ENTITY';
       if (profileSubTypeId === '1') entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
       else if (profileSubTypeId === '2') entityType = 'SANCTIONS_ENTITY_TYPE_AIRCRAFT';
-      else if (profileFeatures?.some((f) => /birth|citizenship|nationality/i.test(featureTypes.get(f.featureTypeId) || ''))) {
+      else if (profileFeatures?.some((f) => FINALIZE_PARTY_RE.test(featureTypes.get(f.featureTypeId) || ''))) {
         entityType = 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL';
       }
 
       const seen = new Map();
       for (const feat of profileFeatures ?? []) {
-        if (!/location/i.test(featureTypes.get(feat.featureTypeId) || '')) continue;
+        if (!FINALIZE_PARTY_RE_2.test(featureTypes.get(feat.featureTypeId) || '')) continue;
         for (const lid of feat.locationIds) {
           const loc = locations.get(lid);
           if (!loc) continue;

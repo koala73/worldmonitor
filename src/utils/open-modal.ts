@@ -36,6 +36,9 @@
  */
 
 /** Element surface the probes need. Structural so tests need no real DOM. */
+const WHITESPACE_RE = /\s+/;
+const SAFE_RE = /[^A-Za-z0-9_-]/g;
+
 export interface VisibleElementLike {
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
@@ -183,9 +186,9 @@ function isRendered(el: VisibleElementLike): boolean {
  */
 function describe(el: VisibleElementLike): string {
   const role = el.getAttribute?.('role') ?? '';
-  const firstClass = (el.className ?? '').split(/\s+/).find((c) => c.length > 0) ?? '';
+  const firstClass = (el.className ?? '').split(WHITESPACE_RE).find((c) => c.length > 0) ?? '';
   const raw = firstClass || role || el.tagName || 'unknown';
-  const safe = raw.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  const safe = raw.replace(SAFE_RE, '').slice(0, 40);
   return safe.length > 0 ? safe : 'unknown';
 }
 

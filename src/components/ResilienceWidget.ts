@@ -34,6 +34,9 @@ import {
 import { CountrySectionError } from '@/services/country-brief-error';
 import type { CountryEnergyProfileData } from './CountryBriefPanel';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 // LOCKED_PREVIEW lives in resilience-widget-utils.ts so tests and
 // other non-Vite consumers can import it without dragging in the
 // full ResilienceWidget class transitive graph (the class indirectly
@@ -43,7 +46,7 @@ const METHODOLOGY_HELP_TITLE = formatResilienceMethodologyHelpTitle();
 
 function normalizeCountryCode(countryCode: string | null | undefined): string | null {
   const normalized = String(countryCode || '').trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+  return COUNTRY_CODE_RE.test(normalized) ? normalized : null;
 }
 
 function clampScore(score: number): number {

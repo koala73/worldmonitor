@@ -64,6 +64,9 @@ import {
 } from "./_resendContacts";
 import { filterPageForEligibility } from "./_poolSelection";
 
+const TRANSIENT_RE = /\b(429|5\d\d)\b/;
+
+
 // ───────────────────────────────────────────────────────────────────────────
 // Constants
 // ───────────────────────────────────────────────────────────────────────────
@@ -169,7 +172,7 @@ async function pushWithBackoff(
     lastResult = result;
     // Re-classify: only retry transient (429, 5xx). 4xx other than 429
     // (e.g. 400/403/404) is permanent — abort early.
-    const transient = /\b(429|5\d\d)\b/.test(result.reason);
+    const transient = TRANSIENT_RE.test(result.reason);
     if (!transient || attempt === RESEND_BACKOFF_MAX_RETRIES - 1) {
       return result;
     }

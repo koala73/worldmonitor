@@ -16,6 +16,9 @@ import {
   createIntervalDiagnostics,
 } from './_resilience-intervals.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const API_BASE = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
@@ -509,7 +512,7 @@ export async function seedResilienceScores({ runtimeCacheState = fetchRuntimeCac
   // this defensive filter prevents transient mismatch during deploys.
   const allCountries = (index?.countries ?? [])
     .map((c) => String(c || '').trim().toUpperCase())
-    .filter((c) => /^[A-Z]{2}$/.test(c));
+    .filter((c) => COUNTRY_CODE_RE.test(c));
   const countryCodes = allCountries.filter(isInRankableUniverse);
   const droppedCount = allCountries.length - countryCodes.length;
   if (droppedCount > 0) {

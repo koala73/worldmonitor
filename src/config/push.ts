@@ -18,6 +18,12 @@
 // leaked VAPID private key grants send-to-any-subscriber capability
 // against this origin's push subscribers.
 
+const NORMAL_RE = /-/g;
+const NORMAL_RE_2 = /_/g;
+const ARRAY_BUFFER_TO_BASE64_RE = /\+/g;
+const ARRAY_BUFFER_TO_BASE64_RE_2 = /\//g;
+const ARRAY_BUFFER_TO_BASE64_RE_3 = /=+$/;
+
 const ENV_KEY = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_VAPID_PUBLIC_KEY;
 
 /**
@@ -36,7 +42,7 @@ export function isWebPushConfigured(): boolean {
 /** Convert a URL-safe base64 VAPID key into the Uint8Array pushManager wants. */
 export function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = '='.repeat((4 - (base64.length % 4)) % 4);
-  const normal = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const normal = (base64 + padding).replace(NORMAL_RE, '+').replace(NORMAL_RE_2, '/');
   const raw = atob(normal);
   const out = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
@@ -49,5 +55,5 @@ export function arrayBufferToBase64(buf: ArrayBuffer | null): string {
   const bytes = new Uint8Array(buf);
   let bin = '';
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i] as number);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(bin).replace(ARRAY_BUFFER_TO_BASE64_RE, '-').replace(ARRAY_BUFFER_TO_BASE64_RE_2, '_').replace(ARRAY_BUFFER_TO_BASE64_RE_3, '');
 }

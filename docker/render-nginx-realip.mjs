@@ -1,6 +1,9 @@
 import { writeFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 
+const VALIDATE_TRUSTED_PROXY_RE = /^(0|[1-9]\d*)$/;
+
+
 const outputPath = process.argv[2] ?? '/tmp/nginx-realip.conf';
 const rawTrustedProxies = process.env.WM_TRUSTED_PROXY_CIDRS?.trim() ?? '';
 
@@ -17,7 +20,7 @@ function validateTrustedProxy(value) {
   const address = value.slice(0, slashIndex);
   const prefixText = value.slice(slashIndex + 1);
   const addressFamily = isIP(address);
-  if (addressFamily === 0 || !/^(0|[1-9]\d*)$/.test(prefixText)) {
+  if (addressFamily === 0 || !VALIDATE_TRUSTED_PROXY_RE.test(prefixText)) {
     return false;
   }
 

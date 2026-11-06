@@ -42,6 +42,11 @@ import {
   type ProviderEvidence,
 } from "../../shared/company-monitoring-evidence";
 
+const NORMALIZED_DOMAIN_RE = /^www\./;
+const NORMALIZED_DOMAIN_RE_2 = /\.$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 type Source = Infer<typeof companyMonitoringScanSourceValidator>;
 type FinalizeResult = Infer<typeof companyMonitoringFinalizeResultValidator>;
 type NonReassuringReason = Infer<typeof companyMonitoringNonReassuringReasonValidator>;
@@ -1291,7 +1296,7 @@ function validXWindow(
 }
 
 function normalizedDomain(value: string): string {
-  return value.toLowerCase().replace(/^www\./, "").replace(/\.$/, "");
+  return value.toLowerCase().replace(NORMALIZED_DOMAIN_RE, "").replace(NORMALIZED_DOMAIN_RE_2, "");
 }
 
 function claimHasIndependentDomainAuthority(
@@ -1381,7 +1386,7 @@ function validXPostObservation(
   if (post.contentState === "withheld") {
     return Boolean(
       post.withheldCountryCodes?.length &&
-      post.withheldCountryCodes.every((code) => /^[A-Z]{2}$/.test(code)),
+      post.withheldCountryCodes.every((code) => COUNTRY_CODE_RE.test(code)),
     );
   }
   return post.withheldCountryCodes === undefined;

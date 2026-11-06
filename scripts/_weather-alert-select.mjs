@@ -16,6 +16,12 @@ import { fileURLToPath } from 'node:url';
 import { roundGeoCoordinate } from './_seed-utils.mjs';
 import { finiteLat, finiteLon, lonLatPair } from './lib/geo-coord.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const DERIVE_WEATHER_COALESCE_KEY_RE = /\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./;
+const OFFSET_FREE_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d{1,3})?$/;
+const COUNTRY_CODE_FROM_SWIC_URL_RE = /^([a-z]{2})-/i;
+
+
 const ISO3_TO_ISO2 = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'shared/iso3-to-iso2.json'), 'utf8'),
 );
@@ -219,7 +225,7 @@ export function weatherAlertNotifySource(alert) {
 
 export function weatherAlertNotifyCountryCode(alert) {
   const code = String(alert?.countryCode || '').trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(code) ? code : undefined;
+  return COUNTRY_CODE_RE.test(code) ? code : undefined;
 }
 
 // NWS severity vocabulary, most dangerous first. Anything outside this list —
@@ -426,7 +432,7 @@ export function mergeAlertSources(parts = {}, { totalLimit = MAX_ALERTS, perSour
  */
 export function deriveWeatherCoalesceKey(vtec) {
   if (typeof vtec !== 'string') return undefined;
-  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
+  const m = vtec.match(DERIVE_WEATHER_COALESCE_KEY_RE);
   if (!m) return undefined;
   return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
 }
@@ -579,7 +585,7 @@ export function normalizeSwicTimestamp(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const offsetFree = raw.match(
-    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d{1,3})?$/,
+    OFFSET_FREE_RE,
   );
   const candidate = offsetFree
     ? `${offsetFree[1]}T${offsetFree[2]}${offsetFree[3] || ''}Z`
@@ -590,15 +596,15 @@ export function normalizeSwicTimestamp(value) {
 
 export function countryCodeFromSwicUrl(url) {
   const path = String(url || '').trim();
-  const match = path.match(/^([a-z]{2})-/i);
+  const match = path.match(COUNTRY_CODE_FROM_SWIC_URL_RE);
   return match ? match[1].toUpperCase() : null;
 }
 
 export function iso3ToIso2(iso3) {
   const code = String(iso3 || '').trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(code)) return code;
+  if (COUNTRY_CODE_RE.test(code)) return code;
   const mapped = ISO3_TO_ISO2[code];
-  return typeof mapped === 'string' && /^[A-Z]{2}$/.test(mapped) ? mapped : null;
+  return typeof mapped === 'string' && COUNTRY_CODE_RE.test(mapped) ? mapped : null;
 }
 
 export function indexSwicMembers(data) {

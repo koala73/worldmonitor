@@ -42,6 +42,10 @@ import { STARTUP_ECOSYSTEMS } from '../src/config/startup-ecosystems.ts';
 import { TECH_COMPANIES } from '../src/config/tech-companies.ts';
 import { COMMODITY_MINERS } from '../src/config/commodity-miners.ts';
 
+const PARSE_OBJECT_LITERALS_RE = /'((?:[^'\\]|\\.)*)'/g;
+const BUILD_CHANNELS_RE = /'([^']+)'/g;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT = resolve(root, 'cli/src/tui/data/catalog.generated.json');
 const CHANNELS_TS = resolve(root, 'src/services/live-channels.ts');
@@ -76,7 +80,7 @@ function parseObjectLiterals(block) {
     let f;
     while ((f = fieldRe.exec(body))) {
       if (f[2] !== undefined) obj[f[1]] = f[2];
-      else obj[f[1]] = [...f[3].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((x) => x[1]);
+      else obj[f[1]] = [...f[3].matchAll(PARSE_OBJECT_LITERALS_RE)].map((x) => x[1]);
     }
     if (obj.id) out.push(obj);
   }
@@ -111,7 +115,7 @@ export function buildChannels(channelsSource) {
     regions.push({
       key: m[1],
       label: REGION_LABELS[m[1]] || m[1],
-      channelIds: [...m[2].matchAll(/'([^']+)'/g)].map((x) => x[1]),
+      channelIds: [...m[2].matchAll(BUILD_CHANNELS_RE)].map((x) => x[1]),
     });
   }
   const regionOf = new Map();

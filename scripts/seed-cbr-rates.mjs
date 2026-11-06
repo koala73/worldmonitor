@@ -33,6 +33,14 @@ import { CHROME_UA, loadEnvFile, runSeed, withRetry } from './_seed-utils.mjs';
 import { DAY_MIN, periodTokenToMs, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
+const PARSE_CBR_DECIMAL_RE = /^-?\d+(?:[.,]\d+)?$/;
+const CBR_DATE_TO_ISO_RE = /^(\d{2})\.(\d{2})\.(\d{4})$/;
+const PARSE_DAILY_RATES_RE = /^[A-Z]{3}$/;
+const PARSE_KEY_RATE_SOAP_RE = /^\d{4}-\d{2}-\d{2}T/;
+const ISO_TO_CBR_DATE_REQ_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const PREVIOUS_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:cbr-rates:v1';
@@ -130,7 +138,7 @@ export function decodeCbrXml(bytes) {
 export function parseCbrDecimal(raw) {
   if (typeof raw !== 'string') return null;
   const token = raw.trim();
-  if (!/^-?\d+(?:[.,]\d+)?$/.test(token)) return null;
+  if (!PARSE_CBR_DECIMAL_RE.test(token)) return null;
   const value = Number(token.replace(',', '.'));
   return Number.isFinite(value) ? value : null;
 }
@@ -147,7 +155,7 @@ export function parseCbrDecimal(raw) {
  */
 export function cbrDateToIso(token) {
   if (typeof token !== 'string') return null;
-  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(token.trim());
+  const m = CBR_DATE_TO_ISO_RE.exec(token.trim());
   if (!m) return null;
   const [, dd, mm, yyyy] = m;
   const day = Number(dd);
@@ -191,7 +199,7 @@ export function parseDailyRates(xml) {
 
   for (const row of asArray(valCurs?.Valute)) {
     const code = typeof row?.CharCode === 'string' ? row.CharCode.trim().toUpperCase() : '';
-    if (!/^[A-Z]{3}$/.test(code)) continue;
+    if (!PARSE_DAILY_RATES_RE.test(code)) continue;
 
     const value = parseCbrDecimal(row?.Value);
     const nominal = parseCbrDecimal(row?.Nominal);
@@ -262,7 +270,7 @@ export function parseKeyRateSoap(xml) {
 
   const observations = [];
   for (const row of rows) {
-    if (!/^\d{4}-\d{2}-\d{2}T/.test(row.DT)) continue;
+    if (!PARSE_KEY_RATE_SOAP_RE.test(row.DT)) continue;
     const value = parseCbrDecimal(row.Rate);
     if (value == null || value < 0) continue;
     observations.push({ date: row.DT.slice(0, 10), value });
@@ -501,7 +509,7 @@ async function fetchCbrBytes(url, init = {}) {
  */
 export function isoToCbrDateReq(iso) {
   if (typeof iso !== 'string') return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const m = ISO_TO_CBR_DATE_REQ_RE.exec(iso);
   if (!m) return null;
   const [, yyyy, mm, dd] = m;
   return `${dd}/${mm}/${yyyy}`;
@@ -514,7 +522,7 @@ export function isoToCbrDateReq(iso) {
  * @returns {string|null}
  */
 export function previousIsoDate(iso) {
-  if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  if (typeof iso !== 'string' || !PREVIOUS_ISO_DATE_RE.test(iso)) return null;
   const ms = Date.parse(`${iso}T00:00:00Z`);
   if (!Number.isFinite(ms)) return null;
   return new Date(ms - 86_400_000).toISOString().slice(0, 10);

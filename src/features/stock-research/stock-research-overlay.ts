@@ -29,6 +29,9 @@ import {
 } from './stock-research-route';
 import { declareOverlay } from '@/utils/open-modal';
 
+const IS_STOCK_RESEARCH_LOCATION_RE = /^\/stocks(?:\/|$)/;
+
+
 /** '/' is rewritten to the marketing page in production; the app lives here. */
 const DASHBOARD_PATH = '/dashboard';
 
@@ -97,7 +100,7 @@ export function closeStockResearchOverlay(): void {
 }
 
 function isStockResearchLocation(): boolean {
-  return /^\/stocks(?:\/|$)/.test(window.location.pathname);
+  return IS_STOCK_RESEARCH_LOCATION_RE.test(window.location.pathname);
 }
 
 export function navigateToStockResearch(symbol: string, stock?: MarketData): void {

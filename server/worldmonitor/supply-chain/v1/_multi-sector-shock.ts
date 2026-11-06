@@ -17,6 +17,9 @@
 import { BYPASS_CORRIDORS_BY_CHOKEPOINT, type BypassCorridor } from '../../../_shared/bypass-corridors';
 import { warRiskTierToInsurancePremiumBps } from './_insurance-tier';
 
+const HS4_TO_HS2_RE = /^0+/;
+
+
 /** Top 10 HS2 sectors seeded by scripts/seed-comtrade-bilateral-hs4.mjs. */
 export const SEEDED_HS2_CODES = ['27', '84', '85', '87', '30', '72', '39', '29', '10', '62'] as const;
 
@@ -37,7 +40,7 @@ export const MULTI_SECTOR_HS2_LABELS: Record<string, string> = {
 /** HS4 → HS2 is always the first two digits, zero-padded. */
 export function hs4ToHs2(hs4: string): string {
   const padded = hs4.padStart(4, '0');
-  return padded.slice(0, 2).replace(/^0+/, '') || '0';
+  return padded.slice(0, 2).replace(HS4_TO_HS2_RE, '') || '0';
 }
 
 export interface MultiSectorCostShock {

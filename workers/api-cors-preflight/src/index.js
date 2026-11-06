@@ -25,6 +25,11 @@ import { stripTrailingSlashes } from '../../../shared/strip-trailing-slashes.js'
 import { maybeShadowKvRead } from './kv-shadow.js';
 import { maybeServeBootstrapFromKv } from './kv-serve.js';
 
+const DECODED_RE = /--/g;
+const DECODED_RE_2 = /-/g;
+const DECODED_RE_3 = /\0/g;
+
+
 // Keep in sync with api/_cors.js#ALLOWED_ORIGIN_PATTERNS and
 // server/cors.ts#PRODUCTION_PATTERNS. The Worker's allowlist must be a
 // superset of (or identical to) the function-side allowlist; if it's narrower,
@@ -169,7 +174,7 @@ function isWorldMonitorGoogleTranslateOrigin(origin) {
     if (!host.endsWith(suffix)) return false;
     const encoded = host.slice(0, -suffix.length);
     if (!encoded || encoded.includes('.')) return false;
-    const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
+    const decoded = encoded.replace(DECODED_RE, '\0').replace(DECODED_RE_2, '.').replace(DECODED_RE_3, '-');
     return APP_ORIGIN_PATTERN.test(`https://${decoded}`);
   } catch {
     return false;

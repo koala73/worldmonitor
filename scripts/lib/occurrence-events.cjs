@@ -1,5 +1,11 @@
 'use strict';
 
+const HOST_RE = /^www\./;
+const PATH_RE = /\/+$/;
+const NORMALIZE_HEADLINE_RE = /\s+[-|–—]\s+[^-|–—]{1,40}$/;
+const NORMALIZE_HEADLINE_RE_2 = /[^\p{L}\p{N}]+/gu;
+
+
 /**
  * Stable event ids and the API fan-out list contract for occurrence events
  * (shared/event-triggers.json, kind "occurrence").
@@ -60,9 +66,9 @@ function canonicalLink(url) {
     return null;
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-  const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+  const host = parsed.hostname.toLowerCase().replace(HOST_RE, '');
   if (!host) return null;
-  const path = parsed.pathname.replace(/\/+$/, '');
+  const path = parsed.pathname.replace(PATH_RE, '');
   return `${host}${path}`;
 }
 
@@ -75,8 +81,8 @@ function normalizeHeadline(title) {
   return String(title ?? '')
     .normalize('NFKC')
     .toLowerCase()
-    .replace(/\s+[-|–—]\s+[^-|–—]{1,40}$/, '')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(NORMALIZE_HEADLINE_RE, '')
+    .replace(NORMALIZE_HEADLINE_RE_2, ' ')
     .trim();
 }
 

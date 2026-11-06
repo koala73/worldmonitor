@@ -116,6 +116,12 @@ import { pathToFileURL } from 'node:url';
 import { CONTENT_CORPUS_PREFIXES } from './discover-content-corpus-pages.mjs';
 import agentRequestPolicy from './shared/agent-request-policy.json' with { type: 'json' };
 
+const BUILD_CORPUS_CACHE_EXPRESSION_RE = /^and /;
+const QUOTED_PATH_LITERALS_RE = /"\/[^"]*"/g;
+const NAMED_HOSTS_RE = /http\.host\s+(?:eq\s+"([^"]+)"|in\s+\{([^}]*)\})/g;
+const NAMED_HOSTS_RE_2 = /"[^"]+"/g;
+
+
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 
 const ZONE_NAME = 'worldmonitor.app';
@@ -436,7 +442,7 @@ function buildCorpusCacheExpression({
     // rule. Single-representation files skip the guard entirely.
     '  and (',
     `    http.request.uri.path.extension in {${singleRepresentation}}`,
-    `    or (${firstGuard.trim().replace(/^and /, '')}`,
+    `    or (${firstGuard.trim().replace(BUILD_CORPUS_CACHE_EXPRESSION_RE, '')}`,
     ...restGuards,
     '    )',
     '  )',
@@ -691,14 +697,14 @@ function claimedPathLiterals({
   ]);
 }
 
-const quotedPathLiterals = (expression) => (expression.match(/"\/[^"]*"/g) ?? []).map((literal) => literal.slice(1, -1));
+const quotedPathLiterals = (expression) => (expression.match(QUOTED_PATH_LITERALS_RE) ?? []).map((literal) => literal.slice(1, -1));
 
 /** The hosts an expression names, if it names any; a host-less expression applies to every host. */
 function namedHosts(expression) {
   const hosts = [];
-  for (const match of expression.matchAll(/http\.host\s+(?:eq\s+"([^"]+)"|in\s+\{([^}]*)\})/g)) {
+  for (const match of expression.matchAll(NAMED_HOSTS_RE)) {
     if (match[1]) hosts.push(match[1]);
-    else for (const literal of match[2].match(/"[^"]+"/g) ?? []) hosts.push(literal.slice(1, -1));
+    else for (const literal of match[2].match(NAMED_HOSTS_RE_2) ?? []) hosts.push(literal.slice(1, -1));
   }
   return hosts;
 }

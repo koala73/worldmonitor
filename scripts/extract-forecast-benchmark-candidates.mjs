@@ -3,6 +3,11 @@
 import { loadEnvFile } from './_seed-utils.mjs';
 import { HISTORY_KEY } from './seed-forecasts.mjs';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUGIFY_RE = /^_+|_+$/g;
+const BUILD_BENCHMARK_CANDIDATE_RE = /-/g;
+
+
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (_isDirectRun) loadEnvFile(import.meta.url);
 
@@ -11,8 +16,8 @@ const NOISE_SIGNAL_TYPES = new Set(['news_corroboration']);
 function slugify(value) {
   return (value || '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
+    .replace(NON_ALPHANUMERIC_RE, '_')
+    .replace(SLUGIFY_RE, '')
     .slice(0, 64);
 }
 
@@ -62,7 +67,7 @@ function buildBenchmarkCandidate(current, prior, snapshotAt) {
   const eventDate = new Date(snapshotAt).toISOString().slice(0, 10);
   const observedChange = summarizeObservedChange(current, prior);
   return {
-    name: `${slugify(current.title)}_${eventDate.replace(/-/g, '_')}`,
+    name: `${slugify(current.title)}_${eventDate.replace(BUILD_BENCHMARK_CANDIDATE_RE, '_')}`,
     eventDate,
     description: `${current.title} moved from ${Math.round(prior.probability * 100)}% to ${Math.round(current.probability * 100)}% between consecutive forecast snapshots.`,
     priorForecast: toBenchmarkForecast(prior),

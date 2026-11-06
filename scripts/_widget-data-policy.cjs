@@ -3,6 +3,9 @@
 // they list. tests/widget-endpoint-policy.test.mjs requires every bootstrap
 // registry key and generated GET route to be listed or excluded with a reason.
 
+const BUILD_WIDGET_DATA_URL_RE = /[\\#\s\u0000-\u001f\u007f]/u;
+const BUILD_WIDGET_DATA_URL_RE_2 = /%(?![0-9a-f]{2})/i;
+
 const GROUPS = [
   'Markets',
   'Crypto',
@@ -435,8 +438,8 @@ function approvedBootstrapQuery(searchParams, requireKeys) {
 // turn a denied spelling into an approved path, or params hide a denied key.
 function buildWidgetDataUrl(endpoint, params = {}) {
   if (typeof endpoint !== 'string' || !endpoint.startsWith('/api/')
-      || /[\\#\s\u0000-\u001f\u007f]/u.test(endpoint)
-      || /%(?![0-9a-f]{2})/i.test(endpoint)
+      || BUILD_WIDGET_DATA_URL_RE.test(endpoint)
+      || BUILD_WIDGET_DATA_URL_RE_2.test(endpoint)
       || !params || typeof params !== 'object' || Array.isArray(params)) return null;
   const rawPath = endpoint.split('?')[0];
   if (rawPath !== '/api/bootstrap' && !RPC_PATHS.has(rawPath)) return null;

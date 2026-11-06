@@ -1,3 +1,8 @@
+
+
+const WHITESPACE_RE = /\s+/;
+const WORDS_RE = /[^\p{L}\p{N}\p{M}']+/u;
+const WORDS_RE_2 = /^'+|'+$/g;
 export interface TokenizedTitle {
   words: Set<string>;
   ordered: string[];
@@ -24,7 +29,7 @@ export function tokenizeForMatch(title: string): TokenizedTitle {
   const norm = normalizeForMatch(title);
   const words = new Set<string>();
   const ordered: string[] = [];
-  for (const raw of norm.split(/\s+/)) {
+  for (const raw of norm.split(WHITESPACE_RE)) {
     const cleaned = raw.replace(EDGE_NON_WORD, '');
     if (!cleaned) continue;
     words.add(cleaned);
@@ -76,8 +81,8 @@ function matchSingleWord(words: Set<string>, keyword: string): boolean {
 
 export function matchKeyword(tokens: TokenizedTitle, keyword: string): boolean {
   const words = normalizeForMatch(keyword)
-    .split(/[^\p{L}\p{N}\p{M}']+/u)
-    .map(w => w.replace(/^'+|'+$/g, ''))
+    .split(WORDS_RE)
+    .map(w => w.replace(WORDS_RE_2, ''))
     .filter((w): w is string => w.length > 0);
   if (words.length === 0) return false;
   if (words.length === 1) return matchSingleWord(tokens.words, words[0]!);

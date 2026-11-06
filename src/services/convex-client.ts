@@ -14,6 +14,12 @@ import { getClerkToken, clearClerkTokenCache, getCurrentClerkUser } from './cler
 import { clearAgentRef, loadAgentRef } from '../../shared/agent-client-source';
 import { agentRefStorage } from '@/services/agent-ref';
 
+const IS_UNKNOWN_SIGNUP_REF_ERROR_RE = /validat/i;
+const CALL_ENSURE_RECORD_RE = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/;
+const CALL_ENSURE_RECORD_RE_2 = /^[a-z]{2,3}$/;
+const COOKIE_MATCH_RE = /(?:^|;\s*)cf-ipcountry=([A-Z]{2})/;
+
+
 // Use typeof to get the exact generated API type without importing statically
 type ConvexApi = typeof import('../../convex/_generated/api').api;
 type ConvexClientFactory = (url: string) => ConvexClient | Promise<ConvexClient>;
@@ -198,7 +204,7 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
  */
 function isUnknownSignupRefError(err: unknown): boolean {
   const message = (err as Error | undefined)?.message ?? '';
-  return /validat/i.test(message) && message.includes('signupRef');
+  return IS_UNKNOWN_SIGNUP_REF_ERROR_RE.test(message) && message.includes('signupRef');
 }
 
 /**
@@ -242,10 +248,10 @@ async function callEnsureRecord(c: ConvexClient): Promise<void> {
     // tags) so the server never rejects what we send and we never enter
     // an eternal-retry loop. Rejected by the server is observable in
     // logs; rejected by the client falls back gracefully.
-    if (!/^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(localeTag) || localeTag.length > 64) {
+    if (!CALL_ENSURE_RECORD_RE.test(localeTag) || localeTag.length > 64) {
       localeTag = 'en';
     }
-    if (!/^[a-z]{2,3}$/.test(localePrimary)) {
+    if (!CALL_ENSURE_RECORD_RE_2.test(localePrimary)) {
       localePrimary = 'en';
     }
 
@@ -262,7 +268,7 @@ async function callEnsureRecord(c: ConvexClient): Promise<void> {
     // analytics use only. Schema docstring marks `country` as
     // client-reported, NOT authoritative.
     let country: string | undefined;
-    const cookieMatch = document.cookie.match(/(?:^|;\s*)cf-ipcountry=([A-Z]{2})/);
+    const cookieMatch = document.cookie.match(COOKIE_MATCH_RE);
     if (cookieMatch?.[1]) country = cookieMatch[1];
 
     const api = await getConvexApi();

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 import { afterEach, test } from 'node:test';
 import { getSocialVelocity } from '../server/worldmonitor/intelligence/v1/get-social-velocity.ts';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
@@ -92,7 +93,7 @@ test('real seeder publishes only Reddit permalinks and the reader accepts its ou
   const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
   const region = source.slice(source.indexOf('const SOCIAL_VELOCITY_REDIS_KEY ='), source.indexOf('async function startSocialVelocitySeedLoop()'));
   let payload: unknown;
-  const seed = runInNewContext(region + '\nseedSocialVelocity', {
+  const seed = runInNewContext(moduleRegexDeclarations(source) + '\n' + region + '\nseedSocialVelocity', {
     URL, Date, console: { log() {}, warn() {}, error() {} },
     setTimeout: (fn: () => void, ms: number) => { if (ms === 500) fn(); return 1; }, clearTimeout() {},
     fetchRedditHotListing: async () => ({ ok: true, posts: [

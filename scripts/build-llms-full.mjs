@@ -36,6 +36,25 @@ import { SITE_ORIGIN } from './discover-content-corpus-pages.mjs';
 import { buildSourceCatalog, buildSourcePages } from './crawlable-sources-page.mjs';
 import { activeSourceAttributionEntries, loadManifest } from './source-attribution.mjs';
 
+const STRIP_FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n/;
+const REDACTED_RE = /https?:\/\/([^/\s)"'`<>]+)([^\s)"'`<>]*)/g;
+const NORMALIZED_RE = /\/+$/;
+const REBASE_INLINED_DOCS_LINKS_RE = /\]\((\/[^)\s]+)(\s+"[^"]*")?\)/g;
+const REBASE_INLINED_DOCS_LINKS_RE_2 = /(<a\b[^>]*\bhref=")(\/[^"]+)(")/g;
+const STRIP_MDX_RE = /<[A-Z][A-Za-z0-9]*[^>]*\/>/g;
+const STRIP_MDX_RE_2 = /<\/?[A-Z][A-Za-z0-9]*[^>]*>/g;
+const STRIP_MDX_RE_3 = /\n{3,}/g;
+const BRIEF_PREFIX_RE = /<!-- corpus-navigation:start -->[\s\S]*?<!-- corpus-navigation:end -->\n*/g;
+const BRIEF_PREFIX_RE_2 = /^<a id="corpus-[^"]+"><\/a>\n/gm;
+const BRIEF_PREFIX_RE_3 = /\s+$/;
+const DELIMITER_RE = /^\s{0,3}(`{3,}|~{3,})/;
+const HEADING_RE = /^(#{1,6}) (.+)$/;
+const BODY_RE = /\]\(#([^)]+)\)/g;
+const WITH_CORPUS_NAVIGATION_RE = /\n(?=<a id="corpus-[^"]+"><\/a>\n## )/;
+const HEADINGS_RE = /^## Comparisons$/gm;
+const TITLE_RE = /^title: "(.+)"$/m;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT_PATH = 'public/llms-full.txt';
 export const LLMS_TXT_PATH = 'public/llms.txt';
@@ -54,7 +73,7 @@ function read(rootDir, relativePath) {
 }
 
 function stripFrontmatter(source) {
-  return redactInternalApiOrigins(String(source).replace(/^---\n[\s\S]*?\n---\n/, '').trim());
+  return redactInternalApiOrigins(String(source).replace(STRIP_FRONTMATTER_RE, '').trim());
 }
 
 const PUBLIC_API_HOSTNAME = 'api.worldmonitor.app';
@@ -68,7 +87,7 @@ export function redactInternalApiOrigins(text) {
   // API origin so agents can follow documented runtime-manifest links, and
   // stamp the existing allowlist pragma so the committed corpus can keep it.
   const redacted = String(text).replace(
-    /https?:\/\/([^/\s)"'`<>]+)([^\s)"'`<>]*)/g,
+    REDACTED_RE,
     (full, host, rest) => {
       const hostname = String(host).toLowerCase();
       if (hostname === PUBLIC_API_HOSTNAME) return full;
@@ -96,7 +115,7 @@ function rebaseInlinedDocsHref(href) {
   const cut = splitAt.length > 0 ? Math.min(...splitAt) : href.length;
   const path = href.slice(0, cut);
   const suffix = href.slice(cut);
-  const normalized = path.length > 1 ? path.replace(/\/+$/, '') : path;
+  const normalized = path.length > 1 ? path.replace(NORMALIZED_RE, '') : path;
   const destination = getRootlessDocsDestination(normalized);
   if (destination) return `${new URL(destination).pathname}${suffix}`;
   if (normalized === '/api-reference' || normalized.startsWith('/api-reference/')) {
@@ -107,13 +126,13 @@ function rebaseInlinedDocsHref(href) {
 
 function rebaseInlinedDocsLinks(text) {
   return mapProseLines(text, (line) => line.replace(
-    /\]\((\/[^)\s]+)(\s+"[^"]*")?\)/g,
+    REBASE_INLINED_DOCS_LINKS_RE,
     (full, href, title = '') => {
       const next = rebaseInlinedDocsHref(href);
       return next ? `](${next}${title})` : full;
     },
   ).replace(
-    /(<a\b[^>]*\bhref=")(\/[^"]+)(")/g,
+    REBASE_INLINED_DOCS_LINKS_RE_2,
     (full, open, href, close) => {
       const next = rebaseInlinedDocsHref(href);
       return next ? `${open}${next}${close}` : full;
@@ -123,26 +142,26 @@ function rebaseInlinedDocsLinks(text) {
 
 function stripMdx(source) {
   let text = stripFrontmatter(source);
-  text = text.replace(/<[A-Z][A-Za-z0-9]*[^>]*\/>/g, '');
-  text = text.replace(/<\/?[A-Z][A-Za-z0-9]*[^>]*>/g, '');
+  text = text.replace(STRIP_MDX_RE, '');
+  text = text.replace(STRIP_MDX_RE_2, '');
   text = rebaseInlinedDocsLinks(text);
-  return redactInternalApiOrigins(text.replace(/\n{3,}/g, '\n\n').trim());
+  return redactInternalApiOrigins(text.replace(STRIP_MDX_RE_3, '\n\n').trim());
 }
 
 function briefPrefix(existing) {
   existing = existing
-    .replace(/<!-- corpus-navigation:start -->[\s\S]*?<!-- corpus-navigation:end -->\n*/g, '')
-    .replace(/^<a id="corpus-[^"]+"><\/a>\n/gm, '');
+    .replace(BRIEF_PREFIX_RE, '')
+    .replace(BRIEF_PREFIX_RE_2, '');
   const heading = `\n${LLMS_FULL_GENERATED_HEADING}\n`;
   const idx = existing.indexOf(heading);
   const prefix = idx === -1 ? existing : existing.slice(0, idx);
-  return prefix.replace(/\s+$/, '');
+  return prefix.replace(BRIEF_PREFIX_RE_3, '');
 }
 
 function mapProseLines(source, transform) {
   let fence = null;
   return source.split('\n').map((line) => {
-    const delimiter = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    const delimiter = line.match(DELIMITER_RE);
     if (delimiter) {
       if (!fence) fence = delimiter[1];
       else if (delimiter[1][0] === fence[0] && delimiter[1].length >= fence.length) fence = null;
@@ -159,7 +178,7 @@ export function withCorpusNavigation(sections) {
   const body = sections.map(({ title: scope, text }) => {
     const anchors = new Map();
     const renamed = mapProseLines(text, (line) => {
-      const heading = line.match(/^(#{1,6}) (.+)$/);
+      const heading = line.match(HEADING_RE);
       if (!heading) return line;
       const [, level, original] = heading;
       const originalSlug = slugify(original);
@@ -175,13 +194,13 @@ export function withCorpusNavigation(sections) {
       const marker = `<a id="${anchor}"></a>`;
       return level === '#' ? `${level} ${title}\n${marker}` : `${marker}\n${level} ${title}`;
     });
-    return mapProseLines(renamed, (line) => line.replace(/\]\(#([^)]+)\)/g, (link, fragment) => (
+    return mapProseLines(renamed, (line) => line.replace(BODY_RE, (link, fragment) => (
       anchors.has(fragment) ? `](#${anchors.get(fragment)})` : link
     )));
   }).join('\n\n');
   const navigation = ['<!-- corpus-navigation:start -->', '**Contents**', '', ...contents,
     '<!-- corpus-navigation:end -->'].join('\n');
-  return body.replace(/\n(?=<a id="corpus-[^"]+"><\/a>\n## )/, `\n${navigation}\n\n`);
+  return body.replace(WITH_CORPUS_NAVIGATION_RE, `\n${navigation}\n\n`);
 }
 
 export const VERSION_HEADER_RE = /^> Version: \d+\.\d+\.\d+ · Last updated: \d{4}-\d{2}-\d{2}$/m;
@@ -329,7 +348,7 @@ export function withResilienceCoverage(text, coverage) {
 export function withComparisonsSection(llmsTxt) {
   const text = String(llmsTxt);
   const block = renderComparisons();
-  const headings = [...text.matchAll(/^## Comparisons$/gm)];
+  const headings = [...text.matchAll(HEADINGS_RE)];
   if (headings.length > 1) {
     throw new Error(`${LLMS_TXT_PATH} carries ${headings.length} "${COMPARISONS_HEADING}" headings; keep exactly one`);
   }
@@ -376,7 +395,7 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
     { title: 'Chokepoint explainers', text: '## Chokepoint explainers' },
     ...CHOKEPOINT_BLOGS.map((relativePath) => {
       const source = read(rootDir, relativePath);
-      const title = source.match(/^title: "(.+)"$/m)[1];
+      const title = source.match(TITLE_RE)[1];
       return { title, text: `### ${relativePath}\n\n${stripFrontmatter(source)}` };
     }),
     { title: 'Country Resilience Index methodology', text: `## Country Resilience Index methodology\n\n${stripMdx(read(rootDir, 'docs/methodology/country-resilience-index.mdx'))}` },

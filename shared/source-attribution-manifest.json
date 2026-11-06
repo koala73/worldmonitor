@@ -13009,6 +13009,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/_regional-energy-source.mjs"
+        },
+        {
           "path": "scripts/seed-fuel-prices.mjs"
         },
         {
@@ -15317,6 +15320,9 @@
         },
         {
           "path": "api/story.js"
+        },
+        {
+          "path": "scripts/_regional-energy-source.mjs"
         },
         {
           "path": "scripts/build-accuracy-page.mjs"

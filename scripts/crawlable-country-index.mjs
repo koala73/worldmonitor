@@ -17,6 +17,10 @@ import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.
 import { gdeltSeenDateToMs } from './_conflict-gdelt.mjs';
 import { COUNTRY_INDEX_ORIGIN, isVerifiableArticleUrl } from './crawlable-developments.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const WHITESPACE_RE = /\s+/g;
+
+
 // Twelve candidates leave the title gate room to drop location-only mentions
 // (the route caps at twenty). A row older than the timeline window is not
 // "recent" on a page headed that way: keep this in lockstep with
@@ -54,13 +58,13 @@ function canonicalHttpsUrl(value) {
 // brief floor can tell curated grounding from open-web corroboration.
 export function selectCountryIndexHeadlines(articles, code, nowMs = Date.now()) {
   const normalized = String(code || '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(normalized) || !Array.isArray(articles)) return [];
+  if (!COUNTRY_CODE_RE.test(normalized) || !Array.isArray(articles)) return [];
   const terms = countryMentionTerms(normalized);
   const cutoff = nowMs - COUNTRY_INDEX_MAX_AGE_MS;
   const rows = [];
   const seen = new Set();
   for (const article of articles) {
-    const title = String(article?.title || '').replace(/\s+/g, ' ').trim();
+    const title = String(article?.title || '').replace(WHITESPACE_RE, ' ').trim();
     const source = String(article?.source || '').trim();
     const url = canonicalHttpsUrl(article?.url);
     const publishedAtMs = gdeltSeenDateToMs(article?.date);

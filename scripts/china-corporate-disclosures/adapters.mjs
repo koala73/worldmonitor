@@ -15,6 +15,23 @@ import {
   CHINA_DISCLOSURE_DOCUMENT_HOSTS,
 } from '../shared/china-corporate-disclosure-policy.js';
 
+const CLASSIFY_DISCLOSURE_TITLE_RE = /业绩说明会/u;
+const REVISION_STATE_FOR_TITLE_RE = /撤回|取消公告|作废/u;
+const REVISION_STATE_FOR_TITLE_RE_2 = /更正|修订|补充/u;
+const QUOTED_ORIGINAL_RE = /[《「『]([^》」』]+)[》」』]/u;
+const SUBJECT_KEY_FOR_TITLE_RE = /更正|修订|补充|撤回|取消|作废/u;
+const SUBJECT_KEY_FOR_TITLE_RE_2 = /^[：:\s]+/u;
+const SUBJECT_KEY_FOR_TITLE_RE_3 = /[（(][^）)]*(?:更正|修订|补充|撤回|取消|作废)[^）)]*[）)]/gu;
+const SUBJECT_KEY_FOR_TITLE_RE_4 = /(?:更正|修订|补充|撤回|取消|作废)(?:公告)?$/u;
+const SUBJECT_KEY_FOR_TITLE_RE_5 = /^关于/u;
+const SUBJECT_KEY_FOR_TITLE_RE_6 = /的?公告$/u;
+const SUBJECT_KEY_FOR_TITLE_RE_7 = /[\s：:，,。．、\-—_（）()【】[\]]+/gu;
+const SSE_ANNOUNCEMENT_ID_RE = /\/([^/]+)\.pdf$/iu;
+const SAFE_SSE_DOCUMENT_URL_RE = /^\/disclosure\/listedinfo\/announcement\/[a-z0-9/_-]+\.pdf$/iu;
+const SAFE_SZSE_DOCUMENT_URL_RE = /^\/disc\/[a-z0-9/_-]+\.pdf$/iu;
+const FAILURE_REASON_RE = /^[a-z0-9_]{1,80}$/iu;
+
+
 // Both names were part of this module's public surface before the transport was
 // extracted; keep re-exporting them so existing importers stay unchanged.
 export { readBoundedJsonResponse };
@@ -221,7 +238,7 @@ export function findReviewedDisclosureIssuer(exchange, securityCode) {
 
 export function classifyDisclosureTitle(title) {
   const normalized = String(title ?? '').normalize('NFKC');
-  if (!normalized || /业绩说明会/u.test(normalized)) return null;
+  if (!normalized || CLASSIFY_DISCLOSURE_TITLE_RE.test(normalized)) return null;
   for (const [type, pattern] of CLASSIFICATION_PATTERNS) {
     if (pattern.test(normalized)) return type;
   }
@@ -230,27 +247,27 @@ export function classifyDisclosureTitle(title) {
 
 function revisionStateForTitle(title) {
   const normalized = String(title ?? '').normalize('NFKC');
-  if (/撤回|取消公告|作废/u.test(normalized)) return 'cancelled';
-  if (/更正|修订|补充/u.test(normalized)) return 'corrected';
+  if (REVISION_STATE_FOR_TITLE_RE.test(normalized)) return 'cancelled';
+  if (REVISION_STATE_FOR_TITLE_RE_2.test(normalized)) return 'corrected';
   return 'original';
 }
 
 function subjectKeyForTitle(title, issuer) {
   let normalized = String(title ?? '').normalize('NFKC').trim();
-  const quotedOriginal = /[《「『]([^》」』]+)[》」』]/u.exec(normalized);
-  if (quotedOriginal && /更正|修订|补充|撤回|取消|作废/u.test(normalized)) {
+  const quotedOriginal = QUOTED_ORIGINAL_RE.exec(normalized);
+  if (quotedOriginal && SUBJECT_KEY_FOR_TITLE_RE.test(normalized)) {
     normalized = quotedOriginal[1];
   }
   for (const prefix of [issuer.nameOriginal, issuer.name]) {
     if (prefix && normalized.startsWith(prefix)) normalized = normalized.slice(prefix.length);
   }
   normalized = normalized
-    .replace(/^[：:\s]+/u, '')
-    .replace(/[（(][^）)]*(?:更正|修订|补充|撤回|取消|作废)[^）)]*[）)]/gu, '')
-    .replace(/(?:更正|修订|补充|撤回|取消|作废)(?:公告)?$/u, '')
-    .replace(/^关于/u, '')
-    .replace(/的?公告$/u, '')
-    .replace(/[\s：:，,。．、\-—_（）()【】[\]]+/gu, '')
+    .replace(SUBJECT_KEY_FOR_TITLE_RE_2, '')
+    .replace(SUBJECT_KEY_FOR_TITLE_RE_3, '')
+    .replace(SUBJECT_KEY_FOR_TITLE_RE_4, '')
+    .replace(SUBJECT_KEY_FOR_TITLE_RE_5, '')
+    .replace(SUBJECT_KEY_FOR_TITLE_RE_6, '')
+    .replace(SUBJECT_KEY_FOR_TITLE_RE_7, '')
     .toLowerCase();
   return normalized || String(title ?? '').trim();
 }
@@ -267,19 +284,19 @@ function publicationDay(value) {
 }
 
 function sseAnnouncementId(urlPath) {
-  const match = /\/([^/]+)\.pdf$/iu.exec(String(urlPath ?? ''));
+  const match = SSE_ANNOUNCEMENT_ID_RE.exec(String(urlPath ?? ''));
   return match?.[1] ?? null;
 }
 
 function safeSseDocumentUrl(path) {
   const value = String(path ?? '');
-  if (!/^\/disclosure\/listedinfo\/announcement\/[a-z0-9/_-]+\.pdf$/iu.test(value)) return null;
+  if (!SAFE_SSE_DOCUMENT_URL_RE.test(value)) return null;
   return `https://www.sse.com.cn${value}`;
 }
 
 function safeSzseDocumentUrl(path) {
   const value = String(path ?? '');
-  if (!/^\/disc\/[a-z0-9/_-]+\.pdf$/iu.test(value)) return null;
+  if (!SAFE_SZSE_DOCUMENT_URL_RE.test(value)) return null;
   return `https://disc.static.szse.cn/download${value}`;
 }
 
@@ -792,7 +809,7 @@ function priorTransportReliability(previous, previousFailure) {
     && (!Number.isFinite(previousCheckedAt) || previousFailureAt > previousCheckedAt)
   ) {
     const failureReason = typeof previousFailure?.errorCode === 'string'
-      && /^[a-z0-9_]{1,80}$/iu.test(previousFailure.errorCode)
+      && FAILURE_REASON_RE.test(previousFailure.errorCode)
       ? previousFailure.errorCode
       : 'FETCH_FAILED';
     return {

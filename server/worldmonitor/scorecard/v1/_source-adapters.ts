@@ -9,6 +9,9 @@ import type {
   SourceObservation,
 } from './_types';
 
+const PARSE_MARKETING_YEAR_RE = /^(\d{4})/;
+
+
 export const SCORECARD_COMMODITY_KCAL_PER_KG = {
   wheat: 3340,
   corn: 3650,
@@ -151,7 +154,7 @@ function readCountry(source: unknown, countryCode: string): JsonRecord | null {
 
 function parseMarketingYear(value: unknown): number | null {
   if (typeof value !== 'string') return null;
-  const match = /^(\d{4})/.exec(value);
+  const match = PARSE_MARKETING_YEAR_RE.exec(value);
   return match ? year(match[1]) : null;
 }
 

@@ -2,6 +2,9 @@
 // Pure and import-free: the browser, the Node checker (scripts/check-live-video-sources.mjs)
 // and the tests all classify with this one definition.
 
+const WITH_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+const WITH_SCHEME_RE_2 = /^(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i;
+
 declare const brand: unique symbol;
 type Brand<T, B extends string> = T & { readonly [brand]: B };
 
@@ -39,9 +42,9 @@ function isYouTubeOwnedHost(host: string): boolean {
 }
 
 function toUrl(raw: string): URL | null {
-  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw)
+  const withScheme = WITH_SCHEME_RE.test(raw)
     ? raw
-    : /^(?:www\.|m\.)?(?:youtube\.com|youtu\.be)\//i.test(raw) ? `https://${raw}` : null;
+    : WITH_SCHEME_RE_2.test(raw) ? `https://${raw}` : null;
   if (!withScheme) return null;
   try {
     return new URL(withScheme);

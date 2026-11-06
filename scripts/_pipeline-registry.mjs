@@ -19,6 +19,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const GAS_CANONICAL_KEY = 'energy:pipelines:gas:v1';
 export const OIL_CANONICAL_KEY = 'energy:pipelines:oil:v1';
 // Per §13.2 of the parity plan: registry fields (geometry/operator/capacity)
@@ -83,11 +86,11 @@ export function validateRegistry(data) {
     } else if (p.productClass !== undefined) {
       return false;
     }
-    if (typeof p.fromCountry !== 'string' || !/^[A-Z]{2}$/.test(p.fromCountry)) return false;
-    if (typeof p.toCountry !== 'string' || !/^[A-Z]{2}$/.test(p.toCountry)) return false;
+    if (typeof p.fromCountry !== 'string' || !COUNTRY_CODE_RE.test(p.fromCountry)) return false;
+    if (typeof p.toCountry !== 'string' || !COUNTRY_CODE_RE.test(p.toCountry)) return false;
     if (!Array.isArray(p.transitCountries)) return false;
     for (const t of p.transitCountries) {
-      if (typeof t !== 'string' || !/^[A-Z]{2}$/.test(t)) return false;
+      if (typeof t !== 'string' || !COUNTRY_CODE_RE.test(t)) return false;
     }
     const hasCapacity =
       (p.commodityType === 'gas' && typeof p.capacityBcmYr === 'number' && p.capacityBcmYr > 0) ||

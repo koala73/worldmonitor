@@ -7,6 +7,8 @@
  * provider used for the exact observation matches a reviewed source below.
  */
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+
 export type RawRedistributionPolicyStatus =
   | 'allow'
   | 'restricted'
@@ -455,7 +457,7 @@ export function getIndicatorSourcePolicy(indicatorId: string): IndicatorSourcePo
 }
 
 function normalizeProvider(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return value.trim().toLowerCase().replace(NON_ALPHANUMERIC_RE, ' ').trim();
 }
 
 function normalizedSourceUrl(value: string): URL | null {

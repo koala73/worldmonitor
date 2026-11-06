@@ -6,6 +6,18 @@ import { rect } from './layout.mjs';
 import { hit, button } from './widgets.mjs';
 import { ageOf, enumLabel, fmtNum } from '../data/select.mjs';
 
+const IS_HTTP_URL_RE = /^https?:/i;
+const IS_TS_RE = /(At|Date|Time|Seen|Updated|Started|Ended|Expires|Onset|Published|pubDate)$/i;
+const IS_TS_RE_2 = /^(onset|expires|pubDate|date|timestamp|observedAt)$/i;
+const FMT_VALUE_RE = /^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/;
+const FMT_VALUE_RE_2 = /^\d{4}-\d{2}-\d{2}/;
+const LABEL_OF_RE = /([a-z0-9])([A-Z])/g;
+const LABEL_OF_RE_2 = /[_-]+/g;
+const LABEL_OF_RE_3 = /\b(pct|percent)\b/i;
+const LABEL_OF_RE_4 = /^./;
+const DRAW_DETAIL_RE = /\n+/;
+
+
 const TITLE_KEYS = ['title', 'name', 'primaryTitle', 'headline', 'event', 'question', 'display', 'symbol', 'place', 'disease', 'theater', 'callsign', 'label', 'scenario', 'region', 'country', 'zone', 'sector', 'asnName', 'indicator', 'id'];
 const URL_KEYS = ['url', 'link', 'primaryLink', 'sourceUrl', 'href', 'source_url'];
 const BODY_KEYS = ['description', 'summary', 'snippet', 'text', 'worldBrief', 'reason', 'note', 'significance', 'whyItMatters', 'riskSummary', 'shortDescription'];
@@ -13,9 +25,9 @@ const SKIP_KEYS = new Set(['id', 'uuid', 'hexCode', 'sparkline', 'history', 'coo
 const FIRST_KEYS = ['source', 'sourceName', 'primarySource', 'category', 'categoryTitle', 'type', 'severity', 'status', 'level', 'country', 'countryName', 'region', 'city', 'operator', 'magnitude', 'price', 'change', 'changePercent'];
 
 // Links come from feeds; only http(s) ones are shown or opened.
-export const isHttpUrl = (v) => typeof v === 'string' && /^https?:/i.test(v);
+export const isHttpUrl = (v) => typeof v === 'string' && IS_HTTP_URL_RE.test(v);
 
-const isTs = (k, _v) => /(At|Date|Time|Seen|Updated|Started|Ended|Expires|Onset|Published|pubDate)$/i.test(k) || /^(onset|expires|pubDate|date|timestamp|observedAt)$/i.test(k);
+const isTs = (k, _v) => IS_TS_RE.test(k) || IS_TS_RE_2.test(k);
 
 function fmtValue(k, v) {
   if (v === null || v === undefined || v === '') return '';
@@ -27,8 +39,8 @@ function fmtValue(k, v) {
     return fmtNum(v);
   }
   if (typeof v === 'string') {
-    if (/^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$/.test(v)) return enumLabel(v) || v.toLowerCase();
-    if (isTs(k, v) && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+    if (FMT_VALUE_RE.test(v)) return enumLabel(v) || v.toLowerCase();
+    if (isTs(k, v) && FMT_VALUE_RE_2.test(v)) {
       const t = Date.parse(v);
       return Number.isFinite(t) ? `${ageOf(t)} ago · ${v.replace('T', ' ').slice(0, 16)}` : v;
     }
@@ -54,11 +66,11 @@ function fmtValue(k, v) {
 
 export function labelOf(key) {
   return String(key)
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b(pct|percent)\b/i, '%')
+    .replace(LABEL_OF_RE, '$1 $2')
+    .replace(LABEL_OF_RE_2, ' ')
+    .replace(LABEL_OF_RE_3, '%')
     .toLowerCase()
-    .replace(/^./, (c) => c.toUpperCase());
+    .replace(LABEL_OF_RE_4, (c) => c.toUpperCase());
 }
 
 // Build a detail spec from any plain record.
@@ -101,7 +113,7 @@ export function drawDetail(ctx, full, spec, state) {
   }
   if (spec.body) {
     if (lines.length) lines.push({ text: '' });
-    for (const para of String(spec.body).split(/\n+/)) {
+    for (const para of String(spec.body).split(DRAW_DETAIL_RE)) {
       for (const l of wrap(para, innerW)) lines.push({ text: l, body: true });
       lines.push({ text: '' });
     }

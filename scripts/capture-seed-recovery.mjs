@@ -8,6 +8,19 @@ import { runRailway, runGit, resolveRailwayTarget, REPOSITORY } from './railway-
 import { orderByRecency, newestRunning } from './railway-deployments.mjs';
 import { createAncestryResolver } from './railway-deploy-closure.mjs';
 
+const TIME_RE = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/;
+const PROJECT_AU_STORAGE_RE = /^\d{13}-[a-z0-9]{1,20}$/;
+const VALIDATE_RECORD_RE = /^[\w .@-]{1,100}$/;
+const VALIDATE_RECORD_RE_2 = /^[a-f0-9-]{36}$/;
+const ATTEMPTS_RE = /Run ID:\s+(\d{13})-[a-z0-9]+\s*$/;
+const PROJECT_RUNS_RE = /^\s*\[([^\]]+)\]\s*(\{.*\})$/;
+const RUN_IDS_RE = /Run ID:\s+(\d{13}-[a-z0-9]+)\s*$/;
+const PROJECT_RUNS_RE_2 = /\(27 ok, 0 failed\)/;
+const PROJECT_RUNS_RE_3 = /; trying primary retry$/;
+const MAIN_RE = /\.json$/;
+const REASON_RE = /^(?:BASELINE_UNVERIFIED|(?:DEPLOYMENT|HEALTH|METADATA|LOG)_READ_FAILED)$/;
+
+
 const SOURCES = {
   yieldCurveAu: {
     service: 'seed-bundle-yield-curves', metaKey: 'seed-meta:economic:yield-curve-au',
@@ -45,7 +58,7 @@ const fail = (code) => { throw new Error(code); };
 const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const time = (value) => {
   if (typeof value === 'number' && value > 0) return value;
-  if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(value)) return NaN;
+  if (typeof value !== 'string' || !TIME_RE.test(value)) return NaN;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 19) === value.slice(0, 19) ? parsed : NaN;
 };
@@ -75,7 +88,7 @@ function projectAuStorage(meta, values, observedAt) {
     || completion?.fetchedAt !== seed.fetchedAt || !iso(completion?.completedAt)
     || time(completion.completedAt) < time(meta.fetchedAt)
     || time(completion.completedAt) > time(observedAt) + 30_000
-    || !/^\d{13}-[a-z0-9]{1,20}$/.test(completion?.runId ?? '')
+    || !PROJECT_AU_STORAGE_RE.test(completion?.runId ?? '')
     || Number(completion.runId.split('-')[0]) > time(seed.fetchedAt)) fail('SOURCE_METADATA_UNVERIFIED');
   for (const shardKey of auStorageKeys(observedAt).slice(2)) {
     const shard = values[shardKey];
@@ -95,8 +108,8 @@ function projectAuStorage(meta, values, observedAt) {
 export function validateRecord(record) {
   if (!object(record) || record.version !== 1 || !Object.hasOwn(SOURCES, record.source)
     || !SHA.test(record.requiredCommit) || !Number.isSafeInteger(record.pr) || record.pr < 1
-    || !/^[\w .@-]{1,100}$/.test(record.owner ?? '')
-    || !/^[a-f0-9-]{36}$/.test(record.project ?? '')
+    || !VALIDATE_RECORD_RE.test(record.owner ?? '')
+    || !VALIDATE_RECORD_RE_2.test(record.project ?? '')
     || !iso(record.createdAt) || !iso(record.deadline) || time(record.deadline) <= time(record.createdAt)
     || !iso(record.baselineSuccessAt) || time(record.baselineSuccessAt) > time(record.createdAt)
     || !Array.isArray(record.observations) || record.observations.length > 1000) fail('INVALID_CHECKPOINT');
@@ -166,14 +179,14 @@ export function projectRuns(source, logs, deployment, observedAt) {
   const starts = logs.filter((row) => row.message === 'Starting Container' && iso(row.timestamp));
   const attempts = logs.flatMap((row) => {
     if (typeof row.message !== 'string' || (config.prefix && !row.message.includes(`[${config.prefix}]`))) return [];
-    const match = row.message.match(/Run ID:\s+(\d{13})-[a-z0-9]+\s*$/);
+    const match = row.message.match(ATTEMPTS_RE);
     return match ? [Number(match[1])] : [];
   });
   const runs = [];
   for (const row of logs) {
     let event = row;
     if (config.prefix) {
-      const match = typeof row.message === 'string' && row.message.match(/^\s*\[([^\]]+)\]\s*(\{.*\})$/);
+      const match = typeof row.message === 'string' && row.message.match(PROJECT_RUNS_RE);
       if (!match || match[1] !== config.prefix) continue;
       try { event = JSON.parse(match[2]); } catch { fail('LOG_EVIDENCE_INVALID'); }
     }
@@ -190,13 +203,13 @@ export function projectRuns(source, logs, deployment, observedAt) {
     const inRun = (line) => time(line.timestamp) >= started - 15_000 && time(line.timestamp) <= ended + 15_000;
     const runIds = logs.filter((line) => inRun(line) && typeof line.message === 'string'
       && line.message.includes(`[${config.prefix}]`))
-      .flatMap((line) => line.message.match(/Run ID:\s+(\d{13}-[a-z0-9]+)\s*$/)?.slice(1) ?? []);
+      .flatMap((line) => line.message.match(RUN_IDS_RE)?.slice(1) ?? []);
     runs.push({
       startedAt: new Date(started).toISOString(), completedAt: iso(event.timestamp), state: event.state,
       containerStartedAt: iso(container?.timestamp),
       scheduled: Boolean(container && scheduledStart(time(container.timestamp), deployment.cronSchedule)),
-      completeCoverage: source !== 'wildfires' || logs.some((line) => inRun(line) && /\(27 ok, 0 failed\)/.test(line.message)),
-      recoveryPath: source === 'wildfires' && logs.some((line) => inRun(line) && /; trying primary retry$/.test(line.message)),
+      completeCoverage: source !== 'wildfires' || logs.some((line) => inRun(line) && PROJECT_RUNS_RE_2.test(line.message)),
+      recoveryPath: source === 'wildfires' && logs.some((line) => inRun(line) && PROJECT_RUNS_RE_3.test(line.message)),
       ...(source === 'yieldCurveAu' ? { runId: runIds.length === 1 ? runIds[0] : null } : {}),
     });
   }
@@ -422,7 +435,7 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   record.observations.push(observation);
   record.verdict = evaluateRecovery(record);
   atomicWrite(output, `${JSON.stringify(record, null, 2)}\n`);
-  atomicWrite(output.replace(/\.json$/, '.md'), formatRecoveryMarkdown(record));
+  atomicWrite(output.replace(MAIN_RE, '.md'), formatRecoveryMarkdown(record));
   return record;
 }
 
@@ -432,7 +445,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.log(`${record.source}: ${record.verdict.status} (${record.verdict.reason})`);
     process.exitCode = record.verdict.status === 'passed' ? 0 : ['failed', 'unverified'].includes(record.verdict.status) ? 1 : 2;
   }).catch((error) => {
-    const reason = CAPTURE_ERRORS.has(error.message) || /^(?:BASELINE_UNVERIFIED|(?:DEPLOYMENT|HEALTH|METADATA|LOG)_READ_FAILED)$/.test(error.message)
+    const reason = CAPTURE_ERRORS.has(error.message) || REASON_RE.test(error.message)
       ? error.message : 'INVALID_ARGUMENTS_OR_CHECKPOINT';
     console.error(`Recovery capture failed: ${reason}. No acceptance was proved.`);
     process.exitCode = 1;

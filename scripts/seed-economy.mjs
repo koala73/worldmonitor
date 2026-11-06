@@ -2,6 +2,10 @@
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch } from './_seed-utils.mjs';
 
+const IS_TRANSIENT_FETCH_ERROR_RE = /timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|ECONNREFUSED|socket hang up/i;
+const PERIOD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect(); // gate.decodo.com — HTTP CONNECT tunneling for FRED
@@ -35,7 +39,7 @@ const REFINERY_MIN_WEEKS = 4; // require at least 4 weeks to guard against quota
 function isTransientFetchError(e) {
   const msg = e?.message || '';
   return e?.name === 'TimeoutError' || e?.name === 'AbortError' ||
-    /timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|ECONNREFUSED|socket hang up/i.test(msg);
+    IS_TRANSIENT_FETCH_ERROR_RE.test(msg);
 }
 
 async function eiaFetchJson(url, label, { timeoutMs = 20_000, attempts = 3 } = {}) {
@@ -420,7 +424,7 @@ export async function fetchCrudeInventories() {
     const row = rows[i];
     const stocksMb = row.value != null ? parseFloat(String(row.value)) / 1000 : null;
     if (stocksMb == null || !Number.isFinite(stocksMb)) continue;
-    const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
+    const period = typeof row.period === 'string' && PERIOD_RE.test(row.period) ? row.period : '';
 
     const olderRow = rows[i + 1];
     let weeklyChangeMb = null;
@@ -469,7 +473,7 @@ async function fetchNatGasStorage() {
     const row = rows[i];
     const storBcf = row.value != null ? parseFloat(String(row.value)) : null;
     if (storBcf == null || !Number.isFinite(storBcf)) continue;
-    const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
+    const period = typeof row.period === 'string' && PERIOD_RE.test(row.period) ? row.period : '';
 
     const olderRow = rows[i + 1];
     let weeklyChangeBcf = null;
@@ -503,7 +507,7 @@ export function parseEiaSprRow(row) {
   if (!row) return null;
   const barrels = row.value != null ? parseFloat(String(row.value)) / 1000 : null;
   if (barrels == null || !Number.isFinite(barrels)) return null;
-  const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
+  const period = typeof row.period === 'string' && PERIOD_RE.test(row.period) ? row.period : '';
   return { barrels: +barrels.toFixed(3), period };
 }
 
@@ -568,7 +572,7 @@ export function parseEiaRefineryRow(row) {
   if (!row) return null;
   const inputsMbblpd = row.value != null ? parseFloat(String(row.value)) / 1000 : null;
   if (inputsMbblpd == null || !Number.isFinite(inputsMbblpd)) return null;
-  const period = typeof row.period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.period) ? row.period : '';
+  const period = typeof row.period === 'string' && PERIOD_RE.test(row.period) ? row.period : '';
   return { inputsMbblpd: +inputsMbblpd.toFixed(3), period };
 }
 

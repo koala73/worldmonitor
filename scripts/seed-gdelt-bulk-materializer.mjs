@@ -47,6 +47,11 @@ import {
   mergeGdeltBulkRollingWindow,
   parseGdeltRecentExports,
 } from './_conflict-gdelt-bulk.mjs';
+
+const FEED_TIMESTAMPS_RE = /^\d{14}$/;
+const RANGE_RE = /^bytes (\d+)-(\d+)\/(\d+)$/;
+const NON_DIGIT_RE = /\D/g;
+
 export {
   GDELT_INTEL_KEY,
   GDELT_BULK_STATE_KEY,
@@ -164,7 +169,7 @@ function feedTimestamps(values, kind) {
   return values
     .filter(({ descriptor }) => descriptor?.kind === kind)
     .map(({ descriptor }) => descriptor.timestamp)
-    .filter((timestamp) => /^\d{14}$/.test(timestamp))
+    .filter((timestamp) => FEED_TIMESTAMPS_RE.test(timestamp))
     .sort();
 }
 
@@ -235,7 +240,7 @@ async function fetchBoundedBuffer(fetchImpl, url, maxBytes, { expectedStatus, di
   }
   const buffer = Buffer.concat(chunks, total);
   if (!discardRangePrefix) return buffer;
-  const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') ?? '');
+  const range = RANGE_RE.exec(response.headers.get('content-range') ?? '');
   const [start, end, size] = range ? range.slice(1).map(Number) : [];
   if (!range || ![start, end, size].every(Number.isSafeInteger)
     || start < 0 || end < start || end >= size || end - start + 1 !== total) {
@@ -513,7 +518,7 @@ async function readLegacyTimelines(readSnapshot) {
 
 function timestampFromMs(value) {
   if (!Number.isFinite(value) || value <= 0) return '';
-  return new Date(value).toISOString().replace(/\D/g, '').slice(0, 14);
+  return new Date(value).toISOString().replace(NON_DIGIT_RE, '').slice(0, 14);
 }
 
 function feedCoverage({
@@ -796,7 +801,7 @@ export function gdeltBulkContentMeta(data, nowMs = Date.now()) {
   if (!Number.isFinite(nowMs)) return null;
   const requiredSourceTimes = ['gkg', 'export'].map((kind) => {
     const sourceClock = data?._state?.cursor?.[kind];
-    return typeof sourceClock === 'string' && /^\d{14}$/.test(sourceClock)
+    return typeof sourceClock === 'string' && FEED_TIMESTAMPS_RE.test(sourceClock)
       ? gdeltTimestampToMs(sourceClock)
       : NaN;
   });

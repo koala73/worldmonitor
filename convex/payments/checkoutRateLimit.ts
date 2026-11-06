@@ -1,5 +1,8 @@
 import { APIConnectionTimeoutError } from "dodopayments";
 
+const CHECKOUT_RATE_LIMITED_OUTCOME_FROM_ERROR_RE = /\b429\b.*(?:status code|too many requests|rate limit)/i;
+
+
 export const CHECKOUT_RATE_LIMITED = "CHECKOUT_RATE_LIMITED";
 export const CHECKOUT_RETRY_AFTER_SECONDS = 10;
 
@@ -53,7 +56,7 @@ export function checkoutRateLimitedOutcomeFromError(
     return rateLimited;
   }
   const message = error instanceof Error ? error.message : String(error);
-  if (!/\b429\b.*(?:status code|too many requests|rate limit)/i.test(message)) {
+  if (!CHECKOUT_RATE_LIMITED_OUTCOME_FROM_ERROR_RE.test(message)) {
     return null;
   }
   return rateLimited;

@@ -20,6 +20,9 @@ import {
   isUsableFredSeries,
 } from './_fred-seeder.mjs';
 
+const SEED_META_KEY_FOR_RE = /:v\d+$/;
+
+
 loadEnvFile(import.meta.url, { only: ['FRED_API_KEY', 'PROXY_URL', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] });
 
 export const CANONICAL_KEY = 'economic:fred:batch:v1';
@@ -31,7 +34,7 @@ export const FRED_RATES_ACTIVATION_KEY = 'seed-activated:economic:fred-rates:v1'
 const MIN_SERIES_COUNT = Math.ceil(FRED_SEED_SERIES.length * 0.75);
 
 function seedMetaKeyFor(dataKey) {
-  return `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
+  return `seed-meta:${dataKey.replace(SEED_META_KEY_FOR_RE, '')}`;
 }
 
 function fredPreserveKeyTtls() {

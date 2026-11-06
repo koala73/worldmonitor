@@ -2,6 +2,8 @@
 // To refresh the base map quarterly: node scripts/generate-airline-codes.mjs
 // To correct individual entries immediately: add to OVERRIDE below (takes precedence over GENERATED).
 
+const PARSE_CALLSIGN_RE = /^([A-Z]{2,4})(\d.*)$/;
+
 const OVERRIDE: Record<string, { iata: string; name: string }> = {
   SWR: { iata: 'LX', name: 'Swiss International Air Lines' },
   TGW: { iata: 'TR', name: 'Scoot' },
@@ -819,7 +821,7 @@ for (const [key, val] of Object.entries(OVERRIDE)) {
  */
 export function parseCallsign(cs: string): { prefix: string; number: string } | null {
   const trimmed = cs.trim().toUpperCase();
-  const m = trimmed.match(/^([A-Z]{2,4})(\d.*)$/);
+  const m = trimmed.match(PARSE_CALLSIGN_RE);
   if (!m) return null;
   return { prefix: m[1] ?? '', number: m[2] ?? '' };
 }

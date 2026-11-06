@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { moduleRegexDeclarations } from './module-regex-declarations.mjs';
 
 export const pageFixture = (name: string) =>
   readFileSync(new URL(`../fixtures/google-flights/${name}`, import.meta.url), 'utf8');
@@ -74,7 +75,7 @@ export function loadGoogleFlightsRelay(provider: typeof fetch, outcomes: string[
   const start = source.indexOf('// ─── Google Flights ─');
   const end = source.indexOf('// ─── Widget Agent ─', start);
   if (start < 0 || end < start) throw new Error('Google Flights section markers moved');
-  return runInNewContext(`${source.slice(start, end)}\n({ search: handleGoogleFlightsSearch, dates: handleGoogleFlightsDates })`, {
+  return runInNewContext(`${moduleRegexDeclarations(source)}\n${source.slice(start, end)}\n({ search: handleGoogleFlightsSearch, dates: handleGoogleFlightsDates })`, {
     URL, Date, AbortSignal, Buffer, process: { env: {} }, console: { warn() {}, error() {} },
     fetch: provider, incrementRelayMetric() {}, recordRelayOutcome(_route: string, outcome: string) { outcomes.push(outcome); },
   }) as { search: RelayHandler; dates: RelayHandler };

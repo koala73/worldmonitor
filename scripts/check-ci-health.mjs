@@ -34,6 +34,15 @@ import { parseArgs } from 'node:util';
 import { corroborateRunListings, reduceRunListings } from './lib/gh-run-listing.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
+const LINE_RE = /^\d{4}-\d\d-\d\dT[\d:.]+Z ?/;
+const LINE_RE_2 = /\x1b\[[\d;]*m/g;
+const PATH_RE = /^\.\//;
+const LABEL_RE = /[^\w .,()+-]/g;
+const LABEL_RE_2 = /www\./gi;
+const WHITESPACE_RE = /\s+/g;
+const FILES_RE = /:\d+(?::\d+)?$/;
+
+
 export const MONITORED_WORKFLOWS = ['test.yml', 'typecheck.yml', 'lint-code.yml', 'proto-check.yml'];
 export const ISSUE_AUTHOR = 'github-actions[bot]';
 const DAY_MS = 86_400_000;
@@ -90,9 +99,9 @@ export function parseFailingTests(log) {
   const found = new Set();
   for (const raw of String(log).split('\n')) {
     // Strip the runner's timestamp prefix and colour codes.
-    const line = raw.replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/, '').replace(/\x1b\[[\d;]*m/g, '').trim();
+    const line = raw.replace(LINE_RE, '').replace(LINE_RE_2, '').trim();
     for (const pattern of FAILING_TEST_PATTERNS) {
-      const path = pattern.exec(line)?.[1]?.replace(/^\.\//, '');
+      const path = pattern.exec(line)?.[1]?.replace(PATH_RE, '');
       if (path && path.length <= MAX_TEST_PATH && TEST_PATH.test(path)) found.add(path);
     }
   }
@@ -121,8 +130,8 @@ export function jobSeconds(job) {
 // Keep names readable but inert: no mentions, issue references, URLs, markup
 // or table breaks. GitHub autolinks a bare `www.` host even after `_`.
 export function safeLabel(value) {
-  const label = String(value ?? '').replace(/[^\w .,()+-]/g, '_').replace(/www\./gi, 'www_')
-    .replace(/\s+/g, ' ').trim();
+  const label = String(value ?? '').replace(LABEL_RE, '_').replace(LABEL_RE_2, 'www_')
+    .replace(WHITESPACE_RE, ' ').trim();
   return (label || '_').slice(0, 100);
 }
 
@@ -219,7 +228,7 @@ export function attributeFlakes(findings, { readLog, changeSince, limit = FLAKE_
     row.detail += ` · failing: ${shown.map((test) => `\`${test}\``).join(', ')}${more ? ` and ${more} more` : ''}`;
     if (!attributed || !row.trustedLog) continue;
     // The display is capped; the decision reads every named file.
-    const files = [...new Set([...tests].map((test) => test.replace(/:\d+(?::\d+)?$/, '')))];
+    const files = [...new Set([...tests].map((test) => test.replace(FILES_RE, '')))];
     // A mass failure is a broken run, not one flake: keep it rather than spend
     // a history lookup per file.
     if (files.length > FILES_PER_ATTRIBUTION) continue;

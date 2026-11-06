@@ -12,6 +12,17 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
+const SLUG_RE = /[\u0300-\u036f]/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUG_RE_2 = /^-|-$/g;
+const DECODE_RE = /<[^>]*>/g;
+const DECODE_RE_2 = /</g;
+const DECODE_RE_3 = /&(amp|#39|apos|quot|nbsp);/g;
+const ROWS_RE = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
+const ROWS_RE_2 = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const SOURCE_URL = 'https://unstats.un.org/unsd/methodology/m49/overview/';
 const TARGET = new URL('../shared/un-m49-regions.json', import.meta.url);
 // scripts/shared/ carries a byte-identical copy (tests/edge-functions.test.mjs).
@@ -23,7 +34,7 @@ const SUPPLEMENTS = {
 };
 
 export function slug(name) {
-  return name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return name.toLowerCase().normalize('NFKD').replace(SLUG_RE, '').replace(NON_ALPHANUMERIC_RE, '-').replace(SLUG_RE_2, '');
 }
 
 const ENTITIES = { amp: '&', '#39': "'", apos: "'", quot: '"', nbsp: ' ' };
@@ -31,16 +42,16 @@ const ENTITIES = { amp: '&', '#39': "'", apos: "'", quot: '"', nbsp: ' ' };
 // Drop tags and any unclosed `<` (an opener with no `>` survives a tag regex),
 // then decode entities in one pass so `&amp;quot;` stays `&quot;`.
 function decode(text) {
-  return text.replace(/<[^>]*>/g, '').replace(/</g, '')
-    .replace(/&(amp|#39|apos|quot|nbsp);/g, (_, name) => ENTITIES[name]).trim();
+  return text.replace(DECODE_RE, '').replace(DECODE_RE_2, '')
+    .replace(DECODE_RE_3, (_, name) => ENTITIES[name]).trim();
 }
 
 export function parseOverview(html) {
   const start = html.indexOf('id = "downloadTableEN"');
   if (start < 0) throw new Error('UNSD page has no English download table');
   const table = html.slice(start, html.indexOf('</table>', start));
-  const rows = [...table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)]
-    .map(match => [...match[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map(cell => decode(cell[1])));
+  const rows = [...table.matchAll(ROWS_RE)]
+    .map(match => [...match[1].matchAll(ROWS_RE_2)].map(cell => decode(cell[1])));
   const header = rows.shift();
   const column = name => {
     const index = header.indexOf(name);
@@ -60,7 +71,7 @@ export function parseOverview(html) {
       [row[cols.subCode], row[cols.sub], 'sub-region'],
       [row[cols.intCode], row[cols.int], 'intermediate-region'],
     ].filter(([code, name]) => code && name),
-  })).filter(row => /^[A-Z]{2}$/.test(row.iso2));
+  })).filter(row => COUNTRY_CODE_RE.test(row.iso2));
 }
 
 export function buildRegions(rows) {

@@ -16,6 +16,9 @@ import {
 } from './_snapshot';
 import type { CountryScorecardSummary, FiveFactorReadModelMetadata, FiveFactorSnapshotV1 } from './_types';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export type ScorecardSnapshotReader = (countryCodes?: string[]) => Promise<unknown>;
 const CANONICAL_FALLBACK_CACHE_MS = 5 * 60_000;
 /**
@@ -89,7 +92,7 @@ function readModelMetadata(value: string | undefined): FiveFactorReadModelMetada
   };
   if (!hasFiveFactorSnapshotShape(skeleton) || !Array.isArray(metadata.countryCodes)) return null;
   if (
-    metadata.countryCodes.some((countryCode) => typeof countryCode !== 'string' || !/^[A-Z]{2}$/.test(countryCode))
+    metadata.countryCodes.some((countryCode) => typeof countryCode !== 'string' || !COUNTRY_CODE_RE.test(countryCode))
     || new Set(metadata.countryCodes).size !== metadata.countryCodes.length
     || metadata.countryCodes.some((countryCode, index) => index > 0 && metadata.countryCodes[index - 1]! >= countryCode)
   ) return null;

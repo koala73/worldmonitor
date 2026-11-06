@@ -15,6 +15,10 @@ import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { declareOverlay } from '@/utils/open-modal';
 
+const EXTRACT_AUTH_HINT_RE = /\(([^)]+)\)\s*$/;
+const PARSE_AUTH_HEADER_RE = /;\s+(?=[A-Za-z0-9_-]+\s*:)/;
+
+
 
 interface McpConnectOptions {
   existingSpec?: McpPanelSpec;
@@ -54,7 +58,7 @@ function extractKeyFromHeaders(headers: Record<string, string>, template: string
 /** Extract a short signup/docs hint from an authNote string.
  *  "Requires Authorization: Bearer <VAR> (free tier at exa.ai)" → "free tier at exa.ai" */
 function extractAuthHint(authNote: string): string {
-  const m = authNote.match(/\(([^)]+)\)\s*$/);
+  const m = authNote.match(EXTRACT_AUTH_HINT_RE);
   return m?.[1] ?? authNote;
 }
 
@@ -382,7 +386,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
     const trimmed = raw.trim();
     if (!trimmed) return {};
     const result: Record<string, string> = {};
-    for (const part of trimmed.split(/;\s+(?=[A-Za-z0-9_-]+\s*:)/)) {
+    for (const part of trimmed.split(PARSE_AUTH_HEADER_RE)) {
       const colon = part.indexOf(':');
       if (colon === -1) continue;
       const key = part.slice(0, colon).trim();

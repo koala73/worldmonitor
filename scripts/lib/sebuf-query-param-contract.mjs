@@ -2,6 +2,14 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import ts from 'typescript';
 
+const SNAKE_TO_CAMEL_RE = /_([a-z0-9])/g;
+const SNAKE_TO_KEBAB_RE = /_/g;
+const PARSE_PROTO_QUERY_FIELDS_RE = /^\/\/\s?/;
+const FIELD_MATCH_RE = /^(?:optional\s+|repeated\s+)?(?:map<[^>]+>|[A-Za-z_][\w.]*)\s+([a-z][a-z0-9_]*)\s*=\s*\d+\b/;
+const QUERY_NAME_RE = /\(sebuf\.http\.query\)\s*=\s*\{[^}]*\bname\s*:\s*"([^"]+)"/;
+const PARSE_PROTO_QUERY_FIELDS_RE_2 = /\(sebuf\.http\.unimplemented\)\s*=\s*true\b/;
+
+
 export const NOOP_QUERY_DESCRIPTION_RE = /\b(?:accepted but currently ignored|currently (?:ignored|a no-op)|no-op|no op)\b/i;
 
 const DEFAULT_SCOPED_PROTO_FILES = new Set([
@@ -111,11 +119,11 @@ function slash(path) {
 // out of a .proto exactly like parseProtoQueryFields does below; two private
 // copies of this rule would let the two gates disagree on the same field.
 export function snakeToCamel(value) {
-  return value.replace(/_([a-z0-9])/g, (_, ch) => ch.toUpperCase());
+  return value.replace(SNAKE_TO_CAMEL_RE, (_, ch) => ch.toUpperCase());
 }
 
 function snakeToKebab(value) {
-  return value.replace(/_/g, '-');
+  return value.replace(SNAKE_TO_KEBAB_RE, '-');
 }
 
 function parseProtoQueryFields(protoFile) {
@@ -127,7 +135,7 @@ function parseProtoQueryFields(protoFile) {
     const trimmed = lines[i].trim();
 
     if (trimmed.startsWith('//')) {
-      comments.push(trimmed.replace(/^\/\/\s?/, ''));
+      comments.push(trimmed.replace(PARSE_PROTO_QUERY_FIELDS_RE, ''));
       continue;
     }
     if (trimmed === '') {
@@ -135,7 +143,7 @@ function parseProtoQueryFields(protoFile) {
       continue;
     }
 
-    const fieldMatch = trimmed.match(/^(?:optional\s+|repeated\s+)?(?:map<[^>]+>|[A-Za-z_][\w.]*)\s+([a-z][a-z0-9_]*)\s*=\s*\d+\b/);
+    const fieldMatch = trimmed.match(FIELD_MATCH_RE);
     if (!fieldMatch) {
       comments = [];
       continue;
@@ -150,14 +158,14 @@ function parseProtoQueryFields(protoFile) {
 
     if (declaration.includes('(sebuf.http.query)')) {
       const fieldName = fieldMatch[1];
-      const queryName = declaration.match(/\(sebuf\.http\.query\)\s*=\s*\{[^}]*\bname\s*:\s*"([^"]+)"/)?.[1] ?? fieldName;
+      const queryName = declaration.match(QUERY_NAME_RE)?.[1] ?? fieldName;
       fields.push({
         file: protoFile,
         line: startLine,
         fieldName,
         tsName: snakeToCamel(fieldName),
         queryName,
-        unimplemented: /\(sebuf\.http\.unimplemented\)\s*=\s*true\b/.test(declaration),
+        unimplemented: PARSE_PROTO_QUERY_FIELDS_RE_2.test(declaration),
         comment: comments.join(' '),
       });
     }

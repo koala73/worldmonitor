@@ -19,6 +19,11 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
+const NORMALIZE_RE = /\p{Diacritic}/gu;
+const NORMALIZE_RE_2 = /['.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+
+
 const SOURCE = new URL('./data/outbreak-places.json', import.meta.url);
 const COUNTRY_NAMES = new URL('./shared/country-names.json', import.meta.url);
 const TARGET = new URL('./shared/news-places.json', import.meta.url);
@@ -41,8 +46,8 @@ const args = process.argv.slice(2);
 const check = args.includes('--check');
 const [wordsPath = '/usr/share/dict/words', namesPath = '/usr/share/dict/propernames'] = args.filter((a) => a !== '--check');
 
-const normalize = (name) => name.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
-  .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ').trim();
+const normalize = (name) => name.normalize('NFKD').replace(NORMALIZE_RE, '').toLowerCase()
+  .replace(NORMALIZE_RE_2, ' ').replace(WHITESPACE_RE, ' ').trim();
 
 function buildPlaces() {
   const commonWords = new Set(readFileSync(wordsPath, 'utf8').split('\n').filter((w) => w && w === w.toLowerCase()));

@@ -19,6 +19,13 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
+const CLASSIFY_RENDER_AXIS_EVENT_RE = /layout|style|recalculate/i;
+const CLASSIFY_RENDER_AXIS_EVENT_RE_2 = /shift/i;
+const CLASSIFY_RENDER_AXIS_EVENT_RE_3 = /canvas|webgl|gles2|skia/i;
+const CLASSIFY_RENDER_AXIS_EVENT_RE_4 = /paint|composite|raster|layerize|prepaint/i;
+const CLASSIFY_RENDER_AXIS_EVENT_RE_5 = /evaluate|functioncall|eventdispatch|timerfire|microtask|compile|execute|v8/i;
+
+
 const TBT_THRESHOLD_MS = 50;
 const DEFAULT_INTERACTION_VIEWPORT = { width: 390, height: 844 };
 const DEFAULT_POST_INTERACT_MS = 1200;
@@ -159,10 +166,10 @@ export function classifyRenderAxisEvent(name) {
   if (CANVAS_NAMES.has(value)) return 'canvas';
   if (RENDERING_NAMES.has(value)) return 'rendering';
   if (SCRIPT_EVALUATION_NAMES.has(value)) return 'scriptEvaluation';
-  if (/layout|style|recalculate/i.test(value) && !/shift/i.test(value)) return 'styleLayout';
-  if (/canvas|webgl|gles2|skia/i.test(value)) return 'canvas';
-  if (/paint|composite|raster|layerize|prepaint/i.test(value)) return 'rendering';
-  if (/evaluate|functioncall|eventdispatch|timerfire|microtask|compile|execute|v8/i.test(value)) {
+  if (CLASSIFY_RENDER_AXIS_EVENT_RE.test(value) && !CLASSIFY_RENDER_AXIS_EVENT_RE_2.test(value)) return 'styleLayout';
+  if (CLASSIFY_RENDER_AXIS_EVENT_RE_3.test(value)) return 'canvas';
+  if (CLASSIFY_RENDER_AXIS_EVENT_RE_4.test(value)) return 'rendering';
+  if (CLASSIFY_RENDER_AXIS_EVENT_RE_5.test(value)) {
     return 'scriptEvaluation';
   }
   return null;

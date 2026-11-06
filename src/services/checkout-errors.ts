@@ -14,6 +14,8 @@
  *   - Future caller additions can't drift into ad-hoc user-visible text.
  */
 
+const PARSE_CHECKOUT_RETRY_AFTER_SECONDS_RE = /^\d{1,4}$/;
+
 export type CheckoutErrorCode =
   | 'unauthorized'
   | 'session_expired'
@@ -103,7 +105,7 @@ function extractServerMessage(body: CheckoutErrorBody | undefined): string | und
  * date-shaped header when calculating the checkout cooldown.
  */
 export function parseCheckoutRetryAfterSeconds(value: string | null | undefined): number | undefined {
-  if (!value || !/^\d{1,4}$/.test(value)) return undefined;
+  if (!value || !PARSE_CHECKOUT_RETRY_AFTER_SECONDS_RE.test(value)) return undefined;
   return Number(value);
 }
 

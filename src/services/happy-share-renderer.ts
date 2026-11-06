@@ -7,6 +7,9 @@ import type { NewsItem } from '@/types';
 import type { HappyContentCategory } from '@/services/positive-classifier';
 import { HAPPY_CATEGORY_LABELS } from '@/services/positive-classifier';
 
+const WHITESPACE_RE = /\s+/;
+
+
 const SIZE = 1080;
 const PAD = 80;
 const CONTENT_W = SIZE - PAD * 2;
@@ -38,7 +41,7 @@ const DEFAULT_CATEGORY: HappyContentCategory = 'humanity-kindness';
  * Canvas 2D has no auto-wrap, so we measure word-by-word.
  */
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const words = text.split(/\s+/);
+  const words = text.split(WHITESPACE_RE);
   const lines: string[] = [];
   let currentLine = '';
 

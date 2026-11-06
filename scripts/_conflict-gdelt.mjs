@@ -16,6 +16,11 @@
 // (pinned by tests/conflict-gdelt-country-coverage.test.mts). It stays a literal
 // rather than a registry read because server/ and the bulk materializer import
 // this module, and the names must match the downstream country resolvers.
+const S_RE = /[^0-9]/g;
+const SANITIZE_GDELT_HEADLINE_RE = /<[^>]+>/g;
+const SANITIZE_GDELT_HEADLINE_RE_2 = /[\u0000-\u001f\u007f]+/g;
+const WHITESPACE_RE = /\s+/g;
+
 export const GDELT_COUNTRY_NAMES = {
   AF: 'Afghanistan', SY: 'Syria', UA: 'Ukraine', SD: 'Sudan', SS: 'South Sudan',
   SO: 'Somalia', CD: 'Democratic Republic of Congo', MM: 'Myanmar', YE: 'Yemen',
@@ -47,7 +52,7 @@ function parseExactUtc(iso, length) {
 // GDELT seendate is 'YYYYMMDDTHHMMSSZ' (or a digits-only variant). Return 'YYYY-MM-DD'
 // (the format the EMA engine parses via Date.parse(ev.event_date)), or '' if unparseable.
 export function gdeltSeenDateToIso(seendate) {
-  const s = String(seendate || '').replace(/[^0-9]/g, '');
+  const s = String(seendate || '').replace(S_RE, '');
   if (s.length < 8) return '';
   if (s.length !== 8 && !Number.isFinite(gdeltSeenDateToMs(s))) return '';
   const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
@@ -65,7 +70,7 @@ export function gdeltSeenDateToIso(seendate) {
 // pure module directly — Date.parse rejects the raw GDELT format, so every
 // consumer needs this ISO reconstruction.
 export function gdeltSeenDateToMs(value) {
-  const digits = String(value || '').replace(/[^0-9]/g, '');
+  const digits = String(value || '').replace(S_RE, '');
   if (digits.length < 14) return Number.NaN;
   const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
     + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}`;
@@ -82,9 +87,9 @@ export function buildGdeltConflictUrl(cc, name = GDELT_COUNTRY_NAMES[cc], maxRec
 
 function sanitizeGdeltHeadline(value) {
   return String(value || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(SANITIZE_GDELT_HEADLINE_RE, ' ')
+    .replace(SANITIZE_GDELT_HEADLINE_RE_2, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim()
     .slice(0, 300);
 }
@@ -121,7 +126,7 @@ function stableGdeltArticleId({ cc, eventDate, canonicalUrl, domain, title, seen
   // normalized article content when a source omits or malforms its URL.
   const identity = canonicalUrl
     ? `url:${canonicalUrl}`
-    : `article:${cc}|${eventDate}|${String(domain || '').trim().toLowerCase().slice(0, 128)}|${title.slice(0, 300)}|${String(seendate || '').replace(/[^0-9]/g, '').slice(0, 14)}`;
+    : `article:${cc}|${eventDate}|${String(domain || '').trim().toLowerCase().slice(0, 128)}|${title.slice(0, 300)}|${String(seendate || '').replace(S_RE, '').slice(0, 14)}`;
   return `gdelt-${cc}-${stableHash(identity)}`;
 }
 

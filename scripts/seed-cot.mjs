@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+
+const PARSE_DATE_RE = /^\d{4}-\d{2}-\d{2}T00:00:00(?:\.000)?$/;
+const PARSE_DATE_RE_2 = /^\d{6}$/;
+const PARSE_DATE_RE_3 = /^\d{4}-\d{2}-\d{2}$/;
+const N_RE = /,/g;
+
 loadEnvFile(import.meta.url);
 
 const COT_KEY = 'market:cot:v1';
@@ -27,15 +33,15 @@ function parseDate(raw) {
   if (!raw) return '';
   let s = String(raw).trim();
   // Socrata's floating timestamp represents the report day at midnight.
-  if (/^\d{4}-\d{2}-\d{2}T00:00:00(?:\.000)?$/.test(s)) s = s.slice(0, 10);
-  if (/^\d{6}$/.test(s)) {
+  if (PARSE_DATE_RE.test(s)) s = s.slice(0, 10);
+  if (PARSE_DATE_RE_2.test(s)) {
     const yy = s.slice(0, 2);
     const mm = s.slice(2, 4);
     const dd = s.slice(4, 6);
     const year = parseInt(yy, 10) >= 50 ? `19${yy}` : `20${yy}`;
     s = `${year}-${mm}-${dd}`;
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+  if (!PARSE_DATE_RE_3.test(s)) return '';
   const date = new Date(`${s}T00:00:00Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === s ? s : '';
 }
@@ -67,7 +73,7 @@ async function fetchSocrata(datasetId, extraParams = '') {
 
 export function buildInstrument(target, currentRow, priorRow, kind) {
   const toNum = v => {
-    const n = parseInt(String(v ?? '').replace(/,/g, '').trim(), 10);
+    const n = parseInt(String(v ?? '').replace(N_RE, '').trim(), 10);
     return Number.isNaN(n) ? 0 : n;
   };
 

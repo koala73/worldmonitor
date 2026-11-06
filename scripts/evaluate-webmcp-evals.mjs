@@ -11,6 +11,9 @@ import {
 } from '../src/config/webmcp.ts';
 import { buildWebMcpTools } from '../src/services/webmcp.ts';
 
+const VALIDATE_EVAL_FIXTURE_RE = /^[a-z0-9_]+$/;
+
+
 const FIXTURE_VERSION = 'webmcp_eval_v1';
 const PREDICTION_VERSION = 'webmcp_predictions_v1';
 const REPORT_VERSION = 'webmcp_eval_report_v1';
@@ -400,7 +403,7 @@ export function validateEvalFixture(value) {
       ['failure'],
     );
     const id = requireString(evalCase.id, `${path}.id`);
-    if (!/^[a-z0-9_]+$/.test(id)) fail(`${path}.id`, 'must use lowercase snake_case');
+    if (!VALIDATE_EVAL_FIXTURE_RE.test(id)) fail(`${path}.id`, 'must use lowercase snake_case');
     if (ids.has(id)) fail(`${path}.id`, `duplicate case ID: ${id}`);
     ids.add(id);
 

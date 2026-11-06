@@ -14,6 +14,12 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
+const JS_LITERAL_TO_JSON_RE = /[A-Za-z_]/;
+const JS_LITERAL_TO_JSON_RE_2 = /[A-Za-z0-9_]/;
+const JS_LITERAL_TO_JSON_RE_3 = /\s/;
+const PARSE_REALTIME_ALERTS_RE = /,/g;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'health:vpd-tracker:realtime:v1';
@@ -279,13 +285,13 @@ function jsLiteralToJSON(literal) {
     //     a previous key/value pair)
     //   - current char starts an identifier
     if ((lastTopChar === '{' || lastTopChar === ',')
-        && /[A-Za-z_]/.test(c)) {
+        && JS_LITERAL_TO_JSON_RE.test(c)) {
       // Read the identifier
       let j = i;
-      while (j < literal.length && /[A-Za-z0-9_]/.test(literal[j])) j++;
+      while (j < literal.length && JS_LITERAL_TO_JSON_RE_2.test(literal[j])) j++;
       // Skip whitespace, expect `:`
       let k = j;
-      while (k < literal.length && /\s/.test(literal[k])) k++;
+      while (k < literal.length && JS_LITERAL_TO_JSON_RE_3.test(literal[k])) k++;
       if (literal[k] === ':') {
         out += '"' + literal.slice(i, j) + '"' + literal.slice(j, k + 1);
         i = k + 1;
@@ -303,7 +309,7 @@ function jsLiteralToJSON(literal) {
 
     // ---- Default pass-through ----
     out += c;
-    if (!/\s/.test(c)) lastTopChar = c;
+    if (!JS_LITERAL_TO_JSON_RE_3.test(c)) lastTopChar = c;
     i++;
   }
   return out;
@@ -401,7 +407,7 @@ export function parseRealtimeAlerts(bundle) {
       placeName: r.place_name,
       country: r.country,
       date: r.date,
-      cases: r.cases ? parseInt(String(r.cases).replace(/,/g, ''), 10) || 0 : null,
+      cases: r.cases ? parseInt(String(r.cases).replace(PARSE_REALTIME_ALERTS_RE, ''), 10) || 0 : null,
       sourceUrl: r.link,
       summary: r.summary,
     }));

@@ -12,6 +12,10 @@
  * the stack parser, or the keepalive/timeout policy lives here only.
  */
 
+const PROJECT_ID_RE = /^\//;
+const PARSE_STACK_RE = /at\s+(?:(.+?)\s+\()?(.+?):(\d+):(\d+)\)?$/;
+const EVENT_ID_RE = /-/g;
+
 let _key = '';
 let _envelopeUrl = '';
 
@@ -25,7 +29,7 @@ let _envelopeUrl = '';
   try {
     const u = new URL(dsn);
     _key = u.username;
-    const projectId = u.pathname.replace(/^\//, '');
+    const projectId = u.pathname.replace(PROJECT_ID_RE, '');
     _envelopeUrl = `${u.protocol}//${u.host}/api/${projectId}/envelope/`;
   } catch {
     // Malformed DSN — silently disable; never throw from a logger.
@@ -39,7 +43,7 @@ function parseStack(stack) {
   const lines = stack.split('\n').slice(1, 30); // skip the "Error: msg" header line
   const frames = [];
   for (const line of lines) {
-    const m = line.match(/at\s+(?:(.+?)\s+\()?(.+?):(\d+):(\d+)\)?$/);
+    const m = line.match(PARSE_STACK_RE);
     if (!m) continue;
     frames.push({
       function: m[1] || '<anonymous>',
@@ -85,7 +89,7 @@ function buildEnvelope(err, ctx, runtimeCfg) {
     ? (err.name || err.constructor.name || 'Error')
     : 'Error';
   const stack = err instanceof Error && err.stack ? err.stack : undefined;
-  const eventId = crypto.randomUUID().replace(/-/g, '');
+  const eventId = crypto.randomUUID().replace(EVENT_ID_RE, '');
   const timestamp = new Date().toISOString();
 
   // Caller may downgrade level for expected-but-still-trackable conditions

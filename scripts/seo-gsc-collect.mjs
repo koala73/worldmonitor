@@ -74,6 +74,21 @@ import {
 } from './lib/seo-url-taxonomy.mjs';
 import { PAGE_FAMILIES } from './seo-ai-visibility-scorecard.mjs';
 
+const NORMALIZE_STATE_RE = /–|—/g;
+const WHITESPACE_RE = /\s+/g;
+const BASE64_URL_RE = /\+/g;
+const BASE64_URL_RE_2 = /\//g;
+const BASE64_URL_RE_3 = /=+$/;
+const IS_DAILY_QUOTA_RE = /per day|daily/i;
+const SITEMAPS_RE = /<sitemapindex[\s>]/;
+const WINDOWS_RE = /^\[seo-url-taxonomy\] /;
+const ASSERT_NO_SECRETS_RE = /^https?:\/\//i;
+const MARKDOWN_CELL_RE = /\\/g;
+const MARKDOWN_CELL_RE_2 = /\|/g;
+const MARKDOWN_CELL_RE_3 = /[\r\n]+/g;
+const SENTENCE_RE = /[.!?]$/;
+
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const SEARCH_CONSOLE_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
@@ -207,8 +222,8 @@ class QuotaExhaustedError extends Error {
 
 const normalizeState = (value) => String(value ?? '')
   .toLowerCase()
-  .replace(/–|—/g, '-')
-  .replace(/\s+/g, ' ')
+  .replace(NORMALIZE_STATE_RE, '-')
+  .replace(WHITESPACE_RE, ' ')
   .trim();
 
 const isCrawledNotIndexed = (coverageState) => (
@@ -318,9 +333,9 @@ export function decodeServiceAccount(rawValue) {
 }
 
 const base64Url = (value) => Buffer.from(value).toString('base64')
-  .replace(/\+/g, '-')
-  .replace(/\//g, '_')
-  .replace(/=+$/, '');
+  .replace(BASE64_URL_RE, '-')
+  .replace(BASE64_URL_RE_2, '_')
+  .replace(BASE64_URL_RE_3, '');
 
 export function createServiceAccountAssertion(serviceAccount, { nowSeconds, scope = SEARCH_CONSOLE_SCOPE }) {
   const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
@@ -335,9 +350,9 @@ export function createServiceAccountAssertion(serviceAccount, { nowSeconds, scop
     .update(`${header}.${claims}`)
     .sign(serviceAccount.private_key)
     .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+    .replace(BASE64_URL_RE, '-')
+    .replace(BASE64_URL_RE_2, '_')
+    .replace(BASE64_URL_RE_3, '');
   return `${header}.${claims}.${signature}`;
 }
 
@@ -434,7 +449,7 @@ const defaultSleep = (ms) => new Promise((done) => setTimeout(done, ms));
 async function isDailyQuota(response) {
   try {
     const payload = await response.json();
-    return /per day|daily/i.test(String(payload?.error?.message ?? ''));
+    return IS_DAILY_QUOTA_RE.test(String(payload?.error?.message ?? ''));
   } catch {
     return false;
   }
@@ -505,7 +520,7 @@ export function createLiveTransport({ accessToken, property, fetchImpl = fetch, 
         invariant(response.ok, `sitemap fetch failed with HTTP ${response.status}`);
         const xml = await response.text();
         documents.push({ url, xml });
-        if (/<sitemapindex[\s>]/.test(xml)) queue.push(...sitemapUrls(xml));
+        if (SITEMAPS_RE.test(xml)) queue.push(...sitemapUrls(xml));
       }
       invariant(
         queue.length === 0,
@@ -574,7 +589,7 @@ export function buildInventory(documents) {
   const sitemaps = [];
   for (const { url, xml } of documents) {
     const locations = sitemapUrls(xml);
-    const isIndex = /<sitemapindex[\s>]/.test(xml);
+    const isIndex = SITEMAPS_RE.test(xml);
     sitemaps.push({
       url,
       kind: isIndex ? 'index' : 'urlset',
@@ -1041,7 +1056,7 @@ function buildPerformance(performance, inventory, indexedByFamily, daily) {
           classified = classifyUrl(row.key);
         } catch (error) {
           addRow(unmapped, row);
-          unmappedRows.push({ ...row, reason: error.message.replace(/^\[seo-url-taxonomy\] /, '') });
+          unmappedRows.push({ ...row, reason: error.message.replace(WINDOWS_RE, '') });
           continue;
         }
       }
@@ -1403,7 +1418,7 @@ export function assertNoSecrets(serialized, { property = null } = {}) {
   }
   // A URL-prefix property is the site's own public origin, which every URL in
   // the snapshot starts with. Only an opaque identifier can leak.
-  if (typeof property === 'string' && property !== '' && !/^https?:\/\//i.test(property)) {
+  if (typeof property === 'string' && property !== '' && !ASSERT_NO_SECRETS_RE.test(property)) {
     invariant(
       !serialized.includes(property),
       'refusing to write output containing the property identifier',
@@ -1512,9 +1527,9 @@ function renderSearchTotals(performance) {
 // A query is user text: escape the backslash first, then the pipe that would
 // end the table cell, and flatten line breaks.
 const markdownCell = (value) => String(value)
-  .replace(/\\/g, '\\\\')
-  .replace(/\|/g, '\\|')
-  .replace(/[\r\n]+/g, ' ');
+  .replace(MARKDOWN_CELL_RE, '\\\\')
+  .replace(MARKDOWN_CELL_RE_2, '\\|')
+  .replace(MARKDOWN_CELL_RE_3, ' ');
 
 const percent = (ratio) => (ratio === null ? 'n/a' : `${(ratio * 100).toFixed(1)}%`);
 const number = (value) => (value === null ? 'n/a' : String(value));
@@ -1730,7 +1745,7 @@ export function toScorecardSearchExport(snapshot, { querySet = null } = {}) {
   const { htmlPages, sample } = snapshot.indexation;
   const complete = sample.complete === true;
   const reviewed = new Set((querySet?.queries ?? []).map((query) => query.query));
-  const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
+  const sentence = (text) => (SENTENCE_RE.test(text) ? text : `${text}.`);
   const notes = [
     'Window totals are Search Console by-property site totals. Page-family rows sum page-grouped rows, where one search counts once per URL it shows, so they are not shares of the site total.',
     `Query rows exist only for reviewed queries that appear with exact text among the top ${MAX_TOP_QUERIES} queries the snapshot lists per window; a reviewed query outside that list has no row, which is not a zero.`,

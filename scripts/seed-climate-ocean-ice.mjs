@@ -4,6 +4,23 @@ import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const PARSE_SEA_ICE_DAILY_ROWS_RE = /^\d{4}\s*,\s*\d{1,2}\s*,\s*\d{1,2}\s*,/;
+const PARSE_SEA_ICE_MONTHLY_ROWS_RE = /^\d/;
+const PARSE_SEA_ICE_CLIMATOLOGY_ROWS_RE = /^\d{3}\s*,/;
+const NORMALIZED_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const RISE_MATCH_RE = /RISE SINCE 1993\s+([0-9]+(?:\.[0-9]+)?)\s+millimeters/i;
+const RISE_MATCH_RE_2 = /since 1993[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*(?:mm|millimeters)/i;
+const RATE_MATCH_RE = /current yearly rate of\s+[0-9.]+\s+inches\/year\s+\(([0-9.]+)\s+centimeters\/year\)/i;
+const RATE_MATCH_RE_2 = /current.*?([0-9]+(?:\.[0-9]+)?)\s+centimeters\/year/i;
+const ROWS_RE = /^YEAR\b/i;
+const WHITESPACE_RE_2 = /\s+/;
+const NUMBERS_RE = /-?\d+(?:\.\d+)?/g;
+const PARSE_OCEAN_TEMPERATURE_ROWS_RE = /^\d{4}\s+\d{1,2}\s+[-+]?\d/;
+const MATCHES_RE = /href="(aravg\.mon\.ocean\.90S\.90N\.(v6\.[0-9.]+?)\.(\d{6})\.asc)"/g;
+
+
 loadEnvFile(import.meta.url);
 
 // Bundle member cadence: daily. The parent climate bundle runs every three hours.
@@ -86,9 +103,9 @@ export async function fetchText(url, label, { timeoutMs = 20_000 } = {}) {
 
 export function parseSeaIceDailyRows(text) {
   return text
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .map((line) => line.trim())
-    .filter((line) => line && /^\d{4}\s*,\s*\d{1,2}\s*,\s*\d{1,2}\s*,/.test(line))
+    .filter((line) => line && PARSE_SEA_ICE_DAILY_ROWS_RE.test(line))
     .map((line) => line.split(',').map((part) => Number(part.trim())))
     .map((cols) => ({
       year: cols[0],
@@ -108,9 +125,9 @@ export function parseSeaIceDailyRows(text) {
 
 export function parseSeaIceMonthlyRows(text, month) {
   return text
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .map((line) => line.trim())
-    .filter((line) => line && /^\d/.test(line))
+    .filter((line) => line && PARSE_SEA_ICE_MONTHLY_ROWS_RE.test(line))
     .map((line) => {
       const cols = line.split(',').map((part) => part.trim());
       const primaryExtent = Number(cols[4]);
@@ -127,9 +144,9 @@ export function parseSeaIceMonthlyRows(text, month) {
 
 export function parseSeaIceClimatologyRows(text) {
   return text
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .map((line) => line.trim())
-    .filter((line) => line && /^\d{3}\s*,/.test(line))
+    .filter((line) => line && PARSE_SEA_ICE_CLIMATOLOGY_ROWS_RE.test(line))
     .map((line) => line.split(',').map((part) => Number(part.trim())))
     .map((cols) => ({
       doy: cols[0],
@@ -269,11 +286,11 @@ async function fetchSeaIceSection() {
 }
 
 export function parseSeaLevelOverlay(html) {
-  const normalized = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  const riseMatch = normalized.match(/RISE SINCE 1993\s+([0-9]+(?:\.[0-9]+)?)\s+millimeters/i)
-    ?? normalized.match(/since 1993[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*(?:mm|millimeters)/i);
-  const rateMatch = normalized.match(/current yearly rate of\s+[0-9.]+\s+inches\/year\s+\(([0-9.]+)\s+centimeters\/year\)/i)
-    ?? normalized.match(/current.*?([0-9]+(?:\.[0-9]+)?)\s+centimeters\/year/i);
+  const normalized = html.replace(NORMALIZED_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
+  const riseMatch = normalized.match(RISE_MATCH_RE)
+    ?? normalized.match(RISE_MATCH_RE_2);
+  const rateMatch = normalized.match(RATE_MATCH_RE)
+    ?? normalized.match(RATE_MATCH_RE_2);
   return {
     seaLevelMmAbove1993: riseMatch ? round(Number(riseMatch[1]), 1) : NaN,
     seaLevelAnnualRiseMm: rateMatch ? round(Number(rateMatch[1]) * 10, 1) : NaN,
@@ -296,10 +313,10 @@ async function fetchSeaLevelSection() {
 
 export function parseOhcYearlyRows(text) {
   const rows = text
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .map((line) => line.trim())
-    .filter((line) => line && !/^YEAR\b/i.test(line))
-    .map((line) => line.split(/\s+/).map((part) => Number(part)))
+    .filter((line) => line && !ROWS_RE.test(line))
+    .map((line) => line.split(WHITESPACE_RE_2).map((part) => Number(part)))
     .map((cols) => ({
       yearMid: cols[0],
       world: cols[1],
@@ -307,7 +324,7 @@ export function parseOhcYearlyRows(text) {
     .filter((row) => Number.isFinite(row.yearMid) && Number.isFinite(row.world));
   if (rows.length) return rows;
 
-  const numbers = Array.from(text.matchAll(/-?\d+(?:\.\d+)?/g), (match) => Number(match[0]));
+  const numbers = Array.from(text.matchAll(NUMBERS_RE), (match) => Number(match[0]));
   const fallback = [];
   for (let index = 0; index + 6 < numbers.length; index += 7) {
     fallback.push({
@@ -333,10 +350,10 @@ async function fetchOhcSection() {
 
 export function parseOceanTemperatureRows(text) {
   return text
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .map((line) => line.trim())
-    .filter((line) => line && /^\d{4}\s+\d{1,2}\s+[-+]?\d/.test(line))
-    .map((line) => line.split(/\s+/))
+    .filter((line) => line && PARSE_OCEAN_TEMPERATURE_ROWS_RE.test(line))
+    .map((line) => line.split(WHITESPACE_RE_2))
     .map((cols) => ({
       year: Number(cols[0]),
       month: Number(cols[1]),
@@ -372,7 +389,7 @@ export function computeOceanBaselineOffsets(rows, startYear = 1991, endYear = 20
 
 export function extractLatestOceanSeriesPath(indexHtml) {
   const matches = Array.from(
-    indexHtml.matchAll(/href="(aravg\.mon\.ocean\.90S\.90N\.(v6\.[0-9.]+?)\.(\d{6})\.asc)"/g),
+    indexHtml.matchAll(MATCHES_RE),
     (match) => ({
       path: match[1],
       version: match[2],

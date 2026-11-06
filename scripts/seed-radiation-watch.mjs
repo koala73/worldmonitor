@@ -2,6 +2,10 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
+const PARSE_RAD_NET_TIMESTAMP_RE = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/;
+const LINE_BREAK_RE = /\r?\n/;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'radiation:observations:v1';
@@ -41,7 +45,7 @@ function round(value, digits = 1) {
 }
 
 function parseRadNetTimestamp(raw) {
-  const match = String(raw || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/);
+  const match = String(raw || '').trim().match(PARSE_RAD_NET_TIMESTAMP_RE);
   if (!match) return null;
   const [, month, day, year, hour, minute, second] = match;
   return Date.UTC(
@@ -130,7 +134,7 @@ function normalizeUnit(value, unit) {
 }
 
 function parseApprovedReadings(csv) {
-  const lines = String(csv || '').trim().split(/\r?\n/);
+  const lines = String(csv || '').trim().split(LINE_BREAK_RE);
   if (lines.length < 2) return [];
 
   const readings = [];

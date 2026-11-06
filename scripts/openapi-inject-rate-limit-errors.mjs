@@ -16,6 +16,18 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, serialize, readIdempotencyExemptPaths } from './lib/openapi-codegen.mjs';
 
+const FIND_YAML_SCHEMA_RANGE_RE = /^ {8}[^ ].*:/;
+const PATH_MATCH_RE = /^ {4}(\/\S+):\s*$/;
+const ENUMERATE_YAML_OPERATIONS_RE = /^\S/;
+const METHOD_MATCH_RE = /^ {8}(get|post|put|delete|patch|options|head):\s*$/;
+const FIND_YAML_RESPONSE_RANGE_RE = /^ {16}[^ ].*:/;
+const FALLBACK_RESPONSE_RE = /^ {20}description:/;
+const ONE_OF_INDEX_RE = /^ {32}oneOf:\s*$/;
+const SCHEMA_INDEX_RE = /^ {28}schema:\s*$/;
+const JSON_FILES_RE = /Service\.openapi\.json$/;
+const YAML_FILES_RE = /Service\.openapi\.yaml$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = process.env.WM_OPENAPI_API_DIR
   ? resolve(process.env.WM_OPENAPI_API_DIR)
@@ -314,7 +326,7 @@ function findYamlSchemaRange(lines, schemaName) {
   let end = start + 1;
   while (end < lines.length) {
     const line = lines[end];
-    if (line && /^ {8}[^ ].*:/.test(line)) break;
+    if (line && FIND_YAML_SCHEMA_RANGE_RE.test(line)) break;
     if (line && !line.startsWith('            ')) break;
     end++;
   }
@@ -336,7 +348,7 @@ function ensureYamlSchema(lines, name, block) {
   if (errorIndex !== -1) {
     while (insertAt < lines.length) {
       const line = lines[insertAt];
-      if (line && /^ {8}[^ ].*:/.test(line)) break;
+      if (line && FIND_YAML_SCHEMA_RANGE_RE.test(line)) break;
       if (line && !line.startsWith('            ')) break;
       insertAt++;
     }
@@ -378,16 +390,16 @@ function enumerateYamlOperations(lines) {
   const operations = [];
   let currentPath = null;
   for (let i = 0; i < lines.length; i++) {
-    const pathMatch = lines[i].match(/^ {4}(\/\S+):\s*$/);
+    const pathMatch = lines[i].match(PATH_MATCH_RE);
     if (pathMatch) {
       currentPath = pathMatch[1];
       continue;
     }
-    if (/^\S/.test(lines[i])) {
+    if (ENUMERATE_YAML_OPERATIONS_RE.test(lines[i])) {
       currentPath = null;
       continue;
     }
-    const methodMatch = lines[i].match(/^ {8}(get|post|put|delete|patch|options|head):\s*$/);
+    const methodMatch = lines[i].match(METHOD_MATCH_RE);
     if (!currentPath || !methodMatch) continue;
     operations.push({ path: currentPath, method: methodMatch[1] });
   }
@@ -400,7 +412,7 @@ function findYamlResponseRange(lines, op, statusLine) {
   let end = start + 1;
   while (end < op.end) {
     const line = lines[end];
-    if (line && /^ {16}[^ ].*:/.test(line)) break;
+    if (line && FIND_YAML_RESPONSE_RANGE_RE.test(line)) break;
     if (line && !line.startsWith('                    ')) break;
     end++;
   }
@@ -441,7 +453,7 @@ function ensureYamlPost400Response(lines, op, supportsIdempotency) {
     ? POST_400_DESCRIPTION
     : POST_400_DESCRIPTION_WITHOUT_IDEMPOTENCY}`;
   const fallbackResponse = YAML_POST_400_RESPONSE.map((line) => (
-    /^ {20}description:/.test(line) ? descriptionLine : line
+    FALLBACK_RESPONSE_RE.test(line) ? descriptionLine : line
   ));
   const existing = findYamlResponseRange(lines, op, '                "400":');
   if (!existing) {
@@ -457,7 +469,7 @@ function ensureYamlPost400Response(lines, op, supportsIdempotency) {
   let changed = false;
   let descriptionIndex = -1;
   for (let i = existing.start + 1; i < existing.end; i++) {
-    if (/^ {20}description:/.test(lines[i])) {
+    if (FALLBACK_RESPONSE_RE.test(lines[i])) {
       descriptionIndex = i;
       break;
     }
@@ -476,10 +488,10 @@ function ensureYamlPost400Response(lines, op, supportsIdempotency) {
   }
 
   const oneOfIndex = lines.findIndex((line, index) =>
-    index > existing.start && index < existing.end && /^ {32}oneOf:\s*$/.test(line));
+    index > existing.start && index < existing.end && ONE_OF_INDEX_RE.test(line));
   if (oneOfIndex === -1) {
     const schemaIndex = lines.findIndex((line, index) =>
-      index > existing.start && index < existing.end && /^ {28}schema:\s*$/.test(line));
+      index > existing.start && index < existing.end && SCHEMA_INDEX_RE.test(line));
     if (schemaIndex === -1) {
       lines.splice(existing.start, existing.end - existing.start, ...fallbackResponse);
       return true;
@@ -544,9 +556,9 @@ function injectYaml(text) {
   return { text: lines.join('\n'), changed };
 }
 
-const jsonFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+const jsonFiles = readdirSync(apiDir).filter((f) => JSON_FILES_RE.test(f)).sort();
 const yamlFiles = readdirSync(apiDir)
-  .filter((f) => /Service\.openapi\.yaml$/.test(f) || f === 'worldmonitor.openapi.yaml')
+  .filter((f) => YAML_FILES_RE.test(f) || f === 'worldmonitor.openapi.yaml')
   .sort();
 let wouldChange = 0;
 const touched = [];

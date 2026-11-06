@@ -57,6 +57,11 @@ import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import { CHOKEPOINT_SLUGS } from './slugs';
 
+const TEMPLATE_RESOURCE_REGISTRY_RE = /^worldmonitor:\/\/countries\/([a-z]{2})\/risk$/;
+const TEMPLATE_RESOURCE_REGISTRY_RE_2 = /^worldmonitor:\/\/chokepoints\/([a-z][a-z0-9-]*)\/status$/;
+const TEMPLATE_RESOURCE_REGISTRY_RE_3 = /^worldmonitor:\/\/markets\/([A-Z][A-Z0-9.=-]{0,15})\/quote$/;
+
+
 // ---------------------------------------------------------------------------
 // Public resource freshness reader
 // ---------------------------------------------------------------------------
@@ -156,7 +161,7 @@ export const TEMPLATE_RESOURCE_REGISTRY: TemplateResourceDef[] = [
     freshnessWrap: { seedMetaKey: 'seed-meta:intelligence:risk-scores', maxStaleMin: 30 },
     paramExtractor: (uri: string) => {
       if (!uri.startsWith('worldmonitor://countries/')) return null;
-      const m = /^worldmonitor:\/\/countries\/([a-z]{2})\/risk$/.exec(uri);
+      const m = TEMPLATE_RESOURCE_REGISTRY_RE.exec(uri);
       const iso2 = m?.[1];
       if (!iso2) {
         return {
@@ -175,7 +180,7 @@ export const TEMPLATE_RESOURCE_REGISTRY: TemplateResourceDef[] = [
     tool: 'get_chokepoint_status',
     paramExtractor: (uri: string) => {
       if (!uri.startsWith('worldmonitor://chokepoints/')) return null;
-      const m = /^worldmonitor:\/\/chokepoints\/([a-z][a-z0-9-]*)\/status$/.exec(uri);
+      const m = TEMPLATE_RESOURCE_REGISTRY_RE_2.exec(uri);
       const slug = m?.[1];
       if (!slug) {
         return {
@@ -207,7 +212,7 @@ export const TEMPLATE_RESOURCE_REGISTRY: TemplateResourceDef[] = [
       // uppercase letters / digits / dash / equals / dot. Covers AAPL,
       // BTC-USD, GC=F, BRK.B. Lowercase tickers are explicitly invalid —
       // canonical wire shape from the bootstrap cache is uppercase.
-      const m = /^worldmonitor:\/\/markets\/([A-Z][A-Z0-9.=-]{0,15})\/quote$/.exec(uri);
+      const m = TEMPLATE_RESOURCE_REGISTRY_RE_3.exec(uri);
       const symbol = m?.[1];
       if (!symbol) {
         return {

@@ -8,6 +8,9 @@ import {
   type TeaserState, type TeaserQuote,
 } from '../services/teasers';
 
+const REGION_FLAG_RE = /^[A-Za-z]{2}$/;
+
+
 const STATUS_COLORS: Record<string, string> = {
   green: 'bg-wm-green',
   yellow: 'bg-[#febc2e]',
@@ -53,7 +56,7 @@ function Card({ icon, title, live, capturedAt, children }: { icon: ReactNode; ti
 }
 
 function regionFlag(code: string): string {
-  if (!/^[A-Za-z]{2}$/.test(code)) return '';
+  if (!REGION_FLAG_RE.test(code)) return '';
   const base = 0x1f1e6;
   const a = code.toUpperCase().charCodeAt(0) - 65;
   const b = code.toUpperCase().charCodeAt(1) - 65;

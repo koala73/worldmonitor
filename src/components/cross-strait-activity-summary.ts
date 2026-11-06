@@ -11,6 +11,9 @@ import {
   type TaiwanMndActivityCategories,
 } from '@/types/cross-strait-activity';
 
+const IS_DATE_ONLY_STRING_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export interface CrossStraitComparisonModel {
   label: string;
   coverage: string;
@@ -109,7 +112,7 @@ function isNullableDateString(value: unknown): boolean {
 
 function isDateOnlyString(value: unknown): boolean {
   return typeof value === 'string'
-    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && IS_DATE_ONLY_STRING_RE.test(value)
     && Number.isFinite(Date.parse(`${value}T00:00:00.000Z`));
 }
 

@@ -1,3 +1,6 @@
+
+
+const NORMALIZE_SOCIAL_VELOCITY_RE = /^\/r\/[A-Za-z0-9_]+\/comments\/[A-Za-z0-9]+(?:\/|$)/;
 const REDDIT_HOSTS = new Set(['reddit.com', 'www.reddit.com', 'old.reddit.com']);
 
 function finiteNumber(value, min, max) {
@@ -17,7 +20,7 @@ export function normalizeSocialVelocity(data) {
     try { url = new URL(p.url); } catch { continue; }
     if (!['https:', 'http:'].includes(url.protocol) || !REDDIT_HOSTS.has(url.hostname)
       || url.username || url.password || url.port
-      || !/^\/r\/[A-Za-z0-9_]+\/comments\/[A-Za-z0-9]+(?:\/|$)/.test(url.pathname)) continue;
+      || !NORMALIZE_SOCIAL_VELOCITY_RE.test(url.pathname)) continue;
     posts.push({
       id: typeof p.id === 'string' ? p.id.slice(0, 128) : '',
       title: typeof p.title === 'string' ? p.title.slice(0, 300) : '',

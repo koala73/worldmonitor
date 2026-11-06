@@ -20,6 +20,17 @@ import {
   fetchHkoWarnings,
 } from './natural/western-pacific-cyclones.mjs';
 
+const PARSE_NHC_ADVISORY_DATE_RE = /^(\d{1,2})(\d{2}) (AM|PM) ([A-Z]{3,4}) (Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{4})$/;
+const NAME_MATCH_RE = /(?:Hurricane|Typhoon|Cyclone|Storm|Depression)\s+(.+)/i;
+const WIND_PATTERNS_RE = /(\d+(?:\.\d+)?)\s*(?:kn(?:ots?)?|kt)/i;
+const WIND_PATTERNS_RE_2 = /(\d+(?:\.\d+)?)\s*mph/i;
+const WIND_PATTERNS_RE_3 = /(\d+(?:\.\d+)?)\s*km\/?h/i;
+const PRESSURE_MATCH_RE = /(\d{3,4})\s*(?:mb|hPa|mbar)/i;
+const URL_RE = /MAP$/;
+const HAS_CLASSIFICATION_RE = /^\s/;
+const IDENTITY_RE = /^[a-zA-Z0-9_.-]{1,128}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const EONET_API_URL = 'https://eonet.gsfc.nasa.gov/api/v3/events';
@@ -359,7 +370,7 @@ function classifyWind(kt) {
 function parseNhcAdvisoryDate(value) {
   if (typeof value !== 'string') return new Date(value).getTime();
 
-  const match = value.match(/^(\d{1,2})(\d{2}) (AM|PM) ([A-Z]{3,4}) (Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{1,2}) (\d{4})$/);
+  const match = value.match(PARSE_NHC_ADVISORY_DATE_RE);
   if (!match) return new Date(value).getTime();
 
   const [, hourText, minuteText, meridiem, timezone, weekday, monthText, dayText, yearText] = match;
@@ -385,15 +396,15 @@ function parseGdacsTcFields(props) {
   fields.stormId = `gdacs-TC-${props.eventid}`;
 
   const name = String(props.name || '');
-  const nameMatch = name.match(/(?:Hurricane|Typhoon|Cyclone|Storm|Depression)\s+(.+)/i);
+  const nameMatch = name.match(NAME_MATCH_RE);
   fields.stormName = nameMatch ? nameMatch[1].trim() : name.trim() || undefined;
 
   const desc = String(props.description || '') + ' ' + String(props.severitydata?.severitytext || '');
 
   const windPatterns = [
-    /(\d+(?:\.\d+)?)\s*(?:kn(?:ots?)?|kt)/i,
-    /(\d+(?:\.\d+)?)\s*mph/i,
-    /(\d+(?:\.\d+)?)\s*km\/?h/i,
+    WIND_PATTERNS_RE,
+    WIND_PATTERNS_RE_2,
+    WIND_PATTERNS_RE_3,
   ];
   for (const [i, pat] of windPatterns.entries()) {
     const m = desc.match(pat);
@@ -411,7 +422,7 @@ function parseGdacsTcFields(props) {
     }
   }
 
-  const pressureMatch = desc.match(/(\d{3,4})\s*(?:mb|hPa|mbar)/i);
+  const pressureMatch = desc.match(PRESSURE_MATCH_RE);
   if (pressureMatch) {
     const p = parseInt(pressureMatch[1], 10);
     if (p >= 850 && p <= 1050) fields.pressureMb = p;
@@ -424,7 +435,7 @@ async function fetchGdacsType(eventtype, fetchFn, now) {
   // MAP requires one type, but its VO route returns 404. SEARCH supplies
   // recent volcano events; their iscurrent field determines closure below.
   // SEARCH answers an event-free date range with 204 and no body.
-  const url = new URL(eventtype === 'VO' ? GDACS_API.replace(/MAP$/, 'SEARCH') : GDACS_API);
+  const url = new URL(eventtype === 'VO' ? GDACS_API.replace(URL_RE, 'SEARCH') : GDACS_API);
   if (eventtype === 'VO') {
     url.search = new URLSearchParams({
       eventlist: 'VO',
@@ -764,7 +775,7 @@ async function fetchNhc(fetchFn = globalThis.fetch) {
     const typeLabel = NHC_STORM_TYPES[stormType] || stormType;
     const comparableName = stormName.trim().toLowerCase();
     const hasClassification = comparableName.startsWith(typeLabel.toLowerCase())
-      && /^\s/.test(comparableName.slice(typeLabel.length));
+      && HAS_CLASSIFICATION_RE.test(comparableName.slice(typeLabel.length));
     const title = hasClassification ? stormName : `${typeLabel} ${stormName}`;
 
     // Build forecast track from forecast points
@@ -1166,7 +1177,7 @@ export function naturalEventsAfterPublish(data, context = {}) {
   ]));
   const patch = { sourceState: failedSources.length ? 'degraded' : 'ok', sourceHealth, failedSources };
   if (context.runId) {
-    const identity = value => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,128}$/.test(value) ? value : null;
+    const identity = value => typeof value === 'string' && IDENTITY_RE.test(value) ? value : null;
     console.info(JSON.stringify({
       event: 'natural_source_receipt',
       schemaVersion: 1,

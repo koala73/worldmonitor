@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { URL as FileURL } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { moduleRegexBindings } from '../helpers/module-regex-declarations.mjs';
 import { collectBriefSources, renderBriefSourcesFooter } from '@/utils/brief-sources';
 import { formatIntelBrief, renderBriefEvidenceFooter } from '@/utils/format-intel-brief';
 import { trustedHtml, setTrustedHtml } from '@/utils/dom-utils';
@@ -25,7 +26,7 @@ function fixture() {
   const outputModule = { freezeBriefContent, createCountryBriefOutput: (...args: Parameters<typeof createCountryBriefOutput>) => {
     captured = args[0]; return createCountryBriefOutput(...args);
   } };
-  const context = { exports: {} as { Harness?: new () => any }, Date, Array, AbortController, clearTimeout,
+  const context = { ...moduleRegexBindings(source), exports: {} as { Harness?: new () => any }, Date, Array, AbortController, clearTimeout,
     console: { error: (...args: unknown[]) => failures.push(args) }, BRIEF_SECTIONS, briefSectionState, summarizeCountryBrief,
     collectBriefSources, renderBriefSourcesFooter, renderBriefEvidenceFooter, formatIntelBrief, trustedHtml, setTrustedHtml,
     t: (key: string) => key, showToast: (message: string) => failures.push(message), require: () => outputModule };

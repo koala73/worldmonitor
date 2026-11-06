@@ -3,13 +3,21 @@ import ENGLISH_NAMES from './country-names.json';
 import { resolveCountryCode } from './country-code-resolve';
 import { resolveArabicCountryName } from './country-code-resolve-arabic';
 
+const NORMALIZE_LOCALIZED_COUNTRY_TOKEN_RE = /(?<=[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}])\p{M}+/gu;
+const NORMALIZE_LOCALIZED_COUNTRY_TOKEN_RE_2 = /[\p{P}\p{Z}\s]+/gu;
+const RESOLVE_NAME_RE = /^[a-z]{2,3}$/i;
+const RESOLVE_COUNTRY_ARG_RE = /[()]/;
+const PARENTHETICAL_RE = /^([^()]*)\(([^()]+)\)$/;
+const WHITESPACE_RE = /\s+/;
+
+
 /** MCP-only data. The dashboard keeps its smaller English resolver. */
 export function normalizeLocalizedCountryToken(raw: string): string {
   return raw.normalize('NFKC').toLowerCase()
     .normalize('NFD')
-    .replace(/(?<=[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}])\p{M}+/gu, '')
+    .replace(NORMALIZE_LOCALIZED_COUNTRY_TOKEN_RE, '')
     .normalize('NFC')
-    .replace(/[\p{P}\p{Z}\s]+/gu, ' ')
+    .replace(NORMALIZE_LOCALIZED_COUNTRY_TOKEN_RE_2, ' ')
     .trim();
 }
 
@@ -30,7 +38,7 @@ for (const [name, code] of Object.entries(ENGLISH_NAMES)) addName(name, code);
 
 function resolveName(raw: string): string | null {
   // Localized abbreviations can be another country's ISO code, such as Spanish RU for GB.
-  if (/^[a-z]{2,3}$/i.test(raw)) {
+  if (RESOLVE_NAME_RE.test(raw)) {
     const code = resolveCountryCode(raw);
     if (code) return code;
   }
@@ -44,11 +52,11 @@ export function resolveCountryArg(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   if (!trimmed || trimmed.length > 128) return null;
-  if (!/[()]/.test(trimmed)) return resolveName(trimmed);
+  if (!RESOLVE_COUNTRY_ARG_RE.test(trimmed)) return resolveName(trimmed);
 
   const key = normalizeLocalizedCountryToken(trimmed);
   if (NAME_TO_ISO2.has(key)) return NAME_TO_ISO2.get(key) ?? null;
-  const parenthetical = trimmed.match(/^([^()]*)\(([^()]+)\)$/);
+  const parenthetical = trimmed.match(PARENTHETICAL_RE);
   if (!parenthetical) return null;
   const base = parenthetical[1]!.trim();
   const inner = parenthetical[2]!.trim();
@@ -59,7 +67,7 @@ export function resolveCountryArg(raw: unknown): string | null {
 
   // A modifier may be part of the name, as in "Sudan (South)".
   const candidates = new Set<string>();
-  const words = base.split(/\s+/);
+  const words = base.split(WHITESPACE_RE);
   for (let at = 0; at <= words.length; at++) {
     const combined = [...words.slice(0, at), inner, ...words.slice(at)].join(' ');
     const combinedKey = normalizeLocalizedCountryToken(combined);

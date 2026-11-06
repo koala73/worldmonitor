@@ -22,6 +22,14 @@ import { isInRankableUniverse } from './shared/rankable-universe.mjs';
 import wgiIndicatorKeys from './shared/wgi-indicator-keys.json' with { type: 'json' };
 import { wgiUpstreamIndicatorId } from './shared/wgi-source-provenance.js';
 
+const ROW_REGEX_RE = /^\s*\|(\d+)\|([^|]+)\|([0-9]+(?:[.,][0-9]+)?)\|([^|]+)\|\s*(?:<[^>]+>)?\s*$/gm;
+const LINES_RE = /^\uFEFF/;
+const LINE_BREAK_RE = /\r?\n/;
+const YEAR_CANDIDATES_RE = /period|date|year/i;
+const COLLECT_SOURCE_YEARS_RE = /year$/i;
+const PHASE_MATCH_RE = /\d+/;
+
+
 export { createCountryResolvers, resolveIso2 } from './_country-resolver.mjs';
 export { wgiUpstreamIndicatorId } from './shared/wgi-source-provenance.js';
 
@@ -447,7 +455,7 @@ function validateRsfFeedDirection(byCountry) {
 
 export function parseRsfRanking(html) {
   const byCountry = new Map();
-  const rowRegex = /^\s*\|(\d+)\|([^|]+)\|([0-9]+(?:[.,][0-9]+)?)\|([^|]+)\|\s*(?:<[^>]+>)?\s*$/gm;
+  const rowRegex = ROW_REGEX_RE;
   for (const match of html.matchAll(rowRegex)) {
     const rank = safeNum(match[1]);
     const countryName = String(match[2] || '').trim();
@@ -637,8 +645,8 @@ function parseDelimitedRow(line, delimiter) {
 
 function parseDelimitedText(text, delimiter) {
   const lines = text
-    .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
+    .replace(LINES_RE, '')
+    .split(LINE_BREAK_RE)
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length < 2) return [];
@@ -714,7 +722,7 @@ export function parseFsinRows(csvText) {
     // Skip rows where no crisis-phase data is present (null or zero — IPC only lists active crises).
     if (!phase3plus && !phase4 && !phase5) continue;
     const yearCandidates = Object.keys(row)
-      .filter((k) => /period|date|year/i.test(k))
+      .filter((k) => YEAR_CANDIDATES_RE.test(k))
       .map((k) => safeNum(String(row[k]).slice(0, 4)))
       .filter((v) => v != null && v > 2000);
     const year = yearCandidates.length ? Math.max(...yearCandidates) : null;
@@ -927,7 +935,7 @@ function collectSourceYears(value, years = new Set()) {
   if (!value || typeof value !== 'object') return years;
   for (const [key, nested] of Object.entries(value)) {
     if (key === 'seedYear') continue;
-    if (/year$/i.test(key) && typeof nested !== 'object') {
+    if (COLLECT_SOURCE_YEARS_RE.test(key) && typeof nested !== 'object') {
       const numeric = safeNum(nested);
       if (numeric != null && numeric >= 1900 && numeric <= 2100) years.add(numeric);
       continue;
@@ -1021,7 +1029,7 @@ export function buildFaoAggregate(faoMap, seedYear, seededAt, eligibleCountryCod
     const countryCode = String(iso2).toUpperCase();
     if (eligible ? !eligible.has(countryCode) : !isInRankableUniverse(countryCode)) continue;
     if (!entry || typeof entry !== 'object') continue;
-    const phaseMatch = typeof entry.phase === 'string' ? entry.phase.match(/\d+/) : null;
+    const phaseMatch = typeof entry.phase === 'string' ? entry.phase.match(PHASE_MATCH_RE) : null;
     const ipcPhase = phaseMatch ? Number(phaseMatch[0]) : null;
     if (ipcPhase == null || ipcPhase < 3) continue;
     countries[countryCode] = {

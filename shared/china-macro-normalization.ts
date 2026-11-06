@@ -11,6 +11,9 @@ import {
 } from './china-macro-contract.js';
 import { validateDecisionSignalProvenance } from './decision-signal-provenance';
 
+const IS_ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+
 type JsonRecord = Record<string, unknown>;
 
 export interface NormalizedChinaMacroVintage {
@@ -166,7 +169,7 @@ function asNumber(value: unknown): number | null {
 
 function isIsoInstant(value: unknown): value is string {
   return typeof value === 'string'
-    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+    && IS_ISO_INSTANT_RE.test(value)
     && Number.isFinite(Date.parse(value));
 }
 

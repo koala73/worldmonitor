@@ -5,13 +5,17 @@ import { getCountryHistoryAccess } from '../../../_shared/country-history-access
 import { runRedisPipeline } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 
+const PARSE_POINT_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PARSE_POINT_RE_2 = /^https?:\/\//i;
+
+
 const DAY = 86400000;
 
 function parsePoint(raw: unknown, country: string, start: number, now: number): CountryHistoryPoint {
   if (typeof raw !== 'string') throw new Error('invalid history member');
   const point = JSON.parse(raw);
   const date = Date.parse(`${point.date}T00:00:00Z`);
-  if (point.countryCode !== country || !/^\d{4}-\d{2}-\d{2}$/.test(point.date)
+  if (point.countryCode !== country || !PARSE_POINT_RE.test(point.date)
     || !Number.isFinite(date) || new Date(date).toISOString().slice(0, 10) !== point.date
     || date < start * DAY || typeof point.capturedAt !== 'number' || !Number.isFinite(point.capturedAt) || point.capturedAt > now
     || point.capturedAt < date || point.capturedAt >= date + DAY
@@ -25,7 +29,7 @@ function parsePoint(raw: unknown, country: string, start: number, now: number): 
   for (const event of point.topEvents) {
     if (!event || !['title', 'source', 'category', 'link'].every(key => typeof event[key] === 'string')
       || event.title.length > 300 || event.link.length > 1024 || event.source.length > 100 || event.category.length > 100
-      || !/^https?:\/\//i.test(event.link)) throw new Error('invalid history event');
+      || !PARSE_POINT_RE_2.test(event.link)) throw new Error('invalid history event');
   }
   return { date: point.date, capturedAt: point.capturedAt, cii: point.cii, resilience: point.resilience, topEvents: point.topEvents, keySignals: point.keySignals, ciiVersionBreak: false, resilienceVersionBreak: false };
 }

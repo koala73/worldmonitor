@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+const WHITESPACE_RE = /\s+/g;
+const EXTRACT_NBS_NATIONAL_DATA_RE = /^(\d{4})(0[1-9]|1[0-2])MM$/;
+const EXTRACT_NBS_NATIONAL_DATA_RE_2 = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
+
+
 const SOURCE_URL = 'https://data.stats.gov.cn/dg/website/publicrelease/web/external/stream/esData';
 const MONEY_CATALOG = '82130c6621a745cda3d64b090e733383';
 const TRADE_CATALOG = '7e11b47c828d4e4e925f1c5a98305558';
@@ -26,7 +31,7 @@ const DEFINITIONS = new Map([
 ]);
 const LABELS = new Set([...DEFINITIONS.values()].map(({ label }) => label));
 const record = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-const labelText = (value) => typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
+const labelText = (value) => typeof value === 'string' ? value.trim().replace(WHITESPACE_RE, ' ') : '';
 const unknown = (reason) => ({ status: 'unknown', reason });
 
 function fail(reason) {
@@ -50,7 +55,7 @@ export function extractNbsNationalData(raw, { retrievedAt } = {}) {
   const seen = new Set();
   for (const period of payload.data) {
     if (!record(period) || !Array.isArray(period.values)) fail('PERIOD');
-    const match = /^(\d{4})(0[1-9]|1[0-2])MM$/.exec(period.code);
+    const match = EXTRACT_NBS_NATIONAL_DATA_RE.exec(period.code);
     if (!match || Number(match[1]) < 1900
       || period.name !== `${match[1]}年${Number(match[2])}月`) fail('MONTH');
     const observationPeriod = `${match[1]}-${match[2]}`;
@@ -76,7 +81,7 @@ export function extractNbsNationalData(raw, { retrievedAt } = {}) {
       const missing = cell.value === '' || cell.value === null;
       if (!missing && monthEnd > retrievedMs) fail('FUTURE_MONTH');
       if (!missing && (typeof cell.value !== 'string'
-        || !/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(cell.value))) fail('NUMERIC_VALUE');
+        || !EXTRACT_NBS_NATIONAL_DATA_RE_2.test(cell.value))) fail('NUMERIC_VALUE');
       const value = missing ? null : Number(cell.value) / definition.divisor;
       if (!missing && (!Number.isFinite(value)
         || (definition.divisor === 1000 && !Number.isSafeInteger(Number(cell.value)))

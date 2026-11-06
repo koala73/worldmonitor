@@ -33,6 +33,15 @@
  *     the runtime guard.
  */
 
+const WALK_TS_RE = /\.(ts|tsx|mts)$/;
+const WALK_TS_RE_2 = /\.(test|spec)\./;
+const SEGMENTS_RE = /[/.]/;
+const AUDIT_REFERENCE_RE = /\./g;
+const IMPORTS_CONVEX_API_RE = /_generated\/api\b/;
+const IMPORTS_CONVEX_API_RE_2 = /\b(getConvexApi|getConvexClient)\b/;
+const IMPORTS_CONVEX_API_RE_3 = /\bconvex-client\b/;
+const IMPORTS_CONVEX_API_RE_4 = /\bclient\.(?:query|mutation|action)\s*\(/;
+
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -50,7 +59,7 @@ function* walkTs(dir) {
     if (entry.name.startsWith('.')) continue;
     const p = path.join(dir, entry.name);
     if (entry.isDirectory()) yield* walkTs(p);
-    else if (entry.isFile() && /\.(ts|tsx|mts)$/.test(entry.name) && !/\.(test|spec)\./.test(entry.name)) {
+    else if (entry.isFile() && WALK_TS_RE.test(entry.name) && !WALK_TS_RE_2.test(entry.name)) {
       yield p;
     }
   }
@@ -97,7 +106,7 @@ function listExports(filePath) {
  * the runtime).
  */
 function resolveModuleFile(moduleRef) {
-  const segments = moduleRef.split(/[/.]/).filter(Boolean);
+  const segments = moduleRef.split(SEGMENTS_RE).filter(Boolean);
   if (segments.length === 0) return null;
   const candidate = path.join(CONVEX_DIR, ...segments) + '.ts';
   return fs.existsSync(candidate) ? candidate : null;
@@ -115,7 +124,7 @@ function auditReference({ moduleRef, fnName, sourceFile, sourceLine, callShape }
   if (!moduleFile) {
     violations.push({
       sourceFile, sourceLine, callShape,
-      reason: `Module not found: convex/${moduleRef.replace(/\./g, '/')}.ts`,
+      reason: `Module not found: convex/${moduleRef.replace(AUDIT_REFERENCE_RE, '/')}.ts`,
       ref: `${moduleRef}:${fnName}`,
     });
     return;
@@ -185,10 +194,10 @@ function scanFile(filePath) {
   //   - the file already uses string-form Convex client calls
   //     (`client.query(` / `client.mutation(` / `client.action(`)
   const importsConvexApi =
-    /_generated\/api\b/.test(src)
-    || /\b(getConvexApi|getConvexClient)\b/.test(src)
-    || /\bconvex-client\b/.test(src)
-    || /\bclient\.(?:query|mutation|action)\s*\(/.test(src);
+    IMPORTS_CONVEX_API_RE.test(src)
+    || IMPORTS_CONVEX_API_RE_2.test(src)
+    || IMPORTS_CONVEX_API_RE_3.test(src)
+    || IMPORTS_CONVEX_API_RE_4.test(src);
   if (importsConvexApi) {
     const reAsAny = /\(\s*api\s+as\s+any\s*\)((?:\.\w+)+)/g;
     while ((m = reAsAny.exec(src)) !== null) {

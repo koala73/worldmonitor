@@ -1,5 +1,8 @@
 'use strict';
 
+const NORMALIZE_TELEMETRY_TOKEN_RE = /[^a-z0-9_.:-]+/g;
+
+
 /**
  * Slot B dedup-material builder — the single source of truth shared by every
  * notification publisher.
@@ -76,7 +79,7 @@ function shouldPublishAfterDedupResult(dedupResult, severity) {
 
 function normalizeTelemetryToken(raw) {
   const value = String(raw ?? 'unknown').trim().toLowerCase();
-  return (value || 'unknown').replace(/[^a-z0-9_.:-]+/g, '_').slice(0, 80);
+  return (value || 'unknown').replace(NORMALIZE_TELEMETRY_TOKEN_RE, '_').slice(0, 80);
 }
 
 /**

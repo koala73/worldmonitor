@@ -17,6 +17,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const FUEL_SHORTAGES_CANONICAL_KEY = 'energy:fuel-shortages:v1';
 // Registry refreshed daily by the classifier; TTL cushion of 3× cadence.
 export const FUEL_SHORTAGES_TTL_SECONDS = 3 * 24 * 3600;
@@ -60,7 +63,7 @@ export function validateRegistry(data) {
     if (seenIds.has(key)) return false;
     seenIds.add(key);
     if (s.id !== key) return false;
-    if (typeof s.country !== 'string' || !/^[A-Z]{2}$/.test(s.country)) return false;
+    if (typeof s.country !== 'string' || !COUNTRY_CODE_RE.test(s.country)) return false;
     if (!VALID_PRODUCTS.has(s.product)) return false;
     if (!VALID_SEVERITIES.has(s.severity)) return false;
     if (typeof s.firstSeen !== 'string' || !isIsoDate(s.firstSeen)) return false;

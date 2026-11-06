@@ -14,6 +14,9 @@ import { readdir, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+const OUTFILE_RE = /\.ts$/;
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 const apiRoot = path.join(projectRoot, 'api');
@@ -64,7 +67,7 @@ async function compileHandlers(handlers, label) {
 
   const results = await Promise.allSettled(
     handlers.map(async (entryPoint) => {
-      const outfile = entryPoint.replace(/\.ts$/, '.js');
+      const outfile = entryPoint.replace(OUTFILE_RE, '.js');
       await build({
         entryPoints: [entryPoint],
         outfile,

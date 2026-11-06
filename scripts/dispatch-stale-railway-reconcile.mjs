@@ -6,6 +6,18 @@ import { appendFileSync } from 'node:fs';
 import { isMainModule } from './lib/main-module.mjs';
 import { RailwayReconcileControlClient } from './railway-reconcile-control-client.mjs';
 
+const PARSE_NEXT_LINK_RE = /^\s*<([^>]+)>;\s*rel="([^"]+)"\s*$/;
+const VALID_IDENTIFIER_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const VALID_GIT_HUB_RUN_ID_RE = /^[1-9][0-9]{0,23}$/;
+const WHITESPACE_RE = /\s+/;
+const MODULE_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const MODULE_RE_2 = /[.*+?^${}()|[\]\\]/g;
+const PAGINATED_RE = /^[1-9]\d*$/;
+const MODULE_RE_3 = /^>=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const MODULE_RE_4 = /^[0-9a-f]{40}$/i;
+const MODULE_RE_5 = /^application\/json(?:;|$)/i;
+
+
 export const ACCEPTED_FRESHNESS_MS = 60 * 60_000;
 export const PRE_MUTATION_ACTIVE_MS = 20 * 60_000;
 export const POST_MUTATION_ACTIVE_MS = 45 * 60_000;
@@ -142,14 +154,14 @@ function exactQuery(url, expected) {
 function parseNextLink(value) {
   if (!value) return null;
   for (const part of value.split(',')) {
-    const match = /^\s*<([^>]+)>;\s*rel="([^"]+)"\s*$/.exec(part);
+    const match = PARSE_NEXT_LINK_RE.exec(part);
     if (match?.[2] === 'next') return match[1];
   }
   return null;
 }
 
 function validIdentifier(value) {
-  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(value);
+  return typeof value === 'string' && VALID_IDENTIFIER_RE.test(value);
 }
 
 function validGitHubId(value) {
@@ -157,11 +169,11 @@ function validGitHubId(value) {
 }
 
 function validGitHubRunId(value) {
-  return validGitHubId(value) || (typeof value === 'string' && /^[1-9][0-9]{0,23}$/.test(value));
+  return validGitHubId(value) || (typeof value === 'string' && VALID_GIT_HUB_RUN_ID_RE.test(value));
 }
 
 function displayTitleHasIdentifier(displayTitle, identifier) {
-  return String(displayTitle).split(/\s+/).includes(identifier);
+  return String(displayTitle).split(WHITESPACE_RE).includes(identifier);
 }
 
 async function mapWithConcurrency(items, concurrency, mapper) {
@@ -194,7 +206,7 @@ export class GitHubWatchdogClient {
     sleep = defaultSleep,
     random = Math.random,
   }) {
-    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '')) {
+    if (!MODULE_RE.test(repository ?? '')) {
       throw new TypeError('repository must be owner/name');
     }
     if (typeof token !== 'string' || token.length < 1) throw new TypeError('GitHub token is required');
@@ -229,13 +241,13 @@ export class GitHubWatchdogClient {
     this.random = random;
     this.apiBase = base.origin;
     this.repoPath = `/repos/${repository}`;
-    this.repoPathPattern = this.repoPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    this.repoPathPattern = this.repoPath.replace(MODULE_RE_2, '\\$&');
   }
 
   #authorize(method, url, body) {
     if (url.origin !== this.apiBase || url.username || url.password || url.hash) return false;
     const page = url.searchParams.get('page');
-    const paginated = page !== null && /^[1-9]\d*$/.test(page);
+    const paginated = page !== null && PAGINATED_RE.test(page);
     if (method === 'GET' && url.pathname === `${this.repoPath}/git/ref/heads/main`) {
       return url.search === '';
     }
@@ -246,7 +258,7 @@ export class GitHubWatchdogClient {
       const created = url.searchParams.get('created');
       const status = url.searchParams.get('status');
       return paginated && (
-        (/^>=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(created ?? '')
+        (MODULE_RE_3.test(created ?? '')
           && exactQuery(url, {
             created,
             event: 'workflow_dispatch',
@@ -278,7 +290,7 @@ export class GitHubWatchdogClient {
         && body?.return_run_details === true
         && Object.keys(body).sort().join(',') === 'inputs,ref,return_run_details'
         && validIdentifier(body.inputs?.recovery_attempt_id)
-        && /^[0-9a-f]{40}$/i.test(body.inputs?.expected_head_sha ?? '')
+        && MODULE_RE_4.test(body.inputs?.expected_head_sha ?? '')
         && Object.keys(body.inputs).sort().join(',') === 'expected_head_sha,recovery_attempt_id';
     }
     return false;
@@ -416,7 +428,7 @@ export class GitHubWatchdogClient {
         return { runId, runAttempt: 1 };
       }
       const contentType = response.headers.get('content-type') ?? '';
-      if (!/^application\/json(?:;|$)/i.test(contentType)) {
+      if (!MODULE_RE_5.test(contentType)) {
         throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'GitHub read response was not JSON', {
           status: response.status,
         });
@@ -557,7 +569,7 @@ export class GitHubWatchdogClient {
   async readCurrentMain() {
     const { data } = await this.request('GET', `${this.repoPath}/git/ref/heads/main`);
     const sha = data?.object?.sha;
-    if (!/^[0-9a-f]{40}$/i.test(sha ?? '')) throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'main ref had no exact SHA');
+    if (!MODULE_RE_4.test(sha ?? '')) throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'main ref had no exact SHA');
     return sha;
   }
 
@@ -655,7 +667,7 @@ export class GitHubWatchdogClient {
       throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'workflow run attempt count was invalid');
     }
     const active = ACTIVE_RUN_STATES.includes(run?.status);
-    if (!/^[0-9a-f]{40}$/i.test(run?.head_sha ?? '')
+    if (!MODULE_RE_4.test(run?.head_sha ?? '')
       || !(active || run?.status === 'completed')
       || (active && run?.conclusion !== null)
       || (run?.status === 'completed' && typeof run?.conclusion !== 'string')
@@ -741,7 +753,7 @@ export class GitHubWatchdogClient {
     if (!Number.isInteger(sourceRunAttempt) || sourceRunAttempt < 1 || sourceRunAttempt > 1_000) {
       throw new TypeError('source workflow run attempt is invalid');
     }
-    if (expectedSourceHeadSha !== null && !/^[0-9a-f]{40}$/i.test(expectedSourceHeadSha ?? '')) {
+    if (expectedSourceHeadSha !== null && !MODULE_RE_4.test(expectedSourceHeadSha ?? '')) {
       throw new TypeError('expected source workflow head is invalid');
     }
     const normalizedRunId = String(sourceRunId);
@@ -762,7 +774,7 @@ export class GitHubWatchdogClient {
       || run?.run_attempt !== sourceRunAttempt
       || run?.head_branch !== 'main'
       || (expectedSourceHeadSha !== null && run?.head_sha !== expectedSourceHeadSha)
-      || !/^[0-9a-f]{40}$/i.test(run?.head_sha ?? '')
+      || !MODULE_RE_4.test(run?.head_sha ?? '')
       || !(active || terminal)
       || (active && run?.conclusion !== null)) {
       throw new GitHubWatchdogError(
@@ -802,7 +814,7 @@ export class GitHubWatchdogClient {
     if (!Number.isSafeInteger(runAttempt) || runAttempt < 1) {
       throw new TypeError('dispatched workflow run attempt is invalid');
     }
-    if (!/^[0-9a-f]{40}$/i.test(expectedHeadSha ?? '')) {
+    if (!MODULE_RE_4.test(expectedHeadSha ?? '')) {
       throw new TypeError('expected dispatched workflow head is invalid');
     }
     const normalizedRunId = String(runId);
@@ -913,7 +925,7 @@ function hasCompleteRunHistory(runs) {
   return runs.every((run) => (
     run
     && (typeof run.id === 'string' || Number.isSafeInteger(run.id))
-    && /^[0-9a-f]{40}$/i.test(run.headSha ?? '')
+    && MODULE_RE_4.test(run.headSha ?? '')
     && ['queued', 'in_progress', 'waiting', 'pending', 'requested', 'completed'].includes(run.status)
     && Number.isFinite(Date.parse(run.createdAt ?? ''))
     && Array.isArray(run.attempts)
@@ -926,7 +938,7 @@ function hasCompleteRunHistory(runs) {
 }
 
 export function classifyWatchdogSnapshot({ now, main, runs, controlState }) {
-  if (!Number.isFinite(now) || !/^[0-9a-f]{40}$/i.test(main?.sha ?? '')) {
+  if (!Number.isFinite(now) || !MODULE_RE_4.test(main?.sha ?? '')) {
     return {
       outcome: 'DEFERRED_AMBIGUOUS',
       headSha: null,
@@ -1169,7 +1181,7 @@ function sourceDispatchRejectionEvidence(hold, evidence) {
   if (!validGitHubRunId(hold?.sourceRunId)
     || !Number.isInteger(hold?.sourceRunAttempt)
     || hold.sourceRunAttempt < 1
-    || !/^[0-9a-f]{40}$/i.test(hold?.sourceHeadSha ?? '')
+    || !MODULE_RE_4.test(hold?.sourceHeadSha ?? '')
     || String(evidence?.sourceRunId) !== String(hold.sourceRunId)
     || evidence?.sourceRunAttempt !== hold.sourceRunAttempt
     || evidence?.headSha !== hold.sourceHeadSha
@@ -1293,7 +1305,7 @@ function sourceDispatchRejectionEvidence(hold, evidence) {
 
 async function recoverNeverStartedDispatchHold({ github, control, hold }) {
   if (!validIdentifier(hold?.recoveryAttemptId)
-    || !/^[0-9a-f]{40}$/i.test(hold?.headSha ?? '')
+    || !MODULE_RE_4.test(hold?.headSha ?? '')
     || !validGitHubRunId(hold?.sourceRunId)
     || !Number.isInteger(hold?.sourceRunAttempt)
     || hold.sourceRunAttempt < 1) {
@@ -1358,7 +1370,7 @@ function acceptedHistoryWatermark(controlState, now) {
   if (!accepted || typeof accepted !== 'object' || Array.isArray(accepted)) return null;
   if (!validIdentifier(accepted.attemptId)
     || !validGitHubRunId(accepted.runId)
-    || !/^[0-9a-f]{40}$/i.test(accepted.headSha ?? '')
+    || !MODULE_RE_4.test(accepted.headSha ?? '')
     || !Number.isFinite(accepted.acceptedAt)
     || accepted.acceptedAt < 0
     || accepted.acceptedAt > now) {
@@ -1783,7 +1795,7 @@ export async function bindAuthorizedRecovery({
   workflowRunId,
   runAttempt,
 }) {
-  if (!/^[0-9a-f]{40}$/i.test(expectedHeadSha ?? '')) {
+  if (!MODULE_RE_4.test(expectedHeadSha ?? '')) {
     throw new TypeError('expected head must be an exact commit SHA');
   }
   if (!validIdentifier(recoveryAttemptId)) throw new TypeError('recovery attempt id is invalid');

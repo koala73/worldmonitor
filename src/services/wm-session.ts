@@ -20,6 +20,13 @@ import { isPublicSharedRpcRequest } from '@/shared/public-rpc-cache';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PUBLIC_WEATHER_BOOTSTRAP_KEY, bootstrapTierKeyNames } from '../../shared/bootstrap-tier-keys.js';
 
+const SAFE_RE = /^v\d+$/;
+const SAFE_RE_2 = /^[A-Za-z][A-Za-z0-9._-]*$/;
+const WORDS_RE = /[-._]/;
+const SAFE_RE_3 = /^\d/;
+const SAFE_RE_4 = /\d/;
+
+
 const STORAGE_KEY = 'wm-session-exp';
 // Refresh well before expiry so a half-loaded page doesn't fail mid-flight.
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
@@ -157,8 +164,8 @@ export function toRouteTag(pathname: string): string {
   const segments = pathname.split('/').filter(Boolean).slice(0, MAX_ROUTE_TAG_SEGMENTS);
   const safe = segments.map((segment) => {
     // `v1`/`v2` are real, fixed route segments.
-    if (/^v\d+$/.test(segment)) return segment;
-    if (segment.length > MAX_ROUTE_TAG_SEGMENT_LENGTH || !/^[A-Za-z][A-Za-z0-9._-]*$/.test(segment)) return ':id';
+    if (SAFE_RE.test(segment)) return segment;
+    if (segment.length > MAX_ROUTE_TAG_SEGMENT_LENGTH || !SAFE_RE_2.test(segment)) return ':id';
     // Classify on identifier SHAPE, not on merely containing a digit. Real RPC
     // method names embed small numbers (`get-co2-monitoring`, `get-pm25-*`,
     // `get-g20-*`) and collapsing those to `:id` would destroy the one thing
@@ -166,8 +173,8 @@ export function toRouteTag(pathname: string): string {
     // while looking indistinguishable from a genuinely dynamic route family.
     // An identifier instead has a word that STARTS with a digit (`8f2a11`,
     // `2026`, `9d4c7b2e`) or a long letter+digit run (uuid/hash chunks).
-    const words = segment.split(/[-._]/);
-    if (words.some((word) => /^\d/.test(word) || (word.length >= 6 && /\d/.test(word)))) return ':id';
+    const words = segment.split(WORDS_RE);
+    if (words.some((word) => SAFE_RE_3.test(word) || (word.length >= 6 && SAFE_RE_4.test(word)))) return ':id';
     return segment;
   });
   return `/${safe.join('/')}`.slice(0, MAX_ROUTE_TAG_LENGTH);

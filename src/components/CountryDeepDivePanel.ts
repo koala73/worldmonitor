@@ -88,6 +88,19 @@ import { NO2_ACTIVITY_COLORS, NO2_ACTIVITY_EXCLUSION_LABELS, NO2_ACTIVITY_STATE_
 import type { No2CountryReading } from '@/services/economic/no2-activity';
 import { BRIEF_SECTIONS, CountryBriefPresentation, briefSectionState, summarizeCountryBrief, type BriefSection, type BriefSectionId } from './country-brief-presentation';
 
+const CP_NAME_RE = /_/g;
+const CUR_REASON_RE = /^Current flows unavailable for [A-Z]{2}: /;
+const CUR_REASON_RE_2 = /\.$/;
+const BASIS_RE = / \((.*)\)$/;
+const RENDER_TRADE_EXPOSURE_CONTENT_RE = /[-_]/g;
+const RENDER_TRADE_EXPOSURE_CONTENT_RE_2 = /\b\w/g;
+const UPDATE_STOCK_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
+const MAGNITUDE_RE = /^[+-]/;
+const NEGATIVE_RE = /[1-9]/;
+const NEGATIVE_RE_2 = /[eE]/;
+const OPEN_OUTPUT_RE = /\*\*/g;
+
+
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
   DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL: { text: 'Single Corridor', cls: 'cdp-dep-critical' },
@@ -1195,9 +1208,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // ── Header line: chokepoint + war risk tier badge ────────────────────
     const header = this.el('div', 'cdp-cost-shock-calc-header');
     const cpName = STRATEGIC_WATERWAYS.find(w => w.id === data.chokepointId)?.name
-      ?? data.chokepointId.replace(/_/g, ' ');
+      ?? data.chokepointId.replace(CP_NAME_RE, ' ');
     header.append(this.el('span', 'cdp-cost-shock-calc-cp', `Primary: ${cpName}`));
-    const tierShort = data.warRiskTier.replace('WAR_RISK_TIER_', '').replace(/_/g, ' ');
+    const tierShort = data.warRiskTier.replace('WAR_RISK_TIER_', '').replace(CP_NAME_RE, ' ');
     header.append(this.el('span', 'cdp-cost-shock-calc-tier', `War risk: ${tierShort || 'NORMAL'}`));
     this.costShockCalcBody.append(header);
 
@@ -2283,7 +2296,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // The server names why current flows are missing (series not seeded yet,
     // or too few filings); an absent figure alone proves neither.
     const curReason = limitations.find((l) => l.startsWith('Current flows unavailable for '))
-      ?.replace(/^Current flows unavailable for [A-Z]{2}: /, '').replace(/\.$/, '');
+      ?.replace(CUR_REASON_RE, '').replace(CUR_REASON_RE_2, '');
     const curRow = this.el('div', 'cdp-shock-baseline', cur
       ? `Current flows (${span(cur)}): ${figures(cur, true)}`
       : `Current flows: not available${curReason ? ` (${curReason})` : ''}`);
@@ -2395,7 +2408,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       // handler names the trade basis in its "product balance, <basis>:" line.
       const balance = (result.limitations ?? []).find((l) => l.startsWith('product balance, ') && !l.startsWith('product balance, current flows'));
       if (balance) {
-        const basis = balance.slice('product balance, '.length, balance.indexOf(':')).replace(/ \((.*)\)$/, ' $1');
+        const basis = balance.slice('product balance, '.length, balance.indexOf(':')).replace(BASIS_RE, ' $1');
         const tradeNote = this.el('div', '');
         tradeNote.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#aaa;margin-bottom:4px';
         const importsModeled = !(result.limitations ?? []).some((l) => l.startsWith('Gulf-origin product imports are not modeled'));
@@ -2704,7 +2717,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       for (const entry of sorted) {
         const tr = this.el('tr');
         const nameCell = this.el('td', 'cdp-chokepoint-name');
-        nameCell.textContent = entry.chokepointName || entry.chokepointId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        nameCell.textContent = entry.chokepointName || entry.chokepointId.replace(RENDER_TRADE_EXPOSURE_CONTENT_RE, ' ').replace(RENDER_TRADE_EXPOSURE_CONTENT_RE_2, (c) => c.toUpperCase());
         const barWrap = this.el('td', 'cdp-exposure-bar-wrap');
         const bar = this.el('div', 'cdp-exposure-bar');
         bar.style.width = `${Math.min(entry.exposureScore, 100)}%`;
@@ -2975,7 +2988,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         value == null ? t('components.supplyVulnerability.unknown') : `${Math.round(value * 100)}%`,
       ),
     );
-    if (detail) item.append(this.el('span', 'cdp-vulnerability-component-detail', detail.replace(/_/g, ' ')));
+    if (detail) item.append(this.el('span', 'cdp-vulnerability-component-detail', detail.replace(CP_NAME_RE, ' ')));
     return item;
   }
 
@@ -3275,9 +3288,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const base = this.economicIndicators.filter((item) => item.label !== 'Stock Index' && item.label !== 'Weekly Momentum');
     const weeklyValue = data.weekChangePercent.trim();
-    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(weeklyValue) && Number.isFinite(delta)) {
-      const magnitude = weeklyValue.replace(/^[+-]/, '');
-      const negative = weeklyValue.startsWith('-') && /[1-9]/.test(magnitude.split(/[eE]/)[0] ?? '');
+    if (UPDATE_STOCK_RE.test(weeklyValue) && Number.isFinite(delta)) {
+      const magnitude = weeklyValue.replace(MAGNITUDE_RE, '');
+      const negative = weeklyValue.startsWith('-') && NEGATIVE_RE.test(magnitude.split(NEGATIVE_RE_2)[0] ?? '');
       base.unshift({
         label: 'Weekly Momentum',
         value: `${negative ? '-' : '+'}${magnitude}%`,
@@ -4627,7 +4640,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           content: freezeBriefContent(card) });
       }
       const assessment = this.el('div', 'cdp-story-assessment');
-      assessment.append(this.el('p', '', this.currentBrief ? summarizeCountryBrief(this.currentBrief).replace(/\*\*/g, '') : 'Assessment is not available in this snapshot.'));
+      assessment.append(this.el('p', '', this.currentBrief ? summarizeCountryBrief(this.currentBrief).replace(OPEN_OUTPUT_RE, '') : 'Assessment is not available in this snapshot.'));
       const assessmentMeta = this.briefBody?.querySelector<HTMLElement>('.cdp-assessment-meta');
       if (assessmentMeta) assessment.append(freezeBriefContent(assessmentMeta));
       const assessmentBody = this.briefBody?.querySelector<HTMLElement>(':scope > .cdp-expanded-only') ?? this.briefBody;

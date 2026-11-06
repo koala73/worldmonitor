@@ -31,6 +31,13 @@ import {
 import { computeStats } from './docs-stats.mjs';
 import { renderRelatedReading } from './related-reading.mjs';
 
+const RENDER_CONTEXTUAL_COMPARISONS_RE = /^\/countries\/[^/]+\/$/;
+const RENDER_CONTEXTUAL_COMPARISONS_RE_2 = /^\/chokepoints\/[^/]+\/$/;
+const RENDER_CONTEXTUAL_COMPARISONS_RE_3 = /^\/crises\/[^/]+\/$/;
+const WHITESPACE_RE = /\s+/g;
+const RENDER_MEASUREMENT_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
 export const COMPARISONS_CONTENT_VERSION = '2026-10-14';
 
@@ -71,9 +78,9 @@ function comparisonAnchor(slug, escapeHtml) {
 
 export function renderContextualComparisons(path, escapeHtml) {
   let slugs = CONTEXTUAL_COMPARISONS[path];
-  if (!slugs && /^\/countries\/[^/]+\/$/.test(path)) slugs = ['best-geopolitical-risk-dashboards', 'free-geopolitical-risk-dashboards'];
-  if (!slugs && /^\/chokepoints\/[^/]+\/$/.test(path)) slugs = ['chokepoint-monitoring-tools'];
-  if (!slugs && /^\/crises\/[^/]+\/$/.test(path)) slugs = ['worldmonitor-vs-liveuamap', 'worldmonitor-vs-deepstatemap'];
+  if (!slugs && RENDER_CONTEXTUAL_COMPARISONS_RE.test(path)) slugs = ['best-geopolitical-risk-dashboards', 'free-geopolitical-risk-dashboards'];
+  if (!slugs && RENDER_CONTEXTUAL_COMPARISONS_RE_2.test(path)) slugs = ['chokepoint-monitoring-tools'];
+  if (!slugs && RENDER_CONTEXTUAL_COMPARISONS_RE_3.test(path)) slugs = ['worldmonitor-vs-liveuamap', 'worldmonitor-vs-deepstatemap'];
   if (!slugs?.length) return '';
   return `<p data-contextual-comparisons>How World Monitor compares: ${slugs.map((slug) => comparisonAnchor(slug, escapeHtml)).join(' · ')}.</p>`;
 }
@@ -495,11 +502,11 @@ function applyComparisonNarrative(page) {
   }
   const merged = { ...page, ...narrative, faqs };
   delete merged.extraFaqs;
-  const whyBody = (merged.whyWeWinBody ?? []).join(' ').replace(/\s+/g, ' ').trim();
+  const whyBody = (merged.whyWeWinBody ?? []).join(' ').replace(WHITESPACE_RE, ' ').trim();
   if (!whyBody) {
     throw new Error(page.slug + ' is missing whyWeWinBody');
   }
-  if (whyBody === merged.whyWeWin.replace(/\s+/g, ' ').trim()) {
+  if (whyBody === merged.whyWeWin.replace(WHITESPACE_RE, ' ').trim()) {
     throw new Error(page.slug + ' whyWeWinBody must not repeat whyWeWin');
   }
   if (merged.heading && !(merged.headingProse?.length || merged.competitorProfiles?.length)) {
@@ -615,7 +622,7 @@ function comparisonWebPageLd({ name, description, url, lastmod, faqId, baseUrl }
 const CHOKEPOINT_STATUS_LINKS = '      <p data-chokepoint-status-links>Status by waterway: <a href="/chokepoints/strait-of-hormuz/">is the Strait of Hormuz open?</a> · <a href="/chokepoints/bab-el-mandeb/">is the Bab el-Mandeb open?</a> · <a href="/chokepoints/suez-canal/">is the Suez Canal open?</a> · <a href="/chokepoints/">all monitored chokepoints</a>.</p>';
 
 function renderMeasurement(slug, snapshotDate, escapeHtml) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate ?? '')) {
+  if (!RENDER_MEASUREMENT_RE.test(snapshotDate ?? '')) {
     throw new Error('Comparison measurement requires the captured snapshot date');
   }
   const paragraphs = COMPARISON_MEASUREMENTS[slug];

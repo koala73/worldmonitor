@@ -1,3 +1,8 @@
+
+
+const IS_SAFE_STYLE_VALUE_RE = /([a-z_][\w-]*)(\s*\()?/gi;
+const WHITESPACE_RE = /\s+/g;
+const IMPORTANT_MATCH_RE = /^(.*?)\s*!important$/i;
 const SAFE_STYLE_PROPERTIES = [
   'align-content',
   'align-items',
@@ -119,7 +124,7 @@ function isSafeStyleValue(value: string): boolean {
     }
   }
   if (depth !== 0) return false;
-  for (const match of value.matchAll(/([a-z_][\w-]*)(\s*\()?/gi)) {
+  for (const match of value.matchAll(IS_SAFE_STYLE_VALUE_RE)) {
     if (!match[2]) continue;
     const name = match[1];
     if (!name || !SAFE_STYLE_FUNCTION_SET.has(name.toLowerCase())) return false;
@@ -132,9 +137,9 @@ function parseSafeDeclaration(chunk: string): SafeStyleDeclaration | null {
   if (colon <= 0) return null;
   const property = safeProperty(chunk.slice(0, colon));
   if (!property) return null;
-  let rawValue = chunk.slice(colon + 1).trim().replace(/\s+/g, ' ');
+  let rawValue = chunk.slice(colon + 1).trim().replace(WHITESPACE_RE, ' ');
   let important = false;
-  const importantMatch = /^(.*?)\s*!important$/i.exec(rawValue);
+  const importantMatch = IMPORTANT_MATCH_RE.exec(rawValue);
   const bareValue = importantMatch?.[1]?.trim();
   if (bareValue !== undefined) {
     if (!bareValue) return null;

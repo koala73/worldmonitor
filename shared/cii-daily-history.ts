@@ -1,3 +1,6 @@
+
+
+const PARSE_CII_DAILY_POINTS_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const CII_DAY_MS = 86_400_000;
 export const CII_HISTORY_MAX_AGE_MS = 30 * 60_000;
 
@@ -21,7 +24,7 @@ export function parseCiiDailyPoints(raw: unknown, now: number): { points: CiiDai
     try { value = typeof row === 'string' ? JSON.parse(row) : null; } catch { invalid = true; continue; }
     if (!value || typeof value !== 'object') { invalid = true; continue; }
     const p = value as CiiDailyPoint;
-    if (typeof p.d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(p.d)
+    if (typeof p.d !== 'string' || !PARSE_CII_DAILY_POINTS_RE.test(p.d)
       || typeof p.v !== 'string' || !p.v.trim()
       || ![p.s, p.u, p.c, p.m, p.n].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 100)
       || typeof p.t !== 'number' || !Number.isFinite(p.t) || p.t <= 0 || p.t > now

@@ -67,6 +67,14 @@ import {
 } from '../../../../shared/cii-weights';
 import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones';
 
+const NORMALIZE_FOR_COUNTRY_MATCH_RE = /[\u0300-\u036f]/g;
+const NORMALIZE_FOR_COUNTRY_MATCH_RE_2 = /&/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const WHITESPACE_RE = /\s+/g;
+const STRIKE_EVENT_COUNTRY_RE = /^[A-Za-z]{2}$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 // ========================================================================
 // Country risk baselines and multipliers
 // ------------------------------------------------------------------------
@@ -162,11 +170,11 @@ function normalizeForCountryMatch(value: string): string {
   return String(value || '')
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(NORMALIZE_FOR_COUNTRY_MATCH_RE, '')
+    .replace(NORMALIZE_FOR_COUNTRY_MATCH_RE_2, ' and ')
+    .replace(NON_ALPHANUMERIC_RE, ' ')
     .trim()
-    .replace(/\s+/g, ' ');
+    .replace(WHITESPACE_RE, ' ');
 }
 
 const COUNTRY_KEYWORDS_NORMALIZED: Record<string, string[]> = Object.fromEntries(
@@ -254,7 +262,7 @@ function countryNamedExactly(text: string): string | null {
 // polygon reaches; a non-Tier-1 country scores nowhere. Older events without
 // it fall back to their coordinates, then to the country named in the text.
 export function strikeEventCountry(s: any): string | null {
-  if (typeof s?.countryCode === 'string' && /^[A-Za-z]{2}$/.test(s.countryCode.trim())) {
+  if (typeof s?.countryCode === 'string' && STRIKE_EVENT_COUNTRY_RE.test(s.countryCode.trim())) {
     return ciiCountryForIso2(s.countryCode);
   }
   const lat = safeNum(s?.lat || s?.latitude);
@@ -666,7 +674,7 @@ export function gdeltCountryEventsFromSeed(raw: unknown, nowMs: number): GdeltCo
   if (!(age <= CII_GDELT_ESCALATION_MAX_AGE_MS)) return null;
   const rows: Record<string, GdeltCountryEventsRow> = {};
   for (const [code, row] of Object.entries(byCountry as Record<string, unknown>)) {
-    if (!/^[A-Z]{2}$/.test(code) || !row || typeof row !== 'object') continue;
+    if (!COUNTRY_CODE_RE.test(code) || !row || typeof row !== 'object') continue;
     const conflict = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).conflict) : null;
     const protest = escalationReady ? parseGdeltEscalationSignal((row as Record<string, unknown>).protest) : null;
     const week = levelReady ? parseGdeltCountryWeek((row as Record<string, unknown>).week) : null;
@@ -1196,7 +1204,7 @@ export function buildCiiAuxiliarySources(
     for (const [rawCode, rawCount] of Object.entries(sanctionsCountsRaw as Record<string, unknown>)) {
       const code = String(rawCode || '').toUpperCase();
       const count = safeNonNegativeNum(rawCount);
-      if (/^[A-Z]{2}$/.test(code) && count > 0) sanctionsCountryCounts[code] = count;
+      if (COUNTRY_CODE_RE.test(code) && count > 0) sanctionsCountryCounts[code] = count;
     }
   }
 
@@ -1904,7 +1912,7 @@ export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
 
 export function normalizeRiskScoreRegion(region: string | undefined | null): string | null {
   const normalized = String(region || '').trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+  return COUNTRY_CODE_RE.test(normalized) ? normalized : null;
 }
 
 function hasRiskScoreRegionFilter(region: string | undefined | null): boolean {

@@ -7,6 +7,9 @@ import { captureSilentError } from '../../api/_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { durationToSeconds, limitWithFallback, resetRateLimitFallbackForTest } from '../../api/_rate-limit-fallback.js';
 
+const RATE_LIMIT_ERROR_LEVEL_RE = /Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|aborted due to timeout|TimeoutError|socket hang up|Redis unavailable|Redis unreachable/i;
+
+
 // Client-IP derivation lives in the dependency-free client-ip.ts (#5231) so
 // seeder-reachable modules (usage.ts) can use it without pulling this file's
 // @upstash imports into Railway containers. Re-exported here because this was
@@ -100,7 +103,7 @@ function getRatelimit(): Ratelimit | null {
 // the mirror drifting. tests/rate-limit.test.mts calls both copies directly.
 export function rateLimitErrorLevel(stage: string, msg: string): 'warning' | 'error' {
   if (stage.includes('missing-config')) return 'error';
-  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|aborted due to timeout|TimeoutError|socket hang up|Redis unavailable|Redis unreachable/i.test(msg)) {
+  if (RATE_LIMIT_ERROR_LEVEL_RE.test(msg)) {
     return 'warning';
   }
   return 'error';

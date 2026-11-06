@@ -18,6 +18,10 @@
 // feed (the Eurostat dissemination API measured ~9 months behind on 2026-09-23)
 // from masking a current national print.
 
+const MONTHLY_RE = /^(\d{4})-(\d{2})$/;
+const QUARTERLY_RE = /^(\d{4})-Q([1-4])$/;
+const SHIFT_PERIOD_RE = /^\d{4}-Q[1-4]$/;
+
 export type WorldCpiSourceId =
   | 'estat-cpi'
   | 'eurostat-hicp'
@@ -105,9 +109,9 @@ export const PREFERRED_SOURCE_MAX_LAG_MONTHS = 6;
 
 /** Convert a period token to a month ordinal (`year * 12 + month`). */
 export function periodOrdinal(period: string | undefined): number | undefined {
-  const monthly = /^(\d{4})-(\d{2})$/.exec(String(period ?? ''));
+  const monthly = MONTHLY_RE.exec(String(period ?? ''));
   if (monthly) return Number(monthly[1]) * 12 + Number(monthly[2]);
-  const quarterly = /^(\d{4})-Q([1-4])$/.exec(String(period ?? ''));
+  const quarterly = QUARTERLY_RE.exec(String(period ?? ''));
   if (quarterly) return Number(quarterly[1]) * 12 + (Number(quarterly[2]) - 1) * 3 + 1;
   return undefined;
 }
@@ -244,7 +248,7 @@ export function shiftPeriod(period: string | undefined, months: number): string 
   const ordinal = periodOrdinal(period);
   if (ordinal === undefined) return undefined;
   const shifted = ordinal - months;
-  if (/^\d{4}-Q[1-4]$/.test(String(period))) {
+  if (SHIFT_PERIOD_RE.test(String(period))) {
     return `${Math.floor((shifted - 1) / 12)}-Q${Math.floor(((shifted - 1) % 12) / 3) + 1}`;
   }
   return `${Math.floor((shifted - 1) / 12)}-${String((shifted - 1) % 12 + 1).padStart(2, '0')}`;
@@ -282,7 +286,7 @@ export function readingAt(
 function shapeMatches(period: string, offset: number): boolean {
   const shifted = shiftPeriod(period, offset);
   if (!shifted) return false;
-  return /^\d{4}-Q[1-4]$/.test(period) === /^\d{4}-Q[1-4]$/.test(shifted);
+  return SHIFT_PERIOD_RE.test(period) === SHIFT_PERIOD_RE.test(shifted);
 }
 
 /**
@@ -329,9 +333,9 @@ export function buildWorldCpiCountries(
 
 /** UTC midnight on the first day of a period, as Unix epoch milliseconds. */
 export function periodStartMs(period: string | undefined): number {
-  const monthly = /^(\d{4})-(\d{2})$/.exec(String(period ?? ''));
+  const monthly = MONTHLY_RE.exec(String(period ?? ''));
   if (monthly) return Date.UTC(Number(monthly[1]), Number(monthly[2]) - 1, 1);
-  const quarterly = /^(\d{4})-Q([1-4])$/.exec(String(period ?? ''));
+  const quarterly = QUARTERLY_RE.exec(String(period ?? ''));
   if (quarterly) return Date.UTC(Number(quarterly[1]), (Number(quarterly[2]) - 1) * 3, 1);
   return 0;
 }

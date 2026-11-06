@@ -16,6 +16,8 @@
  * Does NOT require a dot in the domain — that is only enforced by
  * `isCorporateDomain` in `emailDomain.ts`.
  */
+const EXTRACT_DOMAIN_RE = /\s/;
+
 export function extractDomain(email: string): string | null {
   if (typeof email !== "string") return null;
   const trimmed = email.trim();
@@ -26,6 +28,6 @@ export function extractDomain(email: string): string | null {
   if (trimmed.indexOf("@", at + 1) !== -1) return null;
   const domain = trimmed.slice(at + 1).toLowerCase();
   if (domain.length === 0) return null;
-  if (/\s/.test(domain)) return null;
+  if (EXTRACT_DOMAIN_RE.test(domain)) return null;
   return domain;
 }

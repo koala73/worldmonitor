@@ -12,6 +12,11 @@ import sharp from 'sharp';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const ESCAPE_XML_RE = /&/g;
+const ESCAPE_XML_RE_2 = /</g;
+const ESCAPE_XML_RE_3 = />/g;
+
+
 const REPO_ROOT = join(import.meta.dirname, '..', '..');
 const OUT_DIR = join(REPO_ROOT, 'public', 'research-assets');
 const WIDTH = 1200;
@@ -28,9 +33,9 @@ const { computeMonthlyAverages } = await import(
 
 function escapeXml(value) {
   return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(ESCAPE_XML_RE, '&amp;')
+    .replace(ESCAPE_XML_RE_2, '&lt;')
+    .replace(ESCAPE_XML_RE_3, '&gt;');
 }
 
 function buildCardSvg(report, snapshot) {

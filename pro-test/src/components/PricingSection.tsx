@@ -11,6 +11,9 @@ import type { CheckoutAttribution } from '../../../shared/checkout-attribution';
 import fallbackTiers from '../generated/tiers.json';
 import { resolveCheckoutProduct } from './pricing-billing-mode';
 
+const LOOKS_RELATIVE_RE = /^[a-z][a-z0-9+.-]*:/i;
+
+
 interface Tier {
   name: string;
   localeKey?: string;
@@ -133,7 +136,7 @@ function isInProductHref(href: string): boolean {
   // hitting the catch branch below and being misclassified as external.
   // Resolve against the current origin to determine whether the result
   // lands on our product surface.
-  const looksRelative = !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('//');
+  const looksRelative = !LOOKS_RELATIVE_RE.test(href) && !href.startsWith('//');
   try {
     const base = typeof window !== 'undefined' ? window.location.href : 'https://worldmonitor.app/';
     const url = new URL(href, looksRelative ? base : undefined);

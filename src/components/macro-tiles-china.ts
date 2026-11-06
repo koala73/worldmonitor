@@ -17,6 +17,10 @@ import {
   validateChinaMacroAvailabilityBindings,
 } from '../../shared/china-macro-normalization';
 
+const CHINA_STATE_LABEL_RE = /_/g;
+const CHINA_STATE_LABEL_RE_2 = /\b\w/g;
+
+
 function chinaValueFmt(indicator: ChinaMacroIndicator, value: number): string {
   if (indicator.unit === '%') return `${value.toFixed(1)}%`;
   if (indicator.unit === 'index') return value.toFixed(2);
@@ -44,7 +48,7 @@ const CHINA_STATE_LABELS: Record<string, string> = {
 
 function chinaStateLabel(state: string): string {
   return CHINA_STATE_LABELS[state]
-    ?? state.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    ?? state.toLowerCase().replace(CHINA_STATE_LABEL_RE, ' ').replace(CHINA_STATE_LABEL_RE_2, (letter) => letter.toUpperCase());
 }
 
 function chinaStateTone(
@@ -94,8 +98,8 @@ export function chinaTileHtml(indicator: ChinaMacroIndicator): string {
     </div>
     <div class="macro-summary-value${valueClass}">${value}</div>
     <div class="macro-summary-meta">
-      <span>Period ${escapeHtml(observed)} · ${escapeHtml(indicator.periodKind || 'period unknown').replace(/_/g, ' ')}</span>
-      <span>Released ${escapeHtml(released)} · ${escapeHtml(revision).replace(/_/g, ' ')}</span>
+      <span>Period ${escapeHtml(observed)} · ${escapeHtml(indicator.periodKind || 'period unknown').replace(CHINA_STATE_LABEL_RE, ' ')}</span>
+      <span>Released ${escapeHtml(released)} · ${escapeHtml(revision).replace(CHINA_STATE_LABEL_RE, ' ')}</span>
     </div>
     <div class="macro-summary-source">Source: ${escapeHtml(source)}</div>
   </div>`;

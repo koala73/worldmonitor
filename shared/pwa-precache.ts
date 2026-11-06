@@ -2,6 +2,7 @@ import type { Plugin } from 'vite';
 import type { ManifestTransform, RuntimeCaching } from 'workbox-build';
 
 export const appChunkRuntimeCache: RuntimeCaching = {
+  // Workbox serializes this callback without its module scope.
   urlPattern: ({ url, sameOrigin }) => sameOrigin && /^\/assets\/.+\.(?:js|css)$/i.test(url.pathname),
   handler: 'StaleWhileRevalidate',
   options: {

@@ -9,6 +9,15 @@ import {
   type VariantSeoKey,
 } from './variant-seo-summaries';
 
+const ESC_HTML_RE = /&/g;
+const ESC_HTML_RE_2 = /</g;
+const ESC_HTML_RE_3 = />/g;
+const ESC_HTML_RE_4 = /"/g;
+const ESC_HTML_RE_5 = /'/g;
+const SERIALIZED_RE = /\n/g;
+const RESULT_RE = /[ \t]*<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*([\s\S]*?)\s*<\/script>\s*/gi;
+
+
 // Variants that are served from their own worldmonitor.app subdomain by the
 // single web deployment (vercel.json host-based rewrites map
 // <variant>.worldmonitor.app/dashboard → /dashboard-<variant>.html).
@@ -57,11 +66,11 @@ export function variantDashboardFileName(variant: string): string {
 // prose; '&' already occurs in the tech title).
 function escHtml(s: string): string {
   return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(ESC_HTML_RE, '&amp;')
+    .replace(ESC_HTML_RE_2, '&lt;')
+    .replace(ESC_HTML_RE_3, '&gt;')
+    .replace(ESC_HTML_RE_4, '&quot;')
+    .replace(ESC_HTML_RE_5, '&#39;');
 }
 
 interface CountBounds {
@@ -106,9 +115,9 @@ function jsonLdScript(payload: Record<string, unknown>): string {
   // CSP script-src is never consulted for one — an un-nonced JSON-LD block would
   // not have been blocked (#7459c).
   const serialized = JSON.stringify(payload, null, 2)
-    .replace(/\n/g, '\n    ')
+    .replace(SERIALIZED_RE, '\n    ')
     // Escape `<` so a `</script>` in any value cannot close the element early.
-    .replace(/</g, '\\u003c');
+    .replace(ESC_HTML_RE_2, '\\u003c');
   return `<script type="application/ld+json" nonce="wm-static-bootstrap">\n    ${serialized}\n    </script>`;
 }
 
@@ -156,7 +165,7 @@ function variantBreadcrumbJsonLd(meta: VariantMeta): string {
 function removeJsonLdTypes(html: string, expectedTypes: readonly string[]): string {
   const counts = new Map(expectedTypes.map((type) => [type, 0]));
   const result = html.replace(
-    /[ \t]*<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*([\s\S]*?)\s*<\/script>\s*/gi,
+    RESULT_RE,
     (script, json: string) => {
       const type = JSON.parse(json)['@type'];
       if (!counts.has(type)) return script;
@@ -272,7 +281,7 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   html = replaceCounted(
     html,
     /("featureList": )\[[\s\S]*?\]/g,
-    (_m, a) => `${a}${JSON.stringify(meta.features, null, 8).replace(/\n/g, '\n      ')}`,
+    (_m, a) => `${a}${JSON.stringify(meta.features, null, 8).replace(SERIALIZED_RE, '\n      ')}`,
     ONE,
     'SoftwareApplication featureList',
   );

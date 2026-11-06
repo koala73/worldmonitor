@@ -216,6 +216,10 @@ import {
   type CountryClickGestureTracker,
 } from './map-interaction-guard';
 
+const HTML_RE = /^\s*<div class="deckgl-tooltip[^"]*"[^>]*>/;
+const CAT_LABEL_RE = /-/g;
+const RESULT_RE = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i;
+
 /** deck.gl accessor shape: (datum, objectInfo) => value. */
 type GlyphAccessor<T> = (d: unknown, info: unknown) => T;
 
@@ -5276,7 +5280,7 @@ export class DeckGLMap {
     // different layers stay identifiable (#10139).
     const label = `<div class="deckgl-tooltip-category">${categoryGlyphForLayer(category)} ${escapeHtml(resolveLayerLabel(LAYER_REGISTRY[category], t))}</div>`;
     // Replacer function: a `$` in a translated label must not act as a pattern.
-    const html = tooltip.html.replace(/^\s*<div class="deckgl-tooltip[^"]*"[^>]*>/, (open) => `${open}${label}`);
+    const html = tooltip.html.replace(HTML_RE, (open) => `${open}${label}`);
     return { html: html === tooltip.html ? `${label}${tooltip.html}` : html };
   }
 
@@ -5548,7 +5552,7 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>📰 ${t('components.deckgl.tooltip.news')}</strong><br/>${text(obj.title?.slice(0, 80) || '')}${coverage ? `<br/>${coverage}` : ''}</div>` };
       }
       case 'positive-events-layer': {
-        const catLabel = obj.category ? obj.category.replace(/-/g, ' & ') : 'Positive Event';
+        const catLabel = obj.category ? obj.category.replace(CAT_LABEL_RE, ' & ') : 'Positive Event';
         const countInfo = obj.count > 1 ? `<br/><span style="opacity:.7">${numericLabel(obj.count)} sources reporting</span>` : '';
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/><span style="text-transform:capitalize">${text(catLabel)}</span>${countInfo}</div>` };
       }
@@ -6057,7 +6061,7 @@ export class DeckGLMap {
 
   // Utility methods
   private hexToRgba(hex: string, alpha: number): [number, number, number, number] {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    const result = RESULT_RE.exec(hex);
     if (result?.[1] && result[2] && result[3]) {
       return [
         parseInt(result[1], 16),

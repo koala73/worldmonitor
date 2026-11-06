@@ -1,12 +1,17 @@
 import type { NewsItem } from '../types';
 import { decodeHtmlEntities } from '../utils/html-entities';
 
+const NORMALIZE_HEADLINE_KEY_RE = /[\u0300-\u036f]/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const WHITESPACE_RE = /\s+/g;
+
+
 export function normalizeHeadlineKey(title: string): string {
   return decodeHtmlEntities(title)
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(NORMALIZE_HEADLINE_KEY_RE, '')
+    .replace(NON_ALPHANUMERIC_RE, ' ')
     .trim()
     .split(' ')
     .filter((w) => w.length > 2)
@@ -15,7 +20,7 @@ export function normalizeHeadlineKey(title: string): string {
 }
 
 function fallbackHeadlineKey(title: string): string {
-  return decodeHtmlEntities(title).toLowerCase().trim().replace(/\s+/g, ' ');
+  return decodeHtmlEntities(title).toLowerCase().trim().replace(WHITESPACE_RE, ' ');
 }
 
 export interface DedupedHeadline {

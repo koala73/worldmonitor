@@ -15,6 +15,12 @@
 // and Node.js test environment without `node:crypto` (which the bundle check
 // rejects under --platform=browser).
 
+const BUFFER_TO_BASE64_URL_RE = /\+/g;
+const BUFFER_TO_BASE64_URL_RE_2 = /\//g;
+const BUFFER_TO_BASE64_URL_RE_3 = /=+$/;
+const B64_RE = /-/g;
+const B64_RE_2 = /_/g;
+
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const PREFIX = 'wms_';
 const enc = new TextEncoder();
@@ -41,12 +47,12 @@ function bufferToBase64Url(buf) {
   const bytes = new Uint8Array(buf);
   let bin = '';
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(bin).replace(BUFFER_TO_BASE64_URL_RE, '-').replace(BUFFER_TO_BASE64_URL_RE_2, '_').replace(BUFFER_TO_BASE64_URL_RE_3, '');
 }
 
 function base64UrlToBytes(s) {
   const pad = (4 - (s.length % 4)) % 4;
-  const b64 = (s + '='.repeat(pad)).replace(/-/g, '+').replace(/_/g, '/');
+  const b64 = (s + '='.repeat(pad)).replace(B64_RE, '+').replace(B64_RE_2, '/');
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

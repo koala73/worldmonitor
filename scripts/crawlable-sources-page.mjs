@@ -17,6 +17,17 @@ import {
   uniqueSorted,
 } from './source-catalog-identity.mjs';
 
+const COUNTRY_SECOND_LEVEL_RE = /^(?:ac|co|com|edu|gov|net|org)$/;
+const TITLE_CASE_BRAND_TOKEN_RE = /[-_]+/;
+const TITLE_CASE_BRAND_TOKEN_RE_2 = /^[a-z]+$/;
+const SOURCE_PROVIDER_DISPLAY_NAME_RE = /^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i;
+const EMBASSY_RE = /^([a-z]{2})\.usembassy\.gov$/i;
+const SLUG_BASE_RE = /[\u0300-\u036f]/g;
+const SLUG_BASE_RE_2 = /&/g;
+const SLUG_BASE_RE_3 = /[^a-zA-Z0-9]+/g;
+const SLUG_BASE_RE_4 = /^-+|-+$/g;
+
+
 // Hand-authored marketing copy for the /sources/ catalog page. Domains and
 // their docs anchors mirror docs/data-sources.mdx section headings; the
 // aggregate counts are computed from the committed attribution manifest, so
@@ -661,7 +672,7 @@ function hostnameBrandToken(host) {
   const labels = host.toLowerCase().split('.');
   const suffix = labels.slice(-2).join('.');
   const countrySecondLevel = labels.at(-1)?.length === 2
-    && /^(?:ac|co|com|edu|gov|net|org)$/.test(labels.at(-2) || '');
+    && COUNTRY_SECOND_LEVEL_RE.test(labels.at(-2) || '');
   const offset = MULTI_LABEL_PUBLIC_SUFFIXES.has(suffix) || countrySecondLevel ? 3 : 2;
   return labels.at(-offset) || labels[0] || host;
 }
@@ -670,20 +681,20 @@ function titleCaseBrandToken(token) {
   const override = BRAND_TOKEN_OVERRIDES.get(token);
   if (override) return override;
   return token
-    .split(/[-_]+/)
+    .split(TITLE_CASE_BRAND_TOKEN_RE)
     .filter(Boolean)
-    .map((part) => part.length <= 4 && /^[a-z]+$/.test(part) ? part.toUpperCase() : `${part[0]?.toUpperCase() || ''}${part.slice(1)}`)
+    .map((part) => part.length <= 4 && TITLE_CASE_BRAND_TOKEN_RE_2.test(part) ? part.toUpperCase() : `${part[0]?.toUpperCase() || ''}${part.slice(1)}`)
     .join(' ');
 }
 
 export function sourceProviderDisplayName(provider, hosts = []) {
-  if (!/^(?:[a-z0-9-]+\.)+[a-z0-9-]+$/i.test(provider)) return provider;
+  if (!SOURCE_PROVIDER_DISPLAY_NAME_RE.test(provider)) return provider;
 
   const primaryHost = hosts[0] || provider;
   const exact = SOURCE_NAME_OVERRIDES.get(primaryHost) || SOURCE_NAME_OVERRIDES.get(provider);
   if (exact) return exact;
 
-  const embassy = primaryHost.match(/^([a-z]{2})\.usembassy\.gov$/i);
+  const embassy = primaryHost.match(EMBASSY_RE);
   if (embassy) {
     const country = US_EMBASSY_COUNTRIES.get(embassy[1].toLowerCase());
     if (country) return `U.S. Embassy & Consulates in ${country}`;
@@ -837,10 +848,10 @@ export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
 export function sourceCardAnchors(sourceCatalog) {
   const slugBase = (key) => String(key ?? '')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/&/g, ' and ')
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(SLUG_BASE_RE, '')
+    .replace(SLUG_BASE_RE_2, ' and ')
+    .replace(SLUG_BASE_RE_3, '-')
+    .replace(SLUG_BASE_RE_4, '')
     .toLowerCase() || 'source';
 
   const anchors = new Map();

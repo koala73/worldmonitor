@@ -1,5 +1,8 @@
 import { safeStorageSet } from '@/utils/safe-storage';
 
+const IS_FRESH_ANON_CLAIM_TOKEN_RE = /^\d+$/;
+
+
 const ANON_KEY = 'wm-anon-id';
 const ANON_CLAIM_TOKEN_KEY = 'wm-anon-claim-token';
 const ANON_CLAIM_TOKEN_VERSION = 'v2';
@@ -28,7 +31,7 @@ export function getStoredAnonClaimToken(): string | null {
 function isFreshAnonClaimToken(token: string): boolean {
   const [version, expiresAtRaw, signature, ...extra] = token.split('.');
   if (version !== ANON_CLAIM_TOKEN_VERSION || extra.length > 0) return false;
-  if (!expiresAtRaw || !signature || !/^\d+$/.test(expiresAtRaw)) return false;
+  if (!expiresAtRaw || !signature || !IS_FRESH_ANON_CLAIM_TOKEN_RE.test(expiresAtRaw)) return false;
   if (!HMAC_SHA256_HEX.test(signature)) return false;
   const expiresAt = Number(expiresAtRaw);
   return Number.isSafeInteger(expiresAt) && expiresAt > Date.now();

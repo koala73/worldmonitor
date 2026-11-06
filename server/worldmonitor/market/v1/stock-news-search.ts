@@ -6,6 +6,12 @@ import { sha256Hex } from '../../../_shared/hash';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 
+const SPLIT_API_KEYS_RE = /[\n,]+/;
+const WHITESPACE_RE = /\s+/g;
+const EXTRACT_DOMAIN_RE = /^www\./;
+const RELATIVE_DATE_TO_TIMESTAMP_RE = /^(\d+)\s+(minute|minutes|hour|hours|day|days|week|weeks|month|months)\s+ago$/;
+
+
 export type StockNewsSearchProviderId = 'exa' | 'brave' | 'serpapi' | 'google-news-rss';
 
 type StockNewsSearchResult = {
@@ -55,19 +61,19 @@ export function resetStockNewsSearchStateForTests(): void {
 
 function splitApiKeys(raw: string | undefined): string[] {
   return String(raw || '')
-    .split(/[\n,]+/)
+    .split(SPLIT_API_KEYS_RE)
     .map(key => key.trim())
     .filter(Boolean);
 }
 
 function normalizeSymbol(raw: string): string {
-  return raw.trim().replace(/\s+/g, '').slice(0, 32).toUpperCase();
+  return raw.trim().replace(WHITESPACE_RE, '').slice(0, 32).toUpperCase();
 }
 
 function extractDomain(url: string): string {
   try {
     const parsed = new URL(url);
-    return parsed.hostname.replace(/^www\./, '') || 'Unknown source';
+    return parsed.hostname.replace(EXTRACT_DOMAIN_RE, '') || 'Unknown source';
   } catch {
     return 'Unknown source';
   }
@@ -85,7 +91,7 @@ function relativeDateToTimestamp(value: unknown): number {
   const absolute = Date.parse(raw);
   if (Number.isFinite(absolute)) return absolute;
 
-  const match = raw.match(/^(\d+)\s+(minute|minutes|hour|hours|day|days|week|weeks|month|months)\s+ago$/);
+  const match = raw.match(RELATIVE_DATE_TO_TIMESTAMP_RE);
   if (!match) return 0;
 
   const amount = Number(match[1] || 0);
@@ -265,7 +271,7 @@ async function searchWithBrave(
   return dedupeHeadlines(
     (payload.web?.results || []).map(item => ({
       title: String(item.title || '').trim(),
-      source: String(item.meta_url?.hostname || '').replace(/^www\./, '') || extractDomain(String(item.url || '')),
+      source: String(item.meta_url?.hostname || '').replace(EXTRACT_DOMAIN_RE, '') || extractDomain(String(item.url || '')),
       link: String(item.url || '').trim(),
       publishedAt: relativeDateToTimestamp(item.age || item.page_age),
     })),

@@ -145,6 +145,11 @@ import {
   isMarkdownTwinPath,
 } from '../api/_md-url-twin';
 
+const IS_POST_TO_GET_COMPATIBLE_BODY_SIZE_RE = /^\d+$/;
+const DOMAIN_RE = /^v\d+$/;
+const ENV_OVERRIDE_RE = /-/g;
+
+
 export const serverOptions: ServerOptions = {
   onError: mapErrorToResponse,
   validateRequest: validateGeneratedRequest,
@@ -675,7 +680,7 @@ const MILITARY_BBOX_DIAGNOSTIC_PATH_SET = new Set<string>(REQUIRED_BBOX_RPC_PATH
 
 function isPostToGetCompatibleBodySize(headers: Headers): boolean {
   const rawContentLength = headers.get('Content-Length');
-  if (rawContentLength === null || !/^\d+$/.test(rawContentLength)) return false;
+  if (rawContentLength === null || !IS_POST_TO_GET_COMPATIBLE_BODY_SIZE_RE.test(rawContentLength)) return false;
 
   const contentLength = Number(rawContentLength);
   return Number.isSafeInteger(contentLength) && contentLength < POST_TO_GET_MAX_BODY_BYTES;
@@ -1160,7 +1165,7 @@ export function createDomainGateway(
     //   /api/<domain>/v1/<rpc>          → parts[2] = domain
     //   /api/v2/<domain>/<rpc>          → parts[2] = "v2", parts[3] = domain
     const _parts = pathname.split('/');
-    const domain = (/^v\d+$/.test(_parts[2] ?? '') ? _parts[3] : _parts[2]) ?? '';
+    const domain = (DOMAIN_RE.test(_parts[2] ?? '') ? _parts[3] : _parts[2]) ?? '';
     const reqBytes = deriveReqBytes(request);
 
     // #3199: in shadow mode a per-account limit that WOULD have triggered is
@@ -2761,7 +2766,7 @@ export function createDomainGateway(
       const noStoreReason = getRpcNoStoreReasonFromJson(bodyStr, { pathname });
 
       const rpcName = pathname.split('/').pop() ?? '';
-      const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
+      const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(ENV_OVERRIDE_RE, '_').toUpperCase()}`] as CacheTier | undefined;
       const mapTier = RPC_CACHE_TIER[pathname];
       // The route's own declared tier (an env override wins over the map for
       // normal tiers). A route declared no-store is a hard freshness/privacy

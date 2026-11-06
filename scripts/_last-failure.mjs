@@ -1,8 +1,11 @@
+
+
+const MS_RE = /^\d{4}-\d{2}-\d{2}T/u;
 const CODE = /^[A-Z][A-Z0-9_]{0,79}$/u;
 
 function timestamp(value) {
   const ms = typeof value === 'number' ? value
-    : typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/u.test(value) ? Date.parse(value) : NaN;
+    : typeof value === 'string' && MS_RE.test(value) ? Date.parse(value) : NaN;
   return Number.isFinite(ms) && ms > 0 && ms <= 8.64e15
     ? new Date(ms).toISOString() : null;
 }

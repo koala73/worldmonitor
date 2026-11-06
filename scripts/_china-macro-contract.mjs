@@ -3,6 +3,10 @@
 // shared/china-macro-contract.js; tests/china-macro-production-registration
 // pins every constant and helper across the container boundary.
 
+const CHINA_MACRO_SOURCE_BINDING_RE = /^\/SCGK194\/\d{8}\/[a-f0-9]{32}\.html$/;
+const MONTH_RE = /^(\d{4})-(\d{2})$/;
+const PARSED_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export const CHINA_MACRO_SCHEMA_VERSION = 2;
 export const CHINA_MACRO_CACHE_KEY = 'economic:china:macro:v2';
 export const CHINA_MACRO_PROVENANCE_FAMILY = 'china_macro_official_numeric_observation';
@@ -128,7 +132,7 @@ export function chinaMacroSourceBinding(seriesId, sourceUrl, value) {
     try {
       const url = new URL(sourceUrl);
       if (url.origin === 'https://jrj.sh.gov.cn'
-        && (/^\/SCGK194\/\d{8}\/[a-f0-9]{32}\.html$/.test(url.pathname)
+        && (CHINA_MACRO_SOURCE_BINDING_RE.test(url.pathname)
           || (value === null && url.pathname === '/SCGK194/index.html'))) {
         return CHINA_MACRO_M2_REPUBLICATION;
       }
@@ -139,10 +143,10 @@ export function chinaMacroSourceBinding(seriesId, sourceUrl, value) {
 
 export function chinaMacroObservationDateMs(value) {
   if (typeof value !== 'string' || !value) return null;
-  const month = /^(\d{4})-(\d{2})$/.exec(value);
+  const month = MONTH_RE.exec(value);
   const parsed = month
     ? Date.UTC(Number(month[1]), Number(month[2]), 0, 23, 59, 59)
-    : Date.parse(`${value}${/^\d{4}-\d{2}-\d{2}$/.test(value) ? 'T23:59:59Z' : ''}`);
+    : Date.parse(`${value}${PARSED_RE.test(value) ? 'T23:59:59Z' : ''}`);
   return Number.isFinite(parsed) ? parsed : null;
 }
 

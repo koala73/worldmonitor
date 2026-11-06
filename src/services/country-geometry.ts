@@ -1,6 +1,11 @@
 import type { FeatureCollection, Geometry, GeoJsonProperties, Position } from 'geojson';
 import { markLcpDebug } from '@/utils/lcp-debug';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const ESCAPE_REGEX_RE = /[.*+?^${}()|[\]\\]/g;
+const REBUILD_COUNTRY_INDEX_RE = /^[A-Z]{3}$/i;
+
+
 interface IndexedCountryGeometry {
   code: string;
   name: string;
@@ -64,7 +69,7 @@ let sortedCountryNames: Array<{ name: string; code: string; regex: RegExp }> = [
 export function canonicalizeCountryCode(code: string): string {
   const trimmed = code.trim().toUpperCase();
   const canonical = POLITICAL_OVERRIDES[trimmed] ?? trimmed;
-  return /^[A-Z]{2}$/.test(canonical) ? canonical : '';
+  return COUNTRY_CODE_RE.test(canonical) ? canonical : '';
 }
 
 function rewritePoliticalIso2Properties(properties: GeoJsonProperties | null | undefined): void {
@@ -84,7 +89,7 @@ function normalizeCode(properties: GeoJsonProperties | null | undefined): string
   const rawCode = properties['ISO3166-1-Alpha-2'] ?? properties.ISO_A2 ?? properties.iso_a2;
   if (typeof rawCode !== 'string') return null;
   const trimmed = rawCode.trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(trimmed) ? trimmed : null;
+  return COUNTRY_CODE_RE.test(trimmed) ? trimmed : null;
 }
 
 function normalizeName(properties: GeoJsonProperties | null | undefined): string | null {
@@ -196,7 +201,7 @@ function pointInCountryGeometry(country: IndexedCountryGeometry, lon: number, la
 }
 
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(ESCAPE_REGEX_RE, '\\$&');
 }
 
 function buildCountryNameMatchers(): void {
@@ -230,7 +235,7 @@ function rebuildCountryIndex(data: FeatureCollection<Geometry>): void {
     if (!code || !name) continue;
 
     const iso3 = feature.properties?.['ISO3166-1-Alpha-3'];
-    if (typeof iso3 === 'string' && /^[A-Z]{3}$/i.test(iso3.trim())) {
+    if (typeof iso3 === 'string' && REBUILD_COUNTRY_INDEX_RE.test(iso3.trim())) {
       iso3ToIso2.set(iso3.trim().toUpperCase(), code);
     }
     nameToIso2.set(name.toLowerCase(), code);

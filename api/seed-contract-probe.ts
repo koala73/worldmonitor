@@ -18,6 +18,9 @@
  *   PR 3 merge      → probe gets stricter mode asserting seed-meta:* keys gone
  */
 
+const PROBE_BOUNDARY_ONCE_RE = /"_seed"\s*:/;
+const HANDLER_RE = /\/+$/;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -277,7 +280,7 @@ async function probeBoundaryOnce(
     // Detect any envelope leak in the response body. A substring match on
     // the literal `"_seed":` is sufficient because `_seed` only appears on
     // our envelopes — no third-party API we consume emits that key.
-    if (/"_seed"\s*:/.test(text)) {
+    if (PROBE_BOUNDARY_ONCE_RE.test(text)) {
       return { endpoint, pass: false, status: r.status, reason: 'seed-leak' };
     }
     if (!r.ok) return { endpoint, pass: false, status: r.status, reason: `status:${r.status}` };
@@ -319,7 +322,7 @@ export default async function handler(req: Request): Promise<Response> {
     // timeout, cold-start, mid-rewrite key) doesn't flap the probe to 503.
     const [checks, boundary] = await Promise.all([
       Promise.all(DEFAULT_PROBES.map((spec) => withRetry(() => checkProbe(spec)))),
-      checkPublicBoundary((process.env.WORLDMONITOR_PUBLIC_BASE_URL ?? 'https://www.worldmonitor.app').replace(/\/+$/, '')),
+      checkPublicBoundary((process.env.WORLDMONITOR_PUBLIC_BASE_URL ?? 'https://www.worldmonitor.app').replace(HANDLER_RE, '')),
     ]);
 
     const passedKeys = checks.filter(c => c.pass).length;

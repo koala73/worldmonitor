@@ -3,6 +3,9 @@ import { t } from '@/services/i18n';
 import { fetchWsbTickers, type WsbTicker } from '@/services/wsb-tickers';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
+const _RENDER_RE = /([A-Z])/g;
+
+
 export type { WsbTicker } from '@/services/wsb-tickers';
 
 type SortField = 'mentionCount' | 'totalScore' | 'velocityScore';
@@ -150,7 +153,7 @@ export class WsbTickerScannerPanel extends Panel {
           <tbody>${rows || '<tr><td colspan="6" class="wsb-empty">No ticker data</td></tr>'}</tbody>
         </table>
       </div>
-      <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Reddit \u00B7 r/wallstreetbets, r/stocks, r/investing \u00B7 sorted by ${this._sortField.replace(/([A-Z])/g, ' $1').toLowerCase()}</div>
+      <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Reddit \u00B7 r/wallstreetbets, r/stocks, r/investing \u00B7 sorted by ${this._sortField.replace(_RENDER_RE, ' $1').toLowerCase()}</div>
     `, 'legacy Panel.setContent() migration'), focusField ? () => {
       this.content.querySelector<HTMLButtonElement>(`button[data-sort="${focusField}"]`)
         ?.focus({ preventScroll: true });

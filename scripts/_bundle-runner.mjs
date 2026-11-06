@@ -43,6 +43,11 @@ import {
 } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
+const BUNDLE_DISABLE_ENV_VAR_RE = /[^A-Z0-9]+/g;
+const RUN_BUNDLE_RE = /^[A-Z][A-Z0-9_]*$/;
+const WHITESPACE_RE = /\s+/g;
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const MIN = 60_000;
@@ -481,7 +486,7 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completion
  * cannot silently disable a same-named member of another.
  */
 export function bundleDisableEnvVar(label) {
-  return `WM_BUNDLE_${String(label).toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_DISABLED_MEMBERS`;
+  return `WM_BUNDLE_${String(label).toUpperCase().replace(BUNDLE_DISABLE_ENV_VAR_RE, '_')}_DISABLED_MEMBERS`;
 }
 
 /** Section labels disabled for `label`, parsed from the env. */
@@ -526,7 +531,7 @@ export async function runBundle(label, sections, opts = {}) {
         throw new Error(`[Bundle:${label}] section '${section.label}' has an empty requiredEnv group`);
       }
       for (const name of alternatives) {
-        if (typeof name !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(name)) {
+        if (typeof name !== 'string' || !RUN_BUNDLE_RE.test(name)) {
           throw new Error(`[Bundle:${label}] section '${section.label}' has invalid requiredEnv name '${name}'`);
         }
       }
@@ -770,7 +775,7 @@ export async function runBundle(label, sections, opts = {}) {
       // stdout+stderr, breaking tests (and log readers) that rely on
       // signal-escalation ordering.
       const status = result.status || 'FAILED';
-      console.error(`[Bundle:${label}] section=${section.label} status=${status} elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
+      console.error(`[Bundle:${label}] section=${section.label} status=${status} elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(WHITESPACE_RE, ' ')}`);
       // A GRACEFUL_FAIL (child exit 75) extended the last-good TTL and lost no
       // data — a transient upstream blip (e.g. a rate-limited source). Counting
       // it as a hard failure would crash the whole bundle (exit 1 → Railway

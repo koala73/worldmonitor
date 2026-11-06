@@ -4,6 +4,10 @@
 import { CHROME_UA } from '../_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from '../_content-age-helpers.mjs';
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const FX_CODE_FROM_SERIES_ID_RE = /^FX([A-Z]{3})CAD$/;
+
+
 export const BOC_VALET_HOST = 'www.bankofcanada.ca';
 export const BOC_VALET_TERMS_URL = 'https://www.bankofcanada.ca/terms/';
 export const FX_RATES_DAILY_URL =
@@ -61,7 +65,7 @@ export function parseValetObservations(doc) {
   const latestBySeries = new Map();
 
   for (const row of observations) {
-    const date = typeof row?.d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.d) ? row.d : null;
+    const date = typeof row?.d === 'string' && DATE_RE.test(row.d) ? row.d : null;
     if (!date) continue;
     for (const [seriesId, cell] of Object.entries(row)) {
       if (seriesId === 'd') continue;
@@ -87,7 +91,7 @@ export function parseValetObservations(doc) {
 }
 
 function fxCodeFromSeriesId(seriesId) {
-  const match = /^FX([A-Z]{3})CAD$/.exec(seriesId);
+  const match = FX_CODE_FROM_SERIES_ID_RE.exec(seriesId);
   return match ? match[1] : null;
 }
 
@@ -138,7 +142,7 @@ export function summarisePolicyRate(parsed) {
 export function parsePolicyRateHistory(doc) {
   const observations = [];
   for (const row of Array.isArray(doc?.observations) ? doc.observations : []) {
-    const date = typeof row?.d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(row.d) ? row.d : null;
+    const date = typeof row?.d === 'string' && DATE_RE.test(row.d) ? row.d : null;
     const value = seriesValue(row?.[POLICY_RATE_SERIES_ID]);
     if (!date || value == null || value < 0) continue;
     observations.push({ date, value: cleanFloat(value) });

@@ -15,6 +15,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const RESOLVE_METRIC_TOKENS_RE = /\{\{m:([a-zA-Z0-9]+)\}\}/g;
+const ASSERT_NO_UNRESOLVED_TOKENS_RE = /\{\{m:[^}]*\}\}/;
+const ROWS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export const UMAMI_SCRIPT_TAG =
   '<script async defer src="https://abacus.worldmonitor.app/script.js" '
   + 'data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" '
@@ -429,7 +434,7 @@ export function formatMetric(metric) {
 // Replace {{m:id}} tokens with <data>/<time> elements carrying the raw value,
 // so tests can reconcile visible text, structured data, and downloads.
 export function resolveMetricTokens(text, metrics, escapeHtml) {
-  return String(text).replace(/\{\{m:([a-zA-Z0-9]+)\}\}/g, (_, id) => {
+  return String(text).replace(RESOLVE_METRIC_TOKENS_RE, (_, id) => {
     const metric = metrics.get(id);
     if (!metric) throw new Error(`Unresolved metric token: ${id}`);
     const formatted = formatMetric(metric);
@@ -443,7 +448,7 @@ export function resolveMetricTokens(text, metrics, escapeHtml) {
 // Plain-text variant for surfaces that cannot carry markup (meta description,
 // JSON-LD, alt text). Same fail-closed contract as resolveMetricTokens.
 export function resolvePlainMetricTokens(text, metrics) {
-  return String(text).replace(/\{\{m:([a-zA-Z0-9]+)\}\}/g, (_, id) => {
+  return String(text).replace(RESOLVE_METRIC_TOKENS_RE, (_, id) => {
     const metric = metrics.get(id);
     if (!metric) throw new Error(`Unresolved metric token: ${id}`);
     return formatMetric(metric);
@@ -454,7 +459,7 @@ export function resolvePlainMetricTokens(text, metrics) {
 // spaced id would otherwise ship literally): every rendered research document
 // passes through this before being returned.
 export function assertNoUnresolvedTokens(html) {
-  const match = html.match(/\{\{m:[^}]*\}\}/);
+  const match = html.match(ASSERT_NO_UNRESOLVED_TOKENS_RE);
   if (match) throw new Error(`Unresolved metric token in output: ${match[0]}`);
 }
 
@@ -616,7 +621,7 @@ export function buildCsvDownload(snapshot, report) {
     // an ISO date or a finite number, never free text a spreadsheet could
     // evaluate.
     if (field === 'date') {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw new Error(`Non-ISO date in CSV row: ${value}`);
+      if (!ROWS_RE.test(String(value))) throw new Error(`Non-ISO date in CSV row: ${value}`);
     } else if (!Number.isFinite(value)) {
       throw new Error(`Non-numeric value for ${field} in CSV row ${row.date}: ${value}`);
     }

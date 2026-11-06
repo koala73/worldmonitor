@@ -10,6 +10,8 @@
 // real ccTLDs infer automatically. Generic or vanity TLDs need an explicit
 // override so a new .com source cannot ship without a country decision.
 
+const INFER_ORIGIN_FROM_HOST_RE = /\.(?:gov|service\.gov)\.uk$/;
+
 export const INTERNATIONAL_FILTER = 'intl';
 
 // Keep this module runtime-neutral: it is consumed by both Node corpus scripts
@@ -645,7 +647,7 @@ export function inferOriginFromHost(host) {
     return 'US';
   }
   if (lower.endsWith('.edu')) return 'US';
-  if (/\.(?:gov|service\.gov)\.uk$/.test(lower) || lower.endsWith('.ac.uk') || lower.endsWith('.co.uk') || lower.endsWith('.org.uk')) {
+  if (INFER_ORIGIN_FROM_HOST_RE.test(lower) || lower.endsWith('.ac.uk') || lower.endsWith('.co.uk') || lower.endsWith('.org.uk')) {
     return 'GB';
   }
   if (lower.endsWith('.gov.au') || lower.endsWith('.net.au') || lower.endsWith('.com.au') || lower.endsWith('.org.au') || lower.endsWith('.edu.au')) {

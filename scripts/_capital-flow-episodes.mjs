@@ -21,6 +21,8 @@
 //   inflows up   → surge          inflows down  → stop
 //   outflows up  → flight         outflows down → retrenchment
 
+const NEXT_QUARTER_RE = /^(\d{4})-Q([1-4])$/;
+
 export const WINDOW_QUARTERS = 20;
 // Minimum ΔC history before a z-score is trusted. FW use the full 5-year
 // window; we allow 16 so recently-reporting countries are not silently dropped.
@@ -31,7 +33,7 @@ export const PEAK_Z = 2;
 export const FLOW_COMPONENTS = ['D_F', 'P_F', 'O_F'];
 
 export function nextQuarter(period) {
-  const m = /^(\d{4})-Q([1-4])$/.exec(period);
+  const m = NEXT_QUARTER_RE.exec(period);
   if (!m) throw new Error(`bad quarter: ${period}`);
   const y = Number(m[1]);
   const q = Number(m[2]);

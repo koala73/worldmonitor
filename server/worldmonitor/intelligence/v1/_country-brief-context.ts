@@ -19,6 +19,9 @@ import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
 import { isBriefRelevantTitle } from '../../../../shared/brief-relevance.js';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 const DIGEST_KEY_EN = 'news:digest:v1:full:en';
 const MAX_GROUNDING_ITEMS = 15;
 const MAX_SOURCES = 6;
@@ -108,7 +111,7 @@ function flattenDigest(digest: unknown): DigestItemForBrief[] {
 
 function clipText(value: unknown, maxLen: number): string {
   if (typeof value !== 'string') return '';
-  const text = value.replace(/\s+/g, ' ').trim();
+  const text = value.replace(WHITESPACE_RE, ' ').trim();
   return text.length > maxLen ? `${text.slice(0, maxLen - 1).trim()}...` : text;
 }
 

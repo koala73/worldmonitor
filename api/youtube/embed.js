@@ -1,3 +1,7 @@
+
+
+const SANITIZE_VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+const JSON_FOR_SCRIPT_RE = /[<>&\u2028\u2029]/g;
 export const config = { runtime: 'edge' };
 
 function parseFlag(value, fallback = '1') {
@@ -7,7 +11,7 @@ function parseFlag(value, fallback = '1') {
 
 function sanitizeVideoId(value) {
   if (typeof value !== 'string') return null;
-  return /^[A-Za-z0-9_-]{11}$/.test(value) ? value : null;
+  return SANITIZE_VIDEO_ID_RE.test(value) ? value : null;
 }
 
 const ALLOWED_ORIGINS = [
@@ -131,7 +135,7 @@ const PLAYER_SCRIPT = `
 // JSON inside <script type="application/json">: escape the characters that
 // could close the element or open markup.
 function jsonForScript(value) {
-  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return JSON.stringify(value).replace(JSON_FOR_SCRIPT_RE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
 export default async function handler(request) {

@@ -105,6 +105,15 @@ import {
 } from './mcp-smoke-http.mjs';
 import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 
+const TO_ORIGIN_RE = /^https?:\/\//i;
+const TO_ORIGIN_RE_2 = /\/+$/;
+const WALK_HOST_RE = /text\/markdown/i;
+const PROBE_DISCOVERY_RE = /\bno-store\b/i;
+const PROBE_DISCOVERY_RE_2 = /\bAccept\b(?!-)/i;
+const PROBE_DISCOVERY_RE_3 = /\bLast-Event-ID\b/i;
+const PROBE_DISCOVERY_RE_4 = /^Bearer\b/i;
+
+
 const CANONICAL_ORIGIN = 'https://worldmonitor.app';
 const CANONICAL_MCP = `${CANONICAL_ORIGIN}/mcp`;
 const CANONICAL_LINK_RE = /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/i;
@@ -115,7 +124,7 @@ function csvList(raw) {
 }
 
 function toOrigin(entry) {
-  if (/^https?:\/\//i.test(entry)) return entry.replace(/\/+$/, '');
+  if (TO_ORIGIN_RE.test(entry)) return entry.replace(TO_ORIGIN_RE_2, '');
   return `https://${entry}.worldmonitor.app`;
 }
 
@@ -543,7 +552,7 @@ async function walkHost(host) {
   } else {
     try {
       const { res } = await timedFetch(skill, { headers: { Accept: 'text/markdown' } }, { group: 'canonical' });
-      if (res.status !== 200 || !/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+      if (res.status !== 200 || !WALK_HOST_RE.test(res.headers.get('content-type') ?? '')) {
         fail(host, 'agent_auth skill', `expected 200 markdown, got ${res.status} ${res.headers.get('content-type')} → ${safeUrlLabel(res.headers.get('location'))}`);
       } else {
         ok(host, 'agent_auth skill', '200 markdown on the issuer origin');
@@ -586,13 +595,13 @@ async function probeDiscovery(host) {
     const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } }, { group: 'canonical' });
     if (res.status !== 200) {
       fail(host, 'GET /mcp (crawler)', `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`);
-    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+    } else if (!WALK_HOST_RE.test(res.headers.get('content-type') ?? '')) {
       fail(host, 'GET /mcp (crawler)', `expected the markdown guide, got content-type ${res.headers.get('content-type')}`);
-    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
+    } else if (!PROBE_DISCOVERY_RE.test(res.headers.get('cache-control') ?? '')) {
       fail(host, 'GET /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+    } else if (!PROBE_DISCOVERY_RE_2.test(res.headers.get('vary') ?? '')) {
       fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+    } else if (!PROBE_DISCOVERY_RE_3.test(res.headers.get('vary') ?? '')) {
       fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
     } else if (!text.includes('World Monitor MCP Server')) {
       fail(host, 'GET /mcp (crawler)', 'body is not the mcp-server.md guide');
@@ -615,13 +624,13 @@ async function probeDiscovery(host) {
     }, { group: 'canonical' });
     if (res.status !== 200) {
       fail(host, 'HEAD /mcp (crawler)', `expected 200, got ${res.status}`);
-    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+    } else if (!WALK_HOST_RE.test(res.headers.get('content-type') ?? '')) {
       fail(host, 'HEAD /mcp (crawler)', `expected markdown metadata, got content-type ${res.headers.get('content-type')}`);
-    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
+    } else if (!PROBE_DISCOVERY_RE.test(res.headers.get('cache-control') ?? '')) {
       fail(host, 'HEAD /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+    } else if (!PROBE_DISCOVERY_RE_2.test(res.headers.get('vary') ?? '')) {
       fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+    } else if (!PROBE_DISCOVERY_RE_3.test(res.headers.get('vary') ?? '')) {
       fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
     } else if (!CANONICAL_LINK_RE.test(res.headers.get('link') ?? '')) {
       fail(host, 'HEAD /mcp (crawler)', `guide lacks the apex canonical Link (got "${res.headers.get('link')}")`);
@@ -660,9 +669,9 @@ async function probeDiscovery(host) {
     // `(?!-)` is load-bearing: `-` is a word boundary, so a naive /\bAccept\b/
     // matches the `accept-encoding` that the edge adds on its own and the
     // check passes against an origin that sends no Vary at all.
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+    } else if (!PROBE_DISCOVERY_RE_2.test(res.headers.get('vary') ?? '')) {
       fail(host, 'GET /.well-known/mcp', `cacheable manifest 200 lacks "Vary: Accept" (got "${res.headers.get('vary')}") — a shared cache will serve it to an SSE GET`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+    } else if (!PROBE_DISCOVERY_RE_3.test(res.headers.get('vary') ?? '')) {
       fail(host, 'GET /.well-known/mcp', `cacheable manifest 200 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}") — a shared cache will serve it to a replay GET`);
     } else {
       JSON.parse(text);
@@ -694,7 +703,7 @@ async function probeDiscovery(host) {
     const { res } = await timedFetch(`${host}/.well-known/mcp`, {
       headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
     }, { group: 'canonical' });
-    if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
+    if (res.status !== 401 || !PROBE_DISCOVERY_RE_4.test(res.headers.get('www-authenticate') ?? '')) {
       const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
       fail(host, '/.well-known/mcp (replay-shaped GET)', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
     } else {
@@ -737,11 +746,11 @@ async function probeMcpProxy(host) {
 
 function hasDiscoveryVary(res) {
   const vary = res.headers.get('vary') ?? '';
-  return /\bAccept\b(?!-)/i.test(vary) && /\bLast-Event-ID\b/i.test(vary);
+  return PROBE_DISCOVERY_RE_2.test(vary) && PROBE_DISCOVERY_RE_3.test(vary);
 }
 
 function hasGoneTransportHeaders(res) {
-  return /\bno-store\b/i.test(res.headers.get('cache-control') ?? '')
+  return PROBE_DISCOVERY_RE.test(res.headers.get('cache-control') ?? '')
     && CANONICAL_LINK_RE.test(res.headers.get('link') ?? '');
 }
 

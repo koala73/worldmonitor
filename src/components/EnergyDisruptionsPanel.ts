@@ -16,6 +16,8 @@ import {
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import { bindActivationKeys } from '@/utils/activation';
 
+const WHOLE_PARTS_RE = / ([→·]) /;
+
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
 }));
@@ -54,7 +56,7 @@ const EVENT_TYPE_FILTERS: Array<{ key: string; label: string }> = [
 // Window and offline values may wrap between their parts ("2025-08-14 →
 // 2025-08-18", "15.0 bcm/yr · 1.60 mb/d") but never inside one.
 function wholeParts(text: string): string {
-  return text.split(/ ([→·]) /)
+  return text.split(WHOLE_PARTS_RE)
     .map((part, i) => (i % 2 ? ` ${escapeHtml(part)} ` : `<span class="ed-val">${escapeHtml(part)}</span>`))
     .join('');
 }

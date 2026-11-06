@@ -13,6 +13,10 @@ import {
 import { hasDesktopKeyAccess } from "../shared/desktop-key-access";
 import type { Doc } from "./_generated/dataModel";
 
+const CREATE_API_KEY_FOR_USER_RE = /^wm_[a-f0-9]{5}$/;
+const CREATE_API_KEY_FOR_USER_RE_2 = /^[a-f0-9]{64}$/;
+
+
 /**
  * Maximum number of active (non-revoked) API keys per user. Desktop keys are
  * capped separately by the plan's `maxDesktopKeys` and never count here.
@@ -137,10 +141,10 @@ export const createApiKeyForUser = internalMutation({
     if (!args.name.trim()) {
       throw new ConvexError("INVALID_NAME");
     }
-    if (!/^wm_[a-f0-9]{5}$/.test(args.keyPrefix)) {
+    if (!CREATE_API_KEY_FOR_USER_RE.test(args.keyPrefix)) {
       throw new ConvexError("INVALID_PREFIX");
     }
-    if (!/^[a-f0-9]{64}$/.test(args.keyHash)) {
+    if (!CREATE_API_KEY_FOR_USER_RE_2.test(args.keyHash)) {
       throw new ConvexError("INVALID_HASH");
     }
 
@@ -249,10 +253,10 @@ async function createDesktopKey(
   if (!args.name.trim()) {
     throw new ConvexError("INVALID_NAME");
   }
-  if (!/^wm_[a-f0-9]{5}$/.test(args.keyPrefix)) {
+  if (!CREATE_API_KEY_FOR_USER_RE.test(args.keyPrefix)) {
     throw new ConvexError("INVALID_PREFIX");
   }
-  if (!/^[a-f0-9]{64}$/.test(args.keyHash)) {
+  if (!CREATE_API_KEY_FOR_USER_RE_2.test(args.keyHash)) {
     throw new ConvexError("INVALID_HASH");
   }
 

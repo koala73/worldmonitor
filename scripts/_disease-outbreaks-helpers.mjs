@@ -21,6 +21,19 @@ import { decodeHtmlEntities } from './_html-entities.mjs';
 import { countryCentroid } from './lib/country-centroid.mjs';
 import outbreakPlaces from './data/outbreak-places.json' with { type: 'json' };
 
+const SEGMENTS_RE = /\s*[–—]\s*|\s+-\s+/;
+const EXTRACT_LOCATION_FROM_TITLE_RE = /^[A-Z]/;
+const IN_MATCH_RE = /\bin\s+([A-Z][^,.(]+)/;
+const DETECT_DISEASE_RE = /\bMERS\b/;
+const DETECT_DISEASE_RE_2 = /\bhantavirus\b/i;
+const STRIP_TAGS_RE = /<[^>]+>/g;
+const STRIP_TAGS_RE_2 = /</g;
+const WHITESPACE_RE = /\s+/g;
+const IS_ROUNDUP_HEADLINE_RE = /^\s*quick takes\b/i;
+const HEADLINE_SUMMARY_RE = /[.?!]$/;
+const NAMED_PLACE_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 // WHO DON uses multi-word or hyphenated country names that the bigram scanner misses.
 // These override extractCountryCode for exact substring matches (checked first, case-insensitive).
 const WHO_NAME_OVERRIDES = {
@@ -56,13 +69,13 @@ export function stableHash(str) {
 export function extractLocationFromTitle(title) {
   // WHO DON pattern: "Disease – Country" or "Disease - Country" (one or more dash-separated segments)
   // Split on em-dash, en-dash, or " - " / " – " to get all segments, then take the last capitalized one.
-  const segments = title.split(/\s*[–—]\s*|\s+-\s+/);
+  const segments = title.split(SEGMENTS_RE);
   if (segments.length >= 2) {
     const last = segments[segments.length - 1].trim();
-    if (/^[A-Z]/.test(last)) return last;
+    if (EXTRACT_LOCATION_FROM_TITLE_RE.test(last)) return last;
   }
   // Fallback: "... in <Country/Region>"
-  const inMatch = title.match(/\bin\s+([A-Z][^,.(]+)/);
+  const inMatch = title.match(IN_MATCH_RE);
   if (inMatch) return inMatch[1].trim();
   return '';
 }
@@ -109,8 +122,8 @@ export function detectDisease(title) {
     if (lower.includes(d)) return d.charAt(0).toUpperCase() + d.slice(1);
   }
   // Short names need word boundaries: a bare 'mers' matches 'farmers'.
-  if (/\bMERS\b/.test(title)) return 'MERS';
-  if (/\bhantavirus\b/i.test(title)) return 'Hantavirus';
+  if (DETECT_DISEASE_RE.test(title)) return 'MERS';
+  if (DETECT_DISEASE_RE_2.test(title)) return 'Hantavirus';
   if (UNEXPLAINED_PNEUMONIA_RE.test(title)) return 'Pneumonia of unknown cause';
   return 'Unknown Disease';
 }
@@ -160,9 +173,9 @@ function stripTags(html) {
   let previous;
   do {
     previous = text;
-    text = text.replace(/<[^>]+>/g, '');
+    text = text.replace(STRIP_TAGS_RE, '');
   } while (text !== previous);
-  return text.replace(/</g, '');
+  return text.replace(STRIP_TAGS_RE_2, '');
 }
 
 /**
@@ -174,7 +187,7 @@ function stripTags(html) {
 export function cleanRssDescription(rawDesc) {
   return stripTags(decodeHtmlEntities(rawDesc || ''))
     .replace(TYPOGRAPHIC_ENTITY_RE, (entity) => decodeHtmlEntities(entity))
-    .replace(/\s+/g, ' ').trim().slice(0, 300);
+    .replace(WHITESPACE_RE, ' ').trim().slice(0, 300);
 }
 
 /**
@@ -235,7 +248,7 @@ export function tghNormalizeItem(rec) {
 // so disease and country detection would pair one story's disease with
 // another's country.
 export function isRoundupHeadline(title) {
-  return /^\s*quick takes\b/i.test(title || '');
+  return IS_ROUNDUP_HEADLINE_RE.test(title || '');
 }
 
 // News-style sources whose headlines are sentences, not WHO's
@@ -276,7 +289,7 @@ export function isReportableHeadline(outbreak, nowMs = Date.now()) {
 // leads with the headline.
 function headlineSummary(title, desc) {
   if (!desc || desc.startsWith(title)) return (desc || title).slice(0, 300);
-  return `${title}${/[.?!]$/.test(title) ? '' : '.'} ${desc}`.slice(0, 300);
+  return `${title}${HEADLINE_SUMMARY_RE.test(title) ? '' : '.'} ${desc}`.slice(0, 300);
 }
 
 // Headline sources name a city or region ("a laboratory worker in Irkutsk")
@@ -296,7 +309,7 @@ export function namedPlace(countryCode, text) {
     if (!text.includes(name)) continue;
     let re = placeRes.get(name);
     if (!re) {
-      re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu');
+      re = new RegExp(`(?<![\\p{L}\\p{N}])${name.replace(NAMED_PLACE_RE, '\\$&')}(?![\\p{L}\\p{N}])`, 'gu');
       placeRes.set(name, re);
     }
     for (const { index } of text.matchAll(re)) {

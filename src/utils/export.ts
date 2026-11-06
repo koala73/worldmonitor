@@ -10,6 +10,26 @@ import { showToast } from '@/utils/toast';
 import { buildDataReportDocument, printReportDocument, sanitizeExportData } from '@/utils/export-report';
 import { SUPPORTED_EXPORT_FORMATS, type DataExportFormat } from '@/services/gates/export-resolver';
 
+const IS_SECRETISH_ASSIGNMENT_VALUE_RE = /[A-Za-z]/;
+const IS_SECRETISH_ASSIGNMENT_VALUE_RE_2 = /\d/;
+const CLASSES_RE = /[a-z]/;
+const CLASSES_RE_2 = /[A-Z]/;
+const CLASSES_RE_3 = /[-_=+/]/;
+const NORMALIZED_RE = /([a-z0-9])([A-Z])/g;
+const NORMALIZE_EVIDENCE_URL_RE = /[()]/g;
+const SIGNAL_LABEL_RE = /[_-]+/g;
+const SIGNAL_LABEL_RE_2 = /\b\w/g;
+const CLEAN_RE = /</g;
+const CLEAN_RE_2 = />/g;
+const ESCAPE_MARKDOWN_LINK_TEXT_RE = /[[\]\\]/g;
+const WHITESPACE_RE = /\s+/g;
+const ESCAPE_MARKDOWN_INLINE_RE = /([\\`*_{}[\]()#+\-.!|<>])/g;
+const LINE_BREAK_RE = /\r?\n/;
+const TIMESTAMP_RE = /[:.]/g;
+const SAFE_RE = /^[\t\r\n]|^\s*[=+@-]/;
+const CSV_ROW_RE = /"/g;
+
+
 // Iran-events domain sunset (war ended 2026-07). Default OFF: omit the IRAN
 // EVENTS CSV block. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Guarded so
 // node:test never dereferences import.meta.env.
@@ -403,12 +423,12 @@ function isSecretishAssignmentValue(value: string): boolean {
     return true;
   }
 
-  if (clean.length < 16 || !/[A-Za-z]/.test(clean) || !/\d/.test(clean)) return false;
+  if (clean.length < 16 || !IS_SECRETISH_ASSIGNMENT_VALUE_RE.test(clean) || !IS_SECRETISH_ASSIGNMENT_VALUE_RE_2.test(clean)) return false;
   const classes = [
-    /[a-z]/.test(clean),
-    /[A-Z]/.test(clean),
-    /\d/.test(clean),
-    /[-_=+/]/.test(clean),
+    CLASSES_RE.test(clean),
+    CLASSES_RE_2.test(clean),
+    IS_SECRETISH_ASSIGNMENT_VALUE_RE_2.test(clean),
+    CLASSES_RE_3.test(clean),
   ].filter(Boolean).length;
   return classes >= 3 || clean.length >= 24;
 }
@@ -431,7 +451,7 @@ function sanitizeEvidenceText(value: unknown): string {
 
 function isSensitiveUrlParamName(name: string): boolean {
   const normalized = name
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(NORMALIZED_RE, '$1_$2')
     .toLowerCase();
   return SECRET_URL_PARAM_NAME_RE.test(normalized);
 }
@@ -466,7 +486,7 @@ function normalizeEvidenceUrl(value: unknown): string | undefined {
     if (parsed.password) parsed.password = '[redacted-secret]';
     sanitizeEvidenceUrlSearchParams(parsed);
     sanitizeEvidenceUrlFragment(parsed);
-    return parsed.toString().replace(/[()]/g, (char) => char === '(' ? '%28' : '%29');
+    return parsed.toString().replace(NORMALIZE_EVIDENCE_URL_RE, (char) => char === '(' ? '%28' : '%29');
   } catch {
     return undefined;
   }
@@ -481,9 +501,9 @@ function normalizeIsoTimestamp(value: unknown): string | undefined {
 
 function signalLabel(key: string): string {
   return SIGNAL_LABELS[key] ?? key
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+    .replace(NORMALIZED_RE, '$1 $2')
+    .replace(SIGNAL_LABEL_RE, ' ')
+    .replace(SIGNAL_LABEL_RE_2, (char) => char.toUpperCase());
 }
 
 function buildEvidenceSignals(signals: Record<string, unknown> | undefined): CountryEvidenceSignal[] {
@@ -565,7 +585,7 @@ function buildFreshnessNotes(input: CountryEvidenceBundleInput, exportedAt: stri
     notes.push('No headline source list was available for this export.');
   }
   for (const note of input.signalCoverageNotes?.slice(0, 12) ?? []) {
-    const clean = sanitizeEvidenceText(note).slice(0, 1600).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const clean = sanitizeEvidenceText(note).slice(0, 1600).replace(CLEAN_RE, '&lt;').replace(CLEAN_RE_2, '&gt;');
     if (clean) notes.push(clean);
   }
   return notes;
@@ -577,17 +597,17 @@ function markdownListValue(value: string | number | undefined): string {
 }
 
 function escapeMarkdownLinkText(value: string): string {
-  return value.replace(/[[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_MARKDOWN_LINK_TEXT_RE, '\\$&');
 }
 
 function escapeMarkdownInline(value: string): string {
   return sanitizeEvidenceText(value)
-    .replace(/\s+/g, ' ')
-    .replace(/([\\`*_{}[\]()#+\-.!|<>])/g, '\\$1');
+    .replace(WHITESPACE_RE, ' ')
+    .replace(ESCAPE_MARKDOWN_INLINE_RE, '\\$1');
 }
 
 function renderQuotedEvidenceBlock(value: string): string[] {
-  return value.split(/\r?\n/).map((line) => `> ${line}`);
+  return value.split(LINE_BREAK_RE).map((line) => `> ${line}`);
 }
 
 export function buildCountryEvidenceBundle(input: CountryEvidenceBundleInput): CountryEvidenceBundle {
@@ -688,7 +708,7 @@ export function renderCountryEvidenceMarkdown(bundle: CountryEvidenceBundle): st
 
 export function countryEvidenceMarkdownArtifact(data: CountryEvidenceBundleInput): import('./country-text-download').CountryTextArtifact {
   const bundle = buildCountryEvidenceBundle(data);
-  const timestamp = bundle.exportedAt.replace(/[:.]/g, '-');
+  const timestamp = bundle.exportedAt.replace(TIMESTAMP_RE, '-');
   return { content: renderCountryEvidenceMarkdown(bundle), filename: `country-evidence-${bundle.code}-${timestamp}.md`, mimeType: 'text/markdown;charset=utf-8' };
 }
 
@@ -698,7 +718,7 @@ export function exportCountryEvidenceMarkdown(data: CountryEvidenceBundleInput):
 }
 
 export function exportCountryBriefJSON(data: CountryBriefExport): void {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const timestamp = new Date().toISOString().replace(TIMESTAMP_RE, '-');
   downloadFile(JSON.stringify(data, null, 2), `country-brief-${data.code}-${timestamp}.json`, 'application/json');
 }
 
@@ -737,7 +757,7 @@ export function exportCountryBriefCSV(data: CountryBriefExport): void {
     lines.push('Intelligence Brief');
     lines.push(csvRow([data.brief]));
   }
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const timestamp = new Date().toISOString().replace(TIMESTAMP_RE, '-');
   downloadFile(lines.join('\n'), `country-brief-${data.code}-${timestamp}.csv`, 'text/csv');
 }
 
@@ -745,8 +765,8 @@ function csvRow(values: (string | number)[]): string {
   return values.map(value => {
     if (typeof value === 'number') return `"${value}"`;
     const text = value || '';
-    const safe = /^[\t\r\n]|^\s*[=+@-]/.test(text) ? `'${text}` : text;
-    return `"${safe.replace(/"/g, '""')}"`;
+    const safe = SAFE_RE.test(text) ? `'${text}` : text;
+    return `"${safe.replace(CSV_ROW_RE, '""')}"`;
   }).join(',');
 }
 
@@ -851,7 +871,7 @@ export class ExportPanel {
 
   private export(format: ExportFormat): void {
     const data = this.getData();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const timestamp = new Date().toISOString().replace(TIMESTAMP_RE, '-');
     const filename = `worldmonitor-${timestamp}`;
 
     if (format === 'json') {

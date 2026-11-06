@@ -5,6 +5,10 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+const RAW_RE = /;\s*/;
+const IS_CONFIGURED_HOST_RE = /^(0\.0\.0\.0|::|\*)$/;
+
+
 const COOKIE = 'desk_session';
 const SESSION_MS = 12 * 60 * 60_000;
 
@@ -26,7 +30,7 @@ export function sessionCookie(now = Date.now(), secure = true) {
 
 export function authorized(req, now = Date.now()) {
   if (!enabled()) return true;
-  const raw = (req.headers.cookie ?? '').split(/;\s*/).find((c) => c.startsWith(`${COOKIE}=`));
+  const raw = (req.headers.cookie ?? '').split(RAW_RE).find((c) => c.startsWith(`${COOKIE}=`));
   if (!raw) return false;
   const [expires, mac] = raw.slice(COOKIE.length + 1).split('.');
   return Number(expires) > now && same(mac ?? '', sign(expires));
@@ -62,7 +66,7 @@ function isConfiguredHost(host) {
   try { hostname = new URL(`http://${host}`).hostname.toLowerCase(); } catch { return false; }
   const bind = (process.env.DESK_HOST || '127.0.0.1').toLowerCase();
   return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) ||
-    (!/^(0\.0\.0\.0|::|\*)$/.test(bind) && hostname === (bind.includes(':') ? `[${bind}]` : bind));
+    (!IS_CONFIGURED_HOST_RE.test(bind) && hostname === (bind.includes(':') ? `[${bind}]` : bind));
 }
 
 export function hasRequestIntent(req) {

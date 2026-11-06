@@ -1,6 +1,9 @@
 import { runRedisPipeline } from './redis.js';
 import { canonicalGatewayQueryString, sha256Hex } from './mcp-internal-hmac.js';
 
+const CONSUME_SUB_REQUEST_ADMISSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+
 export const SUB_REQUEST_MARKER_HEADER = 'x-wm-sub-request';
 const ADMISSION_TTL_SECONDS = 30;
 const ADMISSION_PREFIX = 'sub-request-admission:v1:';
@@ -42,7 +45,7 @@ export async function consumeSubRequestAdmission(
   principal: string | null = null,
 ): Promise<SubRequestAdmissionResult> {
   const token = request.headers.get(SUB_REQUEST_MARKER_HEADER);
-  if (request.method !== 'GET' || !token || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(token)) return 'invalid';
+  if (request.method !== 'GET' || !token || !CONSUME_SUB_REQUEST_ADMISSION_RE.test(token)) return 'invalid';
   const results = await runRedisPipeline([['GETDEL', `${ADMISSION_PREFIX}${token}`]], true);
   if (results.length === 0 || results[0]?.error) return 'unavailable';
   const stored = results[0]?.result;

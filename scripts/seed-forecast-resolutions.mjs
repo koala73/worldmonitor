@@ -48,6 +48,18 @@ import { normalizeSubjectText, subjectMatcherForRegion, subjectTermsForRegion } 
 import { JUDGED_EVIDENCE_GRACE_MS } from './_forecast-scorecard.mjs';
 import { GPS_RESOLUTION_RULE, GPS_RESOLUTION_RULE_VERSION, GPS_ZONE_MIN_HEXES } from './_gps-maritime-regions.mjs';
 
+const TRIMMED_RE = /^```(?:json)?\s*/i;
+const TRIMMED_RE_2 = /\s*```$/i;
+const CLEAN_JUDGMENT_JSON_RE = /,(\s*[}\]])/g;
+const QUOTE_TOKENS_RE = /[a-z0-9]{4,}/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const NORMALIZE_CITATION_ID_RE = /^\d+$/;
+const NORMALIZE_CITATION_ID_RE_2 = /^N?\s*(\d+)$/i;
+const WHITESPACE_RE = /\s+/g;
+const SNAPSHOT_SHA256_RE = /^[0-9a-f]{64}$/;
+const SAFE_KEY_RE = /[^a-zA-Z0-9@._-]+/g;
+
+
 export { JUDGED_EVIDENCE_GRACE_MS };
 
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
@@ -1267,8 +1279,8 @@ function parseJudgmentPayload(value) {
 
 function parseJsonObject(text) {
   const trimmed = text.trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
+    .replace(TRIMMED_RE, '')
+    .replace(TRIMMED_RE_2, '')
     .trim();
   try {
     return JSON.parse(trimmed);
@@ -1290,7 +1302,7 @@ function parseJsonObject(text) {
 }
 
 function cleanJudgmentJson(text) {
-  return text.replace(/,(\s*[}\]])/g, '$1');
+  return text.replace(CLEAN_JUDGMENT_JSON_RE, '$1');
 }
 
 function normalizeCitationRows(rawCitations) {
@@ -1346,21 +1358,21 @@ function citationQuoteMatchesItem(quote, item) {
   const itemText = normalizeCitationText([item.title, item.description].filter(Boolean).join(' '));
   if (!quoteText || !itemText) return false;
   if (itemText.includes(quoteText)) return true;
-  const quoteTokens = quoteText.match(/[a-z0-9]{4,}/g) || [];
+  const quoteTokens = quoteText.match(QUOTE_TOKENS_RE) || [];
   if (quoteTokens.length < 3) return false;
   const matched = quoteTokens.filter((token) => itemText.includes(token)).length;
   return matched / quoteTokens.length >= 0.8;
 }
 
 function normalizeCitationText(value) {
-  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return String(value || '').toLowerCase().replace(NON_ALPHANUMERIC_RE, ' ').trim();
 }
 
 function normalizeCitationId(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return `N${Math.floor(value)}`;
   const text = cleanString(value);
-  if (/^\d+$/.test(text)) return `N${text}`;
-  const match = text.match(/^N?\s*(\d+)$/i);
+  if (NORMALIZE_CITATION_ID_RE.test(text)) return `N${text}`;
+  const match = text.match(NORMALIZE_CITATION_ID_RE_2);
   if (match) return `N${match[1]}`;
   return text;
 }
@@ -1475,7 +1487,7 @@ function mergeJudgmentCitations(judgments) {
 }
 
 function cleanString(value) {
-  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return typeof value === 'string' ? value.replace(WHITESPACE_RE, ' ').trim() : '';
 }
 
 function truncateText(value, maxLength) {
@@ -2598,7 +2610,7 @@ function hasSampleAtOrAfterDeadline(samples, deadline) {
 // from the history entry. Entries written before #9058 carry neither.
 function emissionRunOf(snapshot) {
   const runId = typeof snapshot?.runId === 'string' && snapshot.runId ? snapshot.runId : undefined;
-  const snapshotSha256 = typeof snapshot?.snapshotSha256 === 'string' && /^[0-9a-f]{64}$/.test(snapshot.snapshotSha256)
+  const snapshotSha256 = typeof snapshot?.snapshotSha256 === 'string' && SNAPSHOT_SHA256_RE.test(snapshot.snapshotSha256)
     ? snapshot.snapshotSha256
     : undefined;
   return runId || snapshotSha256 ? { runId, snapshotSha256 } : undefined;
@@ -3401,7 +3413,7 @@ export async function appendR2Receipts(receipts, options = {}) {
   for (const receipt of receipts) {
     try {
       const day = new Date(receipt.resolvedAt).toISOString().slice(0, 10);
-      const safeKey = receipt.key.replace(/[^a-zA-Z0-9@._-]+/g, '_');
+      const safeKey = receipt.key.replace(SAFE_KEY_RE, '_');
       const key = `${config.basePrefix}/forecast-resolutions/${day}/${safeKey}-${receipt.resolvedAt}.json`;
       const written = await putObject(config, key, receipt, {
         kind: 'forecast-resolution',

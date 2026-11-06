@@ -54,6 +54,10 @@ import { isGeopoliticalMarket } from './_bet-templates-markets-classify.mjs';
 import { filterAndScore } from './_prediction-scoring.mjs';
 import predictionTags from './data/prediction-tags.json' with { type: 'json' };
 
+const SLUG_RE = /[?#]/;
+const SLUG_RE_2 = /\/+$/;
+
+
 // Canonical pool names, in precedence order. Also the MCP tool's `category`
 // enum and the bootstrap payload's top-level keys — do not reorder casually.
 export const CATEGORIES = Object.freeze(['geopolitical', 'tech', 'finance']);
@@ -167,7 +171,7 @@ const DEGENERATE_SLUGS = new Set(['undefined', 'null', 'nan', '']);
 export function marketIdentity(market) {
   const url = String(market?.url ?? '').trim();
   if (url) {
-    const slug = url.split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() ?? '';
+    const slug = url.split(SLUG_RE)[0].replace(SLUG_RE_2, '').split('/').pop() ?? '';
     if (!DEGENERATE_SLUGS.has(slug.toLowerCase())) return `url:${url}`;
   }
   return `title:${String(market?.title ?? '').trim().toLowerCase()}`;

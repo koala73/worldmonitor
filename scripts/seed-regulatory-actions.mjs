@@ -5,6 +5,21 @@ import { pathToFileURL } from 'node:url';
 import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 
+const UNWRAPPED_RE = /<!\[CDATA\[([\s\S]*?)\]\]>/g;
+const STRIP_HTML_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const LINK_TAGS_RE = /<link\b([^>]*)\/?>/gi;
+const HREF_RE = /\bhref=["']([^"']+)["']/i;
+const REL_RE = /\brel=["']([^"']+)["']/i;
+const SLUGIFY_TITLE_RE = /[\u0300-\u036f]/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUGIFY_TITLE_RE_2 = /^-+|-+$/g;
+const YYYYMMDD_RE = /-/g;
+const HHMMSS_RE = /:/g;
+const PARSE_FEED_RE = /<entry\b/i;
+const ESCAPE_REGEX_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'regulatory:actions:v1';
@@ -51,9 +66,9 @@ function decodeEntities(input) {
 }
 
 function stripHtml(input) {
-  const unwrapped = String(input || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+  const unwrapped = String(input || '').replace(UNWRAPPED_RE, '$1');
   const decoded = decodeEntities(unwrapped);
-  return decoded.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return decoded.replace(STRIP_HTML_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function getTagValue(block, tagName) {
@@ -62,17 +77,17 @@ function getTagValue(block, tagName) {
 }
 
 function extractAtomLink(block) {
-  const linkTags = [...block.matchAll(/<link\b([^>]*)\/?>/gi)];
+  const linkTags = [...block.matchAll(LINK_TAGS_RE)];
   if (linkTags.length === 0) return '';
 
   for (const [, attrs] of linkTags) {
-    const href = attrs.match(/\bhref=["']([^"']+)["']/i)?.[1];
-    const rel = attrs.match(/\brel=["']([^"']+)["']/i)?.[1]?.toLowerCase() || '';
+    const href = attrs.match(HREF_RE)?.[1];
+    const rel = attrs.match(REL_RE)?.[1]?.toLowerCase() || '';
     if (href && (!rel || rel === 'alternate')) return decodeEntities(href.trim());
   }
 
   for (const [, attrs] of linkTags) {
-    const href = attrs.match(/\bhref=["']([^"']+)["']/i)?.[1];
+    const href = attrs.match(HREF_RE)?.[1];
     if (href) return decodeEntities(href.trim());
   }
 
@@ -113,19 +128,19 @@ function toIsoDate(rawDate) {
 function slugifyTitle(title) {
   return stripHtml(title)
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(SLUGIFY_TITLE_RE, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(NON_ALPHANUMERIC_RE, '-')
+    .replace(SLUGIFY_TITLE_RE_2, '')
     .slice(0, 80);
 }
 
 function yyyymmdd(isoDate) {
-  return String(isoDate || '').slice(0, 10).replace(/-/g, '');
+  return String(isoDate || '').slice(0, 10).replace(YYYYMMDD_RE, '');
 }
 
 function hhmmss(isoDate) {
-  return String(isoDate || '').slice(11, 19).replace(/:/g, '');
+  return String(isoDate || '').slice(11, 19).replace(HHMMSS_RE, '');
 }
 
 function buildActionId(agency, title, publishedAt) {
@@ -169,7 +184,7 @@ function parseAtomEntries(xml, feedUrl) {
 }
 
 function parseFeed(xml, feedUrl) {
-  if (/<entry\b/i.test(xml)) return parseAtomEntries(xml, feedUrl);
+  if (PARSE_FEED_RE.test(xml)) return parseAtomEntries(xml, feedUrl);
   return parseRssItems(xml, feedUrl);
 }
 
@@ -244,11 +259,11 @@ async function fetchAllFeeds(fetchImpl = DEFAULT_FETCH, feeds = REGULATORY_FEEDS
 }
 
 function escapeRegex(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(value).replace(ESCAPE_REGEX_RE, '\\$&');
 }
 
 function compileKeywordPattern(keyword) {
-  const pattern = `\\b${escapeRegex(keyword.toLowerCase()).replace(/\s+/g, '\\s+')}\\b`;
+  const pattern = `\\b${escapeRegex(keyword.toLowerCase()).replace(WHITESPACE_RE, '\\s+')}\\b`;
   return { keyword, regex: new RegExp(pattern, 'i') };
 }
 

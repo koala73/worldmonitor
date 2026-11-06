@@ -1,5 +1,8 @@
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { declareOverlay } from '@/utils/open-modal';
+
+const ESCAPE_HTML_RE = /[&<>"']/g;
+
 /**
  * `?` cheat-sheet overlay for the Route Explorer keyboard bindings.
  */
@@ -53,7 +56,7 @@ export class KeyboardHelp {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
+  return s.replace(ESCAPE_HTML_RE, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   );
 }

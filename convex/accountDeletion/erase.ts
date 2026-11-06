@@ -19,6 +19,9 @@ import {
   sha256Hex,
 } from "./registry";
 
+const CODE_RE = /[:;]/;
+
+
 const eraseSourceValidator = v.union(
   v.literal("support"),
   v.literal("clerk_webhook"),
@@ -48,7 +51,7 @@ type EraseResult = {
  */
 function publicErrorCode(lastError: string | undefined): string | undefined {
   if (!lastError) return undefined;
-  const code = lastError.split(/[:;]/, 1)[0]?.trim();
+  const code = lastError.split(CODE_RE, 1)[0]?.trim();
   return code ? code : undefined;
 }
 

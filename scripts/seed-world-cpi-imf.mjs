@@ -45,6 +45,9 @@ import {
   parseSdmxCsv,
 } from './_world-cpi-shared.mjs';
 
+const SPLIT_IMF_CPI_ROWS_RE = /^\d{4}A$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const IMF_CPI_KEY = 'economic:world-cpi:imf:v1';
@@ -104,7 +107,7 @@ export function splitImfCpiRows(rows, iso3ToIso2) {
     const target = indexType === 'HICP' ? harmonised : indexType === 'CPI' ? national : null;
     if (!target) continue;
     const base = String(row?.COMMON_REFERENCE_PERIOD ?? '').trim();
-    if (/^\d{4}A$/.test(base)) indexBases[indexType][frequency][iso2] = `${base.slice(0, 4)}=100`;
+    if (SPLIT_IMF_CPI_ROWS_RE.test(base)) indexBases[indexType][frequency][iso2] = `${base.slice(0, 4)}=100`;
     (target[iso2] ??= []).push({ date: String(row?.TIME_PERIOD ?? ''), value });
   }
   return { national, harmonised, indexBases };

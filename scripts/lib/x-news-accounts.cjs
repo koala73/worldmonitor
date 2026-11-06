@@ -1,5 +1,9 @@
 'use strict';
 
+const HANDLE_RE = /^@/;
+const IS_TWEET_NOT_FOUND_LOOKUP_ERROR_RE = /\/2\/problems\/resource-not-found\/?$/i;
+
+
 const { assertXPostBudgetAdmission, MAX_RECEIPT_BYTES } = require('./x-post-budget.cjs');
 const { setTimeout: sleepMs } = require('node:timers/promises');
 
@@ -61,7 +65,7 @@ function toText(value) {
 }
 
 function normalizeHandle(value) {
-  const handle = toText(value).trim().replace(/^@/, '');
+  const handle = toText(value).trim().replace(HANDLE_RE, '');
   if (!X_HANDLE.test(handle)) return '';
   return handle;
 }
@@ -882,7 +886,7 @@ function lookupErrorResourceId(error) {
 function isTweetNotFoundLookupError(error) {
   if (!error || typeof error !== 'object') return false;
   const type = String(error.type || '').trim();
-  return /\/2\/problems\/resource-not-found\/?$/i.test(type);
+  return IS_TWEET_NOT_FOUND_LOOKUP_ERROR_RE.test(type);
 }
 
 function recordRateLimit(nextState, headers, now) {

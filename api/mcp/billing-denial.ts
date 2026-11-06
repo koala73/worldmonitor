@@ -8,6 +8,9 @@
 import type { BillingVerificationStatus } from '../../server/_shared/entitlement-check';
 import { readBoundedResponseText } from './bounded-body';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 export type BillingVerificationCode =
   | BillingVerificationStatus
   // Gateway-synthesized (server/gateway.ts wm_-key branch): backend-unreachable
@@ -143,7 +146,7 @@ function sanitizeViolationField(value: unknown): string | null {
 
 function sanitizeViolationDescription(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const description = value.replace(/\s+/g, ' ').trim().slice(0, MAX_VIOLATION_DESCRIPTION_LEN);
+  const description = value.replace(WHITESPACE_RE, ' ').trim().slice(0, MAX_VIOLATION_DESCRIPTION_LEN);
   if (!description || UNSAFE_VIOLATION_DESCRIPTION.test(description)) return null;
   return description;
 }

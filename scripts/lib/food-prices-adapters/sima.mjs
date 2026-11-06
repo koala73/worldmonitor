@@ -1,15 +1,29 @@
 import { isoDate } from '../food-prices.mjs';
 
+const FOLD_RE = /[̀-ͯ]/g;
+const FOLD_RE_2 = /[’‘]/g;
+const TITLE_CASE_RE = /(^|[\s'/(-])(\p{L})/gu;
+const MARKET_NAME_RE = /^NY\s+/;
+const SIMA_WEEK_END_RE = /SEMAINE\s*N\D{0,3}\d+\s+DU\s+[A-Z]+\s+\d{1,2}(?:\s+[A-Z]+)?(?:\s+\d{4})?\s+AU\s+[A-Z]+\s+(\d{1,2})\s+([A-Z]+)\s+(\d{4})/;
+const WHITESPACE_RE = /\s+/g;
+const PARSE_SIMA_RE = /SAC DE (?:RIZ DE )?25 KG/;
+const PARSE_SIMA_RE_2 = /^(?:\d{1,3}(?: \d{3})*|-)$/;
+const PARSE_SIMA_RE_3 = /\bMOYENNE$/;
+const PRICE_RE = /\s/g;
+const SIMA_BULLETINS_RE = /^\/_api\/publications\/bulletins\/\d+\/download$/;
+const DATE_RE = /BULLETIN HEBDO DES CEREALES/;
+
+
 const INDEX = 'https://simaniger.net/publications/bulletins-sima?category=hebdo_cereales';
 const FR_MONTHS = ['JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET', 'AOUT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DECEMBRE'];
 const COLUMNS = [['MIL', 'Millet', '100 kg bag'], ['SORGHO', 'Sorghum', '100 kg bag'], ['MAIS', 'Maize', '100 kg bag'], ['RIZ', 'Rice (imported)', '25 kg bag']];
 
-const fold = text => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’‘]/g, "'").toUpperCase();
-const titleCase = text => text.toLowerCase().replace(/(^|[\s'/(-])(\p{L})/gu, (_, before, letter) => before + letter.toUpperCase());
-const marketName = label => label === 'MOYENNE NATIONALE' ? 'National average' : titleCase(label.replace(/^NY\s+/, 'NIAMEY '));
+const fold = text => text.normalize('NFD').replace(FOLD_RE, '').replace(FOLD_RE_2, "'").toUpperCase();
+const titleCase = text => text.toLowerCase().replace(TITLE_CASE_RE, (_, before, letter) => before + letter.toUpperCase());
+const marketName = label => label === 'MOYENNE NATIONALE' ? 'National average' : titleCase(label.replace(MARKET_NAME_RE, 'NIAMEY '));
 
 export function simaWeekEnd(text) {
-  const match = /SEMAINE\s*N\D{0,3}\d+\s+DU\s+[A-Z]+\s+\d{1,2}(?:\s+[A-Z]+)?(?:\s+\d{4})?\s+AU\s+[A-Z]+\s+(\d{1,2})\s+([A-Z]+)\s+(\d{4})/.exec(fold(text).replace(/\s+/g, ' '));
+  const match = SIMA_WEEK_END_RE.exec(fold(text).replace(WHITESPACE_RE, ' '));
   return match ? isoDate(match[3], FR_MONTHS.indexOf(match[2]) + 1, match[1]) : '';
 }
 
@@ -25,9 +39,9 @@ export function simaRows(items) {
 }
 
 export function parseSima(pages, expectedDate) {
-  const text = fold(pages.flat().map(item => item.text).join(' ')).replace(/\s+/g, ' ');
+  const text = fold(pages.flat().map(item => item.text).join(' ')).replace(WHITESPACE_RE, ' ');
   if (!text.includes('BULLETIN HEBDO DES CEREALES') || !text.includes('PRIX AU SAC DES CEREALES')) throw new Error('sima cereal bulletin format changed');
-  if (!text.includes('SAC DE 100 KG') || !/SAC DE (?:RIZ DE )?25 KG/.test(text)) throw new Error('sima cereal bag units changed');
+  if (!text.includes('SAC DE 100 KG') || !PARSE_SIMA_RE.test(text)) throw new Error('sima cereal bag units changed');
   const date = simaWeekEnd(pages[0]?.map(item => item.text).join(' ') ?? '');
   if (!date) throw new Error('sima report date missing');
   if (expectedDate && date !== expectedDate) throw new Error('sima report date mismatch');
@@ -40,15 +54,15 @@ export function parseSima(pages, expectedDate) {
   const result = [];
   for (const [page, items] of pages.slice(start).entries()) {
     for (const row of simaRows(items).filter(row => page > 0 || row.y < header.y - 1)) {
-      const label = fold(row.items.filter(item => item.x < 150).map(item => item.text).join(' ')).replace(/\s+/g, ' ').trim();
+      const label = fold(row.items.filter(item => item.x < 150).map(item => item.text).join(' ')).replace(WHITESPACE_RE, ' ').trim();
       const values = row.items.filter(item => item.x >= 150);
-      if (!label || !values.length || values.some(value => !/^(?:\d{1,3}(?: \d{3})*|-)$/.test(value.text.trim()))) continue;
+      if (!label || !values.length || values.some(value => !PARSE_SIMA_RE_2.test(value.text.trim()))) continue;
       if (values.length !== columns.length) throw new Error('sima cereal table row format changed');
-      if (/\bMOYENNE$/.test(label)) continue;
+      if (PARSE_SIMA_RE_3.test(label)) continue;
       for (const value of values) {
         const column = columns.reduce((best, column) => Math.abs(column.x - value.x) < Math.abs(best.x - value.x) ? column : best);
         if (Math.abs(column.x - value.x) > 30) throw new Error('sima cereal table columns changed');
-        const price = Number(value.text.replace(/\s/g, ''));
+        const price = Number(value.text.replace(PRICE_RE, ''));
         if (value.text.trim() !== '-' && price > 0) result.push({ item: column.item, market: marketName(label), marketType: 'wholesale', unit: column.unit, currency: 'XOF', date, price, origin: '' });
       }
       if (label === 'MOYENNE NATIONALE') return result;
@@ -60,9 +74,9 @@ export function parseSima(pages, expectedDate) {
 export function simaBulletins(links) {
   return links.flatMap(link => {
     const url = new URL(link.url);
-    if (!/^\/_api\/publications\/bulletins\/\d+\/download$/.test(url.pathname)) return [];
+    if (!SIMA_BULLETINS_RE.test(url.pathname)) return [];
     const title = url.searchParams.get('titre') ?? '';
-    const date = /BULLETIN HEBDO DES CEREALES/.test(fold(title)) ? simaWeekEnd(title) : '';
+    const date = DATE_RE.test(fold(title)) ? simaWeekEnd(title) : '';
     return date ? [{ date, url: `${url.origin}${url.pathname}`, title }] : [];
   }).sort((a, b) => b.date.localeCompare(a.date));
 }

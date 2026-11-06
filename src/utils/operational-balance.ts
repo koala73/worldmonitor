@@ -1,5 +1,9 @@
 import type { OperationalBalance, OperationalDelivery, OperationalInput, OperationalSnapshot } from '@/types/operational-balance';
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PARSE_OPERATIONAL_INPUT_RE = /^[\p{L}\p{N} %./-]{1,24}$/u;
+
+
 export const MAX_OPERATIONAL_DAYS = 90;
 export const MAX_OPERATIONAL_DELIVERIES = 30;
 export const MAX_OPERATIONAL_JSON_BYTES = 65_536;
@@ -19,7 +23,7 @@ function quantity(value: unknown, label: string): number {
   return value;
 }
 function date(value: unknown): string {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value || value < '1900-01-01' || value > '9998-12-31') {
+  if (typeof value !== 'string' || !DATE_RE.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value || value < '1900-01-01' || value > '9998-12-31') {
     throw new Error('Use a valid date from 1900 through 9998.');
   }
   return value;
@@ -28,7 +32,7 @@ function date(value: unknown): string {
 export function parseOperationalInput(value: unknown): OperationalInput {
   const input = record(value);
   if (typeof input.operation !== 'string' || !input.operation.trim() || input.operation.length > 100) throw new Error('Enter an operation name of 1-100 characters.');
-  if (typeof input.unit !== 'string' || !/^[\p{L}\p{N} %./-]{1,24}$/u.test(input.unit) || !input.unit.trim()) throw new Error('Enter one quantity unit of 1-24 characters.');
+  if (typeof input.unit !== 'string' || !PARSE_OPERATIONAL_INPUT_RE.test(input.unit) || !input.unit.trim()) throw new Error('Enter one quantity unit of 1-24 characters.');
   const unit = input.unit.trim();
   const startDate = date(input.startDate);
   if (!Number.isInteger(input.horizonDays) || (input.horizonDays as number) < 1 || (input.horizonDays as number) > MAX_OPERATIONAL_DAYS) throw new Error('Horizon must be 1-90 whole days.');

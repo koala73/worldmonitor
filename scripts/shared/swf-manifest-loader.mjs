@@ -23,6 +23,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const VALIDATE_WIKIPEDIA_HINTS_RE = /^https:\/\/[a-z]{2,3}\.wikipedia\.org\//;
+
+
 const here = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_PATH = resolve(here, './swf-classification-manifest.yaml');
 
@@ -105,7 +109,7 @@ function assertZeroToOne(value, path) {
 }
 
 function assertIso2(value, path) {
-  if (typeof value !== 'string' || !/^[A-Z]{2}$/.test(value)) {
+  if (typeof value !== 'string' || !COUNTRY_CODE_RE.test(value)) {
     fail(`${path}: expected ISO-3166-1 alpha-2 country code, got ${JSON.stringify(value)}`);
   }
 }
@@ -204,7 +208,7 @@ function validateWikipediaHints(block, path) {
     if (typeof articleUrl !== 'string') {
       fail(`${path}.article_url: expected string, got ${JSON.stringify(articleUrl)}`);
     }
-    if (!/^https:\/\/[a-z]{2,3}\.wikipedia\.org\//.test(articleUrl)) {
+    if (!VALIDATE_WIKIPEDIA_HINTS_RE.test(articleUrl)) {
       fail(`${path}.article_url: expected a https://<lang>.wikipedia.org/... URL, got ${JSON.stringify(articleUrl)}`);
     }
   }

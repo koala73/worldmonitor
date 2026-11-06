@@ -18,6 +18,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { blogFontInputs } from './inputs.mjs';
 
+const LIST_PAGES_RE = /index\.html$/;
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const blogRoot = path.resolve(here, '../../..');
 const repoRoot = path.resolve(blogRoot, '..');
@@ -57,7 +59,7 @@ function listPages(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, entry.name);
     if (entry.isDirectory()) listPages(p, out);
-    else if (entry.name.endsWith('.html')) out.push(path.relative(distDir, p).replace(/index\.html$/, ''));
+    else if (entry.name.endsWith('.html')) out.push(path.relative(distDir, p).replace(LIST_PAGES_RE, ''));
   }
   return out.sort();
 }

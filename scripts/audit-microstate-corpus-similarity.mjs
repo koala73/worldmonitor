@@ -4,6 +4,15 @@ import { join, resolve } from 'node:path';
 import { Window } from 'happy-dom';
 import { isMainModule } from './lib/main-module.mjs';
 
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const WORD_TOKENS_RE = /[\p{L}\p{N}]+(?:[’'][\p{L}\p{N}]+)*/gu;
+const WHITESPACE_RE = /\s+/g;
+const SEGMENTS_RE = /[\p{N}]+(?:[.,:/-][\p{N}]+)*/gu;
+const SEGMENTS_RE_2 = /[^.!?]+(?:[.!?]+|$)/g;
+const MASKED_SENTENCES_RE = /[^\p{L}<>’'\s-]/gu;
+const AUDIT_CORPUS_FAMILY_RE = /^[a-z0-9-]+$/;
+
+
 const DEFAULT_FLOOR_PAIR = Object.freeze([
   { code: 'JP', slug: 'japan', names: ['Japan'] },
   { code: 'DE', slug: 'germany', names: ['Germany'] },
@@ -16,7 +25,7 @@ const DEFAULT_MICROSTATE_COHORT = Object.freeze([
 ]);
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 export function extractMainText(html) {
@@ -32,7 +41,7 @@ export function extractMainText(html) {
 export function wordTokens(value) {
   return String(value || '')
     .toLocaleLowerCase('en-US')
-    .match(/[\p{L}\p{N}]+(?:[’'][\p{L}\p{N}]+)*/gu) || [];
+    .match(WORD_TOKENS_RE) || [];
 }
 
 export function wordShingles(value, width = 5) {
@@ -60,15 +69,15 @@ export function maskedSentences(value, countryNames) {
     .join('|');
   const countryRe = new RegExp(countryPattern, 'giu');
   const segments = String(value || '')
-    .replace(/\s+/g, ' ')
-    .replace(/[\p{N}]+(?:[.,:/-][\p{N}]+)*/gu, '<number>')
-    .match(/[^.!?]+(?:[.!?]+|$)/g) || [];
+    .replace(WHITESPACE_RE, ' ')
+    .replace(SEGMENTS_RE, '<number>')
+    .match(SEGMENTS_RE_2) || [];
   return segments
     .map((sentence) => sentence
       .replace(countryRe, '<country>')
       .toLocaleLowerCase('en-US')
-      .replace(/[^\p{L}<>’'\s-]/gu, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(MASKED_SENTENCES_RE, ' ')
+      .replace(WHITESPACE_RE, ' ')
       .trim())
     .filter(Boolean);
 }
@@ -182,7 +191,7 @@ function median(values) {
 // page at `<family>/index.html` is excluded: it is a list, not a peer.
 export function auditCorpusFamily({ corpusDir, family }) {
   if (!corpusDir) throw new Error('corpusDir is required');
-  if (!/^[a-z0-9-]+$/.test(String(family || ''))) throw new Error('family must be a corpus directory name');
+  if (!AUDIT_CORPUS_FAMILY_RE.test(String(family || ''))) throw new Error('family must be a corpus directory name');
   const familyDir = resolve(corpusDir, family);
   const pages = readdirSync(familyDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && existsSync(join(familyDir, entry.name, 'index.html')))

@@ -28,9 +28,12 @@ import {
 } from '../shared/jev-classify.js';
 import { isAcceptableDigest } from './shared/digest-acceptance.mjs';
 
+const WHITESPACE_RE = /\s+/;
+
+
 const args = Object.fromEntries(
   process.argv.slice(2).join(' ').split('--').filter(Boolean).map((a) => {
-    const [k, ...v] = a.trim().split(/\s+/);
+    const [k, ...v] = a.trim().split(WHITESPACE_RE);
     return [k, v.join(' ') || 'true'];
   }),
 );

@@ -7,6 +7,10 @@ import {
   chinaCoverageRedisKeys,
 } from './china-coverage-manifest.mjs';
 
+const TIMESTAMP_MS_RE = /^\d{4}$/;
+const TIMESTAMP_MS_RE_2 = /^\d{4}-\d{2}$/;
+
+
 const MINUTE_MS = 60_000;
 
 function valuesAtPath(root, path = []) {
@@ -42,8 +46,8 @@ function timestampMs(value, semantics) {
   }
   if (typeof value !== 'string' || value.trim() === '') return null;
   const token = value.trim();
-  if (/^\d{4}$/.test(token)) return Date.UTC(Number(token), 11, 31);
-  if (/^\d{4}-\d{2}$/.test(token)) {
+  if (TIMESTAMP_MS_RE.test(token)) return Date.UTC(Number(token), 11, 31);
+  if (TIMESTAMP_MS_RE_2.test(token)) {
     const [year, month] = token.split('-').map(Number);
     return Date.UTC(year, month, 0, 23, 59, 59, 999);
   }

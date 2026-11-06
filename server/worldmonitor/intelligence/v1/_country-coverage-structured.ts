@@ -36,6 +36,9 @@ import { listMilitaryFlights } from '../../military/v1/list-military-flights';
 import type { MilitaryFlight } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 import type { ServerContext } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+const GDELT_CONFLICT_KIND_RE = /^GDELT (\d{2})/;
+
+
 export type CoverageSourceState =
   | 'ok'
   | 'empty'
@@ -256,7 +259,7 @@ interface SeededConflictEvent {
 
 /** GDELT fallback rows carry `GDELT <CAMEO code>`; the root code (18/19/20) names the kind. */
 function gdeltConflictKind(eventType: string): string | null {
-  const match = /^GDELT (\d{2})/.exec(eventType);
+  const match = GDELT_CONFLICT_KIND_RE.exec(eventType);
   if (!match) return eventType === 'GDELT coverage' ? 'conflict' : null;
   if (match[1] === '18') return 'assault';
   if (match[1] === '20') return 'mass violence';

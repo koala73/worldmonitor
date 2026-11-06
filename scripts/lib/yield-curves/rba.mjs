@@ -5,6 +5,11 @@
 
 import { collapseCurves } from './model.mjs';
 
+const CSV_DATE_TO_ISO_RE = /^(\d{2})-([A-Z][a-z]{2})-(\d{4})$/;
+const LINES_RE = /^\ufeff/;
+const LINE_BREAK_RE = /\r?\n/;
+
+
 export const RBA_SERIES = {
   FCMYGBAG2D: '2y',
   FCMYGBAG3D: '3y',
@@ -22,7 +27,7 @@ function numericCell(cell) {
 const CSV_MONTHS = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
 
 function csvDateToIso(token) {
-  const match = /^(\d{2})-([A-Z][a-z]{2})-(\d{4})$/.exec(token);
+  const match = CSV_DATE_TO_ISO_RE.exec(token);
   const month = match && CSV_MONTHS[match[2]];
   if (!month) return null;
   const iso = `${match[3]}-${String(month).padStart(2, '0')}-${match[1]}`;
@@ -37,7 +42,7 @@ function csvDateToIso(token) {
  * data rows cannot, so those two are split plainly.
  */
 export function parseRbaCsv(text) {
-  const lines = String(text ?? '').replace(/^\ufeff/, '').split(/\r?\n/);
+  const lines = String(text ?? '').replace(LINES_RE, '').split(LINE_BREAK_RE);
   const seriesLine = lines.find((line) => line.startsWith('Series ID,'));
   if (!seriesLine) return [];
   const columns = [];

@@ -30,6 +30,15 @@
 
 import { PAGE_FAMILIES } from '../seo-ai-visibility-scorecard.mjs';
 
+const IS_MARKDOWN_TWIN_RE = /^llms[\w.-]*\.txt$/;
+const NORMALIZED_PATH_RE = /\/+$/;
+const SEGMENT_FAMILY_RE = /\.[a-z0-9]{1,6}$/i;
+const HOST_RE = /\.$/;
+const LOCATIONS_RE = /<loc>\s*([^<]+?)\s*<\/loc>/g;
+const SITEMAP_URLS_RE = /<\/?loc>/g;
+const ROBOTS_TAG_BLOCKS_INDEXING_RE = /\b(noindex|none)\b/i;
+
+
 const PROPERTY_APEX = 'worldmonitor.app';
 
 /**
@@ -89,7 +98,7 @@ const isMarkdownTwin = (pathname) => {
   const segment = lastSegment(pathname).toLowerCase();
   return segment.endsWith('.md')
     || segment.endsWith('.mdx')
-    || /^llms[\w.-]*\.txt$/.test(segment);
+    || IS_MARKDOWN_TWIN_RE.test(segment);
 };
 
 /**
@@ -185,7 +194,7 @@ const SEGMENT_FAMILIES = Object.freeze({
   _next: 'site_infrastructure',
 });
 
-const normalizedPath = (pathname) => pathname.replace(/\/+$/, '');
+const normalizedPath = (pathname) => pathname.replace(NORMALIZED_PATH_RE, '');
 const segments = (pathname) => normalizedPath(pathname).split('/').filter(Boolean);
 
 /**
@@ -196,7 +205,7 @@ const segments = (pathname) => normalizedPath(pathname).split('/').filter(Boolea
 const segmentFamily = (pathname) => {
   const first = segments(pathname)[0];
   if (first === undefined) return undefined;
-  return SEGMENT_FAMILIES[first] ?? SEGMENT_FAMILIES[first.replace(/\.[a-z0-9]{1,6}$/i, '')];
+  return SEGMENT_FAMILIES[first] ?? SEGMENT_FAMILIES[first.replace(SEGMENT_FAMILY_RE, '')];
 };
 
 const isDocsPath = (pathname) => segments(pathname)[0] === 'docs';
@@ -237,7 +246,7 @@ const FAMILY_RULES = Object.freeze([
 ]);
 
 export function classifyHost(hostname) {
-  const host = String(hostname ?? '').toLowerCase().replace(/\.$/, '');
+  const host = String(hostname ?? '').toLowerCase().replace(HOST_RE, '');
   if (host === `www.${PROPERTY_APEX}`) return { host, hostClass: 'www' };
   if (host === PROPERTY_APEX) return { host, hostClass: 'apex' };
   const variant = VARIANT_HOSTS.find((name) => host === `${name}.${PROPERTY_APEX}`);
@@ -307,8 +316,8 @@ export function classifyUrl(rawUrl) {
 
 /** Extract every `<loc>` from a sitemap or sitemap index document. */
 export function sitemapUrls(xml) {
-  const locations = String(xml).match(/<loc>\s*([^<]+?)\s*<\/loc>/g) ?? [];
-  return locations.map((match) => match.replace(/<\/?loc>/g, '').trim());
+  const locations = String(xml).match(LOCATIONS_RE) ?? [];
+  return locations.map((match) => match.replace(SITEMAP_URLS_RE, '').trim());
 }
 
 /**
@@ -334,5 +343,5 @@ export function kindForContentType(contentType) {
 /** True when an `x-robots-tag` value keeps the URL out of the index. */
 export function robotsTagBlocksIndexing(value) {
   if (typeof value !== 'string' || value.trim() === '') return false;
-  return /\b(noindex|none)\b/i.test(value);
+  return ROBOTS_TAG_BLOCKS_INDEXING_RE.test(value);
 }

@@ -5,6 +5,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadEnvFile, GRACEFUL_FETCH_FAILURE_EXIT_CODE } from './_seed-utils.mjs';
 
+const BACKFILL_SEED_META_FROM_ACTIVE_VERSION_RE = /^\d+$/;
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BATCH_SIZE = 500;
@@ -549,7 +552,7 @@ export async function backfillSeedMetaFromActiveVersion(url, token, prefix, opts
 
   const version = String(rawVersion);
   const fetchedAt = Number(version);
-  if (!/^\d+$/.test(version) || !Number.isSafeInteger(fetchedAt) || fetchedAt <= 0) {
+  if (!BACKFILL_SEED_META_FROM_ACTIVE_VERSION_RE.test(version) || !Number.isSafeInteger(fetchedAt) || fetchedAt <= 0) {
     throw new Error(`Active version "${version}" is not a valid millisecond timestamp`);
   }
 

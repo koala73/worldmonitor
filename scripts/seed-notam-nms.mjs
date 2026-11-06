@@ -31,6 +31,10 @@ import { encodeGzipPayload } from './_seed-payload-codec.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, applyFeatures, buildAirspace, buildClosures, coveredLocations, noteLocations, pruneExpired } from './lib/nms-notam.mjs';
 
+const IS_PRODUCTION_HOST_RE = /\/+$/;
+const NMS_TIME_RE = /\.\d{3}Z$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const NMS_PROD_HOST = 'https://api-nms.aim.faa.gov';
@@ -69,11 +73,11 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const SOURCE_VERSION = 'faa-nms-api-v1';
 
 export function isProductionHost(host) {
-  return String(host || '').replace(/\/+$/, '') === NMS_PROD_HOST;
+  return String(host || '').replace(IS_PRODUCTION_HOST_RE, '') === NMS_PROD_HOST;
 }
 
 function nmsTime(ms) {
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return new Date(ms).toISOString().replace(NMS_TIME_RE, 'Z');
 }
 
 /**
@@ -81,7 +85,7 @@ function nmsTime(ms) {
  * and a run takes seconds) and spaces calls to respect pre-prod's 1 req/s.
  */
 export function createNmsClient({ host, clientId, clientSecret, fetchImpl = (...args) => globalThis.fetch(...args), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
-  const base = String(host).replace(/\/+$/, '');
+  const base = String(host).replace(IS_PRODUCTION_HOST_RE, '');
   let token = null;
   let lastCallAt = 0;
 
@@ -326,7 +330,7 @@ function summarize(result, payload) {
 }
 
 async function main() {
-  const host = (process.env.NMS_API_HOST || NMS_PROD_HOST).replace(/\/+$/, '');
+  const host = (process.env.NMS_API_HOST || NMS_PROD_HOST).replace(IS_PRODUCTION_HOST_RE, '');
   const clientId = process.env.NOTAM_KEY;
   const clientSecret = process.env.NOTAM_SECRET;
   if (!clientId || !clientSecret) {

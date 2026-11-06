@@ -1,5 +1,15 @@
 import { isoDate, pdfRows } from '../food-prices.mjs';
 
+const AMOUNT_RE = /^\d{1,3}(?:[  ]?\d{3})*$/;
+const NON_DIGIT_RE = /\D/g;
+const DISCOVER_MADR_REPORTS_RE = /^\/wp-content\/uploads\/.+\.pdf$/i;
+const DISCOVER_MADR_REPORTS_RE_2 = /^prix_(\d{1,2})_([A-Za-zéûÉ]{3,9})_?(\d{4})_MADRP\b/i;
+const TITLE_RE = /^Mercuriale des prix des produits agricoles/i;
+const PARSE_MADR_RE = /date:\s*(\d{1,2})\s+(\S+)\s+(\d{4})\s*$/i;
+const PARSE_MADR_RE_2 = /^DA\s*\/\s*Kg$/i;
+const CELLS_RE = /^[\d  ]+$/;
+
+
 // The media list is the publisher's own upload index; file names carry suffixes such as -MCIRMN when
 // the commerce ministry co-signs, and some titles drop the underscore before the year (prix_30_Sept2026),
 // so dates come from the title rather than a guessed URL.
@@ -16,7 +26,7 @@ const MAX_LABEL = 120;
 
 const monthIndex = name => MONTHS.findIndex(pattern => pattern.test(name.toLowerCase())) + 1;
 const textDate = (day, month, year) => (monthIndex(month) ? isoDate(year, monthIndex(month), day) : '');
-const amount = text => (/^\d{1,3}(?:[  ]?\d{3})*$/.test(text) && Number(text.replace(/\D/g, '')) > 0 ? Number(text.replace(/\D/g, '')) : null);
+const amount = text => (AMOUNT_RE.test(text) && Number(text.replace(NON_DIGIT_RE, '')) > 0 ? Number(text.replace(NON_DIGIT_RE, '')) : null);
 
 export function discoverMadrReports(media) {
   const seen = new Set();
@@ -24,8 +34,8 @@ export function discoverMadrReports(media) {
     if (entry?.mime_type !== 'application/pdf' || typeof entry.source_url !== 'string') return [];
     let url;
     try { url = new URL(entry.source_url); } catch { return []; }
-    if (url.protocol !== 'https:' || url.hostname !== 'madr.gov.dz' || !/^\/wp-content\/uploads\/.+\.pdf$/i.test(url.pathname)) return [];
-    const match = /^prix_(\d{1,2})_([A-Za-zéûÉ]{3,9})_?(\d{4})_MADRP\b/i.exec(String(entry.title?.rendered ?? '').trim());
+    if (url.protocol !== 'https:' || url.hostname !== 'madr.gov.dz' || !DISCOVER_MADR_REPORTS_RE.test(url.pathname)) return [];
+    const match = DISCOVER_MADR_REPORTS_RE_2.exec(String(entry.title?.rendered ?? '').trim());
     const date = match ? textDate(match[1], match[2], match[3]) : '';
     if (!date || seen.has(date)) return [];
     seen.add(date);
@@ -34,8 +44,8 @@ export function discoverMadrReports(media) {
 }
 
 export function parseMadr(page, expectedDate) {
-  const title = page.find(item => /^Mercuriale des prix des produits agricoles/i.test(item.text.trim()))?.text;
-  const match = title ? /date:\s*(\d{1,2})\s+(\S+)\s+(\d{4})\s*$/i.exec(title) : null;
+  const title = page.find(item => TITLE_RE.test(item.text.trim()))?.text;
+  const match = title ? PARSE_MADR_RE.exec(title) : null;
   if (!match) throw new Error('madr price PDF format changed');
   const date = textDate(match[1], match[2], match[3]);
   if (!date || date !== expectedDate) throw new Error(`madr report date mismatch: ${date || 'missing'} vs ${expectedDate}`);
@@ -45,7 +55,7 @@ export function parseMadr(page, expectedDate) {
     return found[0];
   };
   const [products, mean, max, min] = ['Produits', 'Moyenne', 'Maximum', 'Minimum'].map(header);
-  if (!page.some(item => /^DA\s*\/\s*Kg$/i.test(item.text.trim()))) throw new Error('madr unit line format changed');
+  if (!page.some(item => PARSE_MADR_RE_2.test(item.text.trim()))) throw new Error('madr unit line format changed');
   if (!(products.x < mean.x && mean.x < max.x && max.x < min.x) || Math.abs(mean.y - max.y) > 2 || Math.abs(mean.y - min.y) > 2) {
     throw new Error('madr price columns format changed');
   }
@@ -53,7 +63,7 @@ export function parseMadr(page, expectedDate) {
   const result = [];
   for (const row of pdfRows(page.filter(item => item.y < mean.y - 2))) {
     // Numbers are right-aligned under their header, so a cell belongs to the last header at or left of it.
-    const cells = row.items.filter(item => item.x >= mean.x - 10 && item.x < min.x + 80 && /^[\d  ]+$/.test(item.text.trim()));
+    const cells = row.items.filter(item => item.x >= mean.x - 10 && item.x < min.x + 80 && CELLS_RE.test(item.text.trim()));
     if (!cells.length) continue;
     const label = row.items.filter(item => item.x >= products.x - 5 && item.x < mean.x - 10).map(item => item.text.trim()).join(' ');
     const values = new Map();

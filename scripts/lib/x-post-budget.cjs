@@ -1,5 +1,11 @@
 'use strict';
 
+const MODEL_MATCH_RE = /^fixed-slots-v1:([1-9]\d*)$/;
+const KEY_PREFIX_RE = /:+$/;
+const RESERVATION_ID_RE = /[^A-Za-z0-9:_-]/g;
+const SCOPE_PART_RE = /[^A-Za-z0-9_-]/g;
+
+
 const { createHash, randomUUID } = require('node:crypto');
 
 // The daily limit is the scheduled hold below plus 95 spare Posts, one full
@@ -341,7 +347,7 @@ function projectCoverageHold({
       : blocked();
   }
   if (coverageState !== 1 || coverageModel === '') return blocked();
-  const modelMatch = /^fixed-slots-v1:([1-9]\d*)$/.exec(coverageModel);
+  const modelMatch = MODEL_MATCH_RE.exec(coverageModel);
   const storedTotal = Number(modelMatch?.[1]);
   if (!Number.isSafeInteger(storedTotal) || storedTotal > dailyLimit
     || coverageHeld > storedTotal || storedTotal < expectedTotal) return blocked();
@@ -377,7 +383,7 @@ function createXPostBudget(options = {}) {
   if (typeof evalCommand !== 'function') throw new Error('X Post budget requires evalCommand');
   const now = options.now ?? Date.now;
   const idFactory = options.idFactory ?? randomUUID;
-  const keyPrefix = String(options.keyPrefix || DEFAULT_KEY_PREFIX).replace(/:+$/, '');
+  const keyPrefix = String(options.keyPrefix || DEFAULT_KEY_PREFIX).replace(KEY_PREFIX_RE, '');
   const dailyLimit = positiveInteger(options.dailyLimit, DEFAULT_X_POST_DAILY_LIMIT, 'dailyLimit');
   const monthlyLimit = positiveInteger(options.monthlyLimit, DEFAULT_X_POST_MONTHLY_LIMIT, 'monthlyLimit');
   const dailyCoveragePosts = boundedNonNegativeInteger(options.dailyCoveragePosts);
@@ -453,9 +459,9 @@ function createXPostBudget(options = {}) {
     }
     const period = periodFor(now());
     const rawId = String(idFactory());
-    const reservationId = rawId.replace(/[^A-Za-z0-9:_-]/g, '');
+    const reservationId = rawId.replace(RESERVATION_ID_RE, '');
     if (!reservationId) throw new Error('X Post budget reservation id is invalid');
-    const scopePart = (value) => String(value || 'unknown').replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80);
+    const scopePart = (value) => String(value || 'unknown').replace(SCOPE_PART_RE, '-').slice(0, 80);
     const onceScope = `${scopePart(request.consumer)}:${scopePart(request.operation)}`;
     const rawCoverageId = request.coverageId == null ? '' : String(request.coverageId);
     const hasCoverageUnit = coverageUnitPosts > 0 || rawCoverageId !== '';

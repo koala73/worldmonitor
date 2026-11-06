@@ -6,6 +6,35 @@ import { XMLValidator } from 'fast-xml-parser';
 
 import { decodeHtmlEntities } from './_html-entities.mjs';
 
+const DECODE_XML_RE = /&apos;/g;
+const DECODE_XML_RE_2 = /&quot;/g;
+const DECODE_XML_RE_3 = /&gt;/g;
+const DECODE_XML_RE_4 = /&lt;/g;
+const DECODE_XML_RE_5 = /&amp;/g;
+const PARSE_SITEMAP_DOCUMENT_RE = /<sitemapindex\b/i;
+const PARSE_SITEMAP_DOCUMENT_RE_2 = /<urlset\b/i;
+const LOCATIONS_RE = /<loc>\s*([^<]+?)\s*<\/loc>/gi;
+const CLASSIFY_SITEMAP_URL_RE = /^\/(?:es|pt|ru|fr|de|ar)\/?$/;
+const CLASSIFY_SITEMAP_URL_RE_2 = /\.(?:md|txt)$/;
+const GET_HTML_ATTRIBUTE_RE = /\s+([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+const IS_HTML_RE = /text\/html|application\/xhtml\+xml/i;
+const ADD_CANONICAL_RE = /^https?:$/;
+const ADD_CANONICAL_RE_2 = /^https?:\/\//i;
+const INSPECT_INDEXABILITY_RE = /(?:<[^>]*>|"(?:\\.|[^"\\])*"|'[^']*'|[^,])+/g;
+const TARGET_RE = /^\s*<([^>]*)>([\s\S]*)$/;
+const REL_RE = /;\s*([\w-]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|'([^']*)'|([^;\s,]+))/g;
+const WHITESPACE_RE = /\s+/;
+const MARKUP_RE = /<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+const HEAD_RE = /<head\b[^>]*>([\s\S]*?)<\/head\s*>/i;
+const INSPECT_INDEXABILITY_RE_2 = /<(?:link|meta)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+const INSPECT_INDEXABILITY_RE_3 = /^<link\b/i;
+const SCOPE_RE = /^\s*([\w-]+):\s*(.*)$/;
+const SCOPED_RE = /^(?:unavailable_after|max-image-preview|max-snippet|max-video-preview)$/i;
+const INSPECT_INDEXABILITY_RE_4 = /^(?:noindex|none)$/i;
+const NORMALIZED_ORIGIN_RE = /\/+$/;
+const ROOT_SITEMAPS_RE = /^Sitemap:\s*(\S+)\s*$/gmi;
+
+
 const DEFAULT_ORIGIN = 'https://www.worldmonitor.app';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const REQUIRED_DOCS_PATHS = ['/docs/country-instability-index', '/docs/zh/country-instability-index'];
@@ -20,11 +49,11 @@ const EXPECTED_PAGE_HOSTS = new Set([
 ]);
 
 const decodeXml = (value) => String(value)
-  .replace(/&apos;/g, "'")
-  .replace(/&quot;/g, '"')
-  .replace(/&gt;/g, '>')
-  .replace(/&lt;/g, '<')
-  .replace(/&amp;/g, '&');
+  .replace(DECODE_XML_RE, "'")
+  .replace(DECODE_XML_RE_2, '"')
+  .replace(DECODE_XML_RE_3, '>')
+  .replace(DECODE_XML_RE_4, '<')
+  .replace(DECODE_XML_RE_5, '&');
 
 export function parseSitemapDocument(source) {
   const xml = String(source);
@@ -34,11 +63,11 @@ export function parseSitemapDocument(source) {
   }
 
   let type = null;
-  if (/<sitemapindex\b/i.test(xml)) type = 'index';
-  else if (/<urlset\b/i.test(xml)) type = 'urlset';
+  if (PARSE_SITEMAP_DOCUMENT_RE.test(xml)) type = 'index';
+  else if (PARSE_SITEMAP_DOCUMENT_RE_2.test(xml)) type = 'urlset';
   if (!type) throw new Error('document is neither a sitemap index nor a URL set');
 
-  const locations = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)]
+  const locations = [...xml.matchAll(LOCATIONS_RE)]
     .map((match) => decodeXml(match[1].trim()));
   if (locations.length === 0) throw new Error(`${type} contains no <loc> entries`);
   if (new Set(locations).size !== locations.length) {
@@ -59,10 +88,10 @@ export function classifySitemapUrl(value) {
   if (pathname === '/') return 'landing';
   // Keep in lockstep with nonDefaultLandingLocales() in
   // shared/indexable-landing-locales.ts.
-  if (/^\/(?:es|pt|ru|fr|de|ar)\/?$/.test(pathname)) return 'landing';
+  if (CLASSIFY_SITEMAP_URL_RE.test(pathname)) return 'landing';
   if (pathname === '/dashboard') return 'dashboard';
   if (pathname === '/pro') return 'product';
-  if (/\.(?:md|txt)$/.test(pathname)) return 'machine-readable';
+  if (CLASSIFY_SITEMAP_URL_RE_2.test(pathname)) return 'machine-readable';
   for (const family of ['countries', 'chokepoints', 'compare', 'crises', 'tools', 'research']) {
     if (pathname === `/${family}` || pathname.startsWith(`/${family}/`)) return family;
   }
@@ -71,7 +100,7 @@ export function classifySitemapUrl(value) {
 }
 
 function getHtmlAttribute(tag, name) {
-  for (const match of tag.matchAll(/\s+([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
+  for (const match of tag.matchAll(GET_HTML_ATTRIBUTE_RE)) {
     if (match[1].toLowerCase() === name) return decodeHtmlEntities(match[2] ?? match[3] ?? match[4]);
   }
   return null;
@@ -81,7 +110,7 @@ export function inspectIndexability({ url, headers, body }) {
   const headerRobots = headers.get('x-robots-tag') ?? '';
   const linkHeader = headers.get('link') ?? '';
   const contentType = headers.get('content-type') ?? '';
-  const isHtml = /text\/html|application\/xhtml\+xml/i.test(contentType);
+  const isHtml = IS_HTML_RE.test(contentType);
   const isDocs = classifySitemapUrl(url) === 'docs';
   const canonicalDeclarations = [];
   const canonicalErrors = [];
@@ -94,11 +123,11 @@ export function inspectIndexability({ url, headers, body }) {
     } else {
       try {
         const target = new URL(href, url);
-        if (!/^https?:$/.test(target.protocol) || target.username || target.password || target.hash) {
+        if (!ADD_CANONICAL_RE.test(target.protocol) || target.username || target.password || target.hash) {
           throw new Error('invalid canonical URL');
         }
         resolved = target.href;
-        if (isDocs && !/^https?:\/\//i.test(href)) {
+        if (isDocs && !ADD_CANONICAL_RE_2.test(href)) {
           canonicalErrors.push(`${source} docs canonical must be absolute: ${href}`);
         }
       } catch {
@@ -108,22 +137,22 @@ export function inspectIndexability({ url, headers, body }) {
     canonicalDeclarations.push({ source, href, url: resolved });
   };
 
-  for (const entry of linkHeader.match(/(?:<[^>]*>|"(?:\\.|[^"\\])*"|'[^']*'|[^,])+/g) ?? []) {
-    const target = entry.match(/^\s*<([^>]*)>([\s\S]*)$/);
-    const rel = [...(target?.[2] ?? entry).matchAll(/;\s*([\w-]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|'([^']*)'|([^;\s,]+))/g)]
+  for (const entry of linkHeader.match(INSPECT_INDEXABILITY_RE) ?? []) {
+    const target = entry.match(TARGET_RE);
+    const rel = [...(target?.[2] ?? entry).matchAll(REL_RE)]
       .find((parameter) => parameter[1].toLowerCase() === 'rel');
-    if (!(rel?.[2] ?? rel?.[3] ?? rel?.[4] ?? '').toLowerCase().split(/\s+/).includes('canonical')) continue;
+    if (!(rel?.[2] ?? rel?.[3] ?? rel?.[4] ?? '').toLowerCase().split(WHITESPACE_RE).includes('canonical')) continue;
     addCanonical('http', target?.[1] ?? null);
   }
 
   if (isHtml) {
-    const markup = String(body).replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
-    const head = /<head\b[^>]*>([\s\S]*?)<\/head\s*>/i.exec(markup);
-    for (const match of markup.matchAll(/<(?:link|meta)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
+    const markup = String(body).replace(MARKUP_RE, '');
+    const head = HEAD_RE.exec(markup);
+    for (const match of markup.matchAll(INSPECT_INDEXABILITY_RE_2)) {
       const tag = match[0];
       const inHead = head && match.index >= head.index && match.index < head.index + head[0].length;
-      if (/^<link\b/i.test(tag)) {
-        const rel = getHtmlAttribute(tag, 'rel')?.toLowerCase().split(/\s+/) ?? [];
+      if (INSPECT_INDEXABILITY_RE_3.test(tag)) {
+        const rel = getHtmlAttribute(tag, 'rel')?.toLowerCase().split(WHITESPACE_RE) ?? [];
         if (!rel.includes('canonical')) continue;
         if (!inHead) {
           canonicalErrors.push('HTML canonical is outside the head');
@@ -151,8 +180,8 @@ export function inspectIndexability({ url, headers, body }) {
   let robot = '*';
   const effectiveRobots = [...metaRobots];
   for (const part of headerRobots.split(',')) {
-    const scope = /^\s*([\w-]+):\s*(.*)$/.exec(part);
-    const scoped = scope && !/^(?:unavailable_after|max-image-preview|max-snippet|max-video-preview)$/i.test(scope[1]);
+    const scope = SCOPE_RE.exec(part);
+    const scoped = scope && !SCOPED_RE.test(scope[1]);
     if (scoped) robot = scope[1].toLowerCase();
     if (robot === '*' || robot === 'googlebot') effectiveRobots.push(scoped ? scope[2] : part);
   }
@@ -160,7 +189,7 @@ export function inspectIndexability({ url, headers, body }) {
     canonical: canonicalErrors.length === 0 ? [...targets][0] ?? null : null,
     canonicalDeclarations,
     canonicalErrors,
-    indexable: !effectiveRobots.some(value => value.split(',').some(directive => /^(?:noindex|none)$/i.test(directive.trim()))),
+    indexable: !effectiveRobots.some(value => value.split(',').some(directive => INSPECT_INDEXABILITY_RE_4.test(directive.trim()))),
     robots: [headerRobots, ...metaRobots].filter(Boolean).join(', ') || null,
   };
 }
@@ -392,7 +421,7 @@ export async function verifyProductionSitemaps({
   concurrency = 8,
   fetchImpl = globalThis.fetch,
 } = {}) {
-  const normalizedOrigin = origin.replace(/\/+$/, '');
+  const normalizedOrigin = origin.replace(NORMALIZED_ORIGIN_RE, '');
   const robotsUrl = `${normalizedOrigin}/robots.txt`;
   const robotsResponse = await fetchDirect(robotsUrl, { fetchImpl });
   const robots = await robotsResponse.text();
@@ -400,7 +429,7 @@ export async function verifyProductionSitemaps({
     throw new Error(`${robotsUrl} returned ${robotsResponse.status}`);
   }
 
-  const rootSitemaps = [...robots.matchAll(/^Sitemap:\s*(\S+)\s*$/gmi)]
+  const rootSitemaps = [...robots.matchAll(ROOT_SITEMAPS_RE)]
     .map((match) => match[1]);
   if (rootSitemaps.length === 0) throw new Error(`${robotsUrl} advertises no sitemaps`);
 

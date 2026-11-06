@@ -1,11 +1,14 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+const OPTIONAL_POSITIVE_INTEGER_RE = /^[1-9]\d*$/;
+
+
 function optionalPositiveInteger(name: string): number | undefined {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return undefined;
   const value = Number(raw);
-  if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(value)) {
+  if (!OPTIONAL_POSITIVE_INTEGER_RE.test(raw) || !Number.isSafeInteger(value)) {
     throw new Error(`${name} must be a positive integer`);
   }
   return value;

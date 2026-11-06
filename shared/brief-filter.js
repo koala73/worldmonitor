@@ -12,6 +12,14 @@ import { isInstitutionalStaticPage } from './url-classifier.js';
 import { classifyEphemeralLiveCoverage } from './ephemeral-live-classifier.js';
 import diplomacyKeywordsData from './diplomacy-keywords.json' with { type: 'json' };
 
+const NORMALIZE_SCORING_TEXT_RE = /[^a-z0-9\s]/g;
+const WHITESPACE_RE = /\s+/g;
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+const TITLE_CASE_RE = /\b[a-z]/g;
+const ISSUE_DATE_IN_TZ_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISSUE_SLOT_IN_TZ_RE = /^[01]\d[0-5]\d$|^2[0-3][0-5]\d$/;
+
+
 /**
  * @typedef {import('./brief-envelope.js').BriefEnvelope} BriefEnvelope
  * @typedef {import('./brief-envelope.js').BriefStory} BriefStory
@@ -81,7 +89,7 @@ function finiteNumberOrZero(v) {
 
 /** @param {string} text */
 function normalizeScoringText(text) {
-  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return text.toLowerCase().replace(NORMALIZE_SCORING_TEXT_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 /**
@@ -99,7 +107,7 @@ function normalizeScoringText(text) {
  */
 function containsKeywordToken(text, kw) {
   if (!kw) return false;
-  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = kw.replace(ESCAPED_RE, '\\$&');
   return new RegExp(`(^|\\s)${escaped}`).test(text);
 }
 
@@ -200,7 +208,7 @@ function clip(v, cap) {
  */
 function titleCase(v) {
   if (typeof v !== 'string' || v.length === 0) return v;
-  return v.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+  return v.replace(TITLE_CASE_RE, (c) => c.toUpperCase());
 }
 
 /**
@@ -706,7 +714,7 @@ export function issueDateInTz(nowMs, timezone) {
     });
     // en-CA conveniently formats as YYYY-MM-DD.
     const parts = fmt.format(new Date(nowMs));
-    if (/^\d{4}-\d{2}-\d{2}$/.test(parts)) return parts;
+    if (ISSUE_DATE_IN_TZ_RE.test(parts)) return parts;
   } catch {
     /* fall through to UTC */
   }
@@ -742,7 +750,7 @@ export function issueSlotInTz(nowMs, timezone) {
     const hhmm = `${hh}${mm}`;
     // Intl in some locales emits "24" for midnight instead of "00";
     // pin to the expected 4-digit numeric shape or fall through.
-    if (/^[01]\d[0-5]\d$|^2[0-3][0-5]\d$/.test(hhmm)) return `${date}-${hhmm}`;
+    if (ISSUE_SLOT_IN_TZ_RE.test(hhmm)) return `${date}-${hhmm}`;
   } catch {
     /* fall through to UTC */
   }

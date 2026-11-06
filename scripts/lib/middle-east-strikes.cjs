@@ -1,5 +1,13 @@
 'use strict';
 
+const LOWER_RE = /^@/;
+const WHITESPACE_RE = /\s+/g;
+const ISO2_RE_2 = /^[a-z]{2}$/i;
+const GDELT_STAMP_TO_MS_RE = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/;
+const LINE_BREAK_RE = /\r?\n/;
+const MAP_GDELT_EXPORT_TO_STRIKE_CANDIDATES_RE = /^https?:\/\//i;
+
+
 // Middle East strike feed: Telegram + GDELT -> conflict:iran-events:v1.
 //
 // The key name and event schema are unchanged from the retired manual
@@ -153,7 +161,7 @@ const TRUST_BY_LOWER = new Map(Object.entries(TELEGRAM_STRIKE_TRUST).map(([handl
  * sepah + Tasnim is one voice, not two.
  */
 function channelTrust(handle) {
-  const lower = String(handle || '').replace(/^@/, '').toLowerCase();
+  const lower = String(handle || '').replace(LOWER_RE, '').toLowerCase();
   const entry = TRUST_BY_LOWER.get(lower);
   if (!entry) return { cls: 'propaganda', group: `channel:${lower}`, handle: lower };
   const [tier, risk, state] = entry.value;
@@ -213,8 +221,8 @@ function normalizeClassification(entry) {
   const kind = entry.kind;
   const severity = entry.severity;
   if (!KINDS.has(kind) || !(severity in SEVERITY_RANK)) return undefined;
-  const place = typeof entry.place === 'string' ? entry.place.replace(/\s+/g, ' ').trim().slice(0, 80) : '';
-  const iso2 = typeof entry.countryIso2 === 'string' && /^[a-z]{2}$/i.test(entry.countryIso2.trim())
+  const place = typeof entry.place === 'string' ? entry.place.replace(WHITESPACE_RE, ' ').trim().slice(0, 80) : '';
+  const iso2 = typeof entry.countryIso2 === 'string' && ISO2_RE_2.test(entry.countryIso2.trim())
     ? entry.countryIso2.trim().toUpperCase()
     : null;
   return {
@@ -252,7 +260,7 @@ function classificationCacheKey(text) {
 // ---------------------------------------------------------------------------
 
 function cleanTitle(text) {
-  const flat = String(text || '').replace(/\s+/g, ' ').trim();
+  const flat = String(text || '').replace(WHITESPACE_RE, ' ').trim();
   return flat.length > TITLE_MAX_CHARS ? `${flat.slice(0, TITLE_MAX_CHARS - 1)}…` : flat;
 }
 
@@ -336,7 +344,7 @@ function isDatelineCity(iso2, lat, lon) {
 }
 
 function gdeltStampToMs(stamp) {
-  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(stamp || ''));
+  const m = GDELT_STAMP_TO_MS_RE.exec(String(stamp || ''));
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : Number.NaN;
 }
 
@@ -346,7 +354,7 @@ function gdeltStampToMs(stamp) {
  */
 function mapGdeltExportToStrikeCandidates(csv) {
   const clusters = new Map();
-  for (const line of String(csv || '').split(/\r?\n/)) {
+  for (const line of String(csv || '').split(LINE_BREAK_RE)) {
     if (!line) continue;
     const f = line.split('\t');
     if (f.length < 61) continue;
@@ -387,7 +395,7 @@ function mapGdeltExportToStrikeCandidates(csv) {
     cluster.ts = Math.min(cluster.ts, ts);
     cluster.sources += Math.max(1, Number.parseInt(f[32], 10) || 1);
     const url = f[60];
-    if (/^https?:\/\//i.test(url) && !cluster.urls.includes(url) && cluster.urls.length < 5) cluster.urls.push(url);
+    if (MAP_GDELT_EXPORT_TO_STRIKE_CANDIDATES_RE.test(url) && !cluster.urls.includes(url) && cluster.urls.length < 5) cluster.urls.push(url);
     if (f[27] === '195') cluster.label = label; // the most specific label wins
   }
   return [...clusters.values()];

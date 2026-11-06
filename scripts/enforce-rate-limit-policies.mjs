@@ -41,6 +41,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
+const URL_PATH_RE = /\.(ts|js|tsx|jsx|mjs|cjs)$/i;
+const TO_REPO_RELATIVE_PATH_RE = /^\/+/;
+const CALL_WITH_FAIL_OPEN_OPT_OUT_RE = /checkEndpointRateLimit\s*\([\s\S]*?\{[\s\S]*?failClosed\s*:\s*false[\s\S]*?\}\s*\)/g;
+
+
 const ROOT = new URL('..', import.meta.url).pathname;
 const OPENAPI_DIR = join(ROOT, 'docs/api');
 const RATE_LIMIT_SRC = join(ROOT, 'server/_shared/rate-limit.ts');
@@ -127,7 +132,7 @@ function extractEdgeFunctionRoutes() {
     const filePath = typeof entry?.path === 'string' ? entry.path : null;
     if (!filePath?.startsWith('api/')) continue;
     // api/mcp-proxy.ts → /api/mcp-proxy ; api/oauth/token.ts → /api/oauth/token
-    const urlPath = `/${filePath.replace(/\.(ts|js|tsx|jsx|mjs|cjs)$/i, '')}`;
+    const urlPath = `/${filePath.replace(URL_PATH_RE, '')}`;
     routes.add(urlPath);
   }
   return routes;
@@ -150,7 +155,7 @@ function listRuntimeSourceFiles(dir, files = []) {
 }
 
 function toRepoRelativePath(pathname) {
-  return pathname.slice(ROOT.length).replace(/^\/+/, '');
+  return pathname.slice(ROOT.length).replace(TO_REPO_RELATIVE_PATH_RE, '');
 }
 
 function findEndpointRateLimitFailOpenOptOuts() {
@@ -160,7 +165,7 @@ function findEndpointRateLimitFailOpenOptOuts() {
   // pass `{ failClosed: false }` and silently nullify the registry.
   const findings = [];
   const callWithFailOpenOptOut =
-    /checkEndpointRateLimit\s*\([\s\S]*?\{[\s\S]*?failClosed\s*:\s*false[\s\S]*?\}\s*\)/g;
+    CALL_WITH_FAIL_OPEN_OPT_OUT_RE;
 
   for (const dir of RUNTIME_RATE_LIMIT_DIRS) {
     for (const file of listRuntimeSourceFiles(dir)) {

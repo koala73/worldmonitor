@@ -11,6 +11,9 @@ import {
   PORTWATCH_PORT_ACTIVITY_KEY_PREFIX,
 } from '../../../_shared/cache-keys';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 interface SeederPort {
   portId?: string | null;
   portName?: string | null;
@@ -80,7 +83,7 @@ export async function getCountryPortActivity(
   // The gateway applies no field validation to this request (the sibling
   // GetCountryRiskRequest carries stringPattern ^[A-Z]{2}$), so it must be here.
   const code = req.countryCode?.trim().toUpperCase() ?? '';
-  if (!/^[A-Z]{2}$/.test(code)) return EMPTY;
+  if (!COUNTRY_CODE_RE.test(code)) return EMPTY;
 
   // PERF: allowlist + payload reads run concurrently; the gate is applied on
   // the combined result. Valid codes save a serial RTT; invalid ones cost one

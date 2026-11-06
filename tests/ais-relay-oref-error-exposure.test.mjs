@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 
 const src = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 
@@ -14,7 +15,7 @@ function extractFunction(name) {
   assert.ok(start >= 0, `${name} must exist in the relay`);
   const end = src.indexOf('\n}\n', start);
   // eslint-disable-next-line no-new-func
-  return new Function(`${src.slice(start, end + 2)}; return ${name};`)();
+  return new Function(`${moduleRegexDeclarations(src)}\n${src.slice(start, end + 2)}; return ${name};`)();
 }
 
 test('poll failures publish a fixed summary, never the curl argv', () => {
@@ -90,7 +91,7 @@ test('redactOrefError still strips a pattern-shaped credential it was not config
 
 test('OREF_PROXY_CREDENTIAL is the user:pass part of OREF_PROXY_AUTH in either accepted form', () => {
   const block = src.slice(src.indexOf('const OREF_PROXY_CREDENTIAL = '), src.indexOf('})();', src.indexOf('const OREF_PROXY_CREDENTIAL = ')) + 5);
-  const derive = (auth) => new Function('OREF_PROXY_AUTH', `${block}; return OREF_PROXY_CREDENTIAL;`)(auth);
+  const derive = (auth) => new Function('OREF_PROXY_AUTH', `${moduleRegexDeclarations(src)}\n${block}; return OREF_PROXY_CREDENTIAL;`)(auth);
   assert.equal(derive('user:pa/ss@wd@proxy.example:9000'), 'user:pa/ss@wd');
   assert.equal(derive('http://user:pass@proxy.example:9000'), 'user:pass');
   assert.equal(derive(''), '');

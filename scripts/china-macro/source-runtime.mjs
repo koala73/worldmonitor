@@ -1,5 +1,17 @@
 import { createRequire } from 'node:module';
 
+const SHOULD_RETRY_VIA_PROXY_RE = /^HTTP_\d{3}$/;
+const SHOULD_RETRY_VIA_PROXY_RE_2 = /self signed certificate|certificate chain/i;
+const SHOULD_RETRY_VIA_PROXY_RE_3 = /fetch failed/i;
+const REASON_FOR_RE = /timeout/i;
+const REASON_FOR_RE_2 = /MALFORMED_RELEASE/;
+const ANCHOR_PATTERN_RE = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+const TITLE_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const LINE_BREAK_RE = /\r?\n/;
+const LINE_RE = /#.*$/;
+
+
 const {
   parseProxyConfigForAttempt,
   proxyFetch,
@@ -119,8 +131,8 @@ export function shouldRetryViaProxy(error) {
   if (error?.code === 'SOURCE_CONTRACT_VIOLATION') return false;
   if (Number.isInteger(error?.status) || Number.isInteger(error?.cause?.status)) return false;
   if (
-    /^HTTP_\d{3}$/.test(String(error?.code ?? ''))
-    || /^HTTP_\d{3}$/.test(String(error?.message ?? ''))
+    SHOULD_RETRY_VIA_PROXY_RE.test(String(error?.code ?? ''))
+    || SHOULD_RETRY_VIA_PROXY_RE.test(String(error?.message ?? ''))
   ) return false;
   // Caller abort only. AbortSignal.timeout surfaces as TimeoutError in Node 24
   // and is retryable below — a hang is the blocked-egress shape this hop exists
@@ -129,14 +141,14 @@ export function shouldRetryViaProxy(error) {
   if (
     error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
     || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
-    || /self signed certificate|certificate chain/i.test(
+    || SHOULD_RETRY_VIA_PROXY_RE_2.test(
       `${String(error?.message)} ${String(error?.cause?.message)}`,
     )
   ) return false;
   if (error?.name === 'TimeoutError') return true;
   const code = error?.code || error?.cause?.code;
   if (PROXY_RETRYABLE_CODES.has(code)) return true;
-  if (/fetch failed/i.test(String(error?.message ?? ''))) return true;
+  if (SHOULD_RETRY_VIA_PROXY_RE_3.test(String(error?.message ?? ''))) return true;
   return false;
 }
 
@@ -302,7 +314,7 @@ export async function fetchText(fetchFn, value, {
       logTransportFailure(error, target, 'direct', transientRetries + 1);
       const permanentTls = error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
         || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
-        || /self signed certificate|certificate chain/i.test(
+        || SHOULD_RETRY_VIA_PROXY_RE_2.test(
           `${String(error?.message)} ${String(error?.cause?.message)}`,
         );
       let proxyAttempted = false;
@@ -449,19 +461,19 @@ export function reasonFor(error) {
   if (
     error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
     || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
-    || /self signed certificate|certificate chain/i.test(
+    || SHOULD_RETRY_VIA_PROXY_RE_2.test(
       `${String(error?.message)} ${String(error?.cause?.message)}`,
     )
   ) return 'TLS_CERTIFICATE_ERROR';
-  if (error?.name === 'TimeoutError' || /timeout/i.test(String(error?.message))) return 'TIMEOUT';
-  if (/MALFORMED_RELEASE/.test(String(error?.message))) return 'SCHEMA_DRIFT';
+  if (error?.name === 'TimeoutError' || REASON_FOR_RE.test(String(error?.message))) return 'TIMEOUT';
+  if (REASON_FOR_RE_2.test(String(error?.message))) return 'SCHEMA_DRIFT';
   return 'FETCH_FAILED';
 }
 
 export function findReleaseUrl(html, baseUrl, titlePattern, label, policy) {
-  const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const anchorPattern = ANCHOR_PATTERN_RE;
   for (const match of html.matchAll(anchorPattern)) {
-    const title = String(match[2]).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const title = String(match[2]).replace(TITLE_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
     if (titlePattern.test(title)) {
       return validateSourceUrl(new URL(match[1], baseUrl).toString(), policy).toString();
     }
@@ -478,8 +490,8 @@ function robotsGroups(text) {
     current = { agents: [], rules: [] };
     groupHasDirectives = false;
   };
-  for (const rawLine of String(text).split(/\r?\n/)) {
-    const line = rawLine.replace(/#.*$/, '').trim();
+  for (const rawLine of String(text).split(LINE_BREAK_RE)) {
+    const line = rawLine.replace(LINE_RE, '').trim();
     if (!line) continue;
     const separator = line.indexOf(':');
     if (separator < 0) continue;

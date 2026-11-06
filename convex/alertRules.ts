@@ -19,6 +19,10 @@ import {
 } from "../shared/alert-rule-shape";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const NORMALIZE_TICKERS_RE = /^[A-Z][A-Z0-9&-]{0,11}(\.[A-Z]{1,3})?$/;
+
+
 type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
 
@@ -186,7 +190,7 @@ function normalizeCountries(input: string[]): string[] {
   for (const raw of input) {
     if (typeof raw !== "string") continue;
     const upper = raw.trim().toUpperCase();
-    if (!/^[A-Z]{2}$/.test(upper)) continue;
+    if (!COUNTRY_CODE_RE.test(upper)) continue;
     if (seen.has(upper)) continue;
     seen.add(upper);
     cleaned.push(upper);
@@ -229,7 +233,7 @@ function normalizeTickers(input: string[]): string[] {
   for (const raw of input) {
     if (typeof raw !== "string") continue;
     const upper = raw.trim().toUpperCase();
-    if (!/^[A-Z][A-Z0-9&-]{0,11}(\.[A-Z]{1,3})?$/.test(upper)) continue;
+    if (!NORMALIZE_TICKERS_RE.test(upper)) continue;
     if (seen.has(upper)) continue;
     seen.add(upper);
     cleaned.push(upper);

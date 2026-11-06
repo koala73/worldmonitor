@@ -32,6 +32,17 @@
 // TypeScript loader, and the server bundles this into an edge function.
 
 /** ISO codes that appear as bare uppercase tokens in ordinary English news. */
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const NORMALIZE_MENTION_TEXT_RE = /\p{Diacritic}/gu;
+const NORMALIZE_MENTION_TEXT_RE_2 = /&/g;
+const NORMALIZE_MENTION_TEXT_RE_3 = /[''‘’`.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const ICU_REGION_NAMES_RE = /\s/g;
+const LOCALIZED_COUNTRY_NAMES_RE = /^[a-z]{2,3}$/;
+const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
+const WHITESPACE_RE_2 = /\s+/;
+
 export const CODE_TOKEN_ALLOWLIST = new Set(['US']);
 
 // Names ICU renders in a form no headline uses, replaced wholesale.
@@ -150,7 +161,7 @@ const DEMONYMS = {
 };
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 /**
@@ -162,18 +173,18 @@ function escapeRegExp(value) {
 export function normalizeMentionText(text) {
   return String(text || '')
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_MENTION_TEXT_RE, '')
     .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[''‘’`.(),/-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_MENTION_TEXT_RE_2, ' and ')
+    .replace(NORMALIZE_MENTION_TEXT_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
 /** English display name for an ISO-3166 alpha-2 code, or '' when ICU only echoes the code. */
 export function countryDisplayName(code) {
   const normalized = String(code || '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(normalized)) return '';
+  if (!COUNTRY_CODE_RE.test(normalized)) return '';
   try {
     const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(normalized);
     if (!name || name.toUpperCase() === normalized || name.toLowerCase() === 'unknown region') return '';
@@ -194,7 +205,7 @@ const KATAKANA_RUN = /[\p{Script=Katakana}ー]/u;
  */
 function normalizeLocalizedText(text) {
   const value = String(text || '');
-  if (CJK_SCRIPT.test(value)) return value.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (CJK_SCRIPT.test(value)) return value.normalize('NFKC').toLowerCase().replace(WHITESPACE_RE, ' ').trim();
   return normalizeMentionText(value);
 }
 
@@ -205,7 +216,7 @@ function icuRegionNames(code, lang) {
       const name = new Intl.DisplayNames([lang], { type: 'region', style }).of(code);
       if (!name || name.toUpperCase() === code) continue;
       const text = normalizeLocalizedText(name);
-      if (style === 'short' && [...text.replace(/\s/g, '')].length < (CJK_SCRIPT.test(text) ? 2 : 4)) continue;
+      if (style === 'short' && [...text.replace(ICU_REGION_NAMES_RE, '')].length < (CJK_SCRIPT.test(text) ? 2 : 4)) continue;
       if (text) names.add(text);
     } catch {
       /* Intl.DisplayNames can be missing in constrained runtimes. */
@@ -240,7 +251,7 @@ function allRegionNames(lang) {
 export function localizedCountryNames(code, language) {
   const normalized = String(code || '').trim().toUpperCase();
   const lang = String(language || '').trim().toLowerCase();
-  if (!/^[A-Z]{2}$/.test(normalized) || !/^[a-z]{2,3}$/.test(lang) || lang === 'en') return [];
+  if (!COUNTRY_CODE_RE.test(normalized) || !LOCALIZED_COUNTRY_NAMES_RE.test(lang) || lang === 'en') return [];
   return icuRegionNames(normalized, lang);
 }
 
@@ -256,7 +267,7 @@ export function mentionsLocalizedCountry(rawText, names, language) {
   const lang = String(language || '').trim().toLowerCase();
   const text = normalizeLocalizedText(rawText);
   const unspaced = ['zh', 'ja'].includes(lang);
-  const wordChar = /[\p{L}\p{N}]/u;
+  const wordChar = WORD_CHAR_RE;
   const longer = allRegionNames(lang)
     .filter((other) => !names.includes(other) && names.some((name) => other.length > name.length && other.includes(name)));
   const covered = (at, length) => longer.some((other) => {
@@ -325,7 +336,7 @@ function scrubNormalizedExclusions(normalizedText, exclusions) {
 function scrubRawExclusions(rawText, exclusions) {
   let out = rawText;
   for (const phrase of exclusions) {
-    const pattern = String(phrase || '').trim().split(/\s+/).filter(Boolean).map(escapeRegExp).join('[\\s-]+');
+    const pattern = String(phrase || '').trim().split(WHITESPACE_RE_2).filter(Boolean).map(escapeRegExp).join('[\\s-]+');
     if (pattern) out = out.replace(new RegExp(pattern, 'gi'), ' ');
   }
   return out;

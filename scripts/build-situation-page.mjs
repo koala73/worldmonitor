@@ -11,6 +11,9 @@ import { join } from 'node:path';
 import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
 import { SITUATION_PAGE_PATH, situationSections } from './situation-page/sections.mjs';
 
+const CRISIS_FIGURE_RE = /^[\d,]+$/;
+
+
 const SITUATION_SECTIONS = situationSections(CHOKEPOINT_REGISTRY);
 
 export { SITUATION_PAGE_PATH };
@@ -63,7 +66,7 @@ export function crisisFigure(pulse) {
   const events = String(pulse.eventsTotal ?? '').trim();
   const fatalities = String(pulse.fatalities ?? '').trim();
   const period = String(pulse.referencePeriod ?? '').trim();
-  if (!/^[\d,]+$/.test(events) || !/^[\d,]+$/.test(fatalities) || !OBSERVATION_PERIOD_RE.test(period)) return null;
+  if (!CRISIS_FIGURE_RE.test(events) || !CRISIS_FIGURE_RE.test(fatalities) || !OBSERVATION_PERIOD_RE.test(period)) return null;
   return `${events} recorded events and ${fatalities} fatalities in the ${referenceMonth(period)} HAPI summary`;
 }
 

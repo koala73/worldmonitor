@@ -147,6 +147,9 @@ import {
 } from '@/services/checkout-return-state';
 import { resolveCheckoutContext, type CheckoutContext } from '../../shared/checkout-attribution';
 
+const ESCAPED_RE = /["\\]/g;
+
+
 function readSessionStorageValue(key: string): string | null {
   try {
     return window.sessionStorage.getItem(key);
@@ -796,7 +799,7 @@ export class PanelLayoutManager implements AppModule {
     const panelKey = state.context.origin.panelKey;
     const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
       ? CSS.escape(panelKey)
-      : panelKey.replace(/["\\]/g, '\\$&');
+      : panelKey.replace(ESCAPED_RE, '\\$&');
     document.querySelector<HTMLElement>(`[data-panel="${escaped}"]`)?.scrollIntoView({
       block: 'start',
       behavior: 'smooth',

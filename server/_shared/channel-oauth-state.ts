@@ -17,6 +17,15 @@
 // @ts-expect-error — JS module, no declaration file
 import { isDisallowedOrigin } from '../../api/_cors.js';
 
+const BASE64URL_RE = /\+/g;
+const BASE64URL_RE_2 = /\//g;
+const BASE64URL_RE_3 = /=+$/;
+const HOST_RE = /:\d+$/;
+const PARSE_CHANNEL_OAUTH_STATE_RE = /^[0-9a-f]{64}$/;
+const PARSE_CHANNEL_OAUTH_STATE_RE_2 = /^https?:\/\/[^/]+$/;
+const PARSE_CHANNEL_OAUTH_STATE_RE_3 = /^__Secure-wm_(slack|discord)_oauth_[a-f0-9-]{36}$/;
+
+
 export type ChannelOAuthProvider = 'slack' | 'discord';
 
 export interface ChannelOAuthState {
@@ -37,7 +46,7 @@ export function channelOAuthCookieName(provider: ChannelOAuthProvider): string {
 function base64url(bytes: Uint8Array): string {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(bin).replace(BASE64URL_RE, '-').replace(BASE64URL_RE_2, '_').replace(BASE64URL_RE_3, '');
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -50,7 +59,7 @@ function hashBindValue(provider: ChannelOAuthProvider, value: string): Promise<s
 }
 
 function cookieDomainAttr(req: Request): string {
-  const host = (req.headers.get('host') ?? new URL(req.url).host).toLowerCase().replace(/:\d+$/, '');
+  const host = (req.headers.get('host') ?? new URL(req.url).host).toLowerCase().replace(HOST_RE, '');
   return host === 'worldmonitor.app' || host.endsWith('.worldmonitor.app') ? '; Domain=worldmonitor.app' : '';
 }
 
@@ -92,9 +101,9 @@ export function parseChannelOAuthState(raw: string | null): ChannelOAuthState | 
   if (!parsed || typeof parsed !== 'object') return null;
   const { userId, bindHash, openerOrigin, cookieName } = parsed as Record<string, unknown>;
   if (typeof userId !== 'string' || !userId) return null;
-  if (typeof bindHash !== 'string' || !/^[0-9a-f]{64}$/.test(bindHash)) return null;
-  if (typeof openerOrigin !== 'string' || !/^https?:\/\/[^/]+$/.test(openerOrigin)) return null;
-  if (cookieName !== undefined && (typeof cookieName !== 'string' || !/^__Secure-wm_(slack|discord)_oauth_[a-f0-9-]{36}$/.test(cookieName))) return null;
+  if (typeof bindHash !== 'string' || !PARSE_CHANNEL_OAUTH_STATE_RE.test(bindHash)) return null;
+  if (typeof openerOrigin !== 'string' || !PARSE_CHANNEL_OAUTH_STATE_RE_2.test(openerOrigin)) return null;
+  if (cookieName !== undefined && (typeof cookieName !== 'string' || !PARSE_CHANNEL_OAUTH_STATE_RE_3.test(cookieName))) return null;
   return { userId, bindHash, openerOrigin, ...(typeof cookieName === 'string' ? { cookieName } : {}) };
 }
 

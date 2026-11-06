@@ -42,6 +42,10 @@ import { corroborateRunListings, supersedesRun as supersedes } from './lib/gh-ru
 import { isMainModule } from './lib/main-module.mjs';
 import { REPOSITORY, readArgument } from './railway-cli.mjs';
 
+const STATUS_RE = /\(HTTP (\d{3})\)/;
+const IS_PROVEN_GITHUB_TRANSPORT_FAILURE_RE = /\b(?:tls|x509|eof)\b|certificate|dial tcp|lookup .*no such host|no such host|connection (?:reset|refused|closed|aborted)|network is unreachable|no route to host|context deadline exceeded|i\/o timeout|operation timed out|temporary failure in name resolution/i;
+
+
 // The workflows this monitor speaks for, keyed by workflow FILE (stable) with
 // the display name for humans. Each must be a push-to-main deployer that the
 // deploy gate cannot see.
@@ -242,7 +246,7 @@ export function isRetryableGhFailure(error) {
   // gh itself missing (ENOENT) will never succeed on a retry.
   if (error.code === 'ENOENT') return false;
   const message = error instanceof Error ? error.message : String(error);
-  const status = message.match(/\(HTTP (\d{3})\)/);
+  const status = message.match(STATUS_RE);
   if (status) {
     const code = Number(status[1]);
     return code === 408 || code === 429 || code >= 500;
@@ -263,7 +267,7 @@ function isGithubReadFailure(error) {
 }
 
 function isProvenGithubTransportFailure(message) {
-  return /\b(?:tls|x509|eof)\b|certificate|dial tcp|lookup .*no such host|no such host|connection (?:reset|refused|closed|aborted)|network is unreachable|no route to host|context deadline exceeded|i\/o timeout|operation timed out|temporary failure in name resolution/i.test(message);
+  return IS_PROVEN_GITHUB_TRANSPORT_FAILURE_RE.test(message);
 }
 
 function readGithub(gh, args) {
@@ -292,7 +296,7 @@ export function isGithubRecordUnreadability(error) {
   // GitHub answer about the deploy, so it warns like any other unreadability
   // rather than claiming a production deploy stopped happening.
   if (error.githubRecordUncorroborated === true) return true;
-  const status = message.match(/\(HTTP (\d{3})\)/);
+  const status = message.match(STATUS_RE);
   if (status) {
     const code = Number(status[1]);
     return code >= 500;

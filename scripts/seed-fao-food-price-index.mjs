@@ -12,6 +12,9 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
+const DATA_LINES_RE = /^\d{4}-\d{2},/;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:fao-ffpi:v1';
@@ -38,7 +41,7 @@ async function fetchFaoFfpi() {
   //   Row 4+: YYYY-MM,value,...
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
 
-  const dataLines = lines.filter(l => /^\d{4}-\d{2},/.test(l));
+  const dataLines = lines.filter(l => DATA_LINES_RE.test(l));
   if (dataLines.length === 0) throw new Error('FAO CSV: no data rows found');
 
   function parseVal(s) {

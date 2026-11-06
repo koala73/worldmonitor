@@ -1,5 +1,8 @@
 import { fetchLatestRelease } from './_github-release.js';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+
+
 // Non-sebuf: returns XML/HTML, stays as standalone Vercel function
 export const config = { runtime: 'edge' };
 
@@ -36,7 +39,7 @@ export const SUPPORTED_VARIANTS = new Set([
 const DESKTOP_ASSET_IDENTIFIER = 'worldmonitor';
 
 function canonicalAssetName(name) {
-  return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return String(name || '').toLowerCase().replace(NON_ALPHANUMERIC_RE, '');
 }
 
 function findDesktopAsset(assets, platformMatcher) {

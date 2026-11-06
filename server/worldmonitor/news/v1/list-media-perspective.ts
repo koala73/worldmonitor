@@ -19,6 +19,10 @@ import { UN_M49_REGION_IDS, unM49RegionCountries } from '../../../_shared/un-m49
 import { INTEL_SOURCES, VARIANT_FEEDS } from './_feeds';
 import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
 
+const WHITESPACE_RE = /\s+/g;
+const LANG_RE = /^[a-z]{2}$/;
+
+
 export const MEDIA_PERSPECTIVE_CACHE_PREFIX = 'news:media-perspective:v2';
 const CACHE_TTL_SECONDS = 300;
 const PARTIAL_CACHE_TTL_SECONDS = 60;
@@ -87,14 +91,14 @@ function rowFromCache(value: unknown, source: string, now: number, cutoff: numbe
     ? (typeof row.originPublisher === 'string' ? row.originPublisher.trim() : '')
     : source;
   if (!publisher || publisher.length > 200) return null;
-  const title = row.title.replace(/\s+/g, ' ').trim();
+  const title = row.title.replace(WHITESPACE_RE, ' ').trim();
   if (!title || title.length > 1000 || row.link.length > 2048) return null;
   if (typeof row.publishedAt !== 'number' || !Number.isFinite(row.publishedAt)
     || row.publishedAt < cutoff || row.publishedAt > now + FUTURE_DATE_TOLERANCE_MS) return null;
   try {
     const url = new URL(row.link);
     if (!isVerifiableArticleUrl(url.href) || url.username || url.password || revoked.has(row.link) || revoked.has(url.href)) return null;
-    const lang = typeof row.lang === 'string' && /^[a-z]{2}$/.test(row.lang) ? row.lang : null;
+    const lang = typeof row.lang === 'string' && LANG_RE.test(row.lang) ? row.lang : null;
     return { publisher, title, link: url.href, publishedAt: row.publishedAt, lang };
   } catch {
     return null;

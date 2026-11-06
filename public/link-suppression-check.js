@@ -20,6 +20,8 @@
 /* eslint-env serviceworker */
 /* global self, fetch, caches */
 
+const HOST_RE = /\.+$/;
+
 (function () {
   'use strict';
 
@@ -42,7 +44,7 @@
     }
     var protocol = parsed.protocol.toLowerCase();
     if (protocol !== 'http:' && protocol !== 'https:') return null;
-    var host = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+    var host = parsed.hostname.toLowerCase().replace(HOST_RE, '');
     if (host.length === 0) return null;
     var isDefaultPort =
       (protocol === 'http:' && parsed.port === '80') ||
@@ -54,7 +56,7 @@
     } catch (_e2) {
       // Malformed % sequences stay encoded — still comparable.
     }
-    return { href: protocol + '//' + host + path + parsed.search + parsed.hash, host: parsed.hostname.toLowerCase().replace(/\.+$/, '') };
+    return { href: protocol + '//' + host + path + parsed.search + parsed.hash, host: parsed.hostname.toLowerCase().replace(HOST_RE, '') };
   }
 
   function digestUrl(url) {
@@ -90,7 +92,7 @@
       if (entry && entry.href === norm.href) return Promise.resolve(true);
     }
     for (var j = 0; j < hosts.length; j++) {
-      var host = typeof hosts[j] === 'string' ? hosts[j].trim().toLowerCase().replace(/\.+$/, '') : '';
+      var host = typeof hosts[j] === 'string' ? hosts[j].trim().toLowerCase().replace(HOST_RE, '') : '';
       if (!host) continue;
       if (norm.host === host || norm.host.slice(-host.length - 1) === '.' + host) return Promise.resolve(true);
     }

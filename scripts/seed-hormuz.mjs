@@ -15,6 +15,17 @@
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 
+const STRIP_TAGS_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const DERIVE_STATUS_RE = /\bclosed\b|\bclosure\b/;
+const DERIVE_STATUS_RE_2 = /disrupted|disruption|halt|standstill|suspended|suspension|severely constrained/;
+const DERIVE_STATUS_RE_3 = /restricted|constrained|congested|tension|heightened/;
+const DATE_M_RE = /<time([^>]*)>(.*?)<\/time>/;
+const ISO_M_RE = /datetime="(\d{4}-\d{2}-\d{2})/;
+const LI_M_RE = /Latest insights([\s\S]*?)See key insights/;
+const TITLE_M_RE = /<strong[^>]*>(Strategic trade insights?:[\s\S]*?)<\/strong>/i;
+const PARSE_WTO_PAGE_RE = /^\*\s*AIS\b|based on vessels visible through AIS/i;
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'supply_chain:hormuz_tracker:v1';
@@ -212,14 +223,14 @@ async function fetchPbiCharts() {
 }
 
 export function stripTags(s) {
-  return decodeHtmlEntities(s.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(s.replace(STRIP_TAGS_RE, '')).replace(WHITESPACE_RE, ' ').trim();
 }
 
 export function deriveStatus(text) {
   const lc = text.toLowerCase();
-  if (/\bclosed\b|\bclosure\b/.test(lc)) return 'closed';
-  if (/disrupted|disruption|halt|standstill|suspended|suspension|severely constrained/.test(lc)) return 'disrupted';
-  if (/restricted|constrained|congested|tension|heightened/.test(lc)) return 'restricted';
+  if (DERIVE_STATUS_RE.test(lc)) return 'closed';
+  if (DERIVE_STATUS_RE_2.test(lc)) return 'disrupted';
+  if (DERIVE_STATUS_RE_3.test(lc)) return 'restricted';
   return 'open';
 }
 
@@ -252,12 +263,12 @@ async function scrapeWtoPage() {
 export function parseWtoPage(html) {
   // --- Date of latest insights ---
   // Prefer the machine-readable datetime: the visible text is dd.mm.yyyy.
-  const dateM = html.match(/<time([^>]*)>(.*?)<\/time>/);
-  const isoM = dateM?.[1].match(/datetime="(\d{4}-\d{2}-\d{2})/);
+  const dateM = html.match(DATE_M_RE);
+  const isoM = dateM?.[1].match(ISO_M_RE);
   const updatedDate = isoM ? isoM[1] : dateM ? stripTags(dateM[2]) : null;
 
   // --- "Latest insights" summary blurb (above "See key insights" link) ---
-  const liM = html.match(/Latest insights([\s\S]*?)See key insights/);
+  const liM = html.match(LI_M_RE);
   let summary = null;
   if (liM) {
     const chunk = liM[1];
@@ -268,7 +279,7 @@ export function parseWtoPage(html) {
 
   // --- Title of latest strategic insight (bold text) ---
   // WTO has written both "Strategic Trade Insight:" and "Strategic trade insights:".
-  const titleM = html.match(/<strong[^>]*>(Strategic trade insights?:[\s\S]*?)<\/strong>/i);
+  const titleM = html.match(TITLE_M_RE);
   const title = titleM ? stripTags(titleM[1]) : null;
 
   // --- Full body paragraphs of the insight ---
@@ -280,7 +291,7 @@ export function parseWtoPage(html) {
     while ((m = paraRe.exec(chunk)) !== null && paragraphs.length < 5) {
       const text = stripTags(m[1]);
       // The AIS coverage note is methodology, not insight text.
-      if (text.length > 30 && !/^\*\s*AIS\b|based on vessels visible through AIS/i.test(text)) {
+      if (text.length > 30 && !PARSE_WTO_PAGE_RE.test(text)) {
         paragraphs.push(text);
       }
     }

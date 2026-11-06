@@ -16,6 +16,18 @@ import {
 } from '../shared/publisher-families.js';
 import { assertKnownOriginCode, resolveSourceOrigin } from './source-origin.mjs';
 
+const CATALOG_HOST_KEY_RE = /^www\./i;
+const HOST_FROM_FEED_URL_RE = /^www\./;
+const HOST_FROM_FEED_URL_RE_2 = /^https?:\/\/([^/?#]+)/i;
+const GOOGLE_NEWS_SITE_HOSTS_RE = /\bsite:([a-z0-9.-]+)/gi;
+const READ_QUOTED_STRING_RE = /^[0-9a-f]{2}$/i;
+const READ_QUOTED_STRING_RE_2 = /^[0-9a-f]{1,6}$/i;
+const TOKENIZE_FEED_SOURCE_RE = /\s/;
+const TOKENIZE_FEED_SOURCE_RE_2 = /[A-Za-z_$]/;
+const TOKENIZE_FEED_SOURCE_RE_3 = /[A-Za-z0-9_$]/;
+const COLLECT_FEED_URLS_RE = /^https?:\/\//i;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const SYNDICATION_TRANSPORT_HOSTS = Object.freeze(new Set([
@@ -57,15 +69,15 @@ export function uniqueSorted(values) {
 }
 
 export function catalogHostKey(host) {
-  return String(host || '').replace(/^www\./i, '').toLowerCase();
+  return String(host || '').replace(CATALOG_HOST_KEY_RE, '').toLowerCase();
 }
 
 export function hostFromFeedUrl(raw) {
   try {
-    return new URL(raw).hostname.replace(/^www\./, '').toLowerCase();
+    return new URL(raw).hostname.replace(HOST_FROM_FEED_URL_RE, '').toLowerCase();
   } catch {
-    const match = String(raw || '').match(/^https?:\/\/([^/?#]+)/i);
-    return match ? match[1].replace(/^www\./, '').toLowerCase() : '';
+    const match = String(raw || '').match(HOST_FROM_FEED_URL_RE_2);
+    return match ? match[1].replace(HOST_FROM_FEED_URL_RE, '').toLowerCase() : '';
   }
 }
 
@@ -77,7 +89,7 @@ export function googleNewsSiteHosts(query) {
     decoded = String(query || '').replaceAll('+', ' ');
   }
   const hosts = [];
-  for (const match of decoded.matchAll(/\bsite:([a-z0-9.-]+)/gi)) {
+  for (const match of decoded.matchAll(GOOGLE_NEWS_SITE_HOSTS_RE)) {
     const host = hostFromFeedUrl(`https://${match[1]}`);
     if (host) hosts.push(host);
   }
@@ -134,7 +146,7 @@ function readQuotedString(source, start, fileName) {
     }
     if (escaped === 'x') {
       const hex = source.slice(index, index + 2);
-      if (!/^[0-9a-f]{2}$/i.test(hex)) throw sourceParseError(fileName, 'invalid hexadecimal string escape');
+      if (!READ_QUOTED_STRING_RE.test(hex)) throw sourceParseError(fileName, 'invalid hexadecimal string escape');
       value += String.fromCodePoint(Number.parseInt(hex, 16));
       index += 2;
       continue;
@@ -143,7 +155,7 @@ function readQuotedString(source, start, fileName) {
       const braced = source[index] === '{';
       const close = braced ? source.indexOf('}', index + 1) : index + 4;
       const hex = braced ? source.slice(index + 1, close) : source.slice(index, close);
-      if (close < 0 || !/^[0-9a-f]{1,6}$/i.test(hex)) {
+      if (close < 0 || !READ_QUOTED_STRING_RE_2.test(hex)) {
         throw sourceParseError(fileName, 'invalid Unicode string escape');
       }
       const codePoint = Number.parseInt(hex, 16);
@@ -173,7 +185,7 @@ function tokenizeFeedSource(source, fileName) {
   let index = 0;
   while (index < source.length) {
     const char = source[index];
-    if (/\s/.test(char)) {
+    if (TOKENIZE_FEED_SOURCE_RE.test(char)) {
       index += 1;
       continue;
     }
@@ -199,9 +211,9 @@ function tokenizeFeedSource(source, fileName) {
       tokens.push({ type: 'template', value: '' });
       continue;
     }
-    if (/[A-Za-z_$]/.test(char)) {
+    if (TOKENIZE_FEED_SOURCE_RE_2.test(char)) {
       let end = index + 1;
-      while (end < source.length && /[A-Za-z0-9_$]/.test(source[end])) end += 1;
+      while (end < source.length && TOKENIZE_FEED_SOURCE_RE_3.test(source[end])) end += 1;
       tokens.push({ type: 'identifier', value: source.slice(index, end) });
       index = end;
       continue;
@@ -298,7 +310,7 @@ function callArguments(tokens, open, close) {
 function collectFeedUrls(tokens, start, end, pairs, urls) {
   for (let index = start; index < end; index += 1) {
     const token = tokens[index];
-    if (token.type === 'string' && /^https?:\/\//i.test(token.value)) pushUrl(urls, token.value);
+    if (token.type === 'string' && COLLECT_FEED_URLS_RE.test(token.value)) pushUrl(urls, token.value);
     if (token.type !== 'identifier' || !['rss', 'railwayRss', 'gn', 'gnLocale'].includes(token.value)) continue;
     const open = index + 1;
     const close = pairs.get(open);
@@ -352,7 +364,7 @@ export function classifyFeedDeclaration(name, url) {
   let host = '';
   try {
     parsed = new URL(url);
-    host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+    host = parsed.hostname.replace(HOST_FROM_FEED_URL_RE, '').toLowerCase();
   } catch {
     host = hostFromFeedUrl(url);
   }

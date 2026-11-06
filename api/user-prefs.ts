@@ -8,6 +8,16 @@
  * Requires CONVEX_URL + CLERK_JWT_ISSUER_DOMAIN env vars.
  */
 
+const REQUEST_ID_MATCH_RE = /\[Request ID:\s*([a-f0-9]+)\]/i;
+const ERROR_SHAPE_RE = /UNAUTHENTICATED|"code":\s*"Unauthenticated"/;
+const ERROR_SHAPE_RE_2 = /"code":\s*"ServiceUnavailable"/;
+const ERROR_SHAPE_RE_3 = /"code":\s*"InternalServerError"/;
+const ERROR_SHAPE_RE_4 = /"code":\s*"WorkerOverloaded"/;
+const ERROR_SHAPE_RE_5 = /error code:\s*52[0-7]\b/i;
+const ERROR_SHAPE_RE_6 = /\bJSON\b/;
+const ERROR_SHAPE_RE_7 = /timeout|timed out|aborted/i;
+const ERROR_SHAPE_RE_8 = /fetch failed|network|ECONN|ENOTFOUND|getaddrinfo/i;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -583,7 +593,7 @@ export function buildSentryContext(
   level?: 'warning' | 'info' | 'error' | 'fatal';
 } {
   const errName = err instanceof Error ? err.name : 'unknown';
-  const requestIdMatch = msg.match(/\[Request ID:\s*([a-f0-9]+)\]/i);
+  const requestIdMatch = msg.match(REQUEST_ID_MATCH_RE);
   const convexRequestId = requestIdMatch?.[1];
   // Order matters: UNAUTHENTICATED is more specific than the request-id
   // server-error shape and must be checked first. Auth drift is its own bucket
@@ -603,21 +613,21 @@ export function buildSentryContext(
     // non-default serializer may emit (`"code": "X"`), mirroring `hasConvexCode`
     // in _convex-error.js so this Sentry bucket and the kind→503 mapping stay in
     // lockstep — a with-whitespace body classifies identically on both sides.
-    ?? (/UNAUTHENTICATED|"code":\s*"Unauthenticated"/.test(msg) ? 'convex_auth_drift'
-      : /"code":\s*"ServiceUnavailable"/.test(msg) ? 'convex_service_unavailable'
+    ?? (ERROR_SHAPE_RE.test(msg) ? 'convex_auth_drift'
+      : ERROR_SHAPE_RE_2.test(msg) ? 'convex_service_unavailable'
       // Convex platform 500 — runtime can't recover the request. Same
       // 503-with-Retry-After remediation as ServiceUnavailable in
       // _convex-error.js, but kept as its own Sentry bucket so on-call can
       // tell internal-500s apart from genuine 503s when triaging
       // (WORLDMONITOR-PG/PH).
-      : /"code":\s*"InternalServerError"/.test(msg) ? 'convex_internal_error'
+      : ERROR_SHAPE_RE_3.test(msg) ? 'convex_internal_error'
       // Convex platform worker saturation: `{"code":"WorkerOverloaded",
       // "message":"There are no available workers to process the request"}`.
       // Mapped to SERVICE_UNAVAILABLE (503 + Retry-After) in _convex-error.js,
       // same as InternalServerError/ServiceUnavailable; kept as its own Sentry
       // bucket so on-call can tell worker-saturation apart from internal-500s
       // and genuine 503s when triaging (WORLDMONITOR-PG).
-      : /"code":\s*"WorkerOverloaded"/.test(msg) ? 'convex_worker_overloaded'
+      : ERROR_SHAPE_RE_4.test(msg) ? 'convex_worker_overloaded'
       : isOpaqueConvexServerError(msg) ? 'convex_server_error'
       // Cloudflare edge error (520-527) fronting the Convex deployment — see
       // _convex-error.js. Mapped to SERVICE_UNAVAILABLE (503 + Retry-After)
@@ -628,7 +638,7 @@ export function buildSentryContext(
       // CF body text would otherwise be mis-bucketed as transport_timeout.
       // A genuine client AbortSignal.timeout never carries an `error code: 52x`
       // substring, so this ordering steals no real-timeout events.
-      : /error code:\s*52[0-7]\b/i.test(msg) ? 'transport_cloudflare'
+      : ERROR_SHAPE_RE_5.test(msg) ? 'transport_cloudflare'
       // Response-body JSON parse failure (truncated/corrupt Convex response —
       // WORLDMONITOR-YV). Keyed on the error NAME, not message substrings,
       // mirroring the detector in _convex-error.js so the 503 mapping and
@@ -636,9 +646,9 @@ export function buildSentryContext(
       // V8's `... is not valid JSON` message embeds a snippet of the
       // offending body, and a snippet containing "timeout"/"aborted" prose
       // would otherwise steal the event into transport_timeout.
-      : errName === 'SyntaxError' && /\bJSON\b/.test(msg) ? 'transport_malformed_response'
-      : /timeout|timed out|aborted/i.test(msg) ? 'transport_timeout'
-      : /fetch failed|network|ECONN|ENOTFOUND|getaddrinfo/i.test(msg) ? 'transport_network'
+      : errName === 'SyntaxError' && ERROR_SHAPE_RE_6.test(msg) ? 'transport_malformed_response'
+      : ERROR_SHAPE_RE_7.test(msg) ? 'transport_timeout'
+      : ERROR_SHAPE_RE_8.test(msg) ? 'transport_network'
       : 'unknown');
 
   return {

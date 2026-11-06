@@ -1,5 +1,11 @@
 import { CHROME_UA } from '../_seed-utils.mjs';
 
+const NORMALIZE_ALIAS_RE = /[\u0300-\u036f]/g;
+const NORMALIZE_ALIAS_RE_2 = /^(?:typhoon|tropical\s+storm|tropical\s+depression|cyclone|storm)\s+/i;
+const NORMALIZE_ALIAS_RE_3 = /[^a-z0-9]/gi;
+const WARNING_STATUS_RE = /cancel/i;
+
+
 export const HKO_WARNING_SUMMARY_URL = 'https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en';
 export const HKO_WARNING_SOURCE_URL = 'https://www.weather.gov.hk/en/wxinfo/currwx/warn.htm';
 export const HKO_COORDINATES = Object.freeze({ lat: 22.3193, lon: 114.1694 });
@@ -44,9 +50,9 @@ function clampTimestamp(value, fallback) {
 function normalizeAlias(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/^(?:typhoon|tropical\s+storm|tropical\s+depression|cyclone|storm)\s+/i, '')
-    .replace(/[^a-z0-9]/gi, '')
+    .replace(NORMALIZE_ALIAS_RE, '')
+    .replace(NORMALIZE_ALIAS_RE_2, '')
+    .replace(NORMALIZE_ALIAS_RE_3, '')
     .toLowerCase();
 }
 
@@ -221,7 +227,7 @@ export function canonicalizeWesternPacificCyclones(rawObservations, { now = Date
 }
 
 function warningStatus(actionCode) {
-  return /cancel/i.test(String(actionCode || '')) ? 'cancelled' : 'active';
+  return WARNING_STATUS_RE.test(String(actionCode || '')) ? 'cancelled' : 'active';
 }
 
 export function parseHkoWarningSummary(payload, { now = Date.now() } = {}) {

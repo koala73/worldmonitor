@@ -28,6 +28,13 @@ import { ProviderCooldownGate } from './provider-cooldown.js';
 import type { BasketItem } from '../config/types.js';
 import type { AcquisitionProviderName, SearchOptions, SearchResult } from '../acquisition/types.js';
 
+const STEM_RE = /ies$/;
+const STEM_RE_2 = /es$/;
+const STEM_RE_3 = /s$/;
+const TITLE_WORDS_RE = /\W+/;
+const TITLE_WORDS_RE_2 = /\p{L}{3,}/gu;
+
+
 /** Packaging/container words that are not product identity tokens. */
 const PACKAGING_WORDS = new Set(['pack', 'box', 'bag', 'container', 'bottle', 'can', 'jar', 'tin', 'set', 'kit', 'bundle']);
 const SIZE_LIKE = /^\d+(?:\.\d+)?[a-z]+$/;
@@ -42,7 +49,7 @@ const SIZE_LIKE = /^\d+(?:\.\d+)?[a-z]+$/;
  */
 /** Strip common English plural suffixes for basic stemming. */
 function stem(w: string): string {
-  return w.replace(/ies$/, 'y').replace(/es$/, '').replace(/s$/, '');
+  return w.replace(STEM_RE, 'y').replace(STEM_RE_2, '').replace(STEM_RE_3, '');
 }
 
 /** Non-food product indicator words — reject before token matching. */
@@ -50,11 +57,11 @@ const NON_FOOD_INDICATORS = new Set(['seeds', 'seed', 'seedling', 'seedlings', '
 
 export function isTitlePlausible(canonicalName: string, productName: string | undefined): boolean {
   if (!productName) return false;
-  const titleWords = productName.toLowerCase().split(/\W+/);
+  const titleWords = productName.toLowerCase().split(TITLE_WORDS_RE);
   if (titleWords.some((w) => NON_FOOD_INDICATORS.has(w))) return false;
   const tokens = canonicalName
     .toLowerCase()
-    .split(/\W+/)
+    .split(TITLE_WORDS_RE)
     .filter((w) => w.length > 2 && !PACKAGING_WORDS.has(w) && !(SIZE_LIKE.test(w) && parseSize(w)));
   if (tokens.length === 0) return true;
   const extracted = productName.toLowerCase();
@@ -67,7 +74,7 @@ export function isTitlePlausible(canonicalName: string, productName: string | un
 }
 
 function titleWords(title: string): string[] {
-  return title.toLowerCase().match(/\p{L}{3,}/gu) ?? [];
+  return title.toLowerCase().match(TITLE_WORDS_RE_2) ?? [];
 }
 
 /**

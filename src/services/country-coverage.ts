@@ -7,6 +7,9 @@ import {
   type CountryTimelineIncident,
 } from '../../shared/country-timeline-events';
 
+const EVENT_TERMS_RE = /"/g;
+
+
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const EVENT_QUERY = 'protest OR demonstration OR riot OR conflict OR attack OR military OR earthquake OR flood OR wildfire';
 
@@ -71,7 +74,7 @@ export async function fetchCountryCoverage(
   }
   const eventTerms = [...uniqueTerms.values()]
     .slice(0, 6)
-    .map(term => `"${term.replace(/"/g, '')}"`)
+    .map(term => `"${term.replace(EVENT_TERMS_RE, '')}"`)
     .join(' OR ');
 
   const feedOptions = {

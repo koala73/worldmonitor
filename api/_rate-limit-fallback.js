@@ -1,5 +1,9 @@
 import { redisPipeline } from './_upstash-json.js';
 
+const DURATION_TO_SECONDS_RE = /^(\d+)\s?(ms|s|m|h|d)$/;
+const LIMIT_WITH_FALLBACK_RE = /Command not allowed: (EVAL|EVALSHA|SCRIPT)\b/i;
+
+
 const FALLBACK_REDIS_TIMEOUT_MS = 1_000;
 
 let luaUnsupported = false;
@@ -7,7 +11,7 @@ let luaUnsupported = false;
 // Duration parsing mirrors @upstash/ratelimit's internal (unexported) `ms()`
 // helper. Needed only so the non-Lua fallback can pass a plain-seconds EXPIRE.
 export function durationToSeconds(window) {
-  const match = /^(\d+)\s?(ms|s|m|h|d)$/.exec(window);
+  const match = DURATION_TO_SECONDS_RE.exec(window);
   if (!match) throw new Error(`Unable to parse rate-limit window: ${window}`);
   const value = Number(match[1]);
   const unit = match[2] ?? 's';
@@ -62,7 +66,7 @@ export async function limitWithFallback(rl, identifier, fallbackKey, limit, wind
       return await rl.limit(identifier);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!/Command not allowed: (EVAL|EVALSHA|SCRIPT)\b/i.test(msg)) throw err;
+      if (!LIMIT_WITH_FALLBACK_RE.test(msg)) throw err;
       luaUnsupported = true;
       console.warn('[rate-limit] EVAL/EVALSHA rejected by this Redis endpoint — switching to the non-Lua fixed-window fallback for the rest of this process');
     }

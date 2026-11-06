@@ -3,6 +3,12 @@ import { spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { isMainModule } from './lib/main-module.mjs';
 
+const CELL_RE = /[\r\n]+/g;
+const CELL_RE_2 = /[\\|]/g;
+const CELL_RE_3 = /</g;
+const CELL_RE_4 = />/g;
+
+
 export const ISSUE_TITLE = 'MCP preset liveness: endpoint findings';
 
 function ghJson(args, payload) {
@@ -15,7 +21,7 @@ function ghJson(args, payload) {
 }
 
 function cell(value) {
-  return String(value).replace(/[\r\n]+/g, ' ').replace(/[\\|]/g, '\\$&').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(value).replace(CELL_RE, ' ').replace(CELL_RE_2, '\\$&').replace(CELL_RE_3, '&lt;').replace(CELL_RE_4, '&gt;');
 }
 
 export function publishFindings(report, {

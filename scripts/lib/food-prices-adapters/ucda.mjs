@@ -1,5 +1,17 @@
 import { isoDate } from '../food-prices.mjs';
 
+const AMOUNT_RE = /^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/;
+const AMOUNT_RE_2 = /,/g;
+const DISCOVER_UCDA_REPORT_RE = /\/Daily Coffee Market Report \(([A-Za-z]+) (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})\)[^/]*\.pdf$/i;
+const PARSE_DATE_RE = /^INDICATIVE FOR\/T PRICES\s+([A-Z]+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\d{4})$/i;
+const PARSE_DATE_RE_2 = /^(?:st|nd|rd|th)$/;
+const FARM_TITLE_RE = /^WEEK.S FARMGATE PRICE RANGE IN UGX\/KILO$/;
+const BELOW_RE = /^[\d,\-–]+$/;
+const RANGE_RE = /–/g;
+const PARSE_UCDA_RE = /^([\d,]+)-([\d,]+)$/;
+const PRICE_CELLS_RE = /^[\d.,]+$/;
+
+
 const UCDA_HOME_URL = 'https://ugandacoffee.go.ug/';
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -9,7 +21,7 @@ const EXPORT = [
   ['BUGISU AA', 'Arabica Bugisu AA'], ['BUGISU A', 'Arabica Bugisu A'], ['BUGISU PB', 'Arabica Bugisu PB'], ['BUGISU B', 'Arabica Bugisu B'],
   ['WUGAR', 'Arabica Wugar'], ['DRUGAR', 'Arabica Drugar'],
 ];
-const amount = text => /^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/.test(text) && Number(text.replace(/,/g, '')) > 0 ? Number(text.replace(/,/g, '')) : null;
+const amount = text => AMOUNT_RE.test(text) && Number(text.replace(AMOUNT_RE_2, '')) > 0 ? Number(text.replace(AMOUNT_RE_2, '')) : null;
 const line = (items, y) => items.filter(item => Math.abs(item.y - y) < 4).sort((a, b) => a.x - b.x).map(item => item.text.trim()).join(' ');
 const suffix = day => (day % 100 >= 11 && day % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][day % 10] ?? 'th');
 
@@ -24,7 +36,7 @@ export function discoverUcdaReport(links) {
     const url = new URL(link.url);
     let path;
     try { path = decodeURIComponent(url.pathname); } catch { continue; } // A malformed escape in another link.
-    const match = /\/Daily Coffee Market Report \(([A-Za-z]+) (\d{1,2})(?:st|nd|rd|th)?,? (\d{4})\)[^/]*\.pdf$/i.exec(path);
+    const match = DISCOVER_UCDA_REPORT_RE.exec(path);
     const month = match ? MONTHS.indexOf(match[1].toLowerCase()) + 1 : 0;
     const date = month ? isoDate(match[3], month, match[2]) : '';
     if (url.hostname === 'ugandacoffee.go.ug' && date) return { date, url: url.href };
@@ -34,7 +46,7 @@ export function discoverUcdaReport(links) {
 
 function parseDate(items) {
   const heading = items.find(item => item.text.startsWith('INDICATIVE FOR/T PRICES'));
-  const match = heading && /^INDICATIVE FOR\/T PRICES\s+([A-Z]+)\s+(\d{1,2})(?:st|nd|rd|th)?\s+(\d{4})$/i.exec(line(items.filter(item => !/^(?:st|nd|rd|th)$/.test(item.text.trim()) && item.x < 400), heading.y));
+  const match = heading && PARSE_DATE_RE.exec(line(items.filter(item => !PARSE_DATE_RE_2.test(item.text.trim()) && item.x < 400), heading.y));
   const month = match ? MONTHS.indexOf(match[1].toLowerCase()) + 1 : 0;
   return month ? isoDate(match[3], month, match[2]) : '';
 }
@@ -45,7 +57,7 @@ export function parseUcda(page, expectedDate) {
   const date = parseDate(page);
   if (!date || (expectedDate && date !== expectedDate)) throw new Error('ucda report date mismatch');
   const observations = [];
-  const farmTitle = page.find(item => /^WEEK.S FARMGATE PRICE RANGE IN UGX\/KILO$/.test(item.text.trim()));
+  const farmTitle = page.find(item => FARM_TITLE_RE.test(item.text.trim()));
   const farmHeader = farmTitle && page.find(item => item.text.trim() === 'Category of coffee' && item.y < farmTitle.y);
   if (!farmHeader) throw new Error('ucda farmgate table format changed');
   const columns = FARMGATE.map(([label, item]) => {
@@ -53,14 +65,14 @@ export function parseUcda(page, expectedDate) {
     if (!header) throw new Error('ucda farmgate columns format changed');
     return { x: header.x, item, tokens: [] };
   });
-  const below = page.filter(item => item.y < farmHeader.y - 12 && /^[\d,\-–]+$/.test(item.text.trim()));
+  const below = page.filter(item => item.y < farmHeader.y - 12 && BELOW_RE.test(item.text.trim()));
   // Spreading a publisher-sized list into Math.max overflows the stack.
   const rowY = below.reduce((max, item) => (item.y > max ? item.y : max), -Infinity);
   const values = below.filter(item => Math.abs(item.y - rowY) < 2);
   for (const token of values) columns.reduce((best, column) => (Math.abs(column.x - token.x) < Math.abs(best.x - token.x) ? column : best)).tokens.push(token);
   for (const column of columns) {
-    const range = column.tokens.sort((a, b) => a.x - b.x).map(token => token.text.trim()).join('').replace(/–/g, '-');
-    const match = /^([\d,]+)-([\d,]+)$/.exec(range);
+    const range = column.tokens.sort((a, b) => a.x - b.x).map(token => token.text.trim()).join('').replace(RANGE_RE, '-');
+    const match = PARSE_UCDA_RE.exec(range);
     if (!match && range) throw new Error('ucda farmgate range format changed');
     for (const [suffixText, value] of match ? [['low', match[1]], ['high', match[2]]] : []) {
       const price = amount(value);
@@ -71,7 +83,7 @@ export function parseUcda(page, expectedDate) {
   const cents = page.find(item => item.text.trim() === 'cts/' && usHeader && Math.abs(item.x - usHeader.x) < 15 && item.y < usHeader.y);
   const ugx = page.find(item => item.text.trim() === 'Price (' && usHeader && item.x > usHeader.x);
   if (!cents || !ugx || !text.includes('Grade')) throw new Error('ucda indicative export table format changed');
-  const priceCells = page.filter(item => item.x >= usHeader.x - 5 && item.x < ugx.x - 20 && item.y > farmTitle.y && item.y < cents.y && /^[\d.,]+$/.test(item.text.trim()));
+  const priceCells = page.filter(item => item.x >= usHeader.x - 5 && item.x < ugx.x - 20 && item.y > farmTitle.y && item.y < cents.y && PRICE_CELLS_RE.test(item.text.trim()));
   for (const [label, item] of EXPORT) {
     const grade = page.find(cell => cell.text.trim() === label && cell.y > farmTitle.y && cell.y < cents.y);
     if (!grade) throw new Error('ucda indicative export grades changed');

@@ -9,6 +9,9 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { parseNgaBroadcastWarnings } from '../../../_shared/nga-broadcast-warnings';
 import { cachedFetchJson } from '../../../_shared/redis';
 
+const PARSE_NGA_DATE_RE = /(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i;
+
+
 const REDIS_CACHE_KEY = 'maritime:navwarnings:v3';
 const REDIS_CACHE_TTL = 3600; // 1 hr — NGA broadcasts update daily
 
@@ -21,7 +24,7 @@ const NGA_WARNINGS_URL = 'https://msi.nga.mil/api/publications/broadcast-warn?ou
 function parseNgaDate(dateStr: unknown): number {
   if (!dateStr || typeof dateStr !== 'string') return 0;
   // Format: "081653Z MAY 2024"
-  const match = dateStr.match(/(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i);
+  const match = dateStr.match(PARSE_NGA_DATE_RE);
   if (!match) return Date.parse(dateStr) || 0;
   const months: Record<string, number> = {
     JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,

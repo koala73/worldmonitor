@@ -8,6 +8,9 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA, finnhubGate } from '../../../_shared/constants';
 import { UPSTREAM_TIMEOUT_MS, sanitizeSymbol } from './_shared';
 
+const SYMBOL_RE = /^[A-Za-z0-9][A-Za-z0-9.-]{0,31}$/;
+
+
 const CACHE_TTL_SECONDS = 86_400;
 const SIX_MONTHS_MS = 6 * 30 * 24 * 60 * 60 * 1_000;
 
@@ -45,7 +48,7 @@ export async function getInsiderTransactions(
   req: GetInsiderTransactionsRequest,
 ): Promise<GetInsiderTransactionsResponse> {
   const input = req.symbol.trim();
-  const symbol = /^[A-Za-z0-9][A-Za-z0-9.-]{0,31}$/.test(input) ? sanitizeSymbol(input) : '';
+  const symbol = SYMBOL_RE.test(input) ? sanitizeSymbol(input) : '';
   if (!symbol) {
     return { unavailable: true, symbol: '', totalBuys: 0, totalSells: 0, netValue: 0, transactions: [], fetchedAt: '' };
   }

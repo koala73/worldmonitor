@@ -33,6 +33,9 @@ import {
   getPluralCategories,
 } from './translate-locales.mjs';
 
+const LOCALE_CODE_RE = /\.json$/;
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, '..', 'src', 'locales');
 const EN_PATH = join(LOCALES_DIR, 'en.json');
@@ -154,7 +157,7 @@ function main() {
 
   for (const file of localeFiles) {
     const path = join(LOCALES_DIR, file);
-    const localeCode = file.replace(/\.json$/, '');
+    const localeCode = file.replace(LOCALE_CODE_RE, '');
     const locale = readJson(path, file);
     const localeKeys = new Set(flattenKeys(locale));
     const expectedKeys = expectedKeysForLocale(

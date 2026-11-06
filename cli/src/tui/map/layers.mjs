@@ -12,6 +12,31 @@ import { severityColor } from '../ui/theme.mjs';
 import { countryCentroidByA2 } from './world.mjs';
 import { parseTle, propagate } from './orbit.mjs';
 
+const BASE_COLOR_RE = /china|pla/;
+const BASE_COLOR_RE_2 = /russia/;
+const BASE_COLOR_RE_3 = /nato|allied|uk|france|eu/;
+const BASE_COLOR_RE_4 = /us|united/;
+const LAYERS_RE = /severe|major/i;
+const LAYERS_RE_2 = /normal|low/i;
+const LAYERS_RE_3 = /spike|high|critical/i;
+const LAYERS_RE_4 = /fighter|bomber|reconnaissance|awacs|drone/;
+const POSTURE_RE = /-theater$/;
+const LAYERS_RE_5 = /elevated|high|critical/i;
+const LAYERS_RE_6 = /storm|cyclone|hurricane|typhoon/i;
+const LAYERS_RE_7 = /extreme|severe/i;
+const LAYERS_RE_8 = /extreme/i;
+const WARM_RE = /WARM|HEAT/;
+const LAYERS_RE_9 = /EXTREME|SEVERE/;
+const LAYERS_RE_10 = /emergency|high/i;
+const LAYERS_RE_11 = /alert|elevated/i;
+const LAYERS_RE_12 = /emergency/i;
+const LAYERS_RE_13 = /CRITICAL|HIGH/;
+const LAYERS_RE_14 = /CRITICAL/;
+const LAYERS_RE_15 = /-/g;
+const LAYERS_RE_16 = /_/g;
+const LAYERS_RE_17 = /high/i;
+
+
 export const LAYER_GROUPS = [
   { id: 'infra', label: 'Infrastructure' },
   { id: 'military', label: 'Military & nuclear' },
@@ -43,10 +68,10 @@ const lineEnds = (points) => (points && points.length ? { from: points[0], to: p
 
 function baseColor(t, type) {
   const k = String(type || '').toLowerCase();
-  if (/china|pla/.test(k)) return t.bad;
-  if (/russia/.test(k)) return t.warn;
-  if (/nato|allied|uk|france|eu/.test(k)) return t.info;
-  if (/us|united/.test(k)) return t.accent;
+  if (BASE_COLOR_RE.test(k)) return t.bad;
+  if (BASE_COLOR_RE_2.test(k)) return t.warn;
+  if (BASE_COLOR_RE_3.test(k)) return t.info;
+  if (BASE_COLOR_RE_4.test(k)) return t.accent;
   return t.text;
 }
 
@@ -137,7 +162,7 @@ export const LAYERS = [
       return (catalog.layers?.airports || []).map((a) => {
         const d = delays.get(a.iata);
         const sev = d ? enumLabel(d.severity) : '';
-        return { id: `apt:${a.iata}`, name: `${a.iata} ${a.name}`, lat: a.lat, lon: a.lon, glyph: '✈', color: d ? severityColor(t, sev) : t.dim, size: d ? 2 : 0, pulse: Boolean(d) && /severe|major/i.test(sev), ts: d?.updatedAt,
+        return { id: `apt:${a.iata}`, name: `${a.iata} ${a.name}`, lat: a.lat, lon: a.lon, glyph: '✈', color: d ? severityColor(t, sev) : t.dim, size: d ? 2 : 0, pulse: Boolean(d) && LAYERS_RE.test(sev), ts: d?.updatedAt,
           info: info([['City', `${a.city}, ${a.country}`], ['ICAO', a.icao], ['Region', a.region], ['Delay', d && enumLabel(d.delayType)], ['Severity', sev], ['Average delay', d?.avgDelayMinutes && `${d.avgDelayMinutes} min`], ['Delayed flights', d?.delayedFlightsPct && `${d.delayedFlightsPct}%`], ['Cancelled', d?.cancelledFlights], ['Reason', d?.reason], ['Source', d && enumLabel(d.source)], ['Updated', when(d?.updatedAt, now)]]) };
       });
     },
@@ -188,7 +213,7 @@ export const LAYERS = [
       const p = loc(o);
       if (!p) return null;
       const sev = enumLabel(o.severity);
-      return { id: `rad:${o.id}`, name: `${o.locationName || o.country} · ${o.value} ${o.unit}`, lat: p[0], lon: p[1], glyph: '◉', color: /normal|low/i.test(sev) ? t.good : severityColor(t, sev), size: /normal|low/i.test(sev) ? 0 : 2, pulse: /spike|high|critical/i.test(sev), ts: o.observedAt, info: info([['Reading', `${o.value} ${o.unit}`], ['Baseline', o.baselineValue && `${o.baselineValue} ${o.unit} (Δ ${o.delta >= 0 ? '+' : ''}${o.delta}, z ${o.zScore})`], ['Severity', sev], ['Source', enumLabel(o.source)], ['Confidence', enumLabel(o.confidence)], ['Corroborated', o.corroborated ? 'yes' : 'no'], ['Observed', when(o.observedAt, now)]]) };
+      return { id: `rad:${o.id}`, name: `${o.locationName || o.country} · ${o.value} ${o.unit}`, lat: p[0], lon: p[1], glyph: '◉', color: LAYERS_RE_2.test(sev) ? t.good : severityColor(t, sev), size: LAYERS_RE_2.test(sev) ? 0 : 2, pulse: LAYERS_RE_3.test(sev), ts: o.observedAt, info: info([['Reading', `${o.value} ${o.unit}`], ['Baseline', o.baselineValue && `${o.baselineValue} ${o.unit} (Δ ${o.delta >= 0 ? '+' : ''}${o.delta}, z ${o.zScore})`], ['Severity', sev], ['Source', enumLabel(o.source)], ['Confidence', enumLabel(o.confidence)], ['Corroborated', o.corroborated ? 'yes' : 'no'], ['Observed', when(o.observedAt, now)]]) };
     }).filter(Boolean),
   },
   {
@@ -201,7 +226,7 @@ export const LAYERS = [
       const p = loc(f);
       if (!p) return null;
       const kind = enumLabel(f.aircraftType);
-      return { id: `ac:${f.id}`, name: `${f.callsign || f.hexCode || 'aircraft'}${f.aircraftModel ? ` · ${f.aircraftModel}` : ''}`, lat: p[0], lon: p[1], glyph: '✈', color: /fighter|bomber|reconnaissance|awacs|drone/.test(kind) ? t.accent2 : t.accent, size: 2, heading: f.heading, speedKt: f.speed, ts: f.lastSeenAt, moving: !f.onGround,
+      return { id: `ac:${f.id}`, name: `${f.callsign || f.hexCode || 'aircraft'}${f.aircraftModel ? ` · ${f.aircraftModel}` : ''}`, lat: p[0], lon: p[1], glyph: '✈', color: LAYERS_RE_4.test(kind) ? t.accent2 : t.accent, size: 2, heading: f.heading, speedKt: f.speed, ts: f.lastSeenAt, moving: !f.onGround,
         info: info([['Operator', `${enumLabel(f.operator)} ${f.operatorCountry || ''}`.trim()], ['Type', kind !== 'unknown' ? kind : ''], ['Model', f.aircraftModel], ['Registration', f.registration], ['Altitude', f.altitude && `${fmtInt(f.altitude)} ft`], ['Speed', f.speed && `${fmtInt(f.speed)} kt`], ['Heading', Number.isFinite(f.heading) && `${Math.round(f.heading)}°`], ['Vertical rate', f.verticalRate && `${f.verticalRate} ft/min`], ['Squawk', f.squawk], ['Route', f.origin || f.destination ? `${f.origin || '?'} → ${f.destination || '?'}` : ''], ['Seen', when(f.lastSeenAt, now)]]) };
     }).filter(Boolean),
   },
@@ -217,11 +242,11 @@ export const LAYERS = [
   {
     id: 'hotspots', group: 'military', label: 'Intel hotspots', glyph: '◎', kind: 'point', on: true, color: 'accent2',
     build: ({ catalog, data, t, now }) => {
-      const posture = new Map((data.theaterPosture?.theaters || []).map((p) => [String(p.theater || '').replace(/-theater$/, ''), p]));
+      const posture = new Map((data.theaterPosture?.theaters || []).map((p) => [String(p.theater || '').replace(POSTURE_RE, ''), p]));
       return (catalog.layers?.hotspots || []).map((h) => {
         const p = posture.get(h.id);
         const level = p?.postureLevel || h.level || 'low';
-        return { id: `hot:${h.id}`, name: h.name, lat: h.lat, lon: h.lon, glyph: '◎', color: severityColor(t, level), size: 2, pulse: /elevated|high|critical/i.test(level), info: info([['Level', level], ['Focus', h.subtext], ['Location', h.location], ['Posture', p && `${p.activeFlights ?? 0} aircraft · ${p.trackedVessels ?? 0} vessels`], ['Operations', p?.activeOperations], ['Assessed', when(p?.assessedAt, now)], ['Agencies', h.agencies], ['About', h.description]]) };
+        return { id: `hot:${h.id}`, name: h.name, lat: h.lat, lon: h.lon, glyph: '◎', color: severityColor(t, level), size: 2, pulse: LAYERS_RE_5.test(level), info: info([['Level', level], ['Focus', h.subtext], ['Location', h.location], ['Posture', p && `${p.activeFlights ?? 0} aircraft · ${p.trackedVessels ?? 0} vessels`], ['Operations', p?.activeOperations], ['Assessed', when(p?.assessedAt, now)], ['Agencies', h.agencies], ['About', h.description]]) };
       });
     },
   },
@@ -272,7 +297,7 @@ export const LAYERS = [
     build: ({ data, t, now }) => (data.naturalEvents?.events || []).map((e) => {
       const p = loc(e);
       if (!p) return null;
-      return { id: `nat:${e.id}`, name: e.title, lat: p[0], lon: p[1], glyph: /storm|cyclone|hurricane|typhoon/i.test(e.categoryTitle || e.category) ? '๑' : '◍', color: e.closed ? t.dim : t.info, size: e.closed ? 0 : 2, pulse: !e.closed && /storm|cyclone|hurricane|typhoon/i.test(e.categoryTitle || e.category), ts: e.date, info: info([['Category', e.categoryTitle || e.category], ['Magnitude', e.magnitude && `${e.magnitude} ${e.magnitudeUnit || ''}`], ['Basin', e.basin], ['Status', e.closed ? 'closed' : 'active'], ['Source', e.sourceName], ['Updated', when(e.date, now)], ['About', e.description]]), url: e.sourceUrl };
+      return { id: `nat:${e.id}`, name: e.title, lat: p[0], lon: p[1], glyph: LAYERS_RE_6.test(e.categoryTitle || e.category) ? '๑' : '◍', color: e.closed ? t.dim : t.info, size: e.closed ? 0 : 2, pulse: !e.closed && LAYERS_RE_6.test(e.categoryTitle || e.category), ts: e.date, info: info([['Category', e.categoryTitle || e.category], ['Magnitude', e.magnitude && `${e.magnitude} ${e.magnitudeUnit || ''}`], ['Basin', e.basin], ['Status', e.closed ? 'closed' : 'active'], ['Source', e.sourceName], ['Updated', when(e.date, now)], ['About', e.description]]), url: e.sourceUrl };
     }).filter(Boolean),
   },
   {
@@ -298,7 +323,7 @@ export const LAYERS = [
       }
       if (!p) return null;
       const sev = a.severity || 'Unknown';
-      return { id: `wx:${a.id || i}`, name: a.event || a.headline, rings, lat: p[0], lon: p[1], glyph: '⚠', color: severityColor(t, sev), size: /extreme|severe/i.test(sev) ? 2 : 1, ts: Date.parse(a.onset || a.sent || ''), pulse: /extreme/i.test(sev), info: info([['Severity', `${sev}${a.urgency ? ` · ${a.urgency}` : ''}${a.certainty ? ` · ${a.certainty}` : ''}`], ['Area', a.areaDesc], ['Headline', a.headline], ['Onset', a.onset], ['Expires', a.expires], ['Authority', a.authority || a.source], ['Precision', a.geometryPrecision === 'country' ? 'country-level geocode' : rings ? 'warned-area polygon' : ''], ['Details', a.description && a.description.slice(0, 400)]]) };
+      return { id: `wx:${a.id || i}`, name: a.event || a.headline, rings, lat: p[0], lon: p[1], glyph: '⚠', color: severityColor(t, sev), size: LAYERS_RE_7.test(sev) ? 2 : 1, ts: Date.parse(a.onset || a.sent || ''), pulse: LAYERS_RE_8.test(sev), info: info([['Severity', `${sev}${a.urgency ? ` · ${a.urgency}` : ''}${a.certainty ? ` · ${a.certainty}` : ''}`], ['Area', a.areaDesc], ['Headline', a.headline], ['Onset', a.onset], ['Expires', a.expires], ['Authority', a.authority || a.source], ['Precision', a.geometryPrecision === 'country' ? 'country-level geocode' : rings ? 'warned-area polygon' : ''], ['Details', a.description && a.description.slice(0, 400)]]) };
     }).filter(Boolean),
   },
   {
@@ -323,8 +348,8 @@ export const LAYERS = [
     build: ({ data, t }) => (data.climateAnomalies?.anomalies || []).map((a, i) => {
       const p = loc(a);
       if (!p) return null;
-      const warm = /WARM|HEAT/.test(a.type || '');
-      return { id: `clim:${a.zone || i}`, name: `${a.zone}: ${a.tempDelta > 0 ? '+' : ''}${a.tempDelta}°C`, lat: p[0], lon: p[1], glyph: '≈', color: warm ? t.bad : t.info, size: /EXTREME|SEVERE/.test(a.severity || '') ? 2 : 0, info: info([['Temperature', `${a.tempDelta > 0 ? '+' : ''}${a.tempDelta}°C vs normal`], ['Precipitation', Number.isFinite(a.precipDelta) && `${a.precipDelta > 0 ? '+' : ''}${a.precipDelta}`], ['Type', enumLabel(a.type)], ['Severity', enumLabel(a.severity)], ['Period', a.period]]) };
+      const warm = WARM_RE.test(a.type || '');
+      return { id: `clim:${a.zone || i}`, name: `${a.zone}: ${a.tempDelta > 0 ? '+' : ''}${a.tempDelta}°C`, lat: p[0], lon: p[1], glyph: '≈', color: warm ? t.bad : t.info, size: LAYERS_RE_9.test(a.severity || '') ? 2 : 0, info: info([['Temperature', `${a.tempDelta > 0 ? '+' : ''}${a.tempDelta}°C vs normal`], ['Precipitation', Number.isFinite(a.precipDelta) && `${a.precipDelta > 0 ? '+' : ''}${a.precipDelta}`], ['Type', enumLabel(a.type)], ['Severity', enumLabel(a.severity)], ['Period', a.period]]) };
     }).filter(Boolean),
   },
   {
@@ -332,7 +357,7 @@ export const LAYERS = [
     build: ({ data, t, now }) => (data.diseaseOutbreaks?.outbreaks || []).map((o) => {
       const p = loc(o);
       if (!p) return null;
-      return { id: `dis:${o.id}`, name: `${o.disease} · ${o.location || o.countryCode}`, lat: p[0], lon: p[1], glyph: '✚', color: /emergency|high/i.test(o.alertLevel) ? t.bad : /alert|elevated/i.test(o.alertLevel) ? t.accent2 : t.dim, size: /emergency/i.test(o.alertLevel) ? 2 : 1, ts: o.publishedAt, info: info([['Disease', o.disease], ['Alert level', o.alertLevel], ['Cases', o.cases && fmtInt(o.cases)], ['Deaths', o.deaths && fmtInt(o.deaths)], ['Summary', o.summary && o.summary.slice(0, 300)], ['Source', o.sourceName], ['Published', when(o.publishedAt, now)]]), url: o.sourceUrl };
+      return { id: `dis:${o.id}`, name: `${o.disease} · ${o.location || o.countryCode}`, lat: p[0], lon: p[1], glyph: '✚', color: LAYERS_RE_10.test(o.alertLevel) ? t.bad : LAYERS_RE_11.test(o.alertLevel) ? t.accent2 : t.dim, size: LAYERS_RE_12.test(o.alertLevel) ? 2 : 1, ts: o.publishedAt, info: info([['Disease', o.disease], ['Alert level', o.alertLevel], ['Cases', o.cases && fmtInt(o.cases)], ['Deaths', o.deaths && fmtInt(o.deaths)], ['Summary', o.summary && o.summary.slice(0, 300)], ['Source', o.sourceName], ['Published', when(o.publishedAt, now)]]), url: o.sourceUrl };
     }).filter(Boolean),
   },
 
@@ -367,7 +392,7 @@ export const LAYERS = [
     build: ({ data, t, now }) => (data.cyberThreats?.threats || []).slice(0, 600).map((c) => {
       const p = loc(c);
       if (!p) return null;
-      return { id: `cyber:${c.id}`, name: `${enumLabel(c.type)}${c.malwareFamily ? ` · ${c.malwareFamily}` : ''}`, lat: p[0], lon: p[1], glyph: '¤', color: /CRITICAL|HIGH/.test(c.severity || '') ? t.accent2 : t.accent3, size: /CRITICAL/.test(c.severity || '') ? 1 : 0, ts: c.firstSeenAt, info: info([['Indicator', `${c.indicator} (${enumLabel(c.indicatorType)})`], ['Country', c.country], ['Severity', enumLabel(c.severity)], ['Malware', c.malwareFamily], ['Tags', c.tags], ['Source', enumLabel(c.source)], ['First seen', when(c.firstSeenAt, now)]]) };
+      return { id: `cyber:${c.id}`, name: `${enumLabel(c.type)}${c.malwareFamily ? ` · ${c.malwareFamily}` : ''}`, lat: p[0], lon: p[1], glyph: '¤', color: LAYERS_RE_13.test(c.severity || '') ? t.accent2 : t.accent3, size: LAYERS_RE_14.test(c.severity || '') ? 1 : 0, ts: c.firstSeenAt, info: info([['Indicator', `${c.indicator} (${enumLabel(c.indicatorType)})`], ['Country', c.country], ['Severity', enumLabel(c.severity)], ['Malware', c.malwareFamily], ['Tags', c.tags], ['Source', enumLabel(c.source)], ['First seen', when(c.firstSeenAt, now)]]) };
     }).filter(Boolean),
   },
   {
@@ -375,7 +400,7 @@ export const LAYERS = [
     build: ({ data, t, now }) => (data.positiveGeoEvents?.events || []).map((e, i) => {
       const p = loc(e);
       if (!p) return null;
-      return { id: `pos:${e.name}:${i}`, name: `${e.name}: ${e.count} ${String(e.category || '').replace(/-/g, ' ')}`, lat: p[0], lon: p[1], glyph: '✿', color: t.good, size: e.count >= 50 ? 2 : 1, ts: e.timestamp, info: info([['Category', String(e.category || '').replace(/-/g, ' ')], ['Count', e.count], ['Updated', when(e.timestamp, now)]]) };
+      return { id: `pos:${e.name}:${i}`, name: `${e.name}: ${e.count} ${String(e.category || '').replace(LAYERS_RE_15, ' ')}`, lat: p[0], lon: p[1], glyph: '✿', color: t.good, size: e.count >= 50 ? 2 : 1, ts: e.timestamp, info: info([['Category', String(e.category || '').replace(LAYERS_RE_15, ' ')], ['Count', e.count], ['Updated', when(e.timestamp, now)]]) };
     }).filter(Boolean),
   },
 
@@ -405,7 +430,7 @@ export const LAYERS = [
       const p = loc(d);
       if (!p) return null;
       const sev = enumLabel(d.severity);
-      return { id: `ais:${d.id}`, name: `${d.name}: ${enumLabel(d.type).replace(/_/g, ' ')}`, lat: p[0], lon: p[1], glyph: '⚠', color: severityColor(t, sev), size: 2, pulse: /high/i.test(sev), info: info([['Type', enumLabel(d.type)], ['Severity', sev], ['Change', Number.isFinite(d.changePct) && `${d.changePct > 0 ? '+' : ''}${d.changePct}% over ${d.windowHours}h`], ['Vessels', d.vesselCount], ['Dark ships', d.darkShips], ['Region', d.region], ['About', d.description]]) };
+      return { id: `ais:${d.id}`, name: `${d.name}: ${enumLabel(d.type).replace(LAYERS_RE_16, ' ')}`, lat: p[0], lon: p[1], glyph: '⚠', color: severityColor(t, sev), size: 2, pulse: LAYERS_RE_17.test(sev), info: info([['Type', enumLabel(d.type)], ['Severity', sev], ['Change', Number.isFinite(d.changePct) && `${d.changePct > 0 ? '+' : ''}${d.changePct}% over ${d.windowHours}h`], ['Vessels', d.vesselCount], ['Dark ships', d.darkShips], ['Region', d.region], ['About', d.description]]) };
     }).filter(Boolean),
   },
 

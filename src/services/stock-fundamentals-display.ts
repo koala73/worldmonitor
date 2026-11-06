@@ -1,5 +1,8 @@
 import type { Fundamentals } from '@/generated/client/worldmonitor/market/v1/service_client';
 
+const NORMALIZED_CURRENCY_RE = /^[A-Z]{3}$/;
+
+
 export interface FundamentalDisplayCell {
   label: string;
   value: string;
@@ -8,7 +11,7 @@ export interface FundamentalDisplayCell {
 
 function formatFinancialValueCompact(value: number, currency: string): string {
   const candidateCurrency = currency.trim().toUpperCase();
-  const normalizedCurrency = /^[A-Z]{3}$/.test(candidateCurrency) ? candidateCurrency : 'USD';
+  const normalizedCurrency = NORMALIZED_CURRENCY_RE.test(candidateCurrency) ? candidateCurrency : 'USD';
   const prefix = normalizedCurrency === 'USD' ? '$' : `${normalizedCurrency} `;
   const sign = value < 0 ? '-' : '';
   const abs = Math.abs(value);

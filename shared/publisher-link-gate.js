@@ -37,11 +37,15 @@
  * @param {unknown} hostname
  * @returns {string} '' when not a usable hostname
  */
+const CLEANED_RE = /\.+$/;
+const NORMALIZE_LINK_HOSTNAME_RE = /^www\./;
+const LINK_HOSTNAME_RE = /^https?:\/\//i;
+
 export function normalizeLinkHostname(hostname) {
   if (typeof hostname !== 'string') return '';
-  const cleaned = hostname.trim().toLowerCase().replace(/\.+$/, '');
+  const cleaned = hostname.trim().toLowerCase().replace(CLEANED_RE, '');
   if (cleaned.length === 0 || !cleaned.includes('.')) return '';
-  return cleaned.replace(/^www\./, '');
+  return cleaned.replace(NORMALIZE_LINK_HOSTNAME_RE, '');
 }
 
 /**
@@ -56,7 +60,7 @@ export function normalizeLinkHostname(hostname) {
 export function linkHostname(link) {
   if (typeof link !== 'string') return '';
   const value = link.trim();
-  if (!/^https?:\/\//i.test(value)) return '';
+  if (!LINK_HOSTNAME_RE.test(value)) return '';
   try {
     return normalizeLinkHostname(new URL(value).hostname);
   } catch {

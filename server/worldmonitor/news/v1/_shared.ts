@@ -2,6 +2,10 @@
 // Constants
 // ========================================================================
 
+const LOWER_RE = /_/g;
+const NORMALIZE_SUMMARY_LANGUAGE_RE = /^zh-(?:hant|tw|hk|mo)(?:-|$)/;
+const WHITESPACE_RE = /\s+/g;
+
 export const CACHE_TTL_SECONDS = 86400; // 24 hours
 
 // ========================================================================
@@ -36,11 +40,11 @@ export const SUMMARY_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set([...NEWS_LA
  * when nothing supported matches.
  */
 export function normalizeSummaryLanguage(tag: string): string | null {
-  const lower = tag.trim().toLowerCase().replace(/_/g, '-');
+  const lower = tag.trim().toLowerCase().replace(LOWER_RE, '-');
   for (const code of SUMMARY_OUTPUT_LANGUAGES) {
     if (code.toLowerCase() === lower) return code;
   }
-  if (/^zh-(?:hant|tw|hk|mo)(?:-|$)/.test(lower)) return 'zh-TW';
+  if (NORMALIZE_SUMMARY_LANGUAGE_RE.test(lower)) return 'zh-TW';
   const primary = lower.split('-')[0] ?? '';
   return SUMMARY_OUTPUT_LANGUAGES.has(primary) ? primary : null;
 }
@@ -105,7 +109,7 @@ export function neutralizeTranslateText(text: string): string {
     .replace(TRANSLATE_MARKER_RE, ' ')
     .replace(ANGLE_RUN_RE, ' ')
     .replace(MARKER_WORDS_RE, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 

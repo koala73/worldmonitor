@@ -34,6 +34,13 @@
 // ---------------------------------------------------------------------------
 
 /** Header carrying `<ts>.<base64url-sig>`. */
+const BUFFER_TO_BASE64_URL_RE = /\+/g;
+const BUFFER_TO_BASE64_URL_RE_2 = /\//g;
+const BUFFER_TO_BASE64_URL_RE_3 = /=+$/;
+const IS_VALID_INTERNAL_MCP_NONCE_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const PARSE_SIGNATURE_HEADER_RE = /^[0-9]{1,15}$/;
+const PARSE_SIGNATURE_HEADER_RE_2 = /^[A-Za-z0-9_-]+$/;
+
 export const INTERNAL_MCP_SIG_HEADER = 'X-WM-MCP-Internal';
 
 /** Header carrying the userId the signature claims to represent. */
@@ -205,7 +212,7 @@ function bufferToBase64Url(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(binary).replace(BUFFER_TO_BASE64_URL_RE, '-').replace(BUFFER_TO_BASE64_URL_RE_2, '_').replace(BUFFER_TO_BASE64_URL_RE_3, '');
 }
 
 /** Sign a payload string → base64url(HMAC-SHA-256(secret, payload)). */
@@ -239,7 +246,7 @@ function makeInternalMcpNonce(): string {
 }
 
 function isValidInternalMcpNonce(nonce: string): boolean {
-  return /^[A-Za-z0-9_-]{16,128}$/.test(nonce);
+  return IS_VALID_INTERNAL_MCP_NONCE_RE.test(nonce);
 }
 
 /**
@@ -401,9 +408,9 @@ function parseSignatureHeader(value: string | null): { ts: number; sigB64u: stri
   // silently truncate through `Number()` to lose precision. 1-15 digits
   // covers Unix seconds (10 digits today) and ms epoch (13 digits) with
   // margin for the year-9999 boundary; rejects pathological lengths.
-  if (!/^[0-9]{1,15}$/.test(tsStr)) return null;
+  if (!PARSE_SIGNATURE_HEADER_RE.test(tsStr)) return null;
   // base64url charset only — `+` `/` `=` not allowed.
-  if (!/^[A-Za-z0-9_-]+$/.test(sigB64u)) return null;
+  if (!PARSE_SIGNATURE_HEADER_RE_2.test(sigB64u)) return null;
   const ts = Number(tsStr);
   if (!Number.isFinite(ts) || ts < 0) return null;
   return { ts, sigB64u };

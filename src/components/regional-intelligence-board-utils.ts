@@ -19,6 +19,9 @@ import type {
   RegionalBrief,
 } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 
+const BODY_RE = /_/g;
+
+
 /** Non-global regions available in the dropdown. Matches shared/geography.js REGIONS. */
 export const BOARD_REGIONS: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'mena', label: 'Middle East & North Africa' },
@@ -131,7 +134,7 @@ export function buildRegimeBlock(snapshot: RegionalSnapshot): string {
     ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">Was: ${escapeHtml(previous)}${driver ? ` · ${escapeHtml(driver)}` : ''}</div>`
     : '';
   const body = `
-    <div class="rib-regime-label" style="font-size:calc(15px * var(--wm-panel-effective-scale, 1));font-weight:600;text-transform:capitalize">${escapeHtml(label.replace(/_/g, ' '))}</div>
+    <div class="rib-regime-label" style="font-size:calc(15px * var(--wm-panel-effective-scale, 1));font-weight:600;text-transform:capitalize">${escapeHtml(label.replace(BODY_RE, ' '))}</div>
     ${previousLine}
   `;
   return section('Regime', body);
@@ -395,8 +398,8 @@ export function buildRegimeHistoryBlock(transitions: RegimeTransition[]): string
     return section('Regime History', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">No regime transitions recorded yet</div>');
   }
   const rows = transitions.slice(0, 20).map((t) => {
-    const from = t.previousLabel ? escapeHtml(t.previousLabel.replace(/_/g, ' ')) : 'none';
-    const to = escapeHtml((t.label ?? '').replace(/_/g, ' '));
+    const from = t.previousLabel ? escapeHtml(t.previousLabel.replace(BODY_RE, ' ')) : 'none';
+    const to = escapeHtml((t.label ?? '').replace(BODY_RE, ' '));
     const driver = t.transitionDriver ? ` · ${escapeHtml(t.transitionDriver)}` : '';
     const date = formatDate(t.transitionedAt);
     return `

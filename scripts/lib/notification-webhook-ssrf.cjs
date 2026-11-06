@@ -1,5 +1,17 @@
 'use strict';
 
+const DOTTED_RE = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i;
+const HEX_RE = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i;
+const IPV6_TO_HEXTETS_RE = /::/g;
+const PARSE_SIDE_RE = /^[0-9a-f]{1,4}$/i;
+const NORMALIZED_RE = /^\[|\]$/g;
+const IS_BLOCKED_RESOLVED_ADDRESS_RE = /^f[cd][0-9a-f]{2}:/i;
+const IS_BLOCKED_RESOLVED_ADDRESS_RE_2 = /^fe[89ab][0-9a-f]:/i;
+const IS_BLOCKED_RESOLVED_ADDRESS_RE_3 = /^fe[c-f][0-9a-f]:/i;
+const IS_BLOCKED_RESOLVED_ADDRESS_RE_4 = /^ff[0-9a-f]{2}:/i;
+const IS_BLOCKED_RESOLVED_ADDRESS_RE_5 = /^2001:0?db8:/i;
+
+
 const dns = require('node:dns').promises;
 const https = require('node:https');
 
@@ -37,10 +49,10 @@ function ipv4Parts(value) {
 }
 
 function ipv4FromMappedIpv6(value) {
-  const dotted = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const dotted = value.match(DOTTED_RE);
   if (dotted && ipv4Parts(dotted[1])) return dotted[1];
 
-  const hex = value.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  const hex = value.match(HEX_RE);
   if (!hex) return null;
   const hi = Number.parseInt(hex[1], 16);
   const lo = Number.parseInt(hex[2], 16);
@@ -55,7 +67,7 @@ function ipv4FromMappedIpv6(value) {
 // syntactically valid IPv6 address.
 function ipv6ToHextets(value) {
   if (typeof value !== 'string' || !value.includes(':')) return null;
-  if ((value.match(/::/g) || []).length > 1) return null;
+  if ((value.match(IPV6_TO_HEXTETS_RE) || []).length > 1) return null;
 
   const parseSide = (side) => {
     if (side === '') return [];
@@ -70,7 +82,7 @@ function ipv6ToHextets(value) {
         hextets.push((parts[0] << 8) | parts[1]);
         hextets.push((parts[2] << 8) | parts[3]);
       } else {
-        if (!/^[0-9a-f]{1,4}$/i.test(token)) return null;
+        if (!PARSE_SIDE_RE.test(token)) return null;
         hextets.push(Number.parseInt(token, 16));
       }
     }
@@ -134,7 +146,7 @@ function ipv4FromIpv6(value) {
 }
 
 function isBlockedResolvedAddress(address) {
-  const normalized = String(address).trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const normalized = String(address).trim().toLowerCase().replace(NORMALIZED_RE, '');
   const ipv6Hextets = ipv6ToHextets(normalized);
   const mappedIpv4 = ipv4FromIpv6(normalized);
   const addr = mappedIpv4 || normalized;
@@ -151,11 +163,11 @@ function isBlockedResolvedAddress(address) {
   }
 
   if (addr === '::' || addr === '::1') return true;
-  if (/^f[cd][0-9a-f]{2}:/i.test(addr)) return true;
-  if (/^fe[89ab][0-9a-f]:/i.test(addr)) return true;
-  if (/^fe[c-f][0-9a-f]:/i.test(addr)) return true;
-  if (/^ff[0-9a-f]{2}:/i.test(addr)) return true;
-  if (/^2001:0?db8:/i.test(addr)) return true;
+  if (IS_BLOCKED_RESOLVED_ADDRESS_RE.test(addr)) return true;
+  if (IS_BLOCKED_RESOLVED_ADDRESS_RE_2.test(addr)) return true;
+  if (IS_BLOCKED_RESOLVED_ADDRESS_RE_3.test(addr)) return true;
+  if (IS_BLOCKED_RESOLVED_ADDRESS_RE_4.test(addr)) return true;
+  if (IS_BLOCKED_RESOLVED_ADDRESS_RE_5.test(addr)) return true;
 
   const parts = ipv4Parts(addr);
   if (!parts) return false;

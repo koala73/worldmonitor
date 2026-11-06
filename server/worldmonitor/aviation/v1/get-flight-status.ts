@@ -9,6 +9,11 @@ import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders, IATA_RE, requireLiveAviationAccess } from './_shared';
 import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-budget';
 
+const FLIGHT_NUMBER_RE = /\s/g;
+const FLIGHT_NUMBER_RE_2 = /^([A-Z]{2,3})0+(\d+)$/;
+const GET_FLIGHT_STATUS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 const CACHE_TTL = 120; // 2 minutes
 
 interface AVSFlight {
@@ -60,8 +65,8 @@ export async function getFlightStatus(
     // Metered route — gate before anything else. See requireLiveAviationAccess.
     await requireLiveAviationAccess(ctx.request);
 
-    const flightNumber = (req.flightNumber?.toUpperCase().replace(/\s/g, '') || '')
-        .replace(/^([A-Z]{2,3})0+(\d+)$/, '$1$2');
+    const flightNumber = (req.flightNumber?.toUpperCase().replace(FLIGHT_NUMBER_RE, '') || '')
+        .replace(FLIGHT_NUMBER_RE_2, '$1$2');
     const date = req.date || new Date().toISOString().slice(0, 10);
     const origin = req.origin?.toUpperCase() || '';
     const now = Date.now();
@@ -73,7 +78,7 @@ export async function getFlightStatus(
 
     // Reject malformed filters before cache reads or provider budget reservation.
     const parsedDate = new Date(`${date}T00:00:00Z`);
-    if ((origin && !IATA_RE.test(origin)) || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+    if ((origin && !IATA_RE.test(origin)) || !GET_FLIGHT_STATUS_RE.test(date)
         || !Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
         markNoCacheResponse(ctx.request);
         return { flights: [], source: 'invalid', cacheHit: false };

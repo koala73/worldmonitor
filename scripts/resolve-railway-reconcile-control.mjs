@@ -21,6 +21,25 @@ import {
 } from './railway-cli.mjs';
 import { IN_FLIGHT_STATUSES, isKnownStatus } from './railway-deployments.mjs';
 
+const REQUIRE_RUN_ID_RE = /^[1-9]\d{0,23}$/;
+const REQUIRE_APPROVER_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]*$/;
+const REQUIRE_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const SANITIZED_RE = /[\u0000-\u001f\u007f]/g;
+const WHITESPACE_RE = /\s+/g;
+const SANITIZE_REASON_RE = /[`<>[\]]/;
+const SANITIZE_REASON_RE_2 = /(?:https?:\/\/|www\.)/i;
+const SANITIZE_REASON_RE_3 = /(?:gh[pousr]_|github_pat_|sk-[A-Za-z0-9]|bearer\s+|-----BEGIN|(?:secret|token|api[_ -]?key)\s*[:=])/i;
+const VALIDATE_RECOVERY_REQUEST_RE = /^[0-9a-f]{40}$/;
+const MODULE_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const ESCAPED_BASE_RE = /[.*+?^${}()|[\]\\]/g;
+const PAGINATED_RE = /^[1-9]\d*$/;
+const MODULE_RE_2 = /^(?:>=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\.\.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/;
+const REQUEST_RE = /^application\/json(?:;|$)/i;
+const TITLE_CONTAINS_IDENTIFIER_RE = /[^A-Za-z0-9._:-]+/;
+const MATCHING_RE = /^[0-9a-f]{40}$/i;
+const VALIDATE_CONVERGENCE_PROOF_RE = /^[0-9a-f]{64}$/;
+
+
 export const RECOVERY_PROTOCOL_VERSION = 1;
 export const TARGET_WORKFLOW = 'railway-deploy-trigger.yml';
 export const BREAKGLASS_ENVIRONMENT = 'ingestion-acceptance-production-breakglass';
@@ -90,7 +109,7 @@ function requireIdentifier(value, name) {
 }
 
 function requireRunId(value, name) {
-  if (typeof value !== 'string' || !/^[1-9]\d{0,23}$/.test(value)) {
+  if (typeof value !== 'string' || !REQUIRE_RUN_ID_RE.test(value)) {
     fail('RUN_ID_INVALID', `${name} must be a decimal GitHub run ID`);
   }
   return value;
@@ -112,14 +131,14 @@ function requireActor(value, name) {
 
 function requireApprover(value) {
   if (typeof value !== 'string' || value.length > 128
-    || !/^[A-Za-z0-9][A-Za-z0-9._:@-]*$/.test(value)) {
+    || !REQUIRE_APPROVER_RE.test(value)) {
     fail('APPROVER_INVALID', 'approver must be an allowlisted audit identity');
   }
   return value;
 }
 
 function requireTimestamp(value, name, now) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+  if (typeof value !== 'string' || !REQUIRE_TIMESTAMP_RE.test(value)) {
     fail('TIMESTAMP_INVALID', `${name} must be a millisecond ISO timestamp`);
   }
   const parsed = Date.parse(value);
@@ -129,11 +148,11 @@ function requireTimestamp(value, name, now) {
 
 function sanitizeReason(value) {
   if (typeof value !== 'string') return null;
-  const sanitized = value.normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  const sanitized = value.normalize('NFKC').replace(SANITIZED_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
   if (sanitized !== value || sanitized.length < 10 || sanitized.length > 240
-    || /[`<>[\]]/.test(sanitized)
-    || /(?:https?:\/\/|www\.)/i.test(sanitized)
-    || /(?:gh[pousr]_|github_pat_|sk-[A-Za-z0-9]|bearer\s+|-----BEGIN|(?:secret|token|api[_ -]?key)\s*[:=])/i.test(sanitized)
+    || SANITIZE_REASON_RE.test(sanitized)
+    || SANITIZE_REASON_RE_2.test(sanitized)
+    || SANITIZE_REASON_RE_3.test(sanitized)
     || sanitized.includes('${{') || sanitized.includes('::')) return null;
   return sanitized;
 }
@@ -221,7 +240,7 @@ export function validateRecoveryRequest(value, { now = Date.now } = {}) {
   if (value.version !== RECOVERY_PROTOCOL_VERSION) fail('REQUEST_VERSION_UNSUPPORTED', 'request version is unsupported');
   if (!DECISIONS.has(value.decision)) fail('DECISION_INVALID', 'operator decision is not in the closed vocabulary');
   requireIdentifier(value.priorId, 'priorId');
-  if (typeof value.expectedCurrentHead !== 'string' || !/^[0-9a-f]{40}$/.test(value.expectedCurrentHead)) {
+  if (typeof value.expectedCurrentHead !== 'string' || !VALIDATE_RECOVERY_REQUEST_RE.test(value.expectedCurrentHead)) {
     fail('HEAD_SHA_INVALID', 'expectedCurrentHead must be an exact lowercase commit SHA');
   }
   if (!sanitizeReason(value.reason)) fail('REASON_INVALID', 'reason must be a sanitized single line of 10-240 characters');
@@ -249,7 +268,7 @@ export class ReadOnlyGitHubClient {
     maxRequests = RECOVERY_GITHUB_MAX_REQUESTS,
     requestTimeoutMs = RECOVERY_GITHUB_REQUEST_TIMEOUT_MS,
   }) {
-    if (typeof repository !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+    if (typeof repository !== 'string' || !MODULE_RE.test(repository)) {
       throw new TypeError('repository must be owner/name');
     }
     if (typeof token !== 'string' || token.length < 1) throw new TypeError('read-only GitHub token is required');
@@ -278,9 +297,9 @@ export class ReadOnlyGitHubClient {
 
   #isAllowed(url) {
     const base = `/repos/${this.repository}`;
-    const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedBase = base.replace(ESCAPED_BASE_RE, '\\$&');
     const page = url.searchParams.get('page');
-    const paginated = page !== null && /^[1-9]\d*$/.test(page);
+    const paginated = page !== null && PAGINATED_RE.test(page);
     const exactQuery = (expected) => {
       const actual = [...url.searchParams.entries()];
       return actual.length === Object.keys(expected).length
@@ -298,7 +317,7 @@ export class ReadOnlyGitHubClient {
       const created = url.searchParams.get('created');
       const status = url.searchParams.get('status');
       return paginated && (
-        (/^(?:>=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\.\.\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)$/.test(created ?? '')
+        (MODULE_RE_2.test(created ?? '')
           && exactQuery({ ...common, created }))
         || (ACTIVE_STATUSES.has(status) && exactQuery({ ...common, status }))
       );
@@ -337,7 +356,7 @@ export class ReadOnlyGitHubClient {
         },
       });
       if (!(response instanceof Response) || response.redirected || !response.ok
-        || !/^application\/json(?:;|$)/i.test(response.headers.get('content-type') || '')) {
+        || !REQUEST_RE.test(response.headers.get('content-type') || '')) {
         fail('GITHUB_EVIDENCE_UNREADABLE', 'GitHub recovery evidence could not be read');
       }
       try {
@@ -479,7 +498,7 @@ export class ReadOnlyGitHubClient {
 }
 
 function titleContainsIdentifier(title, identifier) {
-  return typeof title === 'string' && title.split(/[^A-Za-z0-9._:-]+/).includes(identifier);
+  return typeof title === 'string' && title.split(TITLE_CONTAINS_IDENTIFIER_RE).includes(identifier);
 }
 
 function assertTargetWorkflowRun(run, request, repository) {
@@ -487,7 +506,7 @@ function assertTargetWorkflowRun(run, request, repository) {
   const path = typeof run?.path === 'string' ? run.path : '';
   const pathMatches = path === workflowPath || path === `${workflowPath}@refs/heads/main`;
   const targetHead = run?.head_sha;
-  const targetHeadIsValid = typeof targetHead === 'string' && /^[0-9a-f]{40}$/.test(targetHead);
+  const targetHeadIsValid = typeof targetHead === 'string' && VALIDATE_RECOVERY_REQUEST_RE.test(targetHead);
   if (!pathMatches || !['workflow_run', 'workflow_dispatch'].includes(run?.event)
     || run?.head_branch !== 'main' || !targetHeadIsValid
     || run?.repository?.full_name !== repository
@@ -565,7 +584,7 @@ async function collectGitHubProof(request, githubClient, observedAt) {
     return titleContainsIdentifier(run.display_title, request.priorId)
       && run.event === 'workflow_dispatch'
       && run.head_branch === 'main'
-      && /^[0-9a-f]{40}$/i.test(run.head_sha ?? '')
+      && MATCHING_RE.test(run.head_sha ?? '')
       && (run.path === workflowPath || run.path === `${workflowPath}@refs/heads/main`)
       && run.repository?.full_name === githubClient.repository
       && run.head_repository?.full_name === githubClient.repository
@@ -655,7 +674,7 @@ function targetRunHead(githubProof, request) {
   const target = githubProof?.matchingRuns?.find(
     (run) => run.runId === request.evidence.targetRunId,
   );
-  if (!target || typeof target.headSha !== 'string' || !/^[0-9a-f]{40}$/.test(target.headSha)) {
+  if (!target || typeof target.headSha !== 'string' || !VALIDATE_RECOVERY_REQUEST_RE.test(target.headSha)) {
     fail('TARGET_RUN_IDENTITY_MISMATCH', 'the exact target run head was not retained in GitHub evidence');
   }
   return target.headSha;
@@ -685,7 +704,7 @@ function assertManifestProducer(resultManifest, request, repository, githubProof
 function validateConvergenceProof(result, request, incidentHead) {
   if (!result || result.ok !== true || result.attemptId !== request.priorId
     || result.headSha !== incidentHead || result.strict?.ok !== true
-    || !/^[0-9a-f]{64}$/.test(result.intentDigest) || !/^[0-9a-f]{64}$/.test(result.resultDigest)
+    || !VALIDATE_CONVERGENCE_PROOF_RE.test(result.intentDigest) || !VALIDATE_CONVERGENCE_PROOF_RE.test(result.resultDigest)
     || !Array.isArray(result.acceptedDeploymentIds)) {
     fail('CONVERGENCE_PROOF_INVALID', 'strict observed convergence did not prove the exact prior attempt and head');
   }
@@ -768,8 +787,8 @@ function validateResolutionResponse(response, request, operationId) {
   const data = response.data;
   requireIdentifier(data.resolutionId, 'resolutionId');
   requireIdentifier(data.supersedingAttemptId, 'supersedingAttemptId');
-  if (!/^[0-9a-f]{64}$/.test(data.operationId)
-    || !/^[0-9a-f]{64}$/.test(data.evidenceDigest)
+  if (!VALIDATE_CONVERGENCE_PROOF_RE.test(data.operationId)
+    || !VALIDATE_CONVERGENCE_PROOF_RE.test(data.evidenceDigest)
     || typeof data.evidenceId !== 'string' || !IDENTIFIER.test(data.evidenceId)
     || data.operationId !== operationId
     || data.priorId !== request.priorId || data.headSha !== request.expectedCurrentHead

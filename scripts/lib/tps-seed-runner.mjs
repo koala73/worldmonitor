@@ -15,6 +15,9 @@ import {
   validateTpsMciSnapshot,
 } from './tps-open-data.mjs';
 
+const UNAVAILABLE_SNAPSHOT_RE = /^http_[1-5]\d{2}$/;
+
+
 function unavailableSnapshot(semantic, result, startedAt) {
   const [category, , detail] = String(result?.reason || '').split(':');
   const knownReasons = new Set([
@@ -26,7 +29,7 @@ function unavailableSnapshot(semantic, result, startedAt) {
   console.warn(JSON.stringify({
     event: 'tps_source_failure',
     source: semantic === 'annual_aggregate' ? 'calls' : 'mci',
-    reason: knownReasons.has(category) || /^http_[1-5]\d{2}$/.test(category)
+    reason: knownReasons.has(category) || UNAVAILABLE_SNAPSHOT_RE.test(category)
       ? category : 'fetch_failed',
     stage: detail === 'package' || detail === 'ids' ? detail : 'source',
     status: Number.isInteger(result?.status) && result.status >= 100 && result.status <= 599

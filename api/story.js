@@ -11,6 +11,12 @@
 // 20-code name table that left every other country titled by raw ISO2.
 import { COUNTRY_CORPUS_NAMES, COUNTRY_CORPUS_SLUGS } from './_country-corpus-slugs.generated.js';
 
+const ESC_RE = /&/g;
+const ESC_RE_2 = /"/g;
+const ESC_RE_3 = /</g;
+const ESC_RE_4 = />/g;
+
+
 // Canonical www origin for indexable destinations. The share stub itself keeps
 // serving from the bare-host api origin; only its canonical target moves.
 const WWW_ORIGIN = 'https://www.worldmonitor.app';
@@ -101,5 +107,5 @@ export default function handler(req, res) {
 }
 
 function esc(str) {
-  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str.replace(ESC_RE, '&amp;').replace(ESC_RE_2, '&quot;').replace(ESC_RE_3, '&lt;').replace(ESC_RE_4, '&gt;');
 }

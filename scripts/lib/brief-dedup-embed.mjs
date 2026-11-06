@@ -16,6 +16,11 @@ import {
   LOCATION_GAZETTEER,
 } from './entity-gazetteer.mjs';
 
+const WHITESPACE_RE = /\s+/;
+const CLEAN_TOKEN_RE = /[.,;:!?"')\]]+$/g;
+const CLEAN_TOKEN_RE_2 = /^["'([]+/g;
+
+
 // ── Entity extraction / veto ───────────────────────────────────────────
 
 const CAPITALIZED_TOKEN_RE = /^[A-Z][a-zA-Z\-'.]{1,}$/;
@@ -27,14 +32,14 @@ const CAPITALIZED_TOKEN_RE = /^[A-Z][a-zA-Z\-'.]{1,}$/;
 const MAX_LOCATION_PHRASE_LEN = (() => {
   let max = 1;
   for (const entry of LOCATION_GAZETTEER) {
-    const len = entry.split(/\s+/).length;
+    const len = entry.split(WHITESPACE_RE).length;
     if (len > max) max = len;
   }
   return max;
 })();
 
 function cleanToken(t) {
-  return t.replace(/[.,;:!?"')\]]+$/g, '').replace(/^["'([]+/g, '');
+  return t.replace(CLEAN_TOKEN_RE, '').replace(CLEAN_TOKEN_RE_2, '');
 }
 
 /**
@@ -71,7 +76,7 @@ export function extractEntities(title) {
   if (typeof title !== 'string' || title.length === 0) {
     return { locations: [], actors: [] };
   }
-  const tokens = title.split(/\s+/).map(cleanToken).filter(Boolean);
+  const tokens = title.split(WHITESPACE_RE).map(cleanToken).filter(Boolean);
 
   const locations = new Set();
   const actors = new Set();

@@ -3,6 +3,14 @@
 import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
 import { EVENT_SERIES, computePrintValues, fillEventActuals } from './_econ-actuals.mjs';
 
+const RANGE_MATCH_RE = /(\d{1,2})\s*[-\u2013]\s*(\d{1,2})/;
+const DATE_RE_RE = /datetime="(\d{4}-\d{2}-\d{2})"/g;
+const FETCH_ECB_COUNCIL_DATES_RE = /monetary policy/i;
+const FETCH_ECB_COUNCIL_DATES_RE_2 = /\bDay\s*2\b/i;
+const DATE_RE2_RE = /(\d{1,2})\/(\d{2})\/(\d{4})/g;
+const DATE_RE3_RE = /\b(20\d{2}-\d{2}-\d{2})\b/g;
+
+
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -96,7 +104,7 @@ async function fetchFomcDates(fallback) {
         while ((monthMatch = monthRe.exec(section)) !== null) {
           const month = monthMatch[1];
           const afterMonth = section.slice(monthMatch.index + month.length, monthMatch.index + month.length + 80);
-          const rangeMatch = afterMonth.match(/(\d{1,2})\s*[-\u2013]\s*(\d{1,2})/);
+          const rangeMatch = afterMonth.match(RANGE_MATCH_RE);
           if (rangeMatch) {
             const day2 = rangeMatch[2];
             dates.push(`${year}-${MONTHS[month]}-${day2.padStart(2, '0')}`);
@@ -130,27 +138,27 @@ async function fetchEcbCouncilDates(fallback) {
     const dates = [];
 
     // Strategy A: datetime="YYYY-MM-DD" attributes with "monetary policy" + "Day 2" context
-    const dateRe = /datetime="(\d{4}-\d{2}-\d{2})"/g;
+    const dateRe = DATE_RE_RE;
     const allMatches = [...html.matchAll(dateRe)];
     for (let i = 0; i < allMatches.length; i++) {
       const match = allMatches[i];
       const nextIdx = allMatches[i + 1]?.index ?? match.index + 800;
       const ctx = html.slice(match.index, nextIdx);
-      if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
+      if (FETCH_ECB_COUNCIL_DATES_RE.test(ctx) && FETCH_ECB_COUNCIL_DATES_RE_2.test(ctx)) {
         dates.push(match[1]);
       }
     }
 
     // Strategy B: DD/MM/YYYY format in text near "monetary policy" + "Day 2"
     if (dates.length === 0) {
-      const dateRe2 = /(\d{1,2})\/(\d{2})\/(\d{4})/g;
+      const dateRe2 = DATE_RE2_RE;
       const allMatches2 = [...html.matchAll(dateRe2)];
       for (let i = 0; i < allMatches2.length; i++) {
         const match = allMatches2[i];
         const ctxStart = Math.max(0, match.index - 400);
         const ctxEnd = Math.min(html.length, match.index + 400);
         const ctx = html.slice(ctxStart, ctxEnd);
-        if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
+        if (FETCH_ECB_COUNCIL_DATES_RE.test(ctx) && FETCH_ECB_COUNCIL_DATES_RE_2.test(ctx)) {
           const [, dd, mm, yyyy] = match;
           dates.push(`${yyyy}-${mm}-${dd.padStart(2, '0')}`);
         }
@@ -159,14 +167,14 @@ async function fetchEcbCouncilDates(fallback) {
 
     // Strategy C: ISO dates (YYYY-MM-DD) in text near "monetary policy" + "Day 2"
     if (dates.length === 0) {
-      const dateRe3 = /\b(20\d{2}-\d{2}-\d{2})\b/g;
+      const dateRe3 = DATE_RE3_RE;
       const allMatches3 = [...html.matchAll(dateRe3)];
       for (let i = 0; i < allMatches3.length; i++) {
         const match = allMatches3[i];
         const ctxStart = Math.max(0, match.index - 400);
         const ctxEnd = Math.min(html.length, match.index + 400);
         const ctx = html.slice(ctxStart, ctxEnd);
-        if (/monetary policy/i.test(ctx) && /\bDay\s*2\b/i.test(ctx)) {
+        if (FETCH_ECB_COUNCIL_DATES_RE.test(ctx) && FETCH_ECB_COUNCIL_DATES_RE_2.test(ctx)) {
           dates.push(match[1]);
         }
       }

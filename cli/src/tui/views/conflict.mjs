@@ -7,6 +7,12 @@ import { severityColor } from '../ui/theme.mjs';
 import { ageOf, ciiRanking, enumLabel, trendArrow } from '../data/select.mjs';
 import { PaneView, selectedItem } from './base.mjs';
 
+const COLOR_RE = /elevated|high|critical/i;
+const COLOR_RE_2 = /watch|raised/i;
+const RENDER_POSTURE_RE = /-theater$/;
+const RENDER_POSTURE_RE_2 = /-/g;
+
+
 export class ConflictView extends PaneView {
   constructor(app) {
     super(app, { id: 'conflict', label: 'Conflict', paneIds: ['cii', 'ucdp', 'unrest', 'signals'], sources: ['fast', 'slow', 'correlationCards'] });
@@ -122,13 +128,13 @@ export class ConflictView extends PaneView {
     const inner = panel(ctx, r, { title: 'Theater posture' });
     theaters.slice(0, inner.h).forEach((p, i) => {
       const level = String(p.postureLevel || 'normal');
-      const color = /elevated|high|critical/i.test(level) ? t.bad : /watch|raised/i.test(level) ? t.warn : t.good;
+      const color = COLOR_RE.test(level) ? t.bad : COLOR_RE_2.test(level) ? t.warn : t.good;
       segments(
         ctx,
         inner.x,
         inner.y + i,
         [
-          { text: String(p.theater || '').replace(/-theater$/, '').replace(/-/g, ' ').slice(0, 13).padEnd(14), fg: t.text },
+          { text: String(p.theater || '').replace(RENDER_POSTURE_RE, '').replace(RENDER_POSTURE_RE_2, ' ').slice(0, 13).padEnd(14), fg: t.text },
           { text: level.toUpperCase().padEnd(9), fg: color, attr: ATTR.BOLD },
           { text: `✈${String(p.activeFlights ?? 0).padStart(3)} ⚓${String(p.trackedVessels ?? 0).padStart(3)}`, fg: t.dim },
           { text: p.activeOperations?.length ? ` ${p.activeOperations[0]}` : '', fg: t.warn },
@@ -160,7 +166,7 @@ export class ConflictView extends PaneView {
         return [
           { text: 'xsrc ', fg: t.accent2 },
           { text: `${String(Math.round(Number(x.severityScore) || 0)).padStart(3)} `, fg: severityColor(t, x.severity), attr: ATTR.BOLD },
-          { text: `${String(x.theater || '').replace(/-/g, ' ')} `, fg: t.dim },
+          { text: `${String(x.theater || '').replace(RENDER_POSTURE_RE_2, ' ')} `, fg: t.dim },
           { text: String(x.summary || '').slice(0, Math.max(8, width - 26)), fg: t.text },
           { text: ` ${ageOf(x.detectedAt, now)}`, fg: t.dim },
         ];

@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { channel } from 'node:diagnostics_channel';
 import { isIP } from 'node:net';
 
+const RESPONSE_METADATA_RE = /^cloudflare$/i;
+const RESPONSE_METADATA_RE_2 = /^[a-f0-9]{16,32}-[A-Z]{3}$/;
+
+
 const requests = new AsyncLocalStorage();
 const ERROR_CODES = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN',
@@ -18,9 +22,9 @@ function responseMetadata(response) {
   const ray = get('cf-ray');
   return {
     status: Number.isInteger(response.status) ? response.status : null,
-    server: server == null ? null : /^cloudflare$/i.test(server) ? 'cloudflare' : 'other',
+    server: server == null ? null : RESPONSE_METADATA_RE.test(server) ? 'cloudflare' : 'other',
     contentType: ['text/html', 'application/json', 'application/xml', 'application/atom+xml', 'text/xml', 'text/plain'].includes(type) ? type : null,
-    cfRay: typeof ray === 'string' && /^[a-f0-9]{16,32}-[A-Z]{3}$/.test(ray) ? ray : null,
+    cfRay: typeof ray === 'string' && RESPONSE_METADATA_RE_2.test(ray) ? ray : null,
     challenge: get('cf-mitigated') === 'challenge',
   };
 }

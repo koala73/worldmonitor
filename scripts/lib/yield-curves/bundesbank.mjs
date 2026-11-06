@@ -7,6 +7,11 @@
 
 import { normalizeDateLabel, parseYieldNumber, collapseCurves } from './model.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const HEADER_INDEX_RE = /;BBSIS\.[^;]+;/;
+const COLUMNS_RE = /(R\d{2}XX)\b/;
+
+
 export const BUNDESBANK_PAR_TENORS = {
   R01XX: '1y', R02XX: '2y', R03XX: '3y', R04XX: '4y', R05XX: '5y', R06XX: '6y',
   R07XX: '7y', R08XX: '8y', R09XX: '9y', R10XX: '10y', R15XX: '15y', R20XX: '20y',
@@ -14,13 +19,13 @@ export const BUNDESBANK_PAR_TENORS = {
 };
 
 export function parseBundesbankCsv(csv) {
-  const lines = String(csv ?? '').split(/\r?\n/);
+  const lines = String(csv ?? '').split(LINE_BREAK_RE);
   // Header row is the first line carrying a BBSIS series key in cell 2.
-  const headerIndex = lines.findIndex((line) => /;BBSIS\.[^;]+;/.test(line));
+  const headerIndex = lines.findIndex((line) => HEADER_INDEX_RE.test(line));
   if (headerIndex === -1) return [];
   const headers = lines[headerIndex].split(';');
   const columns = headers.map((header) => {
-    const match = /(R\d{2}XX)\b/.exec(header);
+    const match = COLUMNS_RE.exec(header);
     return match && Object.prototype.hasOwnProperty.call(BUNDESBANK_PAR_TENORS, match[1])
       ? BUNDESBANK_PAR_TENORS[match[1]]
       : null;

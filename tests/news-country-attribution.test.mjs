@@ -10,6 +10,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 
 import { extractCountryCode, extractCountryCodes, extractStoryCountries } from '../scripts/shared/geo-extract.mjs';
 
@@ -32,7 +33,7 @@ function relaySlice(fromMarker, toFunction) {
 
 const relay = Function(
   'require',
-  `${relaySlice('const THREAT_COUNTRY_NAME_TO_ISO2 = {', 'threatSummaryCountries')}
+  `${moduleRegexDeclarations(RELAY_SOURCE, [], ['AFFECTED_PREFIX_RE', 'THREAT_PUBLISHER_CREDIT_WORDS'])}\n${relaySlice('const THREAT_COUNTRY_NAME_TO_ISO2 = {', 'threatSummaryCountries')}
   return { matchCountryNamesInText, threatSummaryCountries };`,
 )(createRequire(new URL('../scripts/ais-relay.cjs', import.meta.url)));
 

@@ -1,3 +1,4 @@
+import { moduleRegexDeclarations, moduleRegexBindings, inlineModuleRegexReferences } from './helpers/module-regex-declarations.mjs';
 /**
  * AI Widget Builder — E2E / Static verification tests
  *
@@ -50,7 +51,7 @@ describe('widget relay spend identity trust', () => {
         checkProWidgetRateLimit: bucket => { buckets.push(bucket); return true; },
         safeEnd: (_res, status) => { assert.equal(status, 429); },
       };
-      const run = vm.runInNewContext(`${functions}\nhandleWidgetAgentRequest`, context);
+      const run = vm.runInNewContext(`${functions}\nhandleWidgetAgentRequest`, Object.assign(context, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
       for (const relayKey of [undefined, 'legacy-pro-key', 'wrong-secret', 'server-only-secret']) {
         for (const spendId of ['user:rotated-one', 'user:rotated-two']) {
           // GHSA-rcgv-gv2h-87fp: a direct caller controls these headers, so an
@@ -177,7 +178,7 @@ async function runWidgetAgent(responses, { tier = 'basic', failFetch = false, fa
     return match[0];
   }).join('\n');
   const handler = extract('handleWidgetAgentRequest').replace("import('@anthropic-ai/sdk')", 'importAnthropic()');
-  const run = vm.runInNewContext(`${limit}\n${widgetSonnetConstants()}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('formatWidgetVerifierFindings')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, context);
+  const run = vm.runInNewContext(`${limit}\n${widgetSonnetConstants()}\n${toolDefinitions}\n${extract('sendWidgetSSE')}\n${extract('filterWidgetToolInjection')}\n${extract('sanitizeToolContent')}\n${extract('compactWidgetToolJson')}\n${extract('formatWidgetVerifierFindings')}\n${extract('classifyWidgetAgentError')}\n${handler}\nhandleWidgetAgentRequest`, Object.assign(context, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
   const res = {
     writableEnded: false, writeHead() {},
     write(frame) { frames.push(frame); },
@@ -471,7 +472,7 @@ describe('widget data-tool contracts', () => {
   function constant(name) {
     const match = relay.match(new RegExp('^const ' + name + ' = (`[\\s\\S]*?`|\\{[\\s\\S]*?^\\});$', 'm'));
     assert.ok(match, `${name} must exist`);
-    return vm.runInNewContext(`(${match[1]})`, { WIDGET_DATA_CATALOG });
+    return vm.runInNewContext(`(${match[1]})`, Object.assign({ WIDGET_DATA_CATALOG }, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
   }
   const fetchTool = constant('WIDGET_FETCH_TOOL');
   const searchTool = constant('WIDGET_SEARCH_TOOL');
@@ -586,13 +587,13 @@ describe('widget data-tool contracts', () => {
     assert.ok(start > 0 && resultStart > start);
     const end = resultStart + resultInsertion.length;
     const helpers = relay.slice(relay.indexOf('function filterWidgetToolInjection('), relay.indexOf('const WIDGET_FETCH_TOOL'));
-    const context = vm.createContext({
+    const context = vm.createContext(Object.assign({
       URL, AbortSignal, fetch, buildWidgetDataUrl, response: { stop_reason: 'tool_use', content: [block] }, messages: [], res: {},
       cancelled: false, finalizing: false, toolCallCount: 0, toolExecutionCount: 0,
       WIDGET_MAX_TOOL_CALLS: 3, toolLimit: 3, searchedUrls: new Set(), sources: [], usedWeb: false,
       getWidgetDataSessionToken: async () => 'wms_contract', invalidateWidgetDataSession() {},
       sendWidgetSSE() {}, WIDGET_EXA_KEY: 'fixture', WIDGET_BRAVE_KEY: 'fixture', console,
-    });
+    }, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
     const searchStart = relay.indexOf('async function performWidgetWebSearch(');
     const searchEnd = relay.indexOf('const WIDGET_RATE_LIMIT', searchStart);
     vm.runInContext(helpers + relay.slice(searchStart, searchEnd), context);
@@ -1050,10 +1051,10 @@ describe('widget page reader', () => {
   const load = fetch => {
     const match = relay.match(/async function performWidgetPageRead\([\s\S]*?\n\}/);
     assert.ok(match, 'Missing performWidgetPageRead');
-    return vm.runInNewContext(`${match[0]}\nperformWidgetPageRead`, {
+    return vm.runInNewContext(`${match[0]}\nperformWidgetPageRead`, Object.assign({
       fetch, URL, AbortSignal, String, JSON, console: { warn() {} },
       WIDGET_EXA_KEY: 'exa', WIDGET_FIRECRAWL_KEY: 'fc',
-    });
+    }, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
   };
 
   it('sends a User-Agent to both providers and stops when the widget request is cancelled', async () => {
@@ -1080,7 +1081,7 @@ describe('widget source verifier', () => {
   const load = () => {
     const match = relay.match(/async function verifyWidgetAgainstSources\([\s\S]*?\n\}/);
     assert.ok(match, 'Missing verifyWidgetAgainstSources');
-    return vm.runInNewContext(`${widgetSonnetConstants()}\n${match[0]}\nverifyWidgetAgainstSources`, { JSON, console: { warn() {} } });
+    return vm.runInNewContext(`${widgetSonnetConstants()}\n${match[0]}\nverifyWidgetAgainstSources`, Object.assign({ JSON, console: { warn() {} } }, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
   };
   const clientReturning = (text, seen = []) => ({ messages: { create: async req => { seen.push(req); return { content: [{ type: 'text', text }] }; } } });
   const input = { request: 'Premier League table', today: '2026-09-29', html: '<div>Arsenal 15</div>', sources: [{ kind: 'page', label: 'https://example.com/t', text: '| Arsenal | 15 |' }] };
@@ -1158,12 +1159,12 @@ describe('widget-agent relay — anonymous data session', () => {
   function load(mint) {
     const calls = [];
     let now = 1_000_000;
-    const context = vm.createContext({
+    const context = vm.createContext(Object.assign({
       console: { warn() {} },
       Date: { now: () => now },
       AbortSignal,
       fetch: async (url, init) => { calls.push({ url, init }); return mint(calls.length); },
-    });
+    }, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
     assert.ok(start > 0 && end > start, 'Missing widget data session helpers');
     vm.runInContext(relay.slice(start, end), context);
     return { context, calls, advance: ms => { now += ms; } };
@@ -1581,7 +1582,7 @@ describe('widget-agent relay — completion contract', () => {
       write(chunk) { chunks.push(chunk); },
       end() { this.writableEnded = true; ends++; },
     };
-    vm.runInNewContext(`${widgetSonnetConstants()}\n${sendSSE}\n${handler}\nthis.run = handleWidgetAgentRequest;`, context);
+    vm.runInNewContext(`${widgetSonnetConstants()}\n${sendSSE}\n${handler}\nthis.run = handleWidgetAgentRequest;`, Object.assign(context, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
     await context.run({ headers: {}, on() {} }, res);
     assert.equal(ends, 1, 'stream must end exactly once');
     assert.equal(calls, responses.length, 'generation must consume the expected responses');
@@ -2614,7 +2615,7 @@ describe('PRO widget — store and sanitizer', () => {
         },
         window: sandboxWindow,
       };
-      vm.runInNewContext(script, context);
+      vm.runInNewContext(script, Object.assign(context, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
       const message = listeners.get('message');
       assert.equal(typeof message, 'function', 'message listener must be registered');
       return { parent, readyMessages, writes, message };
@@ -2723,7 +2724,7 @@ describe('PRO widget — store and sanitizer', () => {
         },
         window: sandboxWindow,
       };
-      vm.runInNewContext(script, context);
+      vm.runInNewContext(script, Object.assign(context, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
       const message = listeners.get('message');
       assert.equal(typeof message, 'function', 'message listener must be registered');
       return { parent, readyMessages, writes, message };
@@ -2868,14 +2869,14 @@ describe('PRO widget — store and sanitizer', () => {
       close() {},
     };
 
-    vmContext = vm.createContext({
+    vmContext = vm.createContext(Object.assign({
       URL,
       URLSearchParams,
       Event: FakeEvent,
       EventTarget: FakeEventTarget,
       document,
       window: sandboxWindow,
-    });
+    }, moduleRegexBindings(src('scripts/ais-relay.cjs'))));
     vm.runInContext(script, vmContext);
 
     const message = sandboxWindow.listeners.get('message')?.[0]?.listener;
@@ -3260,7 +3261,7 @@ describe('widget-agent relay — error classifier', () => {
 
   it('classifier scrubs Claude API keys from any fallback message', () => {
     const fnIdx = relay.indexOf('function classifyWidgetAgentError');
-    const region = relay.slice(fnIdx, fnIdx + 3000);
+    const region = inlineModuleRegexReferences(relay, relay.slice(fnIdx, fnIdx + 3000));
     assert.ok(
       /sk-(?:ant-)?\[A-Za-z0-9_-\]\{20,?\}/.test(region) || /sk-\(\?:ant-\)\?\[A-Za-z0-9_-\]/.test(region),
       'Classifier fallback must redact `sk-…` / `sk-ant-…` API keys before surfacing the message',
@@ -3275,7 +3276,7 @@ describe('widget-agent relay — error classifier', () => {
     // Round-trip the function for runtime check: the 400 message must redact a Claude key.
     const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
     assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
-    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const fn = new Function(moduleRegexDeclarations(src('scripts/ais-relay.cjs')) + '\n' + (`${fnMatch[0]}; return classifyWidgetAgentError;`))();
     const out = fn(
       { status: 400, error: { type: 'invalid_request_error' }, message: 'bad header sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA was rejected' },
       'claude-sonnet-4-6',
@@ -3293,7 +3294,7 @@ describe('widget-agent relay — error classifier', () => {
   it('classifier handles Anthropic APITimeoutError (status 408) — does not fall through to fallback', () => {
     const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
     assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
-    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const fn = new Function(moduleRegexDeclarations(src('scripts/ais-relay.cjs')) + '\n' + (`${fnMatch[0]}; return classifyWidgetAgentError;`))();
     // Real Anthropic Node SDK timeout shape: name='APITimeoutError', status=408
     const apiTimeout = fn({ name: 'APITimeoutError', status: 408, message: 'Request timeout.' }, 'claude-sonnet-4-6');
     assert.equal(apiTimeout, 'AI backend timed out', 'APITimeoutError must classify as timed-out, not fallback');
@@ -3310,7 +3311,7 @@ describe('widget-agent relay — error classifier', () => {
     // an APITimeoutError tagged with status 400 (defensive against future SDK
     // shape changes) still classifies as a timeout, not "Invalid request".
     const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
-    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const fn = new Function(moduleRegexDeclarations(src('scripts/ais-relay.cjs')) + '\n' + (`${fnMatch[0]}; return classifyWidgetAgentError;`))();
     const out = fn({ name: 'APITimeoutError', status: 400, message: 'timeout' }, 'claude-sonnet-4-6');
     assert.equal(out, 'AI backend timed out', 'APITimeoutError must beat the 400 branch regardless of status');
   });

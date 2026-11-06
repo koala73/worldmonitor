@@ -13,6 +13,10 @@ import {
 import { resolveIso2 } from './_country-resolver.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
+const LINES_RE = /^\uFEFF/;
+const LINE_BREAK_RE = /\r?\n/;
+
+
 loadEnvFile(import.meta.url);
 
 export const OWID_ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
@@ -78,8 +82,8 @@ function parseDelimitedRow(line, delimiter) {
 
 function parseDelimitedText(text, delimiter) {
   const lines = text
-    .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
+    .replace(LINES_RE, '')
+    .split(LINE_BREAK_RE)
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines.length < 2) return [];

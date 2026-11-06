@@ -27,6 +27,9 @@
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
+const ARGS_RE = /^--/;
+
+
 export const FEATURE_TABLES = [
   "notificationChannels",
   "alertRules",
@@ -387,7 +390,7 @@ export function runCli(argv = process.argv.slice(2), env = process.env) {
   }
   const args = new Map(
     argv.map((arg) => {
-      const [key, value] = arg.replace(/^--/, "").split("=");
+      const [key, value] = arg.replace(ARGS_RE, "").split("=");
       return [key, value ?? true];
     }),
   );

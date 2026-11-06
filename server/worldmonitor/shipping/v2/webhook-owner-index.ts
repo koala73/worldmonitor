@@ -2,6 +2,9 @@ import { ApiError } from '../../../../src/generated/server/worldmonitor/shipping
 import { runRedisPipeline } from '../../../_shared/redis';
 import { ownerIndexKey, webhookKey, WEBHOOK_TTL } from './webhook-shared';
 
+const PRUNE_OWNER_WEBHOOK_INDEX_RE = /^\d+$/;
+
+
 const SWEEP_BATCH_SIZE = 100;
 const REMOVE_EXPIRED_MEMBER = "if redis.call('EXISTS', KEYS[2]) == 0 then return redis.call('SREM', KEYS[1], ARGV[1]) else return 0 end";
 
@@ -23,7 +26,7 @@ export async function pruneOwnerWebhookIndex(ownerTag: string): Promise<void> {
     if (typeof stateResult[0].result !== 'string') unavailable();
     try {
       const parsed = JSON.parse(stateResult[0].result);
-      if (!parsed || typeof parsed.cursor !== 'string' || !/^\d+$/.test(parsed.cursor)
+      if (!parsed || typeof parsed.cursor !== 'string' || !PRUNE_OWNER_WEBHOOK_INDEX_RE.test(parsed.cursor)
         || !Number.isSafeInteger(parsed.offset) || parsed.offset < 0) unavailable();
       state = { cursor: parsed.cursor, offset: parsed.offset };
     } catch { unavailable(); }
@@ -31,7 +34,7 @@ export async function pruneOwnerWebhookIndex(ownerTag: string): Promise<void> {
   const scan = await runRedisPipeline([['SSCAN', ownerKey, state.cursor, 'COUNT', String(SWEEP_BATCH_SIZE)]]);
   const page = scan[0]?.result;
   if (scan[0]?.error || !Array.isArray(page) || page.length !== 2 || typeof page[0] !== 'string'
-    || !/^\d+$/.test(page[0]) || !stringArray(page[1])) unavailable();
+    || !PRUNE_OWNER_WEBHOOK_INDEX_RE.test(page[0]) || !stringArray(page[1])) unavailable();
   const ids = page[1].slice(state.offset, state.offset + SWEEP_BATCH_SIZE);
   const nextState = state.offset + SWEEP_BATCH_SIZE < page[1].length
     ? { cursor: state.cursor, offset: state.offset + SWEEP_BATCH_SIZE }

@@ -19,6 +19,9 @@ import {
   type FactCheckApiClaim,
 } from './fact-checks';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 const SEARCH_TIMEOUT_MS = 5_000;
 /** Published fact-checks rarely change; a day keeps the free API quota for new claims. */
 const SEARCH_CACHE_TTL_S = 24 * 60 * 60;
@@ -35,7 +38,7 @@ type CachedSearch = { claims: FactCheckApiClaim[] };
 
 /** The exact claims:search query for a claim: whitespace collapsed, capped. */
 export function factCheckQuery(rawClaim: string): string {
-  return String(rawClaim ?? '').replace(/\s+/g, ' ').trim().slice(0, CLAIM_MAX_CHARS);
+  return String(rawClaim ?? '').replace(WHITESPACE_RE, ' ').trim().slice(0, CLAIM_MAX_CHARS);
 }
 
 /** The cache identity of a search: the query sent upstream, so every word that changes the search changes the key. */

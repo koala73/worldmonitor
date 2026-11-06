@@ -13,6 +13,9 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { entitlementFeaturesValidator } from "../lib/entitlementFeaturesValidator";
 
+const GET_AI_ROUTING_POLICY_KEY_RE = /^entitlements:/;
+
+
 // 15 min — short enough that subscription expiry is reflected promptly
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
 
@@ -30,7 +33,7 @@ function getEntitlementKey(userId: string): string {
 
 /** Edge AI routing policy cache key; same env namespace as the entitlement key. */
 function getAiRoutingPolicyKey(userId: string): string {
-  return getEntitlementKey(userId).replace(/^entitlements:/, 'ai-routing:');
+  return getEntitlementKey(userId).replace(GET_AI_ROUTING_POLICY_KEY_RE, 'ai-routing:');
 }
 
 /**

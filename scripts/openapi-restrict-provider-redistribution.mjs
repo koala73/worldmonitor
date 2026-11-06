@@ -4,6 +4,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const UPDATED_RE = /^[ \t]*- POSITION_SOURCE_OPENSKY\r?\n/gm;
+const MODULE_RE = /Provider that supplied this observation[^\n]*opensky/i;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 
@@ -24,7 +28,7 @@ for (const path of aviationFiles) {
   const original = readFileSync(path, 'utf8');
   const updated = original
     .replaceAll('"POSITION_SOURCE_OPENSKY",', '')
-    .replace(/^[ \t]*- POSITION_SOURCE_OPENSKY\r?\n/gm, '');
+    .replace(UPDATED_RE, '');
   if (updated.includes('POSITION_SOURCE_OPENSKY')) {
     throw new Error(`openapi provider restriction failed for ${path}: OpenSky enum remains`);
   }
@@ -39,7 +43,7 @@ for (const path of militaryFiles) {
   const updated = original
     .replaceAll('or \\"opensky\\"', 'or \\"wingbits\\"')
     .replaceAll('or "opensky"', 'or "wingbits"');
-  if (/Provider that supplied this observation[^\n]*opensky/i.test(updated)) {
+  if (MODULE_RE.test(updated)) {
     throw new Error(`openapi provider restriction failed for ${path}: OpenSky example remains`);
   }
   if (updated !== original) {

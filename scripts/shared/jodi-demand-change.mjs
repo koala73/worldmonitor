@@ -7,6 +7,8 @@
 
 // Monthly oil-product demand is strongly seasonal, so only a same-month
 // year-over-year comparison is published as an activity-bearing change.
+const MONTH_INDEX_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
 export const DEMAND_CHANGE_BASIS = 'year_over_year';
 
 // The downstream nowcast consumes this as a percentage, while the component
@@ -23,7 +25,7 @@ export const MAX_DEMAND_CHANGE_PERCENT = 50;
 
 /** Canonical parse of a JODI `YYYY-MM` observation period into a month ordinal. */
 export function monthIndex(month) {
-  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month ?? '');
+  const match = MONTH_INDEX_RE.exec(month ?? '');
   return match ? Number(match[1]) * 12 + Number(match[2]) - 1 : null;
 }
 

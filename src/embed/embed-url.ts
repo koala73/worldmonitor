@@ -6,6 +6,14 @@ import {
   type EmbedPanelId,
 } from '../../shared/embed-panels';
 
+const SANITIZE_CSS_DIMENSION_RE = /^\d+(?:\.\d+)?%$/;
+const NUMERIC_RE = /px$/i;
+const ESCAPE_ATTRIBUTE_RE = /&/g;
+const ESCAPE_ATTRIBUTE_RE_2 = /"/g;
+const ESCAPE_ATTRIBUTE_RE_3 = /</g;
+const ESCAPE_ATTRIBUTE_RE_4 = />/g;
+
+
 export type { EmbedLayerId };
 
 // Browser-side mapping for the shared `EMBED_LAYER_IDS` allowlist. An id
@@ -373,20 +381,20 @@ function roundZoom(value: number): string {
 
 function sanitizeCssDimension(value: string): string {
   const trimmed = value.trim();
-  if (/^\d+(?:\.\d+)?%$/.test(trimmed)) return trimmed;
+  if (SANITIZE_CSS_DIMENSION_RE.test(trimmed)) return trimmed;
   return `${sanitizePixelDimension(trimmed, 120, 1200)}px`;
 }
 
 function sanitizePixelDimension(value: string, min: number, max: number): string {
-  const numeric = Number(value.trim().replace(/px$/i, ''));
+  const numeric = Number(value.trim().replace(NUMERIC_RE, ''));
   if (!Number.isFinite(numeric)) return '420';
   return String(Math.max(min, Math.min(max, Math.round(numeric))));
 }
 
 function escapeAttribute(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(ESCAPE_ATTRIBUTE_RE, '&amp;')
+    .replace(ESCAPE_ATTRIBUTE_RE_2, '&quot;')
+    .replace(ESCAPE_ATTRIBUTE_RE_3, '&lt;')
+    .replace(ESCAPE_ATTRIBUTE_RE_4, '&gt;');
 }

@@ -16,6 +16,9 @@ import {
   formatLocalSecretDumpError,
 } from './check-local-secret-dumps.mjs';
 
+const PROBE_HOOKS_PATH_RE = /^file:/;
+
+
 const LOCAL_ENV_FILES = ['.env.local', '.env'];
 const DEFAULT_NPM_CACHE = '/tmp/worldmonitor-npm-cache';
 
@@ -387,7 +390,7 @@ function probeHooksPath(rootDir, runGit) {
   const [origin = '', ...valueParts] = probe.stdout.trim().split('\t');
   return {
     hooksPathValue: valueParts.join('\t'),
-    originFile: origin.replace(/^file:/, ''),
+    originFile: origin.replace(PROBE_HOOKS_PATH_RE, ''),
   };
 }
 

@@ -20,6 +20,13 @@ import {
   validationFormulaMetadata,
 } from './lib/resilience-formula.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const TO_ISO2_RE = /^[A-Z]{3}$/;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]/g;
+const YEAR_COLS_RE = /^hdi_\d{4}$/i;
+const IS_STRICT_VALIDATION_CLI_RE = /^(1|true|yes|on)$/i;
+
+
 loadEnvFile(import.meta.url);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -98,8 +105,8 @@ function buildIso3ToIso2Map() {
 function toIso2(code) {
   if (!code) return null;
   const c = code.trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(c)) return c;
-  if (/^[A-Z]{3}$/.test(c)) return ISO3_TO_ISO2[c] || null;
+  if (COUNTRY_CODE_RE.test(c)) return c;
+  if (TO_ISO2_RE.test(c)) return ISO3_TO_ISO2[c] || null;
   return null;
 }
 
@@ -140,7 +147,7 @@ async function fetchCSV(url, label) {
     return { text, source: 'live' };
   } catch (err) {
     console.warn(`[benchmark] Live fetch failed for ${label}: ${err.message}`);
-    const refPath = join(REFERENCE_DIR, `${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}.csv`);
+    const refPath = join(REFERENCE_DIR, `${label.toLowerCase().replace(NON_ALPHANUMERIC_RE, '-')}.csv`);
     if (existsSync(refPath)) {
       const text = readFileSync(refPath, 'utf8');
       console.log(`[benchmark] Loaded ${label} from reference CSV (${text.length} bytes)`);
@@ -257,7 +264,7 @@ export async function fetchHdi() {
   // "latest snapshot" not a specific year.
   const headers = Object.keys(rows[0]);
   const yearCols = headers
-    .filter((h) => /^hdi_\d{4}$/i.test(h))
+    .filter((h) => YEAR_COLS_RE.test(h))
     .map((h) => ({ col: h, year: Number(h.slice(4)) }))
     .sort((a, b) => b.year - a.year);
   for (const row of rows) {
@@ -532,7 +539,7 @@ export async function runBenchmark(opts = {}) {
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 function isStrictValidationCli(argv = process.argv, env = process.env) {
-  return argv.includes('--strict') || /^(1|true|yes|on)$/i.test(String(env.RESILIENCE_VALIDATION_STRICT ?? ''));
+  return argv.includes('--strict') || IS_STRICT_VALIDATION_CLI_RE.test(String(env.RESILIENCE_VALIDATION_STRICT ?? ''));
 }
 
 function benchmarkCliExitCode(result, strict = false) {

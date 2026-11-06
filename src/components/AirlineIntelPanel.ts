@@ -23,6 +23,11 @@ import { t } from '@/services/i18n';
 import { Panel } from './Panel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const IATA_RE_RE = /^[A-Z]{3}$/;
+const LOAD_TAB_RE = /^[A-Z]{2}\d{1,4}$/;
+const LOAD_TAB_RE_2 = /^[0-9A-F]{6}$/i;
+
+
 
 // ---- Helpers ----
 
@@ -214,7 +219,7 @@ export class AirlineIntelPanel extends Panel {
         const dep = (this.content.querySelector('#priceDepInput') as HTMLInputElement)?.value || '';
         const cabin = (this.content.querySelector('#priceCabinSelect') as HTMLSelectElement)?.value || 'ECONOMY';
         const errEl = this.content.querySelector('#priceInlineErr') as HTMLElement | null;
-        const iataRe = /^[A-Z]{3}$/;
+        const iataRe = IATA_RE_RE;
         if (!iataRe.test(origin) || !iataRe.test(dest)) {
             if (errEl) errEl.textContent = 'Enter valid 3-letter airport codes (for example, DXB)';
             return;
@@ -241,7 +246,7 @@ export class AirlineIntelPanel extends Panel {
         const dur = parseInt((this.content.querySelector('#datesTripDurInput') as HTMLInputElement)?.value || '7', 10);
         const cabin = (this.content.querySelector('#datesCabinSelect') as HTMLSelectElement)?.value || 'ECONOMY';
         const errEl = this.content.querySelector('#datesInlineErr') as HTMLElement | null;
-        const iataRe = /^[A-Z]{3}$/;
+        const iataRe = IATA_RE_RE;
         if (!iataRe.test(origin) || !iataRe.test(dest)) {
             if (errEl) errEl.textContent = 'Enter valid 3-letter airport codes (for example, DXB)';
             return;
@@ -336,9 +341,9 @@ export class AirlineIntelPanel extends Panel {
                     break;
                 case 'tracking':
                     if (this.trackingQuery) {
-                        if (/^[A-Z]{2}\d{1,4}$/.test(this.trackingQuery)) {
+                        if (LOAD_TAB_RE.test(this.trackingQuery)) {
                             this.trackingFlightData = await fetchFlightStatus(this.trackingQuery);
-                        } else if (/^[0-9A-F]{6}$/i.test(this.trackingQuery)) {
+                        } else if (LOAD_TAB_RE_2.test(this.trackingQuery)) {
                             this.trackingData = await fetchAircraftPositions({ icao24: this.trackingQuery.toLowerCase() });
                         } else {
                             this.trackingData = await fetchAircraftPositions({ callsign: this.trackingQuery });

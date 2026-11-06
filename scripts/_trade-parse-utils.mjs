@@ -5,6 +5,20 @@
 
 import { decodeHtmlEntities } from './_html-entities.mjs';
 
+const STRIPPED_RE = /<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const STRIPPED_RE_2 = /<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const STRIPPED_RE_3 = /<!--[\s\S]*?-->/g;
+const STRIPPED_RE_4 = /<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s[^<>]*?)?>/g;
+const WHITESPACE_RE = /\s+/g;
+const TO_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+const TO_ISO_DATE_RE_2 = /^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/;
+const UPDATED_AT_RE = /\bUpdated:\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i;
+const PATTERNS_RE = /effective tariff rate (?:stood at|was|is)\s+(\d+(?:\.\d+)?)%/i;
+const PATTERNS_RE_2 = /effective tariff rate reaching\s+(\d+(?:\.\d+)?)%\s+in\s+([A-Za-z]+\s+\d{4})/i;
+const PATTERNS_RE_3 = /average effective (?:u\.s\.\s*)?tariff rate[^.]{0,180}?\bto\s+(\d+(?:\.\d+)?)%[^.]{0,180}?\b(?:in|by)\s+([A-Za-z]+\s+\d{4})/i;
+const PATTERNS_RE_4 = /average effective (?:u\.s\.\s*)?tariff rate[^.]{0,180}?\bto\s+(\d+(?:\.\d+)?)%/i;
+
+
 export const BUDGET_LAB_TARIFFS_URL = 'https://budgetlab.yale.edu/research/tracking-economic-effects-tariffs';
 
 const MONTH_MAP = {
@@ -15,14 +29,14 @@ const MONTH_MAP = {
 
 export function htmlToPlainText(html) {
   const stripped = String(html ?? '')
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s[^<>]*?)?>/g, ' ');
+    .replace(STRIPPED_RE, ' ')
+    .replace(STRIPPED_RE_2, ' ')
+    .replace(STRIPPED_RE_3, ' ')
+    .replace(STRIPPED_RE_4, ' ');
   // Single-pass decode: chained &amp;-first replaces would decode two levels
   // (e.g. `&amp;quot;` -> `"`), and out-of-range numeric refs must not throw.
   return decodeHtmlEntities(stripped)
-    .replace(/\s+/g, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -33,8 +47,8 @@ export function htmlToPlainText(html) {
 export function toIsoDate(value) {
   const text = String(value ?? '').trim();
   if (!text) return '';
-  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
-  const m = text.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/);
+  if (TO_ISO_DATE_RE.test(text)) return text.slice(0, 10);
+  const m = text.match(TO_ISO_DATE_RE_2);
   if (m) {
     const mm = MONTH_MAP[m[1].toLowerCase()];
     if (mm) return `${m[3]}-${mm}-${m[2].padStart(2, '0')}`;
@@ -56,12 +70,12 @@ export function parseBudgetLabEffectiveTariffHtml(html) {
   const text = htmlToPlainText(html);
   if (!text) return null;
 
-  const updatedAt = toIsoDate(text.match(/\bUpdated:\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i)?.[1] ?? '');
+  const updatedAt = toIsoDate(text.match(UPDATED_AT_RE)?.[1] ?? '');
   const patterns = [
-    /effective tariff rate (?:stood at|was|is)\s+(\d+(?:\.\d+)?)%/i,
-    /effective tariff rate reaching\s+(\d+(?:\.\d+)?)%\s+in\s+([A-Za-z]+\s+\d{4})/i,
-    /average effective (?:u\.s\.\s*)?tariff rate[^.]{0,180}?\bto\s+(\d+(?:\.\d+)?)%[^.]{0,180}?\b(?:in|by)\s+([A-Za-z]+\s+\d{4})/i,
-    /average effective (?:u\.s\.\s*)?tariff rate[^.]{0,180}?\bto\s+(\d+(?:\.\d+)?)%/i,
+    PATTERNS_RE,
+    PATTERNS_RE_2,
+    PATTERNS_RE_3,
+    PATTERNS_RE_4,
   ];
 
   for (const pattern of patterns) {

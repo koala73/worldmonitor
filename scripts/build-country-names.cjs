@@ -1,4 +1,11 @@
 'use strict';
+
+const NORMALIZE_RE = /\p{Diacritic}/gu;
+const NORMALIZE_RE_2 = /&/g;
+const NORMALIZE_RE_3 = /[''.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
 const fs = require('fs');
 const path = require('path');
 
@@ -13,17 +20,17 @@ let added = 0;
 function normalize(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(NORMALIZE_RE, '')
     .toLowerCase()
-    .replace(/&/g, ' and ')
-    .replace(/[''.(),/-]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_RE_2, ' and ')
+    .replace(NORMALIZE_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
 function add(key, iso2, _source) {
   const k = normalize(key);
-  if (!k || !/^[A-Z]{2}$/.test(iso2)) return;
+  if (!k || !COUNTRY_CODE_RE.test(iso2)) return;
   if (result[k]) return;
   result[k] = iso2;
   added++;
@@ -35,7 +42,7 @@ for (const f of geojson.features) {
   const props = f.properties || {};
   const iso2 = String(props['ISO3166-1-Alpha-2'] || '').trim();
   const name = props.name;
-  if (!/^[A-Z]{2}$/.test(iso2)) continue;
+  if (!COUNTRY_CODE_RE.test(iso2)) continue;
   if (typeof name === 'string' && name.trim()) {
     add(name, iso2, 'geojson');
   }
@@ -192,6 +199,6 @@ console.log(`Existing: ${Object.keys(existing).length}, Added: ${added}, Total: 
 
 // Validate all values are ISO2
 for (const [k, v] of Object.entries(sorted)) {
-  if (!/^[A-Z]{2}$/.test(v)) console.error(`INVALID VALUE: ${k} → ${v}`);
+  if (!COUNTRY_CODE_RE.test(v)) console.error(`INVALID VALUE: ${k} → ${v}`);
   if (k !== k.toLowerCase()) console.error(`NON-LOWERCASE KEY: ${k}`);
 }

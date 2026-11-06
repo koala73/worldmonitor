@@ -6,6 +6,10 @@ import { loadEnvFile, fredFetchJson, resolveProxyForConnect, runSeed } from './_
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
+const MONTH_START_RE = /^(\d{4})-(\d{2})-\d{2}/;
+const SHIFT_MONTH_RE = /^(\d{4})-(\d{2})-01$/;
+
+
 loadEnvFile(import.meta.url);
 
 const proxyAuth = resolveProxyForConnect();
@@ -28,12 +32,12 @@ const MAX_STALE_MIN = 4320;
 const CPI_MAX_CONTENT_AGE_MIN = 75 * DAY_MIN;
 
 export function monthStart(date) {
-  const match = /^(\d{4})-(\d{2})-\d{2}/.exec(String(date ?? ''));
+  const match = MONTH_START_RE.exec(String(date ?? ''));
   return match ? `${match[1]}-${match[2]}-01` : undefined;
 }
 
 export function shiftMonth(isoDate, delta) {
-  const match = /^(\d{4})-(\d{2})-01$/.exec(isoDate);
+  const match = SHIFT_MONTH_RE.exec(isoDate);
   if (!match) return undefined;
   const shifted = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1 + delta, 1));
   const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');

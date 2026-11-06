@@ -1,6 +1,9 @@
 import pairs from './shared/gdelt-tension-pairs.json' with { type: 'json' };
 import { GDELT_PUBLICATION_LEAD_MS, gdeltTimestampToMs } from './_conflict-gdelt-bulk.mjs';
 
+const CURSOR_DATE_RE = /^\d{14}$/;
+
+
 const DAY_MS = 86_400_000;
 // A side is one CAMEO country code or a group of them (Iran–GCC sums Iran
 // against each member). Every country pair maps to at most one configured pair.
@@ -110,7 +113,7 @@ export const DYAD_REPAIR_BACKOFF_MS = 6 * 60 * 60 * 1000;
 // Without this, a partial first day or one missed cohort would block every
 // pair for 90 days.
 function repairableDates(snapshot, nowMs) {
-  const cursorDate = /^\d{14}$/.test(snapshot?.cursor ?? '')
+  const cursorDate = CURSOR_DATE_RE.test(snapshot?.cursor ?? '')
     ? `${snapshot.cursor.slice(0, 4)}-${snapshot.cursor.slice(4, 6)}-${snapshot.cursor.slice(6, 8)}` : '';
   if (!cursorDate) return [];
   const hoursFrom = hourlyCutoff(nowMs);
@@ -177,7 +180,7 @@ export function replaceDyadDays(snapshot, rebuilt, nowMs, failures = {}) {
 // them is unusable: the hour lacks one of its 4 cohorts, or its day has no
 // bucket for the pair (the pair was added after that day began).
 function hourlySeries(snapshot, pairId) {
-  if (!/^\d{14}$/.test(snapshot?.cursor ?? '')) return null;
+  if (!CURSOR_DATE_RE.test(snapshot?.cursor ?? '')) return null;
   const cursorMs = gdeltTimestampToMs(snapshot.cursor);
   // The cursor's hour is complete once its :45 cohort is in.
   const endMs = Math.floor(cursorMs / HOUR_MS) * HOUR_MS - (snapshot.cursor.slice(10, 12) === '45' ? 0 : HOUR_MS);

@@ -1,11 +1,14 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { isMainModule } from './lib/main-module.mjs';
 
+const ROUTE_COUNT_RE = /^\s+path: "\/api\/[^"\n]+",$/gm;
+
+
 const unsafeFallback = 'const message = err instanceof Error ? err.message : String(err);';
 const safeFallback = 'const message = "Internal server error";';
 
 export function hardenServerErrors(source) {
-  const routeCount = [...source.matchAll(/^\s+path: "\/api\/[^"\n]+",$/gm)].length;
+  const routeCount = [...source.matchAll(ROUTE_COUNT_RE)].length;
   const fallbackCount = source.split(unsafeFallback).length - 1
     + source.split(safeFallback).length - 1;
   if (routeCount === 0 || routeCount !== fallbackCount) {

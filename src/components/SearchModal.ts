@@ -36,6 +36,9 @@ import {
   type SearchableSource,
 } from '@/components/search-types';
 
+const HIGHLIGHT_MATCH_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 export type {
   SearchMatch,
   SearchResult,
@@ -1143,7 +1146,7 @@ export class SearchModal {
     if (!query) return escapedText;
 
     const escapedQuery = escapeHtml(query);
-    const regex = new RegExp(`(${escapedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const regex = new RegExp(`(${escapedQuery.replace(HIGHLIGHT_MATCH_RE, '\\$&')})`, 'gi');
     return escapedText.replace(regex, '<mark>$1</mark>');
   }
 

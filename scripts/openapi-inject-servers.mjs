@@ -40,6 +40,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serialize, eq } from './lib/openapi-codegen.mjs';
 
+const SPEC_FILES_RE = /Service\.openapi\.json$/;
+const SERVICE_YAML_FILES_RE = /Service\.openapi\.yaml$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 
@@ -101,8 +105,8 @@ function injectYamlServers(text) {
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
-const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
-const serviceYamlFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.yaml$/.test(f)).sort();
+const specFiles = readdirSync(apiDir).filter((f) => SPEC_FILES_RE.test(f)).sort();
+const serviceYamlFiles = readdirSync(apiDir).filter((f) => SERVICE_YAML_FILES_RE.test(f)).sort();
 let wouldChange = 0;
 const touched = [];
 

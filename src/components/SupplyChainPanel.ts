@@ -25,6 +25,10 @@ import { bindActivationKeys } from '@/utils/activation';
 import { ISO2_TO_ISO3 } from '@/utils/country-codes';
 import COUNTRY_PORT_CLUSTERS from '../../scripts/shared/country-port-clusters.json';
 
+const SCENARIO_NAME_RE = /-/g;
+const DETAILS_RE = /_/g;
+
+
 
 type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
 
@@ -1034,7 +1038,7 @@ export class SupplyChainPanel extends Panel {
     }).join('');
     const banner = document.createElement('div');
     banner.className = 'sc-scenario-banner';
-    const scenarioName = SCENARIO_TEMPLATES.find(tmpl => tmpl.id === scenarioId)?.name ?? scenarioId.replace(/-/g, ' ');
+    const scenarioName = SCENARIO_TEMPLATES.find(tmpl => tmpl.id === scenarioId)?.name ?? scenarioId.replace(SCENARIO_NAME_RE, ' ');
 
     // Surface the scenario's defining parameters — before this, users saw only
     // a list of country percentages with no context for what "100% impact"
@@ -1090,7 +1094,7 @@ export class SupplyChainPanel extends Panel {
     evidenceDetails.addEventListener('toggle', () => {
       const list = evidenceDetails.querySelector('ul')!;
       if (evidenceDetails.open && !list.childElementCount) {
-        const details = records.map(r => `<li>${escapeHtml(r.iso2)} / HS ${escapeHtml(r.hs2)}: ${escapeHtml(r.state.replace(/_/g, ' '))}${r.basis ? `, ${r.basis === 'flow_weighted' ? 'flow-weighted' : 'geographic fallback'}` : ''}${r.rawImpact !== undefined ? `, ${r.rawImpact.toFixed(2)} score units` : ''}. Cache date: ${escapeHtml(r.fetchedAt || 'unknown')}; trade observation date: unknown.</li>`).join('');
+        const details = records.map(r => `<li>${escapeHtml(r.iso2)} / HS ${escapeHtml(r.hs2)}: ${escapeHtml(r.state.replace(DETAILS_RE, ' '))}${r.basis ? `, ${r.basis === 'flow_weighted' ? 'flow-weighted' : 'geographic fallback'}` : ''}${r.rawImpact !== undefined ? `, ${r.rawImpact.toFixed(2)} score units` : ''}. Cache date: ${escapeHtml(r.fetchedAt || 'unknown')}; trade observation date: unknown.</li>`).join('');
         setTrustedHtml(list, trustedHtml(details, 'scenario evidence requested by user'));
       }
     });

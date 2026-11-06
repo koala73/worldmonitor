@@ -38,6 +38,11 @@ import { fileURLToPath } from 'node:url';
 import { dedupePipelines } from './_pipeline-dedup.mjs';
 import { validateRegistry } from './_pipeline-registry.mjs';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const BASE_RE = /^-+|-+$/g;
+const ISO_MATCH_RE = /^\d{4}-\d{2}-\d{2}/;
+
+
 /**
  * Canonical input columns. The operator's Excel-to-JSON conversion must
  * preserve these EXACT key names for each row in `pipelines[]`. Schema-drift
@@ -93,8 +98,8 @@ const VALID_LON = (v) => Number.isFinite(v) && v >= -180 && v <= 180;
 
 function slugify(name, country) {
   const base = name.toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(NON_ALPHANUMERIC_RE, '-')
+    .replace(BASE_RE, '')
     .slice(0, 60);
   return `${base}-${country.toLowerCase()}`;
 }
@@ -156,7 +161,7 @@ function resolveEvidenceTimestamp(envelope) {
   for (const v of candidates) {
     if (typeof v === 'string') {
       // Accept full ISO strings OR bare YYYY-MM-DD; coerce to midnight-UTC.
-      const isoMatch = v.match(/^\d{4}-\d{2}-\d{2}/);
+      const isoMatch = v.match(ISO_MATCH_RE);
       if (isoMatch) return `${isoMatch[0]}T00:00:00Z`;
     }
   }

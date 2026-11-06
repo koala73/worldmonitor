@@ -17,6 +17,9 @@ import {
 } from './maritime';
 import { fetchUSNIFleetObservation, mergeUSNIWithAIS } from './usni-fleet';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 // In-memory vessel tracking
 const trackedVessels = new Map<string, MilitaryVessel>();
 const vesselHistory = new Map<string, { positions: [number, number][]; lastUpdate: number }>();
@@ -525,7 +528,7 @@ function clusterVessels(vessels: MilitaryVessel[]): MilitaryVesselCluster[] {
       else activityType = 'transit';
 
       clusters.push({
-        id: `vessel-cluster-${hotspot.name.toLowerCase().replace(/\s+/g, '-')}`,
+        id: `vessel-cluster-${hotspot.name.toLowerCase().replace(WHITESPACE_RE, '-')}`,
         name: `${hotspot.name} Naval Activity`,
         lat: avgLat,
         lon: avgLon,

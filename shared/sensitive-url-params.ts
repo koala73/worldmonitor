@@ -11,6 +11,8 @@
  * stripped from the live URL at boot. STRIPPABLE_AT_BOOT_RE is the subset
  * nobody reads.
  */
+const WAS_ABSOLUTE_RE = /^[a-z][a-z0-9+.-]*:/i;
+
 export const SENSITIVE_URL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;
 
 /**
@@ -77,7 +79,7 @@ export function scrubUrl(parsed: URL, pattern: RegExp): boolean {
  */
 export function redactSensitiveUrl(raw: string, base?: string): string {
   if (raw.length === 0) return raw;
-  const wasAbsolute = /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//');
+  const wasAbsolute = WAS_ABSOLUTE_RE.test(raw) || raw.startsWith('//');
   let parsed: URL;
   try {
     parsed = base ? new URL(raw, base) : new URL(raw);

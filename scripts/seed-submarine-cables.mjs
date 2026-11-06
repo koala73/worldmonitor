@@ -2,6 +2,11 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
+const SLUG_TO_ID_RE = /-/g;
+const WHITESPACE_RE = /\s+/g;
+const STRIPPED_RE = /-\d+$/;
+
+
 loadEnvFile(import.meta.url);
 
 const BASE = 'https://www.submarinecablemap.com/api/v3';
@@ -153,7 +158,7 @@ function simplifyRoute(coords) {
   return result;
 }
 
-function slugToId(slug) { return slug.replace(/-/g, '_'); }
+function slugToId(slug) { return slug.replace(SLUG_TO_ID_RE, '_'); }
 
 const _warnedCountries = new Set();
 function getCountryCode(countryName) {
@@ -180,7 +185,7 @@ async function readJsonResponse(resp, label) {
   try {
     return JSON.parse(text);
   } catch {
-    const snippet = text.slice(0, 80).replace(/\s+/g, ' ').trim();
+    const snippet = text.slice(0, 80).replace(WHITESPACE_RE, ' ').trim();
     const type = contentType ? ` content-type=${contentType}` : '';
     const suffix = snippet ? ` (${snippet})` : '';
     throw new Error(`${label}: invalid JSON${type}${suffix}`);
@@ -204,7 +209,7 @@ export async function fetchSubmarineCables() {
   for (const feat of cableGeo.features) {
     const id = feat.properties?.id;
     if (id) {
-      const stripped = id.replace(/-\d+$/, '');
+      const stripped = id.replace(STRIPPED_RE, '');
       const baseId = allIdSet.has(stripped) ? stripped : id;
       if (!routeMap.has(baseId)) routeMap.set(baseId, []);
       if (feat.geometry?.type === 'MultiLineString') {

@@ -47,6 +47,11 @@ import {
 } from '../tests/helpers/resilience-matched-pairs.mts';
 import { RESILIENCE_COHORTS } from '../tests/helpers/resilience-cohorts.mts';
 
+const VALID_DIGESTS_RE = /^[a-f0-9]{64}$/;
+const VALID_RE = /^[a-f0-9]{40}$/;
+const VALIDATE_CAPTURE_PROVENANCE_RE = /^resilience-education-acceptance-(\d{4}-\d{2}-\d{2})\.json$/;
+
+
 loadEnvFile(import.meta.url);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -762,13 +767,13 @@ function validateCaptureProvenance(artifact, filename) {
     && Number.isFinite(Date.parse(value))
     && new Date(value).toISOString() === value;
   const validDigests = keyDigests && typeof keyDigests === 'object' && !Array.isArray(keyDigests)
-    && Object.values(keyDigests).every((digest) => /^[a-f0-9]{64}$/.test(digest));
+    && Object.values(keyDigests).every((digest) => VALID_DIGESTS_RE.test(digest));
   const valid = artifact?.schemaVersion === 2
     && capture?.source === 'production-seed-dry-run'
     && capture?.activeFormula === 'pc'
     && capture?.harness === HARNESS_PATH
-    && /^[a-f0-9]{40}$/.test(capture?.harnessCommitSha ?? '')
-    && /^[a-f0-9]{64}$/.test(capture?.harnessSha256 ?? '')
+    && VALID_RE.test(capture?.harnessCommitSha ?? '')
+    && VALID_DIGESTS_RE.test(capture?.harnessSha256 ?? '')
     && capture.harnessSha256 === sha256(readHarnessAtCommit(capture.harnessCommitSha))
     && validIso(capture?.startedAt)
     && validIso(capture?.completedAt)
@@ -780,12 +785,12 @@ function validateCaptureProvenance(artifact, filename) {
     && redis.resolvedKeyCount > 0
     && validDigests
     && redis.resolvedKeyCount === Object.keys(keyDigests).length
-    && /^[a-f0-9]{64}$/.test(redis?.snapshotSha256 ?? '')
+    && VALID_DIGESTS_RE.test(redis?.snapshotSha256 ?? '')
     && redis.snapshotSha256 === sha256(canonicalJson(keyDigests))
-    && /^[a-f0-9]{64}$/.test(keyDigests?.[EDUCATION_REDIS_KEY] ?? '');
+    && VALID_DIGESTS_RE.test(keyDigests?.[EDUCATION_REDIS_KEY] ?? '');
   if (!valid) throw new Error('capture provenance is malformed or internally inconsistent');
 
-  const match = filename?.match(/^resilience-education-acceptance-(\d{4}-\d{2}-\d{2})\.json$/);
+  const match = filename?.match(VALIDATE_CAPTURE_PROVENANCE_RE);
   if (match && (
     !artifact.measuredAt.startsWith(match[1])
     || !capture.startedAt.startsWith(match[1])

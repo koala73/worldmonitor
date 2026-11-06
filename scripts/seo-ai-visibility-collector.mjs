@@ -36,6 +36,11 @@ import {
 } from './seo-ai-visibility-scorecard.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
+const IS_ISO_CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ASSERT_ISO_UTC_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const NORMALIZED_PATH_RE = /\/+$/;
+
+
 const UTC_DAY_MS = 86_400_000;
 const WINDOW_DAYS = Object.freeze({ '28d': 28, '90d': 90 });
 const AVAILABILITY_STATES = new Set(['available', 'partial', 'unavailable']);
@@ -164,7 +169,7 @@ function assertQuerySetBounds(querySet) {
 }
 
 function isIsoCalendarDate(value) {
-  if (!isNonEmptyString(value) || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (!isNonEmptyString(value) || !IS_ISO_CALENDAR_DATE_RE.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return parsed.toISOString().slice(0, 10) === value;
 }
@@ -178,7 +183,7 @@ function assertIsoUtcDateTime(value, field) {
   boundedString(value, field, 64);
   invariant(
     isNonEmptyString(value)
-      && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+      && ASSERT_ISO_UTC_DATE_TIME_RE.test(value)
       && Number.isFinite(Date.parse(value)),
     `${field} must be an ISO UTC date-time`,
   );
@@ -371,7 +376,7 @@ function pageRoute(value, field) {
     throw new Error(`[seo-visibility-collector] ${field} must be an HTTPS URL`);
   }
   invariant(parsed.protocol === 'https:', `${field} must be an HTTPS URL`);
-  const normalizedPath = parsed.pathname.replace(/\/+$/, '') || '/';
+  const normalizedPath = parsed.pathname.replace(NORMALIZED_PATH_RE, '') || '/';
   return `${parsed.hostname}${normalizedPath}`;
 }
 

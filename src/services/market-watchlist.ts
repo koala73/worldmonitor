@@ -9,6 +9,8 @@
  * Custom entries are always additive on top of whichever base list is active.
  */
 
+const WHITESPACE_RE = /\s+/g;
+
 export interface MarketWatchlistEntry {
   symbol: string;
   /** Friendly label shown in the UI (maps to MarketData.name). */
@@ -46,7 +48,7 @@ function safeParseJson<T>(raw: string | null): T | null {
 function normalizeSymbol(raw: string): string {
   // Allow common finnhub/yahoo formats: ^GSPC, BRK-B, GC=F, BTCUSD, etc.
   // Only trim whitespace and remove internal spaces.
-  return raw.trim().replace(/\s+/g, '');
+  return raw.trim().replace(WHITESPACE_RE, '');
 }
 
 function normalizeName(raw: string | undefined): string | undefined {

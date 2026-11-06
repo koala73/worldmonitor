@@ -10,6 +10,9 @@ import { fetchWithFallback } from '../acquisition/registry.js';
 import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Target } from './types.js';
 import type { RetailerConfig } from '../config/types.js';
 
+const PARSE_PRICE_RE = /[^\d.]/g;
+
+
 function parsePrice(text: string | null | undefined, config: RetailerConfig): number | null {
   if (!text) return null;
 
@@ -25,7 +28,7 @@ function parsePrice(text: string | null | undefined, config: RetailerConfig): nu
   const dec = fmt?.decimalSeparator ?? '.';
   const thou = fmt?.thousandsSeparator ?? ',';
 
-  clean = clean.replace(new RegExp(`\\${thou}`, 'g'), '').replace(dec, '.').replace(/[^\d.]/g, '').trim();
+  clean = clean.replace(new RegExp(`\\${thou}`, 'g'), '').replace(dec, '.').replace(PARSE_PRICE_RE, '').trim();
 
   const val = parseFloat(clean);
   return isNaN(val) ? null : val;

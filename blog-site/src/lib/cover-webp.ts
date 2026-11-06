@@ -1,6 +1,9 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+const SWAP_EXT_RE = /\.(jpe?g|png)$/i;
+
+
 // Resolves the WebP siblings (full + 640w thumb) for a post cover, but ONLY
 // when both files actually exist under public/ at build time. A <picture>
 // <source> that 404s does NOT fall back to the <img> src — the browser
@@ -19,7 +22,7 @@ const PUBLIC_DIR = [
 ].find((dir) => existsSync(resolve(dir, 'images/blog'))) ?? resolve(process.cwd(), 'public');
 const SITE_BASE = '/blog/';
 
-const swapExt = (src: string, suffix: string) => src.replace(/\.(jpe?g|png)$/i, suffix);
+const swapExt = (src: string, suffix: string) => src.replace(SWAP_EXT_RE, suffix);
 
 const localPublicPath = (src: string): string | null => {
   if (!src.startsWith(SITE_BASE)) return null;

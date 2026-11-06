@@ -8,6 +8,21 @@ import { gdeltSeenDateToMs } from './_conflict-gdelt.mjs';
 import { GDELT_FIPS_TO_ISO2 } from './_gdelt-country-codes.mjs';
 import { inflateRawSync } from 'node:zlib';
 
+const WHITESPACE_RE = /\s+/;
+const PARSE_DESCRIPTOR_RE = /^[a-f0-9]{32}$/;
+const PARSE_DESCRIPTOR_RE_2 = /^\/gdeltv2\/(\d{14})\.(gkg\.csv|export\.CSV)\.zip$/;
+const LINE_BREAK_RE = /\r?\n/;
+const PARSE_GDELT_BULK_DESCRIPTORS_RE = /\.(?:gkg\.csv|export\.CSV)\.zip$/i;
+const PARSE_GDELT_BULK_DESCRIPTORS_RE_2 = /^\d+\s+[a-f0-9]{32}\s+/i;
+const NON_DIGIT_RE = /\D/g;
+const PAGE_TITLE_RE = /<PAGE_TITLE>([\s\S]*?)<\/PAGE_TITLE>/i;
+const PAGE_TITLE_RE_2 = /<[^>]+>/g;
+const WHITESPACE_RE_2 = /\s+/g;
+const NORMALIZE_INDEX_TEXT_RE = /[\u0300-\u036f]/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SAFE_BATCHES_RE = /^\d{14}$/;
+
+
 const GDELT_STORAGE_ORIGIN = 'https://storage.googleapis.com/data.gdeltproject.org';
 const ARTICLE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TIMELINE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
@@ -118,19 +133,19 @@ function boundedPositiveInteger(value, label, max) {
 }
 
 function parseDescriptor(line) {
-  const [sizeRaw, md5Raw, urlRaw, ...extra] = line.split(/\s+/);
+  const [sizeRaw, md5Raw, urlRaw, ...extra] = line.split(WHITESPACE_RE);
   if (!sizeRaw || !md5Raw || !urlRaw || extra.length) {
     throw new Error('malformed GDELT bulk manifest line');
   }
   const md5 = md5Raw.toLowerCase();
-  if (!/^[a-f0-9]{32}$/.test(md5)) throw new Error('invalid GDELT bulk checksum');
+  if (!PARSE_DESCRIPTOR_RE.test(md5)) throw new Error('invalid GDELT bulk checksum');
 
   const url = new URL(urlRaw);
   if (!['http:', 'https:'].includes(url.protocol) || url.hostname !== 'data.gdeltproject.org' || url.port) {
     throw new Error(`untrusted GDELT bulk URL: ${urlRaw}`);
   }
   const match = url.pathname.match(
-    /^\/gdeltv2\/(\d{14})\.(gkg\.csv|export\.CSV)\.zip$/,
+    PARSE_DESCRIPTOR_RE_2,
   );
   if (!match || url.search || url.hash) throw new Error(`invalid GDELT bulk path: ${urlRaw}`);
   const kind = match[2].toLowerCase().startsWith('gkg') ? 'gkg' : 'export';
@@ -149,9 +164,9 @@ export function parseGdeltBulkDescriptors(
   { afterTimestamp = '', maxPerKind = 8 } = {},
 ) {
   const byKind = { gkg: [], export: [] };
-  for (const rawLine of String(manifest || '').split(/\r?\n/)) {
+  for (const rawLine of String(manifest || '').split(LINE_BREAK_RE)) {
     const line = rawLine.trim();
-    if (!/\.(?:gkg\.csv|export\.CSV)\.zip$/i.test(line)) continue;
+    if (!PARSE_GDELT_BULK_DESCRIPTORS_RE.test(line)) continue;
     let descriptor;
     try {
       descriptor = parseDescriptor(line);
@@ -159,7 +174,7 @@ export function parseGdeltBulkDescriptors(
       // A suffix-range response starts at an arbitrary byte and therefore its
       // first line is often truncated. Ignore only that incomplete fragment;
       // a full-looking descriptor still fails closed on bad size/hash/origin.
-      if (!/^\d+\s+[a-f0-9]{32}\s+/i.test(line)) continue;
+      if (!PARSE_GDELT_BULK_DESCRIPTORS_RE_2.test(line)) continue;
       throw error;
     }
     const kindCursor = typeof afterTimestamp === 'object'
@@ -235,7 +250,7 @@ function safeHttpUrl(value) {
 }
 
 function timestampToIso(value) {
-  const digits = String(value || '').replace(/\D/g, '');
+  const digits = String(value || '').replace(NON_DIGIT_RE, '');
   if (digits.length < 14) return '';
   const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
     + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}.000Z`;
@@ -286,10 +301,10 @@ function parseLocations(value) {
 }
 
 function pageTitle(extras) {
-  const match = String(extras || '').match(/<PAGE_TITLE>([\s\S]*?)<\/PAGE_TITLE>/i);
+  const match = String(extras || '').match(PAGE_TITLE_RE);
   return decodeHtmlEntities(match?.[1] || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(PAGE_TITLE_RE_2, ' ')
+    .replace(WHITESPACE_RE_2, ' ')
     .trim()
     .slice(0, 500);
 }
@@ -297,7 +312,7 @@ function pageTitle(extras) {
 export function parseGdeltGkgCsv(csv) {
   const records = [];
   const seen = new Set();
-  for (const line of String(csv || '').split(/\r?\n/)) {
+  for (const line of String(csv || '').split(LINE_BREAK_RE)) {
     if (!line) continue;
     const fields = line.split('\t');
     if (fields.length < 27) continue;
@@ -338,7 +353,7 @@ function recordMatchesTopic(record, topic) {
 // formatArticleDate slices this positionally, so publishing an ISO string there
 // blanked every UI age label (#5863 review).
 function toSeenDate(iso) {
-  const digits = String(iso || '').replace(/\D/g, '');
+  const digits = String(iso || '').replace(NON_DIGIT_RE, '');
   if (digits.length < 14) return '';
   return `${digits.slice(0, 8)}T${digits.slice(8, 14)}Z`;
 }
@@ -383,9 +398,9 @@ function mergeArticles(
 function normalizeIndexText(value) {
   return String(value || '')
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(NORMALIZE_INDEX_TEXT_RE, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(NON_ALPHANUMERIC_RE, ' ')
     .trim();
 }
 
@@ -644,7 +659,7 @@ export function materializeGdeltBulk({
   nowMs = Date.now(),
 }) {
   const safeBatches = (Array.isArray(batches) ? batches : [])
-    .filter((batch) => /^\d{14}$/.test(batch?.timestamp) && Array.isArray(batch?.records))
+    .filter((batch) => SAFE_BATCHES_RE.test(batch?.timestamp) && Array.isArray(batch?.records))
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   const allRecords = safeBatches.flatMap((batch) => batch.records);
   const geoSourceRecords = Array.isArray(geoRecords) ? geoRecords : allRecords;

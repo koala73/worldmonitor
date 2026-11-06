@@ -1,13 +1,18 @@
 import { BC_SNAPSHOT_TTL_SECONDS } from './bc-fire-points.mjs';
 import { CWFIS_RETAIN_MS } from './cwfis-wfs.mjs';
 
+const WILDFIRE_DIAGNOSTIC_CONTEXT_RE = /^\d{1,16}-[a-z0-9]{1,6}$/;
+const WILDFIRE_DIAGNOSTIC_CONTEXT_RE_2 = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
+const WILDFIRE_DIAGNOSTIC_CONTEXT_RE_3 = /^[a-f0-9]{40}$/i;
+
+
 export function wildfireDiagnosticContext(runId, env = {}) {
   return {
-    runId: typeof runId === 'string' && /^\d{1,16}-[a-z0-9]{1,6}$/.test(runId) ? runId : null,
+    runId: typeof runId === 'string' && WILDFIRE_DIAGNOSTIC_CONTEXT_RE.test(runId) ? runId : null,
     deploymentId: typeof env.RAILWAY_DEPLOYMENT_ID === 'string'
-      && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(env.RAILWAY_DEPLOYMENT_ID)
+      && WILDFIRE_DIAGNOSTIC_CONTEXT_RE_2.test(env.RAILWAY_DEPLOYMENT_ID)
       ? env.RAILWAY_DEPLOYMENT_ID : null,
-    commitSha: typeof env.RAILWAY_GIT_COMMIT_SHA === 'string' && /^[a-f0-9]{40}$/i.test(env.RAILWAY_GIT_COMMIT_SHA)
+    commitSha: typeof env.RAILWAY_GIT_COMMIT_SHA === 'string' && WILDFIRE_DIAGNOSTIC_CONTEXT_RE_3.test(env.RAILWAY_GIT_COMMIT_SHA)
       ? env.RAILWAY_GIT_COMMIT_SHA : null,
   };
 }

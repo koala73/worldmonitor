@@ -2,6 +2,9 @@ import { SITE_VARIANT } from '@/config/variant';
 import { VARIANT_META } from '@/config/variant-meta';
 import { getCanonicalApiOrigin } from '@/services/runtime';
 
+const PARSE_STORY_PARAMS_RE = /^[A-Z]{2,3}$/i;
+
+
 interface StoryMeta {
   countryCode: string;
   countryName: string;
@@ -130,7 +133,7 @@ export function parseStoryParams(url: URL): StoryMeta | null {
   const countryCode = url.searchParams.get('c');
   const type = url.searchParams.get('t') || 'ciianalysis';
 
-  if (!countryCode || !/^[A-Z]{2,3}$/i.test(countryCode)) return null;
+  if (!countryCode || !PARSE_STORY_PARAMS_RE.test(countryCode)) return null;
 
   const validTypes: StoryMeta['type'][] = ['ciianalysis', 'crisisalert', 'dailybrief', 'marketfocus'];
   const safeType: StoryMeta['type'] = validTypes.includes(type as StoryMeta['type'])

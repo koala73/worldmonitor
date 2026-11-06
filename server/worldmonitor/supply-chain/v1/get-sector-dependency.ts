@@ -6,6 +6,11 @@ import type {
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
+const NON_DIGIT_RE = /\D/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const GET_SECTOR_DEPENDENCY_RE = /^\d{1,2}$/;
+
+
 const HS2_LABELS: Record<string, string> = {
   '1': 'Live Animals', '2': 'Meat', '3': 'Fish & Seafood', '4': 'Dairy',
   '6': 'Plants & Flowers', '7': 'Vegetables', '8': 'Fruit & Nuts',
@@ -44,9 +49,9 @@ export async function getSectorDependency(
   if (!isPro) return markNoStoreFallbackResponse(ctx.request, empty);
 
   const iso2 = req.iso2?.trim().toUpperCase();
-  const hs2 = req.hs2?.trim().replace(/\D/g, '') || '27';
+  const hs2 = req.hs2?.trim().replace(NON_DIGIT_RE, '') || '27';
 
-  if (!/^[A-Z]{2}$/.test(iso2 ?? '') || !/^\d{1,2}$/.test(hs2)) {
+  if (!COUNTRY_CODE_RE.test(iso2 ?? '') || !GET_SECTOR_DEPENDENCY_RE.test(hs2)) {
     return markNoStoreFallbackResponse(ctx.request, { ...empty, iso2: iso2 ?? '', hs2 });
   }
 

@@ -1,5 +1,8 @@
 import { unwrapEnvelope } from './_seed-envelope.js';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const CACHE_KEY = 'conflict:humanitarian:v1';
 const RETENTION_MS = 6 * 60 * 60_000;
 const COUNTS = ['conflictEventsTotal', 'conflictPoliticalViolenceEvents', 'conflictFatalities', 'conflictDemonstrations'];
@@ -14,7 +17,7 @@ function payload(raw) {
 export async function readHumanitarianRetention(meta, requiredCountryCount, now, pipeline) {
   const codes = meta?.requiredCountryCodes;
   if (!Array.isArray(codes) || codes.length !== requiredCountryCount || codes.length > 100
-    || codes.some((code) => typeof code !== 'string' || !/^[A-Z]{2}$/.test(code))
+    || codes.some((code) => typeof code !== 'string' || !COUNTRY_CODE_RE.test(code))
     || new Set(codes).size !== codes.length
     || !Number.isSafeInteger(meta.fetchedAt) || meta.fetchedAt <= 0 || meta.fetchedAt > now
     || (meta.lastSuccessAt !== undefined && meta.lastSuccessAt !== meta.fetchedAt)) return null;

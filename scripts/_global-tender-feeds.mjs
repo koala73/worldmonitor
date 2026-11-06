@@ -4,6 +4,65 @@ import { decodeHtmlEntities } from './_html-entities.mjs';
 import { recordTenderBucket, readTenderBody } from './_global-tender-receipts.mjs';
 import { dedupeTenders, isOpenOpportunity, normalizePublicTender, safeOfficialUrl } from './_global-tenders.mjs';
 
+const LOCAL_DATE_RE = /(Z|[+-]\d{2}:\d{2})$/;
+const LOCAL_DATE_RE_2 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/;
+const RELEASES_RE = /^ocds-70d2nz-[\w-]+$/;
+const RECORDS_RE = /^\d{14}$/;
+const RECORDS_RE_2 = /^[\w-]+$/;
+const DATE_RE = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+const RECORDS_RE_3 = /^\d{2}:\d{2}$/;
+const HTML_TEXT_RE = /<[^>]*>/g;
+const WHITESPACE_RE = /\s+/g;
+const TABLE_ROWS_RE = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+const TABLE_ROWS_RE_2 = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
+const PAKISTAN_DATE_RE = /^(?:[A-Za-z]+, )?([A-Za-z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)$/;
+const FETCH_PAKISTAN_EPADS_RE = /Procurement Title/;
+const FETCH_PAKISTAN_EPADS_RE_2 = /table-border-bottom-0/;
+const TENDER_ROWS_RE = /\/opportunities\/federal\/procurements\//;
+const FETCH_PAKISTAN_EPADS_RE_3 = /No (?:procurements|records|opportunities) found/i;
+const LINK_RE = /href="(\/opportunities\/federal\/procurements\/(\d+))"/;
+const LABELS_RE = /<span\b[^>]*title="([^"]+)"[^>]*>/gi;
+const DATES_RE = /Published On:\s*(.*?)\s*Closing On:\s*(.*)$/;
+const RECORDS_RE_4 = /^(?:\d+[dhms]\s*)+Left$/;
+const TIMESTAMP_RE = /showBiddingTimer\("(\d{10})",\s*"0"\)/;
+const FETCH_GEORGIA_RE = /id="list_apps_by_subject"/;
+const NOTICES_RE = /ShowApp\((\d+),'[^']*',\d+,'([a-f0-9]+)'\)/g;
+const FETCH_GEORGIA_RE_2 = /0\s+Record\(s\)/;
+const TITLE_RE = /<div\b[^>]*class="blabla"[^>]*>([\s\S]*?)<\/div>/;
+const AMOUNT_RE = /^([\d`.,]+)\s+GEL$/;
+const RECORDS_RE_5 = /\b\d{8}\b/g;
+const RECORDS_RE_6 = /[` ,]/g;
+const FETCH_ARMENIA_RE = /Search results/;
+const FETCH_ARMENIA_RE_2 = /CfT Title:/;
+const FETCH_ARMENIA_RE_3 = /name="status"\s+value="cft\.status\.tender\.submission"/;
+const NOTICES_RE_2 = /href="(\/epps\/cft\/prepareViewCfTWS\.do\?resourceId=(\d+))"/g;
+const FETCH_ARMENIA_RE_4 = /0\s+results in total/;
+const FIELDS_RE = /<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi;
+const FIELDS_RE_2 = /\s*:\s*$/;
+const RECORDS_RE_7 = /^[\d,.\s]+$/;
+const RECORDS_RE_8 = /[,\s]/g;
+const MAIN_ROWS_RE = /<tr\b[^>]*class="cb-rt-main"[^>]*>([\s\S]*?)<\/tr>/gi;
+const DETAILS_RE = /<tr\b[^>]*id="cb-rt-detail-([^"]+)"[^>]*>([\s\S]*?)<\/tr>/gi;
+const CELLS_RE = /<td\b[^>]*data-label="([^"]+)"[^>]*>([\s\S]*?)<\/td>/gi;
+const LINK_RE_2 = /href="(\/public\/tenders\/tender-details\/[\w-]+)"/;
+const TITLE_RE_2 = /<strong>([\s\S]*?)<\/strong>/i;
+const DETAIL_ID_RE = /<button\b[^>]*data-id="([^"]+)"/;
+const BUYER_RE = />Organization<\/span>\s*<span\b[^>]*>\s*<strong>([\s\S]*?)<\/strong>/i;
+const RECORDS_RE_9 = /^([A-Za-z]{3}) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)$/;
+const RECORDS_RE_10 = /Published/;
+const PARSED_RE = /^\uFEFF/;
+const RECORDS_RE_11 = /^REF-\d{5}-\d{2}-\d{2}-\d{4}$/;
+const FUND_RE = /,/g;
+const RECORDS_RE_12 = /^\d+(?:\.\d+)?$/;
+const CARDS_RE = /<div\b[^>]*x-data="\{ selected: false, open: true \}"/;
+const ID_RE = /select-procurement', \{ id: (\d+) \}/;
+const LINK_RE_3 = /href="(https:\/\/myprocurement\.treasury\.gov\.my\/advertisements\/tender\/[a-f0-9]+)"[^>]*>([\s\S]*?)<\/a>/;
+const INVITED_RE = /Tarikh Pelawaan:\s*([^<]*?)\s*</;
+const NUMBER_RE = /No\. Tender<\/span>:\s*([^<]*?)\s*</;
+const PRICE_RE = /^RM ([\d,]+\.\d{2})$/;
+const RECORDS_RE_13 = /^\d{6}$/;
+
+
 const DAY = 86_400_000;
 const MAX_RECORDS = 100;
 const MAX_DETAILS = 20;
@@ -38,8 +97,8 @@ function finish(source, records, now) {
 function localDate(value, timeZone) {
   const raw = text(value).replace(' ', 'T');
   if (!raw) return '';
-  if (/(Z|[+-]\d{2}:\d{2})$/.test(raw)) return raw;
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/);
+  if (LOCAL_DATE_RE.test(raw)) return raw;
+  const match = raw.match(LOCAL_DATE_RE_2);
   if (!match) throw new Error('Procurement response contains an invalid local timestamp');
   const parts = match.slice(1).map((part) => Number(part || 0));
   const utc = Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
@@ -157,7 +216,7 @@ export async function fetchChile({ now = Date.now(), fetchJsonFn } = {}) {
   const url = `https://api.mercadopublico.cl/APISOCDS/OCDS/listaOCDSAgnoMes/${month.getUTCFullYear()}/${month.getUTCMonth() + 1}/0/${MAX_DETAILS}`;
   const payload = await read(url);
   const releases = await detailsInBatches(rows(payload?.data, 'data'), async (row) => {
-    requireRow(/^ocds-70d2nz-[\w-]+$/.test(text(row?.ocid)), source);
+    requireRow(RELEASES_RE.test(text(row?.ocid)), source);
     const id = row.ocid.slice('ocds-70d2nz-'.length);
     const detail = await read(`https://api.mercadopublico.cl/APISOCDS/OCDS/tender/${encodeURIComponent(id)}`);
     return rows(detail?.releases, 'releases');
@@ -174,7 +233,7 @@ export async function fetchBrazil({ now = Date.now(), fetchJsonFn } = {}) {
   }));
   const records = rows(payload?.data, 'data').map((raw) => {
     requireRow(text(raw?.numeroControlePNCP) && text(raw?.objetoCompra) && text(raw?.dataEncerramentoProposta)
-      && /^\d{14}$/.test(text(raw?.orgaoEntidade?.cnpj)) && Number.isSafeInteger(raw?.anoCompra)
+      && RECORDS_RE.test(text(raw?.orgaoEntidade?.cnpj)) && Number.isSafeInteger(raw?.anoCompra)
       && Number.isSafeInteger(raw?.sequencialCompra), source);
     return normalizePublicTender({ source, sourceNoticeId: raw.numeroControlePNCP,
       officialUrl: `https://pncp.gov.br/app/editais/${raw.orgaoEntidade.cnpj}/${raw.anoCompra}/${raw.sequencialCompra}`,
@@ -193,7 +252,7 @@ export async function fetchUkraine({ now = Date.now(), fetchJsonFn } = {}) {
   const read = reader(fetchJsonFn);
   const payload = await read(urlWithParams('https://public-api.prozorro.gov.ua/api/2.5/tenders', { descending: 1, limit: MAX_DETAILS }));
   const records = await detailsInBatches(rows(payload?.data, 'data'), async (row) => {
-    requireRow(/^[\w-]+$/.test(text(row?.id)), source);
+    requireRow(RECORDS_RE_2.test(text(row?.id)), source);
     const detail = await read(`https://public-api.prozorro.gov.ua/api/2.5/tenders/${encodeURIComponent(row.id)}`);
     const raw = detail?.data;
     requireRow(raw?.id === row.id && text(raw?.title) && text(raw?.status), source);
@@ -251,9 +310,9 @@ export async function fetchLatvia({ now = Date.now(), fetchJsonFn } = {}) {
     if (raw.formType !== 'competition') return [];
     return rows(raw.lots, 'lots').map((lot) => {
       const process = lot?.tenderingProcess;
-      const date = text(process?.deadlineReceiptTendersEndDate).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      const date = text(process?.deadlineReceiptTendersEndDate).match(DATE_RE);
       const time = text(process?.deadlineReceiptTendersEndTime);
-      if (!date || !/^\d{2}:\d{2}$/.test(time)) return null;
+      if (!date || !RECORDS_RE_3.test(time)) return null;
       return normalizePublicTender({ source, sourceNoticeId: `${raw.identifier}:${lot.id}`,
         officialUrl: raw.tenderingProcess?.documentsURL, countryCode: 'LV', region: 'Europe',
         title: text(lot.name) || raw.name, description: lot.description, buyer: raw.organizationData?.name,
@@ -284,13 +343,13 @@ export async function fetchPoland({ now = Date.now(), fetchJsonFn } = {}) {
 }
 
 function htmlText(value) {
-  return decodeHtmlEntities(value.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(value.replace(HTML_TEXT_RE, ' ')).replace(WHITESPACE_RE, ' ').trim();
 }
 
 function tableRows(html) {
-  return [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(([, row]) => ({
+  return [...html.matchAll(TABLE_ROWS_RE)].map(([, row]) => ({
     html: row,
-    cells: [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(([, cell]) => cell),
+    cells: [...row.matchAll(TABLE_ROWS_RE_2)].map(([, cell]) => cell),
   }));
 }
 
@@ -313,7 +372,7 @@ function dateOnly(value, separator, timeZone) {
 }
 
 function pakistanDate(value) {
-  const match = text(value).match(/^(?:[A-Za-z]+, )?([A-Za-z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)$/);
+  const match = text(value).match(PAKISTAN_DATE_RE);
   const month = match && ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(match[1]) + 1;
   if (!match || !month || Number(match[4]) < 1 || Number(match[4]) > 12) throw new Error('EPADS response contains an invalid closing timestamp');
   const hour = Number(match[4]) % 12 + (match[6] === 'PM' ? 12 : 0);
@@ -354,19 +413,19 @@ export async function fetchPakistanEpads({ now = Date.now(), fetchTextFn } = {})
   const source = 'pakistan-epads';
   const read = reader((url, options) => fetchTextFn(url, { ...options, redirect: 'error' }));
   const html = await read('https://epads.gov.pk/', { headers: { Accept: 'text/html' } });
-  requireRow(/Procurement Title/.test(html) && /table-border-bottom-0/.test(html), source);
-  const tenderRows = tableRows(html).filter(({ html: row }) => /\/opportunities\/federal\/procurements\//.test(row));
-  if (!tenderRows.length && !/No (?:procurements|records|opportunities) found/i.test(html)) throw new Error('EPADS response missing tender rows');
+  requireRow(FETCH_PAKISTAN_EPADS_RE.test(html) && FETCH_PAKISTAN_EPADS_RE_2.test(html), source);
+  const tenderRows = tableRows(html).filter(({ html: row }) => TENDER_ROWS_RE.test(row));
+  if (!tenderRows.length && !FETCH_PAKISTAN_EPADS_RE_3.test(html)) throw new Error('EPADS response missing tender rows');
   const records = await detailsInBatches(tenderRows, async ({ cells }) => {
-    const link = cells[1]?.match(/href="(\/opportunities\/federal\/procurements\/(\d+))"/);
-    const labels = [...(cells[1] || '').matchAll(/<span\b[^>]*title="([^"]+)"[^>]*>/gi)].map(([, value]) => htmlText(value));
-    const dates = htmlText(cells[2] || '').match(/Published On:\s*(.*?)\s*Closing On:\s*(.*)$/);
+    const link = cells[1]?.match(LINK_RE);
+    const labels = [...(cells[1] || '').matchAll(LABELS_RE)].map(([, value]) => htmlText(value));
+    const dates = htmlText(cells[2] || '').match(DATES_RE);
     requireRow(cells.length === 5 && link && labels.length >= 2 && dates, source);
     const officialUrl = `https://epads.gov.pk${link[1]}`;
     let deadline;
-    if (/^(?:\d+[dhms]\s*)+Left$/.test(dates[2])) {
+    if (RECORDS_RE_4.test(dates[2])) {
       const detail = await read(officialUrl, { headers: { Accept: 'text/html' } });
-      const timestamp = detail.match(/showBiddingTimer\("(\d{10})",\s*"0"\)/)?.[1];
+      const timestamp = detail.match(TIMESTAMP_RE)?.[1];
       requireRow(timestamp, source);
       deadline = new Date(Number(timestamp) * 1000).toISOString();
     } else {
@@ -385,9 +444,9 @@ export async function fetchGeorgia({ now = Date.now(), fetchResponseFn } = {}) {
   const base = 'https://tenders.procurement.gov.ge/public/';
   await read(`${base}?lang=en`);
   const html = await read(`${base}library/controller.php?action=search_app&search=1&app_status=10&app_t=0`);
-  requireRow(/id="list_apps_by_subject"/.test(html), source);
-  const notices = [...html.matchAll(/ShowApp\((\d+),'[^']*',\d+,'([a-f0-9]+)'\)/g)];
-  if (!notices.length && !/0\s+Record\(s\)/.test(html)) throw new Error('Georgia response missing tender rows');
+  requireRow(FETCH_GEORGIA_RE.test(html), source);
+  const notices = [...html.matchAll(NOTICES_RE)];
+  if (!notices.length && !FETCH_GEORGIA_RE_2.test(html)) throw new Error('Georgia response missing tender rows');
   const records = await detailsInBatches(notices, async ([, id, key]) => {
     const detail = await read(`${base}library/controller.php?action=app_main&app_id=${id}&key=${key}`);
     const fields = Object.fromEntries(tableRows(detail).filter(({ cells }) => cells.length === 2)
@@ -395,16 +454,16 @@ export async function fetchGeorgia({ now = Date.now(), fetchResponseFn } = {}) {
     requireRow(fields['Announcment number'] && fields['Procurement proceeding status'], source);
     if (!['Tender announced', 'Bidding commenced'].includes(fields['Procurement proceeding status'])) return [];
     const category = fields['Procuring category'];
-    const title = detail.match(/<div\b[^>]*class="blabla"[^>]*>([\s\S]*?)<\/div>/)?.[1];
+    const title = detail.match(TITLE_RE)?.[1];
     requireRow(category && fields['Procuring entities'], source);
-    const amount = fields['Estimated value of procurement']?.match(/^([\d`.,]+)\s+GEL$/);
+    const amount = fields['Estimated value of procurement']?.match(AMOUNT_RE);
     return [normalizePublicTender({ source, sourceNoticeId: fields['Announcment number'],
       officialUrl: `${base}?go=${id}&lang=en`, countryCode: 'GE', region: 'Asia',
       title: title ? htmlText(title) : category, buyer: fields['Procuring entities'],
       publishedAt: europeanDate(fields['Procurement announcment date'], '.', 'Asia/Tbilisi'),
       deadline: europeanDate(fields['Deadline for bid submission'], '.', 'Asia/Tbilisi'), status: 'open',
-      noticeType: fields['Procurement type'], categoryCodes: category.match(/\b\d{8}\b/g) || [],
-      moneyAmount: amount ? amount[1].replace(/[` ,]/g, '') : undefined, currency: amount ? 'GEL' : '' })];
+      noticeType: fields['Procurement type'], categoryCodes: category.match(RECORDS_RE_5) || [],
+      moneyAmount: amount ? amount[1].replace(RECORDS_RE_6, '') : undefined, currency: amount ? 'GEL' : '' })];
   });
   return finish(source, records, now);
 }
@@ -418,14 +477,14 @@ export async function fetchArmenia({ now = Date.now(), fetchResponseFn } = {}) {
   const html = await read(`${base}/epps/viewCFTSAction.do`, { timeoutMs: 50_000, method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ status: 'cft.status.tender.submission', title: '', uniqueId: '', contractAuthority: '', contractType: '', procedure: '' }).toString() });
-  requireRow(/Search results/.test(html) && /CfT Title:/.test(html), source);
-  requireRow(/name="status"\s+value="cft\.status\.tender\.submission"/.test(html), source);
-  const notices = [...html.matchAll(/href="(\/epps\/cft\/prepareViewCfTWS\.do\?resourceId=(\d+))"/g)];
-  if (!notices.length && !/0\s+results in total/.test(html)) throw new Error('Armenia response missing tender rows');
+  requireRow(FETCH_ARMENIA_RE.test(html) && FETCH_ARMENIA_RE_2.test(html), source);
+  requireRow(FETCH_ARMENIA_RE_3.test(html), source);
+  const notices = [...html.matchAll(NOTICES_RE_2)];
+  if (!notices.length && !FETCH_ARMENIA_RE_4.test(html)) throw new Error('Armenia response missing tender rows');
   const records = await detailsInBatches(notices.slice(0, 10), async ([, path, id]) => {
     const detail = await read(`${base}${path}`);
-    const fields = Object.fromEntries([...detail.matchAll(/<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi)]
-      .map(([, label, value]) => [htmlText(label).replace(/\s*:\s*$/, ''), htmlText(value)]));
+    const fields = Object.fromEntries([...detail.matchAll(FIELDS_RE)]
+      .map(([, label, value]) => [htmlText(label).replace(FIELDS_RE_2, ''), htmlText(value)]));
     requireRow(fields['CfT Id'] && fields['Title'] && fields['Name of Contracting Authority'], source);
     if (fields['Date of Awarding']) return [];
     const deadline = europeanDate(fields['Time-limit for receipt of tenders or requests to participate'], '/', 'Asia/Yerevan');
@@ -433,8 +492,8 @@ export async function fetchArmenia({ now = Date.now(), fetchResponseFn } = {}) {
     return [normalizePublicTender({ source, sourceNoticeId: id, officialUrl: `${base}${path}`,
       countryCode: 'AM', region: 'Asia', title: fields['Title (EN)'] || fields.Title,
       buyer: fields['Name of Contracting Authority'], publishedAt: europeanDate(fields['Date of Publication/Invitation'], '/', 'Asia/Yerevan'),
-      deadline, status: 'open', noticeType: fields.Procedure, categoryCodes: fields['CPV Codes']?.match(/\b\d{8}\b/g) || [],
-      moneyAmount: amount && /^[\d,.\s]+$/.test(amount) ? amount.replace(/[,\s]/g, '') : undefined,
+      deadline, status: 'open', noticeType: fields.Procedure, categoryCodes: fields['CPV Codes']?.match(RECORDS_RE_5) || [],
+      moneyAmount: amount && RECORDS_RE_7.test(amount) ? amount.replace(RECORDS_RE_8, '') : undefined,
       currency: amount ? 'AMD' : '' })];
   });
   return finish(source, records, now);
@@ -444,19 +503,19 @@ export async function fetchPakistan({ now = Date.now(), fetchTextFn } = {}) {
   const source = 'pakistan-ppra';
   const read = reader(fetchTextFn);
   const html = await read('https://epms.ppra.gov.pk/public/tenders/active-tenders', { headers: { Accept: 'text/html' } });
-  const mainRows = [...html.matchAll(/<tr\b[^>]*class="cb-rt-main"[^>]*>([\s\S]*?)<\/tr>/gi)];
-  const details = new Map([...html.matchAll(/<tr\b[^>]*id="cb-rt-detail-([^"]+)"[^>]*>([\s\S]*?)<\/tr>/gi)]
+  const mainRows = [...html.matchAll(MAIN_ROWS_RE)];
+  const details = new Map([...html.matchAll(DETAILS_RE)]
     .map(([, id, row]) => [id, row]));
   if (!mainRows.length) throw new Error('Pakistan response missing tender rows');
   const records = mainRows.slice(0, MAX_RECORDS).map(([, row]) => {
-    const cells = Object.fromEntries([...row.matchAll(/<td\b[^>]*data-label="([^"]+)"[^>]*>([\s\S]*?)<\/td>/gi)]
+    const cells = Object.fromEntries([...row.matchAll(CELLS_RE)]
       .map(([, label, content]) => [label, content]));
-    const link = cells.Actions?.match(/href="(\/public\/tenders\/tender-details\/[\w-]+)"/);
-    const title = cells['Tender Details']?.match(/<strong>([\s\S]*?)<\/strong>/i);
-    const detailId = row.match(/<button\b[^>]*data-id="([^"]+)"/)?.[1];
-    const buyer = details.get(detailId)?.match(/>Organization<\/span>\s*<span\b[^>]*>\s*<strong>([\s\S]*?)<\/strong>/i)?.[1];
+    const link = cells.Actions?.match(LINK_RE_2);
+    const title = cells['Tender Details']?.match(TITLE_RE_2);
+    const detailId = row.match(DETAIL_ID_RE)?.[1];
+    const buyer = details.get(detailId)?.match(BUYER_RE)?.[1];
     const closing = cells.Closing && htmlText(cells.Closing);
-    const match = closing?.match(/^([A-Za-z]{3}) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2}) (AM|PM)$/);
+    const match = closing?.match(RECORDS_RE_9);
     requireRow(link && title && match, source);
     const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(match[1]) + 1;
     requireRow(month, source);
@@ -465,7 +524,7 @@ export async function fetchPakistan({ now = Date.now(), fetchTextFn } = {}) {
       officialUrl: `https://epms.ppra.gov.pk${link[1]}`, countryCode: 'PK', region: 'Asia', title: htmlText(title[1]),
       buyer: buyer ? htmlText(buyer) : '',
       deadline: localDate(`${match[3]}-${String(month).padStart(2, '0')}-${match[2].padStart(2, '0')}T${String(hour).padStart(2, '0')}:${match[5]}:00`, 'Asia/Karachi'),
-      status: /Published/.test(htmlText(cells.Status || '')) ? 'open' : 'closed' });
+      status: RECORDS_RE_10.test(htmlText(cells.Status || '')) ? 'open' : 'closed' });
   });
   return finish(source, records, now);
 }
@@ -490,25 +549,25 @@ export async function fetchAlbania({ now = Date.now(), fetchTextFn } = {}) {
   const files = await Promise.all(years.map((year) => read(`https://www.app.gov.al/GetData/ExportDocument?year=${year}`,
     { headers: { Accept: 'text/csv, text/plain, */*' } })));
   const records = files.flatMap((csv) => {
-    const parsed = Papa.parse(text(csv).replace(/^\uFEFF/, ''), { header: true, skipEmptyLines: true });
+    const parsed = Papa.parse(text(csv).replace(PARSED_RE, ''), { header: true, skipEmptyLines: true });
     requireRow(parsed.meta?.fields?.length === ALBANIA_COLUMNS.length
       && ALBANIA_COLUMNS.every((column, index) => parsed.meta.fields[index] === column), source);
     return rows(parsed.data, 'procedures').map((raw) => {
-      requireRow(Object.keys(raw).length === ALBANIA_COLUMNS.length && /^REF-\d{5}-\d{2}-\d{2}-\d{4}$/.test(text(raw.Numri_i_references))
+      requireRow(Object.keys(raw).length === ALBANIA_COLUMNS.length && RECORDS_RE_11.test(text(raw.Numri_i_references))
         && text(raw.Objekti_i_prokurimit) && text(raw.Autoriteti_kontraktues) && ['Jo', 'Po'].includes(text(raw.Anulluar))
         && ['Jo', 'Po'].includes(text(raw.Pezulluar)), source);
       // Cancelled, suspended and awarded procedures are not open invitations;
       // a procedure without a closing date cannot be represented as open.
       if (raw.Anulluar === 'Po' || raw.Pezulluar === 'Po' || text(raw.Fituesi) || !text(raw.Data_e_mbylljes)) return null;
-      const fund = text(raw.Fondi_limit).replace(/,/g, '');
-      requireRow(!fund || /^\d+(?:\.\d+)?$/.test(fund), source);
+      const fund = text(raw.Fondi_limit).replace(FUND_RE, '');
+      requireRow(!fund || RECORDS_RE_12.test(fund), source);
       // A zero limit fund (ticket purchases) is an absent estimate, not a value.
       const amount = Number(fund) > 0 ? fund : undefined;
       return normalizePublicTender({ source, sourceNoticeId: raw.Numri_i_references, officialUrl: ALBANIA_EXPORT_PAGE,
         countryCode: 'AL', region: 'Europe', title: raw.Objekti_i_prokurimit, buyer: raw.Autoriteti_kontraktues,
         publishedAt: dateOnly(raw.Data_e_publikimit, '.', 'Europe/Tirane'), deadline: dateOnly(raw.Data_e_mbylljes, '.', 'Europe/Tirane'),
         status: 'open', noticeType: raw.Lloji_i_procedures, sectors: raw.Tipi_i_kontrates,
-        categoryCodes: text(raw.Kodet_CPV).match(/\b\d{8}\b/g) || [], moneyAmount: amount, currency: amount ? 'ALL' : '' });
+        categoryCodes: text(raw.Kodet_CPV).match(RECORDS_RE_5) || [], moneyAmount: amount, currency: amount ? 'ALL' : '' });
     });
   });
   return finish(source, records, now);
@@ -556,26 +615,26 @@ export async function fetchMalaysia({ now = Date.now(), fetchJsonFn } = {}) {
   const payload = await read(urlWithParams('https://myprocurement.treasury.gov.my/procurements/fetch',
     { type: 'advertisements', category: 'tender', itemsPerPage: MAX_RECORDS, page: 1 }));
   requireRow(typeof payload?.html === 'string' && Number.isSafeInteger(payload.total) && Number.isSafeInteger(payload.lastPage), source);
-  const cards = payload.html.split(/<div\b[^>]*x-data="\{ selected: false, open: true \}"/).slice(1);
+  const cards = payload.html.split(CARDS_RE).slice(1);
   // A page that renders fewer cards than the publisher's own total promises is
   // a partial render or a changed card marker, not a smaller catalogue.
   if (cards.length !== Math.min(MAX_RECORDS, payload.total)) throw new Error('Malaysia response missing tender cards');
   const field = (card, label) => card.match(new RegExp(`>${label}:</div>\\s*<div\\b[^>]*>([\\s\\S]*?)</div>`))?.[1];
   const records = cards.map((card) => {
-    const id = card.match(/select-procurement', \{ id: (\d+) \}/)?.[1];
-    const link = card.match(/href="(https:\/\/myprocurement\.treasury\.gov\.my\/advertisements\/tender\/[a-f0-9]+)"[^>]*>([\s\S]*?)<\/a>/);
-    const invited = card.match(/Tarikh Pelawaan:\s*([^<]*?)\s*</)?.[1];
-    const number = card.match(/No\. Tender<\/span>:\s*([^<]*?)\s*</)?.[1];
+    const id = card.match(ID_RE)?.[1];
+    const link = card.match(LINK_RE_3);
+    const invited = card.match(INVITED_RE)?.[1];
+    const number = card.match(NUMBER_RE)?.[1];
     const fields = Object.fromEntries(['Kementerian', 'Agensi', 'Kategori Perolehan', 'Kod Bidang', 'Tarikh Tutup Pelawaan', 'Harga Indikatif Jabatan']
       .map((label) => [label, field(card, label)]));
     requireRow(id && link && htmlText(link[2]) && invited && number && Object.values(fields).every((value) => typeof value === 'string'), source);
-    const price = htmlText(fields['Harga Indikatif Jabatan']).match(/^RM ([\d,]+\.\d{2})$/);
+    const price = htmlText(fields['Harga Indikatif Jabatan']).match(PRICE_RE);
     return normalizePublicTender({ source, sourceNoticeId: id, officialUrl: link[1], countryCode: 'MY', region: 'Asia',
       title: htmlText(link[2]), description: `No. Tender: ${htmlText(number)}`, buyer: htmlText(fields.Agensi),
       publishedAt: dateOnly(invited, '/', 'Asia/Kuala_Lumpur'), deadline: dateOnly(fields['Tarikh Tutup Pelawaan'], '/', 'Asia/Kuala_Lumpur'),
       status: 'open', noticeType: htmlText(fields.Kementerian), sectors: htmlText(fields['Kategori Perolehan']),
-      categoryCodes: htmlText(fields['Kod Bidang']).split(',').map((code) => code.trim()).filter((code) => /^\d{6}$/.test(code)),
-      moneyAmount: price ? price[1].replace(/,/g, '') : undefined, currency: price ? 'MYR' : '' });
+      categoryCodes: htmlText(fields['Kod Bidang']).split(',').map((code) => code.trim()).filter((code) => RECORDS_RE_13.test(code)),
+      moneyAmount: price ? price[1].replace(FUND_RE, '') : undefined, currency: price ? 'MYR' : '' });
   });
   return finish(source, records, now);
 }

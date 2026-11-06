@@ -17,6 +17,10 @@ import { UPSTREAM_TIMEOUT_MS, sanitizeSymbol } from './_shared';
 import { storeStockAnalysisSnapshot } from './premium-stock-store';
 import { searchRecentStockHeadlines } from './stock-news-search';
 
+const US_EQUITY_HOURS_APPLY_RE = /\.[A-Za-z]+$/;
+const OPTIONAL_FINANCIAL_CURRENCY_RE = /^[A-Z]{3}$/;
+
+
 export type Candle = {
   timestamp: number;
   open: number;
@@ -775,7 +779,7 @@ export function getUsEquitySessionAt(date: Date = new Date()): UsEquitySession {
 // USD without a suffix covers NYSE/Nasdaq stocks, US indices (^GSPC) and
 // US-listed ADRs (TSM, NVO) — for everything else marketSession stays ''.
 export function usEquityHoursApply(symbol: string, currency: string): boolean {
-  return currency === 'USD' && !/\.[A-Za-z]+$/.test(symbol);
+  return currency === 'USD' && !US_EQUITY_HOURS_APPLY_RE.test(symbol);
 }
 
 export type NewsAlignment = {
@@ -1038,7 +1042,7 @@ function optionalYahooDebtToEquity(field: { raw?: number } | undefined): number 
 function optionalFinancialCurrency(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const normalized = value.trim().toUpperCase();
-  return /^[A-Z]{3}$/.test(normalized) ? normalized : undefined;
+  return OPTIONAL_FINANCIAL_CURRENCY_RE.test(normalized) ? normalized : undefined;
 }
 
 const EMPTY_ANALYST_DATA: AnalystData = {

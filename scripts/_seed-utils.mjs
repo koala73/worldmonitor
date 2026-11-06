@@ -17,6 +17,19 @@ import { COMPARE_AND_DELETE_SCRIPT } from './shared/compare-and-delete-script.cj
 // imports the leaf module directly so its image does not need the seed kernel.
 import { isTestRuntime, loadEnvFile } from './_env-file.mjs';
 
+const RESOLVE_CONVEX_SITE_URL_RE = /\/+$/;
+const IS_TRANSIENT_REDIS_ERROR_RE = /UND_ERR_|Connect Timeout Error|fetch failed|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i;
+const RESOLVE_SEED_META_KEY_RE = /:v\d+$/;
+const REDACT_PROXY_CREDENTIALS_RE = /(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/g;
+const PROXY_URL_RE = /^https?:\/\//i;
+const CURL_FETCH_RE = /^http:\/\//i;
+const IS_TRANSIENT_PROXY_ERROR_RE = /HTTP(?:\/1\.[01])? 5\d{2}|522|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|EPIPE|socket (disconnected|hang up)|TLS connection|tls_get_more_records|packet length too long|SSL routines|secure TLS connection/i;
+const THROW_IF_FRED_MAINTENANCE_RE = /\btext\/html\b/i;
+const THROW_IF_FRED_MAINTENANCE_RE_2 = /<h1[^>]*>\s*We(?:['\u2019]ll| will) be back soon!?\s*<\/h1>/i;
+const NORMALIZE_SDMX_PERIOD_RE = /-M(\d{2})$/;
+const HOSTNAME_RE = /^www\./;
+
+
 export { isTestRuntime, loadEnvFile };
 
 // process.exit does not drain in-flight promises — drain any fire-and-forget
@@ -298,7 +311,7 @@ export function loadSharedConfig(filename) {
  */
 export function resolveConvexSiteUrl(env) {
   const raw = env.CONVEX_SITE_URL || (env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
-  return raw ? raw.replace(/\/+$/, '') : '';
+  return raw ? raw.replace(RESOLVE_CONVEX_SITE_URL_RE, '') : '';
 }
 
 // The commit a seeder was deployed from: Railway, then Vercel, then Actions.
@@ -438,7 +451,7 @@ export function isTransientRedisError(err) {
   const causeMessage = String(err?.cause?.message || '');
   const code = String(err?.code || err?.cause?.code || '');
   const combined = `${message} ${causeMessage} ${code}`;
-  return /UND_ERR_|Connect Timeout Error|fetch failed|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i.test(combined);
+  return IS_TRANSIENT_REDIS_ERROR_RE.test(combined);
 }
 
 export async function acquireLock(domain, runId, ttlMs) {
@@ -1118,7 +1131,7 @@ export const SEED_META_KEY_PREFIX = 'seed-meta:';
  */
 export function resolveSeedMetaKey(dataKey, metaKeyOverride) {
   if (metaKeyOverride === undefined || metaKeyOverride === null || metaKeyOverride === '') {
-    return `${SEED_META_KEY_PREFIX}${dataKey.replace(/:v\d+$/, '')}`;
+    return `${SEED_META_KEY_PREFIX}${dataKey.replace(RESOLVE_SEED_META_KEY_RE, '')}`;
   }
   if (typeof metaKeyOverride !== 'string' || !metaKeyOverride.startsWith(SEED_META_KEY_PREFIX) || metaKeyOverride === dataKey) {
     throw new Error(
@@ -1397,7 +1410,7 @@ export function resolveProxyForConnect() {
 // strings are the only place seeders carry inline credentials, and they end up embedded
 // in curl argv — see the execFileSync catch in curlFetch below.
 export function redactProxyCredentials(text) {
-  return String(text ?? '').replace(/(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/g, '$1***:***@');
+  return String(text ?? '').replace(REDACT_PROXY_CREDENTIALS_RE, '$1***:***@');
 }
 
 // curl-based fetch; throws on non-2xx. Returns response body as string.
@@ -1416,8 +1429,8 @@ export function curlFetch(
   const curlTimeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
   const args = ['-sS', '--compressed', '--max-time', String(curlTimeoutSeconds), '-L'];
   if (proxyAuth) {
-    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `https://${proxyAuth}`;
-    if (/^http:\/\//i.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
+    const proxyUrl = PROXY_URL_RE.test(proxyAuth) ? proxyAuth : `https://${proxyAuth}`;
+    if (CURL_FETCH_RE.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
       throw new Error('Plain HTTP curl proxies require PROXY_ALLOW_INSECURE_HTTP=1');
     }
     args.push('-x', proxyUrl);
@@ -1495,7 +1508,7 @@ export async function httpsProxyFetchRaw(url, proxyAuth, {
 // datacenter IP gets rate-limited/blocked on → the whole batch fails. Exported
 // for unit testing (the proxy fetch itself is network-bound and not injectable).
 export function isTransientProxyError(message) {
-  return /HTTP(?:\/1\.[01])? 5\d{2}|522|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|EPIPE|socket (disconnected|hang up)|TLS connection|tls_get_more_records|packet length too long|SSL routines|secure TLS connection/i.test(message || '');
+  return IS_TRANSIENT_PROXY_ERROR_RE.test(message || '');
 }
 
 // Whether the ORIGIN refused this particular egress IP — a failure that a
@@ -1542,8 +1555,8 @@ export function isExitRefusalError(error) {
 const FRED_JSON_HEADERS = { Accept: 'application/json', 'User-Agent': CHROME_UA };
 
 function throwIfFredMaintenance(body, contentType) {
-  if (/\btext\/html\b/i.test(contentType || '')
-    && /<h1[^>]*>\s*We(?:['\u2019]ll| will) be back soon!?\s*<\/h1>/i.test(body)) {
+  if (THROW_IF_FRED_MAINTENANCE_RE.test(contentType || '')
+    && THROW_IF_FRED_MAINTENANCE_RE_2.test(body)) {
     throw markPreservableFetchFailure(new Error('FRED API is under maintenance'));
   }
 }
@@ -1580,7 +1593,7 @@ async function fredDirectFetchJson(url) {
     try {
       const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
       if (r.ok) {
-        if (/\btext\/html\b/i.test(r.headers?.get?.('content-type') || '')) {
+        if (THROW_IF_FRED_MAINTENANCE_RE.test(r.headers?.get?.('content-type') || '')) {
           return parseFredJson(await r.text(), r.headers.get('content-type'));
         }
         return await r.json();
@@ -1727,7 +1740,7 @@ export function imfAuthHeaders() {
  */
 export function normalizeSdmxPeriod(period) {
   if (typeof period !== 'string') return period;
-  return period.replace(/-M(\d{2})$/, '-$1');
+  return period.replace(NORMALIZE_SDMX_PERIOD_RE, '-$1');
 }
 
 /**
@@ -1846,7 +1859,7 @@ function imfDatasetDate(struct, ds, id) {
 // for EXA includeDomains). Prevents stored-SSRF from Redis-persisted URLs.
 export function isAllowedRouteHost(url, allowedHosts) {
   try {
-    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    const hostname = new URL(url).hostname.replace(HOSTNAME_RE, '');
     return allowedHosts.some(h => hostname === h || hostname.endsWith('.' + h));
   } catch {
     return false;

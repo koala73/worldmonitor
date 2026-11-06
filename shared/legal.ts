@@ -21,6 +21,8 @@
  * together and therefore carry ONE date — `tests/legal-version.test.mts`
  * enforces that they agree, so a single stamped version names all three.
  */
+const ABSOLUTE_LEGAL_URL_RE = /\/+$/;
+
 export const TERMS_VERSION = '2026-11-02';
 
 /** The licence itself: what each plan grants, on every surface (#6983). */
@@ -108,5 +110,5 @@ export const CHECKOUT_CONSENT_TEXT =
  * resolves inside the WebView bundle and 404s.
  */
 export function absoluteLegalUrl(path: string, origin: string): string {
-  return `${origin.replace(/\/+$/, '')}${path}`;
+  return `${origin.replace(ABSOLUTE_LEGAL_URL_RE, '')}${path}`;
 }

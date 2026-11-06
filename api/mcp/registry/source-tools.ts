@@ -26,6 +26,9 @@ import { argNum, argStr, ciIncludes } from '../filters';
 import { MEDIA_PERSPECTIVE_TOOL } from './media-perspective-tool';
 import type { ToolDef } from '../types';
 
+const PARSED_RE = /^\d+$/;
+
+
 interface ManifestEntry {
   host: string;
   provider?: string;
@@ -89,7 +92,7 @@ function resolveRowLimit(value: unknown): { limit: number } | { error: string } 
   // `--key value` path carries values as strings. Accept only the canonical
   // positive-integer string form so `--limit 5` works without widening the
   // contract to decimals, exponents, or whitespace-only values.
-  const parsed = typeof value === 'string' && /^\d+$/.test(value.trim())
+  const parsed = typeof value === 'string' && PARSED_RE.test(value.trim())
     ? Number(value.trim())
     : value;
   if (typeof parsed !== 'number' || !Number.isSafeInteger(parsed) || parsed < 1) {

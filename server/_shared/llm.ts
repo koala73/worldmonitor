@@ -20,6 +20,21 @@ import {
   OPENROUTER_PROVIDER_ROUTING,
 } from '../../scripts/_llm-model-timeouts.mjs';
 
+const S_RE = /<think>[\s\S]*?<\/think>/gi;
+const S_RE_2 = /<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi;
+const S_RE_3 = /<reasoning>[\s\S]*?<\/reasoning>/gi;
+const S_RE_4 = /<reflection>[\s\S]*?<\/reflection>/gi;
+const S_RE_5 = /<\|begin_of_thought\|>[\s\S]*?<\|end_of_thought\|>/gi;
+const STRIP_THINKING_TAGS_RE = /<think>[\s\S]*/gi;
+const STRIP_THINKING_TAGS_RE_2 = /<\|thinking\|>[\s\S]*/gi;
+const STRIP_THINKING_TAGS_RE_3 = /<reasoning>[\s\S]*/gi;
+const STRIP_THINKING_TAGS_RE_4 = /<reflection>[\s\S]*/gi;
+const STRIP_THINKING_TAGS_RE_5 = /<\|begin_of_thought\|>[\s\S]*/gi;
+const NORMALIZED_RE = /[\s-]+/g;
+const CALL_LLM_RE = /^```(?:\w+)?\s*/m;
+const CALL_LLM_RE_2 = /\s*```\s*$/m;
+
+
 export { getLlmAttemptTimeoutMs } from '../../scripts/_llm-model-timeouts.mjs';
 
 function promptChars(messages: Array<{ role: string; content: string }>): number {
@@ -220,20 +235,20 @@ async function readBoundedErrorBody(resp: Response, cap: number): Promise<string
 
 export function stripThinkingTags(text: string): string {
   let s = text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
-    .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-    .replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
-    .replace(/<\|begin_of_thought\|>[\s\S]*?<\|end_of_thought\|>/gi, '')
+    .replace(S_RE, '')
+    .replace(S_RE_2, '')
+    .replace(S_RE_3, '')
+    .replace(S_RE_4, '')
+    .replace(S_RE_5, '')
     .trim();
 
   // Strip unterminated opening tags (no closing tag present)
   s = s
-    .replace(/<think>[\s\S]*/gi, '')
-    .replace(/<\|thinking\|>[\s\S]*/gi, '')
-    .replace(/<reasoning>[\s\S]*/gi, '')
-    .replace(/<reflection>[\s\S]*/gi, '')
-    .replace(/<\|begin_of_thought\|>[\s\S]*/gi, '')
+    .replace(STRIP_THINKING_TAGS_RE, '')
+    .replace(STRIP_THINKING_TAGS_RE_2, '')
+    .replace(STRIP_THINKING_TAGS_RE_3, '')
+    .replace(STRIP_THINKING_TAGS_RE_4, '')
+    .replace(STRIP_THINKING_TAGS_RE_5, '')
     .trim();
 
   return s;
@@ -315,7 +330,7 @@ const KNOWN_NON_LIMIT_FINISH_REASONS = new Set([
 
 function normalizeFinishReason(finishReason: string | null): string | null {
   if (typeof finishReason !== 'string') return null;
-  const normalized = finishReason.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  const normalized = finishReason.trim().toLowerCase().replace(NORMALIZED_RE, '_');
   return normalized || null;
 }
 
@@ -903,7 +918,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         }
 
         // Strip markdown code fences (e.g. ```json ... ```) that some models add
-        content = content.replace(/^```(?:\w+)?\s*/m, '').replace(/\s*```\s*$/m, '').trim();
+        content = content.replace(CALL_LLM_RE, '').replace(CALL_LLM_RE_2, '').trim();
 
         if (validate && !validate(content)) {
           console.warn(`[llm:${providerName}] validate() rejected response, trying next`);

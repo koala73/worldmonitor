@@ -11,6 +11,14 @@ import {
   verifyCitationIndexes,
 } from './shared/brief-llm-core.js';
 
+const WHITESPACE_RE = /\s+/g;
+const TEXT_RE = /```(?:json)?/gi;
+const LEAD_SENTENCES_RE = /\./g;
+const LEAD_SENTENCES_RE_2 = /(?<=[.!?])\s+/;
+const CITED_RE = /\[(\d{1,3})\]/g;
+const BARE_RE = /\s*\[\d{1,3}\]/g;
+
+
 // A dotted acronym ("U.S.", "U.N.", "D.O.J.") that is provably NOT at a sentence
 // boundary, in one of two shapes:
 //   1. followed by a lowercase word — sentences start with a capital;
@@ -97,7 +105,7 @@ export function synthesisRejectionFeedback(rejection) {
   const code = rejection?.code;
   if (!code) return null;
   const detail = typeof rejection?.detail === 'string'
-    ? rejection.detail.replace(/\s+/g, ' ').trim().slice(0, REJECTION_FEEDBACK_MAX_DETAIL_CHARS)
+    ? rejection.detail.replace(WHITESPACE_RE, ' ').trim().slice(0, REJECTION_FEEDBACK_MAX_DETAIL_CHARS)
     : '';
   switch (code) {
     case BRIEF_REJECTIONS.LEAD_PROPER_NOUN:
@@ -231,7 +239,7 @@ export function synthesisUserPrompt(stories, { includeMemberTitles = false } = {
  */
 export function parseBriefSynthesis(rawText, storyCount) {
   if (typeof rawText !== 'string' || rawText.length === 0) return null;
-  const text = rawText.replace(/```(?:json)?/gi, '').trim();
+  const text = rawText.replace(TEXT_RE, '').trim();
   const start = text.indexOf('{');
   if (start === -1) return null;
   // Balanced, string-aware brace scan (#4928 external review): a stray
@@ -367,14 +375,14 @@ function maskAttributedSourcesResult(text, sources) {
   const labels = [...new Set(
     (Array.isArray(sources) ? sources : [])
       .filter((source) => typeof source === 'string')
-      .map((source) => source.trim().replace(/\s+/g, ' '))
+      .map((source) => source.trim().replace(WHITESPACE_RE, ' '))
       .filter(Boolean),
   )].sort((a, b) => b.length - a.length);
 
   for (const label of labels) {
     // Escape first, THEN relax runs of whitespace — a label may carry regex
     // metacharacters ('+972 Magazine', '24.hu', 'CAC (China)').
-    const pattern = label.replace(REGEX_METACHARACTERS, '\\$&').replace(/\s+/g, '\\s+');
+    const pattern = label.replace(REGEX_METACHARACTERS, '\\$&').replace(WHITESPACE_RE, '\\s+');
     const sourceFirst = new RegExp(
       `(^|[^\\p{L}\\p{N}])${pattern}(?=\\s+(?:reported|reports|said|says|wrote|writes)\\b)`,
       'gu',
@@ -513,8 +521,8 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   // the gate's view changes — the published lead below stays leadCheck.text,
   // punctuation intact.
   const leadSentences = leadCheck.text
-    .replace(MIDSENTENCE_DOTTED_ACRONYM, (acronym) => acronym.replace(/\./g, ''))
-    .split(/(?<=[.!?])\s+/)
+    .replace(MIDSENTENCE_DOTTED_ACRONYM, (acronym) => acronym.replace(LEAD_SENTENCES_RE, ''))
+    .split(LEAD_SENTENCES_RE_2)
     .filter((sentence) => sentence.trim().length > 0);
   if (leadSentences.length === 0) return reject(BRIEF_REJECTIONS.LEAD_EMPTY);
   // Repair, don't reject (2026-08-28). One ungrounded noun in one lead sentence
@@ -547,7 +555,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     leadDecisions.push(decision);
     const head = acronymHead;
     acronymHead = null;
-    const cited = [...sentence.matchAll(/\[(\d{1,3})\]/g)]
+    const cited = [...sentence.matchAll(CITED_RE)]
       .map((match) => Number.parseInt(match[1], 10))
       .filter((n) => n >= 1 && n <= topStories.length);
     // Contract: every claim is cited. An uncited sentence is unverifiable —
@@ -668,7 +676,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // wrong source. The line's content is validated against story n, so
     // its ONLY correct citation is [n]: strip every bracket marker and
     // append the canonical one.
-    const bare = lineByIndex.get(n).replace(/\s*\[\d{1,3}\]/g, '').trim();
+    const bare = lineByIndex.get(n).replace(BARE_RE, '').trim();
     // Same attribution rule as the lead, scoped to THIS story's outlet: the line
     // may name it, and naming it grounds nothing else. The published text stays
     // `bare` — only the gate's view is masked.

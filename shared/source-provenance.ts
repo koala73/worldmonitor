@@ -7,6 +7,9 @@ import {
   TELEGRAM_SOURCE_TYPES,
 } from './telegram-channel-trust';
 
+const COMPOSE_PROVENANCE_SUMMARY_RE = /[.!?]$/;
+
+
 // 'unknown' = not yet reviewed (default for unlisted sources — never invent a type)
 // 'other' remains available as an explicit classification when needed.
 export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other' | 'unknown';
@@ -640,7 +643,7 @@ export function composeProvenanceSummary(profile: SourceRiskProfile, type: Sourc
   return [
     describeRiskClause(profile, type),
     knownBiases.length > 0 ? `Perspective: ${knownBiases.join(', ')}.` : 'Perspective: none recorded.',
-    ...(note ? [/[.!?]$/.test(note) ? note : `${note}.`] : []),
+    ...(note ? [COMPOSE_PROVENANCE_SUMMARY_RE.test(note) ? note : `${note}.`] : []),
   ].join(' ');
 }
 

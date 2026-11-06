@@ -13,6 +13,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const IS_REAL_CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const NEXT_RE = /<script type="application\/ld\+json"([^>]*)>([\s\S]*?)<\/script>/g;
+const NEXT_RE_2 = /</g;
+
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SNAPSHOTS_DIR = join(ROOT, 'docs/snapshots');
@@ -42,7 +47,7 @@ function readSnapshotError(name, reason) {
 }
 
 function isRealCalendarDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (typeof value !== 'string' || !IS_REAL_CALENDAR_DATE_RE.test(value)) return false;
   const timestamp = Date.parse(`${value}T00:00:00Z`);
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
 }
@@ -120,7 +125,7 @@ const SOFTWARE_ID = 'https://www.worldmonitor.app/#software';
 export function injectStarsInteractionCounter(html, snapshot) {
   let injected = false;
   const next = String(html).replace(
-    /<script type="application\/ld\+json"([^>]*)>([\s\S]*?)<\/script>/g,
+    NEXT_RE,
     (tag, attrs, body) => {
       let node;
       try {
@@ -133,7 +138,7 @@ export function injectStarsInteractionCounter(html, snapshot) {
       if (!app || app.interactionStatistic !== undefined) return tag;
       app.interactionStatistic = starsInteractionCounter(snapshot);
       injected = true;
-      return `<script type="application/ld+json"${attrs}>${JSON.stringify(node, null, 2).replace(/</g, '\\u003c')}</script>`;
+      return `<script type="application/ld+json"${attrs}>${JSON.stringify(node, null, 2).replace(NEXT_RE_2, '\\u003c')}</script>`;
     },
   );
   return { html: next, injected };

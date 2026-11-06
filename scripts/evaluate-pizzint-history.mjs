@@ -4,6 +4,9 @@ import { createRequire } from 'node:module';
 import { constants } from 'node:buffer';
 import { loadEnvFile, getRedisCredentials, redisCommand } from './_seed-utils.mjs';
 
+const PARSE_ARGS_RE = /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/;
+
+
 const require = createRequire(import.meta.url);
 const { PREFIX, PROVIDERS, RETENTION_DAYS, MAX_FIELDS, MAX_RECORD_BYTES, decodePizzintHistoryRecord, evaluatePizzintHistory } = require('./shared/pizzint-history.cjs');
 // Derived from the writer's own bounds rather than re-typed, so raising a cap in
@@ -29,7 +32,7 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   if (options.input === undefined || options.input === '' || options.asOf === undefined || !Number.isInteger(options.days) || options.days < 1 || options.days > 90) throw new Error('usage: evaluate-pizzint-history [--input fixture.json] [--as-of ISO] [--days 1..90] [--include-suspect-zeros]');
-  if (!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(options.asOf) || !Number.isFinite(Date.parse(options.asOf))) throw new Error('--as-of must be an ISO timestamp with an explicit timezone');
+  if (!PARSE_ARGS_RE.test(options.asOf) || !Number.isFinite(Date.parse(options.asOf))) throw new Error('--as-of must be an ISO timestamp with an explicit timezone');
   return options;
 }
 

@@ -34,6 +34,11 @@
 // give-up state here would silently change behaviour the fleet depends on.
 
 /** Failure classes. Only 'transport' and 'rate-limit' walk the ordinary ladder. */
+const CLASSIFY_AIS_FAILURE_RE = /\b429\b|too many requests|rate.?limit/;
+const CLASSIFY_AIS_FAILURE_RE_2 = /\b(401|403)\b/;
+const CLASSIFY_AIS_FAILURE_RE_3 = /unauthoriz|forbidden|invalid[\s_-]*(api[\s_-]*)?key|api[\s_-]*key[\s_-]*(?:is[\s_-]*)?(?:invalid|not[\s_-]*valid)|authentication failed/;
+const PARSE_AIS_ENV_NUMBER_RE = /^\d+(\.\d+)?$/;
+
 export const AIS_FAILURE_KINDS = Object.freeze(['transport', 'auth', 'rate-limit']);
 
 /** Default cadences. */
@@ -70,7 +75,7 @@ export function classifyAisFailure(detail = {}) {
 
   // 429 first: a throttle is a throttle even if the body wording would otherwise
   // read as an auth rejection.
-  if (status === 429 || /\b429\b|too many requests|rate.?limit/.test(message)) {
+  if (status === 429 || CLASSIFY_AIS_FAILURE_RE.test(message)) {
     return { kind: 'rate-limit', label: 'http_429', retryAfterMs };
   }
   // 401/403 and the wordings AISStream uses for a bad key. The numeric forms are
@@ -78,8 +83,8 @@ export function classifyAisFailure(detail = {}) {
   // transport message cannot impersonate an auth rejection and park the feed.
   if (
     status === 401 || status === 403
-    || /\b(401|403)\b/.test(message)
-    || /unauthoriz|forbidden|invalid[\s_-]*(api[\s_-]*)?key|api[\s_-]*key[\s_-]*(?:is[\s_-]*)?(?:invalid|not[\s_-]*valid)|authentication failed/.test(message)
+    || CLASSIFY_AIS_FAILURE_RE_2.test(message)
+    || CLASSIFY_AIS_FAILURE_RE_3.test(message)
   ) {
     return { kind: 'auth', label: 'auth_rejected', retryAfterMs: null };
   }
@@ -123,7 +128,7 @@ export function parseAisEnvNumber(raw, { fallback, min, label, warn } = {}) {
   // Whitespace-only falls through to the numeric check: it is a value that WAS
   // set and is not a number, which deserves a different warning than "".
   const text = rawText.trim();
-  if (!/^\d+(\.\d+)?$/.test(text)) {
+  if (!PARSE_AIS_ENV_NUMBER_RE.test(text)) {
     warn?.(`[AISStream] Ignoring ${name}=${JSON.stringify(rawText)} (not a non-negative number); using the ${fallbackValue} default.`);
     return { value: fallbackValue, source: 'default' };
   }

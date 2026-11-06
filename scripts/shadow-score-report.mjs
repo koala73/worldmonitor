@@ -12,6 +12,12 @@ import { resolve } from 'node:path';
 
 import { loadEnvFile } from './_seed-utils.mjs';
 
+const S_RE = /score=(\d+)/;
+const AFTER_SCORE_RE = /^score=\d+:/;
+const CSV_ESCAPE_RE = /[",\n]/;
+const CSV_ESCAPE_RE_2 = /"/g;
+
+
 // v2 is the post-fix key (JSON members). v1 is the legacy key (compact strings).
 // Override with SHADOW_SCORE_KEY=shadow:score-log:v2 (pre-weight-rebalance) or v1 (pre-PR #3069).
 const KEY = process.env.SHADOW_SCORE_KEY || 'shadow:score-log:v5';
@@ -58,9 +64,9 @@ function parseMember(m) {
   }
   // v1 legacy format: "<ts>:score=<n>:<eventType>:<titlePrefix>"
   const ts = Number(m.split(':', 1)[0]);
-  const s = m.match(/score=(\d+)/);
+  const s = m.match(S_RE);
   const rest = m.slice(m.indexOf(':') + 1);
-  const afterScore = rest.replace(/^score=\d+:/, '');
+  const afterScore = rest.replace(AFTER_SCORE_RE, '');
   const colon = afterScore.indexOf(':');
   const eventType = colon === -1 ? afterScore : afterScore.slice(0, colon);
   const title = colon === -1 ? '' : afterScore.slice(colon + 1);
@@ -155,7 +161,7 @@ function renderReport(s, _events) {
 
 function csvEscape(v) {
   const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return CSV_ESCAPE_RE.test(s) ? `"${s.replace(CSV_ESCAPE_RE_2, '""')}"` : s;
 }
 
 (async () => {

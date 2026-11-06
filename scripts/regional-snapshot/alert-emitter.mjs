@@ -41,6 +41,9 @@
 import { getRedisCredentials } from '../_seed-utils.mjs';
 import notificationDedup from '../shared/notification-dedup.cjs';
 
+const HUMAN_REGIME_RE = /_/g;
+
+
 const {
   classifySetNxResult,
   recordDedupOutcome,
@@ -64,11 +67,11 @@ const MAX_DEDUP_TTL_SECONDS = 7 * 24 * 60 * 60;
 // ── Humanization helpers (pure) ──────────────────────────────────────────────
 
 function humanRegime(label) {
-  return String(label ?? '').replace(/_/g, ' ') || 'unknown';
+  return String(label ?? '').replace(HUMAN_REGIME_RE, ' ') || 'unknown';
 }
 
 function humanAxis(axis) {
-  return String(axis ?? '').replace(/_/g, ' ');
+  return String(axis ?? '').replace(HUMAN_REGIME_RE, ' ');
 }
 
 // ── Pure event builders ──────────────────────────────────────────────────────

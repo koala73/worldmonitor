@@ -27,6 +27,10 @@ import {
   readViewerDeploymentConfig,
 } from './railway-viewer-deployment-config.mjs';
 
+const NORMALIZE_DOCKERFILE_PATH_RE = /^\/+/;
+const ASSERT_REGISTRY_ENTRY_RE = /^[A-Z][A-Z0-9_]*$/;
+
+
 // Re-exported so the existing importers of this module keep working; the
 // definitions live in the shared files above so the audit, the drift check and
 // the trigger cannot drift into three ideas of the same thing.
@@ -150,7 +154,7 @@ function serviceIdFor(serviceIdsByName, serviceName) {
 }
 
 function normalizeDockerfilePath(value) {
-  return typeof value === 'string' ? value.replace(/^\/+/, '') : '';
+  return typeof value === 'string' ? value.replace(NORMALIZE_DOCKERFILE_PATH_RE, '') : '';
 }
 
 // Every field this audit derives production mutations from is validated here,
@@ -205,7 +209,7 @@ function assertRegistryEntry(entry) {
         throw new Error(`${name} requiredEnv contains an empty any-of group`);
       }
       for (const variable of alternatives) {
-        if (typeof variable !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(variable)) {
+        if (typeof variable !== 'string' || !ASSERT_REGISTRY_ENTRY_RE.test(variable)) {
           throw new Error(`${name} has invalid requiredEnv name ${JSON.stringify(variable)}`);
         }
       }

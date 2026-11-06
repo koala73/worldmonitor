@@ -17,6 +17,12 @@
  * bundled into the Convex deploy and scanned as a leaf of the /pro bundle.
  */
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const TOKEN_RE = /^-+|-+$/g;
+const TOKEN_RE_2 = /-+$/;
+const PATH_RE = /\/+$/;
+const HOST_RE = /^www\./;
+
 export const ACQUISITION_COOKIE_NAME = 'wm-acq';
 export const ACQUISITION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const ACQUISITION_COOKIE_DOMAIN = 'worldmonitor.app';
@@ -63,16 +69,16 @@ function normalizeToken(value: unknown): string | undefined {
   const token = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(NON_ALPHANUMERIC_RE, '-')
+    .replace(TOKEN_RE, '')
     .slice(0, MAX_TOKEN_LENGTH)
-    .replace(/-+$/, '');
+    .replace(TOKEN_RE_2, '');
   return token || undefined;
 }
 
 /** Page family of the landing path, matching content-attribution's buckets. */
 function landingFamily(pathname: string): string | undefined {
-  const path = pathname.toLowerCase().replace(/\/+$/, '') || '/';
+  const path = pathname.toLowerCase().replace(PATH_RE, '') || '/';
   const under = (prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
   if (path === '/') return 'homepage';
   if (under('/dashboard')) return 'dashboard';
@@ -85,7 +91,7 @@ function landingFamily(pathname: string): string | undefined {
 
 function normalizeReferrer(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const host = value.trim().toLowerCase().replace(/^www\./, '');
+  const host = value.trim().toLowerCase().replace(HOST_RE, '');
   return host === DIRECT || HOST_PATTERN.test(host) ? host : undefined;
 }
 

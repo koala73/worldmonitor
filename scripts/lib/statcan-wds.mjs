@@ -4,6 +4,11 @@
 import { CHROME_UA, finiteObservation } from '../_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from '../_content-age-helpers.mjs';
 
+const SHIFT_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PRIOR_YEAR_REF_PER_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const IS_UNRELEASED_STATCAN_PRODUCT_ERROR_RE = /not released yet/i;
+
+
 export const STATCAN_WDS_HOST = 'www150.statcan.gc.ca';
 export const WDS_VECTORS_URL =
   'https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods';
@@ -47,7 +52,7 @@ export function torontoDateIso(nowMs = Date.now()) {
 }
 
 export function shiftIsoDate(dateIso, dayDelta) {
-  if (typeof dateIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+  if (typeof dateIso !== 'string' || !SHIFT_ISO_DATE_RE.test(dateIso)) {
     throw new Error('STATCAN_DATE_INVALID');
   }
   const [year, month, day] = dateIso.split('-').map(Number);
@@ -60,7 +65,7 @@ export function isFutureStatcanDate(dateIso, nowMs = Date.now()) {
 }
 
 export function changedCubeListUrl(dateIso) {
-  if (typeof dateIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+  if (typeof dateIso !== 'string' || !SHIFT_ISO_DATE_RE.test(dateIso)) {
     throw new Error('STATCAN_DATE_INVALID');
   }
   return `https://www150.statcan.gc.ca/t1/wds/rest/getChangedCubeList/${dateIso}`;
@@ -106,7 +111,7 @@ export function parseVectorSeries(doc, vectorId) {
       // observation. Number(null) is 0, which published Canada's unemployment
       // rate as 0.0% for the reference month rather than omitting the point.
       const value = finiteObservation(pt?.value);
-      if (!refPer || !/^\d{4}-\d{2}-\d{2}$/.test(refPer) || value == null) continue;
+      if (!refPer || !SHIFT_ISO_DATE_RE.test(refPer) || value == null) continue;
       points.push({
         refPer,
         value,
@@ -124,7 +129,7 @@ export function parseVectorSeries(doc, vectorId) {
 }
 
 function priorYearRefPer(refPer) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(refPer);
+  const match = PRIOR_YEAR_REF_PER_RE.exec(refPer);
   if (!match) return null;
   return `${Number(match[1]) - 1}-${match[2]}-${match[3]}`;
 }
@@ -198,7 +203,7 @@ export function buildStatcanPayload({
 
 export function validateStatcanPayload(data) {
   if (!data || typeof data !== 'object') return false;
-  if (typeof data.asOfDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.asOfDate)) return false;
+  if (typeof data.asOfDate !== 'string' || !SHIFT_ISO_DATE_RE.test(data.asOfDate)) return false;
   if (!Array.isArray(data.changedCubes)) return false;
   if (!Number.isFinite(data.inflationPct)) return false;
   if (!Number.isFinite(data.unemploymentPct) || data.unemploymentPct < 0) return false;
@@ -216,7 +221,7 @@ function normalizedStatcanRefPer(token, nowMs) {
   // WDS documents refPer as a normalized YYYY-MM-DD observation date.
   // Keep that source contract local: releaseTime is a timezone-less Eastern
   // publication clock and must never enter scored content freshness.
-  if (typeof token !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(token)) return null;
+  if (typeof token !== 'string' || !SHIFT_ISO_DATE_RE.test(token)) return null;
   const ts = Date.parse(`${token}T00:00:00Z`);
   if (!Number.isFinite(ts) || new Date(ts).toISOString().slice(0, 10) !== token || ts > nowMs) {
     return null;
@@ -326,7 +331,7 @@ export function isUnreleasedStatcanProductError(err) {
   // miss must not abort Promise.all / drop the vector POST.
   if (err?.status === 409) return true;
   const text = `${err?.message || ''} ${err?.body || ''}`;
-  return /not released yet/i.test(text);
+  return IS_UNRELEASED_STATCAN_PRODUCT_ERROR_RE.test(text);
 }
 
 /**

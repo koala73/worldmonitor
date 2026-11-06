@@ -9,6 +9,8 @@
 // Failure is never fatal: if the session cannot start, drops, or a line
 // times out, the caller falls back to the globe and the voice.
 
+const SENTENCES_RE = /[^.!?]+[.!?]+["”']?\s*|[^.!?]+$/g;
+
 const WARM_AT_MS = 70_000;     // start the next session this long into the live one
 const LAST_CHUNK_MS = 100_000; // never start a sentence on a session older than this
 const STANDBY_WAIT_MS = 12_000;
@@ -208,7 +210,7 @@ export function interrupt() {
 
 // The avatar speaks best in short turns: sentences grouped up to ~280 chars.
 function chunks(text) {
-  const sentences = text.match(/[^.!?]+[.!?]+["”']?\s*|[^.!?]+$/g) ?? [text];
+  const sentences = text.match(SENTENCES_RE) ?? [text];
   const out = [];
   let cur = '';
   for (const s of sentences) {

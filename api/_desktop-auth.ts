@@ -13,6 +13,11 @@ import { getClientIp } from './_client-ip.js';
 // @ts-expect-error JS module without declarations.
 import { sha256Hex } from './_crypto.js';
 
+const NEW_DESKTOP_AUTH_CODE_RE = /\+/g;
+const NEW_DESKTOP_AUTH_CODE_RE_2 = /\//g;
+const NEW_DESKTOP_AUTH_CODE_RE_3 = /=+$/;
+
+
 /** Code lifetime. The browser redirects to the desktop immediately. */
 export const DESKTOP_AUTH_CODE_TTL_SECONDS = 60;
 /** Sign-in ticket lifetime. The desktop redeems it immediately. */
@@ -59,7 +64,7 @@ export function newDesktopAuthCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(binary).replace(NEW_DESKTOP_AUTH_CODE_RE, '-').replace(NEW_DESKTOP_AUTH_CODE_RE_2, '_').replace(NEW_DESKTOP_AUTH_CODE_RE_3, '');
 }
 
 export async function readJsonBody(request: Request): Promise<Record<string, unknown> | null> {

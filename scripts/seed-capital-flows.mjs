@@ -47,6 +47,10 @@ import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 import { sumGrossFlows, classifyCountry, nextQuarter } from './_capital-flow-episodes.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
+const TO_ISO2_RE = /^[A-Z]{3}$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -86,7 +90,7 @@ const bnFromMillions = (m) => (Number.isFinite(m) ? Math.round(m / 10) / 100 : n
 const pct = (x) => (Number.isFinite(x) ? Math.round(x * 100) / 100 : null);
 
 export function toIso2(iso3) {
-  if (typeof iso3 !== 'string' || !/^[A-Z]{3}$/.test(iso3)) return null;
+  if (typeof iso3 !== 'string' || !TO_ISO2_RE.test(iso3)) return null;
   return iso3ToIso2[iso3] ?? null;
 }
 
@@ -96,7 +100,7 @@ const ISO2_TO_ISO3 = Object.fromEntries(Object.entries(iso3ToIso2).map(([k, v]) 
 // BIS counterparty / reporter codes: ISO2 for countries, digit-bearing codes
 // for aggregates (5A, 5J, 1C …). Keep only real ISO2 countries.
 export function isBisCountry(code) {
-  return typeof code === 'string' && /^[A-Z]{2}$/.test(code) && ISO2_SET.has(code);
+  return typeof code === 'string' && COUNTRY_CODE_RE.test(code) && ISO2_SET.has(code);
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────────

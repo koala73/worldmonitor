@@ -22,6 +22,10 @@ import path from 'node:path';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const PARSE_CARGO_LOCK_VERSIONS_RE = /^name = "([^"]+)"\r?\nversion = "([^"]+)"/gm;
+const LOWER_BOUND_RE = />=\s*(\d+\.\d+\.\d+)/;
+
+
 export const RUST_SECURITY_FLOORS = [
   {
     crate: 'tauri',
@@ -67,7 +71,7 @@ export const RUST_SECURITY_FLOORS = [
  */
 export function parseCargoLockVersions(lockSource) {
   const versions = new Map();
-  const pattern = /^name = "([^"]+)"\r?\nversion = "([^"]+)"/gm;
+  const pattern = PARSE_CARGO_LOCK_VERSIONS_RE;
   for (const match of lockSource.matchAll(pattern)) {
     const existing = versions.get(match[1]);
     if (existing) existing.push(match[2]);
@@ -136,7 +140,7 @@ export function checkManifestSecurityFloor(manifestSource, floor) {
     return [`${floor.manifestFile} must declare ${floor.crate}`];
   }
 
-  const lowerBound = line.match(/>=\s*(\d+\.\d+\.\d+)/)?.[1];
+  const lowerBound = line.match(LOWER_BOUND_RE)?.[1];
   if (!lowerBound) {
     return [
       `${floor.crate} in ${floor.manifestFile} must carry an explicit >= lower bound so it cannot resolve below the security floor; found: ${line.trim()}`,

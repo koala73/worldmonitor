@@ -31,6 +31,12 @@ import { getEntityIndex } from '@/services/entity-index';
 
 import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
+const LINES_HTML_RE = /^<div class="brief-para">/;
+const LINES_HTML_RE_2 = /<\/div>$/;
+const LINES_HTML_RE_3 = /^<p>/;
+const LINES_HTML_RE_4 = /<\/p>$/;
+
+
 const getAuthoritativeCountryScore = getCachedCountryScoreValue;
 
 // The server snapshot is seeded from the full-variant digest only, so it is
@@ -785,10 +791,10 @@ export class InsightsPanel extends Panel {
           <summary>${escapeHtml(t('components.insights.briefStoryDetails', { count: String(lines.length) }))}</summary>
           <ol class="insights-brief-lines">${lines
             .map((line) => `<li>${formatIntelBrief(line.text, { sources })
-              .replace(/^<div class="brief-para">/, '')
-              .replace(/<\/div>$/, '')
-              .replace(/^<p>/, '')
-              .replace(/<\/p>$/, '')}</li>`)
+              .replace(LINES_HTML_RE, '')
+              .replace(LINES_HTML_RE_2, '')
+              .replace(LINES_HTML_RE_3, '')
+              .replace(LINES_HTML_RE_4, '')}</li>`)
             .join('')}</ol>
         </details>`
       : '';

@@ -9,6 +9,10 @@ import { CHROME_UA } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { MARKET_SETTLEMENT_FEED_KEY, isSingleMarketVenue, marketQuestionIdentity } from './_forecast-resolution-eval.mjs';
 
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZE_TITLE_RE = /[?\s]+$/;
+
+
 const GAMMA_SETTLEMENT_BASE = 'https://gamma-api.polymarket.com';
 const KALSHI_SETTLEMENT_BASE = 'https://api.elections.kalshi.com/trade-api/v2';
 const SETTLEMENT_TTL_SECONDS = 45 * 24 * 60 * 60;
@@ -56,7 +60,7 @@ export function parseKalshiSettlement(marketJson) {
 function normalizeTitle(value) {
   // Trailing '?' is stripped because the bet title is normalizeQuestion(venue
   // title) — a '?' appended to statement-form titles.
-  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[?\s]+$/, '');
+  return String(value ?? '').trim().toLowerCase().replace(WHITESPACE_RE, ' ').replace(NORMALIZE_TITLE_RE, '');
 }
 
 function parseJsonArray(value) {

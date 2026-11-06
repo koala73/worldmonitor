@@ -11,6 +11,16 @@
 import { CHROME_UA, MAX_PAYLOAD_BYTES, readSeedSnapshot, writeExtraKey, writeFreshnessMetadataSafely } from '../_seed-utils.mjs';
 import { CANADA_ALERT_SOURCES, rebuildCanadaAlertsUnion } from './canada-alerts-union.mjs';
 
+const RESPONSE_RE = /[\s_-]/g;
+const WHITESPACE_RE = /\s+/;
+const NUMS_RE = /[\s,]+/;
+const WHITESPACE_RE_2 = /\s+/g;
+const CAP_FAILURE_REASON_RE = /CAP HTTP \d{3}$/;
+const CAP_FAILURE_REASON_RE_2 = /parseable JSON|CAP 1.2 JSON|CAP alert\/info/;
+const CAP_FAILURE_REASON_RE_3 = /allowlist/;
+const CAP_FAILURE_REASON_RE_4 = /CAP severity|missing identifier/;
+
+
 export const SASKALERT_HOST = 'emergencyalert.saskatchewan.ca';
 export const SASKALERT_FEED_URL = 'https://emergencyalert.saskatchewan.ca/sapublic/feed.json';
 export const SASKALERT_HOME_URL = 'https://emergencyalert.saskatchewan.ca/';
@@ -89,7 +99,7 @@ export function isEndedCapAlert(alert, info, nowMs = Date.now()) {
   const status = String(alert.status || '').trim().toLowerCase();
   const msgType = String(alert.msgType || '').trim().toLowerCase();
   const scope = String(alert.scope || '').trim().toLowerCase();
-  const response = String(info?.responseType || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+  const response = String(info?.responseType || '').trim().toLowerCase().replace(RESPONSE_RE, '');
   const urgency = String(info?.urgency || '').trim().toLowerCase();
   const blob = `${info?.headline || ''} ${info?.description || ''}`;
   if (ENDED_TOKEN_RE.test(blob) || response === 'allclear' || urgency === 'past' || msgType === 'cancel') {
@@ -107,7 +117,7 @@ export function isEndedCapAlert(alert, info, nowMs = Date.now()) {
 export function parseSaskAlertCoordinates(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return [];
   const out = [];
-  const pairs = raw.trim().split(/\s+/);
+  const pairs = raw.trim().split(WHITESPACE_RE);
   for (const pair of pairs) {
     const parts = pair.split(',').map(Number);
     if (parts.length === 2 && parts.every(Number.isFinite)) {
@@ -117,7 +127,7 @@ export function parseSaskAlertCoordinates(raw) {
     }
   }
   if (out.length === 0) {
-    const nums = raw.trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
+    const nums = raw.trim().split(NUMS_RE).map(Number).filter(Number.isFinite);
     for (let i = 0; i + 1 < nums.length; i += 2) {
       const lat = nums[i];
       const lon = nums[i + 1];
@@ -184,7 +194,7 @@ export function normalizeSaskAlertRecord(entry, capDocument, nowMs = Date.now())
     severity,
     event,
     headline,
-    description: String(info.description || entry.summary_en || '').replace(/\s+/g, ' ').trim().slice(0, 800),
+    description: String(info.description || entry.summary_en || '').replace(WHITESPACE_RE_2, ' ').trim().slice(0, 800),
     areaDesc: areaDescFrom(entry, info),
     onset: info.effective || entry.sent || entry.updated || '',
     expires: info.expires || '',
@@ -351,10 +361,10 @@ export async function fetchSaskAlerts(opts = {}) {
 function capFailureReason(error) {
   const codes = [error?.name, error?.code, error?.cause?.code];
   if (codes.some(code => ['TimeoutError', 'AbortError', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(code))) return 'timeout';
-  if (/CAP HTTP \d{3}$/.test(error?.message || '')) return 'http';
-  if (/parseable JSON|CAP 1.2 JSON|CAP alert\/info/.test(error?.message || '')) return 'parsing';
-  if (/allowlist/.test(error?.message || '')) return 'invalid_link';
-  if (/CAP severity|missing identifier/.test(error?.message || '')) return 'validation';
+  if (CAP_FAILURE_REASON_RE.test(error?.message || '')) return 'http';
+  if (CAP_FAILURE_REASON_RE_2.test(error?.message || '')) return 'parsing';
+  if (CAP_FAILURE_REASON_RE_3.test(error?.message || '')) return 'invalid_link';
+  if (CAP_FAILURE_REASON_RE_4.test(error?.message || '')) return 'validation';
   return 'transport';
 }
 

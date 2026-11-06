@@ -3,6 +3,12 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { ResendSendError, sendResendEmail } from "../lib/resendEmail";
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+
+
 const ADMIN_EMAIL = "elie@worldmonitor.app";
 
 /**
@@ -162,10 +168,10 @@ export async function recordUnattributedEvent(
 
 function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(ESCAPE_HTML_RE, "&amp;")
+    .replace(ESCAPE_HTML_RE_2, "&lt;")
+    .replace(ESCAPE_HTML_RE_3, "&gt;")
+    .replace(ESCAPE_HTML_RE_4, "&quot;");
 }
 
 function row(label: string, value: string | undefined): string {

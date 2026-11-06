@@ -1,3 +1,6 @@
+
+
+const COMPACT_RE = /^(\d{4})(\d{2})(\d{2})T?(\d{2})(\d{2})(\d{2})$/;
 export interface TimeSeriesPoint {
   timestamp: string;
   value: number;
@@ -89,7 +92,7 @@ const MIN_SAMPLE_SIZE = 4;
 const MIN_LAG_SAMPLE_SIZE = 8;
 
 export function parseSeriesTimestamp(value: string): number {
-  const compact = value.match(/^(\d{4})(\d{2})(\d{2})T?(\d{2})(\d{2})(\d{2})$/);
+  const compact = value.match(COMPACT_RE);
   if (compact) {
     return Date.UTC(
       Number(compact[1]),

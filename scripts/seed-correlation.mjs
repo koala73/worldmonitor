@@ -8,6 +8,13 @@ import {
   resolveCorrelationRuntimeMode,
 } from './shared/correlation-runtime-mode.js';
 
+const COUNTRY_NAME_ENTRIES_RE = /[.*+?^${}()|[\]\\]/g;
+const REMAINING_RE = /\p{Diacritic}/gu;
+const REMAINING_RE_2 = /['.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const WORDS_RE = /\W+/;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'correlation:cards-bootstrap:v1';
@@ -274,12 +281,12 @@ function normalizeToCode(country, lat, lon) {
 const COUNTRY_NAME_ENTRIES = Object.entries(COUNTRY_NAME_TO_ISO2)
   .filter(([name]) => name.length >= 2)
   .sort((a, b) => b[0].length - a[0].length)
-  .map(([name, code]) => ({ name, code, regex: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }));
+  .map(([name, code]) => ({ name, code, regex: new RegExp(`\\b${name.replace(COUNTRY_NAME_ENTRIES_RE, '\\$&')}\\b`, 'i') }));
 
 export function matchCountryNamesInText(text) {
   const matched = [];
-  let remaining = text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
-    .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ');
+  let remaining = text.normalize('NFKD').replace(REMAINING_RE, '').toLowerCase()
+    .replace(REMAINING_RE_2, ' ').replace(WHITESPACE_RE, ' ');
   for (const { code, regex } of COUNTRY_NAME_ENTRIES) {
     if (regex.test(remaining)) {
       matched.push(code);
@@ -692,7 +699,7 @@ function clusterByEntity(signals) {
     const lower = s.label.toLowerCase();
     let matchedKey = COMPOUND_PATTERNS.find(p => lower.includes(p));
     if (!matchedKey) {
-      const words = lower.split(/\W+/);
+      const words = lower.split(WORDS_RE);
       matchedKey = words.find(w => SINGLE_KEYS.has(w));
     }
     if (!matchedKey) continue;

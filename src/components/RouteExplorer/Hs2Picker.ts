@@ -5,6 +5,9 @@
 import { filterHs2, getAllHs2, type Hs2Entry } from './RouteExplorer.utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const ESCAPE_HTML_RE = /[&<>"']/g;
+
+
 
 export interface Hs2PickerOptions {
   placeholder?: string;
@@ -148,7 +151,7 @@ export class Hs2Picker {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
+  return s.replace(ESCAPE_HTML_RE, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;',
   );
 }

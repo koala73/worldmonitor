@@ -20,6 +20,8 @@
  * the record shapes and budget math directly.
  */
 
+const FORECAST_EVIDENCE_LINK_HOST_RE = /^www\./;
+
 export const FORECAST_EVIDENCE_KEY = 'forecast:evidence:v1';
 export const FORECAST_EVIDENCE_RECORD_KEY_PREFIX = 'forecast:evidence:record:v1:';
 export const FORECAST_EVIDENCE_COVERAGE_KEY = 'forecast:evidence:coverage:v1';
@@ -316,7 +318,7 @@ export const FORECAST_EVIDENCE_KEEP_LINK_SCRIPT = [
 /** Lowercase host without a leading `www.`, or '' when the link does not parse. */
 export function forecastEvidenceLinkHost(link) {
   try {
-    return new URL(String(link || '')).hostname.toLowerCase().replace(/^www\./, '');
+    return new URL(String(link || '')).hostname.toLowerCase().replace(FORECAST_EVIDENCE_LINK_HOST_RE, '');
   } catch {
     return '';
   }

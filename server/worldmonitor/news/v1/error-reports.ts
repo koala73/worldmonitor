@@ -26,13 +26,16 @@ import {
   type StoredErrorReport,
 } from '../../../_shared/error-reports';
 
+const CLEAN_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STORY_ID_RE = /^[0-9a-f]{64}$/;
 const REPORT_ID_RE = /^[0-9a-f-]{36}$/;
 
 /** Drops control characters other than newline and tab. */
 const clean = (value: string, max: number) =>
-  value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max);
+  value.replace(CLEAN_RE, '').trim().slice(0, max);
 
 function cleanUrl(raw: string): string {
   const value = raw.trim();

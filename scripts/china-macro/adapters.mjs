@@ -43,6 +43,22 @@ import {
   buildChinaMacroSnapshot,
 } from './snapshot-builder.mjs';
 
+const REVISION_MARKER_RE = /preliminary|初步/i;
+const REVISION_MARKER_RE_2 = /correct|更正/i;
+const REVISION_MARKER_RE_3 = /revis|修订/i;
+const DECODE_HTML_RE = /\u00A0/g;
+const STRIP_HTML_RE = /<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const STRIP_HTML_RE_2 = /<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const STRIP_HTML_RE_3 = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const SIGNED_VALUE_RE = /decrease|down|下降|减少/i;
+const CHANGE_RE = /下降|降幅/;
+const PARSE_SHANGHAI_M2_RELEASE_RE = /^\/SCGK194\/\d{8}\/[a-f0-9]{32}\.html$/;
+const META_DATE_RE = /年|月/g;
+const META_DATE_RE_2 = /日$/;
+const MATCHES_RE = /(\d{1,2})\s*月末，\s*广义货币\s*[（(]M2[）)]\s*余额\s*[\d.]+\s*万亿元[，,]\s*同比(增长|下降)\s*([+-]?\d+(?:\.\d+)?)\s*%/g;
+
+
 export { CHINA_MACRO_CACHE_KEY };
 export { buildChinaMacroPillars, buildChinaMacroSnapshot };
 export {
@@ -64,9 +80,9 @@ function contentHash(value) {
 }
 
 function revisionMarker(title) {
-  if (/preliminary|初步/i.test(title)) return 'preliminary';
-  if (/correct|更正/i.test(title)) return 'corrected';
-  if (/revis|修订/i.test(title)) return 'revised';
+  if (REVISION_MARKER_RE.test(title)) return 'preliminary';
+  if (REVISION_MARKER_RE_2.test(title)) return 'corrected';
+  if (REVISION_MARKER_RE_3.test(title)) return 'revised';
   return 'original';
 }
 
@@ -88,16 +104,16 @@ function decodeHtml(value) {
   // The helper decodes `&#160;` to a literal U+00A0; normalize it back to a
   // plain space to keep this decoder's historical `&nbsp;|&#160;` -> ' '
   // contract for `metaContent` (which only trims, never collapses).
-  return decodeHtmlEntities(String(value)).replace(/\u00A0/g, ' ');
+  return decodeHtmlEntities(String(value)).replace(DECODE_HTML_RE, ' ');
 }
 
 function stripHtml(value) {
   return decodeHtml(
     String(value)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
-      .replace(/<[^>]+>/g, ' '),
-  ).replace(/\s+/g, ' ').trim();
+      .replace(STRIP_HTML_RE, ' ')
+      .replace(STRIP_HTML_RE_2, ' ')
+      .replace(STRIP_HTML_RE_3, ' '),
+  ).replace(WHITESPACE_RE, ' ').trim();
 }
 
 function metaContent(html, name) {
@@ -121,7 +137,7 @@ function requireMatch(value, pattern, label) {
 function signedValue(direction, magnitude) {
   const value = Number(magnitude);
   if (!Number.isFinite(value)) throw new Error('MALFORMED_RELEASE:NON_NUMERIC_VALUE');
-  return /decrease|down|下降|减少/i.test(direction) ? -value : value;
+  return SIGNED_VALUE_RE.test(direction) ? -value : value;
 }
 
 function directionFromChange(value) {
@@ -486,7 +502,7 @@ export function parseSafeReserveRelease(html, options = {}) {
   const description = metaContent(html, 'Description');
   const valueMatch = requireMatch(description, /外汇储备规模为\s*([\d.]+)\s*亿美元/, 'SAFE_FX_RESERVES');
   const changeMatch = requireMatch(description, /(?:降幅|升幅)为\s*([\d.]+)%/, 'SAFE_FX_RESERVES_CHANGE');
-  const change = /下降|降幅/.test(description) ? -Number(changeMatch[1]) : Number(changeMatch[1]);
+  const change = CHANGE_RE.test(description) ? -Number(changeMatch[1]) : Number(changeMatch[1]);
   return baseObservation({
     seriesId: 'safe_fx_reserves',
     label: 'Foreign-Exchange Reserves',
@@ -512,7 +528,7 @@ export function parseSafeReserveRelease(html, options = {}) {
 export function parseShanghaiM2Release(html, options = {}) {
   const sourceUrl = new URL(options.sourceUrl || SHANGHAI_M2_LIST_URL);
   if (sourceUrl.origin !== SOURCE_POLICIES.shanghaiM2.origin
-    || !/^\/SCGK194\/\d{8}\/[a-f0-9]{32}\.html$/.test(sourceUrl.pathname)
+    || !PARSE_SHANGHAI_M2_RELEASE_RE.test(sourceUrl.pathname)
     || sourceUrl.username || sourceUrl.password) {
     throw new Error('MALFORMED_RELEASE:SHANGHAI_SOURCE_URL');
   }
@@ -524,13 +540,13 @@ export function parseShanghaiM2Release(html, options = {}) {
   }
   const dateBlock = requireMatch(html, /<h2\b[^>]*id=["']ivs_date["'][^>]*>([\s\S]*?)<\/h2>/i, 'SHANGHAI_PUBLICATION_BLOCK')[1];
   const date = requireMatch(stripHtml(dateBlock), /发布时间[：:]\s*(\d{4}-\d{2}-\d{2})/, 'SHANGHAI_PUBLICATION_TIME')[1];
-  const metaDate = metaContent(html, 'PubDate').replace(/年|月/g, '-').replace(/日$/, '');
+  const metaDate = metaContent(html, 'PubDate').replace(META_DATE_RE, '-').replace(META_DATE_RE_2, '');
   const dateMs = Date.parse(`${date}T00:00:00Z`);
   if (date !== metaDate || !Number.isFinite(dateMs) || new Date(dateMs).toISOString().slice(0, 10) !== date) {
     throw new Error('MALFORMED_RELEASE:SHANGHAI_PUBLICATION_TIME');
   }
   const body = requireMatch(html, /<div\b[^>]*id=["']ivs_content["'][^>]*>([\s\S]*?)<\/div>/i, 'SHANGHAI_M2_BODY')[1];
-  const matches = [...stripHtml(body).matchAll(/(\d{1,2})\s*月末，\s*广义货币\s*[（(]M2[）)]\s*余额\s*[\d.]+\s*万亿元[，,]\s*同比(增长|下降)\s*([+-]?\d+(?:\.\d+)?)\s*%/g)];
+  const matches = [...stripHtml(body).matchAll(MATCHES_RE)];
   if (matches.length !== 1) throw new Error('MALFORMED_RELEASE:SHANGHAI_M2_VALUE');
   const match = matches[0];
   const month = Number(match[1]);

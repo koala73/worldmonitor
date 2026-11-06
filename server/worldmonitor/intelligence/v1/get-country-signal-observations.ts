@@ -13,6 +13,9 @@ import { readTheaterPostureSnapshot } from '../../military/v1/get-theater-postur
 import { readMilitaryFlights } from '../../military/v1/list-military-flights';
 import { drainResponseHeaders, setResponseHeader } from '../../../_shared/response-headers';
 
+const GET_COUNTRY_SIGNAL_OBSERVATIONS_RE = /^[1-9]\d{0,5}$/;
+
+
 export const getCountrySignalObservations: IntelligenceServiceHandler['getCountrySignalObservations'] = async (ctx, req) => {
   setResponseHeader(ctx.request, 'Cache-Control', 'no-store');
   const deadline = AbortSignal.any([ctx.request.signal, AbortSignal.timeout(15_000)]);
@@ -30,7 +33,7 @@ export const getCountrySignalObservations: IntelligenceServiceHandler['getCountr
   if (family === 'flight_page') {
     const box = Number.isInteger(req.windowIndex) && req.windowIndex >= 0 && req.windowIndex <= 1 ? countryActivityQueries(req.countryCode)[req.windowIndex] : undefined;
     const cursorPrefix = `${req.countryCode}:w${req.windowIndex}:`;
-    if (!box || req.cursor.length > 200 || req.cursor && (!req.cursor.startsWith(cursorPrefix) || !/^[1-9]\d{0,5}$/.test(req.cursor.slice(cursorPrefix.length)))) throw new ValidationError([{ field: 'cursor', description: 'Invalid country flight window or cursor.' }]);
+    if (!box || req.cursor.length > 200 || req.cursor && (!req.cursor.startsWith(cursorPrefix) || !GET_COUNTRY_SIGNAL_OBSERVATIONS_RE.test(req.cursor.slice(cursorPrefix.length)))) throw new ValidationError([{ field: 'cursor', description: 'Invalid country flight window or cursor.' }]);
     const flightPage = await withinDeadline(readMilitaryFlights(ctx, { neLat: box.ne_lat, neLon: box.ne_lon, swLat: box.sw_lat, swLon: box.sw_lon, pageSize: 100, cursor: req.cursor ? req.cursor.slice(cursorPrefix.length) : '', operator: 'MILITARY_OPERATOR_UNSPECIFIED', aircraftType: 'MILITARY_AIRCRAFT_TYPE_UNSPECIFIED' }, { redistributableOnly: true, allowProviderFetch: false }));
     if (flightPage.pagination?.nextCursor) flightPage.pagination = { ...flightPage.pagination, nextCursor: `${cursorPrefix}${flightPage.pagination.nextCursor}` };
     deadline.throwIfAborted();

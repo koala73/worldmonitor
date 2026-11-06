@@ -13,6 +13,9 @@ import { sha256Hex } from './_crypto.js';
 // classification is otherwise observable only through a Sentry capture.
 import { relayFailureLevel } from './_relay-failure-level.js';
 
+const USERNAME_RE = /^@+/;
+
+
 export const config = { runtime: 'edge' };
 export { relayFailureLevel };
 
@@ -106,7 +109,7 @@ const TELEGRAM_RATE_LIMIT_POLICY = {
  * @returns {string}
  */
 function toTelegramUsername(value) {
-  const username = toText(value).trim().replace(/^@+/, '').toLowerCase();
+  const username = toText(value).trim().replace(USERNAME_RE, '').toLowerCase();
   return TELEGRAM_USERNAME_RE.test(username) ? username : '';
 }
 

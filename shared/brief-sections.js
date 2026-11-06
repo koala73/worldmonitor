@@ -3,6 +3,8 @@
 // and the freeze and corpus parse them back out (scripts/crawlable-developments.mjs).
 // One table, so the two sides cannot drift.
 
+const UPPER_RE = /:\s*$/;
+
 export const BRIEF_SECTION_KEYS = Object.freeze(['situation', 'implications', 'risks', 'outlook', 'watch']);
 
 const FIXED_HEADINGS = Object.freeze({
@@ -25,7 +27,7 @@ export function briefSectionHeading(key, countryName) {
 
 /** The section key for a heading line, or null. The implications heading matches by prefix. */
 export function briefSectionKey(heading) {
-  const upper = String(heading || '').trim().replace(/:\s*$/, '').toUpperCase();
+  const upper = String(heading || '').trim().replace(UPPER_RE, '').toUpperCase();
   for (const [key, fixed] of Object.entries(FIXED_HEADINGS)) {
     if (upper === fixed) return key;
   }

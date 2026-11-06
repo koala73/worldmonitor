@@ -3,6 +3,9 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
+const NUMBER_RE = /^UKMTO-([1-9]\d{0,9})$/;
+
+
 // UKMTO's own JSON backend (sccd.royalnavy.mod.uk) blocks automated clients at Cloudflare.
 // hormuz.data-tracking.net republishes the same reports through a documented public API:
 // UKMTO reports stay under the Open Government Licence, the republished table under CC BY 4.0.
@@ -36,7 +39,7 @@ const isRepresentableTime = ms => typeof ms === 'number' && Number.isSafeInteger
 export function normalizeIncidents(value) {
   const incidents = new Map();
   for (const row of decodeRows(value)) {
-    const number = /^UKMTO-([1-9]\d{0,9})$/.exec(typeof row.id === 'string' ? row.id : '')?.[1];
+    const number = NUMBER_RE.exec(typeof row.id === 'string' ? row.id : '')?.[1];
     if (!number || Number(number) > 2 ** 31 - 1
       || !Number.isInteger(row.ts) || !isRepresentableTime(row.ts * 1000)
       || typeof row.lat !== 'number' || !Number.isFinite(row.lat) || Math.abs(row.lat) > 90

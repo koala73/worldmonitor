@@ -30,6 +30,14 @@ import {
   type TelegramWatchlistEntry,
 } from '@/services/telegram-watchlist';
 
+const ESCAPED_RE = /&/g;
+const ESCAPED_RE_2 = /</g;
+const ESCAPED_RE_3 = />/g;
+const ESCAPED_RE_4 = /"/g;
+const TEXT_HTML_RE = /\n/g;
+const IS_VIDEO_RE = /\.(mp4|webm|mov)(\?.*)?$/i;
+
+
 const LIVE_THRESHOLD_MS = 600_000;
 
 // Collapsing every backend failure into one string told a user to fix their
@@ -486,11 +494,11 @@ export class TelegramIntelPanel extends Panel {
     const isLive = !Number.isNaN(itemDate) && (Date.now() - itemDate) < LIVE_THRESHOLD_MS;
     const raw = item.text || '';
     const escaped = raw
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-    const textHtml = escaped.replace(/\n/g, '<br>');
+      .replace(ESCAPED_RE, '&amp;')
+      .replace(ESCAPED_RE_2, '&lt;')
+      .replace(ESCAPED_RE_3, '&gt;')
+      .replace(ESCAPED_RE_4, '&quot;');
+    const textHtml = escaped.replace(TEXT_HTML_RE, '<br>');
 
     // Handle-only lookup, deliberately: resolving through the channel TITLE
     // would let a user-added channel called "BBC News" inherit a curated
@@ -536,7 +544,7 @@ export class TelegramIntelPanel extends Panel {
       h('div', { className: 'telegram-intel-text' }, safeHtml(textHtml)),
       item.mediaUrls && item.mediaUrls.length > 0 ? h('div', { className: 'telegram-intel-media-grid' },
         ...item.mediaUrls.map(url => {
-          const isVideo = url.match(/\.(mp4|webm|mov)(\?.*)?$/i);
+          const isVideo = url.match(IS_VIDEO_RE);
           if (isVideo) {
             return h('video', {
               className: 'telegram-intel-video',

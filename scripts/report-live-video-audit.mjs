@@ -7,6 +7,11 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { isMainModule } from './lib/main-module.mjs';
 import { catalogSlots, DEFAULT_CATALOG, slotStatus } from './check-live-video-sources.mjs';
 
+const TEXT_RE = /[\r\n]+/g;
+const TEXT_RE_2 = /[\\|]/g;
+const CODE_RE = /`/g;
+
+
 export const ISSUE_TITLE = 'Live video sources: slots needing a replacement';
 /** GitHub rejects an issue body over 65,536 characters; this leaves room for multi-unit characters. */
 export const MAX_ISSUE_BODY_CHARS = 60_000;
@@ -46,12 +51,12 @@ const SAFE_TEXT = /^[A-Za-z0-9 ,.:;()='/+-]+$/;
 
 /** A table cell of trusted text: one line, pipes and backslashes escaped. */
 function text(value) {
-  return String(value).replace(/[\r\n]+/g, ' ').replace(/[\\|]/g, '\\$&');
+  return String(value).replace(TEXT_RE, ' ').replace(TEXT_RE_2, '\\$&');
 }
 
 /** Untrusted text as an inert code span: one line, backticks swapped for quotes, pipes escaped for the table. */
 function code(value) {
-  return `\`${String(value).replace(/[\r\n]+/g, ' ').replace(/`/g, "'").replace(/[\\|]/g, '\\$&')}\``;
+  return `\`${String(value).replace(TEXT_RE, ' ').replace(CODE_RE, "'").replace(TEXT_RE_2, '\\$&')}\``;
 }
 
 function isAttempt(attempt, entry) {

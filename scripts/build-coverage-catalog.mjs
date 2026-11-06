@@ -6,6 +6,28 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const MARKED_RE = /^\s*<strong>[^<]*<\/strong>\s*/i;
+const MARKED_RE_2 = /<li[^>]*>/gi;
+const MARKED_RE_3 = /<\/li>/gi;
+const MARKED_RE_4 = /<br\s*\/?>/gi;
+const MARKED_RE_5 = /<\/(?:p|ul)>/gi;
+const DECODED_RE = /&(amp|lt|gt|quot|#39|apos|nbsp);/g;
+const WHITESPACE_RE = /\s+/g;
+const FLAT_RE = /\s+([;:,.])/g;
+const FLAT_RE_2 = /;\s*\./g;
+const FLAT_RE_3 = /:\s*\./g;
+const FLAT_RE_4 = /\.(\s*\.)+/g;
+const FLAT_RE_5 = /;\s*$/;
+const SENTENCES_RE = /.+?[.!?]+(?=\s|$)|.+$/g;
+const SENTENCES_RE_2 = /.+?[.!?](?=\s|$)|.+$/g;
+const CAMEL_CASE_RE = /-([a-z0-9])/g;
+const LABEL_RE = /^header\./;
+const SLUG_RE = /&/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUG_RE_2 = /^-|-$/g;
+const BODY_RE = / Monitor$/;
+
+
 export const COVERAGE_CONTENT_VERSION = '2026-10-18';
 export const COVERAGE_PAGE_PATH = '/reference/coverage/';
 export const COVERAGE_DATASET_FILE = 'coverage.json';
@@ -67,32 +89,32 @@ export function tooltipText(html) {
   if (typeof html !== 'string') return '';
   const marked = html
     // A leading bold run is the tooltip's title ("Methodology", the panel name).
-    .replace(/^\s*<strong>[^<]*<\/strong>\s*/i, '')
-    .replace(/<li[^>]*>/gi, ' ')
-    .replace(/<\/li>/gi, '; ')
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<\/(?:p|ul)>/gi, '. ');
+    .replace(MARKED_RE, '')
+    .replace(MARKED_RE_2, ' ')
+    .replace(MARKED_RE_3, '; ')
+    .replace(MARKED_RE_4, ' ')
+    .replace(MARKED_RE_5, '. ');
   // Decoding comes after the first strip and is followed by a second, because
   // coverage.json hands this text to consumers unescaped: an encoded
   // "&lt;script&gt;" must not become a tag.
   const decoded = withoutTags(marked)
-    .replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (_, name) => ENTITIES[name]);
+    .replace(DECODED_RE, (_, name) => ENTITIES[name]);
   const flat = withoutTags(decoded)
-    .replace(/\s+/g, ' ')
-    .replace(/\s+([;:,.])/g, '$1')
-    .replace(/;\s*\./g, '.')
-    .replace(/:\s*\./g, ':')
-    .replace(/\.(\s*\.)+/g, '.')
-    .replace(/;\s*$/, '')
+    .replace(WHITESPACE_RE, ' ')
+    .replace(FLAT_RE, '$1')
+    .replace(FLAT_RE_2, '.')
+    .replace(FLAT_RE_3, ':')
+    .replace(FLAT_RE_4, '.')
+    .replace(FLAT_RE_5, '')
     .trim();
   // A terminator only ends a sentence before a space or the end, so "Llama 3.3"
   // and "GPT-4.1" stay whole.
-  const sentences = flat.match(/.+?[.!?]+(?=\s|$)|.+$/g) || [];
+  const sentences = flat.match(SENTENCES_RE) || [];
   return sentences
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence && !UI_HINT_SENTENCE.test(sentence))
     .join(' ')
-    .replace(/;\s*$/, '.')
+    .replace(FLAT_RE_5, '.')
     .trim();
 }
 
@@ -105,8 +127,8 @@ const MIN_SUMMARY_LENGTH = 60;
  * lists, before falling back to a word cut.
  */
 export function firstSentence(text, maxLength = 240) {
-  const clean = String(text || '').replace(/\s+/g, ' ').trim();
-  const sentences = clean.match(/.+?[.!?](?=\s|$)|.+$/g) || [];
+  const clean = String(text || '').replace(WHITESPACE_RE, ' ').trim();
+  const sentences = clean.match(SENTENCES_RE_2) || [];
   let summary = '';
   for (const sentence of sentences) {
     const next = summary ? `${summary} ${sentence.trim()}` : sentence.trim();
@@ -135,7 +157,7 @@ function lastClauseBoundary(text, maxLength) {
 }
 
 function camelCase(id) {
-  return id.replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
+  return id.replace(CAMEL_CASE_RE, (_, char) => char.toUpperCase());
 }
 
 function proseList(items) {
@@ -184,7 +206,7 @@ export function buildPanelGroups({
   const groups = [];
   const groupByLabel = new Map();
   for (const category of Object.values(categoryMap)) {
-    const label = headerLabels[category.labelKey.replace(/^header\./, '')] || category.labelKey;
+    const label = headerLabels[category.labelKey.replace(LABEL_RE, '')] || category.labelKey;
     for (const id of category.panelKeys) {
       const config = allPanels[id];
       if (!config || seen.has(id)) continue;
@@ -308,7 +330,7 @@ export function coverageCounts(catalog) {
 }
 
 function slug(text) {
-  return text.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return text.toLowerCase().replace(SLUG_RE, 'and').replace(NON_ALPHANUMERIC_RE, '-').replace(SLUG_RE_2, '');
 }
 
 function variantList(variants) {
@@ -392,7 +414,7 @@ export function renderCoveragePage({ catalog, baseUrl, lastmod, tpl }) {
         <div class="metric"><small>Dashboard panels</small><strong>${counts.panels}</strong><span>${counts.proPanels} ${counts.proPanels === 1 ? 'needs' : 'need'} Pro</span></div>
         <div class="metric"><small>Map layers</small><strong>${counts.layers}</strong><span>${counts.proLayers} ${counts.proLayers === 1 ? 'needs' : 'need'} Pro</span></div>
         <div class="metric"><small>MCP tools</small><strong>${counts.tools}</strong><span>${counts.accountFreeTools} without a paid plan</span></div>
-        <div class="metric"><small>Dashboards</small><strong>${counts.dashboards}</strong><span>${escapeHtml(proseList(VARIANTS.map((variant) => variant.name.replace(/ Monitor$/, ''))))}</span></div>
+        <div class="metric"><small>Dashboards</small><strong>${counts.dashboards}</strong><span>${escapeHtml(proseList(VARIANTS.map((variant) => variant.name.replace(BODY_RE, ''))))}</span></div>
       </div>
       <h2 id="how-to-read">How to read this catalog</h2>
       <p>Each entry is generated from the registry the product reads, and each description is the text the product shows: a panel's info tooltip, a layer's explanation card, or an MCP tool's description. A dash means the product has no written description for that item yet. Data sources behind these surfaces are listed provider by provider on the <a href="/sources/">source catalog</a>. The same catalog is available as <a href="${COVERAGE_DATASET_FILE}">JSON</a>.</p>

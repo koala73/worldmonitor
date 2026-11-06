@@ -10,6 +10,9 @@
 // Q-code subjects (letters 2-3 of the selection code) for airspace a pilot can
 // be kept out of. ATS routes (QAR*) are deliberately absent: route closures are
 // navigation detail, not a place on the map.
+const WHITESPACE_RE = /\s+/g;
+const PARSE_QCOORDINATES_RE = /^(\d{2})(\d{2})(\d{2})?([NS])(\d{3})(\d{2})(\d{2})?([EW])$/;
+
 const AIRSPACE_KIND_BY_SUBJECT = {
   RP: 'prohibited',
   RR: 'restricted',
@@ -64,7 +67,7 @@ function upper(value) {
 }
 
 function normalizeText(value) {
-  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return typeof value === 'string' ? value.replace(WHITESPACE_RE, ' ').trim() : '';
 }
 
 /** Parse an NMS time ("2026-10-24T14:00:00Z", "...000Z"); PERM and blanks are open-ended (null). */
@@ -76,7 +79,7 @@ export function parseNmsTime(value) {
 
 /** Parse the Q-line style "3939N04302E" / "512615N0003215W" into [lon, lat]. */
 export function parseQCoordinates(value) {
-  const m = typeof value === 'string' && value.trim().match(/^(\d{2})(\d{2})(\d{2})?([NS])(\d{3})(\d{2})(\d{2})?([EW])$/);
+  const m = typeof value === 'string' && value.trim().match(PARSE_QCOORDINATES_RE);
   if (!m) return null;
   const lat = (Number(m[1]) + Number(m[2]) / 60 + Number(m[3] || 0) / 3600) * (m[4] === 'S' ? -1 : 1);
   const lon = (Number(m[5]) + Number(m[6]) / 60 + Number(m[7] || 0) / 3600) * (m[8] === 'W' ? -1 : 1);

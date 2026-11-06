@@ -6,6 +6,11 @@
 // production and domestic-supply pair when PSD has no complete country balance
 // and no valid USDA stock evidence. The fallback never invents stocks.
 
+const NON_DIGIT_RE = /\D/g;
+const FORMAT_MARKETING_YEAR_RE = /^\d{4}\/\d{2}$/;
+const NORMALIZE_PSD_COUNTRY_CODE_RE = /^0+$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
 export const FOOD_STOCKS_CANONICAL_KEY = 'resilience:food-stocks:v1';
 export const FOOD_STOCKS_WORLD_KEY = '_world';
 export const FOOD_STOCKS_SOURCE_VERSION = 'food-stocks-v1';
@@ -51,7 +56,7 @@ export const COMMODITY_KCAL_PER_KG = {
 };
 
 export function normalizePsdCommodityCode(code) {
-  const digits = String(code ?? '').replace(/\D/g, '');
+  const digits = String(code ?? '').replace(NON_DIGIT_RE, '');
   if (!digits) return '';
   return digits.padStart(7, '0');
 }
@@ -62,14 +67,14 @@ export function commoditySlugFromCode(code) {
 }
 
 export function formatMarketingYear(marketYear) {
-  if (typeof marketYear === 'string' && /^\d{4}\/\d{2}$/.test(marketYear)) return marketYear;
+  if (typeof marketYear === 'string' && FORMAT_MARKETING_YEAR_RE.test(marketYear)) return marketYear;
   const year = Number.parseInt(String(marketYear ?? ''), 10);
   if (!Number.isInteger(year) || year < 1960 || year > 2100) return null;
   return `${year}/${String((year + 1) % 100).padStart(2, '0')}`;
 }
 
 export function parseMarketingYearStart(label) {
-  if (typeof label !== 'string' || !/^\d{4}\/\d{2}$/.test(label)) return null;
+  if (typeof label !== 'string' || !FORMAT_MARKETING_YEAR_RE.test(label)) return null;
   const start = Number.parseInt(label.slice(0, 4), 10);
   return Number.isInteger(start) ? start : null;
 }
@@ -79,8 +84,8 @@ export function normalizePsdCountryCode(code) {
   if (!raw) return null;
   const upper = raw.toUpperCase();
   // Live api.fas.usda.gov world rows use "00"; older fixtures and mocks use 0 / "0".
-  if (upper === 'WORLD' || upper === 'WLD' || /^0+$/.test(raw)) return FOOD_STOCKS_WORLD_KEY;
-  if (/^[A-Z]{2}$/.test(upper)) return upper;
+  if (upper === 'WORLD' || upper === 'WLD' || NORMALIZE_PSD_COUNTRY_CODE_RE.test(raw)) return FOOD_STOCKS_WORLD_KEY;
+  if (COUNTRY_CODE_RE.test(upper)) return upper;
   return null;
 }
 

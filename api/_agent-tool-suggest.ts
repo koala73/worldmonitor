@@ -11,6 +11,9 @@
 
 import { TOOL_REGISTRY } from './mcp/registry/index';
 
+const TOKENIZE_RE = /[^a-z0-9]+/;
+
+
 const QUERY_STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'what', 'which', 'who', 'how', 'where', 'when',
   'need', 'want', 'give', 'gives', 'get', 'show', 'find', 'tool', 'tools',
@@ -23,7 +26,7 @@ function tokenize(text: string): string[] {
     ...new Set(
       text
         .toLowerCase()
-        .split(/[^a-z0-9]+/)
+        .split(TOKENIZE_RE)
         .filter((t) => t.length >= 3 && !QUERY_STOPWORDS.has(t)),
     ),
   ];
@@ -40,7 +43,7 @@ export function suggestTools(query: string, limit = 5): ToolSuggestion[] {
   if (tokens.length === 0) return [];
   const scored: ToolSuggestion[] = [];
   for (const tool of TOOL_REGISTRY) {
-    const nameTokens = new Set(tool.name.toLowerCase().split(/[^a-z0-9]+/));
+    const nameTokens = new Set(tool.name.toLowerCase().split(TOKENIZE_RE));
     const descTokens = new Set(tokenize(tool.description));
     let score = 0;
     for (const token of tokens) {

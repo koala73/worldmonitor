@@ -2,6 +2,12 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const QUERY_NAME_TO_PROPERTY_NAME_RE = /_([a-z])/g;
+const COUNT_INDENT_RE = /^ */;
+const QUOTE_YAML_RE = /'/g;
+const PATCH_YAML_TARGET_RE = /^ {8}[a-z]+:$/;
+
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OPENAPI_DIR = join(ROOT, 'docs/api');
 const JSON_SPEC_SUFFIX = '.openapi.json';
@@ -194,7 +200,7 @@ function cloneJson(value) {
 }
 
 function queryNameToPropertyName(name) {
-  return name.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  return name.replace(QUERY_NAME_TO_PROPERTY_NAME_RE, (_, c) => c.toUpperCase());
 }
 
 function targetKey(target) {
@@ -266,12 +272,12 @@ export function applyOpenApiFilterParamSchemas(spec) {
 }
 
 function countIndent(line) {
-  const match = line.match(/^ */);
+  const match = line.match(COUNT_INDENT_RE);
   return match ? match[0].length : 0;
 }
 
 function quoteYaml(value) {
-  return `'${String(value).replace(/'/g, "''")}'`;
+  return `'${String(value).replace(QUOTE_YAML_RE, "''")}'`;
 }
 
 function schemaLines(schema, indent = 18, name = 'schema') {
@@ -311,7 +317,7 @@ function patchYamlTarget(text, target) {
 
   let methodEnd = pathEnd;
   for (let i = methodIndex + 1; i < pathEnd; i++) {
-    if (/^ {8}[a-z]+:$/.test(lines[i] || '')) {
+    if (PATCH_YAML_TARGET_RE.test(lines[i] || '')) {
       methodEnd = i;
       break;
     }

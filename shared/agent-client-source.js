@@ -18,6 +18,9 @@
  */
 
 /** Buckets reported in counts. Order is display order. */
+const CLEANED_RE = /[^\x20-\x7e]/g;
+const REST_RE = /^-/;
+
 export const AGENT_CLIENT_SOURCES = Object.freeze([
   'claude',
   'chatgpt',
@@ -140,7 +143,7 @@ export function agentSourceFromRef(ref) {
  */
 export function sanitizeClientName(raw) {
   if (typeof raw !== 'string') return null;
-  const cleaned = raw.replace(/[^\x20-\x7e]/g, '').trim().slice(0, MAX_CLIENT_NAME_LENGTH);
+  const cleaned = raw.replace(CLEANED_RE, '').trim().slice(0, MAX_CLIENT_NAME_LENGTH);
   return cleaned || null;
 }
 
@@ -251,6 +254,6 @@ export function agentRefCookieStorage(doc, loc) {
 export function agentRefColumns(raw) {
   const ref = normalizeAgentRef(raw);
   if (!ref) return null;
-  const rest = ref.slice(AGENT_REF_PREFIX.length).replace(/^-/, '');
+  const rest = ref.slice(AGENT_REF_PREFIX.length).replace(REST_RE, '');
   return { ref, source: rest ? classifyAgentClient(rest) : 'other' };
 }

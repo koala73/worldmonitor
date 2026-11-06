@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const MODULE_RE = /^\/\/# sourceMappingURL=.*$/gm;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const archives = [
   ['og', process.argv[2], '/iYJ34PDu4lty1TXdL86qHEw8viveHTllG1PWLuJX8tSFfqKL7kyVJeUORJmQ250bHB0h+alcalXUlza3c/NSA=='],
@@ -57,7 +60,7 @@ try {
       if (source.split(before).length !== 2) throw new Error(`Unexpected ${name} patch target`);
       source = source.replace(before, after);
     }
-    source = source.replace(/^\/\/# sourceMappingURL=.*$/gm, '');
+    source = source.replace(MODULE_RE, '');
     writeFileSync(join(output, 'dist', name), `import harfbuzzWasm from "./harfbuzz.js";\n${source}`);
   }
 } finally {

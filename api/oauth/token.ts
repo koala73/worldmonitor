@@ -69,6 +69,9 @@ import type {
   RefreshRestoreFailureContext,
 } from './_refresh-recovery';
 
+const HANDLE_AUTHORIZATION_CODE_RE = /^[A-Za-z0-9\-._~]+$/;
+
+
 export const config = { runtime: 'edge' };
 
 const TOKEN_TTL_SECONDS = 3600;
@@ -480,7 +483,7 @@ async function handleAuthorizationCode(
   if (
     codeVerifier.length < 43 ||
     codeVerifier.length > 128 ||
-    !/^[A-Za-z0-9\-._~]+$/.test(codeVerifier)
+    !HANDLE_AUTHORIZATION_CODE_RE.test(codeVerifier)
   ) {
     return jsonResp(
       {

@@ -2,6 +2,9 @@
 
 import { createHash } from 'node:crypto';
 
+const BASE_PREFIX_RE = /^\/+|\/+$/g;
+
+
 let _S3Client, _PutObjectCommand, _GetObjectCommand;
 async function loadS3SDK() {
   if (!_S3Client) {
@@ -155,7 +158,7 @@ function resolveR2StorageConfig(env = process.env, options = {}) {
   const region = getEnvValue(env, profile.region) || 'auto';
   const prefixKeys = isDefaultProfile ? [options.prefixEnv || 'CLOUDFLARE_R2_TRACE_PREFIX'] : [];
   const basePrefix = (getEnvValue(env, prefixKeys) || profile.defaultPrefix)
-    .replace(/^\/+|\/+$/g, '');
+    .replace(BASE_PREFIX_RE, '');
   const forcePathStyle = parseBoolean(getEnvValue(env, profile.forcePathStyle), true);
 
   if (!bucket || !accountId) {

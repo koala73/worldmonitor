@@ -9,6 +9,14 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const NORMALIZE_REFERENCE_TEXT_RE = /%[0-9A-F]{2}/gi;
+const INSPECT_DOCUMENTATION_PUBLICATION_RE = /[!*?\[\]\\]/;
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+const NOINDEX_RE = /^(?:noindex|hidden):\s*true\s*(?:#.*)?$/m;
+const SLUG_RE = /\.mdx?$/;
+const INSPECT_DOCUMENTATION_PUBLICATION_RE_2 = /^https?:\/\//;
+
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DOCS_DIR = join(SCRIPT_DIR, '..', 'docs');
 const MINTLIFY_IGNORE_FILE = '.mintignore';
@@ -25,7 +33,7 @@ function decodePercentEscape(encodedSequence) {
 
 function normalizeReferenceText(text) {
   return text
-    .replace(/%[0-9A-F]{2}/gi, decodePercentEscape)
+    .replace(NORMALIZE_REFERENCE_TEXT_RE, decodePercentEscape)
     .replaceAll('\\', '/');
 }
 
@@ -113,7 +121,7 @@ export function findPublicDocumentationViolations(docsDir = DOCS_DIR) {
 export function inspectDocumentationPublication(docsDir = DOCS_DIR) {
   const { entries, violations } = readIgnoreEntries(docsDir);
   for (const entry of entries) {
-    if (/[!*?\[\]\\]/.test(entry) || entry.startsWith('/')) {
+    if (INSPECT_DOCUMENTATION_PUBLICATION_RE.test(entry) || entry.startsWith('/')) {
       violations.push(`docs/.mintignore: coverage check requires literal relative files or directories: ${entry}`);
     }
   }
@@ -136,9 +144,9 @@ export function inspectDocumentationPublication(docsDir = DOCS_DIR) {
   collectPages(config.navigation);
   const documents = collectPublicDocFiles(docsDir, docsDir, []).map(({ path, docsPath }) => {
     const content = readFileSync(path, 'utf8');
-    const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] ?? '';
-    const noindex = /^(?:noindex|hidden):\s*true\s*(?:#.*)?$/m.test(frontmatter);
-    const slug = docsPath.replace(/\.mdx?$/, '');
+    const frontmatter = content.match(FRONTMATTER_RE)?.[1] ?? '';
+    const noindex = NOINDEX_RE.test(frontmatter);
+    const slug = docsPath.replace(SLUG_RE, '');
     const status = isIgnored(docsPath, entries) ? 'excluded'
       : noindex ? 'noindex'
         : navigation.get(slug) ? 'public' : 'unclassified';
@@ -150,9 +158,9 @@ export function inspectDocumentationPublication(docsDir = DOCS_DIR) {
     }
     return { path: docsPath, status };
   }).sort((a, b) => a.path.localeCompare(b.path));
-  const sourceSlugs = new Set(documents.map(doc => doc.path.replace(/\.mdx?$/, '')));
+  const sourceSlugs = new Set(documents.map(doc => doc.path.replace(SLUG_RE, '')));
   for (const slug of navigation.keys()) {
-    if (!sourceSlugs.has(slug) && !/^https?:\/\//.test(slug)) {
+    if (!sourceSlugs.has(slug) && !INSPECT_DOCUMENTATION_PUBLICATION_RE_2.test(slug)) {
       violations.push(`docs/docs.json: navigation page has no Markdown source: ${slug}`);
     }
   }

@@ -4,6 +4,9 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const RENDER_SCORECARD_EDGE_MIRROR_RE = /(['"]\.\/[^'"]+)\.mts(['"])/g;
+
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MIRRORS = [
   ['_input-registry', 'scripts/scorecard/v1/_input-registry.mts', 'server/worldmonitor/scorecard/v1/_input-registry.ts'],
@@ -22,7 +25,7 @@ export function renderScorecardEdgeMirror(name, source) {
   const generatedFrom = mirror[1];
   return [
     `// Generated from ${generatedFrom} by scripts/generate-scorecard-edge-mirrors.mjs. Do not edit.`,
-    source.replace(/(['"]\.\/[^'"]+)\.mts(['"])/g, '$1$2'),
+    source.replace(RENDER_SCORECARD_EDGE_MIRROR_RE, '$1$2'),
   ].join('\n');
 }
 

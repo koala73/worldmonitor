@@ -3,6 +3,11 @@ import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { IMD_PRODUCTS, IMD_MAX_BYTES, assembleImdSnapshot, fetchImdBulletinPage } from './imd-cyclone-marine.mjs';
 
+const RUNTIME_IDENTITY_RE = /^[a-f0-9]{40}$/i;
+const REPLAY_IMD_FAILURE_RE = /[\r\n]/;
+const FAILED_BEFORE_BODY_RE = /^application\/pdf(?:;|$)/i;
+
+
 export const IMD_EVIDENCE_MAX_BYTES = 4 * 1024 * 1024;
 const RETENTION_MS = 24 * 60 * 60 * 1000;
 const pages = Object.entries(IMD_PRODUCTS).flatMap(([productId, product]) =>
@@ -14,7 +19,7 @@ async function runtimeIdentity() {
     parserSha256: hash(await readFile(new URL('./imd-cyclone-marine.mjs', import.meta.url))),
     lockSha256: hash(await readFile(new URL('../package-lock.json', import.meta.url))),
     node: process.version,
-    deploymentCommit: /^[a-f0-9]{40}$/i.test(process.env.RAILWAY_GIT_COMMIT_SHA || '') ? process.env.RAILWAY_GIT_COMMIT_SHA : null,
+    deploymentCommit: RUNTIME_IDENTITY_RE.test(process.env.RAILWAY_GIT_COMMIT_SHA || '') ? process.env.RAILWAY_GIT_COMMIT_SHA : null,
   };
 }
 
@@ -79,13 +84,13 @@ export async function replayImdFailure(bundle, { allowRevisionMismatch = false }
   if (!runtimeMatches && !allowRevisionMismatch) throw new Error('runtime revision mismatch; use the captured revision or explicitly allow comparison');
   for (const [index, attempt] of bundle.attempts.entries()) {
     if (!attempt || (attempt.status !== null && (!Number.isInteger(attempt.status) || attempt.status < 200 || attempt.status > 599))
-      || (attempt.contentType !== null && (typeof attempt.contentType !== 'string' || /[\r\n]/.test(attempt.contentType)))) throw new Error('invalid evidence response');
+      || (attempt.contentType !== null && (typeof attempt.contentType !== 'string' || REPLAY_IMD_FAILURE_RE.test(attempt.contentType)))) throw new Error('invalid evidence response');
     if (attempt.url !== (index === 0 ? registered.page.url : registered.page.fallbackUrl)) throw new Error('invalid evidence URL');
     if (attempt.bodyBase64 !== null && (typeof attempt.bodyBase64 !== 'string'
       || Buffer.byteLength(attempt.bodyBase64, 'base64') > IMD_MAX_BYTES
       || Buffer.from(attempt.bodyBase64, 'base64').toString('base64') !== attempt.bodyBase64)) throw new Error('invalid evidence body');
     const failedBeforeBody = attempt.status === null || attempt.status < 200 || attempt.status >= 300
-      || (index === 1 && !/^application\/pdf(?:;|$)/i.test(attempt.contentType || ''));
+      || (index === 1 && !FAILED_BEFORE_BODY_RE.test(attempt.contentType || ''));
     if (attempt.bodyBase64 === null && !failedBeforeBody) throw new Error('incomplete evidence body');
   }
   let index = 0;

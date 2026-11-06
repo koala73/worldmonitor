@@ -1,5 +1,11 @@
 import { CHROME_UA, sleep } from './_seed-utils.mjs';
 
+const BUILD_ODP_QUERY_RE = /^[A-Z][A-Z0-9]{3}$/;
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZED_PATENT_ID_RE = /^US/i;
+const NORMALIZED_APPLICATION_ID_RE = /[^a-z0-9]/gi;
+
+
 export const USPTO_ODP_API = 'https://api.uspto.gov/api/v1/patent/applications/search';
 export const MAX_PER_CATEGORY = 20;
 
@@ -36,7 +42,7 @@ export const CPC_CATEGORIES = [
 
 export function buildOdpQuery(cpcCode) {
   const code = String(cpcCode ?? '').trim().toUpperCase();
-  if (!/^[A-Z][A-Z0-9]{3}$/.test(code)) {
+  if (!BUILD_ODP_QUERY_RE.test(code)) {
     throw new Error(`Invalid CPC subclass: ${cpcCode}`);
   }
 
@@ -48,21 +54,21 @@ export function buildOdpQuery(cpcCode) {
 }
 
 function normalizeCpc(code) {
-  return String(code ?? '').replace(/\s+/g, '').toUpperCase();
+  return String(code ?? '').replace(WHITESPACE_RE, '').toUpperCase();
 }
 
 function normalizedPatentId(id) {
-  const value = String(id ?? '').replace(/\s+/g, '');
+  const value = String(id ?? '').replace(WHITESPACE_RE, '');
   if (!value) return '';
-  return /^US/i.test(value) ? value.toUpperCase() : `US${value}`;
+  return NORMALIZED_PATENT_ID_RE.test(value) ? value.toUpperCase() : `US${value}`;
 }
 
 function normalizedApplicationId(id) {
-  return String(id ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+  return String(id ?? '').replace(NORMALIZED_APPLICATION_ID_RE, '').toUpperCase();
 }
 
 function normalizedDocumentId(id) {
-  return String(id ?? '').replace(/\s+/g, '').toUpperCase();
+  return String(id ?? '').replace(WHITESPACE_RE, '').toUpperCase();
 }
 
 export function mapPatentApplication(record, category) {

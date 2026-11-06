@@ -89,6 +89,13 @@ import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zo
 import { headingToCompass } from '@/utils/heading-to-compass';
 import { vesselTypeLabel } from '@/utils/vessel-type-label';
 
+const ESC_RE = /&/g;
+const ESC_RE_2 = /</g;
+const ESC_RE_3 = />/g;
+const SHOW_MARKER_TOOLTIP_RE = /_/g;
+const SHOW_MARKER_TOOLTIP_RE_2 = /-/g;
+
+
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
   chrome?: boolean;
@@ -1511,7 +1518,7 @@ export class GlobeMap {
 
     const closeBtn = `<button style="position:absolute;top:4px;right:4px;background:none;border:none;color:#888;cursor:pointer;font-size:calc(14px * var(--wm-panel-effective-scale, 1));line-height:1;padding:2px 4px;" aria-label="Close">\u00D7</button>`;
 
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const esc = (s: string) => s.replace(ESC_RE, '&amp;').replace(ESC_RE_2, '&lt;').replace(ESC_RE_3, '&gt;');
 
     let html = '';
     if (d._kind === 'conflict') {
@@ -1697,7 +1704,7 @@ export class GlobeMap {
                : '#ffee44';
       html = `<span style="color:${sc};font-weight:bold;">✈ ${esc(d.iata)} — ${esc(d.severity.toUpperCase())}</span>` +
              `<br><span style="opacity:.7;">${esc(d.name)}, ${esc(d.country)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.delayType.replace(/_/g, ' '))}` +
+             `<br><span style="opacity:.7;">${esc(d.delayType.replace(SHOW_MARKER_TOOLTIP_RE, ' '))}` +
              (d.avgDelayMinutes > 0 ? ` · avg ${d.avgDelayMinutes}min` : '') + `</span>` +
              (d.reason ? `<br><span style="opacity:.5;white-space:normal;display:block;">${esc(d.reason.slice(0, 70))}</span>` : '');
     } else if (d._kind === 'notamRing') {
@@ -1712,7 +1719,7 @@ export class GlobeMap {
     } else if (d._kind === 'repairShip') {
       const sc = d.status === 'on-station' ? '#44ff88' : '#44aaff';
       html = `<span style="color:${sc};font-weight:bold;">🚢 ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.status.replace(/-/g, ' '))}${d.operator ? ' · ' + esc(d.operator) : ''}</span>` +
+             `<br><span style="opacity:.7;">${esc(d.status.replace(SHOW_MARKER_TOOLTIP_RE_2, ' '))}${d.operator ? ' · ' + esc(d.operator) : ''}</span>` +
              (d.eta ? `<br><span style="opacity:.5;">ETA: ${esc(d.eta)}</span>` : '');
     } else if (d._kind === 'aisDisruption') {
       const sc = d.severity === 'high' ? '#ff2020' : d.severity === 'elevated' ? '#ff8800' : '#44aaff';

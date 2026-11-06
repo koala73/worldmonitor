@@ -18,6 +18,8 @@
  * never enumerate per-user shared briefs.
  */
 
+const REF_CODE_RE = /^[A-Za-z0-9_-]{1,32}$/;
+
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
@@ -145,7 +147,7 @@ export default async function handler(
   // interpolate it into the CTA link later; drop anything over 32
   // chars defensively so it can't be a smuggled payload.
   const refCodeRaw = url.searchParams.get('ref');
-  const refCode = refCodeRaw && /^[A-Za-z0-9_-]{1,32}$/.test(refCodeRaw)
+  const refCode = refCodeRaw && REF_CODE_RE.test(refCodeRaw)
     ? refCodeRaw
     : undefined;
 

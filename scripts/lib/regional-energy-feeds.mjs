@@ -1,6 +1,69 @@
 import feeds from '../shared/regional-energy-feeds.json' with { type: 'json' };
 import Papa from 'papaparse';
 
+const TEXT_RE = /<[^<>]*>/g;
+const TEXT_RE_2 = /&nbsp;|&#160;/g;
+const WHITESPACE_RE = /\s+/g;
+const S_RE = /\s/g;
+const NORMALIZED_RE = /,/g;
+const NUMBER_RE = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const PERIOD_END_RE = /^\d{4}-\d{2}$/;
+const PERIOD_END_RE_2 = /^\d{4}-\d{2}-\d{2}$/;
+const PERIOD_END_RE_3 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const RESULT_RE = /(?:Z|[+-]\d{2}:?\d{2})$/;
+const PARSED_RE = /^\ufeff/;
+const PARSED_RE_2 = /\r\n?/g;
+const TABLE_RE = /Generation\(MW\)/;
+const PARSE_PGCB_RE = /^\d{2}-\d{2}-\d{4}$/;
+const PARSE_ANP_TRADE_RE = /^20\d{2}$/;
+const DATE_RE = /Date\s*:\s*\d{1,2}\s*-\s*(\d{1,2})\s+([A-Za-z]{3}),?\s*(20\d{2})/;
+const PARSE_PETROBANGLA_RE = /Gas in MMCFD/;
+const LNG_LABEL_RE = /RPGCL \(R-LNG\)/;
+const TOTAL_LABEL_RE = /^Grand Total \(1\+2\+3\+4\+5\):?$/;
+const TOTAL_CELLS_RE = /^\d[\d,.]*$/;
+const TITLE_RE = /ELECTRICITY BALANCE OF GEORGIA 20\d{2}/;
+const YEAR_RE = /20\d{2}/;
+const PARSE_GSE_RE = /Mln.kWh/;
+const ITEM_RE = /\.csv$/i;
+const FILE_RE = /^\s*20\d{2}\s*$/;
+const FILE_RE_2 = /\.pdf$/i;
+const REPORT_RE = /দৈনিক-গ্যাস-ইনটেক-অফটেক-প্রতিবেদন/;
+const URL_RE = /href="(https:[^"]+office-petrobangla[^"<>]+\.pdf)"/i;
+const DISCOVER_EVN_POST_RE = /href=["']([^"'<>]{1,400})["']/g;
+const VN_NUMBER_RE = /^\d+(?:,\d+)?$/;
+const VN_NUMBER_RE_2 = /^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/;
+const VN_NUMBER_RE_3 = /\./g;
+const DATE_RE_2 = /ngày (\d{2})\/(\d{2})\/(20\d{2})$/;
+const HEAD_RE = /^Tính với số liệu ĐMT mái nhà \((ước tính thương phẩm|ước tính đầu cực)\):/;
+const PEAK_RE = /Công suất lớn nhất trong ngày: ([\d.,]{1,12}) MW/;
+const ENERGY_RE = /Sản lượng điện sản xuất và nhập khẩu: ([\d.,]{1,12}) triệu kWh/;
+const LINE_RE = /^- (.{1,80}?) ([\d.,]{1,12}) triệu kWh$/;
+const KOREM_DAY_RE = /^(\d{4}-\d{2}-\d{2})T00:00:00$/;
+const PARSE_COES_RE = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/;
+const DECODE_TITLE_RE = /&#8211;|&ndash;/g;
+const DECODE_TITLE_RE_2 = /&#8217;|&rsquo;/g;
+const DECODE_TITLE_RE_3 = /&amp;|&#038;/g;
+const PNG_KINA_PER_LITRE_RE = /^([+-])?\s*(K)?\s*(\d{1,4}(?:\.\d{1,4})?)$/;
+const PNG_ROW_KIND_RE = /\bchange\b/;
+const PNG_ROW_KIND_RE_2 = /unsubsidi[sz]ed|without subsidy/;
+const PNG_ROW_KIND_RE_3 = /gst exemption/;
+const PNG_ROW_KIND_RE_4 = /direct subsidy/;
+const PNG_ROW_KIND_RE_5 = /combined subsidy|subsidi[sz]ed amount|to be subsidi[sz]ed/;
+const PNG_ROW_KIND_RE_6 = /retail price|\birp\b|subsidi[sz]ed price/;
+const POSTED_RE = /^(20\d{2})-(\d{2})-/;
+const PARSE_PNG_FUEL_POST_RE = /Port Moresby/i;
+const PARSE_PNG_FUEL_POST_RE_2 = /^(Petrol|Diesel|Kerosene)(?:\s*\(tpl\))?$/i;
+const PAIRS_RE = /^(Petrol|Diesel|Kerosene)\s+[+-]?K?\d/i;
+const PAIRS_RE_2 = /^\S+\s+/;
+const URLS_RE = /FUEL\s+(?:AND|&)\s+LPG\s+PRICES/i;
+const URLS_RE_2 = /href="(https:\/\/fccc\.gov\.fj\/wp-content\/uploads\/[^"<>\s]{1,300}\.pdf)"/i;
+const PARSE_FIJI_FUEL_RE = /^NEW APPROVED RETAIL FUEL PRICE/i;
+const PARSE_FIJI_FUEL_RE_2 = /^NEW APPROVED RETAIL LPG PRICE/i;
+const S_RE_2 = /^Schedule\s*(\d)\s*:?$/;
+const LABEL_RE = /\*+/g;
+const MONEY_RE = /(\()?\s*\$\s*(\d{1,3}\.\d{2})/g;
+
+
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const PT_MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 export function cleanHtml(source) {
@@ -16,7 +79,7 @@ export function cleanHtml(source) {
   }
   return parts.join('');
 }
-export const text = s => cleanHtml(String(s)).replace(/<[^<>]*>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/\s+/g, ' ').trim();
+export const text = s => cleanHtml(String(s)).replace(TEXT_RE, ' ').replace(TEXT_RE_2, ' ').replace(WHITESPACE_RE, ' ').trim();
 
 // Consume tag tokens once so missing closing tags cannot restart a body scan.
 export function blocks(source, names) {
@@ -41,26 +104,26 @@ export function number(raw, commaDecimal = false) {
     if (Number.isFinite(raw)) return raw;
     throw new Error('Non-finite energy measurement');
   }
-  const s = String(raw ?? '').trim().replace(/\s/g, '');
-  const normalized = commaDecimal ? s.replace(',', '.') : s.replace(/,/g, '');
-  if (!/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(normalized)) throw new Error('Invalid energy measurement');
+  const s = String(raw ?? '').trim().replace(S_RE, '');
+  const normalized = commaDecimal ? s.replace(',', '.') : s.replace(NORMALIZED_RE, '');
+  if (!NUMBER_RE.test(normalized)) throw new Error('Invalid energy measurement');
   const n = Number(normalized);
   if (!Number.isFinite(n)) throw new Error('Non-finite energy measurement');
   return n;
 }
 
 export function periodEnd(period) {
-  if (/^\d{4}-\d{2}$/.test(period)) {
+  if (PERIOD_END_RE.test(period)) {
     const [y, m] = period.split('-').map(Number);
     if (m < 1 || m > 12) throw new Error('Invalid energy month');
     return Date.UTC(y, m, 0, 23, 59, 59, 999);
   }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(period)) {
+  if (PERIOD_END_RE_2.test(period)) {
     const ms = Date.parse(`${period}T00:00:00Z`);
     if (!Number.isFinite(ms) || new Date(ms).toISOString().slice(0, 10) !== period) throw new Error('Invalid energy day');
     return ms;
   }
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(period)) throw new Error('Invalid energy timestamp');
+  if (!PERIOD_END_RE_3.test(period)) throw new Error('Invalid energy timestamp');
   const ms = Date.parse(period);
   if (!Number.isFinite(ms) || new Date(ms).toISOString() !== period) throw new Error('Invalid energy timestamp');
   return ms;
@@ -68,7 +131,7 @@ export function periodEnd(period) {
 
 const iso = (s, offset) => {
   const value = s.includes('T') ? s : s.replace(' ', 'T');
-  const result = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : value + offset);
+  const result = new Date(RESULT_RE.test(value) ? value : value + offset);
   if (!Number.isFinite(result.getTime())) throw new Error('Invalid provider timestamp');
   return result.toISOString();
 };
@@ -79,7 +142,7 @@ export const required = points => {
 };
 
 function csv(source, delimiter = ',') {
-  const parsed = Papa.parse(source.replace(/^\ufeff/, '').replace(/\r\n?/g, '\n'), { delimiter, newline: '\n', skipEmptyLines: 'greedy' });
+  const parsed = Papa.parse(source.replace(PARSED_RE, '').replace(PARSED_RE_2, '\n'), { delimiter, newline: '\n', skipEmptyLines: 'greedy' });
   if (parsed.errors.length || !parsed.data.length) throw new Error('Invalid energy CSV');
   const records = parsed.data.map(row => row.map(cell => cell.trim()));
   const header = records.shift();
@@ -95,7 +158,7 @@ function columns(header, names) {
 }
 
 export function parsePgcb(html) {
-  const table = blocks(cleanHtml(html), 'table').find(table => /Generation\(MW\)/.test(table.inner))?.inner;
+  const table = blocks(cleanHtml(html), 'table').find(table => TABLE_RE.test(table.inner))?.inner;
   if (!table) throw new Error('Changed PGCB fuel table');
   let headerAt = 0;
   for (const heading of ['Gas', 'Liquid Fuel', 'Coal', 'Hydro', 'Solar', 'Wind', 'India', 'Nepal']) {
@@ -105,7 +168,7 @@ export function parsePgcb(html) {
   }
   const points = [];
   for (const row of rows(table)) {
-    if (!/^\d{2}-\d{2}-\d{4}$/.test(row[0] ?? '')) continue;
+    if (!PARSE_PGCB_RE.test(row[0] ?? '')) continue;
     if (row.length !== 14) throw new Error('Changed PGCB row');
     const [d, m, y] = row[0].split('-');
     const period = iso(`${y}-${m}-${d}T${row[1]}`, '+06:00');
@@ -189,7 +252,7 @@ export function parseAnpTrade(source) {
   return required(records.map(row => {
     const month = PT_MONTHS.indexOf(row['MÊS']);
     const operation = { 'IMPORTAÇÃO': 'imports', 'EXPORTAÇÃO': 'exports' }[row['OPERAÇÃO COMERCIAL']];
-    if (month < 0 || !operation || !/^20\d{2}$/.test(row.ANO) || !row.PRODUTO) throw new Error('Invalid ANP trade row');
+    if (month < 0 || !operation || !PARSE_ANP_TRADE_RE.test(row.ANO) || !row.PRODUTO) throw new Error('Invalid ANP trade row');
     return observation(`fuel.${operation}`, `${row.ANO}-${String(month + 1).padStart(2, '0')}`, number(row['IMPORTADO / EXPORTADO'], true), 'm3', row.PRODUTO);
   }));
 }
@@ -238,17 +301,17 @@ export const lineItems = (items, y) => items.filter(i => Math.abs(i.y - y) < 1).
 
 export function parsePetrobangla(items) {
   const fullText = [...items].sort((a, b) => b.y - a.y || a.x - b.x).map(i => i.text).join(' ');
-  const date = fullText.match(/Date\s*:\s*\d{1,2}\s*-\s*(\d{1,2})\s+([A-Za-z]{3}),?\s*(20\d{2})/);
+  const date = fullText.match(DATE_RE);
   const month = MONTHS.indexOf(date?.[2].toUpperCase());
-  if (!date || month < 0 || !/Gas in MMCFD/.test(fullText)) throw new Error('Unknown Petrobangla report');
+  if (!date || month < 0 || !PARSE_PETROBANGLA_RE.test(fullText)) throw new Error('Unknown Petrobangla report');
   const period = `${date[3]}-${String(month + 1).padStart(2, '0')}-${date[1].padStart(2, '0')}`;
-  const lngLabel = items.find(i => /RPGCL \(R-LNG\)/.test(i.text));
-  const totalLabel = items.find(i => /^Grand Total \(1\+2\+3\+4\+5\):?$/.test(i.text));
+  const lngLabel = items.find(i => LNG_LABEL_RE.test(i.text));
+  const totalLabel = items.find(i => TOTAL_LABEL_RE.test(i.text));
   if (!lngLabel || !totalLabel) throw new Error('Missing Petrobangla supply totals');
-  const totalCells = lineItems(items, totalLabel.y).filter(i => i.x > totalLabel.x + totalLabel.width && /^\d[\d,.]*$/.test(i.text.trim()));
+  const totalCells = lineItems(items, totalLabel.y).filter(i => i.x > totalLabel.x + totalLabel.width && TOTAL_CELLS_RE.test(i.text.trim()));
   if (totalCells.length !== 6) throw new Error('Changed Petrobangla total columns');
   const gasColumn = totalCells[2];
-  const lngCells = lineItems(items, lngLabel.y).filter(i => i.x > lngLabel.x + lngLabel.width && /^\d[\d,.]*$/.test(i.text.trim()));
+  const lngCells = lineItems(items, lngLabel.y).filter(i => i.x > lngLabel.x + lngLabel.width && TOTAL_CELLS_RE.test(i.text.trim()));
   const lngCell = lngCells.find(i => Math.abs((i.x + i.width) - (gasColumn.x + gasColumn.width)) < 4);
   if (!lngCell) throw new Error('Missing Petrobangla LNG gas column');
   const total = number(gasColumn.text), lng = number(lngCell.text);
@@ -257,10 +320,10 @@ export function parsePetrobangla(items) {
 }
 
 export function parseGse(items) {
-  const title = items.find(i => /ELECTRICITY BALANCE OF GEORGIA 20\d{2}/.test(i.text));
-  const year = title?.text.match(/20\d{2}/)?.[0];
+  const title = items.find(i => TITLE_RE.test(i.text));
+  const year = title?.text.match(YEAR_RE)?.[0];
   const january = items.find(i => i.text === 'January');
-  if (!year || !january || !items.some(i => /Mln.kWh/.test(i.text))) throw new Error('Unknown GSE balance');
+  if (!year || !january || !items.some(i => PARSE_GSE_RE.test(i.text))) throw new Error('Unknown GSE balance');
   const monthHeaders = lineItems(items, january.y).filter(i => MONTHS.includes(i.text.slice(0, 3).toUpperCase()));
   if (monthHeaders.length !== 12) throw new Error('Changed GSE month columns');
   const centers = monthHeaders.map(i => i.x + i.width / 2);
@@ -298,28 +361,28 @@ export function publicUrl(value, hosts) {
 }
 
 export function discoverEskomCsv(media, title) {
-  const item = Array.isArray(media) && media.find(x => x.title?.rendered === title && /\.csv$/i.test(x.source_url));
+  const item = Array.isArray(media) && media.find(x => x.title?.rendered === title && ITEM_RE.test(x.source_url));
   if (!item) throw new Error(`Missing Eskom ${title} CSV`);
   return publicUrl(item.source_url, ['www.eskom.co.za']);
 }
 
 export function discoverGsePdf(payload) {
   const files = payload?.data?.contents?.flatMap(c => c.files ?? []) ?? [];
-  const file = files.filter(f => /^\s*20\d{2}\s*$/.test(f.name) && /\.pdf$/i.test(f.path)).sort((a, b) => Number(b.name) - Number(a.name))[0];
+  const file = files.filter(f => FILE_RE.test(f.name) && FILE_RE_2.test(f.path)).sort((a, b) => Number(b.name) - Number(a.name))[0];
   if (!file) throw new Error('Missing GSE balance PDF');
   return publicUrl(file.path, ['admin.gse.com.ge']);
 }
 
 export function discoverPetrobanglaPdf(html) {
-  const report = blocks(cleanHtml(html), 'tr').find(row => /দৈনিক-গ্যাস-ইনটেক-অফটেক-প্রতিবেদন/.test(row.inner));
-  const url = report?.inner.match(/href="(https:[^"]+office-petrobangla[^"<>]+\.pdf)"/i)?.[1];
+  const report = blocks(cleanHtml(html), 'tr').find(row => REPORT_RE.test(row.inner));
+  const url = report?.inner.match(URL_RE)?.[1];
   if (!url) throw new Error('Missing Petrobangla daily gas PDF');
   return publicUrl(url, ['objectstorage.ap-dcc-gazipur-1.oraclecloud15.com']);
 }
 
 export const pad2 = n => String(n).padStart(2, '0');
 export const validDay = day => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day ?? '')) throw new Error('Invalid energy day');
+  if (!PERIOD_END_RE_2.test(day ?? '')) throw new Error('Invalid energy day');
   periodEnd(day);
   return day;
 };
@@ -327,6 +390,11 @@ export const ymd = (y, m, d) => validDay(`${y}-${pad2(m)}-${pad2(d)}`);
 const addDays = (day, n) => new Date(Date.parse(`${validDay(day)}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 export const EN_MONTHS = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 export const EN_MONTH_RE = EN_MONTHS.join('|');
+
+const EFFECTIVE_RE = new RegExp(`(?:on|effective|from)\\s+(?:[A-Za-z]+day,?\\s+)?(\\d{1,2})\\s*(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${EN_MONTH_RE})\\s+(20\\d{2})`, 'gi');
+const H_RE = new RegExp(`NEW APPROVED RETAIL (FUEL|LPG) PRICES? FOR (${EN_MONTH_RE}) (20\\d{2})`, 'i');
+const E_RE = new RegExp(`^\\(Effective\\s+(\\d{1,2})\\s+(${EN_MONTH_RE})(?:\\s+(20\\d{2}))?\\)?$`, 'i');
+
 
 // Identical repeats collapse; conflicting repeats throw.
 export function addUnique(map, point) {
@@ -343,7 +411,7 @@ const EVN_POST = /^\/d\/vi-VN\/news\/Thong-tin-chung-ve-van-hanh-he-thong-dien-Q
 
 export function discoverEvnPost(html) {
   let best = null;
-  for (const m of cleanHtml(String(html)).matchAll(/href=["']([^"'<>]{1,400})["']/g)) {
+  for (const m of cleanHtml(String(html)).matchAll(DISCOVER_EVN_POST_RE)) {
     const path = m[1].trim();
     const parts = path.match(EVN_POST);
     if (!parts) continue;
@@ -358,8 +426,8 @@ export function discoverEvnPost(html) {
 // Decimal comma; dotted thousands with a decimal comma are also unambiguous.
 function vnNumber(raw) {
   const s = String(raw).trim();
-  if (/^\d+(?:,\d+)?$/.test(s)) return number(s, true);
-  if (/^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(s)) return number(s.replace(/\./g, ''), true);
+  if (VN_NUMBER_RE.test(s)) return number(s, true);
+  if (VN_NUMBER_RE_2.test(s)) return number(s.replace(VN_NUMBER_RE_3, ''), true);
   throw new Error('Invalid EVN measurement');
 }
 
@@ -384,7 +452,7 @@ const EVN_TOTALS = {
 export function parseEvn(html) {
   const source = cleanHtml(String(html));
   const title = blocks(source, 'h3').map(h => text(h.inner)).find(t => t.startsWith('Thông tin chung về vận hành hệ thống điện Quốc gia ngày'));
-  const date = title?.match(/ngày (\d{2})\/(\d{2})\/(20\d{2})$/);
+  const date = title?.match(DATE_RE_2);
   if (!date) throw new Error('Changed EVN bulletin title');
   const period = ymd(date[3], date[2], date[1]);
   const start = source.indexOf('chitiettinbai');
@@ -394,18 +462,18 @@ export function parseEvn(html) {
   const points = [];
   let summaries = 0;
   for (const para of blocks(body, 'p').map(p => text(p.inner))) {
-    const head = para.match(/^Tính với số liệu ĐMT mái nhà \((ước tính thương phẩm|ước tính đầu cực)\):/);
+    const head = para.match(HEAD_RE);
     if (head) {
       const area = EVN_BASIS[head[1]];
-      const peak = para.match(/Công suất lớn nhất trong ngày: ([\d.,]{1,12}) MW/);
-      const energy = para.match(/Sản lượng điện sản xuất và nhập khẩu: ([\d.,]{1,12}) triệu kWh/);
+      const peak = para.match(PEAK_RE);
+      const energy = para.match(ENERGY_RE);
       if (!peak || !energy) throw new Error('Changed EVN daily summary');
       points.push(observation('generation.peak', period, vnNumber(peak[1]), 'MW', area));
       points.push(observation('energy.generated_and_imported', period, vnNumber(energy[1]), 'mln kWh', area));
       summaries++;
       continue;
     }
-    const line = para.match(/^- (.{1,80}?) ([\d.,]{1,12}) triệu kWh$/);
+    const line = para.match(LINE_RE);
     if (!line) continue;
     if (!Object.hasOwn(EVN_SOURCES, line[1])) throw new Error(`Unknown EVN source ${line[1]}`);
     const [key, area] = EVN_SOURCES[line[1]];
@@ -466,7 +534,7 @@ export function koremCtUrls(torgNames, zones, lastDate) {
 }
 
 const koremDay = dt => {
-  const m = String(dt ?? '').match(/^(\d{4}-\d{2}-\d{2})T00:00:00$/);
+  const m = String(dt ?? '').match(KOREM_DAY_RE);
   if (!m) throw new Error('Invalid KOREM daily timestamp');
   return validDay(m[1]);
 };
@@ -507,7 +575,7 @@ export function parseCoes(payload) {
   const points = [];
   const map = { ValorEjecutado: 'demand', ValorProgramacionDiaria: 'demand.scheduled', ValorProgramacionSemanal: 'demand.scheduled_weekly' };
   for (const row of payload.Data) {
-    const m = String(row?.Fecha ?? '').match(/^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/);
+    const m = String(row?.Fecha ?? '').match(PARSE_COES_RE);
     if (!m) throw new Error('Invalid COES timestamp');
     const period = iso(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00`, '-05:00');
     for (const [key, metric] of Object.entries(map)) {
@@ -525,7 +593,7 @@ const ICCC_HOST = 'iccc.gov.pg';
 // Category 763309980 is "Fuel Prices" (https://iccc.gov.pg/category/fuel-prices/).
 export const ICCC_INDEX_URL = `https://${ICCC_HOST}/wp-json/wp/v2/posts?categories=763309980&per_page=10&_fields=id,date,date_gmt,modified_gmt,link,title`;
 const ICCC_TITLE = new RegExp(`FUEL PRICES\\s*[–-]\\s*(?:\\d{1,2}(?:st|nd|rd|th)?\\s+)?(${EN_MONTH_RE})\\s+(20\\d{2})\\s*$`, 'i');
-export const decodeTitle = s => text(s).replace(/&#8211;|&ndash;/g, '–').replace(/&#8217;|&rsquo;/g, '’').replace(/&amp;|&#038;/g, '&');
+export const decodeTitle = s => text(s).replace(DECODE_TITLE_RE, '–').replace(DECODE_TITLE_RE_2, '’').replace(DECODE_TITLE_RE_3, '&');
 
 // Newest first.
 export function discoverPngFuelPosts(index) {
@@ -545,7 +613,7 @@ const pngProduct = cell => PNG_PRODUCTS.find(p => new RegExp(`^${p}\\b`, 'i').te
 
 // "K5.90" is kina; a bare number ("-59.81") is toea per litre, per the table captions.
 function pngKinaPerLitre(cell) {
-  const m = String(cell).trim().match(/^([+-])?\s*(K)?\s*(\d{1,4}(?:\.\d{1,4})?)$/);
+  const m = String(cell).trim().match(PNG_KINA_PER_LITRE_RE);
   if (!m) throw new Error(`Changed ICCC price cell: ${String(cell).slice(0, 40)}`);
   const magnitude = m[2] ? number(m[3]) : number(m[3]) / 100;
   return { sign: m[1] === '-' ? -1 : 1, value: Number(magnitude.toFixed(4)) };
@@ -554,12 +622,12 @@ function pngKinaPerLitre(cell) {
 function pngRowKind(label, monthName) {
   const l = label.toLowerCase();
   if (EN_MONTHS.some(m => m !== monthName && l.includes(m.toLowerCase()))) return null; // previous month's comparison row
-  if (/\bchange\b/.test(l)) return null;
-  if (/unsubsidi[sz]ed|without subsidy/.test(l)) return { metric: 'fuel.retail_price.unsubsidized' };
-  if (/gst exemption/.test(l)) return { metric: 'fuel.subsidy', component: 'GST exemption' };
-  if (/direct subsidy/.test(l)) return { metric: 'fuel.subsidy', component: 'Direct subsidy' };
-  if (/combined subsidy|subsidi[sz]ed amount|to be subsidi[sz]ed/.test(l)) return { metric: 'fuel.subsidy', component: 'Total' };
-  if (/retail price|\birp\b|subsidi[sz]ed price/.test(l)) return { metric: 'fuel.retail_price' };
+  if (PNG_ROW_KIND_RE.test(l)) return null;
+  if (PNG_ROW_KIND_RE_2.test(l)) return { metric: 'fuel.retail_price.unsubsidized' };
+  if (PNG_ROW_KIND_RE_3.test(l)) return { metric: 'fuel.subsidy', component: 'GST exemption' };
+  if (PNG_ROW_KIND_RE_4.test(l)) return { metric: 'fuel.subsidy', component: 'Direct subsidy' };
+  if (PNG_ROW_KIND_RE_5.test(l)) return { metric: 'fuel.subsidy', component: 'Total' };
+  if (PNG_ROW_KIND_RE_6.test(l)) return { metric: 'fuel.retail_price' };
   return null;
 }
 
@@ -571,12 +639,12 @@ export function parsePngFuelPost(post) {
   const monthName = titleMatch[1].toUpperCase();
   const month = EN_MONTHS.indexOf(monthName) + 1;
   const year = Number(titleMatch[2]);
-  const posted = post.date.match(/^(20\d{2})-(\d{2})-/);
+  const posted = post.date.match(POSTED_RE);
   const lag = posted ? (year * 12 + month) - (Number(posted[1]) * 12 + Number(posted[2])) : NaN;
   if (!(lag === 0 || lag === 1)) throw new Error('ICCC title month does not match post date');
   const body = text(html);
-  if (!/Port Moresby/i.test(body)) throw new Error('ICCC post no longer covers Port Moresby');
-  const effective = [...body.matchAll(new RegExp(`(?:on|effective|from)\\s+(?:[A-Za-z]+day,?\\s+)?(\\d{1,2})\\s*(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${EN_MONTH_RE})\\s+(20\\d{2})`, 'gi'))]
+  if (!PARSE_PNG_FUEL_POST_RE.test(body)) throw new Error('ICCC post no longer covers Port Moresby');
+  const effective = [...body.matchAll(EFFECTIVE_RE)]
     .find(m => m[2].toUpperCase() === monthName && Number(m[3]) === year);
   // The effective day is the period; a month period would read as future-dated all month.
   if (!effective) throw new Error('Missing ICCC effective date');
@@ -585,15 +653,15 @@ export function parsePngFuelPost(post) {
   for (const table of blocks(cleanHtml(html), 'table')) {
     let columns = null;
     for (const row of rows(table.inner)) {
-      if (row.length >= 4 && row.slice(1).every(c => /^(Petrol|Diesel|Kerosene)(?:\s*\(tpl\))?$/i.test(c))) {
+      if (row.length >= 4 && row.slice(1).every(c => PARSE_PNG_FUEL_POST_RE_2.test(c))) {
         columns = row.slice(1).map(pngProduct);
         continue;
       }
       const kind = pngRowKind(row[0] ?? '', monthName);
       if (!kind) continue;
       // Single-row layout: "<Month> IRP | Petrol K4.39 | Diesel K4.44 | Kerosene K4.09"
-      const pairs = row.slice(1).every(c => /^(Petrol|Diesel|Kerosene)\s+[+-]?K?\d/i.test(c))
-        ? row.slice(1).map(c => [pngProduct(c), c.replace(/^\S+\s+/, '')])
+      const pairs = row.slice(1).every(c => PAIRS_RE.test(c))
+        ? row.slice(1).map(c => [pngProduct(c), c.replace(PAIRS_RE_2, '')])
         : columns && row.length === columns.length + 1 ? columns.map((p, i) => [p, row[i + 1]]) : null;
       if (!pairs) throw new Error('Changed ICCC price table');
       for (const [product, cell] of pairs) {
@@ -625,9 +693,9 @@ export const FCCC_INDEX_URL = `https://${FCCC_HOST}/wp-json/wp/v2/posts?search=L
 export function discoverFijiFuelPdfs(index) {
   if (!Array.isArray(index)) throw new Error('Invalid FCCC post index');
   const urls = index
-    .filter(p => typeof p?.date_gmt === 'string' && /FUEL\s+(?:AND|&)\s+LPG\s+PRICES/i.test(decodeTitle(p.title?.rendered ?? '')) && typeof p.content?.rendered === 'string')
+    .filter(p => typeof p?.date_gmt === 'string' && URLS_RE.test(decodeTitle(p.title?.rendered ?? '')) && typeof p.content?.rendered === 'string')
     .sort((a, b) => b.date_gmt.localeCompare(a.date_gmt))
-    .map(p => p.content.rendered.match(/href="(https:\/\/fccc\.gov\.fj\/wp-content\/uploads\/[^"<>\s]{1,300}\.pdf)"/i)?.[1])
+    .map(p => p.content.rendered.match(URLS_RE_2)?.[1])
     .filter(Boolean)
     .map(u => publicUrl(u, [FCCC_HOST]));
   if (!urls.length) throw new Error('Missing FCCC fuel price PDF');
@@ -644,9 +712,9 @@ export function parseFijiFuel(items) {
   const headings = { fuel: null, lpg: null };
   const effectiveDates = [];
   for (const i of ordered) {
-    const h = i.text.match(new RegExp(`NEW APPROVED RETAIL (FUEL|LPG) PRICES? FOR (${EN_MONTH_RE}) (20\\d{2})`, 'i'));
+    const h = i.text.match(H_RE);
     if (h) headings[h[1].toLowerCase()] = `${h[3]}-${pad2(EN_MONTHS.indexOf(h[2].toUpperCase()) + 1)}`;
-    const e = i.text.trim().match(new RegExp(`^\\(Effective\\s+(\\d{1,2})\\s+(${EN_MONTH_RE})(?:\\s+(20\\d{2}))?\\)?$`, 'i'));
+    const e = i.text.trim().match(E_RE);
     if (e) effectiveDates.push({ day: Number(e[1]), month: EN_MONTHS.indexOf(e[2].toUpperCase()) + 1, year: e[3] ? Number(e[3]) : null });
   }
   if (!headings.fuel || !headings.lpg) throw new Error('Unknown FCCC price release');
@@ -658,11 +726,11 @@ export function parseFijiFuel(items) {
   const seen = { fuel: new Map(), lpg: new Map() };
   const points = new Map();
   for (const i of ordered) {
-    if (/^NEW APPROVED RETAIL FUEL PRICE/i.test(i.text)) { section = 'fuel'; schedule = null; continue; }
-    if (/^NEW APPROVED RETAIL LPG PRICE/i.test(i.text)) { section = 'lpg'; schedule = null; continue; }
-    const s = i.text.trim().match(/^Schedule\s*(\d)\s*:?$/);
+    if (PARSE_FIJI_FUEL_RE.test(i.text)) { section = 'fuel'; schedule = null; continue; }
+    if (PARSE_FIJI_FUEL_RE_2.test(i.text)) { section = 'lpg'; schedule = null; continue; }
+    const s = i.text.trim().match(S_RE_2);
     if (s && section) { schedule = Number(s[1]); continue; }
-    const label = i.text.replace(/\*+/g, '').replace(/\s+/g, ' ').trim();
+    const label = i.text.replace(LABEL_RE, '').replace(WHITESPACE_RE, ' ').trim();
     const isFuel = Object.hasOwn(FJ_FUEL, label), isLpg = Object.hasOwn(FJ_LPG, label);
     if (!isFuel && !isLpg) continue;
     if (!schedule || (section === 'fuel') !== isFuel) throw new Error(`FCCC ${label} row outside its schedule`);
@@ -674,7 +742,7 @@ export function parseFijiFuel(items) {
     const line = items
       .filter(o => o !== i && o.page === i.page && Math.abs(o.y - i.y) <= 4 && o.x >= i.x + i.width - 1)
       .sort((a, b) => a.x - b.x).map(o => o.text).join(' ');
-    const money = [...line.matchAll(/(\()?\s*\$\s*(\d{1,3}\.\d{2})/g)].map(m => (m[1] ? -1 : 1) * number(m[2]));
+    const money = [...line.matchAll(MONEY_RE)].map(m => (m[1] ? -1 : 1) * number(m[2]));
     if (money.length !== 3) throw new Error(`Changed FCCC ${label} row`);
     const [current, approved, change] = money;
     if (current <= 0 || approved <= 0 || Math.abs(approved - current - change) > 0.0151) throw new Error(`FCCC ${label} price columns do not reconcile`);
@@ -723,7 +791,7 @@ const MEM_COLUMNS = [
 ];
 // The workbook runs from 2013; only the newest month can reach a snapshot.
 const MEM_WINDOW_DAYS = 31;
-const memLabel = v => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : v);
+const memLabel = v => (typeof v === 'string' ? v.replace(WHITESPACE_RE, ' ').trim() : v);
 
 export function parseMemPriceRows(sheetRows) {
   const headerAt = sheetRows.findIndex(row => memLabel(row[0]) === 'FECHA');

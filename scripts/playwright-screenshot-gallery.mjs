@@ -10,6 +10,12 @@ import { copyFile, mkdir, open, readFile, readdir, writeFile } from 'node:fs/pro
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+const TITLE_FROM_FILE_NAME_RE = /\.png$/i;
+const TITLE_FROM_FILE_NAME_RE_2 = /^\d+-/;
+const TITLE_FROM_FILE_NAME_RE_3 = /[-_]+/g;
+const SANITIZE_FILE_NAME_RE = /[^a-zA-Z0-9._-]/g;
+
+
 const MAX_HISTORY = 100;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -24,14 +30,14 @@ export function escapeHtml(value) {
 
 export function titleFromFileName(fileName) {
   return fileName
-    .replace(/\.png$/i, '')
-    .replace(/^\d+-/, '')
-    .replaceAll(/[-_]+/g, ' ')
+    .replace(TITLE_FROM_FILE_NAME_RE, '')
+    .replace(TITLE_FROM_FILE_NAME_RE_2, '')
+    .replaceAll(TITLE_FROM_FILE_NAME_RE_3, ' ')
     .trim();
 }
 
 export function sanitizeFileName(fileName) {
-  return fileName.replaceAll(/[^a-zA-Z0-9._-]/g, '-');
+  return fileName.replaceAll(SANITIZE_FILE_NAME_RE, '-');
 }
 
 export function isHttpsUrl(value) {

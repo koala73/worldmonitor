@@ -20,6 +20,10 @@ import {
   summarizeSpec,
 } from './core.mjs';
 
+const PARSE_BODY_RE = /^(event|data):/m;
+const LINE_BREAK_RE = /\r?\n/;
+
+
 const DEFAULT_TIMEOUT_MS = 30000;
 
 // MCP responses may arrive as Server-Sent Events (Streamable HTTP). Pull the
@@ -28,9 +32,9 @@ const DEFAULT_TIMEOUT_MS = 30000;
 function parseBody(text, headers) {
   const contentType = (headers && headers.get && headers.get('content-type')) || '';
   let payload = text;
-  if (contentType.includes('text/event-stream') || /^(event|data):/m.test(text)) {
+  if (contentType.includes('text/event-stream') || PARSE_BODY_RE.test(text)) {
     const dataLines = text
-      .split(/\r?\n/)
+      .split(LINE_BREAK_RE)
       .filter((line) => line.startsWith('data:'))
       .map((line) => line.slice(5).trim());
     payload = dataLines[dataLines.length - 1] || '';

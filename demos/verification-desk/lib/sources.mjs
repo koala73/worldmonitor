@@ -13,6 +13,22 @@ import path from 'node:path';
 import { dig } from './mcp-client.mjs';
 import { overlapScore } from './text.mjs';
 
+const DROP_TAGS_RE = /<[^>]+>/g;
+const STRIP_HTML_RE = /&(nbsp|amp|quot|#39|apos);/g;
+const WHITESPACE_RE = /\s+/g;
+const ADDR_RE = /^\[|\]$/g;
+const MAPPED_RE = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/;
+const IS_PRIVATE_ADDRESS_RE = /^f[cd]/;
+const IS_PRIVATE_ADDRESS_RE_2 = /^fe[89ab]/;
+const IS_PRIVATE_ADDRESS_RE_3 = /^ff/;
+const IS_PRIVATE_ADDRESS_RE_4 = /^::ffff:/;
+const IS_PRIVATE_ADDRESS_RE_5 = /^64:ff9b:/;
+const PUBLIC_ADDRESSES_RE = /^https?:$/;
+const PUBLIC_ADDRESSES_RE_2 = /^localhost$|\.localhost$|\.internal$|\.local$/i;
+const FETCH_ARTICLE_TEXT_RE = /^https?:\/\//;
+const LOAD_RE = /^\d{4}-\d{2}-\d{2}T.*\.json$/;
+
+
 export const FULL_CATEGORIES = [
   'politics', 'us', 'europe', 'middleeast', 'tech', 'ai', 'finance', 'commodities', 'gov',
   'africa', 'latam', 'asia', 'energy', 'thinktanks', 'crisis', 'layoffs', 'intel',
@@ -123,15 +139,15 @@ function dropBlocks(text, name) {
 // every unclosed '<' rescan the rest of the page.
 function dropTags(text) {
   const closed = text.lastIndexOf('>') + 1;
-  return text.slice(0, closed).replace(/<[^>]+>/g, ' ') + text.slice(closed);
+  return text.slice(0, closed).replace(DROP_TAGS_RE, ' ') + text.slice(closed);
 }
 
 // Plain text for figure checks only; it is never rendered as HTML.
 function stripHtml(html) {
   return dropTags(dropBlocks(dropBlocks(String(html), 'script'), 'style'))
     // One pass, so "&amp;lt;" stays "&lt;" (no double unescaping).
-    .replace(/&(nbsp|amp|quot|#39|apos);/g, (_, name) => ENTITIES[name])
-    .replace(/\s+/g, ' ')
+    .replace(STRIP_HTML_RE, (_, name) => ENTITIES[name])
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -149,26 +165,26 @@ function ipv4Private(ip) {
 }
 
 export function isPrivateAddress(ip) {
-  const addr = String(ip).toLowerCase().replace(/^\[|\]$/g, '');
+  const addr = String(ip).toLowerCase().replace(ADDR_RE, '');
   if (isIP(addr) === 4) return ipv4Private(addr);
   if (isIP(addr) !== 6) return true; // not an address: refuse
-  const mapped = addr.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  const mapped = addr.match(MAPPED_RE);
   if (mapped) return ipv4Private(mapped[1]);
   return addr === '::' || addr === '::1'
-    || /^f[cd]/.test(addr)            // fc00::/7 unique local
-    || /^fe[89ab]/.test(addr)         // fe80::/10 link-local
-    || /^ff/.test(addr)               // multicast
-    || /^::ffff:/.test(addr)          // other mapped forms
-    || /^64:ff9b:/.test(addr);        // NAT64 to IPv4
+    || IS_PRIVATE_ADDRESS_RE.test(addr)            // fc00::/7 unique local
+    || IS_PRIVATE_ADDRESS_RE_2.test(addr)         // fe80::/10 link-local
+    || IS_PRIVATE_ADDRESS_RE_3.test(addr)               // multicast
+    || IS_PRIVATE_ADDRESS_RE_4.test(addr)          // other mapped forms
+    || IS_PRIVATE_ADDRESS_RE_5.test(addr);        // NAT64 to IPv4
 }
 
 /** http(s) only, no credentials, and every address the host resolves to is public. */
 async function publicAddresses(raw, lookupImpl = (host) => lookup(host, { all: true, verbatim: true })) {
   let url;
   try { url = new URL(raw); } catch { return null; }
-  if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
-  const host = url.hostname.replace(/^\[|\]$/g, '');
-  if (!host || /^localhost$|\.localhost$|\.internal$|\.local$/i.test(host)) return null;
+  if (!PUBLIC_ADDRESSES_RE.test(url.protocol) || url.username || url.password) return null;
+  const host = url.hostname.replace(ADDR_RE, '');
+  if (!host || PUBLIC_ADDRESSES_RE_2.test(host)) return null;
   if (isIP(host)) return isPrivateAddress(host) ? null : [{ address: host, family: isIP(host) }];
   try {
     const addrs = await lookupImpl(host);
@@ -229,7 +245,7 @@ async function readCapped(res) {
 }
 
 export async function fetchArticleText(url, { timeoutMs = 5000, fetchImpl = fetchPinned, lookupImpl } = {}) {
-  if (!url || !/^https?:\/\//.test(url)) return null;
+  if (!url || !FETCH_ARTICLE_TEXT_RE.test(url)) return null;
   try {
     const signal = AbortSignal.timeout(timeoutMs);
     let current = url;
@@ -440,7 +456,7 @@ export class ArchiveSource {
     for (const { dir, days } of this.dirs) {
       try {
         const cutoff = Date.now() - days * 86_400_000;
-        files.push(...(await readdir(dir)).filter((f) => /^\d{4}-\d{2}-\d{2}T.*\.json$/.test(f)).map((f) => ({ file: path.join(dir, f), cutoff })));
+        files.push(...(await readdir(dir)).filter((f) => LOAD_RE.test(f)).map((f) => ({ file: path.join(dir, f), cutoff })));
       } catch {
         // directory not created yet
       }

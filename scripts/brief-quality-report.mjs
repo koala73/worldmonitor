@@ -43,6 +43,9 @@ import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
 import { singleLinkCluster } from './lib/brief-dedup-embed.mjs';
 import { normalizeForEmbedding } from './lib/brief-embedding.mjs';
 
+const PARSE_DROP_LINE_RE = /(\w+)=([^\s]+)/g;
+
+
 loadEnvFile(import.meta.url);
 
 const REPLAY_KEY_PREFIX = 'digest:replay-log:v1';
@@ -116,7 +119,7 @@ async function readStdinDropLines() {
 function parseDropLine(line) {
   // [digest] brief filter drops user=X sensitivity=Y variant=Z outcome=W in=N dropped_*=N out=N
   const fields = {};
-  for (const m of line.matchAll(/(\w+)=([^\s]+)/g)) fields[m[1]] = m[2];
+  for (const m of line.matchAll(PARSE_DROP_LINE_RE)) fields[m[1]] = m[2];
   return fields;
 }
 

@@ -29,6 +29,11 @@ import { INDICATOR_REGISTRY, getIndicatorSourceKeys } from './_indicator-registr
 import type { IndicatorSpec } from './_indicator-registry';
 import { STANDALONE_SOURCE_META_MAX_STALE_MIN } from './_standalone-source-thresholds';
 
+const STRIP_TEMPLATE_TOKENS_RE = /:\{[^}]+\}/g;
+const STRIP_TEMPLATE_TOKENS_RE_2 = /:\*/g;
+const STRIP_TRAILING_VERSION_RE = /:v\d+$/;
+
+
 export interface DimensionFreshnessResult {
   /** Oldest (min) `fetchedAt` across the dimension's indicators. 0 when nothing ever observed. */
   lastObservedAtMs: number;
@@ -45,7 +50,7 @@ export interface DimensionFreshnessResult {
 //   'displacement:summary:v1:{year}'  -> 'displacement:summary:v1'
 //   'economic:imf:macro:v2'           -> 'economic:imf:macro:v2' (unchanged)
 function stripTemplateTokens(sourceKey: string): string {
-  return sourceKey.replace(/:\{[^}]+\}/g, '').replace(/:\*/g, '');
+  return sourceKey.replace(STRIP_TEMPLATE_TOKENS_RE, '').replace(STRIP_TEMPLATE_TOKENS_RE_2, '');
 }
 
 // Mirrors the version-strip in scripts/_seed-utils.mjs writeExtraKeyWithMeta:
@@ -55,7 +60,7 @@ function stripTemplateTokens(sourceKey: string): string {
 // canonical data-key versioning, but the seed-meta variant always drops
 // the trailing version. Strip it here too so we line up with reality.
 function stripTrailingVersion(stripped: string): string {
-  return stripped.replace(/:v\d+$/, '');
+  return stripped.replace(STRIP_TRAILING_VERSION_RE, '');
 }
 
 // Explicit overrides for cases where the template/version strip still

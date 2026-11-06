@@ -18,13 +18,15 @@
  */
 
 /** A Google News search wrapper — the class of feed that silently zeroes. */
+const IS_CBC_RSS_RE = /^https?:\/\/(?:www\.)?cbc\.ca\//i;
+
 export function isGoogleNewsWrapper(url) {
   return typeof url === 'string' && url.includes('news.google.com/rss/');
 }
 
 /** Catalogued CBC native RSS (www or apex). Not a GNews workaround. */
 export function isCbcRss(url) {
-  return typeof url === 'string' && /^https?:\/\/(?:www\.)?cbc\.ca\//i.test(url);
+  return typeof url === 'string' && IS_CBC_RSS_RE.test(url);
 }
 
 /**

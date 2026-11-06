@@ -7,6 +7,9 @@ import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client
 import type { ListClimateNewsResponse, ClimateNewsItem } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { ClimateServiceClient } from '@/services/generated-rpc-clients';
 
+const TRUNCATE_SUMMARY_RE = /\s+\S*$/;
+
+
 const getClimateClient = createLazyClient(() => new ClimateServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 function formatTimeAgo(epochMs: number): string {
@@ -23,7 +26,7 @@ function formatTimeAgo(epochMs: number): string {
 
 function truncateSummary(text: string, maxLen = 120): string {
   if (!text || text.length <= maxLen) return text || '';
-  return text.slice(0, maxLen).replace(/\s+\S*$/, '') + '...';
+  return text.slice(0, maxLen).replace(TRUNCATE_SUMMARY_RE, '') + '...';
 }
 
 function renderNewsCard(item: ClimateNewsItem): SafeHtml {

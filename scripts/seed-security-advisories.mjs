@@ -3,6 +3,29 @@
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
 
+const PARSE_US_LEVEL_RE = /Level (\d)/i;
+const FIVE_POINT_RE = /^([1-5])\/5$/;
+const BY_COUNTRY_NAME_RE = /\b\w/g;
+const NORMALIZED_RE = /\p{Diacritic}/gu;
+const NORMALIZED_RE_2 = /['\u2019]/g;
+const NORMALIZED_RE_3 = /[.(),/-]/g;
+const WHITESPACE_RE = /\s+/g;
+const STRIPPED_RE = /<!\[CDATA\[([\s\S]*?)\]\]>/g;
+const STRIPPED_RE_2 = /<[^>]+>/g;
+const TITLE_RE = /<title[^>]*>([\s\S]*?)<\/title>/i;
+const LINK_RE = /<link[^>]*>([\s\S]*?)<\/link>/i;
+const DESCRIPTION_RE = /<description[^>]*>([\s\S]*?)<\/description>/i;
+const PUB_DATE_RE = /<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i;
+const ADVISORY_LEVEL_RE = /<ta:level[^>]*>([\s\S]*?)<\/ta:level>/i;
+const WARNINGS_RE = /<ta:warnings[^>]*>([\s\S]*?)<\/ta:warnings>/i;
+const ADVISORY_LABEL_RE = /<dc:description>([\s\S]*?)<\/dc:description>/i;
+const LINK_MATCH_RE = /<link[^>]*href=["']([^"']+)["']/i;
+const DESCRIPTION_RE_2 = /<summary[^>]*>([\s\S]*?)<\/summary>/i;
+const UPDATED_RE = /<updated[^>]*>([\s\S]*?)<\/updated>/i;
+const PUBLISHED_RE = /<published[^>]*>([\s\S]*?)<\/published>/i;
+const NORMALIZED_RE_4 = /\b(AEST|AEDT)$/;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:advisories:v1';
@@ -54,7 +77,7 @@ const ADVISORY_FEEDS = [
 const RELAY_URL = process.env.RELAY_URL || 'https://proxy.worldmonitor.app';
 
 export function parseUsLevel(title) {
-  const m = title.match(/Level (\d)/i);
+  const m = title.match(PARSE_US_LEVEL_RE);
   if (!m) return 'info';
   return { '4': 'do-not-travel', '3': 'reconsider', '2': 'caution', '1': 'normal' }[m[1]] || 'info';
 }
@@ -79,7 +102,7 @@ export function parseAuLevel(item) {
   for (const [text, level] of AU_ADVICE_LABELS) {
     if (label === text) return level;
   }
-  const fivePoint = String(item.advisoryLevel || '').trim().match(/^([1-5])\/5$/);
+  const fivePoint = String(item.advisoryLevel || '').trim().match(FIVE_POINT_RE);
   if (fivePoint) return AU_FIVE_POINT_LEVELS[fivePoint[1]] || 'info';
 
   const l = `${item.title || ''} ${item.description || ''}`.toLowerCase();
@@ -102,7 +125,7 @@ const SORTED_COUNTRY_ENTRIES = Object.entries(COUNTRY_NAMES).sort((a, b) => b[0]
 const BY_COUNTRY_NAME = Object.fromEntries(
   Object.entries(COUNTRY_NAMES).map(([name, code]) => [
     code,
-    name.replace(/\b\w/g, (c) => c.toUpperCase()),
+    name.replace(BY_COUNTRY_NAME_RE, (c) => c.toUpperCase()),
   ]),
 );
 
@@ -112,8 +135,8 @@ function extractCountry(title, feed) {
   // Apostrophes are deleted, not spaced: the country keys spell
   // "democratic peoples republic of korea", and a space left "republic of
   // korea" (KR) as the longest match for Smartraveller's North Korea title.
-  const normalized = title.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
-    .replace(/['\u2019]/g, '').replace(/[.(),/-]/g, ' ').replace(/\s+/g, ' ');
+  const normalized = title.normalize('NFKD').replace(NORMALIZED_RE, '').toLowerCase()
+    .replace(NORMALIZED_RE_2, '').replace(NORMALIZED_RE_3, ' ').replace(WHITESPACE_RE, ' ');
   for (const [name, code] of SORTED_COUNTRY_ENTRIES) {
     if (normalized.includes(name)) return code;
   }
@@ -129,9 +152,9 @@ function isValidUrl(link) {
 }
 
 function stripHtml(html) {
-  const stripped = html.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, '');
-  return decodeHtmlEntities(stripped).replace(/\s+/g, ' ').trim();
+  const stripped = html.replace(STRIPPED_RE, '$1')
+    .replace(STRIPPED_RE_2, '');
+  return decodeHtmlEntities(stripped).replace(WHITESPACE_RE, ' ').trim();
 }
 
 export function parseRssItems(xml) {
@@ -140,13 +163,13 @@ export function parseRssItems(xml) {
   let match;
   while ((match = itemRegex.exec(xml)) !== null) {
     const block = match[1];
-    const title = stripHtml((block.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
-    const link = stripHtml((block.match(/<link[^>]*>([\s\S]*?)<\/link>/i) || [])[1] || '');
-    const description = stripHtml((block.match(/<description[^>]*>([\s\S]*?)<\/description>/i) || [])[1] || '');
-    const pubDate = stripHtml((block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i) || [])[1] || '');
-    const advisoryLevel = stripHtml((block.match(/<ta:level[^>]*>([\s\S]*?)<\/ta:level>/i) || [])[1] || '');
-    const warnings = (block.match(/<ta:warnings[^>]*>([\s\S]*?)<\/ta:warnings>/i) || [])[1] || '';
-    const advisoryLabel = stripHtml((warnings.match(/<dc:description>([\s\S]*?)<\/dc:description>/i) || [])[1] || '');
+    const title = stripHtml((block.match(TITLE_RE) || [])[1] || '');
+    const link = stripHtml((block.match(LINK_RE) || [])[1] || '');
+    const description = stripHtml((block.match(DESCRIPTION_RE) || [])[1] || '');
+    const pubDate = stripHtml((block.match(PUB_DATE_RE) || [])[1] || '');
+    const advisoryLevel = stripHtml((block.match(ADVISORY_LEVEL_RE) || [])[1] || '');
+    const warnings = (block.match(WARNINGS_RE) || [])[1] || '';
+    const advisoryLabel = stripHtml((warnings.match(ADVISORY_LABEL_RE) || [])[1] || '');
     items.push({ title, link, description, pubDate, advisoryLevel, advisoryLabel });
   }
   return items;
@@ -158,12 +181,12 @@ function parseAtomEntries(xml) {
   let match;
   while ((match = entryRegex.exec(xml)) !== null) {
     const block = match[1];
-    const title = stripHtml((block.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '');
-    const linkMatch = block.match(/<link[^>]*href=["']([^"']+)["']/i);
+    const title = stripHtml((block.match(TITLE_RE) || [])[1] || '');
+    const linkMatch = block.match(LINK_MATCH_RE);
     const link = linkMatch ? linkMatch[1] : '';
-    const description = stripHtml((block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i) || [])[1] || '');
-    const updated = stripHtml((block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i) || [])[1] || '');
-    const published = stripHtml((block.match(/<published[^>]*>([\s\S]*?)<\/published>/i) || [])[1] || '');
+    const description = stripHtml((block.match(DESCRIPTION_RE_2) || [])[1] || '');
+    const updated = stripHtml((block.match(UPDATED_RE) || [])[1] || '');
+    const published = stripHtml((block.match(PUBLISHED_RE) || [])[1] || '');
     entries.push({ title, link, description, pubDate: updated || published });
   }
   return entries;
@@ -252,7 +275,7 @@ export async function fetchFeed(feed, doFetch = fetch) {
 const ZONE_OFFSETS = { AEST: '+1000', AEDT: '+1100' };
 
 function toIsoDate(pubDate) {
-  const normalized = String(pubDate || '').trim().replace(/\b(AEST|AEDT)$/, (zone) => ZONE_OFFSETS[zone]);
+  const normalized = String(pubDate || '').trim().replace(NORMALIZED_RE_4, (zone) => ZONE_OFFSETS[zone]);
   const parsed = normalized ? new Date(normalized) : null;
   return parsed && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : new Date().toISOString();
 }

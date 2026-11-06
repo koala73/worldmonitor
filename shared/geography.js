@@ -22,6 +22,9 @@
 
 import iso2ToRegionData from './iso2-to-region.json' with { type: 'json' };
 
+const T_RE = /-/g;
+
+
 /** @type {import('./regions.types.js').RegionId[]} */
 export const REGION_IDS = [
   'mena',
@@ -341,15 +344,15 @@ export function isSignalInRegion(theater, regionOrId) {
   if (!region) return false;
   // Normalize both sides: lowercase, trim, collapse dashes to spaces so that
   // 'persian-gulf' and 'Persian Gulf' are treated as the same token.
-  const t = String(theater ?? '').toLowerCase().trim().replace(/-/g, ' ');
+  const t = String(theater ?? '').toLowerCase().trim().replace(T_RE, ' ');
   if (!t) return false;
   const theaters = Array.isArray(region.theaters) ? region.theaters : [];
   for (const label of theaters) {
-    if (t.includes(String(label).toLowerCase().replace(/-/g, ' '))) return true;
+    if (t.includes(String(label).toLowerCase().replace(T_RE, ' '))) return true;
   }
   const aliases = Array.isArray(region.signalAliases) ? region.signalAliases : [];
   for (const alias of aliases) {
-    if (t.includes(String(alias).toLowerCase().replace(/-/g, ' '))) return true;
+    if (t.includes(String(alias).toLowerCase().replace(T_RE, ' '))) return true;
   }
   return false;
 }

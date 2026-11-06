@@ -29,6 +29,47 @@ import { getPublicCorsHeaders } from './_cors.js';
 import { appendDeprecationPolicyLinkToRecord, DEPRECATION_POLICY_LINK } from '../server/_shared/deprecation-policy';
 import { declaredHtmlCanonical, pageCanonicalUrl } from '../shared/page-canonical.js';
 
+const DECODE_HTML_ENTITIES_RE = /&(nbsp|amp|lt|gt|quot|apos|#(x[\da-f]+|\d+));/gi;
+const N_RE = /^x/i;
+const STRIP_TAGS_RE = /<[^>]+>/g;
+const WHITESPACE_RE = /\s+/g;
+const PARAMS_RE = /^utm_/i;
+const TITLE_MATCH_RE = /<title[^>]*>([\s\S]*?)<\/title>/i;
+const BODY_RE = /<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const BODY_RE_2 = /<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const BODY_RE_3 = /<noscript\b[^>]*>[\s\S]*?<\/noscript(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi;
+const MAIN_RE = /<main\b[\s\S]*?<\/main>/i;
+const TEXT_RE = /<h1\b[^>]*>([\s\S]*?)<\/h1>/gi;
+const TEXT_RE_2 = /<h2\b[^>]*>([\s\S]*?)<\/h2>/gi;
+const TEXT_RE_3 = /<h3\b[^>]*>([\s\S]*?)<\/h3>/gi;
+const TEXT_RE_4 = /<h4\b[^>]*>([\s\S]*?)<\/h4>/gi;
+const TEXT_RE_5 = /<h5\b[^>]*>([\s\S]*?)<\/h5>/gi;
+const TEXT_RE_6 = /<h6\b[^>]*>([\s\S]*?)<\/h6>/gi;
+const TEXT_RE_7 = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+const TARGET_RE = /&/g;
+const TARGET_RE_2 = /</g;
+const TARGET_RE_3 = />/g;
+const TEXT_RE_8 = /<div\b/i;
+const TEXT_RE_9 = /<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi;
+const TEXT_RE_10 = /<li\b[^>]*>([\s\S]*?)<\/li>/gi;
+const TEXT_RE_11 = /<br\s*\/?>/gi;
+const TEXT_RE_12 = /<\/p>/gi;
+const TEXT_RE_13 = /<\/div>/gi;
+const HTML_TO_MARKDOWN_RE = /[ \t]+\n/g;
+const HTML_TO_MARKDOWN_RE_2 = /\n{3,}/g;
+const HTML_TO_MARKDOWN_RE_3 = /[ \t]{2,}/g;
+const HTML_TO_MARKDOWN_RE_4 = /^# /m;
+const ENTRY_RE = /^([A-Za-z0-9_.-]+):\s*(.*)$/;
+const QUOTE_FRONT_MATTER_VALUE_RE = /^(["']).*\1$/;
+const TITLE_RE = /^# (.+)$/m;
+const INHERITED_CACHE_CONTROL_RE = /\b(?:no-store|private|no-cache)\b/i;
+const HEADING_FROM_PATH_RE = /[-_]+/g;
+const FETCH_DECLARED_CANONICAL_RE = /html/i;
+const BUILD_MARKDOWN_TWIN_RESPONSE_RE = /markdown|text\/plain/i;
+const BUILD_MARKDOWN_TWIN_RESPONSE_RE_2 = /json/i;
+const BUILD_MARKDOWN_TWIN_RESPONSE_RE_3 = /<html|<body|<title/i;
+
+
 export const MD_TWIN_LOOP_HEADER = 'x-wm-md-twin';
 const MAX_TWIN_CHARS = 512_000;
 export const MAX_TWIN_BYTES = 512_000;
@@ -182,14 +223,14 @@ const HTML_ENTITIES: Record<string, string> = {
 };
 
 function decodeHtmlEntities(value: string): string {
-  return value.replace(/&(nbsp|amp|lt|gt|quot|apos|#(x[\da-f]+|\d+));/gi, (_, entity: string, code: string | undefined) => {
+  return value.replace(DECODE_HTML_ENTITIES_RE, (_, entity: string, code: string | undefined) => {
     if (code === undefined) return HTML_ENTITIES[entity.toLowerCase()]!;
     // `fromCodePoint`, not `fromCharCode`: the latter coerces with ToUint16, so
     // a code point above 0xFFFF wraps back under the `>= 32` guard after passing
     // it — `&#65596;` yielded a literal `<` and `&#65536;` a NUL. It also
     // truncates astral characters, decoding `&#128512;` to a private-use glyph
     // instead of the emoji. Same reasoning as src/utils/html-entities.ts.
-    const n = /^x/i.test(code) ? Number.parseInt(code.slice(1), 16) : Number(code);
+    const n = N_RE.test(code) ? Number.parseInt(code.slice(1), 16) : Number(code);
     const decodable = Number.isInteger(n) && n >= 32 && n <= 0x10ffff
       && !(n >= 0xd800 && n <= 0xdfff);
     return decodable ? String.fromCodePoint(n) : '';
@@ -197,7 +238,7 @@ function decodeHtmlEntities(value: string): string {
 }
 
 function stripTags(value: string): string {
-  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return value.replace(STRIP_TAGS_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function withoutTrackingParams(href: string): string {
@@ -208,56 +249,56 @@ function withoutTrackingParams(href: string): string {
   if (queryIndex < 0) return href;
   // Preserve functional parameters and their URL encoding.
   const params = pathAndQuery.slice(queryIndex + 1).split('&')
-    .filter(param => !/^utm_/i.test(new URLSearchParams(param).keys().next().value ?? ''));
+    .filter(param => !PARAMS_RE.test(new URLSearchParams(param).keys().next().value ?? ''));
   const query = params.join('&');
   return `${pathAndQuery.slice(0, queryIndex)}${query ? `?${query}` : ''}${hash}`;
 }
 
 export function htmlToMarkdown(html: string, fallbackTitle: string): string {
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const titleMatch = html.match(TITLE_MATCH_RE);
   const title = decodeHtmlEntities(stripTags(titleMatch?.[1] ?? '')) || fallbackTitle;
 
   const body = html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ')
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript(?:[\t\n\f\r ][^>]*|\/[^>]*)?>/gi, ' ');
+    .replace(BODY_RE, ' ')
+    .replace(BODY_RE_2, ' ')
+    .replace(BODY_RE_3, ' ');
 
-  const main = body.match(/<main\b[\s\S]*?<\/main>/i)?.[0] ?? body;
+  const main = body.match(MAIN_RE)?.[0] ?? body;
 
   let text = main
-    .replace(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi, (_m, inner: string) => `\n\n# ${stripTags(inner)}\n\n`)
-    .replace(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi, (_m, inner: string) => `\n\n## ${stripTags(inner)}\n\n`)
-    .replace(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi, (_m, inner: string) => `\n\n### ${stripTags(inner)}\n\n`)
-    .replace(/<h4\b[^>]*>([\s\S]*?)<\/h4>/gi, (_m, inner: string) => `\n\n#### ${stripTags(inner)}\n\n`)
-    .replace(/<h5\b[^>]*>([\s\S]*?)<\/h5>/gi, (_m, inner: string) => `\n\n##### ${stripTags(inner)}\n\n`)
-    .replace(/<h6\b[^>]*>([\s\S]*?)<\/h6>/gi, (_m, inner: string) => `\n\n###### ${stripTags(inner)}\n\n`)
+    .replace(TEXT_RE, (_m, inner: string) => `\n\n# ${stripTags(inner)}\n\n`)
+    .replace(TEXT_RE_2, (_m, inner: string) => `\n\n## ${stripTags(inner)}\n\n`)
+    .replace(TEXT_RE_3, (_m, inner: string) => `\n\n### ${stripTags(inner)}\n\n`)
+    .replace(TEXT_RE_4, (_m, inner: string) => `\n\n#### ${stripTags(inner)}\n\n`)
+    .replace(TEXT_RE_5, (_m, inner: string) => `\n\n##### ${stripTags(inner)}\n\n`)
+    .replace(TEXT_RE_6, (_m, inner: string) => `\n\n###### ${stripTags(inner)}\n\n`)
     .replace(
-      /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+      TEXT_RE_7,
       (_m, href: string, inner: string) => {
         const label = stripTags(inner) || href;
         // Parse decoded separators, then protect the URL from tag stripping and
         // the document's final entity pass so each reference is decoded once.
         const target = withoutTrackingParams(decodeHtmlEntities(href))
-          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          .replace(TARGET_RE, '&amp;').replace(TARGET_RE_2, '&lt;').replace(TARGET_RE_3, '&gt;');
         const link = `[${label}](${target})`;
-        return /<div\b/i.test(inner) ? `\n\n${link}\n\n` : link;
+        return TEXT_RE_8.test(inner) ? `\n\n${link}\n\n` : link;
       },
     )
-    .replace(/<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi,
+    .replace(TEXT_RE_9,
       (_m, label: string, value: string) => `\n- ${stripTags(label)}: ${stripTags(value)}\n`)
-    .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_m, inner: string) => `\n- ${stripTags(inner)}`)
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ');
+    .replace(TEXT_RE_10, (_m, inner: string) => `\n- ${stripTags(inner)}`)
+    .replace(TEXT_RE_11, '\n')
+    .replace(TEXT_RE_12, '\n\n')
+    .replace(TEXT_RE_13, '\n')
+    .replace(STRIP_TAGS_RE, ' ');
 
   text = decodeHtmlEntities(text)
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .replace(/[ \t]{2,}/g, ' ')
+    .replace(HTML_TO_MARKDOWN_RE, '\n')
+    .replace(HTML_TO_MARKDOWN_RE_2, '\n\n')
+    .replace(HTML_TO_MARKDOWN_RE_3, ' ')
     .trim();
 
-  if (!/^# /m.test(text)) {
+  if (!HTML_TO_MARKDOWN_RE_4.test(text)) {
     text = text.length > 0 ? `# ${title}\n\n${text}` : `# ${title}`;
   }
 
@@ -303,15 +344,15 @@ function frontMatterOf(markdown: string): { block: string; lines: string[] } | n
  * a metadata block no consumer can parse, canonical included.
  */
 function quoteFrontMatterValue(line: string): string {
-  const entry = line.match(/^([A-Za-z0-9_.-]+):\s*(.*)$/);
+  const entry = line.match(ENTRY_RE);
   if (!entry) return line;
   const [, key, value = ''] = entry;
-  if (value === '' || /^(["']).*\1$/.test(value)) return line;
+  if (value === '' || QUOTE_FRONT_MATTER_VALUE_RE.test(value)) return line;
   return `${key}: ${JSON.stringify(value)}`;
 }
 
 function withHeading(markdown: string, heading: string): string {
-  if (/^# /m.test(markdown)) return markdown;
+  if (HTML_TO_MARKDOWN_RE_4.test(markdown)) return markdown;
   // Asking the sibling for markdown makes a front-matter-led body the common
   // case, and a heading prepended above the opening `---` would swallow the
   // whole block into the document text.
@@ -331,7 +372,7 @@ function withMarkdownMetadata(markdown: string, canonical: string | null, fallba
     lines.push(`canonical: ${JSON.stringify(canonical)}`);
     return `---\n${lines.join('\n')}\n---\n${markdown.slice(frontMatter.block.length)}`;
   }
-  const title = markdown.match(/^# (.+)$/m)?.[1] ?? fallbackTitle;
+  const title = markdown.match(TITLE_RE)?.[1] ?? fallbackTitle;
   const canonicalLine = canonical ? `\ncanonical: ${JSON.stringify(canonical)}` : '';
   return `---\ntitle: ${JSON.stringify(title)}${canonicalLine}\n---\n\n${markdown}`;
 }
@@ -365,12 +406,12 @@ function markdownHeadersFor(
 function inheritedCacheControl(response: Response): Record<string, string> {
   const value = response.headers.get('cache-control');
   if (!value) return {};
-  return { 'Cache-Control': /\b(?:no-store|private|no-cache)\b/i.test(value) ? 'no-store' : value };
+  return { 'Cache-Control': INHERITED_CACHE_CONTROL_RE.test(value) ? 'no-store' : value };
 }
 
 function headingFromPath(pathname: string): string {
   const leaf = pathname.split('/').filter(Boolean).pop() ?? pathname;
-  return leaf.replace(/[-_]+/g, ' ');
+  return leaf.replace(HEADING_FROM_PATH_RE, ' ');
 }
 
 async function readSiblingBody(response: Response): Promise<string> {
@@ -437,7 +478,7 @@ async function fetchDeclaredCanonical(
     const headers = new Headers(outbound);
     headers.set('accept', 'text/html');
     const res = await fetchImpl(siblingUrl, { method: 'GET', headers, redirect: 'manual', signal });
-    if (!res.ok || !/html/i.test(res.headers.get('content-type') ?? '')) {
+    if (!res.ok || !FETCH_DECLARED_CANONICAL_RE.test(res.headers.get('content-type') ?? '')) {
       void res.body?.cancel().catch(() => {});
       return null;
     }
@@ -595,7 +636,7 @@ export async function buildMarkdownTwinResponse(
 
   const resolveCanonical = async (body: string | null, contentType: string): Promise<string | null> => {
     if (!servesCanonicalPage) return null;
-    const declared = body !== null && /html/i.test(contentType)
+    const declared = body !== null && FETCH_DECLARED_CANONICAL_RE.test(contentType)
       ? declaredHtmlCanonical(body)
       : await fetchDeclaredCanonical(siblingUrl, outbound, deadline, fetchImpl);
     return pageCanonicalUrl(siblingUrl, declared);
@@ -623,16 +664,16 @@ export async function buildMarkdownTwinResponse(
   try {
     raw = await readSiblingBody(siblingRes);
 
-    if (/markdown|text\/plain/i.test(contentType) && (/^# /m.test(raw) || FRONT_MATTER.test(raw))) {
+    if (BUILD_MARKDOWN_TWIN_RESPONSE_RE.test(contentType) && (HTML_TO_MARKDOWN_RE_4.test(raw) || FRONT_MATTER.test(raw))) {
       markdown = raw.slice(0, MAX_TWIN_CHARS);
-    } else if (/json/i.test(contentType) || raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+    } else if (BUILD_MARKDOWN_TWIN_RESPONSE_RE_2.test(contentType) || raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
       markdown = jsonToMarkdown(raw, heading);
-    } else if (/html/i.test(contentType) || /<html|<body|<title/i.test(raw)) {
+    } else if (FETCH_DECLARED_CANONICAL_RE.test(contentType) || BUILD_MARKDOWN_TWIN_RESPONSE_RE_3.test(raw)) {
       markdown = htmlToMarkdown(raw, heading);
     } else if (raw.trim().length === 0) {
       markdown = `# ${heading}\n`;
     } else {
-      markdown = /^# /m.test(raw) ? raw.slice(0, MAX_TWIN_CHARS) : `# ${heading}\n\n${raw}`.slice(0, MAX_TWIN_CHARS);
+      markdown = HTML_TO_MARKDOWN_RE_4.test(raw) ? raw.slice(0, MAX_TWIN_CHARS) : `# ${heading}\n\n${raw}`.slice(0, MAX_TWIN_CHARS);
     }
 
     markdown = withHeading(markdown, heading);

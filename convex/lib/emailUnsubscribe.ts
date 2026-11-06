@@ -18,6 +18,14 @@
  * `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
  */
 
+const BASE64_URL_ENCODE_RE = /\+/g;
+const BASE64_URL_ENCODE_RE_2 = /\//g;
+const BASE64_URL_ENCODE_RE_3 = /=+$/;
+const BASE64_URL_DECODE_RE = /^[A-Za-z0-9_-]+$/;
+const PADDED_RE = /-/g;
+const PADDED_RE_2 = /_/g;
+const VERIFY_UNSUBSCRIBE_TOKEN_RE = /^[0-9a-f]{64}$/;
+
 export const EMAIL_UNSUBSCRIBE_SECRET_ENV = "EMAIL_UNSUBSCRIBE_SECRET";
 export const EMAIL_UNSUBSCRIBE_PATH = "/email/unsubscribe";
 const TOKEN_VERSION = "v1";
@@ -39,13 +47,13 @@ function base64UrlEncode(value: string): string {
   const bytes = new TextEncoder().encode(value);
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary).replace(BASE64_URL_ENCODE_RE, "-").replace(BASE64_URL_ENCODE_RE_2, "_").replace(BASE64_URL_ENCODE_RE_3, "");
 }
 
 function base64UrlDecode(value: string): string | null {
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  if (!BASE64_URL_DECODE_RE.test(value)) return null;
   try {
-    const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
+    const padded = value.replace(PADDED_RE, "+").replace(PADDED_RE_2, "/") + "===".slice((value.length + 3) % 4);
     const binary = atob(padded);
     const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -90,7 +98,7 @@ export async function verifyUnsubscribeToken(
   const parts = token.split(".");
   if (parts.length !== 3 || parts[0] !== TOKEN_VERSION) return null;
   const [version, payload, signature] = parts as [string, string, string];
-  if (!/^[0-9a-f]{64}$/.test(signature)) return null;
+  if (!VERIFY_UNSUBSCRIBE_TOKEN_RE.test(signature)) return null;
   const expected = await hmacHex(secret, `${version}.${payload}`);
   if (!timingSafeEqual(expected, signature)) return null;
   const json = base64UrlDecode(payload);

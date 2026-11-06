@@ -8,6 +8,15 @@ import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
+const NORMALIZED_RE = /\bU\.S\.(?:A\.)?/g;
+const NORMALIZED_RE_2 = /\bUS\b/g;
+const NORMALIZED_RE_3 = /\p{Diacritic}/gu;
+const NORMALIZED_RE_4 = /[^a-z\s]+/g;
+const WHITESPACE_RE = /\s+/;
+const PLACE_WORDS_RE = /[^a-z]/g;
+const CREDIT_RE = /\s[-–—|]\s+([^-–—|]+)$/;
+
+
 const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -104,12 +113,12 @@ function* scanCountryCodes(text, { places = false } = {}) {
   // so it survives the stopword pass. Lowercase `us` (pronoun) has no equivalent expansion
   // and is stopped by UNIGRAM_STOPWORDS. `\b` avoids matching inside words like "plus".
   // Every non-letter separates words, so "Kharkiv’s" and "Mosul–Aleppo" still name places.
-  const normalized = text.replace(/\bU\.S\.(?:A\.)?/g, 'United States ').replace(/\bUS\b/g, 'United States')
-    .normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
-    .replace(/[^a-z\s]+/g, ' ');
+  const normalized = text.replace(NORMALIZED_RE, 'United States ').replace(NORMALIZED_RE_2, 'United States')
+    .normalize('NFKD').replace(NORMALIZED_RE_3, '').toLowerCase()
+    .replace(NORMALIZED_RE_4, ' ');
 
-  const words = normalized.split(/\s+/).filter(Boolean);
-  const placeWords = places ? words.map((w) => w.replace(/[^a-z]/g, '')) : null;
+  const words = normalized.split(WHITESPACE_RE).filter(Boolean);
+  const placeWords = places ? words.map((w) => w.replace(PLACE_WORDS_RE, '')) : null;
   for (let i = 0; i < words.length; i++) {
     if (placeWords) {
       const placeMatch = matchPlace(placeWords, i);
@@ -120,8 +129,8 @@ function* scanCountryCodes(text, { places = false } = {}) {
       }
     }
     if (i < words.length - 1) {
-      const left = words[i].replace(/[^a-z]/g, '');
-      const right = words[i + 1].replace(/[^a-z]/g, '');
+      const left = words[i].replace(PLACE_WORDS_RE, '');
+      const right = words[i + 1].replace(PLACE_WORDS_RE, '');
       if (left && right) {
         const bigram = `${left} ${right}`;
         if (LOOKUP[bigram]) {
@@ -131,7 +140,7 @@ function* scanCountryCodes(text, { places = false } = {}) {
         }
       }
     }
-    const clean = words[i].replace(/[^a-z]/g, '');
+    const clean = words[i].replace(PLACE_WORDS_RE, '');
     if (clean.length < 2) continue;
     if (UNIGRAM_STOPWORDS.has(clean)) continue;
     if (LOOKUP[clean] && LOOKUP[clean] !== 'XX') yield LOOKUP[clean];
@@ -206,10 +215,10 @@ const CREDIT_TAIL_CHARS = 120;
 export function stripPublisherSuffix(text) {
   if (!text) return text;
   const tailStart = Math.max(0, text.length - CREDIT_TAIL_CHARS);
-  const credit = /\s[-–—|]\s+([^-–—|]+)$/.exec(text.slice(tailStart));
+  const credit = CREDIT_RE.exec(text.slice(tailStart));
   if (!credit) return text;
   const tail = credit[1].trim();
-  if (tail.split(/\s+/).length > 6) return text;
+  if (tail.split(WHITESPACE_RE).length > 6) return text;
   const isCredit = PUBLISHER_CREDIT_WORDS.test(tail) || scanCountryCodes(tail, { places: true }).next().done;
   return isCredit ? text.slice(0, tailStart + credit.index) : text;
 }

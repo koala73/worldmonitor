@@ -33,6 +33,11 @@ import {
   TPS_MCI_SOURCE,
 } from '../shared/toronto-safety.mjs';
 
+const FETCH_TPS_JSON_RE = /timeout|aborted/i;
+const WHITESPACE_RE = /\s+/;
+const NORMALIZED_RE = /(?:z|[+-]\d\d:\d\d)$/i;
+
+
 export {
   TPS_CALLS_KEY,
   TPS_CALLS_META_KEY,
@@ -515,7 +520,7 @@ async function fetchTpsJson(url, {
       });
     } catch (err) {
       const message = `${err?.message || err}`;
-      if (err?.name === 'TimeoutError' || /timeout|aborted/i.test(message)) {
+      if (err?.name === 'TimeoutError' || FETCH_TPS_JSON_RE.test(message)) {
         throw new TpsOpenDataError(`timeout:${label}`, { cause: err });
       }
       throw new TpsOpenDataError(`fetch_failed:${label}`, { cause: err });
@@ -537,7 +542,7 @@ function featureObjectId(feature, objectIdField) {
 
 function sortFeatureRows(features, orderByFields) {
   const clauses = String(orderByFields || '').split(',').map((part) => {
-    const [field, direction] = part.trim().split(/\s+/);
+    const [field, direction] = part.trim().split(WHITESPACE_RE);
     return { field, direction: direction?.toUpperCase() === 'DESC' ? -1 : 1 };
   }).filter((clause) => clause.field);
   return [...features].sort((left, right) => {
@@ -665,7 +670,7 @@ async function fetchTpsCkanJson(url, {
 function ckanTimestampToEpoch(value) {
   const timestamp = textOrNull(value);
   if (!timestamp) return null;
-  const normalized = /(?:z|[+-]\d\d:\d\d)$/i.test(timestamp) ? timestamp : `${timestamp}Z`;
+  const normalized = NORMALIZED_RE.test(timestamp) ? timestamp : `${timestamp}Z`;
   const parsed = Date.parse(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }

@@ -1,3 +1,7 @@
+
+
+const SHIFT_MONTH_RE = /^(\d{4})-(\d{2})-01$/;
+const MONTH_START_MS_RE = /^\d{4}-\d{2}-01$/;
 export const CPI_COMPONENTS = ['headline', 'core', 'food', 'energy', 'shelter', 'services'] as const;
 
 export type CpiComponent = (typeof CPI_COMPONENTS)[number];
@@ -40,7 +44,7 @@ export function cpiDecadeKey(decade: number): string {
 }
 
 export function shiftMonth(isoDate: string, delta: number): string | undefined {
-  const match = /^(\d{4})-(\d{2})-01$/.exec(isoDate);
+  const match = SHIFT_MONTH_RE.exec(isoDate);
   if (!match) return undefined;
   const shifted = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1 + delta, 1));
   const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
@@ -48,7 +52,7 @@ export function shiftMonth(isoDate: string, delta: number): string | undefined {
 }
 
 export function monthStartMs(isoDate: string): number | undefined {
-  if (!/^\d{4}-\d{2}-01$/.test(isoDate)) return undefined;
+  if (!MONTH_START_MS_RE.test(isoDate)) return undefined;
   const ms = Date.parse(`${isoDate}T00:00:00Z`);
   return Number.isFinite(ms) ? ms : undefined;
 }
@@ -67,7 +71,7 @@ export function percentChange(current: number, base: number): number | undefined
 function indexByDate(points: CpiObservation[] | undefined): Map<string, number> {
   const indexed = new Map<string, number>();
   for (const point of points ?? []) {
-    if (!/^\d{4}-\d{2}-01$/.test(point.date) || !Number.isFinite(point.value)) continue;
+    if (!MONTH_START_MS_RE.test(point.date) || !Number.isFinite(point.value)) continue;
     indexed.set(point.date, point.value);
   }
   return indexed;

@@ -38,6 +38,10 @@ import { readFileSync } from 'node:fs';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const WHITESPACE_RE = /\s+/;
+const APT_ARCHIVE_HAS_RE = /^Version:/m;
+
+
 // Node floor tracks the lowest version CI actually builds on
 // (.github/workflows pins 22 and 24). Raise this when the 22 leg goes.
 const MIN_NODE_MAJOR = 22;
@@ -266,7 +270,7 @@ export function detectDistroFamily(osReleaseText) {
     const m = osReleaseText.match(new RegExp(`^${key}=("?)(.*?)\\1$`, 'm'));
     return m ? m[2] : '';
   };
-  const candidates = [field('ID'), ...field('ID_LIKE').split(/\s+/)].filter(Boolean);
+  const candidates = [field('ID'), ...field('ID_LIKE').split(WHITESPACE_RE)].filter(Boolean);
   for (const candidate of candidates) {
     const hit = DISTRO_FAMILIES.find((f) => f.ids.some((id) => candidate.startsWith(id)));
     if (hit) return hit;
@@ -344,7 +348,7 @@ export function resolvePackage(candidates, archiveHas, { requireArchive = false 
 function aptArchiveHas(name) {
   try {
     const out = execFileSync('apt-cache', ['show', name], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    return /^Version:/m.test(out);
+    return APT_ARCHIVE_HAS_RE.test(out);
   } catch {
     return false;
   }

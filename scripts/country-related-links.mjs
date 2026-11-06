@@ -38,6 +38,9 @@
 
 import { haversineKm } from '../shared/geo-distance.ts';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export const MIN_RELATED_COUNTRIES = 3;
 export const MAX_RELATED_COUNTRIES = 5;
 export const NEARBY_GAP_DEGREES = 1.5;
@@ -163,7 +166,7 @@ function tensionLabelsByPair(tensionPairs) {
     const codes = Array.isArray(pair?.countries)
       ? pair.countries.map((code) => String(code || '').toUpperCase())
       : [];
-    if (codes.length !== 2 || codes.some((code) => !/^[A-Z]{2}$/.test(code)) || codes[0] === codes[1]) continue;
+    if (codes.length !== 2 || codes.some((code) => !COUNTRY_CODE_RE.test(code)) || codes[0] === codes[1]) continue;
     const key = [...codes].sort().join(':');
     if (!out.has(key)) out.set(key, String(pair.label || codes.join('-')));
   }
@@ -203,7 +206,7 @@ export function selectRelatedCountries({
   proximityBoxesByCode = PROXIMITY_BOX_OVERRIDES,
 } = {}) {
   const published = (countries || []).filter((country) => (
-    /^[A-Z]{2}$/.test(String(country?.code || '')) && country.slug && country.name
+    COUNTRY_CODE_RE.test(String(country?.code || '')) && country.slug && country.name
   ));
   const tensionLabels = tensionLabelsByPair(tensionPairs);
   const bboxOf = (code) => (bboxByCode instanceof Map ? bboxByCode.get(code) : bboxByCode?.[code]) || null;

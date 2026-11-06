@@ -27,6 +27,15 @@ import {
   PORTWATCH_MAX_CACHE_AGE_MS,
 } from './_portwatch-content-freshness.mjs';
 
+const IS_TIMEOUT_LIKE_RE = /timeout|aborted|fetch failed|ECONNRESET|UND_ERR_/i;
+const FETCH_ALL_PORT_REFS_RE = /^[A-Z]{3}$/;
+const PARSE_MAX_DATE_OBSERVATION_RE = /^\d{4}-\d{2}-\d{2}$/;
+const REFRESH_FAILURE_CODE_RE = /timeout|timed out|abort/i;
+const IS_UPSTREAM_FETCH_FAILURE_RE = /^Redis |PortWatch cache read/;
+const IS_UPSTREAM_FETCH_FAILURE_RE_2 = /fetch failed/i;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export {
   buildContentFreshnessReport,
   buildPortActivityMetaPayload,
@@ -413,7 +422,7 @@ async function fetchWithTimeout(url, {
     const errMsg = err?.message || '';
     const isTimeoutLike = errName === 'TimeoutError'
       || errName === 'AbortError'
-      || /timeout|aborted|fetch failed|ECONNRESET|UND_ERR_/i.test(errMsg);
+      || IS_TIMEOUT_LIKE_RE.test(errMsg);
     if (!isTimeoutLike) throw err;
     // Greptile PR #3711 P1: best-effort callers (e.g. preflight maxDate)
     // opt out of proxy fallback so a degraded upstream can't burn the
@@ -619,7 +628,7 @@ export async function fetchAllPortRefs({
     const features = validatedPage(body, `reference page ${page}`, offset);
     for (const f of features) {
       const a = f?.attributes;
-      if (a?.portid == null || !/^[A-Z]{3}$/.test(a?.ISO3)) {
+      if (a?.portid == null || !FETCH_ALL_PORT_REFS_RE.test(a?.ISO3)) {
         throw incompletePage(`invalid reference row on page ${page}`);
       }
       const iso3 = String(a.ISO3);
@@ -1036,7 +1045,7 @@ export function parseMaxDateObservation(body) {
   } else if (typeof raw === 'string') {
     const candidate = raw.slice(0, 10);
     const parsedCandidate = Date.parse(`${candidate}T00:00:00Z`);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)
+    if (PARSE_MAX_DATE_OBSERVATION_RE.test(candidate)
         && Number.isFinite(parsedCandidate)
         && new Date(parsedCandidate).toISOString().slice(0, 10) === candidate) {
       maxDate = candidate;
@@ -1423,7 +1432,7 @@ function refreshFailureCode(reason) {
   const text = `${reason?.code || ''} ${reason?.message || reason || ''}`;
   if (INVALID_QUERY_PATTERN.test(text)) return 'invalid_query';
   if (RATE_LIMIT_PATTERN.test(text)) return 'rate_limited';
-  if (/timeout|timed out|abort/i.test(text)) return 'timeout';
+  if (REFRESH_FAILURE_CODE_RE.test(text)) return 'timeout';
   return 'fetch_error';
 }
 
@@ -2304,8 +2313,8 @@ export function isUpstreamFetchFailure(error, signal) {
   if (error.portwatchOwnFault === true) return false;
   if (error instanceof ReferenceError || error instanceof SyntaxError || error instanceof RangeError) return false;
   const message = String(error.message || '');
-  if (/^Redis |PortWatch cache read/.test(message)) return false;
-  if (error instanceof TypeError && !/fetch failed/i.test(message)) return false;
+  if (IS_UPSTREAM_FETCH_FAILURE_RE.test(message)) return false;
+  if (error instanceof TypeError && !IS_UPSTREAM_FETCH_FAILURE_RE_2.test(message)) return false;
   return true;
 }
 
@@ -2398,7 +2407,7 @@ export async function main() {
     const prevIso2List = await readSeedSnapshot(CANONICAL_KEY, { strict: true });
     previousMeta = await readSeedSnapshot(META_KEY, { strict: true });
     if (prevIso2List !== null && (!Array.isArray(prevIso2List)
-      || prevIso2List.some((iso2) => typeof iso2 !== 'string' || !/^[A-Z]{2}$/.test(iso2)))) {
+      || prevIso2List.some((iso2) => typeof iso2 !== 'string' || !COUNTRY_CODE_RE.test(iso2)))) {
       throw new Error('Invalid PortWatch canonical snapshot');
     }
     if (previousMeta !== null && (typeof previousMeta !== 'object' || Array.isArray(previousMeta))) {

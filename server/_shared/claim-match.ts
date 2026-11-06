@@ -23,6 +23,16 @@ import {
 } from './corroboration';
 import { declaredSourceTier, getSourceTier, type DeclaredTier } from './source-tiers';
 
+const CLAIM_TOKENS_RE = /[̀-ͯ]/g;
+const CLAIM_TOKENS_RE_2 = /['’]s\b/g;
+const CLAIM_TOKENS_RE_3 = /[^a-z0-9.%$-]+/;
+const CLAIM_TOKENS_RE_4 = /^[.$-]+|[.-]+$/g;
+const STEM_RE = /(ing|ed|es|s)$/;
+const STEM_RE_2 = /e$/;
+const FACT_LABEL_RE = /^(number|date):/;
+const FULL_RE = /^date:\d{4}-(\d{2}-\d{2})$/;
+
+
 export const CLAIM_MAX_CHARS = 300;
 
 /** Share of the claim's content words a headline must carry to match. */
@@ -59,16 +69,16 @@ export function claimTokens(text: string): string[] {
   return String(text || '')
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/['’]s\b/g, '')
-    .split(/[^a-z0-9.%$-]+/)
-    .map((token) => token.replace(/^[.$-]+|[.-]+$/g, ''))
+    .replace(CLAIM_TOKENS_RE, '')
+    .replace(CLAIM_TOKENS_RE_2, '')
+    .split(CLAIM_TOKENS_RE_3)
+    .map((token) => token.replace(CLAIM_TOKENS_RE_4, ''))
     .filter((token) => token.length > 1 && !STOPWORDS.has(token));
 }
 
 /** Crude stem so "strikes" meets "strike" and "sanctioned" meets "sanction". */
 function stem(token: string): string {
-  return token.replace(/(ing|ed|es|s)$/, '').replace(/e$/, '');
+  return token.replace(STEM_RE, '').replace(STEM_RE_2, '');
 }
 
 /**
@@ -180,7 +190,7 @@ export type FigureCheck = {
 
 /** `number:200` -> `200`, `date:2026-10-09` -> `2026-10-09`: the figure as a reader would write it. */
 function factLabel(fact: string): string {
-  return fact.replace(/^(number|date):/, '');
+  return fact.replace(FACT_LABEL_RE, '');
 }
 
 /**
@@ -200,13 +210,13 @@ export function checkClaimFigures(claim: string, coverageTexts: readonly string[
   const ground = extractNumericFacts(coverageTexts.join('\n'), { dateParts: false });
   const fullDateMonthDays = new Set<string>();
   for (const fact of facts) {
-    const full = fact.match(/^date:\d{4}-(\d{2}-\d{2})$/);
+    const full = fact.match(FULL_RE);
     if (full) fullDateMonthDays.add(`date:${full[1]}`);
   }
   const listed = [...facts].filter((fact) => !fullDateMonthDays.has(fact)).sort();
   const isGrounded = (fact: string) => {
     if (ground.has(fact)) return true;
-    const full = fact.match(/^date:\d{4}-(\d{2}-\d{2})$/);
+    const full = fact.match(FULL_RE);
     return full !== null && ground.has(`date:${full[1]}`);
   };
   return {

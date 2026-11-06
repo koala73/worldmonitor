@@ -29,6 +29,9 @@ import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetc
 import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const WB_BASE = 'https://api.worldbank.org/v2';
@@ -109,7 +112,7 @@ export function deriveNonDrsCountryCodes(records) {
   if (!Array.isArray(records)) return [];
   return [...new Set(records.flatMap((record) => {
     const iso2 = record?.iso2Code;
-    if (typeof iso2 !== 'string' || !/^[A-Z]{2}$/.test(iso2)) return [];
+    if (typeof iso2 !== 'string' || !COUNTRY_CODE_RE.test(iso2)) return [];
     // World Bank aggregate rows use region.id=NA and must never become
     // country-level scorer policy.
     if (record?.region?.id === 'NA') return [];
@@ -205,7 +208,7 @@ export function validate(data) {
     && Object.keys(data.countries).length >= 80
     && Array.isArray(nonDrsCountryCodes)
     && nonDrsCountryCodes.length >= 40
-    && nonDrsCountryCodes.every((code) => typeof code === 'string' && /^[A-Z]{2}$/.test(code))
+    && nonDrsCountryCodes.every((code) => typeof code === 'string' && COUNTRY_CODE_RE.test(code))
     && new Set(nonDrsCountryCodes).size === nonDrsCountryCodes.length
   );
 }

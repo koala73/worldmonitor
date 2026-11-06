@@ -67,6 +67,14 @@ import {
   webhookKey,
 } from './lib/shipping-webhook-delivery.mjs';
 
+const BARE_RE = /-\d{2}$/;
+const STORM_KEY_RE = /[^\p{L}\p{N}]+/gu;
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+const CURSOR_RE = /^\d+$/;
+const IDS_RE = /^webhook:sub:(.+):v1$/;
+const ENDPOINT_RE = /\/+$/;
+
+
 const require = createRequire(import.meta.url);
 // CJS so the relay publisher shares the exact id functions (and the list key).
 const {
@@ -492,8 +500,8 @@ export function stableHazardId(id) {
 
 /** The storm name with its classification and GDACS season suffix stripped, lower-cased: "Super Typhoon Champi" and "CHAMPI-26" are both "champi". */
 export function stormKey(name) {
-  const bare = String(name ?? '').trim().replace(STORM_CLASSIFICATION, '').replace(/-\d{2}$/, '');
-  return bare.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  const bare = String(name ?? '').trim().replace(STORM_CLASSIFICATION, '').replace(BARE_RE, '');
+  return bare.toLowerCase().replace(STORM_KEY_RE, '');
 }
 
 function naturalSource(row) {
@@ -792,7 +800,7 @@ function scopeList(value) {
 }
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 /** Whole-word, case-insensitive; a keyword may contain spaces ("strait of hormuz"). */
@@ -1316,7 +1324,7 @@ async function runBatched(redis, items, toCommand, label) {
 async function backfillIndex(redis) {
   const [progress] = assertRows(await redis([['GET', BACKFILL_CURSOR_KEY]]), 1, 'backfill cursor');
   if (progress.result === 'done') return 0;
-  let cursor = typeof progress.result === 'string' && /^\d+$/.test(progress.result) ? progress.result : '0';
+  let cursor = typeof progress.result === 'string' && CURSOR_RE.test(progress.result) ? progress.result : '0';
   let found = 0;
   for (let page = 0; page < BACKFILL_PAGE_CAP; page += 1) {
     const [scan] = assertRows(
@@ -1326,7 +1334,7 @@ async function backfillIndex(redis) {
     );
     const [nextCursor, keys] = Array.isArray(scan.result) ? scan.result : ['0', []];
     const ids = (Array.isArray(keys) ? keys : [])
-      .map((key) => /^webhook:sub:(.+):v1$/.exec(String(key))?.[1])
+      .map((key) => IDS_RE.exec(String(key))?.[1])
       .filter(Boolean);
     if (ids.length) {
       assertRows(await redis([['SADD', ALL_INDEX_KEY, ...ids]]), 1, 'backfill index');
@@ -1661,7 +1669,7 @@ export async function runTick({
 }
 
 export function createUpstashPipeline({ url, token, fetchImpl = globalThis.fetch }) {
-  const endpoint = `${url.replace(/\/+$/, '')}/pipeline`;
+  const endpoint = `${url.replace(ENDPOINT_RE, '')}/pipeline`;
   return async (commands) => {
     const response = await fetchImpl(endpoint, {
       method: 'POST',

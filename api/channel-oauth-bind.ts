@@ -1,3 +1,10 @@
+
+
+const HANDLER_RE = /^[A-Za-z0-9_-]{27}$/;
+const ESCAPED_URL_RE = /&/g;
+const ESCAPED_URL_RE_2 = /"/g;
+const ESCAPED_URL_RE_3 = /</g;
+const ESCAPED_URL_RE_4 = />/g;
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error JS module has no declaration file.
@@ -29,7 +36,7 @@ export default async function handler(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const provider = url.searchParams.get('provider');
   const stateToken = url.searchParams.get('state') ?? '';
-  if ((provider !== 'slack' && provider !== 'discord') || !/^[A-Za-z0-9_-]{27}$/.test(stateToken)) {
+  if ((provider !== 'slack' && provider !== 'discord') || !HANDLER_RE.test(stateToken)) {
     return errorResponse('Invalid connection.', 400);
   }
   const body = await req.text();
@@ -64,7 +71,7 @@ export default async function handler(req: Request): Promise<Response> {
   if (!(await compareAndDeleteRedisKey(key, data.result, true))) {
     return errorResponse('Connection expired or unavailable. Start again from notification settings.', 503);
   }
-  const escapedUrl = destination.toString().replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escapedUrl = destination.toString().replace(ESCAPED_URL_RE, '&amp;').replace(ESCAPED_URL_RE_2, '&quot;').replace(ESCAPED_URL_RE_3, '&lt;').replace(ESCAPED_URL_RE_4, '&gt;');
   // A new document avoids applying the opener's form-action policy to the provider navigation.
   return new Response(`<!doctype html><html><head><meta charset="utf-8"><title>Connect notifications</title><meta http-equiv="refresh" content="0;url=${escapedUrl}"></head><body><p>Connecting your notifications. <a href="${escapedUrl}">Continue</a></p></body></html>`, {
     headers: { ...HEADERS, 'Set-Cookie': channelOAuthCookieHeader(req, state, token) },

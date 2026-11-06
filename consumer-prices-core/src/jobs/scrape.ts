@@ -36,6 +36,9 @@ import {
   updateScrapeRunStatement,
 } from './scrape-coverage.js';
 
+const EXA_KEY_RE = /[\n,]+/;
+
+
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[scrape] ${msg}`, ...args),
   warn: (msg: string, ...args: unknown[]) => console.warn(`[scrape] ${msg}`, ...args),
@@ -126,7 +129,7 @@ export async function scrapeRetailer(slug: string) {
 
   // Validate API keys before opening a scrape_run row — an early throw here
   // would otherwise leave the run stuck in status='running' forever.
-  const exaKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
+  const exaKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(EXA_KEY_RE)[0].trim();
   const fcKey = process.env.FIRECRAWL_API_KEY ?? '';
 
   if (config.adapter === 'search') {

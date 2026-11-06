@@ -8,6 +8,8 @@
  * 300–500 words of genuine, product-accurate differentiation.
  */
 
+const WHITESPACE_RE = /\s+/;
+
 export type VariantSeoKey = 'full' | 'tech' | 'finance' | 'commodity' | 'happy' | 'energy';
 
 export const VARIANT_SEO_PARAGRAPHS: Record<VariantSeoKey, readonly string[]> = {
@@ -56,5 +58,5 @@ export const VARIANT_SEO_PARAGRAPHS: Record<VariantSeoKey, readonly string[]> = 
 };
 
 export function variantSeoWordCount(variant: VariantSeoKey): number {
-  return VARIANT_SEO_PARAGRAPHS[variant].join(' ').split(/\s+/).filter(Boolean).length;
+  return VARIANT_SEO_PARAGRAPHS[variant].join(' ').split(WHITESPACE_RE).filter(Boolean).length;
 }

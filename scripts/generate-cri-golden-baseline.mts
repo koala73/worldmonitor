@@ -56,6 +56,9 @@ import {
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { buildPillarList } from '../server/worldmonitor/resilience/v1/_pillar-membership.ts';
 
+const CURRENT_HEAD_COMMIT_RE = /^[0-9a-f]{40}$/;
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -288,7 +291,7 @@ function git(args: string[], options: { allowFailure?: boolean; cwd?: string } =
 
 function currentHeadCommit(): string {
   const sha = git(['rev-parse', 'HEAD']);
-  if (!sha || !/^[0-9a-f]{40}$/.test(sha)) {
+  if (!sha || !CURRENT_HEAD_COMMIT_RE.test(sha)) {
     throw new Error(`could not resolve a 40-hex HEAD commit (got: ${sha ?? 'null'})`);
   }
   return sha;

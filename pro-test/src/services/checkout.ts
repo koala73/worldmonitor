@@ -14,6 +14,9 @@
 
 import * as Sentry from '@sentry/react';
 import { ensureClerk, type LoadedClerk } from './clerk';
+
+const ESCAPE_HTML_RE = /[&<>"']/g;
+
 export { ensureClerk } from './clerk';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
@@ -1092,7 +1095,7 @@ function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({
+  return s.replace(ESCAPE_HTML_RE, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c] ?? c));
 }

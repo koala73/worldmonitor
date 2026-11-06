@@ -31,6 +31,9 @@ import {
   fetchFinnhubCompanyAndEarnings,
 } from './_company-shared';
 
+const SAFE_DOMAIN_FROM_WEBSITE_RE = /^www\./;
+
+
 const MAX_RECENT_FILINGS = 15;
 
 export async function getCompanyEnrichment(
@@ -178,7 +181,7 @@ function emptyEnrichment(
 function safeDomainFromWebsite(website: string): string {
   if (!website) return '';
   try {
-    return new URL(website.startsWith('http') ? website : `https://${website}`).hostname.replace(/^www\./, '');
+    return new URL(website.startsWith('http') ? website : `https://${website}`).hostname.replace(SAFE_DOMAIN_FROM_WEBSITE_RE, '');
   } catch {
     return '';
   }

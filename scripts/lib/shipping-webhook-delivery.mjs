@@ -10,6 +10,9 @@ import {
   postJsonWithPinnedAddress,
 } from './notification-webhook-ssrf.cjs';
 
+const FAILURE_CODE_RE = /timed out|timeout/i;
+
+
 export const SHIPPING_WEBHOOK_EVENT = 'chokepoint.disruption';
 export const ALL_INDEX_KEY = 'webhook:all:v1';
 export const DELIVERY_FAILURE_CEILING = 5;
@@ -46,7 +49,7 @@ export function buildShippingWebhookDelivery({ record, payload, deliveryId, even
 
 function failureCode(error) {
   if (error?.code === SSRF_BLOCKED_ERROR_CODE) return 'ssrf';
-  if (/timed out|timeout/i.test(String(error?.message ?? ''))) return 'timeout';
+  if (FAILURE_CODE_RE.test(String(error?.message ?? ''))) return 'timeout';
   return 'network';
 }
 

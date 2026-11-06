@@ -7,6 +7,14 @@ import { clip, num } from './_helpers.mjs';
 // rootDirectory=scripts so ../../shared/ escapes the deploy root.
 import { REGIONS } from '../shared/geography.js';
 
+const SCORE_ACTORS_RE = /sanction|trade/;
+const SCORE_ACTORS_RE_2 = /naval|missile|strike|military|fleet/;
+const SCORE_ACTORS_RE_3 = /oil|gas|pipeline|energy|opec/;
+const SCORE_ACTORS_RE_4 = /diplomat|alliance|treaty|summit/;
+const SCORE_ACTORS_RE_5 = /strait|chokepoint|maritime|shipping|naval/;
+const WHITESPACE_RE = /\s+/g;
+
+
 const ALIASES = {
   iran: 'Iran', irgc: 'IRGC', tehran: 'Iran',
   russia: 'Russia', kremlin: 'Russia', moscow: 'Russia',
@@ -43,11 +51,11 @@ export function scoreActors(regionId, sources) {
       if (text.includes(needle)) {
         const entry = counts.get(canonical) ?? { mentions: 0, domains: new Set(), evidence: [] };
         entry.mentions += 1;
-        if (/sanction|trade/.test(text)) entry.domains.add('economic');
-        if (/naval|missile|strike|military|fleet/.test(text)) entry.domains.add('military');
-        if (/oil|gas|pipeline|energy|opec/.test(text)) entry.domains.add('energy');
-        if (/diplomat|alliance|treaty|summit/.test(text)) entry.domains.add('diplomatic');
-        if (/strait|chokepoint|maritime|shipping|naval/.test(text)) entry.domains.add('maritime');
+        if (SCORE_ACTORS_RE.test(text)) entry.domains.add('economic');
+        if (SCORE_ACTORS_RE_2.test(text)) entry.domains.add('military');
+        if (SCORE_ACTORS_RE_3.test(text)) entry.domains.add('energy');
+        if (SCORE_ACTORS_RE_4.test(text)) entry.domains.add('diplomatic');
+        if (SCORE_ACTORS_RE_5.test(text)) entry.domains.add('maritime');
         if (entry.evidence.length < 5 && f?.id) entry.evidence.push(`forecast:${f.id}`);
         counts.set(canonical, entry);
       }
@@ -61,7 +69,7 @@ export function scoreActors(regionId, sources) {
     const leverageScore = clip(entry.mentions / Math.max(5, totalMentions / 2), 0, 1);
     const role = inferRole(name, entry);
     actors.push({
-      actor_id: name.toLowerCase().replace(/\s+/g, '-'),
+      actor_id: name.toLowerCase().replace(WHITESPACE_RE, '-'),
       name,
       role,
       leverage_domains: /** @type {import('../../shared/regions.types.js').ActorLeverageDomain[]} */ ([...entry.domains]),

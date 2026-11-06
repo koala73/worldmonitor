@@ -1,13 +1,17 @@
 import feeds from '../../../../scripts/shared/regional-energy-feeds.json';
 import type { RegionalEnergyFeed, RegionalEnergyObservation } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+const OBSERVATION_TIME_RE = /^\d{4}-\d{2}$/;
+const OBSERVATION_TIME_RE_2 = /^\d{4}-\d{2}-\d{2}$/;
+
+
 function observationTime(period: unknown): number {
   if (typeof period !== 'string') return NaN;
-  if (/^\d{4}-\d{2}$/.test(period)) {
+  if (OBSERVATION_TIME_RE.test(period)) {
     const year = Number(period.slice(0, 4)), month = Number(period.slice(5, 7));
     return month >= 1 && month <= 12 ? Date.UTC(year, month, 0, 23, 59, 59, 999) : NaN;
   }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(period)) {
+  if (OBSERVATION_TIME_RE_2.test(period)) {
     const time = Date.parse(`${period}T00:00:00Z`);
     return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === period ? time : NaN;
   }

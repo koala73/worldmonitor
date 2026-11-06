@@ -29,6 +29,9 @@ import { allowsProvider, type AiRoutingDecision } from './ai-routing-policy';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
 
+const WHITESPACE_RE = /\s+/g;
+
+
 /**
  * One embeddings call on a user-facing read path. Shorter than the seed
  * writer's 45s batch budget: this is a single input on an interactive
@@ -82,7 +85,7 @@ let _didWarnMissingOpenRouterKey = false;
  */
 export function normalizeQueryText(text: string): string {
   if (typeof text !== 'string') return '';
-  return stripSourceSuffix(text).trim().replace(/\s+/g, ' ').toLowerCase();
+  return stripSourceSuffix(text).trim().replace(WHITESPACE_RE, ' ').toLowerCase();
 }
 
 /**

@@ -20,6 +20,9 @@
 
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 
+const IS_VALID_CODE_RE = /^[a-zA-Z0-9_-]+$/;
+
+
 export const REFERRAL_CAPTURE_KEY = 'wm-referral-capture';
 export const REFERRAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -196,7 +199,7 @@ function isValidCode(code: string): boolean {
   // Allow alphanumeric + `-` `_` only; no whitespace, no slashes, no
   // URL-reserved chars. Keeps any future rendering path (e.g., Sentry
   // extra) safe without needing per-caller escaping.
-  return /^[a-zA-Z0-9_-]+$/.test(code);
+  return IS_VALID_CODE_RE.test(code);
 }
 
 /**

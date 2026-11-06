@@ -11,6 +11,12 @@
 // a renamed or deleted container returns null rather than silently widening to
 // the rest of the file.
 
+const PRECEDING_WORD_RE = /\s/;
+const IDENTIFIER_RE = /^[A-Za-z_$][\w$.]*/;
+const UNESCAPE_STRING_LITERAL_RE = /\\(.)/g;
+const OBJECT_LITERAL_ENTRY_VALUE_RE = /^\s*:/;
+const OBJECT_LITERAL_ENTRY_VALUE_RE_2 = /^\s*:\s*/;
+
 const QUOTE_MODES = { "'": 'squote', '"': 'dquote' };
 const CLOSING_QUOTE = { squote: "'", dquote: '"' };
 
@@ -42,7 +48,7 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
  */
 function precedingWord(text, index) {
   let end = index;
-  while (end > 0 && /\s/.test(text[end - 1])) end -= 1;
+  while (end > 0 && PRECEDING_WORD_RE.test(text[end - 1])) end -= 1;
   let start = end;
   while (start > 0 && IDENTIFIER_CHAR.test(text[start - 1])) start -= 1;
   return text.slice(start, end);
@@ -56,7 +62,7 @@ function opensRegex(text, index, prevSignificant) {
   if (!IDENTIFIER_CHAR.test(prevSignificant)) return false;
   const word = precedingWord(text, index);
   let wordStart = index;
-  while (wordStart > 0 && /\s/.test(text[wordStart - 1])) wordStart -= 1;
+  while (wordStart > 0 && PRECEDING_WORD_RE.test(text[wordStart - 1])) wordStart -= 1;
   wordStart -= word.length;
   if (text[wordStart - 1] === '.') return false;
   return REGEX_PRECEDING_KEYWORDS.has(word);
@@ -158,7 +164,7 @@ export function stripJsComments(source) {
     if (ch === '{') { stack.push('brace'); }
     if (ch === '}' && (mode === 'brace' || mode === 'interp')) { stack.pop(); }
 
-    if (!/\s/.test(ch)) prevSignificant = ch;
+    if (!PRECEDING_WORD_RE.test(ch)) prevSignificant = ch;
     i += 1;
   }
 
@@ -220,7 +226,7 @@ function walkCode(text, start, onCodeChar) {
     }
 
     if (onCodeChar(ch, i) === false) return;
-    if (!/\s/.test(ch)) prevSignificant = ch;
+    if (!PRECEDING_WORD_RE.test(ch)) prevSignificant = ch;
     i += 1;
   }
 }
@@ -244,7 +250,7 @@ function isTokenBoundedMatch(text, anchor, index) {
 }
 
 function skipWhitespace(text, index) {
-  while (index < text.length && /\s/.test(text[index])) index += 1;
+  while (index < text.length && PRECEDING_WORD_RE.test(text[index])) index += 1;
   return index;
 }
 
@@ -261,7 +267,7 @@ function readAssignedObjectShape(text, from, wrappers) {
       continue;
     }
 
-    const identifier = text.slice(index).match(/^[A-Za-z_$][\w$.]*/)?.[0];
+    const identifier = text.slice(index).match(IDENTIFIER_RE)?.[0];
     if (identifier && wrappers.has(identifier)) {
       index = skipWhitespace(text, index + identifier.length);
       if (text[index] !== '(') return null;
@@ -415,7 +421,7 @@ const BARE_KEY = /^([A-Za-z_$][\w$]*)\s*:/;
 const SIMPLE_ESCAPES = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', 0: '\0' };
 
 function unescapeStringLiteral(raw) {
-  return raw.replace(/\\(.)/g, (_match, ch) => SIMPLE_ESCAPES[ch] ?? ch);
+  return raw.replace(UNESCAPE_STRING_LITERAL_RE, (_match, ch) => SIMPLE_ESCAPES[ch] ?? ch);
 }
 
 function readStringLiteral(entry) {
@@ -438,7 +444,7 @@ export function objectLiteralEntryValue(body, key) {
     const literal = readStringLiteral(entry);
     if (literal) {
       const rest = entry.slice(literal.length);
-      if (literal.value === key && /^\s*:/.test(rest)) return rest.replace(/^\s*:\s*/, '').trim();
+      if (literal.value === key && OBJECT_LITERAL_ENTRY_VALUE_RE.test(rest)) return rest.replace(OBJECT_LITERAL_ENTRY_VALUE_RE_2, '').trim();
       continue;
     }
     const bare = BARE_KEY.exec(entry);

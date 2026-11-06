@@ -39,6 +39,9 @@ import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import sovereignStatus from './shared/sovereign-status.json' with { type: 'json' };
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 loadEnvFile(import.meta.url);
 
 const WB_BASE = 'https://api.worldbank.org/v2';
@@ -141,7 +144,7 @@ export function diffCountrySets(previousCodes, currentCodes) {
 
 export function parseCountrySetMeta(raw) {
   if (typeof raw !== 'string' || raw.length === 0) return null;
-  const codes = raw.split(',').map((cc) => cc.trim()).filter((cc) => /^[A-Z]{2}$/.test(cc));
+  const codes = raw.split(',').map((cc) => cc.trim()).filter((cc) => COUNTRY_CODE_RE.test(cc));
   return codes.length > 0 ? codes : null;
 }
 

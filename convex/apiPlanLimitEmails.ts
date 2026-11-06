@@ -5,6 +5,13 @@ import { PRODUCT_CATALOG } from "./config/productCatalog";
 import { MAX_EMAIL_ATTEMPTS } from "./apiPlanLimitNotices";
 import { ResendSendError, sendResendEmail } from "./lib/resendEmail";
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+const ESCAPE_HTML_RE_5 = /'/g;
+
+
 const FROM = "World Monitor <noreply@worldmonitor.app>";
 const SUPPORT_EMAIL = "support@worldmonitor.app";
 const MAX_FAILURE_MESSAGES = 3;
@@ -37,11 +44,11 @@ function normalizeEmail(email: string | undefined | null): string | null {
 
 function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(ESCAPE_HTML_RE, "&amp;")
+    .replace(ESCAPE_HTML_RE_2, "&lt;")
+    .replace(ESCAPE_HTML_RE_3, "&gt;")
+    .replace(ESCAPE_HTML_RE_4, "&quot;")
+    .replace(ESCAPE_HTML_RE_5, "&#39;");
 }
 
 function dimensionLabel(dimension: string): string {

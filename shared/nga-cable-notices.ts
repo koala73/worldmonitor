@@ -13,6 +13,11 @@
  */
 
 /** Notices issued longer ago than this are treated as stale standing notices. */
+const SUBJECT_RE = /\bCABLE\s+AREAS?\b/g;
+const NAME_RE = /\n|,|\b(?:ON\s+STATION|REPAIRING|LAYING|WORKING|COMMENCED|IN\s+AREA|ALONG\s+TRACKLINE)\b/i;
+const WHITESPACE_RE = /\s+/g;
+const EXTRACT_CABLE_SHIP_NAME_RE = /^(THE|AND|FOR|WITH)$/i;
+
 export const NGA_CABLE_NOTICE_MAX_AGE_DAYS = 30;
 
 const CABLE_KEYWORDS = [
@@ -42,7 +47,7 @@ const GENERIC_SHIP_PATTERNS = [
 /** True when the warning text concerns subsea cables (and is not a seismic streamer notice). */
 export function isCableRelatedNotice(text: string): boolean {
   const upper = text.toUpperCase();
-  const subject = upper.replace(/\bCABLE\s+AREAS?\b/g, '');
+  const subject = upper.replace(SUBJECT_RE, '');
   if (!CABLE_KEYWORDS.some((kw) => subject.includes(kw))) return false;
   if (SEISMIC_STREAMER_RE.test(upper) && !CABLE_WORK_RE.test(upper)) return false;
   return true;
@@ -55,8 +60,8 @@ export function extractCableShipName(text: string): string | null {
     : DEDICATED_SHIP_PATTERNS;
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    const name = match?.[1]?.split(/\n|,|\b(?:ON\s+STATION|REPAIRING|LAYING|WORKING|COMMENCED|IN\s+AREA|ALONG\s+TRACKLINE)\b/i)[0]?.trim().replace(/\s+/g, ' ');
-    if (name && name.length > 2 && !/^(THE|AND|FOR|WITH)$/i.test(name)) return name;
+    const name = match?.[1]?.split(NAME_RE)[0]?.trim().replace(WHITESPACE_RE, ' ');
+    if (name && name.length > 2 && !EXTRACT_CABLE_SHIP_NAME_RE.test(name)) return name;
   }
   return null;
 }

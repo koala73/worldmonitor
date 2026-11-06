@@ -2,6 +2,9 @@ import type { ClusteredEvent, VelocityMetrics, VelocityLevel, SentimentType } fr
 import { mlWorker } from './ml-worker';
 import { effectivePubDateMs } from './feed-date';
 
+const WORDS_RE = /\W+/;
+
+
 const HOUR_MS = 60 * 60 * 1000;
 const ELEVATED_THRESHOLD = 3;
 const SPIKE_THRESHOLD = 6;
@@ -25,7 +28,7 @@ const POSITIVE_WORDS = new Set([
 ]);
 
 function analyzeSentiment(text: string): { sentiment: SentimentType; score: number } {
-  const words = text.toLowerCase().split(/\W+/);
+  const words = text.toLowerCase().split(WORDS_RE);
   let score = 0;
 
   for (const word of words) {

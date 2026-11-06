@@ -11,6 +11,9 @@ import { CLASSIFY_VALID_CATEGORIES, CLASSIFY_VALID_LEVELS, UPSTREAM_TIMEOUT_MS, 
 import { callLlm } from '../../../_shared/llm';
 import { aiRoutingCacheSuffix, resolveAiRouting, toLlmRoutingPolicy } from '../../../_shared/ai-routing-policy';
 
+const JSON_MATCH_RE = /\{[\s\S]*\}/;
+
+
 // ========================================================================
 // Constants
 // ========================================================================
@@ -149,7 +152,7 @@ Return: {"level":"...","category":"..."}`;
               try {
                 parsed = JSON.parse(content);
               } catch {
-                const jsonMatch = content.match(/\{[\s\S]*\}/);
+                const jsonMatch = content.match(JSON_MATCH_RE);
                 if (!jsonMatch) return false;
                 parsed = JSON.parse(jsonMatch[0]);
               }

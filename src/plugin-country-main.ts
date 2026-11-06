@@ -28,6 +28,13 @@ import { combineAbortSignals } from '@/services/timeout-signal';
 import { createHostCountryDownload, hostSupportsCountryDownload, CountryDownloadRequestError, COUNTRY_EXPORT_REQUEST_BYTES } from '@/utils/country-text-download';
 import type { CountryIntelData } from '@/components/CountryBriefPanel';
 
+const CONNECTION_PROJECTION_RE = /^20\d{2}-\d{2}-\d{2}$/;
+const SOURCE_LINKS_RE = /^https?:\/\//i;
+const SOURCE_LINKS_RE_2 = /[\u0000-\u0020\u007F]/;
+const DENIED_RE = /subscription|billing|entitlement|scope|unauthoriz|forbidden/i;
+const MOUNT_PLUGIN_RE = /^[a-zA-Z0-9_-]{1,100}$/;
+const MOUNT_PLUGIN_RE_2 = /^https?:$/;
+
 const CHINA_MODEL_CONTEXT_BYTES = 32768;
 const chinaContextTitles = ['Macro Signals', 'Policy & Enforcement', 'Cross-Strait Activity', 'Corporate Disclosures', 'Corridor Conditions', 'Activity Nowcast'];
 const contextBytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -52,7 +59,7 @@ function connectionProjection(initialized: unknown, negotiation: 'pending' | 're
   const capabilities = connectionRecord(value?.hostCapabilities) ? value.hostCapabilities : undefined;
   return {
     negotiation,
-    protocol: { kind: !value && negotiation === 'received' ? 'malformed' : protocol === '2026-01-26' ? 'supported' : typeof protocol === 'string' && /^20\d{2}-\d{2}-\d{2}$/.test(protocol) ? 'other' : protocol === undefined ? 'missing' : 'malformed', value: typeof protocol === 'string' && /^20\d{2}-\d{2}-\d{2}$/.test(protocol) ? protocol : null },
+    protocol: { kind: !value && negotiation === 'received' ? 'malformed' : protocol === '2026-01-26' ? 'supported' : typeof protocol === 'string' && CONNECTION_PROJECTION_RE.test(protocol) ? 'other' : protocol === undefined ? 'missing' : 'malformed', value: typeof protocol === 'string' && CONNECTION_PROJECTION_RE.test(protocol) ? protocol : null },
     hostCapabilities: negotiation !== 'received' ? 'not-established' : value ? capabilityKind(value.hostCapabilities) : 'malformed',
     downloadFile: capabilities ? capabilityKind(capabilities.downloadFile) : 'not-established',
     downloadAllowed: hostSupportsCountryDownload(initialized), contextEnabled,
@@ -137,7 +144,7 @@ function openCommodityContext(base: Record<string, unknown>, root: HTMLElement |
       if (!completeUnicode(url)) urlOmittedReason = 'invalidUnicode';
       else if (contextBytes(url) > 2048) urlOmittedReason = 'url-size';
       else {
-        try { if (!/^https?:\/\//i.test(url) || /[\u0000-\u0020\u007F]/.test(url) || !['http:', 'https:'].includes(new URL(url).protocol)) urlOmittedReason = 'invalid-url'; }
+        try { if (!SOURCE_LINKS_RE.test(url) || SOURCE_LINKS_RE_2.test(url) || !['http:', 'https:'].includes(new URL(url).protocol)) urlOmittedReason = 'invalid-url'; }
         catch { urlOmittedReason = 'invalid-url'; }
       }
       return { sourceIndex, ...textFields('label', read(anchor), 256), urlOriginalByteCount: contextBytes(url),
@@ -264,7 +271,7 @@ function chinaContextGroups(root: HTMLElement | null) {
       if (!completeUnicode(url)) { urlOmittedReason = 'invalidUnicode'; record.invalidUnicode = true; }
       else if (contextBytes(url) > 2048) urlOmittedReason = 'url-size';
       else {
-        try { if (!/^https?:\/\//i.test(url) || /[\u0000-\u0020\u007F]/.test(url) || !['http:', 'https:'].includes(new URL(url).protocol)) urlOmittedReason = 'invalid-url'; }
+        try { if (!SOURCE_LINKS_RE.test(url) || SOURCE_LINKS_RE_2.test(url) || !['http:', 'https:'].includes(new URL(url).protocol)) urlOmittedReason = 'invalid-url'; }
         catch { urlOmittedReason = 'invalid-url'; }
       }
       record.invalidUnicode ||= label.invalidUnicode;
@@ -400,7 +407,7 @@ async function mountPlugin(): Promise<void> {
     const panelRequest = admission && ['get_country_brief_section', 'get_country_brief', 'get_country_coverage'].includes(name) ? { panel_request: admission.token } : {};
     const result = await request('tools/call', { name, arguments: { ...args, ...panelRequest } }, signal) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
     if (result.isError) {
-      const denied = /subscription|billing|entitlement|scope|unauthoriz|forbidden/i.test(JSON.stringify(result));
+      const denied = DENIED_RE.test(JSON.stringify(result));
       throw new CountrySectionError(denied ? 'locked' : 'unavailable', denied ? 'This connection is not authorized for this section.' : result.content?.find(item => item.text)?.text ?? 'The source is unavailable.');
     }
     if (result.structuredContent) return result.structuredContent;
@@ -799,7 +806,7 @@ async function mountPlugin(): Promise<void> {
       if (message.params?.name === 'select_country_view') return open(message.params.arguments);
       if (message.params?.name !== 'open_country_atlas_asset') throw new Error('Unknown country action');
       const args = message.params.arguments;
-      if (!args || !['pipeline', 'storage', 'shortage'].includes(args.type) || typeof args.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(args.id) || Object.keys(args).some(key => !['type', 'id'].includes(key))) throw new Error('Invalid Atlas asset action');
+      if (!args || !['pipeline', 'storage', 'shortage'].includes(args.type) || typeof args.id !== 'string' || !MOUNT_PLUGIN_RE.test(args.id) || Object.keys(args).some(key => !['type', 'id'].includes(key))) throw new Error('Invalid Atlas asset action');
       await panel.openAtlasDetail(args.type, args.id);
       scheduleContext();
       return snapshot();
@@ -836,7 +843,7 @@ async function mountPlugin(): Promise<void> {
     const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
     if (!link) return;
     const url = new URL(link.getAttribute('href')!, 'https://www.worldmonitor.app');
-    if (!/^https?:$/.test(url.protocol)) return;
+    if (!MOUNT_PLUGIN_RE_2.test(url.protocol)) return;
     const href = url.href;
     event.preventDefault();
     if (linksAvailable) void request('ui/open-link', { url: href }).catch(() => { status.textContent = 'The host could not open this source link.'; });

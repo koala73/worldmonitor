@@ -15,6 +15,10 @@ import { isHeadlineMemoryEnabled } from './ai-flow-settings';
 import { yieldToMain } from '@/utils/after-paint';
 import { createYieldingWorkQueue } from '@/utils/yielding-work-queue';
 
+const IMG_EXTENSIONS_RE = /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?|$)/i;
+const IMG_MATCH_RE = /<img[^>]+src=["']([^"']+)["']/;
+
+
 export interface RssFetchPolicy {
   ingestGlobalTrends: boolean;
   ingestVectorMemory: boolean;
@@ -186,7 +190,7 @@ export function getFeedFailures(): Map<string, { count: number; cooldownUntil: n
  */
 function extractImageUrl(item: Element): string | undefined {
   const MRSS_NS = 'http://search.yahoo.com/mrss/';
-  const IMG_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp|avif|svg)(\?|$)/i;
+  const IMG_EXTENSIONS = IMG_EXTENSIONS_RE;
 
   try {
     // 1. media:content with MRSS namespace
@@ -236,7 +240,7 @@ function extractImageUrl(item: Element): string | undefined {
     const contentEncoded = item.getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded');
     const contentText = contentEncoded.length > 0 ? (contentEncoded[0]!.textContent || '') : '';
     const htmlContent = contentText || description;
-    const imgMatch = htmlContent.match(/<img[^>]+src=["']([^"']+)["']/);
+    const imgMatch = htmlContent.match(IMG_MATCH_RE);
     if (imgMatch?.[1]) return imgMatch[1];
   } catch {
     // Fall through

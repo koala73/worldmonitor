@@ -17,6 +17,9 @@
  * rather than rewriting prose mid-stream.
  */
 
+const EXTRACT_PRICE_FIGURES_RE = /[\p{L}\p{N}]/u;
+const BASE_RE = /,/g;
+
 export interface PriceFigure {
   /** The amount as written, e.g. "$80", "€94.7", "USD 101.3". */
   text: string;
@@ -71,8 +74,8 @@ export function extractPriceFigures(text: string): PriceFigure[] {
     const [raw, marker, whole, fraction, suffix] = match;
     const after = text[match.index! + raw.length];
     // "$80%" is not a price; neither is a figure glued to a following word.
-    if (after === '%' || (after !== undefined && /[\p{L}\p{N}]/u.test(after) && !suffix)) continue;
-    const base = Number(`${whole!.replace(/,/g, '')}${fraction ? `.${fraction}` : ''}`);
+    if (after === '%' || (after !== undefined && EXTRACT_PRICE_FIGURES_RE.test(after) && !suffix)) continue;
+    const base = Number(`${whole!.replace(BASE_RE, '')}${fraction ? `.${fraction}` : ''}`);
     if (!Number.isFinite(base)) continue;
     const scale = suffix ? SUFFIX_SCALE[suffix.toLowerCase()] ?? 1 : 1;
     figures.push({

@@ -2,6 +2,16 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const GET_HTML_ATTRIBUTE_RE = /^['"]|['"]$/g;
+const TAGS_RE = /<link\b[^>]*>/gi;
+const WHITESPACE_RE = /\s+/;
+const TAGS_RE_2 = /<meta\b[^>]*>/gi;
+const GET_LASTMOD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const HAS_NO_INDEX_RE = /(?:^|,)\s*noindex\b/i;
+const IS_CHANGELOG_PAGINATION_PATH_RE = /^\/(?:reference\/)?changelog\/page\/\d+\/$/;
+const CHANGELOG_PAGE_NUMBER_RE = /^\/(?:reference\/)?changelog\/page\/(\d+)\/$/;
+
+
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
 export const CONTENT_CORPUS_PREFIXES = ['country-instability-index', 'countries', 'chokepoints', 'compare', 'crises', 'tools', 'research', 'reference', 'changelog', 'sources', 'use-cases', 'accuracy', 'monitor-the-situation'];
 
@@ -11,15 +21,15 @@ export const getHtmlAttribute = (tag, name) => {
   const match = tag.match(new RegExp('\\b' + name + '\\s*=\\s*("[^"]*"|\\\'[^\\\']*\\\'|[^\\s>]+)', 'i'));
   if (!match) return null;
   const value = match[1];
-  return value.replace(/^['"]|['"]$/g, '');
+  return value.replace(GET_HTML_ATTRIBUTE_RE, '');
 };
 
 const getLinkHref = (html, rel) => {
-  const tags = html.match(/<link\b[^>]*>/gi) ?? [];
+  const tags = html.match(TAGS_RE) ?? [];
   for (const tag of tags) {
     const relValue = getHtmlAttribute(tag, 'rel');
     if (!relValue) continue;
-    const relTokens = relValue.toLowerCase().split(/\s+/);
+    const relTokens = relValue.toLowerCase().split(WHITESPACE_RE);
     if (!relTokens.includes(rel.toLowerCase())) continue;
     return getHtmlAttribute(tag, 'href');
   }
@@ -27,7 +37,7 @@ const getLinkHref = (html, rel) => {
 };
 
 const getMetaContent = (html, attrName, attrValue) => {
-  const tags = html.match(/<meta\b[^>]*>/gi) ?? [];
+  const tags = html.match(TAGS_RE_2) ?? [];
   for (const tag of tags) {
     const value = getHtmlAttribute(tag, attrName);
     if (value?.toLowerCase() !== attrValue.toLowerCase()) continue;
@@ -46,18 +56,18 @@ const getLastmod = (html) => {
 
   for (const candidate of candidates) {
     const date = candidate.slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+    if (GET_LASTMOD_RE.test(date)) return date;
   }
   return null;
 };
 
 const hasNoIndex = (html) => {
   const robots = getMetaContent(html, 'name', 'robots');
-  return /(?:^|,)\s*noindex\b/i.test(robots ?? '');
+  return HAS_NO_INDEX_RE.test(robots ?? '');
 };
 
 const isChangelogPaginationPath = (pathname) =>
-  /^\/(?:reference\/)?changelog\/page\/\d+\/$/.test(pathname);
+  IS_CHANGELOG_PAGINATION_PATH_RE.test(pathname);
 
 const toPublicPath = (relativePath) => {
   const normalized = relativePath.split(sep).join('/');
@@ -133,7 +143,7 @@ const buildPageRecord = ({ file, publicDir }) => {
 const changelogPageNumber = (page) => {
   const path = new URL(page.loc).pathname;
   if (path === '/reference/changelog/' || path === '/changelog/') return 1;
-  const match = path.match(/^\/(?:reference\/)?changelog\/page\/(\d+)\/$/);
+  const match = path.match(CHANGELOG_PAGE_NUMBER_RE);
   return match ? Number(match[1]) : null;
 };
 

@@ -21,6 +21,9 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const TARGET = new URL('./data/outbreak-places.json', import.meta.url);
 const MIN_POPULATION = 100_000;
 // A region outranks a smaller city of the same name (Irkutsk Oblast's seat is
@@ -72,7 +75,7 @@ for (const line of readFileSync(citiesPath, 'utf8').split('\n')) {
   const [, name, asciiName] = f;
   const lat = Number(f[4]), lng = Number(f[5]);
   const featureCode = f[7], country = f[8], admin1 = f[10], population = Number(f[14]);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !/^[A-Z]{2}$/.test(country)) continue;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !COUNTRY_CODE_RE.test(country)) continue;
   if (featureCode === 'PPLA') seats.set(`${country}.${admin1}`, { lat, lng });
   if (population >= MAJOR_CITY_POPULATION) majorCities.set(`${country}.${name}`, { lat, lng });
   if (population >= MIN_POPULATION) {

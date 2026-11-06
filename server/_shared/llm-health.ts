@@ -11,6 +11,9 @@
 
 import { getConfiguredLlmHealthProviders } from '../../shared/llm-health-providers.js';
 
+const ESCAPED_MODEL_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 const PROBE_TIMEOUT_MS = 2_000;
 const CACHE_TTL_MS = 60_000; // re-probe every 60s
 
@@ -166,7 +169,7 @@ export function isModelRejection(status: number, body: string, model: string): b
     // Plain-text provider errors are matched directly.
   }
 
-  const escapedModel = model.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedModel = model.replace(ESCAPED_MODEL_RE, '\\$&');
   const modelRef = `(?:^|[^a-z0-9._:/-])${escapedModel}(?=$|[^a-z0-9._:/-])`;
   const patterns = [
     new RegExp(`\\b(?:no such|unknown|invalid)\\s+model\\b[^\\n]{0,80}?${modelRef}`, 'i'),

@@ -8,6 +8,10 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
+const FIELD_VALUE_RE = /\bm:null="true"/;
+const DATE_MATCH_RE = /<d:NEW_DATE\b[^>]*>(\d{4}-\d{2}-\d{2})/;
+
+
 loadEnvFile(import.meta.url);
 
 export const TREASURY_CANONICAL_KEY = 'economic:us-treasury-par-yield:v1';
@@ -43,7 +47,7 @@ export function treasuryYearKey(year) {
 function fieldValue(entry, tag) {
   const match = new RegExp(`<d:${tag}(?![A-Z0-9_])([^>]*)(?:/>|>([^<]*)</d:${tag}>)`).exec(entry);
   if (!match) return undefined;
-  if (/\bm:null="true"/.test(match[1] ?? '')) return undefined;
+  if (FIELD_VALUE_RE.test(match[1] ?? '')) return undefined;
   const text = (match[2] ?? '').trim();
   if (!text) return undefined;
   const value = Number(text);
@@ -53,7 +57,7 @@ function fieldValue(entry, tag) {
 export function parseTreasuryYieldXml(xml) {
   const byDate = new Map();
   for (const entry of String(xml ?? '').split('<entry>').slice(1)) {
-    const dateMatch = /<d:NEW_DATE\b[^>]*>(\d{4}-\d{2}-\d{2})/.exec(entry);
+    const dateMatch = DATE_MATCH_RE.exec(entry);
     if (!dateMatch) continue;
     const curve = { date: dateMatch[1] };
     let present = false;

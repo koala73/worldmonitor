@@ -31,6 +31,12 @@ import {
   chinaMacroSourceBinding,
 } from './_china-macro-contract.mjs';
 
+const IS_ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const IS_CALENDAR_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const HAS_COMPLETE_PROVENANCE_RE = /^sha256:[0-9a-f]{64}$/;
+const HAS_COMPLETE_PROVENANCE_RE_2 = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const CHINA_MACRO_KEY = CHINA_MACRO_CACHE_KEY;
@@ -69,12 +75,12 @@ function hasExactKeys(value, keys) {
 
 function isIsoInstant(value) {
   return typeof value === 'string'
-    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+    && IS_ISO_INSTANT_RE.test(value)
     && Number.isFinite(Date.parse(value));
 }
 
 function isCalendarDay(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (typeof value !== 'string' || !IS_CALENDAR_DAY_RE.test(value)) return false;
   const parsed = Date.parse(`${value}T00:00:00Z`);
   return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value;
 }
@@ -164,7 +170,7 @@ function hasCompleteProvenance(observation) {
     && typeof original.id === 'string'
     && original.id.length > 0
     && original.id === observation.vintageId
-    && /^sha256:[0-9a-f]{64}$/.test(original.contentHash)
+    && HAS_COMPLETE_PROVENANCE_RE.test(original.contentHash)
     && knownClaim(claims.original_language)
     && (claims.original_language.value === 'en' || claims.original_language.value === 'zh-CN')
     && unavailableClaim(claims.translation, 'not_applicable')
@@ -172,7 +178,7 @@ function hasCompleteProvenance(observation) {
     && hasExactKeys(observationTime, ['role', 'value', 'precision'])
     && observationTime.role === 'observation'
     && observationTime.precision === 'month'
-    && /^\d{4}-(0[1-9]|1[0-2])$/.test(observationTime.value)
+    && HAS_COMPLETE_PROVENANCE_RE_2.test(observationTime.value)
     && observationTime.value === observation.observationPeriod
     && unavailableClaim(claims.effective_time, 'unknown')
     && knownClaim(claims.publication_time)
@@ -248,7 +254,7 @@ function hasCompleteProvenance(observation) {
       typeof observation.stale !== 'boolean'
       || content.state === (observation.stale ? 'stale' : 'current')
     )
-    && /^\d{4}-(0[1-9]|1[0-2])$/.test(content.contentAsOf)
+    && HAS_COMPLETE_PROVENANCE_RE_2.test(content.contentAsOf)
     && content.contentAsOf === observation.observationPeriod
     && provenance.signalId === `signal:${observation.vintageId}`
     && unavailableClaim(claims.derivation, 'not_applicable');

@@ -4,6 +4,10 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 import { isMainModule } from './lib/main-module.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const WHITESPACE_RE = /\s+/;
+
+
 export const FORBIDDEN_LOCAL_ENV_DUMPS = [
   '.env.vercel-backup',
   '.env.vercel-export',
@@ -51,10 +55,10 @@ function runGit(rootDir, args, input) {
 
 function parsePrePushUpdates(input) {
   return input
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .filter((line) => line.trim().length > 0)
     .map((line) => {
-      const [localRef, localSha, remoteRef, remoteSha, ...extra] = line.trim().split(/\s+/);
+      const [localRef, localSha, remoteRef, remoteSha, ...extra] = line.trim().split(WHITESPACE_RE);
       if (!localRef || !localSha || !remoteRef || !remoteSha || extra.length > 0) {
         throw new Error(`Invalid pre-push update line: ${line}`);
       }
@@ -70,7 +74,7 @@ function listPushedCommits(rootDir, update, remoteName) {
   if (!ZERO_SHA.test(update.remoteSha)) {
     try {
       return runGit(rootDir, ['rev-list', update.localSha, `^${update.remoteSha}`])
-        .split(/\r?\n/)
+        .split(LINE_BREAK_RE)
         .filter(Boolean);
     } catch {
       // The remote tip is not always available in a shallow or stale clone.
@@ -81,7 +85,7 @@ function listPushedCommits(rootDir, update, remoteName) {
 
   const remoteRefs = remoteName ? `--remotes=${remoteName}` : '--remotes';
   return runGit(rootDir, ['rev-list', update.localSha, '--not', remoteRefs])
-    .split(/\r?\n/)
+    .split(LINE_BREAK_RE)
     .filter(Boolean);
 }
 

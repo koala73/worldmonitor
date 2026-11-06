@@ -24,6 +24,10 @@ import { RpcValidationError } from '../billing-denial';
 import { assertMcpToolFetchOk, fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
+const TRADE_COUNTRY_CODE_RE = /^[0-9]{3}$/;
+const DIGITS_RE = /[\s.]/g;
+
+
 const WORLD_CODE = '000';
 const EU_CODE = '918';
 
@@ -45,7 +49,7 @@ export function tradeCountryCode(
   opts: { allowWorld?: boolean; allowEu?: boolean } = {},
 ): string {
   const text = typeof raw === 'string' ? raw.trim() : '';
-  if (/^[0-9]{3}$/.test(text)) return text;
+  if (TRADE_COUNTRY_CODE_RE.test(text)) return text;
   const lower = text.toLowerCase();
   if (opts.allowWorld && (lower === 'world' || lower === 'wld')) return WORLD_CODE;
   if (opts.allowEu && (lower === 'eu' || lower === 'eun' || lower === 'european union')) return EU_CODE;
@@ -61,7 +65,7 @@ export function tradeCountryCode(
 /** Digits of an HS code, with the dots and spaces people write it with removed. */
 export function hsDigits(raw: unknown, operation: string, pattern: RegExp, expected: string): string {
   const digits = typeof raw === 'string' || typeof raw === 'number'
-    ? String(raw).replace(/[\s.]/g, '')
+    ? String(raw).replace(DIGITS_RE, '')
     : '';
   if (pattern.test(digits)) return digits;
   throw new RpcValidationError(operation, [{

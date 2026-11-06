@@ -10,6 +10,9 @@ import { createOperationalExposureForm, renderOperationalWorksheet, type Operati
 import { attemptWebCountryDownload, countryDownloadMessage, type CountryTextArtifact, type CountryTextDownload } from '@/utils/country-text-download';
 import { combineAbortSignals } from '@/services/timeout-signal';
 
+const RENDER_DECISION_BRIEF_RE = /</g;
+
+
 const operationalSession: OperationalWorksheetSession = {};
 
 export interface BriefOutputSection {
@@ -213,7 +216,7 @@ export function renderDecisionBrief(snapshot: import('@/types/decision-brief').D
   if (snapshot.operationalWorksheet) article.append(renderOperationalWorksheet(snapshot.operationalWorksheet));
   else if (snapshot.operationalWorksheet === null) article.append(h('p', {}, 'Operational worksheet incomplete or invalid. No operational balance is included.'));
   const data = h('script', { type: 'application/json', id: 'decision-brief-snapshot' });
-  data.textContent = JSON.stringify(snapshot).replace(/</g, '\\u003c');
+  data.textContent = JSON.stringify(snapshot).replace(RENDER_DECISION_BRIEF_RE, '\\u003c');
   article.append(data);
   return article;
 }
@@ -413,7 +416,7 @@ export function renderCommodityBrief(snapshot: import('@/types/decision-brief').
       h('p', {}, 'Route basis: WorldMonitor country port clusters and trade-route registry; geographic model, observation date unknown.'),
       h('h3', {}, 'Limitations'), h('ul', {}, ...snapshot.caveats.map(c => h('li', {}, c)))));
   const data = h('script', { type: 'application/json', id: 'commodity-brief-snapshot' });
-  data.textContent = JSON.stringify(snapshot).replace(/</g, '\\u003c');
+  data.textContent = JSON.stringify(snapshot).replace(RENDER_DECISION_BRIEF_RE, '\\u003c');
   article.append(data);
   return article;
 }

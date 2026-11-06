@@ -27,6 +27,9 @@ import {
   oecdLtSourceForCountry,
 } from './government-yield-curves';
 
+const GET_GOVERNMENT_YIELD_CURVE_RE = /^[A-Za-z]{2}$/;
+
+
 const UNAVAILABLE: GetGovernmentYieldCurveResponse = {
   country: '',
   source: '',
@@ -47,7 +50,7 @@ export async function getGovernmentYieldCurve(
 ): Promise<GetGovernmentYieldCurveResponse> {
   const recent = macroHistoryWindow(req.limit);
   const country = (req.country ?? '').trim();
-  if (!/^[A-Za-z]{2}$/.test(country)) {
+  if (!GET_GOVERNMENT_YIELD_CURVE_RE.test(country)) {
     throw new ValidationError([{ field: 'country', description: 'Expected an ISO 3166-1 alpha-2 country code' }]);
   }
   const normalized = country.toUpperCase();

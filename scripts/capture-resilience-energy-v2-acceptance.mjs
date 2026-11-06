@@ -28,6 +28,9 @@ import {
 } from './compare-resilience-current-vs-proposed.mjs';
 import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -59,7 +62,7 @@ const DEFAULT_SAMPLE_COUNTRIES = ['FR', 'DE', 'SG', 'CH', 'NO', 'CA', 'AE', 'BH'
 const SAMPLE_COUNTRIES = (process.env.RESILIENCE_ENERGY_V2_SAMPLE_COUNTRIES || DEFAULT_SAMPLE_COUNTRIES.join(','))
   .split(',')
   .map((countryCode) => countryCode.trim().toUpperCase())
-  .filter((countryCode) => /^[A-Z]{2}$/.test(countryCode));
+  .filter((countryCode) => COUNTRY_CODE_RE.test(countryCode));
 
 class SnapshotNotFoundError extends Error {
   constructor(label) {
@@ -191,7 +194,7 @@ function snapshotScores(snapshot) {
   const items = Array.isArray(snapshot.items) ? snapshot.items : [];
   return Object.fromEntries(
     items
-      .filter((item) => /^[A-Z]{2}$/.test(String(item.countryCode || '')) && typeof item.overallScore === 'number')
+      .filter((item) => COUNTRY_CODE_RE.test(String(item.countryCode || '')) && typeof item.overallScore === 'number')
       .map((item) => [item.countryCode, item.overallScore]),
   );
 }

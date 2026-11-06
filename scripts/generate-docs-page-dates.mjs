@@ -22,6 +22,15 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
+const WALK_RE = /^docs\//;
+const WALK_RE_2 = /\.mdx$/;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUGIFY_RE = /^-|-$/g;
+const COMMIT_DATE_RANGES_RE = /^[a-z\d][a-z\d-]*$/i;
+const COMMIT_DATE_RANGES_RE_2 = /^[a-z\d][a-z\d._-]*$/i;
+const COMMIT_RE = /^COMMIT:(\d{4}-\d{2}-\d{2})$/;
+
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT = 'src/config/docs-page-dates.generated.ts';
 const CHECK = process.argv.includes('--check');
@@ -34,7 +43,7 @@ function listDocPages() {
       if (entry.isDirectory()) walk(`${dir}/${entry.name}`);
       else if (entry.name.endsWith('.mdx')) {
         const file = `${dir}/${entry.name}`;
-        pages.set(file.replace(/^docs\//, '').replace(/\.mdx$/, ''), file);
+        pages.set(file.replace(WALK_RE, '').replace(WALK_RE_2, ''), file);
       }
     }
   };
@@ -50,7 +59,7 @@ function listDocPages() {
     }
   };
   collectSources(JSON.parse(readFileSync(join(ROOT, 'docs/docs.json'), 'utf8')));
-  const slugify = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const slugify = (value) => value.toLowerCase().replace(NON_ALPHANUMERIC_RE, '-').replace(SLUGIFY_RE, '');
   for (const file of sources) {
     const spec = loadYaml(readFileSync(join(ROOT, file), 'utf8'));
     for (const paths of [spec.paths, spec.webhooks]) {
@@ -78,7 +87,7 @@ function commitDateRanges() {
     let remote = 'origin';
     if (!remotes.includes(remote)) {
       const { VERCEL_GIT_PROVIDER: provider, VERCEL_GIT_REPO_OWNER: owner, VERCEL_GIT_REPO_SLUG: repo } = process.env;
-      if (provider !== 'github' || !/^[a-z\d][a-z\d-]*$/i.test(owner ?? '') || !/^[a-z\d][a-z\d._-]*$/i.test(repo ?? '')) {
+      if (provider !== 'github' || !COMMIT_DATE_RANGES_RE.test(owner ?? '') || !COMMIT_DATE_RANGES_RE_2.test(repo ?? '')) {
         throw new Error('docs page dates: no origin remote or valid Vercel GitHub repository identity');
       }
       remote = `https://github.com/${owner}/${repo}.git`;
@@ -109,7 +118,7 @@ function commitDateRanges() {
   const dates = new Map();
   let current = null;
   for (const line of output.split('\n')) {
-    const commit = line.match(/^COMMIT:(\d{4}-\d{2}-\d{2})$/);
+    const commit = line.match(COMMIT_RE);
     if (commit) {
       current = commit[1];
       continue;

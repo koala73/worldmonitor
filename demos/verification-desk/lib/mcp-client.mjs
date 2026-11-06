@@ -4,6 +4,9 @@
 // and keeps the Mcp-Session-Id the server hands out on initialize. No SDK so
 // the demo has one dependency (the Anthropic SDK) and starts in a second.
 
+const PARSE_SSE_BODY_RE = /\r?\n\r?\n/;
+const LINE_BREAK_RE = /\r?\n/;
+
 const PROTOCOL_VERSION = '2025-06-18';
 const USER_AGENT = 'WorldMonitor-VerificationDesk/1.0 (+https://worldmonitor.app)';
 
@@ -19,9 +22,9 @@ export class McpError extends Error {
 function parseSseBody(text) {
   // Last `data:` event that carries a JSON-RPC response wins.
   let last = null;
-  for (const block of text.split(/\r?\n\r?\n/)) {
+  for (const block of text.split(PARSE_SSE_BODY_RE)) {
     const data = block
-      .split(/\r?\n/)
+      .split(LINE_BREAK_RE)
       .filter((line) => line.startsWith('data:'))
       .map((line) => line.slice(5).trimStart())
       .join('\n');

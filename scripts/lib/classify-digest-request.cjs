@@ -1,5 +1,8 @@
 'use strict';
 
+const RESOLVE_CLASSIFY_API_BASE_RE = /\/+$/;
+
+
 // #7437: where should Classify fetch list-feed-digest from, and with which
 // auth/transport? The previous inline https.get against the hardcoded
 // production API host silently classified 0 titles on every self-host install.
@@ -13,7 +16,7 @@ const DEFAULT_CLASSIFY_API_BASE = `https://${DEFAULT_CLASSIFY_API_HOST}`;
 
 function resolveClassifyApiBase(env = process.env) {
   const raw = typeof env.API_BASE_URL === 'string' ? env.API_BASE_URL.trim() : '';
-  return (raw || DEFAULT_CLASSIFY_API_BASE).replace(/\/+$/, '');
+  return (raw || DEFAULT_CLASSIFY_API_BASE).replace(RESOLVE_CLASSIFY_API_BASE_RE, '');
 }
 
 function buildClassifyDigestUrl(variant, env = process.env) {

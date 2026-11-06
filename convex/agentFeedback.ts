@@ -15,6 +15,12 @@ import {
   agentFeedbackStatusValidator,
 } from "./lib/agentFeedbackValidators";
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+
+
 // Storage for the agent feedback channel (#8721). The edge validates,
 // sanitizes, redacts, and hashes every report before it reaches this module;
 // the bounds here are a second line, as in contactMessages.ts. Report text is
@@ -246,10 +252,10 @@ export const submit = internalMutation({
 
 function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(ESCAPE_HTML_RE, "&amp;")
+    .replace(ESCAPE_HTML_RE_2, "&lt;")
+    .replace(ESCAPE_HTML_RE_3, "&gt;")
+    .replace(ESCAPE_HTML_RE_4, "&quot;");
 }
 
 export const getSecurityNotice = internalQuery({

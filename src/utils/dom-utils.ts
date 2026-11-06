@@ -1,4 +1,7 @@
 /** Anything that can appear as a child of h() / fragment(). */
+const WHITESPACE_RE = /\s+/;
+const WALK_RE = /^https?:\/\//i;
+
 export type DomChild = Node | string | number | null | undefined | false;
 
 declare const trustedHtmlBrand: unique symbol;
@@ -91,7 +94,7 @@ const SAFE_STYLE_RE = /^color:\s*(#[0-9a-fA-F]{3,8}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*
 export function ensureNoopenerRel(rel: string | null): string {
   const tokens = new Set(
     (rel ?? '')
-      .split(/\s+/)
+      .split(WHITESPACE_RE)
       .map((token) => token.trim().toLowerCase())
       .filter((token) => token && token !== 'opener'),
   );
@@ -143,7 +146,7 @@ export function safeHtml(html: string): DocumentFragment {
         // "/\t/host" all resolve to another origin.
         if (el.hasAttribute('href')) {
           const href = el.getAttribute('href') || '';
-          if (!/^https?:\/\//i.test(href) && !isSameOriginPath(href) && !href.startsWith('#')) {
+          if (!WALK_RE.test(href) && !isSameOriginPath(href) && !href.startsWith('#')) {
             el.removeAttribute('href');
           }
         }

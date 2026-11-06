@@ -4,6 +4,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const SELECTOR_RE = /\/\*[\s\S]*?\*\//g;
+const WHITESPACE_RE = /\s+/g;
+const VALUE_RE = /['"`]\s*\+?\s*$/;
+
 export const BRIEF_RENDERER = 'server/_shared/brief-render.js';
 const FONT_PROPS = /(?<![\w-])(font-weight|font-style|font-variant(?:-[a-z]+)?|font-feature-settings|font-variation-settings|font-synthesis(?:-[a-z]+)?|font-family|font-optical-sizing|font|text-transform|hyphens)\s*:\s*([^;{}\n]+)/g;
 const LANG_ATTR = /\blang=["']([^"']+)["']/g;
@@ -14,14 +18,14 @@ function selector(text, index) {
   const open = before.lastIndexOf('{');
   if (open < 0 || open < before.lastIndexOf('}')) return '';
   const start = Math.max(before.lastIndexOf('}', open), before.lastIndexOf(';', open)) + 1;
-  return before.slice(start, open).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').trim().slice(-160);
+  return before.slice(start, open).replace(SELECTOR_RE, '').replace(WHITESPACE_RE, ' ').trim().slice(-160);
 }
 
 export function briefFontInputs(root) {
   const text = fs.readFileSync(path.join(root, BRIEF_RENDERER), 'utf8');
   const declarations = new Set();
   for (const m of text.matchAll(FONT_PROPS)) {
-    const value = m[2].trim().replace(/['"`]\s*\+?\s*$/, '').replace(/\s+/g, ' ');
+    const value = m[2].trim().replace(VALUE_RE, '').replace(WHITESPACE_RE, ' ');
     declarations.add(`${selector(text, m.index)} | ${m[1]}: ${value}`);
   }
   const langs = new Set([...text.matchAll(LANG_ATTR)].map((m) => m[1].toLowerCase()));

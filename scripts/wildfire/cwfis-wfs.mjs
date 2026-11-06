@@ -12,6 +12,26 @@
 
 import { CHROME_UA, httpRetryError, isRetryableHttpStatus, withRetry } from '../_seed-utils.mjs';
 
+const ISO_RE = /\.\d{3}Z$/;
+const RESOLVE_CWFIS_CQL_FILTER_RE = /\brecord_end\s*>=/i;
+const LOOKS_LIKE_EXCEPTION_REPORT_RE = /<ows:ExceptionReport\b/i;
+const LOOKS_LIKE_EXCEPTION_REPORT_RE_2 = /<ExceptionReport\b/i;
+const EXCEPTION_MESSAGE_RE = /<ows:ExceptionText>([\s\S]*?)<\/ows:ExceptionText>/i;
+const EXCEPTION_MESSAGE_RE_2 = /<ExceptionText>([\s\S]*?)<\/ExceptionText>/i;
+const WHITESPACE_RE = /\s+/g;
+const PARSE_CWFIS_GML_RE = /<html[\s>]/i;
+const PARSE_CWFIS_GML_RE_2 = /<wfs:FeatureCollection\b/i;
+const PARSE_CWFIS_GML_RE_3 = /<FeatureCollection\b/i;
+const COLLECTION_OPEN_RE = /<(?:wfs:)?FeatureCollection\b([^>]*)>/i;
+const NUMBER_MATCHED_RE = /\bnumberMatched="([^"]+)"/i;
+const NUMBER_RETURNED_RE = /\bnumberReturned="([^"]+)"/i;
+const NEXT_HREF_RE = /\bnext="([^"]+)"/i;
+const NEXT_HREF_RE_2 = /&amp;/g;
+const RESULT_RE = /^[A-Z0-9_]{1,64}$/;
+const LOOKS_JSON_RE = /^\s*\{/;
+const LOOKS_JSON_RE_2 = /json/i;
+
+
 export const CWFIS_WFS_HOST = 'geoserver.cwfif.nrcan.gc.ca';
 export const CWFIS_WFS_BASE = 'https://geoserver.cwfif.nrcan.gc.ca/geoserver/ows';
 export const CWFIS_WFS_VERSION = '2.0.0';
@@ -96,14 +116,14 @@ export function cwfisWfsCacheKey({ typeName, bbox, startIndex } = {}) {
 }
 
 export function currentValidCql(now = new Date()) {
-  const iso = new Date(now).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const iso = new Date(now).toISOString().replace(ISO_RE, 'Z');
   return `record_end >= ${iso}`;
 }
 
 export function resolveCwfisCqlFilter(cqlFilter, now = new Date()) {
   const raw = cqlFilter == null ? '' : String(cqlFilter).trim();
   const resolved = raw || currentValidCql(now);
-  if (!/\brecord_end\s*>=/i.test(resolved)) {
+  if (!RESOLVE_CWFIS_CQL_FILTER_RE.test(resolved)) {
     throw new CwfisWfsError('CWFIS CQL must keep record_end >= now; refusing the historical archive');
   }
   return resolved;
@@ -200,13 +220,13 @@ export function normalizeCwfisFeature(feature, kind) {
 }
 
 function looksLikeExceptionReport(text) {
-  return /<ows:ExceptionReport\b/i.test(text) || /<ExceptionReport\b/i.test(text);
+  return LOOKS_LIKE_EXCEPTION_REPORT_RE.test(text) || LOOKS_LIKE_EXCEPTION_REPORT_RE_2.test(text);
 }
 
 function exceptionMessage(text) {
-  const match = text.match(/<ows:ExceptionText>([\s\S]*?)<\/ows:ExceptionText>/i)
-    || text.match(/<ExceptionText>([\s\S]*?)<\/ExceptionText>/i);
-  return match ? match[1].replace(/\s+/g, ' ').trim() : 'CWFIS WFS exception';
+  const match = text.match(EXCEPTION_MESSAGE_RE)
+    || text.match(EXCEPTION_MESSAGE_RE_2);
+  return match ? match[1].replace(WHITESPACE_RE, ' ').trim() : 'CWFIS WFS exception';
 }
 
 export function parseCwfisGeoJson(payload, kind = 'active') {
@@ -260,18 +280,18 @@ export function parseCwfisGml(xml, kind = 'active') {
   if (typeof xml !== 'string' || xml.trim() === '') {
     throw new CwfisWfsError('CWFIS GML is empty');
   }
-  if (looksLikeExceptionReport(xml) || /<html[\s>]/i.test(xml)) {
+  if (looksLikeExceptionReport(xml) || PARSE_CWFIS_GML_RE.test(xml)) {
     throw new CwfisWfsError(exceptionMessage(xml));
   }
-  if (!/<wfs:FeatureCollection\b/i.test(xml) && !/<FeatureCollection\b/i.test(xml)) {
+  if (!PARSE_CWFIS_GML_RE_2.test(xml) && !PARSE_CWFIS_GML_RE_3.test(xml)) {
     throw new CwfisWfsError('CWFIS GML is not a FeatureCollection');
   }
 
-  const collectionOpen = xml.match(/<(?:wfs:)?FeatureCollection\b([^>]*)>/i);
+  const collectionOpen = xml.match(COLLECTION_OPEN_RE);
   const attrs = collectionOpen ? collectionOpen[1] : '';
-  const numberMatched = asFiniteNumber((attrs.match(/\bnumberMatched="([^"]+)"/i) || [])[1]);
-  const numberReturned = asFiniteNumber((attrs.match(/\bnumberReturned="([^"]+)"/i) || [])[1]);
-  const nextHref = ((attrs.match(/\bnext="([^"]+)"/i) || [])[1] || '').replace(/&amp;/g, '&') || null;
+  const numberMatched = asFiniteNumber((attrs.match(NUMBER_MATCHED_RE) || [])[1]);
+  const numberReturned = asFiniteNumber((attrs.match(NUMBER_RETURNED_RE) || [])[1]);
+  const nextHref = ((attrs.match(NEXT_HREF_RE) || [])[1] || '').replace(NEXT_HREF_RE_2, '&') || null;
 
   const fireDetections = [];
   const pageRowKeys = [];
@@ -444,7 +464,7 @@ export async function fetchApprovedWfs(url, {
         event: 'cwfis_request_failure', layer: typeName, startIndex: Number(startIndex),
         stage, attempt: attempts, durationMs: Date.now() - startedAt,
         status: error.status ?? null,
-        causeCode: typeof causeCode === 'string' && /^[A-Z0-9_]{1,64}$/.test(causeCode) ? causeCode : null,
+        causeCode: typeof causeCode === 'string' && RESULT_RE.test(causeCode) ? causeCode : null,
       }));
       throw error;
     }
@@ -454,7 +474,7 @@ export async function fetchApprovedWfs(url, {
 }
 
 function parseWfsBody(text, contentType, kind) {
-  const looksJson = /^\s*\{/.test(text) || /json/i.test(contentType || '');
+  const looksJson = LOOKS_JSON_RE.test(text) || LOOKS_JSON_RE_2.test(contentType || '');
   if (looksJson) {
     try {
       return parseCwfisGeoJson(text, kind);

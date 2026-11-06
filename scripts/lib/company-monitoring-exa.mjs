@@ -2,6 +2,13 @@
 
 import { createHash } from 'node:crypto';
 
+const WHITESPACE_RE = /\s+/g;
+const SAFE_OPAQUE_TEXT_RE = /[\u0000-\u001f\u007f]/u;
+const NORMALIZED_RE = /^www\./;
+const NORMALIZED_RE_2 = /\.$/;
+const TIMEOUT_ERROR_RE = /timed?\s*out/i;
+
+
 const encoder = new TextEncoder();
 const EXA_ENDPOINT = 'https://api.exa.ai/search';
 const QUERY_HEADER = 'WorldMonitor discovery v1 | recent factual company news | candidate-only attribution';
@@ -45,21 +52,21 @@ function safeText(value, maxUtf8Bytes = 256) {
   if (typeof value !== 'string') return null;
   const tokens = value.normalize('NFC').match(SAFE_TEXT_TOKEN);
   if (!tokens?.length) return null;
-  const normalized = tokens.join(' ').replace(/\s+/g, ' ').trim();
+  const normalized = tokens.join(' ').replace(WHITESPACE_RE, ' ').trim();
   return normalized && utf8Bytes(normalized) <= maxUtf8Bytes ? normalized : null;
 }
 
 function safeOpaqueText(value, maxUtf8Bytes) {
   if (typeof value !== 'string') return null;
   const normalized = value.normalize('NFC').trim();
-  return normalized && !/[\u0000-\u001f\u007f]/u.test(normalized) && utf8Bytes(normalized) <= maxUtf8Bytes
+  return normalized && !SAFE_OPAQUE_TEXT_RE.test(normalized) && utf8Bytes(normalized) <= maxUtf8Bytes
     ? normalized
     : null;
 }
 
 function safeDomain(value) {
   if (typeof value !== 'string') return null;
-  const normalized = value.normalize('NFC').trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+  const normalized = value.normalize('NFC').trim().toLowerCase().replace(NORMALIZED_RE, '').replace(NORMALIZED_RE_2, '');
   return DOMAIN.test(normalized) ? normalized : null;
 }
 
@@ -247,7 +254,7 @@ function providerReason(status) {
 }
 
 function timeoutError(error) {
-  return error?.name === 'TimeoutError' || error?.name === 'AbortError' || /timed?\s*out/i.test(error?.message ?? '');
+  return error?.name === 'TimeoutError' || error?.name === 'AbortError' || TIMEOUT_ERROR_RE.test(error?.message ?? '');
 }
 
 function reportCost(attempts) {

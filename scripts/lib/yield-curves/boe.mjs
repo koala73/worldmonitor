@@ -12,6 +12,9 @@
 
 import { collapseCurves } from './model.mjs';
 
+const LEGACY_RE = /^([34]\. )/;
+
+
 const SPOT_CURVE_SHEET = '4. spot curve';
 const SHORT_END_SHEET = '3. spot, short end';
 
@@ -96,7 +99,7 @@ function findSheet(workbook, preferredName) {
   if (exact) return exact;
   // Archive-era naming ("3. nominal spot, short end"). The preferred name is
   // "3. spot, short end" / "4. spot curve"; the archive inserts "nominal ".
-  const legacy = preferredName.replace(/^([34]\. )/, '$1nominal ');
+  const legacy = preferredName.replace(LEGACY_RE, '$1nominal ');
   return workbook.getWorksheet?.(legacy) ?? null;
 }
 

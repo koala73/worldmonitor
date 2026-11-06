@@ -14,6 +14,10 @@ import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 import { extractCableShipName, isCableRelatedNotice, isFreshNotice } from '../../../../shared/nga-cable-notices';
 
+const _CABLE_NAME_PATTERNS_RE = /[-/]/g;
+const PARSE_ISSUE_DATE_RE = /(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i;
+
+
 // ========================================================================
 // Constants
 // ========================================================================
@@ -195,7 +199,7 @@ export function parseCoordinates(text: string): [number, number][] {
 
 const _cableNamePatterns = new Map(
   Object.entries(CABLE_NAME_MAP).map(([name, id]) => [
-    new RegExp(`\\b${name.replace(/[-/]/g, '\\$&')}\\b`, 'i'),
+    new RegExp(`\\b${name.replace(_CABLE_NAME_PATTERNS_RE, '\\$&')}\\b`, 'i'),
     id,
   ]),
 );
@@ -235,7 +239,7 @@ const MONTH_MAP: Record<string, number> = {
 };
 
 export function parseIssueDate(dateStr: string | undefined): number {
-  const m = dateStr?.match(/(\d{2})(\d{4})Z\s+([A-Z]{3})\s+(\d{4})/i);
+  const m = dateStr?.match(PARSE_ISSUE_DATE_RE);
   if (!m) return 0;
   const d = new Date(Date.UTC(
     parseInt(m[4]!, 10),

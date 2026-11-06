@@ -5,6 +5,10 @@
 
 import { hardResolutionBoundMs } from './_forecast-resolution-eval.mjs';
 
+const TEXT_RE = /[\u0000-\u001f\u007f]+/g;
+const WHITESPACE_RE = /\s+/g;
+
+
 export const DEFAULT_ROLLING_WINDOW_DAYS = 180;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-6;
@@ -1729,7 +1733,7 @@ export const RECEIPT_VOID_REASON_LABELS = Object.freeze({
 const RECEIPT_OUTCOMES = new Set(['YES', 'NO', 'VOID']);
 
 function publicText(value, maxChars) {
-  const text = String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const text = String(value ?? '').replace(TEXT_RE, ' ').replace(WHITESPACE_RE, ' ').trim();
   return text.length > maxChars ? `${text.slice(0, maxChars - 1).trimEnd()}…` : text;
 }
 

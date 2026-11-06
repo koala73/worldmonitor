@@ -36,6 +36,12 @@ import {
   type SubscriptionStatus,
 } from "./subscriptionHelpers";
 
+const ESCAPE_HTML_RE = /&/g;
+const ESCAPE_HTML_RE_2 = /</g;
+const ESCAPE_HTML_RE_3 = />/g;
+const ESCAPE_HTML_RE_4 = /"/g;
+
+
 // ---------------------------------------------------------------------------
 // Billing REST SDK client
 // ---------------------------------------------------------------------------
@@ -3140,10 +3146,10 @@ function readNumber(value: unknown): number | undefined {
 
 function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(ESCAPE_HTML_RE, "&amp;")
+    .replace(ESCAPE_HTML_RE_2, "&lt;")
+    .replace(ESCAPE_HTML_RE_3, "&gt;")
+    .replace(ESCAPE_HTML_RE_4, "&quot;");
 }
 
 function extractDodoPaymentStatus(payment: unknown): string | null {

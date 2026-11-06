@@ -2,6 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const SERIALIZED_KEY_PATTERN_RE = /^\s+("(?:\\.|[^"\\])*"):/gm;
+
+
 // OpenFlights airlines.dat is public domain. Update this SHA deliberately when
 // refreshing the generated lookup so the input remains reproducible.
 const SOURCE_URL = 'https://raw.githubusercontent.com/jpatokal/openflights/1d574116457dd4bccf2d3838c4171b7960794dca/data/airlines.dat';
@@ -78,7 +81,7 @@ function buildGeneratedBlock(airlines) {
 }
 
 function readGeneratedKeys(block) {
-  const serializedKeyPattern = /^\s+("(?:\\.|[^"\\])*"):/gm;
+  const serializedKeyPattern = SERIALIZED_KEY_PATTERN_RE;
   return new Set(
     Array.from(block.matchAll(serializedKeyPattern), ([, serializedKey]) => JSON.parse(serializedKey)),
   );

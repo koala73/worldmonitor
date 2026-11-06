@@ -8,6 +8,8 @@
  * (OECD monthly, ChinaBond latest-only) publish canonical + `:latest` only.
  */
 
+const BUSINESS_DAY_MS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 export type YieldMeasure = 'par' | 'spot' | 'benchmark' | 'monthly-10y';
 
 export interface CoveredMarket {
@@ -67,7 +69,7 @@ export function findCoveredMarket(country: string): CoveredMarket | undefined {
 }
 
 function businessDayMs(isoDate: string): number | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return undefined;
+  if (!BUSINESS_DAY_MS_RE.test(isoDate)) return undefined;
   const ms = Date.parse(`${isoDate}T00:00:00Z`);
   return Number.isFinite(ms) ? ms : undefined;
 }

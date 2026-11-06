@@ -9,6 +9,13 @@
 import COUNTRY_PORT_CLUSTERS from '../../../scripts/shared/country-port-clusters.json';
 import { toFlagEmoji } from '../../utils/country-flag';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const NORMALIZE_FOR_SEARCH_RE = /[\u0300-\u036f]/g;
+const NORMALIZE_FOR_SEARCH_RE_2 = /[^a-z0-9 ]+/g;
+const WHITESPACE_RE = /\s+/g;
+const NON_DIGIT_RE = /\D/g;
+
+
 // ─── Country list ───────────────────────────────────────────────────────────
 
 const regionNames = (() => {
@@ -27,16 +34,16 @@ export interface CountryListEntry {
 }
 
 function isIso2Key(key: string): boolean {
-  return /^[A-Z]{2}$/.test(key);
+  return COUNTRY_CODE_RE.test(key);
 }
 
 function normalizeForSearch(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9 ]+/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_FOR_SEARCH_RE, '')
+    .replace(NORMALIZE_FOR_SEARCH_RE_2, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -170,7 +177,7 @@ export type ExplorerCargo = 'container' | 'tanker' | 'bulk' | 'roro';
  */
 export function inferCargoFromHs2(hs2: string | null): ExplorerCargo {
   if (!hs2) return 'container';
-  const code = hs2.replace(/\D/g, '');
+  const code = hs2.replace(NON_DIGIT_RE, '');
   if (code === '27') return 'tanker';
   if (['10', '11', '12', '15', '26'].includes(code)) return 'bulk';
   if (['87', '89'].includes(code)) return 'roro';

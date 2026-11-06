@@ -8,6 +8,10 @@
 
 import { normalizeDateLabel, parseYieldNumber, collapseCurves } from './model.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const OBS_INDEX_RE = /"/g;
+
+
 export const BENCHMARK_SERIES = {
   'BD.CDN.2YR.DQ.YLD': '2y',
   'BD.CDN.3YR.DQ.YLD': '3y',
@@ -28,15 +32,15 @@ export const TBILL_DAILY_SERIES = {
 };
 
 function parseValetObservationsCsv(csv, seriesMap) {
-  const lines = String(csv ?? '').split(/\r?\n/);
-  const obsIndex = lines.findIndex((line) => line.replace(/"/g, '').trim() === 'OBSERVATIONS');
+  const lines = String(csv ?? '').split(LINE_BREAK_RE);
+  const obsIndex = lines.findIndex((line) => line.replace(OBS_INDEX_RE, '').trim() === 'OBSERVATIONS');
   if (obsIndex === -1) return [];
-  const headers = (lines[obsIndex + 1] ?? '').split(',').map((cell) => cell.replace(/"/g, '').trim());
+  const headers = (lines[obsIndex + 1] ?? '').split(',').map((cell) => cell.replace(OBS_INDEX_RE, '').trim());
   const columns = headers.map((header) => (Object.prototype.hasOwnProperty.call(seriesMap, header) ? seriesMap[header] : null));
   const out = [];
   for (const line of lines.slice(obsIndex + 2)) {
     if (!line.trim()) continue;
-    const cells = line.split(',').map((cell) => cell.replace(/"/g, '').trim());
+    const cells = line.split(',').map((cell) => cell.replace(OBS_INDEX_RE, '').trim());
     const date = normalizeDateLabel(cells[0] ?? '');
     if (!date) continue;
     const tenors = {};

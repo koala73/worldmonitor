@@ -9,6 +9,9 @@ import { cachedFetchJson } from '../../../_shared/redis';
 import { CHROME_UA } from '../../../_shared/constants';
 import { toIataCallsign } from '../../../_shared/airline-codes';
 
+const GET_WINGBITS_LIVE_FLIGHT_RE = /^[0-9a-f]{6}$/;
+
+
 const ECS_API_BASE = 'https://ecs-api.wingbits.com/v1/flights';
 const PLANESPOTTERS_API = 'https://api.planespotters.net/pub/photos/hex';
 // Live position data — short TTL so the popup reflects current state.
@@ -147,7 +150,7 @@ export async function getWingbitsLiveFlight(
   if (!req.icao24) return { flight: undefined };
 
   const icao24 = req.icao24.toLowerCase().trim();
-  if (!/^[0-9a-f]{6}$/.test(icao24)) return { flight: undefined };
+  if (!GET_WINGBITS_LIVE_FLIGHT_RE.test(icao24)) return { flight: undefined };
 
   try {
     const liveResult = await cachedFetchJson<{ flight: WingbitsLiveFlight | null }>(

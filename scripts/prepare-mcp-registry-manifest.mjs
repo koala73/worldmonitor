@@ -6,6 +6,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stableMcpRegistryStringify } from './publish-mcp-registry.mjs';
 
+const BUILD_MCP_REGISTRY_MANIFEST_RE = /\b\d+ tools\b/i;
+
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // The official registry refuses to republish a version whose payload changed —
@@ -85,7 +88,7 @@ export function buildMcpRegistryManifest(server, serverCard, ledger) {
   if (typeof server.description !== 'string' || server.description.trim() === '') {
     throw new Error('server.json must contain a description');
   }
-  if (/\b\d+ tools\b/i.test(server.description)) {
+  if (BUILD_MCP_REGISTRY_MANIFEST_RE.test(server.description)) {
     throw new Error('server.json description must not contain a hand-authored tool count');
   }
   // The pin is keyed on the server card, but the manifest publishes

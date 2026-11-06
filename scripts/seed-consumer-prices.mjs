@@ -19,6 +19,9 @@
 import { loadEnvFile, CHROME_UA, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { pathToFileURL } from 'node:url';
 
+const TRAILING_SLASH_RE = /\/$/;
+
+
 loadEnvFile(import.meta.url);
 
 const FORCE = process.argv.includes('--force');
@@ -31,7 +34,7 @@ const BASKET = 'essentials-ae';
 
 async function fetchSnapshot(path) {
   if (!BASE_URL) return null;
-  const url = `${BASE_URL.replace(/\/$/, '')}${path}`;
+  const url = `${BASE_URL.replace(TRAILING_SLASH_RE, '')}${path}`;
   try {
     const resp = await fetch(url, {
       headers: {

@@ -21,6 +21,13 @@ import {
 } from './lib/classify-eval.mjs';
 import { OPENROUTER_PROVIDER_ROUTING } from './_llm-model-timeouts.mjs';
 
+const NAME_RE = /^--/;
+const LINES_RE = /[\n\r]/g;
+const LINES_RE_2 = /\|/g;
+const RUN_RELAY_RE = /\[[\s\S]*\]/;
+const RUN_RPC_RE = /\{[\s\S]*\}/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_FIXTURE = 'tests/fixtures/classify-judged-headlines.json';
 const LEVELS = ['critical', 'high', 'medium', 'low', 'info'];
@@ -41,7 +48,7 @@ const argv = process.argv.slice(2);
 // flag read as another flag's value would otherwise burn one and write nothing (or junk).
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--force') continue;
-  const name = argv[i].replace(/^--/, '');
+  const name = argv[i].replace(NAME_RE, '');
   if (!argv[i].startsWith('--') || !VALUE_FLAGS.includes(name)) throw new Error(`unknown argument ${argv[i]}`);
   const value = argv[++i];
   if (value === undefined || value.startsWith('--')) throw new Error(`--${name} needs a value`);
@@ -118,10 +125,10 @@ async function runRelay() {
   const out = new Array(fixture.rows.length).fill(null);
   for (let base = 0; base < fixture.rows.length; base += RELAY_CHUNK) {
     const chunk = fixture.rows.slice(base, base + RELAY_CHUNK);
-    const lines = chunk.map((r, i) => `${i}|${r.title.replace(/[\n\r]/g, ' ').replace(/\|/g, '/').slice(0, 200).trim()}`);
+    const lines = chunk.map((r, i) => `${i}|${r.title.replace(LINES_RE, ' ').replace(LINES_RE_2, '/').slice(0, 200).trim()}`);
     const content = await complete(lines.join('\n'), chunk.length * 40);
     let entries = [];
-    try { entries = JSON.parse(content.match(/\[[\s\S]*\]/)?.[0] ?? '[]'); } catch { /* counted as unlabelled */ }
+    try { entries = JSON.parse(content.match(RUN_RELAY_RE)?.[0] ?? '[]'); } catch { /* counted as unlabelled */ }
     // As seedClassifyForVariant: the first entry per index wins, and an entry needs a valid
     // level AND category to be cached at all.
     for (const e of entries) {
@@ -141,7 +148,7 @@ async function runRpc() {
       const i = next++;
       const content = await complete(fixture.rows[i].title.slice(0, 500), 200);
       try {
-        const { level, category } = JSON.parse(content.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
+        const { level, category } = JSON.parse(content.match(RUN_RPC_RE)?.[0] ?? '{}');
         if (LEVELS.includes(level) && CATEGORIES.includes(category)) out[i] = level;
       } catch { /* counted as unlabelled */ }
     }

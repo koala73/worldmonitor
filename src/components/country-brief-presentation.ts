@@ -1,5 +1,15 @@
 import { h } from '@/utils/dom-utils';
 import { BRIEF_TOPICS, BRIEF_SECTIONS, type BriefTopic, type BriefSectionState, type BriefSectionId } from '../../shared/country-brief-sections';
+
+const PARAGRAPHS_RE = /\r/g;
+const PARAGRAPHS_RE_2 = /\n\s*\n/;
+const PARAGRAPHS_RE_3 = /^#{1,6}\s/;
+const PARAGRAPHS_RE_4 = /^\*\*[^*]+\*\*:?$/;
+const PARAGRAPHS_RE_5 = /^(?:Date|Classification):/i;
+const PARAGRAPHS_RE_6 = /^[A-Z][A-Z\s:–-]+$/;
+const LEAD_RE = /[*#]/g;
+const SENTENCES_RE = /[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g;
+
 export { BRIEF_TOPICS, BRIEF_SECTIONS, type BriefTopic, type BriefSectionState, type BriefSectionId } from '../../shared/country-brief-sections';
 
 export interface BriefSection {
@@ -18,14 +28,14 @@ export function briefSectionState(section: BriefSection): BriefSectionState {
 }
 
 export function summarizeCountryBrief(brief: string): string {
-  const paragraphs = brief.replace(/\r/g, '').split(/\n\s*\n/)
+  const paragraphs = brief.replace(PARAGRAPHS_RE, '').split(PARAGRAPHS_RE_2)
     .map(paragraph => paragraph.split('\n').filter(line => {
       const text = line.trim();
-      return text && !/^#{1,6}\s/.test(text) && !/^\*\*[^*]+\*\*:?$/.test(text)
-        && !/^(?:Date|Classification):/i.test(text) && !/^[A-Z][A-Z\s:–-]+$/.test(text);
+      return text && !PARAGRAPHS_RE_3.test(text) && !PARAGRAPHS_RE_4.test(text)
+        && !PARAGRAPHS_RE_5.test(text) && !PARAGRAPHS_RE_6.test(text);
     }).join(' ').trim()).filter(Boolean);
-  const lead = paragraphs.find(paragraph => paragraph.replace(/[*#]/g, '').length > 100) ?? paragraphs[0] ?? '';
-  const sentences = lead.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) ?? [lead];
+  const lead = paragraphs.find(paragraph => paragraph.replace(LEAD_RE, '').length > 100) ?? paragraphs[0] ?? '';
+  const sentences = lead.match(SENTENCES_RE) ?? [lead];
   let summary = '';
   for (const sentence of sentences.slice(0, 3)) {
     if (summary && summary.length + sentence.length > 700) break;

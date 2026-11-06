@@ -4,6 +4,9 @@ import { timingSafeEqualSecret } from './_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { getRedisCredentials } from './_upstash-json.js';
 
+const LOGICAL_KEY_RE = /^(?:(?:preview|development):[^:]+:)+/;
+
+
 export const config = { runtime: 'edge' };
 
 const MAX_EXPLICIT_KEYS = 20;
@@ -36,7 +39,7 @@ function getKeyPrefix() {
 // Strip any deployment prefixes getKeyPrefix() writes, so another
 // deployment's keys are judged by their logical name.
 function logicalKey(key) {
-  return key.replace(/^(?:(?:preview|development):[^:]+:)+/, '');
+  return key.replace(LOGICAL_KEY_RE, '');
 }
 
 function isBlocklisted(key) {

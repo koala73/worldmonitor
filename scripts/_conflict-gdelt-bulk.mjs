@@ -8,6 +8,15 @@ import { inflateRawSync } from 'node:zlib';
 import { GDELT_COUNTRY_NAMES, gdeltSeenDateToIso, gdeltSeenDateToMs } from './_conflict-gdelt.mjs';
 import { allSettledWithConcurrency } from './_seed-utils.mjs';
 
+const WHITESPACE_RE = /\s+/;
+const PARSE_EXPORT_DESCRIPTOR_LINE_RE = /^[a-f0-9]{32}$/;
+const PARSE_EXPORT_DESCRIPTOR_LINE_RE_2 = /^\/gdeltv2\/(\d{14})\.export\.CSV\.zip$/;
+const LINE_BREAK_RE = /\r?\n/;
+const PARSE_GDELT_RECENT_EXPORTS_RE = /\.export\.CSV\.zip$/i;
+const PARSE_GDELT_RECENT_EXPORTS_RE_2 = /^\d+\s+[a-f0-9]{32}\s+/i;
+const EXTRACT_GDELT_EXPORT_CSV_RE = /^\d{14}\.export\.CSV$/;
+
+
 const GDELT_STORAGE_ORIGIN = 'https://storage.googleapis.com/data.gdeltproject.org';
 export const GDELT_MASTER_FILELIST_URL = `${GDELT_STORAGE_ORIGIN}/gdeltv2/masterfilelist.txt`;
 export const GDELT_MAX_EXPORT_ZIP_BYTES = 5_000_000;
@@ -44,19 +53,19 @@ function boundedPositiveInteger(value, label, max) {
 }
 
 function parseExportDescriptorLine(exportLine) {
-  const [sizeRaw, md5Raw, urlRaw, ...extra] = exportLine.split(/\s+/);
+  const [sizeRaw, md5Raw, urlRaw, ...extra] = exportLine.split(WHITESPACE_RE);
   if (!sizeRaw || !md5Raw || !urlRaw || extra.length) {
     throw new Error('malformed GDELT event export manifest line');
   }
   const size = boundedPositiveInteger(sizeRaw, 'event export size', GDELT_MAX_EXPORT_ZIP_BYTES);
   const md5 = md5Raw.toLowerCase();
-  if (!/^[a-f0-9]{32}$/.test(md5)) throw new Error('invalid GDELT event export checksum');
+  if (!PARSE_EXPORT_DESCRIPTOR_LINE_RE.test(md5)) throw new Error('invalid GDELT event export checksum');
 
   const url = new URL(urlRaw);
   if (!['http:', 'https:'].includes(url.protocol) || url.hostname !== 'data.gdeltproject.org' || url.port) {
     throw new Error(`untrusted GDELT event export URL: ${urlRaw}`);
   }
-  const match = url.pathname.match(/^\/gdeltv2\/(\d{14})\.export\.CSV\.zip$/);
+  const match = url.pathname.match(PARSE_EXPORT_DESCRIPTOR_LINE_RE_2);
   if (!match || url.search || url.hash) throw new Error(`invalid GDELT event export path: ${urlRaw}`);
 
   return {
@@ -69,16 +78,16 @@ function parseExportDescriptorLine(exportLine) {
 
 export function parseGdeltRecentExports(manifest, limit = RECENT_EXPORT_COUNT) {
   const descriptors = [];
-  for (const line of String(manifest || '').split(/\r?\n/)) {
+  for (const line of String(manifest || '').split(LINE_BREAK_RE)) {
     const trimmed = line.trim();
-    if (!/\.export\.CSV\.zip$/i.test(trimmed)) continue;
+    if (!PARSE_GDELT_RECENT_EXPORTS_RE.test(trimmed)) continue;
     try {
       descriptors.push(parseExportDescriptorLine(trimmed));
     } catch (error) {
       // A suffix range can begin mid-line. Ignore that incomplete fragment,
       // but fail closed for any full-looking descriptor that violates the
       // checksum/size/URL allowlist.
-      if (!/^\d+\s+[a-f0-9]{32}\s+/i.test(trimmed)) continue;
+      if (!PARSE_GDELT_RECENT_EXPORTS_RE_2.test(trimmed)) continue;
       throw error;
     }
   }
@@ -115,7 +124,7 @@ export function extractGdeltExportCsv(zipBytes, expectedTimestamp = '') {
   if (dataStart > zip.length || dataEnd > zip.length) throw new Error('truncated GDELT event export ZIP');
 
   const filename = zip.subarray(30, 30 + filenameLength).toString('utf8');
-  if (!/^\d{14}\.export\.CSV$/.test(filename)) {
+  if (!EXTRACT_GDELT_EXPORT_CSV_RE.test(filename)) {
     throw new Error(`unexpected GDELT event export filename: ${filename}`);
   }
   // Exact-match the descriptor when the caller has one (#5864): the pattern
@@ -156,7 +165,7 @@ export function gdeltTimestampToMs(value) {
 export function mapGdeltExportToConflictEvents(csv) {
   const events = [];
   const seen = new Set();
-  for (const line of String(csv || '').split(/\r?\n/)) {
+  for (const line of String(csv || '').split(LINE_BREAK_RE)) {
     if (!line) continue;
     const fields = line.split('\t');
     if (fields.length < 61 || fields[25] !== '1' || fields[29] !== '4') continue;

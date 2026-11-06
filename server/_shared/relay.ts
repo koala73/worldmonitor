@@ -1,9 +1,13 @@
 import { CHROME_UA } from './constants';
 
+const GET_RELAY_BASE_URL_RE = /^ws(s?):\/\//;
+const TRAILING_SLASH_RE = /\/$/;
+
+
 export function getRelayBaseUrl(): string | null {
   const relayUrl = process.env.WS_RELAY_URL;
   if (!relayUrl) return null;
-  return relayUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/$/, '');
+  return relayUrl.replace(GET_RELAY_BASE_URL_RE, 'http$1://').replace(TRAILING_SLASH_RE, '');
 }
 
 export function getRelayHeaders(extra: Record<string, string> = {}): Record<string, string> {

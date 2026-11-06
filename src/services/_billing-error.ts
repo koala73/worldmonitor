@@ -20,6 +20,8 @@
  * Returns null when neither path matches — letting the caller default
  * unknown shapes to error-level Sentry capture.
  */
+const EXTRACT_BILLING_ERROR_KIND_RE = /No Dodo customer found for this user/;
+
 export function extractBillingErrorKind(err: unknown): string | null {
   const data = (err as { data?: unknown } | null | undefined)?.data;
   if (data && typeof data === 'object' && 'kind' in data) {
@@ -33,6 +35,6 @@ export function extractBillingErrorKind(err: unknown): string | null {
   // can still classify the event correctly. Removable once both layers
   // have soaked on the structured-throw rollout.
   const msg = err instanceof Error ? err.message : '';
-  if (/No Dodo customer found for this user/.test(msg)) return 'NO_CUSTOMER';
+  if (EXTRACT_BILLING_ERROR_KIND_RE.test(msg)) return 'NO_CUSTOMER';
   return null;
 }

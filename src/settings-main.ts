@@ -38,6 +38,9 @@ import { applyFont } from '@/services/font-settings';
 import { trackFeatureToggle } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+const HIGHLIGHT_MATCH_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 
 let activeSection = 'overview';
 let settingsManager: SettingsManager;
@@ -781,7 +784,7 @@ function highlightMatch(text: string, query: string): string {
   const escaped = escapeHtml(text);
   const qEscaped = escapeHtml(query);
   if (!qEscaped) return escaped;
-  const regex = new RegExp(`(${qEscaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const regex = new RegExp(`(${qEscaped.replace(HIGHLIGHT_MATCH_RE, '\\$&')})`, 'gi');
   return escaped.replace(regex, '<mark>$1</mark>');
 }
 

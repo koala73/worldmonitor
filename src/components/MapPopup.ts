@@ -35,6 +35,12 @@ import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from 
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { aptSectorLabel, aptTacticLabel, countryLabel, datacenterSectorLabel, isSameLocation, localizeRelativePlace, parseGdeltReportTitle, severityLabel, statusLabel, storageFacilityTypeLabel, weatherEventLabel } from './map-popup-i18n';
 
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const SLUG_RE = /^_+|_+$/g;
+const RENDER_BASE_POPUP_RE = /_/g;
+const TOKEN_RE = /[^A-Za-z0-9_-]/g;
+const TOKEN_RE_2 = /^[^A-Za-z_]/;
+
 
 // ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
 // Based on IEA/UNCTAD estimated trade composition. Updated periodically.
@@ -1014,8 +1020,8 @@ export class MapPopup {
   private getLocalizedHotspotSubtext(subtext: string): string {
     const slug = subtext
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
+      .replace(NON_ALPHANUMERIC_RE, '_')
+      .replace(SLUG_RE, '');
     const key = `popups.hotspotSubtexts.${slug}`;
     const localized = t(key);
     return localized === key ? subtext : localized;
@@ -1585,7 +1591,7 @@ export class MapPopup {
       </div>
       <div class="popup-body">
         ${base.description ? `<p class="popup-description">${escapeHtml(base.description)}</p>` : ''}
-        ${enriched.kind ? `<p class="popup-description" style="opacity:0.7;margin-top:2px">${escapeHtml(enriched.kind.replace(/_/g, ' '))}</p>` : ''}
+        ${enriched.kind ? `<p class="popup-description" style="opacity:0.7;margin-top:2px">${escapeHtml(enriched.kind.replace(RENDER_BASE_POPUP_RE, ' '))}</p>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.type')}</span>
@@ -1723,7 +1729,7 @@ export class MapPopup {
     const mediaSignal = event.sourceType === 'gdelt';
     const severityClass = escapeHtml(event.severity);
     const severityText = escapeHtml(severityLabel(event.severity));
-    const eventTypeLabel = mediaSignal ? t('popups.protest.mediaSignal') : escapeHtml(statusLabel(event.eventType.replace(/_/g, ' ')));
+    const eventTypeLabel = mediaSignal ? t('popups.protest.mediaSignal') : escapeHtml(statusLabel(event.eventType.replace(RENDER_BASE_POPUP_RE, ' ')));
     const icon = event.eventType === 'riot' ? '🔥' : event.eventType === 'strike' ? '✊' : '📢';
     const sourceLabel = event.sourceType === 'acled' ? t('popups.protest.acledVerified') : t('popups.protest.gdelt');
     const validatedBadge = !mediaSignal && event.validated ? `<span class="popup-badge verified">${t('popups.verified')}</span>` : '';
@@ -2022,7 +2028,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
       abuseipdb: 'AbuseIPDB',
     };
     const sourceLabel = sourceLabels[threat.source] || threat.source;
-    const typeLabel = statusLabel(threat.type.replace(/_/g, ' '));
+    const typeLabel = statusLabel(threat.type.replace(RENDER_BASE_POPUP_RE, ' '));
     const tags = (threat.tags || []).slice(0, 6);
 
     return `
@@ -3356,7 +3362,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
   }
 
   private sanitizeClassToken(value: string | undefined, fallback = 'unknown'): string {
-    const token = String(value || '').trim().replace(/[^A-Za-z0-9_-]/g, '').replace(/^[^A-Za-z_]/, '');
+    const token = String(value || '').trim().replace(TOKEN_RE, '').replace(TOKEN_RE_2, '');
     return token || fallback;
   }
 

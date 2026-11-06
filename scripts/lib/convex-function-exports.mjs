@@ -13,6 +13,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
+const WALK_CONVEX_SOURCE_FILES_RE = /\./g;
+const WALK_CONVEX_SOURCE_FILES_RE_2 = /\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/;
+const HEADER_RE = /^export\s+const\s+(\w+)/;
+const IS_EXPORT_CONST_BOUND_TO_TRAILING_FACTORY_RE = /export\s+const\s+/g;
+const SKIP_WS_RE = /\s/;
+const EXPORT_MATCHES_RE = /export\s+const\s+(\w+)\b/g;
+
+
 export const PUBLIC_FN_TYPES = Object.freeze(
   new Set(['query', 'mutation', 'action', 'httpAction']),
 );
@@ -47,8 +55,8 @@ export function* walkConvexSourceFiles(dir) {
     // Convex skips multi-dot basenames (`x.test.ts`, `x.helpers.ts`) as entry
     // points; keep the same filter so we do not invent filter patterns for
     // files that never deploy.
-    if ((entry.name.match(/\./g) || []).length !== 1) continue;
-    if (!/\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/.test(entry.name)) continue;
+    if ((entry.name.match(WALK_CONVEX_SOURCE_FILES_RE) || []).length !== 1) continue;
+    if (!WALK_CONVEX_SOURCE_FILES_RE_2.test(entry.name)) continue;
     yield fullPath;
   }
 }
@@ -62,7 +70,7 @@ export function* walkConvexSourceFiles(dir) {
  */
 export function moduleRefForConvexFile(convexRoot, filePath) {
   const rel = relative(convexRoot, filePath).split(sep).join('/');
-  return rel.replace(/\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/, '');
+  return rel.replace(WALK_CONVEX_SOURCE_FILES_RE_2, '');
 }
 
 /**
@@ -77,15 +85,15 @@ export function moduleRefForConvexFile(convexRoot, filePath) {
  * @returns {boolean}
  */
 export function isExportConstBoundToTrailingFactory(fromExport) {
-  const header = /^export\s+const\s+(\w+)/.exec(fromExport);
+  const header = HEADER_RE.exec(fromExport);
   if (!header) return false;
-  if ((fromExport.match(/export\s+const\s+/g) || []).length !== 1) return false;
+  if ((fromExport.match(IS_EXPORT_CONST_BOUND_TO_TRAILING_FACTORY_RE) || []).length !== 1) return false;
 
   let i = header[0].length;
   const source = fromExport;
 
   const skipWs = () => {
-    while (i < source.length && /\s/.test(source[i])) i += 1;
+    while (i < source.length && SKIP_WS_RE.test(source[i])) i += 1;
   };
 
   /**
@@ -204,7 +212,7 @@ export function listConvexFunctionExports(filePath) {
     const factory = match[1];
     const windowStart = Math.max(0, match.index - 800);
     const window = src.slice(windowStart, match.index);
-    const exportMatches = [...window.matchAll(/export\s+const\s+(\w+)\b/g)];
+    const exportMatches = [...window.matchAll(EXPORT_MATCHES_RE)];
     if (exportMatches.length === 0) continue;
     const last = exportMatches[exportMatches.length - 1];
     const fromExport = window.slice(last.index);

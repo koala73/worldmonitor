@@ -8,6 +8,9 @@ import {
   UnpublishableReading,
 } from './common.mjs';
 
+const WEEK_MS_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 // EIA reports the week ending Friday on the following Wednesday, a day later
 // after a federal holiday, so the latest week is up to 13 days old on a normal
 // schedule. 21 days tolerates one missed report.
@@ -16,7 +19,7 @@ const EU_GAS_MAX_AGE_MS = 4 * 24 * 3_600_000;
 const WEEK_MS = 7 * 24 * 3_600_000;
 
 function weekMs(period) {
-  return typeof period === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(period) ? Date.parse(`${period}T00:00:00Z`) : NaN;
+  return typeof period === 'string' && WEEK_MS_RE.test(period) ? Date.parse(`${period}T00:00:00Z`) : NaN;
 }
 
 function newestFirst(weeks, valueKey) {

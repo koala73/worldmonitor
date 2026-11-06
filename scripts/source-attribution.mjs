@@ -29,6 +29,19 @@ import {
   validateFeedBurnerPublisherIdentity,
 } from './source-catalog-identity.mjs';
 
+const MASK_CATALOG_PROSE_RE = /\s/;
+const IS_GENERATED_SOURCE_PATH_RE = /\.generated\./;
+const VISIT_RE = /\.(test|spec)\./;
+const HOST_FROM_URL_RE = /^https?:\/\/([^/?#"'`<>)}\]]+)/i;
+const HOST_RE = /:\d+$/;
+const HOST_FROM_URL_RE_2 = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
+const GOOGLE_NEWS_PUBLISHER_HOSTS_RE = /\bsite:([a-z0-9.-]+)(?:\/[^\s"'`)]+)?/gi;
+const DECLARATION_BEFORE_RE = /(?:const|let|var)\s+[A-Z][A-Z0-9_]*\s*=\s*['"`]?\s*$/;
+const SCAN_UPSTREAM_HOSTS_RE = /\bgn(?:Locale)?\(\s*(["'`])([\s\S]*?)\1/g;
+const SCAN_UPSTREAM_HOSTS_RE_2 = /(?:^|[^:])\/\//;
+const ESCAPE_REG_EXP_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = 'shared/source-attribution-manifest.json';
 const DOCS_PATH = 'docs/source-attribution.mdx';
@@ -1252,7 +1265,7 @@ function maskCatalogProse(source) {
       while (source[j] !== '"') j += source[j] === '\\' ? 2 : 1;
       const top = stack[stack.length - 1];
       let k = j + 1;
-      while (/\s/.test(source[k] ?? '')) k += 1;
+      while (MASK_CATALOG_PROSE_RE.test(source[k] ?? '')) k += 1;
       const isKey = top?.type === 'object' && source[k] === ':';
       if (isKey) {
         pendingKey = JSON.parse(source.slice(i, j + 1));
@@ -1299,7 +1312,7 @@ function isGeneratedSourcePath(rootDir, relativePath) {
   // Inventory facts and other generator outputs use `*.generated.*` and are
   // gitignored. Scanning them after a Docker/local generate step invents
   // references the committed manifest was never built against (#7435).
-  if (/\.generated\./.test(base)) return true;
+  if (IS_GENERATED_SOURCE_PATH_RE.test(base)) return true;
   // docker/build-handlers.mjs emits a .js sibling next to each api/**/*.ts
   // handler. The TypeScript source is the authority; the bundle just repeats
   // its URLs (and any inlined deps). Restrict the sibling skip to api/:
@@ -1322,7 +1335,7 @@ function walkSourceFiles(rootDir) {
         visit(relativePath);
       } else if (
         SOURCE_EXTENSIONS.has(extname(entry.name))
-        && !/\.(test|spec)\./.test(entry.name)
+        && !VISIT_RE.test(entry.name)
         && !isGeneratedSourcePath(rootDir, relativePath)
       ) {
         files.push(relativePath);
@@ -1341,11 +1354,11 @@ function walkSourceFiles(rootDir) {
 }
 
 function hostFromUrl(raw) {
-  const match = raw.match(/^https?:\/\/([^/?#"'`<>)}\]]+)/i);
+  const match = raw.match(HOST_FROM_URL_RE);
   if (!match) return null;
-  const host = match[1].replace(/:\d+$/, '').toLowerCase();
+  const host = match[1].replace(HOST_RE, '').toLowerCase();
   if (!host || host.length < 3 || host.includes('${') || host.includes('[') || host.includes(']') || host.includes('{')) return null;
-  if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(host)) return null;
+  if (!HOST_FROM_URL_RE_2.test(host)) return null;
   return host;
 }
 
@@ -1357,7 +1370,7 @@ function googleNewsPublisherHosts(query) {
     decoded = String(query || '').replaceAll('+', ' ');
   }
   const hosts = new Set();
-  for (const match of decoded.matchAll(/\bsite:([a-z0-9.-]+)(?:\/[^\s"'`)]+)?/gi)) {
+  for (const match of decoded.matchAll(GOOGLE_NEWS_PUBLISHER_HOSTS_RE)) {
     const host = hostFromUrl(`https://${match[1]}`);
     if (host) hosts.add(host);
   }
@@ -1399,7 +1412,7 @@ export function scanUpstreamHosts(rootDir = ROOT) {
       const lineStart = lineStarts[lineNumberIndex];
       const lineEnd = lineStarts[lineNumberIndex + 1] === undefined ? source.length : lineStarts[lineNumberIndex + 1] - 1;
       const line = source.slice(lineStart, lineEnd);
-      const declarationBefore = source.slice(Math.max(0, index - 280), index).match(/(?:const|let|var)\s+[A-Z][A-Z0-9_]*\s*=\s*['"`]?\s*$/);
+      const declarationBefore = source.slice(Math.max(0, index - 280), index).match(DECLARATION_BEFORE_RE);
       const preceding = source.slice(Math.max(0, index - 260), index);
       const candidate = FEED_FILES.has(relativePath)
         || STRUCTURED_CATALOG_FILES.has(relativePath)
@@ -1436,11 +1449,11 @@ export function scanUpstreamHosts(rootDir = ROOT) {
       // Server feed mirrors build Google News URLs through gn()/gnLocale().
       // Count a site-scoped publisher under its own host as well as counting
       // the Google News URL literal above under news.google.com.
-      for (const match of source.matchAll(/\bgn(?:Locale)?\(\s*(["'`])([\s\S]*?)\1/g)) {
+      for (const match of source.matchAll(SCAN_UPSTREAM_HOSTS_RE)) {
         const lineStart = source.lastIndexOf('\n', match.index ?? 0) + 1;
         const beforeMatch = source.slice(lineStart, match.index ?? 0);
         // A `//` after a colon is a URL scheme earlier on the line, not a comment.
-        if (/(?:^|[^:])\/\//.test(beforeMatch)) continue;
+        if (SCAN_UPSTREAM_HOSTS_RE_2.test(beforeMatch)) continue;
         for (const publisherHost of googleNewsPublisherHosts(match[2])) {
           recordHost(publisherHost, 'feed', relativePath);
         }
@@ -1686,7 +1699,7 @@ export function validateSourceAttributionLedger(manifest) {
       errors.push(`manifest entry ${label} must be an object`);
       continue;
     }
-    if (typeof entry.host !== 'string' || !entry.host || /\s/.test(entry.host)) errors.push(`invalid manifest host ${label}`);
+    if (typeof entry.host !== 'string' || !entry.host || MASK_CATALOG_PROSE_RE.test(entry.host)) errors.push(`invalid manifest host ${label}`);
     if (typeof entry.observed !== 'boolean') errors.push(`manifest entry ${label} observed must be boolean`);
     if (typeof entry.kind !== 'string' || !MANIFEST_KIND_RE.test(entry.kind)) errors.push(`invalid manifest kind for ${label}`);
     if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid manifest status for ${label}`);
@@ -1743,7 +1756,7 @@ export function validateSourceAttributionLedger(manifest) {
       errors.push(`logical attribution entry ${label} must be an object`);
       continue;
     }
-    if (typeof entry.host !== 'string' || !entry.host || /\s/.test(entry.host)) errors.push(`invalid logical attribution host ${label}`);
+    if (typeof entry.host !== 'string' || !entry.host || MASK_CATALOG_PROSE_RE.test(entry.host)) errors.push(`invalid logical attribution host ${label}`);
     if (typeof entry.observed !== 'boolean') errors.push(`logical attribution entry ${label} observed must be boolean`);
     if (typeof entry.kind !== 'string' || !LOGICAL_KIND_RE.test(entry.kind)) errors.push(`invalid logical attribution kind for ${label}`);
     if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid logical attribution status for ${label}`);
@@ -2012,7 +2025,7 @@ export function renderAttributionSection(inventory, manifest) {
 }
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(ESCAPE_REG_EXP_RE, '\\$&');
 }
 
 function inventoryMarkerPattern(leadingNewline) {

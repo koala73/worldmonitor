@@ -2,9 +2,19 @@ import Papa from 'papaparse';
 import { unzipSync, strFromU8 } from 'fflate';
 import { XMLParser } from 'fast-xml-parser';
 
+const VALID_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TEXT_RE = /,/g;
+const COUNT_RE = /^\d+$/;
+const TABLE_RE = /<table\b[^>]*>[\s\S]*?<\/table>/i;
+const ROWS_RE = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+const ROWS_RE_2 = /<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi;
+const PARTS_RE = /^(\d{1,2}) ([A-Z][a-z]+) (\d{4})$/;
+const FISCAL_RE = /^(\d{4})(?: \(FYTD\))?$/;
+
+
 const DAY = 86400000;
 const iso = ms => new Date(ms).toISOString().slice(0, 10);
-const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value) && iso(Date.parse(value)) === value;
+const validDate = value => VALID_DATE_RE.test(value) && iso(Date.parse(value)) === value;
 const median = values => {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -12,8 +22,8 @@ const median = values => {
 };
 
 function count(value) {
-  const text = String(value ?? '').trim().replace(/,/g, '');
-  if (!/^\d+$/.test(text) || !Number.isSafeInteger(Number(text))) throw new Error('invalid observation count');
+  const text = String(value ?? '').trim().replace(TEXT_RE, '');
+  if (!COUNT_RE.test(text) || !Number.isSafeInteger(Number(text))) throw new Error('invalid observation count');
   return Number(text);
 }
 
@@ -38,11 +48,11 @@ export function dailyRoute(points) {
 }
 
 export function parseUkDaily(html) {
-  const table = html.match(/<table\b[^>]*>[\s\S]*?<\/table>/i)?.[0];
+  const table = html.match(TABLE_RE)?.[0];
   if (!table) throw new Error('missing Home Office arrivals table');
   // Accept plain cells only; stripping markup can turn invalid input into a count.
-  const rows = [...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(row =>
-    [...row[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)].map(cell => cell[1].trim()));
+  const rows = [...table.matchAll(ROWS_RE)].map(row =>
+    [...row[1].matchAll(ROWS_RE_2)].map(cell => cell[1].trim()));
   const header = rows.find(cells => cells.includes('Date') && cells.includes('Migrants arrived'));
   if (!header || header.filter(c => c === 'Date').length !== 1 || header.filter(c => c === 'Migrants arrived').length !== 1) throw new Error('missing Home Office arrivals headers');
   const dateColumn = header.indexOf('Date');
@@ -51,7 +61,7 @@ export function parseUkDaily(html) {
   const points = [];
   for (const cells of rows) {
     if (cells === header) continue;
-    const parts = cells[dateColumn]?.match(/^(\d{1,2}) ([A-Z][a-z]+) (\d{4})$/);
+    const parts = cells[dateColumn]?.match(PARTS_RE);
     const month = months.indexOf(parts?.[2]);
     if (!parts || month < 0) throw new Error('invalid Home Office date');
     const date = `${parts[3]}-${String(month + 1).padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
@@ -92,7 +102,7 @@ export function parseCbp(csv) {
   const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
   for (const row of parsed.data) {
     if (row['Land Border Region'] !== 'Southwest Land Border') continue;
-    const fiscal = String(row['Fiscal Year']).match(/^(\d{4})(?: \(FYTD\))?$/);
+    const fiscal = String(row['Fiscal Year']).match(FISCAL_RE);
     const year = fiscal ? Number(fiscal[1]) : NaN;
     const month = months.indexOf(row['Month (abbv)']);
     if (!Number.isInteger(year) || year < 2000 || year > 2100 || month < 0) throw new Error('invalid CBP period');

@@ -1,3 +1,6 @@
+
+
+const HEAD_RE = /^Showing (\d+) of (\d+) active dimensions/;
 function compareByCoverage(left, right) {
   return Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id);
 }
@@ -123,7 +126,7 @@ export function buildUnrankedCountryInventory({
       ? inventoryScopeNote
       : rendered.inventoryScope;
     if (accounted !== scope.shown) {
-      const head = String(renderedScope ?? '').match(/^Showing (\d+) of (\d+) active dimensions/);
+      const head = String(renderedScope ?? '').match(HEAD_RE);
       const statedOmitted = scope.omittedClauses.map((clause) => (
         String(renderedScope ?? '').match(new RegExp(`(\\d+) ${clause.text}`))?.[1]
       ));

@@ -1,5 +1,8 @@
+
+
+const IS_OPEN_SKY_PROVIDER_RE = /^opensky(?:$|[\s\-_:])/i;
 export function isOpenSkyProvider(source: unknown): boolean {
-  return typeof source === 'string' && /^opensky(?:$|[\s\-_:])/i.test(source.trim());
+  return typeof source === 'string' && IS_OPEN_SKY_PROVIDER_RE.test(source.trim());
 }
 
 /**

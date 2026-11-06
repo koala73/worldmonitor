@@ -1,5 +1,9 @@
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
+const TED_DATE_RE = /^(\d{4}-\d{2}-\d{2})(Z|[+-]\d{2}:\d{2})$/;
+const IS_OPEN_OPPORTUNITY_RE = /(award|cancel|closed|withdraw|expire|complete|draft)/;
+
+
 const TECHNOLOGY_TERMS = [
   ['artificial intelligence', 'AI'], ['machine learning', 'machine learning'], ['cybersecurity', 'cybersecurity'],
   ['cyber security', 'cybersecurity'], ['software', 'software'], ['data platform', 'data platform'],
@@ -63,7 +67,7 @@ function firstText(...values) { return values.flatMap(strings).find(Boolean) || 
 function parseDate(value) {
   const raw = string(value);
   if (!raw) return NaN;
-  const tedDate = raw.match(/^(\d{4}-\d{2}-\d{2})(Z|[+-]\d{2}:\d{2})$/);
+  const tedDate = raw.match(TED_DATE_RE);
   return Date.parse(tedDate ? `${tedDate[1]}T00:00:00${tedDate[2]}` : raw);
 }
 function date(value) {
@@ -238,7 +242,7 @@ export function dedupeTenders(tenders) {
 export function isOpenOpportunity(tender, now = Date.now()) {
   const deadline = Date.parse(tender?.deadline || '');
   if (!Number.isFinite(deadline) || deadline <= now) return false;
-  return !/(award|cancel|closed|withdraw|expire|complete|draft)/.test(string(tender?.status).toLowerCase());
+  return !IS_OPEN_OPPORTUNITY_RE.test(string(tender?.status).toLowerCase());
 }
 
 export function buildSnapshot({ results, sourceStatuses, fetchedAt = Date.now() }) {

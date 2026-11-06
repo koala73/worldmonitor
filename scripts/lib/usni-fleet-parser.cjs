@@ -1,3 +1,24 @@
+
+
+const USNI_STRIP_HTML_RE = /<[^>]+>/g;
+const USNI_STRIP_HTML_RE_2 = /&nbsp;/g;
+const USNI_STRIP_HTML_RE_3 = /&lt;/g;
+const USNI_STRIP_HTML_RE_4 = /&gt;/g;
+const USNI_STRIP_HTML_RE_5 = /&#8217;/g;
+const USNI_STRIP_HTML_RE_6 = /&#8220;/g;
+const USNI_STRIP_HTML_RE_7 = /&#8221;/g;
+const USNI_STRIP_HTML_RE_8 = /&#8211;/g;
+const USNI_STRIP_HTML_RE_9 = /&amp;/g;
+const WHITESPACE_RE = /\s+/g;
+const USNI_NORMALIZE_REGION_RE = /^(In the|In|The)\s+/i;
+const USNI_PARSE_LEADING_INT_RE = /\d{1,3}(?:,\d{3})*/;
+const USNI_PARSE_LEADING_INT_RE_2 = /,/g;
+const ROWS_RE = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+const HEADERS_RE = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+const TABLE_MATCH_RE = /<table[^>]*>([\s\S]*?)<\/table>/i;
+const H2_PARTS_RE = /<h2[^>]*>/i;
+const H3_PARTS_RE = /<h3[^>]*>/i;
+const HOME_PORT_RE = /homeported (?:at|in) ([^.,]+)/i;
 const HULL_TYPE_MAP = {
   CVN: 'carrier', CV: 'carrier',
   DDG: 'destroyer', CG: 'destroyer',
@@ -93,11 +114,11 @@ function usniStripHtml(html) {
   // &amp; is decoded LAST: every other replace is a literal string that cannot
   // regenerate an entity, so amp-last decodes exactly one level
   // (`&amp;lt;` -> `&lt;`, never `<`).
-  return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&#8217;/g, "'")
-    .replace(/&#8220;/g, '"').replace(/&#8221;/g, '"').replace(/&#8211;/g, '\u2013')
-    .replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ').trim();
+  return html.replace(USNI_STRIP_HTML_RE, ' ').replace(USNI_STRIP_HTML_RE_2, ' ').replace(USNI_STRIP_HTML_RE_3, '<')
+    .replace(USNI_STRIP_HTML_RE_4, '>').replace(USNI_STRIP_HTML_RE_5, "'")
+    .replace(USNI_STRIP_HTML_RE_6, '"').replace(USNI_STRIP_HTML_RE_7, '"').replace(USNI_STRIP_HTML_RE_8, '\u2013')
+    .replace(USNI_STRIP_HTML_RE_9, '&')
+    .replace(WHITESPACE_RE, ' ').trim();
 }
 
 function usniHullToType(hull) {
@@ -116,7 +137,7 @@ function usniDetectStatus(text) {
 }
 
 function usniNormalizeRegion(regionText) {
-  return regionText.replace(/^(In the|In|The)\s+/i, '').replace(/\s+/g, ' ').trim();
+  return regionText.replace(USNI_NORMALIZE_REGION_RE, '').replace(WHITESPACE_RE, ' ').trim();
 }
 
 // Longest table key contained in `lower`, so "Eastern Mediterranean Sea" beats
@@ -154,15 +175,15 @@ function usniGetRegionCoords(regionText) {
 }
 
 function usniParseLeadingInt(text) {
-  const m = text.match(/\d{1,3}(?:,\d{3})*/);
-  return m ? parseInt(m[0].replace(/,/g, ''), 10) : undefined;
+  const m = text.match(USNI_PARSE_LEADING_INT_RE);
+  return m ? parseInt(m[0].replace(USNI_PARSE_LEADING_INT_RE_2, ''), 10) : undefined;
 }
 
 function usniExtractBattleForceSummary(tableHtml) {
-  const rows = Array.from(tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi));
+  const rows = Array.from(tableHtml.matchAll(ROWS_RE));
   if (rows.length < 2) return undefined;
-  const headers = Array.from(rows[0][1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)).map(m => usniStripHtml(m[1]).toLowerCase());
-  const values = Array.from(rows[1][1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)).map(m => usniParseLeadingInt(usniStripHtml(m[1])));
+  const headers = Array.from(rows[0][1].matchAll(HEADERS_RE)).map(m => usniStripHtml(m[1]).toLowerCase());
+  const values = Array.from(rows[1][1].matchAll(HEADERS_RE)).map(m => usniParseLeadingInt(usniStripHtml(m[1])));
   const summary = { totalShips: 0, deployed: 0, underway: 0 };
   let matched = false;
   for (let i = 0; i < headers.length; i++) {
@@ -184,10 +205,10 @@ function usniParseArticle(html, articleUrl, articleDate, articleTitle) {
   const regionsSet = new Set();
 
   let battleForceSummary;
-  const tableMatch = html.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
+  const tableMatch = html.match(TABLE_MATCH_RE);
   if (tableMatch) battleForceSummary = usniExtractBattleForceSummary(tableMatch[1]);
 
-  const h2Parts = html.split(/<h2[^>]*>/i);
+  const h2Parts = html.split(H2_PARTS_RE);
   for (let i = 1; i < h2Parts.length; i++) {
     const part = h2Parts[i];
     const h2End = part.indexOf('</h2>');
@@ -200,7 +221,7 @@ function usniParseArticle(html, articleUrl, articleDate, articleTitle) {
     const regionLat = coords?.lat ?? 0;
     const regionLon = coords?.lon ?? 0;
     const regionContent = part.substring(h2End + 5);
-    const h3Parts = regionContent.split(/<h3[^>]*>/i);
+    const h3Parts = regionContent.split(H3_PARTS_RE);
     let currentSG = null;
     for (let j = 0; j < h3Parts.length; j++) {
       const section = h3Parts[j];
@@ -215,7 +236,7 @@ function usniParseArticle(html, articleUrl, articleDate, articleTitle) {
       let match;
       const sectionText = usniStripHtml(section);
       const deploymentStatus = usniDetectStatus(sectionText);
-      const homePort = (sectionText.match(/homeported (?:at|in) ([^.,]+)/i) || [])[1]?.trim() || '';
+      const homePort = (sectionText.match(HOME_PORT_RE) || [])[1]?.trim() || '';
       const activityDesc = sectionText.length > 10 ? sectionText.substring(0, 200).trim() : '';
       while ((match = shipRegex.exec(section)) !== null) {
         const prefix = match[1].toUpperCase();

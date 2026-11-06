@@ -1,3 +1,16 @@
+
+
+const IS_IP_LITERAL_RE = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+const DOTTED_RE = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i;
+const HEX_RE = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i;
+const IPV6_TO_HEXTETS_RE = /::/g;
+const PARSE_SIDE_RE = /^[0-9a-f]{1,4}$/i;
+const NORMALIZED_RE = /^\[|\]$/g;
+const IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE = /^f[cd][0-9a-f]{2}:/i;
+const IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE_2 = /^fe[89ab][0-9a-f]:/i;
+const IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE_3 = /^fe[c-f][0-9a-f]:/i;
+const IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE_4 = /^ff[0-9a-f]{2}:/i;
+const IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE_5 = /^2001:0?db8:/i;
 const BLOCKED_METADATA_HOSTNAMES = new Set([
   'localhost',
   '169.254.169.254',
@@ -15,7 +28,7 @@ const DNS_JSON_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
 type ResolveHostname = (hostname: string) => Promise<string[]>;
 
 function isIpLiteral(hostname: string): boolean {
-  return hostname.includes(':') || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+  return hostname.includes(':') || IS_IP_LITERAL_RE.test(hostname);
 }
 
 function ipv4Parts(value: string): [number, number, number, number] | null {
@@ -29,11 +42,11 @@ function ipv4Parts(value: string): [number, number, number, number] | null {
 }
 
 function ipv4FromMappedIpv6(value: string): string | null {
-  const dotted = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const dotted = value.match(DOTTED_RE);
   const dottedAddress = dotted?.[1];
   if (dottedAddress && ipv4Parts(dottedAddress)) return dottedAddress;
 
-  const hex = value.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  const hex = value.match(HEX_RE);
   if (!hex) return null;
   const hi = Number.parseInt(hex[1]!, 16);
   const lo = Number.parseInt(hex[2]!, 16);
@@ -48,7 +61,7 @@ function ipv4FromMappedIpv6(value: string): string | null {
 // syntactically valid IPv6 address.
 function ipv6ToHextets(value: string): number[] | null {
   if (typeof value !== 'string' || !value.includes(':')) return null;
-  if ((value.match(/::/g) || []).length > 1) return null;
+  if ((value.match(IPV6_TO_HEXTETS_RE) || []).length > 1) return null;
 
   const parseSide = (side: string): number[] | null => {
     if (side === '') return [];
@@ -63,7 +76,7 @@ function ipv6ToHextets(value: string): number[] | null {
         hextets.push((parts[0] << 8) | parts[1]);
         hextets.push((parts[2] << 8) | parts[3]);
       } else {
-        if (!/^[0-9a-f]{1,4}$/i.test(token)) return null;
+        if (!PARSE_SIDE_RE.test(token)) return null;
         hextets.push(Number.parseInt(token, 16));
       }
     }
@@ -130,7 +143,7 @@ function ipv4FromIpv6(value: string): string | null {
 }
 
 export function isBlockedNotificationResolvedAddress(address: string): boolean {
-  const normalized = address.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const normalized = address.trim().toLowerCase().replace(NORMALIZED_RE, '');
   const ipv6Hextets = ipv6ToHextets(normalized);
   const mappedIpv4 = ipv4FromIpv6(normalized);
   const addr = mappedIpv4 ?? normalized;
@@ -147,11 +160,11 @@ export function isBlockedNotificationResolvedAddress(address: string): boolean {
   }
 
   if (addr === '::' || addr === '::1') return true;
-  if (/^f[cd][0-9a-f]{2}:/i.test(addr)) return true;
-  if (/^fe[89ab][0-9a-f]:/i.test(addr)) return true;
-  if (/^fe[c-f][0-9a-f]:/i.test(addr)) return true;
-  if (/^ff[0-9a-f]{2}:/i.test(addr)) return true;
-  if (/^2001:0?db8:/i.test(addr)) return true;
+  if (IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE.test(addr)) return true;
+  if (IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE_2.test(addr)) return true;
+  if (IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE_3.test(addr)) return true;
+  if (IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE_4.test(addr)) return true;
+  if (IS_BLOCKED_NOTIFICATION_RESOLVED_ADDRESS_RE_5.test(addr)) return true;
 
   const parts = ipv4Parts(addr);
   if (!parts) return false;

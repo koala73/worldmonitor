@@ -3,6 +3,11 @@
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep, resolveProxyForConnect } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { readPublishedPctAbove200d } from './_sp500-breadth.mjs';
+
+const BLOCK_RE = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/;
+const FETCH_CBOE_RE = /"lastPrice"\s*:\s*"?([\d.]+)"?/;
+const PCTS_RE = /<td[^>]*class="tableTxt"[^>]*>([\d.]+)%/g;
+
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -55,8 +60,8 @@ async function fetchCBOE() {
     });
     if (resp.status !== 200) { console.warn(`  Barchart $CPC: HTTP ${resp.status}`); return {}; }
     const html = await resp.text();
-    const block = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? html;
-    const m = block.match(/"lastPrice"\s*:\s*"?([\d.]+)"?/);
+    const block = html.match(BLOCK_RE)?.[1] ?? html;
+    const m = block.match(FETCH_CBOE_RE);
     const val = m ? parseFloat(m[1]) : NaN;
     const totalPc = Number.isFinite(val) ? val : null;
     if (totalPc == null) console.warn('  Barchart $CPC: price not found in page');
@@ -119,7 +124,7 @@ async function fetchAAII() {
     if (!resp.ok) return null;
     const html = await resp.text();
     // Columns 1,2,3 of first data row = Bullish%, Neutral%, Bearish%
-    const pcts = [...html.matchAll(/<td[^>]*class="tableTxt"[^>]*>([\d.]+)%/g)]
+    const pcts = [...html.matchAll(PCTS_RE)]
       .map(m => parseFloat(m[1]));
     if (pcts.length < 3) return null;
     return { bull: pcts[0], bear: pcts[2] };

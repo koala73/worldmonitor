@@ -6,6 +6,9 @@
 
 import { escapeHtml, formatStaticDateTime } from '../crawlable-chokepoint-live.mjs';
 
+const SCRIPT_JSON_RE = /</g;
+
+
 export { escapeHtml, formatStaticDateTime };
 
 // The section's FAQ is rendered here and in middleware, never by the corpus
@@ -70,7 +73,7 @@ export function formatUsdWhole(value) {
 
 /** JSON for an inline <script>: "<" is escaped so the text cannot close the tag. */
 function scriptJson(value) {
-  return JSON.stringify(value).replace(/</g, '\\u003c');
+  return JSON.stringify(value).replace(SCRIPT_JSON_RE, '\\u003c');
 }
 
 /**

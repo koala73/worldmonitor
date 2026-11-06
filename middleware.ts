@@ -34,6 +34,15 @@ import {
 } from './scripts/situation-page/sections.mjs';
 import { CHOKEPOINT_REGISTRY } from './src/config/chokepoint-registry';
 
+const WANTS_HOMEPAGE_MARKDOWN_RE = /(?:^|,)\s*text\/markdown\s*(?:;|,|$)/i;
+const WM_KEY_SHAPE_RE = /^wm_[a-f0-9]{40,64}$/;
+const DECODE_ATTRIBUTE_RE = /&quot;/g;
+const DECODE_ATTRIBUTE_RE_2 = /&#39;/g;
+const DECODE_ATTRIBUTE_RE_3 = /&lt;/g;
+const DECODE_ATTRIBUTE_RE_4 = /&gt;/g;
+const DECODE_ATTRIBUTE_RE_5 = /&amp;/g;
+
+
 type LiveTopicPage = NonNullable<ReturnType<typeof liveTopicPageForPath>>;
 
 const SITUATION_SECTIONS = situationSections(CHOKEPOINT_REGISTRY);
@@ -277,7 +286,7 @@ export default function middleware(request: Request) {
 
   const accept = request.headers.get('accept');
   const markdownQuality = acceptQuality(accept, 'text/markdown') ?? 0;
-  const wantsHomepageMarkdown = /(?:^|,)\s*text\/markdown\s*(?:;|,|$)/i.test(accept ?? '') &&
+  const wantsHomepageMarkdown = WANTS_HOMEPAGE_MARKDOWN_RE.test(accept ?? '') &&
     markdownQuality > 0 && markdownQuality >= (acceptQuality(accept, 'text/html', true) ?? 0);
 
   if (
@@ -386,7 +395,7 @@ export default function middleware(request: Request) {
   // hex chars. User keys are 40 hex chars; enterprise keys may be longer.
   // A random scraper would still have to guess this format, and spoofed-but-
   // well-shaped keys still 401 at the gateway.
-  const WM_KEY_SHAPE = /^wm_[a-f0-9]{40,64}$/;
+  const WM_KEY_SHAPE = WM_KEY_SHAPE_RE;
   const apiKey =
     request.headers.get('x-worldmonitor-key') ??
     request.headers.get('x-api-key') ??
@@ -445,11 +454,11 @@ const CHOKEPOINT_STATUS_PUBLIC_PATH = '/api/supply-chain/v1/get-chokepoint-statu
 
 function decodeAttribute(value: string): string {
   return value
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
+    .replace(DECODE_ATTRIBUTE_RE, '"')
+    .replace(DECODE_ATTRIBUTE_RE_2, "'")
+    .replace(DECODE_ATTRIBUTE_RE_3, '<')
+    .replace(DECODE_ATTRIBUTE_RE_4, '>')
+    .replace(DECODE_ATTRIBUTE_RE_5, '&');
 }
 
 function sectionAttribute(html: string, name: string): string | null {

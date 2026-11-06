@@ -11,6 +11,11 @@ import { internal } from "./_generated/api";
 import { channelTypeValidator } from "./constants";
 import { requireVerifiedAccountEmail } from "./lib/notificationEmail";
 
+const TOKEN_RE = /\+/g;
+const TOKEN_RE_2 = /\//g;
+const TOKEN_RE_3 = /=+$/;
+
+
 type ChannelType = Infer<typeof channelTypeValidator>;
 
 // Versioned queue: old Railway relays only poll wm:events:queue and ignore
@@ -493,9 +498,9 @@ export const createPairingTokenForUser = internalMutation({
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
     const token = btoa(String.fromCharCode(...bytes))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
+      .replace(TOKEN_RE, "-")
+      .replace(TOKEN_RE_2, "_")
+      .replace(TOKEN_RE_3, "");
     const expiresAt = Date.now() + 15 * 60 * 1000;
     await ctx.db.insert("telegramPairingTokens", { userId, token, expiresAt, used: false, variant });
     return { token, expiresAt };
@@ -645,9 +650,9 @@ export const createPairingToken = internalMutation({
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
     const token = btoa(String.fromCharCode(...bytes))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
+      .replace(TOKEN_RE, "-")
+      .replace(TOKEN_RE_2, "_")
+      .replace(TOKEN_RE_3, "");
 
     const expiresAt = Date.now() + 15 * 60 * 1000;
 

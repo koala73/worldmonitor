@@ -1,3 +1,6 @@
+
+
+const ARGS_RE = /</g;
 type PluginDocument = {
   origin: string;
   entry: 'country.html' | 'plugin.html' | 'market.html';
@@ -5,7 +8,7 @@ type PluginDocument = {
 };
 
 export function buildPluginShell(config: PluginDocument): string {
-  const args = JSON.stringify(config).replace(/</g, '\\u003c');
+  const args = JSON.stringify(config).replace(ARGS_RE, '\\u003c');
   return `<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><base href="${config.origin}/"><title>WorldMonitor</title><style>body:has(#pluginBoot){margin:0;background:#141414;color:#eee;font:16px system-ui}#pluginBoot{padding:24px}#pluginBoot button{font:inherit;padding:8px 16px;background:#222;color:inherit;border:1px solid #555;border-radius:4px}</style></head><body><div id="pluginBoot"><p role="status">Loading WorldMonitor…</p></div><script>(${BOOT_SCRIPT})(${args});</script></body></html>`;
 }
 

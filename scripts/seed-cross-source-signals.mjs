@@ -9,6 +9,19 @@ import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
 import { METHODOLOGY_VERSION as PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION } from './lib/physical-divergence.mjs';
 
+const NORMALIZE_THEATER_RE = /\b\w/g;
+const WHITESPACE_RE = /\s+/g;
+const THEATER_RE = /-/g;
+const SURGE_LABEL_RE = /_/g;
+const EXTRACT_COMMODITY_SHOCK_RE = /[^a-z0-9]/gi;
+const EXTRACT_RADIATION_ANOMALY_RE = /\s{2,}/g;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const DE_ESCALATION_TERMS_RE = /\b(?:ceasefire|truce|peace|peaceful|agreement|diplomatic solution|withdrawal|reopen(?:ed)?|restored|resolution|resolved|de-?escalat\w*|stabili[sz]\w*|normali[sz]\w*)\b/i;
+const FAILED_DE_ESCALATION_RE = /\b(?:ceasefire|truce|peace|agreement)\b.{0,40}\b(?:fail\w*|collaps\w*|break(?:s|ing)? down|breakdown|breach\w*|violat\w*|reject\w*|expir\w*|end(?:s|ed|ing)?\b(?!\s+of\b))|\b(?:fail\w*|collaps\w*|break(?:s|ing)? down|breakdown|breach\w*|violat\w*|reject\w*|expir\w*|end(?:s|ed|ing)?\b(?!\s+of\b)).{0,40}\b(?:ceasefire|truce|peace|agreement)\b/i;
+const ADVERSE_RESUMPTION_RE = /\b(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)\b.{0,24}\b(?:resum\w*|renew\w*)\b|\b(?:resum\w*|renew\w*)\b.{0,24}\b(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)\b/i;
+const ADVERSE_CONDITION_ENDS_RE = /\b(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)\b.{0,40}\bend(?:s|ed|ing)?\b|\bend(?:s|ed|ing)?\b(?:\s+of)?.{0,40}\b(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)\b/i;
+
+
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:cross-source-signals:v1';
@@ -135,7 +148,7 @@ function normalizeTheater(raw) {
     if (lower.includes(key)) return theater;
   }
   // Title-case the raw value as fallback
-  return String(raw).trim().replace(/\b\w/g, c => c.toUpperCase()) || 'Global';
+  return String(raw).trim().replace(NORMALIZE_THEATER_RE, c => c.toUpperCase()) || 'Global';
 }
 
 function weatherTheaterForCountry(countryCode) {
@@ -292,7 +305,7 @@ function extractThermalSpike(d) {
     const theater = normalizeTheater(label);
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE'] * Math.min(3, safeNum(c.zScore) || 1.5);
     signals.push({
-      id: `thermal:${c.id || (label || 'unknown').replace(/\s+/g, '-').toLowerCase()}`,
+      id: `thermal:${c.id || (label || 'unknown').replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE',
       theater,
       summary: `Thermal spike detected: ${label || 'unknown'} — z-score ${safeNum(c.zScore).toFixed(1)}`,
@@ -323,7 +336,7 @@ function extractGpsJamming(d) {
   return [...regionMap.values()].slice(0, 3).map(({ theater, count }) => {
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING'] * Math.min(2, 1 + count / 50);
     return {
-      id: `gpsjam:${theater.replace(/\s+/g, '-').toLowerCase()}`,
+      id: `gpsjam:${theater.replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING',
       theater,
       summary: `GPS jamming detected: ${count} high-interference hexagons in ${theater}`,
@@ -344,10 +357,10 @@ function extractMilitaryFlightSurge(d) {
   if (!fetchedAt || Date.now() - fetchedAt > 30 * 60_000) return [];
   const surges = Array.isArray(payload.surges) ? payload.surges : [];
   return surges.map((surge) => {
-    const theater = normalizeTheater(String(surge.theaterId || '').replace(/-/g, ' '));
+    const theater = normalizeTheater(String(surge.theaterId || '').replace(THEATER_RE, ' '));
     const multiple = Math.max(1, safeNum(surge.surgeMultiple));
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE'] * Math.min(2, multiple);
-    const surgeLabel = String(surge.surgeType || 'air activity').replace(/_/g, ' ');
+    const surgeLabel = String(surge.surgeType || 'air activity').replace(SURGE_LABEL_RE, ' ');
     return {
       id: `mil-surge:${surge.id || `${surgeLabel}-${surge.theaterId || 'global'}`}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE',
@@ -388,7 +401,7 @@ function extractUnrestSurge(d) {
     if (count < 3) continue;
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE'] * Math.min(2, 1 + count / 10);
     signals.push({
-      id: `unrest:${theater.replace(/\s+/g, '-').toLowerCase()}`,
+      id: `unrest:${theater.replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE',
       theater,
       summary: `Unrest surge: ${count} events in ${theater} in past 24h`,
@@ -462,7 +475,7 @@ function extractCommodityShock(d) {
     const theater = (q.symbol === 'OIL' || q.symbol === 'CL=F' || q.display?.includes('Oil')) ? 'Persian Gulf' : 'Global Markets';
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK'] * Math.min(2, Math.abs(change) / 5);
     signals.push({
-      id: `commodity:${(q.symbol || q.display || 'unknown').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`,
+      id: `commodity:${(q.symbol || q.display || 'unknown').replace(EXTRACT_COMMODITY_SHOCK_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK',
       theater,
       summary: `Commodity shock: ${q.display || q.symbol} ${change > 0 ? '+' : ''}${change.toFixed(1)}% — ${Math.abs(change) > 10 ? 'extreme' : 'significant'} move`,
@@ -522,7 +535,7 @@ function extractShippingDisruption(d) {
     ? 'Red Sea' : 'Global';
   const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION'] * Math.min(2, 1 + disrupted.length / 3);
   return [{
-    id: `shipping:${theater.replace(/\s+/g, '-').toLowerCase()}`,
+    id: `shipping:${theater.replace(WHITESPACE_RE, '-').toLowerCase()}`,
     type: 'CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION',
     theater,
     summary: `Shipping disruption: ${disrupted.length} freight rate index${disrupted.length > 1 ? 'es' : ''} spiking (${disrupted.map(idx => idx.name || idx.indexId).join(', ')})`,
@@ -543,7 +556,7 @@ function extractSanctionsSurge(d) {
   const theater = normalizeTheater(topCountry?.countryName || '');
   const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE'] * Math.min(2, 1 + newCount / 20);
   return [{
-    id: `sanctions:${theater.replace(/\s+/g, '-').toLowerCase()}`,
+    id: `sanctions:${theater.replace(WHITESPACE_RE, '-').toLowerCase()}`,
     type: 'CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE',
     theater,
     summary: `Sanctions surge: ${newCount} new designations — ${topCountry?.countryName || 'multiple countries'} most targeted`,
@@ -600,10 +613,10 @@ function extractRadiationAnomaly(d) {
     const theater = normalizeTheater(a.country || locationStr);
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY'];
     return {
-      id: `radiation:${a.id || a.anchorId || locationStr.replace(/\s+/g, '-').toLowerCase()}`,
+      id: `radiation:${a.id || a.anchorId || locationStr.replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY',
       theater,
-      summary: `Radiation anomaly: ${locationStr} — ${safeNum(a.value).toFixed(1)} ${a.unit || ''} reading (z-score ${safeNum(a.zScore).toFixed(1)})`.replace(/\s{2,}/g, ' '),
+      summary: `Radiation anomaly: ${locationStr} — ${safeNum(a.value).toFixed(1)} ${a.unit || ''} reading (z-score ${safeNum(a.zScore).toFixed(1)})`.replace(EXTRACT_RADIATION_ANOMALY_RE, ' '),
       severity: scoreTier(score),
       severityScore: score,
       detectedAt: toEpochMs(a.observedAt) || Date.now(),
@@ -641,7 +654,7 @@ function extractInfrastructureOutage(d) {
   for (const [theater, { count, detectedAt }] of regionMap) {
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE'] * Math.min(2, 1 + count / 3);
     signals.push({
-      id: `outage:${theater.replace(/\s+/g, '-').toLowerCase()}`,
+      id: `outage:${theater.replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE',
       theater,
       summary: `Infrastructure outage: ${count} major service failure${count > 1 ? 's' : ''} in ${theater}`,
@@ -686,7 +699,7 @@ function extractWildfireEscalation(d) {
     if (count < 5) continue;
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION'] * Math.min(2, 1 + count / 50);
     signals.push({
-      id: `wildfire:${theater.replace(/\s+/g, '-').toLowerCase()}`,
+      id: `wildfire:${theater.replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION',
       theater,
       summary: `Wildfire escalation: ${count} extreme thermal detections in ${theater}`,
@@ -709,7 +722,7 @@ function extractDisplacementSurge(d) {
     const detectedAt = Date.parse(route.asOf);
     if (route.kind !== 'arrival' || route.surge !== true || !Number.isFinite(detectedAt)
       || detectedAt > Date.now() || Date.now() - detectedAt > 3 * 86400000
-      || !(route.last7Days >= 1000) || !/^[A-Z]{2}$/.test(route.countryCode)) return [];
+      || !(route.last7Days >= 1000) || !COUNTRY_CODE_RE.test(route.countryCode)) return [];
     return [{ id: `displacement:${route.id}`, type: 'CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE',
       theater: weatherTheaterForCountry(route.countryCode), severity: scoreTier(BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE),
       severityScore: BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE,
@@ -755,10 +768,10 @@ function extractForecastDeterioration(d) {
   // escalation score. The canonical writer uses the same polarity distinction
   // when calibrating against prediction markets: a likely ceasefire is not a
   // likely deterioration, while a likely ceasefire failure is.
-  const deEscalationTerms = /\b(?:ceasefire|truce|peace|peaceful|agreement|diplomatic solution|withdrawal|reopen(?:ed)?|restored|resolution|resolved|de-?escalat\w*|stabili[sz]\w*|normali[sz]\w*)\b/i;
-  const failedDeEscalation = /\b(?:ceasefire|truce|peace|agreement)\b.{0,40}\b(?:fail\w*|collaps\w*|break(?:s|ing)? down|breakdown|breach\w*|violat\w*|reject\w*|expir\w*|end(?:s|ed|ing)?\b(?!\s+of\b))|\b(?:fail\w*|collaps\w*|break(?:s|ing)? down|breakdown|breach\w*|violat\w*|reject\w*|expir\w*|end(?:s|ed|ing)?\b(?!\s+of\b)).{0,40}\b(?:ceasefire|truce|peace|agreement)\b/i;
-  const adverseResumption = /\b(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)\b.{0,24}\b(?:resum\w*|renew\w*)\b|\b(?:resum\w*|renew\w*)\b.{0,24}\b(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)\b/i;
-  const adverseConditionEnds = /\b(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)\b.{0,40}\bend(?:s|ed|ing)?\b|\bend(?:s|ed|ing)?\b(?:\s+of)?.{0,40}\b(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)\b/i;
+  const deEscalationTerms = DE_ESCALATION_TERMS_RE;
+  const failedDeEscalation = FAILED_DE_ESCALATION_RE;
+  const adverseResumption = ADVERSE_RESUMPTION_RE;
+  const adverseConditionEnds = ADVERSE_CONDITION_ENDS_RE;
   const deteriorating = predictions.filter((p) => {
     if (safeNum(p.probability) <= 0.65) return false;
     const signalText = (Array.isArray(p.signals) ? p.signals : [])
@@ -775,7 +788,7 @@ function extractForecastDeterioration(d) {
     const theater = normalizeTheater(p.region || p.country || p.theater || '');
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION'] * Math.min(2, 1 + safeNum(p.probability));
     return {
-      id: `forecast:${p.id || (p.title || p.label || theater).replace(/\s+/g, '-').toLowerCase().slice(0, 40)}`,
+      id: `forecast:${p.id || (p.title || p.label || theater).replace(WHITESPACE_RE, '-').toLowerCase().slice(0, 40)}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION',
       theater,
       summary: `Forecast deterioration: ${p.title || p.label || 'Geopolitical risk'} — ${Math.round(safeNum(p.probability) * 100)}% probability`,
@@ -832,7 +845,7 @@ function extractWeatherExtreme(d) {
   for (const [theater, count] of regionMap) {
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME'] * Math.min(2, 1 + count / 5);
     signals.push({
-      id: `weather:${theater.replace(/\s+/g, '-').toLowerCase()}`,
+      id: `weather:${theater.replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME',
       theater,
       summary: `Extreme weather: ${count} active extreme alert${count > 1 ? 's' : ''} in ${theater}`,
@@ -937,7 +950,7 @@ function extractRiskScoreSpike(d) {
     const theater = normalizeTheater(s.region || '');
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE'] * Math.min(2, safeNum(s.combinedScore) / 60);
     return {
-      id: `risk:${(s.region || 'unknown').replace(/\s+/g, '-').toLowerCase()}`,
+      id: `risk:${(s.region || 'unknown').replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE',
       theater,
       summary: `Risk score spike: ${s.region || 'unknown'} CII score ${safeNum(s.combinedScore).toFixed(0)} — trend ${s.trend === 'TREND_DIRECTION_RISING' ? 'rising' : 'elevated'}`,
@@ -1103,14 +1116,14 @@ function detectCompositeEscalation(signals) {
     let signalCount = 0;
     for (const [, categorySigs] of categoryMap) {
       for (const s of categorySigs) {
-        contributingTypes.push(s.type.replace('CROSS_SOURCE_SIGNAL_TYPE_', '').replace(/_/g, ' ').toLowerCase());
+        contributingTypes.push(s.type.replace('CROSS_SOURCE_SIGNAL_TYPE_', '').replace(SURGE_LABEL_RE, ' ').toLowerCase());
         totalScore += s.severityScore;
         signalCount++;
       }
     }
     const compositeScore = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION'] * Math.min(3, 1 + categoryMap.size / 3) + totalScore * 0.2;
     composites.push({
-      id: `composite:${theater.replace(/\s+/g, '-').toLowerCase()}`,
+      id: `composite:${theater.replace(WHITESPACE_RE, '-').toLowerCase()}`,
       type: 'CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION',
       theater,
       summary: `Composite escalation in ${theater}: ${categoryMap.size} signal categories co-firing (${contributingTypes.slice(0, 4).join(', ')}${contributingTypes.length > 4 ? ' ...' : ''})`,

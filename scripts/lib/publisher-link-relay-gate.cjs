@@ -1,5 +1,10 @@
 'use strict';
 
+const CLEANED_RE = /\.+$/;
+const NORMALIZE_LINK_HOSTNAME_RE = /^www\./;
+const LINK_HOSTNAME_RE = /^https?:\/\//i;
+
+
 // Publisher-link gate for relay-emitted RSS events (#8398).
 //
 // An attacker-controlled RSS item reaches every subscribed user's
@@ -94,15 +99,15 @@ const PUBLISHER_LINK_DOMAINS = {
 
 function normalizeLinkHostname(hostname) {
   if (typeof hostname !== 'string') return '';
-  const cleaned = hostname.trim().toLowerCase().replace(/\.+$/, '');
+  const cleaned = hostname.trim().toLowerCase().replace(CLEANED_RE, '');
   if (cleaned.length === 0 || !cleaned.includes('.')) return '';
-  return cleaned.replace(/^www\./, '');
+  return cleaned.replace(NORMALIZE_LINK_HOSTNAME_RE, '');
 }
 
 function linkHostname(link) {
   if (typeof link !== 'string') return '';
   const value = link.trim();
-  if (!/^https?:\/\//i.test(value)) return '';
+  if (!LINK_HOSTNAME_RE.test(value)) return '';
   try {
     return normalizeLinkHostname(new URL(value).hostname);
   } catch {

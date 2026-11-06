@@ -1,3 +1,6 @@
+
+
+const BUSINESS_DAY_MS_RE = /^\d{4}-\d{2}-\d{2}$/;
 export const TREASURY_START_YEAR = 1990;
 export const TREASURY_CANONICAL_KEY = 'economic:us-treasury-par-yield:v1';
 export const TREASURY_LATEST_KEY = 'economic:us-treasury-par-yield:latest:v1';
@@ -69,7 +72,7 @@ export function treasuryYears(now = new Date()): number[] {
 }
 
 function businessDayMs(isoDate: string): number | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return undefined;
+  if (!BUSINESS_DAY_MS_RE.test(isoDate)) return undefined;
   const ms = Date.parse(`${isoDate}T00:00:00Z`);
   return Number.isFinite(ms) ? ms : undefined;
 }

@@ -1,3 +1,6 @@
+
+
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
 type StoredMetric = {
   value?: number;
   year?: number;
@@ -119,7 +122,7 @@ export function buildDefenseIndustrialResponse(
   if (!country && !hasDependency) return emptyResponse(countryCode);
   const suppliers = (dependency?.suppliers || [])
     .filter((entry) => (
-      /^[A-Z]{2}$/.test(String(entry.supplierIso2 || ''))
+      COUNTRY_CODE_RE.test(String(entry.supplierIso2 || ''))
       && Number.isFinite(entry.tivShare)
       && Number(entry.tivShare) >= 0
       && Number(entry.tivShare) <= 1

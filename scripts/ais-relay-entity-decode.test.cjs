@@ -14,6 +14,7 @@ const { strict: assert } = require('node:assert');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
+const { moduleRegexDeclarations } = require('../tests/helpers/module-regex-declarations.mjs');
 
 const relaySource = readFileSync(join(__dirname, 'ais-relay.cjs'), 'utf8');
 
@@ -21,7 +22,7 @@ function loadFunction(name) {
   const match = relaySource.match(new RegExp(`function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
   assert.ok(match, `could not locate ${name}() in ais-relay.cjs`);
   // eslint-disable-next-line no-new-func
-  return new Function(`${match[0]}; return ${name};`)();
+  return new Function(`${moduleRegexDeclarations(relaySource)}\n${match[0]}; return ${name};`)();
 }
 
 const _decodeRedditEntities = loadFunction('_decodeRedditEntities');

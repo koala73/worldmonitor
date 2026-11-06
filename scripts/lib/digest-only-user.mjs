@@ -6,6 +6,8 @@
 // Hard cap: an operator cannot set an expiry more than 48h in the future.
 // Prevents "forever test" misconfig even if the format is otherwise valid.
 // 48h covers every realistic same-day + next-day validation window.
+const PARSE_DIGEST_ONLY_USER_RE = /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
 export const DIGEST_ONLY_USER_MAX_HORIZON_MS = 48 * 60 * 60 * 1000;
 
 /**
@@ -54,7 +56,7 @@ export function parseDigestOnlyUser(raw, nowMs) {
   // ISO 8601 — gate with a rough regex so non-ISO values are rejected
   // by shape, not just by the 48h cap catching a random valid date.
   // Accept YYYY-MM-DD with optional time / fractional / timezone.
-  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(untilRaw)) {
+  if (!PARSE_DIGEST_ONLY_USER_RE.test(untilRaw)) {
     return {
       kind: 'reject',
       reason: `expiry "${untilRaw}" is not a parseable ISO8601 timestamp`,

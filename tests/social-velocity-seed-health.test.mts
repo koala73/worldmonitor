@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, it } from 'node:test';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 
 const CANONICAL_KEY = 'intelligence:social:reddit:v1';
 const META_KEY = 'seed-meta:intelligence:social-reddit';
@@ -37,7 +38,7 @@ const goodPost = { id: 'abc123', title: 'A report', permalink: '/r/worldnews/com
 function harness(options: Options = {}) {
   const calls: Array<{ op: string; key: string; value?: unknown; ttl?: number }> = [];
   const timers: number[] = [];
-  const seed = runInNewContext(`${region}\nseedSocialVelocity`, {
+  const seed = runInNewContext(`${moduleRegexDeclarations(source)}\n${region}\nseedSocialVelocity`, {
     URL, Date, console: { log() {}, warn() {}, error() {} },
     setTimeout: (fn: () => void, ms: number) => { if (ms === 500) fn(); else timers.push(ms); return 1; },
     clearTimeout() {},

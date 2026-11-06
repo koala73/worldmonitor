@@ -7,6 +7,10 @@ import { spec } from 'node:test/reporters';
 import { parseArgs } from 'node:util';
 import { isMainModule } from './lib/main-module.mjs';
 
+const MAIN_RE = /^[1-9]\d*$/;
+const MAIN_RE_2 = /^([1-9]\d*)\/([1-9]\d*)$/;
+
+
 const timingPath = new URL('./shared/data-test-durations.json', import.meta.url);
 
 // CI builds dist/ and public/pro/ once, in the unit-built-output job, instead of
@@ -68,17 +72,17 @@ export async function main(args) {
       'file-timeout': { type: 'string', default: '300000' },
     },
   });
-  if (!/^[1-9]\d*$/.test(values.concurrency) || !Number.isSafeInteger(Number(values.concurrency))) {
+  if (!MAIN_RE.test(values.concurrency) || !Number.isSafeInteger(Number(values.concurrency))) {
     throw new Error('Concurrency must be a positive integer');
   }
-  if (!/^[1-9]\d*$/.test(values['file-timeout']) || !Number.isSafeInteger(Number(values['file-timeout']))) {
+  if (!MAIN_RE.test(values['file-timeout']) || !Number.isSafeInteger(Number(values['file-timeout']))) {
     throw new Error('--file-timeout must be a positive integer of milliseconds');
   }
   const fileTimeout = Number(values['file-timeout']);
   let index = 1;
   let total = 1;
   if (values.shard) {
-    const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(values.shard);
+    const match = MAIN_RE_2.exec(values.shard);
     if (!match) throw new Error('Shard must be INDEX/TOTAL (for example 1/2)');
     [index, total] = match.slice(1).map(Number);
     if (!Number.isSafeInteger(index) || !Number.isSafeInteger(total) || index > total) {

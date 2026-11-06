@@ -17,6 +17,14 @@
 
 import { createHash } from 'node:crypto';
 
+const SANITIZE_UNTRUSTED_RE = /[\r\n\t`]+/g;
+const SANITIZE_UNTRUSTED_RE_2 = /</g;
+const SANITIZE_UNTRUSTED_RE_3 = />/g;
+const WHITESPACE_RE = /\s+/g;
+const JSON_MATCH_RE = /\{[^{}]*"probability"[^{}]*\}/s;
+const BARE_RE = /(?:^|[^\d.])(0?\.\d{1,4}|0|1(?:\.0+)?)(?![\d.])/;
+
+
 const DEFAULT_STAGE_BUDGET_MS = 35_000; // mirrors createLiveJudgeModels (#5087)
 const DEFAULT_MAX_TOKENS = 300;
 const MARKET_PRICE_BUCKET = 5; // cache stays warm across small market moves
@@ -37,10 +45,10 @@ function sanitizeUntrusted(text, max = 300) {
   // would end the untrusted region and promote what follows to instructions).
   return truncate(
     String(text ?? '')
-      .replace(/[\r\n\t`]+/g, ' ')
-      .replace(/</g, '‹')
-      .replace(/>/g, '›')
-      .replace(/\s+/g, ' ')
+      .replace(SANITIZE_UNTRUSTED_RE, ' ')
+      .replace(SANITIZE_UNTRUSTED_RE_2, '‹')
+      .replace(SANITIZE_UNTRUSTED_RE_3, '›')
+      .replace(WHITESPACE_RE, ' ')
       .trim(),
     max,
   );
@@ -208,7 +216,7 @@ function trimmedMean(values) {
 // bare decimal in [0,1] as fallback. Anything else → NaN (pass excluded).
 function parseProbability(text) {
   if (typeof text !== 'string' || !text.trim()) return { probability: NaN };
-  const jsonMatch = text.match(/\{[^{}]*"probability"[^{}]*\}/s);
+  const jsonMatch = text.match(JSON_MATCH_RE);
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0]);
@@ -216,7 +224,7 @@ function parseProbability(text) {
       if (Number.isFinite(p)) return { probability: p, rationale: typeof parsed.rationale === 'string' ? parsed.rationale.slice(0, 200) : undefined };
     } catch { /* fall through to bare-number parse */ }
   }
-  const bare = text.match(/(?:^|[^\d.])(0?\.\d{1,4}|0|1(?:\.0+)?)(?![\d.])/);
+  const bare = text.match(BARE_RE);
   if (bare) {
     const p = clampProbability(Number(bare[1]), NaN);
     if (Number.isFinite(p)) return { probability: p };

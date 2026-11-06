@@ -16,6 +16,9 @@ import { MCP_ATTRIBUTION_SOURCE } from '../../shared/mcp-attribution';
 import { captureSilentError } from '../_sentry-edge.js';
 import { rpcError } from './rpc';
 
+const SECONDS_RE = /^\d{1,5}$/;
+
+
 export const START_UPGRADE_TOOL = 'start_upgrade';
 
 const CHECKOUT_RELAY_USER_AGENT = 'worldmonitor-mcp-edge/1.0';
@@ -162,7 +165,7 @@ export async function relayMcpCheckout(
   }
   if (response.status === 429) {
     const header = response.headers.get('retry-after');
-    const seconds = header && /^\d{1,5}$/.test(header) ? Number(header) : 10;
+    const seconds = header && SECONDS_RE.test(header) ? Number(header) : 10;
     return { kind: 'rate-limited', retryAfterSeconds: Math.max(1, seconds) };
   }
   if (response.status === 400 && data.error === 'INVALID_CHECKOUT_PRODUCT') {

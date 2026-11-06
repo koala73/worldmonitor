@@ -1,5 +1,13 @@
 'use strict';
 
+const LINE_BREAK_RE = /\r?\n/;
+const CURL_CONFIG_VALUE_RE = /\r|\n/;
+const PROXY_URL_RE = /^https?:\/\//i;
+const BUILD_CURL_CONFIG_RE = /^http:\/\//i;
+const WHITESPACE_RE = /\s+/g;
+const CODE_RE = /^[A-Z0-9_]{1,32}$/i;
+
+
 const https = require('node:https');
 const { spawn } = require('node:child_process');
 
@@ -155,7 +163,7 @@ function parseCurlResponse(stdout) {
     const separatorLength = useCrlf ? 4 : 2;
     if (headerEnd < 0) throw new Error('Yahoo proxy response omitted HTTP headers');
 
-    const headerLines = responseText.slice(cursor, headerEnd).split(/\r?\n/).slice(1);
+    const headerLines = responseText.slice(cursor, headerEnd).split(LINE_BREAK_RE).slice(1);
     headers = {};
     for (const line of headerLines) {
       const colon = line.indexOf(':');
@@ -182,13 +190,13 @@ function parseCurlResponse(stdout) {
 
 function curlConfigValue(value) {
   const text = String(value);
-  if (/\r|\n/.test(text)) throw new Error('Yahoo proxy config value contains a newline');
+  if (CURL_CONFIG_VALUE_RE.test(text)) throw new Error('Yahoo proxy config value contains a newline');
   return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
 }
 
 function buildCurlConfig(url, { headers = {}, proxy } = {}) {
-  const proxyUrl = /^https?:\/\//i.test(proxy) ? proxy : `https://${proxy}`;
-  if (/^http:\/\//i.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
+  const proxyUrl = PROXY_URL_RE.test(proxy) ? proxy : `https://${proxy}`;
+  if (BUILD_CURL_CONFIG_RE.test(proxyUrl) && process.env.PROXY_ALLOW_INSECURE_HTTP !== '1') {
     const error = new Error('Plain HTTP curl proxies require PROXY_ALLOW_INSECURE_HTTP=1');
     error.code = 'PROXY_HTTP_OPT_IN_REQUIRED';
     throw error;
@@ -854,7 +862,7 @@ function isNonDurableParseKind(kind) {
 }
 
 function boundedFailure(value, fallback = 'request failed') {
-  const compact = String(value || '').replace(/\s+/g, ' ').trim();
+  const compact = String(value || '').replace(WHITESPACE_RE, ' ').trim();
   if (!compact) return fallback;
   return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
 }
@@ -874,7 +882,7 @@ function responseFailure(response) {
 function transportFailure(error, transport) {
   if (transport === 'proxy') {
     const code = typeof error?.code === 'string'
-      && /^[A-Z0-9_]{1,32}$/i.test(error.code)
+      && CODE_RE.test(error.code)
       ? error.code
       : null;
     return code ? `proxy request failed (${code})` : 'proxy request failed';

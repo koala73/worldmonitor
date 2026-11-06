@@ -17,6 +17,11 @@ import fallbackJson from '../generated/teasers.json';
 import { dedupeByArticleUrl } from '../../../shared/article-identity.js';
 import { createTimeoutSignal } from './timeout-signal';
 
+const HOSTNAME_RE = /\.+$/;
+const FORMAT_SNAPSHOT_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const FORMAT_LOCALIZED_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export interface TeaserHeadline {
   title: string;
   source: string;
@@ -67,7 +72,7 @@ function articleUrl(link: string | undefined): string {
   if (!link) return '';
   try {
     const parsed = new URL(link);
-    const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+    const hostname = parsed.hostname.toLowerCase().replace(HOSTNAME_RE, '');
     return parsed.protocol === 'https:' && hostname && !AGGREGATOR_LINK_HOSTS.has(hostname)
       ? link
       : '';
@@ -96,7 +101,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * publication event, not a second date dialect (#7654).
  */
 export function formatSnapshotDate(capturedAt: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(capturedAt || ''));
+  const match = FORMAT_SNAPSHOT_DATE_RE.exec(String(capturedAt || ''));
   if (!match) return String(capturedAt || '');
   return `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}, ${match[1]}`;
 }
@@ -123,7 +128,7 @@ const HERO_DATE_LOCALES: Record<string, string> = {
  * print the same day.
  */
 export function formatLocalizedDate(capturedAt: string, language: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(capturedAt || ''))) return String(capturedAt || '');
+  if (!FORMAT_LOCALIZED_DATE_RE.test(String(capturedAt || ''))) return String(capturedAt || '');
   return new Intl.DateTimeFormat(HERO_DATE_LOCALES[language] ?? language, {
     calendar: 'gregory',
     day: 'numeric',

@@ -15,6 +15,9 @@ import {
   isSourceAttributionManifestError,
 } from './source-attribution.mjs';
 
+const BUILD_INVENTORY_FACTS_RE = /^[a-z]{2}(?:-[A-Z]{2})?$/;
+
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const read = (path) => readFileSync(join(ROOT, path), 'utf8');
@@ -64,7 +67,7 @@ export function buildInventoryFacts(stats = loadStatsForInventoryFacts()) {
   if (!Array.isArray(capabilities.localeCodes)
     || capabilities.localeCodes.length === 0
     || new Set(capabilities.localeCodes).size !== capabilities.localeCodes.length
-    || capabilities.localeCodes.some((code) => typeof code !== 'string' || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(code))) {
+    || capabilities.localeCodes.some((code) => typeof code !== 'string' || !BUILD_INVENTORY_FACTS_RE.test(code))) {
     throw new Error('inventory capability localeCodes must be a non-empty unique locale-code registry');
   }
   if (capabilities.localeCodes.length !== capabilities.locales) {

@@ -2,6 +2,11 @@ import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { jsonResponse } from '../_json-response.js';
 import { readJsonFromUpstash } from '../_upstash-json.js';
 
+const NAMED_DATE_PARTS_RE = /^(\d{4})-([A-Za-z]+)-(\d{1,2})$/;
+const NAMED_DATE_PARTS_RE_2 = /^([A-Za-z]+)-(\d{1,2})-(\d{4})$/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+
 export const config = { runtime: 'edge' };
 
 const REDIS_KEY = 'supply_chain:hormuz_tracker:v1';
@@ -17,16 +22,16 @@ const MONTH_NAMES = ['january', 'february', 'march', 'april', 'may', 'june',
   'july', 'august', 'september', 'october', 'november', 'december'];
 
 function namedDateParts(text) {
-  let m = text.match(/^(\d{4})-([A-Za-z]+)-(\d{1,2})$/);
+  let m = text.match(NAMED_DATE_PARTS_RE);
   if (m) return { year: m[1], monthName: m[2], day: m[3] };
-  m = text.match(/^([A-Za-z]+)-(\d{1,2})-(\d{4})$/);
+  m = text.match(NAMED_DATE_PARTS_RE_2);
   if (m) return { year: m[3], monthName: m[1], day: m[2] };
   return null;
 }
 
 function isoDate(value) {
   const text = String(value ?? '');
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (ISO_DATE_RE.test(text)) return text;
   const parts = namedDateParts(text);
   if (!parts) return null;
   const month = MONTH_NAMES.indexOf(parts.monthName.toLowerCase());

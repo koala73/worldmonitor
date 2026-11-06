@@ -17,6 +17,9 @@ import { coverage, credibilityBand, sourceCredibility } from './lib/wm.mjs';
 import * as liveavatar from './lib/liveavatar.mjs';
 import * as access from './lib/access.mjs';
 
+const SERVER_RE = /^(off|none)$/i;
+
+
 loadEnv();
 const PORT = Number(process.env.PORT || 4317);
 const desk = buildDesk();
@@ -181,7 +184,7 @@ const server = createServer(async (req, res) => {
         // The documented embed URL on the www host: the apex redirects, and a
         // layer-less /embed is not the dashboard map. DESK_BACKDROP_URL= (empty) turns it off.
         // Offline never loads it; DESK_BACKDROP_URL=off turns it off on stage (a blank .env line can't: blanks are placeholders).
-        backdropUrl: desk.noNetwork || /^(off|none)$/i.test(process.env.DESK_BACKDROP_URL ?? '') ? '' : (process.env.DESK_BACKDROP_URL || 'https://www.worldmonitor.app/embed?layers=conflicts,earthquakes,weather&center=20,0&zoom=1&theme=dark&variant=full'),
+        backdropUrl: desk.noNetwork || SERVER_RE.test(process.env.DESK_BACKDROP_URL ?? '') ? '' : (process.env.DESK_BACKDROP_URL || 'https://www.worldmonitor.app/embed?layers=conflicts,earthquakes,weather&center=20,0&zoom=1&theme=dark&variant=full'),
         avatar: liveavatar.configured(),
         boardRefreshMin: BOARD_REFRESH_MS / 60_000,
         stepDelayMs: Number(process.env.DESK_STEP_DELAY_MS || 1400),

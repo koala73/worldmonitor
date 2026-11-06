@@ -34,6 +34,24 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serialize } from './lib/openapi-codegen.mjs';
 
+const PATH_MATCH_RE = /^ {4}(\/\S+):\s*$/;
+const INJECT_YAML_RE = /^\S/;
+const METHOD_MATCH_RE = /^ {8}([a-z]+):\s*$/;
+const INJECT_YAML_RE_2 = /^ {0,8}\S/;
+const INJECT_YAML_RE_3 = /^ {12}parameters:\s*$/;
+const INJECT_YAML_RE_4 = /^ {16}- name: jmespath\s*$/;
+const INJECT_YAML_RE_5 = /^ {12}responses:\s*$/;
+const SCHEMAS_INDEX_RE = /^ {4}schemas:\s*$/;
+const ENSURE_YAML_JMESPATH_PARAM_RE = /^ {16}- name: \S+/;
+const ENSURE_YAML_JMESPATH_PARAM_RE_2 = /^ {12}\S/;
+const ENSURE_YAML_JMESPATH400_RESPONSE_RE = /^ {16}"400":\s*$/;
+const ENSURE_YAML_JMESPATH400_RESPONSE_RE_2 = /^ {16}("\d{3}"|default):\s*$/;
+const SCHEMA_INDEX_RE = /^ {28}schema:\s*$/;
+const REF_MATCH_RE = /^ {32}\$ref: (.+)$/;
+const JSON_FILES_RE = /Service\.openapi\.json$/;
+const YAML_FILES_RE = /Service\.openapi\.yaml$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const CHECK = process.argv.includes('--check');
@@ -181,17 +199,17 @@ function injectYaml(text) {
   let currentPath = null;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const pathMatch = line.match(/^ {4}(\/\S+):\s*$/);
+    const pathMatch = line.match(PATH_MATCH_RE);
     if (pathMatch) {
       currentPath = pathMatch[1];
       continue;
     }
-    if (/^\S/.test(line)) {
+    if (INJECT_YAML_RE.test(line)) {
       currentPath = null; // left the paths: block
       continue;
     }
 
-    const methodMatch = line.match(/^ {8}([a-z]+):\s*$/);
+    const methodMatch = line.match(METHOD_MATCH_RE);
     if (!methodMatch || !currentPath || methodMatch[1] !== 'get') continue;
 
     let blockEnd = lines.length;
@@ -199,13 +217,13 @@ function injectYaml(text) {
     let hasParameters = false;
     let hasJmespath = false;
     for (let j = i + 1; j < lines.length; j++) {
-      if (/^ {0,8}\S/.test(lines[j])) {
+      if (INJECT_YAML_RE_2.test(lines[j])) {
         blockEnd = j;
         break; // next method (8) / path (4) / top-level
       }
-      if (/^ {12}parameters:\s*$/.test(lines[j])) hasParameters = true;
-      if (/^ {16}- name: jmespath\s*$/.test(lines[j])) hasJmespath = true;
-      if (responsesIndex === -1 && /^ {12}responses:\s*$/.test(lines[j])) responsesIndex = j;
+      if (INJECT_YAML_RE_3.test(lines[j])) hasParameters = true;
+      if (INJECT_YAML_RE_4.test(lines[j])) hasJmespath = true;
+      if (responsesIndex === -1 && INJECT_YAML_RE_5.test(lines[j])) responsesIndex = j;
     }
 
     if (responsesIndex === -1) continue;
@@ -227,7 +245,7 @@ function injectYaml(text) {
 
 function ensureYamlJmespathErrorSchema(lines) {
   if (lines.some((line) => line === `        ${JMESPATH_ERROR_SCHEMA_NAME}:`)) return false;
-  const schemasIndex = lines.findIndex((line) => /^ {4}schemas:\s*$/.test(line));
+  const schemasIndex = lines.findIndex((line) => SCHEMAS_INDEX_RE.test(line));
   if (schemasIndex === -1) return false;
   lines.splice(schemasIndex + 1, 0, ...JMESPATH_ERROR_YAML_SCHEMA);
   return true;
@@ -235,12 +253,12 @@ function ensureYamlJmespathErrorSchema(lines) {
 
 function ensureYamlJmespathParam(lines, start, end) {
   const paramIndex = lines.findIndex((line, index) =>
-    index > start && index < end && /^ {16}- name: jmespath\s*$/.test(line));
+    index > start && index < end && INJECT_YAML_RE_4.test(line));
   if (paramIndex === -1) return false;
 
   let paramEnd = end;
   for (let i = paramIndex + 1; i < end; i++) {
-    if (/^ {16}- name: \S+/.test(lines[i]) || /^ {12}\S/.test(lines[i])) {
+    if (ENSURE_YAML_JMESPATH_PARAM_RE.test(lines[i]) || ENSURE_YAML_JMESPATH_PARAM_RE_2.test(lines[i])) {
       paramEnd = i;
       break;
     }
@@ -256,11 +274,11 @@ function ensureYamlJmespathParam(lines, start, end) {
 function ensureYamlJmespath400Response(lines, start, end) {
   let changed = false;
   for (let i = start; i < end; i++) {
-    if (!/^ {16}"400":\s*$/.test(lines[i])) continue;
+    if (!ENSURE_YAML_JMESPATH400_RESPONSE_RE.test(lines[i])) continue;
 
     let responseEnd = end;
     for (let j = i + 1; j < end; j++) {
-      if (/^ {16}("\d{3}"|default):\s*$/.test(lines[j])) {
+      if (ENSURE_YAML_JMESPATH400_RESPONSE_RE_2.test(lines[j])) {
         responseEnd = j;
         break;
       }
@@ -268,11 +286,11 @@ function ensureYamlJmespath400Response(lines, start, end) {
     if (lines.slice(i, responseEnd).some((line) => line.includes(JMESPATH_ERROR_SCHEMA_NAME))) continue;
 
     const schemaIndex = lines.findIndex((line, index) =>
-      index > i && index < responseEnd && /^ {28}schema:\s*$/.test(line));
+      index > i && index < responseEnd && SCHEMA_INDEX_RE.test(line));
     if (schemaIndex === -1) continue;
 
     const refLine = lines[schemaIndex + 1] ?? '';
-    const refMatch = refLine.match(/^ {32}\$ref: (.+)$/);
+    const refMatch = refLine.match(REF_MATCH_RE);
     if (!refMatch) continue;
 
     lines.splice(
@@ -289,9 +307,9 @@ function ensureYamlJmespath400Response(lines, start, end) {
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
-const jsonFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+const jsonFiles = readdirSync(apiDir).filter((f) => JSON_FILES_RE.test(f)).sort();
 const yamlFiles = readdirSync(apiDir)
-  .filter((f) => /Service\.openapi\.yaml$/.test(f) || f === 'worldmonitor.openapi.yaml')
+  .filter((f) => YAML_FILES_RE.test(f) || f === 'worldmonitor.openapi.yaml')
   .sort();
 let wouldChange = 0;
 const touched = [];

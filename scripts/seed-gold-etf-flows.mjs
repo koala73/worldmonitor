@@ -5,6 +5,14 @@ import { inflateRawSync } from 'node:zlib';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
 
+const S_RE = /[$,\s£€¥]/g;
+const S_RE_2 = /^US\$/i;
+const PARSE_SPDR_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+const M1_RE = /^(\d{1,2})-(\w{3})-(\d{4})$/;
+const M2_RE = /^(\w+)\s+(\d{1,2}),\s+(\d{4})$/;
+const FETCH_GLD_FLOWS_RE = /spreadsheet|xlsx|octet-stream/i;
+
+
 loadEnvFile(import.meta.url);
 
 const require = createRequire(import.meta.url);
@@ -26,7 +34,7 @@ const GLD_HIST_URL = `${GLD_API_BASE}/historical-archive?product=gld&exchange=NY
 
 function parseSpdrNumber(raw) {
   if (raw == null) return NaN;
-  const s = String(raw).replace(/[$,\s£€¥]/g, '').replace(/^US\$/i, '').trim();
+  const s = String(raw).replace(S_RE, '').replace(S_RE_2, '').trim();
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : NaN;
 }
@@ -35,9 +43,9 @@ function parseSpdrDate(raw) {
   if (!raw) return '';
   if (raw instanceof Date) return raw.toISOString().slice(0, 10);
   const s = String(raw).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (PARSE_SPDR_DATE_RE.test(s)) return s.slice(0, 10);
   // "18-Nov-2004" / "10-Apr-2026"
-  const m1 = s.match(/^(\d{1,2})-(\w{3})-(\d{4})$/);
+  const m1 = s.match(M1_RE);
   if (m1) {
     const months = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
     const mm = months[m1[2].toLowerCase()];
@@ -45,7 +53,7 @@ function parseSpdrDate(raw) {
   }
   // "April 13, 2026" (used by the /data endpoint; kept for forward compat if
   // we ever backfill from that source).
-  const m2 = s.match(/^(\w+)\s+(\d{1,2}),\s+(\d{4})$/);
+  const m2 = s.match(M2_RE);
   if (m2) {
     const months = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
     const mm = months[m2[1].toLowerCase()];
@@ -211,7 +219,7 @@ async function fetchGldFlows() {
   });
   if (!resp.ok) throw new Error(`SPDR historical-archive HTTP ${resp.status}`);
   const ct = resp.headers.get('content-type') || '';
-  if (!/spreadsheet|xlsx|octet-stream/i.test(ct)) {
+  if (!FETCH_GLD_FLOWS_RE.test(ct)) {
     throw new Error(`SPDR historical-archive returned non-XLSX content-type: ${ct}`);
   }
   const buf = await readGldArchive(resp);

@@ -24,6 +24,11 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+const ESCAPE_MD_RE = /[\\[\]()<>|*_`~]/g;
+const DO_SAMPLE_RE = /\t/g;
+const DO_SAMPLE_RE_2 = /\n/g;
+
+
 const OUT = resolve(process.cwd(), 'shadow-score-report');
 const SHEET_TSV = resolve(OUT, 'rating-sheet.tsv');
 const SHEET_MD = resolve(OUT, 'rating-sheet.md');
@@ -32,7 +37,7 @@ const EVENTS_JSON = resolve(OUT, 'events.json');
 // Escape markdown specials so a crafted RSS title can't render as formatting,
 // embed `[label](javascript:...)` links, or break the table layout.
 function escapeMd(s) {
-  return String(s ?? '').replace(/[\\[\]()<>|*_`~]/g, (ch) => '\\' + ch);
+  return String(s ?? '').replace(ESCAPE_MD_RE, (ch) => '\\' + ch);
 }
 
 const BANDS = [
@@ -101,7 +106,7 @@ function doSample(perBand) {
       '',                // human (fill 0-4)
       '',                // notes
       e.eventType,
-      e.title.replace(/\t/g, ' ').replace(/\n/g, ' '),
+      e.title.replace(DO_SAMPLE_RE, ' ').replace(DO_SAMPLE_RE_2, ' '),
       e.band,
       new Date(e.ts).toISOString(),
     ].join('\t'));

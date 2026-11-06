@@ -13,6 +13,14 @@ import { finiteObservations } from './_bet-templates-macro.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { MARITIME_REGIONS, hexesInMaritimeRegion } from './_gps-maritime-regions.mjs';
 
+const CANONICAL_COUNTRY_TOKEN_RE = /\s*\([^)]*\)/g;
+const CANONICAL_COUNTRY_TOKEN_RE_2 = /\bthe\b/g;
+const CANONICAL_COUNTRY_TOKEN_RE_3 = /-/g;
+const WHITESPACE_RE = /\s+/g;
+const MARKET_QUESTION_IDENTITY_RE = /[\u2018\u2019]/g;
+const MARKET_QUESTION_IDENTITY_RE_2 = /[?\s]+$/;
+
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
@@ -692,10 +700,10 @@ function normalizeComparable(value) {
 // same canonical form).
 function canonicalCountryToken(value) {
   return normalizeComparable(value)
-    .replace(/\s*\([^)]*\)/g, '')
-    .replace(/\bthe\b/g, '')
-    .replace(/-/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(CANONICAL_COUNTRY_TOKEN_RE, '')
+    .replace(CANONICAL_COUNTRY_TOKEN_RE_2, '')
+    .replace(CANONICAL_COUNTRY_TOKEN_RE_3, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -912,9 +920,9 @@ export function marketQuestionIdentity(value) {
   return String(value ?? '')
     .trim()
     .toLowerCase()
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/\s+/g, ' ')
-    .replace(/[?\s]+$/, '');
+    .replace(MARKET_QUESTION_IDENTITY_RE, "'")
+    .replace(WHITESPACE_RE, ' ')
+    .replace(MARKET_QUESTION_IDENTITY_RE_2, '');
 }
 
 export function isSingleMarketVenue(entry) {

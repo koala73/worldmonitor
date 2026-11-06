@@ -5,16 +5,20 @@
 
 import { normalizeDateLabel, parseYieldNumber, collapseCurves } from './model.mjs';
 
+const LINE_BREAK_RE = /\r?\n/;
+const HEADER_INDEX_RE = /^ï»¿/;
+
+
 export const NORGES_TENORS = {
   '6M': '6m', '9M': '9m', '12M': '1y', '2Y': '2y', '3Y': '3y', '4Y': '4y',
   '5Y': '5y', '6Y': '6y', '7Y': '7y', '8Y': '8y', '9Y': '9y', '10Y': '10y',
 };
 
 export function parseNorgesZeroCouponCsv(csv) {
-  const lines = String(csv ?? '').split(/\r?\n/);
-  const headerIndex = lines.findIndex((line) => line.replace(/^ï»¿/, '').startsWith('FREQ;Frequency;TENOR'));
+  const lines = String(csv ?? '').split(LINE_BREAK_RE);
+  const headerIndex = lines.findIndex((line) => line.replace(HEADER_INDEX_RE, '').startsWith('FREQ;Frequency;TENOR'));
   if (headerIndex === -1) return [];
-  const headers = lines[headerIndex].replace(/^ï»¿/, '').split(';').map((cell) => cell.trim());
+  const headers = lines[headerIndex].replace(HEADER_INDEX_RE, '').split(';').map((cell) => cell.trim());
   const iTenor = headers.indexOf('TENOR');
   const iDate = headers.indexOf('TIME_PERIOD');
   const iValue = headers.indexOf('OBS_VALUE');

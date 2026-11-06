@@ -16,6 +16,10 @@ import {
   withRetry,
 } from './_seed-utils.mjs';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const EXTRACT_COUNTRY_CODE_FROM_NAME_RE = /\b([A-Z]{2})\b$/;
+
+
 loadEnvFile(import.meta.url);
 
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
@@ -74,7 +78,7 @@ function trimString(value) {
 
 function normalizeCountryCode(value) {
   const code = trimString(value).toUpperCase();
-  return /^[A-Z]{2}$/.test(code) ? code : '';
+  return COUNTRY_CODE_RE.test(code) ? code : '';
 }
 
 function toEpochMs(value) {
@@ -199,7 +203,7 @@ export function buildOpenAqStations(locations = [], latestMeasurements = [], now
 }
 
 function extractCountryCodeFromName(name) {
-  const match = trimString(name).match(/\b([A-Z]{2})\b$/);
+  const match = trimString(name).match(EXTRACT_COUNTRY_CODE_FROM_NAME_RE);
   return match ? normalizeCountryCode(match[1]) : '';
 }
 

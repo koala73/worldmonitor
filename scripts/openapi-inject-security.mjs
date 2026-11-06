@@ -50,6 +50,18 @@ import {
   LAPSED_BILLING_STATUS,
 } from './lib/openapi-codegen.mjs';
 
+const APPEND_ENTITLEMENT_NOTE_RE = /Requires entitlement tier >= \d+/i;
+const APPEND_ENTITLEMENT_NOTE_RE_2 = /PRO-gated/i;
+const FIND_COMPONENTS_CHILD_BLOCK_RE = /^ {4}[^ ].*:/;
+const APPEND_NOTE_TO_YAML_BLOCK_RE = /\s+$/;
+const ENSURE_YAML_ENTITLEMENT_DESCRIPTION_RE = /^ {12}description:\s*[|>]/;
+const FIND_YAML_RESPONSE_RANGE_RE = /^ {16}[^ ].*:/;
+const FIND_YAML_SCHEMA_RANGE_RE = /^ {8}[^ ].*:/;
+const ENUMERATE_YAML_OPERATIONS_RE = /^ {4}(\/\S+):$/;
+const SPEC_FILES_RE = /Service\.openapi\.json$/;
+const SERVICE_YAML_FILES_RE = /Service\.openapi\.yaml$/;
+
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const bundlePath = resolve(apiDir, 'worldmonitor.openapi.yaml');
@@ -291,8 +303,8 @@ function appendEntitlementNote(description, requiredTier) {
   const note = entitlementNote(requiredTier);
   const text = String(description ?? '').trim();
   if (!text) return note;
-  if (/Requires entitlement tier >= \d+/i.test(text)) return text;
-  if (/PRO-gated/i.test(text)) return `${text} Requires entitlement tier >= ${requiredTier}.`;
+  if (APPEND_ENTITLEMENT_NOTE_RE.test(text)) return text;
+  if (APPEND_ENTITLEMENT_NOTE_RE_2.test(text)) return `${text} Requires entitlement tier >= ${requiredTier}.`;
   return `${text} ${note}`;
 }
 
@@ -508,7 +520,7 @@ function findComponentsChildBlock(lines, key) {
     while (end < lines.length) {
       const next = lines[end];
       if (next && !next.startsWith(' ') && !next.startsWith('\t')) break;
-      if (/^ {4}[^ ].*:/.test(next)) break;
+      if (FIND_COMPONENTS_CHILD_BLOCK_RE.test(next)) break;
       end++;
     }
     return { componentsIndex, block: { start: i, end, text: lines.slice(i, end).join('\n') } };
@@ -692,7 +704,7 @@ function findYamlPathRange(lines, path) {
 }
 
 function yamlBlockNote(existingText, requiredTier) {
-  return /PRO-gated/i.test(existingText)
+  return APPEND_ENTITLEMENT_NOTE_RE_2.test(existingText)
     ? `Requires entitlement tier >= ${requiredTier}.`
     : entitlementNote(requiredTier);
 }
@@ -726,7 +738,7 @@ function appendNoteToYamlBlock(lines, descIndex, blockEnd, note) {
     lines.splice(blockEnd, 0, '                ' + note);
     return;
   }
-  lines[contentIndex] = lines[contentIndex].replace(/\s+$/, '') + ' ' + note;
+  lines[contentIndex] = lines[contentIndex].replace(APPEND_NOTE_TO_YAML_BLOCK_RE, '') + ' ' + note;
 }
 
 function normalizeYamlBlockNoteLine(lines, descIndex, blockEnd, isNoteLine) {
@@ -736,7 +748,7 @@ function normalizeYamlBlockNoteLine(lines, descIndex, blockEnd, isNoteLine) {
   if (noteIndex === -1) return false;
   const contentIndex = lastYamlBlockContentIndex(lines, descIndex, noteIndex);
   if (contentIndex === descIndex) return false;
-  lines[contentIndex] = lines[contentIndex].replace(/\s+$/, '') + ' ' + lines[noteIndex].trim();
+  lines[contentIndex] = lines[contentIndex].replace(APPEND_NOTE_TO_YAML_BLOCK_RE, '') + ' ' + lines[noteIndex].trim();
   lines.splice(noteIndex, 1);
   return true;
 }
@@ -758,7 +770,7 @@ function ensureYamlEntitlementDescription(lines, path, method, requiredTier) {
   }
 
   const line = lines[descIndex];
-  if (/^ {12}description:\s*[|>]/.test(line)) {
+  if (ENSURE_YAML_ENTITLEMENT_DESCRIPTION_RE.test(line)) {
     let blockEnd = descIndex + 1;
     while (blockEnd < lines.length) {
       const next = lines[blockEnd];
@@ -768,7 +780,7 @@ function ensureYamlEntitlementDescription(lines, path, method, requiredTier) {
     const blockText = lines.slice(descIndex, blockEnd).join('\n');
     const noteLine = new RegExp('^(?:PRO-gated\\. )?Requires entitlement tier >= ' + requiredTier + '\\.$', 'i');
     if (normalizeYamlBlockNoteLine(lines, descIndex, blockEnd, (text) => noteLine.test(text))) return true;
-    if (/Requires entitlement tier >= \d+/i.test(blockText)) return false;
+    if (APPEND_ENTITLEMENT_NOTE_RE.test(blockText)) return false;
     appendNoteToYamlBlock(lines, descIndex, blockEnd, yamlBlockNote(blockText, requiredTier));
     return true;
   }
@@ -799,7 +811,7 @@ function ensureYamlGateDescription(lines, path, method, note) {
   }
 
   const line = lines[descIndex];
-  if (/^ {12}description:\s*[|>]/.test(line)) {
+  if (ENSURE_YAML_ENTITLEMENT_DESCRIPTION_RE.test(line)) {
     let blockEnd = descIndex + 1;
     while (blockEnd < lines.length) {
       const next = lines[blockEnd];
@@ -831,7 +843,7 @@ function findYamlResponseRange(lines, op, statusLine) {
   let end = start + 1;
   while (end < op.end) {
     const line = lines[end];
-    if (line && /^ {16}[^ ].*:/.test(line)) break;
+    if (line && FIND_YAML_RESPONSE_RANGE_RE.test(line)) break;
     if (line && !line.startsWith('                    ')) break;
     end++;
   }
@@ -875,7 +887,7 @@ function findYamlSchemaRange(lines, schemaName) {
   let end = start + 1;
   while (end < lines.length) {
     const line = lines[end];
-    if (line && /^ {8}[^ ].*:/.test(line)) break;
+    if (line && FIND_YAML_SCHEMA_RANGE_RE.test(line)) break;
     if (line && !line.startsWith('            ')) break;
     end++;
   }
@@ -902,7 +914,7 @@ function ensureYamlForbiddenSchema(lines) {
   let insertAt = errorIndex + 1;
   while (insertAt < lines.length) {
     const line = lines[insertAt];
-    if (line && /^ {8}[^ ].*:/.test(line)) break;
+    if (line && FIND_YAML_SCHEMA_RANGE_RE.test(line)) break;
     if (line && !line.startsWith('            ')) break;
     insertAt++;
   }
@@ -1148,7 +1160,7 @@ function removeYamlForbiddenResponse(lines, path, method) {
 function enumerateYamlOperations(lines) {
   const operations = [];
   for (let i = 0; i < lines.length; i++) {
-    const match = lines[i].match(/^ {4}(\/\S+):$/);
+    const match = lines[i].match(ENUMERATE_YAML_OPERATIONS_RE);
     if (!match) continue;
     const methods = [];
     for (let j = i + 1; j < lines.length; j++) {
@@ -1216,8 +1228,8 @@ function injectYamlAuthContract(text) {
   return { text: lines.join('\n'), changed };
 }
 // ── Run ──────────────────────────────────────────────────────────────────────
-const specFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
-const serviceYamlFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.yaml$/.test(f)).sort();
+const specFiles = readdirSync(apiDir).filter((f) => SPEC_FILES_RE.test(f)).sort();
+const serviceYamlFiles = readdirSync(apiDir).filter((f) => SERVICE_YAML_FILES_RE.test(f)).sort();
 let wouldChange = 0;
 const touched = [];
 

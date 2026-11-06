@@ -1,5 +1,9 @@
 'use strict';
 
+const HOST_RE = /\.$/u;
+const STATUS_RE = /^HTTP\/1\.[01] (\d{3})(?:\s|$)/;
+
+
 const net = require('node:net');
 const tls = require('node:tls');
 const https = require('node:https');
@@ -80,7 +84,7 @@ function parseProxyConfigForAttempt(raw, attempt = 0) {
   // Normalize for provider detection only: the host:port:user:pass form keeps
   // whatever casing the operator typed, while the URL form is lowercased by the
   // URL parser. config.host stays verbatim so the connection is unchanged.
-  const host = String(config.host || '').toLowerCase().replace(/\.$/u, '');
+  const host = String(config.host || '').toLowerCase().replace(HOST_RE, '');
   const range = DECODO_STICKY_PORT_RANGES.get(host);
   if (
     !range
@@ -136,7 +140,7 @@ function resolveProxyString(raw = process.env.PROXY_URL || '') {
 
 /** Shared by resolveProxyString and resolveProxyStringForAttempt. */
 function curlProxyString(cfg) {
-  const normalizedHost = String(cfg.host || '').toLowerCase().replace(/\.$/u, '');
+  const normalizedHost = String(cfg.host || '').toLowerCase().replace(HOST_RE, '');
   const host = normalizedHost === DECODO_GATE_HOST ? DECODO_CURL_HOST : cfg.host;
   const base = cfg.auth ? `${cfg.auth}@${host}:${cfg.port}` : `${host}:${cfg.port}`;
   return `${cfg.tls ? 'https' : 'http'}://${base}`;
@@ -241,7 +245,7 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
         if (!buf.includes('\r\n\r\n')) return;
         proxySock.removeListener('data', onData);
         const statusLine = buf.split('\r\n')[0];
-        const status = Number(/^HTTP\/1\.[01] (\d{3})(?:\s|$)/.exec(statusLine)?.[1]);
+        const status = Number(STATUS_RE.exec(statusLine)?.[1]);
         proxyConnectStatus = status >= 100 && status <= 599 ? status : null;
         if (!statusLine.startsWith('HTTP/1.1 200') && !statusLine.startsWith('HTTP/1.0 200')) {
           proxySock.destroy();

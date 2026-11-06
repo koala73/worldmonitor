@@ -7,6 +7,11 @@ import { severityColor } from '../ui/theme.mjs';
 import { ageOf, fmtInt, fmtNum } from '../data/select.mjs';
 import { PaneView, selectedItem } from './base.mjs';
 
+const RANK_RE = /do-not-travel|extreme/i;
+const RANK_RE_2 = /reconsider|high/i;
+const RANK_RE_3 = /caution|increased/i;
+
+
 export class IntelView extends PaneView {
   constructor(app) {
     super(app, { id: 'intel', label: 'Intel', paneIds: ['topics', 'articles', 'advisories', 'social'], sources: ['fast', 'slow'] });
@@ -24,7 +29,7 @@ export class IntelView extends PaneView {
 
   advisories() {
     const list = this.data.securityAdvisories?.advisories || [];
-    const rank = (l) => (/do-not-travel|extreme/i.test(l) ? 3 : /reconsider|high/i.test(l) ? 2 : /caution|increased/i.test(l) ? 1 : 0);
+    const rank = (l) => (RANK_RE.test(l) ? 3 : RANK_RE_2.test(l) ? 2 : RANK_RE_3.test(l) ? 1 : 0);
     return [...list].sort((a, b) => rank(b.level) - rank(a.level) || String(b.pubDate || '').localeCompare(String(a.pubDate || '')));
   }
 

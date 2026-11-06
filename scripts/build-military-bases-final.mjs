@@ -17,6 +17,10 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+const STRIP_HTML_RE = /<[^>]*>/g;
+const DERIVE_CATEGORIES_FROM_KIND_RE = /space|launch|satellite/i;
+
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(projectRoot, 'scripts', 'data');
@@ -85,7 +89,7 @@ function loadJson(filepath, label) {
 
 function stripHtml(str) {
   if (!str || typeof str !== 'string') return str || '';
-  return str.replace(/<[^>]*>/g, '').trim();
+  return str.replace(STRIP_HTML_RE, '').trim();
 }
 
 function toRad(deg) {
@@ -139,7 +143,7 @@ function deriveCategoriesFromKind(kind, name) {
     catAirforce: k.includes('airfield'),
     catNaval: k.includes('naval_base'),
     catNuclear: k.includes('nuclear_explosion_site'),
-    catSpace: /space|launch|satellite/i.test(n),
+    catSpace: DERIVE_CATEGORIES_FROM_KIND_RE.test(n),
     catTraining: k.includes('training_area') || k.includes('range'),
   };
 }

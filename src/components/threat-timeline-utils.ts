@@ -1,6 +1,11 @@
 import type { ServerInsightStory, ServerInsights } from '@/services/insights-loader';
 import type { ClusteredEvent } from '@/types';
 
+const WHITESPACE_RE = /\s+/g;
+const NON_ALPHANUMERIC_RE = /[^a-z0-9]+/g;
+const STABLE_SLUG_RE = /^-|-$/g;
+
+
 export const THREAT_LEVELS = ['critical', 'high', 'medium', 'low', 'info'] as const;
 export type TimelineThreatLevel = typeof THREAT_LEVELS[number];
 
@@ -253,7 +258,7 @@ function inferProvenance(source: string, threatSource?: string): string {
 }
 
 function cleanSource(source: string | undefined): string {
-  return String(source ?? '').replace(/\s+/g, ' ').trim();
+  return String(source ?? '').replace(WHITESPACE_RE, ' ').trim();
 }
 
 function emptyCounts(): Record<TimelineThreatLevel, number> {
@@ -291,5 +296,5 @@ function dayLabel(ms: number): string {
 }
 
 function stableSlug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'item';
+  return value.toLowerCase().replace(NON_ALPHANUMERIC_RE, '-').replace(STABLE_SLUG_RE, '').slice(0, 40) || 'item';
 }

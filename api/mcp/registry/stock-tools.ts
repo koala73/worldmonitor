@@ -9,6 +9,9 @@ import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
+const SYMBOLS_RE = /^[A-Z0-9^][A-Z0-9.^=-]{0,31}$/i;
+
+
 const OPERATIONS = {
   analysis: '/api/market/v1/analyze-stock',
   backtest: '/api/market/v1/backtest-stock',
@@ -68,7 +71,7 @@ function stockResearchArguments(params: Record<string, unknown>) {
     invalid('symbols', 'Use exactly one symbol for analysis/backtest, or 1 through 50 for stored results.');
   }
   const symbols = (rawSymbols as unknown[]).map(raw => {
-    if (typeof raw !== 'string' || !/^[A-Z0-9^][A-Z0-9.^=-]{0,31}$/i.test(raw.trim())) {
+    if (typeof raw !== 'string' || !SYMBOLS_RE.test(raw.trim())) {
       invalid('symbols', 'Each symbol must contain 1 through 32 ticker characters.');
     }
     return (raw as string).trim().toUpperCase();

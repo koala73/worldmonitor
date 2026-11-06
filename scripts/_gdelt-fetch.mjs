@@ -14,6 +14,13 @@
 
 import { CHROME_UA, resolveProxy, curlFetch } from './_seed-utils.mjs';
 
+const MESSAGE_STATUS_RE = /\bHTTP\s+([1-5]\d{2})\b/i;
+const CLASSIFY_GDELT_FETCH_ERROR_RE = /\bJSON\b|Unexpected token/i;
+const CLASSIFY_GDELT_FETCH_ERROR_RE_2 = /SSL_ERROR_SYSCALL|certificate|TLS|SSL/i;
+const CLASSIFY_GDELT_FETCH_ERROR_RE_3 = /timed?\s*out|timeout|AbortError|UND_ERR_HEADERS_TIMEOUT/i;
+const CLASSIFY_GDELT_FETCH_ERROR_RE_4 = /ENOTFOUND|EAI_AGAIN|DNS/i;
+
+
 const ERROR_CODE_RE = /^[A-Z0-9_]{1,64}$/;
 
 export class GdeltFetchError extends Error {
@@ -51,19 +58,19 @@ export function classifyGdeltFetchError(error, route) {
   const prefix = routeErrorPrefix(route);
   const numericStatus = Number(error?.status);
   const text = errorText(error);
-  const messageStatus = text.match(/\bHTTP\s+([1-5]\d{2})\b/i)?.[1];
+  const messageStatus = text.match(MESSAGE_STATUS_RE)?.[1];
   const status = Number.isInteger(numericStatus) && numericStatus >= 100 && numericStatus <= 599
     ? numericStatus
     : (messageStatus ? Number(messageStatus) : null);
   if (status) return `${prefix}_HTTP_${status}`;
-  if (error instanceof SyntaxError || /\bJSON\b|Unexpected token/i.test(text)) {
+  if (error instanceof SyntaxError || CLASSIFY_GDELT_FETCH_ERROR_RE.test(text)) {
     return `${prefix}_INVALID_JSON`;
   }
-  if (/SSL_ERROR_SYSCALL|certificate|TLS|SSL/i.test(text)) return `${prefix}_TLS`;
-  if (/timed?\s*out|timeout|AbortError|UND_ERR_HEADERS_TIMEOUT/i.test(text)) {
+  if (CLASSIFY_GDELT_FETCH_ERROR_RE_2.test(text)) return `${prefix}_TLS`;
+  if (CLASSIFY_GDELT_FETCH_ERROR_RE_3.test(text)) {
     return `${prefix}_TIMEOUT`;
   }
-  if (/ENOTFOUND|EAI_AGAIN|DNS/i.test(text)) return `${prefix}_DNS`;
+  if (CLASSIFY_GDELT_FETCH_ERROR_RE_4.test(text)) return `${prefix}_DNS`;
   return `${prefix}_TRANSPORT`;
 }
 

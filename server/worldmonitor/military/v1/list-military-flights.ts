@@ -20,6 +20,9 @@ import {
 // @ts-expect-error JavaScript module has no declaration file.
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 
+const RESOLVE_OFFSET_RE = /^\d+$/;
+
+
 const REDIS_CACHE_KEY = MILITARY_FLIGHTS_SEED_KEY;
 const REDIS_CACHE_TTL = 600; // 10 min — reduce upstream API pressure
 const REDIS_STALE_KEY = MILITARY_FLIGHTS_STALE_KEY;
@@ -94,7 +97,7 @@ function resolvePageSize(pageSize: number | undefined): number {
 }
 
 function resolveOffset(cursor: string | undefined): number {
-  if (typeof cursor !== 'string' || !/^\d+$/.test(cursor)) return 0;
+  if (typeof cursor !== 'string' || !RESOLVE_OFFSET_RE.test(cursor)) return 0;
   const offset = Number(cursor);
   return Number.isSafeInteger(offset) && offset >= 0 ? offset : 0;
 }

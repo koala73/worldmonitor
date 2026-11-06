@@ -12,6 +12,11 @@ import { CLAIM_MAX_CHARS, claimCandidates } from '../../../_shared/claim-match';
 import { INTEL_SOURCES, isServerFeedReachableForLanguage, VARIANT_FEEDS } from './_feeds';
 import { FUTURE_DATE_TOLERANCE_MS, resolveMaxAgeMs, rssFeedCacheKey } from './_rss-cache';
 
+const IS_MULTI_PUBLISHER_FEED_RE = /\bsite:/i;
+const WHITESPACE_RE = /\s+/g;
+const LINK_RE = /^https?:\/\//i;
+
+
 /**
  * #9092 follow-up: /verify and verify_claim searched only the served digest,
  * which keeps five items per feed and twenty per category (about 280
@@ -45,7 +50,7 @@ let pool: { at: number; promise: Promise<ClaimPool> } | null = null;
 function isMultiPublisherFeed(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return parsed.hostname === 'news.google.com' && !/\bsite:/i.test(parsed.searchParams.get('q') ?? '');
+    return parsed.hostname === 'news.google.com' && !IS_MULTI_PUBLISHER_FEED_RE.test(parsed.searchParams.get('q') ?? '');
   } catch {
     return false;
   }
@@ -53,7 +58,7 @@ function isMultiPublisherFeed(url: string): boolean {
 
 function poolSource(row: Record<string, unknown>, feedName: string, multiPublisher: boolean): string {
   if (!multiPublisher || row.originPublisherTrusted !== true || typeof row.originPublisher !== 'string') return feedName;
-  const origin = row.originPublisher.replace(/\s+/g, ' ').trim();
+  const origin = row.originPublisher.replace(WHITESPACE_RE, ' ').trim();
   return origin && origin.length <= 200 ? origin : feedName;
 }
 
@@ -69,12 +74,12 @@ function poolItem(
   const row = value as Record<string, unknown>;
   if (row.source !== feedName || typeof row.title !== 'string') return null;
   const source = poolSource(row, feedName, multiPublisher);
-  const title = row.title.replace(/\s+/g, ' ').trim();
+  const title = row.title.replace(WHITESPACE_RE, ' ').trim();
   if (!title || title.length > 1000) return null;
   if (typeof row.publishedAt !== 'number' || !Number.isFinite(row.publishedAt)
     || row.publishedAt < cutoff || row.publishedAt > now + FUTURE_DATE_TOLERANCE_MS) return null;
   // Links were gated at ingest (#8398); a blanked or non-http one stays empty.
-  const link = typeof row.link === 'string' && /^https?:\/\//i.test(row.link) && row.link.length <= 2048 ? row.link : '';
+  const link = typeof row.link === 'string' && LINK_RE.test(row.link) && row.link.length <= 2048 ? row.link : '';
   if (link && revoked.has(link)) return null;
   return { source, title, link, pubDate: new Date(row.publishedAt), isAlert: false };
 }
@@ -125,7 +130,7 @@ async function readPool(): Promise<ClaimPool> {
       // cannot come back through its depth copy's different link.
       const row = value as Record<string, unknown> | null;
       if (feed.depthUrl && row && row.source === feed.name && typeof row.title === 'string') {
-        titles.add(row.title.replace(/\s+/g, ' ').trim().toLowerCase());
+        titles.add(row.title.replace(WHITESPACE_RE, ' ').trim().toLowerCase());
       }
       const item = poolItem(value, feed.name, multiPublisher, now, cutoff, revoked.urls);
       if (!item) continue;

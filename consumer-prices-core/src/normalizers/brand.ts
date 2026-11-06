@@ -2,6 +2,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const CLEANED_RE = /[^\w\s]/g;
+const WHITESPACE_RE = /\s+/g;
+const TITLE_CASE_RE = /\b\w/g;
+
+
 interface BrandAliases {
   aliases: Record<string, string[]>;
 }
@@ -33,8 +38,8 @@ export function normalizeBrand(raw: string | null | undefined): string | null {
   const cleaned = raw
     .trim()
     .toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(CLEANED_RE, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 
   const aliases = loadAliases();
@@ -42,5 +47,5 @@ export function normalizeBrand(raw: string | null | undefined): string | null {
 }
 
 function titleCase(s: string): string {
-  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+  return s.replace(TITLE_CASE_RE, (c) => c.toUpperCase());
 }

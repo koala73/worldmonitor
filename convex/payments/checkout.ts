@@ -49,6 +49,9 @@ import { recordCreatedCheckoutSession } from "./checkoutSessionLog";
 import { normalizeCheckoutAttributionSource as normalizeAttributionSource } from "../../shared/mcp-attribution";
 import { acquisitionCheckoutMetadata } from "../../shared/acquisition-source";
 
+const NORMALIZE_CHECKOUT_LOGIN_EMAIL_RE = /\s/;
+
+
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
 
@@ -128,7 +131,7 @@ function normalizeCheckoutLoginEmail(raw: string | undefined): string | null {
   if (extractDomain(trimmed) === null) return null;
   // Stricter than extractDomain, which only rejects whitespace in the domain
   // half: an address bound for an email `to:` header must have none anywhere.
-  if (/\s/.test(trimmed)) return null;
+  if (NORMALIZE_CHECKOUT_LOGIN_EMAIL_RE.test(trimmed)) return null;
   return trimmed;
 }
 

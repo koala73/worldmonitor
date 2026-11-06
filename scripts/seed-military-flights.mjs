@@ -7,6 +7,55 @@ import { lookupPlaneAlertAircraft } from './_plane-alert-registry.mjs';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
+const DETECT_AIRCRAFT_TYPE_RE = /^(SHELL|TEXACO|ARCO|ESSO|PETRO|KC|STRAT)/;
+const DETECT_AIRCRAFT_TYPE_RE_2 = /^(SENTRY|AWACS|MAGIC|DISCO|DARKSTAR|E3|E8|E6)/;
+const DETECT_AIRCRAFT_TYPE_RE_3 = /^(RCH|REACH|MOOSE|EVAC|DUSTOFF|C17|C5|C130|C40)/;
+const DETECT_AIRCRAFT_TYPE_RE_4 = /^(HOMER|OLIVE|JAKE|PSEUDO|GORDO|RC|U2|SR)/;
+const DETECT_AIRCRAFT_TYPE_RE_5 = /^(RQ|MQ|REAPER|PREDATOR|GLOBAL)/;
+const DETECT_AIRCRAFT_TYPE_RE_6 = /^(DEATH|BONE|DOOM|B52|B1|B2)/;
+const DETECT_AIRCRAFT_TYPE_RE_7 = /^(BOLT|VIPER|RAPTOR|BRONCO|EAGLE|HORNET|FALCON|STRIKE|TANGO|FURY)/;
+const DERIVE_SOURCE_HINTS_RE = /(AIR FORCE|AIR ?SELF ?DEFEN[CS]E|MILIT|NAVY|MARINE|ARMY|DEFEN[CS]E|SQUADRON|\bUSAF\b|\bUSN\b|\bUSMC\b|\bRAF\b|\bRCAF\b|\bRAAF\b|NATO|\bPLAAF\b|\bPLAN\b|\bVKS\b|RECON|AWACS|TANKER|AIRLIFT|FIGHTER|BOMBER|DRONE)/;
+const DERIVE_SOURCE_HINTS_RE_2 = /(AIR FORCE|AIR ?SELF ?DEFEN[CS]E|NAVY|MARINE|ARMY|DEFEN[CS]E|SQUADRON|EMIRI AIR FORCE|ROYAL .* AIR FORCE|AEROSPACE FORCES|\bPLAAF\b|\bPLAN\b|NATO)/;
+const DERIVE_SOURCE_HINTS_RE_3 = /(AIRLINES|AIRWAYS|LOGISTICS|EXPRESS|CARGOLUX|TURKISH AIRLINES|ETHIOPIAN AIRLINES|QATAR AIRWAYS|EMIRATES SKYCARGO|SAUDIA)/;
+const DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE = /(KC-?135|KC-?46|KC-?10|A330 MRTT|MRTT|TANKER|REFUEL)/;
+const DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_2 = /(AWACS|AEW&C|AEW|E-2|E-3|E-6|E-7|EARLY WARNING)/;
+const DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_3 = /(C-17|C17|C-130|C130|C-2|C2|C-27|C27|A400M|IL-76|IL76|Y-20|Y20|TRANSPORT|AIRLIFT|CARGO)/;
+const DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_4 = /(RC-135|RC135|RECON|SURVEILLANCE|SIGINT|ELINT|ISR|U-2|P-8|P8|P-3|P3|PATROL)/;
+const DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_5 = /(MQ-9|MQ9|RQ-4|RQ4|DRONE|UAS|UAV)/;
+const DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_6 = /(B-52|B52|B-1|B1|B-2|B2|BOMBER)/;
+const DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_7 = /(F-16|F16|F-15|F15|F-18|F18|F-22|F22|F-35|F35|J-10|J10|J-11|J11|J-16|J16|SU-27|SU27|SU-30|SU30|SU-35|SU35|MIG-29|MIG29|FIGHTER)/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE = /PEOPLE'?S LIBERATION ARMY AIR FORCE|\bPLAAF\b|CHINESE AIR FORCE/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_2 = /PEOPLE'?S LIBERATION ARMY NAVY|\bPLAN\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_3 = /UNITED STATES AIR FORCE|US AIR FORCE|\bUSAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_4 = /UNITED STATES NAVY|US NAVY|\bUSN\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_5 = /UNITED STATES MARINE CORPS|US MARINE|\bUSMC\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_6 = /UNITED STATES ARMY|US ARMY/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_7 = /ROYAL AIR FORCE|\bRAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_8 = /ROYAL NAVY/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_9 = /FRENCH AIR FORCE|ARMEE DE L'?AIR|ARMÉE DE L'?AIR|\bFAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_10 = /GERMAN AIR FORCE|LUFTWAFFE|\bGAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_11 = /ISRAELI AIR FORCE|\bIAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_12 = /NATO/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_13 = /QATAR EMIRI AIR FORCE|\bQEAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_14 = /ROYAL SAUDI AIR FORCE|\bRSAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_15 = /TURKISH AIR FORCE|\bTURAF\b|\bTRKAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_16 = /UNITED ARAB EMIRATES AIR FORCE|UAE AIR FORCE|EMIRATI AIR FORCE/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_17 = /KUWAIT AIR FORCE/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_18 = /EGYPTIAN AIR FORCE/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_19 = /PAKISTAN AIR FORCE|\bPAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_20 = /\bJASDF\b|JAPAN AIR SELF DEFENSE FORCE/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_21 = /\bROKAF\b|REPUBLIC OF KOREA AIR FORCE/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_22 = /RUSSIAN AEROSPACE FORCES|\bVKS\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_23 = /ROYAL AUSTRALIAN AIR FORCE|\bRAAF\b/;
+const DERIVE_OPERATOR_FROM_SOURCE_META_RE_24 = /ROYAL CANADIAN AIR FORCE|\bRCAF\b|CANADIAN ARMED FORCES/;
+const DERIVE_TRUSTED_PLA_OPERATOR_FROM_SOURCE_META_RE = /^(PEOPLE'?S LIBERATION ARMY AIR FORCE|CHINESE AIR FORCE)$/;
+const DERIVE_TRUSTED_PLA_OPERATOR_FROM_SOURCE_META_RE_2 = /^(PEOPLE'?S LIBERATION ARMY NAVY|PEOPLE'?S LIBERATION ARMY NAVAL AIR FORCE)$/;
+const REDACT_PROXY_RE = /\/\/[^@]+@/g;
+const IS_OPEN_SKY_RATE_LIMITED_ERROR_RE = /HTTP 429\b/i;
+const IS_OPEN_SKY_UNAUTHORIZED_ERROR_RE = /HTTP 401\b/i;
+const KNOWN_HEX_RE = /~/g;
+
+
 loadEnvFile(import.meta.url);
 
 const LIVE_KEY = 'military:flights:v1';
@@ -317,13 +366,13 @@ function identifyCommercialCallsign(callsign) {
 function detectAircraftType(callsign) {
   if (!callsign) return 'unknown';
   const cs = callsign.toUpperCase().trim();
-  if (/^(SHELL|TEXACO|ARCO|ESSO|PETRO|KC|STRAT)/.test(cs)) return 'tanker';
-  if (/^(SENTRY|AWACS|MAGIC|DISCO|DARKSTAR|E3|E8|E6)/.test(cs)) return 'awacs';
-  if (/^(RCH|REACH|MOOSE|EVAC|DUSTOFF|C17|C5|C130|C40)/.test(cs)) return 'transport';
-  if (/^(HOMER|OLIVE|JAKE|PSEUDO|GORDO|RC|U2|SR)/.test(cs)) return 'reconnaissance';
-  if (/^(RQ|MQ|REAPER|PREDATOR|GLOBAL)/.test(cs)) return 'drone';
-  if (/^(DEATH|BONE|DOOM|B52|B1|B2)/.test(cs)) return 'bomber';
-  if (/^(BOLT|VIPER|RAPTOR|BRONCO|EAGLE|HORNET|FALCON|STRIKE|TANGO|FURY)/.test(cs)) return 'fighter';
+  if (DETECT_AIRCRAFT_TYPE_RE.test(cs)) return 'tanker';
+  if (DETECT_AIRCRAFT_TYPE_RE_2.test(cs)) return 'awacs';
+  if (DETECT_AIRCRAFT_TYPE_RE_3.test(cs)) return 'transport';
+  if (DETECT_AIRCRAFT_TYPE_RE_4.test(cs)) return 'reconnaissance';
+  if (DETECT_AIRCRAFT_TYPE_RE_5.test(cs)) return 'drone';
+  if (DETECT_AIRCRAFT_TYPE_RE_6.test(cs)) return 'bomber';
+  if (DETECT_AIRCRAFT_TYPE_RE_7.test(cs)) return 'fighter';
   return 'unknown';
 }
 
@@ -479,52 +528,52 @@ function deriveSourceHints(sourceMeta = {}) {
   return {
     hintText,
     authoritativeMilitary,
-    militaryHint: authoritativeMilitary || /(AIR FORCE|AIR ?SELF ?DEFEN[CS]E|MILIT|NAVY|MARINE|ARMY|DEFEN[CS]E|SQUADRON|\bUSAF\b|\bUSN\b|\bUSMC\b|\bRAF\b|\bRCAF\b|\bRAAF\b|NATO|\bPLAAF\b|\bPLAN\b|\bVKS\b|RECON|AWACS|TANKER|AIRLIFT|FIGHTER|BOMBER|DRONE)/.test(hintText),
-    militaryOperatorHint: /(AIR FORCE|AIR ?SELF ?DEFEN[CS]E|NAVY|MARINE|ARMY|DEFEN[CS]E|SQUADRON|EMIRI AIR FORCE|ROYAL .* AIR FORCE|AEROSPACE FORCES|\bPLAAF\b|\bPLAN\b|NATO)/.test(hintText),
-    commercialHint: /(AIRLINES|AIRWAYS|LOGISTICS|EXPRESS|CARGOLUX|TURKISH AIRLINES|ETHIOPIAN AIRLINES|QATAR AIRWAYS|EMIRATES SKYCARGO|SAUDIA)/.test(hintText),
+    militaryHint: authoritativeMilitary || DERIVE_SOURCE_HINTS_RE.test(hintText),
+    militaryOperatorHint: DERIVE_SOURCE_HINTS_RE_2.test(hintText),
+    commercialHint: DERIVE_SOURCE_HINTS_RE_3.test(hintText),
   };
 }
 
 function detectAircraftTypeFromSourceMeta(sourceMeta = {}) {
   const hintText = getSourceHintText(sourceMeta);
   if (!hintText) return 'unknown';
-  if (/(KC-?135|KC-?46|KC-?10|A330 MRTT|MRTT|TANKER|REFUEL)/.test(hintText)) return 'tanker';
-  if (/(AWACS|AEW&C|AEW|E-2|E-3|E-6|E-7|EARLY WARNING)/.test(hintText)) return 'awacs';
-  if (/(C-17|C17|C-130|C130|C-2|C2|C-27|C27|A400M|IL-76|IL76|Y-20|Y20|TRANSPORT|AIRLIFT|CARGO)/.test(hintText)) return 'transport';
-  if (/(RC-135|RC135|RECON|SURVEILLANCE|SIGINT|ELINT|ISR|U-2|P-8|P8|P-3|P3|PATROL)/.test(hintText)) return 'reconnaissance';
-  if (/(MQ-9|MQ9|RQ-4|RQ4|DRONE|UAS|UAV)/.test(hintText)) return 'drone';
-  if (/(B-52|B52|B-1|B1|B-2|B2|BOMBER)/.test(hintText)) return 'bomber';
-  if (/(F-16|F16|F-15|F15|F-18|F18|F-22|F22|F-35|F35|J-10|J10|J-11|J11|J-16|J16|SU-27|SU27|SU-30|SU30|SU-35|SU35|MIG-29|MIG29|FIGHTER)/.test(hintText)) return 'fighter';
+  if (DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE.test(hintText)) return 'tanker';
+  if (DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_2.test(hintText)) return 'awacs';
+  if (DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_3.test(hintText)) return 'transport';
+  if (DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_4.test(hintText)) return 'reconnaissance';
+  if (DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_5.test(hintText)) return 'drone';
+  if (DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_6.test(hintText)) return 'bomber';
+  if (DETECT_AIRCRAFT_TYPE_FROM_SOURCE_META_RE_7.test(hintText)) return 'fighter';
   return 'unknown';
 }
 
 function deriveOperatorFromSourceMeta(sourceMeta = {}) {
   const hintText = getSourceHintText(sourceMeta);
   if (!hintText) return null;
-  if (/PEOPLE'?S LIBERATION ARMY AIR FORCE|\bPLAAF\b|CHINESE AIR FORCE/.test(hintText)) return { operator: 'plaaf', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
-  if (/PEOPLE'?S LIBERATION ARMY NAVY|\bPLAN\b/.test(hintText)) return { operator: 'plan', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
-  if (/UNITED STATES AIR FORCE|US AIR FORCE|\bUSAF\b/.test(hintText)) return { operator: 'usaf', operatorCountry: 'USA', reason: 'source_operator', confidence: 'high' };
-  if (/UNITED STATES NAVY|US NAVY|\bUSN\b/.test(hintText)) return { operator: 'usn', operatorCountry: 'USA', reason: 'source_operator', confidence: 'high' };
-  if (/UNITED STATES MARINE CORPS|US MARINE|\bUSMC\b/.test(hintText)) return { operator: 'usmc', operatorCountry: 'USA', reason: 'source_operator', confidence: 'high' };
-  if (/UNITED STATES ARMY|US ARMY/.test(hintText)) return { operator: 'usa', operatorCountry: 'USA', reason: 'source_operator', confidence: 'high' };
-  if (/ROYAL AIR FORCE|\bRAF\b/.test(hintText)) return { operator: 'raf', operatorCountry: 'UK', reason: 'source_operator', confidence: 'high' };
-  if (/ROYAL NAVY/.test(hintText)) return { operator: 'rn', operatorCountry: 'UK', reason: 'source_operator', confidence: 'high' };
-  if (/FRENCH AIR FORCE|ARMEE DE L'?AIR|ARMÉE DE L'?AIR|\bFAF\b/.test(hintText)) return { operator: 'faf', operatorCountry: 'France', reason: 'source_operator', confidence: 'high' };
-  if (/GERMAN AIR FORCE|LUFTWAFFE|\bGAF\b/.test(hintText)) return { operator: 'gaf', operatorCountry: 'Germany', reason: 'source_operator', confidence: 'high' };
-  if (/ISRAELI AIR FORCE|\bIAF\b/.test(hintText)) return { operator: 'iaf', operatorCountry: 'Israel', reason: 'source_operator', confidence: 'high' };
-  if (/NATO/.test(hintText)) return { operator: 'nato', operatorCountry: 'NATO', reason: 'source_operator', confidence: 'high' };
-  if (/QATAR EMIRI AIR FORCE|\bQEAF\b/.test(hintText)) return { operator: 'qeaf', operatorCountry: 'Qatar', reason: 'source_operator', confidence: 'high' };
-  if (/ROYAL SAUDI AIR FORCE|\bRSAF\b/.test(hintText)) return { operator: 'rsaf', operatorCountry: 'Saudi Arabia', reason: 'source_operator', confidence: 'high' };
-  if (/TURKISH AIR FORCE|\bTURAF\b|\bTRKAF\b/.test(hintText)) return { operator: 'turaf', operatorCountry: 'Turkey', reason: 'source_operator', confidence: 'high' };
-  if (/UNITED ARAB EMIRATES AIR FORCE|UAE AIR FORCE|EMIRATI AIR FORCE/.test(hintText)) return { operator: 'uaeaf', operatorCountry: 'UAE', reason: 'source_operator', confidence: 'high' };
-  if (/KUWAIT AIR FORCE/.test(hintText)) return { operator: 'kuwaf', operatorCountry: 'Kuwait', reason: 'source_operator', confidence: 'high' };
-  if (/EGYPTIAN AIR FORCE/.test(hintText)) return { operator: 'egyaf', operatorCountry: 'Egypt', reason: 'source_operator', confidence: 'high' };
-  if (/PAKISTAN AIR FORCE|\bPAF\b/.test(hintText)) return { operator: 'paf', operatorCountry: 'Pakistan', reason: 'source_operator', confidence: 'high' };
-  if (/\bJASDF\b|JAPAN AIR SELF DEFENSE FORCE/.test(hintText)) return { operator: 'jasdf', operatorCountry: 'Japan', reason: 'source_operator', confidence: 'high' };
-  if (/\bROKAF\b|REPUBLIC OF KOREA AIR FORCE/.test(hintText)) return { operator: 'rokaf', operatorCountry: 'South Korea', reason: 'source_operator', confidence: 'high' };
-  if (/RUSSIAN AEROSPACE FORCES|\bVKS\b/.test(hintText)) return { operator: 'vks', operatorCountry: 'Russia', reason: 'source_operator', confidence: 'high' };
-  if (/ROYAL AUSTRALIAN AIR FORCE|\bRAAF\b/.test(hintText)) return { operator: 'raaf', operatorCountry: 'Australia', reason: 'source_operator', confidence: 'high' };
-  if (/ROYAL CANADIAN AIR FORCE|\bRCAF\b|CANADIAN ARMED FORCES/.test(hintText)) return { operator: 'rcaf', operatorCountry: 'Canada', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE.test(hintText)) return { operator: 'plaaf', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_2.test(hintText)) return { operator: 'plan', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_3.test(hintText)) return { operator: 'usaf', operatorCountry: 'USA', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_4.test(hintText)) return { operator: 'usn', operatorCountry: 'USA', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_5.test(hintText)) return { operator: 'usmc', operatorCountry: 'USA', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_6.test(hintText)) return { operator: 'usa', operatorCountry: 'USA', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_7.test(hintText)) return { operator: 'raf', operatorCountry: 'UK', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_8.test(hintText)) return { operator: 'rn', operatorCountry: 'UK', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_9.test(hintText)) return { operator: 'faf', operatorCountry: 'France', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_10.test(hintText)) return { operator: 'gaf', operatorCountry: 'Germany', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_11.test(hintText)) return { operator: 'iaf', operatorCountry: 'Israel', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_12.test(hintText)) return { operator: 'nato', operatorCountry: 'NATO', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_13.test(hintText)) return { operator: 'qeaf', operatorCountry: 'Qatar', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_14.test(hintText)) return { operator: 'rsaf', operatorCountry: 'Saudi Arabia', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_15.test(hintText)) return { operator: 'turaf', operatorCountry: 'Turkey', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_16.test(hintText)) return { operator: 'uaeaf', operatorCountry: 'UAE', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_17.test(hintText)) return { operator: 'kuwaf', operatorCountry: 'Kuwait', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_18.test(hintText)) return { operator: 'egyaf', operatorCountry: 'Egypt', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_19.test(hintText)) return { operator: 'paf', operatorCountry: 'Pakistan', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_20.test(hintText)) return { operator: 'jasdf', operatorCountry: 'Japan', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_21.test(hintText)) return { operator: 'rokaf', operatorCountry: 'South Korea', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_22.test(hintText)) return { operator: 'vks', operatorCountry: 'Russia', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_23.test(hintText)) return { operator: 'raaf', operatorCountry: 'Australia', reason: 'source_operator', confidence: 'high' };
+  if (DERIVE_OPERATOR_FROM_SOURCE_META_RE_24.test(hintText)) return { operator: 'rcaf', operatorCountry: 'Canada', reason: 'source_operator', confidence: 'high' };
   return null;
 }
 
@@ -538,10 +587,10 @@ function deriveTrustedPlaOperatorFromSourceMeta(sourceMeta = {}) {
   }
 
   const operatorName = String(sourceMeta.operatorName || '').toUpperCase().trim();
-  if (/^(PEOPLE'?S LIBERATION ARMY AIR FORCE|CHINESE AIR FORCE)$/.test(operatorName)) {
+  if (DERIVE_TRUSTED_PLA_OPERATOR_FROM_SOURCE_META_RE.test(operatorName)) {
     return { operator: 'plaaf', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
   }
-  if (/^(PEOPLE'?S LIBERATION ARMY NAVY|PEOPLE'?S LIBERATION ARMY NAVAL AIR FORCE)$/.test(operatorName)) {
+  if (DERIVE_TRUSTED_PLA_OPERATOR_FROM_SOURCE_META_RE_2.test(operatorName)) {
     return { operator: 'plan', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
   }
   return null;
@@ -557,7 +606,7 @@ function getNearbyHotspot(lat, lon) {
 
 // ── HTTP CONNECT Tunnel via Residential Proxy ──────────────
 function redactProxy(msg) {
-  return String(msg || '').replace(/\/\/[^@]+@/g, '//<redacted>@');
+  return String(msg || '').replace(REDACT_PROXY_RE, '//<redacted>@');
 }
 
 // Carries the rate-limit metadata off the tunnel. Without this a 429 arriving
@@ -643,11 +692,11 @@ function isOpenSkyRateLimitedError(error) {
   // this discrimination.
   if (error?.proxyConnect) return false;
   if (Number(error?.status) === 429) return true;
-  return /HTTP 429\b/i.test(String(error?.message || error || ''));
+  return IS_OPEN_SKY_RATE_LIMITED_ERROR_RE.test(String(error?.message || error || ''));
 }
 
 function isOpenSkyUnauthorizedError(error) {
-  return /HTTP 401\b/i.test(String(error?.message || error || ''));
+  return IS_OPEN_SKY_UNAUTHORIZED_ERROR_RE.test(String(error?.message || error || ''));
 }
 
 function getOpenSkyAuthStatus() {
@@ -1199,7 +1248,7 @@ function buildAdsbSourceMeta(flight, sourceName) {
   // selection even if a future response omits dbFlags on an individual row.
   const authoritativeMilitary = sourceName === 'adsb.lol'
     || (Number.isInteger(dbFlags) && (dbFlags & 1) === 1);
-  const knownHex = flight?.hex ? isKnownHex(String(flight.hex).replace(/~/g, '')) : null;
+  const knownHex = flight?.hex ? isKnownHex(String(flight.hex).replace(KNOWN_HEX_RE, '')) : null;
   const originCountry = knownHex?.country || '';
 
   return {
@@ -1232,7 +1281,7 @@ function convertToStates(aircraft, sourceName, seenIds, allStates, responseNowMs
   let added = 0;
   const responseNowSeconds = normalizeResponseNowMs(responseNowMs) / 1000;
   for (const a of aircraft) {
-    const icao24 = (a.hex || '').trim().replace(/~/g, '');
+    const icao24 = (a.hex || '').trim().replace(KNOWN_HEX_RE, '');
     if (!icao24 || seenIds.has(icao24)) continue;
     const lat = a.lat;
     const lon = a.lon;

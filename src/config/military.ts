@@ -1,5 +1,10 @@
 import type { MilitaryAircraftType, MilitaryOperator, MilitaryVesselType } from '@/types';
 
+const NORMALIZE_USNIREGION_RE = /^(In the|In|The)\s+/i;
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZED_RE = /[^A-Z0-9]/g;
+
+
 /**
  * Military callsign prefixes and patterns for aircraft identification
  * These are used to filter ADS-B data for military aircraft
@@ -711,8 +716,8 @@ export const HULL_HOMEPORT: Record<string, string> = {
 
 export function normalizeUSNIRegion(regionText: string): string {
   return regionText
-    .replace(/^(In the|In|The)\s+/i, '')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZE_USNIREGION_RE, '')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -779,6 +784,8 @@ export function getUSNIRegionApproxCoords(regionText: string): { lat: number; lo
   return { lat, lon };
 }
 
+const CALLSIGN_REGEXES = new Map(ALL_MILITARY_CALLSIGNS.map(({ pattern }) => [pattern, new RegExp(pattern, 'i')]));
+
 /**
  * Helper function to identify aircraft by callsign
  */
@@ -794,12 +801,12 @@ export function identifyByCallsign(callsign: string, originCountry?: string): Ca
   if (preferred.length > 0) {
     for (const pattern of ALL_MILITARY_CALLSIGNS) {
       if (!preferred.includes(pattern.operator)) continue;
-      if (new RegExp(pattern.pattern, 'i').test(normalized)) return pattern;
+      if (CALLSIGN_REGEXES.get(pattern.pattern)!.test(normalized)) return pattern;
     }
   }
 
   for (const pattern of ALL_MILITARY_CALLSIGNS) {
-    if (new RegExp(pattern.pattern, 'i').test(normalized)) return pattern;
+    if (CALLSIGN_REGEXES.get(pattern.pattern)!.test(normalized)) return pattern;
   }
 
   return undefined;
@@ -809,7 +816,7 @@ export function identifyByCallsign(callsign: string, originCountry?: string): Ca
  * Helper function to identify aircraft by type code
  */
 export function identifyByAircraftType(typeCode: string): { type: MilitaryAircraftType; name: string } | undefined {
-  const normalized = typeCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const normalized = typeCode.toUpperCase().replace(NORMALIZED_RE, '');
   return MILITARY_AIRCRAFT_TYPES[normalized];
 }
 

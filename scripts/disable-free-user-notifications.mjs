@@ -56,6 +56,10 @@
 import { spawnSync } from "node:child_process";
 import { collectConvexRows } from "./lib/convex-run-pages.mjs";
 
+const TIER_MATCH_RE = /"tier":\s*(\d+)/;
+const PLAN_MATCH_RE = /"planKey":\s*"([^"]+)"/;
+
+
 const CONVEX_URL = process.env.CONVEX_URL;
 const CONVEX_DEPLOY_KEY = process.env.CONVEX_DEPLOY_KEY;
 if (!CONVEX_URL) {
@@ -116,8 +120,8 @@ for (const userId of uniqueUserIds) {
     process.exit(4);
   }
   const out = result.stdout || "";
-  const tierMatch = out.match(/"tier":\s*(\d+)/);
-  const planMatch = out.match(/"planKey":\s*"([^"]+)"/);
+  const tierMatch = out.match(TIER_MATCH_RE);
+  const planMatch = out.match(PLAN_MATCH_RE);
   if (!tierMatch || !planMatch) {
     console.error(
       `[disable-free-notif] FATAL: entitlement lookup for ${userId} returned unparseable output ` +

@@ -7,6 +7,13 @@
 
 import { COMPANY_MONITORING_LIMITS } from "./company-monitoring-contract";
 
+const CANONICAL_WORDS_RE = /[\p{P}\p{S}]+/gu;
+const WHITESPACE_RE = /\s+/g;
+const NORMALIZED_RE = /^www\./;
+const HANDLE_RE = /^@/;
+const VALUE_RE = /\.$/;
+
+
 export const COMPANY_MONITORING_EVIDENCE_POLICY = Object.freeze({
   version: "cm-evidence-selection-v1",
   fingerprintVersion: "cm-evidence-fingerprint-v1",
@@ -111,8 +118,8 @@ function canonicalWords(value: string): string {
   return value
     .normalize("NFKC")
     .toLocaleLowerCase("en-US")
-    .replace(/[\p{P}\p{S}]+/gu, " ")
-    .replace(/\s+/g, " ")
+    .replace(CANONICAL_WORDS_RE, " ")
+    .replace(WHITESPACE_RE, " ")
     .trim();
 }
 
@@ -162,7 +169,7 @@ export function companyEvidenceProviderLocatorHash(
 }
 
 function domainContains(hostname: string, domain: string): boolean {
-  const normalized = domain.toLocaleLowerCase("en-US").replace(/^www\./, "");
+  const normalized = domain.toLocaleLowerCase("en-US").replace(NORMALIZED_RE, "");
   return hostname === normalized || hostname.endsWith(`.${normalized}`);
 }
 
@@ -186,7 +193,7 @@ function claimStrength(
 
   switch (claim.type) {
     case "domain": {
-      const hostname = parsedUrl.hostname.toLocaleLowerCase("en-US").replace(/^www\./, "");
+      const hostname = parsedUrl.hostname.toLocaleLowerCase("en-US").replace(NORMALIZED_RE, "");
       return domainContains(hostname, claim.value) || phrasePresent(searchable, value) ? 100 : 0;
     }
     case "legal_identifier":
@@ -194,8 +201,8 @@ function claimStrength(
     case "x_account_id":
       return row.authorAccountId === claim.value ? 100 : 0;
     case "x_handle": {
-      const handle = claim.value.replace(/^@/, "").toLocaleLowerCase("en-US");
-      const author = row.author?.replace(/^@/, "").toLocaleLowerCase("en-US");
+      const handle = claim.value.replace(HANDLE_RE, "").toLocaleLowerCase("en-US");
+      const author = row.author?.replace(HANDLE_RE, "").toLocaleLowerCase("en-US");
       return author === handle || phrasePresent(searchable, canonicalWords(handle)) ? 80 : 0;
     }
     case "alias": {
@@ -211,9 +218,9 @@ function claimStrength(
 
 function attributionClaimSignature(claim: AttributionClaim): string {
   const value = claim.type === "domain"
-    ? claim.value.toLocaleLowerCase("en-US").replace(/^www\./, "").replace(/\.$/, "")
+    ? claim.value.toLocaleLowerCase("en-US").replace(NORMALIZED_RE, "").replace(VALUE_RE, "")
     : claim.type === "x_handle"
-      ? claim.value.replace(/^@/, "").toLocaleLowerCase("en-US")
+      ? claim.value.replace(HANDLE_RE, "").toLocaleLowerCase("en-US")
       : canonicalWords(claim.value);
   return `${claim.type}\u0000${value}`;
 }
@@ -376,7 +383,7 @@ export async function normalizeCompanyEvidence(input: {
     if (!parsedUrl) continue;
     const providerOrigin = row.provider === "x"
       ? row.authorAccountId ?? parsedUrl.hostname.toLocaleLowerCase("en-US")
-      : parsedUrl.hostname.toLocaleLowerCase("en-US").replace(/^www\./, "");
+      : parsedUrl.hostname.toLocaleLowerCase("en-US").replace(NORMALIZED_RE, "");
     const contentIdentity = canonicalContent(row, parsedUrl);
     const [providerLocatorHash, providerOriginFingerprint, contentFingerprint] = await Promise.all([
       companyEvidenceProviderLocatorHash(row.provider, row.providerLocator),

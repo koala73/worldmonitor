@@ -14,6 +14,10 @@ import type {
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
+const PAGE_OFFSET_RE = /^\d{1,6}$/;
+const IDENTITY_RE = /[^\p{L}\p{N}]+/gu;
+
+
 const SEED_CACHE_KEY = 'economic:global-tenders:v1';
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
@@ -57,7 +61,7 @@ function asTimestamp(value: string | undefined, fallback: number): number {
 }
 
 function pageOffset(cursor: string): number {
-  if (!/^\d{1,6}$/.test(cursor || '')) return 0;
+  if (!PAGE_OFFSET_RE.test(cursor || '')) return 0;
   const value = Number(cursor);
   return Number.isSafeInteger(value) ? value : 0;
 }
@@ -87,7 +91,7 @@ function compareTenders(sort: string, left: GlobalTender, right: GlobalTender): 
 
 function dedupePakistanNotices(tenders: GlobalTender[]): GlobalTender[] {
   const matches = new Map<string, GlobalTender[]>();
-  const identity = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const identity = (value: string) => value.normalize('NFKC').toLowerCase().replace(IDENTITY_RE, ' ').trim();
   for (const tender of tenders) {
     if (!['pakistan-epads', 'pakistan-ppra'].includes(tender.source)) continue;
     const buyer = identity(tender.buyer || '');

@@ -9,6 +9,9 @@ import { toIso2 } from '@/utils/country-codes';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { bindActivationKeys } from '@/utils/activation';
 
+const SOURCE_LINK_RE = /^https:\/\//;
+
+
 
 type DisplacementTab = 'origins' | 'hosts' | 'recent' | 'internal' | 'crossBorder';
 
@@ -279,7 +282,7 @@ export class DisplacementPanel extends Panel {
       const badge = s.accelerating ? ` <span class="disp-badge disp-crisis">${t('components.displacement.accelerating')}</span>` : '';
       const detail = [s.asOf, s.kind, s.measure, s.stale ? t('components.displacement.staleReport') : '', s.topCountries.join(', ')].filter(Boolean).join(' · ');
       const source = s.source || 'UNHCR Operational Data Portal';
-      const sourceLink = /^https:\/\//.test(s.sourceUrl) ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source)}</a>` : escapeHtml(source);
+      const sourceLink = SOURCE_LINK_RE.test(s.sourceUrl) ? `<a href="${escapeHtml(s.sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source)}</a>` : escapeHtml(source);
       const windows = s.last7Days !== undefined || s.last30Days !== undefined
         ? `${s.last7Days === undefined ? '—' : s.last7Days.toLocaleString('en-US')} / ${s.last30Days === undefined ? '—' : s.last30Days.toLocaleString('en-US')}` : '';
       if (windows) { change = windows; period = t('components.displacement.last7And30'); }

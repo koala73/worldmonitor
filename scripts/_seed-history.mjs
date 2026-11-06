@@ -37,6 +37,9 @@ import { embedBatch, normalizeForEmbedding } from './lib/brief-embedding.mjs';
 import { EMBED_MODEL } from './lib/brief-dedup-consts.mjs';
 import { HISTORY_COST_TIMEOUT_MS, recordHistoryCost } from './lib/intel-history-cost.mjs';
 
+const HISTORY_INGEST_ERROR_CODE_RE = /([a-z0-9])([A-Z])/g;
+
+
 // Per-run cap. A seed tick that suddenly emits thousands of "historic"
 // rows is a bug upstream, not a reason to spend the embedding budget —
 // keep the newest slice and drop the tail. The Cross-Strait one-off
@@ -482,7 +485,7 @@ export function historyIngestErrorCode(error) {
   // in Redis only). Every current producer sets a fixed class name, but an
   // unbounded code would be a bounded-response-shape regression waiting for the
   // first caller that throws something exotic.
-  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().slice(0, HISTORY_INGEST_CODE_MAX_CHARS);
+  return name.replace(HISTORY_INGEST_ERROR_CODE_RE, '$1_$2').toLowerCase().slice(0, HISTORY_INGEST_CODE_MAX_CHARS);
 }
 
 /**

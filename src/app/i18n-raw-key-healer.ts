@@ -21,6 +21,9 @@
  *  - The `translate(key) !== key` guard prevents rewriting prose or unresolved
  *    keys, so only strings that genuinely resolve to a different value change.
  */
+const LEADING_RE = /^\s*/;
+const TRAILING_RE = /\s*$/;
+
 export type I18nTranslator = (key: string, options?: Record<string, unknown>) => string;
 
 const RAW_I18N_KEY_RE = /^[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9_-]+)+$/;
@@ -39,8 +42,8 @@ function replaceRawI18nKeyPlaceholderText(value: string, translate: I18nTranslat
   const replacement = translateRawI18nKeyPlaceholder(value, translate);
   if (replacement === null) return null;
 
-  const leading = value.match(/^\s*/)?.[0] ?? '';
-  const trailing = value.match(/\s*$/)?.[0] ?? '';
+  const leading = value.match(LEADING_RE)?.[0] ?? '';
+  const trailing = value.match(TRAILING_RE)?.[0] ?? '';
   return `${leading}${replacement}${trailing}`;
 }
 

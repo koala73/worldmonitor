@@ -68,6 +68,11 @@ import { utf8ByteLength } from './utils';
 // rather than widening the catch below if another dataset grows one.
 import { isPhysicalDivergenceContractError as isMcpStoredContractError } from '../../server/_shared/physical-divergence-snapshot';
 
+const LOCKED_FRESHNESS_KEYS_RE = /:v\d+$/;
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+const IS_CLIENT4XX_RE = /HTTP 4\d\d\b/;
+
+
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)
 // ---------------------------------------------------------------------------
@@ -145,7 +150,7 @@ async function executeCacheTool(
   // exception closed); the withheld sections are named in `locked` below.
   const subscriptionKeys = execution?.freeAccountAllowance === true ? tool._subscriptionCacheKeys : undefined;
   const lockedKeys = subscriptionKeys ? tool._cacheKeys.filter(key => Object.prototype.hasOwnProperty.call(subscriptionKeys, key)) : [];
-  const lockedFreshnessKeys = new Set(lockedKeys.map(key => `seed-meta:${key.replace(/:v\d+$/, '')}`));
+  const lockedFreshnessKeys = new Set(lockedKeys.map(key => `seed-meta:${key.replace(LOCKED_FRESHNESS_KEYS_RE, '')}`));
   const cacheKeys = (tool.name === 'get_sanctions_data'
     ? tool._cacheKeys.filter(key => (key === 'sanctions:changes:v1') === historyMode) : selectedKeys)
     .filter(key => !lockedKeys.includes(key));
@@ -883,7 +888,7 @@ export async function dispatchToolsCall(
           : Object.fromEntries(Object.entries(sourceArguments).filter(([key]) => key !== 'jmespath')), suppliedPanel);
     }
     if (tool.name === 'get_country_brief_section' && callArguments.section === 'signalsRaw'
-      && (!dedicatedPanel || !panelRead || !/^[A-Z]{2}$/.test(panelRead.panel))) {
+      && (!dedicatedPanel || !panelRead || !COUNTRY_CODE_RE.test(panelRead.panel))) {
       throw new PanelRequestError('Raw Signals require a verified paid country panel read.', 'invalid');
     }
     if (deferredBurst && panelRead) {
@@ -1068,7 +1073,7 @@ export async function dispatchToolsCall(
       execution = createMcpToolExecutionContext(req.url);
       if (freeAccountAllowance) execution.freeAccountAllowance = true;
       execution.panelRequest = panelRequest;
-      if (tool.name === 'get_country_brief_section' && panelRead && /^[A-Z]{2}$/.test(panelRead.panel)) execution.countryPanelCode = panelRead.panel;
+      if (tool.name === 'get_country_brief_section' && panelRead && COUNTRY_CODE_RE.test(panelRead.panel)) execution.countryPanelCode = panelRead.panel;
       if (tool.name === 'get_mcp_allowance' && (context.kind === 'pro' || context.kind === 'user_key')) {
         execution.readAccountAllowance = async () => {
           const allowance = await readAccountAllowance(context, deps, budget, freeAccountAllowance);
@@ -1303,7 +1308,7 @@ export async function dispatchToolsCall(
     // the `console.*` call to match the Sentry level — otherwise log alerts
     // fire on 4xx while Sentry does not, defeating the downgrade.
     const message = err instanceof Error ? err.message : String(err);
-    const isClient4xx = /HTTP 4\d\d\b/.test(message);
+    const isClient4xx = IS_CLIENT4XX_RE.test(message);
     // A typed billing denial (incl. its 503 pending/failed variants) is an
     // expected, handled customer state — warning-level, not error-level, so
     // Sentry/log alerts don't page on ordinary billing churn.

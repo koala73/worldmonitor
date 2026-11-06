@@ -15,6 +15,12 @@ import { decodeHtmlEntities } from '../_html-entities.mjs';
 import { CHROME_UA, MAX_PAYLOAD_BYTES } from '../_seed-utils.mjs';
 import { finiteLat, finiteLon } from './geo-coord.mjs';
 
+const WHITESPACE_RE = /\s+/g;
+const PARSE_TORONTO_LOCAL_MS_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})$/;
+const PARSE_TFS_LIVECAD_XML_RE = /<tfs_active_incidents\b[^>]*>[\s\S]*<\/tfs_active_incidents>/i;
+const EVENT_OPEN_COUNT_RE = /<event\b/gi;
+
+
 export const TFS_HOST = 'www.toronto.ca';
 export const TFS_PAGE_PATH = '/community-people/public-safety-alerts/alerts-notifications/toronto-fire-active-incidents/';
 export const TFS_FEED_PATH = '/data/fire/livecad.xml';
@@ -112,7 +118,7 @@ export function isAllowedTpsHost(url) {
 }
 
 function cleanText(raw) {
-  return decodeHtmlEntities(String(raw ?? '')).replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(String(raw ?? '')).replace(WHITESPACE_RE, ' ').trim();
 }
 
 function extractTag(block, tagName) {
@@ -129,7 +135,7 @@ function extractTag(block, tagName) {
  */
 export function parseTorontoLocalMs(raw) {
   const match = String(raw || '').trim().match(
-    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})$/,
+    PARSE_TORONTO_LOCAL_MS_RE,
   );
   if (!match) return null;
   const iso = `${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}`;
@@ -162,7 +168,7 @@ function torontoPoint(lon, lat) {
 
 export function parseTfsLivecadXml(xml) {
   if (typeof xml !== 'string'
-    || !/<tfs_active_incidents\b[^>]*>[\s\S]*<\/tfs_active_incidents>/i.test(xml)) {
+    || !PARSE_TFS_LIVECAD_XML_RE.test(xml)) {
     throw new Error('toronto-tfs: body is not TFS livecad XML');
   }
   const updatedRaw = cleanText(extractTag(xml, 'update_from_db_time'));
@@ -172,7 +178,7 @@ export function parseTfsLivecadXml(xml) {
   }
   const records = [];
   const eventRe = /<event\b[^>]*>[\s\S]*?<\/event>/gi;
-  const eventOpenCount = (xml.match(/<event\b/gi) || []).length;
+  const eventOpenCount = (xml.match(EVENT_OPEN_COUNT_RE) || []).length;
   let match;
   let eventIndex = 0;
   while ((match = eventRe.exec(xml)) !== null) {

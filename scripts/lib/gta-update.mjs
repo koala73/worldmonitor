@@ -13,6 +13,12 @@
 
 import { CHROME_UA } from '../_seed-utils.mjs';
 
+const RAW_RE = /^\uFEFF/;
+const NAIVE_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/;
+const FETCH_ALLOWED_RE = /redirect/i;
+const FETCH_ALLOWED_RE_2 = /timeout|aborted/i;
+
+
 export const GTA_UPDATE_HOST = 'gtaupdate.com';
 export const GTA_UPDATE_SITE_URL = 'https://gtaupdate.com/';
 export const GTA_UPDATE_ABOUT_URL = 'https://gtaupdate.com/about.php';
@@ -161,9 +167,9 @@ export function isFireNamespaceId(id) {
  * time alone.
  */
 export function parseGtaLastIngest(text) {
-  const raw = textOrNull(typeof text === 'string' ? text.replace(/^\uFEFF/, '') : '');
+  const raw = textOrNull(typeof text === 'string' ? text.replace(RAW_RE, '') : '');
   if (!raw) return null;
-  const naive = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/.exec(raw);
+  const naive = NAIVE_RE.exec(raw);
   if (naive) {
     const iso = `${naive[1]}T${naive[2]}Z`;
     const ms = Date.parse(iso);
@@ -405,10 +411,10 @@ async function fetchAllowed(url, { fetchImpl, timeoutMs, accept }) {
     });
   } catch (err) {
     const message = `${err?.message || err}`;
-    if (/redirect/i.test(message)) {
+    if (FETCH_ALLOWED_RE.test(message)) {
       return { ok: false, sourceState: 'unavailable', reason: 'redirect_rejected' };
     }
-    if (err?.name === 'TimeoutError' || /timeout|aborted/i.test(message)) {
+    if (err?.name === 'TimeoutError' || FETCH_ALLOWED_RE_2.test(message)) {
       return { ok: false, sourceState: 'unavailable', reason: 'timeout' };
     }
     return { ok: false, sourceState: 'unavailable', reason: 'fetch_failed', error: message };

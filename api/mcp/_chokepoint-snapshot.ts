@@ -4,6 +4,9 @@ import { argStr, argStrList, ciIncludes, pickMapKeysLike } from './filters';
 // @ts-expect-error — shared Edge-safe JavaScript content contract.
 import { buildContentFreshnessAssessment } from '../_content-freshness.js';
 
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
+
 export type ChokepointPanelRead = { value: unknown; reuseUntil: number | null };
 export const CHOKEPOINT_DATASETS = ['transit-summaries', 'chokepoint_transits', '_countries', 'chokepoint-baselines', 'ref', 'chokepoint-flows'] as const;
 const MAX_AGE_MS = [30, 30, 2160, 60 * 24 * 400, 60 * 24 * 14, 720].map(minutes => minutes * 60_000);
@@ -47,7 +50,7 @@ function sourceCount(data: Record<string, unknown>, index: number): number | nul
 
 function validSource(data: Record<string, unknown>, index: number, params: Record<string, unknown>): boolean {
   const bucket = data[CHOKEPOINT_DATASETS[index]!];
-  if (index === 2) return Array.isArray(bucket) && bucket.length >= 174 && new Set(bucket).size === bucket.length && bucket.every(code => typeof code === 'string' && /^[A-Z]{2}$/.test(code)) && ['CN', 'HK'].every(code => bucket.includes(code));
+  if (index === 2) return Array.isArray(bucket) && bucket.length >= 174 && new Set(bucket).size === bucket.length && bucket.every(code => typeof code === 'string' && COUNTRY_CODE_RE.test(code)) && ['CN', 'HK'].every(code => bucket.includes(code));
   if (!record(bucket) || failed(bucket)) return false;
   if (index === 0 || index === 1) {
     const rows = bucket[index === 0 ? 'summaries' : 'transits'];

@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { moduleRegexDeclarations } from './helpers/module-regex-declarations.mjs';
 
 import {
   escapeDigestText,
@@ -38,7 +39,7 @@ function productionFunction(name) {
 }
 
 const { formatDigest, buildChannelBodies, sanitizeTelegramHtml } = runInNewContext(
-  ['formatDigest', 'buildChannelBodies', 'sanitizeTelegramHtml'].map(productionFunction).join('\n')
+  moduleRegexDeclarations(source) + '\n' + ['formatDigest', 'buildChannelBodies', 'sanitizeTelegramHtml'].map(productionFunction).join('\n')
     + '\n({ formatDigest, buildChannelBodies, sanitizeTelegramHtml })',
   {
     Intl, Date, RegExp,

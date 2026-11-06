@@ -20,6 +20,11 @@
 
 import { isGeopoliticalMarket } from './_bet-templates-markets-classify.mjs';
 
+const POLY_RE = /polymarket\.com\/event\/([^/?#]+)/;
+const KALSHI_RE = /kalshi\.com\/markets\/([^/?#]+)/;
+const NORMALIZE_QUESTION_RE = /\?$/;
+
+
 export const MARKET_FEED = 'prediction:markets-bootstrap:v1';
 export const MARKET_SETTLEMENT_FEED = 'prediction:markets-resolution:v1';
 
@@ -39,9 +44,9 @@ export const MARKET_SLOT_COUNT = 6;
 //   https://kalshi.com/markets/<ticker>  → { source: 'kalshi', slug: ticker }
 export function marketSlugFromUrl(url) {
   const text = String(url || '');
-  const poly = text.match(/polymarket\.com\/event\/([^/?#]+)/);
+  const poly = text.match(POLY_RE);
   if (poly) return { source: 'polymarket', slug: poly[1] };
-  const kalshi = text.match(/kalshi\.com\/markets\/([^/?#]+)/);
+  const kalshi = text.match(KALSHI_RE);
   if (kalshi) return { source: 'kalshi', slug: kalshi[1] };
   return null;
 }
@@ -160,7 +165,7 @@ export const MARKET_BET_TEMPLATES = Array.from({ length: MARKET_SLOT_COUNT }, (_
 
 function normalizeQuestion(title) {
   const text = String(title).trim();
-  return /\?$/.test(text) ? text : `${text}?`;
+  return NORMALIZE_QUESTION_RE.test(text) ? text : `${text}?`;
 }
 
 function round2(value) {

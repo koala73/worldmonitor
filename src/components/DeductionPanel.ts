@@ -13,6 +13,15 @@ import { FrameworkSelector } from './FrameworkSelector';
 import { extractDeductionProbability } from './deduction-probability';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
+const SECTIONS_RE = /^bottom\s+line/i;
+const SECTIONS_RE_2 = /^what\s+we\s+know/i;
+const SECTIONS_RE_3 = /^most\s+likely\s+path/i;
+const SECTIONS_RE_4 = /^alternative\s+path/i;
+const SECTIONS_RE_5 = /^confidence/i;
+const TIME_MATCH_RE = /\(([^)]+)\)/;
+const REFORMAT_RESULT_RE = /^[\s:–—-]+/;
+
+
 // deduct-situation + list-market-implications are premium-gated.
 const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch }));
 
@@ -161,11 +170,11 @@ export class DeductionPanel extends Panel {
     /** Post-process parsed markdown HTML into visually structured sections. */
     private reformatResult(container: HTMLElement): void {
         const SECTIONS = [
-            { re: /^bottom\s+line/i,       cls: 'ds-verdict',   label: 'Bottom Line' },
-            { re: /^what\s+we\s+know/i,    cls: 'ds-evidence',  label: 'What We Know' },
-            { re: /^most\s+likely\s+path/i, cls: 'ds-primary',  label: 'Most Likely Path' },
-            { re: /^alternative\s+path/i,  cls: 'ds-alt',       label: 'Alternative Paths' },
-            { re: /^confidence/i,          cls: 'ds-confidence', label: 'Confidence' },
+            { re: SECTIONS_RE,       cls: 'ds-verdict',   label: 'Bottom Line' },
+            { re: SECTIONS_RE_2,    cls: 'ds-evidence',  label: 'What We Know' },
+            { re: SECTIONS_RE_3, cls: 'ds-primary',  label: 'Most Likely Path' },
+            { re: SECTIONS_RE_4,  cls: 'ds-alt',       label: 'Alternative Paths' },
+            { re: SECTIONS_RE_5,          cls: 'ds-confidence', label: 'Confidence' },
         ] as const;
 
         // Collect top-level children; group by section boundary
@@ -205,7 +214,7 @@ export class DeductionPanel extends Panel {
                 const headingNode = group.nodes[0];
                 const fullText = headingNode?.textContent ?? '';
                 const probability = extractDeductionProbability(fullText);
-                const timeMatch = /\(([^)]+)\)/.exec(fullText);
+                const timeMatch = TIME_MATCH_RE.exec(fullText);
                 labelEl.textContent = group.label;
                 if (timeMatch) {
                     const timeSpan = document.createElement('span');
@@ -235,7 +244,7 @@ export class DeductionPanel extends Panel {
                 bodyDiv.className = group.cls === 'ds-primary' ? 'ds-primary-body' : '';
                 setTrustedHtml(
                     bodyDiv,
-                    trustedHtml(clone.innerHTML.replace(/^[\s:–—-]+/, ''), 'legacy direct innerHTML migration'),
+                    trustedHtml(clone.innerHTML.replace(REFORMAT_RESULT_RE, ''), 'legacy direct innerHTML migration'),
                 );
                 section.appendChild(bodyDiv);
             } else {

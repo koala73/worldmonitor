@@ -8,6 +8,9 @@
  * docs/plans/2026-10-19-desktop-system-browser-sign-in.md.
  */
 
+const PORT_NUMBER_RE = /^\d{1,5}$/;
+const PARAMS_RE = /^#/;
+
 export const LAUNCH_STORAGE_KEY = 'wm-desktop-sign-in-launch';
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 
@@ -24,7 +27,7 @@ export interface LaunchStorage {
 }
 
 function validLaunch(port: unknown, state: unknown, challenge: unknown): LaunchParams | null {
-  const portNumber = typeof port === 'number' ? port : typeof port === 'string' && /^\d{1,5}$/.test(port) ? Number(port) : NaN;
+  const portNumber = typeof port === 'number' ? port : typeof port === 'string' && PORT_NUMBER_RE.test(port) ? Number(port) : NaN;
   if (!Number.isInteger(portNumber) || portNumber < 1024 || portNumber > 65535) return null;
   if (typeof state !== 'string' || !TOKEN_RE.test(state)) return null;
   if (typeof challenge !== 'string' || !TOKEN_RE.test(challenge)) return null;
@@ -32,7 +35,7 @@ function validLaunch(port: unknown, state: unknown, challenge: unknown): LaunchP
 }
 
 export function parseLaunchFragment(hash: string): LaunchParams | null {
-  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const params = new URLSearchParams(hash.replace(PARAMS_RE, ''));
   return validLaunch(params.get('port'), params.get('state'), params.get('challenge'));
 }
 

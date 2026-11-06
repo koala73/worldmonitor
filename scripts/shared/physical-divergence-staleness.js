@@ -1,5 +1,9 @@
 import { PHYSICAL_DIVERGENCE_CONTRACT } from './physical-divergence-contract.js';
 
+const IS_PHYSICAL_DIVERGENCE_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const IS_PHYSICAL_DIVERGENCE_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+
 export const PHYSICAL_DIVERGENCE_STALE_AFTER_CALENDAR_DAYS = PHYSICAL_DIVERGENCE_CONTRACT.freshness.physicalStaleAfterCalendarDays;
 export const PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS = PHYSICAL_DIVERGENCE_CONTRACT.freshness.paperMaxAgeMs;
 export const PHYSICAL_DIVERGENCE_FX_MAX_AGE_MS = PHYSICAL_DIVERGENCE_CONTRACT.freshness.fxMaxAgeMs;
@@ -24,7 +28,7 @@ function shanghaiDayMs(nowMs) {
 
 export function isPhysicalDivergenceDate(value) {
   if (typeof value !== 'string') return false;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const match = IS_PHYSICAL_DIVERGENCE_DATE_RE.exec(value);
   if (!match) return false;
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -36,7 +40,7 @@ export function isPhysicalDivergenceDate(value) {
 }
 
 export function isPhysicalDivergenceInstant(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+  if (typeof value !== 'string' || !IS_PHYSICAL_DIVERGENCE_INSTANT_RE.test(value)) {
     return false;
   }
   const parsed = Date.parse(value);

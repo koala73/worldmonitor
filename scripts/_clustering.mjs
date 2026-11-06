@@ -20,6 +20,11 @@ import {
 // #9095: outlets outside the curated map that run the same copy count once.
 import { detectSyndication } from './shared/syndication.js';
 
+const NORMALIZED_MATCH_TEXT_RE = /[^a-z0-9\s]/g;
+const WHITESPACE_RE = /\s+/g;
+const ESCAPED_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 const require = createRequire(import.meta.url);
 const SOURCE_TIERS = require('./shared/source-tiers.json');
 // scripts/shared/ mirror (NOT ../shared/): seed-insights.mjs deploys via
@@ -114,8 +119,8 @@ function isLlmThreatSource(source) {
 function normalizedMatchText(text) {
   return (text || '')
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORMALIZED_MATCH_TEXT_RE, ' ')
+    .replace(WHITESPACE_RE, ' ')
     .trim();
 }
 
@@ -125,7 +130,7 @@ function normalizedMatchText(text) {
 // 'iranian' (demonym preserved). PR #3909 review (P2).
 function containsKeywordToken(text, kw) {
   if (!kw) return false;
-  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = kw.replace(ESCAPED_RE, '\\$&');
   return new RegExp(`(^|\\s)${escaped}`).test(text);
 }
 

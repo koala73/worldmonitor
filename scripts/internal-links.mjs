@@ -36,6 +36,21 @@ import {
   pickRelated, placeLinks, splitCamel,
 } from './lib/internal-links.mjs';
 
+const SLUG_RE = /\.mdx?$/;
+const TEXT_OF_RE = /<(script|style)\b[\s\S]*?<\/\1\s*>/gi;
+const TEXT_OF_RE_2 = /<[^>]*>/g;
+const TEXT_OF_RE_3 = /&(amp|quot|#39|#x27|nbsp|lt|gt);/g;
+const WHITESPACE_RE = /\s+/g;
+const TITLE_RE = /<title>([^<]*)<\/title>/;
+const TITLE_RE_2 = /\s*[|–—]\s*World ?Monitor.*$/i;
+const ABOUT_RE = /<meta name="description" content="([^"]*)"/;
+const H1_RE = /<h1[^>]*>([\s\S]*?)<\/h1>/;
+const MAIN_RE = /<main[\s\S]*?<\/main>/;
+const HREFS_RE = /\bhref="([^"]+)"/g;
+const WHITESPACE_RE_2 = /\s+/;
+const ESCAPE_RE_RE = /[.*+?^${}()|[\]\\]/g;
+
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_REPORT = join(ROOT, 'node_modules/.cache/internal-links/report.json');
 
@@ -113,7 +128,7 @@ function blogPages() {
   const dir = join(ROOT, 'blog-site/src/content/blog');
   return readdirSync(dir).filter((n) => n.endsWith('.md') || n.endsWith('.mdx')).map((n) => {
     const md = parseMarkdown(readFileSync(join(dir, n), 'utf8'));
-    const slug = n.replace(/\.mdx?$/, '');
+    const slug = n.replace(SLUG_RE, '');
     return page({ url: `${SITE_ORIGIN}/blog/posts/${slug}/`, kind: 'blog', file: `blog-site/src/content/blog/${n}`, title: md.front.title || slug, about: md.front.description ?? '', ...md });
   });
 }
@@ -122,10 +137,10 @@ function blogPages() {
 // pass, and `&lt;`/`&gt;` become spaces so no markup can reappear.
 const ENTITIES = { amp: '&', quot: '"', '#39': "'", '#x27': "'", nbsp: ' ', lt: ' ', gt: ' ' };
 const textOf = (html) => html
-  .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ')
-  .replace(/<[^>]*>/g, ' ')
-  .replace(/&(amp|quot|#39|#x27|nbsp|lt|gt);/g, (_, e) => ENTITIES[e])
-  .replace(/\s+/g, ' ')
+  .replace(TEXT_OF_RE, ' ')
+  .replace(TEXT_OF_RE_2, ' ')
+  .replace(TEXT_OF_RE_3, (_, e) => ENTITIES[e])
+  .replace(WHITESPACE_RE, ' ')
   .trim();
 
 function sitePages() {
@@ -145,11 +160,11 @@ function sitePages() {
     const file = join(ROOT, 'public', route, 'index.html');
     if (!existsSync(file)) continue;
     const html = readFileSync(file, 'utf8');
-    const title = textOf(html.match(/<title>([^<]*)<\/title>/)?.[1] ?? '').replace(/\s*[|–—]\s*World ?Monitor.*$/i, '').trim();
-    const about = textOf(html.match(/<meta name="description" content="([^"]*)"/)?.[1] ?? '');
-    const h1 = textOf(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1] ?? '');
-    const main = html.match(/<main[\s\S]*?<\/main>/)?.[0] ?? '';
-    const hrefs = [...main.matchAll(/\bhref="([^"]+)"/g)].map((m) => m[1]);
+    const title = textOf(html.match(TITLE_RE)?.[1] ?? '').replace(TITLE_RE_2, '').trim();
+    const about = textOf(html.match(ABOUT_RE)?.[1] ?? '');
+    const h1 = textOf(html.match(H1_RE)?.[1] ?? '');
+    const main = html.match(MAIN_RE)?.[0] ?? '';
+    const hrefs = [...main.matchAll(HREFS_RE)].map((m) => m[1]);
     if (title) out.push({ ...page({ url: `${SITE_ORIGIN}${route}`, kind: 'site', title: h1 || title, about, plain: textOf(main).slice(0, 20000), hrefs }), h1, section: route.split('/')[1] });
   }
   // Country pages are titled "<Country> Country Instability Index" or
@@ -158,11 +173,11 @@ function sitePages() {
   for (const group of groupBy(out, (p) => p.section).values()) {
     const endings = new Map();
     for (const p of group) {
-      const w = p.title.toLowerCase().split(/\s+/);
+      const w = p.title.toLowerCase().split(WHITESPACE_RE_2);
       for (let n = 2; n < w.length; n++) endings.set(w.slice(-n).join(' '), (endings.get(w.slice(-n).join(' ')) ?? 0) + 1);
     }
     for (const p of group) {
-      const w = p.title.split(/\s+/);
+      const w = p.title.split(WHITESPACE_RE_2);
       for (let n = w.length - 1; n >= 2; n--) {
         const shared = endings.get(w.slice(-n).join(' ').toLowerCase()) ?? 0;
         if (shared >= 3 && shared >= group.length / 10) {
@@ -268,7 +283,7 @@ async function propose(opts) {
 
 const RELATED_SECTIONS = new Set(['countries', 'crises', 'compare']);
 const RELATED_FILE = join(ROOT, 'scripts/data/related-reading.json');
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRe = (s) => s.replace(ESCAPE_RE_RE, '\\$&');
 
 /**
  * Related reading for generated pages: of the blog posts and docs pages most
