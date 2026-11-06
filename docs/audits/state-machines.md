@@ -10,11 +10,13 @@ tables. Replay suspected invalid paths against production modules with controlle
 settlements. Rank only demonstrated bugs, group related repairs into issues, and retain
 regression tests. Changes must preserve account isolation, retry policy, and public contracts.
 
-Planned repair files: `src/services/entitlements.ts`, `src/services/billing.ts`, their focused
+Repair files: `src/services/entitlements.ts`, `src/services/billing.ts`, their focused
 DOM tests, and this document. Expansion: the ML readiness promise leak was independently reproduced;
 `src/services/ml-worker.ts` and its existing recovery test are also necessary. A later
 widget close/reopen trace proved deadline loss; `src/components/WidgetChatModal.ts` and its
-existing preflight tests are necessary to enforce request ownership across retries.
+existing preflight tests are necessary to enforce request ownership across retries. Review
+follow-up also requires `src/app/panel-layout.ts` and the existing app-destroy DOM suite to
+distinguish final teardown from an account handoff.
 No merge, deployment, provider calls, production writes, or external notification is in scope.
 
 ## Reading the inventory
@@ -77,8 +79,8 @@ unloaded null from loaded null using `subscriptionLoaded`.
 
 Invariants: one attached watch per lifecycle; every attached watch has a retained unsubscribe;
 retired work cannot attach or publish, including after a same-account reconnect; failure must
-leave retry possible. Retiring pending verification publishes unavailable; retired work cannot
-leave a permanent pending verdict. Destroy preserves entitlement data for reconnect, while explicit reset
+leave retry possible. Final panel teardown publishes unavailable when no snapshot exists.
+Transport retirement during an account handoff preserves pending until that handoff settles. Destroy preserves entitlement data for reconnect, while explicit reset
 clears it for an account transition. Billing destroy clears its snapshot and loaded flag.
 
 | From | Event / guard | To / effect |
@@ -87,7 +89,9 @@ clears it for an account transition. Billing destroy clears its snapshot and loa
 | Initializing | Dependencies ready, generation current, no attached watch | Attached; retain unsubscribe |
 | Initializing | Another caller already attached | Complete without a second watch |
 | Initializing | Failure | No watch; a later initialize may retry |
-| Any | Destroy | Increment lifecycle generation before unsubscribe; idle transport; pending verification becomes unavailable |
+| Any | Destroy transport | Increment lifecycle generation before unsubscribe; idle transport; caller owns verification |
+| Pending verification | Final panel teardown, no snapshot | Unavailable; notify current and late subscribers |
+| Pending verification | Account handoff retires old transport | Remain pending while the new auth lifecycle runs |
 | Retired | Dependency completion / queued update / queued error | Ignore |
 | Attached | Current update | Commit snapshot, then notify each listener independently |
 | Attached | Current query error | Entitlement: unavailable if no snapshot; billing: loaded null |
@@ -661,9 +665,14 @@ Issue groups: [watch ownership #10236](https://github.com/koala73/worldmonitor/i
 [billing listener isolation #10237](https://github.com/koala73/worldmonitor/issues/10237).
 Review follow-up: destroying a pending entitlement initializer left verification `pending`
 although its generation could never complete. The new test failed before the repair
-(**1 failure / 13 passes** in the expanded watch suite). Teardown now publishes `unavailable`
-only when verification was pending, including to late subscribers. Ready snapshots and idle
-verification remain unchanged, retired completion cannot republish, and retry can reach ready.
+(**1 failure / 13 passes** in the expanded watch suite). The first follow-up published `unavailable` from transport teardown.
+A second runtime trace found that A-to-B handoff consequently emitted `unavailable` before
+its next `pending` notification (**1 failure / 29 passes** across watch and app-teardown tests).
+The terminal notification now belongs to `PanelLayoutManager.destroy()`, which calls
+`markEntitlementVerificationUnavailable()` after retiring the transport. Account handoff
+preserves pending until auth succeeds or fails; final app teardown notifies current and late
+subscribers when no snapshot exists. Ready snapshots remain intact, retired completion cannot
+republish, and retry can reach ready. No new teardown option or status is introduced.
 The watch suite also switches Clerk from A to B during pending initialization for both services,
 proving no stale A watch attaches and B can start. These changes remain in issue #10236.
 

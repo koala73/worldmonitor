@@ -37,10 +37,13 @@ import {
   initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState,
   getEntitlementState, onEntitlementChange, getEntitlementVerificationStatus,
   onEntitlementVerificationChange, resetEntitlementVerification,
+  beginEntitlementVerification, markEntitlementVerificationUnavailable,
 } from '@/services/entitlements';
 import {
   initSubscriptionWatch, destroySubscriptionWatch, getSubscription, onSubscriptionChange,
 } from '@/services/billing';
+
+import { startAccountAuthHandoff } from '@/app/account-auth-handoff';
 
 const machines = [
   { name: 'entitlement', start: initEntitlementSubscription, stop: destroyEntitlementSubscription,
@@ -147,23 +150,35 @@ describe('billing notification isolation', () => {
 });
 
 describe('entitlement verification retirement', () => {
-  it('publishes unavailable on teardown, ignores retired completion, and allows retry', async () => {
+  it('keeps verification pending during account handoff until auth fails, then allows retry', async () => {
     let release!: () => void;
+    let finishHandoff!: (ready: boolean) => void;
     harness.clientReady = new Promise<void>(resolve => { release = resolve; });
     const pending = initEntitlementSubscription('A');
-    expect(getEntitlementVerificationStatus()).toBe('pending');
     const observer = vi.fn();
     cleanups.push(onEntitlementVerificationChange(observer));
-    destroyEntitlementSubscription();
-    expect(observer).toHaveBeenLastCalledWith('unavailable');
-    const lateObserver = vi.fn();
-    cleanups.push(onEntitlementVerificationChange(lateObserver));
-    expect(lateObserver).toHaveBeenLastCalledWith('unavailable');
+    observer.mockClear();
+    harness.clerkUserId = 'B';
+    const handoff = startAccountAuthHandoff({
+      userId: 'B',
+      isCurrent: () => harness.clerkUserId === 'B',
+      effects: {
+        destroyEntitlementSubscription, beginEntitlementVerification, resetEntitlementState,
+        markEntitlementVerificationUnavailable, destroySubscriptionWatch,
+        initEntitlementSubscription, initSubscriptionWatch,
+        rebindConvexAuthForWatchHandoff: () => new Promise<boolean>(resolve => { finishHandoff = resolve; }),
+        cloudPrefsSignIn: () => {},
+      },
+    });
+    expect(observer).not.toHaveBeenCalledWith('unavailable');
+    expect(getEntitlementVerificationStatus()).toBe('pending');
     release();
     await pending;
-    expect(getEntitlementVerificationStatus()).toBe('unavailable');
     expect(harness.watches).toHaveLength(0);
-    await initEntitlementSubscription('A');
+    finishHandoff(false);
+    await handoff;
+    expect(observer).toHaveBeenLastCalledWith('unavailable');
+    await initEntitlementSubscription('B');
     expect(getEntitlementVerificationStatus()).toBe('pending');
     harness.watches[0]!.update(null);
     expect(getEntitlementVerificationStatus()).toBe('ready');
