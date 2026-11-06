@@ -599,6 +599,7 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/cyber/v1/get-network-info': { limit: 20, window: '60 s' },
   '/api/scorecard/v1/get-five-factor-scorecard': { limit: 30, window: '60 s' },
   '/api/scorecard/v1/get-bloc-scorecard': { limit: 30, window: '60 s' },
   '/api/scorecard/v1/list-five-factor-scorecards': { limit: 30, window: '60 s' },

@@ -270,6 +270,8 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
 };
 
 const RPC_CACHE_TIER: Record<string, CacheTier> = {
+  // Server cache owns enrichment lifetime; provider disablement must be immediate.
+  '/api/cyber/v1/get-network-info': 'no-store',
   // 'live' tier — bbox-quantized + tanker-aware caching upstream of the
   // 60s in-handler cache, absorbing identical-bbox requests at the CDN
   // before they hit this Vercel function. Energy Atlas live-tanker layer.

@@ -2809,7 +2809,43 @@
       "open": "ABERTO"
     },
     "cyberThreat": {
-      "title": "CIBERAMEAÇA"
+      "title": "CIBERAMEAÇA",
+      "evidence": "Threat-feed evidence",
+      "firstSeen": "First seen",
+      "explanations": {
+        "c2_server": "The feed reports a command-and-control server used to send instructions to malware.",
+        "malware_host": "The feed reports an address used to host malware.",
+        "phishing": "The feed reports an indicator associated with phishing.",
+        "malicious_url": "The feed reports a URL associated with malicious activity."
+      },
+      "downloadTag": "malware_download: the source reports a malware download location.",
+      "familyNote": "The malware-family label comes from the threat feed. It does not identify a person or organization.",
+      "approximateLocation": "The mapped location is approximate IP-derived context, not a verified physical host location.",
+      "network": {
+        "title": "Network information",
+        "privacy": "Expand to request passive network data from RIPEstat. The indicator IP is shared with that provider.",
+        "disclaimer": "Network registration and routing do not identify the attacker or make the provider responsible for the activity.",
+        "loading": "Loading network information…",
+        "unknown": "Not available",
+        "disabled": "Network lookup is not enabled.",
+        "invalid": "Network lookup requires a public IP address.",
+        "unavailable": "Network lookup failed. Close and reopen the popup to try again later.",
+        "rateLimited": "Network lookup is temporarily limited. Try again later.",
+        "noData": "The provider returned no network information for this IP.",
+        "partial": "Some network information could not be retrieved.",
+        "ip": "IP",
+        "asn": "Origin ASN",
+        "operator": "Reported ASN holder / network operator",
+        "prefix": "Reported routing prefix",
+        "hostname": "Reverse-DNS hostname (rDNS)",
+        "lookupAt": "Network lookup time",
+        "routingAt": "Routing data time",
+        "broaderPrefix": "The provider matched a broader routing prefix. This is not an exact IP allocation record.",
+        "rdnsNote": "rDNS is a DNS label, not proof of ownership. Registered organization and precise location are not supplied by this lookup.",
+        "copy": "Copy",
+        "copied": "Copied.",
+        "copyFailed": "Copy failed. Select the text to copy it."
+      }
     },
     "nuclear": {
       "types": {

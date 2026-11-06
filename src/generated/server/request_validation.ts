@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 734;
-export const GENERATED_REQUEST_METHOD_COUNT = 193;
+export const GENERATED_REQUEST_METHOD_COUNT = 194;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -68,6 +68,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getInternalDisplacement": "worldmonitor.displacement.v1.GetInternalDisplacementRequest",
   "getMineralProduction": "worldmonitor.supply_chain.v1.GetMineralProductionRequest",
   "getMultiSectorCostShock": "worldmonitor.supply_chain.v1.GetMultiSectorCostShockRequest",
+  "getNetworkInfo": "worldmonitor.cyber.v1.GetNetworkInfoRequest",
   "getNo2Activity": "worldmonitor.economic.v1.GetNo2ActivityRequest",
   "getPhysicalDivergenceIndex": "worldmonitor.market.v1.GetPhysicalDivergenceIndexRequest",
   "getPhysicalPremiums": "worldmonitor.market.v1.GetPhysicalPremiumsRequest",
@@ -934,6 +935,14 @@ export const GENERATED_MESSAGE_RULES = {
         "stringMaxBytes": 65536
       },
       "basketSlug": {
+        "kind": "string",
+        "stringMaxBytes": 65536
+      }
+    }
+  },
+  "worldmonitor.cyber.v1.GetNetworkInfoRequest": {
+    "fields": {
+      "ip": {
         "kind": "string",
         "stringMaxBytes": 65536
       }

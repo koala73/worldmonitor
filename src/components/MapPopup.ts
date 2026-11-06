@@ -30,6 +30,7 @@ import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { bindCyberNetworkSection, renderCyberNetworkSection } from './cyber-network-info';
 import { renderPopupSourceLinks } from './map-popup-source-links';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -345,6 +346,10 @@ export class MapPopup {
           this.refreshHeightCache(popupType, data, containerRect, positionedWith);
         }, 0);
       });
+    }
+
+    if (data.type === 'cyberThreat' && (data.data as CyberThreat).indicatorType === 'ip') {
+      bindCyberNetworkSection(this.popup, (data.data as CyberThreat).indicator, () => this.clampPopupToViewport());
     }
 
     // Mount transit chart for waterway popups after DOM insertion
@@ -2033,10 +2038,12 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
       </div>
       <div class="popup-body">
         <div class="popup-subtitle">${escapeHtml(typeLabel)}</div>
+        <p class="popup-description">${escapeHtml(t(`popups.cyberThreat.explanations.${threat.type}`))}</p>
+        <p class="section-label">${t('popups.cyberThreat.evidence')}</p>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${escapeHtml(threat.indicatorType.toUpperCase())}</span>
-            <span class="stat-value">${escapeHtml(threat.indicator)}</span>
+            <span class="stat-value" style="overflow-wrap:anywhere">${escapeHtml(threat.indicator)}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.country')}</span>
@@ -2050,6 +2057,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             <span class="stat-label">${t('popups.malware')}</span>
             <span class="stat-value">${escapeHtml(threat.malwareFamily)}</span>
           </div>` : ''}
+          ${threat.firstSeen ? `<div class="popup-stat"><span class="stat-label">${t('popups.cyberThreat.firstSeen')}</span><span class="stat-value">${escapeHtml(new Date(threat.firstSeen).toLocaleString())}</span></div>` : ''}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.lastSeen')}</span>
             <span class="stat-value">${escapeHtml(threat.lastSeen ? new Date(threat.lastSeen).toLocaleString() : t('popups.unknown'))}</span>
@@ -2059,6 +2067,10 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         <div class="popup-tags">
           ${tags.map((tag) => `<span class="popup-tag">${escapeHtml(tag)}</span>`).join('')}
         </div>` : ''}
+        ${tags.includes('malware_download') ? `<p class="popup-description">${t('popups.cyberThreat.downloadTag')}</p>` : ''}
+        ${threat.malwareFamily ? `<p class="popup-description">${t('popups.cyberThreat.familyNote')}</p>` : ''}
+        <p class="popup-description">${t('popups.cyberThreat.approximateLocation')}</p>
+        ${threat.indicatorType === 'ip' ? renderCyberNetworkSection() : ''}
       </div>
     `;
   }
