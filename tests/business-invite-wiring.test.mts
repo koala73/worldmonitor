@@ -57,7 +57,7 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     );
     assert.match(
       src,
-      /\} catch \(err\) \{\s*\n\s*if \(!isAccountStillCurrent\(userId\)\) return;/,
+      /\} catch \(err\) \{\s*\n\s*const msg = [^\n]*\n\s*failure = msg;\s*\n\s*if \(!isAccountStillCurrent\(userId\)\) return;/,
       'errors from a departed account must stay silent in the new account UI',
     );
   });
@@ -98,20 +98,23 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     assert.match(src, /showToast\('Pro seat activated'\)/);
   });
 
-  it('forgets the invite in a finally block so a refresh does not retry, except after a wrong-account rejection', async () => {
+  it('settles the invite in a finally block through keepInviteAfterAttempt', async () => {
     const src = await read('src/App.ts');
     assert.match(
       src,
-      /\} finally \{\s*\n\s*\/\/ Forget the invite once the server has answered so a refresh does not retry\.\s*\n\s*if \(!keepInviteForAnotherAccount\) clearPendingBusinessInvite\(pendingBusinessInvite\);\s*\n\s*\}/,
-      'cleanup must run in a finally block around the accept mutation, covering both success and failure',
+      /\} finally \{[\s\S]{0,400}?const keep = keepInviteAfterAttempt\(\{\s*\n\s*accepted: acceptedByServer,\s*\n\s*accountChanged: !isAccountStillCurrent\(userId\),\s*\n\s*error: failure,\s*\n\s*\}\);\s*\n\s*if \(!keep\) clearPendingBusinessInvite\(pendingBusinessInvite\);/,
+      'cleanup must run in a finally block and defer the keep/clear decision to keepInviteAfterAttempt',
     );
     assert.match(
       src,
-      /if \(msg\.includes\('INVITE_EMAIL_MISMATCH'\)\) \{\s*\n\s*keepInviteForAnotherAccount = true;/,
-      'a wrong-account rejection must keep the invite for the invited account to accept in the same tab',
+      /\.then\(\(result\) => \{\s*\n\s*acceptedByServer = true;/,
+      'acceptance must be recorded inside the operation, before settleAccountOperation can throw on an account switch',
     );
-    const mismatchFlags = src.match(/keepInviteForAnotherAccount = true/g) ?? [];
-    assert.equal(mismatchFlags.length, 1, 'only the email-mismatch branch may keep the invite');
+    assert.match(
+      src,
+      /failure = msg;\s*\n\s*if \(!isAccountStillCurrent\(userId\)\) return;/,
+      'the failure must be recorded before the departed-account early return',
+    );
   });
 
   it('grantId is typed at the Convex-client boundary rather than cast through `api as any`', async () => {

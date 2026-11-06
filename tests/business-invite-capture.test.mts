@@ -67,6 +67,7 @@ const {
   captureBusinessInviteFromUrl,
   loadPendingBusinessInvite,
   clearPendingBusinessInvite,
+  keepInviteAfterAttempt,
   resetBusinessInviteMemoryForTests,
   BUSINESS_INVITE_STORAGE_KEY,
 } = await import('../src/services/business-invite-capture.ts');
@@ -177,5 +178,38 @@ describe('clearPendingBusinessInvite', () => {
     captureBusinessInviteFromUrl();
     clearPendingBusinessInvite(older);
     assert.deepEqual(loadPendingBusinessInvite(), { grantId: 'newgrant', token: 'newtoken' });
+  });
+});
+
+describe('keepInviteAfterAttempt', () => {
+  it('drops an accepted invite, even when the account changed after the server accepted it', () => {
+    assert.equal(keepInviteAfterAttempt({ accepted: true, accountChanged: false }), false);
+    assert.equal(keepInviteAfterAttempt({ accepted: true, accountChanged: true, error: 'Account changed' }), false);
+  });
+
+  it('keeps the invite when the user signed out before the answer came back', () => {
+    // Sign-out lands between the request and its answer; the next sign-in
+    // with the invited address must still find the invite.
+    assert.equal(
+      keepInviteAfterAttempt({ accepted: false, accountChanged: true, error: 'Account changed while accepting the Business Pro seat invite. Try again.' }),
+      true,
+    );
+  });
+
+  it('keeps the invite after a wrong-account rejection', () => {
+    assert.equal(
+      keepInviteAfterAttempt({ accepted: false, accountChanged: false, error: 'Uncaught ConvexError: {"kind":"INVITE_EMAIL_MISMATCH"}' }),
+      true,
+    );
+  });
+
+  it('drops the invite after a final rejection', () => {
+    for (const kind of ['INVITE_EXPIRED', 'INVITE_ALREADY_USED', 'BUSINESS_NOT_ACTIVE', 'INVALID_INVITE_TOKEN', 'GRANT_NOT_FOUND']) {
+      assert.equal(
+        keepInviteAfterAttempt({ accepted: false, accountChanged: false, error: `Uncaught ConvexError: {"kind":"${kind}"}` }),
+        false,
+        kind,
+      );
+    }
   });
 });

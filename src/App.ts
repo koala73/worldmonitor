@@ -290,6 +290,7 @@ import { captureReferralFromUrl } from '@/services/referral-capture';
 import {
   captureBusinessInviteFromUrl,
   clearPendingBusinessInvite,
+  keepInviteAfterAttempt,
   loadPendingBusinessInvite,
 } from '@/services/business-invite-capture';
 import { nextPrimeRetryDelayMs } from '@/utils/prime-retry';
@@ -2853,9 +2854,10 @@ export class App {
               console.warn('[business-seats] acceptBusinessInvite skipped — Convex auth not ready');
               return;
             }
-            // A wrong account keeps the invite so signing in as the invited
-            // address in this tab still accepts it.
-            let keepInviteForAnotherAccount = false;
+            // settleAccountOperation also throws when the server accepted but
+            // Clerk switched accounts meanwhile, so record acceptance here.
+            let acceptedByServer = false;
+            let failure: string | undefined;
             try {
               await settleAccountOperation(
                 userId,
@@ -2863,15 +2865,18 @@ export class App {
                 () => client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
                   grantId: pendingBusinessInvite.grantId as Id<'businessProGrants'>,
                   token: pendingBusinessInvite.token,
+                }).then((result) => {
+                  acceptedByServer = true;
+                  return result;
                 }),
               );
               assertAccountStillCurrent(userId, 'accepting the Business Pro seat invite');
               showToast('Pro seat activated');
             } catch (err) {
-              if (!isAccountStillCurrent(userId)) return;
               const msg = err instanceof Error ? err.message : 'Failed to accept invite';
+              failure = msg;
+              if (!isAccountStillCurrent(userId)) return;
               if (msg.includes('INVITE_EMAIL_MISMATCH')) {
-                keepInviteForAnotherAccount = true;
                 showToast('This invite is for a different email address');
               } else if (msg.includes('INVITE_EXPIRED')) {
                 showToast('This invite has expired');
@@ -2884,8 +2889,15 @@ export class App {
               }
               console.warn('[business-seats] acceptBusinessInvite failed:', err);
             } finally {
-              // Forget the invite once the server has answered so a refresh does not retry.
-              if (!keepInviteForAnotherAccount) clearPendingBusinessInvite(pendingBusinessInvite);
+              // Forget the invite once it is settled so a refresh does not retry.
+              // A wrong account or an account switch keeps it for the invited
+              // account to accept in this tab.
+              const keep = keepInviteAfterAttempt({
+                accepted: acceptedByServer,
+                accountChanged: !isAccountStillCurrent(userId),
+                error: failure,
+              });
+              if (!keep) clearPendingBusinessInvite(pendingBusinessInvite);
             }
           })();
         }

@@ -121,6 +121,28 @@ export function clearPendingBusinessInvite(invite: PendingBusinessInvite): void 
   }
 }
 
+export interface BusinessInviteAttempt {
+  /** The server accepted the invite, whatever happened to the account afterwards. */
+  accepted: boolean;
+  /** Clerk no longer has the account that sent the request. */
+  accountChanged: boolean;
+  /** The rejection message when the request failed. */
+  error?: string;
+}
+
+/**
+ * Whether the invite should stay pending after an accept attempt settles.
+ * An accepted invite is done. A rejection the account caused, either a
+ * different signed-in address or an account switch before the answer came
+ * back, leaves it for the invited account to accept in this tab. Any other
+ * rejection is final for this invite.
+ */
+export function keepInviteAfterAttempt(attempt: BusinessInviteAttempt): boolean {
+  if (attempt.accepted) return false;
+  if (attempt.accountChanged) return true;
+  return (attempt.error ?? '').includes('INVITE_EMAIL_MISMATCH');
+}
+
 export function resetBusinessInviteMemoryForTests(): void {
   memoryInvite = null;
 }
