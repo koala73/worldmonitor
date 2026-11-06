@@ -1798,12 +1798,25 @@ describe('marketingBeforeSend — Firefox bare-primitive throw (WORLDMONITOR-1CH
     assert.notEqual(marketingBeforeSend(docOnly('uncaught exception: [object Object]')), null);
   });
 
+  // Parenthesised and `void(...)` spellings throw the same primitives.
+  const BARE_PRIMITIVE_THROW_SOURCE = /\bthrow[\s(]*(?:undefined|null|void[\s(]*0)(?![\w$])/;
+
+  it('the source scan catches every spelling of a bare-primitive throw', () => {
+    for (const src of ['throw undefined;', 'throw null', 'throw void 0;', 'throw (undefined);',
+      'throw(null)', 'throw void(0);', 'throw ( void 0 )']) {
+      assert.ok(BARE_PRIMITIVE_THROW_SOURCE.test(src), src);
+    }
+    for (const src of ['throw nullValue;', 'throw undefinedThing', 'throw new Error("null")', 'rethrow null']) {
+      assert.ok(!BARE_PRIMITIVE_THROW_SOURCE.test(src), src);
+    }
+  });
+
   it('pins the marketing surface free of bare-primitive throws, which is what licenses the rule', () => {
     const stripComments = (src: string) => src
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^[ \t]*\/\/.*$/gm, '');
     const offenders = marketingFirstPartySources()
-      .filter((f) => /throw\s+(?:undefined|null|void 0)(?:[^A-Za-z0-9_$]|$)/m.test(stripComments(f.code)))
+      .filter((f) => BARE_PRIMITIVE_THROW_SOURCE.test(stripComments(f.code)))
       .map((f) => f.rel);
     assert.deepEqual(offenders, [], 'a first-party bare-primitive throw — re-derive the WORLDMONITOR-1CH rule');
   });
