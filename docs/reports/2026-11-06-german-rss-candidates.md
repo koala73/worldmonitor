@@ -106,7 +106,8 @@ integration changes the rendered source list.
 `npm run docs:check` passed. Direct endpoint and XML checks are described above.
 The catalog and host observations were checked against the current local source.
 No runtime behavior changed, so no new runtime regression tests were added.
-Application dependencies are absent in this worktree; parser and browser suites
-were not run. Production ingestion, licensing clearance, coverage benefit, and
+The pre-push hook prepared dependencies and passed its documentation, Unicode,
+derived-file, and version checks. Parser and browser suites were not run for
+this report-only change. Production ingestion, licensing clearance, coverage benefit, and
 source acceptance remain open. No deployment or production configuration change
 is part of this evaluation.
