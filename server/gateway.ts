@@ -2394,7 +2394,8 @@ export function createDomainGateway(
             headers: { 'Content-Type': 'application/json', ...budget.headers, ...corsHeaders },
           });
         }
-        rollbackDailyMeter = budget.rollback;
+        // Daily only: an unserved request keeps its burst slot spent.
+        rollbackDailyMeter = budget.releaseDaily;
       }
 
       if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth) && !isDesktopPrincipal) {
