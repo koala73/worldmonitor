@@ -139,3 +139,79 @@ test.describe('pro critical CSS causes no layout shift when the deferred stylesh
     });
   }
 });
+
+test.describe('welcome safe areas', () => {
+  const cases = [
+    { name: 'iPhone portrait', width: 393, height: 852, top: 59, right: 0, bottom: 34, left: 0 },
+    { name: 'iPhone landscape left', width: 852, height: 393, top: 0, right: 59, bottom: 21, left: 59 },
+    { name: 'asymmetric landscape', width: 852, height: 393, top: 0, right: 59, bottom: 21, left: 0 },
+    { name: 'desktop', width: 1440, height: 900, top: 0, right: 0, bottom: 0, left: 0 },
+    { name: 'Android', width: 412, height: 915, top: 0, right: 0, bottom: 0, left: 0 },
+  ];
+
+  for (const device of cases) {
+    test(`${device.name} protects edge content before and after stylesheet load`, async ({ page, context }, testInfo) => {
+      const html = readFileSync(resolve(repoRoot, 'public/pro/welcome.html'), 'utf8');
+      const href = deferredStylesheetHref(html);
+      const css = readFileSync(resolve(repoRoot, 'public', href.replace(/^\//, '')), 'utf8');
+      // Keep the actual full sheet pending until the critical-only geometry is checked.
+      let releaseStyle!: () => void;
+      const styleReady = new Promise<void>((done) => { releaseStyle = done; });
+      await page.route('**/*', async (route) => {
+        const url = new URL(route.request().url());
+        if (url.origin !== ORIGIN) return route.abort();
+        if (url.pathname === href) {
+          await styleReady;
+          return route.fulfill({ contentType: 'text/css', body: css });
+        }
+        if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
+        return route.abort();
+      });
+      await page.setViewportSize({ width: device.width, height: device.height });
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Emulation.setSafeAreaInsetsOverride', {
+        insets: { top: device.top, right: device.right, bottom: device.bottom, left: device.left },
+      });
+      await page.goto(ORIGIN, { waitUntil: 'domcontentloaded' });
+      const measure = () => page.evaluate(() => {
+        const nav = document.querySelector('nav[data-wm-nav]')!;
+        const hero = document.querySelector('[data-wm-hero]')!;
+        const root = nav.closest('.welcome-page');
+        const rect = (element: Element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        const { x, y, width } = rect(hero);
+        return {
+          nav: rect(nav), hero: { x, y, width },
+          logo: rect(nav.querySelector('a')!),
+          cta: rect(nav.querySelector('[data-umami-event-target="welcome-nav"]')!),
+          rootPadding: root ? getComputedStyle(root).paddingBottom : null,
+          navPadding: getComputedStyle(nav).paddingTop,
+          heroPadding: getComputedStyle(hero).paddingTop,
+        };
+      });
+      try {
+        await page.screenshot({ path: testInfo.outputPath('critical.png') });
+        expect(await page.locator('meta[name="viewport"]').getAttribute('content')).toContain('viewport-fit=cover');
+        const before = await measure();
+        expect(before.navPadding).toBe(`${device.top}px`);
+        expect(before.rootPadding).toBe(`${device.bottom}px`);
+        expect(before.heroPadding).toBe(`${(device.width >= 640 ? 128 : 112) + device.top}px`);
+        expect(before.logo.x).toBeGreaterThanOrEqual(device.left + 16);
+        expect(before.logo.y).toBeGreaterThanOrEqual(device.top);
+        expect(before.cta.x + before.cta.width).toBeLessThanOrEqual(device.width - device.right - 16);
+        releaseStyle();
+        await expect.poll(() => page.evaluate(() => document.styleSheets.length > 1)).toBe(true);
+        expect(await measure()).toEqual(before);
+        await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
+        const skip = await page.getByRole('link', { name: 'Skip to content', exact: true }).boundingBox();
+        expect(skip!.x).toBeGreaterThanOrEqual(device.left);
+        expect(skip!.y).toBeGreaterThanOrEqual(device.top);
+        await page.screenshot({ path: testInfo.outputPath('styled.png') });
+      } finally {
+        releaseStyle();
+      }
+    });
+  }
+});

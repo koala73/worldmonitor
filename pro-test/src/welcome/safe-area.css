@@ -1,0 +1,28 @@
+/* Also inlined by prerender.mjs so safe-area geometry is present at first paint. */
+.welcome-page {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Fixed positioning bypasses the page's padding. Keep its background edge to edge. */
+.welcome-page nav[data-wm-nav] {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.welcome-page main > section[data-wm-hero] {
+  padding-top: calc(7rem + env(safe-area-inset-top, 0px));
+}
+
+.welcome-page > a[href="#main-content"]:focus {
+  top: calc(1rem + env(safe-area-inset-top, 0px));
+  left: calc(1rem + env(safe-area-inset-left, 0px));
+}
+
+@media (min-width: 640px) {
+  .welcome-page main > section[data-wm-hero] {
+    padding-top: calc(8rem + env(safe-area-inset-top, 0px));
+  }
+}
