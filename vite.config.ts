@@ -1096,8 +1096,13 @@ export default defineConfig(({ mode }) => {
           categories: activeMeta.categories,
           icons: [
             { src: '/favico/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/favico/android-chrome-384x384.png', sizes: '384x384', type: 'image/png' },
             { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
-            { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-icon-1024.png', sizes: '1024x1024', type: 'image/png' },
+            { src: '/favico/worldmonitor-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-384.png', sizes: '384x384', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-1024.png', sizes: '1024x1024', type: 'image/png', purpose: 'maskable' },
           ],
         },
 
