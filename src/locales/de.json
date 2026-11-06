@@ -1860,8 +1860,8 @@
       "badgeAnimDesc": "Update-Badges in Panel-Kopfzeilen animieren",
       "headlineMemoryLabel": "Schlagzeilen-Speicher",
       "headlineMemoryDesc": "Gesehene Schlagzeilen merken, um neue hervorzuheben",
-      "streamAlwaysOnLabel": "Live-Streams im Dashboard automatisch abspielen",
-      "streamAlwaysOnDesc": "Startet Live News und Live Webcams automatisch, sobald sie sichtbar sind. Deaktiviert lassen, damit Videos erst nach Klick auf Abspielen geladen werden.",
+      "streamAlwaysOnLabel": "Automatische Wiedergabe von Live-Webcams",
+      "streamAlwaysOnDesc": "Startet die Live-Webcam-Videos automatisch, sobald sie auf dem Bildschirm angezeigt werden. Lassen Sie dies deaktiviert, um sie nur zu laden, wenn Sie sie selbst starten.",
       "globeRenderScaleOptions": {
         "1": "Öko (1x)",
         "2": "4K (2x)",
@@ -1910,7 +1910,9 @@
       "briefStoryDetails": "Details zur Meldung ({{count}})",
       "streamIdleStopLabel": "Live-Video bei Inaktivität stoppen",
       "streamIdleStopDesc": "Stoppt Live News und Live Webcams nach dieser Zeit ohne Aktivität und zeigt einen Hinweis im Panel an.",
-      "streamIdleStopNever": "Nie"
+      "streamIdleStopNever": "Nie",
+      "liveNewsAutoplayLabel": "Live-News automatisch abspielen",
+      "liveNewsAutoplayDesc": "Startet das Live-News-Video automatisch und stummgeschaltet, sobald es auf dem Bildschirm angezeigt wird. Deaktivieren Sie dies, um das Video nur zu laden, wenn Sie es selbst starten."
     },
     "etfFlows": {
       "previousColumns": "Vorherige Spalten",

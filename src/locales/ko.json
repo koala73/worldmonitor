@@ -1492,8 +1492,8 @@
       "badgeAnimDesc": "패널 헤더의 업데이트 배지 애니메이션",
       "headlineMemoryLabel": "헤드라인 메모리",
       "headlineMemoryDesc": "본 헤드라인을 기억하여 새 기사 강조",
-      "streamAlwaysOnLabel": "대시보드에서 라이브 스트림 자동 재생",
-      "streamAlwaysOnDesc": "Live News와 Live Webcams가 표시될 때 자동으로 시작합니다. 동영상을 재생 클릭 후에만 로드하려면 꺼 둡니다.",
+      "streamAlwaysOnLabel": "라이브 웹캠 자동 재생",
+      "streamAlwaysOnDesc": "라이브 웹캠 영상이 화면에 나타나면 자동으로 시작됩니다. 직접 시작할 때만 로드하려면 이 옵션을 꺼두세요.",
       "analysisFrameworksLabel": "분석 프레임워크",
       "analysisFrameworksActivePerPanel": "패널당 활성",
       "analysisFrameworksSkillLibrary": "스킬 라이브러리",
@@ -1534,7 +1534,9 @@
       "briefStoryDetails": "기사 세부 정보 ({{count}})",
       "streamIdleStopLabel": "유휴 상태일 때 라이브 영상 중지",
       "streamIdleStopDesc": "활동이 없는 상태가 이 시간 동안 지속되면 Live News와 Live Webcams을 중지하고 패널에 알림을 표시합니다.",
-      "streamIdleStopNever": "사용 안 함"
+      "streamIdleStopNever": "사용 안 함",
+      "liveNewsAutoplayLabel": "라이브 뉴스 자동 재생",
+      "liveNewsAutoplayDesc": "라이브 뉴스 영상이 화면에 나타나면 음소거 상태로 자동 재생됩니다. 직접 시작할 때만 영상을 로드하려면 이 옵션을 끄세요."
     },
     "settings": {
       "exportSettings": "설정 내보내기",

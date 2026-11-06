@@ -1492,8 +1492,8 @@
       "badgeAnimDesc": "在面板标题中显示更新徽章动画",
       "headlineMemoryLabel": "标题记忆",
       "headlineMemoryDesc": "记住已阅标题以突出显示新内容",
-      "streamAlwaysOnLabel": "在仪表板上自动播放直播流",
-      "streamAlwaysOnDesc": "当 Live News 和 Live Webcams 可见时自动启动。保持关闭则仅在点击“播放”后加载视频。",
+      "streamAlwaysOnLabel": "自动播放实时摄像头",
+      "streamAlwaysOnDesc": "直播摄像头视频出现在屏幕上时立即开始加载。保持关闭可仅在您手动启动时加载视频。",
       "analysisFrameworksLabel": "分析框架",
       "analysisFrameworksActivePerPanel": "每个面板激活",
       "analysisFrameworksSkillLibrary": "技能库",
@@ -1534,7 +1534,9 @@
       "briefStoryDetails": "报道详情 ({{count}})",
       "streamIdleStopLabel": "空闲时停止实时视频",
       "streamIdleStopNever": "从不",
-      "streamIdleStopDesc": "在此时间内无活动后停止实时新闻和实时网络摄像头，并在面板中显示通知。"
+      "streamIdleStopDesc": "在此时间内无活动后停止实时新闻和实时网络摄像头，并在面板中显示通知。",
+      "liveNewsAutoplayLabel": "自动播放实时新闻",
+      "liveNewsAutoplayDesc": "实时新闻视频出现在屏幕上时自动开始播放，静音状态。关闭此选项可仅在您手动启动时加载视频。"
     },
     "settings": {
       "exportSettings": "导出设置",

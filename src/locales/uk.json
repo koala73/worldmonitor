@@ -1654,8 +1654,8 @@
       "analysisFrameworksFromAgentskills": "З agentskills.io",
       "analysisFrameworksPasteJson": "Вставити JSON",
       "analysisFrameworksSaveToLibrary": "Зберегти в бібліотеку",
-      "streamAlwaysOnLabel": "Автоматичне відтворення прямих трансляцій на панелі",
-      "streamAlwaysOnDesc": "Запускає Live News та Live Webcams автоматично при їх видимості. Вимкніть, щоб завантажити відео тільки після натискання Play.",
+      "streamAlwaysOnLabel": "Автовідтворення live веб-камер",
+      "streamAlwaysOnDesc": "Запускає прямі трансляції вебкамер, як тільки вони з'являються на екрані. Залишіть це вимкненим, щоб завантажити їх лише коли ви їх самі запустите.",
       "frameworkNote": "Застосовується лише до аналізу, згенерованого клієнтом",
       "loadingServerInsights": "Завантаження аналітики сервера...",
       "usingCachedBrief": "Використання кешованого звіту...",
@@ -1690,7 +1690,9 @@
       "sources_many": "{{count}} джерел",
       "streamIdleStopLabel": "Зупинити пряму трансляцію відео при бездіяльності",
       "streamIdleStopDesc": "Зупиняє Live News і Live Webcams після цього часу без активності та показує повідомлення на панелі.",
-      "streamIdleStopNever": "Ніколи"
+      "streamIdleStopNever": "Ніколи",
+      "liveNewsAutoplayLabel": "Автовідтворення живих новин",
+      "liveNewsAutoplayDesc": "Запускає відео живих новин без звуку, як тільки воно з'являється на екрані. Вимкніть це, щоб завантажити відео лише коли ви його самі запустите."
     },
     "settings": {
       "exportSettings": "Експортувати параметри",

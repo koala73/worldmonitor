@@ -1772,8 +1772,8 @@
       "badgeAnimDesc": "Animuj odznaki aktualizacji w nagłówkach paneli",
       "headlineMemoryLabel": "Pamięć nagłówków",
       "headlineMemoryDesc": "Zapamiętuj widziane nagłówki, aby wyróżnić nowe",
-      "streamAlwaysOnLabel": "Automatycznie odtwarzaj transmisje na żywo na pulpicie",
-      "streamAlwaysOnDesc": "Automatycznie uruchamia Live News i Live Webcams, gdy są widoczne. Pozostaw wyłączone, aby wideo ładowało się dopiero po kliknięciu Odtwórz.",
+      "streamAlwaysOnLabel": "Automatyczne odtwarzanie transmisji na żywo z kamer",
+      "streamAlwaysOnDesc": "Rozpoczyna transmisje z kamer internetowych zaraz po ich pojawienia się na ekranie. Pozostaw tę opcję wyłączoną, aby załadować je tylko po ręcznym uruchomieniu.",
       "globeRenderScaleOptions": {
         "1": "Eko (1x)",
         "2": "4K (2x)",
@@ -1824,7 +1824,9 @@
       "briefStoryDetails": "Szczegóły wiadomości ({{count}})",
       "streamIdleStopLabel": "Zatrzymaj transmisję live gdy nieaktywna",
       "streamIdleStopDesc": "Zatrzymuje Live News i Live Webcams po tym czasie bez aktywności i wyświetla powiadomienie w panelu.",
-      "streamIdleStopNever": "Nigdy"
+      "streamIdleStopNever": "Nigdy",
+      "liveNewsAutoplayLabel": "Automatyczne odtwarzanie aktualności na żywo",
+      "liveNewsAutoplayDesc": "Rozpoczyna odtwarzanie wideo aktualności na żywo, bez dźwięku, zaraz po jego pojawienia się na ekranie. Wyłącz tę opcję, aby wideo załadowało się tylko po jego ręcznym uruchomieniu."
     },
     "etfFlows": {
       "previousColumns": "Poprzednie kolumny",

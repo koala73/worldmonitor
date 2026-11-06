@@ -1326,8 +1326,8 @@
       "badgeAnimDesc": "Update-badges in paneelkoppen animeren",
       "headlineMemoryLabel": "Koptekstgeheugen",
       "headlineMemoryDesc": "Gezien koppen onthouden om nieuwe te markeren",
-      "streamAlwaysOnLabel": "Livestreams automatisch afspelen op het dashboard",
-      "streamAlwaysOnDesc": "Start Live News en Live Webcams automatisch wanneer ze zichtbaar zijn. Laat uit om video pas te laden nadat je op Afspelen klikt.",
+      "streamAlwaysOnLabel": "Live webcams automatisch afspelen",
+      "streamAlwaysOnDesc": "Start de live webcamvideo's automatisch zodra deze op het scherm verschijnen. Laat dit uit om ze alleen te laden wanneer je deze zelf start.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1376,7 +1376,9 @@
       "briefStoryDetails": "Details van het bericht ({{count}})",
       "streamIdleStopLabel": "Livevideostream stoppen bij inactiviteit",
       "streamIdleStopDesc": "Stopt Live News en Live Webcams na deze periode zonder activiteit en toont een melding in het paneel.",
-      "streamIdleStopNever": "Nooit"
+      "streamIdleStopNever": "Nooit",
+      "liveNewsAutoplayLabel": "Automatisch afspelen van live nieuws",
+      "liveNewsAutoplayDesc": "Start de live nieuwsvideo automatisch, zonder geluid, zodra deze op het scherm verschijnt. Zet dit uit om de video alleen te laden wanneer je deze zelf start."
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen."

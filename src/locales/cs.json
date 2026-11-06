@@ -1482,8 +1482,8 @@
       "badgeAnimDesc": "Animovat odznáčky aktualizací v záhlaví panelů",
       "headlineMemoryLabel": "Paměť titulků",
       "headlineMemoryDesc": "Zapamatovat si zobrazené titulky pro zvýraznění nových",
-      "streamAlwaysOnLabel": "Automaticky přehrávat živé streamy na dashboardu",
-      "streamAlwaysOnDesc": "Spustí Live News a Live Webcams automaticky, když jsou viditelné. Nechte vypnuto, aby se video načetlo až po kliknutí na Přehrát.",
+      "streamAlwaysOnLabel": "Automatické přehrávání živých kamer",
+      "streamAlwaysOnDesc": "Spustí živá videa z webkamer, jakmile se zobrazí na obrazovce. Ponechte vypnuté, chcete-li je načíst pouze sami.",
       "globeRenderScaleOptions": {
         "1": "Eko (1x)",
         "2": "4K (2x)",
@@ -1534,7 +1534,9 @@
       "briefStoryDetails": "Podrobnosti zprávy ({{count}})",
       "streamIdleStopLabel": "Zastavit živé video při nečinnosti",
       "streamIdleStopDesc": "Zastaví Live News a Live Webcams po této době bez aktivity a zobrazí upozornění na panelu.",
-      "streamIdleStopNever": "Nikdy"
+      "streamIdleStopNever": "Nikdy",
+      "liveNewsAutoplayLabel": "Automatické přehrávání živých zpráv",
+      "liveNewsAutoplayDesc": "Spustí video živých zpráv ztlumeně, jakmile se zobrazí na obrazovce. Vypněte, chcete-li video načíst pouze sami."
     },
     "cascade": {
       "filters": {

@@ -15,4 +15,5 @@ export const ROLLING_DEPLOYMENT_PREFERENCE_KEYS = [
   ...ACCOUNT_PROVENANCE_PREFERENCE_KEYS,
   'wm-font-scale',
   'wm-live-media-idle-stop',
+  'wm-live-news-autoplay',
 ] as const;

@@ -1495,8 +1495,8 @@
       "badgeAnimDesc": "Panel başlıklarındaki güncelleme rozetlerini canlandır",
       "headlineMemoryLabel": "Başlık hafızası",
       "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla",
-      "streamAlwaysOnLabel": "Panoda canlı yayınları otomatik oynat",
-      "streamAlwaysOnDesc": "Görünür olduklarında Live News ve Live Webcams otomatik olarak başlar. Videoyu yalnızca Oynat’a tıkladıktan sonra yüklemek için kapalı bırakın.",
+      "streamAlwaysOnLabel": "Canlı web kameralarını otomatik oynat",
+      "streamAlwaysOnDesc": "Canlı web kamerası videolarını ekranda görüntülenir görüntülenmez başlatır. Videoları yalnızca siz başlattığınızda yüklemek için bunu kapalı tutun.",
       "analysisFrameworksLabel": "Analiz Çerçeveleri",
       "analysisFrameworksActivePerPanel": "Panel başına etkin",
       "analysisFrameworksSkillLibrary": "Beceri kütüphanesi",
@@ -1538,7 +1538,9 @@
       "briefStoryDetails": "Haber ayrıntıları ({{count}})",
       "streamIdleStopLabel": "Hareketsizlik sırasında canlı videoyu durdur",
       "streamIdleStopDesc": "Canlı Haber ve Canlı Web Kameralarını bu kadar süre etkinlik olmadan durdurur ve panelde bir bildirim gösterir.",
-      "streamIdleStopNever": "Asla"
+      "streamIdleStopNever": "Asla",
+      "liveNewsAutoplayLabel": "Canlı haberleri otomatik oynat",
+      "liveNewsAutoplayDesc": "Canlı haber videosunu, sessiz olarak, ekranda görüntülenir görüntülenmez başlatır. Videoyu yalnızca siz başlattığınızda yüklemek için bunu kapatın."
     },
     "settings": {
       "exportSettings": "Ayarları Dışa Aktar",

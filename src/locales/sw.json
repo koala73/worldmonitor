@@ -1646,8 +1646,8 @@
       "analysisFrameworksFromAgentskills": "Kutoka kwa agentskills.io",
       "analysisFrameworksPasteJson": "Bandika JSON",
       "analysisFrameworksSaveToLibrary": "Hifadhi kwenye Maktaba",
-      "streamAlwaysOnLabel": "Cheza mitiririko ya moja kwa moja kiotomatiki kwenye dashibodi",
-      "streamAlwaysOnDesc": "Huanzisha Habari za Moja kwa Moja na Kamera za Wavuti moja kwa moja zinapoonekana. Ondoka ili kupakia video tu baada ya kubofya Cheza.",
+      "streamAlwaysOnLabel": "Kucheza kamera moja kwa moja kiotomatiki",
+      "streamAlwaysOnDesc": "Huanza video za kamera moja kwa moja mara tu zinavyoonekana. Acha hii kuwa imezimwa ili kupakia hizo tu wakati unapozisimamisha mwenyewe.",
       "frameworkNote": "Inatumika kwa uchanganuzi unaozalishwa na mteja pekee",
       "loadingServerInsights": "Inapakia maarifa ya seva...",
       "usingCachedBrief": "Inatumia muhtasari ulioakibishwa...",
@@ -1680,7 +1680,9 @@
       "briefStoryDetails": "Maelezo ya habari ({{count}})",
       "streamIdleStopLabel": "Simamisha video moja kwa moja wakati umekaa bila kufanya kitu",
       "streamIdleStopDesc": "Husimamisha Habari za Moja kwa Moja na Kamera za Moja kwa Moja baada ya muda huu bila shughuli na kuonyesha onyo katika paneli.",
-      "streamIdleStopNever": "Kamwe"
+      "streamIdleStopNever": "Kamwe",
+      "liveNewsAutoplayLabel": "Taslimia kiotomatiki habari moja kwa moja",
+      "liveNewsAutoplayDesc": "Huanza video ya habari moja kwa moja, bila sauti, mara tu inapoonekana. Zima hii ili kupakia video tu wakati unapoisimamisha mwenyewe."
     },
     "settings": {
       "exportSettings": "Hamisha Mipangilio",

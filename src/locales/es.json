@@ -1863,8 +1863,8 @@
       "badgeAnimDesc": "Animar insignias de actualización en encabezados de paneles",
       "headlineMemoryLabel": "Memoria de titulares",
       "headlineMemoryDesc": "Recordar titulares vistos para resaltar nuevos",
-      "streamAlwaysOnLabel": "Reproducir automáticamente transmisiones en vivo en el panel",
-      "streamAlwaysOnDesc": "Inicia Live News y Live Webcams automáticamente cuando están visibles. Déjalo desactivado para cargar video solo después de hacer clic en Reproducir.",
+      "streamAlwaysOnLabel": "Reproducción automática de cámaras en directo",
+      "streamAlwaysOnDesc": "Inicia los vídeos de webcam en directo tan pronto como aparecen en pantalla. Déjalo desactivado para cargarlos solo cuando los inicies.",
       "globeRenderScaleOptions": {
         "1": "Eco (1×)",
         "2": "4K (2x)",
@@ -1914,7 +1914,9 @@
       "briefStoryDetails": "Detalles de la noticia ({{count}})",
       "streamIdleStopLabel": "Detener vídeo en directo cuando está inactivo",
       "streamIdleStopDesc": "Detiene Noticias en Directo y Cámaras Web en Directo después de este tiempo sin actividad y muestra una notificación en el panel.",
-      "streamIdleStopNever": "Nunca"
+      "streamIdleStopNever": "Nunca",
+      "liveNewsAutoplayLabel": "Reproducción automática de noticias en directo",
+      "liveNewsAutoplayDesc": "Inicia el vídeo de noticias en directo, silenciado, tan pronto como aparece en pantalla. Desactívalo para cargar el vídeo solo cuando lo inicies."
     },
     "etfFlows": {
       "previousColumns": "Columnas anteriores",
