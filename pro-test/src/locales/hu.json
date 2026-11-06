@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Zaj",
     "signalWord": "Jel",
-    "valueProps": "A geopolitikai hírszerzési AI-réteg — kérdezze, iratkozzon fel rá, építsen rá.",
+    "valueProps": "Kérdezz meg egy AI-elemzőt, állíts be riasztási szabályokat, kapj briefingeket, és használd a Claude-ban.",
     "launchingDate": "Már elérhető",
     "tryFreeDashboard": "Próbálja ki az ingyenes irányítópultot",
     "choosePlan": "Válasszon csomagot",
-    "signIn": "Bejelentkezés",
     "goToDashboard": "Ugrás az irányítópultra"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Személyes",
     "axisPersonalNote": "egyéni használat",
     "axisCommercial": "Kereskedelmi",
-    "axisCommercialNote": "munka, ügyfelek és termékek"
+    "axisCommercialNote": "munka, ügyfelek és termékek",
+    "cancelAnytime": "Bármikor lemondhatja fiókjából. A hozzáférés a kifizetett időszak végéig megmarad."
   },
   "welcome": {
     "meta": {

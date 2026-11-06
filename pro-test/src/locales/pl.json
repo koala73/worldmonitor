@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Szum",
     "signalWord": "Sygnał",
-    "valueProps": "Geopolityczna warstwa AI — zapytaj ją, subskrybuj, buduj na niej.",
+    "valueProps": "Pytaj AI analityka, ustaw reguły alertów, otrzymuj briefingi i używaj w Claude.",
     "launchingDate": "Dostępne teraz",
     "tryFreeDashboard": "Wypróbuj darmowy panel",
     "choosePlan": "Wybierz plan",
-    "signIn": "Zaloguj się",
     "goToDashboard": "Przejdź do Pulpitu"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Osobiste",
     "axisPersonalNote": "użytek indywidualny",
     "axisCommercial": "Komercyjne",
-    "axisCommercialNote": "praca, klienci i produkty"
+    "axisCommercialNote": "praca, klienci i produkty",
+    "cancelAnytime": "Anuluj w dowolnym momencie z poziomu swojego konta. Zachowujesz dostęp do końca okresu, za który zapłaciłeś."
   },
   "welcome": {
     "meta": {

@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Zgomot",
     "signalWord": "Semnal",
-    "valueProps": "Stratul de IA geopolitică — întreabă-l, abonează-te, construiește deasupra.",
+    "valueProps": "Întrebați un analist AI, stabiliți reguli de alertă, obțineți rapoarte de situație și folosiți-o în Claude.",
     "launchingDate": "Disponibil acum",
     "tryFreeDashboard": "Încearcă panoul gratuit",
     "choosePlan": "Alege planul",
-    "signIn": "Autentificare",
     "goToDashboard": "Accesați tabloul de bord"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Uz personal",
     "axisPersonalNote": "utilizare individuală",
     "axisCommercial": "Comercial",
-    "axisCommercialNote": "muncă, clienți și produse"
+    "axisCommercialNote": "muncă, clienți și produse",
+    "cancelAnytime": "Anulați oricând din cont. Veți păstra accesul până la sfârșitul perioadei pentru care ați plătit."
   },
   "welcome": {
     "meta": {
