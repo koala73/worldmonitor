@@ -1392,6 +1392,9 @@ export default function App() {
       const wasEnterprise = page === 'enterprise';
       setPage(next);
       if (next === 'enterprise' && !wasEnterprise) window.scrollTo(0, 0);
+      // The removed #tiers section has no element for native fragment
+      // navigation; send history or same-page jumps to the price cards.
+      if (hash === '#tiers') document.getElementById('pricing')?.scrollIntoView();
       if (hash === '#enterprise-contact') {
         setTimeout(() => {
           document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });

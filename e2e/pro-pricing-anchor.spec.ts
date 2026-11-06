@@ -82,6 +82,14 @@ test.describe('/pro#pricing lands on the pricing section', () => {
     await expectPricingInView(page);
   });
 
+  test('#tiers set after mount (history, same-page link) lands on the pricing section', async ({ page }) => {
+    await serveBuiltPro(page);
+    await page.goto(`${ORIGIN}/pro`, { waitUntil: 'load' });
+    await expect(page.locator('section#pricing')).toBeAttached();
+    await page.evaluate(() => { window.location.hash = '#tiers'; });
+    await expectPricingInView(page);
+  });
+
   // Pricing now appears once, so this section must keep every plan: the five
   // self-serve cards, then the Enterprise band. External requests are
   // aborted, so it renders the committed catalog.
