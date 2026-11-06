@@ -760,10 +760,9 @@ describe('reconcileSessionDenial (SM-138)', () => {
   });
 
   it('end to end: a signed-in 401 retries, then gives up — never the sign-in card', () => {
-    const verdict = reconcileSessionDenial(
-      classifyPremiumDenial({ status: 401, errorCode: null, belief: PRO }),
-      true,
-    );
+    const classified = classifyPremiumDenial({ status: 401, errorCode: null, belief: PRO });
+    assert.ok(classified !== null);
+    const verdict = reconcileSessionDenial(classified, true);
     assert.equal(routeDenial(verdict, 1, 8), 'retry');
     assert.equal(routeDenial(verdict, 9, 8), 'give_up');
   });

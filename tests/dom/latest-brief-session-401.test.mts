@@ -49,7 +49,7 @@ vi.mock('@/services/clerk', async (importOriginal) => ({
   clearClerkTokenCache: vi.fn(),
 }));
 
-import { clearClerkTokenCache } from '@/services/clerk';
+import { clearClerkTokenCache, getClerkToken } from '@/services/clerk';
 import { LatestBriefPanel } from '@/components/LatestBriefPanel';
 
 const PRO_USER = { id: 'user_pro', name: 'Pro', email: 'pro@example.test', role: 'pro' as const };
@@ -114,6 +114,8 @@ beforeEach(() => {
   briefFallback = ready;
   briefCalls = 0;
   vi.mocked(clearClerkTokenCache).mockClear();
+  vi.mocked(getClerkToken).mockReset();
+  vi.mocked(getClerkToken).mockImplementation(async () => 'test-token');
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     // The ready render lazily loads the referral profile; keep it out of the
@@ -173,6 +175,25 @@ describe('LatestBriefPanel — 401 while the client is signed in (SM-138)', () =
     emitEntitlement();
     await vi.waitFor(() => expect(text()).toContain('Read brief'));
     expect(briefCalls).toBe(2);
+  });
+
+  it('ignores auth notifications its own token fetch causes — no backoff-free retry loop', async () => {
+    // Minting a token can make Clerk notify listeners for the same user. That
+    // notification is caused by our own retry, so it must not queue another.
+    vi.mocked(getClerkToken).mockImplementation(async () => {
+      emitAuth();
+      return 'test-token';
+    });
+    briefFallback = unauthorized;
+    mount();
+    await vi.waitFor(() => expect(text()).toContain('Reconnecting to your account'));
+    expect(briefCalls).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(briefCalls).toBe(2);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(briefCalls).toBe(3);
   });
 
   it('does not refetch on auth or entitlement signals once the brief has loaded', async () => {

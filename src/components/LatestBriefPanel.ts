@@ -129,7 +129,8 @@ export class LatestBriefPanel extends Panel {
    * spent). While set, the next auth-state or entitlement notification re-runs
    * refresh() at once instead of waiting out the backoff — a Clerk session
    * refresh or a fresh entitlement snapshot is exactly the event that resolves
-   * the denial (SM-138). Cleared by any non-transient outcome.
+   * the denial (SM-138). One-shot per denial, and ignored while a refresh is in
+   * flight; see recheckOnAccessSignal. Cleared by any non-transient outcome.
    */
   private awaitingAccessSignal = false;
 
@@ -162,7 +163,7 @@ export class LatestBriefPanel extends Panel {
       const nextId = state.user?.id ?? null;
       if (nextId === this.lastUserId) {
         // Same account, new session state (token refresh, wake from sleep).
-        if (nextId && this.awaitingAccessSignal) void this.refresh();
+        if (nextId) this.recheckOnAccessSignal();
         return;
       }
       this.lastUserId = nextId;
@@ -194,7 +195,7 @@ export class LatestBriefPanel extends Panel {
     // denial (see awaitingAccessSignal); otherwise it is not our signal —
     // panel-layout's gating owns lock/unlock on entitlement changes.
     this.unsubscribeEntitlement = onEntitlementChange(() => {
-      if (this.awaitingAccessSignal) void this.refresh();
+      this.recheckOnAccessSignal();
     });
     // visibilitychange drives a refresh when the user returns to
     // the tab. Addresses the "composing → stays composing forever"
@@ -339,6 +340,22 @@ export class LatestBriefPanel extends Panel {
         void this.refresh();
       }
     }
+  }
+
+  /**
+   * Re-run refresh() for an outstanding transient denial when an auth or
+   * entitlement notification arrives.
+   *
+   * Ignored while a refresh is in flight: minting the bearer can itself make
+   * Clerk notify listeners, and queueing a follow-up from that notification
+   * would re-fire on every 401 with no backoff — a loop that outlives the retry
+   * budget. One-shot: the flag is consumed here and set again only by the next
+   * transient denial, so each denial earns at most one early re-check.
+   */
+  private recheckOnAccessSignal(): void {
+    if (!this.awaitingAccessSignal || this.refreshing) return;
+    this.awaitingAccessSignal = false;
+    void this.refresh();
   }
 
   /**
