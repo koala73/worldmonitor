@@ -100,4 +100,18 @@ describe('welcome PWA registration', () => {
       assert.equal(h.warnings[0][1], error);
     });
   }
+
+  it('contains a service-worker getter that starts throwing after scheduling', async (t) => {
+    const h = harness(t, { readyState: 'complete' });
+    registerWelcomeServiceWorker();
+    const error = new DOMException('Sandboxed', 'SecurityError');
+    Object.defineProperty(navigator, 'serviceWorker', { get() { throw error; } });
+    h.frames.shift()();
+    h.frames.shift()();
+    assert.doesNotThrow(() => h.idles[0].cb());
+    await Promise.resolve();
+    assert.deepEqual(h.calls, []);
+    assert.equal(h.warnings.length, 1);
+    assert.equal(h.warnings[0][1], error);
+  });
 });
