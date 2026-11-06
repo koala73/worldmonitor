@@ -501,7 +501,7 @@ function dispatchCloudPrefsSignInTerminal(
  * so tier reconciliation attributes A's gate decisions to B (#7833 review).
  * Provenance is exactly the kind of question to fail closed on.
  */
-function clearForeignOwnershipSidecars(userId: string): boolean {
+function clearForeignAccountState(userId: string): boolean {
   const read = safeStorageGetChecked(KEY_LAST_SIGNED_IN_AS);
   if (!read.ok) return false;
   const lastSignedInAs = read.value;
@@ -514,6 +514,14 @@ function clearForeignOwnershipSidecars(userId: string): boolean {
   for (const key of ACCOUNT_PROVENANCE_SYNC_KEYS) {
     if (!safeStorageRemoveChecked(key)) return false;
   }
+  // The sync version is A's position in A's row. onSignOut removes it, but a
+  // page can boot straight into B without having observed A's sign-out (A
+  // signed out where cloud sync does not run, or the session lapsed while the
+  // tab was closed). Left in place, B's sign-in compares B's row against A's
+  // version: equal versions take the local-upload branch and post A's
+  // preferences into B's row with B's token (SM-015).
+  if (!safeStorageRemoveChecked(KEY_SYNC_VERSION)) return false;
+  safeStorageRemove(KEY_LAST_SYNC_AT);
   return true;
 }
 
@@ -1133,6 +1141,14 @@ export function onSignIn(
     return Promise.resolve();
   }
 
+  // Clerk can switch the active account from A to B directly (multi-session
+  // setActive), so the caller never reports a signed-out state between them.
+  // Run A's sign-out first: it flushes A's pending upload with A's cached
+  // token, retires A's timers and generation, drops A's dirty-key ownership,
+  // and clears A's sync version — the state B's reconciliation must not
+  // inherit (SM-015). _dirtyKeysUserId is the account this page last signed in.
+  if (_dirtyKeysUserId !== null && _dirtyKeysUserId !== userId) onSignOut();
+
   // New onSignIn entry invalidates both upload and sign-in retry closures.
   // Recursive sign-in retries use runSignInAttempt directly, preserving this
   // generation until they reach a real terminal outcome.
@@ -1142,9 +1158,10 @@ export function onSignIn(
   const myGeneration = _authGeneration;
 
   // Ownership sidecars describe which changes a particular account's gate
-  // produced. Preserve them for a same-account legacy cloud row, but never
-  // carry them across an observed account transition.
-  if (!clearForeignOwnershipSidecars(userId)) {
+  // produced, and the sync version is a position in one account's row.
+  // Preserve them for the same account, but never carry them across an
+  // account transition recorded in storage.
+  if (!clearForeignAccountState(userId)) {
     // Provenance is undeterminable, so proceeding could attribute the previous
     // account's gate decisions to this one. Report a terminal error rather than
     // reconcile on a guess.

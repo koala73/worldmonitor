@@ -1072,6 +1072,106 @@ describe('cloud prefs marker ordering (#7833 review)', () => {
   });
 });
 
+// SM-015: Clerk can switch the active account from A straight to B (multi-session
+// setActive) without a signed-out state in between. App.ts then calls only
+// onSignIn(B); onSignOut — which clears A's sync version — runs only on the
+// userId -> null edge. A's surviving sync version used to send B's sign-in down
+// the "local is at or ahead of cloud" branch, posting A's preferences with B's
+// token; when the versions matched, the server accepted the write and B's row
+// was overwritten.
+describe('cloud prefs account switch without an observed sign-out (SM-015)', () => {
+  const versionCases = [
+    { name: 'A version above B', aVersion: 3, bVersion: 2 },
+    { name: 'A version below B', aVersion: 1, bVersion: 2 },
+    { name: 'A version equal to B', aVersion: 2, bVersion: 2 },
+  ];
+
+  async function switchAccounts(
+    { aVersion, bVersion }: { aVersion: number; bVersion: number },
+    transition: 'sign-out' | 'direct' | 'reload',
+  ) {
+    return runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, aVersion, 9);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, bVersion, 9);
+      controls.setToken('a-token');
+      await cloudPrefs.onSignIn('user-a', 'full');
+      assert.equal(localStorage.getItem('worldmonitor-theme'), 'dark');
+      assert.equal(localStorage.getItem('wm-cloud-sync-version'), String(aVersion));
+
+      if (transition === 'sign-out') cloudPrefs.onSignOut();
+      controls.setToken('b-token');
+      // 'reload': account A's page is gone without having observed a sign-out
+      // (for example A signed out on a page that does not run cloud sync), and
+      // a fresh module instance boots straight into account B.
+      const signInModule = transition === 'reload' ? await loadCloudPrefsModule() : cloudPrefs;
+      await signInModule.onSignIn('user-b', 'full');
+    });
+  }
+
+  for (const versions of versionCases) {
+    for (const transition of ['sign-out', 'direct', 'reload'] as const) {
+      it(`keeps account B's cloud row intact on A -> ${transition} -> B (${versions.name})`, async () => {
+        const result = await switchAccounts(versions, transition);
+
+        assert.equal(
+          result.acceptedDataByToken['b-token']?.['worldmonitor-theme'],
+          'light',
+          `B's row was overwritten: ${JSON.stringify(result.acceptedDataByToken['b-token'])}`,
+        );
+        assert.equal(
+          result.acceptedSchemaVersionsByToken['b-token'],
+          undefined,
+          "B's sign-in must not write to B's row: it holds no edits of B's",
+        );
+        assert.equal(result.serverSyncVersion, versions.bVersion);
+        assert.equal(result.localSyncVersion, versions.bVersion);
+        assert.equal(result.state, 'synced');
+      });
+    }
+  }
+
+  it("applies account B's preferences locally after a direct switch", async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 2, 9);
+      controls.setToken('a-token');
+      await cloudPrefs.onSignIn('user-a', 'full');
+      controls.setToken('b-token');
+      await cloudPrefs.onSignIn('user-b', 'full');
+
+      assert.equal(localStorage.getItem('worldmonitor-theme'), 'light');
+      assert.equal(localStorage.getItem('wm-last-signed-in-as'), 'user-b');
+    });
+  });
+
+  it("flushes account A's pending edit to A's row, not B's, on a direct switch", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 2, 9);
+      controls.setToken('a-token');
+      await cloudPrefs.onSignIn('user-a', 'full');
+      cloudPrefs.install('full');
+      // A's edit is still waiting on the upload debounce when B becomes active.
+      localStorage.setItem('wm-market-watchlist-v1', 'user-a-edit');
+
+      controls.setToken('b-token');
+      await cloudPrefs.onSignIn('user-b', 'full');
+
+      assert.equal(
+        localStorage.getItem('wm-cloud-prefs-dirty-keys'),
+        null,
+        "A's dirty marker must not become B's pending edit",
+      );
+    });
+
+    assert.equal(result.acceptedDataByToken['a-token']?.['wm-market-watchlist-v1'], 'user-a-edit');
+    assert.equal(result.acceptedDataByToken['b-token']?.['wm-market-watchlist-v1'], undefined);
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.conflictCount, 0);
+    assert.equal(result.state, 'synced');
+  });
+});
+
 describe('settings import cloud transaction', () => {
   for (const failure of ['remove', 'restore']) {
     it(`attempts every rollback entry after a ${failure} failure`, async () => {
