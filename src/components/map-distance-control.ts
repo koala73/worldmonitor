@@ -1,6 +1,6 @@
 import { ArcLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { ScaleControl, type Map as MapLibreMap } from 'maplibre-gl';
-import { t, I18N_RESOURCES_LOADED_EVENT } from '@/services/i18n';
+import { t, getLocale, I18N_RESOURCES_LOADED_EVENT } from '@/services/i18n';
 import { haversineKm } from '@/utils/distance';
 
 type Coordinate = [number, number];
@@ -100,7 +100,7 @@ export class MapDistanceControl {
     if (a && b) {
       const km = haversineKm(a[1], a[0], b[1], b[0]);
       const value = this.units.value === 'mi' ? km / 1.609344 : km;
-      this.status.textContent = `${label('geodesic')}: ${value.toLocaleString(document.documentElement.lang || 'en', { maximumFractionDigits: 1 })} ${this.units.value}`;
+      this.status.textContent = `${label('geodesic')}: ${value.toLocaleString(getLocale(), { maximumFractionDigits: 1 })} ${this.units.value}`;
     } else {
       this.status.textContent = label(a ? 'pointB' : 'pointA');
     }

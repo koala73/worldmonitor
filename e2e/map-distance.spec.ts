@@ -9,8 +9,8 @@ type HarnessWindow = Window & {
   };
 };
 const setCamera = (page: Page, camera: Camera) => page.evaluate(camera => (window as HarnessWindow).__mapHarness?.setCamera(camera), camera);
-const ready = async (page: Page) => {
-  await page.goto('/tests/map-harness.html');
+const ready = async (page: Page, query = '') => {
+  await page.goto(`/tests/map-harness.html${query}`);
   await page.waitForFunction(() => (window as HarnessWindow).__mapHarness?.ready);
   await page.evaluate(() => document.body.classList.remove('e2e-deterministic'));
 };
@@ -52,11 +52,12 @@ test('2D scale and ruler follow the camera and preserve map interactions', async
 
 for (const [name, a, b, km] of [
   ['equator', [0, 0], [1, 0], 111.2],
+  ['legacy locale', [0, 0], [1, 0], 111.2],
   ['Iceland', [-22, 65], [-21, 65], 47.0],
   ['dateline', [179.9, 0], [-179.9, 0], 22.2],
 ] as const) {
   test(`ruler measures ${name} coordinates and converts km to miles`, async ({ page }) => {
-    await ready(page);
+    await ready(page, name === 'legacy locale' ? '?lang=en_US' : '');
     await page.getByRole('button', { name: 'Measure distance', exact: true }).click();
     for (const [lon, lat] of [a, b]) {
       // With world copies disabled, low zoom constrains the center away from ±180.
