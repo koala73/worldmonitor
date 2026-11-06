@@ -3527,6 +3527,28 @@
       "readReport": "Read full report"
     },
     "datacenter": {
+      "details": {
+        "more": "More details",
+        "owner": "Cluster owner / provider (dataset)",
+        "power": "Dataset power figure",
+        "powerCaveat": "Power capacity may be reported or estimated. This is not a measurement of current electricity use.",
+        "powerBasis": "Power figure basis",
+        "reported": "Reported",
+        "estimated": "Estimated",
+        "notAvailable": "Not available",
+        "location": "Location precision",
+        "locationUnknown": "Unverified map point; do not use as an exact facility address.",
+        "site": "Site (source verified)",
+        "city": "City only",
+        "region": "Region only",
+        "country": "Country only",
+        "dataset": "Epoch AI GPU Clusters dataset",
+        "evidence": "Supporting source",
+        "sourceDate": "Source publication date",
+        "metadataReviewedAt": "Metadata checked",
+        "firstOperationalDate": "First operational date (dataset)",
+        "freshness": "Stored dataset snapshot. Current status and specifications may have changed."
+      },
       "status": {
         "existing": "OPERATIONAL",
         "planned": "PLANNED",

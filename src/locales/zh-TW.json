@@ -3387,6 +3387,28 @@
       "readReport": "閱讀完整報告"
     },
     "datacenter": {
+      "details": {
+        "more": "更多詳情",
+        "owner": "叢集所有者 / 提供商（資料集）",
+        "power": "資料集功率數值",
+        "powerCaveat": "功率容量可能為報告值或估算值。這不是當前用電量的測量值。",
+        "powerBasis": "功率數值依據",
+        "reported": "報告值",
+        "estimated": "估算值",
+        "notAvailable": "暫無資訊",
+        "location": "位置精度",
+        "locationUnknown": "未經核實的地圖點；請勿用作設施的準確地址。",
+        "site": "設施位置（來源已核實）",
+        "city": "僅城市",
+        "region": "僅地區",
+        "country": "僅國家",
+        "dataset": "Epoch AI GPU 叢集資料集",
+        "evidence": "佐證來源",
+        "sourceDate": "來源釋出日期",
+        "metadataReviewedAt": "後設資料核查日期",
+        "firstOperationalDate": "首次運營日期（資料集）",
+        "freshness": "已儲存的資料集快照。當前狀態和規格可能已發生變化。"
+      },
       "status": {
         "existing": "運營中",
         "planned": "計劃中",

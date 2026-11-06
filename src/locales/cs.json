@@ -3439,6 +3439,28 @@
       "readReport": "Číst celou zprávu"
     },
     "datacenter": {
+      "details": {
+        "more": "Další podrobnosti",
+        "owner": "Vlastník / poskytovatel clusteru (datová sada)",
+        "power": "Údaj o výkonu v datové sadě",
+        "powerCaveat": "Kapacita výkonu může být nahlášená nebo odhadovaná. Nejde o měření aktuální spotřeby elektřiny.",
+        "powerBasis": "Základ údaje o výkonu",
+        "reported": "Nahlášený",
+        "estimated": "Odhadovaný",
+        "notAvailable": "Není k dispozici",
+        "location": "Přesnost polohy",
+        "locationUnknown": "Neověřený bod na mapě; nepoužívejte jako přesnou adresu zařízení.",
+        "site": "Místo (ověřeno zdrojem)",
+        "city": "Pouze město",
+        "region": "Pouze region",
+        "country": "Pouze země",
+        "dataset": "Datová sada GPU clusterů Epoch AI",
+        "evidence": "Podpůrný zdroj",
+        "sourceDate": "Datum zveřejnění zdroje",
+        "metadataReviewedAt": "Kontrola metadat",
+        "firstOperationalDate": "Datum prvního uvedení do provozu (datová sada)",
+        "freshness": "Uložený snímek datové sady. Aktuální stav a specifikace se mohly změnit."
+      },
       "status": {
         "existing": "V PROVOZU",
         "planned": "PLÁNOVANÉ",

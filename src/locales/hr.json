@@ -3507,6 +3507,28 @@
       "readReport": "Pročitaj puni izvještaj"
     },
     "datacenter": {
+      "details": {
+        "more": "Više pojedinosti",
+        "owner": "Vlasnik / pružatelj klastera (skup podataka)",
+        "power": "Podatak o snazi u skupu podataka",
+        "powerCaveat": "Kapacitet snage može biti prijavljen ili procijenjen. Ovo nije mjerenje trenutačne potrošnje električne energije.",
+        "powerBasis": "Osnova podatka o snazi",
+        "reported": "Prijavljeno",
+        "estimated": "Procijenjeno",
+        "notAvailable": "Nije dostupno",
+        "location": "Preciznost lokacije",
+        "locationUnknown": "Nepotvrđena točka na karti; ne upotrebljavajte kao točnu adresu objekta.",
+        "site": "Objekt (potvrđen izvorom)",
+        "city": "Samo grad",
+        "region": "Samo regija",
+        "country": "Samo država",
+        "dataset": "Skup podataka GPU klastera Epoch AI",
+        "evidence": "Potkrepljujući izvor",
+        "sourceDate": "Datum objave izvora",
+        "metadataReviewedAt": "Metapodaci provjereni",
+        "firstOperationalDate": "Datum početka rada (skup podataka)",
+        "freshness": "Spremljena snimka skupa podataka. Trenutačni status i specifikacije možda su se promijenili."
+      },
       "status": {
         "existing": "OPERATIVAN",
         "planned": "PLANIRANO",

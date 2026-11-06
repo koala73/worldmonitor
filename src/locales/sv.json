@@ -3015,6 +3015,28 @@
       "readReport": "Läs hela rapporten"
     },
     "datacenter": {
+      "details": {
+        "more": "Mer information",
+        "owner": "Klusterägare / leverantör (dataset)",
+        "power": "Effektvärde i datasetet",
+        "powerCaveat": "Effektkapaciteten kan vara rapporterad eller uppskattad. Detta är inte en mätning av aktuell elförbrukning.",
+        "powerBasis": "Grund för effektvärdet",
+        "reported": "Rapporterad",
+        "estimated": "Uppskattad",
+        "notAvailable": "Inte tillgängligt",
+        "location": "Platsnoggrannhet",
+        "locationUnknown": "Obekräftad kartpunkt; använd inte som anläggningens exakta adress.",
+        "site": "Anläggning (verifierad av källa)",
+        "city": "Endast stad",
+        "region": "Endast region",
+        "country": "Endast land",
+        "dataset": "Epoch AI:s dataset för GPU-kluster",
+        "evidence": "Stödjande källa",
+        "sourceDate": "Källans publiceringsdatum",
+        "metadataReviewedAt": "Metadata kontrollerade",
+        "firstOperationalDate": "Datum för första drift (dataset)",
+        "freshness": "Sparad ögonblicksbild av datasetet. Aktuell status och specifikationer kan ha ändrats."
+      },
       "status": {
         "existing": "OPERATIV",
         "planned": "PLANERAD",
