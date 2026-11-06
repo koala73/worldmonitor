@@ -216,6 +216,7 @@ async function ignoreDeadRoute(work: () => Promise<unknown>): Promise<void> {
 /** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
 
+/** Serve isolated hydration fixtures and record fallbacks, inflight work, and actual aborts. */
 async function installHydrationRequestAccounting(
   page: Page,
   options: {

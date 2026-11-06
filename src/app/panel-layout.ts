@@ -864,6 +864,7 @@ export class PanelLayoutManager implements AppModule {
     panel.getElement().scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  /** Retire panel resources and watches, then settle pending entitlement verification. */
   destroy(): void {
     this.pendingStorageFacilityId = null;
     this.checkoutReturnFocusController.abort();

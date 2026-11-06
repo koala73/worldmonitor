@@ -110,6 +110,7 @@ function connectivityProblem(auth?: BuiltAuthHeaders): string | null {
   return null;
 }
 
+/** Open the widget composer; each submission owns its cancellation and deadline. */
 export function openWidgetChatModal(options: WidgetChatOptions): void {
   closeWidgetChatModal();
   track('widget-ai-open', { panelId: options.existingSpec?.id });

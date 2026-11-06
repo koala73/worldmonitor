@@ -4345,17 +4345,17 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 7px;
-  padding: 14px;
+  /* Centred so the play control stays in view however short the tile is
+     (a phone gives the panel ~140px of content). */
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  text-align: center;
+  cursor: pointer;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 38%),
     linear-gradient(135deg, rgba(220, 38, 38, 0.24), rgba(0, 0, 0, 0.88));
-}
-
-.webcam-preview-tile:hover .webcam-preview-play {
-  border-color: var(--text);
 }
 
 .webcam-preview-title {
@@ -4375,7 +4375,32 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .webcam-preview-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
   margin-top: 4px;
+  padding: 8px 16px;
+  /* Solid, so the prompt reads as the action on the dark tile: white on
+     --red-strong clears AA. */
+  background: var(--red-strong);
+  border-color: var(--red-strong);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+/* Drawn, not a glyph: U+25B6 renders as an emoji on iOS. */
+.webcam-preview-play::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+}
+
+.webcam-preview-tile:hover .webcam-preview-play,
+.webcam-preview-play:hover {
+  border-color: #fff;
 }
 
 .webcam-cell:hover .webcam-cell-label {

@@ -933,7 +933,7 @@
   "components": {
     "webcams": {
       "paused": "وب‌کم‌ها متوقف شده‌اند",
-      "play": "پخش",
+      "play": "تماشای زنده",
       "previewStatus": "آماده برای پخش",
       "regions": {
         "all": "همه",

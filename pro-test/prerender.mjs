@@ -197,7 +197,8 @@ const PRO_OVERVIEW_PREMOUNT_CSS = '@keyframes wm-overview-reveal{to{visibility:v
 
 const PAGE_CRITICAL_CSS = {
   'index.html': CRITICAL_CSS + PRO_HERO_CRITICAL_CSS + PRO_CRITICAL_CSS + PRO_OVERVIEW_PREMOUNT_CSS,
-  'welcome.html': CRITICAL_CSS + WELCOME_HERO_CRITICAL_CSS,
+  'welcome.html': CRITICAL_CSS + WELCOME_HERO_CRITICAL_CSS
+    + readFileSync(resolve(__dirname, 'src/welcome/safe-area.css'), 'utf8'),
 };
 
 // Flip each deferred preload to a real stylesheet on load, on error (retry a
