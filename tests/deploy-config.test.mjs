@@ -2149,11 +2149,10 @@ describe('welcome landing page routing', () => {
     // when the rule it exists to protect is deleted outright.
     for (const required of [
       'main a[data-umami-event-target="welcome-hero"]',
-      // Exact, not `[href*="moments"]`: since #7608 `main` also carries headline
-      // anchors whose href is a third-party article URL, and a substring match
-      // would paint any story slug containing "moments" as a hero CTA until the
-      // deferred stylesheet lands.
-      'main a[href="#moments"]',
+      // The Pro-price hero CTA, by marker: since #7608 `main` also carries
+      // headline anchors whose href is a third-party article URL, so an href
+      // substring rule could paint a story link as a hero CTA.
+      'main a[data-umami-event-target="welcome-hero-pro"]',
       // The analytics marker, not the aria-label: localized landings
       // translate the label ("Dashboard starten"), so an `aria-label*="Launch"`
       // rule left their Launch button unstyled until the stylesheet landed.

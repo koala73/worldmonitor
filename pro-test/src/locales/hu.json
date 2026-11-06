@@ -476,7 +476,6 @@
       "sub": "Amíg hír lesz, már tudtad.",
       "ctaPrimary": "Irányítópult indítása",
       "ctaFree": "Ingyenes · Nincs regisztráció · Másodpercek alatt betölt",
-      "ctaSecondary": "Nézd meg, hogyan használják az emberek ↓",
       "trustUsers": "2M+ felhasználó",
       "trustOpenSource": "Nyílt forrás · AGPL-3.0",
       "screenshotAlt": "World Monitor élő hírszerzési irányítópult — globális térkép konfliktus, szállítás és piaci rétegekkel",
@@ -486,7 +485,8 @@
       "asOf": "Állapot: {{date}}",
       "whatIsTitle": "Mi az a World Monitor?",
       "whatIsBody": "A World Monitor egy ingyenes ($0), nyílt forráskódú (AGPL-3.0) műszerfal, amelyet 2M+ ember használ. {{feeds}} hír- és OSINT-forrást közvetít {{providers}} attribútummal ellátott szolgáltatótól egyetlen élő világtérképre {{mapLayers}} térképréteg-típussal, amely geopolitikát, piacokat, hajózást, repülést és kiberterületet fed le. Korrelálja őket, így az összefutó események a hírcímek előtt kerülnek felszínre. Minden adat forrásolt és minden módszer dokumentált.",
-      "whatIsBestFor": "Elemzőknek, újságíróknak, kereskedőknek és fejlesztőknek ideális, akiknek élő geopolitikai jelzésekre van szükségük."
+      "whatIsBestFor": "Elemzőknek, újságíróknak, kereskedőknek és fejlesztőknek ideális, akiknek élő geopolitikai jelzésekre van szükségük.",
+      "ctaPro": "Pro {{price}}/hónaptól"
     },
     "live": {
       "eyebrow": "Most élő",
