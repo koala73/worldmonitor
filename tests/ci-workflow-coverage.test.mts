@@ -3321,21 +3321,22 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.equal(setup?.with['cache-dependency-path'], 'pro-test/package-lock.json');
   });
 
-  it('runs the four /pro browser gates in one Playwright run', () => {
+  it('runs the /pro browser gates in one Playwright run', () => {
     // Each Playwright run starts the Vite dev server and Chrome (~3.5s), and
-    // the four gates ran one after another.
+    // the gates used to run one after another.
     const specs = [
       'e2e/pro-critical-css-cls.spec.ts',
       'e2e/pro-mobile-overflow.spec.ts',
       'e2e/pro-hero-animation.spec.ts',
       'e2e/pro-hero-lcp.spec.ts',
+      'e2e/pro-pricing-anchor.spec.ts',
     ];
     const script = packageScripts['test:e2e:pro-gates'] ?? '';
     assert.match(script, /^cross-env VITE_VARIANT=full playwright test /);
     assert.match(script, / --project=chromium$/);
     assert.deepEqual(script.match(/e2e\/[\w-]+\.spec\.ts/g), specs);
     for (const spec of specs) assert.ok(existsSync(resolve(root, spec)), `${spec} must exist`);
-    for (const single of ['pro-cls', 'pro-overflow', 'pro-hero', 'pro-lcp']) {
+    for (const single of ['pro-cls', 'pro-overflow', 'pro-hero', 'pro-lcp', 'pro-anchor']) {
       assert.ok(!flat.some((step) => step.run?.includes(`test:e2e:${single}`)), `test:e2e:${single} must run via test:e2e:pro-gates`);
     }
   });
