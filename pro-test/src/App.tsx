@@ -1410,8 +1410,11 @@ export default function App() {
   useEffect(() => {
     const hash = window.location.hash;
     if (hash.length < 2 || hash.startsWith('#enterprise')) return;
+    // #tiers was a Plans section without prices, removed in favour of the
+    // price cards; saved links to it still land on the plans.
+    const target = hash === '#tiers' ? 'pricing' : hash.slice(1);
     const frame = requestAnimationFrame(() => {
-      document.getElementById(hash.slice(1))?.scrollIntoView();
+      document.getElementById(target)?.scrollIntoView();
     });
     return () => cancelAnimationFrame(frame);
   }, []);
