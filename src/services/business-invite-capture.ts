@@ -1,8 +1,10 @@
 /**
- * Holds a Business seat invite from the moment its link loads until a signed-in
- * account can accept it.
+ * Holds a Business seat or Enterprise account invite from the moment its link
+ * loads until a signed-in account can accept it.
  *
- * The invite email links to /dashboard?accept-business-invite=<grantId>&token=<t>.
+ * Business invite emails link to /dashboard?accept-business-invite=<grantId>&token=<t>.
+ * Enterprise invite emails link to /dashboard?accept-enterprise-invite=<memberId>&token=<t>
+ * and are captured with `kind: 'enterprise'`; the id travels in `grantId`.
  * The dashboard's map URL sync rewrites the query string from map state shortly
  * after boot, so an invitee who arrives signed out and then creates an account
  * would reach the accept hook with both params gone. Capture runs at the start
@@ -17,11 +19,14 @@
 export const BUSINESS_INVITE_STORAGE_KEY = 'wm-business-invite-pending';
 
 const GRANT_PARAM = 'accept-business-invite';
+const ENTERPRISE_PARAM = 'accept-enterprise-invite';
 const TOKEN_PARAM = 'token';
 
 export interface PendingBusinessInvite {
   grantId: string;
   token: string;
+  /** Absent for a Business seat invite. */
+  kind?: 'enterprise';
 }
 
 let memoryInvite: PendingBusinessInvite | null = null;
@@ -38,11 +43,12 @@ function isInvite(value: unknown): value is PendingBusinessInvite {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   return typeof record.grantId === 'string' && record.grantId.length > 0
-    && typeof record.token === 'string' && record.token.length > 0;
+    && typeof record.token === 'string' && record.token.length > 0
+    && (record.kind === undefined || record.kind === 'enterprise');
 }
 
 function sameInvite(a: PendingBusinessInvite, b: PendingBusinessInvite): boolean {
-  return a.grantId === b.grantId && a.token === b.token;
+  return a.grantId === b.grantId && a.token === b.token && a.kind === b.kind;
 }
 
 /**
@@ -58,11 +64,15 @@ export function captureBusinessInviteFromUrl(): PendingBusinessInvite | null {
   } catch {
     return null;
   }
-  const grantId = url.searchParams.get(GRANT_PARAM);
+  const enterpriseId = url.searchParams.get(ENTERPRISE_PARAM);
+  const idParam = enterpriseId ? ENTERPRISE_PARAM : GRANT_PARAM;
+  const grantId = enterpriseId ?? url.searchParams.get(GRANT_PARAM);
   const token = url.searchParams.get(TOKEN_PARAM);
   if (!grantId || !token) return null;
 
-  const invite: PendingBusinessInvite = { grantId, token };
+  const invite: PendingBusinessInvite = enterpriseId
+    ? { grantId, token, kind: 'enterprise' }
+    : { grantId, token };
   memoryInvite = invite;
   try {
     storage()?.setItem(BUSINESS_INVITE_STORAGE_KEY, JSON.stringify(invite));
@@ -70,7 +80,7 @@ export function captureBusinessInviteFromUrl(): PendingBusinessInvite | null {
     // Quota or privacy-mode denial: the module copy still serves this page load.
   }
 
-  url.searchParams.delete(GRANT_PARAM);
+  url.searchParams.delete(idParam);
   url.searchParams.delete(TOKEN_PARAM);
   try {
     window.history.replaceState(window.history.state, '', url.toString());
@@ -102,7 +112,9 @@ export function loadPendingBusinessInvite(): PendingBusinessInvite | null {
     try { store.removeItem(BUSINESS_INVITE_STORAGE_KEY); } catch { /* best effort */ }
     return null;
   }
-  memoryInvite = { grantId: parsed.grantId, token: parsed.token };
+  memoryInvite = parsed.kind === 'enterprise'
+    ? { grantId: parsed.grantId, token: parsed.token, kind: 'enterprise' }
+    : { grantId: parsed.grantId, token: parsed.token };
   return memoryInvite;
 }
 
@@ -121,8 +133,14 @@ export function clearPendingBusinessInvite(invite: PendingBusinessInvite): void 
   }
 }
 
-/** Rejection kinds acceptBusinessInvite throws (convex/payments/businessSeats.ts). */
+/**
+ * Rejection kinds acceptBusinessInvite (convex/payments/businessSeats.ts) and
+ * enterpriseSeats.acceptInvite (convex/enterpriseSeats.ts) throw.
+ */
 const INVITE_ERROR_KINDS = [
+  'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT',
+  'CONTRACT_ENDED',
+  'INVITE_NOT_FOUND',
   'INVITE_EMAIL_MISMATCH',
   'INVITE_EXPIRED',
   'BUSINESS_NOT_ACTIVE',

@@ -95,6 +95,47 @@ beforeEach(() => {
   setUrl('https://www.worldmonitor.app/dashboard');
 });
 
+describe('Enterprise invite links', () => {
+  const MEMBER = 'k17enterprisememberrow0000000001';
+  const ENTERPRISE_URL = `https://www.worldmonitor.app/dashboard?accept-enterprise-invite=${MEMBER}&token=${TOKEN}`;
+
+  it('captures the link as an Enterprise invite and strips its params', () => {
+    setUrl(`${ENTERPRISE_URL}&country=UA`);
+    assert.deepEqual(captureBusinessInviteFromUrl(), { grantId: MEMBER, token: TOKEN, kind: 'enterprise' });
+    const params = new URLSearchParams(_loc.search);
+    assert.equal(params.get('accept-enterprise-invite'), null);
+    assert.equal(params.get('token'), null);
+    assert.equal(params.get('country'), 'UA');
+  });
+
+  it('keeps the kind across the reload Clerk performs after sign-up', () => {
+    setUrl(ENTERPRISE_URL);
+    captureBusinessInviteFromUrl();
+    runMapUrlSync();
+    resetBusinessInviteMemoryForTests();
+    assert.deepEqual(loadPendingBusinessInvite(), { grantId: MEMBER, token: TOKEN, kind: 'enterprise' });
+  });
+
+  it('does not clear an Enterprise invite when a Business invite with the same id settles', () => {
+    setUrl(ENTERPRISE_URL);
+    captureBusinessInviteFromUrl();
+    clearPendingBusinessInvite({ grantId: MEMBER, token: TOKEN });
+    assert.deepEqual(loadPendingBusinessInvite(), { grantId: MEMBER, token: TOKEN, kind: 'enterprise' });
+  });
+
+  it('drops a stored invite with an unknown kind', () => {
+    _sessionStorage!.setItem(BUSINESS_INVITE_STORAGE_KEY, JSON.stringify({ grantId: MEMBER, token: TOKEN, kind: 'team' }));
+    assert.equal(loadPendingBusinessInvite(), null);
+    assert.equal(_sessionStorage!.getItem(BUSINESS_INVITE_STORAGE_KEY), null);
+  });
+
+  it('maps the Enterprise accept rejections to their kinds', () => {
+    for (const kind of ['CONTRACT_ENDED', 'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT', 'INVITE_NOT_FOUND']) {
+      assert.equal(businessInviteErrorKind(new Error(`[CONVEX M(enterpriseSeats:acceptInvite)] ${kind}`)), kind);
+    }
+  });
+});
+
 describe('captureBusinessInviteFromUrl', () => {
   it('the map URL sync drops the invite params (the failure this module exists for)', () => {
     setUrl(INVITE_URL);

@@ -105,7 +105,7 @@ async function requireAccount(ctx: MutationCtx, accountId: Id<"enterpriseAccount
  * account's seats reads AND writes it, so Convex OCC serializes concurrent
  * seat changes and two adds cannot both pass the cap check.
  */
-async function touchAccountLock(ctx: MutationCtx, accountId: Id<"enterpriseAccounts">, now: number) {
+export async function touchAccountLock(ctx: MutationCtx, accountId: Id<"enterpriseAccounts">, now: number) {
   const lock = await ctx.db
     .query("enterpriseAccountLocks")
     .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
@@ -114,15 +114,22 @@ async function touchAccountLock(ctx: MutationCtx, accountId: Id<"enterpriseAccou
   else await ctx.db.insert("enterpriseAccountLocks", { accountId, lastTouchedAt: now });
 }
 
-async function accountMembers(ctx: MutationCtx, accountId: Id<"enterpriseAccounts">) {
+export async function accountMembers(ctx: MutationCtx, accountId: Id<"enterpriseAccounts">) {
   return ctx.db
     .query("enterpriseMembers")
     .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
     .collect();
 }
 
-function holdsSeat(member: Doc<"enterpriseMembers">) {
-  return member.status === "active" || member.status === "pending";
+/**
+ * Active members hold a seat, and so do pending invites until they expire.
+ * Operator-created pending rows carry no expiry and hold their seat until
+ * removed.
+ */
+export function holdsSeat(member: Doc<"enterpriseMembers">, at: number) {
+  if (member.status === "active") return true;
+  if (member.status !== "pending") return false;
+  return member.inviteExpiresAt === undefined || member.inviteExpiresAt > at;
 }
 
 /**
@@ -137,7 +144,7 @@ function holdsSeat(member: Doc<"enterpriseMembers">) {
  * same delay as the entitlement cache's race-covering resync, which outlasts
  * an edge request's Convex-read to Redis-write span.
  */
-async function applyMemberChange(ctx: MutationCtx, userId: string, now: number) {
+export async function applyMemberChange(ctx: MutationCtx, userId: string, now: number) {
   await recomputeEntitlementFromAllSubs(ctx, userId, now);
   await ctx.scheduler.runAfter(0, internal.payments.cacheActions.deleteEntitlementCache, { userId });
   await ctx.scheduler.runAfter(0, internal.payments.cacheActions.deleteAiRoutingPolicyCache, { userId });
@@ -238,7 +245,7 @@ export const updateAccount = internalMutation({
     const defined = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
     const terms = validateTerms({ ...account, ...defined } as AccountTerms);
     await touchAccountLock(ctx, accountId, now);
-    const seats = (await accountMembers(ctx, accountId)).filter(holdsSeat).length;
+    const seats = (await accountMembers(ctx, accountId)).filter((m) => holdsSeat(m, now)).length;
     if (terms.seatCap < seats) {
       throw new Error(`SEAT_CAP_BELOW_MEMBERS: ${seats} seats are taken; remove members before lowering the cap to ${terms.seatCap}`);
     }
@@ -282,7 +289,7 @@ export const addMemberByUserId = internalMutation({
       await ctx.db.patch(pending._id, { status: "active", joinedAt: now, updatedAt: now });
       memberId = pending._id;
     } else {
-      const seats = (await accountMembers(ctx, account._id)).filter(holdsSeat).length;
+      const seats = (await accountMembers(ctx, account._id)).filter((m) => holdsSeat(m, now)).length;
       if (seats >= account.seatCap) {
         throw new Error(`SEAT_CAP_REACHED: ${account.name} uses ${seats} of ${account.seatCap} seats`);
       }
@@ -312,7 +319,7 @@ export const removeMember = internalMutation({
     const rows = (await ctx.db
       .query("enterpriseMembers")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .collect()).filter((m) => m.accountId === args.accountId && holdsSeat(m));
+      .collect()).filter((m) => m.accountId === args.accountId && (m.status === "active" || m.status === "pending"));
     if (rows.length === 0) throw new Error(`NOT_A_MEMBER: ${args.userId} holds no seat in ${args.accountId}`);
     // Admin is a role of an active member, so a removed row drops it.
     for (const row of rows) {
@@ -378,7 +385,7 @@ export const getAccountWithMembers = internalQuery({
     return {
       account,
       members,
-      seatsUsed: members.filter(holdsSeat).length,
+      seatsUsed: members.filter((m) => holdsSeat(m, now)).length,
       contractState: isContractLive(account, now)
         ? "live" as const
         : now < account.contractStart ? "not_started" as const : "ended" as const,

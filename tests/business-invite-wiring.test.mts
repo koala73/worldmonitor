@@ -48,11 +48,11 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     const src = await read('src/App.ts');
     assert.match(
       src,
-      /await settleAccountOperation\(\s*userId,\s*'accepting the Business Pro seat invite',\s*\(\) => client\.mutation\(/,
+      /await settleAccountOperation\(\s*userId,\s*operation,\s*\(\) => \(isEnterpriseInvite\s*\?\s*client\.mutation\(api\.enterpriseSeats\.acceptInvite,[\s\S]{0,300}?: client\.mutation\(api\.payments\.businessSeats\.acceptBusinessInvite,/,
     );
     assert.match(
       src,
-      /assertAccountStillCurrent\(userId, 'accepting the Business Pro seat invite'\);\s*\n\s*showToast\('Pro seat activated'\)/,
+      /assertAccountStillCurrent\(userId, operation\);\s*\n\s*showToast\(isEnterpriseInvite \? 'You have joined the Enterprise account' : 'Pro seat activated'\)/,
       'a late A mutation must not show its success toast after Clerk selects B',
     );
     assert.match(
@@ -79,6 +79,9 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
       ['INVITE_EXPIRED', 'This invite has expired'],
       ['BUSINESS_NOT_ACTIVE', 'The Business plan that sent this invite is no longer active'],
       ['INVITE_ALREADY_USED', 'This invite has already been used'],
+      // convex/enterpriseSeats.ts:acceptInvite
+      ['CONTRACT_ENDED', 'The Enterprise contract that sent this invite has ended'],
+      ['ALREADY_MEMBER_OF_ANOTHER_ACCOUNT', 'This account already belongs to another Enterprise account'],
     ];
     for (const [kind, toastMessage] of expectedBranches) {
       assert.match(
@@ -94,8 +97,8 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     }
     // Generic fallback for any unrecognized error kind.
     assert.match(src, /showToast\('Could not accept invite'\)/);
-    // Success toast on the happy path.
-    assert.match(src, /showToast\('Pro seat activated'\)/);
+    // Success toast on the happy path, per invite kind.
+    assert.match(src, /'You have joined the Enterprise account' : 'Pro seat activated'/);
   });
 
   it('settles the invite in a finally block through keepInviteAfterAttempt', async () => {

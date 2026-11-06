@@ -594,6 +594,23 @@ async function eraseEmailKeyed(
     if (writes >= budget) return { writes, done: false };
   }
 
+  // Enterprise invites addressed to this subject (convex/enterpriseSeats.ts).
+  // Rows they accepted carry their userId and went in the personal pass; this
+  // catches pending or withdrawn invites that only hold the address. A row
+  // bound to another user is that user's seat (an accepted row keeps the
+  // invited address, which its holder may have since given up), so an address
+  // match alone never deletes it. An address has only a handful of rows.
+  const invites = (await ctx.db
+    .query("enterpriseMembers")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .collect())
+    .filter((row) => !row.userId || row.userId === deletion.userId);
+  for (const row of invites) {
+    await ctx.db.delete(row._id);
+    writes += 1;
+    if (writes >= budget) return { writes, done: false };
+  }
+
   const leftoverReg = await ctx.db
     .query("registrations")
     .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
@@ -604,9 +621,14 @@ async function eraseEmailKeyed(
       q.eq("normalizedEmail", email),
     )
     .take(1);
+  const leftoverInvite = (await ctx.db
+    .query("enterpriseMembers")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .collect())
+    .filter((row) => !row.userId || row.userId === deletion.userId);
   return {
     writes,
-    done: leftoverReg.length === 0 && leftoverContact.length === 0,
+    done: leftoverReg.length === 0 && leftoverContact.length === 0 && leftoverInvite.length === 0,
   };
 }
 

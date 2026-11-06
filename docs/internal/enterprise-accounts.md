@@ -48,6 +48,43 @@ Code: `convex/enterpriseAccounts.ts` (operator functions),
   because MCP never dispatches a call it could not reserve. The shared burst
   bucket fails open on both paths.
 
+## Admin self-serve seats
+
+The account admin manages people from Settings, in the plan section of the
+dashboard (`src/components/EnterpriseSeatsSection.ts`, server
+`convex/enterpriseSeats.ts`). It works like Business seats:
+
+- The admin invites by company email. Each invite holds a seat and emails a
+  link to `/dashboard?accept-enterprise-invite=<memberId>&token=<t>`, valid
+  for 14 days. An expired invite frees its seat and shows as expired.
+- The invitee accepts while signed in with the invited address, including
+  after creating an account from the link. Acceptance makes them an active
+  member at once (Enterprise plan, pooled allowance, account AI providers).
+- The admin removes members or withdraws invites. Removal takes effect at
+  once. The admin cannot remove their own seat; use `setAdmin` first.
+- Other members see the account name and seat count, not the roster. After
+  the contract ends, the admin still sees the roster and can remove people.
+- Invites are refused after the contract ends, past `seatCap`, and for
+  free-mail domains. Acceptance is refused for a user already active in
+  another account. The invite step does not check other accounts, so it never
+  reveals another customer's roster.
+- An account can send at most `max(20, seatCap)` invites in any 24 hours.
+  Withdrawn invites count, so inviting and withdrawing in a loop cannot send
+  unlimited mail.
+- If the invite email is not sent (no mail key, suppressed recipient, or a
+  send error), the roster says so. The admin withdraws the invite and invites
+  again.
+
+Errors: `NOT_ACCOUNT_ADMIN`, `SEAT_CAP_REACHED`, `INVITEE_DOMAIN_NOT_CORPORATE`,
+`CANNOT_INVITE_SELF`, `CONTRACT_ENDED`, `CANNOT_REMOVE_SELF`,
+`INVITE_EMAIL_MISMATCH`, `INVITE_EXPIRED`, `INVITE_ALREADY_USED`,
+`INVALID_INVITE_TOKEN`, `ALREADY_MEMBER_OF_ANOTHER_ACCOUNT`,
+`INVITE_RATE_LIMITED`.
+
+Deleting an account erases its member rows and any unclaimed invites addressed
+to its verified email. A row another user accepted is that user's seat and is
+kept, even when its stored address matches.
+
 ## Operator commands
 
 Run from the main checkout with the prod deploy key exported
