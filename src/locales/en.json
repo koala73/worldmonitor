@@ -979,7 +979,7 @@
   "components": {
     "webcams": {
       "paused": "Webcams paused",
-      "play": "Play",
+      "play": "Watch live",
       "previewStatus": "Ready to play",
       "connecting": "Connecting…",
       "unverified": "Can’t confirm this stream is live",

@@ -1874,7 +1874,7 @@
   "components.webcams.noFeeds": "No live webcams in this region right now",
   "components.webcams.offline": "{{city}} is offline right now",
   "components.webcams.paused": "Webcams paused",
-  "components.webcams.play": "Play",
+  "components.webcams.play": "Watch live",
   "components.webcams.previewStatus": "Ready to play",
   "components.webcams.regions.all": "ALL",
   "components.webcams.regions.americas": "AMERICAS",

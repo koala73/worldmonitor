@@ -605,7 +605,10 @@ export class LiveWebcamsPanel extends Panel {
     const playBtn = document.createElement('button');
     playBtn.type = 'button';
     playBtn.className = 'offline-retry webcam-preview-play';
-    playBtn.textContent = t('components.webcams.play') || 'Play';
+    const playLabel = t('components.webcams.play') || 'Watch live';
+    playBtn.textContent = playLabel;
+    // Four tiles share one label; name the camera for screen readers.
+    playBtn.setAttribute('aria-label', `${playLabel}: ${feed.city}`);
     // First play intent lights up everything (the wall + Live News), not just this tile.
     const playAll = () => {
       trackWebcamSelected(feed.id, feed.city, source);

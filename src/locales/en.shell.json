@@ -803,6 +803,7 @@
       "sortRelevance": "Relevance"
     },
     "webcams": {
+      "play": "Watch live",
       "previewStatus": "Ready to play"
     },
     "passkeyOffer": {

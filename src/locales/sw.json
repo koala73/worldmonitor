@@ -933,7 +933,7 @@
   "components": {
     "webcams": {
       "paused": "Kamera za wavuti zimesitishwa",
-      "play": "Cheza",
+      "play": "Tazama moja kwa moja",
       "previewStatus": "Tayari kucheza",
       "regions": {
         "all": "YOTE",
