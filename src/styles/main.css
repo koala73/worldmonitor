@@ -19165,6 +19165,89 @@ button.popup-link {
 }
 
 /* deck.gl Time Slider */
+.map-distance-control {
+  position: absolute;
+  top: 118px;
+  right: 10px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 128px);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.map-distance-control .maplibregl-ctrl-scale {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.map-distance-toolbar,
+.map-distance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.map-distance-control button,
+.map-distance-control select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.map-distance-control button:focus-visible,
+.map-distance-control select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.map-distance-toggle[aria-expanded="true"] {
+  border-color: var(--green);
+}
+
+.map-distance-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  max-width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.map-distance-panel[hidden] {
+  display: none;
+}
+
+.map-distance-status,
+.map-distance-actions {
+  flex-shrink: 0;
+}
+
+.map-distance-note {
+  overflow: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.map-measuring .maplibregl-canvas {
+  cursor: crosshair !important;
+}
+
 .deckgl-time-slider {
   position: absolute;
   top: 10px;

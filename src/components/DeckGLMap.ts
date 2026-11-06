@@ -1,3 +1,4 @@
+import { MapDistanceControl } from './map-distance-control';
 import { createTimeoutSignal } from '@/services/timeout-signal';
 /**
  * DeckGLMap - WebGL-accelerated map visualization for desktop
@@ -878,6 +879,7 @@ export class DeckGLMap {
     windowMs: 60_000,
   });
   private destroyed = false;
+  private distanceControl: MapDistanceControl | null = null;
   private usedFallbackStyle = false;
   private readonly chrome: boolean;
   private readonly mapLibreWorkerUrl: string | undefined;
@@ -1371,6 +1373,14 @@ export class DeckGLMap {
 
   private initDeck(): void {
     if (!this.maplibreMap) return;
+
+    this.distanceControl?.destroy();
+    this.distanceControl = this.chrome
+      ? new MapDistanceControl(this.maplibreMap, this.container, () => {
+        this.popup.hide();
+        this.rafUpdateLayers();
+      })
+      : null;
 
     installDeckInterleavedRaceFilter();
 
@@ -2536,6 +2546,7 @@ export class DeckGLMap {
     }
 
     const result = this.withCategoryGlyphs(layers.filter(Boolean) as LayersList);
+    result.push(...(this.distanceControl?.getLayers() ?? []));
     const elapsed = performance.now() - startTime;
     if (import.meta.env.DEV && elapsed > 16) {
       console.warn(`[DeckGLMap] buildLayers took ${elapsed.toFixed(2)}ms (>16ms budget), ${result.length} layers`);
@@ -9024,6 +9035,8 @@ export class DeckGLMap {
     this.activeNuclearFacilities = null;
     this.activeDatacenters = null;
 
+    this.distanceControl?.destroy();
+    this.distanceControl = null;
     this.deckOverlay?.finalize();
     this.deckOverlay = null;
     this.detachMapLibreInteractionHandlers();
