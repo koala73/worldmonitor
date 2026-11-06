@@ -3200,7 +3200,44 @@
       "airborne": "Havada"
     },
     "cyberThreat": {
-      "title": "SIBER TEHDIT"
+      "title": "SIBER TEHDIT",
+      "evidence": "Tehdit akışı kanıtı",
+      "firstSeen": "İlk görülme",
+      "explanations": {
+        "c2_server": "Akış, kötü amaçlı yazılıma talimat göndermek için kullanılan komuta-kontrol sunucusunu bildiriyor.",
+        "malware_host": "Akış, kötü amaçlı yazılım barındırmak için kullanılan bir adresi bildiriyor.",
+        "phishing": "Akış, kimlik avı ile ilişkili bir göstergeyi bildiriyor.",
+        "malicious_url": "Akış, kötü amaçlı etkinlikle ilişkili bir URL bildiriyor."
+      },
+      "downloadTag": "malware_download: kaynak kötü amaçlı yazılım indirme konumunu bildiriyor.",
+      "familyNote": "Kötü amaçlı yazılım ailesi etiketi tehdit akışından gelir. Bir kişiyi veya kuruluşu tanımlamaz.",
+      "approximateLocation": "Eşlenen konum yaklaşık IP türetilmiş bağlamdır, doğrulanmış fiziksel konak konumu değildir.",
+      "network": {
+        "title": "Ağ bilgileri",
+        "privacy": "RIPEstat'tan pasif ağ verisi istemek için genişletin. Gösterge IP'si söz konusu sağlayıcı ile paylaşılır.",
+        "disclaimer": "Ağ kaydı ve yönlendirme, saldırganı tanımlamaz veya sağlayıcıyı etkinlikten sorumlu kılmaz.",
+        "loading": "Ağ bilgileri yükleniyor…",
+        "unknown": "Kullanılamıyor",
+        "disabled": "Ağ sorgulaması etkin değildir.",
+        "invalid": "Ağ sorgulaması herkese açık bir IP adresi gerektirir.",
+        "unavailable": "Ağ sorgulaması başarısız oldu. Daha sonra tekrar denemek için açılır pencereyi kapatıp yeniden açın.",
+        "rateLimited": "Ağ sorgulaması geçici olarak sınırlandırılmıştır. Daha sonra tekrar deneyin.",
+        "noData": "Sağlayıcı bu IP için ağ bilgisi döndürmedi.",
+        "partial": "Bazı ağ bilgileri alınamadı.",
+        "ip": "IP",
+        "asn": "Kaynak ASN",
+        "operator": "Bildirilen ASN sahibi / ağ operatörü",
+        "prefix": "Bildirilen yönlendirme ön eki",
+        "hostname": "Ters-DNS konak adı (rDNS)",
+        "lookupAt": "Ağ sorgulaması zamanı",
+        "routingAt": "Yönlendirme verisi zamanı",
+        "broaderPrefix": "Sağlayıcı daha geniş bir yönlendirme ön eki eşleştirdi. Bu tam bir IP tahsisi kaydı değildir.",
+        "rdnsNote": "rDNS bir DNS etiketi olup, mülkiyetin kanıtı değildir. Kayıtlı kuruluş ve kesin konum bu sorgulamadan sağlanmaz.",
+        "copy": "Kopyala",
+        "copied": "Kopyalandı.",
+        "copyFailed": "Kopyalama başarısız oldu. Kopyalamak için metni seçin."
+      },
+      "firstSeenNote": "Bu, akışlar veya World Monitor gözlemleri arasında kullanılabilir en erken gösterge tarihi olup; listelenmiş kaynağın tarihinden farklı olabilir."
     },
     "nuclear": {
       "types": {

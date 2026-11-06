@@ -599,6 +599,7 @@ interface EndpointRatePolicy {
 // using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
 // for tooling, not new runtime callers.
 export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+  '/api/cyber/v1/get-network-info': { limit: 20, window: '60 s' },
   '/api/scorecard/v1/get-five-factor-scorecard': { limit: 30, window: '60 s' },
   '/api/scorecard/v1/get-bloc-scorecard': { limit: 30, window: '60 s' },
   '/api/scorecard/v1/list-five-factor-scorecards': { limit: 30, window: '60 s' },
@@ -904,6 +905,9 @@ interface RateLimitPolicyDecision {
 // defence. scripts/enforce-rate-limit-policies.mjs fails if any route listed
 // here can drift back to the gateway's availability-first global fallback.
 export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimitPolicyDecision> = {
+  '/api/cyber/v1/get-network-info': {
+    reason: 'Public IP lookups proxy RIPEstat on cache misses and must retain the caller cap during Redis outages.',
+  },
   '/api/news/v1/list-feed-digest': { reason: 'Cold digest builds fan out to RSS providers and require a fail-closed caller budget.' },
   '/api/aviation/v1/track-aircraft': {
     reason: 'Distinct aircraft viewports call Wingbits on cache misses and can fall back to authenticated OpenSky quota.',

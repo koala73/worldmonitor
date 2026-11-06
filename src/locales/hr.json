@@ -3299,7 +3299,44 @@
     },
     "apt": {},
     "cyberThreat": {
-      "title": "KIBERNETSKA PRIJETNJA"
+      "title": "KIBERNETSKA PRIJETNJA",
+      "evidence": "Dokazi iz feed-a prijetnji",
+      "firstSeen": "Prvi put viđeno",
+      "explanations": {
+        "c2_server": "Feed izvještava o serveru za naredbe i kontrolu koji se koristi za slanje uputa zlonamjernom kodu.",
+        "malware_host": "Feed izvještava o adresi koja se koristi za hostiranje zlonamjernog koda.",
+        "phishing": "Feed izvještava o pokazatelju povezanom s phishingom.",
+        "malicious_url": "Feed izvještava o URL-u povezanom sa zlonamjernom aktivnošću."
+      },
+      "downloadTag": "malware_download: izvor izvještava o lokaciji preuzimanja zlonamjernog koda.",
+      "familyNote": "Oznaka obitelji zlonamjernog koda dolazi iz feed-a prijetnji. Ne identificira osobu ili organizaciju.",
+      "approximateLocation": "Mapirana lokacija je približni kontekst izvedeni iz IP-a, a ne verificirana fizička lokacija domaćina.",
+      "network": {
+        "title": "Informacije o mreži",
+        "privacy": "Proširi za zahtjev pasivnih mrežnih podataka iz RIPEstat-a. Pokazatelj IP-a se dijeli s tim pružateljem.",
+        "disclaimer": "Mrežna registracija i usmjeravanje ne identificiraju napadača niti čine pružatelja odgovornim za aktivnost.",
+        "loading": "Učitavanje informacija o mreži…",
+        "unknown": "Nije dostupno",
+        "disabled": "Mrežni pregled nije omogućen.",
+        "invalid": "Mrežni pregled zahtijeva javnu IP adresu.",
+        "unavailable": "Mrežni pregled neuspješan. Zatvori i ponovno otvori skočni prozor da pokušaš kasnije.",
+        "rateLimited": "Mrežni pregled je privremeno ograničen. Pokušaj kasnije.",
+        "noData": "Pružatelj nije vratio mrežne informacije za tu IP adresu.",
+        "partial": "Dio mrežnih informacija nije mogao biti dohvaćen.",
+        "ip": "IP",
+        "asn": "Izvorni ASN",
+        "operator": "Prijavljeni držatelj ASN-a / mrežni operator",
+        "prefix": "Prijavljeni usmjeravaški prefiks",
+        "hostname": "Obrnuti DNS naziv domaćina (rDNS)",
+        "lookupAt": "Vrijeme mrežnog pregleda",
+        "routingAt": "Vrijeme podataka usmjeravanja",
+        "broaderPrefix": "Pružatelj se podudarao sa širim usmjeravačkim prefiksom. Ovo nije točan zapis dodjele IP-a.",
+        "rdnsNote": "rDNS je DNS oznaka, a ne dokaz vlasništva. Registrirana organizacija i precizna lokacija nisu dostavljeni ovim pregledom.",
+        "copy": "Kopiraj",
+        "copied": "Kopirano.",
+        "copyFailed": "Kopiranje neuspješno. Odaberi tekst da ga kopiraš."
+      },
+      "firstSeenNote": "Ovo je najraniji dostupan datum indikatora dostupan kroz feedove ili World Monitor promatranja; može se razlikovati od datuma navedenog izvora."
     },
     "nuclear": {
       "types": {

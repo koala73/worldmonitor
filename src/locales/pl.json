@@ -3231,7 +3231,44 @@
       "open": "OTWARTE"
     },
     "cyberThreat": {
-      "title": "CYBERZAGROŻENIE"
+      "title": "CYBERZAGROŻENIE",
+      "evidence": "Dowody z kanału zagrożeń",
+      "firstSeen": "Pierwsza obserwacja",
+      "explanations": {
+        "c2_server": "Kanał zagrożeń zgłasza serwer command-and-control używany do wysyłania instrukcji złośliwemu oprogramowaniu.",
+        "malware_host": "Kanał zagrożeń zgłasza adres hosting złośliwego oprogramowania.",
+        "phishing": "Kanał zagrożeń zgłasza wskaźnik związany z phishingiem.",
+        "malicious_url": "Kanał zagrożeń zgłasza adres URL związany ze złośliwą aktywnością."
+      },
+      "downloadTag": "malware_download: źródło zgłasza lokalizację pobierania złośliwego oprogramowania.",
+      "familyNote": "Etykieta rodziny złośliwego oprogramowania pochodzi z kanału zagrożeń. Nie identyfikuje osoby ani organizacji.",
+      "approximateLocation": "Zmapowana lokalizacja to przybliżony kontekst pochodzenia adresu IP, a nie zweryfikowana fizyczna lokalizacja hosta.",
+      "network": {
+        "title": "Informacje sieciowe",
+        "privacy": "Rozwiń, aby zażądać pasywnych danych sieciowych z RIPEstat. Adres IP wskaźnika jest udostępniany temu dostawcy.",
+        "disclaimer": "Dane rejestracyjne sieci i routing nie identyfikują atakującego ani nie oznaczają, że dostawca odpowiada za tę działalność.",
+        "loading": "Ładowanie informacji sieciowych…",
+        "unknown": "Niedostępne",
+        "disabled": "Wyszukiwanie sieciowe nie jest włączone.",
+        "invalid": "Wyszukiwanie sieciowe wymaga publicznego adresu IP.",
+        "unavailable": "Wyszukiwanie sieciowe nie powiodło się. Zamknij i ponownie otwórz okno popup, aby spróbować ponownie później.",
+        "rateLimited": "Wyszukiwanie sieciowe jest tymczasowo ograniczone. Spróbuj ponownie później.",
+        "noData": "Dostawca nie zwrócił informacji sieciowych dla tego adresu IP.",
+        "partial": "Nie wszystkie informacje sieciowe mogły zostać pobrane.",
+        "ip": "Adres IP",
+        "asn": "ASN pochodzenia",
+        "operator": "Zgłoszony właściciel ASN / operator sieci",
+        "prefix": "Zgłoszony prefiks routingu",
+        "hostname": "Nazwa hosta odwrotnego DNS (rDNS)",
+        "lookupAt": "Czas wyszukiwania sieciowego",
+        "routingAt": "Czas danych routingu",
+        "broaderPrefix": "Dostawca dopasował szerszy prefiks routingu. To nie jest dokładny rekord alokacji adresu IP.",
+        "rdnsNote": "rDNS to etykieta DNS, a nie dowód własności. Zarejestrowana organizacja i dokładna lokalizacja nie są dostarczane przez to wyszukiwanie.",
+        "copy": "Kopiuj",
+        "copied": "Skopiowano.",
+        "copyFailed": "Kopiowanie nie powiodło się. Zaznacz tekst, aby go skopiować."
+      },
+      "firstSeenNote": "Jest to najwcześniejsza dostępna data wskaźnika z feedów lub obserwacji World Monitor; może różnić się od daty podanego źródła."
     },
     "nuclear": {
       "types": {

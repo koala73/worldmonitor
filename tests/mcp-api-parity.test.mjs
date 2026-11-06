@@ -137,7 +137,9 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
   // quota bounds it" without qualifying the env-key path.
 
-  // === fetch-on-miss (28) ===
+  // === fetch-on-miss (29) ===
+  ['GET /api/cyber/v1/get-network-info',
+    'fetch-on-miss: high-cardinality-input — arbitrary public IP enrichment; provider authorization, privacy disclosure and source attribution are handled by the Cyber Threat popup'],
   ["GET /api/intelligence/v1/get-risk-scores",
     "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite spans conflict plus auxiliary infra outages, climate anomalies, cyber threats, wildfires, GPS jamming, OREF history, advisories, displacement, news insights/threats, aviation, earthquakes, sanctions, temporal anomalies, and military CII; intended for a future expanded_risk_scores composite tool because the current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",

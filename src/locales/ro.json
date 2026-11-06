@@ -3220,7 +3220,44 @@
       "airborne": "În zbor"
     },
     "cyberThreat": {
-      "title": "AMENINȚARE CYBER"
+      "title": "AMENINȚARE CYBER",
+      "evidence": "Dovezi din feed-ul de amenințări",
+      "firstSeen": "Prima apariție",
+      "explanations": {
+        "c2_server": "Feed-ul raportează un server de comandă și control folosit pentru a trimite instrucțiuni malware-ului.",
+        "malware_host": "Feed-ul raportează o adresă folosită pentru găzduirea malware-ului.",
+        "phishing": "Feed-ul raportează un indicator asociat cu phishing-ul.",
+        "malicious_url": "Feed-ul raportează un URL asociat cu activitate rău intenționată."
+      },
+      "downloadTag": "malware_download: sursa raportează o locație de descărcare malware.",
+      "familyNote": "Eticheta familiei de malware provine din feed-ul de amenințări. Nu identifică o persoană sau o organizație.",
+      "approximateLocation": "Locația mapată este context aproximativ derivat din IP, nu o locație fizică verificată a gazdei.",
+      "network": {
+        "title": "Informații de rețea",
+        "privacy": "Extindeți pentru a solicita date de rețea pasive din RIPEstat. Indicatorul IP este partajat cu acel furnizor.",
+        "disclaimer": "Înregistrarea rețelei și rutarea nu identifică atacatorul și nu fac furnizorul responsabil pentru activitate.",
+        "loading": "Se încarcă informații de rețea…",
+        "unknown": "Indisponibil",
+        "disabled": "Căutarea în rețea nu este activată.",
+        "invalid": "Căutarea în rețea necesită o adresă IP publică.",
+        "unavailable": "Căutarea în rețea a eșuat. Închideți și redeschideți fereastra pentru a încerca din nou mai târziu.",
+        "rateLimited": "Căutarea în rețea este temporar limitată. Încercați din nou mai târziu.",
+        "noData": "Furnizorul nu a returnat informații de rețea pentru acest IP.",
+        "partial": "Unele informații de rețea nu au putut fi recuperate.",
+        "ip": "IP",
+        "asn": "ASN de origine",
+        "operator": "Deținătorul ASN raportat / operator de rețea",
+        "prefix": "Prefix de rutare raportat",
+        "hostname": "Nume gazdă DNS invers (rDNS)",
+        "lookupAt": "Ora căutării în rețea",
+        "routingAt": "Ora datelor de rutare",
+        "broaderPrefix": "Furnizorul a potrivit un prefix de rutare mai larg. Acesta nu este un înregistrament exact de alocare IP.",
+        "rdnsNote": "rDNS este o etichetă DNS, nu o dovadă de proprietate. Organizația înregistrată și locația precisă nu sunt furnizate de această căutare.",
+        "copy": "Copiați",
+        "copied": "Copiat.",
+        "copyFailed": "Copierea a eșuat. Selectați textul pentru a-l copia."
+      },
+      "firstSeenNote": "Aceasta este cea mai veche dată indicator disponibilă din feed-uri sau observații World Monitor; poate diferi de data sursei listate."
     },
     "nuclear": {
       "types": {

@@ -3191,7 +3191,44 @@
       "open": "OFFEN"
     },
     "cyberThreat": {
-      "title": "CYBERBEDROHUNG"
+      "title": "CYBERBEDROHUNG",
+      "evidence": "Belege aus dem Bedrohungsfeed",
+      "firstSeen": "Zuerst beobachtet",
+      "explanations": {
+        "c2_server": "Der Feed meldet einen Command-and-Control-Server, der Anweisungen an Schadsoftware sendet.",
+        "malware_host": "Der Feed meldet eine Adresse, die Schadsoftware bereitstellt.",
+        "phishing": "Der Feed meldet einen Indikator im Zusammenhang mit Phishing.",
+        "malicious_url": "Der Feed meldet eine URL im Zusammenhang mit schädlichen Aktivitäten."
+      },
+      "downloadTag": "malware_download: Die Quelle meldet einen Downloadort für Schadsoftware.",
+      "familyNote": "Die Bezeichnung der Schadsoftwarefamilie stammt aus dem Bedrohungsfeed. Sie identifiziert keine Person oder Organisation.",
+      "approximateLocation": "Der Kartenstandort ist eine ungefähre, IP-basierte Angabe und kein bestätigter physischer Standort des Hosts.",
+      "network": {
+        "title": "Netzwerkinformationen",
+        "privacy": "Beim Aufklappen werden passive Netzwerkdaten von RIPEstat angefordert. Die Indikator-IP wird an diesen Anbieter übermittelt.",
+        "disclaimer": "Netzwerkregistrierung und Routing identifizieren keinen Angreifer und machen den Anbieter nicht für die Aktivität verantwortlich.",
+        "loading": "Netzwerkinformationen werden geladen…",
+        "unknown": "Nicht verfügbar",
+        "disabled": "Die Netzwerkabfrage ist nicht aktiviert.",
+        "invalid": "Für die Netzwerkabfrage ist eine öffentliche IP-Adresse erforderlich.",
+        "unavailable": "Die Netzwerkabfrage ist fehlgeschlagen. Schließen und öffnen Sie das Popup später erneut.",
+        "rateLimited": "Die Netzwerkabfrage ist vorübergehend begrenzt. Versuchen Sie es später erneut.",
+        "noData": "Der Anbieter hat keine Netzwerkinformationen für diese IP geliefert.",
+        "partial": "Einige Netzwerkinformationen konnten nicht abgerufen werden.",
+        "ip": "IP",
+        "asn": "Ursprungs-ASN",
+        "operator": "Gemeldeter ASN-Inhaber / Netzbetreiber",
+        "prefix": "Gemeldetes Routing-Präfix",
+        "hostname": "Reverse-DNS-Hostname (rDNS)",
+        "lookupAt": "Zeitpunkt der Netzwerkabfrage",
+        "routingAt": "Zeitpunkt der Routing-Daten",
+        "broaderPrefix": "Der Anbieter hat ein übergeordnetes Routing-Präfix zugeordnet. Dies ist kein genauer IP-Zuteilungsnachweis.",
+        "rdnsNote": "rDNS ist eine DNS-Bezeichnung und kein Eigentumsnachweis. Registrierte Organisation und genauer Standort werden durch diese Abfrage nicht geliefert.",
+        "copy": "Kopieren",
+        "copied": "Kopiert.",
+        "copyFailed": "Kopieren fehlgeschlagen. Markieren Sie den Text zum Kopieren."
+      },
+      "firstSeenNote": "Dies ist das früheste verfügbare Indikatordatum aus Feeds oder World Monitor Beobachtungen; es kann vom Datum der aufgeführten Quelle abweichen."
     },
     "nuclear": {
       "types": {

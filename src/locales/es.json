@@ -3211,7 +3211,44 @@
       "open": "ABIERTO"
     },
     "cyberThreat": {
-      "title": "CIBERAMENAZA"
+      "title": "CIBERAMENAZA",
+      "evidence": "Evidencia de fuente de amenaza",
+      "firstSeen": "Primer avistamiento",
+      "explanations": {
+        "c2_server": "La fuente reporta un servidor de comando y control utilizado para enviar instrucciones a malware.",
+        "malware_host": "La fuente reporta una dirección utilizada para alojar malware.",
+        "phishing": "La fuente reporta un indicador asociado con phishing.",
+        "malicious_url": "La fuente reporta una URL asociada con actividad maliciosa."
+      },
+      "downloadTag": "malware_download: la fuente reporta una ubicación de descarga de malware.",
+      "familyNote": "La etiqueta de familia de malware proviene de la fuente de amenaza. No identifica a una persona ni a una organización.",
+      "approximateLocation": "La ubicación mapeada es contexto aproximado derivado de IP, no una ubicación de host físico verificada.",
+      "network": {
+        "title": "Información de red",
+        "privacy": "Expande para solicitar datos de red pasiva de RIPEstat. La IP del indicador se comparte con ese proveedor.",
+        "disclaimer": "El registro de red y el enrutamiento no identifican al atacante ni hacen al proveedor responsable de la actividad.",
+        "loading": "Cargando información de red…",
+        "unknown": "No disponible",
+        "disabled": "La búsqueda de red no está habilitada.",
+        "invalid": "La búsqueda de red requiere una dirección IP pública.",
+        "unavailable": "La búsqueda de red falló. Cierra y reabre la ventana para intentar más tarde.",
+        "rateLimited": "La búsqueda de red está temporalmente limitada. Intenta más tarde.",
+        "noData": "El proveedor no devolvió información de red para esta IP.",
+        "partial": "No se pudo recuperar parte de la información de red.",
+        "ip": "IP",
+        "asn": "ASN de origen",
+        "operator": "Titular de ASN reportado / operador de red",
+        "prefix": "Prefijo de enrutamiento reportado",
+        "hostname": "Nombre de host de DNS inverso (rDNS)",
+        "lookupAt": "Hora de búsqueda de red",
+        "routingAt": "Hora de datos de enrutamiento",
+        "broaderPrefix": "El proveedor coincidió con un prefijo de enrutamiento más amplio. Este no es un registro de asignación de IP exacto.",
+        "rdnsNote": "rDNS es una etiqueta DNS, no prueba de propiedad. La organización registrada y la ubicación precisa no se proporcionan en esta búsqueda.",
+        "copy": "Copiar",
+        "copied": "Copiado.",
+        "copyFailed": "La copia falló. Selecciona el texto para copiarlo."
+      },
+      "firstSeenNote": "Esta es la fecha del indicador más antigua disponible en los feeds u observaciones de World Monitor; puede diferir de la fecha de la fuente listada."
     },
     "nuclear": {
       "types": {

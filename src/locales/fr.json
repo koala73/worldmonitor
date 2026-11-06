@@ -3211,7 +3211,44 @@
       "open": "OUVERT"
     },
     "cyberThreat": {
-      "title": "CYBER MENACE"
+      "title": "CYBER MENACE",
+      "evidence": "Preuve du flux de menace",
+      "firstSeen": "Première détection",
+      "explanations": {
+        "c2_server": "Le flux signale un serveur de commande et contrôle utilisé pour envoyer des instructions aux malwares.",
+        "malware_host": "Le flux signale une adresse utilisée pour héberger des malwares.",
+        "phishing": "Le flux signale un indicateur associé à du phishing.",
+        "malicious_url": "Le flux signale une URL associée à une activité malveillante."
+      },
+      "downloadTag": "malware_download : la source signale un emplacement de téléchargement de malware.",
+      "familyNote": "L'étiquette de famille de malware provient du flux de menace. Elle n'identifie pas une personne ou une organisation.",
+      "approximateLocation": "L'emplacement cartographié est un contexte approximatif dérivé de l'adresse IP, non une localisation physique d'hôte vérifiée.",
+      "network": {
+        "title": "Informations réseau",
+        "privacy": "Développer pour demander des données réseau passives à RIPEstat. L'adresse IP de l'indicateur est partagée avec ce fournisseur.",
+        "disclaimer": "L'enregistrement réseau et le routage n'identifient pas l'attaquant et ne rendent pas le fournisseur responsable de l'activité.",
+        "loading": "Chargement des informations réseau…",
+        "unknown": "Non disponible",
+        "disabled": "La recherche réseau n'est pas activée.",
+        "invalid": "La recherche réseau nécessite une adresse IP publique.",
+        "unavailable": "Échec de la recherche réseau. Fermez et rouvrez la fenêtre pour réessayer plus tard.",
+        "rateLimited": "La recherche réseau est temporairement limitée. Réessayez plus tard.",
+        "noData": "Le fournisseur n'a retourné aucune information réseau pour cette adresse IP.",
+        "partial": "Certaines informations réseau n'ont pas pu être récupérées.",
+        "ip": "Adresse IP",
+        "asn": "ASN d'origine",
+        "operator": "Titulaire ASN signalé / opérateur réseau",
+        "prefix": "Préfixe de routage signalé",
+        "hostname": "Nom d'hôte DNS inversé (rDNS)",
+        "lookupAt": "Heure de la recherche réseau",
+        "routingAt": "Heure des données de routage",
+        "broaderPrefix": "Le fournisseur a trouvé une correspondance avec un préfixe de routage plus large. Ce n'est pas un enregistrement exact d'allocation d'adresse IP.",
+        "rdnsNote": "rDNS est une étiquette DNS, non une preuve de propriété. L'organisation enregistrée et la localisation précise ne sont pas fournis par cette recherche.",
+        "copy": "Copier",
+        "copied": "Copié.",
+        "copyFailed": "Échec de la copie. Sélectionnez le texte pour le copier."
+      },
+      "firstSeenNote": "Il s'agit de la date d'indicateur la plus ancienne disponible parmi les flux ou les observations de World Monitor ; elle peut différer de la date de la source listée."
     },
     "nuclear": {
       "types": {
