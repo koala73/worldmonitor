@@ -257,11 +257,12 @@ export class LiveNewsPanel extends Panel {
           if (!this.alwaysOn || this.idleStoppedAfterMs !== null || !this.canHostLiveMedia()) return;
           if ('requestIdleCallback' in window) {
             this.idleCallbackId = (window as any).requestIdleCallback(
-              () => { this.idleCallbackId = null; this.triggerInit(); },
+              () => { this.idleCallbackId = null; if (this.canHostLiveMedia()) this.triggerInit(); },
               { timeout: 1000 },
             );
           } else {
-            this.idleCallbackId = setTimeout(() => { this.idleCallbackId = null; this.triggerInit(); }, 1000);
+            // Re-checked when it runs: the viewer may collapse the panel while the start waits.
+            this.idleCallbackId = setTimeout(() => { this.idleCallbackId = null; if (this.canHostLiveMedia()) this.triggerInit(); }, 1000);
           }
         }
       },

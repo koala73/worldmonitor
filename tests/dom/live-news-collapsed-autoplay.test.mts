@@ -112,6 +112,18 @@ describe('Live News autoplay and a collapsed panel', () => {
     expect(isPlaying()).toBe(true);
   });
 
+  it('does not start a scheduled autoplay when the viewer collapses the panel first', () => {
+    mount();
+    FakeIntersectionObserver.latest?.intersect();
+    panel?.setCollapsed(true);
+    vi.advanceTimersByTime(1100);
+    expect(isPlaying()).toBe(false);
+
+    panel?.setCollapsed(false);
+    vi.advanceTimersByTime(1100);
+    expect(isPlaying()).toBe(true);
+  });
+
   it('does not autoplay a collapsed panel when the tab becomes visible again', () => {
     setCollapsedPreference(true);
     mount();
