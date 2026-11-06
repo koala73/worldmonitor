@@ -65,6 +65,26 @@ describe('NGA daily memo fallback', () => {
     assert.equal(parseNgaDailyMemo(MAINTENANCE_PAGE, 'P', 'HYDROPAC', NOW), null);
   });
 
+  it('rejects a memo with an unrecognized block or no warnings instead of reading it as quiet', () => {
+    const pac = MEMO_FIXTURES[NGA_DAILY_MEMO_URLS[3]!]!;
+    const reformatted = pac.replace('HYDROPAC 3229/26', 'HYDROPAC WARNING 3229-26');
+    assert.equal(parseNgaDailyMemo(reformatted, 'P', 'HYDROPAC', NOW), null);
+    const headerOnly = pac.slice(0, pac.indexOf('061306Z NOV 26'));
+    assert.equal(parseNgaDailyMemo(headerOnly, 'P', 'HYDROPAC', NOW), null);
+  });
+
+  it('keeps time for the memoranda when the API hangs, within one total budget', async () => {
+    const { fetchImpl: memoFetch } = maintenanceFetch();
+    const fetchImpl = (url: string, init?: RequestInit): Promise<Response> => url === NGA_BROADCAST_WARN_URL
+      ? new Promise((_, reject) => init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason)))
+      : memoFetch(url);
+    const started = performance.now();
+    const warnings = await fetchNgaBroadcastWarnings({ userAgent: 'test', timeoutMs: 400, fetchImpl, nowMs: NOW });
+    const elapsed = performance.now() - started;
+    assert.equal(warnings?.length, 9);
+    assert.ok(elapsed >= 180 && elapsed < 400, `elapsed ${elapsed}`);
+  });
+
   it('serves the memoranda when the broadcast-warn API is in maintenance', async () => {
     const { requested, fetchImpl } = maintenanceFetch();
     const warnings = await fetchNgaBroadcastWarnings({ userAgent: 'test', timeoutMs: 1000, fetchImpl, nowMs: NOW });

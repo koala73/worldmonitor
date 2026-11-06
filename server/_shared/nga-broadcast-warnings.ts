@@ -98,10 +98,13 @@ export function parseNgaDailyMemo(
   const blocks = lines.slice(headerIndex + 1).join('\n').split(/\n[ \t]*\n/);
   for (const block of blocks) {
     const blockLines = block.split('\n').map((line) => line.trimEnd()).filter((line) => line.trim() !== '');
+    if (blockLines.length === 0 || /^To receive Broadcast Warning messages/.test(blockLines[0]!)) continue;
     // A warning names itself within its first three lines: after a date-time
     // group, or after the MSGID/RMKS preamble on undated legacy notices.
     const idIndex = blockLines.slice(0, 3).findIndex((line) => idRe.test(line.trim()));
-    if (idIndex < 0) continue;
+    // An unrecognized block means the format changed or the file is
+    // truncated; a partial list would read as fewer hazards.
+    if (idIndex < 0) return null;
     const id = blockLines[idIndex]!.trim().match(idRe)!;
     const dtg = idIndex > 0 ? parseDtg(blockLines[idIndex - 1]!.trim()) : null;
     warnings.push({
@@ -114,7 +117,8 @@ export function parseNgaDailyMemo(
       authority: '',
     });
   }
-  return warnings;
+  // Every area carries standing notices, so an empty memo is a broken read.
+  return warnings.length > 0 ? warnings : null;
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -140,11 +144,13 @@ export async function fetchNgaBroadcastWarnings(options: {
   nowMs?: number;
 }): Promise<NgaBroadcastWarning[] | null> {
   const fetchImpl = options.fetchImpl ?? ((input, init) => globalThis.fetch(input, init));
-  const signal = AbortSignal.timeout(options.timeoutMs);
+  // timeoutMs bounds the whole call, so callers' outer deadlines still hold.
+  // The API gets half of it, leaving the memoranda time after an API hang.
+  const deadline = AbortSignal.timeout(options.timeoutMs);
   try {
     const res = await fetchImpl(NGA_BROADCAST_WARN_URL, {
       headers: { Accept: 'application/json', 'User-Agent': options.userAgent },
-      signal,
+      signal: AbortSignal.any([deadline, AbortSignal.timeout(Math.floor(options.timeoutMs / 2))]),
     });
     if (res.ok) {
       const parsed = parseNgaBroadcastWarnings(await res.json());
@@ -154,7 +160,7 @@ export async function fetchNgaBroadcastWarnings(options: {
     // Fall through to the memoranda.
   }
 
-  const init = { headers: { Accept: 'text/plain', 'User-Agent': options.userAgent }, signal: AbortSignal.timeout(options.timeoutMs) };
+  const init = { headers: { Accept: 'text/plain', 'User-Agent': options.userAgent }, signal: deadline };
   const texts = await Promise.all(NGA_DAILY_MEMO_URLS.map((url) => fetchText(fetchImpl, url, init)));
   const warnings: NgaBroadcastWarning[] = [];
   for (const [index, memo] of NGA_DAILY_MEMOS.entries()) {
