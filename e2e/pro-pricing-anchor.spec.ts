@@ -73,20 +73,25 @@ test.describe('/pro#pricing lands on the pricing section', () => {
     await expectPricingInView(page);
   });
 
-  test('a phone', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await serveBuiltPro(page);
-    await page.goto(`${ORIGIN}${FROM_PAGE}`);
-    await page.click('#upgrade');
-    await page.waitForURL(`${ORIGIN}/pro#pricing`);
-    await expectPricingInView(page);
-  });
-
   test('a plain /pro load stays at the top', async ({ page }) => {
     await serveBuiltPro(page);
     await page.goto(`${ORIGIN}/pro`, { waitUntil: 'load' });
     await expect(page.locator('section#pricing')).toBeAttached();
     await page.waitForTimeout(500);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+});
+
+test.describe('/pro#pricing lands on the pricing section on a phone', () => {
+  // isMobile applies the viewport meta tag and mobile scaling, which a
+  // resized desktop context never does (see pro-mobile-overflow.spec.ts).
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('link tap from another page', async ({ page }) => {
+    await serveBuiltPro(page);
+    await page.goto(`${ORIGIN}${FROM_PAGE}`);
+    await page.tap('#upgrade');
+    await page.waitForURL(`${ORIGIN}/pro#pricing`);
+    await expectPricingInView(page);
   });
 });
