@@ -1574,18 +1574,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "اندازه‌گیری فاصله",
+        "units": "واحدهای فاصله",
+        "pointA": "نقطه الف را انتخاب کنید. روی نقشه کلیک کنید یا Enter را در مرکز نقشه فشار دهید.",
+        "pointB": "نقطه ب را انتخاب کنید. نقشه را حرکت دهید و برای استفاده از مرکز آن Enter را فشار دهید.",
+        "geodesic": "فاصله جیودزیک",
+        "note": "بین مختصات کلیک‌شده؛ نه مسیر یا جدایی دارایی‌های تایید‌شده. Escape برای خروج.",
+        "cancel": "لغو انتخاب",
+        "cancelShort": "لغو",
+        "resetShort": "بازنشانی",
+        "exitShort": "خروج",
+        "reset": "بازنشانی اندازه‌گیری",
+        "exit": "خروج از اندازه‌گیری"
       }
     },
     "cii": {

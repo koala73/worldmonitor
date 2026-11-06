@@ -1574,18 +1574,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "Távolság mérése",
+        "units": "Távolság mértékegysége",
+        "pointA": "Válassza az A pontot. Kattintson a térképre vagy nyomja meg az Enter billentyűt a térkép közepén.",
+        "pointB": "Válassza a B pontot. Húzza a térképet és nyomja meg az Enter billentyűt a közepponthoz.",
+        "geodesic": "Geodéziai távolság",
+        "note": "A rákattintott koordináták között; nem útvonal vagy ellenőrzött eszköztávolság. Az Escape billentyű kilép.",
+        "cancel": "Kijelölés visszavonása",
+        "cancelShort": "Mégse",
+        "resetShort": "Alaphelyzet",
+        "exitShort": "Kilépés",
+        "reset": "Mérés alaphelyzete",
+        "exit": "Kilépés a mérésből"
       }
     },
     "cii": {

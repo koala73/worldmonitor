@@ -1432,18 +1432,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "Mesafeyi ölç",
+        "units": "Mesafe birimleri",
+        "pointA": "A noktasını seçin. Harita üzerinde tıklayın veya harita merkezinde Enter tuşuna basın.",
+        "pointB": "B noktasını seçin. Haritayı kaydırın ve merkezini kullanmak için Enter tuşuna basın.",
+        "geodesic": "Jeodezik mesafe",
+        "note": "Tıklanan koordinatlar arasında; bir rota veya doğrulanmış varlık ayrılması değildir. Çıkmak için Escape tuşuna basın.",
+        "cancel": "Seçimi iptal et",
+        "cancelShort": "İptal",
+        "resetShort": "Sıfırla",
+        "exitShort": "Çık",
+        "reset": "Ölçümü sıfırla",
+        "exit": "Ölçümden çık"
       }
     },
     "cii": {

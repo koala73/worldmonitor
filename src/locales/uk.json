@@ -1582,18 +1582,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "Вимірювання відстані",
+        "units": "Одиниці відстані",
+        "pointA": "Виберіть точку A. Клацніть на карті або натисніть Enter на центрі карти.",
+        "pointB": "Виберіть точку B. Панніть карту та натисніть Enter, щоб використати її центр.",
+        "geodesic": "Геодезична відстань",
+        "note": "Між клацнутими координатами; не маршрут чи перевірене розділення активів. Escape завершує.",
+        "cancel": "Скасувати вибір",
+        "cancelShort": "Скасувати",
+        "resetShort": "Скинути",
+        "exitShort": "Вихід",
+        "reset": "Скинути вимірювання",
+        "exit": "Завершити вимірювання"
       }
     },
     "cii": {

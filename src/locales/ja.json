@@ -1429,18 +1429,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "距離を測定",
+        "units": "距離の単位",
+        "pointA": "ポイントAを選択します。マップをクリックするか、マップの中心でEnterキーを押してください。",
+        "pointB": "ポイントBを選択します。マップをパンして、その中心でEnterキーを押してください。",
+        "geodesic": "測地線距離",
+        "note": "クリックした座標間の距離です。ルートまたは検証済みのアセット分離ではありません。Escキーで終了します。",
+        "cancel": "選択をキャンセル",
+        "cancelShort": "キャンセル",
+        "resetShort": "リセット",
+        "exitShort": "終了",
+        "reset": "測定をリセット",
+        "exit": "測定を終了"
       }
     },
     "cii": {

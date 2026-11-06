@@ -1435,18 +1435,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "Măsoară distanța",
+        "units": "Unități de distanță",
+        "pointA": "Selectează punctul A. Apasă pe hartă sau tastează Enter pe centrul hărții.",
+        "pointB": "Selectează punctul B. Navighează harta și apasă Enter pentru a folosi centrul acesteia.",
+        "geodesic": "Distanță geodezică",
+        "note": "Între coordonatele apăsate; nu este o rută sau separare de active verificată. Escape pentru a ieși.",
+        "cancel": "Anulează selecția",
+        "cancelShort": "Anulează",
+        "resetShort": "Resetează",
+        "exitShort": "Ieși",
+        "reset": "Resetează măsurarea",
+        "exit": "Ieși din măsurare"
       }
     },
     "cii": {

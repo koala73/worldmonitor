@@ -1236,18 +1236,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "Zmierz odległość",
+        "units": "Jednostki odległości",
+        "pointA": "Wybierz punkt A. Kliknij na mapę lub naciśnij Enter w centrum mapy.",
+        "pointB": "Wybierz punkt B. Przesunięcie mapy i naciśnij Enter, aby użyć jej centrum.",
+        "geodesic": "Odległość geodezyjnego",
+        "note": "Pomiędzy klikniętymi współrzędnymi; nie jest trasą ani zweryfikowanym rozdzieleniem zasobów. Escape kończy.",
+        "cancel": "Anuluj wybór",
+        "cancelShort": "Anuluj",
+        "resetShort": "Resetuj",
+        "exitShort": "Wyjdź",
+        "reset": "Resetuj pomiar",
+        "exit": "Wyjdź z pomiaru"
       }
     },
     "climate": {

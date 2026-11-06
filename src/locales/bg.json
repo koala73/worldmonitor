@@ -1432,18 +1432,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "Измерване на разстояние",
+        "units": "Единици за разстояние",
+        "pointA": "Избери точка A. Щракни на картата или натисни Enter в центъра на картата.",
+        "pointB": "Избери точка B. Панорамирай картата и натисни Enter, за да използваш центъра й.",
+        "geodesic": "Геодезическо разстояние",
+        "note": "Между избрани координати; не е маршрут или проверено разделяне на активи. Escape излиза.",
+        "cancel": "Отмени избора",
+        "cancelShort": "Отмени",
+        "resetShort": "Нулирай",
+        "exitShort": "Излез",
+        "reset": "Нулирай измерването",
+        "exit": "Излез от измерването"
       }
     },
     "cii": {

@@ -1429,18 +1429,18 @@
         }
       },
       "measure": {
-        "title": "Measure distance",
-        "units": "Distance units",
-        "pointA": "Select point A. Click the map or press Enter at the map center.",
-        "pointB": "Select point B. Pan the map and press Enter to use its center.",
-        "geodesic": "Geodesic distance",
-        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
-        "cancel": "Cancel selection",
-        "cancelShort": "Cancel",
-        "resetShort": "Reset",
-        "exitShort": "Exit",
-        "reset": "Reset measurement",
-        "exit": "Exit measurement"
+        "title": "Đo khoảng cách",
+        "units": "Đơn vị khoảng cách",
+        "pointA": "Chọn điểm A. Nhấp vào bản đồ hoặc nhấn Enter tại tâm bản đồ.",
+        "pointB": "Chọn điểm B. Di chuyển bản đồ và nhấn Enter để sử dụng tâm của nó.",
+        "geodesic": "Khoảng cách trắc địa",
+        "note": "Giữa các tọa độ được nhấp; không phải tuyến đường hoặc tách biệt tài sản được xác minh. Nhấn Escape để thoát.",
+        "cancel": "Hủy lựa chọn",
+        "cancelShort": "Hủy",
+        "resetShort": "Đặt lại",
+        "exitShort": "Thoát",
+        "reset": "Đặt lại phép đo",
+        "exit": "Thoát phép đo"
       }
     },
     "cii": {
