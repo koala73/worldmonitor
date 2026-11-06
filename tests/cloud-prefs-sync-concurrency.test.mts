@@ -559,6 +559,9 @@ describe('cloud preference write serialization', () => {
 
   it('replays once when a preference changes after the active snapshot', async () => {
     const result = await runHarness(async (cloudPrefs) => {
+      // Signed in: once the version is nonzero, only its owner's token may
+      // write, and an upload with no signed-in account has no owner (SM-015).
+      await cloudPrefs.onSignIn('user-1', 'full');
       cloudPrefs.install('full');
       const sync = cloudPrefs.syncNow();
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 1));
@@ -567,7 +570,8 @@ describe('cloud preference write serialization', () => {
     });
 
     assert.equal(result.conflictCount, 0);
-    assert.equal(result.postCount, 2);
+    // One sign-in post, then the snapshot upload and its single replay.
+    assert.equal(result.postCount, 3);
     assert.equal(result.localSyncVersion, result.serverSyncVersion);
     assert.equal(result.state, 'synced');
   });
@@ -1171,6 +1175,47 @@ describe('cloud prefs account switch without an observed sign-out (SM-015)', () 
       });
     }
   }
+
+  // Uploads advance the sync version without recording an owner, so a profile
+  // can hold A's version with no last-signed-in marker (a sign-in whose fetch
+  // failed, then a successful upload; or a profile older than the marker).
+  async function reloadWithUnownedVersion(
+    cloudPrefs: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
+    controls: HarnessControls,
+  ) {
+    controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+    controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 2, 9);
+    controls.setToken('a-token');
+    await cloudPrefs.onSignIn('user-a', 'full');
+    localStorage.removeItem('wm-last-signed-in-as');
+    assert.equal(localStorage.getItem('wm-cloud-sync-version'), '2');
+    controls.setToken('b-token');
+    return loadCloudPrefsModule();
+  }
+
+  it("keeps account B's row intact when A's version has no recorded owner", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      const reloaded = await reloadWithUnownedVersion(cloudPrefs, controls);
+      await reloaded.onSignIn('user-b', 'full');
+    });
+
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['b-token']?.['worldmonitor-theme'], 'light');
+    assert.equal(result.localSyncVersion, 2);
+    assert.equal(result.state, 'synced');
+  });
+
+  it("does not upload an unowned version with B's token before B's sign-in", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      const reloaded = await reloadWithUnownedVersion(cloudPrefs, controls);
+      reloaded.install('full');
+      localStorage.setItem('wm-market-watchlist-v1', 'pre-sign-in-edit');
+      await reloaded.syncNow();
+    });
+
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['b-token']?.['worldmonitor-theme'], 'light');
+  });
 
   it("applies account B's preferences locally after a direct switch", async () => {
     await runHarness(async (cloudPrefs, controls) => {

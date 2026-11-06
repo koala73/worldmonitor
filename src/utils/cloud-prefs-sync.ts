@@ -519,7 +519,10 @@ function tokenSubject(token: string): string | null {
  * catch this, because nothing has bumped it yet.
  *
  * The owner is the account this page signed in, else the account that last
- * completed a sign-in here. With neither, no account's state is at stake.
+ * completed a sign-in here. With neither, the write is safe only while the
+ * local sync version is zero, i.e. not positioned in anyone's row: uploads
+ * advance the version without recording an owner, so a nonzero version with no
+ * recorded owner may be another account's.
  */
 function tokenOwnsSyncState(token: string, accountId?: string): boolean {
   let owner: string | null = accountId ?? _dirtyKeysUserId;
@@ -529,7 +532,7 @@ function tokenOwnsSyncState(token: string, accountId?: string): boolean {
     if (!read.ok) return false;
     owner = read.value;
   }
-  if (owner === null) return true;
+  if (owner === null) return getSyncVersionChecked() === 0;
   return tokenSubject(token) === owner;
 }
 
@@ -546,14 +549,16 @@ function clearForeignAccountState(userId: string): boolean {
   const read = safeStorageGetChecked(KEY_LAST_SIGNED_IN_AS);
   if (!read.ok) return false;
   const lastSignedInAs = read.value;
-  if (lastSignedInAs === null || lastSignedInAs === userId) return true;
+  if (lastSignedInAs === userId) return true;
 
   // Preferences intentionally survive sign-out, but ownership sidecars are
   // account provenance. If the next account has a legacy row that omits them,
   // keeping the prior account's local values attributes A's gate decisions to
   // B. B's explicit cloud values will still be applied later in this attempt.
-  for (const key of ACCOUNT_PROVENANCE_SYNC_KEYS) {
-    if (!safeStorageRemoveChecked(key)) return false;
+  if (lastSignedInAs !== null) {
+    for (const key of ACCOUNT_PROVENANCE_SYNC_KEYS) {
+      if (!safeStorageRemoveChecked(key)) return false;
+    }
   }
   // The sync version is A's position in A's row. onSignOut removes it, but a
   // page can boot straight into B without having observed A's sign-out (A
@@ -561,6 +566,12 @@ function clearForeignAccountState(userId: string): boolean {
   // tab was closed). Left in place, B's sign-in compares B's row against A's
   // version: equal versions take the local-upload branch and post A's
   // preferences into B's row with B's token (SM-015).
+  //
+  // An absent marker does not prove the version is this account's: uploads
+  // advance the version without writing the marker (a sign-in whose fetch
+  // failed, then a successful upload), and older profiles predate it. Cost of
+  // clearing for the same account: one cloud-first reconcile, with its dirty
+  // keys merged over the cloud row.
   if (!safeStorageRemoveChecked(KEY_SYNC_VERSION)) return false;
   safeStorageRemove(KEY_LAST_SYNC_AT);
   return true;
