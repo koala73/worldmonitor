@@ -1320,6 +1320,8 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.setDisplacementFlows(flows); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setDisplacementFlows(flows);
+    } else {
+      this.svgMap?.setDisplacementFlows(flows);
     }
   }
 
@@ -1333,12 +1335,14 @@ export class MapContainer {
     }
   }
 
-  // IDMC event points, deck.gl only like the DTM and cross-border layers.
+  // IDMC event points are supported by both 2D renderers.
   public setDisplacementEvents(data: DisplacementEventsData): void {
     this.cachedDisplacementEvents = data;
     if (this.useGlobe) return;
     if (this.useDeckGL) {
       this.deckGLMap?.setDisplacementEvents(data);
+    } else {
+      this.svgMap?.setDisplacementEvents(data);
     }
   }
 
@@ -1348,6 +1352,8 @@ export class MapContainer {
     if (this.useGlobe) return;
     if (this.useDeckGL) {
       this.deckGLMap?.setInternalDisplacement(data);
+    } else {
+      this.svgMap?.setInternalDisplacement(data);
     }
   }
 

@@ -45,8 +45,9 @@ import { mountWebcamPinButton } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
-import type { CrossBorderData, CrossBorderPoint } from '@/services/displacement';
+import type { CrossBorderData, CrossBorderPoint, DisplacementFlow, DisplacementEventsData, InternalDisplacementData } from '@/services/displacement';
 import { createCrossBorderMarker, crossBorderMarkerOffsets } from './cross-border-marker';
+import { createDisplacementMarker, displacementFlowMarkers, displacementEventMarkers, internalDisplacementMarkers, type DisplacementMarker } from './displacement-marker';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import {
@@ -220,6 +221,9 @@ export class MapComponent {
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private naturalEvents: NaturalEvent[] = [];
   private crossBorderPoints: CrossBorderPoint[] = [];
+  private displacementFlows: DisplacementMarker[] = [];
+  private internalDisplacement: DisplacementMarker[] = [];
+  private displacementEvents: DisplacementMarker[] = [];
   private firmsFireData: Array<{ lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string }> = [];
   private techEvents: TechEventMarker[] = [];
   private techActivities: TechHubActivity[] = [];
@@ -2039,7 +2043,12 @@ export class MapComponent {
     if (layers.techHQs) add('techHQs', TECH_HQS);
     if (layers.accelerators) add('accelerators', ACCELERATORS);
     if (layers.techEvents) add('techEvents', this.techEvents);
-    if (layers.displacement) add('displacement', this.crossBorderPoints);
+    if (layers.displacement) {
+      add('displacement', this.crossBorderPoints);
+      for (const markers of [this.displacementFlows, this.internalDisplacement, this.displacementEvents]) {
+        add('displacement', markers, { rank: item => (item as DisplacementMarker).count });
+      }
+    }
     if (layers.stockExchanges) add('stockExchanges', STOCK_EXCHANGES);
     if (layers.financialCenters) add('financialCenters', FINANCIAL_CENTERS);
     if (layers.centralBanks) add('centralBanks', CENTRAL_BANKS);
@@ -2270,8 +2279,38 @@ export class MapComponent {
     const previousTarget = this.overlayAppendTarget;
     this.overlayAppendTarget = fragment;
 
+    // A viewport-only overlay refresh does not clear the dynamic SVG group.
+    this.dynamicLayerGroup?.selectAll('.displacement-route').remove();
     try {
     if (this.state.layers.displacement) {
+      const routeLayer = this.dynamicLayerGroup?.select('.overlays-svg');
+      const path = d3.geoPath().projection(projection);
+      for (const item of [...this.displacementFlows, ...this.internalDisplacement, ...this.displacementEvents]) {
+        if (this.isOverlayMarkerCut(item)) continue;
+        if (item.route) {
+          routeLayer?.append('path')
+            .attr('class', 'displacement-route')
+            .attr('d', path({ type: 'LineString', coordinates: item.route }))
+            .attr('fill', 'none').attr('stroke', item.color)
+            .attr('stroke-width', 2).attr('opacity', 0.7)
+            .attr('vector-effect', 'non-scaling-stroke').style('pointer-events', 'none');
+        }
+        const pos = projection([item.lon, item.lat]);
+        if (!pos) continue;
+        const marker = createDisplacementMarker(item);
+        marker.style.position = 'absolute';
+        marker.style.left = `${pos[0]}px`;
+        marker.style.top = `${pos[1]}px`;
+        marker.style.transform = 'translate(-50%, -50%) scale(var(--marker-scale, 1))';
+        marker.addEventListener('click', event => {
+          event.stopPropagation();
+          const rect = marker.getBoundingClientRect();
+          const containerRect = this.container.getBoundingClientRect();
+          this.popup.show({ type: 'displacement', data: item,
+            x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+        });
+        this.appendOverlay(marker);
+      }
       const offsets = crossBorderMarkerOffsets(this.crossBorderPoints);
       for (const point of this.crossBorderPoints) {
         if (this.isOverlayMarkerCut(point)) continue;
@@ -5208,6 +5247,21 @@ export class MapComponent {
 
   public setCrossBorderArrivals(data: CrossBorderData): void {
     this.crossBorderPoints = [...data.points, ...(data.deaths ?? [])];
+    this.render();
+  }
+
+  public setDisplacementFlows(flows: DisplacementFlow[]): void {
+    this.displacementFlows = displacementFlowMarkers(flows);
+    this.render();
+  }
+
+  public setInternalDisplacement(data: InternalDisplacementData): void {
+    this.internalDisplacement = internalDisplacementMarkers(data);
+    this.render();
+  }
+
+  public setDisplacementEvents(data: DisplacementEventsData): void {
+    this.displacementEvents = displacementEventMarkers(data);
     this.render();
   }
 
