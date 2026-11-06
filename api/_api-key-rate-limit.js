@@ -195,7 +195,22 @@ export async function reserveDailyMeter(opts) {
   }
   const incrRaw = pipeResult[0]?.result;
   const count = typeof incrRaw === 'number' ? incrRaw : Number(incrRaw);
+  // The member INCR is the third command. Track it on its own so a partial
+  // pipeline failure never leaves the member breakdown out of step with the
+  // pool: only a counter that was incremented is ever decremented.
+  const memberRaw = memberKey ? pipeResult[2]?.result : undefined;
+  const memberCount = typeof memberRaw === 'number' ? memberRaw : Number(memberRaw);
+  const memberCharged = Boolean(memberKey) && Number.isFinite(memberCount) && memberCount >= 1;
   if (!Number.isFinite(count) || count < 1) {
+    // Pool not charged: release a member charge that did land, then fail open.
+    if (memberCharged) {
+      try {
+        await pipeline([['DECR', memberKey]]);
+      }
+      catch {
+        // Best-effort.
+      }
+    }
     return { count: 0, overLimit: false, metered: false, retryAfterSec, rollback: noop };
   }
   let rolledBack = false;
@@ -204,7 +219,7 @@ export async function reserveDailyMeter(opts) {
       return;
     rolledBack = true;
     try {
-      await pipeline(memberKey ? [['DECR', key], ['DECR', memberKey]] : [['DECR', key]]);
+      await pipeline(memberCharged ? [['DECR', key], ['DECR', memberKey]] : [['DECR', key]]);
     }
     catch {
       // Best-effort: a failed DECR overshoots the meter by 1, the

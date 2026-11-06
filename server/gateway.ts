@@ -2317,6 +2317,17 @@ export function createDomainGateway(
     // request carries on its served response; set by the per-account block
     // below once the request is counted on the account's day key.
     let accountResponseHeaders: Record<string, string> | null = null;
+    // Releases the daily-meter charge (pooled account, per-user or desktop)
+    // for a request that ends without being served, and drops the overage
+    // marker and account headers with it. Idempotent.
+    let rollbackDailyMeter: (() => Promise<void>) | undefined;
+    const releaseDailyMeter = async (): Promise<void> => {
+      const rollback = rollbackDailyMeter;
+      rollbackDailyMeter = undefined;
+      usage.overage = null;
+      accountResponseHeaders = null;
+      if (rollback) await rollback();
+    };
 
     // Internal-MCP verified requests skip the remaining gateway layer: the MCP edge
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
@@ -2358,7 +2369,6 @@ export function createDomainGateway(
       // user keys resolve getEntitlements explicitly (cached); enterprise keys
       // carry no entitlement and use hardcoded limits.
       let governedByApiKeyLayer = false;
-      let rollbackDailyMeter: (() => Promise<void>) | undefined;
 
       // ── Per-account desktop-key meter (plan 2026-10-25-001, KTD6) ────────
       // One counter per OWNER per UTC day plus a per-minute burst bucket, so
@@ -2570,11 +2580,7 @@ export function createDomainGateway(
             })
           : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
-          await rollbackDailyMeter?.();
-          // The pooled count was released, so this request is neither
-          // overage nor carries the account's allowance headers.
-          usage.overage = null;
-          accountResponseHeaders = null;
+          await releaseDailyMeter();
           const reason = getRateLimitTelemetryReason(
             rateLimitResponse,
             'rate_limit_429_global',
@@ -2586,6 +2592,7 @@ export function createDomainGateway(
     }
 
     if (pendingPostToGetCompatError) {
+      await releaseDailyMeter();
       emitRequest(400, 'malformed_request', null);
       return pendingPostToGetCompatError;
     }
@@ -2620,6 +2627,7 @@ export function createDomainGateway(
         : null;
       const quotaUserId = operatorQuotaUserId ?? sessionUserId ?? dockerQuotaUserId;
       if (!quotaUserId) {
+        await releaseDailyMeter();
         emitRequest(401, 'auth_401', null);
         return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
       }
@@ -2659,6 +2667,7 @@ export function createDomainGateway(
           pipeline: (cmds) => runRedisPipeline(cmds, true),
         });
         if (!reservation.ok) {
+          await releaseDailyMeter();
           const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
           emitRequest(
             response.status,
@@ -2700,18 +2709,22 @@ export function createDomainGateway(
       switch (idempotency.kind) {
         case 'invalid':
           await releaseDirectLlmReservation();
+          await releaseDailyMeter();
           emitRequest(400, 'idempotency_invalid', null);
           return idempotency.response;
         case 'replay':
           await releaseDirectLlmReservation();
+          await releaseDailyMeter();
           emitRequest(idempotency.response.status, 'idempotent_replay', null);
           return idempotency.response;
         case 'conflict':
           await releaseDirectLlmReservation();
+          await releaseDailyMeter();
           emitRequest(409, 'idempotency_conflict', null);
           return idempotency.response;
         case 'mismatch':
           await releaseDirectLlmReservation();
+          await releaseDailyMeter();
           emitRequest(422, 'idempotency_mismatch', null);
           return idempotency.response;
         // 'disabled' (fail-open) and 'proceed' fall through to execution.
@@ -2740,7 +2753,10 @@ export function createDomainGateway(
       const userId = sessionUserId ?? usage.sessionUserId;
       const ent = !isEnterpriseAuth && userId ? (userKeyEntitlement ?? quotaEntitlements ?? await getEntitlements(userId)) : null;
       const denial = ent?.verificationUnavailable ? getBillingVerificationDenial(ent, corsHeaders) : null;
-      if (denial) return denial;
+      if (denial) {
+        await releaseDailyMeter();
+        return denial;
+      }
       bindCountryHistoryAccess(requestForHandler, isEnterpriseAuth ? 365 : countryHistoryDays(ent));
     }
     try {
@@ -2756,6 +2772,8 @@ export function createDomainGateway(
       );
     } catch (err) {
       console.error('[gateway] Unhandled handler error:', err);
+      // A crash in our handler is not a served request; do not bill it.
+      await releaseDailyMeter();
       response = new Response(JSON.stringify({ message: 'Internal server error' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },

@@ -309,6 +309,26 @@ describe("enterprise contract account — pooled REST metering", () => {
     expect(events.find((e) => e.event_type === "request")).toMatchObject({ account_id: "acct_hexion", overage: null });
   });
 
+  test("a handler crash releases the pooled and member counts and is not overage", async () => {
+    store.set(POOL_KEY, 10_500);
+    store.set(ALICE_KEY, 7);
+    const gateway = createDomainGateway([
+      {
+        method: "GET",
+        path: "/api/news/v1/list-feed-digest",
+        handler: async () => { throw new Error("handler exploded"); },
+      },
+    ]);
+    const res = await gateway(keyRequest("wm_key_alice"), ctx);
+    expect(res.status).toBe(500);
+    expect(res.headers.get("X-WorldMonitor-Overage")).toBeNull();
+    expect(res.headers.get("RateLimit-Limit")).toBeNull();
+    expect(store.get(POOL_KEY)).toBe(10_500);
+    expect(store.get(ALICE_KEY)).toBe(7);
+    await settle();
+    expect(events.find((e) => e.event_type === "request")).toMatchObject({ account_id: "acct_hexion", overage: null });
+  });
+
   test("burst limiter unavailable and fallback admits: served as overage with allowance headers", async () => {
     checkBurst.mockResolvedValue({ ok: null, reason: "timeout" });
     store.set(POOL_KEY, 10_500);

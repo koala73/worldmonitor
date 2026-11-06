@@ -157,6 +157,37 @@ describe('#3199 U3 — reserveDailyMeter', () => {
     ]]);
   });
 
+  it('a failed member INCR leaves the member counter untouched on rollback', async () => {
+    const commands: Array<Array<string | number>>[] = [];
+    const pipeline = async (cmds: Array<Array<string | number>>) => {
+      commands.push(cmds);
+      if (commands.length === 1) return [{ result: 7 }, { result: 1 }, { error: 'ERR' }, { result: 1 }];
+      return cmds.map(() => ({ result: 0 }));
+    };
+    const date = D(2026, 10, 6);
+    const r = await reserveDailyMeter({ userId: 'acct:acct_1', allowance: 50_000, pipeline, date, memberUserId: 'user_a' });
+    assert.equal(r.metered, true);
+    assert.equal(r.count, 7);
+    await r.rollback();
+    assert.deepEqual(commands.slice(1), [[['DECR', 'rl:apikey:day:acct:acct_1:2026-11-06']]]);
+  });
+
+  it('a failed pool INCR releases a member charge that landed and fails open', async () => {
+    const commands: Array<Array<string | number>>[] = [];
+    const pipeline = async (cmds: Array<Array<string | number>>) => {
+      commands.push(cmds);
+      if (commands.length === 1) return [{ error: 'ERR' }, { error: 'ERR' }, { result: 3 }, { result: 1 }];
+      return cmds.map(() => ({ result: 2 }));
+    };
+    const date = D(2026, 10, 6);
+    const r = await reserveDailyMeter({ userId: 'acct:acct_1', allowance: 50_000, pipeline, date, memberUserId: 'user_a' });
+    assert.equal(r.metered, false);
+    assert.equal(r.overLimit, false);
+    assert.deepEqual(commands.slice(1), [[['DECR', apiKeyMemberDailyKey('acct:acct_1', 'user_a', date)]]]);
+    await r.rollback();
+    assert.equal(commands.length, 2);
+  });
+
   it('a per-user meter writes no member key', async () => {
     const mock = makePipeline(0);
     await reserveDailyMeter({ userId: 'user_a', allowance: STARTER_ALLOWANCE, pipeline: mock.pipeline });

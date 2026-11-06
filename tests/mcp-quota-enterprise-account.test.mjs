@@ -192,6 +192,31 @@ describe('reserveQuota on an account pool', () => {
     assert.equal(redis.store.get(MEMBER), 40);
   });
 
+  it('a failed pool charge releases a member charge that landed and refuses the call', async () => {
+    const ops = [];
+    const pipeline = async (cmds) => {
+      ops.push(cmds);
+      if (ops.length === 1) return [{ error: 'ERR' }, { result: 41 }, { result: 1 }];
+      return cmds.map(() => ({ result: 40 }));
+    };
+    const res = await reserveQuota(PRO_USER_ID, pipeline, resolveAccountMcpBudget(ACCOUNT), 1);
+    assert.deepEqual(res, { ok: false, reason: 'redis-unavailable' });
+    assert.deepEqual(ops.slice(1), [[['DECRBY', MEMBER, 1]]]);
+  });
+
+  it('a failed member charge leaves the member key alone on rollback', async () => {
+    const ops = [];
+    const pipeline = async (cmds) => {
+      ops.push(cmds);
+      if (ops.length === 1) return [{ result: [1, 101] }, { error: 'ERR' }, { result: 1 }];
+      return cmds.map(() => ({ result: 100 }));
+    };
+    const res = await reserveQuota(PRO_USER_ID, pipeline, resolveAccountMcpBudget(ACCOUNT), 1);
+    assert.equal(res.ok, true);
+    await res.rollback();
+    assert.deepEqual(ops.slice(1), [[['DECRBY', POOL, 1]]]);
+  });
+
   it('at the safety limit the call is rejected and neither key keeps the charge', async () => {
     const redis = keyedPipeline({ [POOL]: 50_000, [MEMBER]: 9_000 });
     const res = await reserveQuota(PRO_USER_ID, redis.pipeline, resolveAccountMcpBudget(ACCOUNT), 1);
