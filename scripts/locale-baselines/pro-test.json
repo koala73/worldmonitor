@@ -312,7 +312,7 @@
   "proShowcase.subtitle": "The free dashboard shows you the world. Pro gives you an analyst to ask, a digest you subscribe to, and primitives to build on. Stocks, macro, geopolitical risk — and the connections between them.",
   "proShowcase.supplyChainLab": "Supply-Chain Stress Lab",
   "proShowcase.supplyChainLabDesc": "Model a cost shock across countries and sectors. Rank commodity vulnerability by chokepoint dependency. Track mine-to-refinery concentration and the SGE–COMEX physical premium divergence — the series that moves before the headline does.",
-  "proShowcase.title": "What does the World Monitor AI analyst do?",
+  "proShowcase.title": "An AI analyst for stocks, macro and geopolitics",
   "slackMock.elevated": "Macro",
   "slackMock.elevatedText": "ECB holds rates at 3.75%. Euro area GDP revised up to 1.1%. Central bank divergence widening — USD/EUR at 3-month high.",
   "slackMock.markets": "Markets",
@@ -590,6 +590,6 @@
   "whyUpgrade.fasterTitle": "Ask anything",
   "whyUpgrade.noiseDesc": "AIS anomaly → Brent spike → your Slack in under a minute. Signal, not headlines.",
   "whyUpgrade.noiseTitle": "Know first",
-  "whyUpgrade.title": "Why upgrade to World Monitor Pro?",
+  "whyUpgrade.title": "Hear about it before the headlines",
   "wired.asFeaturedIn": "As featured in"
 }

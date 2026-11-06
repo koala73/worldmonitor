@@ -21,7 +21,7 @@
     "asFeaturedIn": "Zmíněno v"
   },
   "whyUpgrade": {
-    "title": "Proč upgradovat na World Monitor Pro?",
+    "title": "Dozvězte se o tom dřív než titulky",
     "noiseTitle": "Vězte první",
     "noiseDesc": "AIS anomálie → skok Brent → váš Slack za méně než minutu. Signál, ne titulky.",
     "fasterTitle": "Zeptejte se na cokoli",
@@ -112,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "PRO ÚROVEŇ",
-    "title": "Co dělá analytik World Monitor AI?",
+    "title": "AI analytik pro akcie, makroekonomii a geopolitiku",
     "subtitle": "Dashboard zdarma vám ukazuje svět. Pro vám dává analytika k dotazování, digest k odběru a primitivy ke stavbě. Akcie, makro, geopolitické riziko — a souvislosti mezi nimi.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Globální analýza akcií s vizualizací finančních dat, cenových cílů analytiků a oceňovacích metrik. Sledujte, co hýbe trhy.",
