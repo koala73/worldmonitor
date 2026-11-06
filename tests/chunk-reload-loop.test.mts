@@ -150,16 +150,19 @@ describe('deferred Sentry loader claims its own chunk failures', () => {
     assert.equal(reloads, 0);
   });
 
-  it('claims a URL-less failure (Safari) during the Sentry load', async () => {
+  it('leaves a URL-less failure (Safari) to the guard, which reloads once', async () => {
     setWindow({ sessionStorage: fakeStorage(), localStorage: fakeStorage() });
-    const { installChunkReloadGuard } = await freshGuardModule();
-    const target = new EventTarget();
-    let reloads = 0;
-    installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { reloads += 1; } });
     const safari = new TypeError('Importing a module script failed.');
-    assert.equal(await sentryLoadAttempt(target, safari), safari);
-    await settle();
-    assert.equal(reloads, 0);
+    let reloads = 0;
+    for (let i = 0; i < 3; i += 1) {
+      const { installChunkReloadGuard } = await freshGuardModule();
+      const target = new EventTarget();
+      installChunkReloadGuard('build-A', { eventTarget: target, reload: () => { reloads += 1; } });
+      // Unclaimed, so Vite rejects with the original error.
+      assert.equal(await sentryLoadAttempt(target, safari), safari);
+      await settle();
+    }
+    assert.equal(reloads, 1, 'it may be an unrelated chunk such as App, so it keeps its one reload');
   });
 
   it('leaves another chunk failure during the Sentry load to the guard', async () => {

@@ -79,15 +79,16 @@ interface PreloadErrorTarget {
 }
 
 /**
- * True unless the failure names a hashed asset that is not a Sentry chunk.
- * Chrome and Firefox name the failed module's URL; Safari's `Importing a
- * module script failed.` names none, and inside the Sentry load window that
- * failure is the Sentry chunk's.
+ * True when the failure names a hashed Sentry asset. Chrome and Firefox name
+ * the failed module's URL. Safari's `Importing a module script failed.` names
+ * none, so it could be any chunk that fails during the Sentry load (a slow
+ * `import('./App')`, say); it is left to the chunk-reload guard, which spends
+ * at most one reload per build on it.
  */
 function isSentryChunkFailure(payload: unknown): boolean {
   const message = payload instanceof Error ? payload.message : String(payload ?? '');
   const asset = message.match(/\/assets\/([A-Za-z0-9_-]+)-[A-Za-z0-9_-]+\.(?:js|css)\b/);
-  return asset === null || asset[1]!.startsWith('sentry');
+  return asset !== null && asset[1]!.startsWith('sentry');
 }
 
 /**
