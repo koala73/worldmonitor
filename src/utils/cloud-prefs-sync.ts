@@ -596,15 +596,17 @@ interface AppliedMigrations {
 function applyMigrationsWithSchemaVersion(
   data: Record<string, unknown>,
   fromVersion: number,
+  germanRssAlreadyApplied = false,
 ): AppliedMigrations {
   if (fromVersion >= CURRENT_PREFS_SCHEMA_VERSION) {
     return { data, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION, dataChanged: false };
   }
+  const migrations = getMigrations();
   const migrated = applyMigrationChainWithSchemaVersion(
     data,
     fromVersion,
     CURRENT_PREFS_SCHEMA_VERSION,
-    getMigrations(),
+    germanRssAlreadyApplied ? { ...migrations, 10: (value) => value } : migrations,
     (version, migrationData) => (
       version === 5
       && isRegionalFeedRolloutMigrationAmbiguous(migrationData, getRegionalRolloutTargets())
@@ -675,7 +677,11 @@ function migrateLocalBlobIfNeeded(): PreparedCloudBlob | null {
   if (localSchema >= CURRENT_PREFS_SCHEMA_VERSION) {
     return { data: blob, schemaVersion: CURRENT_PREFS_SCHEMA_VERSION };
   }
-  const migrated = applyMigrationsWithSchemaVersion(blob, localSchema);
+  // App startup applies this local default before users can edit sources.
+  // Skip repeating it over later choices; incoming cloud rows still migrate.
+  const germanRssMarker = safeStorageGetChecked('worldmonitor-german-rss-sources-v1');
+  if (!germanRssMarker.ok) return null;
+  const migrated = applyMigrationsWithSchemaVersion(blob, localSchema, germanRssMarker.value === 'done');
   const migratedData = migrated.data as Record<string, string>;
   if (migratedData !== blob && !applyCloudBlob(migratedData)) {
     // The migrated blob did not land, so the local state is neither the old
