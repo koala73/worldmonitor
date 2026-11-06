@@ -3,6 +3,7 @@ import { getClientRateLimitKey } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { getOperatorKeys, timingSafeIncludes, sha256Hex } from '../_crypto.js';
 import { loadUpstashRatelimit } from '../_upstash-ratelimit.js';
+import { upstashRedisOptions } from '../_upstash-redis-options.js';
 import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '../_user-api-key.js';
 import { redirectDisplayHost } from './_redirect-uri.js';
 import { clientAllowsRedirectUri, clientDisplayInfo, describeClientFailure, isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
@@ -54,7 +55,7 @@ async function getRatelimit() {
   if (!url || !token) return null;
   const { Ratelimit, Redis } = await loadUpstashRatelimit();
   _rl = new Ratelimit({
-    redis: new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000), url, token }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(10, '60 s'),
     prefix: 'rl:oauth-authorize',
     analytics: false,

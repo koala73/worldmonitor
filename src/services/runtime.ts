@@ -499,9 +499,10 @@ export function installWebApiRedirect(): void {
    * For premium API paths, inject auth when the user has premium access but no
    * existing auth header is present. Priority order:
    *   1. Existing auth headers — left unchanged (API key users keep their flow)
-   *   2. WORLDMONITOR_API_KEY from runtime config → X-WorldMonitor-Key
-   *   3. Tester session (wm-pro-key / wm-widget-key HttpOnly cookie)
-   *   4. Clerk Pro session → Authorization: Bearer <token>
+   *   2. Tester session (wm-pro-key / wm-widget-key HttpOnly cookie)
+   *   3. Clerk Pro session → Authorization: Bearer <token>
+   * A desktop license key never reaches the renderer: the native sidecar
+   * attaches it, and web builds stopped bundling env secrets in #4784.
    * Runs on every web deployment (with or without API base redirect).
    * Returns the original init unchanged for non-premium paths (zero overhead).
    */
@@ -511,15 +512,6 @@ export function installWebApiRedirect(): void {
     const headers = new Headers(init?.headers);
     // Don't overwrite existing auth headers
     if (headers.has('Authorization') || headers.has('X-WorldMonitor-Key')) return init;
-    // WORLDMONITOR_API_KEY from env or runtime config
-    try {
-      const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
-      const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
-      if (wmKey) {
-        headers.set('X-WorldMonitor-Key', wmKey);
-        return { ...withCredentials(init), headers };
-      }
-    } catch { /* runtime-config unavailable — fall through */ }
     // Legacy test seam. In production, tester keys live in HttpOnly cookies
     // and are sent through credentials: 'include'.
     const { getBrowserTesterKey } = await import('@/services/widget-store');

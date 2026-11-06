@@ -1,6 +1,7 @@
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { loadUpstashRatelimit } from './_upstash-ratelimit.js';
+import { upstashRedisOptions } from './_upstash-redis-options.js';
 import {
   durationToSeconds,
   limitWithFallback,
@@ -19,10 +20,6 @@ export {
   hasCloudflareTransitProof,
   hasUnprovenCloudflareClientIp,
 } from './_client-ip.js';
-
-// Production uses two retries with capped jitter and a three-second operation
-// deadline. Skip SDK retries in fake-host fail-open / fail-closed tests.
-const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 
 const DEFAULT_RATE_LIMIT_SCOPE = 'global';
 const DEFAULT_RATE_LIMIT = 600;
@@ -49,7 +46,7 @@ async function getRatelimit(policy) {
 
   const { Ratelimit, Redis } = await loadUpstashRatelimit();
   const ratelimit = new Ratelimit({
-    redis: new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000), url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl' : `rl:${policy.scope}`,
     analytics: false,

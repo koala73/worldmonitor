@@ -17,6 +17,7 @@
 // X-RateLimit-* header shape), server/_shared/pro-mcp-token.ts UTC helpers.
 import { getKeyPrefix } from './_upstash-json.js';
 import { loadUpstashRatelimit } from './_upstash-ratelimit.js';
+import { upstashRedisOptions } from './_upstash-redis-options.js';
 
 /** Hardcoded per-minute burst for enterprise env keys — they carry no Convex
  *  entitlement (gateway.ts:1006-1007 skips checkEntitlement), so this cannot
@@ -38,14 +39,7 @@ async function getRedis() {
   if (!url || !token)
     return null;
   const { Redis } = await loadUpstashRatelimit();
-  // Skip the @upstash/redis retry backoff under the node test runner so
-  // fail-open tests pointed at a fake host degrade immediately; production
-  // uses two capped, jittered retries and a three-second deadline. Mirrors api/_rate-limit.js.
-  // `retry: false` must stay a literal (not a spread) or it widens to
-  // `boolean` and fails tsconfig.api.json's RetryConfig type.
-  redisSingleton = process.env.NODE_TEST_CONTEXT
-    ? new Redis({ signal: () => AbortSignal.timeout(3_000), url, token, retry: false })
-    : new Redis({ retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) }, signal: () => AbortSignal.timeout(3_000), url, token });
+  redisSingleton = new Redis(upstashRedisOptions(url, token));
   return redisSingleton;
 }
 /**

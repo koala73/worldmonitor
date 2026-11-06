@@ -18,11 +18,13 @@ await import('@/app/data-loader');
 
 describe('FIRMS timeout lock recovery (#6770)', () => {
   it('releases the fires key after the RPC deadline and permits a retry', async () => {
-    const timeoutControllers: AbortController[] = [];
+    // premiumFetch adds a 120s outer bound, so fetch receives the 20s RPC
+    // deadline combined with it. Key the controllers by delay: only the 20s
+    // deadline may settle the load.
+    const timeoutControllers = new Map<number, AbortController>();
     const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((delay) => {
-      expect([20_000, 120_000]).toContain(delay);
       const controller = new AbortController();
-      timeoutControllers.push(controller);
+      timeoutControllers.set(delay, controller);
       return controller.signal;
     });
 
@@ -30,9 +32,16 @@ describe('FIRMS timeout lock recovery (#6770)', () => {
       if (fetchMock.mock.calls.length === 1) {
         return await new Promise<Response>((_resolve, reject) => {
           const signal = init?.signal;
+          const rpcDeadline = timeoutControllers.get(20_000);
           expect(signal).toBeInstanceOf(AbortSignal);
+          expect(rpcDeadline).toBeDefined();
           signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
-          queueMicrotask(() => timeoutControllers[0]?.abort(new DOMException('deadline', 'TimeoutError')));
+          queueMicrotask(() => {
+            rpcDeadline?.abort(new DOMException('deadline', 'TimeoutError'));
+            // The signal fetch holds must be wired to the 20s RPC deadline.
+            expect(signal?.aborted).toBe(true);
+            expect(timeoutControllers.get(120_000)?.signal.aborted).toBe(false);
+          });
         });
       }
 
@@ -66,7 +75,7 @@ describe('FIRMS timeout lock recovery (#6770)', () => {
 
     await loader.loadDataForLayer('fires');
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(timeoutSpy).toHaveBeenCalledTimes(4);
+    expect(timeoutSpy.mock.calls.map(([delay]) => delay)).toEqual([20_000, 120_000, 20_000, 120_000]);
     expect(layerLoading.mock.calls).toEqual([
       ['fires', true],
       ['fires', false],

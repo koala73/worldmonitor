@@ -1,5 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { upstashRedisOptions } from '../_upstash-redis-options.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
@@ -78,7 +79,7 @@ function getMcpRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp',
     analytics: false,
@@ -125,7 +126,7 @@ function getMcpProMinRatelimit(perMinute: number): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   const limiter = new Ratelimit({
-    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(perMinute, '60 s'),
     prefix: 'rl:mcp:pro-min',
     analytics: false,
@@ -140,7 +141,7 @@ function getMcpAnonRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpAnonRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp:anon',
     analytics: false,
@@ -1047,7 +1048,7 @@ function getMcpFreeTierRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpFreeTierRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(FREE_TIER_LIMIT_PER_MINUTE, '60 s'),
     prefix: 'rl:mcp:free',
     analytics: false,
