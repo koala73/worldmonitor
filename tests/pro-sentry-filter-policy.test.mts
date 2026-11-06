@@ -1765,3 +1765,46 @@ describe('MARKETING_IGNORE_ERRORS — Android WebView autofill globals (WORLDMON
     assert.deepEqual(offenders, []);
   });
 });
+
+describe('marketingBeforeSend — Firefox bare-primitive throw (WORLDMONITOR-1CH)', () => {
+  // The production shape: one synthesized frame on the document URL, line 0.
+  const docOnly = (value: string): PolicyEvent => ({
+    exception: {
+      values: [{
+        type: 'Error',
+        value,
+        stacktrace: { frames: [{ filename: 'https://www.worldmonitor.app/pro', lineno: 0 }] },
+      }],
+    },
+  });
+
+  it('drops "uncaught exception: undefined" with only the document frame', () => {
+    assert.equal(marketingBeforeSend(docOnly('uncaught exception: undefined')), null);
+  });
+
+  it('drops the null variant', () => {
+    assert.equal(marketingBeforeSend(docOnly('uncaught exception: null')), null);
+  });
+
+  it('keeps the same message when a first-party asset frame is on the stack', () => {
+    const ev = event('uncaught exception: undefined', [
+      'https://www.worldmonitor.app/pro',
+      'https://www.worldmonitor.app/pro/assets/index-abc123.js',
+    ]);
+    assert.notEqual(marketingBeforeSend(ev), null);
+  });
+
+  it('keeps a thrown object', () => {
+    assert.notEqual(marketingBeforeSend(docOnly('uncaught exception: [object Object]')), null);
+  });
+
+  it('pins the marketing surface free of bare-primitive throws, which is what licenses the rule', () => {
+    const stripComments = (src: string) => src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const offenders = marketingFirstPartySources()
+      .filter((f) => /throw\s+(?:undefined|null|void 0)(?:[^A-Za-z0-9_$]|$)/m.test(stripComments(f.code)))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [], 'a first-party bare-primitive throw — re-derive the WORLDMONITOR-1CH rule');
+  });
+});

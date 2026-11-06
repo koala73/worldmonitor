@@ -503,6 +503,8 @@ const MODULE_LOAD_FAILURE =
  * infinitely, and suppressing this by message alone would hide it.
  */
 const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
+/** Firefox's `onerror` message for `throw undefined` / `throw null`. */
+const BARE_PRIMITIVE_THROW = /^(?:Error: )?uncaught exception: (?:undefined|null)$/;
 /**
  * A fetch cancelled by a bare `AbortController.abort()`, in the engine's own
  * default wording. Deliberately NOT in `MARKETING_IGNORE_ERRORS`: this bundle
@@ -685,6 +687,20 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // loop in this bundle — the realistic first-party cause — still pages
   // (WORLDMONITOR-103).
   if (!hasFirstParty && STACK_OVERFLOW.test(msg)) return null;
+
+  // Firefox's `onerror` wording for a script that throws a bare primitive
+  // (`throw undefined` / `throw null`). WORLDMONITOR-1CH is the shape: Firefox
+  // 159 / Windows at `/pro`, one synthesized frame on the document URL at line
+  // 0, no breadcrumbs. A primitive carries no stack, so the frame names no
+  // script at all. The dashboard drops the same signature (WORLDMONITOR-106);
+  // the two surfaces run separate Sentry clients.
+  //
+  // Licensed by a source invariant, not by the frame shape: no first-party
+  // source on this surface, inline HTML scripts included, throws a bare
+  // primitive, and `tests/pro-sentry-filter-policy.test.mts` pins that. Gated
+  // on `!hasFirstParty` so a stack that does name `/pro/assets/*.js` still
+  // reports, and `[object Object]` (a thrown object) is not matched.
+  if (!hasFirstParty && BARE_PRIMITIVE_THROW.test(msg)) return null;
 
   // A leaked fetch cancellation. WORLDMONITOR-11M is the shape: `AbortError:
   // The user aborted a request.` (`DOMException.code: 20`) on Chrome 151 /
