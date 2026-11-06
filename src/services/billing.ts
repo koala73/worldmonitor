@@ -625,7 +625,6 @@ export interface EnterpriseSeatsView {
   seatsUsed: number;
   contractEnd: number;
   contractEnded: boolean;
-  adminIsCorporateDomain: boolean;
   /** The full roster for the admin; empty for other members. */
   seats: EnterpriseSeat[];
 }

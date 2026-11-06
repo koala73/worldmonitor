@@ -31,10 +31,9 @@ function adminView(overrides: Partial<EnterpriseSeatsView> = {}): EnterpriseSeat
     seatsUsed: 3,
     contractEnd: Date.UTC(2027, 10, 2),
     contractEnded: false,
-    adminIsCorporateDomain: true,
     seats: [
-      { memberId: 'm1', email: 'chinmay@hexion.com', status: 'active', role: 'admin', isSelf: true, invitedAt: 1, joinedAt: 1, inviteExpiresAt: null },
-      { memberId: 'm2', email: 'priyatham@hexion.com', status: 'active', role: 'member', isSelf: false, invitedAt: 1, joinedAt: 1, inviteExpiresAt: null },
+      { memberId: 'm1', email: 'admin@hexion.com', status: 'active', role: 'admin', isSelf: true, invitedAt: 1, joinedAt: 1, inviteExpiresAt: null },
+      { memberId: 'm2', email: 'analyst@hexion.com', status: 'active', role: 'member', isSelf: false, invitedAt: 1, joinedAt: 1, inviteExpiresAt: null },
       { memberId: 'm4', email: 'pending@hexion.com', status: 'pending', role: 'member', isSelf: false, invitedAt: 1, joinedAt: null, inviteExpiresAt: Date.UTC(2026, 10, 20) },
     ],
     ...overrides,
@@ -118,7 +117,7 @@ describe('EnterpriseSeatsSection', () => {
     view = adminView();
     await section.load();
     await section.handleRemove('m2');
-    expect(globalThis.confirm).toHaveBeenCalledWith(expect.stringContaining('priyatham@hexion.com'));
+    expect(globalThis.confirm).toHaveBeenCalledWith(expect.stringContaining('analyst@hexion.com'));
     expect(removeEnterpriseMember).toHaveBeenCalledWith('m2');
   });
 

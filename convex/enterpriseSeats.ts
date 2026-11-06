@@ -110,8 +110,6 @@ export const listMySeats = query({
       .collect();
     const seatsUsed = rows.filter((m) => holdsSeat(m, now)).length;
     const isAdmin = self.role === "admin";
-    const identity = await resolveUserIdentity(ctx);
-    const adminEmail = identity?.email?.trim() ?? "";
 
     const seats = isAdmin
       ? await Promise.all(
@@ -139,7 +137,6 @@ export const listMySeats = query({
       seatsUsed,
       contractEnd: account.contractEnd,
       contractEnded: now >= account.contractEnd,
-      adminIsCorporateDomain: adminEmail ? isCorporateDomain(adminEmail) : false,
       seats,
     };
   },

@@ -104,7 +104,7 @@ export class EnterpriseSeatsSection {
         </div>`;
     }
 
-    const canInvite = !view.contractEnded && view.adminIsCorporateDomain && !full;
+    const canInvite = !view.contractEnded && !full;
     const hint = view.contractEnded
       ? 'Your Enterprise contract has ended. Contact support to renew.'
       : full
