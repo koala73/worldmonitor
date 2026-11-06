@@ -301,6 +301,11 @@ async function refreshClerkTokenAfterRejection(rejected: string): Promise<string
  * Whether the request can be sent a second time unchanged. A stream body is
  * consumed by the first send, and a `Request` input carries its own body.
  */
+/** Carries a caller's abort reason, whatever its type, past the auth catch. */
+class CallerAbort {
+  constructor(readonly reason: unknown) {}
+}
+
 /** `work`, or a rejection with the signal's reason as soon as it aborts. */
 function untilAborted<T>(work: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
   if (!signal) return work;
@@ -416,7 +421,10 @@ export async function premiumFetch(
         // no longer accepts (Sentry WORLDMONITOR-1CM: eight country-brief calls
         // 401'd while a sibling 300 ms later on a refreshed token got 200).
         // Refresh once and replay; a second 401 is final.
-        if (res.status !== 401 || requestInit?.signal?.aborted || !isReplayableRequest(input, requestInit)) {
+        // fetch() honours `init.signal` over a Request's own signal; mirror that.
+        const callerSignal = requestInit?.signal
+          ?? (typeof Request !== 'undefined' && input instanceof Request ? input.signal : undefined);
+        if (res.status !== 401 || callerSignal?.aborted || !isReplayableRequest(input, requestInit)) {
           return res;
         }
         // The refresh is shared with sibling requests, so a caller that gives up
@@ -425,7 +433,7 @@ export async function premiumFetch(
         // the catch below would send a third, anonymous request and replace a
         // signed-in answer with an anonymous one. Cancellation still propagates.
         try {
-          const fresh = await untilAborted(refreshClerkTokenAfterRejection(token), requestInit?.signal);
+          const fresh = await untilAborted(refreshClerkTokenAfterRejection(token), callerSignal);
           if (!fresh) return res;
           const replayHeaders = new Headers(existing);
           replayHeaders.set('Authorization', `Bearer ${fresh}`);
@@ -434,11 +442,15 @@ export async function premiumFetch(
             { ...withCredentials(requestInit), headers: replayHeaders },
           );
         } catch (replayError) {
+          // A caller's custom abort reason is not an AbortError; surface it
+          // past the outer catch rather than turning it into this 401.
+          if (callerSignal?.aborted) throw new CallerAbort(callerSignal.reason);
           if (isTimeoutOrAbortError(replayError)) throw replayError;
           return res;
         }
       }
     } catch (error) {
+      if (error instanceof CallerAbort) throw error.reason;
       if (isTimeoutOrAbortError(error)) throw error;
       /* not signed in — fall through */
     }

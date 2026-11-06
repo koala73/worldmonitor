@@ -556,6 +556,65 @@ describe('premiumFetch', () => {
     assert.equal(fetchMock.mock.calls.length, 1, 'no replay after the caller gave up');
   });
 
+  it('premium path: a Request input aborted during the refresh rejects, with no replay', async () => {
+    let refreshStarted!: () => void;
+    const started = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: () => { refreshStarted(); return new Promise<string | null>(() => {}); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+    const controller = new AbortController();
+
+    const pending = premiumFetch(new Request(TARGET, { signal: controller.signal }));
+    await started;
+    controller.abort();
+
+    await assert.rejects(pending, (err: unknown) => (err as Error).name === 'AbortError');
+    assert.equal(fetchMock.mock.calls.length, 1);
+  });
+
+  it('premium path: a custom abort reason during the refresh propagates as-is', async () => {
+    let refreshStarted!: () => void;
+    const started = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: () => { refreshStarted(); return new Promise<string | null>(() => {}); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+    const controller = new AbortController();
+    const reason = new Error('panel closed');
+
+    const pending = premiumFetch(TARGET, { signal: controller.signal });
+    await started;
+    controller.abort(reason);
+
+    await assert.rejects(pending, (err: unknown) => err === reason);
+    assert.equal(fetchMock.mock.calls.length, 1, 'no replay and no anonymous fallback');
+  });
+
+  for (const name of ['AbortError', 'TimeoutError']) {
+    it(`premium path: a replay cancelled with ${name} rejects, with no third request`, async () => {
+      _setTestProviders({
+        getTesterKeys: () => [],
+        getClerkToken: async () => 'stale-jwt',
+        refreshClerkTokenAfterRejection: async () => 'fresh-jwt',
+      });
+      let n = 0;
+      fetchMock.mock.resetCalls();
+      fetchMock.mock.mockImplementation(() => (n++ === 0
+        ? Promise.resolve(fakeRes(401))
+        : Promise.reject(new DOMException('cancelled', name))));
+
+      await assert.rejects(premiumFetch(TARGET), (err: unknown) => (err as Error).name === name);
+      assert.equal(fetchMock.mock.calls.length, 2);
+    });
+  }
+
   it('premium path: a refresh that throws returns the 401, never an anonymous third request', async () => {
     _setTestProviders({
       getTesterKeys: () => [],
