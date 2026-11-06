@@ -19167,7 +19167,8 @@ button.popup-link {
 /* deck.gl Time Slider */
 .map-distance-control {
   position: absolute;
-  top: 118px;
+  /* Reserve the navigation column, including its optional clear-trails button. */
+  top: 150px;
   right: 10px;
   z-index: 500;
   display: flex;
@@ -19175,7 +19176,7 @@ button.popup-link {
   align-items: flex-end;
   gap: 6px;
   max-width: calc(100% - 20px);
-  max-height: calc(100% - 128px);
+  max-height: calc(100% - 160px);
   color: var(--text);
   font-size: 12px;
 }

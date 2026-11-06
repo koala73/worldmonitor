@@ -89,6 +89,7 @@ test('scale reflects latitude and resized light and dark panels', async ({ page 
     await page.evaluate(theme => {
       document.documentElement.dataset.theme = theme;
       document.getElementById('app')!.style.cssText = 'width:360px;height:300px;min-width:0;min-height:0;position:relative;margin:0';
+      document.querySelector<HTMLElement>('.map-clear-trails-btn')!.style.display = '';
       localStorage.setItem('wm-map-provider', 'openfreemap');
       localStorage.setItem('wm-map-theme:openfreemap', theme === 'light' ? 'positron' : 'dark');
       window.dispatchEvent(new CustomEvent('map-theme-changed'));
@@ -96,6 +97,8 @@ test('scale reflects latitude and resized light and dark panels', async ({ page 
     }, theme);
     await page.setViewportSize({ width: 390, height: 460 });
     await expect(scale).toBeVisible();
+    const trailsBottom = await page.locator('.map-clear-trails-btn').evaluate(el => el.getBoundingClientRect().bottom);
+    expect((await scale.boundingBox())!.y).toBeGreaterThan(trailsBottom);
     await page.getByRole('button', { name: 'Measure distance', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Exit measurement' })).toBeVisible();
     const fits = await page.locator('.map-distance-control').evaluate(el => {
