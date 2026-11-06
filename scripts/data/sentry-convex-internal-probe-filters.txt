@@ -167,6 +167,15 @@
 *Could not find public function for 'embedKeys:createEmbedKeyForUser'*
 *Could not find public function for 'embedKeys:touchKeyLastUsed'*
 *Could not find public function for 'embedKeys:validateKeyByHash'*
+*Could not find public function for 'enterpriseAccounts:addMemberByUserId'*
+*Could not find public function for 'enterpriseAccounts:createAccount'*
+*Could not find public function for 'enterpriseAccounts:getAccountWithMembers'*
+*Could not find public function for 'enterpriseAccounts:getLiveAccountBlockByUserId'*
+*Could not find public function for 'enterpriseAccounts:listAccounts'*
+*Could not find public function for 'enterpriseAccounts:recomputeAccountMembers'*
+*Could not find public function for 'enterpriseAccounts:removeMember'*
+*Could not find public function for 'enterpriseAccounts:setAdmin'*
+*Could not find public function for 'enterpriseAccounts:updateAccount'*
 *Could not find public function for 'entitlements:clearAiRoutingPolicy'*
 *Could not find public function for 'entitlements:getAiRoutingPolicyByUserId'*
 *Could not find public function for 'entitlements:getEntitlementsByUserId'*

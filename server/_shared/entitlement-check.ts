@@ -125,6 +125,24 @@ export interface CachedEntitlements {
     };
   };
   validUntil: number;
+  /**
+   * Enterprise contract account (convex/enterpriseAccounts.ts), present only
+   * while the user is an active member of a LIVE contract — whichever source
+   * won the entitlement recompute. Its members share these pooled limits.
+   * Absent for everyone else; consumers must not infer membership from
+   * `planKey === 'enterprise'` (a comp can produce that without an account).
+   */
+  account?: {
+    id: string;
+    /** Pooled REST requests per UTC day across all members. */
+    dailyAllowance: number;
+    /** Pooled requests per minute across all members. */
+    perMinuteBurst: number;
+    /** Multiple of the allowance at which a hard stop trips (default 5). */
+    breakerMultiple: number;
+    monthlyInputTokens: number;
+    monthlyOutputTokens: number;
+  };
   billingStatus?: BillingVerificationStatus;
   retryAfterSeconds?: number;
   renewalVerificationFreshness?: {

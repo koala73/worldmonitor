@@ -49,8 +49,15 @@ export const syncEntitlementCache = internalAction({
     features: entitlementFeaturesValidator,
     validUntil: v.number(),
   },
-  handler: async (_ctx, args) => {
-    await writeEntitlementCacheToRedis(args.userId, args);
+  handler: async (ctx, args) => {
+    // The Enterprise `account` block is not part of the caller's snapshot
+    // (several callers sync a bare row), so read it when the write happens;
+    // without it a member's cached entitlement would lose the block until the
+    // entry expired. Skipped when Redis is not configured (no write follows).
+    const account = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+      ? await ctx.runQuery(internal.enterpriseAccounts.getLiveAccountBlockByUserId, { userId: args.userId })
+      : null;
+    await writeEntitlementCacheToRedis(args.userId, account ? { ...args, account } : args);
   },
 });
 
@@ -76,7 +83,7 @@ export const resyncEntitlementCacheFromDb = internalAction({
 
 async function writeEntitlementCacheToRedis(
   userId: string,
-  payload: { planKey: string; features: unknown; validUntil: number },
+  payload: { planKey: string; features: unknown; validUntil: number; account?: unknown },
 ): Promise<void> {
     const url = process.env.UPSTASH_REDIS_REST_URL;
     const token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -93,6 +100,7 @@ async function writeEntitlementCacheToRedis(
       planKey: payload.planKey,
       features: payload.features,
       validUntil: payload.validUntil,
+      ...(payload.account ? { account: payload.account } : {}),
     });
 
     const controller = new AbortController();

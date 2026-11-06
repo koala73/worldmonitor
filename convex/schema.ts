@@ -919,6 +919,61 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
 
+  // Enterprise contract accounts (convex/enterpriseAccounts.ts). One row per
+  // contract customer: its members share one request pool and one AI token
+  // allowance. Not keyed to a Dodo subscription; an operator creates and edits
+  // it. "Ended" is derived (contractEnd <= now), never stored.
+  enterpriseAccounts: defineTable({
+    name: v.string(),
+    contractStart: v.number(),
+    contractEnd: v.number(),
+    dailyRequestAllowance: v.number(),
+    perMinuteBurst: v.number(),
+    monthlyInputTokens: v.number(),
+    monthlyOutputTokens: v.number(),
+    overagePerThousandRequestsUsd: v.number(),
+    overagePerMillionInputTokensUsd: v.number(),
+    overagePerMillionOutputTokensUsd: v.number(),
+    breakerMultiple: v.number(),
+    seatCap: v.number(),
+    // AI routing policy every active member inherits (and keeps after the
+    // contract ends, until removed). Same provider names as aiRoutingPolicies.
+    allowedProviders: v.array(v.string()),
+    // Pending recomputes at contractStart / contractEnd, replaced on edit.
+    contractStartJobId: v.optional(v.id("_scheduled_functions")),
+    contractEndJobId: v.optional(v.id("_scheduled_functions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_name", ["name"]),
+
+  // Membership of an enterprise account. `userId` is optional because a
+  // pending email invite has no account yet; `email` is stored lowercased.
+  // Active + pending rows count against the seat cap. Removed rows stay as
+  // history. A membership row, not a comp grant, is the entitlement source.
+  enterpriseMembers: defineTable({
+    accountId: v.id("enterpriseAccounts"),
+    userId: v.optional(v.string()),
+    email: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("pending"), v.literal("removed")),
+    role: v.union(v.literal("admin"), v.literal("member")),
+    invitedAt: v.optional(v.number()),
+    joinedAt: v.optional(v.number()),
+    removedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_accountId", ["accountId"])
+    .index("by_userId", ["userId"])
+    .index("by_email", ["email"])
+    .index("by_status", ["status"]),
+
+  // Per-account serialization row for the seat cap, mirroring
+  // businessSeatLocks: every mutation that changes an account's seats reads
+  // AND writes this row so concurrent adds cannot both pass the cap check.
+  enterpriseAccountLocks: defineTable({
+    accountId: v.id("enterpriseAccounts"),
+    lastTouchedAt: v.number(),
+  }).index("by_accountId", ["accountId"]),
+
   apiUsageRollups: defineTable({
     userId: v.string(),
     planKey: v.string(),
