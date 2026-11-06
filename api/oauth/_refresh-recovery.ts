@@ -42,6 +42,9 @@
  * every refresh and every MCP request (positive results are never cached), and
  * a dashboard key is re-validated on bearer use behind a 60-second cache.
  */
+// @ts-expect-error — JS module, no declaration file
+import { sha256Hex } from '../_crypto.js';
+
 export const REFRESH_TTL_SECONDS = 30 * 24 * 3600;
 export const REFRESH_ATTEMPT_TTL_SECONDS = 60;
 /**
@@ -143,6 +146,7 @@ export function refreshSuccessorKey(refreshTokenHash: string): string {
   return `oauth:famsucc:${refreshTokenHash}`;
 }
 
+/** Stored value of the grace record; `kind` tags it so a parser can reject other shapes. */
 export function serializeRefreshSuccessor(record: Omit<RefreshSuccessorRecord, 'kind'>): string {
   return JSON.stringify({ kind: 'refresh_successor', ...record } satisfies RefreshSuccessorRecord);
 }
@@ -322,6 +326,12 @@ function parseStoredJson(value: unknown): unknown {
   }
 }
 
+/**
+ * Consume a refresh token and open its recovery attempt in one script. A hit
+ * returns the record and its remaining lifetime; a miss reports whether an
+ * attempt is pending, the family pointer, and whether the in-flight marker is
+ * still present (an orphaned claim when no attempt is pending).
+ */
 export async function rawRedisBeginRefreshAttempt(
   refreshToken: string,
   attemptId: string,
@@ -378,6 +388,13 @@ export async function rawRedisBeginRefreshAttempt(
   };
 }
 
+/**
+ * Put a consumed refresh token back, fenced on the attempt that consumed it.
+ * A restore means the rotation did not happen, so any successor record the
+ * attempt's storage pipeline may have committed before reporting failure is
+ * removed too: otherwise a later consumer of the restored token and an
+ * overlapping grace replay would hand out two different live pairs.
+ */
 export async function rawRedisRestoreRefreshAttempt(
   refreshToken: string,
   attemptValue: string,
@@ -389,6 +406,7 @@ export async function rawRedisRestoreRefreshAttempt(
   // extend it. Legacy persistent records fall back to the pointer's lifetime.
   const script = [
     "if redis.call('GET', KEYS[3]) ~= ARGV[1] then return 0 end",
+    "redis.call('DEL', KEYS[4])",
     'local expiresAt = tonumber(ARGV[5])',
     'local ttl',
     'if expiresAt then',
@@ -413,6 +431,7 @@ export async function rawRedisRestoreRefreshAttempt(
       `oauth:refresh:${refreshToken}`,
       refreshFamilyPointerKey(refreshToken),
       refreshFamilyAttemptKey(refreshToken),
+      refreshSuccessorKey(await sha256Hex(refreshToken)),
     ],
     [
       attemptValue,

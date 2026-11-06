@@ -182,6 +182,9 @@ function makeRedis() {
       const attemptKey = `oauth:famattempt:${refreshToken}`;
       ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue, expiresAtMs });
       if (store.get(attemptKey) !== attemptValue) return false;
+      // Mirror production: a restore undoes the rotation, so the grace record
+      // its storage pipeline may have committed goes with it.
+      store.delete(await successorKeyFor(refreshToken));
       store.set(`oauth:refresh:${refreshToken}`, JSON.stringify(refreshData));
       if (familyId) store.set(`oauth:famptr:${refreshToken}`, JSON.stringify(familyId));
       store.delete(attemptKey);
@@ -487,13 +490,17 @@ describe('OAuth Redis refresh-attempt production contract', () => {
 
       const restore = JSON.parse(calls[0].init.body);
       assert.equal(restore[0], 'EVAL');
-      assert.deepEqual(restore.slice(3, 6), [
+      assert.equal(restore[2], '4');
+      assert.deepEqual(restore.slice(3, 7), [
         'oauth:refresh:rt-contract',
         'oauth:famptr:rt-contract',
         'oauth:famattempt:rt-contract',
+        await successorKeyFor('rt-contract'),
       ]);
-      assert.equal(restore[8], JSON.stringify('fam-contract'));
-      assert.equal(restore[10], 1700000000400);
+      assert.equal(restore[9], JSON.stringify('fam-contract'));
+      assert.equal(restore[11], 1700000000400);
+      // The grace record is dropped right after the fence, on every branch.
+      assert.match(restore[1], /^if redis\.call\('GET', KEYS\[3\]\) ~= ARGV\[1\] then return 0 end\nredis\.call\('DEL', KEYS\[4\]\)\n/);
       assert.match(restore[1], /local expiresAt = tonumber\(ARGV\[5\]\)/);
       assert.match(restore[1], /redis\.call\('PTTL', KEYS\[2\]\)/);
       assert.match(restore[1], /'PX', ttl\)/);
@@ -1950,6 +1957,58 @@ describe('SM-092 tokenHandler — same-client retries inside the replay grace wi
     const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-malformed', client_id: CLIENT_ID }), deps);
     assert.equal(replay.status, 400);
     assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+  });
+
+  it('a restore removes the grace record its pipeline committed, so retries cannot fork into two chains', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalPipeline = redis.redisPipeline;
+    let reportFailureOnce = true;
+    redis.redisPipeline = async (commands) => {
+      const results = await originalPipeline(commands); // Redis committed every SET...
+      if (reportFailureOnce && commands.some((cmd) => String(cmd[1]).startsWith('oauth:famsucc:'))) {
+        reportFailureOnce = false;
+        return null; // ...but the edge never saw the pipeline response.
+      }
+      return results;
+    };
+    let validations = 0;
+    let signalSecondStarted;
+    const secondStarted = new Promise((resolve) => { signalSecondStarted = resolve; });
+    let releaseSecond;
+    const secondReleased = new Promise((resolve) => { releaseSecond = resolve; });
+    const { deps } = makeDeps({
+      redis,
+      validateProMcpToken: async () => {
+        validations += 1;
+        if (validations === 2) { signalSecondStarted(); await secondReleased; }
+        return { ok: 'valid', userId: USER_ID };
+      },
+    });
+    const FAMILY = 'fam_restore_fork';
+    seedProRefresh(redis, 'rt-fork', FAMILY);
+
+    // Pair B is stored, the response is lost, the handler restores A.
+    const first = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fork', client_id: CLIENT_ID }), deps);
+    assert.equal(first.status, 503);
+    assert.ok(redis.store.has('oauth:refresh:rt-fork'), 'A is restored');
+    assert.equal(redis.store.has(await successorKeyFor('rt-fork')), false, 'the stale record for B is gone with the restore');
+
+    // A second caller consumes restored A and pauses mid-validation; an
+    // overlapping third caller must wait, not be handed B.
+    const secondPending = tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fork', client_id: CLIENT_ID }), deps);
+    await secondStarted;
+    const third = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fork', client_id: CLIENT_ID }), deps);
+    assert.equal(third.status, 503);
+    releaseSecond();
+    const second = await secondPending;
+    assert.equal(second.status, 200);
+    const pairC = await second.json();
+
+    const thirdRetry = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fork', client_id: CLIENT_ID }), deps);
+    assert.equal(thirdRetry.status, 200);
+    assert.deepEqual(await thirdRetry.json(), pairC, 'every retry converges on the one chain that finalized');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
   });
 
   it('a successor in a family revoked meanwhile is not handed back', async () => {

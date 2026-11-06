@@ -351,6 +351,7 @@ interface RefreshSuccessorWrite {
   value: string;
 }
 
+/** Pipeline command for the grace record, or nothing when no token is being replaced. */
 function successorWriteCommands(successor: RefreshSuccessorWrite | undefined): PipelineCommand[] {
   if (!successor) return [];
   return [['SET', successor.key, successor.value, 'EX', REFRESH_REPLAY_GRACE_SECONDS]];
@@ -933,6 +934,7 @@ async function replayRefreshSuccessor(
   });
 }
 
+/** Grace record for the pair that replaces the token at `key`, stamped with the rotation time. */
 function refreshSuccessorWrite(
   key: string,
   clientId: string,

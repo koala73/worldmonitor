@@ -83,12 +83,19 @@ Reuse still revokes the family when any of these holds:
 What an attacker gains: with a stolen refresh token and the public
 `client_id`, presenting the token within 60 seconds after the victim rotates
 it (or vice versa) hands both parties the same pair instead of revoking the
-family. To stay undetected the attacker must keep every rotation inside a
-60-second window of the victim's, which a lazily refreshing MCP host does not
-make predictable; the first rotation outside the window revokes the family as
-before. Previously an attacker who rotated first was contained at the victim's
-next refresh. The window trades that one-rotation containment delay for not
-signing out every connector whose retry crossed a lost response.
+family. An attacker who manages to interleave every one of their rotations
+inside a 60-second window of the victim's can coexist with the victim across
+generations, undetected, for as long as that timing holds; a lazily
+refreshing MCP host does not make the victim's timing predictable, and the
+first rotation outside the window revokes the family as before. Previously an
+attacker who rotated first was contained at the victim's next refresh, with
+no timing to get right. The window trades that guarantee for not signing out
+every connector whose retry crossed a lost response.
+
+A restore (the rotation did not happen) deletes the grace record its storage
+pipeline may have committed before the response was lost. Without that, a
+later consumer of the restored token and an overlapping grace replay would
+hand out two different live pairs and fork the family into two chains.
 
 Storage exposure: the successor pair sits in a Redis value. The raw tokens are
 already the key names of `oauth:token:<uuid>`, `oauth:refresh:<uuid>` and
