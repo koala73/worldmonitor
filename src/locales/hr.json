@@ -1580,6 +1580,20 @@
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
         }
+      },
+      "measure": {
+        "title": "Izmjeri udaljenost",
+        "units": "Jedinice udaljenosti",
+        "pointA": "Odaberi točku A. Klikni na kartu ili pritisni Enter na sredini karte.",
+        "pointB": "Odaberi točku B. Pomakni kartu i pritisni Enter za njenu sredinu.",
+        "geodesic": "Geodetska udaljenost",
+        "note": "Između kliknutih koordinata; nije ruta niti provjeren razmak imovine. Escape izlazi.",
+        "cancel": "Otkaži odabir",
+        "cancelShort": "Otkaži",
+        "resetShort": "Resetiraj",
+        "exitShort": "Izlaz",
+        "reset": "Resetiraj mjerenje",
+        "exit": "Izlaz iz mjerenja"
       }
     },
     "cii": {

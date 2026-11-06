@@ -1427,6 +1427,20 @@
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
         }
+      },
+      "measure": {
+        "title": "測量距離",
+        "units": "距離單位",
+        "pointA": "選擇點 A。點選地圖或按 Enter 鍵到地圖中心。",
+        "pointB": "選擇點 B。平移地圖並按 Enter 鍵使用其中心。",
+        "geodesic": "大地線距離",
+        "note": "基於點選的座標；不是路線或經過驗證的資產分離。按 Escape 退出。",
+        "cancel": "取消選擇",
+        "cancelShort": "取消",
+        "resetShort": "重置",
+        "exitShort": "退出",
+        "reset": "重置測量",
+        "exit": "退出測量"
       }
     },
     "cii": {

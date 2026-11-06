@@ -1572,6 +1572,20 @@
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"
         }
+      },
+      "measure": {
+        "title": "Távolság mérése",
+        "units": "Távolság mértékegysége",
+        "pointA": "Válassza az A pontot. Kattintson a térképre vagy nyomja meg az Enter billentyűt a térkép közepén.",
+        "pointB": "Válassza a B pontot. Húzza a térképet és nyomja meg az Enter billentyűt a közepponthoz.",
+        "geodesic": "Geodéziai távolság",
+        "note": "A rákattintott koordináták között; nem útvonal vagy ellenőrzött eszköztávolság. Az Escape billentyű kilép.",
+        "cancel": "Kijelölés visszavonása",
+        "cancelShort": "Mégse",
+        "resetShort": "Alaphelyzet",
+        "exitShort": "Kilépés",
+        "reset": "Mérés alaphelyzete",
+        "exit": "Kilépés a mérésből"
       }
     },
     "cii": {

@@ -1234,6 +1234,20 @@
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"
         }
+      },
+      "measure": {
+        "title": "Zmierz odległość",
+        "units": "Jednostki odległości",
+        "pointA": "Wybierz punkt A. Kliknij na mapę lub naciśnij Enter w centrum mapy.",
+        "pointB": "Wybierz punkt B. Przesunięcie mapy i naciśnij Enter, aby użyć jej centrum.",
+        "geodesic": "Odległość geodezyjnego",
+        "note": "Pomiędzy klikniętymi współrzędnymi; nie jest trasą ani zweryfikowanym rozdzieleniem zasobów. Escape kończy.",
+        "cancel": "Anuluj wybór",
+        "cancelShort": "Anuluj",
+        "resetShort": "Resetuj",
+        "exitShort": "Wyjdź",
+        "reset": "Resetuj pomiar",
+        "exit": "Wyjdź z pomiaru"
       }
     },
     "climate": {

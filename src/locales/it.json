@@ -1271,6 +1271,20 @@
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"
         }
+      },
+      "measure": {
+        "title": "Misura distanza",
+        "units": "Unità di distanza",
+        "pointA": "Seleziona punto A. Clicca sulla mappa o premi Invio al centro della mappa.",
+        "pointB": "Seleziona punto B. Sposta la mappa e premi Invio per usare il suo centro.",
+        "geodesic": "Distanza geodetica",
+        "note": "Tra le coordinate cliccate; non è un percorso né una separazione di asset verificata. Premi Esc per uscire.",
+        "cancel": "Annulla selezione",
+        "cancelShort": "Annulla",
+        "resetShort": "Ripristina",
+        "exitShort": "Esci",
+        "reset": "Ripristina misurazione",
+        "exit": "Esci dalla misurazione"
       }
     },
     "climate": {

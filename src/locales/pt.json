@@ -721,6 +721,20 @@
         "notes": {
           "timeAffects": "Afeta: terremotos, clima, protestos, interrupções"
         }
+      },
+      "measure": {
+        "title": "Medir distância",
+        "units": "Unidades de distância",
+        "pointA": "Selecione o ponto A. Clique no mapa ou pressione Enter no centro do mapa.",
+        "pointB": "Selecione o ponto B. Panoramize o mapa e pressione Enter para usar seu centro.",
+        "geodesic": "Distância geodésica",
+        "note": "Entre coordenadas clicadas; não é uma rota ou separação de ativo verificada. Pressione Escape para sair.",
+        "cancel": "Cancelar seleção",
+        "cancelShort": "Cancelar",
+        "resetShort": "Redefinir",
+        "exitShort": "Sair",
+        "reset": "Redefinir medição",
+        "exit": "Sair da medição"
       }
     },
     "climate": {

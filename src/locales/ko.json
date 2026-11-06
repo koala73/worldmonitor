@@ -1427,6 +1427,20 @@
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
         }
+      },
+      "measure": {
+        "title": "거리 측정",
+        "units": "거리 단위",
+        "pointA": "지점 A를 선택하세요. 지도를 클릭하거나 지도 중심에서 Enter를 누르세요.",
+        "pointB": "지점 B를 선택하세요. 지도를 이동한 후 Enter를 눌러 중심을 사용하세요.",
+        "geodesic": "측지선 거리",
+        "note": "클릭된 좌표 간의 거리이며, 경로 또는 검증된 자산 분리가 아닙니다. Escape를 눌러 종료합니다.",
+        "cancel": "선택 취소",
+        "cancelShort": "취소",
+        "resetShort": "초기화",
+        "exitShort": "종료",
+        "reset": "측정 초기화",
+        "exit": "측정 종료"
       }
     },
     "cii": {

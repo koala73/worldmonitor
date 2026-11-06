@@ -1433,6 +1433,20 @@
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"
         }
+      },
+      "measure": {
+        "title": "Măsoară distanța",
+        "units": "Unități de distanță",
+        "pointA": "Selectează punctul A. Apasă pe hartă sau tastează Enter pe centrul hărții.",
+        "pointB": "Selectează punctul B. Navighează harta și apasă Enter pentru a folosi centrul acesteia.",
+        "geodesic": "Distanță geodezică",
+        "note": "Între coordonatele apăsate; nu este o rută sau separare de active verificată. Escape pentru a ieși.",
+        "cancel": "Anulează selecția",
+        "cancelShort": "Anulează",
+        "resetShort": "Resetează",
+        "exitShort": "Ieși",
+        "reset": "Resetează măsurarea",
+        "exit": "Ieși din măsurare"
       }
     },
     "cii": {

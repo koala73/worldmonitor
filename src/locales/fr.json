@@ -1381,6 +1381,20 @@
         "notes": {
           "timeAffects": "Affecte : tremblements de terre, conditions météorologiques, manifestations, pannes"
         }
+      },
+      "measure": {
+        "title": "Mesurer la distance",
+        "units": "Unités de distance",
+        "pointA": "Sélectionnez le point A. Cliquez sur la carte ou appuyez sur Entrée au centre de la carte.",
+        "pointB": "Sélectionnez le point B. Déplacez la carte et appuyez sur Entrée pour utiliser son centre.",
+        "geodesic": "Distance géodésique",
+        "note": "Entre les coordonnées cliquées ; pas un itinéraire ni une séparation d'asset vérifiée. Échap pour quitter.",
+        "cancel": "Annuler la sélection",
+        "cancelShort": "Annuler",
+        "resetShort": "Réinitialiser",
+        "exitShort": "Quitter",
+        "reset": "Réinitialiser la mesure",
+        "exit": "Quitter la mesure"
       }
     },
     "cii": {

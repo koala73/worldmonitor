@@ -1063,6 +1063,20 @@
       "tossUp": "Offen"
     },
     "deckgl": {
+      "measure": {
+        "title": "Entfernung messen",
+        "units": "Entfernungseinheit",
+        "pointA": "Punkt A wählen. Karte anklicken oder Eingabetaste für die Kartenmitte drücken.",
+        "pointB": "Punkt B wählen. Karte verschieben und Eingabetaste für die Kartenmitte drücken.",
+        "geodesic": "Geodätische Entfernung",
+        "note": "Zwischen angeklickten Koordinaten; keine Route oder bestätigte Objektentfernung. Escape beendet die Messung.",
+        "cancel": "Auswahl abbrechen",
+        "cancelShort": "Abbrechen",
+        "resetShort": "Zurücksetzen",
+        "exitShort": "Beenden",
+        "reset": "Messung zurücksetzen",
+        "exit": "Messung beenden"
+      },
       "views": {
         "global": "Global",
         "americas": "Amerika",

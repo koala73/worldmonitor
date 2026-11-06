@@ -1572,6 +1572,20 @@
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"
         }
+      },
+      "measure": {
+        "title": "Pima umbali",
+        "units": "Vitengo vya umbali",
+        "pointA": "Chagua nukta A. Bonyeza ramani au bonyeza Enter katikati ya ramani.",
+        "pointB": "Chagua nukta B. Songa ramani na bonyeza Enter ili kutumia kituo chake.",
+        "geodesic": "Umbali wa geodesic",
+        "note": "Kati ya kuratibu zilizobonyezwa; si njia wala mgawanyiko wa mali uliothibitishwa. Escape huondoka.",
+        "cancel": "Ghairi uteuzi",
+        "cancelShort": "Ghairi",
+        "resetShort": "Weka upya",
+        "exitShort": "Ondoka",
+        "reset": "Weka upya kipimo",
+        "exit": "Ondoka kwenye kipimo"
       }
     },
     "cii": {

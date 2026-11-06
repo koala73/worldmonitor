@@ -1424,6 +1424,20 @@
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"
         }
+      },
+      "measure": {
+        "title": "Měřit vzdálenost",
+        "units": "Jednotky vzdálenosti",
+        "pointA": "Vyberte bod A. Klikněte na mapu nebo stiskněte Enter v jejím středu.",
+        "pointB": "Vyberte bod B. Posouváním upravte mapu a stisknutím Enter použijte její střed.",
+        "geodesic": "Geodetická vzdálenost",
+        "note": "Mezi kliknutými souřadnicemi; není to trasa ani ověřená separace majetku. Escape ukončí.",
+        "cancel": "Zrušit výběr",
+        "cancelShort": "Zrušit",
+        "resetShort": "Resetovat",
+        "exitShort": "Ukončit",
+        "reset": "Resetovat měření",
+        "exit": "Ukončit měření"
       }
     },
     "cii": {

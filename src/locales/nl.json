@@ -720,6 +720,20 @@
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
         }
+      },
+      "measure": {
+        "title": "Afstand meten",
+        "units": "Afstandseenheden",
+        "pointA": "Selecteer punt A. Klik op de kaart of druk op Enter bij het kaartcentrum.",
+        "pointB": "Selecteer punt B. Verschuif de kaart en druk op Enter om het centrum te gebruiken.",
+        "geodesic": "Geodetische afstand",
+        "note": "Tussen geklikt coördinaten; geen route of geverifieerde activaseparatie. Escape sluit af.",
+        "cancel": "Selectie annuleren",
+        "cancelShort": "Annuleren",
+        "resetShort": "Opnieuw instellen",
+        "exitShort": "Afsluiten",
+        "reset": "Meting opnieuw instellen",
+        "exit": "Meting afsluiten"
       }
     },
     "climate": {
