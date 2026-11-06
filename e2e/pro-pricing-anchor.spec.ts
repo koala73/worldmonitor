@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
@@ -71,6 +71,49 @@ test.describe('/pro#pricing lands on the pricing section', () => {
     await page.click('#upgrade');
     await page.waitForURL(`${ORIGIN}/pro#pricing`);
     await expectPricingInView(page);
+  });
+
+  // The nav's "Free" link and any saved links pointed at #tiers, a Plans
+  // section without prices that was removed (audit item 5). The legacy
+  // fragment must still land on the price cards, not at the top.
+  test('a legacy /pro#tiers link lands on the pricing section', async ({ page }) => {
+    await serveBuiltPro(page);
+    await page.goto(`${ORIGIN}/pro#tiers`, { waitUntil: 'load' });
+    await expectPricingInView(page);
+  });
+
+  test('#tiers set after mount (history, same-page link) lands on the pricing section', async ({ page }) => {
+    await serveBuiltPro(page);
+    await page.goto(`${ORIGIN}/pro`, { waitUntil: 'load' });
+    await expect(page.locator('section#pricing')).toBeAttached();
+    await page.evaluate(() => { window.location.hash = '#tiers'; });
+    await expectPricingInView(page);
+  });
+
+  // From the Enterprise view the home page, and its price cards, render only
+  // after the hash change, so the scroll has to wait for that render.
+  for (const hash of ['#tiers', '#pricing']) {
+    test(`${hash} from the Enterprise view lands on the pricing section`, async ({ page }) => {
+      await serveBuiltPro(page);
+      await page.goto(`${ORIGIN}/pro#enterprise`, { waitUntil: 'load' });
+      await expect(page.locator('section#pricing')).toHaveCount(0);
+      await page.evaluate((next) => { window.location.hash = next; }, hash);
+      await expectPricingInView(page);
+    });
+  }
+
+  // Pricing now appears once, so this section must keep every plan: the five
+  // self-serve cards, then the Enterprise band. External requests are
+  // aborted, so it renders the committed catalog.
+  test('the pricing section renders every plan', async ({ page }) => {
+    const catalog = JSON.parse(readFileSync(resolve(repoRoot, 'pro-test/src/generated/tiers.json'), 'utf8')) as Array<{ name: string }>;
+    const names = catalog.map((tier) => tier.name);
+    expect(names).toEqual(['Free', 'Pro', 'Pro Business', 'API Starter', 'API Business', 'Enterprise']);
+    await serveBuiltPro(page);
+    await page.goto(`${ORIGIN}/pro#pricing`, { waitUntil: 'load' });
+    const titles = page.locator('section#pricing h3');
+    await expect(titles).toHaveText(names);
+    for (let i = 0; i < names.length; i += 1) await expect(titles.nth(i)).toBeVisible();
   });
 
   test('a plain /pro load stays at the top', async ({ page }) => {

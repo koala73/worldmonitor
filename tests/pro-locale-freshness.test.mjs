@@ -51,8 +51,6 @@ const ENGLISH_ALLOWED_KEYS = new Set([
   'nav.enterprise',
   'tiers.pro',
   'tiers.enterprise',
-  'twoPath.entTitle',
-  'twoPath.proTitle',
   'whatsNew.proTag',
   'apiSection.business',
   'apiSection.starter',
