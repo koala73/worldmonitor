@@ -144,7 +144,7 @@
     "asFeaturedIn": "As featured in"
   },
   "whyUpgrade": {
-    "title": "Why upgrade to World Monitor Pro?",
+    "title": "Hear about it before the headlines",
     "noiseTitle": "Know first",
     "noiseDesc": "AIS anomaly → Brent spike → your Slack in under a minute. Signal, not headlines.",
     "fasterTitle": "Ask anything",
@@ -235,7 +235,7 @@
   },
   "proShowcase": {
     "proTier": "PRO TIER",
-    "title": "What does the World Monitor AI analyst do?",
+    "title": "An AI analyst for stocks, macro and geopolitics",
     "subtitle": "The free dashboard shows you the world. Pro gives you an analyst to ask, a digest you subscribe to, and primitives to build on. Stocks, macro, geopolitical risk — and the connections between them.",
     "equityResearch": "Equity Research",
     "equityResearchDesc": "Global stock analysis with financials visualization, analyst price targets, and valuation metrics. Track what moves markets.",

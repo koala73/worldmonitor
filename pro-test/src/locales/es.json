@@ -21,7 +21,7 @@
     "asFeaturedIn": "Destacado en"
   },
   "whyUpgrade": {
-    "title": "¿Por qué actualizar a World Monitor Pro?",
+    "title": "Entérate antes que los titulares",
     "noiseTitle": "Entérate primero",
     "noiseDesc": "Anomalía AIS → subida del Brent → tu Slack en menos de un minuto. Señal, no titulares.",
     "fasterTitle": "Pregunta cualquier cosa",
@@ -112,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "NIVEL PRO",
-    "title": "¿Qué hace el analista de IA de World Monitor?",
+    "title": "Un analista de IA para acciones, macroeconomía y geopolítica",
     "subtitle": "El panel gratuito te muestra el mundo. Pro te da un analista al que preguntar, un resumen al que suscribirte y primitivas sobre las que construir. Acciones, macro, riesgo geopolítico — y las conexiones entre ellos.",
     "equityResearch": "Investigación bursátil",
     "equityResearchDesc": "Análisis global de acciones con visualización de estados financieros, objetivos de precio de analistas y métricas de valoración. Sigue lo que mueve los mercados.",

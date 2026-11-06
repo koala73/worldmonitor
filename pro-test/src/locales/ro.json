@@ -21,7 +21,7 @@
     "asFeaturedIn": "Apărut în"
   },
   "whyUpgrade": {
-    "title": "De ce să faceți upgrade la World Monitor Pro?",
+    "title": "Aflați înaintea titlurilor din presă",
     "noiseTitle": "Află primul",
     "noiseDesc": "Anomalie AIS → salt Brent → Slack-ul tău în mai puțin de un minut. Semnal, nu titluri.",
     "fasterTitle": "Întreabă orice",
@@ -112,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "NIVEL PRO",
-    "title": "Ce face analistul AI din World Monitor?",
+    "title": "Un analist AI pentru acțiuni, macroeconomie și geopolitică",
     "subtitle": "Panoul gratuit îți arată lumea. Pro îți dă un analist de întrebat, un digest la care te abonezi și primitive pe care să construiești. Acțiuni, macro, risc geopolitic — și conexiunile dintre ele.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Analiză globală de acțiuni cu vizualizare a datelor financiare, ținte de preț ale analiștilor și metrici de evaluare. Urmărește ce mișcă piețele.",

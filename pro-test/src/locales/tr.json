@@ -21,7 +21,7 @@
     "asFeaturedIn": "Yer aldığı yerler"
   },
   "whyUpgrade": {
-    "title": "World Monitor Pro'ya neden yükseltme yapmalısınız?",
+    "title": "Haberlerde çıkmadan önce haberdar olun",
     "noiseTitle": "İlk siz bilin",
     "noiseDesc": "AIS anomalisi → Brent sıçraması → Slack'iniz bir dakikadan kısa sürede. Sinyal, manşet değil.",
     "fasterTitle": "Her şeyi sorun",
@@ -112,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "PRO SEVİYESİ",
-    "title": "World Monitor yapay zeka analisti ne yapar?",
+    "title": "Hisse senetleri, makro ekonomi ve jeopolitik için bir AI analisti",
     "subtitle": "Ücretsiz kontrol paneli size dünyayı gösterir. Pro, soracağınız bir analist, abone olacağınız bir özet ve üzerine inşa edebileceğiniz primitifler verir. Hisseler, makro, jeopolitik risk — ve aralarındaki bağlantılar.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Finansal verilerin görselleştirilmesi, analist fiyat hedefleri ve değerleme metrikleri ile küresel hisse analizi. Piyasaları hareket ettiren şeyleri takip edin.",

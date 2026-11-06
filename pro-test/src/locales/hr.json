@@ -21,7 +21,7 @@
     "asFeaturedIn": "Kako je predstavljeno u"
   },
   "whyUpgrade": {
-    "title": "Zašto nadograditi na World Monitor Pro?",
+    "title": "Saznajte prije nego što se pojavi u vijestima",
     "noiseTitle": "Saznajte prvi",
     "noiseDesc": "AIS anomalija → skok Brenta → vaš Slack za manje od minute. Signal, ne naslovi.",
     "fasterTitle": "Pitajte bilo što",
@@ -112,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "PRO RAZINA",
-    "title": "Što radi World Monitor AI analitičar?",
+    "title": "AI analitičar za dionice, makroekonomiju i geopolitiku",
     "subtitle": "Besplatna nadzorna ploča pokazuje vam svijet. Pro vam daje analitičara kojeg možete pitati, sažetak na koji se pretplaćujete i gradivne elemente na kojima možete graditi. Dionice, makro, geopolitički rizik — i veze među njima.",
     "equityResearch": "Istraživanje dionica",
     "equityResearchDesc": "Globalna analiza dionica s vizualizacijom financijskih izvještaja, ciljnim cijenama analitičara i metrikama vrednovanja. Pratite što pokreće tržišta.",

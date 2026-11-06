@@ -21,7 +21,7 @@
     "asFeaturedIn": "Wyróżnione w"
   },
   "whyUpgrade": {
-    "title": "Dlaczego warto przejść na World Monitor Pro?",
+    "title": "Dowiedz się, zanim trafi to na nagłówki",
     "noiseTitle": "Wiedz pierwszy",
     "noiseDesc": "Anomalia AIS → skok Brent → Twój Slack w mniej niż minutę. Sygnał, nie nagłówki.",
     "fasterTitle": "Zapytaj o wszystko",
@@ -112,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "POZIOM PRO",
-    "title": "Co robi analityk AI World Monitor?",
+    "title": "Analityk AI dla akcji, makroekonomii i geopolityki",
     "subtitle": "Darmowy panel pokazuje Ci świat. Pro daje analityka do zapytania, digest do subskrypcji i prymitywy do budowania. Akcje, makro, ryzyko geopolityczne — i powiązania między nimi.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Globalna analiza akcji z wizualizacją danych finansowych, celami cenowymi analityków i wskaźnikami wyceny. Śledź, co porusza rynki.",
