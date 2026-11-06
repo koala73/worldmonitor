@@ -7,7 +7,9 @@ import sharp from 'sharp';
 
 const root = new URL('../', import.meta.url);
 const config = readFileSync(new URL('vite.config.ts', root), 'utf8');
-const icons = vm.runInNewContext(config.match(/icons: (\[[\s\S]*?\n\s*\]),/)[1]);
+// Shortcuts carry their own one-line `icons: [...]`; the manifest list is the
+// multi-line array.
+const icons = vm.runInNewContext(config.match(/icons: (\[\n[\s\S]*?\n\s*\]),/)[1]);
 
 it('advertises real PNGs at every install size with separate maskable assets', async () => {
   for (const size of [192, 384, 512, 1024]) {
