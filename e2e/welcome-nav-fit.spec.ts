@@ -66,6 +66,13 @@ function measureNav() {
     menuWidth: menu.width,
     menuOverlapsLogo: menu.start < logo.end,
     launchOverlapsMenu: launch.start < menu.end,
+    // Depth stat labels sit in a two-column overflow-hidden grid at 320px;
+    // a long single word (Dutch "Veerkrachtrankingen") must wrap, not spill
+    // into the next cell or past the grid's clip edge.
+    statLabelOverflow: Math.max(0, ...Array.from(
+      document.querySelectorAll<HTMLElement>('#depth dl dt'),
+      (dt) => dt.scrollWidth - dt.clientWidth,
+    )),
   };
 }
 
@@ -97,6 +104,7 @@ for (const group of GROUPS) {
           expect(m.menuWidth, `${at}: menu button is missing`).toBeGreaterThan(0);
           expect(m.menuOverlapsLogo, `${at}: menu button overlaps the logo`).toBe(false);
           expect(m.launchOverlapsMenu, `${at}: Launch overlaps the menu button`).toBe(false);
+          expect(m.statLabelOverflow, `${at}: a Depth stat label is wider than its cell`).toBeLessThanOrEqual(1);
         }
       });
     }
