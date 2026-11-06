@@ -90,3 +90,21 @@ test('FEWS stays direct without PROXY_URL, and other food sources never use the 
   }
   assert.equal(unused.calls.length, 0);
 });
+
+test('a hung exit times out on its own and the next exit still runs within the source budget', async () => {
+  const payload = fixture('fews-sd.json');
+  const signals = [];
+  const { calls, proxyFetchFn } = recordingProxy((_url, options, n) => {
+    signals.push(options.signal);
+    if (n > 1) return answer(payload);
+    // A dead exit that never answers: settles only when its own signal fires.
+    return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }));
+  });
+  const started = Date.now();
+  const result = await collectFoodSource('fewssd', { now, pause: async () => {}, fetchFn: directForbidden, proxyAuth: PROXY_AUTH, proxyFetchFn, firstProxyExit: 0, budgetMs: 3_000 });
+  assert.ok(result.observations.length);
+  assert.deepEqual(calls.map(call => call.port), [10001, 10002]);
+  assert.notEqual(signals[0], signals[1]);
+  assert.equal(signals[1].aborted, false);
+  assert.ok(Date.now() - started < 3_000);
+});

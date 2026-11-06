@@ -133,18 +133,23 @@ const NULL_BODY_STATUSES = new Set([204, 205, 304]);
  * cookies and the size limit stay in the caller's loop. The proxy resolves the publisher's host name, which is what
  * lets MakStat answer when Railway's resolver cannot. Each attempt takes the next Decodo sticky exit (as NRCan does):
  * a dead or refused exit (CONNECT failure, or an origin 403) moves on; a gateway 4xx means the credentials are wrong
- * everywhere. When every exit fails before the publisher answers, the error carries `proxyUnreachable`.
+ * everywhere. Each exit gets its own timeout and a share of the source budget, so one hung exit cannot spend the
+ * time the others need. When every exit fails before the publisher answers, the error carries `proxyUnreachable`.
  */
-async function fetchViaProxy(url, init, { proxyAuth, proxyFetchFn, firstExit }) {
+async function fetchViaProxy(url, init, { proxyAuth, proxyFetchFn, firstExit, deadline }) {
   let last;
   let answered = false;
   for (let attempt = 0; attempt < PROXY_EXITS; attempt++) {
     const proxyConfig = parseProxyConfigForAttempt(proxyAuth, firstExit + attempt);
     if (!proxyConfig) throw new Error('food source proxy: invalid PROXY_URL');
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    // Exits still to try share what is left, so a hung first exit leaves time for the others.
+    const timeoutMs = Math.max(1, Math.min(init.timeoutMs, Math.floor(remaining / (PROXY_EXITS - attempt))));
     try {
       const result = await proxyFetchFn(url, proxyConfig, {
-        method: init.method, body: init.body ?? null, headers: init.headers, signal: init.signal,
-        timeoutMs: init.timeoutMs, maxResponseBytes: 8_000_000,
+        method: init.method, body: init.body ?? null, headers: init.headers, signal: AbortSignal.timeout(timeoutMs),
+        timeoutMs, maxResponseBytes: 8_000_000,
       });
       answered = true;
       if (result.status === 403 && attempt < PROXY_EXITS - 1) { last = new Error('HTTP 403'); continue; }
@@ -156,13 +161,14 @@ async function fetchViaProxy(url, init, { proxyAuth, proxyFetchFn, firstExit }) 
       }
       return new Response(NULL_BODY_STATUSES.has(result.status) ? null : result.buffer, { status: result.status, headers });
     } catch (error) {
-      if (init.signal?.aborted || error?.code === 'RESPONSE_TOO_LARGE') throw error;
+      if (error?.code === 'RESPONSE_TOO_LARGE') throw error;
       if (error?.proxyConnect && error.status >= 400 && error.status < 500) {
         throw new Error(`food source proxy refused: ${redactProxyCredentials(error.message)}`);
       }
       last = error;
     }
   }
+  if (!last) throw new Error('food source fetch budget exceeded');
   throw Object.assign(new Error(`food source proxy failed: ${redactProxyCredentials(last?.message || last)}`), { proxyUnreachable: !answered });
 }
 
@@ -201,9 +207,9 @@ export async function collectFoodSource(id, {
         // Proxy-first for publishers that refuse Railway egress on every run (FRED and fuel-prices precedent);
         // direct only when no exit reached the publisher at all.
         try {
-          response = await fetchViaProxy(target.href, { ...init, timeoutMs }, { proxyAuth, proxyFetchFn, firstExit: firstProxyExit });
+          response = await fetchViaProxy(target.href, { ...init, timeoutMs }, { proxyAuth, proxyFetchFn, firstExit: firstProxyExit, deadline });
         } catch (error) {
-          if (!error?.proxyUnreachable) throw error;
+          if (!error?.proxyUnreachable || deadline <= Date.now()) throw error;
           console.warn(`${id}: ${error.message}; trying direct`);
           response = await fetchFn(target.href, { ...init, signal: AbortSignal.timeout(Math.max(1, Math.min(timeoutMs, deadline - Date.now()))) });
         }
