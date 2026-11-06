@@ -24,13 +24,12 @@ describe('homepage hero names the Pro price', () => {
     assert.doesNotMatch(hero, /welcome\.hero\.ctaSecondary/);
   });
 
-  it('quotes the cheapest monthly Pro plan', () => {
+  it('quotes the monthly price of the Pro plan', () => {
     const { proMonthlyPrice } = readJson('pro-test/src/generated/copy-stats.json');
     const tiers = readJson('pro-test/src/generated/tiers.json');
-    const monthly = (Array.isArray(tiers) ? tiers : tiers.tiers)
-      .map((tier) => tier.monthlyPrice)
-      .filter((price) => typeof price === 'number');
-    assert.equal(proMonthlyPrice, Math.min(...monthly));
+    const pro = (Array.isArray(tiers) ? tiers : tiers.tiers).find((tier) => tier.localeKey === 'pro');
+    assert.ok(pro, 'the Pro tier must exist');
+    assert.equal(proMonthlyPrice, pro.monthlyPrice);
   });
 
   it('every locale carries the price slot and drops the old label', () => {

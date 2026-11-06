@@ -117,13 +117,10 @@ const CRITICAL_CSS = [
   // this rule matching nothing and paint the primary CTA unstyled above the
   // fold. deploy-config.test.mjs fails if any selector here stops matching a
   // prerendered anchor.
-  // `[href="#moments"]`, not `[href*="moments"]`. The hero CTA is an exact
-  // fragment link (welcome/Hero.tsx), and since #7608 `main` also contains
-  // headline anchors whose href is a third-party article URL — a substring
-  // match would paint any story slug containing "moments" as a full-width
-  // uppercase CTA button until the deferred stylesheet lands. Same element,
-  // same painted result, no reach into feed-supplied hrefs.
-  'main a[data-umami-event-target="welcome-hero"],main a[href="#moments"]{min-height:3rem;padding-block:.75rem;justify-content:center;border-radius:.375rem;font-size:.875rem;line-height:1.25rem;font-weight:500}main a[data-umami-event-target="welcome-hero"]{padding-inline:1.5rem}main a[href="#moments"]{padding-inline:1rem}',
+  // The secondary hero CTA (Pro price) is keyed off its analytics marker for the
+  // same reason; since #7608 `main` also carries headline anchors with
+  // third-party hrefs, so no href substring rule may stand in for it.
+  'main a[data-umami-event-target="welcome-hero"],main a[data-umami-event-target="welcome-hero-pro"]{min-height:3rem;padding-block:.75rem;justify-content:center;border-radius:.375rem;font-size:.875rem;line-height:1.25rem;font-weight:500}main a[data-umami-event-target="welcome-hero"]{padding-inline:1.5rem}main a[data-umami-event-target="welcome-hero-pro"]{padding-inline:1.25rem}',
   '@media (min-width:640px){nav[data-wm-nav]>div{padding-inline:1.5rem}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
   '@media (min-width:768px){main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
   '@media (min-width:1024px){nav[data-wm-nav] [class~="lg:flex"]{display:flex}nav[data-wm-nav] [class~="lg:hidden"]{display:none}}',
