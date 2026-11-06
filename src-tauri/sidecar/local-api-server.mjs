@@ -2598,6 +2598,7 @@ export const __testing__ = {
   canCompress,
   jsonForScript,
   isYahooFinanceHost,
+  fetchWithTimeout,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },

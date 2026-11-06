@@ -5407,3 +5407,57 @@ test('relay: an upstream timeout is a relay error, distinct from a denial, and k
     assert.equal(cloud.statusCalls.length, 1, 'a transport failure does not invalidate the verdict');
   });
 });
+
+// The HTTP path used to replace the caller's signal with its own timer, so a
+// caller that cancelled kept waiting for the full deadline. It now combines
+// both. The sidecar's fetch buffers the body, so a stalled body is bounded too.
+test('fetchWithTimeout on HTTP honours both the caller signal and the deadline', async (t) => {
+  const upstream = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.write('{"partial":');
+    // Never ends the body.
+  });
+  await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  t.after(() => { upstream.closeAllConnections(); upstream.close(); });
+  const url = `http://127.0.0.1:${upstream.address().port}/stall`;
+
+  const caller = new AbortController();
+  let startedAt = Date.now();
+  const cancelled = __testing__.fetchWithTimeout(url, { allowPrivateNetwork: true, signal: caller.signal }, 60_000);
+  setTimeout(() => caller.abort(), 50);
+  await assert.rejects(cancelled);
+  assert.ok(Date.now() - startedAt < 2_000, 'a caller abort ends the request, not the 60s deadline');
+
+  startedAt = Date.now();
+  await assert.rejects(__testing__.fetchWithTimeout(url, { allowPrivateNetwork: true }, 150));
+  assert.ok(Date.now() - startedAt < 2_000, 'a stalled body ends at the deadline');
+});
+
+test('fetchWithTimeout hands https.request a signal that aborts with the caller or the deadline', async () => {
+  const seen = [];
+  const original = https.request;
+  https.request = (options) => {
+    seen.push(options.signal);
+    const req = new EventEmitter();
+    req.setTimeout = () => { };
+    req.write = () => { };
+    req.end = () => { };
+    options.signal?.addEventListener('abort', () => req.emit('error', options.signal.reason), { once: true });
+    return req;
+  };
+  try {
+    const caller = new AbortController();
+    const cancelled = __testing__.fetchWithTimeout('https://example.test/a', { signal: caller.signal }, 60_000);
+    caller.abort(new DOMException('cancelled', 'AbortError'));
+    await assert.rejects(cancelled, (error) => error?.name === 'AbortError');
+
+    await assert.rejects(
+      __testing__.fetchWithTimeout('https://example.test/b', {}, 20),
+      (error) => error?.name === 'TimeoutError',
+    );
+    assert.equal(seen.length, 2);
+    assert.ok(seen.every((signal) => signal instanceof AbortSignal));
+  } finally {
+    https.request = original;
+  }
+});
