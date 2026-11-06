@@ -348,6 +348,23 @@ describe("enterprise contract account — pooled REST metering", () => {
     expect(events.find((e) => e.event_type === "request")).toMatchObject({ account_id: "acct_hexion", overage: null });
   });
 
+  test("a 200 whose body stream fails to read rejects and is not billed", async () => {
+    store.set(POOL_KEY, 10_500);
+    store.set(ALICE_KEY, 7);
+    const gateway = createDomainGateway([
+      {
+        method: "GET",
+        path: "/api/news/v1/list-feed-digest",
+        handler: async () => new Response(new ReadableStream({
+          pull(controller) { controller.error(new Error("stream broke")); },
+        }), { status: 200 }),
+      },
+    ]);
+    await expect(gateway(keyRequest("wm_key_alice"), ctx)).rejects.toThrow("stream broke");
+    expect(store.get(POOL_KEY)).toBe(10_500);
+    expect(store.get(ALICE_KEY)).toBe(7);
+  });
+
   test("a 4xx from the handler still counts (control)", async () => {
     store.set(POOL_KEY, 10_500);
     const gateway = createDomainGateway([
