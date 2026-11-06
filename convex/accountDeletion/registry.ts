@@ -91,7 +91,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   {
     target: "enterpriseMembers",
     action: "delete",
-    notes: "This user's seats in Enterprise accounts; the account and other members stay",
+    notes: "This user's seats in Enterprise accounts by userId, and invites to their verified email; the account and other members stay",
   },
   {
     target: "enterpriseAccounts",

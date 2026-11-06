@@ -607,6 +607,79 @@ export async function updateBillingEmail(email: string): Promise<{ email: string
   );
 }
 
+export interface EnterpriseSeat {
+  memberId: string;
+  email: string | null;
+  status: 'active' | 'pending' | 'expired';
+  role: 'admin' | 'member';
+  isSelf: boolean;
+  invitedAt: number | null;
+  joinedAt: number | null;
+  inviteExpiresAt: number | null;
+}
+
+export interface EnterpriseSeatsView {
+  accountName: string;
+  isAdmin: boolean;
+  seatCap: number;
+  seatsUsed: number;
+  contractEnd: number;
+  contractEnded: boolean;
+  adminIsCorporateDomain: boolean;
+  /** The full roster for the admin; empty for other members. */
+  seats: EnterpriseSeat[];
+}
+
+/** The caller's Enterprise account seat view, or null when they are not an active member. */
+export async function listEnterpriseSeats(): Promise<EnterpriseSeatsView | null> {
+  const userId = getCurrentClerkUser()?.id;
+  if (!userId) return null;
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) return null;
+  if (!await waitForConvexAuthForUser(userId)) {
+    assertAccountStillCurrent(userId, 'loading Enterprise seats');
+    throw new Error('Authentication unavailable while loading Enterprise seats. Try again.');
+  }
+  return settleAccountOperation(
+    userId,
+    'loading Enterprise seats',
+    () => client.query(api.enterpriseSeats.listMySeats, {}),
+  );
+}
+
+/** Admin-only: invite people to the Enterprise account by email. */
+export async function inviteEnterpriseMembers(emails: string[]): Promise<{
+  invited: Array<{ email: string; memberId: string; status: 'created' | 'already_pending' | 'already_active' }>;
+}> {
+  const userId = requireSignedInUserId('invite people to the Enterprise account');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'inviting people to the Enterprise account');
+  return settleAccountOperation(
+    userId,
+    'inviting people to the Enterprise account',
+    () => client.mutation(api.enterpriseSeats.inviteMembers, { emails }),
+  );
+}
+
+/** Admin-only: remove a member or withdraw an invite. */
+export async function removeEnterpriseMember(
+  memberId: string,
+): Promise<{ ok: true; status: 'removed' | 'already_removed' }> {
+  const userId = requireSignedInUserId('remove an Enterprise member');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'removing an Enterprise member');
+  return settleAccountOperation(
+    userId,
+    'removing an Enterprise member',
+    () => client.mutation(
+      api.enterpriseSeats.removeMember,
+      { memberId: memberId as Id<'enterpriseMembers'> },
+    ),
+  );
+}
+
 /** Accept a Business Pro seat invite using the token from the email link. */
 export async function acceptBusinessInvite(grantId: string, token: string): Promise<void> {
   const userId = requireSignedInUserId('accept a Business Pro seat invite');

@@ -682,6 +682,47 @@ describe("account deletion — enterprise accounts", () => {
   });
 });
 
+describe("account deletion — enterprise invites", () => {
+  test("self-delete erases Enterprise invites addressed to the caller's verified email", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Hexion",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 10_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 15_000_000,
+      monthlyOutputTokens: 3_000_000,
+      overagePerThousandRequestsUsd: 3,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.run(async (ctx) => {
+      for (const email of [INVITEE.email.toLowerCase(), "someone.else@acme.test"]) {
+        await ctx.db.insert("enterpriseMembers", {
+          accountId,
+          email,
+          status: "pending",
+          role: "member",
+          invitedAt: now,
+          inviteExpiresAt: now + 14 * 24 * 60 * 60 * 1000,
+          updatedAt: now,
+        });
+      }
+    });
+
+    await t.withIdentity(INVITEE).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    await drainErase(t);
+
+    const left = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(left.map((m) => m.email)).toEqual(["someone.else@acme.test"]);
+  });
+});
+
 describe("account deletion — external side effects", () => {
   test("Dodo cancel then Clerk 404 still completes and captures key hashes", async () => {
     const t = await makeT();

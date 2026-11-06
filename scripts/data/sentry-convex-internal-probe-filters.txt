@@ -178,6 +178,7 @@
 *Could not find public function for 'enterpriseAccounts:removeMember'*
 *Could not find public function for 'enterpriseAccounts:setAdmin'*
 *Could not find public function for 'enterpriseAccounts:updateAccount'*
+*Could not find public function for 'enterpriseSeats:sendEnterpriseInviteEmail'*
 *Could not find public function for 'entitlements:clearAiRoutingPolicy'*
 *Could not find public function for 'entitlements:getAiRoutingPolicyByUserId'*
 *Could not find public function for 'entitlements:getEntitlementsByUserId'*

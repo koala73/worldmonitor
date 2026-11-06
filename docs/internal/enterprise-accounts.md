@@ -48,6 +48,32 @@ Code: `convex/enterpriseAccounts.ts` (operator functions),
   because MCP never dispatches a call it could not reserve. The shared burst
   bucket fails open on both paths.
 
+## Admin self-serve seats
+
+The account admin manages people from Settings, in the plan section of the
+dashboard (`src/components/EnterpriseSeatsSection.ts`, server
+`convex/enterpriseSeats.ts`). It works like Business seats:
+
+- The admin invites by company email. Each invite holds a seat and emails a
+  link to `/dashboard?accept-enterprise-invite=<memberId>&token=<t>`, valid
+  for 14 days. An expired invite frees its seat and shows as expired.
+- The invitee accepts while signed in with the invited address, including
+  after creating an account from the link. Acceptance makes them an active
+  member at once (Enterprise plan, pooled allowance, account AI providers).
+- The admin removes members or withdraws invites. Removal takes effect at
+  once. The admin cannot remove their own seat; use `setAdmin` first.
+- Other members see the account name and seat count, not the roster.
+- Invites are refused after the contract ends, past `seatCap`, for free-mail
+  domains, and for a user already active in another account.
+
+Errors: `NOT_ACCOUNT_ADMIN`, `SEAT_CAP_REACHED`, `INVITEE_DOMAIN_NOT_CORPORATE`,
+`CANNOT_INVITE_SELF`, `CONTRACT_ENDED`, `CANNOT_REMOVE_SELF`,
+`INVITE_EMAIL_MISMATCH`, `INVITE_EXPIRED`, `INVITE_ALREADY_USED`,
+`INVALID_INVITE_TOKEN`, `ALREADY_MEMBER_OF_ANOTHER_ACCOUNT`.
+
+Deleting an account erases its member rows and any invites addressed to its
+verified email.
+
 ## Operator commands
 
 Run from the main checkout with the prod deploy key exported

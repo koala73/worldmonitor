@@ -50,6 +50,7 @@ import type * as emailSuppressions from "../emailSuppressions.js";
 import type * as emailUnsubscribe from "../emailUnsubscribe.js";
 import type * as embedKeys from "../embedKeys.js";
 import type * as enterpriseAccounts from "../enterpriseAccounts.js";
+import type * as enterpriseSeats from "../enterpriseSeats.js";
 import type * as entitlements from "../entitlements.js";
 import type * as followedCountries from "../followedCountries.js";
 import type * as http from "../http.js";
@@ -142,6 +143,7 @@ declare const fullApi: ApiFromModules<{
   emailUnsubscribe: typeof emailUnsubscribe;
   embedKeys: typeof embedKeys;
   enterpriseAccounts: typeof enterpriseAccounts;
+  enterpriseSeats: typeof enterpriseSeats;
   entitlements: typeof entitlements;
   followedCountries: typeof followedCountries;
   http: typeof http;

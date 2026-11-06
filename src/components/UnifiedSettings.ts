@@ -48,6 +48,7 @@ import {
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
+import { EnterpriseSeatsSection } from '@/components/EnterpriseSeatsSection';
 import {
   deriveBillingUxState,
   getReactivationHref,
@@ -210,6 +211,7 @@ export class UnifiedSettings {
   private planLimitNoticesError = '';
   // ---- Business Pro seats (plan 2026-07-24-001 U7) ----
   private readonly businessSeatsSection: BusinessSeatsSection;
+  private readonly enterpriseSeatsSection: EnterpriseSeatsSection;
   // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
@@ -247,6 +249,7 @@ export class UnifiedSettings {
     this.overlay.setAttribute('aria-label', t('header.settings'));
     this.focusTrap = createFocusTrap(this.overlay);
     this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
+    this.enterpriseSeatsSection = new EnterpriseSeatsSection(this.overlay);
 
     this.resetPanelDraft();
 
@@ -513,6 +516,18 @@ export class UnifiedSettings {
         return;
       }
 
+      const enterpriseInviteBtn = target.closest<HTMLElement>('.enterprise-seats-invite-btn');
+      if (enterpriseInviteBtn) {
+        void this.enterpriseSeatsSection.handleInvite();
+        return;
+      }
+
+      const enterpriseRemoveBtn = target.closest<HTMLElement>('.enterprise-seat-remove-btn');
+      if (enterpriseRemoveBtn?.dataset.memberId) {
+        void this.enterpriseSeatsSection.handleRemove(enterpriseRemoveBtn.dataset.memberId);
+        return;
+      }
+
       const mcpCopyUrlBtn = target.closest<HTMLElement>('.mcp-clients-copy-url-btn');
       if (mcpCopyUrlBtn?.dataset.copyValue) {
         const value = mcpCopyUrlBtn.dataset.copyValue;
@@ -610,6 +625,7 @@ export class UnifiedSettings {
     this.mcpQuota = null;
     this.stopMcpQuotaPolling();
     this.businessSeatsSection.resetForAccountChange();
+    this.enterpriseSeatsSection.resetForAccountChange();
 
     // Replace any rendered A-owned plaintext/list data synchronously. Account
     // loaders stay suppressed until the new entitlement snapshot rerenders.
@@ -705,6 +721,7 @@ export class UnifiedSettings {
         }
       }
       this.replaceUpgradeSection();
+      this.loadEnterpriseSeatsIfMember();
     });
     this.unsubscribeEntitlementVerification?.();
     this.unsubscribeEntitlementVerification = onEntitlementVerificationChange(() => {
@@ -724,6 +741,18 @@ export class UnifiedSettings {
     });
     if (getSubscription() !== null) {
       void this.businessSeatsSection.load();
+    }
+    this.loadEnterpriseSeatsIfMember();
+  }
+
+  /**
+   * Enterprise seats exist only for contract-account members, whose plan is
+   * `enterprise`. The server decides membership and admin rights; the plan
+   * check only spares everyone else the query.
+   */
+  private loadEnterpriseSeatsIfMember(): void {
+    if (getEntitlementState()?.planKey === 'enterprise') {
+      void this.enterpriseSeatsSection.load();
     }
   }
 
@@ -1249,6 +1278,7 @@ export class UnifiedSettings {
           ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
         ${hasOwnSubscription ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
+        <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
       `;
     }
 

@@ -953,7 +953,8 @@ export default defineSchema({
 
   // Membership of an enterprise account. `userId` is optional because a
   // pending email invite has no account yet; `email` is stored lowercased.
-  // Active + pending rows count against the seat cap. Removed rows stay as
+  // Active rows and unexpired pending rows count against the seat cap. A
+  // pending row past `inviteExpiresAt` frees its seat. Removed rows stay as
   // history. A membership row, not a comp grant, is the entitlement source.
   enterpriseMembers: defineTable({
     accountId: v.id("enterpriseAccounts"),
@@ -962,6 +963,9 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("pending"), v.literal("removed")),
     role: v.union(v.literal("admin"), v.literal("member")),
     invitedAt: v.optional(v.number()),
+    // Set on admin email invites (convex/enterpriseSeats.ts); the emailed
+    // token expires at the same time.
+    inviteExpiresAt: v.optional(v.number()),
     joinedAt: v.optional(v.number()),
     removedAt: v.optional(v.number()),
     updatedAt: v.number(),
