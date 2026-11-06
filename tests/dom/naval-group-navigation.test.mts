@@ -62,11 +62,12 @@ describe('naval group member navigation', () => {
     expect(document.querySelector('.popup-title')?.textContent).toBe('Ship 1');
     expect(document.body.textContent).toContain('Live ship tracking');
     click('.popup-back');
-    cluster.vessels[0] = { ...vessel(0), name: '<img src=x onerror=alert(1)>' };
-    popup.show({ type: 'militaryVesselCluster', data: cluster, x: 10, y: 10 });
+    const unsafeName = { ...vessel(0), name: '<img src=x onerror=alert(1)>' };
+    const unsafeCluster = { ...cluster, vessels: [unsafeName, ...cluster.vessels.slice(1)] };
+    popup.show({ type: 'militaryVesselCluster', data: unsafeCluster, x: 10, y: 10 });
     expect(document.querySelector('[data-vessel-index="0"] img')).toBeNull();
     click('[data-vessel-index="0"]');
-    expect(document.querySelector('.popup-title')?.textContent).toBe(cluster.vessels[0]!.name);
+    expect(document.querySelector('.popup-title')?.textContent).toBe(unsafeName.name);
   });
 
   it('does not carry group navigation into a replacement popup', () => {
