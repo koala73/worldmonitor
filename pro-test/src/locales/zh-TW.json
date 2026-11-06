@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "噪音",
     "signalWord": "訊號",
-    "valueProps": "地緣政治 AI 層 — 向它提問、訂閱它、在其之上構建。",
+    "valueProps": "Pro 增加了 AI 分析師、告警規則和定時情報簡報到即時儀表板，並將其資料連線到 Claude 和其他 AI 工具。",
     "launchingDate": "現已上線",
     "tryFreeDashboard": "試用免費儀表板",
     "choosePlan": "選擇方案",
-    "signIn": "登入",
     "goToDashboard": "轉到儀表板"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "個人\t",
     "axisPersonalNote": "個人使用\t",
     "axisCommercial": "商業\t",
-    "axisCommercialNote": "工作、客戶與產品"
+    "axisCommercialNote": "工作、客戶與產品",
+    "cancelAnytime": "隨時從您的帳戶取消。您可以繼續使用至所付費期間的結束。"
   },
   "welcome": {
     "meta": {

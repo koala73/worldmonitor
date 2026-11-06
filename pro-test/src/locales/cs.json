@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Šum",
     "signalWord": "Signál",
-    "valueProps": "Geopolitická AI vrstva — ptejte se jí, odebírejte ji, stavte na ní.",
+    "valueProps": "Pro přidává AI analytika, pravidla upozornění a naplánovaný briefing na živý dashboard a připojuje jeho data do Claude a dalších AI nástrojů.",
     "launchingDate": "Dostupné nyní",
     "tryFreeDashboard": "Vyzkoušejte dashboard zdarma",
     "choosePlan": "Vyberte plán",
-    "signIn": "Přihlásit se",
     "goToDashboard": "Přejít na Ovládací panel"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Osobní",
     "axisPersonalNote": "individuální použití",
     "axisCommercial": "Komerční",
-    "axisCommercialNote": "práce, klienti a produkty"
+    "axisCommercialNote": "práce, klienti a produkty",
+    "cancelAnytime": "Zrušit kdykoli ze svého účtu. Máte přístup až do konce období, které jste zaplatili."
   },
   "welcome": {
     "meta": {

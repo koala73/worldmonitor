@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Bruit",
     "signalWord": "Signal",
-    "valueProps": "La couche d'IA géopolitique — interrogez-la, abonnez-vous, construisez dessus.",
+    "valueProps": "Pro ajoute un analyste IA, des règles d'alerte et un briefing programmé au dashboard en direct, et connecte ses données à Claude et à d'autres outils IA.",
     "launchingDate": "Disponible maintenant",
     "tryFreeDashboard": "Essayez le tableau de bord gratuit",
     "choosePlan": "Choisissez votre offre",
-    "signIn": "Se connecter",
     "goToDashboard": "Aller au Tableau de Bord"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Personnel",
     "axisPersonalNote": "usage personnel",
     "axisCommercial": "Commercial",
-    "axisCommercialNote": "travail, clients et produits"
+    "axisCommercialNote": "travail, clients et produits",
+    "cancelAnytime": "Annulez à tout moment depuis votre compte. Vous conservez l'accès jusqu'à la fin de la période que vous avez payée."
   },
   "welcome": {
     "meta": {

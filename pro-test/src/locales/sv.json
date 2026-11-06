@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Brus",
     "signalWord": "Signal",
-    "valueProps": "Det geopolitiska AI-lagret — fråga det, prenumerera, bygg på det.",
+    "valueProps": "Pro lägger till en AI-analytiker, aviseringsregler och en schemalagd briefing på live-instrumentpanelen, och kopplar dess data till Claude och andra AI-verktyg.",
     "launchingDate": "Tillgänglig nu",
     "tryFreeDashboard": "Prova den kostnadsfria dashboarden",
     "choosePlan": "Välj din plan",
-    "signIn": "Logga in",
     "goToDashboard": "Gå till instrumentpanel"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Personlig",
     "axisPersonalNote": "individuell användning",
     "axisCommercial": "Kommersiell",
-    "axisCommercialNote": "arbete, klienter och produkter"
+    "axisCommercialNote": "arbete, klienter och produkter",
+    "cancelAnytime": "Avbryt när som helst från ditt konto. Du behåller åtkomsten till slutet av den period du betalade för."
   },
   "welcome": {
     "meta": {

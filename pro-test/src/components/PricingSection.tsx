@@ -374,6 +374,13 @@ export function PricingSection({
               </span>
             </button>
           </motion.div>
+
+          {/* Cancellation terms follow the EULA: cancelling stops future
+              renewals and access runs to the end of the paid period. No
+              partial-period refund is offered, so the note promises none. */}
+          <p className="text-xs text-wm-muted font-mono mt-4">
+            {t('pricing.cancelAnytime')}
+          </p>
         </div>
 
         {/* Tier cards grid */}

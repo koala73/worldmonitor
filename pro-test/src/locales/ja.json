@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "ノイズ",
     "signalWord": "シグナル",
-    "valueProps": "地政学 AI レイヤー — 尋ね、購読し、その上に構築する。",
+    "valueProps": "Proは、ライブダッシュボードにAIアナリスト、アラートルール、スケジュール済みブリーフィングを追加し、そのデータをClaudeおよび他のAIツールに接続します。",
     "launchingDate": "現在ご利用可能",
     "tryFreeDashboard": "無料ダッシュボードを試す",
     "choosePlan": "プランを選ぶ",
-    "signIn": "サインイン",
     "goToDashboard": "ダッシュボードに移動"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "個人用",
     "axisPersonalNote": "個人で使用",
     "axisCommercial": "商用",
-    "axisCommercialNote": "仕事、クライアント、製品"
+    "axisCommercialNote": "仕事、クライアント、製品",
+    "cancelAnytime": "いつでもアカウントからキャンセルできます。お支払いいただいた期間の終了まで、アクセスは継続します。"
   },
   "welcome": {
     "meta": {

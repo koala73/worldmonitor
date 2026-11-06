@@ -11,11 +11,10 @@
   "hero": {
     "noiseWord": "Rauschen",
     "signalWord": "Signal",
-    "valueProps": "Die geopolitische KI-Schicht — fragen Sie sie, abonnieren Sie sie, bauen Sie darauf auf.",
+    "valueProps": "Pro fügt einen AI-Analysten, Alert-Regeln und ein geplantes Briefing zum Live-Dashboard hinzu und verbindet seine Daten mit Claude und anderen AI-Tools.",
     "launchingDate": "Jetzt verfügbar",
     "tryFreeDashboard": "Kostenloses Dashboard testen",
     "choosePlan": "Tarif wählen",
-    "signIn": "Anmelden",
     "goToDashboard": "Zum Dashboard"
   },
   "wired": {
@@ -447,7 +446,8 @@
     "axisPersonal": "Persönlich",
     "axisPersonalNote": "Individuelle Nutzung",
     "axisCommercial": "Kommerziell",
-    "axisCommercialNote": "Arbeit, Kunden & Produkte"
+    "axisCommercialNote": "Arbeit, Kunden & Produkte",
+    "cancelAnytime": "Jederzeit über dein Konto kündbar. Du behältst Zugriff bis zum Ende deines bezahlten Zeitraums."
   },
   "welcome": {
     "meta": {
