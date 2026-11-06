@@ -2196,9 +2196,9 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Briefings diários com IA por email ou Slack",
+      "headline": "Briefings IA diários por email ou Slack",
       "tagline": "mais WM Analyst, regras de alerta e MCP para Claude",
-      "cta": "Fazer upgrade para Pro →",
+      "cta": "Assinar o Pro →",
       "dismiss": "Descartar"
     },
     "billingState": {

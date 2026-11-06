@@ -2644,9 +2644,9 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Muhtasari wa AI kila siku kupitia barua pepe au Slack",
+      "headline": "Muhtasari wa AI kila siku kwa barua pepe au Slack",
       "tagline": "pamoja na WM Analyst, sheria za arifa na MCP kwa Claude",
-      "cta": "Pata toleo jipya la Pro →",
+      "cta": "Jiunge na Pro →",
       "dismiss": "Ondoa"
     },
     "checkoutFailureBanner": {

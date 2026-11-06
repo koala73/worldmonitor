@@ -2612,7 +2612,7 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "ملخصات يومية بالذكاء الاصطناعي عبر البريد أو Slack",
+      "headline": "ملخصات AI يومية بالبريد أو Slack",
       "tagline": "بالإضافة إلى WM Analyst وقواعد التنبيهات و MCP لـ Claude",
       "cta": "ترقية إلى Pro →",
       "dismiss": "رفض"

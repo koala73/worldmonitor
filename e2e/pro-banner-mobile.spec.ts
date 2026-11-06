@@ -1,3 +1,4 @@
+import { readFileSync, readdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
 // Conversion audit item 10 (2026-11-06): on phones the free-user Pro strip
@@ -9,14 +10,14 @@ import { expect, test, type Page } from '@playwright/test';
 const HEADLINE = 'Daily AI briefs by email or Slack';
 const SLOT_HEIGHT = 40;
 
-async function openFreeDashboard(page: Page): Promise<void> {
+async function openFreeDashboard(page: Page, path = '/'): Promise<void> {
   await page.addInitScript(() => {
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
     localStorage.removeItem('wm-pro-banner-launched-dismissed');
     localStorage.removeItem('wm-entitlement-hint');
   });
-  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.goto(path, { waitUntil: 'domcontentloaded' });
   await page.locator('.pro-banner.pro-banner-in').waitFor({ timeout: 20000 });
 }
 
@@ -53,6 +54,30 @@ for (const width of [360, 390]) {
     });
   });
 }
+
+// Every language must fit too: the headline is the whole message on a phone.
+const LOCALE_DIR = new URL('../src/locales/', import.meta.url);
+const localeHeadlines = readdirSync(LOCALE_DIR)
+  .filter((file) => file.endsWith('.json') && !file.endsWith('.shell.json'))
+  .map((file) => {
+    const dict = JSON.parse(readFileSync(new URL(file, LOCALE_DIR), 'utf8'));
+    return { lang: file.replace(/\.json$/, ''), headline: dict.components.proBanner.headline as string };
+  });
+
+test.describe('Pro strip at 360px in every language', () => {
+  test.use({ viewport: { width: 360, height: 800 }, isMobile: true, hasTouch: true });
+
+  for (const { lang, headline } of localeHeadlines) {
+    test(`${lang} headline fits in full`, async ({ page }) => {
+      await openFreeDashboard(page, `/?lang=${lang}`);
+      await expect(page.locator('.pro-banner-text strong')).toHaveText(headline);
+      const layout = await bannerLayout(page);
+      expect(layout.headlineClipped, `${lang}: "${headline}" is cut off`).toBe(false);
+      expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
+      expect(layout.ctaRight).toBeLessThanOrEqual(layout.viewport);
+    });
+  }
+});
 
 test.describe('Pro strip on desktop', () => {
   test.use({ viewport: { width: 1440, height: 900 } });

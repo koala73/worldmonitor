@@ -2188,7 +2188,7 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Dagliga AI-sammanfattningar via e-post eller Slack",
+      "headline": "Dagliga AI-briefer via mejl eller Slack",
       "tagline": "plus WM Analyst, varningsregler och MCP för Claude",
       "cta": "Uppgradera till Pro →",
       "dismiss": "Stäng"
