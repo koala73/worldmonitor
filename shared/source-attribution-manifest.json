@@ -9378,6 +9378,7 @@
       "provider": "stat.ripe.net",
       "kind": "structured",
       "observed": true,
+      "catalogActive": false,
       "license": "RIPEstat Service Terms section 3.3: commercial reuse and redistribution require prior written RIPE NCC permission. Integration disabled by default until authorized.",
       "attribution": "RIPEstat / RIPE NCC; routing origins from RIS and ASN holders from WHOIS; optional reverse DNS. Not attacker attribution. See https://www.ripe.net/about-us/legal/ripestat-service-terms-and-conditions/.",
       "status": "terms-review",

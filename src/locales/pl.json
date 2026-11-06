@@ -3246,7 +3246,7 @@
       "network": {
         "title": "Informacje sieciowe",
         "privacy": "Rozwiń, aby zażądać pasywnych danych sieciowych z RIPEstat. Adres IP wskaźnika jest udostępniany temu dostawcy.",
-        "disclaimer": "Rejestracja sieciowa i routing nie identyfikują atakującego ani nie odpowiadają za tę działalność.",
+        "disclaimer": "Dane rejestracyjne sieci i routing nie identyfikują atakującego ani nie oznaczają, że dostawca odpowiada za tę działalność.",
         "loading": "Ładowanie informacji sieciowych…",
         "unknown": "Niedostępne",
         "disabled": "Wyszukiwanie sieciowe nie jest włączone.",
