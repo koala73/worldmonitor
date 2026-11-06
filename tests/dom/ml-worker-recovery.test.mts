@@ -348,6 +348,24 @@ describe('MLWorkerManager recovery', () => {
     expect(workerHarness.instances).toHaveLength(1);
   });
 
+  it('settles a superseded readiness waiter instead of leaving its promise pending', async () => {
+    workerHarness.autoReady = false;
+    const manager = createManager();
+    const bootInit = manager.init();
+    await vi.waitFor(() => expect(workerHarness.instances).toHaveLength(1));
+
+    const first = vi.fn();
+    const second = vi.fn();
+    void manager.whenReady('same-caller').then(first);
+    void manager.whenReady('same-caller').then(second);
+    workerHarness.instances[0]!.emitReady();
+    await bootInit;
+    // Flush waiter continuations without a wall-clock timeout masking a hang.
+    await Promise.resolve();
+    expect(first).toHaveBeenCalledExactlyOnceWith(false);
+    expect(second).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
   it('snapshots availability per clustering choice without forcing a reload (#7779)', async () => {
     const manager = createManager();
     // Cold worker: snapshot is false, so a news generation takes the analysis

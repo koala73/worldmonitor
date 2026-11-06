@@ -2793,6 +2793,7 @@ export class App {
         void startAccountAuthHandoff({
           userId,
           isCurrent: () => (
+            !this.state.isDestroyed &&
             handoffGeneration === _convexWatchHandoffGeneration &&
             getAuthState().user?.id === userId
           ),
