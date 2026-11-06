@@ -15,7 +15,12 @@ function publicIp(input: string): string | null {
   return isBlockedResolvedAddress(ip) ? null : ip;
 }
 
-class ProviderBudgetError extends Error {}
+class ProviderBudgetError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProviderBudgetError';
+  }
+}
 
 const text = (value: unknown, max = 256): string => typeof value === 'string' ? value.trim().slice(0, max) : '';
 
@@ -58,7 +63,6 @@ export async function getNetworkInfo(_ctx: ServerContext, req: GetNetworkInfoReq
       ]);
       const network = routing.status === 'fulfilled' ? routing.value : null;
       const reverse = dns.status === 'fulfilled' && Array.isArray(dns.value.result) && dns.value.result.every(name => typeof name === 'string') && typeof dns.value.error === 'string' ? dns.value : null;
-      if (!network && !reverse) return null;
       // A valid empty array is no data; a missing/wrong-typed array is a failure.
       const validRouting = network && Array.isArray(network.asns) && network.asns.every(origin =>
         origin && typeof origin === 'object' && Number.isInteger(origin.asn) && origin.asn > 0 && origin.asn <= 4294967295);
@@ -71,11 +75,18 @@ export async function getNetworkInfo(_ctx: ServerContext, req: GetNetworkInfoReq
       const prefix = validRouting ? text(network.resource, 80) : '';
       const routingTime = validRouting ? text(network.query_time, 40) : '';
       const routingDate = routingTime ? new Date(/Z$|[+-]\d\d:\d\d$/.test(routingTime) ? routingTime : `${routingTime}Z`) : null;
-      if (!validRouting && !hostnames.length) return null;
       const hasData = asns.length > 0 || !!prefix || hostnames.length > 0;
       let status = hasData ? 'available' : 'no_data';
       const dnsUnavailable = !reverse || (!!reverse.error && !/NXDOMAIN|does not exist/i.test(text(reverse.error)));
-      if (!validRouting || dnsUnavailable) status = hasData ? 'partial' : 'unavailable';
+      if (!validRouting || dnsUnavailable) {
+        console.warn('[cyber-network-provider] incomplete lookup', {
+          routing: validRouting ? 'ok' : 'unavailable', reverseDns: dnsUnavailable ? 'unavailable' : 'ok',
+        });
+        // A status string is not a shared cache no-store marker. Return null
+        // when no useful data survived so failures get only the short cooldown.
+        if (!hasData) return null;
+        status = 'partial';
+      }
       return {
         ...empty(status, ip),
         asns, prefix, hostnames, isLessSpecific: validRouting ? network.is_less_specific === true : false,

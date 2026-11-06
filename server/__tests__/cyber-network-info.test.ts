@@ -12,6 +12,7 @@ vi.mock('../_shared/redis', () => ({
   }),
 }));
 import { getNetworkInfo } from '../worldmonitor/cyber/v1/get-network-info';
+import { cachedFetchJson } from '../_shared/redis';
 const ctx = {} as Parameters<typeof getNetworkInfo>[0];
 const prefix = { status: 'ok', data: { resource: '2.248.0.0/14', is_less_specific: true,
   query_time: '2026-11-06T08:00:00', asns: [{ asn: 3301, holder: 'Telia Company AB' }, { asn: 1234, holder: null }] } };
@@ -107,4 +108,41 @@ it('round-trips the real generated client and cyber route', async () => {
   });
   const result = await client.getNetworkInfo({ ip: '2.249.90.120' });
   expect(result).toMatchObject({ status: 'available', ip: '2.249.90.120', asns: [{ asn: 3301, holder: 'Telia Company AB' }, { asn: 1234, holder: '' }] });
+});
+
+it('uses the real cache short cooldown for empty routing plus DNS failure and recovers after expiry', async () => {
+  const realRedis = await vi.importActual<typeof import('../_shared/redis')>('../_shared/redis');
+  vi.mocked(cachedFetchJson).mockImplementationOnce(realRedis.cachedFetchJson);
+  vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.test');
+  vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'fixture');
+  vi.stubEnv('LOCAL_API_MODE', '');
+  const writes: unknown[][] = [];
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  let recovered = false;
+  vi.mocked(fetch).mockImplementation(async (input, options) => {
+    const url = String(input);
+    if (url.startsWith('https://redis.test/')) {
+      if (options?.method === 'POST') {
+        writes.push(JSON.parse(String(options.body)));
+        return Response.json({ result: 'OK' });
+      }
+      // Expired/missing entry on each read, as after the short cooldown.
+      return Response.json({ result: null });
+    }
+    if (recovered) return Response.json(url.includes('prefix-overview') ? prefix : { status: 'ok', data: { result: [], error: 'NXDOMAIN' } });
+    if (url.includes('prefix-overview')) return Response.json({ status: 'ok', data: { asns: [] } });
+    throw new Error('provider outage with private diagnostic text');
+  });
+  try {
+    expect((await getNetworkInfo(ctx, { ip: '9.9.9.9' })).status).toBe('unavailable');
+    expect(writes[0]?.slice(2)).toEqual([JSON.stringify('__WM_NEG__'), 'EX', '120']);
+    expect(warning).toHaveBeenCalledWith('[cyber-network-provider] incomplete lookup', { routing: 'ok', reverseDns: 'unavailable' });
+    expect(JSON.stringify(warning.mock.calls)).not.toMatch(/9\.9\.9\.9|private diagnostic/);
+    recovered = true;
+    vi.mocked(cachedFetchJson).mockImplementationOnce(realRedis.cachedFetchJson);
+    expect((await getNetworkInfo(ctx, { ip: '9.9.9.9' })).status).toBe('available');
+    expect(writes[1]?.slice(3)).toEqual(['EX', '86400']);
+  } finally {
+    warning.mockRestore();
+  }
 });
