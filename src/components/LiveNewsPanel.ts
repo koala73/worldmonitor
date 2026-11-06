@@ -253,7 +253,8 @@ export class LiveNewsPanel extends Panel {
           this.lazyObserver?.disconnect();
           this.lazyObserver = null;
           // An idle stop ends only through Resume or Play; scrolling back into view is neither.
-          if (!this.alwaysOn || this.idleStoppedAfterMs !== null) return;
+          // A collapsed panel shows only its header, so it waits for onCollapsedChange.
+          if (!this.alwaysOn || this.idleStoppedAfterMs !== null || !this.canHostLiveMedia()) return;
           if ('requestIdleCallback' in window) {
             this.idleCallbackId = (window as any).requestIdleCallback(
               () => { this.idleCallbackId = null; this.triggerInit(); },
@@ -304,7 +305,7 @@ export class LiveNewsPanel extends Panel {
       this.videoSession !== null ||
       this.pendingMount ||
       this.ownsLiveNewsMedia() ||
-      (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.isPanelVisible());
+      (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.canHostLiveMedia() && this.isPanelVisible());
   }
 
   private ownsLiveMediaForChannel(channelId: string): boolean {
@@ -321,7 +322,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private startAlwaysOnPlaybackIfVisible(): void {
-    if (!this.alwaysOn || document.hidden || !this.element.isConnected || !this.isPanelVisible()) return;
+    if (!this.alwaysOn || document.hidden || !this.canHostLiveMedia() || !this.isPanelVisible()) return;
     // An idle stop ends only through Resume or Play, so autoplay must not restart it on tab return.
     if (this.idleStoppedAfterMs !== null || this.ownsActiveLiveMedia()) return;
     this.beginPlayback('implicit');
@@ -960,6 +961,10 @@ export class LiveNewsPanel extends Panel {
       this.destroyPlayer();
       this.renderPlaceholder();
     }
+  }
+
+  protected override onCollapsedChange(collapsed: boolean): void {
+    if (!collapsed) this.resumeLiveMediaForShow();
   }
 
   public resumeLiveMediaForShow(): void {
