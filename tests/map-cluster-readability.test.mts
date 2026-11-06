@@ -11,6 +11,8 @@ const declaration = source.statements.find(node => ts.isClassDeclaration(node) &
 const methods = ['createBasesClusterLayer', 'createMilitaryVesselClustersLayer', 'createMilitaryFlightClustersLayer', 'createProtestClusterLayers'];
 const body = declaration.members.filter(node => methods.includes(node.name?.getText(source) ?? '')).map(node => node.getText(source)).join('\n');
 const javascript = ts.transpileModule(`class Harness { ${body} }`, {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+// Extracted methods can use only `this` and the module symbols injected below.
+// Add any new module-level dependency to this list when a builder starts using it.
 const Harness = new Function('ScatterplotLayer', 'TextLayer', 'getMilitaryBaseColor', `${javascript}; return Harness;`)(ScatterplotLayer, TextLayer, getMilitaryBaseColor);
 
 test('base clusters leave more map visible while retaining counts and picking', () => {
@@ -38,9 +40,14 @@ test('event cluster fills retain severity colors and relative alpha, and remain 
   assert.ok(colors.every(c=>c[3]<=150));
   assert.ok(colors.every((c,i)=>i===0 || c[3]<colors[i-1][3]));
   assert.equal(protest.props.pickable,true);
-  for (const builder of ['createMilitaryVesselClustersLayer','createMilitaryFlightClustersLayer']) {
+  for (const [builder, activities] of [
+    ['createMilitaryVesselClustersLayer', ['exercise', 'deployment', 'transit', 'unknown']],
+    ['createMilitaryFlightClustersLayer', ['exercise', 'patrol', 'transport', 'unknown']],
+  ] as const) {
     const layer=map[builder]([]);
     assert.equal(layer.props.pickable,true);
-    assert.ok(layer.props.getFillColor({activityType:'exercise'})[3]<=150);
+    const alphas = activities.map(activityType => layer.props.getFillColor({activityType})[3]);
+    assert.deepEqual(alphas, [150, 150, 135, 120], `${builder} retains activity alpha ordering`);
+    assert.equal(layer.props.getFillColor({})[3], 120, `${builder} defaults missing activity to unknown`);
   }
 });
