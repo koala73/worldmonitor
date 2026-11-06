@@ -1632,8 +1632,8 @@
       "analysisFrameworksFromAgentskills": "Az agentskills.io-ból",
       "analysisFrameworksPasteJson": "JSON beillesztése",
       "analysisFrameworksSaveToLibrary": "Mentés a könyvtárba",
-      "streamAlwaysOnLabel": "Élő streamek automatikus lejátszása az irányítópulton",
-      "streamAlwaysOnDesc": "Automatikusan elindítja a Live News és Live Webcams elemeket, amikor láthatók. Hagyja kikapcsolva, hogy a videó csak a Lejátszás gombra kattintás után töltődjön be.",
+      "streamAlwaysOnLabel": "Élő webkamerák automatikus lejátszása",
+      "streamAlwaysOnDesc": "Az élő webkamera videók azonnal elindulnak, amikor megjelennek a képernyőn. Hagyja kikapcsolva ahhoz, hogy csak akkor töltődjenek be, amikor Ön elindítja őket.",
       "frameworkNote": "Csak az ügyfél által generált elemzésre vonatkozik",
       "loadingServerInsights": "Szerver insights betöltése...",
       "usingCachedBrief": "Gyorsítótározott összefoglalás használata...",
@@ -1666,7 +1666,9 @@
       "briefStoryDetails": "A hír részletei ({{count}})",
       "streamIdleStopLabel": "Élő videó leállítása üresjárat során",
       "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen.",
-      "streamIdleStopNever": "Soha"
+      "streamIdleStopNever": "Soha",
+      "liveNewsAutoplayLabel": "Élő hírek automatikus lejátszása",
+      "liveNewsAutoplayDesc": "Az élő hírek videója néma hanggal elindul, amint megjelenik a képernyőn. Ezt kikapcsolva a videó csak akkor töltődik be, amikor Ön elindítja."
     },
     "settings": {
       "exportSettings": "Beállítások exportálása",

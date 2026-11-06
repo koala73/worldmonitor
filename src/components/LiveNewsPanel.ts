@@ -7,7 +7,7 @@ import { loadFromStorage, saveToStorage } from '@/utils';
 import { STORAGE_KEYS } from '@/config';
 
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
-import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
+import { getLiveNewsAutoplay, subscribeLiveNewsAutoplayChange } from '@/services/live-stream-settings';
 import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
 import { sourceListsChannel, type LiveVideoSource, type OfflineReason } from '@/services/live-video/model';
 import { withResolvedLiveVideos } from '@/services/live-video/resolved';
@@ -77,7 +77,8 @@ export class LiveNewsPanel extends Panel {
     if (document.hidden) stopLiveMediaPlayback('live-news', 'hidden');
     else this.startAlwaysOnPlaybackIfVisible();
   };
-  private alwaysOn = getLiveStreamsAlwaysOn();
+  // Live News autoplay (on by default); the webcam wall keeps its own opt-in.
+  private alwaysOn = getLiveNewsAutoplay();
   private unsubscribeStreamSettings: (() => void) | null = null;
   private unsubscribeIdle: (() => void) | null = null;
 
@@ -171,7 +172,7 @@ export class LiveNewsPanel extends Panel {
     this.setupLazyInit();
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
     this.unsubscribeIdle = subscribeLiveMediaIdle((idleAfterMs) => this.stopForIdle(idleAfterMs));
-    this.unsubscribeStreamSettings = subscribeLiveStreamsAlwaysOnChange((alwaysOn) => {
+    this.unsubscribeStreamSettings = subscribeLiveNewsAutoplayChange((alwaysOn) => {
       this.alwaysOn = alwaysOn;
       if (!alwaysOn) {
         // Cancel any pending lazy-init so leaving always-on cannot auto-start playback without intent.

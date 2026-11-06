@@ -1478,8 +1478,8 @@
       "badgeAnimDesc": "แสดงแอนิเมชันป้ายอัปเดตบนส่วนหัวของแผง",
       "headlineMemoryLabel": "หน่วยความจำพาดหัว",
       "headlineMemoryDesc": "จดจำพาดหัวที่เคยดูเพื่อเน้นข่าวใหม่",
-      "streamAlwaysOnLabel": "เล่นสตรีมสดบนแดชบอร์ดโดยอัตโนมัติ",
-      "streamAlwaysOnDesc": "เริ่ม Live News และ Live Webcams โดยอัตโนมัติเมื่อมองเห็น ปิดไว้เพื่อโหลดวิดีโอหลังจากคุณคลิกเล่นเท่านั้น",
+      "streamAlwaysOnLabel": "เล่นเว็บแคมสดโดยอัตโนมัติ",
+      "streamAlwaysOnDesc": "เริ่มเล่นวิดีโอเว็บแคมสดโดยอัตโนมัติ ทันทีที่ปรากฏบนหน้าจอ ปิดตัวเลือกนี้เพื่อโหลดเฉพาะเมื่อคุณเล่นด้วยตัวเอง",
       "analysisFrameworksLabel": "กรอบการวิเคราะห์",
       "analysisFrameworksActivePerPanel": "ใช้งานต่อแผง",
       "analysisFrameworksSkillLibrary": "ไลบรารีทักษะ",
@@ -1520,7 +1520,9 @@
       "briefStoryDetails": "รายละเอียดข่าว ({{count}})",
       "streamIdleStopLabel": "หยุดวิดีโอสดเมื่อไม่มีกิจกรรม",
       "streamIdleStopDesc": "หยุด Live News และ Live Webcams หลังจากที่ไม่มีกิจกรรมนาน ๆ และแสดงประกาศในแผง",
-      "streamIdleStopNever": "ไม่เลย"
+      "streamIdleStopNever": "ไม่เลย",
+      "liveNewsAutoplayLabel": "เล่นข่าวสดโดยอัตโนมัติ",
+      "liveNewsAutoplayDesc": "เริ่มเล่นวิดีโอข่าวสดโดยปิดเสียง ทันทีที่ปรากฏบนหน้าจอ ปิดตัวเลือกนี้เพื่อโหลดวิดีโอเฉพาะเมื่อคุณเล่นด้วยตัวเอง"
     },
     "settings": {
       "exportSettings": "ส่งออกการตั้งค่า",

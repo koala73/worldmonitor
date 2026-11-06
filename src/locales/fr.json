@@ -1434,8 +1434,8 @@
       "analysisFrameworksFromAgentskills": "Depuis agentskills.io",
       "analysisFrameworksPasteJson": "Coller JSON",
       "analysisFrameworksSaveToLibrary": "Enregistrer dans la bibliothèque",
-      "streamAlwaysOnLabel": "Lire automatiquement les flux en direct sur le tableau de bord",
-      "streamAlwaysOnDesc": "Lance automatiquement Live News et Live Webcams lorsqu’ils sont visibles. Laissez désactivé pour charger la vidéo seulement après avoir cliqué sur Lire.",
+      "streamAlwaysOnLabel": "Lecture automatique des webcams en direct",
+      "streamAlwaysOnDesc": "Lance les vidéos des webcams en direct dès qu'elles apparaissent à l'écran. Laissez cette option désactivée pour les charger uniquement quand vous les lancez vous-même.",
       "globeRenderScaleOptions": {
         "1": "Éco (1x)",
         "2": "4K (2x)",
@@ -1476,7 +1476,9 @@
       "briefStoryDetails": "Détails de l’article ({{count}})",
       "streamIdleStopLabel": "Arrêter la vidéo en direct en cas d'inactivité",
       "streamIdleStopDesc": "Arrête Live News et Live Webcams après cette durée sans activité et affiche une notification dans le panneau.",
-      "streamIdleStopNever": "Jamais"
+      "streamIdleStopNever": "Jamais",
+      "liveNewsAutoplayLabel": "Lecture automatique des actualités en direct",
+      "liveNewsAutoplayDesc": "Lance la vidéo des actualités en direct, en sourdine, dès qu'elle apparaît à l'écran. Désactivez cette option pour charger la vidéo uniquement quand vous la lancez vous-même."
     },
     "settings": {
       "exportSettings": "Exporter les paramètres",

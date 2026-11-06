@@ -1481,8 +1481,8 @@
       "badgeAnimDesc": "Анимирайте актуализирани значки на заглавките на панели",
       "headlineMemoryLabel": "Памет на заглавие",
       "headlineMemoryDesc": "Помните видяни заглавия, за да изтеглите нови истории",
-      "streamAlwaysOnLabel": "Автоматично пускане на живи потоци на таблото",
-      "streamAlwaysOnDesc": "Стартира Live News и Live Webcams автоматично, когато са видими. Оставете изключено, за да се зарежда видео само след натискане на Пуск.",
+      "streamAlwaysOnLabel": "Автоматично пуска живи уебкамери",
+      "streamAlwaysOnDesc": "Стартира живите видеокамери веднага щом се появят на екрана. Оставете това изключено, за да ги заредите само когато ги стартирате сами.",
       "analysisFrameworksLabel": "Аналитични рамки",
       "analysisFrameworksActivePerPanel": "Активни по панел",
       "analysisFrameworksSkillLibrary": "Библиотека на умения",
@@ -1524,7 +1524,9 @@
       "briefStoryDetails": "Подробности за историята ({{count}})",
       "streamIdleStopLabel": "Спиране на живото видео при неактивност",
       "streamIdleStopDesc": "Спира Live News и Live Webcams след толкова дълго време без активност и показва уведомление в панела.",
-      "streamIdleStopNever": "Никога"
+      "streamIdleStopNever": "Никога",
+      "liveNewsAutoplayLabel": "Автоматично възпроизвеждане на живи новини",
+      "liveNewsAutoplayDesc": "Стартира видеото със живи новини, със звук изключен, веднага щом се появи на екрана. Изключете това, за да заредите видеото само когато го стартирате сами."
     },
     "settings": {
       "exportSettings": "Експорт на настройки",

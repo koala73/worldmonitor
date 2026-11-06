@@ -1632,8 +1632,8 @@
       "analysisFrameworksFromAgentskills": "agentskills.io से",
       "analysisFrameworksPasteJson": "JSON चिपकाएँ",
       "analysisFrameworksSaveToLibrary": "पुस्तकालय में सहेजें",
-      "streamAlwaysOnLabel": "डैशबोर्ड पर लाइव स्ट्रीम अपने-आप चलाएं",
-      "streamAlwaysOnDesc": "Live News और Live Webcams दिखाई देने पर अपने-आप शुरू करता है। वीडियो को केवल Play क्लिक करने के बाद लोड करने के लिए इसे बंद रखें.",
+      "streamAlwaysOnLabel": "लाइव वेबकैम स्वतः चलाएँ",
+      "streamAlwaysOnDesc": "जैसे ही लाइव वेबकैम वीडियो स्क्रीन पर आते हैं, इन्हें चलाना शुरू करें। इन्हें केवल तब लोड करने के लिए इसे बंद रखें जब आप इन्हें स्वयं शुरू करेंगे।",
       "frameworkNote": "केवल क्लाइंट-जनित विश्लेषण पर लागू",
       "loadingServerInsights": "सर्वर इंटेलिजेंस लोड हो रहा है...",
       "usingCachedBrief": "कैश्ड संक्षिप्त उपयोग हो रहा है...",
@@ -1666,7 +1666,9 @@
       "briefStoryDetails": "खबर का विवरण ({{count}})",
       "streamIdleStopLabel": "निष्क्रियता पर लाइव वीडियो रोकें",
       "streamIdleStopDesc": "निष्क्रियता की इस अवधि के बाद लाइव न्यूज़ और लाइव वेबकैम को रोक देता है और पैनल में एक नोटिस दिखाता है।",
-      "streamIdleStopNever": "कभी नहीं"
+      "streamIdleStopNever": "कभी नहीं",
+      "liveNewsAutoplayLabel": "लाइव न्यूज़ ऑटो-प्ले",
+      "liveNewsAutoplayDesc": "जैसे ही लाइव न्यूज़ वीडियो स्क्रीन पर आता है, इसे म्यूट करके चलाना शुरू करें। इसे बंद करें तो वीडियो केवल तब लोड होगा जब आप इसे स्वयं शुरू करेंगे।"
     },
     "settings": {
       "exportSettings": "सेटिंग्स निर्यात करें",

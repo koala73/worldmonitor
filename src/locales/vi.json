@@ -1478,8 +1478,8 @@
       "badgeAnimDesc": "Hoạt ảnh huy hiệu cập nhật trên tiêu đề bảng",
       "headlineMemoryLabel": "Bộ nhớ tiêu đề",
       "headlineMemoryDesc": "Ghi nhớ tiêu đề đã xem để làm nổi bật tin mới",
-      "streamAlwaysOnLabel": "Tự động phát luồng trực tiếp trên bảng điều khiển",
-      "streamAlwaysOnDesc": "Tự động khởi động Live News và Live Webcams khi chúng hiển thị. Tắt tùy chọn này để chỉ tải video sau khi bạn nhấp Phát.",
+      "streamAlwaysOnLabel": "Tự động phát webcam trực tiếp",
+      "streamAlwaysOnDesc": "Bắt đầu phát các video webcam trực tiếp ngay khi chúng xuất hiện trên màn hình. Để tắt để chỉ tải chúng khi bạn bắt đầu phát.",
       "analysisFrameworksLabel": "Khung phân tích",
       "analysisFrameworksActivePerPanel": "Hoạt động theo bảng điều khiển",
       "analysisFrameworksSkillLibrary": "Thư viện kỹ năng",
@@ -1520,7 +1520,9 @@
       "briefStoryDetails": "Chi tiết tin tức ({{count}})",
       "streamIdleStopLabel": "Dừng video trực tiếp khi không hoạt động",
       "streamIdleStopDesc": "Dừng Live News và Live Webcams sau khoảng thời gian này nếu không có hoạt động và hiển thị thông báo trong panel.",
-      "streamIdleStopNever": "Không bao giờ"
+      "streamIdleStopNever": "Không bao giờ",
+      "liveNewsAutoplayLabel": "Tự động phát tin tức trực tiếp",
+      "liveNewsAutoplayDesc": "Bắt đầu phát video tin tức trực tiếp, không âm thanh, ngay khi nó xuất hiện trên màn hình. Tắt tùy chọn này để chỉ tải video khi bạn bắt đầu phát."
     },
     "settings": {
       "exportSettings": "Xuất cài đặt",

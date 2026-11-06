@@ -1632,8 +1632,8 @@
       "analysisFrameworksFromAgentskills": "از agentskills.io",
       "analysisFrameworksPasteJson": "چسباندن JSON",
       "analysisFrameworksSaveToLibrary": "ذخیره در کتابخانه",
-      "streamAlwaysOnLabel": "پخش خودکار جریان‌های زنده در داشبورد",
-      "streamAlwaysOnDesc": "اخبار زنده و وب‌کم‌های زنده را هنگام نمایان شدن به‌طور خودکار شروع می‌کند. خاموش بگذارید تا ویدئو فقط پس از کلیک روی پخش بارگذاری شود.",
+      "streamAlwaysOnLabel": "پخش خودکار وبکم‌های زنده",
+      "streamAlwaysOnDesc": "ویدیوهای وب‌کم زندهٔ را به محض ظاهر شدن روی صفحه شروع می‌کند. این گزینه را خاموش نگه دارید تا آنها تنها زمانی بارگذاری شوند که خود آنها را شروع کنید.",
       "frameworkNote": "فقط برای تحلیل‌های تولیدشده در سمت کاربر اعمال می‌شود",
       "loadingServerInsights": "در حال بارگذاری بینش‌های سرور...",
       "usingCachedBrief": "استفاده از گزارش ذخیره‌شده...",
@@ -1666,7 +1666,9 @@
       "briefStoryDetails": "جزئیات خبر ({{count}})",
       "streamIdleStopLabel": "توقف ویدیوی زنده هنگام عدم فعالیت",
       "streamIdleStopDesc": "پخش Live News و Live Webcams را پس از این مدت بدون فعالیت متوقف می‌کند و یک پیام را در پنل نمایش می‌دهد.",
-      "streamIdleStopNever": "هرگز"
+      "streamIdleStopNever": "هرگز",
+      "liveNewsAutoplayLabel": "پخش خودکار اخبار زندهٔ",
+      "liveNewsAutoplayDesc": "ویدیوی اخبار زندهٔ را بدون صدا به محض ظاهر شدن روی صفحه شروع می‌کند. این گزینه را خاموش کنید تا ویدیو تنها زمانی بارگذاری شود که خود آن را شروع کنید."
     },
     "settings": {
       "exportSettings": "خروجی تنظیمات",

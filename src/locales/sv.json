@@ -1312,8 +1312,8 @@
       "badgeAnimDesc": "Animera uppdateringsemblem i panelrubriker",
       "headlineMemoryLabel": "Rubrikminne",
       "headlineMemoryDesc": "Kom ihåg sedda rubriker för att markera nya",
-      "streamAlwaysOnLabel": "Spela upp liveströmmar automatiskt på instrumentpanelen",
-      "streamAlwaysOnDesc": "Startar Live News och Live Webcams automatiskt när de är synliga. Lämna avstängt för att ladda video först efter att du klickar på Spela.",
+      "streamAlwaysOnLabel": "Spela live-webbkameror automatiskt",
+      "streamAlwaysOnDesc": "Startar direktwebkameravideoerna så snart de visas på skärmen. Lämna detta avstängt för att endast ladda dem när du startar dem själv.",
       "globeRenderScaleOptions": {
         "1": "Eko (1x)",
         "2": "4K (2x)",
@@ -1362,7 +1362,9 @@
       "briefStoryDetails": "Detaljer om nyheten ({{count}})",
       "streamIdleStopLabel": "Stoppa livevideo när inaktiv",
       "streamIdleStopDesc": "Stoppar Live News och Live Webcams efter denna tid utan aktivitet och visar ett meddelande i panelen.",
-      "streamIdleStopNever": "Aldrig"
+      "streamIdleStopNever": "Aldrig",
+      "liveNewsAutoplayLabel": "Automatisk uppspelning av direktnyheter",
+      "liveNewsAutoplayDesc": "Startar direktnyhetsvideon, avstängd, så snart den visas på skärmen. Stäng av detta för att endast ladda videon när du startar den själv."
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats."
