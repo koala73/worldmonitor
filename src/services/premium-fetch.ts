@@ -1,8 +1,8 @@
 /**
  * Fetch wrapper for premium RPC clients.
  *
- * Injects a Clerk Bearer token (or WORLDMONITOR_API_KEY as fallback) directly
- * into every request for premium endpoints. This is the source-of-truth auth
+ * Injects a Clerk Bearer token (or a tester key) directly into every request
+ * for premium endpoints. This is the source-of-truth auth
  * injection for those routes — no reliance on the global fetch patch.
  *
  * IMPORTANT — Bearer injection is path-gated to PREMIUM_RPC_PATHS only.
@@ -28,7 +28,7 @@
  *
  * Fix: don't attach Bearer for non-premium paths. Fall through to the
  * unauth path so the wm-session interceptor handles the wms_ attach.
- * API-key holders (step 1) and tester-key holders (step 2) are unaffected
+ * Caller-supplied API keys and tester-key holders (step 1) are unaffected
  * — those keys travel via X-WorldMonitor-Key which works on any path.
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
@@ -37,7 +37,6 @@ import { createRequestTimeoutSignal, isTimeoutOrAbortError } from './timeout-sig
 import { PRO_FRESH_CACHE_RPC_PATHS } from '@/shared/pro-fresh-rpc';
 import { withPremiumIntent } from './premium-intent';
 import { noteSelfHostPremiumDenial } from './self-host-key';
-import { isDesktopRuntime } from './runtime';
 
 /**
  * Test seam — set in unit tests to inject key/token providers without needing
@@ -322,32 +321,10 @@ export async function premiumFetch(
     return fetchReportingServerErrors(input, withCredentials(requestInit));
   }
 
-  // 1. Browser/test runtime key. Desktop keys remain inside the native
-  // sidecar; its native proxy authenticates these requests without placing a
-  // license key in renderer memory.
-  if (!isDesktopRuntime()) {
-    try {
-      const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
-      const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
-      if (wmKey) {
-        existing.set('X-WorldMonitor-Key', wmKey);
-        // `return await`, not a bare `return`: this sits inside the try below,
-        // and only an awaited rejection is caught by it. Returning the promise
-        // unawaited would escape the catch and propagate instead of falling
-        // through to the next credential — a silent behavior change.
-        return await fetchReportingServerErrors(
-          input,
-          { ...withCredentials(requestInit), headers: existing },
-        );
-      }
-    } catch (error) {
-      if (isTimeoutOrAbortError(error)) throw error;
-      /* credentials not available — fall through */
-    }
-  }
-
-  // 2. Legacy in-memory test seam. In production, tester/widget keys are
-  // HttpOnly cookies and ride along through credentials: 'include'.
+  // 1. Legacy in-memory test seam. In production, tester/widget keys are
+  // HttpOnly cookies and ride along through credentials: 'include'. A desktop
+  // license key never reaches the renderer: the native sidecar attaches it,
+  // and web builds stopped bundling env secrets in #4784.
   const testerKeys = await loadTesterKeys();
   for (const testerKey of testerKeys) {
     const testerHeaders = new Headers(existing);
@@ -361,10 +338,10 @@ export async function premiumFetch(
     // 401 → try the next tester key, then fall through to Clerk if none work.
   }
 
-  // 3. Clerk Pro session token — ONLY for premium paths. For non-premium
+  // 2. Clerk Pro session token — ONLY for premium paths. For non-premium
   //    endpoints, attaching Bearer would suppress the wm-session
   //    interceptor's wms_ attach and produce a 401 (see the file-level
-  //    comment for the full chain). Falling through to step 4 instead lets
+  //    comment for the full chain). Falling through to step 3 instead lets
   //    the interceptor attach wms_ and the gateway accept it.
   if (isPremiumRpcTarget(input, forcePremium)) {
     try {
@@ -384,8 +361,8 @@ export async function premiumFetch(
       }
       if (token) {
         existing.set('Authorization', `Bearer ${token}`);
-        // `return await` — see the wm-key branch above: this is inside the
-        // enclosing try, whose catch must keep seeing a rejection here.
+        // `return await`, not a bare `return`: this is inside the enclosing
+        // try, and only an awaited rejection reaches its catch.
         return await fetchReportingServerErrors(
           input,
           { ...withCredentials(requestInit), headers: existing },
@@ -397,7 +374,7 @@ export async function premiumFetch(
     }
   }
 
-  // 4. No auth — let the request through.
+  // 3. No auth — let the request through.
   // For NON-premium paths this lands on the wm-session interceptor (which
   // attaches wms_) → gateway accepts → 200. For premium paths reached here
   // (no API key, no tester key, no Clerk Bearer) the gateway will return
