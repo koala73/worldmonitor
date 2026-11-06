@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 import {
+  FEEDBACK_DIGEST_BATCH,
   FEEDBACK_REPORTER_HOURLY_CAP,
   FEEDBACK_RETRY_WINDOW_MS,
   FEEDBACK_SECURITY_EMAILS_PER_DAY,
@@ -298,6 +299,114 @@ describe("security reports", () => {
     const [row] = await rows(t);
     expect(row.notifiedAt).toBe(NOW);
     expect(await t.action(internal.agentFeedback.sendSecurityDigest, { now: NOW + DAY })).toEqual({ listed: 0 });
+  });
+});
+
+describe("feedback digest", () => {
+  const captureResend = () => {
+    vi.stubEnv("RESEND_API_KEY", "synthetic-resend");
+    const bodies: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body));
+      return Response.json({ id: "synthetic-email" });
+    }));
+    return bodies;
+  };
+  const html = (body: string) => JSON.parse(body).html as string;
+  const subject = (body: string) => JSON.parse(body).subject as string;
+
+  test("summarizes new non-security reports by kind and surface, then marks them", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    const ids = await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW, receivedAt: NOW - 1000 };
+      const a = await ctx.db.insert("agentFeedback", { ...base, summary: "DIGEST-SECRET-SUMMARY" });
+      const b = await ctx.db.insert("agentFeedback", { ...base, expected: "DIGEST-SECRET-EXPECTED" });
+      const c = await ctx.db.insert("agentFeedback", {
+        ...base, kind: "data_quality", surfaceType: "rpc", surfaceName: "/api/market/v1/list-market-quotes",
+      });
+      const d = await ctx.db.insert("agentFeedback", {
+        ...base, kind: "missing_capability", surfaceType: "other", surfaceName: "OTHER-LABEL-<b>",
+      });
+      const security = await ctx.db.insert("agentFeedback", { ...base, kind: "security", status: "private" });
+      const announced = await ctx.db.insert("agentFeedback", { ...base, notifiedAt: NOW - 500 });
+      return { a, b, c, d, security, announced };
+    });
+
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 4 });
+    expect(bodies).toHaveLength(1);
+    expect(subject(bodies[0])).toBe("[WM] Agent feedback: 4 new report(s)");
+    const body = html(bodies[0]);
+    expect(body).toContain("<td>bug</td><td>2</td>");
+    expect(body).toContain("<td>data_quality</td><td>1</td>");
+    expect(body).toContain("<td>missing_capability</td><td>1</td>");
+    expect(body).toContain("<td>get_market_data</td><td>mcp_tool</td><td>2</td>");
+    expect(body).toContain("<td>/api/market/v1/list-market-quotes</td><td>rpc</td><td>1</td>");
+    // A free-text surface label is reporter-written: it is counted, never shown.
+    expect(body).toContain("<td>(not a known tool or route)</td><td>other</td><td>1</td>");
+    for (const text of ["DIGEST-SECRET-SUMMARY", "DIGEST-SECRET-EXPECTED", "OTHER-LABEL"]) {
+      expect(body).not.toContain(text);
+    }
+    expect(body).not.toContain(ids.security);
+
+    const stored = await rows(t);
+    for (const id of [ids.a, ids.b, ids.c, ids.d]) {
+      expect(stored.find((r) => r._id === id)?.notifiedAt).toBe(NOW);
+    }
+    expect(stored.find((r) => r._id === ids.security)?.notifiedAt).toBeUndefined();
+
+    // Marked rows are not listed again, and an empty digest sends nothing.
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 0 });
+    expect(bodies).toHaveLength(1);
+  });
+
+  test("a surface name that fails the edge's shape check is shown as unnamed", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run((ctx) => ctx.db.insert("agentFeedback", {
+      ...report({ surfaceName: "<img src=x>" }), status: "received", updatedAt: NOW, receivedAt: NOW - 1000,
+    }));
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 1 });
+    const body = html(bodies[0]);
+    expect(body).toContain("<td>(not a known tool or route)</td><td>mcp_tool</td><td>1</td>");
+    expect(body).not.toContain("img");
+  });
+
+  test("reports the operator already moved out of received are not announced", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    const { reportId } = await t.mutation(internal.agentFeedback.submit, report());
+    await t.mutation(internal.agentFeedback.transition, { reportId, to: "triaged" });
+    const [row] = await rows(t);
+    // Triage means the owner has seen it: it leaves the digest index.
+    expect(row.notifiedAt).toBe(NOW);
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 0 });
+    expect(bodies).toHaveLength(0);
+  });
+
+  test("a failed send leaves every row unannounced for the next run", async () => {
+    vi.stubEnv("RESEND_API_KEY", "synthetic-resend");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 500 })));
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.agentFeedback.submit, report());
+    await expect(t.action(internal.agentFeedback.sendFeedbackDigest, {})).rejects.toThrow("Resend failed");
+    const [row] = await rows(t);
+    expect(row.notifiedAt).toBeUndefined();
+  });
+
+  test("a backlog past one batch is capped and drains on the next run", async () => {
+    const bodies = captureResend();
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const base = { ...report(), status: "received" as const, updatedAt: NOW };
+      for (let i = 0; i < FEEDBACK_DIGEST_BATCH + 3; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - DAY + i });
+      }
+    });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_BATCH });
+    expect(html(bodies[0])).toContain("More reports are waiting");
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 3 });
+    expect(html(bodies[1])).not.toContain("More reports are waiting");
   });
 });
 

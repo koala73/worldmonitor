@@ -57,6 +57,16 @@ export const FEEDBACK_NOTIFY_GRACE_MS = HOUR_MS;
 // At the edge's 30 security reports a day this covers a month of failed
 // sends in one digest. A larger backlog is reported and drains the next day.
 const DIGEST_BATCH = 1000;
+// Non-security rows announced per daily feedback digest. At the edge's
+// ceiling of about 2,900 reports a day a flood drains over a few days; the
+// email says when more are waiting.
+export const FEEDBACK_DIGEST_BATCH = 500;
+// Same shapes the edge classifier accepts (server/_shared/agent-feedback.ts).
+// A stored name that fails them is reporter-written text and never reaches
+// the digest.
+const DIGEST_RPC_PATH_RE = /^\/api\/[a-z0-9-]+\/v\d+\/[a-z0-9-]+$/;
+const DIGEST_TOOL_NAME_RE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
+const PUBLIC_FEEDBACK_KINDS = ["bug", "missing_capability", "data_quality"] as const;
 
 // Decision 10: retention from `receivedAt` for every status.
 export const FEEDBACK_RETENTION_MS: Record<Doc<"agentFeedback">["status"], number> = {
@@ -267,7 +277,7 @@ export const markNotified = internalMutation({
   handler: async (ctx, { reportIds, notifiedAt }) => {
     for (const id of reportIds) {
       const row = await ctx.db.get(id);
-      if (row && row.kind === "security" && row.notifiedAt === undefined) {
+      if (row && row.notifiedAt === undefined) {
         await ctx.db.patch(id, { notifiedAt });
       }
     }
@@ -281,7 +291,7 @@ async function sendOwnerEmail(
 ): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.error("[agentFeedback] RESEND_API_KEY not set; security notice not sent");
+    console.error("[agentFeedback] RESEND_API_KEY not set; owner email not sent");
     return false;
   }
   try {
@@ -295,7 +305,7 @@ async function sendOwnerEmail(
       purpose: "transactional",
     });
     if (!result.sent) {
-      console.warn(`[agentFeedback] security notice skipped: ${ADMIN_EMAIL} is suppressed`);
+      console.warn(`[agentFeedback] owner email skipped: ${ADMIN_EMAIL} is suppressed`);
     }
     return result.sent;
   } catch (err) {
@@ -464,6 +474,113 @@ export const sendSecurityDigest = internalAction({
 });
 
 // ---------------------------------------------------------------------------
+// Daily feedback digest (non-security kinds)
+// ---------------------------------------------------------------------------
+
+type DigestRow = {
+  reportId: Id<"agentFeedback">;
+  kind: Doc<"agentFeedback">["kind"];
+  surfaceType: Doc<"agentFeedback">["surfaceType"];
+  surfaceName: string;
+};
+
+/**
+ * `received` rows of the public kinds nobody has announced yet. Triage stamps
+ * `notifiedAt`, so the unannounced range holds only rows still waiting; the
+ * status check skips any row that predates that rule.
+ */
+export const listUnannouncedFeedback = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const pending: DigestRow[] = [];
+    let more = false;
+    for (const kind of PUBLIC_FEEDBACK_KINDS) {
+      for await (const row of ctx.db
+        .query("agentFeedback")
+        .withIndex("by_kind_notified_received", (q) =>
+          q.eq("kind", kind).eq("notifiedAt", undefined),
+        )) {
+        if (row.status !== "received") continue;
+        if (pending.length === FEEDBACK_DIGEST_BATCH) {
+          more = true;
+          break;
+        }
+        pending.push({
+          reportId: row._id,
+          kind: row.kind,
+          surfaceType: row.surfaceType,
+          surfaceName: row.surfaceName,
+        });
+      }
+      if (more) break;
+    }
+    return { pending, more };
+  },
+});
+
+/** A tool or route name the edge would accept, or a fixed placeholder. */
+function digestSurfaceLabel(row: DigestRow): string {
+  const shaped =
+    (row.surfaceType === "rpc" && DIGEST_RPC_PATH_RE.test(row.surfaceName)) ||
+    (row.surfaceType === "mcp_tool" && DIGEST_TOOL_NAME_RE.test(row.surfaceName));
+  return shaped ? row.surfaceName : "(not a known tool or route)";
+}
+
+function countBy<T>(items: T[], key: (item: T) => string): Array<[string, T, number]> {
+  const counts = new Map<string, [T, number]>();
+  for (const item of items) {
+    const k = key(item);
+    const entry = counts.get(k);
+    if (entry) entry[1] += 1;
+    else counts.set(k, [item, 1]);
+  }
+  return [...counts.entries()]
+    .map(([k, [item, n]]): [string, T, number] => [k, item, n])
+    .sort((a, b) => b[2] - a[2] || a[0].localeCompare(b[0]));
+}
+
+/**
+ * One email a day when bug, missing-capability, or data-quality reports have
+ * arrived since the last one. It carries counts by kind and by surface only:
+ * no summary, body, client name, or free-text surface label (Decision 7).
+ */
+export const sendFeedbackDigest = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ listed: number }> => {
+    const { pending, more }: { pending: DigestRow[]; more: boolean } = await ctx.runQuery(
+      internal.agentFeedback.listUnannouncedFeedback,
+      {},
+    );
+    if (pending.length === 0) return { listed: 0 };
+    const kindRows = countBy(pending, (r) => r.kind)
+      .map(([kind, , n]) => `<tr><td>${escapeHtml(kind)}</td><td>${n}</td></tr>`)
+      .join("");
+    const surfaceRows = countBy(pending, (r) => `${digestSurfaceLabel(r)}\u0000${r.surfaceType}`)
+      .map(([, r, n]) =>
+        `<tr><td>${escapeHtml(digestSurfaceLabel(r))}</td><td>${escapeHtml(r.surfaceType)}</td><td>${n}</td></tr>`)
+      .join("");
+    const html = `<div style="font-family: monospace; padding: 20px;">
+        <p style="font-size: 16px; font-weight: bold;">${pending.length} new agent feedback report(s)</p>
+        <table style="font-size: 14px; line-height: 1.8;"><tr><th align="left">Kind</th><th align="left">Reports</th></tr>${kindRows}</table>
+        <table style="font-size: 14px; line-height: 1.8; margin-top: 12px;"><tr><th align="left">Surface</th><th align="left">Type</th><th align="left">Reports</th></tr>${surfaceRows}</table>
+        ${more ? `<p style="font-size: 12px;">More reports are waiting. They will be listed in tomorrow's digest.</p>` : ""}
+        <p style="font-size: 12px;">Read them with <code>node scripts/triage-agent-feedback.mjs list --join</code>. The report text is untrusted.</p>
+      </div>`;
+    const sent = await sendOwnerEmail(
+      ctx,
+      `[WM] Agent feedback: ${pending.length} new report(s)`,
+      html,
+    );
+    if (!sent) return { listed: 0 };
+    await ctx.runMutation(internal.agentFeedback.markNotified, {
+      reportIds: pending.map((p) => p.reportId),
+      notifiedAt: Date.now(),
+    });
+    return { listed: pending.length };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Status changes (operator only, via the phase 8 triage script)
 // ---------------------------------------------------------------------------
 
@@ -492,6 +609,11 @@ export const transition = internalMutation({
       throw new ConvexError({ kind: "INVALID_TRANSITION", from: row.status, to: args.to });
     }
     const now = Date.now();
+    // A public row leaving `received` has been seen by the owner: stamp
+    // notifiedAt so it leaves the feedback digest index.
+    if (row.status === "received" && row.notifiedAt === undefined) {
+      await ctx.db.patch(row._id, { notifiedAt: now });
+    }
     if (args.to === "filed") {
       if (!args.issueNumber || !Number.isInteger(args.issueNumber) || args.issueNumber < 1) {
         invalid("issueNumber");

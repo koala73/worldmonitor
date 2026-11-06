@@ -24,10 +24,12 @@
 *Could not find public function for 'agentFeedback:getForTriage'*
 *Could not find public function for 'agentFeedback:getSecurityNotice'*
 *Could not find public function for 'agentFeedback:listForTriage'*
+*Could not find public function for 'agentFeedback:listUnannouncedFeedback'*
 *Could not find public function for 'agentFeedback:listUnannouncedSecurity'*
 *Could not find public function for 'agentFeedback:markNotified'*
 *Could not find public function for 'agentFeedback:notifySecurityReport'*
 *Could not find public function for 'agentFeedback:prune'*
+*Could not find public function for 'agentFeedback:sendFeedbackDigest'*
 *Could not find public function for 'agentFeedback:sendSecurityDigest'*
 *Could not find public function for 'agentFeedback:submit'*
 *Could not find public function for 'agentFeedback:transition'*

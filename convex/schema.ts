@@ -665,6 +665,8 @@ export default defineSchema({
     // Security rows only. Scheduling and delivery are separate so a failed
     // send stays visible to the daily digest (Decisions 11 and 12).
     notifyScheduledAt: v.optional(v.number()),
+    // Set once the owner has been told about the row: by a security notice or
+    // digest, by the daily feedback digest, or by triage.
     notifiedAt: v.optional(v.number()),
   })
     .index("by_fingerprint_received", ["fingerprint", "receivedAt"])
