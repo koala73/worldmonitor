@@ -276,8 +276,8 @@
     "a8": "MCP让AI智能体——Claude、GPT、自定义LLM——将World Monitor用作工具，查询已注册的服务。Pro版本已包含。Enterprise版本添加私有MCP服务器和自定义部署。",
     "q9": "我可以自建面板吗?",
     "a9": "可以。Pro 包含自定义小组件构建器 — 从 HTML、CSS 与 JavaScript 构建面板,并支持 AI 辅助修改。",
-    "q10": "我可以把 Claude 或 GPT 接入 WorldMonitor 吗?",
-    "a10": "可以。MCP 已包含在 Pro 中 — 将 WorldMonitor 作为实时工具接入 Claude、GPT 或任何兼容 MCP 的 LLM。",
+    "q10": "我可以把 Claude 或 GPT 接入 World Monitor 吗?",
+    "a10": "可以。MCP 已包含在 Pro 中 — 将 World Monitor 作为实时工具接入 Claude、GPT 或任何兼容 MCP 的 LLM。",
     "q11": "摘要的个性化程度如何?",
     "a11": "选择你的频率——每日、两次每日或每周。我们针对你的警报规则和监控名单重新评分每条追踪的新闻，跨源去重，并发送最多30条排序项目，附带AI评估和监控信号。实时警报也可用于重要事件。",
     "q12": "刷新率是多少?",
@@ -379,7 +379,7 @@
         "cta": "联系销售"
       },
       "apiBusiness": {
-        "description": "在 WorldMonitor 数据基础上推出您自己的产品",
+        "description": "在 World Monitor 数据基础上推出您自己的产品",
         "features": [
           "涵盖 API Starter 的全部内容",
           "用于面向客户产品的 R1–R3 再分发权",
@@ -451,7 +451,7 @@
       "screenshotAlt": "World Monitor 实时情报仪表板 — 包含冲突、海运和市场图层的全球地图\t",
       "plateNote": "从实时地图捕获 — 点击打开\t",
       "trustBuild": "构建应用：\t",
-      "positioningLink": "WorldMonitor 不是开源的 Palantir\t",
+      "positioningLink": "World Monitor 不是开源的 Palantir\t",
       "asOf": "截至{{date}}",
       "whatIsTitle": "World Monitor 是什么？",
       "whatIsBody": "World Monitor 是一款免费（$0）、开源（AGPL-3.0）的仪表板，供 200 多万人使用。它将来自 {{providers}} 个归属提供商的 {{feeds}} 条新闻和 OSINT 源流式传输到一张实时世界地图上，包括 {{mapLayers}} 种地图图层类型，涵盖地缘政治、市场、海运、航空和网络安全。它关联这些数据，使汇聚事件在登上新闻头条前就浮现出来。每个数据都有溯源，每种方法都有文档记录。",
@@ -709,5 +709,8 @@
     "m6": "基于 Sentinel-5P 卫星 NO2 数据的工业活动地图",
     "m7": "230 个经济体及任意国家对之间的资本流动，面向 AI 智能体和 API",
     "m8": "终端仪表盘和可缩放的 CLI 地图 — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "我们监测的信息源"
   }
 }

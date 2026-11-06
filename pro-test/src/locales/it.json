@@ -273,11 +273,11 @@
     "q7": "Posso ancora usare le mie chiavi API?",
     "a7": "Sì. Le tue chiavi personali funzionano sempre. Pro significa semplicemente che non devi registrarti per servizi separati.",
     "q8": "Cos'è MCP?",
-    "a8": "MCP consente agli agenti AI — Claude, GPT, LLM personalizzati — di utilizzare WorldMonitor come strumento, interrogando servizi registrati. Incluso in Pro. Enterprise aggiunge server MCP privati e implementazioni personalizzate.",
+    "a8": "MCP consente agli agenti AI — Claude, GPT, LLM personalizzati — di utilizzare World Monitor come strumento, interrogando servizi registrati. Incluso in Pro. Enterprise aggiunge server MCP privati e implementazioni personalizzate.",
     "q9": "Posso costruire i miei pannelli?",
     "a9": "Sì. Pro include il Custom Widget Builder — costruisci pannelli da HTML, CSS e JavaScript, con modifica assistita dall'IA.",
-    "q10": "Posso collegare Claude o GPT a WorldMonitor?",
-    "a10": "Sì. MCP è incluso in Pro — collega WorldMonitor a Claude, GPT o qualsiasi LLM compatibile MCP come strumento live.",
+    "q10": "Posso collegare Claude o GPT a World Monitor?",
+    "a10": "Sì. MCP è incluso in Pro — collega World Monitor a Claude, GPT o qualsiasi LLM compatibile MCP come strumento live.",
     "q11": "Quanto è personalizzato il digest?",
     "a11": "Scegli la tua cadenza — giornaliera, due volte al giorno o settimanale. Rivalutiamo ogni storia monitorata rispetto alle tue regole di avviso e watchlist, dedichiamo tra le fonti e inviamo fino a 30 elementi classificati con una Valutazione AI e Segnali da monitorare scritti nel tuo contesto. Gli avvisi in tempo reale sono disponibili anche per gli eventi critici.",
     "q12": "Qual è la frequenza di aggiornamento?",
@@ -379,7 +379,7 @@
         "cta": "Contatta il Team Vendite"
       },
       "apiBusiness": {
-        "description": "Lancia il tuo prodotto sui dati di WorldMonitor",
+        "description": "Lancia il tuo prodotto sui dati di World Monitor",
         "features": [
           "Tutto nel piano API Starter",
           "Diritti di ridistribuzione R1–R3 per prodotti rivolti ai clienti",
@@ -451,7 +451,7 @@
       "screenshotAlt": "Dashboard di intelligence live World Monitor — mappa globale con layer di conflitto, spedizioni e mercati",
       "plateNote": "Catturato dalla mappa live — clicca per aprirla",
       "trustBuild": "Costruisci su di esso:",
-      "positioningLink": "WorldMonitor non è un Palantir open-source",
+      "positioningLink": "World Monitor non è un Palantir open-source",
       "asOf": "A partire dal {{date}}",
       "whatIsTitle": "Cos'è World Monitor?",
       "whatIsBody": "World Monitor è una dashboard gratuita ($0), open-source (AGPL-3.0) utilizzata da 2M+ persone. Trasmette {{feeds}} feed di notizie e OSINT da {{providers}} provider attribuiti su un'unica mappa mondiale live con {{mapLayers}} tipi di layer cartografico, coprendo geopolitica, mercati, trasporto marittimo, aviazione e cyber. Li correla in modo che gli eventi convergenti emergano prima dei titoli. Ogni dato è documentato e ogni metodo è tracciato.",
@@ -709,5 +709,8 @@
     "m6": "Mappa dell'attività industriale dai dati satellitari NO2 di Sentinel-5P",
     "m7": "Flussi di capitale per 230 economie e qualsiasi coppia di paesi, per agenti IA e API",
     "m8": "Dashboard nel terminale e mappa CLI con zoom — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Fonti che monitoriamo"
   }
 }

@@ -273,11 +273,11 @@
     "q7": "Tôi vẫn có thể sử dụng khóa API của riêng mình?",
     "a7": "Có. Mang khóa của riêng bạn luôn hoạt động. Pro đơn giản có nghĩa là bạn không phải đăng ký các dịch vụ riêng biệt.",
     "q8": "MCP là gì?",
-    "a8": "MCP cho phép các tác nhân AI — Claude, GPT, các LLM tùy chỉnh — sử dụng WorldMonitor làm công cụ, truy vấn các dịch vụ đã đăng ký. Bao gồm trong Pro. Enterprise thêm các máy chủ MCP riêng và triển khai tùy chỉnh.",
+    "a8": "MCP cho phép các tác nhân AI — Claude, GPT, các LLM tùy chỉnh — sử dụng World Monitor làm công cụ, truy vấn các dịch vụ đã đăng ký. Bao gồm trong Pro. Enterprise thêm các máy chủ MCP riêng và triển khai tùy chỉnh.",
     "q9": "Tôi có thể xây dựng các bảng của riêng mình không?",
     "a9": "Có. Pro bao gồm Custom Widget Builder — xây dựng bảng từ HTML, CSS và JavaScript, với chỉnh sửa hỗ trợ AI.",
-    "q10": "Tôi có thể kết nối Claude hoặc GPT với WorldMonitor không?",
-    "a10": "Có. MCP được bao gồm trong Pro — kết nối WorldMonitor với Claude, GPT hoặc bất kỳ LLM nào tương thích MCP như một công cụ trực tiếp.",
+    "q10": "Tôi có thể kết nối Claude hoặc GPT với World Monitor không?",
+    "a10": "Có. MCP được bao gồm trong Pro — kết nối World Monitor với Claude, GPT hoặc bất kỳ LLM nào tương thích MCP như một công cụ trực tiếp.",
     "q11": "Digest được cá nhân hóa như thế nào?",
     "a11": "Chọn lịch của bạn — hàng ngày, hai lần mỗi ngày hoặc hàng tuần. Chúng tôi cho mỗi bài báo theo dõi được chấm điểm lại so với các quy tắc cảnh báo và danh sách theo dõi của bạn, loại bỏ trùng lặp trên các nguồn, và gửi lên đến 30 mục xếp hạng với Đánh giá AI và Tín hiệu cần theo dõi được viết vào ngữ cảnh của bạn. Cảnh báo thời gian thực cũng có sẵn cho các sự kiện quan trọng.",
     "q12": "Tốc độ làm mới là bao nhiêu?",
@@ -379,7 +379,7 @@
         "cta": "Liên hệ Phòng bán hàng"
       },
       "apiBusiness": {
-        "description": "Khởi chạy sản phẩm của riêng bạn trên dữ liệu WorldMonitor",
+        "description": "Khởi chạy sản phẩm của riêng bạn trên dữ liệu World Monitor",
         "features": [
           "Tất cả trong API Starter",
           "Quyền phân phối lại R1–R3 cho các sản phẩm hướng tới khách hàng",
@@ -451,7 +451,7 @@
       "screenshotAlt": "Bảng điều khiển tình báo trực tiếp World Monitor — bản đồ toàn cầu với các lớp xung đột, vận chuyển và thị trường",
       "plateNote": "Được chụp từ bản đồ trực tiếp — bấm để mở",
       "trustBuild": "Xây dựng trên nó:",
-      "positioningLink": "WorldMonitor không phải là Palantir mã nguồn mở",
+      "positioningLink": "World Monitor không phải là Palantir mã nguồn mở",
       "asOf": "Tính đến {{date}}",
       "whatIsTitle": "World Monitor là gì?",
       "whatIsBody": "World Monitor là một dashboard miễn phí ($0), mã nguồn mở (AGPL-3.0) được sử dụng bởi hơn 2 triệu người. Nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi nguồn lên một bản đồ thế giới trực tiếp với {{mapLayers}} loại lớp bản đồ, bao gồm địa chính trị, thị trường, vận tải biển, hàng không và mạng. Nó tương quan chúng để các sự kiện hội tụ được nổi lên trước khi có tiêu đề. Mỗi con số đều có nguồn gốc và mỗi phương pháp đều được ghi chép.",
@@ -698,7 +698,7 @@
   },
   "whatsNew": {
     "eyebrow": "Nhật ký vận tải",
-    "title": "Có gì mới trong WorldMonitor",
+    "title": "Có gì mới trong World Monitor",
     "subtitle": "Tính năng mới từ 30 ngày qua — sửa chữa và hạ tầng không được tính.",
     "proTag": "PRO",
     "m1": "Góc nhìn truyền thông — báo chí từng nước đưa tin về bất kỳ quốc gia nào ra sao, cho tác tử AI và API",
@@ -709,5 +709,8 @@
     "m6": "Bản đồ hoạt động công nghiệp từ dữ liệu NO2 của vệ tinh Sentinel-5P",
     "m7": "Dòng vốn của 230 nền kinh tế và mọi cặp quốc gia, cho tác tử AI và API",
     "m8": "Bảng điều khiển trong terminal và bản đồ CLI phóng to được — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Các nguồn chúng tôi theo dõi"
   }
 }

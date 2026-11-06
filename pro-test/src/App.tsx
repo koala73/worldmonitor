@@ -679,17 +679,20 @@ const LivePreview = () => (
 const SourceMarquee = () => {
   const sources = [
     "Finnhub", "FRED", "Bloomberg", "CNBC", "Nikkei", "CoinGecko", "Polymarket",
-    "Reuters", "ACLED", "UCDP", "GDELT", "NASA FIRMS", "USGS", "OpenSky", "AISStream",
-    "Cloudflare Radar", "BGPStream", "GPSJam", "NOAA", "Copernicus", "IAEA",
+    "Reuters", "UCDP", "GDELT", "NASA FIRMS", "USGS", "OpenSky", "AISStream",
+    "Cloudflare Radar", "GPSJam", "NOAA", "Copernicus", "IAEA",
     "Al Jazeera", "Sky News", "Euronews", "DW News", "France 24",
-    "OilPrice", "Rigzone", "Maritime Executive", "Hellenic Shipping News",
+    "OilPrice", "Rigzone",
     "Defense One", "Jane's", "The War Zone",
     "TechCrunch", "Ars Technica", "The Verge", "Wired",
-    "Krebs on Security", "BleepingComputer", "The Record",
+    "Krebs on Security",
   ];
   const items = sources.join(" · ");
   return (
-    <section className="border-y border-wm-border bg-wm-card/20 overflow-hidden py-4" aria-label="Data sources">
+    <section className="border-y border-wm-border bg-wm-card/20 overflow-hidden py-4" aria-label={t('sourceMarquee.label')}>
+      <a href="/sources/" className="block w-fit mx-auto mb-3 px-4 font-mono text-xs text-wm-green hover:underline">
+        {t('sourceMarquee.label')} →
+      </a>
       <div className="marquee-track whitespace-nowrap font-mono text-xs text-wm-muted uppercase tracking-widest">
         <span className="inline-block px-4">{items} · </span>
         <span className="inline-block px-4">{items} · </span>
@@ -1333,7 +1336,7 @@ const EnterprisePage = () => (
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
         </div>
-        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
+        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} World Monitor</span>
       </div>
       <PressNav />
       {/* This is the pricing page — the footer a buyer sees on the way to

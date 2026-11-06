@@ -273,11 +273,11 @@
     "q7": "Pot folosi în continuare propriile chei API?",
     "a7": "Da. Cheile proprii funcționează mereu. Pro înseamnă pur și simplu că nu trebuie să te înregistrezi la serviciile separate.",
     "q8": "Ce este MCP?",
-    "a8": "MCP permite agenților AI — Claude, GPT, LLM-uri personalizate — să folosească WorldMonitor ca instrument, interogând serviciile înregistrate. Inclus în Pro. Enterprise adaugă servere MCP private și implementări personalizate.",
+    "a8": "MCP permite agenților AI — Claude, GPT, LLM-uri personalizate — să folosească World Monitor ca instrument, interogând serviciile înregistrate. Inclus în Pro. Enterprise adaugă servere MCP private și implementări personalizate.",
     "q9": "Pot construi propriile panouri?",
     "a9": "Da. Pro include Custom Widget Builder — construiește panouri din HTML, CSS și JavaScript, cu modificare asistată de IA.",
-    "q10": "Pot conecta Claude sau GPT la WorldMonitor?",
-    "a10": "Da. MCP este inclus în Pro — conectează WorldMonitor la Claude, GPT sau orice LLM compatibil MCP ca instrument live.",
+    "q10": "Pot conecta Claude sau GPT la World Monitor?",
+    "a10": "Da. MCP este inclus în Pro — conectează World Monitor la Claude, GPT sau orice LLM compatibil MCP ca instrument live.",
     "q11": "Cât de personalizat este digest-ul?",
     "a11": "Alege cadența — zilnic, de două ori pe zi sau săptămânal. Re-evaluăm fiecare articol urmărit în raport cu regulile tale de alertă și lista de monitorizare, deduplicate pe surse, și trimitem până la 30 de articole clasate cu o Evaluare AI și Semnale de urmărit scrise în contextul tău. Alertele în timp real sunt de asemenea disponibile pentru evenimente critice.",
     "q12": "Care este rata de refresh?",
@@ -379,7 +379,7 @@
         "cta": "Contactați Vânzări"
       },
       "apiBusiness": {
-        "description": "Lansați propriul produs pe datele WorldMonitor",
+        "description": "Lansați propriul produs pe datele World Monitor",
         "features": [
           "Totul din API Starter",
           "Drepturi de redistribuire R1–R3 pentru produse orientate către clienți",
@@ -451,7 +451,7 @@
       "screenshotAlt": "Tabloul de bord de inteligență live World Monitor — hartă globală cu straturi de conflict, transport și piață",
       "plateNote": "Capturat din harta în direct — faceți clic pentru a o deschide",
       "trustBuild": "Construiți pe ea:",
-      "positioningLink": "WorldMonitor nu este un Palantir open-source",
+      "positioningLink": "World Monitor nu este un Palantir open-source",
       "asOf": "Din {{date}}",
       "whatIsTitle": "Ce este World Monitor?",
       "whatIsBody": "World Monitor este un dashboard gratuit ($0), open-source (AGPL-3.0) folosit de 2M+ persoane. Transmite {{feeds}} fluxuri de știri și OSINT de la {{providers}} furnizori atribuiți pe o hartă mondială live unificată cu {{mapLayers}} tipuri de straturi de hartă, acoperind geopolitică, piețe, transport maritim, aviație și cyber. Le corelează pentru ca evenimentele convergente să apară înaintea știrilor. Fiecare cifră este sursa și fiecare metodă documentată.",
@@ -698,7 +698,7 @@
   },
   "whatsNew": {
     "eyebrow": "Jurnal transport maritim",
-    "title": "Ce e nou în WorldMonitor",
+    "title": "Ce e nou în World Monitor",
     "subtitle": "Funcții noi din ultimele 30 de zile — corecții și lucrări de infrastructură nu incluse.",
     "proTag": "PRO",
     "m1": "Perspectiva media — cum relatează presa din fiecare țară despre orice țară, pentru agenți AI și API",
@@ -709,5 +709,8 @@
     "m6": "Hartă a activității industriale din datele satelitare NO2 Sentinel-5P",
     "m7": "Fluxuri de capital pentru 230 de economii și orice pereche de țări, pentru agenți AI și API",
     "m8": "Panou în terminal și hartă CLI cu zoom — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Sursele pe care le monitorizăm"
   }
 }

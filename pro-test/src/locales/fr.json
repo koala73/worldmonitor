@@ -273,11 +273,11 @@
     "q7": "Puis-je toujours utiliser mes propres clés API ?",
     "a7": "Oui. Vos propres clés fonctionnent toujours. Pro signifie simplement que vous n'avez pas besoin de vous inscrire à des services séparés.",
     "q8": "Qu'est-ce que MCP ?",
-    "a8": "MCP permet aux agents IA — Claude, GPT, LLMs personnalisés — d'utiliser WorldMonitor comme outil, interrogeant les services enregistrés. Inclus dans Pro. Enterprise ajoute des serveurs MCP privés et des déploiements personnalisés.",
+    "a8": "MCP permet aux agents IA — Claude, GPT, LLMs personnalisés — d'utiliser World Monitor comme outil, interrogeant les services enregistrés. Inclus dans Pro. Enterprise ajoute des serveurs MCP privés et des déploiements personnalisés.",
     "q9": "Puis-je construire mes propres panneaux ?",
     "a9": "Oui. Pro inclut le Constructeur de widgets personnalisés — construisez des panneaux en HTML, CSS et JavaScript, avec modification assistée par IA.",
-    "q10": "Puis-je connecter Claude ou GPT à WorldMonitor ?",
-    "a10": "Oui. MCP est inclus dans Pro — branchez WorldMonitor à Claude, GPT ou tout LLM compatible MCP comme outil en direct.",
+    "q10": "Puis-je connecter Claude ou GPT à World Monitor ?",
+    "a10": "Oui. MCP est inclus dans Pro — branchez World Monitor à Claude, GPT ou tout LLM compatible MCP comme outil en direct.",
     "q11": "Quel est le degré de personnalisation du digest ?",
     "a11": "Choisissez votre cadence — quotidienne, bi-quotidienne ou hebdomadaire. Nous re-notons chaque histoire surveillée selon vos règles d'alerte et votre liste de surveillance, dédupliquons entre les sources et envoyons jusqu'à 30 éléments classés avec une Évaluation IA et des Signaux à surveiller écrits dans votre contexte. Des alertes en temps réel sont aussi disponibles pour les événements critiques.",
     "q12": "Quel est le taux de rafraîchissement ?",
@@ -379,7 +379,7 @@
         "cta": "Contacter les ventes"
       },
       "apiBusiness": {
-        "description": "Lancez votre propre produit sur les données WorldMonitor",
+        "description": "Lancez votre propre produit sur les données World Monitor",
         "features": [
           "Tout ce qui est dans API Starter",
           "Droits de redistribution R1–R3 pour les produits destinés aux clients",
@@ -451,7 +451,7 @@
       "screenshotAlt": "Tableau de bord d'intelligence en direct World Monitor — carte mondiale avec couches de conflits, de navigation et de marchés",
       "plateNote": "Capturé depuis la carte en direct — cliquez pour l'ouvrir",
       "trustBuild": "Construisez dessus :",
-      "positioningLink": "WorldMonitor n'est pas un Palantir open-source",
+      "positioningLink": "World Monitor n'est pas un Palantir open-source",
       "asOf": "Au {{date}}",
       "whatIsTitle": "Qu'est-ce que World Monitor ?",
       "whatIsBody": "World Monitor est un tableau de bord gratuit ($0), open-source (AGPL-3.0) utilisé par 2M+ personnes. Il diffuse {{feeds}} fils d'actualités et fils OSINT de {{providers}} fournisseurs attribués sur une carte mondiale en direct unique avec {{mapLayers}} types de couches cartographiques, couvrant la géopolitique, les marchés, le transport maritime, l'aviation et la cybersécurité. Il les corrèle pour que les événements convergents s'affichent avant les gros titres. Chaque chiffre est sourcé et chaque méthode documentée.",
@@ -698,7 +698,7 @@
   },
   "whatsNew": {
     "eyebrow": "Journal d'expéditions",
-    "title": "Quoi de neuf dans WorldMonitor",
+    "title": "Quoi de neuf dans World Monitor",
     "subtitle": "Nouvelles fonctionnalités des 30 derniers jours — correctifs et maintenance exclus.",
     "proTag": "PRO",
     "m1": "Perspective médiatique — comment les médias de chaque pays couvrent n'importe quel pays, pour les agents IA et l'API",
@@ -709,5 +709,8 @@
     "m6": "Carte de l'activité industrielle à partir des données satellite NO2 de Sentinel-5P",
     "m7": "Flux de capitaux pour 230 économies et toute paire de pays, pour les agents IA et l'API",
     "m8": "Tableau de bord dans le terminal et carte CLI zoomable — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Sources que nous surveillons"
   }
 }

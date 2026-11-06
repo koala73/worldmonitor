@@ -358,7 +358,7 @@ export const TIER_CONFIG = {
   "api_business": {
     "name": "API Business",
     "localeKey": "apiBusiness",
-    "description": "Launch your own product on WorldMonitor data",
+    "description": "Launch your own product on World Monitor data",
     "features": [
       "Everything in API Starter",
       "R1–R3 redistribution rights for customer-facing products",

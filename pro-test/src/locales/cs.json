@@ -273,11 +273,11 @@
     "q7": "Mohu stále používat své vlastní API klíče?",
     "a7": "Ano. Vlastní klíče vždy fungují. Pro jednoduše znamená, že se nemusíte registrovat pro samostatné služby.",
     "q8": "Co je MCP?",
-    "a8": "MCP umožňuje AI agentům — Claude, GPT, vlastním LLM — používat WorldMonitor jako nástroj, dotazování registrovaných služeb. Zahrnuto v Pro. Enterprise přidává privátní MCP servery a vlastní nasazení.",
+    "a8": "MCP umožňuje AI agentům — Claude, GPT, vlastním LLM — používat World Monitor jako nástroj, dotazování registrovaných služeb. Zahrnuto v Pro. Enterprise přidává privátní MCP servery a vlastní nasazení.",
     "q9": "Mohu stavět vlastní panely?",
     "a9": "Ano. Pro obsahuje Custom Widget Builder — stavte panely z HTML, CSS a JavaScriptu s úpravami pomocí AI.",
-    "q10": "Mohu připojit Claude nebo GPT k WorldMonitor?",
-    "a10": "Ano. MCP je v ceně Pro — připojte WorldMonitor ke Claude, GPT nebo jakémukoliv LLM kompatibilnímu s MCP jako živý nástroj.",
+    "q10": "Mohu připojit Claude nebo GPT k World Monitor?",
+    "a10": "Ano. MCP je v ceně Pro — připojte World Monitor ke Claude, GPT nebo jakémukoliv LLM kompatibilnímu s MCP jako živý nástroj.",
     "q11": "Jak personalizovaný je digest?",
     "a11": "Zvolte si svůj rytmus — denně, dvakrát denně nebo týdně. Přehodnocujeme každý sledovaný příspěvek podle vašich pravidel upozornění a sledovacího seznamu, deduplikujeme napříč zdroji a posíláme až 30 řazených položek s AI vyhodnocením a signály k monitorování zapsanými do vašeho kontextu. Upozornění v reálném čase jsou také dostupná pro kritické události.",
     "q12": "Jaká je frekvence obnovování?",
@@ -379,7 +379,7 @@
         "cta": "Kontaktujte prodej"
       },
       "apiBusiness": {
-        "description": "Spusťte vlastní produkt na datech WorldMonitoru",
+        "description": "Spusťte vlastní produkt na datech World Monitoru",
         "features": [
           "Vše z API Starter",
           "Práva na redistribuci R1–R3 pro produkty určené zákazníkům",
@@ -451,7 +451,7 @@
       "screenshotAlt": "World Monitor live zpravodajský dashboard — globální mapa s vrstvami konfliktů, lodní dopravy a trhů",
       "plateNote": "Zachyceno z živé mapy — kliknutím ji otevřete",
       "trustBuild": "Postavte na tom:",
-      "positioningLink": "WorldMonitor není open-source Palantir",
+      "positioningLink": "World Monitor není open-source Palantir",
       "asOf": "K {{date}}",
       "whatIsTitle": "Co je World Monitor?",
       "whatIsBody": "World Monitor je bezplatný ($0), open-source (AGPL-3.0) dashboard, který používá 2M+ lidí. Streamuje {{feeds}} zpravodajských a OSINT zdrojů z {{providers}} atribuovaných poskytovatelů na jednu živou mapu světa s {{mapLayers}} typy mapových vrstev, která pokrývá geopolitiku, trhy, námořní dopravu, letectví a kybernetiku. Koreluje je tak, aby se sbíhající se události objevily dříve než se dostanou na titulky. Každá údaj má uvedený zdroj a každá metoda je zdokumentovaná.",
@@ -709,5 +709,8 @@
     "m6": "Mapa průmyslové aktivity ze satelitních dat NO2 ze Sentinel-5P",
     "m7": "Kapitálové toky pro 230 ekonomik a libovolnou dvojici zemí, pro AI agenty a API",
     "m8": "Dashboard v terminálu a přibližovatelná CLI mapa — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Zdroje, které sledujeme"
   }
 }
