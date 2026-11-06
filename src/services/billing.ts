@@ -59,6 +59,7 @@ let subscriptionLoaded = false;
 const listeners = new Set<(sub: SubscriptionInfo | null) => void>();
 let initialized = false;
 let unsubscribeConvex: (() => void) | null = null;
+let subscriptionGeneration = 0;
 
 // Convex/Clerk bootstrap rarely rejects with a non-Error value (undefined, null, string).
 // Sentry serializes those as synthetic `Error: undefined` with zero frames — uninvestigable.
@@ -105,8 +106,10 @@ export async function initSubscriptionWatch(
   _userId?: string,
   isCurrent: () => boolean = () => true,
 ): Promise<void> {
+  const generation = subscriptionGeneration;
   const isExpectedAccount = (): boolean => (
-    isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
+    generation === subscriptionGeneration
+    && isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
   );
   if (initialized || !isExpectedAccount()) return;
 
@@ -126,16 +129,17 @@ export async function initSubscriptionWatch(
       console.warn('[billing] Could not load Convex API -- skipping subscription watch');
       return;
     }
-    if (!isExpectedAccount()) return;
+    // Another initializer can attach while this one awaits the client/API.
+    if (initialized || !isExpectedAccount()) return;
 
-    unsubscribeConvex = client.onUpdate(
+    const unsubscribe = client.onUpdate(
       api.payments.billing.getSubscriptionForUser,
       {},
       (result: SubscriptionInfo | null) => {
         if (!isExpectedAccount()) return;
         currentSubscription = result;
         subscriptionLoaded = true;
-        for (const cb of listeners) cb(result);
+        notifySubscriptionListeners(result);
       },
       (err: Error) => {
         if (!isExpectedAccount()) return;
@@ -143,10 +147,16 @@ export async function initSubscriptionWatch(
         // Clear stale cached value so getSubscription() returns null (not old plan).
         currentSubscription = null;
         subscriptionLoaded = true;
-        for (const cb of listeners) cb(null);
+        notifySubscriptionListeners(null);
       },
     );
 
+    // onUpdate may synchronously notify a consumer that tears us down.
+    if (!isExpectedAccount()) {
+      unsubscribe();
+      return;
+    }
+    unsubscribeConvex = unsubscribe;
     initialized = true;
   } catch (err) {
     console.error('[billing] Failed to initialize subscription watch:', err);
@@ -156,6 +166,16 @@ export async function initSubscriptionWatch(
       initErr,
       { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } },
     ));
+  }
+}
+
+function notifySubscriptionListeners(subscription: SubscriptionInfo | null): void {
+  for (const cb of listeners) {
+    try {
+      cb(subscription);
+    } catch (err) {
+      console.warn('[billing] listener threw; continuing fan-out:', err);
+    }
   }
 }
 
@@ -183,6 +203,8 @@ export function onSubscriptionChange(
  * Tear down the subscription watch. Call from PanelLayout.destroy() for cleanup.
  */
 export function destroySubscriptionWatch(): void {
+  // Retire pending initialization and queued callbacks, including same-account rebinds.
+  subscriptionGeneration += 1;
   if (unsubscribeConvex) {
     unsubscribeConvex();
     unsubscribeConvex = null;

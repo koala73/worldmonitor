@@ -96,6 +96,7 @@ let verificationStatus: EntitlementVerificationStatus = 'idle';
 const verificationListeners = new Set<(status: EntitlementVerificationStatus) => void>();
 let initialized = false;
 let unsubscribeFn: (() => void) | null = null;
+let subscriptionGeneration = 0;
 
 function setEntitlementVerificationStatus(status: EntitlementVerificationStatus): void {
   if (verificationStatus === status) return;
@@ -150,8 +151,10 @@ export async function initEntitlementSubscription(
   _userId?: string,
   isCurrent: () => boolean = () => true,
 ): Promise<void> {
+  const generation = subscriptionGeneration;
   const isExpectedAccount = (): boolean => (
-    isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
+    generation === subscriptionGeneration
+    && isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
   );
   if (initialized || !isExpectedAccount()) return;
   if (currentState === null) beginEntitlementVerification();
@@ -190,7 +193,8 @@ export async function initEntitlementSubscription(
       if (isExpectedAccount()) markEntitlementVerificationUnavailable();
       return;
     }
-    if (!isExpectedAccount()) return;
+    // Another initializer can attach while this one awaits authentication.
+    if (initialized || !isExpectedAccount()) return;
 
     const watch = client.onUpdate(
       api.entitlements.getEntitlementsForUser,
@@ -208,6 +212,11 @@ export async function initEntitlementSubscription(
       },
     );
 
+    // onUpdate may synchronously notify a consumer that tears us down.
+    if (!isExpectedAccount()) {
+      watch.unsubscribe();
+      return;
+    }
     unsubscribeFn = watch.unsubscribe;
     initialized = true;
   } catch (err) {
@@ -225,6 +234,8 @@ export async function initEntitlementSubscription(
  * see locked panels during backoff. Call resetEntitlementState() on sign-out.
  */
 export function destroyEntitlementSubscription(): void {
+  // Retire pending initialization and queued callbacks, including same-account rebinds.
+  subscriptionGeneration += 1;
   if (unsubscribeFn) {
     unsubscribeFn();
     unsubscribeFn = null;
