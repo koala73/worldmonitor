@@ -2562,8 +2562,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro 출시됨",
-      "tagline": "더 많은 신호, 더 적은 잡음. 더 많은 AI 브리핑. 당신만을 위한 지정학 및 주식 연구원입니다.",
+      "headline": "매일 이메일 또는 Slack으로 받는 AI 브리핑",
+      "tagline": "WM Analyst, 알림 규칙, Claude용 MCP 포함",
       "cta": "Pro로 업그레이드 →",
       "dismiss": "닫기"
     },

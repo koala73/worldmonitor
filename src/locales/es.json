@@ -2582,8 +2582,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro ha sido lanzado",
-      "tagline": "Más señal, menos ruido. Más resúmenes con IA. Un investigador de geopolítica y equidad solo para ti.",
+      "headline": "Resúmenes diarios de IA por email o Slack",
+      "tagline": "más WM Analyst, reglas de alertas y MCP para Claude",
       "cta": "Actualiza a Pro →",
       "dismiss": "Descartar"
     },

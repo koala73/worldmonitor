@@ -2562,8 +2562,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro đã được phát hành",
-      "tagline": "Nhiều tín hiệu, ít nhiễu. Nhiều AI Briefings. Một nhà nghiên cứu Địa chính trị & Vốn chỉ dành cho bạn.",
+      "headline": "Tóm tắt AI hàng ngày qua email hoặc Slack",
+      "tagline": "cộng với WM Analyst, quy tắc cảnh báo và MCP cho Claude",
       "cta": "Nâng cấp lên Pro →",
       "dismiss": "Bỏ qua"
     },

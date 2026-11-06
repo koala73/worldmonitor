@@ -19790,7 +19790,9 @@ button.popup-link {
   justify-content: center;
   gap: 12px;
   padding: 7px 36px 7px 16px;
-  background: linear-gradient(90deg, rgba(74, 222, 128, 0.06), rgba(74, 222, 128, 0.12), rgba(74, 222, 128, 0.06));
+  /* The tint is translucent; the themed surface under it keeps the text
+     readable in the light theme, where the page body stays dark. */
+  background: linear-gradient(90deg, rgba(74, 222, 128, 0.06), rgba(74, 222, 128, 0.12), rgba(74, 222, 128, 0.06)), var(--surface);
   border-bottom: 1px solid rgba(74, 222, 128, 0.15);
   font-family: var(--font-mono);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
@@ -19875,12 +19877,27 @@ button.popup-link {
   .pro-banner {
     font-size: calc(11px * var(--wm-panel-effective-scale, 1));
     gap: 8px;
-    padding: 6px 32px 6px 10px;
+    padding: 5px 32px 5px 10px;
   }
 
   .pro-banner-text {
     flex: 1 1 0;
     min-width: 0;
+    /* Two lines (2 x 13.75px + 10px padding + 1px border) fit the 40px
+       reserved slot, so the headline is never cut off on a phone. */
+    white-space: normal;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  /* The CTA already says Pro, and the tagline cannot fit; keep the width
+     for the headline. */
+  .pro-banner-badge,
+  .pro-banner-tagline {
+    display: none;
   }
 }
 

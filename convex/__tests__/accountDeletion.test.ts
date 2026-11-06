@@ -646,6 +646,42 @@ describe("account deletion — business seats", () => {
   });
 });
 
+describe("account deletion — enterprise accounts", () => {
+  test("deleting a member removes their member row and leaves the account and other members", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    await seedUser(t, OWNER);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Hexion",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 50_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 50_000_000,
+      monthlyOutputTokens: 5_000_000,
+      overagePerThousandRequestsUsd: 2,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.mutation(internal.enterpriseAccounts.addMemberByUserId, { accountId, userId: INVITEE.subject });
+    await t.mutation(internal.enterpriseAccounts.addMemberByUserId, { accountId, userId: OWNER.subject });
+
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: INVITEE.subject,
+      source: "support",
+    });
+    await drainErase(t);
+
+    const members = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(members.map((m) => m.userId)).toEqual([OWNER.subject]);
+    const accounts = await t.run(async (ctx) => ctx.db.query("enterpriseAccounts").collect());
+    expect(accounts.map((a) => a._id)).toEqual([accountId]);
+  });
+});
+
 describe("account deletion — external side effects", () => {
   test("Dodo cancel then Clerk 404 still completes and captures key hashes", async () => {
     const t = await makeT();

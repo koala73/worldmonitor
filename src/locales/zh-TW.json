@@ -2562,8 +2562,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro已上線",
-      "tagline": "更多訊號，更少噪音。更多AI簡報。專屬於您的地緣政治和股票研究員。",
+      "headline": "每日AI情報摘要，透過郵件或Slack接收",
+      "tagline": "另含WM Analyst、告警規則和適用於Claude的MCP",
       "cta": "升級到Pro →",
       "dismiss": "關閉"
     },

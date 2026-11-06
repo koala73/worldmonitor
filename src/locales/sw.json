@@ -2644,9 +2644,9 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro imezinduliwa",
-      "tagline": "Mawimbi Zaidi, Kelele kidogo. Muhtasari zaidi wa AI. Mtafiti wa Kijiografia na Usawa kwa ajili yako.",
-      "cta": "Pata toleo jipya la Pro →",
+      "headline": "Muhtasari wa AI kila siku kwa barua pepe au Slack",
+      "tagline": "pamoja na WM Analyst, sheria za arifa na MCP kwa Claude",
+      "cta": "Jiunge na Pro →",
       "dismiss": "Ondoa"
     },
     "checkoutFailureBanner": {

@@ -2592,8 +2592,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro je spuštěn",
-      "tagline": "Více signálu, méně šumu. Více AI briefingů. Geopolitický a akciový analytik jen pro vás.",
+      "headline": "Denní AI briefingy e-mailem nebo Slackem",
+      "tagline": "plus WM Analyst, pravidla upozornění a MCP pro Claude",
       "cta": "Upgradovat na Pro →",
       "dismiss": "Zavřít"
     },

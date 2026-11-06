@@ -2562,8 +2562,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Proがローンチしました",
-      "tagline": "より多くのシグナル、ノイズ削減。AI ブリーフィングの強化。あなたのための地政学&エクイティリサーチャー。",
+      "headline": "毎日のAIブリーフをメールまたはSlackで受け取る",
+      "tagline": "WM Analyst、アラートルール、Claude向けMCP付き",
       "cta": "Pro にアップグレード →",
       "dismiss": "閉じる"
     },

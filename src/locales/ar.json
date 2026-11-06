@@ -2612,8 +2612,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "تم إطلاق Pro",
-      "tagline": "إشارة أكثر، ضوضاء أقل. إحاطات ذكية أكثر. باحث في الجيوسياسة والأسهم لك فقط.",
+      "headline": "ملخصات AI يومية بالبريد أو Slack",
+      "tagline": "بالإضافة إلى WM Analyst وقواعد التنبيهات و MCP لـ Claude",
       "cta": "ترقية إلى Pro →",
       "dismiss": "رفض"
     },

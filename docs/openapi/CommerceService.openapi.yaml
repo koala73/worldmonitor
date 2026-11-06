@@ -115,7 +115,7 @@ paths:
                                       monthlyProductId: pdt_0Nbttg7NuOJrhbyBGCius
                                     - name: Enterprise
                                       description: Custom solutions for organizations
-                                      features: ["Everything in Pro + API", "Unlimited API requests"]
+                                      features: ["Everything in Pro + API", "10,000 API requests a day, more by contract"]
                                       highlighted: false
                                       price: null
                                 fetchedAt: 1751700000000

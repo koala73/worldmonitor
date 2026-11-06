@@ -2572,8 +2572,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro yayında",
-      "tagline": "Daha Fazla İşaret, Daha Az Gürültü. Daha Fazla AI Özeti. Sadece Sizin için Jeopolitik & Sermaye Piyasası Araştırmacısı.",
+      "headline": "E-posta veya Slack'te günlük AI raporları",
+      "tagline": "artı WM Analyst, uyarı kuralları ve Claude için MCP",
       "cta": "Pro'ya Yükselt →",
       "dismiss": "Kapat"
     },
