@@ -3387,6 +3387,28 @@
       "readReport": "Đọc báo cáo đầy đủ"
     },
     "datacenter": {
+      "details": {
+        "more": "Thông tin chi tiết",
+        "owner": "Chủ sở hữu / nhà cung cấp cụm (bộ dữ liệu)",
+        "power": "Giá trị công suất trong bộ dữ liệu",
+        "powerCaveat": "Công suất có thể là giá trị được báo cáo hoặc ước tính. Đây không phải phép đo mức tiêu thụ điện hiện tại.",
+        "powerBasis": "Cơ sở của giá trị công suất",
+        "reported": "Được báo cáo",
+        "estimated": "Ước tính",
+        "notAvailable": "Không có dữ liệu",
+        "location": "Độ chính xác vị trí",
+        "locationUnknown": "Điểm trên bản đồ chưa được xác minh; không dùng làm địa chỉ chính xác của cơ sở.",
+        "site": "Cơ sở (được nguồn xác minh)",
+        "city": "Chỉ thành phố",
+        "region": "Chỉ khu vực",
+        "country": "Chỉ quốc gia",
+        "dataset": "Bộ dữ liệu cụm GPU của Epoch AI",
+        "evidence": "Nguồn chứng minh",
+        "sourceDate": "Ngày xuất bản nguồn",
+        "metadataReviewedAt": "Ngày kiểm tra siêu dữ liệu",
+        "firstOperationalDate": "Ngày vận hành đầu tiên (bộ dữ liệu)",
+        "freshness": "Ảnh chụp bộ dữ liệu đã lưu. Trạng thái và thông số hiện tại có thể đã thay đổi."
+      },
       "status": {
         "existing": "ĐANG VẬN HÀNH",
         "planned": "KẾ HOẠCH",

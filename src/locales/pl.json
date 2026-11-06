@@ -3439,6 +3439,28 @@
       "readReport": "Przeczytaj pełny raport"
     },
     "datacenter": {
+      "details": {
+        "more": "Więcej szczegółów",
+        "owner": "Właściciel / dostawca klastra (zbiór danych)",
+        "power": "Wartość mocy w zbiorze danych",
+        "powerCaveat": "Moc może być zgłoszona lub szacowana. Nie jest to pomiar bieżącego zużycia energii elektrycznej.",
+        "powerBasis": "Podstawa wartości mocy",
+        "reported": "Zgłoszona",
+        "estimated": "Szacowana",
+        "notAvailable": "Brak danych",
+        "location": "Dokładność lokalizacji",
+        "locationUnknown": "Niezweryfikowany punkt na mapie; nie używaj jako dokładnego adresu obiektu.",
+        "site": "Obiekt (zweryfikowany źródłem)",
+        "city": "Tylko miasto",
+        "region": "Tylko region",
+        "country": "Tylko kraj",
+        "dataset": "Zbiór danych klastrów GPU Epoch AI",
+        "evidence": "Źródło potwierdzające",
+        "sourceDate": "Data publikacji źródła",
+        "metadataReviewedAt": "Data sprawdzenia metadanych",
+        "firstOperationalDate": "Data pierwszego uruchomienia (zbiór danych)",
+        "freshness": "Zapisany stan zbioru danych. Obecny status i specyfikacje mogły się zmienić."
+      },
       "status": {
         "existing": "OPERACYJNY",
         "planned": "PLANOWANY",

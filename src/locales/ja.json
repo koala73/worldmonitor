@@ -3387,6 +3387,28 @@
       "readReport": "全文レポートを読む"
     },
     "datacenter": {
+      "details": {
+        "more": "詳細情報",
+        "owner": "クラスター所有者 / 提供者（データセット）",
+        "power": "データセットの電力値",
+        "powerCaveat": "電力容量は報告値または推定値です。現在の電力消費量の測定値ではありません。",
+        "powerBasis": "電力値の根拠",
+        "reported": "報告値",
+        "estimated": "推定値",
+        "notAvailable": "情報なし",
+        "location": "位置の精度",
+        "locationUnknown": "未検証の地図上の地点です。施設の正確な住所として使用しないでください。",
+        "site": "施設（情報源で検証済み）",
+        "city": "市のみ",
+        "region": "地域のみ",
+        "country": "国のみ",
+        "dataset": "Epoch AI GPUクラスターデータセット",
+        "evidence": "裏付けとなる情報源",
+        "sourceDate": "情報源の公開日",
+        "metadataReviewedAt": "メタデータ確認日",
+        "firstOperationalDate": "初稼働日（データセット）",
+        "freshness": "保存されたデータセットのスナップショットです。現在の状態や仕様は変更されている可能性があります。"
+      },
       "status": {
         "existing": "稼働中",
         "planned": "計画中",

@@ -1031,7 +1031,8 @@ export const AI_DATA_CENTERS: AIDataCenter[] = [
     powerBasis: 'estimated',
     firstOperationalDate: '2024-04-19',
     metadataReviewedAt: '2026-11-06',
-    sourceUrl: 'https://web.archive.org/web/20240911111117/https://www.datacenterdynamics.com/en/news/nexgen-cloud-to-host-ai-supercloud-in-norwegian-data-center/',
+    sourceDate: '2024-02-27',
+    sourceUrl: 'https://www.datacenterdynamics.com/en/news/nexgen-cloud-to-host-ai-supercloud-in-norwegian-data-center/',
   },
   {
     id: 'dc-56',

@@ -3387,6 +3387,28 @@
       "readReport": "阅读完整报告"
     },
     "datacenter": {
+      "details": {
+        "more": "更多详情",
+        "owner": "集群所有者 / 提供商（数据集）",
+        "power": "数据集功率数值",
+        "powerCaveat": "功率容量可能为报告值或估算值。这不是当前用电量的测量值。",
+        "powerBasis": "功率数值依据",
+        "reported": "报告值",
+        "estimated": "估算值",
+        "notAvailable": "暂无信息",
+        "location": "位置精度",
+        "locationUnknown": "未经核实的地图点；请勿用作设施的准确地址。",
+        "site": "设施位置（来源已核实）",
+        "city": "仅城市",
+        "region": "仅地区",
+        "country": "仅国家",
+        "dataset": "Epoch AI GPU 集群数据集",
+        "evidence": "佐证来源",
+        "sourceDate": "来源发布日期",
+        "metadataReviewedAt": "元数据核查日期",
+        "firstOperationalDate": "首次运营日期（数据集）",
+        "freshness": "已保存的数据集快照。当前状态和规格可能已发生变化。"
+      },
       "status": {
         "existing": "运营中",
         "planned": "计划中",

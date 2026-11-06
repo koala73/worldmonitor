@@ -3427,6 +3427,28 @@
       "readReport": "Citiți raportul complet"
     },
     "datacenter": {
+      "details": {
+        "more": "Mai multe detalii",
+        "owner": "Proprietar / furnizor al clusterului (set de date)",
+        "power": "Valoarea puterii din setul de date",
+        "powerCaveat": "Capacitatea de putere poate fi raportată sau estimată. Nu este o măsurare a consumului actual de energie electrică.",
+        "powerBasis": "Baza valorii puterii",
+        "reported": "Raportată",
+        "estimated": "Estimată",
+        "notAvailable": "Indisponibil",
+        "location": "Precizia locației",
+        "locationUnknown": "Punct neverificat pe hartă; nu folosiți ca adresă exactă a instalației.",
+        "site": "Amplasament (verificat prin sursă)",
+        "city": "Doar oraș",
+        "region": "Doar regiune",
+        "country": "Doar țară",
+        "dataset": "Setul de date despre clustere GPU Epoch AI",
+        "evidence": "Sursă justificativă",
+        "sourceDate": "Data publicării sursei",
+        "metadataReviewedAt": "Metadate verificate",
+        "firstOperationalDate": "Data primei puneri în funcțiune (set de date)",
+        "freshness": "Instantaneu salvat al setului de date. Starea și specificațiile actuale se pot fi schimbat."
+      },
       "status": {
         "existing": "OPERAȚIONAL",
         "planned": "PLANIFICAT",
