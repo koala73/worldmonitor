@@ -951,6 +951,8 @@ const COUNTRY_INTEL_BRIEF_PATH = '/api/intelligence/v1/get-country-intel-brief';
 // value and the platform answering 500. The outer handler drains it on a
 // rejected dispatch and releases the slot there.
 const pendingDirectLlmReservations = new WeakMap<Request, () => Promise<void>>();
+// Same contract for the daily request meter: nothing served, nothing billed.
+const pendingDailyMeterReleases = new WeakMap<Request, () => Promise<void>>();
 
 function methodForGetEquivalentPolicy(method: string): string {
   return method === 'HEAD' ? 'GET' : method;
@@ -2328,6 +2330,9 @@ export function createDomainGateway(
       accountResponseHeaders = null;
       if (rollback) await rollback();
     };
+    // If dispatch throws later (e.g. a handler response body that fails to
+    // stream), the outer wrapper releases the charge.
+    pendingDailyMeterReleases.set(originalRequest, releaseDailyMeter);
 
     // Internal-MCP verified requests skip the remaining gateway layer: the MCP edge
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
@@ -2394,7 +2399,8 @@ export function createDomainGateway(
             headers: { 'Content-Type': 'application/json', ...budget.headers, ...corsHeaders },
           });
         }
-        rollbackDailyMeter = budget.rollback;
+        // Daily only: an unserved request keeps its burst slot spent.
+        rollbackDailyMeter = budget.releaseDaily;
       }
 
       if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth) && !isDesktopPrincipal) {
@@ -2779,6 +2785,9 @@ export function createDomainGateway(
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    // A server error is never billed: give the daily-meter charge back so it
+    // neither consumes the allowance nor counts as contract overage.
+    if (response.status >= 500) await releaseDailyMeter();
 
     // Merge CORS + handler side-channel headers into response.
     // Every side channel below is keyed by the Request object the handler
@@ -3086,9 +3095,15 @@ export function createDomainGateway(
         pendingDirectLlmReservations.delete(originalRequest);
         await rollback();
       }
+      const releaseMeter = pendingDailyMeterReleases.get(originalRequest);
+      if (releaseMeter) {
+        pendingDailyMeterReleases.delete(originalRequest);
+        await releaseMeter();
+      }
       throw err;
     }
     pendingDirectLlmReservations.delete(originalRequest);
+    pendingDailyMeterReleases.delete(originalRequest);
     return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
   return gatewayHandler;
