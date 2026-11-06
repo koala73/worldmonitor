@@ -2,13 +2,13 @@ import { expect, test, type Page } from '@playwright/test';
 
 type Camera = { lon: number; lat: number; zoom: number };
 type HarnessWindow = Window & {
-  __mapHarness: {
+  __mapHarness?: {
     ready: boolean;
     setCamera: (camera: Camera) => void;
     getDeckLayerSnapshot: () => { id: string; dataCount: number }[];
   };
 };
-const setCamera = (page: Page, camera: Camera) => page.evaluate(camera => (window as HarnessWindow).__mapHarness.setCamera(camera), camera);
+const setCamera = (page: Page, camera: Camera) => page.evaluate(camera => (window as HarnessWindow).__mapHarness?.setCamera(camera), camera);
 const ready = async (page: Page) => {
   await page.goto('/tests/map-harness.html');
   await page.waitForFunction(() => (window as HarnessWindow).__mapHarness?.ready);
@@ -31,7 +31,7 @@ test('2D scale and ruler follow the camera and preserve map interactions', async
   await expect(page.locator('.map-distance-panel')).toContainText('Geodesic');
   await expect(page.locator('.map-popup')).not.toBeVisible();
   await page.evaluate(() => document.body.classList.remove('e2e-deterministic'));
-  await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness.getDeckLayerSnapshot().find(l => l.id === 'map-distance-line')?.dataCount)).toBe(1);
+  await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness?.getDeckLayerSnapshot().find(l => l.id === 'map-distance-line')?.dataCount)).toBe(1);
   await page.screenshot({ path: '.claude/verify-evidence/ruler-desktop-iceland.png' });
   await page.getByLabel('Distance units').selectOption('mi');
   await expect(page.locator('.map-distance-status')).toContainText('mi');
@@ -67,9 +67,9 @@ for (const [name, a, b, km] of [
     await expect(page.locator('.map-distance-status')).toHaveText(`Geodesic distance: ${km.toLocaleString('en-US')} km`);
     await page.getByLabel('Distance units').selectOption('mi');
     await expect(page.locator('.map-distance-status')).toHaveText(`Geodesic distance: ${(km / 1.609344).toLocaleString('en-US', { maximumFractionDigits: 1 })} mi`);
-    await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness.getDeckLayerSnapshot().find(l => l.id === 'map-distance-line')?.dataCount)).toBe(1);
+    await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness?.getDeckLayerSnapshot().find(l => l.id === 'map-distance-line')?.dataCount)).toBe(1);
     await page.getByRole('button', { name: 'Exit measurement' }).click();
-    await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness.getDeckLayerSnapshot().some(l => l.id === 'map-distance-line'))).toBe(false);
+    await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness?.getDeckLayerSnapshot().some(l => l.id === 'map-distance-line'))).toBe(false);
   });
 }
 
