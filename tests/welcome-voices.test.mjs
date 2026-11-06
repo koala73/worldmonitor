@@ -71,7 +71,9 @@ describe('homepage and /pro voices', () => {
     assert.match(read('pro-test/src/WelcomeApp.tsx'), /<TaskRoutes \/>\s*<LiveStrip \/>\s*<Voices \/>/);
     const proOrder = read('pro-test/src/App.tsx').match(/<ProHomeShell[\s\S]*?<\/ProHomeShell>/)?.[0] ?? '';
     const sections = [...proOrder.matchAll(/<([A-Z]\w+)\b/g)].map((m) => m[1]);
-    assert.ok(sections.indexOf('SocialProof') > -1 && sections.indexOf('SocialProof') < sections.indexOf('TwoPathSplit'),
+    // ProShowcase is the first feature deep-dive since the priceless Plans
+    // section (TwoPathSplit) was removed.
+    assert.ok(sections.indexOf('SocialProof') > -1 && sections.indexOf('SocialProof') < sections.indexOf('ProShowcase'),
       `/pro SocialProof must come before the feature deep-dives, got ${sections.join(', ')}`);
     assert.doesNotMatch(read('pro-test/src/components/Footer.tsx'), /PressNav/);
   });
