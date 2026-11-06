@@ -189,10 +189,9 @@ surface.**
   below reads the sanitized text.
 - **Email.** The owner notification carries only the report id, `kind`, and the
   received time. It carries no `surface` label, summary, or body. The daily
-  feedback digest (Decision 12) carries counts by `kind` and by surface. It
-  names a surface only when the stored name still matches the edge's tool or
-  RPC-path shape. Any other label is counted under a fixed placeholder, so no
-  reporter-written text reaches the inbox. The Convex
+  feedback digest (Decision 12) carries only counts by `kind` and by surface
+  type. It names no surface: the REST door stores any tool-shaped name without
+  checking the registry, so a stored name is reporter-written text. The Convex
   action escapes those values with the escaper its own module defines, as
   `convex/payments/unattributedPayments.ts` does.
 - **Terminal.** The triage script prints any character outside printable ASCII
@@ -294,10 +293,13 @@ send sets `notifiedAt` on the rows it lists only after Resend accepts it.
 
 A second daily cron sends the feedback digest for `bug`, `missing_capability`,
 and `data_quality` rows that are still `received` with `notifiedAt` unset. It
-lists at most 500 rows, oldest first across all three kinds, says when more are waiting, and sends nothing on a day
-with no new rows. It sets `notifiedAt` on the listed rows after Resend accepts
-it. Any triage transition out of `received` also sets `notifiedAt`, so rows the
-owner has already seen leave the digest index instead of accumulating there.
+pages through them oldest first, up to 5,000 rows per run, which is above the
+edge's daily ceiling of about 2,900, so a sustained flood cannot outrun the
+drain. Past that cap the email tells the owner to triage by hand. It sends
+nothing on a day with no new rows, and it sets `notifiedAt` on the listed rows
+after Resend accepts it. Any triage transition out of `received` also sets
+`notifiedAt`, so rows the owner has already seen leave the digest index
+instead of accumulating there.
 
 **Decision 13. The private disclosure path never depends on this channel
 admitting the report.** The advisory URL

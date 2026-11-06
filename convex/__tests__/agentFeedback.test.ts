@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 import {
-  FEEDBACK_DIGEST_BATCH,
+  FEEDBACK_DIGEST_MAX_ROWS,
+  FEEDBACK_DIGEST_PAGE,
   FEEDBACK_REPORTER_HOURLY_CAP,
   FEEDBACK_RETRY_WINDOW_MS,
   FEEDBACK_SECURITY_EMAILS_PER_DAY,
@@ -340,11 +341,14 @@ describe("feedback digest", () => {
     expect(body).toContain("<td>bug</td><td>2</td>");
     expect(body).toContain("<td>data_quality</td><td>1</td>");
     expect(body).toContain("<td>missing_capability</td><td>1</td>");
-    expect(body).toContain("<td>get_market_data</td><td>mcp_tool</td><td>2</td>");
-    expect(body).toContain("<td>/api/market/v1/list-market-quotes</td><td>rpc</td><td>1</td>");
-    // A free-text surface label is reporter-written: it is counted, never shown.
-    expect(body).toContain("<td>(not a known tool or route)</td><td>other</td><td>1</td>");
-    for (const text of ["DIGEST-SECRET-SUMMARY", "DIGEST-SECRET-EXPECTED", "OTHER-LABEL"]) {
+    expect(body).toContain("<td>mcp_tool</td><td>2</td>");
+    expect(body).toContain("<td>rpc</td><td>1</td>");
+    expect(body).toContain("<td>other</td><td>1</td>");
+    // Surface names are reporter-written: the REST door stores any shaped
+    // name unchecked. They are counted by type, never shown.
+    for (const text of [
+      "DIGEST-SECRET-SUMMARY", "DIGEST-SECRET-EXPECTED", "OTHER-LABEL", "get_market_data", "list-market-quotes",
+    ]) {
       expect(body).not.toContain(text);
     }
     expect(body).not.toContain(ids.security);
@@ -360,16 +364,16 @@ describe("feedback digest", () => {
     expect(bodies).toHaveLength(1);
   });
 
-  test("a surface name that fails the edge's shape check is shown as unnamed", async () => {
+  test("a shaped but unregistered surface name never reaches the email", async () => {
     const bodies = captureResend();
     const t = convexTest(schema, modules);
     await t.run((ctx) => ctx.db.insert("agentFeedback", {
-      ...report({ surfaceName: "<img src=x>" }), status: "received", updatedAt: NOW, receivedAt: NOW - 1000,
+      ...report({ surfaceName: "urgent_rotate_api_key" }), status: "received", updatedAt: NOW, receivedAt: NOW - 1000,
     }));
     expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 1 });
     const body = html(bodies[0]);
-    expect(body).toContain("<td>(not a known tool or route)</td><td>mcp_tool</td><td>1</td>");
-    expect(body).not.toContain("img");
+    expect(body).toContain("<td>mcp_tool</td><td>1</td>");
+    expect(body).not.toContain("urgent_rotate");
   });
 
   test("reports the operator already moved out of received are not announced", async () => {
@@ -402,12 +406,13 @@ describe("feedback digest", () => {
       await ctx.db.insert("agentFeedback", {
         ...base, kind: "missing_capability", surfaceType: "other", surfaceName: "x", receivedAt: NOW - 2 * DAY,
       });
-      for (let i = 0; i < FEEDBACK_DIGEST_BATCH + 10; i++) {
+      for (let i = 0; i < FEEDBACK_DIGEST_PAGE + 10; i++) {
         await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - DAY + i });
       }
     });
-    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_BATCH });
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_PAGE + 11 });
     expect(html(bodies[0])).toContain("<td>missing_capability</td><td>1</td>");
+    expect(html(bodies[0])).toContain(`<td>bug</td><td>${FEEDBACK_DIGEST_PAGE + 10}</td>`);
   });
 
   test("terminal rows never enter the scan", async () => {
@@ -426,19 +431,25 @@ describe("feedback digest", () => {
     expect(late).toBeTruthy();
   });
 
-  test("a backlog past one batch is capped and drains on the next run", async () => {
+  test("a backlog above the edge's daily ceiling drains in one run, then warns past the cap", async () => {
     const bodies = captureResend();
     const t = convexTest(schema, modules);
-    await t.run(async (ctx) => {
+    const insert = (n: number, offset: number) => t.run(async (ctx) => {
       const base = { ...report(), status: "received" as const, updatedAt: NOW };
-      for (let i = 0; i < FEEDBACK_DIGEST_BATCH + 3; i++) {
-        await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - DAY + i });
+      for (let i = 0; i < n; i++) {
+        await ctx.db.insert("agentFeedback", { ...base, receivedAt: NOW - DAY + offset + i });
       }
     });
-    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_BATCH });
-    expect(html(bodies[0])).toContain("More reports are waiting");
+    // 2,900 is the edge's admitted daily ceiling for non-security reports.
+    await insert(2900, 0);
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 2900 });
+    expect(html(bodies[0])).not.toContain("are waiting");
+    expect((await rows(t)).every((r) => r.notifiedAt === NOW)).toBe(true);
+
+    await insert(FEEDBACK_DIGEST_MAX_ROWS + 3, 10_000);
+    expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: FEEDBACK_DIGEST_MAX_ROWS });
+    expect(html(bodies[1])).toContain(`More than ${FEEDBACK_DIGEST_MAX_ROWS} reports are waiting`);
     expect(await t.action(internal.agentFeedback.sendFeedbackDigest, {})).toEqual({ listed: 3 });
-    expect(html(bodies[1])).not.toContain("More reports are waiting");
   });
 });
 
