@@ -2582,8 +2582,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro è stato lanciato",
-      "tagline": "Più segnali, meno rumore. Più briefing IA. Un ricercatore geopolitico e azionario dedicato a te.",
+      "headline": "Briefing giornalieri IA via email o Slack",
+      "tagline": "più WM Analyst, regole di alert e MCP per Claude",
       "cta": "Passa a Pro →",
       "dismiss": "Scarta"
     },

@@ -275,7 +275,7 @@ export function showProBanner(container: HTMLElement): void {
   setTrustedHtml(banner, trustedHtml(`
     <span class="pro-banner-badge">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.badge')}</span>
     <span class="pro-banner-text">
-      <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : ` — ${t('components.proBanner.tagline')}`}
+      <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : `<span class="pro-banner-tagline"> — ${t('components.proBanner.tagline')}</span>`}
     </span>
     <a class="pro-banner-cta" href="${ctaHref}">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.cta')}</a>
     <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>

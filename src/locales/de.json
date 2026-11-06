@@ -2572,8 +2572,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro ist gestartet",
-      "tagline": "Mehr Signal, weniger Rauschen. Mehr KI-Briefings. Ein Geopolitik- und Aktienanalyst nur für Sie.",
+      "headline": "Tägliche AI-Briefings per E-Mail oder Slack",
+      "tagline": "plus WM Analyst, Alert-Regeln und MCP für Claude",
       "cta": "Upgrade auf Pro →",
       "dismiss": "Ausblenden"
     },

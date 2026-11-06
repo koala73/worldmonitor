@@ -2562,8 +2562,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro已上线",
-      "tagline": "更多信号，更少噪音。更多AI简报。专属于您的地缘政治和股票研究员。",
+      "headline": "每日AI情报摘要，通过邮件或Slack接收",
+      "tagline": "另含WM Analyst、告警规则和适用于Claude的MCP",
       "cta": "升级到Pro →",
       "dismiss": "关闭"
     },

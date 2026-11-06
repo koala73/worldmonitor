@@ -2592,8 +2592,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro został uruchomiony",
-      "tagline": "Więcej sygnału, mniej szumu. Więcej briefów AI. Geopolityk i analityk akcji tylko dla Ciebie.",
+      "headline": "Codzienne raporty AI e-mailem lub na Slacku",
+      "tagline": "plus WM Analyst, reguły alertów i MCP dla Claude",
       "cta": "Przejdź na Pro →",
       "dismiss": "Odrzuć"
     },

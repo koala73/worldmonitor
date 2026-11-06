@@ -2582,8 +2582,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro este lansat",
-      "tagline": "Mai mult semnal, mai puțin zgomot. Mai multe rapoarte AI. Un cercetător geopolitic și de capitaluri proprii special pentru tine.",
+      "headline": "Rapoarte zilnice AI prin email sau Slack",
+      "tagline": "plus WM Analyst, reguli de alertă și MCP pentru Claude",
       "cta": "Upgrade la Pro →",
       "dismiss": "Închide"
     },

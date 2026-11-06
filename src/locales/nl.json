@@ -2188,8 +2188,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro is gelanceerd",
-      "tagline": "Meer signaal, minder ruis. Meer AI-briefings. Een geopolitieke & aandelenonderzoeker speciaal voor jou.",
+      "headline": "Dagelijkse AI-briefings per e-mail of Slack",
+      "tagline": "plus WM Analyst, waarschuwingsregels en MCP voor Claude",
       "cta": "Upgrade naar Pro →",
       "dismiss": "Verwijderen"
     },

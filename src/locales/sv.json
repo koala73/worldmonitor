@@ -2188,8 +2188,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro är lanserad",
-      "tagline": "Mer signal, mindre brus. Fler AI-uppdateringar. En geopolitisk och aktieanalytiker bara för dig.",
+      "headline": "Dagliga AI-briefer via mejl eller Slack",
+      "tagline": "plus WM Analyst, varningsregler och MCP för Claude",
       "cta": "Uppgradera till Pro →",
       "dismiss": "Stäng"
     },
