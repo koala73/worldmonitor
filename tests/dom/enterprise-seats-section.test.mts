@@ -32,9 +32,9 @@ function adminView(overrides: Partial<EnterpriseSeatsView> = {}): EnterpriseSeat
     contractEnd: Date.UTC(2027, 10, 2),
     contractEnded: false,
     seats: [
-      { memberId: 'm1', email: 'admin@hexion.com', status: 'active', role: 'admin', isSelf: true, invitedAt: 1, joinedAt: 1, inviteExpiresAt: null },
-      { memberId: 'm2', email: 'analyst@hexion.com', status: 'active', role: 'member', isSelf: false, invitedAt: 1, joinedAt: 1, inviteExpiresAt: null },
-      { memberId: 'm4', email: 'pending@hexion.com', status: 'pending', role: 'member', isSelf: false, invitedAt: 1, joinedAt: null, inviteExpiresAt: Date.UTC(2026, 10, 20) },
+      { memberId: 'm1', email: 'admin@hexion.com', status: 'active', role: 'admin', isSelf: true, invitedAt: 1, joinedAt: 1, inviteExpiresAt: null, emailFailed: false },
+      { memberId: 'm2', email: 'analyst@hexion.com', status: 'active', role: 'member', isSelf: false, invitedAt: 1, joinedAt: 1, inviteExpiresAt: null, emailFailed: false },
+      { memberId: 'm4', email: 'pending@hexion.com', status: 'pending', role: 'member', isSelf: false, invitedAt: 1, joinedAt: null, inviteExpiresAt: Date.UTC(2026, 10, 20), emailFailed: false },
     ],
     ...overrides,
   };
@@ -104,6 +104,37 @@ describe('EnterpriseSeatsSection', () => {
     expect(inviteEnterpriseMembers).toHaveBeenCalledWith(['new@hexion.com']);
   });
 
+  it('tells the admin when an invite email was not sent', async () => {
+    const base = adminView();
+    view = adminView({ seats: base.seats.map((seat) => (seat.memberId === 'm4' ? { ...seat, emailFailed: true } : seat)) });
+    await section.load();
+    expect(overlay.textContent).toContain('The invite email could not be sent');
+  });
+
+  it('restores the invite form at once and refreshes after a load already in flight', async () => {
+    view = adminView();
+    await section.load();
+    let release: () => void = () => {};
+    const slow = new Promise<void>((resolve) => { release = resolve; });
+    const billing = await import('@/services/billing');
+    const spy = vi.spyOn(billing, 'listEnterpriseSeats');
+    const stale = view;
+    spy.mockImplementationOnce(async () => { await slow; return stale; });
+    const inFlight = section.load();
+
+    overlay.querySelector<HTMLInputElement>('.enterprise-seats-email-input')!.value = 'new@hexion.com';
+    view = adminView({ seatsUsed: 4 });
+    await section.handleInvite();
+    const btn = overlay.querySelector<HTMLButtonElement>('.enterprise-seats-invite-btn')!;
+    expect(btn.textContent).toBe('Invite');
+    expect(btn.disabled).toBe(false);
+    expect(overlay.querySelector<HTMLInputElement>('.enterprise-seats-email-input')!.value).toBe('');
+
+    release();
+    await inFlight;
+    await vi.waitFor(() => expect(overlay.textContent).toContain('4 / 5 used'));
+  });
+
   it('shows the seat-cap rejection in plain words', async () => {
     view = adminView();
     await section.load();
@@ -123,7 +154,7 @@ describe('EnterpriseSeatsSection', () => {
 
   it('escapes emails from the server', async () => {
     view = adminView({
-      seats: [{ memberId: 'x', email: '<img src=x onerror=alert(1)>@hexion.com', status: 'pending', role: 'member', isSelf: false, invitedAt: 1, joinedAt: null, inviteExpiresAt: null }],
+      seats: [{ memberId: 'x', email: '<img src=x onerror=alert(1)>@hexion.com', status: 'pending', role: 'member', isSelf: false, invitedAt: 1, joinedAt: null, inviteExpiresAt: null, emailFailed: false }],
     });
     await section.load();
     expect(overlay.querySelector('img')).toBeNull();

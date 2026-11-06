@@ -25,6 +25,7 @@ const ERROR_COPY: Record<string, string> = {
   NOT_ACCOUNT_ADMIN: 'Only the account admin can manage seats.',
   CANNOT_REMOVE_SELF: 'You cannot remove your own seat. Contact support to change the admin.',
   TOO_MANY_EMAILS: 'Invite up to 10 people at a time.',
+  INVITE_RATE_LIMITED: 'You have sent the most invites allowed in a day. Try again tomorrow.',
 };
 
 function errorMessage(err: unknown, fallback: string): string {
@@ -38,6 +39,9 @@ export class EnterpriseSeatsSection {
   // `undefined` = not asked yet, `null` = asked and not a member.
   private view: EnterpriseSeatsView | null | undefined;
   private loading = false;
+  // A refresh asked for while a load is in flight runs once it settles, so an
+  // invite or removal is never shown against an older roster.
+  private reloadQueued = false;
   private error = '';
   private accountGeneration = 0;
   private readonly removingIds = new Set<string>();
@@ -49,13 +53,17 @@ export class EnterpriseSeatsSection {
     this.accountGeneration += 1;
     this.view = undefined;
     this.loading = false;
+    this.reloadQueued = false;
     this.error = '';
     this.removingIds.clear();
     this.renderInPlace();
   }
 
   async load(): Promise<void> {
-    if (this.loading) return;
+    if (this.loading) {
+      this.reloadQueued = true;
+      return;
+    }
     const generation = this.accountGeneration;
     this.loading = true;
     this.error = '';
@@ -71,6 +79,10 @@ export class EnterpriseSeatsSection {
       if (generation === this.accountGeneration) {
         this.loading = false;
         this.renderInPlace();
+        if (this.reloadQueued) {
+          this.reloadQueued = false;
+          void this.load();
+        }
       }
     }
   }
@@ -127,9 +139,12 @@ export class EnterpriseSeatsSection {
   private renderSeat(seat: EnterpriseSeat): string {
     const statusLabel = seat.status === 'active' ? 'Active' : seat.status === 'expired' ? 'Invite expired' : 'Invited';
     const statusColor = seat.status === 'active' ? '#22c55e' : seat.status === 'expired' ? '#666' : '#eab308';
-    const detail = seat.status === 'pending' && seat.inviteExpiresAt
-      ? `Invite expires ${new Date(seat.inviteExpiresAt).toLocaleDateString()}`
-      : '';
+    const detail = seat.status === 'pending' && seat.emailFailed
+      ? 'The invite email could not be sent. Check the address, then withdraw and invite again.'
+      : seat.status === 'pending' && seat.inviteExpiresAt
+        ? `Invite expires ${new Date(seat.inviteExpiresAt).toLocaleDateString()}`
+        : '';
+    const detailColor = seat.status === 'pending' && seat.emailFailed ? '#ef4444' : '#666';
     const role = seat.role === 'admin' ? 'Admin' : '';
     const removing = this.removingIds.has(seat.memberId);
     const action = seat.isSelf
@@ -144,7 +159,7 @@ export class EnterpriseSeatsSection {
             <span style="font-size:calc(11px * ${SCALE});color:${statusColor};">${statusLabel}</span>
             ${role ? `<span style="font-size:calc(11px * ${SCALE});color:#888;">· ${role}</span>` : ''}
           </div>
-          ${detail ? `<div style="font-size:calc(11px * ${SCALE});color:#666;">${escapeHtml(detail)}</div>` : ''}
+          ${detail ? `<div style="font-size:calc(11px * ${SCALE});color:${detailColor};">${escapeHtml(detail)}</div>` : ''}
         </div>
         ${action}
       </div>`;
@@ -164,6 +179,10 @@ export class EnterpriseSeatsSection {
       if (generation !== this.accountGeneration) return;
       const status = result.invited[0]?.status;
       showToast(status === 'created' ? 'Invite sent' : status === 'already_active' ? 'Already a member' : 'Already invited');
+      // Restore the form now; the refresh below can wait behind a load already
+      // in flight, and the re-render applies the seat-cap and contract limits.
+      if (input) input.value = '';
+      this.renderInPlace();
       await this.load();
     } catch (err) {
       if (generation !== this.accountGeneration) return;

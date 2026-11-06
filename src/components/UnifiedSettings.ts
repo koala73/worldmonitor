@@ -685,7 +685,10 @@ export class UnifiedSettings {
         // direct A→B handoff removes/adds MCP and API tabs using B's snapshot.
         // Keep the marker through the reset(null) emission; the first real B
         // snapshot must rebuild once more before ordinary targeted refreshes.
-        if (state !== null) this.accountEntitlementRefreshPending = false;
+        if (state !== null) {
+          this.accountEntitlementRefreshPending = false;
+          this.loadEnterpriseSeats();
+        }
         this.render();
         return;
       }
@@ -721,7 +724,7 @@ export class UnifiedSettings {
         }
       }
       this.replaceUpgradeSection();
-      this.loadEnterpriseSeatsIfMember();
+      this.loadEnterpriseSeats();
     });
     this.unsubscribeEntitlementVerification?.();
     this.unsubscribeEntitlementVerification = onEntitlementVerificationChange(() => {
@@ -742,16 +745,17 @@ export class UnifiedSettings {
     if (getSubscription() !== null) {
       void this.businessSeatsSection.load();
     }
-    this.loadEnterpriseSeatsIfMember();
+    this.loadEnterpriseSeats();
   }
 
   /**
-   * Enterprise seats exist only for contract-account members, whose plan is
-   * `enterprise`. The server decides membership and admin rights; the plan
-   * check only spares everyone else the query.
+   * Ask the server for the signed-in user's Enterprise seat view; it returns
+   * null for anyone who is not a member. Not gated on the current plan: after
+   * a contract ends its members lose the Enterprise plan but keep their seats,
+   * and the admin still needs the roster to remove people.
    */
-  private loadEnterpriseSeatsIfMember(): void {
-    if (getEntitlementState()?.planKey === 'enterprise') {
+  private loadEnterpriseSeats(): void {
+    if (getAuthState().user) {
       void this.enterpriseSeatsSection.load();
     }
   }
@@ -991,6 +995,7 @@ export class UnifiedSettings {
             <p>See your current plan and manage payment details, invoices, or cancellation.</p>
           </div>
           ${this.renderUpgradeSection()}
+          <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
           ${this.renderAccountDeletionSection()}
         </div>
         ` : ''}
@@ -1278,7 +1283,6 @@ export class UnifiedSettings {
           ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
         ${hasOwnSubscription ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
-        <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
       `;
     }
 

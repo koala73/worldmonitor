@@ -138,7 +138,7 @@ function makeInstance(initialTab = 'settings') {
   instance.unsubscribeEntitlementVerification = null;
   instance.unsubscribeSubscription = null;
   instance.businessSeatsSection = { load() {} };
-  instance.loadEnterpriseSeatsIfMember = () => {};
+  instance.loadEnterpriseSeats = () => {};
   return instance;
 }
 

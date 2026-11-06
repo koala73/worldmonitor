@@ -127,6 +127,48 @@ describe("inviteMembers", () => {
     expect((await invite(t, "fourth@hexion.com")).status).toBe("created");
   });
 
+  test("invite and withdraw cannot loop: a rolling daily cap bounds invite emails", async () => {
+    const { t } = await setup({ seatCap: 3 });
+    // Seat cap 3 with admin + member leaves one seat, so every invite below is
+    // withdrawn before the next; only the daily cap can stop the loop.
+    for (let i = 0; i < 20; i++) {
+      const { memberId } = await invite(t, `loop${i}@hexion.com`);
+      await t.withIdentity(ADMIN_ID).mutation(api.enterpriseSeats.removeMember, {
+        memberId: memberId as Id<"enterpriseMembers">,
+      });
+    }
+    await expect(invite(t, "loop20@hexion.com")).rejects.toThrow(/INVITE_RATE_LIMITED/);
+    vi.setSystemTime(NOW + DAY_MS + 1);
+    expect((await invite(t, "loop20@hexion.com")).status).toBe("created");
+  });
+
+  test("an account larger than the daily cap can still fill every seat in one day", async () => {
+    const { t } = await setup({ seatCap: 32 });
+    const emails = Array.from({ length: 30 }, (_, i) => `seat${i}@hexion.com`);
+    for (let i = 0; i < emails.length; i += 10) {
+      await t.withIdentity(ADMIN_ID).mutation(api.enterpriseSeats.inviteMembers, { emails: emails.slice(i, i + 10) });
+    }
+    const view = await t.withIdentity(ADMIN_ID).query(api.enterpriseSeats.listMySeats, {});
+    expect(view?.seatsUsed).toBe(32);
+  });
+
+  test("an invite email that was not sent shows on the roster", async () => {
+    const { t } = await setup({ seatCap: 5 });
+    vi.stubEnv("RESEND_API_KEY", "");
+    const { memberId } = await invite(t, "unsent@hexion.com");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const view = await t.withIdentity(ADMIN_ID).query(api.enterpriseSeats.listMySeats, {});
+    expect(view?.seats.find((s) => s.memberId === memberId)).toMatchObject({ status: "pending", emailFailed: true });
+
+    vi.stubEnv("RESEND_API_KEY", "test-resend-key");
+    fetchMock.mockResolvedValueOnce(new Response("bad", { status: 500 }));
+    const second = await invite(t, "bounced@hexion.com");
+    await t.finishAllScheduledFunctions(vi.runAllTimers).catch(() => {});
+    const after = await t.withIdentity(ADMIN_ID).query(api.enterpriseSeats.listMySeats, {});
+    expect(after?.seats.find((s) => s.memberId === second.memberId)?.emailFailed).toBe(true);
+    expect(after?.seats.find((s) => s.memberId === memberId)?.emailFailed).toBe(true);
+  });
+
   test("re-inviting a pending or active address reports it and creates nothing", async () => {
     const { t } = await setup({ seatCap: 5 });
     const first = await invite(t, "third@hexion.com");

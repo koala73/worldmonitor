@@ -966,6 +966,9 @@ export default defineSchema({
     // Set on admin email invites (convex/enterpriseSeats.ts); the emailed
     // token expires at the same time.
     inviteExpiresAt: v.optional(v.number()),
+    // Set when the invite email could not be sent (no mail key, suppressed
+    // recipient, or a send error); the admin sees it on the roster.
+    inviteEmailFailedAt: v.optional(v.number()),
     joinedAt: v.optional(v.number()),
     removedAt: v.optional(v.number()),
     updatedAt: v.number(),

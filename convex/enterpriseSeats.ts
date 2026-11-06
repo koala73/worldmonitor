@@ -17,6 +17,7 @@
 import { ConvexError, v } from "convex/values";
 import {
   internalAction,
+  internalMutation,
   mutation,
   query,
   type MutationCtx,
@@ -43,6 +44,14 @@ import {
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const MAX_EMAILS_PER_CALL = 10;
 const RESEND_FETCH_TIMEOUT_MS = 10_000;
+/**
+ * Rolling cap on invites so an admin cannot send unbounded invite mail by
+ * inviting and withdrawing in a loop. Withdrawn rows keep their `invitedAt`
+ * and count. The cap never drops below the seat cap, so an admin can still
+ * fill every seat in one day.
+ */
+const INVITE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MIN_INVITES_PER_WINDOW = 20;
 
 function escapeHtml(value: string): string {
   return value
@@ -126,6 +135,7 @@ export const listMySeats = query({
             invitedAt: m.invitedAt ?? null,
             joinedAt: m.joinedAt ?? null,
             inviteExpiresAt: m.inviteExpiresAt ?? null,
+            emailFailed: m.status === "pending" && m.inviteEmailFailedAt !== undefined,
           })),
       )
       : [];
@@ -201,6 +211,17 @@ export const inviteMembers = mutation({
 
     if (holding.length + newEmails.length > account.seatCap) {
       throw new ConvexError({ kind: "SEAT_CAP_REACHED" });
+    }
+    // Counted under the account lock taken above, so concurrent calls cannot
+    // both slip under the cap. Only emailed invites (they carry an expiry)
+    // count; operator-added rows send no mail.
+    const recentInvites = rows.filter(
+      (m) => m.inviteExpiresAt !== undefined
+        && m.invitedAt !== undefined
+        && m.invitedAt > now - INVITE_WINDOW_MS,
+    ).length;
+    if (recentInvites + newEmails.length > Math.max(MIN_INVITES_PER_WINDOW, account.seatCap)) {
+      throw new ConvexError({ kind: "INVITE_RATE_LIMITED" });
     }
 
     const expiresAt = now + INVITE_TTL_MS;
@@ -323,6 +344,7 @@ export const sendEnterpriseInviteEmail = internalAction({
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       console.error("[enterpriseSeats] RESEND_API_KEY not set — skipping invite email");
+      await ctx.runMutation(internal.enterpriseSeats.markInviteEmailFailed, { memberId: args.memberId });
       return;
     }
     const acceptUrl = `https://www.worldmonitor.app/dashboard?accept-enterprise-invite=${encodeURIComponent(args.memberId)}&token=${encodeURIComponent(args.token)}`;
@@ -356,6 +378,7 @@ export const sendEnterpriseInviteEmail = internalAction({
         timeoutMs: RESEND_FETCH_TIMEOUT_MS,
       });
     } catch (err) {
+      await ctx.runMutation(internal.enterpriseSeats.markInviteEmailFailed, { memberId: args.memberId });
       if (err instanceof ResendSendError) {
         console.error(`[enterpriseSeats] Resend ${err.status}: ${err.body}`);
         throw new Error(`Resend enterprise invite email failed: ${err.status}`);
@@ -364,8 +387,21 @@ export const sendEnterpriseInviteEmail = internalAction({
     }
     if (!result.sent) {
       console.log("[enterpriseSeats] Skipped invite email: recipient is suppressed");
+      await ctx.runMutation(internal.enterpriseSeats.markInviteEmailFailed, { memberId: args.memberId });
       return;
     }
     console.log(`[enterpriseSeats] Invite email sent (member ${args.memberId.slice(0, 8)}...)`);
+  },
+});
+
+/** Records that a pending invite's email was not sent, for the admin's roster. */
+export const markInviteEmailFailed = internalMutation({
+  args: { memberId: v.string() },
+  handler: async (ctx, args) => {
+    const memberId = ctx.db.normalizeId("enterpriseMembers", args.memberId);
+    const member = memberId ? await ctx.db.get(memberId) : null;
+    if (!memberId || !member || member.status !== "pending") return;
+    const now = Date.now();
+    await ctx.db.patch(memberId, { inviteEmailFailedAt: now, updatedAt: now });
   },
 });

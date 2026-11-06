@@ -721,6 +721,45 @@ describe("account deletion — enterprise invites", () => {
     const left = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
     expect(left.map((m) => m.email)).toEqual(["someone.else@acme.test"]);
   });
+
+  test("an address match alone never erases a seat another user holds", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Acme",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 10_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 15_000_000,
+      monthlyOutputTokens: 3_000_000,
+      overagePerThousandRequestsUsd: 3,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.run(async (ctx) => {
+      // Accepted by an earlier holder of the address, who still holds the seat.
+      await ctx.db.insert("enterpriseMembers", {
+        accountId,
+        email: INVITEE.email.toLowerCase(),
+        userId: "user_previous_holder",
+        status: "active",
+        role: "member",
+        invitedAt: now,
+        joinedAt: now,
+        updatedAt: now,
+      });
+    });
+
+    await t.withIdentity(INVITEE).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    await drainErase(t);
+
+    const left = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(left.map((m) => m.userId)).toEqual(["user_previous_holder"]);
+  });
 });
 
 describe("account deletion — external side effects", () => {

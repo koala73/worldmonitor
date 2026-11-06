@@ -616,6 +616,8 @@ export interface EnterpriseSeat {
   invitedAt: number | null;
   joinedAt: number | null;
   inviteExpiresAt: number | null;
+  /** The invite email could not be sent; withdraw and invite again. */
+  emailFailed: boolean;
 }
 
 export interface EnterpriseSeatsView {
