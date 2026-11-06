@@ -1094,10 +1094,45 @@ export default defineConfig(({ mode }) => {
           theme_color: '#0a0f0a',
           background_color: '#0a0f0a',
           categories: activeMeta.categories,
+          screenshots: [
+            {
+              src: '/pwa/dashboard-wide.jpg',
+              sizes: '1440x900',
+              type: 'image/jpeg',
+              form_factor: 'wide',
+              label: 'World Monitor desktop dashboard with conflict zones, intelligence hotspots, and live news',
+            },
+            {
+              src: '/pwa/dashboard-narrow.jpg',
+              sizes: '390x844',
+              type: 'image/jpeg',
+              form_factor: 'narrow',
+              label: 'World Monitor mobile map with conflict zones and intelligence hotspots',
+            },
+          ],
+          shortcuts: [
+            {
+              name: 'Dashboard',
+              description: 'Open the live global intelligence dashboard',
+              url: '/dashboard',
+              icons: [{ src: '/favico/android-chrome-96x96.png', sizes: '96x96', type: 'image/png' }],
+            },
+            {
+              name: 'Stocks',
+              description: 'Open stock research and market data',
+              url: '/stocks',
+              icons: [{ src: '/favico/android-chrome-96x96.png', sizes: '96x96', type: 'image/png' }],
+            },
+          ],
           icons: [
             { src: '/favico/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/favico/android-chrome-384x384.png', sizes: '384x384', type: 'image/png' },
             { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
-            { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-icon-1024.png', sizes: '1024x1024', type: 'image/png' },
+            { src: '/favico/worldmonitor-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-384.png', sizes: '384x384', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-1024.png', sizes: '1024x1024', type: 'image/png', purpose: 'maskable' },
           ],
         },
 
