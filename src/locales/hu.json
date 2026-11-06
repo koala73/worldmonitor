@@ -3587,7 +3587,8 @@
       "vesselsCount": "{{count}} HAJÓ",
       "vessels": "HAJÓK",
       "trackedVessels": "KÖVETETT HAJÓK",
-      "showLess": "Kevesebb megjelenítése"
+      "showLess": "Kevesebb megjelenítése",
+      "backToGroup": "Vissza a csoporthoz"
     },
     "naturalEvent": {
       "closed": "LEZÁRVA",

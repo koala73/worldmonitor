@@ -3126,7 +3126,8 @@
       "vesselsCount": "{{count}} FARTYG",
       "vessels": "FARTYG",
       "trackedVessels": "BÅRDA FARTYG",
-      "showLess": "Visa mindre"
+      "showLess": "Visa mindre",
+      "backToGroup": "Tillbaka till gruppen"
     },
     "naturalEvent": {
       "closed": "STÄNGD",

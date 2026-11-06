@@ -3587,7 +3587,8 @@
       "vesselsCount": "{{count}} VYOMBO",
       "vessels": "VYOMBO",
       "trackedVessels": "VYOMBO VILIVYOFUATILIWA",
-      "showLess": "Onyesha kidogo"
+      "showLess": "Onyesha kidogo",
+      "backToGroup": "Rudi kwenye kikundi"
     },
     "naturalEvent": {
       "closed": "IMEFUNGWA",

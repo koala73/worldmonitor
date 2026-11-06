@@ -3550,7 +3550,8 @@
       "vesselsCount": "{{count}} PLAVIDEL",
       "vessels": "PLAVIDLA",
       "trackedVessels": "SLEDOVANÁ PLAVIDLA",
-      "showLess": "Zobrazit méně"
+      "showLess": "Zobrazit méně",
+      "backToGroup": "Zpět ke skupině"
     },
     "naturalEvent": {
       "closed": "ZAVŘENO",

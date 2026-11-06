@@ -3587,7 +3587,8 @@
       "vesselsCount": "{{count}} شناور",
       "vessels": "شناورها",
       "trackedVessels": "شناورهای ردیابی‌شده",
-      "showLess": "نمایش کمتر"
+      "showLess": "نمایش کمتر",
+      "backToGroup": "بازگشت به گروه"
     },
     "naturalEvent": {
       "closed": "بسته",

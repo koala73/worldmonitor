@@ -3498,7 +3498,8 @@
       "vesselsCount": "{{count}}艘舰艇",
       "vessels": "舰艇",
       "trackedVessels": "跟踪舰艇",
-      "showLess": "显示更少"
+      "showLess": "显示更少",
+      "backToGroup": "返回舰船组"
     },
     "naturalEvent": {
       "closed": "已结束",

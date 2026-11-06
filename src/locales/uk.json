@@ -3627,7 +3627,8 @@
       "vesselsCount": "{{count}} СУДЕН",
       "vessels": "СУДНА",
       "trackedVessels": "МОНІТОРЕНІ СУДНА",
-      "showLess": "Показати менше"
+      "showLess": "Показати менше",
+      "backToGroup": "Повернутися до групи"
     },
     "naturalEvent": {
       "closed": "ЗАКРИТО",

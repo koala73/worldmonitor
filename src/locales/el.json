@@ -3518,7 +3518,8 @@
       "vesselsCount": "{{count}} ΠΛΟΙΑ",
       "vessels": "ΠΛΟΙΑ",
       "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ",
-      "showLess": "Εμφάνιση λιγότερων"
+      "showLess": "Εμφάνιση λιγότερων",
+      "backToGroup": "Επιστροφή στην ομάδα"
     },
     "naturalEvent": {
       "closed": "ΚΛΕΙΣΤΟ",

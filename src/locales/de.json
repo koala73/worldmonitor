@@ -3510,7 +3510,8 @@
       "vesselsCount": "{{count}} SCHIFFE",
       "vessels": "SCHIFFE",
       "trackedVessels": "VERFOLGTE SCHIFFE",
-      "showLess": "Weniger anzeigen"
+      "showLess": "Weniger anzeigen",
+      "backToGroup": "Zurück zur Schiffsgruppe"
     },
     "naturalEvent": {
       "closed": "GESCHLOSSEN",

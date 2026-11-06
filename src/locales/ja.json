@@ -3498,7 +3498,8 @@
       "vesselsCount": "{{count}}隻",
       "vessels": "艦艇",
       "trackedVessels": "追跡中の艦艇",
-      "showLess": "表示を減らす"
+      "showLess": "表示を減らす",
+      "backToGroup": "グループに戻る"
     },
     "naturalEvent": {
       "closed": "終了",

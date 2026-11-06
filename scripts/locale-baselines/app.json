@@ -3197,6 +3197,7 @@
   "popups.militaryCluster.activity": "ACTIVITY",
   "popups.militaryCluster.aircraft": "AIRCRAFT",
   "popups.militaryCluster.aircraftCount": "{{count}} AIRCRAFT",
+  "popups.militaryCluster.backToGroup": "Back to group",
   "popups.militaryCluster.flightActivity.exercise": "Military Exercise",
   "popups.militaryCluster.flightActivity.patrol": "Patrol Activity",
   "popups.militaryCluster.flightActivity.transport": "Transport Operations",

@@ -3144,7 +3144,8 @@
       "vesselsCount": "{{count}} NAVIOS",
       "vessels": "NAVIOS",
       "trackedVessels": "NAVIOS RASTREADOS",
-      "showLess": "Mostrar menos"
+      "showLess": "Mostrar menos",
+      "backToGroup": "Voltar ao grupo"
     },
     "naturalEvent": {
       "closed": "FECHADO",

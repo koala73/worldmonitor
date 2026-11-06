@@ -3550,7 +3550,8 @@
       "vesselsCount": "{{count}} STATKI",
       "vessels": "STATKI",
       "trackedVessels": "STATKI GĄSOWE",
-      "showLess": "Pokaż mniej"
+      "showLess": "Pokaż mniej",
+      "backToGroup": "Powrót do grupy"
     },
     "naturalEvent": {
       "closed": "ZAMKNIĘTE",

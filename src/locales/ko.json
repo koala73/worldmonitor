@@ -3498,7 +3498,8 @@
       "vesselsCount": "{{count}}척 함정",
       "vessels": "함정",
       "trackedVessels": "추적 중인 함정",
-      "showLess": "축소"
+      "showLess": "축소",
+      "backToGroup": "그룹으로 돌아가기"
     },
     "naturalEvent": {
       "closed": "종료",
