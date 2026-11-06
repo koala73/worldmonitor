@@ -15,6 +15,7 @@ import {
 import { SILICON_CANALS_2M_URL } from '../../../shared/press';
 import heroProofStats from '../generated/hero-stats.json';
 import depthProofStats from '../generated/depth-stats.json';
+import copyStats from '../generated/copy-stats.json';
 import { PUBLISHED_PULSE_DATE, formatLocalizedDate } from '../services/teasers';
 
 // The screenshot is the LCP element on phones as well as desktop. On a phone
@@ -135,11 +136,14 @@ export const Hero = () => (
         >
           {t('welcome.hero.ctaPrimary')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
+        {/* The first screen's only sign that a paid plan exists. */}
         <a
-          href="#moments"
-          className="inline-flex min-h-12 py-3 items-center justify-center rounded-md px-4 text-sm font-medium text-wm-text transition-colors hover:bg-white/[0.06]"
+          href="/pro#pricing"
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-hero-pro"
+          className="inline-flex min-h-12 py-3 items-center justify-center gap-2 rounded-md border border-wm-border px-5 text-sm font-medium text-wm-text transition-colors hover:border-wm-green hover:text-wm-green"
         >
-          {t('welcome.hero.ctaSecondary')}
+          {t('welcome.hero.ctaPro', { price: `$${copyStats.proMonthlyPrice}` })} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
       </div>
       <div className="mt-4 font-mono text-xs text-wm-muted">
