@@ -665,6 +665,8 @@ export default defineSchema({
     // Security rows only. Scheduling and delivery are separate so a failed
     // send stays visible to the daily digest (Decisions 11 and 12).
     notifyScheduledAt: v.optional(v.number()),
+    // Set once the owner has been told about the row: by a security notice or
+    // digest, by the daily feedback digest, or by triage.
     notifiedAt: v.optional(v.number()),
   })
     .index("by_fingerprint_received", ["fingerprint", "receivedAt"])
@@ -673,7 +675,10 @@ export default defineSchema({
     .index("by_retryKey_received", ["retryKey", "receivedAt"])
     .index("by_reporter_received", ["reporterKey", "receivedAt"])
     .index("by_principal", ["principalId"])
-    .index("by_kind_notified_received", ["kind", "notifiedAt", "receivedAt"]),
+    .index("by_kind_notified_received", ["kind", "notifiedAt", "receivedAt"])
+    // Daily feedback digest: unannounced `received` rows, oldest first across
+    // every kind, so no terminal row enters the scan and no kind starves.
+    .index("by_status_notified_received", ["status", "notifiedAt", "receivedAt"]),
 
   // --- Payment tables (Dodo Payments integration) ---
 
