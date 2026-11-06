@@ -151,13 +151,6 @@ export const Hero = () => (
 
     <div className="max-w-5xl mx-auto text-center">
       <HeroProofRail />
-      {/* The weekly pulse date dates these figures. Under the tagline it read as
-          "this site is days old" next to a live dashboard (#7485 freshness stamp). */}
-      <p className="mt-3 font-mono text-xs text-wm-muted">
-        <time dateTime={PUBLISHED_PULSE_DATE}>
-          {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
-        </time>
-      </p>
 
       <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-mono text-wm-muted">
         <WiredBadge />
@@ -197,6 +190,14 @@ export const Hero = () => (
         >
           {t('welcome.hero.positioningLink')} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
         </a>
+        {/* The page's published-data date, equal to lastmod and dateModified (#8701).
+            Under the tagline it read as "this site is days old" above a live dashboard,
+            and beside the figures rail it would date figures generated separately. */}
+        <p className="mt-4 font-mono text-xs text-wm-muted">
+          <time dateTime={PUBLISHED_PULSE_DATE}>
+            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
+          </time>
+        </p>
       </div>
     </div>
   </section>
