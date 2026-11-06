@@ -476,7 +476,6 @@
       "sub": "Wakati itakuwa habari, wewe tayari ulijua.",
       "ctaPrimary": "Anzisha dashibodi",
       "ctaFree": "Bure · Hapana usajili · Hupakiki kwa sekunde",
-      "ctaSecondary": "Tazama jinsi watu wanavyotumia ↓",
       "trustUsers": "2M+ watumiaji",
       "trustOpenSource": "Chanzo Wazi · AGPL-3.0",
       "screenshotAlt": "World Monitor dashibodi ya akili za moja kwa moja — ramani ya kimataifa yenye safu ya mgogoro, mitambo ya baharini na soko",
@@ -486,7 +485,8 @@
       "asOf": "Kufikia {{date}}",
       "whatIsTitle": "World Monitor ni nini?",
       "whatIsBody": "World Monitor ni dashibodi ya bure ($0), yenye chanzo wazi (AGPL-3.0) inayotumiwa na watu 2M+. Inatiririsha {{feeds}} milisho ya habari na OSINT kutoka kwa watoa huduma {{providers}} waliotajwa kwenye ramani moja hai ya dunia yenye aina {{mapLayers}} za tabaka za ramani, ikishughulikia jiopolitiki, masoko, usafirishaji wa baharini, usafiri wa anga na mtandao. Inazilinganisha ili matukio yanayokutana yajitokeze kabla ya vichwa vya habari. Kila takwimu ina chanzo na kila mbinu imeandikwa.",
-      "whatIsBestFor": "Bora kwa wachambuzi, wanahabari, wafanyabiashara wa masoko na wasanidi programu wanaohitaji ishara za kijiografia na kisiasa za moja kwa moja."
+      "whatIsBestFor": "Bora kwa wachambuzi, wanahabari, wafanyabiashara wa masoko na wasanidi programu wanaohitaji ishara za kijiografia na kisiasa za moja kwa moja.",
+      "ctaPro": "Pro kutoka {{price}}/mwezi"
     },
     "live": {
       "eyebrow": "Moja kwa moja sasa sasa",

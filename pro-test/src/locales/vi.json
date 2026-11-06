@@ -476,7 +476,6 @@
       "sub": "Khi tin tức xuất hiện, bạn đã biết rồi.",
       "ctaPrimary": "Khởi chạy bảng điều khiển",
       "ctaFree": "Miễn phí · Không cần đăng ký · Tải trong vài giây",
-      "ctaSecondary": "Xem cách mọi người sử dụng nó ↓",
       "trustUsers": "2 triệu+ người dùng",
       "trustOpenSource": "Mã nguồn mở · AGPL-3.0",
       "screenshotAlt": "Bảng điều khiển tình báo trực tiếp World Monitor — bản đồ toàn cầu với các lớp xung đột, vận chuyển và thị trường",
@@ -486,7 +485,8 @@
       "asOf": "Tính đến {{date}}",
       "whatIsTitle": "World Monitor là gì?",
       "whatIsBody": "World Monitor là một dashboard miễn phí ($0), mã nguồn mở (AGPL-3.0) được sử dụng bởi hơn 2 triệu người. Nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi nguồn lên một bản đồ thế giới trực tiếp với {{mapLayers}} loại lớp bản đồ, bao gồm địa chính trị, thị trường, vận tải biển, hàng không và mạng. Nó tương quan chúng để các sự kiện hội tụ được nổi lên trước khi có tiêu đề. Mỗi con số đều có nguồn gốc và mỗi phương pháp đều được ghi chép.",
-      "whatIsBestFor": "Phù hợp nhất với nhà phân tích, nhà báo, nhà giao dịch và nhà phát triển cần tín hiệu địa chính trị trực tiếp."
+      "whatIsBestFor": "Phù hợp nhất với nhà phân tích, nhà báo, nhà giao dịch và nhà phát triển cần tín hiệu địa chính trị trực tiếp.",
+      "ctaPro": "Pro từ {{price}}/tháng"
     },
     "live": {
       "eyebrow": "Trực tiếp ngay bây giờ",
