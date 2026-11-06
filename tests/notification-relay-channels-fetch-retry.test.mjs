@@ -81,7 +81,7 @@ const telegramChannel = (chatId) => [{ channelType: 'telegram', verified: true, 
  * `channels(userId)` returns a Response-like object, or throws to model a
  * network error or timeout. `telegram(chatId)` does the same for sends.
  */
-function harness({ users = ['user-1'], channels, telegram, dedupDown = () => false } = {}) {
+function harness({ users = ['user-1'], channels, telegram, dedupDown = () => false, dedupLostResponse = () => false } = {}) {
   const redis = new Map();
   const queue = [];
   const sent = [];
@@ -118,6 +118,13 @@ function harness({ users = ['user-1'], channels, telegram, dedupDown = () => fal
         : parsed.pathname.split('/').slice(1).map(decodeURIComponent);
       if (parts[0] === 'SET' && parts[1].startsWith('wm:notif:dedup:') && dedupDown()) {
         return { ok: false, status: 503, json: async () => ({}) };
+      }
+      if (parts[0] === 'SET' && parts[1].startsWith('wm:notif:dedup:') && dedupLostResponse()) {
+        // Redis commits the write, then the response is lost.
+        upstash(parts);
+        const e = new Error('The operation was aborted due to timeout');
+        e.name = 'TimeoutError';
+        throw e;
       }
       return { ok: true, status: 200, json: async () => ({ result: upstash(parts) }) };
     }
@@ -246,12 +253,31 @@ describe('relay releases the dedup claim when the channel read fails (SM-115)', 
     });
     await h.deliver(rssEvent());
     assert.deepEqual(h.sent, []);
-    assert.equal(h.evals.length, 0, 'no Redis claim was written, so there is none to compare-and-delete');
+    assert.equal(h.evals.length, 1, 'the Redis key is compare-and-deleted in case the SET committed');
+    assert.deepEqual(h.dedupKeys(), [], 'no Redis claim was written');
     assert.equal(h.queue.length, 1);
 
     channelsUp = true;
     await h.deliver(h.queue.shift());
     assert.deepEqual(h.sent, ['chat-user-1'], 'the fail-open fallback must not suppress the retry');
+  });
+
+  it('fail-open after a lost SET NX response: also compare-and-deletes the committed Redis claim', async () => {
+    let channelsUp = false;
+    let lostOnce = true;
+    const h = harness({
+      dedupLostResponse: () => { const lost = lostOnce; lostOnce = false; return lost; },
+      channels: (userId) => (channelsUp ? ok(telegramChannel(`chat-${userId}`)) : httpError(503)),
+      telegram: telegramOk,
+    });
+    await h.deliver(rssEvent());
+    assert.deepEqual(h.sent, []);
+    assert.deepEqual(h.dedupKeys(), [], `the committed claim must be released\n${h.logs.join('\n')}`);
+    assert.equal(h.queue.length, 1);
+
+    channelsUp = true;
+    await h.deliver(h.queue.shift());
+    assert.deepEqual(h.sent, ['chat-user-1'], 'the retry must not hit a claim nobody delivered on');
   });
 
   it('counts attempts and drops loudly after the cap, leaving the claim released', async () => {

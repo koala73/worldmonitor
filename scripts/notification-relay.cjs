@@ -1835,11 +1835,16 @@ async function requeueAfterChannelsFailure(event, err, userCount) {
 // Undo a real-time dedup claim when nothing was sent for it. Only the claim
 // this pass wrote is released: the Redis key through compare-and-delete on our
 // token, or the in-process fallback entry when SET NX errored and the relay
-// failed open. Any other outcome (a duplicate, a fail-closed skip) holds no
-// claim of ours.
+// failed open. A SET NX "error" can be a lost response to a write Redis
+// committed, so the fail-open path also compare-and-deletes the Redis key; the
+// token check leaves any other worker's claim alone. Any other outcome (a
+// duplicate, a fail-closed skip) holds no claim of ours.
 async function releaseRealtimeClaim(dedupDecision, claim) {
   if (dedupDecision.dedupResult === 'new') return releaseDedupClaim(claim.key, claim.token);
-  if (dedupDecision.action === 'fail_open') return releaseFailOpenFallback(claim.fallbackKey);
+  if (dedupDecision.action === 'fail_open') {
+    await releaseDedupClaim(claim.key, claim.token);
+    return releaseFailOpenFallback(claim.fallbackKey);
+  }
   return false;
 }
 
