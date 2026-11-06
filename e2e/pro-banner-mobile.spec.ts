@@ -90,6 +90,16 @@ test.describe('Pro strip on desktop', () => {
     expect(layout.headlineClipped).toBe(false);
     expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
   });
+
+  // Banner views were counted (gate-hit feature=pro-banner) but clicks were
+  // not, so the strip's click-through could not be measured. The Umami
+  // tracker records clicks on any element carrying data-umami-event.
+  test('tags the call to action for click tracking', async ({ page }) => {
+    await openFreeDashboard(page);
+    const cta = page.locator('.pro-banner-cta');
+    await expect(cta).toHaveAttribute('data-umami-event', 'pro-banner-click');
+    await expect(cta).toHaveAttribute('data-umami-event-state', 'upgrade');
+  });
 });
 
 // The strip's gradient is translucent. In the light theme the page body

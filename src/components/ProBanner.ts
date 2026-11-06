@@ -277,7 +277,7 @@ export function showProBanner(container: HTMLElement): void {
     <span class="pro-banner-text">
       <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : `<span class="pro-banner-tagline"> — ${t('components.proBanner.tagline')}</span>`}
     </span>
-    <a class="pro-banner-cta" href="${ctaHref}">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.cta')}</a>
+    <a class="pro-banner-cta" href="${ctaHref}" data-umami-event="pro-banner-click" data-umami-event-state="${returning ? 'lapsed' : 'upgrade'}">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.cta')}</a>
     <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>
   `, "legacy direct innerHTML migration"));
 
