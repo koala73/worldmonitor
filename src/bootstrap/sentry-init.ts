@@ -8,6 +8,7 @@
 
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { isIosLikeUserAgent } from './platform-ua';
+import { installPageUnloadSignal, isPageUnloading } from './page-unload-signal';
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
 import { scrubSentryCredentials } from '../../shared/sensitive-url-params';
@@ -466,6 +467,15 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       }
       const msg = event.exception?.values?.[0]?.value ?? '';
       if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
+      // A reload or navigation aborts every in-flight fetch, and the rejections
+      // land while the page is going away. A `kind` claim does not rescue them:
+      // the owner is reporting the teardown, not an outage (WORLDMONITOR-1AY).
+      // Only the three engines' fetch-failure wordings, only as a TypeError.
+      if (
+        isPageUnloading()
+        && (event.exception?.values?.[0]?.type === 'TypeError' || msg.startsWith('TypeError: '))
+        && /^(?:TypeError: )?(?:Load failed|Failed to fetch|NetworkError when attempting to fetch resource\.?)(?: \(.*\))?$/.test(msg)
+      ) return null;
       // WebKit's wording for a failed fetch, relocated verbatim from
       // `ignoreErrors`. Reach is unchanged — still only a `TypeError` whose
       // message is exactly `Load failed`, optionally with a parenthesised
@@ -1337,6 +1347,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
 }
 
 export async function loadAndInitSentry(): Promise<SentryNs> {
+  installPageUnloadSignal();
   const ns = await import('@sentry/browser');
   ns.init(buildSentryInitOptions());
   return ns;
