@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import sharp from 'sharp';
 
@@ -17,7 +18,7 @@ it('advertises real PNGs at every install size with separate maskable assets', a
     assert.ok(maskable, `missing maskable icon at ${dimensions}`);
     assert.notEqual(any.src, maskable.src);
     for (const icon of [any, maskable]) {
-      const metadata = await sharp(new URL(`public${icon.src}`, root).pathname).metadata();
+      const metadata = await sharp(fileURLToPath(new URL(`public${icon.src}`, root))).metadata();
       assert.equal(icon.type, 'image/png');
       assert.equal(metadata.format, 'png');
       assert.equal(metadata.width, size);
@@ -28,7 +29,7 @@ it('advertises real PNGs at every install size with separate maskable assets', a
 
 it('keeps maskable artwork inside the central 80% circle on an opaque theme background', async () => {
   for (const icon of icons.filter(icon => icon.purpose === 'maskable')) {
-    const { data, info } = await sharp(new URL(`public${icon.src}`, root).pathname)
+    const { data, info } = await sharp(fileURLToPath(new URL(`public${icon.src}`, root)))
       .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     let artworkPixels = 0;
     for (let y = 0; y < info.height; y++) {
