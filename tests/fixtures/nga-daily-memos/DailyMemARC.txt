@@ -1,0 +1,29 @@
+
+HYDROARC IN FORCE AS OF 061440Z NOV 26.
+
+To receive Broadcast Warning messages via email, go to
+msi.nga.mil and click on the 'NAVIGATION WARNINGS' button
+under the 'Subscription Services' section.
+The In-Force Navigational Warnings obtained via this
+service and the availability of Navigational Warnings
+via alternate NGA subscription services does not relieve
+Masters / Captains of the requirement to receive
+Navigational Warnings through IMO approved broadcas
+services in accordance with the provisions of the
+International Convention for the Safety of Life a
+Sea (SOLAS). This information is provided as a
+supplement to those approved services.
+
+301626Z OCT 26
+HYDROARC 316/26
+NGA MARITIME DISSEMINATION ADVISORY
+NGA IS EXPERIENCING WEBSITE OUTAGES FOR WWW AND NIPR SITES.
+THIS AFFECTS DNC, ENC, CPENC, NAVIGATIONAL WARNINGS, AND NAUTICAL PRODUCTS
+SYSTEMS IMPACTED ARE DNC VDU, MSI, MCDP, AND ESYNC.
+NGA MARITIME IS ADVISING USERS TO USE SIPR WEBSITES
+FOR CHART DOWNLOADS AND UPDATING.
+PLEASE USE SIPR MCDP (HTTPS://MARITIME.NGA.SMIL.MIL)
+OR ESYNC (HTTPS://ESYNC.NGA.SMIL.MIL) FOR CHART UPDATING.
+IF YOU REQUIRE FURTHER ASSISTANCE, INCLUDING REQUESTS FOR
+DIRECT DOWNLOADS VIA DOD SAFE, PLEASE CONTACT MARHELP@NGA.MIL.
+

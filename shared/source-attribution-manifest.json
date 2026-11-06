@@ -6873,10 +6873,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/infrastructure/v1/get-cable-health.ts"
-        },
-        {
-          "path": "server/worldmonitor/maritime/v1/list-navigational-warnings.ts"
+          "path": "server/_shared/nga-broadcast-warnings.ts"
         }
       ]
     },
