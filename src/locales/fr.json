@@ -3419,6 +3419,28 @@
       "readReport": "Lire le rapport complet"
     },
     "datacenter": {
+      "details": {
+        "more": "Plus de détails",
+        "owner": "Propriétaire / fournisseur du cluster (jeu de données)",
+        "power": "Puissance indiquée dans le jeu de données",
+        "powerCaveat": "La capacité de puissance peut être déclarée ou estimée. Il ne s’agit pas d’une mesure de la consommation électrique actuelle.",
+        "powerBasis": "Base du chiffre de puissance",
+        "reported": "Déclarée",
+        "estimated": "Estimée",
+        "notAvailable": "Non disponible",
+        "location": "Précision de la localisation",
+        "locationUnknown": "Point non vérifié sur la carte ; ne pas utiliser comme adresse exacte de l’installation.",
+        "site": "Site (vérifié par la source)",
+        "city": "Ville uniquement",
+        "region": "Région uniquement",
+        "country": "Pays uniquement",
+        "dataset": "Jeu de données des clusters GPU d’Epoch AI",
+        "evidence": "Source justificative",
+        "sourceDate": "Date de publication de la source",
+        "metadataReviewedAt": "Métadonnées vérifiées",
+        "firstOperationalDate": "Date de première mise en service (jeu de données)",
+        "freshness": "Instantané enregistré du jeu de données. L’état et les caractéristiques actuels peuvent avoir changé."
+      },
       "status": {
         "existing": "OPÉRATIONNEL",
         "planned": "PRÉVU",

@@ -3387,6 +3387,28 @@
       "readReport": "전체 보고서 읽기"
     },
     "datacenter": {
+      "details": {
+        "more": "자세한 정보",
+        "owner": "클러스터 소유자 / 제공업체 (데이터셋)",
+        "power": "데이터셋 전력 수치",
+        "powerCaveat": "전력 용량은 보고값 또는 추정값일 수 있습니다. 현재 전력 소비량을 측정한 값이 아닙니다.",
+        "powerBasis": "전력 수치의 근거",
+        "reported": "보고값",
+        "estimated": "추정값",
+        "notAvailable": "정보 없음",
+        "location": "위치 정확도",
+        "locationUnknown": "확인되지 않은 지도상의 지점입니다. 시설의 정확한 주소로 사용하지 마세요.",
+        "site": "시설 (출처로 확인됨)",
+        "city": "도시 단위",
+        "region": "지역 단위",
+        "country": "국가 단위",
+        "dataset": "Epoch AI GPU 클러스터 데이터셋",
+        "evidence": "근거 출처",
+        "sourceDate": "출처 게시일",
+        "metadataReviewedAt": "메타데이터 확인일",
+        "firstOperationalDate": "최초 가동일 (데이터셋)",
+        "freshness": "저장된 데이터셋 스냅샷입니다. 현재 상태와 사양은 변경되었을 수 있습니다."
+      },
       "status": {
         "existing": "운영 중",
         "planned": "계획됨",

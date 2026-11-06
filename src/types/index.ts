@@ -782,6 +782,14 @@ export interface AIDataCenter {
   h100Equivalent?: number;
   sector?: string;
   note?: string;
+  /** Optional enrichment; omit fields without verified public evidence. */
+  description?: string;
+  sourceUrl?: string;
+  sourceDate?: string;
+  metadataReviewedAt?: string;
+  firstOperationalDate?: string;
+  locationPrecision?: 'site' | 'city' | 'region' | 'country';
+  powerBasis?: 'reported' | 'estimated';
 }
 
 export interface InternetOutage {

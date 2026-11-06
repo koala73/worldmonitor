@@ -3015,6 +3015,28 @@
       "readReport": "Lees het volledige rapport"
     },
     "datacenter": {
+      "details": {
+        "more": "Meer details",
+        "owner": "Clustereigenaar / aanbieder (dataset)",
+        "power": "Vermogenswaarde in dataset",
+        "powerCaveat": "De vermogenscapaciteit kan gemeld of geschat zijn. Dit is geen meting van het huidige elektriciteitsverbruik.",
+        "powerBasis": "Basis van vermogenswaarde",
+        "reported": "Gemeld",
+        "estimated": "Geschat",
+        "notAvailable": "Niet beschikbaar",
+        "location": "Locatienauwkeurigheid",
+        "locationUnknown": "Onbevestigd kaartpunt; niet gebruiken als exact adres van de faciliteit.",
+        "site": "Locatie (door bron bevestigd)",
+        "city": "Alleen stad",
+        "region": "Alleen regio",
+        "country": "Alleen land",
+        "dataset": "Epoch AI GPU-clusterdataset",
+        "evidence": "Ondersteunende bron",
+        "sourceDate": "Publicatiedatum van de bron",
+        "metadataReviewedAt": "Metagegevens gecontroleerd",
+        "firstOperationalDate": "Datum eerste ingebruikname (dataset)",
+        "freshness": "Opgeslagen momentopname van de dataset. De huidige status en specificaties kunnen gewijzigd zijn."
+      },
       "status": {
         "existing": "OPERATIONEEL",
         "planned": "GEPLAND",

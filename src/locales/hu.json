@@ -3476,6 +3476,28 @@
       "readReport": "Teljes jelentés olvasása"
     },
     "datacenter": {
+      "details": {
+        "more": "További részletek",
+        "owner": "A klaszter tulajdonosa / szolgáltatója (adatkészlet)",
+        "power": "Az adatkészlet teljesítményadata",
+        "powerCaveat": "A teljesítménykapacitás lehet közölt vagy becsült érték. Ez nem a jelenlegi áramfogyasztás mérése.",
+        "powerBasis": "A teljesítményadat alapja",
+        "reported": "Közölt",
+        "estimated": "Becsült",
+        "notAvailable": "Nem érhető el",
+        "location": "Helymeghatározás pontossága",
+        "locationUnknown": "Nem ellenőrzött térképpont; ne használja a létesítmény pontos címeként.",
+        "site": "Telephely (forrással ellenőrizve)",
+        "city": "Csak város",
+        "region": "Csak régió",
+        "country": "Csak ország",
+        "dataset": "Az Epoch AI GPU-klaszter-adatkészlete",
+        "evidence": "Alátámasztó forrás",
+        "sourceDate": "A forrás közzétételének dátuma",
+        "metadataReviewedAt": "Metaadatok ellenőrzése",
+        "firstOperationalDate": "Első üzembe helyezés dátuma (adatkészlet)",
+        "freshness": "Az adatkészlet mentett pillanatképe. A jelenlegi állapot és a műszaki adatok megváltozhattak."
+      },
       "status": {
         "existing": "MŰKÖDIK",
         "planned": "TERVEZETT",

@@ -3476,6 +3476,28 @@
       "readReport": "Soma ripoti kamili"
     },
     "datacenter": {
+      "details": {
+        "more": "Maelezo zaidi",
+        "owner": "Mmiliki / mtoa huduma wa klasta (mkusanyiko wa data)",
+        "power": "Kiwango cha nguvu katika mkusanyiko wa data",
+        "powerCaveat": "Uwezo wa nguvu unaweza kuwa umeripotiwa au kukadiriwa. Hiki si kipimo cha matumizi ya sasa ya umeme.",
+        "powerBasis": "Msingi wa kiwango cha nguvu",
+        "reported": "Umeripotiwa",
+        "estimated": "Umekadiriwa",
+        "notAvailable": "Haipatikani",
+        "location": "Usahihi wa eneo",
+        "locationUnknown": "Sehemu ya ramani haijathibitishwa; usitumie kama anwani sahihi ya kituo.",
+        "site": "Kituo (kimethibitishwa na chanzo)",
+        "city": "Jiji pekee",
+        "region": "Mkoa pekee",
+        "country": "Nchi pekee",
+        "dataset": "Mkusanyiko wa data wa klasta za GPU wa Epoch AI",
+        "evidence": "Chanzo cha ushahidi",
+        "sourceDate": "Tarehe ya kuchapishwa kwa chanzo",
+        "metadataReviewedAt": "Tarehe ya ukaguzi wa metadata",
+        "firstOperationalDate": "Tarehe ya kuanza kufanya kazi (mkusanyiko wa data)",
+        "freshness": "Nakala iliyohifadhiwa ya mkusanyiko wa data. Hali na vipimo vya sasa huenda vimebadilika."
+      },
       "status": {
         "existing": "UENDESHAJI",
         "planned": "IMEPANGA",

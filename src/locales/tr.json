@@ -3407,6 +3407,28 @@
       "readReport": "Tam raporu oku"
     },
     "datacenter": {
+      "details": {
+        "more": "Daha fazla ayrıntı",
+        "owner": "Küme sahibi / sağlayıcısı (veri kümesi)",
+        "power": "Veri kümesindeki güç değeri",
+        "powerCaveat": "Güç kapasitesi bildirilmiş veya tahmini olabilir. Bu, mevcut elektrik tüketiminin ölçümü değildir.",
+        "powerBasis": "Güç değerinin dayanağı",
+        "reported": "Bildirilen",
+        "estimated": "Tahmini",
+        "notAvailable": "Mevcut değil",
+        "location": "Konum hassasiyeti",
+        "locationUnknown": "Doğrulanmamış harita noktası; tesisin kesin adresi olarak kullanmayın.",
+        "site": "Tesis (kaynakla doğrulanmış)",
+        "city": "Yalnızca şehir",
+        "region": "Yalnızca bölge",
+        "country": "Yalnızca ülke",
+        "dataset": "Epoch AI GPU kümeleri veri kümesi",
+        "evidence": "Destekleyici kaynak",
+        "sourceDate": "Kaynağın yayın tarihi",
+        "metadataReviewedAt": "Üst verilerin kontrol tarihi",
+        "firstOperationalDate": "İlk işletime alınma tarihi (veri kümesi)",
+        "freshness": "Veri kümesinin kaydedilmiş anlık görüntüsü. Mevcut durum ve teknik özellikler değişmiş olabilir."
+      },
       "status": {
         "existing": "FAAL",
         "planned": "PLANLANMIS",
