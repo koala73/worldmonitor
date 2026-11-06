@@ -238,6 +238,7 @@
 *Could not find public function for 'payments/billing:repairCustomerFromSubscriptionPayload'*
 *Could not find public function for 'payments/billing:reportPaymentReconciliationFailure'*
 *Could not find public function for 'payments/billing:verifyRecentlyStaleSubscriptionOnDemand'*
+*Could not find public function for 'payments/businessSeats:extendBusinessInvite'*
 *Could not find public function for 'payments/businessSeats:sendBusinessInviteEmail'*
 *Could not find public function for 'payments/businessSeats:sendTeamAccessEndedEmail'*
 *Could not find public function for 'payments/cacheActions:deleteAiRoutingPolicyCache'*
