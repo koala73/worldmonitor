@@ -853,6 +853,7 @@ export function clearClerkTokenCache(): void {
   _cachedSession = null;
   _tokenInflight = null;
   _tokenGen++;
+  _lastRejectedToken = null;
   _clerkClockState = { kind: 'uncalibrated' };
 }
 
@@ -873,6 +874,11 @@ let _cachedTokenAt = 0;
 let _cachedSession: ClerkSession | null = null;
 let _tokenInflight: Promise<string | null> | null = null;
 let _tokenGen = 0;
+// Bumped by each new edge rejection. A fetch that started under an older epoch
+// still returns to its own callers but may no longer write the cache or the
+// clock state, so it cannot restore what the rejection invalidated.
+let _tokenEpoch = 0;
+let _lastRejectedToken: string | null = null;
 // Positive means the client clock is behind the issuer clock. This is measured
 // from a token fetched with skipCache so a stale Clerk token cannot masquerade
 // as a clock offset. Keep the modes explicit: a trusted zero skew is different
@@ -912,20 +918,28 @@ function canCacheClerkToken(state: ClerkClockState): boolean {
 
 type ClerkTokenClaimsMs = { exp: number | null; iat: number | null };
 
-function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
+function clerkTokenClaims(token: string | null): Record<string, unknown> | null {
   const payload = token?.split('.')[1];
-  if (!payload) return { exp: null, iat: null };
+  if (!payload) return null;
   try {
     const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const claims = JSON.parse(
-      atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)),
-    ) as Record<string, unknown>;
-    const toEpochMs = (value: unknown): number | null =>
-      typeof value === 'number' && Number.isFinite(value) ? value * 1_000 : null;
-    return { exp: toEpochMs(claims.exp), iat: toEpochMs(claims.iat) };
+    const claims: unknown = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)));
+    return claims && typeof claims === 'object' ? claims as Record<string, unknown> : null;
   } catch {
-    return { exp: null, iat: null };
+    return null;
   }
+}
+
+function clerkTokenClaimsMs(token: string | null): ClerkTokenClaimsMs {
+  const claims = clerkTokenClaims(token);
+  const toEpochMs = (value: unknown): number | null =>
+    typeof value === 'number' && Number.isFinite(value) ? value * 1_000 : null;
+  return { exp: toEpochMs(claims?.exp), iat: toEpochMs(claims?.iat) };
+}
+
+function clerkTokenSubject(token: string | null): string | null {
+  const sub = clerkTokenClaims(token)?.sub;
+  return typeof sub === 'string' && sub !== '' ? sub : null;
 }
 
 /**
@@ -1052,6 +1066,7 @@ export async function getClerkToken(): Promise<string | null> {
   if (_tokenInflight) return _tokenInflight;
 
   const myGen = _tokenGen;
+  const myEpoch = _tokenEpoch;
   const promise: Promise<string | null> = (async () => {
     if (!clerkInstance && PUBLISHABLE_KEY) {
       try { await initClerk(); } catch { /* Clerk load failed, proceed with null */ }
@@ -1139,12 +1154,14 @@ export async function getClerkToken(): Promise<string | null> {
       // flight, this JWT belongs to the previous user. Drop it on the
       // floor — do not cache, do not return.
       if (myGen !== _tokenGen || clerkInstance?.session !== session) return null;
-      if (token === null && nextClockState.kind === 'retry-after') {
+      // An edge rejection since this fetch began owns the cache and clock now.
+      const mayCommit = myEpoch === _tokenEpoch;
+      if (mayCommit && token === null && nextClockState.kind === 'retry-after') {
         _cachedToken = null;
         _cachedTokenAt = 0;
         _cachedSession = null;
       }
-      _clerkClockState = nextClockState;
+      if (mayCommit) _clerkClockState = nextClockState;
       const fetchedAt = Date.now();
       if (shouldReuseCachedClerkTokenWithExpiry({
         token,
@@ -1154,7 +1171,7 @@ export async function getClerkToken(): Promise<string | null> {
       }, tokenClaims.exp)) {
         // Cache only after a trusted clock sample exists, or after the opaque
         // token path has explicitly opted back into the legacy flat TTL.
-        if (canCacheClerkToken(nextClockState)) {
+        if (mayCommit && canCacheClerkToken(nextClockState)) {
           _cachedToken = token;
           _cachedTokenAt = fetchedAt;
           _cachedSession = session;
@@ -1176,11 +1193,49 @@ export async function getClerkToken(): Promise<string | null> {
       // If clearClerkTokenCache() fired during our await it has already
       // nulled _tokenInflight AND bumped _tokenGen; a newer caller may
       // have assigned a fresh promise that we must not clobber.
-      if (myGen === _tokenGen) _tokenInflight = null;
+      // A rejection detaches the in-flight fetch the same way, by epoch.
+      if (myGen === _tokenGen && myEpoch === _tokenEpoch) _tokenInflight = null;
     }
   })();
   _tokenInflight = promise;
   return promise;
+}
+
+/**
+ * A replacement for a token the edge just refused with 401, or null when Clerk
+ * has nothing different to offer.
+ *
+ * The client judged `rejected` unexpired, so either its clock sample is off or
+ * the request sat between signing and the wire (a frozen tab resumed). The
+ * first rejection of a token drops it from the cache, resets the clock state so
+ * `getClerkToken()` forces a fresh, uncached token and re-samples the skew, and
+ * bumps the epoch so a fetch already in flight (which may hold the same token
+ * or a stale clock sample) is neither joined nor allowed to write back.
+ *
+ * No generation bump: a burst of sibling requests all 401 on the same token,
+ * and the generation is the sign-out signal that makes in-flight callers get
+ * null. Later rejections of the same token join the first one's refresh.
+ *
+ * The replacement must belong to the same Clerk user as `rejected`. A 401 that
+ * lands after an account switch must not replay the first user's request with
+ * the second user's token; an unreadable subject fails closed.
+ */
+export async function refreshClerkTokenAfterRejection(rejected: string): Promise<string | null> {
+  if (rejected !== _lastRejectedToken) {
+    _lastRejectedToken = rejected;
+    _tokenEpoch++;
+    _tokenInflight = null;
+    if (_cachedToken === rejected) {
+      _cachedToken = null;
+      _cachedTokenAt = 0;
+      _cachedSession = null;
+    }
+    _clerkClockState = { kind: 'uncalibrated' };
+  }
+  const next = await getClerkToken();
+  if (!next || next === rejected) return null;
+  const subject = clerkTokenSubject(rejected);
+  return subject !== null && clerkTokenSubject(next) === subject ? next : null;
 }
 
 export function __setClerkInstanceForTests(instance: ClerkInstance | null): void {
