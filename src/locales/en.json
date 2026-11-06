@@ -3614,6 +3614,7 @@
       "primary": "PRIMARY",
       "trackedAircraft": "TRACKED AIRCRAFT",
       "showLess": "Show less",
+      "backToGroup": "Back to group",
       "vesselActivity": {
         "exercise": "Naval Exercise",
         "deployment": "Naval Deployment",

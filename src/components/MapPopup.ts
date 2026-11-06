@@ -327,6 +327,9 @@ export class MapPopup {
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
 
+    // Retain the group's DOM so Back restores expansion and scroll state.
+    let groupView: { nodes: Node[]; bodyScroll: number; scroll: number; member: HTMLButtonElement } | null = null;
+
     // Reconcile the cached height against reality AFTER the frame has painted.
     // rAF alone is not enough: rAF callbacks run before that frame's paint, and
     // INP measures input→next paint, so an offsetHeight read there is still
@@ -341,7 +344,7 @@ export class MapPopup {
       const positionedWith = this.lastPositionedHeight;
       requestAnimationFrame(() => {
         setTimeout(() => {
-          if (this.popup !== openedPopup) return;
+          if (this.popup !== openedPopup || groupView) return;
           this.refreshHeightCache(popupType, data, containerRect, positionedWith);
         }, 0);
       });
@@ -413,10 +416,45 @@ export class MapPopup {
       }
     }
 
+    const openedPopup = this.popup;
+
     // Close button handler via event delegation on the popup element.
     // This avoids re-querying and re-attaching listeners after innerHTML.
     this.popup.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      const member = target.closest<HTMLButtonElement>('[data-vessel-index]');
+      if (member && data.type === 'militaryVesselCluster' && !groupView) {
+        e.stopPropagation();
+        const index = Number(member.dataset.vesselIndex);
+        const vessel = Number.isInteger(index) && index >= 0
+          ? (data.data as MilitaryVesselCluster).vessels[index] : undefined;
+        if (!vessel) return;
+        groupView = {
+          nodes: Array.from(openedPopup.childNodes),
+          bodyScroll: openedPopup.querySelector('.popup-body')?.scrollTop ?? 0,
+          scroll: openedPopup.scrollTop,
+          member,
+        };
+        setTrustedHtml(openedPopup, trustedHtml(
+          (this.isMobileSheet ? `<button class="map-popup-sheet-handle" aria-label="${t('common.close')}"></button>` : '')
+            + this.renderMilitaryVesselPopup(vessel, true), 'naval group member details'));
+        openedPopup.scrollTop = 0;
+        this.clampPopupToViewport();
+        openedPopup.querySelector<HTMLButtonElement>('.popup-back')?.focus({ preventScroll: true });
+        return;
+      }
+      if (target.closest('.popup-back') && groupView) {
+        e.stopPropagation();
+        const saved = groupView;
+        openedPopup.replaceChildren(...saved.nodes);
+        groupView = null;
+        this.clampPopupToViewport();
+        openedPopup.scrollTop = saved.scroll;
+        const body = openedPopup.querySelector('.popup-body');
+        if (body) body.scrollTop = saved.bodyScroll;
+        saved.member.focus({ preventScroll: true });
+        return;
+      }
       if (target.closest('.popup-close') || target.closest('.map-popup-sheet-handle')) {
         this.hide();
         return;
@@ -431,6 +469,7 @@ export class MapPopup {
       }
       const toggle = target.closest('.cluster-toggle') as HTMLButtonElement | null;
       if (toggle) {
+        e.stopPropagation();
         const hidden = toggle.previousElementSibling as HTMLElement | null;
         if (!hidden) return;
         const expanded = hidden.style.display !== 'none';
@@ -3047,13 +3086,13 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     return `${Math.abs(lat).toFixed(3)}°${ns}, ${Math.abs(lon).toFixed(3)}°${ew}`;
   }
 
-  private renderClusterVesselItem(v: MilitaryVessel): string {
+  private renderClusterVesselItem(v: MilitaryVessel, index: number): string {
     const code = this.getOperatorCountryCode(v);
     const flag = code ? this.getFlagEmoji(code) : '';
-    return `<div class="cluster-vessel-item">${flag ? `<span class="flag-icon-small">${flag}</span> ` : ''}${escapeHtml(v.name)} - ${escapeHtml(vesselTypeLabel(v))}</div>`;
+    return `<button type="button" class="cluster-vessel-item" data-vessel-index="${index}">${flag ? `<span class="flag-icon-small">${flag}</span> ` : ''}${escapeHtml(v.name || `${t('popups.militaryVessel.vessel')} ${v.mmsi}`)} - ${escapeHtml(vesselTypeLabel(v))}</button>`;
   }
 
-  private renderMilitaryVesselPopup(vessel: MilitaryVessel): string {
+  private renderMilitaryVesselPopup(vessel: MilitaryVessel, fromGroup = false): string {
     const operatorLabels: Record<string, string> = {
       usn: 'US Navy',
       uscg: 'US Coast Guard',
@@ -3163,6 +3202,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         <button class="popup-close" aria-label="${t('common.close')}">×</button>
       </div>
       <div class="popup-body">
+        ${fromGroup ? `<button type="button" class="popup-back">← ${t('popups.militaryCluster.backToGroup')}</button>` : ''}
         <div class="popup-subtitle">
           ${flagEmoji ? `<span class="flag-icon">${flagEmoji}</span>` : ''}
           <span class="operator-label">${vesselOperator}</span>
@@ -3305,12 +3345,12 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
 
     const visibleVessels = cluster.vessels
       .slice(0, 5)
-      .map(v => this.renderClusterVesselItem(v))
+      .map((v, index) => this.renderClusterVesselItem(v, index))
       .join('');
     const hiddenVessels = cluster.vessels.length > 5
       ? cluster.vessels
           .slice(5)
-          .map(v => this.renderClusterVesselItem(v))
+          .map((v, index) => this.renderClusterVesselItem(v, index + 5))
           .join('')
       : '';
     const hiddenCount = cluster.vessels.length - 5;

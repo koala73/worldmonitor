@@ -14309,6 +14309,41 @@ button.popup-link {
   font-style: italic;
 }
 
+.cluster-vessel-item,
+.popup-back {
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  min-height: 36px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cluster-vessel-item {
+  width: 100%;
+}
+
+.popup-back {
+  display: block;
+  background: var(--overlay-light);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 12px;
+}
+
+.cluster-vessel-item:hover,
+.popup-back:hover {
+  background: var(--overlay-medium);
+}
+
+.cluster-vessel-item:focus-visible,
+.popup-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .popup-description.alert {
   color: var(--semantic-critical-text, var(--semantic-critical));
   font-weight: bold;
