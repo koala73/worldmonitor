@@ -247,6 +247,25 @@ describe('generation-scoped Convex auth handoff', () => {
     assert.deepEqual(attached, ['C']);
   });
 
+  it('does not attach watches when app teardown precedes delayed auth confirmation', async () => {
+    const fake = installFakeClient();
+    const appState = { isDestroyed: false };
+    const attached: string[] = [];
+    const handoff = rebindConvexAuthForWatchHandoff(
+      () => !appState.isDestroyed,
+      () => attached.push('watch'),
+      1_000,
+      [],
+    );
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2);
+    appState.isDestroyed = true;
+    fake.authConfigs[1].onChange(true);
+    assert.equal(await handoff, false);
+    assert.deepEqual(attached, []);
+    assert.deepEqual(fake.watchAttachments, []);
+  });
+
   it('treats a same-config true then false callback as unauthenticated', async () => {
     const fake = installFakeClient();
     const attached: string[] = [];
@@ -941,6 +960,7 @@ describe('App account-switch controller', () => {
     )?.[0];
     assert.ok(branch, 'expected the signed-in identity-change branch');
     assert.match(branch, /startAccountAuthHandoff\(\{/);
+    assert.match(branch, /!this\.state\.isDestroyed[\s\S]*?handoffGeneration === _convexWatchHandoffGeneration/);
     assert.match(branch, /getAuthState\(\)\.user\?\.id === userId/);
     assert.match(branch, /resetEntitlementState,/);
     assert.match(branch, /rebindConvexAuthForWatchHandoff,/);

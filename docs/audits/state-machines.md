@@ -16,7 +16,8 @@ DOM tests, and this document. Expansion: the ML readiness promise leak was indep
 widget close/reopen trace proved deadline loss; `src/components/WidgetChatModal.ts` and its
 existing preflight tests are necessary to enforce request ownership across retries. Review
 follow-up also requires `src/app/panel-layout.ts` and the existing app-destroy DOM suite to
-distinguish final teardown from an account handoff.
+distinguish final teardown from an account handoff. `src/App.ts` and the existing Convex
+auth-handoff suite also bind that handoff to App lifetime.
 No merge, deployment, provider calls, production writes, or external notification is in scope.
 
 ## Reading the inventory
@@ -54,7 +55,8 @@ Owners: [`auth-state.ts`](../../src/services/auth-state.ts),
 [`account-auth-handoff.ts`](../../src/app/account-auth-handoff.ts).
 States: browser session pending / anonymous / account A; Convex client absent / loading /
 ready; identity barrier pending / authenticated / rejected / timed out / retired.
-Invariant: a response or token from A cannot settle B's barrier. Pending authentication is
+Invariant: a response or token from A cannot settle B's barrier. A destroyed App cannot
+resume its account handoff or attach watches, even when account and generation still match. Pending authentication is
 not affirmative denial. Client initialization is shared; authentication is generation-scoped.
 
 | From | Event / guard | To / effect |
@@ -64,6 +66,7 @@ not affirmative denial. Client initialization is shared; authentication is gener
 | Client absent | First consumer | Loading; concurrent consumers join initialization |
 | Identity pending | Matching server auth callback | Authenticated; attach account watches |
 | Identity pending | Deadline or rejected auth | Bounded retry / unavailable when exhausted |
+| Any identity | App destroyed | App lifetime guard retires pending handoff; late authentication cannot attach watches |
 | Any identity | Sign-out or account switch | Retire barrier, invalidate token, create new identity generation |
 | Retired identity | Late callback | Ignore |
 
@@ -673,6 +676,17 @@ The terminal notification now belongs to `PanelLayoutManager.destroy()`, which c
 preserves pending until auth succeeds or fails; final app teardown notifies current and late
 subscribers when no snapshot exists. Ready snapshots remain intact, retired completion cannot
 republish, and retry can reach ready. No new teardown option or status is introduced.
+
+Latest-head review found a separate caller gap: after `App.destroy()` sets `isDestroyed`,
+the account handoff still considered itself current if Clerk identity and handoff generation
+matched. A delayed auth confirmation could then call a fresh initializer after transport
+teardown, creating a new watch lifetime. `App` now includes `!this.state.isDestroyed` in the
+existing handoff predicate, propagated through rebind and watch callbacks. The existing
+App-to-controller wiring assertion failed before this one-line change; a runtime test drives
+the real Convex rebind with delayed confirmation and a retired app lifetime and confirms no
+watch attaches. The wiring assertion is source-level; it does not execute full App boot.
+This remains watch-ownership issue #10236, with no transport or retry-policy change.
+
 The watch suite also switches Clerk from A to B during pending initialization for both services,
 proving no stale A watch attaches and B can start. These changes remain in issue #10236.
 
