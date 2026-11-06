@@ -91,6 +91,7 @@ import { isInputPending, scheduleYield } from '@/utils/after-paint';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import { localizeMapLabels } from '@/utils/map-locale';
+import { improveBasemapLabels } from '@/config/basemap-labels';
 import {
   createCountryHoverQueryController,
   resolveCountryForPointerInteraction,
@@ -1288,6 +1289,7 @@ export class DeckGLMap {
       this.maplibreMap.on('load', () => {
         this.attachMapLibreInteractionHandlers();
         localizeMapLabels(this.maplibreMap);
+        improveBasemapLabels(this.maplibreMap, isLightMapTheme(initialMapTheme));
         this.initDeck();
         this.loadCountryBoundaries();
         this.fetchServerBases();
@@ -1297,6 +1299,7 @@ export class DeckGLMap {
 
     this.maplibreMap.on('load', () => {
       localizeMapLabels(this.maplibreMap);
+      improveBasemapLabels(this.maplibreMap, isLightMapTheme(initialMapTheme));
       this.initDeck();
       this.loadCountryBoundaries();
       this.fetchServerBases();
@@ -3307,7 +3310,8 @@ export class DeckGLMap {
     if (this.serverBaseClusters.length === 0) return [];
     const zoom = this.maplibreMap?.getZoom() || 3;
     const alphaScale = Math.min(1, (zoom - 2.5) / 2.5);
-    const a = Math.round(180 * Math.max(0.3, alphaScale));
+    // Dense base clusters should leave the geographic reference visible beneath.
+    const a = Math.round(130 * Math.max(0.3, alphaScale));
 
     const scatterLayer = new ScatterplotLayer<ServerBaseCluster>({
       id: 'bases-cluster-layer',
@@ -3315,8 +3319,8 @@ export class DeckGLMap {
       getPosition: (d) => [d.longitude, d.latitude],
       getRadius: (d) => Math.max(8000, Math.log2(d.count) * 6000),
       getFillColor: (d) => getMilitaryBaseColor(d.dominantType, a),
-      radiusMinPixels: 10,
-      radiusMaxPixels: 40,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 24,
       pickable: true,
     });
 
@@ -4216,9 +4220,9 @@ export class DeckGLMap {
       getFillColor: (d) => {
         // Vessel types: 'exercise' | 'deployment' | 'transit' | 'unknown'
         const activity = d.activityType || 'unknown';
-        if (activity === 'exercise' || activity === 'deployment') return [255, 100, 100, 200] as [number, number, number, number];
-        if (activity === 'transit') return [255, 180, 100, 180] as [number, number, number, number];
-        return [200, 150, 150, 160] as [number, number, number, number];
+        if (activity === 'exercise' || activity === 'deployment') return [255, 100, 100, 150] as [number, number, number, number];
+        if (activity === 'transit') return [255, 180, 100, 135] as [number, number, number, number];
+        return [200, 150, 150, 120] as [number, number, number, number];
       },
       radiusMinPixels: 8,
       radiusMaxPixels: 25,
@@ -4264,9 +4268,9 @@ export class DeckGLMap {
       getRadius: (d) => 15000 + (d.flightCount || 1) * 3000,
       getFillColor: (d) => {
         const activity = d.activityType || 'unknown';
-        if (activity === 'exercise' || activity === 'patrol') return [100, 150, 255, 200] as [number, number, number, number];
-        if (activity === 'transport') return [255, 200, 100, 180] as [number, number, number, number];
-        return [150, 150, 200, 160] as [number, number, number, number];
+        if (activity === 'exercise' || activity === 'patrol') return [100, 150, 255, 150] as [number, number, number, number];
+        if (activity === 'transport') return [255, 200, 100, 135] as [number, number, number, number];
+        return [150, 150, 200, 120] as [number, number, number, number];
       },
       radiusMinPixels: 8,
       radiusMaxPixels: 25,
@@ -4523,10 +4527,10 @@ export class DeckGLMap {
       radiusMinPixels: 6,
       radiusMaxPixels: 22,
       getFillColor: d => {
-        if (d.hasRiot) return [220, 40, 40, 200] as [number, number, number, number];
-        if (d.maxSeverity === 'high') return [255, 80, 60, 180] as [number, number, number, number];
-        if (d.maxSeverity === 'medium') return [255, 160, 40, 160] as [number, number, number, number];
-        return [255, 220, 80, 140] as [number, number, number, number];
+        if (d.hasRiot) return [220, 40, 40, 150] as [number, number, number, number];
+        if (d.maxSeverity === 'high') return [255, 80, 60, 135] as [number, number, number, number];
+        if (d.maxSeverity === 'medium') return [255, 160, 40, 120] as [number, number, number, number];
+        return [255, 220, 80, 105] as [number, number, number, number];
       },
       pickable: true,
       updateTriggers: { getRadius: this.lastSCZoom, getFillColor: this.lastSCZoom },
@@ -4588,9 +4592,9 @@ export class DeckGLMap {
       radiusMinPixels: 5,
       radiusMaxPixels: 18,
       getFillColor: d => {
-        if (d.primaryType === 'faang') return [0, 220, 120, 200] as [number, number, number, number];
-        if (d.primaryType === 'unicorn') return [255, 100, 200, 180] as [number, number, number, number];
-        return [80, 160, 255, 180] as [number, number, number, number];
+        if (d.primaryType === 'faang') return [0, 220, 120, 150] as [number, number, number, number];
+        if (d.primaryType === 'unicorn') return [255, 100, 200, 135] as [number, number, number, number];
+        return [80, 160, 255, 135] as [number, number, number, number];
       },
       pickable: true,
       updateTriggers: { getRadius: this.lastSCZoom },
@@ -4648,8 +4652,8 @@ export class DeckGLMap {
       radiusMinPixels: 5,
       radiusMaxPixels: 18,
       getFillColor: d => {
-        if (d.soonestDaysUntil <= 14) return [255, 220, 50, 200] as [number, number, number, number];
-        return [80, 140, 255, 180] as [number, number, number, number];
+        if (d.soonestDaysUntil <= 14) return [255, 220, 50, 150] as [number, number, number, number];
+        return [80, 140, 255, 135] as [number, number, number, number];
       },
       pickable: true,
       updateTriggers: { getRadius: this.lastSCZoom },
@@ -4690,8 +4694,8 @@ export class DeckGLMap {
       radiusMinPixels: 6,
       radiusMaxPixels: 20,
       getFillColor: d => {
-        if (d.majorityExisting) return [160, 80, 255, 180] as [number, number, number, number];
-        return [80, 160, 255, 180] as [number, number, number, number];
+        if (d.majorityExisting) return [160, 80, 255, 135] as [number, number, number, number];
+        return [80, 160, 255, 135] as [number, number, number, number];
       },
       pickable: true,
       updateTriggers: { getRadius: this.lastSCZoom },
@@ -8875,6 +8879,7 @@ export class DeckGLMap {
     map.setStyle(style, { diff: false });
     map.once('style.load', () => {
       localizeMapLabels(this.maplibreMap);
+      improveBasemapLabels(this.maplibreMap, isLightMapTheme(isHappyVariant ? getCurrentTheme() : mapTheme));
       this.loadCountryBoundaries();
       if (this.radarActive) this.applyRadarLayer();
       const paintTheme = isLightMapTheme(mapTheme) ? 'light' as const : 'dark' as const;
@@ -8938,6 +8943,7 @@ export class DeckGLMap {
     this.maplibreMap.setStyle(fallback, { diff: false });
     this.maplibreMap.once('style.load', () => {
       localizeMapLabels(this.maplibreMap);
+      improveBasemapLabels(this.maplibreMap, isLightMapTheme(mapTheme));
       this.loadCountryBoundaries();
       if (this.radarActive) this.applyRadarLayer();
       const paintTheme = isLightMapTheme(mapTheme) ? 'light' as const : 'dark' as const;
