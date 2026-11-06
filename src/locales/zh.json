@@ -1427,6 +1427,20 @@
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"
         }
+      },
+      "measure": {
+        "title": "测量距离",
+        "units": "距离单位",
+        "pointA": "选择点 A。点击地图或按 Enter 键到地图中心。",
+        "pointB": "选择点 B。平移地图并按 Enter 键使用其中心。",
+        "geodesic": "大地线距离",
+        "note": "基于点击的坐标；不是路线或经过验证的资产分离。按 Escape 退出。",
+        "cancel": "取消选择",
+        "cancelShort": "取消",
+        "resetShort": "重置",
+        "exitShort": "退出",
+        "reset": "重置测量",
+        "exit": "退出测量"
       }
     },
     "cii": {
@@ -1478,8 +1492,8 @@
       "badgeAnimDesc": "在面板标题中显示更新徽章动画",
       "headlineMemoryLabel": "标题记忆",
       "headlineMemoryDesc": "记住已阅标题以突出显示新内容",
-      "streamAlwaysOnLabel": "在仪表板上自动播放直播流",
-      "streamAlwaysOnDesc": "当 Live News 和 Live Webcams 可见时自动启动。保持关闭则仅在点击“播放”后加载视频。",
+      "streamAlwaysOnLabel": "自动播放实时摄像头",
+      "streamAlwaysOnDesc": "直播摄像头视频出现在屏幕上时立即开始加载。保持关闭可仅在您手动启动时加载视频。",
       "analysisFrameworksLabel": "分析框架",
       "analysisFrameworksActivePerPanel": "每个面板激活",
       "analysisFrameworksSkillLibrary": "技能库",
@@ -1520,7 +1534,9 @@
       "briefStoryDetails": "报道详情 ({{count}})",
       "streamIdleStopLabel": "空闲时停止实时视频",
       "streamIdleStopNever": "从不",
-      "streamIdleStopDesc": "在此时间内无活动后停止实时新闻和实时网络摄像头，并在面板中显示通知。"
+      "streamIdleStopDesc": "在此时间内无活动后停止实时新闻和实时网络摄像头，并在面板中显示通知。",
+      "liveNewsAutoplayLabel": "自动播放实时新闻",
+      "liveNewsAutoplayDesc": "实时新闻视频出现在屏幕上时自动开始播放，静音状态。关闭此选项可仅在您手动启动时加载视频。"
     },
     "settings": {
       "exportSettings": "导出设置",
@@ -3520,7 +3536,8 @@
       "vesselsCount": "{{count}}艘舰艇",
       "vessels": "舰艇",
       "trackedVessels": "跟踪舰艇",
-      "showLess": "显示更少"
+      "showLess": "显示更少",
+      "backToGroup": "返回舰船组"
     },
     "naturalEvent": {
       "closed": "已结束",

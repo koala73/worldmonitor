@@ -111,7 +111,10 @@ function stubNonLiveTeasers(): void {
         ok: true,
         status: 200,
         json: async () => ({
-          chokepoints: [{ name: 'Unavailable chokepoint', status: 'red', disruptionScore: 100 }],
+          // Partial source coverage alone no longer demotes fresh rows
+          // (tests/welcome-live-teasers.test.mts); an old capture does.
+          chokepoints: [{ name: 'Stale chokepoint', status: 'red', disruptionScore: 100 }],
+          fetchedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
           upstreamUnavailable: true,
         }),
       };

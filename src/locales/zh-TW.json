@@ -1427,6 +1427,20 @@
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
         }
+      },
+      "measure": {
+        "title": "測量距離",
+        "units": "距離單位",
+        "pointA": "選擇點 A。點選地圖或按 Enter 鍵到地圖中心。",
+        "pointB": "選擇點 B。平移地圖並按 Enter 鍵使用其中心。",
+        "geodesic": "大地線距離",
+        "note": "基於點選的座標；不是路線或經過驗證的資產分離。按 Escape 退出。",
+        "cancel": "取消選擇",
+        "cancelShort": "取消",
+        "resetShort": "重置",
+        "exitShort": "退出",
+        "reset": "重置測量",
+        "exit": "退出測量"
       }
     },
     "cii": {
@@ -1478,8 +1492,8 @@
       "badgeAnimDesc": "在面板標題中顯示更新徽章動畫",
       "headlineMemoryLabel": "標題記憶",
       "headlineMemoryDesc": "記住已閱標題以突出顯示新內容",
-      "streamAlwaysOnLabel": "在儀表板上自動播放直播流",
-      "streamAlwaysOnDesc": "當 Live News 和 Live Webcams 可見時自動啟動。保持關閉則僅在點選“播放”後載入影片。",
+      "streamAlwaysOnLabel": "自動播放即時攝影機",
+      "streamAlwaysOnDesc": "直播攝影機影片出現在螢幕上時立即開始載入。保持關閉可僅在您手動啟動時載入影片。",
       "analysisFrameworksLabel": "分析框架",
       "analysisFrameworksActivePerPanel": "每個面板啟用",
       "analysisFrameworksSkillLibrary": "技能庫",
@@ -1520,7 +1534,9 @@
       "briefStoryDetails": "報道詳情 ({{count}})",
       "streamIdleStopLabel": "空閒時停止即時影片",
       "streamIdleStopNever": "從不",
-      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。"
+      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。",
+      "liveNewsAutoplayLabel": "自動播放即時新聞",
+      "liveNewsAutoplayDesc": "即時新聞影片出現在螢幕上時自動開始播放，靜音狀態。關閉此選項可僅在您手動啟動時載入影片。"
     },
     "settings": {
       "exportSettings": "匯出設定",
@@ -3520,7 +3536,8 @@
       "vesselsCount": "{{count}}艘艦艇",
       "vessels": "艦艇",
       "trackedVessels": "跟蹤艦艇",
-      "showLess": "顯示更少"
+      "showLess": "顯示更少",
+      "backToGroup": "返回艦船組"
     },
     "naturalEvent": {
       "closed": "已結束",
