@@ -310,6 +310,32 @@ test('a fetch that outlives lockTtlMs keeps its lock alive and still publishes',
   assert.equal(JSON.parse(redis.get(META_KEY)).recordCount, 1);
 });
 
+test('a lock lost between extra keys stops the remaining extra-key writes', async () => {
+  const SECOND_EXTRA = 'test:fence:second:v1';
+  redis.set(SECOND_EXTRA, JSON.stringify({ items: ['B-newer'] }), 3_600_000);
+  redis.set(META_KEY, B_META, 3_600_000);
+  const code = await exitCodeOf(runSeed(DOMAIN, RESOURCE, CANONICAL_KEY, async () => ({ items: ['A'] }), seedOpts({
+    extraKeys: [
+      { key: EXTRA_KEY, ttl: 3600, transform: (d) => ({ items: d.items }) },
+      {
+        key: SECOND_EXTRA,
+        ttl: 3600,
+        transform: (d) => {
+          // Another run takes the lock after the first extra key landed.
+          redis.store.delete(LOCK_KEY);
+          redis.set(LOCK_KEY, 'run-D', 120_000);
+          return { items: d.items };
+        },
+      },
+    ],
+  })));
+
+  assert.deepEqual(JSON.parse(redis.get(EXTRA_KEY)).items, ['A'], 'written while the lock was held');
+  assert.deepEqual(JSON.parse(redis.get(SECOND_EXTRA)).items, ['B-newer'], 'written after the lock was lost');
+  assert.equal(redis.get(META_KEY), B_META);
+  assert.equal(code, 0);
+});
+
 test('a custom atomic publisher is not called once the lock is lost', async () => {
   let publisherCalls = 0;
   const code = await exitCodeOf(runSeed(DOMAIN, RESOURCE, CANONICAL_KEY, async () => {

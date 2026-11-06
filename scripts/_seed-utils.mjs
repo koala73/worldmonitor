@@ -1236,18 +1236,24 @@ export function shouldEnvelopeKey(key) {
   return typeof key === 'string' && !key.startsWith('seed-meta:');
 }
 
-export async function writeExtraKey(key, data, ttl, envelopeMeta) {
+export async function writeExtraKey(key, data, ttl, envelopeMeta, options = {}) {
   const { url, token } = getRedisCredentials();
   const payload = serializeExtraKeyValue(key, data, envelopeMeta);
+  // options.lockFence (runSeed only): write only while the run still holds
+  // its seed lock (SM-122).
+  const lockFence = options?.lockFence;
   // Retry transient Redis timeouts / 5xx / network tears so a single Upstash
   // blip in afterPublish doesn't crash the whole seeder run. Permanent 4xx
   // (auth, payload-too-large) fail fast; 429 honors Retry-After. Mirrors the
   // redisCommand / atomicPublish contract (seed-gdelt-intel PUBLISH_TIMEOUT fix).
   await withRetry(async () => {
-    await redisCommand(url, token, ['SET', key, payload, 'EX', ttl], {
-      label: `Extra key ${key}`,
-      timeoutMs: SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS,
-    });
+    const reply = await redisCommand(
+      url,
+      token,
+      lockFence ? fencedSetCommand(lockFence, key, payload, ttl) : ['SET', key, payload, 'EX', ttl],
+      { label: `Extra key ${key}`, timeoutMs: SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS },
+    );
+    if (lockFence) assertFenceReply(reply, lockFence.lockKey);
   }, SEED_REDIS_RETRY_ATTEMPTS - 1, SEED_REDIS_RETRY_BASE_MS);
   console.log(`  Extra key ${key}: written`);
 }
@@ -1333,7 +1339,7 @@ function buildSeedMeta(recordCount, coverage, extra, fetchedAt = Date.now()) {
   return meta;
 }
 
-export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
+export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra, options = {}) {
   const { url, token } = getRedisCredentials();
   const metaKey = resolveSeedMetaKey(dataKey, metaKeyOverride);
   const meta = buildSeedMeta(recordCount, coverage, extra);
@@ -1343,7 +1349,11 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
+    // options.lockFence (runSeed only): write only while the run still holds
+    // its seed lock (SM-122).
+    body: JSON.stringify(options?.lockFence
+      ? fencedSetCommand(options.lockFence, metaKey, JSON.stringify(meta), metaTtl)
+      : ['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
     signal: AbortSignal.timeout(5_000),
   });
   if (!resp.ok) {
@@ -1353,7 +1363,8 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   // Upstash can return HTTP 200 with a command-level error. Treat that as a
   // failed metadata write instead of reporting success while health still
   // points at the previous heartbeat.
-  await parseRedisCommandResponse(resp, `seed-meta ${metaKey}`);
+  const reply = await parseRedisCommandResponse(resp, `seed-meta ${metaKey}`);
+  if (options?.lockFence) assertFenceReply(reply, options.lockFence.lockKey);
   return true;
 }
 
@@ -3353,9 +3364,11 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // Write extra keys (e.g., bootstrap hydration keys). In contract mode each
     // extra key gets its own envelope; declareRecords may be per-key or reuse
     // the canonical one.
-    assertLockStillHeld();
     if (extraKeys) {
       for (const ek of extraKeys) {
+        // Stop at the first key once the heartbeat has seen the lock go; each
+        // write below is also fenced inside Redis.
+        assertLockStillHeld();
         // skipWhenEmpty needs a resolved recordCount, which only exists in
         // contract mode (declareRecords). Warn loudly on misconfig instead of
         // silently writing the empty payload the flag was meant to guard against.
@@ -3404,6 +3417,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // allowMissingOnSkip key that has not been written yet), or a real
           // preservation failure / unconfirmed pipeline result.
           if (shouldSkipEmptyExtraKey(ek, ekCount)) {
+            assertLockStillHeld();
             const preservation = await extendExistingTtlDetailed(
               [ek.key],
               ek.ttl || ttlSeconds || 600,
@@ -3442,7 +3456,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           );
           await exitAfterTelemetryFlush(1);
         }
-        await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
+        await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope, { lockFence });
         if (contractMode && ek.metaKey) {
           const metaExtra = typeof ek.metaExtra === 'function'
             ? ek.metaExtra(ekData, data)
@@ -3458,9 +3472,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
               resolveSeedMetaTtl(ek.metaTtlSeconds, ek.ttl || ttlSeconds),
               ek.coverage,
               metaExtra,
+              { lockFence },
             );
           } catch (err) {
-            if (ek.metaCritical) throw err;
+            if (ek.metaCritical || isSeedLockLostError(err)) throw err;
             console.warn(`  Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed; freshness will age: ${err.message}`);
           }
           if (!wroteMeta && ek.metaCritical) throw new Error(`Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed`);
@@ -3531,6 +3546,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           runId,
         },
         Math.max(7 * 24 * 60 * 60, ttlSeconds || 0),
+        undefined,
+        { lockFence },
       );
     }
 
