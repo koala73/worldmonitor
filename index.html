@@ -536,7 +536,12 @@
       var attempted=false;
       try{if(sessionStorage.getItem(key))return}catch(e){}
       window.addEventListener('error',function(e){
-        var t=e.target;var u=t&&(t.tagName==="SCRIPT"||t.tagName==="LINK")&&(t.src||t.href)||'';
+        var t=e.target;
+        // Vite adds modulepreload links for lazy chunks. Their failures also
+        // reach vite:preloadError, where chunk-reload.ts bounds the reload; a
+        // stale entry graph fails the module script itself.
+        if(t&&t.tagName==="LINK"&&t.rel==="modulepreload")return;
+        var u=t&&(t.tagName==="SCRIPT"||t.tagName==="LINK")&&(t.src||t.href)||'';
         if(u&&/\/assets\//.test(u)){
           try{sessionStorage.setItem(key,'1')}catch(err){if(attempted)return;attempted=true}
           navigator.serviceWorker.getRegistrations().then(function(regs){
