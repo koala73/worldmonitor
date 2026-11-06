@@ -10,7 +10,22 @@ import { MiniStorage } from './helpers/mini-dom.mts';
 const root = resolve(import.meta.dirname, '..');
 const stubs: Record<string, string> = {
   '@/services/runtime': 'export const isDesktopRuntime = () => false;',
-  '@/services/clerk': 'export const getClerkToken = async () => globalThis.__cloudPrefsToken;',
+  // Tests name a server row ('a-token'); the stub hands cloud-prefs a JWT-shaped
+  // token whose `sub` is the account that row belongs to, as Clerk's tokens
+  // carry the user id. The fake fetch reads the row back out of the `row` claim.
+  // __cloudPrefsTokenHold pauses one token fetch so a test can switch the
+  // active account while a write is waiting for its token.
+  '@/services/clerk': [
+    "const SUBJECTS = { 'test-token': 'user-1', 'two-tab-token': 'user-1', 'a-token': 'user-a', 'user-a-token': 'user-a', 'b-token': 'user-b', 'user-b-token': 'user-b' };",
+    'export const getClerkToken = async () => {',
+    '  const hold = globalThis.__cloudPrefsTokenHold;',
+    '  if (hold) { globalThis.__cloudPrefsTokenHold = null; hold.resolveStarted(); await hold.releasePromise; }',
+    '  const row = globalThis.__cloudPrefsToken;',
+    '  if (!row) return null;',
+    "  const encode = (value) => btoa(JSON.stringify(value)).replace(/=+$/, '');",
+    "  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({ sub: SUBJECTS[row] ?? row, row })}.signature`;",
+    '};',
+  ].join('\n'),
   '@/config/feeds': [
     "export const CANADA_ARCTIC_OPT_IN_SOURCES = ['Globe and Mail', 'Global News', 'Yle News', 'NRK', 'Aftenposten', 'DR Nyheder', 'Arctic Today'];",
     "export const CANADA_DEPTH_OPT_IN_SOURCES = [];",
@@ -62,6 +77,8 @@ interface HarnessControls {
   failNextGetTemporarily: () => void;
   fireSignInRetry: () => void;
   holdNextGet: () => HeldRequest;
+  /** Pause the next Clerk token fetch; the token is minted on release. */
+  holdNextToken: () => HeldRequest;
   holdNextPost: () => HeldRequest;
   /** Make the backing store REJECT writes to `key`, as a full disk does. */
   rejectWritesTo: (key: string) => void;
@@ -71,6 +88,16 @@ interface HarnessControls {
   setToken: (token: string) => void;
   stateHistory: string[];
   timeoutNextRequest: () => void;
+}
+
+/** The server row a stub-minted bearer token names (see the clerk stub). */
+function rowOfBearer(bearer: string): string {
+  try {
+    const claims = JSON.parse(atob(bearer.split('.')[1] ?? '')) as { row?: unknown };
+    return typeof claims.row === 'string' ? claims.row : bearer;
+  } catch {
+    return bearer;
+  }
 }
 
 let harnessSequence = 0;
@@ -288,7 +315,7 @@ async function runHarness(
   globalThis.fetch = async (_input, init = {}) => {
     const method = init.method ?? 'GET';
     const authorization = new Headers(init.headers).get('Authorization') ?? '';
-    const token = authorization.replace(/^Bearer\s+/, '') || 'anonymous';
+    const token = rowOfBearer(authorization.replace(/^Bearer\s+/, '')) || 'anonymous';
     const row = rows.get(token) ?? { data: {}, schemaVersion: 2, syncVersion: 0 };
     if (method === 'GET') {
       if (failNextGetTemporarily) {
@@ -380,6 +407,20 @@ async function runHarness(
       pendingGetHold = { releasePromise, resolveRelease, resolveStarted };
       return { release: resolveRelease, started };
     },
+    holdNextToken: () => {
+      let resolveRelease!: () => void;
+      let resolveStarted!: () => void;
+      const releasePromise = new Promise<void>((resolveReleasePromise) => {
+        resolveRelease = resolveReleasePromise;
+      });
+      const started = new Promise<void>((resolveStartedPromise) => {
+        resolveStarted = resolveStartedPromise;
+      });
+      Object.assign(globalThis, {
+        __cloudPrefsTokenHold: { releasePromise, resolveStarted },
+      });
+      return { release: resolveRelease, started };
+    },
     holdNextPost: () => {
       let resolveRelease!: () => void;
       let resolveStarted!: () => void;
@@ -429,6 +470,7 @@ async function runHarness(
       stateHistory: [...stateHistory],
     };
   } finally {
+    Reflect.deleteProperty(globalThis, '__cloudPrefsTokenHold');
     globalThis.fetch = originalFetch;
     globalThis.setTimeout = originalSetTimeout;
     AbortSignal.timeout = originalAbortSignalTimeout;
@@ -1169,6 +1211,86 @@ describe('cloud prefs account switch without an observed sign-out (SM-015)', () 
     assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
     assert.equal(result.conflictCount, 0);
     assert.equal(result.state, 'synced');
+  });
+
+  // Clerk makes B active before App observes it and calls onSignIn(B). A write
+  // that fetches its token inside that gap gets B's token; the auth generation
+  // has not moved, so only the token's own account can stop the write.
+  async function signInA(cloudPrefs: Awaited<ReturnType<typeof loadCloudPrefsModule>>, controls: HarnessControls) {
+    controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+    controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 2, 9);
+    controls.setToken('a-token');
+    await cloudPrefs.onSignIn('user-a', 'full');
+  }
+
+  it("does not post A's upload with B's token when Clerk switches before the token fetch", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      await signInA(cloudPrefs, controls);
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-market-watchlist-v1', 'user-a-edit');
+
+      const heldToken = controls.holdNextToken();
+      const upload = cloudPrefs.syncNow();
+      await heldToken.started;
+      controls.setToken('b-token');
+      heldToken.release();
+      await upload;
+
+      assert.equal(cloudPrefs.getSyncState(), 'pending', "A's edit stays pending for A");
+
+      // App observes the switch; A's sign-out flushes the edit with A's token.
+      await cloudPrefs.onSignIn('user-b', 'full');
+    });
+
+    assert.equal(
+      result.acceptedDataByToken['b-token']?.['worldmonitor-theme'],
+      'light',
+      `B's row was overwritten: ${JSON.stringify(result.acceptedDataByToken['b-token'])}`,
+    );
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['a-token']?.['wm-market-watchlist-v1'], 'user-a-edit');
+    assert.equal(result.state, 'synced');
+  });
+
+  it("does not let A's tab-hide flush sign with B's token after a raced upload", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      await signInA(cloudPrefs, controls);
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-market-watchlist-v1', 'user-a-edit');
+
+      const heldToken = controls.holdNextToken();
+      const upload = cloudPrefs.syncNow();
+      await heldToken.started;
+      controls.setToken('b-token');
+      heldToken.release();
+      await upload;
+
+      controls.dispatchHidden();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+    });
+
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['b-token']?.['wm-market-watchlist-v1'], undefined);
+    assert.equal(result.acceptedDataByToken['a-token']?.['wm-market-watchlist-v1'], 'user-a-edit');
+  });
+
+  it("does not let A's sign-in retry read or write B's row after Clerk switches", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      await signInA(cloudPrefs, controls);
+      controls.failNextGetTemporarily();
+      await cloudPrefs.onSignIn('user-a', 'full');
+      assert.equal(cloudPrefs.hasPendingCloudPrefsRetry(), true);
+
+      controls.setToken('b-token');
+      controls.fireSignInRetry();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+
+      assert.equal(localStorage.getItem('worldmonitor-theme'), 'dark', "B's row must not land as A's state");
+      assert.equal(cloudPrefs.hasPendingCloudPrefsRetry(), false);
+    });
+
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['b-token']?.['worldmonitor-theme'], 'light');
   });
 });
 
