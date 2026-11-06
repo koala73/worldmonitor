@@ -46,7 +46,7 @@ function escapeHtml(value: string): string {
 const MAX_SEATS = 4;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-/** An extension may not push an invite further out than a fresh one would reach. */
+/** Each extension adds at most 14 days to the later of the current expiry and now. */
 const MAX_EXTENSION_HOURS = INVITE_TTL_MS / HOUR_MS;
 
 /** "7 November 2026 at 08:22 UTC" — unambiguous across the invitee's locale. */
@@ -546,21 +546,31 @@ export const acceptBusinessInvite = mutation({
  * invite can be revived. Run from the CLI:
  *
  *   npx convex run payments/businessSeats:extendBusinessInvite '{"grantId":"…","hours":24}'
+ *
+ * Every run with `hours` > 0 extends again. To retry a failed email without
+ * extending, pass `"hours":0`: it re-sends a link for the current expiry and
+ * refuses an invite that has already lapsed.
  */
 export const extendBusinessInvite = internalMutation({
   args: { grantId: v.id("businessProGrants"), hours: v.number() },
   handler: async (ctx, args) => {
-    if (!Number.isInteger(args.hours) || args.hours < 1 || args.hours > MAX_EXTENSION_HOURS) {
+    if (!Number.isInteger(args.hours) || args.hours < 0 || args.hours > MAX_EXTENSION_HOURS) {
       throw new ConvexError({ kind: "INVALID_EXTENSION_HOURS" });
     }
     const grant = await ctx.db.get(args.grantId);
     if (!grant) {
       throw new ConvexError({ kind: "GRANT_NOT_FOUND" });
     }
+    // An owner whose account is being deleted cannot have invites accepted,
+    // so do not change or re-send them.
+    await assertAccountWritable(ctx, grant.ownerUserId);
     if (grant.status !== "pending") {
       throw new ConvexError({ kind: "INVITE_NOT_PENDING" });
     }
     const now = Date.now();
+    if (args.hours === 0 && grant.expiresAt <= now) {
+      throw new ConvexError({ kind: "INVITE_EXPIRED" });
+    }
     const businessSub = await ctx.db
       .query("subscriptions")
       .withIndex("by_dodoSubscriptionId", (q) =>
@@ -569,6 +579,23 @@ export const extendBusinessInvite = internalMutation({
       .unique();
     if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, now)) {
       throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
+    }
+    // The owner may have re-invited the same address after this invite lapsed.
+    // Two usable grants for one person would hold two seats.
+    const siblings = await ctx.db
+      .query("businessProGrants")
+      .withIndex("by_businessSubscriptionId", (q) =>
+        q.eq("businessSubscriptionId", grant.businessSubscriptionId),
+      )
+      .collect();
+    const inviteeEmail = grant.inviteeEmail.trim().toLowerCase();
+    const duplicate = siblings.some((g) =>
+      g._id !== grant._id
+      && g.inviteeEmail.trim().toLowerCase() === inviteeEmail
+      && (g.status === "accepted" || (g.status === "pending" && g.expiresAt > now)),
+    );
+    if (duplicate) {
+      throw new ConvexError({ kind: "DUPLICATE_INVITE" });
     }
     // A lapsed invite has freed its seat; reviving it must not exceed the cap.
     if (grant.expiresAt <= now) {
@@ -586,8 +613,12 @@ export const extendBusinessInvite = internalMutation({
       throw new ConvexError({ kind: "OWNER_EMAIL_UNAVAILABLE" });
     }
 
-    const expiresAt = Math.max(grant.expiresAt, now) + args.hours * HOUR_MS;
-    await ctx.db.patch(args.grantId, { expiresAt });
+    const expiresAt = args.hours === 0
+      ? grant.expiresAt
+      : Math.max(grant.expiresAt, now) + args.hours * HOUR_MS;
+    if (expiresAt !== grant.expiresAt) {
+      await ctx.db.patch(args.grantId, { expiresAt });
+    }
     const token = await signBusinessInviteToken(args.grantId, expiresAt);
     await ctx.scheduler.runAfter(
       0,
