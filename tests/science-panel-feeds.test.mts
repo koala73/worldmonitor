@@ -52,11 +52,11 @@ describe('science panel feeds', () => {
     assert.equal(Object.keys(feeds.FULL_FEEDS).at(-1), 'science');
   });
 
-  it('enables its sources by default in English, in their own last rollout stage', () => {
+  it('enables its sources by default in English, in their own rollout stage', () => {
     assert.deepEqual([...feeds.SCIENCE_DEFAULT_SOURCES], NAMES);
     const disabled = new Set(feeds.computeDefaultDisabledSources('en'));
     for (const name of NAMES) assert.equal(disabled.has(name), false, `${name} is enabled by default`);
-    assert.deepEqual([...feeds.REGIONAL_FEED_ROLLOUT_STAGES.at(-1)!.introducedNames], NAMES);
+    assert.deepEqual([...feeds.REGIONAL_FEED_ROLLOUT_STAGES.find(stage => stage.introducedNames.includes('Reuters Science'))!.introducedNames], NAMES);
   });
 
   it('costs a default free profile exactly Layoffs News and Foreign Affairs', () => {

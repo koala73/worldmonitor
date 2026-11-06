@@ -6,7 +6,8 @@ import type { Feed } from '@/types';
  * A feed with no explicit `lang` is universal (or multi-URL, resolved per
  * language inside `fetchFeed`). A feed that declares one is only fetched when
  * it matches — unless it is a `strategicDefault`, which bypasses the language
- * filter so it is reachable in every locale.
+ * filter so it is reachable in every locale. `fetchInAllLanguages` permits
+ * cross-language selection without making the feed a strategic default.
  *
  * A strategic-default feed carries local-depth content on a strategically
  * important topic (active war, frontline NATO state, Tier-1 Indo-Pacific
@@ -25,7 +26,7 @@ import type { Feed } from '@/types';
  * pure, unit-testable rule; callers pass `getCurrentLanguage()`.
  */
 export function isFeedInLanguage(feed: Feed, language: string): boolean {
-  return !feed.lang || feed.lang === language || !!feed.strategicDefault;
+  return !feed.lang || feed.lang === language || !!feed.strategicDefault || !!feed.fetchInAllLanguages;
 }
 
 /** The subset of `feeds` a fetch in `language` would actually attempt. */
