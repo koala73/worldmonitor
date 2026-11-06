@@ -401,6 +401,11 @@ function shouldSuppressCspViolation(
     try {
       const url = new URL(blockedURI);
       if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/css2?$/.test(url.pathname)) return true;
+      // Google Fonts' legacy Early Access sheets (`/earlyaccess/<family>.css`),
+      // the same vendor and the same injection class. J0 round 7: Chrome desktop
+      // and Chrome iOS both loading `notosansmalayalam.css`, a family no surface
+      // of ours references.
+      if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/earlyaccess\/[a-z0-9]+\.css$/.test(url.pathname)) return true;
       // Chinese-market extension CDN injecting its overlay stylesheet
       // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
       // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
