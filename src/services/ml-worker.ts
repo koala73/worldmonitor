@@ -177,6 +177,7 @@ export class MLWorkerManager {
     return this.waiterPromise(caller);
   }
 
+  /** Retain one waiter per caller and settle any superseded promise false. */
   private waiterPromise(caller: string): Promise<boolean> {
     // A caller that re-registers while a waiter under its label is still
     // pending replaces that entry — at most one pending continuation per

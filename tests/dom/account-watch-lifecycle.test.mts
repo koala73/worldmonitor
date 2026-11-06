@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const harness = vi.hoisted(() => ({
   clientReady: Promise.resolve(),
   failClient: false,
+  clerkUserId: 'A',
   watches: [] as Array<{
     update: (value: unknown) => void;
     error: (error: Error) => void;
@@ -29,12 +30,13 @@ vi.mock('@/services/convex-client', () => ({
   waitForConvexAuth: async () => true,
   waitForConvexAuthForUser: async () => true,
 }));
-vi.mock('@/services/clerk', () => ({ getCurrentClerkUser: () => ({ id: 'A' }) }));
+vi.mock('@/services/clerk', () => ({ getCurrentClerkUser: () => ({ id: harness.clerkUserId }) }));
 vi.mock('@/bootstrap/sentry-defer', () => ({ enqueueSentryCall: () => {} }));
 
 import {
   initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState,
-  getEntitlementState, onEntitlementChange,
+  getEntitlementState, onEntitlementChange, getEntitlementVerificationStatus,
+  onEntitlementVerificationChange, resetEntitlementVerification,
 } from '@/services/entitlements';
 import {
   initSubscriptionWatch, destroySubscriptionWatch, getSubscription, onSubscriptionChange,
@@ -54,6 +56,8 @@ beforeEach(() => {
   harness.watches = [];
   harness.clientReady = Promise.resolve();
   harness.failClient = false;
+  harness.clerkUserId = 'A';
+  resetEntitlementVerification();
 });
 afterEach(() => {
   cleanups.splice(0).forEach(off => off());
@@ -80,6 +84,18 @@ for (const machine of machines) {
       await pending;
       expect(harness.watches).toHaveLength(0);
       await machine.start('A');
+      expect(harness.watches).toHaveLength(1);
+    });
+
+    it('does not attach stale initialization after the Clerk account changes', async () => {
+      let release!: () => void;
+      harness.clientReady = new Promise<void>(resolve => { release = resolve; });
+      const pending = machine.start('A');
+      harness.clerkUserId = 'B';
+      release();
+      await pending;
+      expect(harness.watches).toHaveLength(0);
+      await machine.start('B');
       expect(harness.watches).toHaveLength(1);
     });
 
@@ -127,5 +143,40 @@ describe('billing notification isolation', () => {
       : watch.error(new Error('query failed'))).not.toThrow();
     expect(survivor).toHaveBeenLastCalledWith(expected);
     expect(getSubscription()).toEqual(expected);
+  });
+});
+
+describe('entitlement verification retirement', () => {
+  it('publishes unavailable on teardown, ignores retired completion, and allows retry', async () => {
+    let release!: () => void;
+    harness.clientReady = new Promise<void>(resolve => { release = resolve; });
+    const pending = initEntitlementSubscription('A');
+    expect(getEntitlementVerificationStatus()).toBe('pending');
+    const observer = vi.fn();
+    cleanups.push(onEntitlementVerificationChange(observer));
+    destroyEntitlementSubscription();
+    expect(observer).toHaveBeenLastCalledWith('unavailable');
+    const lateObserver = vi.fn();
+    cleanups.push(onEntitlementVerificationChange(lateObserver));
+    expect(lateObserver).toHaveBeenLastCalledWith('unavailable');
+    release();
+    await pending;
+    expect(getEntitlementVerificationStatus()).toBe('unavailable');
+    expect(harness.watches).toHaveLength(0);
+    await initEntitlementSubscription('A');
+    expect(getEntitlementVerificationStatus()).toBe('pending');
+    harness.watches[0]!.update(null);
+    expect(getEntitlementVerificationStatus()).toBe('ready');
+  });
+
+  it('preserves idle and ready verification states during teardown', async () => {
+    destroyEntitlementSubscription();
+    expect(getEntitlementVerificationStatus()).toBe('idle');
+    await initEntitlementSubscription('A');
+    const snapshot = { planKey: 'pro', features: { tier: 1 }, validUntil: Date.now() + 60_000 };
+    harness.watches[0]!.update(snapshot);
+    destroyEntitlementSubscription();
+    expect(getEntitlementVerificationStatus()).toBe('ready');
+    expect(getEntitlementState()).toEqual(snapshot);
   });
 });

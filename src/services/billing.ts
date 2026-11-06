@@ -169,6 +169,7 @@ export async function initSubscriptionWatch(
   }
 }
 
+/** Deliver committed billing state to independent consumers even if one throws. */
 function notifySubscriptionListeners(subscription: SubscriptionInfo | null): void {
   for (const cb of listeners) {
     try {

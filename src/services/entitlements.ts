@@ -227,8 +227,9 @@ export async function initEntitlementSubscription(
 }
 
 /**
- * Tears down the entitlement subscription and clears all listeners.
- * Resets initialized flag so a new subscription can be started.
+ * Retire the entitlement transport and pending initialization; retain listeners.
+ * Resets initialized so a new subscription can start. Pending verification
+ * becomes unavailable because retired work can no longer settle it.
  * Does NOT null currentState — preserves the last known state across
  * destroy/reinit cycles (e.g. WebSocket reconnects) so paying users don't
  * see locked panels during backoff. Call resetEntitlementState() on sign-out.
@@ -243,6 +244,9 @@ export function destroyEntitlementSubscription(): void {
   // Keep listeners intact — PanelLayout registers them once and expects them
   // to survive auth transitions. Only the Convex transport is torn down.
   initialized = false;
+  if (verificationStatus === 'pending') {
+    setEntitlementVerificationStatus('unavailable');
+  }
 }
 
 /**

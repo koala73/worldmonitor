@@ -77,7 +77,8 @@ unloaded null from loaded null using `subscriptionLoaded`.
 
 Invariants: one attached watch per lifecycle; every attached watch has a retained unsubscribe;
 retired work cannot attach or publish, including after a same-account reconnect; failure must
-leave retry possible. Destroy preserves entitlement data for reconnect, while explicit reset
+leave retry possible. Retiring pending verification publishes unavailable; retired work cannot
+leave a permanent pending verdict. Destroy preserves entitlement data for reconnect, while explicit reset
 clears it for an account transition. Billing destroy clears its snapshot and loaded flag.
 
 | From | Event / guard | To / effect |
@@ -86,7 +87,7 @@ clears it for an account transition. Billing destroy clears its snapshot and loa
 | Initializing | Dependencies ready, generation current, no attached watch | Attached; retain unsubscribe |
 | Initializing | Another caller already attached | Complete without a second watch |
 | Initializing | Failure | No watch; a later initialize may retry |
-| Any | Destroy | Increment lifecycle generation before unsubscribe; idle |
+| Any | Destroy | Increment lifecycle generation before unsubscribe; idle transport; pending verification becomes unavailable |
 | Retired | Dependency completion / queued update / queued error | Ignore |
 | Attached | Current update | Commit snapshot, then notify each listener independently |
 | Attached | Current query error | Entitlement: unavailable if no snapshot; billing: loaded null |
@@ -658,6 +659,14 @@ Billing now commits the snapshot then isolates each notification on both update 
 
 Issue groups: [watch ownership #10236](https://github.com/koala73/worldmonitor/issues/10236),
 [billing listener isolation #10237](https://github.com/koala73/worldmonitor/issues/10237).
+Review follow-up: destroying a pending entitlement initializer left verification `pending`
+although its generation could never complete. The new test failed before the repair
+(**1 failure / 13 passes** in the expanded watch suite). Teardown now publishes `unavailable`
+only when verification was pending, including to late subscribers. Ready snapshots and idle
+verification remain unchanged, retired completion cannot republish, and retry can reach ready.
+The watch suite also switches Clerk from A to B during pending initialization for both services,
+proving no stale A watch attaches and B can start. These changes remain in issue #10236.
+
 Both fixes are locally implemented; delivery and CI status are recorded below when complete.
 
 ## Audit boundaries and maintenance
