@@ -90,6 +90,15 @@ for (const width of [320, 1280]) {
         await details.locator('a').last().scrollIntoViewIfNeeded();
         await expect(details.locator('a').first()).toBeVisible();
         await expect(details.locator('a').last()).toBeVisible();
+        // Scrolled details must not show through the sticky header.
+        const headerAlpha = await popup.locator('.popup-header').evaluate(element => {
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d')!;
+          context.fillStyle = getComputedStyle(element).backgroundColor;
+          context.fillRect(0, 0, 1, 1);
+          return context.getImageData(0, 0, 1, 1).data[3];
+        });
+        expect(headerAlpha).toBe(255);
         await popup.screenshot({ path: testInfo.outputPath(`datacenter-sources-${lang}-${width}.png`) });
         await summary.scrollIntoViewIfNeeded();
         await summary.focus();

@@ -7658,15 +7658,15 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.datacenter {
-  background: rgba(51, 34, 85, 0.08);
+  background: color-mix(in srgb, rgb(51, 34, 85) 8%, var(--bg));
 }
 
 .popup-header.datacenter.existing {
-  background: rgba(59, 130, 246, 0.06);
+  background: color-mix(in srgb, rgb(59, 130, 246) 6%, var(--bg));
 }
 
 .popup-header.datacenter.planned {
-  background: rgba(234, 179, 8, 0.06);
+  background: color-mix(in srgb, rgb(234, 179, 8) 6%, var(--bg));
 }
 
 /* Heatmap */
