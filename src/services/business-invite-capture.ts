@@ -121,13 +121,40 @@ export function clearPendingBusinessInvite(invite: PendingBusinessInvite): void 
   }
 }
 
+/** Rejection kinds acceptBusinessInvite throws (convex/payments/businessSeats.ts). */
+const INVITE_ERROR_KINDS = [
+  'INVITE_EMAIL_MISMATCH',
+  'INVITE_EXPIRED',
+  'BUSINESS_NOT_ACTIVE',
+  'INVITE_ALREADY_USED',
+  'INVALID_INVITE_TOKEN',
+  'GRANT_NOT_FOUND',
+  'INVITEE_EMAIL_UNAVAILABLE',
+  'INVITEE_DOMAIN_NOT_CORPORATE',
+] as const;
+
+/**
+ * The `kind` of an acceptBusinessInvite rejection. Object-data ConvexErrors
+ * carry it on `err.data.kind`; the message is not guaranteed to contain it in
+ * production, so it is only a fallback for a known kind.
+ */
+export function businessInviteErrorKind(err: unknown): string | null {
+  const data = (err as { data?: unknown } | null | undefined)?.data;
+  if (data && typeof data === 'object' && 'kind' in data) {
+    const kind = (data as Record<string, unknown>).kind;
+    if (typeof kind === 'string') return kind;
+  }
+  const msg = err instanceof Error ? err.message : '';
+  return INVITE_ERROR_KINDS.find((kind) => msg.includes(kind)) ?? null;
+}
+
 export interface BusinessInviteAttempt {
   /** The server accepted the invite, whatever happened to the account afterwards. */
   accepted: boolean;
   /** Clerk no longer has the account that sent the request. */
   accountChanged: boolean;
-  /** The rejection message when the request failed. */
-  error?: string;
+  /** The rejection kind when the request failed, from businessInviteErrorKind. */
+  errorKind?: string | null;
 }
 
 /**
@@ -140,7 +167,7 @@ export interface BusinessInviteAttempt {
 export function keepInviteAfterAttempt(attempt: BusinessInviteAttempt): boolean {
   if (attempt.accepted) return false;
   if (attempt.accountChanged) return true;
-  return (attempt.error ?? '').includes('INVITE_EMAIL_MISMATCH');
+  return attempt.errorKind === 'INVITE_EMAIL_MISMATCH';
 }
 
 export function resetBusinessInviteMemoryForTests(): void {

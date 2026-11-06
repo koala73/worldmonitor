@@ -288,6 +288,7 @@ import {
 } from '@/services/anonymous-identity-storage';
 import { captureReferralFromUrl } from '@/services/referral-capture';
 import {
+  businessInviteErrorKind,
   captureBusinessInviteFromUrl,
   clearPendingBusinessInvite,
   keepInviteAfterAttempt,
@@ -2857,7 +2858,7 @@ export class App {
             // settleAccountOperation also throws when the server accepted but
             // Clerk switched accounts meanwhile, so record acceptance here.
             let acceptedByServer = false;
-            let failure: string | undefined;
+            let failureKind: string | null = null;
             try {
               await settleAccountOperation(
                 userId,
@@ -2873,16 +2874,16 @@ export class App {
               assertAccountStillCurrent(userId, 'accepting the Business Pro seat invite');
               showToast('Pro seat activated');
             } catch (err) {
-              const msg = err instanceof Error ? err.message : 'Failed to accept invite';
-              failure = msg;
+              const kind = businessInviteErrorKind(err);
+              failureKind = kind;
               if (!isAccountStillCurrent(userId)) return;
-              if (msg.includes('INVITE_EMAIL_MISMATCH')) {
+              if (kind === 'INVITE_EMAIL_MISMATCH') {
                 showToast('This invite is for a different email address');
-              } else if (msg.includes('INVITE_EXPIRED')) {
+              } else if (kind === 'INVITE_EXPIRED') {
                 showToast('This invite has expired');
-              } else if (msg.includes('BUSINESS_NOT_ACTIVE')) {
+              } else if (kind === 'BUSINESS_NOT_ACTIVE') {
                 showToast('The Business plan that sent this invite is no longer active');
-              } else if (msg.includes('INVITE_ALREADY_USED')) {
+              } else if (kind === 'INVITE_ALREADY_USED') {
                 showToast('This invite has already been used');
               } else {
                 showToast('Could not accept invite');
@@ -2895,7 +2896,7 @@ export class App {
               const keep = keepInviteAfterAttempt({
                 accepted: acceptedByServer,
                 accountChanged: !isAccountStillCurrent(userId),
-                error: failure,
+                errorKind: failureKind,
               });
               if (!keep) clearPendingBusinessInvite(pendingBusinessInvite);
             }

@@ -57,7 +57,7 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     );
     assert.match(
       src,
-      /\} catch \(err\) \{\s*\n\s*const msg = [^\n]*\n\s*failure = msg;\s*\n\s*if \(!isAccountStillCurrent\(userId\)\) return;/,
+      /\} catch \(err\) \{\s*\n\s*const kind = businessInviteErrorKind\(err\);\s*\n\s*failureKind = kind;\s*\n\s*if \(!isAccountStillCurrent\(userId\)\) return;/,
       'errors from a departed account must stay silent in the new account UI',
     );
   });
@@ -83,7 +83,7 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     for (const [kind, toastMessage] of expectedBranches) {
       assert.match(
         src,
-        new RegExp(`msg\\.includes\\('${kind}'\\)`),
+        new RegExp(`kind === '${kind}'`),
         `missing error-kind branch for ${kind}`,
       );
       assert.match(
@@ -102,7 +102,7 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     const src = await read('src/App.ts');
     assert.match(
       src,
-      /\} finally \{[\s\S]{0,400}?const keep = keepInviteAfterAttempt\(\{\s*\n\s*accepted: acceptedByServer,\s*\n\s*accountChanged: !isAccountStillCurrent\(userId\),\s*\n\s*error: failure,\s*\n\s*\}\);\s*\n\s*if \(!keep\) clearPendingBusinessInvite\(pendingBusinessInvite\);/,
+      /\} finally \{[\s\S]{0,400}?const keep = keepInviteAfterAttempt\(\{\s*\n\s*accepted: acceptedByServer,\s*\n\s*accountChanged: !isAccountStillCurrent\(userId\),\s*\n\s*errorKind: failureKind,\s*\n\s*\}\);\s*\n\s*if \(!keep\) clearPendingBusinessInvite\(pendingBusinessInvite\);/,
       'cleanup must run in a finally block and defer the keep/clear decision to keepInviteAfterAttempt',
     );
     assert.match(
@@ -112,7 +112,7 @@ describe('App.ts accept-business-invite URL flow wiring', () => {
     );
     assert.match(
       src,
-      /failure = msg;\s*\n\s*if \(!isAccountStillCurrent\(userId\)\) return;/,
+      /failureKind = kind;\s*\n\s*if \(!isAccountStillCurrent\(userId\)\) return;/,
       'the failure must be recorded before the departed-account early return',
     );
   });

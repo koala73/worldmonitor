@@ -66,6 +66,7 @@ after(() => {
 const {
   captureBusinessInviteFromUrl,
   loadPendingBusinessInvite,
+  businessInviteErrorKind,
   clearPendingBusinessInvite,
   keepInviteAfterAttempt,
   resetBusinessInviteMemoryForTests,
@@ -181,35 +182,43 @@ describe('clearPendingBusinessInvite', () => {
   });
 });
 
+describe('businessInviteErrorKind', () => {
+  it('reads the kind from object-data ConvexError data, not the message', () => {
+    // Production messages can be a bare "[Request ID: X] Server Error".
+    const err = Object.assign(new Error('[Request ID: abc] Server Error'), { data: { kind: 'INVITE_EMAIL_MISMATCH' } });
+    assert.equal(businessInviteErrorKind(err), 'INVITE_EMAIL_MISMATCH');
+  });
+
+  it('falls back to a known kind named in the message', () => {
+    assert.equal(businessInviteErrorKind(new Error('Uncaught ConvexError: {"kind":"INVITE_EXPIRED"}')), 'INVITE_EXPIRED');
+  });
+
+  it('returns null for an unknown shape', () => {
+    assert.equal(businessInviteErrorKind(new Error('[Request ID: abc] Server Error')), null);
+    assert.equal(businessInviteErrorKind('boom'), null);
+    assert.equal(businessInviteErrorKind(null), null);
+  });
+});
+
 describe('keepInviteAfterAttempt', () => {
   it('drops an accepted invite, even when the account changed after the server accepted it', () => {
     assert.equal(keepInviteAfterAttempt({ accepted: true, accountChanged: false }), false);
-    assert.equal(keepInviteAfterAttempt({ accepted: true, accountChanged: true, error: 'Account changed' }), false);
+    assert.equal(keepInviteAfterAttempt({ accepted: true, accountChanged: true }), false);
   });
 
   it('keeps the invite when the user signed out before the answer came back', () => {
     // Sign-out lands between the request and its answer; the next sign-in
     // with the invited address must still find the invite.
-    assert.equal(
-      keepInviteAfterAttempt({ accepted: false, accountChanged: true, error: 'Account changed while accepting the Business Pro seat invite. Try again.' }),
-      true,
-    );
+    assert.equal(keepInviteAfterAttempt({ accepted: false, accountChanged: true, errorKind: null }), true);
   });
 
   it('keeps the invite after a wrong-account rejection', () => {
-    assert.equal(
-      keepInviteAfterAttempt({ accepted: false, accountChanged: false, error: 'Uncaught ConvexError: {"kind":"INVITE_EMAIL_MISMATCH"}' }),
-      true,
-    );
+    assert.equal(keepInviteAfterAttempt({ accepted: false, accountChanged: false, errorKind: 'INVITE_EMAIL_MISMATCH' }), true);
   });
 
-  it('drops the invite after a final rejection', () => {
-    for (const kind of ['INVITE_EXPIRED', 'INVITE_ALREADY_USED', 'BUSINESS_NOT_ACTIVE', 'INVALID_INVITE_TOKEN', 'GRANT_NOT_FOUND']) {
-      assert.equal(
-        keepInviteAfterAttempt({ accepted: false, accountChanged: false, error: `Uncaught ConvexError: {"kind":"${kind}"}` }),
-        false,
-        kind,
-      );
+  it('drops the invite after a final rejection or an unknown failure', () => {
+    for (const kind of ['INVITE_EXPIRED', 'INVITE_ALREADY_USED', 'BUSINESS_NOT_ACTIVE', 'INVALID_INVITE_TOKEN', 'GRANT_NOT_FOUND', null]) {
+      assert.equal(keepInviteAfterAttempt({ accepted: false, accountChanged: false, errorKind: kind }), false, String(kind));
     }
   });
 });
