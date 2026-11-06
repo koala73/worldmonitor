@@ -519,10 +519,10 @@ function tokenSubject(token: string): string | null {
  * catch this, because nothing has bumped it yet.
  *
  * The owner is the account this page signed in, else the account that last
- * completed a sign-in here. With neither, the write is safe only while the
- * local sync version is zero, i.e. not positioned in anyone's row: uploads
- * advance the version without recording an owner, so a nonzero version with no
- * recorded owner may be another account's.
+ * started a sign-in here. With neither, the write is safe only while the
+ * local sync version is zero, i.e. not positioned in anyone's row: an upload
+ * with no account signed in advances the version without recording an owner,
+ * so a nonzero version with no recorded owner may be another account's.
  */
 function tokenOwnsSyncState(token: string, accountId?: string): boolean {
   let owner: string | null = accountId ?? _dirtyKeysUserId;
@@ -539,8 +539,9 @@ function tokenOwnsSyncState(token: string, accountId?: string): boolean {
 /**
  * Returns false when prior-account ownership could not be DETERMINED.
  *
- * Absent legitimately means "no prior account, nothing to clear". A failed read
- * degrading to null is indistinguishable from that, and skipping the cleanup on
+ * Absent means "no recorded prior account": ownership sidecars stay, but the
+ * sync version is still cleared (see below). A failed read degrading to null is
+ * indistinguishable from that, and skipping the cleanup on
  * an account transition leaves account A's ownership sidecars in place for B —
  * so tier reconciliation attributes A's gate decisions to B (#7833 review).
  * Provenance is exactly the kind of question to fail closed on.
@@ -567,11 +568,10 @@ function clearForeignAccountState(userId: string): boolean {
   // version: equal versions take the local-upload branch and post A's
   // preferences into B's row with B's token (SM-015).
   //
-  // An absent marker does not prove the version is this account's: uploads
-  // advance the version without writing the marker (a sign-in whose fetch
-  // failed, then a successful upload), and older profiles predate it. Cost of
-  // clearing for the same account: one cloud-first reconcile, with its dirty
-  // keys merged over the cloud row.
+  // An absent marker does not prove the version is this account's: profiles
+  // older than the marker, or older than recording it at sign-in entry, can
+  // hold a version with no marker. Cost of clearing for the same account: one
+  // cloud-first reconcile, with its dirty keys merged over the cloud row.
   if (!safeStorageRemoveChecked(KEY_SYNC_VERSION)) return false;
   safeStorageRemove(KEY_LAST_SYNC_AT);
   return true;
@@ -1221,7 +1221,14 @@ export function onSignIn(
   // produced, and the sync version is a position in one account's row.
   // Preserve them for the same account, but never carry them across an
   // account transition recorded in storage.
-  if (!clearForeignAccountState(userId)) {
+  //
+  // The marker is recorded here, not only when this sign-in completes: from
+  // this point the sync version can only advance for this account (older
+  // writers stop on the generation bump above), and the uploads that advance
+  // it do not touch the marker. Recording it only on completion let a failed
+  // sign-in for A leave B's marker over A's version, and B's next sign-in then
+  // kept that version and posted A's preferences into B's row (SM-015).
+  if (!clearForeignAccountState(userId) || !safeStorageSetChecked(KEY_LAST_SIGNED_IN_AS, userId)) {
     // Provenance is undeterminable, so proceeding could attribute the previous
     // account's gate decisions to this one. Report a terminal error rather than
     // reconcile on a guess.

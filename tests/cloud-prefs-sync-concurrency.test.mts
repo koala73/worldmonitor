@@ -1176,9 +1176,8 @@ describe('cloud prefs account switch without an observed sign-out (SM-015)', () 
     }
   }
 
-  // Uploads advance the sync version without recording an owner, so a profile
-  // can hold A's version with no last-signed-in marker (a sign-in whose fetch
-  // failed, then a successful upload; or a profile older than the marker).
+  // A profile can hold A's version with no last-signed-in marker: profiles
+  // older than the marker, or an upload made with no account signed in.
   async function reloadWithUnownedVersion(
     cloudPrefs: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
     controls: HarnessControls,
@@ -1215,6 +1214,40 @@ describe('cloud prefs account switch without an observed sign-out (SM-015)', () 
 
     assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
     assert.equal(result.acceptedDataByToken['b-token']?.['worldmonitor-theme'], 'light');
+  });
+
+  it("keeps account B's row intact when A's failed sign-in left B's marker over A's version", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 3, 9);
+      controls.setToken('b-token');
+      await cloudPrefs.onSignIn('user-b', 'full');
+      cloudPrefs.onSignOut();
+
+      // A's sign-in never completes (its retry is never fired), but A's own
+      // upload still lands: 409 -> merge -> A's row at version 3.
+      controls.setToken('a-token');
+      controls.failNextGetTemporarily();
+      await cloudPrefs.onSignIn('user-a', 'full');
+      cloudPrefs.install('full');
+      localStorage.setItem('worldmonitor-theme', 'dark-edit');
+      await cloudPrefs.syncNow();
+      assert.equal(localStorage.getItem('wm-cloud-sync-version'), '3');
+
+      // A fresh page boots straight into B.
+      controls.setToken('b-token');
+      const reloaded = await loadCloudPrefsModule();
+      await reloaded.onSignIn('user-b', 'full');
+    });
+
+    assert.equal(result.acceptedDataByToken['a-token']?.['worldmonitor-theme'], 'dark-edit');
+    assert.equal(
+      result.acceptedDataByToken['b-token']?.['worldmonitor-theme'],
+      'light',
+      `B's row was overwritten: ${JSON.stringify(result.acceptedDataByToken['b-token'])}`,
+    );
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.localSyncVersion, 3);
   });
 
   it("applies account B's preferences locally after a direct switch", async () => {
