@@ -1271,6 +1271,20 @@
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"
         }
+      },
+      "measure": {
+        "title": "Misura distanza",
+        "units": "Unità di distanza",
+        "pointA": "Seleziona punto A. Clicca sulla mappa o premi Invio al centro della mappa.",
+        "pointB": "Seleziona punto B. Sposta la mappa e premi Invio per usare il suo centro.",
+        "geodesic": "Distanza geodetica",
+        "note": "Tra le coordinate cliccate; non è un percorso né una separazione di asset verificata. Premi Esc per uscire.",
+        "cancel": "Annulla selezione",
+        "cancelShort": "Annulla",
+        "resetShort": "Ripristina",
+        "exitShort": "Esci",
+        "reset": "Ripristina misurazione",
+        "exit": "Esci dalla misurazione"
       }
     },
     "climate": {
@@ -1849,8 +1863,8 @@
       "badgeAnimDesc": "Animare i badge di aggiornamento nelle intestazioni dei pannelli",
       "headlineMemoryLabel": "Memoria titoli",
       "headlineMemoryDesc": "Ricordare i titoli visti per evidenziare quelli nuovi",
-      "streamAlwaysOnLabel": "Riproduci automaticamente gli streaming live nella dashboard",
-      "streamAlwaysOnDesc": "Avvia automaticamente Live News e Live Webcams quando sono visibili. Lascia disattivato per caricare il video solo dopo aver fatto clic su Riproduci.",
+      "streamAlwaysOnLabel": "Riproduzione automatica webcam live",
+      "streamAlwaysOnDesc": "Avvia i video webcam in diretta non appena sono visibili. Mantieni disattivato per caricarli solo quando li avvii manualmente.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1900,7 +1914,9 @@
       "briefStoryDetails": "Dettagli della notizia ({{count}})",
       "streamIdleStopLabel": "Arresta il video in diretta durante l'inattività",
       "streamIdleStopDesc": "Interrompe Live News e Live Webcams dopo questo periodo di inattività e mostra un avviso nel pannello.",
-      "streamIdleStopNever": "Mai"
+      "streamIdleStopNever": "Mai",
+      "liveNewsAutoplayLabel": "Riproduzione automatica notizie in diretta",
+      "liveNewsAutoplayDesc": "Avvia il video delle notizie in diretta, senza audio, non appena è visibile. Disattiva per caricare il video solo quando lo avvii manualmente."
     },
     "etfFlows": {
       "previousColumns": "Colonne precedenti",
@@ -2566,8 +2582,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro è stato lanciato",
-      "tagline": "Più segnali, meno rumore. Più briefing IA. Un ricercatore geopolitico e azionario dedicato a te.",
+      "headline": "Briefing giornalieri IA via email o Slack",
+      "tagline": "più WM Analyst, regole di alert e MCP per Claude",
       "cta": "Passa a Pro →",
       "dismiss": "Scarta"
     },
@@ -3195,7 +3211,44 @@
       "open": "APERTO"
     },
     "cyberThreat": {
-      "title": "MINACCIA INFORMATICA"
+      "title": "MINACCIA INFORMATICA",
+      "evidence": "Evidenza da threat feed",
+      "firstSeen": "Primo rilevamento",
+      "explanations": {
+        "c2_server": "Il feed segnala un server di comando e controllo utilizzato per inviare istruzioni al malware.",
+        "malware_host": "Il feed segnala un indirizzo utilizzato per ospitare malware.",
+        "phishing": "Il feed segnala un indicatore associato a phishing.",
+        "malicious_url": "Il feed segnala un URL associato ad attività malevola."
+      },
+      "downloadTag": "malware_download: la fonte segnala una posizione di download di malware.",
+      "familyNote": "L'etichetta della famiglia di malware proviene dal threat feed. Non identifica una persona o un'organizzazione.",
+      "approximateLocation": "La posizione mappata è un contesto approssimativo derivato da IP, non una posizione fisica verificata dell'host.",
+      "network": {
+        "title": "Informazioni di rete",
+        "privacy": "Espandi per richiedere dati di rete passivi da RIPEstat. L'IP indicatore è condiviso con quel provider.",
+        "disclaimer": "La registrazione di rete e il routing non identificano l'attaccante né rendono il provider responsabile dell'attività.",
+        "loading": "Caricamento informazioni di rete…",
+        "unknown": "Non disponibile",
+        "disabled": "La ricerca di rete non è abilitata.",
+        "invalid": "La ricerca di rete richiede un indirizzo IP pubblico.",
+        "unavailable": "La ricerca di rete non è riuscita. Chiudi e riapri il popup per riprovare più tardi.",
+        "rateLimited": "La ricerca di rete è temporaneamente limitata. Riprova più tardi.",
+        "noData": "Il provider non ha restituito informazioni di rete per questo IP.",
+        "partial": "Alcune informazioni di rete non hanno potuto essere recuperate.",
+        "ip": "IP",
+        "asn": "ASN di origine",
+        "operator": "Titolare ASN segnalato / operatore di rete",
+        "prefix": "Prefisso di routing segnalato",
+        "hostname": "Nome host DNS inverso (rDNS)",
+        "lookupAt": "Ora della ricerca di rete",
+        "routingAt": "Ora dei dati di routing",
+        "broaderPrefix": "Il provider ha rilevato un prefisso di routing più ampio. Non è un record di allocazione IP esatto.",
+        "rdnsNote": "rDNS è un'etichetta DNS, non una prova di proprietà. L'organizzazione registrata e la posizione precisa non sono fornite da questa ricerca.",
+        "copy": "Copia",
+        "copied": "Copiato.",
+        "copyFailed": "Copia non riuscita. Seleziona il testo per copiarlo."
+      },
+      "firstSeenNote": "Questa è la data dell'indicatore più antica disponibile tra i feed o le osservazioni di World Monitor; potrebbe differire dalla data della fonte elencata."
     },
     "nuclear": {
       "types": {
@@ -3366,6 +3419,28 @@
       "readReport": "Leggi il rapporto completo"
     },
     "datacenter": {
+      "details": {
+        "more": "Altri dettagli",
+        "owner": "Proprietario / fornitore del cluster (dataset)",
+        "power": "Valore di potenza nel dataset",
+        "powerCaveat": "La capacità di potenza può essere dichiarata o stimata. Non è una misurazione del consumo elettrico attuale.",
+        "powerBasis": "Base del valore di potenza",
+        "reported": "Dichiarata",
+        "estimated": "Stimata",
+        "notAvailable": "Non disponibile",
+        "location": "Precisione della posizione",
+        "locationUnknown": "Punto sulla mappa non verificato; non usare come indirizzo esatto della struttura.",
+        "site": "Sito (verificato dalla fonte)",
+        "city": "Solo città",
+        "region": "Solo regione",
+        "country": "Solo paese",
+        "dataset": "Dataset dei cluster GPU di Epoch AI",
+        "evidence": "Fonte di supporto",
+        "sourceDate": "Data di pubblicazione della fonte",
+        "metadataReviewedAt": "Metadati verificati",
+        "firstOperationalDate": "Data della prima entrata in servizio (dataset)",
+        "freshness": "Istantanea salvata del dataset. Lo stato e le specifiche attuali potrebbero essere cambiati."
+      },
       "status": {
         "existing": "OPERATIVO",
         "planned": "PIANIFICATO",
@@ -3516,7 +3591,8 @@
       "vesselsCount": "{{count}} VASI",
       "vessels": "VASI",
       "trackedVessels": "NAVI CINGOLATE",
-      "showLess": "Mostra meno"
+      "showLess": "Mostra meno",
+      "backToGroup": "Torna al gruppo"
     },
     "naturalEvent": {
       "closed": "CHIUSO",

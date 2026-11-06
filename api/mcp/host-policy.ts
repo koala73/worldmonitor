@@ -50,6 +50,7 @@ function rewriteError(message: unknown): boolean {
   data.nextStep = informOnlyNextStep({
     reason: data.reason as McpDenialReason,
     sharedWithRestApi: data.sharedWithRestApi === true,
+    allowance: data.allowance,
   });
   delete data.recommendedPlan;
   delete data.checkoutTool;

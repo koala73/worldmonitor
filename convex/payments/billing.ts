@@ -4320,6 +4320,44 @@ export const grantComplimentaryEntitlement = internalMutation({
 });
 
 /**
+ * Removes a user's complimentary grant now and recomputes from the remaining
+ * sources (subscriptions, Business grants, Enterprise contract membership).
+ * Used when a comp holder moves onto a contract account
+ * (docs/internal/enterprise-accounts.md). Also clears a legacy comp with no
+ * recorded plan, which otherwise freezes recompute.
+ *
+ *   npx convex run 'payments/billing:revokeComplimentaryEntitlement' \
+ *     '{"userId":"user_XXX","reason":"moved to contract account"}'
+ */
+export const revokeComplimentaryEntitlement = internalMutation({
+  args: { userId: v.string(), reason: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
+    const existing = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!existing || (existing.compUntil === undefined && existing.compPlanKey === undefined)) {
+      return { userId: args.userId, revoked: false as const };
+    }
+    const now = Date.now();
+    await ctx.db.patch(existing._id, { compUntil: undefined, compPlanKey: undefined, updatedAt: now });
+    await recomputeEntitlementFromAllSubs(ctx, args.userId, now);
+    const effective = await ctx.db.query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId)).first();
+    console.log(
+      `[billing] revokeComplimentaryEntitlement userId=${args.userId} effectivePlanKey=${effective!.planKey} validUntil=${new Date(effective!.validUntil).toISOString()}${args.reason ? ` reason="${args.reason}"` : ""}`,
+    );
+    return {
+      userId: args.userId,
+      revoked: true as const,
+      planKey: effective!.planKey,
+      validUntil: effective!.validUntil,
+    };
+  },
+});
+
+/**
  * Ends a subscription's paid coverage NOW, keeping the row as a `cancelled`
  * churn record.
  *

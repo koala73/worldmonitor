@@ -766,6 +766,18 @@ export const BROWSER_NEWS_CATALOG: BrowserCatalog = {
         {
           "name": "BBC Northern Ireland",
           "url": "https://feeds.bbci.co.uk/news/northern_ireland/rss.xml"
+        },
+        {
+          "name": "Deutschlandfunk",
+          "url": "https://www.deutschlandfunk.de/nachrichten-100.rss",
+          "lang": "de",
+          "fetchInAllLanguages": true
+        },
+        {
+          "name": "ZDFheute",
+          "url": "https://www.zdfheute.de/rss/zdf/nachrichten",
+          "lang": "de",
+          "fetchInAllLanguages": true
         }
       ],
       "middleeast": [

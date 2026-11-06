@@ -136,8 +136,10 @@ export function minimumBriefCaptures(briefMatchedCount) {
 // pro-test is an isolated package that must not import from here, so the lists
 // are duplicated on purpose; tests/welcome-teasers.test.mjs imports both and
 // fails if they drift.
-const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
-const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+// ^VIX is a commodities.json symbol: list-commodity-quotes serves it and
+// list-market-quotes answers NOT_FOUND, which kept the market card off LIVE.
+export const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC'];
+export const COMMODITY_QUOTE_SYMBOLS = ['^VIX', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
 export const QUOTE_SYMBOLS = [
   '^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH',

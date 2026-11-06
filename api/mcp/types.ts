@@ -519,6 +519,14 @@ export interface McpHandlerDeps {
       };
     };
     validUntil: number;
+    // Mirrors `CachedEntitlements.account`: present only for an active member
+    // of a live Enterprise contract, whose MCP calls draw on the account pool.
+    account?: {
+      id: string;
+      dailyAllowance: number;
+      perMinuteBurst: number;
+      breakerMultiple: number;
+    };
     billingStatus?: BillingVerificationStatus;
     retryAfterSeconds?: number;
     verificationUnavailable?: boolean;

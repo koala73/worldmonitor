@@ -73,6 +73,10 @@ vi.mock('@/components/IntelligenceGapBadge', () => ({
 }));
 
 import { App } from '@/App';
+import {
+  beginEntitlementVerification, getEntitlementVerificationStatus,
+  onEntitlementVerificationChange, resetEntitlementState, resetEntitlementVerification,
+} from '@/services/entitlements';
 import { dataFreshness } from '@/services/data-freshness';
 import {
   VesselRuntimeStoppedError,
@@ -145,6 +149,25 @@ afterEach(() => {
 });
 
 describe('App.destroy', () => {
+  it('settles pending entitlement verification during final panel teardown for current and late subscribers', () => {
+    const { app } = makeApp();
+    resetEntitlementState();
+    beginEntitlementVerification();
+    const observer = vi.fn();
+    const off = onEntitlementVerificationChange(observer);
+    try {
+      app.destroy();
+      expect(getEntitlementVerificationStatus()).toBe('unavailable');
+      expect(observer).toHaveBeenLastCalledWith('unavailable');
+      const lateObserver = vi.fn();
+      onEntitlementVerificationChange(lateObserver)();
+      expect(lateObserver).toHaveBeenLastCalledWith('unavailable');
+    } finally {
+      off();
+      resetEntitlementVerification();
+    }
+  });
+
   it('tears down the map, AIS, flight cleanup, workers and WebMCP even when a module destructor throws', async () => {
     const { app, internals } = makeApp();
     enableVesselRuntime();

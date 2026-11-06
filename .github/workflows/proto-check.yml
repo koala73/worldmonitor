@@ -50,6 +50,7 @@ env:
     scripts/shared/geography.js
     scripts/shared/giving-published-estimate-claims.json
     scripts/shared/iso2-to-region.json
+    server/_shared/account-rate-limit.ts
     server/_shared/api-key-rate-limit.ts
     server/_shared/api-only-paths.ts
     server/_shared/auth-session.ts

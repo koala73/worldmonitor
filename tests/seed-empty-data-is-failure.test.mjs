@@ -1,5 +1,6 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 // Behavioral regression for PR #3078: strict-floor IMF seeders must not
 // poison seed-meta on empty/invalid upstream responses. Without the opt-in
@@ -46,7 +47,7 @@ beforeEach(() => {
   console.log = () => {};
   console.warn = () => {};
   console.error = () => {};
-  globalThis.fetch = async (url, init = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
     const body = init.body ? JSON.parse(init.body) : null;
     fetchCalls.push({ url: String(url), body });
     // Lock acquire (SET ... NX PX) must succeed; everything else OK too.
@@ -56,7 +57,7 @@ beforeEach(() => {
       json: async () => ({ result: 'OK' }),
       text: async () => 'OK',
     };
-  };
+  });
 });
 
 class ExitCalled extends Error {

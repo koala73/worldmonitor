@@ -50,6 +50,68 @@ const MOBILE_DEVICE_MATRIX = [
 ] as const;
 
 for (const width of [320, 1280]) {
+  test.describe(`Datacenter details (${width}px)`, () => {
+    test.use({ viewport: { width, height: 900 } });
+    for (const lang of ['en', 'de']) {
+      test(`opens and closes ${lang} details with the keyboard`, async ({ page }, testInfo) => {
+        await page.goto(`/tests/mobile-map-harness.html?datacenter=1&lang=${lang}`);
+        await page.waitForFunction(() => (window as HarnessWindow).__mobileMapHarness?.ready);
+        await page.locator('#mapOverlays .hotspot').click();
+        const popup = page.locator('.map-popup');
+        const details = popup.locator('.datacenter-details');
+        const summary = details.locator('summary');
+        await expect(summary).toHaveText(lang === 'de' ? 'Weitere Informationen' : 'More details');
+        await expect(details).not.toHaveAttribute('open');
+        await popup.screenshot({ path: testInfo.outputPath(`datacenter-compact-${lang}-${width}.png`) });
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        await expect(details).toHaveAttribute('open');
+        await expect(details.locator('h3')).toHaveText('NexGen Cloud Hyperstack AQ Compute Supercomputer');
+        await expect(details).toContainText(lang === 'de' ? '16.384' : '16,384');
+        await expect(details).toContainText(lang === 'de' ? '23,4 MW' : '23.4 MW');
+        await expect(details).toContainText(lang === 'de' ? 'Geschätzt' : 'Estimated');
+        await expect(details.locator('a')).toHaveCount(2);
+        await expect(details.locator('img')).toHaveCount(0);
+        const geometry = await popup.evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          const title = element.querySelector('h3')!;
+          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+            overflow: element.scrollWidth - element.clientWidth,
+            titleOverflow: title.scrollWidth - title.clientWidth };
+        });
+        expect(geometry.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.right).toBeLessThanOrEqual(width);
+        expect(geometry.top).toBeGreaterThanOrEqual(0);
+        expect(geometry.bottom).toBeLessThanOrEqual(900);
+        expect(geometry.overflow).toBeLessThanOrEqual(1);
+        expect(geometry.titleOverflow).toBeLessThanOrEqual(1);
+        await details.locator('h3').scrollIntoViewIfNeeded();
+        await popup.screenshot({ path: testInfo.outputPath(`datacenter-details-${lang}-${width}.png`) });
+        await details.locator('a').last().scrollIntoViewIfNeeded();
+        await expect(details.locator('a').first()).toBeVisible();
+        await expect(details.locator('a').last()).toBeVisible();
+        // Scrolled details must not show through the sticky header.
+        const headerAlpha = await popup.locator('.popup-header').evaluate(element => {
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d')!;
+          context.fillStyle = getComputedStyle(element).backgroundColor;
+          context.fillRect(0, 0, 1, 1);
+          return context.getImageData(0, 0, 1, 1).data[3];
+        });
+        expect(headerAlpha).toBe(255);
+        await popup.screenshot({ path: testInfo.outputPath(`datacenter-sources-${lang}-${width}.png`) });
+        await summary.scrollIntoViewIfNeeded();
+        await summary.focus();
+        await page.keyboard.press('Space');
+        await expect(details).not.toHaveAttribute('open');
+        await popup.locator('.popup-close').click();
+        await expect(popup).toHaveCount(0);
+      });
+    }
+  });
+}
+
+for (const width of [320, 1280]) {
   test.describe(`Hotspot breakdown labels (${width}px)`, () => {
     test.use({ viewport: { width, height: 900 } });
 
@@ -114,21 +176,16 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
       const header = popup.locator('.popup-header');
       const close = header.getByRole('button', { name: 'Close', exact: true });
       const expectHeaderInside = async () => {
-        await expect.poll(async () => {
-          const parent = await popup.boundingBox();
-          const child = await header.boundingBox();
-          return child!.x - parent!.x;
-        }, { message: 'The header must stay inside the popup left edge', timeout: 3000 }).toBeGreaterThanOrEqual(0);
-        const parent = (await popup.boundingBox())!;
-        const child = (await header.boundingBox())!;
-        const button = (await close.boundingBox())!;
-        expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
-        expect(child.y).toBeGreaterThanOrEqual(parent.y);
-        expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
-        expect(button.x).toBeGreaterThanOrEqual(parent.x);
-        expect(button.x + button.width).toBeLessThanOrEqual(parent.x + parent.width);
-        expect(button.y).toBeGreaterThanOrEqual(parent.y);
-        expect(button.y + button.height).toBeLessThanOrEqual(parent.y + parent.height);
+        // Read all bounds in one frame while the mobile sheet animates.
+        await expect.poll(() => popup.evaluate((element) => {
+          const parent = element.getBoundingClientRect();
+          const child = element.querySelector('.popup-header')!.getBoundingClientRect();
+          const button = element.querySelector('.popup-close')!.getBoundingClientRect();
+          return child.left >= parent.left && child.right <= parent.right
+            && child.top >= parent.top && child.bottom <= parent.bottom
+            && button.left >= parent.left && button.right <= parent.right
+            && button.top >= parent.top && button.bottom <= parent.bottom;
+        }), { message: 'The header and close button must stay inside the popup', timeout: 3000 }).toBe(true);
       };
 
       for (let opening = 0; opening < 2; opening++) {
@@ -138,9 +195,10 @@ for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 
         await popup.evaluate((element) => { element.scrollTop = 120; });
         await expect.poll(() => popup.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
         await expectHeaderInside();
-        const scrolledPopup = (await popup.boundingBox())!;
-        const stickyHeader = (await header.boundingBox())!;
-        expect(stickyHeader.y - scrolledPopup.y).toBeCloseTo(1, 0);
+        await expect.poll(() => popup.evaluate((element) =>
+          element.querySelector('.popup-header')!.getBoundingClientRect().top
+            - element.getBoundingClientRect().top,
+        )).toBeCloseTo(1, 0);
         if (opening === 0) {
           await page.screenshot({ path: testInfo.outputPath('hotspot-header-scrolled.png') });
         }

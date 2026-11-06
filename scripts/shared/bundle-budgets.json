@@ -109,11 +109,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1510178
+      "raw": 1511801
     },
     "chunks": {
       "App": {
-        "raw": 955677,
+        "raw": 957022,
         "files": 1
       },
       "ai-flow-settings": {
@@ -145,7 +145,7 @@
         "files": 1
       },
       "continuous": {
-        "raw": 4613,
+        "raw": 4623,
         "files": 1
       },
       "corroboration": {
@@ -169,7 +169,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 122936,
+        "raw": 160143,
         "files": 1
       },
       "index": {
@@ -177,7 +177,7 @@
         "files": 2
       },
       "layout-batch": {
-        "raw": 17465,
+        "raw": 988,
         "files": 1
       },
       "markets": {
@@ -212,6 +212,10 @@
         "raw": 1280,
         "files": 1
       },
+      "select": {
+        "raw": 463,
+        "files": 1
+      },
       "settings-persistence": {
         "raw": 7959,
         "files": 1
@@ -226,10 +230,6 @@
       },
       "storage-quota": {
         "raw": 356,
-        "files": 1
-      },
-      "string": {
-        "raw": 20925,
         "files": 1
       },
       "user-location": {

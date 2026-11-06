@@ -1572,6 +1572,20 @@
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"
         }
+      },
+      "measure": {
+        "title": "Pima umbali",
+        "units": "Vitengo vya umbali",
+        "pointA": "Chagua nukta A. Bonyeza ramani au bonyeza Enter katikati ya ramani.",
+        "pointB": "Chagua nukta B. Songa ramani na bonyeza Enter ili kutumia kituo chake.",
+        "geodesic": "Umbali wa geodesic",
+        "note": "Kati ya kuratibu zilizobonyezwa; si njia wala mgawanyiko wa mali uliothibitishwa. Escape huondoka.",
+        "cancel": "Ghairi uteuzi",
+        "cancelShort": "Ghairi",
+        "resetShort": "Weka upya",
+        "exitShort": "Ondoka",
+        "reset": "Weka upya kipimo",
+        "exit": "Ondoka kwenye kipimo"
       }
     },
     "cii": {
@@ -1632,8 +1646,8 @@
       "analysisFrameworksFromAgentskills": "Kutoka kwa agentskills.io",
       "analysisFrameworksPasteJson": "Bandika JSON",
       "analysisFrameworksSaveToLibrary": "Hifadhi kwenye Maktaba",
-      "streamAlwaysOnLabel": "Cheza mitiririko ya moja kwa moja kiotomatiki kwenye dashibodi",
-      "streamAlwaysOnDesc": "Huanzisha Habari za Moja kwa Moja na Kamera za Wavuti moja kwa moja zinapoonekana. Ondoka ili kupakia video tu baada ya kubofya Cheza.",
+      "streamAlwaysOnLabel": "Kucheza kamera moja kwa moja kiotomatiki",
+      "streamAlwaysOnDesc": "Huanza video za kamera moja kwa moja mara tu zinavyoonekana. Acha hii kuwa imezimwa ili kupakia hizo tu wakati unapozisimamisha mwenyewe.",
       "frameworkNote": "Inatumika kwa uchanganuzi unaozalishwa na mteja pekee",
       "loadingServerInsights": "Inapakia maarifa ya seva...",
       "usingCachedBrief": "Inatumia muhtasari ulioakibishwa...",
@@ -1666,7 +1680,9 @@
       "briefStoryDetails": "Maelezo ya habari ({{count}})",
       "streamIdleStopLabel": "Simamisha video moja kwa moja wakati umekaa bila kufanya kitu",
       "streamIdleStopDesc": "Husimamisha Habari za Moja kwa Moja na Kamera za Moja kwa Moja baada ya muda huu bila shughuli na kuonyesha onyo katika paneli.",
-      "streamIdleStopNever": "Kamwe"
+      "streamIdleStopNever": "Kamwe",
+      "liveNewsAutoplayLabel": "Taslimia kiotomatiki habari moja kwa moja",
+      "liveNewsAutoplayDesc": "Huanza video ya habari moja kwa moja, bila sauti, mara tu inapoonekana. Zima hii ili kupakia video tu wakati unapoisimamisha mwenyewe."
     },
     "settings": {
       "exportSettings": "Hamisha Mipangilio",
@@ -2628,9 +2644,9 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro imezinduliwa",
-      "tagline": "Mawimbi Zaidi, Kelele kidogo. Muhtasari zaidi wa AI. Mtafiti wa Kijiografia na Usawa kwa ajili yako.",
-      "cta": "Pata toleo jipya la Pro →",
+      "headline": "Muhtasari wa AI kila siku kwa barua pepe au Slack",
+      "tagline": "pamoja na WM Analyst, sheria za arifa na MCP kwa Claude",
+      "cta": "Jiunge na Pro →",
       "dismiss": "Ondoa"
     },
     "checkoutFailureBanner": {
@@ -3253,7 +3269,44 @@
       "airborne": "Inayopeperuka hewani"
     },
     "cyberThreat": {
-      "title": "TISHIO LA MTANDAO"
+      "title": "TISHIO LA MTANDAO",
+      "evidence": "Ushahidi wa chanzo cha vitisho",
+      "firstSeen": "Ilionekana kwa mara ya kwanza",
+      "explanations": {
+        "c2_server": "Chanzo kinaripoti seva ya amri na udhibiti inayotumiwa kutuma maagizo kwa programu hasidi.",
+        "malware_host": "Chanzo kinaripoti anwani inayotumiwa kuhifadhi programu hasidi.",
+        "phishing": "Chanzo kinasema kuwa ni kiashiria kinachohusiana na phishing.",
+        "malicious_url": "Chanzo kinasema kuwa ni URL inayohusiana na shughuli za ubaya."
+      },
+      "downloadTag": "malware_download: chanzo kinasema ni mahali pa kupakua malware.",
+      "familyNote": "Lebo ya familia ya programu hasidi inatoka kwenye chanzo cha taarifa za vitisho. Haitambui mtu au shirika.",
+      "approximateLocation": "Mahali paliopangiliwa ni muktadha wa takriban wa IP, si mahali halisi wa kompyuta iliyothibitishwa.",
+      "network": {
+        "title": "Taarifa za mtandao",
+        "privacy": "Panua ili kuomba data ya mtandao passive kutoka kwa RIPEstat. Kiashiria cha IP kinashirikiwa na mtoaji huyo.",
+        "disclaimer": "Taarifa za usajili na uelekezaji wa mtandao hazitambui mshambuliaji wala kumfanya mtoa huduma awajibike kwa shughuli hizo.",
+        "loading": "Inapakia taarifa za mtandao…",
+        "unknown": "Haipatikani",
+        "disabled": "Utafutaji wa mtandao haujawezeshwa.",
+        "invalid": "Utafutaji wa mtandao unahitaji anwani ya IP ya umma.",
+        "unavailable": "Utafutaji wa mtandao umefeli. Funga na kufungua popup upya ili kujaribu tena baadaye.",
+        "rateLimited": "Utafutaji wa mtandao umepunguzwa kwa muda. Jaribu tena baadaye.",
+        "noData": "Mtoaji hariudii taarifa yoyote ya mtandao kwa IP hii.",
+        "partial": "Baadhi ya taarifa za mtandao haiwezi kupatikana.",
+        "ip": "IP",
+        "asn": "ASN ya Asili",
+        "operator": "Mmiliki wa ASN / mwendeshaji wa mtandao aliyetajwa",
+        "prefix": "Kiambishi cha uelekezaji kilichoripotiwa",
+        "hostname": "Jina la kompyuta la DNS-nyuma (rDNS)",
+        "lookupAt": "Wakati wa utafutaji wa mtandao",
+        "routingAt": "Wakati wa data ya uelekezaji",
+        "broaderPrefix": "Mtoa huduma amelinganisha anwani na kiambishi kipana zaidi cha uelekezaji. Hii si rekodi kamili ya ugawaji wa anwani ya IP.",
+        "rdnsNote": "rDNS ni lebo ya DNS, si uthibitisho wa umiliki. Utafutaji huu hautoi shirika lililosajiliwa au mahali halisi.",
+        "copy": "Nakili",
+        "copied": "Ilinakiliwa.",
+        "copyFailed": "Kunakili kumefeli. Chagua maandishi ili kuynakili."
+      },
+      "firstSeenNote": "Hii ni tarehe ya mapema zaidi inayopatikana ya kiashiria kutoka kwa milisho au uchunguzi wa World Monitor; inaweza kutofautiana na tarehe ya chanzo kilichoorodheshwa."
     },
     "nuclear": {
       "types": {
@@ -3423,6 +3476,28 @@
       "readReport": "Soma ripoti kamili"
     },
     "datacenter": {
+      "details": {
+        "more": "Maelezo zaidi",
+        "owner": "Mmiliki / mtoa huduma wa klasta (mkusanyiko wa data)",
+        "power": "Kiwango cha nguvu katika mkusanyiko wa data",
+        "powerCaveat": "Uwezo wa nguvu unaweza kuwa umeripotiwa au kukadiriwa. Hiki si kipimo cha matumizi ya sasa ya umeme.",
+        "powerBasis": "Msingi wa kiwango cha nguvu",
+        "reported": "Umeripotiwa",
+        "estimated": "Umekadiriwa",
+        "notAvailable": "Haipatikani",
+        "location": "Usahihi wa eneo",
+        "locationUnknown": "Sehemu ya ramani haijathibitishwa; usitumie kama anwani sahihi ya kituo.",
+        "site": "Kituo (kimethibitishwa na chanzo)",
+        "city": "Jiji pekee",
+        "region": "Mkoa pekee",
+        "country": "Nchi pekee",
+        "dataset": "Mkusanyiko wa data wa klasta za GPU wa Epoch AI",
+        "evidence": "Chanzo cha ushahidi",
+        "sourceDate": "Tarehe ya kuchapishwa kwa chanzo",
+        "metadataReviewedAt": "Tarehe ya ukaguzi wa metadata",
+        "firstOperationalDate": "Tarehe ya kuanza kufanya kazi (mkusanyiko wa data)",
+        "freshness": "Nakala iliyohifadhiwa ya mkusanyiko wa data. Hali na vipimo vya sasa huenda vimebadilika."
+      },
       "status": {
         "existing": "UENDESHAJI",
         "planned": "IMEPANGA",
@@ -3573,7 +3648,8 @@
       "vesselsCount": "{{count}} VYOMBO",
       "vessels": "VYOMBO",
       "trackedVessels": "VYOMBO VILIVYOFUATILIWA",
-      "showLess": "Onyesha kidogo"
+      "showLess": "Onyesha kidogo",
+      "backToGroup": "Rudi kwenye kikundi"
     },
     "naturalEvent": {
       "closed": "IMEFUNGWA",

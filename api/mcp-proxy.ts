@@ -137,6 +137,8 @@ export function proxyUsageIdentityFor(req, identity) {
       customer_id: identity.userId,
       tier: 0,
       plan_key: null,
+      account_id: null,
+      overage: null,
     };
   }
 

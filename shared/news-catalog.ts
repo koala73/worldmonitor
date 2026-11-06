@@ -34,6 +34,7 @@ export interface CatalogFeed {
   name: string;
   url: CatalogUrl;
   lang?: string;
+  fetchInAllLanguages?: boolean;
   strategicDefault?: boolean;
   type?: string;
   deadlinePriority?: number;
@@ -78,6 +79,7 @@ export interface ServerCatalogFeed {
   name: string;
   url: string;
   lang?: string;
+  fetchInAllLanguages?: boolean;
   strategicDefault?: boolean;
   deadlinePriority?: number;
   depthUrl?: string;
@@ -111,12 +113,14 @@ function serverPlacedFeeds(edition: string, category: string): CatalogFeed[] {
   return placementIndex.get(`${edition}|${category}`) ?? [];
 }
 
+/** Project server fetch metadata, preserving language and cross-language eligibility separately. */
 function toServerFeed(feed: CatalogFeed): ServerCatalogFeed {
   if (typeof feed.url !== 'string') {
     throw new Error(`news catalog: server-placed feed "${feed.name}" needs a single URL`);
   }
   const entry: ServerCatalogFeed = { name: feed.name, url: feed.url };
   if (feed.lang !== undefined) entry.lang = feed.lang;
+  if (feed.fetchInAllLanguages !== undefined) entry.fetchInAllLanguages = feed.fetchInAllLanguages;
   if (feed.strategicDefault !== undefined) entry.strategicDefault = feed.strategicDefault;
   if (feed.deadlinePriority !== undefined) entry.deadlinePriority = feed.deadlinePriority;
   if (feed.depthUrl !== undefined) entry.depthUrl = feed.depthUrl;
@@ -147,9 +151,10 @@ export function projectBrowserCatalog(catalog: NewsCatalog = NEWS_CATALOG): Brow
         if (feed.type !== undefined) browserFeed.type = feed.type;
         const lang = browserField(feed, 'lang');
         if (lang !== undefined) browserFeed.lang = lang;
+        if (feed.fetchInAllLanguages !== undefined) browserFeed.fetchInAllLanguages = feed.fetchInAllLanguages;
         const strategicDefault = browserField(feed, 'strategicDefault');
         if (strategicDefault !== undefined) browserFeed.strategicDefault = strategicDefault;
-        if (feed.lang !== undefined && !feed.strategicDefault) browserFeed.digestLang = feed.lang;
+        if (feed.lang !== undefined && !feed.strategicDefault && !feed.fetchInAllLanguages) browserFeed.digestLang = feed.lang;
       }
       const placedFeed = placement.type === undefined ? browserFeed : { ...browserFeed, type: placement.type };
       const key = `${placement.edition}|${placement.category}`;

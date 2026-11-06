@@ -1433,6 +1433,20 @@
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"
         }
+      },
+      "measure": {
+        "title": "Măsoară distanța",
+        "units": "Unități de distanță",
+        "pointA": "Selectează punctul A. Apasă pe hartă sau tastează Enter pe centrul hărții.",
+        "pointB": "Selectează punctul B. Navighează harta și apasă Enter pentru a folosi centrul acesteia.",
+        "geodesic": "Distanță geodezică",
+        "note": "Între coordonatele apăsate; nu este o rută sau separare de active verificată. Escape pentru a ieși.",
+        "cancel": "Anulează selecția",
+        "cancelShort": "Anulează",
+        "resetShort": "Resetează",
+        "exitShort": "Ieși",
+        "reset": "Resetează măsurarea",
+        "exit": "Ieși din măsurare"
       }
     },
     "cii": {
@@ -1484,8 +1498,8 @@
       "badgeAnimDesc": "Animați insigne de actualizare pe anteturile panoului",
       "headlineMemoryLabel": "Memorie titlu",
       "headlineMemoryDesc": "Amintiți-vă titlurile văzute pentru a evidenția povești noi",
-      "streamAlwaysOnLabel": "Redă automat fluxurile live în tabloul de bord",
-      "streamAlwaysOnDesc": "Pornește automat Live News și Live Webcams când sunt vizibile. Lasă dezactivat pentru a încărca video doar după ce dai clic pe Redă.",
+      "streamAlwaysOnLabel": "Redare automată a camerelor web în direct",
+      "streamAlwaysOnDesc": "Începe redarea videoclipurilor cu cameră web live imediat ce acestea apar pe ecran. Lăsați această opțiune dezactivată pentru a le încărca doar când le porniți dvs.",
       "analysisFrameworksLabel": "Cadre de Analiză",
       "analysisFrameworksActivePerPanel": "Activ per panou",
       "analysisFrameworksSkillLibrary": "Bibliotecă de Abilități",
@@ -1528,7 +1542,9 @@
       "briefStoryDetails": "Detalii despre știre ({{count}})",
       "streamIdleStopLabel": "Oprește video live când este inactiv",
       "streamIdleStopDesc": "Oprește Live News și Live Webcams după această perioadă fără activitate și afișează o notificare în panou.",
-      "streamIdleStopNever": "Niciodată"
+      "streamIdleStopNever": "Niciodată",
+      "liveNewsAutoplayLabel": "Redare automată a știrilor live",
+      "liveNewsAutoplayDesc": "Începe redarea videoclipului cu știri live, fără sunet, imediat ce acesta apare pe ecran. Dezactivați această opțiune pentru a încărca videoclipul doar când îl porniți dvs."
     },
     "settings": {
       "exportSettings": "Exportare setări",
@@ -2566,8 +2582,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro este lansat",
-      "tagline": "Mai mult semnal, mai puțin zgomot. Mai multe rapoarte AI. Un cercetător geopolitic și de capitaluri proprii special pentru tine.",
+      "headline": "Rapoarte zilnice AI prin email sau Slack",
+      "tagline": "plus WM Analyst, reguli de alertă și MCP pentru Claude",
       "cta": "Upgrade la Pro →",
       "dismiss": "Închide"
     },
@@ -3204,7 +3220,44 @@
       "airborne": "În zbor"
     },
     "cyberThreat": {
-      "title": "AMENINȚARE CYBER"
+      "title": "AMENINȚARE CYBER",
+      "evidence": "Dovezi din feed-ul de amenințări",
+      "firstSeen": "Prima apariție",
+      "explanations": {
+        "c2_server": "Feed-ul raportează un server de comandă și control folosit pentru a trimite instrucțiuni malware-ului.",
+        "malware_host": "Feed-ul raportează o adresă folosită pentru găzduirea malware-ului.",
+        "phishing": "Feed-ul raportează un indicator asociat cu phishing-ul.",
+        "malicious_url": "Feed-ul raportează un URL asociat cu activitate rău intenționată."
+      },
+      "downloadTag": "malware_download: sursa raportează o locație de descărcare malware.",
+      "familyNote": "Eticheta familiei de malware provine din feed-ul de amenințări. Nu identifică o persoană sau o organizație.",
+      "approximateLocation": "Locația mapată este context aproximativ derivat din IP, nu o locație fizică verificată a gazdei.",
+      "network": {
+        "title": "Informații de rețea",
+        "privacy": "Extindeți pentru a solicita date de rețea pasive din RIPEstat. Indicatorul IP este partajat cu acel furnizor.",
+        "disclaimer": "Înregistrarea rețelei și rutarea nu identifică atacatorul și nu fac furnizorul responsabil pentru activitate.",
+        "loading": "Se încarcă informații de rețea…",
+        "unknown": "Indisponibil",
+        "disabled": "Căutarea în rețea nu este activată.",
+        "invalid": "Căutarea în rețea necesită o adresă IP publică.",
+        "unavailable": "Căutarea în rețea a eșuat. Închideți și redeschideți fereastra pentru a încerca din nou mai târziu.",
+        "rateLimited": "Căutarea în rețea este temporar limitată. Încercați din nou mai târziu.",
+        "noData": "Furnizorul nu a returnat informații de rețea pentru acest IP.",
+        "partial": "Unele informații de rețea nu au putut fi recuperate.",
+        "ip": "IP",
+        "asn": "ASN de origine",
+        "operator": "Deținătorul ASN raportat / operator de rețea",
+        "prefix": "Prefix de rutare raportat",
+        "hostname": "Nume gazdă DNS invers (rDNS)",
+        "lookupAt": "Ora căutării în rețea",
+        "routingAt": "Ora datelor de rutare",
+        "broaderPrefix": "Furnizorul a potrivit un prefix de rutare mai larg. Acesta nu este un înregistrament exact de alocare IP.",
+        "rdnsNote": "rDNS este o etichetă DNS, nu o dovadă de proprietate. Organizația înregistrată și locația precisă nu sunt furnizate de această căutare.",
+        "copy": "Copiați",
+        "copied": "Copiat.",
+        "copyFailed": "Copierea a eșuat. Selectați textul pentru a-l copia."
+      },
+      "firstSeenNote": "Aceasta este cea mai veche dată indicator disponibilă din feed-uri sau observații World Monitor; poate diferi de data sursei listate."
     },
     "nuclear": {
       "types": {
@@ -3374,6 +3427,28 @@
       "readReport": "Citiți raportul complet"
     },
     "datacenter": {
+      "details": {
+        "more": "Mai multe detalii",
+        "owner": "Proprietar / furnizor al clusterului (set de date)",
+        "power": "Valoarea puterii din setul de date",
+        "powerCaveat": "Capacitatea de putere poate fi raportată sau estimată. Nu este o măsurare a consumului actual de energie electrică.",
+        "powerBasis": "Baza valorii puterii",
+        "reported": "Raportată",
+        "estimated": "Estimată",
+        "notAvailable": "Indisponibil",
+        "location": "Precizia locației",
+        "locationUnknown": "Punct neverificat pe hartă; nu folosiți ca adresă exactă a instalației.",
+        "site": "Amplasament (verificat prin sursă)",
+        "city": "Doar oraș",
+        "region": "Doar regiune",
+        "country": "Doar țară",
+        "dataset": "Setul de date despre clustere GPU Epoch AI",
+        "evidence": "Sursă justificativă",
+        "sourceDate": "Data publicării sursei",
+        "metadataReviewedAt": "Metadate verificate",
+        "firstOperationalDate": "Data primei puneri în funcțiune (set de date)",
+        "freshness": "Instantaneu salvat al setului de date. Starea și specificațiile actuale se pot fi schimbat."
+      },
       "status": {
         "existing": "OPERAȚIONAL",
         "planned": "PLANIFICAT",
@@ -3524,7 +3599,8 @@
       "vesselsCount": "{{count}} NAVE",
       "vessels": "NAVE",
       "trackedVessels": "NAVE ȘENILE",
-      "showLess": "Afișează mai puțin"
+      "showLess": "Afișează mai puțin",
+      "backToGroup": "Înapoi la grup"
     },
     "naturalEvent": {
       "closed": "ÎNCHIS",

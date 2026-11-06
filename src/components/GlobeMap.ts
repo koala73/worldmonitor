@@ -1385,6 +1385,17 @@ export class GlobeMap {
   }
 
   private handleMarkerClick(d: GlobeMarker, anchor: HTMLElement): void {
+    if (d._kind === 'datacenter' && this.popup) {
+      const dc = AI_DATA_CENTERS.find(center => center.id === d.id);
+      if (dc) {
+        const rect = anchor.getBoundingClientRect();
+        const containerRect = this.container.getBoundingClientRect();
+        this.hideTooltip();
+        this.popup.show({ type: 'datacenter', data: dc,
+          x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+        return;
+      }
+    }
     if (d._kind === 'crossBorder' && this.popup) {
       const rect = anchor.getBoundingClientRect();
       const containerRect = this.container.getBoundingClientRect();

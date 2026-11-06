@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "噪音",
     "signalWord": "訊號",
-    "valueProps": "地緣政治 AI 層 — 向它提問、訂閱它、在其之上構建。",
+    "valueProps": "詢問 AI 分析師、設定告警規則、獲取簡報，並在 Claude 中使用。",
     "launchingDate": "現已上線",
     "tryFreeDashboard": "試用免費儀表板",
     "choosePlan": "選擇方案",
-    "signIn": "登入",
     "goToDashboard": "轉到儀表板"
   },
   "wired": {
     "asFeaturedIn": "被報道於"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "你的AI分析師。個人情報工作臺。一個可擴充套件的平臺。",
-    "proF1": "WM Analyst 聊天——對話式查詢即時服務",
-    "proF2": "AI 摘要 — 每日、每日兩次或每週 — 至 Slack、Discord、Telegram、郵件或 webhook",
-    "proF3": "自訂小工具構建器 — HTML/CSS/JS,AI 輔助修改",
-    "proF4": "MCP 聯結器 — 將 WorldMonitor 接入 Claude、GPT 或自訂 LLM",
-    "proF5": "股票研究、股票分析與回測",
-    "proF6": "航班搜尋與價格比較",
-    "proF7": "告警規則引擎 — 自訂觸發器、靜音時段、AES-256 加密通道",
-    "proF8": "市場觀察列表、宏觀與央行追蹤",
-    "proF9": "AI 市場影響與區域情報",
-    "choosePlan": "選擇方案",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "面向需要共享監測、API 存取、部署選項、TV 應用和直接支援的團隊。",
-    "entF1": "Pro 的全部,另加:",
-    "entF2": "即時衛星影象與 SAR",
-    "entF3": "具投資者人設的 AI 代理與 MCP",
-    "entF4": "基礎設施資產已對映",
-    "entF5": "資料聯結器（Splunk、Snowflake、Sentinel...）",
-    "entF6": "REST API + webhook + 批次匯出",
-    "entF7": "具 SSO/MFA/RBAC 的團隊工作區",
-    "entF8": "White-label 與可嵌入面板",
-    "entF9": "用於 SOC 牆和交易大廳的 Android TV 應用",
-    "entF10": "雲、本地或氣隙部署",
-    "entF11": "專屬上手與支援",
-    "entCta": "聯絡銷售",
-    "freeF2": "精選資訊源、標註來源和地圖圖層",
-    "proF10": "Intel 記憶庫 — 歷史搜尋、時間線和相似事件查詢"
-  },
   "whyUpgrade": {
-    "title": "為什麼升級到 World Monitor Pro？",
+    "title": "在頭條新聞前瞭解最新動態",
     "noiseTitle": "搶先知曉",
     "noiseDesc": "AIS 異常 → Brent 跳升 → 不到一分鐘就到您的 Slack。訊號,而非標題。",
     "fasterTitle": "問什麼都行",
@@ -143,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "PRO 等級",
-    "title": "World Monitor AI 分析師做什麼？",
+    "title": "股票、宏觀經濟和地緣政治的 AI 分析師",
     "subtitle": "免費儀表板向您展示世界。Pro 則給您一位可問詢的分析師、可訂閱的摘要和可構建其上的原語。股票、宏觀、地緣政治風險 — 以及它們之間的關聯。",
     "equityResearch": "股票研究",
     "equityResearchDesc": "具財務視覺化、分析師目標價與估值指標的全球股票分析。追蹤市場動力所在。",
@@ -307,8 +276,8 @@
     "a8": "MCP讓AI智慧體——Claude、GPT、自訂LLM——將World Monitor用作工具，查詢已註冊的服務。Pro版本已包含。Enterprise版本新增私有MCP伺服器和自訂部署。",
     "q9": "我可以自建面板嗎?",
     "a9": "可以。Pro 包含自訂小工具構建器 — 從 HTML、CSS 與 JavaScript 構建面板,並支援 AI 輔助修改。",
-    "q10": "我可以把 Claude 或 GPT 接入 WorldMonitor 嗎?",
-    "a10": "可以。MCP 已包含在 Pro 中 — 將 WorldMonitor 作為即時工具接入 Claude、GPT 或任何相容 MCP 的 LLM。",
+    "q10": "我可以把 Claude 或 GPT 接入 World Monitor 嗎?",
+    "a10": "可以。MCP 已包含在 Pro 中 — 將 World Monitor 作為即時工具接入 Claude、GPT 或任何相容 MCP 的 LLM。",
     "q11": "摘要的個性化程度如何?",
     "a11": "選擇你的頻率——每日、兩次每日或每週。我們針對你的警報規則和監控名單重新評分每條追蹤的新聞，跨源去重，併傳送最多30條排序專案，附帶AI評估和監控訊號。即時警報也可用於重要事件。",
     "q12": "重新整理率是多少?",
@@ -396,7 +365,7 @@
         "description": "為組織提供的自訂解決方案",
         "features": [
           "Pro + API 的所有功能",
-          "無限 API 請求",
+          "每天 10,000 次 API 請求，簽約可提高額度",
           "專屬支援",
           "自訂整合",
           "SLA 保證",
@@ -410,7 +379,7 @@
         "cta": "聯絡銷售"
       },
       "apiBusiness": {
-        "description": "在 WorldMonitor 資料基礎上推出您自己的產品",
+        "description": "在 World Monitor 資料基礎上推出您自己的產品",
         "features": [
           "涵蓋 API Starter 的全部內容",
           "用於面向客戶產品的 R1–R3 再分發權",
@@ -447,7 +416,8 @@
     "axisPersonal": "個人\t",
     "axisPersonalNote": "個人使用\t",
     "axisCommercial": "商業\t",
-    "axisCommercialNote": "工作、客戶與產品"
+    "axisCommercialNote": "工作、客戶與產品",
+    "cancelAnytime": "隨時從您的帳戶取消。您可以繼續使用至所付費期間的結束。"
   },
   "welcome": {
     "meta": {
@@ -476,17 +446,17 @@
       "sub": "新聞報道之前，您已經瞭解。",
       "ctaPrimary": "啟動儀表板\t",
       "ctaFree": "免費 · 無需註冊 · 秒速載入\t",
-      "ctaSecondary": "檢視人們如何使用它 ↓\t",
       "trustUsers": "200 萬+ 使用者\t",
       "trustOpenSource": "開源 · AGPL-3.0\t",
       "screenshotAlt": "World Monitor 即時情報儀表板 — 包含衝突、海運和市場圖層的全球地圖\t",
       "plateNote": "從即時地圖捕獲 — 點選開啟\t",
       "trustBuild": "構建應用：\t",
-      "positioningLink": "WorldMonitor 不是開源的 Palantir\t",
+      "positioningLink": "World Monitor 不是開源的 Palantir\t",
       "asOf": "截至{{date}}",
       "whatIsTitle": "World Monitor 是什麼？",
       "whatIsBody": "World Monitor 是一款免費（$0）、開源（AGPL-3.0）的儀表板，供 200 多萬人使用。它將來自 {{providers}} 個歸屬提供商的 {{feeds}} 條新聞和 OSINT 源流式傳輸到一張即時世界地圖上，包括 {{mapLayers}} 種地圖圖層型別，涵蓋地緣政治、市場、海運、航空和網路安全。它關聯這些資料，使匯聚事件在登上新聞頭條前就浮現出來。每個資料都有溯源，每種方法都有文件記錄。",
-      "whatIsBestFor": "最適合需要即時地緣政治訊號的分析師、記者、交易員和開發者。"
+      "whatIsBestFor": "最適合需要即時地緣政治訊號的分析師、記者、交易員和開發者。",
+      "ctaPro": "Pro 版本起價 {{price}}/月"
     },
     "live": {
       "eyebrow": "即時線上\t",
@@ -739,5 +709,8 @@
     "m6": "基於 Sentinel-5P 衛星 NO2 資料的工業活動地圖",
     "m7": "230 個經濟體及任意國家對之間的資本流動，面向 AI 智慧體和 API",
     "m8": "終端儀表盤和可縮放的 CLI 地圖 — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "我們監測的資訊源"
   }
 }

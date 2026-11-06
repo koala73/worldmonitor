@@ -13,6 +13,7 @@ import type { Doc } from "../_generated/dataModel";
 import { isAccountDeleting } from "../accountDeletion/guard";
 import { redactBillingPayload, tombstoneUserId } from "../accountDeletion/registry";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { enterpriseMembershipCandidate } from "../lib/enterpriseAccounts";
 import {
   PLAN_PRECEDENCE,
   PRODUCT_CATALOG,
@@ -408,7 +409,7 @@ function webhookAmount(data: Pick<DodoPaymentData, "total_amount" | "amount">): 
 // happens entirely inside the entitlement check (3s Convex fetch budget + 5s
 // Redis write timeout, ~8s worst case). Tool-level fetch timeouts (up to 25s)
 // do NOT extend that span — the marker write is not deferred to request end.
-const ENTITLEMENT_CACHE_RESYNC_DELAY_MS = 15_000;
+export const ENTITLEMENT_CACHE_RESYNC_DELAY_MS = 15_000;
 
 /**
  * Creates or updates the entitlements record for a given user.
@@ -652,7 +653,9 @@ async function pickBestAcceptedBusinessGrant(
  *   3. Also consider any accepted Business Pro grant tied to a covering
  *      `api_business` subscription; it confers Pro-tier features without
  *      creating a fake subscription row.
- *   4. Include the recorded comp source. Prefer live coverage, then compare
+ *   4. Also consider an active membership of a live Enterprise contract
+ *      account: Enterprise until the contract end.
+ *   5. Include the recorded comp source. Prefer live coverage, then compare
  *      tier > PLAN_PRECEDENCE > currentPeriodEnd. When another source
  *      outlives the winner, recheck at the winner's expiry; otherwise
  *      downgrade to free when no sources remain.
@@ -690,6 +693,9 @@ export async function recomputeEntitlementFromAllSubs(
     .map(({ planKey, currentPeriodEnd }) => ({ planKey, currentPeriodEnd }));
   const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, at);
   if (bestGrant) candidates.push(bestGrant);
+  // Active membership of a live Enterprise contract (convex/enterpriseAccounts.ts).
+  const membership = await enterpriseMembershipCandidate(ctx, userId, at);
+  if (membership) candidates.push(membership);
 
   const comp = entitlement?.compPlanKey && entitlement.compUntil && entitlement.compUntil > at
     ? { planKey: entitlement.compPlanKey, currentPeriodEnd: entitlement.compUntil }

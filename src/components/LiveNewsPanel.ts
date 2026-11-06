@@ -7,7 +7,7 @@ import { loadFromStorage, saveToStorage } from '@/utils';
 import { STORAGE_KEYS } from '@/config';
 
 import { getActiveLiveMedia, playAllLiveMedia, registerLiveMediaStarter, releaseLiveMediaPlayback, requestLiveMediaPlayback, stopLiveMediaPlayback, unregisterLiveMediaStarter, type LiveMediaStopReason } from '@/services/live-media-controller';
-import { getLiveStreamsAlwaysOn, subscribeLiveStreamsAlwaysOnChange } from '@/services/live-stream-settings';
+import { getLiveNewsAutoplay, subscribeLiveNewsAutoplayChange } from '@/services/live-stream-settings';
 import { subscribeLiveMediaIdle } from '@/services/live-media-idle';
 import { sourceListsChannel, type LiveVideoSource, type OfflineReason } from '@/services/live-video/model';
 import { withResolvedLiveVideos } from '@/services/live-video/resolved';
@@ -77,7 +77,8 @@ export class LiveNewsPanel extends Panel {
     if (document.hidden) stopLiveMediaPlayback('live-news', 'hidden');
     else this.startAlwaysOnPlaybackIfVisible();
   };
-  private alwaysOn = getLiveStreamsAlwaysOn();
+  // Live News autoplay (on by default); the webcam wall keeps its own opt-in.
+  private alwaysOn = getLiveNewsAutoplay();
   private unsubscribeStreamSettings: (() => void) | null = null;
   private unsubscribeIdle: (() => void) | null = null;
 
@@ -171,7 +172,7 @@ export class LiveNewsPanel extends Panel {
     this.setupLazyInit();
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
     this.unsubscribeIdle = subscribeLiveMediaIdle((idleAfterMs) => this.stopForIdle(idleAfterMs));
-    this.unsubscribeStreamSettings = subscribeLiveStreamsAlwaysOnChange((alwaysOn) => {
+    this.unsubscribeStreamSettings = subscribeLiveNewsAutoplayChange((alwaysOn) => {
       this.alwaysOn = alwaysOn;
       if (!alwaysOn) {
         // Cancel any pending lazy-init so leaving always-on cannot auto-start playback without intent.
@@ -246,20 +247,32 @@ export class LiveNewsPanel extends Panel {
   }
 
   private setupLazyInit(): void {
+    // Re-checked when it runs: during the wait the viewer may collapse the panel, scroll it
+    // away or switch tabs. Off screen, observe again so the start waits for the panel's return.
+    const startWhenVisible = () => {
+      this.idleCallbackId = null;
+      if (!this.alwaysOn || this.idleStoppedAfterMs !== null || !this.canHostLiveMedia()) return;
+      if (document.hidden || !this.isPanelVisible()) {
+        if (!this.lazyObserver) this.setupLazyInit();
+        return;
+      }
+      this.triggerInit();
+    };
     this.lazyObserver = new IntersectionObserver(
       (entries) => {
         if (entries.some(e => e.isIntersecting)) {
           this.lazyObserver?.disconnect();
           this.lazyObserver = null;
           // An idle stop ends only through Resume or Play; scrolling back into view is neither.
-          if (!this.alwaysOn || this.idleStoppedAfterMs !== null) return;
+          // A collapsed panel shows only its header, so it waits for onCollapsedChange.
+          if (!this.alwaysOn || this.idleStoppedAfterMs !== null || !this.canHostLiveMedia()) return;
           if ('requestIdleCallback' in window) {
             this.idleCallbackId = (window as any).requestIdleCallback(
-              () => { this.idleCallbackId = null; this.triggerInit(); },
+              startWhenVisible,
               { timeout: 1000 },
             );
           } else {
-            this.idleCallbackId = setTimeout(() => { this.idleCallbackId = null; this.triggerInit(); }, 1000);
+            this.idleCallbackId = setTimeout(startWhenVisible, 1000);
           }
         }
       },
@@ -303,7 +316,7 @@ export class LiveNewsPanel extends Panel {
       this.videoSession !== null ||
       this.pendingMount ||
       this.ownsLiveNewsMedia() ||
-      (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.isPanelVisible());
+      (this.idleStoppedAfterMs === null && this.alwaysOn && !document.hidden && this.canHostLiveMedia() && this.isPanelVisible());
   }
 
   private ownsLiveMediaForChannel(channelId: string): boolean {
@@ -320,7 +333,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private startAlwaysOnPlaybackIfVisible(): void {
-    if (!this.alwaysOn || document.hidden || !this.element.isConnected || !this.isPanelVisible()) return;
+    if (!this.alwaysOn || document.hidden || !this.canHostLiveMedia() || !this.isPanelVisible()) return;
     // An idle stop ends only through Resume or Play, so autoplay must not restart it on tab return.
     if (this.idleStoppedAfterMs !== null || this.ownsActiveLiveMedia()) return;
     this.beginPlayback('implicit');
@@ -959,6 +972,10 @@ export class LiveNewsPanel extends Panel {
       this.destroyPlayer();
       this.renderPlaceholder();
     }
+  }
+
+  protected override onCollapsedChange(collapsed: boolean): void {
+    if (!collapsed) this.resumeLiveMediaForShow();
   }
 
   public resumeLiveMediaForShow(): void {

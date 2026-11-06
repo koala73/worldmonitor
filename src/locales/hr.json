@@ -1580,6 +1580,20 @@
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
         }
+      },
+      "measure": {
+        "title": "Izmjeri udaljenost",
+        "units": "Jedinice udaljenosti",
+        "pointA": "Odaberi točku A. Klikni na kartu ili pritisni Enter na sredini karte.",
+        "pointB": "Odaberi točku B. Pomakni kartu i pritisni Enter za njenu sredinu.",
+        "geodesic": "Geodetska udaljenost",
+        "note": "Između kliknutih koordinata; nije ruta niti provjeren razmak imovine. Escape izlazi.",
+        "cancel": "Otkaži odabir",
+        "cancelShort": "Otkaži",
+        "resetShort": "Resetiraj",
+        "exitShort": "Izlaz",
+        "reset": "Resetiraj mjerenje",
+        "exit": "Izlaz iz mjerenja"
       }
     },
     "cii": {
@@ -1640,8 +1654,8 @@
       "analysisFrameworksFromAgentskills": "Iz agentskills.io",
       "analysisFrameworksPasteJson": "Zalijepi JSON",
       "analysisFrameworksSaveToLibrary": "Spremi u knjižnicu",
-      "streamAlwaysOnLabel": "Automatski pokreni prijenose uživo na nadzornoj ploči",
-      "streamAlwaysOnDesc": "Automatski pokreće Live News i Live Webcams kada su vidljivi. Ostavite isključeno kako bi se video učitao tek nakon klika na Pokreni.",
+      "streamAlwaysOnLabel": "Automatska reprodukcija živih web-kamera",
+      "streamAlwaysOnDesc": "Pokreće video uživo web-kamera čim se pojave na zaslonu. Ostavite isključeno da se učitavaju samo kada ih sami pokrenete.",
       "frameworkNote": "Primjenjuje se samo na analizu generirane od strane klijenta",
       "loadingServerInsights": "Učitavanje server uvida...",
       "usingCachedBrief": "Korištenje keširanih sažetaka...",
@@ -1675,7 +1689,9 @@
       "briefStoryDetails": "Detalji priče ({{count}})",
       "streamIdleStopLabel": "Zaustavi live video kada je korisnik neaktivan",
       "streamIdleStopDesc": "Zaustavlja Live News i Live Webcams nakon ovog vremena bez aktivnosti i prikazuje obavijest u panelu.",
-      "streamIdleStopNever": "Nikada"
+      "streamIdleStopNever": "Nikada",
+      "liveNewsAutoplayLabel": "Automatska reprodukcija uživo vijesti",
+      "liveNewsAutoplayDesc": "Pokreće video uživo vijesti, utišan, čim se pojavi na zaslonu. Isključite ovo da se video učita samo kada ga sami pokrenete."
     },
     "settings": {
       "exportSettings": "Izvezi postavke",
@@ -2642,8 +2658,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro je lansiran",
-      "tagline": "Više signala, manje šuma. Više AI sažetaka. Geopolitički i equity istraživač samo za vas.",
+      "headline": "Dnevni AI-briefinzi putem e-maila ili Slacka",
+      "tagline": "plus WM Analyst, pravila upozorenja i MCP za Claude",
       "cta": "Nadogradi na Pro →",
       "dismiss": "Odbaci"
     },
@@ -3283,7 +3299,44 @@
     },
     "apt": {},
     "cyberThreat": {
-      "title": "KIBERNETSKA PRIJETNJA"
+      "title": "KIBERNETSKA PRIJETNJA",
+      "evidence": "Dokazi iz feed-a prijetnji",
+      "firstSeen": "Prvi put viđeno",
+      "explanations": {
+        "c2_server": "Feed izvještava o serveru za naredbe i kontrolu koji se koristi za slanje uputa zlonamjernom kodu.",
+        "malware_host": "Feed izvještava o adresi koja se koristi za hostiranje zlonamjernog koda.",
+        "phishing": "Feed izvještava o pokazatelju povezanom s phishingom.",
+        "malicious_url": "Feed izvještava o URL-u povezanom sa zlonamjernom aktivnošću."
+      },
+      "downloadTag": "malware_download: izvor izvještava o lokaciji preuzimanja zlonamjernog koda.",
+      "familyNote": "Oznaka obitelji zlonamjernog koda dolazi iz feed-a prijetnji. Ne identificira osobu ili organizaciju.",
+      "approximateLocation": "Mapirana lokacija je približni kontekst izvedeni iz IP-a, a ne verificirana fizička lokacija domaćina.",
+      "network": {
+        "title": "Informacije o mreži",
+        "privacy": "Proširi za zahtjev pasivnih mrežnih podataka iz RIPEstat-a. Pokazatelj IP-a se dijeli s tim pružateljem.",
+        "disclaimer": "Mrežna registracija i usmjeravanje ne identificiraju napadača niti čine pružatelja odgovornim za aktivnost.",
+        "loading": "Učitavanje informacija o mreži…",
+        "unknown": "Nije dostupno",
+        "disabled": "Mrežni pregled nije omogućen.",
+        "invalid": "Mrežni pregled zahtijeva javnu IP adresu.",
+        "unavailable": "Mrežni pregled neuspješan. Zatvori i ponovno otvori skočni prozor da pokušaš kasnije.",
+        "rateLimited": "Mrežni pregled je privremeno ograničen. Pokušaj kasnije.",
+        "noData": "Pružatelj nije vratio mrežne informacije za tu IP adresu.",
+        "partial": "Dio mrežnih informacija nije mogao biti dohvaćen.",
+        "ip": "IP",
+        "asn": "Izvorni ASN",
+        "operator": "Prijavljeni držatelj ASN-a / mrežni operator",
+        "prefix": "Prijavljeni usmjeravaški prefiks",
+        "hostname": "Obrnuti DNS naziv domaćina (rDNS)",
+        "lookupAt": "Vrijeme mrežnog pregleda",
+        "routingAt": "Vrijeme podataka usmjeravanja",
+        "broaderPrefix": "Pružatelj se podudarao sa širim usmjeravačkim prefiksom. Ovo nije točan zapis dodjele IP-a.",
+        "rdnsNote": "rDNS je DNS oznaka, a ne dokaz vlasništva. Registrirana organizacija i precizna lokacija nisu dostavljeni ovim pregledom.",
+        "copy": "Kopiraj",
+        "copied": "Kopirano.",
+        "copyFailed": "Kopiranje neuspješno. Odaberi tekst da ga kopiraš."
+      },
+      "firstSeenNote": "Ovo je najraniji dostupan datum indikatora dostupan kroz feedove ili World Monitor promatranja; može se razlikovati od datuma navedenog izvora."
     },
     "nuclear": {
       "types": {
@@ -3454,6 +3507,28 @@
       "readReport": "Pročitaj puni izvještaj"
     },
     "datacenter": {
+      "details": {
+        "more": "Više pojedinosti",
+        "owner": "Vlasnik / pružatelj klastera (skup podataka)",
+        "power": "Podatak o snazi u skupu podataka",
+        "powerCaveat": "Kapacitet snage može biti prijavljen ili procijenjen. Ovo nije mjerenje trenutačne potrošnje električne energije.",
+        "powerBasis": "Osnova podatka o snazi",
+        "reported": "Prijavljeno",
+        "estimated": "Procijenjeno",
+        "notAvailable": "Nije dostupno",
+        "location": "Preciznost lokacije",
+        "locationUnknown": "Nepotvrđena točka na karti; ne upotrebljavajte kao točnu adresu objekta.",
+        "site": "Objekt (potvrđen izvorom)",
+        "city": "Samo grad",
+        "region": "Samo regija",
+        "country": "Samo država",
+        "dataset": "Skup podataka GPU klastera Epoch AI",
+        "evidence": "Potkrepljujući izvor",
+        "sourceDate": "Datum objave izvora",
+        "metadataReviewedAt": "Metapodaci provjereni",
+        "firstOperationalDate": "Datum početka rada (skup podataka)",
+        "freshness": "Spremljena snimka skupa podataka. Trenutačni status i specifikacije možda su se promijenili."
+      },
       "status": {
         "existing": "OPERATIVAN",
         "planned": "PLANIRANO",
@@ -3604,7 +3679,8 @@
       "vesselsCount": "{{count}} BRODOVA",
       "vessels": "BRODOVI",
       "trackedVessels": "PRAĆENI BRODOVI",
-      "showLess": "Prikaži manje"
+      "showLess": "Prikaži manje",
+      "backToGroup": "Natrag na skupinu"
     },
     "naturalEvent": {
       "closed": "ZATVORENO",

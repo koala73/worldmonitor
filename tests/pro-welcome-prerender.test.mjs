@@ -282,7 +282,7 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   assert.match(rootContent, /Launch the dashboard/);
   assert.match(rootContent, /Open source · AGPL-3\.0/);
   assert.match(rootContent, /href="\/blog\/posts\/worldmonitor-is-not-palantir\/"/);
-  assert.match(rootContent, /WorldMonitor is not an open-source Palantir/);
+  assert.match(rootContent, /World Monitor is not an open-source Palantir/);
   assert.match(rootContent, /Which World Monitor license do I need\?/);
   assert.match(rootContent, /API Business lets that organization embed World Monitor data/);
   assert.match(rootContent, /href="\/docs\/terms"[^>]*>worldmonitor\.app\/docs\/terms<\/a>/);
@@ -585,7 +585,7 @@ test('hero proof rail renders measured numerals with extractable labels', { skip
     [String(facts.heroProofStats.mapLayers), 'Map layer types'],
     [String(facts.heroProofStats.feeds), 'News &amp; OSINT feeds'],
     [String(facts.heroProofStats.providers), 'Attributed providers'],
-    [String(facts.heroProofStats.alertOrigins), 'Independent alert origins'],
+    [String(facts.depthProofStats.mcpTools), 'MCP tools'],
   ]) {
     assert.ok(content.includes(`>${value}</div>`), `hero rail must render the numeral ${value}`);
     assert.ok(content.includes(label), `hero rail must label the numeral ${label}`);
@@ -594,6 +594,7 @@ test('hero proof rail renders measured numerals with extractable labels', { skip
   assert.ok(railStart > 0, 'hero proof rail markup must be present');
   const rail = content.slice(railStart, content.indexOf('mt-8 flex', railStart));
   assert.doesNotMatch(rail, />(Shared|Curated|Attributed)</, 'hero numeral slots must not render adjectives');
+  assert.doesNotMatch(rail, /Independent alert origins/, 'a five-origin count beside 800+ providers reads as thin');
 });
 
 test('homepage answers "What is World Monitor?" and carries page date metadata', { skip }, () => {

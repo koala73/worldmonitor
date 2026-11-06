@@ -1230,8 +1230,9 @@ export class DataLoaderManager implements AppModule {
         }
       } catch { /* non-fatal */ }
     }
-    // Intelligence signals: run for any variant that shows these panels
-    if (shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
+    // Shared displacement links must hydrate the map even with the panel offscreen.
+    if ((this.ctx.mapLayers.displacement && runOncePerViewport('displacement-layer'))
+      || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
       tasks.push({ name: 'intelligence', task: () => runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
     // Internet Disruptions has no other gate: the intelligence pass above keys on

@@ -37,6 +37,75 @@ afterEach(() => {
 });
 
 describe('Widget chat preflight without a network', () => {
+  it('does not send a closed request after its token resolves into a new request', async () => {
+    setOnline(true);
+    let releaseToken!: (token: string) => void;
+    vi.mocked(getClerkToken)
+      .mockResolvedValueOnce('jwt') // First preflight.
+      .mockImplementationOnce(() => new Promise(resolve => { releaseToken = resolve; }))
+      .mockResolvedValue('jwt');
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', vi.fn((_url, init) => {
+      if (init?.method !== 'POST') return Promise.resolve(new Response(JSON.stringify({ ok: true, proKeyConfigured: true })));
+      posts.push(String(init.body));
+      return new Promise<Response>(() => {});
+    }));
+    const send = (prompt: string) => {
+      document.querySelector<HTMLTextAreaElement>('.widget-chat-input')!.value = prompt;
+      document.querySelector<HTMLButtonElement>('.widget-chat-send')!.click();
+    };
+    open();
+    await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightConnected')));
+    send('Retired prompt');
+    await vi.waitFor(() => expect(releaseToken).toBeTypeOf('function'));
+    closeWidgetChatModal();
+    open();
+    await vi.waitFor(() => expect(readiness()).toBe(t('widgets.preflightConnected')));
+    send('Current prompt');
+    await vi.waitFor(() => expect(posts).toHaveLength(1));
+    releaseToken('late-jwt');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(posts[0]!).prompt).toBe('Current prompt');
+    expect(document.querySelector<HTMLButtonElement>('.widget-chat-send')!.disabled).toBe(true);
+  });
+
+  it('keeps a reopened request deadline when the closed request settles late', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      setOnline(true);
+      let rejectOld!: (error: Error) => void;
+      const postSignals: AbortSignal[] = [];
+      vi.stubGlobal('fetch', vi.fn((_url, init) => {
+        if (init?.method !== 'POST') return Promise.resolve(new Response(JSON.stringify({ ok: true, proKeyConfigured: true })));
+        postSignals.push(init.signal);
+        if (postSignals.length === 1) return new Promise<Response>((_resolve, reject) => { rejectOld = reject; });
+        return new Promise<Response>(() => {});
+      }));
+      const send = () => {
+        document.querySelector<HTMLTextAreaElement>('.widget-chat-input')!.value = 'Test widget';
+        document.querySelector<HTMLButtonElement>('.widget-chat-send')!.click();
+      };
+      open();
+      await vi.advanceTimersByTimeAsync(0);
+      send();
+      await vi.advanceTimersByTimeAsync(0);
+      closeWidgetChatModal();
+      open();
+      await vi.advanceTimersByTimeAsync(0);
+      send();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(postSignals).toHaveLength(2);
+      rejectOld(new DOMException('Closed', 'AbortError'));
+      await vi.advanceTimersByTimeAsync(200_000);
+      expect(postSignals[1]!.aborted).toBe(true);
+      expect(document.querySelector('.widget-chat-footer-status')!.textContent).toBe(t('widgets.requestTimedOut'));
+    } finally {
+      closeWidgetChatModal();
+      vi.useRealTimers();
+    }
+  });
+
   it('says the browser is offline instead of asking a Pro user to upgrade', async () => {
     setOnline(false);
     // Clerk cannot mint a token offline; a token-less request is what the

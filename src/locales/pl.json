@@ -1234,6 +1234,20 @@
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"
         }
+      },
+      "measure": {
+        "title": "Zmierz odległość",
+        "units": "Jednostki odległości",
+        "pointA": "Wybierz punkt A. Kliknij na mapę lub naciśnij Enter w centrum mapy.",
+        "pointB": "Wybierz punkt B. Przesunięcie mapy i naciśnij Enter, aby użyć jej centrum.",
+        "geodesic": "Odległość geodezyjnego",
+        "note": "Pomiędzy klikniętymi współrzędnymi; nie jest trasą ani zweryfikowanym rozdzieleniem zasobów. Escape kończy.",
+        "cancel": "Anuluj wybór",
+        "cancelShort": "Anuluj",
+        "resetShort": "Resetuj",
+        "exitShort": "Wyjdź",
+        "reset": "Resetuj pomiar",
+        "exit": "Wyjdź z pomiaru"
       }
     },
     "climate": {
@@ -1758,8 +1772,8 @@
       "badgeAnimDesc": "Animuj odznaki aktualizacji w nagłówkach paneli",
       "headlineMemoryLabel": "Pamięć nagłówków",
       "headlineMemoryDesc": "Zapamiętuj widziane nagłówki, aby wyróżnić nowe",
-      "streamAlwaysOnLabel": "Automatycznie odtwarzaj transmisje na żywo na pulpicie",
-      "streamAlwaysOnDesc": "Automatycznie uruchamia Live News i Live Webcams, gdy są widoczne. Pozostaw wyłączone, aby wideo ładowało się dopiero po kliknięciu Odtwórz.",
+      "streamAlwaysOnLabel": "Automatyczne odtwarzanie transmisji na żywo z kamer",
+      "streamAlwaysOnDesc": "Rozpoczyna transmisje z kamer internetowych zaraz po ich pojawienia się na ekranie. Pozostaw tę opcję wyłączoną, aby załadować je tylko po ręcznym uruchomieniu.",
       "globeRenderScaleOptions": {
         "1": "Eko (1x)",
         "2": "4K (2x)",
@@ -1810,7 +1824,9 @@
       "briefStoryDetails": "Szczegóły wiadomości ({{count}})",
       "streamIdleStopLabel": "Zatrzymaj transmisję live gdy nieaktywna",
       "streamIdleStopDesc": "Zatrzymuje Live News i Live Webcams po tym czasie bez aktywności i wyświetla powiadomienie w panelu.",
-      "streamIdleStopNever": "Nigdy"
+      "streamIdleStopNever": "Nigdy",
+      "liveNewsAutoplayLabel": "Automatyczne odtwarzanie aktualności na żywo",
+      "liveNewsAutoplayDesc": "Rozpoczyna odtwarzanie wideo aktualności na żywo, bez dźwięku, zaraz po jego pojawienia się na ekranie. Wyłącz tę opcję, aby wideo załadowało się tylko po jego ręcznym uruchomieniu."
     },
     "etfFlows": {
       "previousColumns": "Poprzednie kolumny",
@@ -2576,8 +2592,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro został uruchomiony",
-      "tagline": "Więcej sygnału, mniej szumu. Więcej briefów AI. Geopolityk i analityk akcji tylko dla Ciebie.",
+      "headline": "Codzienne raporty AI e-mailem lub na Slacku",
+      "tagline": "plus WM Analyst, reguły alertów i MCP dla Claude",
       "cta": "Przejdź na Pro →",
       "dismiss": "Odrzuć"
     },
@@ -3215,7 +3231,44 @@
       "open": "OTWARTE"
     },
     "cyberThreat": {
-      "title": "CYBERZAGROŻENIE"
+      "title": "CYBERZAGROŻENIE",
+      "evidence": "Dowody z kanału zagrożeń",
+      "firstSeen": "Pierwsza obserwacja",
+      "explanations": {
+        "c2_server": "Kanał zagrożeń zgłasza serwer command-and-control używany do wysyłania instrukcji złośliwemu oprogramowaniu.",
+        "malware_host": "Kanał zagrożeń zgłasza adres hosting złośliwego oprogramowania.",
+        "phishing": "Kanał zagrożeń zgłasza wskaźnik związany z phishingiem.",
+        "malicious_url": "Kanał zagrożeń zgłasza adres URL związany ze złośliwą aktywnością."
+      },
+      "downloadTag": "malware_download: źródło zgłasza lokalizację pobierania złośliwego oprogramowania.",
+      "familyNote": "Etykieta rodziny złośliwego oprogramowania pochodzi z kanału zagrożeń. Nie identyfikuje osoby ani organizacji.",
+      "approximateLocation": "Zmapowana lokalizacja to przybliżony kontekst pochodzenia adresu IP, a nie zweryfikowana fizyczna lokalizacja hosta.",
+      "network": {
+        "title": "Informacje sieciowe",
+        "privacy": "Rozwiń, aby zażądać pasywnych danych sieciowych z RIPEstat. Adres IP wskaźnika jest udostępniany temu dostawcy.",
+        "disclaimer": "Dane rejestracyjne sieci i routing nie identyfikują atakującego ani nie oznaczają, że dostawca odpowiada za tę działalność.",
+        "loading": "Ładowanie informacji sieciowych…",
+        "unknown": "Niedostępne",
+        "disabled": "Wyszukiwanie sieciowe nie jest włączone.",
+        "invalid": "Wyszukiwanie sieciowe wymaga publicznego adresu IP.",
+        "unavailable": "Wyszukiwanie sieciowe nie powiodło się. Zamknij i ponownie otwórz okno popup, aby spróbować ponownie później.",
+        "rateLimited": "Wyszukiwanie sieciowe jest tymczasowo ograniczone. Spróbuj ponownie później.",
+        "noData": "Dostawca nie zwrócił informacji sieciowych dla tego adresu IP.",
+        "partial": "Nie wszystkie informacje sieciowe mogły zostać pobrane.",
+        "ip": "Adres IP",
+        "asn": "ASN pochodzenia",
+        "operator": "Zgłoszony właściciel ASN / operator sieci",
+        "prefix": "Zgłoszony prefiks routingu",
+        "hostname": "Nazwa hosta odwrotnego DNS (rDNS)",
+        "lookupAt": "Czas wyszukiwania sieciowego",
+        "routingAt": "Czas danych routingu",
+        "broaderPrefix": "Dostawca dopasował szerszy prefiks routingu. To nie jest dokładny rekord alokacji adresu IP.",
+        "rdnsNote": "rDNS to etykieta DNS, a nie dowód własności. Zarejestrowana organizacja i dokładna lokalizacja nie są dostarczane przez to wyszukiwanie.",
+        "copy": "Kopiuj",
+        "copied": "Skopiowano.",
+        "copyFailed": "Kopiowanie nie powiodło się. Zaznacz tekst, aby go skopiować."
+      },
+      "firstSeenNote": "Jest to najwcześniejsza dostępna data wskaźnika z feedów lub obserwacji World Monitor; może różnić się od daty podanego źródła."
     },
     "nuclear": {
       "types": {
@@ -3386,6 +3439,28 @@
       "readReport": "Przeczytaj pełny raport"
     },
     "datacenter": {
+      "details": {
+        "more": "Więcej szczegółów",
+        "owner": "Właściciel / dostawca klastra (zbiór danych)",
+        "power": "Wartość mocy w zbiorze danych",
+        "powerCaveat": "Moc może być zgłoszona lub szacowana. Nie jest to pomiar bieżącego zużycia energii elektrycznej.",
+        "powerBasis": "Podstawa wartości mocy",
+        "reported": "Zgłoszona",
+        "estimated": "Szacowana",
+        "notAvailable": "Brak danych",
+        "location": "Dokładność lokalizacji",
+        "locationUnknown": "Niezweryfikowany punkt na mapie; nie używaj jako dokładnego adresu obiektu.",
+        "site": "Obiekt (zweryfikowany źródłem)",
+        "city": "Tylko miasto",
+        "region": "Tylko region",
+        "country": "Tylko kraj",
+        "dataset": "Zbiór danych klastrów GPU Epoch AI",
+        "evidence": "Źródło potwierdzające",
+        "sourceDate": "Data publikacji źródła",
+        "metadataReviewedAt": "Data sprawdzenia metadanych",
+        "firstOperationalDate": "Data pierwszego uruchomienia (zbiór danych)",
+        "freshness": "Zapisany stan zbioru danych. Obecny status i specyfikacje mogły się zmienić."
+      },
       "status": {
         "existing": "OPERACYJNY",
         "planned": "PLANOWANY",
@@ -3536,7 +3611,8 @@
       "vesselsCount": "{{count}} STATKI",
       "vessels": "STATKI",
       "trackedVessels": "STATKI GĄSOWE",
-      "showLess": "Pokaż mniej"
+      "showLess": "Pokaż mniej",
+      "backToGroup": "Powrót do grupy"
     },
     "naturalEvent": {
       "closed": "ZAMKNIĘTE",

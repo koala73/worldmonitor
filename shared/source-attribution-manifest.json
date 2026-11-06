@@ -9374,6 +9374,24 @@
       ]
     },
     {
+      "host": "stat.ripe.net",
+      "provider": "stat.ripe.net",
+      "kind": "structured",
+      "observed": true,
+      "catalogActive": false,
+      "license": "RIPEstat Service Terms section 3.3: commercial reuse and redistribution require prior written RIPE NCC permission. Integration disabled by default until authorized.",
+      "attribution": "RIPEstat / RIPE NCC; routing origins from RIS and ASN holders from WHOIS; optional reverse DNS. Not attacker attribution. See https://www.ripe.net/about-us/legal/ripestat-service-terms-and-conditions/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/cyber/v1/get-network-info.ts"
+        },
+        {
+          "path": "src/components/cyber-network-info.ts"
+        }
+      ]
+    },
+    {
       "host": "stat.uz",
       "provider": "stat.uz",
       "kind": "structured",
@@ -12338,6 +12356,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.defenseone.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.deutschlandfunk.de",
+      "provider": "www.deutschlandfunk.de",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.deutschlandfunk.de and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -15418,6 +15450,9 @@
           "path": "server/_shared/deprecation-policy.ts"
         },
         {
+          "path": "server/worldmonitor/cyber/v1/get-network-info.ts"
+        },
+        {
           "path": "server/worldmonitor/intelligence/v1/_country-brief-evidence.ts"
         },
         {
@@ -15540,6 +15575,20 @@
         },
         {
           "path": "src/services/live-video/session.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.zdfheute.de",
+      "provider": "www.zdfheute.de",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.zdfheute.de and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
         }
       ]
     },
