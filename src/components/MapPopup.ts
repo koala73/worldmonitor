@@ -328,7 +328,7 @@ export class MapPopup {
     document.body.appendChild(this.popup);
 
     // Retain the group's DOM so Back restores expansion and scroll state.
-    let groupView: { nodes: Node[]; bodyScroll: number; scroll: number; member: HTMLButtonElement } | null = null;
+    let groupView: { nodes: Node[]; scroll: number; member: HTMLButtonElement } | null = null;
 
     // Reconcile the cached height against reality AFTER the frame has painted.
     // rAF alone is not enough: rAF callbacks run before that frame's paint, and
@@ -431,7 +431,6 @@ export class MapPopup {
         if (!vessel) return;
         groupView = {
           nodes: Array.from(openedPopup.childNodes),
-          bodyScroll: openedPopup.querySelector('.popup-body')?.scrollTop ?? 0,
           scroll: openedPopup.scrollTop,
           member,
         };
@@ -450,8 +449,6 @@ export class MapPopup {
         groupView = null;
         this.clampPopupToViewport();
         openedPopup.scrollTop = saved.scroll;
-        const body = openedPopup.querySelector('.popup-body');
-        if (body) body.scrollTop = saved.bodyScroll;
         saved.member.focus({ preventScroll: true });
         return;
       }

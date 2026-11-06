@@ -267,7 +267,8 @@ ensureHotspotsRendered();
 
 window.__mobileMapIntegrationHarness = {
   seedNavalGroup: () => {
-    const names = ['USS Boxer', 'USS Comstock', 'USS Portland', 'USS Mustin', 'USS Example', 'USS Test', 'Unknown vessel'];
+    const names = ['USS Boxer', 'USS Comstock', 'USS Portland', 'USS Mustin', 'USS Example', 'USS Test', 'Unknown vessel',
+      ...Array.from({ length: 13 }, (_, index) => `Test vessel ${index + 8}`)];
     const vessels: MilitaryVessel[] = names.map((name, index) => ({
       id: `naval-test-${index}`, name, mmsi: index === 0 ? '123456789' : '',
       vesselType: index === 6 ? 'unknown' : 'amphibious', operator: 'usn', operatorCountry: 'US',

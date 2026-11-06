@@ -13,6 +13,28 @@ for (const width of [1280, 390]) {
   test.describe(`Naval group navigation (${width}px)`, () => {
     test.use({ viewport: { width, height: 900 } });
 
+    test('restores the overflowing popup scroll position and selected row', async ({ page }, testInfo) => {
+      await page.goto('/tests/mobile-map-integration-harness.html?lang=en');
+      await page.waitForFunction(() => (window as HarnessWindow).__mobileMapIntegrationHarness?.ready);
+      await page.evaluate(() => (window as HarnessWindow).__mobileMapIntegrationHarness!.seedNavalGroup());
+      await page.locator('.vessel-cluster').click();
+      const popup = page.locator('.map-popup');
+      await popup.locator('.cluster-toggle').click();
+      const member = popup.locator('[data-vessel-index="19"]');
+      await member.scrollIntoViewIfNeeded();
+      await member.focus();
+      const scroll = await popup.evaluate(element => element.scrollTop);
+      expect(scroll).toBeGreaterThan(0);
+      await member.click();
+      await expect(popup.locator('.popup-title')).toHaveText('Test vessel 20');
+      expect(await popup.evaluate(element => element.scrollTop)).toBe(0);
+      await popup.locator('.popup-back').click();
+      expect(await popup.evaluate(element => element.scrollTop)).toBeCloseTo(scroll, 0);
+      await expect(member).toBeFocused();
+      await expect(member).toBeInViewport();
+      await popup.screenshot({ path: testInfo.outputPath(`scroll-restored-${width}.png`) });
+    });
+
     test('opens details without map movement and returns to expanded group', async ({ page }, testInfo) => {
       await page.goto('/tests/mobile-map-integration-harness.html?lang=en');
       await page.waitForFunction(() => (window as HarnessWindow).__mobileMapIntegrationHarness?.ready);

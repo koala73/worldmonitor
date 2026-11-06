@@ -36,20 +36,21 @@ describe('naval group member navigation', () => {
   });
 
   it('opens the exact hidden member and restores group DOM, expansion, scroll and focus', () => {
-    const original = document.querySelector('.map-popup');
+    const original = document.querySelector<HTMLElement>('.map-popup')!;
     click('.cluster-toggle');
     const body = document.querySelector<HTMLElement>('.popup-body')!;
-    body.scrollTop = 38;
+    original.scrollTop = 38;
     click('[data-vessel-index="5"]');
     expect(document.querySelector('.popup-title')?.textContent).toBe('Ship 5');
     expect(document.querySelector('.map-popup')).toBe(original);
+    expect(original.scrollTop).toBe(0);
     expect(document.body.textContent).toContain('Indian Ocean');
     expect(document.body.textContent).toContain('Position approximate');
     expect(document.querySelector('.popup-back')).toBe(document.activeElement);
     click('.popup-back');
     expect(document.querySelector('.popup-title')?.textContent).toBe(cluster.name);
     expect(document.querySelector('.popup-body')).toBe(body);
-    expect(body.scrollTop).toBe(38);
+    expect(original.scrollTop).toBe(38);
     expect(document.querySelector<HTMLElement>('.cluster-vessels-hidden')?.style.display).toBe('');
     expect(document.activeElement?.getAttribute('data-vessel-index')).toBe('5');
     click('.cluster-toggle');
