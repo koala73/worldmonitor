@@ -47,6 +47,7 @@ let _testProviders: {
   getTesterKeys?: () => string[];
   getClerkToken?: () => Promise<string | null>;
   isClerkUserSignedIn?: () => boolean | Promise<boolean>;
+  refreshClerkTokenAfterRejection?: (rejected: string) => Promise<string | null>;
 } | null = null;
 
 type PremiumFetchInit = RequestInit & { forcePremium?: boolean };
@@ -283,6 +284,34 @@ async function resolveClerkToken(): Promise<string | null> {
 }
 
 /**
+ * A token to replace one the edge just refused, or null when Clerk has nothing
+ * different to offer (signed out, revoked, or unreachable).
+ */
+async function refreshClerkTokenAfterRejection(rejected: string): Promise<string | null> {
+  if (_testProviders) {
+    return _testProviders.refreshClerkTokenAfterRejection
+      ? _testProviders.refreshClerkTokenAfterRejection(rejected)
+      : null;
+  }
+  const clerk = await import('@/services/clerk');
+  return clerk.refreshClerkTokenAfterRejection(rejected);
+}
+
+/**
+ * Whether the request can be sent a second time unchanged. A stream body is
+ * consumed by the first send, and a `Request` input carries its own body.
+ */
+function isReplayableRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
+  if (typeof Request !== 'undefined' && input instanceof Request && input.body !== null) return false;
+  const body = init?.body;
+  return body == null
+    || typeof body === 'string'
+    || body instanceof URLSearchParams
+    || body instanceof ArrayBuffer
+    || ArrayBuffer.isView(body);
+}
+
+/**
  * Whether a Clerk user is currently present. Gates the token retry: a present
  * user means a null token is a transient boot-window artifact worth retrying;
  * an absent user means a genuinely anonymous visitor who must NOT pay the
@@ -361,11 +390,28 @@ export async function premiumFetch(
       }
       if (token) {
         existing.set('Authorization', `Bearer ${token}`);
-        // `return await`, not a bare `return`: this is inside the enclosing
-        // try, and only an awaited rejection reaches its catch.
-        return await fetchReportingServerErrors(
+        // `await`, not a bare `return`: this is inside the enclosing try, and
+        // only an awaited rejection reaches its catch.
+        const res = await fetchReportingServerErrors(
           input,
           { ...withCredentials(requestInit), headers: existing },
+        );
+        // A 401 to a bearer request says the edge refused this token (a 403 is
+        // the entitlement answer). The client judged it unexpired, but a tab
+        // resumed from a freeze or a drifted clock can still send one the edge
+        // no longer accepts (Sentry WORLDMONITOR-1CM: eight country-brief calls
+        // 401'd while a sibling 300 ms later on a refreshed token got 200).
+        // Refresh once and replay; a second 401 is final.
+        if (res.status !== 401 || requestInit?.signal?.aborted || !isReplayableRequest(input, requestInit)) {
+          return res;
+        }
+        const fresh = await refreshClerkTokenAfterRejection(token);
+        if (!fresh) return res;
+        const replayHeaders = new Headers(existing);
+        replayHeaders.set('Authorization', `Bearer ${fresh}`);
+        return await fetchReportingServerErrors(
+          input,
+          { ...withCredentials(requestInit), headers: replayHeaders },
         );
       }
     } catch (error) {

@@ -1183,6 +1183,31 @@ export async function getClerkToken(): Promise<string | null> {
   return promise;
 }
 
+/**
+ * A replacement for a token the edge just refused with 401, or null when Clerk
+ * has nothing different to offer.
+ *
+ * The client judged `rejected` unexpired, so either its clock sample is off or
+ * the request sat between signing and the wire (a frozen tab resumed). Drop the
+ * cache only while it still holds `rejected`, and reset the clock state so
+ * `getClerkToken()` forces a fresh, uncached token and re-samples the skew.
+ *
+ * No generation bump: a burst of sibling requests all 401 on the same token,
+ * and bumping would make each refresh abandon the one before it. Without the
+ * bump the first caller starts the refresh and the rest join `_tokenInflight`
+ * or read the token it cached.
+ */
+export async function refreshClerkTokenAfterRejection(rejected: string): Promise<string | null> {
+  if (_cachedToken === rejected) {
+    _cachedToken = null;
+    _cachedTokenAt = 0;
+    _cachedSession = null;
+    _clerkClockState = { kind: 'uncalibrated' };
+  }
+  const next = await getClerkToken();
+  return next && next !== rejected ? next : null;
+}
+
 export function __setClerkInstanceForTests(instance: ClerkInstance | null): void {
   clerkInstance = instance;
   clearClerkTokenCache();

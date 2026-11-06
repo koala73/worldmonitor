@@ -472,6 +472,103 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders().get('Authorization'), null);
   });
 
+  // -------------------------------------------------------------------------
+  // Sentry WORLDMONITOR-1CM: a Pro user's country-brief burst went out with a
+  // bearer the edge had stopped accepting (the client judged it unexpired, but
+  // the tab was resumed from a freeze), so eight tier-gated calls 401'd while
+  // a request sent 300 ms later on a refreshed token returned 200. premiumFetch
+  // handed the 401 straight to the panel. A bearer 401 is a statement about
+  // the token: refresh it once and replay.
+  // -------------------------------------------------------------------------
+
+  it('premium path: a bearer 401 refreshes the Clerk token once and replays', async () => {
+    const rejected: string[] = [];
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async (token) => { rejected.push(token); return 'fresh-jwt'; },
+    });
+    let n = 0;
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(n++ === 0 ? 401 : 200)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 200, 'the replay on a fresh token must reach the caller');
+    assert.deepEqual(rejected, ['stale-jwt'], 'the rejected token is the one handed to the refresh');
+    assert.equal(fetchMock.mock.calls.length, 2);
+    assert.equal(sentHeaders(0).get('Authorization'), 'Bearer stale-jwt');
+    assert.equal(sentHeaders(1).get('Authorization'), 'Bearer fresh-jwt');
+  });
+
+  it('premium path: a bearer 401 with no different token returns the 401 without replaying', async () => {
+    // Genuinely signed out or revoked: the refresh yields nothing new, so the
+    // gateway's answer stands and there is exactly one request.
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => null,
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 401);
+    assert.equal(fetchMock.mock.calls.length, 1, 'no replay without a new token');
+  });
+
+  it('premium path: a replayed 401 is final — the token is refreshed at most once', async () => {
+    let refreshes = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => { refreshes++; return `fresh-jwt-${refreshes}`; },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 401);
+    assert.equal(refreshes, 1);
+    assert.equal(fetchMock.mock.calls.length, 2, 'one original request and one replay, never a loop');
+  });
+
+  it('premium path: a 403 is an entitlement answer, not a stale token — no refresh', async () => {
+    let refreshes = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'clerk-jwt',
+      refreshClerkTokenAfterRejection: async () => { refreshes++; return 'fresh-jwt'; },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(403)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 403);
+    assert.equal(refreshes, 0);
+    assert.equal(fetchMock.mock.calls.length, 1);
+  });
+
+  it('premium path: a bearer 401 on a non-replayable body is returned as-is', async () => {
+    let refreshes = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => { refreshes++; return 'fresh-jwt'; },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+
+    const res = await premiumFetch(TARGET, { method: 'POST', body: new ReadableStream() });
+
+    assert.equal(res.status, 401);
+    assert.equal(refreshes, 0, 'a consumed stream cannot be resent, so do not spend a refresh');
+    assert.equal(fetchMock.mock.calls.length, 1);
+  });
+
   it('a rejected Clerk-authenticated fetch still falls through to the unauthenticated path', async () => {
     // The Bearer attempt lives inside a try whose catch falls through to the
     // anonymous request. Pinned because routing that attempt through a shared
