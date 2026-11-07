@@ -92,7 +92,10 @@ async function requireCurrentConvexUser(
   action: string,
 ): Promise<void> {
   if (!await waitForConvexAuthForUser(userId)) {
-    throw new Error(`Account changed while ${action}. Try again.`);
+    // A failed or unconfirmed auth handshake for the same signed-in user is
+    // not an account switch (Sentry WORLDMONITOR-1CP).
+    assertAccountStillCurrent(userId, action);
+    throw new Error(`Authentication unavailable while ${action}. Try again.`);
   }
   assertAccountStillCurrent(userId, action);
 }

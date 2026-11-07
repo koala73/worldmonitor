@@ -117,7 +117,8 @@ export async function revokeApiKey(keyId: string): Promise<void> {
   const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
   if (!client || !api) throw new Error('Convex unavailable');
   if (!await waitForConvexAuthForUser(userId)) {
-    throw new Error('Account changed while revoking the API key. Try again.');
+    assertAccountStillCurrent(userId, 'revoking the API key');
+    throw new Error('Authentication unavailable while revoking the API key. Try again.');
   }
 
   const result = await settleAccountOperation(
