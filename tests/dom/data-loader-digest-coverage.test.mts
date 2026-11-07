@@ -95,6 +95,8 @@ function digest(state: string, itemCount = 2): ListFeedDigestResponse {
       servedStale: state === 'stale',
       staleAgeSeconds: state === 'stale' ? 1800 : 0,
       staleReason: state === 'stale' ? 'build-error' : '',
+      itemsConsidered: itemCount,
+      publishersConsidered: 1,
     },
   };
 }
@@ -255,7 +257,44 @@ describe('digest coverage follows the selected browser response', () => {
     expect(updateDigestCoverage).toHaveBeenCalledWith(expect.objectContaining({
       state: 'stale',
       itemsServed: 3,
+      // The server never failed: the browser's request did.
+      staleCause: 'device',
     }));
+  });
+
+  it('attributes a server replay to the server and carries the considered pool', async () => {
+    const { internal, updateDigestCoverage } = await makeLoader();
+    const replay = digest('stale', 3);
+    replay.coverage = { ...replay.coverage!, itemsConsidered: 40, publishersConsidered: 12 };
+    internal.digestCacheKey = () => 'digest:current';
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(replay), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+
+    await internal.tryFetchDigest();
+
+    expect(updateDigestCoverage).toHaveBeenCalledWith(expect.objectContaining({
+      state: 'stale',
+      staleCause: 'server',
+      contentAgeSeconds: 1800,
+      itemsConsidered: 40,
+      publishersConsidered: 12,
+    }));
+  });
+
+  it('dates a device copy from its content generatedAt', async () => {
+    const { internal, updateDigestCoverage } = await makeLoader();
+    const retained = digest('complete', 3);
+    retained.generatedAt = new Date(Date.now() - 600_000).toISOString();
+    internal.digestCacheKey = () => 'digest:current';
+    internal.lastGoodDigest = { key: 'digest:current', data: retained };
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('timeout'));
+
+    await internal.tryFetchDigest();
+
+    const summary = updateDigestCoverage.mock.calls[0]![0] as { contentAgeSeconds: number };
+    expect(summary.contentAgeSeconds).toBeGreaterThanOrEqual(599);
+    expect(summary.contentAgeSeconds).toBeLessThan(620);
   });
 
   it('does not report a fresh digest discarded by an in-flight language switch', async () => {

@@ -322,6 +322,9 @@ export interface DigestCoverageBlock {
   attemptedAt: string;
   itemsServed: number;
   publisherCount: number;
+  /** Items that reached ranking before the category cap, and their publishers. */
+  itemsConsidered: number;
+  publishersConsidered: number;
   feedTotal: number;
   feedCompleted: number;
   categoryTotal: number;
@@ -347,6 +350,8 @@ export interface DigestCoverageInput {
   itemsServed: number;
   /** Normalized publisher family of every served item. */
   publisherSources: readonly string[];
+  /** Normalized publisher family of every item that reached ranking. */
+  consideredPublisherSources: readonly string[];
   /** True when the global deadline aborted the build. */
   deadlineAborted: boolean;
   drops: {
@@ -398,6 +403,8 @@ export function buildDigestCoverage(input: DigestCoverageInput): DigestCoverageB
     attemptedAt: new Date(input.buildStartMs).toISOString(),
     itemsServed: input.itemsServed,
     publisherCount: new Set(input.publisherSources).size,
+    itemsConsidered: input.consideredPublisherSources.length,
+    publishersConsidered: new Set(input.consideredPublisherSources).size,
     feedTotal: input.entries.length,
     feedCompleted,
     categoryTotal: configuredCategories.length,

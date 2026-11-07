@@ -45,8 +45,7 @@ message DigestCoverage {
   string attempted_at = 2;
   // Items served in this response, after every gate.
   int32 items_served = 3;
-  // Distinct publishers among the served items (normalized source labels,
-  // current cycle only — not feed-label counts, not historical sets).
+  // Distinct publishers among the served items (normalized, this cycle only).
   int32 publisher_count = 4;
   // Eligible feeds configured for this variant+language, and how many
   // completed (with or without items).
@@ -74,6 +73,12 @@ message DigestCoverage {
   int32 stale_age_seconds = 15;
   // Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).
   string stale_reason = 16;
+  // Items that reached ranking (past the feed, undated and freshness gates)
+  // before the category cap, and distinct publishers among them. Detached
+  // from the fields: the public OpenAPI bundle has no byte headroom for it.
+
+  int32 items_considered = 17;
+  int32 publishers_considered = 18;
 }
 
 message CategoryBucket {

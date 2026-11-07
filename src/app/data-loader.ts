@@ -924,6 +924,15 @@ export class DataLoaderManager implements AppModule {
     stateOverride?: 'stale' | 'unavailable',
   ): void {
     const cov = digest?.coverage;
+    const generatedMs = digest ? Date.parse(digest.generatedAt) : NaN;
+    const contentAgeFromGeneratedAt = Number.isFinite(generatedMs)
+      ? Math.max(0, Math.round((Date.now() - generatedMs) / 1000))
+      : null;
+    // A client override means THIS browser fell back to a retained or saved
+    // copy; the server may be perfectly healthy.
+    const deviceStale = stateOverride === 'stale'
+      ? { staleCause: 'device' as const, contentAgeSeconds: contentAgeFromGeneratedAt }
+      : null;
     if (!cov || typeof cov.state !== 'string') {
       const categoryEntries = digest ? Object.entries(digest.categories) : [];
       const items = categoryEntries.flatMap(([, bucket]) => bucket.items);
@@ -938,6 +947,10 @@ export class DataLoaderManager implements AppModule {
         missingCategories: categoryEntries
           .filter(([, bucket]) => bucket.items.length === 0)
           .map(([category]) => category),
+        itemsConsidered: 0,
+        publishersConsidered: 0,
+        staleCause: deviceStale?.staleCause ?? null,
+        contentAgeSeconds: deviceStale?.contentAgeSeconds ?? null,
       });
       return;
     }
@@ -955,6 +968,11 @@ export class DataLoaderManager implements AppModule {
       missingCategories: Object.entries(cov.categoryStates ?? {})
         .filter(([, v]) => v === 'missing')
         .map(([k]) => k),
+      itemsConsidered: Number(cov.itemsConsidered) || 0,
+      publishersConsidered: Number(cov.publishersConsidered) || 0,
+      ...(deviceStale ?? (state === 'stale'
+        ? { staleCause: 'server' as const, contentAgeSeconds: Number(cov.staleAgeSeconds) || contentAgeFromGeneratedAt }
+        : { staleCause: null, contentAgeSeconds: null })),
     });
   }
 

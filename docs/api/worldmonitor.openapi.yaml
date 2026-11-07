@@ -57030,9 +57030,7 @@ components:
                 publisherCount:
                     type: integer
                     format: int32
-                    description: |-
-                        Distinct publishers among the served items (normalized source labels,
-                         current cycle only — not feed-label counts, not historical sets).
+                    description: Distinct publishers among the served items (normalized, this cycle only).
                 feedTotal:
                     type: integer
                     format: int32
@@ -57086,6 +57084,12 @@ components:
                 staleReason:
                     type: string
                     description: 'Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).'
+                itemsConsidered:
+                    type: integer
+                    format: int32
+                publishersConsidered:
+                    type: integer
+                    format: int32
             description: |-
                 Content vs attempt state for one digest response (#7085). generated_at
                  keeps the CONTENT identity (when the served items were produced);

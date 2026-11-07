@@ -30,6 +30,7 @@ const BASE = {
   attemptOutcomes: ALL_OK,
   itemsServed: 5,
   publisherSources: ['BBC', 'Guardian', 'BBC', 'Ars', 'Guardian'],
+  consideredPublisherSources: ['BBC', 'Guardian', 'BBC', 'Ars', 'Guardian', 'AP', 'Reuters', 'AP', 'NPR'],
   deadlineAborted: false,
   servingStale: false,
   drops: { perFeedCap: 2, undated: 1, freshnessFloor: 3, perCategoryCap: 4 },
@@ -119,6 +120,14 @@ describe('digest coverage block (#7085)', () => {
     assert.equal(cov.itemsServed, 5);
   });
 
+  it('counts the ranked pool the category cap cut down, not just the served slice', () => {
+    const cov = buildDigestCoverage({ ...BASE });
+    // 9 items reached ranking from 6 publisher families; 5 of them were served.
+    assert.equal(cov.itemsConsidered, 9);
+    assert.equal(cov.publishersConsidered, 6);
+    assert.ok(cov.publishersConsidered >= cov.publisherCount);
+  });
+
   it('carries per-gate drop counts under their documented names', () => {
     const cov = buildDigestCoverage({ ...BASE });
     assert.equal(cov.droppedFeedCap, 2);
@@ -149,6 +158,10 @@ describe('list-feed-digest coverage wiring (#7085)', () => {
 
   it('normalizes served items to publisher families before counting them', () => {
     assert.match(digestSource, /publisherFamilyForItem\(item\)/);
+  });
+
+  it('counts the considered pool from the post-revocation ranked items', () => {
+    assert.match(digestSource, /consideredPublisherSources: servableItems\.map\(/);
   });
 
   it('returns the coverage block on the digest response', () => {
@@ -230,6 +243,9 @@ describe('list-feed-digest coverage wiring (#7085)', () => {
     assert.equal(stale.coverage?.state, 'stale');
     assert.equal(stale.coverage?.itemsServed, 1);
     assert.equal(stale.coverage?.publisherCount, 1);
+    // Pre-coverage content has no record of its ranked pool: report what is served.
+    assert.equal(stale.coverage?.itemsConsidered, 1);
+    assert.equal(stale.coverage?.publishersConsidered, 1);
     assert.equal(stale.coverage?.feedTotal, 0);
     assert.equal(stale.coverage?.feedCompleted, 0);
     assert.equal(stale.coverage?.categoryTotal, 2);
