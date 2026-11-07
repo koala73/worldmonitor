@@ -1,6 +1,7 @@
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { track } from '@/services/analytics';
 import { t } from '@/services/i18n';
+import { declareOverlay } from '@/utils/open-modal';
 
 interface InstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -74,6 +75,7 @@ export function openIosInstallSheet(): void {
   if (!needsIosInstall() || document.getElementById('pwa-install-sheet')) return;
   const opener = document.activeElement as HTMLElement | null;
   const sheet = document.createElement('dialog');
+  declareOverlay(sheet, { reload: 'safe' });
   sheet.id = 'pwa-install-sheet';
   sheet.className = 'pwa-install-sheet';
   sheet.setAttribute('aria-labelledby', 'pwa-install-title');
