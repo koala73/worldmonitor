@@ -3913,6 +3913,11 @@ const PRO_BUSINESS_UPGRADE_ADMISSION_WINDOW_MS = 10 * 60 * 1000;
 export const admitProBusinessUpgrade = internalMutation({
   args: { userId: v.string(), now: v.number() },
   handler: async (ctx, { userId, now }): Promise<boolean> => {
+    // The candidate check runs in another transaction; deletion can start in
+    // between, and this row must not be recreated after its cleanup batch.
+    if (await isAccountDeleting(ctx, userId)) {
+      throw new ConvexError({ kind: "ACCOUNT_DELETION_IN_PROGRESS" });
+    }
     const row = await ctx.db
       .query("proBusinessUpgradeAdmissions")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -4026,6 +4031,7 @@ export async function runProBusinessUpgrade(
     throw new ConvexError({ kind: "UPGRADE_IN_PROGRESS" });
   }
 
+  let changePlanSent = false;
   try {
     // A confirm that arrives after an earlier one finished, but before the
     // webhook lands, sees the target product here and skips the change.
@@ -4038,13 +4044,20 @@ export async function runProBusinessUpgrade(
     if (remote.product_id !== candidate.fromProductId) {
       throw new Error(`subscription product changed since preview: ${remote.product_id}`);
     }
+    changePlanSent = true;
     await client.subscriptions.changePlan(candidate.dodoSubscriptionId, params);
   } catch (err) {
-    // The claim stays on success so a repeat within the TTL cannot re-charge;
-    // after a failure the user may retry straight away.
-    await ctx.runMutation(internal.payments.billing.releaseProBusinessUpgrade, {
-      dodoSubscriptionId: candidate.dodoSubscriptionId,
-    });
+    // The claim stays on success so a repeat within the TTL cannot re-charge.
+    // It is released only when the change definitely did not happen: the call
+    // never went out, or Dodo answered with an HTTP status. A timeout or a
+    // dropped connection after sending may still be applying the change, so
+    // the claim holds until its TTL and a retry cannot send a second one.
+    const providerAnswered = typeof (err as { status?: unknown } | null)?.status === "number";
+    if (!changePlanSent || providerAnswered) {
+      await ctx.runMutation(internal.payments.billing.releaseProBusinessUpgrade, {
+        dodoSubscriptionId: candidate.dodoSubscriptionId,
+      });
+    }
     console.error(
       `[billing] Dodo change-plan failed for subscription ${candidate.dodoSubscriptionId}:`,
       err instanceof Error ? err.message : String(err),

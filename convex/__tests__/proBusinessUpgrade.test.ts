@@ -192,7 +192,9 @@ describe("upgradeToProBusiness action", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
     retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
-    changePlan.mockRejectedValueOnce(new Error("card declined")).mockResolvedValueOnce(undefined);
+    changePlan
+      .mockRejectedValueOnce(Object.assign(new Error("card declined"), { status: 402 }))
+      .mockResolvedValueOnce(undefined);
     await expect(
       t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
     ).rejects.toThrow(/DODO_PLAN_CHANGE_ERROR/);
@@ -201,6 +203,35 @@ describe("upgradeToProBusiness action", () => {
       t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
     ).resolves.toMatchObject({ kind: "upgraded" });
     expect(changePlan).toHaveBeenCalledTimes(2);
+  });
+
+  test("an ambiguous change failure keeps the claim until the TTL", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
+    changePlan.mockRejectedValueOnce(new Error("socket hang up"));
+    await expect(
+      t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
+    ).rejects.toThrow(/DODO_PLAN_CHANGE_ERROR/);
+    expect(await t.run((ctx) => ctx.db.query("proBusinessUpgradeClaims").collect())).toHaveLength(1);
+    await expect(
+      t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
+    ).rejects.toThrow(/UPGRADE_IN_PROGRESS/);
+    expect(changePlan).toHaveBeenCalledTimes(1);
+  });
+
+  test("admission refuses an account whose deletion has started", async () => {
+    const t = convexTest(schema, modules);
+    await t.run((ctx) => ctx.db.insert("accountDeletions", {
+      userId: USER.subject, userIdHash: "hash_pro_upgrade", source: "self",
+      status: "pending", step: "grants", dodoSubscriptionIds: [], cancelledDodoSubscriptionIds: [],
+      startedAt: NOW - 2, updatedAt: NOW - 1,
+    }));
+    await expect(
+      t.mutation(internal.payments.billing.admitProBusinessUpgrade, { userId: USER.subject, now: NOW }),
+    ).rejects.toThrow(/ACCOUNT_DELETION_IN_PROGRESS/);
+    expect(await t.run((ctx) => ctx.db.query("proBusinessUpgradeAdmissions").collect())).toHaveLength(0);
   });
 
   test("a claim older than the TTL can be taken again", async () => {
