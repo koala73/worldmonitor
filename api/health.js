@@ -948,11 +948,14 @@ const SEED_META = {
   stablecoinMarkets:{ key: 'seed-meta:market:stablecoins',      maxStaleMin: 60 },
   naturalEvents:    {
     key: 'seed-meta:natural:events',
-    maxStaleMin: 540, // 3h Railway climate bundle; 3x cadence preserves a full missed run.
+    // Sole producer: the seed-natural-events Railway service, every 30 min.
+    // 120 = 4x cadence: two missed runs plus start jitter stay fresh; the third alarms.
+    maxStaleMin: 120,
     sourceFailure: [
       {
         warnAfterConsecutive: 2,
-        maxPendingMin: 210,
+        // The next */30 run settles a single miss; 60 holds past it with jitter.
+        maxPendingMin: 60,
         successAtField: 'lastSourceSuccessAt',
         failureCodePattern: /^NHC_(POINT_REQUEST_FAILED|POINT_RESPONSE_INVALID)$/,
       },
@@ -963,9 +966,7 @@ const SEED_META = {
       // or every source failing at once alarms on the first miss.
       {
         warnAfterConsecutive: 2,
-        // seed-natural-events (*/30) usually settles a miss in ~30 min; 210 also
-        // covers the 3-hourly seed-bundle-climate fallback (0 */3, 180 s timeout).
-        maxPendingMin: 210,
+        maxPendingMin: 60, // the next */30 run settles a single miss, as for NHC above
         successAtField: 'lastSourceSuccessAt',
         sources: ['gdacs:EQ', 'gdacs:TC', 'gdacs:FL', 'gdacs:VO', 'gdacs:DR', 'gdacs:WF', 'eonet'],
         failureCodePattern: /^(GDACS_TYPE_COVERAGE_INCOMPLETE|EONET_SOURCE_FAILED)$/,
