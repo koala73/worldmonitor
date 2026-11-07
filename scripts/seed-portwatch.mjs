@@ -158,6 +158,39 @@ export async function fetchBaselineStats(portname, { fromEpoch, toEpoch }, timeo
 }
 
 /**
+ * The layer's newest day after `afterDate` (YYYY-MM-DD), or null when it has
+ * none or the probe fails. The Hub export can stop updating while the query
+ * service keeps publishing (export ended 2026-10-25, layer 2026-11-01, on
+ * 2026-11-07); one filtered max() shows which chokepoints the export trails.
+ */
+export async function fetchLatestQueryDate(afterDate, timeoutMs = BASELINE_REQUEST_TIMEOUT_MS) {
+  const afterEpoch = Date.parse(`${afterDate}T00:00:00Z`) + DAY_MS;
+  if (!Number.isFinite(afterEpoch)) return null;
+  const params = new URLSearchParams({
+    where: `date >= ${epochToTimestamp(afterEpoch)}`,
+    outStatistics: JSON.stringify([
+      { statisticType: 'max', onStatisticField: 'date', outStatisticFieldName: 'latest_date' },
+    ]),
+    f: 'json',
+  });
+  try {
+    const resp = await fetch(`${ARCGIS_BASE}?${params}`, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const body = await resp.json();
+    if (body.error) throw new Error(body.error.message);
+    // `date` is a DateOnly field, so the max comes back as "YYYY-MM-DD".
+    const latest = Date.parse(body.features?.[0]?.attributes?.latest_date);
+    return Number.isFinite(latest) ? formatDate(latest) : null;
+  } catch (e) {
+    console.warn(`[PortWatch] latest-date probe failed: ${e?.message || e}`);
+    return null;
+  }
+}
+
+/**
  * `{ avgDaily, days, from, to }` from an outStatistics row, or null when the
  * window holds fewer than BASELINE_MIN_DAYS published days or the row is
  * malformed. Null is stored as-is: consumers withhold the comparison rather
@@ -488,8 +521,13 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
     const noBaseline = Object.keys(fresh).filter(id => !fresh[id].baseline);
     console.log(`[PortWatch] source=hub-csv: ${Object.keys(fresh).length} chokepoints${noBaseline.length ? `, baseline withheld for ${noBaseline.join(', ')}` : ''}`);
     // Query what the export lacks, and what it trails: the cached export can
-    // end before history an earlier query-fallback run already published.
-    const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id] || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id]));
+    // end before history an earlier query-fallback run already published, or
+    // stop updating while the query service keeps publishing.
+    const csvLatest = Object.values(fresh).map(lastHistoryDate).sort().at(-1) ?? '';
+    const queryLatest = pastDeadline() ? null : await fetchLatestQueryDate(csvLatest);
+    const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id]
+      || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id])
+      || (queryLatest && queryLatest > lastHistoryDate(fresh[cp.id])));
     if (candidates.length === 0 || pastDeadline()) return fresh;
     console.warn(`[PortWatch] CSV export lacks or trails ${candidates.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
     const queried = await runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
