@@ -530,8 +530,10 @@ export class UnifiedSettings {
       }
 
       const agentControl = target.closest<HTMLElement>('[data-agent-connect]');
-      if (agentControl?.dataset.agentConnect) {
-        trackAgentConnect(agentControl.dataset.agentConnect, agentControl.tagName === 'A' ? 'link' : 'copy');
+      // Resolve against the catalog so only closed ids reach analytics.
+      const agentClient = MCP_AGENT_CLIENTS.find((c) => c.id === agentControl?.dataset.agentConnect);
+      if (agentControl && agentClient) {
+        trackAgentConnect(agentClient.id, agentControl.tagName === 'A' ? 'link' : 'copy');
       }
 
       const mcpCopyBtn = target.closest<HTMLElement>('.mcp-copy-btn');

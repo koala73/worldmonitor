@@ -13,7 +13,7 @@ import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
-import { MCP_AGENT_CLIENTS } from '@/config/mcp-agent-clients';
+import type { McpAgentClientId } from '@/config/mcp-agent-clients';
 import { SITE_VARIANT, isSiteVariant } from '@/config/variant';
 import { isAgentPanelViewSuppressed } from './agent-analytics-privacy';
 import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
@@ -1384,14 +1384,12 @@ export function trackApiAction(action: ApiActionName): void {
   track('api-action', { action });
 }
 
-const AGENT_CLIENT_IDS: ReadonlySet<string> = new Set(MCP_AGENT_CLIENTS.map((c) => c.id));
-
 /**
- * Settings → AI Agents: a user started connecting an agent. `client` is the
- * closed catalog id; anything else (a tampered data attribute) is dropped.
+ * Settings → AI Agents: a user started connecting an agent. `client` is a
+ * closed catalog id; the caller resolves it against the catalog so this chunk
+ * never carries the catalog itself (analytics bundle budget).
  */
-export function trackAgentConnect(client: string, method: 'link' | 'copy'): void {
-  if (!AGENT_CLIENT_IDS.has(client)) return;
+export function trackAgentConnect(client: McpAgentClientId, method: 'link' | 'copy'): void {
   track('agent-connect', { client, method });
 }
 
