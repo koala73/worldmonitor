@@ -45,9 +45,11 @@ for (const theme of ['light', 'dark']) for (const standalone of [false, true]) {
       container.innerHTML = rendered.html;
       rendered.attach(container);
     }, { channelPath: '/src/services/notification-channels.ts', rendererPath: '/src/services/notifications-settings.ts', selector: standalone ? '#contentArea' : '#us-tab-panel-notifications' });
-    await expect(page.locator('.us-notif-ch-name').first()).toBeVisible();
+    const channel = page.locator('.us-notif-ch-row[data-channel-type="telegram"]');
+    await expect(channel).toHaveCount(1);
+    await expect(channel.locator('.us-notif-ch-name')).toHaveText('Telegram');
     for (const selector of ['.us-notif-ch-name', '.us-notif-ch-sub', '.us-notif-ch-btn-primary']) {
-      const colors = await page.locator(`.us-notif-ch-row ${selector}`).first().evaluate(el => {
+      const colors = await channel.locator(selector).evaluate(el => {
         const rgb = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number);
         return { text: rgb(getComputedStyle(el).color), background: rgb(getComputedStyle(el.closest('.us-notif-ch-row')!).backgroundColor) };
       });
