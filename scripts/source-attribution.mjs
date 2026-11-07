@@ -30,6 +30,11 @@ import {
 } from './source-catalog-identity.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// Pin the collation locale. A bare localeCompare() follows the host locale, so
+// a cs_CZ machine ("ch" sorts after "h") reordered the provider identity list,
+// broke the reviewed sha256 and failed `npm install`. 'en-US' keeps the order
+// CI and committed output already use.
+export const compareText = (left, right) => left.localeCompare(right, 'en-US');
 const MANIFEST_PATH = 'shared/source-attribution-manifest.json';
 const DOCS_PATH = 'docs/source-attribution.mdx';
 // MDX comments, not HTML ones: Mintlify parses docs/source-attribution.mdx as MDX v3,
@@ -1110,7 +1115,7 @@ export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
   const identities = Object.entries(providerOverrides || {})
     .filter(([, override]) => typeof override?.provider === 'string')
     .map(([host, override]) => [host, override.provider])
-    .sort(([left], [right]) => left.localeCompare(right));
+    .sort(([left], [right]) => compareText(left, right));
   return createHash('sha256').update(JSON.stringify(identities)).digest('hex');
 }
 
@@ -1181,6 +1186,10 @@ const EXCLUDED_HOSTS = new Set([
   // ingested as data.
   'claude.ai',
   'chatgpt.com',
+  // One-click MCP install links in Settings → AI Agents
+  // (src/config/mcp-agent-clients.ts). Navigation targets, never fetched.
+  'cursor.com',
+  'vscode.dev',
   'searchconsole.googleapis.com',
   'www.googleapis.com',
   'yandex.com',
@@ -1459,8 +1468,8 @@ export function scanUpstreamHosts(rootDir = ROOT) {
     recordHost(dynamic.host, dynamic.kind, dynamic.path);
   }
   return [...hosts.values()]
-    .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => a.path.localeCompare(b.path)) }))
-    .sort((a, b) => a.host.localeCompare(b.host));
+    .map((entry) => ({ ...entry, kinds: [...entry.kinds].sort(), references: entry.references.sort((a, b) => compareText(a.path, b.path)) }))
+    .sort((a, b) => compareText(a.host, b.host));
 }
 
 function defaultEntry(observed) {
@@ -1646,7 +1655,7 @@ export function buildManifest(
   const logicalEntries = [...LOGICAL_ENTRIES, ...(previous.logicalEntries || [])]
     .filter((entry) => !observedHosts.has(entry.host))
     .filter((entry, index, all) => all.findIndex((candidate) => candidate.provider === entry.provider && candidate.host === entry.host) === index)
-    .sort((a, b) => a.provider.localeCompare(b.provider));
+    .sort((a, b) => compareText(a.provider, b.provider));
   const logicalProviders = declarations
     ? buildLogicalProviders(declarations, geography || new Map())
     : (rootDir
@@ -1654,7 +1663,7 @@ export function buildManifest(
       : [...(previous.logicalProviders || [])]);
   return {
     version: 1,
-    entries: entries.sort((a, b) => a.host.localeCompare(b.host)),
+    entries: entries.sort((a, b) => compareText(a.host, b.host)),
     logicalEntries,
     logicalProviders,
   };
@@ -1982,7 +1991,7 @@ function markdownCell(value) {
 export function renderAttributionSection(inventory, manifest) {
   const stats = sourceAttributionStats(inventory, manifest);
   const entries = [...(manifest.entries || []), ...(manifest.logicalEntries || [])]
-    .sort((a, b) => (a.provider || '').localeCompare(b.provider || '') || a.host.localeCompare(b.host));
+    .sort((a, b) => compareText(a.provider || '', b.provider || '') || compareText(a.host, b.host));
   const rows = entries.map((entry) => {
     const references = entry.references || [];
     // Say when the list is cut. A reader auditing where a provider is used

@@ -31,7 +31,15 @@ The repository contains the whole stack, not a demo build:
 - the desktop app source under `src-tauri/`;
 - a `docker-compose.yml` that runs dashboard, relay, Redis and the Redis REST proxy together.
 
-`SELF_HOSTING.md` walks through the Docker or Podman quick start. Public data sources (earthquakes, weather, natural events, displacement, prediction markets, crypto, climate anomalies, cables, BIS data, cyber threats) work with no keys at all. Other feeds need the provider key you supply through `docker-compose.override.yml`.
+To install the stack with one command, run:
+
+```bash
+curl -fsSL https://www.worldmonitor.app/install.sh | bash
+```
+
+It clones the repository into `./worldmonitor` (or reuses an existing checkout), generates the four required secrets into an owner-only `.env`, starts the stack, and seeds public data when Node.js 22.19 or newer is on the host. It is safe to re-run. Pass `--dir`, `--port`, `--no-seed` or `--no-build` after `bash -s --`.
+
+`SELF_HOSTING.md` walks through the same Docker or Podman quick start by hand. Public data sources (earthquakes, weather, natural events, displacement, prediction markets, crypto, climate anomalies, cables, BIS data, cyber threats) work with no keys at all. Other feeds need the provider key you supply through `docker-compose.override.yml`.
 
 ## What self-hosting does not give you
 

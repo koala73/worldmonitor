@@ -35,7 +35,7 @@ const spies = vi.hoisted(() => ({
 
 vi.mock('@/services', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services')>()),
-  initDB: vi.fn(async () => undefined),
+  openStorageForBoot: vi.fn(async () => true),
   disconnectAisStream: spies.disconnectAisStream,
   startFlightHistoryCleanup: spies.startFlightHistoryCleanup,
   stopFlightHistoryCleanup: spies.stopFlightHistoryCleanup,

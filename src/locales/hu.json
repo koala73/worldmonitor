@@ -1236,7 +1236,8 @@
       "skipToStart": "Ugrás az elejére",
       "previous": "Előző",
       "next": "Következő",
-      "skipToEnd": "Ugrás a végére"
+      "skipToEnd": "Ugrás a végére",
+      "storageUnavailable": "A lejátszás nem érhető el, mert a böngésző letiltja a webhelyadatok tárolását. Engedélyezze a webhelyadatokat ennél a webhelynél a pillanatképek mentéséhez."
     },
     "pizzint": {
       "indexSource": "Index: World Monitor",

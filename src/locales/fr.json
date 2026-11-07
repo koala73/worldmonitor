@@ -1045,7 +1045,8 @@
       "skipToStart": "Aller au début",
       "previous": "Précédent",
       "next": "Suivant",
-      "skipToEnd": "Aller à la fin"
+      "skipToEnd": "Aller à la fin",
+      "storageUnavailable": "La lecture est indisponible car ce navigateur bloque le stockage des données du site. Autorisez les données du site pour ce site pour commencer à enregistrer les instantanés."
     },
     "pizzint": {
       "indexSource": "Indice : World Monitor",

@@ -1347,7 +1347,8 @@
       "skipToStart": "Przejdź na początek",
       "previous": "Wstecz",
       "next": "Dalej",
-      "skipToEnd": "Przejdź na koniec"
+      "skipToEnd": "Przejdź na koniec",
+      "storageUnavailable": "Odtwarzanie jest niedostępne, ponieważ przeglądarka blokuje przechowywanie danych witryny. Zezwól na dane witryny dla tej strony, aby rozpocząć zapisywanie migawek."
     },
     "stablecoins": {
       "pegHealth": "Stabilność powiązania",

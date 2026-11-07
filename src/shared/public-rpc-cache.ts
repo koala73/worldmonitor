@@ -23,6 +23,7 @@ export const LIVE_TOPIC_RPC_PATHS = Object.freeze([
   '/api/economic/v1/get-national-debt',
   '/api/economic/v1/get-us-treasury-par-yield-curve',
   '/api/economic/v1/get-oil-inventories',
+  '/api/intelligence/v1/list-security-advisories',
 ]);
 const LIVE_TOPIC_PUBLIC_SEARCH = 'public=1';
 

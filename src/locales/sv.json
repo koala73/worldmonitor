@@ -512,7 +512,8 @@
       "skipToStart": "Hoppa till början",
       "previous": "Föregående",
       "next": "Nästa",
-      "skipToEnd": "Hoppa till slutet"
+      "skipToEnd": "Hoppa till slutet",
+      "storageUnavailable": "Uppspelning är inte tillgänglig eftersom webbläsaren blockerar webbplatslagring. Tillåt webbplatsdata för denna webbplats för att börja spara ögonblicksbilder."
     },
     "deckgl": {
       "views": {

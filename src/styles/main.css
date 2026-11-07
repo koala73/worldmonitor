@@ -5791,8 +5791,31 @@ a.item-title:hover {
   padding: 0;
 }
 
+.playback-notice {
+  margin: 0;
+  padding: 10px 12px 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.playback-notice[hidden] {
+  display: none;
+}
+
 .playback-slider-container {
   padding: 12px;
+}
+
+.playback-slider:disabled,
+.playback-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.playback-btn:disabled:hover {
+  background: var(--panel-border);
+  color: var(--text);
 }
 
 .playback-slider {
@@ -6957,7 +6980,7 @@ body.playback-mode .status-dot {
   stroke: var(--red);
   stroke-width: 1;
   stroke-dasharray: 4, 2;
-  animation: pulse-conflict 2s ease-in-out infinite;
+  /* No fill pulse: an SVG fill animation runs on the main thread every frame. */
   transition: opacity 0.2s ease;
 }
 
@@ -7032,18 +7055,6 @@ body.playback-mode .status-dot {
     0 0 6px var(--bg),
     0 0 12px var(--bg),
     0 0 18px var(--red);
-}
-
-@keyframes pulse-conflict {
-
-  0%,
-  100% {
-    fill: rgba(255, 68, 68, 0.15);
-  }
-
-  50% {
-    fill: rgba(255, 68, 68, 0.3);
-  }
 }
 
 /* Base markers */
@@ -14128,14 +14139,10 @@ button.popup-link {
   0%,
   100% {
     opacity: 1;
-    --vessel-color: var(--semantic-critical);
-    --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   }
 
   50% {
     opacity: 0.7;
-    --vessel-color: var(--semantic-high);
-    --vessel-text: var(--semantic-high-text, var(--semantic-high));
   }
 }
 
@@ -28210,31 +28217,138 @@ body.map-width-resizing {
   line-height: 1.5;
 }
 
-.mcp-clients-empty-url {
+/* ---- AI Agents connect list (Settings → AI Agents) ---- */
+
+.mcp-agents-title,
+.mcp-agents-subtitle {
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+
+.mcp-agents-subtitle {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  margin-top: 20px;
+}
+
+.mcp-agents-url,
+.mcp-agent-command {
   display: flex;
   align-items: center;
   gap: 8px;
-  justify-content: center;
-  margin-top: 4px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--text);
+  padding: 6px 6px 6px 10px;
   background: var(--surface);
-  padding: 6px 10px;
-  border-radius: 4px;
-  user-select: all;
-  word-break: break-all;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 0;
 }
 
-.mcp-clients-copy-url-btn {
+.mcp-agents-url {
+  margin-bottom: 12px;
+}
+
+.mcp-agents-url-label {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  padding: 4px 10px;
-  color: var(--accent);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   flex-shrink: 0;
 }
 
-.mcp-clients-copy-url-btn:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+.mcp-agents-url code,
+.mcp-agent-command code {
+  flex: 1;
+  min-width: 0;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.mcp-agents-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.mcp-agent {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-agent + .mcp-agent {
+  border-top: 1px solid var(--border);
+}
+
+.mcp-agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mcp-agent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mcp-agent-name {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mcp-agent-hint {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.mcp-agent-controls {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mcp-agent-action,
+.mcp-copy-btn {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  padding: 6px 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.mcp-agents-plan-note,
+.mcp-agents-docs {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
+.mcp-agents-plan-note a,
+.mcp-agents-docs a {
+  color: var(--accent);
+}
+
+@media (max-width: 520px) {
+  .mcp-agent-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mcp-agent-controls {
+    flex-wrap: wrap;
+  }
 }
 
 /* ---- Energy Crisis Panel ---- */
@@ -29124,6 +29238,47 @@ body.map-width-resizing {
   color: var(--settings-red);
 }
 
+/* Free alert ladder (#4273): banner, locked channel rows, per-rung CTAs. */
+.us-notif-ladder-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid #d4a843;
+  border-radius: 6px;
+  background: rgba(212, 168, 67, 0.08);
+}
+
+.us-notif-ladder-banner-text {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+.us-notif-ladder-cta {
+  flex-shrink: 0;
+  padding: 6px 14px;
+}
+
+.us-notif-ch-locked .us-notif-ch-icon,
+.us-notif-ch-locked .us-notif-ch-name,
+.us-notif-ch-locked .us-notif-ch-sub {
+  opacity: 0.55;
+}
+
+.us-notif-ladder-chip {
+  border-color: #d4a843;
+  color: #d4a843;
+  font-weight: 600;
+}
+
+.us-notif-scope-warn {
+  /* No display rule: the panel toggles this via the hidden attribute. */
+  margin-top: 6px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
 .us-notif-ch-actions {
   display: flex;
   align-items: center;
@@ -29535,7 +29690,6 @@ body.map-width-resizing {
 .markers-settled .cable-advisory-marker.fault,
 .markers-settled .protest-marker.high,
 .markers-settled .outage-marker.total,
-.markers-settled .conflict-zone,
 .markers-settled .iran-event-marker,
 .markers-settled .earthquake-marker,
 .markers-settled .nuclear-marker.active,

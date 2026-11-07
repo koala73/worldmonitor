@@ -18,6 +18,8 @@ interface UpgradePreview {
   chargeAmount: number;
   currency: string;
   renewalAmount: number | null;
+  renewalCurrency: string | null;
+  renewalDate: string | null;
   billingPeriod: 'monthly' | 'annual';
 }
 
@@ -32,15 +34,26 @@ function formatMinorAmount(amount: number, currency: string): string {
   }
 }
 
+/** Formats an ISO date as "December 7, 2026" (UTC), or null when it does not parse. */
+function formatRenewalDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
+}
+
 function buildUpgradePreviewBody(planDisplayName: string, preview: UpgradePreview): string {
   const charge = formatMinorAmount(preview.chargeAmount, preview.currency);
   const period = preview.billingPeriod === 'annual' ? 'year' : 'month';
-  const renewal = preview.renewalAmount === null
-    ? 'then the Pro Business price from your next renewal'
-    : `then ${formatMinorAmount(preview.renewalAmount, preview.currency)} a ${period} plus any tax from your next renewal`;
+  const date = formatRenewalDate(preview.renewalDate);
+  // The charge currency is the customer's, not the plan's: never borrow it for the renewal.
+  const price = preview.renewalAmount === null || !preview.renewalCurrency
+    ? 'the Pro Business price'
+    : `${formatMinorAmount(preview.renewalAmount, preview.renewalCurrency)} a ${period} plus any tax`;
+  const renewal = date ? `It renews at ${price} on ${date}.` : `It renews at ${price}.`;
   return (
     `Your ${planDisplayName} subscription moves to Pro Business now. ` +
-    `You pay ${charge} today for the rest of this billing period, ${renewal}. ` +
+    `You pay ${charge} today and your billing period restarts today. ${renewal} ` +
     'If the payment fails, you stay on Pro.'
   );
 }
@@ -217,6 +230,8 @@ export async function runProBusinessUpgradeFlow(options: {
     chargeAmount: data.chargeAmount,
     currency: data.currency,
     renewalAmount: typeof data.renewalAmount === 'number' ? data.renewalAmount : null,
+    renewalCurrency: typeof data.renewalCurrency === 'string' ? data.renewalCurrency : null,
+    renewalDate: typeof data.renewalDate === 'string' ? data.renewalDate : null,
     billingPeriod: data.billingPeriod === 'annual' ? 'annual' : 'monthly',
   };
 

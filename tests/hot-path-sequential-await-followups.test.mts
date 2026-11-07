@@ -225,8 +225,8 @@ describe('country brief open', () => {
 describe('app boot', () => {
   it('starts loading i18n before it waits for IndexedDB', () => {
     const body = functionContaining(read('src/App.ts'), "markLcpDebug('wm:boot:app-init-start');");
-    assertStartsBefore(body, 'const i18nReady = initI18n();', 'await initDB();', 'the locale load must not wait for IndexedDB');
-    assertStartsBefore(body, 'await initDB();', 'await i18nReady;', 'boot still waits for i18n after the database opens');
+    assertStartsBefore(body, 'const i18nReady = initI18n();', 'await openStorageForBoot();', 'the locale load must not wait for IndexedDB');
+    assertStartsBefore(body, 'await openStorageForBoot();', 'await i18nReady;', 'boot still waits for i18n after the database opens');
     assert.doesNotMatch(body, /await initI18n\(\)/);
   });
 });

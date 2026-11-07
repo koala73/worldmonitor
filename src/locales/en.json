@@ -1282,7 +1282,8 @@
       "skipToStart": "Skip to start",
       "previous": "Previous",
       "next": "Next",
-      "skipToEnd": "Skip to end"
+      "skipToEnd": "Skip to end",
+      "storageUnavailable": "Playback is unavailable because this browser is blocking site storage. Allow site data for this site to start saving snapshots."
     },
     "pizzint": {
       "indexSource": "Index: World Monitor",

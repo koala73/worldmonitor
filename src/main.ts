@@ -1,6 +1,6 @@
 import './styles/base-layer.css';
-import { initPwaInstall } from '@/services/pwa-install';
 import './bootstrap/zod-csp';
+import { initPwaInstall } from '@/services/pwa-install';
 import { SITE_VARIANT } from '@/config/variant';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
 import { markLcpDebug } from '@/utils/lcp-debug';

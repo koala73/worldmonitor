@@ -167,6 +167,17 @@ describe('Papua New Guinea ICCC fuel prices', () => {
     assert.throws(() => discoverPngFuelPosts([{ ...index[0], link: 'https://evil.example/x' }]), /Unapproved/);
   });
 
+  it('reads the November 2026 retail row after the direct subsidy ended', () => {
+    // The subsidy phase-out relabelled the retail row "November Price (GST Exempted only)";
+    // the "October Subsidized Price" comparison row and the toea change row stay out.
+    const nov = parsePngFuelPost(json('iccc-post-2026-11.json'));
+    assertUnique(nov);
+    assert.equal(nov.length, 3);
+    assert.equal(value(nov, 'fuel.retail_price', '2026-11-08', 'Petrol; Port Moresby'), 6.19);
+    assert.equal(value(nov, 'fuel.retail_price', '2026-11-08', 'Diesel; Port Moresby'), 6.69);
+    assert.equal(value(nov, 'fuel.retail_price', '2026-11-08', 'Kerosene; Port Moresby'), 6.57);
+  });
+
   it('serves the previous release until the newest one takes effect', async () => {
     const { fetchFn, calls } = server({
       'https://iccc.gov.pg/wp-json/wp/v2/posts?categories=763309980&per_page=10&_fields=id,date,date_gmt,modified_gmt,link,title': index,

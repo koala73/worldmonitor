@@ -54,6 +54,13 @@ vi.mock('@/services/clerk', () => ({
 
 vi.mock('@/services/entitlements', () => ({
   hasTier: () => gate.tier,
+  getEntitlementState: () => (gate.tier ? { features: { tier: 1 } } : null),
+  onEntitlementChange: () => () => {},
+  getEntitlementVerificationStatus: () => 'ready',
+  onEntitlementVerificationChange: (cb: (status: string) => void) => {
+    cb('ready');
+    return () => {};
+  },
 }));
 
 vi.mock('@/services/market-watchlist', () => ({
@@ -223,14 +230,28 @@ describe('notification settings delivery mode and sensitivity', () => {
     expect(q<HTMLInputElement>(container, '#usWatchlistAlerts').checked).toBe(true);
   });
 
-  it('gates the panel on the entitlement snapshot, not on being signed in', async () => {
+  it('renders the free ladder for a signed-in free account, not a Pro lock (#4273)', async () => {
     gate.tier = false;
     const container = document.createElement('div');
     const rendered = renderNotificationsSettings({ isSignedIn: true });
     container.innerHTML = rendered.html;
     document.body.appendChild(container);
     cleanups.push(rendered.attach(container));
-    expect(container.querySelector('#usNotifSensitivity')).toBeNull();
+    // The blanket lock is gone: the panel loads with the ladder banner, and
+    // settings data IS fetched for the free account.
+    expect(container.querySelector('#usNotifContent')).not.toBeNull();
+    expect(container.querySelector('#usNotifUpgradeBtn')).toBeNull();
+    expect(container.querySelector('.us-notif-ladder-banner [data-ladder-upgrade]')).not.toBeNull();
+    expect(channelMocks.getChannelsData).toHaveBeenCalled();
+  });
+
+  it('keeps the sign-in gate for signed-out visitors', async () => {
+    gate.tier = false;
+    const container = document.createElement('div');
+    const rendered = renderNotificationsSettings({ isSignedIn: false });
+    container.innerHTML = rendered.html;
+    document.body.appendChild(container);
+    cleanups.push(rendered.attach(container));
     expect(container.querySelector('#usNotifContent')).toBeNull();
     expect(container.querySelector('#usNotifUpgradeBtn')).not.toBeNull();
     expect(channelMocks.getChannelsData).not.toHaveBeenCalled();

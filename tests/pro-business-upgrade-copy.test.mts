@@ -22,34 +22,75 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 describe('buildUpgradePreviewBody', () => {
-  it('states the charge today, the renewal price and the failure outcome', () => {
+  it('states the charge today, the restarted period, the renewal and the failure outcome', () => {
     const body = buildUpgradePreviewBody('Pro Monthly', {
       chargeAmount: 667,
       currency: 'USD',
       renewalAmount: 4999,
+      renewalCurrency: 'USD',
+      renewalDate: '2026-12-07T11:03:06.344647383Z',
       billingPeriod: 'monthly',
     });
     assert.equal(
       body,
-      'Your Pro Monthly subscription moves to Pro Business now. You pay $6.67 today for the rest of this billing period, then $49.99 a month plus any tax from your next renewal. If the payment fails, you stay on Pro.',
+      'Your Pro Monthly subscription moves to Pro Business now. You pay $6.67 today and your billing period restarts today. It renews at $49.99 a month plus any tax on December 7, 2026. If the payment fails, you stay on Pro.',
     );
   });
 
-  it('uses the annual period and survives a missing renewal amount', () => {
+  // Shape of a live Dodo preview (2026-11-07): the charge is in the customer's
+  // adaptive currency, the new plan's recurring price stays in USD.
+  it('formats the renewal in the plan currency, not the charge currency', () => {
+    const body = buildUpgradePreviewBody('Pro Monthly', {
+      chargeAmount: 20053,
+      currency: 'AED',
+      renewalAmount: 4999,
+      renewalCurrency: 'USD',
+      renewalDate: '2026-12-07T11:03:06Z',
+      billingPeriod: 'monthly',
+    });
+    assert.match(body, /You pay AED\s?200\.53 today/);
+    assert.ok(body.includes('It renews at $49.99 a month plus any tax on December 7, 2026.'));
+  });
+
+  it('uses the annual period and survives a missing renewal amount, currency or date', () => {
     const annual = buildUpgradePreviewBody('Pro Annual', {
       chargeAmount: 6000,
       currency: 'USD',
       renewalAmount: 44999,
+      renewalCurrency: 'USD',
+      renewalDate: null,
       billingPeriod: 'annual',
     });
-    assert.ok(annual.includes('$449.99 a year'));
+    assert.ok(annual.includes('It renews at $449.99 a year plus any tax.'));
     const unknown = buildUpgradePreviewBody('Pro', {
       chargeAmount: 100,
       currency: 'USD',
       renewalAmount: null,
+      renewalCurrency: null,
+      renewalDate: 'not-a-date',
       billingPeriod: 'monthly',
     });
-    assert.ok(unknown.includes('then the Pro Business price from your next renewal'));
+    assert.ok(unknown.includes('It renews at the Pro Business price.'));
+  });
+
+  it('names no renewal number when its currency is missing, instead of borrowing the charge currency', () => {
+    const body = buildUpgradePreviewBody('Pro Monthly', {
+      chargeAmount: 20053,
+      currency: 'AED',
+      renewalAmount: 4999,
+      renewalCurrency: null,
+      renewalDate: '2026-12-07T11:03:06Z',
+      billingPeriod: 'monthly',
+    });
+    assert.doesNotMatch(body, /AED\s?49\.99/);
+    assert.ok(body.includes('It renews at the Pro Business price on December 7, 2026.'));
+  });
+
+  it('never claims the charge covers only the rest of the old period', () => {
+    const body = buildUpgradePreviewBody('Pro', {
+      chargeAmount: 100, currency: 'USD', renewalAmount: 4999, renewalCurrency: 'USD', renewalDate: null, billingPeriod: 'monthly',
+    });
+    assert.doesNotMatch(body, /rest of (this|the) billing period|next renewal/);
   });
 
   it('never promises "no charge" for an unconfirmed outcome', () => {
@@ -79,9 +120,11 @@ describe('cross-app copy parity (dashboard vs /pro)', () => {
   const proSource = readFileSync(resolve(root, 'pro-test/src/services/pro-business-upgrade.ts'), 'utf8');
   const shared = [
     'subscription moves to Pro Business now. ',
-    'today for the rest of this billing period, ',
+    'today and your billing period restarts today. ',
     'If the payment fails, you stay on Pro.',
-    'then the Pro Business price from your next renewal',
+    'the Pro Business price',
+    "new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })",
+    "preview.renewalAmount === null || !preview.renewalCurrency",
     UPGRADE_SUCCESS_BODY,
     UPGRADE_CANCEL_SCHEDULED_BODY,
     UPGRADE_FAILED_BODY,

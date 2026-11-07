@@ -1094,7 +1094,8 @@
       "skipToStart": "Başa atla",
       "previous": "Önceki",
       "next": "Sonraki",
-      "skipToEnd": "Sona atla"
+      "skipToEnd": "Sona atla",
+      "storageUnavailable": "Tarayıcı site depolamasını engellediği için oynatma kullanılamıyor. Anlık görüntüleri kaydetmeye başlamak için bu site için site verilerine izin verin."
     },
     "pizzint": {
       "indexSource": "Endeks: World Monitor",

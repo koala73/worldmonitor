@@ -226,7 +226,7 @@
     "q3": "Para quem é o Enterprise?",
     "a3": "O Enterprise é para equipas que precisam de uso partilhado, APIs, integrações, opções de deployment e suporte direto.",
     "q4": "Posso começar com Pro e fazer upgrade depois?",
-    "a4": "Sim. Pro é para uso pessoal. Pro Business ($49,99/mês) adiciona licença comercial, exportação de dados, 25 dashboards e 250 chamadas MCP/dia. Planos API cobrem acesso programático, e Enterprise cobre implantações personalizadas. Para passar de Pro para Pro Business, escolha Pro Business com a sessão iniciada: sua assinatura muda com uma cobrança proporcional pelo restante do período de faturamento.",
+    "a4": "Sim. Pro é para uso pessoal. Pro Business ($49,99/mês) adiciona licença comercial, exportação de dados, 25 dashboards e 250 chamadas MCP/dia. Planos API cobrem acesso programático, e Enterprise cobre implantações personalizadas. Para passar de Pro para Pro Business, escolha Pro Business com a sessão iniciada: sua assinatura muda, você vê a cobrança de hoje antes de confirmar e o período de faturamento recomeça nesse dia.",
     "q5": "É só para monitorização de conflitos?",
     "a5": "Não. O World Monitor é sobretudo uma plataforma de inteligência global que cobre mercados de ações, macroeconomia, análise geopolítica, energia, infraestrutura e mais. O seguimento de conflitos é uma entre muitas capacidades — não o foco.",
     "q6": "Porquê manter a plataforma principal grátis?",

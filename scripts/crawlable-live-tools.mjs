@@ -730,7 +730,7 @@ export function crisisTrackerViewModel(results, countries, now = Date.now()) {
   }
   if (rows.length === 0) throw new Error('No current crisis summaries are available');
 
-  rows.sort((a, b) => a.name.localeCompare(b.name));
+  rows.sort((a, b) => a.name.localeCompare(b.name, 'en-US'));
   const validCodes = new Set(rows.map((row) => row.code));
   const missingCountries = [...countryByCode]
     .filter(([code]) => !validCodes.has(code))
@@ -807,7 +807,7 @@ export function hazardPulseViewModel(payload, { now = Date.now(), bounds = null 
     categoryCounts.set(event.category, (categoryCounts.get(event.category) || 0) + 1);
   }
   const categories = [...categoryCounts]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'en-US'))
     .map(([category, count]) => `${category} ${count}`)
     .join(' · ');
   const magnitudeEvents = events.filter((event) => event.magnitude !== null);

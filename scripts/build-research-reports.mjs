@@ -574,7 +574,7 @@ export function computeMonthlyAverages(history, startMonth, endMonth) {
     byMonth.get(month).push(row.total);
   }
   return [...byMonth.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => a.localeCompare(b, 'en-US'))
     .map(([month, values]) => ({
       month,
       days: values.length,

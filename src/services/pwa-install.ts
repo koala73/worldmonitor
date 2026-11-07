@@ -189,6 +189,12 @@ export function mountInstallEntry(container: HTMLElement): () => void {
       openIosInstallSheet();
       return;
     }
+    // The prompt is single-use, so the entry disappears. Park focus on its
+    // container first so a keyboard user does not land on <body>.
+    if (document.activeElement === button) {
+      container.tabIndex = -1;
+      container.focus({ preventScroll: true });
+    }
     deferredPrompt = null;
     notify();
     try {

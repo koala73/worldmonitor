@@ -181,7 +181,7 @@ describe('notifications-settings.ts — centralized save state (countries thread
   it('saveCurrentAlertRule uses getCurrentAlertRuleFormState (debounced picker save)', () => {
     assert.match(
       settingsSrc,
-      /function\s+saveCurrentAlertRule\s*\(\)[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
+      /function\s+saveCurrentAlertRule\s*\([^)]*\)[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
       'saveCurrentAlertRule must source payload from getCurrentAlertRuleFormState',
     );
   });
@@ -241,8 +241,11 @@ describe('notifications-settings.ts — centralized save state (countries thread
     //
     // Match every settings-scoped saveAlertRules invocation; each must contain
     // `...state` and the settings lifecycle signal so a Retry-After wait cannot
-    // outlive the panel that initiated it.
-    const calls = settingsSrc.match(/saveAlertRules\(\{[\s\S]*?\},\s*signal\)/g) ?? [];
+    // outlive the panel that initiated it. The one sanctioned exception is the
+    // close-time flush (#4273): a pending debounced save dispatched from the
+    // abort handler must NOT ride the already-aborting signal, so that call
+    // site carries the explicit `opts?.flush ? undefined : signal` tail.
+    const calls = settingsSrc.match(/saveAlertRules\(\{[\s\S]*?\},\s*(?:signal|opts\?\.flush \? undefined : signal)\)/g) ?? [];
     assert.ok(calls.length >= 4, `expected ≥4 saveAlertRules call sites, found ${calls.length}`);
     for (const call of calls) {
       assert.match(
